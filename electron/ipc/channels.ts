@@ -68,6 +68,12 @@ export const CHANNELS = {
   ERROR_NOTIFY: 'error:notify',
   ERROR_RETRY: 'error:retry',
   ERROR_OPEN_LOGS: 'error:open-logs',
+
+  // Event Inspector channels
+  EVENT_INSPECTOR_GET_EVENTS: 'event-inspector:get-events',
+  EVENT_INSPECTOR_GET_FILTERED: 'event-inspector:get-filtered',
+  EVENT_INSPECTOR_CLEAR: 'event-inspector:clear',
+  EVENT_INSPECTOR_EVENT: 'event-inspector:event',
 } as const
 
 export type ChannelName = typeof CHANNELS[keyof typeof CHANNELS]

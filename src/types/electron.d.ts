@@ -110,6 +110,24 @@ export interface LogFilterOptions {
   endTime?: number
 }
 
+export interface EventRecord {
+  id: string
+  timestamp: number
+  type: string
+  payload: any
+  source: 'main' | 'renderer'
+}
+
+export interface EventFilterOptions {
+  types?: string[]
+  worktreeId?: string
+  agentId?: string
+  taskId?: string
+  search?: string
+  after?: number
+  before?: number
+}
+
 // Error types for IPC
 type ErrorType = 'git' | 'process' | 'filesystem' | 'network' | 'config' | 'unknown'
 type RetryAction = 'copytree' | 'devserver' | 'terminal' | 'git' | 'worktree'
@@ -191,6 +209,14 @@ export interface ElectronAPI {
     onError(callback: (error: AppError) => void): () => void
     retry(errorId: string, action: RetryAction, args?: Record<string, unknown>): Promise<void>
     openLogs(): Promise<void>
+  }
+  eventInspector: {
+    getEvents(): Promise<EventRecord[]>
+    getFiltered(filters: EventFilterOptions): Promise<EventRecord[]>
+    clear(): Promise<void>
+    subscribe(): void
+    unsubscribe(): void
+    onEvent(callback: (event: EventRecord) => void): () => void
   }
 }
 

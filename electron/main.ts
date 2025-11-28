@@ -1,4 +1,4 @@
-import { app, BrowserWindow } from 'electron'
+import { app, BrowserWindow, ipcMain } from 'electron'
 import path from 'path'
 import { fileURLToPath } from 'url'
 import os from 'os'
@@ -10,6 +10,9 @@ import { worktreeService } from './services/WorktreeService.js'
 import { createWindowWithState } from './windowState.js'
 import { store } from './store.js'
 import { setLoggerWindow } from './utils/logger.js'
+import { EventBuffer } from './services/EventBuffer.js'
+import { events, ALL_EVENT_TYPES } from './services/events.js'
+import { CHANNELS } from './ipc/channels.js'
 
 const __filename = fileURLToPath(import.meta.url)
 const __dirname = path.dirname(__filename)
@@ -29,6 +32,8 @@ let ptyManager: PtyManager | null = null
 let devServerManager: DevServerManager | null = null
 let cleanupIpcHandlers: (() => void) | null = null
 let cleanupErrorHandlers: (() => void) | null = null
+let eventBuffer: EventBuffer | null = null
+let eventBufferUnsubscribe: (() => void) | null = null
 
 // Terminal ID for the default terminal (for backwards compatibility with renderer)
 const DEFAULT_TERMINAL_ID = 'default'
@@ -85,15 +90,63 @@ function createWindow(): void {
   })
   console.log('[MAIN] DevServerManager initialized successfully')
 
-  // Register IPC handlers with PtyManager, DevServerManager, and WorktreeService
+  // --- EVENT BUFFER SETUP ---
+  // Create and start EventBuffer to capture all events
+  console.log('[MAIN] Initializing EventBuffer...')
+  eventBuffer = new EventBuffer(1000)
+  eventBuffer.start()
+
+  // Register IPC handlers with PtyManager, DevServerManager, WorktreeService, and EventBuffer
   console.log('[MAIN] Registering IPC handlers...')
-  cleanupIpcHandlers = registerIpcHandlers(mainWindow, ptyManager, devServerManager, worktreeService)
+  cleanupIpcHandlers = registerIpcHandlers(mainWindow, ptyManager, devServerManager, worktreeService, eventBuffer)
   console.log('[MAIN] IPC handlers registered successfully')
 
   // Register error handlers
   console.log('[MAIN] Registering error handlers...')
   cleanupErrorHandlers = registerErrorHandlers(mainWindow, devServerManager, worktreeService, ptyManager)
   console.log('[MAIN] Error handlers registered successfully')
+
+  // Track if the event inspector is subscribed to prevent unnecessary IPC traffic
+  let eventInspectorActive = false
+  const unsubscribers: Array<() => void> = []
+
+  // Listen for subscription status from renderer
+  ipcMain.on('event-inspector:subscribe', () => {
+    eventInspectorActive = true
+    console.log('[MAIN] Event inspector subscribed')
+  })
+  ipcMain.on('event-inspector:unsubscribe', () => {
+    eventInspectorActive = false
+    console.log('[MAIN] Event inspector unsubscribed')
+  })
+
+  // Subscribe to all event types and forward to renderer (only when inspector is active)
+  for (const eventType of ALL_EVENT_TYPES) {
+    const unsub = events.on(eventType as any, ((payload: any) => {
+      // Only forward if inspector is actively listening
+      if (!eventInspectorActive) return
+
+      // Get sanitized payload from the event buffer's record
+      const sanitizedPayload = eventBuffer!.getAll().find(e => e.type === eventType)?.payload ?? payload
+
+      // Forward to renderer
+      sendToRenderer(mainWindow!, CHANNELS.EVENT_INSPECTOR_EVENT, {
+        id: `${Date.now()}-${Math.random().toString(36).substr(2, 9)}`,
+        timestamp: Date.now(),
+        type: eventType,
+        payload: sanitizedPayload,
+        source: 'main',
+      })
+    }) as any)
+    unsubscribers.push(unsub)
+  }
+
+  eventBufferUnsubscribe = () => {
+    unsubscribers.forEach(unsub => unsub())
+    ipcMain.removeAllListeners('event-inspector:subscribe')
+    ipcMain.removeAllListeners('event-inspector:unsubscribe')
+  }
+  console.log('[MAIN] EventBuffer initialized and events forwarding to renderer (when subscribed)')
 
   // Spawn the default terminal for backwards compatibility with the renderer
   console.log('[MAIN] Spawning default terminal...')
@@ -120,6 +173,16 @@ function createWindow(): void {
         worktreeId: t.worktreeId,
       }))
       store.set('appState.terminals', terminals)
+    }
+
+    // Cleanup event buffer subscriptions
+    if (eventBufferUnsubscribe) {
+      eventBufferUnsubscribe()
+      eventBufferUnsubscribe = null
+    }
+    if (eventBuffer) {
+      eventBuffer.stop()
+      eventBuffer = null
     }
 
     // Cleanup IPC handlers first to prevent any late IPC traffic

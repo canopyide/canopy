@@ -2,6 +2,7 @@ import { useState, useCallback, useEffect, type ReactNode } from 'react'
 import { Toolbar } from './Toolbar'
 import { Sidebar } from './Sidebar'
 import { LogsPanel } from '../Logs'
+import { EventInspectorPanel } from '../EventInspector'
 
 interface AppLayoutProps {
   children?: ReactNode
@@ -98,6 +99,7 @@ export function AppLayout({
           </main>
         </div>
         <LogsPanel />
+        <EventInspectorPanel />
       </div>
     </div>
   )

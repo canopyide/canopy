@@ -6,7 +6,7 @@ import { TerminalGrid } from './components/Terminal'
 import { WorktreeCard } from './components/Worktree'
 import { ProblemsPanel } from './components/Errors'
 import { TerminalPalette } from './components/TerminalPalette'
-import { useTerminalStore, useWorktreeSelectionStore, useLogsStore, useErrorStore, type RetryAction } from './store'
+import { useTerminalStore, useWorktreeSelectionStore, useLogsStore, useErrorStore, useEventStore, type RetryAction } from './store'
 import type { WorktreeState } from './types'
 
 function SidebarContent() {
@@ -106,6 +106,7 @@ function App() {
   const { activeWorktreeId, setActiveWorktree } = useWorktreeSelectionStore()
   const { inject, isInjecting } = useContextInjection()
   const toggleLogsPanel = useLogsStore((state) => state.togglePanel)
+  const toggleEventInspector = useEventStore((state) => state.togglePanel)
 
   // Terminal palette for quick switching (Cmd/Ctrl+T)
   const terminalPalette = useTerminalPalette()
@@ -263,11 +264,20 @@ function App() {
         e.preventDefault()
         toggleLogsPanel()
       }
+      // Ctrl+Shift+E: Toggle event inspector
+      else if (e.ctrlKey && e.shiftKey && (e.key === 'E' || e.key === 'e')) {
+        e.preventDefault()
+        toggleEventInspector()
+      }
     }
 
     window.addEventListener('keydown', handleKeyDown)
     return () => window.removeEventListener('keydown', handleKeyDown)
+<<<<<<< HEAD
   }, [focusNext, focusPrevious, toggleMaximize, focusedId, handleLaunchAgent, handleInjectContextShortcut, toggleLogsPanel, terminalPalette.toggle])
+=======
+  }, [focusNext, focusPrevious, toggleMaximize, focusedId, handleLaunchAgent, handleInjectContextShortcut, toggleLogsPanel, toggleEventInspector])
+>>>>>>> pr-68-temp
 
   if (!isElectronAvailable()) {
     return (

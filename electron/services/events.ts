@@ -287,6 +287,48 @@ export type CanopyEventMap = {
 };
 
 // 3. Create Bus
+// Export all event type keys for external consumers
+export const ALL_EVENT_TYPES: Array<keyof CanopyEventMap> = [
+  'sys:ready',
+  'sys:refresh',
+  'sys:quit',
+  'sys:config:reload',
+  'file:open',
+  'file:copy-tree',
+  'file:copy-path',
+  'ui:notify',
+  'ui:filter:set',
+  'ui:filter:clear',
+  'ui:modal:open',
+  'ui:modal:close',
+  'sys:worktree:switch',
+  'sys:worktree:refresh',
+  'sys:worktree:cycle',
+  'sys:worktree:selectByName',
+  'sys:worktree:update',
+  'sys:worktree:remove',
+  'watcher:change',
+  'server:update',
+  'server:error',
+  'sys:pr:detected',
+  'sys:pr:cleared',
+  'agent:spawned',
+  'agent:state-changed',
+  'agent:output',
+  'agent:completed',
+  'agent:failed',
+  'agent:killed',
+  'task:created',
+  'task:assigned',
+  'task:state-changed',
+  'task:completed',
+  'task:failed',
+  'run:started',
+  'run:progress',
+  'run:completed',
+  'run:error',
+]
+
 class TypedEventBus {
   private bus = new EventEmitter();
 

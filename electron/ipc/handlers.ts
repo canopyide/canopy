@@ -34,6 +34,7 @@ import { logBuffer, type FilterOptions as LogFilterOptions } from '../services/L
 import { updateRecentDirectories, removeRecentDirectory } from '../utils/recentDirectories.js'
 import { join } from 'path'
 import { homedir } from 'os'
+import type { EventBuffer, FilterOptions as EventFilterOptions } from '../services/EventBuffer.js'
 
 /**
  * Initialize all IPC handlers
@@ -42,13 +43,15 @@ import { homedir } from 'os'
  * @param ptyManager - The PtyManager instance for terminal management
  * @param devServerManager - Dev server manager instance
  * @param worktreeService - Worktree service instance
+ * @param eventBuffer - Event buffer instance for event inspector
  * @returns Cleanup function to remove all handlers
  */
 export function registerIpcHandlers(
   mainWindow: BrowserWindow,
   ptyManager: PtyManager,
   devServerManager?: DevServerManager,
-  worktreeService?: WorktreeService
+  worktreeService?: WorktreeService,
+  eventBuffer?: EventBuffer
 ): () => void {
   // Store handler references for cleanup
   const handlers: Array<() => void> = []
@@ -700,6 +703,37 @@ export function registerIpcHandlers(
   }
   ipcMain.handle(CHANNELS.DIRECTORY_REMOVE_RECENT, handleDirectoryRemoveRecent)
   handlers.push(() => ipcMain.removeHandler(CHANNELS.DIRECTORY_REMOVE_RECENT))
+
+  // ==========================================
+  // Event Inspector Handlers
+  // ==========================================
+
+  const handleEventInspectorGetEvents = async () => {
+    if (!eventBuffer) {
+      return []
+    }
+    return eventBuffer.getAll()
+  }
+  ipcMain.handle(CHANNELS.EVENT_INSPECTOR_GET_EVENTS, handleEventInspectorGetEvents)
+  handlers.push(() => ipcMain.removeHandler(CHANNELS.EVENT_INSPECTOR_GET_EVENTS))
+
+  const handleEventInspectorGetFiltered = async (_event: Electron.IpcMainInvokeEvent, filters: EventFilterOptions) => {
+    if (!eventBuffer) {
+      return []
+    }
+    return eventBuffer.getFiltered(filters)
+  }
+  ipcMain.handle(CHANNELS.EVENT_INSPECTOR_GET_FILTERED, handleEventInspectorGetFiltered)
+  handlers.push(() => ipcMain.removeHandler(CHANNELS.EVENT_INSPECTOR_GET_FILTERED))
+
+  const handleEventInspectorClear = async () => {
+    if (!eventBuffer) {
+      return
+    }
+    eventBuffer.clear()
+  }
+  ipcMain.handle(CHANNELS.EVENT_INSPECTOR_CLEAR, handleEventInspectorClear)
+  handlers.push(() => ipcMain.removeHandler(CHANNELS.EVENT_INSPECTOR_CLEAR))
 
   // Return cleanup function
   return () => {
