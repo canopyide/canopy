@@ -9,6 +9,8 @@ import * as pty from 'node-pty'
 import { EventEmitter } from 'events'
 import { existsSync } from 'fs'
 import { events } from './events.js'
+import type { AgentState } from '../types/index.js'
+import { nextAgentState, type AgentEvent } from './AgentStateMachine.js'
 
 export interface PtySpawnOptions {
   cwd: string
@@ -36,6 +38,12 @@ interface TerminalInfo {
   spawnedAt: number
   /** Flag indicating this terminal was explicitly killed (not a natural exit) */
   wasKilled?: boolean
+  /** Current agent state (for agent terminals only) */
+  agentState?: AgentState
+  /** Timestamp of last agent state change */
+  lastStateChange?: number
+  /** Error message if agent state is 'failed' */
+  error?: string
 }
 
 export interface PtyManagerEvents {
@@ -49,6 +57,42 @@ export class PtyManager extends EventEmitter {
 
   constructor() {
     super()
+  }
+
+  /**
+   * Update agent state for a terminal and emit state change events
+   * @param id - Terminal identifier
+   * @param event - Agent event that triggered the state change
+   * @param errorMessage - Optional error message if event is error type
+   */
+  private updateAgentState(id: string, event: AgentEvent, errorMessage?: string): void {
+    const terminal = this.terminals.get(id)
+    if (!terminal || !terminal.agentId) {
+      return // Not an agent terminal
+    }
+
+    const currentState = terminal.agentState || 'idle'
+    const newState = nextAgentState(currentState, event)
+
+    // Only emit if state actually changed
+    if (newState !== currentState) {
+      const timestamp = Date.now()
+      terminal.agentState = newState
+      terminal.lastStateChange = timestamp
+      if (errorMessage && newState === 'failed') {
+        terminal.error = errorMessage
+      }
+
+      // Emit agent:state-changed event
+      events.emit('agent:state-changed', {
+        agentId: terminal.agentId,
+        terminalId: id,
+        previousState: currentState,
+        newState,
+        timestamp,
+        error: errorMessage,
+      })
+    }
   }
 
   /**
@@ -84,15 +128,20 @@ export class PtyManager extends EventEmitter {
       throw new Error(`Failed to spawn terminal: ${errorMessage}`)
     }
 
-    // Forward PTY data events
-    ptyProcess.onData((data) => {
-      this.emit('data', id, data)
-    })
-
     const spawnedAt = Date.now()
     const isAgentTerminal = options.type === 'claude' || options.type === 'gemini'
     // For agent terminals, use terminal ID as agent ID
     const agentId = isAgentTerminal ? id : undefined
+
+    // Forward PTY data events
+    ptyProcess.onData((data) => {
+      this.emit('data', id, data)
+
+      // For agent terminals, check for prompt patterns and update state
+      if (isAgentTerminal && agentId) {
+        this.updateAgentState(id, { type: 'output', data })
+      }
+    })
 
     // Handle PTY exit
     ptyProcess.onExit(({ exitCode }) => {
@@ -104,6 +153,11 @@ export class PtyManager extends EventEmitter {
       }
 
       this.emit('exit', id, exitCode ?? 0)
+
+      // Update agent state based on exit code
+      if (isAgentTerminal && agentId) {
+        this.updateAgentState(id, { type: 'exit', code: exitCode ?? 0 })
+      }
 
       // Emit agent:completed event for agent terminals (but not if explicitly killed)
       if (isAgentTerminal && agentId && !terminal.wasKilled) {
@@ -130,6 +184,8 @@ export class PtyManager extends EventEmitter {
       worktreeId: options.worktreeId,
       agentId,
       spawnedAt,
+      agentState: isAgentTerminal ? 'idle' : undefined,
+      lastStateChange: isAgentTerminal ? spawnedAt : undefined,
     })
 
     // Emit agent:spawned event for agent terminals (Claude, Gemini)
@@ -141,6 +197,9 @@ export class PtyManager extends EventEmitter {
         worktreeId: options.worktreeId,
         timestamp: spawnedAt,
       })
+
+      // Transition from idle to working state when agent starts
+      this.updateAgentState(id, { type: 'start' })
     }
   }
 
@@ -153,6 +212,11 @@ export class PtyManager extends EventEmitter {
     const terminal = this.terminals.get(id)
     if (terminal) {
       terminal.ptyProcess.write(data)
+
+      // For agent terminals in waiting state, transition to working when user provides input
+      if (terminal.agentId && terminal.agentState === 'waiting') {
+        this.updateAgentState(id, { type: 'input' })
+      }
     } else {
       console.warn(`Terminal ${id} not found, cannot write data`)
     }
@@ -184,8 +248,11 @@ export class PtyManager extends EventEmitter {
       // Mark as killed to prevent agent:completed emission
       terminal.wasKilled = true
 
-      // Emit agent:killed event for agent terminals before killing
+      // Update agent state to failed if this was an agent terminal
       if (terminal.agentId) {
+        this.updateAgentState(id, { type: 'error', error: reason || 'Killed by user' })
+
+        // Emit agent:killed event for agent terminals before killing
         events.emit('agent:killed', {
           agentId: terminal.agentId,
           reason,

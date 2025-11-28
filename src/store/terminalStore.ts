@@ -7,6 +7,7 @@
 
 import { create, type StateCreator } from 'zustand'
 import type { TerminalType } from '@/components/Terminal/TerminalPane'
+import type { AgentState } from '@/types'
 
 export interface TerminalInstance {
   id: string
@@ -14,6 +15,9 @@ export interface TerminalInstance {
   title: string
   worktreeId?: string
   cwd: string
+  agentState?: AgentState
+  lastStateChange?: number
+  error?: string
 }
 
 export interface AddTerminalOptions {
@@ -34,6 +38,7 @@ interface TerminalGridState {
   addTerminal: (options: AddTerminalOptions) => Promise<string>
   removeTerminal: (id: string) => void
   updateTitle: (id: string, newTitle: string) => void
+  updateAgentState: (id: string, state: AgentState, timestamp: number, error?: string) => void
   setFocused: (id: string | null) => void
   toggleMaximize: (id: string) => void
   focusNext: () => void
@@ -147,6 +152,31 @@ const createTerminalStore: StateCreator<TerminalGridState> = (set) => ({
 
   setFocused: (id) => set({ focusedId: id }),
 
+  updateAgentState: (id, state, timestamp, error) => {
+    set((prevState) => {
+      const terminal = prevState.terminals.find((t) => t.id === id)
+      if (!terminal) return prevState
+
+      // Ignore stale updates (out-of-order delivery)
+      if (terminal.lastStateChange && timestamp < terminal.lastStateChange) {
+        return prevState
+      }
+
+      const newTerminals = prevState.terminals.map((t) =>
+        t.id === id
+          ? {
+              ...t,
+              agentState: state,
+              lastStateChange: timestamp,
+              error: error || t.error,
+            }
+          : t
+      )
+
+      return { terminals: newTerminals }
+    })
+  },
+
   updateTitle: (id, newTitle) => {
     set((state) => {
       const terminal = state.terminals.find((t) => t.id === id)
@@ -203,3 +233,11 @@ const createTerminalStore: StateCreator<TerminalGridState> = (set) => ({
 })
 
 export const useTerminalStore = create<TerminalGridState>()(createTerminalStore)
+
+// Subscribe to agent state changes from main process
+if (typeof window !== 'undefined' && window.electron?.agent) {
+  window.electron.agent.onStateChanged((payload) => {
+    const store = useTerminalStore.getState()
+    store.updateAgentState(payload.terminalId, payload.newState, payload.timestamp, payload.error)
+  })
+}

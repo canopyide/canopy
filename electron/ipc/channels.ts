@@ -32,6 +32,9 @@ export const CHANNELS = {
   TERMINAL_EXIT: 'terminal:exit',
   TERMINAL_ERROR: 'terminal:error',
 
+  // Agent state channels
+  AGENT_STATE_CHANGED: 'agent:state-changed',
+
   // CopyTree channels
   COPYTREE_GENERATE: 'copytree:generate',
   COPYTREE_INJECT: 'copytree:inject',

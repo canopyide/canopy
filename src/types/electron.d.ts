@@ -12,6 +12,7 @@ import type {
   WorktreeState,
   DevServerState,
   CanopyConfig,
+  AgentState,
 } from './index'
 
 // Additional types specific to the Electron API that may not be in the main types
@@ -40,6 +41,15 @@ interface CopyTreeResult {
   success: boolean
   content?: string
   fileCount?: number
+  error?: string
+}
+
+interface AgentStateChangedPayload {
+  agentId: string
+  terminalId: string
+  previousState: AgentState
+  newState: AgentState
+  timestamp: number
   error?: string
 }
 
@@ -136,6 +146,9 @@ export interface ElectronAPI {
     onData(id: string, callback: (data: string) => void): () => void
     onExit(callback: (id: string, exitCode: number) => void): () => void
   }
+  agent: {
+    onStateChanged(callback: (payload: AgentStateChangedPayload) => void): () => void
+  }
   copyTree: {
     generate(worktreeId: string, options?: CopyTreeOptions): Promise<CopyTreeResult>
     injectToTerminal(terminalId: string, worktreeId: string): Promise<CopyTreeResult>
@@ -151,7 +164,6 @@ export interface ElectronAPI {
     getState(): Promise<AppState>
     setState(partialState: Partial<AppState>): Promise<void>
   }
-<<<<<<< HEAD
   logs: {
     getAll(filters?: LogFilterOptions): Promise<LogEntry[]>
     getSources(): Promise<string[]>
@@ -164,12 +176,11 @@ export interface ElectronAPI {
     open(path: string): Promise<void>
     openDialog(): Promise<string | null>
     removeRecent(path: string): Promise<void>
-=======
+  }
   errors: {
     onError(callback: (error: AppError) => void): () => void
     retry(errorId: string, action: RetryAction, args?: Record<string, unknown>): Promise<void>
     openLogs(): Promise<void>
->>>>>>> feature/issue-47-error-ui-recovery
   }
 }
 

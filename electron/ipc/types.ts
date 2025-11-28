@@ -14,6 +14,12 @@ export interface TerminalSpawnOptions {
   rows: number
   /** Command to execute after shell starts (e.g., 'claude' for AI agents) */
   command?: string
+  /** Terminal type (derived from command if not provided) */
+  type?: 'shell' | 'claude' | 'gemini' | 'custom'
+  /** Display title */
+  title?: string
+  /** Associated worktree ID */
+  worktreeId?: string
 }
 
 export interface TerminalDataPayload {
@@ -39,6 +45,18 @@ export interface TerminalExitPayload {
 export interface TerminalErrorPayload {
   id: string
   error: string
+}
+
+// Agent state types
+export type AgentState = 'idle' | 'working' | 'waiting' | 'completed' | 'failed'
+
+export interface AgentStateChangedPayload {
+  agentId: string
+  terminalId: string
+  previousState: AgentState
+  newState: AgentState
+  timestamp: number
+  error?: string
 }
 
 // Worktree types (imported from core types)

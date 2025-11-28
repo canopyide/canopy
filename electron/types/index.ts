@@ -257,6 +257,12 @@ export interface TerminalInstance {
   cols: number;
   /** Number of rows in the terminal */
   rows: number;
+  /** Current agent lifecycle state (for AI agent terminals) */
+  agentState?: AgentState;
+  /** Timestamp of last agent state change (milliseconds since epoch) */
+  lastStateChange?: number;
+  /** Error message if agent state is 'failed' */
+  error?: string;
 }
 
 /** Options for spawning a new PTY process */

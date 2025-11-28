@@ -20,6 +20,7 @@ import { cn } from '@/lib/utils'
 import { XtermAdapter } from './XtermAdapter'
 import { ErrorBanner } from '../Errors/ErrorBanner'
 import { useErrorStore, type RetryAction } from '@/store'
+import type { AgentState } from '@/types'
 
 export type TerminalType = 'shell' | 'claude' | 'gemini' | 'custom'
 
@@ -38,6 +39,12 @@ export interface TerminalPaneProps {
   isFocused: boolean
   /** Whether this terminal is maximized */
   isMaximized?: boolean
+  /** Agent state (for AI agent terminals) */
+  agentState?: AgentState
+  /** Timestamp of last agent state change */
+  lastStateChange?: number
+  /** Error message if agent state is 'failed' */
+  error?: string
   /** Called when the pane is clicked/focused */
   onFocus: () => void
   /** Called when the close button is clicked */
@@ -57,6 +64,17 @@ const TYPE_ICONS: Record<TerminalType, string> = {
   custom: '⚡',
 }
 
+const AGENT_STATE_CONFIG: Record<
+  AgentState,
+  { label: string; color: string; dotColor: string }
+> = {
+  idle: { label: 'Idle', color: 'text-gray-500', dotColor: 'bg-gray-500' },
+  working: { label: 'Working', color: 'text-blue-500', dotColor: 'bg-blue-500' },
+  waiting: { label: 'Waiting', color: 'text-yellow-500', dotColor: 'bg-yellow-500' },
+  completed: { label: 'Completed', color: 'text-green-500', dotColor: 'bg-green-500' },
+  failed: { label: 'Failed', color: 'text-red-500', dotColor: 'bg-red-500' },
+}
+
 export function TerminalPane({
   id,
   title,
@@ -65,6 +83,9 @@ export function TerminalPane({
   cwd: _cwd, // Reserved for terminal spawning integration
   isFocused,
   isMaximized,
+  agentState,
+  lastStateChange,
+  error: _error,
   onFocus,
   onClose,
   onInjectContext,
@@ -193,6 +214,18 @@ export function TerminalPane({
 
   const typeIcon = TYPE_ICONS[type]
 
+  // Format state duration for tooltip
+  const getStateDuration = useCallback(() => {
+    if (!lastStateChange) return ''
+    const now = Date.now()
+    const seconds = Math.floor((now - lastStateChange) / 1000)
+    if (seconds < 60) return `${seconds}s`
+    const minutes = Math.floor(seconds / 60)
+    if (minutes < 60) return `${minutes}m ${seconds % 60}s`
+    const hours = Math.floor(minutes / 60)
+    return `${hours}h ${minutes % 60}m`
+  }, [lastStateChange])
+
   return (
     <div
       className={cn(
@@ -239,6 +272,28 @@ export function TerminalPane({
               aria-label={onTitleChange ? `Terminal title: ${title}. Press Enter or F2 to edit` : undefined}
             >
               {title}
+            </span>
+          )}
+          {agentState && !isExited && (
+            <span
+              className={cn(
+                'flex items-center gap-1.5 px-2 py-0.5 text-xs font-medium rounded-full shrink-0',
+                'bg-canopy-bg border',
+                AGENT_STATE_CONFIG[agentState].color
+              )}
+              title={`${AGENT_STATE_CONFIG[agentState].label}${lastStateChange ? ` (${getStateDuration()})` : ''}`}
+              role="status"
+              aria-live="polite"
+              aria-label={`Agent state: ${AGENT_STATE_CONFIG[agentState].label}${lastStateChange ? `, duration ${getStateDuration()}` : ''}`}
+            >
+              <span
+                className={cn(
+                  'w-2 h-2 rounded-full',
+                  AGENT_STATE_CONFIG[agentState].dotColor
+                )}
+                aria-hidden="true"
+              />
+              {AGENT_STATE_CONFIG[agentState].label}
             </span>
           )}
           {isExited && (

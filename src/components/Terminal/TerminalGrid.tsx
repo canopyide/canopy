@@ -101,6 +101,9 @@ export function TerminalGrid({ className, defaultCwd }: TerminalGridProps) {
             cwd={terminal.cwd}
             isFocused={true}
             isMaximized={true}
+            agentState={terminal.agentState}
+            lastStateChange={terminal.lastStateChange}
+            error={terminal.error}
             onFocus={() => setFocused(terminal.id)}
             onClose={() => removeTerminal(terminal.id)}
             onInjectContext={
@@ -143,6 +146,9 @@ export function TerminalGrid({ className, defaultCwd }: TerminalGridProps) {
           cwd={terminal.cwd}
           isFocused={terminal.id === focusedId}
           isMaximized={false}
+          agentState={terminal.agentState}
+          lastStateChange={terminal.lastStateChange}
+          error={terminal.error}
           onFocus={() => setFocused(terminal.id)}
           onClose={() => removeTerminal(terminal.id)}
           onInjectContext={

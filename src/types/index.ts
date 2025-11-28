@@ -115,6 +115,12 @@ export interface Notification {
 export type NotificationPayload = Omit<Notification, 'id'> & { id?: string };
 
 // ============================================================================
+// Agent/Task Types
+// ============================================================================
+
+export type AgentState = 'idle' | 'working' | 'waiting' | 'completed' | 'failed';
+
+// ============================================================================
 // Terminal Types
 // ============================================================================
 
@@ -129,6 +135,9 @@ export interface TerminalInstance {
   pid?: number;
   cols: number;
   rows: number;
+  agentState?: AgentState;
+  lastStateChange?: number;
+  error?: string;
 }
 
 export interface PtySpawnOptions {

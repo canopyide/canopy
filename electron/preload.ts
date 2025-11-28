@@ -44,6 +44,9 @@ const CHANNELS = {
   TERMINAL_EXIT: 'terminal:exit',
   TERMINAL_ERROR: 'terminal:error',
 
+  // Agent state channels
+  AGENT_STATE_CHANGED: 'agent:state-changed',
+
   // CopyTree channels
   COPYTREE_GENERATE: 'copytree:generate',
   COPYTREE_INJECT: 'copytree:inject',
@@ -132,6 +135,17 @@ interface DevServerState {
   pid?: number
   errorMessage?: string
   logs: string[]
+}
+
+type AgentState = 'idle' | 'working' | 'waiting' | 'completed' | 'failed'
+
+interface AgentStateChangedPayload {
+  agentId: string
+  terminalId: string
+  previousState: AgentState
+  newState: AgentState
+  timestamp: number
+  error?: string
 }
 
 interface TerminalSpawnOptions {
@@ -272,6 +286,9 @@ export interface ElectronAPI {
     onData(id: string, callback: (data: string) => void): () => void
     onExit(callback: (id: string, exitCode: number) => void): () => void
   }
+  agent: {
+    onStateChanged(callback: (payload: AgentStateChangedPayload) => void): () => void
+  }
   copyTree: {
     generate(worktreeId: string, options?: CopyTreeOptions): Promise<CopyTreeResult>
     injectToTerminal(terminalId: string, worktreeId: string): Promise<CopyTreeResult>
@@ -401,6 +418,30 @@ const api: ElectronAPI = {
       }
       ipcRenderer.on(CHANNELS.TERMINAL_EXIT, handler)
       return () => ipcRenderer.removeListener(CHANNELS.TERMINAL_EXIT, handler)
+    },
+  },
+
+  // ==========================================
+  // Agent API
+  // ==========================================
+  agent: {
+    onStateChanged: (callback: (payload: AgentStateChangedPayload) => void) => {
+      const handler = (_event: Electron.IpcRendererEvent, payload: unknown) => {
+        // Type guard to ensure payload is valid
+        if (
+          payload &&
+          typeof payload === 'object' &&
+          'agentId' in payload &&
+          'terminalId' in payload &&
+          'previousState' in payload &&
+          'newState' in payload &&
+          'timestamp' in payload
+        ) {
+          callback(payload as AgentStateChangedPayload)
+        }
+      }
+      ipcRenderer.on(CHANNELS.AGENT_STATE_CHANGED, handler)
+      return () => ipcRenderer.removeListener(CHANNELS.AGENT_STATE_CHANGED, handler)
     },
   },
 

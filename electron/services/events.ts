@@ -116,9 +116,11 @@ export type CanopyEventMap = {
    */
   'agent:state-changed': {
     agentId: string;
-    state: AgentState;
-    previousState?: AgentState;
+    terminalId: string;
+    newState: AgentState;
+    previousState: AgentState;
     timestamp: number;
+    error?: string;
   };
 
   /**

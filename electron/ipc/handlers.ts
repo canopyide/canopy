@@ -12,6 +12,7 @@ import { CHANNELS } from './channels.js'
 import { PtyManager } from '../services/PtyManager.js'
 import type { DevServerManager } from '../services/DevServerManager.js'
 import type { WorktreeService } from '../services/WorktreeService.js'
+import { events } from '../services/events.js'
 import type {
   TerminalSpawnOptions,
   TerminalResizePayload,
@@ -80,6 +81,17 @@ export function registerIpcHandlers(
   }
   ptyManager.on('error', handlePtyError)
   handlers.push(() => ptyManager.off('error', handlePtyError))
+
+  // ==========================================
+  // Event Bus Forwarding
+  // ==========================================
+
+  // Forward agent state changes to renderer
+  const handleAgentStateChanged = (payload: any) => {
+    sendToRenderer(mainWindow, CHANNELS.AGENT_STATE_CHANGED, payload)
+  }
+  events.on('agent:state-changed', handleAgentStateChanged)
+  handlers.push(() => events.off('agent:state-changed', handleAgentStateChanged))
 
   // ==========================================
   // Worktree Handlers
@@ -211,12 +223,21 @@ export function registerIpcHandlers(
       cwd = os.homedir()
     }
 
+    // Determine terminal type from command
+    let type: 'shell' | 'claude' | 'gemini' | 'custom' = 'shell'
+    if (options.command === 'claude') type = 'claude'
+    else if (options.command === 'gemini') type = 'gemini'
+    else if (options.command) type = 'custom'
+
     try {
       ptyManager.spawn(id, {
         cwd,
         shell: options.shell, // Shell validation happens in PtyManager
         cols,
         rows,
+        type,
+        title: options.title,
+        worktreeId: options.worktreeId,
       })
 
       // If a command is specified (e.g., 'claude' or 'gemini'), execute it after shell initializes
