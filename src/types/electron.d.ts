@@ -1,8 +1,47 @@
+/**
+ * Global Type Declarations for Electron API
+ *
+ * Declares the window.electron API available in the renderer process.
+ * This must stay in sync with the ElectronAPI interface in electron/preload.ts
+ */
+
+// Import types from the IPC types module
+type WorktreeState = import('../../electron/ipc/types.js').WorktreeState
+type DevServerState = import('../../electron/ipc/types.js').DevServerState
+type TerminalSpawnOptions = import('../../electron/ipc/types.js').TerminalSpawnOptions
+type CopyTreeOptions = import('../../electron/ipc/types.js').CopyTreeOptions
+type CanopyConfig = import('../../electron/ipc/types.js').CanopyConfig
+
 export interface ElectronAPI {
-  onTerminalData: (callback: (data: string) => void) => void
-  sendKeystroke: (data: string) => void
-  resizeTerminal: (cols: number, rows: number) => void
-  removeTerminalDataListener: () => void
+  worktree: {
+    getAll(): Promise<WorktreeState[]>
+    refresh(): Promise<void>
+    onUpdate(callback: (state: WorktreeState) => void): () => void
+    onRemove(callback: (data: { worktreeId: string }) => void): () => void
+  }
+  devServer: {
+    start(worktreeId: string, command?: string): Promise<void>
+    stop(worktreeId: string): Promise<void>
+    toggle(worktreeId: string): Promise<void>
+    onUpdate(callback: (state: DevServerState) => void): () => void
+    onError(callback: (data: { worktreeId: string; error: string }) => void): () => void
+  }
+  terminal: {
+    spawn(options: TerminalSpawnOptions): Promise<string>
+    write(id: string, data: string): void
+    resize(id: string, cols: number, rows: number): void
+    kill(id: string): Promise<void>
+    onData(id: string, callback: (data: string) => void): () => void
+  }
+  copyTree: {
+    generate(worktreeId: string, options?: CopyTreeOptions): Promise<string>
+    injectToTerminal(terminalId: string, worktreeId: string): Promise<void>
+  }
+  system: {
+    openExternal(url: string): Promise<void>
+    openPath(path: string): Promise<void>
+    getConfig(): Promise<CanopyConfig>
+  }
 }
 
 declare global {
