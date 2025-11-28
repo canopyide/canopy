@@ -8,19 +8,183 @@
  * - Never expose ipcRenderer directly
  * - All APIs are explicitly defined and typed
  * - Listeners provide cleanup functions to prevent memory leaks
+ *
+ * NOTE: This file is built separately as CommonJS for Electron's sandboxed preload.
+ * Channel names and types are inlined to avoid module format conflicts with the
+ * ESM main process.
  */
 
 import { contextBridge, ipcRenderer } from 'electron'
-import { CHANNELS } from './ipc/channels.js'
-import type {
-  WorktreeState,
-  DevServerState,
-  TerminalSpawnOptions,
-  CopyTreeOptions,
-  CopyTreeResult,
-  CanopyConfig,
-  AppState,
-} from './ipc/types.js'
+
+// Inlined channel constants (must match electron/ipc/channels.ts)
+const CHANNELS = {
+  // Worktree channels
+  WORKTREE_GET_ALL: 'worktree:get-all',
+  WORKTREE_REFRESH: 'worktree:refresh',
+  WORKTREE_SET_ACTIVE: 'worktree:set-active',
+  WORKTREE_UPDATE: 'worktree:update',
+  WORKTREE_REMOVE: 'worktree:remove',
+
+  // Dev server channels
+  DEVSERVER_START: 'devserver:start',
+  DEVSERVER_STOP: 'devserver:stop',
+  DEVSERVER_TOGGLE: 'devserver:toggle',
+  DEVSERVER_GET_STATE: 'devserver:get-state',
+  DEVSERVER_GET_LOGS: 'devserver:get-logs',
+  DEVSERVER_HAS_DEV_SCRIPT: 'devserver:has-dev-script',
+  DEVSERVER_UPDATE: 'devserver:update',
+  DEVSERVER_ERROR: 'devserver:error',
+
+  // Terminal channels
+  TERMINAL_SPAWN: 'terminal:spawn',
+  TERMINAL_DATA: 'terminal:data',
+  TERMINAL_INPUT: 'terminal:input',
+  TERMINAL_RESIZE: 'terminal:resize',
+  TERMINAL_KILL: 'terminal:kill',
+  TERMINAL_EXIT: 'terminal:exit',
+  TERMINAL_ERROR: 'terminal:error',
+
+  // CopyTree channels
+  COPYTREE_GENERATE: 'copytree:generate',
+  COPYTREE_INJECT: 'copytree:inject',
+  COPYTREE_AVAILABLE: 'copytree:available',
+
+  // System channels
+  SYSTEM_OPEN_EXTERNAL: 'system:open-external',
+  SYSTEM_OPEN_PATH: 'system:open-path',
+  SYSTEM_GET_CONFIG: 'system:get-config',
+  SYSTEM_CHECK_COMMAND: 'system:check-command',
+
+  // PR detection channels
+  PR_DETECTED: 'pr:detected',
+  PR_CLEARED: 'pr:cleared',
+
+  // App state channels
+  APP_GET_STATE: 'app:get-state',
+  APP_SET_STATE: 'app:set-state',
+} as const
+
+// Inlined types (must match electron/ipc/types.ts)
+interface WorktreeState {
+  id: string
+  path: string
+  name: string
+  branch?: string
+  isCurrent: boolean
+  isMainWorktree: boolean
+  gitDir: string
+  summary?: string
+  modifiedCount?: number
+  mood?: 'active' | 'stable' | 'stale' | 'error'
+  aiStatus?: 'active' | 'loading' | 'disabled' | 'error'
+  lastActivityTimestamp?: number
+  aiNote?: string
+  aiNoteTimestamp?: number
+  issueNumber?: number
+  prNumber?: number
+  prUrl?: string
+  prState?: 'open' | 'merged' | 'closed'
+  worktreeChanges?: WorktreeChanges | null
+}
+
+interface WorktreeChanges {
+  worktreeId: string
+  worktreePath: string
+  files: FileChangeDetail[]
+  changedFileCount: number
+  insertions: number
+  deletions: number
+  latestMtime: number
+  timestamp: number
+}
+
+interface FileChangeDetail {
+  path: string
+  status: 'added' | 'modified' | 'deleted' | 'renamed' | 'copied' | 'untracked'
+  insertions: number
+  deletions: number
+  mtime?: number
+}
+
+interface DevServerState {
+  worktreeId: string
+  status: 'stopped' | 'starting' | 'running' | 'error'
+  url?: string
+  port?: number
+  pid?: number
+  errorMessage?: string
+  logs: string[]
+}
+
+interface TerminalSpawnOptions {
+  id?: string
+  cwd: string
+  shell?: string
+  args?: string[]
+  env?: Record<string, string>
+  cols?: number
+  rows?: number
+  type?: 'shell' | 'claude' | 'gemini' | 'custom'
+  title?: string
+  worktreeId?: string
+}
+
+interface CopyTreeOptions {
+  profile?: string
+  extraArgs?: string[]
+  files?: string[]
+}
+
+interface CopyTreeResult {
+  success: boolean
+  content?: string
+  fileCount?: number
+  error?: string
+}
+
+interface CanopyConfig {
+  editor?: string
+  editorArgs?: string[]
+  theme?: 'dark' | 'light'
+  monitor?: {
+    pollIntervalActive?: number
+    pollIntervalBackground?: number
+  }
+  ai?: {
+    enabled?: boolean
+    summaryDebounceMs?: number
+  }
+  devServer?: {
+    enabled?: boolean
+    autoStart?: boolean
+    customCommands?: Record<string, string>
+  }
+  quickLinks?: {
+    enabled?: boolean
+    links?: Array<{ name: string; url: string }>
+  }
+  copytree?: {
+    defaultProfile?: string
+    extraArgs?: string[]
+  }
+  keymap?: {
+    preset?: 'standard' | 'vim'
+    overrides?: Record<string, string>
+  }
+}
+
+interface TerminalState {
+  id: string
+  type: 'shell' | 'claude' | 'gemini' | 'custom'
+  title: string
+  cwd: string
+  worktreeId?: string
+}
+
+interface AppState {
+  rootPath?: string
+  terminals: TerminalState[]
+}
 
 export interface ElectronAPI {
   worktree: {

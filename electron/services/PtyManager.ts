@@ -7,6 +7,7 @@
 
 import * as pty from 'node-pty'
 import { EventEmitter } from 'events'
+import { existsSync } from 'fs'
 
 export interface PtySpawnOptions {
   cwd: string
@@ -205,15 +206,14 @@ export class PtyManager extends EventEmitter {
     }
 
     // Try common shells in order of preference
-    const fs = require('fs')
     const commonShells = ['/bin/zsh', '/bin/bash', '/bin/sh']
 
     for (const shell of commonShells) {
       try {
-        if (fs.existsSync(shell)) {
+        if (existsSync(shell)) {
           return shell
         }
-      } catch (error) {
+      } catch {
         // Continue to next shell if check fails
       }
     }

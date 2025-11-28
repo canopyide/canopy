@@ -144,13 +144,14 @@ export class DevServerManager {
 
     try {
       // Use execa for robust cross-platform process management
-      const proc = execa({
+      // Note: execa v9 requires command as first arg, options as second
+      const proc = execa(resolvedCommand, {
         shell: true,
         cwd: worktreePath,
         buffer: false, // Don't buffer - we stream stdout/stderr
         cleanup: true, // Kill on parent exit
         reject: false, // Handle non-zero exit ourselves
-      })`${resolvedCommand}`
+      })
 
       this.servers.set(worktreeId, proc)
       this.updateState(worktreeId, { pid: proc.pid })

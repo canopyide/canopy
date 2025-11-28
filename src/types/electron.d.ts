@@ -3,16 +3,56 @@
  *
  * Declares the window.electron API available in the renderer process.
  * This must stay in sync with the ElectronAPI interface in electron/preload.ts
+ *
+ * IMPORTANT: Uses local types from ./index.ts to maintain proper architecture boundaries.
+ * The renderer should never import directly from electron/ directory.
  */
 
-// Import types from the IPC types module
-type WorktreeState = import('../../electron/ipc/types.js').WorktreeState
-type DevServerState = import('../../electron/ipc/types.js').DevServerState
-type TerminalSpawnOptions = import('../../electron/ipc/types.js').TerminalSpawnOptions
-type CopyTreeOptions = import('../../electron/ipc/types.js').CopyTreeOptions
-type CopyTreeResult = import('../../electron/ipc/types.js').CopyTreeResult
-type CanopyConfig = import('../../electron/ipc/types.js').CanopyConfig
-type AppState = import('../../electron/ipc/types.js').AppState
+import type {
+  WorktreeState,
+  DevServerState,
+  CanopyConfig,
+} from './index'
+
+// Additional types specific to the Electron API that may not be in the main types
+interface TerminalSpawnOptions {
+  id?: string
+  cwd: string
+  shell?: string
+  args?: string[]
+  env?: Record<string, string>
+  cols?: number
+  rows?: number
+  type?: 'shell' | 'claude' | 'gemini' | 'custom'
+  title?: string
+  worktreeId?: string
+}
+
+interface CopyTreeOptions {
+  profile?: string
+  extraArgs?: string[]
+  files?: string[]
+}
+
+interface CopyTreeResult {
+  success: boolean
+  content?: string
+  fileCount?: number
+  error?: string
+}
+
+interface TerminalState {
+  id: string
+  type: 'shell' | 'claude' | 'gemini' | 'custom'
+  title: string
+  cwd: string
+  worktreeId?: string
+}
+
+interface AppState {
+  rootPath?: string
+  terminals: TerminalState[]
+}
 
 export interface ElectronAPI {
   worktree: {

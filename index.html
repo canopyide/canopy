@@ -3,7 +3,8 @@
   <head>
     <meta charset="UTF-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-    <meta http-equiv="Content-Security-Policy" content="default-src 'self'; script-src 'self'; style-src 'self' 'unsafe-inline'; font-src 'self' data:;" />
+    <!-- CSP: Allow Vite dev server in development -->
+    <meta http-equiv="Content-Security-Policy" content="default-src 'self' http://localhost:5173 ws://localhost:5173; script-src 'self' http://localhost:5173 'unsafe-eval'; style-src 'self' http://localhost:5173 'unsafe-inline'; font-src 'self' data:; connect-src 'self' http://localhost:5173 ws://localhost:5173;" />
     <title>Canopy</title>
     <style>
       /* Draggable region for custom title bar */

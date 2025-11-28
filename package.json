@@ -8,7 +8,7 @@
     "dev": "concurrently -k \"npm run build:main && cross-env NODE_ENV=development electron .\" \"vite\"",
     "dev:vite": "vite",
     "dev:electron": "npm run build:main && cross-env NODE_ENV=development electron .",
-    "build:main": "tsc -p electron/tsconfig.json",
+    "build:main": "tsc -p electron/tsconfig.json && tsc -p electron/tsconfig.preload.json",
     "build": "tsc && vite build && npm run build:main",
     "package": "npm run build && electron-builder",
     "rebuild": "electron-rebuild -f -w node-pty",

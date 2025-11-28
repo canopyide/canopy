@@ -5,9 +5,9 @@
  */
 
 import { getErrorDetails } from './errorTypes.js';
-import { appendFileSync } from 'fs';
+import { appendFileSync, mkdirSync } from 'fs';
 import { homedir } from 'os';
-import { join } from 'path';
+import { join, dirname } from 'path';
 
 export type LogLevel = 'debug' | 'info' | 'warn' | 'error';
 
@@ -69,8 +69,6 @@ function writeToLogFile(level: string, message: string, context?: LogContext): v
     const logLine = `[${timestamp}] [${level}] ${message}${contextStr}\n`;
 
     // Ensure directory exists before writing
-    const { mkdirSync } = require('fs');
-    const { dirname } = require('path');
     mkdirSync(dirname(DEBUG_LOG_FILE), { recursive: true });
 
     appendFileSync(DEBUG_LOG_FILE, logLine, 'utf8');

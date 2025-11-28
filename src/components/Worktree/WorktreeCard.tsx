@@ -1,9 +1,9 @@
 import { useMemo, useCallback, useState, useEffect } from 'react';
-import type { WorktreeState, WorktreeMood } from '../../types/index.js';
-import { ActivityLight } from './ActivityLight.js';
-import { FileChangeList } from './FileChangeList.js';
-import { useDevServer } from '../../hooks/useDevServer.js';
-import { cn } from '../../lib/utils.js';
+import type { WorktreeState, WorktreeMood } from '../../types';
+import { ActivityLight } from './ActivityLight';
+import { FileChangeList } from './FileChangeList';
+import { useDevServer } from '../../hooks/useDevServer';
+import { cn } from '../../lib/utils';
 
 export interface WorktreeCardProps {
   worktree: WorktreeState;

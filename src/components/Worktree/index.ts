@@ -1,4 +1,4 @@
-export { WorktreeCard } from './WorktreeCard.js';
-export { WorktreeList } from './WorktreeList.js';
-export { ActivityLight } from './ActivityLight.js';
-export { FileChangeList } from './FileChangeList.js';
+export { WorktreeCard } from './WorktreeCard';
+export { WorktreeList } from './WorktreeList';
+export { ActivityLight } from './ActivityLight';
+export { FileChangeList } from './FileChangeList';

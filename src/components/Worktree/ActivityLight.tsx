@@ -1,6 +1,6 @@
 import { useState, useEffect } from 'react';
-import { getHeatColor } from '../../utils/colorInterpolation.js';
-import { cn } from '../../lib/utils.js';
+import { getHeatColor } from '../../utils/colorInterpolation';
+import { cn } from '../../lib/utils';
 
 interface ActivityLightProps {
   timestamp: number | null;

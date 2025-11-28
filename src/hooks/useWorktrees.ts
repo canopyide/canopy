@@ -12,7 +12,7 @@
  */
 
 import { useState, useEffect, useCallback, useMemo } from 'react'
-import type { WorktreeState } from '../../electron/ipc/types.js'
+import type { WorktreeState } from '../types'
 
 export interface UseWorktreesReturn {
   /** Array of worktrees, sorted with main/master first, then alphabetically */

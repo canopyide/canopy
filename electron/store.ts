@@ -25,6 +25,8 @@ export interface StoreSchema {
 export const store = new Store<StoreSchema>({
   defaults: {
     windowState: {
+      x: undefined,
+      y: undefined,
       width: 1200,
       height: 800,
       isMaximized: false,

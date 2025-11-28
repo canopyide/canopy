@@ -1,6 +1,6 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
-import type { WorktreeState } from '../../types/index.js'
-import { WorktreeCard } from './WorktreeCard.js'
+import type { WorktreeState } from '../../types'
+import { WorktreeCard } from './WorktreeCard'
 
 export interface WorktreeListProps {
   worktrees: WorktreeState[]

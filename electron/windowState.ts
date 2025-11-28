@@ -12,11 +12,11 @@ function debounce<T extends (...args: any[]) => void>(func: T, wait: number): T 
 export function createWindowWithState(options: Electron.BrowserWindowConstructorOptions): BrowserWindow {
   const windowState = store.get('windowState');
 
-  // Create window with saved state
+  // Create window with saved state (only include x/y if they are defined)
   const win = new BrowserWindow({
     ...options,
-    x: windowState.x,
-    y: windowState.y,
+    ...(windowState.x !== undefined && { x: windowState.x }),
+    ...(windowState.y !== undefined && { y: windowState.y }),
     width: windowState.width,
     height: windowState.height,
   });
@@ -31,7 +31,8 @@ export function createWindowWithState(options: Electron.BrowserWindowConstructor
   const display = screen.getDisplayMatching(bounds);
 
   // Check if window is mostly visible (at least 50% on screen)
-  if (!display || bounds.width <= 0 || bounds.height <= 0) {
+  // If no saved position or window is not visible, center it
+  if (!display || bounds.width <= 0 || bounds.height <= 0 || windowState.x === undefined || windowState.y === undefined) {
     win.center();
   } else {
     const workArea = display.workArea;

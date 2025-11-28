@@ -6,7 +6,7 @@
  */
 
 import { useState, useEffect, useCallback } from 'react'
-import type { DevServerState } from '../../electron/ipc/types.js'
+import type { DevServerState } from '../types'
 
 interface UseDevServerOptions {
   worktreeId: string

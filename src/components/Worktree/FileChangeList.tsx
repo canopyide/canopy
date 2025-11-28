@@ -1,6 +1,35 @@
 import { useMemo } from 'react';
-import path from 'path';
-import type { FileChangeDetail, GitStatus } from '../../types/index.js';
+import type { FileChangeDetail, GitStatus } from '../../types';
+
+/**
+ * Browser-safe path utilities (no Node.js path module)
+ */
+function isAbsolutePath(filePath: string): boolean {
+  // Unix absolute paths start with /
+  // Windows absolute paths start with drive letter (C:\) or UNC (\\)
+  return filePath.startsWith('/') || /^[a-zA-Z]:[\\/]/.test(filePath) || filePath.startsWith('\\\\');
+}
+
+function getRelativePath(from: string, to: string): string {
+  // Normalize separators to /
+  const normalizedFrom = from.replace(/\\/g, '/').replace(/\/$/, '');
+  const normalizedTo = to.replace(/\\/g, '/');
+
+  // If 'to' starts with 'from', just strip the prefix
+  if (normalizedTo.startsWith(normalizedFrom + '/')) {
+    return normalizedTo.slice(normalizedFrom.length + 1);
+  }
+
+  // Otherwise return as-is
+  return normalizedTo;
+}
+
+function getBasename(filePath: string): string {
+  // Normalize separators and get the last segment
+  const normalized = filePath.replace(/\\/g, '/').replace(/\/$/, '');
+  const lastSlash = normalized.lastIndexOf('/');
+  return lastSlash === -1 ? normalized : normalized.slice(lastSlash + 1);
+}
 
 const STATUS_ICONS: Record<GitStatus, { icon: string; color: string }> = {
   added: { icon: 'A', color: 'text-green-400' },
@@ -66,8 +95,8 @@ export function FileChangeList({ changes, maxVisible = 4, rootPath }: FileChange
     <div className="mt-3 space-y-1">
       {visibleChanges.map((change) => {
         const { icon, color } = STATUS_ICONS[change.status] || { icon: '?', color: 'text-gray-400' };
-        const relativePath = path.isAbsolute(change.path)
-          ? path.relative(rootPath, change.path)
+        const relativePath = isAbsolutePath(change.path)
+          ? getRelativePath(rootPath, change.path)
           : change.path;
         const displayPath = truncateMiddle(relativePath, 42);
         const additionsLabel = change.insertions !== null ? `+${change.insertions}` : '';
@@ -91,7 +120,7 @@ export function FileChangeList({ changes, maxVisible = 4, rootPath }: FileChange
           ...and {remainingCount} more
           {remainingFiles.length > 0 && (
             <span className="ml-1">
-              ({remainingFiles.map((f) => path.basename(f.path)).join(', ')}
+              ({remainingFiles.map((f) => getBasename(f.path)).join(', ')}
               {sortedChanges.length > maxVisible + 2 && ', ...'})
             </span>
           )}

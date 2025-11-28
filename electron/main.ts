@@ -12,6 +12,16 @@ import { store } from './store.js'
 const __filename = fileURLToPath(import.meta.url)
 const __dirname = path.dirname(__filename)
 
+// Global error handlers to prevent silent crashes
+process.on('uncaughtException', (error) => {
+  console.error('[FATAL] Uncaught Exception:', error)
+  // Don't exit immediately - let Electron handle cleanup
+})
+
+process.on('unhandledRejection', (reason, promise) => {
+  console.error('[FATAL] Unhandled Promise Rejection at:', promise, 'reason:', reason)
+})
+
 let mainWindow: BrowserWindow | null = null
 let ptyManager: PtyManager | null = null
 let devServerManager: DevServerManager | null = null
@@ -21,6 +31,7 @@ let cleanupIpcHandlers: (() => void) | null = null
 const DEFAULT_TERMINAL_ID = 'default'
 
 function createWindow(): void {
+  console.log('[MAIN] Creating window...')
   mainWindow = createWindowWithState({
     minWidth: 800,
     minHeight: 600,
@@ -28,43 +39,64 @@ function createWindow(): void {
       preload: path.join(__dirname, 'preload.js'),
       contextIsolation: true,
       nodeIntegration: false,
-      sandbox: false,
+      sandbox: true,
     },
     titleBarStyle: 'hiddenInset',
-    trafficLightPosition: { x: 15, y: 10 },
     backgroundColor: '#1a1a1a',
   })
 
+  console.log('[MAIN] Window created, loading content...')
+
   // In dev, load Vite dev server. In prod, load built file.
   if (process.env.NODE_ENV === 'development') {
+    console.log('[MAIN] Loading Vite dev server at http://localhost:5173')
     mainWindow.loadURL('http://localhost:5173')
     mainWindow.webContents.openDevTools()
   } else {
+    console.log('[MAIN] Loading production build')
     mainWindow.loadFile(path.join(__dirname, '../dist/index.html'))
   }
 
   // --- PTY MANAGER SETUP ---
   // Create PtyManager instance to manage all terminal processes
-  ptyManager = new PtyManager()
+  console.log('[MAIN] Initializing PtyManager...')
+  try {
+    ptyManager = new PtyManager()
+    console.log('[MAIN] PtyManager initialized successfully')
+  } catch (error) {
+    console.error('[MAIN] Failed to initialize PtyManager:', error)
+    throw error
+  }
 
   // --- DEV SERVER MANAGER SETUP ---
   // Create and initialize DevServerManager
+  console.log('[MAIN] Initializing DevServerManager...')
   devServerManager = new DevServerManager()
   devServerManager.initialize(mainWindow, (channel: string, ...args: unknown[]) => {
     if (mainWindow) {
       sendToRenderer(mainWindow, channel, ...args)
     }
   })
+  console.log('[MAIN] DevServerManager initialized successfully')
 
   // Register IPC handlers with PtyManager, DevServerManager, and WorktreeService
+  console.log('[MAIN] Registering IPC handlers...')
   cleanupIpcHandlers = registerIpcHandlers(mainWindow, ptyManager, devServerManager, worktreeService)
+  console.log('[MAIN] IPC handlers registered successfully')
 
   // Spawn the default terminal for backwards compatibility with the renderer
-  ptyManager.spawn(DEFAULT_TERMINAL_ID, {
-    cwd: process.env.HOME || os.homedir(),
-    cols: 80,
-    rows: 30,
-  })
+  console.log('[MAIN] Spawning default terminal...')
+  try {
+    ptyManager.spawn(DEFAULT_TERMINAL_ID, {
+      cwd: process.env.HOME || os.homedir(),
+      cols: 80,
+      rows: 30,
+    })
+    console.log('[MAIN] Default terminal spawned successfully')
+  } catch (error) {
+    console.error('[MAIN] Failed to spawn default terminal:', error)
+    // Don't throw - let the app continue without the default terminal
+  }
 
   mainWindow.on('closed', async () => {
     // Save terminal state before cleanup (to avoid race with before-quit)
