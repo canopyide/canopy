@@ -19,17 +19,20 @@ import type {
   SystemOpenExternalPayload,
   SystemOpenPathPayload,
 } from './types.js'
+import type { DevServerManager } from '../services/DevServerManager.js'
 
 /**
  * Initialize all IPC handlers
  *
  * @param mainWindow - The main BrowserWindow instance for sending events to renderer
  * @param getPtyProcess - Function to get the current PTY process (for backwards compatibility)
+ * @param devServerManager - Dev server manager instance
  * @returns Cleanup function to remove all handlers
  */
 export function registerIpcHandlers(
   _mainWindow: BrowserWindow,
-  getPtyProcess?: () => pty.IPty | null
+  getPtyProcess?: () => pty.IPty | null,
+  devServerManager?: DevServerManager
 ): () => void {
   // Store handler references for cleanup
   const handlers: Array<() => void> = []
@@ -56,25 +59,52 @@ export function registerIpcHandlers(
   // ==========================================
 
   const handleDevServerStart = async (_event: Electron.IpcMainInvokeEvent, payload: DevServerStartPayload) => {
-    // TODO: Implement when DevServerManager is migrated
-    console.log('DevServer start requested:', payload)
+    if (!devServerManager) {
+      throw new Error('DevServerManager not initialized')
+    }
+    await devServerManager.start(payload.worktreeId, payload.worktreePath, payload.command)
+    return devServerManager.getState(payload.worktreeId)
   }
   ipcMain.handle(CHANNELS.DEVSERVER_START, handleDevServerStart)
   handlers.push(() => ipcMain.removeHandler(CHANNELS.DEVSERVER_START))
 
   const handleDevServerStop = async (_event: Electron.IpcMainInvokeEvent, payload: DevServerStopPayload) => {
-    // TODO: Implement when DevServerManager is migrated
-    console.log('DevServer stop requested:', payload)
+    if (!devServerManager) {
+      throw new Error('DevServerManager not initialized')
+    }
+    await devServerManager.stop(payload.worktreeId)
+    return devServerManager.getState(payload.worktreeId)
   }
   ipcMain.handle(CHANNELS.DEVSERVER_STOP, handleDevServerStop)
   handlers.push(() => ipcMain.removeHandler(CHANNELS.DEVSERVER_STOP))
 
   const handleDevServerToggle = async (_event: Electron.IpcMainInvokeEvent, payload: DevServerTogglePayload) => {
-    // TODO: Implement when DevServerManager is migrated
-    console.log('DevServer toggle requested:', payload)
+    if (!devServerManager) {
+      throw new Error('DevServerManager not initialized')
+    }
+    await devServerManager.toggle(payload.worktreeId, payload.worktreePath, payload.command)
+    return devServerManager.getState(payload.worktreeId)
   }
   ipcMain.handle(CHANNELS.DEVSERVER_TOGGLE, handleDevServerToggle)
   handlers.push(() => ipcMain.removeHandler(CHANNELS.DEVSERVER_TOGGLE))
+
+  const handleDevServerGetState = async (_event: Electron.IpcMainInvokeEvent, worktreeId: string) => {
+    if (!devServerManager) {
+      throw new Error('DevServerManager not initialized')
+    }
+    return devServerManager.getState(worktreeId)
+  }
+  ipcMain.handle(CHANNELS.DEVSERVER_GET_STATE, handleDevServerGetState)
+  handlers.push(() => ipcMain.removeHandler(CHANNELS.DEVSERVER_GET_STATE))
+
+  const handleDevServerGetLogs = async (_event: Electron.IpcMainInvokeEvent, worktreeId: string) => {
+    if (!devServerManager) {
+      throw new Error('DevServerManager not initialized')
+    }
+    return devServerManager.getLogs(worktreeId)
+  }
+  ipcMain.handle(CHANNELS.DEVSERVER_GET_LOGS, handleDevServerGetLogs)
+  handlers.push(() => ipcMain.removeHandler(CHANNELS.DEVSERVER_GET_LOGS))
 
   // ==========================================
   // Terminal Handlers

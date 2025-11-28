@@ -5,6 +5,7 @@ import * as pty from 'node-pty'
 import os from 'os'
 import { registerIpcHandlers, sendToRenderer } from './ipc/handlers.js'
 import { CHANNELS } from './ipc/channels.js'
+import { DevServerManager } from './services/DevServerManager.js'
 
 const __filename = fileURLToPath(import.meta.url)
 const __dirname = path.dirname(__filename)
@@ -17,6 +18,9 @@ let cleanupIpcHandlers: (() => void) | null = null
 
 // Terminal ID for the single default terminal (for backwards compatibility)
 const DEFAULT_TERMINAL_ID = 'default'
+
+// Dev server manager instance
+const devServerManager = new DevServerManager()
 
 function createWindow(): void {
   mainWindow = new BrowserWindow({
@@ -43,8 +47,15 @@ function createWindow(): void {
     mainWindow.loadFile(path.join(__dirname, '../dist/index.html'))
   }
 
-  // Register IPC handlers with PTY getter for backwards compatibility
-  cleanupIpcHandlers = registerIpcHandlers(mainWindow, () => ptyProcess)
+  // Initialize dev server manager with window reference
+  devServerManager.initialize(mainWindow, (channel: string, ...args: unknown[]) => {
+    if (mainWindow) {
+      sendToRenderer(mainWindow, channel, ...args)
+    }
+  })
+
+  // Register IPC handlers with PTY getter and dev server manager
+  cleanupIpcHandlers = registerIpcHandlers(mainWindow, () => ptyProcess, devServerManager)
 
   // --- PTY SETUP ---
   // Set up the default terminal for backwards compatibility
@@ -68,12 +79,14 @@ function createWindow(): void {
     console.log(`PTY exited with code ${exitCode}, signal ${signal}`)
   })
 
-  mainWindow.on('closed', () => {
+  mainWindow.on('closed', async () => {
     // Cleanup IPC handlers first to prevent any late IPC traffic
     if (cleanupIpcHandlers) {
       cleanupIpcHandlers()
       cleanupIpcHandlers = null
     }
+    // Stop all dev servers
+    await devServerManager.stopAll()
     // Then cleanup PTY process
     if (ptyProcess) {
       ptyProcess.kill()
@@ -97,10 +110,26 @@ app.on('activate', () => {
   }
 })
 
-// Cleanup on quit
-app.on('before-quit', () => {
-  if (ptyProcess) {
-    ptyProcess.kill()
-    ptyProcess = null
-  }
+// Cleanup on quit - prevent default to ensure graceful shutdown completes
+app.on('before-quit', (event) => {
+  // Prevent quit until cleanup is done
+  event.preventDefault()
+
+  // Perform cleanup
+  Promise.all([
+    devServerManager.stopAll(),
+    new Promise<void>((resolve) => {
+      if (ptyProcess) {
+        ptyProcess.kill()
+        ptyProcess = null
+      }
+      resolve()
+    })
+  ]).then(() => {
+    // Now actually quit
+    app.exit(0)
+  }).catch((error) => {
+    console.error('Error during cleanup:', error)
+    app.exit(1)
+  })
 })

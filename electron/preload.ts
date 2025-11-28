@@ -28,9 +28,11 @@ export interface ElectronAPI {
     onRemove(callback: (data: { worktreeId: string }) => void): () => void
   }
   devServer: {
-    start(worktreeId: string, command?: string): Promise<void>
-    stop(worktreeId: string): Promise<void>
-    toggle(worktreeId: string): Promise<void>
+    start(worktreeId: string, worktreePath: string, command?: string): Promise<DevServerState>
+    stop(worktreeId: string): Promise<DevServerState>
+    toggle(worktreeId: string, worktreePath: string, command?: string): Promise<DevServerState>
+    getState(worktreeId: string): Promise<DevServerState>
+    getLogs(worktreeId: string): Promise<string[]>
     onUpdate(callback: (state: DevServerState) => void): () => void
     onError(callback: (data: { worktreeId: string; error: string }) => void): () => void
   }
@@ -78,14 +80,20 @@ const api: ElectronAPI = {
   // Dev Server API
   // ==========================================
   devServer: {
-    start: (worktreeId: string, command?: string) =>
-      ipcRenderer.invoke(CHANNELS.DEVSERVER_START, { worktreeId, command }),
+    start: (worktreeId: string, worktreePath: string, command?: string) =>
+      ipcRenderer.invoke(CHANNELS.DEVSERVER_START, { worktreeId, worktreePath, command }),
 
     stop: (worktreeId: string) =>
       ipcRenderer.invoke(CHANNELS.DEVSERVER_STOP, { worktreeId }),
 
-    toggle: (worktreeId: string) =>
-      ipcRenderer.invoke(CHANNELS.DEVSERVER_TOGGLE, { worktreeId }),
+    toggle: (worktreeId: string, worktreePath: string, command?: string) =>
+      ipcRenderer.invoke(CHANNELS.DEVSERVER_TOGGLE, { worktreeId, worktreePath, command }),
+
+    getState: (worktreeId: string) =>
+      ipcRenderer.invoke(CHANNELS.DEVSERVER_GET_STATE, worktreeId),
+
+    getLogs: (worktreeId: string) =>
+      ipcRenderer.invoke(CHANNELS.DEVSERVER_GET_LOGS, worktreeId),
 
     onUpdate: (callback: (state: DevServerState) => void) => {
       const handler = (_event: Electron.IpcRendererEvent, state: DevServerState) => callback(state)

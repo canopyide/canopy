@@ -41,17 +41,22 @@ export interface WorktreeRemovePayload {
   worktreeId: string
 }
 
-// Dev server types (placeholders - will be fully defined when services are migrated)
+// Dev server types
+export type DevServerStatus = 'stopped' | 'starting' | 'running' | 'error'
+
 export interface DevServerState {
   worktreeId: string
-  status: 'running' | 'stopped' | 'error'
+  status: DevServerStatus
   url?: string
   port?: number
-  // Additional fields will be added during service migration
+  pid?: number
+  errorMessage?: string
+  logs?: string[]
 }
 
 export interface DevServerStartPayload {
   worktreeId: string
+  worktreePath: string
   command?: string
 }
 
@@ -61,6 +66,8 @@ export interface DevServerStopPayload {
 
 export interface DevServerTogglePayload {
   worktreeId: string
+  worktreePath: string
+  command?: string
 }
 
 export interface DevServerErrorPayload {
