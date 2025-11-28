@@ -60,6 +60,25 @@ interface AppState {
   sidebarWidth?: number
 }
 
+export type LogLevel = 'debug' | 'info' | 'warn' | 'error'
+
+export interface LogEntry {
+  id: string
+  timestamp: number
+  level: LogLevel
+  message: string
+  context?: Record<string, unknown>
+  source?: string
+}
+
+export interface LogFilterOptions {
+  levels?: LogLevel[]
+  sources?: string[]
+  search?: string
+  startTime?: number
+  endTime?: number
+}
+
 export interface ElectronAPI {
   worktree: {
     getAll(): Promise<WorktreeState[]>
@@ -100,6 +119,13 @@ export interface ElectronAPI {
   app: {
     getState(): Promise<AppState>
     setState(partialState: Partial<AppState>): Promise<void>
+  }
+  logs: {
+    getAll(filters?: LogFilterOptions): Promise<LogEntry[]>
+    getSources(): Promise<string[]>
+    clear(): Promise<void>
+    openFile(): Promise<void>
+    onEntry(callback: (entry: LogEntry) => void): () => void
   }
 }
 

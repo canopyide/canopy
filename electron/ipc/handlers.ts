@@ -27,6 +27,9 @@ import type {
 } from './types.js'
 import { copyTreeService } from '../services/CopyTreeService.js'
 import { store } from '../store.js'
+import { logBuffer, type FilterOptions as LogFilterOptions } from '../services/LogBuffer.js'
+import { join } from 'path'
+import { homedir } from 'os'
 
 /**
  * Initialize all IPC handlers
@@ -527,6 +530,50 @@ export function registerIpcHandlers(
   }
   ipcMain.handle(CHANNELS.APP_SET_STATE, handleAppSetState)
   handlers.push(() => ipcMain.removeHandler(CHANNELS.APP_SET_STATE))
+
+  // ==========================================
+  // Logs Handlers
+  // ==========================================
+
+  const handleLogsGetAll = async (_event: Electron.IpcMainInvokeEvent, filters?: LogFilterOptions) => {
+    if (filters) {
+      return logBuffer.getFiltered(filters)
+    }
+    return logBuffer.getAll()
+  }
+  ipcMain.handle(CHANNELS.LOGS_GET_ALL, handleLogsGetAll)
+  handlers.push(() => ipcMain.removeHandler(CHANNELS.LOGS_GET_ALL))
+
+  const handleLogsGetSources = async () => {
+    return logBuffer.getSources()
+  }
+  ipcMain.handle(CHANNELS.LOGS_GET_SOURCES, handleLogsGetSources)
+  handlers.push(() => ipcMain.removeHandler(CHANNELS.LOGS_GET_SOURCES))
+
+  const handleLogsClear = async () => {
+    logBuffer.clear()
+  }
+  ipcMain.handle(CHANNELS.LOGS_CLEAR, handleLogsClear)
+  handlers.push(() => ipcMain.removeHandler(CHANNELS.LOGS_CLEAR))
+
+  const handleLogsOpenFile = async () => {
+    const logFilePath = join(homedir(), '.config', 'canopy', 'worktree-debug.log')
+    try {
+      const fs = await import('fs')
+      // Check if file exists
+      await fs.promises.access(logFilePath)
+      await shell.openPath(logFilePath)
+    } catch (error) {
+      // File doesn't exist - create it first
+      const fs = await import('fs')
+      const dir = join(homedir(), '.config', 'canopy')
+      await fs.promises.mkdir(dir, { recursive: true })
+      await fs.promises.writeFile(logFilePath, '# Canopy Debug Log\n', 'utf8')
+      await shell.openPath(logFilePath)
+    }
+  }
+  ipcMain.handle(CHANNELS.LOGS_OPEN_FILE, handleLogsOpenFile)
+  handlers.push(() => ipcMain.removeHandler(CHANNELS.LOGS_OPEN_FILE))
 
   // Return cleanup function
   return () => {

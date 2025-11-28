@@ -50,6 +50,13 @@ export const CHANNELS = {
   // App state channels
   APP_GET_STATE: 'app:get-state',
   APP_SET_STATE: 'app:set-state',
+
+  // Logs channels
+  LOGS_GET_ALL: 'logs:get-all',
+  LOGS_GET_SOURCES: 'logs:get-sources',
+  LOGS_CLEAR: 'logs:clear',
+  LOGS_ENTRY: 'logs:entry',
+  LOGS_OPEN_FILE: 'logs:open-file',
 } as const
 
 export type ChannelName = typeof CHANNELS[keyof typeof CHANNELS]

@@ -8,6 +8,7 @@ import { DevServerManager } from './services/DevServerManager.js'
 import { worktreeService } from './services/WorktreeService.js'
 import { createWindowWithState } from './windowState.js'
 import { store } from './store.js'
+import { setLoggerWindow } from './utils/logger.js'
 
 const __filename = fileURLToPath(import.meta.url)
 const __dirname = path.dirname(__filename)
@@ -46,6 +47,9 @@ function createWindow(): void {
   })
 
   console.log('[MAIN] Window created, loading content...')
+
+  // Set up logger window reference for IPC log streaming
+  setLoggerWindow(mainWindow)
 
   // In dev, load Vite dev server. In prod, load built file.
   if (process.env.NODE_ENV === 'development') {
@@ -128,6 +132,8 @@ function createWindow(): void {
       ptyManager.dispose()
       ptyManager = null
     }
+    // Clear logger window reference
+    setLoggerWindow(null)
     mainWindow = null
   })
 }

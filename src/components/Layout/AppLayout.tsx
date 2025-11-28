@@ -1,6 +1,7 @@
 import { useState, useCallback, useEffect, type ReactNode } from 'react'
 import { Toolbar } from './Toolbar'
 import { Sidebar } from './Sidebar'
+import { LogsPanel } from '../Logs'
 
 interface AppLayoutProps {
   children?: ReactNode
@@ -79,13 +80,16 @@ export function AppLayout({
         onRefresh={handleRefresh}
         onSettings={handleSettings}
       />
-      <div className="flex-1 flex overflow-hidden">
-        <Sidebar width={sidebarWidth} onResize={handleSidebarResize}>
-          {sidebarContent}
-        </Sidebar>
-        <main className="flex-1 overflow-hidden bg-canopy-bg">
-          {children}
-        </main>
+      <div className="flex-1 flex flex-col overflow-hidden">
+        <div className="flex-1 flex overflow-hidden">
+          <Sidebar width={sidebarWidth} onResize={handleSidebarResize}>
+            {sidebarContent}
+          </Sidebar>
+          <main className="flex-1 overflow-hidden bg-canopy-bg">
+            {children}
+          </main>
+        </div>
+        <LogsPanel />
       </div>
     </div>
   )

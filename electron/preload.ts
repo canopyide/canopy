@@ -62,6 +62,13 @@ const CHANNELS = {
   // App state channels
   APP_GET_STATE: 'app:get-state',
   APP_SET_STATE: 'app:set-state',
+
+  // Logs channels
+  LOGS_GET_ALL: 'logs:get-all',
+  LOGS_GET_SOURCES: 'logs:get-sources',
+  LOGS_CLEAR: 'logs:clear',
+  LOGS_ENTRY: 'logs:entry',
+  LOGS_OPEN_FILE: 'logs:open-file',
 } as const
 
 // Inlined types (must match electron/ipc/types.ts)
@@ -186,6 +193,25 @@ interface AppState {
   terminals: TerminalState[]
 }
 
+type LogLevel = 'debug' | 'info' | 'warn' | 'error'
+
+interface LogEntry {
+  id: string
+  timestamp: number
+  level: LogLevel
+  message: string
+  context?: Record<string, unknown>
+  source?: string
+}
+
+interface LogFilterOptions {
+  levels?: LogLevel[]
+  sources?: string[]
+  search?: string
+  startTime?: number
+  endTime?: number
+}
+
 export interface ElectronAPI {
   worktree: {
     getAll(): Promise<WorktreeState[]>
@@ -226,6 +252,13 @@ export interface ElectronAPI {
   app: {
     getState(): Promise<AppState>
     setState(partialState: Partial<AppState>): Promise<void>
+  }
+  logs: {
+    getAll(filters?: LogFilterOptions): Promise<LogEntry[]>
+    getSources(): Promise<string[]>
+    clear(): Promise<void>
+    openFile(): Promise<void>
+    onEntry(callback: (entry: LogEntry) => void): () => void
   }
 }
 
@@ -366,6 +399,29 @@ const api: ElectronAPI = {
 
     setState: (partialState: Partial<AppState>) =>
       ipcRenderer.invoke(CHANNELS.APP_SET_STATE, partialState),
+  },
+
+  // ==========================================
+  // Logs API
+  // ==========================================
+  logs: {
+    getAll: (filters?: LogFilterOptions) =>
+      ipcRenderer.invoke(CHANNELS.LOGS_GET_ALL, filters),
+
+    getSources: () =>
+      ipcRenderer.invoke(CHANNELS.LOGS_GET_SOURCES),
+
+    clear: () =>
+      ipcRenderer.invoke(CHANNELS.LOGS_CLEAR),
+
+    openFile: () =>
+      ipcRenderer.invoke(CHANNELS.LOGS_OPEN_FILE),
+
+    onEntry: (callback: (entry: LogEntry) => void) => {
+      const handler = (_event: Electron.IpcRendererEvent, entry: LogEntry) => callback(entry)
+      ipcRenderer.on(CHANNELS.LOGS_ENTRY, handler)
+      return () => ipcRenderer.removeListener(CHANNELS.LOGS_ENTRY, handler)
+    },
   },
 }
 
