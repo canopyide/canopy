@@ -332,6 +332,14 @@ export interface ElectronAPI {
     retry(errorId: string, action: RetryAction, args?: Record<string, unknown>): Promise<void>
     openLogs(): Promise<void>
   }
+  eventInspector: {
+    getEvents(): Promise<EventRecord[]>
+    getFiltered(filters: EventFilterOptions): Promise<EventRecord[]>
+    clear(): Promise<void>
+    subscribe(): void
+    unsubscribe(): void
+    onEvent(callback: (event: EventRecord) => void): () => void
+  }
 }
 
 const api: ElectronAPI = {

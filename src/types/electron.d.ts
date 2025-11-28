@@ -87,6 +87,24 @@ export interface LogFilterOptions {
   endTime?: number
 }
 
+export interface EventRecord {
+  id: string
+  timestamp: number
+  type: string
+  payload: any
+  source: 'main' | 'renderer'
+}
+
+export interface EventFilterOptions {
+  types?: string[]
+  worktreeId?: string
+  agentId?: string
+  taskId?: string
+  search?: string
+  after?: number
+  before?: number
+}
+
 // Error types for IPC
 type ErrorType = 'git' | 'process' | 'filesystem' | 'network' | 'config' | 'unknown'
 type RetryAction = 'copytree' | 'devserver' | 'terminal' | 'git' | 'worktree'
@@ -151,7 +169,6 @@ export interface ElectronAPI {
     getState(): Promise<AppState>
     setState(partialState: Partial<AppState>): Promise<void>
   }
-<<<<<<< HEAD
   logs: {
     getAll(filters?: LogFilterOptions): Promise<LogEntry[]>
     getSources(): Promise<string[]>
@@ -164,12 +181,19 @@ export interface ElectronAPI {
     open(path: string): Promise<void>
     openDialog(): Promise<string | null>
     removeRecent(path: string): Promise<void>
-=======
+  }
   errors: {
     onError(callback: (error: AppError) => void): () => void
     retry(errorId: string, action: RetryAction, args?: Record<string, unknown>): Promise<void>
     openLogs(): Promise<void>
->>>>>>> feature/issue-47-error-ui-recovery
+  }
+  eventInspector: {
+    getEvents(): Promise<EventRecord[]>
+    getFiltered(filters: EventFilterOptions): Promise<EventRecord[]>
+    clear(): Promise<void>
+    subscribe(): void
+    unsubscribe(): void
+    onEvent(callback: (event: EventRecord) => void): () => void
   }
 }
 
