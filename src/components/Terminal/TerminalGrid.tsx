@@ -48,6 +48,7 @@ export function TerminalGrid({ className, defaultCwd }: TerminalGridProps) {
     maximizedId,
     addTerminal,
     removeTerminal,
+    updateTitle,
     setFocused,
     toggleMaximize,
   } = useTerminalStore()
@@ -108,6 +109,7 @@ export function TerminalGrid({ className, defaultCwd }: TerminalGridProps) {
                 : undefined
             }
             onToggleMaximize={() => toggleMaximize(terminal.id)}
+            onTitleChange={(newTitle) => updateTitle(terminal.id, newTitle)}
           />
         </div>
       )
@@ -149,6 +151,7 @@ export function TerminalGrid({ className, defaultCwd }: TerminalGridProps) {
               : undefined
           }
           onToggleMaximize={() => toggleMaximize(terminal.id)}
+          onTitleChange={(newTitle) => updateTitle(terminal.id, newTitle)}
         />
       ))}
     </div>

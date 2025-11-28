@@ -33,6 +33,7 @@ interface TerminalGridState {
 
   addTerminal: (options: AddTerminalOptions) => Promise<string>
   removeTerminal: (id: string) => void
+  updateTitle: (id: string, newTitle: string) => void
   setFocused: (id: string | null) => void
   toggleMaximize: (id: string) => void
   focusNext: () => void
@@ -145,6 +146,34 @@ const createTerminalStore: StateCreator<TerminalGridState> = (set) => ({
   },
 
   setFocused: (id) => set({ focusedId: id }),
+
+  updateTitle: (id, newTitle) => {
+    set((state) => {
+      const terminal = state.terminals.find((t) => t.id === id)
+      if (!terminal) return state
+
+      // Use trimmed title, or fall back to default title based on type
+      const effectiveTitle = newTitle.trim() || TYPE_TITLES[terminal.type]
+      const newTerminals = state.terminals.map((t) =>
+        t.id === id ? { ...t, title: effectiveTitle } : t
+      )
+
+      // Persist updated terminal list
+      window.electron.app.setState({
+        terminals: newTerminals.map(t => ({
+          id: t.id,
+          type: t.type,
+          title: t.title,
+          cwd: t.cwd,
+          worktreeId: t.worktreeId,
+        }))
+      }).catch((error) => {
+        console.error('Failed to persist terminals:', error)
+      })
+
+      return { terminals: newTerminals }
+    })
+  },
 
   toggleMaximize: (id) =>
     set((state) => ({
