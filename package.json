@@ -32,6 +32,7 @@
     "copytree": "github:gregpriday/copytree#develop",
     "electron-store": "^11.0.2",
     "execa": "^9.6.0",
+    "fuse.js": "^7.1.0",
     "lucide-react": "^0.555.0",
     "node-pty": "^1.0.0",
     "react": "^19.0.0",

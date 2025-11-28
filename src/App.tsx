@@ -1,11 +1,12 @@
 import { useCallback, useEffect, useRef } from 'react'
 import '@xterm/xterm/css/xterm.css'
-import { isElectronAvailable, useAgentLauncher, useWorktrees, useContextInjection } from './hooks'
+import { isElectronAvailable, useAgentLauncher, useWorktrees, useContextInjection, useTerminalPalette } from './hooks'
 import { AppLayout } from './components/Layout'
 import { TerminalGrid } from './components/Terminal'
 import { WorktreeCard } from './components/Worktree'
 import { ProblemsPanel } from './components/Errors'
-import { useTerminalStore, useWorktreeSelectionStore, useLogsStore } from './store'
+import { TerminalPalette } from './components/TerminalPalette'
+import { useTerminalStore, useWorktreeSelectionStore, useLogsStore, useErrorStore, type RetryAction } from './store'
 import type { WorktreeState } from './types'
 
 function SidebarContent() {
@@ -106,6 +107,14 @@ function App() {
   const { inject, isInjecting } = useContextInjection()
   const toggleLogsPanel = useLogsStore((state) => state.togglePanel)
 
+  // Terminal palette for quick switching (Cmd/Ctrl+T)
+  const terminalPalette = useTerminalPalette()
+
+  // Error panel state
+  const isProblemsPanelOpen = useErrorStore((state) => state.isPanelOpen)
+  const setProblemsPanelOpen = useErrorStore((state) => state.setPanelOpen)
+  const removeError = useErrorStore((state) => state.removeError)
+
   // Track if state has been restored (prevent StrictMode double-execution)
   const hasRestoredState = useRef(false)
 
@@ -176,11 +185,33 @@ function App() {
     }
   }, [activeWorktreeId, focusedId, isInjecting, inject])
 
+  // Handle error retry from problems panel
+  const handleErrorRetry = useCallback(
+    async (errorId: string, action: RetryAction, args?: Record<string, unknown>) => {
+      if (window.electron?.errors?.retry) {
+        try {
+          await window.electron.errors.retry(errorId, action, args)
+          removeError(errorId)
+        } catch (error) {
+          console.error('Error retry failed:', error)
+        }
+      }
+    },
+    [removeError]
+  )
+
   // Keyboard shortcuts for grid navigation
   useEffect(() => {
     if (!isElectronAvailable()) return
 
     const handleKeyDown = (e: KeyboardEvent) => {
+      // Cmd/Ctrl+T: Open terminal palette (handle before input guard so it works when palette input is focused)
+      if ((e.metaKey || e.ctrlKey) && e.key === 't' && !e.shiftKey) {
+        e.preventDefault()
+        terminalPalette.toggle()
+        return
+      }
+
       // Don't intercept shortcuts if user is typing in an input/textarea or terminal
       const target = e.target as HTMLElement
       const isInput = target.tagName === 'INPUT' ||
@@ -212,11 +243,6 @@ function App() {
           toggleMaximize(focusedId)
         }
       }
-      // Ctrl+T: New shell terminal
-      else if (e.ctrlKey && e.key === 't' && !e.shiftKey) {
-        e.preventDefault()
-        handleLaunchAgent('shell')
-      }
       // Ctrl+Shift+C: Launch Claude (use 'C' not 'c' to detect shift properly)
       else if (e.ctrlKey && e.shiftKey && (e.key === 'C' || e.key === 'c')) {
         e.preventDefault()
@@ -241,7 +267,7 @@ function App() {
 
     window.addEventListener('keydown', handleKeyDown)
     return () => window.removeEventListener('keydown', handleKeyDown)
-  }, [focusNext, focusPrevious, toggleMaximize, focusedId, handleLaunchAgent, handleInjectContextShortcut, toggleLogsPanel])
+  }, [focusNext, focusPrevious, toggleMaximize, focusedId, handleLaunchAgent, handleInjectContextShortcut, toggleLogsPanel, terminalPalette.toggle])
 
   if (!isElectronAvailable()) {
     return (
@@ -254,15 +280,34 @@ function App() {
   }
 
   return (
-    <AppLayout
-      sidebarContent={<SidebarContent />}
-      onLaunchAgent={handleLaunchAgent}
-      onRefresh={handleRefresh}
-      onSettings={handleSettings}
-    >
-      <TerminalGrid className="h-full w-full bg-canopy-bg" />
-      <ProblemsPanel />
-    </AppLayout>
+    <>
+      <AppLayout
+        sidebarContent={<SidebarContent />}
+        onLaunchAgent={handleLaunchAgent}
+        onRefresh={handleRefresh}
+        onSettings={handleSettings}
+      >
+        <TerminalGrid className="h-full w-full bg-canopy-bg" />
+        <ProblemsPanel
+          isOpen={isProblemsPanelOpen}
+          onClose={() => setProblemsPanelOpen(false)}
+          onRetry={handleErrorRetry}
+        />
+      </AppLayout>
+
+      {/* Terminal palette overlay */}
+      <TerminalPalette
+        isOpen={terminalPalette.isOpen}
+        query={terminalPalette.query}
+        results={terminalPalette.results}
+        selectedIndex={terminalPalette.selectedIndex}
+        onQueryChange={terminalPalette.setQuery}
+        onSelectPrevious={terminalPalette.selectPrevious}
+        onSelectNext={terminalPalette.selectNext}
+        onSelect={terminalPalette.selectTerminal}
+        onClose={terminalPalette.close}
+      />
+    </>
   )
 }
 

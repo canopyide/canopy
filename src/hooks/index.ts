@@ -18,3 +18,6 @@ export { useContextInjection } from './useContextInjection'
 export type { UseContextInjectionReturn } from './useContextInjection'
 
 export { useErrors } from './useErrors'
+
+export { useTerminalPalette } from './useTerminalPalette'
+export type { SearchableTerminal, UseTerminalPaletteReturn } from './useTerminalPalette'
