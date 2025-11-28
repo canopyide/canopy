@@ -2,6 +2,8 @@
 
 This file provides guidance to Claude Code (claude.ai/code) when working with code in this repository.
 
+**See @docs/spec.md for the complete technical specification, architecture, and data models.**
+
 ## Project Overview
 
 Canopy Command Center is an Electron-based mini IDE for orchestrating AI coding agents. It's a migration of the original Canopy CLI (terminal-based worktree monitor built with Ink) into a full desktop application with integrated terminals, a visual worktree dashboard, and context injection for AI agents.
@@ -105,6 +107,8 @@ This project migrates code from the original Canopy CLI. When working on migrati
 2. Services (WorktreeService, DevServerManager) move to `electron/services/`
 3. UI components (WorktreeCard, etc.) convert from Ink to React DOM with Tailwind
 4. Event bus (`events.emit()`) calls become IPC sends (`webContents.send()`)
+
+**Use Codex MCP to explore the original CLI:** When you have questions about the original Canopy CLI implementation, use the Codex MCP tool with `cwd: "/Users/gpriday/Projects/CopyTree/canopy"` to analyze the source code.
 
 ## Current State
 
