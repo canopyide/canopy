@@ -58,6 +58,8 @@
       "dist/**/*",
       "dist-electron/**/*"
     ],
+    "nodeGypRebuild": true,
+    "buildDependenciesFromSource": true,
     "mac": {
       "category": "public.app-category.developer-tools",
       "target": [
