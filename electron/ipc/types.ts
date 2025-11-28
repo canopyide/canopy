@@ -39,15 +39,14 @@ export interface TerminalErrorPayload {
   error: string
 }
 
-// Worktree types (placeholders - will be fully defined when services are migrated)
-export interface WorktreeState {
-  worktreeId: string
-  path: string
-  branch: string
-  // Additional fields will be added during service migration
-}
+// Worktree types (imported from core types)
+export type { WorktreeState } from '../types/index.js'
 
 export interface WorktreeRemovePayload {
+  worktreeId: string
+}
+
+export interface WorktreeSetActivePayload {
   worktreeId: string
 }
 

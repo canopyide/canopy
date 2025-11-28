@@ -5,6 +5,7 @@ import os from 'os'
 import { registerIpcHandlers, sendToRenderer } from './ipc/handlers.js'
 import { PtyManager } from './services/PtyManager.js'
 import { DevServerManager } from './services/DevServerManager.js'
+import { worktreeService } from './services/WorktreeService.js'
 
 const __filename = fileURLToPath(import.meta.url)
 const __dirname = path.dirname(__filename)
@@ -55,8 +56,8 @@ function createWindow(): void {
     }
   })
 
-  // Register IPC handlers with PtyManager and DevServerManager
-  cleanupIpcHandlers = registerIpcHandlers(mainWindow, ptyManager, devServerManager)
+  // Register IPC handlers with PtyManager, DevServerManager, and WorktreeService
+  cleanupIpcHandlers = registerIpcHandlers(mainWindow, ptyManager, devServerManager, worktreeService)
 
   // Spawn the default terminal for backwards compatibility with the renderer
   ptyManager.spawn(DEFAULT_TERMINAL_ID, {
@@ -71,6 +72,8 @@ function createWindow(): void {
       cleanupIpcHandlers()
       cleanupIpcHandlers = null
     }
+    // Stop all worktree monitors
+    await worktreeService.stopAll()
     // Stop all dev servers
     if (devServerManager) {
       await devServerManager.stopAll()
@@ -106,6 +109,7 @@ app.on('before-quit', (event) => {
 
   // Perform cleanup
   Promise.all([
+    worktreeService.stopAll(),
     devServerManager ? devServerManager.stopAll() : Promise.resolve(),
     new Promise<void>((resolve) => {
       if (ptyManager) {

@@ -9,6 +9,7 @@ export const CHANNELS = {
   // Worktree channels
   WORKTREE_GET_ALL: 'worktree:get-all',
   WORKTREE_REFRESH: 'worktree:refresh',
+  WORKTREE_SET_ACTIVE: 'worktree:set-active',
   WORKTREE_UPDATE: 'worktree:update',
   WORKTREE_REMOVE: 'worktree:remove',
 

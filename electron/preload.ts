@@ -25,6 +25,7 @@ export interface ElectronAPI {
   worktree: {
     getAll(): Promise<WorktreeState[]>
     refresh(): Promise<void>
+    setActive(worktreeId: string): Promise<void>
     onUpdate(callback: (state: WorktreeState) => void): () => void
     onRemove(callback: (data: { worktreeId: string }) => void): () => void
   }
@@ -66,6 +67,8 @@ const api: ElectronAPI = {
     getAll: () => ipcRenderer.invoke(CHANNELS.WORKTREE_GET_ALL),
 
     refresh: () => ipcRenderer.invoke(CHANNELS.WORKTREE_REFRESH),
+
+    setActive: (worktreeId: string) => ipcRenderer.invoke(CHANNELS.WORKTREE_SET_ACTIVE, { worktreeId }),
 
     onUpdate: (callback: (state: WorktreeState) => void) => {
       const handler = (_event: Electron.IpcRendererEvent, state: WorktreeState) => callback(state)

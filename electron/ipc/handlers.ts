@@ -11,6 +11,7 @@ import os from 'os'
 import { CHANNELS } from './channels.js'
 import { PtyManager } from '../services/PtyManager.js'
 import type { DevServerManager } from '../services/DevServerManager.js'
+import type { WorktreeService } from '../services/WorktreeService.js'
 import type {
   TerminalSpawnOptions,
   TerminalResizePayload,
@@ -22,6 +23,7 @@ import type {
   CopyTreeResult,
   SystemOpenExternalPayload,
   SystemOpenPathPayload,
+  WorktreeSetActivePayload,
 } from './types.js'
 import { copyTreeService } from '../services/CopyTreeService.js'
 
@@ -31,12 +33,14 @@ import { copyTreeService } from '../services/CopyTreeService.js'
  * @param mainWindow - The main BrowserWindow instance for sending events to renderer
  * @param ptyManager - The PtyManager instance for terminal management
  * @param devServerManager - Dev server manager instance
+ * @param worktreeService - Worktree service instance
  * @returns Cleanup function to remove all handlers
  */
 export function registerIpcHandlers(
   mainWindow: BrowserWindow,
   ptyManager: PtyManager,
-  devServerManager?: DevServerManager
+  devServerManager?: DevServerManager,
+  worktreeService?: WorktreeService
 ): () => void {
   // Store handler references for cleanup
   const handlers: Array<() => void> = []
@@ -71,17 +75,32 @@ export function registerIpcHandlers(
   // ==========================================
 
   const handleWorktreeGetAll = async () => {
-    // TODO: Implement when WorktreeService is migrated
-    return []
+    if (!worktreeService) {
+      return []
+    }
+    const statesMap = worktreeService.getAllStates()
+    return Array.from(statesMap.values())
   }
   ipcMain.handle(CHANNELS.WORKTREE_GET_ALL, handleWorktreeGetAll)
   handlers.push(() => ipcMain.removeHandler(CHANNELS.WORKTREE_GET_ALL))
 
   const handleWorktreeRefresh = async () => {
-    // TODO: Implement when WorktreeService is migrated
+    if (!worktreeService) {
+      return
+    }
+    await worktreeService.refresh()
   }
   ipcMain.handle(CHANNELS.WORKTREE_REFRESH, handleWorktreeRefresh)
   handlers.push(() => ipcMain.removeHandler(CHANNELS.WORKTREE_REFRESH))
+
+  const handleWorktreeSetActive = async (_event: Electron.IpcMainInvokeEvent, payload: WorktreeSetActivePayload) => {
+    if (!worktreeService) {
+      return
+    }
+    worktreeService.setActiveWorktree(payload.worktreeId)
+  }
+  ipcMain.handle(CHANNELS.WORKTREE_SET_ACTIVE, handleWorktreeSetActive)
+  handlers.push(() => ipcMain.removeHandler(CHANNELS.WORKTREE_SET_ACTIVE))
 
   // ==========================================
   // Dev Server Handlers
