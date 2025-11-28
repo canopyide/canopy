@@ -1,114 +1,10 @@
-import { useEffect, useRef } from 'react'
-import { Terminal } from '@xterm/xterm'
-import { FitAddon } from '@xterm/addon-fit'
+import { useCallback, useEffect } from 'react'
 import '@xterm/xterm/css/xterm.css'
-import { useElectron, isElectronAvailable } from './hooks/useElectron'
+import { isElectronAvailable } from './hooks/useElectron'
 import { AppLayout } from './components/Layout'
-
-const DEFAULT_TERMINAL_ID = 'default'
-
-function TerminalPane() {
-  if (!isElectronAvailable()) {
-    return (
-      <div className="h-full w-full flex items-center justify-center">
-        <div className="text-canopy-text/60 text-sm">
-          Terminal unavailable - Electron API not loaded
-        </div>
-      </div>
-    )
-  }
-
-  const electron = useElectron()
-  const terminalRef = useRef<HTMLDivElement>(null)
-  const xtermRef = useRef<Terminal | null>(null)
-  const fitAddonRef = useRef<FitAddon | null>(null)
-
-  useEffect(() => {
-    if (!terminalRef.current || xtermRef.current) return
-
-    // Initialize xterm
-    const term = new Terminal({
-      cursorBlink: true,
-      fontSize: 14,
-      fontFamily: 'JetBrains Mono, Menlo, Monaco, Consolas, monospace',
-      theme: {
-        background: '#1a1b26',
-        foreground: '#c0caf5',
-        cursor: '#c0caf5',
-        cursorAccent: '#1a1b26',
-        selectionBackground: '#2d2f3a',
-        black: '#1a1b26',
-        red: '#f7768e',
-        green: '#9ece6a',
-        yellow: '#e0af68',
-        blue: '#7aa2f7',
-        magenta: '#bb9af7',
-        cyan: '#7dcfff',
-        white: '#c0caf5',
-        brightBlack: '#414868',
-        brightRed: '#f7768e',
-        brightGreen: '#9ece6a',
-        brightYellow: '#e0af68',
-        brightBlue: '#7aa2f7',
-        brightMagenta: '#bb9af7',
-        brightCyan: '#7dcfff',
-        brightWhite: '#c0caf5',
-      },
-    })
-
-    const fitAddon = new FitAddon()
-    term.loadAddon(fitAddon)
-
-    term.open(terminalRef.current)
-    fitAddon.fit()
-
-    xtermRef.current = term
-    fitAddonRef.current = fitAddon
-
-    // Connect to Electron IPC - Data coming FROM the shell -> Write to xterm
-    const unsubscribeData = electron.terminal.onData(DEFAULT_TERMINAL_ID, (data: string) => {
-      term.write(data)
-    })
-
-    // Data coming FROM the user typing -> Send to shell
-    term.onData((data) => {
-      electron.terminal.write(DEFAULT_TERMINAL_ID, data)
-    })
-
-    // Handle resize
-    const handleResize = () => {
-      if (fitAddonRef.current && xtermRef.current) {
-        fitAddonRef.current.fit()
-        const { cols, rows } = xtermRef.current
-        electron.terminal.resize(DEFAULT_TERMINAL_ID, cols, rows)
-      }
-    }
-
-    // Initial resize notification
-    const { cols, rows } = term
-    electron.terminal.resize(DEFAULT_TERMINAL_ID, cols, rows)
-
-    // Listen for window resize
-    window.addEventListener('resize', handleResize)
-
-    // Use ResizeObserver for container changes
-    const resizeObserver = new ResizeObserver(handleResize)
-    resizeObserver.observe(terminalRef.current)
-
-    // Cleanup
-    return () => {
-      window.removeEventListener('resize', handleResize)
-      resizeObserver.disconnect()
-      unsubscribeData()
-      term.dispose()
-      // Reset refs to allow re-initialization (important for React StrictMode)
-      xtermRef.current = null
-      fitAddonRef.current = null
-    }
-  }, [electron])
-
-  return <div ref={terminalRef} className="h-full w-full" />
-}
+import { TerminalGrid } from './components/Terminal'
+import { useTerminalStore } from './store'
+import type { TerminalType } from './components/Terminal/TerminalPane'
 
 function SidebarContent() {
   return (
@@ -122,11 +18,96 @@ function SidebarContent() {
 }
 
 function App() {
-  return (
-    <AppLayout sidebarContent={<SidebarContent />}>
-      <div className="h-full w-full p-2 bg-canopy-bg">
-        <TerminalPane />
+  const { addTerminal, focusNext, focusPrevious, toggleMaximize, focusedId } = useTerminalStore()
+
+  // Map agent type to terminal type
+  const agentTypeToTerminalType = (type: 'claude' | 'gemini' | 'shell'): TerminalType => {
+    return type
+  }
+
+  // Handle agent launcher from toolbar
+  const handleLaunchAgent = useCallback(async (type: 'claude' | 'gemini' | 'shell') => {
+    if (!isElectronAvailable()) {
+      console.warn('Electron API not available')
+      return
+    }
+    const cwd = process.env.HOME || '/'
+    await addTerminal({
+      type: agentTypeToTerminalType(type),
+      cwd,
+    })
+  }, [addTerminal])
+
+  const handleRefresh = useCallback(() => {
+    // TODO: Implement worktree refresh via IPC
+    console.log('Refresh worktrees')
+  }, [])
+
+  const handleSettings = useCallback(() => {
+    // TODO: Implement settings modal
+    console.log('Open settings')
+  }, [])
+
+  // Keyboard shortcuts for grid navigation
+  useEffect(() => {
+    if (!isElectronAvailable()) return
+
+    const handleKeyDown = (e: KeyboardEvent) => {
+      // Don't intercept shortcuts if user is typing in an input/textarea
+      const target = e.target as HTMLElement
+      const isInput = target.tagName === 'INPUT' ||
+                     target.tagName === 'TEXTAREA' ||
+                     target.isContentEditable
+
+      // Skip if typing in input field
+      if (isInput) return
+
+      // Ctrl+Tab: Focus next terminal
+      if (e.ctrlKey && e.key === 'Tab' && !e.shiftKey) {
+        e.preventDefault()
+        focusNext()
+      }
+      // Ctrl+Shift+Tab: Focus previous terminal
+      else if (e.ctrlKey && e.shiftKey && e.key === 'Tab') {
+        e.preventDefault()
+        focusPrevious()
+      }
+      // Ctrl+Shift+F: Toggle maximize
+      else if (e.ctrlKey && e.shiftKey && e.key === 'F') {
+        e.preventDefault()
+        if (focusedId) {
+          toggleMaximize(focusedId)
+        }
+      }
+      // Ctrl+T: New shell terminal
+      else if (e.ctrlKey && e.key === 't' && !e.shiftKey) {
+        e.preventDefault()
+        handleLaunchAgent('shell')
+      }
+    }
+
+    window.addEventListener('keydown', handleKeyDown)
+    return () => window.removeEventListener('keydown', handleKeyDown)
+  }, [focusNext, focusPrevious, toggleMaximize, focusedId, handleLaunchAgent])
+
+  if (!isElectronAvailable()) {
+    return (
+      <div className="h-screen w-screen flex items-center justify-center bg-canopy-bg">
+        <div className="text-canopy-text/60 text-sm">
+          Electron API not available - please run in Electron
+        </div>
       </div>
+    )
+  }
+
+  return (
+    <AppLayout
+      sidebarContent={<SidebarContent />}
+      onLaunchAgent={handleLaunchAgent}
+      onRefresh={handleRefresh}
+      onSettings={handleSettings}
+    >
+      <TerminalGrid className="h-full w-full bg-canopy-bg" />
     </AppLayout>
   )
 }

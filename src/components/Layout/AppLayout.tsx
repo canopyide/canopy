@@ -5,13 +5,22 @@ import { Sidebar } from './Sidebar'
 interface AppLayoutProps {
   children?: ReactNode
   sidebarContent?: ReactNode
+  onLaunchAgent?: (type: 'claude' | 'gemini' | 'shell') => void
+  onRefresh?: () => void
+  onSettings?: () => void
 }
 
 const MIN_SIDEBAR_WIDTH = 200
 const MAX_SIDEBAR_WIDTH = 600
 const DEFAULT_SIDEBAR_WIDTH = 350
 
-export function AppLayout({ children, sidebarContent }: AppLayoutProps) {
+export function AppLayout({
+  children,
+  sidebarContent,
+  onLaunchAgent,
+  onRefresh,
+  onSettings,
+}: AppLayoutProps) {
   const [sidebarWidth, setSidebarWidth] = useState(DEFAULT_SIDEBAR_WIDTH)
 
   const handleSidebarResize = useCallback((newWidth: number) => {
@@ -19,20 +28,17 @@ export function AppLayout({ children, sidebarContent }: AppLayoutProps) {
     setSidebarWidth(clampedWidth)
   }, [])
 
-  const handleLaunchAgent = (type: 'claude' | 'gemini' | 'shell') => {
-    // TODO: Implement agent launching via IPC
-    console.log('Launch agent:', type)
-  }
+  const handleLaunchAgent = useCallback((type: 'claude' | 'gemini' | 'shell') => {
+    onLaunchAgent?.(type)
+  }, [onLaunchAgent])
 
-  const handleRefresh = () => {
-    // TODO: Implement refresh via IPC
-    console.log('Refresh')
-  }
+  const handleRefresh = useCallback(() => {
+    onRefresh?.()
+  }, [onRefresh])
 
-  const handleSettings = () => {
-    // TODO: Implement settings modal
-    console.log('Settings')
-  }
+  const handleSettings = useCallback(() => {
+    onSettings?.()
+  }, [onSettings])
 
   return (
     <div className="h-screen flex flex-col bg-canopy-bg">

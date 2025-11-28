@@ -31,7 +31,8 @@
     "react-dom": "^19.0.0",
     "simple-git": "^3.30.0",
     "strip-ansi": "^7.1.2",
-    "tailwind-merge": "^3.4.0"
+    "tailwind-merge": "^3.4.0",
+    "zustand": "^5.0.8"
   },
   "devDependencies": {
     "@electron/rebuild": "^3.7.1",
