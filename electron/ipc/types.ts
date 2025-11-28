@@ -88,9 +88,29 @@ export interface DevServerErrorPayload {
 
 // CopyTree types
 export interface CopyTreeOptions {
+  /** Output format */
+  format?: 'xml' | 'json' | 'markdown' | 'tree' | 'ndjson'
+
+  /** Pattern filtering */
+  filter?: string | string[]
+  exclude?: string | string[]
+  always?: string[]
+
+  /** Git filtering */
+  modified?: boolean
+  changed?: string
+
+  /** Size limits */
+  maxFileSize?: number
+  maxTotalSize?: number
+  maxFileCount?: number
+
+  /** Formatting */
+  withLineNumbers?: boolean
+  charLimit?: number
+
+  /** Profile (load from .copytree file) - legacy option */
   profile?: string
-  extraArgs?: string[]
-  files?: string[]
 }
 
 export interface CopyTreeGeneratePayload {
@@ -102,6 +122,10 @@ export interface CopyTreeResult {
   content: string
   fileCount: number
   error?: string
+  stats?: {
+    totalSize: number
+    duration: number
+  }
 }
 
 export interface CopyTreeInjectPayload {
