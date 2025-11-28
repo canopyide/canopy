@@ -34,6 +34,16 @@ import { logBuffer, type FilterOptions as LogFilterOptions } from '../services/L
 import { updateRecentDirectories, removeRecentDirectory } from '../utils/recentDirectories.js'
 import { join } from 'path'
 import { homedir } from 'os'
+import { projectStore } from '../services/ProjectStore.js'
+import type {
+  ProjectCreatePayload,
+  ProjectUpdatePayload,
+  ProjectRemovePayload,
+  ProjectSwitchPayload,
+  ProjectStatePayload,
+  Project,
+  ProjectState,
+} from './types.js'
 
 /**
  * Initialize all IPC handlers
@@ -700,6 +710,274 @@ export function registerIpcHandlers(
   }
   ipcMain.handle(CHANNELS.DIRECTORY_REMOVE_RECENT, handleDirectoryRemoveRecent)
   handlers.push(() => ipcMain.removeHandler(CHANNELS.DIRECTORY_REMOVE_RECENT))
+
+  // ==========================================
+  // Project Handlers
+  // ==========================================
+
+  const handleProjectGetAll = async (): Promise<Project[]> => {
+    try {
+      return await projectStore.getAllProjects()
+    } catch (error) {
+      console.error('Failed to get all projects:', error)
+      return []
+    }
+  }
+  ipcMain.handle(CHANNELS.PROJECT_GET_ALL, handleProjectGetAll)
+  handlers.push(() => ipcMain.removeHandler(CHANNELS.PROJECT_GET_ALL))
+
+  const handleProjectGetCurrent = async (): Promise<Project | null> => {
+    try {
+      const currentId = projectStore.getCurrentProjectId()
+      if (!currentId) return null
+      return await projectStore.getProjectById(currentId)
+    } catch (error) {
+      console.error('Failed to get current project:', error)
+      return null
+    }
+  }
+  ipcMain.handle(CHANNELS.PROJECT_GET_CURRENT, handleProjectGetCurrent)
+  handlers.push(() => ipcMain.removeHandler(CHANNELS.PROJECT_GET_CURRENT))
+
+  const handleProjectCreate = async (_event: Electron.IpcMainInvokeEvent, payload: ProjectCreatePayload): Promise<Project> => {
+    try {
+      // Validate payload
+      if (!payload || typeof payload !== 'object') {
+        throw new Error('Invalid payload')
+      }
+
+      const { path: projectPath, name, emoji } = payload
+
+      // Validate path
+      if (!projectPath || typeof projectPath !== 'string' || projectPath.trim() === '') {
+        throw new Error('Invalid project path')
+      }
+
+      // Check if directory exists and is accessible
+      const fs = await import('fs')
+      const stats = await fs.promises.stat(projectPath)
+      if (!stats.isDirectory()) {
+        throw new Error('Path is not a directory')
+      }
+
+      // Create or update project
+      const project = await projectStore.addProject(projectPath, name, emoji)
+
+      // Set as current project
+      await projectStore.setCurrentProject(project.id)
+
+      // Update recent directories for backwards compatibility
+      const currentRecents = store.get('appState.recentDirectories', [])
+      const updatedRecents = await updateRecentDirectories(currentRecents, projectPath)
+      store.set('appState.recentDirectories', updatedRecents)
+
+      // Update lastDirectory
+      store.set('appState.lastDirectory', projectPath)
+
+      // Refresh worktree service if available
+      if (worktreeService) {
+        await worktreeService.refresh()
+      }
+
+      return project
+    } catch (error) {
+      console.error('Failed to create project:', error)
+      throw error
+    }
+  }
+  ipcMain.handle(CHANNELS.PROJECT_CREATE, handleProjectCreate)
+  handlers.push(() => ipcMain.removeHandler(CHANNELS.PROJECT_CREATE))
+
+  const handleProjectUpdate = async (_event: Electron.IpcMainInvokeEvent, payload: ProjectUpdatePayload): Promise<void> => {
+    try {
+      // Validate payload
+      if (!payload || typeof payload !== 'object') {
+        throw new Error('Invalid payload')
+      }
+
+      const { id, name, emoji, color } = payload
+
+      if (!id || typeof id !== 'string') {
+        throw new Error('Invalid project ID')
+      }
+
+      await projectStore.updateProject(id, { name, emoji, color })
+    } catch (error) {
+      console.error('Failed to update project:', error)
+      throw error
+    }
+  }
+  ipcMain.handle(CHANNELS.PROJECT_UPDATE, handleProjectUpdate)
+  handlers.push(() => ipcMain.removeHandler(CHANNELS.PROJECT_UPDATE))
+
+  const handleProjectRemove = async (_event: Electron.IpcMainInvokeEvent, payload: ProjectRemovePayload): Promise<void> => {
+    try {
+      // Validate payload
+      if (!payload || typeof payload !== 'object') {
+        throw new Error('Invalid payload')
+      }
+
+      const { id } = payload
+
+      if (!id || typeof id !== 'string') {
+        throw new Error('Invalid project ID')
+      }
+
+      await projectStore.removeProject(id)
+    } catch (error) {
+      console.error('Failed to remove project:', error)
+      throw error
+    }
+  }
+  ipcMain.handle(CHANNELS.PROJECT_REMOVE, handleProjectRemove)
+  handlers.push(() => ipcMain.removeHandler(CHANNELS.PROJECT_REMOVE))
+
+  const handleProjectSwitch = async (_event: Electron.IpcMainInvokeEvent, payload: ProjectSwitchPayload): Promise<void> => {
+    try {
+      // Validate payload
+      if (!payload || typeof payload !== 'object') {
+        throw new Error('Invalid payload')
+      }
+
+      const { id } = payload
+
+      if (!id || typeof id !== 'string') {
+        throw new Error('Invalid project ID')
+      }
+
+      // Get the project
+      const project = await projectStore.getProjectById(id)
+      if (!project) {
+        throw new Error(`Project not found: ${id}`)
+      }
+
+      // Save current project state before switching
+      const currentProjectId = projectStore.getCurrentProjectId()
+      if (currentProjectId && ptyManager) {
+        const terminals = ptyManager.getAll().map(t => ({
+          id: t.id,
+          type: t.type || ('shell' as const),
+          title: t.title || 'Terminal',
+          cwd: t.cwd,
+          worktreeId: t.worktreeId,
+        }))
+
+        const currentState: ProjectState = {
+          projectId: currentProjectId,
+          activeWorktreeId: store.get('appState.activeWorktreeId'),
+          sidebarWidth: store.get('appState.sidebarWidth', 350),
+          terminals,
+        }
+
+        await projectStore.saveProjectState(currentProjectId, currentState)
+      }
+
+      // Stop all worktree monitors and dev servers
+      if (worktreeService) {
+        await worktreeService.stopAll()
+      }
+      if (devServerManager) {
+        await devServerManager.stopAll()
+      }
+
+      // Kill all terminals
+      if (ptyManager) {
+        const allTerminals = ptyManager.getAll()
+        for (const terminal of allTerminals) {
+          try {
+            ptyManager.kill(terminal.id)
+          } catch (error) {
+            console.warn(`Failed to kill terminal ${terminal.id}:`, error)
+          }
+        }
+      }
+
+      // Set new current project
+      await projectStore.setCurrentProject(id)
+
+      // Update backwards-compatible state
+      store.set('appState.lastDirectory', project.path)
+
+      // Load new project state and persist to store
+      // Note: Terminal restoration happens on renderer reload via App.tsx useEffect
+      const newState = await projectStore.getProjectState(id)
+
+      if (newState) {
+        // Restore state to store (renderer will restore terminals on reload)
+        store.set('appState.activeWorktreeId', newState.activeWorktreeId)
+        store.set('appState.sidebarWidth', newState.sidebarWidth)
+        store.set('appState.terminals', newState.terminals)
+      } else {
+        // No saved state, reset to defaults
+        store.set('appState.activeWorktreeId', undefined)
+        store.set('appState.sidebarWidth', 350)
+        store.set('appState.terminals', [])
+      }
+
+      // Refresh worktree service for new project
+      if (worktreeService) {
+        await worktreeService.refresh()
+      }
+    } catch (error) {
+      console.error('Failed to switch project:', error)
+      throw error
+    }
+  }
+  ipcMain.handle(CHANNELS.PROJECT_SWITCH, handleProjectSwitch)
+  handlers.push(() => ipcMain.removeHandler(CHANNELS.PROJECT_SWITCH))
+
+  const handleProjectGetState = async (_event: Electron.IpcMainInvokeEvent, projectId: string): Promise<ProjectState | null> => {
+    try {
+      if (!projectId || typeof projectId !== 'string') {
+        throw new Error('Invalid project ID')
+      }
+
+      // Verify project exists before getting state
+      const project = await projectStore.getProjectById(projectId)
+      if (!project) {
+        console.warn(`Attempted to get state for non-existent project: ${projectId}`)
+        return null
+      }
+
+      return await projectStore.getProjectState(projectId)
+    } catch (error) {
+      console.error('Failed to get project state:', error)
+      return null
+    }
+  }
+  ipcMain.handle(CHANNELS.PROJECT_GET_STATE, handleProjectGetState)
+  handlers.push(() => ipcMain.removeHandler(CHANNELS.PROJECT_GET_STATE))
+
+  const handleProjectSaveState = async (_event: Electron.IpcMainInvokeEvent, payload: ProjectStatePayload): Promise<void> => {
+    try {
+      if (!payload || typeof payload !== 'object') {
+        throw new Error('Invalid payload')
+      }
+
+      const { projectId, state } = payload
+
+      if (!projectId || typeof projectId !== 'string') {
+        throw new Error('Invalid project ID')
+      }
+
+      if (!state || typeof state !== 'object') {
+        throw new Error('Invalid project state')
+      }
+
+      // Verify project exists before saving state
+      const project = await projectStore.getProjectById(projectId)
+      if (!project) {
+        throw new Error(`Cannot save state for non-existent project: ${projectId}`)
+      }
+
+      await projectStore.saveProjectState(projectId, state)
+    } catch (error) {
+      console.error('Failed to save project state:', error)
+      throw error
+    }
+  }
+  ipcMain.handle(CHANNELS.PROJECT_SAVE_STATE, handleProjectSaveState)
+  handlers.push(() => ipcMain.removeHandler(CHANNELS.PROJECT_SAVE_STATE))
 
   // Return cleanup function
   return () => {

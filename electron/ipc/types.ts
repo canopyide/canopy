@@ -165,3 +165,61 @@ export interface DirectoryOpenPayload {
 export interface DirectoryRemoveRecentPayload {
   path: string
 }
+
+// Project types
+export interface Project {
+  id: string                    // UUID or path hash
+  path: string                  // Git repository root path
+  name: string                  // User-editable display name
+  emoji: string                 // User-editable emoji (default: 🌲)
+  aiGeneratedName?: string      // AI-suggested name (from folder)
+  aiGeneratedEmoji?: string     // AI-suggested emoji
+  lastOpened: number            // Timestamp for sorting
+  color?: string                // Theme color/gradient (optional)
+}
+
+export interface ProjectState {
+  projectId: string
+  activeWorktreeId?: string
+  sidebarWidth: number
+  terminals: Array<{
+    id: string
+    type: 'shell' | 'claude' | 'gemini' | 'custom'
+    title: string
+    cwd: string
+    worktreeId?: string
+  }>
+}
+
+export interface ProjectIdentity {
+  name: string
+  emoji: string
+  gradient?: string
+}
+
+// Project operation payloads
+export interface ProjectCreatePayload {
+  path: string
+  name?: string
+  emoji?: string
+}
+
+export interface ProjectUpdatePayload {
+  id: string
+  name?: string
+  emoji?: string
+  color?: string
+}
+
+export interface ProjectRemovePayload {
+  id: string
+}
+
+export interface ProjectSwitchPayload {
+  id: string
+}
+
+export interface ProjectStatePayload {
+  projectId: string
+  state: ProjectState
+}

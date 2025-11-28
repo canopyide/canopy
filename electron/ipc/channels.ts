@@ -68,6 +68,16 @@ export const CHANNELS = {
   ERROR_NOTIFY: 'error:notify',
   ERROR_RETRY: 'error:retry',
   ERROR_OPEN_LOGS: 'error:open-logs',
+
+  // Project channels
+  PROJECT_GET_ALL: 'project:get-all',
+  PROJECT_GET_CURRENT: 'project:get-current',
+  PROJECT_CREATE: 'project:create',
+  PROJECT_UPDATE: 'project:update',
+  PROJECT_REMOVE: 'project:remove',
+  PROJECT_SWITCH: 'project:switch',
+  PROJECT_GET_STATE: 'project:get-state',
+  PROJECT_SAVE_STATE: 'project:save-state',
 } as const
 
 export type ChannelName = typeof CHANNELS[keyof typeof CHANNELS]

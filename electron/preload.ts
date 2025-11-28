@@ -76,6 +76,16 @@ const CHANNELS = {
   DIRECTORY_OPEN_DIALOG: 'directory:open-dialog',
   DIRECTORY_REMOVE_RECENT: 'directory:remove-recent',
 
+  // Project channels
+  PROJECT_GET_ALL: 'project:get-all',
+  PROJECT_GET_CURRENT: 'project:get-current',
+  PROJECT_CREATE: 'project:create',
+  PROJECT_UPDATE: 'project:update',
+  PROJECT_REMOVE: 'project:remove',
+  PROJECT_SWITCH: 'project:switch',
+  PROJECT_GET_STATE: 'project:get-state',
+  PROJECT_SAVE_STATE: 'project:save-state',
+
   // Error channels
   ERROR_NOTIFY: 'error:notify',
   ERROR_RETRY: 'error:retry',
@@ -246,6 +256,31 @@ interface AppError {
   retryArgs?: Record<string, unknown>
 }
 
+// Project types
+interface Project {
+  id: string
+  path: string
+  name: string
+  emoji: string
+  aiGeneratedName?: string
+  aiGeneratedEmoji?: string
+  lastOpened: number
+  color?: string
+}
+
+interface ProjectState {
+  projectId: string
+  activeWorktreeId?: string
+  sidebarWidth: number
+  terminals: Array<{
+    id: string
+    type: 'shell' | 'claude' | 'gemini' | 'custom'
+    title: string
+    cwd: string
+    worktreeId?: string
+  }>
+}
+
 export interface ElectronAPI {
   worktree: {
     getAll(): Promise<WorktreeState[]>
@@ -304,6 +339,16 @@ export interface ElectronAPI {
     onError(callback: (error: AppError) => void): () => void
     retry(errorId: string, action: RetryAction, args?: Record<string, unknown>): Promise<void>
     openLogs(): Promise<void>
+  }
+  project: {
+    getAll(): Promise<Project[]>
+    getCurrent(): Promise<Project | null>
+    create(path: string, name?: string, emoji?: string): Promise<Project>
+    update(id: string, updates: { name?: string; emoji?: string; color?: string }): Promise<void>
+    remove(id: string): Promise<void>
+    switch(id: string): Promise<void>
+    getState(projectId: string): Promise<ProjectState | null>
+    saveState(projectId: string, state: ProjectState): Promise<void>
   }
 }
 
@@ -501,6 +546,35 @@ const api: ElectronAPI = {
 
     openLogs: () =>
       ipcRenderer.invoke(CHANNELS.ERROR_OPEN_LOGS),
+  },
+
+  // ==========================================
+  // Project API
+  // ==========================================
+  project: {
+    getAll: () =>
+      ipcRenderer.invoke(CHANNELS.PROJECT_GET_ALL),
+
+    getCurrent: () =>
+      ipcRenderer.invoke(CHANNELS.PROJECT_GET_CURRENT),
+
+    create: (path: string, name?: string, emoji?: string) =>
+      ipcRenderer.invoke(CHANNELS.PROJECT_CREATE, { path, name, emoji }),
+
+    update: (id: string, updates: { name?: string; emoji?: string; color?: string }) =>
+      ipcRenderer.invoke(CHANNELS.PROJECT_UPDATE, { id, ...updates }),
+
+    remove: (id: string) =>
+      ipcRenderer.invoke(CHANNELS.PROJECT_REMOVE, { id }),
+
+    switch: (id: string) =>
+      ipcRenderer.invoke(CHANNELS.PROJECT_SWITCH, { id }),
+
+    getState: (projectId: string) =>
+      ipcRenderer.invoke(CHANNELS.PROJECT_GET_STATE, projectId),
+
+    saveState: (projectId: string, state: ProjectState) =>
+      ipcRenderer.invoke(CHANNELS.PROJECT_SAVE_STATE, { projectId, state }),
   },
 }
 

@@ -5,7 +5,8 @@ import { AppLayout } from './components/Layout'
 import { TerminalGrid } from './components/Terminal'
 import { WorktreeCard } from './components/Worktree'
 import { ProblemsPanel } from './components/Errors'
-import { useTerminalStore, useWorktreeSelectionStore, useLogsStore } from './store'
+import { ProjectSwitcher } from './components/Project/ProjectSwitcher'
+import { useTerminalStore, useWorktreeSelectionStore, useLogsStore, useErrorStore } from './store'
 import type { WorktreeState } from './types'
 
 function SidebarContent() {
@@ -77,23 +78,31 @@ function SidebarContent() {
   }
 
   return (
-    <div className="p-4">
-      <h2 className="text-canopy-text font-semibold text-sm mb-4">Worktrees</h2>
-      <div className="space-y-2">
-        {worktrees.map((worktree) => (
-          <WorktreeCard
-            key={worktree.id}
-            worktree={worktree}
-            isActive={worktree.id === activeWorktreeId}
-            isFocused={worktree.id === focusedWorktreeId}
-            onSelect={() => selectWorktree(worktree.id)}
-            onCopyTree={() => handleCopyTree(worktree)}
-            onOpenEditor={() => handleOpenEditor(worktree)}
-            onToggleServer={() => handleToggleServer(worktree)}
-            onInjectContext={focusedTerminalId ? () => handleInjectContext(worktree.id) : undefined}
-            isInjecting={isInjecting}
-          />
-        ))}
+    <div className="flex flex-col h-full">
+      {/* Project Switcher */}
+      <div className="px-4 pt-4 pb-2 border-b border-canopy-border">
+        <ProjectSwitcher />
+      </div>
+
+      {/* Worktrees */}
+      <div className="flex-1 overflow-y-auto p-4">
+        <h2 className="text-canopy-text font-semibold text-sm mb-4">Worktrees</h2>
+        <div className="space-y-2">
+          {worktrees.map((worktree) => (
+            <WorktreeCard
+              key={worktree.id}
+              worktree={worktree}
+              isActive={worktree.id === activeWorktreeId}
+              isFocused={worktree.id === focusedWorktreeId}
+              onSelect={() => selectWorktree(worktree.id)}
+              onCopyTree={() => handleCopyTree(worktree)}
+              onOpenEditor={() => handleOpenEditor(worktree)}
+              onToggleServer={() => handleToggleServer(worktree)}
+              onInjectContext={focusedTerminalId ? () => handleInjectContext(worktree.id) : undefined}
+              isInjecting={isInjecting}
+            />
+          ))}
+        </div>
       </div>
     </div>
   )
@@ -105,6 +114,8 @@ function App() {
   const { activeWorktreeId, setActiveWorktree } = useWorktreeSelectionStore()
   const { inject, isInjecting } = useContextInjection()
   const toggleLogsPanel = useLogsStore((state) => state.togglePanel)
+  const isPanelOpen = useErrorStore((state) => state.isPanelOpen)
+  const setPanelOpen = useErrorStore((state) => state.setPanelOpen)
 
   // Track if state has been restored (prevent StrictMode double-execution)
   const hasRestoredState = useRef(false)
@@ -261,7 +272,7 @@ function App() {
       onSettings={handleSettings}
     >
       <TerminalGrid className="h-full w-full bg-canopy-bg" />
-      <ProblemsPanel />
+      <ProblemsPanel isOpen={isPanelOpen} onClose={() => setPanelOpen(false)} />
     </AppLayout>
   )
 }

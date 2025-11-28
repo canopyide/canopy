@@ -10,6 +10,7 @@ import { worktreeService } from './services/WorktreeService.js'
 import { createWindowWithState } from './windowState.js'
 import { store } from './store.js'
 import { setLoggerWindow } from './utils/logger.js'
+import { projectStore } from './services/ProjectStore.js'
 
 const __filename = fileURLToPath(import.meta.url)
 const __dirname = path.dirname(__filename)
@@ -33,8 +34,27 @@ let cleanupErrorHandlers: (() => void) | null = null
 // Terminal ID for the default terminal (for backwards compatibility with renderer)
 const DEFAULT_TERMINAL_ID = 'default'
 
-function createWindow(): void {
+async function createWindow(): Promise<void> {
   console.log('[MAIN] Creating window...')
+
+  // Initialize ProjectStore
+  console.log('[MAIN] Initializing ProjectStore...')
+  try {
+    await projectStore.initialize()
+
+    // Migrate from old appState if needed
+    const lastDirectory = store.get('appState.lastDirectory')
+    const recentDirectories = store.get('appState.recentDirectories', [])
+
+    // Try to migrate and set current project
+    await projectStore.migrateFromAppState(lastDirectory, recentDirectories)
+
+    console.log('[MAIN] ProjectStore initialized successfully')
+  } catch (error) {
+    console.error('[MAIN] Failed to initialize ProjectStore:', error)
+    // Continue anyway - app can still function
+  }
+
   mainWindow = createWindowWithState({
     minWidth: 800,
     minHeight: 600,
@@ -110,7 +130,32 @@ function createWindow(): void {
   }
 
   mainWindow.on('closed', async () => {
-    // Save terminal state before cleanup (to avoid race with before-quit)
+    // Save current project state before cleanup
+    const currentProjectId = projectStore.getCurrentProjectId()
+    if (currentProjectId && ptyManager) {
+      try {
+        const terminals = ptyManager.getAll().map(t => ({
+          id: t.id,
+          type: t.type || ('shell' as const),
+          title: t.title || 'Terminal',
+          cwd: t.cwd,
+          worktreeId: t.worktreeId,
+        }))
+
+        const projectState = {
+          projectId: currentProjectId,
+          activeWorktreeId: store.get('appState.activeWorktreeId'),
+          sidebarWidth: store.get('appState.sidebarWidth', 350),
+          terminals,
+        }
+
+        await projectStore.saveProjectState(currentProjectId, projectState)
+      } catch (error) {
+        console.error('Failed to save project state on close:', error)
+      }
+    }
+
+    // Save terminal state to appState for backwards compatibility
     if (ptyManager) {
       const terminals = ptyManager.getAll().map(t => ({
         id: t.id,
@@ -168,7 +213,34 @@ app.on('before-quit', (event) => {
   // Prevent quit until cleanup is done
   event.preventDefault()
 
-  // Save terminal state before cleanup
+  // Save current project state before cleanup
+  const saveProjectState = async () => {
+    const currentProjectId = projectStore.getCurrentProjectId()
+    if (currentProjectId && ptyManager) {
+      try {
+        const terminals = ptyManager.getAll().map(t => ({
+          id: t.id,
+          type: t.type || ('shell' as const),
+          title: t.title || 'Terminal',
+          cwd: t.cwd,
+          worktreeId: t.worktreeId,
+        }))
+
+        const projectState = {
+          projectId: currentProjectId,
+          activeWorktreeId: store.get('appState.activeWorktreeId'),
+          sidebarWidth: store.get('appState.sidebarWidth', 350),
+          terminals,
+        }
+
+        await projectStore.saveProjectState(currentProjectId, projectState)
+      } catch (error) {
+        console.error('Failed to save project state on quit:', error)
+      }
+    }
+  }
+
+  // Save terminal state to appState for backwards compatibility
   if (ptyManager) {
     const terminals = ptyManager.getAll().map(t => ({
       id: t.id,
@@ -182,6 +254,7 @@ app.on('before-quit', (event) => {
 
   // Perform cleanup
   Promise.all([
+    saveProjectState(),
     worktreeService.stopAll(),
     devServerManager ? devServerManager.stopAll() : Promise.resolve(),
     new Promise<void>((resolve) => {
