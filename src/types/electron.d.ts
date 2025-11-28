@@ -17,6 +17,7 @@ export interface ElectronAPI {
   worktree: {
     getAll(): Promise<WorktreeState[]>
     refresh(): Promise<void>
+    setActive(worktreeId: string): Promise<void>
     onUpdate(callback: (state: WorktreeState) => void): () => void
     onRemove(callback: (data: { worktreeId: string }) => void): () => void
   }
