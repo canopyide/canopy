@@ -31,16 +31,39 @@ interface TerminalSpawnOptions {
 }
 
 interface CopyTreeOptions {
+  /** Output format */
+  format?: 'xml' | 'json' | 'markdown' | 'tree' | 'ndjson'
+
+  /** Pattern filtering */
+  filter?: string | string[]
+  exclude?: string | string[]
+  always?: string[]
+
+  /** Git filtering */
+  modified?: boolean
+  changed?: string
+
+  /** Size limits */
+  maxFileSize?: number
+  maxTotalSize?: number
+  maxFileCount?: number
+
+  /** Formatting */
+  withLineNumbers?: boolean
+  charLimit?: number
+
+  /** Profile (load from .copytree file) - legacy option */
   profile?: string
-  extraArgs?: string[]
-  files?: string[]
 }
 
 interface CopyTreeResult {
-  success: boolean
-  content?: string
-  fileCount?: number
+  content: string
+  fileCount: number
   error?: string
+  stats?: {
+    totalSize: number
+    duration: number
+  }
 }
 
 interface TerminalState {
@@ -151,7 +174,6 @@ export interface ElectronAPI {
     getState(): Promise<AppState>
     setState(partialState: Partial<AppState>): Promise<void>
   }
-<<<<<<< HEAD
   logs: {
     getAll(filters?: LogFilterOptions): Promise<LogEntry[]>
     getSources(): Promise<string[]>
@@ -164,12 +186,11 @@ export interface ElectronAPI {
     open(path: string): Promise<void>
     openDialog(): Promise<string | null>
     removeRecent(path: string): Promise<void>
-=======
+  }
   errors: {
     onError(callback: (error: AppError) => void): () => void
     retry(errorId: string, action: RetryAction, args?: Record<string, unknown>): Promise<void>
     openLogs(): Promise<void>
->>>>>>> feature/issue-47-error-ui-recovery
   }
 }
 

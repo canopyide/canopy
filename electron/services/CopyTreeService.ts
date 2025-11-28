@@ -1,132 +1,181 @@
 /**
  * CopyTree Service
  *
- * Interfaces with the external CopyTree CLI tool to generate context for AI agents.
+ * Interfaces with the CopyTree SDK to generate context for AI agents.
  * CopyTree generates a text representation of a codebase suitable for injection
  * into AI chat interfaces.
+ *
+ * Uses the native SDK (npm install copytree) instead of spawning CLI processes,
+ * enabling better performance, streaming support, and richer progress feedback.
  */
 
-import { execa } from 'execa';
-import stripAnsi from 'strip-ansi';
-import * as fs from 'fs/promises';
+import { copy, ConfigManager, CopyTreeError, ValidationError } from 'copytree';
+import type { CopyResult, CopyOptions as SdkCopyOptions } from 'copytree';
 import * as path from 'path';
+import * as fs from 'fs/promises';
 import type { CopyTreeOptions, CopyTreeResult } from '../ipc/types.js';
 
 // Re-export types for convenience
 export type { CopyTreeOptions, CopyTreeResult };
 
 class CopyTreeService {
+  // Track active operations for cancellation
+  private activeOperations = new Map<string, AbortController>();
+
   /**
-   * Generate context for a worktree
+   * Generate context for a worktree using the native CopyTree SDK
    *
    * @param rootPath - Absolute path to the worktree root
-   * @param options - CopyTree options (profile, extraArgs, files)
+   * @param options - CopyTree options (format, filters, etc.)
    * @returns CopyTreeResult with content, file count, and optional error
    */
   async generate(rootPath: string, options: CopyTreeOptions = {}): Promise<CopyTreeResult> {
-    // Validate rootPath before calling copytree
-    if (!path.isAbsolute(rootPath)) {
-      return {
-        content: '',
-        fileCount: 0,
-        error: 'rootPath must be an absolute path',
-      };
-    }
+    const opId = crypto.randomUUID();
 
     try {
-      await fs.access(rootPath);
-    } catch {
-      return {
-        content: '',
-        fileCount: 0,
-        error: `Path does not exist or is not accessible: ${rootPath}`,
-      };
-    }
-
-    const args = ['-r'];
-
-    if (options.profile) {
-      args.push('-p', options.profile);
-    }
-
-    if (options.extraArgs) {
-      args.push(...options.extraArgs);
-    }
-
-    if (options.files?.length) {
-      args.push(...options.files);
-    }
-
-    try {
-      const { stdout, stderr } = await execa('copytree', args, {
-        cwd: rootPath,
-        timeout: 60000, // 60s timeout for large repos
-      });
-
-      // Strip ANSI codes for clean display
-      const cleanContent = stripAnsi(stdout);
-
-      // Parse file count from output (if available)
-      // CopyTree typically outputs something like "Processed 42 files"
-      const fileCountMatch = cleanContent.match(/(\d+)\s+files?/i);
-      const fileCount = fileCountMatch ? parseInt(fileCountMatch[1], 10) : 0;
-
-      // Log stderr if present (warnings, debug info)
-      if (stderr) {
-        console.warn('[CopyTree] stderr:', stderr);
-      }
-
-      return {
-        content: cleanContent,
-        fileCount,
-      };
-    } catch (error) {
-      // Handle various error scenarios
-      const errorMessage = error instanceof Error ? error.message : 'Unknown error';
-
-      // Check if copytree CLI is not installed
-      // Use execa-specific error properties to distinguish CLI missing from path issues
-      if (
-        (error && typeof error === 'object' && 'code' in error && error.code === 'ENOENT') ||
-        errorMessage.includes('command not found')
-      ) {
+      // Validation
+      if (!path.isAbsolute(rootPath)) {
         return {
           content: '',
           fileCount: 0,
-          error: 'CopyTree CLI not found in PATH. Please install copytree to use this feature.',
+          error: 'rootPath must be an absolute path',
         };
       }
 
-      // Timeout error - use execa's timedOut property
-      if (error && typeof error === 'object' && 'timedOut' in error && error.timedOut === true) {
+      try {
+        await fs.access(rootPath);
+      } catch {
         return {
           content: '',
           fileCount: 0,
-          error: 'CopyTree operation timed out. The repository may be too large or the operation is taking too long.',
+          error: `Path does not exist or is not accessible: ${rootPath}`,
         };
       }
 
-      // Generic error
-      return {
-        content: '',
-        fileCount: 0,
-        error: `CopyTree error: ${errorMessage}`,
+      // Setup cancellation
+      const controller = new AbortController();
+      this.activeOperations.set(opId, controller);
+
+      // Create isolated configuration for concurrent operations
+      const config = await ConfigManager.create();
+
+      // Map IPC options to SDK options
+      const sdkOptions: SdkCopyOptions = {
+        // Core settings
+        config: config,
+        signal: controller.signal,
+
+        // Output settings (CLI side effects disabled)
+        display: false,
+        clipboard: false,
+        format: options.format || 'xml',
+
+        // Filtering
+        filter: options.filter,
+        exclude: options.exclude,
+        always: options.always,
+
+        // Git
+        modified: options.modified,
+        changed: options.changed,
+
+        // Limits & Formatting
+        charLimit: options.charLimit,
+        addLineNumbers: options.withLineNumbers,
+        maxFileSize: options.maxFileSize,
+        maxTotalSize: options.maxTotalSize,
+        maxFileCount: options.maxFileCount,
+
+        // Profile loading (SDK auto-loads .copytree.yml from rootPath)
+        // The profile option is kept for future explicit profile support
       };
+
+      // Execute via SDK
+      const result: CopyResult = await copy(rootPath, sdkOptions);
+
+      return {
+        content: result.output,
+        fileCount: result.stats.totalFiles,
+        stats: {
+          totalSize: result.stats.totalSize,
+          duration: result.stats.duration,
+        },
+      };
+    } catch (error: unknown) {
+      return this.handleError(error);
+    } finally {
+      this.activeOperations.delete(opId);
     }
   }
 
   /**
-   * Check if copytree CLI is available
-   *
-   * @returns True if copytree command is available in PATH
+   * Cancel all running context generations
+   */
+  cancelAll(): void {
+    for (const controller of this.activeOperations.values()) {
+      controller.abort();
+    }
+    this.activeOperations.clear();
+  }
+
+  /**
+   * Cancel a specific operation by ID (if we expose operation IDs in future)
+   */
+  cancel(opId: string): boolean {
+    const controller = this.activeOperations.get(opId);
+    if (controller) {
+      controller.abort();
+      this.activeOperations.delete(opId);
+      return true;
+    }
+    return false;
+  }
+
+  /**
+   * Handle errors from SDK operations
+   */
+  private handleError(error: unknown): CopyTreeResult {
+    // Handle cancellation
+    if (error instanceof Error && error.name === 'AbortError') {
+      return {
+        content: '',
+        fileCount: 0,
+        error: 'Context generation cancelled',
+      };
+    }
+
+    // Handle SDK specific errors
+    if (error instanceof ValidationError) {
+      return {
+        content: '',
+        fileCount: 0,
+        error: `Validation Error: ${error.message}`,
+      };
+    }
+
+    if (error instanceof CopyTreeError) {
+      return {
+        content: '',
+        fileCount: 0,
+        error: `CopyTree Error [${error.code}]: ${error.message}`,
+      };
+    }
+
+    // Generic error
+    const message = error instanceof Error ? error.message : String(error);
+    return {
+      content: '',
+      fileCount: 0,
+      error: `CopyTree Error: ${message}`,
+    };
+  }
+
+  /**
+   * SDK is bundled, so it is always available.
+   * This method is kept for backwards compatibility but always returns true.
    */
   async isAvailable(): Promise<boolean> {
-    try {
-      await execa('copytree', ['--version'], { timeout: 5000 });
-      return true;
-    } catch {
-      return false;
-    }
+    return true;
   }
 }
 
