@@ -69,6 +69,12 @@ const CHANNELS = {
   LOGS_CLEAR: 'logs:clear',
   LOGS_ENTRY: 'logs:entry',
   LOGS_OPEN_FILE: 'logs:open-file',
+
+  // Directory channels
+  DIRECTORY_GET_RECENTS: 'directory:get-recents',
+  DIRECTORY_OPEN: 'directory:open',
+  DIRECTORY_OPEN_DIALOG: 'directory:open-dialog',
+  DIRECTORY_REMOVE_RECENT: 'directory:remove-recent',
 } as const
 
 // Inlined types (must match electron/ipc/types.ts)
