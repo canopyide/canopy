@@ -25,6 +25,7 @@
     "@xterm/xterm": "^5.5.0",
     "class-variance-authority": "^0.7.1",
     "clsx": "^2.1.1",
+    "electron-store": "^11.0.2",
     "execa": "^9.6.0",
     "lucide-react": "^0.555.0",
     "node-pty": "^1.0.0",

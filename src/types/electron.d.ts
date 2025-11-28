@@ -12,6 +12,7 @@ type TerminalSpawnOptions = import('../../electron/ipc/types.js').TerminalSpawnO
 type CopyTreeOptions = import('../../electron/ipc/types.js').CopyTreeOptions
 type CopyTreeResult = import('../../electron/ipc/types.js').CopyTreeResult
 type CanopyConfig = import('../../electron/ipc/types.js').CanopyConfig
+type AppState = import('../../electron/ipc/types.js').AppState
 
 export interface ElectronAPI {
   worktree: {
@@ -49,6 +50,10 @@ export interface ElectronAPI {
     openPath(path: string): Promise<void>
     getConfig(): Promise<CanopyConfig>
     checkCommand(command: string): Promise<boolean>
+  }
+  app: {
+    getState(): Promise<AppState>
+    setState(partialState: Partial<AppState>): Promise<void>
   }
 }
 

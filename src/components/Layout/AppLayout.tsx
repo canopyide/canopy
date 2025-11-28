@@ -1,4 +1,4 @@
-import { useState, useCallback, type ReactNode } from 'react'
+import { useState, useCallback, useEffect, type ReactNode } from 'react'
 import { Toolbar } from './Toolbar'
 import { Sidebar } from './Sidebar'
 
@@ -22,6 +22,38 @@ export function AppLayout({
   onSettings,
 }: AppLayoutProps) {
   const [sidebarWidth, setSidebarWidth] = useState(DEFAULT_SIDEBAR_WIDTH)
+
+  // Restore sidebar width from persisted state
+  useEffect(() => {
+    const restoreSidebarWidth = async () => {
+      try {
+        const appState = await window.electron.app.getState()
+        if (appState.sidebarWidth != null) {
+          // Clamp to valid range
+          const clampedWidth = Math.min(Math.max(appState.sidebarWidth, MIN_SIDEBAR_WIDTH), MAX_SIDEBAR_WIDTH)
+          setSidebarWidth(clampedWidth)
+        }
+      } catch (error) {
+        console.error('Failed to restore sidebar width:', error)
+      }
+    }
+    restoreSidebarWidth()
+  }, [])
+
+  // Persist sidebar width changes (debounced via the resize handler)
+  useEffect(() => {
+    const persistSidebarWidth = async () => {
+      try {
+        await window.electron.app.setState({ sidebarWidth })
+      } catch (error) {
+        console.error('Failed to persist sidebar width:', error)
+      }
+    }
+
+    // Only persist after initial mount (to avoid overwriting on restore)
+    const timer = setTimeout(persistSidebarWidth, 300)
+    return () => clearTimeout(timer)
+  }, [sidebarWidth])
 
   const handleSidebarResize = useCallback((newWidth: number) => {
     const clampedWidth = Math.min(Math.max(newWidth, MIN_SIDEBAR_WIDTH), MAX_SIDEBAR_WIDTH)

@@ -46,6 +46,10 @@ export const CHANNELS = {
   // PR detection channels
   PR_DETECTED: 'pr:detected',
   PR_CLEARED: 'pr:cleared',
+
+  // App state channels
+  APP_GET_STATE: 'app:get-state',
+  APP_SET_STATE: 'app:set-state',
 } as const
 
 export type ChannelName = typeof CHANNELS[keyof typeof CHANNELS]

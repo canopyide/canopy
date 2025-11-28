@@ -19,6 +19,7 @@ import type {
   CopyTreeOptions,
   CopyTreeResult,
   CanopyConfig,
+  AppState,
 } from './ipc/types.js'
 
 export interface ElectronAPI {
@@ -57,6 +58,10 @@ export interface ElectronAPI {
     openPath(path: string): Promise<void>
     getConfig(): Promise<CanopyConfig>
     checkCommand(command: string): Promise<boolean>
+  }
+  app: {
+    getState(): Promise<AppState>
+    setState(partialState: Partial<AppState>): Promise<void>
   }
 }
 
@@ -186,6 +191,17 @@ const api: ElectronAPI = {
 
     checkCommand: (command: string) =>
       ipcRenderer.invoke(CHANNELS.SYSTEM_CHECK_COMMAND, command),
+  },
+
+  // ==========================================
+  // App State API
+  // ==========================================
+  app: {
+    getState: () =>
+      ipcRenderer.invoke(CHANNELS.APP_GET_STATE),
+
+    setState: (partialState: Partial<AppState>) =>
+      ipcRenderer.invoke(CHANNELS.APP_SET_STATE, partialState),
   },
 }
 

@@ -134,3 +134,17 @@ export interface SystemOpenPathPayload {
 export interface CanopyConfig {
   // Configuration fields will be added during service migration
 }
+
+// App state types
+export interface AppState {
+  activeWorktreeId?: string
+  sidebarWidth: number
+  lastDirectory?: string
+  terminals: Array<{
+    id: string
+    type: 'shell' | 'claude' | 'gemini' | 'custom'
+    title: string
+    cwd: string
+    worktreeId?: string
+  }>
+}

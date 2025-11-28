@@ -26,6 +26,7 @@ import type {
   WorktreeSetActivePayload,
 } from './types.js'
 import { copyTreeService } from '../services/CopyTreeService.js'
+import { store } from '../store.js'
 
 /**
  * Initialize all IPC handlers
@@ -476,6 +477,56 @@ export function registerIpcHandlers(
   }
   ipcMain.handle(CHANNELS.SYSTEM_CHECK_COMMAND, handleSystemCheckCommand)
   handlers.push(() => ipcMain.removeHandler(CHANNELS.SYSTEM_CHECK_COMMAND))
+
+  // ==========================================
+  // App State Handlers
+  // ==========================================
+
+  const handleAppGetState = async () => {
+    return store.get('appState')
+  }
+  ipcMain.handle(CHANNELS.APP_GET_STATE, handleAppGetState)
+  handlers.push(() => ipcMain.removeHandler(CHANNELS.APP_GET_STATE))
+
+  const handleAppSetState = async (_event: Electron.IpcMainInvokeEvent, partialState: Partial<typeof store.store.appState>) => {
+    try {
+      // Validate payload is an object
+      if (!partialState || typeof partialState !== 'object' || Array.isArray(partialState)) {
+        console.error('Invalid app state payload:', partialState)
+        return
+      }
+
+      const currentState = store.get('appState')
+
+      // Validate and sanitize fields
+      const updates: Partial<typeof store.store.appState> = {}
+
+      if ('sidebarWidth' in partialState) {
+        const width = Number(partialState.sidebarWidth)
+        if (!isNaN(width) && width >= 200 && width <= 600) {
+          updates.sidebarWidth = width
+        }
+      }
+
+      if ('activeWorktreeId' in partialState) {
+        updates.activeWorktreeId = partialState.activeWorktreeId
+      }
+
+      if ('lastDirectory' in partialState) {
+        updates.lastDirectory = partialState.lastDirectory
+      }
+
+      if ('terminals' in partialState && Array.isArray(partialState.terminals)) {
+        updates.terminals = partialState.terminals
+      }
+
+      store.set('appState', { ...currentState, ...updates })
+    } catch (error) {
+      console.error('Failed to set app state:', error)
+    }
+  }
+  ipcMain.handle(CHANNELS.APP_SET_STATE, handleAppSetState)
+  handlers.push(() => ipcMain.removeHandler(CHANNELS.APP_SET_STATE))
 
   // Return cleanup function
   return () => {

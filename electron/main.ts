@@ -6,6 +6,8 @@ import { registerIpcHandlers, sendToRenderer } from './ipc/handlers.js'
 import { PtyManager } from './services/PtyManager.js'
 import { DevServerManager } from './services/DevServerManager.js'
 import { worktreeService } from './services/WorktreeService.js'
+import { createWindowWithState } from './windowState.js'
+import { store } from './store.js'
 
 const __filename = fileURLToPath(import.meta.url)
 const __dirname = path.dirname(__filename)
@@ -19,9 +21,7 @@ let cleanupIpcHandlers: (() => void) | null = null
 const DEFAULT_TERMINAL_ID = 'default'
 
 function createWindow(): void {
-  mainWindow = new BrowserWindow({
-    width: 1200,
-    height: 800,
+  mainWindow = createWindowWithState({
     minWidth: 800,
     minHeight: 600,
     webPreferences: {
@@ -67,6 +67,18 @@ function createWindow(): void {
   })
 
   mainWindow.on('closed', async () => {
+    // Save terminal state before cleanup (to avoid race with before-quit)
+    if (ptyManager) {
+      const terminals = ptyManager.getAll().map(t => ({
+        id: t.id,
+        type: t.type || 'shell',
+        title: t.title || 'Terminal',
+        cwd: t.cwd,
+        worktreeId: t.worktreeId,
+      }))
+      store.set('appState.terminals', terminals)
+    }
+
     // Cleanup IPC handlers first to prevent any late IPC traffic
     if (cleanupIpcHandlers) {
       cleanupIpcHandlers()
@@ -106,6 +118,18 @@ app.on('activate', () => {
 app.on('before-quit', (event) => {
   // Prevent quit until cleanup is done
   event.preventDefault()
+
+  // Save terminal state before cleanup
+  if (ptyManager) {
+    const terminals = ptyManager.getAll().map(t => ({
+      id: t.id,
+      type: t.type || 'shell',
+      title: t.title || 'Terminal',
+      cwd: t.cwd,
+      worktreeId: t.worktreeId,
+    }))
+    store.set('appState.terminals', terminals)
+  }
 
   // Perform cleanup
   Promise.all([

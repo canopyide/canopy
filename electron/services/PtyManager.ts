@@ -15,6 +15,9 @@ export interface PtySpawnOptions {
   env?: Record<string, string>
   cols: number
   rows: number
+  type?: 'shell' | 'claude' | 'gemini' | 'custom'
+  title?: string
+  worktreeId?: string
 }
 
 interface TerminalInfo {
@@ -22,6 +25,9 @@ interface TerminalInfo {
   ptyProcess: pty.IPty
   cwd: string
   shell: string
+  type?: 'shell' | 'claude' | 'gemini' | 'custom'
+  title?: string
+  worktreeId?: string
 }
 
 export interface PtyManagerEvents {
@@ -81,7 +87,15 @@ export class PtyManager extends EventEmitter {
       this.terminals.delete(id)
     })
 
-    this.terminals.set(id, { id, ptyProcess, cwd: options.cwd, shell })
+    this.terminals.set(id, {
+      id,
+      ptyProcess,
+      cwd: options.cwd,
+      shell,
+      type: options.type,
+      title: options.title,
+      worktreeId: options.worktreeId,
+    })
   }
 
   /**
@@ -140,6 +154,14 @@ export class PtyManager extends EventEmitter {
    */
   getActiveTerminalIds(): string[] {
     return Array.from(this.terminals.keys())
+  }
+
+  /**
+   * Get all active terminals
+   * @returns Array of terminal info objects
+   */
+  getAll(): TerminalInfo[] {
+    return Array.from(this.terminals.values())
   }
 
   /**

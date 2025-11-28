@@ -25,9 +25,25 @@ const createWorktreeSelectionStore: StateCreator<WorktreeSelectionState> = (set)
   activeWorktreeId: null,
   focusedWorktreeId: null,
 
-  setActiveWorktree: (id) => set({ activeWorktreeId: id }),
+  setActiveWorktree: (id) => {
+    set({ activeWorktreeId: id })
+
+    // Persist active worktree
+    window.electron?.app?.setState({ activeWorktreeId: id ?? undefined }).catch((error) => {
+      console.error('Failed to persist active worktree:', error)
+    })
+  },
+
   setFocusedWorktree: (id) => set({ focusedWorktreeId: id }),
-  selectWorktree: (id) => set({ activeWorktreeId: id, focusedWorktreeId: id }),
+
+  selectWorktree: (id) => {
+    set({ activeWorktreeId: id, focusedWorktreeId: id })
+
+    // Persist active worktree
+    window.electron?.app?.setState({ activeWorktreeId: id }).catch((error) => {
+      console.error('Failed to persist active worktree:', error)
+    })
+  },
 })
 
 export const useWorktreeSelectionStore = create<WorktreeSelectionState>()(createWorktreeSelectionStore)

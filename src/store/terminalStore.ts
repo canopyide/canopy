@@ -73,10 +73,27 @@ const createTerminalStore: StateCreator<TerminalGridState> = (set) => ({
         cwd: options.cwd,
       }
 
-      set((state) => ({
-        terminals: [...state.terminals, terminal],
-        focusedId: id,
-      }))
+      set((state) => {
+        const newTerminals = [...state.terminals, terminal]
+
+        // Persist terminal list to electron-store
+        window.electron.app.setState({
+          terminals: newTerminals.map(t => ({
+            id: t.id,
+            type: t.type,
+            title: t.title,
+            cwd: t.cwd,
+            worktreeId: t.worktreeId,
+          }))
+        }).catch((error) => {
+          console.error('Failed to persist terminals:', error)
+        })
+
+        return {
+          terminals: newTerminals,
+          focusedId: id,
+        }
+      })
 
       return id
     } catch (error) {
@@ -105,6 +122,19 @@ const createTerminalStore: StateCreator<TerminalGridState> = (set) => ({
       } else if (state.focusedId !== id) {
         newFocusedId = state.focusedId
       }
+
+      // Persist updated terminal list
+      window.electron.app.setState({
+        terminals: newTerminals.map(t => ({
+          id: t.id,
+          type: t.type,
+          title: t.title,
+          cwd: t.cwd,
+          worktreeId: t.worktreeId,
+        }))
+      }).catch((error) => {
+        console.error('Failed to persist terminals:', error)
+      })
 
       return {
         terminals: newTerminals,

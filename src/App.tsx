@@ -1,4 +1,4 @@
-import { useCallback, useEffect } from 'react'
+import { useCallback, useEffect, useRef } from 'react'
 import '@xterm/xterm/css/xterm.css'
 import { isElectronAvailable, useAgentLauncher, useWorktrees, useContextInjection } from './hooks'
 import { AppLayout } from './components/Layout'
@@ -99,10 +99,58 @@ function SidebarContent() {
 }
 
 function App() {
-  const { focusNext, focusPrevious, toggleMaximize, focusedId } = useTerminalStore()
+  const { focusNext, focusPrevious, toggleMaximize, focusedId, addTerminal } = useTerminalStore()
   const { launchAgent } = useAgentLauncher()
-  const activeWorktreeId = useWorktreeSelectionStore((state) => state.activeWorktreeId)
+  const { activeWorktreeId, setActiveWorktree } = useWorktreeSelectionStore()
   const { inject, isInjecting } = useContextInjection()
+
+  // Track if state has been restored (prevent StrictMode double-execution)
+  const hasRestoredState = useRef(false)
+
+  // Restore persisted app state on mount
+  useEffect(() => {
+    // Guard against non-Electron environments and StrictMode double-execution
+    if (!isElectronAvailable() || hasRestoredState.current) {
+      return
+    }
+
+    hasRestoredState.current = true
+
+    const restoreState = async () => {
+      try {
+        const appState = await window.electron.app.getState()
+
+        // Restore terminals (if they exist and their cwd is still valid)
+        if (appState.terminals && appState.terminals.length > 0) {
+          for (const terminal of appState.terminals) {
+            try {
+              // Skip the default terminal if it exists (it's created automatically)
+              if (terminal.id === 'default') continue
+
+              await addTerminal({
+                type: terminal.type,
+                title: terminal.title,
+                cwd: terminal.cwd,
+                worktreeId: terminal.worktreeId,
+              })
+            } catch (error) {
+              console.warn(`Failed to restore terminal ${terminal.id}:`, error)
+              // Continue restoring other terminals
+            }
+          }
+        }
+
+        // Restore active worktree
+        if (appState.activeWorktreeId) {
+          setActiveWorktree(appState.activeWorktreeId)
+        }
+      } catch (error) {
+        console.error('Failed to restore app state:', error)
+      }
+    }
+
+    restoreState()
+  }, [addTerminal, setActiveWorktree])
 
   // Handle agent launcher from toolbar
   const handleLaunchAgent = useCallback(async (type: 'claude' | 'gemini' | 'shell') => {
