@@ -85,7 +85,14 @@ export function TerminalPane({
   }, [])
 
   const handleKeyDown = useCallback((e: React.KeyboardEvent) => {
-    // Activate terminal on Enter or Space
+    // Ignore events from xterm's internal input elements (textarea/input)
+    // to avoid intercepting actual terminal typing
+    const target = e.target as HTMLElement
+    if (target.tagName === 'TEXTAREA' || target.tagName === 'INPUT') {
+      return
+    }
+
+    // Activate terminal on Enter or Space only when the container itself is focused
     if (e.key === 'Enter' || e.key === ' ') {
       e.preventDefault()
       onFocus()

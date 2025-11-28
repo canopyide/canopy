@@ -65,7 +65,8 @@ export function TerminalGrid({ className, defaultCwd }: TerminalGridProps) {
 
   // Handle adding a new terminal
   const handleAddTerminal = useCallback(async () => {
-    const cwd = defaultCwd || process.env.HOME || '/'
+    // Pass empty string if no defaultCwd; the Main process will handle the fallback to HOME
+    const cwd = defaultCwd || ''
     await addTerminal({ type: 'shell', cwd })
   }, [addTerminal, defaultCwd])
 

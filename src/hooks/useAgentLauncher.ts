@@ -144,7 +144,8 @@ export function useAgentLauncher(): UseAgentLauncherReturn {
 
     // Get CWD from active worktree or fall back to home directory
     const activeWorktree = activeId ? worktreeMap.get(activeId) : null
-    const cwd = activeWorktree?.path || process.env.HOME || '/'
+    // Pass empty string if no worktree; Main process handles HOME fallback
+    const cwd = activeWorktree?.path || ''
 
     const options: AddTerminalOptions = {
       type: config.type,
