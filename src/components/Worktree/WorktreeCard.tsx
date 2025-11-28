@@ -1,6 +1,6 @@
 import { useMemo, useCallback, useState, useEffect } from 'react';
 import type { WorktreeState, WorktreeMood } from '../../types/index.js';
-import { ActivityTrafficLight } from './ActivityTrafficLight.js';
+import { ActivityLight } from './ActivityLight.js';
 import { FileChangeList } from './FileChangeList.js';
 import { useDevServer } from '../../hooks/useDevServer.js';
 import { cn } from '../../lib/utils.js';
@@ -297,9 +297,9 @@ export function WorktreeCard({
         )}
       </div>
 
-      {/* Header: Traffic light + Branch */}
+      {/* Header: Activity light + Branch */}
       <div className="mb-1 flex items-center gap-2">
-        <ActivityTrafficLight timestamp={worktree.lastActivityTimestamp} />
+        <ActivityLight timestamp={worktree.lastActivityTimestamp} />
         {isActive && <span className="text-blue-400">●</span>}
         <span className={cn('font-bold', mood === 'active' ? 'text-yellow-400' : 'text-gray-200')}>
           {branchLabel}

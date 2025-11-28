@@ -31,7 +31,7 @@ export function interpolateColor(startHex: string, endHex: string, factor: numbe
  * 30s - 90s: Dull Green -> Gray (Cooling down)
  */
 export function getHeatColor(lastActivity: number | undefined | null): string {
-  if (!lastActivity) return '#808080'; // Default Gray
+  if (lastActivity == null) return '#808080'; // Default Gray
 
   const elapsed = Date.now() - lastActivity;
 

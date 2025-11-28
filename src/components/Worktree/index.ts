@@ -1,3 +1,3 @@
 export { WorktreeCard } from './WorktreeCard.js';
-export { ActivityTrafficLight } from './ActivityTrafficLight.js';
+export { ActivityLight } from './ActivityLight.js';
 export { FileChangeList } from './FileChangeList.js';

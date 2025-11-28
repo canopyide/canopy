@@ -139,3 +139,20 @@ html, body, #root {
   width: 100%;
   overflow: hidden;
 }
+
+/* Activity light pulse animation for very recent activity */
+@keyframes activity-pulse {
+  0%, 100% {
+    opacity: 1;
+    transform: scale(1);
+  }
+  50% {
+    opacity: 0.7;
+    transform: scale(1.1);
+  }
+}
+
+.animate-activity-pulse {
+  animation: activity-pulse 1s ease-in-out infinite;
+  will-change: opacity, transform;
+}
