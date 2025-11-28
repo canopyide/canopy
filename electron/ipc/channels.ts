@@ -25,6 +25,8 @@ export const CHANNELS = {
   TERMINAL_INPUT: 'terminal:input',
   TERMINAL_RESIZE: 'terminal:resize',
   TERMINAL_KILL: 'terminal:kill',
+  TERMINAL_EXIT: 'terminal:exit',
+  TERMINAL_ERROR: 'terminal:error',
 
   // CopyTree channels
   COPYTREE_GENERATE: 'copytree:generate',

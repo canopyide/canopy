@@ -29,6 +29,16 @@ export interface TerminalKillPayload {
   id: string
 }
 
+export interface TerminalExitPayload {
+  id: string
+  exitCode: number
+}
+
+export interface TerminalErrorPayload {
+  id: string
+  error: string
+}
+
 // Worktree types (placeholders - will be fully defined when services are migrated)
 export interface WorktreeState {
   worktreeId: string

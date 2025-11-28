@@ -6,8 +6,10 @@
  */
 
 import { ipcMain, BrowserWindow, shell } from 'electron'
-import type * as pty from 'node-pty'
+import crypto from 'crypto'
+import os from 'os'
 import { CHANNELS } from './channels.js'
+import { PtyManager } from '../services/PtyManager.js'
 import type {
   TerminalSpawnOptions,
   TerminalResizePayload,
@@ -26,15 +28,40 @@ import { copyTreeService } from '../services/CopyTreeService.js'
  * Initialize all IPC handlers
  *
  * @param mainWindow - The main BrowserWindow instance for sending events to renderer
- * @param getPtyProcess - Function to get the current PTY process (for backwards compatibility)
+ * @param ptyManager - The PtyManager instance for terminal management
  * @returns Cleanup function to remove all handlers
  */
 export function registerIpcHandlers(
-  _mainWindow: BrowserWindow,
-  getPtyProcess?: () => pty.IPty | null
+  mainWindow: BrowserWindow,
+  ptyManager: PtyManager
 ): () => void {
   // Store handler references for cleanup
   const handlers: Array<() => void> = []
+
+  // ==========================================
+  // PtyManager Event Forwarding
+  // ==========================================
+
+  // Forward PTY data to renderer
+  const handlePtyData = (id: string, data: string) => {
+    sendToRenderer(mainWindow, CHANNELS.TERMINAL_DATA, id, data)
+  }
+  ptyManager.on('data', handlePtyData)
+  handlers.push(() => ptyManager.off('data', handlePtyData))
+
+  // Forward PTY exit to renderer
+  const handlePtyExit = (id: string, exitCode: number) => {
+    sendToRenderer(mainWindow, CHANNELS.TERMINAL_EXIT, id, exitCode)
+  }
+  ptyManager.on('exit', handlePtyExit)
+  handlers.push(() => ptyManager.off('exit', handlePtyExit))
+
+  // Forward PTY errors to renderer
+  const handlePtyError = (id: string, error: string) => {
+    sendToRenderer(mainWindow, CHANNELS.TERMINAL_ERROR, id, error)
+  }
+  ptyManager.on('error', handlePtyError)
+  handlers.push(() => ptyManager.off('error', handlePtyError))
 
   // ==========================================
   // Worktree Handlers
@@ -83,40 +110,98 @@ export function registerIpcHandlers(
   // ==========================================
 
   const handleTerminalSpawn = async (_event: Electron.IpcMainInvokeEvent, options: TerminalSpawnOptions): Promise<string> => {
-    // TODO: Implement terminal multiplexing when needed
-    // For backwards compatibility, always return 'default' until multiplexing is implemented
-    // The default PTY is already running and connected to this ID
-    console.log('Terminal spawn requested:', options)
-    return 'default'
+    // Validate input parameters
+    if (typeof options !== 'object' || options === null) {
+      throw new Error('Invalid spawn options: must be an object')
+    }
+
+    // Validate and clamp dimensions
+    const cols = Math.max(1, Math.min(500, Math.floor(options.cols) || 80))
+    const rows = Math.max(1, Math.min(500, Math.floor(options.rows) || 30))
+
+    // Generate ID if not provided
+    const id = options.id || crypto.randomUUID()
+
+    // Use provided cwd or fall back to home directory
+    let cwd = options.cwd || process.env.HOME || os.homedir()
+
+    // Validate cwd exists and is absolute
+    try {
+      const fs = await import('fs')
+      const path = await import('path')
+
+      if (!path.isAbsolute(cwd)) {
+        console.warn(`Relative cwd provided: ${cwd}, using home directory`)
+        cwd = os.homedir()
+      }
+
+      // Check if directory exists
+      await fs.promises.access(cwd)
+    } catch (error) {
+      console.warn(`Invalid cwd: ${cwd}, using home directory`)
+      cwd = os.homedir()
+    }
+
+    try {
+      ptyManager.spawn(id, {
+        cwd,
+        shell: options.shell, // Shell validation happens in PtyManager
+        cols,
+        rows,
+      })
+
+      return id
+    } catch (error) {
+      const errorMessage = error instanceof Error ? error.message : String(error)
+      throw new Error(`Failed to spawn terminal: ${errorMessage}`)
+    }
   }
   ipcMain.handle(CHANNELS.TERMINAL_SPAWN, handleTerminalSpawn)
   handlers.push(() => ipcMain.removeHandler(CHANNELS.TERMINAL_SPAWN))
 
-  const handleTerminalInput = (_event: Electron.IpcMainEvent, _id: string, data: string) => {
-    // For backwards compatibility, route to the default PTY process
-    // TODO: Implement terminal multiplexing when needed
-    const ptyProcess = getPtyProcess?.()
-    if (ptyProcess) {
-      ptyProcess.write(data)
+  const handleTerminalInput = (_event: Electron.IpcMainEvent, id: string, data: string) => {
+    try {
+      if (typeof id !== 'string' || typeof data !== 'string') {
+        console.error('Invalid terminal input parameters')
+        return
+      }
+      ptyManager.write(id, data)
+    } catch (error) {
+      console.error('Error writing to terminal:', error)
     }
   }
   ipcMain.on(CHANNELS.TERMINAL_INPUT, handleTerminalInput)
   handlers.push(() => ipcMain.removeListener(CHANNELS.TERMINAL_INPUT, handleTerminalInput))
 
   const handleTerminalResize = (_event: Electron.IpcMainEvent, payload: TerminalResizePayload) => {
-    // For backwards compatibility, route to the default PTY process
-    // TODO: Implement terminal multiplexing when needed
-    const ptyProcess = getPtyProcess?.()
-    if (ptyProcess) {
-      ptyProcess.resize(payload.cols, payload.rows)
+    try {
+      if (typeof payload !== 'object' || payload === null) {
+        console.error('Invalid terminal resize payload')
+        return
+      }
+
+      const id = payload.id
+      const cols = Math.max(1, Math.min(500, Math.floor(payload.cols) || 80))
+      const rows = Math.max(1, Math.min(500, Math.floor(payload.rows) || 30))
+
+      ptyManager.resize(id, cols, rows)
+    } catch (error) {
+      console.error('Error resizing terminal:', error)
     }
   }
   ipcMain.on(CHANNELS.TERMINAL_RESIZE, handleTerminalResize)
   handlers.push(() => ipcMain.removeListener(CHANNELS.TERMINAL_RESIZE, handleTerminalResize))
 
   const handleTerminalKill = async (_event: Electron.IpcMainInvokeEvent, id: string) => {
-    // TODO: Kill specific PTY instance
-    console.log('Terminal kill requested:', id)
+    try {
+      if (typeof id !== 'string') {
+        throw new Error('Invalid terminal ID: must be a string')
+      }
+      ptyManager.kill(id)
+    } catch (error) {
+      const errorMessage = error instanceof Error ? error.message : String(error)
+      throw new Error(`Failed to kill terminal: ${errorMessage}`)
+    }
   }
   ipcMain.handle(CHANNELS.TERMINAL_KILL, handleTerminalKill)
   handlers.push(() => ipcMain.removeHandler(CHANNELS.TERMINAL_KILL))

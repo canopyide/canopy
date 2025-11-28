@@ -1,21 +1,18 @@
 import { app, BrowserWindow } from 'electron'
 import path from 'path'
 import { fileURLToPath } from 'url'
-import * as pty from 'node-pty'
 import os from 'os'
-import { registerIpcHandlers, sendToRenderer } from './ipc/handlers.js'
-import { CHANNELS } from './ipc/channels.js'
+import { registerIpcHandlers } from './ipc/handlers.js'
+import { PtyManager } from './services/PtyManager.js'
 
 const __filename = fileURLToPath(import.meta.url)
 const __dirname = path.dirname(__filename)
 
-const shell = os.platform() === 'win32' ? 'powershell.exe' : process.env.SHELL || 'zsh'
-
 let mainWindow: BrowserWindow | null = null
-let ptyProcess: pty.IPty | null = null
+let ptyManager: PtyManager | null = null
 let cleanupIpcHandlers: (() => void) | null = null
 
-// Terminal ID for the single default terminal (for backwards compatibility)
+// Terminal ID for the default terminal (for backwards compatibility with renderer)
 const DEFAULT_TERMINAL_ID = 'default'
 
 function createWindow(): void {
@@ -43,29 +40,18 @@ function createWindow(): void {
     mainWindow.loadFile(path.join(__dirname, '../dist/index.html'))
   }
 
-  // Register IPC handlers with PTY getter for backwards compatibility
-  cleanupIpcHandlers = registerIpcHandlers(mainWindow, () => ptyProcess)
+  // --- PTY MANAGER SETUP ---
+  // Create PtyManager instance to manage all terminal processes
+  ptyManager = new PtyManager()
 
-  // --- PTY SETUP ---
-  // Set up the default terminal for backwards compatibility
-  ptyProcess = pty.spawn(shell, [], {
-    name: 'xterm-256color',
+  // Register IPC handlers with PtyManager
+  cleanupIpcHandlers = registerIpcHandlers(mainWindow, ptyManager)
+
+  // Spawn the default terminal for backwards compatibility with the renderer
+  ptyManager.spawn(DEFAULT_TERMINAL_ID, {
+    cwd: process.env.HOME || os.homedir(),
     cols: 80,
     rows: 30,
-    cwd: process.env.HOME || os.homedir(),
-    env: process.env as Record<string, string>,
-  })
-
-  // Send data from shell to frontend using new channel
-  ptyProcess.onData((data: string) => {
-    if (mainWindow) {
-      sendToRenderer(mainWindow, CHANNELS.TERMINAL_DATA, DEFAULT_TERMINAL_ID, data)
-    }
-  })
-
-  // Handle PTY exit
-  ptyProcess.onExit(({ exitCode, signal }) => {
-    console.log(`PTY exited with code ${exitCode}, signal ${signal}`)
   })
 
   mainWindow.on('closed', () => {
@@ -74,10 +60,10 @@ function createWindow(): void {
       cleanupIpcHandlers()
       cleanupIpcHandlers = null
     }
-    // Then cleanup PTY process
-    if (ptyProcess) {
-      ptyProcess.kill()
-      ptyProcess = null
+    // Then cleanup PTY manager (kills all terminals)
+    if (ptyManager) {
+      ptyManager.dispose()
+      ptyManager = null
     }
     mainWindow = null
   })
@@ -99,8 +85,14 @@ app.on('activate', () => {
 
 // Cleanup on quit
 app.on('before-quit', () => {
-  if (ptyProcess) {
-    ptyProcess.kill()
-    ptyProcess = null
+  // Cleanup IPC handlers first to stop incoming requests
+  if (cleanupIpcHandlers) {
+    cleanupIpcHandlers()
+    cleanupIpcHandlers = null
+  }
+  // Then cleanup PTY manager
+  if (ptyManager) {
+    ptyManager.dispose()
+    ptyManager = null
   }
 })
