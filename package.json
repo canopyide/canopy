@@ -2,6 +2,7 @@
   "name": "canopy-app",
   "version": "0.0.1",
   "description": "Canopy IDE - An Electron-based development environment",
+  "author": "Canopy Team",
   "main": "dist-electron/main.js",
   "type": "module",
   "scripts": {
@@ -11,6 +12,9 @@
     "build:main": "tsc -p electron/tsconfig.json && tsc -p electron/tsconfig.preload.json",
     "build": "tsc && vite build && npm run build:main",
     "package": "npm run build && electron-builder",
+    "package:mac": "npm run build && electron-builder --mac",
+    "package:win": "npm run build && electron-builder --win",
+    "package:linux": "npm run build && electron-builder --linux",
     "rebuild": "electron-rebuild -f -w node-pty",
     "postinstall": "electron-rebuild -f -w node-pty",
     "preview": "vite preview",
@@ -55,35 +59,76 @@
     "wait-on": "^8.0.1"
   },
   "build": {
-    "appId": "com.canopy.ide",
+    "appId": "com.canopy.commandcenter",
     "productName": "Canopy",
     "directories": {
+      "buildResources": "build",
       "output": "release"
     },
     "files": [
       "dist/**/*",
       "dist-electron/**/*"
     ],
-    "nodeGypRebuild": true,
-    "buildDependenciesFromSource": true,
+    "asarUnpack": [
+      "node_modules/node-pty/**/*"
+    ],
+    "afterPack": "./scripts/afterPack.cjs",
     "mac": {
       "category": "public.app-category.developer-tools",
+      "icon": "build/icon.icns",
       "target": [
-        "dmg",
-        "zip"
+        {
+          "target": "dmg",
+          "arch": ["universal"]
+        },
+        {
+          "target": "zip",
+          "arch": ["universal"]
+        }
+      ],
+      "hardenedRuntime": true,
+      "gatekeeperAssess": false,
+      "entitlements": "build/entitlements.mac.plist",
+      "entitlementsInherit": "build/entitlements.mac.plist"
+    },
+    "dmg": {
+      "contents": [
+        {
+          "x": 130,
+          "y": 220
+        },
+        {
+          "x": 410,
+          "y": 220,
+          "type": "link",
+          "path": "/Applications"
+        }
       ]
     },
     "win": {
+      "icon": "build/icon.ico",
       "target": [
-        "nsis",
-        "zip"
+        {
+          "target": "nsis",
+          "arch": ["x64"]
+        },
+        {
+          "target": "portable",
+          "arch": ["x64"]
+        }
       ]
     },
+    "nsis": {
+      "oneClick": false,
+      "allowToChangeInstallationDirectory": true,
+      "installerIcon": "build/icon.ico",
+      "uninstallerIcon": "build/icon.ico",
+      "installerHeaderIcon": "build/icon.ico"
+    },
     "linux": {
-      "target": [
-        "AppImage",
-        "deb"
-      ]
+      "icon": "build/icon.png",
+      "target": ["AppImage", "deb"],
+      "category": "Development"
     }
   }
 }

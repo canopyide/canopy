@@ -26,6 +26,8 @@ interface TerminalSpawnOptions {
   type?: 'shell' | 'claude' | 'gemini' | 'custom'
   title?: string
   worktreeId?: string
+  /** Command to execute after shell starts (e.g., 'claude' for AI agents) */
+  command?: string
 }
 
 interface CopyTreeOptions {
@@ -52,6 +54,10 @@ interface TerminalState {
 interface AppState {
   rootPath?: string
   terminals: TerminalState[]
+  /** Currently active worktree ID */
+  activeWorktreeId?: string
+  /** Width of the sidebar in pixels */
+  sidebarWidth?: number
 }
 
 export interface ElectronAPI {
