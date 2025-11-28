@@ -3,7 +3,6 @@ import path from 'path'
 import { fileURLToPath } from 'url'
 import os from 'os'
 import { registerIpcHandlers, sendToRenderer } from './ipc/handlers.js'
-import { CHANNELS } from './ipc/channels.js'
 import { PtyManager } from './services/PtyManager.js'
 import { DevServerManager } from './services/DevServerManager.js'
 
