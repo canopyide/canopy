@@ -186,6 +186,53 @@ export interface Notification {
 export type NotificationPayload = Omit<Notification, 'id'> & { id?: string };
 
 // ============================================================================
+// Agent/Task/Run Types (Delegation Events)
+// ============================================================================
+
+/**
+ * State of an AI agent lifecycle.
+ * - 'idle': Agent is spawned but not actively working
+ * - 'working': Agent is actively processing/executing
+ * - 'waiting': Agent is waiting for input or external response
+ * - 'completed': Agent has finished successfully
+ * - 'failed': Agent encountered an unrecoverable error
+ */
+export type AgentState = 'idle' | 'working' | 'waiting' | 'completed' | 'failed';
+
+/**
+ * State of a task in the task management system.
+ * - 'draft': Task is being defined, not yet actionable
+ * - 'queued': Task is ready to be assigned to an agent
+ * - 'running': Task is actively being worked on
+ * - 'blocked': Task is waiting on dependencies or external input
+ * - 'completed': Task finished successfully
+ * - 'failed': Task encountered an error and cannot continue
+ * - 'cancelled': Task was cancelled before completion
+ */
+export type TaskState = 'draft' | 'queued' | 'running' | 'blocked' | 'completed' | 'failed' | 'cancelled';
+
+/**
+ * Record of an execution instance (a "run").
+ * Runs represent individual execution attempts, potentially retries of the same task.
+ */
+export interface RunRecord {
+  /** Unique identifier for this run */
+  id: string;
+  /** ID of the agent executing this run */
+  agentId: string;
+  /** ID of the task being executed (optional for ad-hoc runs) */
+  taskId?: string;
+  /** Unix timestamp (ms) when the run started */
+  startTime: number;
+  /** Unix timestamp (ms) when the run ended (undefined if still running) */
+  endTime?: number;
+  /** Current state of the run */
+  state: 'running' | 'completed' | 'failed' | 'cancelled';
+  /** Error message if state is 'failed' */
+  error?: string;
+}
+
+// ============================================================================
 // Terminal Types (Electron-specific)
 // ============================================================================
 

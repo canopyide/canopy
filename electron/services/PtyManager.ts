@@ -8,6 +8,7 @@
 import * as pty from 'node-pty'
 import { EventEmitter } from 'events'
 import { existsSync } from 'fs'
+import { events } from './events.js'
 
 export interface PtySpawnOptions {
   cwd: string
@@ -29,6 +30,12 @@ interface TerminalInfo {
   type?: 'shell' | 'claude' | 'gemini' | 'custom'
   title?: string
   worktreeId?: string
+  /** For agent terminals, the agent ID (same as terminal ID for now) */
+  agentId?: string
+  /** Timestamp when the terminal was spawned (for duration calculations) */
+  spawnedAt: number
+  /** Flag indicating this terminal was explicitly killed (not a natural exit) */
+  wasKilled?: boolean
 }
 
 export interface PtyManagerEvents {
@@ -82,9 +89,34 @@ export class PtyManager extends EventEmitter {
       this.emit('data', id, data)
     })
 
+    const spawnedAt = Date.now()
+    const isAgentTerminal = options.type === 'claude' || options.type === 'gemini'
+    // For agent terminals, use terminal ID as agent ID
+    const agentId = isAgentTerminal ? id : undefined
+
     // Handle PTY exit
     ptyProcess.onExit(({ exitCode }) => {
+      // Verify this is still the active terminal (prevent race with respawn)
+      const terminal = this.terminals.get(id)
+      if (!terminal || terminal.ptyProcess !== ptyProcess) {
+        // This is a stale exit event from a previous terminal with same ID
+        return
+      }
+
       this.emit('exit', id, exitCode ?? 0)
+
+      // Emit agent:completed event for agent terminals (but not if explicitly killed)
+      if (isAgentTerminal && agentId && !terminal.wasKilled) {
+        const completedAt = Date.now()
+        const duration = completedAt - spawnedAt
+        events.emit('agent:completed', {
+          agentId,
+          exitCode: exitCode ?? 0,
+          duration,
+          timestamp: completedAt,
+        })
+      }
+
       this.terminals.delete(id)
     })
 
@@ -96,7 +128,20 @@ export class PtyManager extends EventEmitter {
       type: options.type,
       title: options.title,
       worktreeId: options.worktreeId,
+      agentId,
+      spawnedAt,
     })
+
+    // Emit agent:spawned event for agent terminals (Claude, Gemini)
+    if (isAgentTerminal && agentId && options.type) {
+      events.emit('agent:spawned', {
+        agentId,
+        terminalId: id,
+        type: options.type,
+        worktreeId: options.worktreeId,
+        timestamp: spawnedAt,
+      })
+    }
   }
 
   /**
@@ -131,12 +176,24 @@ export class PtyManager extends EventEmitter {
   /**
    * Kill a terminal process
    * @param id - Terminal identifier
+   * @param reason - Optional reason for killing (for agent events)
    */
-  kill(id: string): void {
+  kill(id: string, reason?: string): void {
     const terminal = this.terminals.get(id)
     if (terminal) {
+      // Mark as killed to prevent agent:completed emission
+      terminal.wasKilled = true
+
+      // Emit agent:killed event for agent terminals before killing
+      if (terminal.agentId) {
+        events.emit('agent:killed', {
+          agentId: terminal.agentId,
+          reason,
+          timestamp: Date.now(),
+        })
+      }
       terminal.ptyProcess.kill()
-      this.terminals.delete(id)
+      // Don't delete here - let the exit handler do it to avoid race conditions
     }
   }
 
@@ -178,12 +235,20 @@ export class PtyManager extends EventEmitter {
    * Clean up all terminals (called on app quit)
    */
   dispose(): void {
-    for (const [, terminal] of this.terminals) {
+    for (const [id, terminal] of this.terminals) {
       try {
+        // Emit agent:killed event for agent terminals during shutdown
+        if (terminal.agentId) {
+          events.emit('agent:killed', {
+            agentId: terminal.agentId,
+            reason: 'cleanup',
+            timestamp: Date.now(),
+          })
+        }
         terminal.ptyProcess.kill()
       } catch (error) {
         // Ignore errors during cleanup - process may already be dead
-        console.warn(`Error killing terminal ${terminal.id}:`, error)
+        console.warn(`Error killing terminal ${id}:`, error)
       }
     }
     this.terminals.clear()

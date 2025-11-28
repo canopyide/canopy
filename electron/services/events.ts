@@ -1,5 +1,5 @@
 import { EventEmitter } from 'events';
-import type { NotificationPayload, DevServerState } from '../types/index.js';
+import type { NotificationPayload, DevServerState, AgentState, TaskState, TerminalType } from '../types/index.js';
 import type { WorktreeState } from './WorktreeMonitor.js';
 
 export type ModalId =
@@ -87,6 +87,202 @@ export type CanopyEventMap = {
   /** Emitted when PR data should be cleared (branch/issue changed or worktree removed) */
   'sys:pr:cleared': {
     worktreeId: string;
+  };
+
+  // ============================================================================
+  // Agent Lifecycle Events
+  // ============================================================================
+
+  /**
+   * Emitted when a new AI agent (Claude, Gemini, etc.) is spawned in a terminal.
+   * Use this to track agent creation and associate agents with worktrees.
+   */
+  'agent:spawned': {
+    /** Unique identifier for this agent instance */
+    agentId: string;
+    /** ID of the terminal where the agent is running */
+    terminalId: string;
+    /** Type of agent spawned */
+    type: TerminalType;
+    /** Optional worktree this agent is associated with */
+    worktreeId?: string;
+    /** Unix timestamp (ms) when the agent was spawned */
+    timestamp: number;
+  };
+
+  /**
+   * Emitted when an agent's state changes (e.g., idle → working → completed).
+   * Use this for status indicators and monitoring agent activity.
+   */
+  'agent:state-changed': {
+    agentId: string;
+    state: AgentState;
+    previousState?: AgentState;
+    timestamp: number;
+  };
+
+  /**
+   * Emitted when an agent produces output.
+   * Note: This is separate from terminal data and may be parsed/structured.
+   * WARNING: The data field may contain sensitive information (API keys, secrets, etc.).
+   * Consumers should sanitize or redact before logging/persisting.
+   */
+  'agent:output': {
+    agentId: string;
+    data: string;
+    timestamp: number;
+  };
+
+  /**
+   * Emitted when an agent completes its work successfully.
+   */
+  'agent:completed': {
+    agentId: string;
+    /** Exit code from the underlying process */
+    exitCode: number;
+    /** Duration in milliseconds */
+    duration: number;
+    timestamp: number;
+  };
+
+  /**
+   * Emitted when an agent encounters an error and cannot continue.
+   */
+  'agent:failed': {
+    agentId: string;
+    error: string;
+    timestamp: number;
+  };
+
+  /**
+   * Emitted when an agent is explicitly killed (by user action or system).
+   */
+  'agent:killed': {
+    agentId: string;
+    /** Optional reason for killing (e.g., 'user-request', 'timeout', 'cleanup') */
+    reason?: string;
+    timestamp: number;
+  };
+
+  // ============================================================================
+  // Task Lifecycle Events (Future-proof for task management)
+  // ============================================================================
+
+  /**
+   * Emitted when a new task is created.
+   * Tasks are units of work that can be assigned to agents.
+   * WARNING: The description field may contain sensitive information.
+   * Consumers should sanitize before logging/persisting.
+   */
+  'task:created': {
+    taskId: string;
+    description: string;
+    worktreeId?: string;
+    timestamp: number;
+  };
+
+  /**
+   * Emitted when a task is assigned to an agent.
+   */
+  'task:assigned': {
+    taskId: string;
+    agentId: string;
+    timestamp: number;
+  };
+
+  /**
+   * Emitted when a task's state changes.
+   */
+  'task:state-changed': {
+    taskId: string;
+    state: TaskState;
+    previousState?: TaskState;
+    timestamp: number;
+  };
+
+  /**
+   * Emitted when a task is completed successfully.
+   */
+  'task:completed': {
+    taskId: string;
+    /** ID of the agent that completed this task */
+    agentId?: string;
+    /** ID of the run that completed this task */
+    runId?: string;
+    /** Worktree where task was executed */
+    worktreeId?: string;
+    result: string;
+    /** Paths to any generated artifacts */
+    artifacts?: string[];
+    timestamp: number;
+  };
+
+  /**
+   * Emitted when a task fails.
+   */
+  'task:failed': {
+    taskId: string;
+    /** ID of the agent that failed this task */
+    agentId?: string;
+    /** ID of the run that failed this task */
+    runId?: string;
+    /** Worktree where task was executed */
+    worktreeId?: string;
+    error: string;
+    timestamp: number;
+  };
+
+  // ============================================================================
+  // Run Events (Execution instances)
+  // ============================================================================
+
+  /**
+   * Emitted when a new run (execution instance) starts.
+   * Runs track individual execution attempts, useful for retries and history.
+   */
+  'run:started': {
+    runId: string;
+    taskId?: string;
+    agentId: string;
+    startTime: number;
+  };
+
+  /**
+   * Emitted to report run progress.
+   */
+  'run:progress': {
+    runId: string;
+    step: string;
+    /** Progress percentage (0-100), if available */
+    percentage?: number;
+    timestamp: number;
+  };
+
+  /**
+   * Emitted when a run completes successfully.
+   */
+  'run:completed': {
+    runId: string;
+    /** ID of the agent that executed this run */
+    agentId?: string;
+    /** ID of the task that was executed */
+    taskId?: string;
+    endTime: number;
+    /** Duration in milliseconds */
+    duration: number;
+  };
+
+  /**
+   * Emitted when a run encounters an error.
+   */
+  'run:error': {
+    runId: string;
+    /** ID of the agent that executed this run */
+    agentId?: string;
+    /** ID of the task that was executed */
+    taskId?: string;
+    error: string;
+    timestamp: number;
   };
 };
 
