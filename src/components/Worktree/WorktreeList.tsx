@@ -47,15 +47,41 @@ export function WorktreeList({
   const [showScrollDown, setShowScrollDown] = useState(false)
   const [hasFocus, setHasFocus] = useState(false)
 
-  // Sort worktrees with main/master pinned first
+  // Sort worktrees with main/master pinned first, then by MRU (Most Recently Used)
   const sortedWorktrees = useMemo(() => {
-    return [...worktrees].sort((a, b) => {
-      const aIsMain = a.branch === 'main' || a.branch === 'master'
-      const bIsMain = b.branch === 'main' || b.branch === 'master'
-      if (aIsMain && !bIsMain) return -1
-      if (!aIsMain && bIsMain) return 1
-      return a.name.localeCompare(b.name)
+    if (worktrees.length === 0) {
+      return []
+    }
+
+    // Find main/master to pin at top
+    const mainIndex = worktrees.findIndex(
+      (wt) => wt.branch === 'main' || wt.branch === 'master'
+    )
+
+    // Sort by recency (most recent first), then alphabetically as tie-breaker
+    const sorted = [...worktrees].sort((a, b) => {
+      // Primary sort: Most recent activity first
+      const timeA = a.lastActivityTimestamp ?? 0
+      const timeB = b.lastActivityTimestamp ?? 0
+
+      if (timeA !== timeB) {
+        return timeB - timeA // Descending (newest first)
+      }
+
+      // Fallback: Alphabetical by branch/name
+      const labelA = a.branch || a.name
+      const labelB = b.branch || b.name
+      return labelA.localeCompare(labelB)
     })
+
+    // Prepend main/master at the top
+    if (mainIndex >= 0) {
+      const mainWorktree = worktrees[mainIndex]
+      const filtered = sorted.filter((wt) => wt.id !== mainWorktree.id)
+      return [mainWorktree, ...filtered]
+    }
+
+    return sorted
   }, [worktrees])
 
   // Compute focus index from external focusedId or internal state
