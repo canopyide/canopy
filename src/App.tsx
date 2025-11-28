@@ -2,8 +2,12 @@ import { useEffect, useRef } from 'react'
 import { Terminal } from '@xterm/xterm'
 import { FitAddon } from '@xterm/addon-fit'
 import '@xterm/xterm/css/xterm.css'
+import { useElectron } from './hooks/useElectron'
+
+const DEFAULT_TERMINAL_ID = 'default'
 
 function App() {
+  const electron = useElectron()
   const terminalRef = useRef<HTMLDivElement>(null)
   const xtermRef = useRef<Terminal | null>(null)
   const fitAddonRef = useRef<FitAddon | null>(null)
@@ -51,13 +55,13 @@ function App() {
     fitAddonRef.current = fitAddon
 
     // Connect to Electron IPC - Data coming FROM the shell -> Write to xterm
-    window.electron.onTerminalData((data: string) => {
+    const unsubscribeData = electron.terminal.onData(DEFAULT_TERMINAL_ID, (data: string) => {
       term.write(data)
     })
 
     // Data coming FROM the user typing -> Send to shell
     term.onData((data) => {
-      window.electron.sendKeystroke(data)
+      electron.terminal.write(DEFAULT_TERMINAL_ID, data)
     })
 
     // Handle resize
@@ -65,13 +69,13 @@ function App() {
       if (fitAddonRef.current && xtermRef.current) {
         fitAddonRef.current.fit()
         const { cols, rows } = xtermRef.current
-        window.electron.resizeTerminal(cols, rows)
+        electron.terminal.resize(DEFAULT_TERMINAL_ID, cols, rows)
       }
     }
 
     // Initial resize notification
     const { cols, rows } = term
-    window.electron.resizeTerminal(cols, rows)
+    electron.terminal.resize(DEFAULT_TERMINAL_ID, cols, rows)
 
     // Listen for window resize
     window.addEventListener('resize', handleResize)
@@ -84,10 +88,13 @@ function App() {
     return () => {
       window.removeEventListener('resize', handleResize)
       resizeObserver.disconnect()
-      window.electron.removeTerminalDataListener()
+      unsubscribeData()
       term.dispose()
+      // Reset refs to allow re-initialization (important for React StrictMode)
+      xtermRef.current = null
+      fitAddonRef.current = null
     }
-  }, [])
+  }, [electron])
 
   return (
     <div className="h-screen w-screen bg-background flex flex-col">

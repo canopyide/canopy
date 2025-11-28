@@ -1,60 +1,47 @@
 /**
- * TypeScript declarations for the Electron IPC bridge.
- * These types define the API exposed to the renderer process via contextBridge.
+ * Global Type Declarations for Electron API
+ *
+ * Declares the window.electron API available in the renderer process.
+ * This must stay in sync with the ElectronAPI interface in electron/preload.ts
  */
 
-import type {
-  TerminalInstance,
-  TerminalDimensions,
-  Worktree,
-  WorktreeChanges,
-  DevServerState,
-  Notification,
-} from './index';
+// Import types from the IPC types module
+type WorktreeState = import('../../electron/ipc/types.js').WorktreeState
+type DevServerState = import('../../electron/ipc/types.js').DevServerState
+type TerminalSpawnOptions = import('../../electron/ipc/types.js').TerminalSpawnOptions
+type CopyTreeOptions = import('../../electron/ipc/types.js').CopyTreeOptions
+type CanopyConfig = import('../../electron/ipc/types.js').CanopyConfig
 
-/** API exposed to the renderer process via window.electron */
 export interface ElectronAPI {
-  // ============================================================================
-  // Terminal Operations
-  // ============================================================================
-
-  /** Register callback for incoming terminal data */
-  onTerminalData: (callback: (data: string) => void) => void;
-
-  /** Send keystroke data to the terminal */
-  sendKeystroke: (data: string) => void;
-
-  /** Resize the terminal to new dimensions */
-  resizeTerminal: (cols: number, rows: number) => void;
-
-  /** Remove the terminal data listener */
-  removeTerminalDataListener: () => void;
-
-  // ============================================================================
-  // Future IPC Operations (to be implemented)
-  // These are placeholder types for upcoming features
-  // ============================================================================
-
-  // Worktree operations
-  // getWorktrees: () => Promise<Worktree[]>;
-  // onWorktreeUpdate: (callback: (worktrees: Worktree[]) => void) => void;
-  // removeWorktreeUpdateListener: () => void;
-
-  // Dev server operations
-  // startDevServer: (worktreeId: string) => Promise<void>;
-  // stopDevServer: (worktreeId: string) => Promise<void>;
-  // onDevServerUpdate: (callback: (state: DevServerState) => void) => void;
-  // removeDevServerUpdateListener: () => void;
-
-  // Notification operations
-  // showNotification: (notification: Omit<Notification, 'id'>) => void;
-  // onNotification: (callback: (notification: Notification) => void) => void;
-  // removeNotificationListener: () => void;
-
-  // File operations
-  // openFile: (path: string) => Promise<void>;
-  // openInEditor: (path: string, line?: number) => Promise<void>;
-  // copyToClipboard: (text: string) => Promise<void>;
+  worktree: {
+    getAll(): Promise<WorktreeState[]>
+    refresh(): Promise<void>
+    onUpdate(callback: (state: WorktreeState) => void): () => void
+    onRemove(callback: (data: { worktreeId: string }) => void): () => void
+  }
+  devServer: {
+    start(worktreeId: string, command?: string): Promise<void>
+    stop(worktreeId: string): Promise<void>
+    toggle(worktreeId: string): Promise<void>
+    onUpdate(callback: (state: DevServerState) => void): () => void
+    onError(callback: (data: { worktreeId: string; error: string }) => void): () => void
+  }
+  terminal: {
+    spawn(options: TerminalSpawnOptions): Promise<string>
+    write(id: string, data: string): void
+    resize(id: string, cols: number, rows: number): void
+    kill(id: string): Promise<void>
+    onData(id: string, callback: (data: string) => void): () => void
+  }
+  copyTree: {
+    generate(worktreeId: string, options?: CopyTreeOptions): Promise<string>
+    injectToTerminal(terminalId: string, worktreeId: string): Promise<void>
+  }
+  system: {
+    openExternal(url: string): Promise<void>
+    openPath(path: string): Promise<void>
+    getConfig(): Promise<CanopyConfig>
+  }
 }
 
 declare global {
