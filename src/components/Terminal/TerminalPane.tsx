@@ -34,12 +34,16 @@ export interface TerminalPaneProps {
   cwd: string
   /** Whether this terminal pane has focus */
   isFocused: boolean
+  /** Whether this terminal is maximized */
+  isMaximized?: boolean
   /** Called when the pane is clicked/focused */
   onFocus: () => void
   /** Called when the close button is clicked */
   onClose: () => void
   /** Called when inject context button is clicked */
   onInjectContext?: () => void
+  /** Called when double-click on header or maximize button clicked */
+  onToggleMaximize?: () => void
 }
 
 const TYPE_ICONS: Record<TerminalType, string> = {
@@ -56,9 +60,11 @@ export function TerminalPane({
   worktreeId,
   cwd: _cwd, // Reserved for terminal spawning integration
   isFocused,
+  isMaximized,
   onFocus,
   onClose,
   onInjectContext,
+  onToggleMaximize,
 }: TerminalPaneProps) {
   const [isExited, setIsExited] = useState(false)
   const [exitCode, setExitCode] = useState<number | null>(null)
@@ -103,7 +109,10 @@ export function TerminalPane({
       aria-label={`${type} terminal: ${title}`}
     >
       {/* Header */}
-      <div className="flex items-center justify-between px-3 py-1.5 bg-canopy-sidebar border-b border-canopy-border shrink-0">
+      <div
+        className="flex items-center justify-between px-3 py-1.5 bg-canopy-sidebar border-b border-canopy-border shrink-0"
+        onDoubleClick={onToggleMaximize}
+      >
         <div className="flex items-center gap-2 min-w-0">
           <span className="shrink-0">{typeIcon}</span>
           <span className="text-sm font-medium text-canopy-text truncate">
@@ -133,6 +142,21 @@ export function TerminalPane({
               disabled={isExited}
             >
               📋
+            </button>
+          )}
+          {onToggleMaximize && (
+            <button
+              onClick={(e) => {
+                e.stopPropagation()
+                // Focus this terminal before toggling maximize
+                onFocus()
+                onToggleMaximize()
+              }}
+              className="p-1 hover:bg-gray-700 rounded text-gray-400 hover:text-canopy-text transition-colors"
+              title={isMaximized ? 'Restore (Ctrl+Shift+F)' : 'Maximize (Ctrl+Shift+F)'}
+              aria-label={isMaximized ? 'Restore terminal' : 'Maximize terminal'}
+            >
+              {isMaximized ? '⊖' : '⊕'}
             </button>
           )}
           <button
