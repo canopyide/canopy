@@ -62,6 +62,11 @@ const CHANNELS = {
   // App state channels
   APP_GET_STATE: 'app:get-state',
   APP_SET_STATE: 'app:set-state',
+
+  // Error channels
+  ERROR_NOTIFY: 'error:notify',
+  ERROR_RETRY: 'error:retry',
+  ERROR_OPEN_LOGS: 'error:open-logs',
 } as const
 
 // Inlined types (must match electron/ipc/types.ts)
@@ -186,6 +191,29 @@ interface AppState {
   terminals: TerminalState[]
 }
 
+// Error types for IPC
+type ErrorType = 'git' | 'process' | 'filesystem' | 'network' | 'config' | 'unknown'
+type RetryAction = 'copytree' | 'devserver' | 'terminal' | 'git' | 'worktree'
+
+interface AppError {
+  id: string
+  timestamp: number
+  type: ErrorType
+  message: string
+  details?: string
+  source?: string
+  context?: {
+    worktreeId?: string
+    terminalId?: string
+    filePath?: string
+    command?: string
+  }
+  isTransient: boolean
+  dismissed: boolean
+  retryAction?: RetryAction
+  retryArgs?: Record<string, unknown>
+}
+
 export interface ElectronAPI {
   worktree: {
     getAll(): Promise<WorktreeState[]>
@@ -226,6 +254,11 @@ export interface ElectronAPI {
   app: {
     getState(): Promise<AppState>
     setState(partialState: Partial<AppState>): Promise<void>
+  }
+  errors: {
+    onError(callback: (error: AppError) => void): () => void
+    retry(errorId: string, action: RetryAction, args?: Record<string, unknown>): Promise<void>
+    openLogs(): Promise<void>
   }
 }
 
@@ -366,6 +399,23 @@ const api: ElectronAPI = {
 
     setState: (partialState: Partial<AppState>) =>
       ipcRenderer.invoke(CHANNELS.APP_SET_STATE, partialState),
+  },
+
+  // ==========================================
+  // Error API
+  // ==========================================
+  errors: {
+    onError: (callback: (error: AppError) => void) => {
+      const handler = (_event: Electron.IpcRendererEvent, error: AppError) => callback(error)
+      ipcRenderer.on(CHANNELS.ERROR_NOTIFY, handler)
+      return () => ipcRenderer.removeListener(CHANNELS.ERROR_NOTIFY, handler)
+    },
+
+    retry: (errorId: string, action: RetryAction, args?: Record<string, unknown>) =>
+      ipcRenderer.invoke(CHANNELS.ERROR_RETRY, { errorId, action, args }),
+
+    openLogs: () =>
+      ipcRenderer.invoke(CHANNELS.ERROR_OPEN_LOGS),
   },
 }
 

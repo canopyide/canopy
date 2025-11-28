@@ -16,3 +16,5 @@ export type { AgentType, AgentAvailability, UseAgentLauncherReturn } from './use
 
 export { useContextInjection } from './useContextInjection'
 export type { UseContextInjectionReturn } from './useContextInjection'
+
+export { useErrors } from './useErrors'

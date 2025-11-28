@@ -7,15 +7,26 @@ import {
   DropdownMenuShortcut,
   DropdownMenuTrigger,
 } from '@/components/ui/dropdown-menu'
-import { RefreshCw, Settings, Terminal, Bot, Sparkles, Plus, Command } from 'lucide-react'
+import { RefreshCw, Settings, Terminal, Bot, Sparkles, Plus, Command, AlertCircle } from 'lucide-react'
+import { cn } from '@/lib/utils'
 
 interface ToolbarProps {
   onLaunchAgent: (type: 'claude' | 'gemini' | 'shell') => void
   onRefresh: () => void
   onSettings: () => void
+  /** Number of active errors */
+  errorCount?: number
+  /** Called when problems button is clicked */
+  onToggleProblems?: () => void
 }
 
-export function Toolbar({ onLaunchAgent, onRefresh, onSettings }: ToolbarProps) {
+export function Toolbar({
+  onLaunchAgent,
+  onRefresh,
+  onSettings,
+  errorCount = 0,
+  onToggleProblems,
+}: ToolbarProps) {
   return (
     <header className="h-12 flex items-center px-4 border-b border-canopy-border bg-canopy-sidebar drag-region shrink-0">
       {/* Space for traffic lights on macOS */}
@@ -99,6 +110,23 @@ export function Toolbar({ onLaunchAgent, onRefresh, onSettings }: ToolbarProps) 
 
       {/* Right side actions */}
       <div className="flex gap-2">
+        {/* Problems button with error count badge */}
+        <Button
+          variant="ghost"
+          size="sm"
+          onClick={onToggleProblems}
+          className={cn(
+            'text-canopy-text hover:bg-canopy-border hover:text-canopy-accent relative',
+            errorCount > 0 && 'text-red-400'
+          )}
+          title="Problems (Ctrl+Shift+P)"
+          aria-label={`Problems: ${errorCount} errors`}
+        >
+          <AlertCircle className="h-4 w-4" aria-hidden="true" />
+          {errorCount > 0 && (
+            <span className="ml-1 text-xs">{errorCount}</span>
+          )}
+        </Button>
         <Button
           variant="ghost"
           size="icon"

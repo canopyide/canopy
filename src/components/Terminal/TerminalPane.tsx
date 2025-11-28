@@ -18,6 +18,8 @@
 import { useState, useCallback, useEffect } from 'react'
 import { cn } from '@/lib/utils'
 import { XtermAdapter } from './XtermAdapter'
+import { ErrorBanner } from '../Errors/ErrorBanner'
+import { useErrorStore, type RetryAction } from '@/store'
 
 export type TerminalType = 'shell' | 'claude' | 'gemini' | 'custom'
 
@@ -68,6 +70,32 @@ export function TerminalPane({
 }: TerminalPaneProps) {
   const [isExited, setIsExited] = useState(false)
   const [exitCode, setExitCode] = useState<number | null>(null)
+
+  // Get errors for this terminal - subscribe to store changes
+  const terminalErrors = useErrorStore((state) =>
+    state.errors.filter(
+      (e) => e.context?.terminalId === id && !e.dismissed
+    )
+  )
+  const dismissError = useErrorStore((state) => state.dismissError)
+  const removeError = useErrorStore((state) => state.removeError)
+
+  // Handle error retry
+  const handleErrorRetry = useCallback(
+    async (errorId: string, action: RetryAction, args?: Record<string, unknown>) => {
+      if (window.electron?.errors?.retry) {
+        try {
+          await window.electron.errors.retry(errorId, action, args)
+          // On successful retry, remove the error from the store
+          removeError(errorId)
+        } catch (error) {
+          console.error('Error retry failed:', error)
+          // Retry failed - the main process will send a new error event
+        }
+      }
+    },
+    [removeError]
+  )
 
   // Reset exit state when terminal ID changes (e.g., terminal restart or reorder)
   useEffect(() => {
@@ -179,6 +207,26 @@ export function TerminalPane({
           </button>
         </div>
       </div>
+
+      {/* Terminal errors */}
+      {terminalErrors.length > 0 && (
+        <div className="px-2 py-1 border-b border-canopy-border bg-red-900/10 space-y-1 shrink-0">
+          {terminalErrors.slice(0, 2).map((error) => (
+            <ErrorBanner
+              key={error.id}
+              error={error}
+              onDismiss={dismissError}
+              onRetry={handleErrorRetry}
+              compact
+            />
+          ))}
+          {terminalErrors.length > 2 && (
+            <div className="text-xs text-gray-500 px-2">
+              +{terminalErrors.length - 2} more errors
+            </div>
+          )}
+        </div>
+      )}
 
       {/* Terminal */}
       <div className="flex-1 relative min-h-0">

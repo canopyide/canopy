@@ -1,9 +1,10 @@
 import { useCallback, useEffect, useRef } from 'react'
 import '@xterm/xterm/css/xterm.css'
-import { isElectronAvailable, useAgentLauncher, useWorktrees, useContextInjection } from './hooks'
+import { isElectronAvailable, useAgentLauncher, useWorktrees, useContextInjection, useErrors } from './hooks'
 import { AppLayout } from './components/Layout'
 import { TerminalGrid } from './components/Terminal'
 import { WorktreeCard } from './components/Worktree'
+import { ProblemsPanel } from './components/Errors'
 import { useTerminalStore, useWorktreeSelectionStore } from './store'
 import type { WorktreeState } from './types'
 
@@ -103,6 +104,7 @@ function App() {
   const { launchAgent } = useAgentLauncher()
   const { activeWorktreeId, setActiveWorktree } = useWorktreeSelectionStore()
   const { inject, isInjecting } = useContextInjection()
+  const { isPanelOpen, togglePanel, setPanelOpen, retry, activeErrors } = useErrors()
 
   // Track if state has been restored (prevent StrictMode double-execution)
   const hasRestoredState = useRef(false)
@@ -230,11 +232,16 @@ function App() {
         e.preventDefault()
         handleInjectContextShortcut()
       }
+      // Ctrl+Shift+P: Toggle Problems panel
+      else if (e.ctrlKey && e.shiftKey && (e.key === 'P' || e.key === 'p')) {
+        e.preventDefault()
+        togglePanel()
+      }
     }
 
     window.addEventListener('keydown', handleKeyDown)
     return () => window.removeEventListener('keydown', handleKeyDown)
-  }, [focusNext, focusPrevious, toggleMaximize, focusedId, handleLaunchAgent, handleInjectContextShortcut])
+  }, [focusNext, focusPrevious, toggleMaximize, focusedId, handleLaunchAgent, handleInjectContextShortcut, togglePanel])
 
   if (!isElectronAvailable()) {
     return (
@@ -247,14 +254,23 @@ function App() {
   }
 
   return (
-    <AppLayout
-      sidebarContent={<SidebarContent />}
-      onLaunchAgent={handleLaunchAgent}
-      onRefresh={handleRefresh}
-      onSettings={handleSettings}
-    >
-      <TerminalGrid className="h-full w-full bg-canopy-bg" />
-    </AppLayout>
+    <>
+      <AppLayout
+        sidebarContent={<SidebarContent />}
+        onLaunchAgent={handleLaunchAgent}
+        onRefresh={handleRefresh}
+        onSettings={handleSettings}
+        errorCount={activeErrors.length}
+        onToggleProblems={togglePanel}
+      >
+        <TerminalGrid className="h-full w-full bg-canopy-bg" />
+      </AppLayout>
+      <ProblemsPanel
+        isOpen={isPanelOpen}
+        onClose={() => setPanelOpen(false)}
+        onRetry={retry}
+      />
+    </>
   )
 }
 

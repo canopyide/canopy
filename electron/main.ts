@@ -3,6 +3,7 @@ import path from 'path'
 import { fileURLToPath } from 'url'
 import os from 'os'
 import { registerIpcHandlers, sendToRenderer } from './ipc/handlers.js'
+import { registerErrorHandlers } from './ipc/errorHandlers.js'
 import { PtyManager } from './services/PtyManager.js'
 import { DevServerManager } from './services/DevServerManager.js'
 import { worktreeService } from './services/WorktreeService.js'
@@ -26,6 +27,7 @@ let mainWindow: BrowserWindow | null = null
 let ptyManager: PtyManager | null = null
 let devServerManager: DevServerManager | null = null
 let cleanupIpcHandlers: (() => void) | null = null
+let cleanupErrorHandlers: (() => void) | null = null
 
 // Terminal ID for the default terminal (for backwards compatibility with renderer)
 const DEFAULT_TERMINAL_ID = 'default'
@@ -84,6 +86,11 @@ function createWindow(): void {
   cleanupIpcHandlers = registerIpcHandlers(mainWindow, ptyManager, devServerManager, worktreeService)
   console.log('[MAIN] IPC handlers registered successfully')
 
+  // Register error handlers
+  console.log('[MAIN] Registering error handlers...')
+  cleanupErrorHandlers = registerErrorHandlers(mainWindow, devServerManager, worktreeService, ptyManager)
+  console.log('[MAIN] Error handlers registered successfully')
+
   // Spawn the default terminal for backwards compatibility with the renderer
   console.log('[MAIN] Spawning default terminal...')
   try {
@@ -115,6 +122,10 @@ function createWindow(): void {
     if (cleanupIpcHandlers) {
       cleanupIpcHandlers()
       cleanupIpcHandlers = null
+    }
+    if (cleanupErrorHandlers) {
+      cleanupErrorHandlers()
+      cleanupErrorHandlers = null
     }
     // Stop all worktree monitors
     await worktreeService.stopAll()
@@ -179,6 +190,10 @@ app.on('before-quit', (event) => {
     if (cleanupIpcHandlers) {
       cleanupIpcHandlers()
       cleanupIpcHandlers = null
+    }
+    if (cleanupErrorHandlers) {
+      cleanupErrorHandlers()
+      cleanupErrorHandlers = null
     }
     // Now actually quit
     app.exit(0)

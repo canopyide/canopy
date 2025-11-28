@@ -1,8 +1,10 @@
-import { useMemo, useCallback, useState, useEffect } from 'react';
+import { useCallback, useState, useEffect, useMemo } from 'react';
 import type { WorktreeState, WorktreeMood } from '../../types';
 import { ActivityLight } from './ActivityLight';
 import { FileChangeList } from './FileChangeList';
+import { ErrorBanner } from '../Errors/ErrorBanner';
 import { useDevServer } from '../../hooks/useDevServer';
+import { useErrorStore, type RetryAction } from '../../store';
 import { cn } from '../../lib/utils';
 
 export interface WorktreeCardProps {
@@ -81,6 +83,32 @@ export function WorktreeCard({
     worktreeId: worktree.id,
     worktreePath: worktree.path,
   });
+
+  // Get errors for this worktree - subscribe to store changes
+  const worktreeErrors = useErrorStore((state) =>
+    state.errors.filter(
+      (e) => e.context?.worktreeId === worktree.id && !e.dismissed
+    )
+  );
+  const dismissError = useErrorStore((state) => state.dismissError);
+  const removeError = useErrorStore((state) => state.removeError);
+
+  // Handle error retry
+  const handleErrorRetry = useCallback(
+    async (errorId: string, action: RetryAction, args?: Record<string, unknown>) => {
+      if (window.electron?.errors?.retry) {
+        try {
+          await window.electron.errors.retry(errorId, action, args);
+          // On successful retry, remove the error from the store
+          removeError(errorId);
+        } catch (error) {
+          console.error('Error retry failed:', error);
+          // Retry failed - the main process will send a new error event
+        }
+      }
+    },
+    [removeError]
+  );
 
   // For main worktree, notes expire after 10 minutes (real-time)
   const [now, setNow] = useState(() => Date.now());
@@ -411,6 +439,26 @@ export function WorktreeCard({
             ) : (
               <span key={index}>{segment.content}</span>
             )
+          )}
+        </div>
+      )}
+
+      {/* Inline errors for this worktree */}
+      {worktreeErrors.length > 0 && (
+        <div className="mt-3 space-y-2">
+          {worktreeErrors.slice(0, 3).map((error) => (
+            <ErrorBanner
+              key={error.id}
+              error={error}
+              onDismiss={dismissError}
+              onRetry={handleErrorRetry}
+              compact
+            />
+          ))}
+          {worktreeErrors.length > 3 && (
+            <div className="text-xs text-gray-500">
+              +{worktreeErrors.length - 3} more errors
+            </div>
           )}
         </div>
       )}

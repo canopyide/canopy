@@ -8,6 +8,10 @@ interface AppLayoutProps {
   onLaunchAgent?: (type: 'claude' | 'gemini' | 'shell') => void
   onRefresh?: () => void
   onSettings?: () => void
+  /** Number of active errors to show in toolbar */
+  errorCount?: number
+  /** Called when user clicks the problems button */
+  onToggleProblems?: () => void
 }
 
 const MIN_SIDEBAR_WIDTH = 200
@@ -20,6 +24,8 @@ export function AppLayout({
   onLaunchAgent,
   onRefresh,
   onSettings,
+  errorCount,
+  onToggleProblems,
 }: AppLayoutProps) {
   const [sidebarWidth, setSidebarWidth] = useState(DEFAULT_SIDEBAR_WIDTH)
 
@@ -78,6 +84,8 @@ export function AppLayout({
         onLaunchAgent={handleLaunchAgent}
         onRefresh={handleRefresh}
         onSettings={handleSettings}
+        errorCount={errorCount}
+        onToggleProblems={onToggleProblems}
       />
       <div className="flex-1 flex overflow-hidden">
         <Sidebar width={sidebarWidth} onResize={handleSidebarResize}>
