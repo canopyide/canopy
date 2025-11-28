@@ -2,11 +2,22 @@ import { useEffect, useRef } from 'react'
 import { Terminal } from '@xterm/xterm'
 import { FitAddon } from '@xterm/addon-fit'
 import '@xterm/xterm/css/xterm.css'
-import { useElectron } from './hooks/useElectron'
+import { useElectron, isElectronAvailable } from './hooks/useElectron'
+import { AppLayout } from './components/Layout'
 
 const DEFAULT_TERMINAL_ID = 'default'
 
-function App() {
+function TerminalPane() {
+  if (!isElectronAvailable()) {
+    return (
+      <div className="h-full w-full flex items-center justify-center">
+        <div className="text-canopy-text/60 text-sm">
+          Terminal unavailable - Electron API not loaded
+        </div>
+      </div>
+    )
+  }
+
   const electron = useElectron()
   const terminalRef = useRef<HTMLDivElement>(null)
   const xtermRef = useRef<Terminal | null>(null)
@@ -21,27 +32,27 @@ function App() {
       fontSize: 14,
       fontFamily: 'JetBrains Mono, Menlo, Monaco, Consolas, monospace',
       theme: {
-        background: '#09090b',
-        foreground: '#fafafa',
-        cursor: '#fafafa',
-        cursorAccent: '#09090b',
-        selectionBackground: '#27272a',
-        black: '#09090b',
-        red: '#ef4444',
-        green: '#22c55e',
-        yellow: '#eab308',
-        blue: '#3b82f6',
-        magenta: '#a855f7',
-        cyan: '#06b6d4',
-        white: '#fafafa',
-        brightBlack: '#71717a',
-        brightRed: '#f87171',
-        brightGreen: '#4ade80',
-        brightYellow: '#facc15',
-        brightBlue: '#60a5fa',
-        brightMagenta: '#c084fc',
-        brightCyan: '#22d3ee',
-        brightWhite: '#ffffff',
+        background: '#1a1b26',
+        foreground: '#c0caf5',
+        cursor: '#c0caf5',
+        cursorAccent: '#1a1b26',
+        selectionBackground: '#2d2f3a',
+        black: '#1a1b26',
+        red: '#f7768e',
+        green: '#9ece6a',
+        yellow: '#e0af68',
+        blue: '#7aa2f7',
+        magenta: '#bb9af7',
+        cyan: '#7dcfff',
+        white: '#c0caf5',
+        brightBlack: '#414868',
+        brightRed: '#f7768e',
+        brightGreen: '#9ece6a',
+        brightYellow: '#e0af68',
+        brightBlue: '#7aa2f7',
+        brightMagenta: '#bb9af7',
+        brightCyan: '#7dcfff',
+        brightWhite: '#c0caf5',
       },
     })
 
@@ -96,18 +107,27 @@ function App() {
     }
   }, [electron])
 
+  return <div ref={terminalRef} className="h-full w-full" />
+}
+
+function SidebarContent() {
   return (
-    <div className="h-screen w-screen bg-background flex flex-col">
-      <header className="h-10 bg-card flex items-center px-4 border-b border-border drag-region shrink-0">
-        <div className="w-20" /> {/* Space for traffic lights on macOS */}
-        <span className="text-foreground font-semibold text-sm">
-          Canopy Command Center
-        </span>
-      </header>
-      <main className="flex-1 p-2 overflow-hidden bg-[#09090b]">
-        <div ref={terminalRef} className="h-full w-full" />
-      </main>
+    <div className="p-4">
+      <h2 className="text-canopy-text font-semibold text-sm mb-4">Worktrees</h2>
+      <div className="text-canopy-text/60 text-sm">
+        No worktrees loaded yet.
+      </div>
     </div>
+  )
+}
+
+function App() {
+  return (
+    <AppLayout sidebarContent={<SidebarContent />}>
+      <div className="h-full w-full p-2 bg-canopy-bg">
+        <TerminalPane />
+      </div>
+    </AppLayout>
   )
 }
 

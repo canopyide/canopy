@@ -37,6 +37,16 @@
   --radius-md: calc(var(--radius) - 2px);
   --radius-lg: var(--radius);
   --radius-xl: calc(var(--radius) + 4px);
+
+  /* Canopy theme colors */
+  --color-canopy-bg: #1a1b26;
+  --color-canopy-sidebar: #16171f;
+  --color-canopy-border: #2d2f3a;
+  --color-canopy-text: #c0caf5;
+  --color-canopy-accent: #7aa2f7;
+  --color-canopy-success: #9ece6a;
+  --color-canopy-warning: #e0af68;
+  --color-canopy-error: #f7768e;
 }
 
 :root {
