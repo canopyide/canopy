@@ -151,7 +151,6 @@ export interface ElectronAPI {
     getState(): Promise<AppState>
     setState(partialState: Partial<AppState>): Promise<void>
   }
-<<<<<<< HEAD
   logs: {
     getAll(filters?: LogFilterOptions): Promise<LogEntry[]>
     getSources(): Promise<string[]>
@@ -164,12 +163,11 @@ export interface ElectronAPI {
     open(path: string): Promise<void>
     openDialog(): Promise<string | null>
     removeRecent(path: string): Promise<void>
-=======
+  }
   errors: {
     onError(callback: (error: AppError) => void): () => void
     retry(errorId: string, action: RetryAction, args?: Record<string, unknown>): Promise<void>
     openLogs(): Promise<void>
->>>>>>> feature/issue-47-error-ui-recovery
   }
 }
 

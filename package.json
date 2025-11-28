@@ -31,6 +31,7 @@
     "clsx": "^2.1.1",
     "electron-store": "^11.0.2",
     "execa": "^9.6.0",
+    "fuse.js": "^7.1.0",
     "lucide-react": "^0.555.0",
     "node-pty": "^1.0.0",
     "react": "^19.0.0",
@@ -79,11 +80,15 @@
       "target": [
         {
           "target": "dmg",
-          "arch": ["universal"]
+          "arch": [
+            "universal"
+          ]
         },
         {
           "target": "zip",
-          "arch": ["universal"]
+          "arch": [
+            "universal"
+          ]
         }
       ],
       "hardenedRuntime": true,
@@ -110,11 +115,15 @@
       "target": [
         {
           "target": "nsis",
-          "arch": ["x64"]
+          "arch": [
+            "x64"
+          ]
         },
         {
           "target": "portable",
-          "arch": ["x64"]
+          "arch": [
+            "x64"
+          ]
         }
       ]
     },
@@ -127,7 +136,10 @@
     },
     "linux": {
       "icon": "build/icon.png",
-      "target": ["AppImage", "deb"],
+      "target": [
+        "AppImage",
+        "deb"
+      ],
       "category": "Development"
     }
   }
