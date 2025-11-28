@@ -15,6 +15,10 @@ export interface WorktreeCardProps {
   onOpenIssue?: () => void;
   onOpenPR?: () => void;
   onToggleServer: () => void;
+  /** Called when the inject context button is clicked */
+  onInjectContext?: () => void;
+  /** Whether context injection is currently in progress */
+  isInjecting?: boolean;
 }
 
 const MOOD_BORDER_COLORS: Record<WorktreeMood, string> = {
@@ -67,6 +71,8 @@ export function WorktreeCard({
   onOpenIssue,
   onOpenPR,
   onToggleServer,
+  onInjectContext,
+  isInjecting = false,
 }: WorktreeCardProps) {
   const mood = worktree.mood || 'stable';
   const borderColor = MOOD_BORDER_COLORS[mood];
@@ -264,6 +270,24 @@ export function WorktreeCard({
         >
           Copy
         </button>
+        {onInjectContext && (
+          <button
+            onClick={(e) => {
+              e.stopPropagation();
+              onInjectContext();
+            }}
+            disabled={isInjecting}
+            className={cn(
+              'text-xs px-2 py-1 border border-purple-600 rounded text-purple-400',
+              isInjecting
+                ? 'opacity-50 cursor-not-allowed'
+                : 'hover:bg-purple-900 hover:border-purple-500'
+            )}
+            title="Inject context into focused terminal (Ctrl+Shift+I)"
+          >
+            {isInjecting ? '...' : 'Inject'}
+          </button>
+        )}
         <button
           onClick={(e) => {
             e.stopPropagation();

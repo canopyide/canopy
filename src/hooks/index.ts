@@ -10,3 +10,6 @@ export type { UseWorktreesReturn } from './useWorktrees'
 export { useDevServer, useDevServerStates } from './useDevServer'
 
 export { useElectron, isElectronAvailable } from './useElectron'
+
+export { useContextInjection } from './useContextInjection'
+export type { UseContextInjectionReturn } from './useContextInjection'

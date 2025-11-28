@@ -41,7 +41,7 @@ export interface ElectronAPI {
   }
   copyTree: {
     generate(worktreeId: string, options?: CopyTreeOptions): Promise<CopyTreeResult>
-    injectToTerminal(terminalId: string, worktreeId: string): Promise<void>
+    injectToTerminal(terminalId: string, worktreeId: string): Promise<CopyTreeResult>
     isAvailable(): Promise<boolean>
   }
   system: {

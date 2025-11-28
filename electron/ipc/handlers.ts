@@ -45,6 +45,9 @@ export function registerIpcHandlers(
   // Store handler references for cleanup
   const handlers: Array<() => void> = []
 
+  // Track in-flight context injections per terminal to prevent race conditions
+  const injectionsInProgress = new Set<string>()
+
   // ==========================================
   // PtyManager Event Forwarding
   // ==========================================
@@ -268,28 +271,110 @@ export function registerIpcHandlers(
   // CopyTree Handlers
   // ==========================================
 
-  const handleCopyTreeGenerate = async (_event: Electron.IpcMainInvokeEvent, _payload: CopyTreeGeneratePayload): Promise<CopyTreeResult> => {
-    // TODO: When WorktreeService is implemented, look up rootPath from worktreeId
-    // For now, return an error indicating the service is not yet fully integrated
-    return {
-      content: '',
-      fileCount: 0,
-      error: 'CopyTree generation requires WorktreeService integration (not yet implemented)',
+  const handleCopyTreeGenerate = async (_event: Electron.IpcMainInvokeEvent, payload: CopyTreeGeneratePayload): Promise<CopyTreeResult> => {
+    if (!worktreeService) {
+      return {
+        content: '',
+        fileCount: 0,
+        error: 'WorktreeService not initialized',
+      }
     }
 
-    // Future implementation will be:
-    // const worktree = await worktreeService.getWorktree(payload.worktreeId)
-    // if (!worktree) {
-    //   return { content: '', fileCount: 0, error: 'Worktree not found' }
-    // }
-    // return copyTreeService.generate(worktree.path, payload.options)
+    // Look up worktree path from worktreeId
+    const statesMap = worktreeService.getAllStates()
+    const worktree = statesMap.get(payload.worktreeId)
+
+    if (!worktree) {
+      return {
+        content: '',
+        fileCount: 0,
+        error: `Worktree not found: ${payload.worktreeId}`,
+      }
+    }
+
+    return copyTreeService.generate(worktree.path, payload.options)
   }
   ipcMain.handle(CHANNELS.COPYTREE_GENERATE, handleCopyTreeGenerate)
   handlers.push(() => ipcMain.removeHandler(CHANNELS.COPYTREE_GENERATE))
 
-  const handleCopyTreeInject = async (_event: Electron.IpcMainInvokeEvent, payload: CopyTreeInjectPayload) => {
-    // TODO: Implement when terminal multiplexing and CopyTree integration is complete
-    console.log('CopyTree inject requested:', payload)
+  const handleCopyTreeInject = async (_event: Electron.IpcMainInvokeEvent, payload: CopyTreeInjectPayload): Promise<CopyTreeResult> => {
+    // Prevent concurrent injections to the same terminal
+    if (injectionsInProgress.has(payload.terminalId)) {
+      return {
+        content: '',
+        fileCount: 0,
+        error: 'Context injection already in progress for this terminal',
+      }
+    }
+
+    if (!worktreeService) {
+      return {
+        content: '',
+        fileCount: 0,
+        error: 'WorktreeService not initialized',
+      }
+    }
+
+    // Mark injection as in progress
+    injectionsInProgress.add(payload.terminalId)
+
+    try {
+      // Look up worktree path from worktreeId
+      const statesMap = worktreeService.getAllStates()
+      const worktree = statesMap.get(payload.worktreeId)
+
+      if (!worktree) {
+        return {
+          content: '',
+          fileCount: 0,
+          error: `Worktree not found: ${payload.worktreeId}`,
+        }
+      }
+
+      // Check if terminal exists before generating (saves work if terminal is gone)
+      if (!ptyManager.hasTerminal(payload.terminalId)) {
+        return {
+          content: '',
+          fileCount: 0,
+          error: 'Terminal no longer exists',
+        }
+      }
+
+      // Generate context
+      const result = await copyTreeService.generate(worktree.path)
+
+      if (result.error) {
+        return result
+      }
+
+      // Inject content into terminal using chunked writing
+      // Large contexts can overwhelm the terminal, so we write in chunks
+      const CHUNK_SIZE = 4096
+      const content = result.content
+
+      for (let i = 0; i < content.length; i += CHUNK_SIZE) {
+        // Check terminal still exists before each write
+        if (!ptyManager.hasTerminal(payload.terminalId)) {
+          return {
+            content: '',
+            fileCount: 0,
+            error: 'Terminal closed during injection',
+          }
+        }
+
+        const chunk = content.slice(i, i + CHUNK_SIZE)
+        ptyManager.write(payload.terminalId, chunk)
+        // Small delay to prevent buffer overflow (1ms per chunk)
+        if (i + CHUNK_SIZE < content.length) {
+          await new Promise(resolve => setTimeout(resolve, 1))
+        }
+      }
+
+      return result
+    } finally {
+      // Always remove from in-progress set
+      injectionsInProgress.delete(payload.terminalId)
+    }
   }
   ipcMain.handle(CHANNELS.COPYTREE_INJECT, handleCopyTreeInject)
   handlers.push(() => ipcMain.removeHandler(CHANNELS.COPYTREE_INJECT))

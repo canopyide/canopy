@@ -69,10 +69,20 @@ export function TerminalGrid({ className, defaultCwd }: TerminalGridProps) {
     await addTerminal({ type: 'shell', cwd })
   }, [addTerminal, defaultCwd])
 
-  // Handle context injection (placeholder - will be wired up later)
-  const handleInjectContext = useCallback((terminalId: string, worktreeId?: string) => {
+  // Handle context injection
+  const handleInjectContext = useCallback(async (terminalId: string, worktreeId?: string) => {
     if (!worktreeId) return
-    window.electron.copyTree.injectToTerminal(terminalId, worktreeId)
+
+    try {
+      const result = await window.electron.copyTree.injectToTerminal(terminalId, worktreeId)
+      if (result.error) {
+        console.error('Context injection failed:', result.error)
+      } else {
+        console.log(`Context injected (${result.fileCount} files)`)
+      }
+    } catch (error) {
+      console.error('Context injection failed:', error)
+    }
   }, [])
 
   // If maximized, only show that terminal
