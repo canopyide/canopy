@@ -624,6 +624,7 @@ export interface ElectronAPI {
     getSettings(projectId: string): Promise<ProjectSettings>;
     saveSettings(projectId: string, settings: ProjectSettings): Promise<void>;
     detectRunners(projectId: string): Promise<RunCommand[]>;
+    regenerateIdentity(projectId: string): Promise<Project>;
   };
   history: {
     getSessions(filters?: HistoryGetSessionsPayload): Promise<AgentSession[]>;

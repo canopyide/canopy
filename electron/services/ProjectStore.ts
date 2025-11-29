@@ -6,6 +6,7 @@ import fs from "fs/promises";
 import { existsSync } from "fs";
 import { app } from "electron";
 import { simpleGit } from "simple-git";
+import { generateProjectNameAndEmoji } from "./ai/identity.js";
 
 const SETTINGS_FILENAME = "settings.json";
 
@@ -95,12 +96,24 @@ export class ProjectStore {
       return this.updateProject(existing.id, { lastOpened: Date.now() });
     }
 
-    // Create new project
+    // Generate AI identity (non-blocking, with fallback)
+    let identity: { name: string; emoji: string; color?: string } | null = null;
+    try {
+      identity = await generateProjectNameAndEmoji(normalizedPath);
+    } catch (error) {
+      // Log but don't fail project creation if AI is unavailable
+      console.warn("[ProjectStore] AI identity generation failed:", error);
+    }
+
+    // Create new project with AI-generated identity or fallback defaults
     const project: Project = {
       id: this.generateProjectId(normalizedPath),
       path: normalizedPath,
-      name: path.basename(normalizedPath),
-      emoji: "🌲",
+      name: identity?.name || path.basename(normalizedPath),
+      emoji: identity?.emoji || "🌲",
+      aiGeneratedName: identity?.name,
+      aiGeneratedEmoji: identity?.emoji,
+      color: identity?.color,
       lastOpened: Date.now(),
     };
 

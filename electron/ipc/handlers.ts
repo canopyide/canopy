@@ -1283,6 +1283,50 @@ export function registerIpcHandlers(
   ipcMain.handle(CHANNELS.PROJECT_UPDATE, handleProjectUpdate);
   handlers.push(() => ipcMain.removeHandler(CHANNELS.PROJECT_UPDATE));
 
+  const handleProjectRegenerateIdentity = async (
+    _event: Electron.IpcMainInvokeEvent,
+    projectId: string
+  ) => {
+    // Validate input
+    if (typeof projectId !== "string" || !projectId) {
+      throw new Error("Invalid project ID");
+    }
+
+    const project = projectStore.getProjectById(projectId);
+    if (!project) {
+      throw new Error(`Project not found: ${projectId}`);
+    }
+
+    // Generate new identity using AI with error handling
+    let identity;
+    try {
+      identity = await generateProjectIdentity(project.path);
+    } catch (error) {
+      const message = error instanceof Error ? error.message : "Unknown error";
+      throw new Error(`AI identity generation failed: ${message}`);
+    }
+
+    if (!identity) {
+      throw new Error(
+        "AI identity generation unavailable. Please check that your OpenAI API key is configured in Settings."
+      );
+    }
+
+    // Update project with new AI-generated identity
+    const updates: Partial<Project> = {
+      aiGeneratedName: identity.title,
+      aiGeneratedEmoji: identity.emoji,
+      color: identity.gradientStart,
+      // Also update display name/emoji with AI suggestions
+      name: identity.title,
+      emoji: identity.emoji,
+    };
+
+    return projectStore.updateProject(projectId, updates);
+  };
+  ipcMain.handle(CHANNELS.PROJECT_REGENERATE_IDENTITY, handleProjectRegenerateIdentity);
+  handlers.push(() => ipcMain.removeHandler(CHANNELS.PROJECT_REGENERATE_IDENTITY));
+
   const handleProjectSwitch = async (_event: Electron.IpcMainInvokeEvent, projectId: string) => {
     // Validate input
     if (typeof projectId !== "string" || !projectId) {

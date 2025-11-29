@@ -20,7 +20,9 @@ import {
   Minimize2,
 } from "lucide-react";
 import { cn } from "@/lib/utils";
+import { getProjectGradient } from "@/lib/colorUtils";
 import { BulkActionsMenu } from "@/components/Terminal";
+import { useProjectStore } from "@/store/projectStore";
 
 interface ToolbarProps {
   onLaunchAgent: (type: "claude" | "gemini" | "shell") => void;
@@ -45,6 +47,8 @@ export function Toolbar({
   isFocusMode = false,
   onToggleFocusMode,
 }: ToolbarProps) {
+  const currentProject = useProjectStore((state) => state.currentProject);
+
   return (
     <header className="relative h-12 flex items-center px-4 shrink-0 app-drag-region bg-canopy-sidebar border-b border-canopy-border shadow-sm">
       {/* 1. RESIZE STRIP:
@@ -137,9 +141,25 @@ export function Toolbar({
         this entire center section becomes the primary handle for moving the window.
       */}
       <div className="flex-1 flex justify-center items-center h-full opacity-70 hover:opacity-100 transition-opacity">
-        <span className="text-xs font-medium text-canopy-text tracking-wide select-none">
-          Canopy Command Center
-        </span>
+        {currentProject ? (
+          <div
+            className="flex items-center gap-2 px-3 py-1 rounded-md select-none"
+            style={{
+              background: getProjectGradient(currentProject.color),
+            }}
+          >
+            <span className="text-lg" aria-label="Project emoji">
+              {currentProject.emoji}
+            </span>
+            <span className="text-xs font-medium text-white tracking-wide drop-shadow-md">
+              {currentProject.name}
+            </span>
+          </div>
+        ) : (
+          <span className="text-xs font-medium text-canopy-text tracking-wide select-none">
+            Canopy Command Center
+          </span>
+        )}
       </div>
 
       {/* 5. RIGHT ACTIONS:

@@ -1,6 +1,7 @@
 import { useEffect, useState } from "react";
 import { ChevronsUpDown, Plus, Check } from "lucide-react";
 import { cn } from "@/lib/utils";
+import { getProjectGradient } from "@/lib/colorUtils";
 import { useProjectStore } from "@/store/projectStore";
 import {
   DropdownMenu,
@@ -67,8 +68,16 @@ export function ProjectSwitcher() {
                   onClick={() => switchProject(project.id)}
                   className="gap-2 p-2"
                 >
-                  <div className="flex h-6 w-6 items-center justify-center rounded-md border border-canopy-border bg-canopy-bg">
-                    {project.emoji || "🌲"}
+                  <div
+                    className="flex h-6 w-6 items-center justify-center rounded-md border border-canopy-border"
+                    style={{
+                      background: getProjectGradient(project.color),
+                      backgroundColor: !getProjectGradient(project.color)
+                        ? "var(--canopy-bg)"
+                        : undefined,
+                    }}
+                  >
+                    <span className="text-sm">{project.emoji || "🌲"}</span>
                   </div>
                   <span className="flex-1 truncate">{project.name}</span>
                 </DropdownMenuItem>
@@ -114,7 +123,18 @@ export function ProjectSwitcher() {
             disabled={isLoading}
           >
             <div className="flex items-center gap-2 text-left min-w-0">
-              <div className="flex h-8 w-8 items-center justify-center rounded-md bg-canopy-accent/10 border border-canopy-accent/20">
+              <div
+                className="flex h-8 w-8 items-center justify-center rounded-md border"
+                style={{
+                  background: getProjectGradient(currentProject.color),
+                  backgroundColor: !getProjectGradient(currentProject.color)
+                    ? "rgba(var(--canopy-accent-rgb), 0.1)"
+                    : undefined,
+                  borderColor: !getProjectGradient(currentProject.color)
+                    ? "rgba(var(--canopy-accent-rgb), 0.2)"
+                    : "transparent",
+                }}
+              >
                 <span className="text-lg leading-none">{currentProject.emoji || "🌲"}</span>
               </div>
               <div className="grid flex-1 text-left text-sm leading-tight">
@@ -143,8 +163,16 @@ export function ProjectSwitcher() {
               disabled={isLoading}
               className={cn("gap-2 p-2", project.id === currentProject.id && "bg-canopy-border/30")}
             >
-              <div className="flex h-6 w-6 items-center justify-center rounded-md border border-canopy-border bg-canopy-bg">
-                {project.emoji || "🌲"}
+              <div
+                className="flex h-6 w-6 items-center justify-center rounded-md border border-canopy-border"
+                style={{
+                  background: getProjectGradient(project.color),
+                  backgroundColor: !getProjectGradient(project.color)
+                    ? "var(--canopy-bg)"
+                    : undefined,
+                }}
+              >
+                <span className="text-sm">{project.emoji || "🌲"}</span>
               </div>
               <span className="flex-1 truncate">{project.name}</span>
               {currentProject.id === project.id && <Check className="h-4 w-4 text-canopy-accent" />}

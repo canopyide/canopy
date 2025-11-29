@@ -157,6 +157,7 @@ const CHANNELS = {
   PROJECT_GET_SETTINGS: "project:get-settings",
   PROJECT_SAVE_SETTINGS: "project:save-settings",
   PROJECT_DETECT_RUNNERS: "project:detect-runners",
+  PROJECT_REGENERATE_IDENTITY: "project:regenerate-identity",
 
   // History channels (agent transcripts & artifacts)
   HISTORY_GET_SESSIONS: "history:get-sessions",
@@ -527,6 +528,9 @@ const api: ElectronAPI = {
 
     detectRunners: (projectId: string): Promise<RunCommand[]> =>
       ipcRenderer.invoke(CHANNELS.PROJECT_DETECT_RUNNERS, projectId),
+
+    regenerateIdentity: (projectId: string): Promise<Project> =>
+      ipcRenderer.invoke(CHANNELS.PROJECT_REGENERATE_IDENTITY, projectId),
   },
 
   // ==========================================

@@ -7,11 +7,13 @@
  */
 
 import { useState, useEffect } from "react";
-import { Plus, Trash2, X, Sparkles } from "lucide-react";
+import { Plus, Trash2, X, Sparkles, RefreshCw } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { useProjectSettings } from "@/hooks/useProjectSettings";
+import { useProjectStore } from "@/store/projectStore";
 import type { RunCommand } from "@/types";
 import { cn } from "@/lib/utils";
+import { getProjectGradient } from "@/lib/colorUtils";
 
 interface ProjectSettingsDialogProps {
   projectId: string;
@@ -22,10 +24,14 @@ interface ProjectSettingsDialogProps {
 export function ProjectSettingsDialog({ projectId, isOpen, onClose }: ProjectSettingsDialogProps) {
   const { settings, detectedRunners, saveSettings, promoteToSaved, isLoading, error } =
     useProjectSettings(projectId);
+  const { projects, regenerateIdentity } = useProjectStore();
+  const currentProject = projects.find((p) => p.id === projectId);
+
   const [commands, setCommands] = useState<RunCommand[]>([]);
   const [isSaving, setIsSaving] = useState(false);
   const [saveError, setSaveError] = useState<string | null>(null);
   const [promotingIds, setPromotingIds] = useState<Set<string>>(new Set());
+  const [isRegenerating, setIsRegenerating] = useState(false);
 
   // Sync local state when settings load OR when dialog opens (reset unsaved changes)
   useEffect(() => {
@@ -65,6 +71,18 @@ export function ProjectSettingsDialog({ projectId, isOpen, onClose }: ProjectSet
     }
   };
 
+  const handleRegenerateIdentity = async () => {
+    setIsRegenerating(true);
+    try {
+      await regenerateIdentity(projectId);
+    } catch (error) {
+      console.error("Failed to regenerate identity:", error);
+      setSaveError(error instanceof Error ? error.message : "Failed to regenerate identity");
+    } finally {
+      setIsRegenerating(false);
+    }
+  };
+
   if (!isOpen) return null;
 
   return (
@@ -87,6 +105,7 @@ export function ProjectSettingsDialog({ projectId, isOpen, onClose }: ProjectSet
           <button
             onClick={onClose}
             className="text-gray-400 hover:text-canopy-text transition-colors"
+            aria-label="Close settings"
           >
             <X className="h-5 w-5" />
           </button>
@@ -109,6 +128,69 @@ export function ProjectSettingsDialog({ projectId, isOpen, onClose }: ProjectSet
           )}
           {!isLoading && !error && (
             <>
+              {/* Project Identity Section */}
+              {currentProject && (
+                <div className="mb-6 pb-6 border-b border-canopy-border">
+                  <h3 className="text-sm font-semibold text-canopy-text/80 mb-2">
+                    Project Identity
+                  </h3>
+                  <p className="text-xs text-gray-500 mb-4">
+                    Customize how your project appears in Canopy, or regenerate with AI.
+                  </p>
+
+                  <div className="space-y-4">
+                    {/* Current Identity Display */}
+                    <div className="flex items-center gap-3 p-3 rounded-md bg-canopy-bg border border-canopy-border">
+                      <div
+                        className="flex h-12 w-12 items-center justify-center rounded-md border shrink-0"
+                        style={{
+                          background: getProjectGradient(currentProject.color),
+                          backgroundColor: !getProjectGradient(currentProject.color)
+                            ? "var(--canopy-bg)"
+                            : undefined,
+                          borderColor: !getProjectGradient(currentProject.color)
+                            ? "var(--canopy-border)"
+                            : "transparent",
+                        }}
+                      >
+                        <span className="text-2xl">{currentProject.emoji}</span>
+                      </div>
+                      <div className="flex-1 min-w-0">
+                        <div className="text-sm font-medium text-canopy-text truncate">
+                          {currentProject.name}
+                        </div>
+                        {currentProject.aiGeneratedName && currentProject.aiGeneratedEmoji && (
+                          <div className="text-xs text-gray-500 truncate">
+                            AI suggested: {currentProject.aiGeneratedEmoji} {currentProject.aiGeneratedName}
+                          </div>
+                        )}
+                        {currentProject.color && (
+                          <div className="text-xs text-gray-500 mt-1">
+                            Color: {currentProject.color}
+                          </div>
+                        )}
+                      </div>
+                      <Button
+                        onClick={handleRegenerateIdentity}
+                        variant="outline"
+                        size="sm"
+                        disabled={isRegenerating}
+                        className="shrink-0"
+                      >
+                        <RefreshCw className={cn("h-4 w-4 mr-2", isRegenerating && "animate-spin")} />
+                        {isRegenerating ? "Regenerating..." : "Regenerate"}
+                      </Button>
+                    </div>
+
+                    {currentProject.aiGeneratedName && (
+                      <div className="text-xs text-gray-400 italic">
+                        Tip: Regenerate to get new AI suggestions based on your project name and structure.
+                      </div>
+                    )}
+                  </div>
+                </div>
+              )}
+
               {/* Saved Commands Section */}
               <div className="mb-6">
                 <h3 className="text-sm font-semibold text-canopy-text/80 mb-2">Run Commands</h3>
