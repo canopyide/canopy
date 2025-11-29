@@ -193,7 +193,7 @@ export function ProblemsPanel({ isOpen, onClose, onRetry, className }: ProblemsP
       {/* Header */}
       <div className="flex items-center justify-between px-4 py-2 bg-canopy-sidebar border-b border-canopy-border">
         <div className="flex items-center gap-3">
-          <h2 className="text-sm font-semibold text-canopy-text">Problems</h2>
+          <h2 className="section-header">Problems</h2>
           <span className="px-2 py-0.5 text-xs bg-red-900/50 text-red-300 rounded-full">
             {activeErrors.length}
           </span>

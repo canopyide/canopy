@@ -141,7 +141,7 @@ export function LogsPanel({ className }: LogsPanelProps) {
       {/* Header */}
       <div className="flex items-center justify-between px-3 py-2 border-b border-gray-800 bg-gray-900">
         <div className="flex items-center gap-2">
-          <h3 className="text-sm font-medium text-gray-200">Logs</h3>
+          <h3 className="section-header">Logs</h3>
           <span className="text-xs text-gray-500">({filteredLogs.length})</span>
         </div>
         <div className="flex items-center gap-2">

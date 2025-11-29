@@ -284,6 +284,11 @@ body,
   }
 }
 
+/* Section header pattern - for organizing content hierarchically */
+.section-header {
+  @apply text-xs font-bold tracking-widest text-muted-foreground uppercase;
+}
+
 /* --- Electron Window Controls --- */
 
 /* The draggable area (Title Bar) */

@@ -124,7 +124,7 @@ export function EventInspectorPanel({ className }: EventInspectorPanelProps) {
       {/* Header */}
       <div className="flex-shrink-0 flex items-center justify-between px-4 py-2 border-b bg-muted/30">
         <div className="flex items-center gap-2">
-          <h2 className="text-sm font-semibold">Event Inspector</h2>
+          <h2 className="section-header">Event Inspector</h2>
           <span className="text-xs text-muted-foreground">
             {filteredEvents.length} {filteredEvents.length === 1 ? "event" : "events"}
           </span>
