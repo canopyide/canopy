@@ -22,7 +22,7 @@ import {
   TreePine,
 } from "lucide-react";
 import { cn } from "@/lib/utils";
-import type { AIConfig } from "@/types/electron";
+import type { AIServiceState } from "@/types";
 
 interface SettingsDialogProps {
   isOpen: boolean;
@@ -47,7 +47,7 @@ export function SettingsDialog({ isOpen, onClose }: SettingsDialogProps) {
   const clearLogs = useLogsStore((state) => state.clearLogs);
 
   // AI settings state
-  const [aiConfig, setAiConfig] = useState<AIConfig | null>(null);
+  const [aiConfig, setAiConfig] = useState<AIServiceState | null>(null);
   const [apiKey, setApiKey] = useState("");
   const [isValidating, setIsValidating] = useState(false);
   const [isTesting, setIsTesting] = useState(false);

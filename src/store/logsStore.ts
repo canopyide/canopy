@@ -6,7 +6,7 @@
  */
 
 import { create, type StateCreator } from "zustand";
-import type { LogEntry, LogFilterOptions } from "@/types/electron.d";
+import type { LogEntry, LogFilterOptions } from "@/types";
 
 interface LogsState {
   // Log entries

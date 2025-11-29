@@ -5,7 +5,7 @@
     "moduleResolution": "Node",
     "lib": ["ES2022"],
     "outDir": "../dist-electron",
-    "rootDir": ".",
+    "rootDir": "..",
     "strict": true,
     "esModuleInterop": true,
     "skipLibCheck": true,
@@ -14,8 +14,12 @@
     "declaration": false,
     "noUnusedLocals": true,
     "noUnusedParameters": true,
-    "noFallthroughCasesInSwitch": true
+    "noFallthroughCasesInSwitch": true,
+    "baseUrl": "..",
+    "paths": {
+      "@shared/*": ["./shared/*"]
+    }
   },
-  "include": ["preload.ts"],
+  "include": ["preload.ts", "../shared/**/*.ts"],
   "exclude": ["node_modules"]
 }
