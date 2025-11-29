@@ -8,6 +8,7 @@
 import { ipcMain, BrowserWindow, shell, dialog } from "electron";
 import crypto from "crypto";
 import os from "os";
+import path from "path";
 import { CHANNELS } from "./channels.js";
 import { PtyManager } from "../services/PtyManager.js";
 import type { DevServerManager } from "../services/DevServerManager.js";
@@ -35,6 +36,8 @@ import { updateRecentDirectories, removeRecentDirectory } from "../utils/recentD
 import { join } from "path";
 import { homedir } from "os";
 import type { EventBuffer, FilterOptions as EventFilterOptions } from "../services/EventBuffer.js";
+import { projectStore } from "../services/ProjectStore.js";
+import type { Project } from "../types/index.js";
 
 /**
  * Initialize all IPC handlers
@@ -788,6 +791,105 @@ export function registerIpcHandlers(
   };
   ipcMain.handle(CHANNELS.EVENT_INSPECTOR_CLEAR, handleEventInspectorClear);
   handlers.push(() => ipcMain.removeHandler(CHANNELS.EVENT_INSPECTOR_CLEAR));
+
+  // ==========================================
+  // Project Handlers
+  // ==========================================
+
+  const handleProjectGetAll = async () => {
+    return projectStore.getAllProjects();
+  };
+  ipcMain.handle(CHANNELS.PROJECT_GET_ALL, handleProjectGetAll);
+  handlers.push(() => ipcMain.removeHandler(CHANNELS.PROJECT_GET_ALL));
+
+  const handleProjectGetCurrent = async () => {
+    return projectStore.getCurrentProject();
+  };
+  ipcMain.handle(CHANNELS.PROJECT_GET_CURRENT, handleProjectGetCurrent);
+  handlers.push(() => ipcMain.removeHandler(CHANNELS.PROJECT_GET_CURRENT));
+
+  const handleProjectAdd = async (_event: Electron.IpcMainInvokeEvent, projectPath: string) => {
+    // Validate input
+    if (typeof projectPath !== "string" || !projectPath) {
+      throw new Error("Invalid project path");
+    }
+    if (!path.isAbsolute(projectPath)) {
+      throw new Error("Project path must be absolute");
+    }
+    return await projectStore.addProject(projectPath);
+  };
+  ipcMain.handle(CHANNELS.PROJECT_ADD, handleProjectAdd);
+  handlers.push(() => ipcMain.removeHandler(CHANNELS.PROJECT_ADD));
+
+  const handleProjectRemove = async (_event: Electron.IpcMainInvokeEvent, projectId: string) => {
+    // Validate input
+    if (typeof projectId !== "string" || !projectId) {
+      throw new Error("Invalid project ID");
+    }
+    await projectStore.removeProject(projectId);
+  };
+  ipcMain.handle(CHANNELS.PROJECT_REMOVE, handleProjectRemove);
+  handlers.push(() => ipcMain.removeHandler(CHANNELS.PROJECT_REMOVE));
+
+  const handleProjectUpdate = async (
+    _event: Electron.IpcMainInvokeEvent,
+    projectId: string,
+    updates: Partial<Project>
+  ) => {
+    // Validate inputs
+    if (typeof projectId !== "string" || !projectId) {
+      throw new Error("Invalid project ID");
+    }
+    if (typeof updates !== "object" || updates === null) {
+      throw new Error("Invalid updates object");
+    }
+    return projectStore.updateProject(projectId, updates);
+  };
+  ipcMain.handle(CHANNELS.PROJECT_UPDATE, handleProjectUpdate);
+  handlers.push(() => ipcMain.removeHandler(CHANNELS.PROJECT_UPDATE));
+
+  const handleProjectSwitch = async (_event: Electron.IpcMainInvokeEvent, projectId: string) => {
+    // Validate input
+    if (typeof projectId !== "string" || !projectId) {
+      throw new Error("Invalid project ID");
+    }
+
+    const project = projectStore.getProjectById(projectId);
+    if (!project) {
+      throw new Error(`Project not found: ${projectId}`);
+    }
+
+    // Set as current project (updates lastOpened)
+    await projectStore.setCurrentProject(projectId);
+
+    // Get updated project with new lastOpened timestamp
+    const updatedProject = projectStore.getProjectById(projectId);
+    if (!updatedProject) {
+      throw new Error(`Project not found after update: ${projectId}`);
+    }
+
+    // Notify renderer with updated project
+    sendToRenderer(mainWindow, CHANNELS.PROJECT_ON_SWITCH, updatedProject);
+
+    return updatedProject;
+  };
+  ipcMain.handle(CHANNELS.PROJECT_SWITCH, handleProjectSwitch);
+  handlers.push(() => ipcMain.removeHandler(CHANNELS.PROJECT_SWITCH));
+
+  const handleProjectOpenDialog = async () => {
+    const result = await dialog.showOpenDialog(mainWindow, {
+      properties: ["openDirectory"],
+      title: "Open Git Repository",
+    });
+
+    if (result.canceled || result.filePaths.length === 0) {
+      return null;
+    }
+
+    return result.filePaths[0];
+  };
+  ipcMain.handle(CHANNELS.PROJECT_OPEN_DIALOG, handleProjectOpenDialog);
+  handlers.push(() => ipcMain.removeHandler(CHANNELS.PROJECT_OPEN_DIALOG));
 
   // Return cleanup function
   return () => {

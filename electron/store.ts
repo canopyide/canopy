@@ -1,5 +1,6 @@
 import Store from "electron-store";
 import type { RecentDirectory } from "./ipc/types.js";
+import type { Project } from "./types/index.js";
 
 export type { RecentDirectory };
 
@@ -24,6 +25,10 @@ export interface StoreSchema {
       worktreeId?: string;
     }>;
   };
+  projects: {
+    list: Project[];
+    currentProjectId?: string;
+  };
 }
 
 export const store = new Store<StoreSchema>({
@@ -39,6 +44,10 @@ export const store = new Store<StoreSchema>({
       sidebarWidth: 350,
       recentDirectories: [],
       terminals: [],
+    },
+    projects: {
+      list: [],
+      currentProjectId: undefined,
     },
   },
 });

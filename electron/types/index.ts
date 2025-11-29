@@ -291,6 +291,71 @@ export interface TerminalDimensions {
 }
 
 // ============================================================================
+// Project Types (Multi-Project Support)
+// ============================================================================
+
+/** Represents a project (Git repository) managed by Canopy */
+export interface Project {
+  /** Unique identifier (UUID or path hash) */
+  id: string;
+  /** Git repository root path */
+  path: string;
+  /** User-editable display name */
+  name: string;
+  /** User-editable emoji (default: 🌲) */
+  emoji: string;
+  /** AI-suggested name (optional) */
+  aiGeneratedName?: string;
+  /** AI-suggested emoji (optional) */
+  aiGeneratedEmoji?: string;
+  /** Timestamp of last opening (for sorting) */
+  lastOpened: number;
+  /** Theme color/gradient (optional) */
+  color?: string;
+}
+
+/** Terminal snapshot for state preservation */
+export interface TerminalSnapshot {
+  /** Terminal ID */
+  id: string;
+  /** Terminal type */
+  type: TerminalType;
+  /** Display title */
+  title: string;
+  /** Working directory */
+  cwd: string;
+  /** Associated worktree ID */
+  worktreeId?: string;
+}
+
+/** Terminal layout metadata */
+export interface TerminalLayout {
+  /** Grid configuration (optional for future use) */
+  grid?: {
+    rows: number;
+    cols: number;
+  };
+  /** Focused terminal ID */
+  focusedTerminalId?: string;
+  /** Maximized terminal ID */
+  maximizedTerminalId?: string;
+}
+
+/** Per-project state snapshot */
+export interface ProjectState {
+  /** ID of the project this state belongs to */
+  projectId: string;
+  /** Active worktree ID */
+  activeWorktreeId?: string;
+  /** Sidebar width */
+  sidebarWidth: number;
+  /** Terminal snapshots */
+  terminals: TerminalSnapshot[];
+  /** Terminal layout metadata */
+  terminalLayout?: TerminalLayout;
+}
+
+// ============================================================================
 // Re-exports
 // ============================================================================
 

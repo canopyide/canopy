@@ -88,6 +88,16 @@ const CHANNELS = {
   EVENT_INSPECTOR_EVENT: "event-inspector:event",
   EVENT_INSPECTOR_SUBSCRIBE: "event-inspector:subscribe",
   EVENT_INSPECTOR_UNSUBSCRIBE: "event-inspector:unsubscribe",
+
+  // Project channels
+  PROJECT_GET_ALL: "project:get-all",
+  PROJECT_GET_CURRENT: "project:get-current",
+  PROJECT_ADD: "project:add",
+  PROJECT_REMOVE: "project:remove",
+  PROJECT_UPDATE: "project:update",
+  PROJECT_SWITCH: "project:switch",
+  PROJECT_OPEN_DIALOG: "project:open-dialog",
+  PROJECT_ON_SWITCH: "project:on-switch",
 } as const;
 
 // Inlined types (must match electron/ipc/types.ts)
@@ -273,6 +283,18 @@ interface EventFilterOptions {
   before?: number;
 }
 
+// Project types
+interface Project {
+  id: string;
+  path: string;
+  name: string;
+  emoji: string;
+  aiGeneratedName?: string;
+  aiGeneratedEmoji?: string;
+  lastOpened: number;
+  color?: string;
+}
+
 // Error types for IPC
 type ErrorType = "git" | "process" | "filesystem" | "network" | "config" | "unknown";
 type RetryAction = "copytree" | "devserver" | "terminal" | "git" | "worktree";
@@ -362,6 +384,16 @@ export interface ElectronAPI {
     subscribe(): void;
     unsubscribe(): void;
     onEvent(callback: (event: EventRecord) => void): () => void;
+  };
+  project: {
+    getAll(): Promise<Project[]>;
+    getCurrent(): Promise<Project | null>;
+    add(path: string): Promise<Project>;
+    remove(projectId: string): Promise<void>;
+    update(projectId: string, updates: Partial<Project>): Promise<Project>;
+    switch(projectId: string): Promise<Project>;
+    openDialog(): Promise<string | null>;
+    onSwitch(callback: (project: Project) => void): () => void;
   };
 }
 
@@ -566,6 +598,34 @@ const api: ElectronAPI = {
         callback(eventRecord);
       ipcRenderer.on(CHANNELS.EVENT_INSPECTOR_EVENT, handler);
       return () => ipcRenderer.removeListener(CHANNELS.EVENT_INSPECTOR_EVENT, handler);
+    },
+  },
+
+  // ==========================================
+  // Project API
+  // ==========================================
+  project: {
+    getAll: (): Promise<Project[]> => ipcRenderer.invoke(CHANNELS.PROJECT_GET_ALL),
+
+    getCurrent: (): Promise<Project | null> => ipcRenderer.invoke(CHANNELS.PROJECT_GET_CURRENT),
+
+    add: (path: string): Promise<Project> => ipcRenderer.invoke(CHANNELS.PROJECT_ADD, path),
+
+    remove: (projectId: string): Promise<void> =>
+      ipcRenderer.invoke(CHANNELS.PROJECT_REMOVE, projectId),
+
+    update: (projectId: string, updates: Partial<Project>): Promise<Project> =>
+      ipcRenderer.invoke(CHANNELS.PROJECT_UPDATE, projectId, updates),
+
+    switch: (projectId: string): Promise<Project> =>
+      ipcRenderer.invoke(CHANNELS.PROJECT_SWITCH, projectId),
+
+    openDialog: (): Promise<string | null> => ipcRenderer.invoke(CHANNELS.PROJECT_OPEN_DIALOG),
+
+    onSwitch: (callback: (project: Project) => void) => {
+      const handler = (_event: Electron.IpcRendererEvent, project: Project) => callback(project);
+      ipcRenderer.on(CHANNELS.PROJECT_ON_SWITCH, handler);
+      return () => ipcRenderer.removeListener(CHANNELS.PROJECT_ON_SWITCH, handler);
     },
   },
 };

@@ -13,6 +13,8 @@ import { setLoggerWindow } from "./utils/logger.js";
 import { EventBuffer } from "./services/EventBuffer.js";
 import { events, ALL_EVENT_TYPES } from "./services/events.js";
 import { CHANNELS } from "./ipc/channels.js";
+import { createApplicationMenu } from "./menu.js";
+import { projectStore } from "./services/ProjectStore.js";
 
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
@@ -38,7 +40,7 @@ let eventBufferUnsubscribe: (() => void) | null = null;
 // Terminal ID for the default terminal (for backwards compatibility with renderer)
 const DEFAULT_TERMINAL_ID = "default";
 
-function createWindow(): void {
+async function createWindow(): Promise<void> {
   console.log("[MAIN] Creating window...");
   mainWindow = createWindowWithState({
     minWidth: 800,
@@ -58,15 +60,9 @@ function createWindow(): void {
   // Set up logger window reference for IPC log streaming
   setLoggerWindow(mainWindow);
 
-  // In dev, load Vite dev server. In prod, load built file.
-  if (process.env.NODE_ENV === "development") {
-    console.log("[MAIN] Loading Vite dev server at http://localhost:5173");
-    mainWindow.loadURL("http://localhost:5173");
-    mainWindow.webContents.openDevTools();
-  } else {
-    console.log("[MAIN] Loading production build");
-    mainWindow.loadFile(path.join(__dirname, "../dist/index.html"));
-  }
+  // Create application menu
+  console.log("[MAIN] Creating application menu...");
+  createApplicationMenu(mainWindow);
 
   // --- PTY MANAGER SETUP ---
   // Create PtyManager instance to manage all terminal processes
@@ -90,6 +86,13 @@ function createWindow(): void {
   });
   console.log("[MAIN] DevServerManager initialized successfully");
 
+  // --- PROJECT STORE SETUP ---
+  // Initialize ProjectStore
+  console.log("[MAIN] Initializing ProjectStore...");
+  await projectStore.initialize();
+  await projectStore.migrateFromRecentDirectories();
+  console.log("[MAIN] ProjectStore initialized successfully");
+
   // --- EVENT BUFFER SETUP ---
   // Create and start EventBuffer to capture all events
   console.log("[MAIN] Initializing EventBuffer...");
@@ -97,6 +100,7 @@ function createWindow(): void {
   eventBuffer.start();
 
   // Register IPC handlers with PtyManager, DevServerManager, WorktreeService, and EventBuffer
+  // IMPORTANT: Register handlers BEFORE loading renderer to avoid race conditions
   console.log("[MAIN] Registering IPC handlers...");
   cleanupIpcHandlers = registerIpcHandlers(
     mainWindow,
@@ -122,11 +126,11 @@ function createWindow(): void {
   const unsubscribers: Array<() => void> = [];
 
   // Listen for subscription status from renderer
-  ipcMain.on("event-inspector:subscribe", () => {
+  ipcMain.on(CHANNELS.EVENT_INSPECTOR_SUBSCRIBE, () => {
     eventInspectorActive = true;
     console.log("[MAIN] Event inspector subscribed");
   });
-  ipcMain.on("event-inspector:unsubscribe", () => {
+  ipcMain.on(CHANNELS.EVENT_INSPECTOR_UNSUBSCRIBE, () => {
     eventInspectorActive = false;
     console.log("[MAIN] Event inspector unsubscribed");
   });
@@ -158,10 +162,21 @@ function createWindow(): void {
 
   eventBufferUnsubscribe = () => {
     unsubscribers.forEach((unsub) => unsub());
-    ipcMain.removeAllListeners("event-inspector:subscribe");
-    ipcMain.removeAllListeners("event-inspector:unsubscribe");
+    ipcMain.removeAllListeners(CHANNELS.EVENT_INSPECTOR_SUBSCRIBE);
+    ipcMain.removeAllListeners(CHANNELS.EVENT_INSPECTOR_UNSUBSCRIBE);
   };
   console.log("[MAIN] EventBuffer initialized and events forwarding to renderer (when subscribed)");
+
+  // All IPC handlers and services are now ready - load renderer
+  console.log("[MAIN] All services initialized, loading renderer...");
+  if (process.env.NODE_ENV === "development") {
+    console.log("[MAIN] Loading Vite dev server at http://localhost:5173");
+    mainWindow.loadURL("http://localhost:5173");
+    mainWindow.webContents.openDevTools();
+  } else {
+    console.log("[MAIN] Loading production build");
+    mainWindow.loadFile(path.join(__dirname, "../dist/index.html"));
+  }
 
   // Spawn the default terminal for backwards compatibility with the renderer
   console.log("[MAIN] Spawning default terminal...");

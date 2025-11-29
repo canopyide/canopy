@@ -74,6 +74,18 @@ export const CHANNELS = {
   EVENT_INSPECTOR_GET_FILTERED: "event-inspector:get-filtered",
   EVENT_INSPECTOR_CLEAR: "event-inspector:clear",
   EVENT_INSPECTOR_EVENT: "event-inspector:event",
+  EVENT_INSPECTOR_SUBSCRIBE: "event-inspector:subscribe",
+  EVENT_INSPECTOR_UNSUBSCRIBE: "event-inspector:unsubscribe",
+
+  // Project channels
+  PROJECT_GET_ALL: "project:get-all",
+  PROJECT_GET_CURRENT: "project:get-current",
+  PROJECT_ADD: "project:add",
+  PROJECT_REMOVE: "project:remove",
+  PROJECT_UPDATE: "project:update",
+  PROJECT_SWITCH: "project:switch",
+  PROJECT_OPEN_DIALOG: "project:open-dialog",
+  PROJECT_ON_SWITCH: "project:on-switch",
 } as const;
 
 export type ChannelName = (typeof CHANNELS)[keyof typeof CHANNELS];

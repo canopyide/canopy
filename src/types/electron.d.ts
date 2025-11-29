@@ -76,6 +76,17 @@ interface RecentDirectory {
   name: string;
 }
 
+interface Project {
+  id: string;
+  path: string;
+  name: string;
+  emoji: string;
+  aiGeneratedName?: string;
+  aiGeneratedEmoji?: string;
+  lastOpened: number;
+  color?: string;
+}
+
 interface AppState {
   rootPath?: string;
   terminals: TerminalState[];
@@ -213,6 +224,16 @@ export interface ElectronAPI {
     subscribe(): void;
     unsubscribe(): void;
     onEvent(callback: (event: EventRecord) => void): () => void;
+  };
+  project: {
+    getAll(): Promise<Project[]>;
+    getCurrent(): Promise<Project | null>;
+    add(path: string): Promise<Project>;
+    remove(projectId: string): Promise<void>;
+    update(projectId: string, updates: Partial<Project>): Promise<Project>;
+    switch(projectId: string): Promise<Project>;
+    openDialog(): Promise<string | null>;
+    onSwitch(callback: (project: Project) => void): () => void;
   };
 }
 
