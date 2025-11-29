@@ -18,7 +18,19 @@ import {
   DropdownMenuTrigger,
 } from "../ui/dropdown-menu";
 import { ConfirmDialog } from "../Terminal/ConfirmDialog";
-import { Sparkles, AlertCircle, Loader2 } from "lucide-react";
+import {
+  Sparkles,
+  AlertCircle,
+  Loader2,
+  Copy,
+  Syringe,
+  Code,
+  CircleDot,
+  GitPullRequest,
+  Play,
+  Plus,
+  Terminal,
+} from "lucide-react";
 
 export interface WorktreeCardProps {
   worktree: WorktreeState;
@@ -454,9 +466,11 @@ export function WorktreeCard({
               e.stopPropagation();
               onCopyTree();
             }}
-            className="text-xs px-2 py-1 border border-gray-600 rounded hover:bg-gray-800 hover:border-gray-500 text-gray-300"
+            className="p-1.5 border border-gray-600 rounded hover:bg-gray-800 hover:border-gray-500 text-gray-300 transition-transform active:scale-95 focus-visible:ring-2 focus-visible:ring-gray-400 focus-visible:outline-none"
+            title="Copy context to clipboard"
+            aria-label="Copy context to clipboard"
           >
-            Copy
+            <Copy size={14} />
           </button>
           {onInjectContext && (
             <button
@@ -466,14 +480,18 @@ export function WorktreeCard({
               }}
               disabled={isInjecting}
               className={cn(
-                "text-xs px-2 py-1 border border-purple-600 rounded text-purple-400",
+                "p-1.5 border border-purple-600 rounded text-purple-400 transition-transform active:scale-95 focus-visible:ring-2 focus-visible:ring-purple-400 focus-visible:outline-none",
                 isInjecting
                   ? "opacity-50 cursor-not-allowed"
                   : "hover:bg-purple-900 hover:border-purple-500"
               )}
               title="Inject context into focused terminal (Ctrl+Shift+I)"
+              aria-label={
+                isInjecting ? "Injecting context..." : "Inject context into focused terminal"
+              }
+              aria-busy={isInjecting}
             >
-              {isInjecting ? "..." : "Inject"}
+              {isInjecting ? <Loader2 size={14} className="animate-spin" /> : <Syringe size={14} />}
             </button>
           )}
           <button
@@ -481,9 +499,11 @@ export function WorktreeCard({
               e.stopPropagation();
               onOpenEditor();
             }}
-            className="text-xs px-2 py-1 border border-gray-600 rounded hover:bg-gray-800 hover:border-gray-500 text-gray-300"
+            className="p-1.5 border border-gray-600 rounded hover:bg-gray-800 hover:border-gray-500 text-gray-300 transition-transform active:scale-95 focus-visible:ring-2 focus-visible:ring-gray-400 focus-visible:outline-none"
+            title="Open in code editor"
+            aria-label="Open in code editor"
           >
-            Code
+            <Code size={14} />
           </button>
           {worktree.issueNumber && (
             <button
@@ -491,9 +511,11 @@ export function WorktreeCard({
                 e.stopPropagation();
                 handleOpenIssue();
               }}
-              className="text-xs px-2 py-1 border border-blue-600 rounded hover:bg-blue-900 hover:border-blue-500 text-[var(--color-status-info)]"
+              className="p-1.5 border border-blue-600 rounded hover:bg-blue-900 hover:border-blue-500 text-[var(--color-status-info)] transition-transform active:scale-95 focus-visible:ring-2 focus-visible:ring-blue-400 focus-visible:outline-none"
+              title={`Open issue #${worktree.issueNumber}`}
+              aria-label={`Open issue #${worktree.issueNumber}`}
             >
-              Issue
+              <CircleDot size={14} />
             </button>
           )}
           {worktree.prNumber && (
@@ -502,9 +524,11 @@ export function WorktreeCard({
                 e.stopPropagation();
                 handleOpenPR();
               }}
-              className="text-xs px-2 py-1 border border-green-600 rounded hover:bg-green-900 hover:border-green-500 text-[var(--color-status-success)]"
+              className="p-1.5 border border-green-600 rounded hover:bg-green-900 hover:border-green-500 text-[var(--color-status-success)] transition-transform active:scale-95 focus-visible:ring-2 focus-visible:ring-green-400 focus-visible:outline-none"
+              title={`Open pull request #${worktree.prNumber}`}
+              aria-label={`Open pull request #${worktree.prNumber}`}
             >
-              PR
+              <GitPullRequest size={14} />
             </button>
           )}
           {/* Recipe dropdown */}
@@ -515,13 +539,24 @@ export function WorktreeCard({
                   onClick={(e) => e.stopPropagation()}
                   disabled={runningRecipeId !== null}
                   className={cn(
-                    "text-xs px-2 py-1 border border-orange-600 rounded text-orange-400",
+                    "p-1.5 border border-orange-600 rounded text-orange-400 transition-transform active:scale-95 focus-visible:ring-2 focus-visible:ring-orange-400 focus-visible:outline-none",
                     runningRecipeId !== null
                       ? "opacity-50 cursor-not-allowed"
                       : "hover:bg-orange-900 hover:border-orange-500"
                   )}
+                  title={`Run recipe (${recipes.length} available)`}
+                  aria-label={
+                    runningRecipeId
+                      ? "Running recipe..."
+                      : `Run recipe (${recipes.length} available)`
+                  }
+                  aria-busy={runningRecipeId !== null}
                 >
-                  {runningRecipeId ? "..." : "▶ Recipe"}
+                  {runningRecipeId ? (
+                    <Loader2 size={14} className="animate-spin" />
+                  ) : (
+                    <Play size={14} />
+                  )}
                 </button>
               </DropdownMenuTrigger>
               <DropdownMenuContent onClick={(e) => e.stopPropagation()}>
@@ -546,10 +581,11 @@ export function WorktreeCard({
                 e.stopPropagation();
                 onCreateRecipe();
               }}
-              className="text-xs px-2 py-1 border border-gray-600 rounded hover:bg-gray-800 hover:border-gray-500 text-gray-300"
+              className="p-1.5 border border-gray-600 rounded hover:bg-gray-800 hover:border-gray-500 text-gray-300 transition-transform active:scale-95 focus-visible:ring-2 focus-visible:ring-gray-400 focus-visible:outline-none"
               title="Create terminal recipe"
+              aria-label="Create terminal recipe"
             >
-              +Recipe
+              <Plus size={14} />
             </button>
           )}
           {/* Terminal bulk actions dropdown */}
@@ -558,10 +594,12 @@ export function WorktreeCard({
               <DropdownMenuTrigger asChild>
                 <button
                   onClick={(e) => e.stopPropagation()}
-                  className="text-xs px-2 py-1 border border-cyan-600 rounded text-cyan-400 hover:bg-cyan-900 hover:border-cyan-500"
-                  title="Terminal actions for this worktree"
+                  className="p-1.5 border border-cyan-600 rounded text-cyan-400 hover:bg-cyan-900 hover:border-cyan-500 transition-transform active:scale-95 focus-visible:ring-2 focus-visible:ring-cyan-400 focus-visible:outline-none flex items-center gap-1"
+                  title={`Terminal actions (${totalTerminalCount} terminal${totalTerminalCount !== 1 ? "s" : ""})`}
+                  aria-label={`Terminal actions (${totalTerminalCount} terminal${totalTerminalCount !== 1 ? "s" : ""})`}
                 >
-                  Terms ({totalTerminalCount})
+                  <Terminal size={14} />
+                  <span className="text-xs">{totalTerminalCount}</span>
                 </button>
               </DropdownMenuTrigger>
               <DropdownMenuContent onClick={(e) => e.stopPropagation()}>
