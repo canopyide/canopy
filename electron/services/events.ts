@@ -197,6 +197,25 @@ export type CanopyEventMap = {
     traceId?: string;
   };
 
+  /**
+   * Emitted when artifacts (code blocks or patches) are extracted from agent output.
+   */
+  "artifact:detected": {
+    agentId: string;
+    terminalId: string;
+    worktreeId?: string;
+    artifacts: Array<{
+      id: string;
+      type: "code" | "patch" | "file" | "summary" | "other";
+      language?: string;
+      filename?: string;
+      content: string;
+      extractedAt: number;
+    }>;
+    timestamp: number;
+    traceId?: string;
+  };
+
   // ============================================================================
   // Task Lifecycle Events (Future-proof for task management)
   // ============================================================================
@@ -341,6 +360,7 @@ export const ALL_EVENT_TYPES: Array<keyof CanopyEventMap> = [
   "agent:completed",
   "agent:failed",
   "agent:killed",
+  "artifact:detected",
   "task:created",
   "task:assigned",
   "task:state-changed",

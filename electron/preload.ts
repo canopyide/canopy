@@ -40,6 +40,11 @@ import type {
   AIServiceState,
   ProjectIdentity,
   AgentStateChangePayload,
+  ArtifactDetectedPayload,
+  SaveArtifactOptions,
+  SaveArtifactResult,
+  ApplyPatchOptions,
+  ApplyPatchResult,
   ElectronAPI,
   CreateWorktreeOptions,
   EventContext,
@@ -86,6 +91,11 @@ const CHANNELS = {
   // Agent state channels
   AGENT_STATE_CHANGED: "agent:state-changed",
   AGENT_GET_STATE: "agent:get-state",
+
+  // Artifact channels
+  ARTIFACT_DETECTED: "artifact:detected",
+  ARTIFACT_SAVE_TO_FILE: "artifact:save-to-file",
+  ARTIFACT_APPLY_PATCH: "artifact:apply-patch",
 
   // CopyTree channels
   COPYTREE_GENERATE: "copytree:generate",
@@ -308,6 +318,50 @@ const api: ElectronAPI = {
       ipcRenderer.on(CHANNELS.AGENT_STATE_CHANGED, handler);
       return () => ipcRenderer.removeListener(CHANNELS.AGENT_STATE_CHANGED, handler);
     },
+  },
+
+  // ==========================================
+  // Artifact API
+  // ==========================================
+  artifact: {
+    onDetected: (callback: (data: ArtifactDetectedPayload) => void) => {
+      const handler = (_event: Electron.IpcRendererEvent, data: unknown) => {
+        // Type guard - validate payload structure deeply
+        if (
+          typeof data === "object" &&
+          data !== null &&
+          "agentId" in data &&
+          "terminalId" in data &&
+          "artifacts" in data &&
+          "timestamp" in data &&
+          typeof (data as any).agentId === "string" &&
+          typeof (data as any).terminalId === "string" &&
+          typeof (data as any).timestamp === "number" &&
+          Array.isArray((data as any).artifacts) &&
+          // Validate each artifact object
+          (data as any).artifacts.every((artifact: any) =>
+            typeof artifact === "object" &&
+            artifact !== null &&
+            typeof artifact.id === "string" &&
+            typeof artifact.type === "string" &&
+            typeof artifact.content === "string" &&
+            typeof artifact.extractedAt === "number"
+          )
+        ) {
+          callback(data as ArtifactDetectedPayload);
+        } else {
+          console.warn("[Preload] Invalid artifact:detected payload, dropping event");
+        }
+      };
+      ipcRenderer.on(CHANNELS.ARTIFACT_DETECTED, handler);
+      return () => ipcRenderer.removeListener(CHANNELS.ARTIFACT_DETECTED, handler);
+    },
+
+    saveToFile: (options: SaveArtifactOptions): Promise<SaveArtifactResult | null> =>
+      ipcRenderer.invoke(CHANNELS.ARTIFACT_SAVE_TO_FILE, options),
+
+    applyPatch: (options: ApplyPatchOptions): Promise<ApplyPatchResult> =>
+      ipcRenderer.invoke(CHANNELS.ARTIFACT_APPLY_PATCH, options),
   },
 
   // ==========================================
