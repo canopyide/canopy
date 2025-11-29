@@ -119,3 +119,20 @@ export type {
 
 // Keymap types - keyboard shortcuts
 export type { KeyAction, KeymapPreset, KeyMapConfig } from "./keymap.js";
+
+// Event types - run orchestration and event context
+export type {
+  // Event context for correlation
+  EventContext,
+  // Run state and metadata
+  RunState,
+  RunMetadata,
+  // Run event payloads
+  RunStartedPayload,
+  RunProgressPayload,
+  RunCompletedPayload,
+  RunFailedPayload,
+  RunCancelledPayload,
+  RunPausedPayload,
+  RunResumedPayload,
+} from "./events.js";

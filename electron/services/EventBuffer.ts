@@ -25,6 +25,14 @@ export interface FilterOptions {
   agentId?: string;
   /** Filter by task ID if present in payload */
   taskId?: string;
+  /** Filter by run ID if present in payload (for multi-agent orchestration) */
+  runId?: string;
+  /** Filter by terminal ID if present in payload */
+  terminalId?: string;
+  /** Filter by GitHub issue number if present in payload */
+  issueNumber?: number;
+  /** Filter by GitHub PR number if present in payload */
+  prNumber?: number;
   /** Filter by trace ID to track event chains */
   traceId?: string;
   /** Text search in payload (JSON stringified) */
@@ -212,6 +220,38 @@ export class EventBuffer {
       filtered = filtered.filter((event) => {
         const payload = event.payload;
         return payload && payload.taskId === options.taskId;
+      });
+    }
+
+    // Filter by run ID (for multi-agent orchestration)
+    if (options.runId) {
+      filtered = filtered.filter((event) => {
+        const payload = event.payload;
+        return payload && payload.runId === options.runId;
+      });
+    }
+
+    // Filter by terminal ID
+    if (options.terminalId) {
+      filtered = filtered.filter((event) => {
+        const payload = event.payload;
+        return payload && payload.terminalId === options.terminalId;
+      });
+    }
+
+    // Filter by GitHub issue number
+    if (options.issueNumber !== undefined) {
+      filtered = filtered.filter((event) => {
+        const payload = event.payload;
+        return payload && payload.issueNumber === options.issueNumber;
+      });
+    }
+
+    // Filter by GitHub PR number
+    if (options.prNumber !== undefined) {
+      filtered = filtered.filter((event) => {
+        const payload = event.payload;
+        return payload && payload.prNumber === options.prNumber;
       });
     }
 

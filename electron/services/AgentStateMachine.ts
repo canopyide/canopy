@@ -196,7 +196,6 @@ export interface PromptDetectionOptions {
  * 3. Buffer-based heuristics (short, no trailing newline)
  * 4. Timing-based heuristics (silence after incomplete output)
  *
-<<<<<<< HEAD
  * @param data - String data to analyze
  * @param options - Optional timing, process state, and terminal type
  * @returns true if data appears to be a prompt, false otherwise

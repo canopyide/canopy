@@ -13,6 +13,7 @@ import type {
   ProjectSettings,
   RunCommand,
 } from "./domain.js";
+import type { EventContext, RunMetadata } from "./events.js";
 
 // ============================================================================
 // Terminal IPC Types
@@ -266,6 +267,16 @@ export interface EventFilterOptions {
   agentId?: string;
   /** Filter by task ID */
   taskId?: string;
+  /** Filter by run ID (for multi-agent orchestration) */
+  runId?: string;
+  /** Filter by terminal ID */
+  terminalId?: string;
+  /** Filter by GitHub issue number */
+  issueNumber?: number;
+  /** Filter by GitHub PR number */
+  prNumber?: number;
+  /** Filter by trace ID */
+  traceId?: string;
   /** Search string */
   search?: string;
   /** After timestamp filter */
@@ -569,6 +580,20 @@ export interface ElectronAPI {
     setEnabled(enabled: boolean): Promise<void>;
     validateKey(apiKey: string): Promise<boolean>;
     generateProjectIdentity(projectPath: string): Promise<ProjectIdentity | null>;
+  };
+  run: {
+    start(name: string, context?: EventContext, description?: string): Promise<string>;
+    updateProgress(runId: string, progress: number, message?: string): Promise<void>;
+    pause(runId: string, reason?: string): Promise<void>;
+    resume(runId: string): Promise<void>;
+    complete(runId: string): Promise<void>;
+    fail(runId: string, error: string): Promise<void>;
+    cancel(runId: string, reason?: string): Promise<void>;
+    get(runId: string): Promise<RunMetadata | undefined>;
+    getAll(): Promise<RunMetadata[]>;
+    getActive(): Promise<RunMetadata[]>;
+    clearFinished(olderThan?: number): Promise<number>;
+    onEvent(callback: (event: { type: string; payload: unknown }) => void): () => void;
   };
 }
 

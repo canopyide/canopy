@@ -5,6 +5,13 @@ import type {
   AgentState,
   TaskState,
   TerminalType,
+  RunStartedPayload,
+  RunProgressPayload,
+  RunCompletedPayload,
+  RunFailedPayload,
+  RunCancelledPayload,
+  RunPausedPayload,
+  RunResumedPayload,
 } from "../types/index.js";
 import type { WorktreeState } from "./WorktreeMonitor.js";
 
@@ -259,57 +266,47 @@ export type CanopyEventMap = {
   };
 
   // ============================================================================
-  // Run Events (Execution instances)
+  // Run Events (Multi-agent orchestration workflows)
   // ============================================================================
 
   /**
-   * Emitted when a new run (execution instance) starts.
-   * Runs track individual execution attempts, useful for retries and history.
+   * Emitted when a new run (multi-step workflow) starts.
+   * A "run" groups related agent/terminal operations into a cohesive workflow.
+   * Example: "work on issue #42" spawns agents, injects context, runs commands.
    */
-  "run:started": {
-    runId: string;
-    taskId?: string;
-    agentId: string;
-    startTime: number;
-  };
+  "run:started": RunStartedPayload;
 
   /**
    * Emitted to report run progress.
+   * Use this to track completion percentage and current step.
    */
-  "run:progress": {
-    runId: string;
-    step: string;
-    /** Progress percentage (0-100), if available */
-    percentage?: number;
-    timestamp: number;
-  };
+  "run:progress": RunProgressPayload;
 
   /**
    * Emitted when a run completes successfully.
+   * Includes duration for performance tracking.
    */
-  "run:completed": {
-    runId: string;
-    /** ID of the agent that executed this run */
-    agentId?: string;
-    /** ID of the task that was executed */
-    taskId?: string;
-    endTime: number;
-    /** Duration in milliseconds */
-    duration: number;
-  };
+  "run:completed": RunCompletedPayload;
 
   /**
-   * Emitted when a run encounters an error.
+   * Emitted when a run encounters an unrecoverable error.
    */
-  "run:error": {
-    runId: string;
-    /** ID of the agent that executed this run */
-    agentId?: string;
-    /** ID of the task that was executed */
-    taskId?: string;
-    error: string;
-    timestamp: number;
-  };
+  "run:failed": RunFailedPayload;
+
+  /**
+   * Emitted when a run is cancelled by user action.
+   */
+  "run:cancelled": RunCancelledPayload;
+
+  /**
+   * Emitted when a run is paused (waiting for input).
+   */
+  "run:paused": RunPausedPayload;
+
+  /**
+   * Emitted when a paused run is resumed.
+   */
+  "run:resumed": RunResumedPayload;
 };
 
 // 3. Create Bus
@@ -352,7 +349,10 @@ export const ALL_EVENT_TYPES: Array<keyof CanopyEventMap> = [
   "run:started",
   "run:progress",
   "run:completed",
-  "run:error",
+  "run:failed",
+  "run:cancelled",
+  "run:paused",
+  "run:resumed",
 ];
 
 class TypedEventBus {
