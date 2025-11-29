@@ -41,12 +41,7 @@ import { events } from "../services/events.js";
 import { projectStore } from "../services/ProjectStore.js";
 import type { Project } from "../types/index.js";
 import { getTranscriptManager } from "../services/TranscriptManager.js";
-import {
-  getAIConfig,
-  setAIConfig,
-  clearAIKey,
-  validateAIKey,
-} from "../services/ai/client.js";
+import { getAIConfig, setAIConfig, clearAIKey, validateAIKey } from "../services/ai/client.js";
 import { generateProjectIdentity } from "../services/ai/identity.js";
 import type {
   HistoryGetSessionsPayload,
@@ -1097,10 +1092,7 @@ export function registerIpcHandlers(
   /**
    * Set the AI model
    */
-  const handleAISetModel = async (
-    _event: Electron.IpcMainInvokeEvent,
-    model: string
-  ) => {
+  const handleAISetModel = async (_event: Electron.IpcMainInvokeEvent, model: string) => {
     if (typeof model !== "string" || !model.trim()) {
       throw new Error("Invalid model: must be a non-empty string");
     }
@@ -1112,10 +1104,7 @@ export function registerIpcHandlers(
   /**
    * Enable/disable AI features
    */
-  const handleAISetEnabled = async (
-    _event: Electron.IpcMainInvokeEvent,
-    enabled: boolean
-  ) => {
+  const handleAISetEnabled = async (_event: Electron.IpcMainInvokeEvent, enabled: boolean) => {
     setAIConfig({ enabled });
   };
   ipcMain.handle(CHANNELS.AI_SET_ENABLED, handleAISetEnabled);

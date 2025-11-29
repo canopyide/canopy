@@ -9,7 +9,18 @@ import { useState, useEffect } from "react";
 import { Button } from "@/components/ui/button";
 import { useErrors } from "@/hooks";
 import { useLogsStore } from "@/store";
-import { X, FileText, Trash2, Key, Check, AlertCircle, Loader2, Sparkles, FlaskConical, TreePine } from "lucide-react";
+import {
+  X,
+  FileText,
+  Trash2,
+  Key,
+  Check,
+  AlertCircle,
+  Loader2,
+  Sparkles,
+  FlaskConical,
+  TreePine,
+} from "lucide-react";
 import { cn } from "@/lib/utils";
 import type { AIConfig } from "@/types/electron";
 
@@ -21,7 +32,11 @@ interface SettingsDialogProps {
 type SettingsTab = "general" | "ai" | "troubleshooting";
 
 const AI_MODELS = [
-  { value: "gpt-5-nano", label: "GPT-5 Nano", description: "Fastest and most cost-effective (recommended)" },
+  {
+    value: "gpt-5-nano",
+    label: "GPT-5 Nano",
+    description: "Fastest and most cost-effective (recommended)",
+  },
   { value: "gpt-5-mini", label: "GPT-5 Mini", description: "Balanced speed and capability" },
   { value: "gpt-5.1", label: "GPT-5.1", description: "Most capable flagship model" },
 ];
@@ -36,7 +51,9 @@ export function SettingsDialog({ isOpen, onClose }: SettingsDialogProps) {
   const [apiKey, setApiKey] = useState("");
   const [isValidating, setIsValidating] = useState(false);
   const [isTesting, setIsTesting] = useState(false);
-  const [validationResult, setValidationResult] = useState<"success" | "error" | "test-success" | "test-error" | null>(null);
+  const [validationResult, setValidationResult] = useState<
+    "success" | "error" | "test-success" | "test-error" | null
+  >(null);
   const [selectedModel, setSelectedModel] = useState("gpt-5-nano");
 
   // Load AI config on mount
@@ -274,11 +291,7 @@ export function SettingsDialog({ isOpen, onClose }: SettingsDialogProps) {
                       size="sm"
                       className="min-w-[70px]"
                     >
-                      {isValidating ? (
-                        <Loader2 className="w-4 h-4 animate-spin" />
-                      ) : (
-                        "Save"
-                      )}
+                      {isValidating ? <Loader2 className="w-4 h-4 animate-spin" /> : "Save"}
                     </Button>
                     {aiConfig?.hasKey && (
                       <Button
@@ -318,8 +331,8 @@ export function SettingsDialog({ isOpen, onClose }: SettingsDialogProps) {
                   )}
 
                   <p className="text-xs text-gray-500">
-                    Required for AI-powered summaries, project naming, and context analysis.
-                    Your key is stored locally and never sent to our servers.
+                    Required for AI-powered summaries, project naming, and context analysis. Your
+                    key is stored locally and never sent to our servers.
                   </p>
                 </div>
 
@@ -389,7 +402,8 @@ export function SettingsDialog({ isOpen, onClose }: SettingsDialogProps) {
                     </span>
                   </label>
                   <p className="text-xs text-gray-500">
-                    When enabled, Canopy will use AI to generate worktree summaries and project identities.
+                    When enabled, Canopy will use AI to generate worktree summaries and project
+                    identities.
                   </p>
                 </div>
               </div>
@@ -428,7 +442,9 @@ export function SettingsDialog({ isOpen, onClose }: SettingsDialogProps) {
 
                 <div className="space-y-4">
                   <div>
-                    <h4 className="text-sm font-medium text-canopy-text mb-1">Keyboard Shortcuts</h4>
+                    <h4 className="text-sm font-medium text-canopy-text mb-1">
+                      Keyboard Shortcuts
+                    </h4>
                     <p className="text-xs text-gray-400 mb-3">
                       Use Cmd+Option+I (Mac) or Ctrl+Shift+I (Windows/Linux) to open DevTools.
                     </p>

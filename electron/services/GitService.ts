@@ -188,10 +188,7 @@ export class GitService {
         if (line.startsWith("worktree ")) {
           currentWorktree.path = line.replace("worktree ", "").trim();
         } else if (line.startsWith("branch ")) {
-          currentWorktree.branch = line
-            .replace("branch ", "")
-            .replace("refs/heads/", "")
-            .trim();
+          currentWorktree.branch = line.replace("branch ", "").replace("refs/heads/", "").trim();
         } else if (line.startsWith("bare")) {
           currentWorktree.bare = true;
         } else if (line === "") {

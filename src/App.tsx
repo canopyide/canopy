@@ -117,7 +117,8 @@ function SidebarContent() {
   }
 
   // Get root path from first worktree (assuming all worktrees are from the same repo)
-  const rootPath = worktrees.length > 0 && worktrees[0].path ? worktrees[0].path.split("/.git/")[0] : "";
+  const rootPath =
+    worktrees.length > 0 && worktrees[0].path ? worktrees[0].path.split("/.git/")[0] : "";
 
   return (
     <div className="p-4">

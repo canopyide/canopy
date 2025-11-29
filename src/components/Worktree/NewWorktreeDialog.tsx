@@ -131,7 +131,10 @@ export function NewWorktreeDialog({
       >
         {/* Header */}
         <div className="flex items-center justify-between p-6 border-b border-canopy-border">
-          <h2 id="new-worktree-title" className="text-lg font-medium text-canopy-text flex items-center gap-2">
+          <h2
+            id="new-worktree-title"
+            className="text-lg font-medium text-canopy-text flex items-center gap-2"
+          >
             <GitBranch className="w-5 h-5 text-canopy-accent" />
             Create New Worktree
           </h2>
@@ -195,7 +198,10 @@ export function NewWorktreeDialog({
 
               {/* Worktree Path */}
               <div className="space-y-2">
-                <label htmlFor="worktree-path" className="block text-sm font-medium text-canopy-text">
+                <label
+                  htmlFor="worktree-path"
+                  className="block text-sm font-medium text-canopy-text"
+                >
                   Worktree Path
                 </label>
                 <div className="flex gap-2">
@@ -219,7 +225,9 @@ export function NewWorktreeDialog({
                     <FolderOpen className="w-4 h-4" />
                   </Button>
                 </div>
-                <p className="text-xs text-gray-400">Directory where the worktree will be created</p>
+                <p className="text-xs text-gray-400">
+                  Directory where the worktree will be created
+                </p>
               </div>
 
               {/* Remote Checkbox */}

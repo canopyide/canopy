@@ -419,10 +419,7 @@ export class WorktreeService {
    * @param worktrees - Current worktree list (for sync after creation)
    * @throws Error if worktree creation fails
    */
-  public async createWorktree(
-    rootPath: string,
-    options: CreateWorktreeOptions
-  ): Promise<void> {
+  public async createWorktree(rootPath: string, options: CreateWorktreeOptions): Promise<void> {
     try {
       this.ensureGitService(rootPath);
       if (!this.gitService) {
@@ -456,12 +453,7 @@ export class WorktreeService {
       }));
 
       if (worktreeList.length > 0) {
-        await this.sync(
-          worktreeList,
-          this.activeWorktreeId,
-          this.mainBranch,
-          this.watchingEnabled
-        );
+        await this.sync(worktreeList, this.activeWorktreeId, this.mainBranch, this.watchingEnabled);
       }
 
       logInfo("Worktree created successfully", {
