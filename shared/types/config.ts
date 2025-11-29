@@ -66,6 +66,12 @@ export interface MonitorConfig {
   pollIntervalActive?: number;
   /** Polling interval for background worktrees in ms (default: 10000, min: 5000, max: 300000) */
   pollIntervalBackground?: number;
+  /** Maximum polling interval when idle in ms (default: 30000) */
+  pollIntervalMax?: number;
+  /** Enable adaptive backoff based on Git operation duration (default: true) */
+  adaptiveBackoff?: boolean;
+  /** Number of consecutive failures before circuit breaker triggers (default: 3) */
+  circuitBreakerThreshold?: number;
 }
 
 // ============================================================================

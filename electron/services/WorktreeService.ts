@@ -114,6 +114,9 @@ export class WorktreeService {
   private pollIntervalActive: number = DEFAULT_ACTIVE_WORKTREE_INTERVAL_MS;
   private pollIntervalBackground: number = DEFAULT_BACKGROUND_WORKTREE_INTERVAL_MS;
   private aiDebounceMs: number = DEFAULT_AI_DEBOUNCE_MS;
+  private adaptiveBackoff: boolean = DEFAULT_CONFIG.monitor?.adaptiveBackoff ?? true;
+  private pollIntervalMax: number = DEFAULT_CONFIG.monitor?.pollIntervalMax ?? 30000;
+  private circuitBreakerThreshold: number = DEFAULT_CONFIG.monitor?.circuitBreakerThreshold ?? 3;
   private gitService: GitService | null = null;
   private rootPath: string | null = null;
 
@@ -168,6 +171,16 @@ export class WorktreeService {
       if (monitorConfig?.pollIntervalBackground !== undefined) {
         this.pollIntervalBackground = monitorConfig.pollIntervalBackground;
       }
+      // Update adaptive backoff settings from config
+      if (monitorConfig?.adaptiveBackoff !== undefined) {
+        this.adaptiveBackoff = monitorConfig.adaptiveBackoff;
+      }
+      if (monitorConfig?.pollIntervalMax !== undefined) {
+        this.pollIntervalMax = monitorConfig.pollIntervalMax;
+      }
+      if (monitorConfig?.circuitBreakerThreshold !== undefined) {
+        this.circuitBreakerThreshold = monitorConfig.circuitBreakerThreshold;
+      }
 
       // Update AI debounce from config
       if (aiConfig?.summaryDebounceMs !== undefined) {
@@ -209,6 +222,13 @@ export class WorktreeService {
 
           // Update AI debounce
           existingMonitor.setAIBufferDelay(this.aiDebounceMs);
+
+          // Update adaptive backoff settings
+          existingMonitor.setAdaptiveBackoffConfig(
+            this.adaptiveBackoff,
+            this.pollIntervalMax,
+            this.circuitBreakerThreshold
+          );
         } else {
           // Create new monitor
           logInfo("Creating new WorktreeMonitor", { id: wt.id, path: wt.path });
@@ -225,6 +245,13 @@ export class WorktreeService {
 
           // Set AI debounce
           monitor.setAIBufferDelay(this.aiDebounceMs);
+
+          // Set adaptive backoff settings
+          monitor.setAdaptiveBackoffConfig(
+            this.adaptiveBackoff,
+            this.pollIntervalMax,
+            this.circuitBreakerThreshold
+          );
 
           // Subscribe to monitor updates and forward to renderer
           monitor.on("update", (state: WorktreeState) => {
