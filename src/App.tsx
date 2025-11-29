@@ -195,6 +195,10 @@ function App() {
   // Track if state has been restored (prevent StrictMode double-execution)
   const hasRestoredState = useRef(false);
 
+  // Track Cmd/Ctrl+K chord state for focus mode shortcut (Cmd+K Z)
+  const isCtrlKPressed = useRef(false);
+  const chordTimeout = useRef<NodeJS.Timeout | null>(null);
+
   // Listen for agent state changes from main process
   useEffect(() => {
     if (!isElectronAvailable()) return;
@@ -328,6 +332,49 @@ function App() {
   // Panel toggles
   useKeybinding("panel.logs", () => toggleLogsPanel(), { enabled: electronAvailable });
   useKeybinding("panel.events", () => toggleEventInspector(), { enabled: electronAvailable });
+
+  // Focus Mode Chord (Cmd+K Z) - Manual listener because it's a chord
+  useEffect(() => {
+    if (!electronAvailable) return;
+
+    const handleKeyDown = (e: KeyboardEvent) => {
+      // Handle Cmd/Ctrl+K chord for focus mode (Cmd+K Z)
+      if ((e.metaKey || e.ctrlKey) && e.key === "k" && !e.shiftKey) {
+        e.preventDefault();
+        // Start chord sequence - set flag and timeout
+        isCtrlKPressed.current = true;
+        if (chordTimeout.current) {
+          clearTimeout(chordTimeout.current);
+        }
+        // Reset chord after 1 second if no follow-up key
+        chordTimeout.current = setTimeout(() => {
+          isCtrlKPressed.current = false;
+        }, 1000);
+        return;
+      }
+
+      // Check for Z key after Cmd+K (focus mode toggle)
+      if (isCtrlKPressed.current && (e.key === "z" || e.key === "Z") && !e.metaKey && !e.ctrlKey) {
+        e.preventDefault();
+        isCtrlKPressed.current = false;
+        if (chordTimeout.current) {
+          clearTimeout(chordTimeout.current);
+          chordTimeout.current = null;
+        }
+        // Dispatch custom event for focus mode toggle
+        window.dispatchEvent(new CustomEvent("canopy:toggle-focus-mode"));
+        return;
+      }
+    };
+
+    window.addEventListener("keydown", handleKeyDown);
+    return () => {
+      window.removeEventListener("keydown", handleKeyDown);
+      if (chordTimeout.current) {
+        clearTimeout(chordTimeout.current);
+      }
+    };
+  }, [electronAvailable]);
 
   if (!isElectronAvailable()) {
     return (

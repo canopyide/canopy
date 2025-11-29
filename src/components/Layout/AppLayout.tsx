@@ -3,6 +3,7 @@ import { Toolbar } from "./Toolbar";
 import { Sidebar } from "./Sidebar";
 import { LogsPanel } from "../Logs";
 import { EventInspectorPanel } from "../EventInspector";
+import { useFocusStore, useLogsStore, useEventStore } from "@/store";
 
 interface AppLayoutProps {
   children?: ReactNode;
@@ -31,9 +32,21 @@ export function AppLayout({
 }: AppLayoutProps) {
   const [sidebarWidth, setSidebarWidth] = useState(DEFAULT_SIDEBAR_WIDTH);
 
-  // Restore sidebar width from persisted state
+  // Focus mode state
+  const isFocusMode = useFocusStore((state) => state.isFocusMode);
+  const toggleFocusMode = useFocusStore((state) => state.toggleFocusMode);
+  const setFocusMode = useFocusStore((state) => state.setFocusMode);
+  const savedPanelState = useFocusStore((state) => state.savedPanelState);
+
+  // Panel states from stores
+  const logsOpen = useLogsStore((state) => state.isOpen);
+  const setLogsOpen = useLogsStore((state) => state.setOpen);
+  const eventInspectorOpen = useEventStore((state) => state.isOpen);
+  const setEventInspectorOpen = useEventStore((state) => state.setOpen);
+
+  // Restore sidebar width and focus mode from persisted state
   useEffect(() => {
-    const restoreSidebarWidth = async () => {
+    const restoreState = async () => {
       try {
         const appState = await window.electron.app.getState();
         if (appState.sidebarWidth != null) {
@@ -44,15 +57,28 @@ export function AppLayout({
           );
           setSidebarWidth(clampedWidth);
         }
+        // Restore focus mode state
+        if (appState.focusMode) {
+          // Restore the saved panel state from before focus mode was activated
+          const savedState = appState.focusPanelState ?? {
+            sidebarWidth: appState.sidebarWidth ?? DEFAULT_SIDEBAR_WIDTH,
+            logsOpen: false,
+            eventInspectorOpen: false,
+          };
+          setFocusMode(true, savedState);
+        }
       } catch (error) {
-        console.error("Failed to restore sidebar width:", error);
+        console.error("Failed to restore app state:", error);
       }
     };
-    restoreSidebarWidth();
-  }, []);
+    restoreState();
+  }, [setFocusMode]);
 
   // Persist sidebar width changes (debounced via the resize handler)
   useEffect(() => {
+    // Don't persist when in focus mode (sidebar is collapsed)
+    if (isFocusMode) return;
+
     const persistSidebarWidth = async () => {
       try {
         await window.electron.app.setState({ sidebarWidth });
@@ -64,7 +90,74 @@ export function AppLayout({
     // Only persist after initial mount (to avoid overwriting on restore)
     const timer = setTimeout(persistSidebarWidth, 300);
     return () => clearTimeout(timer);
-  }, [sidebarWidth]);
+  }, [sidebarWidth, isFocusMode]);
+
+  // Persist focus mode state changes
+  useEffect(() => {
+    const persistFocusMode = async () => {
+      try {
+        await window.electron.app.setState({ focusMode: isFocusMode });
+      } catch (error) {
+        console.error("Failed to persist focus mode:", error);
+      }
+    };
+
+    // Debounce to avoid rapid persistence during state transitions
+    const timer = setTimeout(persistFocusMode, 100);
+    return () => clearTimeout(timer);
+  }, [isFocusMode]);
+
+  // Handle focus mode toggle
+  const handleToggleFocusMode = useCallback(async () => {
+    if (isFocusMode) {
+      // Exiting focus mode - restore panel states
+      if (savedPanelState) {
+        setSidebarWidth(savedPanelState.sidebarWidth);
+        setLogsOpen(savedPanelState.logsOpen);
+        setEventInspectorOpen(savedPanelState.eventInspectorOpen);
+      }
+      toggleFocusMode({ sidebarWidth, logsOpen, eventInspectorOpen });
+      // Clear persisted panel state when exiting focus mode
+      try {
+        await window.electron.app.setState({ focusPanelState: undefined });
+      } catch (error) {
+        console.error("Failed to clear focus panel state:", error);
+      }
+    } else {
+      // Entering focus mode - save current state and collapse panels
+      const currentPanelState = { sidebarWidth, logsOpen, eventInspectorOpen };
+      toggleFocusMode(currentPanelState);
+      setLogsOpen(false);
+      setEventInspectorOpen(false);
+      // Persist panel state for restoration after restart
+      try {
+        await window.electron.app.setState({ focusPanelState: currentPanelState });
+      } catch (error) {
+        console.error("Failed to persist focus panel state:", error);
+      }
+    }
+  }, [
+    isFocusMode,
+    savedPanelState,
+    sidebarWidth,
+    logsOpen,
+    eventInspectorOpen,
+    toggleFocusMode,
+    setLogsOpen,
+    setEventInspectorOpen,
+  ]);
+
+  // Listen for keyboard shortcut events (Cmd+K Z)
+  useEffect(() => {
+    const handleFocusModeToggle = () => {
+      handleToggleFocusMode();
+    };
+
+    window.addEventListener("canopy:toggle-focus-mode", handleFocusModeToggle);
+    return () => {
+      window.removeEventListener("canopy:toggle-focus-mode", handleFocusModeToggle);
+    };
+  }, [handleToggleFocusMode]);
 
   const handleSidebarResize = useCallback((newWidth: number) => {
     const clampedWidth = Math.min(Math.max(newWidth, MIN_SIDEBAR_WIDTH), MAX_SIDEBAR_WIDTH);
@@ -86,6 +179,9 @@ export function AppLayout({
     onSettings?.();
   }, [onSettings]);
 
+  // Effective sidebar width - 0 when in focus mode
+  const effectiveSidebarWidth = isFocusMode ? 0 : sidebarWidth;
+
   return (
     <div className="h-screen flex flex-col bg-canopy-bg">
       <Toolbar
@@ -94,12 +190,16 @@ export function AppLayout({
         onSettings={handleSettings}
         errorCount={errorCount}
         onToggleProblems={onToggleProblems}
+        isFocusMode={isFocusMode}
+        onToggleFocusMode={handleToggleFocusMode}
       />
       <div className="flex-1 flex flex-col overflow-hidden">
         <div className="flex-1 flex overflow-hidden">
-          <Sidebar width={sidebarWidth} onResize={handleSidebarResize}>
-            {sidebarContent}
-          </Sidebar>
+          {!isFocusMode && (
+            <Sidebar width={effectiveSidebarWidth} onResize={handleSidebarResize}>
+              {sidebarContent}
+            </Sidebar>
+          )}
           <main className="flex-1 overflow-hidden bg-canopy-bg">{children}</main>
         </div>
         <LogsPanel />

@@ -17,6 +17,14 @@ export interface StoreSchema {
     sidebarWidth: number;
     lastDirectory?: string;
     recentDirectories?: RecentDirectory[];
+    /** Whether focus mode is active (panels collapsed for max terminal space) */
+    focusMode?: boolean;
+    /** Saved panel state before entering focus mode (for restoration) */
+    focusPanelState?: {
+      sidebarWidth: number;
+      logsOpen: boolean;
+      eventInspectorOpen: boolean;
+    };
     terminals: Array<{
       id: string;
       type: "shell" | "claude" | "gemini" | "custom";
@@ -62,6 +70,7 @@ export const store = new Store<StoreSchema>({
     },
     appState: {
       sidebarWidth: 350,
+      focusMode: false,
       recentDirectories: [],
       terminals: [],
       recipes: [],

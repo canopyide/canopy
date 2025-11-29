@@ -11,3 +11,5 @@ export type { AppError, ErrorType, RetryAction } from "./errorStore";
 export { useEventStore } from "./eventStore";
 
 export { useProjectStore } from "./projectStore";
+
+export { useFocusStore } from "./focusStore";
