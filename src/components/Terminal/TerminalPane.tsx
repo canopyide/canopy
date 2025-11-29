@@ -413,13 +413,57 @@ export function TerminalPane({
         </div>
       </div>
 
-      {/* Context injection progress - minimal style */}
+      {/* Context injection progress - enhanced with detailed stage information */}
       {isInjecting && injectionProgress && (
-        <div className="h-0.5 w-full bg-canopy-border relative overflow-hidden shrink-0">
-          <div
-            className="absolute top-0 left-0 h-full bg-purple-500 transition-all duration-200"
-            style={{ width: `${injectionProgress.progress * 100}%` }}
-          />
+        <div className="p-2 bg-canopy-sidebar border-t border-canopy-border shrink-0">
+          {/* Header with label and percentage */}
+          <div className="flex items-center justify-between text-xs text-gray-400 mb-1">
+            <span>Injecting Context</span>
+            <span>{Math.min(100, Math.max(0, Math.round(injectionProgress.progress * 100)))}%</span>
+          </div>
+
+          {/* Progress bar - slightly thicker for better visibility */}
+          <div className="w-full h-2 bg-gray-700 rounded-full overflow-hidden mb-1">
+            <div
+              className="h-full bg-canopy-accent transition-all duration-200"
+              style={{
+                width: `${Math.min(100, Math.max(0, injectionProgress.progress * 100))}%`,
+              }}
+            />
+          </div>
+
+          {/* Stage name and file count */}
+          <div className="text-xs text-gray-400">
+            {(() => {
+              // Map technical stage names to user-friendly labels
+              const stageLabels: Record<string, string> = {
+                FileDiscoveryStage: "Discovering files",
+                FormatterStage: "Formatting",
+                OutputStage: "Writing output",
+                Starting: "Starting",
+                Initializing: "Initializing",
+                Complete: "Complete",
+              };
+              const friendlyStage =
+                stageLabels[injectionProgress.stage] ||
+                injectionProgress.stage.replace(/Stage$/, "");
+              return friendlyStage;
+            })()}
+            {injectionProgress.filesProcessed !== undefined &&
+              injectionProgress.totalFiles !== undefined && (
+                <>
+                  {" · "}
+                  {injectionProgress.filesProcessed}/{injectionProgress.totalFiles} files
+                </>
+              )}
+          </div>
+
+          {/* Current file being processed (optional, truncated) */}
+          {injectionProgress.currentFile && (
+            <div className="text-xs text-gray-500 truncate mt-0.5">
+              {injectionProgress.currentFile}
+            </div>
+          )}
         </div>
       )}
 

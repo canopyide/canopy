@@ -9,6 +9,30 @@ import { cn } from "@/lib/utils";
 import { Loader2, X } from "lucide-react";
 import type { CopyTreeProgress } from "@/hooks/useContextInjection";
 
+/** Mapping from technical stage names to user-friendly labels */
+const STAGE_LABELS: Record<string, string> = {
+  FileDiscoveryStage: "Discovering files",
+  FormatterStage: "Formatting",
+  OutputStage: "Writing output",
+  Starting: "Starting",
+  Initializing: "Initializing",
+  Complete: "Complete",
+};
+
+/**
+ * Convert technical stage name to user-friendly label.
+ * Falls back to removing "Stage" suffix if not in mapping.
+ */
+function formatStageName(stage: string): string {
+  // Check if we have a friendly label for this stage
+  if (STAGE_LABELS[stage]) {
+    return STAGE_LABELS[stage];
+  }
+
+  // Fallback: Remove "Stage" suffix and return
+  return stage.replace(/Stage$/, "");
+}
+
 export interface ProgressBarProps {
   /** Current progress information */
   progress: CopyTreeProgress;
@@ -21,7 +45,9 @@ export interface ProgressBarProps {
 }
 
 export function ProgressBar({ progress, onCancel, compact = false, className }: ProgressBarProps) {
-  const percentage = Math.round(progress.progress * 100);
+  // Clamp percentage to 0-100 range to handle edge cases
+  const percentage = Math.min(100, Math.max(0, Math.round(progress.progress * 100)));
+  const friendlyStageName = formatStageName(progress.stage);
 
   if (compact) {
     return (
@@ -31,7 +57,7 @@ export function ProgressBar({ progress, onCancel, compact = false, className }: 
         aria-valuemin={0}
         aria-valuemax={100}
         aria-valuenow={percentage}
-        aria-valuetext={progress.message || progress.stage}
+        aria-valuetext={progress.message || friendlyStageName}
         aria-live="polite"
       >
         <Loader2 className="h-3 w-3 animate-spin text-canopy-accent shrink-0" aria-hidden="true" />
@@ -61,7 +87,7 @@ export function ProgressBar({ progress, onCancel, compact = false, className }: 
       aria-valuemin={0}
       aria-valuemax={100}
       aria-valuenow={percentage}
-      aria-valuetext={`${progress.stage}: ${progress.message || percentage + "%"}`}
+      aria-valuetext={`${friendlyStageName}: ${progress.message || percentage + "%"}`}
       aria-live="polite"
     >
       {/* Header with message and percentage */}
@@ -82,7 +108,7 @@ export function ProgressBar({ progress, onCancel, compact = false, className }: 
       {/* Footer with stage info and cancel button */}
       <div className="flex justify-between items-center text-xs">
         <span className="text-canopy-text-muted/70 truncate">
-          {progress.stage}
+          {friendlyStageName}
           {progress.filesProcessed !== undefined && progress.totalFiles !== undefined && (
             <span className="ml-1">
               ({progress.filesProcessed}/{progress.totalFiles} files)
