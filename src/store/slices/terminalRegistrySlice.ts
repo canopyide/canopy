@@ -68,7 +68,11 @@ function persistTerminals(terminals: TerminalInstance[]): void {
 }
 
 export type TerminalRegistryMiddleware = {
-  onTerminalRemoved?: (id: string, removedIndex: number, remainingTerminals: TerminalInstance[]) => void;
+  onTerminalRemoved?: (
+    id: string,
+    removedIndex: number,
+    remainingTerminals: TerminalInstance[]
+  ) => void;
 };
 
 export const createTerminalRegistrySlice =

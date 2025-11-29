@@ -38,7 +38,8 @@ export { isAgentReady };
  * This interface represents the full API exposed by the terminal store.
  */
 export interface TerminalGridState
-  extends TerminalRegistrySlice,
+  extends
+    TerminalRegistrySlice,
     TerminalFocusSlice,
     TerminalCommandQueueSlice,
     TerminalBulkActionsSlice {}
@@ -111,7 +112,9 @@ if (typeof window !== "undefined" && window.electron?.terminal?.onAgentStateChan
     }
 
     // Update the terminal's agent state
-    useTerminalStore.getState().updateAgentState(agentId, state as AgentState, undefined, timestamp);
+    useTerminalStore
+      .getState()
+      .updateAgentState(agentId, state as AgentState, undefined, timestamp);
 
     // Process any queued commands when agent becomes idle or waiting
     if (state === "waiting" || state === "idle") {

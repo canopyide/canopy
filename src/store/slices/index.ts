@@ -13,10 +13,7 @@ export {
   type TerminalRegistryMiddleware,
 } from "./terminalRegistrySlice";
 
-export {
-  createTerminalFocusSlice,
-  type TerminalFocusSlice,
-} from "./terminalFocusSlice";
+export { createTerminalFocusSlice, type TerminalFocusSlice } from "./terminalFocusSlice";
 
 export {
   createTerminalCommandQueueSlice,

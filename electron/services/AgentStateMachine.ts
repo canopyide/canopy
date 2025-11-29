@@ -223,7 +223,8 @@ export function detectPrompt(
 
   // Cap buffer length to avoid excessive regex work on chatty output
   // Prompts appear at the tail, so take the last MAX_BUFFER_LENGTH bytes
-  const buffer = cleanData.length > MAX_BUFFER_LENGTH ? cleanData.slice(-MAX_BUFFER_LENGTH) : cleanData;
+  const buffer =
+    cleanData.length > MAX_BUFFER_LENGTH ? cleanData.slice(-MAX_BUFFER_LENGTH) : cleanData;
 
   // Get the last meaningful chunk (prompts usually appear at the end)
   const trimmed = buffer.trim();
