@@ -1,13 +1,13 @@
 /**
  * TerminalPane Component
  *
- * Wraps XtermAdapter with a header bar (title, type icon, close button)
- * and a toolbar (inject context button). Supports focus state styling
- * and exit status display.
+ * Wraps XtermAdapter with a compact monospace header bar in tiling window manager style.
+ * The header uses monospace fonts to match terminal content and minimal height for a
+ * sleek, integrated appearance.
  *
  * Structure:
  * ┌─────────────────────────────────────────────────┐
- * │ 🖥️ Shell - feature/auth           [📋] [×]     │  <- Header
+ * │ 🖥️ Shell - feature/auth           [📋] [×]     │  <- Header (32px, monospace)
  * ├─────────────────────────────────────────────────┤
  * │                                                  │
  * │  user@machine:~/project$                        │  <- XtermAdapter
@@ -284,13 +284,13 @@ export function TerminalPane({
       {/* Header - Status bar style */}
       <div
         className={cn(
-          "flex items-center justify-between px-2 h-7 shrink-0 transition-colors", // Fixed low height
+          "flex items-center justify-between px-3 h-8 shrink-0 font-mono text-sm transition-colors", // Tiling WM aesthetic - improved contrast
           isFocused ? "bg-canopy-sidebar" : "bg-black/20"
         )}
         onDoubleClick={onToggleMaximize}
       >
         <div className="flex items-center gap-2 min-w-0">
-          <span className={cn("shrink-0 opacity-70", isFocused && "text-canopy-accent")}>
+          <span className={cn("shrink-0 text-canopy-text/70", isFocused && "text-canopy-accent")}>
             {getTerminalIcon(type)}
           </span>
 
@@ -303,13 +303,13 @@ export function TerminalPane({
               onChange={(e) => setEditingValue(e.target.value)}
               onKeyDown={handleTitleInputKeyDown}
               onBlur={handleTitleSave}
-              className="text-xs font-mono bg-black/40 border border-canopy-accent/50 px-1 h-5 outline-none text-canopy-text"
+              className="text-sm font-medium bg-black/40 border border-canopy-accent/50 px-1 h-5 min-w-32 outline-none text-canopy-text select-text"
               aria-label="Edit terminal title"
             />
           ) : (
             <span
               className={cn(
-                "text-xs font-mono text-canopy-text/80 truncate select-none",
+                "font-medium text-canopy-text/90 truncate select-none",
                 onTitleChange && "cursor-text hover:text-canopy-text"
               )}
               onDoubleClick={handleTitleDoubleClick}
@@ -328,7 +328,7 @@ export function TerminalPane({
           {/* Subtle exit code */}
           {isExited && (
             <span
-              className="text-[10px] font-mono text-[var(--color-status-error)]/80 ml-1"
+              className="text-xs font-mono text-[var(--color-status-error)] ml-1"
               role="status"
               aria-live="polite"
             >
@@ -345,14 +345,14 @@ export function TerminalPane({
               aria-label="Agent is working"
             >
               <Loader2 className="h-3 w-3 animate-spin" aria-hidden="true" />
-              <span className="text-[10px] font-mono">Working</span>
+              <span className="text-xs font-mono">Working</span>
             </div>
           )}
 
           {/* Queue count indicator */}
           {queueCount > 0 && (
             <div
-              className="text-[10px] font-mono bg-blue-900/60 text-blue-200 px-1.5 py-0.5 rounded ml-1"
+              className="text-xs font-mono bg-blue-900/60 text-blue-200 px-1.5 py-0.5 rounded ml-1"
               role="status"
               aria-live="polite"
               title={`${queueCount} command${queueCount > 1 ? "s" : ""} queued`}
@@ -371,7 +371,7 @@ export function TerminalPane({
                 onInjectContext();
               }}
               className={cn(
-                "p-1 hover:bg-white/10 focus-visible:bg-white/10 focus-visible:outline focus-visible:outline-2 focus-visible:outline-canopy-accent text-canopy-text/60 hover:text-[var(--color-state-working)] transition-colors",
+                "p-1.5 hover:bg-white/10 focus-visible:bg-white/10 focus-visible:outline focus-visible:outline-2 focus-visible:outline-canopy-accent text-canopy-text/60 hover:text-[var(--color-state-working)] transition-colors",
                 isInjecting && "opacity-50 cursor-not-allowed"
               )}
               title="Inject Context (Ctrl+Shift+I)"
@@ -388,7 +388,7 @@ export function TerminalPane({
                 onFocus();
                 onToggleMaximize();
               }}
-              className="p-1 hover:bg-white/10 focus-visible:bg-white/10 focus-visible:outline focus-visible:outline-2 focus-visible:outline-canopy-accent text-canopy-text/60 hover:text-canopy-text transition-colors"
+              className="p-1.5 hover:bg-white/10 focus-visible:bg-white/10 focus-visible:outline focus-visible:outline-2 focus-visible:outline-canopy-accent text-canopy-text/60 hover:text-canopy-text transition-colors"
               title={isMaximized ? "Restore (Ctrl+Shift+F)" : "Maximize (Ctrl+Shift+F)"}
               aria-label={isMaximized ? "Restore terminal" : "Maximize terminal"}
             >
@@ -404,7 +404,7 @@ export function TerminalPane({
               e.stopPropagation();
               onClose();
             }}
-            className="p-1 hover:bg-red-500/20 focus-visible:bg-red-500/20 focus-visible:outline focus-visible:outline-2 focus-visible:outline-[var(--color-status-error)] text-canopy-text/60 hover:text-[var(--color-status-error)] transition-colors"
+            className="p-1.5 hover:bg-red-500/20 focus-visible:bg-red-500/20 focus-visible:outline focus-visible:outline-2 focus-visible:outline-[var(--color-status-error)] text-canopy-text/60 hover:text-[var(--color-status-error)] transition-colors"
             title="Close Terminal (Ctrl+Shift+W)"
             aria-label="Close terminal"
           >
