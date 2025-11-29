@@ -308,7 +308,7 @@ export function TerminalPane({
           {/* Subtle exit code */}
           {isExited && (
             <span
-              className="text-[10px] font-mono text-red-400/80 ml-1"
+              className="text-[10px] font-mono text-[var(--color-status-error)]/80 ml-1"
               role="status"
               aria-live="polite"
             >
@@ -319,7 +319,7 @@ export function TerminalPane({
           {/* Working state spinner */}
           {isAgentWorking && (
             <div
-              className="flex items-center gap-1 text-yellow-400 ml-1"
+              className="flex items-center gap-1 text-[var(--color-state-working)] ml-1"
               role="status"
               aria-live="polite"
               aria-label="Agent is working"
@@ -351,7 +351,7 @@ export function TerminalPane({
                 onInjectContext();
               }}
               className={cn(
-                "p-1 hover:bg-white/10 focus-visible:bg-white/10 focus-visible:outline focus-visible:outline-2 focus-visible:outline-canopy-accent text-canopy-text/60 hover:text-purple-400 transition-colors",
+                "p-1 hover:bg-white/10 focus-visible:bg-white/10 focus-visible:outline focus-visible:outline-2 focus-visible:outline-canopy-accent text-canopy-text/60 hover:text-[var(--color-state-working)] transition-colors",
                 isInjecting && "opacity-50 cursor-not-allowed"
               )}
               title="Inject Context (Ctrl+Shift+I)"
@@ -384,7 +384,7 @@ export function TerminalPane({
               e.stopPropagation();
               onClose();
             }}
-            className="p-1 hover:bg-red-500/20 focus-visible:bg-red-500/20 focus-visible:outline focus-visible:outline-2 focus-visible:outline-red-400 text-canopy-text/60 hover:text-red-400 transition-colors"
+            className="p-1 hover:bg-red-500/20 focus-visible:bg-red-500/20 focus-visible:outline focus-visible:outline-2 focus-visible:outline-[var(--color-status-error)] text-canopy-text/60 hover:text-[var(--color-status-error)] transition-colors"
             title="Close Terminal (Ctrl+Shift+W)"
             aria-label="Close terminal"
           >

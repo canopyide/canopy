@@ -20,7 +20,7 @@ interface HistoryPanelProps {
 
 const AGENT_COLORS: Record<string, string> = {
   claude: "bg-orange-500/20 text-orange-400 border-orange-500/30",
-  gemini: "bg-blue-500/20 text-blue-400 border-blue-500/30",
+  gemini: "bg-blue-500/20 text-[var(--color-status-info)] border-blue-500/30",
   custom: "bg-purple-500/20 text-purple-400 border-purple-500/30",
 };
 
@@ -31,9 +31,9 @@ const STATE_ICONS: Record<string, string> = {
 };
 
 const STATE_COLORS: Record<string, string> = {
-  active: "text-yellow-400",
-  completed: "text-green-400",
-  failed: "text-red-400",
+  active: "text-[var(--color-status-warning)]",
+  completed: "text-[var(--color-status-success)]",
+  failed: "text-[var(--color-status-error)]",
 };
 
 function formatRelativeTime(timestamp: number): string {
@@ -101,7 +101,7 @@ function SessionListItem({ session, isSelected, onSelect, onDelete }: SessionLis
             e.stopPropagation();
             onDelete();
           }}
-          className="text-gray-500 hover:text-red-400 transition-colors px-1"
+          className="text-gray-500 hover:text-[var(--color-status-error)] transition-colors px-1"
           title="Delete session"
         >
           ×
@@ -342,7 +342,7 @@ export function HistoryPanel({ className }: HistoryPanelProps) {
   if (error) {
     return (
       <div className={cn("p-4", className)}>
-        <div className="text-red-400 text-sm mb-2">{error}</div>
+        <div className="text-[var(--color-status-error)] text-sm mb-2">{error}</div>
         <button
           onClick={refresh}
           className="text-xs px-2 py-1 border border-gray-600 rounded hover:bg-gray-800 text-gray-300"

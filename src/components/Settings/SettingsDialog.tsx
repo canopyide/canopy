@@ -253,7 +253,7 @@ export function SettingsDialog({ isOpen, onClose }: SettingsDialogProps) {
                       OpenAI API Key
                     </h4>
                     {aiConfig?.hasKey && (
-                      <span className="text-xs text-green-400 flex items-center gap-1">
+                      <span className="text-xs text-[var(--color-status-success)] flex items-center gap-1">
                         <Check className="w-3 h-3" />
                         Key configured
                       </span>
@@ -298,7 +298,7 @@ export function SettingsDialog({ isOpen, onClose }: SettingsDialogProps) {
                         onClick={handleClearKey}
                         variant="outline"
                         size="sm"
-                        className="text-red-400 border-canopy-border hover:bg-red-900/20 hover:text-red-300 hover:border-red-900/30"
+                        className="text-[var(--color-status-error)] border-canopy-border hover:bg-red-900/20 hover:text-red-300 hover:border-red-900/30"
                       >
                         Clear
                       </Button>
@@ -306,25 +306,25 @@ export function SettingsDialog({ isOpen, onClose }: SettingsDialogProps) {
                   </div>
 
                   {validationResult === "success" && (
-                    <p className="text-xs text-green-400 flex items-center gap-1">
+                    <p className="text-xs text-[var(--color-status-success)] flex items-center gap-1">
                       <Check className="w-3 h-3" />
                       API key validated and saved successfully
                     </p>
                   )}
                   {validationResult === "test-success" && (
-                    <p className="text-xs text-green-400 flex items-center gap-1">
+                    <p className="text-xs text-[var(--color-status-success)] flex items-center gap-1">
                       <Check className="w-3 h-3" />
                       API key is valid! Click Save to store it.
                     </p>
                   )}
                   {validationResult === "error" && (
-                    <p className="text-xs text-red-400 flex items-center gap-1">
+                    <p className="text-xs text-[var(--color-status-error)] flex items-center gap-1">
                       <AlertCircle className="w-3 h-3" />
                       Invalid API key. Please check and try again.
                     </p>
                   )}
                   {validationResult === "test-error" && (
-                    <p className="text-xs text-red-400 flex items-center gap-1">
+                    <p className="text-xs text-[var(--color-status-error)] flex items-center gap-1">
                       <AlertCircle className="w-3 h-3" />
                       API key test failed. Please check your key.
                     </p>
@@ -431,7 +431,7 @@ export function SettingsDialog({ isOpen, onClose }: SettingsDialogProps) {
                         variant="outline"
                         size="sm"
                         onClick={handleClearLogs}
-                        className="text-red-400 border-canopy-border hover:bg-red-900/20 hover:text-red-300 hover:border-red-900/30"
+                        className="text-[var(--color-status-error)] border-canopy-border hover:bg-red-900/20 hover:text-red-300 hover:border-red-900/30"
                       >
                         <Trash2 className="w-4 h-4 mr-2" />
                         Clear Logs

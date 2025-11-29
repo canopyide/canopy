@@ -47,6 +47,24 @@
   --color-canopy-success: #9ece6a;
   --color-canopy-warning: #e0af68;
   --color-canopy-error: #f7768e;
+
+  /* Semantic status colors - for user-facing states (success, error, warning, info) */
+  --color-status-success: #9ece6a; /* Operations completed successfully */
+  --color-status-warning: #e0af68; /* Cautionary states requiring attention */
+  --color-status-error: #f7768e; /* Error states and failures */
+  --color-status-info: #7aa2f7; /* Informational states */
+
+  /* Semantic state colors - for agent/terminal lifecycle states */
+  --color-state-active: #7dcfff; /* Currently active/selected items */
+  --color-state-idle: #565f89; /* Inactive/dormant states */
+  --color-state-working: #bb9af7; /* In-progress/working states */
+  --color-state-waiting: #e0af68; /* Waiting/pending states */
+
+  /* Server status colors - for dev server states */
+  --color-server-running: #9ece6a; /* Server running successfully */
+  --color-server-stopped: #565f89; /* Server stopped/inactive */
+  --color-server-starting: #e0af68; /* Server starting up */
+  --color-server-error: #f7768e; /* Server error state */
 }
 
 :root {

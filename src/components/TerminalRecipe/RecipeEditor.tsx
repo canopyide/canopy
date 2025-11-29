@@ -267,7 +267,7 @@ export function RecipeEditor({ recipe, worktreeId, isOpen, onClose, onSave }: Re
 
           {/* Error Message */}
           {error && (
-            <div className="mb-4 p-3 bg-red-500/10 border border-red-500/30 rounded-md text-red-400 text-sm">
+            <div className="mb-4 p-3 bg-red-500/10 border border-red-500/30 rounded-md text-[var(--color-status-error)] text-sm">
               {error}
             </div>
           )}

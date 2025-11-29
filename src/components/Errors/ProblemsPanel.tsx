@@ -37,11 +37,11 @@ const ERROR_TYPE_LABELS: Record<string, string> = {
 
 const ERROR_TYPE_COLORS: Record<string, string> = {
   git: "text-orange-400",
-  process: "text-yellow-400",
-  filesystem: "text-blue-400",
+  process: "text-[var(--color-status-warning)]",
+  filesystem: "text-[var(--color-status-info)]",
   network: "text-purple-400",
   config: "text-amber-400",
-  unknown: "text-red-400",
+  unknown: "text-[var(--color-status-error)]",
 };
 
 function formatTimestamp(timestamp: number): string {
@@ -68,7 +68,7 @@ function ErrorRow({
   onRetry?: () => void;
 }) {
   const typeLabel = ERROR_TYPE_LABELS[error.type] || "Error";
-  const typeColor = ERROR_TYPE_COLORS[error.type] || "text-red-400";
+  const typeColor = ERROR_TYPE_COLORS[error.type] || "text-[var(--color-status-error)]";
   const canRetry = error.isTransient && error.retryAction && onRetry;
 
   const handleKeyDown = (e: React.KeyboardEvent) => {

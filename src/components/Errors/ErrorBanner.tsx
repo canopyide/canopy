@@ -100,7 +100,7 @@ export function ErrorBanner({
         )}
         <button
           onClick={handleDismiss}
-          className="text-red-400 hover:text-red-300"
+          className="text-[var(--color-status-error)] hover:text-red-300"
           aria-label="Dismiss error"
         >
           ×
@@ -119,7 +119,9 @@ export function ErrorBanner({
         <span className="shrink-0 text-lg">{typeIcon}</span>
         <div className="flex-1 min-w-0">
           <div className="flex items-center gap-2">
-            <span className="text-xs text-red-400 font-medium">{typeLabel}</span>
+            <span className="text-xs text-[var(--color-status-error)] font-medium">
+              {typeLabel}
+            </span>
             {error.source && <span className="text-xs text-red-500">• {error.source}</span>}
           </div>
           <p className="text-sm text-red-200 truncate">{error.message}</p>
@@ -147,7 +149,7 @@ export function ErrorBanner({
           )}
           <button
             onClick={handleDismiss}
-            className="p-1 text-red-400 hover:text-red-300 hover:bg-red-800/50 rounded"
+            className="p-1 text-[var(--color-status-error)] hover:text-red-300 hover:bg-red-800/50 rounded"
             aria-label="Dismiss error"
           >
             ×

@@ -152,7 +152,7 @@ export function BulkActionsMenu({ worktreeId, trigger, className }: BulkActionsM
             disabled={completedCount === 0}
             className="flex items-center gap-2"
           >
-            <CheckCircle className="h-4 w-4 text-green-400" />
+            <CheckCircle className="h-4 w-4 text-[var(--color-status-success)]" />
             <span>Close Completed</span>
             <span className="ml-auto text-xs text-canopy-text/50">({completedCount})</span>
           </DropdownMenuItem>
@@ -161,7 +161,7 @@ export function BulkActionsMenu({ worktreeId, trigger, className }: BulkActionsM
             disabled={failedCount === 0}
             className="flex items-center gap-2"
           >
-            <XCircle className="h-4 w-4 text-red-400" />
+            <XCircle className="h-4 w-4 text-[var(--color-status-error)]" />
             <span>Close Failed</span>
             <span className="ml-auto text-xs text-canopy-text/50">({failedCount})</span>
           </DropdownMenuItem>
@@ -180,7 +180,7 @@ export function BulkActionsMenu({ worktreeId, trigger, className }: BulkActionsM
             disabled={restartableCount === 0}
             className="flex items-center gap-2"
           >
-            <RefreshCw className="h-4 w-4 text-yellow-400" />
+            <RefreshCw className="h-4 w-4 text-[var(--color-status-warning)]" />
             <span>Restart Failed Agents</span>
             <span className="ml-auto text-xs text-canopy-text/50">({restartableCount})</span>
           </DropdownMenuItem>
@@ -188,7 +188,7 @@ export function BulkActionsMenu({ worktreeId, trigger, className }: BulkActionsM
           <DropdownMenuItem
             onClick={handleCloseAll}
             disabled={totalCount === 0}
-            className="flex items-center gap-2 text-red-400 focus:text-red-400"
+            className="flex items-center gap-2 text-[var(--color-status-error)] focus:text-[var(--color-status-error)]"
           >
             <Trash2 className="h-4 w-4" />
             <span>Close All Terminals...</span>

@@ -141,7 +141,7 @@ export function FilePickerModal({ isOpen, worktreeId, onConfirm, onCancel }: Fil
           {loading && (
             <div className="flex items-center justify-center py-8 text-neutral-400">Loading...</div>
           )}
-          {error && <div className="text-red-400 py-4">Error: {error}</div>}
+          {error && <div className="text-[var(--color-status-error)] py-4">Error: {error}</div>}
           {!loading && !error && nodes.length === 0 && (
             <div className="text-neutral-500 py-8 text-center">No files found</div>
           )}

@@ -43,7 +43,7 @@ export function ProgressBar({ progress, onCancel, compact = false, className }: 
               e.stopPropagation();
               onCancel();
             }}
-            className="p-0.5 hover:bg-red-900/50 rounded text-gray-400 hover:text-red-400 transition-colors shrink-0"
+            className="p-0.5 hover:bg-red-900/50 rounded text-gray-400 hover:text-[var(--color-status-error)] transition-colors shrink-0"
             title="Cancel"
             aria-label="Cancel context generation"
           >
@@ -95,7 +95,7 @@ export function ProgressBar({ progress, onCancel, compact = false, className }: 
               e.stopPropagation();
               onCancel();
             }}
-            className="text-red-400 hover:text-red-300 transition-colors shrink-0"
+            className="text-[var(--color-status-error)] hover:text-red-300 transition-colors shrink-0"
             title="Cancel"
             aria-label="Cancel context generation"
           >

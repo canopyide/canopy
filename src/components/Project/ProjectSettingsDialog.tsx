@@ -98,12 +98,12 @@ export function ProjectSettingsDialog({ projectId, isOpen, onClose }: ProjectSet
             <div className="text-sm text-gray-400 text-center py-8">Loading settings...</div>
           )}
           {error && (
-            <div className="text-sm text-red-400 bg-red-900/20 border border-red-900/30 rounded p-3 mb-4">
+            <div className="text-sm text-[var(--color-status-error)] bg-red-900/20 border border-red-900/30 rounded p-3 mb-4">
               Failed to load settings: {error}
             </div>
           )}
           {saveError && (
-            <div className="text-sm text-red-400 bg-red-900/20 border border-red-900/30 rounded p-3 mb-4">
+            <div className="text-sm text-[var(--color-status-error)] bg-red-900/20 border border-red-900/30 rounded p-3 mb-4">
               {saveError}
             </div>
           )}
@@ -141,7 +141,7 @@ export function ProjectSettingsDialog({ projectId, isOpen, onClose }: ProjectSet
                         onClick={() => handleRemove(cmd.id)}
                         variant="ghost"
                         size="icon"
-                        className="text-red-400 hover:text-red-300 hover:bg-red-900/20 h-8 w-8"
+                        className="text-[var(--color-status-error)] hover:text-red-300 hover:bg-red-900/20 h-8 w-8"
                         title="Remove command"
                       >
                         <Trash2 className="h-4 w-4" />
@@ -170,7 +170,7 @@ export function ProjectSettingsDialog({ projectId, isOpen, onClose }: ProjectSet
               {detectedRunners.length > 0 && (
                 <div className="mb-4">
                   <h3 className="text-sm font-semibold text-canopy-text/80 mb-2 flex items-center gap-2">
-                    <Sparkles className="h-4 w-4 text-yellow-400" />
+                    <Sparkles className="h-4 w-4 text-[var(--color-status-warning)]" />
                     Suggested Commands
                   </h3>
                   <p className="text-xs text-gray-500 mb-3">
@@ -225,7 +225,7 @@ export function ProjectSettingsDialog({ projectId, isOpen, onClose }: ProjectSet
                           variant="ghost"
                           size="icon"
                           disabled={promotingIds.has(cmd.id)}
-                          className="text-green-400 hover:text-green-300 hover:bg-green-900/20 h-8 w-8 flex-shrink-0 disabled:opacity-50 disabled:cursor-not-allowed"
+                          className="text-[var(--color-status-success)] hover:text-green-300 hover:bg-green-900/20 h-8 w-8 flex-shrink-0 disabled:opacity-50 disabled:cursor-not-allowed"
                           title="Add to saved commands"
                         >
                           <Plus className="h-4 w-4" />

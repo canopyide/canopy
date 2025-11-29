@@ -61,7 +61,7 @@ export function ProjectRunners({ projectId }: ProjectRunnersProps) {
             )}
             title={cmd.command}
           >
-            <Play className="h-2.5 w-2.5 text-green-400 group-hover:text-green-300 transition-colors flex-shrink-0" />
+            <Play className="h-2.5 w-2.5 text-[var(--color-status-success)] group-hover:text-green-300 transition-colors flex-shrink-0" />
             <span className="truncate">{cmd.name}</span>
           </button>
         ))}

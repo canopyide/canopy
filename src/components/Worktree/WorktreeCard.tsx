@@ -38,10 +38,10 @@ export interface WorktreeCardProps {
 }
 
 const MOOD_BORDER_COLORS: Record<WorktreeMood, string> = {
-  active: "border-blue-400",
-  stable: "border-green-400",
-  stale: "border-yellow-400",
-  error: "border-red-400",
+  active: "border-[var(--color-state-active)]",
+  stable: "border-[var(--color-status-success)]",
+  stale: "border-[var(--color-status-warning)]",
+  error: "border-[var(--color-status-error)]",
 };
 
 const URL_REGEX = /(https?:\/\/[^\s]+)/g;
@@ -293,11 +293,11 @@ export function WorktreeCard({
       case "stopped":
         return <span className="text-gray-500">○</span>;
       case "starting":
-        return <span className="text-yellow-400">◐</span>;
+        return <span className="text-[var(--color-server-starting)]">◐</span>;
       case "running":
-        return <span className="text-green-400">●</span>;
+        return <span className="text-[var(--color-server-running)]">●</span>;
       case "error":
-        return <span className="text-red-400">●</span>;
+        return <span className="text-[var(--color-server-error)]">●</span>;
       default:
         return <span className="text-gray-500">○</span>;
     }
@@ -309,16 +309,16 @@ export function WorktreeCard({
       case "stopped":
         return <span className="text-gray-500">Dev Server</span>;
       case "starting":
-        return <span className="text-yellow-400">Starting...</span>;
+        return <span className="text-[var(--color-server-starting)]">Starting...</span>;
       case "running":
         return serverState.url ? (
-          <span className="text-green-400">{serverState.url}</span>
+          <span className="text-[var(--color-server-running)]">{serverState.url}</span>
         ) : (
-          <span className="text-green-400">Running</span>
+          <span className="text-[var(--color-server-running)]">Running</span>
         );
       case "error":
         return (
-          <span className="text-red-400">
+          <span className="text-[var(--color-server-error)]">
             {serverState.errorMessage ? `Error: ${serverState.errorMessage.slice(0, 40)}` : "Error"}
           </span>
         );
@@ -344,16 +344,16 @@ export function WorktreeCard({
   };
 
   const getServerButtonColor = () => {
-    if (!serverState) return "text-green-400";
+    if (!serverState) return "text-[var(--color-status-success)]";
     switch (serverState.status) {
       case "stopped":
-        return "text-green-400";
+        return "text-[var(--color-status-success)]"; // Start button (green = go)
       case "starting":
-        return "text-yellow-400";
+        return "text-[var(--color-status-warning)]";
       case "running":
-        return "text-red-400";
+        return "text-[var(--color-status-error)]"; // Stop button (red = stop)
       case "error":
-        return "text-green-400";
+        return "text-[var(--color-status-success)]"; // Retry button (green = try again)
       default:
         return "text-gray-400";
     }
@@ -422,7 +422,7 @@ export function WorktreeCard({
               e.stopPropagation();
               handleOpenIssue();
             }}
-            className="text-xs px-2 py-1 border border-blue-600 rounded hover:bg-blue-900 hover:border-blue-500 text-blue-400"
+            className="text-xs px-2 py-1 border border-blue-600 rounded hover:bg-blue-900 hover:border-blue-500 text-[var(--color-status-info)]"
           >
             Issue
           </button>
@@ -433,7 +433,7 @@ export function WorktreeCard({
               e.stopPropagation();
               handleOpenPR();
             }}
-            className="text-xs px-2 py-1 border border-green-600 rounded hover:bg-green-900 hover:border-green-500 text-green-400"
+            className="text-xs px-2 py-1 border border-green-600 rounded hover:bg-green-900 hover:border-green-500 text-[var(--color-status-success)]"
           >
             PR
           </button>
@@ -520,7 +520,7 @@ export function WorktreeCard({
                   e.stopPropagation();
                   handleCloseAllTerminals();
                 }}
-                className="text-red-400 focus:text-red-400"
+                className="text-[var(--color-status-error)] focus:text-[var(--color-status-error)]"
               >
                 Close All...
               </DropdownMenuItem>
@@ -533,13 +533,20 @@ export function WorktreeCard({
       <div className="mb-1 flex items-center gap-2">
         <ActivityLight timestamp={worktree.lastActivityTimestamp} />
         <AgentStatusIndicator state={dominantAgentState} />
-        {isActive && <span className="text-blue-400">●</span>}
-        <span className={cn("font-bold", mood === "active" ? "text-yellow-400" : "text-gray-200")}>
+        {isActive && <span className="text-[var(--color-state-active)]">●</span>}
+        <span
+          className={cn(
+            "font-bold",
+            mood === "active" ? "text-[var(--color-status-warning)]" : "text-gray-200"
+          )}
+        >
           {branchLabel}
         </span>
-        {!worktree.branch && <span className="text-yellow-400">(detached)</span>}
+        {!worktree.branch && <span className="text-[var(--color-status-warning)]">(detached)</span>}
         {worktree.aiStatus === "disabled" && <span className="text-gray-500">[AI off]</span>}
-        {worktree.aiStatus === "error" && <span className="text-red-400">[AI err]</span>}
+        {worktree.aiStatus === "error" && (
+          <span className="text-[var(--color-status-error)]">[AI err]</span>
+        )}
       </div>
 
       {/* Path (clickable) */}
@@ -611,7 +618,7 @@ export function WorktreeCard({
                 href={segment.content}
                 target="_blank"
                 rel="noopener noreferrer"
-                className="text-blue-400 underline hover:text-blue-300"
+                className="text-[var(--color-status-info)] underline hover:text-blue-300"
                 onClick={(e) => {
                   e.stopPropagation();
                   if (window.electron?.system?.openExternal) {

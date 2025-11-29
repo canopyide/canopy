@@ -183,7 +183,10 @@ export function RecipeList({ worktreeId, worktreePath, showGlobal = true }: Reci
                     Export as JSON
                   </DropdownMenuItem>
                   <DropdownMenuSeparator />
-                  <DropdownMenuItem onClick={() => handleDelete(recipe)} className="text-red-400">
+                  <DropdownMenuItem
+                    onClick={() => handleDelete(recipe)}
+                    className="text-[var(--color-status-error)]"
+                  >
                     Delete
                   </DropdownMenuItem>
                 </DropdownMenuContent>

@@ -99,7 +99,7 @@ function SidebarContent() {
     return (
       <div className="p-4">
         <h2 className="text-canopy-text font-semibold text-sm mb-4">Worktrees</h2>
-        <div className="text-red-400 text-sm mb-2">{error}</div>
+        <div className="text-[var(--color-status-error)] text-sm mb-2">{error}</div>
         <button
           onClick={refresh}
           className="text-xs px-2 py-1 border border-gray-600 rounded hover:bg-gray-800 text-gray-300"

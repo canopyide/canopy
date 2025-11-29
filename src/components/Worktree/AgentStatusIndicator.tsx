@@ -35,28 +35,28 @@ const STATE_CONFIG: Record<
 > = {
   working: {
     icon: "⟳",
-    color: "text-blue-400",
+    color: "text-[var(--color-state-working)]",
     pulse: true,
     label: "working",
     tooltip: "Agent is processing",
   },
   waiting: {
     icon: "?",
-    color: "text-yellow-400",
+    color: "text-[var(--color-state-waiting)]",
     pulse: true,
     label: "waiting",
     tooltip: "Agent is waiting for input",
   },
   completed: {
     icon: "✓",
-    color: "text-green-400",
+    color: "text-[var(--color-status-success)]",
     pulse: false,
     label: "completed",
     tooltip: "Agent completed successfully",
   },
   failed: {
     icon: "✗",
-    color: "text-red-400",
+    color: "text-[var(--color-status-error)]",
     pulse: false,
     label: "failed",
     tooltip: "Agent encountered an error",

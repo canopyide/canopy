@@ -21,10 +21,10 @@ interface ArtifactCardProps {
 }
 
 const ARTIFACT_TYPE_COLORS: Record<string, string> = {
-  code: "border-blue-500 text-blue-400",
-  patch: "border-green-500 text-green-400",
+  code: "border-blue-500 text-[var(--color-status-info)]",
+  patch: "border-green-500 text-[var(--color-status-success)]",
   file: "border-purple-500 text-purple-400",
-  summary: "border-yellow-500 text-yellow-400",
+  summary: "border-yellow-500 text-[var(--color-status-warning)]",
   other: "border-gray-500 text-gray-400",
 };
 
@@ -101,7 +101,7 @@ function ArtifactCard({ artifact, isExpanded, onToggle }: ArtifactCardProps) {
           className={cn(
             "absolute top-2 right-2 px-2 py-1 text-xs rounded",
             "bg-gray-800 hover:bg-gray-700 transition-colors",
-            copied ? "text-green-400" : "text-gray-400"
+            copied ? "text-[var(--color-status-success)]" : "text-gray-400"
           )}
         >
           {copied ? "Copied!" : "Copy"}

@@ -20,9 +20,13 @@ interface LogFiltersProps {
 
 const LOG_LEVELS: { level: LogLevel; label: string; color: string }[] = [
   { level: "debug", label: "Debug", color: "text-gray-400 hover:bg-gray-700" },
-  { level: "info", label: "Info", color: "text-blue-400 hover:bg-blue-900/30" },
-  { level: "warn", label: "Warn", color: "text-yellow-400 hover:bg-yellow-900/30" },
-  { level: "error", label: "Error", color: "text-red-400 hover:bg-red-900/30" },
+  { level: "info", label: "Info", color: "text-[var(--color-status-info)] hover:bg-blue-900/30" },
+  {
+    level: "warn",
+    label: "Warn",
+    color: "text-[var(--color-status-warning)] hover:bg-yellow-900/30",
+  },
+  { level: "error", label: "Error", color: "text-[var(--color-status-error)] hover:bg-red-900/30" },
 ];
 
 export function LogFilters({
@@ -151,7 +155,7 @@ export function LogFilters({
                   className={cn(
                     "w-full px-3 py-1.5 text-xs text-left",
                     "hover:bg-gray-700 transition-colors",
-                    isActive ? "text-blue-400 bg-blue-900/20" : "text-gray-300"
+                    isActive ? "text-[var(--color-status-info)] bg-blue-900/20" : "text-gray-300"
                   )}
                 >
                   {isActive && "* "}

@@ -18,10 +18,10 @@ interface ArtifactOverlayProps {
 }
 
 const ARTIFACT_TYPE_COLORS: Record<string, string> = {
-  code: "border-blue-500 bg-blue-500/10 text-blue-400",
-  patch: "border-green-500 bg-green-500/10 text-green-400",
+  code: "border-blue-500 bg-blue-500/10 text-[var(--color-status-info)]",
+  patch: "border-green-500 bg-green-500/10 text-[var(--color-status-success)]",
   file: "border-purple-500 bg-purple-500/10 text-purple-400",
-  summary: "border-yellow-500 bg-yellow-500/10 text-yellow-400",
+  summary: "border-yellow-500 bg-yellow-500/10 text-[var(--color-status-warning)]",
   other: "border-gray-500 bg-gray-500/10 text-gray-400",
 };
 
@@ -170,7 +170,7 @@ function ArtifactItem({
               </button>
             )}
             {feedbackMessage && (
-              <span className="ml-auto text-xs text-green-400 animate-pulse">
+              <span className="ml-auto text-xs text-[var(--color-status-success)] animate-pulse">
                 {feedbackMessage}
               </span>
             )}
@@ -248,7 +248,7 @@ export function ArtifactOverlay({ terminalId, worktreeId, cwd, className }: Arti
           {/* Header */}
           <div className="flex items-center justify-between px-4 py-3 bg-gray-900 border-b border-gray-700">
             <div className="flex items-center gap-2">
-              <span className="font-mono text-blue-400">{}</span>
+              <span className="font-mono text-[var(--color-status-info)]">{}</span>
               <span className="text-sm font-medium text-gray-200">
                 {artifacts.length} Artifact{artifacts.length !== 1 ? "s" : ""}
               </span>

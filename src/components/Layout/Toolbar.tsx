@@ -172,7 +172,7 @@ export function Toolbar({
           onClick={onToggleProblems}
           className={cn(
             "text-canopy-text hover:bg-canopy-border hover:text-canopy-accent relative",
-            errorCount > 0 && "text-red-400"
+            errorCount > 0 && "text-[var(--color-status-error)]"
           )}
           title="Problems (Ctrl+Shift+P)"
           aria-label={`Problems: ${errorCount} error${errorCount !== 1 ? "s" : ""}`}

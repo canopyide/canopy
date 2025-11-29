@@ -23,17 +23,17 @@ const LEVEL_COLORS: Record<LogLevel, { bg: string; text: string; border: string 
   },
   info: {
     bg: "bg-blue-500/20",
-    text: "text-blue-400",
+    text: "text-[var(--color-status-info)]",
     border: "border-blue-500/30",
   },
   warn: {
     bg: "bg-yellow-500/20",
-    text: "text-yellow-400",
+    text: "text-[var(--color-status-warning)]",
     border: "border-yellow-500/30",
   },
   error: {
     bg: "bg-red-500/20",
-    text: "text-red-400",
+    text: "text-[var(--color-status-error)]",
     border: "border-red-500/30",
   },
 };

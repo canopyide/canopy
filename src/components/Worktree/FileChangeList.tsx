@@ -34,10 +34,10 @@ function getBasename(filePath: string): string {
 }
 
 const STATUS_ICONS: Record<GitStatus, { icon: string; color: string }> = {
-  added: { icon: "A", color: "text-green-400" },
-  modified: { icon: "M", color: "text-yellow-400" },
-  deleted: { icon: "D", color: "text-red-400" },
-  renamed: { icon: "R", color: "text-blue-400" },
+  added: { icon: "A", color: "text-[var(--color-status-success)]" },
+  modified: { icon: "M", color: "text-[var(--color-status-warning)]" },
+  deleted: { icon: "D", color: "text-[var(--color-status-error)]" },
+  renamed: { icon: "R", color: "text-[var(--color-status-info)]" },
   copied: { icon: "C", color: "text-cyan-400" },
   untracked: { icon: "?", color: "text-gray-400" },
   ignored: { icon: "I", color: "text-gray-500" },
@@ -120,10 +120,14 @@ export function FileChangeList({ changes, maxVisible = 4, rootPath }: FileChange
             </div>
             <div className="flex items-center gap-2 flex-shrink-0 ml-2">
               {additionsLabel && (
-                <span className="text-green-400 text-xs font-mono">{additionsLabel}</span>
+                <span className="text-[var(--color-status-success)] text-xs font-mono">
+                  {additionsLabel}
+                </span>
               )}
               {deletionsLabel && (
-                <span className="text-red-400 text-xs font-mono">{deletionsLabel}</span>
+                <span className="text-[var(--color-status-error)] text-xs font-mono">
+                  {deletionsLabel}
+                </span>
               )}
             </div>
           </div>

@@ -22,14 +22,14 @@ type TabId = "transcript" | "artifacts";
 
 const AGENT_COLORS: Record<string, string> = {
   claude: "text-orange-400",
-  gemini: "text-blue-400",
+  gemini: "text-[var(--color-status-info)]",
   custom: "text-purple-400",
 };
 
 const STATE_COLORS: Record<string, string> = {
-  active: "text-yellow-400",
-  completed: "text-green-400",
-  failed: "text-red-400",
+  active: "text-[var(--color-status-warning)]",
+  completed: "text-[var(--color-status-success)]",
+  failed: "text-[var(--color-status-error)]",
 };
 
 function formatDuration(startTime: number, endTime?: number): string {
@@ -150,7 +150,7 @@ export function SessionViewer({
               onClick={() => onResume(session)}
               className={cn(
                 "text-xs px-3 py-1 rounded border transition-colors",
-                "border-green-600 text-green-400 hover:bg-green-900"
+                "border-green-600 text-[var(--color-status-success)] hover:bg-green-900"
               )}
             >
               Resume
@@ -175,7 +175,13 @@ export function SessionViewer({
         {session.worktreeId && <span>Worktree: {session.worktreeId}</span>}
         <span>Artifacts: {session.artifacts.length}</span>
         {session.metadata?.exitCode !== undefined && (
-          <span className={session.metadata.exitCode === 0 ? "text-green-400" : "text-red-400"}>
+          <span
+            className={
+              session.metadata.exitCode === 0
+                ? "text-[var(--color-status-success)]"
+                : "text-[var(--color-status-error)]"
+            }
+          >
             Exit: {session.metadata.exitCode}
           </span>
         )}
@@ -188,7 +194,7 @@ export function SessionViewer({
           className={cn(
             "px-4 py-2 text-sm font-medium transition-colors",
             activeTab === "transcript"
-              ? "text-blue-400 border-b-2 border-blue-400"
+              ? "text-[var(--color-status-info)] border-b-2 border-blue-400"
               : "text-gray-400 hover:text-gray-200"
           )}
         >
@@ -199,7 +205,7 @@ export function SessionViewer({
           className={cn(
             "px-4 py-2 text-sm font-medium transition-colors",
             activeTab === "artifacts"
-              ? "text-blue-400 border-b-2 border-blue-400"
+              ? "text-[var(--color-status-info)] border-b-2 border-blue-400"
               : "text-gray-400 hover:text-gray-200"
           )}
         >
@@ -238,7 +244,7 @@ export function SessionViewer({
                       <span
                         className={cn(
                           "font-medium capitalize",
-                          entry.type === "user" && "text-blue-400",
+                          entry.type === "user" && "text-[var(--color-status-info)]",
                           entry.type === "agent" && agentColor,
                           entry.type === "system" && "text-gray-500"
                         )}

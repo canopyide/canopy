@@ -269,7 +269,7 @@ export function WorktreeList({
   if (error) {
     return (
       <div
-        className="flex flex-col items-center justify-center h-full p-4 text-red-400"
+        className="flex flex-col items-center justify-center h-full p-4 text-[var(--color-status-error)]"
         role="alert"
         aria-live="assertive"
       >
