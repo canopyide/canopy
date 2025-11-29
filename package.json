@@ -50,6 +50,7 @@
     "simple-git": "^3.30.0",
     "strip-ansi": "^7.1.2",
     "tailwind-merge": "^3.4.0",
+    "zod": "^4.1.13",
     "zustand": "^5.0.8"
   },
   "devDependencies": {
