@@ -100,6 +100,7 @@ const CHANNELS = {
 
   // CopyTree channels
   COPYTREE_GENERATE: "copytree:generate",
+  COPYTREE_GENERATE_AND_COPY_FILE: "copytree:generate-and-copy-file",
   COPYTREE_INJECT: "copytree:inject",
   COPYTREE_AVAILABLE: "copytree:available",
   COPYTREE_PROGRESS: "copytree:progress",
@@ -379,6 +380,9 @@ const api: ElectronAPI = {
   copyTree: {
     generate: (worktreeId: string, options?: CopyTreeOptions): Promise<CopyTreeResult> =>
       ipcRenderer.invoke(CHANNELS.COPYTREE_GENERATE, { worktreeId, options }),
+
+    generateAndCopyFile: (worktreeId: string, options?: CopyTreeOptions): Promise<CopyTreeResult> =>
+      ipcRenderer.invoke(CHANNELS.COPYTREE_GENERATE_AND_COPY_FILE, { worktreeId, options }),
 
     injectToTerminal: (
       terminalId: string,

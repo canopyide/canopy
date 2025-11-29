@@ -5,7 +5,7 @@
  * Provides a single initialization function to wire up all IPC communication.
  */
 
-import { ipcMain, BrowserWindow, shell, dialog, app } from "electron";
+import { ipcMain, BrowserWindow, shell, dialog, app, clipboard } from "electron";
 import crypto from "crypto";
 import os from "os";
 import path from "path";
@@ -20,6 +20,7 @@ import type {
   DevServerStopPayload,
   DevServerTogglePayload,
   CopyTreeGeneratePayload,
+  CopyTreeGenerateAndCopyFilePayload,
   CopyTreeInjectPayload,
   CopyTreeGetFileTreePayload,
   CopyTreeResult,
@@ -39,6 +40,7 @@ import {
   DevServerStopPayloadSchema,
   DevServerTogglePayloadSchema,
   CopyTreeGeneratePayloadSchema,
+  CopyTreeGenerateAndCopyFilePayloadSchema,
   CopyTreeInjectPayloadSchema,
   CopyTreeGetFileTreePayloadSchema,
 } from "../schemas/ipc.js";
@@ -690,6 +692,118 @@ export function registerIpcHandlers(
   };
   ipcMain.handle(CHANNELS.COPYTREE_GENERATE, handleCopyTreeGenerate);
   handlers.push(() => ipcMain.removeHandler(CHANNELS.COPYTREE_GENERATE));
+
+  const handleCopyTreeGenerateAndCopyFile = async (
+    _event: Electron.IpcMainInvokeEvent,
+    payload: CopyTreeGenerateAndCopyFilePayload
+  ): Promise<CopyTreeResult> => {
+    // Generate trace ID for this operation
+    const traceId = crypto.randomUUID();
+    console.log(
+      `[${traceId}] CopyTree generate-and-copy-file started for worktree ${payload.worktreeId}`
+    );
+
+    // Validate with Zod schema
+    const parseResult = CopyTreeGenerateAndCopyFilePayloadSchema.safeParse(payload);
+    if (!parseResult.success) {
+      console.error(
+        `[${traceId}] Invalid CopyTree generate-and-copy-file payload:`,
+        parseResult.error.format()
+      );
+      return {
+        content: "",
+        fileCount: 0,
+        error: `Invalid payload: ${parseResult.error.message}`,
+      };
+    }
+
+    const validated = parseResult.data;
+
+    if (!worktreeService) {
+      return {
+        content: "",
+        fileCount: 0,
+        error: "WorktreeService not initialized",
+      };
+    }
+
+    // Look up worktree path from worktreeId
+    const statesMap = worktreeService.getAllStates();
+    const worktree = statesMap.get(validated.worktreeId);
+
+    if (!worktree) {
+      return {
+        content: "",
+        fileCount: 0,
+        error: `Worktree not found: ${validated.worktreeId}`,
+      };
+    }
+
+    // Progress callback to send updates to renderer with traceId
+    const onProgress = (progress: CopyTreeProgress) => {
+      sendToRenderer(mainWindow, CHANNELS.COPYTREE_PROGRESS, { ...progress, traceId });
+    };
+
+    const result = await copyTreeService.generate(
+      worktree.path,
+      validated.options,
+      onProgress,
+      traceId
+    );
+
+    if (result.error) {
+      return result;
+    }
+
+    try {
+      const fs = await import("fs/promises");
+      const os = await import("os");
+      const path = await import("path");
+
+      // Ensure temp directory exists
+      const tempDir = path.join(os.tmpdir(), "canopy-context");
+      await fs.mkdir(tempDir, { recursive: true });
+
+      // Create filename with timestamp
+      const timestamp = new Date().toISOString().replace(/[:.]/g, "-");
+      const filename = `context-${worktree.branch || "head"}-${timestamp}.xml`;
+      const filePath = path.join(tempDir, filename);
+
+      // Write content to file
+      await fs.writeFile(filePath, result.content, "utf-8");
+
+      // Copy to clipboard based on platform
+      if (process.platform === "darwin") {
+        const plist = `<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
+<plist version="1.0">
+<array>
+    <string>${filePath}</string>
+</array>
+</plist>`;
+        clipboard.writeBuffer("NSFilenamesPboardType", Buffer.from(plist, "utf8"));
+      } else if (process.platform === "win32") {
+        // Not implemented for Windows yet
+        clipboard.writeText(filePath);
+      } else {
+        // Linux
+        clipboard.writeBuffer("text/uri-list", Buffer.from(`file://${filePath}`, "utf8"));
+      }
+
+      console.log(`[${traceId}] Copied context file to clipboard: ${filePath}`);
+
+      return result;
+    } catch (error) {
+      const errorMessage = error instanceof Error ? error.message : String(error);
+      console.error(`[${traceId}] Failed to save/copy context file:`, errorMessage);
+      return {
+        ...result,
+        error: `Failed to copy file to clipboard: ${errorMessage}`,
+      };
+    }
+  };
+  ipcMain.handle(CHANNELS.COPYTREE_GENERATE_AND_COPY_FILE, handleCopyTreeGenerateAndCopyFile);
+  handlers.push(() => ipcMain.removeHandler(CHANNELS.COPYTREE_GENERATE_AND_COPY_FILE));
 
   const handleCopyTreeInject = async (
     _event: Electron.IpcMainInvokeEvent,

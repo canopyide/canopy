@@ -112,6 +112,14 @@ export const CopyTreeGeneratePayloadSchema = z.object({
 });
 
 /**
+ * Schema for CopyTree generate and copy file payload.
+ */
+export const CopyTreeGenerateAndCopyFilePayloadSchema = z.object({
+  worktreeId: z.string().min(1),
+  options: CopyTreeOptionsSchema,
+});
+
+/**
  * Schema for CopyTree inject payload.
  */
 export const CopyTreeInjectPayloadSchema = z.object({
@@ -239,6 +247,9 @@ export type DevServerStopPayload = z.infer<typeof DevServerStopPayloadSchema>;
 export type DevServerTogglePayload = z.infer<typeof DevServerTogglePayloadSchema>;
 export type CopyTreeOptions = z.infer<typeof CopyTreeOptionsSchema>;
 export type CopyTreeGeneratePayload = z.infer<typeof CopyTreeGeneratePayloadSchema>;
+export type CopyTreeGenerateAndCopyFilePayload = z.infer<
+  typeof CopyTreeGenerateAndCopyFilePayloadSchema
+>;
 export type CopyTreeInjectPayload = z.infer<typeof CopyTreeInjectPayloadSchema>;
 export type CopyTreeProgress = z.infer<typeof CopyTreeProgressSchema>;
 export type CopyTreeGetFileTreePayload = z.infer<typeof CopyTreeGetFileTreePayloadSchema>;

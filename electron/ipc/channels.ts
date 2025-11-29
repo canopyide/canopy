@@ -46,6 +46,7 @@ export const CHANNELS = {
 
   // CopyTree channels
   COPYTREE_GENERATE: "copytree:generate",
+  COPYTREE_GENERATE_AND_COPY_FILE: "copytree:generate-and-copy-file",
   COPYTREE_INJECT: "copytree:inject",
   COPYTREE_AVAILABLE: "copytree:available",
   COPYTREE_PROGRESS: "copytree:progress",

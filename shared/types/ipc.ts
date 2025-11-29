@@ -93,6 +93,16 @@ export interface CopyTreeOptions {
   profile?: string;
 }
 
+export interface CopyTreeGeneratePayload {
+  worktreeId: string;
+  options?: CopyTreeOptions;
+}
+
+export interface CopyTreeGenerateAndCopyFilePayload {
+  worktreeId: string;
+  options?: CopyTreeOptions;
+}
+
 /** Result from CopyTree generation */
 export interface CopyTreeResult {
   /** Generated content */
@@ -573,6 +583,7 @@ export interface ElectronAPI {
   };
   copyTree: {
     generate(worktreeId: string, options?: CopyTreeOptions): Promise<CopyTreeResult>;
+    generateAndCopyFile(worktreeId: string, options?: CopyTreeOptions): Promise<CopyTreeResult>;
     injectToTerminal(
       terminalId: string,
       worktreeId: string,

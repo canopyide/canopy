@@ -129,6 +129,11 @@ export interface CopyTreeGeneratePayload {
   options?: CopyTreeOptions;
 }
 
+export interface CopyTreeGenerateAndCopyFilePayload {
+  worktreeId: string;
+  options?: CopyTreeOptions;
+}
+
 export interface CopyTreeResult {
   content: string;
   fileCount: number;
