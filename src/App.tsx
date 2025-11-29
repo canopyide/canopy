@@ -29,7 +29,11 @@ import { useRecipeStore } from "./store/recipeStore";
 import { cleanupTerminalStoreListeners } from "./store/terminalStore";
 import type { WorktreeState } from "./types";
 
-function SidebarContent() {
+interface SidebarContentProps {
+  onOpenSettings: (tab?: "ai" | "general" | "troubleshooting") => void;
+}
+
+function SidebarContent({ onOpenSettings }: SidebarContentProps) {
   const { worktrees, isLoading, error, refresh } = useWorktrees();
   const { inject, isInjecting } = useContextInjection();
   const { activeWorktreeId, focusedWorktreeId, selectWorktree, setActiveWorktree } =
@@ -149,6 +153,7 @@ function SidebarContent() {
             onInjectContext={focusedTerminalId ? () => handleInjectContext(worktree.id) : undefined}
             isInjecting={isInjecting}
             onCreateRecipe={() => handleCreateRecipe(worktree.id)}
+            onOpenSettings={onOpenSettings}
           />
         ))}
       </div>
@@ -192,6 +197,7 @@ function App() {
 
   // Settings dialog state
   const [isSettingsOpen, setIsSettingsOpen] = useState(false);
+  const [settingsTab, setSettingsTab] = useState<"general" | "ai" | "troubleshooting">("general");
 
   // Refresh state
   const [isRefreshing, setIsRefreshing] = useState(false);
@@ -285,6 +291,14 @@ function App() {
   }, [isRefreshing]);
 
   const handleSettings = useCallback(() => {
+    setSettingsTab("general"); // Always open to General tab when clicking toolbar button
+    setIsSettingsOpen(true);
+  }, []);
+
+  const handleOpenSettings = useCallback((tab?: "ai" | "general" | "troubleshooting") => {
+    if (tab) {
+      setSettingsTab(tab);
+    }
     setIsSettingsOpen(true);
   }, []);
 
@@ -420,7 +434,7 @@ function App() {
   return (
     <>
       <AppLayout
-        sidebarContent={<SidebarContent />}
+        sidebarContent={<SidebarContent onOpenSettings={handleOpenSettings} />}
         historyContent={<HistoryPanel />}
         onLaunchAgent={handleLaunchAgent}
         onRefresh={handleRefresh}
@@ -449,7 +463,11 @@ function App() {
       />
 
       {/* Settings dialog */}
-      <SettingsDialog isOpen={isSettingsOpen} onClose={() => setIsSettingsOpen(false)} />
+      <SettingsDialog
+        isOpen={isSettingsOpen}
+        onClose={() => setIsSettingsOpen(false)}
+        defaultTab={settingsTab}
+      />
     </>
   );
 }

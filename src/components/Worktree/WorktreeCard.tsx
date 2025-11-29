@@ -18,6 +18,7 @@ import {
   DropdownMenuTrigger,
 } from "../ui/dropdown-menu";
 import { ConfirmDialog } from "../Terminal/ConfirmDialog";
+import { Sparkles, AlertCircle, Loader2 } from "lucide-react";
 
 export interface WorktreeCardProps {
   worktree: WorktreeState;
@@ -35,6 +36,8 @@ export interface WorktreeCardProps {
   isInjecting?: boolean;
   /** Called when user wants to create a new recipe */
   onCreateRecipe?: () => void;
+  /** Called when user wants to open Settings dialog with optional tab */
+  onOpenSettings?: (tab?: "ai" | "general" | "troubleshooting") => void;
 }
 
 const MOOD_ACCENT_COLORS: Record<WorktreeMood, string> = {
@@ -90,6 +93,7 @@ export function WorktreeCard({
   onInjectContext,
   isInjecting = false,
   onCreateRecipe,
+  onOpenSettings,
 }: WorktreeCardProps) {
   const mood = worktree.mood || "stable";
   const moodColorClass = MOOD_ACCENT_COLORS[mood];
@@ -266,25 +270,86 @@ export function WorktreeCard({
   const branchLabel = worktree.branch ?? worktree.name;
   const hasChanges = (worktree.worktreeChanges?.changedFileCount ?? 0) > 0;
 
-  // Summary component
-  let summaryContent: React.ReactNode;
-  const isCommitMessage =
-    worktree.summary?.startsWith("Last commit:") || worktree.summary?.startsWith("✅");
+  // AI Summary renderer
+  const renderAISummary = useCallback(() => {
+    const { summary, aiStatus } = worktree;
+    const setProblemsPanelOpen = useErrorStore.getState().setPanelOpen;
 
-  if (worktree.summary) {
-    if (isCommitMessage) {
-      summaryContent = <span className="text-gray-500">{worktree.summary}</span>;
-    } else if (hasChanges) {
-      summaryContent = <span className="text-gray-300">{worktree.summary}</span>;
-    } else {
-      summaryContent = <span className="text-gray-500">{worktree.summary}</span>;
+    switch (aiStatus) {
+      case "disabled":
+        return (
+          <div className="text-xs text-gray-400 flex items-center gap-1">
+            <Sparkles className="w-3 h-3 opacity-50" aria-hidden="true" />
+            <span>AI summaries off</span>
+            {onOpenSettings && (
+              <>
+                <span> ·</span>
+                <button
+                  onClick={(e) => {
+                    e.stopPropagation();
+                    onOpenSettings("ai");
+                  }}
+                  className="text-canopy-accent hover:underline"
+                >
+                  Configure in Settings
+                </button>
+              </>
+            )}
+          </div>
+        );
+
+      case "error":
+        return (
+          <div className="text-xs text-red-400 flex items-center gap-1">
+            <AlertCircle className="w-3 h-3" aria-hidden="true" />
+            <span>AI summary failed ·</span>
+            <button
+              onClick={(e) => {
+                e.stopPropagation();
+                setProblemsPanelOpen(true);
+              }}
+              className="hover:underline"
+            >
+              See Problems panel
+            </button>
+          </div>
+        );
+
+      case "loading":
+        return (
+          <div className="text-xs text-gray-400 flex items-center gap-1">
+            <Loader2 className="w-3 h-3 animate-spin" aria-hidden="true" />
+            <span>Analyzing changes...</span>
+          </div>
+        );
+
+      case "active": {
+        if (!summary) {
+          return <div className="text-xs text-gray-400">Waiting for first changes...</div>;
+        }
+        // Check if it's a commit message
+        const isCommitMessage = summary.startsWith("Last commit:") || summary.startsWith("✅");
+        return (
+          <div className="text-xs flex items-start gap-1">
+            <Sparkles
+              className="w-3 h-3 text-canopy-accent mt-0.5 flex-shrink-0"
+              aria-hidden="true"
+            />
+            <span
+              className={cn(
+                isCommitMessage ? "text-gray-500" : hasChanges ? "text-gray-300" : "text-gray-500"
+              )}
+            >
+              {summary}
+            </span>
+          </div>
+        );
+      }
+
+      default:
+        return null;
     }
-  } else if (worktree.aiStatus === "loading") {
-    summaryContent = <span className="text-gray-500">Generating summary...</span>;
-  } else {
-    const fallbackText = worktree.branch ? `Clean: ${worktree.branch}` : "Ready";
-    summaryContent = <span className="text-gray-500">{fallbackText}</span>;
-  }
+  }, [worktree.aiStatus, worktree.summary, onOpenSettings, hasChanges]);
 
   // Server status helpers
   const getServerStatusIndicator = () => {
@@ -572,7 +637,7 @@ export function WorktreeCard({
         </div>
 
         {/* Summary */}
-        <div className="mt-3 text-sm">{summaryContent}</div>
+        <div className="mt-3 text-sm">{renderAISummary()}</div>
 
         {/* Files */}
         {hasChanges && worktree.worktreeChanges && (

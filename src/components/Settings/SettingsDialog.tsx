@@ -27,6 +27,7 @@ import type { AIServiceState } from "@/types";
 interface SettingsDialogProps {
   isOpen: boolean;
   onClose: () => void;
+  defaultTab?: SettingsTab;
 }
 
 type SettingsTab = "general" | "ai" | "troubleshooting";
@@ -92,8 +93,8 @@ const formatKey = (key: string): string => {
   return key.replace(/Cmd\+/g, "Ctrl+");
 };
 
-export function SettingsDialog({ isOpen, onClose }: SettingsDialogProps) {
-  const [activeTab, setActiveTab] = useState<SettingsTab>("general");
+export function SettingsDialog({ isOpen, onClose, defaultTab }: SettingsDialogProps) {
+  const [activeTab, setActiveTab] = useState<SettingsTab>(defaultTab ?? "general");
   const { openLogs } = useErrors();
   const clearLogs = useLogsStore((state) => state.clearLogs);
 
@@ -109,6 +110,13 @@ export function SettingsDialog({ isOpen, onClose }: SettingsDialogProps) {
     "success" | "error" | "test-success" | "test-error" | null
   >(null);
   const [selectedModel, setSelectedModel] = useState("gpt-5-nano");
+
+  // Update active tab when defaultTab changes while dialog is open
+  useEffect(() => {
+    if (isOpen && defaultTab && defaultTab !== activeTab) {
+      setActiveTab(defaultTab);
+    }
+  }, [isOpen, defaultTab, activeTab]);
 
   // Load app version on mount
   useEffect(() => {
