@@ -1,13 +1,13 @@
 # Multi-Project Support
 
-**Status:** Planning
-**Last Updated:** 2025-11-28
+**Status:** Implemented
+**Last Updated:** 2025-11-29
 
 ## Overview
 
 Multi-Project Support enables Canopy Command Center to manage multiple Git repositories simultaneously, with rapid switching between projects while preserving terminal sessions, worktree states, and UI layouts per project.
 
-This document outlines the architecture, implementation phases, and dependencies for this feature.
+This feature is fully implemented and available in the current version.
 
 ## Goals
 
@@ -25,6 +25,80 @@ The app currently operates on a **single repository** model:
 - No concept of "projects" - everything is worktree-centric within one repo
 
 **Related existing issue:** [#50 - Add recent directories picker on app launch](https://github.com/gregpriday/canopy-electron/issues/50)
+
+## How to Use
+
+### Accessing the Project Switcher
+
+The **Project Switcher** is located in the top-left corner of the toolbar, displayed as a clickable button showing the current project's emoji and name (e.g., "🌲 canopy-app").
+
+**To open the Project Switcher:**
+
+- Click the project name button in the toolbar, OR
+- Use the keyboard shortcut: **Cmd+Shift+O** (macOS) / **Ctrl+Shift+O** (Windows/Linux)
+
+### Adding a New Project
+
+1. Open the Project Switcher (Cmd+Shift+O)
+2. Click the **[+ Add Project]** button at the bottom of the dropdown
+3. Select a directory in the file picker dialog
+4. Canopy will detect the Git repository root and add it to your project list
+5. The project will be assigned an AI-generated name and emoji (if OpenAI API key is configured), or use the folder name and a default 🌲 emoji
+
+### Switching Between Projects
+
+1. Open the Project Switcher (Cmd+Shift+O)
+2. Click on any project in the list to switch to it
+3. Projects are sorted by most recently opened
+4. The active project is indicated with a checkmark (✓)
+
+**What happens when you switch:**
+
+- Current project state is automatically saved (terminals, active worktree, sidebar width)
+- Worktree monitoring stops for the old project
+- The new project's state is loaded and restored
+- Worktree monitoring begins for the new project
+- Your terminal layout and active worktree selection are restored exactly as you left them
+
+### Editing Project Details
+
+1. Open the Project Switcher
+2. Click the **pencil icon (✏️)** next to a project
+3. In the dialog, you can:
+   - Change the project **name**
+   - Select a different **emoji**
+   - View the Git repository path (read-only)
+4. Click **Save** to apply changes
+
+### Removing a Project
+
+1. Open the Project Switcher
+2. Click the **trash icon (🗑️)** next to a project
+3. Confirm the removal
+4. The project is removed from the list (your actual files are not deleted)
+5. All saved state for that project (terminals, layout) is also removed
+
+### Project State Persistence
+
+Each project remembers:
+
+- **Active worktree**: Which worktree was selected in the sidebar
+- **Terminal sessions**: All open terminals with their type (shell, Claude, Gemini), working directories, and titles
+- **Terminal layout**: Grid positions and sizes
+- **Sidebar width**: Your preferred sidebar size
+
+**Storage location:** `~/.config/canopy/projects/<project-id>/`
+
+- `state.json` - Terminal layout and active worktree
+- `settings.json` - Project-specific settings (run commands, environment variables)
+
+### AI-Generated Project Identity
+
+If you have configured an OpenAI API key in Settings:
+
+- New projects automatically get an AI-generated name and emoji based on their code content
+- The AI analyzes the repository structure to suggest a relevant name and emoji
+- You can always override these with custom values using the project edit dialog
 
 ## Architecture
 
@@ -230,75 +304,67 @@ project: {
 }
 ```
 
-## Implementation Phases
+## Implementation Status
 
-### Phase 1: Foundation (Build on Issue #50)
+All core phases are complete. Terminal hibernation (Phase 6) is not implemented, as the simpler "Kill & Respawn" approach was chosen for the initial release.
 
-**Depends on:** Nothing (can start immediately)
+### Phase 1: Foundation ✅ Completed
 
-Implement the lightweight "recent directories" feature from Issue #50:
+**Status:** Implemented
 
-- Add `recentDirectories` array to store schema
-- Add "File → Open Directory" menu item (Cmd+O)
-- Add "File → Open Recent" submenu
-- Track last 10 opened directories
+- ✅ Project model with `ProjectStore` service (`electron/services/ProjectStore.ts`)
+- ✅ IPC handlers for project CRUD operations
+- ✅ Migration from simple directories to full project model
+- ✅ Storage at `~/.config/canopy/projects/`
 
-This provides the core directory-switching infrastructure.
+### Phase 2: Project Model ✅ Completed
 
-### Phase 2: Project Model
+**Status:** Implemented
 
-**Depends on:** Phase 1
+- ✅ `Project` type definition in `electron/types/index.ts`
+- ✅ `ProjectStore` service with CRUD operations
+- ✅ Project persistence with electron-store
+- ✅ Atomic file writes for state/settings
 
-Upgrade from simple directories to full project model:
+### Phase 3: Project Switcher UI ✅ Completed
 
-- Create `Project` type definition
-- Create `ProjectStore` service
-- Migrate `recentDirectories` to `projects` array
-- Add project CRUD IPC handlers
+**Status:** Implemented
 
-### Phase 3: Project Switcher UI
+- ✅ `ProjectSwitcher` component in toolbar (`src/components/Project/ProjectSwitcher.tsx`)
+- ✅ Dropdown interface with project list
+- ✅ Add/Edit/Remove project UI
+- ✅ Keyboard shortcut: **Cmd+Shift+O**
 
-**Depends on:** Phase 2
+### Phase 4: State Snapshotting ✅ Completed
 
-Build the visual project switching interface:
+**Status:** Implemented
 
-- Create `ProjectSwitcher` component
-- Create `ProjectCard` component
-- Add to sidebar header or command palette
-- Add keyboard shortcut (Cmd+Shift+O)
+- ✅ `ProjectState` type for terminal layout and active worktree
+- ✅ Automatic state saving on project switch
+- ✅ State restoration when returning to project
+- ✅ Per-project settings (run commands, environment variables)
 
-### Phase 4: State Snapshotting
+### Phase 5: Project Identity ✅ Completed
 
-**Depends on:** Phase 2, Phase 3
+**Status:** Implemented
 
-Implement per-project state persistence:
+- ✅ AI-generated project names and emojis (`electron/services/ai/identity.ts`)
+- ✅ Project edit dialog with emoji picker (`src/components/Project/ProjectSettingsDialog.tsx`)
+- ✅ Fallback to folder name when AI is unavailable
+- ✅ Cached identity to avoid redundant API calls
 
-- Create `ProjectState` type
-- Add terminal snapshot/restore to `terminalStore`
-- Save state automatically when switching
-- Restore state when returning to project
+### Phase 6: Terminal Hibernation ❌ Not Implemented
 
-### Phase 5: Project Identity
+**Status:** Deferred
 
-**Depends on:** Phase 2
+The simpler "Kill & Respawn" approach is used instead:
 
-Add name and emoji customization:
+- Terminals are killed when switching projects
+- Terminal state (cwd, title, type) is saved
+- New terminal processes are spawned when returning to a project
+- This keeps memory usage low and avoids complex state management
 
-- Port `ProjectIdentityService` from CLI
-- Add project edit dialog
-- Add emoji picker component
-- Integrate AI name generation (optional, requires API key)
-
-### Phase 6: Terminal Hibernation (Optional)
-
-**Depends on:** Phase 4
-
-Advanced feature for keeping terminals alive:
-
-- Keep PTY processes running when switching
-- Detach/reattach xterm.js instances
-- Add "Keep terminals running?" prompt
-- Manage background process lifecycle
+**Future consideration:** If users request terminal persistence across switches, hibernation could be added as an opt-in feature.
 
 ## Dependency Graph
 

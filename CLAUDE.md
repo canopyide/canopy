@@ -267,12 +267,12 @@ The preload script exposes these namespaces via `window.electron`:
 ## Documentation
 
 - **Technical Specification:** `docs/spec.md` - Complete architecture and data models
-- **Multi-Project Support:** `docs/multi-project-support.md` - Planning document
+- **Multi-Project Support:** `docs/multi-project-support.md` - Implementation guide and usage
 - **GitHub Issues:** See pinned issue #22 for the master development plan
 
 ## Migration Context
 
-This project migrated code from the original Canopy CLI. The migration is largely complete. When working on related features:
+This project migrated code from the original Canopy CLI. **The migration is complete.** When working on related features:
 
 1. Original source files are in `/Users/gpriday/Projects/CopyTree/canopy`
 2. Services live in `electron/services/`
@@ -283,18 +283,19 @@ This project migrated code from the original Canopy CLI. The migration is largel
 
 ## Current State
 
-The app is feature-complete for its core functionality:
+The app is feature-complete for all major functionality:
 
 - **Worktree Dashboard**: Full monitoring with AI summaries, PR detection, file change tracking
 - **Terminal Grid**: Multi-terminal support with agent launchers, recipes, bulk actions
-- **Context Injection**: CopyTree integration with progress reporting
+- **Context Injection**: CopyTree SDK integration with per-agent formats, file picker, streaming progress
+- **Multi-Project Support**: Full project switching with state preservation, AI-generated identities
 - **Dev Servers**: Auto-detection, lifecycle management, log streaming
 - **Agent Tracking**: State machine, transcripts, artifact extraction
 - **Settings**: OpenAI configuration, troubleshooting tools
 - **Event Inspector**: Debug tool for internal events
 - **Logs Panel**: Aggregated logging with filtering
 
-### In Progress / Planned
+### Planned Features
 
-- Multi-project support (Phase 1-2 complete, UI pending)
 - Command palette (slash-command interface)
+- Additional agent integrations

@@ -123,10 +123,23 @@ The original Canopy CLI is a terminal application built with Ink (React for CLI)
 
 ### 4. Context Injection (The Killer Feature)
 
+**Implementation:** SDK-based via `copytree` npm package
+
 - "Inject Context" button on worktree cards and terminal toolbar
-- Invokes CopyTree to generate context from worktree
-- Pastes the full context blob into the active terminal
-- Shows notification with file count summary
+- Uses **CopyTree SDK** (not CLI) for direct Node.js integration
+- **File picker modal** allows selective context generation (choose specific files)
+- **Per-agent format selection**:
+  - **XML format** for Claude agents (optimized for Claude's prompt structure)
+  - **Markdown format** for Gemini agents (better compatibility)
+  - Configurable format for custom agents
+- **Streaming progress reporting** with real-time updates:
+  - Stage indicator (e.g., "Reading files", "Processing")
+  - Progress percentage (0-100%)
+  - Files processed count
+  - Current file being processed
+- Pastes the generated context directly into the active terminal
+- Shows notification with file count summary upon completion
+- Cancellable during generation
 
 ### 5. Agent Launchers
 
@@ -487,27 +500,78 @@ interface PtySpawnOptions {
 }
 ```
 
-### CopyTreeService (Main Process) - NEW
+### CopyTreeService (Main Process)
 
-**Purpose:** Interface with CopyTree for context generation
+**Implementation:** `electron/services/CopyTreeService.ts`
+
+**Purpose:** SDK-based integration with CopyTree for context generation
 
 Responsibilities:
 
-- Execute `copytree` command with appropriate arguments
-- Return generated context as string
-- Handle errors gracefully
+- Use **CopyTree SDK** (`copytree` npm package) for direct Node.js integration
+- Generate context with configurable format (XML, Markdown, etc.)
+- Stream progress events to renderer for UI updates
+- Support selective file inclusion via file picker
+- Handle cancellation of in-progress operations
+- Return generated context as string with metadata
 
 ```typescript
 class CopyTreeService {
-  generate(rootPath: string, options?: CopyTreeOptions): Promise<string>;
+  generate(
+    rootPath: string,
+    options?: CopyTreeOptions,
+    onProgress?: ProgressCallback,
+    traceId?: string
+  ): Promise<CopyTreeResult>;
+
+  cancel(opId: string): boolean;
+  cancelAll(): void;
+  isAvailable(): Promise<boolean>; // Always returns true (SDK is bundled)
 }
 
 interface CopyTreeOptions {
-  profile?: string;
-  extraArgs?: string[];
-  files?: string[];
+  format?: "xml" | "markdown" | "tree"; // Output format
+  includePaths?: string[]; // Specific files/paths to include
+  filter?: string; // File filter pattern
+  exclude?: string[]; // Exclusion patterns
+  always?: string[]; // Always include patterns
+  modified?: boolean; // Only modified files (git)
+  changed?: boolean; // Only changed files (git)
+  withLineNumbers?: boolean; // Add line numbers to output
+  charLimit?: number; // Character limit per file
+  maxFileSize?: number; // Max individual file size
+  maxTotalSize?: number; // Max total size
+  maxFileCount?: number; // Max number of files
+}
+
+interface CopyTreeResult {
+  content: string; // Generated context
+  fileCount: number; // Number of files processed
+  stats?: {
+    totalSize: number; // Total bytes processed
+    duration: number; // Generation time (ms)
+  };
+  error?: string; // Error message if failed
+}
+
+interface CopyTreeProgress {
+  stage: string; // Current stage (e.g., "Reading files")
+  progress: number; // Progress 0.0 to 1.0
+  message: string; // Human-readable status
+  filesProcessed?: number; // Files completed
+  totalFiles?: number; // Total files to process
+  currentFile?: string; // Current file being processed
+  traceId: string; // Operation trace ID
 }
 ```
+
+**Key Features:**
+
+- **Format Selection:** Automatically chooses XML for Claude agents, Markdown for Gemini
+- **Streaming Progress:** Real-time updates via `onProgress` callback
+- **Cancellation:** Abort controller for in-flight operations
+- **Error Handling:** Graceful degradation with detailed error messages
+- **SDK Benefits:** No CLI spawning overhead, better performance, richer APIs
 
 ---
 
