@@ -432,11 +432,7 @@ export function TerminalPane({
           className="absolute inset-0"
         />
         {/* Artifact Overlay */}
-        <ArtifactOverlay
-          terminalId={id}
-          worktreeId={worktreeId}
-          cwd={cwd}
-        />
+        <ArtifactOverlay terminalId={id} worktreeId={worktreeId} cwd={cwd} />
       </div>
     </div>
   );

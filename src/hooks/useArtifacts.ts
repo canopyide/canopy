@@ -6,7 +6,7 @@
  * copying, saving, and applying artifacts.
  */
 
-import { useState, useEffect, useCallback, useRef } from "react";
+import { useState, useEffect, useCallback } from "react";
 import { isElectronAvailable } from "./useElectron";
 import type { Artifact, ArtifactDetectedPayload } from "@shared/types";
 
@@ -82,26 +82,23 @@ export function useArtifacts(terminalId: string, worktreeId?: string, cwd?: stri
   }, [terminalId]);
 
   // Copy artifact content to clipboard
-  const copyToClipboard = useCallback(
-    async (artifact: Artifact) => {
-      if (!navigator.clipboard) {
-        console.error("Clipboard API not available");
-        return false;
-      }
+  const copyToClipboard = useCallback(async (artifact: Artifact) => {
+    if (!navigator.clipboard) {
+      console.error("Clipboard API not available");
+      return false;
+    }
 
-      try {
-        setActionInProgress(artifact.id);
-        await navigator.clipboard.writeText(artifact.content);
-        return true;
-      } catch (error) {
-        console.error("Failed to copy to clipboard:", error);
-        return false;
-      } finally {
-        setActionInProgress(null);
-      }
-    },
-    []
-  );
+    try {
+      setActionInProgress(artifact.id);
+      await navigator.clipboard.writeText(artifact.content);
+      return true;
+    } catch (error) {
+      console.error("Failed to copy to clipboard:", error);
+      return false;
+    } finally {
+      setActionInProgress(null);
+    }
+  }, []);
 
   // Save artifact to file
   const saveToFile = useCallback(

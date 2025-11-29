@@ -312,7 +312,7 @@ const api: ElectronAPI = {
           "state" in data &&
           "timestamp" in data
         ) {
-          callback(data as any);
+          callback(data as AgentStateChangePayload);
         }
       };
       ipcRenderer.on(CHANNELS.AGENT_STATE_CHANGED, handler);
@@ -327,6 +327,7 @@ const api: ElectronAPI = {
     onDetected: (callback: (data: ArtifactDetectedPayload) => void) => {
       const handler = (_event: Electron.IpcRendererEvent, data: unknown) => {
         // Type guard - validate payload structure deeply
+        const record = data as Record<string, unknown>;
         if (
           typeof data === "object" &&
           data !== null &&
@@ -334,19 +335,22 @@ const api: ElectronAPI = {
           "terminalId" in data &&
           "artifacts" in data &&
           "timestamp" in data &&
-          typeof (data as any).agentId === "string" &&
-          typeof (data as any).terminalId === "string" &&
-          typeof (data as any).timestamp === "number" &&
-          Array.isArray((data as any).artifacts) &&
+          typeof record.agentId === "string" &&
+          typeof record.terminalId === "string" &&
+          typeof record.timestamp === "number" &&
+          Array.isArray(record.artifacts) &&
           // Validate each artifact object
-          (data as any).artifacts.every((artifact: any) =>
-            typeof artifact === "object" &&
-            artifact !== null &&
-            typeof artifact.id === "string" &&
-            typeof artifact.type === "string" &&
-            typeof artifact.content === "string" &&
-            typeof artifact.extractedAt === "number"
-          )
+          record.artifacts.every((artifact: unknown) => {
+            const art = artifact as Record<string, unknown>;
+            return (
+              typeof artifact === "object" &&
+              artifact !== null &&
+              typeof art.id === "string" &&
+              typeof art.type === "string" &&
+              typeof art.content === "string" &&
+              typeof art.extractedAt === "number"
+            );
+          })
         ) {
           callback(data as ArtifactDetectedPayload);
         } else {

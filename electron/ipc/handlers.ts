@@ -450,7 +450,7 @@ export function registerIpcHandlers(
         typeof options !== "object" ||
         options === null ||
         !("content" in options) ||
-        typeof (options as any).content !== "string"
+        typeof (options as Record<string, unknown>).content !== "string"
       ) {
         throw new Error("Invalid saveToFile payload: missing or invalid content");
       }
@@ -524,8 +524,8 @@ export function registerIpcHandlers(
         options === null ||
         !("patchContent" in options) ||
         !("cwd" in options) ||
-        typeof (options as any).patchContent !== "string" ||
-        typeof (options as any).cwd !== "string"
+        typeof (options as Record<string, unknown>).patchContent !== "string" ||
+        typeof (options as Record<string, unknown>).cwd !== "string"
       ) {
         throw new Error("Invalid applyPatch payload: missing or invalid patchContent/cwd");
       }
@@ -1050,7 +1050,7 @@ export function registerIpcHandlers(
       // Check if file exists
       await fs.promises.access(logFilePath);
       await shell.openPath(logFilePath);
-    } catch (error) {
+    } catch (_error) {
       // File doesn't exist - create it first
       const fs = await import("fs");
       const dir = join(homedir(), ".config", "canopy");
@@ -1708,7 +1708,7 @@ export function registerIpcHandlers(
   ] as const;
 
   for (const eventType of runEventTypes) {
-    const unsub = events.on(eventType as any, (payload: any) => {
+    const unsub = events.on(eventType as (typeof runEventTypes)[number], (payload: unknown) => {
       sendToRenderer(mainWindow, CHANNELS.RUN_EVENT, { type: eventType, payload });
     });
     handlers.push(unsub);

@@ -37,7 +37,9 @@ interface ArtifactItemProps {
   artifact: Artifact;
   onCopy: (artifact: Artifact) => Promise<boolean>;
   onSave: (artifact: Artifact) => Promise<{ filePath: string; success: boolean } | null>;
-  onApplyPatch: (artifact: Artifact) => Promise<{ success: boolean; error?: string; modifiedFiles?: string[] }>;
+  onApplyPatch: (
+    artifact: Artifact
+  ) => Promise<{ success: boolean; error?: string; modifiedFiles?: string[] }>;
   canApplyPatch: boolean;
   isProcessing: boolean;
 }
@@ -111,7 +113,9 @@ function ArtifactItem({
           )}
         </div>
         <div className="flex items-center gap-2 shrink-0">
-          <span className="text-xs text-gray-500">{lineCount} line{lineCount !== 1 ? "s" : ""}</span>
+          <span className="text-xs text-gray-500">
+            {lineCount} line{lineCount !== 1 ? "s" : ""}
+          </span>
           <span className="text-gray-400">{isExpanded ? "▼" : "▶"}</span>
         </div>
       </button>
@@ -166,7 +170,9 @@ function ArtifactItem({
               </button>
             )}
             {feedbackMessage && (
-              <span className="ml-auto text-xs text-green-400 animate-pulse">{feedbackMessage}</span>
+              <span className="ml-auto text-xs text-green-400 animate-pulse">
+                {feedbackMessage}
+              </span>
             )}
           </div>
         </div>
@@ -226,8 +232,10 @@ export function ArtifactOverlay({ terminalId, worktreeId, cwd, className }: Arti
             "flex items-center gap-2"
           )}
         >
-          <span className="font-mono">{ }</span>
-          <span>{artifacts.length} artifact{artifacts.length !== 1 ? "s" : ""}</span>
+          <span className="font-mono">{}</span>
+          <span>
+            {artifacts.length} artifact{artifacts.length !== 1 ? "s" : ""}
+          </span>
         </button>
       ) : (
         // Expanded Overlay
@@ -240,7 +248,7 @@ export function ArtifactOverlay({ terminalId, worktreeId, cwd, className }: Arti
           {/* Header */}
           <div className="flex items-center justify-between px-4 py-3 bg-gray-900 border-b border-gray-700">
             <div className="flex items-center gap-2">
-              <span className="font-mono text-blue-400">{ }</span>
+              <span className="font-mono text-blue-400">{}</span>
               <span className="text-sm font-medium text-gray-200">
                 {artifacts.length} Artifact{artifacts.length !== 1 ? "s" : ""}
               </span>
