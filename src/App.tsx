@@ -16,6 +16,7 @@ import { ProblemsPanel } from "./components/Errors";
 import { TerminalPalette } from "./components/TerminalPalette";
 import { RecipeEditor } from "./components/TerminalRecipe/RecipeEditor";
 import { SettingsDialog } from "./components/Settings";
+import { HistoryPanel } from "./components/History";
 import {
   useTerminalStore,
   useWorktreeSelectionStore,
@@ -383,6 +384,7 @@ function App() {
     <>
       <AppLayout
         sidebarContent={<SidebarContent />}
+        historyContent={<HistoryPanel />}
         onLaunchAgent={handleLaunchAgent}
         onRefresh={handleRefresh}
         onSettings={handleSettings}

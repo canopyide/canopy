@@ -61,6 +61,7 @@ export type {
   CopyTreeOptions,
   CopyTreeResult,
   CopyTreeProgress,
+  FileTreeNode,
   // App state types
   RecentDirectory,
   SavedRecipeTerminal,

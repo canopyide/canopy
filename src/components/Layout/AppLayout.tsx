@@ -8,6 +8,7 @@ import { useFocusStore, useLogsStore, useEventStore } from "@/store";
 interface AppLayoutProps {
   children?: ReactNode;
   sidebarContent?: ReactNode;
+  historyContent?: ReactNode;
   onLaunchAgent?: (type: "claude" | "gemini" | "shell") => void;
   onRefresh?: () => void;
   onSettings?: () => void;
@@ -24,6 +25,7 @@ const DEFAULT_SIDEBAR_WIDTH = 350;
 export function AppLayout({
   children,
   sidebarContent,
+  historyContent,
   onLaunchAgent,
   onRefresh,
   onSettings,
@@ -196,7 +198,11 @@ export function AppLayout({
       <div className="flex-1 flex flex-col overflow-hidden">
         <div className="flex-1 flex overflow-hidden">
           {!isFocusMode && (
-            <Sidebar width={effectiveSidebarWidth} onResize={handleSidebarResize}>
+            <Sidebar
+              width={effectiveSidebarWidth}
+              onResize={handleSidebarResize}
+              historyContent={historyContent}
+            >
               {sidebarContent}
             </Sidebar>
           )}

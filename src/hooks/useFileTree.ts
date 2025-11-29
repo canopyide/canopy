@@ -199,23 +199,21 @@ export function useFileTree(options: UseFileTreeOptions): UseFileTreeResult {
 
     const query = searchQuery.toLowerCase();
 
-    const filterTree = (nodes: FileTreeNode[]): FileTreeNode[] => {
-      return nodes
-        .map((node) => {
-          const nameMatches = node.name.toLowerCase().includes(query);
-          const childrenMatch = node.children ? filterTree(node.children) : [];
+    const filterTree = (nodeList: FileTreeNode[]): FileTreeNode[] => {
+      const results: FileTreeNode[] = [];
+      for (const node of nodeList) {
+        const nameMatches = node.name.toLowerCase().includes(query);
+        const childrenMatch = node.children ? filterTree(node.children) : [];
 
-          // Include node if name matches or has matching children
-          if (nameMatches || childrenMatch.length > 0) {
-            return {
-              ...node,
-              children: childrenMatch.length > 0 ? childrenMatch : node.children,
-            };
-          }
-
-          return null;
-        })
-        .filter((node): node is FileTreeNode => node !== null);
+        // Include node if name matches or has matching children
+        if (nameMatches || childrenMatch.length > 0) {
+          results.push({
+            ...node,
+            children: childrenMatch.length > 0 ? childrenMatch : node.children,
+          });
+        }
+      }
+      return results;
     };
 
     return filterTree(nodes);

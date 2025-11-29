@@ -5,7 +5,7 @@
  * Features tri-state checkboxes, lazy loading, and search.
  */
 
-import { useEffect, useCallback, useRef, useState } from "react";
+import { useEffect, useCallback, useRef } from "react";
 import { Button } from "@/components/ui/button";
 import { cn } from "@/lib/utils";
 import { useFileTree } from "@/hooks/useFileTree";
@@ -51,6 +51,7 @@ export function FilePickerModal({ isOpen, worktreeId, onConfirm, onCancel }: Fil
       // Clear search and selection when closing
       setSearchQuery("");
       clearSelection();
+      return undefined;
     }
   }, [isOpen, loadTree, setSearchQuery, clearSelection]);
 

@@ -4,20 +4,54 @@ import { cn } from "@/lib/utils";
 import { ProjectSwitcher, ProjectRunners, ProjectSettingsDialog } from "@/components/Project";
 import { useProjectStore } from "@/store/projectStore";
 
+export type SidebarTab = "worktrees" | "history";
+
 interface SidebarProps {
   width: number;
   onResize: (width: number) => void;
   children?: ReactNode;
+  historyContent?: ReactNode;
   className?: string;
+  /** Currently active tab */
+  activeTab?: SidebarTab;
+  /** Callback when tab changes */
+  onTabChange?: (tab: SidebarTab) => void;
 }
 
 const RESIZE_STEP = 10;
 
-export function Sidebar({ width, onResize, children, className }: SidebarProps) {
+export function Sidebar({
+  width,
+  onResize,
+  children,
+  historyContent,
+  className,
+  activeTab = "worktrees",
+  onTabChange,
+}: SidebarProps) {
   const [isResizing, setIsResizing] = useState(false);
   const [isSettingsOpen, setIsSettingsOpen] = useState(false);
+  const [internalTab, setInternalTab] = useState<SidebarTab>(activeTab);
   const sidebarRef = useRef<HTMLElement>(null);
   const currentProject = useProjectStore((state) => state.currentProject);
+
+  // Sync internal state when activeTab prop changes
+  useEffect(() => {
+    setInternalTab(activeTab);
+  }, [activeTab]);
+
+  // Use controlled tab if provided, otherwise internal state
+  const currentTab = onTabChange ? activeTab : internalTab;
+  const handleTabChange = useCallback(
+    (tab: SidebarTab) => {
+      if (onTabChange) {
+        onTabChange(tab);
+      } else {
+        setInternalTab(tab);
+      }
+    },
+    [onTabChange]
+  );
 
   const startResizing = useCallback((e: React.MouseEvent) => {
     e.preventDefault();
@@ -99,8 +133,36 @@ export function Sidebar({ width, onResize, children, className }: SidebarProps) 
         {/* Project Runners - displays configured run commands */}
         {currentProject && <ProjectRunners projectId={currentProject.id} />}
 
-        {/* Sidebar content (Worktree list) grows to fill space */}
-        <div className="flex-1 overflow-y-auto min-h-0">{children}</div>
+        {/* Tab bar */}
+        <div className="shrink-0 flex border-b border-canopy-border">
+          <button
+            onClick={() => handleTabChange("worktrees")}
+            className={cn(
+              "flex-1 px-3 py-2 text-sm font-medium transition-colors",
+              currentTab === "worktrees"
+                ? "text-canopy-accent border-b-2 border-canopy-accent"
+                : "text-gray-400 hover:text-gray-200"
+            )}
+          >
+            Worktrees
+          </button>
+          <button
+            onClick={() => handleTabChange("history")}
+            className={cn(
+              "flex-1 px-3 py-2 text-sm font-medium transition-colors",
+              currentTab === "history"
+                ? "text-canopy-accent border-b-2 border-canopy-accent"
+                : "text-gray-400 hover:text-gray-200"
+            )}
+          >
+            History
+          </button>
+        </div>
+
+        {/* Sidebar content grows to fill space */}
+        <div className="flex-1 overflow-y-auto min-h-0">
+          {currentTab === "worktrees" ? children : historyContent}
+        </div>
 
         {/* Resize handle */}
         <div
