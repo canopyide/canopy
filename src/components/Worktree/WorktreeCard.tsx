@@ -37,11 +37,11 @@ export interface WorktreeCardProps {
   onCreateRecipe?: () => void;
 }
 
-const MOOD_BORDER_COLORS: Record<WorktreeMood, string> = {
-  active: "border-[var(--color-state-active)]",
-  stable: "border-[var(--color-status-success)]",
-  stale: "border-[var(--color-status-warning)]",
-  error: "border-[var(--color-status-error)]",
+const MOOD_ACCENT_COLORS: Record<WorktreeMood, string> = {
+  active: "bg-blue-400",
+  stable: "bg-green-400",
+  stale: "bg-yellow-500",
+  error: "bg-red-400",
 };
 
 const URL_REGEX = /(https?:\/\/[^\s]+)/g;
@@ -92,7 +92,7 @@ export function WorktreeCard({
   onCreateRecipe,
 }: WorktreeCardProps) {
   const mood = worktree.mood || "stable";
-  const borderColor = MOOD_BORDER_COLORS[mood];
+  const moodColorClass = MOOD_ACCENT_COLORS[mood];
 
   // Recipe store
   const getRecipesForWorktree = useRecipeStore((state) => state.getRecipesForWorktree);
@@ -362,10 +362,9 @@ export function WorktreeCard({
   return (
     <div
       className={cn(
-        "border-2 rounded-lg p-3 mb-3 cursor-pointer transition-all",
-        borderColor,
-        isFocused && "ring-2 ring-blue-500 ring-offset-2 ring-offset-gray-900",
-        "hover:shadow-lg hover:shadow-blue-500/20"
+        "relative overflow-hidden rounded-xl bg-card/40 border border-border/50 p-4 mb-3 cursor-pointer transition-all",
+        isActive ? "bg-accent/10 border-accent/20 hover:bg-accent/15" : "hover:bg-card/60",
+        isFocused && "ring-2 ring-blue-500 ring-offset-2 ring-offset-gray-900"
       )}
       onClick={onSelect}
       onKeyDown={(e) => {
@@ -378,290 +377,298 @@ export function WorktreeCard({
       role="button"
       aria-label={`Worktree: ${branchLabel}`}
     >
-      {/* Action buttons */}
-      <div className="flex gap-2 mb-3 border-b border-gray-700 pb-2">
-        <button
-          onClick={(e) => {
-            e.stopPropagation();
-            onCopyTree();
-          }}
-          className="text-xs px-2 py-1 border border-gray-600 rounded hover:bg-gray-800 hover:border-gray-500 text-gray-300"
-        >
-          Copy
-        </button>
-        {onInjectContext && (
+      {/* Left-edge status bar */}
+      <div className={cn("absolute left-0 top-0 bottom-0 w-1", moodColorClass)} />
+
+      {/* Content with left padding to avoid status bar */}
+      <div className="pl-2">
+        {/* Action buttons */}
+        <div className="flex gap-2 mb-3 border-b border-gray-700 pb-2">
           <button
             onClick={(e) => {
               e.stopPropagation();
-              onInjectContext();
-            }}
-            disabled={isInjecting}
-            className={cn(
-              "text-xs px-2 py-1 border border-purple-600 rounded text-purple-400",
-              isInjecting
-                ? "opacity-50 cursor-not-allowed"
-                : "hover:bg-purple-900 hover:border-purple-500"
-            )}
-            title="Inject context into focused terminal (Ctrl+Shift+I)"
-          >
-            {isInjecting ? "..." : "Inject"}
-          </button>
-        )}
-        <button
-          onClick={(e) => {
-            e.stopPropagation();
-            onOpenEditor();
-          }}
-          className="text-xs px-2 py-1 border border-gray-600 rounded hover:bg-gray-800 hover:border-gray-500 text-gray-300"
-        >
-          Code
-        </button>
-        {worktree.issueNumber && (
-          <button
-            onClick={(e) => {
-              e.stopPropagation();
-              handleOpenIssue();
-            }}
-            className="text-xs px-2 py-1 border border-blue-600 rounded hover:bg-blue-900 hover:border-blue-500 text-[var(--color-status-info)]"
-          >
-            Issue
-          </button>
-        )}
-        {worktree.prNumber && (
-          <button
-            onClick={(e) => {
-              e.stopPropagation();
-              handleOpenPR();
-            }}
-            className="text-xs px-2 py-1 border border-green-600 rounded hover:bg-green-900 hover:border-green-500 text-[var(--color-status-success)]"
-          >
-            PR
-          </button>
-        )}
-        {/* Recipe dropdown */}
-        {recipes.length > 0 && (
-          <DropdownMenu>
-            <DropdownMenuTrigger asChild>
-              <button
-                onClick={(e) => e.stopPropagation()}
-                disabled={runningRecipeId !== null}
-                className={cn(
-                  "text-xs px-2 py-1 border border-orange-600 rounded text-orange-400",
-                  runningRecipeId !== null
-                    ? "opacity-50 cursor-not-allowed"
-                    : "hover:bg-orange-900 hover:border-orange-500"
-                )}
-              >
-                {runningRecipeId ? "..." : "▶ Recipe"}
-              </button>
-            </DropdownMenuTrigger>
-            <DropdownMenuContent onClick={(e) => e.stopPropagation()}>
-              {recipes.map((recipe) => (
-                <DropdownMenuItem
-                  key={recipe.id}
-                  onClick={(e) => {
-                    e.stopPropagation();
-                    handleRunRecipe(recipe.id);
-                  }}
-                  disabled={runningRecipeId !== null}
-                >
-                  {recipe.name}
-                </DropdownMenuItem>
-              ))}
-            </DropdownMenuContent>
-          </DropdownMenu>
-        )}
-        {onCreateRecipe && (
-          <button
-            onClick={(e) => {
-              e.stopPropagation();
-              onCreateRecipe();
+              onCopyTree();
             }}
             className="text-xs px-2 py-1 border border-gray-600 rounded hover:bg-gray-800 hover:border-gray-500 text-gray-300"
-            title="Create terminal recipe"
           >
-            +Recipe
+            Copy
           </button>
-        )}
-        {/* Terminal bulk actions dropdown */}
-        {totalTerminalCount > 0 && (
-          <DropdownMenu>
-            <DropdownMenuTrigger asChild>
-              <button
-                onClick={(e) => e.stopPropagation()}
-                className="text-xs px-2 py-1 border border-cyan-600 rounded text-cyan-400 hover:bg-cyan-900 hover:border-cyan-500"
-                title="Terminal actions for this worktree"
-              >
-                Terms ({totalTerminalCount})
-              </button>
-            </DropdownMenuTrigger>
-            <DropdownMenuContent onClick={(e) => e.stopPropagation()}>
-              <DropdownMenuItem
-                onClick={(e) => {
-                  e.stopPropagation();
-                  handleCloseCompleted();
-                }}
-                disabled={completedCount === 0}
-              >
-                Close Completed ({completedCount})
-              </DropdownMenuItem>
-              <DropdownMenuItem
-                onClick={(e) => {
-                  e.stopPropagation();
-                  handleCloseFailed();
-                }}
-                disabled={failedCount === 0}
-              >
-                Close Failed ({failedCount})
-              </DropdownMenuItem>
-              <DropdownMenuSeparator />
-              <DropdownMenuItem
-                onClick={(e) => {
-                  e.stopPropagation();
-                  handleCloseAllTerminals();
-                }}
-                className="text-[var(--color-status-error)] focus:text-[var(--color-status-error)]"
-              >
-                Close All...
-              </DropdownMenuItem>
-            </DropdownMenuContent>
-          </DropdownMenu>
-        )}
-      </div>
-
-      {/* Header: Activity light + Agent status + Branch */}
-      <div className="mb-1 flex items-center gap-2">
-        <ActivityLight timestamp={worktree.lastActivityTimestamp} />
-        <AgentStatusIndicator state={dominantAgentState} />
-        {isActive && <span className="text-[var(--color-state-active)]">●</span>}
-        <span
-          className={cn(
-            "font-bold",
-            mood === "active" ? "text-[var(--color-status-warning)]" : "text-gray-200"
+          {onInjectContext && (
+            <button
+              onClick={(e) => {
+                e.stopPropagation();
+                onInjectContext();
+              }}
+              disabled={isInjecting}
+              className={cn(
+                "text-xs px-2 py-1 border border-purple-600 rounded text-purple-400",
+                isInjecting
+                  ? "opacity-50 cursor-not-allowed"
+                  : "hover:bg-purple-900 hover:border-purple-500"
+              )}
+              title="Inject context into focused terminal (Ctrl+Shift+I)"
+            >
+              {isInjecting ? "..." : "Inject"}
+            </button>
           )}
-        >
-          {branchLabel}
-        </span>
-        {!worktree.branch && <span className="text-[var(--color-status-warning)]">(detached)</span>}
-        {worktree.aiStatus === "disabled" && <span className="text-gray-500">[AI off]</span>}
-        {worktree.aiStatus === "error" && (
-          <span className="text-[var(--color-status-error)]">[AI err]</span>
-        )}
-      </div>
-
-      {/* Path (clickable) */}
-      <div className="mb-2">
-        <button
-          onClick={(e) => {
-            e.stopPropagation();
-            handlePathClick();
-          }}
-          className={cn(
-            "text-sm text-gray-500 hover:text-gray-400 hover:underline text-left",
-            isFocused && "underline"
-          )}
-        >
-          {displayPath}
-        </button>
-      </div>
-
-      {/* Summary */}
-      <div className="mt-3 text-sm">{summaryContent}</div>
-
-      {/* Files */}
-      {hasChanges && worktree.worktreeChanges && (
-        <FileChangeList
-          changes={worktree.worktreeChanges.changes}
-          rootPath={worktree.worktreeChanges.rootPath}
-          maxVisible={4}
-        />
-      )}
-
-      {/* Server status */}
-      {hasDevScript && serverState && (
-        <div className="mt-3 flex items-center justify-between text-sm">
-          <div className="flex items-center gap-2">
-            {getServerStatusIndicator()}
-            {getServerStatusText()}
-          </div>
           <button
             onClick={(e) => {
               e.stopPropagation();
-              if (!serverLoading && serverState.status !== "starting") {
-                onToggleServer();
-              }
+              onOpenEditor();
             }}
-            disabled={serverLoading || serverState.status === "starting"}
+            className="text-xs px-2 py-1 border border-gray-600 rounded hover:bg-gray-800 hover:border-gray-500 text-gray-300"
+          >
+            Code
+          </button>
+          {worktree.issueNumber && (
+            <button
+              onClick={(e) => {
+                e.stopPropagation();
+                handleOpenIssue();
+              }}
+              className="text-xs px-2 py-1 border border-blue-600 rounded hover:bg-blue-900 hover:border-blue-500 text-[var(--color-status-info)]"
+            >
+              Issue
+            </button>
+          )}
+          {worktree.prNumber && (
+            <button
+              onClick={(e) => {
+                e.stopPropagation();
+                handleOpenPR();
+              }}
+              className="text-xs px-2 py-1 border border-green-600 rounded hover:bg-green-900 hover:border-green-500 text-[var(--color-status-success)]"
+            >
+              PR
+            </button>
+          )}
+          {/* Recipe dropdown */}
+          {recipes.length > 0 && (
+            <DropdownMenu>
+              <DropdownMenuTrigger asChild>
+                <button
+                  onClick={(e) => e.stopPropagation()}
+                  disabled={runningRecipeId !== null}
+                  className={cn(
+                    "text-xs px-2 py-1 border border-orange-600 rounded text-orange-400",
+                    runningRecipeId !== null
+                      ? "opacity-50 cursor-not-allowed"
+                      : "hover:bg-orange-900 hover:border-orange-500"
+                  )}
+                >
+                  {runningRecipeId ? "..." : "▶ Recipe"}
+                </button>
+              </DropdownMenuTrigger>
+              <DropdownMenuContent onClick={(e) => e.stopPropagation()}>
+                {recipes.map((recipe) => (
+                  <DropdownMenuItem
+                    key={recipe.id}
+                    onClick={(e) => {
+                      e.stopPropagation();
+                      handleRunRecipe(recipe.id);
+                    }}
+                    disabled={runningRecipeId !== null}
+                  >
+                    {recipe.name}
+                  </DropdownMenuItem>
+                ))}
+              </DropdownMenuContent>
+            </DropdownMenu>
+          )}
+          {onCreateRecipe && (
+            <button
+              onClick={(e) => {
+                e.stopPropagation();
+                onCreateRecipe();
+              }}
+              className="text-xs px-2 py-1 border border-gray-600 rounded hover:bg-gray-800 hover:border-gray-500 text-gray-300"
+              title="Create terminal recipe"
+            >
+              +Recipe
+            </button>
+          )}
+          {/* Terminal bulk actions dropdown */}
+          {totalTerminalCount > 0 && (
+            <DropdownMenu>
+              <DropdownMenuTrigger asChild>
+                <button
+                  onClick={(e) => e.stopPropagation()}
+                  className="text-xs px-2 py-1 border border-cyan-600 rounded text-cyan-400 hover:bg-cyan-900 hover:border-cyan-500"
+                  title="Terminal actions for this worktree"
+                >
+                  Terms ({totalTerminalCount})
+                </button>
+              </DropdownMenuTrigger>
+              <DropdownMenuContent onClick={(e) => e.stopPropagation()}>
+                <DropdownMenuItem
+                  onClick={(e) => {
+                    e.stopPropagation();
+                    handleCloseCompleted();
+                  }}
+                  disabled={completedCount === 0}
+                >
+                  Close Completed ({completedCount})
+                </DropdownMenuItem>
+                <DropdownMenuItem
+                  onClick={(e) => {
+                    e.stopPropagation();
+                    handleCloseFailed();
+                  }}
+                  disabled={failedCount === 0}
+                >
+                  Close Failed ({failedCount})
+                </DropdownMenuItem>
+                <DropdownMenuSeparator />
+                <DropdownMenuItem
+                  onClick={(e) => {
+                    e.stopPropagation();
+                    handleCloseAllTerminals();
+                  }}
+                  className="text-[var(--color-status-error)] focus:text-[var(--color-status-error)]"
+                >
+                  Close All...
+                </DropdownMenuItem>
+              </DropdownMenuContent>
+            </DropdownMenu>
+          )}
+        </div>
+
+        {/* Header: Activity light + Agent status + Branch */}
+        <div className="mb-1 flex items-center gap-2">
+          <ActivityLight timestamp={worktree.lastActivityTimestamp} />
+          <AgentStatusIndicator state={dominantAgentState} />
+          {isActive && <span className="text-[var(--color-state-active)]">●</span>}
+          <span
             className={cn(
-              "text-xs px-2 py-1 border rounded font-bold",
-              getServerButtonColor(),
-              serverLoading || serverState.status === "starting"
-                ? "opacity-50 cursor-not-allowed"
-                : "hover:bg-gray-800"
+              "font-bold",
+              mood === "active" ? "text-[var(--color-status-warning)]" : "text-gray-200"
             )}
           >
-            [{getServerButtonLabel()}]
+            {branchLabel}
+          </span>
+          {!worktree.branch && (
+            <span className="text-[var(--color-status-warning)]">(detached)</span>
+          )}
+          {worktree.aiStatus === "disabled" && <span className="text-gray-500">[AI off]</span>}
+          {worktree.aiStatus === "error" && (
+            <span className="text-[var(--color-status-error)]">[AI err]</span>
+          )}
+        </div>
+
+        {/* Path (clickable) */}
+        <div className="mb-2">
+          <button
+            onClick={(e) => {
+              e.stopPropagation();
+              handlePathClick();
+            }}
+            className={cn(
+              "text-sm text-gray-500 hover:text-gray-400 hover:underline text-left",
+              isFocused && "underline"
+            )}
+          >
+            {displayPath}
           </button>
         </div>
-      )}
 
-      {/* Terminal count badge */}
-      <TerminalCountBadge counts={terminalCounts} />
+        {/* Summary */}
+        <div className="mt-3 text-sm">{summaryContent}</div>
 
-      {/* Agent note */}
-      {effectiveNote && (
-        <div className="mt-3 text-sm text-gray-300">
-          {parsedNoteSegments.map((segment, index) =>
-            segment.type === "link" ? (
-              <a
-                key={index}
-                href={segment.content}
-                target="_blank"
-                rel="noopener noreferrer"
-                className="text-[var(--color-status-info)] underline hover:text-blue-300"
-                onClick={(e) => {
-                  e.stopPropagation();
-                  if (window.electron?.system?.openExternal) {
-                    e.preventDefault();
-                    window.electron.system.openExternal(segment.content);
-                  }
-                }}
-              >
-                {segment.content}
-              </a>
-            ) : (
-              <span key={index}>{segment.content}</span>
-            )
-          )}
-        </div>
-      )}
+        {/* Files */}
+        {hasChanges && worktree.worktreeChanges && (
+          <FileChangeList
+            changes={worktree.worktreeChanges.changes}
+            rootPath={worktree.worktreeChanges.rootPath}
+            maxVisible={4}
+          />
+        )}
 
-      {/* Inline errors for this worktree */}
-      {worktreeErrors.length > 0 && (
-        <div className="mt-3 space-y-2">
-          {worktreeErrors.slice(0, 3).map((error) => (
-            <ErrorBanner
-              key={error.id}
-              error={error}
-              onDismiss={dismissError}
-              onRetry={handleErrorRetry}
-              compact
-            />
-          ))}
-          {worktreeErrors.length > 3 && (
-            <div className="text-xs text-gray-500">+{worktreeErrors.length - 3} more errors</div>
-          )}
-        </div>
-      )}
+        {/* Server status */}
+        {hasDevScript && serverState && (
+          <div className="mt-3 flex items-center justify-between text-sm">
+            <div className="flex items-center gap-2">
+              {getServerStatusIndicator()}
+              {getServerStatusText()}
+            </div>
+            <button
+              onClick={(e) => {
+                e.stopPropagation();
+                if (!serverLoading && serverState.status !== "starting") {
+                  onToggleServer();
+                }
+              }}
+              disabled={serverLoading || serverState.status === "starting"}
+              className={cn(
+                "text-xs px-2 py-1 border rounded font-bold",
+                getServerButtonColor(),
+                serverLoading || serverState.status === "starting"
+                  ? "opacity-50 cursor-not-allowed"
+                  : "hover:bg-gray-800"
+              )}
+            >
+              [{getServerButtonLabel()}]
+            </button>
+          </div>
+        )}
 
-      {/* Confirmation dialog for bulk close all terminals */}
-      <ConfirmDialog
-        isOpen={confirmDialog.isOpen}
-        title={confirmDialog.title}
-        description={confirmDialog.description}
-        onConfirm={confirmDialog.onConfirm}
-        onCancel={closeConfirmDialog}
-      />
+        {/* Terminal count badge */}
+        <TerminalCountBadge counts={terminalCounts} />
+
+        {/* Agent note */}
+        {effectiveNote && (
+          <div className="mt-3 text-sm text-gray-300">
+            {parsedNoteSegments.map((segment, index) =>
+              segment.type === "link" ? (
+                <a
+                  key={index}
+                  href={segment.content}
+                  target="_blank"
+                  rel="noopener noreferrer"
+                  className="text-[var(--color-status-info)] underline hover:text-blue-300"
+                  onClick={(e) => {
+                    e.stopPropagation();
+                    if (window.electron?.system?.openExternal) {
+                      e.preventDefault();
+                      window.electron.system.openExternal(segment.content);
+                    }
+                  }}
+                >
+                  {segment.content}
+                </a>
+              ) : (
+                <span key={index}>{segment.content}</span>
+              )
+            )}
+          </div>
+        )}
+
+        {/* Inline errors for this worktree */}
+        {worktreeErrors.length > 0 && (
+          <div className="mt-3 space-y-2">
+            {worktreeErrors.slice(0, 3).map((error) => (
+              <ErrorBanner
+                key={error.id}
+                error={error}
+                onDismiss={dismissError}
+                onRetry={handleErrorRetry}
+                compact
+              />
+            ))}
+            {worktreeErrors.length > 3 && (
+              <div className="text-xs text-gray-500">+{worktreeErrors.length - 3} more errors</div>
+            )}
+          </div>
+        )}
+
+        {/* Confirmation dialog for bulk close all terminals */}
+        <ConfirmDialog
+          isOpen={confirmDialog.isOpen}
+          title={confirmDialog.title}
+          description={confirmDialog.description}
+          onConfirm={confirmDialog.onConfirm}
+          onCancel={closeConfirmDialog}
+        />
+      </div>
     </div>
   );
 }
