@@ -146,6 +146,27 @@ export interface TerminalDimensions {
 }
 
 // ============================================================================
+// Terminal Recipe Types
+// ============================================================================
+
+export type RecipeTerminalType = "claude" | "gemini" | "shell" | "custom";
+
+export interface RecipeTerminal {
+  type: RecipeTerminalType;
+  title?: string;
+  command?: string;
+  env?: Record<string, string>;
+}
+
+export interface TerminalRecipe {
+  id: string;
+  name: string;
+  worktreeId?: string;
+  terminals: RecipeTerminal[];
+  createdAt: number;
+}
+
+// ============================================================================
 // Keymap Types
 // ============================================================================
 

@@ -248,7 +248,7 @@ export function registerIpcHandlers(
 
       // Check if directory exists
       await fs.promises.access(cwd);
-    } catch (error) {
+    } catch (_error) {
       console.warn(`Invalid cwd: ${cwd}, using home directory`);
       cwd = os.homedir();
     }
@@ -259,20 +259,22 @@ export function registerIpcHandlers(
         shell: options.shell, // Shell validation happens in PtyManager
         cols,
         rows,
+        env: options.env, // Pass environment variables through
       });
 
       // If a command is specified (e.g., 'claude' or 'gemini'), execute it after shell initializes
       if (options.command) {
         // Whitelist allowed commands to prevent command injection
-        const ALLOWED_COMMANDS = ["claude", "gemini"];
-        if (!ALLOWED_COMMANDS.includes(options.command)) {
-          console.warn(`Command "${options.command}" is not in the allowed list, ignoring`);
+        // Allow any non-empty command for recipe flexibility
+        const trimmedCommand = options.command.trim();
+        if (trimmedCommand.length === 0) {
+          console.warn("Empty command provided, ignoring");
         } else {
           // Small delay to allow shell to initialize before sending command
           setTimeout(() => {
             // Double-check terminal still exists before writing
             if (ptyManager.hasTerminal(id)) {
-              ptyManager.write(id, `${options.command}\r`);
+              ptyManager.write(id, `${trimmedCommand}\r`);
             }
           }, 100);
         }
@@ -601,6 +603,23 @@ export function registerIpcHandlers(
 
       if ("terminals" in partialState && Array.isArray(partialState.terminals)) {
         updates.terminals = partialState.terminals;
+      }
+
+      if ("recipes" in partialState && Array.isArray(partialState.recipes)) {
+        // Validate recipe structure
+        const validRecipes = partialState.recipes.filter((recipe) => {
+          return (
+            recipe &&
+            typeof recipe === "object" &&
+            typeof recipe.id === "string" &&
+            typeof recipe.name === "string" &&
+            Array.isArray(recipe.terminals) &&
+            recipe.terminals.length > 0 &&
+            recipe.terminals.length <= 10 &&
+            typeof recipe.createdAt === "number"
+          );
+        });
+        updates.recipes = validRecipes;
       }
 
       store.set("appState", { ...currentState, ...updates });

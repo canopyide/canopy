@@ -111,6 +111,19 @@ interface AppState {
   sidebarWidth?: number;
   /** Recently opened directories */
   recentDirectories?: RecentDirectory[];
+  /** Saved terminal recipes */
+  recipes?: Array<{
+    id: string;
+    name: string;
+    worktreeId?: string;
+    terminals: Array<{
+      type: "claude" | "gemini" | "shell" | "custom";
+      title?: string;
+      command?: string;
+      env?: Record<string, string>;
+    }>;
+    createdAt: number;
+  }>;
 }
 
 export type LogLevel = "debug" | "info" | "warn" | "error";

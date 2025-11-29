@@ -5,7 +5,14 @@ import { FileChangeList } from "./FileChangeList";
 import { ErrorBanner } from "../Errors/ErrorBanner";
 import { useDevServer } from "../../hooks/useDevServer";
 import { useErrorStore, type RetryAction } from "../../store";
+import { useRecipeStore } from "../../store/recipeStore";
 import { cn } from "../../lib/utils";
+import {
+  DropdownMenu,
+  DropdownMenuContent,
+  DropdownMenuItem,
+  DropdownMenuTrigger,
+} from "../ui/dropdown-menu";
 
 export interface WorktreeCardProps {
   worktree: WorktreeState;
@@ -21,6 +28,8 @@ export interface WorktreeCardProps {
   onInjectContext?: () => void;
   /** Whether context injection is currently in progress */
   isInjecting?: boolean;
+  /** Called when user wants to create a new recipe */
+  onCreateRecipe?: () => void;
 }
 
 const MOOD_BORDER_COLORS: Record<WorktreeMood, string> = {
@@ -75,9 +84,16 @@ export function WorktreeCard({
   onToggleServer,
   onInjectContext,
   isInjecting = false,
+  onCreateRecipe,
 }: WorktreeCardProps) {
   const mood = worktree.mood || "stable";
   const borderColor = MOOD_BORDER_COLORS[mood];
+
+  // Recipe store
+  const getRecipesForWorktree = useRecipeStore((state) => state.getRecipesForWorktree);
+  const runRecipe = useRecipeStore((state) => state.runRecipe);
+  const recipes = getRecipesForWorktree(worktree.id);
+  const [runningRecipeId, setRunningRecipeId] = useState<string | null>(null);
 
   const {
     state: serverState,
@@ -173,6 +189,26 @@ export function WorktreeCard({
       onOpenPR();
     }
   }, [worktree.prNumber, onOpenPR]);
+
+  const handleRunRecipe = useCallback(
+    async (recipeId: string) => {
+      // Prevent concurrent recipe executions
+      if (runningRecipeId !== null) {
+        return;
+      }
+
+      setRunningRecipeId(recipeId);
+      try {
+        await runRecipe(recipeId, worktree.path, worktree.id);
+      } catch (error) {
+        console.error("Failed to run recipe:", error);
+        // TODO: Show user-facing error notification
+      } finally {
+        setRunningRecipeId(null);
+      }
+    },
+    [runRecipe, worktree.path, worktree.id, runningRecipeId]
+  );
 
   const displayPath = formatPath(worktree.path);
   const branchLabel = worktree.branch ?? worktree.name;
@@ -348,6 +384,51 @@ export function WorktreeCard({
             className="text-xs px-2 py-1 border border-green-600 rounded hover:bg-green-900 hover:border-green-500 text-green-400"
           >
             PR
+          </button>
+        )}
+        {/* Recipe dropdown */}
+        {recipes.length > 0 && (
+          <DropdownMenu>
+            <DropdownMenuTrigger asChild>
+              <button
+                onClick={(e) => e.stopPropagation()}
+                disabled={runningRecipeId !== null}
+                className={cn(
+                  "text-xs px-2 py-1 border border-orange-600 rounded text-orange-400",
+                  runningRecipeId !== null
+                    ? "opacity-50 cursor-not-allowed"
+                    : "hover:bg-orange-900 hover:border-orange-500"
+                )}
+              >
+                {runningRecipeId ? "..." : "▶ Recipe"}
+              </button>
+            </DropdownMenuTrigger>
+            <DropdownMenuContent onClick={(e) => e.stopPropagation()}>
+              {recipes.map((recipe) => (
+                <DropdownMenuItem
+                  key={recipe.id}
+                  onClick={(e) => {
+                    e.stopPropagation();
+                    handleRunRecipe(recipe.id);
+                  }}
+                  disabled={runningRecipeId !== null}
+                >
+                  {recipe.name}
+                </DropdownMenuItem>
+              ))}
+            </DropdownMenuContent>
+          </DropdownMenu>
+        )}
+        {onCreateRecipe && (
+          <button
+            onClick={(e) => {
+              e.stopPropagation();
+              onCreateRecipe();
+            }}
+            className="text-xs px-2 py-1 border border-gray-600 rounded hover:bg-gray-800 hover:border-gray-500 text-gray-300"
+            title="Create terminal recipe"
+          >
+            +Recipe
           </button>
         )}
       </div>

@@ -14,6 +14,8 @@ export interface TerminalSpawnOptions {
   rows: number;
   /** Command to execute after shell starts (e.g., 'claude' for AI agents) */
   command?: string;
+  /** Environment variables to set for the terminal */
+  env?: Record<string, string>;
 }
 
 export interface TerminalDataPayload {
@@ -195,6 +197,18 @@ export interface AppState {
     title: string;
     cwd: string;
     worktreeId?: string;
+  }>;
+  recipes?: Array<{
+    id: string;
+    name: string;
+    worktreeId?: string;
+    terminals: Array<{
+      type: "claude" | "gemini" | "shell" | "custom";
+      title?: string;
+      command?: string;
+      env?: Record<string, string>;
+    }>;
+    createdAt: number;
   }>;
 }
 

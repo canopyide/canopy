@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useRef } from "react";
+import { useCallback, useEffect, useRef, useState } from "react";
 import "@xterm/xterm/css/xterm.css";
 import {
   isElectronAvailable,
@@ -12,6 +12,7 @@ import { TerminalGrid } from "./components/Terminal";
 import { WorktreeCard } from "./components/Worktree";
 import { ProblemsPanel } from "./components/Errors";
 import { TerminalPalette } from "./components/TerminalPalette";
+import { RecipeEditor } from "./components/TerminalRecipe/RecipeEditor";
 import {
   useTerminalStore,
   useWorktreeSelectionStore,
@@ -20,6 +21,7 @@ import {
   useEventStore,
   type RetryAction,
 } from "./store";
+import { useRecipeStore } from "./store/recipeStore";
 import type { WorktreeState } from "./types";
 
 function SidebarContent() {
@@ -28,6 +30,12 @@ function SidebarContent() {
   const { activeWorktreeId, focusedWorktreeId, selectWorktree, setActiveWorktree } =
     useWorktreeSelectionStore();
   const focusedTerminalId = useTerminalStore((state) => state.focusedId);
+
+  // Recipe editor state
+  const [isRecipeEditorOpen, setIsRecipeEditorOpen] = useState(false);
+  const [recipeEditorWorktreeId, setRecipeEditorWorktreeId] = useState<string | undefined>(
+    undefined
+  );
 
   // Set first worktree as active by default
   useEffect(() => {
@@ -59,6 +67,16 @@ function SidebarContent() {
     },
     [inject, focusedTerminalId]
   );
+
+  const handleCreateRecipe = useCallback((worktreeId: string) => {
+    setRecipeEditorWorktreeId(worktreeId);
+    setIsRecipeEditorOpen(true);
+  }, []);
+
+  const handleCloseRecipeEditor = useCallback(() => {
+    setIsRecipeEditorOpen(false);
+    setRecipeEditorWorktreeId(undefined);
+  }, []);
 
   if (isLoading) {
     return (
@@ -109,9 +127,17 @@ function SidebarContent() {
             onToggleServer={() => handleToggleServer(worktree)}
             onInjectContext={focusedTerminalId ? () => handleInjectContext(worktree.id) : undefined}
             isInjecting={isInjecting}
+            onCreateRecipe={() => handleCreateRecipe(worktree.id)}
           />
         ))}
       </div>
+
+      {/* Recipe Editor Modal */}
+      <RecipeEditor
+        worktreeId={recipeEditorWorktreeId}
+        isOpen={isRecipeEditorOpen}
+        onClose={handleCloseRecipeEditor}
+      />
     </div>
   );
 }
@@ -123,6 +149,7 @@ function App() {
   const { inject, isInjecting } = useContextInjection();
   const toggleLogsPanel = useLogsStore((state) => state.togglePanel);
   const toggleEventInspector = useEventStore((state) => state.togglePanel);
+  const loadRecipes = useRecipeStore((state) => state.loadRecipes);
 
   // Terminal palette for quick switching (Cmd/Ctrl+T)
   const terminalPalette = useTerminalPalette();
@@ -172,13 +199,16 @@ function App() {
         if (appState.activeWorktreeId) {
           setActiveWorktree(appState.activeWorktreeId);
         }
+
+        // Load recipes
+        await loadRecipes();
       } catch (error) {
         console.error("Failed to restore app state:", error);
       }
     };
 
     restoreState();
-  }, [addTerminal, setActiveWorktree]);
+  }, [addTerminal, setActiveWorktree, loadRecipes]);
 
   // Handle agent launcher from toolbar
   const handleLaunchAgent = useCallback(
