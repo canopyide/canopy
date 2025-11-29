@@ -1,5 +1,6 @@
 import { useCallback, useEffect, useRef, useState } from "react";
 import "@xterm/xterm/css/xterm.css";
+import { FolderOpen } from "lucide-react";
 import {
   isElectronAvailable,
   useAgentLauncher,
@@ -118,7 +119,28 @@ function SidebarContent({ onOpenSettings }: SidebarContentProps) {
     return (
       <div className="p-4">
         <h2 className="text-canopy-text font-semibold text-sm mb-4">Worktrees</h2>
-        <div className="text-canopy-text/60 text-sm">No worktrees found.</div>
+
+        {/* Empty State */}
+        <div className="flex flex-col items-center justify-center py-12 px-4 text-center">
+          <FolderOpen className="w-12 h-12 text-gray-500 mb-3" aria-hidden="true" />
+
+          <h3 className="text-canopy-text font-medium mb-2">No Worktrees Found</h3>
+
+          <p className="text-sm text-gray-400 mb-4 max-w-xs">
+            Open a Git repository with worktrees to get started. Use{" "}
+            <kbd className="px-1.5 py-0.5 bg-gray-700 rounded text-xs">File → Open Directory</kbd>
+          </p>
+
+          {/* Quick Start */}
+          <div className="text-xs text-gray-500 text-left w-full max-w-xs">
+            <div className="font-medium mb-1">Quick Start:</div>
+            <ol className="space-y-1 list-decimal list-inside">
+              <li>Open a repository</li>
+              <li>Launch Claude or Gemini</li>
+              <li>Inject context to AI agent</li>
+            </ol>
+          </div>
+        </div>
       </div>
     );
   }
