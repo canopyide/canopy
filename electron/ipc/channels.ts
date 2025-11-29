@@ -36,6 +36,8 @@ export const CHANNELS = {
   COPYTREE_GENERATE: "copytree:generate",
   COPYTREE_INJECT: "copytree:inject",
   COPYTREE_AVAILABLE: "copytree:available",
+  COPYTREE_PROGRESS: "copytree:progress",
+  COPYTREE_CANCEL: "copytree:cancel",
 
   // System channels
   SYSTEM_OPEN_EXTERNAL: "system:open-external",
