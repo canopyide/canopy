@@ -1,6 +1,8 @@
 import { useCallback, useEffect, useRef, useState, type ReactNode } from "react";
+import { Settings } from "lucide-react";
 import { cn } from "@/lib/utils";
-import { ProjectSwitcher } from "@/components/Project";
+import { ProjectSwitcher, ProjectRunners, ProjectSettingsDialog } from "@/components/Project";
+import { useProjectStore } from "@/store/projectStore";
 
 interface SidebarProps {
   width: number;
@@ -13,7 +15,9 @@ const RESIZE_STEP = 10;
 
 export function Sidebar({ width, onResize, children, className }: SidebarProps) {
   const [isResizing, setIsResizing] = useState(false);
+  const [isSettingsOpen, setIsSettingsOpen] = useState(false);
   const sidebarRef = useRef<HTMLElement>(null);
+  const currentProject = useProjectStore((state) => state.currentProject);
 
   const startResizing = useCallback((e: React.MouseEvent) => {
     e.preventDefault();
@@ -65,37 +69,64 @@ export function Sidebar({ width, onResize, children, className }: SidebarProps) 
   }, [isResizing, resize, stopResizing]);
 
   return (
-    <aside
-      ref={sidebarRef}
-      className={cn(
-        "relative border-r border-canopy-border bg-canopy-sidebar shrink-0 flex flex-col",
-        className
-      )}
-      style={{ width }}
-    >
-      {/* Project Switcher at the top */}
-      <div className="shrink-0 border-b border-canopy-border">
-        <ProjectSwitcher />
-      </div>
-
-      {/* Sidebar content (Worktree list) grows to fill space */}
-      <div className="flex-1 overflow-y-auto min-h-0">{children}</div>
-
-      {/* Resize handle */}
-      <div
-        role="separator"
-        aria-label="Resize sidebar"
-        aria-orientation="vertical"
-        aria-valuenow={width}
-        tabIndex={0}
+    <>
+      <aside
+        ref={sidebarRef}
         className={cn(
-          "absolute top-0 right-0 w-1 h-full cursor-col-resize",
-          "hover:bg-canopy-accent/50 transition-colors focus:outline-none focus:bg-canopy-accent",
-          isResizing && "bg-canopy-accent"
+          "relative border-r border-canopy-border bg-canopy-sidebar shrink-0 flex flex-col",
+          className
         )}
-        onMouseDown={startResizing}
-        onKeyDown={handleKeyDown}
-      />
-    </aside>
+        style={{ width }}
+      >
+        {/* Project Switcher at the top */}
+        <div className="shrink-0 border-b border-canopy-border">
+          <div className="flex items-center">
+            <div className="flex-1">
+              <ProjectSwitcher />
+            </div>
+            {currentProject && (
+              <button
+                onClick={() => setIsSettingsOpen(true)}
+                className="p-2 mr-1 text-gray-400 hover:text-canopy-text hover:bg-canopy-border/50 rounded transition-colors"
+                title="Project Settings"
+              >
+                <Settings className="h-4 w-4" />
+              </button>
+            )}
+          </div>
+        </div>
+
+        {/* Project Runners - displays configured run commands */}
+        {currentProject && <ProjectRunners projectId={currentProject.id} />}
+
+        {/* Sidebar content (Worktree list) grows to fill space */}
+        <div className="flex-1 overflow-y-auto min-h-0">{children}</div>
+
+        {/* Resize handle */}
+        <div
+          role="separator"
+          aria-label="Resize sidebar"
+          aria-orientation="vertical"
+          aria-valuenow={width}
+          tabIndex={0}
+          className={cn(
+            "absolute top-0 right-0 w-1 h-full cursor-col-resize",
+            "hover:bg-canopy-accent/50 transition-colors focus:outline-none focus:bg-canopy-accent",
+            isResizing && "bg-canopy-accent"
+          )}
+          onMouseDown={startResizing}
+          onKeyDown={handleKeyDown}
+        />
+      </aside>
+
+      {/* Project Settings Dialog - Only mount when open to avoid duplicate hook calls */}
+      {currentProject && isSettingsOpen && (
+        <ProjectSettingsDialog
+          projectId={currentProject.id}
+          isOpen={isSettingsOpen}
+          onClose={() => setIsSettingsOpen(false)}
+        />
+      )}
+    </>
   );
 }

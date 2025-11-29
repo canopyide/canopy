@@ -172,8 +172,7 @@ function SidebarContent() {
 }
 
 function App() {
-  const { focusNext, focusPrevious, toggleMaximize, focusedId, addTerminal } =
-    useTerminalStore();
+  const { focusNext, focusPrevious, toggleMaximize, focusedId, addTerminal } = useTerminalStore();
   const { launchAgent } = useAgentLauncher();
   const { activeWorktreeId, setActiveWorktree } = useWorktreeSelectionStore();
   const { inject, isInjecting } = useContextInjection();

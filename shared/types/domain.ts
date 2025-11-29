@@ -413,3 +413,29 @@ export interface TerminalRecipe {
   /** Timestamp when recipe was created (milliseconds since epoch) */
   createdAt: number;
 }
+
+// ============================================================================
+// Project Settings Types
+// ============================================================================
+
+/** A single run command definition for project-level settings */
+export interface RunCommand {
+  /** Unique identifier for this command */
+  id: string;
+  /** Display name (e.g. "Dev Server" or "Run Tests") */
+  name: string;
+  /** Command to execute (e.g. "npm run dev" or "php artisan test") */
+  command: string;
+  /** Optional icon name for UI display */
+  icon?: string;
+}
+
+/** Project-level settings that persist per repository */
+export interface ProjectSettings {
+  /** List of custom run commands for this project */
+  runCommands: RunCommand[];
+  /** Environment variables to set (future feature) */
+  environmentVariables?: Record<string, string>;
+  /** Paths to exclude from monitoring (future feature) */
+  excludedPaths?: string[];
+}

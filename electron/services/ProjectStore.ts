@@ -1,11 +1,13 @@
 import { store } from "../store.js";
-import type { Project, ProjectState } from "../types/index.js";
+import type { Project, ProjectState, ProjectSettings } from "../types/index.js";
 import { createHash } from "crypto";
 import path from "path";
 import fs from "fs/promises";
 import { existsSync } from "fs";
 import { app } from "electron";
 import { simpleGit } from "simple-git";
+
+const SETTINGS_FILENAME = "settings.json";
 
 /**
  * ProjectStore manages the list of projects and their persisted state.
@@ -305,6 +307,87 @@ export class ProjectStore {
         // Ignore quarantine errors
       }
       return null;
+    }
+  }
+
+  /**
+   * Gets the settings file path for a project
+   */
+  private getSettingsFilePath(projectId: string): string | null {
+    const stateDir = this.getProjectStateDir(projectId);
+    if (!stateDir) return null;
+    return path.join(stateDir, SETTINGS_FILENAME);
+  }
+
+  /**
+   * Load project settings from disk with defaults
+   */
+  async getProjectSettings(projectId: string): Promise<ProjectSettings> {
+    const filePath = this.getSettingsFilePath(projectId);
+    if (!filePath || !existsSync(filePath)) {
+      // Return defaults if no file exists
+      return { runCommands: [] };
+    }
+
+    try {
+      const content = await fs.readFile(filePath, "utf-8");
+      const parsed = JSON.parse(content);
+
+      // Validate and apply defaults
+      const settings: ProjectSettings = {
+        runCommands: Array.isArray(parsed.runCommands) ? parsed.runCommands : [],
+        environmentVariables: parsed.environmentVariables,
+        excludedPaths: parsed.excludedPaths,
+      };
+
+      return settings;
+    } catch (error) {
+      console.error(`[ProjectStore] Failed to load settings for ${projectId}:`, error);
+      // Optionally quarantine corrupted file
+      try {
+        const quarantinePath = `${filePath}.corrupted`;
+        await fs.rename(filePath, quarantinePath);
+        console.warn(`[ProjectStore] Corrupted settings file moved to ${quarantinePath}`);
+      } catch {
+        // Ignore quarantine errors
+      }
+      return { runCommands: [] };
+    }
+  }
+
+  /**
+   * Save project settings to disk (atomic write)
+   */
+  async saveProjectSettings(projectId: string, settings: ProjectSettings): Promise<void> {
+    const stateDir = this.getProjectStateDir(projectId);
+    if (!stateDir) {
+      throw new Error(`Invalid project ID: ${projectId}`);
+    }
+
+    // Ensure directory exists
+    if (!existsSync(stateDir)) {
+      await fs.mkdir(stateDir, { recursive: true });
+    }
+
+    const filePath = this.getSettingsFilePath(projectId);
+    if (!filePath) {
+      throw new Error(`Invalid project ID: ${projectId}`);
+    }
+
+    // Atomic write: write to temp file then rename
+    const tempFilePath = `${filePath}.tmp`;
+    try {
+      await fs.writeFile(tempFilePath, JSON.stringify(settings, null, 2), "utf-8");
+      await fs.rename(tempFilePath, filePath);
+    } catch (error) {
+      console.error(`[ProjectStore] Failed to save settings for ${projectId}:`, error);
+      // Clean up temp file if it exists
+      try {
+        await fs.unlink(tempFilePath);
+      } catch {
+        // Ignore cleanup errors
+      }
+      throw error;
     }
   }
 
