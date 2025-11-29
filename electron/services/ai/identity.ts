@@ -6,6 +6,7 @@
 
 import { getAIClient, getAIModel } from "./client.js";
 import { extractOutputText, formatErrorSnippet, withRetry } from "./utils.js";
+import { ProjectIdentityResponseSchema } from "../../schemas/external.js";
 
 export interface ProjectIdentity {
   emoji: string;
@@ -62,25 +63,56 @@ Respond with JSON:
     }
 
     try {
-      const parsed = JSON.parse(text) as ProjectIdentity;
+      const parsed = JSON.parse(text);
 
-      // Validate required fields
-      if (!parsed.emoji || typeof parsed.emoji !== "string") {
-        throw new Error("Missing or invalid emoji field");
-      }
-      if (!parsed.title || typeof parsed.title !== "string") {
-        throw new Error("Missing or invalid title field");
-      }
-      if (!parsed.gradientStart || typeof parsed.gradientStart !== "string") {
-        throw new Error("Missing or invalid gradientStart field");
-      }
-      if (!parsed.gradientEnd || typeof parsed.gradientEnd !== "string") {
-        throw new Error("Missing or invalid gradientEnd field");
+      // Validate with Zod schema
+      const validated = ProjectIdentityResponseSchema.safeParse(parsed);
+      if (validated.success) {
+        return validated.data;
       }
 
-      return parsed;
+      // Zod validation failed - provide detailed error
+      const errorDetails = validated.error.format();
+      console.warn("[AI] Identity validation failed:", errorDetails);
+
+      // Fallback to manual validation for partial responses
+      if (parsed && typeof parsed === "object") {
+        if (
+          typeof parsed.emoji === "string" &&
+          typeof parsed.title === "string" &&
+          typeof parsed.gradientStart === "string" &&
+          typeof parsed.gradientEnd === "string"
+        ) {
+          // Validate color format specifically (must be valid hex colors)
+          const hexColorRegex = /^#[0-9A-Fa-f]{6}$/;
+          const startValid = hexColorRegex.test(parsed.gradientStart);
+          const endValid = hexColorRegex.test(parsed.gradientEnd);
+
+          if (startValid && endValid) {
+            return parsed as ProjectIdentity;
+          }
+
+          // Colors are invalid - use safe defaults
+          console.warn(
+            "[AI] Identity colors failed validation, using defaults:",
+            parsed.gradientStart,
+            parsed.gradientEnd
+          );
+          return {
+            emoji: parsed.emoji,
+            title: parsed.title,
+            gradientStart: "#4ADE80", // Safe default green
+            gradientEnd: "#3B82F6", // Safe default blue
+          };
+        }
+      }
+
+      throw new Error(`Invalid response structure: ${JSON.stringify(errorDetails)}`);
     } catch (parseError) {
-      throw new Error(`Identity: failed to parse JSON. Raw: ${formatErrorSnippet(text)}`);
+      const message = parseError instanceof Error ? parseError.message : String(parseError);
+      throw new Error(
+        `Identity: failed to parse/validate JSON. ${message}. Raw: ${formatErrorSnippet(text)}`
+      );
     }
   };
 

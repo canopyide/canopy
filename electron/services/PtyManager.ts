@@ -17,6 +17,14 @@ import {
   type AgentEvent,
 } from "./AgentStateMachine.js";
 import type { AgentState } from "../types/index.js";
+import {
+  AgentSpawnedSchema,
+  AgentStateChangedSchema,
+  AgentOutputSchema,
+  AgentCompletedSchema,
+  AgentFailedSchema,
+  AgentKilledSchema,
+} from "../schemas/agent.js";
 
 export interface PtySpawnOptions {
   cwd: string;
@@ -98,21 +106,41 @@ export class PtyManager extends EventEmitter {
       terminal.agentState = newState;
       terminal.lastStateChange = getStateChangeTimestamp();
 
-      // Emit agent:state-changed event
-      events.emit("agent:state-changed", {
+      // Build and validate state change payload
+      const stateChangePayload = {
         agentId: terminal.agentId,
         state: newState,
         previousState,
         timestamp: terminal.lastStateChange,
-      });
+      };
+
+      const validatedStateChange = AgentStateChangedSchema.safeParse(stateChangePayload);
+      if (validatedStateChange.success) {
+        events.emit("agent:state-changed", validatedStateChange.data);
+      } else {
+        console.error(
+          "[PtyManager] Invalid agent:state-changed payload:",
+          validatedStateChange.error.format()
+        );
+      }
 
       // Emit specific completion/failure events
       if (newState === "failed" && event.type === "error") {
-        events.emit("agent:failed", {
+        const failedPayload = {
           agentId: terminal.agentId,
           error: event.error,
           timestamp: terminal.lastStateChange,
-        });
+        };
+
+        const validatedFailed = AgentFailedSchema.safeParse(failedPayload);
+        if (validatedFailed.success) {
+          events.emit("agent:failed", validatedFailed.data);
+        } else {
+          console.error(
+            "[PtyManager] Invalid agent:failed payload:",
+            validatedFailed.error.format()
+          );
+        }
       }
     }
   }
@@ -141,13 +169,21 @@ export class PtyManager extends EventEmitter {
 
     let ptyProcess: pty.IPty;
 
+    // Merge with process environment, filtering out undefined values
+    const baseEnv = process.env as Record<string, string | undefined>;
+    const mergedEnv = { ...baseEnv, ...options.env };
+    // Filter out undefined values to prevent node-pty errors
+    const env = Object.fromEntries(
+      Object.entries(mergedEnv).filter(([_, value]) => value !== undefined)
+    ) as Record<string, string>;
+
     try {
       ptyProcess = pty.spawn(shell, args, {
         name: "xterm-256color",
         cols: options.cols,
         rows: options.rows,
         cwd: options.cwd,
-        env: { ...process.env, ...options.env } as Record<string, string>,
+        env,
       });
     } catch (error) {
       const errorMessage = error instanceof Error ? error.message : String(error);
@@ -197,11 +233,26 @@ export class PtyManager extends EventEmitter {
 
         // Emit agent:output event for transcript capture
         if (agentId) {
-          events.emit("agent:output", {
+          const outputPayload = {
             agentId,
             data,
             timestamp: Date.now(),
-          });
+          };
+
+          const validatedOutput = AgentOutputSchema.safeParse(outputPayload);
+          if (validatedOutput.success) {
+            events.emit("agent:output", validatedOutput.data);
+          } else {
+            // Log validation failures for observability (throttled to avoid noise)
+            if (Math.random() < 0.01) {
+              // Log ~1% of failures to avoid overwhelming logs
+              console.warn(
+                `[PtyManager] Agent output validation failed (terminal ${id}):`,
+                validatedOutput.error.format()
+              );
+            }
+            // Do NOT emit invalid payloads - drop malformed output to protect consumers
+          }
         }
       }
     });
@@ -227,12 +278,22 @@ export class PtyManager extends EventEmitter {
       if (isAgentTerminal && agentId && !terminal.wasKilled && terminal.agentState !== "failed") {
         const completedAt = Date.now();
         const duration = completedAt - spawnedAt;
-        events.emit("agent:completed", {
+        const completedPayload = {
           agentId,
           exitCode: exitCode ?? 0,
           duration,
           timestamp: completedAt,
-        });
+        };
+
+        const validatedCompleted = AgentCompletedSchema.safeParse(completedPayload);
+        if (validatedCompleted.success) {
+          events.emit("agent:completed", validatedCompleted.data);
+        } else {
+          console.error(
+            "[PtyManager] Invalid agent:completed payload:",
+            validatedCompleted.error.format()
+          );
+        }
       }
 
       this.terminals.delete(id);
@@ -255,13 +316,23 @@ export class PtyManager extends EventEmitter {
 
     // Emit agent:spawned event for agent terminals (Claude, Gemini)
     if (isAgentTerminal && agentId && options.type) {
-      events.emit("agent:spawned", {
+      const spawnedPayload = {
         agentId,
         terminalId: id,
         type: options.type,
         worktreeId: options.worktreeId,
         timestamp: spawnedAt,
-      });
+      };
+
+      const validatedSpawned = AgentSpawnedSchema.safeParse(spawnedPayload);
+      if (validatedSpawned.success) {
+        events.emit("agent:spawned", validatedSpawned.data);
+      } else {
+        console.error(
+          "[PtyManager] Invalid agent:spawned payload:",
+          validatedSpawned.error.format()
+        );
+      }
 
       // Transition to working state on start
       this.updateAgentState(id, { type: "start" });
@@ -325,11 +396,21 @@ export class PtyManager extends EventEmitter {
 
       // Emit agent:killed event for agent terminals before killing
       if (terminal.agentId) {
-        events.emit("agent:killed", {
+        const killedPayload = {
           agentId: terminal.agentId,
           reason,
           timestamp: Date.now(),
-        });
+        };
+
+        const validatedKilled = AgentKilledSchema.safeParse(killedPayload);
+        if (validatedKilled.success) {
+          events.emit("agent:killed", validatedKilled.data);
+        } else {
+          console.error(
+            "[PtyManager] Invalid agent:killed payload:",
+            validatedKilled.error.format()
+          );
+        }
       }
       terminal.ptyProcess.kill();
       // Don't delete here - let the exit handler do it to avoid race conditions
@@ -378,11 +459,17 @@ export class PtyManager extends EventEmitter {
       try {
         // Emit agent:killed event for agent terminals during shutdown
         if (terminal.agentId) {
-          events.emit("agent:killed", {
+          const killedPayload = {
             agentId: terminal.agentId,
             reason: "cleanup",
             timestamp: Date.now(),
-          });
+          };
+
+          const validatedKilled = AgentKilledSchema.safeParse(killedPayload);
+          if (validatedKilled.success) {
+            events.emit("agent:killed", validatedKilled.data);
+          }
+          // Skip error logging during cleanup to avoid noise
         }
         terminal.ptyProcess.kill();
       } catch (error) {

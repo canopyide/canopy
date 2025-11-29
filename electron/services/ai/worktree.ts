@@ -11,6 +11,7 @@ import * as path from "path";
 import type { WorktreeChanges } from "../../types/index.js";
 import { getAIClient, getAIModel } from "./client.js";
 import { extractOutputText, formatErrorSnippet, withRetry } from "./utils.js";
+import { WorktreeSummaryResponseSchema } from "../../schemas/external.js";
 
 export interface WorktreeSummary {
   summary: string;
@@ -36,19 +37,35 @@ function normalizeSummary(text: string): string {
 
 /**
  * Resilient JSON parser for summary responses
+ * Uses Zod validation as the primary approach, with fallback regex extraction
  */
 function parseSummaryJSON(text: string): string | null {
-  // First try: standard JSON parsing
+  // First try: Zod schema validation
   try {
     const parsed = JSON.parse(text);
+    const validated = WorktreeSummaryResponseSchema.safeParse(parsed);
+    if (validated.success) {
+      return validated.data.summary.replace(/\s+/g, " ").trim();
+    }
+    // Zod validation failed but JSON parsed - try extracting summary field directly
     if (parsed && typeof parsed.summary === "string") {
-      return parsed.summary.replace(/\s+/g, " ").trim();
+      const candidate = parsed.summary.replace(/\s+/g, " ").trim();
+      // Re-validate the extracted value to ensure it meets constraints
+      const revalidated = WorktreeSummaryResponseSchema.safeParse({ summary: candidate });
+      if (revalidated.success) {
+        return candidate;
+      }
+      // If still invalid, log and fall through to regex
+      console.warn(
+        "[AI] Worktree summary extraction failed Zod validation:",
+        candidate.slice(0, 100)
+      );
     }
   } catch {
-    // Fall through to regex parsing
+    // JSON parsing failed - fall through to regex extraction
   }
 
-  // Second try: regex extraction
+  // Second try: regex extraction (for malformed JSON)
   const patterns = [
     /"summary"\s*:\s*"([^"]+)"/,
     /"summary"\s*:\s*'([^']+)'/,

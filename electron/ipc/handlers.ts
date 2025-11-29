@@ -30,6 +30,15 @@ import type {
   DirectoryOpenPayload,
   DirectoryRemoveRecentPayload,
 } from "./types.js";
+import {
+  TerminalSpawnOptionsSchema,
+  TerminalResizePayloadSchema,
+  DevServerStartPayloadSchema,
+  DevServerStopPayloadSchema,
+  DevServerTogglePayloadSchema,
+  CopyTreeGeneratePayloadSchema,
+  CopyTreeInjectPayloadSchema,
+} from "../schemas/ipc.js";
 import { copyTreeService } from "../services/CopyTreeService.js";
 import { store } from "../store.js";
 import { logBuffer, type FilterOptions as LogFilterOptions } from "../services/LogBuffer.js";
@@ -178,11 +187,20 @@ export function registerIpcHandlers(
     _event: Electron.IpcMainInvokeEvent,
     payload: DevServerStartPayload
   ) => {
+    // Validate with Zod schema
+    const parseResult = DevServerStartPayloadSchema.safeParse(payload);
+    if (!parseResult.success) {
+      console.error("[IPC] Invalid dev server start payload:", parseResult.error.format());
+      throw new Error(`Invalid payload: ${parseResult.error.message}`);
+    }
+
     if (!devServerManager) {
       throw new Error("DevServerManager not initialized");
     }
-    await devServerManager.start(payload.worktreeId, payload.worktreePath, payload.command);
-    return devServerManager.getState(payload.worktreeId);
+
+    const validated = parseResult.data;
+    await devServerManager.start(validated.worktreeId, validated.worktreePath, validated.command);
+    return devServerManager.getState(validated.worktreeId);
   };
   ipcMain.handle(CHANNELS.DEVSERVER_START, handleDevServerStart);
   handlers.push(() => ipcMain.removeHandler(CHANNELS.DEVSERVER_START));
@@ -191,11 +209,20 @@ export function registerIpcHandlers(
     _event: Electron.IpcMainInvokeEvent,
     payload: DevServerStopPayload
   ) => {
+    // Validate with Zod schema
+    const parseResult = DevServerStopPayloadSchema.safeParse(payload);
+    if (!parseResult.success) {
+      console.error("[IPC] Invalid dev server stop payload:", parseResult.error.format());
+      throw new Error(`Invalid payload: ${parseResult.error.message}`);
+    }
+
     if (!devServerManager) {
       throw new Error("DevServerManager not initialized");
     }
-    await devServerManager.stop(payload.worktreeId);
-    return devServerManager.getState(payload.worktreeId);
+
+    const validated = parseResult.data;
+    await devServerManager.stop(validated.worktreeId);
+    return devServerManager.getState(validated.worktreeId);
   };
   ipcMain.handle(CHANNELS.DEVSERVER_STOP, handleDevServerStop);
   handlers.push(() => ipcMain.removeHandler(CHANNELS.DEVSERVER_STOP));
@@ -204,11 +231,20 @@ export function registerIpcHandlers(
     _event: Electron.IpcMainInvokeEvent,
     payload: DevServerTogglePayload
   ) => {
+    // Validate with Zod schema
+    const parseResult = DevServerTogglePayloadSchema.safeParse(payload);
+    if (!parseResult.success) {
+      console.error("[IPC] Invalid dev server toggle payload:", parseResult.error.format());
+      throw new Error(`Invalid payload: ${parseResult.error.message}`);
+    }
+
     if (!devServerManager) {
       throw new Error("DevServerManager not initialized");
     }
-    await devServerManager.toggle(payload.worktreeId, payload.worktreePath, payload.command);
-    return devServerManager.getState(payload.worktreeId);
+
+    const validated = parseResult.data;
+    await devServerManager.toggle(validated.worktreeId, validated.worktreePath, validated.command);
+    return devServerManager.getState(validated.worktreeId);
   };
   ipcMain.handle(CHANNELS.DEVSERVER_TOGGLE, handleDevServerToggle);
   handlers.push(() => ipcMain.removeHandler(CHANNELS.DEVSERVER_TOGGLE));
@@ -257,28 +293,31 @@ export function registerIpcHandlers(
     _event: Electron.IpcMainInvokeEvent,
     options: TerminalSpawnOptions
   ): Promise<string> => {
-    // Validate input parameters
-    if (typeof options !== "object" || options === null) {
-      throw new Error("Invalid spawn options: must be an object");
+    // Validate input with Zod schema
+    const parseResult = TerminalSpawnOptionsSchema.safeParse(options);
+    if (!parseResult.success) {
+      console.error("[IPC] Invalid terminal spawn options:", parseResult.error.format());
+      throw new Error(`Invalid spawn options: ${parseResult.error.message}`);
     }
 
-    // Validate and clamp dimensions
-    const cols = Math.max(1, Math.min(500, Math.floor(options.cols) || 80));
-    const rows = Math.max(1, Math.min(500, Math.floor(options.rows) || 30));
+    const validatedOptions = parseResult.data;
 
-    // Validate and normalize terminal type
-    const allowedTypes = ["shell", "claude", "gemini", "custom"] as const;
-    const type = options.type && allowedTypes.includes(options.type) ? options.type : "shell";
+    // Validate and clamp dimensions (schema already validates range)
+    const cols = Math.max(1, Math.min(500, Math.floor(validatedOptions.cols) || 80));
+    const rows = Math.max(1, Math.min(500, Math.floor(validatedOptions.rows) || 30));
 
-    // Validate title and worktreeId are strings if provided
-    const title = typeof options.title === "string" ? options.title : undefined;
-    const worktreeId = typeof options.worktreeId === "string" ? options.worktreeId : undefined;
+    // Use validated type or default to shell
+    const type = validatedOptions.type || "shell";
+
+    // Use validated title and worktreeId
+    const title = validatedOptions.title;
+    const worktreeId = validatedOptions.worktreeId;
 
     // Generate ID if not provided
-    const id = options.id || crypto.randomUUID();
+    const id = validatedOptions.id || crypto.randomUUID();
 
     // Use provided cwd or fall back to home directory
-    let cwd = options.cwd || process.env.HOME || os.homedir();
+    let cwd = validatedOptions.cwd || process.env.HOME || os.homedir();
 
     // Validate cwd exists and is absolute
     try {
@@ -300,20 +339,20 @@ export function registerIpcHandlers(
     try {
       ptyManager.spawn(id, {
         cwd,
-        shell: options.shell, // Shell validation happens in PtyManager
+        shell: validatedOptions.shell, // Shell validation happens in PtyManager
         cols,
         rows,
-        env: options.env, // Pass environment variables through
+        env: validatedOptions.env, // Pass environment variables through
         type,
         title,
         worktreeId,
       });
 
       // If a command is specified (e.g., 'claude' or 'gemini'), execute it after shell initializes
-      if (options.command) {
+      if (validatedOptions.command) {
         // Whitelist allowed commands to prevent command injection
         // Allow any non-empty command for recipe flexibility
-        const trimmedCommand = options.command.trim();
+        const trimmedCommand = validatedOptions.command.trim();
         if (trimmedCommand.length === 0) {
           console.warn("Empty command provided, ignoring");
         } else {
@@ -352,16 +391,18 @@ export function registerIpcHandlers(
 
   const handleTerminalResize = (_event: Electron.IpcMainEvent, payload: TerminalResizePayload) => {
     try {
-      if (typeof payload !== "object" || payload === null) {
-        console.error("Invalid terminal resize payload");
+      // Validate with Zod schema
+      const parseResult = TerminalResizePayloadSchema.safeParse(payload);
+      if (!parseResult.success) {
+        console.error("[IPC] Invalid terminal resize payload:", parseResult.error.format());
         return;
       }
 
-      const id = payload.id;
-      const cols = Math.max(1, Math.min(500, Math.floor(payload.cols) || 80));
-      const rows = Math.max(1, Math.min(500, Math.floor(payload.rows) || 30));
+      const { id, cols, rows } = parseResult.data;
+      const clampedCols = Math.max(1, Math.min(500, Math.floor(cols)));
+      const clampedRows = Math.max(1, Math.min(500, Math.floor(rows)));
 
-      ptyManager.resize(id, cols, rows);
+      ptyManager.resize(id, clampedCols, clampedRows);
     } catch (error) {
       console.error("Error resizing terminal:", error);
     }
@@ -391,6 +432,19 @@ export function registerIpcHandlers(
     _event: Electron.IpcMainInvokeEvent,
     payload: CopyTreeGeneratePayload
   ): Promise<CopyTreeResult> => {
+    // Validate with Zod schema
+    const parseResult = CopyTreeGeneratePayloadSchema.safeParse(payload);
+    if (!parseResult.success) {
+      console.error("[IPC] Invalid CopyTree generate payload:", parseResult.error.format());
+      return {
+        content: "",
+        fileCount: 0,
+        error: `Invalid payload: ${parseResult.error.message}`,
+      };
+    }
+
+    const validated = parseResult.data;
+
     if (!worktreeService) {
       return {
         content: "",
@@ -401,13 +455,13 @@ export function registerIpcHandlers(
 
     // Look up worktree path from worktreeId
     const statesMap = worktreeService.getAllStates();
-    const worktree = statesMap.get(payload.worktreeId);
+    const worktree = statesMap.get(validated.worktreeId);
 
     if (!worktree) {
       return {
         content: "",
         fileCount: 0,
-        error: `Worktree not found: ${payload.worktreeId}`,
+        error: `Worktree not found: ${validated.worktreeId}`,
       };
     }
 
@@ -416,7 +470,7 @@ export function registerIpcHandlers(
       sendToRenderer(mainWindow, CHANNELS.COPYTREE_PROGRESS, progress);
     };
 
-    return copyTreeService.generate(worktree.path, payload.options, onProgress);
+    return copyTreeService.generate(worktree.path, validated.options, onProgress);
   };
   ipcMain.handle(CHANNELS.COPYTREE_GENERATE, handleCopyTreeGenerate);
   handlers.push(() => ipcMain.removeHandler(CHANNELS.COPYTREE_GENERATE));
@@ -425,8 +479,21 @@ export function registerIpcHandlers(
     _event: Electron.IpcMainInvokeEvent,
     payload: CopyTreeInjectPayload
   ): Promise<CopyTreeResult> => {
+    // Validate with Zod schema
+    const parseResult = CopyTreeInjectPayloadSchema.safeParse(payload);
+    if (!parseResult.success) {
+      console.error("[IPC] Invalid CopyTree inject payload:", parseResult.error.format());
+      return {
+        content: "",
+        fileCount: 0,
+        error: `Invalid payload: ${parseResult.error.message}`,
+      };
+    }
+
+    const validated = parseResult.data;
+
     // Prevent concurrent injections to the same terminal
-    if (injectionsInProgress.has(payload.terminalId)) {
+    if (injectionsInProgress.has(validated.terminalId)) {
       return {
         content: "",
         fileCount: 0,
@@ -443,23 +510,23 @@ export function registerIpcHandlers(
     }
 
     // Mark injection as in progress
-    injectionsInProgress.add(payload.terminalId);
+    injectionsInProgress.add(validated.terminalId);
 
     try {
       // Look up worktree path from worktreeId
       const statesMap = worktreeService.getAllStates();
-      const worktree = statesMap.get(payload.worktreeId);
+      const worktree = statesMap.get(validated.worktreeId);
 
       if (!worktree) {
         return {
           content: "",
           fileCount: 0,
-          error: `Worktree not found: ${payload.worktreeId}`,
+          error: `Worktree not found: ${validated.worktreeId}`,
         };
       }
 
       // Check if terminal exists before generating (saves work if terminal is gone)
-      if (!ptyManager.hasTerminal(payload.terminalId)) {
+      if (!ptyManager.hasTerminal(validated.terminalId)) {
         return {
           content: "",
           fileCount: 0,
@@ -475,7 +542,7 @@ export function registerIpcHandlers(
       // Generate context with options (format can be specified) and progress reporting
       const result = await copyTreeService.generate(
         worktree.path,
-        payload.options || {},
+        validated.options || {},
         onProgress
       );
 
@@ -490,7 +557,7 @@ export function registerIpcHandlers(
 
       for (let i = 0; i < content.length; i += CHUNK_SIZE) {
         // Check terminal still exists before each write
-        if (!ptyManager.hasTerminal(payload.terminalId)) {
+        if (!ptyManager.hasTerminal(validated.terminalId)) {
           return {
             content: "",
             fileCount: 0,
@@ -499,7 +566,7 @@ export function registerIpcHandlers(
         }
 
         const chunk = content.slice(i, i + CHUNK_SIZE);
-        ptyManager.write(payload.terminalId, chunk);
+        ptyManager.write(validated.terminalId, chunk);
         // Small delay to prevent buffer overflow (1ms per chunk)
         if (i + CHUNK_SIZE < content.length) {
           await new Promise((resolve) => setTimeout(resolve, 1));
@@ -509,7 +576,7 @@ export function registerIpcHandlers(
       return result;
     } finally {
       // Always remove from in-progress set
-      injectionsInProgress.delete(payload.terminalId);
+      injectionsInProgress.delete(validated.terminalId);
     }
   };
   ipcMain.handle(CHANNELS.COPYTREE_INJECT, handleCopyTreeInject);
