@@ -3,6 +3,7 @@ import { readFile, stat } from "fs/promises";
 import { join as pathJoin } from "path";
 import { execSync } from "child_process";
 import { simpleGit } from "simple-git";
+import chokidar, { type FSWatcher } from "chokidar";
 import type { Worktree, WorktreeChanges, AISummaryStatus } from "../types/index.js";
 import { DEFAULT_CONFIG } from "../types/config.js";
 import { getWorktreeChangesWithStats, invalidateGitStatusCache } from "../utils/git.js";
@@ -71,11 +72,19 @@ export class WorktreeMonitor {
   private pollingTimer: NodeJS.Timeout | null = null;
   private aiUpdateTimer: NodeJS.Timeout | null = null;
 
+  // File watcher
+  private watcher: FSWatcher | null = null;
+  private debouncedGitUpdate: (() => void) | null = null;
+  private gitUpdateTimer: NodeJS.Timeout | null = null;
+  private pendingGitUpdate: boolean = false; // Flag to re-queue updates if locked
+
   // Configuration
-  private pollingInterval: number = 2000; // Default 2s for active worktree
+  private pollingInterval: number = 2000; // Default 2s for active worktree (fallback only)
+  private gitUpdateDebounce: number = 500; // Debounce for file watcher git updates
   private aiBufferDelay: number = DEFAULT_AI_DEBOUNCE_MS; // Configurable AI debounce
   private noteEnabled: boolean = DEFAULT_CONFIG.note?.enabled ?? true;
   private noteFilename: string = DEFAULT_CONFIG.note?.filename ?? "canopy/note";
+  private useFileWatcher: boolean = true; // Use chokidar file watcher instead of polling
 
   // Git directory cache (resolved once on first use)
   private gitDir: string | null = null;
@@ -157,7 +166,7 @@ export class WorktreeMonitor {
 
   /**
    * Start monitoring this worktree.
-   * Uses git polling (no file watcher) with hash-based change detection.
+   * Uses file watcher (chokidar) for efficient change detection with polling fallback.
    */
   public async start(): Promise<void> {
     if (this.isRunning) {
@@ -166,18 +175,161 @@ export class WorktreeMonitor {
     }
 
     this.isRunning = true;
-    this.pollingEnabled = true; // Enable polling for normal start
-    logInfo("Starting WorktreeMonitor (polling-based)", { id: this.id, path: this.path });
+    this.pollingEnabled = true; // Enable for fallback if watcher fails
 
     // 1. Perform initial fetch immediately
     // This will trigger summary generation via updateGitStatus
     await this.updateGitStatus(true);
 
-    // 2. Start polling timer ONLY after initial fetch completes
+    // 2. Start file watcher ONLY after initial fetch completes
     // Check isRunning in case stop() was called during the await above
     if (this.isRunning) {
-      this.startPolling();
+      if (this.useFileWatcher) {
+        this.startFileWatcher();
+      } else {
+        // Fallback to polling if file watcher is disabled
+        this.startPolling();
+      }
     }
+  }
+
+  /**
+   * Start file watcher for efficient change detection.
+   * Uses chokidar to watch for file changes and triggers debounced git updates.
+   */
+  private startFileWatcher(): void {
+    if (this.watcher) {
+      return; // Already watching
+    }
+
+    logInfo("Starting WorktreeMonitor (file-watcher based)", { id: this.id, path: this.path });
+
+    try {
+      // Setup file watcher with appropriate ignores
+      this.watcher = chokidar.watch(this.path, {
+        ignored: [
+          // Node/npm directories
+          "**/node_modules/**",
+          "**/.pnpm/**",
+          // Git internals (but not .git/canopy which we need for notes)
+          "**/.git/objects/**",
+          "**/.git/logs/**",
+          "**/.git/refs/**",
+          "**/.git/hooks/**",
+          "**/.git/index",
+          "**/.git/index.lock",
+          "**/.git/COMMIT_EDITMSG",
+          "**/.git/ORIG_HEAD",
+          "**/.git/HEAD.lock",
+          "**/.git/worktrees/**",
+          "**/.git/rebase-*/**",
+          "**/.git/MERGE_*",
+          "**/.git/CHERRY_PICK_HEAD",
+          "**/.git/BISECT_*",
+          // Build outputs
+          "**/dist/**",
+          "**/build/**",
+          "**/.next/**",
+          "**/out/**",
+          // Cache directories
+          "**/.cache/**",
+          "**/.turbo/**",
+          "**/.pytest_cache/**",
+          "**/coverage/**",
+          // IDE directories
+          "**/.idea/**",
+          "**/.vscode/**",
+          // OS files
+          "**/.DS_Store",
+          "**/Thumbs.db",
+          // Logs and temp files
+          "**/*.log",
+          "**/npm-debug.log*",
+        ],
+        ignoreInitial: true,
+        persistent: true,
+        // Wait for files to finish writing
+        awaitWriteFinish: {
+          stabilityThreshold: 100,
+          pollInterval: 50,
+        },
+        // Ignore permission errors
+        ignorePermissionErrors: true,
+        // Use fs events (more efficient on macOS/Windows)
+        usePolling: false,
+      });
+
+      // Create debounced git update function
+      this.debouncedGitUpdate = () => {
+        if (this.gitUpdateTimer) {
+          clearTimeout(this.gitUpdateTimer);
+        }
+        this.gitUpdateTimer = setTimeout(() => {
+          this.gitUpdateTimer = null;
+          if (this.isRunning) {
+            void this.updateGitStatus();
+          }
+        }, this.gitUpdateDebounce);
+      };
+
+      // Handle file changes
+      this.watcher.on("all", (event: string, filePath: string) => {
+        // Skip if monitor was stopped
+        if (!this.isRunning) return;
+
+        // Log significant changes for debugging
+        logDebug("File change detected", { id: this.id, event, path: filePath });
+
+        // Immediately update activity timestamp for UI responsiveness
+        // This makes the activity light turn green instantly
+        this.state.lastActivityTimestamp = Date.now();
+        this.emitUpdate();
+
+        // Trigger debounced git status check
+        if (this.debouncedGitUpdate) {
+          this.debouncedGitUpdate();
+        }
+      });
+
+      // Handle watcher errors
+      this.watcher.on("error", (error: unknown) => {
+        logError("File watcher error, falling back to polling", error as Error, { id: this.id });
+        // Clean up failed watcher
+        void this.stopFileWatcher();
+        // Fall back to polling
+        if (this.isRunning && this.pollingEnabled) {
+          this.startPolling();
+        }
+      });
+
+      // Log when ready
+      this.watcher.on("ready", () => {
+        logInfo("File watcher ready", { id: this.id, path: this.path });
+      });
+    } catch (error) {
+      logError("Failed to start file watcher, falling back to polling", error as Error, {
+        id: this.id,
+      });
+      // Fall back to polling
+      if (this.isRunning && this.pollingEnabled) {
+        this.startPolling();
+      }
+    }
+  }
+
+  /**
+   * Stop file watcher and clean up resources.
+   */
+  private async stopFileWatcher(): Promise<void> {
+    if (this.watcher) {
+      await this.watcher.close();
+      this.watcher = null;
+    }
+    if (this.gitUpdateTimer) {
+      clearTimeout(this.gitUpdateTimer);
+      this.gitUpdateTimer = null;
+    }
+    this.debouncedGitUpdate = null;
   }
 
   /**
@@ -202,7 +354,7 @@ export class WorktreeMonitor {
 
   /**
    * Stop monitoring this worktree.
-   * Cleans up timers. Event bus subscriptions are managed by WorktreeService.
+   * Cleans up file watcher and timers. Event bus subscriptions are managed by WorktreeService.
    */
   public async stop(): Promise<void> {
     if (!this.isRunning) {
@@ -211,6 +363,9 @@ export class WorktreeMonitor {
 
     this.isRunning = false;
     logInfo("Stopping WorktreeMonitor", { id: this.id });
+
+    // Stop file watcher
+    await this.stopFileWatcher();
 
     // Clear timers
     this.stopPolling();
@@ -231,6 +386,7 @@ export class WorktreeMonitor {
   /**
    * Set the polling interval for git status updates.
    * Used by WorktreeService to adjust intervals based on active/background status.
+   * Note: With file watcher enabled, polling is only used as a fallback.
    */
   public setPollingInterval(ms: number): void {
     if (this.pollingInterval === ms) {
@@ -239,9 +395,9 @@ export class WorktreeMonitor {
 
     this.pollingInterval = ms;
 
-    // Restart polling with new interval if currently running AND polling is enabled
-    // When --no-watch is used, pollingEnabled is false so we don't restart polling
-    if (this.isRunning && this.pollingEnabled) {
+    // Only restart polling if we're actually using polling (not file watcher)
+    // When file watcher is active, polling is disabled
+    if (this.isRunning && this.pollingEnabled && !this.watcher) {
       this.stopPolling();
       this.startPolling();
     }
@@ -455,8 +611,13 @@ export class WorktreeMonitor {
    * 5. Emit Phase: Single event emission
    */
   private async updateGitStatus(forceRefresh: boolean = false): Promise<void> {
-    // Prevent overlapping updates
-    if (!this.isRunning || this.isUpdating) {
+    // Prevent overlapping updates - queue a re-run if locked
+    if (!this.isRunning) {
+      return;
+    }
+
+    if (this.isUpdating) {
+      this.pendingGitUpdate = true;
       return;
     }
 
@@ -672,6 +833,13 @@ export class WorktreeMonitor {
       this.emitUpdate();
     } finally {
       this.isUpdating = false; // Unlock
+
+      // Check if updates were queued while we were locked
+      if (this.pendingGitUpdate) {
+        this.pendingGitUpdate = false;
+        // Re-run immediately to catch missed changes
+        void this.updateGitStatus();
+      }
     }
   }
 

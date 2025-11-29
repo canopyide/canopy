@@ -6,6 +6,7 @@ import {
   useWorktrees,
   useContextInjection,
   useTerminalPalette,
+  useKeybinding,
 } from "./hooks";
 import { AppLayout } from "./components/Layout";
 import { TerminalGrid } from "./components/Terminal";
@@ -298,88 +299,35 @@ function App() {
     [removeError]
   );
 
-  // Keyboard shortcuts for grid navigation
-  useEffect(() => {
-    if (!isElectronAvailable()) return;
+  // === Centralized Keybindings (via useKeybinding hook) ===
+  const electronAvailable = isElectronAvailable();
 
-    const handleKeyDown = (e: KeyboardEvent) => {
-      // Cmd/Ctrl+T: Open terminal palette (handle before input guard so it works when palette input is focused)
-      if ((e.metaKey || e.ctrlKey) && e.key === "t" && !e.shiftKey) {
-        e.preventDefault();
-        terminalPalette.toggle();
-        return;
-      }
+  // Terminal palette (Cmd+T)
+  useKeybinding("terminal.palette", () => terminalPalette.toggle(), { enabled: electronAvailable });
 
-      // Don't intercept shortcuts if user is typing in an input/textarea or terminal
-      const target = e.target as HTMLElement;
-      const isInput =
-        target.tagName === "INPUT" || target.tagName === "TEXTAREA" || target.isContentEditable;
+  // Terminal navigation
+  useKeybinding("terminal.focusNext", () => focusNext(), { enabled: electronAvailable });
+  useKeybinding("terminal.focusPrevious", () => focusPrevious(), { enabled: electronAvailable });
+  useKeybinding(
+    "terminal.maximize",
+    () => {
+      if (focusedId) toggleMaximize(focusedId);
+    },
+    { enabled: electronAvailable && !!focusedId }
+  );
 
-      // Skip if typing in input field
-      if (isInput) return;
+  // Agent launchers
+  useKeybinding("agent.claude", () => handleLaunchAgent("claude"), { enabled: electronAvailable });
+  useKeybinding("agent.gemini", () => handleLaunchAgent("gemini"), { enabled: electronAvailable });
 
-      // Skip if focus is inside a terminal (xterm renders as a div with class 'xterm')
-      // This allows terminal shortcuts and shell hotkeys to work normally
-      const isInTerminal = target.closest(".xterm") !== null;
-      if (isInTerminal) return;
+  // Context injection
+  useKeybinding("context.inject", () => handleInjectContextShortcut(), {
+    enabled: electronAvailable,
+  });
 
-      // Ctrl+Tab: Focus next terminal
-      if (e.ctrlKey && e.key === "Tab" && !e.shiftKey) {
-        e.preventDefault();
-        focusNext();
-      }
-      // Ctrl+Shift+Tab: Focus previous terminal
-      else if (e.ctrlKey && e.shiftKey && e.key === "Tab") {
-        e.preventDefault();
-        focusPrevious();
-      }
-      // Ctrl+Shift+F: Toggle maximize
-      else if (e.ctrlKey && e.shiftKey && e.key === "F") {
-        e.preventDefault();
-        if (focusedId) {
-          toggleMaximize(focusedId);
-        }
-      }
-      // Ctrl+Shift+C: Launch Claude (use 'C' not 'c' to detect shift properly)
-      else if (e.ctrlKey && e.shiftKey && (e.key === "C" || e.key === "c")) {
-        e.preventDefault();
-        handleLaunchAgent("claude");
-      }
-      // Ctrl+Shift+G: Launch Gemini
-      else if (e.ctrlKey && e.shiftKey && (e.key === "G" || e.key === "g")) {
-        e.preventDefault();
-        handleLaunchAgent("gemini");
-      }
-      // Ctrl+Shift+I: Inject context (active worktree -> focused terminal)
-      else if (e.ctrlKey && e.shiftKey && e.key === "I") {
-        e.preventDefault();
-        handleInjectContextShortcut();
-      }
-      // Ctrl+Shift+L: Toggle logs panel
-      else if (e.ctrlKey && e.shiftKey && (e.key === "L" || e.key === "l")) {
-        e.preventDefault();
-        toggleLogsPanel();
-      }
-      // Ctrl+Shift+E: Toggle event inspector
-      else if (e.ctrlKey && e.shiftKey && (e.key === "E" || e.key === "e")) {
-        e.preventDefault();
-        toggleEventInspector();
-      }
-    };
-
-    window.addEventListener("keydown", handleKeyDown);
-    return () => window.removeEventListener("keydown", handleKeyDown);
-  }, [
-    focusNext,
-    focusPrevious,
-    toggleMaximize,
-    focusedId,
-    handleLaunchAgent,
-    handleInjectContextShortcut,
-    toggleLogsPanel,
-    toggleEventInspector,
-    terminalPalette,
-  ]);
+  // Panel toggles
+  useKeybinding("panel.logs", () => toggleLogsPanel(), { enabled: electronAvailable });
+  useKeybinding("panel.events", () => toggleEventInspector(), { enabled: electronAvailable });
 
   if (!isElectronAvailable()) {
     return (

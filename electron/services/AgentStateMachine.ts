@@ -91,18 +91,53 @@ export function nextAgentState(current: AgentState, event: AgentEvent): AgentSta
 }
 
 /**
- * Prompt detection patterns.
- * These heuristics identify common prompt patterns that indicate
- * the agent is waiting for user input.
+ * High-confidence prompt patterns.
+ * These patterns strongly indicate the agent is waiting for user input.
  */
-const PROMPT_PATTERNS = [
-  /\?\s*$/, // Question mark followed by optional space at end (e.g., "Continue? ")
+const HIGH_CONFIDENCE_PROMPT_PATTERNS = [
   /\(y\/n\)/i, // Yes/no prompt
   /\(yes\/no\)/i, // Full yes/no prompt
+  /\[y\/n\]/i, // Bracketed yes/no
+  /\[yes\/no\]/i, // Bracketed full yes/no
   /enter\s+to\s+continue/i, // "Enter to continue"
   /press\s+enter/i, // "Press enter"
-  /:\s*$/, // Colon at end (common shell/REPL prompt indicator)
-  />\s*$/, // Greater-than at end (another common prompt)
+  /\(s\/n\)/i, // Spanish yes/no (sí/no)
+  /\(o\/n\)/i, // French yes/no (oui/non)
+  /continue\?\s*\(y\/n\)/i, // "Continue? (y/n)"
+  /do\s+you\s+want\s+to\s+(proceed|continue)/i, // "Do you want to proceed/continue"
+  /are\s+you\s+sure/i, // "Are you sure"
+  /confirm/i, // Contains "confirm"
+  /password:/i, // Password prompt
+  /passphrase:/i, // SSH passphrase prompt
+  /username:/i, // Username prompt
+  /login:/i, // Login prompt
+];
+
+/**
+ * Low-confidence prompt patterns.
+ * These patterns may indicate prompts but have higher false positive rates.
+ * Only used when combined with buffer heuristics.
+ */
+const LOW_CONFIDENCE_PROMPT_PATTERNS = [
+  /\?\s*$/, // Question mark at end (could be log message or question in text)
+  /:\s*$/, // Colon at end (common prompt but also log prefixes)
+  />\s*$/, // Greater-than at end (shell prompts, but also comparison operators)
+];
+
+/**
+ * Patterns that indicate the text is NOT a prompt (false positive filters).
+ * These help reduce false positives from log messages containing question marks.
+ */
+const NON_PROMPT_PATTERNS = [
+  /^[\d\-.T:]+\s/, // Starts with timestamp (e.g., "2025-01-28T10:30:00")
+  /^\[[\w-]+\]/, // Starts with log level bracket (e.g., "[INFO]", "[DEBUG]")
+  /^(info|warn|error|debug|trace):/i, // Log level prefix
+  /\d{4}-\d{2}-\d{2}/, // Contains date (ISO format)
+  /https?:\/\//, // Contains URL
+  /have\s+any\s+questions/i, // "Do you have any questions?" in output text
+  /what\s+questions/i, // "What questions..." in output text
+  /if\s+you\s+have\s+questions/i, // "If you have questions" in output
+  /questions\?\s*\n/i, // "questions?" followed by newline (part of log/doc)
 ];
 
 /**
@@ -112,20 +147,105 @@ const PROMPT_PATTERNS = [
 const MIN_PROMPT_LENGTH = 3;
 
 /**
+ * Maximum length for low-confidence prompts.
+ * Real prompts are typically short; long text is likely logs.
+ */
+const MAX_LOW_CONFIDENCE_LENGTH = 200;
+
+/**
+ * Maximum buffer length to analyze (bytes).
+ * Limits regex work for chatty agents by only examining recent tail.
+ */
+const MAX_BUFFER_LENGTH = 2048; // 2KB
+
+/**
+ * Options for enhanced prompt detection.
+ */
+export interface PromptDetectionOptions {
+  /**
+   * Time in milliseconds since last output.
+   * Longer silence after short incomplete output suggests waiting state.
+   */
+  timeSinceLastOutput?: number;
+
+  /**
+   * Whether the process is still alive.
+   * Only relevant for timing-based heuristics.
+   */
+  processAlive?: boolean;
+}
+
+/**
  * Detect if a string appears to be a prompt waiting for user input.
- * Uses heuristic pattern matching on common prompt indicators.
+ * Uses multi-phase heuristic matching:
+ *
+ * 1. High-confidence patterns (y/n prompts, password prompts, etc.)
+ * 2. False positive filtering (timestamps, log levels, URLs)
+ * 3. Buffer-based heuristics (short, no trailing newline)
+ * 4. Timing-based heuristics (silence after incomplete output)
  *
  * @param data - String data to analyze
+ * @param options - Optional timing and process state information
  * @returns true if data appears to be a prompt, false otherwise
  */
-export function detectPrompt(data: string): boolean {
+export function detectPrompt(data: string, options?: PromptDetectionOptions): boolean {
   // Ignore very short strings to reduce false positives
   if (data.length < MIN_PROMPT_LENGTH) {
     return false;
   }
 
-  // Check against known prompt patterns
-  return PROMPT_PATTERNS.some((pattern) => pattern.test(data));
+  // Cap buffer length to avoid excessive regex work on chatty output
+  // Prompts appear at the tail, so take the last MAX_BUFFER_LENGTH bytes
+  const buffer = data.length > MAX_BUFFER_LENGTH ? data.slice(-MAX_BUFFER_LENGTH) : data;
+
+  // Get the last meaningful chunk (prompts usually appear at the end)
+  const trimmed = buffer.trim();
+  if (trimmed.length === 0) {
+    return false;
+  }
+
+  // Extract the last line for analysis
+  const lines = trimmed.split("\n");
+  const lastLine = lines[lines.length - 1].trim();
+
+  // === Phase 1: High-confidence pattern matching ===
+  // These patterns are very reliable indicators of prompts
+  if (HIGH_CONFIDENCE_PROMPT_PATTERNS.some((pattern) => pattern.test(lastLine))) {
+    return true;
+  }
+
+  // === Phase 2: False positive filtering ===
+  // Skip if the text matches patterns that are NOT prompts
+  if (NON_PROMPT_PATTERNS.some((pattern) => pattern.test(lastLine))) {
+    return false;
+  }
+
+  // === Phase 3: Buffer-based heuristics for low-confidence patterns ===
+  // Only apply low-confidence patterns if the buffer looks like a prompt
+  const endsWithNewline = data.endsWith("\n") || data.endsWith("\r");
+  const isShortBuffer = lastLine.length < MAX_LOW_CONFIDENCE_LENGTH;
+
+  // Low-confidence patterns + short buffer without trailing newline = likely prompt
+  if (isShortBuffer && !endsWithNewline) {
+    if (LOW_CONFIDENCE_PROMPT_PATTERNS.some((pattern) => pattern.test(lastLine))) {
+      return true;
+    }
+  }
+
+  // === Phase 4: Timing-based heuristics ===
+  // If we have timing info and the process is alive, use silence detection
+  // Require at least some prompt-like character to avoid false positives on progress output
+  if (options?.timeSinceLastOutput !== undefined && options?.processAlive) {
+    const silentFor500ms = options.timeSinceLastOutput > 500;
+    const hasPromptChar = /[?:>]/.test(lastLine);
+
+    // Silent for 500ms + no trailing newline + short buffer + prompt-like char = likely waiting
+    if (silentFor500ms && !endsWithNewline && isShortBuffer && hasPromptChar) {
+      return true;
+    }
+  }
+
+  return false;
 }
 
 /**
