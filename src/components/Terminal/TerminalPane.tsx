@@ -20,6 +20,8 @@ import { cn } from "@/lib/utils";
 import { XtermAdapter } from "./XtermAdapter";
 import { ErrorBanner } from "../Errors/ErrorBanner";
 import { useErrorStore, type RetryAction } from "@/store";
+import { ProgressBar } from "../ContextInjection/ProgressBar";
+import type { CopyTreeProgress } from "@/hooks/useContextInjection";
 
 export type TerminalType = "shell" | "claude" | "gemini" | "custom";
 
@@ -38,12 +40,18 @@ export interface TerminalPaneProps {
   isFocused: boolean;
   /** Whether this terminal is maximized */
   isMaximized?: boolean;
+  /** Whether context injection is in progress */
+  isInjecting?: boolean;
+  /** Current injection progress (if injecting) */
+  injectionProgress?: CopyTreeProgress | null;
   /** Called when the pane is clicked/focused */
   onFocus: () => void;
   /** Called when the close button is clicked */
   onClose: () => void;
   /** Called when inject context button is clicked */
   onInjectContext?: () => void;
+  /** Called when cancel injection button is clicked */
+  onCancelInjection?: () => void;
   /** Called when double-click on header or maximize button clicked */
   onToggleMaximize?: () => void;
   /** Called when user edits the terminal title */
@@ -65,9 +73,12 @@ export function TerminalPane({
   cwd: _cwd, // Reserved for terminal spawning integration
   isFocused,
   isMaximized,
+  isInjecting,
+  injectionProgress,
   onFocus,
   onClose,
   onInjectContext,
+  onCancelInjection,
   onToggleMaximize,
   onTitleChange,
 }: TerminalPaneProps) {
@@ -267,10 +278,13 @@ export function TerminalPane({
                 e.stopPropagation();
                 onInjectContext();
               }}
-              className="p-1 hover:bg-gray-700 rounded transition-colors"
+              className={cn(
+                "p-1 hover:bg-gray-700 rounded transition-colors",
+                isInjecting && "opacity-50 cursor-not-allowed"
+              )}
               title="Inject Context (Ctrl+Shift+I)"
               aria-label="Inject worktree context"
-              disabled={isExited}
+              disabled={isExited || isInjecting}
             >
               📋
             </button>
@@ -303,6 +317,13 @@ export function TerminalPane({
           </button>
         </div>
       </div>
+
+      {/* Context injection progress */}
+      {isInjecting && injectionProgress && (
+        <div className="px-2 py-1 border-b border-canopy-border bg-canopy-sidebar/50 shrink-0">
+          <ProgressBar progress={injectionProgress} onCancel={onCancelInjection} compact />
+        </div>
+      )}
 
       {/* Terminal errors */}
       {terminalErrors.length > 0 && (

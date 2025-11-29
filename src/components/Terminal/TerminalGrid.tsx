@@ -16,6 +16,7 @@
 import { useMemo, useCallback } from "react";
 import { cn } from "@/lib/utils";
 import { useTerminalStore, type TerminalInstance } from "@/store";
+import { useContextInjection } from "@/hooks/useContextInjection";
 import { TerminalPane } from "./TerminalPane";
 import { Terminal, Plus } from "lucide-react";
 import { Button } from "@/components/ui/button";
@@ -53,6 +54,9 @@ export function TerminalGrid({ className, defaultCwd }: TerminalGridProps) {
     toggleMaximize,
   } = useTerminalStore();
 
+  // Use context injection hook for progress tracking
+  const { inject, cancel, isInjecting, progress } = useContextInjection();
+
   // Calculate grid columns based on terminal count
   // Use a dynamic formula that scales with terminal count
   const gridCols = useMemo(() => {
@@ -71,21 +75,14 @@ export function TerminalGrid({ className, defaultCwd }: TerminalGridProps) {
     await addTerminal({ type: "shell", cwd });
   }, [addTerminal, defaultCwd]);
 
-  // Handle context injection
-  const handleInjectContext = useCallback(async (terminalId: string, worktreeId?: string) => {
-    if (!worktreeId) return;
-
-    try {
-      const result = await window.electron.copyTree.injectToTerminal(terminalId, worktreeId);
-      if (result.error) {
-        console.error("Context injection failed:", result.error);
-      } else {
-        console.log(`Context injected (${result.fileCount} files)`);
-      }
-    } catch (error) {
-      console.error("Context injection failed:", error);
-    }
-  }, []);
+  // Handle context injection using the hook
+  const handleInjectContext = useCallback(
+    async (terminalId: string, worktreeId?: string) => {
+      if (!worktreeId) return;
+      await inject(worktreeId, terminalId);
+    },
+    [inject]
+  );
 
   // If maximized, only show that terminal
   if (maximizedId) {
@@ -101,6 +98,8 @@ export function TerminalGrid({ className, defaultCwd }: TerminalGridProps) {
             cwd={terminal.cwd}
             isFocused={true}
             isMaximized={true}
+            isInjecting={isInjecting}
+            injectionProgress={progress}
             onFocus={() => setFocused(terminal.id)}
             onClose={() => removeTerminal(terminal.id)}
             onInjectContext={
@@ -108,6 +107,7 @@ export function TerminalGrid({ className, defaultCwd }: TerminalGridProps) {
                 ? () => handleInjectContext(terminal.id, terminal.worktreeId)
                 : undefined
             }
+            onCancelInjection={cancel}
             onToggleMaximize={() => toggleMaximize(terminal.id)}
             onTitleChange={(newTitle) => updateTitle(terminal.id, newTitle)}
           />
@@ -143,6 +143,8 @@ export function TerminalGrid({ className, defaultCwd }: TerminalGridProps) {
           cwd={terminal.cwd}
           isFocused={terminal.id === focusedId}
           isMaximized={false}
+          isInjecting={isInjecting}
+          injectionProgress={progress}
           onFocus={() => setFocused(terminal.id)}
           onClose={() => removeTerminal(terminal.id)}
           onInjectContext={
@@ -150,6 +152,7 @@ export function TerminalGrid({ className, defaultCwd }: TerminalGridProps) {
               ? () => handleInjectContext(terminal.id, terminal.worktreeId)
               : undefined
           }
+          onCancelInjection={cancel}
           onToggleMaximize={() => toggleMaximize(terminal.id)}
           onTitleChange={(newTitle) => updateTitle(terminal.id, newTitle)}
         />

@@ -62,6 +62,21 @@ interface CopyTreeResult {
   };
 }
 
+interface CopyTreeProgress {
+  /** Current stage name (e.g., 'FileDiscoveryStage', 'FormatterStage') */
+  stage: string;
+  /** Progress percentage (0-1) */
+  progress: number;
+  /** Human-readable progress message */
+  message: string;
+  /** Files processed so far (if known) */
+  filesProcessed?: number;
+  /** Total files estimated (if known) */
+  totalFiles?: number;
+  /** Current file being processed (if known) */
+  currentFile?: string;
+}
+
 interface TerminalState {
   id: string;
   type: "shell" | "claude" | "gemini" | "custom";
@@ -181,6 +196,8 @@ export interface ElectronAPI {
       options?: CopyTreeOptions
     ): Promise<CopyTreeResult>;
     isAvailable(): Promise<boolean>;
+    cancel(): Promise<void>;
+    onProgress(callback: (progress: CopyTreeProgress) => void): () => void;
   };
   system: {
     openExternal(url: string): Promise<void>;

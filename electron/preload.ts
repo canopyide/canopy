@@ -48,6 +48,8 @@ const CHANNELS = {
   COPYTREE_GENERATE: "copytree:generate",
   COPYTREE_INJECT: "copytree:inject",
   COPYTREE_AVAILABLE: "copytree:available",
+  COPYTREE_PROGRESS: "copytree:progress",
+  COPYTREE_CANCEL: "copytree:cancel",
 
   // System channels
   SYSTEM_OPEN_EXTERNAL: "system:open-external",
@@ -191,6 +193,21 @@ interface CopyTreeResult {
   };
 }
 
+interface CopyTreeProgress {
+  /** Current stage name (e.g., 'FileDiscoveryStage', 'FormatterStage') */
+  stage: string;
+  /** Progress percentage (0-1) */
+  progress: number;
+  /** Human-readable progress message */
+  message: string;
+  /** Files processed so far (if known) */
+  filesProcessed?: number;
+  /** Total files estimated (if known) */
+  totalFiles?: number;
+  /** Current file being processed (if known) */
+  currentFile?: string;
+}
+
 interface CanopyConfig {
   editor?: string;
   editorArgs?: string[];
@@ -330,6 +347,8 @@ export interface ElectronAPI {
       options?: CopyTreeOptions
     ): Promise<CopyTreeResult>;
     isAvailable(): Promise<boolean>;
+    cancel(): Promise<void>;
+    onProgress(callback: (progress: CopyTreeProgress) => void): () => void;
   };
   system: {
     openExternal(url: string): Promise<void>;
@@ -480,6 +499,15 @@ const api: ElectronAPI = {
       ipcRenderer.invoke(CHANNELS.COPYTREE_INJECT, { terminalId, worktreeId, options }),
 
     isAvailable: (): Promise<boolean> => ipcRenderer.invoke(CHANNELS.COPYTREE_AVAILABLE),
+
+    cancel: (): Promise<void> => ipcRenderer.invoke(CHANNELS.COPYTREE_CANCEL),
+
+    onProgress: (callback: (progress: CopyTreeProgress) => void) => {
+      const handler = (_event: Electron.IpcRendererEvent, progress: CopyTreeProgress) =>
+        callback(progress);
+      ipcRenderer.on(CHANNELS.COPYTREE_PROGRESS, handler);
+      return () => ipcRenderer.removeListener(CHANNELS.COPYTREE_PROGRESS, handler);
+    },
   },
 
   // ==========================================

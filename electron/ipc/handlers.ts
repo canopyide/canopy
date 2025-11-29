@@ -21,6 +21,7 @@ import type {
   CopyTreeGeneratePayload,
   CopyTreeInjectPayload,
   CopyTreeResult,
+  CopyTreeProgress,
   SystemOpenExternalPayload,
   SystemOpenPathPayload,
   WorktreeSetActivePayload,
@@ -347,7 +348,12 @@ export function registerIpcHandlers(
       };
     }
 
-    return copyTreeService.generate(worktree.path, payload.options);
+    // Progress callback to send updates to renderer
+    const onProgress = (progress: CopyTreeProgress) => {
+      sendToRenderer(mainWindow, CHANNELS.COPYTREE_PROGRESS, progress);
+    };
+
+    return copyTreeService.generate(worktree.path, payload.options, onProgress);
   };
   ipcMain.handle(CHANNELS.COPYTREE_GENERATE, handleCopyTreeGenerate);
   handlers.push(() => ipcMain.removeHandler(CHANNELS.COPYTREE_GENERATE));
@@ -398,8 +404,13 @@ export function registerIpcHandlers(
         };
       }
 
-      // Generate context with options (format can be specified)
-      const result = await copyTreeService.generate(worktree.path, payload.options);
+      // Progress callback to send updates to renderer
+      const onProgress = (progress: CopyTreeProgress) => {
+        sendToRenderer(mainWindow, CHANNELS.COPYTREE_PROGRESS, progress);
+      };
+
+      // Generate context with options (format can be specified) and progress reporting
+      const result = await copyTreeService.generate(worktree.path, payload.options || {}, onProgress);
 
       if (result.error) {
         return result;
@@ -442,6 +453,12 @@ export function registerIpcHandlers(
   };
   ipcMain.handle(CHANNELS.COPYTREE_AVAILABLE, handleCopyTreeAvailable);
   handlers.push(() => ipcMain.removeHandler(CHANNELS.COPYTREE_AVAILABLE));
+
+  const handleCopyTreeCancel = async (): Promise<void> => {
+    copyTreeService.cancelAll();
+  };
+  ipcMain.handle(CHANNELS.COPYTREE_CANCEL, handleCopyTreeCancel);
+  handlers.push(() => ipcMain.removeHandler(CHANNELS.COPYTREE_CANCEL));
 
   // ==========================================
   // System Handlers

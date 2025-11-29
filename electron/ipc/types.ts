@@ -134,6 +134,21 @@ export interface CopyTreeInjectPayload {
   options?: CopyTreeOptions;
 }
 
+export interface CopyTreeProgress {
+  /** Current stage name (e.g., 'FileDiscoveryStage', 'FormatterStage') */
+  stage: string;
+  /** Progress percentage (0-1) */
+  progress: number;
+  /** Human-readable progress message */
+  message: string;
+  /** Files processed so far (if known) */
+  filesProcessed?: number;
+  /** Total files estimated (if known) */
+  totalFiles?: number;
+  /** Current file being processed (if known) */
+  currentFile?: string;
+}
+
 // PR detection types
 export interface PRDetectedPayload {
   worktreeId: string;

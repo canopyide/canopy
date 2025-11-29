@@ -10,13 +10,16 @@
  */
 
 import { copy, ConfigManager } from "copytree";
-import type { CopyResult, CopyOptions as SdkCopyOptions } from "copytree";
+import type { CopyResult, CopyOptions as SdkCopyOptions, ProgressEvent } from "copytree";
 import * as path from "path";
 import * as fs from "fs/promises";
-import type { CopyTreeOptions, CopyTreeResult } from "../ipc/types.js";
+import type { CopyTreeOptions, CopyTreeResult, CopyTreeProgress } from "../ipc/types.js";
 
 // Re-export types for convenience
-export type { CopyTreeOptions, CopyTreeResult };
+export type { CopyTreeOptions, CopyTreeResult, CopyTreeProgress };
+
+/** Progress callback signature for context generation */
+export type ProgressCallback = (progress: CopyTreeProgress) => void;
 
 class CopyTreeService {
   // Track active operations for cancellation
@@ -27,9 +30,14 @@ class CopyTreeService {
    *
    * @param rootPath - Absolute path to the worktree root
    * @param options - CopyTree options (format, filters, etc.)
+   * @param onProgress - Optional callback for progress updates
    * @returns CopyTreeResult with content, file count, and optional error
    */
-  async generate(rootPath: string, options: CopyTreeOptions = {}): Promise<CopyTreeResult> {
+  async generate(
+    rootPath: string,
+    options: CopyTreeOptions = {},
+    onProgress?: ProgressCallback
+  ): Promise<CopyTreeResult> {
     const opId = crypto.randomUUID();
 
     try {
@@ -85,6 +93,27 @@ class CopyTreeService {
         maxFileSize: options.maxFileSize,
         maxTotalSize: options.maxTotalSize,
         maxFileCount: options.maxFileCount,
+
+        // Progress reporting
+        onProgress: onProgress
+          ? (event: ProgressEvent) => {
+              // Don't emit progress if operation was cancelled
+              const controller = this.activeOperations.get(opId);
+              if (!controller || controller.signal.aborted) return;
+
+              const progress: CopyTreeProgress = {
+                stage: event.stage || "Processing",
+                // Clamp percent to [0, 100] and convert to [0, 1]
+                progress: Math.max(0, Math.min(100, event.percent || 0)) / 100,
+                message: event.message || `Processing: ${event.stage || "files"}`,
+                filesProcessed: event.filesProcessed,
+                totalFiles: event.totalFiles,
+                currentFile: event.currentFile,
+              };
+              onProgress(progress);
+            }
+          : undefined,
+        progressThrottleMs: 100, // Throttle to 10 updates per second max
 
         // Profile loading (SDK auto-loads .copytree.yml from rootPath)
         // The profile option is kept for future explicit profile support
