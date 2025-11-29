@@ -145,6 +145,8 @@ export interface TerminalInstance {
   rows: number;
   /** Current agent lifecycle state (for agent-type terminals) */
   agentState?: AgentState;
+  /** Timestamp when agentState last changed (milliseconds since epoch) */
+  lastStateChange?: number;
   /** Error message if agentState is 'failed' */
   error?: string;
 }

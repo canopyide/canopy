@@ -21,3 +21,6 @@ export { useErrors } from "./useErrors";
 
 export { useTerminalPalette } from "./useTerminalPalette";
 export type { SearchableTerminal, UseTerminalPaletteReturn } from "./useTerminalPalette";
+
+export { useWorktreeTerminals } from "./useWorktreeTerminals";
+export type { WorktreeTerminalCounts, UseWorktreeTerminalsResult } from "./useWorktreeTerminals";

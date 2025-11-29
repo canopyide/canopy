@@ -6,20 +6,10 @@
  */
 
 import { create, type StateCreator } from "zustand";
-import type { TerminalType } from "@/components/Terminal/TerminalPane";
-import type { AgentState } from "@/types";
+import type { TerminalInstance as TerminalInstanceType, AgentState, TerminalType } from "@/types";
 
-export interface TerminalInstance {
-  id: string;
-  type: TerminalType;
-  title: string;
-  worktreeId?: string;
-  cwd: string;
-  /** Current agent lifecycle state (for agent-type terminals) */
-  agentState?: AgentState;
-  /** Error message if agentState is 'failed' */
-  error?: string;
-}
+// Re-export the shared type so callers can import from the store
+export type TerminalInstance = TerminalInstanceType;
 
 export interface AddTerminalOptions {
   type?: TerminalType;
@@ -39,26 +29,23 @@ interface TerminalGridState {
   addTerminal: (options: AddTerminalOptions) => Promise<string>;
   removeTerminal: (id: string) => void;
   updateTitle: (id: string, newTitle: string) => void;
+  updateAgentState: (
+    id: string,
+    agentState: AgentState,
+    error?: string,
+    lastStateChange?: number
+  ) => void;
   setFocused: (id: string | null) => void;
   toggleMaximize: (id: string) => void;
   focusNext: () => void;
   focusPrevious: () => void;
 
-  // Agent state management
-  updateAgentState: (id: string, state: AgentState, error?: string) => void;
-
   // Bulk actions
-  /** Close all terminals matching the given agent state(s) */
   bulkCloseByState: (states: AgentState | AgentState[]) => void;
-  /** Close all terminals for a specific worktree, optionally filtered by state */
   bulkCloseByWorktree: (worktreeId: string, state?: AgentState) => void;
-  /** Close all terminals */
   bulkCloseAll: () => void;
-  /** Restart all failed agent terminals */
   restartFailedAgents: () => Promise<void>;
-  /** Get count of terminals by state */
   getCountByState: (state: AgentState) => number;
-  /** Get count of terminals by worktree and optional state */
   getCountByWorktree: (worktreeId: string, state?: AgentState) => number;
 }
 
@@ -99,7 +86,10 @@ const createTerminalStore: StateCreator<TerminalGridState> = (set, get) => ({
         title,
         worktreeId: options.worktreeId,
         cwd: options.cwd,
+        cols: 80,
+        rows: 24,
         agentState: isAgentTerminal ? "idle" : undefined,
+        lastStateChange: isAgentTerminal ? Date.now() : undefined,
       };
 
       set((state) => {
@@ -209,6 +199,29 @@ const createTerminalStore: StateCreator<TerminalGridState> = (set, get) => ({
     });
   },
 
+  updateAgentState: (id, agentState, error, lastStateChange) => {
+    set((state) => {
+      const terminal = state.terminals.find((t) => t.id === id);
+      if (!terminal) {
+        console.warn(`Cannot update agent state: terminal ${id} not found`);
+        return state;
+      }
+
+      const newTerminals = state.terminals.map((t) =>
+        t.id === id
+          ? {
+              ...t,
+              agentState,
+              error,
+              lastStateChange: lastStateChange ?? Date.now(),
+            }
+          : t
+      );
+
+      return { terminals: newTerminals };
+    });
+  },
+
   toggleMaximize: (id) =>
     set((state) => ({
       maximizedId: state.maximizedId === id ? null : id,
@@ -233,15 +246,6 @@ const createTerminalStore: StateCreator<TerminalGridState> = (set, get) => ({
       const prevIndex = currentIndex <= 0 ? state.terminals.length - 1 : currentIndex - 1;
       return { focusedId: state.terminals[prevIndex].id };
     }),
-
-  updateAgentState: (id, state, error) => {
-    set((prevState) => {
-      const newTerminals = prevState.terminals.map((t) =>
-        t.id === id ? { ...t, agentState: state, error } : t
-      );
-      return { terminals: newTerminals };
-    });
-  },
 
   bulkCloseByState: (states) => {
     const stateArray = Array.isArray(states) ? states : [states];
@@ -309,3 +313,34 @@ const createTerminalStore: StateCreator<TerminalGridState> = (set, get) => ({
 });
 
 export const useTerminalStore = create<TerminalGridState>()(createTerminalStore);
+
+// Subscribe to agent state changes from the main process
+// This runs once at module load and the cleanup function should be called on app shutdown
+let agentStateUnsubscribe: (() => void) | null = null;
+
+if (typeof window !== "undefined" && window.electron?.terminal?.onAgentStateChanged) {
+  agentStateUnsubscribe = window.electron.terminal.onAgentStateChanged((data) => {
+    // The IPC event uses 'agentId' which corresponds to the terminal ID
+    const { agentId, state, timestamp } = data;
+
+    // Validate state is a valid AgentState
+    const validStates: AgentState[] = ["idle", "working", "waiting", "completed", "failed"];
+    if (!validStates.includes(state as AgentState)) {
+      console.warn(`Invalid agent state received: ${state} for terminal ${agentId}`);
+      return;
+    }
+
+    // Update the terminal's agent state
+    useTerminalStore
+      .getState()
+      .updateAgentState(agentId, state as AgentState, undefined, timestamp);
+  });
+}
+
+// Export cleanup function for app shutdown
+export function cleanupTerminalStoreListeners() {
+  if (agentStateUnsubscribe) {
+    agentStateUnsubscribe();
+    agentStateUnsubscribe = null;
+  }
+}

@@ -2,8 +2,10 @@ import { useCallback, useState, useEffect, useMemo } from "react";
 import type { WorktreeState, WorktreeMood } from "../../types";
 import { ActivityLight } from "./ActivityLight";
 import { FileChangeList } from "./FileChangeList";
+import { TerminalCountBadge } from "./TerminalCountBadge";
 import { ErrorBanner } from "../Errors/ErrorBanner";
 import { useDevServer } from "../../hooks/useDevServer";
+import { useWorktreeTerminals } from "../../hooks/useWorktreeTerminals";
 import { useErrorStore, useTerminalStore, type RetryAction } from "../../store";
 import { useRecipeStore } from "../../store/recipeStore";
 import { cn } from "../../lib/utils";
@@ -97,13 +99,14 @@ export function WorktreeCard({
   const recipes = getRecipesForWorktree(worktree.id);
   const [runningRecipeId, setRunningRecipeId] = useState<string | null>(null);
 
+  // Terminal counts
+  const { counts: terminalCounts } = useWorktreeTerminals(worktree.id);
+
   // Terminal bulk actions
-  const terminals = useTerminalStore((state) => state.terminals);
   const bulkCloseByWorktree = useTerminalStore((state) => state.bulkCloseByWorktree);
-  const worktreeTerminals = terminals.filter((t) => t.worktreeId === worktree.id);
-  const completedCount = worktreeTerminals.filter((t) => t.agentState === "completed").length;
-  const failedCount = worktreeTerminals.filter((t) => t.agentState === "failed").length;
-  const totalTerminalCount = worktreeTerminals.length;
+  const completedCount = terminalCounts.byState.completed;
+  const failedCount = terminalCounts.byState.failed;
+  const totalTerminalCount = terminalCounts.total;
 
   // Confirmation dialog state for bulk close all
   const [confirmDialog, setConfirmDialog] = useState<{
@@ -592,6 +595,9 @@ export function WorktreeCard({
           </button>
         </div>
       )}
+
+      {/* Terminal count badge */}
+      <TerminalCountBadge counts={terminalCounts} />
 
       {/* Agent note */}
       {effectiveNote && (
