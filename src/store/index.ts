@@ -1,5 +1,5 @@
-export { useTerminalStore } from "./terminalStore";
-export type { TerminalInstance, AddTerminalOptions } from "./terminalStore";
+export { useTerminalStore, isAgentReady } from "./terminalStore";
+export type { TerminalInstance, AddTerminalOptions, QueuedCommand } from "./terminalStore";
 
 export { useWorktreeSelectionStore } from "./worktreeStore";
 

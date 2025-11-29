@@ -25,6 +25,7 @@ import {
   type RetryAction,
 } from "./store";
 import { useRecipeStore } from "./store/recipeStore";
+import { cleanupTerminalStoreListeners } from "./store/terminalStore";
 import type { WorktreeState } from "./types";
 
 function SidebarContent() {
@@ -317,6 +318,13 @@ function App() {
   // Panel toggles
   useKeybinding("panel.logs", () => toggleLogsPanel(), { enabled: electronAvailable });
   useKeybinding("panel.events", () => toggleEventInspector(), { enabled: electronAvailable });
+
+  // Cleanup terminal store listeners on unmount
+  useEffect(() => {
+    return () => {
+      cleanupTerminalStoreListeners();
+    };
+  }, []);
 
   // Focus Mode Chord (Cmd+K Z) - Manual listener because it's a chord
   useEffect(() => {
