@@ -69,7 +69,7 @@ class CopyTreeService {
 
       // Create isolated configuration for concurrent operations
       // Pass cwd to ensure gitignore and config are read from the worktree root
-      const config = await ConfigManager.create({ cwd: rootPath });
+      const config = await ConfigManager.create();
 
       // Map IPC options to SDK options
       const sdkOptions: SdkCopyOptions = {

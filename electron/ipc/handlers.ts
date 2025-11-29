@@ -636,13 +636,16 @@ export function registerIpcHandlers(
       }
     }
 
-    const worktree = worktreeService.getWorktreeById(validated.worktreeId);
-    if (!worktree) {
+    if (!worktreeService) {
+      throw new Error("Worktree service not available");
+    }
+    const monitor = worktreeService.getMonitor(validated.worktreeId);
+    if (!monitor) {
       throw new Error(`Worktree not found: ${validated.worktreeId}`);
     }
 
     const { getFileTree } = await import("../utils/fileTree.js");
-    return getFileTree(worktree.path, validated.dirPath);
+    return getFileTree(monitor.path, validated.dirPath);
   };
   ipcMain.handle(CHANNELS.COPYTREE_GET_FILE_TREE, handleCopyTreeGetFileTree);
   handlers.push(() => ipcMain.removeHandler(CHANNELS.COPYTREE_GET_FILE_TREE));

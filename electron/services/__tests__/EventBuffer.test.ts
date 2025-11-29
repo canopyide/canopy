@@ -3,8 +3,8 @@
  */
 
 import { describe, it, expect, beforeEach, afterEach, vi } from "vitest";
-import { EventBuffer, type EventRecord, type FilterOptions } from "../EventBuffer.js";
-import { events, type CanopyEventMap } from "../events.js";
+import { EventBuffer } from "../EventBuffer.js";
+import { events } from "../events.js";
 
 describe("EventBuffer", () => {
   let buffer: EventBuffer;
@@ -478,9 +478,10 @@ describe("EventBuffer", () => {
       });
       events.emit("run:started", {
         runId: "run-1",
+        name: "test run",
         taskId: "task-1",
         agentId: "agent-1",
-        startTime: Date.now(),
+        timestamp: Date.now(),
       });
     });
 

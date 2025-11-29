@@ -6,7 +6,7 @@
 
 import * as fs from "fs/promises";
 import * as path from "path";
-import { ConfigManager } from "copytree";
+import { simpleGit } from "simple-git";
 import type { FileTreeNode } from "../ipc/types.js";
 
 /**
@@ -36,8 +36,23 @@ export async function getFileTree(basePath: string, dirPath: string = ""): Promi
     // Read directory contents
     const entries = await fs.readdir(targetPath, { withFileTypes: true });
 
-    // Create config manager with worktree root for gitignore support
-    const config = await ConfigManager.create({ cwd: basePath });
+    // Check ignored files using simple-git
+    const pathsToCheck = entries.map((e) => path.join(normalizedDirPath, e.name));
+    const ignoredPaths = new Set<string>();
+
+    try {
+      const git = simpleGit(basePath);
+      // Only check if there are paths to check
+      if (pathsToCheck.length > 0) {
+        // checkIgnore returns array of ignored paths
+        // We use checkIgnore to respect .gitignore
+        const ignored = await git.checkIgnore(pathsToCheck);
+        ignored.forEach((p) => ignoredPaths.add(p));
+      }
+    } catch (e) {
+      // Ignore errors (e.g. not a git repo), act as if nothing is ignored
+      // We proceed without filtering if git check fails
+    }
 
     // Build file tree nodes
     const nodes: FileTreeNode[] = [];
@@ -51,9 +66,8 @@ export async function getFileTree(basePath: string, dirPath: string = ""): Promi
         continue;
       }
 
-      // Check if this path should be ignored by gitignore/copytree config
-      // The ConfigManager respects .gitignore patterns from the worktree
-      if (config.isIgnored && config.isIgnored(relativePath)) {
+      // Skip ignored files
+      if (ignoredPaths.has(relativePath)) {
         continue;
       }
 

@@ -6,7 +6,7 @@
  * the Electron `app` module and `electron-store` are tested via integration tests.
  */
 
-import { describe, it, expect, vi, beforeEach, afterEach } from "vitest";
+import { describe, it, expect } from "vitest";
 import { createHash } from "crypto";
 import path from "path";
 

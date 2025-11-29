@@ -64,7 +64,7 @@ export class RunCommandDetector {
             name,
             command: `${runner} "${safeName}"`,
             icon: "npm",
-            description: script,
+            description: script as string,
           };
         });
     } catch (error) {

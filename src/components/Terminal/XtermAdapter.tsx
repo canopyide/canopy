@@ -179,10 +179,18 @@ export function XtermAdapter({ terminalId, onReady, onExit, className }: XtermAd
 
   // Handle resize
   const handleResize = useCallback(() => {
+    if (!containerRef.current || containerRef.current.clientWidth === 0 || containerRef.current.clientHeight === 0) {
+      return;
+    }
+
     if (fitAddonRef.current && terminalRef.current) {
-      fitAddonRef.current.fit();
-      const { cols, rows } = terminalRef.current;
-      window.electron.terminal.resize(terminalId, cols, rows);
+      try {
+        fitAddonRef.current.fit();
+        const { cols, rows } = terminalRef.current;
+        window.electron.terminal.resize(terminalId, cols, rows);
+      } catch (e) {
+        console.warn("Resize fit failed:", e);
+      }
     }
   }, [terminalId]);
 
@@ -216,8 +224,14 @@ export function XtermAdapter({ terminalId, onReady, onExit, className }: XtermAd
       console.warn("WebGL addon failed to load, using canvas renderer:", e);
     }
 
-    // Initial fit
-    fitAddon.fit();
+    // Initial fit - but only if container has dimensions
+    if (containerRef.current && containerRef.current.clientWidth > 0 && containerRef.current.clientHeight > 0) {
+      try {
+        fitAddon.fit();
+      } catch (e) {
+        console.warn("Initial fit failed:", e);
+      }
+    }
 
     // Apply the jank fix and store the dispose function
     jankFixDisposeRef.current = applyJankFix(terminal);
