@@ -152,6 +152,15 @@ export function registerIpcHandlers(
   ipcMain.handle(CHANNELS.WORKTREE_REFRESH, handleWorktreeRefresh);
   handlers.push(() => ipcMain.removeHandler(CHANNELS.WORKTREE_REFRESH));
 
+  const handleWorktreePRRefresh = async () => {
+    if (!worktreeService) {
+      return;
+    }
+    await worktreeService.refreshPullRequests();
+  };
+  ipcMain.handle(CHANNELS.WORKTREE_PR_REFRESH, handleWorktreePRRefresh);
+  handlers.push(() => ipcMain.removeHandler(CHANNELS.WORKTREE_PR_REFRESH));
+
   const handleWorktreeSetActive = async (
     _event: Electron.IpcMainInvokeEvent,
     payload: WorktreeSetActivePayload

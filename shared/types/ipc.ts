@@ -533,6 +533,7 @@ export interface ElectronAPI {
   worktree: {
     getAll(): Promise<WorktreeState[]>;
     refresh(): Promise<void>;
+    refreshPullRequests(): Promise<void>;
     setActive(worktreeId: string): Promise<void>;
     create(options: CreateWorktreeOptions, rootPath: string): Promise<void>;
     listBranches(rootPath: string): Promise<BranchInfo[]>;

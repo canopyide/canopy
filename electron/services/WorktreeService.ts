@@ -9,6 +9,7 @@ import { mkdir, writeFile, stat } from "fs/promises";
 import { join as pathJoin, dirname } from "path";
 import { CHANNELS } from "../ipc/channels.js";
 import { GitService, type CreateWorktreeOptions, type BranchInfo } from "./GitService.js";
+import { pullRequestService } from "./PullRequestService.js";
 
 // Default polling intervals (used when config is not provided)
 const DEFAULT_ACTIVE_WORKTREE_INTERVAL_MS = DEFAULT_CONFIG.monitor?.pollIntervalActive ?? 2000;
@@ -119,6 +120,7 @@ export class WorktreeService {
   private circuitBreakerThreshold: number = DEFAULT_CONFIG.monitor?.circuitBreakerThreshold ?? 3;
   private gitService: GitService | null = null;
   private rootPath: string | null = null;
+  private prServiceInitialized: boolean = false;
 
   /**
    * Initialize or update monitors to match the current worktree list.
@@ -185,6 +187,29 @@ export class WorktreeService {
       // Update AI debounce from config
       if (aiConfig?.summaryDebounceMs !== undefined) {
         this.aiDebounceMs = aiConfig.summaryDebounceMs;
+      }
+
+      // Initialize PR service if we have worktrees and it hasn't been initialized yet
+      if (!this.prServiceInitialized && worktrees.length > 0) {
+        try {
+          // Get the repository root from the first worktree
+          const firstWorktreePath = worktrees[0].path;
+          const repoRoot = execSync("git rev-parse --show-toplevel", {
+            cwd: firstWorktreePath,
+            encoding: "utf-8",
+            timeout: 5000,
+            stdio: ["pipe", "pipe", "pipe"],
+          }).trim();
+
+          pullRequestService.initialize(repoRoot);
+          pullRequestService.start();
+          this.prServiceInitialized = true;
+          logInfo("PullRequestService initialized and started", { repoRoot });
+        } catch (error) {
+          logWarn("Failed to initialize PullRequestService", {
+            error: (error as Error).message,
+          });
+        }
       }
 
       const currentIds = new Set(worktrees.map((wt) => wt.id));
@@ -381,6 +406,18 @@ export class WorktreeService {
   }
 
   /**
+   * Manually refresh the pull request service.
+   * Useful for retrying after authentication failures or circuit breaker trips.
+   */
+  public async refreshPullRequests(): Promise<void> {
+    if (this.prServiceInitialized) {
+      await pullRequestService.refresh();
+    } else {
+      logWarn("PullRequestService not initialized - cannot refresh");
+    }
+  }
+
+  /**
    * Stop all monitors and clean up resources.
    * Should be called on app shutdown.
    */
@@ -399,6 +436,13 @@ export class WorktreeService {
 
     await Promise.all(promises);
     this.monitors.clear();
+
+    // Stop PR service
+    if (this.prServiceInitialized) {
+      pullRequestService.destroy();
+      this.prServiceInitialized = false;
+      logInfo("PullRequestService stopped and cleaned up");
+    }
   }
 
   /**

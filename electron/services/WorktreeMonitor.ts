@@ -105,6 +105,9 @@ export class WorktreeMonitor {
   private pollingEnabled: boolean = false; // Tracks if polling should be active (false when --no-watch)
   private pendingAISummary: boolean = false; // Tracks if AI summary should run after current generation completes
 
+  // PR event unsubscribe functions
+  private prEventUnsubscribers: (() => void)[] = [];
+
   constructor(worktree: Worktree, mainBranch: string = "main") {
     this.id = worktree.id;
     this.path = worktree.path;
@@ -146,6 +149,29 @@ export class WorktreeMonitor {
     if (worktree.branch && !initialIssueNumber) {
       void this.extractIssueNumberAsync(worktree.branch, worktree.name);
     }
+
+    // Subscribe to PR detection events and store unsubscribe functions
+    this.prEventUnsubscribers.push(
+      events.on("sys:pr:detected", (data) => {
+        if (data.worktreeId === this.id) {
+          this.state.prNumber = data.prNumber;
+          this.state.prUrl = data.prUrl;
+          this.state.prState = data.prState;
+          this.emitUpdate();
+        }
+      })
+    );
+
+    this.prEventUnsubscribers.push(
+      events.on("sys:pr:cleared", (data) => {
+        if (data.worktreeId === this.id) {
+          this.state.prNumber = undefined;
+          this.state.prUrl = undefined;
+          this.state.prState = undefined;
+          this.emitUpdate();
+        }
+      })
+    );
   }
 
   /**
@@ -382,6 +408,12 @@ export class WorktreeMonitor {
       clearTimeout(this.aiUpdateTimer);
       this.aiUpdateTimer = null;
     }
+
+    // Clean up PR event subscriptions to prevent memory leaks
+    for (const unsubscribe of this.prEventUnsubscribers) {
+      unsubscribe();
+    }
+    this.prEventUnsubscribers = [];
   }
 
   /**

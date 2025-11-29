@@ -65,6 +65,7 @@ const CHANNELS = {
   WORKTREE_REMOVE: "worktree:remove",
   WORKTREE_CREATE: "worktree:create",
   WORKTREE_LIST_BRANCHES: "worktree:list-branches",
+  WORKTREE_PR_REFRESH: "worktree:pr-refresh",
   WORKTREE_SET_ADAPTIVE_BACKOFF_CONFIG: "worktree:set-adaptive-backoff-config",
   WORKTREE_IS_CIRCUIT_BREAKER_TRIPPED: "worktree:is-circuit-breaker-tripped",
   WORKTREE_GET_ADAPTIVE_BACKOFF_METRICS: "worktree:get-adaptive-backoff-metrics",
@@ -198,6 +199,8 @@ const api: ElectronAPI = {
     getAll: () => ipcRenderer.invoke(CHANNELS.WORKTREE_GET_ALL),
 
     refresh: () => ipcRenderer.invoke(CHANNELS.WORKTREE_REFRESH),
+
+    refreshPullRequests: () => ipcRenderer.invoke(CHANNELS.WORKTREE_PR_REFRESH),
 
     setActive: (worktreeId: string) =>
       ipcRenderer.invoke(CHANNELS.WORKTREE_SET_ACTIVE, { worktreeId }),

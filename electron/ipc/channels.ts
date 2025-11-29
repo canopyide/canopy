@@ -14,6 +14,7 @@ export const CHANNELS = {
   WORKTREE_REMOVE: "worktree:remove",
   WORKTREE_CREATE: "worktree:create",
   WORKTREE_LIST_BRANCHES: "worktree:list-branches",
+  WORKTREE_PR_REFRESH: "worktree:pr-refresh",
 
   // Dev server channels
   DEVSERVER_START: "devserver:start",
