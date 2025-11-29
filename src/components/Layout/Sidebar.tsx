@@ -130,9 +130,6 @@ export function Sidebar({
           </div>
         </div>
 
-        {/* Project Runners - displays configured run commands */}
-        {currentProject && <ProjectRunners projectId={currentProject.id} />}
-
         {/* Tab bar */}
         <div className="shrink-0 flex border-b border-canopy-border">
           <button
@@ -163,6 +160,9 @@ export function Sidebar({
         <div className="flex-1 overflow-y-auto min-h-0">
           {currentTab === "worktrees" ? children : historyContent}
         </div>
+
+        {/* Project Runners - displays saved and auto-detected run commands */}
+        {currentProject && <ProjectRunners projectId={currentProject.id} />}
 
         {/* Resize handle */}
         <div

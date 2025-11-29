@@ -6,7 +6,7 @@
  * Also fetches auto-detected run commands from project configuration files.
  */
 
-import { useState, useEffect, useCallback } from "react";
+import { useState, useEffect, useCallback, useRef } from "react";
 import type { ProjectSettings, RunCommand } from "../types";
 import { useProjectStore } from "../store/projectStore";
 
@@ -61,6 +61,10 @@ export function useProjectSettings(projectId?: string): UseProjectSettingsReturn
   const [isLoading, setIsLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
+  // Track the latest targetId to prevent race conditions
+  const latestTargetIdRef = useRef(targetId);
+  latestTargetIdRef.current = targetId;
+
   const fetchSettings = useCallback(async () => {
     if (!targetId) {
       setSettings({ runCommands: [] });
@@ -71,16 +75,16 @@ export function useProjectSettings(projectId?: string): UseProjectSettingsReturn
     setIsLoading(true);
     setError(null);
 
-    const currentProjectId = targetId;
+    const requestedProjectId = targetId;
     try {
       // Fetch saved settings and detected runners in parallel
       const [data, detected] = await Promise.all([
-        window.electron.project.getSettings(currentProjectId),
-        window.electron.project.detectRunners(currentProjectId),
+        window.electron.project.getSettings(requestedProjectId),
+        window.electron.project.detectRunners(requestedProjectId),
       ]);
 
-      // Only update state if this is still the active project
-      if (currentProjectId === targetId) {
+      // Only update state if this is still the active project (check against ref)
+      if (requestedProjectId === latestTargetIdRef.current) {
         setSettings(data);
 
         // Filter out detected commands that are already saved (by command string)
@@ -91,14 +95,14 @@ export function useProjectSettings(projectId?: string): UseProjectSettingsReturn
     } catch (err) {
       console.error("Failed to load project settings:", err);
       // Only update error state if this is still the active project
-      if (currentProjectId === targetId) {
+      if (requestedProjectId === latestTargetIdRef.current) {
         setError(err instanceof Error ? err.message : "Unknown error");
         setSettings({ runCommands: [] });
         setDetectedRunners([]);
       }
     } finally {
       // Only clear loading if this is still the active project
-      if (currentProjectId === targetId) {
+      if (requestedProjectId === latestTargetIdRef.current) {
         setIsLoading(false);
       }
     }
