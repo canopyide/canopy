@@ -48,7 +48,7 @@ import { homedir } from "os";
 import type { EventBuffer, FilterOptions as EventFilterOptions } from "../services/EventBuffer.js";
 import { events } from "../services/events.js";
 import { projectStore } from "../services/ProjectStore.js";
-import type { Project } from "../types/index.js";
+import type { Project, ProjectSettings } from "../types/index.js";
 import { getTranscriptManager } from "../services/TranscriptManager.js";
 import { getAIConfig, setAIConfig, clearAIKey, validateAIKey } from "../services/ai/client.js";
 import { generateProjectIdentity } from "../services/ai/identity.js";
@@ -1072,6 +1072,37 @@ export function registerIpcHandlers(
   };
   ipcMain.handle(CHANNELS.PROJECT_OPEN_DIALOG, handleProjectOpenDialog);
   handlers.push(() => ipcMain.removeHandler(CHANNELS.PROJECT_OPEN_DIALOG));
+
+  const handleProjectGetSettings = async (
+    _event: Electron.IpcMainInvokeEvent,
+    projectId: string
+  ): Promise<ProjectSettings> => {
+    if (typeof projectId !== "string" || !projectId) {
+      throw new Error("Invalid project ID");
+    }
+    return projectStore.getProjectSettings(projectId);
+  };
+  ipcMain.handle(CHANNELS.PROJECT_GET_SETTINGS, handleProjectGetSettings);
+  handlers.push(() => ipcMain.removeHandler(CHANNELS.PROJECT_GET_SETTINGS));
+
+  const handleProjectSaveSettings = async (
+    _event: Electron.IpcMainInvokeEvent,
+    payload: { projectId: string; settings: ProjectSettings }
+  ): Promise<void> => {
+    if (!payload || typeof payload !== "object") {
+      throw new Error("Invalid payload");
+    }
+    const { projectId, settings } = payload;
+    if (typeof projectId !== "string" || !projectId) {
+      throw new Error("Invalid project ID");
+    }
+    if (!settings || typeof settings !== "object") {
+      throw new Error("Invalid settings object");
+    }
+    return projectStore.saveProjectSettings(projectId, settings);
+  };
+  ipcMain.handle(CHANNELS.PROJECT_SAVE_SETTINGS, handleProjectSaveSettings);
+  handlers.push(() => ipcMain.removeHandler(CHANNELS.PROJECT_SAVE_SETTINGS));
 
   // ==========================================
   // History Handlers (Agent Transcripts)

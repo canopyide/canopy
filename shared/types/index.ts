@@ -47,6 +47,9 @@ export type {
   RecipeTerminalType,
   RecipeTerminal,
   TerminalRecipe,
+  // Project settings types
+  RunCommand,
+  ProjectSettings,
 } from "./domain.js";
 
 // IPC types - communication payloads

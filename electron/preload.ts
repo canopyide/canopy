@@ -21,6 +21,7 @@ import type {
   WorktreeState,
   DevServerState,
   Project,
+  ProjectSettings,
   TerminalSpawnOptions,
   CopyTreeOptions,
   CopyTreeResult,
@@ -138,6 +139,8 @@ const CHANNELS = {
   PROJECT_SWITCH: "project:switch",
   PROJECT_OPEN_DIALOG: "project:open-dialog",
   PROJECT_ON_SWITCH: "project:on-switch",
+  PROJECT_GET_SETTINGS: "project:get-settings",
+  PROJECT_SAVE_SETTINGS: "project:save-settings",
 
   // History channels (agent transcripts & artifacts)
   HISTORY_GET_SESSIONS: "history:get-sessions",
@@ -434,6 +437,12 @@ const api: ElectronAPI = {
       ipcRenderer.on(CHANNELS.PROJECT_ON_SWITCH, handler);
       return () => ipcRenderer.removeListener(CHANNELS.PROJECT_ON_SWITCH, handler);
     },
+
+    getSettings: (projectId: string): Promise<ProjectSettings> =>
+      ipcRenderer.invoke(CHANNELS.PROJECT_GET_SETTINGS, projectId),
+
+    saveSettings: (projectId: string, settings: ProjectSettings): Promise<void> =>
+      ipcRenderer.invoke(CHANNELS.PROJECT_SAVE_SETTINGS, { projectId, settings }),
   },
 
   // ==========================================

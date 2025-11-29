@@ -5,7 +5,13 @@
  * the main process and renderer process.
  */
 
-import type { TerminalType, DevServerState, WorktreeState, Project } from "./domain.js";
+import type {
+  TerminalType,
+  DevServerState,
+  WorktreeState,
+  Project,
+  ProjectSettings,
+} from "./domain.js";
 
 // ============================================================================
 // Terminal IPC Types
@@ -526,6 +532,8 @@ export interface ElectronAPI {
     switch(projectId: string): Promise<Project>;
     openDialog(): Promise<string | null>;
     onSwitch(callback: (project: Project) => void): () => void;
+    getSettings(projectId: string): Promise<ProjectSettings>;
+    saveSettings(projectId: string, settings: ProjectSettings): Promise<void>;
   };
   history: {
     getSessions(filters?: HistoryGetSessionsPayload): Promise<AgentSession[]>;

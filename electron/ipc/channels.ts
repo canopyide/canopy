@@ -94,6 +94,8 @@ export const CHANNELS = {
   PROJECT_SWITCH: "project:switch",
   PROJECT_OPEN_DIALOG: "project:open-dialog",
   PROJECT_ON_SWITCH: "project:on-switch",
+  PROJECT_GET_SETTINGS: "project:get-settings",
+  PROJECT_SAVE_SETTINGS: "project:save-settings",
 
   // History channels (agent transcripts & artifacts)
   HISTORY_GET_SESSIONS: "history:get-sessions",
