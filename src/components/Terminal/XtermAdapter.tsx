@@ -200,6 +200,9 @@ export function XtermAdapter({ terminalId, onReady, onExit, className }: XtermAd
     // Prevent double-initialization (React StrictMode)
     if (terminalRef.current) return;
 
+    // Cancellation flag to prevent ghost terminals in StrictMode
+    let isCancelled = false;
+
     // Create terminal instance
     const terminal = new Terminal(terminalOptions);
     terminalRef.current = terminal;
@@ -212,7 +215,8 @@ export function XtermAdapter({ terminalId, onReady, onExit, className }: XtermAd
     // Open terminal in container - use setTimeout to avoid xterm.js dimension errors
     // This gives the DOM a tick to fully render before xterm initializes
     setTimeout(() => {
-      if (!containerRef.current) return;
+      // Check if component was unmounted before timeout fired
+      if (isCancelled || !containerRef.current) return;
 
       try {
         terminal.open(containerRef.current);
@@ -240,7 +244,7 @@ export function XtermAdapter({ terminalId, onReady, onExit, className }: XtermAd
       } catch (e) {
         console.error("Failed to open terminal:", e);
       }
-    }, 0);
+    }, 10);
 
     // Apply the jank fix and store the dispose function
     jankFixDisposeRef.current = applyJankFix(terminal);
@@ -316,6 +320,9 @@ export function XtermAdapter({ terminalId, onReady, onExit, className }: XtermAd
 
     // Cleanup
     return () => {
+      // Mark as cancelled so the timeout doesn't run if it hasn't yet
+      isCancelled = true;
+
       // Cancel pending animation frame
       if (resizeFrameIdRef.current !== null) {
         cancelAnimationFrame(resizeFrameIdRef.current);
@@ -346,9 +353,10 @@ export function XtermAdapter({ terminalId, onReady, onExit, className }: XtermAd
     <div
       ref={containerRef}
       className={cn(
-        "w-full h-full min-h-0 pl-2 pt-1", // Minimal padding (left and top)
+        "w-full h-full min-h-0 overflow-hidden", // Remove padding, add overflow-hidden
         className
       )}
+      style={{ padding: "4px 0 0 8px" }} // Apply padding via style to avoid box model issues
     />
   );
 }
