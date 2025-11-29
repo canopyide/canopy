@@ -16,6 +16,8 @@ interface AppLayoutProps {
   errorCount?: number;
   /** Called when user clicks the problems button */
   onToggleProblems?: () => void;
+  /** Whether worktree refresh is in progress */
+  isRefreshing?: boolean;
 }
 
 const MIN_SIDEBAR_WIDTH = 200;
@@ -31,6 +33,7 @@ export function AppLayout({
   onSettings,
   errorCount,
   onToggleProblems,
+  isRefreshing,
 }: AppLayoutProps) {
   const [sidebarWidth, setSidebarWidth] = useState(DEFAULT_SIDEBAR_WIDTH);
 
@@ -194,6 +197,7 @@ export function AppLayout({
         onToggleProblems={onToggleProblems}
         isFocusMode={isFocusMode}
         onToggleFocusMode={handleToggleFocusMode}
+        isRefreshing={isRefreshing}
       />
       <div className="flex-1 flex flex-col overflow-hidden">
         <div className="flex-1 flex overflow-hidden">

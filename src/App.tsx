@@ -193,6 +193,9 @@ function App() {
   // Settings dialog state
   const [isSettingsOpen, setIsSettingsOpen] = useState(false);
 
+  // Refresh state
+  const [isRefreshing, setIsRefreshing] = useState(false);
+
   // Track if state has been restored (prevent StrictMode double-execution)
   const hasRestoredState = useRef(false);
 
@@ -259,10 +262,27 @@ function App() {
     [launchAgent]
   );
 
-  const handleRefresh = useCallback(() => {
-    // TODO: Implement worktree refresh via IPC
-    console.log("Refresh worktrees");
-  }, []);
+  const handleRefresh = useCallback(async () => {
+    // Guard against non-Electron environments
+    if (!isElectronAvailable()) {
+      return;
+    }
+
+    // Prevent multiple simultaneous refreshes
+    if (isRefreshing) {
+      return;
+    }
+
+    try {
+      setIsRefreshing(true);
+      await window.electron.worktree.refresh();
+    } catch (error) {
+      // Log error - the IPC layer and useWorktrees hook will handle displaying errors
+      console.error("Failed to refresh worktrees:", error);
+    } finally {
+      setIsRefreshing(false);
+    }
+  }, [isRefreshing]);
 
   const handleSettings = useCallback(() => {
     setIsSettingsOpen(true);
@@ -405,6 +425,7 @@ function App() {
         onLaunchAgent={handleLaunchAgent}
         onRefresh={handleRefresh}
         onSettings={handleSettings}
+        isRefreshing={isRefreshing}
       >
         <TerminalGrid className="h-full w-full bg-canopy-bg" />
         <ProblemsPanel

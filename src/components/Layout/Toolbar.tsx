@@ -36,6 +36,8 @@ interface ToolbarProps {
   isFocusMode?: boolean;
   /** Called when focus mode button is clicked */
   onToggleFocusMode?: () => void;
+  /** Whether worktree refresh is in progress */
+  isRefreshing?: boolean;
 }
 
 export function Toolbar({
@@ -46,6 +48,7 @@ export function Toolbar({
   onToggleProblems,
   isFocusMode = false,
   onToggleFocusMode,
+  isRefreshing = false,
 }: ToolbarProps) {
   const currentProject = useProjectStore((state) => state.currentProject);
 
@@ -213,10 +216,14 @@ export function Toolbar({
           variant="ghost"
           size="icon"
           onClick={onRefresh}
-          className="text-canopy-text hover:bg-canopy-border hover:text-canopy-accent h-8 w-8"
+          disabled={isRefreshing}
+          className={cn(
+            "text-canopy-text hover:bg-canopy-border hover:text-canopy-accent h-8 w-8",
+            isRefreshing && "cursor-not-allowed opacity-50"
+          )}
           aria-label="Refresh worktrees"
         >
-          <RefreshCw className="h-4 w-4" />
+          <RefreshCw className={cn("h-4 w-4", isRefreshing && "animate-spin")} />
         </Button>
       </div>
     </header>
