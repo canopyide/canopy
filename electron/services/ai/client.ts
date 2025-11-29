@@ -90,11 +90,7 @@ export function getAIConfig(): {
 /**
  * Save AI configuration to the store.
  */
-export function setAIConfig(config: {
-  apiKey?: string;
-  model?: string;
-  enabled?: boolean;
-}): void {
+export function setAIConfig(config: { apiKey?: string; model?: string; enabled?: boolean }): void {
   if (config.apiKey !== undefined) {
     store.set("userConfig.openaiApiKey", config.apiKey);
     // Reset client instance to pick up new key

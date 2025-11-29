@@ -41,12 +41,7 @@ import { events } from "../services/events.js";
 import { projectStore } from "../services/ProjectStore.js";
 import type { Project } from "../types/index.js";
 import { getTranscriptManager } from "../services/TranscriptManager.js";
-import {
-  getAIConfig,
-  setAIConfig,
-  clearAIKey,
-  validateAIKey,
-} from "../services/ai/client.js";
+import { getAIConfig, setAIConfig, clearAIKey, validateAIKey } from "../services/ai/client.js";
 import { generateProjectIdentity } from "../services/ai/identity.js";
 import type {
   HistoryGetSessionsPayload,
@@ -244,6 +239,14 @@ export function registerIpcHandlers(
     const cols = Math.max(1, Math.min(500, Math.floor(options.cols) || 80));
     const rows = Math.max(1, Math.min(500, Math.floor(options.rows) || 30));
 
+    // Validate and normalize terminal type
+    const allowedTypes = ["shell", "claude", "gemini", "custom"] as const;
+    const type = options.type && allowedTypes.includes(options.type) ? options.type : "shell";
+
+    // Validate title and worktreeId are strings if provided
+    const title = typeof options.title === "string" ? options.title : undefined;
+    const worktreeId = typeof options.worktreeId === "string" ? options.worktreeId : undefined;
+
     // Generate ID if not provided
     const id = options.id || crypto.randomUUID();
 
@@ -274,6 +277,9 @@ export function registerIpcHandlers(
         cols,
         rows,
         env: options.env, // Pass environment variables through
+        type,
+        title,
+        worktreeId,
       });
 
       // If a command is specified (e.g., 'claude' or 'gemini'), execute it after shell initializes
@@ -1070,10 +1076,7 @@ export function registerIpcHandlers(
   /**
    * Set the AI model
    */
-  const handleAISetModel = async (
-    _event: Electron.IpcMainInvokeEvent,
-    model: string
-  ) => {
+  const handleAISetModel = async (_event: Electron.IpcMainInvokeEvent, model: string) => {
     if (typeof model !== "string" || !model.trim()) {
       throw new Error("Invalid model: must be a non-empty string");
     }
@@ -1085,10 +1088,7 @@ export function registerIpcHandlers(
   /**
    * Enable/disable AI features
    */
-  const handleAISetEnabled = async (
-    _event: Electron.IpcMainInvokeEvent,
-    enabled: boolean
-  ) => {
+  const handleAISetEnabled = async (_event: Electron.IpcMainInvokeEvent, enabled: boolean) => {
     setAIConfig({ enabled });
   };
   ipcMain.handle(CHANNELS.AI_SET_ENABLED, handleAISetEnabled);
