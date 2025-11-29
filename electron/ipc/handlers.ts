@@ -673,6 +673,23 @@ export function registerIpcHandlers(
         updates.recipes = validRecipes;
       }
 
+      if ("focusMode" in partialState) {
+        updates.focusMode = Boolean(partialState.focusMode);
+      }
+
+      if ("focusPanelState" in partialState) {
+        const panelState = partialState.focusPanelState;
+        if (
+          panelState &&
+          typeof panelState === "object" &&
+          typeof panelState.sidebarWidth === "number" &&
+          typeof panelState.logsOpen === "boolean" &&
+          typeof panelState.eventInspectorOpen === "boolean"
+        ) {
+          updates.focusPanelState = panelState;
+        }
+      }
+
       store.set("appState", { ...currentState, ...updates });
     } catch (error) {
       console.error("Failed to set app state:", error);

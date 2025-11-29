@@ -16,6 +16,8 @@ import {
   Plus,
   Command,
   AlertCircle,
+  Maximize2,
+  Minimize2,
 } from "lucide-react";
 import { cn } from "@/lib/utils";
 import { BulkActionsMenu } from "@/components/Terminal";
@@ -28,6 +30,10 @@ interface ToolbarProps {
   errorCount?: number;
   /** Called when problems button is clicked */
   onToggleProblems?: () => void;
+  /** Whether focus mode is active */
+  isFocusMode?: boolean;
+  /** Called when focus mode button is clicked */
+  onToggleFocusMode?: () => void;
 }
 
 export function Toolbar({
@@ -36,6 +42,8 @@ export function Toolbar({
   onSettings,
   errorCount = 0,
   onToggleProblems,
+  isFocusMode = false,
+  onToggleFocusMode,
 }: ToolbarProps) {
   return (
     <header className="h-12 flex items-center px-4 border-b border-canopy-border bg-canopy-sidebar drag-region shrink-0">
@@ -119,6 +127,25 @@ export function Toolbar({
 
       {/* Right side actions */}
       <div className="flex gap-2">
+        {/* Focus mode toggle */}
+        <Button
+          variant="ghost"
+          size="icon"
+          onClick={onToggleFocusMode}
+          className={cn(
+            "text-canopy-text hover:bg-canopy-border hover:text-canopy-accent h-8 w-8",
+            isFocusMode && "bg-canopy-accent/20 text-canopy-accent"
+          )}
+          title={isFocusMode ? "Exit Focus Mode (Cmd+K Z)" : "Enter Focus Mode (Cmd+K Z)"}
+          aria-label={isFocusMode ? "Exit focus mode" : "Enter focus mode"}
+          aria-pressed={isFocusMode}
+        >
+          {isFocusMode ? (
+            <Minimize2 className="h-4 w-4" aria-hidden="true" />
+          ) : (
+            <Maximize2 className="h-4 w-4" aria-hidden="true" />
+          )}
+        </Button>
         {/* Problems button with error count badge */}
         <Button
           variant="ghost"

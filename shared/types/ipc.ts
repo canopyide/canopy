@@ -163,6 +163,14 @@ export interface AppState {
   activeWorktreeId?: string;
   /** Width of the sidebar in pixels */
   sidebarWidth?: number;
+  /** Whether focus mode is active (panels collapsed for max terminal space) */
+  focusMode?: boolean;
+  /** Saved panel state before entering focus mode (for restoration) */
+  focusPanelState?: {
+    sidebarWidth: number;
+    logsOpen: boolean;
+    eventInspectorOpen: boolean;
+  };
   /** Recently opened directories */
   recentDirectories?: RecentDirectory[];
   /** Saved terminal recipes */

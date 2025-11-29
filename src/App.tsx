@@ -180,6 +180,9 @@ function App() {
   const toggleEventInspector = useEventStore((state) => state.togglePanel);
   const loadRecipes = useRecipeStore((state) => state.loadRecipes);
 
+  // Focus mode state - not used directly here as the actual toggle is handled in AppLayout
+  // The keyboard shortcut triggers a custom event that AppLayout listens for
+
   // Terminal palette for quick switching (Cmd/Ctrl+T)
   const terminalPalette = useTerminalPalette();
 
@@ -193,6 +196,10 @@ function App() {
 
   // Track if state has been restored (prevent StrictMode double-execution)
   const hasRestoredState = useRef(false);
+
+  // Track Cmd/Ctrl+K chord state for focus mode shortcut (Cmd+K Z)
+  const isCtrlKPressed = useRef(false);
+  const chordTimeout = useRef<NodeJS.Timeout | null>(null);
 
   // Listen for agent state changes from main process
   useEffect(() => {
@@ -298,7 +305,7 @@ function App() {
     [removeError]
   );
 
-  // Keyboard shortcuts for grid navigation
+  // Keyboard shortcuts for grid navigation and focus mode
   useEffect(() => {
     if (!isElectronAvailable()) return;
 
@@ -307,6 +314,34 @@ function App() {
       if ((e.metaKey || e.ctrlKey) && e.key === "t" && !e.shiftKey) {
         e.preventDefault();
         terminalPalette.toggle();
+        return;
+      }
+
+      // Handle Cmd/Ctrl+K chord for focus mode (Cmd+K Z)
+      if ((e.metaKey || e.ctrlKey) && e.key === "k" && !e.shiftKey) {
+        e.preventDefault();
+        // Start chord sequence - set flag and timeout
+        isCtrlKPressed.current = true;
+        if (chordTimeout.current) {
+          clearTimeout(chordTimeout.current);
+        }
+        // Reset chord after 1 second if no follow-up key
+        chordTimeout.current = setTimeout(() => {
+          isCtrlKPressed.current = false;
+        }, 1000);
+        return;
+      }
+
+      // Check for Z key after Cmd+K (focus mode toggle)
+      if (isCtrlKPressed.current && (e.key === "z" || e.key === "Z") && !e.metaKey && !e.ctrlKey) {
+        e.preventDefault();
+        isCtrlKPressed.current = false;
+        if (chordTimeout.current) {
+          clearTimeout(chordTimeout.current);
+          chordTimeout.current = null;
+        }
+        // Dispatch custom event for focus mode toggle
+        window.dispatchEvent(new CustomEvent("canopy:toggle-focus-mode"));
         return;
       }
 
@@ -368,7 +403,12 @@ function App() {
     };
 
     window.addEventListener("keydown", handleKeyDown);
-    return () => window.removeEventListener("keydown", handleKeyDown);
+    return () => {
+      window.removeEventListener("keydown", handleKeyDown);
+      if (chordTimeout.current) {
+        clearTimeout(chordTimeout.current);
+      }
+    };
   }, [
     focusNext,
     focusPrevious,
