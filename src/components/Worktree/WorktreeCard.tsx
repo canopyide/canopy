@@ -4,15 +4,17 @@ import { ActivityLight } from "./ActivityLight";
 import { FileChangeList } from "./FileChangeList";
 import { ErrorBanner } from "../Errors/ErrorBanner";
 import { useDevServer } from "../../hooks/useDevServer";
-import { useErrorStore, type RetryAction } from "../../store";
+import { useErrorStore, useTerminalStore, type RetryAction } from "../../store";
 import { useRecipeStore } from "../../store/recipeStore";
 import { cn } from "../../lib/utils";
 import {
   DropdownMenu,
   DropdownMenuContent,
   DropdownMenuItem,
+  DropdownMenuSeparator,
   DropdownMenuTrigger,
 } from "../ui/dropdown-menu";
+import { ConfirmDialog } from "../Terminal/ConfirmDialog";
 
 export interface WorktreeCardProps {
   worktree: WorktreeState;
@@ -94,6 +96,27 @@ export function WorktreeCard({
   const runRecipe = useRecipeStore((state) => state.runRecipe);
   const recipes = getRecipesForWorktree(worktree.id);
   const [runningRecipeId, setRunningRecipeId] = useState<string | null>(null);
+
+  // Terminal bulk actions
+  const terminals = useTerminalStore((state) => state.terminals);
+  const bulkCloseByWorktree = useTerminalStore((state) => state.bulkCloseByWorktree);
+  const worktreeTerminals = terminals.filter((t) => t.worktreeId === worktree.id);
+  const completedCount = worktreeTerminals.filter((t) => t.agentState === "completed").length;
+  const failedCount = worktreeTerminals.filter((t) => t.agentState === "failed").length;
+  const totalTerminalCount = worktreeTerminals.length;
+
+  // Confirmation dialog state for bulk close all
+  const [confirmDialog, setConfirmDialog] = useState<{
+    isOpen: boolean;
+    title: string;
+    description: string;
+    onConfirm: () => void;
+  }>({
+    isOpen: false,
+    title: "",
+    description: "",
+    onConfirm: () => {},
+  });
 
   const {
     state: serverState,
@@ -209,6 +232,31 @@ export function WorktreeCard({
     },
     [runRecipe, worktree.path, worktree.id, runningRecipeId]
   );
+
+  // Terminal bulk action handlers
+  const closeConfirmDialog = useCallback(() => {
+    setConfirmDialog((prev) => ({ ...prev, isOpen: false }));
+  }, []);
+
+  const handleCloseCompleted = useCallback(() => {
+    bulkCloseByWorktree(worktree.id, "completed");
+  }, [bulkCloseByWorktree, worktree.id]);
+
+  const handleCloseFailed = useCallback(() => {
+    bulkCloseByWorktree(worktree.id, "failed");
+  }, [bulkCloseByWorktree, worktree.id]);
+
+  const handleCloseAllTerminals = useCallback(() => {
+    setConfirmDialog({
+      isOpen: true,
+      title: "Close All Terminals",
+      description: `This will close ${totalTerminalCount} terminal${totalTerminalCount !== 1 ? "s" : ""} for this worktree. This action cannot be undone.`,
+      onConfirm: () => {
+        bulkCloseByWorktree(worktree.id);
+        closeConfirmDialog();
+      },
+    });
+  }, [totalTerminalCount, bulkCloseByWorktree, worktree.id, closeConfirmDialog]);
 
   const displayPath = formatPath(worktree.path);
   const branchLabel = worktree.branch ?? worktree.name;
@@ -431,6 +479,50 @@ export function WorktreeCard({
             +Recipe
           </button>
         )}
+        {/* Terminal bulk actions dropdown */}
+        {totalTerminalCount > 0 && (
+          <DropdownMenu>
+            <DropdownMenuTrigger asChild>
+              <button
+                onClick={(e) => e.stopPropagation()}
+                className="text-xs px-2 py-1 border border-cyan-600 rounded text-cyan-400 hover:bg-cyan-900 hover:border-cyan-500"
+                title="Terminal actions for this worktree"
+              >
+                Terms ({totalTerminalCount})
+              </button>
+            </DropdownMenuTrigger>
+            <DropdownMenuContent onClick={(e) => e.stopPropagation()}>
+              <DropdownMenuItem
+                onClick={(e) => {
+                  e.stopPropagation();
+                  handleCloseCompleted();
+                }}
+                disabled={completedCount === 0}
+              >
+                Close Completed ({completedCount})
+              </DropdownMenuItem>
+              <DropdownMenuItem
+                onClick={(e) => {
+                  e.stopPropagation();
+                  handleCloseFailed();
+                }}
+                disabled={failedCount === 0}
+              >
+                Close Failed ({failedCount})
+              </DropdownMenuItem>
+              <DropdownMenuSeparator />
+              <DropdownMenuItem
+                onClick={(e) => {
+                  e.stopPropagation();
+                  handleCloseAllTerminals();
+                }}
+                className="text-red-400 focus:text-red-400"
+              >
+                Close All...
+              </DropdownMenuItem>
+            </DropdownMenuContent>
+          </DropdownMenu>
+        )}
       </div>
 
       {/* Header: Activity light + Branch */}
@@ -546,6 +638,15 @@ export function WorktreeCard({
           )}
         </div>
       )}
+
+      {/* Confirmation dialog for bulk close all terminals */}
+      <ConfirmDialog
+        isOpen={confirmDialog.isOpen}
+        title={confirmDialog.title}
+        description={confirmDialog.description}
+        onConfirm={confirmDialog.onConfirm}
+        onCancel={closeConfirmDialog}
+      />
     </div>
   );
 }

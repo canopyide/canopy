@@ -2,11 +2,12 @@
  * Terminal Store
  *
  * Zustand store for managing terminal instances and grid state.
- * Handles terminal spawning, focus management, and maximize/restore.
+ * Handles terminal spawning, focus management, maximize/restore, and bulk actions.
  */
 
 import { create, type StateCreator } from "zustand";
 import type { TerminalType } from "@/components/Terminal/TerminalPane";
+import type { AgentState } from "@/types";
 
 export interface TerminalInstance {
   id: string;
@@ -14,6 +15,10 @@ export interface TerminalInstance {
   title: string;
   worktreeId?: string;
   cwd: string;
+  /** Current agent lifecycle state (for agent-type terminals) */
+  agentState?: AgentState;
+  /** Error message if agentState is 'failed' */
+  error?: string;
 }
 
 export interface AddTerminalOptions {
@@ -38,6 +43,23 @@ interface TerminalGridState {
   toggleMaximize: (id: string) => void;
   focusNext: () => void;
   focusPrevious: () => void;
+
+  // Agent state management
+  updateAgentState: (id: string, state: AgentState, error?: string) => void;
+
+  // Bulk actions
+  /** Close all terminals matching the given agent state(s) */
+  bulkCloseByState: (states: AgentState | AgentState[]) => void;
+  /** Close all terminals for a specific worktree, optionally filtered by state */
+  bulkCloseByWorktree: (worktreeId: string, state?: AgentState) => void;
+  /** Close all terminals */
+  bulkCloseAll: () => void;
+  /** Restart all failed agent terminals */
+  restartFailedAgents: () => Promise<void>;
+  /** Get count of terminals by state */
+  getCountByState: (state: AgentState) => number;
+  /** Get count of terminals by worktree and optional state */
+  getCountByWorktree: (worktreeId: string, state?: AgentState) => number;
 }
 
 const TYPE_TITLES: Record<TerminalType, string> = {
@@ -47,7 +69,7 @@ const TYPE_TITLES: Record<TerminalType, string> = {
   custom: "Terminal",
 };
 
-const createTerminalStore: StateCreator<TerminalGridState> = (set) => ({
+const createTerminalStore: StateCreator<TerminalGridState> = (set, get) => ({
   terminals: [],
   focusedId: null,
   maximizedId: null,
@@ -64,14 +86,20 @@ const createTerminalStore: StateCreator<TerminalGridState> = (set) => ({
         cols: 80,
         rows: 24,
         command: options.command,
+        type,
+        title,
+        worktreeId: options.worktreeId,
       });
 
+      // Agent terminals (claude/gemini) start in 'idle' state
+      const isAgentTerminal = type === "claude" || type === "gemini";
       const terminal: TerminalInstance = {
         id,
         type,
         title,
         worktreeId: options.worktreeId,
         cwd: options.cwd,
+        agentState: isAgentTerminal ? "idle" : undefined,
       };
 
       set((state) => {
@@ -205,6 +233,79 @@ const createTerminalStore: StateCreator<TerminalGridState> = (set) => ({
       const prevIndex = currentIndex <= 0 ? state.terminals.length - 1 : currentIndex - 1;
       return { focusedId: state.terminals[prevIndex].id };
     }),
+
+  updateAgentState: (id, state, error) => {
+    set((prevState) => {
+      const newTerminals = prevState.terminals.map((t) =>
+        t.id === id ? { ...t, agentState: state, error } : t
+      );
+      return { terminals: newTerminals };
+    });
+  },
+
+  bulkCloseByState: (states) => {
+    const stateArray = Array.isArray(states) ? states : [states];
+    const { terminals, removeTerminal } = get();
+    const toRemove = terminals.filter((t) => t.agentState && stateArray.includes(t.agentState));
+    toRemove.forEach((t) => removeTerminal(t.id));
+  },
+
+  bulkCloseByWorktree: (worktreeId, state) => {
+    const { terminals, removeTerminal } = get();
+    const toRemove = terminals.filter(
+      (t) => t.worktreeId === worktreeId && (!state || t.agentState === state)
+    );
+    toRemove.forEach((t) => removeTerminal(t.id));
+  },
+
+  bulkCloseAll: () => {
+    const { terminals, removeTerminal } = get();
+    terminals.forEach((t) => removeTerminal(t.id));
+  },
+
+  restartFailedAgents: async () => {
+    const { terminals, removeTerminal, addTerminal } = get();
+    const failed = terminals.filter(
+      (t) => t.agentState === "failed" && (t.type === "claude" || t.type === "gemini")
+    );
+
+    for (const terminal of failed) {
+      try {
+        // Store config before removing
+        const config = {
+          type: terminal.type,
+          title: terminal.title,
+          worktreeId: terminal.worktreeId,
+          cwd: terminal.cwd,
+          command: terminal.type, // claude/gemini command
+        };
+
+        // Wait for terminal to be killed before respawning
+        await window.electron.terminal.kill(terminal.id);
+        removeTerminal(terminal.id);
+
+        // Small delay to ensure cleanup completes
+        await new Promise((resolve) => setTimeout(resolve, 100));
+
+        await addTerminal(config);
+      } catch (error) {
+        console.error(`Failed to restart terminal ${terminal.id}:`, error);
+        // Continue with next terminal even if one fails
+      }
+    }
+  },
+
+  getCountByState: (state) => {
+    const { terminals } = get();
+    return terminals.filter((t) => t.agentState === state).length;
+  },
+
+  getCountByWorktree: (worktreeId, state) => {
+    const { terminals } = get();
+    return terminals.filter(
+      (t) => t.worktreeId === worktreeId && (!state || t.agentState === state)
+    ).length;
+  },
 });
 
 export const useTerminalStore = create<TerminalGridState>()(createTerminalStore);

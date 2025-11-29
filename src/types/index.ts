@@ -115,6 +115,20 @@ export interface Notification {
 export type NotificationPayload = Omit<Notification, "id"> & { id?: string };
 
 // ============================================================================
+// Agent Types
+// ============================================================================
+
+/**
+ * State of an AI agent lifecycle.
+ * - 'idle': Agent is spawned but not actively working
+ * - 'working': Agent is actively processing/executing
+ * - 'waiting': Agent is waiting for input or external response
+ * - 'completed': Agent has finished successfully
+ * - 'failed': Agent encountered an unrecoverable error
+ */
+export type AgentState = "idle" | "working" | "waiting" | "completed" | "failed";
+
+// ============================================================================
 // Terminal Types
 // ============================================================================
 
@@ -129,6 +143,10 @@ export interface TerminalInstance {
   pid?: number;
   cols: number;
   rows: number;
+  /** Current agent lifecycle state (for agent-type terminals) */
+  agentState?: AgentState;
+  /** Error message if agentState is 'failed' */
+  error?: string;
 }
 
 export interface PtySpawnOptions {
