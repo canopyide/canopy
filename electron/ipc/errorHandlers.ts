@@ -32,13 +32,7 @@ type ErrorType = "git" | "process" | "filesystem" | "network" | "config" | "unkn
 /**
  * Retry action types
  */
-type RetryAction =
-  | "copytree"
-  | "devserver"
-  | "terminal"
-  | "git"
-  | "worktree"
-  | "injectContext";
+type RetryAction = "copytree" | "devserver" | "terminal" | "git" | "worktree" | "injectContext";
 
 /**
  * App error structure sent to renderer

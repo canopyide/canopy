@@ -179,7 +179,11 @@ export function XtermAdapter({ terminalId, onReady, onExit, className }: XtermAd
 
   // Handle resize
   const handleResize = useCallback(() => {
-    if (!containerRef.current || containerRef.current.clientWidth === 0 || containerRef.current.clientHeight === 0) {
+    if (
+      !containerRef.current ||
+      containerRef.current.clientWidth === 0 ||
+      containerRef.current.clientHeight === 0
+    ) {
       return;
     }
 
@@ -234,7 +238,11 @@ export function XtermAdapter({ terminalId, onReady, onExit, className }: XtermAd
         }
 
         // Initial fit - but only if container has dimensions
-        if (containerRef.current && containerRef.current.clientWidth > 0 && containerRef.current.clientHeight > 0) {
+        if (
+          containerRef.current &&
+          containerRef.current.clientWidth > 0 &&
+          containerRef.current.clientHeight > 0
+        ) {
           try {
             fitAddon.fit();
           } catch (e) {
