@@ -84,9 +84,7 @@ export class RunManager {
 
     // Only update progress for active runs
     if (run.state !== "running" && run.state !== "paused") {
-      console.warn(
-        `[RunManager] Cannot update progress for run in terminal state: ${run.state}`
-      );
+      console.warn(`[RunManager] Cannot update progress for run in terminal state: ${run.state}`);
       return;
     }
 
