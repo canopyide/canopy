@@ -1,0 +1,115 @@
+/**
+ * Shared types for Canopy Command Center
+ *
+ * This module provides a single source of truth for type definitions
+ * used across the main process, renderer process, and preload script.
+ *
+ * Organization:
+ * - domain.ts: Core business entities (Worktree, DevServer, Terminal, etc.)
+ * - ipc.ts: IPC payloads and options (TerminalSpawnOptions, CopyTreeOptions, etc.)
+ * - config.ts: Application configuration types (CanopyConfig, etc.)
+ * - keymap.ts: Keyboard shortcut types (KeyAction, KeyMapConfig, etc.)
+ */
+
+// Domain types - core business entities
+export type {
+  // Git types
+  GitStatus,
+  FileChangeDetail,
+  WorktreeChanges,
+  // Worktree types
+  WorktreeMood,
+  AISummaryStatus,
+  Worktree,
+  WorktreeState,
+  // Dev server types
+  DevServerStatus,
+  DevServerState,
+  // Notification types
+  NotificationType,
+  Notification,
+  NotificationPayload,
+  // Agent types
+  AgentState,
+  TaskState,
+  RunRecord,
+  // Terminal types
+  TerminalType,
+  TerminalInstance,
+  PtySpawnOptions,
+  TerminalDimensions,
+  // Project types
+  Project,
+  TerminalSnapshot,
+  TerminalLayout,
+  ProjectState,
+  // Recipe types
+  RecipeTerminalType,
+  RecipeTerminal,
+  TerminalRecipe,
+} from "./domain.js";
+
+// IPC types - communication payloads
+export type {
+  // Terminal IPC types
+  TerminalSpawnOptions,
+  TerminalState,
+  // CopyTree IPC types
+  CopyTreeOptions,
+  CopyTreeResult,
+  CopyTreeProgress,
+  // App state types
+  RecentDirectory,
+  SavedRecipeTerminal,
+  SavedRecipe,
+  AppState,
+  // Log types
+  LogLevel,
+  LogEntry,
+  LogFilterOptions,
+  // Event inspector types
+  EventRecord,
+  EventFilterOptions,
+  // Error types
+  ErrorType,
+  RetryAction,
+  AppError,
+  // Agent session types
+  TranscriptEntry,
+  Artifact,
+  AgentSession,
+  HistoryGetSessionsPayload,
+  // AI types
+  AIServiceState,
+  ProjectIdentity,
+  // Agent state change
+  AgentStateChangePayload,
+  // Electron API
+  ElectronAPI,
+} from "./ipc.js";
+
+// Config types - application configuration
+export type {
+  // Opener config
+  OpenerConfig,
+  OpenersConfig,
+  // Quick links config
+  QuickLink,
+  QuickLinksConfig,
+  // Monitor config
+  MonitorConfig,
+  // AI config
+  AIConfig,
+  NoteConfig,
+  // Dev server config
+  DevServerConfig,
+  // UI config
+  UIConfig,
+  WorktreesConfig,
+  GitDisplayConfig,
+  // Main config
+  CanopyConfig,
+} from "./config.js";
+
+// Keymap types - keyboard shortcuts
+export type { KeyAction, KeymapPreset, KeyMapConfig } from "./keymap.js";

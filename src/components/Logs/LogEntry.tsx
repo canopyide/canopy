@@ -7,7 +7,7 @@
 
 import { memo, useCallback } from "react";
 import { cn } from "@/lib/utils";
-import type { LogEntry as LogEntryType, LogLevel } from "@/types/electron.d";
+import type { LogEntry as LogEntryType, LogLevel } from "@/types";
 
 interface LogEntryProps {
   entry: LogEntryType;

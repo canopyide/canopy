@@ -38,6 +38,7 @@ const STATUS_ICONS: Record<GitStatus, { icon: string; color: string }> = {
   modified: { icon: "M", color: "text-yellow-400" },
   deleted: { icon: "D", color: "text-red-400" },
   renamed: { icon: "R", color: "text-blue-400" },
+  copied: { icon: "C", color: "text-cyan-400" },
   untracked: { icon: "?", color: "text-gray-400" },
   ignored: { icon: "I", color: "text-gray-500" },
 };
@@ -47,8 +48,9 @@ const STATUS_PRIORITY: Record<GitStatus, number> = {
   added: 1,
   deleted: 2,
   renamed: 3,
-  untracked: 4,
-  ignored: 5,
+  copied: 4,
+  untracked: 5,
+  ignored: 6,
 };
 
 interface FileChangeListProps {

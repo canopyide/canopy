@@ -9,7 +9,7 @@
 
 import { useCallback, useEffect, useState } from "react";
 import { cn } from "@/lib/utils";
-import type { LogLevel, LogFilterOptions } from "@/types/electron.d";
+import type { LogLevel, LogFilterOptions } from "@/types";
 
 interface LogFiltersProps {
   filters: LogFilterOptions;

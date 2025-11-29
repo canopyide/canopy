@@ -10,7 +10,7 @@ import { cn } from "@/lib/utils";
 import { useLogsStore, filterLogs } from "@/store";
 import { LogEntry } from "./LogEntry";
 import { LogFilters } from "./LogFilters";
-import type { LogEntry as LogEntryType } from "@/types/electron.d";
+import type { LogEntry as LogEntryType } from "@/types";
 
 interface LogsPanelProps {
   className?: string;
