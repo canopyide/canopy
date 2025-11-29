@@ -59,7 +59,9 @@ const KEYBOARD_SHORTCUTS = [
   },
   {
     category: "Other",
-    shortcuts: [{ key: "Cmd+K Z", description: "Toggle focus mode (chord: press Cmd+K, release, then Z)" }],
+    shortcuts: [
+      { key: "Cmd+K Z", description: "Toggle focus mode (chord: press Cmd+K, release, then Z)" },
+    ],
   },
 ];
 
