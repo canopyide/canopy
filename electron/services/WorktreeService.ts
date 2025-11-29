@@ -226,12 +226,10 @@ export class WorktreeService {
           // Set AI debounce
           monitor.setAIBufferDelay(this.aiDebounceMs);
 
-          // Subscribe to monitor updates and forward to renderer
-          monitor.on("update", (state: WorktreeState) => {
-            this.sendToRenderer(CHANNELS.WORKTREE_UPDATE, state);
-          });
-
-          // Also listen to events bus for updates (WorktreeMonitor emits to both)
+          // Subscribe to global event bus for updates (single subscription pattern)
+          // WorktreeMonitor emits to the global TypedEventBus, which provides:
+          // - Centralized event tracking via EventBuffer
+          // - Better debugging via Event Inspector UI
           const unsubscribe = events.on("sys:worktree:update", (state: WorktreeState) => {
             if (state.worktreeId === wt.id) {
               this.sendToRenderer(CHANNELS.WORKTREE_UPDATE, state);
@@ -241,16 +239,22 @@ export class WorktreeService {
           // Store unsubscribe function for cleanup
           (monitor as any)._eventBusUnsubscribe = unsubscribe;
 
-          // Start monitoring only if watching is enabled
-          // When --no-watch is passed, we only do initial status fetch
-          if (this.watchingEnabled) {
-            await monitor.start();
-          } else {
-            // Just fetch initial status without starting polling
-            await monitor.fetchInitialStatus();
-          }
+          try {
+            // Start monitoring only if watching is enabled
+            // When --no-watch is passed, we only do initial status fetch
+            if (this.watchingEnabled) {
+              await monitor.start();
+            } else {
+              // Just fetch initial status without starting polling
+              await monitor.fetchInitialStatus();
+            }
 
-          this.monitors.set(wt.id, monitor);
+            this.monitors.set(wt.id, monitor);
+          } catch (error) {
+            // If monitor startup fails, clean up the event bus subscription
+            unsubscribe();
+            throw error;
+          }
         }
       }
 
