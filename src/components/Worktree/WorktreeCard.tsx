@@ -1,6 +1,7 @@
 import { useCallback, useState, useEffect, useMemo } from "react";
 import type { WorktreeState, WorktreeMood } from "../../types";
 import { ActivityLight } from "./ActivityLight";
+import { AgentStatusIndicator } from "./AgentStatusIndicator";
 import { FileChangeList } from "./FileChangeList";
 import { TerminalCountBadge } from "./TerminalCountBadge";
 import { ErrorBanner } from "../Errors/ErrorBanner";
@@ -99,8 +100,8 @@ export function WorktreeCard({
   const recipes = getRecipesForWorktree(worktree.id);
   const [runningRecipeId, setRunningRecipeId] = useState<string | null>(null);
 
-  // Terminal counts
-  const { counts: terminalCounts } = useWorktreeTerminals(worktree.id);
+  // Terminal counts and agent state
+  const { counts: terminalCounts, dominantAgentState } = useWorktreeTerminals(worktree.id);
 
   // Terminal bulk actions
   const bulkCloseByWorktree = useTerminalStore((state) => state.bulkCloseByWorktree);
@@ -528,9 +529,10 @@ export function WorktreeCard({
         )}
       </div>
 
-      {/* Header: Activity light + Branch */}
+      {/* Header: Activity light + Agent status + Branch */}
       <div className="mb-1 flex items-center gap-2">
         <ActivityLight timestamp={worktree.lastActivityTimestamp} />
+        <AgentStatusIndicator state={dominantAgentState} />
         {isActive && <span className="text-blue-400">●</span>}
         <span className={cn("font-bold", mood === "active" ? "text-yellow-400" : "text-gray-200")}>
           {branchLabel}

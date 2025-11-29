@@ -193,6 +193,33 @@ body,
   will-change: opacity, transform;
 }
 
+/* Agent status indicator pulse animation */
+@keyframes agent-pulse {
+  0%,
+  100% {
+    opacity: 1;
+  }
+  50% {
+    opacity: 0.5;
+  }
+}
+
+.animate-agent-pulse {
+  animation: agent-pulse 1.5s ease-in-out infinite;
+  will-change: opacity;
+}
+
+/* Respect user's motion preferences */
+@media (prefers-reduced-motion: reduce) {
+  .animate-activity-pulse,
+  .animate-agent-pulse {
+    animation: none;
+    opacity: 1;
+    transform: none;
+    will-change: auto;
+  }
+}
+
 /* --- Electron Window Controls --- */
 
 /* The draggable area (Title Bar) */
