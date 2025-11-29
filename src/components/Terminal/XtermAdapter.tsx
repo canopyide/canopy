@@ -209,29 +209,38 @@ export function XtermAdapter({ terminalId, onReady, onExit, className }: XtermAd
     fitAddonRef.current = fitAddon;
     terminal.loadAddon(fitAddon);
 
-    // Open terminal in container
-    terminal.open(containerRef.current);
+    // Open terminal in container - use setTimeout to avoid xterm.js dimension errors
+    // This gives the DOM a tick to fully render before xterm initializes
+    setTimeout(() => {
+      if (!containerRef.current) return;
 
-    // Try to load WebGL addon for better performance
-    try {
-      const webglAddon = new WebglAddon();
-      webglAddon.onContextLoss(() => {
-        console.warn("WebGL context lost, falling back to canvas renderer");
-        webglAddon.dispose();
-      });
-      terminal.loadAddon(webglAddon);
-    } catch (e) {
-      console.warn("WebGL addon failed to load, using canvas renderer:", e);
-    }
-
-    // Initial fit - but only if container has dimensions
-    if (containerRef.current && containerRef.current.clientWidth > 0 && containerRef.current.clientHeight > 0) {
       try {
-        fitAddon.fit();
+        terminal.open(containerRef.current);
+
+        // Try to load WebGL addon for better performance
+        try {
+          const webglAddon = new WebglAddon();
+          webglAddon.onContextLoss(() => {
+            console.warn("WebGL context lost, falling back to canvas renderer");
+            webglAddon.dispose();
+          });
+          terminal.loadAddon(webglAddon);
+        } catch (e) {
+          console.warn("WebGL addon failed to load, using canvas renderer:", e);
+        }
+
+        // Initial fit - but only if container has dimensions
+        if (containerRef.current && containerRef.current.clientWidth > 0 && containerRef.current.clientHeight > 0) {
+          try {
+            fitAddon.fit();
+          } catch (e) {
+            console.warn("Initial fit failed:", e);
+          }
+        }
       } catch (e) {
-        console.warn("Initial fit failed:", e);
+        console.error("Failed to open terminal:", e);
       }
-    }
+    }, 0);
 
     // Apply the jank fix and store the dispose function
     jankFixDisposeRef.current = applyJankFix(terminal);

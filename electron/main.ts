@@ -249,10 +249,21 @@ app.on("activate", () => {
   }
 });
 
+// Track if we're intentionally quitting to avoid premature cleanup
+let isQuitting = false;
+
 // Cleanup on quit - prevent default to ensure graceful shutdown completes
 app.on("before-quit", (event) => {
+  // If already quitting or not ready yet, don't interfere
+  if (isQuitting || !mainWindow) {
+    return;
+  }
+
   // Prevent quit until cleanup is done
   event.preventDefault();
+  isQuitting = true;
+
+  console.log("[MAIN] Starting graceful shutdown...");
 
   // Save terminal state before cleanup
   if (ptyManager) {
@@ -289,11 +300,12 @@ app.on("before-quit", (event) => {
         cleanupErrorHandlers();
         cleanupErrorHandlers = null;
       }
+      console.log("[MAIN] Graceful shutdown complete");
       // Now actually quit
       app.exit(0);
     })
     .catch((error) => {
-      console.error("Error during cleanup:", error);
+      console.error("[MAIN] Error during cleanup:", error);
       app.exit(1);
     });
 });
