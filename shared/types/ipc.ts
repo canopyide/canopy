@@ -418,6 +418,18 @@ export interface CreateWorktreeOptions {
 }
 
 // ============================================================================
+// Adaptive Backoff IPC Types
+// ============================================================================
+
+/** Metrics for adaptive backoff and circuit breaker */
+export interface AdaptiveBackoffMetrics {
+  lastOperationDuration: number;
+  consecutiveFailures: number;
+  circuitBreakerTripped: boolean;
+  currentInterval: number;
+}
+
+// ============================================================================
 // ElectronAPI Type (exposed via preload)
 // ============================================================================
 
@@ -429,6 +441,13 @@ export interface ElectronAPI {
     setActive(worktreeId: string): Promise<void>;
     create(options: CreateWorktreeOptions, rootPath: string): Promise<void>;
     listBranches(rootPath: string): Promise<BranchInfo[]>;
+    setAdaptiveBackoffConfig(
+      enabled: boolean,
+      maxInterval?: number,
+      threshold?: number
+    ): Promise<void>;
+    isCircuitBreakerTripped(worktreeId: string): Promise<boolean>;
+    getAdaptiveBackoffMetrics(worktreeId: string): Promise<AdaptiveBackoffMetrics | null>;
     onUpdate(callback: (state: WorktreeState) => void): () => void;
     onRemove(callback: (data: { worktreeId: string }) => void): () => void;
   };

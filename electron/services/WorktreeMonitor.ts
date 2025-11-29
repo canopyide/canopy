@@ -80,11 +80,19 @@ export class WorktreeMonitor {
 
   // Configuration
   private pollingInterval: number = 2000; // Default 2s for active worktree (fallback only)
+  private maxPollingInterval: number = DEFAULT_CONFIG.monitor?.pollIntervalMax ?? 30000;
+  private adaptiveBackoff: boolean = DEFAULT_CONFIG.monitor?.adaptiveBackoff ?? true;
+  private circuitBreakerThreshold: number = DEFAULT_CONFIG.monitor?.circuitBreakerThreshold ?? 3;
   private gitUpdateDebounce: number = 500; // Debounce for file watcher git updates
   private aiBufferDelay: number = DEFAULT_AI_DEBOUNCE_MS; // Configurable AI debounce
   private noteEnabled: boolean = DEFAULT_CONFIG.note?.enabled ?? true;
   private noteFilename: string = DEFAULT_CONFIG.note?.filename ?? "canopy/note";
   private useFileWatcher: boolean = true; // Use chokidar file watcher instead of polling
+
+  // Adaptive backoff state
+  private lastOperationDuration: number = 0; // Duration of last git operation in ms
+  private consecutiveFailures: number = 0; // Count of consecutive git operation failures
+  private circuitBreakerTripped: boolean = false; // Whether circuit breaker has stopped polling
 
   // Git directory cache (resolved once on first use)
   private gitDir: string | null = null;
@@ -438,6 +446,52 @@ export class WorktreeMonitor {
   }
 
   /**
+   * Configure adaptive backoff settings.
+   * @param enabled - Enable/disable adaptive backoff based on operation duration
+   * @param maxInterval - Maximum polling interval in ms (cap for backoff)
+   * @param threshold - Number of consecutive failures before circuit breaker trips
+   */
+  public setAdaptiveBackoffConfig(
+    enabled: boolean,
+    maxInterval?: number,
+    threshold?: number
+  ): void {
+    this.adaptiveBackoff = enabled;
+    if (maxInterval !== undefined) {
+      this.maxPollingInterval = maxInterval;
+    }
+    if (threshold !== undefined) {
+      this.circuitBreakerThreshold = threshold;
+    }
+  }
+
+  /**
+   * Check if the circuit breaker is currently tripped.
+   * @returns true if polling has stopped due to consecutive failures
+   */
+  public isCircuitBreakerTripped(): boolean {
+    return this.circuitBreakerTripped;
+  }
+
+  /**
+   * Get the current adaptive backoff metrics for debugging/monitoring.
+   * @returns Object containing current backoff state
+   */
+  public getAdaptiveBackoffMetrics(): {
+    lastOperationDuration: number;
+    consecutiveFailures: number;
+    circuitBreakerTripped: boolean;
+    currentInterval: number;
+  } {
+    return {
+      lastOperationDuration: this.lastOperationDuration,
+      consecutiveFailures: this.consecutiveFailures,
+      circuitBreakerTripped: this.circuitBreakerTripped,
+      currentInterval: this.calculateNextInterval(),
+    };
+  }
+
+  /**
    * Update metadata (branch, name) from a refreshed worktree object.
    * This is called by WorktreeService.sync() when worktree metadata changes
    * (e.g., after a `git checkout` or `git switch` in the worktree).
@@ -491,8 +545,14 @@ export class WorktreeMonitor {
 
   /**
    * Force refresh of git status and AI summary.
+   * Resets the circuit breaker if it was tripped, allowing polling to resume.
    */
   public async refresh(forceAI: boolean = false): Promise<void> {
+    // Reset circuit breaker on manual refresh - user is explicitly requesting status
+    if (this.circuitBreakerTripped) {
+      this.resetCircuitBreaker();
+    }
+
     await this.updateGitStatus(true);
     if (forceAI) {
       // Bypass buffer for forced refresh
@@ -821,16 +881,21 @@ export class WorktreeMonitor {
         return;
       }
 
-      // Handle index.lock collision gracefully (don't set mood to error)
+      // Handle index.lock collision gracefully (don't trigger circuit breaker)
       const errorMessage = (error as Error).message || "";
       if (errorMessage.includes("index.lock")) {
         logWarn("Git index locked, skipping this poll cycle", { id: this.id });
         return; // Silent skip - wait for next poll
       }
 
+      // For all other errors, set mood to error and rethrow to trigger circuit breaker
       logError("Failed to update git status", error as Error, { id: this.id });
       this.state.mood = "error";
+      this.state.summaryLoading = false; // Clear any pending loading state
       this.emitUpdate();
+
+      // Rethrow to allow poll() to track consecutive failures and trigger circuit breaker
+      throw error;
     } finally {
       this.isUpdating = false; // Unlock
 
@@ -1084,16 +1149,161 @@ export class WorktreeMonitor {
   }
 
   /**
-   * Start polling for git status updates.
+   * Calculate the next polling interval based on adaptive backoff.
+   *
+   * Uses a self-scheduling pattern where the next poll is scheduled AFTER the current
+   * operation completes. This prevents overlapping git processes on large repositories.
+   *
+   * Interval calculation:
+   * 1. Base interval (pollingInterval) as minimum
+   * 2. If adaptive backoff is enabled, use 1.5x last operation duration as minimum
+   * 3. Cap at maxPollingInterval
+   *
+   * @returns The calculated next polling interval in ms
    */
-  private startPolling(): void {
-    if (this.pollingTimer) {
+  private calculateNextInterval(): number {
+    if (!this.adaptiveBackoff || this.lastOperationDuration === 0) {
+      return this.pollingInterval;
+    }
+
+    // Use 1.5x the last operation duration as the buffer
+    // This ensures we don't poll faster than git can respond
+    const adaptiveInterval = Math.ceil(this.lastOperationDuration * 1.5);
+
+    // Take the maximum of base interval and adaptive interval
+    const nextInterval = Math.max(this.pollingInterval, adaptiveInterval);
+
+    // Cap at maximum interval
+    return Math.min(nextInterval, this.maxPollingInterval);
+  }
+
+  /**
+   * Schedule the next poll after the current operation completes.
+   * This is the core of the self-scheduling pattern that prevents overlapping git processes.
+   */
+  private scheduleNextPoll(): void {
+    if (!this.isRunning || !this.pollingEnabled || this.circuitBreakerTripped) {
       return;
     }
 
-    this.pollingTimer = setInterval(() => {
-      void this.updateGitStatus();
-    }, this.pollingInterval);
+    const nextInterval = this.calculateNextInterval();
+
+    logDebug("Scheduling next poll", {
+      id: this.id,
+      nextInterval,
+      lastOperationDuration: this.lastOperationDuration,
+      adaptiveBackoff: this.adaptiveBackoff,
+    });
+
+    this.pollingTimer = setTimeout(() => {
+      this.pollingTimer = null;
+      void this.poll();
+    }, nextInterval);
+  }
+
+  /**
+   * Execute a single polling cycle with timing and error handling.
+   * This method wraps updateGitStatus() with:
+   * - Operation duration tracking for adaptive backoff
+   * - Circuit breaker logic for consecutive failures
+   * - Self-scheduling of the next poll
+   */
+  private async poll(): Promise<void> {
+    if (!this.isRunning || this.circuitBreakerTripped) {
+      return;
+    }
+
+    const startTime = Date.now();
+
+    try {
+      await this.updateGitStatus();
+
+      // Success: track duration and reset failure count
+      this.lastOperationDuration = Date.now() - startTime;
+      this.consecutiveFailures = 0;
+
+      logDebug("Poll completed successfully", {
+        id: this.id,
+        duration: this.lastOperationDuration,
+      });
+    } catch (error) {
+      // Track duration even on failure for adaptive backoff
+      this.lastOperationDuration = Date.now() - startTime;
+
+      // Increment failure counter
+      // Note: index.lock and WorktreeRemovedError are handled in updateGitStatus()
+      // and don't rethrow, so they won't reach this catch block
+      this.consecutiveFailures++;
+
+      logWarn("Poll failed", {
+        id: this.id,
+        consecutiveFailures: this.consecutiveFailures,
+        threshold: this.circuitBreakerThreshold,
+        error: (error as Error).message,
+      });
+
+      // Circuit breaker: Stop polling after consecutive failures
+      if (this.consecutiveFailures >= this.circuitBreakerThreshold) {
+        this.tripCircuitBreaker();
+        return; // Don't schedule next poll
+      }
+    }
+
+    // Schedule next poll AFTER current operation completes
+    this.scheduleNextPoll();
+  }
+
+  /**
+   * Trip the circuit breaker to stop polling after consecutive failures.
+   * Sets mood to 'error' and requires manual refresh to resume.
+   */
+  private tripCircuitBreaker(): void {
+    this.circuitBreakerTripped = true;
+    this.state.mood = "error";
+    this.state.summary = `⚠️ Polling stopped after ${this.consecutiveFailures} consecutive failures`;
+
+    logWarn("Circuit breaker tripped", {
+      id: this.id,
+      consecutiveFailures: this.consecutiveFailures,
+    });
+
+    this.emitUpdate();
+    // Note: Polling will NOT be scheduled until resetCircuitBreaker() is called
+  }
+
+  /**
+   * Reset the circuit breaker and resume polling.
+   * Called by manual refresh (Cmd+R) or explicit recovery.
+   */
+  public resetCircuitBreaker(): void {
+    if (!this.circuitBreakerTripped) {
+      return;
+    }
+
+    logInfo("Resetting circuit breaker", { id: this.id });
+
+    this.circuitBreakerTripped = false;
+    this.consecutiveFailures = 0;
+    this.lastOperationDuration = 0;
+
+    // Resume polling if enabled
+    if (this.isRunning && this.pollingEnabled) {
+      this.scheduleNextPoll();
+    }
+  }
+
+  /**
+   * Start polling for git status updates.
+   * Uses self-scheduling setTimeout pattern instead of setInterval
+   * to prevent overlapping git processes on large repositories.
+   */
+  private startPolling(): void {
+    if (this.pollingTimer || this.circuitBreakerTripped) {
+      return;
+    }
+
+    // Schedule first poll
+    this.scheduleNextPoll();
   }
 
   /**
@@ -1101,7 +1311,7 @@ export class WorktreeMonitor {
    */
   private stopPolling(): void {
     if (this.pollingTimer) {
-      clearInterval(this.pollingTimer);
+      clearTimeout(this.pollingTimer);
       this.pollingTimer = null;
     }
   }

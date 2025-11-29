@@ -88,6 +88,9 @@ export const DEFAULT_CONFIG: CanopyConfig = {
   monitor: {
     pollIntervalActive: 2000,
     pollIntervalBackground: 10000,
+    pollIntervalMax: 30000,
+    adaptiveBackoff: true,
+    circuitBreakerThreshold: 3,
   },
   ai: {
     summaryDebounceMs: 10000,
