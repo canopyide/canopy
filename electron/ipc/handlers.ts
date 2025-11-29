@@ -426,7 +426,11 @@ export function registerIpcHandlers(
       };
 
       // Generate context with options (format can be specified) and progress reporting
-      const result = await copyTreeService.generate(worktree.path, payload.options || {}, onProgress);
+      const result = await copyTreeService.generate(
+        worktree.path,
+        payload.options || {},
+        onProgress
+      );
 
       if (result.error) {
         return result;

@@ -18,6 +18,7 @@ import {
   AlertCircle,
 } from "lucide-react";
 import { cn } from "@/lib/utils";
+import { BulkActionsMenu } from "@/components/Terminal";
 
 interface ToolbarProps {
   onLaunchAgent: (type: "claude" | "gemini" | "shell") => void;
@@ -108,6 +109,7 @@ export function Toolbar({
             </DropdownMenuItem>
           </DropdownMenuContent>
         </DropdownMenu>
+        <BulkActionsMenu />
       </div>
 
       {/* Title - centered */}

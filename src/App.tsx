@@ -143,7 +143,8 @@ function SidebarContent() {
 }
 
 function App() {
-  const { focusNext, focusPrevious, toggleMaximize, focusedId, addTerminal } = useTerminalStore();
+  const { focusNext, focusPrevious, toggleMaximize, focusedId, addTerminal, updateAgentState } =
+    useTerminalStore();
   const { launchAgent } = useAgentLauncher();
   const { activeWorktreeId, setActiveWorktree } = useWorktreeSelectionStore();
   const { inject, isInjecting } = useContextInjection();
@@ -161,6 +162,23 @@ function App() {
 
   // Track if state has been restored (prevent StrictMode double-execution)
   const hasRestoredState = useRef(false);
+
+  // Listen for agent state changes from main process
+  useEffect(() => {
+    if (!isElectronAvailable()) return;
+
+    const cleanup = window.electron.terminal.onAgentStateChanged((data) => {
+      // Validate state is a valid AgentState before updating
+      const validStates = ["idle", "working", "waiting", "completed", "failed"];
+      if (!validStates.includes(data.state)) {
+        console.warn(`Invalid agent state received: ${data.state}`);
+        return;
+      }
+      updateAgentState(data.agentId, data.state as import("@/types").AgentState);
+    });
+
+    return cleanup;
+  }, [updateAgentState]);
 
   // Restore persisted app state on mount
   useEffect(() => {
