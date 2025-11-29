@@ -130,7 +130,8 @@ class PullRequestService {
 
     // Detect if the "identity" of the work context changed
     const contextChanged =
-      currentContext?.issueNumber !== newIssueNumber || currentContext?.branchName !== newBranchName;
+      currentContext?.issueNumber !== newIssueNumber ||
+      currentContext?.branchName !== newBranchName;
 
     if (contextChanged && currentContext) {
       // Context changed - CLEAR immediately

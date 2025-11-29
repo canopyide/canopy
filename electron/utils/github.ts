@@ -143,7 +143,9 @@ export async function openGitHubUrl(cwd: string, page?: "issues" | "pulls"): Pro
     if (error.code === "ENOENT") {
       throw new Error("GitHub CLI (gh) not found. Please install it.");
     }
-    throw new Error(error.message || "Failed to open GitHub. Are you logged in via `gh auth login`?");
+    throw new Error(
+      error.message || "Failed to open GitHub. Are you logged in via `gh auth login`?"
+    );
   }
 }
 
@@ -277,11 +279,7 @@ export async function getRepoInfo(cwd: string): Promise<{ owner: string; repo: s
  * 1. Issue timeline for CrossReferencedEvent where source is a PullRequest
  * 2. PRs with matching headRefName (fallback for unlinked PRs)
  */
-function buildBatchPRQuery(
-  owner: string,
-  repo: string,
-  candidates: PRCheckCandidate[]
-): string {
+function buildBatchPRQuery(owner: string, repo: string, candidates: PRCheckCandidate[]): string {
   const issueQueries: string[] = [];
   const branchQueries: string[] = [];
 
@@ -342,7 +340,10 @@ function buildBatchPRQuery(
 /**
  * Parse GraphQL response to extract PR information per worktree.
  */
-function parseBatchPRResponse(data: any, candidates: PRCheckCandidate[]): Map<string, PRCheckResult> {
+function parseBatchPRResponse(
+  data: any,
+  candidates: PRCheckCandidate[]
+): Map<string, PRCheckResult> {
   const results = new Map<string, PRCheckResult>();
 
   for (let i = 0; i < candidates.length; i++) {
@@ -361,7 +362,9 @@ function parseBatchPRResponse(data: any, candidates: PRCheckCandidate[]): Map<st
           prs.push({
             number: source.number,
             url: source.url,
-            state: source.merged ? "merged" : ((source.state?.toLowerCase() as "open" | "closed") || "open"),
+            state: source.merged
+              ? "merged"
+              : (source.state?.toLowerCase() as "open" | "closed") || "open",
             isDraft: source.isDraft ?? false,
           });
         }
@@ -390,7 +393,7 @@ function parseBatchPRResponse(data: any, candidates: PRCheckCandidate[]): Map<st
           foundPR = {
             number: pr.number,
             url: pr.url,
-            state: pr.merged ? "merged" : ((pr.state?.toLowerCase() as "open" | "closed") || "open"),
+            state: pr.merged ? "merged" : (pr.state?.toLowerCase() as "open" | "closed") || "open",
             isDraft: pr.isDraft ?? false,
           };
         }
