@@ -155,6 +155,8 @@ export interface CopyTreeProgress {
   totalFiles?: number;
   /** Current file being processed (if known) */
   currentFile?: string;
+  /** Optional trace ID to track event chains */
+  traceId?: string;
 }
 
 // PR detection types

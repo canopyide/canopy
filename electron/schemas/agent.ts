@@ -27,6 +27,7 @@ export const AgentSpawnedSchema = z.object({
   type: TerminalTypeSchema,
   worktreeId: z.string().optional(),
   timestamp: z.number().int().positive(),
+  traceId: z.string().optional(),
 });
 
 /**
@@ -38,6 +39,7 @@ export const AgentStateChangedSchema = z.object({
   state: AgentStateSchema,
   previousState: AgentStateSchema,
   timestamp: z.number().int().positive(),
+  traceId: z.string().optional(),
 });
 
 /**
@@ -48,6 +50,7 @@ export const AgentOutputSchema = z.object({
   agentId: z.string().min(1),
   data: z.string().min(1), // Require non-empty output
   timestamp: z.number().int().positive(),
+  traceId: z.string().optional(),
 });
 
 /**
@@ -59,6 +62,7 @@ export const AgentCompletedSchema = z.object({
   exitCode: z.number().int(),
   duration: z.number().int().nonnegative(),
   timestamp: z.number().int().positive(),
+  traceId: z.string().optional(),
 });
 
 /**
@@ -69,6 +73,7 @@ export const AgentFailedSchema = z.object({
   agentId: z.string().min(1),
   error: z.string().trim().min(1), // Require non-empty error message
   timestamp: z.number().int().positive(),
+  traceId: z.string().optional(),
 });
 
 /**
@@ -79,6 +84,7 @@ export const AgentKilledSchema = z.object({
   agentId: z.string().min(1),
   reason: z.string().optional(),
   timestamp: z.number().int().positive(),
+  traceId: z.string().optional(),
 });
 
 /**

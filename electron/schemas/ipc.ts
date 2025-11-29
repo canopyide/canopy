@@ -129,6 +129,7 @@ export const CopyTreeProgressSchema = z.object({
   filesProcessed: z.number().int().nonnegative().optional(),
   totalFiles: z.number().int().nonnegative().optional(),
   currentFile: z.string().optional(),
+  traceId: z.string().optional(),
 });
 
 // ============================================================================

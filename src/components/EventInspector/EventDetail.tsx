@@ -147,6 +147,14 @@ export function EventDetail({ event, className }: EventDetailProps) {
               <span className="text-muted-foreground">Timestamp:</span>
               <span className="font-mono text-xs">{event.timestamp}</span>
             </div>
+            {event.payload?.traceId && (
+              <div className="grid grid-cols-[100px_1fr] gap-2">
+                <span className="text-muted-foreground">Trace ID:</span>
+                <span className="font-mono text-xs truncate" title={event.payload.traceId}>
+                  {event.payload.traceId}
+                </span>
+              </div>
+            )}
           </div>
         )}
       </div>

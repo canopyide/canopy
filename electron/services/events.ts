@@ -14,6 +14,17 @@ export interface ModalContextMap {
   "command-palette": undefined;
 }
 
+/**
+ * Base event payload with optional trace correlation ID.
+ * All events can optionally include a traceId to track event chains.
+ */
+export interface BaseEventPayload {
+  /** UUID to track related events across the system */
+  traceId?: string;
+  /** Unix timestamp in milliseconds when the event occurred */
+  timestamp: number;
+}
+
 // 1. Define Payload Types
 export interface CopyTreePayload {
   rootPath?: string;
@@ -111,6 +122,8 @@ export type CanopyEventMap = {
     worktreeId?: string;
     /** Unix timestamp (ms) when the agent was spawned */
     timestamp: number;
+    /** Optional trace ID to track event chains */
+    traceId?: string;
   };
 
   /**
@@ -122,6 +135,8 @@ export type CanopyEventMap = {
     state: AgentState;
     previousState?: AgentState;
     timestamp: number;
+    /** Optional trace ID to track event chains */
+    traceId?: string;
   };
 
   /**
@@ -134,6 +149,8 @@ export type CanopyEventMap = {
     agentId: string;
     data: string;
     timestamp: number;
+    /** Optional trace ID to track event chains */
+    traceId?: string;
   };
 
   /**
@@ -146,6 +163,8 @@ export type CanopyEventMap = {
     /** Duration in milliseconds */
     duration: number;
     timestamp: number;
+    /** Optional trace ID to track event chains */
+    traceId?: string;
   };
 
   /**
@@ -155,6 +174,8 @@ export type CanopyEventMap = {
     agentId: string;
     error: string;
     timestamp: number;
+    /** Optional trace ID to track event chains */
+    traceId?: string;
   };
 
   /**
@@ -165,6 +186,8 @@ export type CanopyEventMap = {
     /** Optional reason for killing (e.g., 'user-request', 'timeout', 'cleanup') */
     reason?: string;
     timestamp: number;
+    /** Optional trace ID to track event chains */
+    traceId?: string;
   };
 
   // ============================================================================

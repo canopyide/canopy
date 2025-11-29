@@ -432,10 +432,14 @@ export function registerIpcHandlers(
     _event: Electron.IpcMainInvokeEvent,
     payload: CopyTreeGeneratePayload
   ): Promise<CopyTreeResult> => {
+    // Generate trace ID for this operation
+    const traceId = crypto.randomUUID();
+    console.log(`[${traceId}] CopyTree generate started for worktree ${payload.worktreeId}`);
+
     // Validate with Zod schema
     const parseResult = CopyTreeGeneratePayloadSchema.safeParse(payload);
     if (!parseResult.success) {
-      console.error("[IPC] Invalid CopyTree generate payload:", parseResult.error.format());
+      console.error(`[${traceId}] Invalid CopyTree generate payload:`, parseResult.error.format());
       return {
         content: "",
         fileCount: 0,
@@ -465,12 +469,12 @@ export function registerIpcHandlers(
       };
     }
 
-    // Progress callback to send updates to renderer
+    // Progress callback to send updates to renderer with traceId
     const onProgress = (progress: CopyTreeProgress) => {
-      sendToRenderer(mainWindow, CHANNELS.COPYTREE_PROGRESS, progress);
+      sendToRenderer(mainWindow, CHANNELS.COPYTREE_PROGRESS, { ...progress, traceId });
     };
 
-    return copyTreeService.generate(worktree.path, validated.options, onProgress);
+    return copyTreeService.generate(worktree.path, validated.options, onProgress, traceId);
   };
   ipcMain.handle(CHANNELS.COPYTREE_GENERATE, handleCopyTreeGenerate);
   handlers.push(() => ipcMain.removeHandler(CHANNELS.COPYTREE_GENERATE));
@@ -479,10 +483,16 @@ export function registerIpcHandlers(
     _event: Electron.IpcMainInvokeEvent,
     payload: CopyTreeInjectPayload
   ): Promise<CopyTreeResult> => {
+    // Generate trace ID for this injection operation
+    const traceId = crypto.randomUUID();
+    console.log(
+      `[${traceId}] CopyTree inject started for terminal ${payload.terminalId}, worktree ${payload.worktreeId}`
+    );
+
     // Validate with Zod schema
     const parseResult = CopyTreeInjectPayloadSchema.safeParse(payload);
     if (!parseResult.success) {
-      console.error("[IPC] Invalid CopyTree inject payload:", parseResult.error.format());
+      console.error(`[${traceId}] Invalid CopyTree inject payload:`, parseResult.error.format());
       return {
         content: "",
         fileCount: 0,
@@ -534,16 +544,17 @@ export function registerIpcHandlers(
         };
       }
 
-      // Progress callback to send updates to renderer
+      // Progress callback to send updates to renderer with traceId
       const onProgress = (progress: CopyTreeProgress) => {
-        sendToRenderer(mainWindow, CHANNELS.COPYTREE_PROGRESS, progress);
+        sendToRenderer(mainWindow, CHANNELS.COPYTREE_PROGRESS, { ...progress, traceId });
       };
 
       // Generate context with options (format can be specified) and progress reporting
       const result = await copyTreeService.generate(
         worktree.path,
         validated.options || {},
-        onProgress
+        onProgress,
+        traceId
       );
 
       if (result.error) {
@@ -566,13 +577,14 @@ export function registerIpcHandlers(
         }
 
         const chunk = content.slice(i, i + CHUNK_SIZE);
-        ptyManager.write(validated.terminalId, chunk);
+        ptyManager.write(validated.terminalId, chunk, traceId);
         // Small delay to prevent buffer overflow (1ms per chunk)
         if (i + CHUNK_SIZE < content.length) {
           await new Promise((resolve) => setTimeout(resolve, 1));
         }
       }
 
+      console.log(`[${traceId}] CopyTree inject completed successfully`);
       return result;
     } finally {
       // Always remove from in-progress set

@@ -66,6 +66,8 @@ interface TerminalInfo {
    * Keeps last ~2000 chars to handle split packets (busy strings split across chunks).
    */
   outputBuffer: string;
+  /** Optional trace ID for tracking event chains (from context injection, etc.) */
+  traceId?: string;
 }
 
 export interface PtyManagerEvents {
@@ -112,6 +114,7 @@ export class PtyManager extends EventEmitter {
         state: newState,
         previousState,
         timestamp: terminal.lastStateChange,
+        traceId: terminal.traceId,
       };
 
       const validatedStateChange = AgentStateChangedSchema.safeParse(stateChangePayload);
@@ -130,6 +133,7 @@ export class PtyManager extends EventEmitter {
           agentId: terminal.agentId,
           error: event.error,
           timestamp: terminal.lastStateChange,
+          traceId: terminal.traceId,
         };
 
         const validatedFailed = AgentFailedSchema.safeParse(failedPayload);
@@ -237,6 +241,7 @@ export class PtyManager extends EventEmitter {
             agentId,
             data,
             timestamp: Date.now(),
+            traceId: terminal.traceId,
           };
 
           const validatedOutput = AgentOutputSchema.safeParse(outputPayload);
@@ -283,6 +288,7 @@ export class PtyManager extends EventEmitter {
           exitCode: exitCode ?? 0,
           duration,
           timestamp: completedAt,
+          traceId: terminal.traceId,
         };
 
         const validatedCompleted = AgentCompletedSchema.safeParse(completedPayload);
@@ -343,10 +349,17 @@ export class PtyManager extends EventEmitter {
    * Write data to terminal stdin
    * @param id - Terminal identifier
    * @param data - Data to write
+   * @param traceId - Optional trace ID for event correlation
    */
-  write(id: string, data: string): void {
+  write(id: string, data: string, traceId?: string): void {
     const terminal = this.terminals.get(id);
     if (terminal) {
+      // Store traceId if provided, or clear it if explicitly undefined
+      // This ensures each traced operation gets a fresh ID and prevents cross-operation bleed
+      if (traceId !== undefined) {
+        terminal.traceId = traceId || undefined;
+      }
+
       terminal.ptyProcess.write(data);
 
       // For agent terminals in waiting state, track input event
@@ -400,6 +413,7 @@ export class PtyManager extends EventEmitter {
           agentId: terminal.agentId,
           reason,
           timestamp: Date.now(),
+          traceId: terminal.traceId,
         };
 
         const validatedKilled = AgentKilledSchema.safeParse(killedPayload);
@@ -463,6 +477,7 @@ export class PtyManager extends EventEmitter {
             agentId: terminal.agentId,
             reason: "cleanup",
             timestamp: Date.now(),
+            traceId: terminal.traceId,
           };
 
           const validatedKilled = AgentKilledSchema.safeParse(killedPayload);

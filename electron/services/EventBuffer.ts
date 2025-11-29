@@ -25,6 +25,8 @@ export interface FilterOptions {
   agentId?: string;
   /** Filter by task ID if present in payload */
   taskId?: string;
+  /** Filter by trace ID to track event chains */
+  traceId?: string;
   /** Text search in payload (JSON stringified) */
   search?: string;
   /** Filter events after this timestamp (inclusive) */
@@ -182,6 +184,14 @@ export class EventBuffer {
       filtered = filtered.filter((event) => {
         const payload = event.payload;
         return payload && payload.taskId === options.taskId;
+      });
+    }
+
+    // Filter by trace ID
+    if (options.traceId) {
+      filtered = filtered.filter((event) => {
+        const payload = event.payload;
+        return payload && payload.traceId === options.traceId;
       });
     }
 

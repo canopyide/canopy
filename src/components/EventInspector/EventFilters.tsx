@@ -7,26 +7,31 @@
 import { useState, useMemo, useEffect } from "react";
 import { cn } from "@/lib/utils";
 import { Search, X, Filter } from "lucide-react";
-import type { EventRecord } from "@/store/eventStore";
+import type { EventRecord, EventFilterOptions } from "@/store/eventStore";
+
+type FilterSubset = Pick<EventFilterOptions, "types" | "search" | "traceId">;
 
 interface EventFiltersProps {
   events: EventRecord[];
-  filters: {
-    types?: string[];
-    search?: string;
-  };
-  onFiltersChange: (filters: { types?: string[]; search?: string }) => void;
+  filters: FilterSubset;
+  onFiltersChange: (filters: FilterSubset) => void;
   className?: string;
 }
 
 export function EventFilters({ events, filters, onFiltersChange, className }: EventFiltersProps) {
   const [searchInput, setSearchInput] = useState(filters.search || "");
+  const [traceIdInput, setTraceIdInput] = useState(filters.traceId || "");
   const [showTypeFilters, setShowTypeFilters] = useState(false);
 
   // Sync search input with filter changes from external sources
   useEffect(() => {
     setSearchInput(filters.search || "");
   }, [filters.search]);
+
+  // Sync traceId input with filter changes from external sources
+  useEffect(() => {
+    setTraceIdInput(filters.traceId || "");
+  }, [filters.traceId]);
 
   // Get unique event types from all events and compute counts
   const { availableTypes, typeCounts } = useMemo(() => {
@@ -88,6 +93,18 @@ export function EventFilters({ events, filters, onFiltersChange, className }: Ev
     onFiltersChange({ ...filters, search: undefined });
   };
 
+  const handleTraceIdChange = (value: string) => {
+    setTraceIdInput(value);
+    // Normalize: trim whitespace and lowercase for more forgiving matching
+    const normalized = value.trim().toLowerCase();
+    onFiltersChange({ ...filters, traceId: normalized || undefined });
+  };
+
+  const clearTraceId = () => {
+    setTraceIdInput("");
+    onFiltersChange({ ...filters, traceId: undefined });
+  };
+
   const toggleTypeFilter = (type: string) => {
     const currentTypes = filters.types || [];
     const newTypes = currentTypes.includes(type)
@@ -100,7 +117,8 @@ export function EventFilters({ events, filters, onFiltersChange, className }: Ev
     onFiltersChange({ ...filters, types: undefined });
   };
 
-  const activeFilterCount = (filters.types?.length || 0) + (filters.search ? 1 : 0);
+  const activeFilterCount =
+    (filters.types?.length || 0) + (filters.search ? 1 : 0) + (filters.traceId ? 1 : 0);
 
   return (
     <div className={cn("flex-shrink-0 border-b bg-background", className)}>
@@ -128,6 +146,35 @@ export function EventFilters({ events, filters, onFiltersChange, className }: Ev
               <X className="w-4 h-4" />
             </button>
           )}
+        </div>
+
+        {/* Trace ID filter */}
+        <div className="space-y-1">
+          <label className="text-xs text-muted-foreground px-1">
+            Trace ID (correlates related events)
+          </label>
+          <div className="relative">
+            <input
+              type="text"
+              value={traceIdInput}
+              onChange={(e) => handleTraceIdChange(e.target.value)}
+              placeholder="Filter by trace ID..."
+              className={cn(
+                "w-full pl-3 pr-9 py-2 text-sm rounded-md font-mono",
+                "bg-muted/50 border border-transparent",
+                "focus:bg-background focus:border-primary focus:outline-none",
+                "placeholder:text-muted-foreground placeholder:font-sans"
+              )}
+            />
+            {traceIdInput && (
+              <button
+                onClick={clearTraceId}
+                className="absolute right-3 top-1/2 -translate-y-1/2 text-muted-foreground hover:text-foreground"
+              >
+                <X className="w-4 h-4" />
+              </button>
+            )}
+          </div>
         </div>
 
         {/* Filter toggle */}

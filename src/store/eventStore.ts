@@ -21,6 +21,7 @@ export interface EventFilterOptions {
   worktreeId?: string;
   agentId?: string;
   taskId?: string;
+  traceId?: string;
   search?: string;
   after?: number;
   before?: number;
@@ -155,6 +156,15 @@ const createEventsStore: StateCreator<EventsState> = (set, get) => ({
       filtered = filtered.filter((event) => {
         const payload = event.payload;
         return payload && payload.taskId === filters.taskId;
+      });
+    }
+
+    // Filter by trace ID (normalized for case-insensitive matching)
+    if (filters.traceId) {
+      const normalizedFilter = filters.traceId.toLowerCase();
+      filtered = filtered.filter((event) => {
+        const payload = event.payload;
+        return payload && payload.traceId?.toLowerCase() === normalizedFilter;
       });
     }
 

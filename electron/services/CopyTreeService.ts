@@ -31,14 +31,17 @@ class CopyTreeService {
    * @param rootPath - Absolute path to the worktree root
    * @param options - CopyTree options (format, filters, etc.)
    * @param onProgress - Optional callback for progress updates
+   * @param traceId - Optional trace ID for event correlation
    * @returns CopyTreeResult with content, file count, and optional error
    */
   async generate(
     rootPath: string,
     options: CopyTreeOptions = {},
-    onProgress?: ProgressCallback
+    onProgress?: ProgressCallback,
+    traceId?: string
   ): Promise<CopyTreeResult> {
     const opId = crypto.randomUUID();
+    const effectiveTraceId = traceId || opId;
 
     try {
       // Validation
@@ -109,6 +112,7 @@ class CopyTreeService {
                 filesProcessed: event.filesProcessed,
                 totalFiles: event.totalFiles,
                 currentFile: event.currentFile,
+                traceId: effectiveTraceId,
               };
               onProgress(progress);
             }
