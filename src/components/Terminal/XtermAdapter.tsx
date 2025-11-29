@@ -155,6 +155,9 @@ function applyJankFix(terminal: Terminal): () => void {
   };
 }
 
+/** Maximum retries when container has zero dimensions */
+const MAX_ZERO_RETRIES = 10;
+
 export function XtermAdapter({ terminalId, onReady, onExit, className }: XtermAdapterProps) {
   const containerRef = useRef<HTMLDivElement>(null);
   const terminalRef = useRef<Terminal | null>(null);
@@ -162,6 +165,9 @@ export function XtermAdapter({ terminalId, onReady, onExit, className }: XtermAd
   const throttledWriterRef = useRef<ReturnType<typeof createThrottledWriter> | null>(null);
   const jankFixDisposeRef = useRef<(() => void) | null>(null);
   const resizeFrameIdRef = useRef<number | null>(null);
+  const prevDimensionsRef = useRef<{ cols: number; rows: number } | null>(null);
+  const zeroRetryCountRef = useRef<number>(0);
+  const clearScreenTimeoutRef = useRef<number | null>(null);
 
   // Memoize terminal options
   const terminalOptions = useMemo(
@@ -285,6 +291,72 @@ export function XtermAdapter({ terminalId, onReady, onExit, className }: XtermAd
     const { cols, rows } = terminal;
     window.electron.terminal.resize(terminalId, cols, rows);
 
+    // Helper to perform the actual resize check and fit
+    const performResize = () => {
+      if (!containerRef.current) {
+        resizeFrameIdRef.current = null;
+        return;
+      }
+
+      // If dimensions are zero, schedule explicit retry with polling
+      if (containerRef.current.clientWidth === 0 || containerRef.current.clientHeight === 0) {
+        if (zeroRetryCountRef.current < MAX_ZERO_RETRIES) {
+          zeroRetryCountRef.current++;
+          // Schedule explicit dimension check on next frame
+          resizeFrameIdRef.current = requestAnimationFrame(performResize);
+        } else {
+          // Give up after max retries
+          console.warn(`Terminal container has zero dimensions after ${MAX_ZERO_RETRIES} retries`);
+          zeroRetryCountRef.current = 0;
+          resizeFrameIdRef.current = null;
+        }
+        return;
+      }
+
+      // Reset retry count on successful resize
+      zeroRetryCountRef.current = 0;
+
+      if (fitAddonRef.current && terminalRef.current) {
+        try {
+          fitAddonRef.current.fit();
+          const { cols, rows } = terminalRef.current;
+
+          // Clear screen if terminal shrunk (debounced to avoid flicker)
+          if (prevDimensionsRef.current) {
+            const shrunk =
+              cols < prevDimensionsRef.current.cols || rows < prevDimensionsRef.current.rows;
+
+            if (shrunk) {
+              // Clear any pending clear timeout
+              if (clearScreenTimeoutRef.current !== null) {
+                clearTimeout(clearScreenTimeoutRef.current);
+              }
+
+              // Debounce screen clearing to avoid repeated wipes during drag-resize
+              clearScreenTimeoutRef.current = window.setTimeout(() => {
+                if (terminalRef.current) {
+                  // Send ANSI escape sequence to clear screen
+                  // ESC[2J clears screen, ESC[H moves cursor to home
+                  terminalRef.current.write("\x1B[2J\x1B[H");
+                }
+                clearScreenTimeoutRef.current = null;
+              }, 150); // Wait 150ms for resize to settle
+            }
+          }
+
+          // Update previous dimensions
+          prevDimensionsRef.current = { cols, rows };
+
+          // Send resize to backend
+          window.electron.terminal.resize(terminalId, cols, rows);
+        } catch (e) {
+          // Suppress fit errors during rapid resizing
+          console.warn("Terminal fit failed:", e);
+        }
+      }
+      resizeFrameIdRef.current = null;
+    };
+
     // Set up resize handling with ResizeObserver
     const resizeObserver = new ResizeObserver(() => {
       // Cancel any pending resize animation frame
@@ -293,30 +365,7 @@ export function XtermAdapter({ terminalId, onReady, onExit, className }: XtermAd
       }
 
       // Use requestAnimationFrame to debounce rapid resize events
-      resizeFrameIdRef.current = requestAnimationFrame(() => {
-        // Guard against fitting when container has zero dimensions
-        // This prevents xterm crashes during layout thrashing or initial render
-        if (
-          !containerRef.current ||
-          containerRef.current.clientWidth === 0 ||
-          containerRef.current.clientHeight === 0
-        ) {
-          resizeFrameIdRef.current = null;
-          return;
-        }
-
-        if (fitAddonRef.current && terminalRef.current) {
-          try {
-            fitAddonRef.current.fit();
-            const { cols, rows } = terminalRef.current;
-            window.electron.terminal.resize(terminalId, cols, rows);
-          } catch (e) {
-            // Suppress fit errors during rapid resizing
-            console.warn("Terminal fit failed:", e);
-          }
-        }
-        resizeFrameIdRef.current = null;
-      });
+      resizeFrameIdRef.current = requestAnimationFrame(performResize);
     });
     resizeObserver.observe(containerRef.current);
 
@@ -337,6 +386,12 @@ export function XtermAdapter({ terminalId, onReady, onExit, className }: XtermAd
         resizeFrameIdRef.current = null;
       }
 
+      // Clear pending screen clear timeout
+      if (clearScreenTimeoutRef.current !== null) {
+        clearTimeout(clearScreenTimeoutRef.current);
+        clearScreenTimeoutRef.current = null;
+      }
+
       // Dispose jank fix listeners and timers
       if (jankFixDisposeRef.current) {
         jankFixDisposeRef.current();
@@ -350,10 +405,12 @@ export function XtermAdapter({ terminalId, onReady, onExit, className }: XtermAd
       inputDisposable.dispose();
       throttledWriter.dispose();
       terminal.dispose();
-      // Reset refs to allow re-initialization
+      // Reset refs to allow re-initialization (prevents StrictMode issues)
       terminalRef.current = null;
       fitAddonRef.current = null;
       throttledWriterRef.current = null;
+      prevDimensionsRef.current = null;
+      zeroRetryCountRef.current = 0;
     };
   }, [terminalId, terminalOptions, handleResize, onReady, onExit]);
 
