@@ -163,6 +163,44 @@ export interface EventFilterOptions {
   before?: number;
 }
 
+// Agent session and transcript types
+export interface TranscriptEntry {
+  timestamp: number;
+  type: "user" | "agent" | "system";
+  content: string;
+}
+
+export interface Artifact {
+  id: string;
+  type: "code" | "patch" | "file" | "summary" | "other";
+  language?: string;
+  filename?: string;
+  content: string;
+  extractedAt: number;
+}
+
+export interface AgentSession {
+  id: string;
+  agentType: "claude" | "gemini" | "custom";
+  worktreeId?: string;
+  startTime: number;
+  endTime?: number;
+  state: "active" | "completed" | "failed";
+  transcript: TranscriptEntry[];
+  artifacts: Artifact[];
+  metadata: {
+    terminalId: string;
+    cwd: string;
+    exitCode?: number;
+  };
+}
+
+export interface HistoryGetSessionsPayload {
+  worktreeId?: string;
+  agentType?: "claude" | "gemini" | "custom";
+  limit?: number;
+}
+
 // Error types for IPC
 type ErrorType = "git" | "process" | "filesystem" | "network" | "config" | "unknown";
 type RetryAction = "copytree" | "devserver" | "terminal" | "git" | "worktree";
@@ -276,6 +314,13 @@ export interface ElectronAPI {
     switch(projectId: string): Promise<Project>;
     openDialog(): Promise<string | null>;
     onSwitch(callback: (project: Project) => void): () => void;
+  };
+
+  history: {
+    getSessions(filters?: HistoryGetSessionsPayload): Promise<AgentSession[]>;
+    getSession(sessionId: string): Promise<AgentSession | null>;
+    exportSession(sessionId: string, format: "json" | "markdown"): Promise<string | null>;
+    deleteSession(sessionId: string): Promise<void>;
   };
 }
 

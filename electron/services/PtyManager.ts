@@ -120,7 +120,8 @@ export class PtyManager extends EventEmitter {
     const args = options.args || this.getDefaultShellArgs(shell);
 
     const spawnedAt = Date.now();
-    const isAgentTerminal = options.type === "claude" || options.type === "gemini";
+    const isAgentTerminal =
+      options.type === "claude" || options.type === "gemini" || options.type === "custom";
     // For agent terminals, use terminal ID as agent ID
     const agentId = isAgentTerminal ? id : undefined;
 
@@ -156,6 +157,15 @@ export class PtyManager extends EventEmitter {
       if (isAgentTerminal) {
         // Check for prompt detection and update state accordingly
         this.updateAgentState(id, { type: "output", data });
+
+        // Emit agent:output event for transcript capture
+        if (agentId) {
+          events.emit("agent:output", {
+            agentId,
+            data,
+            timestamp: Date.now(),
+          });
+        }
       }
     });
 
@@ -175,8 +185,9 @@ export class PtyManager extends EventEmitter {
         this.updateAgentState(id, { type: "exit", code: exitCode ?? 0 });
       }
 
-      // Emit agent:completed event for agent terminals (but not if explicitly killed)
-      if (isAgentTerminal && agentId && !terminal.wasKilled) {
+      // Emit agent:completed event for agent terminals (but not if explicitly killed or already failed)
+      // Only emit completed if the agent didn't fail (agentState !== "failed")
+      if (isAgentTerminal && agentId && !terminal.wasKilled && terminal.agentState !== "failed") {
         const completedAt = Date.now();
         const duration = completedAt - spawnedAt;
         events.emit("agent:completed", {

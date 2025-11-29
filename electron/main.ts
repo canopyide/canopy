@@ -15,6 +15,7 @@ import { events, ALL_EVENT_TYPES } from "./services/events.js";
 import { CHANNELS } from "./ipc/channels.js";
 import { createApplicationMenu } from "./menu.js";
 import { projectStore } from "./services/ProjectStore.js";
+import { getTranscriptManager, disposeTranscriptManager } from "./services/TranscriptManager.js";
 
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
@@ -92,6 +93,13 @@ async function createWindow(): Promise<void> {
   await projectStore.initialize();
   await projectStore.migrateFromRecentDirectories();
   console.log("[MAIN] ProjectStore initialized successfully");
+
+  // --- TRANSCRIPT MANAGER SETUP ---
+  // Initialize TranscriptManager for agent session capture
+  console.log("[MAIN] Initializing TranscriptManager...");
+  const transcriptManager = getTranscriptManager();
+  await transcriptManager.initialize();
+  console.log("[MAIN] TranscriptManager initialized successfully");
 
   // --- EVENT BUFFER SETUP ---
   // Create and start EventBuffer to capture all events
@@ -231,6 +239,8 @@ async function createWindow(): Promise<void> {
       await devServerManager.stopAll();
       devServerManager = null;
     }
+    // Cleanup transcript manager
+    await disposeTranscriptManager();
     // Then cleanup PTY manager (kills all terminals)
     if (ptyManager) {
       ptyManager.dispose();
@@ -277,6 +287,7 @@ app.on("before-quit", (event) => {
   Promise.all([
     worktreeService.stopAll(),
     devServerManager ? devServerManager.stopAll() : Promise.resolve(),
+    disposeTranscriptManager(),
     new Promise<void>((resolve) => {
       if (ptyManager) {
         ptyManager.dispose();

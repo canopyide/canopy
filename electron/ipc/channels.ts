@@ -92,6 +92,12 @@ export const CHANNELS = {
   PROJECT_SWITCH: "project:switch",
   PROJECT_OPEN_DIALOG: "project:open-dialog",
   PROJECT_ON_SWITCH: "project:on-switch",
+
+  // History channels (agent transcripts & artifacts)
+  HISTORY_GET_SESSIONS: "history:get-sessions",
+  HISTORY_GET_SESSION: "history:get-session",
+  HISTORY_EXPORT_SESSION: "history:export-session",
+  HISTORY_DELETE_SESSION: "history:delete-session",
 } as const;
 
 export type ChannelName = (typeof CHANNELS)[keyof typeof CHANNELS];

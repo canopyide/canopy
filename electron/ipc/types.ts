@@ -16,6 +16,12 @@ export interface TerminalSpawnOptions {
   command?: string;
   /** Environment variables to set for the terminal */
   env?: Record<string, string>;
+  /** Terminal type (for agent classification) */
+  type?: "shell" | "claude" | "gemini" | "custom";
+  /** Display title for the terminal */
+  title?: string;
+  /** Associated worktree ID (if applicable) */
+  worktreeId?: string;
 }
 
 export interface TerminalDataPayload {
@@ -219,4 +225,55 @@ export interface DirectoryOpenPayload {
 
 export interface DirectoryRemoveRecentPayload {
   path: string;
+}
+
+// ============================================================================
+// Agent Session & Transcript Types
+// ============================================================================
+
+export interface TranscriptEntry {
+  timestamp: number;
+  type: "user" | "agent" | "system";
+  content: string;
+}
+
+export interface Artifact {
+  id: string;
+  type: "code" | "patch" | "file" | "summary" | "other";
+  language?: string; // For code blocks
+  filename?: string; // Detected or suggested filename
+  content: string;
+  extractedAt: number;
+}
+
+export interface AgentSession {
+  id: string;
+  agentType: "claude" | "gemini" | "custom";
+  worktreeId?: string;
+  startTime: number;
+  endTime?: number;
+  state: "active" | "completed" | "failed";
+  transcript: TranscriptEntry[];
+  artifacts: Artifact[];
+  metadata: {
+    terminalId: string;
+    cwd: string;
+    exitCode?: number;
+  };
+}
+
+// History operation payloads
+export interface HistoryGetSessionsPayload {
+  worktreeId?: string;
+  agentType?: "claude" | "gemini" | "custom";
+  limit?: number;
+}
+
+export interface HistoryGetSessionPayload {
+  sessionId: string;
+}
+
+export interface HistoryExportSessionPayload {
+  sessionId: string;
+  format: "json" | "markdown";
 }

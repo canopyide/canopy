@@ -104,6 +104,12 @@ const CHANNELS = {
   PROJECT_SWITCH: "project:switch",
   PROJECT_OPEN_DIALOG: "project:open-dialog",
   PROJECT_ON_SWITCH: "project:on-switch",
+
+  // History channels (agent transcripts & artifacts)
+  HISTORY_GET_SESSIONS: "history:get-sessions",
+  HISTORY_GET_SESSION: "history:get-session",
+  HISTORY_EXPORT_SESSION: "history:export-session",
+  HISTORY_DELETE_SESSION: "history:delete-session",
 } as const;
 
 // Inlined types (must match electron/ipc/types.ts)
@@ -316,6 +322,44 @@ interface Project {
   color?: string;
 }
 
+// Agent session and transcript types
+interface TranscriptEntry {
+  timestamp: number;
+  type: "user" | "agent" | "system";
+  content: string;
+}
+
+interface Artifact {
+  id: string;
+  type: "code" | "patch" | "file" | "summary" | "other";
+  language?: string;
+  filename?: string;
+  content: string;
+  extractedAt: number;
+}
+
+interface AgentSession {
+  id: string;
+  agentType: "claude" | "gemini" | "custom";
+  worktreeId?: string;
+  startTime: number;
+  endTime?: number;
+  state: "active" | "completed" | "failed";
+  transcript: TranscriptEntry[];
+  artifacts: Artifact[];
+  metadata: {
+    terminalId: string;
+    cwd: string;
+    exitCode?: number;
+  };
+}
+
+interface HistoryGetSessionsPayload {
+  worktreeId?: string;
+  agentType?: "claude" | "gemini" | "custom";
+  limit?: number;
+}
+
 // Error types for IPC
 type ErrorType = "git" | "process" | "filesystem" | "network" | "config" | "unknown";
 type RetryAction = "copytree" | "devserver" | "terminal" | "git" | "worktree";
@@ -429,6 +473,12 @@ export interface ElectronAPI {
     switch(projectId: string): Promise<Project>;
     openDialog(): Promise<string | null>;
     onSwitch(callback: (project: Project) => void): () => void;
+  };
+  history: {
+    getSessions(filters?: HistoryGetSessionsPayload): Promise<AgentSession[]>;
+    getSession(sessionId: string): Promise<AgentSession | null>;
+    exportSession(sessionId: string, format: "json" | "markdown"): Promise<string | null>;
+    deleteSession(sessionId: string): Promise<void>;
   };
 }
 
@@ -699,6 +749,23 @@ const api: ElectronAPI = {
       ipcRenderer.on(CHANNELS.PROJECT_ON_SWITCH, handler);
       return () => ipcRenderer.removeListener(CHANNELS.PROJECT_ON_SWITCH, handler);
     },
+  },
+
+  // ==========================================
+  // History API (Agent Transcripts & Artifacts)
+  // ==========================================
+  history: {
+    getSessions: (filters?: HistoryGetSessionsPayload): Promise<AgentSession[]> =>
+      ipcRenderer.invoke(CHANNELS.HISTORY_GET_SESSIONS, filters),
+
+    getSession: (sessionId: string): Promise<AgentSession | null> =>
+      ipcRenderer.invoke(CHANNELS.HISTORY_GET_SESSION, { sessionId }),
+
+    exportSession: (sessionId: string, format: "json" | "markdown"): Promise<string | null> =>
+      ipcRenderer.invoke(CHANNELS.HISTORY_EXPORT_SESSION, { sessionId, format }),
+
+    deleteSession: (sessionId: string): Promise<void> =>
+      ipcRenderer.invoke(CHANNELS.HISTORY_DELETE_SESSION, sessionId),
   },
 };
 
