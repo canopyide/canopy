@@ -36,6 +36,7 @@ import { updateRecentDirectories, removeRecentDirectory } from "../utils/recentD
 import { join } from "path";
 import { homedir } from "os";
 import type { EventBuffer, FilterOptions as EventFilterOptions } from "../services/EventBuffer.js";
+import { events } from "../services/events.js";
 
 /**
  * Initialize all IPC handlers
@@ -84,6 +85,16 @@ export function registerIpcHandlers(
   };
   ptyManager.on("error", handlePtyError);
   handlers.push(() => ptyManager.off("error", handlePtyError));
+
+  // ==========================================
+  // Agent State Event Forwarding
+  // ==========================================
+
+  // Forward agent state changes to renderer
+  const unsubAgentState = events.on("agent:state-changed", (payload) => {
+    sendToRenderer(mainWindow, CHANNELS.AGENT_STATE_CHANGED, payload);
+  });
+  handlers.push(unsubAgentState);
 
   // ==========================================
   // Worktree Handlers

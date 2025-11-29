@@ -44,6 +44,10 @@ const CHANNELS = {
   TERMINAL_EXIT: "terminal:exit",
   TERMINAL_ERROR: "terminal:error",
 
+  // Agent state channels
+  AGENT_STATE_CHANGED: "agent:state-changed",
+  AGENT_GET_STATE: "agent:get-state",
+
   // CopyTree channels
   COPYTREE_GENERATE: "copytree:generate",
   COPYTREE_INJECT: "copytree:inject",
@@ -338,6 +342,14 @@ export interface ElectronAPI {
     kill(id: string): Promise<void>;
     onData(id: string, callback: (data: string) => void): () => void;
     onExit(callback: (id: string, exitCode: number) => void): () => void;
+    onAgentStateChanged(
+      callback: (data: {
+        agentId: string;
+        state: string;
+        previousState?: string;
+        timestamp: number;
+      }) => void
+    ): () => void;
   };
   copyTree: {
     generate(worktreeId: string, options?: CopyTreeOptions): Promise<CopyTreeResult>;
@@ -481,6 +493,30 @@ const api: ElectronAPI = {
       };
       ipcRenderer.on(CHANNELS.TERMINAL_EXIT, handler);
       return () => ipcRenderer.removeListener(CHANNELS.TERMINAL_EXIT, handler);
+    },
+
+    onAgentStateChanged: (
+      callback: (data: {
+        agentId: string;
+        state: string;
+        previousState?: string;
+        timestamp: number;
+      }) => void
+    ) => {
+      const handler = (_event: Electron.IpcRendererEvent, data: unknown) => {
+        // Type guard
+        if (
+          typeof data === "object" &&
+          data !== null &&
+          "agentId" in data &&
+          "state" in data &&
+          "timestamp" in data
+        ) {
+          callback(data as any);
+        }
+      };
+      ipcRenderer.on(CHANNELS.AGENT_STATE_CHANGED, handler);
+      return () => ipcRenderer.removeListener(CHANNELS.AGENT_STATE_CHANGED, handler);
     },
   },
 

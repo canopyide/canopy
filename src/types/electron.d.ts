@@ -187,6 +187,14 @@ export interface ElectronAPI {
     kill(id: string): Promise<void>;
     onData(id: string, callback: (data: string) => void): () => void;
     onExit(callback: (id: string, exitCode: number) => void): () => void;
+    onAgentStateChanged(
+      callback: (data: {
+        agentId: string;
+        state: string;
+        previousState?: string;
+        timestamp: number;
+      }) => void
+    ): () => void;
   };
   copyTree: {
     generate(worktreeId: string, options?: CopyTreeOptions): Promise<CopyTreeResult>;
