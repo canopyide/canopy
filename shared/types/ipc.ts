@@ -599,6 +599,7 @@ export interface ElectronAPI {
     openPath(path: string): Promise<void>;
     getConfig(): Promise<CanopyConfig>;
     checkCommand(command: string): Promise<boolean>;
+    getHomeDir(): Promise<string>;
   };
   app: {
     getState(): Promise<AppState>;

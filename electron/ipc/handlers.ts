@@ -1054,6 +1054,12 @@ export function registerIpcHandlers(
   ipcMain.handle(CHANNELS.SYSTEM_CHECK_COMMAND, handleSystemCheckCommand);
   handlers.push(() => ipcMain.removeHandler(CHANNELS.SYSTEM_CHECK_COMMAND));
 
+  const handleSystemGetHomeDir = async () => {
+    return os.homedir();
+  };
+  ipcMain.handle(CHANNELS.SYSTEM_GET_HOME_DIR, handleSystemGetHomeDir);
+  handlers.push(() => ipcMain.removeHandler(CHANNELS.SYSTEM_GET_HOME_DIR));
+
   // ==========================================
   // App State Handlers
   // ==========================================

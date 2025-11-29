@@ -1,4 +1,5 @@
 import { useCallback, useState, useEffect, useMemo } from "react";
+import { useShallow } from "zustand/react/shallow";
 import type { WorktreeState, WorktreeMood } from "../../types";
 import { ActivityLight } from "./ActivityLight";
 import { AgentStatusIndicator } from "./AgentStatusIndicator";
@@ -50,6 +51,8 @@ export interface WorktreeCardProps {
   onCreateRecipe?: () => void;
   /** Called when user wants to open Settings dialog with optional tab */
   onOpenSettings?: (tab?: "ai" | "general" | "troubleshooting") => void;
+  /** User's home directory for path formatting */
+  homeDir?: string;
 }
 
 const MOOD_ACCENT_COLORS: Record<WorktreeMood, string> = {
@@ -82,8 +85,8 @@ function parseNoteWithLinks(text: string): Array<{ type: "text" | "link"; conten
   return segments;
 }
 
-function formatPath(targetPath: string): string {
-  const home = process.env.HOME || "";
+function formatPath(targetPath: string, homeDir?: string): string {
+  const home = homeDir || "";
   if (home && targetPath.startsWith(home)) {
     return targetPath.replace(home, "~");
   }
@@ -106,6 +109,7 @@ export function WorktreeCard({
   isInjecting = false,
   onCreateRecipe,
   onOpenSettings,
+  homeDir,
 }: WorktreeCardProps) {
   const mood = worktree.mood || "stable";
   const moodColorClass = MOOD_ACCENT_COLORS[mood];
@@ -148,8 +152,10 @@ export function WorktreeCard({
   });
 
   // Get errors for this worktree - subscribe to store changes
-  const worktreeErrors = useErrorStore((state) =>
-    state.errors.filter((e) => e.context?.worktreeId === worktree.id && !e.dismissed)
+  const worktreeErrors = useErrorStore(
+    useShallow((state) =>
+      state.errors.filter((e) => e.context?.worktreeId === worktree.id && !e.dismissed)
+    )
   );
   const dismissError = useErrorStore((state) => state.dismissError);
   const removeError = useErrorStore((state) => state.removeError);
@@ -278,7 +284,7 @@ export function WorktreeCard({
     });
   }, [totalTerminalCount, bulkCloseByWorktree, worktree.id, closeConfirmDialog]);
 
-  const displayPath = formatPath(worktree.path);
+  const displayPath = formatPath(worktree.path, homeDir);
   const branchLabel = worktree.branch ?? worktree.name;
   const hasChanges = (worktree.worktreeChanges?.changedFileCount ?? 0) > 0;
 

@@ -51,6 +51,15 @@ function SidebarContent({ onOpenSettings }: SidebarContentProps) {
   // New worktree dialog state
   const [isNewWorktreeDialogOpen, setIsNewWorktreeDialogOpen] = useState(false);
 
+  // Home directory for path formatting
+  const [homeDir, setHomeDir] = useState<string | undefined>(undefined);
+
+  useEffect(() => {
+    if (window.electron?.system?.getHomeDir) {
+      window.electron.system.getHomeDir().then(setHomeDir).catch(console.error);
+    }
+  }, []);
+
   // Set first worktree as active by default
   useEffect(() => {
     if (worktrees.length > 0 && !activeWorktreeId) {
@@ -263,6 +272,7 @@ function SidebarContent({ onOpenSettings }: SidebarContentProps) {
             isInjecting={isInjecting}
             onCreateRecipe={() => handleCreateRecipe(worktree.id)}
             onOpenSettings={onOpenSettings}
+            homeDir={homeDir}
           />
         ))}
       </div>

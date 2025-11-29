@@ -58,6 +58,7 @@ export const CHANNELS = {
   SYSTEM_OPEN_PATH: "system:open-path",
   SYSTEM_GET_CONFIG: "system:get-config",
   SYSTEM_CHECK_COMMAND: "system:check-command",
+  SYSTEM_GET_HOME_DIR: "system:get-home-dir",
 
   // PR detection channels
   PR_DETECTED: "pr:detected",

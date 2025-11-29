@@ -112,6 +112,7 @@ const CHANNELS = {
   SYSTEM_OPEN_PATH: "system:open-path",
   SYSTEM_GET_CONFIG: "system:get-config",
   SYSTEM_CHECK_COMMAND: "system:check-command",
+  SYSTEM_GET_HOME_DIR: "system:get-home-dir",
 
   // PR detection channels
   PR_DETECTED: "pr:detected",
@@ -417,6 +418,8 @@ const api: ElectronAPI = {
     getConfig: () => ipcRenderer.invoke(CHANNELS.SYSTEM_GET_CONFIG),
 
     checkCommand: (command: string) => ipcRenderer.invoke(CHANNELS.SYSTEM_CHECK_COMMAND, command),
+
+    getHomeDir: () => ipcRenderer.invoke(CHANNELS.SYSTEM_GET_HOME_DIR),
   },
 
   // ==========================================
