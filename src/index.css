@@ -218,6 +218,16 @@ body,
     transform: none;
     will-change: auto;
   }
+
+  /* Disable button scale transforms for reduced motion */
+  button,
+  [role="button"],
+  [type="button"],
+  [type="submit"],
+  [type="reset"] {
+    transform: none !important;
+    transition: none !important;
+  }
 }
 
 /* --- Electron Window Controls --- */
