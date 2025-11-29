@@ -187,7 +187,7 @@ export class PtyManager extends EventEmitter {
         } else {
           // No busy pattern - check if recent output looks like a prompt (waiting for input)
           // Use the buffer (not just current chunk) to handle colored/split prompts
-          const isPrompt = detectPrompt(recentSlice, options.type);
+          const isPrompt = detectPrompt(recentSlice, { type: options.type });
           if (isPrompt) {
             this.updateAgentState(id, { type: "prompt" });
           } else {
