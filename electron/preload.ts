@@ -26,6 +26,7 @@ import type {
   CopyTreeOptions,
   CopyTreeResult,
   CopyTreeProgress,
+  FileTreeNode,
   AppState,
   LogEntry,
   LogFilterOptions,
@@ -89,6 +90,7 @@ const CHANNELS = {
   COPYTREE_AVAILABLE: "copytree:available",
   COPYTREE_PROGRESS: "copytree:progress",
   COPYTREE_CANCEL: "copytree:cancel",
+  COPYTREE_GET_FILE_TREE: "copytree:get-file-tree",
 
   // System channels
   SYSTEM_OPEN_EXTERNAL: "system:open-external",
@@ -307,6 +309,9 @@ const api: ElectronAPI = {
     isAvailable: (): Promise<boolean> => ipcRenderer.invoke(CHANNELS.COPYTREE_AVAILABLE),
 
     cancel: (): Promise<void> => ipcRenderer.invoke(CHANNELS.COPYTREE_CANCEL),
+
+    getFileTree: (worktreeId: string, dirPath?: string): Promise<FileTreeNode[]> =>
+      ipcRenderer.invoke(CHANNELS.COPYTREE_GET_FILE_TREE, { worktreeId, dirPath }),
 
     onProgress: (callback: (progress: CopyTreeProgress) => void) => {
       const handler = (_event: Electron.IpcRendererEvent, progress: CopyTreeProgress) =>

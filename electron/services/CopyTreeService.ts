@@ -68,7 +68,8 @@ class CopyTreeService {
       this.activeOperations.set(opId, controller);
 
       // Create isolated configuration for concurrent operations
-      const config = await ConfigManager.create();
+      // Pass cwd to ensure gitignore and config are read from the worktree root
+      const config = await ConfigManager.create({ cwd: rootPath });
 
       // Map IPC options to SDK options
       const sdkOptions: SdkCopyOptions = {
@@ -82,7 +83,9 @@ class CopyTreeService {
         format: options.format || "xml",
 
         // Filtering
-        filter: options.filter,
+        // If includePaths is provided, use it as the filter (replaces any existing filter)
+        // Otherwise, use the filter option as-is
+        filter: options.includePaths || options.filter,
         exclude: options.exclude,
         always: options.always,
 

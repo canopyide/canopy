@@ -104,6 +104,9 @@ export interface CopyTreeOptions {
   exclude?: string | string[];
   always?: string[];
 
+  /** Explicit file/folder paths to include (used by file picker modal) */
+  includePaths?: string[];
+
   /** Git filtering */
   modified?: boolean;
   changed?: string;
@@ -157,6 +160,25 @@ export interface CopyTreeProgress {
   currentFile?: string;
   /** Optional trace ID to track event chains */
   traceId?: string;
+}
+
+export interface CopyTreeGetFileTreePayload {
+  worktreeId: string;
+  /** Optional directory path relative to worktree root (defaults to root) */
+  dirPath?: string;
+}
+
+export interface FileTreeNode {
+  /** File/folder name */
+  name: string;
+  /** Relative path from worktree root */
+  path: string;
+  /** Whether this is a directory */
+  isDirectory: boolean;
+  /** File size in bytes (directories have size 0) */
+  size?: number;
+  /** Children (only populated for directories if expanded) */
+  children?: FileTreeNode[];
 }
 
 // PR detection types

@@ -21,8 +21,10 @@ import type {
   DevServerTogglePayload,
   CopyTreeGeneratePayload,
   CopyTreeInjectPayload,
+  CopyTreeGetFileTreePayload,
   CopyTreeResult,
   CopyTreeProgress,
+  FileTreeNode,
   SystemOpenExternalPayload,
   SystemOpenPathPayload,
   WorktreeSetActivePayload,
@@ -38,6 +40,7 @@ import {
   DevServerTogglePayloadSchema,
   CopyTreeGeneratePayloadSchema,
   CopyTreeInjectPayloadSchema,
+  CopyTreeGetFileTreePayloadSchema,
 } from "../schemas/ipc.js";
 import { copyTreeService } from "../services/CopyTreeService.js";
 import { store } from "../store.js";
@@ -605,6 +608,41 @@ export function registerIpcHandlers(
   };
   ipcMain.handle(CHANNELS.COPYTREE_CANCEL, handleCopyTreeCancel);
   handlers.push(() => ipcMain.removeHandler(CHANNELS.COPYTREE_CANCEL));
+
+  const handleCopyTreeGetFileTree = async (
+    _event: Electron.IpcMainInvokeEvent,
+    payload: CopyTreeGetFileTreePayload
+  ): Promise<FileTreeNode[]> => {
+    // Use safeParse for better error handling
+    const parseResult = CopyTreeGetFileTreePayloadSchema.safeParse(payload);
+    if (!parseResult.success) {
+      throw new Error(`Invalid file tree request: ${parseResult.error.message}`);
+    }
+
+    const validated = parseResult.data;
+
+    // Validate dirPath is relative (no absolute paths or excessive ..)
+    if (validated.dirPath) {
+      if (path.isAbsolute(validated.dirPath)) {
+        throw new Error("dirPath must be a relative path");
+      }
+      // Normalize and check for path traversal attempts
+      const normalized = path.normalize(validated.dirPath);
+      if (normalized.startsWith("..")) {
+        throw new Error("dirPath cannot traverse outside worktree root");
+      }
+    }
+
+    const worktree = worktreeService.getWorktreeById(validated.worktreeId);
+    if (!worktree) {
+      throw new Error(`Worktree not found: ${validated.worktreeId}`);
+    }
+
+    const { getFileTree } = await import("../utils/fileTree.js");
+    return getFileTree(worktree.path, validated.dirPath);
+  };
+  ipcMain.handle(CHANNELS.COPYTREE_GET_FILE_TREE, handleCopyTreeGetFileTree);
+  handlers.push(() => ipcMain.removeHandler(CHANNELS.COPYTREE_GET_FILE_TREE));
 
   // ==========================================
   // System Handlers

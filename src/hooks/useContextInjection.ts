@@ -61,7 +61,7 @@ export interface CopyTreeProgress {
 
 export interface UseContextInjectionReturn {
   /** Inject context from a worktree into a terminal */
-  inject: (worktreeId: string, terminalId?: string) => Promise<void>;
+  inject: (worktreeId: string, terminalId?: string, selectedPaths?: string[]) => Promise<void>;
   /** Cancel the current injection operation */
   cancel: () => void;
   /** Whether an injection is currently in progress */
@@ -113,7 +113,7 @@ export function useContextInjection(): UseContextInjectionReturn {
   }, []);
 
   const inject = useCallback(
-    async (worktreeId: string, terminalId?: string) => {
+    async (worktreeId: string, terminalId?: string, selectedPaths?: string[]) => {
       const targetTerminalId = terminalId || focusedId;
 
       if (!targetTerminalId) {
@@ -153,6 +153,12 @@ export function useContextInjection(): UseContextInjectionReturn {
 
         const format = getOptimalFormat(terminal.type);
 
+        // Build options with includePaths if selected paths were provided
+        const options = {
+          format,
+          ...(selectedPaths && selectedPaths.length > 0 ? { includePaths: selectedPaths } : {}),
+        };
+
         // Inject context into terminal with optimal format
         // The injectToTerminal function handles:
         // - Looking up the worktree path from worktreeId
@@ -161,7 +167,7 @@ export function useContextInjection(): UseContextInjectionReturn {
         const result = await window.electron.copyTree.injectToTerminal(
           targetTerminalId,
           worktreeId,
-          { format }
+          options
         );
 
         if (result.error) {
@@ -169,7 +175,13 @@ export function useContextInjection(): UseContextInjectionReturn {
         }
 
         // Log success with format information
-        console.log(`Context injected (${result.fileCount} files as ${format.toUpperCase()})`);
+        const pathInfo =
+          selectedPaths && selectedPaths.length > 0
+            ? ` from ${selectedPaths.length} selected ${selectedPaths.length === 1 ? "path" : "paths"}`
+            : "";
+        console.log(
+          `Context injected (${result.fileCount} files as ${format.toUpperCase()}${pathInfo})`
+        );
       } catch (e) {
         const message = e instanceof Error ? e.message : "Failed to inject context";
         setError(message);

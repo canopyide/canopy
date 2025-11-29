@@ -13,12 +13,13 @@
  * - 7+ terminals: 3+ columns
  */
 
-import { useMemo, useCallback } from "react";
+import { useMemo, useCallback, useState } from "react";
 import { useShallow } from "zustand/react/shallow";
 import { cn } from "@/lib/utils";
 import { useTerminalStore, type TerminalInstance } from "@/store";
 import { useContextInjection } from "@/hooks/useContextInjection";
 import { TerminalPane } from "./TerminalPane";
+import { FilePickerModal } from "@/components/ContextInjection";
 import { Terminal, Plus } from "lucide-react";
 import { Button } from "@/components/ui/button";
 
@@ -63,6 +64,17 @@ export function TerminalGrid({ className, defaultCwd }: TerminalGridProps) {
   // Use context injection hook for progress tracking
   const { inject, cancel, isInjecting, progress } = useContextInjection();
 
+  // File picker modal state
+  const [filePickerState, setFilePickerState] = useState<{
+    isOpen: boolean;
+    worktreeId: string | null;
+    terminalId: string | null;
+  }>({
+    isOpen: false,
+    worktreeId: null,
+    terminalId: null,
+  });
+
   // Calculate grid columns based on terminal count
   // Use a dynamic formula that scales with terminal count
   const gridCols = useMemo(() => {
@@ -81,14 +93,38 @@ export function TerminalGrid({ className, defaultCwd }: TerminalGridProps) {
     await addTerminal({ type: "shell", cwd });
   }, [addTerminal, defaultCwd]);
 
-  // Handle context injection using the hook
-  const handleInjectContext = useCallback(
-    async (terminalId: string, worktreeId?: string) => {
-      if (!worktreeId) return;
-      await inject(worktreeId, terminalId);
+  // Handle context injection - open file picker modal
+  const handleInjectContext = useCallback((terminalId: string, worktreeId?: string) => {
+    if (!worktreeId) return;
+    setFilePickerState({
+      isOpen: true,
+      worktreeId,
+      terminalId,
+    });
+  }, []);
+
+  // Handle file picker confirmation
+  const handleFilePickerConfirm = useCallback(
+    async (selectedPaths: string[]) => {
+      if (!filePickerState.terminalId || !filePickerState.worktreeId) return;
+
+      // Close modal
+      setFilePickerState({ isOpen: false, worktreeId: null, terminalId: null });
+
+      // Inject with selected paths
+      await inject(
+        filePickerState.worktreeId,
+        filePickerState.terminalId,
+        selectedPaths.length > 0 ? selectedPaths : undefined
+      );
     },
-    [inject]
+    [filePickerState, inject]
   );
+
+  // Handle file picker cancel
+  const handleFilePickerCancel = useCallback(() => {
+    setFilePickerState({ isOpen: false, worktreeId: null, terminalId: null });
+  }, []);
 
   // If maximized, only show that terminal
   if (maximizedId) {
@@ -168,6 +204,16 @@ export function TerminalGrid({ className, defaultCwd }: TerminalGridProps) {
           onTitleChange={(newTitle) => updateTitle(terminal.id, newTitle)}
         />
       ))}
+
+      {/* File Picker Modal */}
+      {filePickerState.worktreeId && (
+        <FilePickerModal
+          isOpen={filePickerState.isOpen}
+          worktreeId={filePickerState.worktreeId}
+          onConfirm={handleFilePickerConfirm}
+          onCancel={handleFilePickerCancel}
+        />
+      )}
     </div>
   );
 }

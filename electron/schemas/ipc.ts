@@ -91,6 +91,7 @@ export const CopyTreeOptionsSchema = z
     filter: z.union([z.string(), z.array(z.string())]).optional(),
     exclude: z.union([z.string(), z.array(z.string())]).optional(),
     always: z.array(z.string()).optional(),
+    includePaths: z.array(z.string()).optional(),
     modified: z.boolean().optional(),
     changed: z.string().optional(),
     maxFileSize: z.number().int().positive().optional(),
@@ -130,6 +131,14 @@ export const CopyTreeProgressSchema = z.object({
   totalFiles: z.number().int().nonnegative().optional(),
   currentFile: z.string().optional(),
   traceId: z.string().optional(),
+});
+
+/**
+ * Schema for CopyTree get file tree payload.
+ */
+export const CopyTreeGetFileTreePayloadSchema = z.object({
+  worktreeId: z.string().min(1),
+  dirPath: z.string().optional(),
 });
 
 // ============================================================================
@@ -232,6 +241,7 @@ export type CopyTreeOptions = z.infer<typeof CopyTreeOptionsSchema>;
 export type CopyTreeGeneratePayload = z.infer<typeof CopyTreeGeneratePayloadSchema>;
 export type CopyTreeInjectPayload = z.infer<typeof CopyTreeInjectPayloadSchema>;
 export type CopyTreeProgress = z.infer<typeof CopyTreeProgressSchema>;
+export type CopyTreeGetFileTreePayload = z.infer<typeof CopyTreeGetFileTreePayloadSchema>;
 export type SystemOpenExternalPayload = z.infer<typeof SystemOpenExternalPayloadSchema>;
 export type SystemOpenPathPayload = z.infer<typeof SystemOpenPathPayloadSchema>;
 export type DirectoryOpenPayload = z.infer<typeof DirectoryOpenPayloadSchema>;
