@@ -486,7 +486,9 @@ export function WorktreeCard({
                   : "hover:bg-purple-900 hover:border-purple-500"
               )}
               title="Inject context into focused terminal (Ctrl+Shift+I)"
-              aria-label={isInjecting ? "Injecting context..." : "Inject context into focused terminal"}
+              aria-label={
+                isInjecting ? "Injecting context..." : "Inject context into focused terminal"
+              }
               aria-busy={isInjecting}
             >
               {isInjecting ? <Loader2 size={14} className="animate-spin" /> : <Syringe size={14} />}
@@ -543,10 +545,18 @@ export function WorktreeCard({
                       : "hover:bg-orange-900 hover:border-orange-500"
                   )}
                   title={`Run recipe (${recipes.length} available)`}
-                  aria-label={runningRecipeId ? "Running recipe..." : `Run recipe (${recipes.length} available)`}
+                  aria-label={
+                    runningRecipeId
+                      ? "Running recipe..."
+                      : `Run recipe (${recipes.length} available)`
+                  }
                   aria-busy={runningRecipeId !== null}
                 >
-                  {runningRecipeId ? <Loader2 size={14} className="animate-spin" /> : <Play size={14} />}
+                  {runningRecipeId ? (
+                    <Loader2 size={14} className="animate-spin" />
+                  ) : (
+                    <Play size={14} />
+                  )}
                 </button>
               </DropdownMenuTrigger>
               <DropdownMenuContent onClick={(e) => e.stopPropagation()}>
