@@ -378,9 +378,40 @@ export class PtyManager extends EventEmitter {
    * @param rows - New row count
    */
   resize(id: string, cols: number, rows: number): void {
+    // Validate dimensions - check for finite positive integers
+    if (
+      !Number.isFinite(cols) ||
+      !Number.isFinite(rows) ||
+      cols <= 0 ||
+      rows <= 0 ||
+      cols !== Math.floor(cols) ||
+      rows !== Math.floor(rows)
+    ) {
+      console.warn(`Invalid terminal dimensions for ${id}: ${cols}x${rows}`);
+      return;
+    }
+
     const terminal = this.terminals.get(id);
     if (terminal) {
-      terminal.ptyProcess.resize(cols, rows);
+      try {
+        // Get current dimensions to check for no-op resize
+        const currentCols = terminal.ptyProcess.cols;
+        const currentRows = terminal.ptyProcess.rows;
+
+        // Skip no-op resizes to avoid unnecessary PTY churn
+        if (currentCols === cols && currentRows === rows) {
+          return;
+        }
+
+        terminal.ptyProcess.resize(cols, rows);
+
+        // Optional: Log resize events when verbose logging enabled
+        if (process.env.CANOPY_VERBOSE) {
+          console.log(`Resized terminal ${id} from ${currentCols}x${currentRows} to ${cols}x${rows}`);
+        }
+      } catch (error) {
+        console.error(`Failed to resize terminal ${id}:`, error);
+      }
     } else {
       console.warn(`Terminal ${id} not found, cannot resize`);
     }
