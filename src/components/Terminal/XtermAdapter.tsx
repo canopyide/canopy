@@ -319,7 +319,15 @@ export function XtermAdapter({ terminalId, onReady, onExit, className }: XtermAd
     };
   }, [terminalId, terminalOptions, handleResize, onReady, onExit]);
 
-  return <div ref={containerRef} className={cn("w-full h-full min-h-0", className)} />;
+  return (
+    <div
+      ref={containerRef}
+      className={cn(
+        "w-full h-full min-h-0 pl-2 pt-1", // Minimal padding (left and top)
+        className
+      )}
+    />
+  );
 }
 
 export default XtermAdapter;

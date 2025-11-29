@@ -17,11 +17,11 @@
 
 import { useState, useCallback, useEffect, useRef } from "react";
 import { useShallow } from "zustand/react/shallow";
+import { Terminal, Bot, Sparkles, Command, X, Maximize2, Minimize2, Copy } from "lucide-react";
 import { cn } from "@/lib/utils";
 import { XtermAdapter } from "./XtermAdapter";
 import { ErrorBanner } from "../Errors/ErrorBanner";
 import { useErrorStore, type RetryAction } from "@/store";
-import { ProgressBar } from "../ContextInjection/ProgressBar";
 import type { CopyTreeProgress } from "@/hooks/useContextInjection";
 
 export type TerminalType = "shell" | "claude" | "gemini" | "custom";
@@ -59,12 +59,22 @@ export interface TerminalPaneProps {
   onTitleChange?: (newTitle: string) => void;
 }
 
-const TYPE_ICONS: Record<TerminalType, string> = {
-  shell: "🖥️",
-  claude: "🤖",
-  gemini: "✨",
-  custom: "⚡",
-};
+/**
+ * Get terminal icon based on type - Tiling window manager style with Lucide icons
+ */
+function getTerminalIcon(type: TerminalType, className?: string) {
+  const props = { className: cn("w-3.5 h-3.5", className), "aria-hidden": "true" as const };
+  switch (type) {
+    case "claude":
+      return <Bot {...props} />;
+    case "gemini":
+      return <Sparkles {...props} />;
+    case "custom":
+      return <Command {...props} />;
+    case "shell":
+      return <Terminal {...props} />;
+  }
+}
 
 export function TerminalPane({
   id,
@@ -79,7 +89,7 @@ export function TerminalPane({
   onFocus,
   onClose,
   onInjectContext,
-  onCancelInjection,
+  onCancelInjection: _onCancelInjection, // Unused with minimal progress bar
   onToggleMaximize,
   onTitleChange,
 }: TerminalPaneProps) {
@@ -214,14 +224,12 @@ export function TerminalPane({
     [onFocus]
   );
 
-  const typeIcon = TYPE_ICONS[type];
-
   return (
     <div
       className={cn(
-        "flex flex-col h-full border rounded-lg overflow-hidden",
-        isFocused ? "border-canopy-accent" : "border-canopy-border",
-        isExited && "opacity-75"
+        "flex flex-col h-full border border-canopy-border/50 group", // Tiling style - full border for all edges
+        isFocused ? "border-canopy-accent/50" : "border-canopy-border/30", // Subtle focus indication
+        isExited && "opacity-75 grayscale"
       )}
       onClick={onFocus}
       onFocus={onFocus}
@@ -230,13 +238,20 @@ export function TerminalPane({
       role="group"
       aria-label={`${type} terminal: ${title}`}
     >
-      {/* Header */}
+      {/* Header - Status bar style */}
       <div
-        className="flex items-center justify-between px-3 py-1.5 bg-canopy-sidebar border-b border-canopy-border shrink-0"
+        className={cn(
+          "flex items-center justify-between px-2 h-7 shrink-0 transition-colors", // Fixed low height
+          isFocused ? "bg-canopy-sidebar" : "bg-black/20"
+        )}
         onDoubleClick={onToggleMaximize}
       >
         <div className="flex items-center gap-2 min-w-0">
-          <span className="shrink-0">{typeIcon}</span>
+          <span className={cn("shrink-0 opacity-70", isFocused && "text-canopy-accent")}>
+            {getTerminalIcon(type)}
+          </span>
+
+          {/* Title - Monospace and smaller */}
           {isEditingTitle ? (
             <input
               ref={titleInputRef}
@@ -245,14 +260,14 @@ export function TerminalPane({
               onChange={(e) => setEditingValue(e.target.value)}
               onKeyDown={handleTitleInputKeyDown}
               onBlur={handleTitleSave}
-              className="text-sm font-medium text-canopy-text bg-canopy-bg border border-canopy-accent rounded px-1 py-0.5 min-w-[100px] max-w-[200px] outline-none"
+              className="text-xs font-mono bg-black/40 border border-canopy-accent/50 px-1 h-5 outline-none text-canopy-text"
               aria-label="Edit terminal title"
             />
           ) : (
             <span
               className={cn(
-                "text-sm font-medium text-canopy-text truncate",
-                onTitleChange && "cursor-text hover:text-canopy-accent"
+                "text-xs font-mono text-canopy-text/80 truncate select-none",
+                onTitleChange && "cursor-text hover:text-canopy-text"
               )}
               onDoubleClick={handleTitleDoubleClick}
               onKeyDown={handleTitleKeyDown}
@@ -266,14 +281,21 @@ export function TerminalPane({
               {title}
             </span>
           )}
+
+          {/* Subtle exit code */}
           {isExited && (
-            <span className="text-xs text-gray-500 shrink-0" role="status" aria-live="polite">
-              (exited{exitCode !== null ? `: ${exitCode}` : ""})
+            <span
+              className="text-[10px] font-mono text-red-400/80 ml-1"
+              role="status"
+              aria-live="polite"
+            >
+              [exit {exitCode}]
             </span>
           )}
         </div>
 
-        <div className="flex items-center gap-1 shrink-0">
+        {/* Controls - Ghostty style (minimal, subtle, appear on hover/focus) */}
+        <div className="flex items-center gap-1 opacity-0 group-hover:opacity-100 group-focus-within:opacity-100 transition-opacity">
           {worktreeId && onInjectContext && (
             <button
               onClick={(e) => {
@@ -281,29 +303,32 @@ export function TerminalPane({
                 onInjectContext();
               }}
               className={cn(
-                "p-1 hover:bg-gray-700 rounded transition-colors",
+                "p-1 hover:bg-white/10 focus-visible:bg-white/10 focus-visible:outline focus-visible:outline-2 focus-visible:outline-canopy-accent text-canopy-text/60 hover:text-purple-400 transition-colors",
                 isInjecting && "opacity-50 cursor-not-allowed"
               )}
               title="Inject Context (Ctrl+Shift+I)"
               aria-label="Inject worktree context"
               disabled={isExited || isInjecting}
             >
-              📋
+              <Copy className="w-3 h-3" aria-hidden="true" />
             </button>
           )}
           {onToggleMaximize && (
             <button
               onClick={(e) => {
                 e.stopPropagation();
-                // Focus this terminal before toggling maximize
                 onFocus();
                 onToggleMaximize();
               }}
-              className="p-1 hover:bg-gray-700 rounded text-gray-400 hover:text-canopy-text transition-colors"
+              className="p-1 hover:bg-white/10 focus-visible:bg-white/10 focus-visible:outline focus-visible:outline-2 focus-visible:outline-canopy-accent text-canopy-text/60 hover:text-canopy-text transition-colors"
               title={isMaximized ? "Restore (Ctrl+Shift+F)" : "Maximize (Ctrl+Shift+F)"}
               aria-label={isMaximized ? "Restore terminal" : "Maximize terminal"}
             >
-              {isMaximized ? "⊖" : "⊕"}
+              {isMaximized ? (
+                <Minimize2 className="w-3 h-3" aria-hidden="true" />
+              ) : (
+                <Maximize2 className="w-3 h-3" aria-hidden="true" />
+              )}
             </button>
           )}
           <button
@@ -311,19 +336,22 @@ export function TerminalPane({
               e.stopPropagation();
               onClose();
             }}
-            className="p-1 hover:bg-red-900/50 rounded text-gray-400 hover:text-red-400 transition-colors"
+            className="p-1 hover:bg-red-500/20 focus-visible:bg-red-500/20 focus-visible:outline focus-visible:outline-2 focus-visible:outline-red-400 text-canopy-text/60 hover:text-red-400 transition-colors"
             title="Close Terminal (Ctrl+Shift+W)"
             aria-label="Close terminal"
           >
-            ×
+            <X className="w-3 h-3" aria-hidden="true" />
           </button>
         </div>
       </div>
 
-      {/* Context injection progress */}
+      {/* Context injection progress - minimal style */}
       {isInjecting && injectionProgress && (
-        <div className="px-2 py-1 border-b border-canopy-border bg-canopy-sidebar/50 shrink-0">
-          <ProgressBar progress={injectionProgress} onCancel={onCancelInjection} compact />
+        <div className="h-0.5 w-full bg-canopy-border relative overflow-hidden shrink-0">
+          <div
+            className="absolute top-0 left-0 h-full bg-purple-500 transition-all duration-200"
+            style={{ width: `${injectionProgress.progress * 100}%` }}
+          />
         </div>
       )}
 
@@ -347,8 +375,8 @@ export function TerminalPane({
         </div>
       )}
 
-      {/* Terminal */}
-      <div className="flex-1 relative min-h-0">
+      {/* Terminal Body - Explicit dark bg matches theme */}
+      <div className="flex-1 relative min-h-0 bg-[#09090b]">
         <XtermAdapter
           terminalId={id}
           onReady={handleReady}

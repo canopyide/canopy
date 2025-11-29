@@ -242,7 +242,8 @@ export async function generateWorktreeSummary(
     }
 
     // Tiered context: Tier 1 (top 3-5 files with rich diffs), Tier 2 (next 5-10 with light summaries)
-    const TIER_1_COUNT = scoredFiles.length <= 3 ? scoredFiles.length : Math.min(5, scoredFiles.length);
+    const TIER_1_COUNT =
+      scoredFiles.length <= 3 ? scoredFiles.length : Math.min(5, scoredFiles.length);
     const TIER_2_COUNT = Math.min(10, scoredFiles.length - TIER_1_COUNT);
     const tier1Files = scoredFiles.slice(0, TIER_1_COUNT);
     const tier2Files = scoredFiles.slice(TIER_1_COUNT, TIER_1_COUNT + TIER_2_COUNT);
@@ -300,7 +301,9 @@ export async function generateWorktreeSummary(
           }
 
           const isEmpty = content !== null && content.trim().length === 0;
-          const isLikelyBinary = /\.(png|jpe?g|gif|bmp|svg|ico|webp|heic|avif|bin)$/i.test(file.relPath);
+          const isLikelyBinary = /\.(png|jpe?g|gif|bmp|svg|ico|webp|heic|avif|bin)$/i.test(
+            file.relPath
+          );
 
           if (isEmpty || isLikelyBinary || content === null) {
             mechanicalNewFiles.push(file.relPath);
@@ -309,7 +312,9 @@ export async function generateWorktreeSummary(
 
           const lines = content.split("\n");
           const skeleton = lines
-            .filter((line) => /^(import|export|class|function|interface|type|const|let|var)\s/.test(line.trim()))
+            .filter((line) =>
+              /^(import|export|class|function|interface|type|const|let|var)\s/.test(line.trim())
+            )
             .slice(0, 10)
             .join("\n");
 
@@ -372,7 +377,8 @@ export async function generateWorktreeSummary(
     }
 
     // If only mechanical changes, return mechanical summary
-    const onlyMechanical = mechanicalNewFiles.length > 0 && mechanicalNewFiles.length === modifiedCount;
+    const onlyMechanical =
+      mechanicalNewFiles.length > 0 && mechanicalNewFiles.length === modifiedCount;
     if (onlyMechanical) {
       const target = path.basename(mechanicalNewFiles[0]);
       return {
@@ -429,7 +435,9 @@ Examples:
 
       const text = extractOutputText(response);
       if (!text) {
-        throw new Error(`Worktree summary: empty response from model. Raw: ${formatErrorSnippet(response)}`);
+        throw new Error(
+          `Worktree summary: empty response from model. Raw: ${formatErrorSnippet(response)}`
+        );
       }
 
       // Remove all newlines and carriage returns before parsing
@@ -437,12 +445,16 @@ Examples:
 
       const summary = parseSummaryJSON(cleanedText);
       if (!summary) {
-        throw new Error(`Worktree summary: failed to parse summary. Raw: ${formatErrorSnippet(text)}`);
+        throw new Error(
+          `Worktree summary: failed to parse summary. Raw: ${formatErrorSnippet(text)}`
+        );
       }
 
       const normalized = normalizeSummary(summary);
       if (!normalized) {
-        throw new Error(`Worktree summary: empty normalized summary. Raw: ${formatErrorSnippet(summary)}`);
+        throw new Error(
+          `Worktree summary: empty normalized summary. Raw: ${formatErrorSnippet(summary)}`
+        );
       }
 
       return {

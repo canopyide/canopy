@@ -35,8 +35,14 @@ export function extractOutputText(response: unknown): string | null {
   // 3. Check for output array (responses API)
   if (Array.isArray(resp.output)) {
     for (const item of resp.output) {
-      if (typeof item === "object" && item !== null && Array.isArray((item as Record<string, unknown>).content)) {
-        const result = extractFromContentArray((item as Record<string, unknown>).content as unknown[]);
+      if (
+        typeof item === "object" &&
+        item !== null &&
+        Array.isArray((item as Record<string, unknown>).content)
+      ) {
+        const result = extractFromContentArray(
+          (item as Record<string, unknown>).content as unknown[]
+        );
         if (result) return result;
       }
     }
@@ -100,17 +106,16 @@ export function formatErrorSnippet(raw: unknown): string {
         })();
 
   if (!asString) return "";
-  return asString.length > ERROR_SNIPPET_MAX ? `${asString.slice(0, ERROR_SNIPPET_MAX)}...` : asString;
+  return asString.length > ERROR_SNIPPET_MAX
+    ? `${asString.slice(0, ERROR_SNIPPET_MAX)}...`
+    : asString;
 }
 
 /**
  * Resilient JSON parser that can handle malformed JSON responses.
  * Tries standard JSON.parse first, then falls back to regex extraction.
  */
-export function parseResilientJSON(
-  text: string,
-  targetKey: string
-): string | null {
+export function parseResilientJSON(text: string, targetKey: string): string | null {
   // First try: standard JSON parsing
   try {
     const parsed = JSON.parse(text) as Record<string, unknown>;

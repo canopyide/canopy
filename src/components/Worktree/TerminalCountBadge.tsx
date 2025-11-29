@@ -5,6 +5,7 @@
  * Shows total count or state-specific counts when agent state tracking is available.
  */
 
+import { TerminalSquare } from "lucide-react";
 import type { WorktreeTerminalCounts } from "@/hooks/useWorktreeTerminals";
 import type { AgentState } from "@/types";
 
@@ -55,8 +56,8 @@ export function TerminalCountBadge({ counts }: TerminalCountBadgeProps) {
     counts.byState.failed > 0;
 
   return (
-    <div className="flex items-center gap-1.5 px-2 py-1 text-xs text-gray-400">
-      <span className="opacity-60">📟</span>
+    <div className="flex items-center gap-1.5 px-2 py-1 text-xs text-canopy-text/50 bg-black/20 rounded-sm">
+      <TerminalSquare className="w-3 h-3 opacity-70" aria-hidden="true" />
       {hasNonIdleStates ? (
         <span className="font-mono">{formatStateCounts(counts.byState)}</span>
       ) : (

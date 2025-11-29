@@ -95,7 +95,7 @@ export function TerminalGrid({ className, defaultCwd }: TerminalGridProps) {
     const terminal = terminals.find((t: TerminalInstance) => t.id === maximizedId);
     if (terminal) {
       return (
-        <div className={cn("h-full p-2", className)}>
+        <div className={cn("h-full", className)}>
           <TerminalPane
             id={terminal.id}
             title={terminal.title}
@@ -133,10 +133,13 @@ export function TerminalGrid({ className, defaultCwd }: TerminalGridProps) {
 
   return (
     <div
-      className={cn("h-full p-2 grid gap-2", className)}
+      className={cn("h-full bg-canopy-border", className)} // bg acts as divider lines
       style={{
+        display: "grid",
         gridTemplateColumns: `repeat(${gridCols}, 1fr)`,
         gridAutoRows: "1fr",
+        gap: "1px", // 1px gap reveals bg-canopy-border underneath = clean dividers
+        padding: "0", // No outer padding
       }}
     >
       {terminals.map((terminal: TerminalInstance) => (
