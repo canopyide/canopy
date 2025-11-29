@@ -31,6 +31,40 @@ interface SettingsDialogProps {
 
 type SettingsTab = "general" | "ai" | "troubleshooting";
 
+// Keyboard shortcuts organized by category
+const KEYBOARD_SHORTCUTS = [
+  {
+    category: "Terminal",
+    shortcuts: [
+      { key: "Cmd+T", description: "Open terminal palette" },
+      { key: "Ctrl+Tab", description: "Focus next terminal" },
+      { key: "Ctrl+Shift+Tab", description: "Focus previous terminal" },
+      { key: "Ctrl+Shift+F", description: "Toggle maximize terminal" },
+    ],
+  },
+  {
+    category: "Agents",
+    shortcuts: [
+      { key: "Ctrl+Shift+C", description: "Launch Claude agent" },
+      { key: "Ctrl+Shift+G", description: "Launch Gemini agent" },
+      { key: "Ctrl+Shift+I", description: "Inject context to terminal" },
+    ],
+  },
+  {
+    category: "Panels",
+    shortcuts: [
+      { key: "Ctrl+Shift+L", description: "Toggle logs panel" },
+      { key: "Ctrl+Shift+E", description: "Toggle event inspector" },
+    ],
+  },
+  {
+    category: "Other",
+    shortcuts: [
+      { key: "Cmd+K Z", description: "Toggle focus mode (chord: press Cmd+K, release, then Z)" },
+    ],
+  },
+];
+
 const AI_MODELS = [
   {
     value: "gpt-5-nano",
@@ -40,6 +74,23 @@ const AI_MODELS = [
   { value: "gpt-5-mini", label: "GPT-5 Mini", description: "Balanced speed and capability" },
   { value: "gpt-5.1", label: "GPT-5.1", description: "Most capable flagship model" },
 ];
+
+// Format key for platform-specific display
+const formatKey = (key: string): string => {
+  // Use process.platform from Electron for reliable platform detection
+  const isMac = window.navigator.platform.toUpperCase().indexOf("MAC") >= 0;
+
+  if (isMac) {
+    return key
+      .replace(/Cmd\+/g, "⌘")
+      .replace(/Ctrl\+/g, "⌃")
+      .replace(/Shift\+/g, "⇧")
+      .replace(/Alt\+/g, "⌥");
+  }
+
+  // On Windows/Linux, replace Cmd with Ctrl
+  return key.replace(/Cmd\+/g, "Ctrl+");
+};
 
 export function SettingsDialog({ isOpen, onClose }: SettingsDialogProps) {
   const [activeTab, setActiveTab] = useState<SettingsTab>("general");
@@ -204,6 +255,7 @@ export function SettingsDialog({ isOpen, onClose }: SettingsDialogProps) {
             <button
               onClick={onClose}
               className="text-gray-400 hover:text-canopy-text transition-colors"
+              aria-label="Close settings"
             >
               <X className="h-5 w-5" />
             </button>
@@ -239,6 +291,33 @@ export function SettingsDialog({ isOpen, onClose }: SettingsDialogProps) {
                     A mini IDE for orchestrating AI coding agents. Monitor worktrees, manage
                     terminals, and inject context into Claude, Gemini, and other AI agents.
                   </p>
+                </div>
+
+                <div className="space-y-4">
+                  <h4 className="text-sm font-medium text-canopy-text">Keyboard Shortcuts</h4>
+
+                  {KEYBOARD_SHORTCUTS.map((category) => (
+                    <div key={category.category} className="space-y-2">
+                      <h5 className="text-xs font-medium text-gray-400 uppercase tracking-wide">
+                        {category.category}
+                      </h5>
+                      <dl className="space-y-1">
+                        {category.shortcuts.map((shortcut) => (
+                          <div
+                            key={shortcut.key}
+                            className="flex items-center justify-between text-sm py-1"
+                          >
+                            <dt className="text-gray-300">{shortcut.description}</dt>
+                            <dd>
+                              <kbd className="px-2 py-1 bg-canopy-bg border border-canopy-border rounded text-xs font-mono text-canopy-text">
+                                {formatKey(shortcut.key)}
+                              </kbd>
+                            </dd>
+                          </div>
+                        ))}
+                      </dl>
+                    </div>
+                  ))}
                 </div>
               </div>
             )}
