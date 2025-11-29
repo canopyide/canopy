@@ -1,4 +1,3 @@
-import { EventEmitter } from "events";
 import { createHash } from "crypto";
 import { readFile, stat } from "fs/promises";
 import { join as pathJoin } from "path";
@@ -50,10 +49,11 @@ export interface WorktreeState extends Worktree {
  * - Mood categorization
  * - Activity tracking (traffic light)
  *
- * The monitor emits 'update' events whenever its state changes.
- * React components can subscribe to these updates via the WorktreeService.
+ * The monitor emits 'sys:worktree:update' events via the global TypedEventBus.
+ * React components subscribe to these updates via WorktreeService, which
+ * forwards them to the renderer via IPC.
  */
-export class WorktreeMonitor extends EventEmitter {
+export class WorktreeMonitor {
   public readonly id: string;
   public readonly path: string;
   private name: string;
@@ -89,8 +89,6 @@ export class WorktreeMonitor extends EventEmitter {
   private pendingAISummary: boolean = false; // Tracks if AI summary should run after current generation completes
 
   constructor(worktree: Worktree, mainBranch: string = "main") {
-    super();
-
     this.id = worktree.id;
     this.path = worktree.path;
     this.name = worktree.name;
@@ -204,7 +202,7 @@ export class WorktreeMonitor extends EventEmitter {
 
   /**
    * Stop monitoring this worktree.
-   * Cleans up timers and event listeners.
+   * Cleans up timers. Event bus subscriptions are managed by WorktreeService.
    */
   public async stop(): Promise<void> {
     if (!this.isRunning) {
@@ -221,9 +219,6 @@ export class WorktreeMonitor extends EventEmitter {
       clearTimeout(this.aiUpdateTimer);
       this.aiUpdateTimer = null;
     }
-
-    // Remove all event listeners
-    this.removeAllListeners();
   }
 
   /**
@@ -944,7 +939,8 @@ export class WorktreeMonitor extends EventEmitter {
   }
 
   /**
-   * Emit state update event.
+   * Emit state update event via the global TypedEventBus.
+   * WorktreeService subscribes to this event and forwards to renderer via IPC.
    */
   private emitUpdate(): void {
     const state = this.getState();
@@ -955,7 +951,6 @@ export class WorktreeMonitor extends EventEmitter {
       mood: state.mood,
       stack: new Error().stack?.split("\n").slice(2, 5).join(" <- "),
     });
-    this.emit("update", state);
     events.emit("sys:worktree:update", state);
   }
 }
