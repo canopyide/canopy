@@ -568,7 +568,7 @@ export function registerIpcHandlers(
         if (worktreeService) {
           const worktrees = worktreeService.getAllStates();
           const isValidWorktree = Array.from(worktrees.values()).some(
-            (wt) => path.resolve(wt.worktreePath) === resolvedCwd
+            (wt) => path.resolve(wt.path) === resolvedCwd
           );
           if (!isValidWorktree) {
             return {

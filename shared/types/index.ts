@@ -88,6 +88,12 @@ export type {
   ProjectIdentity,
   // Agent state change
   AgentStateChangePayload,
+  // Artifact types
+  ArtifactDetectedPayload,
+  SaveArtifactOptions,
+  SaveArtifactResult,
+  ApplyPatchOptions,
+  ApplyPatchResult,
   // Electron API
   ElectronAPI,
   BranchInfo,
