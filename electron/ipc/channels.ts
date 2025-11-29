@@ -64,6 +64,7 @@ export const CHANNELS = {
   // App state channels
   APP_GET_STATE: "app:get-state",
   APP_SET_STATE: "app:set-state",
+  APP_GET_VERSION: "app:get-version",
 
   // Directory channels
   DIRECTORY_GET_RECENTS: "directory:get-recents",

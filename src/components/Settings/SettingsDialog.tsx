@@ -46,6 +46,9 @@ export function SettingsDialog({ isOpen, onClose }: SettingsDialogProps) {
   const { openLogs } = useErrors();
   const clearLogs = useLogsStore((state) => state.clearLogs);
 
+  // App version state
+  const [appVersion, setAppVersion] = useState<string>("Loading...");
+
   // AI settings state
   const [aiConfig, setAiConfig] = useState<AIServiceState | null>(null);
   const [apiKey, setApiKey] = useState("");
@@ -55,6 +58,24 @@ export function SettingsDialog({ isOpen, onClose }: SettingsDialogProps) {
     "success" | "error" | "test-success" | "test-error" | null
   >(null);
   const [selectedModel, setSelectedModel] = useState("gpt-5-nano");
+
+  // Load app version on mount
+  useEffect(() => {
+    if (isOpen) {
+      if (window.electron?.app) {
+        window.electron.app
+          .getVersion()
+          .then(setAppVersion)
+          .catch((error) => {
+            console.error("Failed to fetch app version:", error);
+            setAppVersion("Unavailable");
+          });
+      } else {
+        // Not in Electron environment (e.g., tests, storybook)
+        setAppVersion("N/A");
+      }
+    }
+  }, [isOpen]);
 
   // Load AI config on mount
   useEffect(() => {
@@ -227,7 +248,7 @@ export function SettingsDialog({ isOpen, onClose }: SettingsDialogProps) {
                     <div className="space-y-2 text-sm">
                       <div className="flex justify-between text-gray-400">
                         <span>Version</span>
-                        <span className="font-mono text-canopy-text">0.0.1</span>
+                        <span className="font-mono text-canopy-text">{appVersion}</span>
                       </div>
                     </div>
                   </div>

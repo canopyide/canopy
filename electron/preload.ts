@@ -118,6 +118,7 @@ const CHANNELS = {
   // App state channels
   APP_GET_STATE: "app:get-state",
   APP_SET_STATE: "app:set-state",
+  APP_GET_VERSION: "app:get-version",
 
   // Logs channels
   LOGS_GET_ALL: "logs:get-all",
@@ -419,6 +420,8 @@ const api: ElectronAPI = {
 
     setState: (partialState: Partial<AppState>) =>
       ipcRenderer.invoke(CHANNELS.APP_SET_STATE, partialState),
+
+    getVersion: () => ipcRenderer.invoke(CHANNELS.APP_GET_VERSION),
   },
 
   // ==========================================

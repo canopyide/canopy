@@ -5,7 +5,7 @@
  * Provides a single initialization function to wire up all IPC communication.
  */
 
-import { ipcMain, BrowserWindow, shell, dialog } from "electron";
+import { ipcMain, BrowserWindow, shell, dialog, app } from "electron";
 import crypto from "crypto";
 import os from "os";
 import path from "path";
@@ -1017,6 +1017,12 @@ export function registerIpcHandlers(
   };
   ipcMain.handle(CHANNELS.APP_SET_STATE, handleAppSetState);
   handlers.push(() => ipcMain.removeHandler(CHANNELS.APP_SET_STATE));
+
+  const handleAppGetVersion = async () => {
+    return app.getVersion();
+  };
+  ipcMain.handle(CHANNELS.APP_GET_VERSION, handleAppGetVersion);
+  handlers.push(() => ipcMain.removeHandler(CHANNELS.APP_GET_VERSION));
 
   // ==========================================
   // Logs Handlers

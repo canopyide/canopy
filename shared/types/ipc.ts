@@ -591,6 +591,7 @@ export interface ElectronAPI {
   app: {
     getState(): Promise<AppState>;
     setState(partialState: Partial<AppState>): Promise<void>;
+    getVersion(): Promise<string>;
   };
   logs: {
     getAll(filters?: LogFilterOptions): Promise<LogEntry[]>;
