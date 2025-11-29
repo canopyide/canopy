@@ -30,6 +30,7 @@ import {
 } from "lucide-react";
 import { cn } from "@/lib/utils";
 import { XtermAdapter } from "./XtermAdapter";
+import { ArtifactOverlay } from "./ArtifactOverlay";
 import { ErrorBanner } from "../Errors/ErrorBanner";
 import { useErrorStore, useTerminalStore, type RetryAction } from "@/store";
 import type { CopyTreeProgress } from "@/hooks/useContextInjection";
@@ -94,7 +95,7 @@ export function TerminalPane({
   title,
   type,
   worktreeId,
-  cwd: _cwd, // Reserved for terminal spawning integration
+  cwd,
   isFocused,
   isMaximized,
   isInjecting,
@@ -430,6 +431,8 @@ export function TerminalPane({
           onExit={handleExit}
           className="absolute inset-0"
         />
+        {/* Artifact Overlay */}
+        <ArtifactOverlay terminalId={id} worktreeId={worktreeId} cwd={cwd} />
       </div>
     </div>
   );

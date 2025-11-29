@@ -435,6 +435,60 @@ export interface AgentStateChangePayload {
 }
 
 // ============================================================================
+// Artifact IPC Types
+// ============================================================================
+
+/** Payload for artifact detection events */
+export interface ArtifactDetectedPayload {
+  /** Agent ID that generated the artifacts */
+  agentId: string;
+  /** Terminal ID where the artifacts appeared */
+  terminalId: string;
+  /** Associated worktree ID (if any) */
+  worktreeId?: string;
+  /** Array of detected artifacts */
+  artifacts: Artifact[];
+  /** Timestamp when artifacts were detected */
+  timestamp: number;
+}
+
+/** Options for saving an artifact to a file */
+export interface SaveArtifactOptions {
+  /** Artifact content to save */
+  content: string;
+  /** Suggested filename */
+  suggestedFilename?: string;
+  /** Working directory for the save dialog */
+  cwd?: string;
+}
+
+/** Result from saving an artifact */
+export interface SaveArtifactResult {
+  /** Path where the file was saved */
+  filePath: string;
+  /** Whether the operation succeeded */
+  success: boolean;
+}
+
+/** Options for applying a patch */
+export interface ApplyPatchOptions {
+  /** Patch content in unified diff format */
+  patchContent: string;
+  /** Working directory to apply the patch in */
+  cwd: string;
+}
+
+/** Result from applying a patch */
+export interface ApplyPatchResult {
+  /** Whether the patch applied successfully */
+  success: boolean;
+  /** Error message if the patch failed */
+  error?: string;
+  /** Files that were modified */
+  modifiedFiles?: string[];
+}
+
+// ============================================================================
 // Worktree Creation Types
 // ============================================================================
 
@@ -504,6 +558,11 @@ export interface ElectronAPI {
     onData(id: string, callback: (data: string) => void): () => void;
     onExit(callback: (id: string, exitCode: number) => void): () => void;
     onAgentStateChanged(callback: (data: AgentStateChangePayload) => void): () => void;
+  };
+  artifact: {
+    onDetected(callback: (data: ArtifactDetectedPayload) => void): () => void;
+    saveToFile(options: SaveArtifactOptions): Promise<SaveArtifactResult | null>;
+    applyPatch(options: ApplyPatchOptions): Promise<ApplyPatchResult>;
   };
   copyTree: {
     generate(worktreeId: string, options?: CopyTreeOptions): Promise<CopyTreeResult>;

@@ -125,6 +125,17 @@ export class TranscriptManager {
     const newArtifacts = extractArtifacts(cleanData, session.artifacts);
     session.artifacts.push(...newArtifacts);
 
+    // Emit artifact:detected event if new artifacts were found
+    if (newArtifacts.length > 0) {
+      events.emit("artifact:detected", {
+        agentId: payload.agentId,
+        terminalId: session.metadata.terminalId,
+        worktreeId: session.worktreeId,
+        artifacts: newArtifacts,
+        timestamp: payload.timestamp,
+      });
+    }
+
     // Debounce write to disk
     this.scheduleWrite(payload.agentId);
   }

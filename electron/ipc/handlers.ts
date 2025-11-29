@@ -123,6 +123,12 @@ export function registerIpcHandlers(
   });
   handlers.push(unsubAgentState);
 
+  // Forward artifact detection events to renderer
+  const unsubArtifactDetected = events.on("artifact:detected", (payload) => {
+    sendToRenderer(mainWindow, CHANNELS.ARTIFACT_DETECTED, payload);
+  });
+  handlers.push(unsubArtifactDetected);
+
   // ==========================================
   // Worktree Handlers
   // ==========================================
@@ -429,6 +435,197 @@ export function registerIpcHandlers(
   };
   ipcMain.handle(CHANNELS.TERMINAL_KILL, handleTerminalKill);
   handlers.push(() => ipcMain.removeHandler(CHANNELS.TERMINAL_KILL));
+
+  // ==========================================
+  // Artifact Handlers
+  // ==========================================
+
+  const handleArtifactSaveToFile = async (
+    _event: Electron.IpcMainInvokeEvent,
+    options: unknown
+  ): Promise<{ filePath: string; success: boolean } | null> => {
+    try {
+      // Validate payload
+      if (
+        typeof options !== "object" ||
+        options === null ||
+        !("content" in options) ||
+        typeof (options as Record<string, unknown>).content !== "string"
+      ) {
+        throw new Error("Invalid saveToFile payload: missing or invalid content");
+      }
+
+      const { content, suggestedFilename, cwd } = options as {
+        content: string;
+        suggestedFilename?: string;
+        cwd?: string;
+      };
+
+      // Validate content size (max 10MB)
+      if (content.length > 10 * 1024 * 1024) {
+        throw new Error("Artifact content exceeds maximum size (10MB)");
+      }
+
+      // Validate and sanitize cwd if provided
+      let safeCwd = os.homedir();
+      if (cwd && typeof cwd === "string") {
+        const fs = await import("fs/promises");
+        try {
+          // Resolve to absolute path and check if it exists
+          const resolvedCwd = path.resolve(cwd);
+          const stat = await fs.stat(resolvedCwd);
+          if (stat.isDirectory()) {
+            safeCwd = resolvedCwd;
+          }
+        } catch {
+          // If cwd is invalid, fall back to homedir
+          safeCwd = os.homedir();
+        }
+      }
+
+      // Show save dialog
+      const result = await dialog.showSaveDialog(mainWindow, {
+        title: "Save Artifact",
+        defaultPath: suggestedFilename
+          ? path.join(safeCwd, path.basename(suggestedFilename)) // Only use basename to prevent traversal
+          : path.join(safeCwd, "artifact.txt"),
+        properties: ["createDirectory", "showOverwriteConfirmation"],
+      });
+
+      if (result.canceled || !result.filePath) {
+        return null;
+      }
+
+      // Write content to file
+      const fs = await import("fs/promises");
+      await fs.writeFile(result.filePath, content, "utf-8");
+
+      return {
+        filePath: result.filePath,
+        success: true,
+      };
+    } catch (error) {
+      const errorMessage = error instanceof Error ? error.message : String(error);
+      console.error("[Artifact] Failed to save to file:", errorMessage);
+      throw new Error(`Failed to save artifact: ${errorMessage}`);
+    }
+  };
+  ipcMain.handle(CHANNELS.ARTIFACT_SAVE_TO_FILE, handleArtifactSaveToFile);
+  handlers.push(() => ipcMain.removeHandler(CHANNELS.ARTIFACT_SAVE_TO_FILE));
+
+  const handleArtifactApplyPatch = async (
+    _event: Electron.IpcMainInvokeEvent,
+    options: unknown
+  ): Promise<{ success: boolean; error?: string; modifiedFiles?: string[] }> => {
+    try {
+      // Validate payload
+      if (
+        typeof options !== "object" ||
+        options === null ||
+        !("patchContent" in options) ||
+        !("cwd" in options) ||
+        typeof (options as Record<string, unknown>).patchContent !== "string" ||
+        typeof (options as Record<string, unknown>).cwd !== "string"
+      ) {
+        throw new Error("Invalid applyPatch payload: missing or invalid patchContent/cwd");
+      }
+
+      const { patchContent, cwd } = options as { patchContent: string; cwd: string };
+
+      // Validate patch content size (max 5MB)
+      if (patchContent.length > 5 * 1024 * 1024) {
+        throw new Error("Patch content exceeds maximum size (5MB)");
+      }
+
+      // Validate and sanitize cwd
+      const fs = await import("fs/promises");
+      let resolvedCwd: string;
+      try {
+        // Resolve to absolute path
+        resolvedCwd = path.resolve(cwd);
+
+        // Check if directory exists
+        const stat = await fs.stat(resolvedCwd);
+        if (!stat.isDirectory()) {
+          return {
+            success: false,
+            error: "Provided cwd is not a directory",
+          };
+        }
+
+        // Check if it's a git repository
+        const gitPath = path.join(resolvedCwd, ".git");
+        try {
+          await fs.stat(gitPath);
+        } catch {
+          return {
+            success: false,
+            error: "Provided cwd is not a git repository",
+          };
+        }
+
+        // Optional: Verify cwd is within allowed worktrees
+        if (worktreeService) {
+          const worktrees = worktreeService.getAllStates();
+          const isValidWorktree = Array.from(worktrees.values()).some(
+            (wt) => path.resolve(wt.worktreePath) === resolvedCwd
+          );
+          if (!isValidWorktree) {
+            return {
+              success: false,
+              error: "Directory is not a known worktree",
+            };
+          }
+        }
+      } catch (error) {
+        return {
+          success: false,
+          error: `Invalid cwd: ${error instanceof Error ? error.message : String(error)}`,
+        };
+      }
+
+      // Write patch to temporary file
+      const tmpPatchPath = path.join(os.tmpdir(), `canopy-patch-${Date.now()}.patch`);
+      await fs.writeFile(tmpPatchPath, patchContent, "utf-8");
+
+      try {
+        // Apply patch using git apply
+        const { execa } = await import("execa");
+        await execa("git", ["apply", tmpPatchPath], { cwd: resolvedCwd });
+
+        // Get modified files by parsing the patch
+        const modifiedFiles: string[] = [];
+        const lines = patchContent.split("\n");
+        for (const line of lines) {
+          if (line.startsWith("+++")) {
+            const match = line.match(/\+\+\+ b\/(.+)/);
+            if (match) {
+              modifiedFiles.push(match[1]);
+            }
+          }
+        }
+
+        return {
+          success: true,
+          modifiedFiles,
+        };
+      } finally {
+        // Clean up temp patch file
+        await fs.unlink(tmpPatchPath).catch(() => {
+          /* ignore cleanup errors */
+        });
+      }
+    } catch (error) {
+      const errorMessage = error instanceof Error ? error.message : String(error);
+      console.error("[Artifact] Failed to apply patch:", errorMessage);
+      return {
+        success: false,
+        error: errorMessage,
+      };
+    }
+  };
+  ipcMain.handle(CHANNELS.ARTIFACT_APPLY_PATCH, handleArtifactApplyPatch);
+  handlers.push(() => ipcMain.removeHandler(CHANNELS.ARTIFACT_APPLY_PATCH));
 
   // ==========================================
   // CopyTree Handlers
@@ -856,7 +1053,7 @@ export function registerIpcHandlers(
       // Check if file exists
       await fs.promises.access(logFilePath);
       await shell.openPath(logFilePath);
-    } catch (error) {
+    } catch (_error) {
       // File doesn't exist - create it first
       const fs = await import("fs");
       const dir = join(homedir(), ".config", "canopy");
@@ -1514,7 +1711,7 @@ export function registerIpcHandlers(
   ] as const;
 
   for (const eventType of runEventTypes) {
-    const unsub = events.on(eventType as any, (payload: any) => {
+    const unsub = events.on(eventType as (typeof runEventTypes)[number], (payload: unknown) => {
       sendToRenderer(mainWindow, CHANNELS.RUN_EVENT, { type: eventType, payload });
     });
     handlers.push(unsub);

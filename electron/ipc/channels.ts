@@ -38,6 +38,11 @@ export const CHANNELS = {
   AGENT_STATE_CHANGED: "agent:state-changed",
   AGENT_GET_STATE: "agent:get-state",
 
+  // Artifact channels
+  ARTIFACT_DETECTED: "artifact:detected",
+  ARTIFACT_SAVE_TO_FILE: "artifact:save-to-file",
+  ARTIFACT_APPLY_PATCH: "artifact:apply-patch",
+
   // CopyTree channels
   COPYTREE_GENERATE: "copytree:generate",
   COPYTREE_INJECT: "copytree:inject",
