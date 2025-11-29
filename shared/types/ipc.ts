@@ -392,6 +392,24 @@ export interface AgentStateChangePayload {
 }
 
 // ============================================================================
+// Worktree Creation Types
+// ============================================================================
+
+export interface BranchInfo {
+  name: string;
+  current: boolean;
+  commit: string;
+  remote?: string;
+}
+
+export interface CreateWorktreeOptions {
+  baseBranch: string;
+  newBranch: string;
+  path: string;
+  fromRemote?: boolean;
+}
+
+// ============================================================================
 // ElectronAPI Type (exposed via preload)
 // ============================================================================
 
@@ -401,6 +419,8 @@ export interface ElectronAPI {
     getAll(): Promise<WorktreeState[]>;
     refresh(): Promise<void>;
     setActive(worktreeId: string): Promise<void>;
+    create(options: CreateWorktreeOptions, rootPath: string): Promise<void>;
+    listBranches(rootPath: string): Promise<BranchInfo[]>;
     onUpdate(callback: (state: WorktreeState) => void): () => void;
     onRemove(callback: (data: { worktreeId: string }) => void): () => void;
   };

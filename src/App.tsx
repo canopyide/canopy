@@ -10,6 +10,7 @@ import {
 import { AppLayout } from "./components/Layout";
 import { TerminalGrid } from "./components/Terminal";
 import { WorktreeCard } from "./components/Worktree";
+import { NewWorktreeDialog } from "./components/Worktree/NewWorktreeDialog";
 import { ProblemsPanel } from "./components/Errors";
 import { TerminalPalette } from "./components/TerminalPalette";
 import { RecipeEditor } from "./components/TerminalRecipe/RecipeEditor";
@@ -37,6 +38,9 @@ function SidebarContent() {
   const [recipeEditorWorktreeId, setRecipeEditorWorktreeId] = useState<string | undefined>(
     undefined
   );
+
+  // New worktree dialog state
+  const [isNewWorktreeDialogOpen, setIsNewWorktreeDialogOpen] = useState(false);
 
   // Set first worktree as active by default
   useEffect(() => {
@@ -112,9 +116,22 @@ function SidebarContent() {
     );
   }
 
+  // Get root path from first worktree (assuming all worktrees are from the same repo)
+  const rootPath =
+    worktrees.length > 0 && worktrees[0].path ? worktrees[0].path.split("/.git/")[0] : "";
+
   return (
     <div className="p-4">
-      <h2 className="text-canopy-text font-semibold text-sm mb-4">Worktrees</h2>
+      <div className="flex items-center justify-between mb-4">
+        <h2 className="text-canopy-text font-semibold text-sm">Worktrees</h2>
+        <button
+          onClick={() => setIsNewWorktreeDialogOpen(true)}
+          className="text-xs px-2 py-1 bg-canopy-accent/10 hover:bg-canopy-accent/20 text-canopy-accent rounded transition-colors"
+          title="Create new worktree"
+        >
+          + New
+        </button>
+      </div>
       <div className="space-y-2">
         {worktrees.map((worktree) => (
           <WorktreeCard
@@ -139,6 +156,16 @@ function SidebarContent() {
         isOpen={isRecipeEditorOpen}
         onClose={handleCloseRecipeEditor}
       />
+
+      {/* New Worktree Dialog */}
+      {rootPath && (
+        <NewWorktreeDialog
+          isOpen={isNewWorktreeDialogOpen}
+          onClose={() => setIsNewWorktreeDialogOpen(false)}
+          rootPath={rootPath}
+          onWorktreeCreated={refresh}
+        />
+      )}
     </div>
   );
 }

@@ -38,6 +38,7 @@ import type {
   ProjectIdentity,
   AgentStateChangePayload,
   ElectronAPI,
+  CreateWorktreeOptions,
 } from "@shared/types";
 
 // Re-export ElectronAPI for type declarations
@@ -52,6 +53,8 @@ const CHANNELS = {
   WORKTREE_SET_ACTIVE: "worktree:set-active",
   WORKTREE_UPDATE: "worktree:update",
   WORKTREE_REMOVE: "worktree:remove",
+  WORKTREE_CREATE: "worktree:create",
+  WORKTREE_LIST_BRANCHES: "worktree:list-branches",
 
   // Dev server channels
   DEVSERVER_START: "devserver:start",
@@ -160,6 +163,12 @@ const api: ElectronAPI = {
 
     setActive: (worktreeId: string) =>
       ipcRenderer.invoke(CHANNELS.WORKTREE_SET_ACTIVE, { worktreeId }),
+
+    create: (options: CreateWorktreeOptions, rootPath: string) =>
+      ipcRenderer.invoke(CHANNELS.WORKTREE_CREATE, { rootPath, options }),
+
+    listBranches: (rootPath: string) =>
+      ipcRenderer.invoke(CHANNELS.WORKTREE_LIST_BRANCHES, { rootPath }),
 
     onUpdate: (callback: (state: WorktreeState) => void) => {
       const handler = (_event: Electron.IpcRendererEvent, state: WorktreeState) => callback(state);

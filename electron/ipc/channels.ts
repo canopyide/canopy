@@ -12,6 +12,8 @@ export const CHANNELS = {
   WORKTREE_SET_ACTIVE: "worktree:set-active",
   WORKTREE_UPDATE: "worktree:update",
   WORKTREE_REMOVE: "worktree:remove",
+  WORKTREE_CREATE: "worktree:create",
+  WORKTREE_LIST_BRANCHES: "worktree:list-branches",
 
   // Dev server channels
   DEVSERVER_START: "devserver:start",

@@ -2,12 +2,13 @@ import { BrowserWindow } from "electron";
 import { WorktreeMonitor, type WorktreeState } from "./WorktreeMonitor.js";
 import type { Worktree, MonitorConfig, AIConfig } from "../types/index.js";
 import { DEFAULT_CONFIG } from "../types/config.js";
-import { logInfo, logWarn, logDebug } from "../utils/logger.js";
+import { logInfo, logWarn, logDebug, logError } from "../utils/logger.js";
 import { events } from "./events.js";
 import { execSync } from "child_process";
 import { mkdir, writeFile, stat } from "fs/promises";
 import { join as pathJoin, dirname } from "path";
 import { CHANNELS } from "../ipc/channels.js";
+import { GitService, type CreateWorktreeOptions, type BranchInfo } from "./GitService.js";
 
 // Default polling intervals (used when config is not provided)
 const DEFAULT_ACTIVE_WORKTREE_INTERVAL_MS = DEFAULT_CONFIG.monitor?.pollIntervalActive ?? 2000;
@@ -113,6 +114,8 @@ export class WorktreeService {
   private pollIntervalActive: number = DEFAULT_ACTIVE_WORKTREE_INTERVAL_MS;
   private pollIntervalBackground: number = DEFAULT_BACKGROUND_WORKTREE_INTERVAL_MS;
   private aiDebounceMs: number = DEFAULT_AI_DEBOUNCE_MS;
+  private gitService: GitService | null = null;
+  private rootPath: string | null = null;
 
   /**
    * Initialize or update monitors to match the current worktree list.
@@ -372,6 +375,98 @@ export class WorktreeService {
    */
   public getMonitorCount(): number {
     return this.monitors.size;
+  }
+
+  /**
+   * Initialize GitService for worktree creation operations.
+   * Must be called after sync() to ensure rootPath is set.
+   *
+   * @param rootPath - Repository root path
+   */
+  private ensureGitService(rootPath: string): void {
+    if (!this.gitService || this.rootPath !== rootPath) {
+      this.rootPath = rootPath;
+      this.gitService = new GitService(rootPath);
+      logDebug("GitService initialized", { rootPath });
+    }
+  }
+
+  /**
+   * List all local and remote branches.
+   * Requires sync() to have been called at least once.
+   *
+   * @param rootPath - Repository root path
+   * @returns Array of branch information
+   */
+  public async listBranches(rootPath: string): Promise<BranchInfo[]> {
+    try {
+      this.ensureGitService(rootPath);
+      if (!this.gitService) {
+        throw new Error("GitService not initialized");
+      }
+      return await this.gitService.listBranches();
+    } catch (error) {
+      logError("Failed to list branches", { error: (error as Error).message });
+      throw error;
+    }
+  }
+
+  /**
+   * Create a new worktree and automatically sync monitors.
+   *
+   * @param rootPath - Repository root path
+   * @param options - Worktree creation options
+   * @param worktrees - Current worktree list (for sync after creation)
+   * @throws Error if worktree creation fails
+   */
+  public async createWorktree(rootPath: string, options: CreateWorktreeOptions): Promise<void> {
+    try {
+      this.ensureGitService(rootPath);
+      if (!this.gitService) {
+        throw new Error("GitService not initialized");
+      }
+
+      logInfo("Creating worktree", {
+        baseBranch: options.baseBranch,
+        newBranch: options.newBranch,
+        path: options.path,
+        fromRemote: options.fromRemote,
+      });
+
+      // Create the worktree using GitService
+      await this.gitService.createWorktree(options);
+
+      // Ensure note file exists for the new worktree
+      await ensureNoteFile(options.path);
+
+      // Trigger a sync to pick up the new worktree
+      // Need to refresh the worktree list to include the newly created one
+      const updatedWorktrees = await this.gitService.listWorktrees();
+
+      // Convert to Worktree format expected by sync
+      const worktreeList: Worktree[] = updatedWorktrees.map((wt) => ({
+        id: wt.path,
+        path: wt.path,
+        name: wt.path.split("/").pop() || wt.path,
+        branch: wt.branch,
+        isCurrent: false, // Will be determined by sync
+      }));
+
+      if (worktreeList.length > 0) {
+        await this.sync(worktreeList, this.activeWorktreeId, this.mainBranch, this.watchingEnabled);
+      }
+
+      logInfo("Worktree created successfully", {
+        path: options.path,
+        branch: options.newBranch,
+      });
+    } catch (error) {
+      logError("Failed to create worktree", {
+        options,
+        error: (error as Error).message,
+      });
+      throw error;
+    }
   }
 
   /**

@@ -143,6 +143,33 @@ export function registerIpcHandlers(
   ipcMain.handle(CHANNELS.WORKTREE_SET_ACTIVE, handleWorktreeSetActive);
   handlers.push(() => ipcMain.removeHandler(CHANNELS.WORKTREE_SET_ACTIVE));
 
+  const handleWorktreeCreate = async (
+    _event: Electron.IpcMainInvokeEvent,
+    payload: {
+      rootPath: string;
+      options: { baseBranch: string; newBranch: string; path: string; fromRemote?: boolean };
+    }
+  ) => {
+    if (!worktreeService) {
+      throw new Error("WorktreeService not initialized");
+    }
+    await worktreeService.createWorktree(payload.rootPath, payload.options);
+  };
+  ipcMain.handle(CHANNELS.WORKTREE_CREATE, handleWorktreeCreate);
+  handlers.push(() => ipcMain.removeHandler(CHANNELS.WORKTREE_CREATE));
+
+  const handleWorktreeListBranches = async (
+    _event: Electron.IpcMainInvokeEvent,
+    payload: { rootPath: string }
+  ) => {
+    if (!worktreeService) {
+      throw new Error("WorktreeService not initialized");
+    }
+    return await worktreeService.listBranches(payload.rootPath);
+  };
+  ipcMain.handle(CHANNELS.WORKTREE_LIST_BRANCHES, handleWorktreeListBranches);
+  handlers.push(() => ipcMain.removeHandler(CHANNELS.WORKTREE_LIST_BRANCHES));
+
   // ==========================================
   // Dev Server Handlers
   // ==========================================

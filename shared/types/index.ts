@@ -86,6 +86,8 @@ export type {
   AgentStateChangePayload,
   // Electron API
   ElectronAPI,
+  BranchInfo,
+  CreateWorktreeOptions,
 } from "./ipc.js";
 
 // Config types - application configuration
