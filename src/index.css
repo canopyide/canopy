@@ -132,6 +132,39 @@
     -webkit-font-smoothing: antialiased;
     -moz-osx-font-smoothing: grayscale;
   }
+
+  /* Terminal scrollbar styling - tiling window manager aesthetic */
+  .xterm-viewport {
+    scrollbar-width: thin;
+  }
+
+  /* WebKit scrollbar styling for Chromium/Electron */
+  .xterm-viewport::-webkit-scrollbar {
+    width: 8px;
+  }
+
+  .xterm-viewport::-webkit-scrollbar-track {
+    background: transparent;
+  }
+
+  .xterm-viewport::-webkit-scrollbar-thumb {
+    background: var(--color-canopy-border);
+    border-radius: 4px;
+  }
+
+  .xterm-viewport::-webkit-scrollbar-thumb:hover {
+    background: var(--color-canopy-text);
+    opacity: 0.5;
+  }
+
+  /* Consistent monospace font stack */
+  code,
+  kbd,
+  samp,
+  pre,
+  .font-mono {
+    font-family: "JetBrains Mono", "Fira Code", "Menlo", "Consolas", monospace;
+  }
 }
 
 html,

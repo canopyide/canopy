@@ -5,6 +5,7 @@
  * Displays terminal icon, title, worktree badge, and truncated CWD.
  */
 
+import { Terminal, Bot, Sparkles, Command } from "lucide-react";
 import { cn } from "@/lib/utils";
 import type { TerminalType } from "@/components/Terminal/TerminalPane";
 
@@ -25,12 +26,22 @@ export interface TerminalListItemProps {
   onClick: () => void;
 }
 
-const TYPE_ICONS: Record<TerminalType, string> = {
-  shell: "🖥️",
-  claude: "🤖",
-  gemini: "✨",
-  custom: "⚡",
-};
+/**
+ * Get icon component for terminal type - matches tiling window manager aesthetic
+ */
+function getIcon(type: TerminalType) {
+  const props = { className: "w-4 h-4", "aria-hidden": "true" as const };
+  switch (type) {
+    case "claude":
+      return <Bot {...props} />;
+    case "gemini":
+      return <Sparkles {...props} />;
+    case "custom":
+      return <Command {...props} />;
+    case "shell":
+      return <Terminal {...props} />;
+  }
+}
 
 /**
  * Truncate a path from the left if it exceeds max length
@@ -54,7 +65,6 @@ export function TerminalListItem({
   isSelected,
   onClick,
 }: TerminalListItemProps) {
-  const icon = TYPE_ICONS[type];
   const worktreeLabel = worktreeName ? ` in ${worktreeName}` : "";
   const fullLabel = `${title}${worktreeLabel} — ${cwd}`;
 
@@ -75,8 +85,8 @@ export function TerminalListItem({
       role="option"
     >
       {/* Terminal type icon */}
-      <span className="shrink-0 text-lg" aria-hidden="true">
-        {icon}
+      <span className="shrink-0 text-canopy-text/70" aria-hidden="true">
+        {getIcon(type)}
       </span>
 
       {/* Content */}
