@@ -347,20 +347,7 @@ export type WithBase<T> = T & BaseEventPayload;
  * Use for events that require correlation context (worktreeId, agentId, etc.).
  * Note: Since BaseEventPayload now extends EventContext, this is equivalent to WithBase<T>.
  */
-<<<<<<< HEAD
 export type WithContext<T> = T & BaseEventPayload;
-=======
-export type WithContext<T> = T &
-  BaseEventPayload & {
-    worktreeId?: string;
-    agentId?: string;
-    taskId?: string;
-    runId?: string;
-    terminalId?: string;
-    issueNumber?: number;
-    prNumber?: number;
-  };
->>>>>>> feature/issue-196-state-change-metadata
 
 // ============================================================================
 // Event Type Unions by Category
