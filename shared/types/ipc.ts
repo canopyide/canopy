@@ -253,6 +253,16 @@ export interface SystemOpenPathPayload {
   path: string;
 }
 
+/** CLI availability status for AI agents */
+export interface CliAvailability {
+  /** Whether the Claude CLI is available */
+  claude: boolean;
+  /** Whether the Gemini CLI is available */
+  gemini: boolean;
+  /** Whether the Codex CLI is available */
+  codex: boolean;
+}
+
 // ============================================================================
 // Directory IPC Payload Types
 // ============================================================================
@@ -927,6 +937,14 @@ export interface IpcInvokeMap {
     args: [];
     result: string;
   };
+  "system:get-cli-availability": {
+    args: [];
+    result: CliAvailability;
+  };
+  "system:refresh-cli-availability": {
+    args: [];
+    result: CliAvailability;
+  };
 
   // ============================================
   // App state channels
@@ -1337,6 +1355,8 @@ export interface ElectronAPI {
     openPath(path: string): Promise<void>;
     checkCommand(command: string): Promise<boolean>;
     getHomeDir(): Promise<string>;
+    getCliAvailability(): Promise<CliAvailability>;
+    refreshCliAvailability(): Promise<CliAvailability>;
   };
   app: {
     getState(): Promise<AppState>;

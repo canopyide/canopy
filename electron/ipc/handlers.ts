@@ -13,6 +13,7 @@ import { CHANNELS } from "./channels.js";
 import { PtyManager } from "../services/PtyManager.js";
 import type { DevServerManager } from "../services/DevServerManager.js";
 import type { WorktreeService } from "../services/WorktreeService.js";
+import type { CliAvailabilityService } from "../services/CliAvailabilityService.js";
 import type {
   TerminalSpawnOptions,
   TerminalResizePayload,
@@ -137,7 +138,8 @@ export function registerIpcHandlers(
   ptyManager: PtyManager,
   devServerManager?: DevServerManager,
   worktreeService?: WorktreeService,
-  eventBuffer?: EventBuffer
+  eventBuffer?: EventBuffer,
+  cliAvailabilityService?: CliAvailabilityService
 ): () => void {
   // Store handler references for cleanup
   const handlers: Array<() => void> = [];
@@ -1142,6 +1144,36 @@ export function registerIpcHandlers(
   };
   ipcMain.handle(CHANNELS.SYSTEM_GET_HOME_DIR, handleSystemGetHomeDir);
   handlers.push(() => ipcMain.removeHandler(CHANNELS.SYSTEM_GET_HOME_DIR));
+
+  const handleSystemGetCliAvailability = async () => {
+    if (!cliAvailabilityService) {
+      console.warn("[IPC] CliAvailabilityService not available");
+      return { claude: false, gemini: false, codex: false };
+    }
+
+    // Return cached result if available, otherwise check now
+    const cached = cliAvailabilityService.getAvailability();
+    if (cached) {
+      return cached;
+    }
+
+    // First time check - run availability check and cache
+    return await cliAvailabilityService.checkAvailability();
+  };
+  ipcMain.handle(CHANNELS.SYSTEM_GET_CLI_AVAILABILITY, handleSystemGetCliAvailability);
+  handlers.push(() => ipcMain.removeHandler(CHANNELS.SYSTEM_GET_CLI_AVAILABILITY));
+
+  const handleSystemRefreshCliAvailability = async () => {
+    if (!cliAvailabilityService) {
+      console.warn("[IPC] CliAvailabilityService not available");
+      return { claude: false, gemini: false, codex: false };
+    }
+
+    // Force re-check of CLI availability
+    return await cliAvailabilityService.refresh();
+  };
+  ipcMain.handle(CHANNELS.SYSTEM_REFRESH_CLI_AVAILABILITY, handleSystemRefreshCliAvailability);
+  handlers.push(() => ipcMain.removeHandler(CHANNELS.SYSTEM_REFRESH_CLI_AVAILABILITY));
 
   // ==========================================
   // App State Handlers
