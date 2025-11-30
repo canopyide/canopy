@@ -209,8 +209,14 @@ export function AppLayout({
         onToggleFocusMode={handleToggleFocusMode}
         isRefreshing={isRefreshing}
       />
-      <div className="flex-1 flex flex-col overflow-hidden" style={{ flex: 1, display: "flex", flexDirection: "column", overflow: "hidden" }}>
-        <div className="flex-1 flex overflow-hidden" style={{ flex: 1, display: "flex", overflow: "hidden" }}>
+      <div
+        className="flex-1 flex flex-col overflow-hidden"
+        style={{ flex: 1, display: "flex", flexDirection: "column", overflow: "hidden" }}
+      >
+        <div
+          className="flex-1 flex overflow-hidden"
+          style={{ flex: 1, display: "flex", overflow: "hidden" }}
+        >
           {!isFocusMode && (
             <Sidebar
               width={effectiveSidebarWidth}
@@ -220,7 +226,10 @@ export function AppLayout({
               {sidebarContent}
             </Sidebar>
           )}
-          <main className="flex-1 overflow-hidden bg-canopy-bg" style={{ flex: 1, overflow: "hidden", backgroundColor: "#1a1b26" }}>
+          <main
+            className="flex-1 overflow-hidden bg-canopy-bg"
+            style={{ flex: 1, overflow: "hidden", backgroundColor: "#1a1b26" }}
+          >
             {children}
           </main>
         </div>

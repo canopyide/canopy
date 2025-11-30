@@ -153,13 +153,16 @@ export class PtyManager extends EventEmitter {
       terminal.agentState = newState;
       terminal.lastStateChange = getStateChangeTimestamp();
 
-      // Build and validate state change payload
+      // Build and validate state change payload with EventContext fields
       const stateChangePayload = {
         agentId: terminal.agentId,
         state: newState,
         previousState,
         timestamp: terminal.lastStateChange,
         traceId: terminal.traceId,
+        // EventContext fields for correlation and filtering
+        terminalId: terminal.id,
+        worktreeId: terminal.worktreeId,
       };
 
       const validatedStateChange = AgentStateChangedSchema.safeParse(stateChangePayload);
@@ -179,6 +182,9 @@ export class PtyManager extends EventEmitter {
           error: event.error,
           timestamp: terminal.lastStateChange,
           traceId: terminal.traceId,
+          // EventContext fields for correlation and filtering
+          terminalId: terminal.id,
+          worktreeId: terminal.worktreeId,
         };
 
         const validatedFailed = AgentFailedSchema.safeParse(failedPayload);
@@ -343,6 +349,9 @@ export class PtyManager extends EventEmitter {
             data,
             timestamp: Date.now(),
             traceId: terminal.traceId,
+            // EventContext fields for correlation and filtering
+            terminalId: id,
+            worktreeId: options.worktreeId,
           };
 
           const validatedOutput = AgentOutputSchema.safeParse(outputPayload);
@@ -390,6 +399,9 @@ export class PtyManager extends EventEmitter {
           duration,
           timestamp: completedAt,
           traceId: terminal.traceId,
+          // EventContext fields for correlation and filtering
+          terminalId: id,
+          worktreeId: terminal.worktreeId,
         };
 
         const validatedCompleted = AgentCompletedSchema.safeParse(completedPayload);
@@ -557,6 +569,9 @@ export class PtyManager extends EventEmitter {
           reason,
           timestamp: Date.now(),
           traceId: terminal.traceId,
+          // EventContext fields for correlation and filtering
+          terminalId: terminal.id,
+          worktreeId: terminal.worktreeId,
         };
 
         const validatedKilled = AgentKilledSchema.safeParse(killedPayload);
@@ -671,6 +686,9 @@ export class PtyManager extends EventEmitter {
             reason: "cleanup",
             timestamp: Date.now(),
             traceId: terminal.traceId,
+            // EventContext fields for correlation and filtering
+            terminalId: terminal.id,
+            worktreeId: terminal.worktreeId,
           };
 
           const validatedKilled = AgentKilledSchema.safeParse(killedPayload);

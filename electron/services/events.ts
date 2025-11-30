@@ -13,6 +13,7 @@ import type {
   RunPausedPayload,
   RunResumedPayload,
 } from "../types/index.js";
+import type { EventContext } from "../../shared/types/events.js";
 import type { WorktreeState } from "./WorktreeMonitor.js";
 
 // ============================================================================
@@ -336,9 +337,7 @@ export function getEventCategory(eventType: keyof CanopyEventMap): EventCategory
 /**
  * Get all event types for a specific category.
  */
-export function getEventTypesForCategory(
-  category: EventCategory
-): Array<keyof CanopyEventMap> {
+export function getEventTypesForCategory(category: EventCategory): Array<keyof CanopyEventMap> {
   return (Object.keys(EVENT_META) as Array<keyof CanopyEventMap>).filter(
     (key) => EVENT_META[key].category === category
   );
@@ -357,16 +356,9 @@ export type WithBase<T> = T & BaseEventPayload;
 /**
  * Helper type to enforce both BaseEventPayload and EventContext fields.
  * Use for events that require correlation context (worktreeId, agentId, etc.).
+ * Note: Since BaseEventPayload now extends EventContext, this is equivalent to WithBase<T>.
  */
-export type WithContext<T> = T & BaseEventPayload & {
-  worktreeId?: string;
-  agentId?: string;
-  taskId?: string;
-  runId?: string;
-  terminalId?: string;
-  issueNumber?: number;
-  prNumber?: number;
-};
+export type WithContext<T> = T & BaseEventPayload;
 
 // ============================================================================
 // Event Type Unions by Category
@@ -394,10 +386,21 @@ export interface ModalContextMap {
 }
 
 /**
- * Base event payload with optional trace correlation ID.
- * All events can optionally include a traceId to track event chains.
+ * Base event payload with optional trace correlation ID and event context.
+ * All domain events extend this interface to enable filtering and correlation
+ * across the event stream.
+ *
+ * @example
+ * // Event payload with full context
+ * const payload: BaseEventPayload = {
+ *   timestamp: Date.now(),
+ *   traceId: 'trace-123',
+ *   worktreeId: 'wt-abc',
+ *   agentId: 'agent-456',
+ *   terminalId: 'term-789',
+ * };
  */
-export interface BaseEventPayload {
+export interface BaseEventPayload extends EventContext {
   /** UUID to track related events across the system */
   traceId?: string;
   /** Unix timestamp in milliseconds when the event occurred */
@@ -460,7 +463,7 @@ export type CanopyEventMap = {
   "sys:worktree:cycle": WorktreeCyclePayload;
   "sys:worktree:selectByName": WorktreeSelectByNamePayload;
   "sys:worktree:update": WorktreeState;
-  "sys:worktree:remove": { worktreeId: string };
+  "sys:worktree:remove": { worktreeId: string; timestamp: number };
 
   "watcher:change": WatcherChangePayload;
 
@@ -490,7 +493,7 @@ export type CanopyEventMap = {
    * Emitted when a new AI agent (Claude, Gemini, etc.) is spawned in a terminal.
    * Use this to track agent creation and associate agents with worktrees.
    */
-  "agent:spawned": {
+  "agent:spawned": WithContext<{
     /** Unique identifier for this agent instance */
     agentId: string;
     /** ID of the terminal where the agent is running */
@@ -499,24 +502,21 @@ export type CanopyEventMap = {
     type: TerminalType;
     /** Optional worktree this agent is associated with */
     worktreeId?: string;
-    /** Unix timestamp (ms) when the agent was spawned */
-    timestamp: number;
-    /** Optional trace ID to track event chains */
-    traceId?: string;
-  };
+  }>;
 
   /**
    * Emitted when an agent's state changes (e.g., idle → working → completed).
    * Use this for status indicators and monitoring agent activity.
    */
-  "agent:state-changed": {
+  "agent:state-changed": WithContext<{
     agentId: string;
     state: AgentState;
     previousState?: AgentState;
-    timestamp: number;
-    /** Optional trace ID to track event chains */
-    traceId?: string;
-  };
+    /** EventContext: ID of the terminal where the agent is running */
+    terminalId?: string;
+    /** EventContext: Associated worktree ID */
+    worktreeId?: string;
+  }>;
 
   /**
    * Emitted when an agent produces output.
@@ -524,55 +524,59 @@ export type CanopyEventMap = {
    * WARNING: The data field may contain sensitive information (API keys, secrets, etc.).
    * Consumers should sanitize or redact before logging/persisting.
    */
-  "agent:output": {
+  "agent:output": WithContext<{
     agentId: string;
     data: string;
-    timestamp: number;
-    /** Optional trace ID to track event chains */
-    traceId?: string;
-  };
+    /** EventContext: ID of the terminal where the agent is running */
+    terminalId?: string;
+    /** EventContext: Associated worktree ID */
+    worktreeId?: string;
+  }>;
 
   /**
    * Emitted when an agent completes its work successfully.
    */
-  "agent:completed": {
+  "agent:completed": WithContext<{
     agentId: string;
     /** Exit code from the underlying process */
     exitCode: number;
     /** Duration in milliseconds */
     duration: number;
-    timestamp: number;
-    /** Optional trace ID to track event chains */
-    traceId?: string;
-  };
+    /** EventContext: ID of the terminal where the agent is running */
+    terminalId?: string;
+    /** EventContext: Associated worktree ID */
+    worktreeId?: string;
+  }>;
 
   /**
    * Emitted when an agent encounters an error and cannot continue.
    */
-  "agent:failed": {
+  "agent:failed": WithContext<{
     agentId: string;
     error: string;
-    timestamp: number;
-    /** Optional trace ID to track event chains */
-    traceId?: string;
-  };
+    /** EventContext: ID of the terminal where the agent is running */
+    terminalId?: string;
+    /** EventContext: Associated worktree ID */
+    worktreeId?: string;
+  }>;
 
   /**
    * Emitted when an agent is explicitly killed (by user action or system).
    */
-  "agent:killed": {
+  "agent:killed": WithContext<{
     agentId: string;
     /** Optional reason for killing (e.g., 'user-request', 'timeout', 'cleanup') */
     reason?: string;
-    timestamp: number;
-    /** Optional trace ID to track event chains */
-    traceId?: string;
-  };
+    /** EventContext: ID of the terminal where the agent is running */
+    terminalId?: string;
+    /** EventContext: Associated worktree ID */
+    worktreeId?: string;
+  }>;
 
   /**
    * Emitted when artifacts (code blocks or patches) are extracted from agent output.
    */
-  "artifact:detected": {
+  "artifact:detected": WithContext<{
     agentId: string;
     terminalId: string;
     worktreeId?: string;
@@ -584,9 +588,7 @@ export type CanopyEventMap = {
       content: string;
       extractedAt: number;
     }>;
-    timestamp: number;
-    traceId?: string;
-  };
+  }>;
 
   // ============================================================================
   // Task Lifecycle Events (Future-proof for task management)
@@ -598,36 +600,33 @@ export type CanopyEventMap = {
    * WARNING: The description field may contain sensitive information.
    * Consumers should sanitize before logging/persisting.
    */
-  "task:created": {
+  "task:created": WithContext<{
     taskId: string;
     description: string;
     worktreeId?: string;
-    timestamp: number;
-  };
+  }>;
 
   /**
    * Emitted when a task is assigned to an agent.
    */
-  "task:assigned": {
+  "task:assigned": WithContext<{
     taskId: string;
     agentId: string;
-    timestamp: number;
-  };
+  }>;
 
   /**
    * Emitted when a task's state changes.
    */
-  "task:state-changed": {
+  "task:state-changed": WithContext<{
     taskId: string;
     state: TaskState;
     previousState?: TaskState;
-    timestamp: number;
-  };
+  }>;
 
   /**
    * Emitted when a task is completed successfully.
    */
-  "task:completed": {
+  "task:completed": WithContext<{
     taskId: string;
     /** ID of the agent that completed this task */
     agentId?: string;
@@ -638,13 +637,12 @@ export type CanopyEventMap = {
     result: string;
     /** Paths to any generated artifacts */
     artifacts?: string[];
-    timestamp: number;
-  };
+  }>;
 
   /**
    * Emitted when a task fails.
    */
-  "task:failed": {
+  "task:failed": WithContext<{
     taskId: string;
     /** ID of the agent that failed this task */
     agentId?: string;
@@ -653,8 +651,7 @@ export type CanopyEventMap = {
     /** Worktree where task was executed */
     worktreeId?: string;
     error: string;
-    timestamp: number;
-  };
+  }>;
 
   // ============================================================================
   // Run Events (Multi-agent orchestration workflows)
