@@ -2045,6 +2045,84 @@ export function registerIpcHandlers(
     handlers.push(unsub);
   }
 
+  // ==========================================
+  // Agent Settings Handlers
+  // ==========================================
+
+  /**
+   * Get agent settings
+   */
+  const handleAgentSettingsGet = async () => {
+    return store.get("agentSettings");
+  };
+  ipcMain.handle(CHANNELS.AGENT_SETTINGS_GET, handleAgentSettingsGet);
+  handlers.push(() => ipcMain.removeHandler(CHANNELS.AGENT_SETTINGS_GET));
+
+  /**
+   * Set agent settings (partial update)
+   */
+  const handleAgentSettingsSet = async (
+    _event: Electron.IpcMainInvokeEvent,
+    payload: {
+      agentType: "claude" | "gemini" | "codex";
+      settings: Record<string, unknown>;
+    }
+  ) => {
+    if (!payload || typeof payload !== "object") {
+      throw new Error("Invalid payload");
+    }
+    const { agentType, settings } = payload;
+    if (!agentType || !["claude", "gemini", "codex"].includes(agentType)) {
+      throw new Error("Invalid agent type");
+    }
+    if (!settings || typeof settings !== "object") {
+      throw new Error("Invalid settings object");
+    }
+
+    const currentSettings = store.get("agentSettings");
+    const updatedSettings = {
+      ...currentSettings,
+      [agentType]: {
+        ...currentSettings[agentType],
+        ...settings,
+      },
+    };
+    store.set("agentSettings", updatedSettings);
+    return updatedSettings;
+  };
+  ipcMain.handle(CHANNELS.AGENT_SETTINGS_SET, handleAgentSettingsSet);
+  handlers.push(() => ipcMain.removeHandler(CHANNELS.AGENT_SETTINGS_SET));
+
+  /**
+   * Reset agent settings to defaults
+   */
+  const handleAgentSettingsReset = async (
+    _event: Electron.IpcMainInvokeEvent,
+    agentType?: "claude" | "gemini" | "codex"
+  ) => {
+    const { DEFAULT_AGENT_SETTINGS } = await import("@shared/types/index.js");
+
+    if (agentType) {
+      // Reset specific agent settings
+      if (!["claude", "gemini", "codex"].includes(agentType)) {
+        throw new Error("Invalid agent type");
+      }
+      const currentSettings = store.get("agentSettings");
+      const updatedSettings = {
+        ...currentSettings,
+        [agentType]: DEFAULT_AGENT_SETTINGS[agentType],
+      };
+      store.set("agentSettings", updatedSettings);
+      return updatedSettings;
+    } else {
+      // Reset all agent settings
+      store.set("agentSettings", DEFAULT_AGENT_SETTINGS);
+      return DEFAULT_AGENT_SETTINGS;
+    }
+  };
+  ipcMain.handle(CHANNELS.AGENT_SETTINGS_RESET, handleAgentSettingsReset);
+  handlers.push(() => ipcMain.removeHandler(CHANNELS.AGENT_SETTINGS_RESET));
+
   // Return cleanup function
   return () => {
     handlers.forEach((cleanup) => cleanup());

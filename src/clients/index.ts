@@ -35,6 +35,7 @@
  * ```
  */
 
+export { agentSettingsClient } from "./agentSettingsClient";
 export { aiClient } from "./aiClient";
 export { appClient } from "./appClient";
 export { artifactClient } from "./artifactClient";

@@ -52,6 +52,10 @@ import type {
   IpcInvokeMap,
   IpcEventMap,
   TerminalActivityPayload,
+  AgentSettings,
+  ClaudeSettings,
+  GeminiSettings,
+  CodexSettings,
 } from "@shared/types";
 
 // Re-export ElectronAPI for type declarations
@@ -247,6 +251,11 @@ const CHANNELS = {
   RUN_GET_ACTIVE: "run:get-active",
   RUN_CLEAR_FINISHED: "run:clear-finished",
   RUN_EVENT: "run:event",
+
+  // Agent settings channels
+  AGENT_SETTINGS_GET: "agent-settings:get",
+  AGENT_SETTINGS_SET: "agent-settings:set",
+  AGENT_SETTINGS_RESET: "agent-settings:reset",
 } as const;
 
 const api: ElectronAPI = {
@@ -727,6 +736,25 @@ const api: ElectronAPI = {
       ipcRenderer.on(CHANNELS.RUN_EVENT, handler);
       return () => ipcRenderer.removeListener(CHANNELS.RUN_EVENT, handler);
     },
+  },
+
+  // ==========================================
+  // Agent Settings API
+  // ==========================================
+  agentSettings: {
+    get: (): Promise<AgentSettings> => ipcRenderer.invoke(CHANNELS.AGENT_SETTINGS_GET),
+
+    setClaude: (settings: Partial<ClaudeSettings>): Promise<AgentSettings> =>
+      ipcRenderer.invoke(CHANNELS.AGENT_SETTINGS_SET, { agentType: "claude", settings }),
+
+    setGemini: (settings: Partial<GeminiSettings>): Promise<AgentSettings> =>
+      ipcRenderer.invoke(CHANNELS.AGENT_SETTINGS_SET, { agentType: "gemini", settings }),
+
+    setCodex: (settings: Partial<CodexSettings>): Promise<AgentSettings> =>
+      ipcRenderer.invoke(CHANNELS.AGENT_SETTINGS_SET, { agentType: "codex", settings }),
+
+    reset: (agentType?: "claude" | "gemini" | "codex"): Promise<AgentSettings> =>
+      ipcRenderer.invoke(CHANNELS.AGENT_SETTINGS_RESET, agentType),
   },
 };
 

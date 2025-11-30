@@ -15,7 +15,9 @@ import { useTerminalStore, type AddTerminalOptions } from "@/store/terminalStore
 import { useProjectStore } from "@/store/projectStore";
 import { useWorktrees } from "./useWorktrees";
 import { isElectronAvailable } from "./useElectron";
-import { systemClient } from "@/clients";
+import { systemClient, agentSettingsClient } from "@/clients";
+import type { AgentSettings } from "@shared/types";
+import { generateClaudeFlags, generateGeminiFlags, generateCodexFlags } from "@shared/types";
 
 export type AgentType = "claude" | "gemini" | "codex" | "shell";
 
@@ -104,8 +106,9 @@ export function useAgentLauncher(): UseAgentLauncherReturn {
     codex: true,
   });
   const [isCheckingAvailability, setIsCheckingAvailability] = useState(true);
+  const [agentSettings, setAgentSettings] = useState<AgentSettings | null>(null);
 
-  // Check CLI availability on mount
+  // Check CLI availability and load agent settings on mount
   useEffect(() => {
     if (!isElectronAvailable()) {
       setIsCheckingAvailability(false);
@@ -114,12 +117,13 @@ export function useAgentLauncher(): UseAgentLauncherReturn {
 
     let cancelled = false;
 
-    async function checkAvailability() {
+    async function checkAvailabilityAndLoadSettings() {
       try {
-        const [claudeAvailable, geminiAvailable, codexAvailable] = await Promise.all([
+        const [claudeAvailable, geminiAvailable, codexAvailable, settings] = await Promise.all([
           systemClient.checkCommand("claude"),
           systemClient.checkCommand("gemini"),
           systemClient.checkCommand("codex"),
+          agentSettingsClient.get(),
         ]);
 
         if (!cancelled) {
@@ -128,9 +132,10 @@ export function useAgentLauncher(): UseAgentLauncherReturn {
             gemini: geminiAvailable,
             codex: codexAvailable,
           });
+          setAgentSettings(settings);
         }
       } catch (error) {
-        console.error("Failed to check CLI availability:", error);
+        console.error("Failed to check CLI availability or load settings:", error);
         // Keep optimistic defaults on error
       } finally {
         if (!cancelled) {
@@ -139,7 +144,7 @@ export function useAgentLauncher(): UseAgentLauncherReturn {
       }
     }
 
-    checkAvailability();
+    checkAvailabilityAndLoadSettings();
 
     return () => {
       cancelled = true;
@@ -160,12 +165,34 @@ export function useAgentLauncher(): UseAgentLauncherReturn {
       // Pass project root if no worktree; Main process handles HOME fallback as last resort
       const cwd = activeWorktree?.path || currentProject?.path || "";
 
+      // Build command with settings-based CLI flags
+      let command = config.command;
+      if (command && agentSettings) {
+        let flags: string[] = [];
+
+        switch (type) {
+          case "claude":
+            flags = generateClaudeFlags(agentSettings.claude);
+            break;
+          case "gemini":
+            flags = generateGeminiFlags(agentSettings.gemini);
+            break;
+          case "codex":
+            flags = generateCodexFlags(agentSettings.codex);
+            break;
+        }
+
+        if (flags.length > 0) {
+          command = `${config.command} ${flags.join(" ")}`;
+        }
+      }
+
       const options: AddTerminalOptions = {
         type: config.type,
         title: config.title,
         cwd,
         worktreeId: activeId || undefined,
-        command: config.command,
+        command,
       };
 
       try {
@@ -176,7 +203,7 @@ export function useAgentLauncher(): UseAgentLauncherReturn {
         return null;
       }
     },
-    [activeId, worktreeMap, addTerminal, currentProject]
+    [activeId, worktreeMap, addTerminal, currentProject, agentSettings]
   );
 
   return {
