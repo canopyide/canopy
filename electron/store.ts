@@ -1,5 +1,5 @@
 import Store from "electron-store";
-import type { RecentDirectory } from "./ipc/types.js";
+import type { RecentDirectory } from "./types/index.js";
 import type { Project } from "./types/index.js";
 
 export type { RecentDirectory };

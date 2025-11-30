@@ -57,11 +57,37 @@ export type {
   // Terminal IPC types
   TerminalSpawnOptions,
   TerminalState,
+  TerminalDataPayload,
+  TerminalResizePayload,
+  TerminalKillPayload,
+  TerminalExitPayload,
+  TerminalErrorPayload,
   // CopyTree IPC types
   CopyTreeOptions,
+  CopyTreeGeneratePayload,
+  CopyTreeGenerateAndCopyFilePayload,
+  CopyTreeInjectPayload,
+  CopyTreeGetFileTreePayload,
   CopyTreeResult,
   CopyTreeProgress,
   FileTreeNode,
+  // Worktree IPC types
+  WorktreeRemovePayload,
+  WorktreeSetActivePayload,
+  // Dev server IPC types
+  DevServerStartPayload,
+  DevServerStopPayload,
+  DevServerTogglePayload,
+  DevServerErrorPayload,
+  // System IPC types
+  SystemOpenExternalPayload,
+  SystemOpenPathPayload,
+  // Directory IPC types
+  DirectoryOpenPayload,
+  DirectoryRemoveRecentPayload,
+  // PR detection IPC types
+  PRDetectedPayload,
+  PRClearedPayload,
   // App state types
   RecentDirectory,
   SavedRecipeTerminal,
@@ -83,6 +109,8 @@ export type {
   Artifact,
   AgentSession,
   HistoryGetSessionsPayload,
+  HistoryGetSessionPayload,
+  HistoryExportSessionPayload,
   // AI types
   AIServiceState,
   ProjectIdentity,
@@ -98,6 +126,8 @@ export type {
   ElectronAPI,
   BranchInfo,
   CreateWorktreeOptions,
+  // Adaptive backoff
+  AdaptiveBackoffMetrics,
 } from "./ipc.js";
 
 // Config types - application configuration

@@ -24,17 +24,15 @@ export interface TerminalSpawnOptions {
   /** Optional custom ID for the terminal */
   id?: string;
   /** Working directory for the terminal */
-  cwd: string;
+  cwd?: string;
   /** Shell executable to use (defaults to user's shell) */
   shell?: string;
-  /** Arguments to pass to the shell */
-  args?: string[];
   /** Environment variables to set */
   env?: Record<string, string>;
   /** Initial number of columns */
-  cols?: number;
+  cols: number;
   /** Initial number of rows */
-  rows?: number;
+  rows: number;
   /** Type of terminal */
   type?: TerminalType;
   /** Display title for the terminal */
@@ -57,6 +55,36 @@ export interface TerminalState {
   cwd: string;
   /** Associated worktree ID */
   worktreeId?: string;
+}
+
+/** Terminal data payload for IPC */
+export interface TerminalDataPayload {
+  id: string;
+  data: string;
+}
+
+/** Terminal resize payload for IPC */
+export interface TerminalResizePayload {
+  id: string;
+  cols: number;
+  rows: number;
+}
+
+/** Terminal kill payload for IPC */
+export interface TerminalKillPayload {
+  id: string;
+}
+
+/** Terminal exit payload for IPC */
+export interface TerminalExitPayload {
+  id: string;
+  exitCode: number;
+}
+
+/** Terminal error payload for IPC */
+export interface TerminalErrorPayload {
+  id: string;
+  error: string;
 }
 
 // ============================================================================
@@ -103,6 +131,20 @@ export interface CopyTreeGenerateAndCopyFilePayload {
   options?: CopyTreeOptions;
 }
 
+/** Payload for injecting CopyTree context to terminal */
+export interface CopyTreeInjectPayload {
+  terminalId: string;
+  worktreeId: string;
+  options?: CopyTreeOptions;
+}
+
+/** Payload for getting file tree */
+export interface CopyTreeGetFileTreePayload {
+  worktreeId: string;
+  /** Optional directory path relative to worktree root (defaults to root) */
+  dirPath?: string;
+}
+
 /** Result from CopyTree generation */
 export interface CopyTreeResult {
   /** Generated content */
@@ -132,6 +174,8 @@ export interface CopyTreeProgress {
   totalFiles?: number;
   /** Current file being processed (if known) */
   currentFile?: string;
+  /** Optional trace ID to track event chains */
+  traceId?: string;
 }
 
 /** File tree node for file picker */
@@ -149,6 +193,95 @@ export interface FileTreeNode {
 }
 
 // ============================================================================
+// Worktree IPC Payload Types
+// ============================================================================
+
+/** Payload for worktree removal notification */
+export interface WorktreeRemovePayload {
+  worktreeId: string;
+}
+
+/** Payload for setting active worktree */
+export interface WorktreeSetActivePayload {
+  worktreeId: string;
+}
+
+// ============================================================================
+// Dev Server IPC Payload Types
+// ============================================================================
+
+/** Payload for starting a dev server */
+export interface DevServerStartPayload {
+  worktreeId: string;
+  worktreePath: string;
+  command?: string;
+}
+
+/** Payload for stopping a dev server */
+export interface DevServerStopPayload {
+  worktreeId: string;
+}
+
+/** Payload for toggling a dev server */
+export interface DevServerTogglePayload {
+  worktreeId: string;
+  worktreePath: string;
+  command?: string;
+}
+
+/** Payload for dev server error notification */
+export interface DevServerErrorPayload {
+  worktreeId: string;
+  error: string;
+}
+
+// ============================================================================
+// System IPC Payload Types
+// ============================================================================
+
+/** Payload for opening an external URL */
+export interface SystemOpenExternalPayload {
+  url: string;
+}
+
+/** Payload for opening a path */
+export interface SystemOpenPathPayload {
+  path: string;
+}
+
+// ============================================================================
+// Directory IPC Payload Types
+// ============================================================================
+
+/** Payload for opening a directory */
+export interface DirectoryOpenPayload {
+  path: string;
+}
+
+/** Payload for removing a recent directory */
+export interface DirectoryRemoveRecentPayload {
+  path: string;
+}
+
+// ============================================================================
+// PR Detection IPC Payload Types
+// ============================================================================
+
+/** Payload for PR detected notification */
+export interface PRDetectedPayload {
+  worktreeId: string;
+  prNumber: number;
+  prUrl: string;
+  prState: string;
+  issueNumber?: number;
+}
+
+/** Payload for PR cleared notification */
+export interface PRClearedPayload {
+  worktreeId: string;
+}
+
+// ============================================================================
 // App State IPC Types
 // ============================================================================
 
@@ -159,7 +292,9 @@ export interface RecentDirectory {
   /** Last opened timestamp */
   lastOpened: number;
   /** Display name */
-  name: string;
+  displayName: string;
+  /** Git root directory (if detected) */
+  gitRoot?: string;
 }
 
 /** Saved recipe terminal definition */
@@ -197,7 +332,9 @@ export interface AppState {
   /** Currently active worktree ID */
   activeWorktreeId?: string;
   /** Width of the sidebar in pixels */
-  sidebarWidth?: number;
+  sidebarWidth: number;
+  /** Last opened directory */
+  lastDirectory?: string;
   /** Whether focus mode is active (panels collapsed for max terminal space) */
   focusMode?: boolean;
   /** Saved panel state before entering focus mode (for restoration) */
@@ -408,6 +545,17 @@ export interface HistoryGetSessionsPayload {
   limit?: number;
 }
 
+/** Payload for getting a single session */
+export interface HistoryGetSessionPayload {
+  sessionId: string;
+}
+
+/** Payload for exporting a session */
+export interface HistoryExportSessionPayload {
+  sessionId: string;
+  format: "json" | "markdown";
+}
+
 // ============================================================================
 // AI IPC Types
 // ============================================================================
@@ -613,7 +761,7 @@ export interface ElectronAPI {
     onEntry(callback: (entry: LogEntry) => void): () => void;
   };
   directory: {
-    getRecent(): Promise<Array<{ path: string; lastOpened: number; name: string }>>;
+    getRecent(): Promise<RecentDirectory[]>;
     open(path: string): Promise<void>;
     openDialog(): Promise<string | null>;
     removeRecent(path: string): Promise<void>;

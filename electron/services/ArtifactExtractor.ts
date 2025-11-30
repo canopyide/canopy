@@ -6,7 +6,7 @@
  */
 
 import { createHash } from "crypto";
-import type { Artifact } from "../ipc/types.js";
+import type { Artifact } from "../types/index.js";
 
 /**
  * Extract artifacts from a text buffer

@@ -7,7 +7,7 @@
 import * as fs from "fs/promises";
 import * as path from "path";
 import { simpleGit } from "simple-git";
-import type { FileTreeNode } from "../ipc/types.js";
+import type { FileTreeNode } from "../types/index.js";
 
 /**
  * Get file tree for a directory, respecting .gitignore patterns

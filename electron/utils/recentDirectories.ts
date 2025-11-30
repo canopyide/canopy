@@ -1,7 +1,7 @@
 import { promises as fs } from "fs";
 import { basename } from "path";
 import { execSync } from "child_process";
-import type { RecentDirectory } from "../ipc/types.js";
+import type { RecentDirectory } from "../types/index.js";
 
 /**
  * Detect git root directory for a given path

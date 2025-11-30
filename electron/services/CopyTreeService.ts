@@ -13,7 +13,7 @@ import { copy, ConfigManager } from "copytree";
 import type { CopyResult, CopyOptions as SdkCopyOptions, ProgressEvent } from "copytree";
 import * as path from "path";
 import * as fs from "fs/promises";
-import type { CopyTreeOptions, CopyTreeResult, CopyTreeProgress } from "../ipc/types.js";
+import type { CopyTreeOptions, CopyTreeResult, CopyTreeProgress } from "../types/index.js";
 
 // Re-export types for convenience
 export type { CopyTreeOptions, CopyTreeResult, CopyTreeProgress };

@@ -11,7 +11,7 @@ import fs from "fs/promises";
 import { existsSync } from "fs";
 import { events } from "./events.js";
 import { extractArtifacts, stripAnsiCodes } from "./ArtifactExtractor.js";
-import type { AgentSession } from "../ipc/types.js";
+import type { AgentSession } from "../types/index.js";
 import type { TerminalType } from "../types/index.js";
 
 const MAX_SESSIONS = 100; // Keep last 100 sessions

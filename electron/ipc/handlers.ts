@@ -32,7 +32,7 @@ import type {
   RecentDirectory,
   DirectoryOpenPayload,
   DirectoryRemoveRecentPayload,
-} from "./types.js";
+} from "../types/index.js";
 import {
   TerminalSpawnOptionsSchema,
   TerminalResizePayloadSchema,
@@ -65,7 +65,7 @@ import type {
   HistoryGetSessionPayload,
   HistoryExportSessionPayload,
   AgentSession,
-} from "./types.js";
+} from "../types/index.js";
 
 /**
  * Initialize all IPC handlers

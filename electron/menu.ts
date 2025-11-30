@@ -1,5 +1,5 @@
 import { Menu, dialog, BrowserWindow, shell } from "electron";
-import type { RecentDirectory } from "./ipc/types.js";
+import type { RecentDirectory } from "./types/index.js";
 import { store } from "./store.js";
 import { projectStore } from "./services/ProjectStore.js";
 import { worktreeService } from "./services/WorktreeService.js";

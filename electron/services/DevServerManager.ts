@@ -17,7 +17,7 @@ import { existsSync } from "node:fs";
 import { readFile } from "node:fs/promises";
 import path from "node:path";
 import type { BrowserWindow } from "electron";
-import type { DevServerState, DevServerStatus } from "../ipc/types.js";
+import type { DevServerState, DevServerStatus } from "../types/index.js";
 import { events } from "./events.js";
 
 // URL detection patterns for common dev servers
