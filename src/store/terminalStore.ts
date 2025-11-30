@@ -102,7 +102,7 @@ let agentStateUnsubscribe: (() => void) | null = null;
 if (typeof window !== "undefined" && window.electron?.terminal?.onAgentStateChanged) {
   agentStateUnsubscribe = window.electron.terminal.onAgentStateChanged((data) => {
     // The IPC event uses 'agentId' which corresponds to the terminal ID
-    const { agentId, state, timestamp } = data;
+    const { agentId, state, timestamp, trigger, confidence } = data;
 
     // Validate state is a valid AgentState
     const validStates: AgentState[] = ["idle", "working", "waiting", "completed", "failed"];
@@ -111,10 +111,10 @@ if (typeof window !== "undefined" && window.electron?.terminal?.onAgentStateChan
       return;
     }
 
-    // Update the terminal's agent state
+    // Update the terminal's agent state with trigger and confidence metadata
     useTerminalStore
       .getState()
-      .updateAgentState(agentId, state as AgentState, undefined, timestamp);
+      .updateAgentState(agentId, state as AgentState, undefined, timestamp, trigger, confidence);
 
     // Process any queued commands when agent becomes idle or waiting
     if (state === "waiting" || state === "idle") {

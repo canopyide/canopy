@@ -586,16 +586,34 @@ export interface ProjectIdentity {
 // Agent State Change Payload
 // ============================================================================
 
+/**
+ * Trigger types for agent state changes.
+ * Indicates what caused an agent's state to change.
+ */
+export type AgentStateChangeTrigger =
+  | "input"
+  | "output"
+  | "heuristic"
+  | "ai-classification"
+  | "timeout"
+  | "exit";
+
 /** Payload for agent state change events */
 export interface AgentStateChangePayload {
   /** Agent/terminal ID */
   agentId: string;
-  /** New state (string to allow for runtime flexibility) */
+  /** New state */
   state: string;
   /** Previous state */
-  previousState?: string;
+  previousState: string;
   /** Timestamp of state change */
   timestamp: number;
+  /** Optional trace ID to track event chains */
+  traceId?: string;
+  /** What caused this state change */
+  trigger: AgentStateChangeTrigger;
+  /** Confidence in the state detection (0.0 = uncertain, 1.0 = certain) */
+  confidence: number;
 }
 
 // ============================================================================

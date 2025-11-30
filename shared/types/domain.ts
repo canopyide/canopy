@@ -266,6 +266,15 @@ export interface RunRecord {
 /** Type of terminal instance */
 export type TerminalType = "shell" | "claude" | "gemini" | "custom";
 
+/** Valid triggers for agent state changes */
+export type AgentStateChangeTrigger =
+  | "input"
+  | "output"
+  | "heuristic"
+  | "ai-classification"
+  | "timeout"
+  | "exit";
+
 /** Represents a terminal instance in the application */
 export interface TerminalInstance {
   /** Unique identifier for this terminal */
@@ -290,6 +299,10 @@ export interface TerminalInstance {
   lastStateChange?: number;
   /** Error message if agentState is 'failed' */
   error?: string;
+  /** What triggered the most recent state change */
+  stateChangeTrigger?: AgentStateChangeTrigger;
+  /** Confidence in the most recent state detection (0.0-1.0) */
+  stateChangeConfidence?: number;
 }
 
 /** Options for spawning a new PTY process */

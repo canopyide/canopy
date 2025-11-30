@@ -142,7 +142,10 @@ describe("EventBuffer", () => {
       events.emit("agent:state-changed", {
         agentId: "agent-1",
         state: "working",
+        previousState: "idle",
         timestamp: Date.now() - 4000,
+        trigger: "output",
+        confidence: 1.0,
       });
       events.emit("sys:worktree:update", {
         id: "wt-1",
@@ -331,6 +334,8 @@ describe("EventBuffer", () => {
         state: "working",
         previousState: "idle",
         timestamp: Date.now(),
+        trigger: "heuristic",
+        confidence: 0.9,
       });
 
       const all = buffer.getAll();
@@ -339,6 +344,9 @@ describe("EventBuffer", () => {
       expect(stateEvent).toBeDefined();
       expect(stateEvent?.payload.state).toBe("working");
       expect(stateEvent?.payload.previousState).toBe("idle");
+      // Verify trigger and confidence metadata survive sanitization
+      expect(stateEvent?.payload.trigger).toBe("heuristic");
+      expect(stateEvent?.payload.confidence).toBe(0.9);
     });
   });
 
@@ -506,8 +514,11 @@ describe("EventBuffer", () => {
       events.emit("agent:state-changed", {
         agentId: "agent-1",
         state: "working",
+        previousState: "idle",
         timestamp: Date.now(),
         traceId: "trace-alpha",
+        trigger: "output",
+        confidence: 1.0,
       });
       events.emit("agent:spawned", {
         agentId: "agent-2",
@@ -541,8 +552,11 @@ describe("EventBuffer", () => {
       events.emit("agent:state-changed", {
         agentId: "agent-1",
         state: "working",
+        previousState: "idle",
         timestamp: Date.now(),
         traceId: "trace-1",
+        trigger: "output",
+        confidence: 1.0,
       });
       events.emit("agent:spawned", {
         agentId: "agent-2",
@@ -615,7 +629,10 @@ describe("EventBuffer", () => {
       events.emit("agent:state-changed", {
         agentId: "agent-1",
         state: "working",
+        previousState: "idle",
         timestamp: Date.now(),
+        trigger: "output",
+        confidence: 1.0,
       });
       events.emit("server:update", {
         worktreeId: "wt-1",
@@ -691,7 +708,10 @@ describe("EventBuffer", () => {
       events.emit("agent:state-changed", {
         agentId: "agent-1",
         state: "working",
+        previousState: "idle",
         timestamp: Date.now(),
+        trigger: "output",
+        confidence: 1.0,
       });
       events.emit("server:update", {
         worktreeId: "wt-1",

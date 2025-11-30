@@ -35,6 +35,7 @@ export type {
   RunRecord,
   // Terminal types
   TerminalType,
+  AgentStateChangeTrigger,
   TerminalInstance,
   PtySpawnOptions,
   TerminalDimensions,

@@ -310,15 +310,29 @@ const api: ElectronAPI = {
 
     onAgentStateChanged: (callback: (data: AgentStateChangePayload) => void) => {
       const handler = (_event: Electron.IpcRendererEvent, data: unknown) => {
-        // Type guard
+        // Type guard - validate all required fields including new metadata
+        const record = data as Record<string, unknown>;
         if (
           typeof data === "object" &&
           data !== null &&
           "agentId" in data &&
           "state" in data &&
-          "timestamp" in data
+          "previousState" in data &&
+          "timestamp" in data &&
+          "trigger" in data &&
+          "confidence" in data &&
+          typeof record.agentId === "string" &&
+          typeof record.state === "string" &&
+          typeof record.previousState === "string" &&
+          typeof record.timestamp === "number" &&
+          typeof record.trigger === "string" &&
+          typeof record.confidence === "number" &&
+          record.confidence >= 0 &&
+          record.confidence <= 1
         ) {
           callback(data as AgentStateChangePayload);
+        } else {
+          console.warn("[Preload] Invalid agent:state-changed payload, dropping event", data);
         }
       };
       ipcRenderer.on(CHANNELS.AGENT_STATE_CHANGED, handler);

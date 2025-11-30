@@ -24,6 +24,7 @@ import {
   AgentCompletedSchema,
   AgentFailedSchema,
   AgentKilledSchema,
+  type AgentStateChangeTrigger,
 } from "../schemas/agent.js";
 
 export interface PtySpawnOptions {
@@ -129,12 +130,99 @@ export class PtyManager extends EventEmitter {
   }
 
   /**
+   * Infer the trigger type from an agent event.
+   * @param event - Agent event that triggers the state transition
+   * @returns The inferred trigger type
+   * @private
+   */
+  private inferTrigger(event: AgentEvent): AgentStateChangeTrigger {
+    switch (event.type) {
+      case "input":
+        return "input";
+      case "output":
+        return "output";
+      case "busy":
+        return "heuristic";
+      case "prompt":
+        return "heuristic";
+      case "exit":
+        return "exit";
+      case "start":
+        // Start events occur at spawn, before any actual output
+        return "heuristic";
+      case "error":
+        // Error events are detected via output patterns, not actual exits
+        return "heuristic";
+      default:
+        return "output";
+    }
+  }
+
+  /**
+   * Infer the confidence level for a state change.
+   * @param event - Agent event that triggers the state transition
+   * @param trigger - The trigger type for this state change
+   * @returns Confidence value between 0.0 and 1.0
+   * @private
+   */
+  private inferConfidence(event: AgentEvent, trigger: AgentStateChangeTrigger): number {
+    // Deterministic triggers have perfect confidence
+    if (trigger === "input" || trigger === "exit") {
+      return 1.0;
+    }
+
+    // Output triggers are deterministic (we know output happened)
+    if (trigger === "output") {
+      return 1.0;
+    }
+
+    // Heuristic triggers have varying confidence based on pattern type
+    if (trigger === "heuristic") {
+      // Busy patterns are high confidence (specific indicators like "esc to interrupt")
+      if (event.type === "busy") {
+        return 0.9;
+      }
+      // Prompt patterns are medium confidence (more false positives)
+      if (event.type === "prompt") {
+        return 0.75;
+      }
+      // Start events (initial spawn) are lower confidence - no real output yet
+      if (event.type === "start") {
+        return 0.7;
+      }
+      // Error events detected via patterns are medium-low confidence
+      if (event.type === "error") {
+        return 0.65;
+      }
+    }
+
+    // AI classification confidence should be passed explicitly (handled in caller)
+    if (trigger === "ai-classification") {
+      return 0.85; // Default if not specified
+    }
+
+    // Timeout triggers depend on context (caller should specify)
+    if (trigger === "timeout") {
+      return 0.6; // Default conservative value
+    }
+
+    return 0.5; // Unknown confidence
+  }
+
+  /**
    * Update agent state for a terminal and emit state-changed event
    * @param id - Terminal identifier
    * @param event - Agent event that triggers the state transition
+   * @param trigger - Optional explicit trigger type (if not provided, inferred from event)
+   * @param confidence - Optional explicit confidence value (if not provided, inferred from event and trigger)
    * @private
    */
-  private updateAgentState(id: string, event: AgentEvent): void {
+  private updateAgentState(
+    id: string,
+    event: AgentEvent,
+    trigger?: AgentStateChangeTrigger,
+    confidence?: number
+  ): void {
     const terminal = this.terminals.get(id);
     if (!terminal || !terminal.agentId) {
       return;
@@ -153,6 +241,10 @@ export class PtyManager extends EventEmitter {
       terminal.agentState = newState;
       terminal.lastStateChange = getStateChangeTimestamp();
 
+      // Infer trigger from event type if not explicitly provided
+      const inferredTrigger = trigger ?? this.inferTrigger(event);
+      const inferredConfidence = confidence ?? this.inferConfidence(event, inferredTrigger);
+
       // Build and validate state change payload
       const stateChangePayload = {
         agentId: terminal.agentId,
@@ -160,6 +252,8 @@ export class PtyManager extends EventEmitter {
         previousState,
         timestamp: terminal.lastStateChange,
         traceId: terminal.traceId,
+        trigger: inferredTrigger,
+        confidence: inferredConfidence,
       };
 
       const validatedStateChange = AgentStateChangedSchema.safeParse(stateChangePayload);

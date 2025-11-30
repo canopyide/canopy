@@ -34,9 +34,15 @@ import { ArtifactOverlay } from "./ArtifactOverlay";
 import { ErrorBanner } from "../Errors/ErrorBanner";
 import { useErrorStore, useTerminalStore, type RetryAction } from "@/store";
 import { useContextInjection, type CopyTreeProgress } from "@/hooks/useContextInjection";
-import type { AgentState } from "@/types";
+import type { AgentState, AgentStateChangeTrigger } from "@/types";
 
 export type TerminalType = "shell" | "claude" | "gemini" | "custom";
+
+/** Debug info for state changes */
+export interface StateDebugInfo {
+  trigger: AgentStateChangeTrigger;
+  confidence: number;
+}
 
 export interface TerminalPaneProps {
   /** Unique terminal identifier */
@@ -59,6 +65,8 @@ export interface TerminalPaneProps {
   injectionProgress?: CopyTreeProgress | null;
   /** Current agent state (for agent terminals) */
   agentState?: AgentState;
+  /** Debug info about state detection (trigger and confidence) */
+  stateDebugInfo?: StateDebugInfo | null;
   /** Called when the pane is clicked/focused */
   onFocus: () => void;
   /** Called when the close button is clicked */
@@ -101,6 +109,7 @@ export function TerminalPane({
   isInjecting,
   injectionProgress,
   agentState,
+  stateDebugInfo,
   onFocus,
   onClose,
   onInjectContext,
@@ -348,6 +357,18 @@ export function TerminalPane({
               <span className="text-xs font-mono">Working</span>
             </div>
           )}
+
+          {/* State debug info - shown when CANOPY_STATE_DEBUG is set in localStorage */}
+          {stateDebugInfo &&
+            typeof localStorage !== "undefined" &&
+            localStorage.getItem("CANOPY_STATE_DEBUG") === "1" && (
+              <span
+                className="text-xs font-mono text-gray-500 ml-1"
+                title={`Trigger: ${stateDebugInfo.trigger}\nConfidence: ${(stateDebugInfo.confidence * 100).toFixed(0)}%`}
+              >
+                ({stateDebugInfo.trigger}, {(stateDebugInfo.confidence * 100).toFixed(0)}%)
+              </span>
+            )}
 
           {/* Queue count indicator */}
           {queueCount > 0 && (

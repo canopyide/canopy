@@ -143,6 +143,14 @@ export function TerminalGrid({ className, defaultCwd }: TerminalGridProps) {
             isInjecting={isInjecting}
             injectionProgress={progress}
             agentState={terminal.agentState}
+            stateDebugInfo={
+              terminal.stateChangeTrigger
+                ? {
+                    trigger: terminal.stateChangeTrigger,
+                    confidence: terminal.stateChangeConfidence ?? 0,
+                  }
+                : null
+            }
             onFocus={() => setFocused(terminal.id)}
             onClose={() => removeTerminal(terminal.id)}
             onInjectContext={
@@ -192,6 +200,14 @@ export function TerminalGrid({ className, defaultCwd }: TerminalGridProps) {
           isInjecting={isInjecting}
           injectionProgress={progress}
           agentState={terminal.agentState}
+          stateDebugInfo={
+            terminal.stateChangeTrigger
+              ? {
+                  trigger: terminal.stateChangeTrigger,
+                  confidence: terminal.stateChangeConfidence ?? 0,
+                }
+              : null
+          }
           onFocus={() => setFocused(terminal.id)}
           onClose={() => removeTerminal(terminal.id)}
           onInjectContext={

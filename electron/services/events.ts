@@ -336,9 +336,7 @@ export function getEventCategory(eventType: keyof CanopyEventMap): EventCategory
 /**
  * Get all event types for a specific category.
  */
-export function getEventTypesForCategory(
-  category: EventCategory
-): Array<keyof CanopyEventMap> {
+export function getEventTypesForCategory(category: EventCategory): Array<keyof CanopyEventMap> {
   return (Object.keys(EVENT_META) as Array<keyof CanopyEventMap>).filter(
     (key) => EVENT_META[key].category === category
   );
@@ -358,15 +356,16 @@ export type WithBase<T> = T & BaseEventPayload;
  * Helper type to enforce both BaseEventPayload and EventContext fields.
  * Use for events that require correlation context (worktreeId, agentId, etc.).
  */
-export type WithContext<T> = T & BaseEventPayload & {
-  worktreeId?: string;
-  agentId?: string;
-  taskId?: string;
-  runId?: string;
-  terminalId?: string;
-  issueNumber?: number;
-  prNumber?: number;
-};
+export type WithContext<T> = T &
+  BaseEventPayload & {
+    worktreeId?: string;
+    agentId?: string;
+    taskId?: string;
+    runId?: string;
+    terminalId?: string;
+    issueNumber?: number;
+    prNumber?: number;
+  };
 
 // ============================================================================
 // Event Type Unions by Category
@@ -392,6 +391,25 @@ export interface ModalContextMap {
   worktree: undefined;
   "command-palette": undefined;
 }
+
+/**
+ * Trigger types for agent state changes.
+ * Indicates what caused an agent's state to change.
+ *
+ * - `input`: User sent input to terminal (deterministic, confidence 1.0)
+ * - `output`: PTY emitted output (deterministic, confidence 1.0)
+ * - `heuristic`: Pattern matching detected prompt/busy (confidence 0.7-0.9)
+ * - `ai-classification`: AI model classified state (confidence 0.8-0.95)
+ * - `timeout`: Silence timeout triggered check (confidence varies)
+ * - `exit`: Process exited (deterministic, confidence 1.0)
+ */
+export type AgentStateChangeTrigger =
+  | "input"
+  | "output"
+  | "heuristic"
+  | "ai-classification"
+  | "timeout"
+  | "exit";
 
 /**
  * Base event payload with optional trace correlation ID.
@@ -512,10 +530,14 @@ export type CanopyEventMap = {
   "agent:state-changed": {
     agentId: string;
     state: AgentState;
-    previousState?: AgentState;
+    previousState: AgentState;
     timestamp: number;
     /** Optional trace ID to track event chains */
     traceId?: string;
+    /** What caused this state change */
+    trigger: AgentStateChangeTrigger;
+    /** Confidence in the state detection (0.0 = uncertain, 1.0 = certain) */
+    confidence: number;
   };
 
   /**
