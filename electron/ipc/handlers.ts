@@ -1018,13 +1018,6 @@ export function registerIpcHandlers(
   ipcMain.handle(CHANNELS.SYSTEM_OPEN_PATH, handleSystemOpenPath);
   handlers.push(() => ipcMain.removeHandler(CHANNELS.SYSTEM_OPEN_PATH));
 
-  const handleSystemGetConfig = async () => {
-    // TODO: Implement when config system is migrated
-    return {};
-  };
-  ipcMain.handle(CHANNELS.SYSTEM_GET_CONFIG, handleSystemGetConfig);
-  handlers.push(() => ipcMain.removeHandler(CHANNELS.SYSTEM_GET_CONFIG));
-
   const handleSystemCheckCommand = async (
     _event: Electron.IpcMainInvokeEvent,
     command: string

@@ -7,7 +7,5 @@
 // Re-export all shared types
 export * from "@shared/types/index.js";
 
-// Re-export runtime values from local files (DEFAULT_CONFIG, keymaps, etc.)
-// Note: Types are re-exported via @shared, these are just the runtime constants/functions
+// Re-export runtime values from local files
 export { DEFAULT_CONFIG } from "./config.js";
-export { STANDARD_KEYMAP, VIM_KEYMAP, getPresetKeymap, resolveKeymap } from "./keymap.js";

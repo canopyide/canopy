@@ -597,7 +597,6 @@ export interface ElectronAPI {
   system: {
     openExternal(url: string): Promise<void>;
     openPath(path: string): Promise<void>;
-    getConfig(): Promise<CanopyConfig>;
     checkCommand(command: string): Promise<boolean>;
     getHomeDir(): Promise<string>;
   };
@@ -676,6 +675,3 @@ export interface ElectronAPI {
     onEvent(callback: (event: { type: string; payload: unknown }) => void): () => void;
   };
 }
-
-// Import CanopyConfig for use in ElectronAPI
-import type { CanopyConfig } from "./config.js";

@@ -96,22 +96,6 @@ export async function getRepoStats(cwd: string): Promise<RepoStatsResult> {
   }
 }
 
-/**
- * @deprecated Use getRepoStats() instead for efficiency (single API call)
- */
-export async function getIssueCount(cwd: string): Promise<number | null> {
-  const result = await getRepoStats(cwd);
-  return result.stats?.issueCount ?? null;
-}
-
-/**
- * @deprecated Use getRepoStats() instead for efficiency (single API call)
- */
-export async function getPrCount(cwd: string): Promise<number | null> {
-  const result = await getRepoStats(cwd);
-  return result.stats?.prCount ?? null;
-}
-
 // ─────────────────────────────────────────────────────────────────────────────
 // URL Helpers
 // ─────────────────────────────────────────────────────────────────────────────

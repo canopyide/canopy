@@ -56,7 +56,6 @@ export const CHANNELS = {
   // System channels
   SYSTEM_OPEN_EXTERNAL: "system:open-external",
   SYSTEM_OPEN_PATH: "system:open-path",
-  SYSTEM_GET_CONFIG: "system:get-config",
   SYSTEM_CHECK_COMMAND: "system:check-command",
   SYSTEM_GET_HOME_DIR: "system:get-home-dir",
 

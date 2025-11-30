@@ -34,10 +34,6 @@ export function stopWorktreeCacheCleanup(): void {
   }
 }
 
-// Legacy aliases for backward compatibility
-export { startWorktreeCacheCleanup as startGitStatusCacheCleanup };
-export { stopWorktreeCacheCleanup as stopGitStatusCacheCleanup };
-
 if (process.env.NODE_ENV !== "test") {
   startWorktreeCacheCleanup();
 }
@@ -52,7 +48,7 @@ export function invalidateWorktreeCache(cwd: string): void {
   GIT_WORKTREE_CHANGES_CACHE.invalidate(cwd);
 }
 
-// Legacy alias for backward compatibility
+// Legacy alias - still used by WorktreeMonitor
 export { invalidateWorktreeCache as invalidateGitStatusCache };
 
 /**
@@ -62,9 +58,6 @@ export { invalidateWorktreeCache as invalidateGitStatusCache };
 export function clearWorktreeCache(): void {
   GIT_WORKTREE_CHANGES_CACHE.clear();
 }
-
-// Legacy alias for backward compatibility
-export { clearWorktreeCache as clearGitStatusCache };
 
 interface DiffStat {
   insertions: number | null;
