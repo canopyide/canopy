@@ -243,6 +243,29 @@ export function XtermAdapter({ terminalId, onReady, onExit, className }: XtermAd
           console.warn("WebGL addon failed to load, using canvas renderer:", e);
         }
 
+        // Custom key event handler for Shift+Enter line breaks
+        // Matches behavior of web-based AI interfaces (Claude.ai, Gemini)
+        // Note: attachCustomKeyEventHandler doesn't return a disposable -
+        // the handler is automatically cleaned up when terminal.dispose() is called
+        terminal.attachCustomKeyEventHandler((event: KeyboardEvent) => {
+          // Intercept Shift+Enter for line breaks (not Ctrl/Alt/Meta combos)
+          if (
+            event.key === "Enter" &&
+            event.shiftKey &&
+            !event.ctrlKey &&
+            !event.altKey &&
+            !event.metaKey
+          ) {
+            // Send newline to PTY so the shell receives it and echoes it back
+            // This keeps terminal display and PTY state in sync
+            window.electron.terminal.write(terminalId, "\r");
+            // Return false to prevent xterm from processing this event
+            return false;
+          }
+          // Let xterm handle all other keys
+          return true;
+        });
+
         // Initial fit - but only if container has dimensions
         if (
           containerRef.current &&
