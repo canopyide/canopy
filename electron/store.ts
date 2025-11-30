@@ -1,6 +1,8 @@
 import Store from "electron-store";
 import type { RecentDirectory } from "./types/index.js";
 import type { Project } from "./types/index.js";
+import type { AgentSettings } from "@shared/types/index.js";
+import { DEFAULT_AGENT_SETTINGS } from "@shared/types/index.js";
 
 export type { RecentDirectory };
 
@@ -57,6 +59,8 @@ export interface StoreSchema {
     /** Whether AI features are enabled */
     aiEnabled?: boolean;
   };
+  /** Agent CLI settings for Claude, Gemini, and Codex */
+  agentSettings: AgentSettings;
 }
 
 export const store = new Store<StoreSchema>({
@@ -84,5 +88,6 @@ export const store = new Store<StoreSchema>({
       aiModel: "gpt-5-nano",
       aiEnabled: true,
     },
+    agentSettings: DEFAULT_AGENT_SETTINGS,
   },
 });

@@ -18,6 +18,12 @@ import type {
   RunCommand,
 } from "./domain.js";
 import type { EventContext, RunMetadata } from "./events.js";
+import type {
+  AgentSettings,
+  ClaudeSettings,
+  GeminiSettings,
+  CodexSettings,
+} from "./agentSettings.js";
 
 // ============================================================================
 // Terminal IPC Types
@@ -1178,6 +1184,24 @@ export interface IpcInvokeMap {
     args: [olderThan?: number];
     result: number;
   };
+
+  // ============================================
+  // Agent settings channels
+  // ============================================
+  "agent-settings:get": {
+    args: [];
+    result: AgentSettings;
+  };
+  "agent-settings:set": {
+    args: [
+      payload: { agentType: "claude" | "gemini" | "codex"; settings: Record<string, unknown> },
+    ];
+    result: AgentSettings;
+  };
+  "agent-settings:reset": {
+    args: [agentType?: "claude" | "gemini" | "codex"];
+    result: AgentSettings;
+  };
 }
 
 /**
@@ -1432,5 +1456,12 @@ export interface ElectronAPI {
     getActive(): Promise<RunMetadata[]>;
     clearFinished(olderThan?: number): Promise<number>;
     onEvent(callback: (event: { type: string; payload: unknown }) => void): () => void;
+  };
+  agentSettings: {
+    get(): Promise<AgentSettings>;
+    setClaude(settings: Partial<ClaudeSettings>): Promise<AgentSettings>;
+    setGemini(settings: Partial<GeminiSettings>): Promise<AgentSettings>;
+    setCodex(settings: Partial<CodexSettings>): Promise<AgentSettings>;
+    reset(agentType?: "claude" | "gemini" | "codex"): Promise<AgentSettings>;
   };
 }

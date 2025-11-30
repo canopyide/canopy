@@ -138,6 +138,11 @@ export const CHANNELS = {
   RUN_GET_ACTIVE: "run:get-active",
   RUN_CLEAR_FINISHED: "run:clear-finished",
   RUN_EVENT: "run:event",
+
+  // Agent settings channels
+  AGENT_SETTINGS_GET: "agent-settings:get",
+  AGENT_SETTINGS_SET: "agent-settings:set",
+  AGENT_SETTINGS_RESET: "agent-settings:reset",
 } as const;
 
 export type ChannelName = (typeof CHANNELS)[keyof typeof CHANNELS];

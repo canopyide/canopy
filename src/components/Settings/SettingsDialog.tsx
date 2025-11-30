@@ -20,10 +20,12 @@ import {
   Sparkles,
   FlaskConical,
   TreePine,
+  Bot,
 } from "lucide-react";
 import { cn } from "@/lib/utils";
 import type { AIServiceState } from "@/types";
 import { appClient, aiClient, logsClient } from "@/clients";
+import { AgentSettings } from "./AgentSettings";
 
 interface SettingsDialogProps {
   isOpen: boolean;
@@ -31,7 +33,7 @@ interface SettingsDialogProps {
   defaultTab?: SettingsTab;
 }
 
-type SettingsTab = "general" | "ai" | "troubleshooting";
+type SettingsTab = "general" | "agents" | "ai" | "troubleshooting";
 
 // Keyboard shortcuts organized by category
 const KEYBOARD_SHORTCUTS = [
@@ -246,6 +248,18 @@ export function SettingsDialog({ isOpen, onClose, defaultTab }: SettingsDialogPr
             General
           </button>
           <button
+            onClick={() => setActiveTab("agents")}
+            className={cn(
+              "text-left px-3 py-2 rounded-md text-sm transition-colors flex items-center gap-2",
+              activeTab === "agents"
+                ? "bg-canopy-accent/10 text-canopy-accent"
+                : "text-gray-400 hover:bg-canopy-border hover:text-canopy-text"
+            )}
+          >
+            <Bot className="w-4 h-4" />
+            Agents
+          </button>
+          <button
             onClick={() => setActiveTab("ai")}
             className={cn(
               "text-left px-3 py-2 rounded-md text-sm transition-colors flex items-center gap-2",
@@ -274,7 +288,11 @@ export function SettingsDialog({ isOpen, onClose, defaultTab }: SettingsDialogPr
         <div className="flex-1 flex flex-col min-w-0">
           <div className="flex items-center justify-between p-6 border-b border-canopy-border">
             <h3 className="text-lg font-medium text-canopy-text capitalize">
-              {activeTab === "ai" ? "AI Features" : activeTab}
+              {activeTab === "ai"
+                ? "AI Features"
+                : activeTab === "agents"
+                  ? "Agent Settings"
+                  : activeTab}
             </h3>
             <button
               onClick={onClose}
@@ -345,6 +363,8 @@ export function SettingsDialog({ isOpen, onClose, defaultTab }: SettingsDialogPr
                 </div>
               </div>
             )}
+
+            {activeTab === "agents" && <AgentSettings />}
 
             {activeTab === "ai" && (
               <div className="space-y-6">
