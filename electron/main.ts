@@ -40,7 +40,110 @@ let eventBufferUnsubscribe: (() => void) | null = null;
 // Terminal ID for the default terminal (for backwards compatibility with renderer)
 const DEFAULT_TERMINAL_ID = "default";
 
+// Track if we're intentionally quitting to avoid premature cleanup
+let isQuitting = false;
+
+// --- SINGLE INSTANCE LOCK ---
+// Robustly prevent multiple instances of the application
+const gotTheLock = app.requestSingleInstanceLock();
+
+if (!gotTheLock) {
+  console.log("[MAIN] Another instance is already running. Quitting...");
+  app.quit();
+} else {
+  // We are the primary instance
+  app.on("second-instance", (_event, _commandLine, _workingDirectory) => {
+    // Someone tried to run a second instance, we should focus our window.
+    console.log("[MAIN] Second instance detected, focusing main window");
+    if (mainWindow) {
+      if (mainWindow.isMinimized()) mainWindow.restore();
+      mainWindow.focus();
+    }
+  });
+
+  // Proceed with app startup
+  app.whenReady().then(createWindow);
+
+  app.on("window-all-closed", () => {
+    if (process.platform !== "darwin") {
+      app.quit();
+    }
+  });
+
+  app.on("activate", () => {
+    if (BrowserWindow.getAllWindows().length === 0) {
+      createWindow();
+    }
+  });
+
+  // Cleanup on quit - prevent default to ensure graceful shutdown completes
+  app.on("before-quit", (event) => {
+    // If already quitting or not ready yet, don't interfere
+    if (isQuitting || !mainWindow) {
+      return;
+    }
+
+    // Prevent quit until cleanup is done
+    event.preventDefault();
+    isQuitting = true;
+
+    console.log("[MAIN] Starting graceful shutdown...");
+
+    // Save terminal state before cleanup
+    if (ptyManager) {
+      const terminals = ptyManager.getAll().map((t) => ({
+        id: t.id,
+        type: t.type || "shell",
+        title: t.title || "Terminal",
+        cwd: t.cwd,
+        worktreeId: t.worktreeId,
+      }));
+      store.set("appState.terminals", terminals);
+    }
+
+    // Perform cleanup
+    Promise.all([
+      worktreeService.stopAll(),
+      devServerManager ? devServerManager.stopAll() : Promise.resolve(),
+      disposeTranscriptManager(),
+      new Promise<void>((resolve) => {
+        if (ptyManager) {
+          ptyManager.dispose();
+          ptyManager = null;
+        }
+        resolve();
+      }),
+    ])
+      .then(() => {
+        // Cleanup IPC handlers
+        if (cleanupIpcHandlers) {
+          cleanupIpcHandlers();
+          cleanupIpcHandlers = null;
+        }
+        if (cleanupErrorHandlers) {
+          cleanupErrorHandlers();
+          cleanupErrorHandlers = null;
+        }
+        console.log("[MAIN] Graceful shutdown complete");
+        // Now actually quit
+        app.exit(0);
+      })
+      .catch((error) => {
+        console.error("[MAIN] Error during cleanup:", error);
+        app.exit(1);
+      });
+  });
+}
+
 async function createWindow(): Promise<void> {
+  // Standard idempotent check for 'activate' event
+  if (mainWindow && !mainWindow.isDestroyed()) {
+    console.log("[MAIN] Main window already exists, focusing");
+    if (mainWindow.isMinimized()) mainWindow.restore();
+    mainWindow.focus();
+    return;
+  }
+
   console.log("[MAIN] Creating window...");
   mainWindow = createWindowWithState({
     minWidth: 800,
@@ -234,78 +337,3 @@ async function createWindow(): Promise<void> {
     mainWindow = null;
   });
 }
-
-app.whenReady().then(createWindow);
-
-app.on("window-all-closed", () => {
-  if (process.platform !== "darwin") {
-    app.quit();
-  }
-});
-
-app.on("activate", () => {
-  if (BrowserWindow.getAllWindows().length === 0) {
-    createWindow();
-  }
-});
-
-// Track if we're intentionally quitting to avoid premature cleanup
-let isQuitting = false;
-
-// Cleanup on quit - prevent default to ensure graceful shutdown completes
-app.on("before-quit", (event) => {
-  // If already quitting or not ready yet, don't interfere
-  if (isQuitting || !mainWindow) {
-    return;
-  }
-
-  // Prevent quit until cleanup is done
-  event.preventDefault();
-  isQuitting = true;
-
-  console.log("[MAIN] Starting graceful shutdown...");
-
-  // Save terminal state before cleanup
-  if (ptyManager) {
-    const terminals = ptyManager.getAll().map((t) => ({
-      id: t.id,
-      type: t.type || "shell",
-      title: t.title || "Terminal",
-      cwd: t.cwd,
-      worktreeId: t.worktreeId,
-    }));
-    store.set("appState.terminals", terminals);
-  }
-
-  // Perform cleanup
-  Promise.all([
-    worktreeService.stopAll(),
-    devServerManager ? devServerManager.stopAll() : Promise.resolve(),
-    disposeTranscriptManager(),
-    new Promise<void>((resolve) => {
-      if (ptyManager) {
-        ptyManager.dispose();
-        ptyManager = null;
-      }
-      resolve();
-    }),
-  ])
-    .then(() => {
-      // Cleanup IPC handlers
-      if (cleanupIpcHandlers) {
-        cleanupIpcHandlers();
-        cleanupIpcHandlers = null;
-      }
-      if (cleanupErrorHandlers) {
-        cleanupErrorHandlers();
-        cleanupErrorHandlers = null;
-      }
-      console.log("[MAIN] Graceful shutdown complete");
-      // Now actually quit
-      app.exit(0);
-    })
-    .catch((error) => {
-      console.error("[MAIN] Error during cleanup:", error);
-      app.exit(1);
-    });
-});
