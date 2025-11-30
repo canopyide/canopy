@@ -93,7 +93,9 @@ export class CliAvailabilityService {
     // Validate command contains only safe characters to prevent shell injection
     // Allow alphanumeric, dash, underscore, and dot (for extensions)
     if (!/^[a-zA-Z0-9._-]+$/.test(command)) {
-      console.warn(`[CliAvailabilityService] Command "${command}" contains invalid characters, rejecting`);
+      console.warn(
+        `[CliAvailabilityService] Command "${command}" contains invalid characters, rejecting`
+      );
       return false;
     }
 

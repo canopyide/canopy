@@ -96,7 +96,11 @@ describe("CliAvailabilityService", () => {
         await service.checkAvailability();
 
         // Should use 'which' command on Unix
-        expect(mockedExecFileSync).toHaveBeenCalledWith("which", expect.any(Array), expect.any(Object));
+        expect(mockedExecFileSync).toHaveBeenCalledWith(
+          "which",
+          expect.any(Array),
+          expect.any(Object)
+        );
       } finally {
         // Restore original platform even if test fails
         Object.defineProperty(process, "platform", {
@@ -121,7 +125,11 @@ describe("CliAvailabilityService", () => {
         await service.checkAvailability();
 
         // Should use 'where' command on Windows
-        expect(mockedExecFileSync).toHaveBeenCalledWith("where", expect.any(Array), expect.any(Object));
+        expect(mockedExecFileSync).toHaveBeenCalledWith(
+          "where",
+          expect.any(Array),
+          expect.any(Object)
+        );
       } finally {
         // Restore original platform even if test fails
         Object.defineProperty(process, "platform", {
