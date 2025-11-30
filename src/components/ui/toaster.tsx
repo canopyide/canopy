@@ -12,10 +12,10 @@ const ICONS = {
 };
 
 const VARIANTS = {
-  success: "border-green-500/20 bg-green-500/10 text-green-400",
-  error: "border-red-500/20 bg-red-500/10 text-red-400",
-  info: "border-blue-500/20 bg-blue-500/10 text-blue-400",
-  warning: "border-yellow-500/20 bg-yellow-500/10 text-yellow-400",
+  success: "border-green-700/40 bg-green-900/30 text-green-300",
+  error: "border-red-700/40 bg-red-900/30 text-red-300",
+  info: "border-blue-700/40 bg-blue-900/30 text-blue-300",
+  warning: "border-yellow-700/40 bg-yellow-900/30 text-yellow-300",
 };
 
 function Toast({ notification }: { notification: Notification }) {
@@ -30,7 +30,7 @@ function Toast({ notification }: { notification: Notification }) {
   const handleDismiss = () => {
     setIsVisible(false);
     // Wait for animation
-    setTimeout(() => removeNotification(notification.id), 300);
+    setTimeout(() => removeNotification(notification.id), 150);
   };
 
   const Icon = ICONS[notification.type];
@@ -39,14 +39,14 @@ function Toast({ notification }: { notification: Notification }) {
   return (
     <div
       className={cn(
-        "pointer-events-auto flex w-full max-w-md gap-3 rounded-lg border p-4 shadow-lg transition-all duration-300 ease-in-out bg-[#1e1e1e] border-border/50",
-        isVisible ? "translate-x-0 opacity-100" : "translate-x-full opacity-0",
+        "pointer-events-auto flex w-full max-w-sm gap-2 rounded border p-3 transition-opacity duration-150 ease-out bg-[#1e1e1e]/90",
+        isVisible ? "opacity-100" : "opacity-0",
         variantClass
       )}
       role="alert"
     >
-      <Icon className="h-5 w-5 shrink-0" />
-      <div className="flex-1">
+      <Icon className="h-4 w-4 shrink-0 mt-0.5" />
+      <div className="flex-1 break-words">
         {notification.title && (
           <h4 className="mb-1 font-medium leading-none">{notification.title}</h4>
         )}
