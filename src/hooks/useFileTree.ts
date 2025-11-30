@@ -7,6 +7,7 @@
 
 import { useState, useCallback, useMemo } from "react";
 import type { FileTreeNode } from "@shared/types";
+import { copyTreeClient } from "@/clients";
 
 export interface FileTreeSelection {
   /** Map of path -> selection state (true = selected, false = unselected, undefined = indeterminate) */
@@ -72,7 +73,7 @@ export function useFileTree(options: UseFileTreeOptions): UseFileTreeResult {
   const loadTreeForPath = useCallback(
     async (dirPath?: string): Promise<FileTreeNode[]> => {
       try {
-        const result = await window.electron.copyTree.getFileTree(worktreeId, dirPath);
+        const result = await copyTreeClient.getFileTree(worktreeId, dirPath);
         return result;
       } catch (err) {
         throw new Error(err instanceof Error ? err.message : String(err));

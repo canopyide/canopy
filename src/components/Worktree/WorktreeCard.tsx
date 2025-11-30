@@ -8,6 +8,7 @@ import { useDevServer } from "../../hooks/useDevServer";
 import { useWorktreeTerminals } from "../../hooks/useWorktreeTerminals";
 import { useErrorStore, useTerminalStore, type RetryAction } from "../../store";
 import { useRecipeStore } from "../../store/recipeStore";
+import { systemClient, errorsClient } from "@/clients";
 import { cn } from "../../lib/utils";
 import {
   DropdownMenu,
@@ -154,15 +155,13 @@ export function WorktreeCard({
   // Handle error retry
   const handleErrorRetry = useCallback(
     async (errorId: string, action: RetryAction, args?: Record<string, unknown>) => {
-      if (window.electron?.errors?.retry) {
-        try {
-          await window.electron.errors.retry(errorId, action, args);
-          // On successful retry, remove the error from the store
-          removeError(errorId);
-        } catch (error) {
-          console.error("Error retry failed:", error);
-          // Retry failed - the main process will send a new error event
-        }
+      try {
+        await errorsClient.retry(errorId, action, args);
+        // On successful retry, remove the error from the store
+        removeError(errorId);
+      } catch (error) {
+        console.error("Error retry failed:", error);
+        // Retry failed - the main process will send a new error event
       }
     },
     [removeError]
@@ -213,9 +212,7 @@ export function WorktreeCard({
   }, [effectiveNote]);
 
   const handlePathClick = useCallback(() => {
-    if (window.electron?.system?.openPath) {
-      window.electron.system.openPath(worktree.path);
-    }
+    systemClient.openPath(worktree.path);
   }, [worktree.path]);
 
   const handleOpenIssue = useCallback(() => {
@@ -548,10 +545,8 @@ export function WorktreeCard({
                   className="text-[var(--color-status-info)] underline hover:text-blue-300"
                   onClick={(e) => {
                     e.stopPropagation();
-                    if (window.electron?.system?.openExternal) {
-                      e.preventDefault();
-                      window.electron.system.openExternal(segment.content);
-                    }
+                    e.preventDefault();
+                    systemClient.openExternal(segment.content);
                   }}
                 >
                   {segment.content}

@@ -4,6 +4,7 @@ import { Sidebar } from "./Sidebar";
 import { LogsPanel } from "../Logs";
 import { EventInspectorPanel } from "../EventInspector";
 import { useFocusStore, useLogsStore, useEventStore } from "@/store";
+import { appClient } from "@/clients";
 
 interface AppLayoutProps {
   children?: ReactNode;
@@ -53,7 +54,7 @@ export function AppLayout({
   useEffect(() => {
     const restoreState = async () => {
       try {
-        const appState = await window.electron.app.getState();
+        const appState = await appClient.getState();
         if (appState.sidebarWidth != null) {
           // Clamp to valid range
           const clampedWidth = Math.min(
@@ -86,7 +87,7 @@ export function AppLayout({
 
     const persistSidebarWidth = async () => {
       try {
-        await window.electron.app.setState({ sidebarWidth });
+        await appClient.setState({ sidebarWidth });
       } catch (error) {
         console.error("Failed to persist sidebar width:", error);
       }
@@ -101,7 +102,7 @@ export function AppLayout({
   useEffect(() => {
     const persistFocusMode = async () => {
       try {
-        await window.electron.app.setState({ focusMode: isFocusMode });
+        await appClient.setState({ focusMode: isFocusMode });
       } catch (error) {
         console.error("Failed to persist focus mode:", error);
       }
@@ -124,7 +125,7 @@ export function AppLayout({
       toggleFocusMode({ sidebarWidth, logsOpen, eventInspectorOpen });
       // Clear persisted panel state when exiting focus mode
       try {
-        await window.electron.app.setState({ focusPanelState: undefined });
+        await appClient.setState({ focusPanelState: undefined });
       } catch (error) {
         console.error("Failed to clear focus panel state:", error);
       }
@@ -136,7 +137,7 @@ export function AppLayout({
       setEventInspectorOpen(false);
       // Persist panel state for restoration after restart
       try {
-        await window.electron.app.setState({ focusPanelState: currentPanelState });
+        await appClient.setState({ focusPanelState: currentPanelState });
       } catch (error) {
         console.error("Failed to persist focus panel state:", error);
       }

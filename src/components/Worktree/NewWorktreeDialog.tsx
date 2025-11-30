@@ -10,6 +10,7 @@ import { useState, useEffect } from "react";
 import { Button } from "@/components/ui/button";
 import { X, FolderOpen, GitBranch, Check, AlertCircle, Loader2 } from "lucide-react";
 import type { BranchInfo, CreateWorktreeOptions } from "@/types/electron";
+import { worktreeClient, directoryClient } from "@/clients";
 
 interface NewWorktreeDialogProps {
   isOpen: boolean;
@@ -37,12 +38,12 @@ export function NewWorktreeDialog({
 
   // Load branches when dialog opens
   useEffect(() => {
-    if (!isOpen || !window.electron?.worktree) return;
+    if (!isOpen) return;
 
     setLoading(true);
     setError(null);
 
-    window.electron.worktree
+    worktreeClient
       .listBranches(rootPath)
       .then((branchList) => {
         setBranches(branchList);
@@ -71,8 +72,6 @@ export function NewWorktreeDialog({
   }, [newBranch, rootPath]);
 
   const handleCreate = async () => {
-    if (!window.electron?.worktree) return;
-
     // Validation
     if (!baseBranch) {
       setError("Please select a base branch");
@@ -98,7 +97,7 @@ export function NewWorktreeDialog({
         fromRemote,
       };
 
-      await window.electron.worktree.create(options, rootPath);
+      await worktreeClient.create(options, rootPath);
 
       // Success! Call callback and close
       onWorktreeCreated?.();
@@ -218,12 +217,8 @@ export function NewWorktreeDialog({
                     variant="outline"
                     size="sm"
                     onClick={async () => {
-                      if (!window.electron?.directory?.openDialog) {
-                        setError("Directory picker is not available");
-                        return;
-                      }
                       try {
-                        const selected = await window.electron.directory.openDialog();
+                        const selected = await directoryClient.openDialog();
                         if (selected) {
                           setWorktreePath(selected);
                           setError(null); // Clear any previous errors
@@ -235,7 +230,7 @@ export function NewWorktreeDialog({
                         );
                       }
                     }}
-                    disabled={creating || !window.electron?.directory?.openDialog}
+                    disabled={creating}
                   >
                     <FolderOpen className="w-4 h-4" />
                   </Button>

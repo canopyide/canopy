@@ -28,6 +28,7 @@ import {
   type QueuedCommand,
   isAgentReady,
 } from "./slices";
+import { terminalClient } from "@/clients";
 
 // Re-export types for consumers
 export type { TerminalInstance, AddTerminalOptions, QueuedCommand };
@@ -99,8 +100,8 @@ export const useTerminalStore = create<TerminalGridState>()((set, get, api) => {
 // This runs once at module load and the cleanup function should be called on app shutdown
 let agentStateUnsubscribe: (() => void) | null = null;
 
-if (typeof window !== "undefined" && window.electron?.terminal?.onAgentStateChanged) {
-  agentStateUnsubscribe = window.electron.terminal.onAgentStateChanged((data) => {
+if (typeof window !== "undefined") {
+  agentStateUnsubscribe = terminalClient.onAgentStateChanged((data) => {
     // The IPC event uses 'agentId' which corresponds to the terminal ID
     const { agentId, state, timestamp, trigger, confidence } = data;
 

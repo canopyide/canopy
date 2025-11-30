@@ -11,6 +11,7 @@
 
 import { useState, useEffect, useCallback } from "react";
 import type { AgentSession, HistoryGetSessionsPayload } from "@shared/types";
+import { historyClient } from "@/clients";
 
 export interface SessionFilters {
   agentType?: "claude" | "gemini" | "custom" | "all";
@@ -110,7 +111,7 @@ export function useSessionHistory(): UseSessionHistoryReturn {
       setIsLoading(true);
       setError(null);
       const payload = buildPayload(filters);
-      const fetchedSessions = await window.electron.history.getSessions(payload);
+      const fetchedSessions = await historyClient.getSessions(payload);
 
       // Sort by start time (newest first) - server may not guarantee order
       const sorted = [...fetchedSessions].sort((a, b) => b.startTime - a.startTime);
@@ -221,7 +222,7 @@ export function useSessionHistory(): UseSessionHistoryReturn {
   const getSession = useCallback(async (sessionId: string): Promise<AgentSession | null> => {
     try {
       setIsLoadingSession(true);
-      const session = await window.electron.history.getSession(sessionId);
+      const session = await historyClient.getSession(sessionId);
       return session;
     } catch (e) {
       console.error("Failed to get session:", e);
@@ -235,7 +236,7 @@ export function useSessionHistory(): UseSessionHistoryReturn {
   const exportSession = useCallback(
     async (sessionId: string, format: "json" | "markdown"): Promise<string | null> => {
       try {
-        const content = await window.electron.history.exportSession(sessionId, format);
+        const content = await historyClient.exportSession(sessionId, format);
         return content;
       } catch (e) {
         console.error("Failed to export session:", e);
@@ -249,7 +250,7 @@ export function useSessionHistory(): UseSessionHistoryReturn {
   const deleteSession = useCallback(
     async (sessionId: string): Promise<void> => {
       try {
-        await window.electron.history.deleteSession(sessionId);
+        await historyClient.deleteSession(sessionId);
         // Remove from local state
         setSessions((prev) => prev.filter((s) => s.id !== sessionId));
         // Clear selection if deleted session was selected
@@ -307,7 +308,7 @@ export function useSession(sessionId: string | null): {
     try {
       setIsLoading(true);
       setError(null);
-      const fetchedSession = await window.electron.history.getSession(sessionId);
+      const fetchedSession = await historyClient.getSession(sessionId);
       setSession(fetchedSession);
     } catch (e) {
       setError(e instanceof Error ? e.message : "Failed to load session");

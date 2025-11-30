@@ -11,6 +11,7 @@ import { EventTimeline } from "./EventTimeline";
 import { EventDetail } from "./EventDetail";
 import { EventFilters } from "./EventFilters";
 import { X, Trash2 } from "lucide-react";
+import { eventInspectorClient } from "@/clients";
 
 interface EventInspectorPanelProps {
   className?: string;
@@ -38,25 +39,25 @@ export function EventInspectorPanel({ className }: EventInspectorPanelProps) {
 
   // Load initial events and set up subscription
   useEffect(() => {
-    if (!isOpen || !window.electron?.eventInspector) return;
+    if (!isOpen) return;
 
     // Notify main process that we're subscribing
-    window.electron.eventInspector.subscribe();
+    eventInspectorClient.subscribe();
 
     // Load existing events
-    window.electron.eventInspector.getEvents().then((existingEvents) => {
+    eventInspectorClient.getEvents().then((existingEvents) => {
       setEvents(existingEvents);
     });
 
     // Subscribe to new events
-    const unsubscribe = window.electron.eventInspector.onEvent((event) => {
+    const unsubscribe = eventInspectorClient.onEvent((event) => {
       addEvent(event);
     });
 
     return () => {
       unsubscribe();
       // Notify main process that we're unsubscribing
-      window.electron.eventInspector.unsubscribe();
+      eventInspectorClient.unsubscribe();
     };
   }, [isOpen, addEvent, setEvents]);
 
@@ -104,9 +105,7 @@ export function EventInspectorPanel({ className }: EventInspectorPanelProps) {
       // Clear local state
       clearEvents();
       // Clear main process buffer
-      if (window.electron?.eventInspector) {
-        await window.electron.eventInspector.clear();
-      }
+      await eventInspectorClient.clear();
     }
   };
 

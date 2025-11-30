@@ -12,6 +12,7 @@ import {
   DropdownMenuTrigger,
 } from "@/components/ui/dropdown-menu";
 import { Button } from "@/components/ui/button";
+import { projectClient } from "@/clients";
 
 export function ProjectSwitcher() {
   const {
@@ -44,7 +45,7 @@ export function ProjectSwitcher() {
     getCurrentProject();
 
     // Listen for switch events from menu/system
-    const cleanup = window.electron.project.onSwitch(() => {
+    const cleanup = projectClient.onSwitch(() => {
       getCurrentProject();
       loadProjects();
     });

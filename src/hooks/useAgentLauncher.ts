@@ -15,6 +15,7 @@ import { useTerminalStore, type AddTerminalOptions } from "@/store/terminalStore
 import { useProjectStore } from "@/store/projectStore";
 import { useWorktrees } from "./useWorktrees";
 import { isElectronAvailable } from "./useElectron";
+import { systemClient } from "@/clients";
 
 export type AgentType = "claude" | "gemini" | "codex" | "shell";
 
@@ -116,9 +117,9 @@ export function useAgentLauncher(): UseAgentLauncherReturn {
     async function checkAvailability() {
       try {
         const [claudeAvailable, geminiAvailable, codexAvailable] = await Promise.all([
-          window.electron.system.checkCommand("claude"),
-          window.electron.system.checkCommand("gemini"),
-          window.electron.system.checkCommand("codex"),
+          systemClient.checkCommand("claude"),
+          systemClient.checkCommand("gemini"),
+          systemClient.checkCommand("codex"),
         ]);
 
         if (!cancelled) {

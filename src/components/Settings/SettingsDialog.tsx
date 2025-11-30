@@ -23,6 +23,7 @@ import {
 } from "lucide-react";
 import { cn } from "@/lib/utils";
 import type { AIServiceState } from "@/types";
+import { appClient, aiClient, logsClient } from "@/clients";
 
 interface SettingsDialogProps {
   isOpen: boolean;
@@ -122,25 +123,20 @@ export function SettingsDialog({ isOpen, onClose, defaultTab }: SettingsDialogPr
   // Load app version on mount
   useEffect(() => {
     if (isOpen) {
-      if (window.electron?.app) {
-        window.electron.app
-          .getVersion()
-          .then(setAppVersion)
-          .catch((error) => {
-            console.error("Failed to fetch app version:", error);
-            setAppVersion("Unavailable");
-          });
-      } else {
-        // Not in Electron environment (e.g., tests, storybook)
-        setAppVersion("N/A");
-      }
+      appClient
+        .getVersion()
+        .then(setAppVersion)
+        .catch((error) => {
+          console.error("Failed to fetch app version:", error);
+          setAppVersion("Unavailable");
+        });
     }
   }, [isOpen]);
 
   // Load AI config on mount
   useEffect(() => {
-    if (isOpen && window.electron?.ai) {
-      window.electron.ai.getConfig().then((config) => {
+    if (isOpen) {
+      aiClient.getConfig().then((config) => {
         setAiConfig(config);
         setSelectedModel(config.model);
       });
@@ -156,9 +152,7 @@ export function SettingsDialog({ isOpen, onClose, defaultTab }: SettingsDialogPr
 
   const handleClearLogs = async () => {
     clearLogs();
-    if (window.electron?.logs) {
-      await window.electron.logs.clear();
-    }
+    await logsClient.clear();
   };
 
   const handleSaveKey = async () => {
@@ -168,12 +162,12 @@ export function SettingsDialog({ isOpen, onClose, defaultTab }: SettingsDialogPr
     setValidationResult(null);
 
     try {
-      const success = await window.electron.ai.setKey(apiKey.trim());
+      const success = await aiClient.setKey(apiKey.trim());
       if (success) {
         setApiKey(""); // Clear input for security
         setValidationResult("success");
         // Refresh config
-        const config = await window.electron.ai.getConfig();
+        const config = await aiClient.getConfig();
         setAiConfig(config);
       } else {
         setValidationResult("error");
@@ -186,8 +180,8 @@ export function SettingsDialog({ isOpen, onClose, defaultTab }: SettingsDialogPr
   };
 
   const handleClearKey = async () => {
-    await window.electron.ai.clearKey();
-    const config = await window.electron.ai.getConfig();
+    await aiClient.clearKey();
+    const config = await aiClient.getConfig();
     setAiConfig(config);
     setValidationResult(null);
   };
@@ -199,7 +193,7 @@ export function SettingsDialog({ isOpen, onClose, defaultTab }: SettingsDialogPr
     setValidationResult(null);
 
     try {
-      const isValid = await window.electron.ai.validateKey(apiKey.trim());
+      const isValid = await aiClient.validateKey(apiKey.trim());
       setValidationResult(isValid ? "test-success" : "test-error");
     } catch {
       setValidationResult("test-error");
@@ -210,14 +204,14 @@ export function SettingsDialog({ isOpen, onClose, defaultTab }: SettingsDialogPr
 
   const handleModelChange = async (model: string) => {
     setSelectedModel(model);
-    await window.electron.ai.setModel(model);
-    const config = await window.electron.ai.getConfig();
+    await aiClient.setModel(model);
+    const config = await aiClient.getConfig();
     setAiConfig(config);
   };
 
   const handleEnabledChange = async (enabled: boolean) => {
-    await window.electron.ai.setEnabled(enabled);
-    const config = await window.electron.ai.getConfig();
+    await aiClient.setEnabled(enabled);
+    const config = await aiClient.getConfig();
     setAiConfig(config);
   };
 

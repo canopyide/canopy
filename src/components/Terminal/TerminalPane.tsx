@@ -26,6 +26,7 @@ import { ErrorBanner } from "../Errors/ErrorBanner";
 import { useErrorStore, useTerminalStore, type RetryAction } from "@/store";
 import { useContextInjection, type CopyTreeProgress } from "@/hooks/useContextInjection";
 import type { AgentState, AgentStateChangeTrigger } from "@/types";
+import { errorsClient } from "@/clients";
 
 export type TerminalType = "shell" | "claude" | "gemini" | "codex" | "custom";
 
@@ -155,9 +156,9 @@ export function TerminalPane({
 
           // Explicitly remove error on success
           removeError(errorId);
-        } else if (window.electron?.errors?.retry) {
+        } else {
           // For other actions, delegate to the main process
-          await window.electron.errors.retry(errorId, action, args);
+          await errorsClient.retry(errorId, action, args);
           // On successful retry, remove the error from the store
           removeError(errorId);
         }

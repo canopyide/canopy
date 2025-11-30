@@ -16,6 +16,7 @@ import type {
   TerminalType,
   AgentStateChangeTrigger,
 } from "@/types";
+import { appClient, terminalClient } from "@/clients";
 
 // Re-export the shared type
 export type TerminalInstance = TerminalInstanceType;
@@ -60,7 +61,7 @@ export interface TerminalRegistrySlice {
  * Only persists essential fields needed to restore sessions.
  */
 function persistTerminals(terminals: TerminalInstance[]): void {
-  window.electron.app
+  appClient
     .setState({
       terminals: terminals.map((t) => ({
         id: t.id,
@@ -96,7 +97,7 @@ export const createTerminalRegistrySlice =
 
       try {
         // Spawn the PTY process via IPC
-        const id = await window.electron.terminal.spawn({
+        const id = await terminalClient.spawn({
           cwd: options.cwd,
           shell: options.shell,
           cols: 80,
@@ -140,7 +141,7 @@ export const createTerminalRegistrySlice =
       const removedIndex = currentTerminals.findIndex((t) => t.id === id);
 
       // Kill the PTY process
-      window.electron.terminal.kill(id).catch((error) => {
+      terminalClient.kill(id).catch((error) => {
         console.error("Failed to kill terminal:", error);
         // Continue with state cleanup even if kill fails
       });

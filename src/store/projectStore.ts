@@ -7,6 +7,7 @@
 
 import { create, type StateCreator } from "zustand";
 import type { Project } from "@shared/types";
+import { projectClient } from "@/clients";
 
 interface ProjectState {
   projects: Project[];
@@ -33,7 +34,7 @@ const createProjectStore: StateCreator<ProjectState> = (set, get) => ({
   loadProjects: async () => {
     set({ isLoading: true, error: null });
     try {
-      const projects = await window.electron.project.getAll();
+      const projects = await projectClient.getAll();
       set({ projects, isLoading: false });
     } catch (error) {
       console.error("Failed to load projects:", error);
@@ -44,7 +45,7 @@ const createProjectStore: StateCreator<ProjectState> = (set, get) => ({
   getCurrentProject: async () => {
     set({ isLoading: true, error: null });
     try {
-      const currentProject = await window.electron.project.getCurrent();
+      const currentProject = await projectClient.getCurrent();
       set({ currentProject, isLoading: false });
     } catch (error) {
       console.error("Failed to get current project:", error);
@@ -60,14 +61,14 @@ const createProjectStore: StateCreator<ProjectState> = (set, get) => ({
     set({ isLoading: true, error: null });
     try {
       // 1. Open dialog to pick folder
-      const path = await window.electron.project.openDialog();
+      const path = await projectClient.openDialog();
       if (!path) {
         set({ isLoading: false });
         return;
       }
 
       // 2. Add project (backend handles git checks)
-      const newProject = await window.electron.project.add(path);
+      const newProject = await projectClient.add(path);
 
       // 3. Refresh list and switch to it
       await get().loadProjects();
@@ -81,7 +82,7 @@ const createProjectStore: StateCreator<ProjectState> = (set, get) => ({
   switchProject: async (projectId) => {
     set({ isLoading: true, error: null });
     try {
-      const project = await window.electron.project.switch(projectId);
+      const project = await projectClient.switch(projectId);
       set({ currentProject: project, isLoading: false });
 
       // Refresh the projects list to update 'lastOpened' timestamps
@@ -99,7 +100,7 @@ const createProjectStore: StateCreator<ProjectState> = (set, get) => ({
   updateProject: async (id, updates) => {
     set({ isLoading: true, error: null });
     try {
-      await window.electron.project.update(id, updates);
+      await projectClient.update(id, updates);
       await get().loadProjects();
       if (get().currentProject?.id === id) {
         await get().getCurrentProject();
@@ -114,7 +115,7 @@ const createProjectStore: StateCreator<ProjectState> = (set, get) => ({
   removeProject: async (id) => {
     set({ isLoading: true, error: null });
     try {
-      await window.electron.project.remove(id);
+      await projectClient.remove(id);
       await get().loadProjects();
       // If we removed the active project, clear current
       if (get().currentProject?.id === id) {
@@ -130,7 +131,7 @@ const createProjectStore: StateCreator<ProjectState> = (set, get) => ({
   regenerateIdentity: async (projectId) => {
     set({ isLoading: true, error: null });
     try {
-      const updatedProject = await window.electron.project.regenerateIdentity(projectId);
+      const updatedProject = await projectClient.regenerateIdentity(projectId);
 
       // Update the projects list with the new identity
       const projects = get().projects.map((p) => (p.id === projectId ? updatedProject : p));
