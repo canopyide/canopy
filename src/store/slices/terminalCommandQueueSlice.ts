@@ -14,6 +14,7 @@
 import type { StateCreator } from "zustand";
 import type { TerminalInstance } from "./terminalRegistrySlice";
 import type { AgentState } from "@/types";
+import { terminalClient } from "@/clients";
 
 /**
  * Represents a command queued for execution when the agent becomes idle.
@@ -81,7 +82,7 @@ export const createTerminalCommandQueueSlice =
 
       // If agent is idle/waiting, send immediately (no need to queue)
       if (isAgentReady(terminal.agentState)) {
-        window.electron.terminal.write(terminalId, payload);
+        terminalClient.write(terminalId, payload);
         return;
       }
 
@@ -113,7 +114,7 @@ export const createTerminalCommandQueueSlice =
         // Process FIFO - send first queued command
         if (forTerminal.length > 0) {
           const cmd = forTerminal[0];
-          window.electron.terminal.write(cmd.terminalId, cmd.payload);
+          terminalClient.write(cmd.terminalId, cmd.payload);
 
           // Remove processed command, keep rest in queue
           return { commandQueue: [...remaining, ...forTerminal.slice(1)] };

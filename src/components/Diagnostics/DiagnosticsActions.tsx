@@ -8,6 +8,7 @@ import { useCallback } from "react";
 import { cn } from "@/lib/utils";
 import { useLogsStore, useErrorStore } from "@/store";
 import { useEventStore } from "@/store/eventStore";
+import { logsClient, eventInspectorClient, errorsClient } from "@/clients";
 
 interface ActionButtonProps {
   onClick: () => void;
@@ -40,7 +41,7 @@ export function ProblemsActions() {
   const clearAll = useErrorStore((state) => state.clearAll);
 
   const handleOpenLogs = useCallback(() => {
-    window.electron?.errors?.openLogs();
+    errorsClient.openLogs();
   }, []);
 
   return (
@@ -65,16 +66,12 @@ export function LogsActions() {
   const clearLogs = useLogsStore((state) => state.clearLogs);
 
   const handleOpenFile = useCallback(async () => {
-    if (window.electron?.logs) {
-      await window.electron.logs.openFile();
-    }
+    await logsClient.openFile();
   }, []);
 
   const handleClearLogs = useCallback(async () => {
     clearLogs();
-    if (window.electron?.logs) {
-      await window.electron.logs.clear();
-    }
+    await logsClient.clear();
   }, [clearLogs]);
 
   return (
@@ -109,9 +106,7 @@ export function EventsActions() {
       // Clear local state
       clearEvents();
       // Clear main process buffer
-      if (window.electron?.eventInspector) {
-        await window.electron.eventInspector.clear();
-      }
+      await eventInspectorClient.clear();
     }
   };
 

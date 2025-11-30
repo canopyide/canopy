@@ -9,6 +9,7 @@
 import { useState, useEffect, useCallback } from "react";
 import { isElectronAvailable } from "./useElectron";
 import type { Artifact, ArtifactDetectedPayload } from "@shared/types";
+import { artifactClient } from "@/clients";
 
 // Global state for artifacts (shared across all hook instances)
 const artifactStore = new Map<string, Artifact[]>();
@@ -43,7 +44,7 @@ export function useArtifacts(terminalId: string, worktreeId?: string, cwd?: stri
 
     // Set up IPC listener if this is the first instance
     if (listenerRefCount === 1 && !ipcUnsubscribe) {
-      ipcUnsubscribe = window.electron.artifact.onDetected((payload: ArtifactDetectedPayload) => {
+      ipcUnsubscribe = artifactClient.onDetected((payload: ArtifactDetectedPayload) => {
         // Update artifact store
         const currentArtifacts = artifactStore.get(payload.terminalId) || [];
         const newArtifacts = [...currentArtifacts, ...payload.artifacts];
@@ -115,7 +116,7 @@ export function useArtifacts(terminalId: string, worktreeId?: string, cwd?: stri
           suggestedFilename = `artifact-${Date.now()}${ext}`;
         }
 
-        const result = await window.electron.artifact.saveToFile({
+        const result = await artifactClient.saveToFile({
           content: artifact.content,
           suggestedFilename,
           cwd,
@@ -146,7 +147,7 @@ export function useArtifacts(terminalId: string, worktreeId?: string, cwd?: stri
       try {
         setActionInProgress(artifact.id);
 
-        const result = await window.electron.artifact.applyPatch({
+        const result = await artifactClient.applyPatch({
           patchContent: artifact.content,
           cwd,
         });

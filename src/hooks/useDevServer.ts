@@ -7,6 +7,7 @@
 
 import { useState, useEffect, useCallback } from "react";
 import type { DevServerState } from "../types";
+import { devServerClient } from "@/clients";
 
 interface UseDevServerOptions {
   worktreeId: string;
@@ -67,7 +68,7 @@ export function useDevServer({
 
     let cancelled = false;
 
-    window.electron.devServer
+    devServerClient
       .hasDevScript(worktreePath)
       .then((result) => {
         if (!cancelled) {
@@ -89,7 +90,7 @@ export function useDevServer({
   useEffect(() => {
     let cancelled = false;
 
-    window.electron.devServer
+    devServerClient
       .getState(worktreeId)
       .then((state) => {
         if (!cancelled) {
@@ -109,7 +110,7 @@ export function useDevServer({
 
   // Subscribe to state updates for this worktree
   useEffect(() => {
-    const unsubUpdate = window.electron.devServer.onUpdate((newState) => {
+    const unsubUpdate = devServerClient.onUpdate((newState) => {
       if (newState.worktreeId === worktreeId) {
         setState(newState);
         // Clear loading state when update arrives
@@ -117,7 +118,7 @@ export function useDevServer({
       }
     });
 
-    const unsubError = window.electron.devServer.onError((data) => {
+    const unsubError = devServerClient.onError((data) => {
       if (data.worktreeId === worktreeId) {
         setError(data.error);
         setIsLoading(false);
@@ -141,7 +142,7 @@ export function useDevServer({
       setError(null);
 
       try {
-        const newState = await window.electron.devServer.start(worktreeId, worktreePath, command);
+        const newState = await devServerClient.start(worktreeId, worktreePath, command);
         setState(newState);
       } catch (err) {
         const message = err instanceof Error ? err.message : "Failed to start dev server";
@@ -158,7 +159,7 @@ export function useDevServer({
     setError(null);
 
     try {
-      const newState = await window.electron.devServer.stop(worktreeId);
+      const newState = await devServerClient.stop(worktreeId);
       setState(newState);
     } catch (err) {
       const message = err instanceof Error ? err.message : "Failed to stop dev server";
@@ -178,7 +179,7 @@ export function useDevServer({
     setError(null);
 
     try {
-      const newState = await window.electron.devServer.toggle(worktreeId, worktreePath);
+      const newState = await devServerClient.toggle(worktreeId, worktreePath);
       setState(newState);
     } catch (err) {
       const message = err instanceof Error ? err.message : "Failed to toggle dev server";
@@ -222,7 +223,7 @@ export function useDevServerStates(): Map<string, DevServerState> {
   const [states, setStates] = useState<Map<string, DevServerState>>(new Map());
 
   useEffect(() => {
-    const unsub = window.electron.devServer.onUpdate((state) => {
+    const unsub = devServerClient.onUpdate((state) => {
       setStates((prev) => {
         const next = new Map(prev);
         next.set(state.worktreeId, state);

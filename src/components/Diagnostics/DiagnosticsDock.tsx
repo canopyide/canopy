@@ -20,6 +20,7 @@ import { LogsContent } from "./LogsContent";
 import { EventsContent } from "./EventsContent";
 import { ProblemsActions, LogsActions, EventsActions } from "./DiagnosticsActions";
 import type { RetryAction } from "@/store";
+import { appClient } from "@/clients";
 
 interface TabButtonProps {
   tab: DiagnosticsTab;
@@ -126,7 +127,7 @@ export function DiagnosticsDock({ onRetry, className }: DiagnosticsDockProps) {
     if (!isResizing && isOpen) {
       const timer = setTimeout(async () => {
         try {
-          await window.electron?.app.setState({ diagnosticsHeight: height });
+          await appClient.setState({ diagnosticsHeight: height });
         } catch (error) {
           console.error("Failed to persist diagnostics height:", error);
         }
@@ -140,7 +141,7 @@ export function DiagnosticsDock({ onRetry, className }: DiagnosticsDockProps) {
   useEffect(() => {
     const restoreHeight = async () => {
       try {
-        const appState = await window.electron?.app.getState();
+        const appState = await appClient.getState();
         if (appState?.diagnosticsHeight) {
           setHeight(appState.diagnosticsHeight);
         }

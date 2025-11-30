@@ -8,6 +8,7 @@
 import { create, type StateCreator } from "zustand";
 import type { TerminalRecipe, RecipeTerminal } from "@/types";
 import { useTerminalStore } from "./terminalStore";
+import { appClient } from "@/clients";
 
 interface RecipeState {
   recipes: TerminalRecipe[];
@@ -47,7 +48,7 @@ const createRecipeStore: StateCreator<RecipeState> = (set, get) => ({
   loadRecipes: async () => {
     set({ isLoading: true });
     try {
-      const appState = await window.electron.app.getState();
+      const appState = await appClient.getState();
       set({ recipes: appState.recipes || [], isLoading: false });
     } catch (error) {
       console.error("Failed to load recipes:", error);
@@ -77,7 +78,7 @@ const createRecipeStore: StateCreator<RecipeState> = (set, get) => ({
 
     // Persist to electron-store
     try {
-      await window.electron.app.setState({
+      await appClient.setState({
         recipes: newRecipes.map((r) => ({
           id: r.id,
           name: r.name,
@@ -117,7 +118,7 @@ const createRecipeStore: StateCreator<RecipeState> = (set, get) => ({
 
     // Persist to electron-store
     try {
-      await window.electron.app.setState({
+      await appClient.setState({
         recipes: newRecipes.map((r) => ({
           id: r.id,
           name: r.name,
@@ -138,7 +139,7 @@ const createRecipeStore: StateCreator<RecipeState> = (set, get) => ({
 
     // Persist to electron-store
     try {
-      await window.electron.app.setState({
+      await appClient.setState({
         recipes: newRecipes.map((r) => ({
           id: r.id,
           name: r.name,
@@ -270,7 +271,7 @@ const createRecipeStore: StateCreator<RecipeState> = (set, get) => ({
 
     // Persist to electron-store
     try {
-      await window.electron.app.setState({
+      await appClient.setState({
         recipes: newRecipes.map((r) => ({
           id: r.id,
           name: r.name,

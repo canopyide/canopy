@@ -13,6 +13,7 @@
 
 import { useState, useEffect, useCallback, useMemo } from "react";
 import type { WorktreeState } from "../types";
+import { worktreeClient } from "@/clients";
 
 export interface UseWorktreesReturn {
   /** Array of worktrees, sorted with main/master first, then alphabetically */
@@ -66,7 +67,7 @@ export function useWorktrees(): UseWorktreesReturn {
       try {
         setIsLoading(true);
         setError(null);
-        const states = await window.electron.worktree.getAll();
+        const states = await worktreeClient.getAll();
         if (!cancelled) {
           const map = new Map(states.map((s) => [s.id, s]));
           setWorktreeMap(map);
@@ -80,7 +81,7 @@ export function useWorktrees(): UseWorktreesReturn {
             setActiveId(initialActive);
 
             // Notify main process of initial active selection so polling priorities are synced
-            window.electron.worktree.setActive(initialActive).catch(() => {
+            worktreeClient.setActive(initialActive).catch(() => {
               // Silently fail - this is non-critical
             });
           }
@@ -105,7 +106,7 @@ export function useWorktrees(): UseWorktreesReturn {
 
   // Subscribe to worktree updates from main process
   useEffect(() => {
-    const unsubUpdate = window.electron.worktree.onUpdate((state) => {
+    const unsubUpdate = worktreeClient.onUpdate((state) => {
       setWorktreeMap((prev) => {
         const next = new Map(prev);
         next.set(state.id, state);
@@ -113,7 +114,7 @@ export function useWorktrees(): UseWorktreesReturn {
       });
     });
 
-    const unsubRemove = window.electron.worktree.onRemove(({ worktreeId }) => {
+    const unsubRemove = worktreeClient.onRemove(({ worktreeId }) => {
       setWorktreeMap((prev) => {
         const next = new Map(prev);
         next.delete(worktreeId);
@@ -139,7 +140,7 @@ export function useWorktrees(): UseWorktreesReturn {
   const refresh = useCallback(async () => {
     try {
       setError(null);
-      await window.electron.worktree.refresh();
+      await worktreeClient.refresh();
     } catch (e) {
       setError(e instanceof Error ? e.message : "Failed to refresh worktrees");
     }
@@ -149,7 +150,7 @@ export function useWorktrees(): UseWorktreesReturn {
   const setActive = useCallback((id: string) => {
     setActiveId(id);
     // Notify main process so it can adjust polling priorities
-    window.electron.worktree.setActive(id).catch(() => {
+    worktreeClient.setActive(id).catch(() => {
       // Silently fail - this is non-critical
     });
   }, []);
@@ -206,7 +207,7 @@ export function useWorktree(worktreeId: string): WorktreeState | null {
   useEffect(() => {
     let cancelled = false;
 
-    window.electron.worktree
+    worktreeClient
       .getAll()
       .then((states) => {
         if (!cancelled) {
@@ -227,13 +228,13 @@ export function useWorktree(worktreeId: string): WorktreeState | null {
 
   // Subscribe to updates for this specific worktree
   useEffect(() => {
-    const unsubUpdate = window.electron.worktree.onUpdate((state) => {
+    const unsubUpdate = worktreeClient.onUpdate((state) => {
       if (state.id === worktreeId) {
         setWorktree(state);
       }
     });
 
-    const unsubRemove = window.electron.worktree.onRemove(({ worktreeId: removedId }) => {
+    const unsubRemove = worktreeClient.onRemove(({ worktreeId: removedId }) => {
       if (removedId === worktreeId) {
         setWorktree(null);
       }

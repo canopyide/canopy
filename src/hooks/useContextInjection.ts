@@ -17,6 +17,7 @@ import { useTerminalStore, type TerminalInstance } from "@/store/terminalStore";
 import { useErrorStore } from "@/store/errorStore";
 import type { TerminalType } from "@/components/Terminal/TerminalPane";
 import type { AgentState } from "@/types";
+import { copyTreeClient } from "@/clients";
 
 /** CopyTree output format */
 type CopyTreeFormat = "xml" | "json" | "markdown" | "tree" | "ndjson";
@@ -103,7 +104,7 @@ export function useContextInjection(): UseContextInjectionReturn {
 
   // Subscribe to progress events from the main process
   useEffect(() => {
-    const unsubscribe = window.electron.copyTree.onProgress((p) => {
+    const unsubscribe = copyTreeClient.onProgress((p) => {
       // Ignore progress updates when not injecting (prevents stale events)
       if (!isInjectingRef.current) return;
 
@@ -157,7 +158,7 @@ export function useContextInjection(): UseContextInjectionReturn {
 
       try {
         // Check if CopyTree is available
-        const isAvailable = await window.electron.copyTree.isAvailable();
+        const isAvailable = await copyTreeClient.isAvailable();
         if (!isAvailable) {
           throw new Error(
             "CopyTree CLI not installed. Please install copytree to use this feature."
@@ -177,11 +178,7 @@ export function useContextInjection(): UseContextInjectionReturn {
         // - Looking up the worktree path from worktreeId
         // - Generating context via CopyTree with the specified format
         // - Chunked writing to the terminal
-        const result = await window.electron.copyTree.injectToTerminal(
-          targetTerminalId,
-          worktreeId,
-          options
-        );
+        const result = await copyTreeClient.injectToTerminal(targetTerminalId, worktreeId, options);
 
         if (result.error) {
           throw new Error(result.error);
@@ -249,7 +246,7 @@ export function useContextInjection(): UseContextInjectionReturn {
   );
 
   const cancel = useCallback(() => {
-    window.electron.copyTree.cancel().catch(console.error);
+    copyTreeClient.cancel().catch(console.error);
     setIsInjecting(false);
     isInjectingRef.current = false;
     setProgress(null);

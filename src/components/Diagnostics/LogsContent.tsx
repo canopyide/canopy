@@ -12,6 +12,8 @@ import { LogEntry } from "../Logs/LogEntry";
 import { LogFilters } from "../Logs/LogFilters";
 import type { LogEntry as LogEntryType } from "@/types";
 
+import { logsClient } from "@/clients";
+
 export interface LogsContentProps {
   className?: string;
   /** Expose sources for toolbar actions */
@@ -40,10 +42,8 @@ export function LogsContent({ className, onSourcesChange }: LogsContentProps) {
 
   // Load initial logs and set up subscription
   useEffect(() => {
-    if (!window.electron?.logs) return;
-
     // Load existing logs
-    window.electron.logs
+    logsClient
       .getAll()
       .then((existingLogs) => {
         setLogs(existingLogs);
@@ -53,7 +53,7 @@ export function LogsContent({ className, onSourcesChange }: LogsContentProps) {
       });
 
     // Load sources
-    window.electron.logs
+    logsClient
       .getSources()
       .then((existingSources) => {
         sourcesRef.current = existingSources;
@@ -64,7 +64,7 @@ export function LogsContent({ className, onSourcesChange }: LogsContentProps) {
       });
 
     // Subscribe to new log entries
-    const unsubscribe = window.electron.logs.onEntry((entry: LogEntryType) => {
+    const unsubscribe = logsClient.onEntry((entry: LogEntryType) => {
       addLog(entry);
       // Update sources if new
       if (entry.source && !sourcesRef.current.includes(entry.source)) {

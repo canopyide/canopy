@@ -11,6 +11,7 @@ import { useEventStore } from "@/store/eventStore";
 import { EventTimeline } from "../EventInspector/EventTimeline";
 import { EventDetail } from "../EventInspector/EventDetail";
 import { EventFilters } from "../EventInspector/EventFilters";
+import { eventInspectorClient } from "@/clients";
 
 export interface EventsContentProps {
   className?: string;
@@ -37,13 +38,11 @@ export function EventsContent({ className }: EventsContentProps) {
 
   // Load initial events and set up subscription
   useEffect(() => {
-    if (!window.electron?.eventInspector) return;
-
     // Notify main process that we're subscribing
-    window.electron.eventInspector.subscribe();
+    eventInspectorClient.subscribe();
 
     // Load existing events
-    window.electron.eventInspector
+    eventInspectorClient
       .getEvents()
       .then((existingEvents) => {
         setEvents(existingEvents);
@@ -53,14 +52,14 @@ export function EventsContent({ className }: EventsContentProps) {
       });
 
     // Subscribe to new events
-    const unsubscribe = window.electron.eventInspector.onEvent((event) => {
+    const unsubscribe = eventInspectorClient.onEvent((event) => {
       addEvent(event);
     });
 
     return () => {
       unsubscribe();
       // Notify main process that we're unsubscribing
-      window.electron.eventInspector.unsubscribe();
+      eventInspectorClient.unsubscribe();
     };
   }, [addEvent, setEvents]);
 

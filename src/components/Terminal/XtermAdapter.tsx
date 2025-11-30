@@ -17,6 +17,7 @@ import { FitAddon } from "@xterm/addon-fit";
 import { WebglAddon } from "@xterm/addon-webgl";
 import "@xterm/xterm/css/xterm.css";
 import { cn } from "@/lib/utils";
+import { terminalClient } from "@/clients";
 
 export interface XtermAdapterProps {
   /** Unique terminal identifier - must match PtyManager terminal ID */
@@ -197,7 +198,7 @@ export function XtermAdapter({ terminalId, onReady, onExit, className }: XtermAd
       try {
         fitAddonRef.current.fit();
         const { cols, rows } = terminalRef.current;
-        window.electron.terminal.resize(terminalId, cols, rows);
+        terminalClient.resize(terminalId, cols, rows);
       } catch (e) {
         console.warn("Resize fit failed:", e);
       }
@@ -258,7 +259,7 @@ export function XtermAdapter({ terminalId, onReady, onExit, className }: XtermAd
           ) {
             // Send newline to PTY so the shell receives it and echoes it back
             // This keeps terminal display and PTY state in sync
-            window.electron.terminal.write(terminalId, "\r");
+            terminalClient.write(terminalId, "\r");
             // Return false to prevent xterm from processing this event
             return false;
           }
@@ -291,12 +292,12 @@ export function XtermAdapter({ terminalId, onReady, onExit, className }: XtermAd
     throttledWriterRef.current = throttledWriter;
 
     // Connect to PTY via IPC - data coming FROM the shell
-    const unsubData = window.electron.terminal.onData(terminalId, (data: string) => {
+    const unsubData = terminalClient.onData(terminalId, (data: string) => {
       throttledWriter.write(data);
     });
 
     // Handle terminal exit
-    const unsubExit = window.electron.terminal.onExit((id, exitCode) => {
+    const unsubExit = terminalClient.onExit((id, exitCode) => {
       if (id === terminalId) {
         // Flush any remaining buffered data
         throttledWriter.dispose();
@@ -307,12 +308,12 @@ export function XtermAdapter({ terminalId, onReady, onExit, className }: XtermAd
 
     // Send input FROM the user TO the PTY
     const inputDisposable = terminal.onData((data) => {
-      window.electron.terminal.write(terminalId, data);
+      terminalClient.write(terminalId, data);
     });
 
     // Send initial size
     const { cols, rows } = terminal;
-    window.electron.terminal.resize(terminalId, cols, rows);
+    terminalClient.resize(terminalId, cols, rows);
 
     // Helper to perform the actual resize check and fit
     const performResize = () => {
@@ -371,7 +372,7 @@ export function XtermAdapter({ terminalId, onReady, onExit, className }: XtermAd
           prevDimensionsRef.current = { cols, rows };
 
           // Send resize to backend
-          window.electron.terminal.resize(terminalId, cols, rows);
+          terminalClient.resize(terminalId, cols, rows);
         } catch (e) {
           // Suppress fit errors during rapid resizing
           console.warn("Terminal fit failed:", e);

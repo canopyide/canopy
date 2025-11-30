@@ -13,6 +13,7 @@ import { useTerminalStore, type AddTerminalOptions } from "@/store/terminalStore
 import { useWorktrees } from "@/hooks";
 import { ConfirmDialog } from "../Terminal/ConfirmDialog";
 import type { AgentSession } from "@shared/types";
+import { terminalClient } from "@/clients";
 
 interface HistoryPanelProps {
   className?: string;
@@ -287,9 +288,9 @@ export function HistoryPanel({ className }: HistoryPanelProps) {
           if (terminalId) {
             // Write the context as a comment/reference (the user will see it)
             // Note: This pastes the context as text which the user can reference
-            window.electron.terminal.write(terminalId, `# Resuming from previous session\n`);
-            window.electron.terminal.write(terminalId, `# Session ID: ${session.id}\n`);
-            window.electron.terminal.write(
+            terminalClient.write(terminalId, `# Resuming from previous session\n`);
+            terminalClient.write(terminalId, `# Session ID: ${session.id}\n`);
+            terminalClient.write(
               terminalId,
               `# Previous transcript and artifacts are available in the History panel\n\n`
             );

@@ -29,6 +29,15 @@ import {
 import { useRecipeStore } from "./store/recipeStore";
 import { cleanupTerminalStoreListeners } from "./store/terminalStore";
 import type { WorktreeState } from "./types";
+import {
+  systemClient,
+  copyTreeClient,
+  appClient,
+  projectClient,
+  worktreeClient,
+  errorsClient,
+  devServerClient,
+} from "@/clients";
 
 interface SidebarContentProps {
   onOpenSettings: (tab?: "ai" | "general" | "troubleshooting") => void;
@@ -65,9 +74,7 @@ function SidebarContent({ onOpenSettings }: SidebarContentProps) {
   const [homeDir, setHomeDir] = useState<string | undefined>(undefined);
 
   useEffect(() => {
-    if (window.electron?.system?.getHomeDir) {
-      window.electron.system.getHomeDir().then(setHomeDir).catch(console.error);
-    }
+    systemClient.getHomeDir().then(setHomeDir).catch(console.error);
   }, []);
 
   // Set first worktree as active by default
@@ -81,7 +88,7 @@ function SidebarContent({ onOpenSettings }: SidebarContentProps) {
     async (worktree: WorktreeState) => {
       try {
         // Check if CopyTree is available
-        const isAvailable = await window.electron.copyTree.isAvailable();
+        const isAvailable = await copyTreeClient.isAvailable();
         if (!isAvailable) {
           throw new Error(
             "CopyTree SDK not available. Please restart the application or check installation."
@@ -90,7 +97,7 @@ function SidebarContent({ onOpenSettings }: SidebarContentProps) {
 
         // CHANGE: Use generateAndCopyFile instead of generate
         // This handles the file creation and OS-level clipboard reference (copytree -r behavior)
-        const result = await window.electron.copyTree.generateAndCopyFile(worktree.id, {
+        const result = await copyTreeClient.generateAndCopyFile(worktree.id, {
           format: "xml",
         });
 
@@ -148,11 +155,11 @@ function SidebarContent({ onOpenSettings }: SidebarContentProps) {
   );
 
   const handleOpenEditor = useCallback((worktree: WorktreeState) => {
-    window.electron?.system?.openPath(worktree.path);
+    systemClient.openPath(worktree.path);
   }, []);
 
   const handleToggleServer = useCallback((worktree: WorktreeState) => {
-    window.electron?.devServer?.toggle(worktree.id, worktree.path);
+    devServerClient.toggle(worktree.id, worktree.path);
   }, []);
 
   const handleInjectContext = useCallback(
@@ -329,7 +336,7 @@ function App() {
 
     const restoreState = async () => {
       try {
-        const appState = await window.electron.app.getState();
+        const appState = await appClient.getState();
 
         // Restore terminals - main process handles CWD validation and falls back
         // to project root if the persisted cwd is invalid/deleted
@@ -338,7 +345,7 @@ function App() {
           // Handle errors gracefully - if no project available, persisted cwd will be used
           let projectRoot: string | undefined;
           try {
-            const currentProject = await window.electron.project.getCurrent();
+            const currentProject = await projectClient.getCurrent();
             projectRoot = currentProject?.path;
           } catch (error) {
             console.warn("Failed to get current project for terminal restoration:", error);
@@ -403,7 +410,7 @@ function App() {
 
     try {
       setIsRefreshing(true);
-      await window.electron.worktree.refresh();
+      await worktreeClient.refresh();
     } catch (error) {
       // Log error - the IPC layer and useWorktrees hook will handle displaying errors
       console.error("Failed to refresh worktrees:", error);
@@ -451,9 +458,9 @@ function App() {
 
           // Explicitly remove error on success (hook instance may differ)
           removeError(errorId);
-        } else if (window.electron?.errors?.retry) {
+        } else {
           // For other actions, delegate to the main process
-          await window.electron.errors.retry(errorId, action, args);
+          await errorsClient.retry(errorId, action, args);
           removeError(errorId);
         }
       } catch (error) {

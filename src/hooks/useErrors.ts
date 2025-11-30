@@ -10,6 +10,7 @@
 import { useEffect, useCallback, useRef } from "react";
 import { useErrorStore, type AppError, type RetryAction } from "@/store";
 import { isElectronAvailable } from "./useElectron";
+import { errorsClient } from "@/clients";
 
 // Global flag to ensure only one IPC listener is attached
 let ipcListenerAttached = false;
@@ -42,7 +43,7 @@ export function useErrors() {
     ipcListenerAttached = true;
     didAttachListener.current = true;
 
-    const unsubscribe = window.electron.errors.onError((error: AppError) => {
+    const unsubscribe = errorsClient.onError((error: AppError) => {
       addError({
         type: error.type,
         message: error.message,
@@ -69,7 +70,7 @@ export function useErrors() {
       if (!isElectronAvailable()) return;
 
       try {
-        await window.electron.errors.retry(errorId, action, args);
+        await errorsClient.retry(errorId, action, args);
         // On successful retry, remove the error
         removeError(errorId);
       } catch (error) {
@@ -83,7 +84,7 @@ export function useErrors() {
   // Open logs via IPC
   const openLogs = useCallback(async () => {
     if (!isElectronAvailable()) return;
-    await window.electron.errors.openLogs();
+    await errorsClient.openLogs();
   }, []);
 
   return {

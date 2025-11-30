@@ -6,6 +6,7 @@
  */
 
 import { create, type StateCreator } from "zustand";
+import { appClient } from "@/clients";
 
 interface WorktreeSelectionState {
   /** Currently active worktree ID (the one selected) */
@@ -38,7 +39,7 @@ const createWorktreeSelectionStore: StateCreator<WorktreeSelectionState> = (set)
     set({ activeWorktreeId: id });
 
     // Persist active worktree
-    window.electron?.app?.setState({ activeWorktreeId: id ?? undefined }).catch((error) => {
+    appClient.setState({ activeWorktreeId: id ?? undefined }).catch((error) => {
       console.error("Failed to persist active worktree:", error);
     });
   },
@@ -49,7 +50,7 @@ const createWorktreeSelectionStore: StateCreator<WorktreeSelectionState> = (set)
     set({ activeWorktreeId: id, focusedWorktreeId: id });
 
     // Persist active worktree
-    window.electron?.app?.setState({ activeWorktreeId: id }).catch((error) => {
+    appClient.setState({ activeWorktreeId: id }).catch((error) => {
       console.error("Failed to persist active worktree:", error);
     });
   },

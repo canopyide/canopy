@@ -9,6 +9,7 @@
 import { useState, useEffect, useCallback, useRef } from "react";
 import type { ProjectSettings, RunCommand } from "../types";
 import { useProjectStore } from "../store/projectStore";
+import { projectClient } from "@/clients";
 
 interface UseProjectSettingsReturn {
   /** Current project settings (null while loading) */
@@ -79,8 +80,8 @@ export function useProjectSettings(projectId?: string): UseProjectSettingsReturn
     try {
       // Fetch saved settings and detected runners in parallel
       const [data, detected] = await Promise.all([
-        window.electron.project.getSettings(requestedProjectId),
-        window.electron.project.detectRunners(requestedProjectId),
+        projectClient.getSettings(requestedProjectId),
+        projectClient.detectRunners(requestedProjectId),
       ]);
 
       // Only update state if this is still the active project (check against ref)
@@ -116,7 +117,7 @@ export function useProjectSettings(projectId?: string): UseProjectSettingsReturn
       }
 
       try {
-        await window.electron.project.saveSettings(targetId, newSettings);
+        await projectClient.saveSettings(targetId, newSettings);
         setSettings(newSettings);
 
         // Re-filter detected commands after save
@@ -142,7 +143,7 @@ export function useProjectSettings(projectId?: string): UseProjectSettingsReturn
       const updated = [...currentSettings.runCommands, command];
 
       try {
-        await window.electron.project.saveSettings(targetId, {
+        await projectClient.saveSettings(targetId, {
           ...currentSettings,
           runCommands: updated,
         });

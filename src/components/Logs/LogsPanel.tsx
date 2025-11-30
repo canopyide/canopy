@@ -11,6 +11,7 @@ import { useLogsStore, filterLogs } from "@/store";
 import { LogEntry } from "./LogEntry";
 import { LogFilters } from "./LogFilters";
 import type { LogEntry as LogEntryType } from "@/types";
+import { logsClient } from "@/clients";
 
 interface LogsPanelProps {
   className?: string;
@@ -41,20 +42,20 @@ export function LogsPanel({ className }: LogsPanelProps) {
 
   // Load initial logs and set up subscription
   useEffect(() => {
-    if (!isOpen || !window.electron?.logs) return;
+    if (!isOpen) return;
 
     // Load existing logs
-    window.electron.logs.getAll().then((existingLogs) => {
+    logsClient.getAll().then((existingLogs) => {
       setLogs(existingLogs);
     });
 
     // Load sources
-    window.electron.logs.getSources().then((existingSources) => {
+    logsClient.getSources().then((existingSources) => {
       setSources(existingSources);
     });
 
     // Subscribe to new log entries
-    const unsubscribe = window.electron.logs.onEntry((entry: LogEntryType) => {
+    const unsubscribe = logsClient.onEntry((entry: LogEntryType) => {
       addLog(entry);
       // Update sources if new using functional updater
       if (entry.source) {
@@ -113,16 +114,12 @@ export function LogsPanel({ className }: LogsPanelProps) {
   const handleClearLogs = useCallback(async () => {
     clearLogs();
     setSources([]); // Clear sources when clearing logs
-    if (window.electron?.logs) {
-      await window.electron.logs.clear();
-    }
+    await logsClient.clear();
   }, [clearLogs]);
 
   // Handle open log file
   const handleOpenFile = useCallback(async () => {
-    if (window.electron?.logs) {
-      await window.electron.logs.openFile();
-    }
+    await logsClient.openFile();
   }, []);
 
   // Filter logs (memoized for performance)

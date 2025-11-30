@@ -14,6 +14,7 @@
 import { useMemo, useCallback, useState } from "react";
 import { cn } from "@/lib/utils";
 import { useErrorStore, type AppError, type RetryAction } from "@/store";
+import { errorsClient } from "@/clients";
 
 export interface ProblemsPanelProps {
   /** Whether the panel is open */
@@ -173,7 +174,7 @@ export function ProblemsPanel({ isOpen, onClose, onRetry, className }: ProblemsP
   }, []);
 
   const handleOpenLogs = useCallback(() => {
-    window.electron?.errors?.openLogs();
+    errorsClient.openLogs();
   }, []);
 
   if (!isOpen) return null;
