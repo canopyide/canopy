@@ -336,9 +336,7 @@ export function getEventCategory(eventType: keyof CanopyEventMap): EventCategory
 /**
  * Get all event types for a specific category.
  */
-export function getEventTypesForCategory(
-  category: EventCategory
-): Array<keyof CanopyEventMap> {
+export function getEventTypesForCategory(category: EventCategory): Array<keyof CanopyEventMap> {
   return (Object.keys(EVENT_META) as Array<keyof CanopyEventMap>).filter(
     (key) => EVENT_META[key].category === category
   );
@@ -358,15 +356,16 @@ export type WithBase<T> = T & BaseEventPayload;
  * Helper type to enforce both BaseEventPayload and EventContext fields.
  * Use for events that require correlation context (worktreeId, agentId, etc.).
  */
-export type WithContext<T> = T & BaseEventPayload & {
-  worktreeId?: string;
-  agentId?: string;
-  taskId?: string;
-  runId?: string;
-  terminalId?: string;
-  issueNumber?: number;
-  prNumber?: number;
-};
+export type WithContext<T> = T &
+  BaseEventPayload & {
+    worktreeId?: string;
+    agentId?: string;
+    taskId?: string;
+    runId?: string;
+    terminalId?: string;
+    issueNumber?: number;
+    prNumber?: number;
+  };
 
 // ============================================================================
 // Event Type Unions by Category
