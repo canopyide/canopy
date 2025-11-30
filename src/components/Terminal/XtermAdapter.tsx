@@ -173,13 +173,30 @@ export function XtermAdapter({ terminalId, onReady, onExit, className }: XtermAd
   // Memoize terminal options
   const terminalOptions = useMemo(
     () => ({
-      cursorBlink: true,
-      fontSize: 14,
-      fontFamily: "JetBrains Mono, Menlo, Monaco, Consolas, monospace",
+      // Cursor refinement - reduce distraction during AI streaming
+      cursorBlink: false,
+      cursorStyle: "bar" as const,
+      cursorWidth: 2,
+
+      // Typography - optimized for AI agent readability
+      fontSize: 13,
+      lineHeight: 1.4,
+      fontFamily: '"JetBrains Mono", "Fira Code", Monaco, Menlo, Consolas, monospace',
+
+      // Visual enhancements
+      fontLigatures: true,
+      fontWeight: 400,
+      fontWeightBold: 700,
+
+      // Theme and performance
       theme: CANOPY_TERMINAL_THEME,
       allowProposedApi: true, // Required for CSI parser access
       smoothScrollDuration: 0, // Disable smooth scroll for better performance
       scrollback: 10000, // Reasonable scrollback buffer
+
+      // UX improvements
+      macOptionIsMeta: true,
+      fastScrollModifier: "alt" as const,
     }),
     []
   );
@@ -442,7 +459,8 @@ export function XtermAdapter({ terminalId, onReady, onExit, className }: XtermAd
     <div
       ref={containerRef}
       className={cn(
-        "w-full h-full min-h-0 overflow-hidden p-2.5", // Balanced padding for comfortable reading
+        "w-full h-full min-h-0 overflow-hidden",
+        "pl-3 pt-2", // Custom padding: gutter feel on left, minimal top
         className
       )}
     />
