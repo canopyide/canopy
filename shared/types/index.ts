@@ -181,3 +181,11 @@ export type {
   RunPausedPayload,
   RunResumedPayload,
 } from "./events.js";
+
+// Terminal activity types - semantic activity detection
+export type {
+  TerminalTaskType,
+  TerminalActivityStatus,
+  TerminalActivity,
+  TerminalActivityPayload,
+} from "./terminal.js";

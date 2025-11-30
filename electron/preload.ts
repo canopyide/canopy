@@ -51,6 +51,7 @@ import type {
   RunMetadata,
   IpcInvokeMap,
   IpcEventMap,
+  TerminalActivityPayload,
 } from "@shared/types";
 
 // Re-export ElectronAPI for type declarations
@@ -143,6 +144,9 @@ const CHANNELS = {
   // Agent state channels
   AGENT_STATE_CHANGED: "agent:state-changed",
   AGENT_GET_STATE: "agent:get-state",
+
+  // Terminal activity channels
+  TERMINAL_ACTIVITY: "terminal:activity",
 
   // Artifact channels
   ARTIFACT_DETECTED: "artifact:detected",
@@ -390,6 +394,35 @@ const api: ElectronAPI = {
       };
       ipcRenderer.on(CHANNELS.AGENT_STATE_CHANGED, handler);
       return () => ipcRenderer.removeListener(CHANNELS.AGENT_STATE_CHANGED, handler);
+    },
+
+    onActivity: (callback: (data: TerminalActivityPayload) => void) => {
+      const handler = (_event: Electron.IpcRendererEvent, data: unknown) => {
+        // Type guard - validate terminal activity payload structure
+        const record = data as Record<string, unknown>;
+        if (
+          typeof data === "object" &&
+          data !== null &&
+          "terminalId" in data &&
+          "headline" in data &&
+          "status" in data &&
+          "type" in data &&
+          "confidence" in data &&
+          "timestamp" in data &&
+          typeof record.terminalId === "string" &&
+          typeof record.headline === "string" &&
+          typeof record.status === "string" &&
+          typeof record.type === "string" &&
+          typeof record.confidence === "number" &&
+          typeof record.timestamp === "number"
+        ) {
+          callback(data as TerminalActivityPayload);
+        } else {
+          console.warn("[Preload] Invalid terminal:activity payload, dropping event", data);
+        }
+      };
+      ipcRenderer.on(CHANNELS.TERMINAL_ACTIVITY, handler);
+      return () => ipcRenderer.removeListener(CHANNELS.TERMINAL_ACTIVITY, handler);
     },
   },
 

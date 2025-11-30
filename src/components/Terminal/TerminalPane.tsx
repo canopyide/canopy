@@ -36,6 +36,13 @@ export interface StateDebugInfo {
   confidence: number;
 }
 
+/** Activity state for semantic terminal activity */
+export interface ActivityState {
+  headline: string;
+  status: "working" | "waiting" | "success" | "failure";
+  type: "interactive" | "background" | "idle";
+}
+
 export interface TerminalPaneProps {
   /** Unique terminal identifier */
   id: string;
@@ -59,6 +66,8 @@ export interface TerminalPaneProps {
   agentState?: AgentState;
   /** Debug info about state detection (trigger and confidence) */
   stateDebugInfo?: StateDebugInfo | null;
+  /** AI-generated activity state (headline, status, type) */
+  activity?: ActivityState | null;
   /** Called when the pane is clicked/focused */
   onFocus: () => void;
   /** Called when the close button is clicked */
@@ -92,6 +101,36 @@ function getTerminalIcon(type: TerminalType, className?: string) {
   }
 }
 
+/**
+ * Get status badge color based on activity status
+ */
+function getStatusColor(status: ActivityState["status"]): string {
+  switch (status) {
+    case "working":
+      return "bg-blue-500/20 text-blue-300 border-blue-500/30";
+    case "waiting":
+      return "bg-yellow-500/20 text-yellow-300 border-yellow-500/30";
+    case "success":
+      return "bg-green-500/20 text-green-300 border-green-500/30";
+    case "failure":
+      return "bg-red-500/20 text-red-300 border-red-500/30";
+  }
+}
+
+/**
+ * Get type badge color based on terminal task type
+ */
+function getTypeColor(type: ActivityState["type"]): string {
+  switch (type) {
+    case "background":
+      return "bg-purple-500/20 text-purple-300 border-purple-500/30";
+    case "interactive":
+      return "bg-cyan-500/20 text-cyan-300 border-cyan-500/30";
+    case "idle":
+      return "bg-gray-500/20 text-gray-400 border-gray-500/30";
+  }
+}
+
 export function TerminalPane({
   id,
   title,
@@ -104,6 +143,7 @@ export function TerminalPane({
   injectionProgress,
   agentState,
   stateDebugInfo,
+  activity,
   onFocus,
   onClose,
   onInjectContext,
@@ -339,8 +379,33 @@ export function TerminalPane({
             </span>
           )}
 
-          {/* Working state spinner */}
-          {isAgentWorking && (
+          {/* Activity badge - shows AI-generated headline */}
+          {activity && activity.headline && (
+            <div
+              className={cn(
+                "flex items-center gap-1.5 px-2 py-0.5 rounded border text-xs font-mono ml-2",
+                getStatusColor(activity.status)
+              )}
+              role="status"
+              aria-live="polite"
+              title={`${activity.headline} (${activity.type})`}
+            >
+              {activity.status === "working" && (
+                <Loader2 className="h-3 w-3 animate-spin" aria-hidden="true" />
+              )}
+              <span className="truncate max-w-[150px]">{activity.headline}</span>
+              {activity.type === "background" && (
+                <span
+                  className={cn("text-[10px] px-1 rounded border", getTypeColor(activity.type))}
+                >
+                  bg
+                </span>
+              )}
+            </div>
+          )}
+
+          {/* Fallback: Working state spinner (when no activity headline) */}
+          {isAgentWorking && !activity?.headline && (
             <div
               className="flex items-center gap-1 text-[var(--color-state-working)] ml-1"
               role="status"

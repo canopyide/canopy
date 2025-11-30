@@ -151,6 +151,15 @@ export function TerminalGrid({ className, defaultCwd }: TerminalGridProps) {
                   }
                 : null
             }
+            activity={
+              terminal.activityHeadline
+                ? {
+                    headline: terminal.activityHeadline,
+                    status: terminal.activityStatus ?? "working",
+                    type: terminal.activityType ?? "interactive",
+                  }
+                : null
+            }
             onFocus={() => setFocused(terminal.id)}
             onClose={() => removeTerminal(terminal.id)}
             onInjectContext={
@@ -205,6 +214,15 @@ export function TerminalGrid({ className, defaultCwd }: TerminalGridProps) {
               ? {
                   trigger: terminal.stateChangeTrigger,
                   confidence: terminal.stateChangeConfidence ?? 0,
+                }
+              : null
+          }
+          activity={
+            terminal.activityHeadline
+              ? {
+                  headline: terminal.activityHeadline,
+                  status: terminal.activityStatus ?? "working",
+                  type: terminal.activityType ?? "interactive",
                 }
               : null
           }
