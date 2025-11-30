@@ -5,7 +5,11 @@
  * Wraps window.electron.terminal.* calls for testability and maintainability.
  */
 
-import type { TerminalSpawnOptions, AgentStateChangePayload } from "@shared/types";
+import type {
+  TerminalSpawnOptions,
+  AgentStateChangePayload,
+  TerminalActivityPayload,
+} from "@shared/types";
 
 /**
  * Client for terminal IPC operations.
@@ -52,5 +56,10 @@ export const terminalClient = {
   /** Subscribe to agent state change events. Returns cleanup function. */
   onAgentStateChanged: (callback: (data: AgentStateChangePayload) => void): (() => void) => {
     return window.electron.terminal.onAgentStateChanged(callback);
+  },
+
+  /** Subscribe to terminal activity events. Returns cleanup function. */
+  onActivity: (callback: (data: TerminalActivityPayload) => void): (() => void) => {
+    return window.electron.terminal.onActivity(callback);
   },
 } as const;

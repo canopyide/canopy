@@ -303,6 +303,14 @@ export interface TerminalInstance {
   stateChangeTrigger?: AgentStateChangeTrigger;
   /** Confidence in the most recent state detection (0.0-1.0) */
   stateChangeConfidence?: number;
+  /** AI-generated activity headline (e.g., "Installing dependencies") */
+  activityHeadline?: string;
+  /** Semantic activity status (working, waiting, success, failure) */
+  activityStatus?: "working" | "waiting" | "success" | "failure";
+  /** Terminal task type (interactive, background, idle) */
+  activityType?: "interactive" | "background" | "idle";
+  /** Timestamp when activity was last updated */
+  activityTimestamp?: number;
 }
 
 /** Options for spawning a new PTY process */

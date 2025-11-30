@@ -53,6 +53,13 @@ export interface TerminalRegistrySlice {
     trigger?: AgentStateChangeTrigger,
     confidence?: number
   ) => void;
+  updateActivity: (
+    id: string,
+    headline: string,
+    status: "working" | "waiting" | "success" | "failure",
+    type: "interactive" | "background" | "idle",
+    timestamp: number
+  ) => void;
   getTerminal: (id: string) => TerminalInstance | undefined;
 }
 
@@ -195,6 +202,31 @@ export const createTerminalRegistrySlice =
         );
 
         // Note: We don't persist agent state changes since they are transient
+        return { terminals: newTerminals };
+      });
+    },
+
+    updateActivity: (id, headline, status, type, timestamp) => {
+      set((state) => {
+        const terminal = state.terminals.find((t) => t.id === id);
+        if (!terminal) {
+          // Silently ignore - terminal may have been closed
+          return state;
+        }
+
+        const newTerminals = state.terminals.map((t) =>
+          t.id === id
+            ? {
+                ...t,
+                activityHeadline: headline,
+                activityStatus: status,
+                activityType: type,
+                activityTimestamp: timestamp,
+              }
+            : t
+        );
+
+        // Note: We don't persist activity state since it's transient
         return { terminals: newTerminals };
       });
     },

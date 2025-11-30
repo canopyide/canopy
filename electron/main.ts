@@ -7,6 +7,10 @@ import { registerErrorHandlers } from "./ipc/errorHandlers.js";
 import { PtyManager } from "./services/PtyManager.js";
 import { DevServerManager } from "./services/DevServerManager.js";
 import { TerminalObserver } from "./services/TerminalObserver.js";
+import {
+  getSemanticActivityObserver,
+  disposeSemanticActivityObserver,
+} from "./services/ai/SemanticActivityObserver.js";
 import { worktreeService } from "./services/WorktreeService.js";
 import { CliAvailabilityService } from "./services/CliAvailabilityService.js";
 import { createWindowWithState } from "./windowState.js";
@@ -111,6 +115,8 @@ if (!gotTheLock) {
       devServerManager ? devServerManager.stopAll() : Promise.resolve(),
       disposeTranscriptManager(),
       new Promise<void>((resolve) => {
+        // Stop SemanticActivityObserver
+        disposeSemanticActivityObserver();
         // Stop TerminalObserver first
         if (terminalObserver) {
           terminalObserver.dispose();
@@ -203,6 +209,19 @@ async function createWindow(): Promise<void> {
       ptyManager = null;
     }
     throw error;
+  }
+
+  // --- SEMANTIC ACTIVITY OBSERVER SETUP ---
+  // Create and start SemanticActivityObserver for AI-powered activity headlines
+  console.log("[MAIN] Initializing SemanticActivityObserver...");
+  try {
+    const semanticObserver = getSemanticActivityObserver();
+    semanticObserver.initialize(mainWindow);
+    semanticObserver.start();
+    console.log("[MAIN] SemanticActivityObserver initialized and started");
+  } catch (error) {
+    console.error("[MAIN] Failed to initialize SemanticActivityObserver:", error);
+    // Non-fatal - continue without semantic activity detection
   }
 
   // --- DEV SERVER MANAGER SETUP ---
@@ -364,6 +383,8 @@ async function createWindow(): Promise<void> {
     }
     // Cleanup transcript manager
     await disposeTranscriptManager();
+    // Cleanup SemanticActivityObserver
+    disposeSemanticActivityObserver();
     // Cleanup TerminalObserver first
     if (terminalObserver) {
       terminalObserver.dispose();

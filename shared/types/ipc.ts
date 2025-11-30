@@ -18,6 +18,7 @@ import type {
   RunCommand,
 } from "./domain.js";
 import type { EventContext, RunMetadata } from "./events.js";
+import type { TerminalActivityPayload } from "./terminal.js";
 
 // ============================================================================
 // Terminal IPC Types
@@ -1235,6 +1236,11 @@ export interface IpcEventMap {
   "agent:state-changed": AgentStateChangePayload;
 
   // ============================================
+  // Terminal activity events
+  // ============================================
+  "terminal:activity": TerminalActivityPayload;
+
+  // ============================================
   // Artifact events
   // ============================================
   "artifact:detected": ArtifactDetectedPayload;
@@ -1332,6 +1338,7 @@ export interface ElectronAPI {
     onData(id: string, callback: (data: string) => void): () => void;
     onExit(callback: (id: string, exitCode: number) => void): () => void;
     onAgentStateChanged(callback: (data: AgentStateChangePayload) => void): () => void;
+    onActivity(callback: (data: TerminalActivityPayload) => void): () => void;
   };
   artifact: {
     onDetected(callback: (data: ArtifactDetectedPayload) => void): () => void;

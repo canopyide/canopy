@@ -39,6 +39,9 @@ export const CHANNELS = {
   AGENT_STATE_CHANGED: "agent:state-changed",
   AGENT_GET_STATE: "agent:get-state",
 
+  // Terminal activity channels
+  TERMINAL_ACTIVITY: "terminal:activity",
+
   // Artifact channels
   ARTIFACT_DETECTED: "artifact:detected",
   ARTIFACT_SAVE_TO_FILE: "artifact:save-to-file",
