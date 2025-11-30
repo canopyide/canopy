@@ -12,6 +12,7 @@
 
 import { useCallback, useEffect, useState } from "react";
 import { useTerminalStore, type AddTerminalOptions } from "@/store/terminalStore";
+import { useProjectStore } from "@/store/projectStore";
 import { useWorktrees } from "./useWorktrees";
 import { isElectronAvailable } from "./useElectron";
 
@@ -88,6 +89,7 @@ export interface UseAgentLauncherReturn {
 export function useAgentLauncher(): UseAgentLauncherReturn {
   const { addTerminal } = useTerminalStore();
   const { worktreeMap, activeId } = useWorktrees();
+  const currentProject = useProjectStore((state) => state.currentProject);
 
   const [availability, setAvailability] = useState<AgentAvailability>({
     claude: true, // Optimistically assume available until checked
@@ -143,10 +145,10 @@ export function useAgentLauncher(): UseAgentLauncherReturn {
 
       const config = AGENT_CONFIGS[type];
 
-      // Get CWD from active worktree or fall back to home directory
+      // Get CWD from active worktree or fall back to project root
       const activeWorktree = activeId ? worktreeMap.get(activeId) : null;
-      // Pass empty string if no worktree; Main process handles HOME fallback
-      const cwd = activeWorktree?.path || "";
+      // Pass project root if no worktree; Main process handles HOME fallback as last resort
+      const cwd = activeWorktree?.path || currentProject?.path || "";
 
       const options: AddTerminalOptions = {
         type: config.type,
@@ -164,7 +166,7 @@ export function useAgentLauncher(): UseAgentLauncherReturn {
         return null;
       }
     },
-    [activeId, worktreeMap, addTerminal]
+    [activeId, worktreeMap, addTerminal, currentProject]
   );
 
   return {

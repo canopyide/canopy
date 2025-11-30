@@ -339,24 +339,42 @@ export function registerIpcHandlers(
     // Generate ID if not provided
     const id = validatedOptions.id || crypto.randomUUID();
 
-    // Use provided cwd or fall back to home directory
-    let cwd = validatedOptions.cwd || process.env.HOME || os.homedir();
+    // Cache project path to avoid multiple lookups and ensure consistency
+    const projectPath = projectStore.getCurrentProject()?.path;
+
+    // Use provided cwd, project root, or fall back to home directory
+    let cwd = validatedOptions.cwd || projectPath || process.env.HOME || os.homedir();
 
     // Validate cwd exists and is absolute
-    try {
-      const fs = await import("fs");
-      const path = await import("path");
+    const fs = await import("fs");
+    const path = await import("path");
 
+    // Helper to get validated fallback (absolute path that exists)
+    const getValidatedFallback = async (): Promise<string> => {
+      // Try project path first if available
+      if (projectPath && path.isAbsolute(projectPath)) {
+        try {
+          await fs.promises.access(projectPath);
+          return projectPath;
+        } catch {
+          // Project path invalid, fall through to home
+        }
+      }
+      // Fall back to home directory
+      return os.homedir();
+    };
+
+    try {
       if (!path.isAbsolute(cwd)) {
-        console.warn(`Relative cwd provided: ${cwd}, using home directory`);
-        cwd = os.homedir();
+        console.warn(`Relative cwd provided: ${cwd}, falling back to project root or home`);
+        cwd = await getValidatedFallback();
       }
 
       // Check if directory exists
       await fs.promises.access(cwd);
     } catch (_error) {
-      console.warn(`Invalid cwd: ${cwd}, using home directory`);
-      cwd = os.homedir();
+      console.warn(`Invalid cwd: ${cwd}, falling back to project root or home`);
+      cwd = await getValidatedFallback();
     }
 
     try {

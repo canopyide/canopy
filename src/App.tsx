@@ -106,10 +106,10 @@ function SidebarContent({ onOpenSettings }: SidebarContentProps) {
         // Show success notification
         const sizeStr = result.stats?.totalSize ? formatBytes(result.stats.totalSize) : "";
         addNotification({
-            type: "success",
-            title: "Context Copied",
-            message: `Copied ${result.fileCount} files${sizeStr ? ` (${sizeStr})` : ""} to clipboard`,
-            duration: 3000
+          type: "success",
+          title: "Context Copied",
+          message: `Copied ${result.fileCount} files${sizeStr ? ` (${sizeStr})` : ""} to clipboard`,
+          duration: 3000,
         });
       } catch (e) {
         const message = e instanceof Error ? e.message : "Failed to copy context to clipboard";
@@ -335,17 +335,33 @@ function App() {
       try {
         const appState = await window.electron.app.getState();
 
-        // Restore terminals (if they exist and their cwd is still valid)
+        // Restore terminals - main process handles CWD validation and falls back
+        // to project root if the persisted cwd is invalid/deleted
         if (appState.terminals && appState.terminals.length > 0) {
+          // Get current project to use as fallback for invalid cwd paths
+          // Handle errors gracefully - if no project available, persisted cwd will be used
+          let projectRoot: string | undefined;
+          try {
+            const currentProject = await window.electron.project.getCurrent();
+            projectRoot = currentProject?.path;
+          } catch (error) {
+            console.warn("Failed to get current project for terminal restoration:", error);
+            // Continue with undefined projectRoot - main process will handle fallback
+          }
+
           for (const terminal of appState.terminals) {
             try {
               // Skip the default terminal if it exists (it's created automatically)
               if (terminal.id === "default") continue;
 
+              // Use persisted cwd, falling back to project root if empty
+              // Main process will validate and handle invalid paths
+              const cwd = terminal.cwd || projectRoot || "";
+
               await addTerminal({
                 type: terminal.type,
                 title: terminal.title,
-                cwd: terminal.cwd,
+                cwd,
                 worktreeId: terminal.worktreeId,
               });
             } catch (error) {
