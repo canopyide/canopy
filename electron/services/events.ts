@@ -15,6 +15,378 @@ import type {
 } from "../types/index.js";
 import type { WorktreeState } from "./WorktreeMonitor.js";
 
+// ============================================================================
+// Event Category and Metadata System
+// ============================================================================
+
+/**
+ * Event categories for organizing and filtering events.
+ * Used by EventBuffer for categorization and the Event Inspector UI.
+ */
+export type EventCategory =
+  | "system" // sys:* - core system state (worktrees, PR detection)
+  | "agent" // agent:* - agent lifecycle and output
+  | "task" // task:* - task orchestration
+  | "run" // run:* - run lifecycle
+  | "server" // server:* - dev server state
+  | "file" // file:* - file operations (copy-tree, open)
+  | "ui" // ui:* - UI notifications/state
+  | "watcher" // watcher:* - file watching
+  | "artifact"; // artifact:* - detected artifacts
+
+/**
+ * Metadata for each event type.
+ * Provides category mapping and context requirements for validation.
+ */
+export interface EventMetadata {
+  /** Event category for filtering and UI organization */
+  category: EventCategory;
+  /** Whether this event must include EventContext fields (worktreeId, agentId, etc.) */
+  requiresContext: boolean;
+  /** Whether this event must include a timestamp (enforced at type level) */
+  requiresTimestamp: boolean;
+  /** Human-readable description of the event's purpose */
+  description: string;
+}
+
+/**
+ * Metadata mapping for all event types.
+ * Single source of truth for event categorization and validation requirements.
+ */
+export const EVENT_META: Record<keyof CanopyEventMap, EventMetadata> = {
+  // System events
+  "sys:ready": {
+    category: "system",
+    requiresContext: false,
+    requiresTimestamp: false,
+    description: "Application ready with initial working directory",
+  },
+  "sys:refresh": {
+    category: "system",
+    requiresContext: false,
+    requiresTimestamp: false,
+    description: "Request to refresh worktree list",
+  },
+  "sys:quit": {
+    category: "system",
+    requiresContext: false,
+    requiresTimestamp: false,
+    description: "Application quit requested",
+  },
+  "sys:config:reload": {
+    category: "system",
+    requiresContext: false,
+    requiresTimestamp: false,
+    description: "Configuration reload requested",
+  },
+  "sys:worktree:switch": {
+    category: "system",
+    requiresContext: true,
+    requiresTimestamp: false,
+    description: "Active worktree changed",
+  },
+  "sys:worktree:refresh": {
+    category: "system",
+    requiresContext: false,
+    requiresTimestamp: false,
+    description: "Worktree list refresh requested",
+  },
+  "sys:worktree:cycle": {
+    category: "system",
+    requiresContext: false,
+    requiresTimestamp: false,
+    description: "Cycle to next/previous worktree",
+  },
+  "sys:worktree:selectByName": {
+    category: "system",
+    requiresContext: false,
+    requiresTimestamp: false,
+    description: "Select worktree by name pattern",
+  },
+  "sys:worktree:update": {
+    category: "system",
+    requiresContext: true,
+    requiresTimestamp: true,
+    description: "Worktree state changed (files, branch, summary)",
+  },
+  "sys:worktree:remove": {
+    category: "system",
+    requiresContext: true,
+    requiresTimestamp: true,
+    description: "Worktree was removed from monitoring",
+  },
+  "sys:pr:detected": {
+    category: "system",
+    requiresContext: true,
+    requiresTimestamp: true,
+    description: "Pull request detected for worktree branch",
+  },
+  "sys:pr:cleared": {
+    category: "system",
+    requiresContext: true,
+    requiresTimestamp: true,
+    description: "Pull request association cleared",
+  },
+
+  // File events
+  "file:open": {
+    category: "file",
+    requiresContext: false,
+    requiresTimestamp: false,
+    description: "Open file in external editor",
+  },
+  "file:copy-tree": {
+    category: "file",
+    requiresContext: false,
+    requiresTimestamp: false,
+    description: "Generate CopyTree context",
+  },
+  "file:copy-path": {
+    category: "file",
+    requiresContext: false,
+    requiresTimestamp: false,
+    description: "Copy path to clipboard",
+  },
+
+  // UI events
+  "ui:notify": {
+    category: "ui",
+    requiresContext: false,
+    requiresTimestamp: true,
+    description: "Display notification to user",
+  },
+  "ui:filter:set": {
+    category: "ui",
+    requiresContext: false,
+    requiresTimestamp: false,
+    description: "Set filter query",
+  },
+  "ui:filter:clear": {
+    category: "ui",
+    requiresContext: false,
+    requiresTimestamp: false,
+    description: "Clear filter query",
+  },
+  "ui:modal:open": {
+    category: "ui",
+    requiresContext: false,
+    requiresTimestamp: false,
+    description: "Open modal dialog",
+  },
+  "ui:modal:close": {
+    category: "ui",
+    requiresContext: false,
+    requiresTimestamp: false,
+    description: "Close modal dialog",
+  },
+
+  // Watcher events
+  "watcher:change": {
+    category: "watcher",
+    requiresContext: false,
+    requiresTimestamp: false,
+    description: "File system change detected",
+  },
+
+  // Server events
+  "server:update": {
+    category: "server",
+    requiresContext: true,
+    requiresTimestamp: true,
+    description: "Dev server status changed",
+  },
+  "server:error": {
+    category: "server",
+    requiresContext: true,
+    requiresTimestamp: true,
+    description: "Dev server encountered error",
+  },
+
+  // Agent events
+  "agent:spawned": {
+    category: "agent",
+    requiresContext: true,
+    requiresTimestamp: true,
+    description: "Agent process spawned in terminal",
+  },
+  "agent:state-changed": {
+    category: "agent",
+    requiresContext: true,
+    requiresTimestamp: true,
+    description: "Agent state changed (idle, working, completed, etc.)",
+  },
+  "agent:output": {
+    category: "agent",
+    requiresContext: true,
+    requiresTimestamp: true,
+    description: "Agent produced output (sanitized in EventBuffer)",
+  },
+  "agent:completed": {
+    category: "agent",
+    requiresContext: true,
+    requiresTimestamp: true,
+    description: "Agent completed work successfully",
+  },
+  "agent:failed": {
+    category: "agent",
+    requiresContext: true,
+    requiresTimestamp: true,
+    description: "Agent encountered error and stopped",
+  },
+  "agent:killed": {
+    category: "agent",
+    requiresContext: true,
+    requiresTimestamp: true,
+    description: "Agent was killed (user or system action)",
+  },
+
+  // Artifact events
+  "artifact:detected": {
+    category: "artifact",
+    requiresContext: true,
+    requiresTimestamp: true,
+    description: "Code artifacts extracted from agent output",
+  },
+
+  // Task events
+  "task:created": {
+    category: "task",
+    requiresContext: true,
+    requiresTimestamp: true,
+    description: "New task created",
+  },
+  "task:assigned": {
+    category: "task",
+    requiresContext: true,
+    requiresTimestamp: true,
+    description: "Task assigned to agent",
+  },
+  "task:state-changed": {
+    category: "task",
+    requiresContext: true,
+    requiresTimestamp: true,
+    description: "Task state changed",
+  },
+  "task:completed": {
+    category: "task",
+    requiresContext: true,
+    requiresTimestamp: true,
+    description: "Task completed successfully",
+  },
+  "task:failed": {
+    category: "task",
+    requiresContext: true,
+    requiresTimestamp: true,
+    description: "Task failed",
+  },
+
+  // Run events
+  "run:started": {
+    category: "run",
+    requiresContext: true,
+    requiresTimestamp: true,
+    description: "Multi-step run workflow started",
+  },
+  "run:progress": {
+    category: "run",
+    requiresContext: true,
+    requiresTimestamp: true,
+    description: "Run progress updated",
+  },
+  "run:completed": {
+    category: "run",
+    requiresContext: true,
+    requiresTimestamp: true,
+    description: "Run completed successfully",
+  },
+  "run:failed": {
+    category: "run",
+    requiresContext: true,
+    requiresTimestamp: true,
+    description: "Run failed with error",
+  },
+  "run:cancelled": {
+    category: "run",
+    requiresContext: true,
+    requiresTimestamp: true,
+    description: "Run cancelled by user",
+  },
+  "run:paused": {
+    category: "run",
+    requiresContext: true,
+    requiresTimestamp: true,
+    description: "Run paused (waiting for input)",
+  },
+  "run:resumed": {
+    category: "run",
+    requiresContext: true,
+    requiresTimestamp: true,
+    description: "Paused run resumed",
+  },
+};
+
+/**
+ * Get the category for an event type using EVENT_META.
+ * Falls back to 'system' if event type is not found.
+ */
+export function getEventCategory(eventType: keyof CanopyEventMap): EventCategory {
+  return EVENT_META[eventType]?.category ?? "system";
+}
+
+/**
+ * Get all event types for a specific category.
+ */
+export function getEventTypesForCategory(
+  category: EventCategory
+): Array<keyof CanopyEventMap> {
+  return (Object.keys(EVENT_META) as Array<keyof CanopyEventMap>).filter(
+    (key) => EVENT_META[key].category === category
+  );
+}
+
+// ============================================================================
+// Type Helpers for BaseEventPayload Enforcement
+// ============================================================================
+
+/**
+ * Helper type to enforce BaseEventPayload for all domain events.
+ * Combines the payload type T with required timestamp and optional traceId.
+ */
+export type WithBase<T> = T & BaseEventPayload;
+
+/**
+ * Helper type to enforce both BaseEventPayload and EventContext fields.
+ * Use for events that require correlation context (worktreeId, agentId, etc.).
+ */
+export type WithContext<T> = T & BaseEventPayload & {
+  worktreeId?: string;
+  agentId?: string;
+  taskId?: string;
+  runId?: string;
+  terminalId?: string;
+  issueNumber?: number;
+  prNumber?: number;
+};
+
+// ============================================================================
+// Event Type Unions by Category
+// ============================================================================
+
+/** Union of all system event types */
+export type SystemEventType = Extract<keyof CanopyEventMap, `sys:${string}`>;
+/** Union of all agent event types */
+export type AgentEventType = Extract<keyof CanopyEventMap, `agent:${string}`>;
+/** Union of all server event types */
+export type ServerEventType = Extract<keyof CanopyEventMap, `server:${string}`>;
+/** Union of all run event types */
+export type RunEventType = Extract<keyof CanopyEventMap, `run:${string}`>;
+/** Union of all task event types */
+export type TaskEventType = Extract<keyof CanopyEventMap, `task:${string}`>;
+/** Union of all file event types */
+export type FileEventType = Extract<keyof CanopyEventMap, `file:${string}`>;
+/** Union of all UI event types */
+export type UIEventType = Extract<keyof CanopyEventMap, `ui:${string}`>;
+
 export type ModalId = "worktree" | "command-palette";
 export interface ModalContextMap {
   worktree: undefined;
@@ -92,9 +464,9 @@ export type CanopyEventMap = {
 
   "watcher:change": WatcherChangePayload;
 
-  // Dev Server Events
-  "server:update": DevServerState;
-  "server:error": { worktreeId: string; error: string };
+  // Dev Server Events - now require timestamp and context for observability
+  "server:update": WithContext<DevServerState>;
+  "server:error": WithContext<{ error: string; errorMessage?: string }>;
 
   // Pull Request Events
   "sys:pr:detected": {

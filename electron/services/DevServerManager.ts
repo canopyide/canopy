@@ -18,6 +18,7 @@ import { readFile } from "node:fs/promises";
 import path from "node:path";
 import type { BrowserWindow } from "electron";
 import type { DevServerState, DevServerStatus } from "../ipc/types.js";
+import { events } from "./events.js";
 
 // URL detection patterns for common dev servers
 const URL_PATTERNS = [
@@ -58,22 +59,27 @@ const DEV_SCRIPT_CACHE_TTL_MS = 5 * 60 * 1000;
 
 /**
  * DevServerManager manages dev server processes for worktrees.
+ *
+ * State changes are emitted via the event bus (server:update, server:error),
+ * enabling observability through EventBuffer and EventInspector.
+ * IPC handlers subscribe to these events and forward to renderer.
  */
 export class DevServerManager {
   private servers = new Map<string, ResultPromise>();
   private states = new Map<string, DevServerState>();
   private logBuffers = new Map<string, string[]>();
   private devScriptCache = new Map<string, DevScriptCacheEntry>();
-  private sendToRenderer: ((channel: string, ...args: unknown[]) => void) | null = null;
 
   /**
-   * Initialize the manager with IPC sender
+   * Initialize the manager.
+   * Note: IPC communication is now handled via event bus subscriptions in handlers.ts
    */
   public initialize(
     _mainWindow: BrowserWindow,
-    sendToRenderer: (channel: string, ...args: unknown[]) => void
+    _sendToRenderer: (channel: string, ...args: unknown[]) => void
   ): void {
-    this.sendToRenderer = sendToRenderer;
+    // No-op: State updates are now emitted via event bus (server:update, server:error)
+    // IPC handlers subscribe to events and forward to renderer
   }
 
   /**
@@ -192,10 +198,13 @@ export class DevServerManager {
               signal !== "SIGTERM" &&
               signal !== "SIGKILL"
             ) {
+              const errorMessage = `Process exited with code ${exitCode}`;
               this.updateState(worktreeId, {
                 status: "error",
-                errorMessage: `Process exited with code ${exitCode}`,
+                errorMessage,
               });
+              // Emit error event for observability (EventBuffer, EventInspector)
+              this.emitError(worktreeId, errorMessage);
             } else {
               this.updateState(worktreeId, {
                 status: "stopped",
@@ -433,21 +442,27 @@ export class DevServerManager {
   }
 
   /**
-   * Emit state update to renderer via IPC
+   * Emit state update via event bus.
+   * IPC handlers subscribe to this event and forward to renderer.
    */
   private emitUpdate(state: DevServerState): void {
-    if (this.sendToRenderer) {
-      this.sendToRenderer("devserver:update", state);
-    }
+    // Emit through event bus for observability (EventBuffer, EventInspector)
+    events.emit("server:update", {
+      ...state,
+      timestamp: Date.now(),
+    });
   }
 
   /**
-   * Emit error to renderer via IPC
+   * Emit error via event bus.
+   * IPC handlers subscribe to this event and forward to renderer.
    */
   private emitError(worktreeId: string, error: string): void {
-    if (this.sendToRenderer) {
-      this.sendToRenderer("devserver:error", { worktreeId, error });
-    }
+    events.emit("server:error", {
+      worktreeId,
+      error,
+      timestamp: Date.now(),
+    });
   }
 
   /**

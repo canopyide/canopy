@@ -1,4 +1,11 @@
-import { events, ALL_EVENT_TYPES, type CanopyEventMap } from "./events.js";
+import {
+  events,
+  ALL_EVENT_TYPES,
+  type CanopyEventMap,
+  EVENT_META,
+  type EventCategory,
+  getEventCategory,
+} from "./events.js";
 
 /**
  * Represents a single event record stored in the buffer.
@@ -10,6 +17,8 @@ export interface EventRecord {
   timestamp: number;
   /** Event type name from CanopyEventMap */
   type: keyof CanopyEventMap;
+  /** Event category derived from EVENT_META */
+  category: EventCategory;
   /** Event payload data (may contain sensitive information) */
   payload: any;
   /** Source of the event (always 'main' in Electron main process) */
@@ -19,6 +28,8 @@ export interface EventRecord {
 export interface FilterOptions {
   /** Filter by event type(s) */
   types?: Array<keyof CanopyEventMap>;
+  /** Filter by event category (uses EVENT_META) */
+  category?: EventCategory;
   /** Filter by worktree ID if present in payload */
   worktreeId?: string;
   /** Filter by agent ID if present in payload */
@@ -105,6 +116,43 @@ export class EventBuffer {
   }
 
   /**
+   * Validate event payload against EVENT_META requirements.
+   * Logs warnings for missing required fields but does not reject events.
+   */
+  private validatePayload(eventType: keyof CanopyEventMap, payload: any): void {
+    const meta = EVENT_META[eventType];
+    if (!meta) {
+      return; // Unknown event type, skip validation
+    }
+
+    // Check timestamp requirement
+    if (meta.requiresTimestamp && (!payload || typeof payload.timestamp !== "number")) {
+      console.warn(`[EventBuffer] Event ${eventType} missing required timestamp`, {
+        hasPayload: !!payload,
+        timestampType: payload ? typeof payload.timestamp : "undefined",
+      });
+    }
+
+    // Check context requirement (at least one context field should be present)
+    if (meta.requiresContext && payload) {
+      const hasContext =
+        payload.worktreeId ||
+        payload.agentId ||
+        payload.taskId ||
+        payload.runId ||
+        payload.terminalId ||
+        payload.issueNumber ||
+        payload.prNumber;
+      if (!hasContext) {
+        console.warn(`[EventBuffer] Event ${eventType} missing required context fields`, {
+          eventType,
+          availableFields: Object.keys(payload).filter((k) => payload[k] !== undefined),
+        });
+      }
+    }
+  }
+
+  /**
    * Start capturing events from the event bus.
    * Should be called once during application initialization.
    */
@@ -121,10 +169,21 @@ export class EventBuffer {
       const unsub = events.on(
         eventType as any,
         ((payload: any) => {
+          // Validate payload against EVENT_META requirements
+          this.validatePayload(eventType, payload);
+
+          // Prefer event payload timestamp if present (event-time semantics)
+          // Fall back to current time (receipt-time) if not provided
+          const eventTimestamp =
+            payload && typeof payload.timestamp === "number"
+              ? payload.timestamp
+              : Date.now();
+
           this.push({
             id: this.generateId(),
-            timestamp: Date.now(),
+            timestamp: eventTimestamp,
             type: eventType,
+            category: getEventCategory(eventType),
             payload: this.sanitizePayload(eventType, payload),
             source: "main",
           });
@@ -189,6 +248,11 @@ export class EventBuffer {
     // Filter by event types
     if (options.types && options.types.length > 0) {
       filtered = filtered.filter((event) => options.types!.includes(event.type));
+    }
+
+    // Filter by event category (uses EVENT_META)
+    if (options.category) {
+      filtered = filtered.filter((event) => event.category === options.category);
     }
 
     // Filter by timestamp range
@@ -296,6 +360,43 @@ export class EventBuffer {
    */
   size(): number {
     return this.buffer.length;
+  }
+
+  /**
+   * Get events by category using EVENT_META.
+   * Convenience method for filtering events by their category.
+   *
+   * @param category - The event category to filter by
+   * @returns Array of events matching the category
+   */
+  getEventsByCategory(category: EventCategory): EventRecord[] {
+    return this.buffer.filter((event) => event.category === category);
+  }
+
+  /**
+   * Get count of events per category.
+   * Useful for debugging and UI statistics.
+   */
+  getCategoryStats(): Record<EventCategory, number> {
+    const stats: Record<EventCategory, number> = {
+      system: 0,
+      agent: 0,
+      task: 0,
+      run: 0,
+      server: 0,
+      file: 0,
+      ui: 0,
+      watcher: 0,
+      artifact: 0,
+    };
+
+    for (const event of this.buffer) {
+      if (event.category in stats) {
+        stats[event.category]++;
+      }
+    }
+
+    return stats;
   }
 
   /**

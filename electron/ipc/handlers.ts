@@ -132,6 +132,23 @@ export function registerIpcHandlers(
   handlers.push(unsubArtifactDetected);
 
   // ==========================================
+  // Dev Server Event Forwarding
+  // ==========================================
+
+  // Forward dev server update events to renderer
+  // DevServerManager now emits events instead of direct IPC
+  const unsubServerUpdate = events.on("server:update", (payload) => {
+    sendToRenderer(mainWindow, CHANNELS.DEVSERVER_UPDATE, payload);
+  });
+  handlers.push(unsubServerUpdate);
+
+  // Forward dev server error events to renderer
+  const unsubServerError = events.on("server:error", (payload) => {
+    sendToRenderer(mainWindow, CHANNELS.DEVSERVER_ERROR, payload);
+  });
+  handlers.push(unsubServerError);
+
+  // ==========================================
   // Worktree Handlers
   // ==========================================
 
