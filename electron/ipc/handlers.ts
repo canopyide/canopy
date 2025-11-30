@@ -60,7 +60,7 @@ import { getAIConfig, setAIConfig, clearAIKey, validateAIKey } from "../services
 import { generateProjectIdentity } from "../services/ai/identity.js";
 import { runCommandDetector } from "../services/ai/RunCommandDetector.js";
 import { runManager } from "../services/RunManager.js";
-import type { EventContext, RunMetadata } from "@shared/types/events.js";
+import type { EventContext, RunMetadata } from "../../shared/types/events.js";
 import type {
   HistoryGetSessionsPayload,
   HistoryGetSessionPayload,

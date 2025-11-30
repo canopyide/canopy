@@ -9,14 +9,14 @@
  * - All APIs are explicitly defined and typed
  * - Listeners provide cleanup functions to prevent memory leaks
  *
- * NOTE: This file is built separately as CommonJS for Electron's sandboxed preload.
+ * NOTE: This file is built separately with NodeNext/ESM settings for Electron's preload.
  * Types are imported from the shared module but channel names are inlined to avoid
  * module format conflicts with the ESM main process.
  */
 
 import { contextBridge, ipcRenderer } from "electron";
 
-// Import types from shared module
+// Import types from shared module (type-only to avoid bundling shared runtime)
 import type {
   WorktreeState,
   DevServerState,
@@ -56,7 +56,7 @@ import type {
   ClaudeSettings,
   GeminiSettings,
   CodexSettings,
-} from "@shared/types";
+} from "../shared/types/index.js";
 
 // Re-export ElectronAPI for type declarations
 export type { ElectronAPI };
@@ -76,7 +76,7 @@ export type { ElectronAPI };
  * const worktrees = await typedInvoke("worktree:get-all");
  * const state = await typedInvoke("devserver:get-state", worktreeId);
  */
-function _typedInvoke<K extends keyof IpcInvokeMap>(
+function _typedInvoke<K extends Extract<keyof IpcInvokeMap, string>>(
   channel: K,
   ...args: IpcInvokeMap[K]["args"]
 ): Promise<IpcInvokeMap[K]["result"]> {
@@ -96,7 +96,7 @@ function _typedInvoke<K extends keyof IpcInvokeMap>(
  * });
  * // Later: cleanup();
  */
-function _typedOn<K extends keyof IpcEventMap>(
+function _typedOn<K extends Extract<keyof IpcEventMap, string>>(
   channel: K,
   callback: (payload: IpcEventMap[K]) => void
 ): () => void {

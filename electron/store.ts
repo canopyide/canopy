@@ -1,8 +1,8 @@
 import Store from "electron-store";
 import type { RecentDirectory } from "./types/index.js";
 import type { Project } from "./types/index.js";
-import type { AgentSettings } from "@shared/types/index.js";
-import { DEFAULT_AGENT_SETTINGS } from "@shared/types/index.js";
+import type { AgentSettings } from "../shared/types/index.js";
+import { DEFAULT_AGENT_SETTINGS } from "../shared/types/index.js";
 
 export type { RecentDirectory };
 

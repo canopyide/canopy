@@ -5,7 +5,5 @@
  */
 
 // Re-export all shared types
-export * from "@shared/types/index.js";
-
-// Re-export runtime values from local files
-export { DEFAULT_CONFIG } from "./config.js";
+export * from "./config.js";
+export * from "../../shared/types/index.js";
