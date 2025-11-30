@@ -3,33 +3,20 @@ import {
   ALL_EVENT_TYPES,
   type CanopyEventMap,
   EVENT_META,
-  type EventCategory,
   getEventCategory,
 } from "./events.js";
+import type { EventRecord, EventCategory } from "@shared/types/index.js";
 
-/**
- * Represents a single event record stored in the buffer.
- */
-export interface EventRecord {
-  /** Unique identifier for this event */
-  id: string;
-  /** Unix timestamp in milliseconds when the event occurred */
-  timestamp: number;
-  /** Event type name from CanopyEventMap */
-  type: keyof CanopyEventMap;
-  /** Event category derived from EVENT_META */
-  category: EventCategory;
-  /** Event payload data (may contain sensitive information) */
-  payload: any;
-  /** Source of the event (always 'main' in Electron main process) */
-  source: "main" | "renderer";
-}
+// Re-export for backwards compatibility
+export type { EventRecord };
 
 export interface FilterOptions {
   /** Filter by event type(s) */
   types?: Array<keyof CanopyEventMap>;
   /** Filter by event category (uses EVENT_META) */
   category?: EventCategory;
+  /** Filter by multiple event categories */
+  categories?: EventCategory[];
   /** Filter by worktree ID if present in payload */
   worktreeId?: string;
   /** Filter by agent ID if present in payload */
@@ -175,9 +162,7 @@ export class EventBuffer {
           // Prefer event payload timestamp if present (event-time semantics)
           // Fall back to current time (receipt-time) if not provided
           const eventTimestamp =
-            payload && typeof payload.timestamp === "number"
-              ? payload.timestamp
-              : Date.now();
+            payload && typeof payload.timestamp === "number" ? payload.timestamp : Date.now();
 
           this.push({
             id: this.generateId(),
@@ -247,12 +232,19 @@ export class EventBuffer {
 
     // Filter by event types
     if (options.types && options.types.length > 0) {
-      filtered = filtered.filter((event) => options.types!.includes(event.type));
+      filtered = filtered.filter((event) =>
+        options.types!.includes(event.type as keyof CanopyEventMap)
+      );
     }
 
     // Filter by event category (uses EVENT_META)
     if (options.category) {
       filtered = filtered.filter((event) => event.category === options.category);
+    }
+
+    // Filter by multiple event categories
+    if (options.categories && options.categories.length > 0) {
+      filtered = filtered.filter((event) => options.categories!.includes(event.category));
     }
 
     // Filter by timestamp range

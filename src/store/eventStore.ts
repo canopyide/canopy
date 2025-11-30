@@ -6,26 +6,10 @@
  */
 
 import { create, type StateCreator } from "zustand";
+import type { EventRecord, EventFilterOptions, EventCategory, EventPayload } from "@shared/types";
 
-export interface EventRecord {
-  id: string;
-  timestamp: number;
-  type: string;
-  // eslint-disable-next-line @typescript-eslint/no-explicit-any
-  payload: any;
-  source: "main" | "renderer";
-}
-
-export interface EventFilterOptions {
-  types?: string[];
-  worktreeId?: string;
-  agentId?: string;
-  taskId?: string;
-  traceId?: string;
-  search?: string;
-  after?: number;
-  before?: number;
-}
+// Re-export types for consumers
+export type { EventRecord, EventFilterOptions, EventCategory, EventPayload };
 
 interface EventsState {
   // Event records
@@ -125,6 +109,16 @@ const createEventsStore: StateCreator<EventsState> = (set, get) => ({
     // Filter by event types
     if (filters.types && filters.types.length > 0) {
       filtered = filtered.filter((event) => filters.types!.includes(event.type));
+    }
+
+    // Filter by single event category
+    if (filters.category) {
+      filtered = filtered.filter((event) => event.category === filters.category);
+    }
+
+    // Filter by multiple event categories
+    if (filters.categories && filters.categories.length > 0) {
+      filtered = filtered.filter((event) => filters.categories!.includes(event.category));
     }
 
     // Filter by timestamp range

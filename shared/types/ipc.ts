@@ -390,6 +390,45 @@ export interface LogFilterOptions {
 // Event Inspector IPC Types
 // ============================================================================
 
+/**
+ * Event categories for organizing and filtering events.
+ * Used by EventBuffer for categorization and the Event Inspector UI.
+ */
+export type EventCategory =
+  | "system" // sys:* - core system state (worktrees, PR detection)
+  | "agent" // agent:* - agent lifecycle and output
+  | "task" // task:* - task orchestration
+  | "run" // run:* - run lifecycle
+  | "server" // server:* - dev server state
+  | "file" // file:* - file operations (copy-tree, open)
+  | "ui" // ui:* - UI notifications/state
+  | "watcher" // watcher:* - file watching
+  | "artifact"; // artifact:* - detected artifacts
+
+/** Common fields that may be present in event payloads */
+export interface EventPayload {
+  /** Worktree context */
+  worktreeId?: string;
+  /** Agent context */
+  agentId?: string;
+  /** Task context */
+  taskId?: string;
+  /** Run context */
+  runId?: string;
+  /** Terminal context */
+  terminalId?: string;
+  /** GitHub issue number */
+  issueNumber?: number;
+  /** GitHub PR number */
+  prNumber?: number;
+  /** Trace ID for event correlation */
+  traceId?: string;
+  /** Event timestamp (may be present in payload) */
+  timestamp?: number;
+  /** Additional fields are allowed */
+  [key: string]: unknown;
+}
+
 /** A recorded event for debugging */
 export interface EventRecord {
   /** Unique identifier */
@@ -398,8 +437,10 @@ export interface EventRecord {
   timestamp: number;
   /** Event type/channel name */
   type: string;
-  /** Event payload */
-  payload: unknown;
+  /** Event category derived from EVENT_META */
+  category: EventCategory;
+  /** Event payload with common context fields */
+  payload: EventPayload;
   /** Source of the event */
   source: "main" | "renderer";
 }
@@ -408,6 +449,10 @@ export interface EventRecord {
 export interface EventFilterOptions {
   /** Filter by event types */
   types?: string[];
+  /** Filter by event category (uses EVENT_META) */
+  category?: EventCategory;
+  /** Filter by multiple event categories */
+  categories?: EventCategory[];
   /** Filter by worktree ID */
   worktreeId?: string;
   /** Filter by agent ID */

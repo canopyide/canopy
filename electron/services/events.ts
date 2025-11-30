@@ -12,27 +12,16 @@ import type {
   RunCancelledPayload,
   RunPausedPayload,
   RunResumedPayload,
+  EventCategory,
 } from "../types/index.js";
 import type { WorktreeState } from "./WorktreeMonitor.js";
+
+// Re-export EventCategory for backwards compatibility
+export type { EventCategory };
 
 // ============================================================================
 // Event Category and Metadata System
 // ============================================================================
-
-/**
- * Event categories for organizing and filtering events.
- * Used by EventBuffer for categorization and the Event Inspector UI.
- */
-export type EventCategory =
-  | "system" // sys:* - core system state (worktrees, PR detection)
-  | "agent" // agent:* - agent lifecycle and output
-  | "task" // task:* - task orchestration
-  | "run" // run:* - run lifecycle
-  | "server" // server:* - dev server state
-  | "file" // file:* - file operations (copy-tree, open)
-  | "ui" // ui:* - UI notifications/state
-  | "watcher" // watcher:* - file watching
-  | "artifact"; // artifact:* - detected artifacts
 
 /**
  * Metadata for each event type.
@@ -336,9 +325,7 @@ export function getEventCategory(eventType: keyof CanopyEventMap): EventCategory
 /**
  * Get all event types for a specific category.
  */
-export function getEventTypesForCategory(
-  category: EventCategory
-): Array<keyof CanopyEventMap> {
+export function getEventTypesForCategory(category: EventCategory): Array<keyof CanopyEventMap> {
   return (Object.keys(EVENT_META) as Array<keyof CanopyEventMap>).filter(
     (key) => EVENT_META[key].category === category
   );
@@ -358,15 +345,16 @@ export type WithBase<T> = T & BaseEventPayload;
  * Helper type to enforce both BaseEventPayload and EventContext fields.
  * Use for events that require correlation context (worktreeId, agentId, etc.).
  */
-export type WithContext<T> = T & BaseEventPayload & {
-  worktreeId?: string;
-  agentId?: string;
-  taskId?: string;
-  runId?: string;
-  terminalId?: string;
-  issueNumber?: number;
-  prNumber?: number;
-};
+export type WithContext<T> = T &
+  BaseEventPayload & {
+    worktreeId?: string;
+    agentId?: string;
+    taskId?: string;
+    runId?: string;
+    terminalId?: string;
+    issueNumber?: number;
+    prNumber?: number;
+  };
 
 // ============================================================================
 // Event Type Unions by Category

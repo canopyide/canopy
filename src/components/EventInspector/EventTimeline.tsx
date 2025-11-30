@@ -1,12 +1,25 @@
 /**
  * EventTimeline Component
  *
- * Displays a vertical timeline of events with timestamps and summary information.
+ * Displays a vertical timeline of events with timestamps, category badges, and summary information.
  */
 
 import { cn } from "@/lib/utils";
-import type { EventRecord } from "@/store/eventStore";
-import { Clock, Circle } from "lucide-react";
+import type { EventRecord, EventCategory } from "@/store/eventStore";
+import { Circle } from "lucide-react";
+
+/** Category display configuration for styling */
+const CATEGORY_STYLES: Record<EventCategory, { label: string; color: string }> = {
+  system: { label: "SYS", color: "bg-blue-500/20 text-blue-400 border-blue-500/30" },
+  agent: { label: "AGT", color: "bg-purple-500/20 text-purple-400 border-purple-500/30" },
+  task: { label: "TSK", color: "bg-green-500/20 text-green-400 border-green-500/30" },
+  run: { label: "RUN", color: "bg-yellow-500/20 text-yellow-400 border-yellow-500/30" },
+  server: { label: "SRV", color: "bg-orange-500/20 text-orange-400 border-orange-500/30" },
+  file: { label: "FIL", color: "bg-pink-500/20 text-pink-400 border-pink-500/30" },
+  ui: { label: "UI", color: "bg-indigo-500/20 text-indigo-400 border-indigo-500/30" },
+  watcher: { label: "WCH", color: "bg-cyan-500/20 text-cyan-400 border-cyan-500/30" },
+  artifact: { label: "ART", color: "bg-rose-500/20 text-rose-400 border-rose-500/30" },
+};
 
 interface EventTimelineProps {
   events: EventRecord[];
@@ -30,39 +43,13 @@ export function EventTimeline({
     return `${hours}:${minutes}:${seconds}.${ms}`;
   };
 
-  const getEventCategory = (type: string): string => {
-    if (type.startsWith("sys:")) return "system";
-    if (type.startsWith("agent:")) return "agent";
-    if (type.startsWith("task:")) return "task";
-    if (type.startsWith("run:")) return "run";
-    if (type.startsWith("server:")) return "devserver";
-    if (type.startsWith("watcher:")) return "watcher";
-    if (type.startsWith("file:")) return "file";
-    if (type.startsWith("ui:")) return "ui";
-    return "other";
-  };
-
-  const getCategoryColor = (category: string): string => {
-    switch (category) {
-      case "system":
-        return "bg-blue-500/20 text-[var(--color-status-info)] border-blue-500/30";
-      case "agent":
-        return "bg-purple-500/20 text-purple-400 border-purple-500/30";
-      case "task":
-        return "bg-green-500/20 text-[var(--color-status-success)] border-green-500/30";
-      case "run":
-        return "bg-yellow-500/20 text-[var(--color-status-warning)] border-yellow-500/30";
-      case "devserver":
-        return "bg-orange-500/20 text-orange-400 border-orange-500/30";
-      case "watcher":
-        return "bg-cyan-500/20 text-cyan-400 border-cyan-500/30";
-      case "file":
-        return "bg-pink-500/20 text-pink-400 border-pink-500/30";
-      case "ui":
-        return "bg-indigo-500/20 text-indigo-400 border-indigo-500/30";
-      default:
-        return "bg-gray-500/20 text-gray-400 border-gray-500/30";
-    }
+  const getCategoryStyle = (category: EventCategory) => {
+    return (
+      CATEGORY_STYLES[category] || {
+        label: "???",
+        color: "bg-gray-500/20 text-gray-400 border-gray-500/30",
+      }
+    );
   };
 
   const getPayloadSummary = (event: EventRecord): string => {
@@ -101,8 +88,7 @@ export function EventTimeline({
     <div className={cn("flex-1 overflow-y-auto", className)}>
       <div className="space-y-px">
         {events.map((event) => {
-          const category = getEventCategory(event.type);
-          const colorClass = getCategoryColor(category);
+          const categoryStyle = getCategoryStyle(event.category);
           const isSelected = event.id === selectedId;
           const summary = getPayloadSummary(event);
 
@@ -116,23 +102,23 @@ export function EventTimeline({
                 isSelected && "bg-muted border-l-primary"
               )}
             >
-              <div className="flex items-start gap-3">
-                <div className="flex-shrink-0 pt-0.5">
-                  <Clock className="w-3 h-3 text-muted-foreground" />
-                </div>
+              <div className="flex items-start gap-2">
+                {/* Category badge */}
+                <span
+                  className={cn(
+                    "flex-shrink-0 inline-flex items-center justify-center w-8 px-1 py-0.5 rounded text-[10px] font-medium border",
+                    categoryStyle.color
+                  )}
+                  title={event.category}
+                >
+                  {categoryStyle.label}
+                </span>
                 <div className="flex-1 min-w-0 space-y-1">
                   <div className="flex items-center gap-2">
                     <span className="font-mono text-xs text-muted-foreground">
                       {formatTimestamp(event.timestamp)}
                     </span>
-                    <span
-                      className={cn(
-                        "inline-flex items-center px-2 py-0.5 rounded text-xs font-mono border",
-                        colorClass
-                      )}
-                    >
-                      {event.type}
-                    </span>
+                    <span className="text-xs font-mono text-foreground truncate">{event.type}</span>
                   </div>
                   {summary && (
                     <p className="text-xs text-muted-foreground font-mono truncate">{summary}</p>

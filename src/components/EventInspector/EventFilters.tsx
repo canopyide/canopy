@@ -1,15 +1,41 @@
 /**
  * EventFilters Component
  *
- * Filter controls for the event inspector including type filters and search.
+ * Filter controls for the event inspector including category, type filters, and search.
  */
 
 import { useState, useMemo, useEffect } from "react";
 import { cn } from "@/lib/utils";
-import { Search, X, Filter } from "lucide-react";
-import type { EventRecord, EventFilterOptions } from "@/store/eventStore";
+import { Search, X, Filter, Tag } from "lucide-react";
+import type { EventRecord, EventFilterOptions, EventCategory } from "@/store/eventStore";
 
-type FilterSubset = Pick<EventFilterOptions, "types" | "search" | "traceId">;
+/** All available event categories in display order */
+const ALL_CATEGORIES: EventCategory[] = [
+  "system",
+  "agent",
+  "task",
+  "run",
+  "server",
+  "file",
+  "ui",
+  "watcher",
+  "artifact",
+];
+
+/** Category display names and colors */
+const CATEGORY_CONFIG: Record<EventCategory, { label: string; color: string }> = {
+  system: { label: "System", color: "bg-blue-500/20 text-blue-400 border-blue-500/30" },
+  agent: { label: "Agent", color: "bg-purple-500/20 text-purple-400 border-purple-500/30" },
+  task: { label: "Task", color: "bg-green-500/20 text-green-400 border-green-500/30" },
+  run: { label: "Run", color: "bg-yellow-500/20 text-yellow-400 border-yellow-500/30" },
+  server: { label: "Server", color: "bg-orange-500/20 text-orange-400 border-orange-500/30" },
+  file: { label: "File", color: "bg-pink-500/20 text-pink-400 border-pink-500/30" },
+  ui: { label: "UI", color: "bg-indigo-500/20 text-indigo-400 border-indigo-500/30" },
+  watcher: { label: "Watcher", color: "bg-cyan-500/20 text-cyan-400 border-cyan-500/30" },
+  artifact: { label: "Artifact", color: "bg-rose-500/20 text-rose-400 border-rose-500/30" },
+};
+
+type FilterSubset = Pick<EventFilterOptions, "types" | "categories" | "search" | "traceId">;
 
 interface EventFiltersProps {
   events: EventRecord[];
@@ -32,6 +58,17 @@ export function EventFilters({ events, filters, onFiltersChange, className }: Ev
   useEffect(() => {
     setTraceIdInput(filters.traceId || "");
   }, [filters.traceId]);
+
+  // Compute category counts from events
+  const categoryCounts = useMemo(() => {
+    const counts = new Map<EventCategory, number>();
+    events.forEach((event) => {
+      if (event.category) {
+        counts.set(event.category, (counts.get(event.category) || 0) + 1);
+      }
+    });
+    return counts;
+  }, [events]);
 
   // Get unique event types from all events and compute counts
   const { availableTypes, typeCounts } = useMemo(() => {
@@ -105,6 +142,21 @@ export function EventFilters({ events, filters, onFiltersChange, className }: Ev
     onFiltersChange({ ...filters, traceId: undefined });
   };
 
+  const toggleCategoryFilter = (category: EventCategory) => {
+    const currentCategories = filters.categories || [];
+    const newCategories = currentCategories.includes(category)
+      ? currentCategories.filter((c) => c !== category)
+      : [...currentCategories, category];
+    onFiltersChange({
+      ...filters,
+      categories: newCategories.length > 0 ? newCategories : undefined,
+    });
+  };
+
+  const clearCategoryFilters = () => {
+    onFiltersChange({ ...filters, categories: undefined });
+  };
+
   const toggleTypeFilter = (type: string) => {
     const currentTypes = filters.types || [];
     const newTypes = currentTypes.includes(type)
@@ -118,7 +170,10 @@ export function EventFilters({ events, filters, onFiltersChange, className }: Ev
   };
 
   const activeFilterCount =
-    (filters.types?.length || 0) + (filters.search ? 1 : 0) + (filters.traceId ? 1 : 0);
+    (filters.categories?.length || 0) +
+    (filters.types?.length || 0) +
+    (filters.search ? 1 : 0) +
+    (filters.traceId ? 1 : 0);
 
   return (
     <div className={cn("flex-shrink-0 border-b bg-background", className)}>
@@ -174,6 +229,51 @@ export function EventFilters({ events, filters, onFiltersChange, className }: Ev
                 <X className="w-4 h-4" />
               </button>
             )}
+          </div>
+        </div>
+
+        {/* Category filter chips */}
+        <div className="space-y-1.5">
+          <div className="flex items-center justify-between">
+            <div className="flex items-center gap-2 text-xs text-muted-foreground px-1">
+              <Tag className="w-3 h-3" />
+              <span>Categories</span>
+            </div>
+            {filters.categories && filters.categories.length > 0 && (
+              <button
+                onClick={clearCategoryFilters}
+                className="text-xs text-muted-foreground hover:text-foreground"
+              >
+                Clear
+              </button>
+            )}
+          </div>
+          <div className="flex flex-wrap gap-1.5">
+            {ALL_CATEGORIES.map((category) => {
+              const isActive = filters.categories?.includes(category) || false;
+              const count = categoryCounts.get(category) || 0;
+              const config = CATEGORY_CONFIG[category];
+
+              return (
+                <button
+                  key={category}
+                  onClick={() => toggleCategoryFilter(category)}
+                  className={cn(
+                    "inline-flex items-center gap-1.5 px-2 py-1 text-xs rounded-md border transition-colors",
+                    isActive
+                      ? config.color
+                      : "bg-muted/30 text-muted-foreground border-transparent hover:bg-muted/50"
+                  )}
+                >
+                  <span>{config.label}</span>
+                  {count > 0 && (
+                    <span className={cn("text-[10px]", isActive ? "opacity-80" : "opacity-60")}>
+                      {count}
+                    </span>
+                  )}
+                </button>
+              );
+            })}
           </div>
         </div>
 

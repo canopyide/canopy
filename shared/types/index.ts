@@ -98,6 +98,8 @@ export type {
   LogEntry,
   LogFilterOptions,
   // Event inspector types
+  EventCategory,
+  EventPayload,
   EventRecord,
   EventFilterOptions,
   // Error types
