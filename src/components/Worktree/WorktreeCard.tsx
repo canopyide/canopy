@@ -361,7 +361,7 @@ export function WorktreeCard({
       className={cn(
         "group relative overflow-hidden rounded-lg bg-card/30 border border-border/60 px-3 py-2.5 mb-2 cursor-pointer transition-all",
         isActive
-          ? "border-canopy-accent bg-canopy-accent/5 shadow-sm"
+          ? "border-canopy-accent/50 bg-canopy-accent/3"
           : "hover:border-canopy-accent/60 hover:bg-card/60",
         isFocused && "ring-1 ring-canopy-accent"
       )}
