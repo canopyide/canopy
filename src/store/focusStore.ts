@@ -2,16 +2,15 @@
  * Focus Mode Store
  *
  * Zustand store for managing focus mode state.
- * Focus mode collapses all panels (sidebar, logs, event inspector)
+ * Focus mode collapses all panels (sidebar, diagnostics dock)
  * to maximize terminal workspace.
  */
 
 import { create, type StateCreator } from "zustand";
 
-interface PanelState {
+export interface PanelState {
   sidebarWidth: number;
-  logsOpen: boolean;
-  eventInspectorOpen: boolean;
+  diagnosticsOpen: boolean;
 }
 
 interface FocusState {

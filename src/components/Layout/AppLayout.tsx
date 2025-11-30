@@ -1,9 +1,9 @@
 import { useState, useCallback, useEffect, type ReactNode } from "react";
 import { Toolbar } from "./Toolbar";
 import { Sidebar } from "./Sidebar";
-import { LogsPanel } from "../Logs";
-import { EventInspectorPanel } from "../EventInspector";
-import { useFocusStore, useLogsStore, useEventStore } from "@/store";
+import { DiagnosticsDock } from "../Diagnostics";
+import { useFocusStore, useDiagnosticsStore, useErrorStore, type PanelState } from "@/store";
+import type { RetryAction } from "@/store";
 
 interface AppLayoutProps {
   children?: ReactNode;
@@ -12,10 +12,8 @@ interface AppLayoutProps {
   onLaunchAgent?: (type: "claude" | "gemini" | "codex" | "shell") => void;
   onRefresh?: () => void;
   onSettings?: () => void;
-  /** Number of active errors to show in toolbar */
-  errorCount?: number;
-  /** Called when user clicks the problems button */
-  onToggleProblems?: () => void;
+  /** Called when user clicks retry in problems panel */
+  onRetry?: (id: string, action: RetryAction, args?: Record<string, unknown>) => void;
   /** Whether worktree refresh is in progress */
   isRefreshing?: boolean;
 }
@@ -31,8 +29,7 @@ export function AppLayout({
   onLaunchAgent,
   onRefresh,
   onSettings,
-  errorCount,
-  onToggleProblems,
+  onRetry,
   isRefreshing,
 }: AppLayoutProps) {
   const [sidebarWidth, setSidebarWidth] = useState(DEFAULT_SIDEBAR_WIDTH);
@@ -43,11 +40,23 @@ export function AppLayout({
   const setFocusMode = useFocusStore((state) => state.setFocusMode);
   const savedPanelState = useFocusStore((state) => state.savedPanelState);
 
-  // Panel states from stores
-  const logsOpen = useLogsStore((state) => state.isOpen);
-  const setLogsOpen = useLogsStore((state) => state.setOpen);
-  const eventInspectorOpen = useEventStore((state) => state.isOpen);
-  const setEventInspectorOpen = useEventStore((state) => state.setOpen);
+  // Diagnostics dock state
+  const diagnosticsOpen = useDiagnosticsStore((state) => state.isOpen);
+  const setDiagnosticsOpen = useDiagnosticsStore((state) => state.setOpen);
+  const openDiagnosticsDock = useDiagnosticsStore((state) => state.openDock);
+
+  // Error count for toolbar badge
+  const errorCount = useErrorStore((state) => state.errors.filter((e) => !e.dismissed).length);
+
+  // Handle toggle problems button in toolbar
+  const handleToggleProblems = useCallback(() => {
+    const dock = useDiagnosticsStore.getState();
+    if (!dock.isOpen || dock.activeTab !== "problems") {
+      openDiagnosticsDock("problems");
+    } else {
+      setDiagnosticsOpen(false);
+    }
+  }, [openDiagnosticsDock, setDiagnosticsOpen]);
 
   // Restore sidebar width and focus mode from persisted state
   useEffect(() => {
@@ -65,11 +74,24 @@ export function AppLayout({
         // Restore focus mode state
         if (appState.focusMode) {
           // Restore the saved panel state from before focus mode was activated
-          const savedState = appState.focusPanelState ?? {
-            sidebarWidth: appState.sidebarWidth ?? DEFAULT_SIDEBAR_WIDTH,
-            logsOpen: false,
-            eventInspectorOpen: false,
-          };
+          // Handle migration from legacy format (logsOpen/eventInspectorOpen) to new format (diagnosticsOpen)
+          const legacyState = appState.focusPanelState as
+            | PanelState
+            | { sidebarWidth: number; logsOpen?: boolean; eventInspectorOpen?: boolean }
+            | undefined;
+
+          const savedState: PanelState = legacyState
+            ? {
+                sidebarWidth: legacyState.sidebarWidth,
+                diagnosticsOpen:
+                  "diagnosticsOpen" in legacyState
+                    ? legacyState.diagnosticsOpen
+                    : (legacyState.logsOpen ?? false) || (legacyState.eventInspectorOpen ?? false),
+              }
+            : {
+                sidebarWidth: appState.sidebarWidth ?? DEFAULT_SIDEBAR_WIDTH,
+                diagnosticsOpen: false,
+              };
           setFocusMode(true, savedState);
         }
       } catch (error) {
@@ -117,11 +139,10 @@ export function AppLayout({
     if (isFocusMode) {
       // Exiting focus mode - restore panel states
       if (savedPanelState) {
-        setSidebarWidth(savedPanelState.sidebarWidth);
-        setLogsOpen(savedPanelState.logsOpen);
-        setEventInspectorOpen(savedPanelState.eventInspectorOpen);
+        setSidebarWidth((savedPanelState as PanelState).sidebarWidth);
+        setDiagnosticsOpen((savedPanelState as PanelState).diagnosticsOpen);
       }
-      toggleFocusMode({ sidebarWidth, logsOpen, eventInspectorOpen });
+      toggleFocusMode({ sidebarWidth, diagnosticsOpen } as PanelState);
       // Clear persisted panel state when exiting focus mode
       try {
         await window.electron.app.setState({ focusPanelState: undefined });
@@ -130,10 +151,9 @@ export function AppLayout({
       }
     } else {
       // Entering focus mode - save current state and collapse panels
-      const currentPanelState = { sidebarWidth, logsOpen, eventInspectorOpen };
+      const currentPanelState: PanelState = { sidebarWidth, diagnosticsOpen };
       toggleFocusMode(currentPanelState);
-      setLogsOpen(false);
-      setEventInspectorOpen(false);
+      setDiagnosticsOpen(false);
       // Persist panel state for restoration after restart
       try {
         await window.electron.app.setState({ focusPanelState: currentPanelState });
@@ -145,11 +165,9 @@ export function AppLayout({
     isFocusMode,
     savedPanelState,
     sidebarWidth,
-    logsOpen,
-    eventInspectorOpen,
+    diagnosticsOpen,
     toggleFocusMode,
-    setLogsOpen,
-    setEventInspectorOpen,
+    setDiagnosticsOpen,
   ]);
 
   // Listen for keyboard shortcut events (Cmd+K Z)
@@ -204,7 +222,7 @@ export function AppLayout({
         onRefresh={handleRefresh}
         onSettings={handleSettings}
         errorCount={errorCount}
-        onToggleProblems={onToggleProblems}
+        onToggleProblems={handleToggleProblems}
         isFocusMode={isFocusMode}
         onToggleFocusMode={handleToggleFocusMode}
         isRefreshing={isRefreshing}
@@ -233,8 +251,8 @@ export function AppLayout({
             {children}
           </main>
         </div>
-        <LogsPanel />
-        <EventInspectorPanel />
+        {/* Unified diagnostics dock replaces LogsPanel, EventInspectorPanel, and ProblemsPanel */}
+        <DiagnosticsDock onRetry={onRetry} />
       </div>
     </div>
   );

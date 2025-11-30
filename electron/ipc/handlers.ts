@@ -1242,11 +1242,34 @@ export function registerIpcHandlers(
         if (
           panelState &&
           typeof panelState === "object" &&
-          typeof panelState.sidebarWidth === "number" &&
-          typeof panelState.logsOpen === "boolean" &&
-          typeof panelState.eventInspectorOpen === "boolean"
+          typeof panelState.sidebarWidth === "number"
         ) {
-          updates.focusPanelState = panelState;
+          // Support both new format (diagnosticsOpen) and legacy format (logsOpen/eventInspectorOpen)
+          if ("diagnosticsOpen" in panelState && typeof panelState.diagnosticsOpen === "boolean") {
+            // New format
+            updates.focusPanelState = {
+              sidebarWidth: panelState.sidebarWidth,
+              diagnosticsOpen: panelState.diagnosticsOpen,
+            };
+          } else if (
+            "logsOpen" in panelState &&
+            typeof panelState.logsOpen === "boolean" &&
+            "eventInspectorOpen" in panelState &&
+            typeof panelState.eventInspectorOpen === "boolean"
+          ) {
+            // Legacy format - migrate to new format
+            updates.focusPanelState = {
+              sidebarWidth: panelState.sidebarWidth,
+              diagnosticsOpen: panelState.logsOpen || panelState.eventInspectorOpen,
+            };
+          }
+        }
+      }
+
+      if ("diagnosticsHeight" in partialState) {
+        const height = Number(partialState.diagnosticsHeight);
+        if (!isNaN(height) && height >= 128 && height <= 1000) {
+          updates.diagnosticsHeight = height;
         }
       }
 

@@ -21,9 +21,10 @@ export interface StoreSchema {
     /** Saved panel state before entering focus mode (for restoration) */
     focusPanelState?: {
       sidebarWidth: number;
-      logsOpen: boolean;
-      eventInspectorOpen: boolean;
+      diagnosticsOpen: boolean;
     };
+    /** Height of diagnostics dock in pixels */
+    diagnosticsHeight?: number;
     terminals: Array<{
       id: string;
       type: "shell" | "claude" | "gemini" | "custom";

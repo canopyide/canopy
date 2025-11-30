@@ -13,7 +13,6 @@ import { AppLayout } from "./components/Layout";
 import { TerminalGrid } from "./components/Terminal";
 import { WorktreeCard } from "./components/Worktree";
 import { NewWorktreeDialog } from "./components/Worktree/NewWorktreeDialog";
-import { ProblemsPanel } from "./components/Errors";
 import { TerminalPalette } from "./components/TerminalPalette";
 import { RecipeEditor } from "./components/TerminalRecipe/RecipeEditor";
 import { SettingsDialog } from "./components/Settings";
@@ -22,10 +21,9 @@ import { Toaster } from "./components/ui/toaster";
 import {
   useTerminalStore,
   useWorktreeSelectionStore,
-  useLogsStore,
   useErrorStore,
-  useEventStore,
   useNotificationStore,
+  useDiagnosticsStore,
   type RetryAction,
 } from "./store";
 import { useRecipeStore } from "./store/recipeStore";
@@ -293,16 +291,14 @@ function App() {
   const { launchAgent } = useAgentLauncher();
   const { activeWorktreeId, setActiveWorktree } = useWorktreeSelectionStore();
   const { inject, isInjecting } = useContextInjection();
-  const toggleLogsPanel = useLogsStore((state) => state.togglePanel);
-  const toggleEventInspector = useEventStore((state) => state.togglePanel);
   const loadRecipes = useRecipeStore((state) => state.loadRecipes);
 
   // Terminal palette for quick switching (Cmd/Ctrl+T)
   const terminalPalette = useTerminalPalette();
 
-  // Error panel state
-  const isProblemsPanelOpen = useErrorStore((state) => state.isPanelOpen);
-  const setProblemsPanelOpen = useErrorStore((state) => state.setPanelOpen);
+  // Diagnostics dock state (unified problems/logs/events)
+  const openDiagnosticsDock = useDiagnosticsStore((state) => state.openDock);
+  const toggleDiagnosticsDock = useDiagnosticsStore((state) => state.toggleDock);
   const removeError = useErrorStore((state) => state.removeError);
 
   // Settings dialog state
@@ -493,9 +489,15 @@ function App() {
     enabled: electronAvailable,
   });
 
-  // Panel toggles
-  useKeybinding("panel.logs", () => toggleLogsPanel(), { enabled: electronAvailable });
-  useKeybinding("panel.events", () => toggleEventInspector(), { enabled: electronAvailable });
+  // Panel toggles - now open/switch to tabs in diagnostics dock
+  useKeybinding("panel.logs", () => openDiagnosticsDock("logs"), { enabled: electronAvailable });
+  useKeybinding("panel.events", () => openDiagnosticsDock("events"), {
+    enabled: electronAvailable,
+  });
+  useKeybinding("panel.problems", () => openDiagnosticsDock("problems"), {
+    enabled: electronAvailable,
+  });
+  useKeybinding("panel.diagnostics", () => toggleDiagnosticsDock(), { enabled: electronAvailable });
 
   // Cleanup terminal store listeners on unmount
   useEffect(() => {
@@ -565,14 +567,10 @@ function App() {
         onLaunchAgent={handleLaunchAgent}
         onRefresh={handleRefresh}
         onSettings={handleSettings}
+        onRetry={handleErrorRetry}
         isRefreshing={isRefreshing}
       >
         <TerminalGrid className="h-full w-full bg-canopy-bg" />
-        <ProblemsPanel
-          isOpen={isProblemsPanelOpen}
-          onClose={() => setProblemsPanelOpen(false)}
-          onRetry={handleErrorRetry}
-        />
       </AppLayout>
 
       {/* Terminal palette overlay */}

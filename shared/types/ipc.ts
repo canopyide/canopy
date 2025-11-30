@@ -354,9 +354,10 @@ export interface AppState {
   /** Saved panel state before entering focus mode (for restoration) */
   focusPanelState?: {
     sidebarWidth: number;
-    logsOpen: boolean;
-    eventInspectorOpen: boolean;
+    diagnosticsOpen: boolean;
   };
+  /** Height of the diagnostics dock in pixels */
+  diagnosticsHeight?: number;
   /** Recently opened directories */
   recentDirectories?: RecentDirectory[];
   /** Saved terminal recipes */

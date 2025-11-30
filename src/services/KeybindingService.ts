@@ -90,20 +90,34 @@ const DEFAULT_KEYBINDINGS: KeybindingConfig[] = [
     description: "Inject context into focused terminal",
   },
 
-  // Panels
+  // Panels - unified diagnostics dock
   {
     actionId: "panel.logs",
     combo: "Ctrl+Shift+L",
     scope: "global",
     priority: 0,
-    description: "Toggle logs panel",
+    description: "Open diagnostics dock to Logs tab",
   },
   {
     actionId: "panel.events",
     combo: "Ctrl+Shift+E",
     scope: "global",
     priority: 0,
-    description: "Toggle event inspector",
+    description: "Open diagnostics dock to Events tab",
+  },
+  {
+    actionId: "panel.problems",
+    combo: "Ctrl+Shift+M",
+    scope: "global",
+    priority: 0,
+    description: "Open diagnostics dock to Problems tab",
+  },
+  {
+    actionId: "panel.diagnostics",
+    combo: "Ctrl+`",
+    scope: "global",
+    priority: 0,
+    description: "Toggle diagnostics dock",
   },
 
   // === Modal shortcuts (active in dialogs) ===
