@@ -11,21 +11,20 @@ import {
   RefreshCw,
   Settings,
   Terminal,
-  Bot,
-  Sparkles,
   Plus,
   Command,
   AlertCircle,
   Maximize2,
   Minimize2,
 } from "lucide-react";
+import { ClaudeIcon, GeminiIcon, CodexIcon } from "@/components/icons";
 import { cn } from "@/lib/utils";
 import { getProjectGradient } from "@/lib/colorUtils";
 import { BulkActionsMenu } from "@/components/Terminal";
 import { useProjectStore } from "@/store/projectStore";
 
 interface ToolbarProps {
-  onLaunchAgent: (type: "claude" | "gemini" | "shell") => void;
+  onLaunchAgent: (type: "claude" | "gemini" | "codex" | "shell") => void;
   onRefresh: () => void;
   onSettings: () => void;
   /** Number of active errors */
@@ -76,7 +75,7 @@ export function Toolbar({
           title="Launch Claude (Ctrl+Shift+C)"
           aria-label="Launch Claude"
         >
-          <Bot className="h-4 w-4" />
+          <ClaudeIcon className="h-4 w-4" />
           <span className="hidden lg:inline">Claude</span>
         </Button>
         <Button
@@ -87,8 +86,19 @@ export function Toolbar({
           title="Launch Gemini (Ctrl+Shift+G)"
           aria-label="Launch Gemini"
         >
-          <Sparkles className="h-4 w-4" />
+          <GeminiIcon className="h-4 w-4" />
           <span className="hidden lg:inline">Gemini</span>
+        </Button>
+        <Button
+          variant="ghost"
+          size="sm"
+          onClick={() => onLaunchAgent("codex")}
+          className="text-canopy-text hover:bg-canopy-border hover:text-canopy-accent"
+          title="Launch Codex (Ctrl+Shift+X)"
+          aria-label="Launch Codex"
+        >
+          <CodexIcon className="h-4 w-4" />
+          <span className="hidden lg:inline">Codex</span>
         </Button>
         <Button
           variant="ghost"
@@ -114,14 +124,19 @@ export function Toolbar({
           </DropdownMenuTrigger>
           <DropdownMenuContent align="start">
             <DropdownMenuItem onClick={() => onLaunchAgent("claude")}>
-              <Bot className="mr-2 h-4 w-4" />
+              <ClaudeIcon className="mr-2 h-4 w-4" />
               <span>Claude</span>
               <DropdownMenuShortcut>Ctrl+Shift+C</DropdownMenuShortcut>
             </DropdownMenuItem>
             <DropdownMenuItem onClick={() => onLaunchAgent("gemini")}>
-              <Sparkles className="mr-2 h-4 w-4" />
+              <GeminiIcon className="mr-2 h-4 w-4" />
               <span>Gemini</span>
               <DropdownMenuShortcut>Ctrl+Shift+G</DropdownMenuShortcut>
+            </DropdownMenuItem>
+            <DropdownMenuItem onClick={() => onLaunchAgent("codex")}>
+              <CodexIcon className="mr-2 h-4 w-4" />
+              <span>Codex</span>
+              <DropdownMenuShortcut>Ctrl+Shift+X</DropdownMenuShortcut>
             </DropdownMenuItem>
             <DropdownMenuItem onClick={() => onLaunchAgent("shell")}>
               <Terminal className="mr-2 h-4 w-4" />

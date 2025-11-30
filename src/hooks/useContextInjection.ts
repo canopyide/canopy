@@ -28,6 +28,7 @@ type CopyTreeFormat = "xml" | "json" | "markdown" | "tree" | "ndjson";
 const AGENT_FORMAT_MAP: Record<TerminalType, CopyTreeFormat> = {
   claude: "xml", // Claude prefers structured XML
   gemini: "markdown", // Gemini works well with Markdown
+  codex: "xml", // Codex prefers structured XML (like Claude)
   shell: "xml", // Default for manual paste
   custom: "xml", // Safe default
 };

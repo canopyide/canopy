@@ -175,9 +175,7 @@ export class EventBuffer {
           // Prefer event payload timestamp if present (event-time semantics)
           // Fall back to current time (receipt-time) if not provided
           const eventTimestamp =
-            payload && typeof payload.timestamp === "number"
-              ? payload.timestamp
-              : Date.now();
+            payload && typeof payload.timestamp === "number" ? payload.timestamp : Date.now();
 
           this.push({
             id: this.generateId(),

@@ -388,7 +388,7 @@ function App() {
 
   // Handle agent launcher from toolbar
   const handleLaunchAgent = useCallback(
-    async (type: "claude" | "gemini" | "shell") => {
+    async (type: "claude" | "gemini" | "codex" | "shell") => {
       await launchAgent(type);
     },
     [launchAgent]

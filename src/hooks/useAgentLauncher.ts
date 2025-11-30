@@ -16,7 +16,7 @@ import { useProjectStore } from "@/store/projectStore";
 import { useWorktrees } from "./useWorktrees";
 import { isElectronAvailable } from "./useElectron";
 
-export type AgentType = "claude" | "gemini" | "shell";
+export type AgentType = "claude" | "gemini" | "codex" | "shell";
 
 interface AgentConfig {
   type: AgentType;
@@ -35,6 +35,11 @@ const AGENT_CONFIGS: Record<AgentType, AgentConfig> = {
     title: "Gemini",
     command: "gemini",
   },
+  codex: {
+    type: "codex",
+    title: "Codex",
+    command: "codex",
+  },
   shell: {
     type: "shell",
     title: "Shell",
@@ -45,6 +50,7 @@ const AGENT_CONFIGS: Record<AgentType, AgentConfig> = {
 export interface AgentAvailability {
   claude: boolean;
   gemini: boolean;
+  codex: boolean;
 }
 
 export interface UseAgentLauncherReturn {
@@ -94,6 +100,7 @@ export function useAgentLauncher(): UseAgentLauncherReturn {
   const [availability, setAvailability] = useState<AgentAvailability>({
     claude: true, // Optimistically assume available until checked
     gemini: true,
+    codex: true,
   });
   const [isCheckingAvailability, setIsCheckingAvailability] = useState(true);
 
@@ -108,15 +115,17 @@ export function useAgentLauncher(): UseAgentLauncherReturn {
 
     async function checkAvailability() {
       try {
-        const [claudeAvailable, geminiAvailable] = await Promise.all([
+        const [claudeAvailable, geminiAvailable, codexAvailable] = await Promise.all([
           window.electron.system.checkCommand("claude"),
           window.electron.system.checkCommand("gemini"),
+          window.electron.system.checkCommand("codex"),
         ]);
 
         if (!cancelled) {
           setAvailability({
             claude: claudeAvailable,
             gemini: geminiAvailable,
+            codex: codexAvailable,
           });
         }
       } catch (error) {

@@ -27,12 +27,13 @@ interface RecipeEditorProps {
   onSave?: (recipe: TerminalRecipe) => void;
 }
 
-const TERMINAL_TYPES: RecipeTerminalType[] = ["shell", "claude", "gemini", "custom"];
+const TERMINAL_TYPES: RecipeTerminalType[] = ["shell", "claude", "gemini", "codex", "custom"];
 
 const TYPE_LABELS: Record<RecipeTerminalType, string> = {
   shell: "Shell",
   claude: "Claude",
   gemini: "Gemini",
+  codex: "Codex",
   custom: "Custom",
 };
 

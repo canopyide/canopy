@@ -5,7 +5,8 @@
  * Displays terminal icon, title, worktree badge, and truncated CWD.
  */
 
-import { Terminal, Bot, Sparkles, Command } from "lucide-react";
+import { Terminal, Command } from "lucide-react";
+import { ClaudeIcon, GeminiIcon, CodexIcon } from "@/components/icons";
 import { cn } from "@/lib/utils";
 import type { TerminalType } from "@/components/Terminal/TerminalPane";
 
@@ -27,15 +28,17 @@ export interface TerminalListItemProps {
 }
 
 /**
- * Get icon component for terminal type - matches tiling window manager aesthetic
+ * Get icon component for terminal type - custom brand icons for AI agents
  */
 function getIcon(type: TerminalType) {
   const props = { className: "w-4 h-4", "aria-hidden": "true" as const };
   switch (type) {
     case "claude":
-      return <Bot {...props} />;
+      return <ClaudeIcon {...props} />;
     case "gemini":
-      return <Sparkles {...props} />;
+      return <GeminiIcon {...props} />;
+    case "codex":
+      return <CodexIcon {...props} />;
     case "custom":
       return <Command {...props} />;
     case "shell":

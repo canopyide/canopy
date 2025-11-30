@@ -17,17 +17,8 @@
 
 import { useState, useCallback, useEffect, useRef } from "react";
 import { useShallow } from "zustand/react/shallow";
-import {
-  Terminal,
-  Bot,
-  Sparkles,
-  Command,
-  X,
-  Maximize2,
-  Minimize2,
-  Copy,
-  Loader2,
-} from "lucide-react";
+import { Terminal, Command, X, Maximize2, Minimize2, Copy, Loader2 } from "lucide-react";
+import { ClaudeIcon, GeminiIcon, CodexIcon } from "@/components/icons";
 import { cn } from "@/lib/utils";
 import { XtermAdapter } from "./XtermAdapter";
 import { ArtifactOverlay } from "./ArtifactOverlay";
@@ -36,7 +27,7 @@ import { useErrorStore, useTerminalStore, type RetryAction } from "@/store";
 import { useContextInjection, type CopyTreeProgress } from "@/hooks/useContextInjection";
 import type { AgentState } from "@/types";
 
-export type TerminalType = "shell" | "claude" | "gemini" | "custom";
+export type TerminalType = "shell" | "claude" | "gemini" | "codex" | "custom";
 
 export interface TerminalPaneProps {
   /** Unique terminal identifier */
@@ -74,15 +65,17 @@ export interface TerminalPaneProps {
 }
 
 /**
- * Get terminal icon based on type - Tiling window manager style with Lucide icons
+ * Get terminal icon based on type - Custom brand icons for AI agents
  */
 function getTerminalIcon(type: TerminalType, className?: string) {
   const props = { className: cn("w-3.5 h-3.5", className), "aria-hidden": "true" as const };
   switch (type) {
     case "claude":
-      return <Bot {...props} />;
+      return <ClaudeIcon {...props} />;
     case "gemini":
-      return <Sparkles {...props} />;
+      return <GeminiIcon {...props} />;
+    case "codex":
+      return <CodexIcon {...props} />;
     case "custom":
       return <Command {...props} />;
     case "shell":

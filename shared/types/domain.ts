@@ -264,7 +264,7 @@ export interface RunRecord {
 // ============================================================================
 
 /** Type of terminal instance */
-export type TerminalType = "shell" | "claude" | "gemini" | "custom";
+export type TerminalType = "shell" | "claude" | "gemini" | "codex" | "custom";
 
 /** Represents a terminal instance in the application */
 export interface TerminalInstance {
@@ -391,7 +391,7 @@ export interface ProjectState {
 // ============================================================================
 
 /** Type of terminal in a recipe */
-export type RecipeTerminalType = "claude" | "gemini" | "shell" | "custom";
+export type RecipeTerminalType = "claude" | "gemini" | "codex" | "shell" | "custom";
 
 /** A single terminal definition within a recipe */
 export interface RecipeTerminal {

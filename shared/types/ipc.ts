@@ -300,7 +300,7 @@ export interface RecentDirectory {
 /** Saved recipe terminal definition */
 export interface SavedRecipeTerminal {
   /** Terminal type */
-  type: "claude" | "gemini" | "shell" | "custom";
+  type: "claude" | "gemini" | "codex" | "shell" | "custom";
   /** Optional title */
   title?: string;
   /** Optional command */
@@ -514,7 +514,7 @@ export interface AgentSession {
   /** Unique identifier */
   id: string;
   /** Type of agent */
-  agentType: "claude" | "gemini" | "custom";
+  agentType: "claude" | "gemini" | "codex" | "custom";
   /** Associated worktree ID */
   worktreeId?: string;
   /** Start timestamp */

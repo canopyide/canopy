@@ -29,6 +29,7 @@ const TYPE_TITLES: Record<TerminalType, string> = {
   shell: "Shell",
   claude: "Claude",
   gemini: "Gemini",
+  codex: "Codex",
   custom: "Terminal",
 };
 
