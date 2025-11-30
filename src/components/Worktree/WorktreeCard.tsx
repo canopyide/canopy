@@ -8,6 +8,7 @@ import { useDevServer } from "../../hooks/useDevServer";
 import { useWorktreeTerminals } from "../../hooks/useWorktreeTerminals";
 import { useErrorStore, useTerminalStore, type RetryAction } from "../../store";
 import { useRecipeStore } from "../../store/recipeStore";
+import { useWorktreeSelectionStore } from "../../store/worktreeStore";
 import { cn } from "../../lib/utils";
 import {
   DropdownMenu,
@@ -32,6 +33,8 @@ import {
   Globe,
   GitCommitHorizontal,
   Folder,
+  ChevronDown,
+  ChevronRight,
 } from "lucide-react";
 
 export interface WorktreeCardProps {
@@ -104,6 +107,12 @@ export function WorktreeCard({
   homeDir,
 }: WorktreeCardProps) {
   const mood = worktree.mood || "stable";
+
+  // Expanded state from store (per-id subscription to avoid re-renders on other cards)
+  const isExpanded = useWorktreeSelectionStore(
+    useCallback((state) => state.expandedWorktrees.has(worktree.id), [worktree.id])
+  );
+  const toggleWorktreeExpanded = useWorktreeSelectionStore((state) => state.toggleWorktreeExpanded);
 
   // Recipe store
   const getRecipesForWorktree = useRecipeStore((state) => state.getRecipesForWorktree);
@@ -356,10 +365,31 @@ export function WorktreeCard({
     return "Dev Server";
   };
 
+  // Handler for expand/collapse toggle
+  const handleToggleExpand = useCallback(
+    (e: React.MouseEvent) => {
+      e.stopPropagation();
+      toggleWorktreeExpanded(worktree.id);
+    },
+    [toggleWorktreeExpanded, worktree.id]
+  );
+
+  // Compute whether there's expandable content
+  const hasExpandableContent =
+    hasChanges ||
+    effectiveNote ||
+    !!worktree.summary ||
+    worktree.aiStatus === "loading" ||
+    hasDevScript ||
+    worktreeErrors.length > 0;
+
+  // Generate stable ID for aria-controls
+  const detailsId = useMemo(() => `worktree-${worktree.id}-details`, [worktree.id]);
+
   return (
     <div
       className={cn(
-        "group relative overflow-hidden rounded-lg bg-card/30 border border-border/60 px-3 py-2.5 mb-2 cursor-pointer transition-all",
+        "group relative overflow-hidden rounded-lg bg-card/30 border border-border/60 px-3 py-2 mb-2 cursor-pointer transition-all duration-200",
         isActive
           ? "border-canopy-accent/50 bg-canopy-accent/3"
           : "hover:border-canopy-accent/60 hover:bg-card/60",
@@ -377,12 +407,28 @@ export function WorktreeCard({
       aria-label={`Worktree: ${branchLabel}`}
     >
       {/* Content container */}
-      <div className="flex flex-col gap-1.5">
+      <div className="flex flex-col gap-1">
         {/* Header: Identity + Actions */}
         <div className="flex items-start justify-between gap-2">
           {/* Left: identity + status */}
-          <div className="flex flex-col min-w-0">
-            <div className="flex items-center gap-2 text-xs font-mono leading-none mb-1">
+          <div className="flex flex-col min-w-0 flex-1">
+            <div className="flex items-center gap-2 text-xs font-mono leading-none">
+              {/* Expand/collapse chevron */}
+              {hasExpandableContent && (
+                <button
+                  onClick={handleToggleExpand}
+                  className="p-0.5 -ml-0.5 rounded hover:bg-white/10 text-gray-400 hover:text-gray-200 transition-colors"
+                  aria-label={isExpanded ? "Collapse details" : "Expand details"}
+                  aria-expanded={isExpanded}
+                  aria-controls={detailsId}
+                >
+                  {isExpanded ? (
+                    <ChevronDown className="w-3 h-3" />
+                  ) : (
+                    <ChevronRight className="w-3 h-3" />
+                  )}
+                </button>
+              )}
               <AgentStatusIndicator state={dominantAgentState} />
               {isActive && (
                 <span
@@ -420,20 +466,6 @@ export function WorktreeCard({
                 </span>
               )}
             </div>
-
-            {/* Path (Always visible but subtle) */}
-            <button
-              onClick={(e) => {
-                e.stopPropagation();
-                handlePathClick();
-              }}
-              className={cn(
-                "text-[0.7rem] text-gray-500 hover:text-gray-400 hover:underline text-left font-mono truncate",
-                isFocused && "underline"
-              )}
-            >
-              {displayPath}
-            </button>
           </div>
 
           {/* Right: action icons */}
@@ -527,146 +559,175 @@ export function WorktreeCard({
           </div>
         </div>
 
-        {/* Summary Block */}
-        <div className="text-xs leading-relaxed break-words">{renderAISummary()}</div>
-
-        {/* Note (only if present) */}
-        {effectiveNote && (
-          <div
-            className={cn(
-              "text-xs text-gray-400 bg-black/20 p-1.5 rounded border-l-2 border-gray-700 font-mono",
-              isActive ? "line-clamp-none" : "line-clamp-2"
-            )}
-          >
-            {parsedNoteSegments.map((segment, index) =>
-              segment.type === "link" ? (
-                <a
-                  key={index}
-                  href={segment.content}
-                  target="_blank"
-                  rel="noopener noreferrer"
-                  className="text-[var(--color-status-info)] underline hover:text-blue-300"
-                  onClick={(e) => {
-                    e.stopPropagation();
-                    if (window.electron?.system?.openExternal) {
-                      e.preventDefault();
-                      window.electron.system.openExternal(segment.content);
-                    }
-                  }}
-                >
-                  {segment.content}
-                </a>
-              ) : (
-                <span key={index}>{segment.content}</span>
-              )
-            )}
-          </div>
-        )}
-
-        {/* DENSE METRICS ROW: Terminals | Changes | Errors (collapsed) */}
-        <div className="flex items-center gap-4 mt-1 text-xs text-gray-400 font-mono">
+        {/* COMPACT SUMMARY ROW: Always visible metrics */}
+        <div className="flex items-center gap-3 text-[0.7rem] text-gray-400 font-mono ml-4">
           {/* Terminals */}
           {terminalCounts.total > 0 && (
-            <div className="flex items-center gap-1.5">
-              <Terminal className="w-3 h-3" />
+            <div className="flex items-center gap-1">
+              <Terminal className="w-2.5 h-2.5" />
               <span>{terminalCounts.total}</span>
               {(terminalCounts.byState.working > 0 || terminalCounts.byState.waiting > 0) && (
-                <span className="text-[var(--color-status-success)] text-[0.65rem] flex items-center">
-                  <div className="w-1 h-1 rounded-full bg-current mr-0.5 animate-pulse" />
-                </span>
+                <div className="w-1 h-1 rounded-full bg-[var(--color-status-success)] animate-pulse" />
               )}
             </div>
           )}
 
-          {/* Changes */}
+          {/* Changes count (compact: just the count) */}
           {hasChanges && worktree.worktreeChanges && (
-            <div className="flex items-center gap-1.5">
-              <GitCommitHorizontal className="w-3 h-3" />
-              <div className="flex items-center gap-1">
-                <span className="text-[var(--color-status-success)]">
-                  +{worktree.worktreeChanges.insertions ?? 0}
-                </span>
-                <span className="text-gray-600">/</span>
-                <span className="text-[var(--color-status-error)]">
-                  -{worktree.worktreeChanges.deletions ?? 0}
-                </span>
-              </div>
+            <div className="flex items-center gap-1">
+              <GitCommitHorizontal className="w-2.5 h-2.5" />
+              <span className="text-[var(--color-status-success)]">
+                +{worktree.worktreeChanges.insertions ?? 0}
+              </span>
+              <span className="text-gray-600">/</span>
+              <span className="text-[var(--color-status-error)]">
+                -{worktree.worktreeChanges.deletions ?? 0}
+              </span>
             </div>
           )}
 
-          {/* Error Summary (only if NOT active - active shows banner) */}
-          {!isActive && worktreeErrors.length > 0 && (
+          {/* Dev server status indicator (compact) */}
+          {hasDevScript && serverState && serverState.status !== "stopped" && (
+            <div className="flex items-center gap-1">
+              <Globe className="w-2.5 h-2.5" />
+              {getServerStatusIndicator()}
+            </div>
+          )}
+
+          {/* Error count */}
+          {worktreeErrors.length > 0 && (
             <div className="flex items-center gap-1 text-[var(--color-status-error)]">
-              <AlertCircle className="w-3 h-3" />
+              <AlertCircle className="w-2.5 h-2.5" />
               <span>{worktreeErrors.length}</span>
             </div>
           )}
         </div>
 
-        {/* ACTIVE STATE EXPANSIONS */}
-
-        {/* 1. File Changes List */}
-        {isActive && hasChanges && worktree.worktreeChanges && (
-          <div className="mt-1">
-            <FileChangeList
-              changes={worktree.worktreeChanges.changes}
-              rootPath={worktree.worktreeChanges.rootPath}
-              maxVisible={5}
-            />
-          </div>
-        )}
-
-        {/* Dev Server Button (new placement) */}
-        {hasDevScript && serverState && (
-          <div className="flex items-center gap-2 mt-1 text-xs text-gray-400 font-mono">
-            <Globe className="w-3 h-3" />
-            <div className="flex items-center gap-1">
-              {getServerStatusIndicator()}
-              <span className="truncate max-w-[120px]">{getServerLabel()}</span>
-            </div>
-            {/* Tiny Action Button for Dev Server */}
+        {/* EXPANDED CONTENT - shown when isExpanded is true */}
+        <div
+          id={detailsId}
+          aria-hidden={!isExpanded}
+          inert={!isExpanded ? ("" as unknown as boolean) : undefined}
+          className={cn(
+            "overflow-hidden transition-[max-height,opacity] duration-200",
+            isExpanded ? "max-h-[500px] opacity-100" : "max-h-0 opacity-0"
+          )}
+        >
+          <div className="pt-2 space-y-2">
+            {/* Path (shown in expanded mode) */}
             <button
               onClick={(e) => {
                 e.stopPropagation();
-                if (!serverLoading && serverState.status !== "starting") {
-                  onToggleServer();
-                }
+                handlePathClick();
               }}
-              disabled={serverLoading || serverState.status === "starting"}
               className={cn(
-                "ml-1 p-0.5 rounded hover:bg-gray-700 transition-colors",
-                serverLoading ? "opacity-50" : ""
+                "text-[0.7rem] text-gray-500 hover:text-gray-400 hover:underline text-left font-mono truncate block ml-4",
+                isFocused && "underline"
               )}
-              title={serverState.status === "running" ? "Stop Server" : "Start Server"}
             >
-              {serverState.status === "running" ? (
-                <div className="w-1.5 h-1.5 bg-[var(--color-status-error)] rounded-sm" />
-              ) : (
-                <Play className="w-2 h-2 fill-current" />
-              )}
+              {displayPath}
             </button>
-          </div>
-        )}
 
-        {/* 2. Detailed Errors */}
-        {isActive && worktreeErrors.length > 0 && (
-          <div className="space-y-1 mt-2">
-            {worktreeErrors.slice(0, 3).map((error) => (
-              <ErrorBanner
-                key={error.id}
-                error={error}
-                onDismiss={dismissError}
-                onRetry={handleErrorRetry}
-                compact
-              />
-            ))}
-            {worktreeErrors.length > 3 && (
-              <div className="text-[0.65rem] text-gray-500 text-center">
-                +{worktreeErrors.length - 3} more errors
+            {/* AI Summary Block */}
+            <div className="text-xs leading-relaxed break-words ml-4">{renderAISummary()}</div>
+
+            {/* Note (only if present) */}
+            {effectiveNote && (
+              <div
+                className={cn(
+                  "text-xs text-gray-400 bg-black/20 p-1.5 rounded border-l-2 border-gray-700 font-mono ml-4",
+                  "line-clamp-none"
+                )}
+              >
+                {parsedNoteSegments.map((segment, index) =>
+                  segment.type === "link" ? (
+                    <a
+                      key={index}
+                      href={segment.content}
+                      target="_blank"
+                      rel="noopener noreferrer"
+                      className="text-[var(--color-status-info)] underline hover:text-blue-300"
+                      onClick={(e) => {
+                        e.stopPropagation();
+                        if (window.electron?.system?.openExternal) {
+                          e.preventDefault();
+                          window.electron.system.openExternal(segment.content);
+                        }
+                      }}
+                    >
+                      {segment.content}
+                    </a>
+                  ) : (
+                    <span key={index}>{segment.content}</span>
+                  )
+                )}
+              </div>
+            )}
+
+            {/* File Changes List */}
+            {hasChanges && worktree.worktreeChanges && (
+              <div className="ml-4">
+                <FileChangeList
+                  changes={worktree.worktreeChanges.changes}
+                  rootPath={worktree.worktreeChanges.rootPath}
+                  maxVisible={5}
+                />
+              </div>
+            )}
+
+            {/* Dev Server Controls */}
+            {hasDevScript && serverState && (
+              <div className="flex items-center gap-2 text-xs text-gray-400 font-mono ml-4">
+                <Globe className="w-3 h-3" />
+                <div className="flex items-center gap-1">
+                  {getServerStatusIndicator()}
+                  <span className="truncate max-w-[120px]">{getServerLabel()}</span>
+                </div>
+                {/* Tiny Action Button for Dev Server */}
+                <button
+                  onClick={(e) => {
+                    e.stopPropagation();
+                    if (!serverLoading && serverState.status !== "starting") {
+                      onToggleServer();
+                    }
+                  }}
+                  disabled={serverLoading || serverState.status === "starting"}
+                  className={cn(
+                    "ml-1 p-0.5 rounded hover:bg-gray-700 transition-colors",
+                    serverLoading ? "opacity-50" : ""
+                  )}
+                  title={serverState.status === "running" ? "Stop Server" : "Start Server"}
+                >
+                  {serverState.status === "running" ? (
+                    <div className="w-1.5 h-1.5 bg-[var(--color-status-error)] rounded-sm" />
+                  ) : (
+                    <Play className="w-2 h-2 fill-current" />
+                  )}
+                </button>
+              </div>
+            )}
+
+            {/* Detailed Errors */}
+            {worktreeErrors.length > 0 && (
+              <div className="space-y-1 ml-4">
+                {worktreeErrors.slice(0, 3).map((error) => (
+                  <ErrorBanner
+                    key={error.id}
+                    error={error}
+                    onDismiss={dismissError}
+                    onRetry={handleErrorRetry}
+                    compact
+                  />
+                ))}
+                {worktreeErrors.length > 3 && (
+                  <div className="text-[0.65rem] text-gray-500 text-center">
+                    +{worktreeErrors.length - 3} more errors
+                  </div>
+                )}
               </div>
             )}
           </div>
-        )}
+        </div>
 
         {/* Confirmation dialog for bulk close all terminals */}
         <ConfirmDialog
