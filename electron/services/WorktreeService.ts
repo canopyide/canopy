@@ -100,7 +100,6 @@ interface PendingSyncRequest {
   worktrees: Worktree[];
   activeWorktreeId: string | null;
   mainBranch: string;
-  watchingEnabled: boolean;
   monitorConfig?: MonitorConfig;
   aiConfig?: AIConfig;
 }
@@ -108,7 +107,6 @@ interface PendingSyncRequest {
 export class WorktreeService {
   private monitors = new Map<string, WorktreeMonitor>();
   private mainBranch: string = "main";
-  private watchingEnabled: boolean = true;
   private activeWorktreeId: string | null = null;
   private isSyncing: boolean = false;
   private pendingSync: PendingSyncRequest | null = null;
@@ -144,8 +142,8 @@ export class WorktreeService {
       // 2. Map to domain Worktree objects
       const worktrees: Worktree[] = rawWorktrees.map((wt) => {
         const name = wt.isMainWorktree
-          ? wt.path.split(/[/\\]/).pop() || "Main"
-          : wt.branch || wt.path.split(/[/\\]/).pop() || "Worktree";
+          ? wt.path.split(new RegExp("[/\\\\]")).pop() || "Main"
+          : wt.branch || wt.path.split(new RegExp("[/\\\\]")).pop() || "Worktree";
 
         return {
           id: wt.path,
@@ -162,8 +160,7 @@ export class WorktreeService {
       await this.sync(
         worktrees,
         this.activeWorktreeId,
-        this.mainBranch,
-        this.watchingEnabled
+        this.mainBranch
       );
 
       // 4. Force an immediate refresh to populate statuses
@@ -187,7 +184,6 @@ export class WorktreeService {
    * @param worktrees - Current list of worktrees
    * @param activeWorktreeId - ID of the currently active worktree
    * @param mainBranch - Main branch name (default: 'main')
-   * @param watchingEnabled - Enable file watching (default: true)
    * @param monitorConfig - Optional polling interval configuration
    * @param aiConfig - Optional AI summary debounce configuration
    */
@@ -195,7 +191,6 @@ export class WorktreeService {
     worktrees: Worktree[],
     activeWorktreeId: string | null = null,
     mainBranch: string = "main",
-    watchingEnabled: boolean = true,
     monitorConfig?: MonitorConfig,
     aiConfig?: AIConfig
   ): Promise<void> {
@@ -206,7 +201,6 @@ export class WorktreeService {
         worktrees,
         activeWorktreeId,
         mainBranch,
-        watchingEnabled,
         monitorConfig,
         aiConfig,
       };
@@ -217,7 +211,6 @@ export class WorktreeService {
 
     try {
       this.mainBranch = mainBranch;
-      this.watchingEnabled = watchingEnabled;
       this.activeWorktreeId = activeWorktreeId;
 
       // Update polling intervals from config
@@ -346,15 +339,8 @@ export class WorktreeService {
           (monitor as any)._eventBusUnsubscribe = unsubscribe;
 
           try {
-            // Start monitoring only if watching is enabled
-            // When --no-watch is passed, we only do initial status fetch
-            if (this.watchingEnabled) {
-              await monitor.start();
-            } else {
-              // Just fetch initial status without starting polling
-              await monitor.fetchInitialStatus();
-            }
-
+            // Start monitoring
+            await monitor.start();
             this.monitors.set(wt.id, monitor);
           } catch (error) {
             // If monitor startup fails, clean up the event bus subscription
@@ -381,7 +367,6 @@ export class WorktreeService {
           pending.worktrees,
           pending.activeWorktreeId,
           pending.mainBranch,
-          pending.watchingEnabled,
           pending.monitorConfig,
           pending.aiConfig
         );
@@ -577,8 +562,8 @@ export class WorktreeService {
         id: wt.path,
         path: wt.path,
         name: wt.isMainWorktree
-          ? wt.path.split(/[/\\]/).pop() || "Main"
-          : wt.branch || wt.path.split(/[/\\]/).pop() || wt.path,
+          ? wt.path.split(new RegExp("[/\\\\]")).pop() || "Main"
+          : wt.branch || wt.path.split(new RegExp("[/\\\\]")).pop() || wt.path,
         branch: wt.branch,
         isCurrent: false, // Will be determined by sync
         isMainWorktree: wt.isMainWorktree,
@@ -586,7 +571,7 @@ export class WorktreeService {
       }));
 
       if (worktreeList.length > 0) {
-        await this.sync(worktreeList, this.activeWorktreeId, this.mainBranch, this.watchingEnabled);
+        await this.sync(worktreeList, this.activeWorktreeId, this.mainBranch);
       }
 
       logInfo("Worktree created successfully", {
