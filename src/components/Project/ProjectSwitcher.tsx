@@ -52,6 +52,27 @@ export function ProjectSwitcher() {
     return cleanup;
   }, [loadProjects, getCurrentProject]);
 
+  // Helper to render the project icon
+  const renderIcon = (emoji: string, color?: string, sizeClass = "h-8 w-8 text-lg") => (
+    <div
+      className={cn(
+        "flex items-center justify-center rounded-lg border shadow-sm transition-all shrink-0",
+        sizeClass
+      )}
+      style={{
+        background: getProjectGradient(color),
+        backgroundColor: !getProjectGradient(color)
+          ? "rgba(var(--canopy-accent-rgb), 0.05)"
+          : undefined,
+        borderColor: !getProjectGradient(color)
+          ? "var(--canopy-border)"
+          : "rgba(255,255,255,0.1)", // Subtle inner highlight for gradients
+      }}
+    >
+      <span className="leading-none drop-shadow-sm filter">{emoji}</span>
+    </div>
+  );
+
   // If no project is selected yet
   if (!currentProject) {
     // If projects exist, show dropdown to select one
@@ -62,15 +83,15 @@ export function ProjectSwitcher() {
             <DropdownMenuTrigger asChild>
               <Button
                 variant="outline"
-                className="w-full justify-start text-muted-foreground"
+                className="w-full justify-between text-muted-foreground border-dashed active:scale-100"
                 disabled={isLoading}
               >
-                <ChevronsUpDown className="mr-2 h-4 w-4" />
-                Select Project...
+                <span>Select Project...</span>
+                <ChevronsUpDown className="h-4 w-4 opacity-50" />
               </Button>
             </DropdownMenuTrigger>
-            <DropdownMenuContent className="w-64" align="start">
-              <DropdownMenuLabel className="text-xs text-canopy-text/60">
+            <DropdownMenuContent className="w-64 max-h-[300px] overflow-y-auto p-1" align="start">
+              <DropdownMenuLabel className="text-xs font-medium text-muted-foreground/70 uppercase tracking-wider px-2 py-1.5">
                 Projects
               </DropdownMenuLabel>
 
@@ -78,45 +99,25 @@ export function ProjectSwitcher() {
                 <DropdownMenuItem
                   key={project.id}
                   onClick={() => switchProject(project.id)}
-                  className="gap-2 p-2 group"
+                  className="gap-3 p-2 group cursor-pointer focus:bg-canopy-accent/10"
                 >
-                  <div
-                    className="flex h-6 w-6 items-center justify-center rounded-md border border-canopy-border"
-                    style={{
-                      background: getProjectGradient(project.color),
-                      backgroundColor: !getProjectGradient(project.color)
-                        ? "var(--canopy-bg)"
-                        : undefined,
-                    }}
-                  >
-                    <span className="text-sm">{project.emoji || "🌲"}</span>
+                  {renderIcon(project.emoji || "🌲", project.color, "h-8 w-8 text-base")}
+                  <div className="flex flex-col min-w-0 flex-1">
+                    <span className="font-medium truncate">{project.name}</span>
+                    <span className="text-[10px] text-muted-foreground truncate">
+                      {project.path.split(/[/\\]/).pop()}
+                    </span>
                   </div>
-                  <span className="flex-1 truncate">{project.name}</span>
-                  {project.isFallbackIdentity && (
-                    <Button
-                      variant="ghost"
-                      size="icon"
-                      className="h-6 w-6 opacity-0 group-hover:opacity-100 transition-opacity"
-                      onClick={(e) => handleRegenerate(e, project.id)}
-                      disabled={regeneratingId === project.id}
-                    >
-                      {regeneratingId === project.id ? (
-                        <Loader2 className="h-3 w-3 animate-spin" />
-                      ) : (
-                        <Sparkles className="h-3 w-3 text-canopy-accent" />
-                      )}
-                    </Button>
-                  )}
                 </DropdownMenuItem>
               ))}
 
               <DropdownMenuSeparator />
 
-              <DropdownMenuItem onClick={addProject} className="gap-2">
-                <div className="flex h-6 w-6 items-center justify-center rounded-md border border-dashed border-canopy-text/30">
+              <DropdownMenuItem onClick={addProject} className="gap-3 p-2 cursor-pointer text-muted-foreground focus:text-foreground">
+                <div className="flex h-8 w-8 items-center justify-center rounded-lg border border-dashed border-muted-foreground/30 bg-muted/20">
                   <Plus className="h-4 w-4" />
                 </div>
-                Add Project...
+                <span className="font-medium">Add Project...</span>
               </DropdownMenuItem>
             </DropdownMenuContent>
           </DropdownMenu>
@@ -129,7 +130,7 @@ export function ProjectSwitcher() {
       <div className="p-2">
         <Button
           variant="outline"
-          className="w-full justify-start text-muted-foreground"
+          className="w-full justify-start text-muted-foreground border-dashed h-10 active:scale-100"
           onClick={addProject}
           disabled={isLoading}
         >
@@ -146,91 +147,95 @@ export function ProjectSwitcher() {
         <DropdownMenuTrigger asChild>
           <Button
             variant="ghost"
-            className="w-full justify-between px-2 hover:bg-canopy-border/50 h-12"
+            // active:scale-100 prevents the "loud shift" (shrink animation) on click
+            className="w-full justify-between px-2 h-14 hover:bg-canopy-bg/50 group transition-all duration-200 active:scale-100"
             disabled={isLoading}
           >
-            <div className="flex items-center gap-2 text-left min-w-0">
-              <div
-                className="flex h-8 w-8 items-center justify-center rounded-md border"
-                style={{
-                  background: getProjectGradient(currentProject.color),
-                  backgroundColor: !getProjectGradient(currentProject.color)
-                    ? "rgba(var(--canopy-accent-rgb), 0.1)"
-                    : undefined,
-                  borderColor: !getProjectGradient(currentProject.color)
-                    ? "rgba(var(--canopy-accent-rgb), 0.2)"
-                    : "transparent",
-                }}
-              >
-                <span className="text-lg leading-none">{currentProject.emoji || "🌲"}</span>
-              </div>
-              <div className="grid flex-1 text-left text-sm leading-tight">
-                <span className="truncate font-semibold text-canopy-text">
+            <div className="flex items-center gap-3 text-left min-w-0">
+              {renderIcon(
+                currentProject.emoji || "🌲", 
+                currentProject.color, 
+                "h-9 w-9 text-xl shadow-md"
+              )}
+              
+              <div className="flex flex-col min-w-0 gap-0.5">
+                <span className="truncate font-semibold text-canopy-text text-sm leading-none">
                   {currentProject.name}
                 </span>
-                <span className="truncate text-xs text-canopy-text/60">
+                <span className="truncate text-xs text-muted-foreground/60 font-mono">
                   {currentProject.path.split(/[/\\]/).pop()}
                 </span>
               </div>
             </div>
-            <ChevronsUpDown className="ml-2 h-4 w-4 shrink-0 opacity-50" />
+            <ChevronsUpDown className="ml-2 h-4 w-4 shrink-0 text-muted-foreground/40 group-hover:text-muted-foreground/70 transition-colors" />
           </Button>
         </DropdownMenuTrigger>
-        <DropdownMenuContent className="w-64" align="start">
-          <DropdownMenuLabel className="text-xs text-canopy-text/60">Projects</DropdownMenuLabel>
+        
+        {/* Added max-h and overflow to prevent layout jumps if list is long */}
+        <DropdownMenuContent className="w-[260px] max-h-[60vh] overflow-y-auto p-1" align="start" sideOffset={8}>
+          <DropdownMenuLabel className="text-[10px] font-semibold text-muted-foreground/50 uppercase tracking-widest px-2 py-1.5">
+            Switch Project
+          </DropdownMenuLabel>
 
-          {projects.map((project) => (
-            <DropdownMenuItem
-              key={project.id}
-              onClick={() => {
-                if (project.id !== currentProject.id && !isLoading) {
-                  switchProject(project.id);
-                }
-              }}
-              disabled={isLoading}
-              className={cn(
-                "gap-2 p-2 group",
-                project.id === currentProject.id && "bg-canopy-border/30"
-              )}
-            >
-              <div
-                className="flex h-6 w-6 items-center justify-center rounded-md border border-canopy-border"
-                style={{
-                  background: getProjectGradient(project.color),
-                  backgroundColor: !getProjectGradient(project.color)
-                    ? "var(--canopy-bg)"
-                    : undefined,
+          {projects.map((project) => {
+            const isActive = project.id === currentProject.id;
+            return (
+              <DropdownMenuItem
+                key={project.id}
+                onClick={() => {
+                  if (!isActive && !isLoading) {
+                    switchProject(project.id);
+                  }
                 }}
+                disabled={isLoading}
+                className={cn(
+                  "gap-3 p-2 cursor-pointer mb-0.5 rounded-md transition-colors",
+                  isActive ? "bg-accent/50" : "focus:bg-accent/30"
+                )}
               >
-                <span className="text-sm">{project.emoji || "🌲"}</span>
-              </div>
-              <span className="flex-1 truncate">{project.name}</span>
-              {project.isFallbackIdentity && (
-                <Button
-                  variant="ghost"
-                  size="icon"
-                  className="h-6 w-6 opacity-0 group-hover:opacity-100 transition-opacity"
-                  onClick={(e) => handleRegenerate(e, project.id)}
-                  disabled={regeneratingId === project.id}
-                >
-                  {regeneratingId === project.id ? (
-                    <Loader2 className="h-3 w-3 animate-spin" />
-                  ) : (
-                    <Sparkles className="h-3 w-3 text-canopy-accent" />
-                  )}
-                </Button>
-              )}
-              {currentProject.id === project.id && <Check className="h-4 w-4 text-canopy-accent" />}
-            </DropdownMenuItem>
-          ))}
+                {renderIcon(project.emoji || "🌲", project.color, "h-8 w-8 text-base")}
+                
+                <div className="flex flex-col min-w-0 flex-1">
+                  <span className={cn("truncate text-sm font-medium", isActive ? "text-foreground" : "text-foreground/80")}>
+                    {project.name}
+                  </span>
+                  <span className="truncate text-[10px] text-muted-foreground/70">
+                    {project.path.split(/[/\\]/).pop()}
+                  </span>
+                </div>
 
-          <DropdownMenuSeparator />
+                {project.isFallbackIdentity ? (
+                  <Button
+                    variant="ghost"
+                    size="icon"
+                    className="h-6 w-6 text-muted-foreground hover:text-canopy-accent hover:bg-canopy-accent/10"
+                    onClick={(e) => handleRegenerate(e, project.id)}
+                    disabled={regeneratingId === project.id}
+                    title="Regenerate Icon & Name"
+                  >
+                    {regeneratingId === project.id ? (
+                      <Loader2 className="h-3 w-3 animate-spin" />
+                    ) : (
+                      <Sparkles className="h-3 w-3" />
+                    )}
+                  </Button>
+                ) : (
+                  isActive && <Check className="h-4 w-4 text-canopy-accent ml-2" />
+                )}
+              </DropdownMenuItem>
+            );
+          })}
 
-          <DropdownMenuItem onClick={addProject} className="gap-2">
-            <div className="flex h-6 w-6 items-center justify-center rounded-md border border-dashed border-canopy-text/30">
+          <DropdownMenuSeparator className="my-1 bg-border/40" />
+
+          <DropdownMenuItem 
+            onClick={addProject} 
+            className="gap-3 p-2 cursor-pointer focus:bg-accent/30"
+          >
+            <div className="flex h-8 w-8 items-center justify-center rounded-lg border border-dashed border-muted-foreground/30 bg-muted/20 text-muted-foreground">
               <Plus className="h-4 w-4" />
             </div>
-            Add Project...
+            <span className="font-medium text-sm text-muted-foreground">Add Project...</span>
           </DropdownMenuItem>
         </DropdownMenuContent>
       </DropdownMenu>
