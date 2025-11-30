@@ -25,12 +25,13 @@ export const useNotificationStore = create<NotificationStore>((set) => ({
   addNotification: (notification) => {
     const id = uuidv4();
     const newNotification = { ...notification, id };
-    
+
     set((state) => ({
       notifications: [...state.notifications, newNotification],
     }));
 
-    if (notification.duration !== 0) { // 0 = persistent
+    if (notification.duration !== 0) {
+      // 0 = persistent
       setTimeout(() => {
         set((state) => ({
           notifications: state.notifications.filter((n) => n.id !== id),

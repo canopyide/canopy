@@ -113,7 +113,7 @@ export function FileChangeList({ changes, maxVisible = 4, rootPath }: FileChange
           const relativePath = isAbsolutePath(change.path)
             ? getRelativePath(rootPath, change.path)
             : change.path;
-          
+
           const { dir, base } = splitPath(relativePath);
           const additionsLabel = change.insertions !== null ? `+${change.insertions}` : "";
           const deletionsLabel = change.deletions !== null ? `-${change.deletions}` : "";
@@ -121,40 +121,34 @@ export function FileChangeList({ changes, maxVisible = 4, rootPath }: FileChange
           return (
             <Fragment key={`${change.path}-${change.status}`}>
               {/* Icon Column */}
-              <div className={cn(color, "font-bold flex items-center")}>
-                {icon}
-              </div>
-              
+              <div className={cn(color, "font-bold flex items-center")}>{icon}</div>
+
               {/* Path Column - RTL for left-side truncation, LTR for content */}
-              <div 
-                className="min-w-0 overflow-hidden text-ellipsis whitespace-nowrap text-left text-gray-500" 
+              <div
+                className="min-w-0 overflow-hidden text-ellipsis whitespace-nowrap text-left text-gray-500"
                 dir="rtl"
                 title={relativePath}
               >
                 <span dir="ltr">
-                   {dir && <span className="text-gray-500">{dir}/</span>}
-                   <span className="text-gray-200">{base}</span>
+                  {dir && <span className="text-gray-500">{dir}/</span>}
+                  <span className="text-gray-200">{base}</span>
                 </span>
               </div>
-              
+
               {/* Stats Column */}
               <div className="flex items-center gap-2 justify-end">
                 {additionsLabel && (
-                  <span className="text-[var(--color-status-success)]">
-                    {additionsLabel}
-                  </span>
+                  <span className="text-[var(--color-status-success)]">{additionsLabel}</span>
                 )}
                 {deletionsLabel && (
-                  <span className="text-[var(--color-status-error)]">
-                    {deletionsLabel}
-                  </span>
+                  <span className="text-[var(--color-status-error)]">{deletionsLabel}</span>
                 )}
               </div>
             </Fragment>
           );
         })}
       </div>
-      
+
       {remainingCount > 0 && (
         <div className="mt-1.5 text-gray-500 text-xs pl-0.5">
           ...and {remainingCount} more

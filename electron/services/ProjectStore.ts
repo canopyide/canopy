@@ -175,7 +175,7 @@ export class ProjectStore {
     if (updates.name !== undefined || updates.emoji !== undefined) {
       safeUpdates.isFallbackIdentity = false;
     }
-    
+
     if (updates.color !== undefined) safeUpdates.color = updates.color;
     if (updates.aiGeneratedName !== undefined)
       safeUpdates.aiGeneratedName = updates.aiGeneratedName;

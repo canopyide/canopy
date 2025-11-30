@@ -106,10 +106,10 @@ function SidebarContent({ onOpenSettings }: SidebarContentProps) {
         // Show success notification
         const sizeStr = result.stats?.totalSize ? formatBytes(result.stats.totalSize) : "";
         addNotification({
-            type: "success",
-            title: "Context Copied",
-            message: `Copied ${result.fileCount} files${sizeStr ? ` (${sizeStr})` : ""} to clipboard`,
-            duration: 3000
+          type: "success",
+          title: "Context Copied",
+          message: `Copied ${result.fileCount} files${sizeStr ? ` (${sizeStr})` : ""} to clipboard`,
+          duration: 3000,
         });
       } catch (e) {
         const message = e instanceof Error ? e.message : "Failed to copy context to clipboard";

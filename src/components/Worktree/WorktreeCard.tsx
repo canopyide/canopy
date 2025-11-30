@@ -315,7 +315,7 @@ export function WorktreeCard({
 
       case "active": {
         if (summary) {
-           return <span className="text-gray-300">{summary}</span>;
+          return <span className="text-gray-300">{summary}</span>;
         }
         if (hasChanges) {
           return <span className="text-gray-400 italic">Changes detected...</span>;
@@ -348,8 +348,8 @@ export function WorktreeCard({
   const getServerLabel = () => {
     if (!serverState) return null;
     if (serverState.status === "running" && serverState.url) {
-        // Strip http:// and trailing slash for density
-        return serverState.url.replace(/^https?:\/\//, '').replace(/\/$/, '');
+      // Strip http:// and trailing slash for density
+      return serverState.url.replace(/^https?:\/\//, "").replace(/\/$/, "");
     }
     if (serverState.status === "error") return "Error";
     if (serverState.status === "starting") return "Starting";
@@ -395,29 +395,29 @@ export function WorktreeCard({
               <span
                 className={cn(
                   "truncate font-semibold",
-                  mood === "active"
-                    ? "text-[var(--color-status-warning)]"
-                    : "text-gray-200"
+                  mood === "active" ? "text-[var(--color-status-warning)]" : "text-gray-200"
                 )}
               >
                 {branchLabel}
               </span>
               {!worktree.branch && (
-                <span className="text-[var(--color-status-warning)] text-[0.65rem]">(detached)</span>
+                <span className="text-[var(--color-status-warning)] text-[0.65rem]">
+                  (detached)
+                </span>
               )}
-              
+
               {/* Issues/PRs in header line for extreme density */}
               {worktree.prNumber && (
-                 <span className="flex items-center gap-0.5 text-[0.65rem] text-[var(--color-status-success)] bg-green-500/10 px-1 rounded">
-                    <GitPullRequest className="w-2.5 h-2.5" />
-                    {worktree.prNumber}
-                 </span>
+                <span className="flex items-center gap-0.5 text-[0.65rem] text-[var(--color-status-success)] bg-green-500/10 px-1 rounded">
+                  <GitPullRequest className="w-2.5 h-2.5" />
+                  {worktree.prNumber}
+                </span>
               )}
               {worktree.issueNumber && (
-                 <span className="flex items-center gap-0.5 text-[0.65rem] text-[var(--color-status-info)] bg-blue-500/10 px-1 rounded">
-                    <CircleDot className="w-2.5 h-2.5" />
-                    {worktree.issueNumber}
-                 </span>
+                <span className="flex items-center gap-0.5 text-[0.65rem] text-[var(--color-status-info)] bg-blue-500/10 px-1 rounded">
+                  <CircleDot className="w-2.5 h-2.5" />
+                  {worktree.issueNumber}
+                </span>
               )}
             </div>
 
@@ -450,16 +450,16 @@ export function WorktreeCard({
               </DropdownMenuTrigger>
               <DropdownMenuContent align="end" sideOffset={4} onClick={(e) => e.stopPropagation()}>
                 <DropdownMenuItem onClick={() => onCopyTree()}>
-                   <Copy className="w-3 h-3 mr-2" />
-                   Copy Context
+                  <Copy className="w-3 h-3 mr-2" />
+                  Copy Context
                 </DropdownMenuItem>
                 <DropdownMenuItem onClick={() => onOpenEditor()}>
-                   <Code className="w-3 h-3 mr-2" />
-                   Open in Editor
+                  <Code className="w-3 h-3 mr-2" />
+                  Open in Editor
                 </DropdownMenuItem>
                 <DropdownMenuItem onClick={() => handlePathClick()}>
-                   <Folder className="w-3 h-3 mr-2" />
-                   Reveal in Finder
+                  <Folder className="w-3 h-3 mr-2" />
+                  Reveal in Finder
                 </DropdownMenuItem>
 
                 {(worktree.issueNumber || worktree.prNumber) && <DropdownMenuSeparator />}
@@ -478,7 +478,7 @@ export function WorktreeCard({
                 )}
 
                 {(recipes.length > 0 || onCreateRecipe) && <DropdownMenuSeparator />}
-                
+
                 {recipes.length > 0 && (
                   <>
                     <DropdownMenuLabel>Recipes</DropdownMenuLabel>
@@ -495,27 +495,30 @@ export function WorktreeCard({
                   </>
                 )}
                 {onCreateRecipe && (
-                   <DropdownMenuItem onClick={onCreateRecipe}>
-                     <Plus className="w-3 h-3 mr-2" />
-                     Create Recipe...
-                   </DropdownMenuItem>
+                  <DropdownMenuItem onClick={onCreateRecipe}>
+                    <Plus className="w-3 h-3 mr-2" />
+                    Create Recipe...
+                  </DropdownMenuItem>
                 )}
 
                 {totalTerminalCount > 0 && (
                   <>
                     <DropdownMenuSeparator />
                     <DropdownMenuLabel>Terminals</DropdownMenuLabel>
-                    <DropdownMenuItem onClick={handleCloseCompleted} disabled={completedCount === 0}>
-                       Close Completed ({completedCount})
+                    <DropdownMenuItem
+                      onClick={handleCloseCompleted}
+                      disabled={completedCount === 0}
+                    >
+                      Close Completed ({completedCount})
                     </DropdownMenuItem>
                     <DropdownMenuItem onClick={handleCloseFailed} disabled={failedCount === 0}>
-                       Close Failed ({failedCount})
+                      Close Failed ({failedCount})
                     </DropdownMenuItem>
-                    <DropdownMenuItem 
+                    <DropdownMenuItem
                       onClick={handleCloseAllTerminals}
                       className="text-[var(--color-status-error)] focus:text-[var(--color-status-error)]"
                     >
-                       Close All...
+                      Close All...
                     </DropdownMenuItem>
                   </>
                 )}
@@ -525,16 +528,16 @@ export function WorktreeCard({
         </div>
 
         {/* Summary Block */}
-        <div className="text-xs leading-relaxed break-words">
-            {renderAISummary()}
-        </div>
-        
+        <div className="text-xs leading-relaxed break-words">{renderAISummary()}</div>
+
         {/* Note (only if present) */}
         {effectiveNote && (
-          <div className={cn(
+          <div
+            className={cn(
               "text-xs text-gray-400 bg-black/20 p-1.5 rounded border-l-2 border-gray-700 font-mono",
               isActive ? "line-clamp-none" : "line-clamp-2"
-          )}>
+            )}
+          >
             {parsedNoteSegments.map((segment, index) =>
               segment.type === "link" ? (
                 <a
@@ -562,104 +565,107 @@ export function WorktreeCard({
 
         {/* DENSE METRICS ROW: Terminals | Changes | Errors (collapsed) */}
         <div className="flex items-center gap-4 mt-1 text-xs text-gray-400 font-mono">
-            
-            {/* Terminals */}
-            {terminalCounts.total > 0 && (
-                 <div className="flex items-center gap-1.5">
-                     <Terminal className="w-3 h-3" />
-                     <span>{terminalCounts.total}</span>
-                     {(terminalCounts.byState.working > 0 || terminalCounts.byState.waiting > 0) && (
-                        <span className="text-[var(--color-status-success)] text-[0.65rem] flex items-center">
-                            <div className="w-1 h-1 rounded-full bg-current mr-0.5 animate-pulse" />
-                        </span>
-                     )}
-                 </div>
-            )}
+          {/* Terminals */}
+          {terminalCounts.total > 0 && (
+            <div className="flex items-center gap-1.5">
+              <Terminal className="w-3 h-3" />
+              <span>{terminalCounts.total}</span>
+              {(terminalCounts.byState.working > 0 || terminalCounts.byState.waiting > 0) && (
+                <span className="text-[var(--color-status-success)] text-[0.65rem] flex items-center">
+                  <div className="w-1 h-1 rounded-full bg-current mr-0.5 animate-pulse" />
+                </span>
+              )}
+            </div>
+          )}
 
-            {/* Changes */}
-            {hasChanges && worktree.worktreeChanges && (
-                <div className="flex items-center gap-1.5">
-                    <GitCommitHorizontal className="w-3 h-3" />
-                    <div className="flex items-center gap-1">
-                         <span className="text-[var(--color-status-success)]">+{worktree.worktreeChanges.insertions ?? 0}</span>
-                         <span className="text-gray-600">/</span>
-                         <span className="text-[var(--color-status-error)]">-{worktree.worktreeChanges.deletions ?? 0}</span>
-                    </div>
-                </div>
-            )}
+          {/* Changes */}
+          {hasChanges && worktree.worktreeChanges && (
+            <div className="flex items-center gap-1.5">
+              <GitCommitHorizontal className="w-3 h-3" />
+              <div className="flex items-center gap-1">
+                <span className="text-[var(--color-status-success)]">
+                  +{worktree.worktreeChanges.insertions ?? 0}
+                </span>
+                <span className="text-gray-600">/</span>
+                <span className="text-[var(--color-status-error)]">
+                  -{worktree.worktreeChanges.deletions ?? 0}
+                </span>
+              </div>
+            </div>
+          )}
 
-            {/* Error Summary (only if NOT active - active shows banner) */}
-            {!isActive && worktreeErrors.length > 0 && (
-                <div className="flex items-center gap-1 text-[var(--color-status-error)]">
-                    <AlertCircle className="w-3 h-3" />
-                    <span>{worktreeErrors.length}</span>
-                </div>
-            )}
+          {/* Error Summary (only if NOT active - active shows banner) */}
+          {!isActive && worktreeErrors.length > 0 && (
+            <div className="flex items-center gap-1 text-[var(--color-status-error)]">
+              <AlertCircle className="w-3 h-3" />
+              <span>{worktreeErrors.length}</span>
+            </div>
+          )}
         </div>
 
         {/* ACTIVE STATE EXPANSIONS */}
-        
+
         {/* 1. File Changes List */}
         {isActive && hasChanges && worktree.worktreeChanges && (
-             <div className="mt-1">
-                <FileChangeList
-                    changes={worktree.worktreeChanges.changes}
-                    rootPath={worktree.worktreeChanges.rootPath}
-                    maxVisible={5}
-                />
-             </div>
+          <div className="mt-1">
+            <FileChangeList
+              changes={worktree.worktreeChanges.changes}
+              rootPath={worktree.worktreeChanges.rootPath}
+              maxVisible={5}
+            />
+          </div>
         )}
 
         {/* Dev Server Button (new placement) */}
         {hasDevScript && serverState && (
-            <div className="flex items-center gap-2 mt-1 text-xs text-gray-400 font-mono">
-                <Globe className="w-3 h-3" />
-                <div className="flex items-center gap-1">
-                    {getServerStatusIndicator()}
-                    <span className="truncate max-w-[120px]">{getServerLabel()}</span>
-                </div>
-                {/* Tiny Action Button for Dev Server */}
-                <button
-                    onClick={(e) => {
-                        e.stopPropagation();
-                        if (!serverLoading && serverState.status !== "starting") {
-                        onToggleServer();
-                        }
-                    }}
-                    disabled={serverLoading || serverState.status === "starting"}
-                    className={cn(
-                        "ml-1 p-0.5 rounded hover:bg-gray-700 transition-colors",
-                        serverLoading ? "opacity-50" : ""
-                    )}
-                    title={serverState.status === "running" ? "Stop Server" : "Start Server"}
-                >
-                    {serverState.status === "running" ? (
-                        <div className="w-1.5 h-1.5 bg-[var(--color-status-error)] rounded-sm" />
-                    ) : (
-                        <Play className="w-2 h-2 fill-current" />
-                    )}
-                </button>
+          <div className="flex items-center gap-2 mt-1 text-xs text-gray-400 font-mono">
+            <Globe className="w-3 h-3" />
+            <div className="flex items-center gap-1">
+              {getServerStatusIndicator()}
+              <span className="truncate max-w-[120px]">{getServerLabel()}</span>
             </div>
+            {/* Tiny Action Button for Dev Server */}
+            <button
+              onClick={(e) => {
+                e.stopPropagation();
+                if (!serverLoading && serverState.status !== "starting") {
+                  onToggleServer();
+                }
+              }}
+              disabled={serverLoading || serverState.status === "starting"}
+              className={cn(
+                "ml-1 p-0.5 rounded hover:bg-gray-700 transition-colors",
+                serverLoading ? "opacity-50" : ""
+              )}
+              title={serverState.status === "running" ? "Stop Server" : "Start Server"}
+            >
+              {serverState.status === "running" ? (
+                <div className="w-1.5 h-1.5 bg-[var(--color-status-error)] rounded-sm" />
+              ) : (
+                <Play className="w-2 h-2 fill-current" />
+              )}
+            </button>
+          </div>
         )}
 
         {/* 2. Detailed Errors */}
         {isActive && worktreeErrors.length > 0 && (
-            <div className="space-y-1 mt-2">
-                {worktreeErrors.slice(0, 3).map((error) => (
-                    <ErrorBanner
-                    key={error.id}
-                    error={error}
-                    onDismiss={dismissError}
-                    onRetry={handleErrorRetry}
-                    compact
-                    />
-                ))}
-                {worktreeErrors.length > 3 && (
-                    <div className="text-[0.65rem] text-gray-500 text-center">
-                    +{worktreeErrors.length - 3} more errors
-                    </div>
-                )}
-            </div>
+          <div className="space-y-1 mt-2">
+            {worktreeErrors.slice(0, 3).map((error) => (
+              <ErrorBanner
+                key={error.id}
+                error={error}
+                onDismiss={dismissError}
+                onRetry={handleErrorRetry}
+                compact
+              />
+            ))}
+            {worktreeErrors.length > 3 && (
+              <div className="text-[0.65rem] text-gray-500 text-center">
+                +{worktreeErrors.length - 3} more errors
+              </div>
+            )}
+          </div>
         )}
 
         {/* Confirmation dialog for bulk close all terminals */}

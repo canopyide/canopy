@@ -64,9 +64,7 @@ export function ProjectSwitcher() {
         backgroundColor: !getProjectGradient(color)
           ? "rgba(var(--canopy-accent-rgb), 0.05)"
           : undefined,
-        borderColor: !getProjectGradient(color)
-          ? "var(--canopy-border)"
-          : "rgba(255,255,255,0.1)", // Subtle inner highlight for gradients
+        borderColor: !getProjectGradient(color) ? "var(--canopy-border)" : "rgba(255,255,255,0.1)", // Subtle inner highlight for gradients
       }}
     >
       <span className="leading-none drop-shadow-sm filter">{emoji}</span>
@@ -113,7 +111,10 @@ export function ProjectSwitcher() {
 
               <DropdownMenuSeparator />
 
-              <DropdownMenuItem onClick={addProject} className="gap-3 p-2 cursor-pointer text-muted-foreground focus:text-foreground">
+              <DropdownMenuItem
+                onClick={addProject}
+                className="gap-3 p-2 cursor-pointer text-muted-foreground focus:text-foreground"
+              >
                 <div className="flex h-8 w-8 items-center justify-center rounded-lg border border-dashed border-muted-foreground/30 bg-muted/20">
                   <Plus className="h-4 w-4" />
                 </div>
@@ -153,11 +154,11 @@ export function ProjectSwitcher() {
           >
             <div className="flex items-center gap-3 text-left min-w-0">
               {renderIcon(
-                currentProject.emoji || "🌲", 
-                currentProject.color, 
+                currentProject.emoji || "🌲",
+                currentProject.color,
                 "h-9 w-9 text-xl shadow-md"
               )}
-              
+
               <div className="flex flex-col min-w-0 gap-0.5">
                 <span className="truncate font-semibold text-canopy-text text-sm leading-none">
                   {currentProject.name}
@@ -170,9 +171,13 @@ export function ProjectSwitcher() {
             <ChevronsUpDown className="ml-2 h-4 w-4 shrink-0 text-muted-foreground/40 group-hover:text-muted-foreground/70 transition-colors" />
           </Button>
         </DropdownMenuTrigger>
-        
+
         {/* Added max-h and overflow to prevent layout jumps if list is long */}
-        <DropdownMenuContent className="w-[260px] max-h-[60vh] overflow-y-auto p-1" align="start" sideOffset={8}>
+        <DropdownMenuContent
+          className="w-[260px] max-h-[60vh] overflow-y-auto p-1"
+          align="start"
+          sideOffset={8}
+        >
           <DropdownMenuLabel className="text-[10px] font-semibold text-muted-foreground/50 uppercase tracking-widest px-2 py-1.5">
             Switch Project
           </DropdownMenuLabel>
@@ -194,9 +199,14 @@ export function ProjectSwitcher() {
                 )}
               >
                 {renderIcon(project.emoji || "🌲", project.color, "h-8 w-8 text-base")}
-                
+
                 <div className="flex flex-col min-w-0 flex-1">
-                  <span className={cn("truncate text-sm font-medium", isActive ? "text-foreground" : "text-foreground/80")}>
+                  <span
+                    className={cn(
+                      "truncate text-sm font-medium",
+                      isActive ? "text-foreground" : "text-foreground/80"
+                    )}
+                  >
                     {project.name}
                   </span>
                   <span className="truncate text-[10px] text-muted-foreground/70">
@@ -228,8 +238,8 @@ export function ProjectSwitcher() {
 
           <DropdownMenuSeparator className="my-1 bg-border/40" />
 
-          <DropdownMenuItem 
-            onClick={addProject} 
+          <DropdownMenuItem
+            onClick={addProject}
             className="gap-3 p-2 cursor-pointer focus:bg-accent/30"
           >
             <div className="flex h-8 w-8 items-center justify-center rounded-lg border border-dashed border-muted-foreground/30 bg-muted/20 text-muted-foreground">

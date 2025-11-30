@@ -68,12 +68,57 @@ interface TerminalInfo {
   outputBuffer: string;
   /** Optional trace ID for tracking event chains (from context injection, etc.) */
   traceId?: string;
+
+  // Timing metadata for silence detection and AI analysis throttling
+  /** Timestamp of last user input (write() call) */
+  lastInputTime: number;
+  /** Timestamp of last PTY output (onData event) */
+  lastOutputTime: number;
+  /** Timestamp of last state check (AI/heuristic analysis) */
+  lastCheckTime: number;
+
+  /**
+   * Semantic buffer for AI analysis.
+   * Maintains last ~50 lines as array of strings for line-based context.
+   * Separate from outputBuffer (char-based) to cleanly separate pattern detection from AI analysis.
+   */
+  semanticBuffer: string[];
 }
 
 export interface PtyManagerEvents {
   data: (id: string, data: string) => void;
   exit: (id: string, exitCode: number) => void;
   error: (id: string, error: string) => void;
+}
+
+/**
+ * Snapshot of terminal state for external analysis (AI, heuristics).
+ * Allows services like AgentObserver to access terminal data without
+ * direct coupling to PtyManager internals.
+ */
+export interface TerminalSnapshot {
+  /** Terminal identifier */
+  id: string;
+  /** Last ~50 lines of output for AI analysis */
+  lines: string[];
+  /** Timestamp of last user input (write() call) */
+  lastInputTime: number;
+  /** Timestamp of last PTY output (onData event) */
+  lastOutputTime: number;
+  /** Timestamp of last state check (AI/heuristic analysis) */
+  lastCheckTime: number;
+  /** Terminal type */
+  type?: "shell" | "claude" | "gemini" | "custom";
+  /** Associated worktree ID */
+  worktreeId?: string;
+  /** Agent ID (for agent terminals) */
+  agentId?: string;
+  /** Current agent state */
+  agentState?: AgentState;
+  /** Timestamp when agentState last changed (for AI analysis/throttling) */
+  lastStateChange?: number;
+  /** Error message if agentState is 'failed' (for AI context) */
+  error?: string;
 }
 
 export class PtyManager extends EventEmitter {
@@ -149,6 +194,56 @@ export class PtyManager extends EventEmitter {
     }
   }
 
+  /** Maximum number of lines in the semantic buffer */
+  private static readonly SEMANTIC_BUFFER_MAX_LINES = 50;
+  /** Maximum length for a single line in the semantic buffer (to prevent memory bloat) */
+  private static readonly SEMANTIC_BUFFER_MAX_LINE_LENGTH = 1000;
+
+  /**
+   * Update the semantic buffer with new output data.
+   * Maintains a sliding window of the last ~50 lines for AI analysis.
+   * Handles CRLF normalization, carriage returns, empty lines, and line length limits.
+   * @param terminal - Terminal info to update
+   * @param chunk - Raw output chunk from PTY
+   * @private
+   */
+  private updateSemanticBuffer(terminal: TerminalInfo, chunk: string): void {
+    // Normalize CRLF to LF and handle carriage returns
+    // Carriage returns (\r) rewrite the current line, so we treat them as newlines
+    const normalized = chunk.replace(/\r\n/g, "\n").replace(/\r/g, "\n");
+
+    // Split chunk into lines, preserving partial lines
+    const lines = normalized.split("\n");
+
+    // If the buffer has content and the last line was incomplete,
+    // append the first part of new data to it
+    if (terminal.semanticBuffer.length > 0 && lines.length > 0 && !normalized.startsWith("\n")) {
+      terminal.semanticBuffer[terminal.semanticBuffer.length - 1] += lines[0];
+      lines.shift();
+    }
+
+    // Filter out empty strings from leading newlines and truncate long lines
+    const processedLines = lines
+      .filter((line) => line.length > 0 || terminal.semanticBuffer.length > 0) // Keep empty lines only if buffer has content
+      .map((line) => {
+        // Truncate very long lines to prevent memory bloat
+        if (line.length > PtyManager.SEMANTIC_BUFFER_MAX_LINE_LENGTH) {
+          return line.substring(0, PtyManager.SEMANTIC_BUFFER_MAX_LINE_LENGTH) + "... [truncated]";
+        }
+        return line;
+      });
+
+    // Add remaining lines to buffer
+    terminal.semanticBuffer.push(...processedLines);
+
+    // Trim to max lines
+    if (terminal.semanticBuffer.length > PtyManager.SEMANTIC_BUFFER_MAX_LINES) {
+      terminal.semanticBuffer = terminal.semanticBuffer.slice(
+        -PtyManager.SEMANTIC_BUFFER_MAX_LINES
+      );
+    }
+  }
+
   /**
    * Spawn a new PTY process
    * @param id - Unique identifier for this terminal
@@ -205,6 +300,9 @@ export class PtyManager extends EventEmitter {
         return;
       }
 
+      // Track output timing for silence detection
+      terminal.lastOutputTime = Date.now();
+
       this.emit("data", id, data);
 
       // For agent terminals, track state based on output
@@ -214,6 +312,9 @@ export class PtyManager extends EventEmitter {
         if (terminal.outputBuffer.length > OUTPUT_BUFFER_SIZE) {
           terminal.outputBuffer = terminal.outputBuffer.slice(-OUTPUT_BUFFER_SIZE);
         }
+
+        // Update semantic buffer for AI analysis (line-based)
+        this.updateSemanticBuffer(terminal, data);
 
         // Check for busy state patterns (e.g., "(esc to interrupt)")
         // Priority: busy > prompt > output (busy patterns override prompt detection)
@@ -318,6 +419,12 @@ export class PtyManager extends EventEmitter {
       agentState: isAgentTerminal ? "idle" : undefined,
       lastStateChange: isAgentTerminal ? spawnedAt : undefined,
       outputBuffer: "", // Initialize empty buffer for pattern detection
+      // Initialize timing metadata - all start at spawn time
+      lastInputTime: spawnedAt,
+      lastOutputTime: spawnedAt,
+      lastCheckTime: spawnedAt,
+      // Initialize empty semantic buffer for AI analysis
+      semanticBuffer: [],
     });
 
     // Emit agent:spawned event for agent terminals (Claude, Gemini)
@@ -354,6 +461,9 @@ export class PtyManager extends EventEmitter {
   write(id: string, data: string, traceId?: string): void {
     const terminal = this.terminals.get(id);
     if (terminal) {
+      // Track input timing for silence detection
+      terminal.lastInputTime = Date.now();
+
       // Store traceId if provided, or clear it if explicitly undefined
       // This ensures each traced operation gets a fresh ID and prevents cross-operation bleed
       if (traceId !== undefined) {
@@ -496,6 +606,56 @@ export class PtyManager extends EventEmitter {
    */
   hasTerminal(id: string): boolean {
     return this.terminals.has(id);
+  }
+
+  /**
+   * Get a snapshot of terminal state for external analysis (AI, heuristics).
+   * This allows services like AgentObserver to access terminal data without
+   * direct coupling to PtyManager internals.
+   * @param id - Terminal identifier
+   * @returns TerminalSnapshot or null if terminal not found
+   */
+  getTerminalSnapshot(id: string): TerminalSnapshot | null {
+    const terminal = this.terminals.get(id);
+    if (!terminal) return null;
+
+    return {
+      id: terminal.id,
+      lines: [...terminal.semanticBuffer], // Return copy to prevent mutation
+      lastInputTime: terminal.lastInputTime,
+      lastOutputTime: terminal.lastOutputTime,
+      lastCheckTime: terminal.lastCheckTime,
+      type: terminal.type,
+      worktreeId: terminal.worktreeId,
+      agentId: terminal.agentId,
+      agentState: terminal.agentState,
+      lastStateChange: terminal.lastStateChange,
+      error: terminal.error,
+    };
+  }
+
+  /**
+   * Get snapshots for all active terminals.
+   * Useful for bulk analysis (e.g., TerminalObserver polling).
+   * @returns Array of TerminalSnapshot for all active terminals
+   */
+  getAllTerminalSnapshots(): TerminalSnapshot[] {
+    return Array.from(this.terminals.keys())
+      .map((id) => this.getTerminalSnapshot(id))
+      .filter((snapshot): snapshot is TerminalSnapshot => snapshot !== null);
+  }
+
+  /**
+   * Mark a terminal's check time (for AI/heuristic analysis throttling).
+   * External services call this after running state detection to prevent
+   * redundant checks.
+   * @param id - Terminal identifier
+   */
+  markChecked(id: string): void {
+    const terminal = this.terminals.get(id);
+    if (terminal) {
+      terminal.lastCheckTime = Date.now();
+    }
   }
 
   /**

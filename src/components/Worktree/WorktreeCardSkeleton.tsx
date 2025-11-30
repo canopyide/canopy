@@ -24,16 +24,16 @@ export function WorktreeCardSkeleton() {
       {/* Line 1: Header (Status Icon + Branch + Actions) */}
       <div className="flex items-center justify-between gap-3 mb-2" aria-hidden="true">
         <div className="flex items-center gap-3 w-full">
-            {/* Status Icon */}
-            <div className="h-4 w-4 bg-muted/50 rounded-full shrink-0" />
-            {/* Branch Name */}
-            <div className="h-4 w-32 bg-muted/50 rounded" />
+          {/* Status Icon */}
+          <div className="h-4 w-4 bg-muted/50 rounded-full shrink-0" />
+          {/* Branch Name */}
+          <div className="h-4 w-32 bg-muted/50 rounded" />
         </div>
-         {/* Action buttons */}
+        {/* Action buttons */}
         <div className="flex gap-1 shrink-0">
-            <div className="h-4 w-4 bg-muted/30 rounded" />
-            <div className="h-4 w-4 bg-muted/30 rounded" />
-            <div className="h-4 w-4 bg-muted/30 rounded" />
+          <div className="h-4 w-4 bg-muted/30 rounded" />
+          <div className="h-4 w-4 bg-muted/30 rounded" />
+          <div className="h-4 w-4 bg-muted/30 rounded" />
         </div>
       </div>
 
@@ -44,7 +44,7 @@ export function WorktreeCardSkeleton() {
 
       {/* Line 3: Summary */}
       <div aria-hidden="true">
-         <div className="h-3 w-full bg-muted/20 rounded" />
+        <div className="h-3 w-full bg-muted/20 rounded" />
       </div>
     </div>
   );

@@ -157,11 +157,7 @@ export class WorktreeService {
       });
 
       // 3. Sync monitors
-      await this.sync(
-        worktrees,
-        this.activeWorktreeId,
-        this.mainBranch
-      );
+      await this.sync(worktrees, this.activeWorktreeId, this.mainBranch);
 
       // 4. Force an immediate refresh to populate statuses
       await this.refresh();
