@@ -7,6 +7,7 @@ import { registerErrorHandlers } from "./ipc/errorHandlers.js";
 import { PtyManager } from "./services/PtyManager.js";
 import { DevServerManager } from "./services/DevServerManager.js";
 import { worktreeService } from "./services/WorktreeService.js";
+import { CliAvailabilityService } from "./services/CliAvailabilityService.js";
 import { createWindowWithState } from "./windowState.js";
 import { store } from "./store.js";
 import { setLoggerWindow } from "./utils/logger.js";
@@ -32,6 +33,7 @@ process.on("unhandledRejection", (reason, promise) => {
 let mainWindow: BrowserWindow | null = null;
 let ptyManager: PtyManager | null = null;
 let devServerManager: DevServerManager | null = null;
+let cliAvailabilityService: CliAvailabilityService | null = null;
 let cleanupIpcHandlers: (() => void) | null = null;
 let cleanupErrorHandlers: (() => void) | null = null;
 let eventBuffer: EventBuffer | null = null;
@@ -189,6 +191,15 @@ async function createWindow(): Promise<void> {
   });
   console.log("[MAIN] DevServerManager initialized successfully");
 
+  // Create and initialize CliAvailabilityService
+  console.log("[MAIN] Initializing CliAvailabilityService...");
+  cliAvailabilityService = new CliAvailabilityService();
+  // Run initial CLI availability check at startup
+  cliAvailabilityService.checkAvailability().then((availability) => {
+    console.log("[MAIN] CLI availability checked:", availability);
+  });
+  console.log("[MAIN] CliAvailabilityService initialized successfully");
+
   // --- PROJECT STORE SETUP ---
   // Initialize ProjectStore
   console.log("[MAIN] Initializing ProjectStore...");
@@ -217,7 +228,8 @@ async function createWindow(): Promise<void> {
     ptyManager,
     devServerManager,
     worktreeService,
-    eventBuffer
+    eventBuffer,
+    cliAvailabilityService
   );
   console.log("[MAIN] IPC handlers registered successfully");
 

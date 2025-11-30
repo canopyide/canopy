@@ -163,6 +163,8 @@ const CHANNELS = {
   SYSTEM_OPEN_PATH: "system:open-path",
   SYSTEM_CHECK_COMMAND: "system:check-command",
   SYSTEM_GET_HOME_DIR: "system:get-home-dir",
+  SYSTEM_GET_CLI_AVAILABILITY: "system:get-cli-availability",
+  SYSTEM_REFRESH_CLI_AVAILABILITY: "system:refresh-cli-availability",
 
   // PR detection channels
   PR_DETECTED: "pr:detected",
@@ -482,6 +484,10 @@ const api: ElectronAPI = {
     checkCommand: (command: string) => ipcRenderer.invoke(CHANNELS.SYSTEM_CHECK_COMMAND, command),
 
     getHomeDir: () => ipcRenderer.invoke(CHANNELS.SYSTEM_GET_HOME_DIR),
+
+    getCliAvailability: () => ipcRenderer.invoke(CHANNELS.SYSTEM_GET_CLI_AVAILABILITY),
+
+    refreshCliAvailability: () => ipcRenderer.invoke(CHANNELS.SYSTEM_REFRESH_CLI_AVAILABILITY),
   },
 
   // ==========================================
