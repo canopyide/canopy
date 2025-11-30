@@ -120,6 +120,8 @@ export interface TerminalSnapshot {
   lastStateChange?: number;
   /** Error message if agentState is 'failed' (for AI context) */
   error?: string;
+  /** Session token to prevent stale observations from affecting new terminals with reused IDs */
+  spawnedAt: number;
 }
 
 export class PtyManager extends EventEmitter {
@@ -740,6 +742,7 @@ export class PtyManager extends EventEmitter {
       agentState: terminal.agentState,
       lastStateChange: terminal.lastStateChange,
       error: terminal.error,
+      spawnedAt: terminal.spawnedAt,
     };
   }
 
@@ -765,6 +768,44 @@ export class PtyManager extends EventEmitter {
     if (terminal) {
       terminal.lastCheckTime = Date.now();
     }
+  }
+
+  /**
+   * Transition agent state from an external observer.
+   * Used by TerminalObserver for heuristic/AI-based state detection.
+   *
+   * @param id - Terminal identifier
+   * @param event - Agent event that triggers the state transition
+   * @param trigger - Trigger type for this state change
+   * @param confidence - Confidence value for this detection
+   * @param spawnedAt - Session token to prevent stale observations (optional, will be validated if provided)
+   * @returns true if state was transitioned, false if rejected due to stale session
+   */
+  transitionState(
+    id: string,
+    event: AgentEvent,
+    trigger: AgentStateChangeTrigger,
+    confidence: number,
+    spawnedAt?: number
+  ): boolean {
+    const terminal = this.terminals.get(id);
+    if (!terminal) {
+      return false;
+    }
+
+    // Validate session token if provided to prevent stale observations
+    if (spawnedAt !== undefined && terminal.spawnedAt !== spawnedAt) {
+      if (process.env.CANOPY_VERBOSE) {
+        console.log(
+          `[PtyManager] Rejected stale state transition for ${id} ` +
+            `(session ${spawnedAt} vs current ${terminal.spawnedAt})`
+        );
+      }
+      return false;
+    }
+
+    this.updateAgentState(id, event, trigger, confidence);
+    return true;
   }
 
   /**

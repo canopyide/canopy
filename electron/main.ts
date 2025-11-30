@@ -6,6 +6,7 @@ import { registerIpcHandlers, sendToRenderer } from "./ipc/handlers.js";
 import { registerErrorHandlers } from "./ipc/errorHandlers.js";
 import { PtyManager } from "./services/PtyManager.js";
 import { DevServerManager } from "./services/DevServerManager.js";
+import { TerminalObserver } from "./services/TerminalObserver.js";
 import { worktreeService } from "./services/WorktreeService.js";
 import { CliAvailabilityService } from "./services/CliAvailabilityService.js";
 import { createWindowWithState } from "./windowState.js";
@@ -34,6 +35,7 @@ let mainWindow: BrowserWindow | null = null;
 let ptyManager: PtyManager | null = null;
 let devServerManager: DevServerManager | null = null;
 let cliAvailabilityService: CliAvailabilityService | null = null;
+let terminalObserver: TerminalObserver | null = null;
 let cleanupIpcHandlers: (() => void) | null = null;
 let cleanupErrorHandlers: (() => void) | null = null;
 let eventBuffer: EventBuffer | null = null;
@@ -109,6 +111,12 @@ if (!gotTheLock) {
       devServerManager ? devServerManager.stopAll() : Promise.resolve(),
       disposeTranscriptManager(),
       new Promise<void>((resolve) => {
+        // Stop TerminalObserver first
+        if (terminalObserver) {
+          terminalObserver.dispose();
+          terminalObserver = null;
+        }
+        // Then dispose PtyManager
         if (ptyManager) {
           ptyManager.dispose();
           ptyManager = null;
@@ -177,6 +185,23 @@ async function createWindow(): Promise<void> {
     console.log("[MAIN] PtyManager initialized successfully");
   } catch (error) {
     console.error("[MAIN] Failed to initialize PtyManager:", error);
+    throw error;
+  }
+
+  // --- TERMINAL OBSERVER SETUP ---
+  // Create and start TerminalObserver for intelligent agent state detection
+  console.log("[MAIN] Initializing TerminalObserver...");
+  try {
+    terminalObserver = new TerminalObserver(ptyManager);
+    terminalObserver.start();
+    console.log("[MAIN] TerminalObserver initialized and started");
+  } catch (error) {
+    console.error("[MAIN] Failed to initialize TerminalObserver:", error);
+    // Cleanup PtyManager before failing
+    if (ptyManager) {
+      ptyManager.dispose();
+      ptyManager = null;
+    }
     throw error;
   }
 
@@ -339,6 +364,11 @@ async function createWindow(): Promise<void> {
     }
     // Cleanup transcript manager
     await disposeTranscriptManager();
+    // Cleanup TerminalObserver first
+    if (terminalObserver) {
+      terminalObserver.dispose();
+      terminalObserver = null;
+    }
     // Then cleanup PTY manager (kills all terminals)
     if (ptyManager) {
       ptyManager.dispose();
