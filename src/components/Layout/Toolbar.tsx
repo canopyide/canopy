@@ -1,27 +1,11 @@
 import { Button } from "@/components/ui/button";
-import {
-  DropdownMenu,
-  DropdownMenuContent,
-  DropdownMenuItem,
-  DropdownMenuSeparator,
-  DropdownMenuShortcut,
-  DropdownMenuTrigger,
-} from "@/components/ui/dropdown-menu";
-import {
-  RefreshCw,
-  Settings,
-  Terminal,
-  Plus,
-  Command,
-  AlertCircle,
-  Maximize2,
-  Minimize2,
-} from "lucide-react";
+import { RefreshCw, Settings, Terminal, AlertCircle, Maximize2, Minimize2 } from "lucide-react";
 import { ClaudeIcon, GeminiIcon, CodexIcon } from "@/components/icons";
 import { cn } from "@/lib/utils";
 import { getProjectGradient } from "@/lib/colorUtils";
 import { BulkActionsMenu } from "@/components/Terminal";
 import { useProjectStore } from "@/store/projectStore";
+import { useTerminalStore } from "@/store/terminalStore";
 
 interface ToolbarProps {
   onLaunchAgent: (type: "claude" | "gemini" | "codex" | "shell") => void;
@@ -50,6 +34,10 @@ export function Toolbar({
   isRefreshing = false,
 }: ToolbarProps) {
   const currentProject = useProjectStore((state) => state.currentProject);
+  const terminals = useTerminalStore((state) => state.terminals);
+
+  // Show BulkActionsMenu when there are any terminals (actionable or not)
+  const showBulkActions = terminals.length > 0;
 
   return (
     <header className="relative h-12 flex items-center px-4 shrink-0 app-drag-region bg-canopy-sidebar border-b border-canopy-border shadow-sm">
@@ -64,94 +52,52 @@ export function Toolbar({
       <div className="w-20 shrink-0" />
 
       {/* 3. LEFT ACTIONS:
-        Wrapped in app-no-drag so they remain clickable
+        Wrapped in app-no-drag so they remain clickable.
+        Agent launchers are icon-only for clean appearance.
       */}
-      <div className="flex gap-2 app-no-drag">
+      <div className="flex items-center gap-1 app-no-drag">
         <Button
           variant="ghost"
-          size="sm"
+          size="icon"
           onClick={() => onLaunchAgent("claude")}
-          className="text-canopy-text hover:bg-canopy-border hover:text-canopy-accent"
-          title="Launch Claude (Ctrl+Shift+C)"
-          aria-label="Launch Claude"
+          className="text-canopy-text hover:bg-canopy-border hover:text-canopy-accent h-8 w-8"
+          title="Launch Claude Agent (Ctrl+Shift+C)"
+          aria-label="Launch Claude Agent"
         >
           <ClaudeIcon className="h-4 w-4" />
-          <span className="hidden lg:inline">Claude</span>
         </Button>
         <Button
           variant="ghost"
-          size="sm"
+          size="icon"
           onClick={() => onLaunchAgent("gemini")}
-          className="text-canopy-text hover:bg-canopy-border hover:text-canopy-accent"
-          title="Launch Gemini (Ctrl+Shift+G)"
-          aria-label="Launch Gemini"
+          className="text-canopy-text hover:bg-canopy-border hover:text-canopy-accent h-8 w-8"
+          title="Launch Gemini Agent (Ctrl+Shift+G)"
+          aria-label="Launch Gemini Agent"
         >
           <GeminiIcon className="h-4 w-4" />
-          <span className="hidden lg:inline">Gemini</span>
         </Button>
         <Button
           variant="ghost"
-          size="sm"
+          size="icon"
           onClick={() => onLaunchAgent("codex")}
-          className="text-canopy-text hover:bg-canopy-border hover:text-canopy-accent"
-          title="Launch Codex (Ctrl+Shift+X)"
-          aria-label="Launch Codex"
+          className="text-canopy-text hover:bg-canopy-border hover:text-canopy-accent h-8 w-8"
+          title="Launch Codex Agent"
+          aria-label="Launch Codex Agent"
         >
           <CodexIcon className="h-4 w-4" />
-          <span className="hidden lg:inline">Codex</span>
         </Button>
         <Button
           variant="ghost"
-          size="sm"
+          size="icon"
           onClick={() => onLaunchAgent("shell")}
-          className="text-canopy-text hover:bg-canopy-border hover:text-canopy-accent"
-          title="Launch Shell (Ctrl+T)"
-          aria-label="Launch Shell"
+          className="text-canopy-text hover:bg-canopy-border hover:text-canopy-accent h-8 w-8"
+          title="Open Shell Terminal"
+          aria-label="Open Shell Terminal"
         >
           <Terminal className="h-4 w-4" />
-          <span className="hidden lg:inline">Shell</span>
         </Button>
-        <DropdownMenu>
-          <DropdownMenuTrigger asChild>
-            <Button
-              variant="ghost"
-              size="icon"
-              className="text-canopy-text hover:bg-canopy-border hover:text-canopy-accent h-8 w-8"
-              aria-label="Add new terminal"
-            >
-              <Plus className="h-4 w-4" />
-            </Button>
-          </DropdownMenuTrigger>
-          <DropdownMenuContent align="start">
-            <DropdownMenuItem onClick={() => onLaunchAgent("claude")}>
-              <ClaudeIcon className="mr-2 h-4 w-4" />
-              <span>Claude</span>
-              <DropdownMenuShortcut>Ctrl+Shift+C</DropdownMenuShortcut>
-            </DropdownMenuItem>
-            <DropdownMenuItem onClick={() => onLaunchAgent("gemini")}>
-              <GeminiIcon className="mr-2 h-4 w-4" />
-              <span>Gemini</span>
-              <DropdownMenuShortcut>Ctrl+Shift+G</DropdownMenuShortcut>
-            </DropdownMenuItem>
-            <DropdownMenuItem onClick={() => onLaunchAgent("codex")}>
-              <CodexIcon className="mr-2 h-4 w-4" />
-              <span>Codex</span>
-              <DropdownMenuShortcut>Ctrl+Shift+X</DropdownMenuShortcut>
-            </DropdownMenuItem>
-            <DropdownMenuItem onClick={() => onLaunchAgent("shell")}>
-              <Terminal className="mr-2 h-4 w-4" />
-              <span>Shell</span>
-              <DropdownMenuShortcut>Ctrl+T</DropdownMenuShortcut>
-            </DropdownMenuItem>
-            <DropdownMenuSeparator />
-            <DropdownMenuItem disabled>
-              <Command className="mr-2 h-4 w-4" />
-              <span>Custom Command...</span>
-              <DropdownMenuShortcut>Ctrl+Shift+N</DropdownMenuShortcut>
-            </DropdownMenuItem>
-          </DropdownMenuContent>
-        </DropdownMenu>
-        <BulkActionsMenu />
+        {/* BulkActionsMenu only visible when there are terminals to act on */}
+        {showBulkActions && <BulkActionsMenu />}
       </div>
 
       {/* 4. CENTER TITLE (The "Grip" Area):
@@ -181,65 +127,82 @@ export function Toolbar({
       </div>
 
       {/* 5. RIGHT ACTIONS:
-        Wrapped in app-no-drag so they remain clickable
+        Wrapped in app-no-drag so they remain clickable.
+        Grouped by purpose: View/Health cluster | Settings/Actions cluster
       */}
-      <div className="flex gap-2 app-no-drag">
-        {/* Focus mode toggle */}
-        <Button
-          variant="ghost"
-          size="icon"
-          onClick={onToggleFocusMode}
-          className={cn(
-            "text-canopy-text hover:bg-canopy-border hover:text-canopy-accent h-8 w-8",
-            isFocusMode && "bg-canopy-accent/20 text-canopy-accent"
-          )}
-          title={isFocusMode ? "Exit Focus Mode (Cmd+K Z)" : "Enter Focus Mode (Cmd+K Z)"}
-          aria-label={isFocusMode ? "Exit focus mode" : "Enter focus mode"}
-          aria-pressed={isFocusMode}
-        >
-          {isFocusMode ? (
-            <Minimize2 className="h-4 w-4" aria-hidden="true" />
-          ) : (
-            <Maximize2 className="h-4 w-4" aria-hidden="true" />
-          )}
-        </Button>
-        {/* Problems button with error count badge */}
-        <Button
-          variant="ghost"
-          size="sm"
-          onClick={onToggleProblems}
-          className={cn(
-            "text-canopy-text hover:bg-canopy-border hover:text-canopy-accent relative",
-            errorCount > 0 && "text-[var(--color-status-error)]"
-          )}
-          title="Problems (Ctrl+Shift+P)"
-          aria-label={`Problems: ${errorCount} error${errorCount !== 1 ? "s" : ""}`}
-        >
-          <AlertCircle className="h-4 w-4" />
-          {errorCount > 0 && <span className="ml-1 text-xs">{errorCount}</span>}
-        </Button>
-        <Button
-          variant="ghost"
-          size="icon"
-          onClick={onSettings}
-          className="text-canopy-text hover:bg-canopy-border hover:text-canopy-accent h-8 w-8"
-          aria-label="Open settings"
-        >
-          <Settings className="h-4 w-4" />
-        </Button>
-        <Button
-          variant="ghost"
-          size="icon"
-          onClick={onRefresh}
-          disabled={isRefreshing}
-          className={cn(
-            "text-canopy-text hover:bg-canopy-border hover:text-canopy-accent h-8 w-8",
-            isRefreshing && "cursor-not-allowed opacity-50"
-          )}
-          aria-label="Refresh worktrees"
-        >
-          <RefreshCw className={cn("h-4 w-4", isRefreshing && "animate-spin")} />
-        </Button>
+      <div className="flex items-center gap-1 app-no-drag">
+        {/* View & Health cluster */}
+        <div className="flex items-center gap-1">
+          {/* Focus mode toggle */}
+          <Button
+            variant="ghost"
+            size="icon"
+            onClick={onToggleFocusMode}
+            className={cn(
+              "text-canopy-text hover:bg-canopy-border hover:text-canopy-accent h-8 w-8",
+              isFocusMode && "bg-canopy-accent/20 text-canopy-accent"
+            )}
+            title={
+              isFocusMode ? "Exit Focus Mode (Cmd/Ctrl+K, Z)" : "Toggle Focus Mode (Cmd/Ctrl+K, Z)"
+            }
+            aria-label={isFocusMode ? "Exit focus mode" : "Enter focus mode"}
+            aria-pressed={isFocusMode}
+          >
+            {isFocusMode ? (
+              <Minimize2 className="h-4 w-4" aria-hidden="true" />
+            ) : (
+              <Maximize2 className="h-4 w-4" aria-hidden="true" />
+            )}
+          </Button>
+          {/* Problems button with error count indicator */}
+          <Button
+            variant="ghost"
+            size="icon"
+            onClick={onToggleProblems}
+            className={cn(
+              "text-canopy-text hover:bg-canopy-border hover:text-canopy-accent h-8 w-8 relative",
+              errorCount > 0 && "text-[var(--color-status-error)]"
+            )}
+            title="Show Problems Panel (Ctrl+Shift+M)"
+            aria-label={`Problems: ${errorCount} error${errorCount !== 1 ? "s" : ""}`}
+          >
+            <AlertCircle className="h-4 w-4" />
+            {errorCount > 0 && (
+              <span className="absolute top-1 right-1 w-2 h-2 bg-[var(--color-status-error)] rounded-full" />
+            )}
+          </Button>
+        </div>
+
+        {/* Visual divider */}
+        <div className="w-px h-6 bg-canopy-border" />
+
+        {/* Settings & Actions cluster */}
+        <div className="flex items-center gap-1">
+          <Button
+            variant="ghost"
+            size="icon"
+            onClick={onSettings}
+            className="text-canopy-text hover:bg-canopy-border hover:text-canopy-accent h-8 w-8"
+            title="Open Settings"
+            aria-label="Open settings"
+          >
+            <Settings className="h-4 w-4" />
+          </Button>
+          <Button
+            variant="ghost"
+            size="icon"
+            onClick={onRefresh}
+            disabled={isRefreshing}
+            className={cn(
+              "text-canopy-text hover:bg-canopy-border hover:text-canopy-accent h-8 w-8",
+              isRefreshing && "cursor-not-allowed opacity-50"
+            )}
+            title="Refresh Worktrees"
+            aria-label="Refresh worktrees"
+          >
+            <RefreshCw className={cn("h-4 w-4", isRefreshing && "animate-spin")} />
+          </Button>
+        </div>
       </div>
     </header>
   );
