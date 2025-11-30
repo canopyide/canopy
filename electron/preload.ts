@@ -49,10 +49,61 @@ import type {
   CreateWorktreeOptions,
   EventContext,
   RunMetadata,
+  IpcInvokeMap,
+  IpcEventMap,
 } from "@shared/types";
 
 // Re-export ElectronAPI for type declarations
 export type { ElectronAPI };
+
+// ============================================================================
+// Type-safe IPC helpers
+// ============================================================================
+
+/**
+ * Type-safe wrapper for ipcRenderer.invoke
+ *
+ * Provides compile-time type checking for IPC channel arguments and return types.
+ * Use this helper to ensure type safety when calling main process handlers.
+ *
+ * @example
+ * // TypeScript will ensure correct arguments and return type
+ * const worktrees = await typedInvoke("worktree:get-all");
+ * const state = await typedInvoke("devserver:get-state", worktreeId);
+ */
+function _typedInvoke<K extends keyof IpcInvokeMap>(
+  channel: K,
+  ...args: IpcInvokeMap[K]["args"]
+): Promise<IpcInvokeMap[K]["result"]> {
+  return ipcRenderer.invoke(channel, ...args);
+}
+
+/**
+ * Type-safe wrapper for ipcRenderer.on with automatic cleanup
+ *
+ * Provides compile-time type checking for event payloads.
+ * Returns a cleanup function to remove the listener.
+ *
+ * @example
+ * const cleanup = typedOn("worktree:update", (state) => {
+ *   // state is typed as WorktreeState
+ *   console.log(state.path);
+ * });
+ * // Later: cleanup();
+ */
+function _typedOn<K extends keyof IpcEventMap>(
+  channel: K,
+  callback: (payload: IpcEventMap[K]) => void
+): () => void {
+  const handler = (_event: Electron.IpcRendererEvent, payload: IpcEventMap[K]) => callback(payload);
+  ipcRenderer.on(channel, handler);
+  return () => ipcRenderer.removeListener(channel, handler);
+}
+
+// Expose typed helpers for future use (prefixed with underscore to avoid unused warnings)
+// These can be used to gradually migrate existing code or in new implementations
+void _typedInvoke;
+void _typedOn;
 
 // Inlined channel constants (must match electron/ipc/channels.ts)
 // These are kept inline to avoid runtime module resolution issues with CommonJS

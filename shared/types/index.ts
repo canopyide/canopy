@@ -128,6 +128,12 @@ export type {
   CreateWorktreeOptions,
   // Adaptive backoff
   AdaptiveBackoffMetrics,
+  // IPC Contract Maps
+  IpcInvokeMap,
+  IpcEventMap,
+  IpcInvokeArgs,
+  IpcInvokeResult,
+  IpcEventPayload,
 } from "./ipc.js";
 
 // Config types - application configuration

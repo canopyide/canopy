@@ -65,7 +65,62 @@ import type {
   HistoryGetSessionPayload,
   HistoryExportSessionPayload,
   AgentSession,
+  IpcInvokeMap,
+  IpcEventMap,
 } from "../types/index.js";
+
+// ============================================================================
+// Type-safe IPC handler helpers
+// ============================================================================
+
+/**
+ * Type-safe wrapper for ipcMain.handle
+ *
+ * Provides compile-time type checking for IPC handler arguments and return types.
+ * Use this helper to ensure type safety when registering main process handlers.
+ *
+ * @example
+ * // TypeScript will ensure the handler signature matches the contract
+ * typedHandle("worktree:get-all", async () => worktreeService.getAllStates());
+ * typedHandle("devserver:get-state", async (worktreeId) => devServerManager.getState(worktreeId));
+ *
+ * @returns Cleanup function to remove the handler
+ */
+function _typedHandle<K extends keyof IpcInvokeMap>(
+  channel: K,
+  handler: (
+    ...args: IpcInvokeMap[K]["args"]
+  ) => Promise<IpcInvokeMap[K]["result"]> | IpcInvokeMap[K]["result"]
+): () => void {
+  ipcMain.handle(channel, async (_event, ...args) => {
+    return handler(...(args as IpcInvokeMap[K]["args"]));
+  });
+  return () => ipcMain.removeHandler(channel);
+}
+
+/**
+ * Type-safe wrapper for webContents.send
+ *
+ * Provides compile-time type checking for event payloads sent to renderer.
+ *
+ * @example
+ * // TypeScript will ensure the payload type matches the contract
+ * typedSend(mainWindow, "worktree:update", worktreeState);
+ * typedSend(mainWindow, "devserver:error", { worktreeId, error: message });
+ */
+function _typedSend<K extends keyof IpcEventMap>(
+  window: BrowserWindow,
+  channel: K,
+  payload: IpcEventMap[K]
+): void {
+  if (window && !window.isDestroyed()) {
+    window.webContents.send(channel, payload);
+  }
+}
+
+// Export the typed helpers for use in future handler implementations
+// The underscore prefix indicates these are available but intentionally not used in existing code
+export { _typedHandle as typedHandle, _typedSend as typedSend };
 
 /**
  * Initialize all IPC handlers

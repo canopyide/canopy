@@ -3,6 +3,10 @@
  *
  * These types define payloads and options for IPC communication between
  * the main process and renderer process.
+ *
+ * The IpcInvokeMap and IpcEventMap interfaces provide compile-time type safety
+ * for IPC channels, ensuring that handler signatures, preload wrappers, and
+ * renderer usage all agree on channel signatures.
  */
 
 import type {
@@ -681,6 +685,529 @@ export interface AdaptiveBackoffMetrics {
   circuitBreakerTripped: boolean;
   currentInterval: number;
 }
+
+// ============================================================================
+// IPC Contract Maps - Type-safe channel definitions
+// ============================================================================
+
+/**
+ * IPC Invoke Contract Map
+ *
+ * Maps channel names to their argument and return types for invoke/handle patterns.
+ * Used to type-check ipcRenderer.invoke calls and ipcMain.handle handlers.
+ *
+ * Usage in preload:
+ * ```typescript
+ * function typedInvoke<K extends keyof IpcInvokeMap>(
+ *   channel: K,
+ *   ...args: IpcInvokeMap[K]["args"]
+ * ): Promise<IpcInvokeMap[K]["result"]> {
+ *   return ipcRenderer.invoke(channel, ...args);
+ * }
+ * ```
+ *
+ * Usage in handlers:
+ * ```typescript
+ * function handle<K extends keyof IpcInvokeMap>(
+ *   channel: K,
+ *   handler: (...args: IpcInvokeMap[K]["args"]) => Promise<IpcInvokeMap[K]["result"]> | IpcInvokeMap[K]["result"]
+ * ) {
+ *   ipcMain.handle(channel, async (_event, ...args) => handler(...args as IpcInvokeMap[K]["args"]));
+ * }
+ * ```
+ */
+export interface IpcInvokeMap {
+  // ============================================
+  // Worktree channels
+  // ============================================
+  "worktree:get-all": {
+    args: [];
+    result: WorktreeState[];
+  };
+  "worktree:refresh": {
+    args: [];
+    result: void;
+  };
+  "worktree:pr-refresh": {
+    args: [];
+    result: void;
+  };
+  "worktree:set-active": {
+    args: [payload: WorktreeSetActivePayload];
+    result: void;
+  };
+  "worktree:create": {
+    args: [payload: { rootPath: string; options: CreateWorktreeOptions }];
+    result: void;
+  };
+  "worktree:list-branches": {
+    args: [payload: { rootPath: string }];
+    result: BranchInfo[];
+  };
+  "worktree:set-adaptive-backoff-config": {
+    args: [payload: { enabled: boolean; maxInterval?: number; threshold?: number }];
+    result: void;
+  };
+  "worktree:is-circuit-breaker-tripped": {
+    args: [worktreeId: string];
+    result: boolean;
+  };
+  "worktree:get-adaptive-backoff-metrics": {
+    args: [worktreeId: string];
+    result: AdaptiveBackoffMetrics | null;
+  };
+
+  // ============================================
+  // Dev server channels
+  // ============================================
+  "devserver:start": {
+    args: [payload: DevServerStartPayload];
+    result: DevServerState;
+  };
+  "devserver:stop": {
+    args: [payload: DevServerStopPayload];
+    result: DevServerState;
+  };
+  "devserver:toggle": {
+    args: [payload: DevServerTogglePayload];
+    result: DevServerState;
+  };
+  "devserver:get-state": {
+    args: [worktreeId: string];
+    result: DevServerState;
+  };
+  "devserver:get-logs": {
+    args: [worktreeId: string];
+    result: string[];
+  };
+  "devserver:has-dev-script": {
+    args: [worktreePath: string];
+    result: boolean;
+  };
+
+  // ============================================
+  // Terminal channels
+  // ============================================
+  "terminal:spawn": {
+    args: [options: TerminalSpawnOptions];
+    result: string;
+  };
+  "terminal:kill": {
+    args: [id: string];
+    result: void;
+  };
+
+  // ============================================
+  // Agent channels
+  // ============================================
+  "agent:get-state": {
+    args: [agentId: string];
+    result: string | null;
+  };
+
+  // ============================================
+  // Artifact channels
+  // ============================================
+  "artifact:save-to-file": {
+    args: [options: SaveArtifactOptions];
+    result: SaveArtifactResult | null;
+  };
+  "artifact:apply-patch": {
+    args: [options: ApplyPatchOptions];
+    result: ApplyPatchResult;
+  };
+
+  // ============================================
+  // CopyTree channels
+  // ============================================
+  "copytree:generate": {
+    args: [payload: CopyTreeGeneratePayload];
+    result: CopyTreeResult;
+  };
+  "copytree:generate-and-copy-file": {
+    args: [payload: CopyTreeGenerateAndCopyFilePayload];
+    result: CopyTreeResult;
+  };
+  "copytree:inject": {
+    args: [payload: CopyTreeInjectPayload];
+    result: CopyTreeResult;
+  };
+  "copytree:available": {
+    args: [];
+    result: boolean;
+  };
+  "copytree:cancel": {
+    args: [];
+    result: void;
+  };
+  "copytree:get-file-tree": {
+    args: [payload: CopyTreeGetFileTreePayload];
+    result: FileTreeNode[];
+  };
+
+  // ============================================
+  // System channels
+  // ============================================
+  "system:open-external": {
+    args: [payload: SystemOpenExternalPayload];
+    result: void;
+  };
+  "system:open-path": {
+    args: [payload: SystemOpenPathPayload];
+    result: void;
+  };
+  "system:check-command": {
+    args: [command: string];
+    result: boolean;
+  };
+  "system:get-home-dir": {
+    args: [];
+    result: string;
+  };
+
+  // ============================================
+  // App state channels
+  // ============================================
+  "app:get-state": {
+    args: [];
+    result: AppState;
+  };
+  "app:set-state": {
+    args: [partialState: Partial<AppState>];
+    result: void;
+  };
+  "app:get-version": {
+    args: [];
+    result: string;
+  };
+
+  // ============================================
+  // Directory channels
+  // ============================================
+  "directory:get-recents": {
+    args: [];
+    result: RecentDirectory[];
+  };
+  "directory:open": {
+    args: [payload: DirectoryOpenPayload];
+    result: void;
+  };
+  "directory:open-dialog": {
+    args: [];
+    result: string | null;
+  };
+  "directory:remove-recent": {
+    args: [payload: DirectoryRemoveRecentPayload];
+    result: void;
+  };
+
+  // ============================================
+  // Logs channels
+  // ============================================
+  "logs:get-all": {
+    args: [filters?: LogFilterOptions];
+    result: LogEntry[];
+  };
+  "logs:get-sources": {
+    args: [];
+    result: string[];
+  };
+  "logs:clear": {
+    args: [];
+    result: void;
+  };
+  "logs:open-file": {
+    args: [];
+    result: void;
+  };
+
+  // ============================================
+  // Error channels
+  // ============================================
+  "error:retry": {
+    args: [payload: { errorId: string; action: RetryAction; args?: Record<string, unknown> }];
+    result: void;
+  };
+  "error:open-logs": {
+    args: [];
+    result: void;
+  };
+
+  // ============================================
+  // Event inspector channels
+  // ============================================
+  "event-inspector:get-events": {
+    args: [];
+    result: EventRecord[];
+  };
+  "event-inspector:get-filtered": {
+    args: [filters: EventFilterOptions];
+    result: EventRecord[];
+  };
+  "event-inspector:clear": {
+    args: [];
+    result: void;
+  };
+
+  // ============================================
+  // Project channels
+  // ============================================
+  "project:get-all": {
+    args: [];
+    result: Project[];
+  };
+  "project:get-current": {
+    args: [];
+    result: Project | null;
+  };
+  "project:add": {
+    args: [path: string];
+    result: Project;
+  };
+  "project:remove": {
+    args: [projectId: string];
+    result: void;
+  };
+  "project:update": {
+    args: [projectId: string, updates: Partial<Project>];
+    result: Project;
+  };
+  "project:switch": {
+    args: [projectId: string];
+    result: Project;
+  };
+  "project:open-dialog": {
+    args: [];
+    result: string | null;
+  };
+  "project:get-settings": {
+    args: [projectId: string];
+    result: ProjectSettings;
+  };
+  "project:save-settings": {
+    args: [payload: { projectId: string; settings: ProjectSettings }];
+    result: void;
+  };
+  "project:detect-runners": {
+    args: [projectId: string];
+    result: RunCommand[];
+  };
+  "project:regenerate-identity": {
+    args: [projectId: string];
+    result: Project;
+  };
+
+  // ============================================
+  // History channels
+  // ============================================
+  "history:get-sessions": {
+    args: [filters?: HistoryGetSessionsPayload];
+    result: AgentSession[];
+  };
+  "history:get-session": {
+    args: [payload: HistoryGetSessionPayload];
+    result: AgentSession | null;
+  };
+  "history:export-session": {
+    args: [payload: HistoryExportSessionPayload];
+    result: string | null;
+  };
+  "history:delete-session": {
+    args: [sessionId: string];
+    result: void;
+  };
+
+  // ============================================
+  // AI channels
+  // ============================================
+  "ai:get-config": {
+    args: [];
+    result: AIServiceState;
+  };
+  "ai:set-key": {
+    args: [apiKey: string];
+    result: boolean;
+  };
+  "ai:clear-key": {
+    args: [];
+    result: void;
+  };
+  "ai:set-model": {
+    args: [model: string];
+    result: void;
+  };
+  "ai:set-enabled": {
+    args: [enabled: boolean];
+    result: void;
+  };
+  "ai:validate-key": {
+    args: [apiKey: string];
+    result: boolean;
+  };
+  "ai:generate-project-identity": {
+    args: [projectPath: string];
+    result: ProjectIdentity | null;
+  };
+
+  // ============================================
+  // Run orchestration channels
+  // ============================================
+  "run:start": {
+    args: [payload: { name: string; context?: EventContext; description?: string }];
+    result: string;
+  };
+  "run:update-progress": {
+    args: [payload: { runId: string; progress: number; message?: string }];
+    result: void;
+  };
+  "run:pause": {
+    args: [payload: { runId: string; reason?: string }];
+    result: void;
+  };
+  "run:resume": {
+    args: [runId: string];
+    result: void;
+  };
+  "run:complete": {
+    args: [runId: string];
+    result: void;
+  };
+  "run:fail": {
+    args: [payload: { runId: string; error: string }];
+    result: void;
+  };
+  "run:cancel": {
+    args: [payload: { runId: string; reason?: string }];
+    result: void;
+  };
+  "run:get": {
+    args: [runId: string];
+    result: RunMetadata | undefined;
+  };
+  "run:get-all": {
+    args: [];
+    result: RunMetadata[];
+  };
+  "run:get-active": {
+    args: [];
+    result: RunMetadata[];
+  };
+  "run:clear-finished": {
+    args: [olderThan?: number];
+    result: number;
+  };
+}
+
+/**
+ * IPC Event Contract Map
+ *
+ * Maps event channel names to their payload types for send/on patterns.
+ * Used to type-check ipcRenderer.on callbacks and webContents.send payloads.
+ *
+ * Usage in preload (subscribing):
+ * ```typescript
+ * function typedOn<K extends keyof IpcEventMap>(
+ *   channel: K,
+ *   callback: (payload: IpcEventMap[K]) => void
+ * ): () => void {
+ *   const handler = (_event: IpcRendererEvent, payload: IpcEventMap[K]) => callback(payload);
+ *   ipcRenderer.on(channel, handler);
+ *   return () => ipcRenderer.removeListener(channel, handler);
+ * }
+ * ```
+ *
+ * Usage in main (sending):
+ * ```typescript
+ * function typedSend<K extends keyof IpcEventMap>(
+ *   window: BrowserWindow,
+ *   channel: K,
+ *   payload: IpcEventMap[K]
+ * ): void {
+ *   window.webContents.send(channel, payload);
+ * }
+ * ```
+ */
+export interface IpcEventMap {
+  // ============================================
+  // Worktree events
+  // ============================================
+  "worktree:update": WorktreeState;
+  "worktree:remove": { worktreeId: string };
+
+  // ============================================
+  // Dev server events
+  // ============================================
+  "devserver:update": DevServerState;
+  "devserver:error": DevServerErrorPayload;
+
+  // ============================================
+  // Terminal events (these have multiple arguments, represented as tuples)
+  // ============================================
+  "terminal:data": [id: string, data: string];
+  "terminal:exit": [id: string, exitCode: number];
+  "terminal:error": [id: string, error: string];
+
+  // ============================================
+  // Agent events
+  // ============================================
+  "agent:state-changed": AgentStateChangePayload;
+
+  // ============================================
+  // Artifact events
+  // ============================================
+  "artifact:detected": ArtifactDetectedPayload;
+
+  // ============================================
+  // CopyTree events
+  // ============================================
+  "copytree:progress": CopyTreeProgress;
+
+  // ============================================
+  // PR detection events
+  // ============================================
+  "pr:detected": PRDetectedPayload;
+  "pr:cleared": PRClearedPayload;
+
+  // ============================================
+  // Error events
+  // ============================================
+  "error:notify": AppError;
+
+  // ============================================
+  // Log events
+  // ============================================
+  "logs:entry": LogEntry;
+
+  // ============================================
+  // Event inspector events
+  // ============================================
+  "event-inspector:event": EventRecord;
+
+  // ============================================
+  // Project events
+  // ============================================
+  "project:on-switch": Project;
+
+  // ============================================
+  // Run orchestration events
+  // ============================================
+  "run:event": { type: string; payload: unknown };
+}
+
+/**
+ * Helper type to extract argument types from IpcInvokeMap
+ */
+export type IpcInvokeArgs<K extends keyof IpcInvokeMap> = IpcInvokeMap[K]["args"];
+
+/**
+ * Helper type to extract result type from IpcInvokeMap
+ */
+export type IpcInvokeResult<K extends keyof IpcInvokeMap> = IpcInvokeMap[K]["result"];
+
+/**
+ * Helper type to extract payload type from IpcEventMap
+ */
+export type IpcEventPayload<K extends keyof IpcEventMap> = IpcEventMap[K];
 
 // ============================================================================
 // ElectronAPI Type (exposed via preload)
