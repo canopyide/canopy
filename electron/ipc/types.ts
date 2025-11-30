@@ -224,7 +224,6 @@ export interface RecentDirectory {
 export interface AppState {
   activeWorktreeId?: string;
   sidebarWidth: number;
-  lastDirectory?: string;
   recentDirectories?: RecentDirectory[];
   terminals: Array<{
     id: string;

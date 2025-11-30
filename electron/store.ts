@@ -15,7 +15,6 @@ export interface StoreSchema {
   appState: {
     activeWorktreeId?: string;
     sidebarWidth: number;
-    lastDirectory?: string;
     recentDirectories?: RecentDirectory[];
     /** Whether focus mode is active (panels collapsed for max terminal space) */
     focusMode?: boolean;

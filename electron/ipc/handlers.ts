@@ -1097,10 +1097,6 @@ export function registerIpcHandlers(
         updates.activeWorktreeId = partialState.activeWorktreeId;
       }
 
-      if ("lastDirectory" in partialState) {
-        updates.lastDirectory = partialState.lastDirectory;
-      }
-
       if ("terminals" in partialState && Array.isArray(partialState.terminals)) {
         updates.terminals = partialState.terminals;
       }
@@ -1250,9 +1246,6 @@ export function registerIpcHandlers(
       const updatedRecents = await updateRecentDirectories(currentRecents, path);
       store.set("appState.recentDirectories", updatedRecents);
 
-      // Update lastDirectory
-      store.set("appState.lastDirectory", path);
-
       // Refresh worktree service if available
       if (worktreeService) {
         await worktreeService.refresh();
@@ -1282,9 +1275,6 @@ export function registerIpcHandlers(
       const currentRecents = store.get("appState.recentDirectories", []);
       const updatedRecents = await updateRecentDirectories(currentRecents, selectedPath);
       store.set("appState.recentDirectories", updatedRecents);
-
-      // Update lastDirectory
-      store.set("appState.lastDirectory", selectedPath);
 
       // Refresh worktree service if available
       if (worktreeService) {
