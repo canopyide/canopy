@@ -6,18 +6,7 @@
  */
 
 import { create, type StateCreator } from "zustand";
-
-interface Project {
-  id: string;
-  path: string;
-  name: string;
-  emoji: string;
-  aiGeneratedName?: string;
-  aiGeneratedEmoji?: string;
-  lastOpened: number;
-  color?: string;
-  isFallbackIdentity?: boolean;
-}
+import type { Project } from "@shared/types";
 
 interface ProjectState {
   projects: Project[];
