@@ -1,5 +1,6 @@
 import { Button } from "@/components/ui/button";
-import { ArrowRight, TreePine } from "lucide-react";
+import { ArrowRight } from "lucide-react";
+import { CanopyIcon } from "@/components/icons";
 import { appClient } from "@/clients";
 
 interface WelcomeScreenProps {
@@ -25,7 +26,7 @@ export function WelcomeScreen({ onDismiss }: WelcomeScreenProps) {
         {/* Header Section */}
         <div className="space-y-4">
           <div className="h-16 w-16 bg-canopy-accent/20 rounded-2xl flex items-center justify-center mx-auto mb-6">
-            <TreePine className="w-10 h-10 text-canopy-accent" />
+            <CanopyIcon className="w-10 h-10 text-canopy-accent" />
           </div>
           <h1 className="text-4xl font-bold text-canopy-text tracking-tight">Welcome to Canopy</h1>
           <p className="text-xl text-muted-foreground max-w-2xl mx-auto">

@@ -9,3 +9,4 @@
 export { ClaudeIcon } from "./ClaudeIcon";
 export { GeminiIcon } from "./GeminiIcon";
 export { CodexIcon } from "./CodexIcon";
+export { CanopyIcon } from "./CanopyIcon";
