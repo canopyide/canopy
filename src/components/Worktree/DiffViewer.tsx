@@ -149,7 +149,7 @@ export function DiffViewer({ diff, filePath, viewType = "split" }: DiffViewerPro
 
   return (
     <div className="diff-viewer overflow-auto">
-      {files.map((file, index) => (
+      {files.map((file: any, index: number) => (
         <FileDiff
           key={file.newRevision || file.oldRevision || index}
           file={file}
