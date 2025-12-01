@@ -31,32 +31,38 @@ export interface XtermAdapterProps {
 }
 
 /**
- * Canopy terminal theme - matches the app's dark theme
+ * Canopy terminal theme - Tokyo Night palette for brand consistency
  */
 const CANOPY_TERMINAL_THEME = {
-  background: "#09090b",
-  foreground: "#fafafa",
-  cursor: "#fafafa",
-  cursorAccent: "#09090b",
-  selectionBackground: "#27272a",
-  selectionForeground: "#fafafa",
-  selectionInactiveBackground: "#18181b",
-  black: "#09090b",
-  red: "#ef4444",
-  green: "#22c55e",
-  yellow: "#eab308",
-  blue: "#3b82f6",
-  magenta: "#a855f7",
-  cyan: "#06b6d4",
-  white: "#fafafa",
-  brightBlack: "#71717a",
-  brightRed: "#f87171",
-  brightGreen: "#4ade80",
-  brightYellow: "#facc15",
-  brightBlue: "#60a5fa",
-  brightMagenta: "#c084fc",
-  brightCyan: "#22d3ee",
-  brightWhite: "#ffffff",
+  // Base: Matches --color-canopy-bg
+  background: "#1a1b26",
+  // Foreground: Matches --color-canopy-text
+  foreground: "#c0caf5",
+  cursor: "#c0caf5",
+  cursorAccent: "#1a1b26",
+
+  // Selection: Distinct but subtle (xterm 5.x doesn't support selectionForeground)
+  selectionBackground: "#33467c",
+
+  // ANSI Standard (Tokyo Night)
+  black: "#15161e",
+  red: "#f7768e", // Error / Fatal
+  green: "#9ece6a", // Success / Insertions
+  yellow: "#e0af68", // Warning / Prompts
+  blue: "#7aa2f7", // Info / Folder names
+  magenta: "#bb9af7", // AI Agents / Special
+  cyan: "#7dcfff", // Links / Regex
+  white: "#a9b1d6", // Muted text
+
+  // ANSI Bright (Vibrant for highlighting)
+  brightBlack: "#414868", // Comments / Ignored files
+  brightRed: "#f7768e",
+  brightGreen: "#9ece6a",
+  brightYellow: "#e0af68",
+  brightBlue: "#7aa2f7",
+  brightMagenta: "#bb9af7",
+  brightCyan: "#7dcfff",
+  brightWhite: "#c0caf5",
 };
 
 /**
@@ -173,14 +179,14 @@ export function XtermAdapter({ terminalId, onReady, onExit, className }: XtermAd
   // Memoize terminal options
   const terminalOptions = useMemo(
     () => ({
-      // Cursor refinement - reduce distraction during AI streaming
-      cursorBlink: false,
+      // Cursor refinement - blinking bar for "alive" feel
+      cursorBlink: true,
       cursorStyle: "bar" as const,
       cursorWidth: 2,
 
-      // Typography - optimized for AI agent readability
-      fontSize: 13,
-      lineHeight: 1.4,
+      // Typography - increased for better readability
+      fontSize: 14,
+      lineHeight: 1.5,
       fontFamily: '"JetBrains Mono", "Fira Code", Monaco, Menlo, Consolas, monospace',
 
       // Visual enhancements
@@ -459,7 +465,7 @@ export function XtermAdapter({ terminalId, onReady, onExit, className }: XtermAd
       ref={containerRef}
       className={cn(
         "w-full h-full min-h-0 overflow-hidden",
-        "pl-3 pt-2", // Custom padding: gutter feel on left, minimal top
+        "p-3", // Padding for breathing room (12px = 0.75rem * 4)
         className
       )}
     />
