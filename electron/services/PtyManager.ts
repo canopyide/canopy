@@ -363,11 +363,11 @@ export class PtyManager extends EventEmitter {
     const args = options.args || this.getDefaultShellArgs(shell);
 
     const spawnedAt = Date.now();
-        const isAgentTerminal =
-          options.type === "claude" ||
-          options.type === "gemini" ||
-          options.type === "codex" ||
-          options.type === "custom";
+    const isAgentTerminal =
+      options.type === "claude" ||
+      options.type === "gemini" ||
+      options.type === "codex" ||
+      options.type === "custom";
     // For agent terminals, use terminal ID as agent ID
     const agentId = isAgentTerminal ? id : undefined;
 
