@@ -1,18 +1,3 @@
-/**
- * TerminalGrid Component
- *
- * Manages multiple terminal panes in a flexible grid layout.
- * Supports 1-N terminals with automatic column calculation,
- * focus management, and maximize/restore functionality.
- *
- * Layout examples:
- * - 1 terminal: Full width
- * - 2 terminals: 2 columns
- * - 3-4 terminals: 2x2 grid
- * - 5-6 terminals: 3x2 grid
- * - 7+ terminals: 3+ columns
- */
-
 import { useMemo, useCallback, useState } from "react";
 import { useShallow } from "zustand/react/shallow";
 import { cn } from "@/lib/utils";
@@ -20,82 +5,124 @@ import { useTerminalStore, type TerminalInstance } from "@/store";
 import { useContextInjection } from "@/hooks/useContextInjection";
 import { TerminalPane } from "./TerminalPane";
 import { FilePickerModal } from "@/components/ContextInjection";
-import { Terminal, Bot, Sparkles } from "lucide-react";
-import { Button } from "@/components/ui/button";
-import { CanopyIcon, CodexIcon } from "@/components/icons";
+import { Terminal, ArrowDown } from "lucide-react";
+import { CanopyIcon, CodexIcon, ClaudeIcon, GeminiIcon } from "@/components/icons";
 
 export interface TerminalGridProps {
   className?: string;
   defaultCwd?: string;
 }
 
-function EmptyState({
-  onLaunchAgent,
-  hasDockedTerminals,
-}: {
-  onLaunchAgent: (type: "claude" | "gemini" | "codex" | "shell") => void;
-  hasDockedTerminals: boolean;
-}) {
-  return (
-    <div className="flex flex-col items-center justify-center h-full text-canopy-text/60">
-      <CanopyIcon className="h-16 w-16 mb-6 text-canopy-accent/50" />
-      {hasDockedTerminals ? (
-        <>
-          <p className="mb-2 text-sm">All agents are minimized to the dock</p>
-          <p className="mb-4 text-xs text-canopy-text/40">
-            Click an agent in the dock below to preview, or restore it to the grid
-          </p>
-        </>
-      ) : (
-        <div className="text-center space-y-2 mb-8">
-          <h3 className="text-2xl font-bold text-canopy-text tracking-tight">
-            Canopy Command Center
-          </h3>
-          <p className="text-sm text-canopy-text/60 max-w-md mx-auto">
-            Launch an AI agent to start orchestrating your development workflow.
-          </p>
-        </div>
-      )}
+interface LauncherCardProps {
+  title: string;
+  description: string;
+  shortcut?: string;
+  icon: React.ReactNode;
+  onClick: () => void;
+  primary?: boolean;
+}
 
-      <div className="flex gap-3 mb-6">
-        <Button
-          onClick={() => onLaunchAgent("claude")}
-          className="bg-canopy-accent hover:bg-canopy-accent/80 text-white"
-        >
-          <Bot className="h-4 w-4 mr-2" />
-          Start Claude
-        </Button>
-        <Button
-          onClick={() => onLaunchAgent("gemini")}
-          className="bg-canopy-accent hover:bg-canopy-accent/80 text-white"
-        >
-          <Sparkles className="h-4 w-4 mr-2" />
-          Start Gemini
-        </Button>
-        <Button
-          onClick={() => onLaunchAgent("codex")}
-          className="bg-canopy-accent hover:bg-canopy-accent/80 text-white"
-        >
-          <CodexIcon className="h-4 w-4 mr-2" />
-          Start Codex
-        </Button>
-        <Button
-          onClick={() => onLaunchAgent("shell")}
-          variant="outline"
-          className="text-canopy-text border-canopy-border hover:bg-canopy-border"
-        >
-          <Terminal className="h-4 w-4 mr-2" />
-          Open Shell
-        </Button>
+function LauncherCard({
+  title,
+  description,
+  shortcut,
+  icon,
+  onClick,
+  primary,
+}: LauncherCardProps) {
+  return (
+    <button
+      onClick={onClick}
+      className={cn(
+        "group flex items-center text-left p-3 rounded-xl border transition-all duration-200 min-h-[90px]", // Added min-h and flex items-center
+        "bg-white/[0.02] hover:bg-white/[0.04]",
+        primary
+          ? "border-canopy-accent/20 hover:border-canopy-accent/50 hover:shadow-[0_0_15px_rgba(16,185,129,0.1)]"
+          : "border-white/5 hover:border-white/10"
+      )}
+    >
+      <div className="flex items-center justify-center p-2 rounded-lg mr-3 transition-colors">
+        {icon}
       </div>
 
-      {!hasDockedTerminals && (
-        <p className="text-xs text-canopy-text/40">
-          Or use <kbd className="px-1.5 py-0.5 rounded bg-canopy-border">Ctrl+Shift+C</kbd> for
-          Claude, <kbd className="px-1.5 py-0.5 rounded bg-canopy-border">Ctrl+Shift+G</kbd> for
-          Gemini
+      <div className="flex-1">
+        <div className="flex w-full items-center justify-between mb-1"> {/* mb-1 to reduce vertical space */}
+          <h4
+            className={cn(
+              "font-medium text-base", // Increased font size for title
+              primary ? "text-canopy-text" : "text-canopy-text/80 group-hover:text-canopy-text"
+            )}
+          >
+            {title}
+          </h4>
+          {shortcut && (
+            <span className="text-[10px] font-mono text-white/30 border border-white/10 rounded px-1.5 py-0.5 group-hover:text-white/50 group-hover:border-white/20 transition-colors">
+              {shortcut}
+            </span>
+          )}
+        </div>
+        <p className="text-xs text-canopy-text/50 group-hover:text-canopy-text/70 transition-colors leading-relaxed">
+          {description}
         </p>
-      )}
+      </div>
+    </button>
+  );
+}
+
+function EmptyState({
+  onLaunchAgent,
+}: {
+  onLaunchAgent: (type: "claude" | "gemini" | "codex" | "shell") => void;
+}) {
+  return (
+    <div className="flex flex-col items-center justify-center h-full w-full p-8 animate-in fade-in duration-500">
+      <div className="max-w-3xl w-full flex flex-col items-center">
+        {/* Brand Hero */}
+        <div className="mb-10 flex flex-col items-center text-center">
+          <CanopyIcon className="h-16 w-16 text-canopy-accent opacity-50 mb-6" />
+          <h3 className="text-2xl font-bold text-canopy-text tracking-tight mb-2">
+            Canopy Command Center
+          </h3>
+          <p className="text-sm text-canopy-text/50 max-w-md leading-relaxed">
+            Orchestrate your development workflow with AI agents. Select a runtime to begin.
+          </p>
+        </div>
+
+        {/* Launcher Grid */}
+        <div className="grid grid-cols-1 sm:grid-cols-2 gap-4 w-full max-w-3xl mb-12">
+          <LauncherCard
+            title="Claude"
+            description="Advanced reasoning and coding." // Shortened description
+            shortcut="Ctrl+Shift+C"
+            icon={<ClaudeIcon className="h-5 w-5" />} // Changed to ClaudeIcon
+            onClick={() => onLaunchAgent("claude")}
+            primary
+          />
+          <LauncherCard
+            title="Gemini"
+            description="Fast, large context window." // Shortened description
+            shortcut="Ctrl+Shift+G"
+            icon={<GeminiIcon className="h-5 w-5" />} // Changed to GeminiIcon
+            onClick={() => onLaunchAgent("gemini")}
+            primary
+          />
+          <LauncherCard
+            title="Codex"
+            description="Code generation and refactoring." // Shortened description
+            icon={<CodexIcon className="h-5 w-5" />}
+            onClick={() => onLaunchAgent("codex")}
+            primary
+          />
+          <LauncherCard
+            title="Terminal"
+            description="Standard shell access." // Shortened description
+            icon={<Terminal className="h-5 w-5" />}
+            onClick={() => onLaunchAgent("shell")}
+          />
+        </div>
+
+
+      </div>
     </div>
   );
 }
@@ -253,7 +280,6 @@ export function TerminalGrid({ className, defaultCwd }: TerminalGridProps) {
       <div className={cn("h-full", className)}>
         <EmptyState
           onLaunchAgent={handleLaunchAgent}
-          hasDockedTerminals={dockTerminals.length > 0}
         />
       </div>
     );

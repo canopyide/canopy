@@ -25,9 +25,7 @@ export function WelcomeScreen({ onDismiss }: WelcomeScreenProps) {
       <div className="max-w-4xl w-full flex flex-col items-center gap-8">
         {/* Header Section */}
         <div className="space-y-4">
-          <div className="h-16 w-16 bg-canopy-accent/20 rounded-2xl flex items-center justify-center mx-auto mb-6">
-            <CanopyIcon className="w-10 h-10 text-canopy-accent" />
-          </div>
+          <CanopyIcon className="h-24 w-24 text-canopy-accent mx-auto mb-6" />
           <h1 className="text-4xl font-bold text-canopy-text tracking-tight">Welcome to Canopy</h1>
           <p className="text-xl text-muted-foreground max-w-2xl mx-auto">
             Your AI-native command center for orchestrating agents, managing worktrees, and
