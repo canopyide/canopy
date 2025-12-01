@@ -53,27 +53,31 @@ export const createTerminalFocusSlice =
 
     focusNext: () => {
       const terminals = getTerminals();
-      if (terminals.length === 0) return;
+      // Only navigate through grid terminals (not docked ones)
+      const gridTerminals = terminals.filter((t) => t.location === "grid" || !t.location);
+      if (gridTerminals.length === 0) return;
 
       set((state) => {
         const currentIndex = state.focusedId
-          ? terminals.findIndex((t) => t.id === state.focusedId)
+          ? gridTerminals.findIndex((t) => t.id === state.focusedId)
           : -1;
-        const nextIndex = (currentIndex + 1) % terminals.length;
-        return { focusedId: terminals[nextIndex].id };
+        const nextIndex = (currentIndex + 1) % gridTerminals.length;
+        return { focusedId: gridTerminals[nextIndex].id };
       });
     },
 
     focusPrevious: () => {
       const terminals = getTerminals();
-      if (terminals.length === 0) return;
+      // Only navigate through grid terminals (not docked ones)
+      const gridTerminals = terminals.filter((t) => t.location === "grid" || !t.location);
+      if (gridTerminals.length === 0) return;
 
       set((state) => {
         const currentIndex = state.focusedId
-          ? terminals.findIndex((t) => t.id === state.focusedId)
+          ? gridTerminals.findIndex((t) => t.id === state.focusedId)
           : 0;
-        const prevIndex = currentIndex <= 0 ? terminals.length - 1 : currentIndex - 1;
-        return { focusedId: terminals[prevIndex].id };
+        const prevIndex = currentIndex <= 0 ? gridTerminals.length - 1 : currentIndex - 1;
+        return { focusedId: gridTerminals[prevIndex].id };
       });
     },
 
@@ -83,11 +87,17 @@ export const createTerminalFocusSlice =
 
         // Handle focus transfer if the removed terminal was focused
         if (state.focusedId === removedId) {
-          if (remainingTerminals.length > 0) {
-            // Focus the next terminal, or the previous if we removed the last one
-            const nextIndex = Math.min(removedIndex, remainingTerminals.length - 1);
-            updates.focusedId = remainingTerminals[nextIndex]?.id || null;
+          // Only focus grid terminals (not docked ones)
+          const gridTerminals = remainingTerminals.filter(
+            (t) => t.location === "grid" || !t.location
+          );
+
+          if (gridTerminals.length > 0) {
+            // Focus the next grid terminal, or the previous if we removed the last one
+            const nextIndex = Math.min(removedIndex, gridTerminals.length - 1);
+            updates.focusedId = gridTerminals[nextIndex]?.id || null;
           } else {
+            // No grid terminals left, clear focus
             updates.focusedId = null;
           }
         }

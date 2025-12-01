@@ -87,11 +87,34 @@ export const useTerminalStore = create<TerminalGridState>()((set, get, api) => {
     ...commandQueueSlice,
     ...bulkActionsSlice,
 
-    // Override addTerminal to also set focus
+    // Override addTerminal to also set focus (only for grid terminals)
     addTerminal: async (options: AddTerminalOptions) => {
       const id = await registrySlice.addTerminal(options);
-      set({ focusedId: id });
+      // Only focus if terminal is in grid (not docked)
+      if (!options.location || options.location === "grid") {
+        set({ focusedId: id });
+      }
       return id;
+    },
+
+    // Override moveTerminalToDock to also clear focus
+    moveTerminalToDock: (id: string) => {
+      const state = get();
+      registrySlice.moveTerminalToDock(id);
+
+      // Clear focus if the docked terminal was focused
+      if (state.focusedId === id) {
+        // Find next available grid terminal to focus
+        const gridTerminals = state.terminals.filter((t) => t.id !== id && t.location === "grid");
+        set({ focusedId: gridTerminals[0]?.id ?? null });
+      }
+    },
+
+    // Override moveTerminalToGrid to also set focus
+    moveTerminalToGrid: (id: string) => {
+      registrySlice.moveTerminalToGrid(id);
+      // Set focus to the restored terminal
+      set({ focusedId: id });
     },
   };
 });

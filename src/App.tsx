@@ -366,6 +366,7 @@ function App() {
                 title: terminal.title,
                 cwd,
                 worktreeId: terminal.worktreeId,
+                location: terminal.location || "grid", // Restore dock state, default to grid for legacy
               });
             } catch (error) {
               console.warn(`Failed to restore terminal ${terminal.id}:`, error);

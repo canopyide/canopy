@@ -1,6 +1,7 @@
 import { useState, useCallback, useEffect, type ReactNode } from "react";
 import { Toolbar } from "./Toolbar";
 import { Sidebar } from "./Sidebar";
+import { TerminalDock } from "./TerminalDock";
 import { DiagnosticsDock } from "../Diagnostics";
 import { useFocusStore, useDiagnosticsStore, useErrorStore, type PanelState } from "@/store";
 import type { RetryAction } from "@/store";
@@ -246,10 +247,18 @@ export function AppLayout({
             </Sidebar>
           )}
           <main
-            className="flex-1 overflow-hidden bg-canopy-bg"
-            style={{ flex: 1, overflow: "hidden", backgroundColor: "#1a1b26" }}
+            className="flex-1 flex flex-col overflow-hidden bg-canopy-bg"
+            style={{
+              flex: 1,
+              display: "flex",
+              flexDirection: "column",
+              overflow: "hidden",
+              backgroundColor: "#1a1b26",
+            }}
           >
-            {children}
+            <div className="flex-1 overflow-hidden min-h-0">{children}</div>
+            {/* Terminal Dock - appears at bottom only when terminals are docked */}
+            <TerminalDock />
           </main>
         </div>
         {/* Unified diagnostics dock replaces LogsPanel, EventInspectorPanel, and ProblemsPanel */}

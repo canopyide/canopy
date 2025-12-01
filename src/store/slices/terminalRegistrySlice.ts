@@ -14,6 +14,7 @@ import type {
   TerminalInstance as TerminalInstanceType,
   AgentState,
   TerminalType,
+  TerminalLocation,
   AgentStateChangeTrigger,
 } from "@/types";
 import { appClient, terminalClient } from "@/clients";
@@ -29,6 +30,8 @@ export interface AddTerminalOptions {
   shell?: string;
   /** Command to execute after shell starts (e.g., 'claude' for AI agents) */
   command?: string;
+  /** Initial location in the UI (defaults to 'grid') */
+  location?: TerminalLocation;
 }
 
 const TYPE_TITLES: Record<TerminalType, string> = {
@@ -61,6 +64,13 @@ export interface TerminalRegistrySlice {
     timestamp: number
   ) => void;
   getTerminal: (id: string) => TerminalInstance | undefined;
+
+  /** Move terminal to dock (minimized) */
+  moveTerminalToDock: (id: string) => void;
+  /** Move terminal to grid (restored) */
+  moveTerminalToGrid: (id: string) => void;
+  /** Toggle terminal between dock and grid */
+  toggleTerminalLocation: (id: string) => void;
 }
 
 /**
@@ -76,6 +86,7 @@ function persistTerminals(terminals: TerminalInstance[]): void {
         title: t.title,
         cwd: t.cwd,
         worktreeId: t.worktreeId,
+        location: t.location,
       })),
     })
     .catch((error) => {
@@ -101,6 +112,7 @@ export const createTerminalRegistrySlice =
     addTerminal: async (options) => {
       const type = options.type || "shell";
       const title = options.title || TYPE_TITLES[type];
+      const location = options.location || "grid";
 
       try {
         // Spawn the PTY process via IPC
@@ -127,6 +139,7 @@ export const createTerminalRegistrySlice =
           rows: 24,
           agentState: isAgentTerminal ? "idle" : undefined,
           lastStateChange: isAgentTerminal ? Date.now() : undefined,
+          location,
         };
 
         set((state) => {
@@ -233,5 +246,44 @@ export const createTerminalRegistrySlice =
 
     getTerminal: (id) => {
       return get().terminals.find((t) => t.id === id);
+    },
+
+    moveTerminalToDock: (id) => {
+      set((state) => {
+        const terminal = state.terminals.find((t) => t.id === id);
+        if (!terminal || terminal.location === "dock") return state;
+
+        const newTerminals = state.terminals.map((t) =>
+          t.id === id ? { ...t, location: "dock" as const } : t
+        );
+
+        persistTerminals(newTerminals);
+        return { terminals: newTerminals };
+      });
+    },
+
+    moveTerminalToGrid: (id) => {
+      set((state) => {
+        const terminal = state.terminals.find((t) => t.id === id);
+        if (!terminal || terminal.location === "grid") return state;
+
+        const newTerminals = state.terminals.map((t) =>
+          t.id === id ? { ...t, location: "grid" as const } : t
+        );
+
+        persistTerminals(newTerminals);
+        return { terminals: newTerminals };
+      });
+    },
+
+    toggleTerminalLocation: (id) => {
+      const terminal = get().terminals.find((t) => t.id === id);
+      if (!terminal) return;
+
+      if (terminal.location === "dock") {
+        get().moveTerminalToGrid(id);
+      } else {
+        get().moveTerminalToDock(id);
+      }
     },
   });
