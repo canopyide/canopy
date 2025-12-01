@@ -184,15 +184,17 @@ export function XtermAdapter({ terminalId, onReady, onExit, className }: XtermAd
       cursorStyle: "bar" as const,
       cursorWidth: 2,
 
-      // Typography - increased for better readability
-      fontSize: 14,
-      lineHeight: 1.5,
-      fontFamily: '"JetBrains Mono", "Fira Code", Monaco, Menlo, Consolas, monospace',
+      // Typography - refined for professional density
+      fontSize: 13,
+      lineHeight: 1.2,
+      letterSpacing: 0,
+      fontFamily:
+        '"JetBrains Mono", "Fira Code", "Cascadia Code", Menlo, Consolas, "Courier New", monospace',
 
       // Visual enhancements
       fontLigatures: true,
-      fontWeight: 400,
-      fontWeightBold: 700,
+      fontWeight: "500" as const, // Slightly bolder for better legibility on dark backgrounds
+      fontWeightBold: "700" as const,
 
       // Theme and performance
       theme: CANOPY_TERMINAL_THEME,
