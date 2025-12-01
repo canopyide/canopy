@@ -18,6 +18,7 @@ import { WebglAddon } from "@xterm/addon-webgl";
 import "@xterm/xterm/css/xterm.css";
 import { cn } from "@/lib/utils";
 import { terminalClient } from "@/clients";
+import { TerminalRefreshTier } from "@/types";
 
 export interface XtermAdapterProps {
   /** Unique terminal identifier - must match PtyManager terminal ID */
@@ -28,6 +29,8 @@ export interface XtermAdapterProps {
   onExit?: (exitCode: number) => void;
   /** Additional CSS classes */
   className?: string;
+  /** Callback to get the current refresh tier (for performance optimization) */
+  getRefreshTier?: () => TerminalRefreshTier;
 }
 
 /**
@@ -66,32 +69,72 @@ const CANOPY_TERMINAL_THEME = {
 };
 
 /**
- * Create a throttled writer that batches writes at 60fps
- * This prevents performance issues when AI agents dump large amounts of text
+ * Create a throttled writer with variable refresh rate based on terminal visibility state.
+ * This prevents performance issues when AI agents dump large amounts of text across
+ * multiple terminals by reducing refresh rates for non-focused/hidden terminals.
+ *
+ * @param terminal - The xterm.js Terminal instance
+ * @param getRefreshTier - Callback to get the current refresh tier (ms interval)
  */
-function createThrottledWriter(terminal: Terminal) {
+function createThrottledWriter(
+  terminal: Terminal,
+  getRefreshTier: () => TerminalRefreshTier = () => TerminalRefreshTier.FOCUSED // Default to 60fps for backwards compatibility
+) {
   let buffer = "";
-  let frameId: number | null = null;
+  let timerId: number | null = null;
+  let currentTier: TerminalRefreshTier = getRefreshTier();
 
   const flush = () => {
     if (buffer) {
       terminal.write(buffer);
       buffer = "";
     }
-    frameId = null;
+    timerId = null;
   };
 
   return {
     write: (data: string) => {
       buffer += data;
-      if (!frameId) {
-        frameId = requestAnimationFrame(flush);
+
+      const newTier = getRefreshTier();
+
+      // Check if tier improved (lower value = faster refresh)
+      if (newTier < currentTier) {
+        // Cancel existing timer regardless of type
+        if (timerId !== null) {
+          cancelAnimationFrame(timerId);
+          clearTimeout(timerId);
+          timerId = null;
+        }
+
+        // Flush immediately on tier upgrade for responsive focus switching
+        if (buffer) {
+          flush();
+        }
+        currentTier = newTier;
+        return;
+      }
+
+      // Only schedule new timer if one isn't already pending
+      if (!timerId) {
+        currentTier = newTier;
+
+        // Use requestAnimationFrame for focused terminals (smoothest)
+        // Use setTimeout for background terminals (less CPU overhead)
+        if (currentTier === TerminalRefreshTier.FOCUSED) {
+          // FOCUSED tier - use rAF for smooth 60fps
+          timerId = requestAnimationFrame(flush);
+        } else {
+          // VISIBLE or BACKGROUND tier - use setTimeout
+          timerId = window.setTimeout(flush, currentTier);
+        }
       }
     },
     dispose: () => {
-      if (frameId) {
-        cancelAnimationFrame(frameId);
-        frameId = null;
+      if (timerId !== null) {
+        cancelAnimationFrame(timerId);
+        clearTimeout(timerId);
+        timerId = null;
       }
       // Flush any remaining data
       if (buffer) {
@@ -165,7 +208,13 @@ function applyJankFix(terminal: Terminal): () => void {
 /** Maximum retries when container has zero dimensions */
 const MAX_ZERO_RETRIES = 10;
 
-export function XtermAdapter({ terminalId, onReady, onExit, className }: XtermAdapterProps) {
+export function XtermAdapter({
+  terminalId,
+  onReady,
+  onExit,
+  className,
+  getRefreshTier,
+}: XtermAdapterProps) {
   const containerRef = useRef<HTMLDivElement>(null);
   const terminalRef = useRef<Terminal | null>(null);
   const fitAddonRef = useRef<FitAddon | null>(null);
@@ -311,8 +360,11 @@ export function XtermAdapter({ terminalId, onReady, onExit, className }: XtermAd
     // Apply the jank fix and store the dispose function
     jankFixDisposeRef.current = applyJankFix(terminal);
 
-    // Create throttled writer for performance
-    const throttledWriter = createThrottledWriter(terminal);
+    // Create throttled writer for performance with tier callback
+    const throttledWriter = createThrottledWriter(
+      terminal,
+      getRefreshTier || (() => TerminalRefreshTier.FOCUSED) // Default to 60fps if no tier callback provided
+    );
     throttledWriterRef.current = throttledWriter;
 
     // Connect to PTY via IPC - data coming FROM the shell
@@ -460,6 +512,9 @@ export function XtermAdapter({ terminalId, onReady, onExit, className }: XtermAd
       prevDimensionsRef.current = null;
       zeroRetryCountRef.current = 0;
     };
+    // Note: getRefreshTier is intentionally NOT in deps to avoid recreating terminal on focus changes
+    // The throttled writer reads tier dynamically via callback on each write
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [terminalId, terminalOptions, handleResize, onReady, onExit]);
 
   return (

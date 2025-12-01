@@ -14,6 +14,7 @@
 
 import { create } from "zustand";
 import type { AgentState } from "@/types";
+import { TerminalRefreshTier } from "@/types";
 import {
   createTerminalRegistrySlice,
   createTerminalFocusSlice,
@@ -33,6 +34,37 @@ import { terminalClient } from "@/clients";
 // Re-export types for consumers
 export type { TerminalInstance, AddTerminalOptions, QueuedCommand };
 export { isAgentReady };
+
+/**
+ * Determine the refresh tier for a terminal based on its state.
+ * Priority: Focused > Visible > Background (docked or not visible)
+ */
+export function getTerminalRefreshTier(
+  terminal: TerminalInstance | undefined,
+  isFocused: boolean
+): TerminalRefreshTier {
+  if (!terminal) {
+    return TerminalRefreshTier.BACKGROUND;
+  }
+
+  // Focused terminal gets highest priority (60fps)
+  if (isFocused) {
+    return TerminalRefreshTier.FOCUSED;
+  }
+
+  // Docked terminals are always background tier (4fps)
+  if (terminal.location === "dock") {
+    return TerminalRefreshTier.BACKGROUND;
+  }
+
+  // Grid terminal that's visible gets mid-tier (10fps)
+  if (terminal.isVisible) {
+    return TerminalRefreshTier.VISIBLE;
+  }
+
+  // Grid terminal that's not visible gets background tier (4fps)
+  return TerminalRefreshTier.BACKGROUND;
+}
 
 /**
  * Combined terminal store state and actions.

@@ -278,6 +278,19 @@ export type AgentStateChangeTrigger =
   | "timeout"
   | "exit";
 
+/**
+ * Terminal rendering refresh tier for performance optimization.
+ * Controls how frequently terminal output is flushed to the display.
+ */
+export enum TerminalRefreshTier {
+  /** 60fps - terminal is focused and user is actively interacting */
+  FOCUSED = 16,
+  /** 10fps - terminal is visible in the grid but not focused */
+  VISIBLE = 100,
+  /** 4fps - terminal is in the dock or otherwise not visible */
+  BACKGROUND = 250,
+}
+
 /** Represents a terminal instance in the application */
 export interface TerminalInstance {
   /** Unique identifier for this terminal */
@@ -318,6 +331,8 @@ export interface TerminalInstance {
   location: TerminalLocation;
   /** Command to execute after shell starts (e.g., 'claude --model sonnet-4' for AI agents) */
   command?: string;
+  /** Whether the terminal pane is currently visible in the viewport */
+  isVisible?: boolean;
 }
 
 /** Options for spawning a new PTY process */
