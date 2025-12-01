@@ -908,6 +908,14 @@ export interface IpcInvokeMap {
     args: [id: string];
     result: void;
   };
+  "terminal:trash": {
+    args: [id: string];
+    result: void;
+  };
+  "terminal:restore": {
+    args: [id: string];
+    result: boolean;
+  };
 
   // ============================================
   // Agent channels
@@ -1312,6 +1320,8 @@ export interface IpcEventMap {
   "terminal:data": [id: string, data: string];
   "terminal:exit": [id: string, exitCode: number];
   "terminal:error": [id: string, error: string];
+  "terminal:trashed": { id: string; expiresAt: number };
+  "terminal:restored": { id: string };
 
   // ============================================
   // Agent events
@@ -1418,10 +1428,14 @@ export interface ElectronAPI {
     write(id: string, data: string): void;
     resize(id: string, cols: number, rows: number): void;
     kill(id: string): Promise<void>;
+    trash(id: string): Promise<void>;
+    restore(id: string): Promise<boolean>;
     onData(id: string, callback: (data: string) => void): () => void;
     onExit(callback: (id: string, exitCode: number) => void): () => void;
     onAgentStateChanged(callback: (data: AgentStateChangePayload) => void): () => void;
     onActivity(callback: (data: TerminalActivityPayload) => void): () => void;
+    onTrashed(callback: (data: { id: string; expiresAt: number }) => void): () => void;
+    onRestored(callback: (data: { id: string }) => void): () => void;
   };
   artifact: {
     onDetected(callback: (data: ArtifactDetectedPayload) => void): () => void;

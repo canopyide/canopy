@@ -549,6 +549,51 @@ export function registerIpcHandlers(
   ipcMain.handle(CHANNELS.TERMINAL_KILL, handleTerminalKill);
   handlers.push(() => ipcMain.removeHandler(CHANNELS.TERMINAL_KILL));
 
+  const handleTerminalTrash = async (_event: Electron.IpcMainInvokeEvent, id: string) => {
+    try {
+      if (typeof id !== "string") {
+        throw new Error("Invalid terminal ID: must be a string");
+      }
+      ptyManager.trash(id);
+    } catch (error) {
+      const errorMessage = error instanceof Error ? error.message : String(error);
+      throw new Error(`Failed to trash terminal: ${errorMessage}`);
+    }
+  };
+  ipcMain.handle(CHANNELS.TERMINAL_TRASH, handleTerminalTrash);
+  handlers.push(() => ipcMain.removeHandler(CHANNELS.TERMINAL_TRASH));
+
+  const handleTerminalRestore = async (
+    _event: Electron.IpcMainInvokeEvent,
+    id: string
+  ): Promise<boolean> => {
+    try {
+      if (typeof id !== "string") {
+        throw new Error("Invalid terminal ID: must be a string");
+      }
+      return ptyManager.restore(id);
+    } catch (error) {
+      const errorMessage = error instanceof Error ? error.message : String(error);
+      throw new Error(`Failed to restore terminal: ${errorMessage}`);
+    }
+  };
+  ipcMain.handle(CHANNELS.TERMINAL_RESTORE, handleTerminalRestore);
+  handlers.push(() => ipcMain.removeHandler(CHANNELS.TERMINAL_RESTORE));
+
+  // Forward terminal trashed/restored events to renderer
+  const unsubTerminalTrashed = events.on(
+    "terminal:trashed",
+    (payload: { id: string; expiresAt: number }) => {
+      sendToRenderer(mainWindow, CHANNELS.TERMINAL_TRASHED, payload);
+    }
+  );
+  handlers.push(unsubTerminalTrashed);
+
+  const unsubTerminalRestored = events.on("terminal:restored", (payload: { id: string }) => {
+    sendToRenderer(mainWindow, CHANNELS.TERMINAL_RESTORED, payload);
+  });
+  handlers.push(unsubTerminalRestored);
+
   // ==========================================
   // Artifact Handlers
   // ==========================================
