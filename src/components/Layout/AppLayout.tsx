@@ -18,6 +18,8 @@ interface AppLayoutProps {
   onRetry?: (id: string, action: RetryAction, args?: Record<string, unknown>) => void;
   /** Whether worktree refresh is in progress */
   isRefreshing?: boolean;
+  /** Called when welcome/help button is clicked */
+  onShowWelcome?: () => void;
 }
 
 const MIN_SIDEBAR_WIDTH = 200;
@@ -33,6 +35,7 @@ export function AppLayout({
   onSettings,
   onRetry,
   isRefreshing,
+  onShowWelcome,
 }: AppLayoutProps) {
   const [sidebarWidth, setSidebarWidth] = useState(DEFAULT_SIDEBAR_WIDTH);
 
@@ -228,6 +231,7 @@ export function AppLayout({
         isFocusMode={isFocusMode}
         onToggleFocusMode={handleToggleFocusMode}
         isRefreshing={isRefreshing}
+        onShowWelcome={onShowWelcome}
       />
       <div
         className="flex-1 flex flex-col overflow-hidden"
