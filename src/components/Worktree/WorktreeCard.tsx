@@ -604,7 +604,7 @@ export function WorktreeCard({
         <div
           id={detailsId}
           aria-hidden={!isExpanded}
-          inert={!isExpanded ? ("" as unknown as boolean) : undefined}
+          inert={!isExpanded}
           className={cn(
             "overflow-hidden transition-[max-height,opacity] duration-200",
             isExpanded ? "max-h-[500px] opacity-100" : "max-h-0 opacity-0"
