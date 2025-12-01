@@ -5,7 +5,7 @@
  * Includes tabs for General info, AI settings, and Troubleshooting tools.
  */
 
-import { useState, useEffect } from "react";
+import { useState, useEffect, useCallback } from "react";
 import { Button } from "@/components/ui/button";
 import { useErrors } from "@/hooks";
 import { useLogsStore } from "@/store";
@@ -21,11 +21,13 @@ import {
   FlaskConical,
   TreePine,
   Bot,
+  Bug,
 } from "lucide-react";
 import { cn } from "@/lib/utils";
 import type { AIServiceState } from "@/types";
 import { appClient, aiClient, logsClient } from "@/clients";
 import { AgentSettings } from "./AgentSettings";
+import { getStateDebugEnabled, toggleStateDebug } from "@/components/Terminal";
 
 interface SettingsDialogProps {
   isOpen: boolean;
@@ -114,6 +116,15 @@ export function SettingsDialog({ isOpen, onClose, defaultTab }: SettingsDialogPr
   >(null);
   const [selectedModel, setSelectedModel] = useState("gpt-5-nano");
 
+  // State debug info toggle
+  const [showStateDebug, setShowStateDebug] = useState(() => getStateDebugEnabled());
+
+  // Handle state debug toggle
+  const handleToggleStateDebug = useCallback(() => {
+    const newState = toggleStateDebug();
+    setShowStateDebug(newState);
+  }, []);
+
   // Update active tab when defaultTab changes while dialog is open
   useEffect(() => {
     if (isOpen && defaultTab && defaultTab !== activeTab) {
@@ -142,6 +153,8 @@ export function SettingsDialog({ isOpen, onClose, defaultTab }: SettingsDialogPr
         setAiConfig(config);
         setSelectedModel(config.model);
       });
+      // Sync debug toggle state when dialog opens
+      setShowStateDebug(getStateDebugEnabled());
     }
   }, [isOpen]);
 
@@ -560,6 +573,38 @@ export function SettingsDialog({ isOpen, onClose, defaultTab }: SettingsDialogPr
                         Clear Logs
                       </Button>
                     </div>
+                  </div>
+                </div>
+
+                <div className="space-y-4">
+                  <div>
+                    <h4 className="text-sm font-medium text-canopy-text mb-1 flex items-center gap-2">
+                      <Bug className="w-4 h-4" />
+                      State Debug Info
+                    </h4>
+                    <p className="text-xs text-gray-400 mb-3">
+                      Show trigger source and confidence level in terminal headers for agent state
+                      changes.
+                    </p>
+                    <label className="flex items-center gap-3 cursor-pointer">
+                      <button
+                        onClick={handleToggleStateDebug}
+                        className={cn(
+                          "relative w-11 h-6 rounded-full transition-colors",
+                          showStateDebug ? "bg-canopy-accent" : "bg-gray-600"
+                        )}
+                      >
+                        <span
+                          className={cn(
+                            "absolute top-0.5 left-0.5 w-5 h-5 bg-white rounded-full transition-transform",
+                            showStateDebug && "translate-x-5"
+                          )}
+                        />
+                      </button>
+                      <span className="text-sm text-canopy-text">
+                        {showStateDebug ? "Enabled" : "Disabled"}
+                      </span>
+                    </label>
                   </div>
                 </div>
 

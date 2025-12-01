@@ -17,11 +17,14 @@
 
 import { useState, useCallback, useEffect, useRef } from "react";
 import { useShallow } from "zustand/react/shallow";
-import { Terminal, Command, X, Maximize2, Minimize2, Copy, Loader2 } from "lucide-react";
+import { Terminal, Command, X, Maximize2, Minimize2, Copy } from "lucide-react";
 import { ClaudeIcon, GeminiIcon, CodexIcon } from "@/components/icons";
 import { cn } from "@/lib/utils";
 import { XtermAdapter } from "./XtermAdapter";
 import { ArtifactOverlay } from "./ArtifactOverlay";
+import { StateBadge } from "./StateBadge";
+import { ActivityBadge } from "./ActivityBadge";
+import { DebugInfo } from "./DebugInfo";
 import { ErrorBanner } from "../Errors/ErrorBanner";
 import { useErrorStore, useTerminalStore, type RetryAction } from "@/store";
 import { useContextInjection, type CopyTreeProgress } from "@/hooks/useContextInjection";
@@ -101,35 +104,6 @@ function getTerminalIcon(type: TerminalType, className?: string) {
   }
 }
 
-/**
- * Get status badge color based on activity status
- */
-function getStatusColor(status: ActivityState["status"]): string {
-  switch (status) {
-    case "working":
-      return "bg-blue-500/20 text-blue-300 border-blue-500/30";
-    case "waiting":
-      return "bg-yellow-500/20 text-yellow-300 border-yellow-500/30";
-    case "success":
-      return "bg-green-500/20 text-green-300 border-green-500/30";
-    case "failure":
-      return "bg-red-500/20 text-red-300 border-red-500/30";
-  }
-}
-
-/**
- * Get type badge color based on terminal task type
- */
-function getTypeColor(type: ActivityState["type"]): string {
-  switch (type) {
-    case "background":
-      return "bg-purple-500/20 text-purple-300 border-purple-500/30";
-    case "interactive":
-      return "bg-cyan-500/20 text-cyan-300 border-cyan-500/30";
-    case "idle":
-      return "bg-gray-500/20 text-gray-400 border-gray-500/30";
-  }
-}
 
 export function TerminalPane({
   id,
@@ -164,9 +138,6 @@ export function TerminalPane({
   const queueCount = useTerminalStore(
     useShallow((state) => state.commandQueue.filter((c) => c.terminalId === id).length)
   );
-
-  // Determine if agent is working (busy)
-  const isAgentWorking = agentState === "working";
 
   // Get errors for this terminal - subscribe to store changes
   // Use useShallow to prevent infinite loops from .filter() creating new array references
@@ -379,55 +350,34 @@ export function TerminalPane({
             </span>
           )}
 
-          {/* Activity badge - shows AI-generated headline */}
-          {activity && activity.headline && (
-            <div
-              className={cn(
-                "flex items-center gap-1.5 px-2 py-0.5 rounded border text-xs font-mono ml-2",
-                getStatusColor(activity.status)
-              )}
-              role="status"
-              aria-live="polite"
-              title={`${activity.headline} (${activity.type})`}
-            >
-              {activity.status === "working" && (
-                <Loader2 className="h-3 w-3 animate-spin" aria-hidden="true" />
-              )}
-              <span className="truncate max-w-[150px]">{activity.headline}</span>
-              {activity.type === "background" && (
-                <span
-                  className={cn("text-[10px] px-1 rounded border", getTypeColor(activity.type))}
-                >
-                  bg
-                </span>
-              )}
-            </div>
+          {/* Agent state badge - shows for all non-idle states when no activity or when state is critical */}
+          {agentState && agentState !== "idle" && (
+            // Show state badge when:
+            // 1. No activity headline exists, OR
+            // 2. State is critical (failed/waiting) even if activity exists
+            (!activity?.headline || agentState === "failed" || agentState === "waiting") && (
+              <StateBadge state={agentState} className="ml-2" />
+            )
           )}
 
-          {/* Fallback: Working state spinner (when no activity headline) */}
-          {isAgentWorking && !activity?.headline && (
-            <div
-              className="flex items-center gap-1 text-[var(--color-state-working)] ml-1"
-              role="status"
-              aria-live="polite"
-              aria-label="Agent is working"
-            >
-              <Loader2 className="h-3 w-3 animate-spin" aria-hidden="true" />
-              <span className="text-xs font-mono">Working</span>
-            </div>
+          {/* Activity badge - shows AI-generated headline when state is not critical */}
+          {activity && activity.headline && agentState !== "failed" && agentState !== "waiting" && (
+            <ActivityBadge
+              headline={activity.headline}
+              status={activity.status}
+              type={activity.type}
+              className="ml-2"
+            />
           )}
 
           {/* State debug info - shown when CANOPY_STATE_DEBUG is set in localStorage */}
-          {stateDebugInfo &&
-            typeof localStorage !== "undefined" &&
-            localStorage.getItem("CANOPY_STATE_DEBUG") === "1" && (
-              <span
-                className="text-xs font-mono text-gray-500 ml-1"
-                title={`Trigger: ${stateDebugInfo.trigger}\nConfidence: ${(stateDebugInfo.confidence * 100).toFixed(0)}%`}
-              >
-                ({stateDebugInfo.trigger}, {(stateDebugInfo.confidence * 100).toFixed(0)}%)
-              </span>
-            )}
+          {stateDebugInfo && (
+            <DebugInfo
+              trigger={stateDebugInfo.trigger}
+              confidence={stateDebugInfo.confidence}
+              className="ml-1"
+            />
+          )}
 
           {/* Queue count indicator */}
           {queueCount > 0 && (
