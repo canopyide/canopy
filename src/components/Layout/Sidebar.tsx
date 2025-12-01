@@ -1,6 +1,7 @@
 import { useCallback, useEffect, useRef, useState, type ReactNode } from "react";
 import { Settings } from "lucide-react";
 import { cn } from "@/lib/utils";
+import { Tabs } from "@/components/ui/Tabs";
 import { ProjectSwitcher, ProjectRunners, ProjectSettingsDialog } from "@/components/Project";
 import { useProjectStore } from "@/store/projectStore";
 
@@ -131,30 +132,17 @@ export function Sidebar({
         </div>
 
         {/* Tab bar */}
-        <div className="shrink-0 flex border-b border-canopy-border">
-          <button
-            onClick={() => handleTabChange("worktrees")}
-            className={cn(
-              "flex-1 px-3 py-2 text-sm font-medium transition-colors",
-              currentTab === "worktrees"
-                ? "text-canopy-accent border-b-2 border-canopy-accent"
-                : "text-gray-400 hover:text-gray-200"
-            )}
-          >
-            Worktrees
-          </button>
-          <button
-            onClick={() => handleTabChange("history")}
-            className={cn(
-              "flex-1 px-3 py-2 text-sm font-medium transition-colors",
-              currentTab === "history"
-                ? "text-canopy-accent border-b-2 border-canopy-accent"
-                : "text-gray-400 hover:text-gray-200"
-            )}
-          >
-            History
-          </button>
-        </div>
+        <Tabs
+          value={currentTab}
+          onChange={(tab) => handleTabChange(tab as SidebarTab)}
+          options={[
+            { value: "worktrees", label: "Worktrees" },
+            { value: "history", label: "History" },
+          ]}
+          fullWidth
+          className="shrink-0"
+          ariaLabel="Sidebar navigation"
+        />
 
         {/* Sidebar content grows to fill space */}
         <div className="flex-1 overflow-y-auto min-h-0">

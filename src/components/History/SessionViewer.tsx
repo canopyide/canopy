@@ -5,8 +5,9 @@
  * Provides export and resume functionality.
  */
 
-import { useState, useCallback, useMemo } from "react";
+import { useState, useCallback, useMemo, useEffect } from "react";
 import { cn } from "@/lib/utils";
+import { Tabs } from "@/components/ui/Tabs";
 import { ArtifactList } from "./ArtifactList";
 import type { AgentSession } from "@shared/types";
 
@@ -72,6 +73,11 @@ export function SessionViewer({
   const [activeTab, setActiveTab] = useState<TabId>("transcript");
   const [isExporting, setIsExporting] = useState(false);
   const [exportFormat, setExportFormat] = useState<"json" | "markdown">("markdown");
+
+  // Reset to transcript tab when session changes
+  useEffect(() => {
+    setActiveTab("transcript");
+  }, [session.id]);
 
   // Combine transcript entries for display
   const transcriptText = useMemo(() => {
@@ -188,30 +194,16 @@ export function SessionViewer({
       </div>
 
       {/* Tabs */}
-      <div className="flex border-b border-gray-700">
-        <button
-          onClick={() => setActiveTab("transcript")}
-          className={cn(
-            "px-4 py-2 text-sm font-medium transition-colors",
-            activeTab === "transcript"
-              ? "text-[var(--color-status-info)] border-b-2 border-blue-400"
-              : "text-gray-400 hover:text-gray-200"
-          )}
-        >
-          Transcript ({session.transcript.length})
-        </button>
-        <button
-          onClick={() => setActiveTab("artifacts")}
-          className={cn(
-            "px-4 py-2 text-sm font-medium transition-colors",
-            activeTab === "artifacts"
-              ? "text-[var(--color-status-info)] border-b-2 border-blue-400"
-              : "text-gray-400 hover:text-gray-200"
-          )}
-        >
-          Artifacts ({session.artifacts.length})
-        </button>
-      </div>
+      <Tabs
+        value={activeTab}
+        onChange={(tab) => setActiveTab(tab as TabId)}
+        options={[
+          { value: "transcript", label: `Transcript (${session.transcript.length})` },
+          { value: "artifacts", label: `Artifacts (${session.artifacts.length})` },
+        ]}
+        className="border-b-gray-700"
+        ariaLabel="Session content tabs"
+      />
 
       {/* Content */}
       <div className="flex-1 overflow-y-auto min-h-0">
