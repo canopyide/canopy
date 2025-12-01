@@ -102,6 +102,15 @@ build/icon.ico
 build/icon.png
 build/icon-source.png
 
+# Fonts (binary files, not useful for context)
+src/fonts/
+
+# Icon components (SVG boilerplate)
+src/components/icons/
+
+# Build and packaging scripts
+scripts/
+
 # Agent instruction files (already in CLAUDE.md and docs/)
 AGENTS.md
 GEMINI.md
