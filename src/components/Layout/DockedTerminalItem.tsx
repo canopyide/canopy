@@ -40,19 +40,20 @@ function getTerminalIcon(type: TerminalType, className?: string) {
 
 /**
  * Get compact status indicator based on agent state
+ * Uses Digital Ecology palette: violet for working, emerald for success.
  */
 function getStateIndicator(state?: AgentState) {
   if (!state || state === "idle") return null;
 
   switch (state) {
     case "working":
-      return <Loader2 className="h-3 w-3 animate-spin text-blue-400" aria-hidden="true" />;
+      return <Loader2 className="h-3 w-3 animate-spin text-purple-500" aria-hidden="true" />; // Purple-500 matches --color-state-working
     case "waiting":
       return (
-        <span className="w-2 h-2 rounded-full bg-yellow-400 animate-pulse" aria-hidden="true" />
+        <span className="w-2 h-2 rounded-full bg-amber-400 animate-pulse" aria-hidden="true" />
       );
     case "completed":
-      return <span className="w-2 h-2 rounded-full bg-green-400" aria-hidden="true" />;
+      return <span className="w-2 h-2 rounded-full bg-emerald-400" aria-hidden="true" />; // Emerald for success
     case "failed":
       return <span className="w-2 h-2 rounded-full bg-red-400" aria-hidden="true" />;
     default:
@@ -110,14 +111,14 @@ export function DockedTerminalItem({ terminal }: DockedTerminalItemProps) {
       </PopoverTrigger>
 
       <PopoverContent
-        className="w-[700px] h-[500px] p-0 border-canopy-border bg-[#1a1b26] shadow-2xl"
+        className="w-[700px] h-[500px] p-0 border-canopy-border bg-canopy-bg shadow-2xl"
         side="top"
         align="start"
         sideOffset={8}
       >
         <div className="flex flex-col h-full">
           {/* Mini Header */}
-          <div className="h-9 flex items-center justify-between px-3 border-b border-canopy-border bg-[#1a1b26] shrink-0">
+          <div className="h-9 flex items-center justify-between px-3 border-b border-canopy-border bg-canopy-bg shrink-0">
             <div className="flex items-center gap-2">
               {getTerminalIcon(terminal.type, "text-canopy-text/70")}
               {getStateIndicator(terminal.agentState)}

@@ -217,10 +217,10 @@ export function AppLayout({
       style={{
         height: "100vh",
         width: "100vw",
-        backgroundColor: "#1a1b26", // Fallback for bg-canopy-bg
+        backgroundColor: "#18181b", // Fallback for bg-canopy-bg (Zinc-950)
         display: "flex",
         flexDirection: "column",
-        color: "#c0caf5", // Fallback for text-canopy-text
+        color: "#e4e4e7", // Fallback for text-canopy-text (Zinc-200)
       }}
     >
       <Toolbar
@@ -259,7 +259,7 @@ export function AppLayout({
               display: "flex",
               flexDirection: "column",
               overflow: "hidden",
-              backgroundColor: "#1a1b26",
+              backgroundColor: "#18181b", // Zinc-950
             }}
           >
             <div className="flex-1 overflow-hidden min-h-0">{children}</div>

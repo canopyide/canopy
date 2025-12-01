@@ -20,22 +20,22 @@ export function WelcomeScreen({ onDismiss }: WelcomeScreenProps) {
   };
 
   return (
-    <div className="h-full w-full flex flex-col items-center justify-center bg-[#1a1b26] p-8 text-center overflow-y-auto">
+    <div className="h-full w-full flex flex-col items-center justify-center bg-canopy-bg p-8 text-center overflow-y-auto">
       <div className="max-w-4xl w-full flex flex-col items-center gap-8">
         {/* Header Section */}
         <div className="space-y-4">
           <div className="h-16 w-16 bg-canopy-accent/20 rounded-2xl flex items-center justify-center mx-auto mb-6">
             <TreePine className="w-10 h-10 text-canopy-accent" />
           </div>
-          <h1 className="text-4xl font-bold text-white tracking-tight">Welcome to Canopy</h1>
-          <p className="text-xl text-gray-400 max-w-2xl mx-auto">
+          <h1 className="text-4xl font-bold text-canopy-text tracking-tight">Welcome to Canopy</h1>
+          <p className="text-xl text-muted-foreground max-w-2xl mx-auto">
             Your AI-native command center for orchestrating agents, managing worktrees, and
             accelerating development.
           </p>
         </div>
 
         {/* Video Container */}
-        <div className="w-full aspect-video bg-black/40 rounded-xl overflow-hidden border border-white/10 shadow-2xl relative group">
+        <div className="w-full aspect-video bg-canopy-sidebar rounded-xl overflow-hidden border border-canopy-border shadow-2xl relative group">
           <iframe
             className="w-full h-full"
             src={`https://www.youtube.com/embed/${videoId}?rel=0&modestbranding=1`}

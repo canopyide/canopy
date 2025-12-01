@@ -165,7 +165,7 @@ async function createWindow(): Promise<void> {
       sandbox: true,
     },
     titleBarStyle: "hiddenInset",
-    backgroundColor: "#1a1a1a",
+    backgroundColor: "#18181b", // Zinc-950: Digital Ecology background
   });
 
   console.log("[MAIN] Window created, loading content...");

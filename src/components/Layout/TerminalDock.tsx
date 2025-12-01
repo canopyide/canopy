@@ -44,7 +44,7 @@ export function TerminalDock() {
   return (
     <div
       className={cn(
-        "h-10 bg-[#1a1b26] border-t border-canopy-border",
+        "h-10 bg-canopy-bg border-t border-canopy-border",
         "flex items-center px-4 gap-2 overflow-x-auto",
         "z-40 shrink-0"
       )}

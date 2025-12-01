@@ -24,35 +24,36 @@ export function interpolateColor(startHex: string, endHex: string, factor: numbe
 
 /**
  * Calculates the heat color based on time elapsed.
+ * Uses the Digital Ecology emerald spectrum for activity indication.
  *
  * Strategy:
- * 0s - 5s:   Neon Green (High Activity) -> Pure Green
- * 5s - 30s:  Pure Green -> Dull Green/Yellowish
- * 30s - 90s: Dull Green -> Gray (Cooling down)
+ * 0s - 5s:   Bright Emerald (High Activity) -> Standard Emerald
+ * 5s - 30s:  Standard Emerald -> Teal (Transitioning)
+ * 30s - 90s: Teal -> Zinc (Cooling down to dormant)
  */
 export function getHeatColor(lastActivity: number | undefined | null): string {
-  if (lastActivity == null) return "#808080"; // Default Gray
+  if (lastActivity == null) return "#52525b"; // Zinc-600: Default dormant
 
   const elapsed = Date.now() - lastActivity;
 
   // Phase 1: The "Flash" (0s to 5s)
-  // From Neon Green (#4ADE80) to Solid Green (#22C55E)
+  // From Bright Emerald (#34d399) to Standard Emerald (#10b981)
   if (elapsed < 5000) {
-    return interpolateColor("#4ADE80", "#22C55E", elapsed / 5000);
+    return interpolateColor("#34d399", "#10b981", elapsed / 5000);
   }
 
   // Phase 2: Active Working (5s to 30s)
-  // From Solid Green (#22C55E) to Dull Olive (#859F3D)
+  // From Standard Emerald (#10b981) to Teal (#14b8a6)
   if (elapsed < 30000) {
-    return interpolateColor("#22C55E", "#859F3D", (elapsed - 5000) / 25000);
+    return interpolateColor("#10b981", "#14b8a6", (elapsed - 5000) / 25000);
   }
 
   // Phase 3: Cooling Down (30s to 90s)
-  // From Dull Olive (#859F3D) to Idle Gray (#6B7280)
+  // From Teal (#14b8a6) to Zinc-600 (#52525b) - dormant state
   if (elapsed < 90000) {
-    return interpolateColor("#859F3D", "#6B7280", (elapsed - 30000) / 60000);
+    return interpolateColor("#14b8a6", "#52525b", (elapsed - 30000) / 60000);
   }
 
-  // Phase 4: Idle
-  return "#6B7280"; // Gray-500
+  // Phase 4: Idle/Dormant
+  return "#52525b"; // Zinc-600
 }
