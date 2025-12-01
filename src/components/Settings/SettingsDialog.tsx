@@ -22,6 +22,8 @@ import {
   TreePine,
   Bot,
   Bug,
+  ChevronDown,
+  ChevronRight,
 } from "lucide-react";
 import { cn } from "@/lib/utils";
 import type { AIServiceState } from "@/types";
@@ -99,7 +101,7 @@ const formatKey = (key: string): string => {
 };
 
 export function SettingsDialog({ isOpen, onClose, defaultTab }: SettingsDialogProps) {
-  const [activeTab, setActiveTab] = useState<SettingsTab>(defaultTab ?? "general");
+  const [activeTab, setActiveTab] = useState<SettingsTab>(defaultTab ?? "ai");
   const { openLogs } = useErrors();
   const clearLogs = useLogsStore((state) => state.clearLogs);
 
@@ -119,6 +121,10 @@ export function SettingsDialog({ isOpen, onClose, defaultTab }: SettingsDialogPr
   // State debug info toggle
   const [showStateDebug, setShowStateDebug] = useState(() => getStateDebugEnabled());
 
+  // Collapsible section states
+  const [isAdvancedOpen, setIsAdvancedOpen] = useState(false);
+  const [isShortcutsOpen, setIsShortcutsOpen] = useState(false);
+
   // Handle state debug toggle
   const handleToggleStateDebug = useCallback(() => {
     const newState = toggleStateDebug();
@@ -132,6 +138,14 @@ export function SettingsDialog({ isOpen, onClose, defaultTab }: SettingsDialogPr
     }
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [isOpen, defaultTab]);
+
+  // Reset collapsible sections when dialog closes
+  useEffect(() => {
+    if (!isOpen) {
+      setIsAdvancedOpen(false);
+      setIsShortcutsOpen(false);
+    }
+  }, [isOpen]);
 
   // Load app version on mount
   useEffect(() => {
@@ -348,31 +362,52 @@ export function SettingsDialog({ isOpen, onClose, defaultTab }: SettingsDialogPr
                   </p>
                 </div>
 
-                <div className="space-y-4">
-                  <h4 className="text-sm font-medium text-canopy-text">Keyboard Shortcuts</h4>
+                {/* Keyboard Shortcuts (collapsed by default) */}
+                <div className="border border-canopy-border rounded-md">
+                  <button
+                    type="button"
+                    onClick={() => setIsShortcutsOpen(!isShortcutsOpen)}
+                    aria-expanded={isShortcutsOpen}
+                    aria-controls="keyboard-shortcuts-content"
+                    className="w-full flex items-center gap-2 px-3 py-2 text-sm text-gray-400 hover:text-canopy-text transition-colors"
+                  >
+                    {isShortcutsOpen ? (
+                      <ChevronDown className="w-4 h-4" />
+                    ) : (
+                      <ChevronRight className="w-4 h-4" />
+                    )}
+                    <span>Keyboard Shortcuts</span>
+                  </button>
 
-                  {KEYBOARD_SHORTCUTS.map((category) => (
-                    <div key={category.category} className="space-y-2">
-                      <h5 className="text-xs font-medium text-gray-400 uppercase tracking-wide">
-                        {category.category}
-                      </h5>
-                      <dl className="space-y-1">
-                        {category.shortcuts.map((shortcut) => (
-                          <div
-                            key={shortcut.key}
-                            className="flex items-center justify-between text-sm py-1"
-                          >
-                            <dt className="text-gray-300">{shortcut.description}</dt>
-                            <dd>
-                              <kbd className="px-2 py-1 bg-canopy-bg border border-canopy-border rounded text-xs font-mono text-canopy-text">
-                                {formatKey(shortcut.key)}
-                              </kbd>
-                            </dd>
-                          </div>
-                        ))}
-                      </dl>
+                  {isShortcutsOpen && (
+                    <div
+                      id="keyboard-shortcuts-content"
+                      className="px-3 pb-3 space-y-4 border-t border-canopy-border pt-3"
+                    >
+                      {KEYBOARD_SHORTCUTS.map((category) => (
+                        <div key={category.category} className="space-y-2">
+                          <h5 className="text-xs font-medium text-gray-400 uppercase tracking-wide">
+                            {category.category}
+                          </h5>
+                          <dl className="space-y-1">
+                            {category.shortcuts.map((shortcut) => (
+                              <div
+                                key={shortcut.key}
+                                className="flex items-center justify-between text-sm py-1"
+                              >
+                                <dt className="text-gray-300">{shortcut.description}</dt>
+                                <dd>
+                                  <kbd className="px-2 py-1 bg-canopy-bg border border-canopy-border rounded text-xs font-mono text-canopy-text">
+                                    {formatKey(shortcut.key)}
+                                  </kbd>
+                                </dd>
+                              </div>
+                            ))}
+                          </dl>
+                        </div>
+                      ))}
                     </div>
-                  ))}
+                  )}
                 </div>
               </div>
             )}
@@ -472,75 +507,105 @@ export function SettingsDialog({ isOpen, onClose, defaultTab }: SettingsDialogPr
                   </p>
                 </div>
 
-                {/* Model Selection */}
-                <div className="space-y-3">
-                  <h4 className="text-sm font-medium text-canopy-text">AI Model</h4>
-                  <div className="space-y-2">
-                    {AI_MODELS.map((model) => (
-                      <label
-                        key={model.value}
-                        className={cn(
-                          "flex items-center gap-3 p-3 rounded-md border cursor-pointer transition-colors",
-                          selectedModel === model.value
-                            ? "border-canopy-accent bg-canopy-accent/10"
-                            : "border-canopy-border hover:border-gray-500"
-                        )}
-                      >
-                        <input
-                          type="radio"
-                          name="ai-model"
-                          value={model.value}
-                          checked={selectedModel === model.value}
-                          onChange={() => handleModelChange(model.value)}
-                          className="sr-only"
-                        />
-                        <div
-                          className={cn(
-                            "w-4 h-4 rounded-full border-2 flex items-center justify-center",
-                            selectedModel === model.value
-                              ? "border-canopy-accent"
-                              : "border-gray-500"
-                          )}
-                        >
-                          {selectedModel === model.value && (
-                            <div className="w-2 h-2 rounded-full bg-canopy-accent" />
-                          )}
-                        </div>
-                        <div className="flex-1">
-                          <div className="text-sm font-medium text-canopy-text">{model.label}</div>
-                          <div className="text-xs text-gray-500">{model.description}</div>
-                        </div>
-                      </label>
-                    ))}
-                  </div>
-                </div>
+                {/* Advanced Options (collapsed by default) */}
+                <div className="border border-canopy-border rounded-md">
+                  <button
+                    type="button"
+                    onClick={() => setIsAdvancedOpen(!isAdvancedOpen)}
+                    aria-expanded={isAdvancedOpen}
+                    aria-controls="advanced-options-content"
+                    className="w-full flex items-center gap-2 px-3 py-2 text-sm text-gray-400 hover:text-canopy-text transition-colors"
+                  >
+                    {isAdvancedOpen ? (
+                      <ChevronDown className="w-4 h-4" />
+                    ) : (
+                      <ChevronRight className="w-4 h-4" />
+                    )}
+                    <span>Advanced Options</span>
+                  </button>
 
-                {/* Enable/Disable Toggle */}
-                <div className="space-y-3">
-                  <h4 className="text-sm font-medium text-canopy-text">AI Features</h4>
-                  <label className="flex items-center gap-3 cursor-pointer">
-                    <button
-                      onClick={() => handleEnabledChange(!aiConfig?.enabled)}
-                      className={cn(
-                        "relative w-11 h-6 rounded-full transition-colors",
-                        aiConfig?.enabled ? "bg-canopy-accent" : "bg-gray-600"
-                      )}
+                  {isAdvancedOpen && (
+                    <div
+                      id="advanced-options-content"
+                      className="px-3 pb-3 space-y-4 border-t border-canopy-border pt-3"
                     >
-                      <span
-                        className={cn(
-                          "absolute top-0.5 left-0.5 w-5 h-5 bg-white rounded-full transition-transform",
-                          aiConfig?.enabled && "translate-x-5"
-                        )}
-                      />
-                    </button>
-                    <span className="text-sm text-canopy-text">
-                      {aiConfig?.enabled ? "Enabled" : "Disabled"}
-                    </span>
-                  </label>
-                  <p className="text-xs text-gray-500">
-                    When enabled, Canopy generates worktree summaries and project identities to help
-                    agents understand your work.
-                  </p>
+                      {/* Model Selection */}
+                      <div className="space-y-3">
+                        <h4 className="text-sm font-medium text-canopy-text">AI Model</h4>
+                        <div className="space-y-2">
+                          {AI_MODELS.map((model) => (
+                            <label
+                              key={model.value}
+                              className={cn(
+                                "flex items-center gap-3 p-3 rounded-md border cursor-pointer transition-colors",
+                                selectedModel === model.value
+                                  ? "border-canopy-accent bg-canopy-accent/10"
+                                  : "border-canopy-border hover:border-gray-500"
+                              )}
+                            >
+                              <input
+                                type="radio"
+                                name="ai-model"
+                                value={model.value}
+                                checked={selectedModel === model.value}
+                                onChange={() => handleModelChange(model.value)}
+                                className="sr-only"
+                              />
+                              <div
+                                className={cn(
+                                  "w-4 h-4 rounded-full border-2 flex items-center justify-center",
+                                  selectedModel === model.value
+                                    ? "border-canopy-accent"
+                                    : "border-gray-500"
+                                )}
+                              >
+                                {selectedModel === model.value && (
+                                  <div className="w-2 h-2 rounded-full bg-canopy-accent" />
+                                )}
+                              </div>
+                              <div className="flex-1">
+                                <div className="text-sm font-medium text-canopy-text">
+                                  {model.label}
+                                </div>
+                                <div className="text-xs text-gray-500">{model.description}</div>
+                              </div>
+                            </label>
+                          ))}
+                        </div>
+                        <p className="text-xs text-gray-500">
+                          GPT-5 Nano is recommended for most tasks.
+                        </p>
+                      </div>
+
+                      {/* Enable/Disable Toggle */}
+                      <div className="space-y-3">
+                        <h4 className="text-sm font-medium text-canopy-text">AI Features</h4>
+                        <label className="flex items-center gap-3 cursor-pointer">
+                          <button
+                            onClick={() => handleEnabledChange(!aiConfig?.enabled)}
+                            className={cn(
+                              "relative w-11 h-6 rounded-full transition-colors",
+                              aiConfig?.enabled ? "bg-canopy-accent" : "bg-gray-600"
+                            )}
+                          >
+                            <span
+                              className={cn(
+                                "absolute top-0.5 left-0.5 w-5 h-5 bg-white rounded-full transition-transform",
+                                aiConfig?.enabled && "translate-x-5"
+                              )}
+                            />
+                          </button>
+                          <span className="text-sm text-canopy-text">
+                            {aiConfig?.enabled ? "Enabled" : "Disabled"}
+                          </span>
+                        </label>
+                        <p className="text-xs text-gray-500">
+                          When enabled, Canopy generates worktree summaries and project identities
+                          to help agents understand your work.
+                        </p>
+                      </div>
+                    </div>
+                  )}
                 </div>
               </div>
             )}
