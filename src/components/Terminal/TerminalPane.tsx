@@ -321,6 +321,7 @@ export function TerminalPane({
   return (
     <div
       ref={containerRef}
+      data-terminal-id={id}
       className={cn(
         "flex flex-col h-full border border-canopy-border/50 group", // Tiling style - full border for all edges
         isFocused ? "border-canopy-accent/20" : "border-canopy-border/30",

@@ -1,6 +1,7 @@
 import { useState, useCallback, useEffect, type ReactNode } from "react";
 import { Toolbar } from "./Toolbar";
 import { Sidebar } from "./Sidebar";
+import { WaitingForYouStrip } from "./WaitingForYouStrip";
 import { TerminalDock } from "./TerminalDock";
 import { DiagnosticsDock } from "../Diagnostics";
 import { useFocusStore, useDiagnosticsStore, useErrorStore, type PanelState } from "@/store";
@@ -229,6 +230,7 @@ export function AppLayout({
         onToggleFocusMode={handleToggleFocusMode}
         isRefreshing={isRefreshing}
       />
+      <WaitingForYouStrip />
       <div
         className="flex-1 flex flex-col overflow-hidden"
         style={{ flex: 1, display: "flex", flexDirection: "column", overflow: "hidden" }}
