@@ -1328,6 +1328,10 @@ export function registerIpcHandlers(
         }
       }
 
+      if ("hasSeenWelcome" in partialState) {
+        updates.hasSeenWelcome = Boolean(partialState.hasSeenWelcome);
+      }
+
       store.set("appState", { ...currentState, ...updates });
     } catch (error) {
       console.error("Failed to set app state:", error);

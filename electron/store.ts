@@ -27,6 +27,8 @@ export interface StoreSchema {
     };
     /** Height of diagnostics dock in pixels */
     diagnosticsHeight?: number;
+    /** Whether the user has seen the welcome screen */
+    hasSeenWelcome?: boolean;
     terminals: Array<{
       id: string;
       type: "shell" | "claude" | "gemini" | "codex" | "custom";
@@ -80,6 +82,7 @@ export const store = new Store<StoreSchema>({
       recentDirectories: [],
       terminals: [],
       recipes: [],
+      hasSeenWelcome: false,
     },
     projects: {
       list: [],

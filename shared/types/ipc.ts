@@ -400,6 +400,8 @@ export interface AppState {
   recentDirectories?: RecentDirectory[];
   /** Saved terminal recipes */
   recipes?: SavedRecipe[];
+  /** Whether the user has seen the welcome screen */
+  hasSeenWelcome?: boolean;
 }
 
 // ============================================================================

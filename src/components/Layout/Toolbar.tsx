@@ -9,6 +9,7 @@ import {
   GitCommit,
   GitPullRequest,
   AlertTriangle,
+  CircleHelp,
 } from "lucide-react";
 import { ClaudeIcon, GeminiIcon, CodexIcon } from "@/components/icons";
 import { cn } from "@/lib/utils";
@@ -33,6 +34,8 @@ interface ToolbarProps {
   onToggleFocusMode?: () => void;
   /** Whether worktree refresh is in progress */
   isRefreshing?: boolean;
+  /** Called when welcome/help button is clicked */
+  onShowWelcome?: () => void;
 }
 
 export function Toolbar({
@@ -44,6 +47,7 @@ export function Toolbar({
   isFocusMode = false,
   onToggleFocusMode,
   isRefreshing = false,
+  onShowWelcome,
 }: ToolbarProps) {
   const currentProject = useProjectStore((state) => state.currentProject);
   const terminals = useTerminalStore((state) => state.terminals);
@@ -274,6 +278,16 @@ export function Toolbar({
 
         {/* Settings & Actions cluster */}
         <div className="flex items-center gap-1">
+          <Button
+            variant="ghost"
+            size="icon"
+            onClick={onShowWelcome}
+            className="text-canopy-text hover:bg-canopy-border hover:text-canopy-accent h-8 w-8"
+            title="Welcome & Help"
+            aria-label="Show welcome screen"
+          >
+            <CircleHelp className="h-4 w-4" />
+          </Button>
           <Button
             variant="ghost"
             size="icon"

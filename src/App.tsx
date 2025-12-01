@@ -11,6 +11,7 @@ import {
 } from "./hooks";
 import { AppLayout } from "./components/Layout";
 import { TerminalGrid } from "./components/Terminal";
+import { WelcomeScreen } from "./components/Welcome/WelcomeScreen";
 import { WorktreeCard } from "./components/Worktree";
 import { NewWorktreeDialog } from "./components/Worktree/NewWorktreeDialog";
 import { TerminalPalette } from "./components/TerminalPalette";
@@ -293,6 +294,8 @@ function SidebarContent({ onOpenSettings }: SidebarContentProps) {
   );
 }
 
+type AppView = "grid" | "welcome";
+
 function App() {
   const { focusNext, focusPrevious, toggleMaximize, focusedId, addTerminal } = useTerminalStore();
   const { launchAgent } = useAgentLauncher();
@@ -314,6 +317,10 @@ function App() {
 
   // Refresh state
   const [isRefreshing, setIsRefreshing] = useState(false);
+
+  // View state management for welcome screen (start with welcome, will be updated after state loads)
+  const [currentView, setCurrentView] = useState<AppView>("welcome");
+  const [isStateLoaded, setIsStateLoaded] = useState(false);
 
   // Track if state has been restored (prevent StrictMode double-execution)
   const hasRestoredState = useRef(false);
@@ -337,6 +344,18 @@ function App() {
     const restoreState = async () => {
       try {
         const appState = await appClient.getState();
+
+        // Guard against undefined state
+        if (!appState) {
+          console.warn("App state returned undefined, using defaults");
+          setCurrentView("welcome"); // Default to welcome screen for safety
+          setIsStateLoaded(true);
+          return;
+        }
+
+        // Check if user has seen the welcome screen (treat undefined as not seen for first-run and migration)
+        const hasSeenWelcome = appState.hasSeenWelcome ?? false;
+        setCurrentView(hasSeenWelcome ? "grid" : "welcome");
 
         // Restore terminals - main process handles CWD validation and falls back
         // to project root if the persisted cwd is invalid/deleted
@@ -385,6 +404,8 @@ function App() {
         await loadRecipes();
       } catch (error) {
         console.error("Failed to restore app state:", error);
+      } finally {
+        setIsStateLoaded(true);
       }
     };
 
@@ -431,6 +452,15 @@ function App() {
       setSettingsTab(tab);
     }
     setIsSettingsOpen(true);
+  }, []);
+
+  // Welcome screen handlers
+  const handleShowWelcome = useCallback(() => {
+    setCurrentView("welcome");
+  }, []);
+
+  const handleDismissWelcome = useCallback(() => {
+    setCurrentView("grid");
   }, []);
 
   // Handle context injection via keyboard shortcut
@@ -568,6 +598,11 @@ function App() {
     );
   }
 
+  // Show loading state while checking persistence flag to prevent flash of content
+  if (!isStateLoaded) {
+    return <div className="h-screen w-screen bg-[#1a1b26]" />;
+  }
+
   return (
     <>
       <AppLayout
@@ -578,8 +613,13 @@ function App() {
         onSettings={handleSettings}
         onRetry={handleErrorRetry}
         isRefreshing={isRefreshing}
+        onShowWelcome={handleShowWelcome}
       >
-        <TerminalGrid className="h-full w-full bg-canopy-bg" />
+        {currentView === "welcome" ? (
+          <WelcomeScreen onDismiss={handleDismissWelcome} />
+        ) : (
+          <TerminalGrid className="h-full w-full bg-canopy-bg" />
+        )}
       </AppLayout>
 
       {/* Terminal palette overlay */}
