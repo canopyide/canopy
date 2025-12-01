@@ -39,12 +39,7 @@ function getCommandMeta(name: string) {
   const n = name.toLowerCase();
 
   // Check most specific categories first (test, lint, build) before generic (dev, watch)
-  if (
-    n.includes("test") ||
-    n.includes("lint") ||
-    n.includes("check") ||
-    n.includes("format")
-  ) {
+  if (n.includes("test") || n.includes("lint") || n.includes("check") || n.includes("format")) {
     return {
       category: "Quality" as CommandCategory,
       icon: FlaskConical,
