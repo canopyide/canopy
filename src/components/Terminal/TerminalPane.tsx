@@ -353,7 +353,7 @@ export function TerminalPane({
           // Inactive: Dark background + subtle bottom border
           isFocused
             ? "bg-canopy-accent/10 border-b border-canopy-accent/20"
-            : "bg-[#16171f] border-b border-canopy-border/30"
+            : "bg-canopy-sidebar border-b border-canopy-border/30"
         )}
         onDoubleClick={onToggleMaximize}
       >
@@ -448,7 +448,7 @@ export function TerminalPane({
           {/* Queue count indicator */}
           {queueCount > 0 && (
             <div
-              className="text-xs font-mono bg-blue-900/60 text-blue-200 px-1.5 py-0.5 rounded ml-1"
+              className="text-xs font-mono bg-canopy-accent/15 text-canopy-text px-1.5 py-0.5 rounded ml-1"
               role="status"
               aria-live="polite"
               title={`${queueCount} command${queueCount > 1 ? "s" : ""} queued`}
@@ -596,8 +596,8 @@ export function TerminalPane({
         </div>
       )}
 
-      {/* Terminal Body - Explicit Tokyo Night bg matches theme */}
-      <div className="flex-1 relative min-h-0 bg-[#1a1b26]">
+      {/* Terminal Body - Digital Ecology bg matches theme */}
+      <div className="flex-1 relative min-h-0 bg-canopy-bg">
         <XtermAdapter
           terminalId={id}
           onReady={handleReady}

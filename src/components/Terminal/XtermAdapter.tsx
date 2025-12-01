@@ -34,38 +34,39 @@ export interface XtermAdapterProps {
 }
 
 /**
- * Canopy terminal theme - Tokyo Night palette for brand consistency
+ * Canopy terminal theme - Digital Ecology palette for brand consistency
  */
 const CANOPY_TERMINAL_THEME = {
-  // Base: Matches --color-canopy-bg
-  background: "#1a1b26",
-  // Foreground: Matches --color-canopy-text
-  foreground: "#c0caf5",
-  cursor: "#c0caf5",
-  cursorAccent: "#1a1b26",
+  // Base: Matches --color-canopy-bg (Zinc-950)
+  background: "#18181b",
+  // Foreground: Matches --color-canopy-text (Zinc-200)
+  foreground: "#e4e4e7",
+  cursor: "#10b981", // Emerald-500: Brand cursor
+  cursorAccent: "#18181b",
 
-  // Selection: Distinct but subtle (xterm 5.x doesn't support selectionForeground)
-  selectionBackground: "#33467c",
+  // Selection: Deep emerald for organic highlighting
+  selectionBackground: "#064e3b", // Emerald-900
+  selectionForeground: "#e4e4e7",
 
-  // ANSI Standard (Tokyo Night)
-  black: "#15161e",
-  red: "#f7768e", // Error / Fatal
-  green: "#9ece6a", // Success / Insertions
-  yellow: "#e0af68", // Warning / Prompts
-  blue: "#7aa2f7", // Info / Folder names
-  magenta: "#bb9af7", // AI Agents / Special
-  cyan: "#7dcfff", // Links / Regex
-  white: "#a9b1d6", // Muted text
+  // ANSI Standard (Digital Ecology palette)
+  black: "#18181b", // Zinc-950
+  red: "#f87171", // Red-400: Soft coral
+  green: "#10b981", // Emerald-500: Brand green
+  yellow: "#fbbf24", // Amber-400
+  blue: "#38bdf8", // Sky-400
+  magenta: "#a855f7", // Purple-500: AI/Magic
+  cyan: "#22d3ee", // Cyan-400
+  white: "#e4e4e7", // Zinc-200
 
   // ANSI Bright (Vibrant for highlighting)
-  brightBlack: "#414868", // Comments / Ignored files
-  brightRed: "#f7768e",
-  brightGreen: "#9ece6a",
-  brightYellow: "#e0af68",
-  brightBlue: "#7aa2f7",
-  brightMagenta: "#bb9af7",
-  brightCyan: "#7dcfff",
-  brightWhite: "#c0caf5",
+  brightBlack: "#52525b", // Zinc-600
+  brightRed: "#fca5a5", // Red-300
+  brightGreen: "#34d399", // Emerald-400
+  brightYellow: "#fcd34d", // Amber-300
+  brightBlue: "#7dd3fc", // Sky-300
+  brightMagenta: "#c084fc", // Purple-400
+  brightCyan: "#67e8f9", // Cyan-300
+  brightWhite: "#fafafa", // Zinc-50
 };
 
 /**

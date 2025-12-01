@@ -600,7 +600,7 @@ function App() {
 
   // Show loading state while checking persistence flag to prevent flash of content
   if (!isStateLoaded) {
-    return <div className="h-screen w-screen bg-[#1a1b26]" />;
+    return <div className="h-screen w-screen bg-canopy-bg" />;
   }
 
   return (

@@ -1,12 +1,12 @@
 /**
  * AgentStatusIndicator displays a visual indicator of agent lifecycle state.
  *
- * States:
+ * States (Digital Ecology palette):
  * - idle: No indicator (agent spawned but not active)
- * - working: Spinner icon with blue pulse (agent processing)
- * - waiting: Question mark icon with yellow pulse (needs user input)
- * - completed: Checkmark icon in green (agent finished successfully)
- * - failed: X icon in red (agent encountered error)
+ * - working: Spinner icon with violet pulse (agent processing - AI thinking)
+ * - waiting: Question mark icon with amber background (needs user input)
+ * - completed: Checkmark icon in emerald (agent finished successfully)
+ * - failed: X icon in coral red (agent encountered error)
  */
 
 import { cn } from "../../lib/utils";
@@ -22,6 +22,7 @@ interface AgentStatusIndicatorProps {
 /**
  * Maps agent states to their visual properties.
  * idle is excluded as it doesn't show an indicator.
+ * Uses Digital Ecology palette: violet for working, emerald for success.
  */
 const STATE_CONFIG: Record<
   Exclude<AgentState, "idle">,
@@ -37,30 +38,30 @@ const STATE_CONFIG: Record<
 > = {
   working: {
     icon: "⟳",
-    color: "status-working", // Custom class for pulsing gradient
+    color: "status-working", // Custom class for violet pulsing gradient
     pulse: false, // Using custom animation instead
     label: "working",
     tooltip: "Agent is processing",
   },
   waiting: {
     icon: "?",
-    color: "text-[#1a1b26]", // Dark text
-    bgColor: "bg-[#e0af68]", // High-contrast yellow block
+    color: "text-canopy-bg", // Dark text on light bg
+    bgColor: "bg-[var(--color-state-waiting)]", // Amber high-contrast block
     pulse: false,
     label: "waiting",
     tooltip: "Agent is waiting for input",
   },
   completed: {
     icon: "✓",
-    color: "text-[var(--color-status-success)]",
+    color: "text-[var(--color-status-success)]", // Emerald-400
     pulse: false,
     label: "completed",
     tooltip: "Agent completed successfully",
   },
   failed: {
     icon: "✗",
-    color: "text-[#f7768e]", // Red text
-    borderColor: "border-[#f7768e]", // Red outline
+    color: "text-[var(--color-status-error)]", // Red-400: Soft coral
+    borderColor: "border-[var(--color-status-error)]", // Red outline
     pulse: false,
     label: "failed",
     tooltip: "Agent encountered an error",

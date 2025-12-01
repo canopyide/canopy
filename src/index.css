@@ -63,33 +63,33 @@
   --radius-lg: var(--radius);
   --radius-xl: calc(var(--radius) + 4px);
 
-  /* Canopy theme colors */
-  --color-canopy-bg: #1a1b26;
-  --color-canopy-sidebar: #16171f;
-  --color-canopy-border: #2d2f3a;
-  --color-canopy-text: #c0caf5;
-  --color-canopy-accent: #7aa2f7;
-  --color-canopy-success: #9ece6a;
-  --color-canopy-warning: #e0af68;
-  --color-canopy-error: #f7768e;
+  /* Digital Ecology theme colors - The Forest Floor (Backgrounds) */
+  --color-canopy-bg: #18181b; /* Zinc-950: Neutral, deep charcoal */
+  --color-canopy-sidebar: #121214; /* Slightly darker, distinct from main content */
+  --color-canopy-border: #27272a; /* Zinc-800: Subtle separation */
+  --color-canopy-text: #e4e4e7; /* Zinc-200: Soft white, not harsh */
+  --color-canopy-accent: #10b981; /* Emerald-500: The Brand Color (Growth) */
+  --color-canopy-success: #34d399; /* Emerald-400: Brighter green */
+  --color-canopy-warning: #fbbf24; /* Amber-400 */
+  --color-canopy-error: #f87171; /* Red-400: Soft Coral */
 
   /* Semantic status colors - for user-facing states (success, error, warning, info) */
-  --color-status-success: #9ece6a; /* Operations completed successfully */
-  --color-status-warning: #e0af68; /* Cautionary states requiring attention */
-  --color-status-error: #f7768e; /* Error states and failures */
-  --color-status-info: #7aa2f7; /* Informational states */
+  --color-status-success: #34d399; /* Emerald-400: Brighter green */
+  --color-status-warning: #fbbf24; /* Amber-400 */
+  --color-status-error: #f87171; /* Red-400: Soft Coral */
+  --color-status-info: #38bdf8; /* Sky-400: Water/Sky elements */
 
   /* Semantic state colors - for agent/terminal lifecycle states */
-  --color-state-active: #7dcfff; /* Currently active/selected items */
-  --color-state-idle: #565f89; /* Inactive/dormant states */
-  --color-state-working: #bb9af7; /* In-progress/working states */
-  --color-state-waiting: #e0af68; /* Waiting/pending states */
+  --color-state-active: #10b981; /* Emerald-500: Active Worktree */
+  --color-state-idle: #52525b; /* Zinc-600: Dormant */
+  --color-state-working: #a855f7; /* Purple-500: AI is Thinking (Magic) */
+  --color-state-waiting: #fbbf24; /* Amber-400: Needs Attention */
 
   /* Server status colors - for dev server states */
-  --color-server-running: #9ece6a; /* Server running successfully */
-  --color-server-stopped: #565f89; /* Server stopped/inactive */
-  --color-server-starting: #e0af68; /* Server starting up */
-  --color-server-error: #f7768e; /* Server error state */
+  --color-server-running: #34d399; /* Emerald-400: Server running successfully */
+  --color-server-stopped: #52525b; /* Zinc-600: Server stopped/inactive */
+  --color-server-starting: #fbbf24; /* Amber-400: Server starting up */
+  --color-server-error: #f87171; /* Red-400: Server error state */
 }
 
 :root {
@@ -212,7 +212,7 @@
     -moz-osx-font-smoothing: grayscale;
   }
 
-  /* Terminal scrollbar styling - Tokyo Night theme */
+  /* Terminal scrollbar styling - Digital Ecology theme */
   .xterm-viewport {
     scrollbar-width: thin;
   }
@@ -223,16 +223,16 @@
   }
 
   .xterm-viewport::-webkit-scrollbar-track {
-    background: #1a1b26; /* Match terminal bg */
+    background: #18181b; /* Match terminal bg - Zinc-950 */
   }
 
   .xterm-viewport::-webkit-scrollbar-thumb {
-    background: #565f89; /* Improved contrast (3:1 on #1a1b26) */
+    background: #52525b; /* Zinc-600: Improved contrast */
     border-radius: 4px;
   }
 
   .xterm-viewport::-webkit-scrollbar-thumb:hover {
-    background: #6f7bb6; /* Lighter on hover */
+    background: #71717a; /* Zinc-500: Lighter on hover */
   }
 
   /* Consistent monospace font stack */
@@ -287,19 +287,19 @@ body,
   will-change: opacity;
 }
 
-/* Agent status working state - pulsing gradient animation */
+/* Agent status working state - pulsing gradient animation (violet for AI "thinking") */
 @keyframes status-pulse {
   0%,
   100% {
-    color: #7aa2f7;
-  } /* Blue */
+    color: #a855f7;
+  } /* Purple-500: Violet */
   50% {
-    color: #bb9af7;
-  } /* Purple */
+    color: #c084fc;
+  } /* Purple-400: Lighter violet */
 }
 
 .status-working {
-  color: #7aa2f7; /* Fallback color for reduced motion */
+  color: #a855f7; /* Fallback color for reduced motion - Purple-500 */
   animation: status-pulse 2s ease-in-out infinite;
 }
 
