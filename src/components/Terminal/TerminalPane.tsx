@@ -295,7 +295,17 @@ export function TerminalPane({
       onKeyDown={handleKeyDown}
       tabIndex={0}
       role="group"
-      aria-label={`${type} terminal: ${title}`}
+      aria-label={
+        type === "shell"
+          ? `Shell terminal: ${title}`
+          : type === "claude"
+            ? `Claude agent: ${title}`
+            : type === "gemini"
+              ? `Gemini agent: ${title}`
+              : type === "codex"
+                ? `Codex agent: ${title}`
+                : `${type} session: ${title}`
+      }
     >
       {/* Header - Status bar style */}
       <div
@@ -321,7 +331,7 @@ export function TerminalPane({
               onKeyDown={handleTitleInputKeyDown}
               onBlur={handleTitleSave}
               className="text-sm font-medium bg-black/40 border border-canopy-accent/50 px-1 h-5 min-w-32 outline-none text-canopy-text select-text"
-              aria-label="Edit terminal title"
+              aria-label={type === "shell" ? "Edit shell title" : "Edit agent title"}
             />
           ) : (
             <span
@@ -335,7 +345,11 @@ export function TerminalPane({
               role={onTitleChange ? "button" : undefined}
               title={onTitleChange ? `${title} — Double-click or press Enter to edit` : title}
               aria-label={
-                onTitleChange ? `Terminal title: ${title}. Press Enter or F2 to edit` : undefined
+                onTitleChange
+                  ? type === "shell"
+                    ? `Shell title: ${title}. Press Enter or F2 to edit`
+                    : `Agent title: ${title}. Press Enter or F2 to edit`
+                  : undefined
               }
             >
               {title}
@@ -422,7 +436,7 @@ export function TerminalPane({
               }}
               className="p-1.5 hover:bg-white/10 focus-visible:bg-white/10 focus-visible:outline focus-visible:outline-2 focus-visible:outline-canopy-accent text-canopy-text/60 hover:text-canopy-text transition-colors"
               title="Minimize to dock"
-              aria-label="Minimize terminal to dock"
+              aria-label="Minimize to dock"
             >
               <ArrowDownToLine className="w-3 h-3" aria-hidden="true" />
             </button>
@@ -436,7 +450,7 @@ export function TerminalPane({
               }}
               className="p-1.5 hover:bg-white/10 focus-visible:bg-white/10 focus-visible:outline focus-visible:outline-2 focus-visible:outline-canopy-accent text-canopy-text/60 hover:text-canopy-text transition-colors"
               title={isMaximized ? "Restore (Ctrl+Shift+F)" : "Maximize (Ctrl+Shift+F)"}
-              aria-label={isMaximized ? "Restore terminal" : "Maximize terminal"}
+              aria-label={isMaximized ? "Restore" : "Maximize"}
             >
               {isMaximized ? (
                 <Minimize2 className="w-3 h-3" aria-hidden="true" />
@@ -451,8 +465,8 @@ export function TerminalPane({
               onClose();
             }}
             className="p-1.5 hover:bg-red-500/20 focus-visible:bg-red-500/20 focus-visible:outline focus-visible:outline-2 focus-visible:outline-[var(--color-status-error)] text-canopy-text/60 hover:text-[var(--color-status-error)] transition-colors"
-            title="Close Terminal (Ctrl+Shift+W)"
-            aria-label="Close terminal"
+            title="Close Session (Ctrl+Shift+W)"
+            aria-label="Close session"
           >
             <X className="w-3 h-3" aria-hidden="true" />
           </button>

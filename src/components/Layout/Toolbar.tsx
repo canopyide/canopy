@@ -93,8 +93,8 @@ export function Toolbar({
           size="icon"
           onClick={() => onLaunchAgent("claude")}
           className="text-canopy-text hover:bg-canopy-border hover:text-canopy-accent h-8 w-8"
-          title="Launch Claude Agent (Ctrl+Shift+C)"
-          aria-label="Launch Claude Agent"
+          title="Start Claude Agent (Ctrl+Shift+C)"
+          aria-label="Start Claude Agent"
         >
           <ClaudeIcon className="h-4 w-4" />
         </Button>
@@ -103,8 +103,8 @@ export function Toolbar({
           size="icon"
           onClick={() => onLaunchAgent("gemini")}
           className="text-canopy-text hover:bg-canopy-border hover:text-canopy-accent h-8 w-8"
-          title="Launch Gemini Agent (Ctrl+Shift+G)"
-          aria-label="Launch Gemini Agent"
+          title="Start Gemini Agent (Ctrl+Shift+G)"
+          aria-label="Start Gemini Agent"
         >
           <GeminiIcon className="h-4 w-4" />
         </Button>
@@ -113,8 +113,8 @@ export function Toolbar({
           size="icon"
           onClick={() => onLaunchAgent("codex")}
           className="text-canopy-text hover:bg-canopy-border hover:text-canopy-accent h-8 w-8"
-          title="Launch Codex Agent"
-          aria-label="Launch Codex Agent"
+          title="Start Codex Agent"
+          aria-label="Start Codex Agent"
         >
           <CodexIcon className="h-4 w-4" />
         </Button>
@@ -123,8 +123,8 @@ export function Toolbar({
           size="icon"
           onClick={() => onLaunchAgent("shell")}
           className="text-canopy-text hover:bg-canopy-border hover:text-canopy-accent h-8 w-8"
-          title="Open Shell Terminal"
-          aria-label="Open Shell Terminal"
+          title="Open Shell"
+          aria-label="Open Shell"
         >
           <Terminal className="h-4 w-4" />
         </Button>

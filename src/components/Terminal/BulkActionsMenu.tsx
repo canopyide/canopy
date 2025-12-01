@@ -94,8 +94,8 @@ export function BulkActionsMenu({ worktreeId, trigger, className }: BulkActionsM
     const count = worktreeId ? totalCount : terminals.length;
     setConfirmDialog({
       isOpen: true,
-      title: "Close All Terminals",
-      description: `This will close ${count} terminal${count !== 1 ? "s" : ""}. This action cannot be undone.`,
+      title: "Close All Sessions",
+      description: `This will close ${count} session${count !== 1 ? "s" : ""} (including agents and shells). This action cannot be undone.`,
       onConfirm: () => {
         if (worktreeId) {
           bulkCloseByWorktree(worktreeId);
@@ -117,8 +117,8 @@ export function BulkActionsMenu({ worktreeId, trigger, className }: BulkActionsM
   const handleRestartFailed = useCallback(() => {
     // Note: This restarts ALL failed agents globally, not just for this worktree
     const globalRestartMessage = worktreeId
-      ? `This will restart ${restartableCount} failed agent${restartableCount !== 1 ? "s" : ""} across ALL worktrees (not just this one). The terminals will be closed and new ones will be spawned with the same configuration.`
-      : `This will restart ${restartableCount} failed agent${restartableCount !== 1 ? "s" : ""}. The terminals will be closed and new ones will be spawned with the same configuration.`;
+      ? `This will restart ${restartableCount} failed agent${restartableCount !== 1 ? "s" : ""} across ALL worktrees (not just this one). Sessions will be closed and new ones spawned with the same configuration.`
+      : `This will restart ${restartableCount} failed agent${restartableCount !== 1 ? "s" : ""}. Sessions will be closed and new ones spawned with the same configuration.`;
 
     setConfirmDialog({
       isOpen: true,
@@ -191,7 +191,7 @@ export function BulkActionsMenu({ worktreeId, trigger, className }: BulkActionsM
             className="flex items-center gap-2 text-[var(--color-status-error)] focus:text-[var(--color-status-error)]"
           >
             <Trash2 className="h-4 w-4" />
-            <span>Close All Terminals...</span>
+            <span>Close All Sessions...</span>
             <span className="ml-auto text-xs text-canopy-text/50">({totalCount})</span>
           </DropdownMenuItem>
         </DropdownMenuContent>
