@@ -153,6 +153,8 @@ const CHANNELS = {
   TERMINAL_RESTORE: "terminal:restore",
   TERMINAL_TRASHED: "terminal:trashed",
   TERMINAL_RESTORED: "terminal:restored",
+  TERMINAL_SET_BUFFERING: "terminal:set-buffering",
+  TERMINAL_FLUSH: "terminal:flush",
 
   // Agent state channels
   AGENT_STATE_CHANGED: "agent:state-changed",
@@ -472,6 +474,11 @@ const api: ElectronAPI = {
       ipcRenderer.on(CHANNELS.TERMINAL_RESTORED, handler);
       return () => ipcRenderer.removeListener(CHANNELS.TERMINAL_RESTORED, handler);
     },
+
+    setBuffering: (id: string, enabled: boolean): Promise<void> =>
+      ipcRenderer.invoke(CHANNELS.TERMINAL_SET_BUFFERING, { id, enabled }),
+
+    flush: (id: string): Promise<void> => ipcRenderer.invoke(CHANNELS.TERMINAL_FLUSH, id),
   },
 
   // ==========================================

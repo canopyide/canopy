@@ -38,6 +38,8 @@ export const CHANNELS = {
   TERMINAL_RESTORE: "terminal:restore",
   TERMINAL_TRASHED: "terminal:trashed",
   TERMINAL_RESTORED: "terminal:restored",
+  TERMINAL_SET_BUFFERING: "terminal:set-buffering",
+  TERMINAL_FLUSH: "terminal:flush",
 
   // Agent state channels
   AGENT_STATE_CHANGED: "agent:state-changed",

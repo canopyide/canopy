@@ -82,4 +82,21 @@ export const terminalClient = {
   onRestored: (callback: (data: { id: string }) => void): (() => void) => {
     return window.electron.terminal.onRestored(callback);
   },
+
+  /**
+   * Set buffering mode for a terminal.
+   * When enabled, PTY output is buffered in memory instead of emitting IPC events.
+   * Used to reduce IPC overhead for hidden/docked terminals.
+   */
+  setBuffering: (id: string, enabled: boolean): Promise<void> => {
+    return window.electron.terminal.setBuffering(id, enabled);
+  },
+
+  /**
+   * Flush buffered output for a terminal.
+   * Combines all buffered chunks and sends them immediately.
+   */
+  flush: (id: string): Promise<void> => {
+    return window.electron.terminal.flush(id);
+  },
 } as const;
