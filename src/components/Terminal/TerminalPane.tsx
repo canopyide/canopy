@@ -297,8 +297,9 @@ export function TerminalPane({
       {/* Header - Status bar style */}
       <div
         className={cn(
-          "flex items-center justify-between px-3 h-8 shrink-0 font-mono text-sm transition-colors", // Tiling WM aesthetic - improved contrast
-          isFocused ? "bg-canopy-sidebar" : "bg-black/20"
+          "flex items-center justify-between px-3 h-8 shrink-0 font-mono text-sm transition-colors",
+          "bg-[#1a1b26]", // Match terminal background consistently
+          isFocused ? "border-b border-[#7aa2f7]/50" : "border-b border-[#414868]/30" // Focus via border color
         )}
         onDoubleClick={onToggleMaximize}
       >
@@ -516,8 +517,8 @@ export function TerminalPane({
         </div>
       )}
 
-      {/* Terminal Body - Explicit dark bg matches theme */}
-      <div className="flex-1 relative min-h-0 bg-[#09090b]">
+      {/* Terminal Body - Explicit Tokyo Night bg matches theme */}
+      <div className="flex-1 relative min-h-0 bg-[#1a1b26]">
         <XtermAdapter
           terminalId={id}
           onReady={handleReady}

@@ -187,7 +187,7 @@
     -moz-osx-font-smoothing: grayscale;
   }
 
-  /* Terminal scrollbar styling - tiling window manager aesthetic */
+  /* Terminal scrollbar styling - Tokyo Night theme */
   .xterm-viewport {
     scrollbar-width: thin;
   }
@@ -198,17 +198,16 @@
   }
 
   .xterm-viewport::-webkit-scrollbar-track {
-    background: transparent;
+    background: #1a1b26; /* Match terminal bg */
   }
 
   .xterm-viewport::-webkit-scrollbar-thumb {
-    background: var(--color-canopy-border);
+    background: #565f89; /* Improved contrast (3:1 on #1a1b26) */
     border-radius: 4px;
   }
 
   .xterm-viewport::-webkit-scrollbar-thumb:hover {
-    background: var(--color-canopy-text);
-    opacity: 0.5;
+    background: #6f7bb6; /* Lighter on hover */
   }
 
   /* Consistent monospace font stack */
@@ -263,10 +262,27 @@ body,
   will-change: opacity;
 }
 
+/* Agent status working state - pulsing gradient animation */
+@keyframes status-pulse {
+  0%,
+  100% {
+    color: #7aa2f7;
+  } /* Blue */
+  50% {
+    color: #bb9af7;
+  } /* Purple */
+}
+
+.status-working {
+  color: #7aa2f7; /* Fallback color for reduced motion */
+  animation: status-pulse 2s ease-in-out infinite;
+}
+
 /* Respect user's motion preferences */
 @media (prefers-reduced-motion: reduce) {
   .animate-activity-pulse,
-  .animate-agent-pulse {
+  .animate-agent-pulse,
+  .status-working {
     animation: none;
     opacity: 1;
     transform: none;

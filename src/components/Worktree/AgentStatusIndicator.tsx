@@ -28,6 +28,8 @@ const STATE_CONFIG: Record<
   {
     icon: string;
     color: string;
+    bgColor?: string;
+    borderColor?: string;
     pulse: boolean;
     label: string;
     tooltip: string;
@@ -35,15 +37,16 @@ const STATE_CONFIG: Record<
 > = {
   working: {
     icon: "⟳",
-    color: "text-[var(--color-state-working)]",
-    pulse: true,
+    color: "status-working", // Custom class for pulsing gradient
+    pulse: false, // Using custom animation instead
     label: "working",
     tooltip: "Agent is processing",
   },
   waiting: {
     icon: "?",
-    color: "text-[var(--color-state-waiting)]",
-    pulse: true,
+    color: "text-[#1a1b26]", // Dark text
+    bgColor: "bg-[#e0af68]", // High-contrast yellow block
+    pulse: false,
     label: "waiting",
     tooltip: "Agent is waiting for input",
   },
@@ -56,7 +59,8 @@ const STATE_CONFIG: Record<
   },
   failed: {
     icon: "✗",
-    color: "text-[var(--color-status-error)]",
+    color: "text-[#f7768e]", // Red text
+    borderColor: "border-[#f7768e]", // Red outline
     pulse: false,
     label: "failed",
     tooltip: "Agent encountered an error",
@@ -77,8 +81,16 @@ export function AgentStatusIndicator({ state, className }: AgentStatusIndicatorP
   return (
     <span
       className={cn(
-        "inline-flex items-center justify-center w-5 h-5 rounded-full text-xs font-bold",
+        "inline-flex items-center justify-center w-5 h-5 text-xs font-bold",
+        // Apply base styles
+        state === "waiting" ? "rounded-sm px-2" : "rounded-full",
+        // Apply color/background
         config.color,
+        config.bgColor,
+        // Apply border for error state
+        config.borderColor && "border",
+        config.borderColor,
+        // Apply pulse animation
         config.pulse && "animate-agent-pulse",
         className
       )}
