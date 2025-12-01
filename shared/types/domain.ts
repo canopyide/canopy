@@ -316,6 +316,8 @@ export interface TerminalInstance {
   activityTimestamp?: number;
   /** Location in the UI - grid (main view) or dock (minimized) */
   location: TerminalLocation;
+  /** Command to execute after shell starts (e.g., 'claude --model sonnet-4' for AI agents) */
+  command?: string;
 }
 
 /** Options for spawning a new PTY process */
@@ -385,6 +387,8 @@ export interface TerminalSnapshot {
   worktreeId?: string;
   /** Location in the UI - grid or dock */
   location: TerminalLocation;
+  /** Command to execute after shell starts (e.g., 'claude --model sonnet-4' for AI agents) */
+  command?: string;
 }
 
 /** Terminal layout metadata */

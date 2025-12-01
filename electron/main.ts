@@ -97,17 +97,11 @@ if (!gotTheLock) {
 
     console.log("[MAIN] Starting graceful shutdown...");
 
-    // Save terminal state before cleanup
-    if (ptyManager) {
-      const terminals = ptyManager.getAll().map((t) => ({
-        id: t.id,
-        type: t.type || "shell",
-        title: t.title || "Terminal",
-        cwd: t.cwd,
-        worktreeId: t.worktreeId,
-      }));
-      store.set("appState.terminals", terminals);
-    }
+    // NOTE: Terminal state is persisted by the renderer via appClient.setState()
+    // in terminalRegistrySlice.ts. We don't overwrite it here because:
+    // 1. Renderer state includes command/location fields needed for restoration
+    // 2. PtyManager only has runtime state (id/type/title/cwd), missing persistence fields
+    // 3. Overwriting would strip command field, breaking agent terminal restoration
 
     // Perform cleanup
     Promise.all([
