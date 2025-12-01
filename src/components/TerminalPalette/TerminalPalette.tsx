@@ -128,7 +128,7 @@ export function TerminalPalette({
       onClick={handleBackdropClick}
       role="dialog"
       aria-modal="true"
-      aria-label="Terminal palette"
+      aria-label="Agent palette"
     >
       <div
         className={cn(
@@ -145,7 +145,7 @@ export function TerminalPalette({
             value={query}
             onChange={(e) => onQueryChange(e.target.value)}
             onKeyDown={handleKeyDown}
-            placeholder="Search terminals by name, type, or worktree..."
+            placeholder="Search agents and shells..."
             className={cn(
               "w-full px-3 py-2 text-sm",
               "bg-canopy-sidebar border border-canopy-border rounded-md",
@@ -155,7 +155,7 @@ export function TerminalPalette({
             role="combobox"
             aria-expanded={isOpen}
             aria-haspopup="listbox"
-            aria-label="Search terminals"
+            aria-label="Search agents and shells"
             aria-controls="terminal-list"
             aria-activedescendant={
               results.length > 0 && selectedIndex >= 0
@@ -170,12 +170,16 @@ export function TerminalPalette({
           ref={listRef}
           id="terminal-list"
           role="listbox"
-          aria-label="Terminals"
+          aria-label="Agents and shells"
           className="max-h-[50vh] overflow-y-auto p-2 space-y-1"
         >
           {results.length === 0 ? (
             <div className="px-3 py-8 text-center text-canopy-text/50 text-sm">
-              {query.trim() ? <>No terminals match "{query}"</> : <>No terminals open</>}
+              {query.trim() ? (
+                <>No agents or shells match "{query}"</>
+              ) : (
+                <>No agents or shells running</>
+              )}
             </div>
           ) : (
             results.map((terminal, index) => (

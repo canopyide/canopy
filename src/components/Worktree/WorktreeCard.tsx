@@ -272,8 +272,8 @@ export function WorktreeCard({
   const handleCloseAllTerminals = useCallback(() => {
     setConfirmDialog({
       isOpen: true,
-      title: "Close All Terminals",
-      description: `This will close ${totalTerminalCount} terminal${totalTerminalCount !== 1 ? "s" : ""} for this worktree. This action cannot be undone.`,
+      title: "Close All Sessions",
+      description: `This will close ${totalTerminalCount} session${totalTerminalCount !== 1 ? "s" : ""} (including agents and shells) for this worktree. This action cannot be undone.`,
       onConfirm: () => {
         bulkCloseByWorktree(worktree.id);
         closeConfirmDialog();
@@ -533,7 +533,7 @@ export function WorktreeCard({
                 {totalTerminalCount > 0 && (
                   <>
                     <DropdownMenuSeparator />
-                    <DropdownMenuLabel>Terminals</DropdownMenuLabel>
+                    <DropdownMenuLabel>Sessions</DropdownMenuLabel>
                     <DropdownMenuItem
                       onClick={handleCloseCompleted}
                       disabled={completedCount === 0}

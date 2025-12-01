@@ -40,20 +40,20 @@ type SettingsTab = "general" | "agents" | "ai" | "troubleshooting";
 // Keyboard shortcuts organized by category
 const KEYBOARD_SHORTCUTS = [
   {
-    category: "Terminal",
+    category: "Agents",
     shortcuts: [
-      { key: "Cmd+T", description: "Open terminal palette" },
-      { key: "Ctrl+Tab", description: "Focus next terminal" },
-      { key: "Ctrl+Shift+Tab", description: "Focus previous terminal" },
-      { key: "Ctrl+Shift+F", description: "Toggle maximize terminal" },
+      { key: "Ctrl+Shift+C", description: "Start Claude agent" },
+      { key: "Ctrl+Shift+G", description: "Start Gemini agent" },
+      { key: "Ctrl+Shift+I", description: "Inject context to agent" },
+      { key: "Cmd+T", description: "Open agent palette" },
     ],
   },
   {
-    category: "Agents",
+    category: "Navigation",
     shortcuts: [
-      { key: "Ctrl+Shift+C", description: "Launch Claude agent" },
-      { key: "Ctrl+Shift+G", description: "Launch Gemini agent" },
-      { key: "Ctrl+Shift+I", description: "Inject context to terminal" },
+      { key: "Ctrl+Tab", description: "Focus next agent or shell" },
+      { key: "Ctrl+Shift+Tab", description: "Focus previous agent or shell" },
+      { key: "Ctrl+Shift+F", description: "Toggle maximize focused tile" },
     ],
   },
   {
@@ -343,8 +343,8 @@ export function SettingsDialog({ isOpen, onClose, defaultTab }: SettingsDialogPr
                 <div className="space-y-2">
                   <h4 className="text-sm font-medium text-canopy-text">Description</h4>
                   <p className="text-sm text-gray-400">
-                    A mini IDE for orchestrating AI coding agents. Monitor worktrees, manage
-                    terminals, and inject context into Claude, Gemini, and other AI agents.
+                    An orchestration board for AI coding agents. Start agents on worktrees, monitor
+                    their progress, and inject context to help them understand your codebase.
                   </p>
                 </div>
 
@@ -467,8 +467,8 @@ export function SettingsDialog({ isOpen, onClose, defaultTab }: SettingsDialogPr
                   )}
 
                   <p className="text-xs text-gray-500">
-                    Required for AI-powered summaries, project naming, and context analysis. Your
-                    key is stored locally and never sent to our servers.
+                    Used for worktree summaries and project identity. Helps agents understand your
+                    codebase context. Stored locally and never sent to our servers.
                   </p>
                 </div>
 
@@ -538,8 +538,8 @@ export function SettingsDialog({ isOpen, onClose, defaultTab }: SettingsDialogPr
                     </span>
                   </label>
                   <p className="text-xs text-gray-500">
-                    When enabled, Canopy will use AI to generate worktree summaries and project
-                    identities.
+                    When enabled, Canopy generates worktree summaries and project identities to help
+                    agents understand your work.
                   </p>
                 </div>
               </div>

@@ -138,7 +138,7 @@ export function DockedTerminalItem({ terminal }: DockedTerminalItemProps) {
               <button
                 onClick={handleClose}
                 className="p-1 hover:bg-red-500/20 rounded transition-colors text-canopy-text/60 hover:text-red-400"
-                title="Close terminal"
+                title="Close session"
               >
                 <X className="w-3.5 h-3.5" aria-hidden="true" />
               </button>

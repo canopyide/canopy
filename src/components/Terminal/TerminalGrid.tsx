@@ -20,8 +20,9 @@ import { useTerminalStore, type TerminalInstance } from "@/store";
 import { useContextInjection } from "@/hooks/useContextInjection";
 import { TerminalPane } from "./TerminalPane";
 import { FilePickerModal } from "@/components/ContextInjection";
-import { Terminal, Plus } from "lucide-react";
+import { Terminal, Bot, Sparkles } from "lucide-react";
 import { Button } from "@/components/ui/button";
+import { CodexIcon } from "@/components/icons";
 
 export interface TerminalGridProps {
   className?: string;
@@ -29,32 +30,71 @@ export interface TerminalGridProps {
 }
 
 function EmptyState({
-  onAddTerminal,
+  onLaunchAgent,
   hasDockedTerminals,
 }: {
-  onAddTerminal: () => void;
+  onLaunchAgent: (type: "claude" | "gemini" | "codex" | "shell") => void;
   hasDockedTerminals: boolean;
 }) {
   return (
     <div className="flex flex-col items-center justify-center h-full text-canopy-text/60">
-      <Terminal className="h-12 w-12 mb-4 opacity-50" />
+      <Bot className="h-12 w-12 mb-4 opacity-50" />
       {hasDockedTerminals ? (
         <>
-          <p className="mb-2 text-sm">All terminals are minimized to the dock</p>
+          <p className="mb-2 text-sm">All agents are minimized to the dock</p>
           <p className="mb-4 text-xs text-canopy-text/40">
-            Click a terminal in the dock below to preview, or restore it to the grid
+            Click an agent in the dock below to preview, or restore it to the grid
           </p>
         </>
       ) : (
-        <p className="mb-4 text-sm">No terminals open</p>
+        <div className="text-center space-y-2 mb-4">
+          <h3 className="text-lg font-medium text-canopy-text">Start an AI Agent</h3>
+          <p className="text-sm text-canopy-text/50 max-w-md">
+            Each agent runs in its own tile. Agents can work autonomously on tasks, with full access
+            to context and tools.
+          </p>
+        </div>
       )}
-      <Button
-        onClick={onAddTerminal}
-        className="bg-canopy-accent hover:bg-canopy-accent/80 text-white"
-      >
-        <Plus className="h-4 w-4 mr-2" />
-        Open Terminal
-      </Button>
+
+      <div className="flex gap-2 mb-3">
+        <Button
+          onClick={() => onLaunchAgent("claude")}
+          className="bg-canopy-accent hover:bg-canopy-accent/80 text-white"
+        >
+          <Bot className="h-4 w-4 mr-2" />
+          Start Claude
+        </Button>
+        <Button
+          onClick={() => onLaunchAgent("gemini")}
+          className="bg-canopy-accent hover:bg-canopy-accent/80 text-white"
+        >
+          <Sparkles className="h-4 w-4 mr-2" />
+          Start Gemini
+        </Button>
+        <Button
+          onClick={() => onLaunchAgent("codex")}
+          className="bg-canopy-accent hover:bg-canopy-accent/80 text-white"
+        >
+          <CodexIcon className="h-4 w-4 mr-2" />
+          Start Codex
+        </Button>
+        <Button
+          onClick={() => onLaunchAgent("shell")}
+          variant="outline"
+          className="text-canopy-text border-canopy-border hover:bg-canopy-border"
+        >
+          <Terminal className="h-4 w-4 mr-2" />
+          Open Shell
+        </Button>
+      </div>
+
+      {!hasDockedTerminals && (
+        <p className="text-xs text-canopy-text/40">
+          Or use <kbd className="px-1.5 py-0.5 rounded bg-canopy-border">Ctrl+Shift+C</kbd> for
+          Claude, <kbd className="px-1.5 py-0.5 rounded bg-canopy-border">Ctrl+Shift+G</kbd> for
+          Gemini
+        </p>
+      )}
     </div>
   );
 }
@@ -108,12 +148,19 @@ export function TerminalGrid({ className, defaultCwd }: TerminalGridProps) {
     return Math.min(Math.ceil(Math.sqrt(count)), 4); // Cap at 4 columns max
   }, [gridTerminals.length]);
 
-  // Handle adding a new terminal
-  const handleAddTerminal = useCallback(async () => {
-    // Pass empty string if no defaultCwd; the Main process will handle the fallback to HOME
-    const cwd = defaultCwd || "";
-    await addTerminal({ type: "shell", cwd });
-  }, [addTerminal, defaultCwd]);
+  // Handle launching an agent from empty state
+  const handleLaunchAgent = useCallback(
+    async (type: "claude" | "gemini" | "codex" | "shell") => {
+      try {
+        const cwd = defaultCwd || "";
+        await addTerminal({ type, cwd });
+      } catch (error) {
+        console.error(`Failed to launch ${type}:`, error);
+        // Error will be displayed via the error banner system
+      }
+    },
+    [addTerminal, defaultCwd]
+  );
 
   // Handle context injection - open file picker modal
   const handleInjectContext = useCallback((terminalId: string, worktreeId?: string) => {
@@ -204,7 +251,7 @@ export function TerminalGrid({ className, defaultCwd }: TerminalGridProps) {
     return (
       <div className={cn("h-full", className)}>
         <EmptyState
-          onAddTerminal={handleAddTerminal}
+          onLaunchAgent={handleLaunchAgent}
           hasDockedTerminals={dockTerminals.length > 0}
         />
       </div>
