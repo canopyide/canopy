@@ -90,11 +90,7 @@ export function SegmentedControl({
 
   return (
     <div className={cn("pb-6", className)}>
-      <div
-        role="tablist"
-        aria-label={ariaLabel}
-        className="flex p-1 bg-black/20 rounded-lg w-full"
-      >
+      <div role="tablist" aria-label={ariaLabel} className="flex p-1 bg-black/20 rounded-lg w-full">
         {tabs.map((tab, index) => {
           const isActive = activeTab === tab.id;
           return (
