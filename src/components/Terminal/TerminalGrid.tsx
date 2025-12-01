@@ -1,4 +1,4 @@
-import { useMemo, useCallback, useState } from "react";
+import { useMemo, useCallback, useState, useEffect } from "react";
 import { useShallow } from "zustand/react/shallow";
 import { cn } from "@/lib/utils";
 import { useTerminalStore, type TerminalInstance } from "@/store";
@@ -7,6 +7,9 @@ import { TerminalPane } from "./TerminalPane";
 import { FilePickerModal } from "@/components/ContextInjection";
 import { Terminal } from "lucide-react";
 import { CanopyIcon, CodexIcon, ClaudeIcon, GeminiIcon } from "@/components/icons";
+import { terminalInstanceService } from "@/services/TerminalInstanceService";
+import { terminalClient } from "@/clients";
+import { TerminalRefreshTier } from "@/types";
 
 export interface TerminalGridProps {
   className?: string;
@@ -222,6 +225,39 @@ export function TerminalGrid({ className, defaultCwd }: TerminalGridProps) {
   const handleFilePickerCancel = useCallback(() => {
     setFilePickerState({ isOpen: false, worktreeId: null, terminalId: null });
   }, []);
+
+  // Batch-fit visible grid terminals when layout (gridCols/count) changes to avoid synchronous thrash
+  useEffect(() => {
+    const ids = gridTerminals.map((t) => t.id);
+    let cancelled = false;
+
+    const timeoutId = window.setTimeout(() => {
+      let index = 0;
+      const processNext = () => {
+        if (cancelled || index >= ids.length) return;
+        const id = ids[index++];
+        const managed = terminalInstanceService.get(id);
+
+        if (managed?.hostElement.isConnected) {
+          const dims = terminalInstanceService.fit(id);
+          if (dims) {
+            terminalClient.resize(id, dims.cols, dims.rows);
+            terminalInstanceService.applyRendererPolicy(
+              id,
+              TerminalRefreshTier.VISIBLE
+            );
+          }
+        }
+        requestAnimationFrame(processNext);
+      };
+      processNext();
+    }, 150); // allow grid to settle
+
+    return () => {
+      cancelled = true;
+      clearTimeout(timeoutId);
+    };
+  }, [gridCols, gridTerminals.length]);
 
   // If maximized, only show that terminal (must be a grid terminal)
   if (maximizedId) {

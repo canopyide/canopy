@@ -7,6 +7,7 @@ import {
   useWorktrees,
   useContextInjection,
   useTerminalPalette,
+  useTerminalConfig,
   useKeybinding,
 } from "./hooks";
 import { AppLayout } from "./components/Layout";
@@ -302,6 +303,7 @@ function App() {
   const { activeWorktreeId, setActiveWorktree } = useWorktreeSelectionStore();
   const { inject, isInjecting } = useContextInjection();
   const loadRecipes = useRecipeStore((state) => state.loadRecipes);
+  useTerminalConfig();
 
   // Terminal palette for quick switching (Cmd/Ctrl+T)
   const terminalPalette = useTerminalPalette();

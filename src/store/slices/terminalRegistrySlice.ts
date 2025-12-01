@@ -18,6 +18,8 @@ import type {
   AgentStateChangeTrigger,
 } from "@/types";
 import { appClient, terminalClient } from "@/clients";
+import { terminalInstanceService } from "@/services/TerminalInstanceService";
+import { TerminalRefreshTier } from "@/types";
 
 // Re-export the shared type
 export type TerminalInstance = TerminalInstanceType;
@@ -200,6 +202,9 @@ export const createTerminalRegistrySlice =
         // Continue with state cleanup even if kill fails
       });
 
+      // Dispose renderer instance to prevent zombies
+      terminalInstanceService.destroy(id);
+
       set((state) => {
         const newTerminals = state.terminals.filter((t) => t.id !== id);
 
@@ -324,6 +329,9 @@ export const createTerminalRegistrySlice =
       terminalClient.setBuffering(id, true).catch((error) => {
         console.error("Failed to enable terminal buffering:", error);
       });
+
+      // Release GPU resources for docked terminals
+      terminalInstanceService.applyRendererPolicy(id, TerminalRefreshTier.BACKGROUND);
     },
 
     moveTerminalToGrid: (id) => {
@@ -354,6 +362,9 @@ export const createTerminalRegistrySlice =
         .catch((error) => {
           console.error("Failed to disable terminal buffering:", error);
         });
+
+      // Mark as visible priority so renderer can reacquire GPU if needed
+      terminalInstanceService.applyRendererPolicy(id, TerminalRefreshTier.VISIBLE);
     },
 
     toggleTerminalLocation: (id) => {
