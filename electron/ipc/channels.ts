@@ -68,6 +68,14 @@ export const CHANNELS = {
   PR_DETECTED: "pr:detected",
   PR_CLEARED: "pr:cleared",
 
+  // GitHub channels
+  GITHUB_GET_REPO_STATS: "github:get-repo-stats",
+  GITHUB_OPEN_ISSUES: "github:open-issues",
+  GITHUB_OPEN_PRS: "github:open-prs",
+  GITHUB_OPEN_ISSUE: "github:open-issue",
+  GITHUB_OPEN_PR: "github:open-pr",
+  GITHUB_CHECK_CLI: "github:check-cli",
+
   // App state channels
   APP_GET_STATE: "app:get-state",
   APP_SET_STATE: "app:set-state",

@@ -83,12 +83,16 @@ export type {
   // System IPC types
   SystemOpenExternalPayload,
   SystemOpenPathPayload,
+  CliAvailability,
   // Directory IPC types
   DirectoryOpenPayload,
   DirectoryRemoveRecentPayload,
   // PR detection IPC types
   PRDetectedPayload,
   PRClearedPayload,
+  // GitHub IPC types
+  RepositoryStats,
+  GitHubCliStatus,
   // App state types
   RecentDirectory,
   SavedRecipeTerminal,

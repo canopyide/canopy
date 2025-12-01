@@ -44,6 +44,7 @@ export { devServerClient } from "./devServerClient";
 export { directoryClient } from "./directoryClient";
 export { errorsClient } from "./errorsClient";
 export { eventInspectorClient } from "./eventInspectorClient";
+export { githubClient } from "./githubClient";
 export { historyClient } from "./historyClient";
 export { logsClient } from "./logsClient";
 export { projectClient } from "./projectClient";
