@@ -89,9 +89,7 @@ export function ActivityBadge({ headline, status, type, className }: ActivityBad
       title={`${headline} (${type})`}
     >
       {/* Show spinner for working status */}
-      {status === "working" && (
-        <Loader2 className="h-3 w-3 animate-spin" aria-hidden="true" />
-      )}
+      {status === "working" && <Loader2 className="h-3 w-3 animate-spin" aria-hidden="true" />}
 
       {/* Headline text with truncation */}
       <span className="truncate max-w-[150px]" aria-hidden="true">

@@ -104,7 +104,6 @@ function getTerminalIcon(type: TerminalType, className?: string) {
   }
 }
 
-
 export function TerminalPane({
   id,
   title,
@@ -351,14 +350,14 @@ export function TerminalPane({
           )}
 
           {/* Agent state badge - shows for all non-idle states when no activity or when state is critical */}
-          {agentState && agentState !== "idle" && (
+          {agentState &&
+            agentState !== "idle" &&
             // Show state badge when:
             // 1. No activity headline exists, OR
             // 2. State is critical (failed/waiting) even if activity exists
             (!activity?.headline || agentState === "failed" || agentState === "waiting") && (
               <StateBadge state={agentState} className="ml-2" />
-            )
-          )}
+            )}
 
           {/* Activity badge - shows AI-generated headline when state is not critical */}
           {activity && activity.headline && agentState !== "failed" && agentState !== "waiting" && (

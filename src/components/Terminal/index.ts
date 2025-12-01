@@ -1,7 +1,12 @@
 export { XtermAdapter } from "./XtermAdapter";
 export type { XtermAdapterProps } from "./XtermAdapter";
 export { TerminalPane } from "./TerminalPane";
-export type { TerminalPaneProps, TerminalType, StateDebugInfo, ActivityState } from "./TerminalPane";
+export type {
+  TerminalPaneProps,
+  TerminalType,
+  StateDebugInfo,
+  ActivityState,
+} from "./TerminalPane";
 export { TerminalGrid } from "./TerminalGrid";
 export type { TerminalGridProps } from "./TerminalGrid";
 export { BulkActionsMenu } from "./BulkActionsMenu";

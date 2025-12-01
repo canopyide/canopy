@@ -46,12 +46,7 @@ const STATE_CONFIG: Record<
     tooltip: "Agent is processing",
   },
   waiting: {
-    icon: (
-      <span
-        className="w-2 h-2 rounded-full bg-yellow-400 animate-pulse"
-        aria-hidden="true"
-      />
-    ),
+    icon: <span className="w-2 h-2 rounded-full bg-yellow-400 animate-pulse" aria-hidden="true" />,
     label: "Waiting",
     className: "bg-yellow-500/20 text-yellow-300 border-yellow-500/30",
     tooltip: "Agent is waiting for input",
