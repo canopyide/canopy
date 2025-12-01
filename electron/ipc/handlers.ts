@@ -474,7 +474,11 @@ export function registerIpcHandlers(
           console.warn("Empty command provided, ignoring");
         } else if (trimmedCommand.includes("\n") || trimmedCommand.includes("\r")) {
           console.error("Multi-line commands not allowed for security, ignoring");
-        } else if (trimmedCommand.includes(";") || trimmedCommand.includes("&&") || trimmedCommand.includes("||")) {
+        } else if (
+          trimmedCommand.includes(";") ||
+          trimmedCommand.includes("&&") ||
+          trimmedCommand.includes("||")
+        ) {
           console.error("Command chaining not allowed for security, ignoring");
         } else {
           // Small delay to allow shell to initialize before sending command
