@@ -15,8 +15,8 @@ import { useTerminalStore, type AddTerminalOptions } from "@/store/terminalStore
 import { useProjectStore } from "@/store/projectStore";
 import { useWorktrees } from "./useWorktrees";
 import { isElectronAvailable } from "./useElectron";
-import { systemClient, agentSettingsClient } from "@/clients";
-import type { AgentSettings } from "@shared/types";
+import { cliAvailabilityClient, agentSettingsClient } from "@/clients";
+import type { AgentSettings, CliAvailability } from "@shared/types";
 import { generateClaudeFlags, generateGeminiFlags, generateCodexFlags } from "@shared/types";
 
 export type AgentType = "claude" | "gemini" | "codex" | "shell";
@@ -50,17 +50,11 @@ const AGENT_CONFIGS: Record<AgentType, AgentConfig> = {
   },
 };
 
-export interface AgentAvailability {
-  claude: boolean;
-  gemini: boolean;
-  codex: boolean;
-}
-
 export interface UseAgentLauncherReturn {
   /** Launch an agent terminal */
   launchAgent: (type: AgentType) => Promise<string | null>;
   /** CLI availability status */
-  availability: AgentAvailability;
+  availability: CliAvailability;
   /** Whether availability check is in progress */
   isCheckingAvailability: boolean;
 }
@@ -100,10 +94,10 @@ export function useAgentLauncher(): UseAgentLauncherReturn {
   const { worktreeMap, activeId } = useWorktrees();
   const currentProject = useProjectStore((state) => state.currentProject);
 
-  const [availability, setAvailability] = useState<AgentAvailability>({
-    claude: true, // Optimistically assume available until checked
-    gemini: true,
-    codex: true,
+  const [availability, setAvailability] = useState<CliAvailability>({
+    claude: false, // Default to unavailable until checked - safer than optimistic true
+    gemini: false,
+    codex: false,
   });
   const [isCheckingAvailability, setIsCheckingAvailability] = useState(true);
   const [agentSettings, setAgentSettings] = useState<AgentSettings | null>(null);
@@ -119,24 +113,21 @@ export function useAgentLauncher(): UseAgentLauncherReturn {
 
     async function checkAvailabilityAndLoadSettings() {
       try {
-        const [claudeAvailable, geminiAvailable, codexAvailable, settings] = await Promise.all([
-          systemClient.checkCommand("claude"),
-          systemClient.checkCommand("gemini"),
-          systemClient.checkCommand("codex"),
+        // Use centralized CLI availability service for optimal performance
+        // Single IPC call instead of three separate checkCommand calls
+        // Use refresh() to ensure fresh data on mount (handles mid-session CLI installs)
+        const [cliAvailability, settings] = await Promise.all([
+          cliAvailabilityClient.refresh(),
           agentSettingsClient.get(),
         ]);
 
         if (!cancelled) {
-          setAvailability({
-            claude: claudeAvailable,
-            gemini: geminiAvailable,
-            codex: codexAvailable,
-          });
+          setAvailability(cliAvailability);
           setAgentSettings(settings);
         }
       } catch (error) {
         console.error("Failed to check CLI availability or load settings:", error);
-        // Keep optimistic defaults on error
+        // On error, keep safe defaults (false) to avoid enabling unavailable CLIs
       } finally {
         if (!cancelled) {
           setIsCheckingAvailability(false);
