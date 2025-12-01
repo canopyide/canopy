@@ -56,6 +56,10 @@ import type {
   ClaudeSettings,
   GeminiSettings,
   CodexSettings,
+  RepositoryStats,
+  GitHubCliStatus,
+  PRDetectedPayload,
+  PRClearedPayload,
 } from "../shared/types/index.js";
 
 // Re-export ElectronAPI for type declarations
@@ -177,6 +181,14 @@ const CHANNELS = {
   // PR detection channels
   PR_DETECTED: "pr:detected",
   PR_CLEARED: "pr:cleared",
+
+  // GitHub channels
+  GITHUB_GET_REPO_STATS: "github:get-repo-stats",
+  GITHUB_OPEN_ISSUES: "github:open-issues",
+  GITHUB_OPEN_PRS: "github:open-prs",
+  GITHUB_OPEN_ISSUE: "github:open-issue",
+  GITHUB_OPEN_PR: "github:open-pr",
+  GITHUB_CHECK_CLI: "github:check-cli",
 
   // App state channels
   APP_GET_STATE: "app:get-state",
@@ -755,6 +767,39 @@ const api: ElectronAPI = {
 
     reset: (agentType?: "claude" | "gemini" | "codex"): Promise<AgentSettings> =>
       ipcRenderer.invoke(CHANNELS.AGENT_SETTINGS_RESET, agentType),
+  },
+
+  // ==========================================
+  // GitHub API
+  // ==========================================
+  github: {
+    getRepoStats: (cwd: string): Promise<RepositoryStats> =>
+      ipcRenderer.invoke(CHANNELS.GITHUB_GET_REPO_STATS, cwd),
+
+    openIssues: (cwd: string): Promise<void> =>
+      ipcRenderer.invoke(CHANNELS.GITHUB_OPEN_ISSUES, cwd),
+
+    openPRs: (cwd: string): Promise<void> => ipcRenderer.invoke(CHANNELS.GITHUB_OPEN_PRS, cwd),
+
+    openIssue: (cwd: string, issueNumber: number): Promise<void> =>
+      ipcRenderer.invoke(CHANNELS.GITHUB_OPEN_ISSUE, { cwd, issueNumber }),
+
+    openPR: (prUrl: string): Promise<void> => ipcRenderer.invoke(CHANNELS.GITHUB_OPEN_PR, prUrl),
+
+    checkCli: (): Promise<GitHubCliStatus> => ipcRenderer.invoke(CHANNELS.GITHUB_CHECK_CLI),
+
+    onPRDetected: (callback: (data: PRDetectedPayload) => void) => {
+      const handler = (_event: Electron.IpcRendererEvent, data: PRDetectedPayload) =>
+        callback(data);
+      ipcRenderer.on(CHANNELS.PR_DETECTED, handler);
+      return () => ipcRenderer.removeListener(CHANNELS.PR_DETECTED, handler);
+    },
+
+    onPRCleared: (callback: (data: PRClearedPayload) => void) => {
+      const handler = (_event: Electron.IpcRendererEvent, data: PRClearedPayload) => callback(data);
+      ipcRenderer.on(CHANNELS.PR_CLEARED, handler);
+      return () => ipcRenderer.removeListener(CHANNELS.PR_CLEARED, handler);
+    },
   },
 };
 

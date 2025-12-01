@@ -33,6 +33,8 @@ import type {
   RecentDirectory,
   DirectoryOpenPayload,
   DirectoryRemoveRecentPayload,
+  RepositoryStats,
+  GitHubCliStatus,
 } from "../types/index.js";
 import {
   TerminalSpawnOptionsSchema,
@@ -2122,6 +2124,141 @@ export function registerIpcHandlers(
   };
   ipcMain.handle(CHANNELS.AGENT_SETTINGS_RESET, handleAgentSettingsReset);
   handlers.push(() => ipcMain.removeHandler(CHANNELS.AGENT_SETTINGS_RESET));
+
+  // ==========================================
+  // GitHub Handlers
+  // ==========================================
+
+  const handleGitHubGetRepoStats = async (
+    _event: Electron.IpcMainInvokeEvent,
+    cwd: string
+  ): Promise<RepositoryStats> => {
+    if (typeof cwd !== "string" || !cwd) {
+      throw new Error("Invalid working directory");
+    }
+
+    const fs = await import("fs/promises");
+    const pathModule = await import("path");
+    const { getRepoStats } = await import("../utils/github.js");
+    const { getCommitCount } = await import("../utils/git.js");
+
+    try {
+      // Validate directory exists
+      const resolved = pathModule.resolve(cwd);
+      const stat = await fs.stat(resolved);
+      if (!stat.isDirectory()) {
+        return {
+          commitCount: 0,
+          issueCount: null,
+          prCount: null,
+          loading: false,
+          ghError: "Path is not a directory",
+        };
+      }
+
+      // Fetch repo stats and commit count in parallel
+      const [statsResult, commitCount] = await Promise.all([
+        getRepoStats(resolved),
+        getCommitCount(resolved).catch(() => 0), // Default to 0 on error
+      ]);
+
+      return {
+        commitCount,
+        issueCount: statsResult.stats?.issueCount ?? null,
+        prCount: statsResult.stats?.prCount ?? null,
+        loading: false,
+        ghError: statsResult.error,
+      };
+    } catch (err) {
+      const message = err instanceof Error ? err.message : String(err);
+      return {
+        commitCount: 0,
+        issueCount: null,
+        prCount: null,
+        loading: false,
+        ghError: message,
+      };
+    }
+  };
+  ipcMain.handle(CHANNELS.GITHUB_GET_REPO_STATS, handleGitHubGetRepoStats);
+  handlers.push(() => ipcMain.removeHandler(CHANNELS.GITHUB_GET_REPO_STATS));
+
+  const handleGitHubOpenIssues = async (_event: Electron.IpcMainInvokeEvent, cwd: string) => {
+    if (typeof cwd !== "string" || !cwd) {
+      throw new Error("Invalid working directory");
+    }
+    const { openGitHubUrl } = await import("../utils/github.js");
+    await openGitHubUrl(cwd, "issues");
+  };
+  ipcMain.handle(CHANNELS.GITHUB_OPEN_ISSUES, handleGitHubOpenIssues);
+  handlers.push(() => ipcMain.removeHandler(CHANNELS.GITHUB_OPEN_ISSUES));
+
+  const handleGitHubOpenPRs = async (_event: Electron.IpcMainInvokeEvent, cwd: string) => {
+    if (typeof cwd !== "string" || !cwd) {
+      throw new Error("Invalid working directory");
+    }
+    const { openGitHubUrl } = await import("../utils/github.js");
+    await openGitHubUrl(cwd, "pulls");
+  };
+  ipcMain.handle(CHANNELS.GITHUB_OPEN_PRS, handleGitHubOpenPRs);
+  handlers.push(() => ipcMain.removeHandler(CHANNELS.GITHUB_OPEN_PRS));
+
+  const handleGitHubOpenIssue = async (
+    _event: Electron.IpcMainInvokeEvent,
+    payload: { cwd: string; issueNumber: number }
+  ) => {
+    if (!payload || typeof payload !== "object") {
+      throw new Error("Invalid payload");
+    }
+    if (typeof payload.cwd !== "string" || !payload.cwd) {
+      throw new Error("Invalid working directory");
+    }
+    if (typeof payload.issueNumber !== "number" || payload.issueNumber <= 0) {
+      throw new Error("Invalid issue number");
+    }
+    const { openGitHubIssue } = await import("../utils/github.js");
+    await openGitHubIssue(payload.cwd, payload.issueNumber);
+  };
+  ipcMain.handle(CHANNELS.GITHUB_OPEN_ISSUE, handleGitHubOpenIssue);
+  handlers.push(() => ipcMain.removeHandler(CHANNELS.GITHUB_OPEN_ISSUE));
+
+  const handleGitHubOpenPR = async (_event: Electron.IpcMainInvokeEvent, prUrl: string) => {
+    if (typeof prUrl !== "string" || !prUrl) {
+      throw new Error("Invalid PR URL");
+    }
+    // Security: validate URL scheme to prevent arbitrary protocol execution
+    try {
+      const url = new URL(prUrl);
+      if (!["https:", "http:"].includes(url.protocol)) {
+        throw new Error(`Only https:// or http:// PR URLs are allowed, got ${url.protocol}`);
+      }
+    } catch (error) {
+      throw new Error(`Invalid PR URL: ${error instanceof Error ? error.message : String(error)}`);
+    }
+    const { openGitHubPR } = await import("../utils/github.js");
+    await openGitHubPR(prUrl);
+  };
+  ipcMain.handle(CHANNELS.GITHUB_OPEN_PR, handleGitHubOpenPR);
+  handlers.push(() => ipcMain.removeHandler(CHANNELS.GITHUB_OPEN_PR));
+
+  const handleGitHubCheckCli = async (): Promise<GitHubCliStatus> => {
+    const { execa } = await import("execa");
+    try {
+      await execa("gh", ["auth", "status"], { timeout: 5000 });
+      return { available: true };
+    } catch (error: unknown) {
+      const err = error as { code?: string; message?: string; stderr?: string };
+      if (err.code === "ENOENT") {
+        return { available: false, error: "gh CLI not installed" };
+      }
+      if (err.message?.includes("not logged in") || err.stderr?.includes("not logged in")) {
+        return { available: false, error: "gh auth required - run: gh auth login" };
+      }
+      return { available: false, error: "gh CLI error" };
+    }
+  };
+  ipcMain.handle(CHANNELS.GITHUB_CHECK_CLI, handleGitHubCheckCli);
+  handlers.push(() => ipcMain.removeHandler(CHANNELS.GITHUB_CHECK_CLI));
 
   // Return cleanup function
   return () => {

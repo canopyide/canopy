@@ -306,6 +306,32 @@ export interface PRClearedPayload {
 }
 
 // ============================================================================
+// GitHub IPC Types
+// ============================================================================
+
+/** Repository statistics from GitHub API */
+export interface RepositoryStats {
+  /** Total commit count for current branch */
+  commitCount: number;
+  /** Open issues count (null if unavailable) */
+  issueCount: number | null;
+  /** Open pull requests count (null if unavailable) */
+  prCount: number | null;
+  /** Whether stats are currently loading */
+  loading: boolean;
+  /** Error message if GitHub API failed */
+  ghError?: string;
+}
+
+/** GitHub CLI availability check result */
+export interface GitHubCliStatus {
+  /** Whether gh CLI is available */
+  available: boolean;
+  /** Error message if not available */
+  error?: string;
+}
+
+// ============================================================================
 // App State IPC Types
 // ============================================================================
 
@@ -1142,6 +1168,34 @@ export interface IpcInvokeMap {
   };
 
   // ============================================
+  // GitHub channels
+  // ============================================
+  "github:get-repo-stats": {
+    args: [cwd: string];
+    result: RepositoryStats;
+  };
+  "github:open-issues": {
+    args: [cwd: string];
+    result: void;
+  };
+  "github:open-prs": {
+    args: [cwd: string];
+    result: void;
+  };
+  "github:open-issue": {
+    args: [payload: { cwd: string; issueNumber: number }];
+    result: void;
+  };
+  "github:open-pr": {
+    args: [prUrl: string];
+    result: void;
+  };
+  "github:check-cli": {
+    args: [];
+    result: GitHubCliStatus;
+  };
+
+  // ============================================
   // Run orchestration channels
   // ============================================
   "run:start": {
@@ -1473,5 +1527,15 @@ export interface ElectronAPI {
     setGemini(settings: Partial<GeminiSettings>): Promise<AgentSettings>;
     setCodex(settings: Partial<CodexSettings>): Promise<AgentSettings>;
     reset(agentType?: "claude" | "gemini" | "codex"): Promise<AgentSettings>;
+  };
+  github: {
+    getRepoStats(cwd: string): Promise<RepositoryStats>;
+    openIssues(cwd: string): Promise<void>;
+    openPRs(cwd: string): Promise<void>;
+    openIssue(cwd: string, issueNumber: number): Promise<void>;
+    openPR(prUrl: string): Promise<void>;
+    checkCli(): Promise<GitHubCliStatus>;
+    onPRDetected(callback: (data: PRDetectedPayload) => void): () => void;
+    onPRCleared(callback: (data: PRClearedPayload) => void): () => void;
   };
 }

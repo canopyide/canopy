@@ -1,11 +1,13 @@
 import { Button } from "@/components/ui/button";
-import { RefreshCw, Settings, Terminal, AlertCircle, Maximize2, Minimize2 } from "lucide-react";
+import { RefreshCw, Settings, Terminal, AlertCircle, Maximize2, Minimize2, GitCommit, GitPullRequest, AlertTriangle } from "lucide-react";
 import { ClaudeIcon, GeminiIcon, CodexIcon } from "@/components/icons";
 import { cn } from "@/lib/utils";
 import { getProjectGradient } from "@/lib/colorUtils";
 import { BulkActionsMenu } from "@/components/Terminal";
 import { useProjectStore } from "@/store/projectStore";
 import { useTerminalStore } from "@/store/terminalStore";
+import { useRepositoryStats } from "@/hooks/useRepositoryStats";
+import { githubClient } from "@/clients";
 
 interface ToolbarProps {
   onLaunchAgent: (type: "claude" | "gemini" | "codex" | "shell") => void;
@@ -35,9 +37,29 @@ export function Toolbar({
 }: ToolbarProps) {
   const currentProject = useProjectStore((state) => state.currentProject);
   const terminals = useTerminalStore((state) => state.terminals);
+  const { stats, error: statsError, refresh: refreshStats } = useRepositoryStats();
 
   // Show BulkActionsMenu when there are any terminals (actionable or not)
   const showBulkActions = terminals.length > 0;
+
+  // Handle opening GitHub pages
+  const handleOpenIssues = async () => {
+    if (!currentProject) return;
+    try {
+      await githubClient.openIssues(currentProject.path);
+    } catch (error) {
+      console.error("Failed to open GitHub issues:", error);
+    }
+  };
+
+  const handleOpenPRs = async () => {
+    if (!currentProject) return;
+    try {
+      await githubClient.openPRs(currentProject.path);
+    } catch (error) {
+      console.error("Failed to open GitHub PRs:", error);
+    }
+  };
 
   return (
     <header className="relative h-12 flex items-center px-4 shrink-0 app-drag-region bg-canopy-sidebar border-b border-canopy-border shadow-sm">
@@ -128,9 +150,61 @@ export function Toolbar({
 
       {/* 5. RIGHT ACTIONS:
         Wrapped in app-no-drag so they remain clickable.
-        Grouped by purpose: View/Health cluster | Settings/Actions cluster
+        Grouped by purpose: GitHub Stats | View/Health cluster | Settings/Actions cluster
       */}
       <div className="flex items-center gap-1 app-no-drag">
+        {/* GitHub Stats - show even with errors for consistent layout */}
+        {stats && currentProject && (
+          <>
+            <div className="flex items-center gap-1">
+              <Button
+                variant="ghost"
+                size="sm"
+                onClick={statsError ? refreshStats : handleOpenIssues}
+                className={cn(
+                  "text-canopy-text hover:bg-canopy-border hover:text-canopy-accent h-7 px-2 gap-1.5",
+                  (stats.issueCount === 0 || statsError) && "opacity-50",
+                  statsError && "text-[var(--color-status-error)]"
+                )}
+                title={statsError ? `GitHub error: ${statsError} (click to retry)` : "Open GitHub Issues"}
+                aria-label={statsError ? "GitHub stats error" : `${stats.issueCount ?? 0} open issues`}
+              >
+                <AlertTriangle className="h-3.5 w-3.5" />
+                <span className="text-xs font-medium">{stats.issueCount ?? "?"}</span>
+              </Button>
+              <Button
+                variant="ghost"
+                size="sm"
+                onClick={statsError ? refreshStats : handleOpenPRs}
+                className={cn(
+                  "text-canopy-text hover:bg-canopy-border hover:text-canopy-accent h-7 px-2 gap-1.5",
+                  (stats.prCount === 0 || statsError) && "opacity-50",
+                  statsError && "text-[var(--color-status-error)]"
+                )}
+                title={statsError ? `GitHub error: ${statsError} (click to retry)` : "Open GitHub Pull Requests"}
+                aria-label={statsError ? "GitHub stats error" : `${stats.prCount ?? 0} open pull requests`}
+              >
+                <GitPullRequest className="h-3.5 w-3.5" />
+                <span className="text-xs font-medium">{stats.prCount ?? "?"}</span>
+              </Button>
+              <div
+                className={cn(
+                  "flex items-center gap-1.5 px-2 h-7 rounded-md",
+                  (stats.commitCount === 0 || statsError) && "opacity-50",
+                  statsError && "text-[var(--color-status-error)]"
+                )}
+                title={statsError ? `GitHub error: ${statsError}` : "Total commits in current branch"}
+                aria-label={statsError ? "GitHub stats error" : `${stats.commitCount} commits`}
+              >
+                <GitCommit className="h-3.5 w-3.5 text-canopy-text" />
+                <span className="text-xs font-medium text-canopy-text">{stats.commitCount}</span>
+              </div>
+            </div>
+            {/* Visual divider */}
+            <div className="w-px h-6 bg-canopy-border" />
+          </>
+        )}
+
         {/* View & Health cluster */}
         <div className="flex items-center gap-1">
           {/* Focus mode toggle */}
