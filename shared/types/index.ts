@@ -40,6 +40,13 @@ export type {
   TerminalInstance,
   PtySpawnOptions,
   TerminalDimensions,
+} from "./domain.js";
+
+// Export enums separately (not as types)
+export { TerminalRefreshTier } from "./domain.js";
+
+// Continue with domain type exports
+export type {
   // Project types
   Project,
   TerminalSnapshot,

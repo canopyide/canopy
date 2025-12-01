@@ -63,6 +63,7 @@ export interface TerminalRegistrySlice {
     type: "interactive" | "background" | "idle",
     timestamp: number
   ) => void;
+  updateVisibility: (id: string, isVisible: boolean) => void;
   getTerminal: (id: string) => TerminalInstance | undefined;
 
   /** Move terminal to dock (minimized) */
@@ -143,6 +144,9 @@ export const createTerminalRegistrySlice =
           lastStateChange: isAgentTerminal ? Date.now() : undefined,
           location,
           command: options.command, // Store command for persistence
+          // Initialize grid terminals as visible to avoid initial under-throttling
+          // IntersectionObserver will update this once mounted
+          isVisible: location === "grid" ? true : false,
         };
 
         set((state) => {
@@ -243,6 +247,26 @@ export const createTerminalRegistrySlice =
         );
 
         // Note: We don't persist activity state since it's transient
+        return { terminals: newTerminals };
+      });
+    },
+
+    updateVisibility: (id, isVisible) => {
+      set((state) => {
+        const terminal = state.terminals.find((t) => t.id === id);
+        if (!terminal) {
+          // Silently ignore - terminal may have been closed
+          return state;
+        }
+
+        // Skip update if visibility hasn't changed (avoid unnecessary re-renders)
+        if (terminal.isVisible === isVisible) {
+          return state;
+        }
+
+        const newTerminals = state.terminals.map((t) => (t.id === id ? { ...t, isVisible } : t));
+
+        // Note: We don't persist visibility state since it's transient
         return { terminals: newTerminals };
       });
     },

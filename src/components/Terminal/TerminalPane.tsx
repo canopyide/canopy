@@ -26,7 +26,7 @@ import { StateBadge } from "./StateBadge";
 import { ActivityBadge } from "./ActivityBadge";
 import { DebugInfo } from "./DebugInfo";
 import { ErrorBanner } from "../Errors/ErrorBanner";
-import { useErrorStore, useTerminalStore, type RetryAction } from "@/store";
+import { useErrorStore, useTerminalStore, getTerminalRefreshTier, type RetryAction } from "@/store";
 import { useContextInjection, type CopyTreeProgress } from "@/hooks/useContextInjection";
 import type { AgentState, AgentStateChangeTrigger } from "@/types";
 import { errorsClient } from "@/clients";
@@ -132,9 +132,14 @@ export function TerminalPane({
   const [isEditingTitle, setIsEditingTitle] = useState(false);
   const [editingValue, setEditingValue] = useState(title);
   const titleInputRef = useRef<HTMLInputElement>(null);
+  const containerRef = useRef<HTMLDivElement>(null);
 
   // Get context injection hook for retry handling
   const { inject } = useContextInjection();
+
+  // Get store actions
+  const updateVisibility = useTerminalStore((state) => state.updateVisibility);
+  const getTerminal = useTerminalStore((state) => state.getTerminal);
 
   // Get queued command count for this terminal
   const queueCount = useTerminalStore(
@@ -203,6 +208,30 @@ export function TerminalPane({
       titleInputRef.current.select();
     }
   }, [isEditingTitle]);
+
+  // Track visibility with IntersectionObserver for performance optimization
+  useEffect(() => {
+    if (!containerRef.current) return;
+
+    const observer = new IntersectionObserver(
+      ([entry]) => {
+        // Update visibility in store when intersection changes
+        updateVisibility(id, entry.isIntersecting);
+      },
+      {
+        // Consider visible if at least 10% is in viewport
+        threshold: 0.1,
+      }
+    );
+
+    observer.observe(containerRef.current);
+
+    return () => {
+      observer.disconnect();
+      // Clean up visibility state when component unmounts
+      updateVisibility(id, false);
+    };
+  }, [id, updateVisibility]);
 
   const handleTitleDoubleClick = useCallback(
     (e: React.MouseEvent) => {
@@ -283,8 +312,15 @@ export function TerminalPane({
     [onFocus]
   );
 
+  // Callback to get the current refresh tier for this terminal
+  const getRefreshTierCallback = useCallback(() => {
+    const terminal = getTerminal(id);
+    return getTerminalRefreshTier(terminal, isFocused);
+  }, [id, isFocused, getTerminal]);
+
   return (
     <div
+      ref={containerRef}
       className={cn(
         "flex flex-col h-full border border-canopy-border/50 group", // Tiling style - full border for all edges
         isFocused ? "border-canopy-accent/20" : "border-canopy-border/30",
@@ -566,6 +602,7 @@ export function TerminalPane({
           onReady={handleReady}
           onExit={handleExit}
           className="absolute inset-0"
+          getRefreshTier={getRefreshTierCallback}
         />
         {/* Artifact Overlay */}
         <ArtifactOverlay terminalId={id} worktreeId={worktreeId} cwd={cwd} />
