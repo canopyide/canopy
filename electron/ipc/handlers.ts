@@ -9,11 +9,13 @@ import { ipcMain, BrowserWindow, shell, dialog, app, clipboard } from "electron"
 import crypto from "crypto";
 import os from "os";
 import path from "path";
+import fs from "fs";
 import { CHANNELS } from "./channels.js";
 import { PtyManager } from "../services/PtyManager.js";
 import type { DevServerManager } from "../services/DevServerManager.js";
 import type { WorktreeService } from "../services/WorktreeService.js";
 import type { CliAvailabilityService } from "../services/CliAvailabilityService.js";
+import { GitService } from "../services/GitService.js";
 import type {
   TerminalSpawnOptions,
   TerminalResizePayload,
@@ -2312,6 +2314,58 @@ export function registerIpcHandlers(
   };
   ipcMain.handle(CHANNELS.GITHUB_CHECK_CLI, handleGitHubCheckCli);
   handlers.push(() => ipcMain.removeHandler(CHANNELS.GITHUB_CHECK_CLI));
+
+  // ==========================================
+  // Git Handlers
+  // ==========================================
+
+  const handleGitGetFileDiff = async (
+    _event: Electron.IpcMainInvokeEvent,
+    payload: { cwd: string; filePath: string; status: string }
+  ): Promise<string> => {
+    if (!payload || typeof payload !== "object") {
+      throw new Error("Invalid payload");
+    }
+
+    const { cwd, filePath, status } = payload;
+
+    if (typeof cwd !== "string" || !cwd) {
+      throw new Error("Invalid working directory");
+    }
+    if (typeof filePath !== "string" || !filePath) {
+      throw new Error("Invalid file path");
+    }
+    if (typeof status !== "string" || !status) {
+      throw new Error("Invalid file status");
+    }
+
+    // Validate that cwd exists and is a directory
+    if (!fs.existsSync(cwd)) {
+      throw new Error("Working directory does not exist");
+    }
+
+    const cwdStats = fs.statSync(cwd);
+    if (!cwdStats.isDirectory()) {
+      throw new Error("Working directory path is not a directory");
+    }
+
+    // Validate that cwd contains a .git directory (is a git repository)
+    const gitDir = path.join(cwd, ".git");
+    if (!fs.existsSync(gitDir)) {
+      throw new Error("Working directory is not a git repository");
+    }
+
+    try {
+      const gitService = new GitService(cwd);
+      return await gitService.getFileDiff(filePath, status as any);
+    } catch (error) {
+      const errorMessage = error instanceof Error ? error.message : String(error);
+      console.error("[Git] Failed to get file diff:", errorMessage);
+      throw new Error(`Failed to get file diff: ${errorMessage}`);
+    }
+  };
+  ipcMain.handle(CHANNELS.GIT_GET_FILE_DIFF, handleGitGetFileDiff);
+  handlers.push(() => ipcMain.removeHandler(CHANNELS.GIT_GET_FILE_DIFF));
 
   // Return cleanup function
   return () => {

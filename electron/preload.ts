@@ -60,6 +60,7 @@ import type {
   GitHubCliStatus,
   PRDetectedPayload,
   PRClearedPayload,
+  GitStatus,
 } from "../shared/types/index.js";
 
 // Re-export ElectronAPI for type declarations
@@ -272,6 +273,9 @@ const CHANNELS = {
   AGENT_SETTINGS_GET: "agent-settings:get",
   AGENT_SETTINGS_SET: "agent-settings:set",
   AGENT_SETTINGS_RESET: "agent-settings:reset",
+
+  // Git channels
+  GIT_GET_FILE_DIFF: "git:get-file-diff",
 } as const;
 
 const api: ElectronAPI = {
@@ -823,6 +827,14 @@ const api: ElectronAPI = {
       ipcRenderer.on(CHANNELS.PR_CLEARED, handler);
       return () => ipcRenderer.removeListener(CHANNELS.PR_CLEARED, handler);
     },
+  },
+
+  // ==========================================
+  // Git API
+  // ==========================================
+  git: {
+    getFileDiff: (cwd: string, filePath: string, status: GitStatus): Promise<string> =>
+      ipcRenderer.invoke(CHANNELS.GIT_GET_FILE_DIFF, { cwd, filePath, status }),
   },
 };
 

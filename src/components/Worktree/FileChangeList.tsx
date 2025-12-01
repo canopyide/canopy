@@ -1,6 +1,7 @@
-import { useMemo, Fragment } from "react";
+import { useMemo, Fragment, useState } from "react";
 import type { FileChangeDetail, GitStatus } from "../../types";
 import { cn } from "../../lib/utils";
+import { FileDiffModal } from "./FileDiffModal";
 
 /**
  * Browser-safe path utilities (no Node.js path module)
@@ -72,7 +73,14 @@ function splitPath(filePath: string): { dir: string; base: string } {
   };
 }
 
+interface SelectedFile {
+  path: string;
+  status: GitStatus;
+}
+
 export function FileChangeList({ changes, maxVisible = 4, rootPath }: FileChangeListProps) {
+  const [selectedFile, setSelectedFile] = useState<SelectedFile | null>(null);
+
   // Sort changes by churn (most changes first), then by status priority as tiebreaker
   const sortedChanges = useMemo(() => {
     return [...changes].sort((a, b) => {
@@ -102,64 +110,91 @@ export function FileChangeList({ changes, maxVisible = 4, rootPath }: FileChange
     return null;
   }
 
+  const handleFileClick = (change: FileChangeDetail) => {
+    const relativePath = isAbsolutePath(change.path)
+      ? getRelativePath(rootPath, change.path)
+      : change.path;
+    setSelectedFile({
+      path: relativePath,
+      status: change.status,
+    });
+  };
+
+  const closeModal = () => {
+    setSelectedFile(null);
+  };
+
   return (
-    <div className="mt-2">
-      <div className="grid grid-cols-[auto_minmax(0,1fr)_auto] gap-x-3 gap-y-1 text-xs font-mono">
-        {visibleChanges.map((change) => {
-          const { icon, color } = STATUS_ICONS[change.status] || {
-            icon: "?",
-            color: "text-gray-400",
-          };
-          const relativePath = isAbsolutePath(change.path)
-            ? getRelativePath(rootPath, change.path)
-            : change.path;
+    <>
+      <div className="mt-2">
+        <div className="grid grid-cols-[auto_minmax(0,1fr)_auto] gap-x-3 gap-y-1 text-xs font-mono">
+          {visibleChanges.map((change) => {
+            const { icon, color } = STATUS_ICONS[change.status] || {
+              icon: "?",
+              color: "text-gray-400",
+            };
+            const relativePath = isAbsolutePath(change.path)
+              ? getRelativePath(rootPath, change.path)
+              : change.path;
 
-          const { dir, base } = splitPath(relativePath);
-          const additionsLabel = change.insertions !== null ? `+${change.insertions}` : "";
-          const deletionsLabel = change.deletions !== null ? `-${change.deletions}` : "";
+            const { dir, base } = splitPath(relativePath);
+            const additionsLabel = change.insertions !== null ? `+${change.insertions}` : "";
+            const deletionsLabel = change.deletions !== null ? `-${change.deletions}` : "";
 
-          return (
-            <Fragment key={`${change.path}-${change.status}`}>
-              {/* Icon Column */}
-              <div className={cn(color, "font-bold flex items-center")}>{icon}</div>
+            return (
+              <Fragment key={`${change.path}-${change.status}`}>
+                {/* Icon Column */}
+                <div className={cn(color, "font-bold flex items-center")}>{icon}</div>
 
-              {/* Path Column - RTL for left-side truncation, LTR for content */}
-              <div
-                className="min-w-0 overflow-hidden text-ellipsis whitespace-nowrap text-left text-gray-500"
-                dir="rtl"
-                title={relativePath}
-              >
-                <span dir="ltr">
-                  {dir && <span className="text-gray-500">{dir}/</span>}
-                  <span className="text-gray-200">{base}</span>
-                </span>
-              </div>
+                {/* Path Column - RTL for left-side truncation, LTR for content - clickable */}
+                <button
+                  type="button"
+                  className="min-w-0 overflow-hidden text-ellipsis whitespace-nowrap text-left text-gray-500 hover:text-gray-300 hover:underline cursor-pointer transition-colors"
+                  dir="rtl"
+                  title={`Click to view diff for ${relativePath}`}
+                  onClick={() => handleFileClick(change)}
+                >
+                  <span dir="ltr">
+                    {dir && <span className="text-gray-500 group-hover:text-gray-400">{dir}/</span>}
+                    <span className="text-gray-200 group-hover:text-gray-100">{base}</span>
+                  </span>
+                </button>
 
-              {/* Stats Column */}
-              <div className="flex items-center gap-2 justify-end">
-                {additionsLabel && (
-                  <span className="text-[var(--color-status-success)]">{additionsLabel}</span>
-                )}
-                {deletionsLabel && (
-                  <span className="text-[var(--color-status-error)]">{deletionsLabel}</span>
-                )}
-              </div>
-            </Fragment>
-          );
-        })}
+                {/* Stats Column */}
+                <div className="flex items-center gap-2 justify-end">
+                  {additionsLabel && (
+                    <span className="text-[var(--color-status-success)]">{additionsLabel}</span>
+                  )}
+                  {deletionsLabel && (
+                    <span className="text-[var(--color-status-error)]">{deletionsLabel}</span>
+                  )}
+                </div>
+              </Fragment>
+            );
+          })}
+        </div>
+
+        {remainingCount > 0 && (
+          <div className="mt-1.5 text-gray-500 text-xs pl-0.5">
+            ...and {remainingCount} more
+            {remainingFiles.length > 0 && (
+              <span className="ml-1 opacity-75">
+                ({remainingFiles.map((f) => getBasename(f.path)).join(", ")}
+                {sortedChanges.length > maxVisible + 2 && ", ..."})
+              </span>
+            )}
+          </div>
+        )}
       </div>
 
-      {remainingCount > 0 && (
-        <div className="mt-1.5 text-gray-500 text-xs pl-0.5">
-          ...and {remainingCount} more
-          {remainingFiles.length > 0 && (
-            <span className="ml-1 opacity-75">
-              ({remainingFiles.map((f) => getBasename(f.path)).join(", ")}
-              {sortedChanges.length > maxVisible + 2 && ", ..."})
-            </span>
-          )}
-        </div>
-      )}
-    </div>
+      {/* Diff Modal */}
+      <FileDiffModal
+        isOpen={selectedFile !== null}
+        filePath={selectedFile?.path ?? ""}
+        status={selectedFile?.status ?? "modified"}
+        worktreePath={rootPath}
+        onClose={closeModal}
+      />
+    </>
   );
 }

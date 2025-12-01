@@ -359,3 +359,190 @@ body,
   pointer-events: auto; /* Allow OS to catch resize events */
   cursor: ns-resize; /* Show vertical resize cursor */
 }
+
+/* ============================================================================
+ * React-Diff-View Tokyo Night Theme Overrides
+ *
+ * These styles override the default react-diff-view styling to match
+ * the application's Tokyo Night color scheme.
+ * ============================================================================ */
+
+.diff-viewer {
+  font-family: "JetBrains Mono", "Fira Code", "Menlo", "Consolas", monospace;
+  font-size: 12px;
+  line-height: 1.5;
+}
+
+/* Base diff table styling */
+.diff-viewer .diff {
+  background: #1a1b26;
+  color: #c0caf5;
+}
+
+/* Gutter (line numbers) styling */
+.diff-viewer .diff-gutter {
+  background: #16171f;
+  color: #565f89;
+  padding: 0 8px;
+  min-width: 50px;
+  text-align: right;
+  user-select: none;
+  border-right: 1px solid #2d2f3a;
+}
+
+/* Code content styling */
+.diff-viewer .diff-code {
+  background: #1a1b26;
+  padding: 0 12px;
+  white-space: pre;
+  overflow-x: auto;
+}
+
+/* Added lines - Tokyo Night green */
+.diff-viewer .diff-code-insert {
+  background: rgba(158, 206, 106, 0.12);
+}
+
+.diff-viewer .diff-gutter-insert {
+  background: rgba(158, 206, 106, 0.2);
+  color: #9ece6a;
+}
+
+/* Deleted lines - Tokyo Night red */
+.diff-viewer .diff-code-delete {
+  background: rgba(247, 118, 142, 0.12);
+}
+
+.diff-viewer .diff-gutter-delete {
+  background: rgba(247, 118, 142, 0.2);
+  color: #f7768e;
+}
+
+/* Word-level change highlighting */
+.diff-viewer .diff-code-edit .diff-code-insert-edit {
+  background: rgba(158, 206, 106, 0.3);
+  border-radius: 2px;
+}
+
+.diff-viewer .diff-code-edit .diff-code-delete-edit {
+  background: rgba(247, 118, 142, 0.3);
+  border-radius: 2px;
+}
+
+/* Hunk header styling */
+.diff-viewer .diff-hunk-header {
+  background: #24283b;
+  color: #7aa2f7;
+  padding: 4px 12px;
+  font-size: 11px;
+  border-top: 1px solid #2d2f3a;
+  border-bottom: 1px solid #2d2f3a;
+}
+
+.diff-viewer .diff-hunk-header-gutter {
+  background: #24283b;
+}
+
+.diff-viewer .diff-hunk-header-content {
+  background: #24283b;
+}
+
+/* Split view specific styling */
+.diff-viewer .diff[data-view-type="split"] .diff-gutter {
+  min-width: 40px;
+}
+
+/* Line number hover effect */
+.diff-viewer .diff-gutter:hover {
+  background: #24283b;
+}
+
+/* Selection styling */
+.diff-viewer .diff-code::selection,
+.diff-viewer .diff-code *::selection {
+  background: rgba(122, 162, 247, 0.3);
+}
+
+/* Scrollbar styling for diff viewer */
+.diff-viewer::-webkit-scrollbar {
+  width: 8px;
+  height: 8px;
+}
+
+.diff-viewer::-webkit-scrollbar-track {
+  background: #1a1b26;
+}
+
+.diff-viewer::-webkit-scrollbar-thumb {
+  background: #565f89;
+  border-radius: 4px;
+}
+
+.diff-viewer::-webkit-scrollbar-thumb:hover {
+  background: #6f7bb6;
+}
+
+/* Syntax highlighting overrides for Tokyo Night palette */
+.diff-viewer .token.comment,
+.diff-viewer .token.prolog,
+.diff-viewer .token.doctype,
+.diff-viewer .token.cdata {
+  color: #565f89;
+}
+
+.diff-viewer .token.punctuation {
+  color: #c0caf5;
+}
+
+.diff-viewer .token.property,
+.diff-viewer .token.tag,
+.diff-viewer .token.boolean,
+.diff-viewer .token.number,
+.diff-viewer .token.constant,
+.diff-viewer .token.symbol {
+  color: #ff9e64;
+}
+
+.diff-viewer .token.selector,
+.diff-viewer .token.attr-name,
+.diff-viewer .token.string,
+.diff-viewer .token.char,
+.diff-viewer .token.builtin {
+  color: #9ece6a;
+}
+
+.diff-viewer .token.operator,
+.diff-viewer .token.entity,
+.diff-viewer .token.url,
+.diff-viewer .language-css .token.string,
+.diff-viewer .style .token.string {
+  color: #89ddff;
+}
+
+.diff-viewer .token.atrule,
+.diff-viewer .token.attr-value,
+.diff-viewer .token.keyword {
+  color: #bb9af7;
+}
+
+.diff-viewer .token.function,
+.diff-viewer .token.class-name {
+  color: #7aa2f7;
+}
+
+.diff-viewer .token.regex,
+.diff-viewer .token.important,
+.diff-viewer .token.variable {
+  color: #e0af68;
+}
+
+/* Ensure proper table layout */
+.diff-viewer table.diff {
+  width: 100%;
+  border-collapse: collapse;
+  table-layout: fixed;
+}
+
+.diff-viewer table.diff td {
+  vertical-align: top;
+}
