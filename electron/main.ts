@@ -2,6 +2,11 @@ import { app, BrowserWindow, ipcMain } from "electron";
 import path from "path";
 import { fileURLToPath } from "url";
 import os from "os";
+import fixPath from "fix-path";
+
+// Fix PATH for packaged apps on macOS/Linux
+// This ensures git, gh, and other CLI tools are available
+fixPath();
 import { registerIpcHandlers, sendToRenderer } from "./ipc/handlers.js";
 import { registerErrorHandlers } from "./ipc/errorHandlers.js";
 import { PtyManager } from "./services/PtyManager.js";
@@ -319,7 +324,8 @@ async function createWindow(): Promise<void> {
     mainWindow.webContents.openDevTools();
   } else {
     console.log("[MAIN] Loading production build");
-    mainWindow.loadFile(path.join(__dirname, "../dist/index.html"));
+    // __dirname is dist-electron/electron, so go up two levels to reach dist/index.html
+    mainWindow.loadFile(path.join(__dirname, "../../dist/index.html"));
   }
 
   // Spawn the default terminal for backwards compatibility with the renderer
