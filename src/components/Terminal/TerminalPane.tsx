@@ -314,14 +314,19 @@ export function TerminalPane({
           // DESIGN CHANGE: Header logic
           // Active: Tinted background (accent/10) + solid bottom border
           // Inactive: Dark background + subtle bottom border
-          isFocused 
-            ? "bg-canopy-accent/10 border-b border-canopy-accent/20" 
+          isFocused
+            ? "bg-canopy-accent/10 border-b border-canopy-accent/20"
             : "bg-[#16171f] border-b border-canopy-border/30"
         )}
         onDoubleClick={onToggleMaximize}
       >
         <div className="flex items-center gap-2 min-w-0">
-          <span className={cn("shrink-0 transition-colors", isFocused ? "text-canopy-accent" : "text-canopy-text/50")}>
+          <span
+            className={cn(
+              "shrink-0 transition-colors",
+              isFocused ? "text-canopy-accent" : "text-canopy-text/50"
+            )}
+          >
             {getTerminalIcon(type)}
           </span>
 
