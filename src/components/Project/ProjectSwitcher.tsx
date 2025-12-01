@@ -1,7 +1,6 @@
 import { useEffect, useState } from "react";
 import { ChevronsUpDown, Plus, Check, Sparkles, Loader2 } from "lucide-react";
 import { cn } from "@/lib/utils";
-import { getProjectGradient } from "@/lib/colorUtils";
 import { useProjectStore } from "@/store/projectStore";
 import {
   DropdownMenu,
@@ -54,21 +53,18 @@ export function ProjectSwitcher() {
   }, [loadProjects, getCurrentProject]);
 
   // Helper to render the project icon
-  const renderIcon = (emoji: string, color?: string, sizeClass = "h-8 w-8 text-lg") => (
+  // Uses subtle accent-based styling to match the "active worktree" aesthetic
+  const renderIcon = (emoji: string, _color?: string, sizeClass = "h-8 w-8 text-lg") => (
     <div
       className={cn(
-        "flex items-center justify-center rounded-lg border shadow-sm transition-all shrink-0",
+        "flex items-center justify-center rounded-md border shrink-0 transition-all duration-200",
+        // Subtle muted styling
+        "bg-canopy-surface/50",
+        "border-canopy-border/50",
         sizeClass
       )}
-      style={{
-        background: getProjectGradient(color),
-        backgroundColor: !getProjectGradient(color)
-          ? "rgba(var(--canopy-accent-rgb), 0.05)"
-          : undefined,
-        borderColor: !getProjectGradient(color) ? "var(--canopy-border)" : "rgba(255,255,255,0.1)", // Subtle inner highlight for gradients
-      }}
     >
-      <span className="leading-none drop-shadow-sm filter">{emoji}</span>
+      <span className="leading-none select-none">{emoji}</span>
     </div>
   );
 
@@ -157,7 +153,7 @@ export function ProjectSwitcher() {
               {renderIcon(
                 currentProject.emoji || "🌲",
                 currentProject.color,
-                "h-9 w-9 text-xl shadow-md"
+                "h-9 w-9 text-xl"
               )}
 
               <div className="flex flex-col min-w-0 gap-0.5">
