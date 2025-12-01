@@ -5,7 +5,7 @@ import { useTerminalStore, type TerminalInstance } from "@/store";
 import { useContextInjection } from "@/hooks/useContextInjection";
 import { TerminalPane } from "./TerminalPane";
 import { FilePickerModal } from "@/components/ContextInjection";
-import { Terminal, ArrowDown } from "lucide-react";
+import { Terminal } from "lucide-react";
 import { CanopyIcon, CodexIcon, ClaudeIcon, GeminiIcon } from "@/components/icons";
 
 export interface TerminalGridProps {
@@ -91,31 +91,31 @@ function EmptyState({
         {/* Launcher Grid */}
         <div className="grid grid-cols-1 sm:grid-cols-2 gap-4 w-full max-w-3xl mb-12">
           <LauncherCard
-            title="Claude"
-            description="Advanced reasoning and coding." // Shortened description
+            title="Claude Code"
+            description="Best for sustained, autonomous refactoring sessions."
             shortcut="Ctrl+Shift+C"
-            icon={<ClaudeIcon className="h-5 w-5" />} // Changed to ClaudeIcon
+            icon={<ClaudeIcon className="h-5 w-5" />}
             onClick={() => onLaunchAgent("claude")}
             primary
           />
           <LauncherCard
-            title="Gemini"
-            description="Fast, large context window." // Shortened description
-            shortcut="Ctrl+Shift+G"
-            icon={<GeminiIcon className="h-5 w-5" />} // Changed to GeminiIcon
-            onClick={() => onLaunchAgent("gemini")}
-            primary
-          />
-          <LauncherCard
-            title="Codex"
-            description="Code generation and refactoring." // Shortened description
+            title="Codex CLI"
+            description="Top-tier reasoning depth with context compaction."
             icon={<CodexIcon className="h-5 w-5" />}
             onClick={() => onLaunchAgent("codex")}
             primary
           />
           <LauncherCard
+            title="Gemini CLI"
+            description="Fast auto-routing and multi-modal image input."
+            shortcut="Ctrl+Shift+G"
+            icon={<GeminiIcon className="h-5 w-5" />}
+            onClick={() => onLaunchAgent("gemini")}
+            primary
+          />
+          <LauncherCard
             title="Terminal"
-            description="Standard shell access." // Shortened description
+            description="Standard shell access."
             icon={<Terminal className="h-5 w-5" />}
             onClick={() => onLaunchAgent("shell")}
           />
@@ -275,7 +275,6 @@ export function TerminalGrid({ className, defaultCwd }: TerminalGridProps) {
 
   // Empty state - show when no grid terminals (docked terminals don't count for empty)
   if (gridTerminals.length === 0) {
-    const dockTerminals = terminals.filter((t) => t.location === "dock");
     return (
       <div className={cn("h-full", className)}>
         <EmptyState

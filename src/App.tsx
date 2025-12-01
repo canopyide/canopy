@@ -385,7 +385,8 @@ function App() {
                 title: terminal.title,
                 cwd,
                 worktreeId: terminal.worktreeId,
-                location: terminal.location || "grid", // Restore dock state, default to grid for legacy
+                // Force all terminals to the grid on startup so they are immediately visible
+                location: "grid",
                 command: terminal.command, // Restore agent command for re-launching CLI
               });
             } catch (error) {

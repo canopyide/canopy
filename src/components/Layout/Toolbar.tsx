@@ -97,7 +97,7 @@ export function Toolbar({
           size="icon"
           onClick={() => onLaunchAgent("claude")}
           className="text-canopy-text hover:bg-canopy-border hover:text-canopy-accent h-8 w-8"
-          title="Start Claude Agent (Ctrl+Shift+C)"
+          title="Start Claude (Opus 4.5 for deep work)"
           aria-label="Start Claude Agent"
         >
           <ClaudeIcon className="h-4 w-4" />
@@ -107,7 +107,7 @@ export function Toolbar({
           size="icon"
           onClick={() => onLaunchAgent("gemini")}
           className="text-canopy-text hover:bg-canopy-border hover:text-canopy-accent h-8 w-8"
-          title="Start Gemini Agent (Ctrl+Shift+G)"
+          title="Start Gemini (Auto-routing enabled)"
           aria-label="Start Gemini Agent"
         >
           <GeminiIcon className="h-4 w-4" />
@@ -117,7 +117,7 @@ export function Toolbar({
           size="icon"
           onClick={() => onLaunchAgent("codex")}
           className="text-canopy-text hover:bg-canopy-border hover:text-canopy-accent h-8 w-8"
-          title="Start Codex Agent"
+          title="Start Codex (GPT-5.1 Max)"
           aria-label="Start Codex Agent"
         >
           <CodexIcon className="h-4 w-4" />

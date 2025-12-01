@@ -124,12 +124,11 @@ export function AgentSettings({ onSettingsChange }: AgentSettingsProps) {
               type="text"
               value={settings.claude.model || ""}
               onChange={(e) => handleClaudeChange({ model: e.target.value })}
-              placeholder="e.g., sonnet, opus, haiku"
+              placeholder="e.g., opus-4.5, sonnet-4.5"
               className="w-full bg-canopy-bg border border-canopy-border rounded-md px-3 py-2 text-sm text-canopy-text placeholder:text-gray-500 focus:outline-none focus:ring-1 focus:ring-canopy-accent"
             />
             <p className="text-xs text-gray-500">
-              Leave empty to use Claude CLI default. Options: sonnet, opus, haiku, or full model
-              names.
+              Opus 4.5 recommended for long-horizon autonomous tasks. Leave empty to use Claude CLI default.
             </p>
           </div>
 
@@ -302,10 +301,12 @@ export function AgentSettings({ onSettingsChange }: AgentSettingsProps) {
               type="text"
               value={settings.gemini.model || ""}
               onChange={(e) => handleGeminiChange({ model: e.target.value })}
-              placeholder="e.g., gemini-2.0-flash"
+              placeholder="e.g., gemini-3-pro"
               className="w-full bg-canopy-bg border border-canopy-border rounded-md px-3 py-2 text-sm text-canopy-text placeholder:text-gray-500 focus:outline-none focus:ring-1 focus:ring-canopy-accent"
             />
-            <p className="text-xs text-gray-500">Leave empty to use Gemini CLI default.</p>
+            <p className="text-xs text-gray-500">
+              Leave empty to use 'Auto' routing (switches between Pro/Flash based on complexity).
+            </p>
           </div>
 
           {/* Approval Mode */}
@@ -456,10 +457,12 @@ export function AgentSettings({ onSettingsChange }: AgentSettingsProps) {
               type="text"
               value={settings.codex.model || ""}
               onChange={(e) => handleCodexChange({ model: e.target.value })}
-              placeholder="e.g., o3, o4-mini"
+              placeholder="e.g., gpt-5.1-codex-max"
               className="w-full bg-canopy-bg border border-canopy-border rounded-md px-3 py-2 text-sm text-canopy-text placeholder:text-gray-500 focus:outline-none focus:ring-1 focus:ring-canopy-accent"
             />
-            <p className="text-xs text-gray-500">Leave empty to use Codex CLI default.</p>
+            <p className="text-xs text-gray-500">
+              Tip: Set effort to 'xhigh' for complex architecture decisions. Leave empty to use Codex CLI default.
+            </p>
           </div>
 
           {/* Sandbox Policy */}
