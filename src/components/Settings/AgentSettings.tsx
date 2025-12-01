@@ -7,8 +7,10 @@
 
 import { useState, useEffect } from "react";
 import { Button } from "@/components/ui/button";
+import { SegmentedControl, type SegmentedControlTab } from "@/components/ui/SegmentedControl";
 import { cn } from "@/lib/utils";
 import { RotateCcw, AlertTriangle, ChevronDown, ChevronUp } from "lucide-react";
+import { ClaudeIcon, GeminiIcon, CodexIcon } from "@/components/icons";
 import type {
   AgentSettings as AgentSettingsType,
   ClaudeApprovalMode,
@@ -94,25 +96,23 @@ export function AgentSettings({ onSettingsChange }: AgentSettingsProps) {
     );
   }
 
+  const agentTabs: SegmentedControlTab[] = [
+    { id: "claude", label: "Claude", icon: <ClaudeIcon size={14} /> },
+    { id: "gemini", label: "Gemini", icon: <GeminiIcon size={14} /> },
+    { id: "codex", label: "Codex", icon: <CodexIcon size={14} /> },
+  ];
+
   return (
     <div className="space-y-4">
       {/* Agent Tabs */}
-      <div className="flex gap-2 border-b border-canopy-border pb-2">
-        {(["claude", "gemini", "codex"] as const).map((tab) => (
-          <button
-            key={tab}
-            onClick={() => setActiveTab(tab)}
-            className={cn(
-              "px-4 py-2 text-sm font-medium rounded-t-md transition-colors capitalize",
-              activeTab === tab
-                ? "bg-canopy-accent/10 text-canopy-accent border-b-2 border-canopy-accent"
-                : "text-gray-400 hover:text-canopy-text hover:bg-canopy-border/50"
-            )}
-          >
-            {tab}
-          </button>
-        ))}
-      </div>
+      <SegmentedControl
+        tabs={agentTabs}
+        activeTab={activeTab}
+        onTabChange={(tabId) => {
+          setActiveTab(tabId as AgentTab);
+          setShowAdvanced(false);
+        }}
+      />
 
       {/* Claude Settings */}
       {activeTab === "claude" && (

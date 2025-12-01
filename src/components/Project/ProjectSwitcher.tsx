@@ -150,11 +150,7 @@ export function ProjectSwitcher() {
             disabled={isLoading}
           >
             <div className="flex items-center gap-3 text-left min-w-0">
-              {renderIcon(
-                currentProject.emoji || "🌲",
-                currentProject.color,
-                "h-9 w-9 text-xl"
-              )}
+              {renderIcon(currentProject.emoji || "🌲", currentProject.color, "h-9 w-9 text-xl")}
 
               <div className="flex flex-col min-w-0 gap-0.5">
                 <span className="truncate font-semibold text-canopy-text text-sm leading-none">
