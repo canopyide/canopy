@@ -7,9 +7,9 @@
  */
 
 import { getErrorDetails } from "./errorTypes.js";
-import { appendFileSync, mkdirSync } from "fs";
-import { homedir } from "os";
-import { join, dirname } from "path";
+import { appendFileSync, mkdirSync, existsSync } from "fs";
+import { join } from "path";
+import { app } from "electron";
 import type { BrowserWindow } from "electron";
 import { logBuffer, type LogEntry } from "../services/LogBuffer.js";
 
@@ -19,9 +19,24 @@ interface LogContext {
   [key: string]: unknown;
 }
 
-// Debug file logging
-const DEBUG_LOG_FILE = join(homedir(), ".config", "canopy", "worktree-debug.log");
-const ENABLE_FILE_LOGGING = false; // Disabled by default
+// Log directory - uses app's user data path in production, project logs/ in development
+function getLogDirectory(): string {
+  if (process.env.NODE_ENV === "development") {
+    // In development, use logs/ directory in project root
+    // app.getAppPath() returns the path to the app's main file
+    const appPath = app.getAppPath();
+    return join(appPath, "logs");
+  }
+  // In production, use the user data directory
+  return join(app.getPath("userData"), "logs");
+}
+
+function getLogFilePath(): string {
+  return join(getLogDirectory(), "canopy.log");
+}
+
+// Enable file logging in development for debugging
+const ENABLE_FILE_LOGGING = process.env.NODE_ENV === "development";
 
 // Sensitive keys that should be redacted from logs
 const SENSITIVE_KEYS = new Set([
@@ -177,14 +192,18 @@ function writeToLogFile(level: string, message: string, context?: LogContext): v
   if (!ENABLE_FILE_LOGGING) return;
 
   try {
+    const logFile = getLogFilePath();
     const timestamp = new Date().toISOString();
     const contextStr = context ? ` ${JSON.stringify(context)}` : "";
     const logLine = `[${timestamp}] [${level}] ${message}${contextStr}\n`;
 
     // Ensure directory exists before writing
-    mkdirSync(dirname(DEBUG_LOG_FILE), { recursive: true });
+    const logDir = getLogDirectory();
+    if (!existsSync(logDir)) {
+      mkdirSync(logDir, { recursive: true });
+    }
 
-    appendFileSync(DEBUG_LOG_FILE, logLine, "utf8");
+    appendFileSync(logFile, logLine, "utf8");
   } catch (error) {
     // Silently fail if we can't write to log file
   }
