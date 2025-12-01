@@ -23,10 +23,7 @@ export function CanopyIcon({ className, size = 16 }: CanopyIconProps) {
       className={cn(className)}
       aria-hidden="true"
     >
-      <path
-        fill="currentColor"
-        d="M12 2L5.5 13H9l-3.5 9h13l-3.5-9h3.5L12 2z"
-      />
+      <path fill="currentColor" d="M12 2L5.5 13H9l-3.5 9h13l-3.5-9h3.5L12 2z" />
     </svg>
   );
 }

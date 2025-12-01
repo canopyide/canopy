@@ -175,6 +175,13 @@ export const createTerminalRegistrySlice =
           return { terminals: newTerminals };
         });
 
+        // Enable buffering immediately if terminal starts in dock (hidden)
+        if (location === "dock") {
+          terminalClient.setBuffering(id, true).catch((error) => {
+            console.error("Failed to enable terminal buffering:", error);
+          });
+        }
+
         return id;
       } catch (error) {
         console.error("Failed to spawn terminal:", error);
@@ -312,6 +319,11 @@ export const createTerminalRegistrySlice =
         persistTerminals(newTerminals);
         return { terminals: newTerminals };
       });
+
+      // Enable buffering for docked (hidden) terminal to reduce IPC overhead
+      terminalClient.setBuffering(id, true).catch((error) => {
+        console.error("Failed to enable terminal buffering:", error);
+      });
     },
 
     moveTerminalToGrid: (id) => {
@@ -326,6 +338,22 @@ export const createTerminalRegistrySlice =
         persistTerminals(newTerminals);
         return { terminals: newTerminals };
       });
+
+      // Disable buffering and flush buffered data when terminal becomes visible
+      // We call flush after a small delay to ensure the UI has subscribed to onData
+      terminalClient
+        .setBuffering(id, false)
+        .then(() => {
+          // Delay flush to allow UI to mount and subscribe
+          setTimeout(() => {
+            terminalClient.flush(id).catch((error) => {
+              console.error("Failed to flush terminal buffer:", error);
+            });
+          }, 100);
+        })
+        .catch((error) => {
+          console.error("Failed to disable terminal buffering:", error);
+        });
     },
 
     toggleTerminalLocation: (id) => {

@@ -933,6 +933,14 @@ export interface IpcInvokeMap {
     args: [id: string];
     result: boolean;
   };
+  "terminal:set-buffering": {
+    args: [payload: { id: string; enabled: boolean }];
+    result: void;
+  };
+  "terminal:flush": {
+    args: [id: string];
+    result: void;
+  };
 
   // ============================================
   // Agent channels
@@ -1455,6 +1463,8 @@ export interface ElectronAPI {
     kill(id: string): Promise<void>;
     trash(id: string): Promise<void>;
     restore(id: string): Promise<boolean>;
+    setBuffering(id: string, enabled: boolean): Promise<void>;
+    flush(id: string): Promise<void>;
     onData(id: string, callback: (data: string) => void): () => void;
     onExit(callback: (id: string, exitCode: number) => void): () => void;
     onAgentStateChanged(callback: (data: AgentStateChangePayload) => void): () => void;

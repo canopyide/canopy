@@ -42,6 +42,12 @@ export interface PtySpawnOptions {
 /** Buffer size for sliding window (characters) - enough to capture busy patterns across split packets */
 const OUTPUT_BUFFER_SIZE = 2000;
 
+/** Default max chunks to buffer before auto-flush (prevents OOM for long-running hidden terminals) */
+const DEFAULT_MAX_QUEUE_SIZE = 100;
+
+/** Maximum bytes to buffer before auto-flush (1MB - prevents single large write from causing OOM) */
+const DEFAULT_MAX_QUEUE_BYTES = 1024 * 1024;
+
 interface TerminalInfo {
   id: string;
   ptyProcess: pty.IPty;
@@ -84,6 +90,33 @@ interface TerminalInfo {
    * Separate from outputBuffer (char-based) to cleanly separate pattern detection from AI analysis.
    */
   semanticBuffer: string[];
+
+  // Buffering mode fields for hidden/docked terminals
+  /**
+   * When true, PTY output is buffered in memory instead of emitting IPC events.
+   * Used to reduce IPC overhead for hidden/docked terminals.
+   */
+  bufferingMode: boolean;
+  /**
+   * Queue of buffered output chunks when bufferingMode is true.
+   * Flushed when terminal becomes visible or queue exceeds maxQueueSize.
+   */
+  outputQueue: string[];
+  /**
+   * Current size of buffered output in bytes.
+   * Used to enforce maxQueueBytes limit.
+   */
+  queuedBytes: number;
+  /**
+   * Maximum number of chunks to buffer before auto-flush.
+   * Prevents unbounded memory growth for long-running hidden terminals.
+   */
+  maxQueueSize: number;
+  /**
+   * Maximum bytes to buffer before auto-flush.
+   * Prevents single large writes from causing OOM.
+   */
+  maxQueueBytes: number;
 }
 
 export interface PtyManagerEvents {
@@ -412,7 +445,23 @@ export class PtyManager extends EventEmitter {
       // Track output timing for silence detection
       terminal.lastOutputTime = Date.now();
 
-      this.emit("data", id, data);
+      // Check if we're in buffering mode (terminal is hidden/docked)
+      if (terminal.bufferingMode) {
+        // Buffer data instead of emitting IPC event
+        terminal.outputQueue.push(data);
+        terminal.queuedBytes += data.length;
+
+        // Auto-flush if buffer exceeds max size or byte limit (prevents OOM)
+        if (
+          terminal.outputQueue.length >= terminal.maxQueueSize ||
+          terminal.queuedBytes >= terminal.maxQueueBytes
+        ) {
+          this.flushBuffer(id);
+        }
+      } else {
+        // Normal flow: emit immediately
+        this.emit("data", id, data);
+      }
 
       // For agent terminals, track state based on output
       if (isAgentTerminal) {
@@ -491,6 +540,11 @@ export class PtyManager extends EventEmitter {
         this.trashTimeouts.delete(id);
       }
 
+      // Flush any buffered output before exit to avoid data loss
+      if (terminal.bufferingMode && terminal.outputQueue.length > 0) {
+        this.flushBuffer(id);
+      }
+
       this.emit("exit", id, exitCode ?? 0);
 
       // Update agent state on exit
@@ -547,6 +601,12 @@ export class PtyManager extends EventEmitter {
       lastCheckTime: spawnedAt,
       // Initialize empty semantic buffer for AI analysis
       semanticBuffer: [],
+      // Initialize buffering mode as disabled (terminals start visible)
+      bufferingMode: false,
+      outputQueue: [],
+      queuedBytes: 0,
+      maxQueueSize: DEFAULT_MAX_QUEUE_SIZE,
+      maxQueueBytes: DEFAULT_MAX_QUEUE_BYTES,
     });
 
     // Emit agent:spawned event for agent terminals (Claude, Gemini)
@@ -652,6 +712,67 @@ export class PtyManager extends EventEmitter {
   }
 
   /**
+   * Set buffering mode for a terminal.
+   * When enabled, PTY output is buffered in memory instead of emitting IPC events.
+   * Used to reduce IPC overhead for hidden/docked terminals.
+   *
+   * @param id - Terminal identifier
+   * @param enabled - Whether to enable buffering mode
+   */
+  setBuffering(id: string, enabled: boolean): void {
+    const terminal = this.terminals.get(id);
+    if (!terminal) {
+      console.warn(`[PtyManager] Cannot set buffering: terminal ${id} not found`);
+      return;
+    }
+
+    // Skip if already in desired mode
+    if (terminal.bufferingMode === enabled) {
+      return;
+    }
+
+    terminal.bufferingMode = enabled;
+
+    if (enabled) {
+      if (process.env.CANOPY_VERBOSE) {
+        console.log(`[PtyManager] Buffering enabled for ${id}`);
+      }
+    } else {
+      if (process.env.CANOPY_VERBOSE) {
+        console.log(`[PtyManager] Buffering disabled for ${id}`);
+      }
+      // Note: We don't auto-flush here because the UI may not be subscribed yet.
+      // The caller should explicitly call flushBuffer() after the UI is ready.
+    }
+  }
+
+  /**
+   * Flush buffered output for a terminal.
+   * Combines all buffered chunks into a single payload and emits via IPC.
+   *
+   * @param id - Terminal identifier
+   */
+  flushBuffer(id: string): void {
+    const terminal = this.terminals.get(id);
+    if (!terminal || terminal.outputQueue.length === 0) {
+      return;
+    }
+
+    // Combine all buffered chunks into a single payload
+    const combined = terminal.outputQueue.join("");
+    const chunkCount = terminal.outputQueue.length;
+    terminal.outputQueue = [];
+    terminal.queuedBytes = 0;
+
+    // Send as single IPC message for efficiency
+    this.emit("data", id, combined);
+
+    if (process.env.CANOPY_VERBOSE) {
+      console.log(`[PtyManager] Flushed ${combined.length} bytes (${chunkCount} chunks) for ${id}`);
+    }
+  }
+
+  /**
    * Kill a terminal process
    * @param id - Terminal identifier
    * @param reason - Optional reason for killing (for agent events)
@@ -666,6 +787,11 @@ export class PtyManager extends EventEmitter {
 
     const terminal = this.terminals.get(id);
     if (terminal) {
+      // Flush any buffered output before killing to avoid data loss
+      if (terminal.bufferingMode && terminal.outputQueue.length > 0) {
+        this.flushBuffer(id);
+      }
+
       // Mark as killed to prevent agent:completed emission
       terminal.wasKilled = true;
 

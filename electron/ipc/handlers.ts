@@ -596,6 +596,46 @@ export function registerIpcHandlers(
   });
   handlers.push(unsubTerminalRestored);
 
+  const handleTerminalSetBuffering = async (
+    _event: Electron.IpcMainInvokeEvent,
+    payload: { id: string; enabled: boolean }
+  ): Promise<void> => {
+    try {
+      if (!payload || typeof payload !== "object") {
+        throw new Error("Invalid payload");
+      }
+      if (typeof payload.id !== "string" || !payload.id) {
+        throw new Error("Invalid terminal ID: must be a non-empty string");
+      }
+      if (typeof payload.enabled !== "boolean") {
+        throw new Error("Invalid enabled flag: must be a boolean");
+      }
+      ptyManager.setBuffering(payload.id, payload.enabled);
+    } catch (error) {
+      const errorMessage = error instanceof Error ? error.message : String(error);
+      throw new Error(`Failed to set terminal buffering: ${errorMessage}`);
+    }
+  };
+  ipcMain.handle(CHANNELS.TERMINAL_SET_BUFFERING, handleTerminalSetBuffering);
+  handlers.push(() => ipcMain.removeHandler(CHANNELS.TERMINAL_SET_BUFFERING));
+
+  const handleTerminalFlush = async (
+    _event: Electron.IpcMainInvokeEvent,
+    id: string
+  ): Promise<void> => {
+    try {
+      if (typeof id !== "string" || !id) {
+        throw new Error("Invalid terminal ID: must be a non-empty string");
+      }
+      ptyManager.flushBuffer(id);
+    } catch (error) {
+      const errorMessage = error instanceof Error ? error.message : String(error);
+      throw new Error(`Failed to flush terminal buffer: ${errorMessage}`);
+    }
+  };
+  ipcMain.handle(CHANNELS.TERMINAL_FLUSH, handleTerminalFlush);
+  handlers.push(() => ipcMain.removeHandler(CHANNELS.TERMINAL_FLUSH));
+
   // ==========================================
   // Artifact Handlers
   // ==========================================
