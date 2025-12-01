@@ -101,7 +101,8 @@ export function useRepositoryStats(): UseRepositoryStatsReturn {
       }
     } catch (err) {
       if (mountedRef.current) {
-        const errorMessage = err instanceof Error ? err.message : "Failed to fetch repository stats";
+        const errorMessage =
+          err instanceof Error ? err.message : "Failed to fetch repository stats";
         setError(errorMessage);
         lastErrorRef.current = errorMessage;
       }
