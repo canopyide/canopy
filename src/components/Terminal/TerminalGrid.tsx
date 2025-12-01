@@ -22,7 +22,7 @@ import { TerminalPane } from "./TerminalPane";
 import { FilePickerModal } from "@/components/ContextInjection";
 import { Terminal, Bot, Sparkles } from "lucide-react";
 import { Button } from "@/components/ui/button";
-import { CodexIcon } from "@/components/icons";
+import { CanopyIcon, CodexIcon } from "@/components/icons";
 
 export interface TerminalGridProps {
   className?: string;
@@ -38,7 +38,7 @@ function EmptyState({
 }) {
   return (
     <div className="flex flex-col items-center justify-center h-full text-canopy-text/60">
-      <Bot className="h-12 w-12 mb-4 opacity-50" />
+      <CanopyIcon className="h-16 w-16 mb-6 text-canopy-accent/50" />
       {hasDockedTerminals ? (
         <>
           <p className="mb-2 text-sm">All agents are minimized to the dock</p>
@@ -47,16 +47,17 @@ function EmptyState({
           </p>
         </>
       ) : (
-        <div className="text-center space-y-2 mb-4">
-          <h3 className="text-lg font-medium text-canopy-text">Start an AI Agent</h3>
-          <p className="text-sm text-canopy-text/50 max-w-md">
-            Each agent runs in its own tile. Agents can work autonomously on tasks, with full access
-            to context and tools.
+        <div className="text-center space-y-2 mb-8">
+          <h3 className="text-2xl font-bold text-canopy-text tracking-tight">
+            Canopy Command Center
+          </h3>
+          <p className="text-sm text-canopy-text/60 max-w-md mx-auto">
+            Launch an AI agent to start orchestrating your development workflow.
           </p>
         </div>
       )}
 
-      <div className="flex gap-2 mb-3">
+      <div className="flex gap-3 mb-6">
         <Button
           onClick={() => onLaunchAgent("claude")}
           className="bg-canopy-accent hover:bg-canopy-accent/80 text-white"
