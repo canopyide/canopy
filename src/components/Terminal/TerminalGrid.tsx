@@ -111,7 +111,7 @@ export function TerminalGrid({ className, defaultCwd }: TerminalGridProps) {
 
   // Get actions separately - these are stable references
   const addTerminal = useTerminalStore((state) => state.addTerminal);
-  const removeTerminal = useTerminalStore((state) => state.removeTerminal);
+  const trashTerminal = useTerminalStore((state) => state.trashTerminal);
   const updateTitle = useTerminalStore((state) => state.updateTitle);
   const setFocused = useTerminalStore((state) => state.setFocused);
   const toggleMaximize = useTerminalStore((state) => state.toggleMaximize);
@@ -230,7 +230,7 @@ export function TerminalGrid({ className, defaultCwd }: TerminalGridProps) {
                 : null
             }
             onFocus={() => setFocused(terminal.id)}
-            onClose={() => removeTerminal(terminal.id)}
+            onClose={() => trashTerminal(terminal.id)}
             onInjectContext={
               terminal.worktreeId
                 ? () => handleInjectContext(terminal.id, terminal.worktreeId)
@@ -300,7 +300,7 @@ export function TerminalGrid({ className, defaultCwd }: TerminalGridProps) {
               : null
           }
           onFocus={() => setFocused(terminal.id)}
-          onClose={() => removeTerminal(terminal.id)}
+          onClose={() => trashTerminal(terminal.id)}
           onInjectContext={
             terminal.worktreeId
               ? () => handleInjectContext(terminal.id, terminal.worktreeId)

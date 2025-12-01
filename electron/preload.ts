@@ -148,6 +148,10 @@ const CHANNELS = {
   TERMINAL_KILL: "terminal:kill",
   TERMINAL_EXIT: "terminal:exit",
   TERMINAL_ERROR: "terminal:error",
+  TERMINAL_TRASH: "terminal:trash",
+  TERMINAL_RESTORE: "terminal:restore",
+  TERMINAL_TRASHED: "terminal:trashed",
+  TERMINAL_RESTORED: "terminal:restored",
 
   // Agent state channels
   AGENT_STATE_CHANGED: "agent:state-changed",
@@ -444,6 +448,25 @@ const api: ElectronAPI = {
       };
       ipcRenderer.on(CHANNELS.TERMINAL_ACTIVITY, handler);
       return () => ipcRenderer.removeListener(CHANNELS.TERMINAL_ACTIVITY, handler);
+    },
+
+    trash: (id: string): Promise<void> => ipcRenderer.invoke(CHANNELS.TERMINAL_TRASH, id),
+
+    restore: (id: string): Promise<boolean> => ipcRenderer.invoke(CHANNELS.TERMINAL_RESTORE, id),
+
+    onTrashed: (callback: (data: { id: string; expiresAt: number }) => void) => {
+      const handler = (
+        _event: Electron.IpcRendererEvent,
+        data: { id: string; expiresAt: number }
+      ) => callback(data);
+      ipcRenderer.on(CHANNELS.TERMINAL_TRASHED, handler);
+      return () => ipcRenderer.removeListener(CHANNELS.TERMINAL_TRASHED, handler);
+    },
+
+    onRestored: (callback: (data: { id: string }) => void) => {
+      const handler = (_event: Electron.IpcRendererEvent, data: { id: string }) => callback(data);
+      ipcRenderer.on(CHANNELS.TERMINAL_RESTORED, handler);
+      return () => ipcRenderer.removeListener(CHANNELS.TERMINAL_RESTORED, handler);
     },
   },
 

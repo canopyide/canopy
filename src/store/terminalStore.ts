@@ -123,6 +123,8 @@ export const useTerminalStore = create<TerminalGridState>()((set, get, api) => {
 // This runs once at module load and the cleanup function should be called on app shutdown
 let agentStateUnsubscribe: (() => void) | null = null;
 let activityUnsubscribe: (() => void) | null = null;
+let trashedUnsubscribe: (() => void) | null = null;
+let restoredUnsubscribe: (() => void) | null = null;
 
 if (typeof window !== "undefined") {
   agentStateUnsubscribe = terminalClient.onAgentStateChanged((data) => {
@@ -154,6 +156,18 @@ if (typeof window !== "undefined") {
     // Update the terminal's activity state
     useTerminalStore.getState().updateActivity(terminalId, headline, status, type, timestamp);
   });
+
+  // Subscribe to terminal trashed events from the main process
+  trashedUnsubscribe = terminalClient.onTrashed((data) => {
+    const { id, expiresAt } = data;
+    useTerminalStore.getState().markAsTrashed(id, expiresAt);
+  });
+
+  // Subscribe to terminal restored events from the main process
+  restoredUnsubscribe = terminalClient.onRestored((data) => {
+    const { id } = data;
+    useTerminalStore.getState().markAsRestored(id);
+  });
 }
 
 // Export cleanup function for app shutdown
@@ -165,5 +179,13 @@ export function cleanupTerminalStoreListeners() {
   if (activityUnsubscribe) {
     activityUnsubscribe();
     activityUnsubscribe = null;
+  }
+  if (trashedUnsubscribe) {
+    trashedUnsubscribe();
+    trashedUnsubscribe = null;
+  }
+  if (restoredUnsubscribe) {
+    restoredUnsubscribe();
+    restoredUnsubscribe = null;
   }
 }

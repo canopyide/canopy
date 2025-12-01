@@ -126,6 +126,10 @@ export interface TerminalSnapshot {
 
 export class PtyManager extends EventEmitter {
   private terminals: Map<string, TerminalInfo> = new Map();
+  private trashTimeouts: Map<string, NodeJS.Timeout> = new Map();
+
+  /** TTL for trashed terminals before auto-kill (60 seconds) */
+  private readonly TRASH_TTL_MS = 60 * 1000;
 
   constructor() {
     super();
@@ -363,11 +367,11 @@ export class PtyManager extends EventEmitter {
     const args = options.args || this.getDefaultShellArgs(shell);
 
     const spawnedAt = Date.now();
-        const isAgentTerminal =
-          options.type === "claude" ||
-          options.type === "gemini" ||
-          options.type === "codex" ||
-          options.type === "custom";
+    const isAgentTerminal =
+      options.type === "claude" ||
+      options.type === "gemini" ||
+      options.type === "codex" ||
+      options.type === "custom";
     // For agent terminals, use terminal ID as agent ID
     const agentId = isAgentTerminal ? id : undefined;
 
@@ -478,6 +482,13 @@ export class PtyManager extends EventEmitter {
       if (!terminal || terminal.ptyProcess !== ptyProcess) {
         // This is a stale exit event from a previous terminal with same ID
         return;
+      }
+
+      // Clear any pending trash timeout (prevents stale timeout from firing on reused ID)
+      const timeout = this.trashTimeouts.get(id);
+      if (timeout) {
+        clearTimeout(timeout);
+        this.trashTimeouts.delete(id);
       }
 
       this.emit("exit", id, exitCode ?? 0);
@@ -646,6 +657,13 @@ export class PtyManager extends EventEmitter {
    * @param reason - Optional reason for killing (for agent events)
    */
   kill(id: string, reason?: string): void {
+    // Clear any pending trash timeout
+    const timeout = this.trashTimeouts.get(id);
+    if (timeout) {
+      clearTimeout(timeout);
+      this.trashTimeouts.delete(id);
+    }
+
     const terminal = this.terminals.get(id);
     if (terminal) {
       // Mark as killed to prevent agent:completed emission
@@ -686,6 +704,70 @@ export class PtyManager extends EventEmitter {
       terminal.ptyProcess.kill();
       // Don't delete here - let the exit handler do it to avoid race conditions
     }
+  }
+
+  /**
+   * Move a terminal to the trash. It will be auto-killed after the TTL.
+   * Idempotent - calling multiple times on same terminal has no effect.
+   * @param id - Terminal identifier
+   */
+  trash(id: string): void {
+    // If already scheduled for deletion, do nothing
+    if (this.trashTimeouts.has(id)) {
+      return;
+    }
+
+    // Verify terminal exists
+    if (!this.terminals.has(id)) {
+      console.warn(`[PtyManager] Cannot trash non-existent terminal: ${id}`);
+      return;
+    }
+
+    // Schedule garbage collection
+    const timeout = setTimeout(() => {
+      console.log(`[PtyManager] Auto-killing trashed terminal after TTL: ${id}`);
+      this.kill(id, "trash-expired");
+      this.trashTimeouts.delete(id);
+    }, this.TRASH_TTL_MS);
+
+    this.trashTimeouts.set(id, timeout);
+
+    // Emit event so renderer knows it's pending GC
+    events.emit("terminal:trashed", { id, expiresAt: Date.now() + this.TRASH_TTL_MS });
+  }
+
+  /**
+   * Restore a terminal from the trash.
+   * Returns true if terminal was in trash and restored, false otherwise.
+   * @param id - Terminal identifier
+   */
+  restore(id: string): boolean {
+    const timeout = this.trashTimeouts.get(id);
+
+    // Only return true if we actually canceled a trash timeout
+    if (timeout) {
+      // Cancel pending deletion
+      clearTimeout(timeout);
+      this.trashTimeouts.delete(id);
+
+      // Verify terminal still exists
+      if (this.terminals.has(id)) {
+        console.log(`[PtyManager] Restored terminal from trash: ${id}`);
+        events.emit("terminal:restored", { id });
+        return true;
+      }
+    }
+
+    // Terminal was not in trash (or doesn't exist)
+    return false;
+  }
+
+  /**
+   * Check if a terminal is in the trash (pending deletion)
+   * @param id - Terminal identifier
+   */
+  isInTrash(id: string): boolean {
+    return this.trashTimeouts.has(id);
   }
 
   /**
@@ -815,6 +897,12 @@ export class PtyManager extends EventEmitter {
    * Clean up all terminals (called on app quit)
    */
   dispose(): void {
+    // Clear all trash timeouts to prevent them from firing during shutdown
+    for (const timeout of this.trashTimeouts.values()) {
+      clearTimeout(timeout);
+    }
+    this.trashTimeouts.clear();
+
     for (const [id, terminal] of this.terminals) {
       try {
         // Emit agent:killed event for agent terminals during shutdown

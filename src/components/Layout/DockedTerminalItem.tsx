@@ -63,7 +63,7 @@ function getStateIndicator(state?: AgentState) {
 export function DockedTerminalItem({ terminal }: DockedTerminalItemProps) {
   const [isOpen, setIsOpen] = useState(false);
   const moveTerminalToGrid = useTerminalStore((s) => s.moveTerminalToGrid);
-  const removeTerminal = useTerminalStore((s) => s.removeTerminal);
+  const trashTerminal = useTerminalStore((s) => s.trashTerminal);
 
   const handleRestore = useCallback(
     (e: React.MouseEvent) => {
@@ -77,10 +77,10 @@ export function DockedTerminalItem({ terminal }: DockedTerminalItemProps) {
   const handleClose = useCallback(
     (e: React.MouseEvent) => {
       e.stopPropagation();
-      removeTerminal(terminal.id);
+      trashTerminal(terminal.id);
       setIsOpen(false);
     },
-    [removeTerminal, terminal.id]
+    [trashTerminal, terminal.id]
   );
 
   const handleOpenChange = useCallback((open: boolean) => {

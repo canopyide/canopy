@@ -34,6 +34,10 @@ export const CHANNELS = {
   TERMINAL_KILL: "terminal:kill",
   TERMINAL_EXIT: "terminal:exit",
   TERMINAL_ERROR: "terminal:error",
+  TERMINAL_TRASH: "terminal:trash",
+  TERMINAL_RESTORE: "terminal:restore",
+  TERMINAL_TRASHED: "terminal:trashed",
+  TERMINAL_RESTORED: "terminal:restored",
 
   // Agent state channels
   AGENT_STATE_CHANGED: "agent:state-changed",

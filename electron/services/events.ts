@@ -238,6 +238,20 @@ export const EVENT_META: Record<keyof CanopyEventMap, EventMetadata> = {
     description: "Code artifacts extracted from agent output",
   },
 
+  // Terminal trash events
+  "terminal:trashed": {
+    category: "agent",
+    requiresContext: false,
+    requiresTimestamp: false,
+    description: "Terminal moved to trash pending deletion",
+  },
+  "terminal:restored": {
+    category: "agent",
+    requiresContext: false,
+    requiresTimestamp: false,
+    description: "Terminal restored from trash",
+  },
+
   // Task events
   "task:created": {
     category: "task",
@@ -599,6 +613,25 @@ export type CanopyEventMap = {
   }>;
 
   // ============================================================================
+  // Terminal Trash Events
+  // ============================================================================
+
+  /**
+   * Emitted when a terminal is moved to trash (pending deletion).
+   */
+  "terminal:trashed": {
+    id: string;
+    expiresAt: number;
+  };
+
+  /**
+   * Emitted when a terminal is restored from trash.
+   */
+  "terminal:restored": {
+    id: string;
+  };
+
+  // ============================================================================
   // Task Lifecycle Events (Future-proof for task management)
   // ============================================================================
 
@@ -738,6 +771,8 @@ export const ALL_EVENT_TYPES: Array<keyof CanopyEventMap> = [
   "agent:failed",
   "agent:killed",
   "artifact:detected",
+  "terminal:trashed",
+  "terminal:restored",
   "task:created",
   "task:assigned",
   "task:state-changed",

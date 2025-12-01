@@ -11,6 +11,7 @@ export {
   type TerminalInstance,
   type AddTerminalOptions,
   type TerminalRegistryMiddleware,
+  type TrashedTerminal,
 } from "./terminalRegistrySlice";
 
 export { createTerminalFocusSlice, type TerminalFocusSlice } from "./terminalFocusSlice";

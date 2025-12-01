@@ -42,8 +42,16 @@ const TYPE_TITLES: Record<TerminalType, string> = {
   custom: "Terminal",
 };
 
+/** Trashed terminal metadata for countdown timers */
+export interface TrashedTerminal {
+  id: string;
+  expiresAt: number;
+}
+
 export interface TerminalRegistrySlice {
   terminals: TerminalInstance[];
+  /** Terminals pending deletion (in trash) */
+  trashedTerminals: Map<string, TrashedTerminal>;
 
   addTerminal: (options: AddTerminalOptions) => Promise<string>;
   removeTerminal: (id: string) => void;
@@ -71,6 +79,17 @@ export interface TerminalRegistrySlice {
   moveTerminalToGrid: (id: string) => void;
   /** Toggle terminal between dock and grid */
   toggleTerminalLocation: (id: string) => void;
+
+  /** Move terminal to trash (pending deletion) */
+  trashTerminal: (id: string) => void;
+  /** Restore terminal from trash */
+  restoreTerminal: (id: string) => void;
+  /** Mark terminal as trashed (from IPC event) */
+  markAsTrashed: (id: string, expiresAt: number) => void;
+  /** Mark terminal as restored (from IPC event) */
+  markAsRestored: (id: string) => void;
+  /** Check if terminal is in trash */
+  isInTrash: (id: string) => boolean;
 }
 
 /**
@@ -110,6 +129,7 @@ export const createTerminalRegistrySlice =
   ): StateCreator<TerminalRegistrySlice, [], [], TerminalRegistrySlice> =>
   (set, get) => ({
     terminals: [],
+    trashedTerminals: new Map(),
 
     addTerminal: async (options) => {
       const type = options.type || "shell";
@@ -171,8 +191,13 @@ export const createTerminalRegistrySlice =
 
       set((state) => {
         const newTerminals = state.terminals.filter((t) => t.id !== id);
+
+        // Clean up trash entry if it exists
+        const newTrashed = new Map(state.trashedTerminals);
+        newTrashed.delete(id);
+
         persistTerminals(newTerminals);
-        return { terminals: newTerminals };
+        return { terminals: newTerminals, trashedTerminals: newTrashed };
       });
 
       // Notify middleware with pre-removal index and remaining terminals
@@ -288,5 +313,47 @@ export const createTerminalRegistrySlice =
       } else {
         get().moveTerminalToDock(id);
       }
+    },
+
+    trashTerminal: (id) => {
+      const terminal = get().terminals.find((t) => t.id === id);
+      if (!terminal) return;
+
+      // Call IPC to trash on main process (which starts the countdown)
+      terminalClient.trash(id).catch((error) => {
+        console.error("Failed to trash terminal:", error);
+      });
+
+      // Move to dock if in grid
+      if (terminal.location === "grid") {
+        get().moveTerminalToDock(id);
+      }
+    },
+
+    restoreTerminal: (id) => {
+      // Call IPC to restore on main process
+      terminalClient.restore(id).catch((error) => {
+        console.error("Failed to restore terminal:", error);
+      });
+    },
+
+    markAsTrashed: (id, expiresAt) => {
+      set((state) => {
+        const newTrashed = new Map(state.trashedTerminals);
+        newTrashed.set(id, { id, expiresAt });
+        return { trashedTerminals: newTrashed };
+      });
+    },
+
+    markAsRestored: (id) => {
+      set((state) => {
+        const newTrashed = new Map(state.trashedTerminals);
+        newTrashed.delete(id);
+        return { trashedTerminals: newTrashed };
+      });
+    },
+
+    isInTrash: (id) => {
+      return get().trashedTerminals.has(id);
     },
   });

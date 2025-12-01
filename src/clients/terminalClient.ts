@@ -43,6 +43,16 @@ export const terminalClient = {
     return window.electron.terminal.kill(id);
   },
 
+  /** Move terminal to trash (pending deletion with countdown) */
+  trash: (id: string): Promise<void> => {
+    return window.electron.terminal.trash(id);
+  },
+
+  /** Restore terminal from trash, cancelling countdown */
+  restore: (id: string): Promise<boolean> => {
+    return window.electron.terminal.restore(id);
+  },
+
   /** Subscribe to terminal data for a specific terminal. Returns cleanup function. */
   onData: (id: string, callback: (data: string) => void): (() => void) => {
     return window.electron.terminal.onData(id, callback);
@@ -61,5 +71,15 @@ export const terminalClient = {
   /** Subscribe to terminal activity events. Returns cleanup function. */
   onActivity: (callback: (data: TerminalActivityPayload) => void): (() => void) => {
     return window.electron.terminal.onActivity(callback);
+  },
+
+  /** Subscribe to terminal trashed events. Returns cleanup function. */
+  onTrashed: (callback: (data: { id: string; expiresAt: number }) => void): (() => void) => {
+    return window.electron.terminal.onTrashed(callback);
+  },
+
+  /** Subscribe to terminal restored events. Returns cleanup function. */
+  onRestored: (callback: (data: { id: string }) => void): (() => void) => {
+    return window.electron.terminal.onRestored(callback);
   },
 } as const;
