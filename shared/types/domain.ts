@@ -266,6 +266,9 @@ export interface RunRecord {
 /** Type of terminal instance */
 export type TerminalType = "shell" | "claude" | "gemini" | "codex" | "custom";
 
+/** Location of a terminal instance in the UI */
+export type TerminalLocation = "grid" | "dock";
+
 /** Valid triggers for agent state changes */
 export type AgentStateChangeTrigger =
   | "input"
@@ -311,6 +314,8 @@ export interface TerminalInstance {
   activityType?: "interactive" | "background" | "idle";
   /** Timestamp when activity was last updated */
   activityTimestamp?: number;
+  /** Location in the UI - grid (main view) or dock (minimized) */
+  location: TerminalLocation;
 }
 
 /** Options for spawning a new PTY process */
@@ -378,6 +383,8 @@ export interface TerminalSnapshot {
   cwd: string;
   /** Associated worktree ID */
   worktreeId?: string;
+  /** Location in the UI - grid or dock */
+  location: TerminalLocation;
 }
 
 /** Terminal layout metadata */

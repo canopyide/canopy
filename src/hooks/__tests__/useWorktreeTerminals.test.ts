@@ -61,6 +61,7 @@ describe("useWorktreeTerminals logic", () => {
         cwd: "/path/1",
         cols: 80,
         rows: 24,
+        location: "grid",
       },
       {
         id: "term-2",
@@ -70,6 +71,7 @@ describe("useWorktreeTerminals logic", () => {
         cwd: "/path/2",
         cols: 80,
         rows: 24,
+        location: "grid",
       },
       {
         id: "term-3",
@@ -79,6 +81,7 @@ describe("useWorktreeTerminals logic", () => {
         cwd: "/path/1",
         cols: 80,
         rows: 24,
+        location: "grid",
       },
     ];
 
@@ -99,6 +102,7 @@ describe("useWorktreeTerminals logic", () => {
         cwd: "/path/1",
         cols: 80,
         rows: 24,
+        location: "grid",
         // No agentState
       },
       {
@@ -109,6 +113,7 @@ describe("useWorktreeTerminals logic", () => {
         cwd: "/path/1",
         cols: 80,
         rows: 24,
+        location: "grid",
         // No agentState
       },
     ];
@@ -130,6 +135,7 @@ describe("useWorktreeTerminals logic", () => {
         cwd: "/path/1",
         cols: 80,
         rows: 24,
+        location: "grid",
         agentState: "working",
       },
       {
@@ -140,6 +146,7 @@ describe("useWorktreeTerminals logic", () => {
         cwd: "/path/1",
         cols: 80,
         rows: 24,
+        location: "grid",
         agentState: "working",
       },
       {
@@ -150,6 +157,7 @@ describe("useWorktreeTerminals logic", () => {
         cwd: "/path/1",
         cols: 80,
         rows: 24,
+        location: "grid",
         agentState: "idle",
       },
       {
@@ -160,6 +168,7 @@ describe("useWorktreeTerminals logic", () => {
         cwd: "/path/1",
         cols: 80,
         rows: 24,
+        location: "grid",
         agentState: "failed",
         error: "Test error",
       },
@@ -184,6 +193,7 @@ describe("useWorktreeTerminals logic", () => {
         cwd: "/path/1",
         cols: 80,
         rows: 24,
+        location: "grid",
         // No worktreeId
       },
       {
@@ -194,6 +204,7 @@ describe("useWorktreeTerminals logic", () => {
         cwd: "/path/1",
         cols: 80,
         rows: 24,
+        location: "grid",
       },
     ];
 
@@ -214,6 +225,7 @@ describe("useWorktreeTerminals logic", () => {
         cwd: "/path/1",
         cols: 80,
         rows: 24,
+        location: "grid",
         agentState: "waiting",
       },
       {
@@ -224,6 +236,7 @@ describe("useWorktreeTerminals logic", () => {
         cwd: "/path/1",
         cols: 80,
         rows: 24,
+        location: "grid",
         // No agent state - should count as idle
       },
       {
@@ -234,6 +247,7 @@ describe("useWorktreeTerminals logic", () => {
         cwd: "/path/1",
         cols: 80,
         rows: 24,
+        location: "grid",
         agentState: "completed",
       },
     ];

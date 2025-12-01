@@ -17,7 +17,7 @@
 
 import { useState, useCallback, useEffect, useRef } from "react";
 import { useShallow } from "zustand/react/shallow";
-import { Terminal, Command, X, Maximize2, Minimize2, Copy } from "lucide-react";
+import { Terminal, Command, X, Maximize2, Minimize2, Copy, ArrowDownToLine } from "lucide-react";
 import { ClaudeIcon, GeminiIcon, CodexIcon } from "@/components/icons";
 import { cn } from "@/lib/utils";
 import { XtermAdapter } from "./XtermAdapter";
@@ -83,6 +83,8 @@ export interface TerminalPaneProps {
   onToggleMaximize?: () => void;
   /** Called when user edits the terminal title */
   onTitleChange?: (newTitle: string) => void;
+  /** Called when minimize to dock button is clicked */
+  onMinimize?: () => void;
 }
 
 /**
@@ -123,6 +125,7 @@ export function TerminalPane({
   onCancelInjection: _onCancelInjection, // Unused with minimal progress bar
   onToggleMaximize,
   onTitleChange,
+  onMinimize,
 }: TerminalPaneProps) {
   const [isExited, setIsExited] = useState(false);
   const [exitCode, setExitCode] = useState<number | null>(null);
@@ -409,6 +412,19 @@ export function TerminalPane({
               disabled={isExited || isInjecting}
             >
               <Copy className="w-3 h-3" aria-hidden="true" />
+            </button>
+          )}
+          {onMinimize && !isMaximized && (
+            <button
+              onClick={(e) => {
+                e.stopPropagation();
+                onMinimize();
+              }}
+              className="p-1.5 hover:bg-white/10 focus-visible:bg-white/10 focus-visible:outline focus-visible:outline-2 focus-visible:outline-canopy-accent text-canopy-text/60 hover:text-canopy-text transition-colors"
+              title="Minimize to dock"
+              aria-label="Minimize terminal to dock"
+            >
+              <ArrowDownToLine className="w-3 h-3" aria-hidden="true" />
             </button>
           )}
           {onToggleMaximize && (

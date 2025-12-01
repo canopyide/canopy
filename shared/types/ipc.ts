@@ -11,6 +11,7 @@
 
 import type {
   TerminalType,
+  TerminalLocation,
   DevServerState,
   WorktreeState,
   Project,
@@ -66,6 +67,8 @@ export interface TerminalState {
   cwd: string;
   /** Associated worktree ID */
   worktreeId?: string;
+  /** Location in the UI - grid or dock */
+  location?: TerminalLocation;
 }
 
 /** Terminal data payload for IPC */

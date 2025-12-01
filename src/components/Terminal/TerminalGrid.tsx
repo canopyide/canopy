@@ -28,11 +28,26 @@ export interface TerminalGridProps {
   defaultCwd?: string;
 }
 
-function EmptyState({ onAddTerminal }: { onAddTerminal: () => void }) {
+function EmptyState({
+  onAddTerminal,
+  hasDockedTerminals,
+}: {
+  onAddTerminal: () => void;
+  hasDockedTerminals: boolean;
+}) {
   return (
     <div className="flex flex-col items-center justify-center h-full text-canopy-text/60">
       <Terminal className="h-12 w-12 mb-4 opacity-50" />
-      <p className="mb-4 text-sm">No terminals open</p>
+      {hasDockedTerminals ? (
+        <>
+          <p className="mb-2 text-sm">All terminals are minimized to the dock</p>
+          <p className="mb-4 text-xs text-canopy-text/40">
+            Click a terminal in the dock below to preview, or restore it to the grid
+          </p>
+        </>
+      ) : (
+        <p className="mb-4 text-sm">No terminals open</p>
+      )}
       <Button
         onClick={onAddTerminal}
         className="bg-canopy-accent hover:bg-canopy-accent/80 text-white"
@@ -60,6 +75,13 @@ export function TerminalGrid({ className, defaultCwd }: TerminalGridProps) {
   const updateTitle = useTerminalStore((state) => state.updateTitle);
   const setFocused = useTerminalStore((state) => state.setFocused);
   const toggleMaximize = useTerminalStore((state) => state.toggleMaximize);
+  const moveTerminalToDock = useTerminalStore((state) => state.moveTerminalToDock);
+
+  // Filter to only show grid terminals (not docked ones)
+  const gridTerminals = useMemo(
+    () => terminals.filter((t) => t.location === "grid" || t.location === undefined),
+    [terminals]
+  );
 
   // Use context injection hook for progress tracking
   const { inject, cancel, isInjecting, progress } = useContextInjection();
@@ -75,16 +97,16 @@ export function TerminalGrid({ className, defaultCwd }: TerminalGridProps) {
     terminalId: null,
   });
 
-  // Calculate grid columns based on terminal count
+  // Calculate grid columns based on grid terminal count (not docked ones)
   // Use a dynamic formula that scales with terminal count
   const gridCols = useMemo(() => {
-    const count = terminals.length;
+    const count = gridTerminals.length;
     if (count <= 1) return 1;
     if (count <= 4) return 2;
     // For 5+ terminals, use ceiling of square root for balanced grid
     // This gives: 5-6 → 3 cols, 7-9 → 3 cols, 10-12 → 4 cols, etc.
     return Math.min(Math.ceil(Math.sqrt(count)), 4); // Cap at 4 columns max
-  }, [terminals.length]);
+  }, [gridTerminals.length]);
 
   // Handle adding a new terminal
   const handleAddTerminal = useCallback(async () => {
@@ -126,9 +148,9 @@ export function TerminalGrid({ className, defaultCwd }: TerminalGridProps) {
     setFilePickerState({ isOpen: false, worktreeId: null, terminalId: null });
   }, []);
 
-  // If maximized, only show that terminal
+  // If maximized, only show that terminal (must be a grid terminal)
   if (maximizedId) {
-    const terminal = terminals.find((t: TerminalInstance) => t.id === maximizedId);
+    const terminal = gridTerminals.find((t: TerminalInstance) => t.id === maximizedId);
     if (terminal) {
       return (
         <div className={cn("h-full", className)}>
@@ -176,11 +198,15 @@ export function TerminalGrid({ className, defaultCwd }: TerminalGridProps) {
     }
   }
 
-  // Empty state
-  if (terminals.length === 0) {
+  // Empty state - show when no grid terminals (docked terminals don't count for empty)
+  if (gridTerminals.length === 0) {
+    const dockTerminals = terminals.filter((t) => t.location === "dock");
     return (
       <div className={cn("h-full", className)}>
-        <EmptyState onAddTerminal={handleAddTerminal} />
+        <EmptyState
+          onAddTerminal={handleAddTerminal}
+          hasDockedTerminals={dockTerminals.length > 0}
+        />
       </div>
     );
   }
@@ -196,7 +222,7 @@ export function TerminalGrid({ className, defaultCwd }: TerminalGridProps) {
         padding: "0", // No outer padding
       }}
     >
-      {terminals.map((terminal: TerminalInstance) => (
+      {gridTerminals.map((terminal: TerminalInstance) => (
         <TerminalPane
           key={terminal.id}
           id={terminal.id}
@@ -236,6 +262,7 @@ export function TerminalGrid({ className, defaultCwd }: TerminalGridProps) {
           onCancelInjection={cancel}
           onToggleMaximize={() => toggleMaximize(terminal.id)}
           onTitleChange={(newTitle) => updateTitle(terminal.id, newTitle)}
+          onMinimize={() => moveTerminalToDock(terminal.id)}
         />
       ))}
 
