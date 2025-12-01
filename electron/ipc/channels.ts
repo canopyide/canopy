@@ -158,6 +158,9 @@ export const CHANNELS = {
   AGENT_SETTINGS_GET: "agent-settings:get",
   AGENT_SETTINGS_SET: "agent-settings:set",
   AGENT_SETTINGS_RESET: "agent-settings:reset",
+
+  // Git channels
+  GIT_GET_FILE_DIFF: "git:get-file-diff",
 } as const;
 
 export type ChannelName = (typeof CHANNELS)[keyof typeof CHANNELS];

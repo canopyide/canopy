@@ -137,6 +137,8 @@ export type {
   SaveArtifactResult,
   ApplyPatchOptions,
   ApplyPatchResult,
+  // Git types
+  GitGetFileDiffPayload,
   // Electron API
   ElectronAPI,
   BranchInfo,

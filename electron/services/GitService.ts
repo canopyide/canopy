@@ -1,7 +1,9 @@
 import { simpleGit, SimpleGit, BranchSummary } from "simple-git";
-import { resolve, dirname } from "path";
+import { resolve, dirname, normalize, sep, isAbsolute } from "path";
 import { existsSync } from "fs";
+import { readFile, stat } from "fs/promises";
 import { logDebug, logError } from "../utils/logger.js";
+import type { GitStatus } from "../../shared/types/index.js";
 
 export interface BranchInfo {
   name: string;
@@ -227,5 +229,143 @@ export class GitService {
       logError("Failed to list worktrees", { error: (error as Error).message });
       throw new Error(`Failed to list worktrees: ${(error as Error).message}`);
     }
+  }
+
+  /**
+   * Get a unified diff for a specific file.
+   *
+   * @param filePath - Path to the file (relative to worktree root)
+   * @param status - Git status of the file
+   * @returns The unified diff string, or special markers for binary/large files
+   */
+  async getFileDiff(filePath: string, status: GitStatus): Promise<string> {
+    // Validate input status
+    const validStatuses: GitStatus[] = [
+      "added",
+      "modified",
+      "deleted",
+      "untracked",
+      "ignored",
+      "renamed",
+      "copied",
+    ];
+    if (!validStatuses.includes(status)) {
+      throw new Error(`Invalid git status: ${status}`);
+    }
+
+    // Security: Prevent path traversal attacks
+    // 1. Reject absolute paths
+    if (isAbsolute(filePath)) {
+      throw new Error("Absolute paths are not allowed");
+    }
+
+    // 2. Normalize and check for parent directory references
+    const normalizedPath = normalize(filePath);
+    if (normalizedPath.includes("..") || normalizedPath.startsWith(sep)) {
+      throw new Error("Path traversal detected");
+    }
+
+    // 3. Resolve and verify the path stays within rootPath
+    const absolutePath = resolve(this.rootPath, normalizedPath);
+    const normalizedRoot = normalize(this.rootPath + sep);
+    if (!absolutePath.startsWith(normalizedRoot)) {
+      throw new Error("Path is outside worktree root");
+    }
+
+    // Handle file size limits (1MB max for existing files)
+    try {
+      const stats = await stat(absolutePath);
+      if (stats.size > 1024 * 1024) {
+        return "FILE_TOO_LARGE";
+      }
+    } catch {
+      // File might be deleted, will check diff size below
+    }
+
+    // Handle Untracked/Added files - these aren't in the index yet
+    if (status === "untracked" || status === "added") {
+      try {
+        // Read as Buffer first to check for binary content
+        const buffer = await readFile(absolutePath);
+
+        // Check for binary content before converting to string
+        if (this.isBinaryBuffer(buffer)) {
+          return "BINARY_FILE";
+        }
+
+        const content = buffer.toString("utf-8");
+        const lines = content.split("\n");
+
+        // Construct unified diff format for new files
+        return `diff --git a/${normalizedPath} b/${normalizedPath}
+new file mode 100644
+--- /dev/null
++++ b/${normalizedPath}
+@@ -0,0 +1,${lines.length} @@
+${lines.map((l) => "+" + l).join("\n")}`;
+      } catch (error) {
+        logError("Failed to read new file for diff", {
+          filePath: normalizedPath,
+          error: (error as Error).message,
+        });
+        throw new Error(`Failed to read new file: ${(error as Error).message}`);
+      }
+    }
+
+    // Handle Modified/Deleted files using git diff
+    try {
+      const diff = await this.git.diff(["HEAD", "--no-color", "--", normalizedPath]);
+
+      // Check for binary files
+      if (diff.includes("Binary files")) {
+        return "BINARY_FILE";
+      }
+
+      // If no diff returned, the file might be unchanged
+      if (!diff.trim()) {
+        return "NO_CHANGES";
+      }
+
+      // Check diff size to prevent memory issues with large deleted files
+      if (diff.length > 1024 * 1024) {
+        return "FILE_TOO_LARGE";
+      }
+
+      return diff;
+    } catch (error) {
+      logError("Failed to generate diff", {
+        filePath,
+        error: (error as Error).message,
+      });
+      throw new Error(`Failed to generate diff: ${(error as Error).message}`);
+    }
+  }
+
+  /**
+   * Check if a buffer contains binary content
+   * More accurate than string-based detection
+   */
+  private isBinaryBuffer(buffer: Buffer): boolean {
+    // Check up to first 8KB for null bytes (standard binary detection)
+    const checkLength = Math.min(buffer.length, 8192);
+
+    for (let i = 0; i < checkLength; i++) {
+      if (buffer[i] === 0) {
+        return true;
+      }
+    }
+
+    // Check for high ratio of non-printable characters
+    let nonPrintable = 0;
+    for (let i = 0; i < checkLength; i++) {
+      const byte = buffer[i];
+      // Printable ASCII range (0x20-0x7E) + common whitespace (tab, newline, carriage return)
+      if (!(byte >= 0x20 && byte <= 0x7e) && byte !== 0x09 && byte !== 0x0a && byte !== 0x0d) {
+        nonPrintable++;
+      }
+    }
+
+    // More than 30% non-printable characters indicates binary
+    return checkLength > 0 && nonPrintable / checkLength > 0.3;
   }
 }

@@ -17,6 +17,7 @@ import type {
   Project,
   ProjectSettings,
   RunCommand,
+  GitStatus,
 } from "./domain.js";
 import type { EventContext, RunMetadata } from "./events.js";
 import type { TerminalActivityPayload } from "./terminal.js";
@@ -771,6 +772,20 @@ export interface ApplyPatchResult {
 }
 
 // ============================================================================
+// Git IPC Types
+// ============================================================================
+
+/** Payload for getting a file diff */
+export interface GitGetFileDiffPayload {
+  /** Working directory (worktree path) */
+  cwd: string;
+  /** Path to the file relative to worktree root */
+  filePath: string;
+  /** Git status of the file */
+  status: GitStatus;
+}
+
+// ============================================================================
 // Worktree Creation Types
 // ============================================================================
 
@@ -1272,6 +1287,14 @@ export interface IpcInvokeMap {
     args: [agentType?: "claude" | "gemini" | "codex"];
     result: AgentSettings;
   };
+
+  // ============================================
+  // Git channels
+  // ============================================
+  "git:get-file-diff": {
+    args: [payload: GitGetFileDiffPayload];
+    result: string;
+  };
 }
 
 /**
@@ -1555,5 +1578,8 @@ export interface ElectronAPI {
     checkCli(): Promise<GitHubCliStatus>;
     onPRDetected(callback: (data: PRDetectedPayload) => void): () => void;
     onPRCleared(callback: (data: PRClearedPayload) => void): () => void;
+  };
+  git: {
+    getFileDiff(cwd: string, filePath: string, status: GitStatus): Promise<string>;
   };
 }
