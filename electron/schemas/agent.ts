@@ -10,7 +10,7 @@ import { z } from "zod";
 /**
  * Valid terminal/agent types.
  */
-export const TerminalTypeSchema = z.enum(["shell", "claude", "gemini", "custom"]);
+export const TerminalTypeSchema = z.enum(["shell", "claude", "gemini", "codex", "custom"]);
 
 /**
  * Valid agent lifecycle states.

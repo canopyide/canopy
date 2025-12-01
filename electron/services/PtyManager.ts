@@ -34,7 +34,7 @@ export interface PtySpawnOptions {
   env?: Record<string, string>;
   cols: number;
   rows: number;
-  type?: "shell" | "claude" | "gemini" | "custom";
+  type?: "shell" | "claude" | "gemini" | "codex" | "custom";
   title?: string;
   worktreeId?: string;
 }
@@ -47,7 +47,7 @@ interface TerminalInfo {
   ptyProcess: pty.IPty;
   cwd: string;
   shell: string;
-  type?: "shell" | "claude" | "gemini" | "custom";
+  type?: "shell" | "claude" | "gemini" | "codex" | "custom";
   title?: string;
   worktreeId?: string;
   /** For agent terminals, the agent ID (same as terminal ID for now) */
@@ -109,7 +109,7 @@ export interface TerminalSnapshot {
   /** Timestamp of last state check (AI/heuristic analysis) */
   lastCheckTime: number;
   /** Terminal type */
-  type?: "shell" | "claude" | "gemini" | "custom";
+  type?: "shell" | "claude" | "gemini" | "codex" | "custom";
   /** Associated worktree ID */
   worktreeId?: string;
   /** Agent ID (for agent terminals) */
@@ -363,8 +363,11 @@ export class PtyManager extends EventEmitter {
     const args = options.args || this.getDefaultShellArgs(shell);
 
     const spawnedAt = Date.now();
-    const isAgentTerminal =
-      options.type === "claude" || options.type === "gemini" || options.type === "custom";
+        const isAgentTerminal =
+          options.type === "claude" ||
+          options.type === "gemini" ||
+          options.type === "codex" ||
+          options.type === "custom";
     // For agent terminals, use terminal ID as agent ID
     const agentId = isAgentTerminal ? id : undefined;
 

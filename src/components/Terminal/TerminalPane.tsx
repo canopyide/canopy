@@ -287,7 +287,7 @@ export function TerminalPane({
     <div
       className={cn(
         "flex flex-col h-full border border-canopy-border/50 group", // Tiling style - full border for all edges
-        isFocused ? "border-canopy-accent/50" : "border-canopy-border/30", // Subtle focus indication
+        isFocused ? "border-canopy-accent/20" : "border-canopy-border/30",
         isExited && "opacity-75 grayscale"
       )}
       onClick={onFocus}
@@ -311,13 +311,17 @@ export function TerminalPane({
       <div
         className={cn(
           "flex items-center justify-between px-3 h-8 shrink-0 font-mono text-sm transition-colors",
-          "bg-[#16171f]", // Subtle visual separation from terminal body
-          isFocused ? "border-b border-[#7aa2f7]/50" : "border-b border-[#414868]/30" // Focus via border color
+          // DESIGN CHANGE: Header logic
+          // Active: Tinted background (accent/10) + solid bottom border
+          // Inactive: Dark background + subtle bottom border
+          isFocused 
+            ? "bg-canopy-accent/10 border-b border-canopy-accent/20" 
+            : "bg-[#16171f] border-b border-canopy-border/30"
         )}
         onDoubleClick={onToggleMaximize}
       >
         <div className="flex items-center gap-2 min-w-0">
-          <span className={cn("shrink-0 text-canopy-text/70", isFocused && "text-canopy-accent")}>
+          <span className={cn("shrink-0 transition-colors", isFocused ? "text-canopy-accent" : "text-canopy-text/50")}>
             {getTerminalIcon(type)}
           </span>
 
@@ -336,7 +340,10 @@ export function TerminalPane({
           ) : (
             <span
               className={cn(
-                "font-medium text-canopy-text/90 truncate select-none",
+                // Active: Brighter text
+                // Inactive: Dimmer text
+                isFocused ? "text-canopy-text" : "text-canopy-text/70",
+                "font-medium truncate select-none",
                 onTitleChange && "cursor-text hover:text-canopy-text"
               )}
               onDoubleClick={handleTitleDoubleClick}

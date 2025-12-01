@@ -44,6 +44,12 @@ export const AGENT_PROFILES: Record<string, AgentProfile> = {
     // Gemini uses "> " as prompt
     promptPatterns: [/> $/],
   },
+  codex: {
+    type: "codex",
+    // Matches: "(1.2s • esc to interrupt)"
+    busyPatterns: [/\(\d+\.?\d*s?\s*[•·]\s*esc to interrupt\)/i],
+    promptPatterns: [/> $/, /\? $/],
+  },
   custom: {
     type: "custom",
     // Codex shows "({elapsed time} • esc to interrupt)" format
