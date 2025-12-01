@@ -1,5 +1,15 @@
 import { Button } from "@/components/ui/button";
-import { RefreshCw, Settings, Terminal, AlertCircle, Maximize2, Minimize2, GitCommit, GitPullRequest, AlertTriangle } from "lucide-react";
+import {
+  RefreshCw,
+  Settings,
+  Terminal,
+  AlertCircle,
+  Maximize2,
+  Minimize2,
+  GitCommit,
+  GitPullRequest,
+  AlertTriangle,
+} from "lucide-react";
 import { ClaudeIcon, GeminiIcon, CodexIcon } from "@/components/icons";
 import { cn } from "@/lib/utils";
 import { getProjectGradient } from "@/lib/colorUtils";
@@ -166,8 +176,12 @@ export function Toolbar({
                   (stats.issueCount === 0 || statsError) && "opacity-50",
                   statsError && "text-[var(--color-status-error)]"
                 )}
-                title={statsError ? `GitHub error: ${statsError} (click to retry)` : "Open GitHub Issues"}
-                aria-label={statsError ? "GitHub stats error" : `${stats.issueCount ?? 0} open issues`}
+                title={
+                  statsError ? `GitHub error: ${statsError} (click to retry)` : "Open GitHub Issues"
+                }
+                aria-label={
+                  statsError ? "GitHub stats error" : `${stats.issueCount ?? 0} open issues`
+                }
               >
                 <AlertTriangle className="h-3.5 w-3.5" />
                 <span className="text-xs font-medium">{stats.issueCount ?? "?"}</span>
@@ -181,8 +195,14 @@ export function Toolbar({
                   (stats.prCount === 0 || statsError) && "opacity-50",
                   statsError && "text-[var(--color-status-error)]"
                 )}
-                title={statsError ? `GitHub error: ${statsError} (click to retry)` : "Open GitHub Pull Requests"}
-                aria-label={statsError ? "GitHub stats error" : `${stats.prCount ?? 0} open pull requests`}
+                title={
+                  statsError
+                    ? `GitHub error: ${statsError} (click to retry)`
+                    : "Open GitHub Pull Requests"
+                }
+                aria-label={
+                  statsError ? "GitHub stats error" : `${stats.prCount ?? 0} open pull requests`
+                }
               >
                 <GitPullRequest className="h-3.5 w-3.5" />
                 <span className="text-xs font-medium">{stats.prCount ?? "?"}</span>
@@ -193,7 +213,9 @@ export function Toolbar({
                   (stats.commitCount === 0 || statsError) && "opacity-50",
                   statsError && "text-[var(--color-status-error)]"
                 )}
-                title={statsError ? `GitHub error: ${statsError}` : "Total commits in current branch"}
+                title={
+                  statsError ? `GitHub error: ${statsError}` : "Total commits in current branch"
+                }
                 aria-label={statsError ? "GitHub stats error" : `${stats.commitCount} commits`}
               >
                 <GitCommit className="h-3.5 w-3.5 text-canopy-text" />

@@ -5,7 +5,12 @@
  * Wraps window.electron.github.* calls for testability and maintainability.
  */
 
-import type { RepositoryStats, GitHubCliStatus, PRDetectedPayload, PRClearedPayload } from "../types";
+import type {
+  RepositoryStats,
+  GitHubCliStatus,
+  PRDetectedPayload,
+  PRClearedPayload,
+} from "../types";
 
 /**
  * Client for GitHub IPC operations.
