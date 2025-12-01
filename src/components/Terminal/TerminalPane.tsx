@@ -301,7 +301,7 @@ export function TerminalPane({
       <div
         className={cn(
           "flex items-center justify-between px-3 h-8 shrink-0 font-mono text-sm transition-colors",
-          "bg-[#1a1b26]", // Match terminal background consistently
+          "bg-[#16171f]", // Subtle visual separation from terminal body
           isFocused ? "border-b border-[#7aa2f7]/50" : "border-b border-[#414868]/30" // Focus via border color
         )}
         onDoubleClick={onToggleMaximize}
