@@ -367,6 +367,7 @@ function App() {
                 cwd,
                 worktreeId: terminal.worktreeId,
                 location: terminal.location || "grid", // Restore dock state, default to grid for legacy
+                command: terminal.command, // Restore agent command for re-launching CLI
               });
             } catch (error) {
               console.warn(`Failed to restore terminal ${terminal.id}:`, error);

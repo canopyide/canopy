@@ -69,6 +69,8 @@ export interface TerminalState {
   worktreeId?: string;
   /** Location in the UI - grid or dock */
   location?: TerminalLocation;
+  /** Command to execute after shell starts (e.g., 'claude' for AI agents) */
+  command?: string;
 }
 
 /** Terminal data payload for IPC */

@@ -29,10 +29,12 @@ export interface StoreSchema {
     diagnosticsHeight?: number;
     terminals: Array<{
       id: string;
-      type: "shell" | "claude" | "gemini" | "custom";
+      type: "shell" | "claude" | "gemini" | "codex" | "custom";
       title: string;
       cwd: string;
       worktreeId?: string;
+      location?: "grid" | "dock";
+      command?: string;
     }>;
     recipes?: Array<{
       id: string;

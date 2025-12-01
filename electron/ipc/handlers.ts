@@ -467,11 +467,19 @@ export function registerIpcHandlers(
 
       // If a command is specified (e.g., 'claude' or 'gemini'), execute it after shell initializes
       if (validatedOptions.command) {
-        // Whitelist allowed commands to prevent command injection
-        // Allow any non-empty command for recipe flexibility
         const trimmedCommand = validatedOptions.command.trim();
+
+        // Security: Validate command to prevent injection attacks
         if (trimmedCommand.length === 0) {
           console.warn("Empty command provided, ignoring");
+        } else if (trimmedCommand.includes("\n") || trimmedCommand.includes("\r")) {
+          console.error("Multi-line commands not allowed for security, ignoring");
+        } else if (
+          trimmedCommand.includes(";") ||
+          trimmedCommand.includes("&&") ||
+          trimmedCommand.includes("||")
+        ) {
+          console.error("Command chaining not allowed for security, ignoring");
         } else {
           // Small delay to allow shell to initialize before sending command
           setTimeout(() => {

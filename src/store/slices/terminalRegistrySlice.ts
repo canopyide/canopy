@@ -87,6 +87,8 @@ function persistTerminals(terminals: TerminalInstance[]): void {
         cwd: t.cwd,
         worktreeId: t.worktreeId,
         location: t.location,
+        // Only persist command if non-empty (trim whitespace)
+        command: t.command?.trim() || undefined,
       })),
     })
     .catch((error) => {
@@ -140,6 +142,7 @@ export const createTerminalRegistrySlice =
           agentState: isAgentTerminal ? "idle" : undefined,
           lastStateChange: isAgentTerminal ? Date.now() : undefined,
           location,
+          command: options.command, // Store command for persistence
         };
 
         set((state) => {
