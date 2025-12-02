@@ -10,6 +10,35 @@
  * - Bulk Actions Slice: Bulk operations (close by state, restart failed)
  *
  * Each slice is independently testable and has a single responsibility.
+ *
+ * ## Selector Best Practices
+ *
+ * This store updates frequently (terminal output, agent state changes).
+ * Use atomic selectors to prevent unnecessary re-renders:
+ *
+ * ```typescript
+ * // ❌ Bad - re-renders on ANY store change
+ * const { terminals, focusedId, addTerminal } = useTerminalStore();
+ *
+ * // ✅ Good - use useShallow for multi-field selections
+ * import { useShallow } from "zustand/react/shallow";
+ * const { terminals, focusedId } = useTerminalStore(
+ *   useShallow((state) => ({
+ *     terminals: state.terminals,
+ *     focusedId: state.focusedId,
+ *   }))
+ * );
+ *
+ * // ✅ Good - single field selectors (stable reference)
+ * const addTerminal = useTerminalStore((state) => state.addTerminal);
+ *
+ * // ✅ Best - use custom hooks from useTerminalSelectors.ts
+ * import { useTerminalById, useTerminalIds } from "@/hooks";
+ * const terminal = useTerminalById(id);
+ * const ids = useTerminalIds();
+ * ```
+ *
+ * @see src/hooks/useTerminalSelectors.ts for optimized selector hooks
  */
 
 import { create } from "zustand";

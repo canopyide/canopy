@@ -1,4 +1,5 @@
 import { useState } from "react";
+import { useShallow } from "zustand/react/shallow";
 import { Button } from "@/components/ui/button";
 import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover";
 import {
@@ -59,7 +60,8 @@ export function Toolbar({
   agentSettings,
 }: ToolbarProps) {
   const currentProject = useProjectStore((state) => state.currentProject);
-  const terminals = useTerminalStore((state) => state.terminals);
+  // Use useShallow for terminals array to prevent re-renders on unrelated terminal changes
+  const terminals = useTerminalStore(useShallow((state) => state.terminals));
   const { stats, error: statsError, refresh: refreshStats } = useRepositoryStats();
 
   // Popover states for GitHub lists

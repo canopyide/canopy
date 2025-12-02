@@ -13,6 +13,7 @@
  */
 
 import { useCallback, useState, useEffect, useRef } from "react";
+import { useShallow } from "zustand/react/shallow";
 import { useTerminalStore, type TerminalInstance } from "@/store/terminalStore";
 import { useErrorStore } from "@/store/errorStore";
 import type { TerminalType } from "@/components/Terminal/TerminalPane";
@@ -98,7 +99,8 @@ export function useContextInjection(): UseContextInjectionReturn {
   const [progress, setProgress] = useState<CopyTreeProgress | null>(null);
   const [error, setError] = useState<string | null>(null);
   const focusedId = useTerminalStore((state) => state.focusedId);
-  const terminals = useTerminalStore((state) => state.terminals);
+  // Use useShallow for terminals array to prevent re-renders on unrelated terminal changes
+  const terminals = useTerminalStore(useShallow((state) => state.terminals));
   const addError = useErrorStore((state) => state.addError);
   const removeError = useErrorStore((state) => state.removeError);
   // Note: queueCommand is available but not used for context injection

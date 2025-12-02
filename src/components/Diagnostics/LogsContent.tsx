@@ -6,6 +6,7 @@
  */
 
 import { useCallback, useEffect, useMemo, useRef } from "react";
+import { useShallow } from "zustand/react/shallow";
 import { cn } from "@/lib/utils";
 import { useLogsStore, filterLogs } from "@/store";
 import { LogEntry } from "../Logs/LogEntry";
@@ -21,6 +22,7 @@ export interface LogsContentProps {
 }
 
 export function LogsContent({ className, onSourcesChange }: LogsContentProps) {
+  // Use useShallow to prevent re-renders when unrelated store fields change
   const {
     logs,
     filters,
@@ -32,7 +34,20 @@ export function LogsContent({ className, onSourcesChange }: LogsContentProps) {
     clearFilters,
     setAutoScroll,
     toggleExpanded,
-  } = useLogsStore();
+  } = useLogsStore(
+    useShallow((state) => ({
+      logs: state.logs,
+      filters: state.filters,
+      autoScroll: state.autoScroll,
+      expandedIds: state.expandedIds,
+      addLog: state.addLog,
+      setLogs: state.setLogs,
+      setFilters: state.setFilters,
+      clearFilters: state.clearFilters,
+      setAutoScroll: state.setAutoScroll,
+      toggleExpanded: state.toggleExpanded,
+    }))
+  );
 
   const containerRef = useRef<HTMLDivElement>(null);
   const isUserScrolling = useRef(false);
