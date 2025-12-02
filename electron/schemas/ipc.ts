@@ -167,23 +167,6 @@ export const SystemOpenPathPayloadSchema = z.object({
   path: z.string().min(1),
 });
 
-// ============================================================================
-// Directory Schemas
-// ============================================================================
-
-/**
- * Schema for directory open payload.
- */
-export const DirectoryOpenPayloadSchema = z.object({
-  path: z.string().min(1),
-});
-
-/**
- * Schema for removing recent directory.
- */
-export const DirectoryRemoveRecentPayloadSchema = z.object({
-  path: z.string().min(1),
-});
 
 // ============================================================================
 // Worktree Schemas
@@ -255,8 +238,6 @@ export type CopyTreeProgress = z.infer<typeof CopyTreeProgressSchema>;
 export type CopyTreeGetFileTreePayload = z.infer<typeof CopyTreeGetFileTreePayloadSchema>;
 export type SystemOpenExternalPayload = z.infer<typeof SystemOpenExternalPayloadSchema>;
 export type SystemOpenPathPayload = z.infer<typeof SystemOpenPathPayloadSchema>;
-export type DirectoryOpenPayload = z.infer<typeof DirectoryOpenPayloadSchema>;
-export type DirectoryRemoveRecentPayload = z.infer<typeof DirectoryRemoveRecentPayloadSchema>;
 export type WorktreeSetActivePayload = z.infer<typeof WorktreeSetActivePayloadSchema>;
 export type WorktreeCreatePayload = z.infer<typeof WorktreeCreatePayloadSchema>;
 export type HistoryGetSessionsPayload = z.infer<typeof HistoryGetSessionsPayloadSchema>;

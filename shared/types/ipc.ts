@@ -279,19 +279,6 @@ export interface CliAvailability {
   codex: boolean;
 }
 
-// ============================================================================
-// Directory IPC Payload Types
-// ============================================================================
-
-/** Payload for opening a directory */
-export interface DirectoryOpenPayload {
-  path: string;
-}
-
-/** Payload for removing a recent directory */
-export interface DirectoryRemoveRecentPayload {
-  path: string;
-}
 
 // ============================================================================
 // PR Detection IPC Payload Types
@@ -1098,21 +1085,9 @@ export interface IpcInvokeMap {
   // ============================================
   // Directory channels
   // ============================================
-  "directory:get-recents": {
-    args: [];
-    result: RecentDirectory[];
-  };
-  "directory:open": {
-    args: [payload: DirectoryOpenPayload];
-    result: void;
-  };
   "directory:open-dialog": {
     args: [];
     result: string | null;
-  };
-  "directory:remove-recent": {
-    args: [payload: DirectoryRemoveRecentPayload];
-    result: void;
   };
 
   // ============================================
@@ -1556,10 +1531,7 @@ export interface ElectronAPI {
     onEntry(callback: (entry: LogEntry) => void): () => void;
   };
   directory: {
-    getRecent(): Promise<RecentDirectory[]>;
-    open(path: string): Promise<void>;
     openDialog(): Promise<string | null>;
-    removeRecent(path: string): Promise<void>;
   };
   errors: {
     onError(callback: (error: AppError) => void): () => void;
