@@ -232,6 +232,7 @@ let agentStateUnsubscribe: (() => void) | null = null;
 let activityUnsubscribe: (() => void) | null = null;
 let trashedUnsubscribe: (() => void) | null = null;
 let restoredUnsubscribe: (() => void) | null = null;
+let exitUnsubscribe: (() => void) | null = null;
 
 if (typeof window !== "undefined") {
   agentStateUnsubscribe = terminalClient.onAgentStateChanged((data) => {
@@ -295,6 +296,17 @@ if (typeof window !== "undefined") {
     // Set focus to the restored terminal (same as restoreTerminal override)
     useTerminalStore.setState({ focusedId: id });
   });
+
+  // Subscribe to terminal exit events from the main process
+  // This handles cleanup when terminals are killed by the trash expiration timer
+  exitUnsubscribe = terminalClient.onExit((id) => {
+    const state = useTerminalStore.getState();
+    // Check if the terminal exists in our state (whether active or trashed)
+    if (state.terminals.some((t) => t.id === id)) {
+      // Remove the terminal completely (handles both active and trashed terminals)
+      state.removeTerminal(id);
+    }
+  });
 }
 
 // Export cleanup function for app shutdown
@@ -314,5 +326,9 @@ export function cleanupTerminalStoreListeners() {
   if (restoredUnsubscribe) {
     restoredUnsubscribe();
     restoredUnsubscribe = null;
+  }
+  if (exitUnsubscribe) {
+    exitUnsubscribe();
+    exitUnsubscribe = null;
   }
 }
