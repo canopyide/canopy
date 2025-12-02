@@ -11,27 +11,16 @@ import type { EventRecord, EventCategory } from "../../shared/types/index.js";
 export type { EventRecord };
 
 export interface FilterOptions {
-  /** Filter by event type(s) */
   types?: Array<keyof CanopyEventMap>;
-  /** Filter by event category (uses EVENT_META) */
   category?: EventCategory;
-  /** Filter by multiple event categories */
   categories?: EventCategory[];
-  /** Filter by worktree ID if present in payload */
   worktreeId?: string;
-  /** Filter by agent ID if present in payload */
   agentId?: string;
-  /** Filter by task ID if present in payload */
   taskId?: string;
-  /** Filter by terminal ID if present in payload */
   terminalId?: string;
-  /** Filter by GitHub issue number if present in payload */
   issueNumber?: number;
-  /** Filter by GitHub PR number if present in payload */
   prNumber?: number;
-  /** Filter by trace ID to track event chains */
   traceId?: string;
-  /** Text search in payload (JSON stringified) */
   search?: string;
   /** Filter events after this timestamp (inclusive) */
   after?: number;
@@ -39,11 +28,7 @@ export interface FilterOptions {
   before?: number;
 }
 
-/**
- * Ring buffer for storing recent system events.
- * Maintains a fixed-size buffer (default 1000) of the most recent events
- * emitted through the TypedEventBus.
- */
+/** Ring buffer for recent system events (FIFO) */
 export class EventBuffer {
   private buffer: EventRecord[] = [];
   private maxSize: number;
@@ -54,12 +39,7 @@ export class EventBuffer {
     this.maxSize = maxSize;
   }
 
-  /**
-   * Subscribe to event records as they are created.
-   * This ensures subscribers see the exact sanitized payload.
-   * @param callback Function called with each new event record
-   * @returns Unsubscribe function to remove the callback
-   */
+  /** Subscribe to new events */
   public onRecord(callback: (record: EventRecord) => void): () => void {
     this.onRecordCallbacks.push(callback);
     return () => {
@@ -70,19 +50,14 @@ export class EventBuffer {
     };
   }
 
-  /**
-   * Sanitize event payload to remove sensitive information.
-   * WARNING: Events like agent:output and task:created may contain secrets.
-   */
+  /** Redact sensitive data (agent output, secrets) */
   private sanitizePayload(eventType: keyof CanopyEventMap, payload: any): any {
-    // Events that may contain sensitive data
     const sensitiveEventTypes: Array<keyof CanopyEventMap> = ["agent:output", "task:created"];
 
     if (!sensitiveEventTypes.includes(eventType)) {
       return payload;
     }
 
-    // For sensitive events, redact the data field or description
     if (eventType === "agent:output" && payload && typeof payload.data === "string") {
       return {
         ...payload,
@@ -100,17 +75,13 @@ export class EventBuffer {
     return payload;
   }
 
-  /**
-   * Validate event payload against EVENT_META requirements.
-   * Logs warnings for missing required fields but does not reject events.
-   */
+  /** Validate payload schema (warn only) */
   private validatePayload(eventType: keyof CanopyEventMap, payload: any): void {
     const meta = EVENT_META[eventType];
     if (!meta) {
-      return; // Unknown event type, skip validation
+      return;
     }
 
-    // Check timestamp requirement
     if (meta.requiresTimestamp && (!payload || typeof payload.timestamp !== "number")) {
       console.warn(`[EventBuffer] Event ${eventType} missing required timestamp`, {
         hasPayload: !!payload,
@@ -118,7 +89,6 @@ export class EventBuffer {
       });
     }
 
-    // Check context requirement (at least one context field should be present)
     if (meta.requiresContext && payload) {
       const hasContext =
         payload.worktreeId ||
@@ -136,10 +106,7 @@ export class EventBuffer {
     }
   }
 
-  /**
-   * Start capturing events from the event bus.
-   * Should be called once during application initialization.
-   */
+  /** Start capturing events */
   start(): void {
     if (this.unsubscribe) {
       console.warn("[EventBuffer] Already started");
@@ -148,16 +115,12 @@ export class EventBuffer {
 
     const unsubscribers: Array<() => void> = [];
 
-    // Subscribe to each event type using the shared constant
     for (const eventType of ALL_EVENT_TYPES) {
       const unsub = events.on(
         eventType as any,
         ((payload: any) => {
-          // Validate payload against EVENT_META requirements
           this.validatePayload(eventType, payload);
 
-          // Prefer event payload timestamp if present (event-time semantics)
-          // Fall back to current time (receipt-time) if not provided
           const eventTimestamp =
             payload && typeof payload.timestamp === "number" ? payload.timestamp : Date.now();
 
@@ -174,15 +137,12 @@ export class EventBuffer {
       unsubscribers.push(unsub);
     }
 
-    // Store cleanup function
     this.unsubscribe = () => {
       unsubscribers.forEach((unsub) => unsub());
     };
   }
 
-  /**
-   * Stop capturing events and clean up subscriptions.
-   */
+  /** Stop capturing */
   stop(): void {
     if (this.unsubscribe) {
       this.unsubscribe();
@@ -190,16 +150,10 @@ export class EventBuffer {
     }
   }
 
-  /**
-   * Add an event to the buffer.
-   * If buffer is full, removes the oldest event (FIFO).
-   * Notifies all onRecord subscribers after the event is recorded.
-   */
+  /** Add event to buffer (FIFO, max size) */
   private push(event: EventRecord): void {
     this.buffer.push(event);
 
-    // Notify subscribers AFTER recording
-    // Use a shallow copy to prevent issues if a callback unsubscribes during iteration
     for (const callback of [...this.onRecordCallbacks]) {
       try {
         callback(event);
@@ -208,43 +162,34 @@ export class EventBuffer {
       }
     }
 
-    // Enforce max size by removing oldest events
     while (this.buffer.length > this.maxSize) {
       this.buffer.shift();
     }
   }
 
-  /**
-   * Get all events in the buffer (oldest to newest).
-   */
+  /** Get all events */
   getAll(): EventRecord[] {
     return [...this.buffer];
   }
 
-  /**
-   * Get filtered events based on provided options.
-   */
+  /** Get filtered events */
   getFiltered(options: FilterOptions): EventRecord[] {
     let filtered = this.buffer;
 
-    // Filter by event types
     if (options.types && options.types.length > 0) {
       filtered = filtered.filter((event) =>
         options.types!.includes(event.type as keyof CanopyEventMap)
       );
     }
 
-    // Filter by event category (uses EVENT_META)
     if (options.category) {
       filtered = filtered.filter((event) => event.category === options.category);
     }
 
-    // Filter by multiple event categories
     if (options.categories && options.categories.length > 0) {
       filtered = filtered.filter((event) => options.categories!.includes(event.category));
     }
 
-    // Filter by timestamp range
     if (options.after !== undefined) {
       filtered = filtered.filter((event) => event.timestamp >= options.after!);
     }
@@ -252,7 +197,6 @@ export class EventBuffer {
       filtered = filtered.filter((event) => event.timestamp <= options.before!);
     }
 
-    // Filter by worktree ID
     if (options.worktreeId) {
       filtered = filtered.filter((event) => {
         const payload = event.payload;
@@ -260,7 +204,6 @@ export class EventBuffer {
       });
     }
 
-    // Filter by agent ID
     if (options.agentId) {
       filtered = filtered.filter((event) => {
         const payload = event.payload;
@@ -268,7 +211,6 @@ export class EventBuffer {
       });
     }
 
-    // Filter by task ID
     if (options.taskId) {
       filtered = filtered.filter((event) => {
         const payload = event.payload;
@@ -276,7 +218,6 @@ export class EventBuffer {
       });
     }
 
-    // Filter by terminal ID
     if (options.terminalId) {
       filtered = filtered.filter((event) => {
         const payload = event.payload;
@@ -284,7 +225,6 @@ export class EventBuffer {
       });
     }
 
-    // Filter by GitHub issue number
     if (options.issueNumber !== undefined) {
       filtered = filtered.filter((event) => {
         const payload = event.payload;
@@ -292,7 +232,6 @@ export class EventBuffer {
       });
     }
 
-    // Filter by GitHub PR number
     if (options.prNumber !== undefined) {
       filtered = filtered.filter((event) => {
         const payload = event.payload;
@@ -300,7 +239,6 @@ export class EventBuffer {
       });
     }
 
-    // Filter by trace ID
     if (options.traceId) {
       filtered = filtered.filter((event) => {
         const payload = event.payload;
@@ -308,15 +246,12 @@ export class EventBuffer {
       });
     }
 
-    // Filter by text search
     if (options.search) {
       const searchLower = options.search.toLowerCase();
       filtered = filtered.filter((event) => {
-        // Search in event type
         if (event.type.toLowerCase().includes(searchLower)) {
           return true;
         }
-        // Search in stringified payload
         try {
           const payloadStr = JSON.stringify(event.payload).toLowerCase();
           return payloadStr.includes(searchLower);
@@ -329,44 +264,28 @@ export class EventBuffer {
     return filtered;
   }
 
-  /**
-   * Clear all events from the buffer.
-   */
+  /** Clear buffer */
   clear(): void {
     this.buffer = [];
   }
 
-  /**
-   * Handle project switch - clear all events for the new project.
-   * This ensures events from the previous project don't appear in the new project.
-   */
+  /** Clear events on project switch */
   onProjectSwitch(): void {
     console.log("Handling project switch in EventBuffer - clearing events");
     this.clear();
   }
 
-  /**
-   * Get the current buffer size.
-   */
+  /** Get current buffer size */
   size(): number {
     return this.buffer.length;
   }
 
-  /**
-   * Get events by category using EVENT_META.
-   * Convenience method for filtering events by their category.
-   *
-   * @param category - The event category to filter by
-   * @returns Array of events matching the category
-   */
+  /** Filter by category */
   getEventsByCategory(category: EventCategory): EventRecord[] {
     return this.buffer.filter((event) => event.category === category);
   }
 
-  /**
-   * Get count of events per category.
-   * Useful for debugging and UI statistics.
-   */
+  /** Get count per category */
   getCategoryStats(): Record<EventCategory, number> {
     const stats: Record<EventCategory, number> = {
       system: 0,
@@ -388,10 +307,7 @@ export class EventBuffer {
     return stats;
   }
 
-  /**
-   * Generate a unique ID for an event.
-   * Uses timestamp + random string for uniqueness.
-   */
+  /** Generate unique ID */
   private generateId(): string {
     return `${Date.now()}-${Math.random().toString(36).substr(2, 9)}`;
   }

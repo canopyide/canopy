@@ -1,9 +1,4 @@
-/**
- * TranscriptManager
- *
- * Manages storage and retrieval of agent session transcripts and artifacts.
- * Sessions are stored as JSON files in the user data directory.
- */
+/** Manages agent session transcripts and artifacts (persisted to disk) */
 
 import { app } from "electron";
 import path from "path";
@@ -14,9 +9,9 @@ import { extractArtifacts, stripAnsiCodes } from "./ArtifactExtractor.js";
 import type { AgentSession } from "../types/index.js";
 import type { TerminalType } from "../types/index.js";
 
-const MAX_SESSIONS = 100; // Keep last 100 sessions
-const MAX_SESSION_SIZE = 10 * 1024 * 1024; // 10MB per session
-const DEBOUNCE_WRITE_MS = 2000; // Debounce writes to disk
+const MAX_SESSIONS = 100;
+const MAX_SESSION_SIZE = 10 * 1024 * 1024;
+const DEBOUNCE_WRITE_MS = 2000;
 
 export class TranscriptManager {
   private sessionsDir: string;
@@ -25,21 +20,17 @@ export class TranscriptManager {
   private disposed = false;
   private eventUnsubscribers: Array<() => void> = [];
 
+  /** Initialize sessions path */
   constructor() {
-    // Store sessions in app.getPath("userData")/sessions
     this.sessionsDir = path.join(app.getPath("userData"), "sessions");
   }
 
-  /**
-   * Initialize the transcript manager (creates directories, subscribes to events)
-   */
+  /** Ensure directories and subscribe to events */
   async initialize(): Promise<void> {
-    // Ensure sessions directory exists
     if (!existsSync(this.sessionsDir)) {
       await fs.mkdir(this.sessionsDir, { recursive: true });
     }
 
-    // Subscribe to agent lifecycle events and store unsubscribe functions
     this.eventUnsubscribers.push(events.on("agent:spawned", this.handleAgentSpawned.bind(this)));
     this.eventUnsubscribers.push(events.on("agent:output", this.handleAgentOutput.bind(this)));
     this.eventUnsubscribers.push(
@@ -51,9 +42,7 @@ export class TranscriptManager {
     console.log("[TranscriptManager] Initialized, sessions dir:", this.sessionsDir);
   }
 
-  /**
-   * Handle agent:spawned event - create new session
-   */
+  /** Create new session on spawn */
   private handleAgentSpawned(payload: {
     agentId: string;
     terminalId: string;
@@ -63,14 +52,11 @@ export class TranscriptManager {
   }): void {
     if (this.disposed) return;
 
-    // Only track AI agent terminals (not shell or package manager terminals)
-    // Package managers (npm, yarn, pnpm, bun) don't need transcripts
     const nonAgentTypes: TerminalType[] = ["shell", "npm", "yarn", "pnpm", "bun"];
     if (nonAgentTypes.includes(payload.type)) {
       return;
     }
 
-    // At this point, type must be an agent type (claude, gemini, codex, custom)
     const agentType = payload.type as "claude" | "gemini" | "codex" | "custom";
 
     const session: AgentSession = {
@@ -89,7 +75,7 @@ export class TranscriptManager {
       artifacts: [],
       metadata: {
         terminalId: payload.terminalId,
-        cwd: "", // Will be populated if available
+        cwd: "",
       },
     };
 
@@ -97,21 +83,21 @@ export class TranscriptManager {
     console.log("[TranscriptManager] Started session:", payload.agentId);
   }
 
-  /**
-   * Handle agent:output event - append to transcript
-   */
-  private handleAgentOutput(payload: { agentId: string; data: string; timestamp: number }): void {
+  /** Append output and extract artifacts */
+  private handleAgentOutput(payload: {
+    agentId: string;
+    data: string;
+    timestamp: number;
+  }): void {
     if (this.disposed) return;
 
     const session = this.activeSessions.get(payload.agentId);
     if (!session) {
-      return; // Session not found (may have ended)
+      return;
     }
 
-    // Strip ANSI codes for clean storage
     const cleanData = stripAnsiCodes(payload.data);
 
-    // Check size limit
     const currentSize = this.estimateSessionSize(session);
     if (currentSize > MAX_SESSION_SIZE) {
       console.warn(
@@ -120,18 +106,15 @@ export class TranscriptManager {
       return;
     }
 
-    // Append to transcript
     session.transcript.push({
       timestamp: payload.timestamp,
       type: "agent",
       content: cleanData,
     });
 
-    // Extract artifacts from output
     const newArtifacts = extractArtifacts(cleanData, session.artifacts);
     session.artifacts.push(...newArtifacts);
 
-    // Emit artifact:detected event if new artifacts were found
     if (newArtifacts.length > 0) {
       events.emit("artifact:detected", {
         agentId: payload.agentId,
@@ -142,13 +125,10 @@ export class TranscriptManager {
       });
     }
 
-    // Debounce write to disk
     this.scheduleWrite(payload.agentId);
   }
 
-  /**
-   * Handle agent:completed event - finalize session
-   */
+  /** Finalize session (completed) */
   private async handleAgentCompleted(payload: {
     agentId: string;
     exitCode: number;
@@ -172,15 +152,12 @@ export class TranscriptManager {
     await this.saveSession(session);
     this.activeSessions.delete(payload.agentId);
 
-    // Cleanup old sessions
     await this.cleanupOldSessions();
 
     console.log("[TranscriptManager] Completed session:", payload.agentId);
   }
 
-  /**
-   * Handle agent:failed event - mark session as failed
-   */
+  /** Finalize session (failed) */
   private async handleAgentFailed(payload: {
     agentId: string;
     error: string;
@@ -202,15 +179,12 @@ export class TranscriptManager {
     await this.saveSession(session);
     this.activeSessions.delete(payload.agentId);
 
-    // Cleanup old sessions
     await this.cleanupOldSessions();
 
     console.log("[TranscriptManager] Failed session:", payload.agentId);
   }
 
-  /**
-   * Handle agent:killed event - mark session as failed (killed)
-   */
+  /** Finalize session (killed) */
   private async handleAgentKilled(payload: {
     agentId: string;
     reason?: string;
@@ -232,23 +206,18 @@ export class TranscriptManager {
     await this.saveSession(session);
     this.activeSessions.delete(payload.agentId);
 
-    // Cleanup old sessions
     await this.cleanupOldSessions();
 
     console.log("[TranscriptManager] Killed session:", payload.agentId);
   }
 
-  /**
-   * Schedule a debounced write to disk
-   */
+  /** Debounce write to disk */
   private scheduleWrite(agentId: string): void {
-    // Clear existing timer
     const existingTimer = this.writeTimers.get(agentId);
     if (existingTimer) {
       clearTimeout(existingTimer);
     }
 
-    // Schedule new write
     const timer = setTimeout(async () => {
       try {
         const session = this.activeSessions.get(agentId);
@@ -265,9 +234,7 @@ export class TranscriptManager {
     this.writeTimers.set(agentId, timer);
   }
 
-  /**
-   * Save a session to disk
-   */
+  /** Write session to JSON */
   private async saveSession(session: AgentSession): Promise<void> {
     try {
       const sessionPath = path.join(this.sessionsDir, `${session.id}.json`);
@@ -277,16 +244,12 @@ export class TranscriptManager {
     }
   }
 
-  /**
-   * Estimate session size in bytes
-   */
+  /** Estimate JSON size */
   private estimateSessionSize(session: AgentSession): number {
     return JSON.stringify(session).length;
   }
 
-  /**
-   * Get all sessions with optional filters
-   */
+  /** List sessions (filtered/sorted) */
   async getSessions(filters?: {
     worktreeId?: string;
     agentType?: "claude" | "gemini" | "custom";
@@ -304,7 +267,6 @@ export class TranscriptManager {
           const content = await fs.readFile(sessionPath, "utf-8");
           const session: AgentSession = JSON.parse(content);
 
-          // Apply filters
           if (filters?.worktreeId && session.worktreeId !== filters.worktreeId) {
             continue;
           }
@@ -318,10 +280,8 @@ export class TranscriptManager {
         }
       }
 
-      // Sort by start time (newest first)
       sessions.sort((a, b) => b.startTime - a.startTime);
 
-      // Apply limit
       if (filters?.limit) {
         return sessions.slice(0, filters.limit);
       }
@@ -333,9 +293,7 @@ export class TranscriptManager {
     }
   }
 
-  /**
-   * Get a single session by ID
-   */
+  /** Load session by ID */
   async getSession(sessionId: string): Promise<AgentSession | null> {
     try {
       const sessionPath = path.join(this.sessionsDir, `${sessionId}.json`);
@@ -350,9 +308,7 @@ export class TranscriptManager {
     }
   }
 
-  /**
-   * Export a session to different formats
-   */
+  /** Export to JSON/Markdown */
   async exportSession(sessionId: string, format: "json" | "markdown"): Promise<string | null> {
     const session = await this.getSession(sessionId);
     if (!session) {
@@ -370,9 +326,7 @@ export class TranscriptManager {
     return null;
   }
 
-  /**
-   * Convert session to Markdown format
-   */
+  /** Convert to Markdown */
   private sessionToMarkdown(session: AgentSession): string {
     const lines: string[] = [];
 
@@ -407,12 +361,12 @@ export class TranscriptManager {
         lines.push(`### ${artifact.filename || artifact.type}`);
         lines.push("");
         if (artifact.language) {
-          lines.push("```" + artifact.language);
+          lines.push("`" + artifact.language);
         } else {
-          lines.push("```");
+          lines.push("`");
         }
         lines.push(artifact.content);
-        lines.push("```");
+        lines.push("`");
         lines.push("");
       }
     }
@@ -420,20 +374,15 @@ export class TranscriptManager {
     return lines.join("\n");
   }
 
-  /**
-   * Delete a session
-   */
+  /** Delete session file */
   async deleteSession(sessionId: string): Promise<void> {
     try {
-      // Validate sessionId to prevent path traversal attacks
-      // Only allow alphanumeric characters and hyphens (UUIDs/hex strings)
       if (!/^[a-zA-Z0-9-]+$/.test(sessionId)) {
         throw new Error(`Invalid session ID format: ${sessionId}`);
       }
 
       const sessionPath = path.join(this.sessionsDir, `${sessionId}.json`);
 
-      // Ensure the resolved path is within the sessions directory
       const normalizedPath = path.normalize(sessionPath);
       if (!normalizedPath.startsWith(this.sessionsDir + path.sep)) {
         throw new Error(`Session path outside sessions directory: ${sessionId}`);
@@ -445,18 +394,15 @@ export class TranscriptManager {
       }
     } catch (error) {
       console.error(`[TranscriptManager] Failed to delete session ${sessionId}:`, error);
-      throw error; // Re-throw to surface validation errors to IPC handler
+      throw error;
     }
   }
 
-  /**
-   * Cleanup old sessions (keep last MAX_SESSIONS)
-   */
+  /** Enforce max session limit */
   private async cleanupOldSessions(): Promise<void> {
     try {
       const sessions = await this.getSessions();
 
-      // If we have more than MAX_SESSIONS, delete the oldest ones
       if (sessions.length > MAX_SESSIONS) {
         const toDelete = sessions.slice(MAX_SESSIONS);
         for (const session of toDelete) {
@@ -469,26 +415,21 @@ export class TranscriptManager {
     }
   }
 
-  /**
-   * Dispose (cleanup on app quit)
-   */
+  /** Cleanup resources */
   async dispose(): Promise<void> {
     if (this.disposed) return;
     this.disposed = true;
 
-    // Unsubscribe from all event listeners first
     for (const unsubscribe of this.eventUnsubscribers) {
       unsubscribe();
     }
     this.eventUnsubscribers = [];
 
-    // Clear all write timers
     for (const timer of this.writeTimers.values()) {
       clearTimeout(timer);
     }
     this.writeTimers.clear();
 
-    // Flush all active sessions to disk
     for (const session of this.activeSessions.values()) {
       await this.saveSession(session);
     }
@@ -501,6 +442,7 @@ export class TranscriptManager {
 // Export singleton instance
 let transcriptManagerInstance: TranscriptManager | null = null;
 
+/** Get singleton */
 export function getTranscriptManager(): TranscriptManager {
   if (!transcriptManagerInstance) {
     transcriptManagerInstance = new TranscriptManager();
@@ -508,6 +450,7 @@ export function getTranscriptManager(): TranscriptManager {
   return transcriptManagerInstance;
 }
 
+/** Dispose singleton */
 export async function disposeTranscriptManager(): Promise<void> {
   if (transcriptManagerInstance) {
     await transcriptManagerInstance.dispose();

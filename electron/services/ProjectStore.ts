@@ -1,3 +1,5 @@
+/** Manages persisted project state and metadata */
+
 import { store } from "../store.js";
 import type { Project, ProjectState, ProjectSettings } from "../types/index.js";
 import { createHash } from "crypto";
@@ -10,67 +12,49 @@ import { generateProjectNameAndEmoji } from "./ai/identity.js";
 
 const SETTINGS_FILENAME = "settings.json";
 
-/**
- * ProjectStore manages the list of projects and their persisted state.
- * Each project represents a Git repository root.
- */
 export class ProjectStore {
   private projectsConfigDir: string;
 
+  /** Initialize store path */
   constructor() {
-    // Store project states in ~/.config/canopy/projects (or platform equivalent)
     this.projectsConfigDir = path.join(app.getPath("userData"), "projects");
   }
 
-  /**
-   * Initializes the project store (creates directories if needed)
-   */
+  /** Create store directory */
   async initialize(): Promise<void> {
     if (!existsSync(this.projectsConfigDir)) {
       await fs.mkdir(this.projectsConfigDir, { recursive: true });
     }
   }
 
-  /**
-   * Generates a stable ID for a project based on its path
-   */
+  /** Generate ID from path (SHA-256) */
   private generateProjectId(projectPath: string): string {
     return createHash("sha256").update(projectPath).digest("hex");
   }
 
-  /**
-   * Validates that a project ID has the expected format (64-character hex string)
-   */
+  /** Validate ID format */
   private isValidProjectId(projectId: string): boolean {
     return /^[0-9a-f]{64}$/.test(projectId);
   }
 
-  /**
-   * Safely resolves a project state directory and ensures it's within projectsConfigDir
-   */
+  /** Resolve state dir (safe) */
   private getProjectStateDir(projectId: string): string | null {
     if (!this.isValidProjectId(projectId)) {
       return null;
     }
     const stateDir = path.join(this.projectsConfigDir, projectId);
     const normalized = path.normalize(stateDir);
-    // Ensure the path stays within projectsConfigDir (prevent traversal)
     if (!normalized.startsWith(this.projectsConfigDir + path.sep)) {
       return null;
     }
     return normalized;
   }
 
-  /**
-   * Gets the Git repository root for a given path and canonicalizes it
-   * Uses GitService for consistent git operations
-   */
+  /** Get repo root (canonical) */
   private async getGitRoot(projectPath: string): Promise<string | null> {
     try {
-      // Create a temporary GitService instance for this path
       const gitService = new GitService(projectPath);
       const root = await gitService.getRepositoryRoot(projectPath);
-      // Canonicalize to resolve symlinks and normalize path
       const canonical = await fs.realpath(root);
       return canonical;
     } catch {
@@ -78,11 +62,8 @@ export class ProjectStore {
     }
   }
 
-  /**
-   * Adds a new project to the list
-   */
+  /** Add project (validates git repo) */
   async addProject(projectPath: string): Promise<Project> {
-    // Normalize path and get git root
     const gitRoot = await this.getGitRoot(projectPath);
     if (!gitRoot) {
       throw new Error(`Not a git repository: ${projectPath}`);
@@ -90,23 +71,18 @@ export class ProjectStore {
 
     const normalizedPath = path.normalize(gitRoot);
 
-    // Check if project already exists
     const existing = await this.getProjectByPath(normalizedPath);
     if (existing) {
-      // Update lastOpened timestamp
       return this.updateProject(existing.id, { lastOpened: Date.now() });
     }
 
-    // Generate AI identity (non-blocking, with fallback)
     let identity: { name: string; emoji: string; color?: string } | null = null;
     try {
       identity = await generateProjectNameAndEmoji(normalizedPath);
     } catch (error) {
-      // Log but don't fail project creation if AI is unavailable
       console.warn("[ProjectStore] AI identity generation failed:", error);
     }
 
-    // Create new project with AI-generated identity or fallback defaults
     const project: Project = {
       id: this.generateProjectId(normalizedPath),
       path: normalizedPath,
@@ -126,11 +102,8 @@ export class ProjectStore {
     return project;
   }
 
-  /**
-   * Removes a project from the list
-   */
+  /** Remove project and state */
   async removeProject(projectId: string): Promise<void> {
-    // Validate project ID format to prevent path traversal
     const stateDir = this.getProjectStateDir(projectId);
     if (!stateDir) {
       throw new Error(`Invalid project ID: ${projectId}`);
@@ -140,25 +113,20 @@ export class ProjectStore {
     const filtered = projects.filter((p) => p.id !== projectId);
     store.set("projects.list", filtered);
 
-    // Remove project state directory
     if (existsSync(stateDir)) {
       try {
         await fs.rm(stateDir, { recursive: true, force: true });
       } catch (error) {
         console.error(`[ProjectStore] Failed to remove state directory for ${projectId}:`, error);
-        // Don't throw - project was removed from list, state cleanup is secondary
       }
     }
 
-    // If this was the current project, clear it
     if (this.getCurrentProjectId() === projectId) {
       store.set("projects.currentProjectId", undefined);
     }
   }
 
-  /**
-   * Updates a project's metadata (only allows safe fields to be modified)
-   */
+  /** Update metadata (safe fields only) */
   updateProject(projectId: string, updates: Partial<Project>): Project {
     const projects = this.getAllProjects();
     const index = projects.findIndex((p) => p.id === projectId);
@@ -167,12 +135,10 @@ export class ProjectStore {
       throw new Error(`Project not found: ${projectId}`);
     }
 
-    // Only allow safe fields to be updated (prevent mutation of id and path)
     const safeUpdates: Partial<Project> = {};
     if (updates.name !== undefined) safeUpdates.name = updates.name;
     if (updates.emoji !== undefined) safeUpdates.emoji = updates.emoji;
 
-    // If name or emoji is manually updated, clear the fallback flag
     if (updates.name !== undefined || updates.emoji !== undefined) {
       safeUpdates.isFallbackIdentity = false;
     }
@@ -182,7 +148,6 @@ export class ProjectStore {
       safeUpdates.aiGeneratedName = updates.aiGeneratedName;
     if (updates.aiGeneratedEmoji !== undefined)
       safeUpdates.aiGeneratedEmoji = updates.aiGeneratedEmoji;
-    // Allow lastOpened to be updated (for project switching and reopening)
     if (updates.lastOpened !== undefined) safeUpdates.lastOpened = updates.lastOpened;
 
     const updated = { ...projects[index], ...safeUpdates };
@@ -192,50 +157,38 @@ export class ProjectStore {
     return updated;
   }
 
-  /**
-   * Gets all projects, sorted by lastOpened descending
-   */
+  /** Get all projects (sorted by recent) */
   getAllProjects(): Project[] {
     const projects = store.get("projects.list", []);
     return projects.sort((a, b) => b.lastOpened - a.lastOpened);
   }
 
-  /**
-   * Gets a project by path
-   */
+  /** Find project by path */
   async getProjectByPath(projectPath: string): Promise<Project | null> {
     const normalizedPath = path.normalize(projectPath);
     const projects = this.getAllProjects();
     return projects.find((p) => p.path === normalizedPath) || null;
   }
 
-  /**
-   * Gets a project by ID
-   */
+  /** Find project by ID */
   getProjectById(projectId: string): Project | null {
     const projects = this.getAllProjects();
     return projects.find((p) => p.id === projectId) || null;
   }
 
-  /**
-   * Gets the current project ID
-   */
+  /** Get active project ID */
   getCurrentProjectId(): string | null {
     return store.get("projects.currentProjectId") || null;
   }
 
-  /**
-   * Gets the current project
-   */
+  /** Get active project */
   getCurrentProject(): Project | null {
     const currentId = this.getCurrentProjectId();
     if (!currentId) return null;
     return this.getProjectById(currentId);
   }
 
-  /**
-   * Sets the current project
-   */
+  /** Set active project */
   async setCurrentProject(projectId: string): Promise<void> {
     const project = this.getProjectById(projectId);
     if (!project) {
@@ -243,14 +196,10 @@ export class ProjectStore {
     }
 
     store.set("projects.currentProjectId", projectId);
-
-    // Update lastOpened timestamp
     this.updateProject(projectId, { lastOpened: Date.now() });
   }
 
-  /**
-   * Gets the state file path for a project
-   */
+  /** Get state file path */
   private getStateFilePath(projectId: string): string | null {
     const stateDir = this.getProjectStateDir(projectId);
     if (!stateDir) {
@@ -259,9 +208,7 @@ export class ProjectStore {
     return path.join(stateDir, "state.json");
   }
 
-  /**
-   * Saves project state to disk (atomic write with temp file)
-   */
+  /** Save state (atomic) */
   async saveProjectState(projectId: string, state: ProjectState): Promise<void> {
     const stateDir = this.getProjectStateDir(projectId);
     if (!stateDir) {
@@ -277,26 +224,22 @@ export class ProjectStore {
       throw new Error(`Invalid project ID: ${projectId}`);
     }
 
-    // Atomic write: write to temp file then rename
     const tempFilePath = `${stateFilePath}.tmp`;
     try {
       await fs.writeFile(tempFilePath, JSON.stringify(state, null, 2), "utf-8");
       await fs.rename(tempFilePath, stateFilePath);
     } catch (error) {
       console.error(`[ProjectStore] Failed to save state for project ${projectId}:`, error);
-      // Clean up temp file if it exists
       try {
         await fs.unlink(tempFilePath);
       } catch {
-        // Ignore cleanup errors
+        // Ignore
       }
       throw error;
     }
   }
 
-  /**
-   * Loads project state from disk with validation and defaults
-   */
+  /** Load state (with defaults) */
   async getProjectState(projectId: string): Promise<ProjectState | null> {
     const stateFilePath = this.getStateFilePath(projectId);
     if (!stateFilePath || !existsSync(stateFilePath)) {
@@ -307,7 +250,6 @@ export class ProjectStore {
       const content = await fs.readFile(stateFilePath, "utf-8");
       const parsed = JSON.parse(content);
 
-      // Validate and apply defaults
       const state: ProjectState = {
         projectId: parsed.projectId || projectId,
         activeWorktreeId: parsed.activeWorktreeId,
@@ -319,34 +261,28 @@ export class ProjectStore {
       return state;
     } catch (error) {
       console.error(`[ProjectStore] Failed to load state for project ${projectId}:`, error);
-      // Optionally quarantine corrupted file
       try {
         const quarantinePath = `${stateFilePath}.corrupted`;
         await fs.rename(stateFilePath, quarantinePath);
         console.warn(`[ProjectStore] Corrupted state file moved to ${quarantinePath}`);
       } catch {
-        // Ignore quarantine errors
+        // Ignore
       }
       return null;
     }
   }
 
-  /**
-   * Gets the settings file path for a project
-   */
+  /** Get settings file path */
   private getSettingsFilePath(projectId: string): string | null {
     const stateDir = this.getProjectStateDir(projectId);
     if (!stateDir) return null;
     return path.join(stateDir, SETTINGS_FILENAME);
   }
 
-  /**
-   * Load project settings from disk with defaults
-   */
+  /** Load settings (with defaults) */
   async getProjectSettings(projectId: string): Promise<ProjectSettings> {
     const filePath = this.getSettingsFilePath(projectId);
     if (!filePath || !existsSync(filePath)) {
-      // Return defaults if no file exists
       return { runCommands: [] };
     }
 
@@ -354,7 +290,6 @@ export class ProjectStore {
       const content = await fs.readFile(filePath, "utf-8");
       const parsed = JSON.parse(content);
 
-      // Validate and apply defaults
       const settings: ProjectSettings = {
         runCommands: Array.isArray(parsed.runCommands) ? parsed.runCommands : [],
         environmentVariables: parsed.environmentVariables,
@@ -364,28 +299,24 @@ export class ProjectStore {
       return settings;
     } catch (error) {
       console.error(`[ProjectStore] Failed to load settings for ${projectId}:`, error);
-      // Optionally quarantine corrupted file
       try {
         const quarantinePath = `${filePath}.corrupted`;
         await fs.rename(filePath, quarantinePath);
         console.warn(`[ProjectStore] Corrupted settings file moved to ${quarantinePath}`);
       } catch {
-        // Ignore quarantine errors
+        // Ignore
       }
       return { runCommands: [] };
     }
   }
 
-  /**
-   * Save project settings to disk (atomic write)
-   */
+  /** Save settings (atomic) */
   async saveProjectSettings(projectId: string, settings: ProjectSettings): Promise<void> {
     const stateDir = this.getProjectStateDir(projectId);
     if (!stateDir) {
       throw new Error(`Invalid project ID: ${projectId}`);
     }
 
-    // Ensure directory exists
     if (!existsSync(stateDir)) {
       await fs.mkdir(stateDir, { recursive: true });
     }
@@ -395,18 +326,16 @@ export class ProjectStore {
       throw new Error(`Invalid project ID: ${projectId}`);
     }
 
-    // Atomic write: write to temp file then rename
     const tempFilePath = `${filePath}.tmp`;
     try {
       await fs.writeFile(tempFilePath, JSON.stringify(settings, null, 2), "utf-8");
       await fs.rename(tempFilePath, filePath);
     } catch (error) {
       console.error(`[ProjectStore] Failed to save settings for ${projectId}:`, error);
-      // Clean up temp file if it exists
       try {
         await fs.unlink(tempFilePath);
       } catch {
-        // Ignore cleanup errors
+        // Ignore
       }
       throw error;
     }

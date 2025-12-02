@@ -1,13 +1,4 @@
-/**
- * CopyTree Service
- *
- * Interfaces with the CopyTree SDK to generate context for AI agents.
- * CopyTree generates a text representation of a codebase suitable for injection
- * into AI chat interfaces.
- *
- * Uses the native SDK (npm install copytree) instead of spawning CLI processes,
- * enabling better performance, streaming support, and richer progress feedback.
- */
+/** Interfaces with CopyTree SDK to generate codebase context for AI agents */
 
 import { copy, ConfigManager } from "copytree";
 import type { CopyResult, CopyOptions as SdkCopyOptions, ProgressEvent } from "copytree";
@@ -22,18 +13,9 @@ export type { CopyTreeOptions, CopyTreeResult, CopyTreeProgress };
 export type ProgressCallback = (progress: CopyTreeProgress) => void;
 
 class CopyTreeService {
-  // Track active operations for cancellation
   private activeOperations = new Map<string, AbortController>();
 
-  /**
-   * Generate context for a worktree using the native CopyTree SDK
-   *
-   * @param rootPath - Absolute path to the worktree root
-   * @param options - CopyTree options (format, filters, etc.)
-   * @param onProgress - Optional callback for progress updates
-   * @param traceId - Optional trace ID for event correlation
-   * @returns CopyTreeResult with content, file count, and optional error
-   */
+  /** Generate context using CopyTree SDK */
   async generate(
     rootPath: string,
     options: CopyTreeOptions = {},
@@ -44,7 +26,6 @@ class CopyTreeService {
     const effectiveTraceId = traceId || opId;
 
     try {
-      // Validation
       if (!path.isAbsolute(rootPath)) {
         return {
           content: "",
@@ -67,49 +48,38 @@ class CopyTreeService {
       const controller = new AbortController();
       this.activeOperations.set(opId, controller);
 
-      // Create isolated configuration for concurrent operations
-      // Pass cwd to ensure gitignore and config are read from the worktree root
+      // Isolated config
       const config = await ConfigManager.create();
 
-      // Map IPC options to SDK options
+      // Map options to SDK
       const sdkOptions: SdkCopyOptions = {
-        // Core settings
         config: config,
         signal: controller.signal,
-
-        // Output settings (CLI side effects disabled)
         display: false,
         clipboard: false,
         format: options.format || "xml",
 
-        // Filtering
-        // If includePaths is provided, use it as the filter (replaces any existing filter)
-        // Otherwise, use the filter option as-is
+        // Filter options
         filter: options.includePaths || options.filter || undefined,
         exclude: options.exclude || undefined,
         always: options.always,
 
-        // Git
         modified: options.modified,
         changed: options.changed,
 
-        // Limits & Formatting
         charLimit: options.charLimit,
         addLineNumbers: options.withLineNumbers,
         maxFileSize: options.maxFileSize,
         maxTotalSize: options.maxTotalSize,
         maxFileCount: options.maxFileCount,
 
-        // Progress reporting
         onProgress: onProgress
           ? (event: ProgressEvent) => {
-              // Don't emit progress if operation was cancelled
               const controller = this.activeOperations.get(opId);
               if (!controller || controller.signal.aborted) return;
 
               const progress: CopyTreeProgress = {
                 stage: event.stage || "Processing",
-                // Clamp percent to [0, 100] and convert to [0, 1]
                 progress: Math.max(0, Math.min(100, event.percent || 0)) / 100,
                 message: event.message || `Processing: ${event.stage || "files"}`,
                 filesProcessed: event.filesProcessed,
@@ -120,13 +90,9 @@ class CopyTreeService {
               onProgress(progress);
             }
           : undefined,
-        progressThrottleMs: 100, // Throttle to 10 updates per second max
-
-        // Profile loading (SDK auto-loads .copytree.yml from rootPath)
-        // The profile option is kept for future explicit profile support
+        progressThrottleMs: 100,
       };
 
-      // Execute via SDK
       const result: CopyResult = await copy(rootPath, sdkOptions);
 
       return {
@@ -144,9 +110,7 @@ class CopyTreeService {
     }
   }
 
-  /**
-   * Cancel all running context generations
-   */
+  /** Cancel all operations */
   cancelAll(): void {
     for (const controller of this.activeOperations.values()) {
       controller.abort();
@@ -154,9 +118,7 @@ class CopyTreeService {
     this.activeOperations.clear();
   }
 
-  /**
-   * Cancel a specific operation by ID (if we expose operation IDs in future)
-   */
+  /** Cancel specific operation by ID */
   cancel(opId: string): boolean {
     const controller = this.activeOperations.get(opId);
     if (controller) {
@@ -167,11 +129,8 @@ class CopyTreeService {
     return false;
   }
 
-  /**
-   * Handle errors from SDK operations
-   */
+  /** Handle SDK errors */
   private handleError(error: unknown): CopyTreeResult {
-    // Handle cancellation
     if (error instanceof Error && error.name === "AbortError") {
       return {
         content: "",
@@ -180,7 +139,6 @@ class CopyTreeService {
       };
     }
 
-    // Handle SDK specific errors by name (avoid importing broken error classes)
     if (error instanceof Error) {
       const errorName = error.name;
       const errorCode = (error as Error & { code?: string }).code;
@@ -208,7 +166,6 @@ class CopyTreeService {
       };
     }
 
-    // Generic error
     return {
       content: "",
       fileCount: 0,
@@ -216,10 +173,7 @@ class CopyTreeService {
     };
   }
 
-  /**
-   * SDK is bundled, so it is always available.
-   * This method is kept for backwards compatibility but always returns true.
-   */
+  /** Check availability (always true for bundled SDK) */
   async isAvailable(): Promise<boolean> {
     return true;
   }
