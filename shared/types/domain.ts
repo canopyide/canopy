@@ -267,7 +267,7 @@ export interface RunRecord {
 export type TerminalType = "shell" | "claude" | "gemini" | "codex" | "custom";
 
 /** Location of a terminal instance in the UI */
-export type TerminalLocation = "grid" | "dock";
+export type TerminalLocation = "grid" | "dock" | "trash";
 
 /** Valid triggers for agent state changes */
 export type AgentStateChangeTrigger =

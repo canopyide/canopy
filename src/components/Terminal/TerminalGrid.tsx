@@ -148,7 +148,7 @@ export function TerminalGrid({ className, defaultCwd }: TerminalGridProps) {
   const toggleMaximize = useTerminalStore((state) => state.toggleMaximize);
   const moveTerminalToDock = useTerminalStore((state) => state.moveTerminalToDock);
 
-  // Filter to only show grid terminals (not docked ones)
+  // Filter to only show grid terminals (not docked or trashed ones)
   const gridTerminals = useMemo(
     () => terminals.filter((t) => t.location === "grid" || t.location === undefined),
     [terminals]
