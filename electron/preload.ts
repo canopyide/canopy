@@ -206,10 +206,7 @@ const CHANNELS = {
   LOGS_OPEN_FILE: "logs:open-file",
 
   // Directory channels
-  DIRECTORY_GET_RECENTS: "directory:get-recents",
-  DIRECTORY_OPEN: "directory:open",
   DIRECTORY_OPEN_DIALOG: "directory:open-dialog",
-  DIRECTORY_REMOVE_RECENT: "directory:remove-recent",
 
   // Error channels
   ERROR_NOTIFY: "error:notify",
@@ -476,13 +473,7 @@ const api: ElectronAPI = {
   // Directory API
   // ==========================================
   directory: {
-    getRecent: () => _typedInvoke(CHANNELS.DIRECTORY_GET_RECENTS),
-
-    open: (path: string) => _typedInvoke(CHANNELS.DIRECTORY_OPEN, { path }),
-
     openDialog: () => _typedInvoke(CHANNELS.DIRECTORY_OPEN_DIALOG),
-
-    removeRecent: (path: string) => _typedInvoke(CHANNELS.DIRECTORY_REMOVE_RECENT, { path }),
   },
 
   // ==========================================

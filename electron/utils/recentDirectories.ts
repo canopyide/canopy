@@ -73,48 +73,6 @@ export async function updateRecentDirectories(
 }
 
 /**
- * Remove a directory from the recent directories list
- *
- * @param currentRecents - Current list of recent directories
- * @param pathToRemove - Path to remove
- * @returns Updated list with the path removed
- */
-export function removeRecentDirectory(
-  currentRecents: RecentDirectory[],
-  pathToRemove: string
-): RecentDirectory[] {
-  return currentRecents.filter((r) => r.path !== pathToRemove);
-}
-
-/**
- * Validate that recent directories still exist and are accessible
- * Filters out any entries that no longer exist.
- *
- * @param recents - List of recent directories to validate
- * @returns Promise resolving to validated list
- */
-export async function validateRecentDirectories(
-  recents: RecentDirectory[]
-): Promise<RecentDirectory[]> {
-  const validatedEntries = await Promise.all(
-    recents.map(async (entry) => {
-      try {
-        const stats = await fs.stat(entry.path);
-        if (stats.isDirectory()) {
-          return entry;
-        }
-        return null;
-      } catch {
-        // Directory no longer exists or is inaccessible
-        return null;
-      }
-    })
-  );
-
-  return validatedEntries.filter((entry): entry is RecentDirectory => entry !== null);
-}
-
-/**
  * Truncate path for display in menus
  * Shortens very long paths by truncating from the middle
  *

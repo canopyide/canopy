@@ -92,9 +92,6 @@ export type {
   SystemOpenExternalPayload,
   SystemOpenPathPayload,
   CliAvailability,
-  // Directory IPC types
-  DirectoryOpenPayload,
-  DirectoryRemoveRecentPayload,
   // PR detection IPC types
   PRDetectedPayload,
   PRClearedPayload,

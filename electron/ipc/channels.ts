@@ -96,10 +96,7 @@ export const CHANNELS = {
   APP_GET_VERSION: "app:get-version",
 
   // Directory channels
-  DIRECTORY_GET_RECENTS: "directory:get-recents",
-  DIRECTORY_OPEN: "directory:open",
   DIRECTORY_OPEN_DIALOG: "directory:open-dialog",
-  DIRECTORY_REMOVE_RECENT: "directory:remove-recent",
 
   // Logs channels
   LOGS_GET_ALL: "logs:get-all",
