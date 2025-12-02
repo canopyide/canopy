@@ -191,7 +191,7 @@ export function AgentSettings({ onSettingsChange }: AgentSettingsProps) {
                 onClick={() => handleToggleEnabled("claude")}
                 className={cn(
                   "relative w-11 h-6 rounded-full transition-colors",
-                  settings.claude.enabled ?? true ? "bg-canopy-accent" : "bg-gray-600"
+                  (settings.claude.enabled ?? true) ? "bg-canopy-accent" : "bg-gray-600"
                 )}
               >
                 <span
@@ -216,7 +216,7 @@ export function AgentSettings({ onSettingsChange }: AgentSettingsProps) {
                 onClick={() => handleToggleEnabled("gemini")}
                 className={cn(
                   "relative w-11 h-6 rounded-full transition-colors",
-                  settings.gemini.enabled ?? true ? "bg-canopy-accent" : "bg-gray-600"
+                  (settings.gemini.enabled ?? true) ? "bg-canopy-accent" : "bg-gray-600"
                 )}
               >
                 <span
@@ -241,7 +241,7 @@ export function AgentSettings({ onSettingsChange }: AgentSettingsProps) {
                 onClick={() => handleToggleEnabled("codex")}
                 className={cn(
                   "relative w-11 h-6 rounded-full transition-colors",
-                  settings.codex.enabled ?? true ? "bg-canopy-accent" : "bg-gray-600"
+                  (settings.codex.enabled ?? true) ? "bg-canopy-accent" : "bg-gray-600"
                 )}
               >
                 <span

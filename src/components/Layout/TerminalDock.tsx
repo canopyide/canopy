@@ -18,11 +18,7 @@ import { cn } from "@/lib/utils";
 import { useTerminalStore } from "@/store";
 import { DockedTerminalItem } from "./DockedTerminalItem";
 import { TrashContainer } from "./TrashContainer";
-import {
-  getTerminalDragData,
-  isTerminalDrag,
-  calculateDropIndex,
-} from "@/utils/dragDrop";
+import { getTerminalDragData, isTerminalDrag, calculateDropIndex } from "@/utils/dragDrop";
 
 export function TerminalDock() {
   // Filter terminals in dock location using shallow comparison
@@ -61,29 +57,26 @@ export function TerminalDock() {
   const activeDockTerminals = dockTerminals;
 
   // Drag event handlers
-  const handleDragOver = useCallback(
-    (e: React.DragEvent) => {
-      if (!isTerminalDrag(e.dataTransfer)) return;
+  const handleDragOver = useCallback((e: React.DragEvent) => {
+    if (!isTerminalDrag(e.dataTransfer)) return;
 
-      e.preventDefault();
-      e.dataTransfer.dropEffect = "move";
-      setIsDragOver(true);
+    e.preventDefault();
+    e.dataTransfer.dropEffect = "move";
+    setIsDragOver(true);
 
-      // Calculate drop index
-      if (dockRef.current) {
-        const dockItems = Array.from(
-          dockRef.current.querySelectorAll("[data-docked-terminal-id]")
-        ) as HTMLElement[];
+    // Calculate drop index
+    if (dockRef.current) {
+      const dockItems = Array.from(
+        dockRef.current.querySelectorAll("[data-docked-terminal-id]")
+      ) as HTMLElement[];
 
-        const data = getTerminalDragData(e.dataTransfer);
-        const sourceIndex = data?.sourceLocation === "dock" ? data.sourceIndex : undefined;
+      const data = getTerminalDragData(e.dataTransfer);
+      const sourceIndex = data?.sourceLocation === "dock" ? data.sourceIndex : undefined;
 
-        const index = calculateDropIndex(e.clientX, e.clientY, dockItems, "horizontal", sourceIndex);
-        setDropIndex(index);
-      }
-    },
-    []
-  );
+      const index = calculateDropIndex(e.clientX, e.clientY, dockItems, "horizontal", sourceIndex);
+      setDropIndex(index);
+    }
+  }, []);
 
   const handleDragLeave = useCallback((e: React.DragEvent) => {
     // Only clear if leaving the dock entirely
@@ -123,7 +116,14 @@ export function TerminalDock() {
 
       setFocused(null); // Clear focus when moving to dock
     },
-    [dropIndex, activeDockTerminals, dockTerminals, reorderTerminals, moveTerminalToPosition, setFocused]
+    [
+      dropIndex,
+      activeDockTerminals,
+      dockTerminals,
+      reorderTerminals,
+      moveTerminalToPosition,
+      setFocused,
+    ]
   );
 
   // Handler for dock item drag start

@@ -54,14 +54,9 @@ export function TrashContainer({ trashedTerminals }: TrashContainerProps) {
         aria-label={`Trash: ${trashedTerminals.length} terminal${trashedTerminals.length === 1 ? "" : "s"}. Click to ${isExpanded ? "collapse" : "expand"}`}
       >
         <Trash2 className="w-3 h-3" aria-hidden="true" />
-        <span className="font-mono tabular-nums">
-          Trash ({trashedTerminals.length})
-        </span>
+        <span className="font-mono tabular-nums">Trash ({trashedTerminals.length})</span>
         <ChevronDown
-          className={cn(
-            "w-3 h-3 transition-transform duration-200",
-            isExpanded && "rotate-180"
-          )}
+          className={cn("w-3 h-3 transition-transform duration-200", isExpanded && "rotate-180")}
           aria-hidden="true"
         />
       </button>

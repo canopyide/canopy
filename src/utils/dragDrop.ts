@@ -203,10 +203,7 @@ export interface TerminalDragData {
 /**
  * Set terminal drag data in a drag event.
  */
-export function setTerminalDragData(
-  dataTransfer: DataTransfer,
-  data: TerminalDragData
-): void {
+export function setTerminalDragData(dataTransfer: DataTransfer, data: TerminalDragData): void {
   dataTransfer.setData(TERMINAL_DRAG_MIME_TYPE, JSON.stringify(data));
   // Also set text/plain for debugging purposes
   dataTransfer.setData("text/plain", data.terminalId);

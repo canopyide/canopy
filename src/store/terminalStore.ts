@@ -242,8 +242,7 @@ if (typeof window !== "undefined") {
     // Fallback to 'grid' if terminal wasn't trashed via trashTerminal (edge case)
     // The terminal's original location is captured by trashTerminal before this event
     const terminal = state.terminals.find((t) => t.id === id);
-    const originalLocation: "dock" | "grid" =
-      terminal?.location === "dock" ? "dock" : "grid";
+    const originalLocation: "dock" | "grid" = terminal?.location === "dock" ? "dock" : "grid";
     state.markAsTrashed(id, expiresAt, originalLocation);
 
     // Clear focus/maximize if the trashed terminal was active (same as trashTerminal override)
