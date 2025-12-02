@@ -12,22 +12,22 @@ import { events } from "./events.js";
 // URL detection patterns for common dev servers
 const URL_PATTERNS = [
   // Vite
-  /Local:\s+(https?:\/\/localhost:\d+\/?)/i,
+  new RegExp("Local:\\s+(https?://localhost:\\d+/?/?)", "i"),
   // Next.js
-  /Ready on (https?:\/\/localhost:\d+\/?)/i,
+  new RegExp("Ready on (https?://localhost:\\d+/?/?)", "i"),
   // Generic patterns - broader host matching
-  /Listening on (https?:\/\/[\w.-]+:\d+\/?)/i,
-  /Server (?:is )?(?:running|started) (?:on|at) (https?:\/\/[\w.-]+:\d+\/?)/i,
+  new RegExp("Listening on (https?://[\\w.-]+:\\d+/?/?)", "i"),
+  new RegExp("Server (?:is )?(?:running|started) (?:on|at) (https?://[\\w.-]+:\\d+/?/?)", "i"),
   // Create React App
-  /Local:\s+(https?:\/\/localhost:\d+\/?)/i,
+  new RegExp("Local:\\s+(https?://localhost:\\d+/?/?)", "i"),
   // Angular
-  /Server is listening on (https?:\/\/[\w.-]+:\d+\/?)/i,
+  new RegExp("Server is listening on (https?://[\\w.-]+:\\d+/?/?)", "i"),
   // Express / generic Node
-  /(?:Listening|Started) on (?:port )?(\d+)/i,
+  new RegExp("(?:Listening|Started) on (?:port )?(\\d+)", "i"),
   // Webpack Dev Server
-  /Project is running at (https?:\/\/[\w.-]+:\d+\/?)/i,
+  new RegExp("Project is running at (https?://[\\w.-]+:\\d+/?/?)", "i"),
   // Generic URL fallback - capture any http(s) URL with port
-  /(https?:\/\/[\w.-]+:\d+\/?)/i,
+  new RegExp("(https?://[\\w.-]+:\\d+/?/?)", "i"),
 ];
 
 // Port-only patterns (extract port number)
