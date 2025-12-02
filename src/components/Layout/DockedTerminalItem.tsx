@@ -111,6 +111,39 @@ export function DockedTerminalItem({
         return;
       }
 
+      // Create custom drag image that looks like a terminal card
+      const dragIcon = document.createElement("div");
+      dragIcon.style.cssText = `
+        position: absolute;
+        top: -1000px;
+        width: 200px;
+        height: 150px;
+        background-color: #18181b;
+        border: 1px solid #27272a;
+        border-radius: 8px;
+        padding: 10px;
+        font-family: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, monospace;
+        font-size: 12px;
+        color: #e5e5e5;
+        display: flex;
+        align-items: center;
+        justify-content: center;
+        box-shadow: 0 10px 25px rgba(0, 0, 0, 0.5);
+        pointer-events: none;
+      `;
+      dragIcon.innerText = terminal.title;
+      document.body.appendChild(dragIcon);
+
+      // Set the custom drag image centered on cursor
+      e.dataTransfer.setDragImage(dragIcon, 100, 75);
+
+      // Clean up after browser captures the image (Firefox/Safari need a tick)
+      requestAnimationFrame(() => {
+        if (dragIcon.parentNode) {
+          dragIcon.remove();
+        }
+      });
+
       setTerminalDragData(e.dataTransfer, {
         terminalId: terminal.id,
         sourceLocation: "dock",
@@ -119,7 +152,7 @@ export function DockedTerminalItem({
 
       onDragStart?.(terminal.id, index);
     },
-    [terminal.id, index, isOpen, onDragStart]
+    [terminal.id, terminal.title, index, isOpen, onDragStart]
   );
 
   const handleDragEnd = useCallback(() => {

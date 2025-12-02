@@ -15,10 +15,7 @@ import { TerminalObserver } from "./services/TerminalObserver.js";
 import { PtyPool, getPtyPool } from "./services/PtyPool.js";
 import { events } from "./services/events.js";
 import type { AgentEvent } from "./services/AgentStateMachine.js";
-import type {
-  PtyHostEvent,
-  PtyHostTerminalSnapshot,
-} from "../shared/types/pty-host.js";
+import type { PtyHostEvent, PtyHostTerminalSnapshot } from "../shared/types/pty-host.js";
 
 // Validate we're running in UtilityProcess context
 if (!process.parentPort) {

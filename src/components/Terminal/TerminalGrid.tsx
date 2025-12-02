@@ -339,15 +339,22 @@ export function TerminalGrid({ className, defaultCwd }: TerminalGridProps) {
         const dropIndicator = getDropIndicator("grid", index);
         const isDragging = isDraggedTerminal(terminal.id);
         const isTerminalInTrash = isInTrash(terminal.id);
+        const showGhostBefore =
+          dropIndicator.showBefore && dragState.sourceLocation === "dock" && dragState.isDragging;
 
         return (
           <div
             key={terminal.id}
             className={cn(
               "relative",
-              dropIndicator.showBefore && "ring-2 ring-canopy-accent ring-inset"
+              dropIndicator.showBefore && !showGhostBefore && "ring-2 ring-canopy-accent ring-inset"
             )}
           >
+            {showGhostBefore && (
+              <div className="absolute inset-0 bg-canopy-accent/10 border-2 border-dashed border-canopy-accent rounded-lg pointer-events-none z-10 flex items-center justify-center">
+                <span className="text-xs text-canopy-accent font-medium">Drop here</span>
+              </div>
+            )}
             <TerminalPane
               id={terminal.id}
               title={terminal.title}
@@ -395,6 +402,18 @@ export function TerminalGrid({ className, defaultCwd }: TerminalGridProps) {
           </div>
         );
       })}
+
+      {/* Ghost pane at end position when dropping after last terminal */}
+      {dragState.isDragging &&
+        dragState.dropZone === "grid" &&
+        dragState.dropIndex === gridTerminals.length &&
+        dragState.sourceLocation === "dock" && (
+          <div className="relative">
+            <div className="absolute inset-0 bg-canopy-accent/10 border-2 border-dashed border-canopy-accent rounded-lg pointer-events-none z-10 flex items-center justify-center">
+              <span className="text-xs text-canopy-accent font-medium">Drop here</span>
+            </div>
+          </div>
+        )}
 
       {filePickerState.worktreeId && (
         <FilePickerModal
