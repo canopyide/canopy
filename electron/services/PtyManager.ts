@@ -2,13 +2,7 @@ import * as pty from "node-pty";
 import { EventEmitter } from "events";
 import { existsSync } from "fs";
 import { events } from "./events.js";
-import {
-  nextAgentState,
-  getStateChangeTimestamp,
-  detectBusyState,
-  detectPrompt,
-  type AgentEvent,
-} from "./AgentStateMachine.js";
+import { nextAgentState, getStateChangeTimestamp, type AgentEvent } from "./AgentStateMachine.js";
 import type { AgentState } from "../types/index.js";
 import {
   AgentSpawnedSchema,
@@ -22,6 +16,7 @@ import {
 import { type PtyPool } from "./PtyPool.js";
 import { ProcessDetector, type DetectionResult } from "./ProcessDetector.js";
 import type { TerminalType } from "../../shared/types/domain.js";
+import { ActivityMonitor } from "./ActivityMonitor.js";
 
 export interface PtySpawnOptions {
   cwd: string;
@@ -100,6 +95,7 @@ export interface TerminalSnapshot {
 export class PtyManager extends EventEmitter {
   private terminals: Map<string, TerminalInfo> = new Map();
   private trashTimeouts: Map<string, NodeJS.Timeout> = new Map();
+  private activityMonitors: Map<string, ActivityMonitor> = new Map();
   private ptyPool: PtyPool | null = null;
 
   private readonly TRASH_TTL_MS = 120 * 1000;
@@ -112,6 +108,18 @@ export class PtyManager extends EventEmitter {
     this.ptyPool = pool;
   }
 
+  private emitActivityState(terminalId: string, activity: "busy" | "idle"): void {
+    const terminal = this.terminals.get(terminalId);
+    if (!terminal || !terminal.agentId) {
+      return;
+    }
+
+    // Map activity to agent events: busy -> working state, idle -> waiting state
+    const event: AgentEvent = activity === "busy" ? { type: "busy" } : { type: "prompt" };
+
+    this.updateAgentState(terminalId, event, "activity", 1.0);
+  }
+
   private inferTrigger(event: AgentEvent): AgentStateChangeTrigger {
     switch (event.type) {
       case "input":
@@ -119,15 +127,15 @@ export class PtyManager extends EventEmitter {
       case "output":
         return "output";
       case "busy":
-        return "heuristic";
+        return "activity";
       case "prompt":
-        return "heuristic";
+        return "activity";
       case "exit":
         return "exit";
       case "start":
-        return "heuristic";
+        return "activity";
       case "error":
-        return "heuristic";
+        return "activity";
       default:
         return "output";
     }
@@ -139,6 +147,11 @@ export class PtyManager extends EventEmitter {
     }
 
     if (trigger === "output") {
+      return 1.0;
+    }
+
+    // Activity-based detection is always high confidence
+    if (trigger === "activity") {
       return 1.0;
     }
 
@@ -468,35 +481,21 @@ export class PtyManager extends EventEmitter {
         this.emit("data", id, data);
       }
 
-      // For agent terminals, track state based on output
+      // For agent terminals, notify activity monitor and emit output events
       if (isAgentTerminal) {
-        // Update sliding window buffer to handle split packets
+        // Update sliding window buffer (needed for transcript capture)
         terminal.outputBuffer += data;
         if (terminal.outputBuffer.length > OUTPUT_BUFFER_SIZE) {
           terminal.outputBuffer = terminal.outputBuffer.slice(-OUTPUT_BUFFER_SIZE);
         }
 
-        // Update semantic buffer for AI analysis (line-based)
+        // Update semantic buffer (needed for transcript capture)
         this.updateSemanticBuffer(terminal, data);
 
-        // Check for busy state patterns (e.g., "(esc to interrupt)")
-        // Priority: busy > prompt > output (busy patterns override prompt detection)
-        // Use only recent slice (last 200 chars) to avoid indefinite matching of stale busy tokens
-        const recentSlice = terminal.outputBuffer.slice(-200);
-        const isBusy = options.type && detectBusyState(recentSlice, options.type);
-
-        if (isBusy) {
-          // Busy pattern detected - signal busy state (prevents transition to 'waiting')
-          this.updateAgentState(id, { type: "busy" });
-        } else {
-          // No busy pattern - check if recent output looks like a prompt (waiting for input)
-          // Use the buffer (not just current chunk) to handle colored/split prompts
-          const isPrompt = detectPrompt(recentSlice, { type: options.type });
-          if (isPrompt) {
-            this.updateAgentState(id, { type: "prompt" });
-          } else {
-            this.updateAgentState(id, { type: "output", data });
-          }
+        // Notify activity monitor - it handles busy/idle state transitions
+        const monitor = this.activityMonitors.get(id);
+        if (monitor) {
+          monitor.onData();
         }
 
         // Emit agent:output event for transcript capture
@@ -549,6 +548,13 @@ export class PtyManager extends EventEmitter {
       if (terminal.processDetector) {
         terminal.processDetector.stop();
         terminal.processDetector = undefined;
+      }
+
+      // Dispose activity monitor
+      const monitor = this.activityMonitors.get(id);
+      if (monitor) {
+        monitor.dispose();
+        this.activityMonitors.delete(id);
       }
 
       // Flush any buffered output before exit to avoid data loss
@@ -621,6 +627,14 @@ export class PtyManager extends EventEmitter {
     };
 
     this.terminals.set(id, terminal);
+
+    // Create activity monitor for agent terminals
+    if (isAgentTerminal) {
+      const monitor = new ActivityMonitor(id, (termId, state) => {
+        this.emitActivityState(termId, state);
+      });
+      this.activityMonitors.set(id, monitor);
+    }
 
     // Start process detection for all terminals (including shell terminals)
     // This allows detection of agents launched from within shell sessions
@@ -815,6 +829,13 @@ export class PtyManager extends EventEmitter {
       if (terminal.processDetector) {
         terminal.processDetector.stop();
         terminal.processDetector = undefined;
+      }
+
+      // Dispose activity monitor
+      const monitor = this.activityMonitors.get(id);
+      if (monitor) {
+        monitor.dispose();
+        this.activityMonitors.delete(id);
       }
 
       // Flush any buffered output before killing to avoid data loss
@@ -1058,6 +1079,12 @@ export class PtyManager extends EventEmitter {
       clearTimeout(timeout);
     }
     this.trashTimeouts.clear();
+
+    // Dispose all activity monitors
+    for (const monitor of this.activityMonitors.values()) {
+      monitor.dispose();
+    }
+    this.activityMonitors.clear();
 
     for (const [id, terminal] of this.terminals) {
       try {

@@ -277,14 +277,6 @@ export function TerminalGrid({ className, defaultCwd }: TerminalGridProps) {
             isInjecting={isInjecting}
             injectionProgress={progress}
             agentState={terminal.agentState}
-            stateDebugInfo={
-              terminal.stateChangeTrigger
-                ? {
-                    trigger: terminal.stateChangeTrigger,
-                    confidence: terminal.stateChangeConfidence ?? 0,
-                  }
-                : null
-            }
             activity={
               terminal.activityHeadline
                 ? {
@@ -381,14 +373,6 @@ export function TerminalGrid({ className, defaultCwd }: TerminalGridProps) {
               isInjecting={isInjecting}
               injectionProgress={progress}
               agentState={terminal.agentState}
-              stateDebugInfo={
-                terminal.stateChangeTrigger
-                  ? {
-                      trigger: terminal.stateChangeTrigger,
-                      confidence: terminal.stateChangeConfidence ?? 0,
-                    }
-                  : null
-              }
               activity={
                 terminal.activityHeadline
                   ? {

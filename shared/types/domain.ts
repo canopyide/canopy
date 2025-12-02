@@ -238,7 +238,8 @@ export type AgentStateChangeTrigger =
   | "heuristic"
   | "ai-classification"
   | "timeout"
-  | "exit";
+  | "exit"
+  | "activity";
 
 export enum TerminalRefreshTier {
   BURST = 16, // 60fps - only during active typing

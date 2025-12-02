@@ -3,7 +3,6 @@ import { Button } from "@/components/ui/button";
 import { FileText, Trash2, Bug } from "lucide-react";
 import { cn } from "@/lib/utils";
 import { appClient, logsClient } from "@/clients";
-import { getStateDebugEnabled, enableStateDebug, disableStateDebug } from "@/components/Terminal";
 import type { AppState } from "@shared/types";
 
 interface TroubleshootingTabProps {
@@ -13,7 +12,6 @@ interface TroubleshootingTabProps {
 
 export function TroubleshootingTab({ openLogs, clearLogs }: TroubleshootingTabProps) {
   const [developerMode, setDeveloperMode] = useState(false);
-  const [showStateDebug, setShowStateDebug] = useState(() => getStateDebugEnabled());
   const [autoOpenDiagnostics, setAutoOpenDiagnostics] = useState(false);
   const [focusEventsTab, setFocusEventsTab] = useState(false);
 
@@ -21,16 +19,8 @@ export function TroubleshootingTab({ openLogs, clearLogs }: TroubleshootingTabPr
     appClient.getState().then((appState) => {
       if (appState?.developerMode) {
         setDeveloperMode(appState.developerMode.enabled);
-        setShowStateDebug(appState.developerMode.showStateDebug);
         setAutoOpenDiagnostics(appState.developerMode.autoOpenDiagnostics);
         setFocusEventsTab(appState.developerMode.focusEventsTab);
-        if (appState.developerMode.showStateDebug) {
-          enableStateDebug();
-        } else {
-          disableStateDebug();
-        }
-      } else {
-        setShowStateDebug(getStateDebugEnabled());
       }
     });
   }, []);
@@ -51,8 +41,6 @@ export function TroubleshootingTab({ openLogs, clearLogs }: TroubleshootingTabPr
     setDeveloperMode(newEnabled);
 
     if (!newEnabled) {
-      setShowStateDebug(false);
-      disableStateDebug();
       if (typeof window !== "undefined") {
         window.dispatchEvent(
           new CustomEvent("canopy:debug-toggle", { detail: { enabled: false } })
@@ -69,45 +57,12 @@ export function TroubleshootingTab({ openLogs, clearLogs }: TroubleshootingTabPr
     } else {
       saveDeveloperModeSettings({
         enabled: true,
-        showStateDebug,
+        showStateDebug: false,
         autoOpenDiagnostics,
         focusEventsTab,
       });
     }
-  }, [
-    developerMode,
-    showStateDebug,
-    autoOpenDiagnostics,
-    focusEventsTab,
-    saveDeveloperModeSettings,
-  ]);
-
-  const handleToggleStateDebug = useCallback(() => {
-    const newState = !showStateDebug;
-    setShowStateDebug(newState);
-    if (newState) {
-      enableStateDebug();
-    } else {
-      disableStateDebug();
-    }
-    if (typeof window !== "undefined") {
-      window.dispatchEvent(
-        new CustomEvent("canopy:debug-toggle", { detail: { enabled: newState } })
-      );
-    }
-    saveDeveloperModeSettings({
-      enabled: developerMode,
-      showStateDebug: newState,
-      autoOpenDiagnostics,
-      focusEventsTab,
-    });
-  }, [
-    showStateDebug,
-    developerMode,
-    autoOpenDiagnostics,
-    focusEventsTab,
-    saveDeveloperModeSettings,
-  ]);
+  }, [developerMode, autoOpenDiagnostics, focusEventsTab, saveDeveloperModeSettings]);
 
   const handleToggleAutoOpenDiagnostics = useCallback(() => {
     const newState = !autoOpenDiagnostics;
@@ -116,42 +71,30 @@ export function TroubleshootingTab({ openLogs, clearLogs }: TroubleshootingTabPr
       setFocusEventsTab(false);
       saveDeveloperModeSettings({
         enabled: developerMode,
-        showStateDebug,
+        showStateDebug: false,
         autoOpenDiagnostics: false,
         focusEventsTab: false,
       });
     } else {
       saveDeveloperModeSettings({
         enabled: developerMode,
-        showStateDebug,
+        showStateDebug: false,
         autoOpenDiagnostics: true,
         focusEventsTab,
       });
     }
-  }, [
-    autoOpenDiagnostics,
-    developerMode,
-    showStateDebug,
-    focusEventsTab,
-    saveDeveloperModeSettings,
-  ]);
+  }, [autoOpenDiagnostics, developerMode, focusEventsTab, saveDeveloperModeSettings]);
 
   const handleToggleFocusEventsTab = useCallback(() => {
     const newState = !focusEventsTab;
     setFocusEventsTab(newState);
     saveDeveloperModeSettings({
       enabled: developerMode,
-      showStateDebug,
+      showStateDebug: false,
       autoOpenDiagnostics,
       focusEventsTab: newState,
     });
-  }, [
-    focusEventsTab,
-    developerMode,
-    showStateDebug,
-    autoOpenDiagnostics,
-    saveDeveloperModeSettings,
-  ]);
+  }, [focusEventsTab, developerMode, autoOpenDiagnostics, saveDeveloperModeSettings]);
 
   const handleClearLogs = async () => {
     try {
@@ -230,22 +173,6 @@ export function TroubleshootingTab({ openLogs, clearLogs }: TroubleshootingTabPr
               !developerMode && "opacity-50"
             )}
           >
-            <label className="flex items-center gap-3 cursor-pointer">
-              <input
-                type="checkbox"
-                checked={showStateDebug}
-                onChange={handleToggleStateDebug}
-                disabled={!developerMode}
-                className="w-4 h-4 rounded border-gray-600 bg-gray-700 text-canopy-accent focus:ring-canopy-accent focus:ring-offset-0 disabled:opacity-50"
-              />
-              <div>
-                <span className="text-sm text-canopy-text">State Debug Overlays</span>
-                <p className="text-xs text-gray-400">
-                  Show trigger source and confidence in terminal headers
-                </p>
-              </div>
-            </label>
-
             <label className="flex items-center gap-3 cursor-pointer">
               <input
                 type="checkbox"
