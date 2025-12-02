@@ -145,7 +145,7 @@ export function TerminalDock() {
     <div
       ref={dockRef}
       className={cn(
-        "h-10 bg-canopy-bg border-t border-canopy-border",
+        "h-10 bg-canopy-bg/95 backdrop-blur-sm border-t-2 border-canopy-border/60 shadow-[0_-4px_12px_rgba(0,0,0,0.3)]",
         "flex items-center px-4 gap-2 overflow-x-auto",
         "z-40 shrink-0",
         isDragOver && "ring-2 ring-canopy-accent/50 ring-inset bg-canopy-accent/5"
