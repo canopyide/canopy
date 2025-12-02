@@ -58,6 +58,8 @@ import type {
   CodexSettings,
   RepositoryStats,
   GitHubCliStatus,
+  GitHubTokenConfig,
+  GitHubTokenValidation,
   PRDetectedPayload,
   PRClearedPayload,
   GitStatus,
@@ -196,6 +198,10 @@ const CHANNELS = {
   GITHUB_OPEN_ISSUE: "github:open-issue",
   GITHUB_OPEN_PR: "github:open-pr",
   GITHUB_CHECK_CLI: "github:check-cli",
+  GITHUB_GET_CONFIG: "github:get-config",
+  GITHUB_SET_TOKEN: "github:set-token",
+  GITHUB_CLEAR_TOKEN: "github:clear-token",
+  GITHUB_VALIDATE_TOKEN: "github:validate-token",
 
   // App state channels
   APP_GET_STATE: "app:get-state",
@@ -821,6 +827,16 @@ const api: ElectronAPI = {
     openPR: (prUrl: string): Promise<void> => ipcRenderer.invoke(CHANNELS.GITHUB_OPEN_PR, prUrl),
 
     checkCli: (): Promise<GitHubCliStatus> => ipcRenderer.invoke(CHANNELS.GITHUB_CHECK_CLI),
+
+    getConfig: (): Promise<GitHubTokenConfig> => ipcRenderer.invoke(CHANNELS.GITHUB_GET_CONFIG),
+
+    setToken: (token: string): Promise<GitHubTokenValidation> =>
+      ipcRenderer.invoke(CHANNELS.GITHUB_SET_TOKEN, token),
+
+    clearToken: (): Promise<void> => ipcRenderer.invoke(CHANNELS.GITHUB_CLEAR_TOKEN),
+
+    validateToken: (token: string): Promise<GitHubTokenValidation> =>
+      ipcRenderer.invoke(CHANNELS.GITHUB_VALIDATE_TOKEN, token),
 
     onPRDetected: (callback: (data: PRDetectedPayload) => void) => {
       const handler = (_event: Electron.IpcRendererEvent, data: PRDetectedPayload) =>

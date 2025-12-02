@@ -81,6 +81,10 @@ export const CHANNELS = {
   GITHUB_OPEN_ISSUE: "github:open-issue",
   GITHUB_OPEN_PR: "github:open-pr",
   GITHUB_CHECK_CLI: "github:check-cli",
+  GITHUB_GET_CONFIG: "github:get-config",
+  GITHUB_SET_TOKEN: "github:set-token",
+  GITHUB_CLEAR_TOKEN: "github:clear-token",
+  GITHUB_VALIDATE_TOKEN: "github:validate-token",
 
   // App state channels
   APP_GET_STATE: "app:get-state",

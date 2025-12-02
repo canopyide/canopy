@@ -101,6 +101,8 @@ export type {
   // GitHub IPC types
   RepositoryStats,
   GitHubCliStatus,
+  GitHubTokenConfig,
+  GitHubTokenValidation,
   // App state types
   RecentDirectory,
   SavedRecipeTerminal,

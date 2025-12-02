@@ -62,6 +62,8 @@ export interface StoreSchema {
     aiModel?: string;
     /** Whether AI features are enabled */
     aiEnabled?: boolean;
+    /** GitHub personal access token for direct API integration */
+    githubToken?: string;
   };
   /** Agent CLI settings for Claude, Gemini, and Codex */
   agentSettings: AgentSettings;
