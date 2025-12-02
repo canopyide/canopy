@@ -67,8 +67,14 @@ export function GitHubResourceList({ type, projectPath, onClose }: GitHubResourc
   }, [type]);
 
   // Fetch data function
+  // Note: currentCursor is passed as a parameter (not read from state) to avoid
+  // dependency cycle where updating cursor would recreate this callback
   const fetchData = useCallback(
-    async (append: boolean = false, abortSignal?: AbortSignal) => {
+    async (
+      currentCursor: string | null | undefined,
+      append: boolean = false,
+      abortSignal?: AbortSignal
+    ) => {
       if (!projectPath) return;
 
       if (append) {
@@ -85,7 +91,7 @@ export function GitHubResourceList({ type, projectPath, onClose }: GitHubResourc
           cwd: projectPath,
           search: debouncedSearch || undefined,
           state: filterState as "open" | "closed" | "merged" | "all",
-          cursor: append ? cursor || undefined : undefined,
+          cursor: currentCursor || undefined,
         };
 
         const result =
@@ -122,7 +128,7 @@ export function GitHubResourceList({ type, projectPath, onClose }: GitHubResourc
         }
       }
     },
-    [projectPath, debouncedSearch, filterState, cursor, type]
+    [projectPath, debouncedSearch, filterState, type]
   );
 
   // Fetch on mount and when search/filter changes
@@ -132,7 +138,7 @@ export function GitHubResourceList({ type, projectPath, onClose }: GitHubResourc
     // Reset pagination when search or filter changes
     setCursor(null);
     setHasMore(false);
-    fetchData(false, abortController.signal);
+    fetchData(null, false, abortController.signal);
 
     return () => abortController.abort();
   }, [debouncedSearch, filterState, projectPath, type, fetchData]);
@@ -140,7 +146,7 @@ export function GitHubResourceList({ type, projectPath, onClose }: GitHubResourc
   // Load more handler
   const handleLoadMore = () => {
     if (!loadingMore && hasMore) {
-      fetchData(true, undefined);
+      fetchData(cursor, true, undefined);
     }
   };
 
@@ -164,7 +170,7 @@ export function GitHubResourceList({ type, projectPath, onClose }: GitHubResourc
   // Retry handler for errors
   const handleRetry = () => {
     setCursor(null);
-    fetchData(false, undefined);
+    fetchData(null, false, undefined);
   };
 
   // Render loading skeleton
