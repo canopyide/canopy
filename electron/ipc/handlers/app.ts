@@ -1,0 +1,226 @@
+import { ipcMain, app, shell } from "electron";
+import { join } from "path";
+import { homedir } from "os";
+import { CHANNELS } from "../channels";
+import { store } from "../../store";
+import { logBuffer } from "../../services/LogBuffer";
+import type { HandlerDependencies } from "../types";
+import type { FilterOptions as LogFilterOptions } from "../../services/LogBuffer";
+import type { FilterOptions as EventFilterOptions } from "../../services/EventBuffer";
+
+export function registerAppHandlers(deps: HandlerDependencies): () => void {
+  const { eventBuffer } = deps;
+  const handlers: Array<() => void> = [];
+
+  // ==========================================
+  // App State Handlers
+  // ==========================================
+
+  const handleAppGetState = async () => {
+    return store.get("appState");
+  };
+  ipcMain.handle(CHANNELS.APP_GET_STATE, handleAppGetState);
+  handlers.push(() => ipcMain.removeHandler(CHANNELS.APP_GET_STATE));
+
+  const handleAppSetState = async (
+    _event: Electron.IpcMainInvokeEvent,
+    partialState: Partial<typeof store.store.appState>
+  ) => {
+    try {
+      // Validate payload is an object
+      if (!partialState || typeof partialState !== "object" || Array.isArray(partialState)) {
+        console.error("Invalid app state payload:", partialState);
+        return;
+      }
+
+      const currentState = store.get("appState");
+
+      // Validate and sanitize fields
+      const updates: Partial<typeof store.store.appState> = {};
+
+      if ("sidebarWidth" in partialState) {
+        const width = Number(partialState.sidebarWidth);
+        if (!isNaN(width) && width >= 200 && width <= 600) {
+          updates.sidebarWidth = width;
+        }
+      }
+
+      if ("activeWorktreeId" in partialState) {
+        updates.activeWorktreeId = partialState.activeWorktreeId;
+      }
+
+      if ("terminals" in partialState && Array.isArray(partialState.terminals)) {
+        updates.terminals = partialState.terminals;
+      }
+
+      if ("recipes" in partialState && Array.isArray(partialState.recipes)) {
+        // Validate recipe structure
+        const validRecipes = partialState.recipes.filter((recipe) => {
+          return (
+            recipe &&
+            typeof recipe === "object" &&
+            typeof recipe.id === "string" &&
+            typeof recipe.name === "string" &&
+            Array.isArray(recipe.terminals) &&
+            recipe.terminals.length > 0 &&
+            recipe.terminals.length <= 10 &&
+            typeof recipe.createdAt === "number"
+          );
+        });
+        updates.recipes = validRecipes;
+      }
+
+      if ("focusMode" in partialState) {
+        updates.focusMode = Boolean(partialState.focusMode);
+      }
+
+      if ("focusPanelState" in partialState) {
+        const panelState = partialState.focusPanelState;
+        if (
+          panelState &&
+          typeof panelState === "object" &&
+          typeof panelState.sidebarWidth === "number"
+        ) {
+          // Support both new format (diagnosticsOpen) and legacy format (logsOpen/eventInspectorOpen)
+          if ("diagnosticsOpen" in panelState && typeof panelState.diagnosticsOpen === "boolean") {
+            // New format
+            updates.focusPanelState = {
+              sidebarWidth: panelState.sidebarWidth,
+              diagnosticsOpen: panelState.diagnosticsOpen,
+            };
+          } else if (
+            "logsOpen" in panelState &&
+            typeof panelState.logsOpen === "boolean" &&
+            "eventInspectorOpen" in panelState &&
+            typeof panelState.eventInspectorOpen === "boolean"
+          ) {
+            // Legacy format - migrate to new format
+            updates.focusPanelState = {
+              sidebarWidth: panelState.sidebarWidth,
+              diagnosticsOpen: panelState.logsOpen || panelState.eventInspectorOpen,
+            };
+          }
+        }
+      }
+
+      if ("diagnosticsHeight" in partialState) {
+        const height = Number(partialState.diagnosticsHeight);
+        if (!isNaN(height) && height >= 128 && height <= 1000) {
+          updates.diagnosticsHeight = height;
+        }
+      }
+
+      if ("hasSeenWelcome" in partialState) {
+        updates.hasSeenWelcome = Boolean(partialState.hasSeenWelcome);
+      }
+
+      if ("developerMode" in partialState) {
+        const devMode = partialState.developerMode;
+        if (devMode && typeof devMode === "object") {
+          // Validate and coerce all boolean fields
+          updates.developerMode = {
+            enabled: Boolean(devMode.enabled),
+            showStateDebug: Boolean(devMode.showStateDebug),
+            autoOpenDiagnostics: Boolean(devMode.autoOpenDiagnostics),
+            focusEventsTab: Boolean(devMode.focusEventsTab),
+          };
+        }
+      }
+
+      store.set("appState", { ...currentState, ...updates });
+    } catch (error) {
+      console.error("Failed to set app state:", error);
+    }
+  };
+  ipcMain.handle(CHANNELS.APP_SET_STATE, handleAppSetState);
+  handlers.push(() => ipcMain.removeHandler(CHANNELS.APP_SET_STATE));
+
+  const handleAppGetVersion = async () => {
+    return app.getVersion();
+  };
+  ipcMain.handle(CHANNELS.APP_GET_VERSION, handleAppGetVersion);
+  handlers.push(() => ipcMain.removeHandler(CHANNELS.APP_GET_VERSION));
+
+  // ==========================================
+  // Logs Handlers
+  // ==========================================
+
+  const handleLogsGetAll = async (
+    _event: Electron.IpcMainInvokeEvent,
+    filters?: LogFilterOptions
+  ) => {
+    if (filters) {
+      return logBuffer.getFiltered(filters);
+    }
+    return logBuffer.getAll();
+  };
+  ipcMain.handle(CHANNELS.LOGS_GET_ALL, handleLogsGetAll);
+  handlers.push(() => ipcMain.removeHandler(CHANNELS.LOGS_GET_ALL));
+
+  const handleLogsGetSources = async () => {
+    return logBuffer.getSources();
+  };
+  ipcMain.handle(CHANNELS.LOGS_GET_SOURCES, handleLogsGetSources);
+  handlers.push(() => ipcMain.removeHandler(CHANNELS.LOGS_GET_SOURCES));
+
+  const handleLogsClear = async () => {
+    logBuffer.clear();
+  };
+  ipcMain.handle(CHANNELS.LOGS_CLEAR, handleLogsClear);
+  handlers.push(() => ipcMain.removeHandler(CHANNELS.LOGS_CLEAR));
+
+  const handleLogsOpenFile = async () => {
+    const logFilePath = join(homedir(), ".config", "canopy", "worktree-debug.log");
+    try {
+      const fs = await import("fs");
+      // Check if file exists
+      await fs.promises.access(logFilePath);
+      await shell.openPath(logFilePath);
+    } catch (_error) {
+      // File doesn't exist - create it first
+      const fs = await import("fs");
+      const dir = join(homedir(), ".config", "canopy");
+      await fs.promises.mkdir(dir, { recursive: true });
+      await fs.promises.writeFile(logFilePath, "# Canopy Debug Log\n", "utf8");
+      await shell.openPath(logFilePath);
+    }
+  };
+  ipcMain.handle(CHANNELS.LOGS_OPEN_FILE, handleLogsOpenFile);
+  handlers.push(() => ipcMain.removeHandler(CHANNELS.LOGS_OPEN_FILE));
+
+  // ==========================================
+  // Event Inspector Handlers
+  // ==========================================
+
+  const handleEventInspectorGetEvents = async () => {
+    if (!eventBuffer) {
+      return [];
+    }
+    return eventBuffer.getAll();
+  };
+  ipcMain.handle(CHANNELS.EVENT_INSPECTOR_GET_EVENTS, handleEventInspectorGetEvents);
+  handlers.push(() => ipcMain.removeHandler(CHANNELS.EVENT_INSPECTOR_GET_EVENTS));
+
+  const handleEventInspectorGetFiltered = async (
+    _event: Electron.IpcMainInvokeEvent,
+    filters: EventFilterOptions
+  ) => {
+    if (!eventBuffer) {
+      return [];
+    }
+    return eventBuffer.getFiltered(filters);
+  };
+  ipcMain.handle(CHANNELS.EVENT_INSPECTOR_GET_FILTERED, handleEventInspectorGetFiltered);
+  handlers.push(() => ipcMain.removeHandler(CHANNELS.EVENT_INSPECTOR_GET_FILTERED));
+
+  const handleEventInspectorClear = async () => {
+    if (!eventBuffer) {
+      return;
+    }
+    eventBuffer.clear();
+  };
+  ipcMain.handle(CHANNELS.EVENT_INSPECTOR_CLEAR, handleEventInspectorClear);
+  handlers.push(() => ipcMain.removeHandler(CHANNELS.EVENT_INSPECTOR_CLEAR));
+
+  return () => handlers.forEach((cleanup) => cleanup());
+}

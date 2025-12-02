@@ -1,0 +1,230 @@
+import { ipcMain, shell } from "electron";
+import { CHANNELS } from "../channels";
+import type { HandlerDependencies } from "../types";
+import type { RepositoryStats, GitHubCliStatus, GitHubTokenConfig, GitHubTokenValidation } from "../../types/index";
+
+export function registerGithubHandlers(_deps: HandlerDependencies): () => void {
+  const handlers: Array<() => void> = [];
+
+  const handleGitHubGetRepoStats = async (
+    _event: Electron.IpcMainInvokeEvent,
+    cwd: string
+  ): Promise<RepositoryStats> => {
+    if (typeof cwd !== "string" || !cwd) {
+      throw new Error("Invalid working directory");
+    }
+
+    const fs = await import("fs/promises");
+    const pathModule = await import("path");
+    const { getRepoStats } = await import("../../services/GitHubService.js");
+    const { getCommitCount } = await import("../../utils/git.js");
+
+    try {
+      // Validate directory exists
+      const resolved = pathModule.resolve(cwd);
+      const stat = await fs.stat(resolved);
+      if (!stat.isDirectory()) {
+        return {
+          commitCount: 0,
+          issueCount: null,
+          prCount: null,
+          loading: false,
+          ghError: "Path is not a directory",
+        };
+      }
+
+      // Fetch repo stats using GitHub API (requires token)
+      const statsResult = await getRepoStats(resolved);
+
+      const commitCount = await getCommitCount(resolved).catch(() => 0);
+
+      return {
+        commitCount,
+        issueCount: statsResult.stats?.issueCount ?? null,
+        prCount: statsResult.stats?.prCount ?? null,
+        loading: false,
+        ghError: statsResult.error,
+      };
+    } catch (err) {
+      const message = err instanceof Error ? err.message : String(err);
+      return {
+        commitCount: 0,
+        issueCount: null,
+        prCount: null,
+        loading: false,
+        ghError: message,
+      };
+    }
+  };
+  ipcMain.handle(CHANNELS.GITHUB_GET_REPO_STATS, handleGitHubGetRepoStats);
+  handlers.push(() => ipcMain.removeHandler(CHANNELS.GITHUB_GET_REPO_STATS));
+
+  const handleGitHubOpenIssues = async (_event: Electron.IpcMainInvokeEvent, cwd: string) => {
+    if (typeof cwd !== "string" || !cwd) {
+      throw new Error("Invalid working directory");
+    }
+    const { getRepoUrl } = await import("../../services/GitHubService.js");
+    const repoUrl = await getRepoUrl(cwd);
+    if (!repoUrl) {
+      throw new Error("Not a GitHub repository");
+    }
+    await shell.openExternal(`${repoUrl}/issues`);
+  };
+  ipcMain.handle(CHANNELS.GITHUB_OPEN_ISSUES, handleGitHubOpenIssues);
+  handlers.push(() => ipcMain.removeHandler(CHANNELS.GITHUB_OPEN_ISSUES));
+
+  const handleGitHubOpenPRs = async (_event: Electron.IpcMainInvokeEvent, cwd: string) => {
+    if (typeof cwd !== "string" || !cwd) {
+      throw new Error("Invalid working directory");
+    }
+    const { getRepoUrl } = await import("../../services/GitHubService.js");
+    const repoUrl = await getRepoUrl(cwd);
+    if (!repoUrl) {
+      throw new Error("Not a GitHub repository");
+    }
+    await shell.openExternal(`${repoUrl}/pulls`);
+  };
+  ipcMain.handle(CHANNELS.GITHUB_OPEN_PRS, handleGitHubOpenPRs);
+  handlers.push(() => ipcMain.removeHandler(CHANNELS.GITHUB_OPEN_PRS));
+
+  const handleGitHubOpenIssue = async (
+    _event: Electron.IpcMainInvokeEvent,
+    payload: { cwd: string; issueNumber: number }
+  ) => {
+    if (!payload || typeof payload !== "object") {
+      throw new Error("Invalid payload");
+    }
+    if (typeof payload.cwd !== "string" || !payload.cwd) {
+      throw new Error("Invalid working directory");
+    }
+    if (typeof payload.issueNumber !== "number" || payload.issueNumber <= 0) {
+      throw new Error("Invalid issue number");
+    }
+    const { getIssueUrl } = await import("../../services/GitHubService.js");
+    const issueUrl = await getIssueUrl(payload.cwd, payload.issueNumber);
+    if (!issueUrl) {
+      throw new Error("Not a GitHub repository");
+    }
+    await shell.openExternal(issueUrl);
+  };
+  ipcMain.handle(CHANNELS.GITHUB_OPEN_ISSUE, handleGitHubOpenIssue);
+  handlers.push(() => ipcMain.removeHandler(CHANNELS.GITHUB_OPEN_ISSUE));
+
+  const handleGitHubOpenPR = async (_event: Electron.IpcMainInvokeEvent, prUrl: string) => {
+    if (typeof prUrl !== "string" || !prUrl) {
+      throw new Error("Invalid PR URL");
+    }
+    // Security: validate URL scheme to prevent arbitrary protocol execution
+    try {
+      const url = new URL(prUrl);
+      if (!["https:", "http:"].includes(url.protocol)) {
+        throw new Error(`Only https:// or http:// PR URLs are allowed, got ${url.protocol}`);
+      }
+    } catch (error) {
+      throw new Error(`Invalid PR URL: ${error instanceof Error ? error.message : String(error)}`);
+    }
+    await shell.openExternal(prUrl);
+  };
+  ipcMain.handle(CHANNELS.GITHUB_OPEN_PR, handleGitHubOpenPR);
+  handlers.push(() => ipcMain.removeHandler(CHANNELS.GITHUB_OPEN_PR));
+
+  const handleGitHubCheckCli = async (): Promise<GitHubCliStatus> => {
+    // Check if we have a GitHub token configured
+    const { hasGitHubToken } = await import("../../services/GitHubService.js");
+    if (hasGitHubToken()) {
+      return { available: true };
+    }
+    return { available: false, error: "GitHub token not configured. Set up in Settings." };
+  };
+  ipcMain.handle(CHANNELS.GITHUB_CHECK_CLI, handleGitHubCheckCli);
+  handlers.push(() => ipcMain.removeHandler(CHANNELS.GITHUB_CHECK_CLI));
+
+  // GitHub Token Management Handlers
+  const handleGitHubGetConfig = async (): Promise<GitHubTokenConfig> => {
+    const { getGitHubConfig } = await import("../../services/GitHubService.js");
+    return getGitHubConfig();
+  };
+  ipcMain.handle(CHANNELS.GITHUB_GET_CONFIG, handleGitHubGetConfig);
+  handlers.push(() => ipcMain.removeHandler(CHANNELS.GITHUB_GET_CONFIG));
+
+  const handleGitHubSetToken = async (
+    _event: Electron.IpcMainInvokeEvent,
+    token: string
+  ): Promise<GitHubTokenValidation> => {
+    if (typeof token !== "string" || !token.trim()) {
+      return { valid: false, scopes: [], error: "Token is required" };
+    }
+
+    const { validateGitHubToken, setGitHubToken } = await import("../../services/GitHubService.js");
+
+    // Validate token first
+    const validation = await validateGitHubToken(token.trim());
+
+    if (validation.valid) {
+      // Save the token if valid
+      setGitHubToken(token.trim());
+    }
+
+    return validation;
+  };
+  ipcMain.handle(CHANNELS.GITHUB_SET_TOKEN, handleGitHubSetToken);
+  handlers.push(() => ipcMain.removeHandler(CHANNELS.GITHUB_SET_TOKEN));
+
+  const handleGitHubClearToken = async (): Promise<void> => {
+    const { clearGitHubToken } = await import("../../services/GitHubService.js");
+    clearGitHubToken();
+  };
+  ipcMain.handle(CHANNELS.GITHUB_CLEAR_TOKEN, handleGitHubClearToken);
+  handlers.push(() => ipcMain.removeHandler(CHANNELS.GITHUB_CLEAR_TOKEN));
+
+  const handleGitHubValidateToken = async (
+    _event: Electron.IpcMainInvokeEvent,
+    token: string
+  ): Promise<GitHubTokenValidation> => {
+    if (typeof token !== "string" || !token.trim()) {
+      return { valid: false, scopes: [], error: "Token is required" };
+    }
+
+    const { validateGitHubToken } = await import("../../services/GitHubService.js");
+    return validateGitHubToken(token.trim());
+  };
+  ipcMain.handle(CHANNELS.GITHUB_VALIDATE_TOKEN, handleGitHubValidateToken);
+  handlers.push(() => ipcMain.removeHandler(CHANNELS.GITHUB_VALIDATE_TOKEN));
+
+  // GitHub List Issues Handler
+  const handleGitHubListIssues = async (
+    _event: Electron.IpcMainInvokeEvent,
+    options: { cwd: string; search?: string; state?: "open" | "closed" | "all"; cursor?: string }
+  ) => {
+    if (!options || typeof options.cwd !== "string" || !options.cwd) {
+      throw new Error("Invalid options: cwd is required");
+    }
+
+    const { listIssues } = await import("../../services/GitHubService.js");
+    return listIssues(options);
+  };
+  ipcMain.handle(CHANNELS.GITHUB_LIST_ISSUES, handleGitHubListIssues);
+  handlers.push(() => ipcMain.removeHandler(CHANNELS.GITHUB_LIST_ISSUES));
+
+  // GitHub List PRs Handler
+  const handleGitHubListPRs = async (
+    _event: Electron.IpcMainInvokeEvent,
+    options: {
+      cwd: string;
+      search?: string;
+      state?: "open" | "closed" | "merged" | "all";
+      cursor?: string;
+    }
+  ) => {
+    if (!options || typeof options.cwd !== "string" || !options.cwd) {
+      throw new Error("Invalid options: cwd is required");
+    }
+
+    const { listPullRequests } = await import("../../services/GitHubService.js");
+    return listPullRequests(options);
+  };
+  ipcMain.handle(CHANNELS.GITHUB_LIST_PRS, handleGitHubListPRs);
+  handlers.push(() => ipcMain.removeHandler(CHANNELS.GITHUB_LIST_PRS));
+
+  return () => handlers.forEach((cleanup) => cleanup());
+}

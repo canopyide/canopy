@@ -1,0 +1,259 @@
+import { ipcMain } from "electron";
+import { CHANNELS } from "../channels";
+import { store } from "../../store";
+import type { HandlerDependencies } from "../types";
+import { getTranscriptManager } from "../../services/TranscriptManager";
+import { getAIConfig, setAIConfig, clearAIKey, validateAIKey } from "../../services/ai/client";
+import { generateProjectIdentity } from "../../services/ai/identity";
+import type {
+  HistoryGetSessionsPayload,
+  HistoryGetSessionPayload,
+  HistoryExportSessionPayload,
+  AgentSession,
+} from "../../types/index";
+
+export function registerAiHandlers(_deps: HandlerDependencies): () => void {
+  const handlers: Array<() => void> = [];
+
+  // ==========================================
+  // History Handlers (Agent Transcripts)
+  // ==========================================
+
+  /**
+   * Get agent sessions with optional filters
+   */
+  const handleHistoryGetSessions = async (
+    _event: Electron.IpcMainInvokeEvent,
+    payload?: HistoryGetSessionsPayload
+  ): Promise<AgentSession[]> => {
+    const transcriptManager = getTranscriptManager();
+    return await transcriptManager.getSessions(payload);
+  };
+  ipcMain.handle(CHANNELS.HISTORY_GET_SESSIONS, handleHistoryGetSessions);
+  handlers.push(() => ipcMain.removeHandler(CHANNELS.HISTORY_GET_SESSIONS));
+
+  /**
+   * Get a single agent session by ID
+   */
+  const handleHistoryGetSession = async (
+    _event: Electron.IpcMainInvokeEvent,
+    payload: HistoryGetSessionPayload
+  ): Promise<AgentSession | null> => {
+    if (!payload || typeof payload.sessionId !== "string" || !payload.sessionId) {
+      throw new Error("Invalid payload: sessionId is required");
+    }
+    const transcriptManager = getTranscriptManager();
+    return await transcriptManager.getSession(payload.sessionId);
+  };
+  ipcMain.handle(CHANNELS.HISTORY_GET_SESSION, handleHistoryGetSession);
+  handlers.push(() => ipcMain.removeHandler(CHANNELS.HISTORY_GET_SESSION));
+
+  /**
+   * Export a session to JSON or Markdown
+   */
+  const handleHistoryExportSession = async (
+    _event: Electron.IpcMainInvokeEvent,
+    payload: HistoryExportSessionPayload
+  ): Promise<string | null> => {
+    if (!payload || typeof payload.sessionId !== "string" || !payload.sessionId) {
+      throw new Error("Invalid payload: sessionId is required");
+    }
+    if (!payload.format || (payload.format !== "json" && payload.format !== "markdown")) {
+      throw new Error("Invalid payload: format must be 'json' or 'markdown'");
+    }
+    const transcriptManager = getTranscriptManager();
+    return await transcriptManager.exportSession(payload.sessionId, payload.format);
+  };
+  ipcMain.handle(CHANNELS.HISTORY_EXPORT_SESSION, handleHistoryExportSession);
+  handlers.push(() => ipcMain.removeHandler(CHANNELS.HISTORY_EXPORT_SESSION));
+
+  /**
+   * Delete a session
+   */
+  const handleHistoryDeleteSession = async (
+    _event: Electron.IpcMainInvokeEvent,
+    sessionId: string
+  ): Promise<void> => {
+    if (typeof sessionId !== "string" || !sessionId) {
+      throw new Error("Invalid sessionId: must be a non-empty string");
+    }
+    const transcriptManager = getTranscriptManager();
+    await transcriptManager.deleteSession(sessionId);
+  };
+  ipcMain.handle(CHANNELS.HISTORY_DELETE_SESSION, handleHistoryDeleteSession);
+  handlers.push(() => ipcMain.removeHandler(CHANNELS.HISTORY_DELETE_SESSION));
+
+  // ==========================================
+  // AI Configuration Handlers
+  // ==========================================
+
+  /**
+   * Get AI configuration status
+   */
+  const handleAIGetConfig = async () => {
+    return getAIConfig();
+  };
+  ipcMain.handle(CHANNELS.AI_GET_CONFIG, handleAIGetConfig);
+  handlers.push(() => ipcMain.removeHandler(CHANNELS.AI_GET_CONFIG));
+
+  /**
+   * Set the OpenAI API key (validates before saving)
+   */
+  const handleAISetKey = async (
+    _event: Electron.IpcMainInvokeEvent,
+    apiKey: string
+  ): Promise<boolean> => {
+    if (typeof apiKey !== "string" || !apiKey.trim()) {
+      return false;
+    }
+
+    const isValid = await validateAIKey(apiKey.trim());
+    if (isValid) {
+      setAIConfig({ apiKey: apiKey.trim() });
+      return true;
+    }
+    return false;
+  };
+  ipcMain.handle(CHANNELS.AI_SET_KEY, handleAISetKey);
+  handlers.push(() => ipcMain.removeHandler(CHANNELS.AI_SET_KEY));
+
+  /**
+   * Clear the API key
+   */
+  const handleAIClearKey = async () => {
+    clearAIKey();
+  };
+  ipcMain.handle(CHANNELS.AI_CLEAR_KEY, handleAIClearKey);
+  handlers.push(() => ipcMain.removeHandler(CHANNELS.AI_CLEAR_KEY));
+
+  /**
+   * Set the AI model
+   */
+  const handleAISetModel = async (_event: Electron.IpcMainInvokeEvent, model: string) => {
+    if (typeof model !== "string" || !model.trim()) {
+      throw new Error("Invalid model: must be a non-empty string");
+    }
+    setAIConfig({ model: model.trim() });
+  };
+  ipcMain.handle(CHANNELS.AI_SET_MODEL, handleAISetModel);
+  handlers.push(() => ipcMain.removeHandler(CHANNELS.AI_SET_MODEL));
+
+  /**
+   * Enable/disable AI features
+   */
+  const handleAISetEnabled = async (_event: Electron.IpcMainInvokeEvent, enabled: boolean) => {
+    setAIConfig({ enabled });
+  };
+  ipcMain.handle(CHANNELS.AI_SET_ENABLED, handleAISetEnabled);
+  handlers.push(() => ipcMain.removeHandler(CHANNELS.AI_SET_ENABLED));
+
+  /**
+   * Validate an API key without saving
+   */
+  const handleAIValidateKey = async (
+    _event: Electron.IpcMainInvokeEvent,
+    apiKey: string
+  ): Promise<boolean> => {
+    if (typeof apiKey !== "string" || !apiKey.trim()) {
+      return false;
+    }
+    return await validateAIKey(apiKey.trim());
+  };
+  ipcMain.handle(CHANNELS.AI_VALIDATE_KEY, handleAIValidateKey);
+  handlers.push(() => ipcMain.removeHandler(CHANNELS.AI_VALIDATE_KEY));
+
+  /**
+   * Generate project identity (emoji, name, colors) using AI
+   */
+  const handleAIGenerateProjectIdentity = async (
+    _event: Electron.IpcMainInvokeEvent,
+    projectPath: string
+  ) => {
+    if (typeof projectPath !== "string" || !projectPath.trim()) {
+      throw new Error("Invalid projectPath: must be a non-empty string");
+    }
+    return await generateProjectIdentity(projectPath.trim());
+  };
+  ipcMain.handle(CHANNELS.AI_GENERATE_PROJECT_IDENTITY, handleAIGenerateProjectIdentity);
+  handlers.push(() => ipcMain.removeHandler(CHANNELS.AI_GENERATE_PROJECT_IDENTITY));
+
+  // ==========================================
+  // Agent Settings Handlers
+  // ==========================================
+
+  /**
+   * Get agent settings
+   */
+  const handleAgentSettingsGet = async () => {
+    return store.get("agentSettings");
+  };
+  ipcMain.handle(CHANNELS.AGENT_SETTINGS_GET, handleAgentSettingsGet);
+  handlers.push(() => ipcMain.removeHandler(CHANNELS.AGENT_SETTINGS_GET));
+
+  /**
+   * Set agent settings (partial update)
+   */
+  const handleAgentSettingsSet = async (
+    _event: Electron.IpcMainInvokeEvent,
+    payload: {
+      agentType: "claude" | "gemini" | "codex";
+      settings: Record<string, unknown>;
+    }
+  ) => {
+    if (!payload || typeof payload !== "object") {
+      throw new Error("Invalid payload");
+    }
+    const { agentType, settings } = payload;
+    if (!agentType || !["claude", "gemini", "codex"].includes(agentType)) {
+      throw new Error("Invalid agent type");
+    }
+    if (!settings || typeof settings !== "object") {
+      throw new Error("Invalid settings object");
+    }
+
+    const currentSettings = store.get("agentSettings");
+    const updatedSettings = {
+      ...currentSettings,
+      [agentType]: {
+        ...currentSettings[agentType],
+        ...settings,
+      },
+    };
+    store.set("agentSettings", updatedSettings);
+    return updatedSettings;
+  };
+  ipcMain.handle(CHANNELS.AGENT_SETTINGS_SET, handleAgentSettingsSet);
+  handlers.push(() => ipcMain.removeHandler(CHANNELS.AGENT_SETTINGS_SET));
+
+  /**
+   * Reset agent settings to defaults
+   */
+  const handleAgentSettingsReset = async (
+    _event: Electron.IpcMainInvokeEvent,
+    agentType?: "claude" | "gemini" | "codex"
+  ) => {
+    const { DEFAULT_AGENT_SETTINGS } = await import("../../shared/types/index.js");
+
+    if (agentType) {
+      // Reset specific agent settings
+      if (!["claude", "gemini", "codex"].includes(agentType)) {
+        throw new Error("Invalid agent type");
+      }
+      const currentSettings = store.get("agentSettings");
+      const updatedSettings = {
+        ...currentSettings,
+        [agentType]: DEFAULT_AGENT_SETTINGS[agentType],
+      };
+      store.set("agentSettings", updatedSettings);
+      return updatedSettings;
+    } else {
+      // Reset all agent settings
+      store.set("agentSettings", DEFAULT_AGENT_SETTINGS);
+      return DEFAULT_AGENT_SETTINGS;
+    }
+  };
+  ipcMain.handle(CHANNELS.AGENT_SETTINGS_RESET, handleAgentSettingsReset);
+  handlers.push(() => ipcMain.removeHandler(CHANNELS.AGENT_SETTINGS_RESET));
+
+  return () => handlers.forEach((cleanup) => cleanup());
+}
