@@ -4,6 +4,10 @@
  * A compact chip representing a docked terminal in the TerminalDock.
  * Shows terminal title and agent state indicator.
  * Clicking opens a popover with an interactive terminal preview.
+ *
+ * Supports drag-and-drop:
+ * - Can be dragged to reorder within the dock
+ * - Can be dragged to the grid to restore
  */
 
 import { useState, useCallback } from "react";
@@ -14,9 +18,20 @@ import { cn } from "@/lib/utils";
 import { useTerminalStore, type TerminalInstance } from "@/store";
 import { XtermAdapter } from "@/components/Terminal/XtermAdapter";
 import type { AgentState, TerminalType } from "@/types";
+import { setTerminalDragData } from "@/utils/dragDrop";
 
 interface DockedTerminalItemProps {
   terminal: TerminalInstance;
+  /** Index of this item in the dock (for drag operations) */
+  index: number;
+  /** Whether this item is currently being dragged */
+  isDragging?: boolean;
+  /** Whether this item is a drop target */
+  isDropTarget?: boolean;
+  /** Called when drag starts */
+  onDragStart?: (id: string, index: number) => void;
+  /** Called when drag ends */
+  onDragEnd?: () => void;
 }
 
 /**
@@ -61,7 +76,14 @@ function getStateIndicator(state?: AgentState) {
   }
 }
 
-export function DockedTerminalItem({ terminal }: DockedTerminalItemProps) {
+export function DockedTerminalItem({
+  terminal,
+  index,
+  isDragging,
+  isDropTarget,
+  onDragStart,
+  onDragEnd,
+}: DockedTerminalItemProps) {
   const [isOpen, setIsOpen] = useState(false);
   const moveTerminalToGrid = useTerminalStore((s) => s.moveTerminalToGrid);
   const trashTerminal = useTerminalStore((s) => s.trashTerminal);
@@ -88,27 +110,63 @@ export function DockedTerminalItem({ terminal }: DockedTerminalItemProps) {
     setIsOpen(open);
   }, []);
 
+  const handleDragStart = useCallback(
+    (e: React.DragEvent) => {
+      // Don't start drag if popover is open
+      if (isOpen) {
+        e.preventDefault();
+        return;
+      }
+
+      setTerminalDragData(e.dataTransfer, {
+        terminalId: terminal.id,
+        sourceLocation: "dock",
+        sourceIndex: index,
+      });
+
+      onDragStart?.(terminal.id, index);
+    },
+    [terminal.id, index, isOpen, onDragStart]
+  );
+
+  const handleDragEnd = useCallback(() => {
+    onDragEnd?.();
+  }, [onDragEnd]);
+
   return (
-    <Popover open={isOpen} onOpenChange={handleOpenChange}>
-      <PopoverTrigger asChild>
-        <button
-          className={cn(
-            "flex items-center gap-2 px-3 py-1.5 rounded text-xs border transition-all",
-            "hover:bg-canopy-accent/10 border-canopy-border hover:border-canopy-accent/50",
-            isOpen && "bg-canopy-accent/20 border-canopy-accent"
-          )}
-          title={`${terminal.title} - Click to preview`}
-        >
-          {/* Terminal type icon */}
-          {getTerminalIcon(terminal.type)}
+    <div className="relative flex items-center">
+      {/* Drop indicator before this item */}
+      {isDropTarget && (
+        <div className="absolute -left-1.5 w-0.5 h-6 bg-canopy-accent rounded" />
+      )}
 
-          {/* Status indicator */}
-          {getStateIndicator(terminal.agentState)}
+      <Popover open={isOpen} onOpenChange={handleOpenChange}>
+        <PopoverTrigger asChild>
+          <button
+            data-docked-terminal-id={terminal.id}
+            className={cn(
+              "flex items-center gap-2 px-3 py-1.5 rounded text-xs border transition-all",
+              "hover:bg-canopy-accent/10 border-canopy-border hover:border-canopy-accent/50",
+              "cursor-grab active:cursor-grabbing",
+              isOpen && "bg-canopy-accent/20 border-canopy-accent",
+              isDragging && "opacity-50 ring-2 ring-canopy-accent"
+            )}
+            title={`${terminal.title} - Click to preview, drag to reorder`}
+            draggable={!isOpen}
+            onDragStart={handleDragStart}
+            onDragEnd={handleDragEnd}
+            aria-grabbed={isDragging}
+          >
+            {/* Terminal type icon */}
+            {getTerminalIcon(terminal.type)}
 
-          {/* Terminal title */}
-          <span className="truncate max-w-[120px] font-mono">{terminal.title}</span>
-        </button>
-      </PopoverTrigger>
+            {/* Status indicator */}
+            {getStateIndicator(terminal.agentState)}
+
+            {/* Terminal title */}
+            <span className="truncate max-w-[120px] font-mono">{terminal.title}</span>
+          </button>
+        </PopoverTrigger>
 
       <PopoverContent
         className="w-[700px] h-[500px] p-0 border-canopy-border bg-canopy-bg shadow-2xl"
@@ -152,6 +210,7 @@ export function DockedTerminalItem({ terminal }: DockedTerminalItemProps) {
           </div>
         </div>
       </PopoverContent>
-    </Popover>
+      </Popover>
+    </div>
   );
 }

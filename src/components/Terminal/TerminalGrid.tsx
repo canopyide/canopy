@@ -3,6 +3,7 @@ import { useShallow } from "zustand/react/shallow";
 import { cn } from "@/lib/utils";
 import { useTerminalStore, type TerminalInstance } from "@/store";
 import { useContextInjection } from "@/hooks/useContextInjection";
+import { useTerminalDragAndDrop } from "@/hooks/useDragAndDrop";
 import { TerminalPane } from "./TerminalPane";
 import { FilePickerModal } from "@/components/ContextInjection";
 import { Terminal } from "lucide-react";
@@ -140,12 +141,25 @@ export function TerminalGrid({ className, defaultCwd }: TerminalGridProps) {
   const setFocused = useTerminalStore((state) => state.setFocused);
   const toggleMaximize = useTerminalStore((state) => state.toggleMaximize);
   const moveTerminalToDock = useTerminalStore((state) => state.moveTerminalToDock);
+  const isInTrash = useTerminalStore((state) => state.isInTrash);
 
   // Filter to only show grid terminals (not docked or trashed ones)
   const gridTerminals = useMemo(
     () => terminals.filter((t) => t.location === "grid" || t.location === undefined),
     [terminals]
   );
+
+  // Drag and drop functionality
+  const {
+    dragState,
+    gridRef,
+    createDragStartHandler,
+    createDragOverHandler,
+    handleDrop,
+    handleDragEnd,
+    isDraggedTerminal,
+    getDropIndicator,
+  } = useTerminalDragAndDrop();
 
   // Use context injection hook for progress tracking
   const { inject, cancel, isInjecting, progress } = useContextInjection();
@@ -308,9 +322,17 @@ export function TerminalGrid({ className, defaultCwd }: TerminalGridProps) {
     );
   }
 
+  // Handle drag over for the grid
+  const handleGridDragOver = createDragOverHandler("grid");
+
   return (
     <div
-      className={cn("h-full bg-canopy-border", className)} // bg acts as divider lines
+      ref={gridRef}
+      className={cn(
+        "h-full bg-canopy-border", // bg acts as divider lines
+        dragState.isDragging && dragState.dropZone === "grid" && "ring-2 ring-canopy-accent/30 ring-inset",
+        className
+      )}
       style={{
         display: "grid",
         gridTemplateColumns: `repeat(${gridCols}, 1fr)`,
@@ -318,50 +340,76 @@ export function TerminalGrid({ className, defaultCwd }: TerminalGridProps) {
         gap: "1px", // 1px gap reveals bg-canopy-border underneath = clean dividers
         padding: "0", // No outer padding
       }}
+      role="grid"
+      aria-dropeffect={dragState.isDragging ? "move" : undefined}
+      onDragOver={handleGridDragOver}
+      onDrop={handleDrop}
+      onDragEnd={handleDragEnd}
+      onDragLeave={(e) => {
+        // Only clear if leaving the grid entirely
+        if (!e.currentTarget.contains(e.relatedTarget as Node)) {
+          handleDragEnd();
+        }
+      }}
     >
-      {gridTerminals.map((terminal: TerminalInstance) => (
-        <TerminalPane
-          key={terminal.id}
-          id={terminal.id}
-          title={terminal.title}
-          type={terminal.type}
-          worktreeId={terminal.worktreeId}
-          cwd={terminal.cwd}
-          isFocused={terminal.id === focusedId}
-          isMaximized={false}
-          isInjecting={isInjecting}
-          injectionProgress={progress}
-          agentState={terminal.agentState}
-          stateDebugInfo={
-            terminal.stateChangeTrigger
-              ? {
-                  trigger: terminal.stateChangeTrigger,
-                  confidence: terminal.stateChangeConfidence ?? 0,
-                }
-              : null
-          }
-          activity={
-            terminal.activityHeadline
-              ? {
-                  headline: terminal.activityHeadline,
-                  status: terminal.activityStatus ?? "working",
-                  type: terminal.activityType ?? "interactive",
-                }
-              : null
-          }
-          onFocus={() => setFocused(terminal.id)}
-          onClose={() => trashTerminal(terminal.id)}
-          onInjectContext={
-            terminal.worktreeId
-              ? () => handleInjectContext(terminal.id, terminal.worktreeId)
-              : undefined
-          }
-          onCancelInjection={cancel}
-          onToggleMaximize={() => toggleMaximize(terminal.id)}
-          onTitleChange={(newTitle) => updateTitle(terminal.id, newTitle)}
-          onMinimize={() => moveTerminalToDock(terminal.id)}
-        />
-      ))}
+      {gridTerminals.map((terminal: TerminalInstance, index: number) => {
+        const dropIndicator = getDropIndicator("grid", index);
+        const isDragging = isDraggedTerminal(terminal.id);
+        const isTerminalInTrash = isInTrash(terminal.id);
+
+        return (
+          <div
+            key={terminal.id}
+            className={cn(
+              "relative",
+              dropIndicator.showBefore && "ring-2 ring-canopy-accent ring-inset"
+            )}
+          >
+            <TerminalPane
+              id={terminal.id}
+              title={terminal.title}
+              type={terminal.type}
+              worktreeId={terminal.worktreeId}
+              cwd={terminal.cwd}
+              isFocused={terminal.id === focusedId}
+              isMaximized={false}
+              isInjecting={isInjecting}
+              injectionProgress={progress}
+              agentState={terminal.agentState}
+              stateDebugInfo={
+                terminal.stateChangeTrigger
+                  ? {
+                      trigger: terminal.stateChangeTrigger,
+                      confidence: terminal.stateChangeConfidence ?? 0,
+                    }
+                  : null
+              }
+              activity={
+                terminal.activityHeadline
+                  ? {
+                      headline: terminal.activityHeadline,
+                      status: terminal.activityStatus ?? "working",
+                      type: terminal.activityType ?? "interactive",
+                    }
+                  : null
+              }
+              onFocus={() => setFocused(terminal.id)}
+              onClose={() => trashTerminal(terminal.id)}
+              onInjectContext={
+                terminal.worktreeId
+                  ? () => handleInjectContext(terminal.id, terminal.worktreeId)
+                  : undefined
+              }
+              onCancelInjection={cancel}
+              onToggleMaximize={() => toggleMaximize(terminal.id)}
+              onTitleChange={(newTitle) => updateTitle(terminal.id, newTitle)}
+              onMinimize={() => moveTerminalToDock(terminal.id)}
+              isDragging={isDragging}
+              onDragStart={!isTerminalInTrash ? createDragStartHandler(terminal.id, "grid", index) : undefined}
+            />
+          </div>
+        );
+      })}
 
       {/* File Picker Modal */}
       {filePickerState.worktreeId && (

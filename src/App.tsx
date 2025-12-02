@@ -298,7 +298,7 @@ function SidebarContent({ onOpenSettings }: SidebarContentProps) {
 type AppView = "grid" | "welcome";
 
 function App() {
-  const { focusNext, focusPrevious, toggleMaximize, focusedId, addTerminal } = useTerminalStore();
+  const { focusNext, focusPrevious, toggleMaximize, focusedId, addTerminal, reorderTerminals, terminals } = useTerminalStore();
   const { launchAgent, availability, agentSettings, refreshSettings } = useAgentLauncher();
   const { activeWorktreeId, setActiveWorktree } = useWorktreeSelectionStore();
   const { inject, isInjecting } = useContextInjection();
@@ -530,6 +530,34 @@ function App() {
   useKeybinding("context.inject", () => handleInjectContextShortcut(), {
     enabled: electronAvailable,
   });
+
+  // Terminal reordering
+  useKeybinding(
+    "terminal.moveLeft",
+    () => {
+      if (!focusedId) return;
+      // Find grid terminals and current index
+      const gridTerminals = terminals.filter((t) => t.location === "grid" || t.location === undefined);
+      const currentIndex = gridTerminals.findIndex((t) => t.id === focusedId);
+      if (currentIndex > 0) {
+        reorderTerminals(currentIndex, currentIndex - 1, "grid");
+      }
+    },
+    { enabled: electronAvailable && !!focusedId }
+  );
+  useKeybinding(
+    "terminal.moveRight",
+    () => {
+      if (!focusedId) return;
+      // Find grid terminals and current index
+      const gridTerminals = terminals.filter((t) => t.location === "grid" || t.location === undefined);
+      const currentIndex = gridTerminals.findIndex((t) => t.id === focusedId);
+      if (currentIndex >= 0 && currentIndex < gridTerminals.length - 1) {
+        reorderTerminals(currentIndex, currentIndex + 1, "grid");
+      }
+    },
+    { enabled: electronAvailable && !!focusedId }
+  );
 
   // Panel toggles - now open/switch to tabs in diagnostics dock
   useKeybinding("panel.logs", () => openDiagnosticsDock("logs"), { enabled: electronAvailable });
