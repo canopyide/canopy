@@ -8,6 +8,7 @@
 import { useEffect, useCallback, useRef } from "react";
 import { Button } from "@/components/ui/button";
 import { cn } from "@/lib/utils";
+import { formatBytes } from "@/lib/formatBytes";
 import { useFileTree } from "@/hooks/useFileTree";
 import type { FileTreeNode } from "@shared/types";
 
@@ -329,10 +330,3 @@ function FileTreeNode({
 }
 
 // Utility to format bytes
-function formatBytes(bytes: number): string {
-  if (bytes === 0) return "0 B";
-  const k = 1024;
-  const sizes = ["B", "KB", "MB", "GB"];
-  const i = Math.floor(Math.log(bytes) / Math.log(k));
-  return `${parseFloat((bytes / Math.pow(k, i)).toFixed(1))} ${sizes[i]}`;
-}

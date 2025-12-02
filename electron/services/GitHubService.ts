@@ -14,6 +14,7 @@
 import { graphql, type GraphQlQueryResponseData } from "@octokit/graphql";
 import { simpleGit } from "simple-git";
 import { store } from "../store.js";
+import { Cache } from "../utils/cache.js";
 import type {
   GitHubIssue,
   GitHubPR,
@@ -78,58 +79,15 @@ export interface BatchPRCheckResult {
 }
 
 // ─────────────────────────────────────────────────────────────────────────────
-// Cache
-// ─────────────────────────────────────────────────────────────────────────────
-
-interface CacheEntry<T> {
-  value: T;
-  expiresAt: number;
-}
-
-class SimpleCache<T> {
-  private cache = new Map<string, CacheEntry<T>>();
-  private defaultTTL: number;
-
-  constructor(defaultTTL: number = 60000) {
-    this.defaultTTL = defaultTTL;
-  }
-
-  get(key: string): T | undefined {
-    const entry = this.cache.get(key);
-    if (!entry) return undefined;
-    if (Date.now() > entry.expiresAt) {
-      this.cache.delete(key);
-      return undefined;
-    }
-    return entry.value;
-  }
-
-  set(key: string, value: T, ttl?: number): void {
-    this.cache.set(key, {
-      value,
-      expiresAt: Date.now() + (ttl ?? this.defaultTTL),
-    });
-  }
-
-  clear(): void {
-    this.cache.clear();
-  }
-
-  delete(key: string): void {
-    this.cache.delete(key);
-  }
-}
-
-// ─────────────────────────────────────────────────────────────────────────────
 // GitHub Service
 // ─────────────────────────────────────────────────────────────────────────────
 
 // Cache instances
-const repoContextCache = new SimpleCache<RepoContext>(300000); // 5 minutes
-const repoStatsCache = new SimpleCache<RepoStats>(60000); // 1 minute
-const prCheckCache = new SimpleCache<PRCheckResult>(60000); // 1 minute
-const issueListCache = new SimpleCache<GitHubListResponse<GitHubIssue>>(60000); // 1 minute
-const prListCache = new SimpleCache<GitHubListResponse<GitHubPR>>(60000); // 1 minute
+const repoContextCache = new Cache<string, RepoContext>({ defaultTTL: 300000 }); // 5 minutes
+const repoStatsCache = new Cache<string, RepoStats>({ defaultTTL: 60000 }); // 1 minute
+const prCheckCache = new Cache<string, PRCheckResult>({ defaultTTL: 60000 }); // 1 minute
+const issueListCache = new Cache<string, GitHubListResponse<GitHubIssue>>({ defaultTTL: 60000 }); // 1 minute
+const prListCache = new Cache<string, GitHubListResponse<GitHubPR>>({ defaultTTL: 60000 }); // 1 minute
 
 /**
  * Get the GitHub token from storage.
