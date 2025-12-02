@@ -1,6 +1,15 @@
 import { useState, useCallback, useEffect, useRef } from "react";
 import { useShallow } from "zustand/react/shallow";
-import { Terminal, Command, X, Maximize2, Minimize2, Copy, ArrowDownToLine } from "lucide-react";
+import {
+  Terminal,
+  Command,
+  X,
+  Maximize2,
+  Minimize2,
+  Copy,
+  ArrowDownToLine,
+  Loader2,
+} from "lucide-react";
 import {
   ClaudeIcon,
   GeminiIcon,
@@ -281,6 +290,7 @@ export function TerminalPane({
   }, [id, isFocused, getTerminal]);
 
   const canDrag = !isMaximized && !!onDragStart;
+  const isWorking = agentState === "working";
 
   return (
     <div
@@ -323,15 +333,12 @@ export function TerminalPane({
       })()}
       aria-grabbed={isDragging || undefined}
     >
-      {/* Header - State-aware background coloring */}
+      {/* Header - Uniform background for all terminal types */}
       <div
         className={cn(
           "flex items-center justify-between px-3 h-7 shrink-0 font-mono text-xs transition-colors relative overflow-hidden",
-          // Base background
+          // Base background - uniform for all types
           isFocused ? "bg-[var(--color-surface-highlight)]" : "bg-[var(--color-surface)]",
-          // Agent state background overlays
-          agentState === "working" && "terminal-header-working",
-          agentState === "waiting" && "terminal-header-waiting",
           // Drag cursor styles
           canDrag && "cursor-grab active:cursor-grabbing"
         )}
@@ -340,13 +347,16 @@ export function TerminalPane({
         onDragStart={canDrag ? onDragStart : undefined}
       >
         <div className="flex items-center gap-2 min-w-0">
-          <span
-            className={cn(
-              "shrink-0 transition-colors",
-              isFocused ? "text-canopy-text" : "text-canopy-text/50"
+          <span className="shrink-0 flex items-center justify-center w-3.5 h-3.5 text-canopy-text">
+            {isWorking ? (
+              <Loader2
+                className="w-3.5 h-3.5 animate-spin"
+                style={{ color: getBrandColorHex(type) }}
+                aria-hidden="true"
+              />
+            ) : (
+              getTerminalIcon(type, { brandColor: getBrandColorHex(type) })
             )}
-          >
-            {getTerminalIcon(type, { brandColor: isFocused ? getBrandColorHex(type) : undefined })}
           </span>
 
           {isEditingTitle ? (
@@ -394,10 +404,11 @@ export function TerminalPane({
             </span>
           )}
 
-          {/* Show state badge for busy/completed/failed states */}
-          {agentState && agentState !== "idle" && agentState !== "waiting" && (
-            <StateBadge state={agentState} className="ml-2" />
-          )}
+          {/* Show state badge for completed/failed states (working state uses spinner instead) */}
+          {agentState &&
+            agentState !== "idle" &&
+            agentState !== "waiting" &&
+            agentState !== "working" && <StateBadge state={agentState} className="ml-2" />}
 
           {/* Show activity headline when available and not in terminal state */}
           {activity &&
