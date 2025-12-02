@@ -294,9 +294,7 @@ export function TerminalPane({
         "flex flex-col h-full rounded overflow-hidden border transition-all duration-200 group",
         "bg-[var(--color-surface)] shadow-md",
         // Subtle focus indicator - neutral glow
-        isFocused
-          ? "terminal-focused border-zinc-600"
-          : "border-zinc-800 hover:border-zinc-700",
+        isFocused ? "terminal-focused border-zinc-600" : "border-zinc-800 hover:border-zinc-700",
         isExited && "opacity-75 grayscale",
         isDragging && "opacity-50 ring-2 ring-canopy-accent"
       )}
