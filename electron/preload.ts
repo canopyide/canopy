@@ -208,6 +208,8 @@ const CHANNELS = {
   GITHUB_SET_TOKEN: "github:set-token",
   GITHUB_CLEAR_TOKEN: "github:clear-token",
   GITHUB_VALIDATE_TOKEN: "github:validate-token",
+  GITHUB_LIST_ISSUES: "github:list-issues",
+  GITHUB_LIST_PRS: "github:list-prs",
 
   // App state channels
   APP_GET_STATE: "app:get-state",
@@ -891,6 +893,20 @@ const api: ElectronAPI = {
 
     validateToken: (token: string): Promise<GitHubTokenValidation> =>
       ipcRenderer.invoke(CHANNELS.GITHUB_VALIDATE_TOKEN, token),
+
+    listIssues: (options: {
+      cwd: string;
+      search?: string;
+      state?: "open" | "closed" | "all";
+      cursor?: string;
+    }) => ipcRenderer.invoke(CHANNELS.GITHUB_LIST_ISSUES, options),
+
+    listPullRequests: (options: {
+      cwd: string;
+      search?: string;
+      state?: "open" | "closed" | "merged" | "all";
+      cursor?: string;
+    }) => ipcRenderer.invoke(CHANNELS.GITHUB_LIST_PRS, options),
 
     onPRDetected: (callback: (data: PRDetectedPayload) => void) => {
       const handler = (_event: Electron.IpcRendererEvent, data: PRDetectedPayload) =>
