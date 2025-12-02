@@ -366,8 +366,12 @@ export function TerminalPane({
       ref={containerRef}
       data-terminal-id={id}
       className={cn(
-        "flex flex-col h-full border border-canopy-border/50 group", // Tiling style - full border for all edges
-        isFocused ? "border-canopy-accent/20" : "border-canopy-border/30",
+        "flex flex-col h-full rounded overflow-hidden border transition-all duration-200 group",
+        "bg-[var(--color-surface)]",
+        // Subtle glow for focus, neutral borders
+        isFocused
+          ? "border-zinc-700 shadow-[0_0_8px_rgba(255,255,255,0.06)]"
+          : "border-zinc-800 hover:border-zinc-700",
         isExited && "opacity-75 grayscale",
         isDragging && "opacity-50 ring-2 ring-canopy-accent"
       )}
@@ -400,16 +404,12 @@ export function TerminalPane({
       })()}
       aria-grabbed={isDragging || undefined}
     >
-      {/* Header - Status bar style, draggable when allowed */}
+      {/* Header - Unified with terminal body (no border-b) */}
       <div
         className={cn(
           "flex items-center justify-between px-3 h-8 shrink-0 font-mono text-sm transition-colors",
-          // DESIGN CHANGE: Header logic
-          // Active: Tinted background (accent/10) + solid bottom border
-          // Inactive: Dark background + subtle bottom border
-          isFocused
-            ? "bg-canopy-accent/10 border-b border-canopy-accent/20"
-            : "bg-canopy-sidebar border-b border-canopy-border/30",
+          // Unified background that flows into terminal body
+          isFocused ? "bg-[var(--color-surface-highlight)]" : "bg-[var(--color-surface)]",
           // Drag cursor styles
           canDrag && "cursor-grab active:cursor-grabbing"
         )}
@@ -662,7 +662,7 @@ export function TerminalPane({
           terminalId={id}
           onReady={handleReady}
           onExit={handleExit}
-          className="absolute inset-0"
+          className="absolute inset-2"
           getRefreshTier={getRefreshTierCallback}
         />
         {/* Artifact Overlay */}

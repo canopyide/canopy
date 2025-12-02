@@ -329,7 +329,7 @@ export function TerminalGrid({ className, defaultCwd }: TerminalGridProps) {
     <div
       ref={gridRef}
       className={cn(
-        "h-full bg-[#141417]", // bg acts as divider lines
+        "h-full bg-[var(--color-grid-bg)] p-1", // Subtle dark background with minimal frame
         dragState.isDragging &&
           dragState.dropZone === "grid" &&
           "ring-2 ring-canopy-accent/30 ring-inset",
@@ -339,8 +339,7 @@ export function TerminalGrid({ className, defaultCwd }: TerminalGridProps) {
         display: "grid",
         gridTemplateColumns: `repeat(${gridCols}, 1fr)`,
         gridAutoRows: "1fr",
-        gap: "1px", // 1px gap reveals bg-black underneath = clean dividers
-        padding: "0", // No outer padding
+        gap: "4px", // Tight gutters
       }}
       role="grid"
       aria-dropeffect={dragState.isDragging ? "move" : undefined}

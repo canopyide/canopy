@@ -90,6 +90,13 @@
   --color-server-stopped: #52525b; /* Zinc-600: Server stopped/inactive */
   --color-server-starting: #fbbf24; /* Amber-400: Server starting up */
   --color-server-error: #f87171; /* Red-400: Server error state */
+
+  /* Grid background - darker than terminals but not stark black */
+  --color-grid-bg: #0e0e10;
+
+  /* Terminal surface background */
+  --color-surface: #18181b; /* Zinc-950 */
+  --color-surface-highlight: #27272a; /* Zinc-800 (for active headers) */
 }
 
 :root {
