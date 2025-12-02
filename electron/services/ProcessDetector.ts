@@ -192,6 +192,7 @@ export class ProcessDetector {
             }
           }
         } catch {
+          // ignore
         }
       }
 

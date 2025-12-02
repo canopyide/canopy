@@ -28,9 +28,9 @@ export async function getFileTree(basePath: string, dirPath: string = ""): Promi
         const ignored = await git.checkIgnore(pathsToCheck);
         ignored.forEach((p) => ignoredPaths.add(p));
       }
-    } catch (e) {
-    }
-
+      } catch (e) {
+        // ignore
+      }
     const nodes: FileTreeNode[] = [];
 
     for (const entry of entries) {

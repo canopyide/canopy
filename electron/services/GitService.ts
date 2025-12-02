@@ -221,6 +221,7 @@ export class GitService {
         return "FILE_TOO_LARGE";
       }
     } catch {
+      // ignore
     }
 
     if (status === "untracked" || status === "added") {

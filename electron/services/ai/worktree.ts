@@ -43,6 +43,7 @@ function parseSummaryJSON(text: string): string | null {
       );
     }
   } catch {
+    // ignore
   }
 
   const patterns = [
@@ -110,6 +111,7 @@ export async function generateWorktreeSummary(
           };
         }
       } catch {
+        // ignore
       }
 
       const branchLabel = branch || "worktree";
@@ -337,6 +339,7 @@ export async function generateWorktreeSummary(
           }
         }
       } catch {
+        // ignore
       }
     }
 

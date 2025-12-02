@@ -227,7 +227,9 @@ export class PtyPool {
         if (existsSync(shell)) {
           return shell;
         }
-      } catch {}
+      } catch {
+        // ignore
+      }
     }
 
     return "/bin/sh";

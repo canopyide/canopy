@@ -196,7 +196,9 @@ export class DevServerManager {
         console.warn("Force killing dev server", { worktreeId });
         try {
           proc.kill("SIGKILL");
-        } catch {}
+        } catch {
+          // ignore
+        }
       }, FORCE_KILL_TIMEOUT_MS);
 
       proc.finally(() => {
