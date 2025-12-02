@@ -205,6 +205,18 @@ export const EVENT_META: Record<keyof CanopyEventMap, EventMetadata> = {
     requiresTimestamp: true,
     description: "Agent state changed (idle, working, completed, etc.)",
   },
+  "agent:detected": {
+    category: "agent",
+    requiresContext: false,
+    requiresTimestamp: true,
+    description: "Agent CLI detected in terminal process tree",
+  },
+  "agent:exited": {
+    category: "agent",
+    requiresContext: false,
+    requiresTimestamp: true,
+    description: "Agent CLI exited from terminal",
+  },
   "agent:output": {
     category: "agent",
     requiresContext: true,
@@ -541,6 +553,25 @@ export type CanopyEventMap = {
   }>;
 
   /**
+   * Emitted when an agent CLI is detected running in a terminal.
+   */
+  "agent:detected": {
+    terminalId: string;
+    agentType: string;
+    processName: string;
+    timestamp: number;
+  };
+
+  /**
+   * Emitted when an agent CLI exits from a terminal.
+   */
+  "agent:exited": {
+    terminalId: string;
+    agentType: string;
+    timestamp: number;
+  };
+
+  /**
    * Emitted when an agent produces output.
    * Note: This is separate from terminal data and may be parsed/structured.
    * WARNING: The data field may contain sensitive information (API keys, secrets, etc.).
@@ -766,6 +797,8 @@ export const ALL_EVENT_TYPES: Array<keyof CanopyEventMap> = [
   "sys:pr:cleared",
   "agent:spawned",
   "agent:state-changed",
+  "agent:detected",
+  "agent:exited",
   "agent:output",
   "agent:completed",
   "agent:failed",

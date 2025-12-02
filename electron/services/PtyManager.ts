@@ -27,6 +27,8 @@ import {
   type AgentStateChangeTrigger,
 } from "../schemas/agent.js";
 import { type PtyPool } from "./PtyPool.js";
+import { ProcessDetector, type DetectionResult } from "./ProcessDetector.js";
+import type { TerminalType } from "../../shared/types/domain.js";
 
 export interface PtySpawnOptions {
   cwd: string;
@@ -91,6 +93,12 @@ interface TerminalInfo {
    * Separate from outputBuffer (char-based) to cleanly separate pattern detection from AI analysis.
    */
   semanticBuffer: string[];
+
+  // Agent process detection
+  /** Process detector for runtime agent CLI detection */
+  processDetector?: ProcessDetector;
+  /** Last detected agent type from process introspection */
+  detectedAgentType?: TerminalType;
 
   // Buffering mode fields for hidden/docked terminals
   /**
@@ -342,6 +350,67 @@ export class PtyManager extends EventEmitter {
           );
         }
       }
+    }
+  }
+
+  /**
+   * Handle agent detection results from ProcessDetector
+   * @param id - Terminal ID
+   * @param result - Detection result
+   * @private
+   */
+  private handleAgentDetection(id: string, result: DetectionResult): void {
+    const terminal = this.terminals.get(id);
+    if (!terminal) {
+      return;
+    }
+
+    if (result.detected && result.agentType) {
+      // Agent detected
+      const previousType = terminal.detectedAgentType;
+
+      // Only emit event if detection state changed
+      if (previousType !== result.agentType) {
+        terminal.detectedAgentType = result.agentType;
+
+        // Update terminal type to match detected agent
+        terminal.type = result.agentType;
+
+        // Update title if it's not custom
+        if (!terminal.title || terminal.title === previousType || terminal.title === "Shell") {
+          const agentNames: Record<TerminalType, string> = {
+            claude: "Claude",
+            gemini: "Gemini",
+            codex: "Codex",
+            shell: "Shell",
+            custom: "Custom",
+          };
+          terminal.title = agentNames[result.agentType];
+        }
+
+        // Emit agent:detected event
+        events.emit("agent:detected", {
+          terminalId: id,
+          agentType: result.agentType,
+          processName: result.processName || result.agentType,
+          timestamp: Date.now(),
+        });
+      }
+    } else if (!result.detected && terminal.detectedAgentType) {
+      // Agent exited
+      const previousType = terminal.detectedAgentType;
+      terminal.detectedAgentType = undefined;
+
+      // Revert to shell type
+      terminal.type = "shell";
+      terminal.title = "Shell";
+
+      // Emit agent:exited event
+      events.emit("agent:exited", {
+        terminalId: id,
+        agentType: previousType,
+        timestamp: Date.now(),
+      });
     }
   }
 
@@ -610,6 +679,12 @@ export class PtyManager extends EventEmitter {
         this.trashTimeouts.delete(id);
       }
 
+      // Stop process detector before exit to prevent memory leaks
+      if (terminal.processDetector) {
+        terminal.processDetector.stop();
+        terminal.processDetector = undefined;
+      }
+
       // Flush any buffered output before exit to avoid data loss
       if (terminal.bufferingMode && terminal.outputQueue.length > 0) {
         this.flushBuffer(id);
@@ -652,7 +727,7 @@ export class PtyManager extends EventEmitter {
       this.terminals.delete(id);
     });
 
-    this.terminals.set(id, {
+    const terminal: TerminalInfo = {
       id,
       ptyProcess,
       cwd: options.cwd,
@@ -677,7 +752,20 @@ export class PtyManager extends EventEmitter {
       queuedBytes: 0,
       maxQueueSize: DEFAULT_MAX_QUEUE_SIZE,
       maxQueueBytes: DEFAULT_MAX_QUEUE_BYTES,
-    });
+    };
+
+    this.terminals.set(id, terminal);
+
+    // Start process detection for all terminals (including shell terminals)
+    // This allows detection of agents launched from within shell sessions
+    const ptyPid = ptyProcess.pid;
+    if (ptyPid !== undefined) {
+      const detector = new ProcessDetector(id, ptyPid, (result: DetectionResult) => {
+        this.handleAgentDetection(id, result);
+      });
+      terminal.processDetector = detector;
+      detector.start();
+    }
 
     // Emit agent:spawned event for agent terminals (Claude, Gemini)
     if (isAgentTerminal && agentId && options.type) {
@@ -857,6 +945,12 @@ export class PtyManager extends EventEmitter {
 
     const terminal = this.terminals.get(id);
     if (terminal) {
+      // Stop process detector
+      if (terminal.processDetector) {
+        terminal.processDetector.stop();
+        terminal.processDetector = undefined;
+      }
+
       // Flush any buffered output before killing to avoid data loss
       if (terminal.bufferingMode && terminal.outputQueue.length > 0) {
         this.flushBuffer(id);
