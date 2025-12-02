@@ -220,3 +220,16 @@ export type {
   GitHubListOptions,
   GitHubListResponse,
 } from "./github.js";
+
+// Pty Host types - IPC protocol for terminal management
+export type {
+  PtyHostSpawnOptions,
+  PtyHostRequest,
+  PtyHostEvent,
+  PtyHostTerminalSnapshot,
+  AgentSpawnedPayload,
+  AgentOutputPayload,
+  AgentCompletedPayload,
+  AgentFailedPayload,
+  AgentKilledPayload,
+} from "./pty-host.js";

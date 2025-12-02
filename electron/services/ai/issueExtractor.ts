@@ -1,10 +1,4 @@
-const ISSUE_PATTERNS = [
-  /issue-(\d+)/i,
-  /issues?\/(\d+)/i,
-  /#(\d+)/,
-  /gh-(\d+)/i,
-  /jira-(\d+)/i,
-];
+const ISSUE_PATTERNS = [/issue-(\d+)/i, /issues?\/(\d+)/i, /#(\d+)/, /gh-(\d+)/i, /jira-(\d+)/i];
 
 const issueCache = new Map<string, number | null>();
 
