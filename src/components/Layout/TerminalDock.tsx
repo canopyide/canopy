@@ -14,11 +14,10 @@
 
 import { useState, useCallback, useRef } from "react";
 import { useShallow } from "zustand/react/shallow";
-import { Trash2 } from "lucide-react";
 import { cn } from "@/lib/utils";
 import { useTerminalStore } from "@/store";
 import { DockedTerminalItem } from "./DockedTerminalItem";
-import { TrashedTerminalItem } from "./TrashedTerminalItem";
+import { TrashContainer } from "./TrashContainer";
 import {
   getTerminalDragData,
   isTerminalDrag,
@@ -187,19 +186,8 @@ export function TerminalDock() {
         <div className="w-px h-5 bg-canopy-border mx-2 shrink-0" />
       )}
 
-      {/* Trashed terminals section */}
-      {trashedItems.length > 0 && (
-        <>
-          <span className="text-xs text-red-400/80 mr-2 shrink-0 flex items-center gap-1">
-            <Trash2 className="w-3 h-3" />
-            Trash ({trashedItems.length})
-          </span>
-
-          {trashedItems.map(({ terminal, trashedInfo }) => (
-            <TrashedTerminalItem key={terminal.id} terminal={terminal} trashedInfo={trashedInfo} />
-          ))}
-        </>
-      )}
+      {/* Consolidated trash container */}
+      <TrashContainer trashedTerminals={trashedItems} />
     </div>
   );
 }
