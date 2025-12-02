@@ -128,7 +128,8 @@ export function AgentSettings({ onSettingsChange }: AgentSettingsProps) {
               className="w-full bg-canopy-bg border border-canopy-border rounded-md px-3 py-2 text-sm text-canopy-text placeholder:text-gray-500 focus:outline-none focus:ring-1 focus:ring-canopy-accent"
             />
             <p className="text-xs text-gray-500">
-              Opus 4.5 recommended for long-horizon autonomous tasks. Leave empty to use Claude CLI default.
+              Opus 4.5 recommended for long-horizon autonomous tasks. Leave empty to use Claude CLI
+              default.
             </p>
           </div>
 
@@ -461,7 +462,8 @@ export function AgentSettings({ onSettingsChange }: AgentSettingsProps) {
               className="w-full bg-canopy-bg border border-canopy-border rounded-md px-3 py-2 text-sm text-canopy-text placeholder:text-gray-500 focus:outline-none focus:ring-1 focus:ring-canopy-accent"
             />
             <p className="text-xs text-gray-500">
-              Tip: Set effort to 'xhigh' for complex architecture decisions. Leave empty to use Codex CLI default.
+              Tip: Set effort to 'xhigh' for complex architecture decisions. Leave empty to use
+              Codex CLI default.
             </p>
           </div>
 

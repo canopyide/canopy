@@ -25,14 +25,7 @@ interface LauncherCardProps {
   primary?: boolean;
 }
 
-function LauncherCard({
-  title,
-  description,
-  shortcut,
-  icon,
-  onClick,
-  primary,
-}: LauncherCardProps) {
+function LauncherCard({ title, description, shortcut, icon, onClick, primary }: LauncherCardProps) {
   return (
     <button
       onClick={onClick}
@@ -49,7 +42,9 @@ function LauncherCard({
       </div>
 
       <div className="flex-1">
-        <div className="flex w-full items-center justify-between mb-1"> {/* mb-1 to reduce vertical space */}
+        <div className="flex w-full items-center justify-between mb-1">
+          {" "}
+          {/* mb-1 to reduce vertical space */}
           <h4
             className={cn(
               "font-medium text-base", // Increased font size for title
@@ -123,8 +118,6 @@ function EmptyState({
             onClick={() => onLaunchAgent("shell")}
           />
         </div>
-
-
       </div>
     </div>
   );
@@ -242,10 +235,7 @@ export function TerminalGrid({ className, defaultCwd }: TerminalGridProps) {
           const dims = terminalInstanceService.fit(id);
           if (dims) {
             terminalClient.resize(id, dims.cols, dims.rows);
-            terminalInstanceService.applyRendererPolicy(
-              id,
-              TerminalRefreshTier.VISIBLE
-            );
+            terminalInstanceService.applyRendererPolicy(id, TerminalRefreshTier.VISIBLE);
           }
         }
         requestAnimationFrame(processNext);
@@ -313,9 +303,7 @@ export function TerminalGrid({ className, defaultCwd }: TerminalGridProps) {
   if (gridTerminals.length === 0) {
     return (
       <div className={cn("h-full", className)}>
-        <EmptyState
-          onLaunchAgent={handleLaunchAgent}
-        />
+        <EmptyState onLaunchAgent={handleLaunchAgent} />
       </div>
     );
   }

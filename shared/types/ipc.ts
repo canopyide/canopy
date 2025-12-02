@@ -334,6 +334,28 @@ export interface GitHubCliStatus {
   error?: string;
 }
 
+/** GitHub token configuration status */
+export interface GitHubTokenConfig {
+  /** Whether a token is configured */
+  hasToken: boolean;
+  /** Token scopes (only available after validation) */
+  scopes?: string[];
+  /** GitHub username (only available after validation) */
+  username?: string;
+}
+
+/** GitHub token validation result */
+export interface GitHubTokenValidation {
+  /** Whether the token is valid */
+  valid: boolean;
+  /** Token scopes */
+  scopes: string[];
+  /** GitHub username */
+  username?: string;
+  /** Error message if validation failed */
+  error?: string;
+}
+
 // ============================================================================
 // App State IPC Types
 // ============================================================================
@@ -1229,6 +1251,22 @@ export interface IpcInvokeMap {
     args: [];
     result: GitHubCliStatus;
   };
+  "github:get-config": {
+    args: [];
+    result: GitHubTokenConfig;
+  };
+  "github:set-token": {
+    args: [token: string];
+    result: GitHubTokenValidation;
+  };
+  "github:clear-token": {
+    args: [];
+    result: void;
+  };
+  "github:validate-token": {
+    args: [token: string];
+    result: GitHubTokenValidation;
+  };
 
   // ============================================
   // Run orchestration channels
@@ -1586,6 +1624,10 @@ export interface ElectronAPI {
     openIssue(cwd: string, issueNumber: number): Promise<void>;
     openPR(prUrl: string): Promise<void>;
     checkCli(): Promise<GitHubCliStatus>;
+    getConfig(): Promise<GitHubTokenConfig>;
+    setToken(token: string): Promise<GitHubTokenValidation>;
+    clearToken(): Promise<void>;
+    validateToken(token: string): Promise<GitHubTokenValidation>;
     onPRDetected(callback: (data: PRDetectedPayload) => void): () => void;
     onPRCleared(callback: (data: PRClearedPayload) => void): () => void;
   };

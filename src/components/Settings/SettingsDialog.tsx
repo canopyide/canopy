@@ -24,10 +24,12 @@ import {
   Bug,
   ChevronDown,
   ChevronRight,
+  Github,
+  ExternalLink,
 } from "lucide-react";
 import { cn } from "@/lib/utils";
-import type { AIServiceState } from "@/types";
-import { appClient, aiClient, logsClient } from "@/clients";
+import type { AIServiceState, GitHubTokenConfig } from "@/types";
+import { appClient, aiClient, logsClient, githubClient } from "@/clients";
 import { AgentSettings } from "./AgentSettings";
 import { getStateDebugEnabled, toggleStateDebug } from "@/components/Terminal";
 
@@ -37,7 +39,7 @@ interface SettingsDialogProps {
   defaultTab?: SettingsTab;
 }
 
-type SettingsTab = "general" | "agents" | "ai" | "troubleshooting";
+type SettingsTab = "general" | "agents" | "ai" | "github" | "troubleshooting";
 
 // Keyboard shortcuts organized by category
 const KEYBOARD_SHORTCUTS = [
@@ -118,6 +120,16 @@ export function SettingsDialog({ isOpen, onClose, defaultTab }: SettingsDialogPr
   >(null);
   const [selectedModel, setSelectedModel] = useState("gpt-5-nano");
 
+  // GitHub settings state
+  const [githubConfig, setGithubConfig] = useState<GitHubTokenConfig | null>(null);
+  const [githubToken, setGithubToken] = useState("");
+  const [isGithubValidating, setIsGithubValidating] = useState(false);
+  const [isGithubTesting, setIsGithubTesting] = useState(false);
+  const [githubValidationResult, setGithubValidationResult] = useState<
+    "success" | "error" | "test-success" | "test-error" | null
+  >(null);
+  const [githubErrorMessage, setGithubErrorMessage] = useState<string | null>(null);
+
   // State debug info toggle
   const [showStateDebug, setShowStateDebug] = useState(() => getStateDebugEnabled());
 
@@ -172,12 +184,29 @@ export function SettingsDialog({ isOpen, onClose, defaultTab }: SettingsDialogPr
     }
   }, [isOpen]);
 
+  // Load GitHub config on mount
+  useEffect(() => {
+    if (isOpen) {
+      githubClient.getConfig().then(setGithubConfig);
+    }
+  }, [isOpen]);
+
   // Clear validation result after 3 seconds
   useEffect(() => {
     if (!validationResult) return;
     const timer = setTimeout(() => setValidationResult(null), 3000);
     return () => clearTimeout(timer);
   }, [validationResult]);
+
+  // Clear GitHub validation result after 3 seconds
+  useEffect(() => {
+    if (!githubValidationResult) return;
+    const timer = setTimeout(() => {
+      setGithubValidationResult(null);
+      setGithubErrorMessage(null);
+    }, 5000);
+    return () => clearTimeout(timer);
+  }, [githubValidationResult]);
 
   const handleClearLogs = async () => {
     clearLogs();
@@ -244,6 +273,69 @@ export function SettingsDialog({ isOpen, onClose, defaultTab }: SettingsDialogPr
     setAiConfig(config);
   };
 
+  // GitHub token handlers
+  const handleGitHubSaveToken = async () => {
+    if (!githubToken.trim()) return;
+
+    setIsGithubValidating(true);
+    setGithubValidationResult(null);
+    setGithubErrorMessage(null);
+
+    try {
+      const result = await githubClient.setToken(githubToken.trim());
+      if (result.valid) {
+        setGithubToken(""); // Clear input for security
+        setGithubValidationResult("success");
+        // Refresh config
+        const config = await githubClient.getConfig();
+        setGithubConfig(config);
+      } else {
+        setGithubValidationResult("error");
+        setGithubErrorMessage(result.error || "Invalid token");
+      }
+    } catch {
+      setGithubValidationResult("error");
+      setGithubErrorMessage("Failed to save token");
+    } finally {
+      setIsGithubValidating(false);
+    }
+  };
+
+  const handleGitHubClearToken = async () => {
+    await githubClient.clearToken();
+    const config = await githubClient.getConfig();
+    setGithubConfig(config);
+    setGithubValidationResult(null);
+    setGithubErrorMessage(null);
+  };
+
+  const handleGitHubTestToken = async () => {
+    if (!githubToken.trim()) return;
+
+    setIsGithubTesting(true);
+    setGithubValidationResult(null);
+    setGithubErrorMessage(null);
+
+    try {
+      const result = await githubClient.validateToken(githubToken.trim());
+      setGithubValidationResult(result.valid ? "test-success" : "test-error");
+      if (!result.valid) {
+        setGithubErrorMessage(result.error || "Invalid token");
+      }
+    } catch {
+      setGithubValidationResult("test-error");
+      setGithubErrorMessage("Failed to validate token");
+    } finally {
+      setIsGithubTesting(false);
+    }
+  };
+
+  const openGitHubTokenPage = () => {
+    window.electron.system.openExternal(
+      "https://github.com/settings/tokens/new?scopes=repo,read:org&description=Canopy%20Command%20Center"
+    );
+  };
+
   if (!isOpen) return null;
 
   return (
@@ -299,6 +391,18 @@ export function SettingsDialog({ isOpen, onClose, defaultTab }: SettingsDialogPr
             AI Features
           </button>
           <button
+            onClick={() => setActiveTab("github")}
+            className={cn(
+              "text-left px-3 py-2 rounded-md text-sm transition-colors flex items-center gap-2",
+              activeTab === "github"
+                ? "bg-canopy-accent/10 text-canopy-accent"
+                : "text-gray-400 hover:bg-canopy-border hover:text-canopy-text"
+            )}
+          >
+            <Github className="w-4 h-4" />
+            GitHub
+          </button>
+          <button
             onClick={() => setActiveTab("troubleshooting")}
             className={cn(
               "text-left px-3 py-2 rounded-md text-sm transition-colors",
@@ -319,7 +423,9 @@ export function SettingsDialog({ isOpen, onClose, defaultTab }: SettingsDialogPr
                 ? "AI Features"
                 : activeTab === "agents"
                   ? "Agent Settings"
-                  : activeTab}
+                  : activeTab === "github"
+                    ? "GitHub Integration"
+                    : activeTab}
             </h3>
             <button
               onClick={onClose}
@@ -606,6 +712,136 @@ export function SettingsDialog({ isOpen, onClose, defaultTab }: SettingsDialogPr
                       </div>
                     </div>
                   )}
+                </div>
+              </div>
+            )}
+
+            {activeTab === "github" && (
+              <div className="space-y-6">
+                {/* Token Section */}
+                <div className="space-y-3">
+                  <div className="flex items-center justify-between">
+                    <h4 className="text-sm font-medium text-canopy-text flex items-center gap-2">
+                      <Key className="w-4 h-4" />
+                      Personal Access Token
+                    </h4>
+                    {githubConfig?.hasToken && (
+                      <span className="text-xs text-[var(--color-status-success)] flex items-center gap-1">
+                        <Check className="w-3 h-3" />
+                        Token configured
+                      </span>
+                    )}
+                  </div>
+
+                  <div className="flex gap-2">
+                    <input
+                      type="password"
+                      value={githubToken}
+                      onChange={(e) => setGithubToken(e.target.value)}
+                      placeholder={
+                        githubConfig?.hasToken
+                          ? "Enter new token to replace"
+                          : "ghp_... or github_pat_..."
+                      }
+                      className="flex-1 bg-canopy-bg border border-canopy-border rounded-md px-3 py-2 text-sm text-canopy-text placeholder:text-gray-500 focus:outline-none focus:ring-1 focus:ring-canopy-accent"
+                      disabled={isGithubValidating || isGithubTesting}
+                    />
+                    <Button
+                      onClick={handleGitHubTestToken}
+                      disabled={isGithubTesting || isGithubValidating || !githubToken.trim()}
+                      variant="outline"
+                      size="sm"
+                      className="min-w-[70px] text-canopy-text border-canopy-border hover:bg-canopy-border"
+                    >
+                      {isGithubTesting ? (
+                        <Loader2 className="w-4 h-4 animate-spin" />
+                      ) : (
+                        <>
+                          <FlaskConical className="w-4 h-4 mr-1" />
+                          Test
+                        </>
+                      )}
+                    </Button>
+                    <Button
+                      onClick={handleGitHubSaveToken}
+                      disabled={isGithubValidating || isGithubTesting || !githubToken.trim()}
+                      size="sm"
+                      className="min-w-[70px]"
+                    >
+                      {isGithubValidating ? <Loader2 className="w-4 h-4 animate-spin" /> : "Save"}
+                    </Button>
+                    {githubConfig?.hasToken && (
+                      <Button
+                        onClick={handleGitHubClearToken}
+                        variant="outline"
+                        size="sm"
+                        className="text-[var(--color-status-error)] border-canopy-border hover:bg-red-900/20 hover:text-red-300 hover:border-red-900/30"
+                      >
+                        Clear
+                      </Button>
+                    )}
+                  </div>
+
+                  {githubValidationResult === "success" && (
+                    <p className="text-xs text-[var(--color-status-success)] flex items-center gap-1">
+                      <Check className="w-3 h-3" />
+                      Token validated and saved successfully
+                    </p>
+                  )}
+                  {githubValidationResult === "test-success" && (
+                    <p className="text-xs text-[var(--color-status-success)] flex items-center gap-1">
+                      <Check className="w-3 h-3" />
+                      Token is valid! Click Save to store it.
+                    </p>
+                  )}
+                  {githubValidationResult === "error" && (
+                    <p className="text-xs text-[var(--color-status-error)] flex items-center gap-1">
+                      <AlertCircle className="w-3 h-3" />
+                      {githubErrorMessage || "Invalid token. Please check and try again."}
+                    </p>
+                  )}
+                  {githubValidationResult === "test-error" && (
+                    <p className="text-xs text-[var(--color-status-error)] flex items-center gap-1">
+                      <AlertCircle className="w-3 h-3" />
+                      {githubErrorMessage || "Token test failed. Please check your token."}
+                    </p>
+                  )}
+
+                  <p className="text-xs text-gray-500">
+                    Used for repository statistics, issue/PR detection, and linking worktrees to
+                    GitHub. Eliminates the need for the gh CLI.
+                  </p>
+                </div>
+
+                {/* Create Token Section */}
+                <div className="space-y-3 border border-canopy-border rounded-md p-4">
+                  <h4 className="text-sm font-medium text-canopy-text">Create a New Token</h4>
+                  <p className="text-xs text-gray-400">
+                    To create a personal access token with the required scopes (repo, read:org),
+                    click the button below. This will open GitHub in your browser.
+                  </p>
+                  <Button
+                    onClick={openGitHubTokenPage}
+                    variant="outline"
+                    size="sm"
+                    className="text-canopy-text border-canopy-border hover:bg-canopy-border"
+                  >
+                    <ExternalLink className="w-4 h-4 mr-2" />
+                    Create Token on GitHub
+                  </Button>
+                  <div className="mt-2 space-y-1">
+                    <p className="text-xs text-gray-500">Required scopes:</p>
+                    <ul className="text-xs text-gray-500 list-disc list-inside">
+                      <li>
+                        <code className="text-canopy-text bg-canopy-bg px-1 rounded">repo</code> -
+                        Access repository data
+                      </li>
+                      <li>
+                        <code className="text-canopy-text bg-canopy-bg px-1 rounded">read:org</code>{" "}
+                        - Read organization membership (for private repos)
+                      </li>
+                    </ul>
+                  </div>
                 </div>
               </div>
             )}

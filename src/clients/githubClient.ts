@@ -8,6 +8,8 @@
 import type {
   RepositoryStats,
   GitHubCliStatus,
+  GitHubTokenConfig,
+  GitHubTokenValidation,
   PRDetectedPayload,
   PRClearedPayload,
 } from "../types";
@@ -52,6 +54,26 @@ export const githubClient = {
   /** Check if GitHub CLI is available and authenticated */
   checkCli: (): Promise<GitHubCliStatus> => {
     return window.electron.github.checkCli();
+  },
+
+  /** Get GitHub token configuration status */
+  getConfig: (): Promise<GitHubTokenConfig> => {
+    return window.electron.github.getConfig();
+  },
+
+  /** Set and validate a GitHub personal access token */
+  setToken: (token: string): Promise<GitHubTokenValidation> => {
+    return window.electron.github.setToken(token);
+  },
+
+  /** Clear the saved GitHub token */
+  clearToken: (): Promise<void> => {
+    return window.electron.github.clearToken();
+  },
+
+  /** Validate a GitHub token without saving it */
+  validateToken: (token: string): Promise<GitHubTokenValidation> => {
+    return window.electron.github.validateToken(token);
   },
 
   /** Subscribe to PR detected events */
