@@ -1,23 +1,23 @@
 /**
  * TrashContainer Component
  *
- * A consolidated container for trashed terminals in the dock.
- * Shows a collapsed "Trash (N)" indicator that can be expanded to show
- * individual trashed terminals with restore/delete actions.
+ * A right-aligned popover showing trashed terminals sorted by expiration time.
+ * Opens above the dock with a clean list interface for restore/delete actions.
  *
  * Features:
- * - Collapsed by default, showing count of trashed terminals
- * - Click to expand and show list of trashed terminals
- * - Auto-collapses when trash becomes empty
- * - More subtle visual design than individual trash items
+ * - Popover-based interface (replaces inline expansion)
+ * - Sorted by expiration time (soonest to delete first)
+ * - Red theme for destructive action semantics
+ * - Reuses TrashBinItem for consistent list item display
  */
 
-import { useState, useEffect } from "react";
-import { ChevronDown, Trash2 } from "lucide-react";
+import { useState } from "react";
+import { Trash2 } from "lucide-react";
+import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover";
 import { cn } from "@/lib/utils";
 import type { TerminalInstance } from "@/store";
 import type { TrashedTerminal } from "@/store/slices";
-import { TrashedTerminalItem } from "./TrashedTerminalItem";
+import { TrashBinItem } from "./TrashBinItem";
 
 interface TrashContainerProps {
   trashedTerminals: Array<{
@@ -27,53 +27,63 @@ interface TrashContainerProps {
 }
 
 export function TrashContainer({ trashedTerminals }: TrashContainerProps) {
-  const [isExpanded, setIsExpanded] = useState(false);
-
-  // Auto-collapse when trash becomes empty
-  useEffect(() => {
-    if (trashedTerminals.length === 0) {
-      setIsExpanded(false);
-    }
-  }, [trashedTerminals.length]);
+  const [isOpen, setIsOpen] = useState(false);
 
   // Don't render if no trashed terminals
   if (trashedTerminals.length === 0) return null;
 
-  return (
-    <div className="flex flex-col shrink-0">
-      {/* Collapsed view - always visible when there are items */}
-      <button
-        onClick={() => setIsExpanded(!isExpanded)}
-        className={cn(
-          "flex items-center gap-1.5 px-2.5 py-1.5 rounded text-xs transition-all",
-          "hover:bg-orange-500/10 text-orange-400/80 hover:text-orange-400",
-          isExpanded && "bg-orange-500/10"
-        )}
-        aria-expanded={isExpanded}
-        aria-controls="trash-list"
-        aria-label={`Trash: ${trashedTerminals.length} terminal${trashedTerminals.length === 1 ? "" : "s"}. Click to ${isExpanded ? "collapse" : "expand"}`}
-      >
-        <Trash2 className="w-3 h-3" aria-hidden="true" />
-        <span className="font-mono tabular-nums">Trash ({trashedTerminals.length})</span>
-        <ChevronDown
-          className={cn("w-3 h-3 transition-transform duration-200", isExpanded && "rotate-180")}
-          aria-hidden="true"
-        />
-      </button>
+  // Sort by expiration time (soonest to expire first)
+  const sortedItems = [...trashedTerminals].sort(
+    (a, b) => a.trashedInfo.expiresAt - b.trashedInfo.expiresAt
+  );
 
-      {/* Expanded view - shows individual trashed terminals */}
-      {isExpanded && (
-        <div id="trash-list" className="flex items-center gap-1.5 mt-1.5 pl-1" role="list">
-          {trashedTerminals.map(({ terminal, trashedInfo }) => (
-            <TrashedTerminalItem
-              key={terminal.id}
-              terminal={terminal}
-              trashedInfo={trashedInfo}
-              compact
-            />
-          ))}
+  const count = trashedTerminals.length;
+  const contentId = "trash-container-popover";
+
+  return (
+    <Popover open={isOpen} onOpenChange={setIsOpen}>
+      <PopoverTrigger asChild>
+        <button
+          className={cn(
+            "flex items-center gap-2 px-3 py-1.5 rounded text-xs border transition-all",
+            "bg-red-500/10 border-red-500/30 text-red-200 hover:bg-red-500/20 hover:border-red-500/50",
+            isOpen && "bg-red-500/20 border-red-500/50 ring-1 ring-red-500/30"
+          )}
+          title="View recently closed terminals"
+          aria-haspopup="dialog"
+          aria-expanded={isOpen}
+          aria-controls={contentId}
+          aria-label={`Trash: ${count} terminal${count === 1 ? "" : "s"}`}
+        >
+          <Trash2 className="w-3.5 h-3.5" aria-hidden="true" />
+          <span className="font-medium">Trash ({count})</span>
+        </button>
+      </PopoverTrigger>
+
+      <PopoverContent
+        id={contentId}
+        role="dialog"
+        aria-label="Recently closed terminals"
+        className="w-80 p-0 border-red-500/30 bg-[#1a1a1a] shadow-2xl"
+        side="top"
+        align="end"
+        sideOffset={8}
+      >
+        <div className="flex flex-col">
+          {/* Header */}
+          <div className="px-3 py-2 border-b border-white/10 bg-red-500/5 flex justify-between items-center">
+            <span className="text-xs font-medium text-red-200">Recently Closed</span>
+            <span className="text-[10px] text-white/40">Auto-clears automatically</span>
+          </div>
+
+          {/* List */}
+          <div className="p-2 flex flex-col gap-1 max-h-[300px] overflow-y-auto">
+            {sortedItems.map(({ terminal, trashedInfo }) => (
+              <TrashBinItem key={terminal.id} terminal={terminal} trashedInfo={trashedInfo} />
+            ))}
+          </div>
         </div>
-      )}
-    </div>
+      </PopoverContent>
+    </Popover>
   );
 }
