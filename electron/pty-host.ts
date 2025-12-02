@@ -8,7 +8,7 @@
  * Performance target: Offload CPU-intensive regex/AI state detection from Main thread.
  */
 
-import { parentPort, MessagePort } from "node:worker_threads";
+import { MessagePort } from "node:worker_threads";
 import os from "node:os";
 import { PtyManager } from "./services/PtyManager.js";
 import { TerminalObserver } from "./services/TerminalObserver.js";
@@ -16,17 +16,31 @@ import { PtyPool, getPtyPool } from "./services/PtyPool.js";
 import { events } from "./services/events.js";
 import type { AgentEvent } from "./services/AgentStateMachine.js";
 import type {
-  PtyHostRequest,
   PtyHostEvent,
   PtyHostTerminalSnapshot,
 } from "../shared/types/pty-host.js";
 
 // Validate we're running in UtilityProcess context
-if (!parentPort) {
+if (!process.parentPort) {
   throw new Error("[PtyHost] Must run in UtilityProcess context");
 }
 
-const port = parentPort as MessagePort;
+const port = process.parentPort as unknown as MessagePort;
+
+// Global error handlers to prevent silent crashes
+process.on("uncaughtException", (err) => {
+  console.error("[PtyHost] Uncaught Exception:", err);
+  sendEvent({ type: "error", id: "system", error: err.message });
+});
+
+process.on("unhandledRejection", (reason) => {
+  console.error("[PtyHost] Unhandled Rejection:", reason);
+  sendEvent({
+    type: "error",
+    id: "system",
+    error: String(reason instanceof Error ? reason.message : reason),
+  });
+});
 
 // Initialize services
 const ptyManager = new PtyManager();
@@ -195,7 +209,10 @@ function toHostSnapshot(id: string): PtyHostTerminalSnapshot | null {
 }
 
 // Handle requests from Main
-port.on("message", (msg: PtyHostRequest) => {
+port.on("message", (rawMsg: any) => {
+  // Electron/Node might wrap the message in { data: ..., ports: [] }
+  const msg = rawMsg?.data ? rawMsg.data : rawMsg;
+
   try {
     switch (msg.type) {
       case "spawn":
