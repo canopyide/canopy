@@ -144,7 +144,7 @@ export function useTerminalDragAndDrop(
         dropIndex,
       }));
     },
-    [dragState.sourceLocation, dragState.sourceIndex]
+    [dragState.sourceLocation, dragState.sourceIndex, dragState.dropZone]
   );
 
   const handleDrop = useCallback(

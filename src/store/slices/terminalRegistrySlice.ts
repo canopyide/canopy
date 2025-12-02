@@ -498,15 +498,16 @@ export const createTerminalRegistrySlice =
         reorderedInLocation.splice(fromIndex, 1);
         reorderedInLocation.splice(toIndex, 0, terminalToMove);
 
+        const trashedTerminals = state.terminals.filter((t) => t.location === "trash");
         let newTerminals: TerminalInstance[];
         if (location === "grid") {
           const dockTerminals = state.terminals.filter((t) => t.location === "dock");
-          newTerminals = [...reorderedInLocation, ...dockTerminals];
+          newTerminals = [...reorderedInLocation, ...dockTerminals, ...trashedTerminals];
         } else {
           const gridTerminals = state.terminals.filter(
             (t) => t.location === "grid" || t.location === undefined
           );
-          newTerminals = [...gridTerminals, ...reorderedInLocation];
+          newTerminals = [...gridTerminals, ...reorderedInLocation, ...trashedTerminals];
         }
 
         persistTerminals(newTerminals);
@@ -541,15 +542,16 @@ export const createTerminalRegistrySlice =
         const reorderedTargetLocation = [...terminalsInTargetLocation];
         reorderedTargetLocation.splice(clampedIndex, 0, updatedTerminal);
 
+        const trashedTerminals = otherTerminals.filter((t) => t.location === "trash");
         let newTerminals: TerminalInstance[];
         if (location === "grid") {
           const dockTerminals = otherTerminals.filter((t) => t.location === "dock");
-          newTerminals = [...reorderedTargetLocation, ...dockTerminals];
+          newTerminals = [...reorderedTargetLocation, ...dockTerminals, ...trashedTerminals];
         } else {
           const gridTerminals = otherTerminals.filter(
             (t) => t.location === "grid" || t.location === undefined
           );
-          newTerminals = [...gridTerminals, ...reorderedTargetLocation];
+          newTerminals = [...gridTerminals, ...reorderedTargetLocation, ...trashedTerminals];
         }
 
         persistTerminals(newTerminals);

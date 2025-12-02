@@ -5,6 +5,7 @@ import { useTerminalStore } from "@/store";
 import { DockedTerminalItem } from "./DockedTerminalItem";
 import { TrashContainer } from "./TrashContainer";
 import { getTerminalDragData, isTerminalDrag, calculateDropIndex } from "@/utils/dragDrop";
+import { useTerminalDragAndDrop } from "@/hooks/useDragAndDrop";
 
 export function TerminalDock() {
   const dockTerminals = useTerminalStore(
@@ -17,6 +18,8 @@ export function TerminalDock() {
   const reorderTerminals = useTerminalStore((s) => s.reorderTerminals);
   const moveTerminalToPosition = useTerminalStore((s) => s.moveTerminalToPosition);
   const setFocused = useTerminalStore((s) => s.setFocused);
+
+  const { beginDrag } = useTerminalDragAndDrop();
 
   const [isDragOver, setIsDragOver] = useState(false);
   const [dropIndex, setDropIndex] = useState<number | null>(null);
@@ -101,9 +104,13 @@ export function TerminalDock() {
     ]
   );
 
-  const handleDockItemDragStart = useCallback((id: string, _index: number) => {
-    setDraggedId(id);
-  }, []);
+  const handleDockItemDragStart = useCallback(
+    (id: string, index: number) => {
+      setDraggedId(id);
+      beginDrag(id, "dock", index);
+    },
+    [beginDrag]
+  );
 
   const handleDockItemDragEnd = useCallback(() => {
     setDraggedId(null);
@@ -111,16 +118,16 @@ export function TerminalDock() {
     setDropIndex(null);
   }, []);
 
-  // Don't render if no docked or trashed terminals AND not dragging over
-  if (activeDockTerminals.length === 0 && trashedItems.length === 0 && !isDragOver) return null;
+  const isEmpty = activeDockTerminals.length === 0 && trashedItems.length === 0;
 
   return (
     <div
       ref={dockRef}
       className={cn(
-        "h-10 bg-canopy-bg/95 backdrop-blur-sm border-t-2 border-canopy-border/60 shadow-[0_-4px_12px_rgba(0,0,0,0.3)]",
+        "min-h-[40px] bg-canopy-bg/95 backdrop-blur-sm border-t-2 border-canopy-border/60 shadow-[0_-4px_12px_rgba(0,0,0,0.3)]",
         "flex items-center px-4 gap-2",
         "z-40 shrink-0",
+        isEmpty && !isDragOver && "h-10",
         isDragOver && "ring-2 ring-canopy-accent/50 ring-inset bg-canopy-accent/5"
       )}
       role="list"
@@ -130,7 +137,17 @@ export function TerminalDock() {
       onDrop={handleDrop}
     >
       <div className="flex items-center gap-2 overflow-x-auto flex-1 no-scrollbar">
-        {(activeDockTerminals.length > 0 || isDragOver) && (
+        {isEmpty ? (
+          isDragOver ? (
+            <div className="flex-1 flex items-center justify-center text-xs text-canopy-text/40 select-none transition-opacity duration-200 opacity-100">
+              Drop terminals here to minimize
+            </div>
+          ) : (
+            <div className="flex-1 flex items-center justify-center text-xs text-canopy-text/20 select-none">
+              Drag terminals here to minimize
+            </div>
+          )
+        ) : (
           <>
             <span className="text-xs text-canopy-text/60 mr-2 shrink-0 select-none">
               Background ({activeDockTerminals.length})
