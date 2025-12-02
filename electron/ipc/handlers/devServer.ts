@@ -34,10 +34,7 @@ export function registerDevServerHandlers(deps: HandlerDependencies): () => void
   // Dev Server Handlers
   // ==========================================
 
-  const handleDevServerStart = async (
-    _event: Electron.IpcMainInvokeEvent,
-    payload: unknown
-  ) => {
+  const handleDevServerStart = async (_event: Electron.IpcMainInvokeEvent, payload: unknown) => {
     // Validate with Zod schema
     const parseResult = DevServerStartPayloadSchema.safeParse(payload);
     if (!parseResult.success) {
@@ -56,10 +53,7 @@ export function registerDevServerHandlers(deps: HandlerDependencies): () => void
   ipcMain.handle(CHANNELS.DEVSERVER_START, handleDevServerStart);
   handlers.push(() => ipcMain.removeHandler(CHANNELS.DEVSERVER_START));
 
-  const handleDevServerStop = async (
-    _event: Electron.IpcMainInvokeEvent,
-    payload: unknown
-  ) => {
+  const handleDevServerStop = async (_event: Electron.IpcMainInvokeEvent, payload: unknown) => {
     // Validate with Zod schema
     const parseResult = DevServerStopPayloadSchema.safeParse(payload);
     if (!parseResult.success) {
@@ -78,10 +72,7 @@ export function registerDevServerHandlers(deps: HandlerDependencies): () => void
   ipcMain.handle(CHANNELS.DEVSERVER_STOP, handleDevServerStop);
   handlers.push(() => ipcMain.removeHandler(CHANNELS.DEVSERVER_STOP));
 
-  const handleDevServerToggle = async (
-    _event: Electron.IpcMainInvokeEvent,
-    payload: unknown
-  ) => {
+  const handleDevServerToggle = async (_event: Electron.IpcMainInvokeEvent, payload: unknown) => {
     // Validate with Zod schema
     const parseResult = DevServerTogglePayloadSchema.safeParse(payload);
     if (!parseResult.success) {

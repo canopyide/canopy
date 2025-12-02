@@ -12,7 +12,7 @@
  */
 
 import { graphql, type GraphQlQueryResponseData } from "@octokit/graphql";
-import { simpleGit } from "simple-git";
+import { GitService } from "./GitService.js";
 import { store } from "../store.js";
 import { Cache } from "../utils/cache.js";
 import type {
@@ -214,14 +214,12 @@ export async function getRepoContext(cwd: string): Promise<RepoContext | null> {
   if (cached) return cached;
 
   try {
-    const git = simpleGit(cwd);
-    const remotes = await git.getRemotes(true);
-    const origin = remotes.find((r) => r.name === "origin");
+    const gitService = new GitService(cwd);
+    const fetchUrl = await gitService.getRemoteUrl(cwd);
 
-    if (!origin?.refs?.fetch) return null;
+    if (!fetchUrl) return null;
 
     // Parse GitHub URL (https or ssh format)
-    const fetchUrl = origin.refs.fetch;
     const match = fetchUrl.match(/github\.com[/:]([^/]+)\/([^/.]+?)(?:\.git)?$/);
 
     if (!match) return null;

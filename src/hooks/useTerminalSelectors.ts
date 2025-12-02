@@ -61,9 +61,7 @@ import { useTerminalStore, type TerminalInstance } from "@/store/terminalStore";
  * ```
  */
 export function useTerminalById(id: string): TerminalInstance | undefined {
-  return useTerminalStore(
-    useCallback((state) => state.terminals.find((t) => t.id === id), [id])
-  );
+  return useTerminalStore(useCallback((state) => state.terminals.find((t) => t.id === id), [id]));
 }
 
 /**

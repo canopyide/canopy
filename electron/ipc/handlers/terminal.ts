@@ -491,7 +491,9 @@ export function registerTerminalHandlers(deps: HandlerDependencies): () => void 
         };
       } finally {
         // Clean up temp patch file
-        await fs.unlink(tmpPatchPath).catch(() => { /* ignore cleanup errors */ });
+        await fs.unlink(tmpPatchPath).catch(() => {
+          /* ignore cleanup errors */
+        });
       }
     } catch (error) {
       const errorMessage = error instanceof Error ? error.message : String(error);

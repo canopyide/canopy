@@ -2,10 +2,9 @@ import { createHash } from "crypto";
 import { readFile, stat } from "fs/promises";
 import { join as pathJoin } from "path";
 import { execSync } from "child_process";
-import { simpleGit } from "simple-git";
 import type { Worktree, WorktreeChanges, AISummaryStatus } from "../types/index.js";
 import { DEFAULT_CONFIG } from "../types/config.js";
-import { getWorktreeChangesWithStats, invalidateGitStatusCache } from "../utils/git.js";
+import { invalidateGitStatusCache } from "../utils/git.js";
 import { WorktreeRemovedError } from "../utils/errorTypes.js";
 import { generateWorktreeSummary } from "./ai/worktree.js";
 import { getAIClient } from "./ai/client.js";
@@ -13,6 +12,7 @@ import { categorizeWorktree } from "../utils/worktreeMood.js";
 import { logWarn, logError, logInfo, logDebug } from "../utils/logger.js";
 import { events } from "./events.js";
 import { extractIssueNumberSync, extractIssueNumber } from "./ai/issueExtractor.js";
+import type { GitService } from "./GitService.js";
 
 // Default AI debounce (used when config is not provided)
 const DEFAULT_AI_DEBOUNCE_MS = DEFAULT_CONFIG.ai?.summaryDebounceMs ?? 10000;
@@ -64,6 +64,7 @@ export class WorktreeMonitor {
 
   private state: WorktreeState;
   private mainBranch: string;
+  private gitService: GitService;
 
   // Hash-based change detection
   private previousStateHash: string = "";
@@ -101,13 +102,14 @@ export class WorktreeMonitor {
   // PR event unsubscribe functions
   private prEventUnsubscribers: (() => void)[] = [];
 
-  constructor(worktree: Worktree, mainBranch: string = "main") {
+  constructor(worktree: Worktree, gitService: GitService, mainBranch: string = "main") {
     this.id = worktree.id;
     this.path = worktree.path;
     this.name = worktree.name;
     this.branch = worktree.branch;
     this.isCurrent = worktree.isCurrent;
     this.mainBranch = mainBranch;
+    this.gitService = gitService;
 
     // Initialize state - determine initial AI status based on API key availability
     const initialAIStatus: AISummaryStatus = getAIClient() ? "active" : "disabled";
@@ -469,7 +471,7 @@ export class WorktreeMonitor {
         invalidateGitStatusCache(this.path);
       }
 
-      const newChanges = await getWorktreeChangesWithStats(this.path, forceRefresh);
+      const newChanges = await this.gitService.getWorktreeChangesWithStats(this.path, forceRefresh);
 
       // Check if monitor was stopped while waiting for git status
       if (!this.isRunning) {
@@ -671,10 +673,7 @@ export class WorktreeMonitor {
    */
   private async fetchLastCommitMessage(): Promise<string> {
     try {
-      const git = simpleGit(this.path);
-
-      const log = await git.log({ maxCount: 1 });
-      const lastCommitMsg = log.latest?.message ?? "";
+      const lastCommitMsg = await this.gitService.getLastCommitMessage(this.path);
 
       if (lastCommitMsg) {
         const firstLine = lastCommitMsg.split("\n")[0].trim();

@@ -304,7 +304,12 @@ export class WorktreeService {
           // Ensure the canopy note file exists for AI agents to write to
           await ensureNoteFile(wt.path);
 
-          const monitor = new WorktreeMonitor(wt, this.mainBranch);
+          // Ensure GitService is available for the monitor
+          if (!this.gitService) {
+            throw new Error("GitService not initialized - cannot create WorktreeMonitor");
+          }
+
+          const monitor = new WorktreeMonitor(wt, this.gitService, this.mainBranch);
 
           // Set initial polling interval
           const interval = isActive ? this.pollIntervalActive : this.pollIntervalBackground;
