@@ -2439,6 +2439,41 @@ export function registerIpcHandlers(
   ipcMain.handle(CHANNELS.GITHUB_VALIDATE_TOKEN, handleGitHubValidateToken);
   handlers.push(() => ipcMain.removeHandler(CHANNELS.GITHUB_VALIDATE_TOKEN));
 
+  // GitHub List Issues Handler
+  const handleGitHubListIssues = async (
+    _event: Electron.IpcMainInvokeEvent,
+    options: { cwd: string; search?: string; state?: "open" | "closed" | "all"; cursor?: string }
+  ) => {
+    if (!options || typeof options.cwd !== "string" || !options.cwd) {
+      throw new Error("Invalid options: cwd is required");
+    }
+
+    const { listIssues } = await import("../services/GitHubService.js");
+    return listIssues(options);
+  };
+  ipcMain.handle(CHANNELS.GITHUB_LIST_ISSUES, handleGitHubListIssues);
+  handlers.push(() => ipcMain.removeHandler(CHANNELS.GITHUB_LIST_ISSUES));
+
+  // GitHub List PRs Handler
+  const handleGitHubListPRs = async (
+    _event: Electron.IpcMainInvokeEvent,
+    options: {
+      cwd: string;
+      search?: string;
+      state?: "open" | "closed" | "merged" | "all";
+      cursor?: string;
+    }
+  ) => {
+    if (!options || typeof options.cwd !== "string" || !options.cwd) {
+      throw new Error("Invalid options: cwd is required");
+    }
+
+    const { listPullRequests } = await import("../services/GitHubService.js");
+    return listPullRequests(options);
+  };
+  ipcMain.handle(CHANNELS.GITHUB_LIST_PRS, handleGitHubListPRs);
+  handlers.push(() => ipcMain.removeHandler(CHANNELS.GITHUB_LIST_PRS));
+
   // ==========================================
   // Git Handlers
   // ==========================================

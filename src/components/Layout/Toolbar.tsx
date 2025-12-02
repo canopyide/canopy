@@ -1,4 +1,6 @@
+import { useState } from "react";
 import { Button } from "@/components/ui/button";
+import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover";
 import {
   RefreshCw,
   Settings,
@@ -15,10 +17,10 @@ import { ClaudeIcon, GeminiIcon, CodexIcon } from "@/components/icons";
 import { cn } from "@/lib/utils";
 import { getProjectGradient, getBrandColorHex } from "@/lib/colorUtils";
 import { BulkActionsMenu } from "@/components/Terminal";
+import { GitHubResourceList } from "@/components/GitHub";
 import { useProjectStore } from "@/store/projectStore";
 import { useTerminalStore } from "@/store/terminalStore";
 import { useRepositoryStats } from "@/hooks/useRepositoryStats";
-import { githubClient } from "@/clients";
 import type { CliAvailability, AgentSettings } from "@shared/types";
 
 interface ToolbarProps {
@@ -60,6 +62,10 @@ export function Toolbar({
   const terminals = useTerminalStore((state) => state.terminals);
   const { stats, error: statsError, refresh: refreshStats } = useRepositoryStats();
 
+  // Popover states for GitHub lists
+  const [issuesOpen, setIssuesOpen] = useState(false);
+  const [prsOpen, setPrsOpen] = useState(false);
+
   // Show BulkActionsMenu when there are any terminals (actionable or not)
   const showBulkActions = terminals.length > 0;
 
@@ -71,25 +77,6 @@ export function Toolbar({
     // Must be enabled in settings (default true if settings not loaded yet)
     if (agentSettings && agentSettings[type].enabled === false) return false;
     return true;
-  };
-
-  // Handle opening GitHub pages
-  const handleOpenIssues = async () => {
-    if (!currentProject) return;
-    try {
-      await githubClient.openIssues(currentProject.path);
-    } catch (error) {
-      console.error("Failed to open GitHub issues:", error);
-    }
-  };
-
-  const handleOpenPRs = async () => {
-    if (!currentProject) return;
-    try {
-      await githubClient.openPRs(currentProject.path);
-    } catch (error) {
-      console.error("Failed to open GitHub PRs:", error);
-    }
   };
 
   return (
@@ -195,46 +182,76 @@ export function Toolbar({
         {stats && currentProject && (
           <>
             <div className="flex items-center gap-1">
-              <Button
-                variant="ghost"
-                size="sm"
-                onClick={statsError ? refreshStats : handleOpenIssues}
-                className={cn(
-                  "text-canopy-text hover:bg-canopy-border hover:text-canopy-accent h-7 px-2 gap-1.5",
-                  (stats.issueCount === 0 || statsError) && "opacity-50",
-                  statsError && "text-[var(--color-status-error)]"
-                )}
-                title={
-                  statsError ? `GitHub error: ${statsError} (click to retry)` : "Open GitHub Issues"
-                }
-                aria-label={
-                  statsError ? "GitHub stats error" : `${stats.issueCount ?? 0} open issues`
-                }
-              >
-                <AlertTriangle className="h-3.5 w-3.5" />
-                <span className="text-xs font-medium">{stats.issueCount ?? "?"}</span>
-              </Button>
-              <Button
-                variant="ghost"
-                size="sm"
-                onClick={statsError ? refreshStats : handleOpenPRs}
-                className={cn(
-                  "text-canopy-text hover:bg-canopy-border hover:text-canopy-accent h-7 px-2 gap-1.5",
-                  (stats.prCount === 0 || statsError) && "opacity-50",
-                  statsError && "text-[var(--color-status-error)]"
-                )}
-                title={
-                  statsError
-                    ? `GitHub error: ${statsError} (click to retry)`
-                    : "Open GitHub Pull Requests"
-                }
-                aria-label={
-                  statsError ? "GitHub stats error" : `${stats.prCount ?? 0} open pull requests`
-                }
-              >
-                <GitPullRequest className="h-3.5 w-3.5" />
-                <span className="text-xs font-medium">{stats.prCount ?? "?"}</span>
-              </Button>
+              {/* Issues Popover */}
+              <Popover open={issuesOpen} onOpenChange={setIssuesOpen}>
+                <PopoverTrigger asChild>
+                  <Button
+                    variant="ghost"
+                    size="sm"
+                    onClick={statsError ? refreshStats : undefined}
+                    className={cn(
+                      "text-canopy-text hover:bg-canopy-border hover:text-canopy-accent h-7 px-2 gap-1.5",
+                      (stats.issueCount === 0 || statsError) && "opacity-50",
+                      statsError && "text-[var(--color-status-error)]",
+                      issuesOpen && "bg-canopy-border text-canopy-accent"
+                    )}
+                    title={
+                      statsError
+                        ? `GitHub error: ${statsError} (click to retry)`
+                        : "Browse GitHub Issues"
+                    }
+                    aria-label={
+                      statsError ? "GitHub stats error" : `${stats.issueCount ?? 0} open issues`
+                    }
+                  >
+                    <AlertTriangle className="h-3.5 w-3.5" />
+                    <span className="text-xs font-medium">{stats.issueCount ?? "?"}</span>
+                  </Button>
+                </PopoverTrigger>
+                <PopoverContent className="p-0" align="end" sideOffset={8}>
+                  <GitHubResourceList
+                    type="issue"
+                    projectPath={currentProject.path}
+                    onClose={() => setIssuesOpen(false)}
+                  />
+                </PopoverContent>
+              </Popover>
+
+              {/* PRs Popover */}
+              <Popover open={prsOpen} onOpenChange={setPrsOpen}>
+                <PopoverTrigger asChild>
+                  <Button
+                    variant="ghost"
+                    size="sm"
+                    onClick={statsError ? refreshStats : undefined}
+                    className={cn(
+                      "text-canopy-text hover:bg-canopy-border hover:text-canopy-accent h-7 px-2 gap-1.5",
+                      (stats.prCount === 0 || statsError) && "opacity-50",
+                      statsError && "text-[var(--color-status-error)]",
+                      prsOpen && "bg-canopy-border text-canopy-accent"
+                    )}
+                    title={
+                      statsError
+                        ? `GitHub error: ${statsError} (click to retry)`
+                        : "Browse GitHub Pull Requests"
+                    }
+                    aria-label={
+                      statsError ? "GitHub stats error" : `${stats.prCount ?? 0} open pull requests`
+                    }
+                  >
+                    <GitPullRequest className="h-3.5 w-3.5" />
+                    <span className="text-xs font-medium">{stats.prCount ?? "?"}</span>
+                  </Button>
+                </PopoverTrigger>
+                <PopoverContent className="p-0" align="end" sideOffset={8}>
+                  <GitHubResourceList
+                    type="pr"
+                    projectPath={currentProject.path}
+                    onClose={() => setPrsOpen(false)}
+                  />
+                </PopoverContent>
+              </Popover>
+
               <div
                 className={cn(
                   "flex items-center gap-1.5 px-2 h-7 rounded-md",

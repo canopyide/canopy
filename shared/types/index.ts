@@ -229,3 +229,12 @@ export type {
   TerminalActivity,
   TerminalActivityPayload,
 } from "./terminal.js";
+
+// GitHub types - issues and pull requests
+export type {
+  GitHubUser,
+  GitHubIssue,
+  GitHubPR,
+  GitHubListOptions,
+  GitHubListResponse,
+} from "./github.js";

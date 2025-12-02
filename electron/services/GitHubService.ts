@@ -14,6 +14,12 @@
 import { graphql, type GraphQlQueryResponseData } from "@octokit/graphql";
 import { simpleGit } from "simple-git";
 import { store } from "../store.js";
+import type {
+  GitHubIssue,
+  GitHubPR,
+  GitHubListOptions,
+  GitHubListResponse,
+} from "@shared/types/github.js";
 
 // ─────────────────────────────────────────────────────────────────────────────
 // Types
@@ -122,6 +128,8 @@ class SimpleCache<T> {
 const repoContextCache = new SimpleCache<RepoContext>(300000); // 5 minutes
 const repoStatsCache = new SimpleCache<RepoStats>(60000); // 1 minute
 const prCheckCache = new SimpleCache<PRCheckResult>(60000); // 1 minute
+const issueListCache = new SimpleCache<GitHubListResponse<GitHubIssue>>(60000); // 1 minute
+const prListCache = new SimpleCache<GitHubListResponse<GitHubPR>>(60000); // 1 minute
 
 /**
  * Get the GitHub token from storage.
@@ -142,10 +150,8 @@ export function hasGitHubToken(): boolean {
  */
 export function setGitHubToken(token: string): void {
   store.set("userConfig.githubToken", token);
-  // Clear caches when token changes
-  repoContextCache.clear();
-  repoStatsCache.clear();
-  prCheckCache.clear();
+  // Clear all caches when token changes
+  clearGitHubCaches();
 }
 
 /**
@@ -153,10 +159,8 @@ export function setGitHubToken(token: string): void {
  */
 export function clearGitHubToken(): void {
   store.set("userConfig.githubToken", undefined);
-  // Clear caches when token is removed
-  repoContextCache.clear();
-  repoStatsCache.clear();
-  prCheckCache.clear();
+  // Clear all caches when token is removed
+  clearGitHubCaches();
 }
 
 /**
@@ -566,4 +570,402 @@ export function clearGitHubCaches(): void {
   repoContextCache.clear();
   repoStatsCache.clear();
   prCheckCache.clear();
+  issueListCache.clear();
+  prListCache.clear();
+}
+
+// ─────────────────────────────────────────────────────────────────────────────
+// List Issues and Pull Requests
+// ─────────────────────────────────────────────────────────────────────────────
+
+// GraphQL query for listing issues (no search)
+const LIST_ISSUES_QUERY = `
+  query GetIssues($owner: String!, $repo: String!, $states: [IssueState!], $cursor: String, $limit: Int = 20) {
+    repository(owner: $owner, name: $repo) {
+      issues(first: $limit, after: $cursor, states: $states, orderBy: {field: UPDATED_AT, direction: DESC}) {
+        pageInfo {
+          hasNextPage
+          endCursor
+        }
+        nodes {
+          number
+          title
+          url
+          state
+          updatedAt
+          author {
+            login
+            avatarUrl
+          }
+          assignees(first: 5) {
+            nodes {
+              login
+              avatarUrl
+            }
+          }
+          comments {
+            totalCount
+          }
+        }
+      }
+    }
+  }
+`;
+
+// GraphQL query for listing pull requests (no search)
+const LIST_PRS_QUERY = `
+  query GetPRs($owner: String!, $repo: String!, $states: [PullRequestState!], $cursor: String, $limit: Int = 20) {
+    repository(owner: $owner, name: $repo) {
+      pullRequests(first: $limit, after: $cursor, states: $states, orderBy: {field: UPDATED_AT, direction: DESC}) {
+        pageInfo {
+          hasNextPage
+          endCursor
+        }
+        nodes {
+          number
+          title
+          url
+          state
+          isDraft
+          updatedAt
+          merged
+          author {
+            login
+            avatarUrl
+          }
+          reviews(first: 1) {
+            totalCount
+          }
+        }
+      }
+    }
+  }
+`;
+
+// GraphQL query for searching issues/PRs
+const SEARCH_QUERY = `
+  query SearchItems($query: String!, $type: SearchType!, $cursor: String, $limit: Int = 20) {
+    search(query: $query, type: $type, first: $limit, after: $cursor) {
+      issueCount
+      pageInfo {
+        hasNextPage
+        endCursor
+      }
+      nodes {
+        ... on Issue {
+          number
+          title
+          url
+          state
+          updatedAt
+          author {
+            login
+            avatarUrl
+          }
+          assignees(first: 5) {
+            nodes {
+              login
+              avatarUrl
+            }
+          }
+          comments {
+            totalCount
+          }
+        }
+        ... on PullRequest {
+          number
+          title
+          url
+          state
+          isDraft
+          updatedAt
+          merged
+          author {
+            login
+            avatarUrl
+          }
+          reviews(first: 1) {
+            totalCount
+          }
+        }
+      }
+    }
+  }
+`;
+
+/**
+ * Build cache key for list operations.
+ */
+function buildListCacheKey(
+  type: "issue" | "pr",
+  owner: string,
+  repo: string,
+  state: string,
+  search: string,
+  cursor: string
+): string {
+  return `${type}:${owner}/${repo}:${state}:${search}:${cursor}`;
+}
+
+/**
+ * Map state filter to GraphQL IssueState array.
+ */
+function mapIssueStates(state?: string): string[] {
+  if (!state || state === "open") return ["OPEN"];
+  if (state === "closed") return ["CLOSED"];
+  if (state === "all") return ["OPEN", "CLOSED"];
+  return ["OPEN"];
+}
+
+/**
+ * Map state filter to GraphQL PullRequestState array.
+ */
+function mapPRStates(state?: string): string[] {
+  if (!state || state === "open") return ["OPEN"];
+  if (state === "closed") return ["CLOSED"];
+  if (state === "merged") return ["MERGED"];
+  if (state === "all") return ["OPEN", "CLOSED", "MERGED"];
+  return ["OPEN"];
+}
+
+/**
+ * Parse issue node from GraphQL response.
+ */
+function parseIssueNode(node: Record<string, unknown>): GitHubIssue {
+  const author = node.author as { login?: string; avatarUrl?: string } | null;
+  const assigneesData = node.assignees as { nodes?: Array<{ login?: string; avatarUrl?: string }> };
+  const commentsData = node.comments as { totalCount?: number };
+
+  return {
+    number: node.number as number,
+    title: node.title as string,
+    url: node.url as string,
+    state: node.state as "OPEN" | "CLOSED",
+    updatedAt: node.updatedAt as string,
+    author: {
+      login: author?.login ?? "unknown",
+      avatarUrl: author?.avatarUrl ?? "",
+    },
+    assignees: (assigneesData?.nodes ?? []).map((a) => ({
+      login: a.login ?? "unknown",
+      avatarUrl: a.avatarUrl ?? "",
+    })),
+    commentCount: commentsData?.totalCount ?? 0,
+  };
+}
+
+/**
+ * Parse PR node from GraphQL response.
+ */
+function parsePRNode(node: Record<string, unknown>): GitHubPR {
+  const author = node.author as { login?: string; avatarUrl?: string } | null;
+  const reviewsData = node.reviews as { totalCount?: number };
+  const merged = node.merged as boolean;
+  const rawState = node.state as string;
+
+  // Determine state: if merged is true, state is MERGED regardless of raw state
+  let state: "OPEN" | "CLOSED" | "MERGED" = rawState as "OPEN" | "CLOSED" | "MERGED";
+  if (merged) {
+    state = "MERGED";
+  }
+
+  return {
+    number: node.number as number,
+    title: node.title as string,
+    url: node.url as string,
+    state,
+    isDraft: (node.isDraft as boolean) ?? false,
+    updatedAt: node.updatedAt as string,
+    author: {
+      login: author?.login ?? "unknown",
+      avatarUrl: author?.avatarUrl ?? "",
+    },
+    reviewCount: reviewsData?.totalCount,
+  };
+}
+
+/**
+ * List issues from a repository with optional filtering and search.
+ */
+export async function listIssues(
+  options: GitHubListOptions
+): Promise<GitHubListResponse<GitHubIssue>> {
+  const client = createGraphQLClient();
+  if (!client) {
+    throw new Error("GitHub token not configured");
+  }
+
+  const context = await getRepoContext(options.cwd);
+  if (!context) {
+    throw new Error("Not a GitHub repository");
+  }
+
+  const cacheKey = buildListCacheKey(
+    "issue",
+    context.owner,
+    context.repo,
+    options.state ?? "open",
+    options.search ?? "",
+    options.cursor ?? ""
+  );
+
+  // Check cache (only for non-search queries to keep search fresh)
+  if (!options.search) {
+    const cached = issueListCache.get(cacheKey);
+    if (cached) return cached;
+  }
+
+  try {
+    let result: GitHubListResponse<GitHubIssue>;
+
+    if (options.search) {
+      // Use search API for keyword filtering
+      const stateFilter =
+        options.state === "closed" ? "is:closed" : options.state === "all" ? "" : "is:open";
+      const searchQuery =
+        `repo:${context.owner}/${context.repo} is:issue ${stateFilter} sort:updated-desc ${options.search}`.trim();
+
+      const response = (await client(SEARCH_QUERY, {
+        query: searchQuery,
+        type: "ISSUE",
+        cursor: options.cursor,
+        limit: 20,
+      })) as GraphQlQueryResponseData;
+
+      const search = response?.search;
+      const nodes = (search?.nodes ?? []) as Array<Record<string, unknown>>;
+
+      result = {
+        items: nodes.map(parseIssueNode),
+        pageInfo: {
+          hasNextPage: search?.pageInfo?.hasNextPage ?? false,
+          endCursor: search?.pageInfo?.endCursor ?? null,
+        },
+      };
+    } else {
+      // Use repository query for listing
+      const states = mapIssueStates(options.state);
+
+      const response = (await client(LIST_ISSUES_QUERY, {
+        owner: context.owner,
+        repo: context.repo,
+        states,
+        cursor: options.cursor,
+        limit: 20,
+      })) as GraphQlQueryResponseData;
+
+      const issues = response?.repository?.issues;
+      const nodes = (issues?.nodes ?? []) as Array<Record<string, unknown>>;
+
+      result = {
+        items: nodes.map(parseIssueNode),
+        pageInfo: {
+          hasNextPage: issues?.pageInfo?.hasNextPage ?? false,
+          endCursor: issues?.pageInfo?.endCursor ?? null,
+        },
+      };
+
+      // Cache the result
+      issueListCache.set(cacheKey, result);
+    }
+
+    return result;
+  } catch (error) {
+    throw new Error(parseGitHubError(error));
+  }
+}
+
+/**
+ * List pull requests from a repository with optional filtering and search.
+ */
+export async function listPullRequests(
+  options: GitHubListOptions
+): Promise<GitHubListResponse<GitHubPR>> {
+  const client = createGraphQLClient();
+  if (!client) {
+    throw new Error("GitHub token not configured");
+  }
+
+  const context = await getRepoContext(options.cwd);
+  if (!context) {
+    throw new Error("Not a GitHub repository");
+  }
+
+  const cacheKey = buildListCacheKey(
+    "pr",
+    context.owner,
+    context.repo,
+    options.state ?? "open",
+    options.search ?? "",
+    options.cursor ?? ""
+  );
+
+  // Check cache (only for non-search queries to keep search fresh)
+  if (!options.search) {
+    const cached = prListCache.get(cacheKey);
+    if (cached) return cached;
+  }
+
+  try {
+    let result: GitHubListResponse<GitHubPR>;
+
+    if (options.search) {
+      // Use search API for keyword filtering
+      let stateFilter = "";
+      if (options.state === "open") stateFilter = "is:open";
+      else if (options.state === "closed") stateFilter = "is:closed is:unmerged";
+      else if (options.state === "merged") stateFilter = "is:merged";
+      // "all" has no state filter
+
+      const searchQuery =
+        `repo:${context.owner}/${context.repo} is:pr ${stateFilter} sort:updated-desc ${options.search}`.trim();
+
+      const response = (await client(SEARCH_QUERY, {
+        query: searchQuery,
+        type: "ISSUE", // GitHub search uses ISSUE type for both
+        cursor: options.cursor,
+        limit: 20,
+      })) as GraphQlQueryResponseData;
+
+      const search = response?.search;
+      const nodes = (search?.nodes ?? []) as Array<Record<string, unknown>>;
+
+      result = {
+        items: nodes.map(parsePRNode),
+        pageInfo: {
+          hasNextPage: search?.pageInfo?.hasNextPage ?? false,
+          endCursor: search?.pageInfo?.endCursor ?? null,
+        },
+      };
+    } else {
+      // Use repository query for listing
+      const states = mapPRStates(options.state);
+
+      const response = (await client(LIST_PRS_QUERY, {
+        owner: context.owner,
+        repo: context.repo,
+        states,
+        cursor: options.cursor,
+        limit: 20,
+      })) as GraphQlQueryResponseData;
+
+      const pullRequests = response?.repository?.pullRequests;
+      const nodes = (pullRequests?.nodes ?? []) as Array<Record<string, unknown>>;
+
+      result = {
+        items: nodes.map(parsePRNode),
+        pageInfo: {
+          hasNextPage: pullRequests?.pageInfo?.hasNextPage ?? false,
+          endCursor: pullRequests?.pageInfo?.endCursor ?? null,
+        },
+      };
+
+      // Cache the result
+      prListCache.set(cacheKey, result);
+    }
+
+    return result;
+  } catch (error) {
+    throw new Error(parseGitHubError(error));
+  }
 }

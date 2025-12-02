@@ -13,6 +13,12 @@ import type {
   PRDetectedPayload,
   PRClearedPayload,
 } from "../types";
+import type {
+  GitHubIssue,
+  GitHubPR,
+  GitHubListOptions,
+  GitHubListResponse,
+} from "@shared/types/github";
 
 /**
  * Client for GitHub IPC operations.
@@ -74,6 +80,20 @@ export const githubClient = {
   /** Validate a GitHub token without saving it */
   validateToken: (token: string): Promise<GitHubTokenValidation> => {
     return window.electron.github.validateToken(token);
+  },
+
+  /** List issues with optional search and filtering */
+  listIssues: (
+    options: Omit<GitHubListOptions, "state"> & { state?: "open" | "closed" | "all" }
+  ): Promise<GitHubListResponse<GitHubIssue>> => {
+    return window.electron.github.listIssues(options);
+  },
+
+  /** List pull requests with optional search and filtering */
+  listPullRequests: (
+    options: Omit<GitHubListOptions, "state"> & { state?: "open" | "closed" | "merged" | "all" }
+  ): Promise<GitHubListResponse<GitHubPR>> => {
+    return window.electron.github.listPullRequests(options);
   },
 
   /** Subscribe to PR detected events */

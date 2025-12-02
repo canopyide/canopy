@@ -1308,6 +1308,23 @@ export interface IpcInvokeMap {
     args: [token: string];
     result: GitHubTokenValidation;
   };
+  "github:list-issues": {
+    args: [
+      options: { cwd: string; search?: string; state?: "open" | "closed" | "all"; cursor?: string },
+    ];
+    result: import("./github.js").GitHubListResponse<import("./github.js").GitHubIssue>;
+  };
+  "github:list-prs": {
+    args: [
+      options: {
+        cwd: string;
+        search?: string;
+        state?: "open" | "closed" | "merged" | "all";
+        cursor?: string;
+      },
+    ];
+    result: import("./github.js").GitHubListResponse<import("./github.js").GitHubPR>;
+  };
 
   // ============================================
   // Run orchestration channels
@@ -1673,6 +1690,18 @@ export interface ElectronAPI {
     setToken(token: string): Promise<GitHubTokenValidation>;
     clearToken(): Promise<void>;
     validateToken(token: string): Promise<GitHubTokenValidation>;
+    listIssues(options: {
+      cwd: string;
+      search?: string;
+      state?: "open" | "closed" | "all";
+      cursor?: string;
+    }): Promise<import("./github.js").GitHubListResponse<import("./github.js").GitHubIssue>>;
+    listPullRequests(options: {
+      cwd: string;
+      search?: string;
+      state?: "open" | "closed" | "merged" | "all";
+      cursor?: string;
+    }): Promise<import("./github.js").GitHubListResponse<import("./github.js").GitHubPR>>;
     onPRDetected(callback: (data: PRDetectedPayload) => void): () => void;
     onPRCleared(callback: (data: PRClearedPayload) => void): () => void;
   };
