@@ -163,7 +163,7 @@ export function DiagnosticsDock({ onRetry, className }: DiagnosticsDockProps) {
   return (
     <div
       className={cn(
-        "flex flex-col border-t border-canopy-border bg-canopy-bg",
+        "flex flex-col border-t-2 border-canopy-border/60 bg-canopy-bg/95 backdrop-blur-sm shadow-[0_-4px_12px_rgba(0,0,0,0.3)]",
         "transition-[height] duration-200 ease-out",
         isResizing && "select-none",
         className
