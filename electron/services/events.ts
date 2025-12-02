@@ -322,6 +322,7 @@ export interface ModalContextMap {
  * - `ai-classification`: AI model classified state (confidence 0.8-0.95)
  * - `timeout`: Silence timeout triggered check (confidence varies)
  * - `exit`: Process exited (deterministic, confidence 1.0)
+ * - `activity`: Activity monitor detected data flow or silence (confidence 1.0)
  */
 export type AgentStateChangeTrigger =
   | "input"
@@ -329,7 +330,8 @@ export type AgentStateChangeTrigger =
   | "heuristic"
   | "ai-classification"
   | "timeout"
-  | "exit";
+  | "exit"
+  | "activity";
 
 /**
  * Base event payload with optional trace correlation ID and event context.

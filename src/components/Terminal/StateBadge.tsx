@@ -9,7 +9,7 @@ interface StateBadgeProps {
 }
 
 const STATE_CONFIG: Record<
-  Exclude<AgentState, "idle">,
+  Exclude<AgentState, "idle" | "waiting">,
   {
     icon: ReactNode;
     label: string;
@@ -19,15 +19,9 @@ const STATE_CONFIG: Record<
 > = {
   working: {
     icon: <Loader2 className="h-3 w-3 animate-spin" aria-hidden="true" />,
-    label: "Working",
-    className: "bg-purple-500/20 text-purple-300 border-purple-500/30",
-    tooltip: "Agent is processing",
-  },
-  waiting: {
-    icon: <span className="w-2 h-2 rounded-full bg-amber-400 animate-pulse" aria-hidden="true" />,
-    label: "Waiting",
-    className: "bg-amber-500/20 text-amber-300 border-amber-500/30",
-    tooltip: "Agent is waiting for input",
+    label: "Busy",
+    className: "bg-blue-500/20 text-blue-300 border-blue-500/30",
+    tooltip: "Agent is active",
   },
   completed: {
     icon: (
@@ -35,7 +29,7 @@ const STATE_CONFIG: Record<
         ✓
       </span>
     ),
-    label: "Completed",
+    label: "Done",
     className: "bg-emerald-500/20 text-emerald-300 border-emerald-500/30",
     tooltip: "Agent completed successfully",
   },
@@ -52,7 +46,8 @@ const STATE_CONFIG: Record<
 };
 
 export function StateBadge({ state, className }: StateBadgeProps) {
-  if (state === "idle") {
+  // Don't show badge for idle or waiting states - only show when busy or exited
+  if (state === "idle" || state === "waiting") {
     return null;
   }
 

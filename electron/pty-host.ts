@@ -1,24 +1,21 @@
 /**
  * Pty Host - UtilityProcess entry point for terminal management.
  *
- * This process handles all terminal I/O and state analysis, keeping the
- * Main process responsive. It runs PtyManager, TerminalObserver, and PtyPool
- * in an isolated context, communicating with Main via IPC messages.
+ * This process handles all terminal I/O and state tracking, keeping the
+ * Main process responsive. It runs PtyManager and PtyPool in an isolated
+ * context, communicating with Main via IPC messages.
  *
- * Performance target: Offload CPU-intensive regex/AI state detection from Main thread.
+ * State detection uses activity-based monitoring (data flow) rather than
+ * pattern matching or AI classification.
  */
 
 import { MessagePort } from "node:worker_threads";
 import os from "node:os";
 import { PtyManager } from "./services/PtyManager.js";
-import { TerminalObserver } from "./services/TerminalObserver.js";
 import { PtyPool, getPtyPool } from "./services/PtyPool.js";
 import { events } from "./services/events.js";
 import type { AgentEvent } from "./services/AgentStateMachine.js";
-import type {
-  PtyHostEvent,
-  PtyHostTerminalSnapshot,
-} from "../shared/types/pty-host.js";
+import type { PtyHostEvent, PtyHostTerminalSnapshot } from "../shared/types/pty-host.js";
 
 // Validate we're running in UtilityProcess context
 if (!process.parentPort) {
@@ -45,7 +42,6 @@ process.on("unhandledRejection", (reason) => {
 // Initialize services
 const ptyManager = new PtyManager();
 let ptyPool: PtyPool | null = null;
-let terminalObserver: TerminalObserver | null = null;
 
 // Helper to send events to Main process
 function sendEvent(event: PtyHostEvent): void {
@@ -316,11 +312,6 @@ port.on("message", (rawMsg: any) => {
 function cleanup(): void {
   console.log("[PtyHost] Disposing resources...");
 
-  if (terminalObserver) {
-    terminalObserver.dispose();
-    terminalObserver = null;
-  }
-
   if (ptyPool) {
     ptyPool.dispose();
     ptyPool = null;
@@ -337,7 +328,7 @@ process.on("exit", () => {
   cleanup();
 });
 
-// Initialize pool and observer asynchronously
+// Initialize pool asynchronously
 async function initialize(): Promise<void> {
   try {
     // Initialize pool
@@ -346,11 +337,6 @@ async function initialize(): Promise<void> {
     await ptyPool.warmPool(homedir);
     ptyManager.setPtyPool(ptyPool);
     console.log("[PtyHost] PTY pool warmed");
-
-    // Initialize observer
-    terminalObserver = new TerminalObserver(ptyManager);
-    terminalObserver.start();
-    console.log("[PtyHost] Terminal observer started");
 
     // Notify Main that we're ready
     sendEvent({ type: "ready" });

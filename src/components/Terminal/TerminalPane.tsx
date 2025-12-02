@@ -17,19 +17,13 @@ import { XtermAdapter } from "./XtermAdapter";
 import { ArtifactOverlay } from "./ArtifactOverlay";
 import { StateBadge } from "./StateBadge";
 import { ActivityBadge } from "./ActivityBadge";
-import { DebugInfo } from "./DebugInfo";
 import { ErrorBanner } from "../Errors/ErrorBanner";
 import { useErrorStore, useTerminalStore, getTerminalRefreshTier, type RetryAction } from "@/store";
 import { useContextInjection, type CopyTreeProgress } from "@/hooks/useContextInjection";
-import type { AgentState, AgentStateChangeTrigger } from "@/types";
+import type { AgentState } from "@/types";
 import { errorsClient } from "@/clients";
 
 export type { TerminalType };
-
-export interface StateDebugInfo {
-  trigger: AgentStateChangeTrigger;
-  confidence: number;
-}
 
 export interface ActivityState {
   headline: string;
@@ -48,7 +42,6 @@ export interface TerminalPaneProps {
   isInjecting?: boolean;
   injectionProgress?: CopyTreeProgress | null;
   agentState?: AgentState;
-  stateDebugInfo?: StateDebugInfo | null;
   activity?: ActivityState | null;
   onFocus: () => void;
   onClose: () => void;
@@ -108,7 +101,6 @@ export function TerminalPane({
   isInjecting,
   injectionProgress,
   agentState,
-  stateDebugInfo,
   activity,
   onFocus,
   onClose,
@@ -294,9 +286,7 @@ export function TerminalPane({
         "flex flex-col h-full rounded overflow-hidden border transition-all duration-200 group",
         "bg-[var(--color-surface)] shadow-md",
         // Subtle focus indicator - neutral glow
-        isFocused
-          ? "terminal-focused border-zinc-600"
-          : "border-zinc-800 hover:border-zinc-700",
+        isFocused ? "terminal-focused border-zinc-600" : "border-zinc-800 hover:border-zinc-700",
         isExited && "opacity-75 grayscale",
         isDragging && "opacity-50 ring-2 ring-canopy-accent"
       )}
@@ -400,28 +390,23 @@ export function TerminalPane({
             </span>
           )}
 
-          {agentState &&
-            agentState !== "idle" &&
-            (!activity?.headline || agentState === "failed" || agentState === "waiting") && (
-              <StateBadge state={agentState} className="ml-2" />
+          {/* Show state badge for busy/completed/failed states */}
+          {agentState && agentState !== "idle" && agentState !== "waiting" && (
+            <StateBadge state={agentState} className="ml-2" />
+          )}
+
+          {/* Show activity headline when available and not in terminal state */}
+          {activity &&
+            activity.headline &&
+            agentState !== "failed" &&
+            agentState !== "completed" && (
+              <ActivityBadge
+                headline={activity.headline}
+                status={activity.status}
+                type={activity.type}
+                className="ml-2"
+              />
             )}
-
-          {activity && activity.headline && agentState !== "failed" && agentState !== "waiting" && (
-            <ActivityBadge
-              headline={activity.headline}
-              status={activity.status}
-              type={activity.type}
-              className="ml-2"
-            />
-          )}
-
-          {stateDebugInfo && (
-            <DebugInfo
-              trigger={stateDebugInfo.trigger}
-              confidence={stateDebugInfo.confidence}
-              className="ml-1"
-            />
-          )}
 
           {queueCount > 0 && (
             <div

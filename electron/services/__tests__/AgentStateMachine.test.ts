@@ -2,7 +2,6 @@ import { describe, it, expect } from "vitest";
 import {
   nextAgentState,
   isValidTransition,
-  detectPrompt,
   getStateChangeTimestamp,
   type AgentEvent,
 } from "../AgentStateMachine.js";
@@ -82,27 +81,30 @@ describe("AgentStateMachine", () => {
       });
     });
 
-    describe("output event", () => {
-      it("should transition working → waiting when prompt detected", () => {
-        const event: AgentEvent = { type: "output", data: "Continue? " };
-        expect(nextAgentState("working", event)).toBe("waiting");
+    describe("busy event (activity-based detection)", () => {
+      it("should transition idle → working on busy", () => {
+        const event: AgentEvent = { type: "busy" };
+        expect(nextAgentState("idle", event)).toBe("working");
       });
 
-      it("should stay in working when no prompt detected", () => {
-        const event: AgentEvent = { type: "output", data: "Processing data..." };
+      it("should transition waiting → working on busy", () => {
+        const event: AgentEvent = { type: "busy" };
+        expect(nextAgentState("waiting", event)).toBe("working");
+      });
+
+      it("should stay in working on busy", () => {
+        const event: AgentEvent = { type: "busy" };
         expect(nextAgentState("working", event)).toBe("working");
       });
 
-      it("should not transition from other states on output", () => {
-        const event: AgentEvent = { type: "output", data: "Continue? " };
-        expect(nextAgentState("idle", event)).toBe("idle");
-        expect(nextAgentState("waiting", event)).toBe("waiting");
+      it("should not transition from terminal states on busy", () => {
+        const event: AgentEvent = { type: "busy" };
         expect(nextAgentState("completed", event)).toBe("completed");
         expect(nextAgentState("failed", event)).toBe("failed");
       });
     });
 
-    describe("prompt event", () => {
+    describe("prompt event (activity-based detection)", () => {
       it("should transition working → waiting on prompt", () => {
         const event: AgentEvent = { type: "prompt" };
         expect(nextAgentState("working", event)).toBe("waiting");
@@ -171,53 +173,14 @@ describe("AgentStateMachine", () => {
         }
       });
     });
-  });
 
-  describe("detectPrompt", () => {
-    it("should detect question mark prompts", () => {
-      expect(detectPrompt("Continue? ")).toBe(true);
-      expect(detectPrompt("Are you sure?")).toBe(true);
-      expect(detectPrompt("Retry?")).toBe(true);
-    });
-
-    it("should detect yes/no prompts", () => {
-      expect(detectPrompt("Proceed (y/n)")).toBe(true);
-      expect(detectPrompt("Confirm (Y/N)")).toBe(true);
-      expect(detectPrompt("Continue (yes/no)")).toBe(true);
-      expect(detectPrompt("Accept (YES/NO)")).toBe(true);
-    });
-
-    it("should detect enter prompts", () => {
-      expect(detectPrompt("Press enter to continue")).toBe(true);
-      expect(detectPrompt("Press ENTER to proceed")).toBe(true);
-      expect(detectPrompt("Enter to continue")).toBe(true);
-    });
-
-    it("should detect colon prompts", () => {
-      expect(detectPrompt("Username: ")).toBe(true);
-      expect(detectPrompt("Password:")).toBe(true);
-    });
-
-    it("should detect greater-than prompts", () => {
-      expect(detectPrompt("cmd> ")).toBe(true);
-      expect(detectPrompt(">>>")).toBe(true);
-    });
-
-    it("should not detect prompts in regular output", () => {
-      expect(detectPrompt("Processing data...")).toBe(false);
-      expect(detectPrompt("Task completed successfully")).toBe(false);
-      expect(detectPrompt("Running tests")).toBe(false);
-    });
-
-    it("should not detect very short strings as prompts", () => {
-      expect(detectPrompt("? ")).toBe(false); // Length 2, below MIN_PROMPT_LENGTH
-      expect(detectPrompt(": ")).toBe(false); // Length 2
-      expect(detectPrompt(">")).toBe(false); // Length 1
-    });
-
-    it("should handle edge cases", () => {
-      expect(detectPrompt("")).toBe(false);
-      expect(detectPrompt("   ")).toBe(false);
+    describe("output event (no longer triggers state changes)", () => {
+      it("should not change state on output", () => {
+        const event: AgentEvent = { type: "output", data: "Some output" };
+        expect(nextAgentState("working", event)).toBe("working");
+        expect(nextAgentState("idle", event)).toBe("idle");
+        expect(nextAgentState("waiting", event)).toBe("waiting");
+      });
     });
   });
 
