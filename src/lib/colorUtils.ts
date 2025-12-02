@@ -33,6 +33,9 @@ export type ElementState = "focused" | "unfocused" | "hover";
  * Returns the appropriate Tailwind text color class for a given agent type and state.
  * Used for terminal icons in headers and toolbar launcher buttons.
  *
+ * NOTE: We use literal strings here so Tailwind's scanner can detect the arbitrary values.
+ * Do not use string interpolation with variables for Tailwind classes.
+ *
  * @param type - The terminal/agent type
  * @param state - The element state (focused, unfocused, or hover)
  * @returns A Tailwind class string for text color
@@ -41,20 +44,20 @@ export function getAgentBrandColor(type: TerminalType, state: ElementState): str
   // Unfocused state is always uniformly dimmed
   if (state === "unfocused") return "text-canopy-text/50";
 
-  // Build class using BRAND_COLORS constants
+  // Build class using BRAND_COLORS constants (hardcoded for Tailwind JIT)
   switch (type) {
     case "claude":
       return state === "hover"
-        ? `hover:text-[${BRAND_COLORS.claude}] focus-visible:text-[${BRAND_COLORS.claude}]`
-        : `text-[${BRAND_COLORS.claude}]`;
+        ? "hover:text-[#CC785C] focus-visible:text-[#CC785C]"
+        : "text-[#CC785C]";
     case "gemini":
       return state === "hover"
-        ? `hover:text-[${BRAND_COLORS.gemini}] focus-visible:text-[${BRAND_COLORS.gemini}]`
-        : `text-[${BRAND_COLORS.gemini}]`;
+        ? "hover:text-[#4285F4] focus-visible:text-[#4285F4]"
+        : "text-[#4285F4]";
     case "codex":
       return state === "hover"
-        ? `hover:text-[${BRAND_COLORS.codex}] focus-visible:text-[${BRAND_COLORS.codex}]`
-        : `text-[${BRAND_COLORS.codex}]`;
+        ? "hover:text-[#E5E5E5] focus-visible:text-[#E5E5E5]"
+        : "text-[#E5E5E5]";
     default:
       // Shell and Custom types fallback to app accent color
       return state === "hover"
