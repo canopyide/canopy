@@ -291,8 +291,12 @@ export function TerminalPane({
       ref={containerRef}
       data-terminal-id={id}
       className={cn(
-        "flex flex-col h-full border border-canopy-border/50 group", // Tiling style - full border for all edges
-        isFocused ? "border-canopy-accent/20" : "border-canopy-border/30",
+        "flex flex-col h-full rounded overflow-hidden border transition-all duration-200 group",
+        "bg-[var(--color-surface)] shadow-md",
+        // Subtle glow for focus, neutral borders
+        isFocused
+          ? "border-zinc-700 shadow-lg shadow-black/40"
+          : "border-zinc-800 hover:border-zinc-700",
         isExited && "opacity-75 grayscale",
         isDragging && "opacity-50 ring-2 ring-canopy-accent"
       )}
@@ -325,12 +329,13 @@ export function TerminalPane({
       })()}
       aria-grabbed={isDragging || undefined}
     >
+      {/* Header - Unified with terminal body (no border-b) */}
       <div
         className={cn(
-          "flex items-center justify-between px-3 h-8 shrink-0 font-mono text-sm transition-colors",
-          isFocused
-            ? "bg-canopy-accent/10 border-b border-canopy-accent/20"
-            : "bg-canopy-sidebar border-b border-canopy-border/30",
+          "flex items-center justify-between px-3 h-7 shrink-0 font-mono text-xs transition-colors",
+          // Unified background that flows into terminal body
+          isFocused ? "bg-[var(--color-surface-highlight)]" : "bg-[var(--color-surface)]",
+          // Drag cursor styles
           canDrag && "cursor-grab active:cursor-grabbing"
         )}
         onDoubleClick={onToggleMaximize}
@@ -562,7 +567,7 @@ export function TerminalPane({
           terminalId={id}
           onReady={handleReady}
           onExit={handleExit}
-          className="absolute inset-0"
+          className="absolute inset-2"
           getRefreshTier={getRefreshTierCallback}
         />
         <ArtifactOverlay terminalId={id} worktreeId={worktreeId} cwd={cwd} />

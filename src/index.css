@@ -90,6 +90,13 @@
   --color-server-stopped: #52525b; /* Zinc-600: Server stopped/inactive */
   --color-server-starting: #fbbf24; /* Amber-400: Server starting up */
   --color-server-error: #f87171; /* Red-400: Server error state */
+
+  /* Grid background - off-black base for noise texture */
+  --color-grid-bg: #0d0d0e;
+
+  /* Terminal surface background - lighter for contrast with grid */
+  --color-surface: #1c1c20;
+  --color-surface-highlight: #2a2a2f;
 }
 
 :root {
@@ -242,6 +249,21 @@
   pre,
   .font-mono {
     font-family: "JetBrains Mono", "Fira Code", "Menlo", "Consolas", monospace;
+  }
+
+  /* Subtle noise texture for grid background */
+  .bg-noise {
+    position: relative;
+  }
+  .bg-noise::before {
+    content: "";
+    position: absolute;
+    inset: 0;
+    background-image: url("./assets/noise.png");
+    background-repeat: repeat;
+    opacity: 0.03;
+    pointer-events: none;
+    z-index: 0;
   }
 }
 
