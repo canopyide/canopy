@@ -25,3 +25,5 @@ export {
   DIAGNOSTICS_MAX_HEIGHT_RATIO,
   DIAGNOSTICS_DEFAULT_HEIGHT,
 } from "./diagnosticsStore";
+
+export { useLayoutConfigStore } from "./layoutConfigStore";

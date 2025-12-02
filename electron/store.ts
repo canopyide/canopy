@@ -1,6 +1,6 @@
 import Store from "electron-store";
 import type { Project } from "./types/index.js";
-import type { AgentSettings } from "../shared/types/index.js";
+import type { AgentSettings, TerminalGridConfig } from "../shared/types/index.js";
 import { DEFAULT_AGENT_SETTINGS } from "../shared/types/index.js";
 
 export interface StoreSchema {
@@ -48,6 +48,7 @@ export interface StoreSchema {
       }>;
       createdAt: number;
     }>;
+    terminalGridConfig?: TerminalGridConfig;
   };
   projects: {
     list: Project[];
@@ -77,6 +78,7 @@ export const store = new Store<StoreSchema>({
       terminals: [],
       recipes: [],
       hasSeenWelcome: false,
+      terminalGridConfig: { strategy: "automatic", value: 3 },
     },
     projects: {
       list: [],

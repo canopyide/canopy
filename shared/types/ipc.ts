@@ -15,6 +15,7 @@ import type {
   GeminiSettings,
   CodexSettings,
 } from "./agentSettings.js";
+import type { TerminalGridConfig } from "./config.js";
 
 // Terminal IPC Types
 
@@ -380,6 +381,8 @@ export interface AppState {
     /** Focus events tab when diagnostics opens (requires autoOpenDiagnostics) */
     focusEventsTab: boolean;
   };
+  /** Terminal grid layout configuration */
+  terminalGridConfig?: TerminalGridConfig;
 }
 
 // Log IPC Types
