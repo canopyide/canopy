@@ -171,8 +171,8 @@ export class PtyManager extends EventEmitter {
   private trashTimeouts: Map<string, NodeJS.Timeout> = new Map();
   private ptyPool: PtyPool | null = null;
 
-  /** TTL for trashed terminals before auto-kill (60 seconds) */
-  private readonly TRASH_TTL_MS = 60 * 1000;
+  /** TTL for trashed terminals before auto-kill (2 minutes) */
+  private readonly TRASH_TTL_MS = 120 * 1000;
 
   constructor() {
     super();

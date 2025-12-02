@@ -394,18 +394,39 @@ export const createTerminalRegistrySlice =
       const terminal = get().terminals.find((t) => t.id === id);
       if (!terminal) return;
 
-      // Call IPC to trash on main process (which starts the countdown)
-      terminalClient.trash(id).catch((error) => {
-        console.error("Failed to trash terminal:", error);
-      });
+      // Optimistically calculate expiry (2 minutes) to match backend TTL.
+      // This prevents UI flicker/disappearance while waiting for IPC event.
+      const optimisticExpiresAt = Date.now() + 120000;
 
-      // Move terminal to trash location (separate from dock)
+      // Move terminal to trash location AND immediately populate trashedTerminals map
       set((state) => {
+        // Add to trashed map immediately (optimistic update)
+        const newTrashed = new Map(state.trashedTerminals);
+        newTrashed.set(id, { id, expiresAt: optimisticExpiresAt });
+
+        // Move terminal to trash location
         const newTerminals = state.terminals.map((t) =>
           t.id === id ? { ...t, location: "trash" as const } : t
         );
+
         persistTerminals(newTerminals);
-        return { terminals: newTerminals };
+        return { terminals: newTerminals, trashedTerminals: newTrashed };
+      });
+
+      // Call IPC to trash on main process (which starts the countdown)
+      // If this fails, rollback optimistic update
+      terminalClient.trash(id).catch((error) => {
+        console.error("Failed to trash terminal:", error);
+        // Rollback: remove from trash and return to grid
+        set((state) => {
+          const newTrashed = new Map(state.trashedTerminals);
+          newTrashed.delete(id);
+          const newTerminals = state.terminals.map((t) =>
+            t.id === id ? { ...t, location: "grid" as const } : t
+          );
+          persistTerminals(newTerminals);
+          return { terminals: newTerminals, trashedTerminals: newTrashed };
+        });
       });
 
       // Enable buffering for trashed (hidden) terminal to reduce IPC overhead
@@ -419,35 +440,51 @@ export const createTerminalRegistrySlice =
 
     restoreTerminal: (id) => {
       // Call IPC to restore on main process
-      terminalClient.restore(id).catch((error) => {
-        console.error("Failed to restore terminal:", error);
-      });
-
-      // Move terminal back to grid
-      set((state) => {
-        const newTerminals = state.terminals.map((t) =>
-          t.id === id ? { ...t, location: "grid" as const } : t
-        );
-        persistTerminals(newTerminals);
-        return { terminals: newTerminals };
-      });
-
-      // Disable buffering and flush when terminal returns to grid
+      // Only update UI if restore was successful
       terminalClient
-        .setBuffering(id, false)
-        .then(() => {
-          setTimeout(() => {
-            terminalClient.flush(id).catch((error) => {
-              console.error("Failed to flush terminal buffer:", error);
+        .restore(id)
+        .then((wasRestored) => {
+          // If restore failed (terminal not in trash or already expired), don't update UI
+          if (!wasRestored) {
+            console.warn(`Cannot restore terminal ${id}: not in trash or already expired`);
+            return;
+          }
+
+          // Move terminal back to grid AND remove from trashedTerminals map
+          set((state) => {
+            // Remove from trashed map
+            const newTrashed = new Map(state.trashedTerminals);
+            newTrashed.delete(id);
+
+            // Move terminal to grid location
+            const newTerminals = state.terminals.map((t) =>
+              t.id === id ? { ...t, location: "grid" as const } : t
+            );
+
+            persistTerminals(newTerminals);
+            return { terminals: newTerminals, trashedTerminals: newTrashed };
+          });
+
+          // Disable buffering and flush when terminal returns to grid
+          terminalClient
+            .setBuffering(id, false)
+            .then(() => {
+              setTimeout(() => {
+                terminalClient.flush(id).catch((error) => {
+                  console.error("Failed to flush terminal buffer:", error);
+                });
+              }, 100);
+            })
+            .catch((error) => {
+              console.error("Failed to disable terminal buffering:", error);
             });
-          }, 100);
+
+          // Mark as visible priority so renderer can reacquire GPU if needed
+          terminalInstanceService.applyRendererPolicy(id, TerminalRefreshTier.VISIBLE);
         })
         .catch((error) => {
-          console.error("Failed to disable terminal buffering:", error);
+          console.error("Failed to restore terminal:", error);
         });
-
-      // Mark as visible priority so renderer can reacquire GPU if needed
-      terminalInstanceService.applyRendererPolicy(id, TerminalRefreshTier.VISIBLE);
     },
 
     markAsTrashed: (id, expiresAt) => {
@@ -505,7 +542,7 @@ export const createTerminalRegistrySlice =
       set((state) => {
         // Get terminals in the specified location
         const terminalsInLocation = state.terminals.filter(
-          (t) => (t.location === location) || (location === "grid" && t.location === undefined)
+          (t) => t.location === location || (location === "grid" && t.location === undefined)
         );
 
         // Validate indices
@@ -547,7 +584,7 @@ export const createTerminalRegistrySlice =
         const terminalsInTargetLocation = state.terminals.filter(
           (t) =>
             t.id !== id &&
-            ((t.location === location) || (location === "grid" && t.location === undefined))
+            (t.location === location || (location === "grid" && t.location === undefined))
         );
 
         // Clamp toIndex to valid range
@@ -557,7 +594,7 @@ export const createTerminalRegistrySlice =
         const otherTerminals = state.terminals.filter(
           (t) =>
             t.id !== id &&
-            !((t.location === location) || (location === "grid" && t.location === undefined))
+            !(t.location === location || (location === "grid" && t.location === undefined))
         );
 
         // Update the terminal's location
