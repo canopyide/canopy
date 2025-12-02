@@ -330,7 +330,9 @@ export function TerminalGrid({ className, defaultCwd }: TerminalGridProps) {
       ref={gridRef}
       className={cn(
         "h-full bg-canopy-border", // bg acts as divider lines
-        dragState.isDragging && dragState.dropZone === "grid" && "ring-2 ring-canopy-accent/30 ring-inset",
+        dragState.isDragging &&
+          dragState.dropZone === "grid" &&
+          "ring-2 ring-canopy-accent/30 ring-inset",
         className
       )}
       style={{
@@ -405,7 +407,9 @@ export function TerminalGrid({ className, defaultCwd }: TerminalGridProps) {
               onTitleChange={(newTitle) => updateTitle(terminal.id, newTitle)}
               onMinimize={() => moveTerminalToDock(terminal.id)}
               isDragging={isDragging}
-              onDragStart={!isTerminalInTrash ? createDragStartHandler(terminal.id, "grid", index) : undefined}
+              onDragStart={
+                !isTerminalInTrash ? createDragStartHandler(terminal.id, "grid", index) : undefined
+              }
             />
           </div>
         );

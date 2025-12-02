@@ -40,7 +40,12 @@ const initialDragState: DragState = {
 
 export interface UseTerminalDragAndDropOptions {
   /** Callback when a terminal is moved */
-  onTerminalMoved?: (terminalId: string, fromLocation: "grid" | "dock", toLocation: "grid" | "dock", toIndex: number) => void;
+  onTerminalMoved?: (
+    terminalId: string,
+    fromLocation: "grid" | "dock",
+    toLocation: "grid" | "dock",
+    toIndex: number
+  ) => void;
 }
 
 export interface UseTerminalDragAndDropReturn {
@@ -53,7 +58,11 @@ export interface UseTerminalDragAndDropReturn {
   /** Manually begin a drag from an external source (e.g., dock item) */
   beginDrag: (id: string, location: "grid" | "dock", index: number) => void;
   /** Create drag start handler for a terminal */
-  createDragStartHandler: (id: string, location: "grid" | "dock", index: number) => (e: React.DragEvent) => void;
+  createDragStartHandler: (
+    id: string,
+    location: "grid" | "dock",
+    index: number
+  ) => (e: React.DragEvent) => void;
   /** Create drag over handler for a drop zone */
   createDragOverHandler: (zone: "grid" | "dock") => (e: React.DragEvent) => void;
   /** Handle drop event */
@@ -63,7 +72,10 @@ export interface UseTerminalDragAndDropReturn {
   /** Check if a terminal is being dragged */
   isDraggedTerminal: (id: string) => boolean;
   /** Get drop indicator info for rendering */
-  getDropIndicator: (zone: "grid" | "dock", index: number) => { showBefore: boolean; showAfter: boolean };
+  getDropIndicator: (
+    zone: "grid" | "dock",
+    index: number
+  ) => { showBefore: boolean; showAfter: boolean };
 }
 
 export function useTerminalDragAndDrop(
@@ -85,95 +97,90 @@ export function useTerminalDragAndDrop(
   const DRAG_OVER_THROTTLE_MS = 50;
 
   // Manually begin a drag from an external source (e.g., dock item)
-  const beginDrag = useCallback(
-    (id: string, location: "grid" | "dock", index: number) => {
-      setDragState({
-        isDragging: true,
-        draggedId: id,
-        sourceLocation: location,
-        sourceIndex: index,
-        dropZone: null,
-        dropIndex: null,
-      });
-    },
-    []
-  );
+  const beginDrag = useCallback((id: string, location: "grid" | "dock", index: number) => {
+    setDragState({
+      isDragging: true,
+      draggedId: id,
+      sourceLocation: location,
+      sourceIndex: index,
+      dropZone: null,
+      dropIndex: null,
+    });
+  }, []);
 
   // Create drag start handler for a specific terminal
   const createDragStartHandler = useCallback(
-    (id: string, location: "grid" | "dock", index: number) =>
-      (e: React.DragEvent) => {
-        // Set drag data
-        setTerminalDragData(e.dataTransfer, {
-          terminalId: id,
-          sourceLocation: location,
-          sourceIndex: index,
-        });
+    (id: string, location: "grid" | "dock", index: number) => (e: React.DragEvent) => {
+      // Set drag data
+      setTerminalDragData(e.dataTransfer, {
+        terminalId: id,
+        sourceLocation: location,
+        sourceIndex: index,
+      });
 
-        // Set drag image (optional - browser default is usually fine)
-        // e.dataTransfer.setDragImage(e.currentTarget, 0, 0);
+      // Set drag image (optional - browser default is usually fine)
+      // e.dataTransfer.setDragImage(e.currentTarget, 0, 0);
 
-        beginDrag(id, location, index);
-      },
+      beginDrag(id, location, index);
+    },
     [beginDrag]
   );
 
   // Create drag over handler for a drop zone
   const createDragOverHandler = useCallback(
-    (zone: "grid" | "dock") =>
-      (e: React.DragEvent) => {
-        e.preventDefault();
-        e.dataTransfer.dropEffect = "move";
+    (zone: "grid" | "dock") => (e: React.DragEvent) => {
+      e.preventDefault();
+      e.dataTransfer.dropEffect = "move";
 
-        // Throttle updates per-zone to avoid stale drop state when switching zones
-        const now = Date.now();
-        const previousZone = dragState.dropZone;
-        const isZoneChange = previousZone !== null && previousZone !== zone;
+      // Throttle updates per-zone to avoid stale drop state when switching zones
+      const now = Date.now();
+      const previousZone = dragState.dropZone;
+      const isZoneChange = previousZone !== null && previousZone !== zone;
 
-        if (!isZoneChange && now - lastDragOverTime.current[zone] < DRAG_OVER_THROTTLE_MS) {
-          return;
+      if (!isZoneChange && now - lastDragOverTime.current[zone] < DRAG_OVER_THROTTLE_MS) {
+        return;
+      }
+      lastDragOverTime.current[zone] = now;
+
+      // Calculate drop index based on position
+      let dropIndex = 0;
+      const containerRef = zone === "grid" ? gridRef : dockRef;
+
+      if (containerRef.current) {
+        if (zone === "grid") {
+          // For grid, find terminal pane containers
+          const terminalElements = Array.from(
+            containerRef.current.querySelectorAll("[data-terminal-id]")
+          ) as HTMLElement[];
+
+          dropIndex = calculateGridDropIndex(
+            e.clientX,
+            e.clientY,
+            terminalElements,
+            dragState.sourceLocation === "grid" ? (dragState.sourceIndex ?? undefined) : undefined
+          );
+        } else {
+          // For dock, find docked terminal buttons (not trashed ones)
+          const dockItems = Array.from(
+            containerRef.current.querySelectorAll("[data-docked-terminal-id]")
+          ) as HTMLElement[];
+
+          dropIndex = calculateDropIndex(
+            e.clientX,
+            e.clientY,
+            dockItems,
+            "horizontal",
+            dragState.sourceLocation === "dock" ? (dragState.sourceIndex ?? undefined) : undefined
+          );
         }
-        lastDragOverTime.current[zone] = now;
+      }
 
-        // Calculate drop index based on position
-        let dropIndex = 0;
-        const containerRef = zone === "grid" ? gridRef : dockRef;
-
-        if (containerRef.current) {
-          if (zone === "grid") {
-            // For grid, find terminal pane containers
-            const terminalElements = Array.from(
-              containerRef.current.querySelectorAll("[data-terminal-id]")
-            ) as HTMLElement[];
-
-            dropIndex = calculateGridDropIndex(
-              e.clientX,
-              e.clientY,
-              terminalElements,
-              dragState.sourceLocation === "grid" ? (dragState.sourceIndex ?? undefined) : undefined
-            );
-          } else {
-            // For dock, find docked terminal buttons (not trashed ones)
-            const dockItems = Array.from(
-              containerRef.current.querySelectorAll("[data-docked-terminal-id]")
-            ) as HTMLElement[];
-
-            dropIndex = calculateDropIndex(
-              e.clientX,
-              e.clientY,
-              dockItems,
-              "horizontal",
-              dragState.sourceLocation === "dock" ? (dragState.sourceIndex ?? undefined) : undefined
-            );
-          }
-        }
-
-        setDragState((prev) => ({
-          ...prev,
-          dropZone: zone,
-          dropIndex,
-        }));
-      },
+      setDragState((prev) => ({
+        ...prev,
+        dropZone: zone,
+        dropIndex,
+      }));
+    },
     [dragState.sourceLocation, dragState.sourceIndex]
   );
 

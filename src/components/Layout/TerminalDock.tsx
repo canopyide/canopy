@@ -14,16 +14,11 @@
 
 import { useState, useCallback, useRef } from "react";
 import { useShallow } from "zustand/react/shallow";
-import { Trash2 } from "lucide-react";
 import { cn } from "@/lib/utils";
 import { useTerminalStore } from "@/store";
 import { DockedTerminalItem } from "./DockedTerminalItem";
-import { TrashedTerminalItem } from "./TrashedTerminalItem";
-import {
-  getTerminalDragData,
-  isTerminalDrag,
-  calculateDropIndex,
-} from "@/utils/dragDrop";
+import { TrashBin } from "./TrashBin";
+import { getTerminalDragData, isTerminalDrag, calculateDropIndex } from "@/utils/dragDrop";
 
 export function TerminalDock() {
   // Filter terminals in dock location using shallow comparison
@@ -47,44 +42,37 @@ export function TerminalDock() {
   const dockRef = useRef<HTMLDivElement>(null);
 
   // Get trashed terminal info paired with terminal instances
-  const trashedItems = Array.from(trashedTerminals.values())
-    .map((trashed) => ({
-      terminal: terminals.find((t) => t.id === trashed.id),
-      trashedInfo: trashed,
-    }))
-    .filter((item) => item.terminal !== undefined) as {
-    terminal: (typeof terminals)[0];
-    trashedInfo: typeof trashedTerminals extends Map<string, infer V> ? V : never;
-  }[];
+  // Use flatMap to avoid type assertion
+  const trashedItems = Array.from(trashedTerminals.values()).flatMap((trashed) => {
+    const terminal = terminals.find((t) => t.id === trashed.id);
+    return terminal ? [{ terminal, trashedInfo: trashed }] : [];
+  });
 
   // dockTerminals are now guaranteed to be only docked (not trashed) since
   // trashed terminals have location="trash" instead of location="dock"
   const activeDockTerminals = dockTerminals;
 
   // Drag event handlers
-  const handleDragOver = useCallback(
-    (e: React.DragEvent) => {
-      if (!isTerminalDrag(e.dataTransfer)) return;
+  const handleDragOver = useCallback((e: React.DragEvent) => {
+    if (!isTerminalDrag(e.dataTransfer)) return;
 
-      e.preventDefault();
-      e.dataTransfer.dropEffect = "move";
-      setIsDragOver(true);
+    e.preventDefault();
+    e.dataTransfer.dropEffect = "move";
+    setIsDragOver(true);
 
-      // Calculate drop index
-      if (dockRef.current) {
-        const dockItems = Array.from(
-          dockRef.current.querySelectorAll("[data-docked-terminal-id]")
-        ) as HTMLElement[];
+    // Calculate drop index
+    if (dockRef.current) {
+      const dockItems = Array.from(
+        dockRef.current.querySelectorAll("[data-docked-terminal-id]")
+      ) as HTMLElement[];
 
-        const data = getTerminalDragData(e.dataTransfer);
-        const sourceIndex = data?.sourceLocation === "dock" ? data.sourceIndex : undefined;
+      const data = getTerminalDragData(e.dataTransfer);
+      const sourceIndex = data?.sourceLocation === "dock" ? data.sourceIndex : undefined;
 
-        const index = calculateDropIndex(e.clientX, e.clientY, dockItems, "horizontal", sourceIndex);
-        setDropIndex(index);
-      }
-    },
-    []
-  );
+      const index = calculateDropIndex(e.clientX, e.clientY, dockItems, "horizontal", sourceIndex);
+      setDropIndex(index);
+    }
+  }, []);
 
   const handleDragLeave = useCallback((e: React.DragEvent) => {
     // Only clear if leaving the dock entirely
@@ -124,7 +112,14 @@ export function TerminalDock() {
 
       setFocused(null); // Clear focus when moving to dock
     },
-    [dropIndex, activeDockTerminals, dockTerminals, reorderTerminals, moveTerminalToPosition, setFocused]
+    [
+      dropIndex,
+      activeDockTerminals,
+      dockTerminals,
+      reorderTerminals,
+      moveTerminalToPosition,
+      setFocused,
+    ]
   );
 
   // Handler for dock item drag start
@@ -182,22 +177,13 @@ export function TerminalDock() {
         </>
       )}
 
-      {/* Separator between sections */}
-      {activeDockTerminals.length > 0 && trashedItems.length > 0 && (
-        <div className="w-px h-5 bg-canopy-border mx-2 shrink-0" />
-      )}
-
-      {/* Trashed terminals section */}
+      {/* Trash bin (right aligned) */}
       {trashedItems.length > 0 && (
         <>
-          <span className="text-xs text-red-400/80 mr-2 shrink-0 flex items-center gap-1">
-            <Trash2 className="w-3 h-3" />
-            Trash ({trashedItems.length})
-          </span>
-
-          {trashedItems.map(({ terminal, trashedInfo }) => (
-            <TrashedTerminalItem key={terminal.id} terminal={terminal} trashedInfo={trashedInfo} />
-          ))}
+          {activeDockTerminals.length > 0 && (
+            <div className="w-px h-5 bg-canopy-border mx-2 shrink-0" />
+          )}
+          <TrashBin items={trashedItems} />
         </>
       )}
     </div>
