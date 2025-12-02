@@ -1,13 +1,13 @@
 import { ipcMain, dialog, shell } from "electron";
 import path from "path";
 import os from "os";
-import { CHANNELS } from "../channels";
-import { sendToRenderer } from "../utils";
-import { store } from "../../store";
-import { projectStore } from "../../services/ProjectStore";
-import { generateProjectIdentity } from "../../services/ai/identity";
-import { runCommandDetector } from "../../services/ai/RunCommandDetector";
-import type { HandlerDependencies } from "../types";
+import { CHANNELS } from "../channels.js";
+import { sendToRenderer } from "../utils.js";
+import { store } from "../../store.js";
+import { projectStore } from "../../services/ProjectStore.js";
+import { generateProjectIdentity } from "../../services/ai/identity.js";
+import { runCommandDetector } from "../../services/ai/RunCommandDetector.js";
+import type { HandlerDependencies } from "../types.js";
 import type {
   RecentDirectory,
   DirectoryOpenPayload,
@@ -16,8 +16,8 @@ import type {
   SystemOpenPathPayload,
   Project,
   ProjectSettings,
-} from "../../types/index";
-import { updateRecentDirectories, removeRecentDirectory } from "../../utils/recentDirectories";
+} from "../../types/index.js";
+import { updateRecentDirectories, removeRecentDirectory } from "../../utils/recentDirectories.js";
 
 export function registerProjectHandlers(deps: HandlerDependencies): () => void {
   const { mainWindow, worktreeService, cliAvailabilityService } = deps;

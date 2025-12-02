@@ -1,10 +1,10 @@
 import { ipcMain, clipboard } from "electron";
 import crypto from "crypto";
 import path from "path";
-import { CHANNELS } from "../channels";
-import { sendToRenderer } from "../utils";
-import { copyTreeService } from "../../services/CopyTreeService";
-import type { HandlerDependencies } from "../types";
+import { CHANNELS } from "../channels.js";
+import { sendToRenderer } from "../utils.js";
+import { copyTreeService } from "../../services/CopyTreeService.js";
+import type { HandlerDependencies } from "../types.js";
 import type {
   CopyTreeGeneratePayload,
   CopyTreeGenerateAndCopyFilePayload,
@@ -13,13 +13,13 @@ import type {
   CopyTreeResult,
   CopyTreeProgress,
   FileTreeNode,
-} from "../../types/index";
+} from "../../types/index.js";
 import {
   CopyTreeGeneratePayloadSchema,
   CopyTreeGenerateAndCopyFilePayloadSchema,
   CopyTreeInjectPayloadSchema,
   CopyTreeGetFileTreePayloadSchema,
-} from "../../schemas/ipc";
+} from "../../schemas/ipc.js";
 
 export function registerCopyTreeHandlers(deps: HandlerDependencies): () => void {
   const { mainWindow, worktreeService, ptyManager } = deps;

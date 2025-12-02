@@ -1,10 +1,10 @@
 import { ipcMain } from "electron";
 import fs from "fs";
 import path from "path";
-import { CHANNELS } from "../channels";
-import { GitService } from "../../services/GitService";
-import type { HandlerDependencies } from "../types";
-import type { WorktreeSetActivePayload } from "../../types/index";
+import { CHANNELS } from "../channels.js";
+import { GitService } from "../../services/GitService.js";
+import type { HandlerDependencies } from "../types.js";
+import type { WorktreeSetActivePayload } from "../../types/index.js";
 
 export function registerWorktreeHandlers(deps: HandlerDependencies): () => void {
   const { worktreeService } = deps;

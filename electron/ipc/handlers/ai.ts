@@ -1,16 +1,17 @@
 import { ipcMain } from "electron";
-import { CHANNELS } from "../channels";
-import { store } from "../../store";
-import type { HandlerDependencies } from "../types";
-import { getTranscriptManager } from "../../services/TranscriptManager";
-import { getAIConfig, setAIConfig, clearAIKey, validateAIKey } from "../../services/ai/client";
-import { generateProjectIdentity } from "../../services/ai/identity";
+import { CHANNELS } from "../channels.js";
+import { store } from "../../store.js";
+import type { HandlerDependencies } from "../types.js";
+import { getTranscriptManager } from "../../services/TranscriptManager.js";
+import { getAIConfig, setAIConfig, clearAIKey, validateAIKey } from "../../services/ai/client.js";
+import { generateProjectIdentity } from "../../services/ai/identity.js";
 import type {
   HistoryGetSessionsPayload,
   HistoryGetSessionPayload,
   HistoryExportSessionPayload,
   AgentSession,
-} from "../../types/index";
+} from "../../types/index.js";
+import { DEFAULT_AGENT_SETTINGS } from "../../../shared/types/index.js";
 
 export function registerAiHandlers(_deps: HandlerDependencies): () => void {
   const handlers: Array<() => void> = [];
@@ -232,7 +233,6 @@ export function registerAiHandlers(_deps: HandlerDependencies): () => void {
     _event: Electron.IpcMainInvokeEvent,
     agentType?: "claude" | "gemini" | "codex"
   ) => {
-    const { DEFAULT_AGENT_SETTINGS } = await import("../../shared/types/index.js");
 
     if (agentType) {
       // Reset specific agent settings

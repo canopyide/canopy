@@ -2,13 +2,13 @@ import { ipcMain, dialog } from "electron";
 import crypto from "crypto";
 import os from "os";
 import path from "path";
-import { CHANNELS } from "../channels";
-import { sendToRenderer } from "../utils";
-import { projectStore } from "../../services/ProjectStore";
-import { events } from "../../services/events";
-import type { HandlerDependencies } from "../types";
-import type { TerminalSpawnOptions, TerminalResizePayload } from "../../types/index";
-import { TerminalSpawnOptionsSchema, TerminalResizePayloadSchema } from "../../schemas/ipc";
+import { CHANNELS } from "../channels.js";
+import { sendToRenderer } from "../utils.js";
+import { projectStore } from "../../services/ProjectStore.js";
+import { events } from "../../services/events.js";
+import type { HandlerDependencies } from "../types.js";
+import type { TerminalSpawnOptions, TerminalResizePayload } from "../../types/index.js";
+import { TerminalSpawnOptionsSchema, TerminalResizePayloadSchema } from "../../schemas/ipc.js";
 
 export function registerTerminalHandlers(deps: HandlerDependencies): () => void {
   const { mainWindow, ptyManager, worktreeService } = deps;
@@ -44,24 +44,24 @@ export function registerTerminalHandlers(deps: HandlerDependencies): () => void 
   // ==========================================
 
   // Forward agent state changes to renderer
-  const unsubAgentState = events.on("agent:state-changed", (payload) => {
+  const unsubAgentState = events.on("agent:state-changed", (payload: unknown) => {
     sendToRenderer(mainWindow, CHANNELS.AGENT_STATE_CHANGED, payload);
   });
   handlers.push(unsubAgentState);
 
   // Forward agent detection events to renderer
-  const unsubAgentDetected = events.on("agent:detected", (payload) => {
+  const unsubAgentDetected = events.on("agent:detected", (payload: unknown) => {
     sendToRenderer(mainWindow, CHANNELS.AGENT_DETECTED, payload);
   });
   handlers.push(unsubAgentDetected);
 
-  const unsubAgentExited = events.on("agent:exited", (payload) => {
+  const unsubAgentExited = events.on("agent:exited", (payload: unknown) => {
     sendToRenderer(mainWindow, CHANNELS.AGENT_EXITED, payload);
   });
   handlers.push(unsubAgentExited);
 
   // Forward artifact detection events to renderer
-  const unsubArtifactDetected = events.on("artifact:detected", (payload) => {
+  const unsubArtifactDetected = events.on("artifact:detected", (payload: unknown) => {
     sendToRenderer(mainWindow, CHANNELS.ARTIFACT_DETECTED, payload);
   });
   handlers.push(unsubArtifactDetected);
@@ -448,7 +448,7 @@ export function registerTerminalHandlers(deps: HandlerDependencies): () => void 
         if (worktreeService) {
           const worktrees = worktreeService.getAllStates();
           const isValidWorktree = Array.from(worktrees.values()).some(
-            (wt) => path.resolve(wt.path) === resolvedCwd
+            (wt: { path: string }) => path.resolve(wt.path) === resolvedCwd
           );
           if (!isValidWorktree) {
             return {

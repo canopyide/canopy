@@ -1,5 +1,5 @@
 import { BrowserWindow, ipcMain } from "electron";
-import type { IpcInvokeMap, IpcEventMap } from "../types/index";
+import type { IpcInvokeMap, IpcEventMap } from "../types/index.js";
 
 export function sendToRenderer(
   mainWindow: BrowserWindow,
@@ -17,10 +17,10 @@ export function typedHandle<K extends keyof IpcInvokeMap>(
     ...args: IpcInvokeMap[K]["args"]
   ) => Promise<IpcInvokeMap[K]["result"]> | IpcInvokeMap[K]["result"]
 ): () => void {
-  ipcMain.handle(channel, async (_event, ...args) => {
+  ipcMain.handle(channel as string, async (_event, ...args) => {
     return handler(...(args as IpcInvokeMap[K]["args"]));
   });
-  return () => ipcMain.removeHandler(channel);
+  return () => ipcMain.removeHandler(channel as string);
 }
 
 export function typedSend<K extends keyof IpcEventMap>(
@@ -29,6 +29,6 @@ export function typedSend<K extends keyof IpcEventMap>(
   payload: IpcEventMap[K]
 ): void {
   if (window && !window.isDestroyed()) {
-    window.webContents.send(channel, payload);
+    window.webContents.send(channel as string, payload);
   }
 }

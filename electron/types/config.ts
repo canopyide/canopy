@@ -5,7 +5,7 @@
  * This file contains only the DEFAULT_CONFIG constant.
  */
 
-import type { CanopyConfig } from "@shared/types/index.js";
+import type { CanopyConfig } from "../../shared/types/index.js";
 
 // Re-export types for backward compatibility with existing imports
 export type {
@@ -21,7 +21,7 @@ export type {
   WorktreesConfig,
   GitDisplayConfig,
   CanopyConfig,
-} from "@shared/types/index.js";
+} from "../../shared/types/index.js";
 
 // ============================================================================
 // Default Configuration

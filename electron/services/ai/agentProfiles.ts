@@ -6,7 +6,7 @@
  * that we use to track their working state.
  */
 
-import type { TerminalType } from "@shared/types/index.js";
+import type { TerminalType } from "../../../shared/types/index.js";
 
 /**
  * Agent profile configuration for pattern-based state detection.

@@ -5,7 +5,7 @@ import {
   EVENT_META,
   getEventCategory,
 } from "./events.js";
-import type { EventRecord, EventCategory } from "@shared/types/index.js";
+import type { EventRecord, EventCategory } from "../../shared/types/index.js";
 
 // Re-export for backwards compatibility
 export type { EventRecord };

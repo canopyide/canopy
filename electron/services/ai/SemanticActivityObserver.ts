@@ -19,7 +19,7 @@ import type {
   TerminalTaskType,
   TerminalActivityStatus,
   TerminalActivityPayload,
-} from "@shared/types/terminal.js";
+} from "../../../shared/types/terminal.js";
 
 /**
  * Configuration for the semantic activity observer.

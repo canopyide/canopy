@@ -1,12 +1,12 @@
 import { ipcMain, app, shell } from "electron";
 import { join } from "path";
 import { homedir } from "os";
-import { CHANNELS } from "../channels";
-import { store } from "../../store";
-import { logBuffer } from "../../services/LogBuffer";
-import type { HandlerDependencies } from "../types";
-import type { FilterOptions as LogFilterOptions } from "../../services/LogBuffer";
-import type { FilterOptions as EventFilterOptions } from "../../services/EventBuffer";
+import { CHANNELS } from "../channels.js";
+import { store } from "../../store.js";
+import { logBuffer } from "../../services/LogBuffer.js";
+import type { HandlerDependencies } from "../types.js";
+import type { FilterOptions as LogFilterOptions } from "../../services/LogBuffer.js";
+import type { FilterOptions as EventFilterOptions } from "../../services/EventBuffer.js";
 
 export function registerAppHandlers(deps: HandlerDependencies): () => void {
   const { eventBuffer } = deps;
@@ -55,7 +55,7 @@ export function registerAppHandlers(deps: HandlerDependencies): () => void {
 
       if ("recipes" in partialState && Array.isArray(partialState.recipes)) {
         // Validate recipe structure
-        const validRecipes = partialState.recipes.filter((recipe) => {
+        const validRecipes = partialState.recipes.filter((recipe: any) => {
           return (
             recipe &&
             typeof recipe === "object" &&

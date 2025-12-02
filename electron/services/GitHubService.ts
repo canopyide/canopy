@@ -20,7 +20,7 @@ import type {
   GitHubPR,
   GitHubListOptions,
   GitHubListResponse,
-} from "@shared/types/github.js";
+} from "../../shared/types/github.js";
 
 // ─────────────────────────────────────────────────────────────────────────────
 // Types

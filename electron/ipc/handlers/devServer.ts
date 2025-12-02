@@ -1,18 +1,13 @@
 import { ipcMain } from "electron";
-import { CHANNELS } from "../channels";
-import { sendToRenderer } from "../utils";
-import { events } from "../../services/events";
-import type { HandlerDependencies } from "../types";
-import type {
-  DevServerStartPayload,
-  DevServerStopPayload,
-  DevServerTogglePayload,
-} from "../../types/index";
+import { CHANNELS } from "../channels.js";
+import { sendToRenderer } from "../utils.js";
+import { events } from "../../services/events.js";
+import type { HandlerDependencies } from "../types.js";
 import {
   DevServerStartPayloadSchema,
   DevServerStopPayloadSchema,
   DevServerTogglePayloadSchema,
-} from "../../schemas/ipc";
+} from "../../schemas/ipc.js";
 
 export function registerDevServerHandlers(deps: HandlerDependencies): () => void {
   const { mainWindow, devServerManager } = deps;
@@ -24,13 +19,13 @@ export function registerDevServerHandlers(deps: HandlerDependencies): () => void
 
   // Forward dev server update events to renderer
   // DevServerManager now emits events instead of direct IPC
-  const unsubServerUpdate = events.on("server:update", (payload) => {
+  const unsubServerUpdate = events.on("server:update", (payload: unknown) => {
     sendToRenderer(mainWindow, CHANNELS.DEVSERVER_UPDATE, payload);
   });
   handlers.push(unsubServerUpdate);
 
   // Forward dev server error events to renderer
-  const unsubServerError = events.on("server:error", (payload) => {
+  const unsubServerError = events.on("server:error", (payload: unknown) => {
     sendToRenderer(mainWindow, CHANNELS.DEVSERVER_ERROR, payload);
   });
   handlers.push(unsubServerError);
@@ -41,7 +36,7 @@ export function registerDevServerHandlers(deps: HandlerDependencies): () => void
 
   const handleDevServerStart = async (
     _event: Electron.IpcMainInvokeEvent,
-    payload: DevServerStartPayload
+    payload: unknown
   ) => {
     // Validate with Zod schema
     const parseResult = DevServerStartPayloadSchema.safeParse(payload);
@@ -63,7 +58,7 @@ export function registerDevServerHandlers(deps: HandlerDependencies): () => void
 
   const handleDevServerStop = async (
     _event: Electron.IpcMainInvokeEvent,
-    payload: DevServerStopPayload
+    payload: unknown
   ) => {
     // Validate with Zod schema
     const parseResult = DevServerStopPayloadSchema.safeParse(payload);
@@ -85,7 +80,7 @@ export function registerDevServerHandlers(deps: HandlerDependencies): () => void
 
   const handleDevServerToggle = async (
     _event: Electron.IpcMainInvokeEvent,
-    payload: DevServerTogglePayload
+    payload: unknown
   ) => {
     // Validate with Zod schema
     const parseResult = DevServerTogglePayloadSchema.safeParse(payload);
