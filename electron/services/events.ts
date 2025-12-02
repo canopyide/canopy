@@ -234,7 +234,7 @@ export const EVENT_META: Record<keyof CanopyEventMap, EventMetadata> = {
     description: "Code artifacts extracted from agent output",
   },
 
-  // Terminal trash events
+  // Terminal events
   "terminal:trashed": {
     category: "agent",
     requiresContext: false,
@@ -246,6 +246,12 @@ export const EVENT_META: Record<keyof CanopyEventMap, EventMetadata> = {
     requiresContext: false,
     requiresTimestamp: false,
     description: "Terminal restored from trash",
+  },
+  "terminal:activity": {
+    category: "agent",
+    requiresContext: false,
+    requiresTimestamp: false,
+    description: "Terminal activity state changed (busy/idle via process tree)",
   },
 
   // Task events
@@ -546,6 +552,16 @@ export type CanopyEventMap = {
     id: string;
   };
 
+  /**
+   * Emitted when a terminal's activity state changes (busy/idle).
+   * For shell terminals, this uses process tree inspection for accuracy.
+   */
+  "terminal:activity": {
+    terminalId: string;
+    activity: "busy" | "idle";
+    source: "process-tree" | "data-flow";
+  };
+
   // Task Lifecycle Events (Future-proof for task management)
 
   /**
@@ -636,6 +652,7 @@ export const ALL_EVENT_TYPES: Array<keyof CanopyEventMap> = [
   "artifact:detected",
   "terminal:trashed",
   "terminal:restored",
+  "terminal:activity",
   "task:created",
   "task:assigned",
   "task:state-changed",

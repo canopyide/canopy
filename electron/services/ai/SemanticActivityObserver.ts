@@ -1,4 +1,4 @@
-import { getAIClient, isAIAvailable } from "./client.js";
+import { getAIClient, getAIModel, isAIAvailable } from "./client.js";
 import { getPtyManager } from "../PtyManager.js";
 import { sendToRenderer } from "../../ipc/handlers.js";
 import { CHANNELS } from "../../ipc/channels.js";
@@ -19,8 +19,6 @@ export interface SemanticActivityObserverConfig {
 const DEFAULT_POLL_INTERVAL_MS = 3000;
 const DEFAULT_ACTIVITY_THRESHOLD_MS = 1000;
 const DEFAULT_THROTTLE_MS = 5000;
-
-const CLASSIFICATION_MODEL = "gpt-4o-mini";
 
 // To control API cost and latency
 const MAX_ANALYSIS_LINES = 30;
@@ -246,7 +244,7 @@ export class SemanticActivityObserver {
 
     try {
       const response = await client.chat.completions.create({
-        model: CLASSIFICATION_MODEL,
+        model: getAIModel(),
         messages: [
           { role: "system", content: SEMANTIC_ACTIVITY_PROMPT },
           { role: "user", content: context },

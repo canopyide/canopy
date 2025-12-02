@@ -14,7 +14,7 @@ import {
   type AgentStateChangeTrigger,
 } from "../schemas/agent.js";
 import { type PtyPool } from "./PtyPool.js";
-import { ProcessDetector, type DetectionResult } from "./ProcessDetector.js";
+import { ProcessDetector, hasChildProcesses, type DetectionResult } from "./ProcessDetector.js";
 import type { TerminalType } from "../../shared/types/domain.js";
 import { ActivityMonitor } from "./ActivityMonitor.js";
 
@@ -96,9 +96,11 @@ export class PtyManager extends EventEmitter {
   private terminals: Map<string, TerminalInfo> = new Map();
   private trashTimeouts: Map<string, NodeJS.Timeout> = new Map();
   private activityMonitors: Map<string, ActivityMonitor> = new Map();
+  private shellActivityPollers: Map<string, NodeJS.Timeout> = new Map();
   private ptyPool: PtyPool | null = null;
 
   private readonly TRASH_TTL_MS = 120 * 1000;
+  private readonly SHELL_POLL_INTERVAL_MS = 1000;
 
   constructor() {
     super();
@@ -118,6 +120,50 @@ export class PtyManager extends EventEmitter {
     const event: AgentEvent = activity === "busy" ? { type: "busy" } : { type: "prompt" };
 
     this.updateAgentState(terminalId, event, "activity", 1.0);
+  }
+
+  /**
+   * Start polling for shell activity using process tree inspection.
+   * This is more accurate than text-based detection for shell terminals.
+   */
+  private startShellActivityPoller(terminalId: string, pid: number): void {
+    // Stop any existing poller for this terminal
+    this.stopShellActivityPoller(terminalId);
+
+    let lastBusyState: boolean | null = null;
+
+    const poller = setInterval(async () => {
+      const terminal = this.terminals.get(terminalId);
+      if (!terminal) {
+        this.stopShellActivityPoller(terminalId);
+        return;
+      }
+
+      const isBusy = await hasChildProcesses(pid);
+
+      // Only emit on state change
+      if (isBusy !== lastBusyState) {
+        lastBusyState = isBusy;
+        events.emit("terminal:activity", {
+          terminalId,
+          activity: isBusy ? "busy" : "idle",
+          source: "process-tree",
+        });
+      }
+    }, this.SHELL_POLL_INTERVAL_MS);
+
+    this.shellActivityPollers.set(terminalId, poller);
+  }
+
+  /**
+   * Stop the shell activity poller for a terminal.
+   */
+  private stopShellActivityPoller(terminalId: string): void {
+    const poller = this.shellActivityPollers.get(terminalId);
+    if (poller) {
+      clearInterval(poller);
+      this.shellActivityPollers.delete(terminalId);
+    }
   }
 
   private inferTrigger(event: AgentEvent): AgentStateChangeTrigger {
@@ -557,6 +603,9 @@ export class PtyManager extends EventEmitter {
         this.activityMonitors.delete(id);
       }
 
+      // Stop shell activity poller
+      this.stopShellActivityPoller(id);
+
       // Flush any buffered output before exit to avoid data loss
       if (terminal.bufferingMode && terminal.outputQueue.length > 0) {
         this.flushBuffer(id);
@@ -645,6 +694,12 @@ export class PtyManager extends EventEmitter {
       });
       terminal.processDetector = detector;
       detector.start();
+
+      // Start shell activity poller for shell terminals (process tree inspection)
+      // This provides accurate busy/idle detection based on child processes
+      if (!isAgentTerminal) {
+        this.startShellActivityPoller(id, ptyPid);
+      }
     }
 
     // Emit agent:spawned event for agent terminals (Claude, Gemini)
@@ -837,6 +892,9 @@ export class PtyManager extends EventEmitter {
         monitor.dispose();
         this.activityMonitors.delete(id);
       }
+
+      // Stop shell activity poller
+      this.stopShellActivityPoller(id);
 
       // Flush any buffered output before killing to avoid data loss
       if (terminal.bufferingMode && terminal.outputQueue.length > 0) {
@@ -1085,6 +1143,12 @@ export class PtyManager extends EventEmitter {
       monitor.dispose();
     }
     this.activityMonitors.clear();
+
+    // Clear all shell activity pollers
+    for (const poller of this.shellActivityPollers.values()) {
+      clearInterval(poller);
+    }
+    this.shellActivityPollers.clear();
 
     for (const [id, terminal] of this.terminals) {
       try {

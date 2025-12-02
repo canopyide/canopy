@@ -4,6 +4,43 @@ import type { TerminalType } from "../../shared/types/domain.js";
 
 const execAsync = promisify(exec);
 
+/**
+ * Check if a process has any child processes running.
+ * Used for shell terminals to determine busy/idle state.
+ */
+export async function hasChildProcesses(pid: number): Promise<boolean> {
+  try {
+    if (!Number.isInteger(pid) || pid <= 0) {
+      return false;
+    }
+
+    if (process.platform === "win32") {
+      // Windows: Use wmic to count child processes
+      const { stdout } = await execAsync(
+        `wmic process where (ParentProcessId=${pid}) get ProcessId 2>nul || echo.`,
+        { timeout: 5000 }
+      );
+      // Header + at least one ID means children exist
+      return (
+        stdout
+          .trim()
+          .split("\n")
+          .filter((line) => line.trim()).length > 1
+      );
+    } else {
+      // macOS/Linux: Use pgrep to check for children
+      try {
+        await execAsync(`pgrep -P ${pid}`, { timeout: 5000 });
+        return true; // pgrep returns 0 exit code if processes found
+      } catch {
+        return false; // pgrep returns 1 if no processes found
+      }
+    }
+  } catch {
+    return false;
+  }
+}
+
 const AGENT_CLI_NAMES: Record<string, TerminalType> = {
   claude: "claude",
   gemini: "gemini",
