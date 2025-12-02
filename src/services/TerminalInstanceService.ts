@@ -26,6 +26,9 @@ interface ManagedTerminal {
  * Mirrors the behavior previously inside XtermAdapter but is now owned
  * by the terminal instance so it survives React remounts.
  */
+// Window in ms after user input where we bypass buffering for immediate echo
+const INPUT_FAST_PATH_WINDOW_MS = 150;
+
 function createThrottledWriter(
   terminal: Terminal,
   initialProvider: RefreshTierProvider = () => TerminalRefreshTier.FOCUSED
@@ -34,6 +37,7 @@ function createThrottledWriter(
   let timerId: number | null = null;
   let getRefreshTier = initialProvider;
   let currentTier: TerminalRefreshTier = getRefreshTier();
+  let lastInputTime = 0;
 
   const flush = () => {
     if (buffer) {
@@ -62,11 +66,11 @@ function createThrottledWriter(
 
       currentTier = newTier;
 
-      // Low-latency fast-path: If terminal is focused and we receive a small chunk
-      // (like a keystroke echo), write immediately to bypass ~16ms RAF lag.
+      // Low-latency fast-path: If terminal is focused and user recently typed,
+      // write immediately to bypass ~16ms RAF lag for keystroke echo.
       // Only when buffer is empty to maintain strict ordering with any pending content.
-      const isTypingChunk = data.length < 256;
-      if (currentTier === TerminalRefreshTier.FOCUSED && !buffer && isTypingChunk) {
+      const inInputWindow = Date.now() - lastInputTime < INPUT_FAST_PATH_WINDOW_MS;
+      if (currentTier === TerminalRefreshTier.FOCUSED && !buffer && inInputWindow) {
         terminal.write(data);
         return;
       }
@@ -98,6 +102,9 @@ function createThrottledWriter(
     updateProvider: (provider: RefreshTierProvider) => {
       getRefreshTier = provider;
       currentTier = provider();
+    },
+    notifyInput: () => {
+      lastInputTime = Date.now();
     },
   };
 }
@@ -194,6 +201,7 @@ class TerminalInstanceService {
     listeners.push(unsubExit);
 
     const inputDisposable = terminal.onData((data) => {
+      throttledWriter.notifyInput();
       terminalClient.write(id, data);
     });
     listeners.push(() => inputDisposable.dispose());
