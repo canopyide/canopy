@@ -1387,6 +1387,19 @@ export function registerIpcHandlers(
         updates.hasSeenWelcome = Boolean(partialState.hasSeenWelcome);
       }
 
+      if ("developerMode" in partialState) {
+        const devMode = partialState.developerMode;
+        if (devMode && typeof devMode === "object") {
+          // Validate and coerce all boolean fields
+          updates.developerMode = {
+            enabled: Boolean(devMode.enabled),
+            showStateDebug: Boolean(devMode.showStateDebug),
+            autoOpenDiagnostics: Boolean(devMode.autoOpenDiagnostics),
+            focusEventsTab: Boolean(devMode.focusEventsTab),
+          };
+        }
+      }
+
       store.set("appState", { ...currentState, ...updates });
     } catch (error) {
       console.error("Failed to set app state:", error);

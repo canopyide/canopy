@@ -31,7 +31,8 @@ import { cn } from "@/lib/utils";
 import type { AIServiceState, GitHubTokenConfig } from "@/types";
 import { appClient, aiClient, logsClient, githubClient } from "@/clients";
 import { AgentSettings } from "./AgentSettings";
-import { getStateDebugEnabled, toggleStateDebug } from "@/components/Terminal";
+import { getStateDebugEnabled, enableStateDebug, disableStateDebug } from "@/components/Terminal";
+import type { AppState } from "@shared/types";
 
 interface SettingsDialogProps {
   isOpen: boolean;
@@ -137,18 +138,142 @@ export function SettingsDialog({
   >(null);
   const [githubErrorMessage, setGithubErrorMessage] = useState<string | null>(null);
 
-  // State debug info toggle
+  // Developer mode settings
+  const [developerMode, setDeveloperMode] = useState(false);
   const [showStateDebug, setShowStateDebug] = useState(() => getStateDebugEnabled());
+  const [autoOpenDiagnostics, setAutoOpenDiagnostics] = useState(false);
+  const [focusEventsTab, setFocusEventsTab] = useState(false);
 
   // Collapsible section states
   const [isAdvancedOpen, setIsAdvancedOpen] = useState(false);
   const [isShortcutsOpen, setIsShortcutsOpen] = useState(false);
 
+  // Save developer mode settings to app state
+  const saveDeveloperModeSettings = useCallback(
+    async (settings: NonNullable<AppState["developerMode"]>) => {
+      try {
+        await appClient.setState({ developerMode: settings });
+      } catch (error) {
+        console.error("Failed to save developer mode settings:", error);
+      }
+    },
+    []
+  );
+
+  // Handle master developer mode toggle
+  const handleToggleDeveloperMode = useCallback(() => {
+    const newEnabled = !developerMode;
+    setDeveloperMode(newEnabled);
+
+    // If disabling, turn off all child features
+    if (!newEnabled) {
+      setShowStateDebug(false);
+      disableStateDebug();
+      // Dispatch event to notify other components that debug mode is off
+      if (typeof window !== "undefined") {
+        window.dispatchEvent(
+          new CustomEvent("canopy:debug-toggle", { detail: { enabled: false } })
+        );
+      }
+      setAutoOpenDiagnostics(false);
+      setFocusEventsTab(false);
+      saveDeveloperModeSettings({
+        enabled: false,
+        showStateDebug: false,
+        autoOpenDiagnostics: false,
+        focusEventsTab: false,
+      });
+    } else {
+      saveDeveloperModeSettings({
+        enabled: true,
+        showStateDebug,
+        autoOpenDiagnostics,
+        focusEventsTab,
+      });
+    }
+  }, [
+    developerMode,
+    showStateDebug,
+    autoOpenDiagnostics,
+    focusEventsTab,
+    saveDeveloperModeSettings,
+  ]);
+
   // Handle state debug toggle
   const handleToggleStateDebug = useCallback(() => {
-    const newState = toggleStateDebug();
+    const newState = !showStateDebug;
     setShowStateDebug(newState);
-  }, []);
+    if (newState) {
+      enableStateDebug();
+    } else {
+      disableStateDebug();
+    }
+    // Dispatch event to notify other components (e.g., DebugInfo)
+    if (typeof window !== "undefined") {
+      window.dispatchEvent(
+        new CustomEvent("canopy:debug-toggle", { detail: { enabled: newState } })
+      );
+    }
+    saveDeveloperModeSettings({
+      enabled: developerMode,
+      showStateDebug: newState,
+      autoOpenDiagnostics,
+      focusEventsTab,
+    });
+  }, [
+    showStateDebug,
+    developerMode,
+    autoOpenDiagnostics,
+    focusEventsTab,
+    saveDeveloperModeSettings,
+  ]);
+
+  // Handle auto-open diagnostics toggle
+  const handleToggleAutoOpenDiagnostics = useCallback(() => {
+    const newState = !autoOpenDiagnostics;
+    setAutoOpenDiagnostics(newState);
+    // If disabling auto-open, also disable focus events tab
+    if (!newState) {
+      setFocusEventsTab(false);
+      saveDeveloperModeSettings({
+        enabled: developerMode,
+        showStateDebug,
+        autoOpenDiagnostics: false,
+        focusEventsTab: false,
+      });
+    } else {
+      saveDeveloperModeSettings({
+        enabled: developerMode,
+        showStateDebug,
+        autoOpenDiagnostics: true,
+        focusEventsTab,
+      });
+    }
+  }, [
+    autoOpenDiagnostics,
+    developerMode,
+    showStateDebug,
+    focusEventsTab,
+    saveDeveloperModeSettings,
+  ]);
+
+  // Handle focus events tab toggle
+  const handleToggleFocusEventsTab = useCallback(() => {
+    const newState = !focusEventsTab;
+    setFocusEventsTab(newState);
+    saveDeveloperModeSettings({
+      enabled: developerMode,
+      showStateDebug,
+      autoOpenDiagnostics,
+      focusEventsTab: newState,
+    });
+  }, [
+    focusEventsTab,
+    developerMode,
+    showStateDebug,
+    autoOpenDiagnostics,
+    saveDeveloperModeSettings,
+  ]);
 
   // Update active tab when defaultTab changes while dialog is open
   useEffect(() => {
@@ -179,16 +304,35 @@ export function SettingsDialog({
     }
   }, [isOpen]);
 
-  // Load AI config on mount
+  // Load AI config and developer mode settings on mount
   useEffect(() => {
-    if (isOpen) {
-      aiClient.getConfig().then((config) => {
-        setAiConfig(config);
-        setSelectedModel(config.model);
-      });
-      // Sync debug toggle state when dialog opens
-      setShowStateDebug(getStateDebugEnabled());
-    }
+    if (!isOpen) return;
+
+    // Load AI config
+    aiClient.getConfig().then((config) => {
+      setAiConfig(config);
+      setSelectedModel(config.model);
+    });
+
+    // Load developer mode settings
+    appClient.getState().then((appState) => {
+      if (appState?.developerMode) {
+        // Use persisted developer mode settings
+        setDeveloperMode(appState.developerMode.enabled);
+        setShowStateDebug(appState.developerMode.showStateDebug);
+        setAutoOpenDiagnostics(appState.developerMode.autoOpenDiagnostics);
+        setFocusEventsTab(appState.developerMode.focusEventsTab);
+        // Sync localStorage with persisted state
+        if (appState.developerMode.showStateDebug) {
+          enableStateDebug();
+        } else {
+          disableStateDebug();
+        }
+      } else {
+        // No persisted settings - sync from localStorage
+        setShowStateDebug(getStateDebugEnabled());
+      }
+    });
   }, [isOpen]);
 
   // Load GitHub config on mount
@@ -855,6 +999,7 @@ export function SettingsDialog({
 
             {activeTab === "troubleshooting" && (
               <div className="space-y-6">
+                {/* Application Logs Section */}
                 <div className="space-y-4">
                   <div>
                     <h4 className="text-sm font-medium text-canopy-text mb-1">Application Logs</h4>
@@ -884,38 +1029,135 @@ export function SettingsDialog({
                   </div>
                 </div>
 
+                {/* Developer Mode Section */}
                 <div className="space-y-4">
                   <div>
                     <h4 className="text-sm font-medium text-canopy-text mb-1 flex items-center gap-2">
                       <Bug className="w-4 h-4" />
-                      State Debug Info
+                      Developer Mode
                     </h4>
                     <p className="text-xs text-gray-400 mb-3">
-                      Show trigger source and confidence level in terminal headers for agent state
-                      changes.
+                      Enable enhanced debugging features for development and troubleshooting.
                     </p>
-                    <label className="flex items-center gap-3 cursor-pointer">
+
+                    {/* Master Developer Mode Toggle */}
+                    <label className="flex items-center gap-3 cursor-pointer mb-4 p-3 border border-canopy-border rounded-md">
                       <button
-                        onClick={handleToggleStateDebug}
+                        onClick={handleToggleDeveloperMode}
                         className={cn(
-                          "relative w-11 h-6 rounded-full transition-colors",
-                          showStateDebug ? "bg-canopy-accent" : "bg-gray-600"
+                          "relative w-11 h-6 rounded-full transition-colors shrink-0",
+                          developerMode ? "bg-canopy-accent" : "bg-gray-600"
                         )}
                       >
                         <span
                           className={cn(
                             "absolute top-0.5 left-0.5 w-5 h-5 bg-white rounded-full transition-transform",
-                            showStateDebug && "translate-x-5"
+                            developerMode && "translate-x-5"
                           )}
                         />
                       </button>
-                      <span className="text-sm text-canopy-text">
-                        {showStateDebug ? "Enabled" : "Disabled"}
-                      </span>
+                      <div>
+                        <span className="text-sm text-canopy-text font-medium">
+                          Enable Developer Mode
+                        </span>
+                        <p className="text-xs text-gray-400">
+                          Activates all debugging features below
+                        </p>
+                      </div>
                     </label>
+
+                    {/* Individual Debug Features */}
+                    <div
+                      className={cn(
+                        "ml-4 space-y-3 border-l-2 border-canopy-border pl-4 transition-opacity",
+                        !developerMode && "opacity-50"
+                      )}
+                    >
+                      {/* State Debug Overlays */}
+                      <label className="flex items-center gap-3 cursor-pointer">
+                        <input
+                          type="checkbox"
+                          checked={showStateDebug}
+                          onChange={handleToggleStateDebug}
+                          disabled={!developerMode}
+                          className="w-4 h-4 rounded border-gray-600 bg-gray-700 text-canopy-accent focus:ring-canopy-accent focus:ring-offset-0 disabled:opacity-50"
+                        />
+                        <div>
+                          <span className="text-sm text-canopy-text">State Debug Overlays</span>
+                          <p className="text-xs text-gray-400">
+                            Show trigger source and confidence in terminal headers
+                          </p>
+                        </div>
+                      </label>
+
+                      {/* Auto-open Diagnostics */}
+                      <label className="flex items-center gap-3 cursor-pointer">
+                        <input
+                          type="checkbox"
+                          checked={autoOpenDiagnostics}
+                          onChange={handleToggleAutoOpenDiagnostics}
+                          disabled={!developerMode}
+                          className="w-4 h-4 rounded border-gray-600 bg-gray-700 text-canopy-accent focus:ring-canopy-accent focus:ring-offset-0 disabled:opacity-50"
+                        />
+                        <div>
+                          <span className="text-sm text-canopy-text">
+                            Auto-Open Diagnostics Dock
+                          </span>
+                          <p className="text-xs text-gray-400">
+                            Automatically open diagnostics panel on app startup
+                          </p>
+                        </div>
+                      </label>
+
+                      {/* Focus Events Tab */}
+                      <label
+                        className={cn(
+                          "flex items-center gap-3 cursor-pointer ml-4",
+                          !autoOpenDiagnostics && "opacity-50"
+                        )}
+                      >
+                        <input
+                          type="checkbox"
+                          checked={focusEventsTab}
+                          onChange={handleToggleFocusEventsTab}
+                          disabled={!developerMode || !autoOpenDiagnostics}
+                          className="w-4 h-4 rounded border-gray-600 bg-gray-700 text-canopy-accent focus:ring-canopy-accent focus:ring-offset-0 disabled:opacity-50"
+                        />
+                        <div>
+                          <span className="text-sm text-canopy-text">Focus Events Tab</span>
+                          <p className="text-xs text-gray-400">
+                            Default to Events tab when diagnostics opens
+                          </p>
+                        </div>
+                      </label>
+                    </div>
+
+                    {/* Environment Variable Hints */}
+                    <div className="mt-4 p-3 bg-canopy-border/30 rounded-md">
+                      <h5 className="text-xs font-medium text-canopy-text mb-2">
+                        Advanced: Main Process Logging
+                      </h5>
+                      <p className="text-xs text-gray-400 mb-2">
+                        For verbose main process logs, restart the app with environment variables:
+                      </p>
+                      <code className="block text-xs bg-canopy-bg p-2 rounded border border-canopy-border font-mono text-canopy-text">
+                        CANOPY_DEBUG=1 CANOPY_VERBOSE=1 npm run dev
+                      </code>
+                      <div className="mt-2 space-y-1">
+                        <p className="text-xs text-gray-400">
+                          <span className="font-medium text-canopy-text">CANOPY_DEBUG</span> —
+                          General logger verbosity
+                        </p>
+                        <p className="text-xs text-gray-400">
+                          <span className="font-medium text-canopy-text">CANOPY_VERBOSE</span> —
+                          Service-level debug output
+                        </p>
+                      </div>
+                    </div>
                   </div>
                 </div>
 
+                {/* Keyboard Shortcuts Section */}
                 <div className="space-y-4">
                   <div>
                     <h4 className="text-sm font-medium text-canopy-text mb-1">

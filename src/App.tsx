@@ -413,6 +413,13 @@ function App() {
 
         // Load recipes
         await loadRecipes();
+
+        // Handle developer mode auto-open diagnostics
+        if (appState.developerMode?.enabled && appState.developerMode.autoOpenDiagnostics) {
+          // Open diagnostics dock, optionally switching to events tab
+          const tab = appState.developerMode.focusEventsTab ? "events" : undefined;
+          openDiagnosticsDock(tab);
+        }
       } catch (error) {
         console.error("Failed to restore app state:", error);
       } finally {
@@ -421,7 +428,7 @@ function App() {
     };
 
     restoreState();
-  }, [addTerminal, setActiveWorktree, loadRecipes]);
+  }, [addTerminal, setActiveWorktree, loadRecipes, openDiagnosticsDock]);
 
   // Handle agent launcher from toolbar
   const handleLaunchAgent = useCallback(
