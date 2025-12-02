@@ -38,6 +38,8 @@ interface EventsState {
   clearFilters: () => void;
   setSelectedEvent: (id: string | null) => void;
   setAutoScroll: (autoScroll: boolean) => void;
+  /** Reset store to initial state for project switching */
+  reset: () => void;
 
   // Computed/filtered events
   getFilteredEvents: () => EventRecord[];
@@ -99,6 +101,15 @@ const createEventsStore: StateCreator<EventsState> = (set, get) => ({
   setSelectedEvent: (id) => set({ selectedEventId: id }),
 
   setAutoScroll: (autoScroll) => set({ autoScroll }),
+
+  reset: () =>
+    set({
+      events: [],
+      isOpen: false,
+      filters: {},
+      selectedEventId: null,
+      autoScroll: true,
+    }),
 
   getFilteredEvents: () => {
     const state = get();

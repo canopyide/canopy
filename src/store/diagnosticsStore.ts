@@ -26,6 +26,8 @@ interface DiagnosticsState {
   setActiveTab: (tab: DiagnosticsTab) => void;
   setOpen: (open: boolean) => void;
   setHeight: (height: number) => void;
+  /** Reset store to initial state for project switching */
+  reset: () => void;
 }
 
 const DEFAULT_HEIGHT = 256;
@@ -71,6 +73,13 @@ const createDiagnosticsStore: StateCreator<DiagnosticsState> = (set) => ({
     const clampedHeight = Math.min(Math.max(height, MIN_HEIGHT), maxHeight);
     set({ height: clampedHeight });
   },
+
+  reset: () =>
+    set({
+      isOpen: false,
+      activeTab: "problems",
+      height: DEFAULT_HEIGHT,
+    }),
 });
 
 export const useDiagnosticsStore = create<DiagnosticsState>(createDiagnosticsStore);

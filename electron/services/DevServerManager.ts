@@ -321,6 +321,22 @@ export class DevServerManager {
   }
 
   /**
+   * Handle project switch - stop all servers and clear all state.
+   * This ensures no dev servers from the previous project leak into the new project.
+   */
+  public async onProjectSwitch(): Promise<void> {
+    console.log("Handling project switch in DevServerManager");
+
+    // Stop all running dev servers
+    await this.stopAll();
+
+    // Clear dev script cache (new project may have different structure)
+    this.clearCache();
+
+    console.log("DevServerManager state reset for project switch");
+  }
+
+  /**
    * Get logs for a worktree's dev server.
    */
   public getLogs(worktreeId: string): string[] {

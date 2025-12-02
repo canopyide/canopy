@@ -28,6 +28,8 @@ interface WorktreeSelectionState {
   setWorktreeExpanded: (id: string, expanded: boolean) => void;
   /** Collapse all worktrees */
   collapseAllWorktrees: () => void;
+  /** Reset store to initial state for project switching */
+  reset: () => void;
 }
 
 const createWorktreeSelectionStore: StateCreator<WorktreeSelectionState> = (set) => ({
@@ -78,6 +80,13 @@ const createWorktreeSelectionStore: StateCreator<WorktreeSelectionState> = (set)
     }),
 
   collapseAllWorktrees: () => set({ expandedWorktrees: new Set<string>() }),
+
+  reset: () =>
+    set({
+      activeWorktreeId: null,
+      focusedWorktreeId: null,
+      expandedWorktrees: new Set<string>(),
+    }),
 });
 
 export const useWorktreeSelectionStore = create<WorktreeSelectionState>()(

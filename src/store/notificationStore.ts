@@ -18,6 +18,8 @@ interface NotificationStore {
   addNotification: (notification: Omit<Notification, "id">) => string;
   removeNotification: (id: string) => void;
   clearNotifications: () => void;
+  /** Reset store to initial state for project switching */
+  reset: () => void;
 }
 
 export const useNotificationStore = create<NotificationStore>((set) => ({
@@ -46,4 +48,5 @@ export const useNotificationStore = create<NotificationStore>((set) => ({
       notifications: state.notifications.filter((n) => n.id !== id),
     })),
   clearNotifications: () => set({ notifications: [] }),
+  reset: () => set({ notifications: [] }),
 }));

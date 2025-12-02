@@ -104,7 +104,10 @@ export interface TerminalGridState
     TerminalRegistrySlice,
     TerminalFocusSlice,
     TerminalCommandQueueSlice,
-    TerminalBulkActionsSlice {}
+    TerminalBulkActionsSlice {
+  /** Reset store to initial state and kill all terminals for project switching */
+  reset: () => Promise<void>;
+}
 
 /**
  * Create the combined terminal store.
@@ -222,6 +225,40 @@ export const useTerminalStore = create<TerminalGridState>()((set, get, api) => {
         const gridTerminals = state.terminals.filter((t) => t.id !== id && t.location === "grid");
         set({ focusedId: gridTerminals[0]?.id ?? null });
       }
+    },
+
+    // Reset all store state and kill all terminal processes for project switching
+    reset: async () => {
+      const state = get();
+
+      // Destroy renderer-side terminal instances before killing PTYs
+      // This ensures IPC listeners and DOM nodes are properly cleaned up
+      const { terminalInstanceService } = await import("@/services/TerminalInstanceService");
+      for (const terminal of state.terminals) {
+        try {
+          terminalInstanceService.destroy(terminal.id);
+        } catch (error) {
+          console.warn(`Failed to destroy terminal instance ${terminal.id}:`, error);
+        }
+      }
+
+      // Kill all terminal processes in main process
+      const killPromises = state.terminals.map((terminal) =>
+        terminalClient.kill(terminal.id).catch((error) => {
+          console.error(`Failed to kill terminal ${terminal.id}:`, error);
+        })
+      );
+
+      await Promise.all(killPromises);
+
+      // Reset all store state to initial values (using correct field names from slices)
+      set({
+        terminals: [],
+        trashedTerminals: new Map(),
+        focusedId: null,
+        maximizedId: null,
+        commandQueue: [], // Correct field name from command queue slice
+      });
     },
   };
 });

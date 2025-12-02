@@ -35,6 +35,8 @@ interface LogsState {
   setAutoScroll: (autoScroll: boolean) => void;
   toggleExpanded: (id: string) => void;
   collapseAll: () => void;
+  /** Reset store to initial state for project switching */
+  reset: () => void;
 }
 
 const MAX_LOGS = 500;
@@ -85,6 +87,15 @@ const createLogsStore: StateCreator<LogsState> = (set) => ({
     }),
 
   collapseAll: () => set({ expandedIds: new Set() }),
+
+  reset: () =>
+    set({
+      logs: [],
+      isOpen: false,
+      filters: {},
+      autoScroll: true,
+      expandedIds: new Set(),
+    }),
 });
 
 export const useLogsStore = create<LogsState>()(createLogsStore);
