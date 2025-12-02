@@ -16,7 +16,7 @@ import {
   detectPrompt,
   type AgentEvent,
 } from "./AgentStateMachine.js";
-import type { AgentState, TerminalType } from "../types/index.js";
+import type { AgentState } from "../types/index.js";
 import {
   AgentSpawnedSchema,
   AgentStateChangedSchema,
@@ -384,6 +384,10 @@ export class PtyManager extends EventEmitter {
             codex: "Codex",
             shell: "Shell",
             custom: "Custom",
+            npm: "NPM",
+            yarn: "Yarn",
+            pnpm: "PNPM",
+            bun: "Bun",
           };
           terminal.title = agentNames[result.agentType];
         }

@@ -66,8 +66,6 @@ import type {
   SaveArtifactResult,
   ApplyPatchOptions,
   ApplyPatchResult,
-  PRDetectedPayload,
-  PRClearedPayload,
 } from "../shared/types/ipc.js";
 import type { TerminalActivityPayload } from "../shared/types/terminal.js";
 
