@@ -23,8 +23,6 @@ export interface FilterOptions {
   agentId?: string;
   /** Filter by task ID if present in payload */
   taskId?: string;
-  /** Filter by run ID if present in payload (for multi-agent orchestration) */
-  runId?: string;
   /** Filter by terminal ID if present in payload */
   terminalId?: string;
   /** Filter by GitHub issue number if present in payload */
@@ -126,7 +124,6 @@ export class EventBuffer {
         payload.worktreeId ||
         payload.agentId ||
         payload.taskId ||
-        payload.runId ||
         payload.terminalId ||
         payload.issueNumber ||
         payload.prNumber;
@@ -279,14 +276,6 @@ export class EventBuffer {
       });
     }
 
-    // Filter by run ID (for multi-agent orchestration)
-    if (options.runId) {
-      filtered = filtered.filter((event) => {
-        const payload = event.payload;
-        return payload && payload.runId === options.runId;
-      });
-    }
-
     // Filter by terminal ID
     if (options.terminalId) {
       filtered = filtered.filter((event) => {
@@ -374,7 +363,6 @@ export class EventBuffer {
       system: 0,
       agent: 0,
       task: 0,
-      run: 0,
       server: 0,
       file: 0,
       ui: 0,

@@ -41,8 +41,6 @@ import type {
   ProjectIdentity,
   ElectronAPI,
   CreateWorktreeOptions,
-  EventContext,
-  RunMetadata,
   IpcInvokeMap,
   IpcEventMap,
   AgentSettings,
@@ -270,20 +268,6 @@ const CHANNELS = {
   AI_SET_ENABLED: "ai:set-enabled",
   AI_VALIDATE_KEY: "ai:validate-key",
   AI_GENERATE_PROJECT_IDENTITY: "ai:generate-project-identity",
-
-  // Run orchestration channels
-  RUN_START: "run:start",
-  RUN_UPDATE_PROGRESS: "run:update-progress",
-  RUN_PAUSE: "run:pause",
-  RUN_RESUME: "run:resume",
-  RUN_COMPLETE: "run:complete",
-  RUN_FAIL: "run:fail",
-  RUN_CANCEL: "run:cancel",
-  RUN_GET: "run:get",
-  RUN_GET_ALL: "run:get-all",
-  RUN_GET_ACTIVE: "run:get-active",
-  RUN_CLEAR_FINISHED: "run:clear-finished",
-  RUN_EVENT: "run:event",
 
   // Agent settings channels
   AGENT_SETTINGS_GET: "agent-settings:get",
@@ -801,49 +785,6 @@ const api: ElectronAPI = {
 
     generateProjectIdentity: (projectPath: string): Promise<ProjectIdentity | null> =>
       ipcRenderer.invoke(CHANNELS.AI_GENERATE_PROJECT_IDENTITY, projectPath),
-  },
-
-  // ==========================================
-  // Run Orchestration API
-  // ==========================================
-  run: {
-    start: (name: string, context?: EventContext, description?: string): Promise<string> =>
-      ipcRenderer.invoke(CHANNELS.RUN_START, { name, context, description }),
-
-    updateProgress: (runId: string, progress: number, message?: string): Promise<void> =>
-      ipcRenderer.invoke(CHANNELS.RUN_UPDATE_PROGRESS, { runId, progress, message }),
-
-    pause: (runId: string, reason?: string): Promise<void> =>
-      ipcRenderer.invoke(CHANNELS.RUN_PAUSE, { runId, reason }),
-
-    resume: (runId: string): Promise<void> => ipcRenderer.invoke(CHANNELS.RUN_RESUME, runId),
-
-    complete: (runId: string): Promise<void> => ipcRenderer.invoke(CHANNELS.RUN_COMPLETE, runId),
-
-    fail: (runId: string, error: string): Promise<void> =>
-      ipcRenderer.invoke(CHANNELS.RUN_FAIL, { runId, error }),
-
-    cancel: (runId: string, reason?: string): Promise<void> =>
-      ipcRenderer.invoke(CHANNELS.RUN_CANCEL, { runId, reason }),
-
-    get: (runId: string): Promise<RunMetadata | undefined> =>
-      ipcRenderer.invoke(CHANNELS.RUN_GET, runId),
-
-    getAll: (): Promise<RunMetadata[]> => ipcRenderer.invoke(CHANNELS.RUN_GET_ALL),
-
-    getActive: (): Promise<RunMetadata[]> => ipcRenderer.invoke(CHANNELS.RUN_GET_ACTIVE),
-
-    clearFinished: (olderThan?: number): Promise<number> =>
-      ipcRenderer.invoke(CHANNELS.RUN_CLEAR_FINISHED, olderThan),
-
-    onEvent: (callback: (event: { type: string; payload: unknown }) => void) => {
-      const handler = (
-        _event: Electron.IpcRendererEvent,
-        data: { type: string; payload: unknown }
-      ) => callback(data);
-      ipcRenderer.on(CHANNELS.RUN_EVENT, handler);
-      return () => ipcRenderer.removeListener(CHANNELS.RUN_EVENT, handler);
-    },
   },
 
   // ==========================================

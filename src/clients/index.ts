@@ -49,7 +49,6 @@ export { githubClient } from "./githubClient";
 export { historyClient } from "./historyClient";
 export { logsClient } from "./logsClient";
 export { projectClient } from "./projectClient";
-export { runClient } from "./runClient";
 export { systemClient } from "./systemClient";
 export { terminalClient } from "./terminalClient";
 export { worktreeClient } from "./worktreeClient";
