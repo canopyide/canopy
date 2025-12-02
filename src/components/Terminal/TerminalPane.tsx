@@ -293,9 +293,9 @@ export function TerminalPane({
       className={cn(
         "flex flex-col h-full rounded overflow-hidden border transition-all duration-200 group",
         "bg-[var(--color-surface)] shadow-md",
-        // Subtle glow for focus, neutral borders
+        // Subtle focus indicator - neutral glow
         isFocused
-          ? "border-zinc-700 shadow-lg shadow-black/40"
+          ? "terminal-focused border-zinc-600"
           : "border-zinc-800 hover:border-zinc-700",
         isExited && "opacity-75 grayscale",
         isDragging && "opacity-50 ring-2 ring-canopy-accent"
@@ -329,12 +329,15 @@ export function TerminalPane({
       })()}
       aria-grabbed={isDragging || undefined}
     >
-      {/* Header - Unified with terminal body (no border-b) */}
+      {/* Header - State-aware background coloring */}
       <div
         className={cn(
-          "flex items-center justify-between px-3 h-7 shrink-0 font-mono text-xs transition-colors",
-          // Unified background that flows into terminal body
+          "flex items-center justify-between px-3 h-7 shrink-0 font-mono text-xs transition-colors relative overflow-hidden",
+          // Base background
           isFocused ? "bg-[var(--color-surface-highlight)]" : "bg-[var(--color-surface)]",
+          // Agent state background overlays
+          agentState === "working" && "terminal-header-working",
+          agentState === "waiting" && "terminal-header-waiting",
           // Drag cursor styles
           canDrag && "cursor-grab active:cursor-grabbing"
         )}

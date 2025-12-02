@@ -347,6 +347,78 @@ body,
   }
 }
 
+/* Terminal Focus Effect - subtle neutral glow */
+.terminal-focused {
+  box-shadow:
+    0 0 0 1px rgba(113, 113, 122, 0.5),
+    0 2px 8px -2px rgba(0, 0, 0, 0.4);
+}
+
+/* Terminal content padding - breathing room for text */
+.xterm-screen {
+  padding: 8px 0 0 8px;
+}
+
+/* Terminal Header State Backgrounds
+ * Subtle tints to indicate agent state at a glance
+ */
+.terminal-header-working {
+  background: linear-gradient(
+    90deg,
+    color-mix(in srgb, var(--color-state-working) 8%, transparent),
+    transparent 60%
+  );
+}
+
+.terminal-header-waiting {
+  background: linear-gradient(
+    90deg,
+    color-mix(in srgb, var(--color-state-waiting) 12%, transparent),
+    transparent 60%
+  );
+}
+
+@keyframes header-pulse {
+  0%,
+  100% {
+    opacity: 1;
+  }
+  50% {
+    opacity: 0.6;
+  }
+}
+
+.terminal-header-working {
+  animation: header-pulse 2s ease-in-out infinite;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .terminal-header-working {
+    animation: none;
+  }
+}
+
+/* Waiting For You Strip - demands attention */
+@keyframes waiting-strip-pulse {
+  0%,
+  100% {
+    background-color: rgba(234, 179, 8, 0.1);
+  }
+  50% {
+    background-color: rgba(234, 179, 8, 0.15);
+  }
+}
+
+.waiting-strip {
+  animation: waiting-strip-pulse 2s ease-in-out infinite;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .waiting-strip {
+    animation: none;
+  }
+}
+
 /* Section header pattern - for organizing content hierarchically */
 .section-header {
   @apply text-xs font-bold tracking-widest text-muted-foreground uppercase;

@@ -15,12 +15,16 @@ export function WaitingForYouStrip() {
 
   return (
     <div
-      className="h-10 border-b border-canopy-border bg-canopy-sidebar/50 px-4 flex items-center gap-3 shrink-0"
+      className="waiting-strip h-10 border-b border-yellow-500/30 bg-yellow-500/10 px-4 flex items-center gap-3 shrink-0"
       role="region"
       aria-label="Agents waiting for input"
+      aria-live="polite"
     >
-      <span className="text-sm font-medium text-canopy-text/70 shrink-0">Waiting for you:</span>
-      <div className="flex items-center gap-2 overflow-x-auto scrollbar-thin scrollbar-thumb-canopy-border scrollbar-track-transparent">
+      <div className="flex items-center gap-2 shrink-0">
+        <span className="w-2 h-2 rounded-full bg-yellow-500 animate-pulse" aria-hidden="true" />
+        <span className="text-sm font-semibold text-yellow-500">Waiting for you</span>
+      </div>
+      <div className="flex items-center gap-2 overflow-x-auto scrollbar-thin scrollbar-thumb-yellow-500/30 scrollbar-track-transparent">
         {waitingTerminals.map((terminal) => (
           <WaitingAgentChip key={terminal.id} terminal={terminal} />
         ))}
