@@ -240,14 +240,11 @@ export type AgentStateChangeTrigger =
   | "timeout"
   | "exit";
 
-/** Terminal refresh tier - controls flush frequency for performance */
 export enum TerminalRefreshTier {
-  /** 60fps - terminal is focused and user is actively interacting */
-  FOCUSED = 16,
-  /** 10fps - terminal is visible in the grid but not focused */
-  VISIBLE = 100,
-  /** 4fps - terminal is in the dock or otherwise not visible */
-  BACKGROUND = 250,
+  BURST = 16, // 60fps - only during active typing
+  FOCUSED = 100, // 10fps - focused but idle
+  VISIBLE = 200, // 5fps
+  BACKGROUND = 1000, // 1fps
 }
 
 /** Represents a terminal instance in the application */
