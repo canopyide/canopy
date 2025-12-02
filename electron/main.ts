@@ -9,10 +9,6 @@ import { registerIpcHandlers, sendToRenderer } from "./ipc/handlers.js";
 import { registerErrorHandlers } from "./ipc/errorHandlers.js";
 import { PtyClient, disposePtyClient } from "./services/PtyClient.js";
 import { DevServerManager } from "./services/DevServerManager.js";
-import {
-  getSemanticActivityObserver,
-  disposeSemanticActivityObserver,
-} from "./services/ai/SemanticActivityObserver.js";
 import { worktreeService } from "./services/WorktreeService.js";
 import { CliAvailabilityService } from "./services/CliAvailabilityService.js";
 import { createWindowWithState } from "./windowState.js";
@@ -96,7 +92,6 @@ if (!gotTheLock) {
       devServerManager ? devServerManager.stopAll() : Promise.resolve(),
       disposeTranscriptManager(),
       new Promise<void>((resolve) => {
-        disposeSemanticActivityObserver();
         if (ptyClient) {
           ptyClient.dispose();
           ptyClient = null;
@@ -176,16 +171,6 @@ async function createWindow(): Promise<void> {
   } catch (error) {
     console.error("[MAIN] Failed to initialize PtyClient:", error);
     throw error;
-  }
-
-  console.log("[MAIN] Initializing SemanticActivityObserver...");
-  try {
-    const semanticObserver = getSemanticActivityObserver();
-    semanticObserver.initialize(mainWindow);
-    semanticObserver.start();
-    console.log("[MAIN] SemanticActivityObserver initialized and started");
-  } catch (error) {
-    console.error("[MAIN] Failed to initialize SemanticActivityObserver:", error);
   }
 
   console.log("[MAIN] Initializing DevServerManager...");
@@ -314,7 +299,6 @@ async function createWindow(): Promise<void> {
       devServerManager = null;
     }
     await disposeTranscriptManager();
-    disposeSemanticActivityObserver();
     if (ptyClient) {
       ptyClient.dispose();
       ptyClient = null;

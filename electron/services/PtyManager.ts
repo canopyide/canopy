@@ -722,8 +722,7 @@ export class PtyManager extends EventEmitter {
         );
       }
 
-      // Transition to working state on start
-      this.updateAgentState(id, { type: "start" });
+      // Agent starts in idle state - ActivityMonitor will transition to working on Enter key
     }
   }
 
@@ -745,12 +744,14 @@ export class PtyManager extends EventEmitter {
         terminal.traceId = traceId || undefined;
       }
 
-      terminal.ptyProcess.write(data);
-
-      // For agent terminals in waiting state, track input event
-      if (terminal.agentId && terminal.agentState === "waiting") {
-        this.updateAgentState(id, { type: "input" });
+      // Notify activity monitor of input (detects Enter key for busy state)
+      // ActivityMonitor is the single source of truth for busy/idle transitions
+      const monitor = this.activityMonitors.get(id);
+      if (monitor) {
+        monitor.onInput(data);
       }
+
+      terminal.ptyProcess.write(data);
     } else {
       console.warn(`Terminal ${id} not found, cannot write data`);
     }

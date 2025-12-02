@@ -1,11 +1,8 @@
-/**
- * Simple activity monitor that tracks PTY data flow.
- * Sets "busy" state when data is received, "idle" when silent.
- */
 export class ActivityMonitor {
   private state: "busy" | "idle" = "idle";
   private debounceTimer: NodeJS.Timeout | null = null;
-  private readonly DEBOUNCE_MS = 1000;
+  // 2 seconds silence required to consider the agent "waiting"
+  private readonly DEBOUNCE_MS = 2000;
 
   constructor(
     private terminalId: string,
@@ -13,35 +10,58 @@ export class ActivityMonitor {
   ) {}
 
   /**
-   * Called on every data event from PTY.
-   * Immediately sets state to busy if idle, resets silence timer.
+   * Called when user sends input to the terminal.
+   * Proactively transitions to BUSY on Enter key.
    */
-  onData(): void {
-    // Transition to busy if currently idle
-    if (this.state === "idle") {
-      this.state = "busy";
-      this.onStateChange(this.terminalId, "busy");
-    }
+  onInput(data: string): void {
+    // Use includes() to handle pasted text or grouped keystrokes.
+    // We look for \r (Return) or \n (Newline).
+    const hasEnter = data.includes("\r") || data.includes("\n");
 
-    // Clear existing timer
-    if (this.debounceTimer) {
-      clearTimeout(this.debounceTimer);
+    // If we see an Enter key, we assume the user submitted a command.
+    if (hasEnter) {
+      this.becomeBusy();
     }
-
-    // Set new timer for idle transition
-    this.debounceTimer = setTimeout(() => {
-      this.state = "idle";
-      this.onStateChange(this.terminalId, "idle");
-    }, this.DEBOUNCE_MS);
   }
 
   /**
-   * Clean up timer when terminal is destroyed.
+   * Called on every data event from PTY (output received).
+   * Only extends the BUSY state; never triggers it.
    */
+  onData(): void {
+    // If we are already busy, any output resets the "silence" timer.
+    // If we are idle, we ignore output (background noise).
+    if (this.state === "busy") {
+      this.resetDebounceTimer();
+    }
+  }
+
+  private becomeBusy(): void {
+    // Always reset the timer when activity happens
+    this.resetDebounceTimer();
+
+    // Only fire state change if we weren't already busy
+    if (this.state !== "busy") {
+      this.state = "busy";
+      this.onStateChange(this.terminalId, "busy");
+    }
+  }
+
+  private resetDebounceTimer(): void {
+    if (this.debounceTimer) {
+      clearTimeout(this.debounceTimer);
+    }
+
+    this.debounceTimer = setTimeout(() => {
+      this.state = "idle";
+      this.onStateChange(this.terminalId, "idle");
+      this.debounceTimer = null;
+    }, this.DEBOUNCE_MS);
+  }
+
   dispose(): void {
     if (this.debounceTimer) {
       clearTimeout(this.debounceTimer);
-      this.debounceTimer = null;
     }
   }
 
