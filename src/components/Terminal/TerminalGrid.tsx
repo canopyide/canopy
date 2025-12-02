@@ -8,6 +8,7 @@ import { TerminalPane } from "./TerminalPane";
 import { FilePickerModal } from "@/components/ContextInjection";
 import { Terminal } from "lucide-react";
 import { CanopyIcon, CodexIcon, ClaudeIcon, GeminiIcon } from "@/components/icons";
+import { getBrandColorHex } from "@/lib/colorUtils";
 import { terminalInstanceService } from "@/services/TerminalInstanceService";
 import { terminalClient } from "@/clients";
 import { TerminalRefreshTier } from "@/types";
@@ -89,14 +90,14 @@ function EmptyState({
             title="Claude Code"
             description="Best for sustained, autonomous refactoring sessions."
             shortcut="Ctrl+Shift+C"
-            icon={<ClaudeIcon className="h-5 w-5" />}
+            icon={<ClaudeIcon className="h-5 w-5" brandColor={getBrandColorHex("claude")} />}
             onClick={() => onLaunchAgent("claude")}
             primary
           />
           <LauncherCard
             title="Codex CLI"
             description="Top-tier reasoning depth with context compaction."
-            icon={<CodexIcon className="h-5 w-5" />}
+            icon={<CodexIcon className="h-5 w-5" brandColor={getBrandColorHex("codex")} />}
             onClick={() => onLaunchAgent("codex")}
             primary
           />
@@ -104,7 +105,7 @@ function EmptyState({
             title="Gemini CLI"
             description="Fast auto-routing and multi-modal image input."
             shortcut="Ctrl+Shift+G"
-            icon={<GeminiIcon className="h-5 w-5" />}
+            icon={<GeminiIcon className="h-5 w-5" brandColor={getBrandColorHex("gemini")} />}
             onClick={() => onLaunchAgent("gemini")}
             primary
           />
@@ -180,10 +181,10 @@ export function TerminalGrid({ className, defaultCwd }: TerminalGridProps) {
     async (type: "claude" | "gemini" | "codex" | "shell") => {
       try {
         const cwd = defaultCwd || "";
-        await addTerminal({ type, cwd });
+        const command = type !== "shell" ? type : undefined;
+        await addTerminal({ type, cwd, command });
       } catch (error) {
         console.error(`Failed to launch ${type}:`, error);
-        // Error will be displayed via the error banner system
       }
     },
     [addTerminal, defaultCwd]
