@@ -22,6 +22,8 @@ interface ManagedTerminal {
 }
 
 const BURST_MODE_WINDOW_MS = 500;
+// Debounce to catch split PTY packets (Clear + Redraw) before rendering
+const INPUT_DEBOUNCE_MS = 8;
 
 function createThrottledWriter(
   terminal: Terminal,
@@ -29,7 +31,6 @@ function createThrottledWriter(
 ) {
   let buffer = "";
   let timerId: number | null = null;
-  let isRafTimer = false;
   let getRefreshTier = initialProvider;
   let lastInputTime = 0;
 
@@ -39,18 +40,17 @@ function createThrottledWriter(
       buffer = "";
     }
     timerId = null;
-    isRafTimer = false;
   };
 
   const scheduleFlush = (delay: number) => {
     if (timerId !== null) return;
 
+    // Use setTimeout instead of RAF for burst mode to avoid split-packet flashing.
+    // RAF can fire instantly if called near frame boundary, rendering "Clear" before "Redraw".
     if (delay <= 16) {
-      timerId = requestAnimationFrame(flush);
-      isRafTimer = true;
+      timerId = window.setTimeout(flush, INPUT_DEBOUNCE_MS);
     } else {
       timerId = window.setTimeout(flush, delay);
-      isRafTimer = false;
     }
   };
 
@@ -62,7 +62,8 @@ function createThrottledWriter(
       const tierDelay = getRefreshTier();
       const effectiveDelay = isBurstMode ? TerminalRefreshTier.BURST : tierDelay;
 
-      if (timerId !== null && !isRafTimer && effectiveDelay <= 16) {
+      // If switching to faster mode, cancel slow timer and reschedule
+      if (timerId !== null && effectiveDelay < tierDelay) {
         clearTimeout(timerId);
         timerId = null;
       }
@@ -71,11 +72,7 @@ function createThrottledWriter(
     },
     dispose: () => {
       if (timerId !== null) {
-        if (isRafTimer) {
-          cancelAnimationFrame(timerId);
-        } else {
-          clearTimeout(timerId);
-        }
+        clearTimeout(timerId);
         timerId = null;
       }
       if (buffer) {
@@ -88,10 +85,10 @@ function createThrottledWriter(
     },
     notifyInput: () => {
       lastInputTime = Date.now();
-      if (buffer && timerId !== null && !isRafTimer) {
+      // If pending data on slow timer, switch to fast debounce
+      if (buffer && timerId !== null) {
         clearTimeout(timerId);
-        timerId = requestAnimationFrame(flush);
-        isRafTimer = true;
+        timerId = window.setTimeout(flush, INPUT_DEBOUNCE_MS);
       }
     },
     getDebugInfo: () => {
