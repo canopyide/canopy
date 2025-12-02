@@ -35,3 +35,14 @@ export { useProjectSettings } from "./useProjectSettings";
 
 export { useSessionHistory, useSession } from "./useSessionHistory";
 export type { SessionFilters, UseSessionHistoryReturn } from "./useSessionHistory";
+
+// Optimized terminal selectors
+export {
+  useTerminalById,
+  useTerminalIds,
+  useGridTerminalIds,
+  useDockedTerminalIds,
+  useTerminalCounts,
+  useFocusedTerminal,
+  useWaitingTerminalIds,
+} from "./useTerminalSelectors";

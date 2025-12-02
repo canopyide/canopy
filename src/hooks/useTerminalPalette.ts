@@ -8,6 +8,7 @@
 
 import { useState, useCallback, useMemo, useEffect, useRef } from "react";
 import Fuse, { type IFuseOptions } from "fuse.js";
+import { useShallow } from "zustand/react/shallow";
 import { useTerminalStore, type TerminalInstance } from "@/store";
 import { useWorktrees } from "./useWorktrees";
 
@@ -74,8 +75,8 @@ export function useTerminalPalette(): UseTerminalPaletteReturn {
   const [selectedIndex, setSelectedIndex] = useState(0);
   const [debouncedQuery, setDebouncedQuery] = useState("");
 
-  // Get terminals from store
-  const terminals = useTerminalStore((state) => state.terminals);
+  // Get terminals from store - use useShallow for array comparison
+  const terminals = useTerminalStore(useShallow((state) => state.terminals));
   const setFocused = useTerminalStore((state) => state.setFocused);
 
   // Get worktrees for name lookup

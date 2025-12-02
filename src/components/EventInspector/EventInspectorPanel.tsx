@@ -5,6 +5,7 @@
  */
 
 import { useCallback, useEffect, useRef } from "react";
+import { useShallow } from "zustand/react/shallow";
 import { cn } from "@/lib/utils";
 import { useEventStore } from "@/store/eventStore";
 import { EventTimeline } from "./EventTimeline";
@@ -18,6 +19,7 @@ interface EventInspectorPanelProps {
 }
 
 export function EventInspectorPanel({ className }: EventInspectorPanelProps) {
+  // Use useShallow to prevent re-renders when unrelated store fields change
   const {
     events,
     isOpen,
@@ -30,7 +32,21 @@ export function EventInspectorPanel({ className }: EventInspectorPanelProps) {
     setFilters,
     setSelectedEvent,
     getFilteredEvents,
-  } = useEventStore();
+  } = useEventStore(
+    useShallow((state) => ({
+      events: state.events,
+      isOpen: state.isOpen,
+      filters: state.filters,
+      selectedEventId: state.selectedEventId,
+      autoScroll: state.autoScroll,
+      addEvent: state.addEvent,
+      setEvents: state.setEvents,
+      clearEvents: state.clearEvents,
+      setFilters: state.setFilters,
+      setSelectedEvent: state.setSelectedEvent,
+      getFilteredEvents: state.getFilteredEvents,
+    }))
+  );
 
   const timelineRef = useRef<HTMLDivElement>(null);
   const isUserScrolling = useRef(false);

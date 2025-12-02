@@ -6,6 +6,7 @@
  */
 
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
+import { useShallow } from "zustand/react/shallow";
 import { cn } from "@/lib/utils";
 import { useLogsStore, filterLogs } from "@/store";
 import { LogEntry } from "./LogEntry";
@@ -18,6 +19,7 @@ interface LogsPanelProps {
 }
 
 export function LogsPanel({ className }: LogsPanelProps) {
+  // Use useShallow to prevent re-renders when unrelated store fields change
   const {
     logs,
     isOpen,
@@ -32,7 +34,23 @@ export function LogsPanel({ className }: LogsPanelProps) {
     clearFilters,
     setAutoScroll,
     toggleExpanded,
-  } = useLogsStore();
+  } = useLogsStore(
+    useShallow((state) => ({
+      logs: state.logs,
+      isOpen: state.isOpen,
+      filters: state.filters,
+      autoScroll: state.autoScroll,
+      expandedIds: state.expandedIds,
+      addLog: state.addLog,
+      setLogs: state.setLogs,
+      clearLogs: state.clearLogs,
+      togglePanel: state.togglePanel,
+      setFilters: state.setFilters,
+      clearFilters: state.clearFilters,
+      setAutoScroll: state.setAutoScroll,
+      toggleExpanded: state.toggleExpanded,
+    }))
+  );
 
   const [sources, setSources] = useState<string[]>([]);
   const containerRef = useRef<HTMLDivElement>(null);

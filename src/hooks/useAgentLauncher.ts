@@ -94,7 +94,8 @@ export interface UseAgentLauncherReturn {
  * ```
  */
 export function useAgentLauncher(): UseAgentLauncherReturn {
-  const { addTerminal } = useTerminalStore();
+  // Single function selector - stable reference, no useShallow needed
+  const addTerminal = useTerminalStore((state) => state.addTerminal);
   const { worktreeMap, activeId } = useWorktrees();
   const currentProject = useProjectStore((state) => state.currentProject);
 

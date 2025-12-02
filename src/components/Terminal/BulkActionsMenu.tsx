@@ -6,6 +6,7 @@
  */
 
 import { useState, useCallback } from "react";
+import { useShallow } from "zustand/react/shallow";
 import {
   DropdownMenu,
   DropdownMenuContent,
@@ -28,7 +29,8 @@ export interface BulkActionsMenuProps {
 }
 
 export function BulkActionsMenu({ worktreeId, trigger, className }: BulkActionsMenuProps) {
-  const terminals = useTerminalStore((state) => state.terminals);
+  // Use useShallow for terminals array to prevent re-renders on unrelated terminal changes
+  const terminals = useTerminalStore(useShallow((state) => state.terminals));
   const bulkCloseByState = useTerminalStore((state) => state.bulkCloseByState);
   const bulkCloseByWorktree = useTerminalStore((state) => state.bulkCloseByWorktree);
   const bulkCloseAll = useTerminalStore((state) => state.bulkCloseAll);

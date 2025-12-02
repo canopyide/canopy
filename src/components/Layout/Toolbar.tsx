@@ -1,3 +1,4 @@
+import { useShallow } from "zustand/react/shallow";
 import { Button } from "@/components/ui/button";
 import {
   RefreshCw,
@@ -57,7 +58,8 @@ export function Toolbar({
   agentSettings,
 }: ToolbarProps) {
   const currentProject = useProjectStore((state) => state.currentProject);
-  const terminals = useTerminalStore((state) => state.terminals);
+  // Use useShallow for terminals array to prevent re-renders on unrelated terminal changes
+  const terminals = useTerminalStore(useShallow((state) => state.terminals));
   const { stats, error: statsError, refresh: refreshStats } = useRepositoryStats();
 
   // Show BulkActionsMenu when there are any terminals (actionable or not)

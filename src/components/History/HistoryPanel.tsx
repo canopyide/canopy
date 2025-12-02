@@ -11,6 +11,8 @@ import { useSessionHistory, type SessionFilters } from "@/hooks";
 import { SessionViewer } from "./SessionViewer";
 import { useTerminalStore, type AddTerminalOptions } from "@/store/terminalStore";
 import { useWorktrees } from "@/hooks";
+// Note: useTerminalStore selector for addTerminal returns a stable function reference,
+// so useShallow is not needed for single-function selectors
 import { ConfirmDialog } from "../Terminal/ConfirmDialog";
 import type { AgentSession } from "@shared/types";
 import { terminalClient } from "@/clients";
@@ -207,7 +209,8 @@ export function HistoryPanel({ className }: HistoryPanelProps) {
   } = useSessionHistory();
 
   const { worktrees } = useWorktrees();
-  const { addTerminal } = useTerminalStore();
+  // Single function selector - stable reference, no useShallow needed
+  const addTerminal = useTerminalStore((state) => state.addTerminal);
 
   const [confirmDelete, setConfirmDelete] = useState<{
     isOpen: boolean;

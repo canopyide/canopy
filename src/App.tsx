@@ -28,6 +28,7 @@ import {
   useDiagnosticsStore,
   type RetryAction,
 } from "./store";
+import { useShallow } from "zustand/react/shallow";
 import { useRecipeStore } from "./store/recipeStore";
 import { cleanupTerminalStoreListeners } from "./store/terminalStore";
 import type { WorktreeState } from "./types";
@@ -58,7 +59,14 @@ function SidebarContent({ onOpenSettings }: SidebarContentProps) {
   const { worktrees, isLoading, error, refresh } = useWorktrees();
   const { inject, isInjecting } = useContextInjection();
   const { activeWorktreeId, focusedWorktreeId, selectWorktree, setActiveWorktree } =
-    useWorktreeSelectionStore();
+    useWorktreeSelectionStore(
+      useShallow((state) => ({
+        activeWorktreeId: state.activeWorktreeId,
+        focusedWorktreeId: state.focusedWorktreeId,
+        selectWorktree: state.selectWorktree,
+        setActiveWorktree: state.setActiveWorktree,
+      }))
+    );
   const addError = useErrorStore((state) => state.addError);
   const addNotification = useNotificationStore((state) => state.addNotification);
   const focusedTerminalId = useTerminalStore((state) => state.focusedId);
@@ -298,17 +306,27 @@ function SidebarContent({ onOpenSettings }: SidebarContentProps) {
 type AppView = "grid" | "welcome";
 
 function App() {
-  const {
-    focusNext,
-    focusPrevious,
-    toggleMaximize,
-    focusedId,
-    addTerminal,
-    reorderTerminals,
-    terminals,
-  } = useTerminalStore();
+  // Terminal store selectors - use useShallow for multi-field selections to prevent unnecessary re-renders
+  const { focusNext, focusPrevious, toggleMaximize, focusedId, addTerminal, reorderTerminals } =
+    useTerminalStore(
+      useShallow((state) => ({
+        focusNext: state.focusNext,
+        focusPrevious: state.focusPrevious,
+        toggleMaximize: state.toggleMaximize,
+        focusedId: state.focusedId,
+        addTerminal: state.addTerminal,
+        reorderTerminals: state.reorderTerminals,
+      }))
+    );
+  // Select terminals separately for keybinding logic - shallow compare array of objects
+  const terminals = useTerminalStore(useShallow((state) => state.terminals));
   const { launchAgent, availability, agentSettings, refreshSettings } = useAgentLauncher();
-  const { activeWorktreeId, setActiveWorktree } = useWorktreeSelectionStore();
+  const { activeWorktreeId, setActiveWorktree } = useWorktreeSelectionStore(
+    useShallow((state) => ({
+      activeWorktreeId: state.activeWorktreeId,
+      setActiveWorktree: state.setActiveWorktree,
+    }))
+  );
   const { inject, isInjecting } = useContextInjection();
   const loadRecipes = useRecipeStore((state) => state.loadRecipes);
   useTerminalConfig();
