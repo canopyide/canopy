@@ -101,7 +101,6 @@ export type {
   GitHubTokenConfig,
   GitHubTokenValidation,
   // App state types
-  RecentDirectory,
   SavedRecipeTerminal,
   SavedRecipe,
   AppState,

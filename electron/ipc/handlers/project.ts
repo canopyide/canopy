@@ -3,7 +3,6 @@ import path from "path";
 import os from "os";
 import { CHANNELS } from "../channels.js";
 import { sendToRenderer } from "../utils.js";
-import { store } from "../../store.js";
 import { projectStore } from "../../services/ProjectStore.js";
 import { generateProjectIdentity } from "../../services/ai/identity.js";
 import { runCommandDetector } from "../../services/ai/RunCommandDetector.js";
@@ -14,47 +13,10 @@ import type {
   Project,
   ProjectSettings,
 } from "../../types/index.js";
-import { updateRecentDirectories } from "../../utils/recentDirectories.js";
 
 export function registerProjectHandlers(deps: HandlerDependencies): () => void {
   const { mainWindow, worktreeService, cliAvailabilityService } = deps;
   const handlers: Array<() => void> = [];
-
-  // ==========================================
-  // Directory Handlers
-  // ==========================================
-
-  const handleDirectoryOpenDialog = async (): Promise<string | null> => {
-    try {
-      const result = await dialog.showOpenDialog(mainWindow, {
-        properties: ["openDirectory"],
-        title: "Open Directory",
-      });
-
-      if (result.canceled || !result.filePaths[0]) {
-        return null;
-      }
-
-      const selectedPath = result.filePaths[0];
-
-      // Update recent directories
-      const currentRecents = store.get("appState.recentDirectories", []);
-      const updatedRecents = await updateRecentDirectories(currentRecents, selectedPath);
-      store.set("appState.recentDirectories", updatedRecents);
-
-      // Refresh worktree service if available
-      if (worktreeService) {
-        await worktreeService.refresh();
-      }
-
-      return selectedPath;
-    } catch (error) {
-      console.error("Failed to open directory dialog:", error);
-      throw error;
-    }
-  };
-  ipcMain.handle(CHANNELS.DIRECTORY_OPEN_DIALOG, handleDirectoryOpenDialog);
-  handlers.push(() => ipcMain.removeHandler(CHANNELS.DIRECTORY_OPEN_DIALOG));
 
   // ==========================================
   // System Handlers

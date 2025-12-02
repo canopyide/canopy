@@ -1,10 +1,7 @@
 import Store from "electron-store";
-import type { RecentDirectory } from "./types/index.js";
 import type { Project } from "./types/index.js";
 import type { AgentSettings } from "../shared/types/index.js";
 import { DEFAULT_AGENT_SETTINGS } from "../shared/types/index.js";
-
-export type { RecentDirectory };
 
 export interface StoreSchema {
   windowState: {
@@ -17,7 +14,6 @@ export interface StoreSchema {
   appState: {
     activeWorktreeId?: string;
     sidebarWidth: number;
-    recentDirectories?: RecentDirectory[];
     /** Whether focus mode is active (panels collapsed for max terminal space) */
     focusMode?: boolean;
     /** Saved panel state before entering focus mode (for restoration) */
@@ -92,7 +88,6 @@ export const store = new Store<StoreSchema>({
     appState: {
       sidebarWidth: 350,
       focusMode: false,
-      recentDirectories: [],
       terminals: [],
       recipes: [],
       hasSeenWelcome: false,

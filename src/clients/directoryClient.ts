@@ -1,23 +1,19 @@
 /**
- * Directory IPC Client
+ * Directory IPC Client (Legacy)
  *
- * Provides a typed interface for directory-related IPC operations.
- * Wraps window.electron.directory.* calls for testability and maintainability.
+ * This client has been deprecated. Directory functionality has been migrated
+ * to the Projects system. Use the project API instead:
+ *
+ * - window.electron.project.getAll() - Get all projects
+ * - window.electron.project.add(path) - Add a new project
+ * - window.electron.project.switch(projectId) - Switch to a project
+ * - window.electron.project.openDialog() - Open project picker
  */
 
 /**
- * Client for directory IPC operations.
- *
- * @example
- * ```typescript
- * import { directoryClient } from "@/clients/directoryClient";
- *
- * const selected = await directoryClient.openDialog();
- * ```
+ * @deprecated Use the project API instead. This client is kept for backward compatibility.
  */
 export const directoryClient = {
-  /** Open a directory picker dialog */
-  openDialog: (): Promise<string | null> => {
-    return window.electron.directory.openDialog();
-  },
+  // All methods have been removed as part of the migration to the Projects system.
+  // See the project API for project management functionality.
 } as const;

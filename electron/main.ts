@@ -273,7 +273,6 @@ async function createWindow(): Promise<void> {
   // Initialize ProjectStore
   console.log("[MAIN] Initializing ProjectStore...");
   await projectStore.initialize();
-  await projectStore.migrateFromRecentDirectories();
   console.log("[MAIN] ProjectStore initialized successfully");
 
   // --- TRANSCRIPT MANAGER SETUP ---

@@ -204,8 +204,7 @@ const CHANNELS = {
   LOGS_ENTRY: "logs:entry",
   LOGS_OPEN_FILE: "logs:open-file",
 
-  // Directory channels
-  DIRECTORY_OPEN_DIALOG: "directory:open-dialog",
+  // Directory channels (legacy - migrated to Projects system)
 
   // Error channels
   ERROR_NOTIFY: "error:notify",
@@ -469,10 +468,12 @@ const api: ElectronAPI = {
   },
 
   // ==========================================
-  // Directory API
+  // Directory API (legacy - migrated to Projects system)
   // ==========================================
   directory: {
-    openDialog: () => _typedInvoke(CHANNELS.DIRECTORY_OPEN_DIALOG),
+    // Note: getRecent, open, openDialog, and removeRecent have been removed
+    // as part of the migration to the Projects system.
+    // Use the project API for project management.
   },
 
   // ==========================================
