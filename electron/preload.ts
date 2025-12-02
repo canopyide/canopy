@@ -17,17 +17,15 @@
 import { contextBridge, ipcRenderer } from "electron";
 
 // Import types from shared module (type-only to avoid bundling shared runtime)
+// Note: Many types are now inferred from IpcInvokeMap/IpcEventMap via typed helpers
 import type {
   WorktreeState,
   DevServerState,
   Project,
   ProjectSettings,
-  RunCommand,
   TerminalSpawnOptions,
   CopyTreeOptions,
-  CopyTreeResult,
   CopyTreeProgress,
-  FileTreeNode,
   AppState,
   LogEntry,
   LogFilterOptions,
@@ -35,24 +33,15 @@ import type {
   EventFilterOptions,
   RetryAction,
   AppError,
-  AgentSession,
   HistoryGetSessionsPayload,
-  AIServiceState,
-  ProjectIdentity,
   ElectronAPI,
   CreateWorktreeOptions,
   EventContext,
-  RunMetadata,
   IpcInvokeMap,
   IpcEventMap,
-  AgentSettings,
   ClaudeSettings,
   GeminiSettings,
   CodexSettings,
-  RepositoryStats,
-  GitHubCliStatus,
-  GitHubTokenConfig,
-  GitHubTokenValidation,
   PRDetectedPayload,
   PRClearedPayload,
   GitStatus,
@@ -63,9 +52,7 @@ import type {
   AgentExitedPayload,
   ArtifactDetectedPayload,
   SaveArtifactOptions,
-  SaveArtifactResult,
   ApplyPatchOptions,
-  ApplyPatchResult,
 } from "../shared/types/ipc.js";
 import type { TerminalActivityPayload } from "../shared/types/terminal.js";
 
@@ -115,11 +102,6 @@ function _typedOn<K extends Extract<keyof IpcEventMap, string>>(
   ipcRenderer.on(channel, handler);
   return () => ipcRenderer.removeListener(channel, handler);
 }
-
-// Expose typed helpers for future use (prefixed with underscore to avoid unused warnings)
-// These can be used to gradually migrate existing code or in new implementations
-void _typedInvoke;
-void _typedOn;
 
 // Inlined channel constants (must match electron/ipc/channels.ts)
 // These are kept inline to avoid runtime module resolution issues with CommonJS
@@ -297,46 +279,37 @@ const api: ElectronAPI = {
   // Worktree API
   // ==========================================
   worktree: {
-    getAll: () => ipcRenderer.invoke(CHANNELS.WORKTREE_GET_ALL),
+    getAll: () => _typedInvoke(CHANNELS.WORKTREE_GET_ALL),
 
-    refresh: () => ipcRenderer.invoke(CHANNELS.WORKTREE_REFRESH),
+    refresh: () => _typedInvoke(CHANNELS.WORKTREE_REFRESH),
 
-    refreshPullRequests: () => ipcRenderer.invoke(CHANNELS.WORKTREE_PR_REFRESH),
+    refreshPullRequests: () => _typedInvoke(CHANNELS.WORKTREE_PR_REFRESH),
 
-    setActive: (worktreeId: string) =>
-      ipcRenderer.invoke(CHANNELS.WORKTREE_SET_ACTIVE, { worktreeId }),
+    setActive: (worktreeId: string) => _typedInvoke(CHANNELS.WORKTREE_SET_ACTIVE, { worktreeId }),
 
     create: (options: CreateWorktreeOptions, rootPath: string) =>
-      ipcRenderer.invoke(CHANNELS.WORKTREE_CREATE, { rootPath, options }),
+      _typedInvoke(CHANNELS.WORKTREE_CREATE, { rootPath, options }),
 
-    listBranches: (rootPath: string) =>
-      ipcRenderer.invoke(CHANNELS.WORKTREE_LIST_BRANCHES, { rootPath }),
+    listBranches: (rootPath: string) => _typedInvoke(CHANNELS.WORKTREE_LIST_BRANCHES, { rootPath }),
 
     setAdaptiveBackoffConfig: (enabled: boolean, maxInterval?: number, threshold?: number) =>
-      ipcRenderer.invoke(CHANNELS.WORKTREE_SET_ADAPTIVE_BACKOFF_CONFIG, {
+      _typedInvoke(CHANNELS.WORKTREE_SET_ADAPTIVE_BACKOFF_CONFIG, {
         enabled,
         maxInterval,
         threshold,
       }),
 
     isCircuitBreakerTripped: (worktreeId: string) =>
-      ipcRenderer.invoke(CHANNELS.WORKTREE_IS_CIRCUIT_BREAKER_TRIPPED, worktreeId),
+      _typedInvoke(CHANNELS.WORKTREE_IS_CIRCUIT_BREAKER_TRIPPED, worktreeId),
 
     getAdaptiveBackoffMetrics: (worktreeId: string) =>
-      ipcRenderer.invoke(CHANNELS.WORKTREE_GET_ADAPTIVE_BACKOFF_METRICS, worktreeId),
+      _typedInvoke(CHANNELS.WORKTREE_GET_ADAPTIVE_BACKOFF_METRICS, worktreeId),
 
-    onUpdate: (callback: (state: WorktreeState) => void) => {
-      const handler = (_event: Electron.IpcRendererEvent, state: WorktreeState) => callback(state);
-      ipcRenderer.on(CHANNELS.WORKTREE_UPDATE, handler);
-      return () => ipcRenderer.removeListener(CHANNELS.WORKTREE_UPDATE, handler);
-    },
+    onUpdate: (callback: (state: WorktreeState) => void) =>
+      _typedOn(CHANNELS.WORKTREE_UPDATE, callback),
 
-    onRemove: (callback: (data: { worktreeId: string }) => void) => {
-      const handler = (_event: Electron.IpcRendererEvent, data: { worktreeId: string }) =>
-        callback(data);
-      ipcRenderer.on(CHANNELS.WORKTREE_REMOVE, handler);
-      return () => ipcRenderer.removeListener(CHANNELS.WORKTREE_REMOVE, handler);
-    },
+    onRemove: (callback: (data: { worktreeId: string }) => void) =>
+      _typedOn(CHANNELS.WORKTREE_REMOVE, callback),
   },
 
   // ==========================================
@@ -344,52 +317,44 @@ const api: ElectronAPI = {
   // ==========================================
   devServer: {
     start: (worktreeId: string, worktreePath: string, command?: string) =>
-      ipcRenderer.invoke(CHANNELS.DEVSERVER_START, { worktreeId, worktreePath, command }),
+      _typedInvoke(CHANNELS.DEVSERVER_START, { worktreeId, worktreePath, command }),
 
-    stop: (worktreeId: string) => ipcRenderer.invoke(CHANNELS.DEVSERVER_STOP, { worktreeId }),
+    stop: (worktreeId: string) => _typedInvoke(CHANNELS.DEVSERVER_STOP, { worktreeId }),
 
     toggle: (worktreeId: string, worktreePath: string, command?: string) =>
-      ipcRenderer.invoke(CHANNELS.DEVSERVER_TOGGLE, { worktreeId, worktreePath, command }),
+      _typedInvoke(CHANNELS.DEVSERVER_TOGGLE, { worktreeId, worktreePath, command }),
 
-    getState: (worktreeId: string) => ipcRenderer.invoke(CHANNELS.DEVSERVER_GET_STATE, worktreeId),
+    getState: (worktreeId: string) => _typedInvoke(CHANNELS.DEVSERVER_GET_STATE, worktreeId),
 
-    getLogs: (worktreeId: string) => ipcRenderer.invoke(CHANNELS.DEVSERVER_GET_LOGS, worktreeId),
+    getLogs: (worktreeId: string) => _typedInvoke(CHANNELS.DEVSERVER_GET_LOGS, worktreeId),
 
     hasDevScript: (worktreePath: string) =>
-      ipcRenderer.invoke(CHANNELS.DEVSERVER_HAS_DEV_SCRIPT, worktreePath),
+      _typedInvoke(CHANNELS.DEVSERVER_HAS_DEV_SCRIPT, worktreePath),
 
-    onUpdate: (callback: (state: DevServerState) => void) => {
-      const handler = (_event: Electron.IpcRendererEvent, state: DevServerState) => callback(state);
-      ipcRenderer.on(CHANNELS.DEVSERVER_UPDATE, handler);
-      return () => ipcRenderer.removeListener(CHANNELS.DEVSERVER_UPDATE, handler);
-    },
+    onUpdate: (callback: (state: DevServerState) => void) =>
+      _typedOn(CHANNELS.DEVSERVER_UPDATE, callback),
 
-    onError: (callback: (data: { worktreeId: string; error: string }) => void) => {
-      const handler = (
-        _event: Electron.IpcRendererEvent,
-        data: { worktreeId: string; error: string }
-      ) => callback(data);
-      ipcRenderer.on(CHANNELS.DEVSERVER_ERROR, handler);
-      return () => ipcRenderer.removeListener(CHANNELS.DEVSERVER_ERROR, handler);
-    },
+    onError: (callback: (data: { worktreeId: string; error: string }) => void) =>
+      _typedOn(CHANNELS.DEVSERVER_ERROR, callback),
   },
 
   // ==========================================
   // Terminal API
   // ==========================================
   terminal: {
-    spawn: (options: TerminalSpawnOptions) => ipcRenderer.invoke(CHANNELS.TERMINAL_SPAWN, options),
+    spawn: (options: TerminalSpawnOptions) => _typedInvoke(CHANNELS.TERMINAL_SPAWN, options),
 
     write: (id: string, data: string) => ipcRenderer.send(CHANNELS.TERMINAL_INPUT, id, data),
 
     resize: (id: string, cols: number, rows: number) =>
       ipcRenderer.send(CHANNELS.TERMINAL_RESIZE, { id, cols, rows }),
 
-    kill: (id: string) => ipcRenderer.invoke(CHANNELS.TERMINAL_KILL, id),
+    kill: (id: string) => _typedInvoke(CHANNELS.TERMINAL_KILL, id),
 
+    // Note: terminal:data uses tuple payload [id, data] which requires special handling
+    // for per-terminal filtering, so we keep manual ipcRenderer.on here
     onData: (id: string, callback: (data: string) => void) => {
       const handler = (_event: Electron.IpcRendererEvent, terminalId: unknown, data: unknown) => {
-        // Type guards to ensure we received valid data
         if (typeof terminalId === "string" && typeof data === "string" && terminalId === id) {
           callback(data);
         }
@@ -398,6 +363,7 @@ const api: ElectronAPI = {
       return () => ipcRenderer.removeListener(CHANNELS.TERMINAL_DATA, handler);
     },
 
+    // Note: terminal:exit uses tuple payload [id, exitCode] which requires special handling
     onExit: (callback: (id: string, exitCode: number) => void) => {
       const handler = (_event: Electron.IpcRendererEvent, id: unknown, exitCode: unknown) => {
         if (typeof id === "string" && typeof exitCode === "number") {
@@ -408,510 +374,318 @@ const api: ElectronAPI = {
       return () => ipcRenderer.removeListener(CHANNELS.TERMINAL_EXIT, handler);
     },
 
-    onAgentStateChanged: (callback: (data: AgentStateChangePayload) => void) => {
-      const handler = (_event: Electron.IpcRendererEvent, data: unknown) => {
-        // Type guard - validate all required fields including new metadata
-        const record = data as Record<string, unknown>;
-        if (
-          typeof data === "object" &&
-          data !== null &&
-          "agentId" in data &&
-          "state" in data &&
-          "previousState" in data &&
-          "timestamp" in data &&
-          "trigger" in data &&
-          "confidence" in data &&
-          typeof record.agentId === "string" &&
-          typeof record.state === "string" &&
-          typeof record.previousState === "string" &&
-          typeof record.timestamp === "number" &&
-          typeof record.trigger === "string" &&
-          typeof record.confidence === "number" &&
-          record.confidence >= 0 &&
-          record.confidence <= 1
-        ) {
-          callback(data as AgentStateChangePayload);
-        } else {
-          console.warn("[Preload] Invalid agent:state-changed payload, dropping event", data);
-        }
-      };
-      ipcRenderer.on(CHANNELS.AGENT_STATE_CHANGED, handler);
-      return () => ipcRenderer.removeListener(CHANNELS.AGENT_STATE_CHANGED, handler);
-    },
+    onAgentStateChanged: (callback: (data: AgentStateChangePayload) => void) =>
+      _typedOn(CHANNELS.AGENT_STATE_CHANGED, callback),
 
-    onAgentDetected: (callback: (data: AgentDetectedPayload) => void) => {
-      const handler = (_event: Electron.IpcRendererEvent, data: unknown) => {
-        // Type guard - validate agent detected payload
-        const record = data as Record<string, unknown>;
-        if (
-          typeof data === "object" &&
-          data !== null &&
-          "terminalId" in data &&
-          "agentType" in data &&
-          "processName" in data &&
-          "timestamp" in data &&
-          typeof record.terminalId === "string" &&
-          typeof record.agentType === "string" &&
-          typeof record.processName === "string" &&
-          typeof record.timestamp === "number"
-        ) {
-          callback(data as AgentDetectedPayload);
-        } else {
-          console.warn("[Preload] Invalid agent:detected payload, dropping event", data);
-        }
-      };
-      ipcRenderer.on(CHANNELS.AGENT_DETECTED, handler);
-      return () => ipcRenderer.removeListener(CHANNELS.AGENT_DETECTED, handler);
-    },
+    onAgentDetected: (callback: (data: AgentDetectedPayload) => void) =>
+      _typedOn(CHANNELS.AGENT_DETECTED, callback),
 
-    onAgentExited: (callback: (data: AgentExitedPayload) => void) => {
-      const handler = (_event: Electron.IpcRendererEvent, data: unknown) => {
-        // Type guard - validate agent exited payload
-        const record = data as Record<string, unknown>;
-        if (
-          typeof data === "object" &&
-          data !== null &&
-          "terminalId" in data &&
-          "agentType" in data &&
-          "timestamp" in data &&
-          typeof record.terminalId === "string" &&
-          typeof record.agentType === "string" &&
-          typeof record.timestamp === "number"
-        ) {
-          callback(data as AgentExitedPayload);
-        } else {
-          console.warn("[Preload] Invalid agent:exited payload, dropping event", data);
-        }
-      };
-      ipcRenderer.on(CHANNELS.AGENT_EXITED, handler);
-      return () => ipcRenderer.removeListener(CHANNELS.AGENT_EXITED, handler);
-    },
+    onAgentExited: (callback: (data: AgentExitedPayload) => void) =>
+      _typedOn(CHANNELS.AGENT_EXITED, callback),
 
-    onActivity: (callback: (data: TerminalActivityPayload) => void) => {
-      const handler = (_event: Electron.IpcRendererEvent, data: unknown) => {
-        // Type guard - validate terminal activity payload structure
-        const record = data as Record<string, unknown>;
-        if (
-          typeof data === "object" &&
-          data !== null &&
-          "terminalId" in data &&
-          "headline" in data &&
-          "status" in data &&
-          "type" in data &&
-          "confidence" in data &&
-          "timestamp" in data &&
-          typeof record.terminalId === "string" &&
-          typeof record.headline === "string" &&
-          typeof record.status === "string" &&
-          typeof record.type === "string" &&
-          typeof record.confidence === "number" &&
-          typeof record.timestamp === "number"
-        ) {
-          callback(data as TerminalActivityPayload);
-        } else {
-          console.warn("[Preload] Invalid terminal:activity payload, dropping event", data);
-        }
-      };
-      ipcRenderer.on(CHANNELS.TERMINAL_ACTIVITY, handler);
-      return () => ipcRenderer.removeListener(CHANNELS.TERMINAL_ACTIVITY, handler);
-    },
+    onActivity: (callback: (data: TerminalActivityPayload) => void) =>
+      _typedOn(CHANNELS.TERMINAL_ACTIVITY, callback),
 
-    trash: (id: string): Promise<void> => ipcRenderer.invoke(CHANNELS.TERMINAL_TRASH, id),
+    trash: (id: string) => _typedInvoke(CHANNELS.TERMINAL_TRASH, id),
 
-    restore: (id: string): Promise<boolean> => ipcRenderer.invoke(CHANNELS.TERMINAL_RESTORE, id),
+    restore: (id: string) => _typedInvoke(CHANNELS.TERMINAL_RESTORE, id),
 
-    onTrashed: (callback: (data: { id: string; expiresAt: number }) => void) => {
-      const handler = (
-        _event: Electron.IpcRendererEvent,
-        data: { id: string; expiresAt: number }
-      ) => callback(data);
-      ipcRenderer.on(CHANNELS.TERMINAL_TRASHED, handler);
-      return () => ipcRenderer.removeListener(CHANNELS.TERMINAL_TRASHED, handler);
-    },
+    onTrashed: (callback: (data: { id: string; expiresAt: number }) => void) =>
+      _typedOn(CHANNELS.TERMINAL_TRASHED, callback),
 
-    onRestored: (callback: (data: { id: string }) => void) => {
-      const handler = (_event: Electron.IpcRendererEvent, data: { id: string }) => callback(data);
-      ipcRenderer.on(CHANNELS.TERMINAL_RESTORED, handler);
-      return () => ipcRenderer.removeListener(CHANNELS.TERMINAL_RESTORED, handler);
-    },
+    onRestored: (callback: (data: { id: string }) => void) =>
+      _typedOn(CHANNELS.TERMINAL_RESTORED, callback),
 
-    setBuffering: (id: string, enabled: boolean): Promise<void> =>
-      ipcRenderer.invoke(CHANNELS.TERMINAL_SET_BUFFERING, { id, enabled }),
+    setBuffering: (id: string, enabled: boolean) =>
+      _typedInvoke(CHANNELS.TERMINAL_SET_BUFFERING, { id, enabled }),
 
-    flush: (id: string): Promise<void> => ipcRenderer.invoke(CHANNELS.TERMINAL_FLUSH, id),
+    flush: (id: string) => _typedInvoke(CHANNELS.TERMINAL_FLUSH, id),
   },
 
   // ==========================================
   // Artifact API
   // ==========================================
   artifact: {
-    onDetected: (callback: (data: ArtifactDetectedPayload) => void) => {
-      const handler = (_event: Electron.IpcRendererEvent, data: unknown) => {
-        // Type guard - validate payload structure deeply
-        const record = data as Record<string, unknown>;
-        if (
-          typeof data === "object" &&
-          data !== null &&
-          "agentId" in data &&
-          "terminalId" in data &&
-          "artifacts" in data &&
-          "timestamp" in data &&
-          typeof record.agentId === "string" &&
-          typeof record.terminalId === "string" &&
-          typeof record.timestamp === "number" &&
-          Array.isArray(record.artifacts) &&
-          // Validate each artifact object
-          record.artifacts.every((artifact: unknown) => {
-            const art = artifact as Record<string, unknown>;
-            return (
-              typeof artifact === "object" &&
-              artifact !== null &&
-              typeof art.id === "string" &&
-              typeof art.type === "string" &&
-              typeof art.content === "string" &&
-              typeof art.extractedAt === "number"
-            );
-          })
-        ) {
-          callback(data as ArtifactDetectedPayload);
-        } else {
-          console.warn("[Preload] Invalid artifact:detected payload, dropping event");
-        }
-      };
-      ipcRenderer.on(CHANNELS.ARTIFACT_DETECTED, handler);
-      return () => ipcRenderer.removeListener(CHANNELS.ARTIFACT_DETECTED, handler);
-    },
+    onDetected: (callback: (data: ArtifactDetectedPayload) => void) =>
+      _typedOn(CHANNELS.ARTIFACT_DETECTED, callback),
 
-    saveToFile: (options: SaveArtifactOptions): Promise<SaveArtifactResult | null> =>
-      ipcRenderer.invoke(CHANNELS.ARTIFACT_SAVE_TO_FILE, options),
+    saveToFile: (options: SaveArtifactOptions) =>
+      _typedInvoke(CHANNELS.ARTIFACT_SAVE_TO_FILE, options),
 
-    applyPatch: (options: ApplyPatchOptions): Promise<ApplyPatchResult> =>
-      ipcRenderer.invoke(CHANNELS.ARTIFACT_APPLY_PATCH, options),
+    applyPatch: (options: ApplyPatchOptions) =>
+      _typedInvoke(CHANNELS.ARTIFACT_APPLY_PATCH, options),
   },
 
   // ==========================================
   // CopyTree API
   // ==========================================
   copyTree: {
-    generate: (worktreeId: string, options?: CopyTreeOptions): Promise<CopyTreeResult> =>
-      ipcRenderer.invoke(CHANNELS.COPYTREE_GENERATE, { worktreeId, options }),
+    generate: (worktreeId: string, options?: CopyTreeOptions) =>
+      _typedInvoke(CHANNELS.COPYTREE_GENERATE, { worktreeId, options }),
 
-    generateAndCopyFile: (worktreeId: string, options?: CopyTreeOptions): Promise<CopyTreeResult> =>
-      ipcRenderer.invoke(CHANNELS.COPYTREE_GENERATE_AND_COPY_FILE, { worktreeId, options }),
+    generateAndCopyFile: (worktreeId: string, options?: CopyTreeOptions) =>
+      _typedInvoke(CHANNELS.COPYTREE_GENERATE_AND_COPY_FILE, { worktreeId, options }),
 
-    injectToTerminal: (
-      terminalId: string,
-      worktreeId: string,
-      options?: CopyTreeOptions
-    ): Promise<CopyTreeResult> =>
-      ipcRenderer.invoke(CHANNELS.COPYTREE_INJECT, { terminalId, worktreeId, options }),
+    injectToTerminal: (terminalId: string, worktreeId: string, options?: CopyTreeOptions) =>
+      _typedInvoke(CHANNELS.COPYTREE_INJECT, { terminalId, worktreeId, options }),
 
-    isAvailable: (): Promise<boolean> => ipcRenderer.invoke(CHANNELS.COPYTREE_AVAILABLE),
+    isAvailable: () => _typedInvoke(CHANNELS.COPYTREE_AVAILABLE),
 
-    cancel: (): Promise<void> => ipcRenderer.invoke(CHANNELS.COPYTREE_CANCEL),
+    cancel: () => _typedInvoke(CHANNELS.COPYTREE_CANCEL),
 
-    getFileTree: (worktreeId: string, dirPath?: string): Promise<FileTreeNode[]> =>
-      ipcRenderer.invoke(CHANNELS.COPYTREE_GET_FILE_TREE, { worktreeId, dirPath }),
+    getFileTree: (worktreeId: string, dirPath?: string) =>
+      _typedInvoke(CHANNELS.COPYTREE_GET_FILE_TREE, { worktreeId, dirPath }),
 
-    onProgress: (callback: (progress: CopyTreeProgress) => void) => {
-      const handler = (_event: Electron.IpcRendererEvent, progress: CopyTreeProgress) =>
-        callback(progress);
-      ipcRenderer.on(CHANNELS.COPYTREE_PROGRESS, handler);
-      return () => ipcRenderer.removeListener(CHANNELS.COPYTREE_PROGRESS, handler);
-    },
+    onProgress: (callback: (progress: CopyTreeProgress) => void) =>
+      _typedOn(CHANNELS.COPYTREE_PROGRESS, callback),
   },
 
   // ==========================================
   // System API
   // ==========================================
   system: {
-    openExternal: (url: string) => ipcRenderer.invoke(CHANNELS.SYSTEM_OPEN_EXTERNAL, { url }),
+    openExternal: (url: string) => _typedInvoke(CHANNELS.SYSTEM_OPEN_EXTERNAL, { url }),
 
-    openPath: (path: string) => ipcRenderer.invoke(CHANNELS.SYSTEM_OPEN_PATH, { path }),
+    openPath: (path: string) => _typedInvoke(CHANNELS.SYSTEM_OPEN_PATH, { path }),
 
-    checkCommand: (command: string) => ipcRenderer.invoke(CHANNELS.SYSTEM_CHECK_COMMAND, command),
+    checkCommand: (command: string) => _typedInvoke(CHANNELS.SYSTEM_CHECK_COMMAND, command),
 
-    getHomeDir: () => ipcRenderer.invoke(CHANNELS.SYSTEM_GET_HOME_DIR),
+    getHomeDir: () => _typedInvoke(CHANNELS.SYSTEM_GET_HOME_DIR),
 
-    getCliAvailability: () => ipcRenderer.invoke(CHANNELS.SYSTEM_GET_CLI_AVAILABILITY),
+    getCliAvailability: () => _typedInvoke(CHANNELS.SYSTEM_GET_CLI_AVAILABILITY),
 
-    refreshCliAvailability: () => ipcRenderer.invoke(CHANNELS.SYSTEM_REFRESH_CLI_AVAILABILITY),
+    refreshCliAvailability: () => _typedInvoke(CHANNELS.SYSTEM_REFRESH_CLI_AVAILABILITY),
   },
 
   // ==========================================
   // App State API
   // ==========================================
   app: {
-    getState: () => ipcRenderer.invoke(CHANNELS.APP_GET_STATE),
+    getState: () => _typedInvoke(CHANNELS.APP_GET_STATE),
 
     setState: (partialState: Partial<AppState>) =>
-      ipcRenderer.invoke(CHANNELS.APP_SET_STATE, partialState),
+      _typedInvoke(CHANNELS.APP_SET_STATE, partialState),
 
-    getVersion: () => ipcRenderer.invoke(CHANNELS.APP_GET_VERSION),
+    getVersion: () => _typedInvoke(CHANNELS.APP_GET_VERSION),
   },
 
   // ==========================================
   // Logs API
   // ==========================================
   logs: {
-    getAll: (filters?: LogFilterOptions) => ipcRenderer.invoke(CHANNELS.LOGS_GET_ALL, filters),
+    getAll: (filters?: LogFilterOptions) => _typedInvoke(CHANNELS.LOGS_GET_ALL, filters),
 
-    getSources: () => ipcRenderer.invoke(CHANNELS.LOGS_GET_SOURCES),
+    getSources: () => _typedInvoke(CHANNELS.LOGS_GET_SOURCES),
 
-    clear: () => ipcRenderer.invoke(CHANNELS.LOGS_CLEAR),
+    clear: () => _typedInvoke(CHANNELS.LOGS_CLEAR),
 
-    openFile: () => ipcRenderer.invoke(CHANNELS.LOGS_OPEN_FILE),
+    openFile: () => _typedInvoke(CHANNELS.LOGS_OPEN_FILE),
 
-    onEntry: (callback: (entry: LogEntry) => void) => {
-      const handler = (_event: Electron.IpcRendererEvent, entry: LogEntry) => callback(entry);
-      ipcRenderer.on(CHANNELS.LOGS_ENTRY, handler);
-      return () => ipcRenderer.removeListener(CHANNELS.LOGS_ENTRY, handler);
-    },
+    onEntry: (callback: (entry: LogEntry) => void) => _typedOn(CHANNELS.LOGS_ENTRY, callback),
   },
 
   // ==========================================
   // Directory API
   // ==========================================
   directory: {
-    getRecent: () => ipcRenderer.invoke(CHANNELS.DIRECTORY_GET_RECENTS),
+    getRecent: () => _typedInvoke(CHANNELS.DIRECTORY_GET_RECENTS),
 
-    open: (path: string) => ipcRenderer.invoke(CHANNELS.DIRECTORY_OPEN, { path }),
+    open: (path: string) => _typedInvoke(CHANNELS.DIRECTORY_OPEN, { path }),
 
-    openDialog: () => ipcRenderer.invoke(CHANNELS.DIRECTORY_OPEN_DIALOG),
+    openDialog: () => _typedInvoke(CHANNELS.DIRECTORY_OPEN_DIALOG),
 
-    removeRecent: (path: string) => ipcRenderer.invoke(CHANNELS.DIRECTORY_REMOVE_RECENT, { path }),
+    removeRecent: (path: string) => _typedInvoke(CHANNELS.DIRECTORY_REMOVE_RECENT, { path }),
   },
 
   // ==========================================
   // Error API
   // ==========================================
   errors: {
-    onError: (callback: (error: AppError) => void) => {
-      const handler = (_event: Electron.IpcRendererEvent, error: AppError) => callback(error);
-      ipcRenderer.on(CHANNELS.ERROR_NOTIFY, handler);
-      return () => ipcRenderer.removeListener(CHANNELS.ERROR_NOTIFY, handler);
-    },
+    onError: (callback: (error: AppError) => void) => _typedOn(CHANNELS.ERROR_NOTIFY, callback),
 
     retry: (errorId: string, action: RetryAction, args?: Record<string, unknown>) =>
-      ipcRenderer.invoke(CHANNELS.ERROR_RETRY, { errorId, action, args }),
+      _typedInvoke(CHANNELS.ERROR_RETRY, { errorId, action, args }),
 
-    openLogs: () => ipcRenderer.invoke(CHANNELS.ERROR_OPEN_LOGS),
+    openLogs: () => _typedInvoke(CHANNELS.ERROR_OPEN_LOGS),
   },
 
   // ==========================================
   // Event Inspector API
   // ==========================================
   eventInspector: {
-    getEvents: (): Promise<EventRecord[]> =>
-      ipcRenderer.invoke(CHANNELS.EVENT_INSPECTOR_GET_EVENTS),
+    getEvents: () => _typedInvoke(CHANNELS.EVENT_INSPECTOR_GET_EVENTS),
 
-    getFiltered: (filters: EventFilterOptions): Promise<EventRecord[]> =>
-      ipcRenderer.invoke(CHANNELS.EVENT_INSPECTOR_GET_FILTERED, filters),
+    getFiltered: (filters: EventFilterOptions) =>
+      _typedInvoke(CHANNELS.EVENT_INSPECTOR_GET_FILTERED, filters),
 
-    clear: () => ipcRenderer.invoke(CHANNELS.EVENT_INSPECTOR_CLEAR),
+    clear: () => _typedInvoke(CHANNELS.EVENT_INSPECTOR_CLEAR),
 
     subscribe: () => ipcRenderer.send(CHANNELS.EVENT_INSPECTOR_SUBSCRIBE),
 
     unsubscribe: () => ipcRenderer.send(CHANNELS.EVENT_INSPECTOR_UNSUBSCRIBE),
 
-    onEvent: (callback: (event: EventRecord) => void) => {
-      const handler = (_event: Electron.IpcRendererEvent, eventRecord: EventRecord) =>
-        callback(eventRecord);
-      ipcRenderer.on(CHANNELS.EVENT_INSPECTOR_EVENT, handler);
-      return () => ipcRenderer.removeListener(CHANNELS.EVENT_INSPECTOR_EVENT, handler);
-    },
+    onEvent: (callback: (event: EventRecord) => void) =>
+      _typedOn(CHANNELS.EVENT_INSPECTOR_EVENT, callback),
   },
 
   // ==========================================
   // Project API
   // ==========================================
   project: {
-    getAll: (): Promise<Project[]> => ipcRenderer.invoke(CHANNELS.PROJECT_GET_ALL),
+    getAll: () => _typedInvoke(CHANNELS.PROJECT_GET_ALL),
 
-    getCurrent: (): Promise<Project | null> => ipcRenderer.invoke(CHANNELS.PROJECT_GET_CURRENT),
+    getCurrent: () => _typedInvoke(CHANNELS.PROJECT_GET_CURRENT),
 
-    add: (path: string): Promise<Project> => ipcRenderer.invoke(CHANNELS.PROJECT_ADD, path),
+    add: (path: string) => _typedInvoke(CHANNELS.PROJECT_ADD, path),
 
-    remove: (projectId: string): Promise<void> =>
-      ipcRenderer.invoke(CHANNELS.PROJECT_REMOVE, projectId),
+    remove: (projectId: string) => _typedInvoke(CHANNELS.PROJECT_REMOVE, projectId),
 
-    update: (projectId: string, updates: Partial<Project>): Promise<Project> =>
-      ipcRenderer.invoke(CHANNELS.PROJECT_UPDATE, projectId, updates),
+    update: (projectId: string, updates: Partial<Project>) =>
+      _typedInvoke(CHANNELS.PROJECT_UPDATE, projectId, updates),
 
-    switch: (projectId: string): Promise<Project> =>
-      ipcRenderer.invoke(CHANNELS.PROJECT_SWITCH, projectId),
+    switch: (projectId: string) => _typedInvoke(CHANNELS.PROJECT_SWITCH, projectId),
 
-    openDialog: (): Promise<string | null> => ipcRenderer.invoke(CHANNELS.PROJECT_OPEN_DIALOG),
+    openDialog: () => _typedInvoke(CHANNELS.PROJECT_OPEN_DIALOG),
 
-    onSwitch: (callback: (project: Project) => void) => {
-      const handler = (_event: Electron.IpcRendererEvent, project: Project) => callback(project);
-      ipcRenderer.on(CHANNELS.PROJECT_ON_SWITCH, handler);
-      return () => ipcRenderer.removeListener(CHANNELS.PROJECT_ON_SWITCH, handler);
-    },
+    onSwitch: (callback: (project: Project) => void) =>
+      _typedOn(CHANNELS.PROJECT_ON_SWITCH, callback),
 
-    getSettings: (projectId: string): Promise<ProjectSettings> =>
-      ipcRenderer.invoke(CHANNELS.PROJECT_GET_SETTINGS, projectId),
+    getSettings: (projectId: string) => _typedInvoke(CHANNELS.PROJECT_GET_SETTINGS, projectId),
 
-    saveSettings: (projectId: string, settings: ProjectSettings): Promise<void> =>
-      ipcRenderer.invoke(CHANNELS.PROJECT_SAVE_SETTINGS, { projectId, settings }),
+    saveSettings: (projectId: string, settings: ProjectSettings) =>
+      _typedInvoke(CHANNELS.PROJECT_SAVE_SETTINGS, { projectId, settings }),
 
-    detectRunners: (projectId: string): Promise<RunCommand[]> =>
-      ipcRenderer.invoke(CHANNELS.PROJECT_DETECT_RUNNERS, projectId),
+    detectRunners: (projectId: string) => _typedInvoke(CHANNELS.PROJECT_DETECT_RUNNERS, projectId),
 
-    regenerateIdentity: (projectId: string): Promise<Project> =>
-      ipcRenderer.invoke(CHANNELS.PROJECT_REGENERATE_IDENTITY, projectId),
+    regenerateIdentity: (projectId: string) =>
+      _typedInvoke(CHANNELS.PROJECT_REGENERATE_IDENTITY, projectId),
   },
 
   // ==========================================
   // History API (Agent Transcripts & Artifacts)
   // ==========================================
   history: {
-    getSessions: (filters?: HistoryGetSessionsPayload): Promise<AgentSession[]> =>
-      ipcRenderer.invoke(CHANNELS.HISTORY_GET_SESSIONS, filters),
+    getSessions: (filters?: HistoryGetSessionsPayload) =>
+      _typedInvoke(CHANNELS.HISTORY_GET_SESSIONS, filters),
 
-    getSession: (sessionId: string): Promise<AgentSession | null> =>
-      ipcRenderer.invoke(CHANNELS.HISTORY_GET_SESSION, { sessionId }),
+    getSession: (sessionId: string) => _typedInvoke(CHANNELS.HISTORY_GET_SESSION, { sessionId }),
 
-    exportSession: (sessionId: string, format: "json" | "markdown"): Promise<string | null> =>
-      ipcRenderer.invoke(CHANNELS.HISTORY_EXPORT_SESSION, { sessionId, format }),
+    exportSession: (sessionId: string, format: "json" | "markdown") =>
+      _typedInvoke(CHANNELS.HISTORY_EXPORT_SESSION, { sessionId, format }),
 
-    deleteSession: (sessionId: string): Promise<void> =>
-      ipcRenderer.invoke(CHANNELS.HISTORY_DELETE_SESSION, sessionId),
+    deleteSession: (sessionId: string) => _typedInvoke(CHANNELS.HISTORY_DELETE_SESSION, sessionId),
   },
 
   // ==========================================
   // AI API
   // ==========================================
   ai: {
-    getConfig: (): Promise<AIServiceState> => ipcRenderer.invoke(CHANNELS.AI_GET_CONFIG),
+    getConfig: () => _typedInvoke(CHANNELS.AI_GET_CONFIG),
 
-    setKey: (apiKey: string): Promise<boolean> => ipcRenderer.invoke(CHANNELS.AI_SET_KEY, apiKey),
+    setKey: (apiKey: string) => _typedInvoke(CHANNELS.AI_SET_KEY, apiKey),
 
-    clearKey: (): Promise<void> => ipcRenderer.invoke(CHANNELS.AI_CLEAR_KEY),
+    clearKey: () => _typedInvoke(CHANNELS.AI_CLEAR_KEY),
 
-    setModel: (model: string): Promise<void> => ipcRenderer.invoke(CHANNELS.AI_SET_MODEL, model),
+    setModel: (model: string) => _typedInvoke(CHANNELS.AI_SET_MODEL, model),
 
-    setEnabled: (enabled: boolean): Promise<void> =>
-      ipcRenderer.invoke(CHANNELS.AI_SET_ENABLED, enabled),
+    setEnabled: (enabled: boolean) => _typedInvoke(CHANNELS.AI_SET_ENABLED, enabled),
 
-    validateKey: (apiKey: string): Promise<boolean> =>
-      ipcRenderer.invoke(CHANNELS.AI_VALIDATE_KEY, apiKey),
+    validateKey: (apiKey: string) => _typedInvoke(CHANNELS.AI_VALIDATE_KEY, apiKey),
 
-    generateProjectIdentity: (projectPath: string): Promise<ProjectIdentity | null> =>
-      ipcRenderer.invoke(CHANNELS.AI_GENERATE_PROJECT_IDENTITY, projectPath),
+    generateProjectIdentity: (projectPath: string) =>
+      _typedInvoke(CHANNELS.AI_GENERATE_PROJECT_IDENTITY, projectPath),
   },
 
   // ==========================================
   // Run Orchestration API
   // ==========================================
   run: {
-    start: (name: string, context?: EventContext, description?: string): Promise<string> =>
-      ipcRenderer.invoke(CHANNELS.RUN_START, { name, context, description }),
+    start: (name: string, context?: EventContext, description?: string) =>
+      _typedInvoke(CHANNELS.RUN_START, { name, context, description }),
 
-    updateProgress: (runId: string, progress: number, message?: string): Promise<void> =>
-      ipcRenderer.invoke(CHANNELS.RUN_UPDATE_PROGRESS, { runId, progress, message }),
+    updateProgress: (runId: string, progress: number, message?: string) =>
+      _typedInvoke(CHANNELS.RUN_UPDATE_PROGRESS, { runId, progress, message }),
 
-    pause: (runId: string, reason?: string): Promise<void> =>
-      ipcRenderer.invoke(CHANNELS.RUN_PAUSE, { runId, reason }),
+    pause: (runId: string, reason?: string) => _typedInvoke(CHANNELS.RUN_PAUSE, { runId, reason }),
 
-    resume: (runId: string): Promise<void> => ipcRenderer.invoke(CHANNELS.RUN_RESUME, runId),
+    resume: (runId: string) => _typedInvoke(CHANNELS.RUN_RESUME, runId),
 
-    complete: (runId: string): Promise<void> => ipcRenderer.invoke(CHANNELS.RUN_COMPLETE, runId),
+    complete: (runId: string) => _typedInvoke(CHANNELS.RUN_COMPLETE, runId),
 
-    fail: (runId: string, error: string): Promise<void> =>
-      ipcRenderer.invoke(CHANNELS.RUN_FAIL, { runId, error }),
+    fail: (runId: string, error: string) => _typedInvoke(CHANNELS.RUN_FAIL, { runId, error }),
 
-    cancel: (runId: string, reason?: string): Promise<void> =>
-      ipcRenderer.invoke(CHANNELS.RUN_CANCEL, { runId, reason }),
+    cancel: (runId: string, reason?: string) =>
+      _typedInvoke(CHANNELS.RUN_CANCEL, { runId, reason }),
 
-    get: (runId: string): Promise<RunMetadata | undefined> =>
-      ipcRenderer.invoke(CHANNELS.RUN_GET, runId),
+    get: (runId: string) => _typedInvoke(CHANNELS.RUN_GET, runId),
 
-    getAll: (): Promise<RunMetadata[]> => ipcRenderer.invoke(CHANNELS.RUN_GET_ALL),
+    getAll: () => _typedInvoke(CHANNELS.RUN_GET_ALL),
 
-    getActive: (): Promise<RunMetadata[]> => ipcRenderer.invoke(CHANNELS.RUN_GET_ACTIVE),
+    getActive: () => _typedInvoke(CHANNELS.RUN_GET_ACTIVE),
 
-    clearFinished: (olderThan?: number): Promise<number> =>
-      ipcRenderer.invoke(CHANNELS.RUN_CLEAR_FINISHED, olderThan),
+    clearFinished: (olderThan?: number) => _typedInvoke(CHANNELS.RUN_CLEAR_FINISHED, olderThan),
 
-    onEvent: (callback: (event: { type: string; payload: unknown }) => void) => {
-      const handler = (
-        _event: Electron.IpcRendererEvent,
-        data: { type: string; payload: unknown }
-      ) => callback(data);
-      ipcRenderer.on(CHANNELS.RUN_EVENT, handler);
-      return () => ipcRenderer.removeListener(CHANNELS.RUN_EVENT, handler);
-    },
+    onEvent: (callback: (event: { type: string; payload: unknown }) => void) =>
+      _typedOn(CHANNELS.RUN_EVENT, callback),
   },
 
   // ==========================================
   // Agent Settings API
   // ==========================================
   agentSettings: {
-    get: (): Promise<AgentSettings> => ipcRenderer.invoke(CHANNELS.AGENT_SETTINGS_GET),
+    get: () => _typedInvoke(CHANNELS.AGENT_SETTINGS_GET),
 
-    setClaude: (settings: Partial<ClaudeSettings>): Promise<AgentSettings> =>
-      ipcRenderer.invoke(CHANNELS.AGENT_SETTINGS_SET, { agentType: "claude", settings }),
+    setClaude: (settings: Partial<ClaudeSettings>) =>
+      _typedInvoke(CHANNELS.AGENT_SETTINGS_SET, { agentType: "claude", settings }),
 
-    setGemini: (settings: Partial<GeminiSettings>): Promise<AgentSettings> =>
-      ipcRenderer.invoke(CHANNELS.AGENT_SETTINGS_SET, { agentType: "gemini", settings }),
+    setGemini: (settings: Partial<GeminiSettings>) =>
+      _typedInvoke(CHANNELS.AGENT_SETTINGS_SET, { agentType: "gemini", settings }),
 
-    setCodex: (settings: Partial<CodexSettings>): Promise<AgentSettings> =>
-      ipcRenderer.invoke(CHANNELS.AGENT_SETTINGS_SET, { agentType: "codex", settings }),
+    setCodex: (settings: Partial<CodexSettings>) =>
+      _typedInvoke(CHANNELS.AGENT_SETTINGS_SET, { agentType: "codex", settings }),
 
-    reset: (agentType?: "claude" | "gemini" | "codex"): Promise<AgentSettings> =>
-      ipcRenderer.invoke(CHANNELS.AGENT_SETTINGS_RESET, agentType),
+    reset: (agentType?: "claude" | "gemini" | "codex") =>
+      _typedInvoke(CHANNELS.AGENT_SETTINGS_RESET, agentType),
   },
 
   // ==========================================
   // GitHub API
   // ==========================================
   github: {
-    getRepoStats: (cwd: string): Promise<RepositoryStats> =>
-      ipcRenderer.invoke(CHANNELS.GITHUB_GET_REPO_STATS, cwd),
+    getRepoStats: (cwd: string) => _typedInvoke(CHANNELS.GITHUB_GET_REPO_STATS, cwd),
 
-    openIssues: (cwd: string): Promise<void> =>
-      ipcRenderer.invoke(CHANNELS.GITHUB_OPEN_ISSUES, cwd),
+    openIssues: (cwd: string) => _typedInvoke(CHANNELS.GITHUB_OPEN_ISSUES, cwd),
 
-    openPRs: (cwd: string): Promise<void> => ipcRenderer.invoke(CHANNELS.GITHUB_OPEN_PRS, cwd),
+    openPRs: (cwd: string) => _typedInvoke(CHANNELS.GITHUB_OPEN_PRS, cwd),
 
-    openIssue: (cwd: string, issueNumber: number): Promise<void> =>
-      ipcRenderer.invoke(CHANNELS.GITHUB_OPEN_ISSUE, { cwd, issueNumber }),
+    openIssue: (cwd: string, issueNumber: number) =>
+      _typedInvoke(CHANNELS.GITHUB_OPEN_ISSUE, { cwd, issueNumber }),
 
-    openPR: (prUrl: string): Promise<void> => ipcRenderer.invoke(CHANNELS.GITHUB_OPEN_PR, prUrl),
+    openPR: (prUrl: string) => _typedInvoke(CHANNELS.GITHUB_OPEN_PR, prUrl),
 
-    checkCli: (): Promise<GitHubCliStatus> => ipcRenderer.invoke(CHANNELS.GITHUB_CHECK_CLI),
+    checkCli: () => _typedInvoke(CHANNELS.GITHUB_CHECK_CLI),
 
-    getConfig: (): Promise<GitHubTokenConfig> => ipcRenderer.invoke(CHANNELS.GITHUB_GET_CONFIG),
+    getConfig: () => _typedInvoke(CHANNELS.GITHUB_GET_CONFIG),
 
-    setToken: (token: string): Promise<GitHubTokenValidation> =>
-      ipcRenderer.invoke(CHANNELS.GITHUB_SET_TOKEN, token),
+    setToken: (token: string) => _typedInvoke(CHANNELS.GITHUB_SET_TOKEN, token),
 
-    clearToken: (): Promise<void> => ipcRenderer.invoke(CHANNELS.GITHUB_CLEAR_TOKEN),
+    clearToken: () => _typedInvoke(CHANNELS.GITHUB_CLEAR_TOKEN),
 
-    validateToken: (token: string): Promise<GitHubTokenValidation> =>
-      ipcRenderer.invoke(CHANNELS.GITHUB_VALIDATE_TOKEN, token),
+    validateToken: (token: string) => _typedInvoke(CHANNELS.GITHUB_VALIDATE_TOKEN, token),
 
-    onPRDetected: (callback: (data: PRDetectedPayload) => void) => {
-      const handler = (_event: Electron.IpcRendererEvent, data: PRDetectedPayload) =>
-        callback(data);
-      ipcRenderer.on(CHANNELS.PR_DETECTED, handler);
-      return () => ipcRenderer.removeListener(CHANNELS.PR_DETECTED, handler);
-    },
+    onPRDetected: (callback: (data: PRDetectedPayload) => void) =>
+      _typedOn(CHANNELS.PR_DETECTED, callback),
 
-    onPRCleared: (callback: (data: PRClearedPayload) => void) => {
-      const handler = (_event: Electron.IpcRendererEvent, data: PRClearedPayload) => callback(data);
-      ipcRenderer.on(CHANNELS.PR_CLEARED, handler);
-      return () => ipcRenderer.removeListener(CHANNELS.PR_CLEARED, handler);
-    },
+    onPRCleared: (callback: (data: PRClearedPayload) => void) =>
+      _typedOn(CHANNELS.PR_CLEARED, callback),
   },
 
   // ==========================================
   // Git API
   // ==========================================
   git: {
-    getFileDiff: (cwd: string, filePath: string, status: GitStatus): Promise<string> =>
-      ipcRenderer.invoke(CHANNELS.GIT_GET_FILE_DIFF, { cwd, filePath, status }),
+    getFileDiff: (cwd: string, filePath: string, status: GitStatus) =>
+      _typedInvoke(CHANNELS.GIT_GET_FILE_DIFF, { cwd, filePath, status }),
   },
 };
 
