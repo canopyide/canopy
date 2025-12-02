@@ -464,9 +464,7 @@ export class WorktreeMonitor {
     this.isUpdating = true;
 
     try {
-      // ============================================
       // PHASE 1: FETCH GIT STATUS
-      // ============================================
       if (forceRefresh) {
         invalidateGitStatusCache(this.path);
       }
@@ -478,9 +476,7 @@ export class WorktreeMonitor {
         return;
       }
 
-      // ============================================
       // PHASE 2: DETECT CHANGES (Hash Check)
-      // ============================================
       const currentHash = this.calculateStateHash(newChanges);
       const stateChanged = currentHash !== this.previousStateHash;
 
@@ -495,10 +491,8 @@ export class WorktreeMonitor {
       const wasClean = prevChanges ? prevChanges.changedFileCount === 0 : true;
       const isNowClean = newChanges.changedFileCount === 0;
 
-      // ============================================
       // PHASE 3: PREPARE DRAFT STATE VALUES
       // All state changes are drafted here before committing
-      // ============================================
       let nextSummary = this.state.summary;
       let nextSummaryLoading = this.state.summaryLoading;
       let nextLastActivityTimestamp = this.state.lastActivityTimestamp;
@@ -520,10 +514,8 @@ export class WorktreeMonitor {
         nextLastActivityTimestamp = Date.now();
       }
 
-      // ============================================
       // PHASE 4: HANDLE SUMMARY LOGIC (The Sync Fix)
       // Fetch last commit SYNCHRONOUSLY when clean so stats + summary update together
-      // ============================================
       let shouldTriggerAI = false;
       let shouldScheduleAI = false;
 
@@ -562,10 +554,8 @@ export class WorktreeMonitor {
         }
       }
 
-      // ============================================
       // PHASE 5: UPDATE MOOD
       // This is computed before the atomic commit
-      // ============================================
       let nextMood = this.state.mood;
       try {
         nextMood = await categorizeWorktree(
@@ -587,18 +577,14 @@ export class WorktreeMonitor {
         nextMood = "error";
       }
 
-      // ============================================
       // PHASE 5.5: READ AI NOTE FILE
       // Polled at same interval as git status
-      // ============================================
       const noteData = await this.readNoteFile();
       const nextAiNote = noteData?.content;
       const nextAiNoteTimestamp = noteData?.timestamp;
 
-      // ============================================
       // PHASE 6: ATOMIC COMMIT
       // Apply all state changes at once
-      // ============================================
       this.previousStateHash = currentHash;
       this.state = {
         ...this.state,
@@ -613,15 +599,11 @@ export class WorktreeMonitor {
         aiNoteTimestamp: nextAiNoteTimestamp,
       };
 
-      // ============================================
       // PHASE 7: SINGLE EMISSION
-      // ============================================
       this.emitUpdate();
 
-      // ============================================
       // PHASE 8: POST-EMIT ASYNC WORK
       // AI summary is fire-and-forget with its own emission
-      // ============================================
       if (shouldTriggerAI) {
         void this.triggerAISummary();
       } else if (shouldScheduleAI) {

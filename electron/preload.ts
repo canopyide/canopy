@@ -58,9 +58,7 @@ import type { TerminalActivityPayload } from "../shared/types/terminal.js";
 // Re-export ElectronAPI for type declarations
 export type { ElectronAPI };
 
-// ============================================================================
 // Type-safe IPC helpers
-// ============================================================================
 
 /**
  * Type-safe wrapper for ipcRenderer.invoke
@@ -258,9 +256,7 @@ const CHANNELS = {
 } as const;
 
 const api: ElectronAPI = {
-  // ==========================================
   // Worktree API
-  // ==========================================
   worktree: {
     getAll: () => _typedInvoke(CHANNELS.WORKTREE_GET_ALL),
 
@@ -295,9 +291,7 @@ const api: ElectronAPI = {
       _typedOn(CHANNELS.WORKTREE_REMOVE, callback),
   },
 
-  // ==========================================
   // Dev Server API
-  // ==========================================
   devServer: {
     start: (worktreeId: string, worktreePath: string, command?: string) =>
       _typedInvoke(CHANNELS.DEVSERVER_START, { worktreeId, worktreePath, command }),
@@ -321,9 +315,7 @@ const api: ElectronAPI = {
       _typedOn(CHANNELS.DEVSERVER_ERROR, callback),
   },
 
-  // ==========================================
   // Terminal API
-  // ==========================================
   terminal: {
     spawn: (options: TerminalSpawnOptions) => _typedInvoke(CHANNELS.TERMINAL_SPAWN, options),
 
@@ -385,9 +377,7 @@ const api: ElectronAPI = {
     flush: (id: string) => _typedInvoke(CHANNELS.TERMINAL_FLUSH, id),
   },
 
-  // ==========================================
   // Artifact API
-  // ==========================================
   artifact: {
     onDetected: (callback: (data: ArtifactDetectedPayload) => void) =>
       _typedOn(CHANNELS.ARTIFACT_DETECTED, callback),
@@ -399,9 +389,7 @@ const api: ElectronAPI = {
       _typedInvoke(CHANNELS.ARTIFACT_APPLY_PATCH, options),
   },
 
-  // ==========================================
   // CopyTree API
-  // ==========================================
   copyTree: {
     generate: (worktreeId: string, options?: CopyTreeOptions) =>
       _typedInvoke(CHANNELS.COPYTREE_GENERATE, { worktreeId, options }),
@@ -423,9 +411,7 @@ const api: ElectronAPI = {
       _typedOn(CHANNELS.COPYTREE_PROGRESS, callback),
   },
 
-  // ==========================================
   // System API
-  // ==========================================
   system: {
     openExternal: (url: string) => _typedInvoke(CHANNELS.SYSTEM_OPEN_EXTERNAL, { url }),
 
@@ -440,9 +426,7 @@ const api: ElectronAPI = {
     refreshCliAvailability: () => _typedInvoke(CHANNELS.SYSTEM_REFRESH_CLI_AVAILABILITY),
   },
 
-  // ==========================================
   // App State API
-  // ==========================================
   app: {
     getState: () => _typedInvoke(CHANNELS.APP_GET_STATE),
 
@@ -452,9 +436,7 @@ const api: ElectronAPI = {
     getVersion: () => _typedInvoke(CHANNELS.APP_GET_VERSION),
   },
 
-  // ==========================================
   // Logs API
-  // ==========================================
   logs: {
     getAll: (filters?: LogFilterOptions) => _typedInvoke(CHANNELS.LOGS_GET_ALL, filters),
 
@@ -467,18 +449,14 @@ const api: ElectronAPI = {
     onEntry: (callback: (entry: LogEntry) => void) => _typedOn(CHANNELS.LOGS_ENTRY, callback),
   },
 
-  // ==========================================
   // Directory API (legacy - migrated to Projects system)
-  // ==========================================
   directory: {
     // Note: getRecent, open, openDialog, and removeRecent have been removed
     // as part of the migration to the Projects system.
     // Use the project API for project management.
   },
 
-  // ==========================================
   // Error API
-  // ==========================================
   errors: {
     onError: (callback: (error: AppError) => void) => _typedOn(CHANNELS.ERROR_NOTIFY, callback),
 
@@ -488,9 +466,7 @@ const api: ElectronAPI = {
     openLogs: () => _typedInvoke(CHANNELS.ERROR_OPEN_LOGS),
   },
 
-  // ==========================================
   // Event Inspector API
-  // ==========================================
   eventInspector: {
     getEvents: () => _typedInvoke(CHANNELS.EVENT_INSPECTOR_GET_EVENTS),
 
@@ -507,9 +483,7 @@ const api: ElectronAPI = {
       _typedOn(CHANNELS.EVENT_INSPECTOR_EVENT, callback),
   },
 
-  // ==========================================
   // Project API
-  // ==========================================
   project: {
     getAll: () => _typedInvoke(CHANNELS.PROJECT_GET_ALL),
 
@@ -540,9 +514,7 @@ const api: ElectronAPI = {
       _typedInvoke(CHANNELS.PROJECT_REGENERATE_IDENTITY, projectId),
   },
 
-  // ==========================================
   // History API (Agent Transcripts & Artifacts)
-  // ==========================================
   history: {
     getSessions: (filters?: HistoryGetSessionsPayload) =>
       _typedInvoke(CHANNELS.HISTORY_GET_SESSIONS, filters),
@@ -555,9 +527,7 @@ const api: ElectronAPI = {
     deleteSession: (sessionId: string) => _typedInvoke(CHANNELS.HISTORY_DELETE_SESSION, sessionId),
   },
 
-  // ==========================================
   // AI API
-  // ==========================================
   ai: {
     getConfig: () => _typedInvoke(CHANNELS.AI_GET_CONFIG),
 
@@ -575,9 +545,7 @@ const api: ElectronAPI = {
       _typedInvoke(CHANNELS.AI_GENERATE_PROJECT_IDENTITY, projectPath),
   },
 
-  // ==========================================
   // Agent Settings API
-  // ==========================================
   agentSettings: {
     get: () => _typedInvoke(CHANNELS.AGENT_SETTINGS_GET),
 
@@ -594,9 +562,7 @@ const api: ElectronAPI = {
       _typedInvoke(CHANNELS.AGENT_SETTINGS_RESET, agentType),
   },
 
-  // ==========================================
   // GitHub API
-  // ==========================================
   github: {
     getRepoStats: (cwd: string) => _typedInvoke(CHANNELS.GITHUB_GET_REPO_STATS, cwd),
 
@@ -640,9 +606,7 @@ const api: ElectronAPI = {
       _typedOn(CHANNELS.PR_CLEARED, callback),
   },
 
-  // ==========================================
   // Git API
-  // ==========================================
   git: {
     getFileDiff: (cwd: string, filePath: string, status: GitStatus) =>
       _typedInvoke(CHANNELS.GIT_GET_FILE_DIFF, { cwd, filePath, status }),

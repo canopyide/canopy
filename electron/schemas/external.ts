@@ -9,9 +9,7 @@
 
 import { z } from "zod";
 
-// ============================================================================
 // Package.json Schemas
-// ============================================================================
 
 /**
  * Schema for package.json scripts section.
@@ -29,9 +27,7 @@ export const PackageJsonSchema = z.object({
   devDependencies: z.record(z.string(), z.string()).optional(),
 });
 
-// ============================================================================
 // AI Response Schemas
-// ============================================================================
 
 /**
  * Schema for worktree summary AI response.
@@ -69,9 +65,7 @@ export const IssueExtractionResponseSchema = z.object({
   repository: z.string().optional(),
 });
 
-// ============================================================================
 // Git Output Schemas
-// ============================================================================
 
 /**
  * Valid git file statuses.
@@ -127,9 +121,7 @@ export const GitWorktreeEntrySchema = z.object({
   prunable: z.boolean().optional(),
 });
 
-// ============================================================================
 // Validation Utilities
-// ============================================================================
 
 /**
  * Safely parse a value with a Zod schema.

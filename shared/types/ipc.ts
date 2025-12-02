@@ -1,14 +1,3 @@
-/**
- * IPC-specific type definitions for Canopy Command Center
- *
- * These types define payloads and options for IPC communication between
- * the main process and renderer process.
- *
- * The IpcInvokeMap and IpcEventMap interfaces provide compile-time type safety
- * for IPC channels, ensuring that handler signatures, preload wrappers, and
- * renderer usage all agree on channel signatures.
- */
-
 import type {
   TerminalType,
   TerminalLocation,
@@ -27,11 +16,9 @@ import type {
   CodexSettings,
 } from "./agentSettings.js";
 
-// ============================================================================
 // Terminal IPC Types
-// ============================================================================
 
-/** Options for spawning a new terminal via IPC */
+/** Terminal spawn options */
 export interface TerminalSpawnOptions {
   /** Optional custom ID for the terminal */
   id?: string;
@@ -107,11 +94,9 @@ export interface TerminalErrorPayload {
   error: string;
 }
 
-// ============================================================================
 // CopyTree IPC Types
-// ============================================================================
 
-/** Options for CopyTree generation */
+/** CopyTree generation options */
 export interface CopyTreeOptions {
   /** Output format */
   format?: "xml" | "json" | "markdown" | "tree" | "ndjson";
@@ -212,11 +197,9 @@ export interface FileTreeNode {
   children?: FileTreeNode[];
 }
 
-// ============================================================================
-// Worktree IPC Payload Types
-// ============================================================================
+// Worktree IPC Payloads
 
-/** Payload for worktree removal notification */
+/** Worktree removal payload */
 export interface WorktreeRemovePayload {
   worktreeId: string;
 }
@@ -226,11 +209,9 @@ export interface WorktreeSetActivePayload {
   worktreeId: string;
 }
 
-// ============================================================================
-// Dev Server IPC Payload Types
-// ============================================================================
+// Dev Server IPC Payloads
 
-/** Payload for starting a dev server */
+/** Dev server start payload */
 export interface DevServerStartPayload {
   worktreeId: string;
   worktreePath: string;
@@ -255,11 +236,9 @@ export interface DevServerErrorPayload {
   error: string;
 }
 
-// ============================================================================
-// System IPC Payload Types
-// ============================================================================
+// System IPC Payloads
 
-/** Payload for opening an external URL */
+/** Open external URL payload */
 export interface SystemOpenExternalPayload {
   url: string;
 }
@@ -279,11 +258,9 @@ export interface CliAvailability {
   codex: boolean;
 }
 
-// ============================================================================
-// PR Detection IPC Payload Types
-// ============================================================================
+// PR Detection IPC Payloads
 
-/** Payload for PR detected notification */
+/** PR detected payload */
 export interface PRDetectedPayload {
   worktreeId: string;
   prNumber: number;
@@ -297,11 +274,9 @@ export interface PRClearedPayload {
   worktreeId: string;
 }
 
-// ============================================================================
 // GitHub IPC Types
-// ============================================================================
 
-/** Repository statistics from GitHub API */
+/** Repository stats from GitHub API */
 export interface RepositoryStats {
   /** Total commit count for current branch */
   commitCount: number;
@@ -345,11 +320,9 @@ export interface GitHubTokenValidation {
   error?: string;
 }
 
-// ============================================================================
 // App State IPC Types
-// ============================================================================
 
-/** Saved recipe terminal definition */
+/** Saved recipe terminal */
 export interface SavedRecipeTerminal {
   /** Terminal type */
   type: "claude" | "gemini" | "codex" | "shell" | "custom";
@@ -409,11 +382,9 @@ export interface AppState {
   };
 }
 
-// ============================================================================
 // Log IPC Types
-// ============================================================================
 
-/** Log severity levels */
+/** Log level */
 export type LogLevel = "debug" | "info" | "warn" | "error";
 
 /** A log entry */
@@ -446,14 +417,9 @@ export interface LogFilterOptions {
   endTime?: number;
 }
 
-// ============================================================================
 // Event Inspector IPC Types
-// ============================================================================
 
-/**
- * Event categories for organizing and filtering events.
- * Used by EventBuffer for categorization and the Event Inspector UI.
- */
+/** Event category for filtering */
 export type EventCategory =
   | "system" // sys:* - core system state (worktrees, PR detection)
   | "agent" // agent:* - agent lifecycle and output
@@ -536,11 +502,9 @@ export interface EventFilterOptions {
   before?: number;
 }
 
-// ============================================================================
 // Error IPC Types
-// ============================================================================
 
-/** Type of error */
+/** Error type */
 export type ErrorType = "git" | "process" | "filesystem" | "network" | "config" | "unknown";
 
 /** Action that can be retried after an error */
@@ -583,11 +547,9 @@ export interface AppError {
   retryArgs?: Record<string, unknown>;
 }
 
-// ============================================================================
-// Agent Session IPC Types (History/Transcripts)
-// ============================================================================
+// Agent Session IPC Types
 
-/** A single entry in an agent transcript */
+/** Transcript entry */
 export interface TranscriptEntry {
   /** Timestamp in milliseconds */
   timestamp: number;
@@ -660,11 +622,9 @@ export interface HistoryExportSessionPayload {
   format: "json" | "markdown";
 }
 
-// ============================================================================
 // AI IPC Types
-// ============================================================================
 
-/** AI service state (for IPC) */
+/** AI service state */
 export interface AIServiceState {
   /** Whether an API key is configured */
   hasKey: boolean;
@@ -686,14 +646,9 @@ export interface ProjectIdentity {
   gradientEnd: string;
 }
 
-// ============================================================================
 // Agent State Change Payload
-// ============================================================================
 
-/**
- * Trigger types for agent state changes.
- * Indicates what caused an agent's state to change.
- */
+/** Agent state change trigger */
 export type AgentStateChangeTrigger =
   | "input"
   | "output"
@@ -720,11 +675,9 @@ export interface AgentStateChangePayload {
   confidence: number;
 }
 
-// ============================================================================
 // Agent Detection IPC Types
-// ============================================================================
 
-/** Payload for agent detected events */
+/** Agent detected payload */
 export interface AgentDetectedPayload {
   /** Terminal ID where agent was detected */
   terminalId: string;
@@ -746,11 +699,9 @@ export interface AgentExitedPayload {
   timestamp: number;
 }
 
-// ============================================================================
 // Artifact IPC Types
-// ============================================================================
 
-/** Payload for artifact detection events */
+/** Artifact detected payload */
 export interface ArtifactDetectedPayload {
   /** Agent ID that generated the artifacts */
   agentId: string;
@@ -800,11 +751,9 @@ export interface ApplyPatchResult {
   modifiedFiles?: string[];
 }
 
-// ============================================================================
 // Git IPC Types
-// ============================================================================
 
-/** Payload for getting a file diff */
+/** Get file diff payload */
 export interface GitGetFileDiffPayload {
   /** Working directory (worktree path) */
   cwd: string;
@@ -814,9 +763,7 @@ export interface GitGetFileDiffPayload {
   status: GitStatus;
 }
 
-// ============================================================================
 // Worktree Creation Types
-// ============================================================================
 
 export interface BranchInfo {
   name: string;
@@ -832,11 +779,9 @@ export interface CreateWorktreeOptions {
   fromRemote?: boolean;
 }
 
-// ============================================================================
 // Adaptive Backoff IPC Types
-// ============================================================================
 
-/** Metrics for adaptive backoff and circuit breaker */
+/** Adaptive backoff metrics */
 export interface AdaptiveBackoffMetrics {
   lastOperationDuration: number;
   consecutiveFailures: number;
@@ -844,40 +789,11 @@ export interface AdaptiveBackoffMetrics {
   currentInterval: number;
 }
 
-// ============================================================================
-// IPC Contract Maps - Type-safe channel definitions
-// ============================================================================
+// IPC Contract Maps
 
-/**
- * IPC Invoke Contract Map
- *
- * Maps channel names to their argument and return types for invoke/handle patterns.
- * Used to type-check ipcRenderer.invoke calls and ipcMain.handle handlers.
- *
- * Usage in preload:
- * ```typescript
- * function typedInvoke<K extends keyof IpcInvokeMap>(
- *   channel: K,
- *   ...args: IpcInvokeMap[K]["args"]
- * ): Promise<IpcInvokeMap[K]["result"]> {
- *   return ipcRenderer.invoke(channel, ...args);
- * }
- * ```
- *
- * Usage in handlers:
- * ```typescript
- * function handle<K extends keyof IpcInvokeMap>(
- *   channel: K,
- *   handler: (...args: IpcInvokeMap[K]["args"]) => Promise<IpcInvokeMap[K]["result"]> | IpcInvokeMap[K]["result"]
- * ) {
- *   ipcMain.handle(channel, async (_event, ...args) => handler(...args as IpcInvokeMap[K]["args"]));
- * }
- * ```
- */
+/** Maps IPC channels to their args/result types for type-safe invoke/handle */
 export interface IpcInvokeMap {
-  // ============================================
   // Worktree channels
-  // ============================================
   "worktree:get-all": {
     args: [];
     result: WorktreeState[];
@@ -915,9 +831,7 @@ export interface IpcInvokeMap {
     result: AdaptiveBackoffMetrics | null;
   };
 
-  // ============================================
   // Dev server channels
-  // ============================================
   "devserver:start": {
     args: [payload: DevServerStartPayload];
     result: DevServerState;
@@ -943,9 +857,7 @@ export interface IpcInvokeMap {
     result: boolean;
   };
 
-  // ============================================
   // Terminal channels
-  // ============================================
   "terminal:spawn": {
     args: [options: TerminalSpawnOptions];
     result: string;
@@ -971,17 +883,13 @@ export interface IpcInvokeMap {
     result: void;
   };
 
-  // ============================================
   // Agent channels
-  // ============================================
   "agent:get-state": {
     args: [agentId: string];
     result: string | null;
   };
 
-  // ============================================
   // Artifact channels
-  // ============================================
   "artifact:save-to-file": {
     args: [options: SaveArtifactOptions];
     result: SaveArtifactResult | null;
@@ -991,9 +899,7 @@ export interface IpcInvokeMap {
     result: ApplyPatchResult;
   };
 
-  // ============================================
   // CopyTree channels
-  // ============================================
   "copytree:generate": {
     args: [payload: CopyTreeGeneratePayload];
     result: CopyTreeResult;
@@ -1019,9 +925,7 @@ export interface IpcInvokeMap {
     result: FileTreeNode[];
   };
 
-  // ============================================
   // System channels
-  // ============================================
   "system:open-external": {
     args: [payload: SystemOpenExternalPayload];
     result: void;
@@ -1047,9 +951,7 @@ export interface IpcInvokeMap {
     result: CliAvailability;
   };
 
-  // ============================================
   // App state channels
-  // ============================================
   "app:get-state": {
     args: [];
     result: AppState;
@@ -1063,15 +965,11 @@ export interface IpcInvokeMap {
     result: string;
   };
 
-  // ============================================
   // Directory channels (legacy - migrated to Projects system)
-  // ============================================
   // Note: Directory channels have been removed as part of the migration
   // to the Projects system. Use project:* channels instead.
 
-  // ============================================
   // Logs channels
-  // ============================================
   "logs:get-all": {
     args: [filters?: LogFilterOptions];
     result: LogEntry[];
@@ -1089,9 +987,7 @@ export interface IpcInvokeMap {
     result: void;
   };
 
-  // ============================================
   // Error channels
-  // ============================================
   "error:retry": {
     args: [payload: { errorId: string; action: RetryAction; args?: Record<string, unknown> }];
     result: void;
@@ -1101,9 +997,7 @@ export interface IpcInvokeMap {
     result: void;
   };
 
-  // ============================================
   // Event inspector channels
-  // ============================================
   "event-inspector:get-events": {
     args: [];
     result: EventRecord[];
@@ -1117,9 +1011,7 @@ export interface IpcInvokeMap {
     result: void;
   };
 
-  // ============================================
   // Project channels
-  // ============================================
   "project:get-all": {
     args: [];
     result: Project[];
@@ -1165,9 +1057,7 @@ export interface IpcInvokeMap {
     result: Project;
   };
 
-  // ============================================
   // History channels
-  // ============================================
   "history:get-sessions": {
     args: [filters?: HistoryGetSessionsPayload];
     result: AgentSession[];
@@ -1185,9 +1075,7 @@ export interface IpcInvokeMap {
     result: void;
   };
 
-  // ============================================
   // AI channels
-  // ============================================
   "ai:get-config": {
     args: [];
     result: AIServiceState;
@@ -1217,9 +1105,7 @@ export interface IpcInvokeMap {
     result: ProjectIdentity | null;
   };
 
-  // ============================================
   // GitHub channels
-  // ============================================
   "github:get-repo-stats": {
     args: [cwd: string];
     result: RepositoryStats;
@@ -1278,9 +1164,7 @@ export interface IpcInvokeMap {
     result: import("./github.js").GitHubListResponse<import("./github.js").GitHubPR>;
   };
 
-  // ============================================
   // Agent settings channels
-  // ============================================
   "agent-settings:get": {
     args: [];
     result: AgentSettings;
@@ -1296,9 +1180,7 @@ export interface IpcInvokeMap {
     result: AgentSettings;
   };
 
-  // ============================================
   // Git channels
-  // ============================================
   "git:get-file-diff": {
     args: [payload: GitGetFileDiffPayload];
     result: string;
@@ -1335,73 +1217,49 @@ export interface IpcInvokeMap {
  * ```
  */
 export interface IpcEventMap {
-  // ============================================
   // Worktree events
-  // ============================================
   "worktree:update": WorktreeState;
   "worktree:remove": { worktreeId: string };
 
-  // ============================================
   // Dev server events
-  // ============================================
   "devserver:update": DevServerState;
   "devserver:error": DevServerErrorPayload;
 
-  // ============================================
   // Terminal events (these have multiple arguments, represented as tuples)
-  // ============================================
   "terminal:data": [id: string, data: string];
   "terminal:exit": [id: string, exitCode: number];
   "terminal:error": [id: string, error: string];
   "terminal:trashed": { id: string; expiresAt: number };
   "terminal:restored": { id: string };
 
-  // ============================================
   // Agent events
-  // ============================================
   "agent:state-changed": AgentStateChangePayload;
   "agent:detected": AgentDetectedPayload;
   "agent:exited": AgentExitedPayload;
 
-  // ============================================
   // Terminal activity events
-  // ============================================
   "terminal:activity": TerminalActivityPayload;
 
-  // ============================================
   // Artifact events
-  // ============================================
   "artifact:detected": ArtifactDetectedPayload;
 
-  // ============================================
   // CopyTree events
-  // ============================================
   "copytree:progress": CopyTreeProgress;
 
-  // ============================================
   // PR detection events
-  // ============================================
   "pr:detected": PRDetectedPayload;
   "pr:cleared": PRClearedPayload;
 
-  // ============================================
   // Error events
-  // ============================================
   "error:notify": AppError;
 
-  // ============================================
   // Log events
-  // ============================================
   "logs:entry": LogEntry;
 
-  // ============================================
   // Event inspector events
-  // ============================================
   "event-inspector:event": EventRecord;
 
-  // ============================================
   // Project events
-  // ============================================
   "project:on-switch": Project;
 }
 
@@ -1420,9 +1278,7 @@ export type IpcInvokeResult<K extends keyof IpcInvokeMap> = IpcInvokeMap[K]["res
  */
 export type IpcEventPayload<K extends keyof IpcEventMap> = IpcEventMap[K];
 
-// ============================================================================
 // ElectronAPI Type (exposed via preload)
-// ============================================================================
 
 /** Complete Electron API exposed to renderer */
 export interface ElectronAPI {

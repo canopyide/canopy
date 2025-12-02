@@ -14,9 +14,7 @@ export function registerTerminalHandlers(deps: HandlerDependencies): () => void 
   const { mainWindow, ptyManager, worktreeService } = deps;
   const handlers: Array<() => void> = [];
 
-  // ==========================================
   // PtyManager Event Forwarding
-  // ==========================================
 
   // Forward PTY data to renderer
   const handlePtyData = (id: string, data: string) => {
@@ -39,9 +37,7 @@ export function registerTerminalHandlers(deps: HandlerDependencies): () => void 
   ptyManager.on("error", handlePtyError);
   handlers.push(() => ptyManager.off("error", handlePtyError));
 
-  // ==========================================
   // Agent State Event Forwarding
-  // ==========================================
 
   // Forward agent state changes to renderer
   const unsubAgentState = events.on("agent:state-changed", (payload: unknown) => {
@@ -66,9 +62,7 @@ export function registerTerminalHandlers(deps: HandlerDependencies): () => void 
   });
   handlers.push(unsubArtifactDetected);
 
-  // ==========================================
   // Terminal Handlers
-  // ==========================================
 
   const handleTerminalSpawn = async (
     _event: Electron.IpcMainInvokeEvent,
@@ -316,9 +310,7 @@ export function registerTerminalHandlers(deps: HandlerDependencies): () => void 
   ipcMain.handle(CHANNELS.TERMINAL_FLUSH, handleTerminalFlush);
   handlers.push(() => ipcMain.removeHandler(CHANNELS.TERMINAL_FLUSH));
 
-  // ==========================================
   // Artifact Handlers
-  // ==========================================
 
   const handleArtifactSaveToFile = async (
     _event: Electron.IpcMainInvokeEvent,

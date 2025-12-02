@@ -1,17 +1,8 @@
-/**
- * Configuration type definitions for Canopy Command Center
- *
- * These types define the application configuration schema used by both
- * the main process and renderer process.
- */
-
 import type { KeyMapConfig } from "./keymap.js";
 
-// ============================================================================
 // Opener Configuration
-// ============================================================================
 
-/** Configuration for opening files with external applications */
+/** External file opener config */
 export interface OpenerConfig {
   /** Command to execute (editor name or path) */
   cmd: string;
@@ -29,11 +20,9 @@ export interface OpenersConfig {
   byGlob: Record<string, OpenerConfig>;
 }
 
-// ============================================================================
 // Quick Links Configuration
-// ============================================================================
 
-/** A configurable quick link for external tools (chat clients, dashboards, etc.) */
+/** Quick link for external tools */
 export interface QuickLink {
   /** Display label for the link */
   label: string;
@@ -53,14 +42,9 @@ export interface QuickLinksConfig {
   links: QuickLink[];
 }
 
-// ============================================================================
 // Monitor Configuration
-// ============================================================================
 
-/**
- * Configuration for worktree monitor polling intervals.
- * Allows tuning for large monorepos or resource-constrained environments.
- */
+/** Worktree monitor polling intervals (tunable for monorepos/resource constraints) */
 export interface MonitorConfig {
   /** Polling interval for active worktree in ms (default: 2000, min: 500, max: 60000) */
   pollIntervalActive?: number;
@@ -74,20 +58,15 @@ export interface MonitorConfig {
   circuitBreakerThreshold?: number;
 }
 
-// ============================================================================
 // AI Configuration
-// ============================================================================
 
-/** Configuration for AI-powered features */
+/** AI feature config */
 export interface AIConfig {
   /** Debounce interval for AI summary generation in ms (default: 10000, min: 1000, max: 60000) */
   summaryDebounceMs?: number;
 }
 
-/**
- * Configuration for the AI note feature.
- * Allows AI agents to communicate status by writing to a well-known file.
- */
+/** AI note feature config (agents write status to .git/canopy/note) */
 export interface NoteConfig {
   /** Enable/disable the AI note feature (default: true) */
   enabled?: boolean;
@@ -95,11 +74,9 @@ export interface NoteConfig {
   filename?: string;
 }
 
-// ============================================================================
 // Dev Server Configuration
-// ============================================================================
 
-/** Configuration for development server management */
+/** Dev server management config */
 export interface DevServerConfig {
   /** Custom dev server command (e.g., "npm run start:frontend") */
   command?: string;
@@ -111,11 +88,9 @@ export interface DevServerConfig {
   customCommands?: Record<string, string>;
 }
 
-// ============================================================================
 // UI Configuration
-// ============================================================================
 
-/** Configuration for UI behavior and appearance */
+/** UI behavior and appearance */
 export interface UIConfig {
   /** Action to perform on left click ('open' opens file, 'select' selects it) */
   leftClickAction?: "open" | "select";
@@ -145,11 +120,9 @@ export interface GitDisplayConfig {
   heatMapIntensity?: "subtle" | "normal" | "intense";
 }
 
-// ============================================================================
 // Main Configuration Interface
-// ============================================================================
 
-/** Complete application configuration */
+/** Complete app configuration */
 export interface CanopyConfig {
   /** Default editor command */
   editor: string;

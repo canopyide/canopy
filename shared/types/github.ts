@@ -1,15 +1,6 @@
-/**
- * GitHub-specific type definitions for Canopy Command Center
- *
- * These types support the interactive GitHub popover interfaces
- * for browsing, searching, and filtering issues and pull requests.
- */
-
-// ============================================================================
 // Core GitHub Types
-// ============================================================================
 
-/** GitHub user representation */
+/** GitHub user */
 export interface GitHubUser {
   /** GitHub username */
   login: string;
@@ -57,11 +48,9 @@ export interface GitHubPR {
   reviewCount?: number;
 }
 
-// ============================================================================
 // List Options and Response Types
-// ============================================================================
 
-/** Options for listing GitHub issues or PRs */
+/** GitHub list options */
 export interface GitHubListOptions {
   /** Working directory to determine repository */
   cwd: string;

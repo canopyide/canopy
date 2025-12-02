@@ -12,9 +12,7 @@ export function registerAppHandlers(deps: HandlerDependencies): () => void {
   const { eventBuffer } = deps;
   const handlers: Array<() => void> = [];
 
-  // ==========================================
   // App State Handlers
-  // ==========================================
 
   const handleAppGetState = async () => {
     return store.get("appState");
@@ -141,9 +139,7 @@ export function registerAppHandlers(deps: HandlerDependencies): () => void {
   ipcMain.handle(CHANNELS.APP_GET_VERSION, handleAppGetVersion);
   handlers.push(() => ipcMain.removeHandler(CHANNELS.APP_GET_VERSION));
 
-  // ==========================================
   // Logs Handlers
-  // ==========================================
 
   const handleLogsGetAll = async (
     _event: Electron.IpcMainInvokeEvent,
@@ -188,9 +184,7 @@ export function registerAppHandlers(deps: HandlerDependencies): () => void {
   ipcMain.handle(CHANNELS.LOGS_OPEN_FILE, handleLogsOpenFile);
   handlers.push(() => ipcMain.removeHandler(CHANNELS.LOGS_OPEN_FILE));
 
-  // ==========================================
   // Event Inspector Handlers
-  // ==========================================
 
   const handleEventInspectorGetEvents = async () => {
     if (!eventBuffer) {

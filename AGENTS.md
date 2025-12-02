@@ -29,6 +29,17 @@ Use this guide to get productive quickly and keep contributions consistent.
 - Components/hooks in `PascalCase`, functions/vars in `camelCase`, constants in `SCREAMING_SNAKE_CASE`.
 - Keep side-effects out of shared utils; prefer pure helpers and typed return values.
 
+## Code Commenting Guidelines
+
+**Optimize for Token Efficiency**
+
+This project is AI-first. Comments must be minimal to preserve the context window.
+
+- **No Decoration:** Strictly avoid decorative separator lines (e.g., `=====`, `-----`) or block framing.
+- **Be Terse:** Use direct, brief language. Avoid conversational filler.
+- **High Signal:** Only document non-obvious logic, complex rationale, or edge cases.
+- **No Redundancy:** Do not restate information that is already obvious from variable names or types.
+
 ## Testing Guidelines
 
 - Framework: Vitest. Test files end with `.test.ts`/`.test.tsx` inside `__tests__` folders near source.
