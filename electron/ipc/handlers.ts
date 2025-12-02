@@ -186,6 +186,17 @@ export function registerIpcHandlers(
   });
   handlers.push(unsubAgentState);
 
+  // Forward agent detection events to renderer
+  const unsubAgentDetected = events.on("agent:detected", (payload) => {
+    sendToRenderer(mainWindow, CHANNELS.AGENT_DETECTED, payload);
+  });
+  handlers.push(unsubAgentDetected);
+
+  const unsubAgentExited = events.on("agent:exited", (payload) => {
+    sendToRenderer(mainWindow, CHANNELS.AGENT_EXITED, payload);
+  });
+  handlers.push(unsubAgentExited);
+
   // Forward artifact detection events to renderer
   const unsubArtifactDetected = events.on("artifact:detected", (payload) => {
     sendToRenderer(mainWindow, CHANNELS.ARTIFACT_DETECTED, payload);

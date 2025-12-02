@@ -39,29 +39,33 @@ import type {
   HistoryGetSessionsPayload,
   AIServiceState,
   ProjectIdentity,
-  AgentStateChangePayload,
-  ArtifactDetectedPayload,
-  SaveArtifactOptions,
-  SaveArtifactResult,
-  ApplyPatchOptions,
-  ApplyPatchResult,
   ElectronAPI,
   CreateWorktreeOptions,
   EventContext,
   RunMetadata,
   IpcInvokeMap,
   IpcEventMap,
-  TerminalActivityPayload,
   AgentSettings,
   ClaudeSettings,
   GeminiSettings,
   CodexSettings,
   RepositoryStats,
   GitHubCliStatus,
-  PRDetectedPayload,
-  PRClearedPayload,
   GitStatus,
 } from "../shared/types/index.js";
+import type {
+  AgentStateChangePayload,
+  AgentDetectedPayload,
+  AgentExitedPayload,
+  ArtifactDetectedPayload,
+  SaveArtifactOptions,
+  SaveArtifactResult,
+  ApplyPatchOptions,
+  ApplyPatchResult,
+  PRDetectedPayload,
+  PRClearedPayload,
+} from "../shared/types/ipc.js";
+import type { TerminalActivityPayload } from "../shared/types/terminal.js";
 
 // Re-export ElectronAPI for type declarations
 export type { ElectronAPI };
@@ -159,6 +163,8 @@ const CHANNELS = {
   // Agent state channels
   AGENT_STATE_CHANGED: "agent:state-changed",
   AGENT_GET_STATE: "agent:get-state",
+  AGENT_DETECTED: "agent:detected",
+  AGENT_EXITED: "agent:exited",
 
   // Terminal activity channels
   TERMINAL_ACTIVITY: "terminal:activity",
@@ -425,6 +431,54 @@ const api: ElectronAPI = {
       };
       ipcRenderer.on(CHANNELS.AGENT_STATE_CHANGED, handler);
       return () => ipcRenderer.removeListener(CHANNELS.AGENT_STATE_CHANGED, handler);
+    },
+
+    onAgentDetected: (callback: (data: AgentDetectedPayload) => void) => {
+      const handler = (_event: Electron.IpcRendererEvent, data: unknown) => {
+        // Type guard - validate agent detected payload
+        const record = data as Record<string, unknown>;
+        if (
+          typeof data === "object" &&
+          data !== null &&
+          "terminalId" in data &&
+          "agentType" in data &&
+          "processName" in data &&
+          "timestamp" in data &&
+          typeof record.terminalId === "string" &&
+          typeof record.agentType === "string" &&
+          typeof record.processName === "string" &&
+          typeof record.timestamp === "number"
+        ) {
+          callback(data as AgentDetectedPayload);
+        } else {
+          console.warn("[Preload] Invalid agent:detected payload, dropping event", data);
+        }
+      };
+      ipcRenderer.on(CHANNELS.AGENT_DETECTED, handler);
+      return () => ipcRenderer.removeListener(CHANNELS.AGENT_DETECTED, handler);
+    },
+
+    onAgentExited: (callback: (data: AgentExitedPayload) => void) => {
+      const handler = (_event: Electron.IpcRendererEvent, data: unknown) => {
+        // Type guard - validate agent exited payload
+        const record = data as Record<string, unknown>;
+        if (
+          typeof data === "object" &&
+          data !== null &&
+          "terminalId" in data &&
+          "agentType" in data &&
+          "timestamp" in data &&
+          typeof record.terminalId === "string" &&
+          typeof record.agentType === "string" &&
+          typeof record.timestamp === "number"
+        ) {
+          callback(data as AgentExitedPayload);
+        } else {
+          console.warn("[Preload] Invalid agent:exited payload, dropping event", data);
+        }
+      };
+      ipcRenderer.on(CHANNELS.AGENT_EXITED, handler);
+      return () => ipcRenderer.removeListener(CHANNELS.AGENT_EXITED, handler);
     },
 
     onActivity: (callback: (data: TerminalActivityPayload) => void) => {

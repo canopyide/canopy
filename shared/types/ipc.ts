@@ -72,6 +72,10 @@ export interface TerminalState {
   location?: TerminalLocation;
   /** Command to execute after shell starts (e.g., 'claude' for AI agents) */
   command?: string;
+  /** Last detected agent type (for restoration hints) */
+  lastDetectedAgent?: TerminalType;
+  /** Last detected agent title (for restoration hints) */
+  lastDetectedAgentTitle?: string;
 }
 
 /** Terminal data payload for IPC */
@@ -718,6 +722,32 @@ export interface AgentStateChangePayload {
 }
 
 // ============================================================================
+// Agent Detection IPC Types
+// ============================================================================
+
+/** Payload for agent detected events */
+export interface AgentDetectedPayload {
+  /** Terminal ID where agent was detected */
+  terminalId: string;
+  /** Type of agent detected */
+  agentType: TerminalType;
+  /** Process name that was detected */
+  processName: string;
+  /** Timestamp when detected */
+  timestamp: number;
+}
+
+/** Payload for agent exited events */
+export interface AgentExitedPayload {
+  /** Terminal ID where agent exited */
+  terminalId: string;
+  /** Type of agent that exited */
+  agentType: TerminalType;
+  /** Timestamp when exited */
+  timestamp: number;
+}
+
+// ============================================================================
 // Artifact IPC Types
 // ============================================================================
 
@@ -1360,6 +1390,8 @@ export interface IpcEventMap {
   // Agent events
   // ============================================
   "agent:state-changed": AgentStateChangePayload;
+  "agent:detected": AgentDetectedPayload;
+  "agent:exited": AgentExitedPayload;
 
   // ============================================
   // Terminal activity events
@@ -1468,6 +1500,8 @@ export interface ElectronAPI {
     onData(id: string, callback: (data: string) => void): () => void;
     onExit(callback: (id: string, exitCode: number) => void): () => void;
     onAgentStateChanged(callback: (data: AgentStateChangePayload) => void): () => void;
+    onAgentDetected(callback: (data: AgentDetectedPayload) => void): () => void;
+    onAgentExited(callback: (data: AgentExitedPayload) => void): () => void;
     onActivity(callback: (data: TerminalActivityPayload) => void): () => void;
     onTrashed(callback: (data: { id: string; expiresAt: number }) => void): () => void;
     onRestored(callback: (data: { id: string }) => void): () => void;
