@@ -329,7 +329,7 @@ export function TerminalGrid({ className, defaultCwd }: TerminalGridProps) {
     <div
       ref={gridRef}
       className={cn(
-        "h-full bg-black", // bg acts as divider lines
+        "h-full bg-[#141417]", // bg acts as divider lines
         dragState.isDragging &&
           dragState.dropZone === "grid" &&
           "ring-2 ring-canopy-accent/30 ring-inset",
