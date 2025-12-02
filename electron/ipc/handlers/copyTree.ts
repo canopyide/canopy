@@ -24,7 +24,7 @@ import {
 export function registerCopyTreeHandlers(deps: HandlerDependencies): () => void {
   const { mainWindow, worktreeService, ptyManager } = deps;
   const handlers: Array<() => void> = [];
-  
+
   // Track in-flight context injections per terminal to prevent race conditions
   const injectionsInProgress = new Set<string>();
 

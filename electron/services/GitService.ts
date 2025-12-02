@@ -2,8 +2,9 @@ import { simpleGit, SimpleGit, BranchSummary } from "simple-git";
 import { resolve, dirname, normalize, sep, isAbsolute } from "path";
 import { existsSync } from "fs";
 import { readFile, stat } from "fs/promises";
-import { logDebug, logError } from "../utils/logger.js";
-import type { GitStatus } from "../../shared/types/index.js";
+import { logDebug, logError, logWarn } from "../utils/logger.js";
+import type { GitStatus, WorktreeChanges } from "../../shared/types/index.js";
+import { WorktreeRemovedError, GitError } from "../utils/errorTypes.js";
 
 export interface BranchInfo {
   name: string;
@@ -367,5 +368,163 @@ ${lines.map((l) => "+" + l).join("\n")}`;
 
     // More than 30% non-printable characters indicates binary
     return checkLength > 0 && nonPrintable / checkLength > 0.3;
+  }
+
+  /**
+   * Get remote URL for a repository (typically origin)
+   * @param repoPath - Path to repository
+   * @returns Remote URL or null if no remote exists
+   */
+  async getRemoteUrl(repoPath: string): Promise<string | null> {
+    return this.handleGitOperation(async () => {
+      const git = simpleGit(repoPath);
+      const remotes = await git.getRemotes(true);
+      const origin = remotes.find((r) => r.name === "origin");
+      return origin?.refs?.fetch || null;
+    }, "getRemoteUrl");
+  }
+
+  /**
+   * Get upstream URL (origin) for a repository
+   * Alias for getRemoteUrl for backwards compatibility
+   */
+  async getUpstreamUrl(repoPath: string): Promise<string | null> {
+    return this.getRemoteUrl(repoPath);
+  }
+
+  /**
+   * Initialize a new git repository
+   * @param path - Path where repository should be initialized
+   */
+  async initializeRepository(path: string): Promise<void> {
+    return this.handleGitOperation(async () => {
+      const git = simpleGit(path);
+      await git.init();
+    }, "initializeRepository");
+  }
+
+  /**
+   * Get worktree changes with stats (moved from electron/utils/git.ts)
+   * This method integrates the existing cache-based implementation
+   * but delegates to the standalone function for now to preserve behavior.
+   *
+   * @param worktreePath - Path to the worktree
+   * @param forceRefresh - Skip cache and fetch fresh data
+   * @returns WorktreeChanges with file details and statistics
+   */
+  async getWorktreeChangesWithStats(
+    worktreePath: string,
+    forceRefresh = false
+  ): Promise<WorktreeChanges> {
+    // Import the standalone function to preserve existing cache behavior
+    // This allows gradual migration without breaking existing functionality
+    const { getWorktreeChangesWithStats: getChanges } = await import("../utils/git.js");
+    return getChanges(worktreePath, forceRefresh);
+  }
+
+  /**
+   * Get the last commit message from a repository or worktree
+   * @param repoPath - Path to repository or worktree
+   * @returns Last commit message or null if no commits exist
+   */
+  async getLastCommitMessage(repoPath: string): Promise<string | null> {
+    return this.handleGitOperation(async () => {
+      const git = simpleGit(repoPath);
+      const log = await git.log({ maxCount: 1 });
+      return log.latest?.message ?? null;
+    }, "getLastCommitMessage");
+  }
+
+  /**
+   * Get the repository root directory for a given path
+   * @param repoPath - Path within a git repository
+   * @returns Absolute path to repository root
+   */
+  async getRepositoryRoot(repoPath: string): Promise<string> {
+    return this.handleGitOperation(async () => {
+      const git = simpleGit(repoPath);
+      const root = await git.revparse(["--show-toplevel"]);
+      return root.trim();
+    }, "getRepositoryRoot");
+  }
+
+  /**
+   * Get git status for a repository or worktree
+   * @param repoPath - Path to repository or worktree
+   * @returns Status result from simple-git
+   */
+  async getStatus(repoPath: string) {
+    return this.handleGitOperation(async () => {
+      const git = simpleGit(repoPath);
+      return await git.status();
+    }, "getStatus");
+  }
+
+  /**
+   * Get git log entries
+   * @param repoPath - Path to repository or worktree
+   * @param options - Log options (e.g., maxCount)
+   * @returns Log result from simple-git
+   */
+  async getLog(repoPath: string, options?: { maxCount?: number }) {
+    return this.handleGitOperation(async () => {
+      const git = simpleGit(repoPath);
+      return await git.log(options);
+    }, "getLog");
+  }
+
+  /**
+   * Get git diff output
+   * @param repoPath - Path to repository or worktree
+   * @param args - Diff arguments (e.g., ['--numstat', 'HEAD'])
+   * @returns Diff output string
+   */
+  async getDiff(repoPath: string, args: string[]): Promise<string> {
+    return this.handleGitOperation(async () => {
+      const git = simpleGit(repoPath);
+      return await git.diff(args);
+    }, "getDiff");
+  }
+
+  /**
+   * Centralized error handling wrapper for git operations
+   * Provides consistent error handling, logging, and error type conversion
+   *
+   * @param operation - Async function to execute
+   * @param context - Description of operation for logging
+   * @returns Result of the operation
+   */
+  private async handleGitOperation<T>(operation: () => Promise<T>, context: string): Promise<T> {
+    try {
+      return await operation();
+    } catch (error) {
+      const errorMessage = error instanceof Error ? error.message : String(error);
+
+      // Check for worktree removed scenario
+      if (
+        errorMessage.includes("ENOENT") ||
+        errorMessage.includes("no such file or directory") ||
+        errorMessage.includes("Unable to read current working directory")
+      ) {
+        const wtError =
+          error instanceof WorktreeRemovedError
+            ? error
+            : new WorktreeRemovedError(this.rootPath, error instanceof Error ? error : undefined);
+        logWarn(`Git operation failed: worktree removed (${context})`, {
+          rootPath: this.rootPath,
+        });
+        throw wtError;
+      }
+
+      // Wrap other errors in GitError for consistent handling
+      const cause = error instanceof Error ? error : new Error(String(error));
+      const gitError = new GitError(
+        `Git operation failed: ${context}`,
+        { rootPath: this.rootPath },
+        cause
+      );
+      logError(`Git operation failed: ${context}`, gitError, { rootPath: this.rootPath });
+      throw gitError;
+    }
   }
 }

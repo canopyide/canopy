@@ -5,13 +5,13 @@
  * using OpenAI's API.
  */
 
-import { simpleGit } from "simple-git";
 import * as fs from "fs/promises";
 import * as path from "path";
 import type { WorktreeChanges } from "../../types/index.js";
 import { getAIClient, getAIModel } from "./client.js";
 import { extractOutputText, formatErrorSnippet, withRetry } from "./utils.js";
 import { WorktreeSummaryResponseSchema } from "../../schemas/external.js";
+import type { GitService } from "../GitService.js";
 
 export interface WorktreeSummary {
   summary: string;
@@ -96,21 +96,27 @@ function parseSummaryJSON(text: string): string | null {
  * @param branch - Branch name (used for context)
  * @param mainBranch - Main branch to compare against
  * @param changes - Optional WorktreeChanges with file-level details
+ * @param gitService - Optional GitService instance for git operations
  * @returns Summary and modified file count, or null if AI client is unavailable
  */
 export async function generateWorktreeSummary(
   worktreePath: string,
   branch: string | undefined,
   _mainBranch: string = "main",
-  changes?: WorktreeChanges
+  changes?: WorktreeChanges,
+  gitService?: GitService
 ): Promise<WorktreeSummary | null> {
-  const git = simpleGit(worktreePath);
+  // Create GitService instance if not provided (for backwards compatibility)
+  if (!gitService) {
+    const { GitService: GitServiceClass } = await import("../GitService.js");
+    gitService = new GitServiceClass(worktreePath);
+  }
   let modifiedCount = 0;
   let promptContext = "";
   const mechanicalNewFiles: string[] = [];
 
   try {
-    const status = await git.status();
+    const status = await gitService.getStatus(worktreePath);
     const deletedFiles = [...status.deleted];
     const createdFiles = Array.from(new Set([...status.created, ...status.not_added]));
     const modifiedFiles = Array.from(new Set(status.modified));
@@ -127,7 +133,7 @@ export async function generateWorktreeSummary(
     // If no changes, show last commit instead of AI summary
     if (modifiedCount === 0) {
       try {
-        const log = await git.log({ maxCount: 1 });
+        const log = await gitService.getLog(worktreePath, { maxCount: 1 });
         const lastCommitMsg = log.latest?.message ?? "";
 
         if (lastCommitMsg) {
@@ -342,7 +348,7 @@ export async function generateWorktreeSummary(
           diff = `NEW FILE STRUCTURE:\n${skeleton}`;
         } else {
           // Zero-context diffs with aggressive line filtering
-          diff = await git.diff([
+          diff = await gitService.getDiff(worktreePath, [
             "--unified=0",
             "--minimal",
             "--ignore-all-space",

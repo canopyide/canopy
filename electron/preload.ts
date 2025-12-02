@@ -36,7 +36,6 @@ import type {
   HistoryGetSessionsPayload,
   ElectronAPI,
   CreateWorktreeOptions,
-
   IpcInvokeMap,
   IpcEventMap,
   ClaudeSettings,

@@ -49,7 +49,7 @@ export function registerIpcHandlers(
     devServerManager,
     worktreeService,
     eventBuffer,
-    cliAvailabilityService
+    cliAvailabilityService,
   };
 
   const cleanupFunctions = [
@@ -64,6 +64,6 @@ export function registerIpcHandlers(
   ];
 
   return () => {
-    cleanupFunctions.forEach(cleanup => cleanup());
+    cleanupFunctions.forEach((cleanup) => cleanup());
   };
 }

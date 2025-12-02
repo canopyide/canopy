@@ -5,7 +5,7 @@ import path from "path";
 import fs from "fs/promises";
 import { existsSync } from "fs";
 import { app } from "electron";
-import { simpleGit } from "simple-git";
+import { GitService } from "./GitService.js";
 import { generateProjectNameAndEmoji } from "./ai/identity.js";
 
 const SETTINGS_FILENAME = "settings.json";
@@ -63,14 +63,15 @@ export class ProjectStore {
 
   /**
    * Gets the Git repository root for a given path and canonicalizes it
+   * Uses GitService for consistent git operations
    */
   private async getGitRoot(projectPath: string): Promise<string | null> {
     try {
-      const git = simpleGit(projectPath);
-      const root = await git.revparse(["--show-toplevel"]);
-      const trimmed = root.trim();
+      // Create a temporary GitService instance for this path
+      const gitService = new GitService(projectPath);
+      const root = await gitService.getRepositoryRoot(projectPath);
       // Canonicalize to resolve symlinks and normalize path
-      const canonical = await fs.realpath(trimmed);
+      const canonical = await fs.realpath(root);
       return canonical;
     } catch {
       return null;

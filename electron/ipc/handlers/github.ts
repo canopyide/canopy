@@ -1,7 +1,12 @@
 import { ipcMain, shell } from "electron";
 import { CHANNELS } from "../channels.js";
 import type { HandlerDependencies } from "../types.js";
-import type { RepositoryStats, GitHubCliStatus, GitHubTokenConfig, GitHubTokenValidation } from "../../types/index.js";
+import type {
+  RepositoryStats,
+  GitHubCliStatus,
+  GitHubTokenConfig,
+  GitHubTokenValidation,
+} from "../../types/index.js";
 
 export function registerGithubHandlers(_deps: HandlerDependencies): () => void {
   const handlers: Array<() => void> = [];
