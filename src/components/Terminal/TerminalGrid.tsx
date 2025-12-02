@@ -280,6 +280,7 @@ export function TerminalGrid({ className, defaultCwd }: TerminalGridProps) {
                   }
                 : null
             }
+            location="grid"
             onFocus={() => setFocused(terminal.id)}
             onClose={() => trashTerminal(terminal.id)}
             onInjectContext={
@@ -376,6 +377,7 @@ export function TerminalGrid({ className, defaultCwd }: TerminalGridProps) {
                     }
                   : null
               }
+              location="grid"
               onFocus={() => setFocused(terminal.id)}
               onClose={() => trashTerminal(terminal.id)}
               onInjectContext={
