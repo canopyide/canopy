@@ -84,11 +84,7 @@ export class TranscriptManager {
   }
 
   /** Append output and extract artifacts */
-  private handleAgentOutput(payload: {
-    agentId: string;
-    data: string;
-    timestamp: number;
-  }): void {
+  private handleAgentOutput(payload: { agentId: string; data: string; timestamp: number }): void {
     if (this.disposed) return;
 
     const session = this.activeSessions.get(payload.agentId);

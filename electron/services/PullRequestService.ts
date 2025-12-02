@@ -7,11 +7,7 @@ import type { WorktreeState } from "./WorktreeMonitor.js";
 
 const DEFAULT_POLL_INTERVAL_MS = 60 * 1000;
 
-const ERROR_BACKOFF_INTERVALS = [
-  5 * 60 * 1000,
-  10 * 60 * 1000,
-  30 * 60 * 1000,
-];
+const ERROR_BACKOFF_INTERVALS = [5 * 60 * 1000, 10 * 60 * 1000, 30 * 60 * 1000];
 
 const MAX_CONSECUTIVE_ERRORS = 3;
 const UPDATE_DEBOUNCE_MS = 100;

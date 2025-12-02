@@ -329,7 +329,7 @@ export function TerminalGrid({ className, defaultCwd }: TerminalGridProps) {
     <div
       ref={gridRef}
       className={cn(
-        "h-full bg-canopy-border", // bg acts as divider lines
+        "h-full bg-black", // bg acts as divider lines
         dragState.isDragging &&
           dragState.dropZone === "grid" &&
           "ring-2 ring-canopy-accent/30 ring-inset",
@@ -339,7 +339,7 @@ export function TerminalGrid({ className, defaultCwd }: TerminalGridProps) {
         display: "grid",
         gridTemplateColumns: `repeat(${gridCols}, 1fr)`,
         gridAutoRows: "1fr",
-        gap: "1px", // 1px gap reveals bg-canopy-border underneath = clean dividers
+        gap: "1px", // 1px gap reveals bg-black underneath = clean dividers
         padding: "0", // No outer padding
       }}
       role="grid"

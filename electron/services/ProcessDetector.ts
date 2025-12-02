@@ -149,7 +149,7 @@ export class ProcessDetector {
       }
 
       const { stdout } = await execAsync(
-        `wmic process where "ParentProcessId=${this.ptyPid}" get ProcessId,Name 2>nul || echo.`, 
+        `wmic process where "ParentProcessId=${this.ptyPid}" get ProcessId,Name 2>nul || echo.`,
         { timeout: 5000 }
       );
 
@@ -182,7 +182,7 @@ export class ProcessDetector {
       for (const childPid of childPids.slice(0, 10)) {
         try {
           const { stdout: childStdout } = await execAsync(
-            `wmic process where "ParentProcessId=${childPid}" get Name 2>nul || echo.`, 
+            `wmic process where "ParentProcessId=${childPid}" get Name 2>nul || echo.`,
             { timeout: 5000 }
           );
 

@@ -120,11 +120,7 @@ export async function validateGitHubToken(token: string): Promise<GitHubTokenVal
   }
 
   // Basic format validation
-  if (
-    !token.startsWith("ghp_") &&
-    !token.startsWith("github_pat_") &&
-    !token.startsWith("gho_")
-  ) {
+  if (!token.startsWith("ghp_") && !token.startsWith("github_pat_") && !token.startsWith("gho_")) {
     if (token.length < 40) {
       return { valid: false, scopes: [], error: "Invalid token format" };
     }
@@ -249,11 +245,7 @@ export async function getRepoInfo(cwd: string): Promise<RepoContext | null> {
 }
 
 /** Build batch PR query */
-function buildBatchPRQuery(
-  owner: string,
-  repo: string,
-  candidates: PRCheckCandidate[]
-): string {
+function buildBatchPRQuery(owner: string, repo: string, candidates: PRCheckCandidate[]): string {
   const issueQueries: string[] = [];
   const branchQueries: string[] = [];
 
@@ -323,7 +315,15 @@ function parseBatchPRResponse(
     )?.issue?.timelineItems?.nodes;
     if (issueData && Array.isArray(issueData)) {
       const prs: LinkedPR[] = [];
-      for (const node of issueData as Array<{ source?: { number?: number; url?: string; state?: string; isDraft?: boolean; merged?: boolean } }>) {
+      for (const node of issueData as Array<{
+        source?: {
+          number?: number;
+          url?: string;
+          state?: string;
+          isDraft?: boolean;
+          merged?: boolean;
+        };
+      }>) {
         const source = node?.source;
         if (source?.number && source?.url) {
           prs.push({
@@ -351,18 +351,21 @@ function parseBatchPRResponse(
     }
 
     if (!foundPR) {
-      const branchData = (
-        data?.[`${alias}_branch`] as { pullRequests?: { nodes?: unknown[] } }
-      )?.pullRequests?.nodes;
+      const branchData = (data?.[`${alias}_branch`] as { pullRequests?: { nodes?: unknown[] } })
+        ?.pullRequests?.nodes;
       if (branchData && Array.isArray(branchData) && branchData.length > 0) {
-        const pr = branchData[0] as { number?: number; url?: string; state?: string; isDraft?: boolean; merged?: boolean };
+        const pr = branchData[0] as {
+          number?: number;
+          url?: string;
+          state?: string;
+          isDraft?: boolean;
+          merged?: boolean;
+        };
         if (pr?.number && pr?.url) {
           foundPR = {
             number: pr.number,
             url: pr.url,
-            state: pr.merged
-              ? "merged"
-              : (pr.state?.toLowerCase() as "open" | "closed") || "open",
+            state: pr.merged ? "merged" : (pr.state?.toLowerCase() as "open" | "closed") || "open",
             isDraft: pr.isDraft ?? false,
           };
         }
