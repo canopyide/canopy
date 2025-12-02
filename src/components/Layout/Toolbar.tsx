@@ -13,7 +13,7 @@ import {
 } from "lucide-react";
 import { ClaudeIcon, GeminiIcon, CodexIcon } from "@/components/icons";
 import { cn } from "@/lib/utils";
-import { getProjectGradient, getAgentBrandColor } from "@/lib/colorUtils";
+import { getProjectGradient, getBrandColor } from "@/lib/colorUtils";
 import { BulkActionsMenu } from "@/components/Terminal";
 import { useProjectStore } from "@/store/projectStore";
 import { useTerminalStore } from "@/store/terminalStore";
@@ -115,10 +115,8 @@ export function Toolbar({
             variant="ghost"
             size="icon"
             onClick={() => onLaunchAgent("claude")}
-            className={cn(
-              "text-canopy-text hover:bg-canopy-border h-8 w-8 transition-colors",
-              getAgentBrandColor("claude", "hover")
-            )}
+            className="text-canopy-text hover:bg-canopy-border h-8 w-8 transition-colors hover:text-[var(--brand-color)] focus-visible:text-[var(--brand-color)]"
+            style={{ "--brand-color": getBrandColor("claude") } as React.CSSProperties}
             title="Start Claude (Opus 4.5 for deep work)"
             aria-label="Start Claude Agent"
           >
@@ -130,10 +128,8 @@ export function Toolbar({
             variant="ghost"
             size="icon"
             onClick={() => onLaunchAgent("gemini")}
-            className={cn(
-              "text-canopy-text hover:bg-canopy-border h-8 w-8 transition-colors",
-              getAgentBrandColor("gemini", "hover")
-            )}
+            className="text-canopy-text hover:bg-canopy-border h-8 w-8 transition-colors hover:text-[var(--brand-color)] focus-visible:text-[var(--brand-color)]"
+            style={{ "--brand-color": getBrandColor("gemini") } as React.CSSProperties}
             title="Start Gemini (Auto-routing enabled)"
             aria-label="Start Gemini Agent"
           >
@@ -145,10 +141,8 @@ export function Toolbar({
             variant="ghost"
             size="icon"
             onClick={() => onLaunchAgent("codex")}
-            className={cn(
-              "text-canopy-text hover:bg-canopy-border h-8 w-8 transition-colors",
-              getAgentBrandColor("codex", "hover")
-            )}
+            className="text-canopy-text hover:bg-canopy-border h-8 w-8 transition-colors hover:text-[var(--brand-color)] focus-visible:text-[var(--brand-color)]"
+            style={{ "--brand-color": getBrandColor("codex") } as React.CSSProperties}
             title="Start Codex (GPT-5.1 Max)"
             aria-label="Start Codex Agent"
           >
@@ -159,10 +153,7 @@ export function Toolbar({
           variant="ghost"
           size="icon"
           onClick={() => onLaunchAgent("shell")}
-          className={cn(
-            "text-canopy-text hover:bg-canopy-border h-8 w-8 transition-colors",
-            getAgentBrandColor("shell", "hover")
-          )}
+          className="text-canopy-text hover:bg-canopy-border h-8 w-8 transition-colors hover:text-canopy-accent focus-visible:text-canopy-accent"
           title="Open Shell"
           aria-label="Open Shell"
         >

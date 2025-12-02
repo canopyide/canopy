@@ -29,7 +29,7 @@ import {
 } from "@/components/icons";
 import type { TerminalType } from "@/types";
 import { cn } from "@/lib/utils";
-import { getAgentBrandColor } from "@/lib/colorUtils";
+import { getBrandColor } from "@/lib/colorUtils";
 import { XtermAdapter } from "./XtermAdapter";
 import { ArtifactOverlay } from "./ArtifactOverlay";
 import { StateBadge } from "./StateBadge";
@@ -410,8 +410,15 @@ export function TerminalPane({
           <span
             className={cn(
               "shrink-0 transition-colors",
-              getAgentBrandColor(type, isFocused ? "focused" : "unfocused")
+              // Use CSS variable for hover color when not focused
+              !isFocused && "text-canopy-text/50 hover:text-[var(--brand-color)]"
             )}
+            // Apply color directly if focused, otherwise set CSS variable for hover
+            style={
+              isFocused
+                ? { color: getBrandColor(type) || "var(--color-accent)" }
+                : ({ "--brand-color": getBrandColor(type) || "var(--color-accent)" } as React.CSSProperties)
+            }
           >
             {getTerminalIcon(type)}
           </span>
