@@ -28,10 +28,11 @@ interface ManagedTerminal {
  */
 function createThrottledWriter(
   terminal: Terminal,
-  getRefreshTier: RefreshTierProvider = () => TerminalRefreshTier.FOCUSED
+  initialProvider: RefreshTierProvider = () => TerminalRefreshTier.FOCUSED
 ) {
   let buffer = "";
   let timerId: number | null = null;
+  let getRefreshTier = initialProvider;
   let currentTier: TerminalRefreshTier = getRefreshTier();
 
   const flush = () => {
@@ -63,9 +64,9 @@ function createThrottledWriter(
 
       // Low-latency fast-path: If terminal is focused and we receive a small chunk
       // (like a keystroke echo), write immediately to bypass ~16ms RAF lag.
-      // Only when buffer is empty (!timerId) to maintain strict ordering.
+      // Only when buffer is empty to maintain strict ordering with any pending content.
       const isTypingChunk = data.length < 256;
-      if (currentTier === TerminalRefreshTier.FOCUSED && !timerId && isTypingChunk) {
+      if (currentTier === TerminalRefreshTier.FOCUSED && !buffer && isTypingChunk) {
         terminal.write(data);
         return;
       }
@@ -95,6 +96,7 @@ function createThrottledWriter(
       }
     },
     updateProvider: (provider: RefreshTierProvider) => {
+      getRefreshTier = provider;
       currentTier = provider();
     },
   };
