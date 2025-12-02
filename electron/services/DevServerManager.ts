@@ -1,32 +1,33 @@
 /** Manages dev server processes for worktrees with URL detection and graceful shutdown */
 
-import { execa, type ResultPromise, type Result } from "execa";
+import { execa } from "execa";
+import type { ResultPromise, Result } from "execa";
 import { existsSync } from "node:fs";
 import { readFile } from "node:fs/promises";
 import path from "node:path";
 import type { BrowserWindow } from "electron";
-import type { DevServerState, DevServerStatus } from "../types/index.js";
+import { DevServerState, DevServerStatus } from "../types/index.js";
 import { events } from "./events.js";
 
 // URL detection patterns for common dev servers
 const URL_PATTERNS = [
   // Vite
-  /Local:\s+(https?://localhost:\d+\/?)/i,
+  /Local:\s+(https?:\/\/localhost:\d+\/?)/i,
   // Next.js
-  /Ready on (https?://localhost:\d+\/?)/i,
+  /Ready on (https?:\/\/localhost:\d+\/?)/i,
   // Generic patterns - broader host matching
-  /Listening on (https?://[\w.-]+:\d+\/?)/i,
-  /Server (?:is )?(?:running|started) (?:on|at) (https?://[\w.-]+:\d+\/?)/i,
+  /Listening on (https?:\/\/[\w.-]+:\d+\/?)/i,
+  /Server (?:is )?(?:running|started) (?:on|at) (https?:\/\/[\w.-]+:\d+\/?)/i,
   // Create React App
-  /Local:\s+(https?://localhost:\d+\/?)/i,
+  /Local:\s+(https?:\/\/localhost:\d+\/?)/i,
   // Angular
-  /Server is listening on (https?://[\w.-]+:\d+\/?)/i,
+  /Server is listening on (https?:\/\/[\w.-]+:\d+\/?)/i,
   // Express / generic Node
   /(?:Listening|Started) on (?:port )?(\d+)/i,
   // Webpack Dev Server
-  /Project is running at (https?://[\w.-]+:\d+\/?)/i,
+  /Project is running at (https?:\/\/[\w.-]+:\d+\/?)/i,
   // Generic URL fallback - capture any http(s) URL with port
-  /(https?://[\w.-]+:\d+\/?)/i,
+  /(https?:\/\/[\w.-]+:\d+\/?)/i,
 ];
 
 // Port-only patterns (extract port number)
