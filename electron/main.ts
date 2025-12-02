@@ -10,6 +10,7 @@ fixPath();
 import { registerIpcHandlers, sendToRenderer } from "./ipc/handlers.js";
 import { registerErrorHandlers } from "./ipc/errorHandlers.js";
 import { PtyManager } from "./services/PtyManager.js";
+import { getPtyPool, disposePtyPool, type PtyPool } from "./services/PtyPool.js";
 import { DevServerManager } from "./services/DevServerManager.js";
 import { TerminalObserver } from "./services/TerminalObserver.js";
 import {
@@ -42,6 +43,7 @@ process.on("unhandledRejection", (reason, promise) => {
 
 let mainWindow: BrowserWindow | null = null;
 let ptyManager: PtyManager | null = null;
+let ptyPool: PtyPool | null = null;
 let devServerManager: DevServerManager | null = null;
 let cliAvailabilityService: CliAvailabilityService | null = null;
 let terminalObserver: TerminalObserver | null = null;
@@ -126,6 +128,9 @@ if (!gotTheLock) {
           ptyManager.dispose();
           ptyManager = null;
         }
+        // Dispose PTY pool (kills any pre-warmed terminals)
+        disposePtyPool();
+        ptyPool = null;
         resolve();
       }),
     ])
@@ -182,11 +187,32 @@ async function createWindow(): Promise<void> {
   console.log("[MAIN] Creating application menu...");
   createApplicationMenu(mainWindow);
 
+  // --- PTY POOL SETUP ---
+  // Create and warm PTY pool for instant terminal spawns
+  console.log("[MAIN] Initializing PtyPool...");
+  try {
+    ptyPool = getPtyPool({ poolSize: 2 });
+    // Warm pool in background (don't block startup)
+    const homedir = process.env.HOME || os.homedir();
+    ptyPool.warmPool(homedir).catch((err) => {
+      console.error("[MAIN] Failed to warm PTY pool:", err);
+    });
+    console.log("[MAIN] PtyPool initialized (warming in background)");
+  } catch (error) {
+    console.error("[MAIN] Failed to initialize PtyPool:", error);
+    // Non-fatal - continue without pool (terminals will spawn normally)
+    ptyPool = null;
+  }
+
   // --- PTY MANAGER SETUP ---
   // Create PtyManager instance to manage all terminal processes
   console.log("[MAIN] Initializing PtyManager...");
   try {
     ptyManager = new PtyManager();
+    // Connect pool to manager for instant spawns
+    if (ptyPool) {
+      ptyManager.setPtyPool(ptyPool);
+    }
     console.log("[MAIN] PtyManager initialized successfully");
   } catch (error) {
     console.error("[MAIN] Failed to initialize PtyManager:", error);
@@ -395,6 +421,9 @@ async function createWindow(): Promise<void> {
       ptyManager.dispose();
       ptyManager = null;
     }
+    // Cleanup PTY pool (kills any pre-warmed terminals)
+    disposePtyPool();
+    ptyPool = null;
     // Clear logger window reference
     setLoggerWindow(null);
     mainWindow = null;

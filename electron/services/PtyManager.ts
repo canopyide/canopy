@@ -26,6 +26,7 @@ import {
   AgentKilledSchema,
   type AgentStateChangeTrigger,
 } from "../schemas/agent.js";
+import { type PtyPool } from "./PtyPool.js";
 
 export interface PtySpawnOptions {
   cwd: string;
@@ -160,12 +161,23 @@ export interface TerminalSnapshot {
 export class PtyManager extends EventEmitter {
   private terminals: Map<string, TerminalInfo> = new Map();
   private trashTimeouts: Map<string, NodeJS.Timeout> = new Map();
+  private ptyPool: PtyPool | null = null;
 
   /** TTL for trashed terminals before auto-kill (60 seconds) */
   private readonly TRASH_TTL_MS = 60 * 1000;
 
   constructor() {
     super();
+  }
+
+  /**
+   * Set the PTY pool to use for acquiring pre-warmed terminals.
+   * This enables instant terminal spawns when pool has available instances.
+   *
+   * @param pool - The PtyPool instance to use
+   */
+  setPtyPool(pool: PtyPool): void {
+    this.ptyPool = pool;
   }
 
   /**
@@ -408,8 +420,6 @@ export class PtyManager extends EventEmitter {
     // For agent terminals, use terminal ID as agent ID
     const agentId = isAgentTerminal ? id : undefined;
 
-    let ptyProcess: pty.IPty;
-
     // Merge with process environment, filtering out undefined values
     const baseEnv = process.env as Record<string, string | undefined>;
     const mergedEnv = { ...baseEnv, ...options.env };
@@ -418,19 +428,79 @@ export class PtyManager extends EventEmitter {
       Object.entries(mergedEnv).filter(([_, value]) => value !== undefined)
     ) as Record<string, string>;
 
-    try {
-      ptyProcess = pty.spawn(shell, args, {
-        name: "xterm-256color",
-        cols: options.cols,
-        rows: options.rows,
-        cwd: options.cwd,
-        env,
-      });
-    } catch (error) {
-      const errorMessage = error instanceof Error ? error.message : String(error);
-      console.error(`Failed to spawn terminal ${id}:`, errorMessage);
-      this.emit("error", id, errorMessage);
-      throw new Error(`Failed to spawn terminal: ${errorMessage}`);
+    // Try to acquire from pool for shell terminals only
+    // Agent terminals need fresh instances with specific configurations
+    // Also exclude terminals with custom shell, env, or args (pool uses default args)
+    const canUsePool =
+      this.ptyPool && !isAgentTerminal && !options.shell && !options.env && !options.args;
+    let pooledPty = canUsePool ? this.ptyPool!.acquire() : null;
+
+    let ptyProcess: pty.IPty;
+
+    if (pooledPty) {
+      // Use pre-warmed PTY from pool
+      // Resize to requested dimensions - treat failure as fatal
+      try {
+        pooledPty.resize(options.cols, options.rows);
+      } catch (resizeError) {
+        console.warn(
+          `[PtyManager] Failed to resize pooled PTY for ${id}, falling back to spawn:`,
+          resizeError
+        );
+        // Pooled PTY is likely dead - kill it and spawn fresh
+        try {
+          pooledPty.kill();
+        } catch {
+          // Ignore kill errors - already dead
+        }
+        // Fall through to spawn a fresh PTY
+        pooledPty = null;
+      }
+    }
+
+    if (pooledPty) {
+      // Pooled PTY is healthy, use it
+      ptyProcess = pooledPty;
+
+      // Change directory if needed (send cd command)
+      // Platform-specific cd to handle drive switching on Windows
+      if (process.platform === "win32") {
+        // cmd.exe and PowerShell need different commands
+        const shellLower = shell.toLowerCase();
+        if (shellLower.includes("powershell") || shellLower.includes("pwsh")) {
+          ptyProcess.write(`Set-Location "${options.cwd.replace(/"/g, '""')}"\r`);
+        } else {
+          // cmd.exe needs /d flag to switch drives
+          ptyProcess.write(`cd /d "${options.cwd.replace(/"/g, '\\"')}"\r`);
+        }
+      } else {
+        // Unix shells
+        ptyProcess.write(`cd "${options.cwd.replace(/"/g, '\\"')}"\r`);
+      }
+
+      if (process.env.CANOPY_VERBOSE) {
+        console.log(`[PtyManager] Acquired terminal ${id} from pool (instant spawn)`);
+      }
+    } else {
+      // Fall back to spawning a new PTY
+      try {
+        ptyProcess = pty.spawn(shell, args, {
+          name: "xterm-256color",
+          cols: options.cols,
+          rows: options.rows,
+          cwd: options.cwd,
+          env,
+        });
+
+        if (process.env.CANOPY_VERBOSE && this.ptyPool) {
+          console.log(`[PtyManager] Spawned terminal ${id} (pool empty or not applicable)`);
+        }
+      } catch (error) {
+        const errorMessage = error instanceof Error ? error.message : String(error);
+        console.error(`Failed to spawn terminal ${id}:`, errorMessage);
+        this.emit("error", id, errorMessage);
+        throw new Error(`Failed to spawn terminal: ${errorMessage}`);
+      }
     }
 
     // Forward PTY data events
