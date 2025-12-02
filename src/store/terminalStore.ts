@@ -52,8 +52,8 @@ export function getTerminalRefreshTier(
     return TerminalRefreshTier.FOCUSED;
   }
 
-  // Docked terminals are always background tier (4fps)
-  if (terminal.location === "dock") {
+  // Docked or trashed terminals are always background tier (4fps)
+  if (terminal.location === "dock" || terminal.location === "trash") {
     return TerminalRefreshTier.BACKGROUND;
   }
 
@@ -148,6 +148,37 @@ export const useTerminalStore = create<TerminalGridState>()((set, get, api) => {
       // Set focus to the restored terminal
       set({ focusedId: id });
     },
+
+    // Override trashTerminal to also clear focus and maximize state
+    trashTerminal: (id: string) => {
+      const state = get();
+      registrySlice.trashTerminal(id);
+
+      const updates: Partial<TerminalGridState> = {};
+
+      // Clear focus if the trashed terminal was focused
+      if (state.focusedId === id) {
+        // Find next available grid terminal to focus
+        const gridTerminals = state.terminals.filter((t) => t.id !== id && t.location === "grid");
+        updates.focusedId = gridTerminals[0]?.id ?? null;
+      }
+
+      // Clear maximize state if the trashed terminal was maximized
+      if (state.maximizedId === id) {
+        updates.maximizedId = null;
+      }
+
+      if (Object.keys(updates).length > 0) {
+        set(updates);
+      }
+    },
+
+    // Override restoreTerminal to also set focus
+    restoreTerminal: (id: string) => {
+      registrySlice.restoreTerminal(id);
+      // Set focus to the restored terminal
+      set({ focusedId: id });
+    },
   };
 });
 
@@ -192,13 +223,29 @@ if (typeof window !== "undefined") {
   // Subscribe to terminal trashed events from the main process
   trashedUnsubscribe = terminalClient.onTrashed((data) => {
     const { id, expiresAt } = data;
-    useTerminalStore.getState().markAsTrashed(id, expiresAt);
+    const state = useTerminalStore.getState();
+    state.markAsTrashed(id, expiresAt);
+
+    // Clear focus/maximize if the trashed terminal was active (same as trashTerminal override)
+    const updates: Partial<TerminalGridState> = {};
+    if (state.focusedId === id) {
+      const gridTerminals = state.terminals.filter((t) => t.id !== id && t.location === "grid");
+      updates.focusedId = gridTerminals[0]?.id ?? null;
+    }
+    if (state.maximizedId === id) {
+      updates.maximizedId = null;
+    }
+    if (Object.keys(updates).length > 0) {
+      useTerminalStore.setState(updates);
+    }
   });
 
   // Subscribe to terminal restored events from the main process
   restoredUnsubscribe = terminalClient.onRestored((data) => {
     const { id } = data;
     useTerminalStore.getState().markAsRestored(id);
+    // Set focus to the restored terminal (same as restoreTerminal override)
+    useTerminalStore.setState({ focusedId: id });
   });
 }
 

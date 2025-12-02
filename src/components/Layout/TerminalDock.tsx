@@ -35,8 +35,9 @@ export function TerminalDock() {
     trashedInfo: typeof trashedTerminals extends Map<string, infer V> ? V : never;
   }[];
 
-  // Filter out trashed terminals from docked terminals list
-  const activeDockTerminals = dockTerminals.filter((t) => !trashedTerminals.has(t.id));
+  // dockTerminals are now guaranteed to be only docked (not trashed) since
+  // trashed terminals have location="trash" instead of location="dock"
+  const activeDockTerminals = dockTerminals;
 
   // Don't render if no docked or trashed terminals
   if (activeDockTerminals.length === 0 && trashedItems.length === 0) return null;

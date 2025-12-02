@@ -98,20 +98,23 @@ export interface TerminalRegistrySlice {
 /**
  * Persist terminals to electron-store.
  * Only persists essential fields needed to restore sessions.
+ * Excludes trashed terminals to avoid resurrecting orphaned sessions after restart.
  */
 function persistTerminals(terminals: TerminalInstance[]): void {
   appClient
     .setState({
-      terminals: terminals.map((t) => ({
-        id: t.id,
-        type: t.type,
-        title: t.title,
-        cwd: t.cwd,
-        worktreeId: t.worktreeId,
-        location: t.location,
-        // Only persist command if non-empty (trim whitespace)
-        command: t.command?.trim() || undefined,
-      })),
+      terminals: terminals
+        .filter((t) => t.location !== "trash") // Don't persist trashed terminals
+        .map((t) => ({
+          id: t.id,
+          type: t.type,
+          title: t.title,
+          cwd: t.cwd,
+          worktreeId: t.worktreeId,
+          location: t.location,
+          // Only persist command if non-empty (trim whitespace)
+          command: t.command?.trim() || undefined,
+        })),
     })
     .catch((error) => {
       console.error("Failed to persist terminals:", error);
@@ -387,10 +390,22 @@ export const createTerminalRegistrySlice =
         console.error("Failed to trash terminal:", error);
       });
 
-      // Move to dock if in grid
-      if (terminal.location === "grid") {
-        get().moveTerminalToDock(id);
-      }
+      // Move terminal to trash location (separate from dock)
+      set((state) => {
+        const newTerminals = state.terminals.map((t) =>
+          t.id === id ? { ...t, location: "trash" as const } : t
+        );
+        persistTerminals(newTerminals);
+        return { terminals: newTerminals };
+      });
+
+      // Enable buffering for trashed (hidden) terminal to reduce IPC overhead
+      terminalClient.setBuffering(id, true).catch((error) => {
+        console.error("Failed to enable terminal buffering:", error);
+      });
+
+      // Release GPU resources for trashed terminals
+      terminalInstanceService.applyRendererPolicy(id, TerminalRefreshTier.BACKGROUND);
     },
 
     restoreTerminal: (id) => {
@@ -398,22 +413,77 @@ export const createTerminalRegistrySlice =
       terminalClient.restore(id).catch((error) => {
         console.error("Failed to restore terminal:", error);
       });
+
+      // Move terminal back to grid
+      set((state) => {
+        const newTerminals = state.terminals.map((t) =>
+          t.id === id ? { ...t, location: "grid" as const } : t
+        );
+        persistTerminals(newTerminals);
+        return { terminals: newTerminals };
+      });
+
+      // Disable buffering and flush when terminal returns to grid
+      terminalClient
+        .setBuffering(id, false)
+        .then(() => {
+          setTimeout(() => {
+            terminalClient.flush(id).catch((error) => {
+              console.error("Failed to flush terminal buffer:", error);
+            });
+          }, 100);
+        })
+        .catch((error) => {
+          console.error("Failed to disable terminal buffering:", error);
+        });
+
+      // Mark as visible priority so renderer can reacquire GPU if needed
+      terminalInstanceService.applyRendererPolicy(id, TerminalRefreshTier.VISIBLE);
     },
 
     markAsTrashed: (id, expiresAt) => {
       set((state) => {
         const newTrashed = new Map(state.trashedTerminals);
         newTrashed.set(id, { id, expiresAt });
-        return { trashedTerminals: newTrashed };
+        const newTerminals = state.terminals.map((t) =>
+          t.id === id ? { ...t, location: "trash" as const } : t
+        );
+        persistTerminals(newTerminals);
+        return { trashedTerminals: newTrashed, terminals: newTerminals };
       });
+
+      // Apply same side effects as trashTerminal for consistency
+      terminalClient.setBuffering(id, true).catch((error) => {
+        console.error("Failed to enable terminal buffering:", error);
+      });
+      terminalInstanceService.applyRendererPolicy(id, TerminalRefreshTier.BACKGROUND);
     },
 
     markAsRestored: (id) => {
       set((state) => {
         const newTrashed = new Map(state.trashedTerminals);
         newTrashed.delete(id);
-        return { trashedTerminals: newTrashed };
+        const newTerminals = state.terminals.map((t) =>
+          t.id === id ? { ...t, location: "grid" as const } : t
+        );
+        persistTerminals(newTerminals);
+        return { trashedTerminals: newTrashed, terminals: newTerminals };
       });
+
+      // Apply same side effects as restoreTerminal for consistency
+      terminalClient
+        .setBuffering(id, false)
+        .then(() => {
+          setTimeout(() => {
+            terminalClient.flush(id).catch((error) => {
+              console.error("Failed to flush terminal buffer:", error);
+            });
+          }, 100);
+        })
+        .catch((error) => {
+          console.error("Failed to disable terminal buffering:", error);
+        });
+      terminalInstanceService.applyRendererPolicy(id, TerminalRefreshTier.VISIBLE);
     },
 
     isInTrash: (id) => {
