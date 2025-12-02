@@ -155,6 +155,7 @@ function writeToLogFile(level: string, message: string, context?: LogContext): v
 
     appendFileSync(logFile, logLine, "utf8");
   } catch (error) {
+    // ignore
   }
 }
 

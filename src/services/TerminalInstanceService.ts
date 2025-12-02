@@ -44,11 +44,9 @@ function createThrottledWriter(
 
   return {
     write: (data: string) => {
-      buffer += data;
-
       const newTier = getRefreshTier();
 
-      // If tier improves (lower value), flush immediately
+      // If tier improves (lower value), flush pending data immediately
       if (newTier < currentTier) {
         if (timerId !== null) {
           cancelAnimationFrame(timerId);
@@ -59,15 +57,26 @@ function createThrottledWriter(
           flush();
         }
         currentTier = newTier;
-        return;
-      }
-
-      if (timerId) {
-        currentTier = newTier;
-        return;
       }
 
       currentTier = newTier;
+
+      // Low-latency fast-path: If terminal is focused and we receive a small chunk
+      // (like a keystroke echo), write immediately to bypass ~16ms RAF lag.
+      // Only when buffer is empty (!timerId) to maintain strict ordering.
+      const isTypingChunk = data.length < 256;
+      if (currentTier === TerminalRefreshTier.FOCUSED && !timerId && isTypingChunk) {
+        terminal.write(data);
+        return;
+      }
+
+      // Standard buffering for bulk output
+      buffer += data;
+
+      if (timerId) {
+        return;
+      }
+
       if (currentTier === TerminalRefreshTier.FOCUSED) {
         timerId = requestAnimationFrame(flush);
       } else {

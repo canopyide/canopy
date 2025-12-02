@@ -87,6 +87,7 @@ export function registerTerminalHandlers(deps: HandlerDependencies): () => void 
           await fs.promises.access(projectPath);
           return projectPath;
         } catch {
+          // ignore
         }
       }
       return os.homedir();
