@@ -7,10 +7,8 @@ import fixPath from "fix-path";
 fixPath();
 import { registerIpcHandlers, sendToRenderer } from "./ipc/handlers.js";
 import { registerErrorHandlers } from "./ipc/errorHandlers.js";
-import { PtyManager } from "./services/PtyManager.js";
-import { getPtyPool, disposePtyPool, type PtyPool } from "./services/PtyPool.js";
+import { PtyClient, disposePtyClient } from "./services/PtyClient.js";
 import { DevServerManager } from "./services/DevServerManager.js";
-import { TerminalObserver } from "./services/TerminalObserver.js";
 import {
   getSemanticActivityObserver,
   disposeSemanticActivityObserver,
@@ -18,7 +16,6 @@ import {
 import { worktreeService } from "./services/WorktreeService.js";
 import { CliAvailabilityService } from "./services/CliAvailabilityService.js";
 import { createWindowWithState } from "./windowState.js";
-import { store } from "./store.js";
 import { setLoggerWindow } from "./utils/logger.js";
 import { EventBuffer } from "./services/EventBuffer.js";
 import { CHANNELS } from "./ipc/channels.js";
@@ -38,11 +35,9 @@ process.on("unhandledRejection", (reason, promise) => {
 });
 
 let mainWindow: BrowserWindow | null = null;
-let ptyManager: PtyManager | null = null;
-let ptyPool: PtyPool | null = null;
+let ptyClient: PtyClient | null = null;
 let devServerManager: DevServerManager | null = null;
 let cliAvailabilityService: CliAvailabilityService | null = null;
-let terminalObserver: TerminalObserver | null = null;
 let cleanupIpcHandlers: (() => void) | null = null;
 let cleanupErrorHandlers: (() => void) | null = null;
 let eventBuffer: EventBuffer | null = null;
@@ -102,16 +97,11 @@ if (!gotTheLock) {
       disposeTranscriptManager(),
       new Promise<void>((resolve) => {
         disposeSemanticActivityObserver();
-        if (terminalObserver) {
-          terminalObserver.dispose();
-          terminalObserver = null;
+        if (ptyClient) {
+          ptyClient.dispose();
+          ptyClient = null;
         }
-        if (ptyManager) {
-          ptyManager.dispose();
-          ptyManager = null;
-        }
-        disposePtyPool();
-        ptyPool = null;
+        disposePtyClient();
         resolve();
       }),
     ])
@@ -163,43 +153,28 @@ async function createWindow(): Promise<void> {
   console.log("[MAIN] Creating application menu...");
   createApplicationMenu(mainWindow);
 
-  console.log("[MAIN] Initializing PtyPool...");
+  // Initialize PtyClient (replaces PtyManager + TerminalObserver + PtyPool)
+  // The PtyClient spawns a UtilityProcess (pty-host) that handles all terminal I/O
+  // and state analysis, keeping the Main process responsive.
+  console.log("[MAIN] Initializing PtyClient (Pty Host pattern)...");
   try {
-    ptyPool = getPtyPool({ poolSize: 2 });
-    // Warm pool in background (don't block startup)
-    const homedir = process.env.HOME || os.homedir();
-    ptyPool.warmPool(homedir).catch((err) => {
-      console.error("[MAIN] Failed to warm PTY pool:", err);
+    ptyClient = new PtyClient({
+      maxRestartAttempts: 3,
+      healthCheckIntervalMs: 30000,
+      showCrashDialog: true,
     });
-    console.log("[MAIN] PtyPool initialized (warming in background)");
-  } catch (error) {
-    console.error("[MAIN] Failed to initialize PtyPool:", error);
-    ptyPool = null;
-  }
 
-  console.log("[MAIN] Initializing PtyManager...");
-  try {
-    ptyManager = new PtyManager();
-    if (ptyPool) {
-      ptyManager.setPtyPool(ptyPool);
-    }
-    console.log("[MAIN] PtyManager initialized successfully");
-  } catch (error) {
-    console.error("[MAIN] Failed to initialize PtyManager:", error);
-    throw error;
-  }
+    // Listen for host crashes
+    ptyClient.on("host-crash", (code) => {
+      console.error(`[MAIN] Pty Host crashed with code ${code}`);
+      // The PtyClient handles restart attempts internally
+    });
 
-  console.log("[MAIN] Initializing TerminalObserver...");
-  try {
-    terminalObserver = new TerminalObserver(ptyManager);
-    terminalObserver.start();
-    console.log("[MAIN] TerminalObserver initialized and started");
+    // Wait for host to be ready before proceeding
+    await ptyClient.waitForReady();
+    console.log("[MAIN] PtyClient initialized successfully (Pty Host ready)");
   } catch (error) {
-    console.error("[MAIN] Failed to initialize TerminalObserver:", error);
-    if (ptyManager) {
-      ptyManager.dispose();
-      ptyManager = null;
-    }
+    console.error("[MAIN] Failed to initialize PtyClient:", error);
     throw error;
   }
 
@@ -246,7 +221,7 @@ async function createWindow(): Promise<void> {
   console.log("[MAIN] Registering IPC handlers...");
   cleanupIpcHandlers = registerIpcHandlers(
     mainWindow,
-    ptyManager,
+    ptyClient,
     devServerManager,
     worktreeService,
     eventBuffer,
@@ -259,7 +234,7 @@ async function createWindow(): Promise<void> {
     mainWindow,
     devServerManager,
     worktreeService,
-    ptyManager
+    ptyClient
   );
   console.log("[MAIN] Error handlers registered successfully");
 
@@ -299,7 +274,7 @@ async function createWindow(): Promise<void> {
 
   console.log("[MAIN] Spawning default terminal...");
   try {
-    ptyManager.spawn(DEFAULT_TERMINAL_ID, {
+    ptyClient.spawn(DEFAULT_TERMINAL_ID, {
       cwd: process.env.HOME || os.homedir(),
       cols: 80,
       rows: 30,
@@ -310,16 +285,11 @@ async function createWindow(): Promise<void> {
   }
 
   mainWindow.on("closed", async () => {
-    if (ptyManager) {
-      const terminals = ptyManager.getAll().map((t) => ({
-        id: t.id,
-        type: t.type || "shell",
-        title: t.title || "Terminal",
-        cwd: t.cwd,
-        worktreeId: t.worktreeId,
-      }));
-      store.set("appState.terminals", terminals);
-    }
+    // NOTE: Terminal state is persisted by the renderer via appClient.setState()
+    // in terminalRegistrySlice.ts. We don't save terminals here because:
+    // 1. Renderer state includes command/location fields needed for restoration
+    // 2. PtyClient doesn't have synchronous access to terminal metadata
+    // 3. Terminal state is already saved by renderer on state changes
 
     if (eventBufferUnsubscribe) {
       eventBufferUnsubscribe();
@@ -345,16 +315,11 @@ async function createWindow(): Promise<void> {
     }
     await disposeTranscriptManager();
     disposeSemanticActivityObserver();
-    if (terminalObserver) {
-      terminalObserver.dispose();
-      terminalObserver = null;
+    if (ptyClient) {
+      ptyClient.dispose();
+      ptyClient = null;
     }
-    if (ptyManager) {
-      ptyManager.dispose();
-      ptyManager = null;
-    }
-    disposePtyPool();
-    ptyPool = null;
+    disposePtyClient();
     setLoggerWindow(null);
     mainWindow = null;
   });

@@ -13,7 +13,7 @@ import {
 } from "../utils/errorTypes.js";
 import type { DevServerManager } from "../services/DevServerManager.js";
 import type { WorktreeService } from "../services/WorktreeService.js";
-import type { PtyManager } from "../services/PtyManager.js";
+import type { TerminalManager } from "./types.js";
 
 type ErrorType = "git" | "process" | "filesystem" | "network" | "config" | "unknown";
 
@@ -94,13 +94,13 @@ export class ErrorService {
   private mainWindow: BrowserWindow | null = null;
   private devServerManager: DevServerManager | null = null;
   private worktreeService: WorktreeService | null = null;
-  private ptyManager: PtyManager | null = null;
+  private ptyManager: TerminalManager | null = null;
 
   initialize(
     mainWindow: BrowserWindow,
     devServerManager: DevServerManager | null,
     worktreeService: WorktreeService | null,
-    ptyManager: PtyManager | null
+    ptyManager: TerminalManager | null
   ) {
     this.mainWindow = mainWindow;
     this.devServerManager = devServerManager;
@@ -181,7 +181,7 @@ export function registerErrorHandlers(
   mainWindow: BrowserWindow,
   devServerManager: DevServerManager | null,
   worktreeService: WorktreeService | null,
-  ptyManager: PtyManager | null
+  ptyManager: TerminalManager | null
 ): () => void {
   const handlers: Array<() => void> = [];
 
