@@ -64,23 +64,19 @@ function SidebarContent({ onOpenSettings }: SidebarContentProps) {
   const addNotification = useNotificationStore((state) => state.addNotification);
   const focusedTerminalId = useTerminalStore((state) => state.focusedId);
 
-  // Recipe editor state
   const [isRecipeEditorOpen, setIsRecipeEditorOpen] = useState(false);
   const [recipeEditorWorktreeId, setRecipeEditorWorktreeId] = useState<string | undefined>(
     undefined
   );
 
-  // New worktree dialog state
   const [isNewWorktreeDialogOpen, setIsNewWorktreeDialogOpen] = useState(false);
 
-  // Home directory for path formatting
   const [homeDir, setHomeDir] = useState<string | undefined>(undefined);
 
   useEffect(() => {
     systemClient.getHomeDir().then(setHomeDir).catch(console.error);
   }, []);
 
-  // Set first worktree as active by default
   useEffect(() => {
     if (worktrees.length > 0 && !activeWorktreeId) {
       setActiveWorktree(worktrees[0].id);
@@ -90,7 +86,6 @@ function SidebarContent({ onOpenSettings }: SidebarContentProps) {
   const handleCopyTree = useCallback(
     async (worktree: WorktreeState) => {
       try {
-        // Check if CopyTree is available
         const isAvailable = await copyTreeClient.isAvailable();
         if (!isAvailable) {
           throw new Error(
@@ -108,10 +103,7 @@ function SidebarContent({ onOpenSettings }: SidebarContentProps) {
           throw new Error(result.error);
         }
 
-        // Log success
         console.log(`Copied ${result.fileCount} files as file reference`);
-
-        // Show success notification
         const sizeStr = result.stats?.totalSize ? formatBytes(result.stats.totalSize) : "";
         addNotification({
           type: "success",
@@ -123,7 +115,6 @@ function SidebarContent({ onOpenSettings }: SidebarContentProps) {
         const message = e instanceof Error ? e.message : "Failed to copy context to clipboard";
         const details = e instanceof Error ? e.stack : undefined;
 
-        // Determine error type based on message content
         let errorType: "config" | "process" | "filesystem" = "process";
         if (message.includes("not available") || message.includes("not installed")) {
           errorType = "config";
@@ -215,7 +206,6 @@ function SidebarContent({ onOpenSettings }: SidebarContentProps) {
       <div className="p-4">
         <h2 className="text-canopy-text font-semibold text-sm mb-4">Worktrees</h2>
 
-        {/* Empty State */}
         <div className="flex flex-col items-center justify-center py-12 px-4 text-center">
           <FolderOpen className="w-12 h-12 text-gray-500 mb-3" aria-hidden="true" />
 
@@ -226,7 +216,6 @@ function SidebarContent({ onOpenSettings }: SidebarContentProps) {
             <kbd className="px-1.5 py-0.5 bg-gray-700 rounded text-xs">File → Open Directory</kbd>
           </p>
 
-          {/* Quick Start */}
           <div className="text-xs text-gray-500 text-left w-full max-w-xs">
             <div className="font-medium mb-1">Quick Start:</div>
             <ol className="space-y-1 list-decimal list-inside">
@@ -240,7 +229,7 @@ function SidebarContent({ onOpenSettings }: SidebarContentProps) {
     );
   }
 
-  // Get root path from first worktree (assuming all worktrees are from the same repo)
+  // Assuming all worktrees are from the same repo
   const rootPath =
     worktrees.length > 0 && worktrees[0].path ? worktrees[0].path.split("/.git/")[0] : "";
 
@@ -276,14 +265,12 @@ function SidebarContent({ onOpenSettings }: SidebarContentProps) {
         ))}
       </div>
 
-      {/* Recipe Editor Modal */}
       <RecipeEditor
         worktreeId={recipeEditorWorktreeId}
         isOpen={isRecipeEditorOpen}
         onClose={handleCloseRecipeEditor}
       />
 
-      {/* New Worktree Dialog */}
       {rootPath && (
         <NewWorktreeDialog
           isOpen={isNewWorktreeDialogOpen}
@@ -299,7 +286,7 @@ function SidebarContent({ onOpenSettings }: SidebarContentProps) {
 type AppView = "grid" | "welcome";
 
 function App() {
-  // Terminal store selectors - use useShallow for multi-field selections to prevent unnecessary re-renders
+  // Use useShallow for multi-field selections to prevent unnecessary re-renders
   const { focusNext, focusPrevious, toggleMaximize, focusedId, addTerminal, reorderTerminals } =
     useTerminalStore(
       useShallow((state) => ({
@@ -311,7 +298,7 @@ function App() {
         reorderTerminals: state.reorderTerminals,
       }))
     );
-  // Select terminals separately for keybinding logic - shallow compare array of objects
+  // Shallow compare array of objects for keybinding logic
   const terminals = useTerminalStore(useShallow((state) => state.terminals));
   const { launchAgent, availability, agentSettings, refreshSettings } = useAgentLauncher();
   const { activeWorktreeId, setActiveWorktree } = useWorktreeSelectionStore(
@@ -324,38 +311,28 @@ function App() {
   const loadRecipes = useRecipeStore((state) => state.loadRecipes);
   useTerminalConfig();
 
-  // Terminal palette for quick switching (Cmd/Ctrl+T)
   const terminalPalette = useTerminalPalette();
 
-  // Diagnostics dock state (unified problems/logs/events)
   const openDiagnosticsDock = useDiagnosticsStore((state) => state.openDock);
   const toggleDiagnosticsDock = useDiagnosticsStore((state) => state.toggleDock);
   const removeError = useErrorStore((state) => state.removeError);
 
-  // Settings dialog state
   const [isSettingsOpen, setIsSettingsOpen] = useState(false);
   const [settingsTab, setSettingsTab] = useState<"general" | "ai" | "troubleshooting">("general");
 
-  // Refresh state
   const [isRefreshing, setIsRefreshing] = useState(false);
 
-  // View state management for welcome screen (start with welcome, will be updated after state loads)
   const [currentView, setCurrentView] = useState<AppView>("welcome");
   const [isStateLoaded, setIsStateLoaded] = useState(false);
 
-  // Track if state has been restored (prevent StrictMode double-execution)
+  // Prevent StrictMode double-execution
   const hasRestoredState = useRef(false);
 
   // Track Cmd/Ctrl+K chord state for focus mode shortcut (Cmd+K Z)
   const isCtrlKPressed = useRef(false);
   const chordTimeout = useRef<NodeJS.Timeout | null>(null);
 
-  // Queue processing is handled in terminalStore.ts via the agent state subscription
-  // No need for duplicate subscription here - the store already listens to state changes
-
-  // Restore persisted app state on mount
   useEffect(() => {
-    // Guard against non-Electron environments and StrictMode double-execution
     if (!isElectronAvailable() || hasRestoredState.current) {
       return;
     }
@@ -366,19 +343,17 @@ function App() {
       try {
         const appState = await appClient.getState();
 
-        // Guard against undefined state
         if (!appState) {
           console.warn("App state returned undefined, using defaults");
-          setCurrentView("welcome"); // Default to welcome screen for safety
+          setCurrentView("welcome");
           setIsStateLoaded(true);
           return;
         }
 
-        // Check if user has seen the welcome screen (treat undefined as not seen for first-run and migration)
+        // Treat undefined hasSeenWelcome as false for first-run and migration scenarios
         const hasSeenWelcome = appState.hasSeenWelcome ?? false;
         setCurrentView(hasSeenWelcome ? "grid" : "welcome");
 
-        // Hydrate app state (restore terminals, worktrees, recipes, etc.)
         await hydrateAppState({
           addTerminal,
           setActiveWorktree,
@@ -395,7 +370,6 @@ function App() {
     restoreState();
   }, [addTerminal, setActiveWorktree, loadRecipes, openDiagnosticsDock]);
 
-  // Listen for project-switched events and re-hydrate state
   useEffect(() => {
     if (!isElectronAvailable()) {
       return;
@@ -416,13 +390,11 @@ function App() {
       }
     };
 
-    // Listen for custom event from projectStore.switchProject
     window.addEventListener("project-switched", handleProjectSwitch);
 
-    // Also listen for IPC PROJECT_ON_SWITCH event (for menu-initiated switches)
+    // Also listen for IPC PROJECT_ON_SWITCH event for menu-initiated switches
     const cleanup = projectClient.onSwitch(() => {
       console.log("[App] Received PROJECT_ON_SWITCH from main process, re-hydrating...");
-      // Dispatch the same custom event to reuse hydration logic
       window.dispatchEvent(new CustomEvent("project-switched"));
     });
 
@@ -432,7 +404,6 @@ function App() {
     };
   }, [addTerminal, setActiveWorktree, loadRecipes, openDiagnosticsDock]);
 
-  // Handle agent launcher from toolbar
   const handleLaunchAgent = useCallback(
     async (type: "claude" | "gemini" | "codex" | "shell") => {
       await launchAgent(type);
@@ -441,12 +412,10 @@ function App() {
   );
 
   const handleRefresh = useCallback(async () => {
-    // Guard against non-Electron environments
     if (!isElectronAvailable()) {
       return;
     }
 
-    // Prevent multiple simultaneous refreshes
     if (isRefreshing) {
       return;
     }
@@ -455,7 +424,7 @@ function App() {
       setIsRefreshing(true);
       await worktreeClient.refresh();
     } catch (error) {
-      // Log error - the IPC layer and useWorktrees hook will handle displaying errors
+      // IPC layer and useWorktrees hook will handle displaying errors
       console.error("Failed to refresh worktrees:", error);
     } finally {
       setIsRefreshing(false);
@@ -463,7 +432,7 @@ function App() {
   }, [isRefreshing]);
 
   const handleSettings = useCallback(() => {
-    setSettingsTab("general"); // Always open to General tab when clicking toolbar button
+    setSettingsTab("general");
     setIsSettingsOpen(true);
   }, []);
 
@@ -474,7 +443,6 @@ function App() {
     setIsSettingsOpen(true);
   }, []);
 
-  // Welcome screen handlers
   const handleShowWelcome = useCallback(() => {
     setCurrentView("welcome");
   }, []);
@@ -483,18 +451,15 @@ function App() {
     setCurrentView("grid");
   }, []);
 
-  // Handle context injection via keyboard shortcut
   const handleInjectContextShortcut = useCallback(() => {
     if (activeWorktreeId && focusedId && !isInjecting) {
       inject(activeWorktreeId, focusedId);
     }
   }, [activeWorktreeId, focusedId, isInjecting, inject]);
 
-  // Handle error retry from problems panel
   const handleErrorRetry = useCallback(
     async (errorId: string, action: RetryAction, args?: Record<string, unknown>) => {
       try {
-        // Handle injectContext retry locally
         if (action === "injectContext") {
           const worktreeId = args?.worktreeId as string | undefined;
           const terminalId = args?.terminalId as string | undefined;
@@ -505,13 +470,12 @@ function App() {
             return;
           }
 
-          // Retry the injection
           await inject(worktreeId, terminalId, selectedPaths);
 
-          // Explicitly remove error on success (hook instance may differ)
+          // Remove error on success (hook instance may differ)
           removeError(errorId);
         } else {
-          // For other actions, delegate to the main process
+          // Delegate other actions to main process
           await errorsClient.retry(errorId, action, args);
           removeError(errorId);
         }
@@ -522,13 +486,10 @@ function App() {
     [inject, removeError]
   );
 
-  // === Centralized Keybindings (via useKeybinding hook) ===
   const electronAvailable = isElectronAvailable();
 
-  // Terminal palette (Cmd+T)
   useKeybinding("terminal.palette", () => terminalPalette.toggle(), { enabled: electronAvailable });
 
-  // Terminal navigation
   useKeybinding("terminal.focusNext", () => focusNext(), { enabled: electronAvailable });
   useKeybinding("terminal.focusPrevious", () => focusPrevious(), { enabled: electronAvailable });
   useKeybinding(
@@ -539,21 +500,17 @@ function App() {
     { enabled: electronAvailable && !!focusedId }
   );
 
-  // Agent launchers
   useKeybinding("agent.claude", () => handleLaunchAgent("claude"), { enabled: electronAvailable });
   useKeybinding("agent.gemini", () => handleLaunchAgent("gemini"), { enabled: electronAvailable });
 
-  // Context injection
   useKeybinding("context.inject", () => handleInjectContextShortcut(), {
     enabled: electronAvailable,
   });
 
-  // Terminal reordering
   useKeybinding(
     "terminal.moveLeft",
     () => {
       if (!focusedId) return;
-      // Find grid terminals and current index
       const gridTerminals = terminals.filter(
         (t) => t.location === "grid" || t.location === undefined
       );
@@ -568,7 +525,6 @@ function App() {
     "terminal.moveRight",
     () => {
       if (!focusedId) return;
-      // Find grid terminals and current index
       const gridTerminals = terminals.filter(
         (t) => t.location === "grid" || t.location === undefined
       );
@@ -580,7 +536,6 @@ function App() {
     { enabled: electronAvailable && !!focusedId }
   );
 
-  // Panel toggles - now open/switch to tabs in diagnostics dock
   useKeybinding("panel.logs", () => openDiagnosticsDock("logs"), { enabled: electronAvailable });
   useKeybinding("panel.events", () => openDiagnosticsDock("events"), {
     enabled: electronAvailable,
@@ -590,34 +545,29 @@ function App() {
   });
   useKeybinding("panel.diagnostics", () => toggleDiagnosticsDock(), { enabled: electronAvailable });
 
-  // Cleanup terminal store listeners on unmount
   useEffect(() => {
     return () => {
       cleanupTerminalStoreListeners();
     };
   }, []);
 
-  // Focus Mode Chord (Cmd+K Z) - Manual listener because it's a chord
   useEffect(() => {
     if (!electronAvailable) return;
 
     const handleKeyDown = (e: KeyboardEvent) => {
-      // Handle Cmd/Ctrl+K chord for focus mode (Cmd+K Z)
+      // Cmd+K Z chord for focus mode toggle
       if ((e.metaKey || e.ctrlKey) && e.key === "k" && !e.shiftKey) {
         e.preventDefault();
-        // Start chord sequence - set flag and timeout
         isCtrlKPressed.current = true;
         if (chordTimeout.current) {
           clearTimeout(chordTimeout.current);
         }
-        // Reset chord after 1 second if no follow-up key
         chordTimeout.current = setTimeout(() => {
           isCtrlKPressed.current = false;
         }, 1000);
         return;
       }
 
-      // Check for Z key after Cmd+K (focus mode toggle)
       if (isCtrlKPressed.current && (e.key === "z" || e.key === "Z") && !e.metaKey && !e.ctrlKey) {
         e.preventDefault();
         isCtrlKPressed.current = false;
@@ -625,7 +575,6 @@ function App() {
           clearTimeout(chordTimeout.current);
           chordTimeout.current = null;
         }
-        // Dispatch custom event for focus mode toggle
         window.dispatchEvent(new CustomEvent("canopy:toggle-focus-mode"));
         return;
       }
@@ -650,7 +599,6 @@ function App() {
     );
   }
 
-  // Show loading state while checking persistence flag to prevent flash of content
   if (!isStateLoaded) {
     return <div className="h-screen w-screen bg-canopy-bg" />;
   }
@@ -672,11 +620,10 @@ function App() {
         {currentView === "welcome" ? (
           <WelcomeScreen onDismiss={handleDismissWelcome} />
         ) : (
-          <TerminalGrid className="h-full w-full bg-canopy-bg" />
+          <TerminalGrid className="h-full w-full" />
         )}
       </AppLayout>
 
-      {/* Terminal palette overlay */}
       <TerminalPalette
         isOpen={terminalPalette.isOpen}
         query={terminalPalette.query}
@@ -689,7 +636,6 @@ function App() {
         onClose={terminalPalette.close}
       />
 
-      {/* Settings dialog */}
       <SettingsDialog
         isOpen={isSettingsOpen}
         onClose={() => setIsSettingsOpen(false)}
@@ -697,7 +643,6 @@ function App() {
         onSettingsChange={refreshSettings}
       />
 
-      {/* Notifications */}
       <Toaster />
     </>
   );
