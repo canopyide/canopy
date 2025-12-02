@@ -1228,6 +1228,24 @@ export class PtyManager extends EventEmitter {
   }
 
   /**
+   * Handle project switch - kill all terminals and reset state.
+   * This ensures no terminals from the previous project leak into the new project.
+   * Reuses existing dispose() logic to ensure complete cleanup.
+   */
+  onProjectSwitch(): void {
+    console.log("Handling project switch in PtyManager");
+
+    // Use dispose() to ensure complete cleanup (stops detectors, clears buffers, kills PTYs)
+    // This reuses the existing teardown logic that properly cleans up all resources
+    this.dispose();
+
+    // Note: dispose() already clears terminals and trash timeouts
+    // No need to duplicate that logic here
+
+    console.log("PtyManager state reset for project switch");
+  }
+
+  /**
    * Get the default shell for the current platform
    * Tries multiple fallbacks to ensure a valid shell is found
    */

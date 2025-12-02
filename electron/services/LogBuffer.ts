@@ -142,6 +142,15 @@ export class LogBuffer {
   }
 
   /**
+   * Handle project switch - clear all logs for the new project.
+   * This ensures logs from the previous project don't appear in the new project.
+   */
+  onProjectSwitch(): void {
+    console.log("Handling project switch in LogBuffer - clearing logs");
+    this.clear();
+  }
+
+  /**
    * Get the count of log entries
    */
   get length(): number {

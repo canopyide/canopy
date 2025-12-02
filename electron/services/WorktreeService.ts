@@ -486,6 +486,31 @@ export class WorktreeService {
   }
 
   /**
+   * Handle project switch - stop all monitors and reset state.
+   * Similar to stopAll but also resets internal state for the new project.
+   */
+  public async onProjectSwitch(): Promise<void> {
+    logInfo("Handling project switch in WorktreeService");
+
+    // Stop all monitors and clean up (reuse stopAll logic)
+    await this.stopAll();
+
+    // Reset internal state for new project
+    this.activeWorktreeId = null;
+    this.mainBranch = "main";
+    this.gitService = null;
+    this.rootPath = null;
+    this.isSyncing = false;
+    this.pendingSync = null;
+
+    // Reset adaptive backoff state by clearing monitors
+    // (already done in stopAll, but this makes intent explicit)
+    this.monitors.clear();
+
+    logInfo("WorktreeService state reset for project switch");
+  }
+
+  /**
    * Get count of active monitors.
    */
   public getMonitorCount(): number {

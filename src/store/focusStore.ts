@@ -26,6 +26,9 @@ interface FocusState {
 
   // Get the saved state for restoration
   getSavedPanelState: () => PanelState | null;
+
+  /** Reset store to initial state for project switching */
+  reset: () => void;
 }
 
 const createFocusStore: StateCreator<FocusState> = (set, get) => ({
@@ -56,6 +59,12 @@ const createFocusStore: StateCreator<FocusState> = (set, get) => ({
     }),
 
   getSavedPanelState: () => get().savedPanelState,
+
+  reset: () =>
+    set({
+      isFocusMode: false,
+      savedPanelState: null,
+    }),
 });
 
 export const useFocusStore = create<FocusState>(createFocusStore);

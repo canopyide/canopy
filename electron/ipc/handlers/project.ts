@@ -254,7 +254,46 @@ export function registerProjectHandlers(deps: HandlerDependencies): () => void {
       throw new Error(`Project not found: ${projectId}`);
     }
 
-    // Set as current project (updates lastOpened)
+    console.log("[ProjectSwitch] Starting project switch to:", project.name);
+
+    // Step 1: Reset all main process services (cleanup previous project)
+    // Import singleton service instances directly
+    const { logBuffer } = await import("../../services/LogBuffer.js");
+    const { getPtyManager } = await import("../../services/PtyManager.js");
+    const ptyManager = getPtyManager();
+
+    console.log("[ProjectSwitch] Cleaning up previous project state...");
+
+    // Reset services in parallel (they're independent)
+    // Use allSettled to ensure all cleanup runs even if some services fail
+    const cleanupResults = await Promise.allSettled([
+      // Async cleanup services
+      deps.worktreeService?.onProjectSwitch() ?? Promise.resolve(),
+      deps.devServerManager?.onProjectSwitch() ?? Promise.resolve(),
+
+      // Sync cleanup services (wrapped in Promise.resolve for parallel execution)
+      Promise.resolve(ptyManager.onProjectSwitch()),
+      Promise.resolve(logBuffer.onProjectSwitch()),
+      Promise.resolve(deps.eventBuffer?.onProjectSwitch()),
+    ]);
+
+    // Log any cleanup failures but continue with project switch
+    cleanupResults.forEach((result, index) => {
+      if (result.status === "rejected") {
+        const serviceNames = [
+          "WorktreeService",
+          "DevServerManager",
+          "PtyManager",
+          "LogBuffer",
+          "EventBuffer",
+        ];
+        console.error(`[ProjectSwitch] ${serviceNames[index]} cleanup failed:`, result.reason);
+      }
+    });
+
+    console.log("[ProjectSwitch] Previous project state cleaned up");
+
+    // Step 2: Set as current project (updates lastOpened)
     await projectStore.setCurrentProject(projectId);
 
     // Get updated project with new lastOpened timestamp
@@ -263,18 +302,21 @@ export function registerProjectHandlers(deps: HandlerDependencies): () => void {
       throw new Error(`Project not found after update: ${projectId}`);
     }
 
-    // Load worktrees for this project
+    // Step 3: Load worktrees for new project
     if (worktreeService) {
       try {
+        console.log("[ProjectSwitch] Loading worktrees for new project...");
         await worktreeService.loadProject(project.path);
+        console.log("[ProjectSwitch] Worktrees loaded successfully");
       } catch (err) {
         console.error("Failed to load worktrees for project:", err);
       }
     }
 
-    // Notify renderer with updated project
+    // Step 4: Notify renderer with updated project (triggers renderer-side hydration)
     sendToRenderer(mainWindow, CHANNELS.PROJECT_ON_SWITCH, updatedProject);
 
+    console.log("[ProjectSwitch] Project switch complete");
     return updatedProject;
   };
   ipcMain.handle(CHANNELS.PROJECT_SWITCH, handleProjectSwitch);

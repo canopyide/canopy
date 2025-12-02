@@ -8,6 +8,7 @@
 import { create, type StateCreator } from "zustand";
 import type { Project } from "@shared/types";
 import { projectClient } from "@/clients";
+import { resetAllStoresForProjectSwitch } from "./resetStores";
 
 interface ProjectState {
   projects: Project[];
@@ -82,15 +83,22 @@ const createProjectStore: StateCreator<ProjectState> = (set, get) => ({
   switchProject: async (projectId) => {
     set({ isLoading: true, error: null });
     try {
+      // Step 1: Reset all renderer stores (clears terminals, worktrees, logs, etc.)
+      console.log("[ProjectSwitch] Resetting renderer stores...");
+      await resetAllStoresForProjectSwitch();
+
+      // Step 2: Tell main process to switch project (this triggers main process service resets)
+      console.log("[ProjectSwitch] Switching project in main process...");
       const project = await projectClient.switch(projectId);
       set({ currentProject: project, isLoading: false });
 
       // Refresh the projects list to update 'lastOpened' timestamps
       await get().loadProjects();
 
-      // Force a full window reload to ensure clean state for the new project
-      // This mimics the "fresh start" behavior until we implement full state hydration
-      window.location.reload();
+      // Step 3: Trigger re-hydration by emitting a custom event
+      // The App component will listen for this and call hydrateAppState
+      console.log("[ProjectSwitch] Triggering state re-hydration...");
+      window.dispatchEvent(new CustomEvent("project-switched"));
     } catch (error) {
       console.error("Failed to switch project:", error);
       set({ error: "Failed to switch project", isLoading: false });

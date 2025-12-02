@@ -1,4 +1,5 @@
 import { useCallback, useEffect, useRef, useState } from "react";
+import { hydrateAppState } from "./utils/stateHydration";
 import "@xterm/xterm/css/xterm.css";
 import { FolderOpen } from "lucide-react";
 import {
@@ -377,59 +378,13 @@ function App() {
         const hasSeenWelcome = appState.hasSeenWelcome ?? false;
         setCurrentView(hasSeenWelcome ? "grid" : "welcome");
 
-        // Restore terminals - main process handles CWD validation and falls back
-        // to project root if the persisted cwd is invalid/deleted
-        if (appState.terminals && appState.terminals.length > 0) {
-          // Get current project to use as fallback for invalid cwd paths
-          // Handle errors gracefully - if no project available, persisted cwd will be used
-          let projectRoot: string | undefined;
-          try {
-            const currentProject = await projectClient.getCurrent();
-            projectRoot = currentProject?.path;
-          } catch (error) {
-            console.warn("Failed to get current project for terminal restoration:", error);
-            // Continue with undefined projectRoot - main process will handle fallback
-          }
-
-          for (const terminal of appState.terminals) {
-            try {
-              // Skip the default terminal if it exists (it's created automatically)
-              if (terminal.id === "default") continue;
-
-              // Use persisted cwd, falling back to project root if empty
-              // Main process will validate and handle invalid paths
-              const cwd = terminal.cwd || projectRoot || "";
-
-              await addTerminal({
-                type: terminal.type,
-                title: terminal.title,
-                cwd,
-                worktreeId: terminal.worktreeId,
-                // Force all terminals to the grid on startup so they are immediately visible
-                location: "grid",
-                command: terminal.command, // Restore agent command for re-launching CLI
-              });
-            } catch (error) {
-              console.warn(`Failed to restore terminal ${terminal.id}:`, error);
-              // Continue restoring other terminals
-            }
-          }
-        }
-
-        // Restore active worktree
-        if (appState.activeWorktreeId) {
-          setActiveWorktree(appState.activeWorktreeId);
-        }
-
-        // Load recipes
-        await loadRecipes();
-
-        // Handle developer mode auto-open diagnostics
-        if (appState.developerMode?.enabled && appState.developerMode.autoOpenDiagnostics) {
-          // Open diagnostics dock, optionally switching to events tab
-          const tab = appState.developerMode.focusEventsTab ? "events" : undefined;
-          openDiagnosticsDock(tab);
-        }
+        // Hydrate app state (restore terminals, worktrees, recipes, etc.)
+        await hydrateAppState({
+          addTerminal,
+          setActiveWorktree,
+          loadRecipes,
+          openDiagnosticsDock,
+        });
       } catch (error) {
         console.error("Failed to restore app state:", error);
       } finally {
@@ -438,6 +393,43 @@ function App() {
     };
 
     restoreState();
+  }, [addTerminal, setActiveWorktree, loadRecipes, openDiagnosticsDock]);
+
+  // Listen for project-switched events and re-hydrate state
+  useEffect(() => {
+    if (!isElectronAvailable()) {
+      return;
+    }
+
+    const handleProjectSwitch = async () => {
+      console.log("[App] Received project-switched event, re-hydrating state...");
+      try {
+        await hydrateAppState({
+          addTerminal,
+          setActiveWorktree,
+          loadRecipes,
+          openDiagnosticsDock,
+        });
+        console.log("[App] State re-hydration complete");
+      } catch (error) {
+        console.error("[App] Failed to re-hydrate state after project switch:", error);
+      }
+    };
+
+    // Listen for custom event from projectStore.switchProject
+    window.addEventListener("project-switched", handleProjectSwitch);
+
+    // Also listen for IPC PROJECT_ON_SWITCH event (for menu-initiated switches)
+    const cleanup = projectClient.onSwitch(() => {
+      console.log("[App] Received PROJECT_ON_SWITCH from main process, re-hydrating...");
+      // Dispatch the same custom event to reuse hydration logic
+      window.dispatchEvent(new CustomEvent("project-switched"));
+    });
+
+    return () => {
+      window.removeEventListener("project-switched", handleProjectSwitch);
+      cleanup();
+    };
   }, [addTerminal, setActiveWorktree, loadRecipes, openDiagnosticsDock]);
 
   // Handle agent launcher from toolbar

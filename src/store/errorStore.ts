@@ -89,6 +89,8 @@ interface ErrorStore {
   getTerminalErrors: (terminalId: string) => AppError[];
   /** Get active (non-dismissed) errors */
   getActiveErrors: () => AppError[];
+  /** Reset store to initial state for project switching */
+  reset: () => void;
 }
 
 /** Maximum number of errors to keep in store */
@@ -188,6 +190,13 @@ const createErrorStore: StateCreator<ErrorStore> = (set, get) => ({
   getActiveErrors: () => {
     return get().errors.filter((e) => !e.dismissed);
   },
+
+  reset: () =>
+    set({
+      errors: [],
+      isPanelOpen: false,
+      lastErrorTime: 0,
+    }),
 });
 
 export const useErrorStore = create<ErrorStore>()(createErrorStore);

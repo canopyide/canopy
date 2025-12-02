@@ -337,6 +337,15 @@ export class EventBuffer {
   }
 
   /**
+   * Handle project switch - clear all events for the new project.
+   * This ensures events from the previous project don't appear in the new project.
+   */
+  onProjectSwitch(): void {
+    console.log("Handling project switch in EventBuffer - clearing events");
+    this.clear();
+  }
+
+  /**
    * Get the current buffer size.
    */
   size(): number {
