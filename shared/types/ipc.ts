@@ -19,7 +19,6 @@ import type {
   RunCommand,
   GitStatus,
 } from "./domain.js";
-import type { EventContext, RunMetadata } from "./events.js";
 import type { TerminalActivityPayload } from "./terminal.js";
 import type {
   AgentSettings,
@@ -491,7 +490,6 @@ export type EventCategory =
   | "system" // sys:* - core system state (worktrees, PR detection)
   | "agent" // agent:* - agent lifecycle and output
   | "task" // task:* - task orchestration
-  | "run" // run:* - run lifecycle
   | "server" // server:* - dev server state
   | "file" // file:* - file operations (copy-tree, open)
   | "ui" // ui:* - UI notifications/state
@@ -1310,54 +1308,6 @@ export interface IpcInvokeMap {
   };
 
   // ============================================
-  // Run orchestration channels
-  // ============================================
-  "run:start": {
-    args: [payload: { name: string; context?: EventContext; description?: string }];
-    result: string;
-  };
-  "run:update-progress": {
-    args: [payload: { runId: string; progress: number; message?: string }];
-    result: void;
-  };
-  "run:pause": {
-    args: [payload: { runId: string; reason?: string }];
-    result: void;
-  };
-  "run:resume": {
-    args: [runId: string];
-    result: void;
-  };
-  "run:complete": {
-    args: [runId: string];
-    result: void;
-  };
-  "run:fail": {
-    args: [payload: { runId: string; error: string }];
-    result: void;
-  };
-  "run:cancel": {
-    args: [payload: { runId: string; reason?: string }];
-    result: void;
-  };
-  "run:get": {
-    args: [runId: string];
-    result: RunMetadata | undefined;
-  };
-  "run:get-all": {
-    args: [];
-    result: RunMetadata[];
-  };
-  "run:get-active": {
-    args: [];
-    result: RunMetadata[];
-  };
-  "run:clear-finished": {
-    args: [olderThan?: number];
-    result: number;
-  };
-
-  // ============================================
   // Agent settings channels
   // ============================================
   "agent-settings:get": {
@@ -1482,11 +1432,6 @@ export interface IpcEventMap {
   // Project events
   // ============================================
   "project:on-switch": Project;
-
-  // ============================================
-  // Run orchestration events
-  // ============================================
-  "run:event": { type: string; payload: unknown };
 }
 
 /**
@@ -1640,20 +1585,6 @@ export interface ElectronAPI {
     setEnabled(enabled: boolean): Promise<void>;
     validateKey(apiKey: string): Promise<boolean>;
     generateProjectIdentity(projectPath: string): Promise<ProjectIdentity | null>;
-  };
-  run: {
-    start(name: string, context?: EventContext, description?: string): Promise<string>;
-    updateProgress(runId: string, progress: number, message?: string): Promise<void>;
-    pause(runId: string, reason?: string): Promise<void>;
-    resume(runId: string): Promise<void>;
-    complete(runId: string): Promise<void>;
-    fail(runId: string, error: string): Promise<void>;
-    cancel(runId: string, reason?: string): Promise<void>;
-    get(runId: string): Promise<RunMetadata | undefined>;
-    getAll(): Promise<RunMetadata[]>;
-    getActive(): Promise<RunMetadata[]>;
-    clearFinished(olderThan?: number): Promise<number>;
-    onEvent(callback: (event: { type: string; payload: unknown }) => void): () => void;
   };
   agentSettings: {
     get(): Promise<AgentSettings>;

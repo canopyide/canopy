@@ -486,11 +486,10 @@ describe("EventBuffer", () => {
         agentId: "agent-1",
         timestamp: Date.now(),
       });
-      events.emit("run:started", {
-        runId: "run-1",
-        name: "test run",
+      events.emit("task:state-changed", {
         taskId: "task-1",
-        agentId: "agent-1",
+        state: "running",
+        previousState: "queued",
         timestamp: Date.now(),
       });
     });

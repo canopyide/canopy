@@ -5,13 +5,6 @@ import type {
   AgentState,
   TaskState,
   TerminalType,
-  RunStartedPayload,
-  RunProgressPayload,
-  RunCompletedPayload,
-  RunFailedPayload,
-  RunCancelledPayload,
-  RunPausedPayload,
-  RunResumedPayload,
   EventCategory,
 } from "../types/index.js";
 import type { EventContext } from "../../shared/types/events.js";
@@ -295,50 +288,6 @@ export const EVENT_META: Record<keyof CanopyEventMap, EventMetadata> = {
     requiresTimestamp: true,
     description: "Task failed",
   },
-
-  // Run events
-  "run:started": {
-    category: "run",
-    requiresContext: true,
-    requiresTimestamp: true,
-    description: "Multi-step run workflow started",
-  },
-  "run:progress": {
-    category: "run",
-    requiresContext: true,
-    requiresTimestamp: true,
-    description: "Run progress updated",
-  },
-  "run:completed": {
-    category: "run",
-    requiresContext: true,
-    requiresTimestamp: true,
-    description: "Run completed successfully",
-  },
-  "run:failed": {
-    category: "run",
-    requiresContext: true,
-    requiresTimestamp: true,
-    description: "Run failed with error",
-  },
-  "run:cancelled": {
-    category: "run",
-    requiresContext: true,
-    requiresTimestamp: true,
-    description: "Run cancelled by user",
-  },
-  "run:paused": {
-    category: "run",
-    requiresContext: true,
-    requiresTimestamp: true,
-    description: "Run paused (waiting for input)",
-  },
-  "run:resumed": {
-    category: "run",
-    requiresContext: true,
-    requiresTimestamp: true,
-    description: "Paused run resumed",
-  },
 };
 
 /**
@@ -385,8 +334,6 @@ export type SystemEventType = Extract<keyof CanopyEventMap, `sys:${string}`>;
 export type AgentEventType = Extract<keyof CanopyEventMap, `agent:${string}`>;
 /** Union of all server event types */
 export type ServerEventType = Extract<keyof CanopyEventMap, `server:${string}`>;
-/** Union of all run event types */
-export type RunEventType = Extract<keyof CanopyEventMap, `run:${string}`>;
 /** Union of all task event types */
 export type TaskEventType = Extract<keyof CanopyEventMap, `task:${string}`>;
 /** Union of all file event types */
@@ -724,49 +671,6 @@ export type CanopyEventMap = {
     worktreeId?: string;
     error: string;
   }>;
-
-  // ============================================================================
-  // Run Events (Multi-agent orchestration workflows)
-  // ============================================================================
-
-  /**
-   * Emitted when a new run (multi-step workflow) starts.
-   * A "run" groups related agent/terminal operations into a cohesive workflow.
-   * Example: "work on issue #42" spawns agents, injects context, runs commands.
-   */
-  "run:started": RunStartedPayload;
-
-  /**
-   * Emitted to report run progress.
-   * Use this to track completion percentage and current step.
-   */
-  "run:progress": RunProgressPayload;
-
-  /**
-   * Emitted when a run completes successfully.
-   * Includes duration for performance tracking.
-   */
-  "run:completed": RunCompletedPayload;
-
-  /**
-   * Emitted when a run encounters an unrecoverable error.
-   */
-  "run:failed": RunFailedPayload;
-
-  /**
-   * Emitted when a run is cancelled by user action.
-   */
-  "run:cancelled": RunCancelledPayload;
-
-  /**
-   * Emitted when a run is paused (waiting for input).
-   */
-  "run:paused": RunPausedPayload;
-
-  /**
-   * Emitted when a paused run is resumed.
-   */
-  "run:resumed": RunResumedPayload;
 };
 
 // 3. Create Bus
@@ -811,13 +715,6 @@ export const ALL_EVENT_TYPES: Array<keyof CanopyEventMap> = [
   "task:state-changed",
   "task:completed",
   "task:failed",
-  "run:started",
-  "run:progress",
-  "run:completed",
-  "run:failed",
-  "run:cancelled",
-  "run:paused",
-  "run:resumed",
 ];
 
 class TypedEventBus {

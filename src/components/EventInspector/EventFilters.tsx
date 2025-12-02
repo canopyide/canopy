@@ -14,7 +14,6 @@ const ALL_CATEGORIES: EventCategory[] = [
   "system",
   "agent",
   "task",
-  "run",
   "server",
   "file",
   "ui",
@@ -27,7 +26,6 @@ const CATEGORY_CONFIG: Record<EventCategory, { label: string; color: string }> =
   system: { label: "System", color: "bg-blue-500/20 text-blue-400 border-blue-500/30" },
   agent: { label: "Agent", color: "bg-purple-500/20 text-purple-400 border-purple-500/30" },
   task: { label: "Task", color: "bg-green-500/20 text-green-400 border-green-500/30" },
-  run: { label: "Run", color: "bg-yellow-500/20 text-yellow-400 border-yellow-500/30" },
   server: { label: "Server", color: "bg-orange-500/20 text-orange-400 border-orange-500/30" },
   file: { label: "File", color: "bg-pink-500/20 text-pink-400 border-pink-500/30" },
   ui: { label: "UI", color: "bg-indigo-500/20 text-indigo-400 border-indigo-500/30" },
@@ -92,7 +90,6 @@ export function EventFilters({ events, filters, onFiltersChange, className }: Ev
       system: [],
       agent: [],
       task: [],
-      run: [],
       devserver: [],
       watcher: [],
       file: [],
@@ -104,7 +101,6 @@ export function EventFilters({ events, filters, onFiltersChange, className }: Ev
       if (type.startsWith("sys:")) groups.system.push(type);
       else if (type.startsWith("agent:")) groups.agent.push(type);
       else if (type.startsWith("task:")) groups.task.push(type);
-      else if (type.startsWith("run:")) groups.run.push(type);
       else if (type.startsWith("server:")) groups.devserver.push(type);
       else if (type.startsWith("watcher:")) groups.watcher.push(type);
       else if (type.startsWith("file:")) groups.file.push(type);

@@ -148,20 +148,6 @@ export const CHANNELS = {
   AI_VALIDATE_KEY: "ai:validate-key",
   AI_GENERATE_PROJECT_IDENTITY: "ai:generate-project-identity",
 
-  // Run orchestration channels
-  RUN_START: "run:start",
-  RUN_UPDATE_PROGRESS: "run:update-progress",
-  RUN_PAUSE: "run:pause",
-  RUN_RESUME: "run:resume",
-  RUN_COMPLETE: "run:complete",
-  RUN_FAIL: "run:fail",
-  RUN_CANCEL: "run:cancel",
-  RUN_GET: "run:get",
-  RUN_GET_ALL: "run:get-all",
-  RUN_GET_ACTIVE: "run:get-active",
-  RUN_CLEAR_FINISHED: "run:clear-finished",
-  RUN_EVENT: "run:event",
-
   // Agent settings channels
   AGENT_SETTINGS_GET: "agent-settings:get",
   AGENT_SETTINGS_SET: "agent-settings:set",

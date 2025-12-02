@@ -205,22 +205,8 @@ export {
   generateCodexFlags,
 } from "./agentSettings.js";
 
-// Event types - run orchestration and event context
-export type {
-  // Event context for correlation
-  EventContext,
-  // Run state and metadata
-  RunState,
-  RunMetadata,
-  // Run event payloads
-  RunStartedPayload,
-  RunProgressPayload,
-  RunCompletedPayload,
-  RunFailedPayload,
-  RunCancelledPayload,
-  RunPausedPayload,
-  RunResumedPayload,
-} from "./events.js";
+// Event types - event context for correlation
+export type { EventContext } from "./events.js";
 
 // Terminal activity types - semantic activity detection
 export type {
