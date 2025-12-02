@@ -17,7 +17,7 @@ import { useShallow } from "zustand/react/shallow";
 import { cn } from "@/lib/utils";
 import { useTerminalStore } from "@/store";
 import { DockedTerminalItem } from "./DockedTerminalItem";
-import { TrashBin } from "./TrashBin";
+import { TrashContainer } from "./TrashContainer";
 import { getTerminalDragData, isTerminalDrag, calculateDropIndex } from "@/utils/dragDrop";
 
 export function TerminalDock() {
@@ -42,11 +42,15 @@ export function TerminalDock() {
   const dockRef = useRef<HTMLDivElement>(null);
 
   // Get trashed terminal info paired with terminal instances
-  // Use flatMap to avoid type assertion
-  const trashedItems = Array.from(trashedTerminals.values()).flatMap((trashed) => {
-    const terminal = terminals.find((t) => t.id === trashed.id);
-    return terminal ? [{ terminal, trashedInfo: trashed }] : [];
-  });
+  const trashedItems = Array.from(trashedTerminals.values())
+    .map((trashed) => ({
+      terminal: terminals.find((t) => t.id === trashed.id),
+      trashedInfo: trashed,
+    }))
+    .filter((item) => item.terminal !== undefined) as {
+    terminal: (typeof terminals)[0];
+    trashedInfo: typeof trashedTerminals extends Map<string, infer V> ? V : never;
+  }[];
 
   // dockTerminals are now guaranteed to be only docked (not trashed) since
   // trashed terminals have location="trash" instead of location="dock"
@@ -177,15 +181,13 @@ export function TerminalDock() {
         </>
       )}
 
-      {/* Trash bin (right aligned) */}
-      {trashedItems.length > 0 && (
-        <>
-          {activeDockTerminals.length > 0 && (
-            <div className="w-px h-5 bg-canopy-border mx-2 shrink-0" />
-          )}
-          <TrashBin items={trashedItems} />
-        </>
+      {/* Separator between sections */}
+      {activeDockTerminals.length > 0 && trashedItems.length > 0 && (
+        <div className="w-px h-5 bg-canopy-border mx-2 shrink-0" />
       )}
+
+      {/* Consolidated trash container */}
+      <TrashContainer trashedTerminals={trashedItems} />
     </div>
   );
 }

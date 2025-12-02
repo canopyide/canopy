@@ -52,6 +52,8 @@ const TYPE_TITLES: Record<TerminalType, string> = {
 export interface TrashedTerminal {
   id: string;
   expiresAt: number;
+  /** Original location ('dock' | 'grid') for restoration */
+  originalLocation: "dock" | "grid";
 }
 
 export interface TerminalRegistrySlice {
@@ -92,7 +94,7 @@ export interface TerminalRegistrySlice {
   /** Restore terminal from trash */
   restoreTerminal: (id: string) => void;
   /** Mark terminal as trashed (from IPC event) */
-  markAsTrashed: (id: string, expiresAt: number) => void;
+  markAsTrashed: (id: string, expiresAt: number, originalLocation: "dock" | "grid") => void;
   /** Mark terminal as restored (from IPC event) */
   markAsRestored: (id: string) => void;
   /** Check if terminal is in trash */
@@ -394,39 +396,27 @@ export const createTerminalRegistrySlice =
       const terminal = get().terminals.find((t) => t.id === id);
       if (!terminal) return;
 
-      // Optimistically calculate expiry (2 minutes) to match backend TTL.
-      // This prevents UI flicker/disappearance while waiting for IPC event.
-      const optimisticExpiresAt = Date.now() + 120000;
+      // Capture the current location BEFORE moving to trash (for restoration)
+      // Only 'dock' or 'grid' are valid original locations - treat undefined as 'grid'
+      const originalLocation: "dock" | "grid" = terminal.location === "dock" ? "dock" : "grid";
 
-      // Move terminal to trash location AND immediately populate trashedTerminals map
+      // Call IPC to trash on main process (which starts the countdown)
+      terminalClient.trash(id).catch((error) => {
+        console.error("Failed to trash terminal:", error);
+      });
+
+      // Move terminal to trash location and record original location
       set((state) => {
-        // Add to trashed map immediately (optimistic update)
-        const newTrashed = new Map(state.trashedTerminals);
-        newTrashed.set(id, { id, expiresAt: optimisticExpiresAt });
-
-        // Move terminal to trash location
         const newTerminals = state.terminals.map((t) =>
           t.id === id ? { ...t, location: "trash" as const } : t
         );
-
+        // Pre-populate trashedTerminals with the captured location
+        // The IPC event will update expiresAt when it arrives
+        const newTrashed = new Map(state.trashedTerminals);
+        // Use a placeholder expiresAt - will be updated when IPC event arrives
+        newTrashed.set(id, { id, expiresAt: Date.now() + 120000, originalLocation });
         persistTerminals(newTerminals);
         return { terminals: newTerminals, trashedTerminals: newTrashed };
-      });
-
-      // Call IPC to trash on main process (which starts the countdown)
-      // If this fails, rollback optimistic update
-      terminalClient.trash(id).catch((error) => {
-        console.error("Failed to trash terminal:", error);
-        // Rollback: remove from trash and return to grid
-        set((state) => {
-          const newTrashed = new Map(state.trashedTerminals);
-          newTrashed.delete(id);
-          const newTerminals = state.terminals.map((t) =>
-            t.id === id ? { ...t, location: "grid" as const } : t
-          );
-          persistTerminals(newTerminals);
-          return { terminals: newTerminals, trashedTerminals: newTrashed };
-        });
       });
 
       // Enable buffering for trashed (hidden) terminal to reduce IPC overhead
@@ -439,58 +429,67 @@ export const createTerminalRegistrySlice =
     },
 
     restoreTerminal: (id) => {
+      // Get the trashed info to find original location
+      const trashedInfo = get().trashedTerminals.get(id);
+      const restoreLocation = trashedInfo?.originalLocation ?? "grid";
+
       // Call IPC to restore on main process
-      // Only update UI if restore was successful
-      terminalClient
-        .restore(id)
-        .then((wasRestored) => {
-          // If restore failed (terminal not in trash or already expired), don't update UI
-          if (!wasRestored) {
-            console.warn(`Cannot restore terminal ${id}: not in trash or already expired`);
-            return;
-          }
+      terminalClient.restore(id).catch((error) => {
+        console.error("Failed to restore terminal:", error);
+      });
 
-          // Move terminal back to grid AND remove from trashedTerminals map
-          set((state) => {
-            // Remove from trashed map
-            const newTrashed = new Map(state.trashedTerminals);
-            newTrashed.delete(id);
+      // Move terminal back to its original location and remove from trash
+      set((state) => {
+        const newTerminals = state.terminals.map((t) =>
+          t.id === id ? { ...t, location: restoreLocation } : t
+        );
+        const newTrashed = new Map(state.trashedTerminals);
+        newTrashed.delete(id);
+        persistTerminals(newTerminals);
+        return { terminals: newTerminals, trashedTerminals: newTrashed };
+      });
 
-            // Move terminal to grid location
-            const newTerminals = state.terminals.map((t) =>
-              t.id === id ? { ...t, location: "grid" as const } : t
-            );
-
-            persistTerminals(newTerminals);
-            return { terminals: newTerminals, trashedTerminals: newTrashed };
-          });
-
-          // Disable buffering and flush when terminal returns to grid
-          terminalClient
-            .setBuffering(id, false)
-            .then(() => {
-              setTimeout(() => {
-                terminalClient.flush(id).catch((error) => {
-                  console.error("Failed to flush terminal buffer:", error);
-                });
-              }, 100);
-            })
-            .catch((error) => {
-              console.error("Failed to disable terminal buffering:", error);
-            });
-
-          // Mark as visible priority so renderer can reacquire GPU if needed
-          terminalInstanceService.applyRendererPolicy(id, TerminalRefreshTier.VISIBLE);
-        })
-        .catch((error) => {
-          console.error("Failed to restore terminal:", error);
+      // Handle buffering and GPU resources based on restore location
+      if (restoreLocation === "dock") {
+        // Keep buffering enabled for dock terminals
+        terminalClient.setBuffering(id, true).catch((error) => {
+          console.error("Failed to enable terminal buffering:", error);
         });
+        terminalInstanceService.applyRendererPolicy(id, TerminalRefreshTier.BACKGROUND);
+      } else {
+        // Disable buffering and flush when terminal returns to grid
+        terminalClient
+          .setBuffering(id, false)
+          .then(() => {
+            setTimeout(() => {
+              terminalClient.flush(id).catch((error) => {
+                console.error("Failed to flush terminal buffer:", error);
+              });
+            }, 100);
+          })
+          .catch((error) => {
+            console.error("Failed to disable terminal buffering:", error);
+          });
+        // Mark as visible priority so renderer can reacquire GPU if needed
+        terminalInstanceService.applyRendererPolicy(id, TerminalRefreshTier.VISIBLE);
+      }
     },
 
-    markAsTrashed: (id, expiresAt) => {
+    markAsTrashed: (id, expiresAt, originalLocation) => {
       set((state) => {
+        // Ignore stale trashed events if terminal was already restored
+        const terminal = state.terminals.find((t) => t.id === id);
+        if (terminal && terminal.location !== "trash") {
+          // Terminal already restored before this IPC event arrived, ignore
+          return state;
+        }
+
         const newTrashed = new Map(state.trashedTerminals);
-        newTrashed.set(id, { id, expiresAt });
+        // Preserve existing originalLocation if already set (from trashTerminal call),
+        // otherwise use the provided one
+        const existingTrashed = state.trashedTerminals.get(id);
+        const location = existingTrashed?.originalLocation ?? originalLocation;
+        newTrashed.set(id, { id, expiresAt, originalLocation: location });
         const newTerminals = state.terminals.map((t) =>
           t.id === id ? { ...t, location: "trash" as const } : t
         );
@@ -506,30 +505,50 @@ export const createTerminalRegistrySlice =
     },
 
     markAsRestored: (id) => {
+      // Get the terminal to check its current location (in case restoreTerminal already moved it)
+      const terminal = get().terminals.find((t) => t.id === id);
+
+      // If terminal is no longer in trash, respect its current location (set by restoreTerminal)
+      // Otherwise, fall back to originalLocation from trash metadata
+      const trashedInfo = get().trashedTerminals.get(id);
+      const restoreLocation =
+        terminal && terminal.location !== "trash"
+          ? terminal.location
+          : (trashedInfo?.originalLocation ?? "grid");
+
       set((state) => {
         const newTrashed = new Map(state.trashedTerminals);
         newTrashed.delete(id);
         const newTerminals = state.terminals.map((t) =>
-          t.id === id ? { ...t, location: "grid" as const } : t
+          t.id === id ? { ...t, location: restoreLocation } : t
         );
         persistTerminals(newTerminals);
         return { trashedTerminals: newTrashed, terminals: newTerminals };
       });
 
-      // Apply same side effects as restoreTerminal for consistency
-      terminalClient
-        .setBuffering(id, false)
-        .then(() => {
-          setTimeout(() => {
-            terminalClient.flush(id).catch((error) => {
-              console.error("Failed to flush terminal buffer:", error);
-            });
-          }, 100);
-        })
-        .catch((error) => {
-          console.error("Failed to disable terminal buffering:", error);
+      // Apply side effects based on restore location
+      if (restoreLocation === "dock") {
+        // Keep buffering enabled for dock terminals
+        terminalClient.setBuffering(id, true).catch((error) => {
+          console.error("Failed to enable terminal buffering:", error);
         });
-      terminalInstanceService.applyRendererPolicy(id, TerminalRefreshTier.VISIBLE);
+        terminalInstanceService.applyRendererPolicy(id, TerminalRefreshTier.BACKGROUND);
+      } else {
+        // Disable buffering and flush when terminal returns to grid
+        terminalClient
+          .setBuffering(id, false)
+          .then(() => {
+            setTimeout(() => {
+              terminalClient.flush(id).catch((error) => {
+                console.error("Failed to flush terminal buffer:", error);
+              });
+            }, 100);
+          })
+          .catch((error) => {
+            console.error("Failed to disable terminal buffering:", error);
+          });
+        terminalInstanceService.applyRendererPolicy(id, TerminalRefreshTier.VISIBLE);
+      }
     },
 
     isInTrash: (id) => {
