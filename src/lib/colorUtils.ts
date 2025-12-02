@@ -1,6 +1,8 @@
 /**
- * Color utility functions for safe gradient rendering
+ * Color utility functions for safe gradient rendering and brand colors
  */
+
+import type { TerminalType } from "@shared/types/domain";
 
 /**
  * Validates if a string is a safe hex color
@@ -8,6 +10,57 @@
  */
 function isValidHexColor(color: string): boolean {
   return /^#([0-9A-Fa-f]{3}|[0-9A-Fa-f]{4}|[0-9A-Fa-f]{6}|[0-9A-Fa-f]{8})$/.test(color);
+}
+
+/**
+ * Brand colors for AI agents
+ * - Claude (Anthropic): Official warm orange
+ * - Gemini (Google): Google Blue 500
+ * - OpenAI/Codex: Light gray (accessible on dark backgrounds, brand is monochrome)
+ */
+export const BRAND_COLORS = {
+  claude: "#CC785C",
+  gemini: "#4285F4",
+  codex: "#E5E5E5", // Light gray instead of white for better contrast
+} as const satisfies Record<Extract<TerminalType, "claude" | "gemini" | "codex">, string>;
+
+/**
+ * Element state for determining color variant
+ */
+export type ElementState = "focused" | "unfocused" | "hover";
+
+/**
+ * Returns the appropriate Tailwind text color class for a given agent type and state.
+ * Used for terminal icons in headers and toolbar launcher buttons.
+ *
+ * @param type - The terminal/agent type
+ * @param state - The element state (focused, unfocused, or hover)
+ * @returns A Tailwind class string for text color
+ */
+export function getAgentBrandColor(type: TerminalType, state: ElementState): string {
+  // Unfocused state is always uniformly dimmed
+  if (state === "unfocused") return "text-canopy-text/50";
+
+  // Build class using BRAND_COLORS constants
+  switch (type) {
+    case "claude":
+      return state === "hover"
+        ? `hover:text-[${BRAND_COLORS.claude}] focus-visible:text-[${BRAND_COLORS.claude}]`
+        : `text-[${BRAND_COLORS.claude}]`;
+    case "gemini":
+      return state === "hover"
+        ? `hover:text-[${BRAND_COLORS.gemini}] focus-visible:text-[${BRAND_COLORS.gemini}]`
+        : `text-[${BRAND_COLORS.gemini}]`;
+    case "codex":
+      return state === "hover"
+        ? `hover:text-[${BRAND_COLORS.codex}] focus-visible:text-[${BRAND_COLORS.codex}]`
+        : `text-[${BRAND_COLORS.codex}]`;
+    default:
+      // Shell and Custom types fallback to app accent color
+      return state === "hover"
+        ? "hover:text-canopy-accent focus-visible:text-canopy-accent"
+        : "text-canopy-accent";
+  }
 }
 
 /**

@@ -20,6 +20,7 @@ import { useShallow } from "zustand/react/shallow";
 import { Terminal, Command, X, Maximize2, Minimize2, Copy, ArrowDownToLine } from "lucide-react";
 import { ClaudeIcon, GeminiIcon, CodexIcon } from "@/components/icons";
 import { cn } from "@/lib/utils";
+import { getAgentBrandColor } from "@/lib/colorUtils";
 import { XtermAdapter } from "./XtermAdapter";
 import { ArtifactOverlay } from "./ArtifactOverlay";
 import { StateBadge } from "./StateBadge";
@@ -361,7 +362,7 @@ export function TerminalPane({
           <span
             className={cn(
               "shrink-0 transition-colors",
-              isFocused ? "text-canopy-accent" : "text-canopy-text/50"
+              getAgentBrandColor(type, isFocused ? "focused" : "unfocused")
             )}
           >
             {getTerminalIcon(type)}
