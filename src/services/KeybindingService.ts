@@ -64,6 +64,20 @@ const DEFAULT_KEYBINDINGS: KeybindingConfig[] = [
     priority: 0,
     description: "Toggle maximize terminal",
   },
+  {
+    actionId: "terminal.moveLeft",
+    combo: "Ctrl+Shift+ArrowLeft",
+    scope: "global",
+    priority: 0,
+    description: "Move terminal left in grid",
+  },
+  {
+    actionId: "terminal.moveRight",
+    combo: "Ctrl+Shift+ArrowRight",
+    scope: "global",
+    priority: 0,
+    description: "Move terminal right in grid",
+  },
 
   // Agent launchers
   {

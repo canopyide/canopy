@@ -148,6 +148,21 @@ export const useTerminalStore = create<TerminalGridState>()((set, get, api) => {
       // Set focus to the restored terminal
       set({ focusedId: id });
     },
+
+    // Override moveTerminalToPosition to also handle focus
+    moveTerminalToPosition: (id: string, toIndex: number, location: "grid" | "dock") => {
+      const state = get();
+      registrySlice.moveTerminalToPosition(id, toIndex, location);
+
+      // If moving to grid, set focus to the moved terminal
+      if (location === "grid") {
+        set({ focusedId: id });
+      } else if (state.focusedId === id) {
+        // If moving to dock and terminal was focused, clear focus
+        const gridTerminals = state.terminals.filter((t) => t.id !== id && t.location === "grid");
+        set({ focusedId: gridTerminals[0]?.id ?? null });
+      }
+    },
   };
 });
 

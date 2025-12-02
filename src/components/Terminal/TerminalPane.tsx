@@ -85,6 +85,10 @@ export interface TerminalPaneProps {
   onTitleChange?: (newTitle: string) => void;
   /** Called when minimize to dock button is clicked */
   onMinimize?: () => void;
+  /** Whether this terminal is currently being dragged */
+  isDragging?: boolean;
+  /** Called when drag starts on the header */
+  onDragStart?: (e: React.DragEvent) => void;
 }
 
 /**
@@ -126,6 +130,8 @@ export function TerminalPane({
   onToggleMaximize,
   onTitleChange,
   onMinimize,
+  isDragging,
+  onDragStart,
 }: TerminalPaneProps) {
   const [isExited, setIsExited] = useState(false);
   const [exitCode, setExitCode] = useState<number | null>(null);
@@ -318,6 +324,9 @@ export function TerminalPane({
     return getTerminalRefreshTier(terminal, isFocused);
   }, [id, isFocused, getTerminal]);
 
+  // Determine if dragging is allowed (not maximized and not in trash)
+  const canDrag = !isMaximized && !!onDragStart;
+
   return (
     <div
       ref={containerRef}
@@ -325,7 +334,8 @@ export function TerminalPane({
       className={cn(
         "flex flex-col h-full border border-canopy-border/50 group", // Tiling style - full border for all edges
         isFocused ? "border-canopy-accent/20" : "border-canopy-border/30",
-        isExited && "opacity-75 grayscale"
+        isExited && "opacity-75 grayscale",
+        isDragging && "opacity-50 ring-2 ring-canopy-accent"
       )}
       onClick={onFocus}
       onFocus={onFocus}
@@ -343,8 +353,9 @@ export function TerminalPane({
                 ? `Codex agent: ${title}`
                 : `${type} session: ${title}`
       }
+      aria-grabbed={isDragging || undefined}
     >
-      {/* Header - Status bar style */}
+      {/* Header - Status bar style, draggable when allowed */}
       <div
         className={cn(
           "flex items-center justify-between px-3 h-8 shrink-0 font-mono text-sm transition-colors",
@@ -353,9 +364,13 @@ export function TerminalPane({
           // Inactive: Dark background + subtle bottom border
           isFocused
             ? "bg-canopy-accent/10 border-b border-canopy-accent/20"
-            : "bg-canopy-sidebar border-b border-canopy-border/30"
+            : "bg-canopy-sidebar border-b border-canopy-border/30",
+          // Drag cursor styles
+          canDrag && "cursor-grab active:cursor-grabbing"
         )}
         onDoubleClick={onToggleMaximize}
+        draggable={canDrag}
+        onDragStart={canDrag ? onDragStart : undefined}
       >
         <div className="flex items-center gap-2 min-w-0">
           <span

@@ -93,6 +93,11 @@ export interface TerminalRegistrySlice {
   markAsRestored: (id: string) => void;
   /** Check if terminal is in trash */
   isInTrash: (id: string) => boolean;
+
+  /** Reorder terminals within a location (grid or dock) */
+  reorderTerminals: (fromIndex: number, toIndex: number, location?: "grid" | "dock") => void;
+  /** Move a terminal to a specific position in a location */
+  moveTerminalToPosition: (id: string, toIndex: number, location: "grid" | "dock") => void;
 }
 
 /**
@@ -418,5 +423,122 @@ export const createTerminalRegistrySlice =
 
     isInTrash: (id) => {
       return get().trashedTerminals.has(id);
+    },
+
+    reorderTerminals: (fromIndex, toIndex, location = "grid") => {
+      if (fromIndex === toIndex) return;
+
+      set((state) => {
+        // Get terminals in the specified location
+        const terminalsInLocation = state.terminals.filter(
+          (t) => (t.location === location) || (location === "grid" && t.location === undefined)
+        );
+
+        // Validate indices
+        if (fromIndex < 0 || fromIndex >= terminalsInLocation.length) return state;
+        if (toIndex < 0 || toIndex > terminalsInLocation.length) return state;
+
+        // Get the terminal being moved
+        const terminalToMove = terminalsInLocation[fromIndex];
+        if (!terminalToMove) return state;
+
+        // Reorder within location
+        const reorderedInLocation = [...terminalsInLocation];
+        reorderedInLocation.splice(fromIndex, 1);
+        reorderedInLocation.splice(toIndex, 0, terminalToMove);
+
+        // Combine: grid terminals first, then dock terminals
+        let newTerminals: TerminalInstance[];
+        if (location === "grid") {
+          const dockTerminals = state.terminals.filter((t) => t.location === "dock");
+          newTerminals = [...reorderedInLocation, ...dockTerminals];
+        } else {
+          const gridTerminals = state.terminals.filter(
+            (t) => t.location === "grid" || t.location === undefined
+          );
+          newTerminals = [...gridTerminals, ...reorderedInLocation];
+        }
+
+        persistTerminals(newTerminals);
+        return { terminals: newTerminals };
+      });
+    },
+
+    moveTerminalToPosition: (id, toIndex, location) => {
+      set((state) => {
+        const terminal = state.terminals.find((t) => t.id === id);
+        if (!terminal) return state;
+
+        // Get terminals in the target location (excluding the terminal being moved)
+        const terminalsInTargetLocation = state.terminals.filter(
+          (t) =>
+            t.id !== id &&
+            ((t.location === location) || (location === "grid" && t.location === undefined))
+        );
+
+        // Clamp toIndex to valid range
+        const clampedIndex = Math.max(0, Math.min(toIndex, terminalsInTargetLocation.length));
+
+        // Get all other terminals (not the moved one and not in target location)
+        const otherTerminals = state.terminals.filter(
+          (t) =>
+            t.id !== id &&
+            !((t.location === location) || (location === "grid" && t.location === undefined))
+        );
+
+        // Update the terminal's location
+        const updatedTerminal: TerminalInstance = {
+          ...terminal,
+          location,
+        };
+
+        // Insert the terminal at the specified index in the target location
+        const reorderedTargetLocation = [...terminalsInTargetLocation];
+        reorderedTargetLocation.splice(clampedIndex, 0, updatedTerminal);
+
+        // Combine: grid terminals first, then dock terminals
+        let newTerminals: TerminalInstance[];
+        if (location === "grid") {
+          // Terminal moved to grid
+          const dockTerminals = otherTerminals.filter((t) => t.location === "dock");
+          newTerminals = [...reorderedTargetLocation, ...dockTerminals];
+        } else {
+          // Terminal moved to dock
+          const gridTerminals = otherTerminals.filter(
+            (t) => t.location === "grid" || t.location === undefined
+          );
+          newTerminals = [...gridTerminals, ...reorderedTargetLocation];
+        }
+
+        persistTerminals(newTerminals);
+        return { terminals: newTerminals };
+      });
+
+      // Handle buffering based on new location
+      if (location === "dock") {
+        // Enable buffering for docked (hidden) terminal
+        terminalClient.setBuffering(id, true).catch((error) => {
+          console.error("Failed to enable terminal buffering:", error);
+        });
+
+        // Release GPU resources for docked terminals
+        terminalInstanceService.applyRendererPolicy(id, TerminalRefreshTier.BACKGROUND);
+      } else {
+        // Disable buffering and flush when moving to grid
+        terminalClient
+          .setBuffering(id, false)
+          .then(() => {
+            setTimeout(() => {
+              terminalClient.flush(id).catch((error) => {
+                console.error("Failed to flush terminal buffer:", error);
+              });
+            }, 100);
+          })
+          .catch((error) => {
+            console.error("Failed to disable terminal buffering:", error);
+          });
+
+        terminalInstanceService.applyRendererPolicy(id, TerminalRefreshTier.VISIBLE);
+      }
     },
   });
