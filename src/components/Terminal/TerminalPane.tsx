@@ -29,7 +29,7 @@ import {
 } from "@/components/icons";
 import type { TerminalType } from "@/types";
 import { cn } from "@/lib/utils";
-import { getAgentBrandColor } from "@/lib/colorUtils";
+import { getBrandColorHex } from "@/lib/colorUtils";
 import { XtermAdapter } from "./XtermAdapter";
 import { ArtifactOverlay } from "./ArtifactOverlay";
 import { StateBadge } from "./StateBadge";
@@ -102,34 +102,45 @@ export interface TerminalPaneProps {
   onDragStart?: (e: React.DragEvent) => void;
 }
 
-/**
- * Get terminal icon based on type - Custom brand icons for AI agents and package managers
- */
-function getTerminalIcon(type: TerminalType, className?: string) {
-  const props = { className: cn("w-3.5 h-3.5", className), "aria-hidden": "true" as const };
+// Add new type declaration for props accepted by getTerminalIcon
+interface TerminalIconProps {
+  className?: string;
+  brandColor?: string; // Add brandColor prop to pass down
+}
+
+// Modify the local helper function `getTerminalIcon`
+function getTerminalIcon(type: TerminalType, props: TerminalIconProps) {
+  const finalProps = {
+    className: cn("w-3.5 h-3.5", props.className),
+    "aria-hidden": "true" as const,
+  };
+
+  // Only pass brandColor to custom icons that support it
+  const customIconProps = { ...finalProps, brandColor: props.brandColor };
+
   switch (type) {
-    // AI Agents
+    // AI Agents (support brandColor)
     case "claude":
-      return <ClaudeIcon {...props} />;
+      return <ClaudeIcon {...customIconProps} />;
     case "gemini":
-      return <GeminiIcon {...props} />;
+      return <GeminiIcon {...customIconProps} />;
     case "codex":
-      return <CodexIcon {...props} />;
-    // Package Managers
+      return <CodexIcon {...customIconProps} />;
+    // Package Managers (don't support brandColor explicitly, fall back to currentColor)
     case "npm":
-      return <NpmIcon {...props} />;
+      return <NpmIcon {...finalProps} />;
     case "yarn":
-      return <YarnIcon {...props} />;
+      return <YarnIcon {...finalProps} />;
     case "pnpm":
-      return <PnpmIcon {...props} />;
+      return <PnpmIcon {...finalProps} />;
     case "bun":
-      return <BunIcon {...props} />;
-    // Generic
+      return <BunIcon {...finalProps} />;
+    // Generic Lucide icons (don't support brandColor explicitly)
     case "custom":
-      return <Command {...props} />;
+      return <Command {...finalProps} />;
     case "shell":
     default:
-      return <Terminal {...props} />;
+      return <Terminal {...finalProps} />;
   }
 }
 
@@ -410,10 +421,10 @@ export function TerminalPane({
           <span
             className={cn(
               "shrink-0 transition-colors",
-              getAgentBrandColor(type, isFocused ? "focused" : "unfocused")
+              isFocused ? "text-canopy-text" : "text-canopy-text/50" // Base color based on focus
             )}
           >
-            {getTerminalIcon(type)}
+            {getTerminalIcon(type, { brandColor: isFocused ? getBrandColorHex(type) : undefined })}
           </span>
 
           {/* Title - Monospace and smaller */}

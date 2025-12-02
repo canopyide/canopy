@@ -13,7 +13,7 @@ import {
 } from "lucide-react";
 import { ClaudeIcon, GeminiIcon, CodexIcon } from "@/components/icons";
 import { cn } from "@/lib/utils";
-import { getProjectGradient, getAgentBrandColor } from "@/lib/colorUtils";
+import { getProjectGradient, getBrandColorHex } from "@/lib/colorUtils";
 import { BulkActionsMenu } from "@/components/Terminal";
 import { useProjectStore } from "@/store/projectStore";
 import { useTerminalStore } from "@/store/terminalStore";
@@ -115,14 +115,11 @@ export function Toolbar({
             variant="ghost"
             size="icon"
             onClick={() => onLaunchAgent("claude")}
-            className={cn(
-              "text-canopy-text hover:bg-canopy-border h-8 w-8 transition-colors",
-              getAgentBrandColor("claude", "hover")
-            )}
+            className="text-canopy-text hover:bg-canopy-border h-8 w-8 transition-colors hover:text-canopy-accent focus-visible:text-canopy-accent"
             title="Start Claude (Opus 4.5 for deep work)"
             aria-label="Start Claude Agent"
           >
-            <ClaudeIcon className="h-4 w-4" />
+            <ClaudeIcon className="h-4 w-4" brandColor={getBrandColorHex("claude")} />
           </Button>
         )}
         {shouldShowAgent("gemini") && (
@@ -130,14 +127,11 @@ export function Toolbar({
             variant="ghost"
             size="icon"
             onClick={() => onLaunchAgent("gemini")}
-            className={cn(
-              "text-canopy-text hover:bg-canopy-border h-8 w-8 transition-colors",
-              getAgentBrandColor("gemini", "hover")
-            )}
+            className="text-canopy-text hover:bg-canopy-border h-8 w-8 transition-colors hover:text-canopy-accent focus-visible:text-canopy-accent"
             title="Start Gemini (Auto-routing enabled)"
             aria-label="Start Gemini Agent"
           >
-            <GeminiIcon className="h-4 w-4" />
+            <GeminiIcon className="h-4 w-4" brandColor={getBrandColorHex("gemini")} />
           </Button>
         )}
         {shouldShowAgent("codex") && (
@@ -145,24 +139,18 @@ export function Toolbar({
             variant="ghost"
             size="icon"
             onClick={() => onLaunchAgent("codex")}
-            className={cn(
-              "text-canopy-text hover:bg-canopy-border h-8 w-8 transition-colors",
-              getAgentBrandColor("codex", "hover")
-            )}
+            className="text-canopy-text hover:bg-canopy-border h-8 w-8 transition-colors hover:text-canopy-accent focus-visible:text-canopy-accent"
             title="Start Codex (GPT-5.1 Max)"
             aria-label="Start Codex Agent"
           >
-            <CodexIcon className="h-4 w-4" />
+            <CodexIcon className="h-4 w-4" brandColor={getBrandColorHex("codex")} />
           </Button>
         )}
         <Button
           variant="ghost"
           size="icon"
           onClick={() => onLaunchAgent("shell")}
-          className={cn(
-            "text-canopy-text hover:bg-canopy-border h-8 w-8 transition-colors",
-            getAgentBrandColor("shell", "hover")
-          )}
+          className="text-canopy-text hover:bg-canopy-border h-8 w-8 transition-colors hover:text-canopy-accent focus-visible:text-canopy-accent"
           title="Open Shell"
           aria-label="Open Shell"
         >
