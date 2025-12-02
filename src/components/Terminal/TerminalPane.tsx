@@ -367,10 +367,10 @@ export function TerminalPane({
       data-terminal-id={id}
       className={cn(
         "flex flex-col h-full rounded overflow-hidden border transition-all duration-200 group",
-        "bg-[var(--color-surface)]",
+        "bg-[var(--color-surface)] shadow-md",
         // Subtle glow for focus, neutral borders
         isFocused
-          ? "border-zinc-700 shadow-[0_0_8px_rgba(255,255,255,0.06)]"
+          ? "border-zinc-700 shadow-lg shadow-black/40"
           : "border-zinc-800 hover:border-zinc-700",
         isExited && "opacity-75 grayscale",
         isDragging && "opacity-50 ring-2 ring-canopy-accent"
@@ -407,7 +407,7 @@ export function TerminalPane({
       {/* Header - Unified with terminal body (no border-b) */}
       <div
         className={cn(
-          "flex items-center justify-between px-3 h-8 shrink-0 font-mono text-sm transition-colors",
+          "flex items-center justify-between px-3 h-7 shrink-0 font-mono text-xs transition-colors",
           // Unified background that flows into terminal body
           isFocused ? "bg-[var(--color-surface-highlight)]" : "bg-[var(--color-surface)]",
           // Drag cursor styles
