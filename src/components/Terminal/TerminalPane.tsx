@@ -57,6 +57,8 @@ export interface TerminalPaneProps {
   onToggleMaximize?: () => void;
   onTitleChange?: (newTitle: string) => void;
   onMinimize?: () => void;
+  onRestore?: () => void;
+  location?: "grid" | "dock";
   isDragging?: boolean;
   onDragStart?: (e: React.DragEvent) => void;
 }
@@ -117,6 +119,8 @@ export function TerminalPane({
   onToggleMaximize,
   onTitleChange,
   onMinimize,
+  onRestore,
+  location = "grid",
   isDragging,
   onDragStart,
 }: TerminalPaneProps) {
@@ -451,7 +455,7 @@ export function TerminalPane({
               <Copy className="w-3 h-3" aria-hidden="true" />
             </button>
           )}
-          {onMinimize && !isMaximized && (
+          {location === "grid" && onMinimize && !isMaximized && (
             <button
               onClick={(e) => {
                 e.stopPropagation();
@@ -462,6 +466,19 @@ export function TerminalPane({
               aria-label="Minimize to dock"
             >
               <ArrowDownToLine className="w-3 h-3" aria-hidden="true" />
+            </button>
+          )}
+          {location === "dock" && onRestore && (
+            <button
+              onClick={(e) => {
+                e.stopPropagation();
+                onRestore();
+              }}
+              className="p-1.5 hover:bg-white/10 focus-visible:bg-white/10 focus-visible:outline focus-visible:outline-2 focus-visible:outline-canopy-accent text-canopy-text/60 hover:text-canopy-text transition-colors"
+              title="Restore to grid"
+              aria-label="Restore to grid"
+            >
+              <Maximize2 className="w-3 h-3" aria-hidden="true" />
             </button>
           )}
           {onToggleMaximize && (

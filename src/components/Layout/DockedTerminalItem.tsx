@@ -1,5 +1,5 @@
-import { useState, useCallback } from "react";
-import { Maximize2, X, Loader2, Terminal, Command } from "lucide-react";
+import { useState, useCallback, useEffect } from "react";
+import { Loader2, Terminal, Command } from "lucide-react";
 import {
   ClaudeIcon,
   GeminiIcon,
@@ -12,9 +12,13 @@ import {
 import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover";
 import { cn } from "@/lib/utils";
 import { useTerminalStore, type TerminalInstance } from "@/store";
-import { XtermAdapter } from "@/components/Terminal/XtermAdapter";
+import { TerminalPane } from "@/components/Terminal/TerminalPane";
+import { useContextInjection } from "@/hooks/useContextInjection";
 import type { AgentState, TerminalType } from "@/types";
+import { TerminalRefreshTier } from "@/types";
 import { setTerminalDragData } from "@/utils/dragDrop";
+import { terminalClient } from "@/clients";
+import { terminalInstanceService } from "@/services/TerminalInstanceService";
 
 interface DockedTerminalItemProps {
   terminal: TerminalInstance;
@@ -50,7 +54,6 @@ function getTerminalIcon(type: TerminalType, className?: string) {
   }
 }
 
-// Uses Digital Ecology palette: violet for working, emerald for success.
 function getStateIndicator(state?: AgentState) {
   if (!state || state === "idle") return null;
 
@@ -79,30 +82,70 @@ export function DockedTerminalItem({
   onDragEnd,
 }: DockedTerminalItemProps) {
   const [isOpen, setIsOpen] = useState(false);
+  const [isRestoring, setIsRestoring] = useState(false);
   const moveTerminalToGrid = useTerminalStore((s) => s.moveTerminalToGrid);
   const trashTerminal = useTerminalStore((s) => s.trashTerminal);
 
-  const handleRestore = useCallback(
-    (e: React.MouseEvent) => {
-      e.stopPropagation();
-      moveTerminalToGrid(terminal.id);
-      setIsOpen(false);
-    },
-    [moveTerminalToGrid, terminal.id]
-  );
+  const { inject, cancel, isInjecting, progress } = useContextInjection();
 
-  const handleClose = useCallback(
-    (e: React.MouseEvent) => {
-      e.stopPropagation();
-      trashTerminal(terminal.id);
-      setIsOpen(false);
-    },
-    [trashTerminal, terminal.id]
-  );
+  // Toggle buffering based on popover open state
+  useEffect(() => {
+    // Skip if terminal is being restored to avoid race with moveTerminalToGrid
+    if (isRestoring) return;
+
+    let cancelled = false;
+
+    const applyBufferingState = async () => {
+      try {
+        if (isOpen) {
+          // Popover opened - disable buffering and flush queued data
+          if (!cancelled) {
+            await terminalClient.setBuffering(terminal.id, false);
+            await terminalClient.flush(terminal.id);
+            terminalInstanceService.applyRendererPolicy(terminal.id, TerminalRefreshTier.VISIBLE);
+          }
+        } else {
+          // Popover closed - enable buffering for resource optimization
+          if (!cancelled) {
+            await terminalClient.setBuffering(terminal.id, true);
+            terminalInstanceService.applyRendererPolicy(
+              terminal.id,
+              TerminalRefreshTier.BACKGROUND
+            );
+          }
+        }
+      } catch (error) {
+        // Terminal may have been trashed/exited - ignore errors
+        console.warn(`Failed to apply buffering state for terminal ${terminal.id}:`, error);
+      }
+    };
+
+    applyBufferingState();
+
+    return () => {
+      cancelled = true;
+    };
+  }, [isOpen, terminal.id, isRestoring]);
+
+  const handleRestore = useCallback(() => {
+    setIsRestoring(true);
+    setIsOpen(false);
+    moveTerminalToGrid(terminal.id);
+  }, [moveTerminalToGrid, terminal.id]);
+
+  const handleClose = useCallback(() => {
+    trashTerminal(terminal.id);
+    setIsOpen(false);
+  }, [trashTerminal, terminal.id]);
 
   const handleOpenChange = useCallback((open: boolean) => {
     setIsOpen(open);
   }, []);
+
+  const handleInjectContext = useCallback(async () => {
+    if (!terminal.worktreeId) return;
+    await inject(terminal.worktreeId, terminal.id);
+  }, [inject, terminal.id, terminal.worktreeId]);
 
   const handleDragStart = useCallback(
     (e: React.DragEvent) => {
@@ -159,37 +202,40 @@ export function DockedTerminalItem({
           align="start"
           sideOffset={8}
         >
-          <div className="flex flex-col h-full">
-            <div className="h-9 flex items-center justify-between px-3 border-b border-canopy-border bg-canopy-bg shrink-0">
-              <div className="flex items-center gap-2">
-                {getTerminalIcon(terminal.type, "text-canopy-text/70")}
-                {getStateIndicator(terminal.agentState)}
-                <span className="font-mono text-xs text-canopy-text">{terminal.title}</span>
-              </div>
-
-              <div className="flex items-center gap-1">
-                <button
-                  onClick={handleRestore}
-                  className="p-1 hover:bg-canopy-accent/20 rounded transition-colors text-canopy-text/60 hover:text-canopy-text"
-                  title="Restore to grid"
-                >
-                  <Maximize2 className="w-3.5 h-3.5" aria-hidden="true" />
-                </button>
-
-                <button
-                  onClick={handleClose}
-                  className="p-1 hover:bg-red-500/20 rounded transition-colors text-canopy-text/60 hover:text-red-400"
-                  title="Close session"
-                >
-                  <X className="w-3.5 h-3.5" aria-hidden="true" />
-                </button>
-              </div>
-            </div>
-
-            <div className="flex-1 relative overflow-hidden min-h-0">
-              <XtermAdapter terminalId={terminal.id} className="absolute inset-0" />
-            </div>
-          </div>
+          <TerminalPane
+            id={terminal.id}
+            title={terminal.title}
+            type={terminal.type}
+            worktreeId={terminal.worktreeId}
+            cwd={terminal.cwd}
+            isFocused={true}
+            isInjecting={isInjecting}
+            injectionProgress={progress}
+            agentState={terminal.agentState}
+            stateDebugInfo={
+              terminal.stateChangeTrigger
+                ? {
+                    trigger: terminal.stateChangeTrigger,
+                    confidence: terminal.stateChangeConfidence ?? 0,
+                  }
+                : null
+            }
+            activity={
+              terminal.activityHeadline
+                ? {
+                    headline: terminal.activityHeadline,
+                    status: terminal.activityStatus ?? "working",
+                    type: terminal.activityType ?? "interactive",
+                  }
+                : null
+            }
+            location="dock"
+            onFocus={() => {}}
+            onClose={handleClose}
+            onRestore={handleRestore}
+            onInjectContext={terminal.worktreeId ? handleInjectContext : undefined}
+            onCancelInjection={cancel}
+          />
         </PopoverContent>
       </Popover>
     </div>
