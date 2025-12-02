@@ -168,9 +168,13 @@ export function GitHubResourceList({ type, projectPath, onClose }: GitHubResourc
   };
 
   // Render loading skeleton
+  // Calculate skeleton count to fill max-h-[500px] container:
+  // - Container: 500px max - header (~80px) - footer (~48px) = ~372px available
+  // - Each item: ~44px (16px icon + 16px title + 12px metadata + spacing)
+  // - 372px / 44px ≈ 8 items to prevent layout shift
   const renderSkeleton = () => (
     <div className="space-y-3 p-3">
-      {[1, 2, 3].map((i) => (
+      {Array.from({ length: 8 }).map((_, i) => (
         <div key={i} className="flex items-start gap-3 animate-pulse">
           <div className="w-4 h-4 rounded-full bg-muted mt-0.5" />
           <div className="flex-1 space-y-2">
