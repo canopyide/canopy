@@ -6,7 +6,15 @@
  */
 
 import { Terminal, Command } from "lucide-react";
-import { ClaudeIcon, GeminiIcon, CodexIcon } from "@/components/icons";
+import {
+  ClaudeIcon,
+  GeminiIcon,
+  CodexIcon,
+  NpmIcon,
+  YarnIcon,
+  PnpmIcon,
+  BunIcon,
+} from "@/components/icons";
 import { cn } from "@/lib/utils";
 import type { TerminalType } from "@/components/Terminal/TerminalPane";
 
@@ -28,20 +36,32 @@ export interface TerminalListItemProps {
 }
 
 /**
- * Get icon component for terminal type - custom brand icons for AI agents
+ * Get icon component for terminal type - custom brand icons for AI agents and package managers
  */
 function getIcon(type: TerminalType) {
   const props = { className: "w-4 h-4", "aria-hidden": "true" as const };
   switch (type) {
+    // AI Agents
     case "claude":
       return <ClaudeIcon {...props} />;
     case "gemini":
       return <GeminiIcon {...props} />;
     case "codex":
       return <CodexIcon {...props} />;
+    // Package Managers
+    case "npm":
+      return <NpmIcon {...props} />;
+    case "yarn":
+      return <YarnIcon {...props} />;
+    case "pnpm":
+      return <PnpmIcon {...props} />;
+    case "bun":
+      return <BunIcon {...props} />;
+    // Generic
     case "custom":
       return <Command {...props} />;
     case "shell":
+    default:
       return <Terminal {...props} />;
   }
 }

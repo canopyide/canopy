@@ -263,8 +263,26 @@ export interface RunRecord {
 // Terminal Types
 // ============================================================================
 
-/** Type of terminal instance */
-export type TerminalType = "shell" | "claude" | "gemini" | "codex" | "custom";
+/**
+ * Type of terminal instance.
+ * - AI agents: claude, gemini, codex
+ * - Package managers: npm, yarn, pnpm, bun
+ * - Generic: shell, custom
+ */
+export type TerminalType =
+  | "shell"
+  | "claude"
+  | "gemini"
+  | "codex"
+  | "npm"
+  | "yarn"
+  | "pnpm"
+  | "bun"
+  | "custom";
+
+/** Package manager terminal types for type narrowing */
+export const PACKAGE_MANAGER_TYPES = ["npm", "yarn", "pnpm", "bun"] as const;
+export type PackageManagerType = (typeof PACKAGE_MANAGER_TYPES)[number];
 
 /** Location of a terminal instance in the UI */
 export type TerminalLocation = "grid" | "dock";

@@ -1,0 +1,37 @@
+/**
+ * Yarn Icon Component
+ *
+ * Custom SVG icon based on the official Yarn package manager brand icon.
+ * Uses a simplified version of the Yarn "cat/kitten" shape, rendered monochrome via currentColor.
+ *
+ * Brand Color Reference: #2C8EBB (Yarn Blue)
+ * Source: https://github.com/yarnpkg/assets
+ */
+
+import { cn } from "@/lib/utils";
+
+interface YarnIconProps {
+  className?: string;
+  size?: number;
+}
+
+export function YarnIcon({ className, size = 16 }: YarnIconProps) {
+  return (
+    <svg
+      width={size}
+      height={size}
+      viewBox="0 0 24 24"
+      fill="none"
+      xmlns="http://www.w3.org/2000/svg"
+      className={cn(className)}
+      aria-hidden="true"
+    >
+      <path
+        fill="currentColor"
+        d="M12 0C5.375 0 0 5.375 0 12s5.375 12 12 12 12-5.375 12-12S18.625 0 12 0zm.768 4.105c.183 0 .363.053.525.157.125.083.287.185.755 1.154.31-.088.468-.042.551-.019.204.056.366.19.463.375.477.917.542 2.553.334 3.605-.023.116-.082.232-.112.31-.365.924-.897 1.611-1.418 2.141.273.197.523.46.754.758.548.71.947 1.613 1.203 2.465.194.664.316 1.374.316 1.93 0 .836-.14 1.163-.442 1.371-.094.064-.19.106-.294.118-.757.091-1.486-.089-1.992-.326-.584-.274-1.128-.636-1.58-.93-.288-.186-.539-.38-.835-.546a7.93 7.93 0 01-1.196.438 4.996 4.996 0 01-1.31.17c-.868 0-1.258-.41-1.413-.622-.132-.18-.247-.476-.21-.896a3.534 3.534 0 01.31-1.007c.154-.324.366-.654.575-.952-.106-.125-.205-.256-.297-.391-.514-.753-.678-1.467-.678-2.08 0-.263.038-.506.102-.727-.102-.18-.236-.391-.282-.553-.102-.36-.155-.859-.063-1.379.108-.613.443-1.159.825-1.528.126-.122.275-.23.426-.323-.055-.16-.078-.325-.078-.481 0-.6.344-1.38 1.148-1.38l.014-.001a.858.858 0 01.028-.001z"
+      />
+    </svg>
+  );
+}
+
+export default YarnIcon;

@@ -25,11 +25,19 @@ type CopyTreeFormat = "xml" | "json" | "markdown" | "tree" | "ndjson";
 /**
  * Mapping from terminal type to optimal CopyTree output format.
  * Different AI agents have different preferences for context format.
+ * Package managers use XML as a safe, structured default.
  */
 const AGENT_FORMAT_MAP: Record<TerminalType, CopyTreeFormat> = {
+  // AI Agents
   claude: "xml", // Claude prefers structured XML
   gemini: "markdown", // Gemini works well with Markdown
   codex: "xml", // Codex prefers structured XML (like Claude)
+  // Package Managers
+  npm: "xml", // Safe default for package manager runners
+  yarn: "xml", // Safe default for package manager runners
+  pnpm: "xml", // Safe default for package manager runners
+  bun: "xml", // Safe default for package manager runners
+  // Generic
   shell: "xml", // Default for manual paste
   custom: "xml", // Safe default
 };

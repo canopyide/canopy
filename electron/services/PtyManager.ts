@@ -16,7 +16,7 @@ import {
   detectPrompt,
   type AgentEvent,
 } from "./AgentStateMachine.js";
-import type { AgentState } from "../types/index.js";
+import type { AgentState, TerminalType } from "../types/index.js";
 import {
   AgentSpawnedSchema,
   AgentStateChangedSchema,
@@ -34,7 +34,7 @@ export interface PtySpawnOptions {
   env?: Record<string, string>;
   cols: number;
   rows: number;
-  type?: "shell" | "claude" | "gemini" | "codex" | "custom";
+  type?: TerminalType;
   title?: string;
   worktreeId?: string;
 }
@@ -53,7 +53,7 @@ interface TerminalInfo {
   ptyProcess: pty.IPty;
   cwd: string;
   shell: string;
-  type?: "shell" | "claude" | "gemini" | "codex" | "custom";
+  type?: TerminalType;
   title?: string;
   worktreeId?: string;
   /** For agent terminals, the agent ID (same as terminal ID for now) */
@@ -142,7 +142,7 @@ export interface TerminalSnapshot {
   /** Timestamp of last state check (AI/heuristic analysis) */
   lastCheckTime: number;
   /** Terminal type */
-  type?: "shell" | "claude" | "gemini" | "codex" | "custom";
+  type?: TerminalType;
   /** Associated worktree ID */
   worktreeId?: string;
   /** Agent ID (for agent terminals) */
