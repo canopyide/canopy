@@ -10,7 +10,7 @@
  * - Checks CLI availability and caches results
  */
 
-import { useCallback, useEffect, useState } from "react";
+import { useCallback, useEffect, useRef, useState } from "react";
 import { useTerminalStore, type AddTerminalOptions } from "@/store/terminalStore";
 import { useProjectStore } from "@/store/projectStore";
 import { useWorktrees } from "./useWorktrees";
@@ -57,6 +57,10 @@ export interface UseAgentLauncherReturn {
   availability: CliAvailability;
   /** Whether availability check is in progress */
   isCheckingAvailability: boolean;
+  /** Current agent settings (to check enabled status) */
+  agentSettings: AgentSettings | null;
+  /** Force refresh settings (e.g. after changing them) */
+  refreshSettings: () => Promise<void>;
 }
 
 /**
@@ -102,45 +106,53 @@ export function useAgentLauncher(): UseAgentLauncherReturn {
   const [isCheckingAvailability, setIsCheckingAvailability] = useState(true);
   const [agentSettings, setAgentSettings] = useState<AgentSettings | null>(null);
 
-  // Check CLI availability and load agent settings on mount
-  useEffect(() => {
+  // Track if component is mounted to prevent state updates after unmount
+  const isMounted = useRef(true);
+
+  // Extracted check function that can be called for initial load and refresh
+  const checkAvailabilityAndLoadSettings = useCallback(async () => {
     if (!isElectronAvailable()) {
       setIsCheckingAvailability(false);
       return;
     }
 
-    let cancelled = false;
-
-    async function checkAvailabilityAndLoadSettings() {
-      try {
-        // Use centralized CLI availability service for optimal performance
-        // Single IPC call instead of three separate checkCommand calls
-        // Use refresh() to ensure fresh data on mount (handles mid-session CLI installs)
-        const [cliAvailability, settings] = await Promise.all([
-          cliAvailabilityClient.refresh(),
-          agentSettingsClient.get(),
-        ]);
-
-        if (!cancelled) {
-          setAvailability(cliAvailability);
-          setAgentSettings(settings);
-        }
-      } catch (error) {
-        console.error("Failed to check CLI availability or load settings:", error);
-        // On error, keep safe defaults (false) to avoid enabling unavailable CLIs
-      } finally {
-        if (!cancelled) {
-          setIsCheckingAvailability(false);
-        }
-      }
+    // Set loading state for manual refreshes too
+    if (isMounted.current) {
+      setIsCheckingAvailability(true);
     }
 
+    try {
+      // Use centralized CLI availability service for optimal performance
+      // Single IPC call instead of three separate checkCommand calls
+      // Use refresh() to ensure fresh data on mount (handles mid-session CLI installs)
+      const [cliAvailability, settings] = await Promise.all([
+        cliAvailabilityClient.refresh(),
+        agentSettingsClient.get(),
+      ]);
+
+      if (isMounted.current) {
+        setAvailability(cliAvailability);
+        setAgentSettings(settings);
+      }
+    } catch (error) {
+      console.error("Failed to check CLI availability or load settings:", error);
+      // On error, keep safe defaults (false) to avoid enabling unavailable CLIs
+    } finally {
+      if (isMounted.current) {
+        setIsCheckingAvailability(false);
+      }
+    }
+  }, []);
+
+  // Check CLI availability and load agent settings on mount
+  useEffect(() => {
+    isMounted.current = true;
     checkAvailabilityAndLoadSettings();
 
     return () => {
-      cancelled = true;
+      isMounted.current = false;
     };
-  }, []);
+  }, [checkAvailabilityAndLoadSettings]);
 
   const launchAgent = useCallback(
     async (type: AgentType): Promise<string | null> => {
@@ -201,5 +213,7 @@ export function useAgentLauncher(): UseAgentLauncherReturn {
     launchAgent,
     availability,
     isCheckingAvailability,
+    agentSettings,
+    refreshSettings: checkAvailabilityAndLoadSettings,
   };
 }
