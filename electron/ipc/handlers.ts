@@ -2251,7 +2251,7 @@ export function registerIpcHandlers(
 
     const fs = await import("fs/promises");
     const pathModule = await import("path");
-    const { getRepoStats, hasGitHubToken } = await import("../services/GitHubService.js");
+    const { getRepoStats } = await import("../services/GitHubService.js");
     const { getCommitCount } = await import("../utils/git.js");
 
     try {
@@ -2268,18 +2268,8 @@ export function registerIpcHandlers(
         };
       }
 
-      // Fetch repo stats and commit count in parallel
-      // Use direct API if token configured, otherwise fall back to gh CLI
-      let statsResult: { stats: { issueCount: number; prCount: number } | null; error?: string };
-
-      if (hasGitHubToken()) {
-        // Use direct GitHub API
-        statsResult = await getRepoStats(resolved);
-      } else {
-        // Fall back to gh CLI for backward compatibility
-        const { getRepoStats: getRepoStatsCli } = await import("../utils/github.js");
-        statsResult = await getRepoStatsCli(resolved);
-      }
+      // Fetch repo stats using GitHub API (requires token)
+      const statsResult = await getRepoStats(resolved);
 
       const commitCount = await getCommitCount(resolved).catch(() => 0);
 
@@ -2308,8 +2298,12 @@ export function registerIpcHandlers(
     if (typeof cwd !== "string" || !cwd) {
       throw new Error("Invalid working directory");
     }
-    const { openGitHubUrl } = await import("../utils/github.js");
-    await openGitHubUrl(cwd, "issues");
+    const { getRepoUrl } = await import("../services/GitHubService.js");
+    const repoUrl = await getRepoUrl(cwd);
+    if (!repoUrl) {
+      throw new Error("Not a GitHub repository");
+    }
+    await shell.openExternal(`${repoUrl}/issues`);
   };
   ipcMain.handle(CHANNELS.GITHUB_OPEN_ISSUES, handleGitHubOpenIssues);
   handlers.push(() => ipcMain.removeHandler(CHANNELS.GITHUB_OPEN_ISSUES));
@@ -2318,8 +2312,12 @@ export function registerIpcHandlers(
     if (typeof cwd !== "string" || !cwd) {
       throw new Error("Invalid working directory");
     }
-    const { openGitHubUrl } = await import("../utils/github.js");
-    await openGitHubUrl(cwd, "pulls");
+    const { getRepoUrl } = await import("../services/GitHubService.js");
+    const repoUrl = await getRepoUrl(cwd);
+    if (!repoUrl) {
+      throw new Error("Not a GitHub repository");
+    }
+    await shell.openExternal(`${repoUrl}/pulls`);
   };
   ipcMain.handle(CHANNELS.GITHUB_OPEN_PRS, handleGitHubOpenPRs);
   handlers.push(() => ipcMain.removeHandler(CHANNELS.GITHUB_OPEN_PRS));
@@ -2337,8 +2335,12 @@ export function registerIpcHandlers(
     if (typeof payload.issueNumber !== "number" || payload.issueNumber <= 0) {
       throw new Error("Invalid issue number");
     }
-    const { openGitHubIssue } = await import("../utils/github.js");
-    await openGitHubIssue(payload.cwd, payload.issueNumber);
+    const { getIssueUrl } = await import("../services/GitHubService.js");
+    const issueUrl = await getIssueUrl(payload.cwd, payload.issueNumber);
+    if (!issueUrl) {
+      throw new Error("Not a GitHub repository");
+    }
+    await shell.openExternal(issueUrl);
   };
   ipcMain.handle(CHANNELS.GITHUB_OPEN_ISSUE, handleGitHubOpenIssue);
   handlers.push(() => ipcMain.removeHandler(CHANNELS.GITHUB_OPEN_ISSUE));
@@ -2356,34 +2358,18 @@ export function registerIpcHandlers(
     } catch (error) {
       throw new Error(`Invalid PR URL: ${error instanceof Error ? error.message : String(error)}`);
     }
-    const { openGitHubPR } = await import("../utils/github.js");
-    await openGitHubPR(prUrl);
+    await shell.openExternal(prUrl);
   };
   ipcMain.handle(CHANNELS.GITHUB_OPEN_PR, handleGitHubOpenPR);
   handlers.push(() => ipcMain.removeHandler(CHANNELS.GITHUB_OPEN_PR));
 
   const handleGitHubCheckCli = async (): Promise<GitHubCliStatus> => {
-    // First check if we have a GitHub token (preferred method)
+    // Check if we have a GitHub token configured
     const { hasGitHubToken } = await import("../services/GitHubService.js");
     if (hasGitHubToken()) {
       return { available: true };
     }
-
-    // Fall back to checking gh CLI for backward compatibility
-    const { execa } = await import("execa");
-    try {
-      await execa("gh", ["auth", "status"], { timeout: 5000 });
-      return { available: true };
-    } catch (error: unknown) {
-      const err = error as { code?: string; message?: string; stderr?: string };
-      if (err.code === "ENOENT") {
-        return { available: false, error: "gh CLI not installed" };
-      }
-      if (err.message?.includes("not logged in") || err.stderr?.includes("not logged in")) {
-        return { available: false, error: "gh auth required - run: gh auth login" };
-      }
-      return { available: false, error: "gh CLI error" };
-    }
+    return { available: false, error: "GitHub token not configured. Set up in Settings." };
   };
   ipcMain.handle(CHANNELS.GITHUB_CHECK_CLI, handleGitHubCheckCli);
   handlers.push(() => ipcMain.removeHandler(CHANNELS.GITHUB_CHECK_CLI));

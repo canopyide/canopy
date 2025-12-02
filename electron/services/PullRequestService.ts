@@ -17,7 +17,7 @@
  */
 
 import { events } from "./events.js";
-import { batchCheckLinkedPRs, type PRCheckCandidate, type LinkedPR } from "../utils/github.js";
+import { batchCheckLinkedPRs, type PRCheckCandidate, type LinkedPR } from "./GitHubService.js";
 import { logInfo, logWarn, logDebug } from "../utils/logger.js";
 import type { WorktreeState } from "./WorktreeMonitor.js";
 
