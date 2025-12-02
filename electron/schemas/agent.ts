@@ -9,8 +9,19 @@ import { z } from "zod";
 
 /**
  * Valid terminal/agent types.
+ * Includes AI agents, package managers, and generic types.
  */
-export const TerminalTypeSchema = z.enum(["shell", "claude", "gemini", "codex", "custom"]);
+export const TerminalTypeSchema = z.enum([
+  "shell",
+  "claude",
+  "gemini",
+  "codex",
+  "npm",
+  "yarn",
+  "pnpm",
+  "bun",
+  "custom",
+]);
 
 /**
  * Valid agent lifecycle states.

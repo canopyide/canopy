@@ -41,6 +41,10 @@ const TYPE_TITLES: Record<TerminalType, string> = {
   claude: "Claude",
   gemini: "Gemini",
   codex: "Codex",
+  npm: "NPM",
+  yarn: "Yarn",
+  pnpm: "PNPM",
+  bun: "Bun",
   custom: "Terminal",
 };
 

@@ -12,7 +12,15 @@
 
 import { useState, useCallback } from "react";
 import { Maximize2, X, Loader2, Terminal, Command } from "lucide-react";
-import { ClaudeIcon, GeminiIcon, CodexIcon } from "@/components/icons";
+import {
+  ClaudeIcon,
+  GeminiIcon,
+  CodexIcon,
+  NpmIcon,
+  YarnIcon,
+  PnpmIcon,
+  BunIcon,
+} from "@/components/icons";
 import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover";
 import { cn } from "@/lib/utils";
 import { useTerminalStore, type TerminalInstance } from "@/store";
@@ -40,15 +48,27 @@ interface DockedTerminalItemProps {
 function getTerminalIcon(type: TerminalType, className?: string) {
   const props = { className: cn("w-3 h-3", className), "aria-hidden": "true" as const };
   switch (type) {
+    // AI Agents
     case "claude":
       return <ClaudeIcon {...props} />;
     case "gemini":
       return <GeminiIcon {...props} />;
     case "codex":
       return <CodexIcon {...props} />;
+    // Package Managers
+    case "npm":
+      return <NpmIcon {...props} />;
+    case "yarn":
+      return <YarnIcon {...props} />;
+    case "pnpm":
+      return <PnpmIcon {...props} />;
+    case "bun":
+      return <BunIcon {...props} />;
+    // Generic
     case "custom":
       return <Command {...props} />;
     case "shell":
+    default:
       return <Terminal {...props} />;
   }
 }

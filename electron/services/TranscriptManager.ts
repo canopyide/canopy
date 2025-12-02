@@ -63,13 +63,19 @@ export class TranscriptManager {
   }): void {
     if (this.disposed) return;
 
-    // Only track agent terminals (not shell terminals)
-    if (payload.type === "shell") {
+    // Only track AI agent terminals (not shell or package manager terminals)
+    // Package managers (npm, yarn, pnpm, bun) don't need transcripts
+    const nonAgentTypes: TerminalType[] = ["shell", "npm", "yarn", "pnpm", "bun"];
+    if (nonAgentTypes.includes(payload.type)) {
       return;
     }
+
+    // At this point, type must be an agent type (claude, gemini, codex, custom)
+    const agentType = payload.type as "claude" | "gemini" | "codex" | "custom";
+
     const session: AgentSession = {
       id: payload.agentId,
-      agentType: payload.type,
+      agentType: agentType,
       worktreeId: payload.worktreeId,
       startTime: payload.timestamp,
       state: "active",

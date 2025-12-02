@@ -18,7 +18,16 @@
 import { useState, useCallback, useEffect, useRef } from "react";
 import { useShallow } from "zustand/react/shallow";
 import { Terminal, Command, X, Maximize2, Minimize2, Copy, ArrowDownToLine } from "lucide-react";
-import { ClaudeIcon, GeminiIcon, CodexIcon } from "@/components/icons";
+import {
+  ClaudeIcon,
+  GeminiIcon,
+  CodexIcon,
+  NpmIcon,
+  YarnIcon,
+  PnpmIcon,
+  BunIcon,
+} from "@/components/icons";
+import type { TerminalType } from "@/types";
 import { cn } from "@/lib/utils";
 import { getAgentBrandColor } from "@/lib/colorUtils";
 import { XtermAdapter } from "./XtermAdapter";
@@ -32,7 +41,8 @@ import { useContextInjection, type CopyTreeProgress } from "@/hooks/useContextIn
 import type { AgentState, AgentStateChangeTrigger } from "@/types";
 import { errorsClient } from "@/clients";
 
-export type TerminalType = "shell" | "claude" | "gemini" | "codex" | "custom";
+// Re-export TerminalType from shared types for backward compatibility
+export type { TerminalType };
 
 /** Debug info for state changes */
 export interface StateDebugInfo {
@@ -93,20 +103,32 @@ export interface TerminalPaneProps {
 }
 
 /**
- * Get terminal icon based on type - Custom brand icons for AI agents
+ * Get terminal icon based on type - Custom brand icons for AI agents and package managers
  */
 function getTerminalIcon(type: TerminalType, className?: string) {
   const props = { className: cn("w-3.5 h-3.5", className), "aria-hidden": "true" as const };
   switch (type) {
+    // AI Agents
     case "claude":
       return <ClaudeIcon {...props} />;
     case "gemini":
       return <GeminiIcon {...props} />;
     case "codex":
       return <CodexIcon {...props} />;
+    // Package Managers
+    case "npm":
+      return <NpmIcon {...props} />;
+    case "yarn":
+      return <YarnIcon {...props} />;
+    case "pnpm":
+      return <PnpmIcon {...props} />;
+    case "bun":
+      return <BunIcon {...props} />;
+    // Generic
     case "custom":
       return <Command {...props} />;
     case "shell":
+    default:
       return <Terminal {...props} />;
   }
 }
@@ -343,17 +365,28 @@ export function TerminalPane({
       onKeyDown={handleKeyDown}
       tabIndex={0}
       role="group"
-      aria-label={
-        type === "shell"
-          ? `Shell terminal: ${title}`
-          : type === "claude"
-            ? `Claude agent: ${title}`
-            : type === "gemini"
-              ? `Gemini agent: ${title}`
-              : type === "codex"
-                ? `Codex agent: ${title}`
-                : `${type} session: ${title}`
-      }
+      aria-label={(() => {
+        switch (type) {
+          case "shell":
+            return `Shell terminal: ${title}`;
+          case "claude":
+            return `Claude agent: ${title}`;
+          case "gemini":
+            return `Gemini agent: ${title}`;
+          case "codex":
+            return `Codex agent: ${title}`;
+          case "npm":
+            return `NPM runner: ${title}`;
+          case "yarn":
+            return `Yarn runner: ${title}`;
+          case "pnpm":
+            return `PNPM runner: ${title}`;
+          case "bun":
+            return `Bun runner: ${title}`;
+          default:
+            return `${type} session: ${title}`;
+        }
+      })()}
       aria-grabbed={isDragging || undefined}
     >
       {/* Header - Status bar style, draggable when allowed */}

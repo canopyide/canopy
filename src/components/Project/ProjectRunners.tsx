@@ -23,6 +23,7 @@ import { useTerminalStore } from "@/store/terminalStore";
 import { useProjectStore } from "@/store/projectStore";
 import type { RunCommand } from "@/types";
 import { cn } from "@/lib/utils";
+import { detectTerminalTypeFromCommand } from "@/utils/terminalType";
 
 interface ProjectRunnersProps {
   projectId: string;
@@ -125,8 +126,11 @@ export function ProjectRunners({ projectId }: ProjectRunnersProps) {
     }
 
     try {
+      // Detect terminal type from command (npm, yarn, pnpm, bun, or custom)
+      const terminalType = detectTerminalTypeFromCommand(cmd.command);
+
       await addTerminal({
-        type: "custom",
+        type: terminalType,
         title: cmd.name,
         cwd: currentProject.path,
         command: cmd.command,
