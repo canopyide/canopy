@@ -145,7 +145,7 @@ export function TerminalDock() {
       ref={dockRef}
       className={cn(
         "h-10 bg-canopy-bg/95 backdrop-blur-sm border-t-2 border-canopy-border/60 shadow-[0_-4px_12px_rgba(0,0,0,0.3)]",
-        "flex items-center px-4 gap-2 overflow-x-auto",
+        "flex items-center px-4 gap-2",
         "z-40 shrink-0",
         isDragOver && "ring-2 ring-canopy-accent/50 ring-inset bg-canopy-accent/5"
       )}
@@ -155,39 +155,43 @@ export function TerminalDock() {
       onDragLeave={handleDragLeave}
       onDrop={handleDrop}
     >
-      {/* Active docked terminals section */}
-      {(activeDockTerminals.length > 0 || isDragOver) && (
-        <>
-          <span className="text-xs text-canopy-text/60 mr-2 shrink-0">
-            Background ({activeDockTerminals.length})
-          </span>
+      {/* Active docked terminals section - scrollable, takes remaining space */}
+      <div className="flex items-center gap-2 overflow-x-auto flex-1 no-scrollbar">
+        {(activeDockTerminals.length > 0 || isDragOver) && (
+          <>
+            <span className="text-xs text-canopy-text/60 mr-2 shrink-0 select-none">
+              Background ({activeDockTerminals.length})
+            </span>
 
-          {activeDockTerminals.map((terminal, index) => (
-            <DockedTerminalItem
-              key={terminal.id}
-              terminal={terminal}
-              index={index}
-              isDragging={draggedId === terminal.id}
-              isDropTarget={dropIndex === index && isDragOver}
-              onDragStart={handleDockItemDragStart}
-              onDragEnd={handleDockItemDragEnd}
-            />
-          ))}
+            {activeDockTerminals.map((terminal, index) => (
+              <DockedTerminalItem
+                key={terminal.id}
+                terminal={terminal}
+                index={index}
+                isDragging={draggedId === terminal.id}
+                isDropTarget={dropIndex === index && isDragOver}
+                onDragStart={handleDockItemDragStart}
+                onDragEnd={handleDockItemDragEnd}
+              />
+            ))}
 
-          {/* Drop indicator at the end */}
-          {isDragOver && dropIndex === activeDockTerminals.length && (
-            <div className="w-0.5 h-6 bg-canopy-accent rounded shrink-0" />
-          )}
-        </>
-      )}
+            {/* Drop indicator at the end */}
+            {isDragOver && dropIndex === activeDockTerminals.length && (
+              <div className="w-0.5 h-6 bg-canopy-accent rounded shrink-0" />
+            )}
+          </>
+        )}
+      </div>
 
-      {/* Separator between sections */}
+      {/* Separator between sections - only show if both have content */}
       {activeDockTerminals.length > 0 && trashedItems.length > 0 && (
         <div className="w-px h-5 bg-canopy-border mx-2 shrink-0" />
       )}
 
-      {/* Consolidated trash container */}
-      <TrashContainer trashedTerminals={trashedItems} />
+      {/* Trash container - right-aligned with shrink-0 */}
+      <div className="shrink-0">
+        <TrashContainer trashedTerminals={trashedItems} />
+      </div>
     </div>
   );
 }
