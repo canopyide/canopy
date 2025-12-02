@@ -8,7 +8,7 @@
  * Interface matches PtyManager for seamless integration with existing code.
  */
 
-import { utilityProcess, UtilityProcess, dialog } from "electron";
+import { utilityProcess, UtilityProcess, dialog, app } from "electron";
 import { EventEmitter } from "events";
 import path from "path";
 import { fileURLToPath } from "url";
@@ -92,7 +92,10 @@ export class PtyClient extends EventEmitter {
       this.child = utilityProcess.fork(hostPath, [], {
         serviceName: "canopy-pty-host",
         stdio: "inherit", // Show logs in dev
-        env: process.env as Record<string, string>,
+        env: {
+          ...(process.env as Record<string, string>),
+          CANOPY_USER_DATA: app.getPath("userData"),
+        },
       });
     } catch (error) {
       console.error("[PtyClient] Failed to fork Pty Host:", error);

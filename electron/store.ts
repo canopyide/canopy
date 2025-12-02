@@ -1,5 +1,4 @@
 import Store from "electron-store";
-import { app } from "electron";
 import type { Project } from "./types/index.js";
 import type { AgentSettings } from "../shared/types/index.js";
 import { DEFAULT_AGENT_SETTINGS } from "../shared/types/index.js";
@@ -90,5 +89,5 @@ export const store = new Store<StoreSchema>({
     },
     agentSettings: DEFAULT_AGENT_SETTINGS,
   },
-  cwd: app.getPath("userData"),
+  cwd: process.env.CANOPY_USER_DATA,
 });
