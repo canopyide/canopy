@@ -179,7 +179,37 @@ let trashedUnsubscribe: (() => void) | null = null;
 let restoredUnsubscribe: (() => void) | null = null;
 let exitUnsubscribe: (() => void) | null = null;
 
-if (typeof window !== "undefined") {
+export function cleanupTerminalStoreListeners() {
+  if (agentStateUnsubscribe) {
+    agentStateUnsubscribe();
+    agentStateUnsubscribe = null;
+  }
+  if (activityUnsubscribe) {
+    activityUnsubscribe();
+    activityUnsubscribe = null;
+  }
+  if (trashedUnsubscribe) {
+    trashedUnsubscribe();
+    trashedUnsubscribe = null;
+  }
+  if (restoredUnsubscribe) {
+    restoredUnsubscribe();
+    restoredUnsubscribe = null;
+  }
+  if (exitUnsubscribe) {
+    exitUnsubscribe();
+    exitUnsubscribe = null;
+  }
+}
+
+export function setupTerminalStoreListeners() {
+  if (typeof window === "undefined") return () => {};
+
+  // Idempotent: return early if already setup to prevent event loss window and overlapping cleanup
+  if (exitUnsubscribe !== null) {
+    return cleanupTerminalStoreListeners;
+  }
+
   agentStateUnsubscribe = terminalClient.onAgentStateChanged((data) => {
     const { agentId, state, timestamp, trigger, confidence } = data;
 
@@ -235,27 +265,6 @@ if (typeof window !== "undefined") {
       state.removeTerminal(id);
     }
   });
-}
 
-export function cleanupTerminalStoreListeners() {
-  if (agentStateUnsubscribe) {
-    agentStateUnsubscribe();
-    agentStateUnsubscribe = null;
-  }
-  if (activityUnsubscribe) {
-    activityUnsubscribe();
-    activityUnsubscribe = null;
-  }
-  if (trashedUnsubscribe) {
-    trashedUnsubscribe();
-    trashedUnsubscribe = null;
-  }
-  if (restoredUnsubscribe) {
-    restoredUnsubscribe();
-    restoredUnsubscribe = null;
-  }
-  if (exitUnsubscribe) {
-    exitUnsubscribe();
-    exitUnsubscribe = null;
-  }
+  return cleanupTerminalStoreListeners;
 }

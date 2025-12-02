@@ -31,7 +31,7 @@ import {
 } from "./store";
 import { useShallow } from "zustand/react/shallow";
 import { useRecipeStore } from "./store/recipeStore";
-import { cleanupTerminalStoreListeners } from "./store/terminalStore";
+import { setupTerminalStoreListeners } from "./store/terminalStore";
 import type { WorktreeState } from "./types";
 import {
   systemClient,
@@ -532,10 +532,10 @@ function App() {
   useKeybinding("panel.diagnostics", () => toggleDiagnosticsDock(), { enabled: electronAvailable });
 
   useEffect(() => {
-    return () => {
-      cleanupTerminalStoreListeners();
-    };
-  }, []);
+    if (!electronAvailable) return;
+    const cleanup = setupTerminalStoreListeners();
+    return cleanup;
+  }, [electronAvailable]);
 
   useEffect(() => {
     if (!electronAvailable) return;
