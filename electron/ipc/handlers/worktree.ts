@@ -77,9 +77,7 @@ export function registerWorktreeHandlers(deps: HandlerDependencies): () => void 
   ipcMain.handle(CHANNELS.WORKTREE_LIST_BRANCHES, handleWorktreeListBranches);
   handlers.push(() => ipcMain.removeHandler(CHANNELS.WORKTREE_LIST_BRANCHES));
 
-  // ==========================================
   // Git Handlers
-  // ==========================================
 
   const handleGitGetFileDiff = async (
     _event: Electron.IpcMainInvokeEvent,

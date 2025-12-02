@@ -1,15 +1,6 @@
-/**
- * Domain model types for Canopy Command Center
- *
- * These types represent core business entities used throughout the application.
- * They are shared between the main process, renderer process, and preload script.
- */
-
-// ============================================================================
 // Git Types
-// ============================================================================
 
-/** Git file status types */
+/** Git file status */
 export type GitStatus =
   | "modified"
   | "added"
@@ -59,27 +50,15 @@ export interface WorktreeChanges {
   lastUpdated?: number;
 }
 
-// ============================================================================
 // Worktree Types
-// ============================================================================
 
-/** High-level mood/state indicator for worktrees */
+/** Worktree mood indicator */
 export type WorktreeMood = "stable" | "active" | "stale" | "error";
 
-/**
- * AI summary generation status for a worktree.
- * - 'active': AI summaries are working normally
- * - 'loading': Currently generating an AI summary
- * - 'disabled': No OPENAI_API_KEY set, AI features unavailable
- * - 'error': API errors occurred, showing fallback text
- */
+/** AI summary status: active | loading | disabled | error */
 export type AISummaryStatus = "active" | "loading" | "disabled" | "error";
 
-/**
- * Represents a single git worktree.
- * Git worktrees allow multiple working trees attached to the same repository,
- * enabling work on different branches simultaneously.
- */
+/** Git worktree - multiple working trees on same repo */
 export interface Worktree {
   /** Stable identifier for this worktree (normalized absolute path) */
   id: string;
@@ -145,10 +124,7 @@ export interface Worktree {
   worktreeChanges?: WorktreeChanges | null;
 }
 
-/**
- * Runtime state extension for Worktree.
- * Used internally by the WorktreeService for tracking live state.
- */
+/** Runtime worktree state (internal to WorktreeService) */
 export interface WorktreeState extends Worktree {
   /** Alias for id (compatibility with some internal APIs) */
   worktreeId: string;
@@ -160,11 +136,9 @@ export interface WorktreeState extends Worktree {
   aiStatus: AISummaryStatus;
 }
 
-// ============================================================================
 // Dev Server Types
-// ============================================================================
 
-/** Status of a development server process */
+/** Dev server status */
 export type DevServerStatus = "stopped" | "starting" | "running" | "error";
 
 /** State of a development server associated with a worktree */
@@ -185,11 +159,9 @@ export interface DevServerState {
   logs?: string[];
 }
 
-// ============================================================================
 // Notification Types
-// ============================================================================
 
-/** Type of notification to display */
+/** Notification type */
 export type NotificationType = "info" | "success" | "error" | "warning";
 
 /** A notification message to display to the user */
@@ -205,30 +177,12 @@ export interface Notification {
 /** Payload for creating a new notification (id is optional and will be generated) */
 export type NotificationPayload = Omit<Notification, "id"> & { id?: string };
 
-// ============================================================================
-// Agent/Task/Run Types (Delegation Events)
-// ============================================================================
+// Agent/Task/Run Types
 
-/**
- * State of an AI agent lifecycle.
- * - 'idle': Agent is spawned but not actively working
- * - 'working': Agent is actively processing/executing
- * - 'waiting': Agent is waiting for input or external response
- * - 'completed': Agent has finished successfully
- * - 'failed': Agent encountered an unrecoverable error
- */
+/** Agent lifecycle state: idle | working | waiting | completed | failed */
 export type AgentState = "idle" | "working" | "waiting" | "completed" | "failed";
 
-/**
- * State of a task in the task management system.
- * - 'draft': Task is being defined, not yet actionable
- * - 'queued': Task is ready to be assigned to an agent
- * - 'running': Task is actively being worked on
- * - 'blocked': Task is waiting on dependencies or external input
- * - 'completed': Task finished successfully
- * - 'failed': Task encountered an error and cannot continue
- * - 'cancelled': Task was cancelled before completion
- */
+/** Task state: draft | queued | running | blocked | completed | failed | cancelled */
 export type TaskState =
   | "draft"
   | "queued"
@@ -238,10 +192,7 @@ export type TaskState =
   | "failed"
   | "cancelled";
 
-/**
- * Record of an execution instance (a "run").
- * Runs represent individual execution attempts, potentially retries of the same task.
- */
+/** Execution instance - individual attempt of a task */
 export interface RunRecord {
   /** Unique identifier for this run */
   id: string;
@@ -259,16 +210,9 @@ export interface RunRecord {
   error?: string;
 }
 
-// ============================================================================
 // Terminal Types
-// ============================================================================
 
-/**
- * Type of terminal instance.
- * - AI agents: claude, gemini, codex
- * - Package managers: npm, yarn, pnpm, bun
- * - Generic: shell, custom
- */
+/** Terminal type: AI agents (claude/gemini/codex), package managers, or shell/custom */
 export type TerminalType =
   | "shell"
   | "claude"
@@ -296,10 +240,7 @@ export type AgentStateChangeTrigger =
   | "timeout"
   | "exit";
 
-/**
- * Terminal rendering refresh tier for performance optimization.
- * Controls how frequently terminal output is flushed to the display.
- */
+/** Terminal refresh tier - controls flush frequency for performance */
 export enum TerminalRefreshTier {
   /** 60fps - terminal is focused and user is actively interacting */
   FOCUSED = 16,
@@ -377,11 +318,9 @@ export interface TerminalDimensions {
   height: number;
 }
 
-// ============================================================================
-// Project Types (Multi-Project Support)
-// ============================================================================
+// Project Types
 
-/** Represents a project (Git repository) managed by Canopy */
+/** Project (Git repository) managed by Canopy */
 export interface Project {
   /** Unique identifier (UUID or path hash) */
   id: string;
@@ -451,11 +390,9 @@ export interface ProjectState {
   terminalLayout?: TerminalLayout;
 }
 
-// ============================================================================
 // Terminal Recipe Types
-// ============================================================================
 
-/** Type of terminal in a recipe */
+/** Recipe terminal type */
 export type RecipeTerminalType = "claude" | "gemini" | "codex" | "shell" | "custom";
 
 /** A single terminal definition within a recipe */
@@ -484,11 +421,9 @@ export interface TerminalRecipe {
   createdAt: number;
 }
 
-// ============================================================================
 // Project Settings Types
-// ============================================================================
 
-/** A single run command definition for project-level settings */
+/** Run command definition */
 export interface RunCommand {
   /** Unique identifier for this command */
   id: string;

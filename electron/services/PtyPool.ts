@@ -1,35 +1,19 @@
-/**
- * PtyPool Service
- *
- * Pre-warms terminal PTY instances for instant spawn responsiveness.
- * Maintains a small pool of ready-to-use PTY processes that can be
- * immediately assigned to new terminals instead of spawning from scratch.
- *
- * This reduces terminal spawn latency from 100-300ms to <50ms.
- */
+/** Pre-warms terminal PTYs for instant spawning */
 
 import * as pty from "node-pty";
 import type { IDisposable } from "node-pty";
 import { existsSync } from "fs";
 import os from "os";
 
-/** Configuration for the PTY pool */
 export interface PtyPoolConfig {
-  /** Number of PTY instances to maintain in the pool (default: 2) */
   poolSize?: number;
-  /** Default working directory for pooled PTYs (default: user's home) */
   defaultCwd?: string;
 }
 
-/** Information about a pooled PTY instance */
 interface PooledPty {
-  /** The node-pty process */
   process: pty.IPty;
-  /** Working directory the PTY was created with */
   cwd: string;
-  /** Timestamp when the PTY was created */
   createdAt: number;
-  /** Data listener disposable */
   dataDisposable: IDisposable;
 }
 
@@ -47,12 +31,7 @@ export class PtyPool {
     this.defaultShell = this.getDefaultShell();
   }
 
-  /**
-   * Pre-create PTY instances to fill the pool.
-   * Called at app startup to ensure instant terminal availability.
-   *
-   * @param cwd - Working directory for pooled PTYs (optional, uses default if not provided)
-   */
+  /** Pre-fill pool */
   async warmPool(cwd?: string): Promise<void> {
     if (this.isDisposed) {
       console.warn("[PtyPool] Cannot warm pool - already disposed");
@@ -79,10 +58,7 @@ export class PtyPool {
     }
   }
 
-  /**
-   * Create a single pool entry.
-   * @param cwd - Working directory for the PTY
-   */
+  /** Create single pooled PTY */
   private async createPoolEntry(cwd: string): Promise<void> {
     if (this.isDisposed) return;
 
@@ -97,30 +73,24 @@ export class PtyPool {
         env: this.getFilteredEnv(),
       });
 
-      // Suppress output from pooled PTYs - we don't want to process it
-      // Store disposable so we can properly clean up later
       const dataDisposable = ptyProcess.onData(() => {
-        // Intentionally empty - discard output from pooled PTYs
+        // Suppress output
       });
 
-      // Handle unexpected exits
       ptyProcess.onExit(({ exitCode }) => {
         if (process.env.CANOPY_VERBOSE) {
           console.log(`[PtyPool] Pooled PTY ${id} exited with code ${exitCode}`);
         }
-        // Remove from pool if still there
         const entry = this.pool.get(id);
         if (entry) {
           entry.dataDisposable.dispose();
           this.pool.delete(id);
         }
-        // Trigger refill if not disposed
         if (!this.isDisposed) {
           this.refillPool();
         }
       });
 
-      // Check if disposed during async spawn (race condition on shutdown)
       if (this.isDisposed) {
         dataDisposable.dispose();
         ptyProcess.kill();
@@ -142,13 +112,7 @@ export class PtyPool {
     }
   }
 
-  /**
-   * Acquire a PTY from the pool.
-   * Returns null if the pool is empty (caller should spawn normally).
-   * Performs health check on pooled PTY before returning.
-   *
-   * @returns A pre-warmed PTY process or null if pool is empty/unhealthy
-   */
+  /** Get PTY from pool (checks health) */
   acquire(): pty.IPty | null {
     if (this.isDisposed) {
       console.warn("[PtyPool] Cannot acquire - pool disposed");
@@ -162,12 +126,9 @@ export class PtyPool {
       return null;
     }
 
-    // Get first entry from pool
     const [id, entry] = this.pool.entries().next().value as [string, PooledPty];
     this.pool.delete(id);
 
-    // Health check: verify PTY is still alive
-    // If pid is undefined or process has exited, it's dead
     try {
       const pid = entry.process.pid;
       if (pid === undefined) {
@@ -183,23 +144,18 @@ export class PtyPool {
       return null;
     }
 
-    // Clean up the data suppressor - caller will set up real handlers
     entry.dataDisposable.dispose();
 
     if (process.env.CANOPY_VERBOSE) {
       console.log(`[PtyPool] Acquired PTY ${id}, ${this.pool.size} remaining`);
     }
 
-    // Trigger background refill
     this.refillPool();
 
     return entry.process;
   }
 
-  /**
-   * Refill the pool in the background.
-   * Non-blocking - creates PTYs asynchronously.
-   */
+  /** Refill pool asynchronously */
   refillPool(): void {
     if (this.isDisposed || this.refillInProgress) {
       return;
@@ -212,7 +168,6 @@ export class PtyPool {
 
     this.refillInProgress = true;
 
-    // Async refill without blocking
     const promises: Promise<void>[] = [];
     for (let i = 0; i < needed; i++) {
       promises.push(this.createPoolEntry(this.defaultCwd));
@@ -232,34 +187,22 @@ export class PtyPool {
       });
   }
 
-  /**
-   * Update the default working directory for new pooled PTYs.
-   * Existing pooled PTYs are not affected (they'll cd when acquired).
-   *
-   * @param cwd - New default working directory
-   */
+  /** Update default CWD */
   setDefaultCwd(cwd: string): void {
     this.defaultCwd = cwd;
   }
 
-  /**
-   * Get current pool size.
-   */
+  /** Get current pool size */
   getPoolSize(): number {
     return this.pool.size;
   }
 
-  /**
-   * Get configured max pool size.
-   */
+  /** Get max pool size */
   getMaxPoolSize(): number {
     return this.poolSize;
   }
 
-  /**
-   * Clean up all pooled PTYs.
-   * Called on app quit or when pool is no longer needed.
-   */
+  /** Clean up all PTYs */
   dispose(): void {
     if (this.isDisposed) return;
 
@@ -273,7 +216,6 @@ export class PtyPool {
           console.log(`[PtyPool] Killed pooled PTY ${id}`);
         }
       } catch (error) {
-        // Ignore errors during cleanup - process may already be dead
         console.warn(`[PtyPool] Error killing pooled PTY ${id}:`, error);
       }
     }
@@ -282,20 +224,16 @@ export class PtyPool {
     console.log("[PtyPool] Disposed");
   }
 
-  /**
-   * Get the default shell for the current platform.
-   */
+  /** Get platform default shell */
   private getDefaultShell(): string {
     if (process.platform === "win32") {
       return process.env.COMSPEC || "powershell.exe";
     }
 
-    // On macOS/Linux, try SHELL env var first
     if (process.env.SHELL) {
       return process.env.SHELL;
     }
 
-    // Try common shells in order of preference
     const commonShells = ["/bin/zsh", "/bin/bash", "/bin/sh"];
     for (const shell of commonShells) {
       try {
@@ -303,38 +241,32 @@ export class PtyPool {
           return shell;
         }
       } catch {
-        // Continue to next shell
+        // Continue
       }
     }
 
     return "/bin/sh";
   }
 
-  /**
-   * Get default shell arguments.
-   */
+  /** Get shell args (login shell) */
   private getDefaultShellArgs(): string[] {
     const shellName = this.defaultShell.toLowerCase();
 
     if (process.platform !== "win32") {
       if (shellName.includes("zsh") || shellName.includes("bash")) {
-        return ["-l"]; // Login shell for proper profile loading
+        return ["-l"];
       }
     }
 
     return [];
   }
 
-  /**
-   * Get the default working directory.
-   */
+  /** Get user home dir */
   private getDefaultCwd(): string {
     return process.env.HOME || os.homedir();
   }
 
-  /**
-   * Get filtered environment variables for PTY.
-   */
+  /** Filter env vars */
   private getFilteredEnv(): Record<string, string> {
     const env = process.env as Record<string, string | undefined>;
     return Object.fromEntries(
@@ -346,10 +278,7 @@ export class PtyPool {
 // Singleton instance
 let ptyPoolInstance: PtyPool | null = null;
 
-/**
- * Get or create the PtyPool singleton.
- * @param config - Configuration for the pool (only used on first call)
- */
+/** Get singleton */
 export function getPtyPool(config?: PtyPoolConfig): PtyPool {
   if (!ptyPoolInstance) {
     ptyPoolInstance = new PtyPool(config);
@@ -357,9 +286,7 @@ export function getPtyPool(config?: PtyPoolConfig): PtyPool {
   return ptyPoolInstance;
 }
 
-/**
- * Dispose and clear the PtyPool singleton.
- */
+/** Dispose singleton */
 export function disposePtyPool(): void {
   if (ptyPoolInstance) {
     ptyPoolInstance.dispose();

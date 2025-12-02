@@ -1,15 +1,4 @@
-/**
- * GitHub Service for Canopy Electron App
- *
- * Provides direct GitHub API integration using @octokit/graphql,
- * eliminating the need for the gh CLI dependency.
- *
- * Key features:
- * - Personal access token management (stored via electron-store)
- * - GraphQL API calls for repo stats, PR detection, etc.
- * - Token validation and scope checking
- * - Caching to minimize API calls and avoid rate limits
- */
+/** GitHub integration (GraphQL) without gh CLI dependency */
 
 import { graphql, type GraphQlQueryResponseData } from "@octokit/graphql";
 import { GitService } from "./GitService.js";
@@ -22,10 +11,7 @@ import type {
   GitHubListResponse,
 } from "../../shared/types/github.js";
 
-// ─────────────────────────────────────────────────────────────────────────────
 // Types
-// ─────────────────────────────────────────────────────────────────────────────
-
 export interface GitHubTokenConfig {
   hasToken: boolean;
   scopes?: string[];
@@ -78,52 +64,36 @@ export interface BatchPRCheckResult {
   error?: string;
 }
 
-// ─────────────────────────────────────────────────────────────────────────────
-// GitHub Service
-// ─────────────────────────────────────────────────────────────────────────────
+// Caches
+const repoContextCache = new Cache<string, RepoContext>({ defaultTTL: 300000 });
+const repoStatsCache = new Cache<string, RepoStats>({ defaultTTL: 60000 });
+const prCheckCache = new Cache<string, PRCheckResult>({ defaultTTL: 60000 });
+const issueListCache = new Cache<string, GitHubListResponse<GitHubIssue>>({ defaultTTL: 60000 });
+const prListCache = new Cache<string, GitHubListResponse<GitHubPR>>({ defaultTTL: 60000 });
 
-// Cache instances
-const repoContextCache = new Cache<string, RepoContext>({ defaultTTL: 300000 }); // 5 minutes
-const repoStatsCache = new Cache<string, RepoStats>({ defaultTTL: 60000 }); // 1 minute
-const prCheckCache = new Cache<string, PRCheckResult>({ defaultTTL: 60000 }); // 1 minute
-const issueListCache = new Cache<string, GitHubListResponse<GitHubIssue>>({ defaultTTL: 60000 }); // 1 minute
-const prListCache = new Cache<string, GitHubListResponse<GitHubPR>>({ defaultTTL: 60000 }); // 1 minute
-
-/**
- * Get the GitHub token from storage.
- */
+/** Get token from store */
 export function getGitHubToken(): string | undefined {
   return store.get("userConfig.githubToken");
 }
 
-/**
- * Check if a GitHub token is configured.
- */
+/** Check if token exists */
 export function hasGitHubToken(): boolean {
   return !!getGitHubToken();
 }
 
-/**
- * Save a GitHub token to storage.
- */
+/** Save token and clear caches */
 export function setGitHubToken(token: string): void {
   store.set("userConfig.githubToken", token);
-  // Clear all caches when token changes
   clearGitHubCaches();
 }
 
-/**
- * Clear the GitHub token from storage.
- */
+/** Remove token and clear caches */
 export function clearGitHubToken(): void {
   store.set("userConfig.githubToken", undefined);
-  // Clear all caches when token is removed
   clearGitHubCaches();
 }
 
-/**
- * Get the GitHub token configuration status.
- */
+/** Get token config status */
 export function getGitHubConfig(): GitHubTokenConfig {
   const token = getGitHubToken();
   return {
@@ -131,10 +101,7 @@ export function getGitHubConfig(): GitHubTokenConfig {
   };
 }
 
-/**
- * Create an authenticated GraphQL client.
- * Returns null if no token is configured.
- */
+/** Create authenticated GraphQL client */
 function createGraphQLClient(): typeof graphql | null {
   const token = getGitHubToken();
   if (!token) return null;
@@ -146,26 +113,24 @@ function createGraphQLClient(): typeof graphql | null {
   });
 }
 
-/**
- * Validate a GitHub token by making a test API call.
- * Returns validation result with scopes and username.
- */
+/** Validate token via API (check scopes) */
 export async function validateGitHubToken(token: string): Promise<GitHubTokenValidation> {
   if (!token || token.trim() === "") {
     return { valid: false, scopes: [], error: "Token is empty" };
   }
 
   // Basic format validation
-  if (!token.startsWith("ghp_") && !token.startsWith("github_pat_") && !token.startsWith("gho_")) {
-    // Allow classic tokens that don't have prefix (older tokens)
-    // but warn if they look completely wrong
+  if (
+    !token.startsWith("ghp_") &&
+    !token.startsWith("github_pat_") &&
+    !token.startsWith("gho_")
+  ) {
     if (token.length < 40) {
       return { valid: false, scopes: [], error: "Invalid token format" };
     }
   }
 
   try {
-    // Use REST API to validate and get scopes
     const response = await fetch("https://api.github.com/user", {
       headers: {
         Authorization: `token ${token}`,
@@ -205,11 +170,8 @@ export async function validateGitHubToken(token: string): Promise<GitHubTokenVal
   }
 }
 
-/**
- * Extract owner/repo from git remote URL.
- */
+/** Extract owner/repo from git remote */
 export async function getRepoContext(cwd: string): Promise<RepoContext | null> {
-  // Check cache first
   const cached = repoContextCache.get(cwd);
   if (cached) return cached;
 
@@ -219,7 +181,6 @@ export async function getRepoContext(cwd: string): Promise<RepoContext | null> {
 
     if (!fetchUrl) return null;
 
-    // Parse GitHub URL (https or ssh format)
     const match = fetchUrl.match(/github\.com[/:]([^/]+)\/([^/.]+?)(?:\.git)?$/);
 
     if (!match) return null;
@@ -232,9 +193,7 @@ export async function getRepoContext(cwd: string): Promise<RepoContext | null> {
   }
 }
 
-/**
- * Get issue and PR counts using a single GraphQL API call.
- */
+/** Get issue/PR counts */
 export async function getRepoStats(cwd: string): Promise<RepoStatsResult> {
   const client = createGraphQLClient();
   if (!client) {
@@ -246,7 +205,6 @@ export async function getRepoStats(cwd: string): Promise<RepoStatsResult> {
     return { stats: null, error: "Not a GitHub repository" };
   }
 
-  // Check cache
   const cacheKey = `${context.owner}/${context.repo}`;
   const cached = repoStatsCache.get(cacheKey);
   if (cached) {
@@ -285,18 +243,17 @@ export async function getRepoStats(cwd: string): Promise<RepoStatsResult> {
   }
 }
 
-/**
- * Get repository owner and name from a working directory.
- * Returns cached result to avoid repeated git operations.
- */
+/** Get repo info (cached) */
 export async function getRepoInfo(cwd: string): Promise<RepoContext | null> {
   return getRepoContext(cwd);
 }
 
-/**
- * Build a batched GraphQL query to check multiple issues for linked PRs.
- */
-function buildBatchPRQuery(owner: string, repo: string, candidates: PRCheckCandidate[]): string {
+/** Build batch PR query */
+function buildBatchPRQuery(
+  owner: string,
+  repo: string,
+  candidates: PRCheckCandidate[]
+): string {
   const issueQueries: string[] = [];
   const branchQueries: string[] = [];
 
@@ -304,7 +261,6 @@ function buildBatchPRQuery(owner: string, repo: string, candidates: PRCheckCandi
     const candidate = candidates[i];
     const alias = `wt_${i}`;
 
-    // Query by issue number (check timeline for cross-references)
     if (candidate.issueNumber) {
       issueQueries.push(`
         ${alias}_issue: repository(owner: "${owner}", name: "${repo}") {
@@ -329,7 +285,6 @@ function buildBatchPRQuery(owner: string, repo: string, candidates: PRCheckCandi
       `);
     }
 
-    // Also query by branch name (fallback for PRs not linked via "Closes #X")
     if (candidate.branchName) {
       const escapedBranch = JSON.stringify(candidate.branchName).slice(1, -1);
       branchQueries.push(`
@@ -351,9 +306,7 @@ function buildBatchPRQuery(owner: string, repo: string, candidates: PRCheckCandi
   return `query { ${issueQueries.join("\n")} ${branchQueries.join("\n")} }`;
 }
 
-/**
- * Parse GraphQL response to extract PR information per worktree.
- */
+/** Parse batch PR response */
 function parseBatchPRResponse(
   data: Record<string, unknown>,
   candidates: PRCheckCandidate[]
@@ -365,21 +318,12 @@ function parseBatchPRResponse(
     const alias = `wt_${i}`;
     let foundPR: LinkedPR | null = null;
 
-    // Check issue timeline results first
     const issueData = (
       data?.[`${alias}_issue`] as { issue?: { timelineItems?: { nodes?: unknown[] } } }
     )?.issue?.timelineItems?.nodes;
     if (issueData && Array.isArray(issueData)) {
       const prs: LinkedPR[] = [];
-      for (const node of issueData as Array<{
-        source?: {
-          number?: number;
-          url?: string;
-          state?: string;
-          isDraft?: boolean;
-          merged?: boolean;
-        };
-      }>) {
+      for (const node of issueData as Array<{ source?: { number?: number; url?: string; state?: string; isDraft?: boolean; merged?: boolean } }>) {
         const source = node?.source;
         if (source?.number && source?.url) {
           prs.push({
@@ -393,7 +337,6 @@ function parseBatchPRResponse(
         }
       }
 
-      // Pick best PR: prefer open, then merged, then closed
       const openPRs = prs.filter((pr) => pr.state === "open");
       const mergedPRs = prs.filter((pr) => pr.state === "merged");
       const closedPRs = prs.filter((pr) => pr.state === "closed");
@@ -407,23 +350,19 @@ function parseBatchPRResponse(
       }
     }
 
-    // If no PR found via issue, check branch-based lookup
     if (!foundPR) {
-      const branchData = (data?.[`${alias}_branch`] as { pullRequests?: { nodes?: unknown[] } })
-        ?.pullRequests?.nodes;
+      const branchData = (
+        data?.[`${alias}_branch`] as { pullRequests?: { nodes?: unknown[] } }
+      )?.pullRequests?.nodes;
       if (branchData && Array.isArray(branchData) && branchData.length > 0) {
-        const pr = branchData[0] as {
-          number?: number;
-          url?: string;
-          state?: string;
-          isDraft?: boolean;
-          merged?: boolean;
-        };
+        const pr = branchData[0] as { number?: number; url?: string; state?: string; isDraft?: boolean; merged?: boolean };
         if (pr?.number && pr?.url) {
           foundPR = {
             number: pr.number,
             url: pr.url,
-            state: pr.merged ? "merged" : (pr.state?.toLowerCase() as "open" | "closed") || "open",
+            state: pr.merged
+              ? "merged"
+              : (pr.state?.toLowerCase() as "open" | "closed") || "open",
             isDraft: pr.isDraft ?? false,
           };
         }
@@ -440,9 +379,7 @@ function parseBatchPRResponse(
   return results;
 }
 
-/**
- * Batch check for PRs linked to multiple worktrees.
- */
+/** Batch check for linked PRs */
 export async function batchCheckLinkedPRs(
   cwd: string,
   candidates: PRCheckCandidate[]
@@ -472,27 +409,21 @@ export async function batchCheckLinkedPRs(
   }
 }
 
-/**
- * Get the URL for a GitHub repository.
- */
+/** Get repo URL */
 export async function getRepoUrl(cwd: string): Promise<string | null> {
   const context = await getRepoContext(cwd);
   if (!context) return null;
   return `https://github.com/${context.owner}/${context.repo}`;
 }
 
-/**
- * Get the URL for a specific issue.
- */
+/** Get issue URL */
 export async function getIssueUrl(cwd: string, issueNumber: number): Promise<string | null> {
   const repoUrl = await getRepoUrl(cwd);
   if (!repoUrl) return null;
   return `${repoUrl}/issues/${issueNumber}`;
 }
 
-/**
- * Parse GitHub API errors into user-friendly messages.
- */
+/** Parse GitHub API errors */
 function parseGitHubError(error: unknown): string {
   const message = error instanceof Error ? error.message : String(error);
 
@@ -519,9 +450,7 @@ function parseGitHubError(error: unknown): string {
   return "GitHub API unavailable";
 }
 
-/**
- * Clear all caches. Useful when token changes or on logout.
- */
+/** Clear all caches */
 export function clearGitHubCaches(): void {
   repoContextCache.clear();
   repoStatsCache.clear();
@@ -530,11 +459,8 @@ export function clearGitHubCaches(): void {
   prListCache.clear();
 }
 
-// ─────────────────────────────────────────────────────────────────────────────
 // List Issues and Pull Requests
-// ─────────────────────────────────────────────────────────────────────────────
 
-// GraphQL query for listing issues (no search)
 const LIST_ISSUES_QUERY = `
   query GetIssues($owner: String!, $repo: String!, $states: [IssueState!], $cursor: String, $limit: Int = 20) {
     repository(owner: $owner, name: $repo) {
@@ -568,7 +494,6 @@ const LIST_ISSUES_QUERY = `
   }
 `;
 
-// GraphQL query for listing pull requests (no search)
 const LIST_PRS_QUERY = `
   query GetPRs($owner: String!, $repo: String!, $states: [PullRequestState!], $cursor: String, $limit: Int = 20) {
     repository(owner: $owner, name: $repo) {
@@ -598,7 +523,6 @@ const LIST_PRS_QUERY = `
   }
 `;
 
-// GraphQL query for searching issues/PRs
 const SEARCH_QUERY = `
   query SearchItems($query: String!, $type: SearchType!, $cursor: String, $limit: Int = 20) {
     search(query: $query, type: $type, first: $limit, after: $cursor) {
@@ -649,9 +573,7 @@ const SEARCH_QUERY = `
   }
 `;
 
-/**
- * Build cache key for list operations.
- */
+/** Build list cache key */
 function buildListCacheKey(
   type: "issue" | "pr",
   owner: string,
@@ -663,9 +585,7 @@ function buildListCacheKey(
   return `${type}:${owner}/${repo}:${state}:${search}:${cursor}`;
 }
 
-/**
- * Map state filter to GraphQL IssueState array.
- */
+/** Map state to GraphQL IssueState */
 function mapIssueStates(state?: string): string[] {
   if (!state || state === "open") return ["OPEN"];
   if (state === "closed") return ["CLOSED"];
@@ -673,9 +593,7 @@ function mapIssueStates(state?: string): string[] {
   return ["OPEN"];
 }
 
-/**
- * Map state filter to GraphQL PullRequestState array.
- */
+/** Map state to GraphQL PullRequestState */
 function mapPRStates(state?: string): string[] {
   if (!state || state === "open") return ["OPEN"];
   if (state === "closed") return ["CLOSED"];
@@ -684,9 +602,7 @@ function mapPRStates(state?: string): string[] {
   return ["OPEN"];
 }
 
-/**
- * Parse issue node from GraphQL response.
- */
+/** Parse issue node */
 function parseIssueNode(node: Record<string, unknown>): GitHubIssue {
   const author = node.author as { login?: string; avatarUrl?: string } | null;
   const assigneesData = node.assignees as { nodes?: Array<{ login?: string; avatarUrl?: string }> };
@@ -710,16 +626,13 @@ function parseIssueNode(node: Record<string, unknown>): GitHubIssue {
   };
 }
 
-/**
- * Parse PR node from GraphQL response.
- */
+/** Parse PR node */
 function parsePRNode(node: Record<string, unknown>): GitHubPR {
   const author = node.author as { login?: string; avatarUrl?: string } | null;
   const reviewsData = node.reviews as { totalCount?: number };
   const merged = node.merged as boolean;
   const rawState = node.state as string;
 
-  // Determine state: if merged is true, state is MERGED regardless of raw state
   let state: "OPEN" | "CLOSED" | "MERGED" = rawState as "OPEN" | "CLOSED" | "MERGED";
   if (merged) {
     state = "MERGED";
@@ -740,9 +653,7 @@ function parsePRNode(node: Record<string, unknown>): GitHubPR {
   };
 }
 
-/**
- * List issues from a repository with optional filtering and search.
- */
+/** List issues (filter/search) */
 export async function listIssues(
   options: GitHubListOptions
 ): Promise<GitHubListResponse<GitHubIssue>> {
@@ -765,7 +676,6 @@ export async function listIssues(
     options.cursor ?? ""
   );
 
-  // Check cache (only for non-search queries to keep search fresh)
   if (!options.search) {
     const cached = issueListCache.get(cacheKey);
     if (cached) return cached;
@@ -775,7 +685,6 @@ export async function listIssues(
     let result: GitHubListResponse<GitHubIssue>;
 
     if (options.search) {
-      // Use search API for keyword filtering
       const stateFilter =
         options.state === "closed" ? "is:closed" : options.state === "all" ? "" : "is:open";
       const searchQuery =
@@ -799,7 +708,6 @@ export async function listIssues(
         },
       };
     } else {
-      // Use repository query for listing
       const states = mapIssueStates(options.state);
 
       const response = (await client(LIST_ISSUES_QUERY, {
@@ -821,7 +729,6 @@ export async function listIssues(
         },
       };
 
-      // Cache the result
       issueListCache.set(cacheKey, result);
     }
 
@@ -831,9 +738,7 @@ export async function listIssues(
   }
 }
 
-/**
- * List pull requests from a repository with optional filtering and search.
- */
+/** List PRs (filter/search) */
 export async function listPullRequests(
   options: GitHubListOptions
 ): Promise<GitHubListResponse<GitHubPR>> {
@@ -856,7 +761,6 @@ export async function listPullRequests(
     options.cursor ?? ""
   );
 
-  // Check cache (only for non-search queries to keep search fresh)
   if (!options.search) {
     const cached = prListCache.get(cacheKey);
     if (cached) return cached;
@@ -866,19 +770,17 @@ export async function listPullRequests(
     let result: GitHubListResponse<GitHubPR>;
 
     if (options.search) {
-      // Use search API for keyword filtering
       let stateFilter = "";
       if (options.state === "open") stateFilter = "is:open";
       else if (options.state === "closed") stateFilter = "is:closed is:unmerged";
       else if (options.state === "merged") stateFilter = "is:merged";
-      // "all" has no state filter
 
       const searchQuery =
         `repo:${context.owner}/${context.repo} is:pr ${stateFilter} sort:updated-desc ${options.search}`.trim();
 
       const response = (await client(SEARCH_QUERY, {
         query: searchQuery,
-        type: "ISSUE", // GitHub search uses ISSUE type for both
+        type: "ISSUE",
         cursor: options.cursor,
         limit: 20,
       })) as GraphQlQueryResponseData;
@@ -894,7 +796,6 @@ export async function listPullRequests(
         },
       };
     } else {
-      // Use repository query for listing
       const states = mapPRStates(options.state);
 
       const response = (await client(LIST_PRS_QUERY, {
@@ -916,7 +817,6 @@ export async function listPullRequests(
         },
       };
 
-      // Cache the result
       prListCache.set(cacheKey, result);
     }
 

@@ -13,9 +13,7 @@ export function registerDevServerHandlers(deps: HandlerDependencies): () => void
   const { mainWindow, devServerManager } = deps;
   const handlers: Array<() => void> = [];
 
-  // ==========================================
   // Dev Server Event Forwarding
-  // ==========================================
 
   // Forward dev server update events to renderer
   // DevServerManager now emits events instead of direct IPC
@@ -30,9 +28,7 @@ export function registerDevServerHandlers(deps: HandlerDependencies): () => void
   });
   handlers.push(unsubServerError);
 
-  // ==========================================
   // Dev Server Handlers
-  // ==========================================
 
   const handleDevServerStart = async (_event: Electron.IpcMainInvokeEvent, payload: unknown) => {
     // Validate with Zod schema

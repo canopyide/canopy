@@ -1,24 +1,14 @@
-/**
- * ArtifactExtractor
- *
- * Detects and extracts artifacts from agent terminal output.
- * Artifacts include code blocks, diffs/patches, file writes, and summaries.
- */
+/** Detects and extracts artifacts (code blocks, diffs) from terminal output */
 
 import { createHash } from "crypto";
 import type { Artifact } from "../types/index.js";
 
-/**
- * Extract artifacts from a text buffer
- * @param text - The raw text to extract artifacts from
- * @param previousArtifacts - Previously extracted artifacts (to avoid duplicates)
- * @returns Array of newly extracted artifacts
- */
+/** Extract artifacts from text buffer (deduplicated against previous) */
 export function extractArtifacts(text: string, previousArtifacts: Artifact[] = []): Artifact[] {
   const artifacts: Artifact[] = [];
   const previousIds = new Set(previousArtifacts.map((a) => a.id));
 
-  // Extract code blocks (```language ... ```)
+  // Extract code blocks
   const codeBlocks = extractCodeBlocks(text);
   for (const block of codeBlocks) {
     const id = generateArtifactId(block.content);
@@ -59,12 +49,9 @@ interface CodeBlock {
   content: string;
 }
 
-/**
- * Extract fenced code blocks from text
- */
+/** Extract fenced code blocks */
 function extractCodeBlocks(text: string): CodeBlock[] {
   const blocks: CodeBlock[] = [];
-  // Match ```language\ncontent\n``` with proper escaping
   const regex = /```(\w+)?\n([\s\S]*?)```/g;
   let match;
 
@@ -79,10 +66,7 @@ function extractCodeBlocks(text: string): CodeBlock[] {
   return blocks;
 }
 
-/**
- * Extract diff/patch blocks from text
- * Detects unified diff format (diff, ---, +++, @@)
- */
+/** Extract diff/patch blocks (unified diff format) */
 function extractPatches(text: string): string[] {
   const patches: string[] = [];
   const lines = text.split("\n");
@@ -90,16 +74,14 @@ function extractPatches(text: string): string[] {
   let inPatch = false;
 
   for (const line of lines) {
-    // Start of patch (diff or --- line)
-    if (line.startsWith("diff ") || line.startsWith("--- ")) {
+    // Start of patch
+    if (line.startsWith("diff ") || line.startsWith("---")) {
       if (inPatch && currentPatch.length > 0) {
-        // Save previous patch
         patches.push(currentPatch.join("\n"));
       }
       currentPatch = [line];
       inPatch = true;
     } else if (inPatch) {
-      // Continue accumulating patch lines
       if (
         line.startsWith("+++") ||
         line.startsWith("@@") ||
@@ -109,12 +91,11 @@ function extractPatches(text: string): string[] {
       ) {
         currentPatch.push(line);
       } else if (line.trim() === "") {
-        // Allow blank lines in patches
+        // Allow blank lines
         currentPatch.push(line);
       } else {
         // End of patch
         if (currentPatch.length > 3) {
-          // Only save if it has meaningful content
           patches.push(currentPatch.join("\n"));
         }
         currentPatch = [];
@@ -123,7 +104,6 @@ function extractPatches(text: string): string[] {
     }
   }
 
-  // Save final patch if exists
   if (inPatch && currentPatch.length > 3) {
     patches.push(currentPatch.join("\n"));
   }
@@ -131,20 +111,14 @@ function extractPatches(text: string): string[] {
   return patches;
 }
 
-/**
- * Extract filename from a patch/diff
- */
+/** Extract filename from patch/diff headers */
 function extractPatchFilename(patch: string): string | undefined {
-  // Look for +++ b/filename or --- a/filename
-  const match = patch.match(/^\+\+\+ b\/(.+)$/m) || patch.match(/^--- a\/(.+)$/m);
+  const match = patch.match(/^\+\+\+ b\/(.+)$/m) || patch.match(/^---\s*a\/(.+)$/m);
   return match ? match[1] : undefined;
 }
 
-/**
- * Suggest a filename based on language and content
- */
+/** Suggest filename from language and content (class/function names) */
 function suggestFilename(language: string, content: string): string | undefined {
-  // Try to detect filename from content (e.g., class name, function name)
   const extensionMap: Record<string, string> = {
     typescript: ".ts",
     javascript: ".js",
@@ -173,22 +147,18 @@ function suggestFilename(language: string, content: string): string | undefined 
     return undefined;
   }
 
-  // Try to extract class/function/component name for better filename
   let name = "code";
 
-  // TypeScript/JavaScript class
   const classMatch = content.match(/(?:export\s+)?(?:class|interface)\s+(\w+)/);
   if (classMatch) {
     name = classMatch[1];
   }
 
-  // TypeScript/JavaScript function
   const functionMatch = content.match(/(?:export\s+)?(?:function|const)\s+(\w+)/);
   if (functionMatch && !classMatch) {
     name = functionMatch[1];
   }
 
-  // Python class or function
   const pythonMatch = content.match(/(?:class|def)\s+(\w+)/);
   if (pythonMatch && language === "python") {
     name = pythonMatch[1];
@@ -197,17 +167,12 @@ function suggestFilename(language: string, content: string): string | undefined 
   return name + extension;
 }
 
-/**
- * Generate a stable ID for an artifact based on its content
- */
+/** Generate stable SHA-256 hash ID for content */
 function generateArtifactId(content: string): string {
   return createHash("sha256").update(content).digest("hex").substring(0, 16);
 }
 
-/**
- * Strip ANSI escape codes from text before artifact extraction
- * This ensures clean artifacts without terminal formatting
- */
+/** Strip ANSI escape codes */
 export function stripAnsiCodes(text: string): string {
   // eslint-disable-next-line no-control-regex
   return text.replace(/\x1b\[[0-9;]*[a-zA-Z]/g, "");

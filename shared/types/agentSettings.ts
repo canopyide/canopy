@@ -1,21 +1,6 @@
-/**
- * Agent Settings Type Definitions
- *
- * Types for configuring AI agent CLI options (Claude, Gemini, Codex).
- * These settings allow users to customize agent behavior through CLI flags
- * like approval modes, models, sandbox policies, and other advanced options.
- */
-
-// ============================================================================
 // Claude Settings
-// ============================================================================
 
-/**
- * Permission/approval mode for Claude CLI
- * - "default": Standard permission prompts
- * - "bypass": Bypass permission checks (--permission-mode bypassPermissions)
- * - "yolo": Don't ask for permissions (--permission-mode dontAsk)
- */
+/** Claude approval mode: default | bypass | yolo */
 export type ClaudeApprovalMode = "default" | "bypass" | "yolo";
 
 /**
@@ -40,16 +25,9 @@ export interface ClaudeSettings {
   customFlags?: string;
 }
 
-// ============================================================================
 // Gemini Settings
-// ============================================================================
 
-/**
- * Approval mode for Gemini CLI
- * - "default": Standard approval prompts
- * - "auto_edit": Auto-approve edits
- * - "yolo": Auto-accept all actions (⚠️ dangerous)
- */
+/** Gemini approval mode: default | auto_edit | yolo */
 export type GeminiApprovalMode = "default" | "auto_edit" | "yolo";
 
 /**
@@ -70,25 +48,12 @@ export interface GeminiSettings {
   customFlags?: string;
 }
 
-// ============================================================================
 // Codex Settings
-// ============================================================================
 
-/**
- * Sandbox policy for Codex CLI
- * - "read-only": Can only read files
- * - "workspace-write": Can write to workspace
- * - "danger-full-access": Full filesystem access (⚠️ dangerous)
- */
+/** Codex sandbox: read-only | workspace-write | danger-full-access */
 export type CodexSandboxPolicy = "read-only" | "workspace-write" | "danger-full-access";
 
-/**
- * Approval policy for Codex CLI
- * - "untrusted": Requires approval for all commands
- * - "on-failure": Only requires approval on failures
- * - "on-request": Only when explicitly requested
- * - "never": Never ask for approval
- */
+/** Codex approval: untrusted | on-failure | on-request | never */
 export type CodexApprovalPolicy = "untrusted" | "on-failure" | "on-request" | "never";
 
 /**
@@ -113,13 +78,9 @@ export interface CodexSettings {
   customFlags?: string;
 }
 
-// ============================================================================
 // Unified Agent Settings
-// ============================================================================
 
-/**
- * Complete agent settings configuration
- */
+/** Complete agent settings */
 export interface AgentSettings {
   claude: ClaudeSettings;
   gemini: GeminiSettings;
@@ -160,13 +121,9 @@ export const DEFAULT_AGENT_SETTINGS: AgentSettings = {
   },
 };
 
-// ============================================================================
 // CLI Flag Generation
-// ============================================================================
 
-/**
- * Generate CLI flags for Claude from settings
- */
+/** Generate Claude CLI flags from settings */
 export function generateClaudeFlags(settings: ClaudeSettings): string[] {
   const flags: string[] = [];
 
@@ -205,9 +162,7 @@ export function generateClaudeFlags(settings: ClaudeSettings): string[] {
   return flags;
 }
 
-/**
- * Generate CLI flags for Gemini from settings
- */
+/** Generate Gemini CLI flags from settings */
 export function generateGeminiFlags(settings: GeminiSettings): string[] {
   const flags: string[] = [];
 
@@ -236,9 +191,7 @@ export function generateGeminiFlags(settings: GeminiSettings): string[] {
   return flags;
 }
 
-/**
- * Generate CLI flags for Codex from settings
- */
+/** Generate Codex CLI flags from settings */
 export function generateCodexFlags(settings: CodexSettings): string[] {
   const flags: string[] = [];
 

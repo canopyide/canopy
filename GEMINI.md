@@ -53,6 +53,17 @@ The application follows the standard Electron **Main/Renderer** process model, h
 - **Typecheck:** TypeScript (`npm run typecheck`)
 - **Tests:** Vitest (`npm run test`)
 
+### Code Commenting Guidelines
+
+**Optimize for Token Efficiency**
+
+This project is AI-first. Comments must be minimal to preserve the context window.
+
+- **No Decoration:** Strictly avoid decorative separator lines (e.g., `=====`, `-----`) or block framing.
+- **Be Terse:** Use direct, brief language. Avoid conversational filler.
+- **High Signal:** Only document non-obvious logic, complex rationale, or edge cases.
+- **No Redundancy:** Do not restate information that is already obvious from variable names or types.
+
 ## Key Concepts & Features
 
 ### 1. Worktrees

@@ -16,9 +16,7 @@ import { DEFAULT_AGENT_SETTINGS } from "../../../shared/types/index.js";
 export function registerAiHandlers(_deps: HandlerDependencies): () => void {
   const handlers: Array<() => void> = [];
 
-  // ==========================================
   // History Handlers (Agent Transcripts)
-  // ==========================================
 
   /**
    * Get agent sessions with optional filters
@@ -84,9 +82,7 @@ export function registerAiHandlers(_deps: HandlerDependencies): () => void {
   ipcMain.handle(CHANNELS.HISTORY_DELETE_SESSION, handleHistoryDeleteSession);
   handlers.push(() => ipcMain.removeHandler(CHANNELS.HISTORY_DELETE_SESSION));
 
-  // ==========================================
   // AI Configuration Handlers
-  // ==========================================
 
   /**
    * Get AI configuration status
@@ -178,9 +174,7 @@ export function registerAiHandlers(_deps: HandlerDependencies): () => void {
   ipcMain.handle(CHANNELS.AI_GENERATE_PROJECT_IDENTITY, handleAIGenerateProjectIdentity);
   handlers.push(() => ipcMain.removeHandler(CHANNELS.AI_GENERATE_PROJECT_IDENTITY));
 
-  // ==========================================
   // Agent Settings Handlers
-  // ==========================================
 
   /**
    * Get agent settings

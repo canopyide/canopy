@@ -20,10 +20,7 @@ export interface CreateWorktreeOptions {
   fromRemote?: boolean;
 }
 
-/**
- * GitService encapsulates git operations for worktree management.
- * Uses simple-git for most operations and git.raw() for worktree commands.
- */
+/** Encapsulates git operations (worktrees, branches, diffs) */
 export class GitService {
   private git: SimpleGit;
   private rootPath: string;
@@ -33,27 +30,19 @@ export class GitService {
     this.git = simpleGit(rootPath);
   }
 
-  /**
-   * List all local and remote branches.
-   * @returns Array of branch information
-   */
+  /** List all local and remote branches */
   async listBranches(): Promise<BranchInfo[]> {
     try {
       logDebug("Listing branches", { rootPath: this.rootPath });
 
-      // Get both local and remote branches
       const summary: BranchSummary = await this.git.branch(["-a"]);
-
       const branches: BranchInfo[] = [];
 
-      // Process all branches (local + remote)
       for (const [branchName, branchDetail] of Object.entries(summary.branches)) {
-        // Skip HEAD pointers (both "HEAD ->" and "remotes/origin/HEAD")
         if (branchName.includes("HEAD ->") || branchName.endsWith("/HEAD")) {
           continue;
         }
 
-        // Determine if this is a remote branch
         const isRemote = branchName.startsWith("remotes/");
         const displayName = isRemote ? branchName.replace("remotes/", "") : branchName;
 
@@ -73,10 +62,7 @@ export class GitService {
     }
   }
 
-  /**
-   * Suggest a default worktree path based on branch name.
-   * Pattern: <repo-root>/../<repo-name>-worktrees/<branch-name>
-   */
+  /** Suggest worktree path from branch name */
   suggestWorktreePath(branchName: string): string {
     const repoName = this.rootPath.split("/").pop() || "repo";
     const sanitizedBranch = branchName.replace(/[^a-zA-Z0-9-_]/g, "-");
@@ -84,10 +70,7 @@ export class GitService {
     return resolve(worktreesDir, sanitizedBranch);
   }
 
-  /**
-   * Validate that a path doesn't already exist.
-   * @returns true if path is valid (doesn't exist), false otherwise
-   */
+  /** Validate path doesn't exist */
   validatePath(path: string): { valid: boolean; error?: string } {
     if (existsSync(path)) {
       return {
@@ -98,9 +81,7 @@ export class GitService {
     return { valid: true };
   }
 
-  /**
-   * Check if a branch exists (local or remote).
-   */
+  /** Check if branch exists (local/remote) */
   async branchExists(branchName: string): Promise<boolean> {
     try {
       const branches = await this.listBranches();
@@ -114,13 +95,7 @@ export class GitService {
     }
   }
 
-  /**
-   * Create a new worktree.
-   * Uses git.raw() since simple-git doesn't have a worktree wrapper.
-   *
-   * @param options - Worktree creation options
-   * @throws Error if worktree creation fails
-   */
+  /** Create new worktree */
   async createWorktree(options: CreateWorktreeOptions): Promise<void> {
     const { baseBranch, newBranch, path, fromRemote = false } = options;
 
@@ -131,13 +106,11 @@ export class GitService {
       fromRemote: options.fromRemote,
     });
 
-    // Validate path doesn't exist
     const pathValidation = this.validatePath(path);
     if (!pathValidation.valid) {
       throw new Error(pathValidation.error);
     }
 
-    // Ensure parent directory exists
     const parentDir = dirname(path);
     if (!existsSync(parentDir)) {
       throw new Error(`Parent directory does not exist: ${parentDir}`);
@@ -145,8 +118,6 @@ export class GitService {
 
     try {
       if (fromRemote) {
-        // Create worktree from remote branch with local tracking branch
-        // git worktree add -b <new-branch> --track <path> <remote>/<branch>
         logDebug("Creating worktree from remote branch", {
           path,
           newBranch,
@@ -155,8 +126,6 @@ export class GitService {
 
         await this.git.raw(["worktree", "add", "-b", newBranch, "--track", path, baseBranch]);
       } else {
-        // Create worktree with new branch
-        // git worktree add -b <new-branch> <path> <base-branch>
         logDebug("Creating worktree with new branch", {
           path,
           newBranch,
@@ -176,17 +145,13 @@ export class GitService {
     }
   }
 
-  /**
-   * List all worktrees.
-   * Uses git worktree list --porcelain for structured output.
-   * The first worktree in the output is always the main worktree (repository root).
-   */
+  /** List all worktrees (porcelain format) */
   async listWorktrees(): Promise<
     Array<{ path: string; branch: string; bare: boolean; isMainWorktree: boolean }>
   > {
     try {
       const output = await this.git.raw(["worktree", "list", "--porcelain"]);
-      const worktrees: Array<{
+      const worktrees: Array<{ 
         path: string;
         branch: string;
         bare: boolean;
@@ -195,14 +160,12 @@ export class GitService {
 
       let currentWorktree: Partial<{ path: string; branch: string; bare: boolean }> = {};
 
-      // Helper to push worktree
       const pushWorktree = () => {
         if (currentWorktree.path) {
           worktrees.push({
             path: currentWorktree.path,
             branch: currentWorktree.branch || "",
             bare: currentWorktree.bare || false,
-            // The first worktree found is always the main worktree
             isMainWorktree: worktrees.length === 0,
           });
         }
@@ -217,12 +180,10 @@ export class GitService {
         } else if (line.startsWith("bare")) {
           currentWorktree.bare = true;
         } else if (line === "") {
-          // Empty line marks end of worktree entry
           pushWorktree();
         }
       }
 
-      // Handle last entry if file doesn't end with empty line
       pushWorktree();
 
       return worktrees;
@@ -232,15 +193,8 @@ export class GitService {
     }
   }
 
-  /**
-   * Get a unified diff for a specific file.
-   *
-   * @param filePath - Path to the file (relative to worktree root)
-   * @param status - Git status of the file
-   * @returns The unified diff string, or special markers for binary/large files
-   */
+  /** Get unified diff for file (handles new/modified/binary/large) */
   async getFileDiff(filePath: string, status: GitStatus): Promise<string> {
-    // Validate input status
     const validStatuses: GitStatus[] = [
       "added",
       "modified",
@@ -254,42 +208,37 @@ export class GitService {
       throw new Error(`Invalid git status: ${status}`);
     }
 
-    // Security: Prevent path traversal attacks
-    // 1. Reject absolute paths
+    // Security: path validation
     if (isAbsolute(filePath)) {
       throw new Error("Absolute paths are not allowed");
     }
 
-    // 2. Normalize and check for parent directory references
     const normalizedPath = normalize(filePath);
     if (normalizedPath.includes("..") || normalizedPath.startsWith(sep)) {
       throw new Error("Path traversal detected");
     }
 
-    // 3. Resolve and verify the path stays within rootPath
     const absolutePath = resolve(this.rootPath, normalizedPath);
     const normalizedRoot = normalize(this.rootPath + sep);
     if (!absolutePath.startsWith(normalizedRoot)) {
       throw new Error("Path is outside worktree root");
     }
 
-    // Handle file size limits (1MB max for existing files)
     try {
       const stats = await stat(absolutePath);
       if (stats.size > 1024 * 1024) {
         return "FILE_TOO_LARGE";
       }
     } catch {
-      // File might be deleted, will check diff size below
+      // File might be deleted
     }
 
-    // Handle Untracked/Added files - these aren't in the index yet
+    // Untracked/Added files
     if (status === "untracked" || status === "added") {
       try {
-        // Read as Buffer first to check for binary content
         const buffer = await readFile(absolutePath);
 
-        // Check for binary content before converting to string
+        // Check binary
         if (this.isBinaryBuffer(buffer)) {
           return "BINARY_FILE";
         }
@@ -297,7 +246,7 @@ export class GitService {
         const content = buffer.toString("utf-8");
         const lines = content.split("\n");
 
-        // Construct unified diff format for new files
+        // Synthetic diff
         return `diff --git a/${normalizedPath} b/${normalizedPath}
 new file mode 100644
 --- /dev/null
@@ -313,21 +262,18 @@ ${lines.map((l) => "+" + l).join("\n")}`;
       }
     }
 
-    // Handle Modified/Deleted files using git diff
+    // Modified/Deleted
     try {
       const diff = await this.git.diff(["HEAD", "--no-color", "--", normalizedPath]);
 
-      // Check for binary files
       if (diff.includes("Binary files")) {
         return "BINARY_FILE";
       }
 
-      // If no diff returned, the file might be unchanged
       if (!diff.trim()) {
         return "NO_CHANGES";
       }
 
-      // Check diff size to prevent memory issues with large deleted files
       if (diff.length > 1024 * 1024) {
         return "FILE_TOO_LARGE";
       }
@@ -342,12 +288,8 @@ ${lines.map((l) => "+" + l).join("\n")}`;
     }
   }
 
-  /**
-   * Check if a buffer contains binary content
-   * More accurate than string-based detection
-   */
+  /** Check for binary content (null bytes or high non-printable ratio) */
   private isBinaryBuffer(buffer: Buffer): boolean {
-    // Check up to first 8KB for null bytes (standard binary detection)
     const checkLength = Math.min(buffer.length, 8192);
 
     for (let i = 0; i < checkLength; i++) {
@@ -356,25 +298,18 @@ ${lines.map((l) => "+" + l).join("\n")}`;
       }
     }
 
-    // Check for high ratio of non-printable characters
     let nonPrintable = 0;
     for (let i = 0; i < checkLength; i++) {
       const byte = buffer[i];
-      // Printable ASCII range (0x20-0x7E) + common whitespace (tab, newline, carriage return)
       if (!(byte >= 0x20 && byte <= 0x7e) && byte !== 0x09 && byte !== 0x0a && byte !== 0x0d) {
         nonPrintable++;
       }
     }
 
-    // More than 30% non-printable characters indicates binary
     return checkLength > 0 && nonPrintable / checkLength > 0.3;
   }
 
-  /**
-   * Get remote URL for a repository (typically origin)
-   * @param repoPath - Path to repository
-   * @returns Remote URL or null if no remote exists
-   */
+  /** Get remote URL (origin) */
   async getRemoteUrl(repoPath: string): Promise<string | null> {
     return this.handleGitOperation(async () => {
       const git = simpleGit(repoPath);
@@ -384,18 +319,12 @@ ${lines.map((l) => "+" + l).join("\n")}`;
     }, "getRemoteUrl");
   }
 
-  /**
-   * Get upstream URL (origin) for a repository
-   * Alias for getRemoteUrl for backwards compatibility
-   */
+  /** Get upstream URL (alias) */
   async getUpstreamUrl(repoPath: string): Promise<string | null> {
     return this.getRemoteUrl(repoPath);
   }
 
-  /**
-   * Initialize a new git repository
-   * @param path - Path where repository should be initialized
-   */
+  /** Init new repo */
   async initializeRepository(path: string): Promise<void> {
     return this.handleGitOperation(async () => {
       const git = simpleGit(path);
@@ -403,30 +332,16 @@ ${lines.map((l) => "+" + l).join("\n")}`;
     }, "initializeRepository");
   }
 
-  /**
-   * Get worktree changes with stats (moved from electron/utils/git.ts)
-   * This method integrates the existing cache-based implementation
-   * but delegates to the standalone function for now to preserve behavior.
-   *
-   * @param worktreePath - Path to the worktree
-   * @param forceRefresh - Skip cache and fetch fresh data
-   * @returns WorktreeChanges with file details and statistics
-   */
+  /** Get worktree changes with stats */
   async getWorktreeChangesWithStats(
     worktreePath: string,
     forceRefresh = false
   ): Promise<WorktreeChanges> {
-    // Import the standalone function to preserve existing cache behavior
-    // This allows gradual migration without breaking existing functionality
     const { getWorktreeChangesWithStats: getChanges } = await import("../utils/git.js");
     return getChanges(worktreePath, forceRefresh);
   }
 
-  /**
-   * Get the last commit message from a repository or worktree
-   * @param repoPath - Path to repository or worktree
-   * @returns Last commit message or null if no commits exist
-   */
+  /** Get last commit message */
   async getLastCommitMessage(repoPath: string): Promise<string | null> {
     return this.handleGitOperation(async () => {
       const git = simpleGit(repoPath);
@@ -435,11 +350,7 @@ ${lines.map((l) => "+" + l).join("\n")}`;
     }, "getLastCommitMessage");
   }
 
-  /**
-   * Get the repository root directory for a given path
-   * @param repoPath - Path within a git repository
-   * @returns Absolute path to repository root
-   */
+  /** Get repo root */
   async getRepositoryRoot(repoPath: string): Promise<string> {
     return this.handleGitOperation(async () => {
       const git = simpleGit(repoPath);
@@ -448,11 +359,7 @@ ${lines.map((l) => "+" + l).join("\n")}`;
     }, "getRepositoryRoot");
   }
 
-  /**
-   * Get git status for a repository or worktree
-   * @param repoPath - Path to repository or worktree
-   * @returns Status result from simple-git
-   */
+  /** Get git status */
   async getStatus(repoPath: string) {
     return this.handleGitOperation(async () => {
       const git = simpleGit(repoPath);
@@ -460,12 +367,7 @@ ${lines.map((l) => "+" + l).join("\n")}`;
     }, "getStatus");
   }
 
-  /**
-   * Get git log entries
-   * @param repoPath - Path to repository or worktree
-   * @param options - Log options (e.g., maxCount)
-   * @returns Log result from simple-git
-   */
+  /** Get git log */
   async getLog(repoPath: string, options?: { maxCount?: number }) {
     return this.handleGitOperation(async () => {
       const git = simpleGit(repoPath);
@@ -473,12 +375,7 @@ ${lines.map((l) => "+" + l).join("\n")}`;
     }, "getLog");
   }
 
-  /**
-   * Get git diff output
-   * @param repoPath - Path to repository or worktree
-   * @param args - Diff arguments (e.g., ['--numstat', 'HEAD'])
-   * @returns Diff output string
-   */
+  /** Get raw git diff */
   async getDiff(repoPath: string, args: string[]): Promise<string> {
     return this.handleGitOperation(async () => {
       const git = simpleGit(repoPath);
@@ -486,21 +383,13 @@ ${lines.map((l) => "+" + l).join("\n")}`;
     }, "getDiff");
   }
 
-  /**
-   * Centralized error handling wrapper for git operations
-   * Provides consistent error handling, logging, and error type conversion
-   *
-   * @param operation - Async function to execute
-   * @param context - Description of operation for logging
-   * @returns Result of the operation
-   */
+  /** Error handling wrapper for git ops */
   private async handleGitOperation<T>(operation: () => Promise<T>, context: string): Promise<T> {
     try {
       return await operation();
     } catch (error) {
       const errorMessage = error instanceof Error ? error.message : String(error);
 
-      // Check for worktree removed scenario
       if (
         errorMessage.includes("ENOENT") ||
         errorMessage.includes("no such file or directory") ||
@@ -516,7 +405,6 @@ ${lines.map((l) => "+" + l).join("\n")}`;
         throw wtError;
       }
 
-      // Wrap other errors in GitError for consistent handling
       const cause = error instanceof Error ? error : new Error(String(error));
       const gitError = new GitError(
         `Git operation failed: ${context}`,

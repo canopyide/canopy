@@ -13,9 +13,7 @@ import type { WorktreeState } from "./WorktreeMonitor.js";
 // Re-export EventCategory for backwards compatibility
 export type { EventCategory };
 
-// ============================================================================
 // Event Category and Metadata System
-// ============================================================================
 
 /**
  * Metadata for each event type.
@@ -307,9 +305,7 @@ export function getEventTypesForCategory(category: EventCategory): Array<keyof C
   );
 }
 
-// ============================================================================
 // Type Helpers for BaseEventPayload Enforcement
-// ============================================================================
 
 /**
  * Helper type to enforce BaseEventPayload for all domain events.
@@ -324,9 +320,7 @@ export type WithBase<T> = T & BaseEventPayload;
  */
 export type WithContext<T> = T & BaseEventPayload;
 
-// ============================================================================
 // Event Type Unions by Category
-// ============================================================================
 
 /** Union of all system event types */
 export type SystemEventType = Extract<keyof CanopyEventMap, `sys:${string}`>;
@@ -466,9 +460,7 @@ export type CanopyEventMap = {
     worktreeId: string;
   };
 
-  // ============================================================================
   // Agent Lifecycle Events
-  // ============================================================================
 
   /**
    * Emitted when a new AI agent (Claude, Gemini, etc.) is spawned in a terminal.
@@ -590,9 +582,7 @@ export type CanopyEventMap = {
     }>;
   }>;
 
-  // ============================================================================
   // Terminal Trash Events
-  // ============================================================================
 
   /**
    * Emitted when a terminal is moved to trash (pending deletion).
@@ -609,9 +599,7 @@ export type CanopyEventMap = {
     id: string;
   };
 
-  // ============================================================================
   // Task Lifecycle Events (Future-proof for task management)
-  // ============================================================================
 
   /**
    * Emitted when a new task is created.

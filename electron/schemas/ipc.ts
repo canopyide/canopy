@@ -8,9 +8,7 @@
 import { z } from "zod";
 import { TerminalTypeSchema } from "./agent.js";
 
-// ============================================================================
 // Terminal Schemas
-// ============================================================================
 
 /**
  * Schema for terminal spawn options.
@@ -39,9 +37,7 @@ export const TerminalResizePayloadSchema = z.object({
   rows: z.number().int().positive().max(500),
 });
 
-// ============================================================================
 // Dev Server Schemas
-// ============================================================================
 
 /**
  * Valid dev server status values.
@@ -73,9 +69,7 @@ export const DevServerTogglePayloadSchema = z.object({
   command: z.string().optional(),
 });
 
-// ============================================================================
 // CopyTree Schemas
-// ============================================================================
 
 /**
  * Schema for CopyTree output format.
@@ -149,9 +143,7 @@ export const CopyTreeGetFileTreePayloadSchema = z.object({
   dirPath: z.string().optional(),
 });
 
-// ============================================================================
 // System Schemas
-// ============================================================================
 
 /**
  * Schema for opening external URLs.
@@ -167,9 +159,7 @@ export const SystemOpenPathPayloadSchema = z.object({
   path: z.string().min(1),
 });
 
-// ============================================================================
 // Worktree Schemas
-// ============================================================================
 
 /**
  * Schema for setting active worktree.
@@ -191,9 +181,7 @@ export const WorktreeCreatePayloadSchema = z.object({
   }),
 });
 
-// ============================================================================
 // History Schemas
-// ============================================================================
 
 /**
  * Schema for history session filters.

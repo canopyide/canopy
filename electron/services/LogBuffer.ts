@@ -1,9 +1,4 @@
-/**
- * LogBuffer Service
- *
- * Ring buffer for storing recent log entries from the main process.
- * Provides filtering capabilities and streams new entries via IPC.
- */
+/** Ring buffer for main process logs (FIFO) */
 
 import crypto from "crypto";
 
@@ -26,7 +21,6 @@ export interface FilterOptions {
   endTime?: number;
 }
 
-// Singleton instance
 let instance: LogBuffer | null = null;
 
 export class LogBuffer {
@@ -37,9 +31,7 @@ export class LogBuffer {
     this.maxSize = maxSize;
   }
 
-  /**
-   * Get the singleton instance
-   */
+  /** Get singleton */
   static getInstance(): LogBuffer {
     if (!instance) {
       instance = new LogBuffer();
@@ -47,9 +39,7 @@ export class LogBuffer {
     return instance;
   }
 
-  /**
-   * Add a new log entry to the buffer
-   */
+  /** Add log entry */
   push(entry: Omit<LogEntry, "id">): LogEntry {
     const fullEntry: LogEntry = {
       ...entry,
@@ -58,7 +48,6 @@ export class LogBuffer {
 
     this.buffer.push(fullEntry);
 
-    // Trim buffer if it exceeds max size
     if (this.buffer.length > this.maxSize) {
       this.buffer = this.buffer.slice(-this.maxSize);
     }
@@ -66,42 +55,33 @@ export class LogBuffer {
     return fullEntry;
   }
 
-  /**
-   * Get all log entries
-   */
+  /** Get all logs */
   getAll(): LogEntry[] {
     return [...this.buffer];
   }
 
-  /**
-   * Get filtered log entries
-   */
+  /** Get filtered logs */
   getFiltered(options: FilterOptions): LogEntry[] {
     let entries = this.buffer;
 
-    // Filter by log levels
     if (options.levels && options.levels.length > 0) {
       entries = entries.filter((e) => options.levels!.includes(e.level));
     }
 
-    // Filter by sources
     if (options.sources && options.sources.length > 0) {
       entries = entries.filter((e) => e.source && options.sources!.includes(e.source));
     }
 
-    // Filter by search text
     if (options.search) {
       const searchLower = options.search.toLowerCase();
       entries = entries.filter((e) => {
         if (e.message.toLowerCase().includes(searchLower)) return true;
         if (e.source && e.source.toLowerCase().includes(searchLower)) return true;
 
-        // Safe context search - handle circular references and BigInt
         if (e.context) {
           try {
             return JSON.stringify(e.context).toLowerCase().includes(searchLower);
           } catch {
-            // Ignore entries with context that can't be stringified
             return false;
           }
         }
@@ -110,7 +90,6 @@ export class LogBuffer {
       });
     }
 
-    // Filter by time range
     if (options.startTime !== undefined) {
       entries = entries.filter((e) => e.timestamp >= options.startTime!);
     }
@@ -121,9 +100,7 @@ export class LogBuffer {
     return entries;
   }
 
-  /**
-   * Get unique sources from current logs
-   */
+  /** Get unique log sources */
   getSources(): string[] {
     const sources = new Set<string>();
     for (const entry of this.buffer) {
@@ -134,25 +111,18 @@ export class LogBuffer {
     return Array.from(sources).sort();
   }
 
-  /**
-   * Clear all log entries
-   */
+  /** Clear buffer */
   clear(): void {
     this.buffer = [];
   }
 
-  /**
-   * Handle project switch - clear all logs for the new project.
-   * This ensures logs from the previous project don't appear in the new project.
-   */
+  /** Clear logs on project switch */
   onProjectSwitch(): void {
     console.log("Handling project switch in LogBuffer - clearing logs");
     this.clear();
   }
 
-  /**
-   * Get the count of log entries
-   */
+  /** Get current count */
   get length(): number {
     return this.buffer.length;
   }

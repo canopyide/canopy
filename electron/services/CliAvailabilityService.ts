@@ -1,42 +1,21 @@
-/**
- * CLI Availability Service
- *
- * Checks which AI agent CLIs are available on the system at startup and on-demand.
- * This centralizes availability detection so the renderer can query cached results
- * instead of running checks each time.
- *
- * Supported CLIs:
- * - claude: Claude AI CLI
- * - gemini: Gemini AI CLI
- * - codex: Codex AI CLI
- */
+/** Checks availability of AI agent CLIs (claude, gemini, codex) with caching */
 
 import { execFileSync } from "child_process";
 import type { CliAvailability } from "../../shared/types/ipc.js";
 
-/**
- * Service for checking CLI command availability
- */
+/** Service for checking CLI command availability */
 export class CliAvailabilityService {
   private availability: CliAvailability | null = null;
   private inFlightCheck: Promise<CliAvailability> | null = null;
 
-  /**
-   * Check which CLIs are available on the system
-   * Runs checks in parallel for better performance
-   * Deduplicates concurrent calls to avoid redundant checks
-   * @returns CLI availability status for all supported CLIs
-   */
+  /** Check all CLIs (parallel, deduplicated) */
   async checkAvailability(): Promise<CliAvailability> {
-    // If a check is already in progress, return the same promise
     if (this.inFlightCheck) {
       return this.inFlightCheck;
     }
 
-    // Create and store the in-flight promise
     this.inFlightCheck = (async () => {
       try {
-        // Run all checks in parallel for optimal performance
         const [claude, gemini, codex] = await Promise.all([
           this.checkCommand("claude"),
           this.checkCommand("gemini"),
@@ -49,12 +28,10 @@ export class CliAvailabilityService {
           codex,
         };
 
-        // Cache the results
         this.availability = result;
 
         return result;
       } finally {
-        // Clear in-flight promise when done
         this.inFlightCheck = null;
       }
     })();
@@ -62,36 +39,23 @@ export class CliAvailabilityService {
     return this.inFlightCheck;
   }
 
-  /**
-   * Get cached availability status
-   * @returns Cached availability or null if not yet checked
-   */
+  /** Get cached availability status */
   getAvailability(): CliAvailability | null {
     return this.availability;
   }
 
-  /**
-   * Refresh availability by re-checking all CLIs
-   * @returns Updated CLI availability status
-   */
+  /** Refresh availability by re-checking all CLIs */
   async refresh(): Promise<CliAvailability> {
     return this.checkAvailability();
   }
 
-  /**
-   * Check if a specific command is available on the system
-   * Uses 'which' on Unix-like systems, 'where' on Windows
-   * Wraps synchronous execFileSync in a promise to avoid blocking the event loop
-   * @param command - Command name to check
-   * @returns true if command is available, false otherwise
-   */
+  /** Check command availability (async wrapper around which/where) */
   private async checkCommand(command: string): Promise<boolean> {
     if (typeof command !== "string" || !command.trim()) {
       return false;
     }
 
-    // Validate command contains only safe characters to prevent shell injection
-    // Allow alphanumeric, dash, underscore, and dot (for extensions)
+    // Prevent shell injection (alphanumeric, ., -, _)
     if (!/^[a-zA-Z0-9._-]+$/.test(command)) {
       console.warn(
         `[CliAvailabilityService] Command "${command}" contains invalid characters, rejecting`
@@ -99,13 +63,11 @@ export class CliAvailabilityService {
       return false;
     }
 
-    // Wrap sync operation in setImmediate to avoid blocking event loop
+    // Non-blocking wrapper
     return new Promise((resolve) => {
       setImmediate(() => {
         try {
-          // Use 'which' on Unix-like systems, 'where' on Windows
           const checkCmd = process.platform === "win32" ? "where" : "which";
-          // Use execFileSync instead of execSync to avoid shell interpretation
           execFileSync(checkCmd, [command], { stdio: "ignore" });
           resolve(true);
         } catch {

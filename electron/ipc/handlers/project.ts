@@ -18,9 +18,7 @@ export function registerProjectHandlers(deps: HandlerDependencies): () => void {
   const { mainWindow, worktreeService, cliAvailabilityService } = deps;
   const handlers: Array<() => void> = [];
 
-  // ==========================================
   // System Handlers
-  // ==========================================
 
   const handleSystemOpenExternal = async (
     _event: Electron.IpcMainInvokeEvent,
@@ -131,9 +129,7 @@ export function registerProjectHandlers(deps: HandlerDependencies): () => void {
   ipcMain.handle(CHANNELS.SYSTEM_REFRESH_CLI_AVAILABILITY, handleSystemRefreshCliAvailability);
   handlers.push(() => ipcMain.removeHandler(CHANNELS.SYSTEM_REFRESH_CLI_AVAILABILITY));
 
-  // ==========================================
   // Project Handlers
-  // ==========================================
 
   const handleProjectGetAll = async () => {
     return projectStore.getAllProjects();

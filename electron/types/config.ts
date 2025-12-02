@@ -23,9 +23,7 @@ export type {
   CanopyConfig,
 } from "../../shared/types/index.js";
 
-// ============================================================================
 // Default Configuration
-// ============================================================================
 
 /** Default configuration values */
 export const DEFAULT_CONFIG: CanopyConfig = {
