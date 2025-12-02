@@ -1,16 +1,3 @@
-/**
- * TrashContainer Component
- *
- * A right-aligned popover showing trashed terminals sorted by expiration time.
- * Opens above the dock with a clean list interface for restore/delete actions.
- *
- * Features:
- * - Popover-based interface (replaces inline expansion)
- * - Sorted by expiration time (soonest to delete first)
- * - Subtle muted styling (non-urgent background utility)
- * - Reuses TrashBinItem for consistent list item display
- */
-
 import { useState } from "react";
 import { Trash2 } from "lucide-react";
 import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover";
@@ -29,10 +16,8 @@ interface TrashContainerProps {
 export function TrashContainer({ trashedTerminals }: TrashContainerProps) {
   const [isOpen, setIsOpen] = useState(false);
 
-  // Don't render if no trashed terminals
   if (trashedTerminals.length === 0) return null;
 
-  // Sort by expiration time (soonest to expire first)
   const sortedItems = [...trashedTerminals].sort(
     (a, b) => a.trashedInfo.expiresAt - b.trashedInfo.expiresAt
   );
@@ -70,13 +55,11 @@ export function TrashContainer({ trashedTerminals }: TrashContainerProps) {
         sideOffset={8}
       >
         <div className="flex flex-col">
-          {/* Header */}
           <div className="px-3 py-2 border-b border-white/10 bg-white/5 flex justify-between items-center">
             <span className="text-xs font-medium text-white/70">Recently Closed</span>
             <span className="text-[10px] text-white/40">Auto-clears</span>
           </div>
 
-          {/* List */}
           <div className="p-2 flex flex-col gap-1 max-h-[300px] overflow-y-auto">
             {sortedItems.map(({ terminal, trashedInfo }) => (
               <TrashBinItem key={terminal.id} terminal={terminal} trashedInfo={trashedInfo} />

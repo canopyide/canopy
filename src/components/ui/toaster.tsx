@@ -23,13 +23,11 @@ function Toast({ notification }: { notification: Notification }) {
   const [isVisible, setIsVisible] = useState(false);
 
   useEffect(() => {
-    // Animate in
     requestAnimationFrame(() => setIsVisible(true));
   }, []);
 
   const handleDismiss = () => {
     setIsVisible(false);
-    // Wait for animation
     setTimeout(() => removeNotification(notification.id), 150);
   };
 

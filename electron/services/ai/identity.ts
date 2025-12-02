@@ -1,9 +1,3 @@
-/**
- * AI-powered project identity generation
- *
- * Generates emoji, title, and color scheme for projects based on their path/name
- */
-
 import { getAIClient, getAIModel } from "./client.js";
 import { extractOutputText, formatErrorSnippet, withRetry } from "./utils.js";
 import { ProjectIdentityResponseSchema } from "../../schemas/external.js";
@@ -15,13 +9,6 @@ export interface ProjectIdentity {
   gradientEnd: string;
 }
 
-/**
- * Generate a visual identity for a project based on its path or name.
- * Returns emoji, formatted title, and gradient colors.
- *
- * @param pathOrName - Project path or name to analyze
- * @returns ProjectIdentity or null if AI is unavailable
- */
 export async function generateProjectIdentity(pathOrName: string): Promise<ProjectIdentity | null> {
   const client = getAIClient();
   if (!client) return null;
@@ -65,13 +52,11 @@ Respond with JSON:
     try {
       const parsed = JSON.parse(text);
 
-      // Validate with Zod schema
       const validated = ProjectIdentityResponseSchema.safeParse(parsed);
       if (validated.success) {
         return validated.data;
       }
 
-      // Zod validation failed - provide detailed error
       const errorDetails = validated.error.format();
       console.warn("[AI] Identity validation failed:", errorDetails);
 
@@ -83,7 +68,6 @@ Respond with JSON:
           typeof parsed.gradientStart === "string" &&
           typeof parsed.gradientEnd === "string"
         ) {
-          // Validate color format specifically (must be valid hex colors)
           const hexColorRegex = /^#[0-9A-Fa-f]{6}$/;
           const startValid = hexColorRegex.test(parsed.gradientStart);
           const endValid = hexColorRegex.test(parsed.gradientEnd);
@@ -128,9 +112,6 @@ Respond with JSON:
   }
 }
 
-/**
- * Generate identity and return a simplified version for the Project model
- */
 export async function generateProjectNameAndEmoji(
   projectPath: string
 ): Promise<{ name: string; emoji: string; color?: string } | null> {

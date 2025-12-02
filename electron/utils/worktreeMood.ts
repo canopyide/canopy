@@ -5,7 +5,6 @@ import { logWarn } from "./logger.js";
 const MS_PER_DAY = 1000 * 60 * 60 * 24;
 
 /**
- * Get the age of the last commit in days for a worktree path.
  * Returns null if the age can't be determined (e.g., no commits or git failure).
  */
 export async function getLastCommitAgeInDays(worktreePath: string): Promise<number | null> {
@@ -29,9 +28,6 @@ export async function getLastCommitAgeInDays(worktreePath: string): Promise<numb
   }
 }
 
-/**
- * Categorize a worktree based on branch, change count, and staleness.
- */
 export async function categorizeWorktree(
   worktree: Worktree,
   changes: WorktreeChanges | undefined,

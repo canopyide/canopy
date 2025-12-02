@@ -7,7 +7,6 @@ import {
 } from "./events.js";
 import type { EventRecord, EventCategory } from "../../shared/types/index.js";
 
-// Re-export for backwards compatibility
 export type { EventRecord };
 
 export interface FilterOptions {
@@ -22,13 +21,10 @@ export interface FilterOptions {
   prNumber?: number;
   traceId?: string;
   search?: string;
-  /** Filter events after this timestamp (inclusive) */
   after?: number;
-  /** Filter events before this timestamp (inclusive) */
   before?: number;
 }
 
-/** Ring buffer for recent system events (FIFO) */
 export class EventBuffer {
   private buffer: EventRecord[] = [];
   private maxSize: number;
@@ -39,7 +35,6 @@ export class EventBuffer {
     this.maxSize = maxSize;
   }
 
-  /** Subscribe to new events */
   public onRecord(callback: (record: EventRecord) => void): () => void {
     this.onRecordCallbacks.push(callback);
     return () => {
@@ -50,7 +45,6 @@ export class EventBuffer {
     };
   }
 
-  /** Redact sensitive data (agent output, secrets) */
   private sanitizePayload(eventType: keyof CanopyEventMap, payload: any): any {
     const sensitiveEventTypes: Array<keyof CanopyEventMap> = ["agent:output", "task:created"];
 
@@ -75,7 +69,6 @@ export class EventBuffer {
     return payload;
   }
 
-  /** Validate payload schema (warn only) */
   private validatePayload(eventType: keyof CanopyEventMap, payload: any): void {
     const meta = EVENT_META[eventType];
     if (!meta) {
@@ -106,7 +99,6 @@ export class EventBuffer {
     }
   }
 
-  /** Start capturing events */
   start(): void {
     if (this.unsubscribe) {
       console.warn("[EventBuffer] Already started");
@@ -142,7 +134,6 @@ export class EventBuffer {
     };
   }
 
-  /** Stop capturing */
   stop(): void {
     if (this.unsubscribe) {
       this.unsubscribe();
@@ -150,7 +141,6 @@ export class EventBuffer {
     }
   }
 
-  /** Add event to buffer (FIFO, max size) */
   private push(event: EventRecord): void {
     this.buffer.push(event);
 
@@ -167,12 +157,10 @@ export class EventBuffer {
     }
   }
 
-  /** Get all events */
   getAll(): EventRecord[] {
     return [...this.buffer];
   }
 
-  /** Get filtered events */
   getFiltered(options: FilterOptions): EventRecord[] {
     let filtered = this.buffer;
 
@@ -264,28 +252,23 @@ export class EventBuffer {
     return filtered;
   }
 
-  /** Clear buffer */
   clear(): void {
     this.buffer = [];
   }
 
-  /** Clear events on project switch */
   onProjectSwitch(): void {
     console.log("Handling project switch in EventBuffer - clearing events");
     this.clear();
   }
 
-  /** Get current buffer size */
   size(): number {
     return this.buffer.length;
   }
 
-  /** Filter by category */
   getEventsByCategory(category: EventCategory): EventRecord[] {
     return this.buffer.filter((event) => event.category === category);
   }
 
-  /** Get count per category */
   getCategoryStats(): Record<EventCategory, number> {
     const stats: Record<EventCategory, number> = {
       system: 0,
@@ -307,7 +290,6 @@ export class EventBuffer {
     return stats;
   }
 
-  /** Generate unique ID */
   private generateId(): string {
     return `${Date.now()}-${Math.random().toString(36).substr(2, 9)}`;
   }

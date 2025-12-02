@@ -1,16 +1,5 @@
-/**
- * Zod schemas for agent-related events and payloads.
- *
- * These schemas provide runtime validation for data coming from
- * agent processes (Claude, Gemini) and the agent state machine.
- */
-
 import { z } from "zod";
 
-/**
- * Valid terminal/agent types.
- * Includes AI agents, package managers, and generic types.
- */
 export const TerminalTypeSchema = z.enum([
   "shell",
   "claude",
@@ -23,37 +12,19 @@ export const TerminalTypeSchema = z.enum([
   "custom",
 ]);
 
-/**
- * Valid agent lifecycle states.
- */
 export const AgentStateSchema = z.enum(["idle", "working", "waiting", "completed", "failed"]);
 
-/**
- * Schema for EventContext fields.
- * These optional fields enable filtering and correlation across the event stream.
- *
- * @see shared/types/events.ts for the TypeScript interface definition.
- */
+// @see shared/types/events.ts for the TypeScript interface definition.
 export const EventContextSchema = z.object({
-  /** ID of the worktree this event relates to */
   worktreeId: z.string().optional(),
-  /** ID of the agent executing work */
   agentId: z.string().optional(),
-  /** ID of the task being performed */
   taskId: z.string().optional(),
-  /** ID of the run (multi-step workflow) */
   runId: z.string().optional(),
-  /** ID of the terminal involved */
   terminalId: z.string().optional(),
-  /** GitHub issue number if applicable */
   issueNumber: z.number().int().positive().optional(),
-  /** GitHub PR number if applicable */
   prNumber: z.number().int().positive().optional(),
 });
 
-/**
- * Valid triggers for agent state changes.
- */
 export const AgentStateChangeTriggerSchema = z.enum([
   "input",
   "output",
@@ -63,10 +34,6 @@ export const AgentStateChangeTriggerSchema = z.enum([
   "exit",
 ]);
 
-/**
- * Schema for agent spawned event payload.
- * Emitted when a new agent terminal is created.
- */
 export const AgentSpawnedSchema = EventContextSchema.extend({
   agentId: z.string().min(1),
   terminalId: z.string().min(1),
@@ -75,40 +42,24 @@ export const AgentSpawnedSchema = EventContextSchema.extend({
   traceId: z.string().optional(),
 });
 
-/**
- * Schema for agent state change event payload.
- * Emitted when an agent transitions between lifecycle states.
- * Includes EventContext fields for filtering and correlation.
- */
 export const AgentStateChangedSchema = EventContextSchema.extend({
   agentId: z.string().min(1),
   state: AgentStateSchema,
   previousState: AgentStateSchema,
   timestamp: z.number().int().positive(),
   traceId: z.string().optional(),
-  /** What caused this state change */
   trigger: AgentStateChangeTriggerSchema,
-  /** Confidence in the state detection (0.0 = uncertain, 1.0 = certain) */
+  // Confidence in the state detection (0.0 = uncertain, 1.0 = certain)
   confidence: z.number().min(0).max(1),
 });
 
-/**
- * Schema for agent output event payload.
- * Emitted when an agent produces terminal output.
- * Includes EventContext fields for filtering and correlation.
- */
 export const AgentOutputSchema = EventContextSchema.extend({
   agentId: z.string().min(1),
-  data: z.string().min(1), // Require non-empty output
+  data: z.string().min(1),
   timestamp: z.number().int().positive(),
   traceId: z.string().optional(),
 });
 
-/**
- * Schema for agent completed event payload.
- * Emitted when an agent finishes successfully.
- * Includes EventContext fields for filtering and correlation.
- */
 export const AgentCompletedSchema = EventContextSchema.extend({
   agentId: z.string().min(1),
   exitCode: z.number().int(),
@@ -117,23 +68,13 @@ export const AgentCompletedSchema = EventContextSchema.extend({
   traceId: z.string().optional(),
 });
 
-/**
- * Schema for agent failed event payload.
- * Emitted when an agent encounters an unrecoverable error.
- * Includes EventContext fields for filtering and correlation.
- */
 export const AgentFailedSchema = EventContextSchema.extend({
   agentId: z.string().min(1),
-  error: z.string().trim().min(1), // Require non-empty error message
+  error: z.string().trim().min(1),
   timestamp: z.number().int().positive(),
   traceId: z.string().optional(),
 });
 
-/**
- * Schema for agent killed event payload.
- * Emitted when an agent is explicitly terminated.
- * Includes EventContext fields for filtering and correlation.
- */
 export const AgentKilledSchema = EventContextSchema.extend({
   agentId: z.string().min(1),
   reason: z.string().optional(),
@@ -141,9 +82,6 @@ export const AgentKilledSchema = EventContextSchema.extend({
   traceId: z.string().optional(),
 });
 
-/**
- * Union type for all agent event payloads.
- */
 export const AgentEventPayloadSchema = z.union([
   AgentSpawnedSchema,
   AgentStateChangedSchema,
@@ -153,7 +91,6 @@ export const AgentEventPayloadSchema = z.union([
   AgentKilledSchema,
 ]);
 
-// Export inferred types
 export type EventContext = z.infer<typeof EventContextSchema>;
 export type AgentSpawned = z.infer<typeof AgentSpawnedSchema>;
 export type AgentStateChanged = z.infer<typeof AgentStateChangedSchema>;

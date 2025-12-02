@@ -25,7 +25,6 @@ export function registerGithubHandlers(_deps: HandlerDependencies): () => void {
     const { getCommitCount } = await import("../../utils/git.js");
 
     try {
-      // Validate directory exists
       const resolved = pathModule.resolve(cwd);
       const stat = await fs.stat(resolved);
       if (!stat.isDirectory()) {
@@ -38,7 +37,6 @@ export function registerGithubHandlers(_deps: HandlerDependencies): () => void {
         };
       }
 
-      // Fetch repo stats using GitHub API (requires token)
       const statsResult = await getRepoStats(resolved);
 
       const commitCount = await getCommitCount(resolved).catch(() => 0);
@@ -119,7 +117,6 @@ export function registerGithubHandlers(_deps: HandlerDependencies): () => void {
     if (typeof prUrl !== "string" || !prUrl) {
       throw new Error("Invalid PR URL");
     }
-    // Security: validate URL scheme to prevent arbitrary protocol execution
     try {
       const url = new URL(prUrl);
       if (!["https:", "http:"].includes(url.protocol)) {
@@ -134,7 +131,6 @@ export function registerGithubHandlers(_deps: HandlerDependencies): () => void {
   handlers.push(() => ipcMain.removeHandler(CHANNELS.GITHUB_OPEN_PR));
 
   const handleGitHubCheckCli = async (): Promise<GitHubCliStatus> => {
-    // Check if we have a GitHub token configured
     const { hasGitHubToken } = await import("../../services/GitHubService.js");
     if (hasGitHubToken()) {
       return { available: true };
@@ -144,7 +140,6 @@ export function registerGithubHandlers(_deps: HandlerDependencies): () => void {
   ipcMain.handle(CHANNELS.GITHUB_CHECK_CLI, handleGitHubCheckCli);
   handlers.push(() => ipcMain.removeHandler(CHANNELS.GITHUB_CHECK_CLI));
 
-  // GitHub Token Management Handlers
   const handleGitHubGetConfig = async (): Promise<GitHubTokenConfig> => {
     const { getGitHubConfig } = await import("../../services/GitHubService.js");
     return getGitHubConfig();
@@ -162,11 +157,9 @@ export function registerGithubHandlers(_deps: HandlerDependencies): () => void {
 
     const { validateGitHubToken, setGitHubToken } = await import("../../services/GitHubService.js");
 
-    // Validate token first
     const validation = await validateGitHubToken(token.trim());
 
     if (validation.valid) {
-      // Save the token if valid
       setGitHubToken(token.trim());
     }
 
@@ -196,7 +189,6 @@ export function registerGithubHandlers(_deps: HandlerDependencies): () => void {
   ipcMain.handle(CHANNELS.GITHUB_VALIDATE_TOKEN, handleGitHubValidateToken);
   handlers.push(() => ipcMain.removeHandler(CHANNELS.GITHUB_VALIDATE_TOKEN));
 
-  // GitHub List Issues Handler
   const handleGitHubListIssues = async (
     _event: Electron.IpcMainInvokeEvent,
     options: { cwd: string; search?: string; state?: "open" | "closed" | "all"; cursor?: string }
@@ -211,7 +203,6 @@ export function registerGithubHandlers(_deps: HandlerDependencies): () => void {
   ipcMain.handle(CHANNELS.GITHUB_LIST_ISSUES, handleGitHubListIssues);
   handlers.push(() => ipcMain.removeHandler(CHANNELS.GITHUB_LIST_ISSUES));
 
-  // GitHub List PRs Handler
   const handleGitHubListPRs = async (
     _event: Electron.IpcMainInvokeEvent,
     options: {

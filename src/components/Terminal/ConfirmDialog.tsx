@@ -1,29 +1,15 @@
-/**
- * Confirm Dialog Component
- *
- * Simple modal dialog for confirming destructive actions.
- */
-
 import { useEffect, useCallback, useRef, useId } from "react";
 import { Button } from "@/components/ui/button";
 import { cn } from "@/lib/utils";
 
 export interface ConfirmDialogProps {
-  /** Whether the dialog is open */
   isOpen: boolean;
-  /** Dialog title */
   title: string;
-  /** Dialog description/message */
   description: string;
-  /** Label for the confirm button */
   confirmLabel?: string;
-  /** Label for the cancel button */
   cancelLabel?: string;
-  /** Whether the confirm action is destructive (shows red button) */
   destructive?: boolean;
-  /** Called when the user confirms */
   onConfirm: () => void;
-  /** Called when the user cancels */
   onCancel: () => void;
 }
 
@@ -57,7 +43,6 @@ export function ConfirmDialog({
     return () => window.removeEventListener("keydown", handleKeyDown);
   }, [isOpen, handleKeyDown]);
 
-  // Auto-focus cancel button when dialog opens
   useEffect(() => {
     if (!isOpen) return;
     cancelButtonRef.current?.focus();
@@ -74,7 +59,6 @@ export function ConfirmDialog({
       aria-describedby={dialogDescriptionId}
       onClick={(e) => e.stopPropagation()}
     >
-      {/* Backdrop */}
       <div
         className="absolute inset-0 bg-black/50 backdrop-blur-sm"
         onClick={(e) => {
@@ -84,7 +68,6 @@ export function ConfirmDialog({
         aria-hidden="true"
       />
 
-      {/* Dialog */}
       <div
         className="relative z-10 w-full max-w-md rounded-lg border border-canopy-border bg-canopy-sidebar p-6 shadow-xl"
         onClick={(e) => e.stopPropagation()}

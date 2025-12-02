@@ -25,18 +25,15 @@ export function registerCopyTreeHandlers(deps: HandlerDependencies): () => void 
   const { mainWindow, worktreeService, ptyManager } = deps;
   const handlers: Array<() => void> = [];
 
-  // Track in-flight context injections per terminal to prevent race conditions
   const injectionsInProgress = new Set<string>();
 
   const handleCopyTreeGenerate = async (
     _event: Electron.IpcMainInvokeEvent,
     payload: CopyTreeGeneratePayload
   ): Promise<CopyTreeResult> => {
-    // Generate trace ID for this operation
     const traceId = crypto.randomUUID();
     console.log(`[${traceId}] CopyTree generate started for worktree ${payload.worktreeId}`);
 
-    // Validate with Zod schema
     const parseResult = CopyTreeGeneratePayloadSchema.safeParse(payload);
     if (!parseResult.success) {
       console.error(`[${traceId}] Invalid CopyTree generate payload:`, parseResult.error.format());
@@ -57,7 +54,6 @@ export function registerCopyTreeHandlers(deps: HandlerDependencies): () => void 
       };
     }
 
-    // Look up worktree path from worktreeId
     const statesMap = worktreeService.getAllStates();
     const worktree = statesMap.get(validated.worktreeId);
 
@@ -69,7 +65,6 @@ export function registerCopyTreeHandlers(deps: HandlerDependencies): () => void 
       };
     }
 
-    // Progress callback to send updates to renderer with traceId
     const onProgress = (progress: CopyTreeProgress) => {
       sendToRenderer(mainWindow, CHANNELS.COPYTREE_PROGRESS, { ...progress, traceId });
     };
@@ -83,13 +78,11 @@ export function registerCopyTreeHandlers(deps: HandlerDependencies): () => void 
     _event: Electron.IpcMainInvokeEvent,
     payload: CopyTreeGenerateAndCopyFilePayload
   ): Promise<CopyTreeResult> => {
-    // Generate trace ID for this operation
     const traceId = crypto.randomUUID();
     console.log(
       `[${traceId}] CopyTree generate-and-copy-file started for worktree ${payload.worktreeId}`
     );
 
-    // Validate with Zod schema
     const parseResult = CopyTreeGenerateAndCopyFilePayloadSchema.safeParse(payload);
     if (!parseResult.success) {
       console.error(
@@ -113,7 +106,6 @@ export function registerCopyTreeHandlers(deps: HandlerDependencies): () => void 
       };
     }
 
-    // Look up worktree path from worktreeId
     const statesMap = worktreeService.getAllStates();
     const worktree = statesMap.get(validated.worktreeId);
 
@@ -125,7 +117,6 @@ export function registerCopyTreeHandlers(deps: HandlerDependencies): () => void 
       };
     }
 
-    // Progress callback to send updates to renderer with traceId
     const onProgress = (progress: CopyTreeProgress) => {
       sendToRenderer(mainWindow, CHANNELS.COPYTREE_PROGRESS, { ...progress, traceId });
     };
@@ -146,19 +137,15 @@ export function registerCopyTreeHandlers(deps: HandlerDependencies): () => void 
       const os = await import("os");
       const path = await import("path");
 
-      // Ensure temp directory exists
       const tempDir = path.join(os.tmpdir(), "canopy-context");
       await fs.mkdir(tempDir, { recursive: true });
 
-      // Create filename with timestamp
       const timestamp = new Date().toISOString().replace(/[:.]/g, "-");
       const filename = `context-${worktree.branch || "head"}-${timestamp}.xml`;
       const filePath = path.join(tempDir, filename);
 
-      // Write content to file
       await fs.writeFile(filePath, result.content, "utf-8");
 
-      // Copy to clipboard based on platform
       if (process.platform === "darwin") {
         const plist = `<?xml version="1.0" encoding="UTF-8"?>
 <!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
@@ -169,10 +156,8 @@ export function registerCopyTreeHandlers(deps: HandlerDependencies): () => void 
 </plist>`;
         clipboard.writeBuffer("NSFilenamesPboardType", Buffer.from(plist, "utf8"));
       } else if (process.platform === "win32") {
-        // Not implemented for Windows yet
         clipboard.writeText(filePath);
       } else {
-        // Linux
         clipboard.writeBuffer("text/uri-list", Buffer.from(`file://${filePath}`, "utf8"));
       }
 
@@ -195,13 +180,11 @@ export function registerCopyTreeHandlers(deps: HandlerDependencies): () => void 
     _event: Electron.IpcMainInvokeEvent,
     payload: CopyTreeInjectPayload
   ): Promise<CopyTreeResult> => {
-    // Generate trace ID for this injection operation
     const traceId = crypto.randomUUID();
     console.log(
       `[${traceId}] CopyTree inject started for terminal ${payload.terminalId}, worktree ${payload.worktreeId}`
     );
 
-    // Validate with Zod schema
     const parseResult = CopyTreeInjectPayloadSchema.safeParse(payload);
     if (!parseResult.success) {
       console.error(`[${traceId}] Invalid CopyTree inject payload:`, parseResult.error.format());
@@ -214,7 +197,6 @@ export function registerCopyTreeHandlers(deps: HandlerDependencies): () => void 
 
     const validated = parseResult.data;
 
-    // Prevent concurrent injections to the same terminal
     if (injectionsInProgress.has(validated.terminalId)) {
       return {
         content: "",
@@ -231,11 +213,9 @@ export function registerCopyTreeHandlers(deps: HandlerDependencies): () => void 
       };
     }
 
-    // Mark injection as in progress
     injectionsInProgress.add(validated.terminalId);
 
     try {
-      // Look up worktree path from worktreeId
       const statesMap = worktreeService.getAllStates();
       const worktree = statesMap.get(validated.worktreeId);
 
@@ -247,7 +227,6 @@ export function registerCopyTreeHandlers(deps: HandlerDependencies): () => void 
         };
       }
 
-      // Check if terminal exists before generating (saves work if terminal is gone)
       if (!ptyManager.hasTerminal(validated.terminalId)) {
         return {
           content: "",
@@ -256,12 +235,10 @@ export function registerCopyTreeHandlers(deps: HandlerDependencies): () => void 
         };
       }
 
-      // Progress callback to send updates to renderer with traceId
       const onProgress = (progress: CopyTreeProgress) => {
         sendToRenderer(mainWindow, CHANNELS.COPYTREE_PROGRESS, { ...progress, traceId });
       };
 
-      // Generate context with options (format can be specified) and progress reporting
       const result = await copyTreeService.generate(
         worktree.path,
         validated.options || {},
@@ -273,13 +250,10 @@ export function registerCopyTreeHandlers(deps: HandlerDependencies): () => void 
         return result;
       }
 
-      // Inject content into terminal using chunked writing
-      // Large contexts can overwhelm the terminal, so we write in chunks
       const CHUNK_SIZE = 4096;
       const content = result.content;
 
       for (let i = 0; i < content.length; i += CHUNK_SIZE) {
-        // Check terminal still exists before each write
         if (!ptyManager.hasTerminal(validated.terminalId)) {
           return {
             content: "",
@@ -290,7 +264,6 @@ export function registerCopyTreeHandlers(deps: HandlerDependencies): () => void 
 
         const chunk = content.slice(i, i + CHUNK_SIZE);
         ptyManager.write(validated.terminalId, chunk, traceId);
-        // Small delay to prevent buffer overflow (1ms per chunk)
         if (i + CHUNK_SIZE < content.length) {
           await new Promise((resolve) => setTimeout(resolve, 1));
         }
@@ -299,7 +272,6 @@ export function registerCopyTreeHandlers(deps: HandlerDependencies): () => void 
       console.log(`[${traceId}] CopyTree inject completed successfully`);
       return result;
     } finally {
-      // Always remove from in-progress set
       injectionsInProgress.delete(validated.terminalId);
     }
   };
@@ -322,7 +294,6 @@ export function registerCopyTreeHandlers(deps: HandlerDependencies): () => void 
     _event: Electron.IpcMainInvokeEvent,
     payload: CopyTreeGetFileTreePayload
   ): Promise<FileTreeNode[]> => {
-    // Use safeParse for better error handling
     const parseResult = CopyTreeGetFileTreePayloadSchema.safeParse(payload);
     if (!parseResult.success) {
       throw new Error(`Invalid file tree request: ${parseResult.error.message}`);
@@ -330,12 +301,10 @@ export function registerCopyTreeHandlers(deps: HandlerDependencies): () => void 
 
     const validated = parseResult.data;
 
-    // Validate dirPath is relative (no absolute paths or excessive ..)
     if (validated.dirPath) {
       if (path.isAbsolute(validated.dirPath)) {
         throw new Error("dirPath must be a relative path");
       }
-      // Normalize and check for path traversal attempts
       const normalized = path.normalize(validated.dirPath);
       if (normalized.startsWith("..")) {
         throw new Error("dirPath cannot traverse outside worktree root");

@@ -1,14 +1,7 @@
-/**
- * EventTimeline Component
- *
- * Displays a vertical timeline of events with timestamps, category badges, and summary information.
- */
-
 import { cn } from "@/lib/utils";
 import type { EventRecord, EventCategory } from "@/store/eventStore";
 import { Circle } from "lucide-react";
 
-/** Category display configuration for styling */
 const CATEGORY_STYLES: Record<EventCategory, { label: string; color: string }> = {
   system: { label: "SYS", color: "bg-blue-500/20 text-blue-400 border-blue-500/30" },
   agent: { label: "AGT", color: "bg-purple-500/20 text-purple-400 border-purple-500/30" },
@@ -102,7 +95,6 @@ export function EventTimeline({
               )}
             >
               <div className="flex items-start gap-2">
-                {/* Category badge */}
                 <span
                   className={cn(
                     "flex-shrink-0 inline-flex items-center justify-center w-8 px-1 py-0.5 rounded text-[10px] font-medium border",

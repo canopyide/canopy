@@ -14,26 +14,18 @@ import { events } from "./events.js";
 import { extractIssueNumberSync, extractIssueNumber } from "./ai/issueExtractor.js";
 import type { GitService } from "./GitService.js";
 
-// Default AI debounce
 const DEFAULT_AI_DEBOUNCE_MS = DEFAULT_CONFIG.ai?.summaryDebounceMs ?? 10000;
 
-/** Monitors single worktree (git status, AI summary, mood) and emits updates via event bus */
 export interface WorktreeState extends Worktree {
   worktreeId: string;
-  // Full changes
   worktreeChanges: WorktreeChanges | null;
-  // Activity timestamp
   lastActivityTimestamp: number | null;
-  // AI summary status (active, loading, disabled, error)
   aiStatus: AISummaryStatus;
-  // Agent note content
   aiNote?: string;
-  // Timestamp when note file was last modified
   aiNoteTimestamp?: number;
   timestamp?: number;
 }
 
-/** Monitors single worktree (git status, AI summary, mood) and emits updates via event bus */
 export class WorktreeMonitor {
   public readonly id: string;
   public readonly path: string;
@@ -45,15 +37,12 @@ export class WorktreeMonitor {
   private mainBranch: string;
   private gitService: GitService;
 
-  // Hash-based change detection
   private previousStateHash: string = "";
   private lastSummarizedHash: string | null = null;
 
-  // Timers
   private pollingTimer: NodeJS.Timeout | null = null;
   private aiUpdateTimer: NodeJS.Timeout | null = null;
 
-  // Configuration
   private pollingInterval: number = 2000;
   private maxPollingInterval: number = DEFAULT_CONFIG.monitor?.pollIntervalMax ?? 30000;
   private adaptiveBackoff: boolean = DEFAULT_CONFIG.monitor?.adaptiveBackoff ?? true;
@@ -62,15 +51,12 @@ export class WorktreeMonitor {
   private noteEnabled: boolean = DEFAULT_CONFIG.note?.enabled ?? true;
   private noteFilename: string = DEFAULT_CONFIG.note?.filename ?? "canopy/note";
 
-  // Adaptive backoff state
   private lastOperationDuration: number = 0;
   private consecutiveFailures: number = 0;
   private circuitBreakerTripped: boolean = false;
 
-  // Git directory cache
   private gitDir: string | null = null;
 
-  // Flags
   private isRunning: boolean = false;
   private isUpdating: boolean = false;
   private isGeneratingSummary: boolean = false;
@@ -78,7 +64,6 @@ export class WorktreeMonitor {
   private pollingEnabled: boolean = false;
   private pendingAISummary: boolean = false;
 
-  // PR event unsubscribe functions
   private prEventUnsubscribers: (() => void)[] = [];
 
   constructor(worktree: Worktree, gitService: GitService, mainBranch: string = "main") {
@@ -143,7 +128,6 @@ export class WorktreeMonitor {
     );
   }
 
-  /** Extract issue number (async AI fallback) */
   private async extractIssueNumberAsync(branchName: string, folderName?: string): Promise<void> {
     try {
       const issueNumber = await extractIssueNumber(branchName, folderName);
@@ -160,7 +144,6 @@ export class WorktreeMonitor {
     }
   }
 
-  /** Start monitoring (polling) */
   public async start(): Promise<void> {
     if (this.isRunning) {
       return;
@@ -171,16 +154,13 @@ export class WorktreeMonitor {
     this.isRunning = true;
     this.pollingEnabled = true;
 
-    // 1. Initial fetch
     await this.updateGitStatus(true);
 
-    // 2. Start polling loop
     if (this.isRunning) {
       this.scheduleNextPoll();
     }
   }
 
-  /** Fetch initial status (no polling) */
   public async fetchInitialStatus(): Promise<void> {
     logInfo("Fetching initial status (no polling)", { id: this.id, path: this.path });
 
@@ -190,7 +170,6 @@ export class WorktreeMonitor {
     await this.updateGitStatus(true);
   }
 
-  /** Stop monitoring and cleanup */
   public async stop(): Promise<void> {
     if (!this.isRunning) {
       return;
@@ -212,12 +191,10 @@ export class WorktreeMonitor {
     this.prEventUnsubscribers = [];
   }
 
-  /** Get current state */
   public getState(): WorktreeState {
     return { ...this.state };
   }
 
-  /** Set polling interval */
   public setPollingInterval(ms: number): void {
     if (this.pollingInterval === ms) {
       return;
@@ -232,7 +209,6 @@ export class WorktreeMonitor {
     }
   }
 
-  /** Set AI summary debounce delay */
   public setAIBufferDelay(ms: number): void {
     if (this.aiBufferDelay === ms) {
       return;
@@ -247,7 +223,6 @@ export class WorktreeMonitor {
     }
   }
 
-  /** Configure AI note polling */
   public setNoteConfig(enabled: boolean, filename?: string): void {
     this.noteEnabled = enabled;
     if (filename !== undefined) {
@@ -255,7 +230,6 @@ export class WorktreeMonitor {
     }
   }
 
-  /** Configure adaptive backoff */
   public setAdaptiveBackoffConfig(
     enabled: boolean,
     maxInterval?: number,
@@ -270,12 +244,10 @@ export class WorktreeMonitor {
     }
   }
 
-  /** Check if circuit breaker tripped */
   public isCircuitBreakerTripped(): boolean {
     return this.circuitBreakerTripped;
   }
 
-  /** Get backoff metrics */
   public getAdaptiveBackoffMetrics(): {
     lastOperationDuration: number;
     consecutiveFailures: number;
@@ -290,7 +262,6 @@ export class WorktreeMonitor {
     };
   }
 
-  /** Update metadata (branch/name) and re-extract issue number if needed */
   public updateMetadata(worktree: Worktree): void {
     const branchChanged = this.state.branch !== worktree.branch;
     const nameChanged = this.state.name !== worktree.name;
@@ -326,7 +297,6 @@ export class WorktreeMonitor {
     }
   }
 
-  /** Force refresh status and optionally AI summary */
   public async refresh(forceAI: boolean = false): Promise<void> {
     if (this.circuitBreakerTripped) {
       this.resetCircuitBreaker();
@@ -338,7 +308,6 @@ export class WorktreeMonitor {
     }
   }
 
-  /** Calculate hash of git state (changes) */
   private calculateStateHash(changes: WorktreeChanges): string {
     const signature = changes.changes
       .sort((a, b) => a.path.localeCompare(b.path))
@@ -348,7 +317,6 @@ export class WorktreeMonitor {
     return createHash("md5").update(signature).digest("hex");
   }
 
-  /** Update git status (hash-based change detection) */
   private async updateGitStatus(forceRefresh: boolean = false): Promise<void> {
     if (this.isUpdating) {
       return;
@@ -357,7 +325,6 @@ export class WorktreeMonitor {
     this.isUpdating = true;
 
     try {
-      // 1. Fetch status
       if (forceRefresh) {
         invalidateGitStatusCache(this.path);
       }
@@ -368,7 +335,6 @@ export class WorktreeMonitor {
         return;
       }
 
-      // 2. Hash check
       const currentHash = this.calculateStateHash(newChanges);
       const stateChanged = currentHash !== this.previousStateHash;
 
@@ -381,12 +347,10 @@ export class WorktreeMonitor {
       const wasClean = prevChanges ? prevChanges.changedFileCount === 0 : true;
       const isNowClean = newChanges.changedFileCount === 0;
 
-      // 3. Draft state
       let nextSummary = this.state.summary;
       let nextSummaryLoading = this.state.summaryLoading;
       let nextLastActivityTimestamp = this.state.lastActivityTimestamp;
 
-      // Update activity timestamp
       const hasPendingChanges = newChanges.changedFileCount > 0;
       const shouldUpdateTimestamp =
         (stateChanged && !isInitialLoad) || (isInitialLoad && hasPendingChanges);
@@ -395,7 +359,6 @@ export class WorktreeMonitor {
         nextLastActivityTimestamp = Date.now();
       }
 
-      // 4. Summary logic
       let shouldTriggerAI = false;
       let shouldScheduleAI = false;
 
@@ -428,7 +391,6 @@ export class WorktreeMonitor {
         }
       }
 
-      // 5. Update mood
       let nextMood = this.state.mood;
       try {
         nextMood = await categorizeWorktree(
@@ -450,12 +412,10 @@ export class WorktreeMonitor {
         nextMood = "error";
       }
 
-      // 5.5. Read AI note
       const noteData = await this.readNoteFile();
       const nextAiNote = noteData?.content;
       const nextAiNoteTimestamp = noteData?.timestamp;
 
-      // 6. Atomic commit
       this.previousStateHash = currentHash;
       this.state = {
         ...this.state,
@@ -470,10 +430,8 @@ export class WorktreeMonitor {
         aiNoteTimestamp: nextAiNoteTimestamp,
       };
 
-      // 7. Emit
       this.emitUpdate();
 
-      // 8. Post-emit async work
       if (shouldTriggerAI) {
         void this.triggerAISummary();
       } else if (shouldScheduleAI) {
@@ -514,7 +472,6 @@ export class WorktreeMonitor {
     }
   }
 
-  /** Fetch last commit message (helper) */
   private async fetchLastCommitMessage(): Promise<string> {
     try {
       const lastCommitMsg = await this.gitService.getLastCommitMessage(this.path);
@@ -530,7 +487,6 @@ export class WorktreeMonitor {
     }
   }
 
-  /** Get git directory (resolves .git for worktrees) */
   private getGitDir(): string | null {
     if (this.gitDir !== null) {
       return this.gitDir;
@@ -557,7 +513,6 @@ export class WorktreeMonitor {
     }
   }
 
-  /** Read AI note file (.git/canopy/note) */
   private async readNoteFile(): Promise<{ content: string; timestamp: number } | undefined> {
     if (!this.noteEnabled) {
       return undefined;
@@ -596,7 +551,6 @@ export class WorktreeMonitor {
     }
   }
 
-  /** Schedule AI summary (debounced) */
   private scheduleAISummary(): void {
     if (this.isGeneratingSummary) {
       this.pendingAISummary = true;
@@ -613,12 +567,10 @@ export class WorktreeMonitor {
     }, this.aiBufferDelay);
   }
 
-  /** Trigger AI summary immediately */
   private async triggerAISummary(): Promise<void> {
     await this.updateAISummary();
   }
 
-  /** Generate AI summary and emit update */
   private async updateAISummary(forceUpdate: boolean = false): Promise<void> {
     logDebug("updateAISummary called", {
       id: this.id,
@@ -701,7 +653,6 @@ export class WorktreeMonitor {
     }
   }
 
-  /** Calculate next poll interval (adaptive) */
   private calculateNextInterval(): number {
     if (!this.adaptiveBackoff || this.lastOperationDuration === 0) {
       return this.pollingInterval;
@@ -712,7 +663,6 @@ export class WorktreeMonitor {
     return Math.min(nextInterval, this.maxPollingInterval);
   }
 
-  /** Schedule next poll */
   private scheduleNextPoll(): void {
     if (!this.isRunning || !this.pollingEnabled || this.circuitBreakerTripped) {
       return;
@@ -737,7 +687,6 @@ export class WorktreeMonitor {
     }, nextInterval);
   }
 
-  /** Execute single poll cycle */
   private async poll(): Promise<void> {
     if (!this.isRunning || this.circuitBreakerTripped) {
       return;
@@ -775,7 +724,6 @@ export class WorktreeMonitor {
     this.scheduleNextPoll();
   }
 
-  /** Trip circuit breaker (stop polling) */
   private tripCircuitBreaker(): void {
     this.circuitBreakerTripped = true;
     this.state.mood = "error";
@@ -789,7 +737,6 @@ export class WorktreeMonitor {
     this.emitUpdate();
   }
 
-  /** Reset circuit breaker */
   public resetCircuitBreaker(): void {
     if (!this.circuitBreakerTripped) {
       return;
@@ -806,7 +753,6 @@ export class WorktreeMonitor {
     }
   }
 
-  /** Stop polling */
   private stopPolling(): void {
     if (this.pollingTimer) {
       clearTimeout(this.pollingTimer);
@@ -814,7 +760,6 @@ export class WorktreeMonitor {
     }
   }
 
-  /** Emit state update event */
   private emitUpdate(): void {
     const state = this.getState();
     const payload = { ...state, timestamp: Date.now() };

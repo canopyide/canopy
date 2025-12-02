@@ -1,13 +1,3 @@
-/**
- * PNPM Icon Component
- *
- * Custom SVG icon based on the official PNPM package manager brand icon.
- * Uses the distinctive PNPM diamond/package grid shape, rendered monochrome via currentColor.
- *
- * Brand Color Reference: #F9AD00 (PNPM Yellow/Orange)
- * Source: https://pnpm.io/
- */
-
 import { cn } from "@/lib/utils";
 
 interface PnpmIconProps {

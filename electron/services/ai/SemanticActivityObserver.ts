@@ -1,15 +1,3 @@
-/**
- * SemanticActivityObserver Service
- *
- * Uses AI (gpt-4o-mini) to generate human-readable headlines and classify
- * terminal activity as interactive, background, or idle.
- *
- * This service polls active terminals and generates semantic activity updates
- * that are displayed in the terminal header as badges.
- *
- * @module electron/services/ai/SemanticActivityObserver
- */
-
 import { getAIClient, isAIAvailable } from "./client.js";
 import { getPtyManager } from "../PtyManager.js";
 import { sendToRenderer } from "../../ipc/handlers.js";
@@ -21,38 +9,24 @@ import type {
   TerminalActivityPayload,
 } from "../../../shared/types/terminal.js";
 
-/**
- * Configuration for the semantic activity observer.
- */
 export interface SemanticActivityObserverConfig {
-  /** Interval between activity checks (ms). Default: 3000 (every 3s) */
   pollIntervalMs?: number;
-  /** Minimum time since last output before checking (ms). Default: 1000 */
   activityThresholdMs?: number;
-  /** Minimum interval between checks per terminal (ms). Default: 5000 */
   throttleMs?: number;
-  /** Enable verbose logging. Default: false */
   verbose?: boolean;
 }
 
-// Default configuration values
-const DEFAULT_POLL_INTERVAL_MS = 3000; // Poll every 3 seconds
-const DEFAULT_ACTIVITY_THRESHOLD_MS = 1000; // Only check terminals with activity in last 1s
-const DEFAULT_THROTTLE_MS = 5000; // Don't check same terminal more than once per 5s
+const DEFAULT_POLL_INTERVAL_MS = 3000;
+const DEFAULT_ACTIVITY_THRESHOLD_MS = 1000;
+const DEFAULT_THROTTLE_MS = 5000;
 
-/** Model to use for classification (fast, cheap) */
 const CLASSIFICATION_MODEL = "gpt-4o-mini";
 
-/** Maximum lines to analyze (to control API cost and latency) */
+// To control API cost and latency
 const MAX_ANALYSIS_LINES = 30;
 
-/** Maximum tokens in response */
 const MAX_RESPONSE_TOKENS = 150;
 
-/**
- * System prompt for AI semantic activity classification.
- * Instructs the model to generate a headline and classify the terminal.
- */
 const SEMANTIC_ACTIVITY_PROMPT = `You are analyzing terminal output to generate a human-readable status summary.
 
 Your task: Analyze the terminal output and return a JSON object with:
@@ -86,9 +60,6 @@ Rules for TYPE:
 Reply with ONLY a JSON object:
 {"headline": "...", "status": "working|waiting|success|failure", "type": "interactive|background|idle", "confidence": 0.0-1.0}`;
 
-/**
- * Result of AI semantic analysis.
- */
 interface SemanticAnalysisResult {
   headline: string;
   status: TerminalActivityStatus;
@@ -96,16 +67,6 @@ interface SemanticAnalysisResult {
   confidence: number;
 }
 
-/**
- * SemanticActivityObserver polls terminals and generates human-readable
- * activity status updates using AI.
- *
- * Usage:
- * ```typescript
- * const observer = new SemanticActivityObserver(mainWindow);
- * observer.start();
- * ```
- */
 export class SemanticActivityObserver {
   private mainWindow: BrowserWindow | null = null;
   private config: Required<SemanticActivityObserverConfig>;
@@ -113,11 +74,11 @@ export class SemanticActivityObserver {
   private isRunning = false;
   private checkInProgress = false;
 
-  /** Track last check time per terminal to enforce throttling */
+  // Enforce throttling
   private lastCheckTimes: Map<string, number> = new Map();
-  /** Track last emitted activity per terminal to avoid duplicate emissions */
+  // Avoid duplicate emissions
   private lastActivities: Map<string, string> = new Map();
-  /** Track terminals currently being analyzed to prevent concurrent analyses */
+  // Prevent concurrent analyses
   private analyzing: Set<string> = new Set();
 
   constructor(config: SemanticActivityObserverConfig = {}) {
@@ -129,17 +90,11 @@ export class SemanticActivityObserver {
     };
   }
 
-  /**
-   * Initialize the observer with the main window reference.
-   * Must be called before start().
-   */
+  // Must be called before start()
   initialize(mainWindow: BrowserWindow): void {
     this.mainWindow = mainWindow;
   }
 
-  /**
-   * Start the polling loop.
-   */
   start(): void {
     if (this.isRunning) {
       return;
@@ -164,9 +119,6 @@ export class SemanticActivityObserver {
     }
   }
 
-  /**
-   * Stop the polling loop.
-   */
   stop(): void {
     if (this.pollInterval) {
       clearInterval(this.pollInterval);
@@ -182,16 +134,12 @@ export class SemanticActivityObserver {
     }
   }
 
-  /**
-   * Check all terminals for activity updates.
-   */
   private async checkTerminals(): Promise<void> {
     // Prevent overlapping check runs
     if (this.checkInProgress) {
       return;
     }
 
-    // Skip if AI is not available
     if (!isAIAvailable()) {
       return;
     }
@@ -211,31 +159,26 @@ export class SemanticActivityObserver {
         }
       }
 
-      // Process terminals with recent activity
       for (const snapshot of snapshots) {
-        // Skip if terminal is being analyzed
         if (this.analyzing.has(snapshot.id)) {
           continue;
         }
 
-        // Skip if no recent activity (older than threshold)
         const timeSinceOutput = now - snapshot.lastOutputTime;
         if (timeSinceOutput > this.config.activityThresholdMs) {
           continue;
         }
 
-        // Skip if we checked this terminal recently (throttling)
         const lastCheck = this.lastCheckTimes.get(snapshot.id) ?? 0;
         if (now - lastCheck < this.config.throttleMs) {
           continue;
         }
 
-        // Skip if no lines to analyze
         if (snapshot.lines.length === 0) {
           continue;
         }
 
-        // Analyze terminal (don't await - let analyses run in parallel)
+        // Don't await - let analyses run in parallel
         this.analyzeTerminal(snapshot.id, snapshot.lines, snapshot.worktreeId).catch((err) => {
           console.error(`[SemanticActivityObserver] Analysis failed for ${snapshot.id}:`, err);
         });
@@ -245,15 +188,11 @@ export class SemanticActivityObserver {
     }
   }
 
-  /**
-   * Analyze a terminal and emit activity event.
-   */
   private async analyzeTerminal(
     terminalId: string,
     lines: string[],
     worktreeId?: string
   ): Promise<void> {
-    // Mark as analyzing
     this.analyzing.add(terminalId);
     this.lastCheckTimes.set(terminalId, Date.now());
 
@@ -263,7 +202,6 @@ export class SemanticActivityObserver {
         return;
       }
 
-      // Create activity payload
       const activity: TerminalActivityPayload = {
         terminalId,
         headline: result.headline,
@@ -274,15 +212,12 @@ export class SemanticActivityObserver {
         worktreeId,
       };
 
-      // Check if this is different from last emitted activity
       const activityKey = `${activity.headline}|${activity.status}|${activity.type}`;
       const lastKey = this.lastActivities.get(terminalId);
       if (activityKey === lastKey) {
-        // Same as last emission, skip
         return;
       }
 
-      // Update last activity and emit
       this.lastActivities.set(terminalId, activityKey);
       this.emitActivity(activity);
 
@@ -297,19 +232,14 @@ export class SemanticActivityObserver {
     }
   }
 
-  /**
-   * Call the AI model to analyze terminal output.
-   */
   private async callAI(lines: string[]): Promise<SemanticAnalysisResult | null> {
     const client = getAIClient();
     if (!client) {
       return null;
     }
 
-    // Take only the last N lines for analysis
     const context = lines.slice(-MAX_ANALYSIS_LINES).join("\n");
 
-    // Empty context = skip
     if (context.trim().length === 0) {
       return null;
     }
@@ -322,7 +252,7 @@ export class SemanticActivityObserver {
           { role: "user", content: context },
         ],
         max_tokens: MAX_RESPONSE_TOKENS,
-        temperature: 0, // Deterministic for consistent results
+        temperature: 0,
         response_format: { type: "json_object" },
       });
 
@@ -331,10 +261,8 @@ export class SemanticActivityObserver {
         return null;
       }
 
-      // Parse JSON response
       const parsed = JSON.parse(content);
 
-      // Validate and normalize response
       const headline =
         typeof parsed.headline === "string" ? parsed.headline.slice(0, 50) : "Unknown";
       const status = this.normalizeStatus(parsed.status);
@@ -351,9 +279,6 @@ export class SemanticActivityObserver {
     }
   }
 
-  /**
-   * Normalize status string to valid TerminalActivityStatus.
-   */
   private normalizeStatus(status: unknown): TerminalActivityStatus {
     if (typeof status !== "string") return "working";
     const normalized = status.toLowerCase();
@@ -368,9 +293,6 @@ export class SemanticActivityObserver {
     return "working";
   }
 
-  /**
-   * Normalize type string to valid TerminalTaskType.
-   */
   private normalizeType(type: unknown): TerminalTaskType {
     if (typeof type !== "string") return "interactive";
     const normalized = type.toLowerCase();
@@ -380,9 +302,6 @@ export class SemanticActivityObserver {
     return "interactive";
   }
 
-  /**
-   * Emit activity event to renderer.
-   */
   private emitActivity(activity: TerminalActivityPayload): void {
     if (!this.mainWindow || this.mainWindow.isDestroyed()) {
       return;
@@ -391,10 +310,7 @@ export class SemanticActivityObserver {
     sendToRenderer(this.mainWindow, CHANNELS.TERMINAL_ACTIVITY, activity);
   }
 
-  /**
-   * Force immediate analysis of a specific terminal.
-   * Useful for testing or manual triggering.
-   */
+  // Useful for testing or manual triggering
   async analyzeNow(terminalId: string): Promise<TerminalActivityPayload | null> {
     const ptyManager = getPtyManager();
     const snapshot = ptyManager.getTerminalSnapshot(terminalId);
@@ -422,21 +338,14 @@ export class SemanticActivityObserver {
     return activity;
   }
 
-  /**
-   * Clean up resources.
-   */
   dispose(): void {
     this.stop();
     this.mainWindow = null;
   }
 }
 
-// Singleton instance
 let observerInstance: SemanticActivityObserver | null = null;
 
-/**
- * Get the singleton SemanticActivityObserver instance.
- */
 export function getSemanticActivityObserver(): SemanticActivityObserver {
   if (!observerInstance) {
     observerInstance = new SemanticActivityObserver();
@@ -444,9 +353,6 @@ export function getSemanticActivityObserver(): SemanticActivityObserver {
   return observerInstance;
 }
 
-/**
- * Dispose the singleton SemanticActivityObserver instance.
- */
 export function disposeSemanticActivityObserver(): void {
   if (observerInstance) {
     observerInstance.dispose();

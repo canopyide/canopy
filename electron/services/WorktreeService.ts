@@ -11,20 +11,13 @@ import { CHANNELS } from "../ipc/channels.js";
 import { GitService, type CreateWorktreeOptions, type BranchInfo } from "./GitService.js";
 import { pullRequestService } from "./PullRequestService.js";
 
-// Default polling intervals (used when config is not provided)
 const DEFAULT_ACTIVE_WORKTREE_INTERVAL_MS = DEFAULT_CONFIG.monitor?.pollIntervalActive ?? 2000;
 const DEFAULT_BACKGROUND_WORKTREE_INTERVAL_MS =
   DEFAULT_CONFIG.monitor?.pollIntervalBackground ?? 10000;
 const DEFAULT_AI_DEBOUNCE_MS = DEFAULT_CONFIG.ai?.summaryDebounceMs ?? 10000;
 
-// Default note path within git directory (matches WorktreeMonitor)
 const NOTE_PATH = DEFAULT_CONFIG.note?.filename ?? "canopy/note";
 
-/**
- * Get the git directory for a worktree.
- * For regular repos: .git directory
- * For worktrees: the actual git directory (e.g., ../.git/worktrees/branch-name)
- */
 function getGitDir(worktreePath: string): string | null {
   try {
     const result = execSync("git rev-parse --git-dir", {
@@ -34,7 +27,6 @@ function getGitDir(worktreePath: string): string | null {
       stdio: ["pipe", "pipe", "pipe"],
     }).trim();
 
-    // If relative path, resolve it relative to worktree path
     if (!result.startsWith("/")) {
       return pathJoin(worktreePath, result);
     }
@@ -44,11 +36,6 @@ function getGitDir(worktreePath: string): string | null {
   }
 }
 
-/**
- * Ensure the canopy note file exists for a worktree.
- * Creates .git/canopy/note (or the configured path) if it doesn't exist.
- * This allows AI agents to communicate their status via this file.
- */
 async function ensureNoteFile(worktreePath: string): Promise<void> {
   const gitDir = getGitDir(worktreePath);
   if (!gitDir) {
@@ -59,18 +46,14 @@ async function ensureNoteFile(worktreePath: string): Promise<void> {
   const notePath = pathJoin(gitDir, NOTE_PATH);
 
   try {
-    // Check if file already exists
     await stat(notePath);
     logDebug("Note file already exists", { path: notePath });
   } catch {
-    // File doesn't exist - create it
     try {
-      // Ensure the canopy directory exists
       const canopyDir = dirname(notePath);
       await mkdir(canopyDir, { recursive: true });
 
-      // Touch the file (create empty)
-      await writeFile(notePath, "", { flag: "wx" }); // wx = fail if exists (race condition safe)
+      await writeFile(notePath, "", { flag: "wx" });
       logInfo("Created canopy note file", { path: notePath });
     } catch (createError) {
       // Ignore EEXIST (file was created by another process between stat and writeFile)
@@ -85,17 +68,6 @@ async function ensureNoteFile(worktreePath: string): Promise<void> {
   }
 }
 
-/**
- * WorktreeService manages all WorktreeMonitor instances.
- *
- * Responsibilities:
- * - Create monitors for new worktrees
- * - Destroy monitors for removed worktrees
- * - Adjust polling intervals based on active/background status
- * - Forward monitor updates to renderer via IPC
- *
- * This service is a singleton and should be accessed via the exported instance.
- */
 interface PendingSyncRequest {
   worktrees: Worktree[];
   activeWorktreeId: string | null;
@@ -120,12 +92,6 @@ export class WorktreeService {
   private rootPath: string | null = null;
   private prServiceInitialized: boolean = false;
 
-  /**
-   * Load a project from disk and initialize monitors.
-   * This is the primary entry point when opening a project.
-   *
-   * @param rootPath - Repository root path
-   */
   public async loadProject(rootPath: string): Promise<void> {
     logInfo("Loading project worktrees", { rootPath });
 

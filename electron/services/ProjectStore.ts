@@ -1,5 +1,3 @@
-/** Manages persisted project state and metadata */
-
 import { store } from "../store.js";
 import type { Project, ProjectState, ProjectSettings } from "../types/index.js";
 import { createHash } from "crypto";
@@ -15,29 +13,24 @@ const SETTINGS_FILENAME = "settings.json";
 export class ProjectStore {
   private projectsConfigDir: string;
 
-  /** Initialize store path */
   constructor() {
     this.projectsConfigDir = path.join(app.getPath("userData"), "projects");
   }
 
-  /** Create store directory */
   async initialize(): Promise<void> {
     if (!existsSync(this.projectsConfigDir)) {
       await fs.mkdir(this.projectsConfigDir, { recursive: true });
     }
   }
 
-  /** Generate ID from path (SHA-256) */
   private generateProjectId(projectPath: string): string {
     return createHash("sha256").update(projectPath).digest("hex");
   }
 
-  /** Validate ID format */
   private isValidProjectId(projectId: string): boolean {
     return /^[0-9a-f]{64}$/.test(projectId);
   }
 
-  /** Resolve state dir (safe) */
   private getProjectStateDir(projectId: string): string | null {
     if (!this.isValidProjectId(projectId)) {
       return null;
@@ -50,7 +43,6 @@ export class ProjectStore {
     return normalized;
   }
 
-  /** Get repo root (canonical) */
   private async getGitRoot(projectPath: string): Promise<string | null> {
     try {
       const gitService = new GitService(projectPath);
@@ -62,7 +54,6 @@ export class ProjectStore {
     }
   }
 
-  /** Add project (validates git repo) */
   async addProject(projectPath: string): Promise<Project> {
     const gitRoot = await this.getGitRoot(projectPath);
     if (!gitRoot) {
@@ -102,7 +93,6 @@ export class ProjectStore {
     return project;
   }
 
-  /** Remove project and state */
   async removeProject(projectId: string): Promise<void> {
     const stateDir = this.getProjectStateDir(projectId);
     if (!stateDir) {
@@ -126,7 +116,6 @@ export class ProjectStore {
     }
   }
 
-  /** Update metadata (safe fields only) */
   updateProject(projectId: string, updates: Partial<Project>): Project {
     const projects = this.getAllProjects();
     const index = projects.findIndex((p) => p.id === projectId);
@@ -157,38 +146,32 @@ export class ProjectStore {
     return updated;
   }
 
-  /** Get all projects (sorted by recent) */
   getAllProjects(): Project[] {
     const projects = store.get("projects.list", []);
     return projects.sort((a, b) => b.lastOpened - a.lastOpened);
   }
 
-  /** Find project by path */
   async getProjectByPath(projectPath: string): Promise<Project | null> {
     const normalizedPath = path.normalize(projectPath);
     const projects = this.getAllProjects();
     return projects.find((p) => p.path === normalizedPath) || null;
   }
 
-  /** Find project by ID */
   getProjectById(projectId: string): Project | null {
     const projects = this.getAllProjects();
     return projects.find((p) => p.id === projectId) || null;
   }
 
-  /** Get active project ID */
   getCurrentProjectId(): string | null {
     return store.get("projects.currentProjectId") || null;
   }
 
-  /** Get active project */
   getCurrentProject(): Project | null {
     const currentId = this.getCurrentProjectId();
     if (!currentId) return null;
     return this.getProjectById(currentId);
   }
 
-  /** Set active project */
   async setCurrentProject(projectId: string): Promise<void> {
     const project = this.getProjectById(projectId);
     if (!project) {
@@ -199,7 +182,6 @@ export class ProjectStore {
     this.updateProject(projectId, { lastOpened: Date.now() });
   }
 
-  /** Get state file path */
   private getStateFilePath(projectId: string): string | null {
     const stateDir = this.getProjectStateDir(projectId);
     if (!stateDir) {
@@ -208,7 +190,6 @@ export class ProjectStore {
     return path.join(stateDir, "state.json");
   }
 
-  /** Save state (atomic) */
   async saveProjectState(projectId: string, state: ProjectState): Promise<void> {
     const stateDir = this.getProjectStateDir(projectId);
     if (!stateDir) {
@@ -239,7 +220,6 @@ export class ProjectStore {
     }
   }
 
-  /** Load state (with defaults) */
   async getProjectState(projectId: string): Promise<ProjectState | null> {
     const stateFilePath = this.getStateFilePath(projectId);
     if (!stateFilePath || !existsSync(stateFilePath)) {
@@ -272,14 +252,12 @@ export class ProjectStore {
     }
   }
 
-  /** Get settings file path */
   private getSettingsFilePath(projectId: string): string | null {
     const stateDir = this.getProjectStateDir(projectId);
     if (!stateDir) return null;
     return path.join(stateDir, SETTINGS_FILENAME);
   }
 
-  /** Load settings (with defaults) */
   async getProjectSettings(projectId: string): Promise<ProjectSettings> {
     const filePath = this.getSettingsFilePath(projectId);
     if (!filePath || !existsSync(filePath)) {
@@ -310,7 +288,6 @@ export class ProjectStore {
     }
   }
 
-  /** Save settings (atomic) */
   async saveProjectSettings(projectId: string, settings: ProjectSettings): Promise<void> {
     const stateDir = this.getProjectStateDir(projectId);
     if (!stateDir) {
@@ -342,5 +319,4 @@ export class ProjectStore {
   }
 }
 
-// Singleton instance
 export const projectStore = new ProjectStore();

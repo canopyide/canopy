@@ -16,15 +16,10 @@ interface AppLayoutProps {
   onLaunchAgent?: (type: "claude" | "gemini" | "codex" | "shell") => void;
   onRefresh?: () => void;
   onSettings?: () => void;
-  /** Called when user clicks retry in problems panel */
   onRetry?: (id: string, action: RetryAction, args?: Record<string, unknown>) => void;
-  /** Whether worktree refresh is in progress */
   isRefreshing?: boolean;
-  /** Called when welcome/help button is clicked */
   onShowWelcome?: () => void;
-  /** CLI availability status for agent buttons */
   agentAvailability?: CliAvailability;
-  /** Agent settings (to check enabled status) */
   agentSettings?: AgentSettings | null;
 }
 
@@ -47,21 +42,17 @@ export function AppLayout({
 }: AppLayoutProps) {
   const [sidebarWidth, setSidebarWidth] = useState(DEFAULT_SIDEBAR_WIDTH);
 
-  // Focus mode state
   const isFocusMode = useFocusStore((state) => state.isFocusMode);
   const toggleFocusMode = useFocusStore((state) => state.toggleFocusMode);
   const setFocusMode = useFocusStore((state) => state.setFocusMode);
   const savedPanelState = useFocusStore((state) => state.savedPanelState);
 
-  // Diagnostics dock state
   const diagnosticsOpen = useDiagnosticsStore((state) => state.isOpen);
   const setDiagnosticsOpen = useDiagnosticsStore((state) => state.setOpen);
   const openDiagnosticsDock = useDiagnosticsStore((state) => state.openDock);
 
-  // Error count for toolbar badge
   const errorCount = useErrorStore((state) => state.errors.filter((e) => !e.dismissed).length);
 
-  // Handle toggle problems button in toolbar
   const handleToggleProblems = useCallback(() => {
     const dock = useDiagnosticsStore.getState();
     if (!dock.isOpen || dock.activeTab !== "problems") {
@@ -71,20 +62,17 @@ export function AppLayout({
     }
   }, [openDiagnosticsDock, setDiagnosticsOpen]);
 
-  // Restore sidebar width and focus mode from persisted state
   useEffect(() => {
     const restoreState = async () => {
       try {
         const appState = await appClient.getState();
         if (appState.sidebarWidth != null) {
-          // Clamp to valid range
           const clampedWidth = Math.min(
             Math.max(appState.sidebarWidth, MIN_SIDEBAR_WIDTH),
             MAX_SIDEBAR_WIDTH
           );
           setSidebarWidth(clampedWidth);
         }
-        // Restore focus mode state
         if (appState.focusMode) {
           // Restore the saved panel state from before focus mode was activated
           // Handle migration from legacy format (logsOpen/eventInspectorOpen) to new format (diagnosticsOpen)
@@ -114,7 +102,6 @@ export function AppLayout({
     restoreState();
   }, [setFocusMode]);
 
-  // Persist sidebar width changes (debounced via the resize handler)
   useEffect(() => {
     // Don't persist when in focus mode (sidebar is collapsed)
     if (isFocusMode) return;
@@ -132,7 +119,6 @@ export function AppLayout({
     return () => clearTimeout(timer);
   }, [sidebarWidth, isFocusMode]);
 
-  // Persist focus mode state changes
   useEffect(() => {
     const persistFocusMode = async () => {
       try {
@@ -147,23 +133,19 @@ export function AppLayout({
     return () => clearTimeout(timer);
   }, [isFocusMode]);
 
-  // Handle focus mode toggle
   const handleToggleFocusMode = useCallback(async () => {
     if (isFocusMode) {
-      // Exiting focus mode - restore panel states
       if (savedPanelState) {
         setSidebarWidth((savedPanelState as PanelState).sidebarWidth);
         setDiagnosticsOpen((savedPanelState as PanelState).diagnosticsOpen);
       }
       toggleFocusMode({ sidebarWidth, diagnosticsOpen } as PanelState);
-      // Clear persisted panel state when exiting focus mode
       try {
         await appClient.setState({ focusPanelState: undefined });
       } catch (error) {
         console.error("Failed to clear focus panel state:", error);
       }
     } else {
-      // Entering focus mode - save current state and collapse panels
       const currentPanelState: PanelState = { sidebarWidth, diagnosticsOpen };
       toggleFocusMode(currentPanelState);
       setDiagnosticsOpen(false);
@@ -183,7 +165,6 @@ export function AppLayout({
     setDiagnosticsOpen,
   ]);
 
-  // Listen for keyboard shortcut events (Cmd+K Z)
   useEffect(() => {
     const handleFocusModeToggle = () => {
       handleToggleFocusMode();
@@ -215,7 +196,6 @@ export function AppLayout({
     onSettings?.();
   }, [onSettings]);
 
-  // Effective sidebar width - 0 when in focus mode
   const effectiveSidebarWidth = isFocusMode ? 0 : sidebarWidth;
 
   return (

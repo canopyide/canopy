@@ -1,65 +1,23 @@
-/**
- * useWorktrees Hook
- *
- * Provides worktree state management via IPC for the React UI.
- * Connects to the WorktreeService in the main process, handling:
- * - Initial load of all worktrees
- * - Real-time updates as worktrees change
- * - Removal events when worktrees are deleted
- * - Active worktree tracking
- *
- * Migrated from: /Users/gpriday/Projects/CopyTree/canopy/src/hooks/useWorktreeMonitor.ts
- */
-
 import { useState, useEffect, useCallback, useMemo } from "react";
 import type { WorktreeState } from "../types";
 import { worktreeClient } from "@/clients";
 
 export interface UseWorktreesReturn {
-  /** Array of worktrees, sorted with main/master first, then alphabetically */
   worktrees: WorktreeState[];
-  /** Map of worktree ID to state for quick lookups */
   worktreeMap: Map<string, WorktreeState>;
-  /** Currently active worktree ID */
   activeId: string | null;
-  /** Whether initial load is in progress */
   isLoading: boolean;
-  /** Error message if initial load failed */
   error: string | null;
-  /** Trigger a manual refresh of all worktrees */
   refresh: () => Promise<void>;
-  /** Set the active worktree by ID */
   setActive: (id: string) => void;
 }
 
-/**
- * Hook for managing worktree state in the renderer process
- *
- * @example
- * ```tsx
- * function Sidebar() {
- *   const { worktrees, activeId, isLoading, error, refresh, setActive } = useWorktrees()
- *
- *   if (isLoading) return <LoadingSpinner />
- *   if (error) return <ErrorMessage error={error} onRetry={refresh} />
- *
- *   return (
- *     <WorktreeList
- *       worktrees={worktrees}
- *       activeId={activeId}
- *       onSelect={setActive}
- *     />
- *   )
- * }
- * ```
- */
 export function useWorktrees(): UseWorktreesReturn {
   const [worktreeMap, setWorktreeMap] = useState<Map<string, WorktreeState>>(new Map());
   const [activeId, setActiveId] = useState<string | null>(null);
   const [isLoading, setIsLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
 
-  // Initial load of worktrees
   useEffect(() => {
     let cancelled = false;
 
@@ -72,18 +30,13 @@ export function useWorktrees(): UseWorktreesReturn {
           const map = new Map(states.map((s) => [s.id, s]));
           setWorktreeMap(map);
 
-          // Set initial active to first worktree if none selected
           if (states.length > 0 && activeId === null) {
-            // Prefer the current worktree (based on cwd), then main worktree, then first
             const currentWorktree = states.find((s) => s.isCurrent);
             const mainWorktree = states.find((s) => s.isMainWorktree);
             const initialActive = currentWorktree?.id ?? mainWorktree?.id ?? states[0].id;
             setActiveId(initialActive);
 
-            // Notify main process of initial active selection so polling priorities are synced
-            worktreeClient.setActive(initialActive).catch(() => {
-              // Silently fail - this is non-critical
-            });
+            worktreeClient.setActive(initialActive).catch(() => {});
           }
         }
       } catch (e) {
@@ -102,9 +55,8 @@ export function useWorktrees(): UseWorktreesReturn {
     return () => {
       cancelled = true;
     };
-  }, []); // Only run on mount
+  }, []);
 
-  // Subscribe to worktree updates from main process
   useEffect(() => {
     const unsubUpdate = worktreeClient.onUpdate((state) => {
       setWorktreeMap((prev) => {
@@ -121,7 +73,6 @@ export function useWorktrees(): UseWorktreesReturn {
         return next;
       });
 
-      // If the removed worktree was active, clear active selection
       setActiveId((current) => {
         if (current === worktreeId) {
           return null;
@@ -136,7 +87,6 @@ export function useWorktrees(): UseWorktreesReturn {
     };
   }, []);
 
-  // Trigger refresh of worktrees from main process
   const refresh = useCallback(async () => {
     try {
       setError(null);
@@ -146,26 +96,19 @@ export function useWorktrees(): UseWorktreesReturn {
     }
   }, []);
 
-  // Set active worktree (notifies main process)
   const setActive = useCallback((id: string) => {
     setActiveId(id);
-    // Notify main process so it can adjust polling priorities
-    worktreeClient.setActive(id).catch(() => {
-      // Silently fail - this is non-critical
-    });
+    worktreeClient.setActive(id).catch(() => {});
   }, []);
 
-  // Convert map to sorted array for rendering
   const worktrees = useMemo(() => {
     return Array.from(worktreeMap.values()).sort((a, b) => {
-      // Main/master branches always come first
       const aIsMain = a.branch === "main" || a.branch === "master";
       const bIsMain = b.branch === "main" || b.branch === "master";
       if (aIsMain !== bIsMain) {
         return aIsMain ? -1 : 1;
       }
 
-      // Then sort by name alphabetically
       return a.name.localeCompare(b.name);
     });
   }, [worktreeMap]);
@@ -181,29 +124,9 @@ export function useWorktrees(): UseWorktreesReturn {
   };
 }
 
-/**
- * Hook for getting a single worktree by ID
- *
- * Useful when you need state for just one worktree, such as in a detail view.
- *
- * @param worktreeId - The ID of the worktree to track
- * @returns The worktree state, or null if not found
- *
- * @example
- * ```tsx
- * function WorktreeDetail({ id }: { id: string }) {
- *   const worktree = useWorktree(id)
- *
- *   if (!worktree) return <NotFound />
- *
- *   return <WorktreeCard worktree={worktree} />
- * }
- * ```
- */
 export function useWorktree(worktreeId: string): WorktreeState | null {
   const [worktree, setWorktree] = useState<WorktreeState | null>(null);
 
-  // Get initial state
   useEffect(() => {
     let cancelled = false;
 
@@ -226,7 +149,6 @@ export function useWorktree(worktreeId: string): WorktreeState | null {
     };
   }, [worktreeId]);
 
-  // Subscribe to updates for this specific worktree
   useEffect(() => {
     const unsubUpdate = worktreeClient.onUpdate((state) => {
       if (state.id === worktreeId) {

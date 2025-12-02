@@ -1,11 +1,3 @@
-/**
- * New Worktree Dialog Component
- *
- * Modal UI for creating new git worktrees.
- * Allows users to select a base branch, enter a new branch name,
- * and choose a worktree path.
- */
-
 import { useState, useEffect } from "react";
 import { Button } from "@/components/ui/button";
 import { X, FolderOpen, GitBranch, Check, AlertCircle, Loader2 } from "lucide-react";
@@ -30,13 +22,11 @@ export function NewWorktreeDialog({
   const [creating, setCreating] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
-  // Form state
   const [baseBranch, setBaseBranch] = useState("");
   const [newBranch, setNewBranch] = useState("");
   const [worktreePath, setWorktreePath] = useState("");
   const [fromRemote, setFromRemote] = useState(false);
 
-  // Load branches when dialog opens
   useEffect(() => {
     if (!isOpen) return;
 
@@ -47,7 +37,6 @@ export function NewWorktreeDialog({
       .listBranches(rootPath)
       .then((branchList) => {
         setBranches(branchList);
-        // Set default base branch (current or main/master)
         const currentBranch = branchList.find((b) => b.current);
         const mainBranch =
           branchList.find((b) => b.name === "main") || branchList.find((b) => b.name === "master");
@@ -61,7 +50,6 @@ export function NewWorktreeDialog({
       });
   }, [isOpen, rootPath]);
 
-  // Auto-suggest worktree path based on branch name
   useEffect(() => {
     if (newBranch && rootPath) {
       const repoName = rootPath.split("/").pop() || "repo";
@@ -72,7 +60,6 @@ export function NewWorktreeDialog({
   }, [newBranch, rootPath]);
 
   const handleCreate = async () => {
-    // Validation
     if (!baseBranch) {
       setError("Please select a base branch");
       return;
@@ -99,11 +86,9 @@ export function NewWorktreeDialog({
 
       await worktreeClient.create(options, rootPath);
 
-      // Success! Call callback and close
       onWorktreeCreated?.();
       onClose();
 
-      // Reset form
       setNewBranch("");
       setWorktreePath("");
       setFromRemote(false);
@@ -128,7 +113,6 @@ export function NewWorktreeDialog({
         aria-modal="true"
         aria-labelledby="new-worktree-title"
       >
-        {/* Header */}
         <div className="flex items-center justify-between p-6 border-b border-canopy-border">
           <h2
             id="new-worktree-title"
@@ -146,7 +130,6 @@ export function NewWorktreeDialog({
           </button>
         </div>
 
-        {/* Content */}
         <div className="p-6 space-y-4">
           {loading ? (
             <div className="flex items-center justify-center py-12">
@@ -155,7 +138,6 @@ export function NewWorktreeDialog({
             </div>
           ) : (
             <>
-              {/* Base Branch */}
               <div className="space-y-2">
                 <label htmlFor="base-branch" className="block text-sm font-medium text-canopy-text">
                   Base Branch
@@ -178,7 +160,6 @@ export function NewWorktreeDialog({
                 <p className="text-xs text-gray-400">The branch to create the new worktree from</p>
               </div>
 
-              {/* New Branch Name */}
               <div className="space-y-2">
                 <label htmlFor="new-branch" className="block text-sm font-medium text-canopy-text">
                   New Branch Name
@@ -195,7 +176,6 @@ export function NewWorktreeDialog({
                 <p className="text-xs text-gray-400">Name for the new branch</p>
               </div>
 
-              {/* Worktree Path */}
               <div className="space-y-2">
                 <label
                   htmlFor="worktree-path"
@@ -221,7 +201,7 @@ export function NewWorktreeDialog({
                         const selected = await window.electron.project.openDialog();
                         if (selected) {
                           setWorktreePath(selected);
-                          setError(null); // Clear any previous errors
+                          setError(null);
                         }
                       } catch (err: any) {
                         console.error("Failed to open directory picker:", err);
@@ -240,7 +220,6 @@ export function NewWorktreeDialog({
                 </p>
               </div>
 
-              {/* Remote Checkbox */}
               <div className="flex items-center gap-2">
                 <input
                   id="from-remote"
@@ -255,7 +234,6 @@ export function NewWorktreeDialog({
                 </label>
               </div>
 
-              {/* Error Message */}
               {error && (
                 <div className="flex items-start gap-2 p-3 bg-red-500/10 border border-red-500/20 rounded-md">
                   <AlertCircle className="w-4 h-4 text-[var(--color-status-error)] mt-0.5 flex-shrink-0" />
@@ -266,7 +244,6 @@ export function NewWorktreeDialog({
           )}
         </div>
 
-        {/* Footer */}
         <div className="flex items-center justify-end gap-3 p-6 border-t border-canopy-border">
           <Button variant="ghost" onClick={onClose} disabled={creating}>
             Cancel

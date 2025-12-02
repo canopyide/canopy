@@ -1,14 +1,3 @@
-/**
- * Recipe List Component
- *
- * Displays saved terminal recipes for a worktree or globally.
- * Provides actions to:
- * - Run a recipe (spawn all terminals)
- * - Edit a recipe
- * - Delete a recipe
- * - Export a recipe as JSON
- */
-
 import { useState } from "react";
 import type { TerminalRecipe } from "@/types";
 import { Button } from "@/components/ui/button";
@@ -23,11 +12,8 @@ import { useRecipeStore } from "@/store/recipeStore";
 import { RecipeEditor } from "./RecipeEditor";
 
 interface RecipeListProps {
-  /** Worktree ID to filter recipes (undefined for all recipes) */
   worktreeId?: string;
-  /** Worktree path for running recipes */
   worktreePath?: string;
-  /** Whether to show global recipes */
   showGlobal?: boolean;
 }
 
@@ -42,13 +28,10 @@ export function RecipeList({ worktreeId, worktreePath, showGlobal = true }: Reci
   const [isEditorOpen, setIsEditorOpen] = useState(false);
   const [runningRecipeId, setRunningRecipeId] = useState<string | null>(null);
 
-  // Filter recipes for this worktree
   const filteredRecipes = recipes.filter((recipe) => {
     if (worktreeId) {
-      // Show recipes for this worktree + global recipes
       return recipe.worktreeId === worktreeId || (showGlobal && !recipe.worktreeId);
     }
-    // Show all recipes
     return true;
   });
 
@@ -58,7 +41,6 @@ export function RecipeList({ worktreeId, worktreePath, showGlobal = true }: Reci
       return;
     }
 
-    // Prevent concurrent recipe executions
     if (runningRecipeId !== null) {
       return;
     }
@@ -68,7 +50,6 @@ export function RecipeList({ worktreeId, worktreePath, showGlobal = true }: Reci
       await runRecipe(recipe.id, worktreePath, worktreeId);
     } catch (error) {
       console.error("Failed to run recipe:", error);
-      // TODO: Show user-facing error notification
     } finally {
       setRunningRecipeId(null);
     }
@@ -96,12 +77,10 @@ export function RecipeList({ worktreeId, worktreePath, showGlobal = true }: Reci
       return;
     }
 
-    // Download as JSON file
     const blob = new Blob([json], { type: "application/json" });
     const url = URL.createObjectURL(blob);
     const a = document.createElement("a");
     a.href = url;
-    // Sanitize filename: remove unsafe characters, keep alphanumeric and hyphens
     const safeName = recipe.name.replace(/[^a-zA-Z0-9-_]/g, "-").toLowerCase();
     a.download = `${safeName}.json`;
     a.click();
@@ -159,7 +138,6 @@ export function RecipeList({ worktreeId, worktreePath, showGlobal = true }: Reci
             </div>
 
             <div className="flex items-center gap-2">
-              {/* Run Button */}
               {worktreePath && (
                 <Button
                   size="sm"
@@ -170,7 +148,6 @@ export function RecipeList({ worktreeId, worktreePath, showGlobal = true }: Reci
                 </Button>
               )}
 
-              {/* Actions Dropdown */}
               <DropdownMenu>
                 <DropdownMenuTrigger asChild>
                   <Button size="sm" variant="outline" aria-label="Recipe actions">
@@ -196,14 +173,12 @@ export function RecipeList({ worktreeId, worktreePath, showGlobal = true }: Reci
         </div>
       ))}
 
-      {/* Import Button */}
       <div className="pt-2">
         <Button size="sm" variant="outline" onClick={handleImport} className="w-full">
           Import Recipe
         </Button>
       </div>
 
-      {/* Recipe Editor Modal */}
       <RecipeEditor
         recipe={editingRecipe}
         worktreeId={worktreeId}

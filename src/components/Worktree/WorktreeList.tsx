@@ -19,12 +19,6 @@ export interface WorktreeListProps {
 }
 
 /**
- * WorktreeList Component
- *
- * Displays all worktrees in a scrollable list with keyboard navigation.
- * Main/master worktree is pinned at the top, and visual indicators show
- * when there are more worktrees above or below the visible area.
- *
  * Migrated from: /Users/gpriday/Projects/CopyTree/canopy/src/components/WorktreeOverview.tsx
  */
 export function WorktreeList({
@@ -48,26 +42,21 @@ export function WorktreeList({
   const [showScrollDown, setShowScrollDown] = useState(false);
   const [hasFocus, setHasFocus] = useState(false);
 
-  // Sort worktrees with main worktree pinned first, then by MRU (Most Recently Used)
   const sortedWorktrees = useMemo(() => {
     if (worktrees.length === 0) {
       return [];
     }
 
-    // Sort function
     const sorted = [...worktrees].sort((a, b) => {
-      // 1. PIN MAIN WORKTREE: Always put the main worktree first
       if (a.isMainWorktree && !b.isMainWorktree) return -1;
       if (!a.isMainWorktree && b.isMainWorktree) return 1;
 
-      // 2. Activity Recency: Most recent activity first
       const timeA = a.lastActivityTimestamp ?? 0;
       const timeB = b.lastActivityTimestamp ?? 0;
       if (timeA !== timeB) {
         return timeB - timeA;
       }
 
-      // 3. Alphabetical tie-breaker
       const labelA = a.branch || a.name;
       const labelB = b.branch || b.name;
       return labelA.localeCompare(labelB);
@@ -76,8 +65,6 @@ export function WorktreeList({
     return sorted;
   }, [worktrees]);
 
-  // Compute focus index from external focusedId or internal state
-  // Always clamp to valid bounds to handle list size changes
   const focusIndex = useMemo(() => {
     if (sortedWorktrees.length === 0) return 0;
 
@@ -89,14 +76,11 @@ export function WorktreeList({
       idx = internalFocusIndex;
     }
 
-    // Clamp to valid range [0, length - 1]
     return Math.max(0, Math.min(idx, sortedWorktrees.length - 1));
   }, [externalFocusedId, sortedWorktrees, internalFocusIndex]);
 
-  // Get current focused worktree
   const focusedWorktree = sortedWorktrees[focusIndex];
 
-  // Scroll focused item into view
   useEffect(() => {
     if (!focusedWorktree) return;
     const itemEl = itemRefs.current.get(focusedWorktree.id);
@@ -105,14 +89,12 @@ export function WorktreeList({
     }
   }, [focusIndex, focusedWorktree]);
 
-  // Update scroll indicators on scroll
   const handleScroll = useCallback((e: React.UIEvent<HTMLDivElement>) => {
     const { scrollTop, scrollHeight, clientHeight } = e.currentTarget;
     setShowScrollUp(scrollTop > 10);
     setShowScrollDown(scrollTop + clientHeight < scrollHeight - 10);
   }, []);
 
-  // Check initial scroll state
   useEffect(() => {
     const el = listRef.current;
     if (!el) return;
@@ -128,7 +110,6 @@ export function WorktreeList({
     return () => clearTimeout(timeout);
   }, [sortedWorktrees]);
 
-  // Keyboard navigation
   useEffect(() => {
     if (!hasFocus) return;
 
@@ -150,12 +131,12 @@ export function WorktreeList({
 
       switch (e.key) {
         case "ArrowDown":
-        case "j": // vim-style navigation
+        case "j":
           e.preventDefault();
           setInternalFocusIndex((i) => Math.min(i + 1, sortedWorktrees.length - 1));
           break;
         case "ArrowUp":
-        case "k": // vim-style navigation
+        case "k":
           e.preventDefault();
           setInternalFocusIndex((i) => Math.max(i - 1, 0));
           break;
@@ -208,7 +189,6 @@ export function WorktreeList({
     onToggleServer,
   ]);
 
-  // Handle focus and blur on the list container
   const handleFocus = useCallback(() => {
     setHasFocus(true);
   }, []);
@@ -220,7 +200,6 @@ export function WorktreeList({
     }
   }, []);
 
-  // Store ref for each item
   const setItemRef = useCallback((id: string, el: HTMLDivElement | null) => {
     if (el) {
       itemRefs.current.set(id, el);
@@ -229,8 +208,7 @@ export function WorktreeList({
     }
   }, []);
 
-  // Loading state - show skeleton placeholders to prevent layout shift
-  // Keep the same container structure as loaded state for consistent layout
+  // Show skeleton placeholders to prevent layout shift
   if (isLoading) {
     return (
       <div className="relative h-full">
@@ -255,7 +233,6 @@ export function WorktreeList({
     );
   }
 
-  // Error state
   if (error) {
     return (
       <div
@@ -290,7 +267,6 @@ export function WorktreeList({
     );
   }
 
-  // Empty state
   if (sortedWorktrees.length === 0) {
     return (
       <div
@@ -322,14 +298,12 @@ export function WorktreeList({
 
   return (
     <div className="relative h-full" onFocus={handleFocus} onBlur={handleBlur}>
-      {/* Scroll up indicator */}
       {showScrollUp && (
         <div className="absolute top-0 left-0 right-0 h-8 bg-gradient-to-b from-canopy-sidebar to-transparent pointer-events-none z-10 flex items-center justify-center">
           <span className="text-xs text-gray-500">↑ more worktrees</span>
         </div>
       )}
 
-      {/* Worktree list */}
       <div
         ref={listRef}
         onScroll={handleScroll}
@@ -369,7 +343,6 @@ export function WorktreeList({
         ))}
       </div>
 
-      {/* Scroll down indicator */}
       {showScrollDown && (
         <div className="absolute bottom-0 left-0 right-0 h-8 bg-gradient-to-t from-canopy-sidebar to-transparent pointer-events-none z-10 flex items-center justify-center">
           <span className="text-xs text-gray-500">↓ more worktrees</span>

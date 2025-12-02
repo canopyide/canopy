@@ -1,10 +1,3 @@
-/**
- * FileDiffModal Component
- *
- * Modal dialog for viewing file diffs with syntax highlighting.
- * Fetches the diff from the main process and displays it using DiffViewer.
- */
-
 import { useEffect, useCallback, useState, useRef, useId } from "react";
 import { Button } from "@/components/ui/button";
 import { cn } from "@/lib/utils";
@@ -13,15 +6,10 @@ import type { ViewType } from "react-diff-view";
 import type { GitStatus } from "@shared/types";
 
 export interface FileDiffModalProps {
-  /** Whether the modal is open */
   isOpen: boolean;
-  /** Path to the file (relative to worktree root) */
   filePath: string;
-  /** Git status of the file */
   status: GitStatus;
-  /** Worktree root path */
   worktreePath: string;
-  /** Called when the modal should close */
   onClose: () => void;
 }
 
@@ -42,7 +30,6 @@ export function FileDiffModal({
   const previousFocusRef = useRef<HTMLElement | null>(null);
   const dialogTitleId = useId();
 
-  // Fetch the diff when modal opens
   const fetchDiff = useCallback(async () => {
     setLoadingState("loading");
     setError(null);
@@ -50,7 +37,6 @@ export function FileDiffModal({
     try {
       const diffResult = await window.electron.git.getFileDiff(worktreePath, filePath, status);
 
-      // Treat empty/null result as no diff available
       if (!diffResult || !diffResult.trim()) {
         setDiff("NO_CHANGES");
       } else {
@@ -65,14 +51,12 @@ export function FileDiffModal({
 
   useEffect(() => {
     if (!isOpen) {
-      // Reset state when closing
       setDiff(null);
       setLoadingState("loading");
       setError(null);
       return;
     }
 
-    // Store previous focus to restore on close
     previousFocusRef.current = document.activeElement as HTMLElement;
 
     let cancelled = false;
@@ -86,14 +70,12 @@ export function FileDiffModal({
 
     return () => {
       cancelled = true;
-      // Restore focus when modal closes
       if (previousFocusRef.current && previousFocusRef.current.focus) {
         previousFocusRef.current.focus();
       }
     };
   }, [isOpen, fetchDiff]);
 
-  // Handle escape key and focus management
   const handleKeyDown = useCallback(
     (e: KeyboardEvent) => {
       if (e.key === "Escape") {
@@ -109,7 +91,6 @@ export function FileDiffModal({
     return () => window.removeEventListener("keydown", handleKeyDown);
   }, [isOpen, handleKeyDown]);
 
-  // Focus close button when modal opens
   useEffect(() => {
     if (!isOpen) return;
     const timeoutId = setTimeout(() => closeButtonRef.current?.focus(), 100);
@@ -118,10 +99,7 @@ export function FileDiffModal({
 
   if (!isOpen) return null;
 
-  // Extract filename from path
   const fileName = filePath.split("/").pop() || filePath;
-
-  // Get status display info
   const statusInfo = getStatusInfo(status);
 
   return (
@@ -132,22 +110,18 @@ export function FileDiffModal({
       aria-labelledby={dialogTitleId}
       onClick={(e) => e.stopPropagation()}
     >
-      {/* Backdrop */}
       <div
         className="absolute inset-0 bg-black/60 backdrop-blur-sm"
         onClick={onClose}
         aria-hidden="true"
       />
 
-      {/* Modal content */}
       <div
         className="relative z-10 w-full max-w-6xl max-h-[90vh] mx-4 flex flex-col bg-neutral-900 border border-neutral-700 rounded-lg shadow-xl overflow-hidden"
         onClick={(e) => e.stopPropagation()}
       >
-        {/* Header */}
         <div className="flex items-center justify-between px-4 py-3 border-b border-neutral-700 bg-neutral-800/50">
           <div className="flex items-center gap-3 min-w-0">
-            {/* Status badge */}
             <span
               className={cn(
                 "flex-shrink-0 px-2 py-0.5 text-xs font-bold rounded",
@@ -158,7 +132,6 @@ export function FileDiffModal({
               {statusInfo.label}
             </span>
 
-            {/* File path */}
             <h2 id={dialogTitleId} className="text-sm font-medium text-neutral-200 truncate">
               <span className="text-neutral-500">{filePath.replace(fileName, "")}</span>
               <span className="text-neutral-100">{fileName}</span>
@@ -166,7 +139,6 @@ export function FileDiffModal({
           </div>
 
           <div className="flex items-center gap-2">
-            {/* View type toggle */}
             <div className="flex bg-neutral-800 rounded p-0.5">
               <button
                 type="button"
@@ -194,7 +166,6 @@ export function FileDiffModal({
               </button>
             </div>
 
-            {/* Close button */}
             <Button
               ref={closeButtonRef}
               variant="ghost"
@@ -214,7 +185,6 @@ export function FileDiffModal({
           </div>
         </div>
 
-        {/* Content */}
         <div className="flex-1 overflow-auto min-h-0">
           {loadingState === "loading" && (
             <div className="flex items-center justify-center h-64">
@@ -267,7 +237,6 @@ export function FileDiffModal({
           )}
         </div>
 
-        {/* Footer */}
         <div className="flex items-center justify-end px-4 py-3 border-t border-neutral-700 bg-neutral-800/50">
           <Button variant="ghost" onClick={onClose}>
             Close
@@ -278,9 +247,6 @@ export function FileDiffModal({
   );
 }
 
-/**
- * Get display information for a git status
- */
 function getStatusInfo(status: GitStatus): {
   label: string;
   bgColor: string;

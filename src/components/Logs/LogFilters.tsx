@@ -1,12 +1,3 @@
-/**
- * LogFilters Component
- *
- * Provides filtering controls for the logs panel including:
- * - Level filter (debug, info, warn, error)
- * - Source filter (modules)
- * - Text search
- */
-
 import { useCallback, useEffect, useState } from "react";
 import { cn } from "@/lib/utils";
 import type { LogLevel, LogFilterOptions } from "@/types";
@@ -37,7 +28,6 @@ export function LogFilters({
 }: LogFiltersProps) {
   const [searchValue, setSearchValue] = useState(filters.search || "");
 
-  // Debounce search input
   useEffect(() => {
     const timer = setTimeout(() => {
       if (searchValue !== filters.search) {
@@ -81,7 +71,6 @@ export function LogFilters({
 
   return (
     <div className="flex flex-wrap items-center gap-2 p-2 border-b border-gray-800 bg-gray-900/50">
-      {/* Search input */}
       <div className="relative flex-1 min-w-[150px] max-w-[250px]">
         <input
           type="text"
@@ -105,7 +94,6 @@ export function LogFilters({
         )}
       </div>
 
-      {/* Level filters */}
       <div className="flex items-center gap-1">
         <span className="text-gray-500 text-xs mr-1">Level:</span>
         {LOG_LEVELS.map(({ level, label, color }) => {
@@ -126,7 +114,6 @@ export function LogFilters({
         })}
       </div>
 
-      {/* Source dropdown */}
       {availableSources.length > 0 && (
         <div className="relative group">
           <button
@@ -167,7 +154,6 @@ export function LogFilters({
         </div>
       )}
 
-      {/* Clear filters */}
       {hasActiveFilters && (
         <button
           onClick={handleClearAll}

@@ -1,18 +1,3 @@
-/**
- * Tabs Component
- *
- * A reusable tab navigation component with underline-style highlighting.
- * Designed for consistent tab behavior across the app with full accessibility.
- *
- * Features:
- * - Optional icons per tab
- * - Underline-style active state
- * - Full keyboard navigation (Arrow keys, Home, End)
- * - Proper ARIA attributes for accessibility
- * - Roving tabindex (only active tab is tabbable)
- * - Support for dynamic labels
- */
-
 import { useRef, useCallback, type ReactNode, type KeyboardEvent } from "react";
 import { cn } from "@/lib/utils";
 
@@ -23,19 +8,12 @@ export interface TabOption {
 }
 
 export interface TabsProps {
-  /** Currently selected tab value */
   value: string;
-  /** Callback when tab selection changes */
   onChange: (value: string) => void;
-  /** Tab options to display */
   options: TabOption[];
-  /** Additional CSS classes for the container */
   className?: string;
-  /** Whether tabs should stretch to fill available space */
   fullWidth?: boolean;
-  /** ARIA label for the tablist */
   ariaLabel?: string;
-  /** Optional ID prefix for generating tab and panel IDs for ARIA relationships */
   idPrefix?: string;
 }
 
@@ -66,20 +44,16 @@ export function Tabs({
       switch (event.key) {
         case "ArrowLeft":
         case "ArrowUp":
-          // Move to previous tab, wrap to end
           newIndex = currentIndex === 0 ? options.length - 1 : currentIndex - 1;
           break;
         case "ArrowRight":
         case "ArrowDown":
-          // Move to next tab, wrap to start
           newIndex = currentIndex === options.length - 1 ? 0 : currentIndex + 1;
           break;
         case "Home":
-          // Move to first tab
           newIndex = 0;
           break;
         case "End":
-          // Move to last tab
           newIndex = options.length - 1;
           break;
         default:

@@ -20,7 +20,6 @@ export interface CreateWorktreeOptions {
   fromRemote?: boolean;
 }
 
-/** Encapsulates git operations (worktrees, branches, diffs) */
 export class GitService {
   private git: SimpleGit;
   private rootPath: string;
@@ -30,7 +29,6 @@ export class GitService {
     this.git = simpleGit(rootPath);
   }
 
-  /** List all local and remote branches */
   async listBranches(): Promise<BranchInfo[]> {
     try {
       logDebug("Listing branches", { rootPath: this.rootPath });
@@ -62,7 +60,6 @@ export class GitService {
     }
   }
 
-  /** Suggest worktree path from branch name */
   suggestWorktreePath(branchName: string): string {
     const repoName = this.rootPath.split("/").pop() || "repo";
     const sanitizedBranch = branchName.replace(/[^a-zA-Z0-9-_]/g, "-");
@@ -70,7 +67,6 @@ export class GitService {
     return resolve(worktreesDir, sanitizedBranch);
   }
 
-  /** Validate path doesn't exist */
   validatePath(path: string): { valid: boolean; error?: string } {
     if (existsSync(path)) {
       return {
@@ -81,7 +77,6 @@ export class GitService {
     return { valid: true };
   }
 
-  /** Check if branch exists (local/remote) */
   async branchExists(branchName: string): Promise<boolean> {
     try {
       const branches = await this.listBranches();
@@ -95,7 +90,6 @@ export class GitService {
     }
   }
 
-  /** Create new worktree */
   async createWorktree(options: CreateWorktreeOptions): Promise<void> {
     const { baseBranch, newBranch, path, fromRemote = false } = options;
 
@@ -145,7 +139,6 @@ export class GitService {
     }
   }
 
-  /** List all worktrees (porcelain format) */
   async listWorktrees(): Promise<
     Array<{ path: string; branch: string; bare: boolean; isMainWorktree: boolean }>
   > {
@@ -193,7 +186,6 @@ export class GitService {
     }
   }
 
-  /** Get unified diff for file (handles new/modified/binary/large) */
   async getFileDiff(filePath: string, status: GitStatus): Promise<string> {
     const validStatuses: GitStatus[] = [
       "added",
@@ -208,7 +200,6 @@ export class GitService {
       throw new Error(`Invalid git status: ${status}`);
     }
 
-    // Security: path validation
     if (isAbsolute(filePath)) {
       throw new Error("Absolute paths are not allowed");
     }
@@ -230,15 +221,12 @@ export class GitService {
         return "FILE_TOO_LARGE";
       }
     } catch {
-      // File might be deleted
     }
 
-    // Untracked/Added files
     if (status === "untracked" || status === "added") {
       try {
         const buffer = await readFile(absolutePath);
 
-        // Check binary
         if (this.isBinaryBuffer(buffer)) {
           return "BINARY_FILE";
         }
@@ -246,7 +234,6 @@ export class GitService {
         const content = buffer.toString("utf-8");
         const lines = content.split("\n");
 
-        // Synthetic diff
         return `diff --git a/${normalizedPath} b/${normalizedPath}
 new file mode 100644
 --- /dev/null
@@ -262,7 +249,6 @@ ${lines.map((l) => "+" + l).join("\n")}`;
       }
     }
 
-    // Modified/Deleted
     try {
       const diff = await this.git.diff(["HEAD", "--no-color", "--", normalizedPath]);
 
@@ -288,7 +274,6 @@ ${lines.map((l) => "+" + l).join("\n")}`;
     }
   }
 
-  /** Check for binary content (null bytes or high non-printable ratio) */
   private isBinaryBuffer(buffer: Buffer): boolean {
     const checkLength = Math.min(buffer.length, 8192);
 
@@ -309,7 +294,6 @@ ${lines.map((l) => "+" + l).join("\n")}`;
     return checkLength > 0 && nonPrintable / checkLength > 0.3;
   }
 
-  /** Get remote URL (origin) */
   async getRemoteUrl(repoPath: string): Promise<string | null> {
     return this.handleGitOperation(async () => {
       const git = simpleGit(repoPath);
@@ -319,12 +303,10 @@ ${lines.map((l) => "+" + l).join("\n")}`;
     }, "getRemoteUrl");
   }
 
-  /** Get upstream URL (alias) */
   async getUpstreamUrl(repoPath: string): Promise<string | null> {
     return this.getRemoteUrl(repoPath);
   }
 
-  /** Init new repo */
   async initializeRepository(path: string): Promise<void> {
     return this.handleGitOperation(async () => {
       const git = simpleGit(path);
@@ -332,7 +314,6 @@ ${lines.map((l) => "+" + l).join("\n")}`;
     }, "initializeRepository");
   }
 
-  /** Get worktree changes with stats */
   async getWorktreeChangesWithStats(
     worktreePath: string,
     forceRefresh = false
@@ -341,7 +322,6 @@ ${lines.map((l) => "+" + l).join("\n")}`;
     return getChanges(worktreePath, forceRefresh);
   }
 
-  /** Get last commit message */
   async getLastCommitMessage(repoPath: string): Promise<string | null> {
     return this.handleGitOperation(async () => {
       const git = simpleGit(repoPath);
@@ -350,7 +330,6 @@ ${lines.map((l) => "+" + l).join("\n")}`;
     }, "getLastCommitMessage");
   }
 
-  /** Get repo root */
   async getRepositoryRoot(repoPath: string): Promise<string> {
     return this.handleGitOperation(async () => {
       const git = simpleGit(repoPath);
@@ -359,7 +338,6 @@ ${lines.map((l) => "+" + l).join("\n")}`;
     }, "getRepositoryRoot");
   }
 
-  /** Get git status */
   async getStatus(repoPath: string) {
     return this.handleGitOperation(async () => {
       const git = simpleGit(repoPath);
@@ -367,7 +345,6 @@ ${lines.map((l) => "+" + l).join("\n")}`;
     }, "getStatus");
   }
 
-  /** Get git log */
   async getLog(repoPath: string, options?: { maxCount?: number }) {
     return this.handleGitOperation(async () => {
       const git = simpleGit(repoPath);
@@ -375,7 +352,6 @@ ${lines.map((l) => "+" + l).join("\n")}`;
     }, "getLog");
   }
 
-  /** Get raw git diff */
   async getDiff(repoPath: string, args: string[]): Promise<string> {
     return this.handleGitOperation(async () => {
       const git = simpleGit(repoPath);
@@ -383,7 +359,6 @@ ${lines.map((l) => "+" + l).join("\n")}`;
     }, "getDiff");
   }
 
-  /** Error handling wrapper for git ops */
   private async handleGitOperation<T>(operation: () => Promise<T>, context: string): Promise<T> {
     try {
       return await operation();

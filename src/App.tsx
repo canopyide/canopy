@@ -93,8 +93,6 @@ function SidebarContent({ onOpenSettings }: SidebarContentProps) {
           );
         }
 
-        // CHANGE: Use generateAndCopyFile instead of generate
-        // This handles the file creation and OS-level clipboard reference (copytree -r behavior)
         const result = await copyTreeClient.generateAndCopyFile(worktree.id, {
           format: "xml",
         });
@@ -126,7 +124,6 @@ function SidebarContent({ onOpenSettings }: SidebarContentProps) {
           errorType = "filesystem";
         }
 
-        // Add to global error store for Problems panel visibility
         addError({
           type: errorType,
           message: `Copy context failed: ${message}`,
@@ -229,7 +226,6 @@ function SidebarContent({ onOpenSettings }: SidebarContentProps) {
     );
   }
 
-  // Assuming all worktrees are from the same repo
   const rootPath =
     worktrees.length > 0 && worktrees[0].path ? worktrees[0].path.split("/.git/")[0] : "";
 
@@ -286,7 +282,6 @@ function SidebarContent({ onOpenSettings }: SidebarContentProps) {
 type AppView = "grid" | "welcome";
 
 function App() {
-  // Use useShallow for multi-field selections to prevent unnecessary re-renders
   const { focusNext, focusPrevious, toggleMaximize, focusedId, addTerminal, reorderTerminals } =
     useTerminalStore(
       useShallow((state) => ({
@@ -298,7 +293,6 @@ function App() {
         reorderTerminals: state.reorderTerminals,
       }))
     );
-  // Shallow compare array of objects for keybinding logic
   const terminals = useTerminalStore(useShallow((state) => state.terminals));
   const { launchAgent, availability, agentSettings, refreshSettings } = useAgentLauncher();
   const { activeWorktreeId, setActiveWorktree } = useWorktreeSelectionStore(
@@ -325,10 +319,7 @@ function App() {
   const [currentView, setCurrentView] = useState<AppView>("welcome");
   const [isStateLoaded, setIsStateLoaded] = useState(false);
 
-  // Prevent StrictMode double-execution
   const hasRestoredState = useRef(false);
-
-  // Track Cmd/Ctrl+K chord state for focus mode shortcut (Cmd+K Z)
   const isCtrlKPressed = useRef(false);
   const chordTimeout = useRef<NodeJS.Timeout | null>(null);
 
@@ -350,7 +341,6 @@ function App() {
           return;
         }
 
-        // Treat undefined hasSeenWelcome as false for first-run and migration scenarios
         const hasSeenWelcome = appState.hasSeenWelcome ?? false;
         setCurrentView(hasSeenWelcome ? "grid" : "welcome");
 
@@ -392,7 +382,6 @@ function App() {
 
     window.addEventListener("project-switched", handleProjectSwitch);
 
-    // Also listen for IPC PROJECT_ON_SWITCH event for menu-initiated switches
     const cleanup = projectClient.onSwitch(() => {
       console.log("[App] Received PROJECT_ON_SWITCH from main process, re-hydrating...");
       window.dispatchEvent(new CustomEvent("project-switched"));
@@ -424,7 +413,6 @@ function App() {
       setIsRefreshing(true);
       await worktreeClient.refresh();
     } catch (error) {
-      // IPC layer and useWorktrees hook will handle displaying errors
       console.error("Failed to refresh worktrees:", error);
     } finally {
       setIsRefreshing(false);
@@ -472,10 +460,8 @@ function App() {
 
           await inject(worktreeId, terminalId, selectedPaths);
 
-          // Remove error on success (hook instance may differ)
           removeError(errorId);
         } else {
-          // Delegate other actions to main process
           await errorsClient.retry(errorId, action, args);
           removeError(errorId);
         }
@@ -555,7 +541,6 @@ function App() {
     if (!electronAvailable) return;
 
     const handleKeyDown = (e: KeyboardEvent) => {
-      // Cmd+K Z chord for focus mode toggle
       if ((e.metaKey || e.ctrlKey) && e.key === "k" && !e.shiftKey) {
         e.preventDefault();
         isCtrlKPressed.current = true;

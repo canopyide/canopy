@@ -1,15 +1,3 @@
-/**
- * DockedTerminalItem Component
- *
- * A compact chip representing a docked terminal in the TerminalDock.
- * Shows terminal title and agent state indicator.
- * Clicking opens a popover with an interactive terminal preview.
- *
- * Supports drag-and-drop:
- * - Can be dragged to reorder within the dock
- * - Can be dragged to the grid to restore
- */
-
 import { useState, useCallback } from "react";
 import { Maximize2, X, Loader2, Terminal, Command } from "lucide-react";
 import {
@@ -30,32 +18,22 @@ import { setTerminalDragData } from "@/utils/dragDrop";
 
 interface DockedTerminalItemProps {
   terminal: TerminalInstance;
-  /** Index of this item in the dock (for drag operations) */
   index: number;
-  /** Whether this item is currently being dragged */
   isDragging?: boolean;
-  /** Whether this item is a drop target */
   isDropTarget?: boolean;
-  /** Called when drag starts */
   onDragStart?: (id: string, index: number) => void;
-  /** Called when drag ends */
   onDragEnd?: () => void;
 }
 
-/**
- * Get terminal icon based on type
- */
 function getTerminalIcon(type: TerminalType, className?: string) {
   const props = { className: cn("w-3 h-3", className), "aria-hidden": "true" as const };
   switch (type) {
-    // AI Agents
     case "claude":
       return <ClaudeIcon {...props} />;
     case "gemini":
       return <GeminiIcon {...props} />;
     case "codex":
       return <CodexIcon {...props} />;
-    // Package Managers
     case "npm":
       return <NpmIcon {...props} />;
     case "yarn":
@@ -64,7 +42,6 @@ function getTerminalIcon(type: TerminalType, className?: string) {
       return <PnpmIcon {...props} />;
     case "bun":
       return <BunIcon {...props} />;
-    // Generic
     case "custom":
       return <Command {...props} />;
     case "shell":
@@ -73,22 +50,19 @@ function getTerminalIcon(type: TerminalType, className?: string) {
   }
 }
 
-/**
- * Get compact status indicator based on agent state
- * Uses Digital Ecology palette: violet for working, emerald for success.
- */
+// Uses Digital Ecology palette: violet for working, emerald for success.
 function getStateIndicator(state?: AgentState) {
   if (!state || state === "idle") return null;
 
   switch (state) {
     case "working":
-      return <Loader2 className="h-3 w-3 animate-spin text-purple-500" aria-hidden="true" />; // Purple-500 matches --color-state-working
+      return <Loader2 className="h-3 w-3 animate-spin text-purple-500" aria-hidden="true" />;
     case "waiting":
       return (
         <span className="w-2 h-2 rounded-full bg-amber-400 animate-pulse" aria-hidden="true" />
       );
     case "completed":
-      return <span className="w-2 h-2 rounded-full bg-emerald-400" aria-hidden="true" />; // Emerald for success
+      return <span className="w-2 h-2 rounded-full bg-emerald-400" aria-hidden="true" />;
     case "failed":
       return <span className="w-2 h-2 rounded-full bg-red-400" aria-hidden="true" />;
     default:
@@ -132,7 +106,6 @@ export function DockedTerminalItem({
 
   const handleDragStart = useCallback(
     (e: React.DragEvent) => {
-      // Don't start drag if popover is open
       if (isOpen) {
         e.preventDefault();
         return;
@@ -155,7 +128,6 @@ export function DockedTerminalItem({
 
   return (
     <div className="relative flex items-center">
-      {/* Drop indicator before this item */}
       {isDropTarget && <div className="absolute -left-1.5 w-0.5 h-6 bg-canopy-accent rounded" />}
 
       <Popover open={isOpen} onOpenChange={handleOpenChange}>
@@ -175,13 +147,8 @@ export function DockedTerminalItem({
             onDragEnd={handleDragEnd}
             aria-grabbed={isDragging}
           >
-            {/* Terminal type icon */}
             {getTerminalIcon(terminal.type)}
-
-            {/* Status indicator */}
             {getStateIndicator(terminal.agentState)}
-
-            {/* Terminal title */}
             <span className="truncate max-w-[120px] font-mono">{terminal.title}</span>
           </button>
         </PopoverTrigger>
@@ -193,7 +160,6 @@ export function DockedTerminalItem({
           sideOffset={8}
         >
           <div className="flex flex-col h-full">
-            {/* Mini Header */}
             <div className="h-9 flex items-center justify-between px-3 border-b border-canopy-border bg-canopy-bg shrink-0">
               <div className="flex items-center gap-2">
                 {getTerminalIcon(terminal.type, "text-canopy-text/70")}
@@ -202,7 +168,6 @@ export function DockedTerminalItem({
               </div>
 
               <div className="flex items-center gap-1">
-                {/* Restore to Grid Button */}
                 <button
                   onClick={handleRestore}
                   className="p-1 hover:bg-canopy-accent/20 rounded transition-colors text-canopy-text/60 hover:text-canopy-text"
@@ -211,7 +176,6 @@ export function DockedTerminalItem({
                   <Maximize2 className="w-3.5 h-3.5" aria-hidden="true" />
                 </button>
 
-                {/* Close (Kill) Button */}
                 <button
                   onClick={handleClose}
                   className="p-1 hover:bg-red-500/20 rounded transition-colors text-canopy-text/60 hover:text-red-400"
@@ -222,7 +186,6 @@ export function DockedTerminalItem({
               </div>
             </div>
 
-            {/* The Actual Terminal */}
             <div className="flex-1 relative overflow-hidden min-h-0">
               <XtermAdapter terminalId={terminal.id} className="absolute inset-0" />
             </div>

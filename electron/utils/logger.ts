@@ -1,11 +1,3 @@
-/**
- * Structured logging utilities for Canopy Electron.
- * Uses console.log/warn/error with consistent formatting.
- * Migrated from Canopy CLI for Electron main process.
- *
- * Logs are also stored in a ring buffer and streamed to the renderer via IPC.
- */
-
 import { getErrorDetails } from "./errorTypes.js";
 import { appendFileSync, mkdirSync, existsSync } from "fs";
 import { join } from "path";
@@ -19,15 +11,11 @@ interface LogContext {
   [key: string]: unknown;
 }
 
-// Log directory - uses app's user data path in production, project logs/ in development
 function getLogDirectory(): string {
   if (process.env.NODE_ENV === "development") {
-    // In development, use logs/ directory in project root
-    // app.getAppPath() returns the path to the app's main file
     const appPath = app.getAppPath();
     return join(appPath, "logs");
   }
-  // In production, use the user data directory
   return join(app.getPath("userData"), "logs");
 }
 
@@ -35,10 +23,8 @@ function getLogFilePath(): string {
   return join(getLogDirectory(), "canopy.log");
 }
 
-// Enable file logging in development for debugging
 const ENABLE_FILE_LOGGING = process.env.NODE_ENV === "development";
 
-// Sensitive keys that should be redacted from logs
 const SENSITIVE_KEYS = new Set([
   "token",
   "password",
@@ -48,29 +34,20 @@ const SENSITIVE_KEYS = new Set([
   "refreshToken",
 ]);
 
-// Add a check for debug mode
 const IS_DEBUG = process.env.NODE_ENV === "development" || process.env.CANOPY_DEBUG;
 const IS_TEST = process.env.NODE_ENV === "test";
 
-// Main window reference for IPC
 let mainWindow: BrowserWindow | null = null;
 
-// Throttle log sending to avoid overwhelming the renderer
-const LOG_THROTTLE_MS = 16; // ~60 logs/sec
+const LOG_THROTTLE_MS = 16;
 let lastLogTime = 0;
 let pendingLogs: LogEntry[] = [];
 let throttleTimeout: NodeJS.Timeout | null = null;
 
-/**
- * Set the main window reference for IPC log streaming
- */
 export function setLoggerWindow(window: BrowserWindow | null): void {
   mainWindow = window;
 }
 
-/**
- * Send a log entry to the renderer process (throttled)
- */
 function sendLogToRenderer(entry: LogEntry): void {
   if (!mainWindow || mainWindow.isDestroyed()) {
     return;
@@ -86,9 +63,6 @@ function sendLogToRenderer(entry: LogEntry): void {
   }
 }
 
-/**
- * Flush pending logs to renderer
- */
 function flushLogs(): void {
   if (throttleTimeout) {
     clearTimeout(throttleTimeout);
@@ -100,49 +74,36 @@ function flushLogs(): void {
     return;
   }
 
-  // Cap the number of logs sent per flush to prevent overwhelming renderer
   const MAX_LOGS_PER_FLUSH = 60;
   const logsToSend = pendingLogs.slice(0, MAX_LOGS_PER_FLUSH);
 
-  // Send logs as a batch
   for (const log of logsToSend) {
     mainWindow.webContents.send("logs:entry", log);
   }
 
-  // Keep remaining logs for next flush
   pendingLogs = pendingLogs.slice(MAX_LOGS_PER_FLUSH);
   lastLogTime = Date.now();
 
-  // If there are still pending logs, schedule another flush
   if (pendingLogs.length > 0 && !throttleTimeout) {
     throttleTimeout = setTimeout(flushLogs, LOG_THROTTLE_MS);
   }
 }
 
-/**
- * Extract source module from stack trace
- */
 function getCallerSource(): string | undefined {
   const err = new Error();
   const stack = err.stack?.split("\n");
   if (!stack || stack.length < 4) return undefined;
 
-  // Skip Error, getCallerSource, log function, and the logger function
   const callerLine = stack[4];
   if (!callerLine) return undefined;
 
-  // Extract file path from stack trace
-  // Format: "    at functionName (/path/to/file.ts:line:col)"
-  // or "    at /path/to/file.ts:line:col"
   const match = callerLine.match(/\(([^)]+)\)/) || callerLine.match(/at\s+(.+)$/);
   if (!match) return undefined;
 
   const fullPath = match[1];
-  // Extract just the filename without line numbers
   const pathParts = fullPath.split(/[/\\]/);
   const fileName = pathParts[pathParts.length - 1]?.split(":")[0];
 
-  // Provide friendly names for common modules
   if (fileName?.includes("WorktreeService")) return "WorktreeService";
   if (fileName?.includes("WorktreeMonitor")) return "WorktreeMonitor";
   if (fileName?.includes("DevServerManager")) return "DevServerManager";
@@ -154,22 +115,16 @@ function getCallerSource(): string | undefined {
   return fileName?.replace(/\.[tj]s$/, "");
 }
 
-/**
- * Safely stringify values, handling circular references and sensitive data
- */
 function safeStringify(value: unknown): string {
   const seen = new WeakSet<object>();
   try {
     return JSON.stringify(
       value,
       (key, val) => {
-        // Redact sensitive keys
         if (SENSITIVE_KEYS.has(key)) return "[redacted]";
 
-        // Handle BigInt
         if (typeof val === "bigint") return val.toString();
 
-        // Handle circular references
         if (val && typeof val === "object") {
           if (seen.has(val as object)) return "[Circular]";
           seen.add(val as object);
@@ -180,14 +135,10 @@ function safeStringify(value: unknown): string {
       2
     );
   } catch (error) {
-    // Fallback if JSON.stringify fails
     return `[Unable to stringify: ${String(error)}]`;
   }
 }
 
-/**
- * Write log to file for debugging
- */
 function writeToLogFile(level: string, message: string, context?: LogContext): void {
   if (!ENABLE_FILE_LOGGING) return;
 
@@ -197,7 +148,6 @@ function writeToLogFile(level: string, message: string, context?: LogContext): v
     const contextStr = context ? ` ${JSON.stringify(context)}` : "";
     const logLine = `[${timestamp}] [${level}] ${message}${contextStr}\n`;
 
-    // Ensure directory exists before writing
     const logDir = getLogDirectory();
     if (!existsSync(logDir)) {
       mkdirSync(logDir, { recursive: true });
@@ -205,20 +155,14 @@ function writeToLogFile(level: string, message: string, context?: LogContext): v
 
     appendFileSync(logFile, logLine, "utf8");
   } catch (error) {
-    // Silently fail if we can't write to log file
   }
 }
 
-/**
- * Core logging function that handles all log levels
- */
 function log(level: LogLevel, message: string, context?: LogContext): LogEntry {
   const source = getCallerSource();
 
-  // Redact sensitive data from context
   const safeContext = context ? redactSensitiveData(context) : undefined;
 
-  // Add to ring buffer
   const entry = logBuffer.push({
     timestamp: Date.now(),
     level,
@@ -227,22 +171,17 @@ function log(level: LogLevel, message: string, context?: LogContext): LogEntry {
     source,
   });
 
-  // Send to renderer via IPC
   sendLogToRenderer(entry);
 
   return entry;
 }
 
-/**
- * Redact sensitive data from context object
- */
 function redactSensitiveData(obj: Record<string, unknown>): Record<string, unknown> {
   const result: Record<string, unknown> = {};
   for (const [key, value] of Object.entries(obj)) {
     if (SENSITIVE_KEYS.has(key.toLowerCase())) {
       result[key] = "[redacted]";
     } else if (Array.isArray(value)) {
-      // Recursively redact arrays
       result[key] = value.map((item) => {
         if (item && typeof item === "object") {
           return redactSensitiveData(item as Record<string, unknown>);
@@ -258,9 +197,6 @@ function redactSensitiveData(obj: Record<string, unknown>): Record<string, unkno
   return result;
 }
 
-/**
- * Log a debug message (development only, filtered in production)
- */
 export function logDebug(message: string, context?: LogContext): void {
   log("debug", message, context);
   writeToLogFile("DEBUG", message, context);
@@ -269,9 +205,6 @@ export function logDebug(message: string, context?: LogContext): void {
   }
 }
 
-/**
- * Log an info message
- */
 export function logInfo(message: string, context?: LogContext): void {
   log("info", message, context);
   writeToLogFile("INFO", message, context);
@@ -280,9 +213,6 @@ export function logInfo(message: string, context?: LogContext): void {
   }
 }
 
-/**
- * Log a warning message
- */
 export function logWarn(message: string, context?: LogContext): void {
   log("warn", message, context);
   writeToLogFile("WARN", message, context);
@@ -291,16 +221,13 @@ export function logWarn(message: string, context?: LogContext): void {
   }
 }
 
-/**
- * Log an error message
- */
 export function logError(message: string, error?: unknown, context?: LogContext): void {
   const errorDetails = error ? getErrorDetails(error) : undefined;
   const fullContext = { ...context, error: errorDetails };
   log("error", message, fullContext);
   writeToLogFile("ERROR", message, fullContext);
 
-  if (IS_TEST) return; // Suppress errors in tests to keep output clean
+  if (IS_TEST) return;
 
   console.error(
     `[ERROR] ${message}`,

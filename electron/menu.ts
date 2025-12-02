@@ -3,9 +3,6 @@ import { projectStore } from "./services/ProjectStore.js";
 import { worktreeService } from "./services/WorktreeService.js";
 import { CHANNELS } from "./ipc/channels.js";
 
-/**
- * Creates and sets the application menu
- */
 export function createApplicationMenu(mainWindow: BrowserWindow): void {
   const template: Electron.MenuItemConstructorOptions[] = [
     {
@@ -81,7 +78,6 @@ export function createApplicationMenu(mainWindow: BrowserWindow): void {
     },
   ];
 
-  // On macOS, add app menu as first item
   if (process.platform === "darwin") {
     template.unshift({
       label: "Canopy",
@@ -103,9 +99,6 @@ export function createApplicationMenu(mainWindow: BrowserWindow): void {
   Menu.setApplicationMenu(menu);
 }
 
-/**
- * Builds the "Open Recent" submenu from stored projects
- */
 function buildRecentProjectsMenu(mainWindow: BrowserWindow): Electron.MenuItemConstructorOptions[] {
   const projects = projectStore.getAllProjects();
 
@@ -113,7 +106,6 @@ function buildRecentProjectsMenu(mainWindow: BrowserWindow): Electron.MenuItemCo
     return [{ label: "No Recent Projects", enabled: false }];
   }
 
-  // Sort by lastOpened (most recent first)
   const sortedProjects = [...projects].sort((a, b) => b.lastOpened - a.lastOpened);
 
   const menuItems: Electron.MenuItemConstructorOptions[] = sortedProjects.map((project) => ({
@@ -126,38 +118,28 @@ function buildRecentProjectsMenu(mainWindow: BrowserWindow): Electron.MenuItemCo
   return menuItems;
 }
 
-/**
- * Handles opening a directory: uses ProjectStore for multi-project support
- */
 async function handleDirectoryOpen(
   directoryPath: string,
   mainWindow: BrowserWindow
 ): Promise<void> {
   try {
-    // 1. Add to ProjectStore (persists to projects.json)
     const project = await projectStore.addProject(directoryPath);
 
-    // 2. Set as current project (updates lastOpened)
     await projectStore.setCurrentProject(project.id);
 
-    // 3. Get the updated project with new lastOpened timestamp
     const updatedProject = projectStore.getProjectById(project.id);
     if (!updatedProject) {
       throw new Error(`Project not found after update: ${project.id}`);
     }
 
-    // 4. Refresh worktree service to load worktrees from new project
     await worktreeService.refresh();
 
-    // 5. Notify renderer to update UI
     mainWindow.webContents.send(CHANNELS.PROJECT_ON_SWITCH, updatedProject);
 
-    // 6. Update application menu to reflect new recent projects
     createApplicationMenu(mainWindow);
   } catch (error) {
     console.error("Failed to open project:", error);
 
-    // Provide more specific error messages
     let errorMessage = "An unknown error occurred";
     if (error instanceof Error) {
       if (error.message.includes("Not a git repository")) {
@@ -171,14 +153,10 @@ async function handleDirectoryOpen(
       }
     }
 
-    // Show error dialog to user
     dialog.showErrorBox("Failed to Open Project", errorMessage);
   }
 }
 
-/**
- * Updates the application menu (call this when projects change)
- */
 export function updateApplicationMenu(mainWindow: BrowserWindow): void {
   createApplicationMenu(mainWindow);
 }

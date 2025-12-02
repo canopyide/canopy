@@ -14,38 +14,29 @@ export function registerTerminalHandlers(deps: HandlerDependencies): () => void 
   const { mainWindow, ptyManager, worktreeService } = deps;
   const handlers: Array<() => void> = [];
 
-  // PtyManager Event Forwarding
-
-  // Forward PTY data to renderer
   const handlePtyData = (id: string, data: string) => {
     sendToRenderer(mainWindow, CHANNELS.TERMINAL_DATA, id, data);
   };
   ptyManager.on("data", handlePtyData);
   handlers.push(() => ptyManager.off("data", handlePtyData));
 
-  // Forward PTY exit to renderer
   const handlePtyExit = (id: string, exitCode: number) => {
     sendToRenderer(mainWindow, CHANNELS.TERMINAL_EXIT, id, exitCode);
   };
   ptyManager.on("exit", handlePtyExit);
   handlers.push(() => ptyManager.off("exit", handlePtyExit));
 
-  // Forward PTY errors to renderer
   const handlePtyError = (id: string, error: string) => {
     sendToRenderer(mainWindow, CHANNELS.TERMINAL_ERROR, id, error);
   };
   ptyManager.on("error", handlePtyError);
   handlers.push(() => ptyManager.off("error", handlePtyError));
 
-  // Agent State Event Forwarding
-
-  // Forward agent state changes to renderer
   const unsubAgentState = events.on("agent:state-changed", (payload: unknown) => {
     sendToRenderer(mainWindow, CHANNELS.AGENT_STATE_CHANGED, payload);
   });
   handlers.push(unsubAgentState);
 
-  // Forward agent detection events to renderer
   const unsubAgentDetected = events.on("agent:detected", (payload: unknown) => {
     sendToRenderer(mainWindow, CHANNELS.AGENT_DETECTED, payload);
   });
@@ -56,19 +47,15 @@ export function registerTerminalHandlers(deps: HandlerDependencies): () => void 
   });
   handlers.push(unsubAgentExited);
 
-  // Forward artifact detection events to renderer
   const unsubArtifactDetected = events.on("artifact:detected", (payload: unknown) => {
     sendToRenderer(mainWindow, CHANNELS.ARTIFACT_DETECTED, payload);
   });
   handlers.push(unsubArtifactDetected);
 
-  // Terminal Handlers
-
   const handleTerminalSpawn = async (
     _event: Electron.IpcMainInvokeEvent,
     options: TerminalSpawnOptions
   ): Promise<string> => {
-    // Validate input with Zod schema
     const parseResult = TerminalSpawnOptionsSchema.safeParse(options);
     if (!parseResult.success) {
       console.error("[IPC] Invalid terminal spawn options:", parseResult.error.format());
@@ -77,42 +64,31 @@ export function registerTerminalHandlers(deps: HandlerDependencies): () => void 
 
     const validatedOptions = parseResult.data;
 
-    // Validate and clamp dimensions (schema already validates range)
     const cols = Math.max(1, Math.min(500, Math.floor(validatedOptions.cols) || 80));
     const rows = Math.max(1, Math.min(500, Math.floor(validatedOptions.rows) || 30));
 
-    // Use validated type or default to shell
     const type = validatedOptions.type || "shell";
 
-    // Use validated title and worktreeId
     const title = validatedOptions.title;
     const worktreeId = validatedOptions.worktreeId;
 
-    // Generate ID if not provided
     const id = validatedOptions.id || crypto.randomUUID();
 
-    // Cache project path to avoid multiple lookups and ensure consistency
     const projectPath = projectStore.getCurrentProject()?.path;
 
-    // Use provided cwd, project root, or fall back to home directory
     let cwd = validatedOptions.cwd || projectPath || process.env.HOME || os.homedir();
 
-    // Validate cwd exists and is absolute
     const fs = await import("fs");
     const path = await import("path");
 
-    // Helper to get validated fallback (absolute path that exists)
     const getValidatedFallback = async (): Promise<string> => {
-      // Try project path first if available
       if (projectPath && path.isAbsolute(projectPath)) {
         try {
           await fs.promises.access(projectPath);
           return projectPath;
         } catch {
-          // Project path invalid, fall through to home
         }
       }
-      // Fall back to home directory
       return os.homedir();
     };
 
@@ -122,7 +98,6 @@ export function registerTerminalHandlers(deps: HandlerDependencies): () => void 
         cwd = await getValidatedFallback();
       }
 
-      // Check if directory exists
       await fs.promises.access(cwd);
     } catch (_error) {
       console.warn(`Invalid cwd: ${cwd}, falling back to project root or home`);
@@ -132,20 +107,18 @@ export function registerTerminalHandlers(deps: HandlerDependencies): () => void 
     try {
       ptyManager.spawn(id, {
         cwd,
-        shell: validatedOptions.shell, // Shell validation happens in PtyManager
+        shell: validatedOptions.shell,
         cols,
         rows,
-        env: validatedOptions.env, // Pass environment variables through
+        env: validatedOptions.env,
         type,
         title,
         worktreeId,
       });
 
-      // If a command is specified (e.g., 'claude' or 'gemini'), execute it after shell initializes
       if (validatedOptions.command) {
         const trimmedCommand = validatedOptions.command.trim();
 
-        // Security: Validate command to prevent injection attacks
         if (trimmedCommand.length === 0) {
           console.warn("Empty command provided, ignoring");
         } else if (trimmedCommand.includes("\n") || trimmedCommand.includes("\r")) {
@@ -157,9 +130,7 @@ export function registerTerminalHandlers(deps: HandlerDependencies): () => void 
         ) {
           console.error("Command chaining not allowed for security, ignoring");
         } else {
-          // Small delay to allow shell to initialize before sending command
           setTimeout(() => {
-            // Double-check terminal still exists before writing
             if (ptyManager.hasTerminal(id)) {
               ptyManager.write(id, `${trimmedCommand}\r`);
             }
@@ -256,7 +227,6 @@ export function registerTerminalHandlers(deps: HandlerDependencies): () => void 
   ipcMain.handle(CHANNELS.TERMINAL_RESTORE, handleTerminalRestore);
   handlers.push(() => ipcMain.removeHandler(CHANNELS.TERMINAL_RESTORE));
 
-  // Forward terminal trashed/restored events to renderer
   const unsubTerminalTrashed = events.on(
     "terminal:trashed",
     (payload: { id: string; expiresAt: number }) => {
@@ -310,14 +280,11 @@ export function registerTerminalHandlers(deps: HandlerDependencies): () => void 
   ipcMain.handle(CHANNELS.TERMINAL_FLUSH, handleTerminalFlush);
   handlers.push(() => ipcMain.removeHandler(CHANNELS.TERMINAL_FLUSH));
 
-  // Artifact Handlers
-
   const handleArtifactSaveToFile = async (
     _event: Electron.IpcMainInvokeEvent,
     options: unknown
   ): Promise<{ filePath: string; success: boolean } | null> => {
     try {
-      // Validate payload
       if (
         typeof options !== "object" ||
         options === null ||
@@ -333,33 +300,28 @@ export function registerTerminalHandlers(deps: HandlerDependencies): () => void 
         cwd?: string;
       };
 
-      // Validate content size (max 10MB)
       if (content.length > 10 * 1024 * 1024) {
         throw new Error("Artifact content exceeds maximum size (10MB)");
       }
 
-      // Validate and sanitize cwd if provided
       let safeCwd = os.homedir();
       if (cwd && typeof cwd === "string") {
         const fs = await import("fs/promises");
         try {
-          // Resolve to absolute path and check if it exists
           const resolvedCwd = path.resolve(cwd);
           const stat = await fs.stat(resolvedCwd);
           if (stat.isDirectory()) {
             safeCwd = resolvedCwd;
           }
         } catch {
-          // If cwd is invalid, fall back to homedir
           safeCwd = os.homedir();
         }
       }
 
-      // Show save dialog
       const result = await dialog.showSaveDialog(mainWindow, {
         title: "Save Artifact",
         defaultPath: suggestedFilename
-          ? path.join(safeCwd, path.basename(suggestedFilename)) // Only use basename to prevent traversal
+          ? path.join(safeCwd, path.basename(suggestedFilename))
           : path.join(safeCwd, "artifact.txt"),
         properties: ["createDirectory", "showOverwriteConfirmation"],
       });
@@ -368,7 +330,6 @@ export function registerTerminalHandlers(deps: HandlerDependencies): () => void 
         return null;
       }
 
-      // Write content to file
       const fs = await import("fs/promises");
       await fs.writeFile(result.filePath, content, "utf-8");
 
@@ -390,7 +351,6 @@ export function registerTerminalHandlers(deps: HandlerDependencies): () => void 
     options: unknown
   ): Promise<{ success: boolean; error?: string; modifiedFiles?: string[] }> => {
     try {
-      // Validate payload
       if (
         typeof options !== "object" ||
         options === null ||
@@ -404,19 +364,15 @@ export function registerTerminalHandlers(deps: HandlerDependencies): () => void 
 
       const { patchContent, cwd } = options as { patchContent: string; cwd: string };
 
-      // Validate patch content size (max 5MB)
       if (patchContent.length > 5 * 1024 * 1024) {
         throw new Error("Patch content exceeds maximum size (5MB)");
       }
 
-      // Validate and sanitize cwd
       const fs = await import("fs/promises");
       let resolvedCwd: string;
       try {
-        // Resolve to absolute path
         resolvedCwd = path.resolve(cwd);
 
-        // Check if directory exists
         const stat = await fs.stat(resolvedCwd);
         if (!stat.isDirectory()) {
           return {
@@ -425,7 +381,6 @@ export function registerTerminalHandlers(deps: HandlerDependencies): () => void 
           };
         }
 
-        // Check if it's a git repository
         const gitPath = path.join(resolvedCwd, ".git");
         try {
           await fs.stat(gitPath);
@@ -436,7 +391,6 @@ export function registerTerminalHandlers(deps: HandlerDependencies): () => void 
           };
         }
 
-        // Optional: Verify cwd is within allowed worktrees
         if (worktreeService) {
           const worktrees = worktreeService.getAllStates();
           const isValidWorktree = Array.from(worktrees.values()).some(
@@ -456,16 +410,13 @@ export function registerTerminalHandlers(deps: HandlerDependencies): () => void 
         };
       }
 
-      // Write patch to temporary file
       const tmpPatchPath = path.join(os.tmpdir(), `canopy-patch-${Date.now()}.patch`);
       await fs.writeFile(tmpPatchPath, patchContent, "utf-8");
 
       try {
-        // Apply patch using git apply
         const { execa } = await import("execa");
         await execa("git", ["apply", tmpPatchPath], { cwd: resolvedCwd });
 
-        // Get modified files by parsing the patch
         const modifiedFiles: string[] = [];
         const lines = patchContent.split("\n");
         for (const line of lines) {
@@ -482,10 +433,7 @@ export function registerTerminalHandlers(deps: HandlerDependencies): () => void 
           modifiedFiles,
         };
       } finally {
-        // Clean up temp patch file
-        await fs.unlink(tmpPatchPath).catch(() => {
-          /* ignore cleanup errors */
-        });
+        await fs.unlink(tmpPatchPath).catch(() => {});
       }
     } catch (error) {
       const errorMessage = error instanceof Error ? error.message : String(error);

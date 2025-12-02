@@ -13,25 +13,17 @@ export function registerDevServerHandlers(deps: HandlerDependencies): () => void
   const { mainWindow, devServerManager } = deps;
   const handlers: Array<() => void> = [];
 
-  // Dev Server Event Forwarding
-
-  // Forward dev server update events to renderer
-  // DevServerManager now emits events instead of direct IPC
   const unsubServerUpdate = events.on("server:update", (payload: unknown) => {
     sendToRenderer(mainWindow, CHANNELS.DEVSERVER_UPDATE, payload);
   });
   handlers.push(unsubServerUpdate);
 
-  // Forward dev server error events to renderer
   const unsubServerError = events.on("server:error", (payload: unknown) => {
     sendToRenderer(mainWindow, CHANNELS.DEVSERVER_ERROR, payload);
   });
   handlers.push(unsubServerError);
 
-  // Dev Server Handlers
-
   const handleDevServerStart = async (_event: Electron.IpcMainInvokeEvent, payload: unknown) => {
-    // Validate with Zod schema
     const parseResult = DevServerStartPayloadSchema.safeParse(payload);
     if (!parseResult.success) {
       console.error("[IPC] Invalid dev server start payload:", parseResult.error.format());
@@ -50,7 +42,6 @@ export function registerDevServerHandlers(deps: HandlerDependencies): () => void
   handlers.push(() => ipcMain.removeHandler(CHANNELS.DEVSERVER_START));
 
   const handleDevServerStop = async (_event: Electron.IpcMainInvokeEvent, payload: unknown) => {
-    // Validate with Zod schema
     const parseResult = DevServerStopPayloadSchema.safeParse(payload);
     if (!parseResult.success) {
       console.error("[IPC] Invalid dev server stop payload:", parseResult.error.format());
@@ -69,7 +60,6 @@ export function registerDevServerHandlers(deps: HandlerDependencies): () => void
   handlers.push(() => ipcMain.removeHandler(CHANNELS.DEVSERVER_STOP));
 
   const handleDevServerToggle = async (_event: Electron.IpcMainInvokeEvent, payload: unknown) => {
-    // Validate with Zod schema
     const parseResult = DevServerTogglePayloadSchema.safeParse(payload);
     if (!parseResult.success) {
       console.error("[IPC] Invalid dev server toggle payload:", parseResult.error.format());

@@ -18,13 +18,10 @@ export function registerProjectHandlers(deps: HandlerDependencies): () => void {
   const { mainWindow, worktreeService, cliAvailabilityService } = deps;
   const handlers: Array<() => void> = [];
 
-  // System Handlers
-
   const handleSystemOpenExternal = async (
     _event: Electron.IpcMainInvokeEvent,
     payload: SystemOpenExternalPayload
   ) => {
-    // Validate URL before opening to prevent arbitrary protocol execution
     try {
       const url = new URL(payload.url);
       const allowedProtocols = ["http:", "https:", "mailto:"];
@@ -44,8 +41,6 @@ export function registerProjectHandlers(deps: HandlerDependencies): () => void {
     _event: Electron.IpcMainInvokeEvent,
     payload: SystemOpenPathPayload
   ) => {
-    // Validate path is absolute and exists before opening
-    // This prevents path traversal and arbitrary file access
     const fs = await import("fs");
     const path = await import("path");
 
@@ -53,7 +48,6 @@ export function registerProjectHandlers(deps: HandlerDependencies): () => void {
       if (!path.isAbsolute(payload.path)) {
         throw new Error("Only absolute paths are allowed");
       }
-      // Check if path exists
       await fs.promises.access(payload.path);
       await shell.openPath(payload.path);
     } catch (error) {
@@ -72,8 +66,6 @@ export function registerProjectHandlers(deps: HandlerDependencies): () => void {
       return false;
     }
 
-    // Validate command contains only safe characters to prevent shell injection
-    // Allow alphanumeric, dash, underscore, and dot (for extensions)
     if (!/^[a-zA-Z0-9._-]+$/.test(command)) {
       console.warn(`Command "${command}" contains invalid characters, rejecting`);
       return false;
@@ -81,9 +73,7 @@ export function registerProjectHandlers(deps: HandlerDependencies): () => void {
 
     try {
       const { execFileSync } = await import("child_process");
-      // Use 'which' on Unix-like systems, 'where' on Windows
       const checkCmd = process.platform === "win32" ? "where" : "which";
-      // Use execFileSync instead of execSync to avoid shell interpretation
       execFileSync(checkCmd, [command], { stdio: "ignore" });
       return true;
     } catch {
@@ -105,13 +95,11 @@ export function registerProjectHandlers(deps: HandlerDependencies): () => void {
       return { claude: false, gemini: false, codex: false };
     }
 
-    // Return cached result if available, otherwise check now
     const cached = cliAvailabilityService.getAvailability();
     if (cached) {
       return cached;
     }
 
-    // First time check - run availability check and cache
     return await cliAvailabilityService.checkAvailability();
   };
   ipcMain.handle(CHANNELS.SYSTEM_GET_CLI_AVAILABILITY, handleSystemGetCliAvailability);
@@ -123,13 +111,10 @@ export function registerProjectHandlers(deps: HandlerDependencies): () => void {
       return { claude: false, gemini: false, codex: false };
     }
 
-    // Force re-check of CLI availability
     return await cliAvailabilityService.refresh();
   };
   ipcMain.handle(CHANNELS.SYSTEM_REFRESH_CLI_AVAILABILITY, handleSystemRefreshCliAvailability);
   handlers.push(() => ipcMain.removeHandler(CHANNELS.SYSTEM_REFRESH_CLI_AVAILABILITY));
-
-  // Project Handlers
 
   const handleProjectGetAll = async () => {
     return projectStore.getAllProjects();
@@ -140,7 +125,6 @@ export function registerProjectHandlers(deps: HandlerDependencies): () => void {
   const handleProjectGetCurrent = async () => {
     const currentProject = projectStore.getCurrentProject();
 
-    // Load worktrees for the current project if available
     if (currentProject && worktreeService) {
       try {
         await worktreeService.loadProject(currentProject.path);
@@ -155,7 +139,6 @@ export function registerProjectHandlers(deps: HandlerDependencies): () => void {
   handlers.push(() => ipcMain.removeHandler(CHANNELS.PROJECT_GET_CURRENT));
 
   const handleProjectAdd = async (_event: Electron.IpcMainInvokeEvent, projectPath: string) => {
-    // Validate input
     if (typeof projectPath !== "string" || !projectPath) {
       throw new Error("Invalid project path");
     }
@@ -168,7 +151,6 @@ export function registerProjectHandlers(deps: HandlerDependencies): () => void {
   handlers.push(() => ipcMain.removeHandler(CHANNELS.PROJECT_ADD));
 
   const handleProjectRemove = async (_event: Electron.IpcMainInvokeEvent, projectId: string) => {
-    // Validate input
     if (typeof projectId !== "string" || !projectId) {
       throw new Error("Invalid project ID");
     }
@@ -182,7 +164,6 @@ export function registerProjectHandlers(deps: HandlerDependencies): () => void {
     projectId: string,
     updates: Partial<Project>
   ) => {
-    // Validate inputs
     if (typeof projectId !== "string" || !projectId) {
       throw new Error("Invalid project ID");
     }
@@ -198,7 +179,6 @@ export function registerProjectHandlers(deps: HandlerDependencies): () => void {
     _event: Electron.IpcMainInvokeEvent,
     projectId: string
   ) => {
-    // Validate input
     if (typeof projectId !== "string" || !projectId) {
       throw new Error("Invalid project ID");
     }
@@ -208,7 +188,6 @@ export function registerProjectHandlers(deps: HandlerDependencies): () => void {
       throw new Error(`Project not found: ${projectId}`);
     }
 
-    // Generate new identity using AI with error handling
     let identity;
     try {
       identity = await generateProjectIdentity(project.path);
@@ -223,12 +202,10 @@ export function registerProjectHandlers(deps: HandlerDependencies): () => void {
       );
     }
 
-    // Update project with new AI-generated identity
     const updates: Partial<Project> = {
       aiGeneratedName: identity.title,
       aiGeneratedEmoji: identity.emoji,
       color: identity.gradientStart,
-      // Also update display name/emoji with AI suggestions
       name: identity.title,
       emoji: identity.emoji,
       isFallbackIdentity: false,
@@ -240,7 +217,6 @@ export function registerProjectHandlers(deps: HandlerDependencies): () => void {
   handlers.push(() => ipcMain.removeHandler(CHANNELS.PROJECT_REGENERATE_IDENTITY));
 
   const handleProjectSwitch = async (_event: Electron.IpcMainInvokeEvent, projectId: string) => {
-    // Validate input
     if (typeof projectId !== "string" || !projectId) {
       throw new Error("Invalid project ID");
     }
@@ -252,28 +228,20 @@ export function registerProjectHandlers(deps: HandlerDependencies): () => void {
 
     console.log("[ProjectSwitch] Starting project switch to:", project.name);
 
-    // Step 1: Reset all main process services (cleanup previous project)
-    // Import singleton service instances directly
     const { logBuffer } = await import("../../services/LogBuffer.js");
     const { getPtyManager } = await import("../../services/PtyManager.js");
     const ptyManager = getPtyManager();
 
     console.log("[ProjectSwitch] Cleaning up previous project state...");
 
-    // Reset services in parallel (they're independent)
-    // Use allSettled to ensure all cleanup runs even if some services fail
     const cleanupResults = await Promise.allSettled([
-      // Async cleanup services
       deps.worktreeService?.onProjectSwitch() ?? Promise.resolve(),
       deps.devServerManager?.onProjectSwitch() ?? Promise.resolve(),
-
-      // Sync cleanup services (wrapped in Promise.resolve for parallel execution)
       Promise.resolve(ptyManager.onProjectSwitch()),
       Promise.resolve(logBuffer.onProjectSwitch()),
       Promise.resolve(deps.eventBuffer?.onProjectSwitch()),
     ]);
 
-    // Log any cleanup failures but continue with project switch
     cleanupResults.forEach((result, index) => {
       if (result.status === "rejected") {
         const serviceNames = [
@@ -289,16 +257,13 @@ export function registerProjectHandlers(deps: HandlerDependencies): () => void {
 
     console.log("[ProjectSwitch] Previous project state cleaned up");
 
-    // Step 2: Set as current project (updates lastOpened)
     await projectStore.setCurrentProject(projectId);
 
-    // Get updated project with new lastOpened timestamp
     const updatedProject = projectStore.getProjectById(projectId);
     if (!updatedProject) {
       throw new Error(`Project not found after update: ${projectId}`);
     }
 
-    // Step 3: Load worktrees for new project
     if (worktreeService) {
       try {
         console.log("[ProjectSwitch] Loading worktrees for new project...");
@@ -309,7 +274,6 @@ export function registerProjectHandlers(deps: HandlerDependencies): () => void {
       }
     }
 
-    // Step 4: Notify renderer with updated project (triggers renderer-side hydration)
     sendToRenderer(mainWindow, CHANNELS.PROJECT_ON_SWITCH, updatedProject);
 
     console.log("[ProjectSwitch] Project switch complete");

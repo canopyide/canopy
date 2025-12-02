@@ -1,10 +1,3 @@
-/**
- * IPC Handlers Registration
- *
- * Registers all IPC handlers in the main process.
- * Provides a single initialization function to wire up all IPC communication.
- */
-
 import { BrowserWindow } from "electron";
 import { PtyManager } from "../services/PtyManager.js";
 import type { DevServerManager } from "../services/DevServerManager.js";
@@ -22,19 +15,8 @@ import { registerGithubHandlers } from "./handlers/github.js";
 import { registerAppHandlers } from "./handlers/app.js";
 import { typedHandle, typedSend, sendToRenderer } from "./utils.js";
 
-// Export the typed helpers for use in future handler implementations
 export { typedHandle, typedSend, sendToRenderer };
 
-/**
- * Initialize all IPC handlers
- *
- * @param mainWindow - The main BrowserWindow instance for sending events to renderer
- * @param ptyManager - The PtyManager instance for terminal management
- * @param devServerManager - Dev server manager instance
- * @param worktreeService - Worktree service instance
- * @param eventBuffer - Event buffer instance for event inspector
- * @returns Cleanup function to remove all handlers
- */
 export function registerIpcHandlers(
   mainWindow: BrowserWindow,
   ptyManager: PtyManager,

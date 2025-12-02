@@ -1,10 +1,3 @@
-/**
- * useDevServer Hook
- *
- * Provides dev server control for a specific worktree via IPC.
- * Manages state, start/stop/toggle actions, and dev script detection.
- */
-
 import { useState, useEffect, useCallback } from "react";
 import type { DevServerState } from "../types";
 import { devServerClient } from "@/clients";
@@ -15,41 +8,15 @@ interface UseDevServerOptions {
 }
 
 interface UseDevServerReturn {
-  /** Current dev server state for this worktree */
   state: DevServerState | null;
-  /** Whether the worktree has a detectable dev script */
   hasDevScript: boolean;
-  /** Start the dev server (optionally with custom command) */
   start: (command?: string) => Promise<void>;
-  /** Stop the dev server */
   stop: () => Promise<void>;
-  /** Toggle the dev server state */
   toggle: () => Promise<void>;
-  /** Whether an action is currently in progress */
   isLoading: boolean;
-  /** Any error that occurred during the last action */
   error: string | null;
 }
 
-/**
- * Hook for controlling a dev server for a specific worktree
- *
- * @example
- * ```tsx
- * const { state, hasDevScript, toggle, isLoading } = useDevServer({
- *   worktreeId: worktree.id,
- *   worktreePath: worktree.path,
- * })
- *
- * if (!hasDevScript) return null
- *
- * return (
- *   <button onClick={toggle} disabled={isLoading}>
- *     {state?.status === 'running' ? 'Stop' : 'Start'}
- *   </button>
- * )
- * ```
- */
 export function useDevServer({
   worktreeId,
   worktreePath,
@@ -58,8 +25,6 @@ export function useDevServer({
   const [hasDevScript, setHasDevScript] = useState(false);
   const [isLoading, setIsLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
-
-  // Check for dev script availability on mount or when path changes
   useEffect(() => {
     if (!worktreePath) {
       setHasDevScript(false);
@@ -86,7 +51,6 @@ export function useDevServer({
     };
   }, [worktreePath]);
 
-  // Get initial state on mount or when worktreeId changes
   useEffect(() => {
     let cancelled = false;
 
@@ -108,12 +72,10 @@ export function useDevServer({
     };
   }, [worktreeId]);
 
-  // Subscribe to state updates for this worktree
   useEffect(() => {
     const unsubUpdate = devServerClient.onUpdate((newState) => {
       if (newState.worktreeId === worktreeId) {
         setState(newState);
-        // Clear loading state when update arrives
         setIsLoading(false);
       }
     });
@@ -200,25 +162,6 @@ export function useDevServer({
   };
 }
 
-/**
- * Hook for managing all dev server states globally
- *
- * Use this when you need to track dev servers across multiple worktrees,
- * such as in a dashboard view.
- *
- * @example
- * ```tsx
- * const devServerStates = useDevServerStates()
- *
- * return (
- *   <ul>
- *     {Array.from(devServerStates.entries()).map(([id, state]) => (
- *       <li key={id}>{state.status}: {state.url}</li>
- *     ))}
- *   </ul>
- * )
- * ```
- */
 export function useDevServerStates(): Map<string, DevServerState> {
   const [states, setStates] = useState<Map<string, DevServerState>>(new Map());
 

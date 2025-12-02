@@ -1,5 +1,3 @@
-/** Centralized polling for PR detection across worktrees */
-
 import { events } from "./events.js";
 import { batchCheckLinkedPRs, type PRCheckCandidate, type LinkedPR } from "./GitHubService.js";
 import { logInfo, logWarn, logDebug } from "../utils/logger.js";
@@ -38,13 +36,11 @@ class PullRequestService {
   private updateDebounceTimer: NodeJS.Timeout | null = null;
   private unsubscribers: (() => void)[] = [];
 
-  /** Initialize listeners */
   constructor() {
     this.unsubscribers.push(events.on("sys:worktree:update", this.handleWorktreeUpdate.bind(this)));
     this.unsubscribers.push(events.on("sys:worktree:remove", this.handleWorktreeRemove.bind(this)));
   }
 
-  /** Handle worktree update (detect changes) */
   private handleWorktreeUpdate(state: WorktreeState): void {
     if (!this.isPolling) {
       return;
@@ -92,7 +88,6 @@ class PullRequestService {
     }
   }
 
-  /** Handle worktree removal */
   private handleWorktreeRemove({ worktreeId }: { worktreeId: string }): void {
     if (this.candidates.has(worktreeId) || this.detectedPRs.has(worktreeId)) {
       this.candidates.delete(worktreeId);
@@ -105,7 +100,6 @@ class PullRequestService {
     }
   }
 
-  /** Schedule debounced check */
   private scheduleDebounceCheck(): void {
     if (this.updateDebounceTimer) {
       clearTimeout(this.updateDebounceTimer);
@@ -125,13 +119,11 @@ class PullRequestService {
     }, UPDATE_DEBOUNCE_MS);
   }
 
-  /** Set repo root */
   public initialize(cwd: string): void {
     this.cwd = cwd;
     logInfo("PullRequestService initialized", { cwd });
   }
 
-  /** Start polling */
   public start(intervalMs?: number): void {
     if (this.isPolling) {
       logWarn("PullRequestService already polling");
@@ -164,7 +156,6 @@ class PullRequestService {
     this.scheduleNextPoll();
   }
 
-  /** Stop polling */
   public stop(): void {
     if (this.pollTimer) {
       clearTimeout(this.pollTimer);
@@ -178,7 +169,6 @@ class PullRequestService {
     logInfo("PullRequestService stopped");
   }
 
-  /** Force immediate check */
   public async refresh(): Promise<void> {
     if (!this.cwd) {
       return;
@@ -192,7 +182,6 @@ class PullRequestService {
     }
   }
 
-  /** Reset state */
   public reset(): void {
     this.stop();
     this.candidates.clear();
@@ -202,7 +191,6 @@ class PullRequestService {
     this.isEnabled = true;
   }
 
-  /** Cleanup listeners */
   public destroy(): void {
     this.reset();
     for (const unsubscribe of this.unsubscribers) {
@@ -211,7 +199,6 @@ class PullRequestService {
     this.unsubscribers = [];
   }
 
-  /** Schedule next poll (with backoff) */
   private scheduleNextPoll(): void {
     if (!this.isPolling || !this.isEnabled) {
       return;
@@ -235,7 +222,6 @@ class PullRequestService {
     }, interval);
   }
 
-  /** Check for pending worktrees */
   private hasUnresolvedCandidates(): boolean {
     for (const worktreeId of this.candidates.keys()) {
       if (!this.resolvedWorktrees.has(worktreeId)) {
@@ -245,7 +231,6 @@ class PullRequestService {
     return false;
   }
 
-  /** Execute PR check */
   private async checkForPRs(): Promise<void> {
     const activeCandidates: PRCheckCandidate[] = [];
     for (const [worktreeId, context] of this.candidates) {
@@ -300,7 +285,6 @@ class PullRequestService {
     }
   }
 
-  /** Handle errors (backoff/circuit breaker) */
   private handleError(errorMsg: string): void {
     this.consecutiveErrors++;
     logWarn("PR check failed", { error: errorMsg, consecutiveErrors: this.consecutiveErrors });
@@ -316,7 +300,6 @@ class PullRequestService {
     }
   }
 
-  /** Get debug status */
   public getStatus(): {
     isPolling: boolean;
     isEnabled: boolean;
@@ -334,5 +317,4 @@ class PullRequestService {
   }
 }
 
-// Export singleton instance
 export const pullRequestService = new PullRequestService();

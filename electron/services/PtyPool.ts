@@ -1,5 +1,3 @@
-/** Pre-warms terminal PTYs for instant spawning */
-
 import * as pty from "node-pty";
 import type { IDisposable } from "node-pty";
 import { existsSync } from "fs";
@@ -31,7 +29,6 @@ export class PtyPool {
     this.defaultShell = this.getDefaultShell();
   }
 
-  /** Pre-fill pool */
   async warmPool(cwd?: string): Promise<void> {
     if (this.isDisposed) {
       console.warn("[PtyPool] Cannot warm pool - already disposed");
@@ -58,7 +55,6 @@ export class PtyPool {
     }
   }
 
-  /** Create single pooled PTY */
   private async createPoolEntry(cwd: string): Promise<void> {
     if (this.isDisposed) return;
 
@@ -73,9 +69,7 @@ export class PtyPool {
         env: this.getFilteredEnv(),
       });
 
-      const dataDisposable = ptyProcess.onData(() => {
-        // Suppress output
-      });
+      const dataDisposable = ptyProcess.onData(() => {});
 
       ptyProcess.onExit(({ exitCode }) => {
         if (process.env.CANOPY_VERBOSE) {
@@ -112,7 +106,6 @@ export class PtyPool {
     }
   }
 
-  /** Get PTY from pool (checks health) */
   acquire(): pty.IPty | null {
     if (this.isDisposed) {
       console.warn("[PtyPool] Cannot acquire - pool disposed");
@@ -155,7 +148,6 @@ export class PtyPool {
     return entry.process;
   }
 
-  /** Refill pool asynchronously */
   refillPool(): void {
     if (this.isDisposed || this.refillInProgress) {
       return;
@@ -187,22 +179,18 @@ export class PtyPool {
       });
   }
 
-  /** Update default CWD */
   setDefaultCwd(cwd: string): void {
     this.defaultCwd = cwd;
   }
 
-  /** Get current pool size */
   getPoolSize(): number {
     return this.pool.size;
   }
 
-  /** Get max pool size */
   getMaxPoolSize(): number {
     return this.poolSize;
   }
 
-  /** Clean up all PTYs */
   dispose(): void {
     if (this.isDisposed) return;
 
@@ -224,7 +212,6 @@ export class PtyPool {
     console.log("[PtyPool] Disposed");
   }
 
-  /** Get platform default shell */
   private getDefaultShell(): string {
     if (process.platform === "win32") {
       return process.env.COMSPEC || "powershell.exe";
@@ -240,15 +227,12 @@ export class PtyPool {
         if (existsSync(shell)) {
           return shell;
         }
-      } catch {
-        // Continue
-      }
+      } catch {}
     }
 
     return "/bin/sh";
   }
 
-  /** Get shell args (login shell) */
   private getDefaultShellArgs(): string[] {
     const shellName = this.defaultShell.toLowerCase();
 
@@ -261,12 +245,10 @@ export class PtyPool {
     return [];
   }
 
-  /** Get user home dir */
   private getDefaultCwd(): string {
     return process.env.HOME || os.homedir();
   }
 
-  /** Filter env vars */
   private getFilteredEnv(): Record<string, string> {
     const env = process.env as Record<string, string | undefined>;
     return Object.fromEntries(
@@ -275,10 +257,8 @@ export class PtyPool {
   }
 }
 
-// Singleton instance
 let ptyPoolInstance: PtyPool | null = null;
 
-/** Get singleton */
 export function getPtyPool(config?: PtyPoolConfig): PtyPool {
   if (!ptyPoolInstance) {
     ptyPoolInstance = new PtyPool(config);
@@ -286,7 +266,6 @@ export function getPtyPool(config?: PtyPoolConfig): PtyPool {
   return ptyPoolInstance;
 }
 
-/** Dispose singleton */
 export function disposePtyPool(): void {
   if (ptyPoolInstance) {
     ptyPoolInstance.dispose();

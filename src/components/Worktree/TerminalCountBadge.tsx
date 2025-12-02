@@ -1,10 +1,3 @@
-/**
- * TerminalCountBadge Component
- *
- * Displays terminal count information for a worktree with state-based breakdowns.
- * Shows total count or state-specific counts when agent state tracking is available.
- */
-
 import { TerminalSquare } from "lucide-react";
 import type { WorktreeTerminalCounts } from "@/hooks/useWorktreeTerminals";
 import type { AgentState } from "@/types";
@@ -21,14 +14,9 @@ const STATE_LABELS: Record<AgentState, string> = {
   failed: "error",
 };
 
-/**
- * Format state counts into a display string
- * Shows only non-zero states, prioritizing active states
- */
 function formatStateCounts(byState: Record<AgentState, number>): string {
   const parts: string[] = [];
 
-  // Priority order: working, waiting, failed, idle, completed
   const priorityOrder: AgentState[] = ["working", "waiting", "failed", "idle", "completed"];
 
   for (const state of priorityOrder) {
@@ -42,13 +30,10 @@ function formatStateCounts(byState: Record<AgentState, number>): string {
 }
 
 export function TerminalCountBadge({ counts }: TerminalCountBadgeProps) {
-  // Hide badge when no terminals
   if (counts.total === 0) {
     return null;
   }
 
-  // Check if any terminals have non-idle agent states
-  // (terminals without agentState are counted as "idle" by the hook)
   const hasNonIdleStates =
     counts.byState.working > 0 ||
     counts.byState.waiting > 0 ||

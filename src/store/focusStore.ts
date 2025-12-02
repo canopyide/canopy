@@ -1,11 +1,3 @@
-/**
- * Focus Mode Store
- *
- * Zustand store for managing focus mode state.
- * Focus mode collapses all panels (sidebar, diagnostics dock)
- * to maximize terminal workspace.
- */
-
 import { create, type StateCreator } from "zustand";
 
 export interface PanelState {
@@ -14,20 +6,12 @@ export interface PanelState {
 }
 
 interface FocusState {
-  // Whether focus mode is currently active
   isFocusMode: boolean;
-
-  // Saved panel states to restore when exiting focus mode
   savedPanelState: PanelState | null;
 
-  // Actions
   toggleFocusMode: (currentPanelState: PanelState) => void;
   setFocusMode: (enabled: boolean, currentPanelState?: PanelState) => void;
-
-  // Get the saved state for restoration
   getSavedPanelState: () => PanelState | null;
-
-  /** Reset store to initial state for project switching */
   reset: () => void;
 }
 
@@ -38,10 +22,8 @@ const createFocusStore: StateCreator<FocusState> = (set, get) => ({
   toggleFocusMode: (currentPanelState) =>
     set((state) => {
       if (state.isFocusMode) {
-        // Exiting focus mode - clear saved state
         return { isFocusMode: false, savedPanelState: null };
       } else {
-        // Entering focus mode - save current state
         return { isFocusMode: true, savedPanelState: currentPanelState };
       }
     }),
@@ -49,10 +31,8 @@ const createFocusStore: StateCreator<FocusState> = (set, get) => ({
   setFocusMode: (enabled, currentPanelState) =>
     set((state) => {
       if (enabled && !state.isFocusMode && currentPanelState) {
-        // Entering focus mode - save current state
         return { isFocusMode: true, savedPanelState: currentPanelState };
       } else if (!enabled && state.isFocusMode) {
-        // Exiting focus mode - clear saved state
         return { isFocusMode: false, savedPanelState: null };
       }
       return state;

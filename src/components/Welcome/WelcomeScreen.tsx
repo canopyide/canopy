@@ -8,7 +8,6 @@ interface WelcomeScreenProps {
 }
 
 export function WelcomeScreen({ onDismiss }: WelcomeScreenProps) {
-  // TODO: Replace this placeholder video ID with actual Canopy intro video
   const videoId = "dQw4w9WgXcQ";
 
   const handleGetStarted = async () => {
@@ -23,7 +22,6 @@ export function WelcomeScreen({ onDismiss }: WelcomeScreenProps) {
   return (
     <div className="h-full w-full flex flex-col items-center justify-center bg-canopy-bg p-8 text-center overflow-y-auto">
       <div className="max-w-4xl w-full flex flex-col items-center gap-8">
-        {/* Header Section */}
         <div className="space-y-4">
           <CanopyIcon className="h-24 w-24 text-canopy-accent mx-auto mb-6" />
           <h1 className="text-4xl font-bold text-canopy-text tracking-tight">Welcome to Canopy</h1>
@@ -33,7 +31,6 @@ export function WelcomeScreen({ onDismiss }: WelcomeScreenProps) {
           </p>
         </div>
 
-        {/* Video Container */}
         <div className="w-full aspect-video bg-canopy-sidebar rounded-xl overflow-hidden border border-canopy-border shadow-2xl relative group">
           <iframe
             className="w-full h-full"
@@ -44,7 +41,6 @@ export function WelcomeScreen({ onDismiss }: WelcomeScreenProps) {
           />
         </div>
 
-        {/* Action Section */}
         <div className="flex flex-col items-center gap-4 mt-4">
           <Button
             size="lg"

@@ -1,17 +1,3 @@
-/**
- * Segmented Control Component
- *
- * A reusable tab navigation component with pill-style highlighting.
- * Designed for the Settings interface but can be used anywhere tabs are needed.
- *
- * Features:
- * - Optional icons per tab
- * - Pill-style active state with canopy-accent colors
- * - Full keyboard navigation (Tab, Arrow keys, Home, End)
- * - Proper ARIA attributes for accessibility
- * - Smooth transitions
- */
-
 import { useRef, useCallback, type ReactNode, type KeyboardEvent } from "react";
 import { cn } from "@/lib/utils";
 
@@ -26,7 +12,6 @@ export interface SegmentedControlProps {
   activeTab: string;
   onTabChange: (tabId: string) => void;
   className?: string;
-  /** ARIA label for the tablist */
   ariaLabel?: string;
 }
 
@@ -55,20 +40,16 @@ export function SegmentedControl({
       switch (event.key) {
         case "ArrowLeft":
         case "ArrowUp":
-          // Move to previous tab, wrap to end
           newIndex = currentIndex === 0 ? tabs.length - 1 : currentIndex - 1;
           break;
         case "ArrowRight":
         case "ArrowDown":
-          // Move to next tab, wrap to start
           newIndex = currentIndex === tabs.length - 1 ? 0 : currentIndex + 1;
           break;
         case "Home":
-          // Move to first tab
           newIndex = 0;
           break;
         case "End":
-          // Move to last tab
           newIndex = tabs.length - 1;
           break;
         default:

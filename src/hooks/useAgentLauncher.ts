@@ -1,15 +1,3 @@
-/**
- * useAgentLauncher Hook
- *
- * Provides agent launcher functionality with proper configuration for AI agents.
- * Handles spawning terminals pre-configured for Claude, Gemini, or plain shell.
- *
- * Features:
- * - Spawns terminal with agent command (claude, gemini) or plain shell
- * - Uses active worktree path as CWD when available
- * - Checks CLI availability and caches results
- */
-
 import { useCallback, useEffect, useRef, useState } from "react";
 import { useTerminalStore, type AddTerminalOptions } from "@/store/terminalStore";
 import { useProjectStore } from "@/store/projectStore";
@@ -107,25 +95,20 @@ export function useAgentLauncher(): UseAgentLauncherReturn {
   const [isCheckingAvailability, setIsCheckingAvailability] = useState(true);
   const [agentSettings, setAgentSettings] = useState<AgentSettings | null>(null);
 
-  // Track if component is mounted to prevent state updates after unmount
   const isMounted = useRef(true);
 
-  // Extracted check function that can be called for initial load and refresh
   const checkAvailabilityAndLoadSettings = useCallback(async () => {
     if (!isElectronAvailable()) {
       setIsCheckingAvailability(false);
       return;
     }
 
-    // Set loading state for manual refreshes too
     if (isMounted.current) {
       setIsCheckingAvailability(true);
     }
 
     try {
-      // Use centralized CLI availability service for optimal performance
       // Single IPC call instead of three separate checkCommand calls
-      // Use refresh() to ensure fresh data on mount (handles mid-session CLI installs)
       const [cliAvailability, settings] = await Promise.all([
         cliAvailabilityClient.refresh(),
         agentSettingsClient.get(),
@@ -137,7 +120,7 @@ export function useAgentLauncher(): UseAgentLauncherReturn {
       }
     } catch (error) {
       console.error("Failed to check CLI availability or load settings:", error);
-      // On error, keep safe defaults (false) to avoid enabling unavailable CLIs
+      // Keep safe defaults (false) to avoid enabling unavailable CLIs
     } finally {
       if (isMounted.current) {
         setIsCheckingAvailability(false);
@@ -145,7 +128,6 @@ export function useAgentLauncher(): UseAgentLauncherReturn {
     }
   }, []);
 
-  // Check CLI availability and load agent settings on mount
   useEffect(() => {
     isMounted.current = true;
     checkAvailabilityAndLoadSettings();
@@ -164,12 +146,10 @@ export function useAgentLauncher(): UseAgentLauncherReturn {
 
       const config = AGENT_CONFIGS[type];
 
-      // Get CWD from active worktree or fall back to project root
       const activeWorktree = activeId ? worktreeMap.get(activeId) : null;
       // Pass project root if no worktree; Main process handles HOME fallback as last resort
       const cwd = activeWorktree?.path || currentProject?.path || "";
 
-      // Build command with settings-based CLI flags
       let command = config.command;
       if (command && agentSettings) {
         let flags: string[] = [];

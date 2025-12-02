@@ -4,8 +4,6 @@ import { fileURLToPath } from "url";
 import os from "os";
 import fixPath from "fix-path";
 
-// Fix PATH for packaged apps on macOS/Linux
-// This ensures git, gh, and other CLI tools are available
 fixPath();
 import { registerIpcHandlers, sendToRenderer } from "./ipc/handlers.js";
 import { registerErrorHandlers } from "./ipc/errorHandlers.js";
@@ -31,10 +29,8 @@ import { getTranscriptManager, disposeTranscriptManager } from "./services/Trans
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
 
-// Global error handlers to prevent silent crashes
 process.on("uncaughtException", (error) => {
   console.error("[FATAL] Uncaught Exception:", error);
-  // Don't exit immediately - let Electron handle cleanup
 });
 
 process.on("unhandledRejection", (reason, promise) => {
@@ -52,23 +48,17 @@ let cleanupErrorHandlers: (() => void) | null = null;
 let eventBuffer: EventBuffer | null = null;
 let eventBufferUnsubscribe: (() => void) | null = null;
 
-// Terminal ID for the default terminal (for backwards compatibility with renderer)
 const DEFAULT_TERMINAL_ID = "default";
 
-// Track if we're intentionally quitting to avoid premature cleanup
 let isQuitting = false;
 
-// --- SINGLE INSTANCE LOCK ---
-// Robustly prevent multiple instances of the application
 const gotTheLock = app.requestSingleInstanceLock();
 
 if (!gotTheLock) {
   console.log("[MAIN] Another instance is already running. Quitting...");
   app.quit();
 } else {
-  // We are the primary instance
   app.on("second-instance", (_event, _commandLine, _workingDirectory) => {
-    // Someone tried to run a second instance, we should focus our window.
     console.log("[MAIN] Second instance detected, focusing main window");
     if (mainWindow) {
       if (mainWindow.isMinimized()) mainWindow.restore();
@@ -76,7 +66,6 @@ if (!gotTheLock) {
     }
   });
 
-  // Proceed with app startup
   app.whenReady().then(createWindow);
 
   app.on("window-all-closed", () => {
@@ -91,14 +80,11 @@ if (!gotTheLock) {
     }
   });
 
-  // Cleanup on quit - prevent default to ensure graceful shutdown completes
   app.on("before-quit", (event) => {
-    // If already quitting or not ready yet, don't interfere
     if (isQuitting || !mainWindow) {
       return;
     }
 
-    // Prevent quit until cleanup is done
     event.preventDefault();
     isQuitting = true;
 
@@ -110,32 +96,26 @@ if (!gotTheLock) {
     // 2. PtyManager only has runtime state (id/type/title/cwd), missing persistence fields
     // 3. Overwriting would strip command field, breaking agent terminal restoration
 
-    // Perform cleanup
     Promise.all([
       worktreeService.stopAll(),
       devServerManager ? devServerManager.stopAll() : Promise.resolve(),
       disposeTranscriptManager(),
       new Promise<void>((resolve) => {
-        // Stop SemanticActivityObserver
         disposeSemanticActivityObserver();
-        // Stop TerminalObserver first
         if (terminalObserver) {
           terminalObserver.dispose();
           terminalObserver = null;
         }
-        // Then dispose PtyManager
         if (ptyManager) {
           ptyManager.dispose();
           ptyManager = null;
         }
-        // Dispose PTY pool (kills any pre-warmed terminals)
         disposePtyPool();
         ptyPool = null;
         resolve();
       }),
     ])
       .then(() => {
-        // Cleanup IPC handlers
         if (cleanupIpcHandlers) {
           cleanupIpcHandlers();
           cleanupIpcHandlers = null;
@@ -145,7 +125,6 @@ if (!gotTheLock) {
           cleanupErrorHandlers = null;
         }
         console.log("[MAIN] Graceful shutdown complete");
-        // Now actually quit
         app.exit(0);
       })
       .catch((error) => {
@@ -156,7 +135,6 @@ if (!gotTheLock) {
 }
 
 async function createWindow(): Promise<void> {
-  // Standard idempotent check for 'activate' event
   if (mainWindow && !mainWindow.isDestroyed()) {
     console.log("[MAIN] Main window already exists, focusing");
     if (mainWindow.isMinimized()) mainWindow.restore();
@@ -175,20 +153,16 @@ async function createWindow(): Promise<void> {
       sandbox: true,
     },
     titleBarStyle: "hiddenInset",
-    backgroundColor: "#18181b", // Zinc-950: Digital Ecology background
+    backgroundColor: "#18181b",
   });
 
   console.log("[MAIN] Window created, loading content...");
 
-  // Set up logger window reference for IPC log streaming
   setLoggerWindow(mainWindow);
 
-  // Create application menu
   console.log("[MAIN] Creating application menu...");
   createApplicationMenu(mainWindow);
 
-  // --- PTY POOL SETUP ---
-  // Create and warm PTY pool for instant terminal spawns
   console.log("[MAIN] Initializing PtyPool...");
   try {
     ptyPool = getPtyPool({ poolSize: 2 });
@@ -200,16 +174,12 @@ async function createWindow(): Promise<void> {
     console.log("[MAIN] PtyPool initialized (warming in background)");
   } catch (error) {
     console.error("[MAIN] Failed to initialize PtyPool:", error);
-    // Non-fatal - continue without pool (terminals will spawn normally)
     ptyPool = null;
   }
 
-  // --- PTY MANAGER SETUP ---
-  // Create PtyManager instance to manage all terminal processes
   console.log("[MAIN] Initializing PtyManager...");
   try {
     ptyManager = new PtyManager();
-    // Connect pool to manager for instant spawns
     if (ptyPool) {
       ptyManager.setPtyPool(ptyPool);
     }
@@ -219,8 +189,6 @@ async function createWindow(): Promise<void> {
     throw error;
   }
 
-  // --- TERMINAL OBSERVER SETUP ---
-  // Create and start TerminalObserver for intelligent agent state detection
   console.log("[MAIN] Initializing TerminalObserver...");
   try {
     terminalObserver = new TerminalObserver(ptyManager);
@@ -228,7 +196,6 @@ async function createWindow(): Promise<void> {
     console.log("[MAIN] TerminalObserver initialized and started");
   } catch (error) {
     console.error("[MAIN] Failed to initialize TerminalObserver:", error);
-    // Cleanup PtyManager before failing
     if (ptyManager) {
       ptyManager.dispose();
       ptyManager = null;
@@ -236,8 +203,6 @@ async function createWindow(): Promise<void> {
     throw error;
   }
 
-  // --- SEMANTIC ACTIVITY OBSERVER SETUP ---
-  // Create and start SemanticActivityObserver for AI-powered activity headlines
   console.log("[MAIN] Initializing SemanticActivityObserver...");
   try {
     const semanticObserver = getSemanticActivityObserver();
@@ -246,11 +211,8 @@ async function createWindow(): Promise<void> {
     console.log("[MAIN] SemanticActivityObserver initialized and started");
   } catch (error) {
     console.error("[MAIN] Failed to initialize SemanticActivityObserver:", error);
-    // Non-fatal - continue without semantic activity detection
   }
 
-  // --- DEV SERVER MANAGER SETUP ---
-  // Create and initialize DevServerManager
   console.log("[MAIN] Initializing DevServerManager...");
   devServerManager = new DevServerManager();
   devServerManager.initialize(mainWindow, (channel: string, ...args: unknown[]) => {
@@ -260,35 +222,26 @@ async function createWindow(): Promise<void> {
   });
   console.log("[MAIN] DevServerManager initialized successfully");
 
-  // Create and initialize CliAvailabilityService
   console.log("[MAIN] Initializing CliAvailabilityService...");
   cliAvailabilityService = new CliAvailabilityService();
-  // Run initial CLI availability check at startup
   cliAvailabilityService.checkAvailability().then((availability) => {
     console.log("[MAIN] CLI availability checked:", availability);
   });
   console.log("[MAIN] CliAvailabilityService initialized successfully");
 
-  // --- PROJECT STORE SETUP ---
-  // Initialize ProjectStore
   console.log("[MAIN] Initializing ProjectStore...");
   await projectStore.initialize();
   console.log("[MAIN] ProjectStore initialized successfully");
 
-  // --- TRANSCRIPT MANAGER SETUP ---
-  // Initialize TranscriptManager for agent session capture
   console.log("[MAIN] Initializing TranscriptManager...");
   const transcriptManager = getTranscriptManager();
   await transcriptManager.initialize();
   console.log("[MAIN] TranscriptManager initialized successfully");
 
-  // --- EVENT BUFFER SETUP ---
-  // Create and start EventBuffer to capture all events
   console.log("[MAIN] Initializing EventBuffer...");
   eventBuffer = new EventBuffer(1000);
   eventBuffer.start();
 
-  // Register IPC handlers with PtyManager, DevServerManager, WorktreeService, and EventBuffer
   // IMPORTANT: Register handlers BEFORE loading renderer to avoid race conditions
   console.log("[MAIN] Registering IPC handlers...");
   cleanupIpcHandlers = registerIpcHandlers(
@@ -301,7 +254,6 @@ async function createWindow(): Promise<void> {
   );
   console.log("[MAIN] IPC handlers registered successfully");
 
-  // Register error handlers
   console.log("[MAIN] Registering error handlers...");
   cleanupErrorHandlers = registerErrorHandlers(
     mainWindow,
@@ -311,10 +263,8 @@ async function createWindow(): Promise<void> {
   );
   console.log("[MAIN] Error handlers registered successfully");
 
-  // Track if the event inspector is subscribed to prevent unnecessary IPC traffic
   let eventInspectorActive = false;
 
-  // Listen for subscription status from renderer
   ipcMain.on(CHANNELS.EVENT_INSPECTOR_SUBSCRIBE, () => {
     eventInspectorActive = true;
     console.log("[MAIN] Event inspector subscribed");
@@ -324,13 +274,9 @@ async function createWindow(): Promise<void> {
     console.log("[MAIN] Event inspector unsubscribed");
   });
 
-  // Subscribe to EventBuffer's onRecord callback to forward sanitized events to renderer
-  // This eliminates the race condition and duplication from the previous approach
   const unsubscribeFromEventBuffer = eventBuffer.onRecord((record) => {
-    // Only forward if inspector is actively listening
     if (!eventInspectorActive) return;
 
-    // Forward the exact record that was sanitized and stored
     sendToRenderer(mainWindow!, CHANNELS.EVENT_INSPECTOR_EVENT, record);
   });
 
@@ -341,7 +287,6 @@ async function createWindow(): Promise<void> {
   };
   console.log("[MAIN] EventBuffer initialized and events forwarding to renderer (when subscribed)");
 
-  // All IPC handlers and services are now ready - load renderer
   console.log("[MAIN] All services initialized, loading renderer...");
   if (process.env.NODE_ENV === "development") {
     console.log("[MAIN] Loading Vite dev server at http://localhost:5173");
@@ -349,11 +294,9 @@ async function createWindow(): Promise<void> {
     mainWindow.webContents.openDevTools();
   } else {
     console.log("[MAIN] Loading production build");
-    // __dirname is dist-electron/electron, so go up two levels to reach dist/index.html
     mainWindow.loadFile(path.join(__dirname, "../../dist/index.html"));
   }
 
-  // Spawn the default terminal for backwards compatibility with the renderer
   console.log("[MAIN] Spawning default terminal...");
   try {
     ptyManager.spawn(DEFAULT_TERMINAL_ID, {
@@ -364,11 +307,9 @@ async function createWindow(): Promise<void> {
     console.log("[MAIN] Default terminal spawned successfully");
   } catch (error) {
     console.error("[MAIN] Failed to spawn default terminal:", error);
-    // Don't throw - let the app continue without the default terminal
   }
 
   mainWindow.on("closed", async () => {
-    // Save terminal state before cleanup (to avoid race with before-quit)
     if (ptyManager) {
       const terminals = ptyManager.getAll().map((t) => ({
         id: t.id,
@@ -380,7 +321,6 @@ async function createWindow(): Promise<void> {
       store.set("appState.terminals", terminals);
     }
 
-    // Cleanup event buffer subscriptions
     if (eventBufferUnsubscribe) {
       eventBufferUnsubscribe();
       eventBufferUnsubscribe = null;
@@ -390,7 +330,6 @@ async function createWindow(): Promise<void> {
       eventBuffer = null;
     }
 
-    // Cleanup IPC handlers first to prevent any late IPC traffic
     if (cleanupIpcHandlers) {
       cleanupIpcHandlers();
       cleanupIpcHandlers = null;
@@ -399,31 +338,23 @@ async function createWindow(): Promise<void> {
       cleanupErrorHandlers();
       cleanupErrorHandlers = null;
     }
-    // Stop all worktree monitors
     await worktreeService.stopAll();
-    // Stop all dev servers
     if (devServerManager) {
       await devServerManager.stopAll();
       devServerManager = null;
     }
-    // Cleanup transcript manager
     await disposeTranscriptManager();
-    // Cleanup SemanticActivityObserver
     disposeSemanticActivityObserver();
-    // Cleanup TerminalObserver first
     if (terminalObserver) {
       terminalObserver.dispose();
       terminalObserver = null;
     }
-    // Then cleanup PTY manager (kills all terminals)
     if (ptyManager) {
       ptyManager.dispose();
       ptyManager = null;
     }
-    // Cleanup PTY pool (kills any pre-warmed terminals)
     disposePtyPool();
     ptyPool = null;
-    // Clear logger window reference
     setLoggerWindow(null);
     mainWindow = null;
   });

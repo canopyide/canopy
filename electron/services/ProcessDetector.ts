@@ -1,12 +1,9 @@
-/** Detects active agent CLIs (claude, gemini, codex) in terminals */
-
 import { exec } from "child_process";
 import { promisify } from "util";
 import type { TerminalType } from "../../shared/types/domain.js";
 
 const execAsync = promisify(exec);
 
-/** Agent CLI names to detect (process basename) */
 const AGENT_CLI_NAMES: Record<string, TerminalType> = {
   claude: "claude",
   gemini: "gemini",
@@ -21,7 +18,6 @@ export interface DetectionResult {
 
 export type DetectionCallback = (result: DetectionResult) => void;
 
-/** Polls terminal process tree to detect agent CLIs */
 export class ProcessDetector {
   private terminalId: string;
   private ptyPid: number;
@@ -32,7 +28,6 @@ export class ProcessDetector {
   private isWindows: boolean;
   private isDetecting: boolean = false;
 
-  /** Initialize detector */
   constructor(
     terminalId: string,
     ptyPid: number,
@@ -46,7 +41,6 @@ export class ProcessDetector {
     this.isWindows = process.platform === "win32";
   }
 
-  /** Start polling */
   start(): void {
     if (this.intervalHandle) {
       console.warn(`ProcessDetector for terminal ${this.terminalId} already started`);
@@ -62,7 +56,6 @@ export class ProcessDetector {
     }, this.pollInterval);
   }
 
-  /** Stop polling */
   stop(): void {
     if (this.intervalHandle) {
       clearInterval(this.intervalHandle);
@@ -71,7 +64,6 @@ export class ProcessDetector {
     }
   }
 
-  /** Run detection cycle */
   private async detect(): Promise<void> {
     if (this.isDetecting) {
       return;
@@ -95,7 +87,6 @@ export class ProcessDetector {
     }
   }
 
-  /** Detect agent in process tree (platform specific) */
   private async detectAgent(): Promise<DetectionResult> {
     if (this.isWindows) {
       return this.detectAgentWindows();
@@ -104,7 +95,6 @@ export class ProcessDetector {
     }
   }
 
-  /** Detect (Unix): uses ps -g */
   private async detectAgentUnix(): Promise<DetectionResult> {
     try {
       if (!Number.isInteger(this.ptyPid) || this.ptyPid <= 0) {
@@ -140,7 +130,6 @@ export class ProcessDetector {
     }
   }
 
-  /** Detect (Windows): uses wmic */
   private async detectAgentWindows(): Promise<DetectionResult> {
     try {
       if (!Number.isInteger(this.ptyPid) || this.ptyPid <= 0) {
@@ -203,7 +192,6 @@ export class ProcessDetector {
             }
           }
         } catch {
-          // Ignore errors
         }
       }
 
@@ -213,7 +201,6 @@ export class ProcessDetector {
     }
   }
 
-  /** Get last detected state */
   getLastDetected(): TerminalType | null {
     return this.lastDetected;
   }

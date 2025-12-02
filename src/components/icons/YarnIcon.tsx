@@ -1,13 +1,3 @@
-/**
- * Yarn Icon Component
- *
- * Custom SVG icon based on the official Yarn package manager brand icon.
- * Uses a simplified version of the Yarn "cat/kitten" shape, rendered monochrome via currentColor.
- *
- * Brand Color Reference: #2C8EBB (Yarn Blue)
- * Source: https://github.com/yarnpkg/assets
- */
-
 import { cn } from "@/lib/utils";
 
 interface YarnIconProps {

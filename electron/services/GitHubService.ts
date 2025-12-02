@@ -1,5 +1,3 @@
-/** GitHub integration (GraphQL) without gh CLI dependency */
-
 import { graphql, type GraphQlQueryResponseData } from "@octokit/graphql";
 import { GitService } from "./GitService.js";
 import { store } from "../store.js";
@@ -10,8 +8,6 @@ import type {
   GitHubListOptions,
   GitHubListResponse,
 } from "../../shared/types/github.js";
-
-// Types
 export interface GitHubTokenConfig {
   hasToken: boolean;
   scopes?: string[];
@@ -71,29 +67,24 @@ const prCheckCache = new Cache<string, PRCheckResult>({ defaultTTL: 60000 });
 const issueListCache = new Cache<string, GitHubListResponse<GitHubIssue>>({ defaultTTL: 60000 });
 const prListCache = new Cache<string, GitHubListResponse<GitHubPR>>({ defaultTTL: 60000 });
 
-/** Get token from store */
 export function getGitHubToken(): string | undefined {
   return store.get("userConfig.githubToken");
 }
 
-/** Check if token exists */
 export function hasGitHubToken(): boolean {
   return !!getGitHubToken();
 }
 
-/** Save token and clear caches */
 export function setGitHubToken(token: string): void {
   store.set("userConfig.githubToken", token);
   clearGitHubCaches();
 }
 
-/** Remove token and clear caches */
 export function clearGitHubToken(): void {
   store.set("userConfig.githubToken", undefined);
   clearGitHubCaches();
 }
 
-/** Get token config status */
 export function getGitHubConfig(): GitHubTokenConfig {
   const token = getGitHubToken();
   return {
@@ -101,7 +92,6 @@ export function getGitHubConfig(): GitHubTokenConfig {
   };
 }
 
-/** Create authenticated GraphQL client */
 function createGraphQLClient(): typeof graphql | null {
   const token = getGitHubToken();
   if (!token) return null;
@@ -113,13 +103,11 @@ function createGraphQLClient(): typeof graphql | null {
   });
 }
 
-/** Validate token via API (check scopes) */
 export async function validateGitHubToken(token: string): Promise<GitHubTokenValidation> {
   if (!token || token.trim() === "") {
     return { valid: false, scopes: [], error: "Token is empty" };
   }
 
-  // Basic format validation
   if (!token.startsWith("ghp_") && !token.startsWith("github_pat_") && !token.startsWith("gho_")) {
     if (token.length < 40) {
       return { valid: false, scopes: [], error: "Invalid token format" };
@@ -166,7 +154,6 @@ export async function validateGitHubToken(token: string): Promise<GitHubTokenVal
   }
 }
 
-/** Extract owner/repo from git remote */
 export async function getRepoContext(cwd: string): Promise<RepoContext | null> {
   const cached = repoContextCache.get(cwd);
   if (cached) return cached;
@@ -189,7 +176,6 @@ export async function getRepoContext(cwd: string): Promise<RepoContext | null> {
   }
 }
 
-/** Get issue/PR counts */
 export async function getRepoStats(cwd: string): Promise<RepoStatsResult> {
   const client = createGraphQLClient();
   if (!client) {
@@ -239,12 +225,10 @@ export async function getRepoStats(cwd: string): Promise<RepoStatsResult> {
   }
 }
 
-/** Get repo info (cached) */
 export async function getRepoInfo(cwd: string): Promise<RepoContext | null> {
   return getRepoContext(cwd);
 }
 
-/** Build batch PR query */
 function buildBatchPRQuery(owner: string, repo: string, candidates: PRCheckCandidate[]): string {
   const issueQueries: string[] = [];
   const branchQueries: string[] = [];
@@ -298,7 +282,6 @@ function buildBatchPRQuery(owner: string, repo: string, candidates: PRCheckCandi
   return `query { ${issueQueries.join("\n")} ${branchQueries.join("\n")} }`;
 }
 
-/** Parse batch PR response */
 function parseBatchPRResponse(
   data: Record<string, unknown>,
   candidates: PRCheckCandidate[]
@@ -382,7 +365,6 @@ function parseBatchPRResponse(
   return results;
 }
 
-/** Batch check for linked PRs */
 export async function batchCheckLinkedPRs(
   cwd: string,
   candidates: PRCheckCandidate[]
@@ -412,21 +394,18 @@ export async function batchCheckLinkedPRs(
   }
 }
 
-/** Get repo URL */
 export async function getRepoUrl(cwd: string): Promise<string | null> {
   const context = await getRepoContext(cwd);
   if (!context) return null;
   return `https://github.com/${context.owner}/${context.repo}`;
 }
 
-/** Get issue URL */
 export async function getIssueUrl(cwd: string, issueNumber: number): Promise<string | null> {
   const repoUrl = await getRepoUrl(cwd);
   if (!repoUrl) return null;
   return `${repoUrl}/issues/${issueNumber}`;
 }
 
-/** Parse GitHub API errors */
 function parseGitHubError(error: unknown): string {
   const message = error instanceof Error ? error.message : String(error);
 
@@ -453,7 +432,6 @@ function parseGitHubError(error: unknown): string {
   return "GitHub API unavailable";
 }
 
-/** Clear all caches */
 export function clearGitHubCaches(): void {
   repoContextCache.clear();
   repoStatsCache.clear();
@@ -461,8 +439,6 @@ export function clearGitHubCaches(): void {
   issueListCache.clear();
   prListCache.clear();
 }
-
-// List Issues and Pull Requests
 
 const LIST_ISSUES_QUERY = `
   query GetIssues($owner: String!, $repo: String!, $states: [IssueState!], $cursor: String, $limit: Int = 20) {
@@ -576,7 +552,6 @@ const SEARCH_QUERY = `
   }
 `;
 
-/** Build list cache key */
 function buildListCacheKey(
   type: "issue" | "pr",
   owner: string,
@@ -588,7 +563,6 @@ function buildListCacheKey(
   return `${type}:${owner}/${repo}:${state}:${search}:${cursor}`;
 }
 
-/** Map state to GraphQL IssueState */
 function mapIssueStates(state?: string): string[] {
   if (!state || state === "open") return ["OPEN"];
   if (state === "closed") return ["CLOSED"];
@@ -596,7 +570,6 @@ function mapIssueStates(state?: string): string[] {
   return ["OPEN"];
 }
 
-/** Map state to GraphQL PullRequestState */
 function mapPRStates(state?: string): string[] {
   if (!state || state === "open") return ["OPEN"];
   if (state === "closed") return ["CLOSED"];
@@ -605,7 +578,6 @@ function mapPRStates(state?: string): string[] {
   return ["OPEN"];
 }
 
-/** Parse issue node */
 function parseIssueNode(node: Record<string, unknown>): GitHubIssue {
   const author = node.author as { login?: string; avatarUrl?: string } | null;
   const assigneesData = node.assignees as { nodes?: Array<{ login?: string; avatarUrl?: string }> };
@@ -629,7 +601,6 @@ function parseIssueNode(node: Record<string, unknown>): GitHubIssue {
   };
 }
 
-/** Parse PR node */
 function parsePRNode(node: Record<string, unknown>): GitHubPR {
   const author = node.author as { login?: string; avatarUrl?: string } | null;
   const reviewsData = node.reviews as { totalCount?: number };
@@ -656,7 +627,6 @@ function parsePRNode(node: Record<string, unknown>): GitHubPR {
   };
 }
 
-/** List issues (filter/search) */
 export async function listIssues(
   options: GitHubListOptions
 ): Promise<GitHubListResponse<GitHubIssue>> {
@@ -741,7 +711,6 @@ export async function listIssues(
   }
 }
 
-/** List PRs (filter/search) */
 export async function listPullRequests(
   options: GitHubListOptions
 ): Promise<GitHubListResponse<GitHubPR>> {

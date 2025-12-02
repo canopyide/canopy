@@ -1,15 +1,3 @@
-/**
- * Terminal Focus Slice
- *
- * Manages focus and maximize state for the terminal grid.
- * This slice is responsible for:
- * - Tracking which terminal is focused
- * - Managing maximized terminal state
- * - Focus navigation (next/previous)
- *
- * This slice is purely UI state and does not persist to electron-store.
- */
-
 import type { StateCreator } from "zustand";
 import type { TerminalInstance } from "./terminalRegistrySlice";
 
@@ -22,7 +10,6 @@ export interface TerminalFocusSlice {
   focusNext: () => void;
   focusPrevious: () => void;
 
-  /** Called when a terminal is removed to clean up focus state */
   handleTerminalRemoved: (
     removedId: string,
     terminals: TerminalInstance[],
@@ -30,12 +17,6 @@ export interface TerminalFocusSlice {
   ) => void;
 }
 
-/**
- * Creates the terminal focus slice.
- *
- * @param getTerminals - Function to get current terminals from the registry slice.
- *   This is injected to avoid circular dependencies between slices.
- */
 export const createTerminalFocusSlice =
   (
     getTerminals: () => TerminalInstance[]
@@ -85,7 +66,6 @@ export const createTerminalFocusSlice =
       set((state) => {
         const updates: Partial<TerminalFocusSlice> = {};
 
-        // Handle focus transfer if the removed terminal was focused
         if (state.focusedId === removedId) {
           // Only focus grid terminals (not docked ones)
           const gridTerminals = remainingTerminals.filter(
@@ -93,16 +73,13 @@ export const createTerminalFocusSlice =
           );
 
           if (gridTerminals.length > 0) {
-            // Focus the next grid terminal, or the previous if we removed the last one
             const nextIndex = Math.min(removedIndex, gridTerminals.length - 1);
             updates.focusedId = gridTerminals[nextIndex]?.id || null;
           } else {
-            // No grid terminals left, clear focus
             updates.focusedId = null;
           }
         }
 
-        // Clear maximize state if the maximized terminal was removed
         if (state.maximizedId === removedId) {
           updates.maximizedId = null;
         }

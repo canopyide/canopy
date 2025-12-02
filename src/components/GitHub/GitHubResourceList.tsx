@@ -1,10 +1,3 @@
-/**
- * GitHubResourceList Component
- *
- * A generic list container for displaying GitHub issues or pull requests.
- * Handles data fetching, search, pagination, and filtering by state.
- */
-
 import { useState, useEffect, useMemo, useCallback } from "react";
 import { Search, ExternalLink, RefreshCw, AlertCircle, Plus } from "lucide-react";
 import { Button } from "@/components/ui/button";
@@ -23,9 +16,6 @@ type IssueStateFilter = "open" | "closed" | "all";
 type PRStateFilter = "open" | "closed" | "merged" | "all";
 type StateFilter = IssueStateFilter | PRStateFilter;
 
-/**
- * Debounce a function call.
- */
 function useDebounce<T>(value: T, delay: number): T {
   const [debouncedValue, setDebouncedValue] = useState(value);
 
@@ -48,10 +38,8 @@ export function GitHubResourceList({ type, projectPath, onClose }: GitHubResourc
   const [error, setError] = useState<string | null>(null);
   const [loadMoreError, setLoadMoreError] = useState<string | null>(null);
 
-  // Debounce search query
   const debouncedSearch = useDebounce(searchQuery, 300);
 
-  // State filter tabs
   const stateTabs = useMemo(() => {
     if (type === "pr") {
       return [
@@ -66,7 +54,6 @@ export function GitHubResourceList({ type, projectPath, onClose }: GitHubResourc
     ];
   }, [type]);
 
-  // Fetch data function
   // Note: currentCursor is passed as a parameter (not read from state) to avoid
   // dependency cycle where updating cursor would recreate this callback
   const fetchData = useCallback(
@@ -131,11 +118,9 @@ export function GitHubResourceList({ type, projectPath, onClose }: GitHubResourc
     [projectPath, debouncedSearch, filterState, type]
   );
 
-  // Fetch on mount and when search/filter changes
   useEffect(() => {
     const abortController = new AbortController();
 
-    // Reset pagination when search or filter changes
     setCursor(null);
     setHasMore(false);
     fetchData(null, false, abortController.signal);
@@ -143,14 +128,12 @@ export function GitHubResourceList({ type, projectPath, onClose }: GitHubResourc
     return () => abortController.abort();
   }, [debouncedSearch, filterState, projectPath, type, fetchData]);
 
-  // Load more handler
   const handleLoadMore = () => {
     if (!loadingMore && hasMore) {
       fetchData(cursor, true, undefined);
     }
   };
 
-  // Open in GitHub handler
   const handleOpenInGitHub = () => {
     if (type === "issue") {
       githubClient.openIssues(projectPath);
@@ -160,20 +143,17 @@ export function GitHubResourceList({ type, projectPath, onClose }: GitHubResourc
     onClose?.();
   };
 
-  // Create new handler
   const handleCreateNew = () => {
     // Use openIssues/openPRs with /new path would require a new IPC
     // For now, just open the GitHub page
     handleOpenInGitHub();
   };
 
-  // Retry handler for errors
   const handleRetry = () => {
     setCursor(null);
     fetchData(null, false, undefined);
   };
 
-  // Render loading skeleton
   // Calculate skeleton count to fill max-h-[500px] container:
   // - Container: 500px max - header (~80px) - footer (~48px) = ~372px available
   // - Each item: ~44px (16px icon + 16px title + 12px metadata + spacing)
@@ -192,7 +172,6 @@ export function GitHubResourceList({ type, projectPath, onClose }: GitHubResourc
     </div>
   );
 
-  // Render error state
   const renderError = () => (
     <div className="p-4 m-3 rounded-md bg-red-500/10 border border-red-500/20">
       <div className="flex items-center gap-2 text-red-500">
@@ -212,7 +191,6 @@ export function GitHubResourceList({ type, projectPath, onClose }: GitHubResourc
     </div>
   );
 
-  // Render empty state
   const renderEmpty = () => (
     <div className="p-8 text-center text-muted-foreground">
       <p className="text-sm">
@@ -224,9 +202,7 @@ export function GitHubResourceList({ type, projectPath, onClose }: GitHubResourc
 
   return (
     <div className="w-[450px] flex flex-col max-h-[500px]">
-      {/* Header with search and filters */}
       <div className="p-3 border-b border-canopy-border space-y-3 shrink-0">
-        {/* Search input */}
         <div className="relative">
           <Search className="absolute left-2.5 top-1/2 -translate-y-1/2 h-3.5 w-3.5 text-muted-foreground" />
           <input
@@ -245,7 +221,6 @@ export function GitHubResourceList({ type, projectPath, onClose }: GitHubResourc
           />
         </div>
 
-        {/* State filter tabs */}
         <div
           className="flex p-0.5 bg-black/20 rounded-md"
           role="group"
@@ -273,7 +248,6 @@ export function GitHubResourceList({ type, projectPath, onClose }: GitHubResourc
         </div>
       </div>
 
-      {/* Scrollable list */}
       <div className="overflow-y-auto flex-1 min-h-0">
         {loading && !data.length ? (
           renderSkeleton()
@@ -289,7 +263,6 @@ export function GitHubResourceList({ type, projectPath, onClose }: GitHubResourc
               ))}
             </div>
 
-            {/* Load more section with inline error handling */}
             {hasMore && (
               <div className="p-3 space-y-2">
                 {loadMoreError && (
@@ -326,7 +299,6 @@ export function GitHubResourceList({ type, projectPath, onClose }: GitHubResourc
         )}
       </div>
 
-      {/* Footer */}
       <div className="p-3 border-t border-canopy-border flex items-center justify-between shrink-0">
         <Button
           variant="ghost"

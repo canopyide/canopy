@@ -1,9 +1,3 @@
-/**
- * Hooks Index
- *
- * Re-exports all hooks for convenient importing.
- */
-
 export { useWorktrees, useWorktree } from "./useWorktrees";
 export type { UseWorktreesReturn } from "./useWorktrees";
 
@@ -36,7 +30,6 @@ export { useProjectSettings } from "./useProjectSettings";
 export { useSessionHistory, useSession } from "./useSessionHistory";
 export type { SessionFilters, UseSessionHistoryReturn } from "./useSessionHistory";
 
-// Optimized terminal selectors
 export {
   useTerminalById,
   useTerminalIds,

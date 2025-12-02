@@ -1,15 +1,8 @@
-/**
- * EventFilters Component
- *
- * Filter controls for the event inspector including category, type filters, and search.
- */
-
 import { useState, useMemo, useEffect } from "react";
 import { cn } from "@/lib/utils";
 import { Search, X, Filter, Tag } from "lucide-react";
 import type { EventRecord, EventFilterOptions, EventCategory } from "@/store/eventStore";
 
-/** All available event categories in display order */
 const ALL_CATEGORIES: EventCategory[] = [
   "system",
   "agent",
@@ -21,7 +14,6 @@ const ALL_CATEGORIES: EventCategory[] = [
   "artifact",
 ];
 
-/** Category display names and colors */
 const CATEGORY_CONFIG: Record<EventCategory, { label: string; color: string }> = {
   system: { label: "System", color: "bg-blue-500/20 text-blue-400 border-blue-500/30" },
   agent: { label: "Agent", color: "bg-purple-500/20 text-purple-400 border-purple-500/30" },
@@ -47,17 +39,14 @@ export function EventFilters({ events, filters, onFiltersChange, className }: Ev
   const [traceIdInput, setTraceIdInput] = useState(filters.traceId || "");
   const [showTypeFilters, setShowTypeFilters] = useState(false);
 
-  // Sync search input with filter changes from external sources
   useEffect(() => {
     setSearchInput(filters.search || "");
   }, [filters.search]);
 
-  // Sync traceId input with filter changes from external sources
   useEffect(() => {
     setTraceIdInput(filters.traceId || "");
   }, [filters.traceId]);
 
-  // Compute category counts from events
   const categoryCounts = useMemo(() => {
     const counts = new Map<EventCategory, number>();
     events.forEach((event) => {
@@ -68,7 +57,6 @@ export function EventFilters({ events, filters, onFiltersChange, className }: Ev
     return counts;
   }, [events]);
 
-  // Get unique event types from all events and compute counts
   const { availableTypes, typeCounts } = useMemo(() => {
     const types = new Set<string>();
     const counts = new Map<string, number>();
@@ -84,7 +72,6 @@ export function EventFilters({ events, filters, onFiltersChange, className }: Ev
     };
   }, [events]);
 
-  // Group types by category
   const groupedTypes = useMemo(() => {
     const groups: Record<string, string[]> = {
       system: [],
@@ -108,7 +95,6 @@ export function EventFilters({ events, filters, onFiltersChange, className }: Ev
       else groups.other.push(type);
     });
 
-    // Remove empty groups
     Object.keys(groups).forEach((key) => {
       if (groups[key].length === 0) delete groups[key];
     });
@@ -173,7 +159,6 @@ export function EventFilters({ events, filters, onFiltersChange, className }: Ev
 
   return (
     <div className={cn("flex-shrink-0 border-b bg-background", className)}>
-      {/* Search bar */}
       <div className="p-3 space-y-2">
         <div className="relative">
           <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-muted-foreground" />
@@ -199,7 +184,6 @@ export function EventFilters({ events, filters, onFiltersChange, className }: Ev
           )}
         </div>
 
-        {/* Trace ID filter */}
         <div className="space-y-1">
           <label className="text-xs text-muted-foreground px-1">
             Trace ID (correlates related events)
@@ -228,7 +212,6 @@ export function EventFilters({ events, filters, onFiltersChange, className }: Ev
           </div>
         </div>
 
-        {/* Category filter chips */}
         <div className="space-y-1.5">
           <div className="flex items-center justify-between">
             <div className="flex items-center gap-2 text-xs text-muted-foreground px-1">
@@ -273,7 +256,6 @@ export function EventFilters({ events, filters, onFiltersChange, className }: Ev
           </div>
         </div>
 
-        {/* Filter toggle */}
         <div className="flex items-center justify-between">
           <button
             onClick={() => setShowTypeFilters(!showTypeFilters)}
@@ -302,7 +284,6 @@ export function EventFilters({ events, filters, onFiltersChange, className }: Ev
         </div>
       </div>
 
-      {/* Type filters */}
       {showTypeFilters && (
         <div className="px-3 pb-3 space-y-3 max-h-64 overflow-y-auto">
           {Object.entries(groupedTypes).map(([category, types]) => (

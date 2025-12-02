@@ -48,15 +48,10 @@ export interface WorktreeCardProps {
   onOpenIssue?: () => void;
   onOpenPR?: () => void;
   onToggleServer: () => void;
-  /** Called when the inject context button is clicked */
   onInjectContext?: () => void;
-  /** Whether context injection is currently in progress */
   isInjecting?: boolean;
-  /** Called when user wants to create a new recipe */
   onCreateRecipe?: () => void;
-  /** Called when user wants to open Settings dialog with optional tab */
   onOpenSettings?: (tab?: "ai" | "general" | "troubleshooting") => void;
-  /** User's home directory for path formatting */
   homeDir?: string;
 }
 
@@ -109,28 +104,23 @@ export function WorktreeCard({
 }: WorktreeCardProps) {
   const mood = worktree.mood || "stable";
 
-  // Expanded state from store (per-id subscription to avoid re-renders on other cards)
   const isExpanded = useWorktreeSelectionStore(
     useCallback((state) => state.expandedWorktrees.has(worktree.id), [worktree.id])
   );
   const toggleWorktreeExpanded = useWorktreeSelectionStore((state) => state.toggleWorktreeExpanded);
 
-  // Recipe store
   const getRecipesForWorktree = useRecipeStore((state) => state.getRecipesForWorktree);
   const runRecipe = useRecipeStore((state) => state.runRecipe);
   const recipes = getRecipesForWorktree(worktree.id);
   const [runningRecipeId, setRunningRecipeId] = useState<string | null>(null);
 
-  // Terminal counts and agent state
   const { counts: terminalCounts, dominantAgentState } = useWorktreeTerminals(worktree.id);
 
-  // Terminal bulk actions
   const bulkCloseByWorktree = useTerminalStore((state) => state.bulkCloseByWorktree);
   const completedCount = terminalCounts.byState.completed;
   const failedCount = terminalCounts.byState.failed;
   const totalTerminalCount = terminalCounts.total;
 
-  // Confirmation dialog state for bulk close all
   const [confirmDialog, setConfirmDialog] = useState<{
     isOpen: boolean;
     title: string;
@@ -152,7 +142,6 @@ export function WorktreeCard({
     worktreePath: worktree.path,
   });
 
-  // Get errors for this worktree - subscribe to store changes
   const worktreeErrors = useErrorStore(
     useShallow((state) =>
       state.errors.filter((e) => e.context?.worktreeId === worktree.id && !e.dismissed)
@@ -161,26 +150,21 @@ export function WorktreeCard({
   const dismissError = useErrorStore((state) => state.dismissError);
   const removeError = useErrorStore((state) => state.removeError);
 
-  // Handle error retry
   const handleErrorRetry = useCallback(
     async (errorId: string, action: RetryAction, args?: Record<string, unknown>) => {
       try {
         await errorsClient.retry(errorId, action, args);
-        // On successful retry, remove the error from the store
         removeError(errorId);
       } catch (error) {
         console.error("Error retry failed:", error);
-        // Retry failed - the main process will send a new error event
       }
     },
     [removeError]
   );
 
-  // For main worktree, notes expire after 10 minutes (real-time)
   const [now, setNow] = useState(() => Date.now());
   const isMainWorktree = worktree.branch === "main" || worktree.branch === "master";
 
-  // Set up timer to re-check note expiration for main worktree
   useEffect(() => {
     if (!isMainWorktree || !worktree.aiNote || !worktree.aiNoteTimestamp) {
       return;
@@ -201,7 +185,6 @@ export function WorktreeCard({
     return () => clearTimeout(timer);
   }, [isMainWorktree, worktree.aiNote, worktree.aiNoteTimestamp]);
 
-  // Calculate effective note (applying TTL for main worktree)
   const effectiveNote = useMemo(() => {
     const trimmed = worktree.aiNote?.trim();
     if (!trimmed) return undefined;
@@ -238,7 +221,6 @@ export function WorktreeCard({
 
   const handleRunRecipe = useCallback(
     async (recipeId: string) => {
-      // Prevent concurrent recipe executions
       if (runningRecipeId !== null) {
         return;
       }
@@ -248,7 +230,6 @@ export function WorktreeCard({
         await runRecipe(recipeId, worktree.path, worktree.id);
       } catch (error) {
         console.error("Failed to run recipe:", error);
-        // TODO: Show user-facing error notification
       } finally {
         setRunningRecipeId(null);
       }
@@ -256,7 +237,6 @@ export function WorktreeCard({
     [runRecipe, worktree.path, worktree.id, runningRecipeId]
   );
 
-  // Terminal bulk action handlers
   const closeConfirmDialog = useCallback(() => {
     setConfirmDialog((prev) => ({ ...prev, isOpen: false }));
   }, []);
@@ -285,7 +265,6 @@ export function WorktreeCard({
   const branchLabel = worktree.branch ?? worktree.name;
   const hasChanges = (worktree.worktreeChanges?.changedFileCount ?? 0) > 0;
 
-  // AI Summary
   const renderAISummary = useCallback(() => {
     const { summary, aiStatus } = worktree;
 
@@ -334,7 +313,6 @@ export function WorktreeCard({
     }
   }, [worktree.aiStatus, worktree.summary, hasChanges, onOpenSettings]);
 
-  // Server status helpers
   const getServerStatusIndicator = () => {
     if (!serverState) return null;
     switch (serverState.status) {
@@ -354,7 +332,6 @@ export function WorktreeCard({
   const getServerLabel = () => {
     if (!serverState) return null;
     if (serverState.status === "running" && serverState.url) {
-      // Strip http:// and trailing slash for density
       return serverState.url.replace(/^https?:\/\//, "").replace(/\/$/, "");
     }
     if (serverState.status === "error") return "Error";
@@ -362,7 +339,6 @@ export function WorktreeCard({
     return "Dev Server";
   };
 
-  // Handler for expand/collapse toggle
   const handleToggleExpand = useCallback(
     (e: React.MouseEvent) => {
       e.stopPropagation();
@@ -371,7 +347,6 @@ export function WorktreeCard({
     [toggleWorktreeExpanded, worktree.id]
   );
 
-  // Compute whether there's expandable content
   const hasExpandableContent =
     hasChanges ||
     effectiveNote ||
@@ -380,7 +355,6 @@ export function WorktreeCard({
     hasDevScript ||
     worktreeErrors.length > 0;
 
-  // Generate stable ID for aria-controls
   const detailsId = useMemo(() => `worktree-${worktree.id}-details`, [worktree.id]);
 
   return (
@@ -403,14 +377,10 @@ export function WorktreeCard({
       role="button"
       aria-label={`Worktree: ${branchLabel}`}
     >
-      {/* Content container */}
       <div className="flex flex-col gap-1">
-        {/* Header: Identity + Actions */}
         <div className="flex items-start justify-between gap-2">
-          {/* Left: identity + status */}
           <div className="flex flex-col min-w-0 flex-1">
             <div className="flex items-center gap-2 text-xs font-mono leading-none">
-              {/* Expand/collapse chevron */}
               {hasExpandableContent && (
                 <button
                   onClick={handleToggleExpand}
@@ -449,7 +419,6 @@ export function WorktreeCard({
                 </span>
               )}
 
-              {/* Issues/PRs in header line for extreme density */}
               {worktree.prNumber && (
                 <span className="flex items-center gap-0.5 text-[0.65rem] text-[var(--color-status-success)] bg-green-500/10 px-1 rounded">
                   <GitPullRequest className="w-2.5 h-2.5" />
@@ -465,7 +434,6 @@ export function WorktreeCard({
             </div>
           </div>
 
-          {/* Right: action icons */}
           <div className="flex items-center gap-0.5 -mt-0.5">
             <DropdownMenu>
               <DropdownMenuTrigger asChild>
@@ -556,9 +524,7 @@ export function WorktreeCard({
           </div>
         </div>
 
-        {/* COMPACT SUMMARY ROW: Always visible metrics */}
         <div className="flex items-center gap-3 text-[0.7rem] text-gray-400 font-mono ml-4">
-          {/* Terminals */}
           {terminalCounts.total > 0 && (
             <div className="flex items-center gap-1">
               <Terminal className="w-2.5 h-2.5" />
@@ -569,7 +535,6 @@ export function WorktreeCard({
             </div>
           )}
 
-          {/* Changes count (compact: just the count) */}
           {hasChanges && worktree.worktreeChanges && (
             <div className="flex items-center gap-1">
               <GitCommitHorizontal className="w-2.5 h-2.5" />
@@ -583,7 +548,6 @@ export function WorktreeCard({
             </div>
           )}
 
-          {/* Dev server status indicator (compact) */}
           {hasDevScript && serverState && serverState.status !== "stopped" && (
             <div className="flex items-center gap-1">
               <Globe className="w-2.5 h-2.5" />
@@ -591,7 +555,6 @@ export function WorktreeCard({
             </div>
           )}
 
-          {/* Error count */}
           {worktreeErrors.length > 0 && (
             <div className="flex items-center gap-1 text-[var(--color-status-error)]">
               <AlertCircle className="w-2.5 h-2.5" />
@@ -600,7 +563,6 @@ export function WorktreeCard({
           )}
         </div>
 
-        {/* EXPANDED CONTENT - shown when isExpanded is true */}
         <div
           id={detailsId}
           aria-hidden={!isExpanded}
@@ -611,7 +573,6 @@ export function WorktreeCard({
           )}
         >
           <div className="pt-2 space-y-2">
-            {/* Path (shown in expanded mode) */}
             <button
               onClick={(e) => {
                 e.stopPropagation();
@@ -625,10 +586,8 @@ export function WorktreeCard({
               {displayPath}
             </button>
 
-            {/* AI Summary Block */}
             <div className="text-xs leading-relaxed break-words ml-4">{renderAISummary()}</div>
 
-            {/* Note (only if present) */}
             {effectiveNote && (
               <div
                 className={cn(
@@ -659,7 +618,6 @@ export function WorktreeCard({
               </div>
             )}
 
-            {/* File Changes List */}
             {hasChanges && worktree.worktreeChanges && (
               <div className="ml-4">
                 <FileChangeList
@@ -670,7 +628,6 @@ export function WorktreeCard({
               </div>
             )}
 
-            {/* Dev Server Controls */}
             {hasDevScript && serverState && (
               <div className="flex items-center gap-2 text-xs text-gray-400 font-mono ml-4">
                 <Globe className="w-3 h-3" />
@@ -678,7 +635,6 @@ export function WorktreeCard({
                   {getServerStatusIndicator()}
                   <span className="truncate max-w-[120px]">{getServerLabel()}</span>
                 </div>
-                {/* Tiny Action Button for Dev Server */}
                 <button
                   onClick={(e) => {
                     e.stopPropagation();
@@ -702,7 +658,6 @@ export function WorktreeCard({
               </div>
             )}
 
-            {/* Detailed Errors */}
             {worktreeErrors.length > 0 && (
               <div className="space-y-1 ml-4">
                 {worktreeErrors.slice(0, 3).map((error) => (
@@ -724,7 +679,6 @@ export function WorktreeCard({
           </div>
         </div>
 
-        {/* Confirmation dialog for bulk close all terminals */}
         <ConfirmDialog
           isOpen={confirmDialog.isOpen}
           title={confirmDialog.title}

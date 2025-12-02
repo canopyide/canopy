@@ -1,10 +1,3 @@
-/**
- * Bulk Actions Menu Component
- *
- * Dropdown menu for bulk terminal management actions like closing
- * all completed/failed terminals or restarting failed agents.
- */
-
 import { useState, useCallback } from "react";
 import { useShallow } from "zustand/react/shallow";
 import {
@@ -20,23 +13,18 @@ import { useTerminalStore } from "@/store/terminalStore";
 import { ConfirmDialog } from "./ConfirmDialog";
 
 export interface BulkActionsMenuProps {
-  /** Optional worktree ID to scope actions to a specific worktree */
   worktreeId?: string;
-  /** Custom trigger element (if not provided, uses default button) */
   trigger?: React.ReactNode;
-  /** Additional class name for the trigger button */
   className?: string;
 }
 
 export function BulkActionsMenu({ worktreeId, trigger, className }: BulkActionsMenuProps) {
-  // Use useShallow for terminals array to prevent re-renders on unrelated terminal changes
   const terminals = useTerminalStore(useShallow((state) => state.terminals));
   const bulkCloseByState = useTerminalStore((state) => state.bulkCloseByState);
   const bulkCloseByWorktree = useTerminalStore((state) => state.bulkCloseByWorktree);
   const bulkCloseAll = useTerminalStore((state) => state.bulkCloseAll);
   const restartFailedAgents = useTerminalStore((state) => state.restartFailedAgents);
 
-  // Confirmation dialog state
   const [confirmDialog, setConfirmDialog] = useState<{
     isOpen: boolean;
     title: string;
@@ -49,7 +37,6 @@ export function BulkActionsMenu({ worktreeId, trigger, className }: BulkActionsM
     onConfirm: () => {},
   });
 
-  // Calculate counts based on scope
   const scopedTerminals = worktreeId
     ? terminals.filter((t) => t.worktreeId === worktreeId)
     : terminals;
@@ -59,7 +46,6 @@ export function BulkActionsMenu({ worktreeId, trigger, className }: BulkActionsM
   const idleCount = scopedTerminals.filter((t) => t.agentState === "idle").length;
   const totalCount = scopedTerminals.length;
 
-  // Failed agents that can be restarted (only agent terminals)
   const restartableCount = scopedTerminals.filter(
     (t) => t.agentState === "failed" && (t.type === "claude" || t.type === "gemini")
   ).length;

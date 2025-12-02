@@ -1,10 +1,3 @@
-/**
- * PtyManager Service
- *
- * Manages node-pty terminal instances for the integrated terminals.
- * Handles spawning, input/output, resize, and cleanup of PTY processes.
- */
-
 import * as pty from "node-pty";
 import { EventEmitter } from "events";
 import { existsSync } from "fs";
@@ -42,13 +35,10 @@ export interface PtySpawnOptions {
   worktreeId?: string;
 }
 
-/** Buffer size for sliding window (characters) - enough to capture busy patterns across split packets */
 const OUTPUT_BUFFER_SIZE = 2000;
 
-/** Default max chunks to buffer before auto-flush (prevents OOM for long-running hidden terminals) */
 const DEFAULT_MAX_QUEUE_SIZE = 100;
 
-/** Maximum bytes to buffer before auto-flush (1MB - prevents single large write from causing OOM) */
 const DEFAULT_MAX_QUEUE_BYTES = 1024 * 1024;
 
 interface TerminalInfo {
@@ -59,72 +49,29 @@ interface TerminalInfo {
   type?: TerminalType;
   title?: string;
   worktreeId?: string;
-  /** For agent terminals, the agent ID (same as terminal ID for now) */
   agentId?: string;
-  /** Timestamp when the terminal was spawned (for duration calculations) */
   spawnedAt: number;
-  /** Flag indicating this terminal was explicitly killed (not a natural exit) */
   wasKilled?: boolean;
-  /** Current agent state (for agent terminals only) */
   agentState?: AgentState;
-  /** Timestamp when agentState last changed */
   lastStateChange?: number;
-  /** Error message if agentState is 'failed' */
   error?: string;
-  /**
-   * Sliding window buffer for pattern detection.
-   * Keeps last ~2000 chars to handle split packets (busy strings split across chunks).
-   */
   outputBuffer: string;
-  /** Optional trace ID for tracking event chains (from context injection, etc.) */
   traceId?: string;
 
-  // Timing metadata for silence detection and AI analysis throttling
-  /** Timestamp of last user input (write() call) */
   lastInputTime: number;
-  /** Timestamp of last PTY output (onData event) */
   lastOutputTime: number;
-  /** Timestamp of last state check (AI/heuristic analysis) */
   lastCheckTime: number;
 
-  /**
-   * Semantic buffer for AI analysis.
-   * Maintains last ~50 lines as array of strings for line-based context.
-   * Separate from outputBuffer (char-based) to cleanly separate pattern detection from AI analysis.
-   */
+  /** Maintains last ~50 lines as array for AI analysis, separate from char-based outputBuffer */
   semanticBuffer: string[];
 
-  // Agent process detection
-  /** Process detector for runtime agent CLI detection */
   processDetector?: ProcessDetector;
-  /** Last detected agent type from process introspection */
   detectedAgentType?: TerminalType;
 
-  // Buffering mode fields for hidden/docked terminals
-  /**
-   * When true, PTY output is buffered in memory instead of emitting IPC events.
-   * Used to reduce IPC overhead for hidden/docked terminals.
-   */
   bufferingMode: boolean;
-  /**
-   * Queue of buffered output chunks when bufferingMode is true.
-   * Flushed when terminal becomes visible or queue exceeds maxQueueSize.
-   */
   outputQueue: string[];
-  /**
-   * Current size of buffered output in bytes.
-   * Used to enforce maxQueueBytes limit.
-   */
   queuedBytes: number;
-  /**
-   * Maximum number of chunks to buffer before auto-flush.
-   * Prevents unbounded memory growth for long-running hidden terminals.
-   */
   maxQueueSize: number;
-  /**
-   * Maximum bytes to buffer before auto-flush.
-   * Prevents single large writes from causing OOM.
-   */
   maxQueueBytes: number;
 }
 
@@ -134,33 +81,17 @@ export interface PtyManagerEvents {
   error: (id: string, error: string) => void;
 }
 
-/**
- * Snapshot of terminal state for external analysis (AI, heuristics).
- * Allows services like AgentObserver to access terminal data without
- * direct coupling to PtyManager internals.
- */
 export interface TerminalSnapshot {
-  /** Terminal identifier */
   id: string;
-  /** Last ~50 lines of output for AI analysis */
   lines: string[];
-  /** Timestamp of last user input (write() call) */
   lastInputTime: number;
-  /** Timestamp of last PTY output (onData event) */
   lastOutputTime: number;
-  /** Timestamp of last state check (AI/heuristic analysis) */
   lastCheckTime: number;
-  /** Terminal type */
   type?: TerminalType;
-  /** Associated worktree ID */
   worktreeId?: string;
-  /** Agent ID (for agent terminals) */
   agentId?: string;
-  /** Current agent state */
   agentState?: AgentState;
-  /** Timestamp when agentState last changed (for AI analysis/throttling) */
   lastStateChange?: number;
-  /** Error message if agentState is 'failed' (for AI context) */
   error?: string;
   /** Session token to prevent stale observations from affecting new terminals with reused IDs */
   spawnedAt: number;
@@ -171,29 +102,16 @@ export class PtyManager extends EventEmitter {
   private trashTimeouts: Map<string, NodeJS.Timeout> = new Map();
   private ptyPool: PtyPool | null = null;
 
-  /** TTL for trashed terminals before auto-kill (2 minutes) */
   private readonly TRASH_TTL_MS = 120 * 1000;
 
   constructor() {
     super();
   }
 
-  /**
-   * Set the PTY pool to use for acquiring pre-warmed terminals.
-   * This enables instant terminal spawns when pool has available instances.
-   *
-   * @param pool - The PtyPool instance to use
-   */
   setPtyPool(pool: PtyPool): void {
     this.ptyPool = pool;
   }
 
-  /**
-   * Infer the trigger type from an agent event.
-   * @param event - Agent event that triggers the state transition
-   * @returns The inferred trigger type
-   * @private
-   */
   private inferTrigger(event: AgentEvent): AgentStateChangeTrigger {
     switch (event.type) {
       case "input":
@@ -207,75 +125,49 @@ export class PtyManager extends EventEmitter {
       case "exit":
         return "exit";
       case "start":
-        // Start events occur at spawn, before any actual output
         return "heuristic";
       case "error":
-        // Error events are detected via output patterns, not actual exits
         return "heuristic";
       default:
         return "output";
     }
   }
 
-  /**
-   * Infer the confidence level for a state change.
-   * @param event - Agent event that triggers the state transition
-   * @param trigger - The trigger type for this state change
-   * @returns Confidence value between 0.0 and 1.0
-   * @private
-   */
   private inferConfidence(event: AgentEvent, trigger: AgentStateChangeTrigger): number {
-    // Deterministic triggers have perfect confidence
     if (trigger === "input" || trigger === "exit") {
       return 1.0;
     }
 
-    // Output triggers are deterministic (we know output happened)
     if (trigger === "output") {
       return 1.0;
     }
 
-    // Heuristic triggers have varying confidence based on pattern type
     if (trigger === "heuristic") {
-      // Busy patterns are high confidence (specific indicators like "esc to interrupt")
       if (event.type === "busy") {
         return 0.9;
       }
-      // Prompt patterns are medium confidence (more false positives)
       if (event.type === "prompt") {
         return 0.75;
       }
-      // Start events (initial spawn) are lower confidence - no real output yet
       if (event.type === "start") {
         return 0.7;
       }
-      // Error events detected via patterns are medium-low confidence
       if (event.type === "error") {
         return 0.65;
       }
     }
 
-    // AI classification confidence should be passed explicitly (handled in caller)
     if (trigger === "ai-classification") {
-      return 0.85; // Default if not specified
+      return 0.85;
     }
 
-    // Timeout triggers depend on context (caller should specify)
     if (trigger === "timeout") {
-      return 0.6; // Default conservative value
+      return 0.6;
     }
 
-    return 0.5; // Unknown confidence
+    return 0.5;
   }
 
-  /**
-   * Update agent state for a terminal and emit state-changed event
-   * @param id - Terminal identifier
-   * @param event - Agent event that triggers the state transition
-   * @param trigger - Optional explicit trigger type (if not provided, inferred from event)
-   * @param confidence - Optional explicit confidence value (if not provided, inferred from event and trigger)
-   * @private
-   */
   private updateAgentState(
     id: string,
     event: AgentEvent,
@@ -353,12 +245,6 @@ export class PtyManager extends EventEmitter {
     }
   }
 
-  /**
-   * Handle agent detection results from ProcessDetector
-   * @param id - Terminal ID
-   * @param result - Detection result
-   * @private
-   */
   private handleAgentDetection(id: string, result: DetectionResult): void {
     const terminal = this.terminals.get(id);
     if (!terminal) {
@@ -418,49 +304,31 @@ export class PtyManager extends EventEmitter {
     }
   }
 
-  /** Maximum number of lines in the semantic buffer */
   private static readonly SEMANTIC_BUFFER_MAX_LINES = 50;
-  /** Maximum length for a single line in the semantic buffer (to prevent memory bloat) */
   private static readonly SEMANTIC_BUFFER_MAX_LINE_LENGTH = 1000;
 
-  /**
-   * Update the semantic buffer with new output data.
-   * Maintains a sliding window of the last ~50 lines for AI analysis.
-   * Handles CRLF normalization, carriage returns, empty lines, and line length limits.
-   * @param terminal - Terminal info to update
-   * @param chunk - Raw output chunk from PTY
-   * @private
-   */
   private updateSemanticBuffer(terminal: TerminalInfo, chunk: string): void {
-    // Normalize CRLF to LF and handle carriage returns
     // Carriage returns (\r) rewrite the current line, so we treat them as newlines
     const normalized = chunk.replace(/\r\n/g, "\n").replace(/\r/g, "\n");
 
-    // Split chunk into lines, preserving partial lines
     const lines = normalized.split("\n");
 
-    // If the buffer has content and the last line was incomplete,
-    // append the first part of new data to it
     if (terminal.semanticBuffer.length > 0 && lines.length > 0 && !normalized.startsWith("\n")) {
       terminal.semanticBuffer[terminal.semanticBuffer.length - 1] += lines[0];
       lines.shift();
     }
 
-    // Filter out empty strings from leading newlines and truncate long lines
     const processedLines = lines
-      .filter((line) => line.length > 0 || terminal.semanticBuffer.length > 0) // Keep empty lines only if buffer has content
+      .filter((line) => line.length > 0 || terminal.semanticBuffer.length > 0)
       .map((line) => {
-        // Truncate very long lines to prevent memory bloat
         if (line.length > PtyManager.SEMANTIC_BUFFER_MAX_LINE_LENGTH) {
           return line.substring(0, PtyManager.SEMANTIC_BUFFER_MAX_LINE_LENGTH) + "... [truncated]";
         }
         return line;
       });
 
-    // Add remaining lines to buffer
     terminal.semanticBuffer.push(...processedLines);
 
-    // Trim to max lines
     if (terminal.semanticBuffer.length > PtyManager.SEMANTIC_BUFFER_MAX_LINES) {
       terminal.semanticBuffer = terminal.semanticBuffer.slice(
         -PtyManager.SEMANTIC_BUFFER_MAX_LINES
@@ -468,12 +336,6 @@ export class PtyManager extends EventEmitter {
     }
   }
 
-  /**
-   * Spawn a new PTY process
-   * @param id - Unique identifier for this terminal
-   * @param options - Spawn options including cwd, shell, cols, rows
-   * @throws Error if PTY spawn fails
-   */
   spawn(id: string, options: PtySpawnOptions): void {
     // Check if terminal with this ID already exists
     if (this.terminals.has(id)) {

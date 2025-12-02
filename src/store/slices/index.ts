@@ -1,10 +1,3 @@
-/**
- * Terminal Store Slices
- *
- * This module exports all terminal store slices and their types.
- * These slices are combined in terminalStore.ts to create the full store.
- */
-
 export {
   createTerminalRegistrySlice,
   type TerminalRegistrySlice,

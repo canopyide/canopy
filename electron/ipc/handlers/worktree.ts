@@ -77,8 +77,6 @@ export function registerWorktreeHandlers(deps: HandlerDependencies): () => void 
   ipcMain.handle(CHANNELS.WORKTREE_LIST_BRANCHES, handleWorktreeListBranches);
   handlers.push(() => ipcMain.removeHandler(CHANNELS.WORKTREE_LIST_BRANCHES));
 
-  // Git Handlers
-
   const handleGitGetFileDiff = async (
     _event: Electron.IpcMainInvokeEvent,
     payload: { cwd: string; filePath: string; status: string }
@@ -99,7 +97,6 @@ export function registerWorktreeHandlers(deps: HandlerDependencies): () => void 
       throw new Error("Invalid file status");
     }
 
-    // Validate that cwd exists and is a directory
     if (!fs.existsSync(cwd)) {
       throw new Error("Working directory does not exist");
     }
@@ -109,7 +106,6 @@ export function registerWorktreeHandlers(deps: HandlerDependencies): () => void 
       throw new Error("Working directory path is not a directory");
     }
 
-    // Validate that cwd contains a .git directory (is a git repository)
     const gitDir = path.join(cwd, ".git");
     if (!fs.existsSync(gitDir)) {
       throw new Error("Working directory is not a git repository");

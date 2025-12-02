@@ -1,29 +1,13 @@
-/**
- * Recipe Editor Component
- *
- * Modal UI for creating and editing terminal recipes.
- * Allows users to:
- * - Set recipe name and worktree association
- * - Add/remove/reorder terminals
- * - Configure terminal type, title, command, and environment variables
- * - Save recipe to electron-store
- */
-
 import { useState, useEffect } from "react";
 import type { TerminalRecipe, RecipeTerminal, RecipeTerminalType } from "@/types";
 import { Button } from "@/components/ui/button";
 import { useRecipeStore } from "@/store/recipeStore";
 
 interface RecipeEditorProps {
-  /** Recipe to edit (undefined for creating new recipe) */
   recipe?: TerminalRecipe;
-  /** Worktree ID to associate with new recipe (undefined for global) */
   worktreeId?: string;
-  /** Whether the modal is open */
   isOpen: boolean;
-  /** Callback when modal is closed */
   onClose: () => void;
-  /** Callback when recipe is saved */
   onSave?: (recipe: TerminalRecipe) => void;
 }
 
@@ -48,7 +32,6 @@ export function RecipeEditor({ recipe, worktreeId, isOpen, onClose, onSave }: Re
   const [isSaving, setIsSaving] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
-  // Load recipe data when editing
   useEffect(() => {
     if (recipe) {
       setRecipeName(recipe.name);
@@ -89,13 +72,11 @@ export function RecipeEditor({ recipe, worktreeId, isOpen, onClose, onSave }: Re
   const handleSave = async () => {
     setError(null);
 
-    // Validate recipe name
     if (!recipeName.trim()) {
       setError("Recipe name is required");
       return;
     }
 
-    // Validate terminals
     if (terminals.length === 0) {
       setError("Recipe must contain at least one terminal");
       return;
@@ -105,13 +86,11 @@ export function RecipeEditor({ recipe, worktreeId, isOpen, onClose, onSave }: Re
 
     try {
       if (recipe) {
-        // Update existing recipe
         await updateRecipe(recipe.id, {
           name: recipeName,
           terminals,
         });
       } else {
-        // Create new recipe
         await createRecipe(recipeName, worktreeId, terminals);
       }
 
@@ -154,16 +133,13 @@ export function RecipeEditor({ recipe, worktreeId, isOpen, onClose, onSave }: Re
         aria-modal="true"
         aria-labelledby="recipe-editor-title"
       >
-        {/* Header */}
         <div className="px-6 py-4 border-b border-canopy-border">
           <h2 id="recipe-editor-title" className="text-lg font-semibold text-canopy-text">
             {recipe ? "Edit Recipe" : "Create Recipe"}
           </h2>
         </div>
 
-        {/* Body */}
         <div className="px-6 py-4 overflow-y-auto max-h-[calc(80vh-180px)]">
-          {/* Recipe Name */}
           <div className="mb-4">
             <label
               htmlFor="recipe-name"
@@ -181,7 +157,6 @@ export function RecipeEditor({ recipe, worktreeId, isOpen, onClose, onSave }: Re
             />
           </div>
 
-          {/* Terminals List */}
           <div className="mb-4">
             <div className="flex items-center justify-between mb-2">
               <label className="block text-sm font-medium text-canopy-text">
@@ -199,7 +174,6 @@ export function RecipeEditor({ recipe, worktreeId, isOpen, onClose, onSave }: Re
                   className="bg-canopy-background border border-canopy-border rounded-md p-3"
                 >
                   <div className="flex items-start gap-3">
-                    {/* Terminal Type */}
                     <div className="flex-1">
                       <label className="block text-xs font-medium text-canopy-text mb-1">
                         Type
@@ -219,7 +193,6 @@ export function RecipeEditor({ recipe, worktreeId, isOpen, onClose, onSave }: Re
                       </select>
                     </div>
 
-                    {/* Terminal Title */}
                     <div className="flex-1">
                       <label className="block text-xs font-medium text-canopy-text mb-1">
                         Title (optional)
@@ -233,7 +206,6 @@ export function RecipeEditor({ recipe, worktreeId, isOpen, onClose, onSave }: Re
                       />
                     </div>
 
-                    {/* Remove Button */}
                     <div className="pt-5">
                       <Button
                         size="sm"
@@ -246,7 +218,6 @@ export function RecipeEditor({ recipe, worktreeId, isOpen, onClose, onSave }: Re
                     </div>
                   </div>
 
-                  {/* Command (for custom type) */}
                   {terminal.type === "custom" && (
                     <div className="mt-2">
                       <label className="block text-xs font-medium text-canopy-text mb-1">
@@ -266,7 +237,6 @@ export function RecipeEditor({ recipe, worktreeId, isOpen, onClose, onSave }: Re
             </div>
           </div>
 
-          {/* Error Message */}
           {error && (
             <div className="mb-4 p-3 bg-red-500/10 border border-red-500/30 rounded-md text-[var(--color-status-error)] text-sm">
               {error}
@@ -274,7 +244,6 @@ export function RecipeEditor({ recipe, worktreeId, isOpen, onClose, onSave }: Re
           )}
         </div>
 
-        {/* Footer */}
         <div className="px-6 py-4 border-t border-canopy-border flex justify-end gap-3">
           <Button variant="outline" onClick={onClose} disabled={isSaving}>
             Cancel

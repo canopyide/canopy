@@ -7,7 +7,6 @@
 
 import type { CanopyConfig } from "../../shared/types/index.js";
 
-// Re-export types for backward compatibility with existing imports
 export type {
   OpenerConfig,
   OpenersConfig,
@@ -23,9 +22,6 @@ export type {
   CanopyConfig,
 } from "../../shared/types/index.js";
 
-// Default Configuration
-
-/** Default configuration values */
 export const DEFAULT_CONFIG: CanopyConfig = {
   editor: "code",
   editorArgs: ["-r"],

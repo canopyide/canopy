@@ -1,10 +1,3 @@
-/**
- * ProblemsContent Component
- *
- * Content component for the Problems tab in the diagnostics dock.
- * Displays errors table extracted from the original ProblemsPanel.
- */
-
 import { useMemo, useCallback, useState } from "react";
 import { cn } from "@/lib/utils";
 import { useErrorStore, type AppError, type RetryAction } from "@/store";
@@ -127,7 +120,6 @@ export function ProblemsContent({ onRetry, className }: ProblemsContentProps) {
   const errors = useErrorStore((state) => state.errors);
   const dismissError = useErrorStore((state) => state.dismissError);
 
-  // Track expanded rows
   const [expandedIds, setExpandedIds] = useState<Set<string>>(() => new Set());
 
   const activeErrors = useMemo(() => {

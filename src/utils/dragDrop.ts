@@ -1,20 +1,3 @@
-/**
- * Drag-and-Drop Utilities
- *
- * Helper functions for calculating drop positions, detecting drop zones,
- * and reordering arrays during drag-and-drop operations.
- */
-
-/**
- * Calculate the drop index based on drag position over a list of elements.
- * Returns the index where the dragged item should be inserted.
- *
- * @param dragY - The Y coordinate of the drag event (for vertical lists)
- * @param dragX - The X coordinate of the drag event (for horizontal lists)
- * @param elements - Array of DOM elements representing drop targets
- * @param orientation - Whether the list is horizontal or vertical
- * @param currentIndex - Optional current index of the dragged item (for same-list reordering)
- */
 export function calculateDropIndex(
   dragX: number,
   dragY: number,
@@ -42,19 +25,9 @@ export function calculateDropIndex(
     }
   }
 
-  // Dropped after all elements
   return elements.length;
 }
 
-/**
- * Calculate the drop index for a grid layout based on drag position.
- * Uses grid cell positions to determine where to insert.
- *
- * @param dragX - The X coordinate of the drag event
- * @param dragY - The Y coordinate of the drag event
- * @param elements - Array of DOM elements representing grid cells
- * @param currentIndex - Optional current index of the dragged item
- */
 export function calculateGridDropIndex(
   dragX: number,
   dragY: number,
@@ -63,7 +36,6 @@ export function calculateGridDropIndex(
 ): number {
   if (elements.length === 0) return 0;
 
-  // Find the element closest to the drag position
   let closestIndex = 0;
   let closestDistance = Infinity;
 
@@ -72,7 +44,6 @@ export function calculateGridDropIndex(
     const centerX = rect.left + rect.width / 2;
     const centerY = rect.top + rect.height / 2;
 
-    // Calculate distance from drag point to element center
     const distance = Math.sqrt(Math.pow(dragX - centerX, 2) + Math.pow(dragY - centerY, 2));
 
     if (distance < closestDistance) {
@@ -81,7 +52,6 @@ export function calculateGridDropIndex(
     }
   }
 
-  // Determine if we should insert before or after the closest element
   const closestRect = elements[closestIndex].getBoundingClientRect();
   const isBeforeMidpoint = dragX < closestRect.left + closestRect.width / 2;
 
@@ -95,14 +65,6 @@ export function calculateGridDropIndex(
   return Math.max(0, Math.min(targetIndex, elements.length));
 }
 
-/**
- * Determine which drop zone the drag event is over.
- *
- * @param clientX - Client X coordinate from drag event
- * @param clientY - Client Y coordinate from drag event
- * @param gridElement - The grid container element (or null if not present)
- * @param dockElement - The dock container element (or null if not present)
- */
 export function getDropZone(
   clientX: number,
   clientY: number,
@@ -122,7 +84,6 @@ export function getDropZone(
     }
   }
 
-  // Check grid
   if (gridElement) {
     const gridRect = gridElement.getBoundingClientRect();
     if (
@@ -138,14 +99,6 @@ export function getDropZone(
   return null;
 }
 
-/**
- * Reorder an array by moving an item from one index to another.
- * Returns a new array with the item moved.
- *
- * @param array - The source array
- * @param fromIndex - Index of the item to move
- * @param toIndex - Index where the item should be placed
- */
 export function reorderArray<T>(array: T[], fromIndex: number, toIndex: number): T[] {
   if (fromIndex === toIndex) return array;
   if (fromIndex < 0 || fromIndex >= array.length) return array;
@@ -157,15 +110,6 @@ export function reorderArray<T>(array: T[], fromIndex: number, toIndex: number):
   return result;
 }
 
-/**
- * Move an item from one array to another at a specific index.
- * Returns both modified arrays.
- *
- * @param sourceArray - The source array to remove from
- * @param targetArray - The target array to insert into
- * @param sourceIndex - Index of the item in the source array
- * @param targetIndex - Index where to insert in the target array
- */
 export function moveItemBetweenArrays<T>(
   sourceArray: T[],
   targetArray: T[],
@@ -185,35 +129,20 @@ export function moveItemBetweenArrays<T>(
   return { source: newSource, target: newTarget };
 }
 
-/**
- * MIME type for terminal drag-and-drop operations.
- * Used in dataTransfer to identify terminal drags.
- */
 export const TERMINAL_DRAG_MIME_TYPE = "application/x-canopy-terminal";
 
-/**
- * Data structure stored in dataTransfer during terminal drags.
- */
 export interface TerminalDragData {
   terminalId: string;
   sourceLocation: "grid" | "dock";
   sourceIndex: number;
 }
 
-/**
- * Set terminal drag data in a drag event.
- */
 export function setTerminalDragData(dataTransfer: DataTransfer, data: TerminalDragData): void {
   dataTransfer.setData(TERMINAL_DRAG_MIME_TYPE, JSON.stringify(data));
-  // Also set text/plain for debugging purposes
   dataTransfer.setData("text/plain", data.terminalId);
   dataTransfer.effectAllowed = "move";
 }
 
-/**
- * Get terminal drag data from a drag event.
- * Returns null if the drag is not a terminal drag.
- */
 export function getTerminalDragData(dataTransfer: DataTransfer): TerminalDragData | null {
   const data = dataTransfer.getData(TERMINAL_DRAG_MIME_TYPE);
   if (!data) return null;
@@ -225,9 +154,6 @@ export function getTerminalDragData(dataTransfer: DataTransfer): TerminalDragDat
   }
 }
 
-/**
- * Check if a drag event contains terminal drag data.
- */
 export function isTerminalDrag(dataTransfer: DataTransfer): boolean {
   return dataTransfer.types.includes(TERMINAL_DRAG_MIME_TYPE);
 }

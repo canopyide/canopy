@@ -1,14 +1,3 @@
-/**
- * Terminal Registry Slice
- *
- * Manages terminal CRUD operations and process tracking.
- * This slice is responsible for:
- * - Adding/removing terminal instances
- * - Updating terminal metadata (title, agent state)
- * - Persisting terminal list to electron-store
- * - IPC communication with the main process for PTY management
- */
-
 import type { StateCreator } from "zustand";
 import type {
   TerminalInstance as TerminalInstanceType,
@@ -21,7 +10,6 @@ import { appClient, terminalClient } from "@/clients";
 import { terminalInstanceService } from "@/services/TerminalInstanceService";
 import { TerminalRefreshTier } from "@/types";
 
-// Re-export the shared type
 export type TerminalInstance = TerminalInstanceType;
 
 export interface AddTerminalOptions {
@@ -30,9 +18,7 @@ export interface AddTerminalOptions {
   worktreeId?: string;
   cwd: string;
   shell?: string;
-  /** Command to execute after shell starts (e.g., 'claude' for AI agents) */
   command?: string;
-  /** Initial location in the UI (defaults to 'grid') */
   location?: TerminalLocation;
 }
 
@@ -48,17 +34,14 @@ const TYPE_TITLES: Record<TerminalType, string> = {
   custom: "Terminal",
 };
 
-/** Trashed terminal metadata for countdown timers */
 export interface TrashedTerminal {
   id: string;
   expiresAt: number;
-  /** Original location ('dock' | 'grid') for restoration */
   originalLocation: "dock" | "grid";
 }
 
 export interface TerminalRegistrySlice {
   terminals: TerminalInstance[];
-  /** Terminals pending deletion (in trash) */
   trashedTerminals: Map<string, TrashedTerminal>;
 
   addTerminal: (options: AddTerminalOptions) => Promise<string>;
@@ -82,40 +65,26 @@ export interface TerminalRegistrySlice {
   updateVisibility: (id: string, isVisible: boolean) => void;
   getTerminal: (id: string) => TerminalInstance | undefined;
 
-  /** Move terminal to dock (minimized) */
   moveTerminalToDock: (id: string) => void;
-  /** Move terminal to grid (restored) */
   moveTerminalToGrid: (id: string) => void;
-  /** Toggle terminal between dock and grid */
   toggleTerminalLocation: (id: string) => void;
 
-  /** Move terminal to trash (pending deletion) */
   trashTerminal: (id: string) => void;
-  /** Restore terminal from trash */
   restoreTerminal: (id: string) => void;
-  /** Mark terminal as trashed (from IPC event) */
   markAsTrashed: (id: string, expiresAt: number, originalLocation: "dock" | "grid") => void;
-  /** Mark terminal as restored (from IPC event) */
   markAsRestored: (id: string) => void;
-  /** Check if terminal is in trash */
   isInTrash: (id: string) => boolean;
 
-  /** Reorder terminals within a location (grid or dock) */
   reorderTerminals: (fromIndex: number, toIndex: number, location?: "grid" | "dock") => void;
-  /** Move a terminal to a specific position in a location */
   moveTerminalToPosition: (id: string, toIndex: number, location: "grid" | "dock") => void;
 }
 
-/**
- * Persist terminals to electron-store.
- * Only persists essential fields needed to restore sessions.
- * Excludes trashed terminals to avoid resurrecting orphaned sessions after restart.
- */
+// Excludes trashed terminals to avoid resurrecting orphaned sessions after restart
 function persistTerminals(terminals: TerminalInstance[]): void {
   appClient
     .setState({
       terminals: terminals
-        .filter((t) => t.location !== "trash") // Don't persist trashed terminals
+        .filter((t) => t.location !== "trash")
         .map((t) => ({
           id: t.id,
           type: t.type,
@@ -123,7 +92,6 @@ function persistTerminals(terminals: TerminalInstance[]): void {
           cwd: t.cwd,
           worktreeId: t.worktreeId,
           location: t.location,
-          // Only persist command if non-empty (trim whitespace)
           command: t.command?.trim() || undefined,
         })),
     })
@@ -154,7 +122,6 @@ export const createTerminalRegistrySlice =
       const location = options.location || "grid";
 
       try {
-        // Spawn the PTY process via IPC
         const id = await terminalClient.spawn({
           cwd: options.cwd,
           shell: options.shell,
@@ -166,7 +133,6 @@ export const createTerminalRegistrySlice =
           worktreeId: options.worktreeId,
         });
 
-        // Agent terminals (claude/gemini) start in 'idle' state
         const isAgentTerminal = type === "claude" || type === "gemini";
         const terminal: TerminalInstance = {
           id,
@@ -179,7 +145,7 @@ export const createTerminalRegistrySlice =
           agentState: isAgentTerminal ? "idle" : undefined,
           lastStateChange: isAgentTerminal ? Date.now() : undefined,
           location,
-          command: options.command, // Store command for persistence
+          command: options.command,
           // Initialize grid terminals as visible to avoid initial under-throttling
           // IntersectionObserver will update this once mounted
           isVisible: location === "grid" ? true : false,
@@ -191,7 +157,6 @@ export const createTerminalRegistrySlice =
           return { terminals: newTerminals };
         });
 
-        // Enable buffering immediately if terminal starts in dock (hidden)
         if (location === "dock") {
           terminalClient.setBuffering(id, true).catch((error) => {
             console.error("Failed to enable terminal buffering:", error);
@@ -206,23 +171,18 @@ export const createTerminalRegistrySlice =
     },
 
     removeTerminal: (id) => {
-      // Capture pre-removal state for focus handling
       const currentTerminals = get().terminals;
       const removedIndex = currentTerminals.findIndex((t) => t.id === id);
 
-      // Kill the PTY process
       terminalClient.kill(id).catch((error) => {
         console.error("Failed to kill terminal:", error);
-        // Continue with state cleanup even if kill fails
       });
 
-      // Dispose renderer instance to prevent zombies
       terminalInstanceService.destroy(id);
 
       set((state) => {
         const newTerminals = state.terminals.filter((t) => t.id !== id);
 
-        // Clean up trash entry if it exists
         const newTrashed = new Map(state.trashedTerminals);
         newTrashed.delete(id);
 
@@ -230,7 +190,6 @@ export const createTerminalRegistrySlice =
         return { terminals: newTerminals, trashedTerminals: newTrashed };
       });
 
-      // Notify middleware with pre-removal index and remaining terminals
       const remainingTerminals = get().terminals;
       middleware?.onTerminalRemoved?.(id, removedIndex, remainingTerminals);
     },
@@ -240,7 +199,6 @@ export const createTerminalRegistrySlice =
         const terminal = state.terminals.find((t) => t.id === id);
         if (!terminal) return state;
 
-        // Use trimmed title, or fall back to default title based on type
         const effectiveTitle = newTitle.trim() || TYPE_TITLES[terminal.type];
         const newTerminals = state.terminals.map((t) =>
           t.id === id ? { ...t, title: effectiveTitle } : t
@@ -272,7 +230,6 @@ export const createTerminalRegistrySlice =
             : t
         );
 
-        // Note: We don't persist agent state changes since they are transient
         return { terminals: newTerminals };
       });
     },
@@ -281,7 +238,6 @@ export const createTerminalRegistrySlice =
       set((state) => {
         const terminal = state.terminals.find((t) => t.id === id);
         if (!terminal) {
-          // Silently ignore - terminal may have been closed
           return state;
         }
 
@@ -297,7 +253,6 @@ export const createTerminalRegistrySlice =
             : t
         );
 
-        // Note: We don't persist activity state since it's transient
         return { terminals: newTerminals };
       });
     },
@@ -306,18 +261,15 @@ export const createTerminalRegistrySlice =
       set((state) => {
         const terminal = state.terminals.find((t) => t.id === id);
         if (!terminal) {
-          // Silently ignore - terminal may have been closed
           return state;
         }
 
-        // Skip update if visibility hasn't changed (avoid unnecessary re-renders)
         if (terminal.isVisible === isVisible) {
           return state;
         }
 
         const newTerminals = state.terminals.map((t) => (t.id === id ? { ...t, isVisible } : t));
 
-        // Note: We don't persist visibility state since it's transient
         return { terminals: newTerminals };
       });
     },
@@ -339,12 +291,10 @@ export const createTerminalRegistrySlice =
         return { terminals: newTerminals };
       });
 
-      // Enable buffering for docked (hidden) terminal to reduce IPC overhead
       terminalClient.setBuffering(id, true).catch((error) => {
         console.error("Failed to enable terminal buffering:", error);
       });
 
-      // Release GPU resources for docked terminals
       terminalInstanceService.applyRendererPolicy(id, TerminalRefreshTier.BACKGROUND);
     },
 
@@ -361,12 +311,10 @@ export const createTerminalRegistrySlice =
         return { terminals: newTerminals };
       });
 
-      // Disable buffering and flush buffered data when terminal becomes visible
-      // We call flush after a small delay to ensure the UI has subscribed to onData
+      // Delay flush to ensure the UI has subscribed to onData
       terminalClient
         .setBuffering(id, false)
         .then(() => {
-          // Delay flush to allow UI to mount and subscribe
           setTimeout(() => {
             terminalClient.flush(id).catch((error) => {
               console.error("Failed to flush terminal buffer:", error);
@@ -377,7 +325,6 @@ export const createTerminalRegistrySlice =
           console.error("Failed to disable terminal buffering:", error);
         });
 
-      // Mark as visible priority so renderer can reacquire GPU if needed
       terminalInstanceService.applyRendererPolicy(id, TerminalRefreshTier.VISIBLE);
     },
 
@@ -396,49 +343,39 @@ export const createTerminalRegistrySlice =
       const terminal = get().terminals.find((t) => t.id === id);
       if (!terminal) return;
 
-      // Capture the current location BEFORE moving to trash (for restoration)
       // Only 'dock' or 'grid' are valid original locations - treat undefined as 'grid'
       const originalLocation: "dock" | "grid" = terminal.location === "dock" ? "dock" : "grid";
 
-      // Call IPC to trash on main process (which starts the countdown)
       terminalClient.trash(id).catch((error) => {
         console.error("Failed to trash terminal:", error);
       });
 
-      // Move terminal to trash location and record original location
       set((state) => {
         const newTerminals = state.terminals.map((t) =>
           t.id === id ? { ...t, location: "trash" as const } : t
         );
-        // Pre-populate trashedTerminals with the captured location
-        // The IPC event will update expiresAt when it arrives
         const newTrashed = new Map(state.trashedTerminals);
-        // Use a placeholder expiresAt - will be updated when IPC event arrives
+        // Use placeholder expiresAt - will be updated when IPC event arrives
         newTrashed.set(id, { id, expiresAt: Date.now() + 120000, originalLocation });
         persistTerminals(newTerminals);
         return { terminals: newTerminals, trashedTerminals: newTrashed };
       });
 
-      // Enable buffering for trashed (hidden) terminal to reduce IPC overhead
       terminalClient.setBuffering(id, true).catch((error) => {
         console.error("Failed to enable terminal buffering:", error);
       });
 
-      // Release GPU resources for trashed terminals
       terminalInstanceService.applyRendererPolicy(id, TerminalRefreshTier.BACKGROUND);
     },
 
     restoreTerminal: (id) => {
-      // Get the trashed info to find original location
       const trashedInfo = get().trashedTerminals.get(id);
       const restoreLocation = trashedInfo?.originalLocation ?? "grid";
 
-      // Call IPC to restore on main process
       terminalClient.restore(id).catch((error) => {
         console.error("Failed to restore terminal:", error);
       });
 
-      // Move terminal back to its original location and remove from trash
       set((state) => {
         const newTerminals = state.terminals.map((t) =>
           t.id === id ? { ...t, location: restoreLocation } : t
@@ -449,15 +386,12 @@ export const createTerminalRegistrySlice =
         return { terminals: newTerminals, trashedTerminals: newTrashed };
       });
 
-      // Handle buffering and GPU resources based on restore location
       if (restoreLocation === "dock") {
-        // Keep buffering enabled for dock terminals
         terminalClient.setBuffering(id, true).catch((error) => {
           console.error("Failed to enable terminal buffering:", error);
         });
         terminalInstanceService.applyRendererPolicy(id, TerminalRefreshTier.BACKGROUND);
       } else {
-        // Disable buffering and flush when terminal returns to grid
         terminalClient
           .setBuffering(id, false)
           .then(() => {
@@ -470,7 +404,6 @@ export const createTerminalRegistrySlice =
           .catch((error) => {
             console.error("Failed to disable terminal buffering:", error);
           });
-        // Mark as visible priority so renderer can reacquire GPU if needed
         terminalInstanceService.applyRendererPolicy(id, TerminalRefreshTier.VISIBLE);
       }
     },
@@ -480,13 +413,11 @@ export const createTerminalRegistrySlice =
         // Ignore stale trashed events if terminal was already restored
         const terminal = state.terminals.find((t) => t.id === id);
         if (terminal && terminal.location !== "trash") {
-          // Terminal already restored before this IPC event arrived, ignore
           return state;
         }
 
         const newTrashed = new Map(state.trashedTerminals);
-        // Preserve existing originalLocation if already set (from trashTerminal call),
-        // otherwise use the provided one
+        // Preserve existing originalLocation if already set (from trashTerminal call)
         const existingTrashed = state.trashedTerminals.get(id);
         const location = existingTrashed?.originalLocation ?? originalLocation;
         newTrashed.set(id, { id, expiresAt, originalLocation: location });
@@ -497,7 +428,6 @@ export const createTerminalRegistrySlice =
         return { trashedTerminals: newTrashed, terminals: newTerminals };
       });
 
-      // Apply same side effects as trashTerminal for consistency
       terminalClient.setBuffering(id, true).catch((error) => {
         console.error("Failed to enable terminal buffering:", error);
       });
@@ -505,11 +435,9 @@ export const createTerminalRegistrySlice =
     },
 
     markAsRestored: (id) => {
-      // Get the terminal to check its current location (in case restoreTerminal already moved it)
       const terminal = get().terminals.find((t) => t.id === id);
 
       // If terminal is no longer in trash, respect its current location (set by restoreTerminal)
-      // Otherwise, fall back to originalLocation from trash metadata
       const trashedInfo = get().trashedTerminals.get(id);
       const restoreLocation =
         terminal && terminal.location !== "trash"
@@ -526,15 +454,12 @@ export const createTerminalRegistrySlice =
         return { trashedTerminals: newTrashed, terminals: newTerminals };
       });
 
-      // Apply side effects based on restore location
       if (restoreLocation === "dock") {
-        // Keep buffering enabled for dock terminals
         terminalClient.setBuffering(id, true).catch((error) => {
           console.error("Failed to enable terminal buffering:", error);
         });
         terminalInstanceService.applyRendererPolicy(id, TerminalRefreshTier.BACKGROUND);
       } else {
-        // Disable buffering and flush when terminal returns to grid
         terminalClient
           .setBuffering(id, false)
           .then(() => {
@@ -559,25 +484,20 @@ export const createTerminalRegistrySlice =
       if (fromIndex === toIndex) return;
 
       set((state) => {
-        // Get terminals in the specified location
         const terminalsInLocation = state.terminals.filter(
           (t) => t.location === location || (location === "grid" && t.location === undefined)
         );
 
-        // Validate indices
         if (fromIndex < 0 || fromIndex >= terminalsInLocation.length) return state;
         if (toIndex < 0 || toIndex > terminalsInLocation.length) return state;
 
-        // Get the terminal being moved
         const terminalToMove = terminalsInLocation[fromIndex];
         if (!terminalToMove) return state;
 
-        // Reorder within location
         const reorderedInLocation = [...terminalsInLocation];
         reorderedInLocation.splice(fromIndex, 1);
         reorderedInLocation.splice(toIndex, 0, terminalToMove);
 
-        // Combine: grid terminals first, then dock terminals
         let newTerminals: TerminalInstance[];
         if (location === "grid") {
           const dockTerminals = state.terminals.filter((t) => t.location === "dock");
@@ -599,41 +519,33 @@ export const createTerminalRegistrySlice =
         const terminal = state.terminals.find((t) => t.id === id);
         if (!terminal) return state;
 
-        // Get terminals in the target location (excluding the terminal being moved)
         const terminalsInTargetLocation = state.terminals.filter(
           (t) =>
             t.id !== id &&
             (t.location === location || (location === "grid" && t.location === undefined))
         );
 
-        // Clamp toIndex to valid range
         const clampedIndex = Math.max(0, Math.min(toIndex, terminalsInTargetLocation.length));
 
-        // Get all other terminals (not the moved one and not in target location)
         const otherTerminals = state.terminals.filter(
           (t) =>
             t.id !== id &&
             !(t.location === location || (location === "grid" && t.location === undefined))
         );
 
-        // Update the terminal's location
         const updatedTerminal: TerminalInstance = {
           ...terminal,
           location,
         };
 
-        // Insert the terminal at the specified index in the target location
         const reorderedTargetLocation = [...terminalsInTargetLocation];
         reorderedTargetLocation.splice(clampedIndex, 0, updatedTerminal);
 
-        // Combine: grid terminals first, then dock terminals
         let newTerminals: TerminalInstance[];
         if (location === "grid") {
-          // Terminal moved to grid
           const dockTerminals = otherTerminals.filter((t) => t.location === "dock");
           newTerminals = [...reorderedTargetLocation, ...dockTerminals];
         } else {
-          // Terminal moved to dock
           const gridTerminals = otherTerminals.filter(
             (t) => t.location === "grid" || t.location === undefined
           );
@@ -644,17 +556,13 @@ export const createTerminalRegistrySlice =
         return { terminals: newTerminals };
       });
 
-      // Handle buffering based on new location
       if (location === "dock") {
-        // Enable buffering for docked (hidden) terminal
         terminalClient.setBuffering(id, true).catch((error) => {
           console.error("Failed to enable terminal buffering:", error);
         });
 
-        // Release GPU resources for docked terminals
         terminalInstanceService.applyRendererPolicy(id, TerminalRefreshTier.BACKGROUND);
       } else {
-        // Disable buffering and flush when moving to grid
         terminalClient
           .setBuffering(id, false)
           .then(() => {

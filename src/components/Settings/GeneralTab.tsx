@@ -1,10 +1,3 @@
-/**
- * General Settings Tab Component
- *
- * Displays application version, description, and keyboard shortcuts.
- * This is a mostly static tab with collapsible keyboard shortcuts section.
- */
-
 import { useState } from "react";
 import { ChevronDown, ChevronRight, TreePine } from "lucide-react";
 
@@ -12,7 +5,6 @@ interface GeneralTabProps {
   appVersion: string;
 }
 
-// Keyboard shortcuts organized by category
 const KEYBOARD_SHORTCUTS = [
   {
     category: "Agents",
@@ -46,7 +38,6 @@ const KEYBOARD_SHORTCUTS = [
   },
 ];
 
-// Format key for platform-specific display
 const formatKey = (key: string): string => {
   const isMac = window.navigator.platform.toUpperCase().indexOf("MAC") >= 0;
 
@@ -58,7 +49,6 @@ const formatKey = (key: string): string => {
       .replace(/Alt\+/g, "⌥");
   }
 
-  // On Windows/Linux, replace Cmd with Ctrl
   return key.replace(/Cmd\+/g, "Ctrl+");
 };
 
@@ -96,7 +86,6 @@ export function GeneralTab({ appVersion }: GeneralTabProps) {
         </p>
       </div>
 
-      {/* Keyboard Shortcuts (collapsed by default) */}
       <div className="border border-canopy-border rounded-md">
         <button
           type="button"

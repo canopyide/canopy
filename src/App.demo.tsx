@@ -1,10 +1,3 @@
-/**
- * Demo App Component
- *
- * Simple demo version to verify the app is working.
- * Shows a terminal and some placeholder UI.
- */
-
 import { useEffect, useRef } from "react";
 import "@xterm/xterm/css/xterm.css";
 import { Terminal } from "@xterm/xterm";
@@ -18,7 +11,6 @@ function DemoTerminal() {
   useEffect(() => {
     if (!terminalRef.current || xtermRef.current) return;
 
-    // Create terminal
     const term = new Terminal({
       cursorBlink: true,
       fontSize: 14,
@@ -38,7 +30,6 @@ function DemoTerminal() {
     xtermRef.current = term;
     fitAddonRef.current = fitAddon;
 
-    // Welcome message
     term.writeln("\x1b[1;32m╔═══════════════════════════════════════╗\x1b[0m");
     term.writeln("\x1b[1;32m║                                       ║\x1b[0m");
     term.writeln("\x1b[1;32m║      Welcome to Canopy Command        ║\x1b[0m");
@@ -59,7 +50,6 @@ function DemoTerminal() {
     term.writeln("");
     term.write("$ ");
 
-    // Handle resize
     const handleResize = () => {
       if (fitAddonRef.current) {
         fitAddonRef.current.fit();
@@ -67,7 +57,6 @@ function DemoTerminal() {
     };
     window.addEventListener("resize", handleResize);
 
-    // Cleanup
     return () => {
       window.removeEventListener("resize", handleResize);
       term.dispose();
@@ -99,7 +88,6 @@ function App() {
         fontFamily: "system-ui, -apple-system, sans-serif",
       }}
     >
-      {/* Header */}
       <div
         style={{
           height: "50px",
@@ -116,7 +104,6 @@ function App() {
         </div>
       </div>
 
-      {/* Main Content */}
       <div
         style={{
           flex: 1,
@@ -124,7 +111,6 @@ function App() {
           overflow: "hidden",
         }}
       >
-        {/* Sidebar */}
         <div
           style={{
             width: "300px",
@@ -189,7 +175,6 @@ function App() {
           </div>
         </div>
 
-        {/* Terminal Area */}
         <div
           style={{
             flex: 1,

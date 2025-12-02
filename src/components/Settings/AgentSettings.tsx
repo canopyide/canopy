@@ -1,10 +1,3 @@
-/**
- * Agent Settings Component
- *
- * Settings panel for configuring AI agent CLI options (Claude, Gemini, Codex).
- * Provides UI for approval modes, models, sandbox policies, and advanced options.
- */
-
 import { useState, useEffect } from "react";
 import { Button } from "@/components/ui/button";
 import { SegmentedControl, type SegmentedControlTab } from "@/components/ui/SegmentedControl";
@@ -33,7 +26,6 @@ export function AgentSettings({ onSettingsChange }: AgentSettingsProps) {
   const [loadError, setLoadError] = useState<string | null>(null);
   const [showAdvanced, setShowAdvanced] = useState(false);
 
-  // Load settings on mount
   useEffect(() => {
     let cancelled = false;
 
@@ -156,7 +148,6 @@ export function AgentSettings({ onSettingsChange }: AgentSettingsProps) {
 
   return (
     <div className="space-y-4">
-      {/* Agent Tabs */}
       <SegmentedControl
         tabs={agentTabs}
         activeTab={activeTab}
@@ -166,7 +157,6 @@ export function AgentSettings({ onSettingsChange }: AgentSettingsProps) {
         }}
       />
 
-      {/* Main Tab - Enabled Agents */}
       {activeTab === "main" && settings && (
         <div className="space-y-4">
           <div className="space-y-2">
@@ -178,7 +168,6 @@ export function AgentSettings({ onSettingsChange }: AgentSettingsProps) {
           </div>
 
           <div className="space-y-3 bg-canopy-bg border border-canopy-border rounded-md p-4">
-            {/* Claude Toggle */}
             <div className="flex items-center justify-between">
               <div className="flex items-center gap-3">
                 <ClaudeIcon size={18} className="text-canopy-text" />
@@ -203,7 +192,6 @@ export function AgentSettings({ onSettingsChange }: AgentSettingsProps) {
               </button>
             </div>
 
-            {/* Gemini Toggle */}
             <div className="flex items-center justify-between">
               <div className="flex items-center gap-3">
                 <GeminiIcon size={18} className="text-canopy-text" />
@@ -228,7 +216,6 @@ export function AgentSettings({ onSettingsChange }: AgentSettingsProps) {
               </button>
             </div>
 
-            {/* Codex Toggle */}
             <div className="flex items-center justify-between">
               <div className="flex items-center gap-3">
                 <CodexIcon size={18} className="text-canopy-text" />
@@ -260,10 +247,8 @@ export function AgentSettings({ onSettingsChange }: AgentSettingsProps) {
         </div>
       )}
 
-      {/* Claude Settings */}
       {activeTab === "claude" && (
         <div className="space-y-4">
-          {/* Model */}
           <div className="space-y-2">
             <label className="text-sm font-medium text-canopy-text">Model</label>
             <input
@@ -279,7 +264,6 @@ export function AgentSettings({ onSettingsChange }: AgentSettingsProps) {
             </p>
           </div>
 
-          {/* Approval Mode */}
           <div className="space-y-2">
             <label className="text-sm font-medium text-canopy-text">Approval Mode</label>
             <div className="space-y-2">
@@ -346,7 +330,6 @@ export function AgentSettings({ onSettingsChange }: AgentSettingsProps) {
             </div>
           </div>
 
-          {/* Advanced Section */}
           <div className="border-t border-canopy-border pt-4">
             <button
               onClick={() => setShowAdvanced(!showAdvanced)}
@@ -362,7 +345,6 @@ export function AgentSettings({ onSettingsChange }: AgentSettingsProps) {
 
             {showAdvanced && (
               <div className="mt-4 space-y-4">
-                {/* Dangerously Skip Permissions */}
                 <label className="flex items-center gap-3 cursor-pointer">
                   <button
                     onClick={() =>
@@ -393,7 +375,6 @@ export function AgentSettings({ onSettingsChange }: AgentSettingsProps) {
                   </div>
                 </label>
 
-                {/* System Prompt */}
                 <div className="space-y-2">
                   <label className="text-sm font-medium text-canopy-text">System Prompt</label>
                   <textarea
@@ -405,7 +386,6 @@ export function AgentSettings({ onSettingsChange }: AgentSettingsProps) {
                   />
                 </div>
 
-                {/* Custom Flags */}
                 <div className="space-y-2">
                   <label className="text-sm font-medium text-canopy-text">Custom Flags</label>
                   <input
@@ -423,7 +403,6 @@ export function AgentSettings({ onSettingsChange }: AgentSettingsProps) {
             )}
           </div>
 
-          {/* Reset Button */}
           <div className="flex justify-end pt-2">
             <Button
               variant="outline"
@@ -438,10 +417,8 @@ export function AgentSettings({ onSettingsChange }: AgentSettingsProps) {
         </div>
       )}
 
-      {/* Gemini Settings */}
       {activeTab === "gemini" && (
         <div className="space-y-4">
-          {/* Model */}
           <div className="space-y-2">
             <label className="text-sm font-medium text-canopy-text">Model</label>
             <input
@@ -456,7 +433,6 @@ export function AgentSettings({ onSettingsChange }: AgentSettingsProps) {
             </p>
           </div>
 
-          {/* Approval Mode */}
           <div className="space-y-2">
             <label className="text-sm font-medium text-canopy-text">Approval Mode</label>
             <div className="space-y-2">
@@ -523,7 +499,6 @@ export function AgentSettings({ onSettingsChange }: AgentSettingsProps) {
             </div>
           </div>
 
-          {/* Advanced Section */}
           <div className="border-t border-canopy-border pt-4">
             <button
               onClick={() => setShowAdvanced(!showAdvanced)}
@@ -539,7 +514,6 @@ export function AgentSettings({ onSettingsChange }: AgentSettingsProps) {
 
             {showAdvanced && (
               <div className="mt-4 space-y-4">
-                {/* Sandbox */}
                 <label className="flex items-center gap-3 cursor-pointer">
                   <button
                     onClick={() => handleGeminiChange({ sandbox: !settings.gemini.sandbox })}
@@ -561,7 +535,6 @@ export function AgentSettings({ onSettingsChange }: AgentSettingsProps) {
                   </div>
                 </label>
 
-                {/* Custom Flags */}
                 <div className="space-y-2">
                   <label className="text-sm font-medium text-canopy-text">Custom Flags</label>
                   <input
@@ -579,7 +552,6 @@ export function AgentSettings({ onSettingsChange }: AgentSettingsProps) {
             )}
           </div>
 
-          {/* Reset Button */}
           <div className="flex justify-end pt-2">
             <Button
               variant="outline"
@@ -594,10 +566,8 @@ export function AgentSettings({ onSettingsChange }: AgentSettingsProps) {
         </div>
       )}
 
-      {/* Codex Settings */}
       {activeTab === "codex" && (
         <div className="space-y-4">
-          {/* Model */}
           <div className="space-y-2">
             <label className="text-sm font-medium text-canopy-text">Model</label>
             <input
@@ -613,7 +583,6 @@ export function AgentSettings({ onSettingsChange }: AgentSettingsProps) {
             </p>
           </div>
 
-          {/* Sandbox Policy */}
           <div className="space-y-2">
             <label className="text-sm font-medium text-canopy-text">Sandbox Policy</label>
             <div className="space-y-2">
@@ -680,7 +649,6 @@ export function AgentSettings({ onSettingsChange }: AgentSettingsProps) {
             </div>
           </div>
 
-          {/* Approval Policy */}
           <div className="space-y-2">
             <label className="text-sm font-medium text-canopy-text">Approval Policy</label>
             <select
@@ -700,7 +668,6 @@ export function AgentSettings({ onSettingsChange }: AgentSettingsProps) {
             </p>
           </div>
 
-          {/* Advanced Section */}
           <div className="border-t border-canopy-border pt-4">
             <button
               onClick={() => setShowAdvanced(!showAdvanced)}
@@ -716,7 +683,6 @@ export function AgentSettings({ onSettingsChange }: AgentSettingsProps) {
 
             {showAdvanced && (
               <div className="mt-4 space-y-4">
-                {/* Full Auto */}
                 <label className="flex items-center gap-3 cursor-pointer">
                   <button
                     onClick={() => handleCodexChange({ fullAuto: !settings.codex.fullAuto })}
@@ -738,7 +704,6 @@ export function AgentSettings({ onSettingsChange }: AgentSettingsProps) {
                   </div>
                 </label>
 
-                {/* Search */}
                 <label className="flex items-center gap-3 cursor-pointer">
                   <button
                     onClick={() => handleCodexChange({ search: !settings.codex.search })}
@@ -760,7 +725,6 @@ export function AgentSettings({ onSettingsChange }: AgentSettingsProps) {
                   </div>
                 </label>
 
-                {/* Dangerously Bypass */}
                 <label className="flex items-center gap-3 cursor-pointer">
                   <button
                     onClick={() =>
@@ -794,7 +758,6 @@ export function AgentSettings({ onSettingsChange }: AgentSettingsProps) {
                   </div>
                 </label>
 
-                {/* Custom Flags */}
                 <div className="space-y-2">
                   <label className="text-sm font-medium text-canopy-text">Custom Flags</label>
                   <input
@@ -812,7 +775,6 @@ export function AgentSettings({ onSettingsChange }: AgentSettingsProps) {
             )}
           </div>
 
-          {/* Reset Button */}
           <div className="flex justify-end pt-2">
             <Button
               variant="outline"

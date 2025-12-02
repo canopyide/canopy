@@ -1,32 +1,18 @@
-/**
- * Diagnostics Store
- *
- * Zustand store for managing the unified diagnostics dock state.
- * The dock consolidates Problems, Logs, and Events tabs.
- */
-
 import { create, type StateCreator } from "zustand";
 
 export type DiagnosticsTab = "problems" | "logs" | "events";
 
 interface DiagnosticsState {
-  // Whether the dock is open
   isOpen: boolean;
-
-  // Currently active tab
   activeTab: DiagnosticsTab;
-
-  // Dock height (resizable)
   height: number;
 
-  // Actions
   toggleDock: () => void;
   openDock: (tab?: DiagnosticsTab) => void;
   closeDock: () => void;
   setActiveTab: (tab: DiagnosticsTab) => void;
   setOpen: (open: boolean) => void;
   setHeight: (height: number) => void;
-  /** Reset store to initial state for project switching */
   reset: () => void;
 }
 
@@ -66,8 +52,6 @@ const createDiagnosticsStore: StateCreator<DiagnosticsState> = (set) => ({
     }),
 
   setHeight: (height) => {
-    // Clamp height between min and max
-    // Guard for SSR/test environments
     const maxHeight =
       typeof window !== "undefined" ? window.innerHeight * MAX_HEIGHT_RATIO : height;
     const clampedHeight = Math.min(Math.max(height, MIN_HEIGHT), maxHeight);
@@ -84,7 +68,6 @@ const createDiagnosticsStore: StateCreator<DiagnosticsState> = (set) => ({
 
 export const useDiagnosticsStore = create<DiagnosticsState>(createDiagnosticsStore);
 
-// Export constants for use in components
 export const DIAGNOSTICS_MIN_HEIGHT = MIN_HEIGHT;
 export const DIAGNOSTICS_MAX_HEIGHT_RATIO = MAX_HEIGHT_RATIO;
 export const DIAGNOSTICS_DEFAULT_HEIGHT = DEFAULT_HEIGHT;

@@ -1,10 +1,3 @@
-/**
- * TerminalListItem Component
- *
- * Individual result item in the terminal palette.
- * Displays terminal icon, title, worktree badge, and truncated CWD.
- */
-
 import { Terminal, Command } from "lucide-react";
 import {
   ClaudeIcon,
@@ -19,36 +12,24 @@ import { cn } from "@/lib/utils";
 import type { TerminalType } from "@/components/Terminal/TerminalPane";
 
 export interface TerminalListItemProps {
-  /** Terminal ID for aria-activedescendant */
   id: string;
-  /** Terminal title */
   title: string;
-  /** Terminal type (affects icon) */
   type: TerminalType;
-  /** Associated worktree name (optional) */
   worktreeName?: string;
-  /** Current working directory */
   cwd: string;
-  /** Whether this item is currently selected */
   isSelected: boolean;
-  /** Called when this item is clicked */
   onClick: () => void;
 }
 
-/**
- * Get icon component for terminal type - custom brand icons for AI agents and package managers
- */
 function getIcon(type: TerminalType) {
   const props = { className: "w-4 h-4", "aria-hidden": "true" as const };
   switch (type) {
-    // AI Agents
     case "claude":
       return <ClaudeIcon {...props} />;
     case "gemini":
       return <GeminiIcon {...props} />;
     case "codex":
       return <CodexIcon {...props} />;
-    // Package Managers
     case "npm":
       return <NpmIcon {...props} />;
     case "yarn":
@@ -57,7 +38,6 @@ function getIcon(type: TerminalType) {
       return <PnpmIcon {...props} />;
     case "bun":
       return <BunIcon {...props} />;
-    // Generic
     case "custom":
       return <Command {...props} />;
     case "shell":
@@ -66,10 +46,6 @@ function getIcon(type: TerminalType) {
   }
 }
 
-/**
- * Truncate a path from the left if it exceeds max length
- * Shows "...rest/of/path" format
- */
 function truncatePath(path: string, maxLength: number = 40): string {
   if (path.length <= maxLength) {
     return path;
@@ -107,18 +83,14 @@ export function TerminalListItem({
       aria-label={fullLabel}
       role="option"
     >
-      {/* Terminal type icon */}
       <span className="shrink-0 text-canopy-text/70" aria-hidden="true">
         {getIcon(type)}
       </span>
 
-      {/* Content */}
       <div className="flex-1 min-w-0 overflow-hidden">
-        {/* Title row */}
         <div className="flex items-center gap-2">
           <span className="text-sm font-medium text-canopy-text truncate">{title}</span>
 
-          {/* Worktree badge */}
           {worktreeName && (
             <span className="shrink-0 px-1.5 py-0.5 text-xs rounded bg-canopy-accent/10 text-canopy-accent border border-canopy-accent/30">
               {worktreeName}
@@ -126,13 +98,11 @@ export function TerminalListItem({
           )}
         </div>
 
-        {/* CWD row */}
         <div className="text-xs text-canopy-text/50 truncate" title={cwd}>
           {truncatePath(cwd)}
         </div>
       </div>
 
-      {/* Type label (right side) */}
       <span className="shrink-0 text-xs text-canopy-text/40 capitalize">{type}</span>
     </button>
   );

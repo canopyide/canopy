@@ -1,33 +1,14 @@
-/**
- * WaitingForYouStrip Component
- *
- * A persistent horizontal strip at the top of the terminal grid that shows
- * all agents currently in "waiting" state, providing one-click navigation
- * to agents that need user input.
- *
- * This is a key UX primitive from the "8+ Agents at Once" guide for reducing
- * context-switching cost when orchestrating multiple agents.
- *
- * Features:
- * - Auto-hides when no agents are waiting
- * - Yellow color scheme indicates attention needed
- * - Horizontal scroll support for many chips
- * - Real-time updates as agents transition in/out of waiting state
- */
-
 import { WaitingAgentChip } from "./WaitingAgentChip";
 import { useTerminalStore } from "@/store/terminalStore";
 import { useShallow } from "zustand/react/shallow";
 
 export function WaitingForYouStrip() {
-  // Use shallow selector to only re-render when the waiting terminals actually change
   const waitingTerminals = useTerminalStore(
     useShallow((state) =>
       state.terminals.filter((t) => t.agentState === "waiting" && !state.isInTrash(t.id))
     )
   );
 
-  // Hide strip when no agents waiting
   if (waitingTerminals.length === 0) {
     return null;
   }

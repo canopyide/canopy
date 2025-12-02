@@ -1,37 +1,19 @@
-/**
- * useRepositoryStats Hook
- *
- * Provides GitHub repository statistics with adaptive polling.
- * - Active polling (30s) when window is visible
- * - Idle polling (5min) when window is hidden
- * - Immediate refresh on file changes
- *
- * Migrated from: /Users/gpriday/Projects/CopyTree/canopy/src/hooks/useRepositoryStats.ts
- */
-
 import { useState, useEffect, useCallback, useRef } from "react";
 import type { RepositoryStats } from "../types";
 import { githubClient, projectClient } from "@/clients";
 
-// Polling intervals
-const ACTIVE_POLL_INTERVAL = 30 * 1000; // 30 seconds when active
-const IDLE_POLL_INTERVAL = 5 * 60 * 1000; // 5 minutes when idle
-const ERROR_BACKOFF_INTERVAL = 2 * 60 * 1000; // 2 minutes on error
+const ACTIVE_POLL_INTERVAL = 30 * 1000;
+const IDLE_POLL_INTERVAL = 5 * 60 * 1000;
+const ERROR_BACKOFF_INTERVAL = 2 * 60 * 1000;
 
 export interface UseRepositoryStatsReturn {
-  /** Repository statistics */
   stats: RepositoryStats | null;
-  /** Whether stats are currently loading */
   loading: boolean;
-  /** Error message if stats failed to load */
   error: string | null;
-  /** Manual refresh trigger */
   refresh: () => Promise<void>;
 }
 
 /**
- * Hook for fetching and polling GitHub repository stats
- *
  * @example
  * ```tsx
  * function Toolbar() {
@@ -56,16 +38,12 @@ export function useRepositoryStats(): UseRepositoryStatsReturn {
   const [error, setError] = useState<string | null>(null);
 
   const pollTimerRef = useRef<NodeJS.Timeout | null>(null);
-  const isVisibleRef = useRef(!document.hidden); // Initialize from current visibility
+  const isVisibleRef = useRef(!document.hidden);
   const mountedRef = useRef(true);
-  const lastErrorRef = useRef<string | null>(null); // Track latest error for backoff
-  const inFlightRef = useRef(false); // Prevent concurrent fetches
+  const lastErrorRef = useRef<string | null>(null);
+  const inFlightRef = useRef(false);
 
-  /**
-   * Fetch repository stats from the current project
-   */
   const fetchStats = useCallback(async () => {
-    // Prevent concurrent fetches
     if (inFlightRef.current) {
       return;
     }
@@ -73,10 +51,8 @@ export function useRepositoryStats(): UseRepositoryStatsReturn {
     try {
       inFlightRef.current = true;
 
-      // Get current project to determine cwd
       const project = await projectClient.getCurrent();
       if (!project) {
-        // No project open, clear stats
         if (mountedRef.current) {
           setStats(null);
           setError(null);
@@ -114,11 +90,7 @@ export function useRepositoryStats(): UseRepositoryStatsReturn {
     }
   }, []);
 
-  /**
-   * Manual refresh trigger
-   */
   const refresh = useCallback(async () => {
-    // Clear existing timer to avoid overlap
     if (pollTimerRef.current) {
       clearTimeout(pollTimerRef.current);
       pollTimerRef.current = null;
@@ -126,16 +98,11 @@ export function useRepositoryStats(): UseRepositoryStatsReturn {
     await fetchStats();
   }, [fetchStats]);
 
-  /**
-   * Schedule next poll with adaptive interval
-   */
   const scheduleNextPoll = useCallback(() => {
-    // Clear existing timer
     if (pollTimerRef.current) {
       clearTimeout(pollTimerRef.current);
     }
 
-    // Determine interval based on visibility and error state (using refs for latest values)
     let interval = isVisibleRef.current ? ACTIVE_POLL_INTERVAL : IDLE_POLL_INTERVAL;
     if (lastErrorRef.current) {
       interval = ERROR_BACKOFF_INTERVAL;
@@ -150,20 +117,15 @@ export function useRepositoryStats(): UseRepositoryStatsReturn {
     }, interval);
   }, [fetchStats]);
 
-  /**
-   * Handle visibility change
-   */
   useEffect(() => {
     const handleVisibilityChange = () => {
       isVisibleRef.current = !document.hidden;
 
-      // Clear any existing timer to prevent overlap
       if (pollTimerRef.current) {
         clearTimeout(pollTimerRef.current);
         pollTimerRef.current = null;
       }
 
-      // If window became visible, trigger immediate refresh
       if (isVisibleRef.current) {
         fetchStats().then(() => {
           if (mountedRef.current) {
@@ -171,7 +133,6 @@ export function useRepositoryStats(): UseRepositoryStatsReturn {
           }
         });
       } else {
-        // Window hidden, reschedule with idle interval
         scheduleNextPoll();
       }
     };
@@ -183,9 +144,6 @@ export function useRepositoryStats(): UseRepositoryStatsReturn {
     };
   }, [fetchStats, scheduleNextPoll]);
 
-  /**
-   * Mount/unmount cleanup - stable effect with no deps
-   */
   useEffect(() => {
     mountedRef.current = true;
 
@@ -197,11 +155,7 @@ export function useRepositoryStats(): UseRepositoryStatsReturn {
     };
   }, []);
 
-  /**
-   * Initial fetch and start polling - stable effect
-   */
   useEffect(() => {
-    // Initial fetch
     fetchStats().then(() => {
       if (mountedRef.current) {
         scheduleNextPoll();
@@ -210,18 +164,13 @@ export function useRepositoryStats(): UseRepositoryStatsReturn {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
-  /**
-   * Listen for project switches to refresh stats
-   */
   useEffect(() => {
     const cleanup = projectClient.onSwitch(() => {
-      // Clear existing timer to prevent overlap
       if (pollTimerRef.current) {
         clearTimeout(pollTimerRef.current);
         pollTimerRef.current = null;
       }
 
-      // Project switched, fetch new stats immediately
       fetchStats().then(() => {
         if (mountedRef.current) {
           scheduleNextPoll();

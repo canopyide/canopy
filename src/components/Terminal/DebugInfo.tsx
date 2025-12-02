@@ -1,34 +1,13 @@
-/**
- * DebugInfo Component
- *
- * Displays debug information about agent state detection in terminal headers.
- * Shows the trigger source (heuristic, user, timeout) and confidence level.
- * Visibility is controlled by a localStorage flag for development use.
- *
- * Example output: "(heuristic, 75%)"
- *
- * Enable via localStorage: localStorage.setItem('CANOPY_STATE_DEBUG', '1')
- * Or via Settings > Troubleshooting > Show State Debug Info
- */
-
 import { useState, useEffect } from "react";
 import { cn } from "@/lib/utils";
 import type { AgentStateChangeTrigger } from "@/types";
 
 interface DebugInfoProps {
-  /** What triggered the state change */
   trigger: AgentStateChangeTrigger;
-  /** Confidence level of the detection (0.0 - 1.0) */
   confidence: number;
-  /** Additional CSS classes */
   className?: string;
 }
 
-/**
- * Check if debug mode is enabled.
- * Reads from localStorage to allow runtime toggling.
- * Handles Safari private mode and other storage exceptions gracefully.
- */
 function isDebugEnabled(): boolean {
   if (typeof localStorage === "undefined") {
     return false;
@@ -42,11 +21,9 @@ function isDebugEnabled(): boolean {
 }
 
 export function DebugInfo({ trigger, confidence, className }: DebugInfoProps) {
-  // Track debug mode state and re-render when it changes
   const [isEnabled, setIsEnabled] = useState(() => isDebugEnabled());
 
   useEffect(() => {
-    // Listen for debug toggle changes from settings
     const handleDebugToggle = (e: Event) => {
       const customEvent = e as CustomEvent<{ enabled: boolean }>;
       setIsEnabled(customEvent.detail.enabled);
@@ -56,7 +33,6 @@ export function DebugInfo({ trigger, confidence, className }: DebugInfoProps) {
     return () => window.removeEventListener("canopy:debug-toggle", handleDebugToggle);
   }, []);
 
-  // Only render when debug mode is enabled
   if (!isEnabled) {
     return null;
   }
@@ -73,11 +49,6 @@ export function DebugInfo({ trigger, confidence, className }: DebugInfoProps) {
   );
 }
 
-/**
- * Enable state debug mode.
- * Persists to localStorage for cross-session debugging.
- * Handles Safari private mode and other storage exceptions gracefully.
- */
 export function enableStateDebug(): void {
   if (typeof localStorage === "undefined") {
     return;
@@ -90,10 +61,6 @@ export function enableStateDebug(): void {
   }
 }
 
-/**
- * Disable state debug mode.
- * Handles Safari private mode and other storage exceptions gracefully.
- */
 export function disableStateDebug(): void {
   if (typeof localStorage === "undefined") {
     return;
@@ -106,10 +73,6 @@ export function disableStateDebug(): void {
   }
 }
 
-/**
- * Toggle state debug mode.
- * @returns The new state (true = enabled)
- */
 export function toggleStateDebug(): boolean {
   const newState = !isDebugEnabled();
   if (newState) {
@@ -118,7 +81,6 @@ export function toggleStateDebug(): boolean {
     disableStateDebug();
   }
 
-  // Dispatch custom event to notify components of the change
   if (typeof window !== "undefined") {
     window.dispatchEvent(new CustomEvent("canopy:debug-toggle", { detail: { enabled: newState } }));
   }
@@ -126,9 +88,6 @@ export function toggleStateDebug(): boolean {
   return newState;
 }
 
-/**
- * Get current debug mode state.
- */
 export function getStateDebugEnabled(): boolean {
   return isDebugEnabled();
 }

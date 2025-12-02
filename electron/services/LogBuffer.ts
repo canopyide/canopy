@@ -1,5 +1,3 @@
-/** Ring buffer for main process logs (FIFO) */
-
 import crypto from "crypto";
 
 export type LogLevel = "debug" | "info" | "warn" | "error";
@@ -31,7 +29,6 @@ export class LogBuffer {
     this.maxSize = maxSize;
   }
 
-  /** Get singleton */
   static getInstance(): LogBuffer {
     if (!instance) {
       instance = new LogBuffer();
@@ -39,7 +36,6 @@ export class LogBuffer {
     return instance;
   }
 
-  /** Add log entry */
   push(entry: Omit<LogEntry, "id">): LogEntry {
     const fullEntry: LogEntry = {
       ...entry,
@@ -55,12 +51,10 @@ export class LogBuffer {
     return fullEntry;
   }
 
-  /** Get all logs */
   getAll(): LogEntry[] {
     return [...this.buffer];
   }
 
-  /** Get filtered logs */
   getFiltered(options: FilterOptions): LogEntry[] {
     let entries = this.buffer;
 
@@ -100,7 +94,6 @@ export class LogBuffer {
     return entries;
   }
 
-  /** Get unique log sources */
   getSources(): string[] {
     const sources = new Set<string>();
     for (const entry of this.buffer) {
@@ -111,22 +104,18 @@ export class LogBuffer {
     return Array.from(sources).sort();
   }
 
-  /** Clear buffer */
   clear(): void {
     this.buffer = [];
   }
 
-  /** Clear logs on project switch */
   onProjectSwitch(): void {
     console.log("Handling project switch in LogBuffer - clearing logs");
     this.clear();
   }
 
-  /** Get current count */
   get length(): number {
     return this.buffer.length;
   }
 }
 
-// Export singleton accessor
 export const logBuffer = LogBuffer.getInstance();

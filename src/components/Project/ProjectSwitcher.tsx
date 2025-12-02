@@ -38,12 +38,10 @@ export function ProjectSwitcher() {
     }
   };
 
-  // Initial load
   useEffect(() => {
     loadProjects();
     getCurrentProject();
 
-    // Listen for switch events from menu/system
     const cleanup = projectClient.onSwitch(() => {
       getCurrentProject();
       loadProjects();
@@ -52,13 +50,10 @@ export function ProjectSwitcher() {
     return cleanup;
   }, [loadProjects, getCurrentProject]);
 
-  // Helper to render the project icon
-  // Uses subtle accent-based styling to match the "active worktree" aesthetic
   const renderIcon = (emoji: string, _color?: string, sizeClass = "h-8 w-8 text-lg") => (
     <div
       className={cn(
         "flex items-center justify-center rounded-md border shrink-0 transition-all duration-200",
-        // Subtle muted styling
         "bg-canopy-surface/50",
         "border-canopy-border/50",
         sizeClass
@@ -68,9 +63,7 @@ export function ProjectSwitcher() {
     </div>
   );
 
-  // If no project is selected yet
   if (!currentProject) {
-    // If projects exist, show dropdown to select one
     if (projects.length > 0) {
       return (
         <div className="p-2">
@@ -123,7 +116,6 @@ export function ProjectSwitcher() {
       );
     }
 
-    // No projects at all - show "Open Project" button
     return (
       <div className="p-2">
         <Button
@@ -145,7 +137,6 @@ export function ProjectSwitcher() {
         <DropdownMenuTrigger asChild>
           <Button
             variant="ghost"
-            // active:scale-100 prevents the "loud shift" (shrink animation) on click
             className="w-full justify-between px-2 h-14 hover:bg-canopy-bg/50 group transition-all duration-200 active:scale-100"
             disabled={isLoading}
           >
@@ -165,7 +156,6 @@ export function ProjectSwitcher() {
           </Button>
         </DropdownMenuTrigger>
 
-        {/* Added max-h and overflow to prevent layout jumps if list is long */}
         <DropdownMenuContent
           className="w-[260px] max-h-[60vh] overflow-y-auto p-1"
           align="start"

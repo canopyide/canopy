@@ -1,5 +1,3 @@
-/** Manages dev server processes for worktrees with URL detection and graceful shutdown */
-
 import { execa } from "execa";
 import type { ResultPromise, Result } from "execa";
 import { existsSync } from "node:fs";
@@ -9,41 +7,29 @@ import type { BrowserWindow } from "electron";
 import { DevServerState, DevServerStatus } from "../types/index.js";
 import { events } from "./events.js";
 
-// URL detection patterns for common dev servers
 const URL_PATTERNS = [
-  // Vite
   new RegExp("Local:\\s+(https?://localhost:\\d+/?/?)", "i"),
-  // Next.js
   new RegExp("Ready on (https?://localhost:\\d+/?/?)", "i"),
-  // Generic patterns - broader host matching
   new RegExp("Listening on (https?://[\\w.-]+:\\d+/?/?)", "i"),
   new RegExp("Server (?:is )?(?:running|started) (?:on|at) (https?://[\\w.-]+:\\d+/?/?)", "i"),
-  // Create React App
   new RegExp("Local:\\s+(https?://localhost:\\d+/?/?)", "i"),
-  // Angular
   new RegExp("Server is listening on (https?://[\\w.-]+:\\d+/?/?)", "i"),
-  // Express / generic Node
   new RegExp("(?:Listening|Started) on (?:port )?(\\d+)", "i"),
-  // Webpack Dev Server
   new RegExp("Project is running at (https?://[\\w.-]+:\\d+/?/?)", "i"),
-  // Generic URL fallback - capture any http(s) URL with port
   new RegExp("(https?://[\\w.-]+:\\d+/?/?)", "i"),
 ];
 
-// Port-only patterns (extract port number)
 const PORT_PATTERNS = [/(?:Listening|Started) on (?:port )?(\d+)/i, /port[:\s]+(\d+)/i];
 
 const FORCE_KILL_TIMEOUT_MS = 5000;
 const MAX_LOG_LINES = 100;
 
-/** Cache entry for dev script detection */
 interface DevScriptCacheEntry {
   hasDevScript: boolean;
   command: string | null;
   checkedAt: number;
 }
 
-// Cache TTL: 5 minutes (invalidated on explicit refresh)
 const DEV_SCRIPT_CACHE_TTL_MS = 5 * 60 * 1000;
 
 /**
@@ -56,15 +42,11 @@ export class DevServerManager {
   private logBuffers = new Map<string, string[]>();
   private devScriptCache = new Map<string, DevScriptCacheEntry>();
 
-  /** Initialize manager (IPC handled via event bus) */
   public initialize(
     _mainWindow: BrowserWindow,
     _sendToRenderer: (channel: string, ...args: unknown[]) => void
-  ): void {
-    // No-op: State updates emitted via event bus
-  }
+  ): void {}
 
-  /** Get dev server state for worktree */
   public getState(worktreeId: string): DevServerState {
     return (
       this.states.get(worktreeId) ?? {
@@ -74,18 +56,15 @@ export class DevServerManager {
     );
   }
 
-  /** Get all server states */
   public getAllStates(): Map<string, DevServerState> {
     return new Map(this.states);
   }
 
-  /** Check if dev server is running */
   public isRunning(worktreeId: string): boolean {
     const state = this.states.get(worktreeId);
     return state?.status === "running" || state?.status === "starting";
   }
 
-  /** Start dev server (defaults to auto-detection if no command) */
   public async start(worktreeId: string, worktreePath: string, command?: string): Promise<void> {
     if (this.isRunning(worktreeId)) {
       console.warn("Dev server already running for worktree", worktreeId);
@@ -105,26 +84,22 @@ export class DevServerManager {
 
     console.log("Starting dev server", { worktreeId, command: resolvedCommand });
 
-    // Update state to starting
     this.updateState(worktreeId, { status: "starting", errorMessage: undefined });
 
-    // Clear and initialize log buffer
     this.logBuffers.set(worktreeId, []);
 
     try {
-      // execa v9: command first, options second
       const proc = execa(resolvedCommand, {
         shell: true,
         cwd: worktreePath,
-        buffer: false, // Stream stdout/stderr
-        cleanup: true, // Kill on parent exit
-        reject: false, // Handle non-zero exit ourselves
+        buffer: false,
+        cleanup: true,
+        reject: false,
       });
 
       this.servers.set(worktreeId, proc);
       this.updateState(worktreeId, { pid: proc.pid });
 
-      // URL detection via stdout
       if (proc.stdout) {
         proc.stdout.on("data", (data: Buffer) => {
           const output = data.toString();
@@ -133,7 +108,6 @@ export class DevServerManager {
         });
       }
 
-      // Check stderr too (some servers output there)
       if (proc.stderr) {
         proc.stderr.on("data", (data: Buffer) => {
           const output = data.toString();
@@ -142,7 +116,6 @@ export class DevServerManager {
         });
       }
 
-      // Handle process completion
       proc
         .then((result: Result) => {
           console.log("Dev server exited", {
@@ -154,7 +127,6 @@ export class DevServerManager {
 
           const currentState = this.states.get(worktreeId);
 
-          // Only update to stopped if not already in error state
           if (currentState?.status !== "error") {
             const exitCode = result.exitCode ?? null;
             const signal = result.signal ?? null;
@@ -203,7 +175,6 @@ export class DevServerManager {
     }
   }
 
-  /** Stop a dev server */
   public async stop(worktreeId: string): Promise<void> {
     const proc = this.servers.get(worktreeId);
 
@@ -225,9 +196,7 @@ export class DevServerManager {
         console.warn("Force killing dev server", { worktreeId });
         try {
           proc.kill("SIGKILL");
-        } catch {
-          // Process may have already exited
-        }
+        } catch {}
       }, FORCE_KILL_TIMEOUT_MS);
 
       proc.finally(() => {
@@ -251,7 +220,6 @@ export class DevServerManager {
     });
   }
 
-  /** Toggle dev server state */
   public async toggle(worktreeId: string, worktreePath: string, command?: string): Promise<void> {
     const state = this.getState(worktreeId);
 
@@ -262,7 +230,6 @@ export class DevServerManager {
     }
   }
 
-  /** Stop all dev servers (shutdown) */
   public async stopAll(): Promise<void> {
     console.log("Stopping all dev servers", { count: this.servers.size });
 
@@ -274,7 +241,6 @@ export class DevServerManager {
     this.logBuffers.clear();
   }
 
-  /** Stop all servers and clear state on project switch */
   public async onProjectSwitch(): Promise<void> {
     console.log("Handling project switch in DevServerManager");
     await this.stopAll();
@@ -282,12 +248,10 @@ export class DevServerManager {
     console.log("DevServerManager state reset for project switch");
   }
 
-  /** Get logs for a worktree's dev server */
   public getLogs(worktreeId: string): string[] {
     return this.logBuffers.get(worktreeId) ?? [];
   }
 
-  /** Detect dev command from package.json (cached) */
   public async detectDevCommandAsync(worktreePath: string): Promise<string | null> {
     const cached = this.devScriptCache.get(worktreePath);
     if (cached && Date.now() - cached.checkedAt < DEV_SCRIPT_CACHE_TTL_MS) {
@@ -310,7 +274,6 @@ export class DevServerManager {
       const pkg = JSON.parse(content);
       const scripts = pkg.scripts || {};
 
-      // Priority: dev, start:dev, serve, start
       const candidates = ["dev", "start:dev", "serve", "start"];
 
       for (const script of candidates) {
@@ -341,28 +304,23 @@ export class DevServerManager {
     }
   }
 
-  /** Check if worktree has detectable dev script (async) */
   public async hasDevScriptAsync(worktreePath: string): Promise<boolean> {
     const command = await this.detectDevCommandAsync(worktreePath);
     return command !== null;
   }
 
-  /** Invalidate cache for worktree */
   public invalidateCache(worktreePath: string): void {
     this.devScriptCache.delete(worktreePath);
   }
 
-  /** Clear entire cache */
   public clearCache(): void {
     this.devScriptCache.clear();
   }
 
-  /** Pre-warm cache for worktrees */
   public async warmCache(worktreePaths: string[]): Promise<void> {
     await Promise.all(worktreePaths.map((path) => this.hasDevScriptAsync(path)));
   }
 
-  /** Update state and emit event if changed */
   private updateState(
     worktreeId: string,
     updates: Partial<Omit<DevServerState, "worktreeId">>
@@ -386,7 +344,6 @@ export class DevServerManager {
     }
   }
 
-  /** Emit state update via event bus */
   private emitUpdate(state: DevServerState): void {
     events.emit("server:update", {
       ...state,
@@ -394,7 +351,6 @@ export class DevServerManager {
     });
   }
 
-  /** Emit error via event bus */
   private emitError(worktreeId: string, error: string): void {
     events.emit("server:error", {
       worktreeId,
@@ -403,7 +359,6 @@ export class DevServerManager {
     });
   }
 
-  /** Append output to log buffer (capped size) */
   private appendLog(worktreeId: string, output: string): void {
     const logs = this.logBuffers.get(worktreeId) ?? [];
 
@@ -416,14 +371,12 @@ export class DevServerManager {
 
     this.logBuffers.set(worktreeId, logs);
 
-    // Update state with latest logs (no event emission)
     const current = this.states.get(worktreeId);
     if (current) {
       this.states.set(worktreeId, { ...current, logs });
     }
   }
 
-  /** Detect URL from server output */
   private detectUrl(worktreeId: string, output: string): void {
     const currentState = this.states.get(worktreeId);
 
@@ -431,7 +384,6 @@ export class DevServerManager {
       return;
     }
 
-    // Try URL patterns
     for (const pattern of URL_PATTERNS) {
       const match = output.match(pattern);
       if (match?.[1]) {
@@ -456,7 +408,6 @@ export class DevServerManager {
       }
     }
 
-    // Try port-only patterns
     for (const pattern of PORT_PATTERNS) {
       const match = output.match(pattern);
       if (match?.[1]) {

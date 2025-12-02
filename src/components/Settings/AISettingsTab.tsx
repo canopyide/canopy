@@ -1,10 +1,3 @@
-/**
- * AI Settings Tab Component
- *
- * Manages OpenAI API key configuration, model selection, and AI features toggle.
- * Provides UI for saving, testing, and clearing API keys with validation feedback.
- */
-
 import { useState, useEffect, useCallback } from "react";
 import { Button } from "@/components/ui/button";
 import {
@@ -43,7 +36,6 @@ export function AISettingsTab() {
   const [isLoading, setIsLoading] = useState(true);
   const [loadError, setLoadError] = useState<string | null>(null);
 
-  // Load AI config on mount
   useEffect(() => {
     let cancelled = false;
 
@@ -74,7 +66,6 @@ export function AISettingsTab() {
     };
   }, []);
 
-  // Clear validation result after 3 seconds
   useEffect(() => {
     if (!validationResult) return;
     const timer = setTimeout(() => setValidationResult(null), 3000);
@@ -90,9 +81,8 @@ export function AISettingsTab() {
     try {
       const success = await aiClient.setKey(apiKey.trim());
       if (success) {
-        setApiKey(""); // Clear input for security
+        setApiKey("");
         setValidationResult("success");
-        // Refresh config
         const config = await aiClient.getConfig();
         setAiConfig(config);
       } else {
@@ -181,7 +171,6 @@ export function AISettingsTab() {
 
   return (
     <div className="space-y-6">
-      {/* API Key Section */}
       <div className="space-y-3">
         <div className="flex items-center justify-between">
           <h4 className="text-sm font-medium text-canopy-text flex items-center gap-2">
@@ -272,7 +261,6 @@ export function AISettingsTab() {
         </p>
       </div>
 
-      {/* Advanced Options (collapsed by default) */}
       <div className="border border-canopy-border rounded-md">
         <button
           type="button"
@@ -294,7 +282,6 @@ export function AISettingsTab() {
             id="advanced-options-content"
             className="px-3 pb-3 space-y-4 border-t border-canopy-border pt-3"
           >
-            {/* Model Selection */}
             <div className="space-y-3">
               <h4 className="text-sm font-medium text-canopy-text">AI Model</h4>
               <div className="space-y-2">
@@ -336,7 +323,6 @@ export function AISettingsTab() {
               <p className="text-xs text-gray-500">GPT-5 Nano is recommended for most tasks.</p>
             </div>
 
-            {/* Enable/Disable Toggle */}
             <div className="space-y-3">
               <h4 className="text-sm font-medium text-canopy-text">AI Features</h4>
               <label className="flex items-center gap-3 cursor-pointer">

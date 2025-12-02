@@ -1,10 +1,3 @@
-/**
- * EventsContent Component
- *
- * Content component for the Events tab in the diagnostics dock.
- * Displays event timeline extracted from the original EventInspectorPanel.
- */
-
 import { useCallback, useEffect, useRef, useMemo } from "react";
 import { useShallow } from "zustand/react/shallow";
 import { cn } from "@/lib/utils";
@@ -19,7 +12,6 @@ export interface EventsContentProps {
 }
 
 export function EventsContent({ className }: EventsContentProps) {
-  // Use useShallow to prevent re-renders when unrelated store fields change
   const {
     events,
     filters,
@@ -51,12 +43,9 @@ export function EventsContent({ className }: EventsContentProps) {
   const isProgrammaticScroll = useRef(false);
   const scrollTimeout = useRef<NodeJS.Timeout | null>(null);
 
-  // Load initial events and set up subscription
   useEffect(() => {
-    // Notify main process that we're subscribing
     eventInspectorClient.subscribe();
 
-    // Load existing events
     eventInspectorClient
       .getEvents()
       .then((existingEvents) => {
@@ -66,41 +55,34 @@ export function EventsContent({ className }: EventsContentProps) {
         console.error("Failed to load events:", error);
       });
 
-    // Subscribe to new events
     const unsubscribe = eventInspectorClient.onEvent((event) => {
       addEvent(event);
     });
 
     return () => {
       unsubscribe();
-      // Notify main process that we're unsubscribing
       eventInspectorClient.unsubscribe();
     };
   }, [addEvent, setEvents]);
 
-  // Auto-scroll to bottom when new events arrive
   useEffect(() => {
     if (autoScroll && timelineRef.current && !isUserScrolling.current) {
       isProgrammaticScroll.current = true;
       timelineRef.current.scrollTop = timelineRef.current.scrollHeight;
-      // Reset flag after scroll completes
       setTimeout(() => {
         isProgrammaticScroll.current = false;
       }, 50);
     }
   }, [events, autoScroll]);
 
-  // Handle user scrolling
   const handleScroll = useCallback(() => {
     if (!timelineRef.current) return;
 
-    // Ignore programmatic scrolls
     if (isProgrammaticScroll.current) return;
 
     const { scrollTop, scrollHeight, clientHeight } = timelineRef.current;
     const isAtBottom = scrollHeight - scrollTop - clientHeight < 50;
 
-    // Detect if user is scrolling
     isUserScrolling.current = true;
     if (scrollTimeout.current) {
       clearTimeout(scrollTimeout.current);
@@ -109,7 +91,6 @@ export function EventsContent({ className }: EventsContentProps) {
       isUserScrolling.current = false;
     }, 100);
 
-    // Auto-scroll is disabled when user scrolls up, enabled when at bottom
     if (!isAtBottom && autoScroll) {
       setAutoScroll(false);
     } else if (isAtBottom && !autoScroll) {
@@ -117,7 +98,6 @@ export function EventsContent({ className }: EventsContentProps) {
     }
   }, [autoScroll, setAutoScroll]);
 
-  // Memoize filtered events to avoid unnecessary re-renders
   const filteredEvents = useMemo(() => getFilteredEvents(), [getFilteredEvents]);
   const selectedEvent = selectedEventId
     ? events.find((e) => e.id === selectedEventId) || null
@@ -125,16 +105,13 @@ export function EventsContent({ className }: EventsContentProps) {
 
   return (
     <div className={cn("flex flex-col h-full", className)}>
-      {/* Filters */}
       <EventFilters
         events={events}
         filters={filters}
         onFiltersChange={(newFilters) => setFilters(newFilters)}
       />
 
-      {/* Main content area */}
       <div className="flex-1 flex min-h-0">
-        {/* Timeline (left) */}
         <div ref={timelineRef} onScroll={handleScroll} className="w-1/2 border-r overflow-y-auto">
           <EventTimeline
             events={filteredEvents}
@@ -143,7 +120,6 @@ export function EventsContent({ className }: EventsContentProps) {
           />
         </div>
 
-        {/* Detail view (right) */}
         <div className="w-1/2 overflow-hidden">
           <EventDetail event={selectedEvent} />
         </div>

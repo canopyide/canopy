@@ -1,27 +1,12 @@
-/**
- * ErrorBanner Component
- *
- * Displays inline error messages next to affected components with:
- * - Error icon and user-friendly message
- * - Details expander for technical info
- * - Retry button (if transient)
- * - Dismiss button
- */
-
 import { useState, useCallback } from "react";
 import { cn } from "@/lib/utils";
 import type { AppError, RetryAction } from "@/store/errorStore";
 
 export interface ErrorBannerProps {
-  /** Error to display */
   error: AppError;
-  /** Called when user clicks dismiss */
   onDismiss: (id: string) => void;
-  /** Called when user clicks retry */
   onRetry?: (id: string, action: RetryAction, args?: Record<string, unknown>) => void;
-  /** Additional CSS classes */
   className?: string;
-  /** Compact mode for inline display */
   compact?: boolean;
 }
 
@@ -114,7 +99,6 @@ export function ErrorBanner({
       className={cn("border border-red-700/50 bg-red-900/20 rounded-lg overflow-hidden", className)}
       role="alert"
     >
-      {/* Header */}
       <div className="flex items-center gap-2 px-3 py-2 bg-red-900/30">
         <span className="shrink-0 text-lg">{typeIcon}</span>
         <div className="flex-1 min-w-0">
@@ -157,7 +141,6 @@ export function ErrorBanner({
         </div>
       </div>
 
-      {/* Details (expandable) */}
       {isExpanded && error.details && (
         <div className="px-3 py-2 border-t border-red-700/30 bg-red-950/30">
           <pre className="text-xs text-red-300/80 whitespace-pre-wrap break-all font-mono overflow-x-auto">

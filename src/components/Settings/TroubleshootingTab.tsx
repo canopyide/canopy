@@ -1,10 +1,3 @@
-/**
- * Troubleshooting Tab Component
- *
- * Provides developer mode settings, log management, and debugging features.
- * Includes master toggle for developer mode with child feature controls.
- */
-
 import { useState, useEffect, useCallback } from "react";
 import { Button } from "@/components/ui/button";
 import { FileText, Trash2, Bug } from "lucide-react";
@@ -24,29 +17,24 @@ export function TroubleshootingTab({ openLogs, clearLogs }: TroubleshootingTabPr
   const [autoOpenDiagnostics, setAutoOpenDiagnostics] = useState(false);
   const [focusEventsTab, setFocusEventsTab] = useState(false);
 
-  // Load developer mode settings on mount
   useEffect(() => {
     appClient.getState().then((appState) => {
       if (appState?.developerMode) {
-        // Use persisted developer mode settings
         setDeveloperMode(appState.developerMode.enabled);
         setShowStateDebug(appState.developerMode.showStateDebug);
         setAutoOpenDiagnostics(appState.developerMode.autoOpenDiagnostics);
         setFocusEventsTab(appState.developerMode.focusEventsTab);
-        // Sync localStorage with persisted state
         if (appState.developerMode.showStateDebug) {
           enableStateDebug();
         } else {
           disableStateDebug();
         }
       } else {
-        // No persisted settings - sync from localStorage
         setShowStateDebug(getStateDebugEnabled());
       }
     });
   }, []);
 
-  // Save developer mode settings to app state
   const saveDeveloperModeSettings = useCallback(
     async (settings: NonNullable<AppState["developerMode"]>) => {
       try {
@@ -58,16 +46,13 @@ export function TroubleshootingTab({ openLogs, clearLogs }: TroubleshootingTabPr
     []
   );
 
-  // Handle master developer mode toggle
   const handleToggleDeveloperMode = useCallback(() => {
     const newEnabled = !developerMode;
     setDeveloperMode(newEnabled);
 
-    // If disabling, turn off all child features
     if (!newEnabled) {
       setShowStateDebug(false);
       disableStateDebug();
-      // Dispatch event to notify other components that debug mode is off
       if (typeof window !== "undefined") {
         window.dispatchEvent(
           new CustomEvent("canopy:debug-toggle", { detail: { enabled: false } })
@@ -97,7 +82,6 @@ export function TroubleshootingTab({ openLogs, clearLogs }: TroubleshootingTabPr
     saveDeveloperModeSettings,
   ]);
 
-  // Handle state debug toggle
   const handleToggleStateDebug = useCallback(() => {
     const newState = !showStateDebug;
     setShowStateDebug(newState);
@@ -106,7 +90,6 @@ export function TroubleshootingTab({ openLogs, clearLogs }: TroubleshootingTabPr
     } else {
       disableStateDebug();
     }
-    // Dispatch event to notify other components (e.g., DebugInfo)
     if (typeof window !== "undefined") {
       window.dispatchEvent(
         new CustomEvent("canopy:debug-toggle", { detail: { enabled: newState } })
@@ -126,11 +109,9 @@ export function TroubleshootingTab({ openLogs, clearLogs }: TroubleshootingTabPr
     saveDeveloperModeSettings,
   ]);
 
-  // Handle auto-open diagnostics toggle
   const handleToggleAutoOpenDiagnostics = useCallback(() => {
     const newState = !autoOpenDiagnostics;
     setAutoOpenDiagnostics(newState);
-    // If disabling auto-open, also disable focus events tab
     if (!newState) {
       setFocusEventsTab(false);
       saveDeveloperModeSettings({
@@ -155,7 +136,6 @@ export function TroubleshootingTab({ openLogs, clearLogs }: TroubleshootingTabPr
     saveDeveloperModeSettings,
   ]);
 
-  // Handle focus events tab toggle
   const handleToggleFocusEventsTab = useCallback(() => {
     const newState = !focusEventsTab;
     setFocusEventsTab(newState);
@@ -184,7 +164,6 @@ export function TroubleshootingTab({ openLogs, clearLogs }: TroubleshootingTabPr
 
   return (
     <div className="space-y-6">
-      {/* Application Logs Section */}
       <div className="space-y-4">
         <div>
           <h4 className="text-sm font-medium text-canopy-text mb-1">Application Logs</h4>
@@ -214,7 +193,6 @@ export function TroubleshootingTab({ openLogs, clearLogs }: TroubleshootingTabPr
         </div>
       </div>
 
-      {/* Developer Mode Section */}
       <div className="space-y-4">
         <div>
           <h4 className="text-sm font-medium text-canopy-text mb-1 flex items-center gap-2">
@@ -225,7 +203,6 @@ export function TroubleshootingTab({ openLogs, clearLogs }: TroubleshootingTabPr
             Enable enhanced debugging features for development and troubleshooting.
           </p>
 
-          {/* Master Developer Mode Toggle */}
           <label className="flex items-center gap-3 cursor-pointer mb-4 p-3 border border-canopy-border rounded-md">
             <button
               onClick={handleToggleDeveloperMode}
@@ -247,14 +224,12 @@ export function TroubleshootingTab({ openLogs, clearLogs }: TroubleshootingTabPr
             </div>
           </label>
 
-          {/* Individual Debug Features */}
           <div
             className={cn(
               "ml-4 space-y-3 border-l-2 border-canopy-border pl-4 transition-opacity",
               !developerMode && "opacity-50"
             )}
           >
-            {/* State Debug Overlays */}
             <label className="flex items-center gap-3 cursor-pointer">
               <input
                 type="checkbox"
@@ -271,7 +246,6 @@ export function TroubleshootingTab({ openLogs, clearLogs }: TroubleshootingTabPr
               </div>
             </label>
 
-            {/* Auto-open Diagnostics */}
             <label className="flex items-center gap-3 cursor-pointer">
               <input
                 type="checkbox"
@@ -288,7 +262,6 @@ export function TroubleshootingTab({ openLogs, clearLogs }: TroubleshootingTabPr
               </div>
             </label>
 
-            {/* Focus Events Tab */}
             <label
               className={cn(
                 "flex items-center gap-3 cursor-pointer ml-4",
@@ -311,7 +284,6 @@ export function TroubleshootingTab({ openLogs, clearLogs }: TroubleshootingTabPr
             </label>
           </div>
 
-          {/* Environment Variable Hints */}
           <div className="mt-4 p-3 bg-canopy-border/30 rounded-md">
             <h5 className="text-xs font-medium text-canopy-text mb-2">
               Advanced: Main Process Logging
@@ -336,7 +308,6 @@ export function TroubleshootingTab({ openLogs, clearLogs }: TroubleshootingTabPr
         </div>
       </div>
 
-      {/* Keyboard Shortcuts Section */}
       <div className="space-y-4">
         <div>
           <h4 className="text-sm font-medium text-canopy-text mb-1">Keyboard Shortcuts</h4>

@@ -10,23 +10,16 @@ import type {
 import type { EventContext } from "../../shared/types/events.js";
 import type { WorktreeState } from "./WorktreeMonitor.js";
 
-// Re-export EventCategory for backwards compatibility
 export type { EventCategory };
-
-// Event Category and Metadata System
 
 /**
  * Metadata for each event type.
  * Provides category mapping and context requirements for validation.
  */
 export interface EventMetadata {
-  /** Event category for filtering and UI organization */
   category: EventCategory;
-  /** Whether this event must include EventContext fields (worktreeId, agentId, etc.) */
   requiresContext: boolean;
-  /** Whether this event must include a timestamp (enforced at type level) */
   requiresTimestamp: boolean;
-  /** Human-readable description of the event's purpose */
   description: string;
 }
 
@@ -288,51 +281,29 @@ export const EVENT_META: Record<keyof CanopyEventMap, EventMetadata> = {
   },
 };
 
-/**
- * Get the category for an event type using EVENT_META.
- * Falls back to 'system' if event type is not found.
- */
 export function getEventCategory(eventType: keyof CanopyEventMap): EventCategory {
   return EVENT_META[eventType]?.category ?? "system";
 }
 
-/**
- * Get all event types for a specific category.
- */
 export function getEventTypesForCategory(category: EventCategory): Array<keyof CanopyEventMap> {
   return (Object.keys(EVENT_META) as Array<keyof CanopyEventMap>).filter(
     (key) => EVENT_META[key].category === category
   );
 }
 
-// Type Helpers for BaseEventPayload Enforcement
-
-/**
- * Helper type to enforce BaseEventPayload for all domain events.
- * Combines the payload type T with required timestamp and optional traceId.
- */
 export type WithBase<T> = T & BaseEventPayload;
 
 /**
- * Helper type to enforce both BaseEventPayload and EventContext fields.
  * Use for events that require correlation context (worktreeId, agentId, etc.).
  * Note: Since BaseEventPayload now extends EventContext, this is equivalent to WithBase<T>.
  */
 export type WithContext<T> = T & BaseEventPayload;
 
-// Event Type Unions by Category
-
-/** Union of all system event types */
 export type SystemEventType = Extract<keyof CanopyEventMap, `sys:${string}`>;
-/** Union of all agent event types */
 export type AgentEventType = Extract<keyof CanopyEventMap, `agent:${string}`>;
-/** Union of all server event types */
 export type ServerEventType = Extract<keyof CanopyEventMap, `server:${string}`>;
-/** Union of all task event types */
 export type TaskEventType = Extract<keyof CanopyEventMap, `task:${string}`>;
-/** Union of all file event types */
 export type FileEventType = Extract<keyof CanopyEventMap, `file:${string}`>;
-/** Union of all UI event types */
 export type UIEventType = Extract<keyof CanopyEventMap, `ui:${string}`>;
 
 export type ModalId = "worktree" | "command-palette";
@@ -382,7 +353,6 @@ export interface BaseEventPayload extends EventContext {
   timestamp: number;
 }
 
-// 1. Define Payload Types
 export interface CopyTreePayload {
   rootPath?: string;
   profile?: string;
@@ -404,19 +374,17 @@ export interface UIModalClosePayload {
 
 export interface WatcherChangePayload {
   type: "add" | "change" | "unlink" | "addDir" | "unlinkDir";
-  path: string; // Absolute path
+  path: string;
 }
 
-// Worktree Payloads
 export interface WorktreeCyclePayload {
-  direction: number; // +1 for next, -1 for prev
+  direction: number;
 }
 
 export interface WorktreeSelectByNamePayload {
-  query: string; // Pattern to match against branch/name/path
+  query: string;
 }
 
-// 2. Define Event Map
 export type CanopyEventMap = {
   "sys:ready": { cwd: string };
   "sys:refresh": void;
@@ -442,38 +410,28 @@ export type CanopyEventMap = {
 
   "watcher:change": WatcherChangePayload;
 
-  // Dev Server Events - now require timestamp and context for observability
   "server:update": WithContext<DevServerState>;
   "server:error": WithContext<{ error: string; errorMessage?: string }>;
 
-  // Pull Request Events
   "sys:pr:detected": {
     worktreeId: string;
     prNumber: number;
     prUrl: string;
     prState: "open" | "merged" | "closed";
-    /** The issue number this PR was detected for */
     issueNumber: number;
   };
-  /** Emitted when PR data should be cleared (branch/issue changed or worktree removed) */
   "sys:pr:cleared": {
     worktreeId: string;
   };
-
-  // Agent Lifecycle Events
 
   /**
    * Emitted when a new AI agent (Claude, Gemini, etc.) is spawned in a terminal.
    * Use this to track agent creation and associate agents with worktrees.
    */
   "agent:spawned": WithContext<{
-    /** Unique identifier for this agent instance */
     agentId: string;
-    /** ID of the terminal where the agent is running */
     terminalId: string;
-    /** Type of agent spawned */
     type: TerminalType;
-    /** Optional worktree this agent is associated with */
     worktreeId?: string;
   }>;
 
@@ -485,9 +443,7 @@ export type CanopyEventMap = {
     agentId: string;
     state: AgentState;
     previousState: AgentState;
-    /** What caused this state change */
     trigger: AgentStateChangeTrigger;
-    /** Confidence in the state detection (0.0 = uncertain, 1.0 = certain) */
     confidence: number;
   }>;
 
@@ -519,9 +475,7 @@ export type CanopyEventMap = {
   "agent:output": WithContext<{
     agentId: string;
     data: string;
-    /** EventContext: ID of the terminal where the agent is running */
     terminalId?: string;
-    /** EventContext: Associated worktree ID */
     worktreeId?: string;
   }>;
 
@@ -530,13 +484,9 @@ export type CanopyEventMap = {
    */
   "agent:completed": WithContext<{
     agentId: string;
-    /** Exit code from the underlying process */
     exitCode: number;
-    /** Duration in milliseconds */
     duration: number;
-    /** EventContext: ID of the terminal where the agent is running */
     terminalId?: string;
-    /** EventContext: Associated worktree ID */
     worktreeId?: string;
   }>;
 
@@ -546,9 +496,7 @@ export type CanopyEventMap = {
   "agent:failed": WithContext<{
     agentId: string;
     error: string;
-    /** EventContext: ID of the terminal where the agent is running */
     terminalId?: string;
-    /** EventContext: Associated worktree ID */
     worktreeId?: string;
   }>;
 
@@ -557,11 +505,8 @@ export type CanopyEventMap = {
    */
   "agent:killed": WithContext<{
     agentId: string;
-    /** Optional reason for killing (e.g., 'user-request', 'timeout', 'cleanup') */
     reason?: string;
-    /** EventContext: ID of the terminal where the agent is running */
     terminalId?: string;
-    /** EventContext: Associated worktree ID */
     worktreeId?: string;
   }>;
 
@@ -635,14 +580,10 @@ export type CanopyEventMap = {
    */
   "task:completed": WithContext<{
     taskId: string;
-    /** ID of the agent that completed this task */
     agentId?: string;
-    /** ID of the run that completed this task */
     runId?: string;
-    /** Worktree where task was executed */
     worktreeId?: string;
     result: string;
-    /** Paths to any generated artifacts */
     artifacts?: string[];
   }>;
 
@@ -651,18 +592,13 @@ export type CanopyEventMap = {
    */
   "task:failed": WithContext<{
     taskId: string;
-    /** ID of the agent that failed this task */
     agentId?: string;
-    /** ID of the run that failed this task */
     runId?: string;
-    /** Worktree where task was executed */
     worktreeId?: string;
     error: string;
   }>;
 };
 
-// 3. Create Bus
-// Export all event type keys for external consumers
 export const ALL_EVENT_TYPES: Array<keyof CanopyEventMap> = [
   "sys:ready",
   "sys:refresh",
@@ -714,13 +650,11 @@ class TypedEventBus {
     this.bus.setMaxListeners(100);
   }
 
-  // Subscribe
   on<K extends keyof CanopyEventMap>(
     event: K,
     listener: CanopyEventMap[K] extends void ? () => void : (payload: CanopyEventMap[K]) => void
   ) {
-    this.bus.on(event, listener as (...args: any[]) => void); // Type assertion for EventEmitter
-    // Return un-subscriber for easy useEffect cleanup
+    this.bus.on(event, listener as (...args: any[]) => void);
     return () => {
       this.bus.off(event, listener as (...args: any[]) => void);
     };
@@ -733,7 +667,6 @@ class TypedEventBus {
     this.bus.off(event, listener as (...args: any[]) => void);
   }
 
-  // Publish
   emit<K extends keyof CanopyEventMap>(
     event: K,
     ...args: CanopyEventMap[K] extends void ? [] : [CanopyEventMap[K]]

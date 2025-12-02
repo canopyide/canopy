@@ -1,14 +1,3 @@
-/**
- * Terminal Bulk Actions Slice
- *
- * Manages bulk operations on terminals.
- * This slice is responsible for:
- * - Closing terminals by state (completed, failed, idle)
- * - Closing terminals by worktree
- * - Restarting failed agents
- * - Count aggregations
- */
-
 import type { StateCreator } from "zustand";
 import type { TerminalInstance, AddTerminalOptions } from "./terminalRegistrySlice";
 import type { AgentState } from "@/types";
@@ -22,13 +11,6 @@ export interface TerminalBulkActionsSlice {
   getCountByWorktree: (worktreeId: string, state?: AgentState) => number;
 }
 
-/**
- * Creates the terminal bulk actions slice.
- *
- * @param getTerminals - Function to get current terminals from the registry slice.
- * @param removeTerminal - Function to remove a terminal from the registry.
- * @param addTerminal - Function to add a terminal to the registry.
- */
 export const createTerminalBulkActionsSlice = (
   getTerminals: () => TerminalInstance[],
   removeTerminal: (id: string) => void,
@@ -63,13 +45,12 @@ export const createTerminalBulkActionsSlice = (
 
       for (const terminal of failed) {
         try {
-          // Store config before removing
           const config: AddTerminalOptions = {
             type: terminal.type,
             title: terminal.title,
             worktreeId: terminal.worktreeId,
             cwd: terminal.cwd,
-            command: terminal.type, // claude/gemini command
+            command: terminal.type,
           };
 
           // removeTerminal handles the kill internally, so we don't need to kill twice

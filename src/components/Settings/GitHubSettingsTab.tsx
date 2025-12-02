@@ -1,10 +1,3 @@
-/**
- * GitHub Settings Tab Component
- *
- * Manages GitHub personal access token configuration.
- * Provides UI for saving, testing, and clearing tokens with validation feedback.
- */
-
 import { useState, useEffect, useCallback } from "react";
 import { Button } from "@/components/ui/button";
 import { Key, Check, AlertCircle, Loader2, FlaskConical, ExternalLink } from "lucide-react";
@@ -23,7 +16,6 @@ export function GitHubSettingsTab() {
   const [isLoading, setIsLoading] = useState(true);
   const [loadError, setLoadError] = useState<string | null>(null);
 
-  // Load GitHub config on mount
   useEffect(() => {
     let cancelled = false;
 
@@ -53,7 +45,6 @@ export function GitHubSettingsTab() {
     };
   }, []);
 
-  // Clear validation result after 5 seconds
   useEffect(() => {
     if (!validationResult) return;
     const timer = setTimeout(() => {
@@ -73,9 +64,8 @@ export function GitHubSettingsTab() {
     try {
       const result = await githubClient.setToken(githubToken.trim());
       if (result.valid) {
-        setGithubToken(""); // Clear input for security
+        setGithubToken("");
         setValidationResult("success");
-        // Refresh config
         const config = await githubClient.getConfig();
         setGithubConfig(config);
       } else {
@@ -157,7 +147,6 @@ export function GitHubSettingsTab() {
 
   return (
     <div className="space-y-6">
-      {/* Token Section */}
       <div className="space-y-3">
         <div className="flex items-center justify-between">
           <h4 className="text-sm font-medium text-canopy-text flex items-center gap-2">
@@ -250,7 +239,6 @@ export function GitHubSettingsTab() {
         </p>
       </div>
 
-      {/* Create Token Section */}
       <div className="space-y-3 border border-canopy-border rounded-md p-4">
         <h4 className="text-sm font-medium text-canopy-text">Create a New Token</h4>
         <p className="text-xs text-gray-400">

@@ -1,24 +1,11 @@
 /**
- * Zod schemas for external data sources.
- *
- * These schemas validate data from external sources like:
- * - package.json files
- * - Git command output
- * - AI model responses
+ * Zod schemas for external data: package.json, Git output, AI responses.
  */
 
 import { z } from "zod";
 
-// Package.json Schemas
-
-/**
- * Schema for package.json scripts section.
- */
 export const PackageJsonScriptsSchema = z.record(z.string(), z.string()).optional();
 
-/**
- * Schema for package.json (partial, only fields we use).
- */
 export const PackageJsonSchema = z.object({
   name: z.string().optional(),
   version: z.string().optional(),
@@ -27,20 +14,11 @@ export const PackageJsonSchema = z.object({
   devDependencies: z.record(z.string(), z.string()).optional(),
 });
 
-// AI Response Schemas
-
-/**
- * Schema for worktree summary AI response.
- * Expected format: {"summary": "emoji + description"}
- */
+// Expected format: {"summary": "emoji + description"}
 export const WorktreeSummaryResponseSchema = z.object({
   summary: z.string().min(1).max(200),
 });
 
-/**
- * Schema for project identity AI response.
- * Matches the structure returned from generateProjectIdentity.
- */
 export const ProjectIdentityResponseSchema = z.object({
   emoji: z.string().min(1).max(10),
   title: z.string().min(1).max(100),
@@ -48,28 +26,17 @@ export const ProjectIdentityResponseSchema = z.object({
   gradientEnd: z.string().regex(/^#[0-9A-Fa-f]{6}$/),
 });
 
-/**
- * Schema for simplified project identity (name + emoji + optional color).
- */
 export const SimplifiedProjectIdentitySchema = z.object({
   emoji: z.string().min(1).max(10),
   name: z.string().min(1).max(100),
   color: z.string().optional(),
 });
 
-/**
- * Schema for issue extraction AI response.
- */
 export const IssueExtractionResponseSchema = z.object({
   issueNumber: z.number().int().positive().optional(),
   repository: z.string().optional(),
 });
 
-// Git Output Schemas
-
-/**
- * Valid git file statuses.
- */
 export const GitStatusCodeSchema = z.enum([
   "modified",
   "added",
@@ -80,9 +47,6 @@ export const GitStatusCodeSchema = z.enum([
   "copied",
 ]);
 
-/**
- * Schema for a single git status entry.
- */
 export const GitStatusEntrySchema = z.object({
   path: z.string().min(1),
   status: GitStatusCodeSchema,
@@ -92,9 +56,6 @@ export const GitStatusEntrySchema = z.object({
   mtime: z.number().nonnegative().optional(),
 });
 
-/**
- * Schema for aggregated worktree changes.
- */
 export const WorktreeChangesSchema = z.object({
   worktreeId: z.string().min(1),
   rootPath: z.string().min(1),
@@ -108,9 +69,6 @@ export const WorktreeChangesSchema = z.object({
   lastUpdated: z.number().nonnegative().optional(),
 });
 
-/**
- * Schema for worktree list entry from `git worktree list --porcelain`.
- */
 export const GitWorktreeEntrySchema = z.object({
   worktree: z.string().min(1),
   head: z.string().optional(),
@@ -121,18 +79,6 @@ export const GitWorktreeEntrySchema = z.object({
   prunable: z.boolean().optional(),
 });
 
-// Validation Utilities
-
-/**
- * Safely parse a value with a Zod schema.
- * Returns the parsed value on success, or null on failure.
- * Logs validation errors for debugging.
- *
- * @param schema - Zod schema to validate against
- * @param value - Value to parse
- * @param context - Optional context string for error logging
- * @returns Parsed value or null
- */
 export function safeParse<T>(schema: z.ZodSchema<T>, value: unknown, context?: string): T | null {
   const result = schema.safeParse(value);
   if (!result.success) {
@@ -143,16 +89,6 @@ export function safeParse<T>(schema: z.ZodSchema<T>, value: unknown, context?: s
   return result.data;
 }
 
-/**
- * Parse a value with a Zod schema, throwing on failure.
- * Use when validation failure should halt processing.
- *
- * @param schema - Zod schema to validate against
- * @param value - Value to parse
- * @param context - Optional context string for error message
- * @returns Parsed value
- * @throws Error with validation details
- */
 export function parseOrThrow<T>(schema: z.ZodSchema<T>, value: unknown, context?: string): T {
   const result = schema.safeParse(value);
   if (!result.success) {
@@ -162,7 +98,6 @@ export function parseOrThrow<T>(schema: z.ZodSchema<T>, value: unknown, context?
   return result.data;
 }
 
-// Export inferred types
 export type PackageJsonScripts = z.infer<typeof PackageJsonScriptsSchema>;
 export type PackageJson = z.infer<typeof PackageJsonSchema>;
 export type WorktreeSummaryResponse = z.infer<typeof WorktreeSummaryResponseSchema>;

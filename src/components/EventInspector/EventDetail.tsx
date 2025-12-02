@@ -1,9 +1,3 @@
-/**
- * EventDetail Component
- *
- * Displays detailed information about a selected event including full payload.
- */
-
 import { useState, useEffect, useRef } from "react";
 import { cn } from "@/lib/utils";
 import type { EventRecord } from "@/store/eventStore";
@@ -19,7 +13,6 @@ export function EventDetail({ event, className }: EventDetailProps) {
   const [expandedSections, setExpandedSections] = useState<Set<string>>(new Set(["payload"]));
   const copyTimeoutRef = useRef<NodeJS.Timeout | null>(null);
 
-  // Clean up copy timeout when component unmounts or event changes
   useEffect(() => {
     return () => {
       if (copyTimeoutRef.current) {
@@ -60,12 +53,10 @@ export function EventDetail({ event, className }: EventDetailProps) {
       await navigator.clipboard.writeText(payloadStr);
       setCopied(true);
 
-      // Clear any existing timeout
       if (copyTimeoutRef.current) {
         clearTimeout(copyTimeoutRef.current);
       }
 
-      // Set new timeout
       copyTimeoutRef.current = setTimeout(() => {
         setCopied(false);
         copyTimeoutRef.current = null;
@@ -91,7 +82,6 @@ export function EventDetail({ event, className }: EventDetailProps) {
 
   return (
     <div className={cn("flex flex-col h-full bg-background", className)}>
-      {/* Header */}
       <div className="flex-shrink-0 p-4 border-b">
         <div className="flex items-start justify-between gap-4">
           <div className="flex-1 min-w-0 space-y-1">
@@ -114,7 +104,6 @@ export function EventDetail({ event, className }: EventDetailProps) {
         </div>
       </div>
 
-      {/* Metadata */}
       <div className="flex-shrink-0 border-b">
         <button
           onClick={() => toggleSection("metadata")}
@@ -159,7 +148,6 @@ export function EventDetail({ event, className }: EventDetailProps) {
         )}
       </div>
 
-      {/* Payload */}
       <div className="flex-1 flex flex-col border-b">
         <button
           onClick={() => toggleSection("payload")}
@@ -181,7 +169,6 @@ export function EventDetail({ event, className }: EventDetailProps) {
         )}
       </div>
 
-      {/* Context info */}
       {event.payload &&
         (event.payload.worktreeId ||
           event.payload.agentId ||

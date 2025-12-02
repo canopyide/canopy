@@ -1,19 +1,10 @@
 /**
- * Zod schemas for IPC payload validation.
- *
- * These schemas validate data exchanged between the main and renderer processes.
- * Critical for preventing malformed payloads from causing runtime errors.
+ * Zod schemas for IPC payload validation between main and renderer processes.
  */
 
 import { z } from "zod";
 import { TerminalTypeSchema } from "./agent.js";
 
-// Terminal Schemas
-
-/**
- * Schema for terminal spawn options.
- * Validated when creating a new terminal.
- */
 export const TerminalSpawnOptionsSchema = z.object({
   id: z.string().optional(),
   cwd: z.string().optional(),
@@ -27,58 +18,32 @@ export const TerminalSpawnOptionsSchema = z.object({
   worktreeId: z.string().optional(),
 });
 
-/**
- * Schema for terminal resize payload.
- * Validated when resizing a terminal.
- */
 export const TerminalResizePayloadSchema = z.object({
   id: z.string().min(1),
   cols: z.number().int().positive().max(500),
   rows: z.number().int().positive().max(500),
 });
 
-// Dev Server Schemas
-
-/**
- * Valid dev server status values.
- */
 export const DevServerStatusSchema = z.enum(["stopped", "starting", "running", "error"]);
 
-/**
- * Schema for dev server start payload.
- */
 export const DevServerStartPayloadSchema = z.object({
   worktreeId: z.string().min(1),
   worktreePath: z.string().min(1),
   command: z.string().optional(),
 });
 
-/**
- * Schema for dev server stop payload.
- */
 export const DevServerStopPayloadSchema = z.object({
   worktreeId: z.string().min(1),
 });
 
-/**
- * Schema for dev server toggle payload.
- */
 export const DevServerTogglePayloadSchema = z.object({
   worktreeId: z.string().min(1),
   worktreePath: z.string().min(1),
   command: z.string().optional(),
 });
 
-// CopyTree Schemas
-
-/**
- * Schema for CopyTree output format.
- */
 export const CopyTreeFormatSchema = z.enum(["xml", "json", "markdown", "tree", "ndjson"]);
 
-/**
- * Schema for CopyTree options.
- */
 export const CopyTreeOptionsSchema = z
   .object({
     format: CopyTreeFormatSchema.optional(),
@@ -97,34 +62,22 @@ export const CopyTreeOptionsSchema = z
   })
   .optional();
 
-/**
- * Schema for CopyTree generate payload.
- */
 export const CopyTreeGeneratePayloadSchema = z.object({
   worktreeId: z.string().min(1),
   options: CopyTreeOptionsSchema,
 });
 
-/**
- * Schema for CopyTree generate and copy file payload.
- */
 export const CopyTreeGenerateAndCopyFilePayloadSchema = z.object({
   worktreeId: z.string().min(1),
   options: CopyTreeOptionsSchema,
 });
 
-/**
- * Schema for CopyTree inject payload.
- */
 export const CopyTreeInjectPayloadSchema = z.object({
   terminalId: z.string().min(1),
   worktreeId: z.string().min(1),
   options: CopyTreeOptionsSchema,
 });
 
-/**
- * Schema for CopyTree progress update.
- */
 export const CopyTreeProgressSchema = z.object({
   stage: z.string(),
   progress: z.number().min(0).max(1),
@@ -135,42 +88,23 @@ export const CopyTreeProgressSchema = z.object({
   traceId: z.string().optional(),
 });
 
-/**
- * Schema for CopyTree get file tree payload.
- */
 export const CopyTreeGetFileTreePayloadSchema = z.object({
   worktreeId: z.string().min(1),
   dirPath: z.string().optional(),
 });
 
-// System Schemas
-
-/**
- * Schema for opening external URLs.
- */
 export const SystemOpenExternalPayloadSchema = z.object({
   url: z.string().url(),
 });
 
-/**
- * Schema for opening paths.
- */
 export const SystemOpenPathPayloadSchema = z.object({
   path: z.string().min(1),
 });
 
-// Worktree Schemas
-
-/**
- * Schema for setting active worktree.
- */
 export const WorktreeSetActivePayloadSchema = z.object({
   worktreeId: z.string().min(1),
 });
 
-/**
- * Schema for creating a worktree.
- */
 export const WorktreeCreatePayloadSchema = z.object({
   rootPath: z.string().min(1),
   options: z.object({
@@ -181,11 +115,6 @@ export const WorktreeCreatePayloadSchema = z.object({
   }),
 });
 
-// History Schemas
-
-/**
- * Schema for history session filters.
- */
 export const HistoryGetSessionsPayloadSchema = z
   .object({
     worktreeId: z.string().optional(),
@@ -194,22 +123,15 @@ export const HistoryGetSessionsPayloadSchema = z
   })
   .optional();
 
-/**
- * Schema for getting a single session.
- */
 export const HistoryGetSessionPayloadSchema = z.object({
   sessionId: z.string().min(1),
 });
 
-/**
- * Schema for exporting a session.
- */
 export const HistoryExportSessionPayloadSchema = z.object({
   sessionId: z.string().min(1),
   format: z.enum(["json", "markdown"]),
 });
 
-// Export inferred types
 export type TerminalSpawnOptions = z.infer<typeof TerminalSpawnOptionsSchema>;
 export type TerminalResizePayload = z.infer<typeof TerminalResizePayloadSchema>;
 export type DevServerStartPayload = z.infer<typeof DevServerStartPayloadSchema>;

@@ -1,10 +1,3 @@
-/**
- * SessionViewer Component
- *
- * Displays a full agent session with transcript, artifacts, and metadata.
- * Provides export and resume functionality.
- */
-
 import { useState, useCallback, useMemo, useEffect } from "react";
 import { cn } from "@/lib/utils";
 import { Tabs } from "@/components/ui/Tabs";
@@ -74,12 +67,10 @@ export function SessionViewer({
   const [isExporting, setIsExporting] = useState(false);
   const [exportFormat, setExportFormat] = useState<"json" | "markdown">("markdown");
 
-  // Reset to transcript tab when session changes
   useEffect(() => {
     setActiveTab("transcript");
   }, [session.id]);
 
-  // Combine transcript entries for display
   const transcriptText = useMemo(() => {
     return session.transcript
       .map((entry) => {
@@ -113,7 +104,6 @@ export function SessionViewer({
 
   return (
     <div className={cn("flex flex-col bg-gray-900 rounded-lg overflow-hidden", className)}>
-      {/* Header */}
       <div className="flex items-center justify-between px-4 py-3 border-b border-gray-700 bg-gray-800/50">
         <div className="flex items-center gap-3">
           <div className="flex items-center gap-2">
@@ -174,7 +164,6 @@ export function SessionViewer({
         </div>
       </div>
 
-      {/* Metadata */}
       <div className="px-4 py-2 border-b border-gray-700/50 bg-gray-800/30 text-xs text-gray-400 flex flex-wrap gap-x-4 gap-y-1">
         <span>Started: {formatRelativeTime(session.startTime)}</span>
         <span>Duration: {formatDuration(session.startTime, session.endTime)}</span>
@@ -193,7 +182,6 @@ export function SessionViewer({
         )}
       </div>
 
-      {/* Tabs */}
       <Tabs
         value={activeTab}
         onChange={(tab) => setActiveTab(tab as TabId)}
@@ -205,7 +193,6 @@ export function SessionViewer({
         ariaLabel="Session content tabs"
       />
 
-      {/* Content */}
       <div className="flex-1 overflow-y-auto min-h-0">
         {activeTab === "transcript" ? (
           <div className="relative">

@@ -166,7 +166,6 @@ class TerminalInstanceService {
 
     const throttledWriter = createThrottledWriter(terminal, getRefreshTier);
 
-    // Wire IPC listeners once per instance
     const listeners: Array<() => void> = [];
     const exitSubscribers = new Set<(exitCode: number) => void>();
 
@@ -227,12 +226,10 @@ class TerminalInstanceService {
     const managed = this.instances.get(id);
     if (!managed) return null;
 
-    // Ensure host is in the container
     if (managed.hostElement.parentElement !== container) {
       container.appendChild(managed.hostElement);
     }
 
-    // Open once
     if (!managed.isOpened) {
       managed.terminal.open(managed.hostElement);
       managed.isOpened = true;
@@ -381,7 +378,6 @@ class TerminalInstanceService {
     managed.webglAddon?.dispose();
     this.webglLru = this.webglLru.filter((existing) => existing !== id);
 
-    // Dispose jank fix
     const disposeJank = this.jankFixDisposers.get(id);
     if (disposeJank) {
       disposeJank();

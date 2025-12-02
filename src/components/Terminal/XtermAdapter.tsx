@@ -13,9 +13,6 @@ export interface XtermAdapterProps {
   getRefreshTier?: () => TerminalRefreshTier;
 }
 
-/**
- * Canopy terminal theme - Digital Ecology palette for brand consistency
- */
 export const CANOPY_TERMINAL_THEME = {
   background: "#18181b",
   foreground: "#e4e4e7",
@@ -41,9 +38,7 @@ export const CANOPY_TERMINAL_THEME = {
   brightWhite: "#fafafa",
 };
 
-/** Maximum retries when container has zero dimensions */
 const MAX_ZERO_RETRIES = 10;
-/** Delay before fitting after layout change to avoid synchronous thrash */
 const FIT_SETTLE_DELAY_MS = 120;
 
 export function XtermAdapter({
@@ -83,7 +78,6 @@ export function XtermAdapter({
     []
   );
 
-  // Fit with zero-dimension guard and brief settle delay so grid transitions can finish
   const scheduleFit = useCallback(() => {
     if (settleTimeoutRef.current !== null) {
       clearTimeout(settleTimeoutRef.current);
@@ -136,7 +130,6 @@ export function XtermAdapter({
     });
   }, [scheduleFit]);
 
-  // Attach/detach host element synchronously to avoid paint flashes on reparent
   useLayoutEffect(() => {
     const container = containerRef.current;
     if (!container) return;
@@ -196,10 +189,8 @@ export function XtermAdapter({
       prevDimensionsRef.current = null;
       zeroRetryCountRef.current = 0;
     };
-    // Including getRefreshTier so we refresh priority when focus/visibility changes
   }, [terminalId, terminalOptions, onExit, onReady, scheduleFit]);
 
-  // React to refresh tier changes (focus/visibility) without tearing down the DOM
   useLayoutEffect(() => {
     const tier = getRefreshTier ? getRefreshTier() : TerminalRefreshTier.FOCUSED;
     terminalInstanceService.updateRefreshTierProvider(
@@ -209,7 +200,6 @@ export function XtermAdapter({
     terminalInstanceService.applyRendererPolicy(terminalId, tier);
   }, [terminalId, getRefreshTier]);
 
-  // Resize observers and window resize handling
   useLayoutEffect(() => {
     const container = containerRef.current;
     if (!container) return;

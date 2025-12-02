@@ -1,10 +1,3 @@
-/**
- * LogEntry Component
- *
- * Displays a single log entry with timestamp, level badge, message,
- * and expandable context.
- */
-
 import { memo, useCallback } from "react";
 import { cn } from "@/lib/utils";
 import type { LogEntry as LogEntryType, LogLevel } from "@/types";
@@ -92,9 +85,7 @@ function LogEntryComponent({ entry, isExpanded, onToggle }: LogEntryProps) {
           : undefined
       }
     >
-      {/* Main row */}
       <div className="flex items-start gap-2 min-w-0">
-        {/* Timestamp */}
         <span
           className="text-gray-500 text-xs font-mono shrink-0"
           title={new Date(entry.timestamp).toISOString()}
@@ -102,7 +93,6 @@ function LogEntryComponent({ entry, isExpanded, onToggle }: LogEntryProps) {
           {formatTimestamp(entry.timestamp)}
         </span>
 
-        {/* Level badge */}
         <span
           className={cn(
             "text-xs font-medium px-1.5 py-0.5 rounded shrink-0 uppercase",
@@ -113,23 +103,19 @@ function LogEntryComponent({ entry, isExpanded, onToggle }: LogEntryProps) {
           {entry.level}
         </span>
 
-        {/* Source */}
         {entry.source && (
           <span className="text-purple-400 text-xs font-mono shrink-0">[{entry.source}]</span>
         )}
 
-        {/* Message */}
         <span className="text-gray-200 text-xs font-mono break-words min-w-0 flex-1">
           {entry.message}
         </span>
 
-        {/* Expand indicator */}
         {hasContext && (
           <span className="text-gray-500 text-xs shrink-0">{isExpanded ? "[-]" : "[+]"}</span>
         )}
       </div>
 
-      {/* Expanded context */}
       {isExpanded && hasContext && (
         <div
           id={contextPanelId}

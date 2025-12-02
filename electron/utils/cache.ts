@@ -4,11 +4,8 @@
  */
 
 export interface CacheOptions {
-  /** Maximum number of entries (LRU eviction when exceeded) */
   maxSize?: number;
-  /** Default time-to-live in milliseconds */
   defaultTTL?: number;
-  /** Callback when entries are evicted */
   onEvict?: (key: unknown, value: unknown) => void;
 }
 
@@ -30,31 +27,21 @@ export class Cache<K, V> {
     this.onEvict = options.onEvict as ((key: K, value: V) => void) | undefined;
   }
 
-  /**
-   * Get a value from the cache
-   * Returns undefined if not found or expired
-   */
   get(key: K): V | undefined {
     const entry = this.cache.get(key);
     if (!entry) {
       return undefined;
     }
 
-    // Check expiration
     if (Date.now() > entry.expiresAt) {
       this.invalidate(key);
       return undefined;
     }
 
-    // Update last accessed for LRU
     entry.lastAccessed = Date.now();
     return entry.value;
   }
 
-  /**
-   * Set a value in the cache
-   * Evicts LRU entry if size limit exceeded
-   */
   set(key: K, value: V, ttl?: number): void {
     const expiresAt = Date.now() + (ttl ?? this.defaultTTL);
 
@@ -64,15 +51,11 @@ export class Cache<K, V> {
       lastAccessed: Date.now(),
     });
 
-    // Enforce size limit with LRU eviction
     if (this.cache.size > this.maxSize) {
       this.evictLRU();
     }
   }
 
-  /**
-   * Invalidate (remove) a specific key
-   */
   invalidate(key: K): void {
     const entry = this.cache.get(key);
     if (entry && this.onEvict) {
@@ -81,9 +64,6 @@ export class Cache<K, V> {
     this.cache.delete(key);
   }
 
-  /**
-   * Clear all entries
-   */
   clear(): void {
     if (this.onEvict) {
       for (const [key, entry] of this.cache) {
@@ -93,24 +73,15 @@ export class Cache<K, V> {
     this.cache.clear();
   }
 
-  /**
-   * Get current cache size
-   */
   size(): number {
     return this.cache.size;
   }
 
-  /**
-   * Check if a key exists and is not expired
-   */
   has(key: K): boolean {
     return this.get(key) !== undefined;
   }
 
-  /**
-   * Cleanup expired entries
-   * Call this periodically to prevent memory leaks
-   */
+  // Call this periodically to prevent memory leaks
   cleanup(): void {
     const now = Date.now();
     for (const [key, entry] of this.cache) {
@@ -120,9 +91,6 @@ export class Cache<K, V> {
     }
   }
 
-  /**
-   * Evict the least recently used entry
-   */
   private evictLRU(): void {
     let oldestKey: K | null = null;
     let oldestTime = Infinity;

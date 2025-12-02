@@ -1,5 +1,3 @@
-/** Manages agent session transcripts and artifacts (persisted to disk) */
-
 import { app } from "electron";
 import path from "path";
 import fs from "fs/promises";
@@ -20,12 +18,10 @@ export class TranscriptManager {
   private disposed = false;
   private eventUnsubscribers: Array<() => void> = [];
 
-  /** Initialize sessions path */
   constructor() {
     this.sessionsDir = path.join(app.getPath("userData"), "sessions");
   }
 
-  /** Ensure directories and subscribe to events */
   async initialize(): Promise<void> {
     if (!existsSync(this.sessionsDir)) {
       await fs.mkdir(this.sessionsDir, { recursive: true });
@@ -42,7 +38,6 @@ export class TranscriptManager {
     console.log("[TranscriptManager] Initialized, sessions dir:", this.sessionsDir);
   }
 
-  /** Create new session on spawn */
   private handleAgentSpawned(payload: {
     agentId: string;
     terminalId: string;
@@ -83,7 +78,6 @@ export class TranscriptManager {
     console.log("[TranscriptManager] Started session:", payload.agentId);
   }
 
-  /** Append output and extract artifacts */
   private handleAgentOutput(payload: { agentId: string; data: string; timestamp: number }): void {
     if (this.disposed) return;
 
@@ -124,7 +118,6 @@ export class TranscriptManager {
     this.scheduleWrite(payload.agentId);
   }
 
-  /** Finalize session (completed) */
   private async handleAgentCompleted(payload: {
     agentId: string;
     exitCode: number;
@@ -153,7 +146,6 @@ export class TranscriptManager {
     console.log("[TranscriptManager] Completed session:", payload.agentId);
   }
 
-  /** Finalize session (failed) */
   private async handleAgentFailed(payload: {
     agentId: string;
     error: string;
@@ -180,7 +172,6 @@ export class TranscriptManager {
     console.log("[TranscriptManager] Failed session:", payload.agentId);
   }
 
-  /** Finalize session (killed) */
   private async handleAgentKilled(payload: {
     agentId: string;
     reason?: string;
@@ -207,7 +198,6 @@ export class TranscriptManager {
     console.log("[TranscriptManager] Killed session:", payload.agentId);
   }
 
-  /** Debounce write to disk */
   private scheduleWrite(agentId: string): void {
     const existingTimer = this.writeTimers.get(agentId);
     if (existingTimer) {
@@ -230,7 +220,6 @@ export class TranscriptManager {
     this.writeTimers.set(agentId, timer);
   }
 
-  /** Write session to JSON */
   private async saveSession(session: AgentSession): Promise<void> {
     try {
       const sessionPath = path.join(this.sessionsDir, `${session.id}.json`);
@@ -240,12 +229,10 @@ export class TranscriptManager {
     }
   }
 
-  /** Estimate JSON size */
   private estimateSessionSize(session: AgentSession): number {
     return JSON.stringify(session).length;
   }
 
-  /** List sessions (filtered/sorted) */
   async getSessions(filters?: {
     worktreeId?: string;
     agentType?: "claude" | "gemini" | "custom";
@@ -289,7 +276,6 @@ export class TranscriptManager {
     }
   }
 
-  /** Load session by ID */
   async getSession(sessionId: string): Promise<AgentSession | null> {
     try {
       const sessionPath = path.join(this.sessionsDir, `${sessionId}.json`);
@@ -304,7 +290,6 @@ export class TranscriptManager {
     }
   }
 
-  /** Export to JSON/Markdown */
   async exportSession(sessionId: string, format: "json" | "markdown"): Promise<string | null> {
     const session = await this.getSession(sessionId);
     if (!session) {
@@ -322,7 +307,6 @@ export class TranscriptManager {
     return null;
   }
 
-  /** Convert to Markdown */
   private sessionToMarkdown(session: AgentSession): string {
     const lines: string[] = [];
 
@@ -370,7 +354,6 @@ export class TranscriptManager {
     return lines.join("\n");
   }
 
-  /** Delete session file */
   async deleteSession(sessionId: string): Promise<void> {
     try {
       if (!/^[a-zA-Z0-9-]+$/.test(sessionId)) {
@@ -394,7 +377,6 @@ export class TranscriptManager {
     }
   }
 
-  /** Enforce max session limit */
   private async cleanupOldSessions(): Promise<void> {
     try {
       const sessions = await this.getSessions();
@@ -411,7 +393,6 @@ export class TranscriptManager {
     }
   }
 
-  /** Cleanup resources */
   async dispose(): Promise<void> {
     if (this.disposed) return;
     this.disposed = true;
@@ -435,10 +416,8 @@ export class TranscriptManager {
   }
 }
 
-// Export singleton instance
 let transcriptManagerInstance: TranscriptManager | null = null;
 
-/** Get singleton */
 export function getTranscriptManager(): TranscriptManager {
   if (!transcriptManagerInstance) {
     transcriptManagerInstance = new TranscriptManager();
@@ -446,7 +425,6 @@ export function getTranscriptManager(): TranscriptManager {
   return transcriptManagerInstance;
 }
 
-/** Dispose singleton */
 export async function disposeTranscriptManager(): Promise<void> {
   if (transcriptManagerInstance) {
     await transcriptManagerInstance.dispose();

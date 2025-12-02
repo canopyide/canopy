@@ -1,9 +1,3 @@
-/**
- * Canopy Brand Icon Component
- *
- * The official Canopy logo, represented as an SVG.
- */
-
 import { cn } from "@/lib/utils";
 
 interface CanopyIconProps {

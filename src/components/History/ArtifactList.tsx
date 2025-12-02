@@ -1,10 +1,3 @@
-/**
- * ArtifactList Component
- *
- * Displays extracted artifacts from an agent session with syntax highlighting
- * and copy-to-clipboard functionality.
- */
-
 import { useState, useCallback } from "react";
 import { cn } from "@/lib/utils";
 import type { Artifact } from "@shared/types";
@@ -57,7 +50,6 @@ function ArtifactCard({ artifact, isExpanded, onToggle }: ArtifactCardProps) {
 
   return (
     <div className={cn("border rounded-md overflow-hidden", colorClass.split(" ")[0])}>
-      {/* Header */}
       <button
         onClick={onToggle}
         className={cn(
@@ -78,7 +70,6 @@ function ArtifactCard({ artifact, isExpanded, onToggle }: ArtifactCardProps) {
         </div>
       </button>
 
-      {/* Content */}
       <div className="relative">
         <pre
           className={cn(
@@ -92,7 +83,6 @@ function ArtifactCard({ artifact, isExpanded, onToggle }: ArtifactCardProps) {
           </code>
         </pre>
 
-        {/* Copy button */}
         <button
           onClick={(e) => {
             e.stopPropagation();

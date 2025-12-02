@@ -1,10 +1,3 @@
-/**
- * Project Store
- *
- * Frontend state management for projects.
- * Syncs with the Electron backend ProjectStore via IPC.
- */
-
 import { create, type StateCreator } from "zustand";
 import type { Project } from "@shared/types";
 import { projectClient } from "@/clients";
@@ -16,7 +9,6 @@ interface ProjectState {
   isLoading: boolean;
   error: string | null;
 
-  // Actions
   loadProjects: () => Promise<void>;
   getCurrentProject: () => Promise<void>;
   addProject: () => Promise<void>;
@@ -61,17 +53,14 @@ const createProjectStore: StateCreator<ProjectState> = (set, get) => ({
   addProject: async () => {
     set({ isLoading: true, error: null });
     try {
-      // 1. Open dialog to pick folder
       const path = await projectClient.openDialog();
       if (!path) {
         set({ isLoading: false });
         return;
       }
 
-      // 2. Add project (backend handles git checks)
       const newProject = await projectClient.add(path);
 
-      // 3. Refresh list and switch to it
       await get().loadProjects();
       await get().switchProject(newProject.id);
     } catch (error) {
@@ -83,20 +72,15 @@ const createProjectStore: StateCreator<ProjectState> = (set, get) => ({
   switchProject: async (projectId) => {
     set({ isLoading: true, error: null });
     try {
-      // Step 1: Reset all renderer stores (clears terminals, worktrees, logs, etc.)
       console.log("[ProjectSwitch] Resetting renderer stores...");
       await resetAllStoresForProjectSwitch();
 
-      // Step 2: Tell main process to switch project (this triggers main process service resets)
       console.log("[ProjectSwitch] Switching project in main process...");
       const project = await projectClient.switch(projectId);
       set({ currentProject: project, isLoading: false });
 
-      // Refresh the projects list to update 'lastOpened' timestamps
       await get().loadProjects();
 
-      // Step 3: Trigger re-hydration by emitting a custom event
-      // The App component will listen for this and call hydrateAppState
       console.log("[ProjectSwitch] Triggering state re-hydration...");
       window.dispatchEvent(new CustomEvent("project-switched"));
     } catch (error) {
@@ -125,7 +109,6 @@ const createProjectStore: StateCreator<ProjectState> = (set, get) => ({
     try {
       await projectClient.remove(id);
       await get().loadProjects();
-      // If we removed the active project, clear current
       if (get().currentProject?.id === id) {
         set({ currentProject: null });
       }
@@ -141,11 +124,9 @@ const createProjectStore: StateCreator<ProjectState> = (set, get) => ({
     try {
       const updatedProject = await projectClient.regenerateIdentity(projectId);
 
-      // Update the projects list with the new identity
       const projects = get().projects.map((p) => (p.id === projectId ? updatedProject : p));
       set({ projects });
 
-      // Update current project if this is the active one
       if (get().currentProject?.id === projectId) {
         set({ currentProject: updatedProject });
       }

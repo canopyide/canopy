@@ -1,11 +1,3 @@
-/**
- * Settings Dialog Component
- *
- * Modal UI for viewing and configuring application settings.
- * Contains a tabbed interface with navigation sidebar.
- * Tab-specific content is rendered by dedicated tab components.
- */
-
 import { useState, useEffect } from "react";
 import { useErrors } from "@/hooks";
 import { useLogsStore } from "@/store";
@@ -22,7 +14,6 @@ interface SettingsDialogProps {
   isOpen: boolean;
   onClose: () => void;
   defaultTab?: SettingsTab;
-  /** Called when agent settings change (to refresh toolbar visibility) */
   onSettingsChange?: () => void;
 }
 
@@ -38,10 +29,8 @@ export function SettingsDialog({
   const { openLogs } = useErrors();
   const clearLogs = useLogsStore((state) => state.clearLogs);
 
-  // App version state
   const [appVersion, setAppVersion] = useState<string>("Loading...");
 
-  // Update active tab when defaultTab changes while dialog is open
   useEffect(() => {
     if (isOpen && defaultTab && defaultTab !== activeTab) {
       setActiveTab(defaultTab);
@@ -49,7 +38,6 @@ export function SettingsDialog({
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [isOpen, defaultTab]);
 
-  // Load app version on mount
   useEffect(() => {
     if (isOpen) {
       appClient
@@ -76,7 +64,6 @@ export function SettingsDialog({
         aria-modal="true"
         aria-labelledby="settings-title"
       >
-        {/* Sidebar */}
         <div className="w-48 border-r border-canopy-border bg-canopy-bg/50 p-4 flex flex-col gap-2">
           <h2 id="settings-title" className="text-sm font-semibold text-canopy-text mb-4 px-2">
             Settings
@@ -141,7 +128,6 @@ export function SettingsDialog({
           </button>
         </div>
 
-        {/* Content */}
         <div className="flex-1 flex flex-col min-w-0">
           <div className="flex items-center justify-between p-6 border-b border-canopy-border">
             <h3 className="text-lg font-medium text-canopy-text capitalize">
@@ -163,7 +149,6 @@ export function SettingsDialog({
           </div>
 
           <div className="p-6 overflow-y-auto flex-1">
-            {/* Render all tabs but hide inactive ones to preserve state */}
             <div className={activeTab === "general" ? "" : "hidden"}>
               <GeneralTab appVersion={appVersion} />
             </div>

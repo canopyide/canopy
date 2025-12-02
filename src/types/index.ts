@@ -1,9 +1,2 @@
-/**
- * Type definitions for Canopy Command Center (Renderer Process)
- *
- * Re-exports shared types for use in the renderer process.
- * This file eliminates the need for manual type synchronization.
- */
-
-// Re-export all shared types
+// Re-exports shared types - eliminates manual type synchronization
 export * from "@shared/types";

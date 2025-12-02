@@ -28,21 +28,13 @@ interface ToolbarProps {
   onLaunchAgent: (type: "claude" | "gemini" | "codex" | "shell") => void;
   onRefresh: () => void;
   onSettings: () => void;
-  /** Number of active errors */
   errorCount?: number;
-  /** Called when problems button is clicked */
   onToggleProblems?: () => void;
-  /** Whether focus mode is active */
   isFocusMode?: boolean;
-  /** Called when focus mode button is clicked */
   onToggleFocusMode?: () => void;
-  /** Whether worktree refresh is in progress */
   isRefreshing?: boolean;
-  /** Called when welcome/help button is clicked */
   onShowWelcome?: () => void;
-  /** CLI availability status for agent buttons */
   agentAvailability?: CliAvailability;
-  /** Agent settings (to check enabled status) */
   agentSettings?: AgentSettings | null;
 }
 
@@ -60,44 +52,26 @@ export function Toolbar({
   agentSettings,
 }: ToolbarProps) {
   const currentProject = useProjectStore((state) => state.currentProject);
-  // Use useShallow for terminals array to prevent re-renders on unrelated terminal changes
   const terminals = useTerminalStore(useShallow((state) => state.terminals));
   const { stats, error: statsError, refresh: refreshStats } = useRepositoryStats();
 
-  // Popover states for GitHub lists
   const [issuesOpen, setIssuesOpen] = useState(false);
   const [prsOpen, setPrsOpen] = useState(false);
 
-  // Show BulkActionsMenu when there are any terminals (actionable or not)
   const showBulkActions = terminals.length > 0;
 
-  // Helper to check if an agent should be shown in the toolbar
-  // Must be installed (availability check) AND enabled in settings (user preference)
   const shouldShowAgent = (type: "claude" | "gemini" | "codex"): boolean => {
-    // Must be installed (system check) - default to false if availability not yet loaded
     if (!agentAvailability?.[type]) return false;
-    // Must be enabled in settings (default true if settings not loaded yet)
     if (agentSettings && agentSettings[type].enabled === false) return false;
     return true;
   };
 
   return (
     <header className="relative h-12 flex items-center px-4 shrink-0 app-drag-region bg-canopy-sidebar border-b border-canopy-border shadow-sm">
-      {/* 1. RESIZE STRIP:
-        Invisible strip at the very top to allow resizing from the top edge on non-macOS systems
-      */}
       <div className="window-resize-strip" />
 
-      {/* 2. TRAFFIC LIGHT SPACER (macOS):
-        Keeps content away from window controls.
-      */}
       <div className="w-20 shrink-0" />
 
-      {/* 3. LEFT ACTIONS:
-        Wrapped in app-no-drag so they remain clickable.
-        Agent launchers are icon-only for clean appearance.
-        Each agent shows its brand color on hover and keyboard focus.
-      */}
       <div className="flex items-center gap-1 app-no-drag">
         {shouldShowAgent("claude") && (
           <Button
@@ -145,14 +119,9 @@ export function Toolbar({
         >
           <Terminal className="h-4 w-4" />
         </Button>
-        {/* BulkActionsMenu only visible when there are terminals to act on */}
         {showBulkActions && <BulkActionsMenu />}
       </div>
 
-      {/* 4. CENTER TITLE (The "Grip" Area):
-        This flex-1 area expands to fill empty space. By NOT putting app-no-drag here,
-        this entire center section becomes the primary handle for moving the window.
-      */}
       <div className="flex-1 flex justify-center items-center h-full opacity-70 hover:opacity-100 transition-opacity">
         {currentProject ? (
           <div
@@ -175,16 +144,10 @@ export function Toolbar({
         )}
       </div>
 
-      {/* 5. RIGHT ACTIONS:
-        Wrapped in app-no-drag so they remain clickable.
-        Grouped by purpose: GitHub Stats | View/Health cluster | Settings/Actions cluster
-      */}
       <div className="flex items-center gap-1 app-no-drag">
-        {/* GitHub Stats - show even with errors for consistent layout */}
         {stats && currentProject && (
           <>
             <div className="flex items-center gap-1">
-              {/* Issues Popover */}
               <Popover open={issuesOpen} onOpenChange={setIssuesOpen}>
                 <PopoverTrigger asChild>
                   <Button
@@ -219,7 +182,6 @@ export function Toolbar({
                 </PopoverContent>
               </Popover>
 
-              {/* PRs Popover */}
               <Popover open={prsOpen} onOpenChange={setPrsOpen}>
                 <PopoverTrigger asChild>
                   <Button
@@ -269,14 +231,11 @@ export function Toolbar({
                 <span className="text-xs font-medium text-canopy-text">{stats.commitCount}</span>
               </div>
             </div>
-            {/* Visual divider */}
             <div className="w-px h-6 bg-canopy-border" />
           </>
         )}
 
-        {/* View & Health cluster */}
         <div className="flex items-center gap-1">
-          {/* Focus mode toggle */}
           <Button
             variant="ghost"
             size="icon"
@@ -297,7 +256,6 @@ export function Toolbar({
               <Maximize2 className="h-4 w-4" aria-hidden="true" />
             )}
           </Button>
-          {/* Problems button with error count indicator */}
           <Button
             variant="ghost"
             size="icon"
@@ -316,10 +274,8 @@ export function Toolbar({
           </Button>
         </div>
 
-        {/* Visual divider */}
         <div className="w-px h-6 bg-canopy-border" />
 
-        {/* Settings & Actions cluster */}
         <div className="flex items-center gap-1">
           <Button
             variant="ghost"

@@ -12,8 +12,6 @@ export function registerAppHandlers(deps: HandlerDependencies): () => void {
   const { eventBuffer } = deps;
   const handlers: Array<() => void> = [];
 
-  // App State Handlers
-
   const handleAppGetState = async () => {
     return store.get("appState");
   };
@@ -25,7 +23,6 @@ export function registerAppHandlers(deps: HandlerDependencies): () => void {
     partialState: Partial<typeof store.store.appState>
   ) => {
     try {
-      // Validate payload is an object
       if (!partialState || typeof partialState !== "object" || Array.isArray(partialState)) {
         console.error("Invalid app state payload:", partialState);
         return;
@@ -33,7 +30,6 @@ export function registerAppHandlers(deps: HandlerDependencies): () => void {
 
       const currentState = store.get("appState");
 
-      // Validate and sanitize fields
       const updates: Partial<typeof store.store.appState> = {};
 
       if ("sidebarWidth" in partialState) {
@@ -52,7 +48,6 @@ export function registerAppHandlers(deps: HandlerDependencies): () => void {
       }
 
       if ("recipes" in partialState && Array.isArray(partialState.recipes)) {
-        // Validate recipe structure
         const validRecipes = partialState.recipes.filter((recipe: any) => {
           return (
             recipe &&
@@ -79,9 +74,7 @@ export function registerAppHandlers(deps: HandlerDependencies): () => void {
           typeof panelState === "object" &&
           typeof panelState.sidebarWidth === "number"
         ) {
-          // Support both new format (diagnosticsOpen) and legacy format (logsOpen/eventInspectorOpen)
           if ("diagnosticsOpen" in panelState && typeof panelState.diagnosticsOpen === "boolean") {
-            // New format
             updates.focusPanelState = {
               sidebarWidth: panelState.sidebarWidth,
               diagnosticsOpen: panelState.diagnosticsOpen,
@@ -92,7 +85,6 @@ export function registerAppHandlers(deps: HandlerDependencies): () => void {
             "eventInspectorOpen" in panelState &&
             typeof panelState.eventInspectorOpen === "boolean"
           ) {
-            // Legacy format - migrate to new format
             updates.focusPanelState = {
               sidebarWidth: panelState.sidebarWidth,
               diagnosticsOpen: panelState.logsOpen || panelState.eventInspectorOpen,
@@ -115,7 +107,6 @@ export function registerAppHandlers(deps: HandlerDependencies): () => void {
       if ("developerMode" in partialState) {
         const devMode = partialState.developerMode;
         if (devMode && typeof devMode === "object") {
-          // Validate and coerce all boolean fields
           updates.developerMode = {
             enabled: Boolean(devMode.enabled),
             showStateDebug: Boolean(devMode.showStateDebug),
@@ -138,8 +129,6 @@ export function registerAppHandlers(deps: HandlerDependencies): () => void {
   };
   ipcMain.handle(CHANNELS.APP_GET_VERSION, handleAppGetVersion);
   handlers.push(() => ipcMain.removeHandler(CHANNELS.APP_GET_VERSION));
-
-  // Logs Handlers
 
   const handleLogsGetAll = async (
     _event: Electron.IpcMainInvokeEvent,
@@ -169,11 +158,9 @@ export function registerAppHandlers(deps: HandlerDependencies): () => void {
     const logFilePath = join(homedir(), ".config", "canopy", "worktree-debug.log");
     try {
       const fs = await import("fs");
-      // Check if file exists
       await fs.promises.access(logFilePath);
       await shell.openPath(logFilePath);
     } catch (_error) {
-      // File doesn't exist - create it first
       const fs = await import("fs");
       const dir = join(homedir(), ".config", "canopy");
       await fs.promises.mkdir(dir, { recursive: true });
@@ -183,8 +170,6 @@ export function registerAppHandlers(deps: HandlerDependencies): () => void {
   };
   ipcMain.handle(CHANNELS.LOGS_OPEN_FILE, handleLogsOpenFile);
   handlers.push(() => ipcMain.removeHandler(CHANNELS.LOGS_OPEN_FILE));
-
-  // Event Inspector Handlers
 
   const handleEventInspectorGetEvents = async () => {
     if (!eventBuffer) {

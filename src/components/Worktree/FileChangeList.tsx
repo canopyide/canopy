@@ -3,33 +3,24 @@ import type { FileChangeDetail, GitStatus } from "../../types";
 import { cn } from "../../lib/utils";
 import { FileDiffModal } from "./FileDiffModal";
 
-/**
- * Browser-safe path utilities (no Node.js path module)
- */
 function isAbsolutePath(filePath: string): boolean {
-  // Unix absolute paths start with /
-  // Windows absolute paths start with drive letter (C:\) or UNC (\\)
   return (
     filePath.startsWith("/") || /^[a-zA-Z]:[\\/]/.test(filePath) || filePath.startsWith("\\\\")
   );
 }
 
 function getRelativePath(from: string, to: string): string {
-  // Normalize separators to /
   const normalizedFrom = from.replace(/\\/g, "/").replace(/\/$/, "");
   const normalizedTo = to.replace(/\\/g, "/");
 
-  // If 'to' starts with 'from', just strip the prefix
   if (normalizedTo.startsWith(normalizedFrom + "/")) {
     return normalizedTo.slice(normalizedFrom.length + 1);
   }
 
-  // Otherwise return as-is
   return normalizedTo;
 }
 
 function getBasename(filePath: string): string {
-  // Normalize separators and get the last segment
   const normalized = filePath.replace(/\\/g, "/").replace(/\/$/, "");
   const lastSlash = normalized.lastIndexOf("/");
   return lastSlash === -1 ? normalized : normalized.slice(lastSlash + 1);
@@ -81,17 +72,14 @@ interface SelectedFile {
 export function FileChangeList({ changes, maxVisible = 4, rootPath }: FileChangeListProps) {
   const [selectedFile, setSelectedFile] = useState<SelectedFile | null>(null);
 
-  // Sort changes by churn (most changes first), then by status priority as tiebreaker
   const sortedChanges = useMemo(() => {
     return [...changes].sort((a, b) => {
-      // Primary sort: by churn (insertions + deletions), descending
       const churnA = (a.insertions ?? 0) + (a.deletions ?? 0);
       const churnB = (b.insertions ?? 0) + (b.deletions ?? 0);
       if (churnA !== churnB) {
         return churnB - churnA;
       }
 
-      // Secondary sort: by status priority
       const priorityA = STATUS_PRIORITY[a.status] ?? 99;
       const priorityB = STATUS_PRIORITY[b.status] ?? 99;
       if (priorityA !== priorityB) {
@@ -104,7 +92,7 @@ export function FileChangeList({ changes, maxVisible = 4, rootPath }: FileChange
 
   const visibleChanges = sortedChanges.slice(0, maxVisible);
   const remainingCount = Math.max(0, sortedChanges.length - maxVisible);
-  const remainingFiles = sortedChanges.slice(maxVisible, maxVisible + 2); // Show up to 2 additional filenames
+  const remainingFiles = sortedChanges.slice(maxVisible, maxVisible + 2);
 
   if (changes.length === 0) {
     return null;
@@ -143,10 +131,8 @@ export function FileChangeList({ changes, maxVisible = 4, rootPath }: FileChange
 
             return (
               <Fragment key={`${change.path}-${change.status}`}>
-                {/* Icon Column */}
                 <div className={cn(color, "font-bold flex items-center")}>{icon}</div>
 
-                {/* Path Column - RTL for left-side truncation, LTR for content - clickable */}
                 <button
                   type="button"
                   className="min-w-0 overflow-hidden text-ellipsis whitespace-nowrap text-left text-gray-500 hover:text-gray-300 hover:underline cursor-pointer transition-colors"
@@ -160,7 +146,6 @@ export function FileChangeList({ changes, maxVisible = 4, rootPath }: FileChange
                   </span>
                 </button>
 
-                {/* Stats Column */}
                 <div className="flex items-center gap-2 justify-end">
                   {additionsLabel && (
                     <span className="text-[var(--color-status-success)]">{additionsLabel}</span>
@@ -187,7 +172,6 @@ export function FileChangeList({ changes, maxVisible = 4, rootPath }: FileChange
         )}
       </div>
 
-      {/* Diff Modal */}
       <FileDiffModal
         isOpen={selectedFile !== null}
         filePath={selectedFile?.path ?? ""}

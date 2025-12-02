@@ -1,39 +1,17 @@
-/**
- * TerminalPalette Component
- *
- * Modal overlay with fuzzy search for quickly switching between terminals.
- * Similar to VS Code's Cmd+P quick open.
- *
- * Features:
- * - Fuzzy search by title, type, worktree, and CWD
- * - Keyboard navigation (up/down arrows, Enter to select, Escape to close)
- * - Click outside to close
- * - Auto-focus search input on open
- */
-
 import { useEffect, useRef, useCallback } from "react";
 import { cn } from "@/lib/utils";
 import { TerminalListItem } from "./TerminalListItem";
 import type { SearchableTerminal } from "@/hooks/useTerminalPalette";
 
 export interface TerminalPaletteProps {
-  /** Whether the palette is open */
   isOpen: boolean;
-  /** Current search query */
   query: string;
-  /** Filtered terminal results */
   results: SearchableTerminal[];
-  /** Currently selected index */
   selectedIndex: number;
-  /** Called when query changes */
   onQueryChange: (query: string) => void;
-  /** Called to move selection up */
   onSelectPrevious: () => void;
-  /** Called to move selection down */
   onSelectNext: () => void;
-  /** Called when a terminal is selected */
   onSelect: (terminal: SearchableTerminal) => void;
-  /** Called to close the palette */
   onClose: () => void;
 }
 
@@ -51,17 +29,14 @@ export function TerminalPalette({
   const inputRef = useRef<HTMLInputElement>(null);
   const listRef = useRef<HTMLDivElement>(null);
 
-  // Auto-focus input when palette opens
   useEffect(() => {
     if (isOpen && inputRef.current) {
-      // Small delay to ensure the modal is rendered
       requestAnimationFrame(() => {
         inputRef.current?.focus();
       });
     }
   }, [isOpen]);
 
-  // Scroll selected item into view
   useEffect(() => {
     if (listRef.current && selectedIndex >= 0) {
       const selectedItem = listRef.current.children[selectedIndex] as HTMLElement;
@@ -71,7 +46,6 @@ export function TerminalPalette({
     }
   }, [selectedIndex]);
 
-  // Handle keyboard navigation
   const handleKeyDown = useCallback(
     (e: React.KeyboardEvent) => {
       switch (e.key) {
@@ -94,7 +68,6 @@ export function TerminalPalette({
           onClose();
           break;
         case "Tab":
-          // Prevent Tab from moving focus out of the palette
           e.preventDefault();
           if (e.shiftKey) {
             onSelectPrevious();
@@ -107,10 +80,8 @@ export function TerminalPalette({
     [results, selectedIndex, onSelectPrevious, onSelectNext, onSelect, onClose]
   );
 
-  // Handle click outside
   const handleBackdropClick = useCallback(
     (e: React.MouseEvent) => {
-      // Only close if clicking on the backdrop itself
       if (e.target === e.currentTarget) {
         onClose();
       }
@@ -137,7 +108,6 @@ export function TerminalPalette({
         )}
         onClick={(e) => e.stopPropagation()}
       >
-        {/* Search input */}
         <div className="p-3 border-b border-canopy-border">
           <input
             ref={inputRef}
@@ -165,7 +135,6 @@ export function TerminalPalette({
           />
         </div>
 
-        {/* Results list */}
         <div
           ref={listRef}
           id="terminal-list"
@@ -197,7 +166,6 @@ export function TerminalPalette({
           )}
         </div>
 
-        {/* Footer hint */}
         <div className="px-3 py-2 border-t border-canopy-border bg-canopy-sidebar/50 text-xs text-canopy-text/40 flex items-center gap-4">
           <span>
             <kbd className="px-1.5 py-0.5 rounded bg-canopy-border text-canopy-text/60">↑</kbd>

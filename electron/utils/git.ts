@@ -6,7 +6,6 @@ import { GitError, WorktreeRemovedError } from "./errorTypes.js";
 import { logWarn, logError } from "./logger.js";
 import { Cache } from "./cache.js";
 
-// Worktree changes cache configuration
 const GIT_WORKTREE_CHANGES_CACHE = new Cache<string, WorktreeChanges>({
   maxSize: 100,
   defaultTTL: 5000,
@@ -18,15 +17,12 @@ function runCacheCleanup(): void {
   GIT_WORKTREE_CHANGES_CACHE.cleanup();
 }
 
-// Start periodic cache cleanup (no-op if already running)
 export function startWorktreeCacheCleanup(): void {
   if (cleanupInterval) return;
   cleanupInterval = setInterval(runCacheCleanup, 10000);
-  // Unref the interval so it doesn't keep the process alive
   cleanupInterval.unref();
 }
 
-// Allow cleanup to be stopped (for testing)
 export function stopWorktreeCacheCleanup(): void {
   if (cleanupInterval) {
     clearInterval(cleanupInterval);
@@ -38,23 +34,12 @@ if (process.env.NODE_ENV !== "test") {
   startWorktreeCacheCleanup();
 }
 
-/**
- * Invalidate worktree changes cache for a directory.
- * Call this when you know git status has changed.
- *
- * @param cwd - Directory to invalidate
- */
 export function invalidateWorktreeCache(cwd: string): void {
   GIT_WORKTREE_CHANGES_CACHE.invalidate(cwd);
 }
 
-// Legacy alias - still used by WorktreeMonitor
 export { invalidateWorktreeCache as invalidateGitStatusCache };
 
-/**
- * Clear all worktree changes caches.
- * Useful when switching worktrees.
- */
 export function clearWorktreeCache(): void {
   GIT_WORKTREE_CHANGES_CACHE.clear();
 }
@@ -106,15 +91,9 @@ function parseNumstat(diffOutput: string, gitRoot: string): Map<string, DiffStat
   return stats;
 }
 
-/**
- * Get total commit count for the current branch.
- * @param cwd - Working directory
- * @returns Number of commits in the current branch history
- */
 export async function getCommitCount(cwd: string): Promise<number> {
   try {
     const git = simpleGit(cwd);
-    // 'HEAD' counts all commits in history of current branch
     const count = await git.raw(["rev-list", "--count", "HEAD"]);
     return parseInt(count.trim(), 10);
   } catch (error) {
@@ -123,10 +102,6 @@ export async function getCommitCount(cwd: string): Promise<number> {
   }
 }
 
-/**
- * Fetch worktree changes enriched with insertion/deletion counts.
- * Includes caching with the same TTL as basic status.
- */
 export async function getWorktreeChangesWithStats(
   cwd: string,
   forceRefresh = false
@@ -141,13 +116,7 @@ export async function getWorktreeChangesWithStats(
     }
   }
 
-  // PERF: Limit the number of files we calculate stats for to prevent CPU hang
-  // on massive changesets (e.g., accidental package-lock.json deletion in monorepo)
   const MAX_FILES_FOR_NUMSTAT = 100;
-
-  // Check if directory exists before calling simpleGit.
-  // simple-git throws immediately if cwd doesn't exist, which can flood stderr
-  // when a worktree is deleted externally while being monitored.
   try {
     await fs.access(cwd);
   } catch (accessError) {
@@ -155,7 +124,6 @@ export async function getWorktreeChangesWithStats(
     if (nodeError.code === "ENOENT") {
       throw new WorktreeRemovedError(cwd, nodeError);
     }
-    // Re-throw other access errors (e.g., permissions)
     throw accessError;
   }
 
@@ -164,7 +132,6 @@ export async function getWorktreeChangesWithStats(
     const status: StatusResult = await git.status();
     const gitRoot = realpathSync((await git.revparse(["--show-toplevel"])).trim());
 
-    // Collect all tracked changed files for numstat (excludes untracked)
     const trackedChangedFiles = [
       ...status.modified,
       ...status.created,
@@ -176,14 +143,10 @@ export async function getWorktreeChangesWithStats(
 
     try {
       if (trackedChangedFiles.length === 0) {
-        // No tracked changes - skip numstat entirely
         diffOutput = "";
       } else if (trackedChangedFiles.length <= MAX_FILES_FOR_NUMSTAT) {
-        // Small changeset - run numstat on all files
         diffOutput = await git.diff(["--numstat", "HEAD"]);
       } else {
-        // PERF: Large changeset - only run numstat on first N files to prevent CPU hang
-        // The remaining files will show stats as 0/0 but will still appear in the list
         const limitedFiles = trackedChangedFiles.slice(0, MAX_FILES_FOR_NUMSTAT);
         diffOutput = await git.diff(["--numstat", "HEAD", "--", ...limitedFiles]);
         logWarn("Large changeset detected; limiting numstat to first 100 files", {
@@ -202,42 +165,29 @@ export async function getWorktreeChangesWithStats(
     const diffStats = parseNumstat(diffOutput, gitRoot);
     const changesMap = new Map<string, FileChangeDetail>();
 
-    /**
-     * Helper to count lines in a file by reading from filesystem.
-     * Used for untracked files where git diff doesn't provide stats.
-     * Counts newline characters to match git diff --numstat behavior.
-     * Skips files larger than 10MB to avoid memory issues.
-     */
     const countFileLines = async (filePath: string): Promise<number | null> => {
       try {
-        // Check file size first - skip large files to avoid memory issues
         const stats = await fs.stat(filePath);
-        const MAX_FILE_SIZE = 10 * 1024 * 1024; // 10MB
+        const MAX_FILE_SIZE = 10 * 1024 * 1024;
         if (stats.size > MAX_FILE_SIZE) {
-          return null; // Skip large files
+          return null;
         }
 
-        // Read as buffer first to detect binary files
         const buffer = await fs.readFile(filePath);
 
-        // Check for binary content (presence of NUL bytes in first 8KB)
         const sampleSize = Math.min(buffer.length, 8192);
         for (let i = 0; i < sampleSize; i++) {
           if (buffer[i] === 0) {
-            // Binary file detected - return null
             return null;
           }
         }
 
-        // Convert to string and count newlines
         const content = buffer.toString("utf-8");
 
-        // Empty file = 0 lines
         if (content.length === 0) {
           return 0;
         }
 
-        // Count newline characters (matches git diff --numstat)
         let lineCount = 0;
         for (let i = 0; i < content.length; i++) {
           if (content[i] === "\n") {
@@ -245,15 +195,12 @@ export async function getWorktreeChangesWithStats(
           }
         }
 
-        // If file doesn't end with newline, add 1 for the final line
         if (content[content.length - 1] !== "\n") {
           lineCount++;
         }
 
         return lineCount;
       } catch (error) {
-        // File may be unreadable, or deleted between status check and read
-        // Fall back to null to indicate we couldn't determine line count
         return null;
       }
     };
@@ -269,10 +216,9 @@ export async function getWorktreeChangesWithStats(
       let insertions: number | null;
       let deletions: number | null;
 
-      // For untracked files without diff stats, read from filesystem to get line count
       if (statusValue === "untracked" && !statsForFile) {
         insertions = await countFileLines(absolutePath);
-        deletions = null; // Untracked files have no deletions
+        deletions = null;
       } else {
         insertions = statsForFile?.insertions ?? (statusValue === "untracked" ? null : 0);
         deletions = statsForFile?.deletions ?? (statusValue === "untracked" ? null : 0);
@@ -286,7 +232,6 @@ export async function getWorktreeChangesWithStats(
       });
     };
 
-    // Process tracked files sequentially (no filesystem reads needed)
     for (const file of status.modified) {
       await addChange(file, "modified");
     }
@@ -311,11 +256,8 @@ export async function getWorktreeChangesWithStats(
       }
     }
 
-    // Process untracked files in parallel with bounded concurrency (max 10 at once)
-    // to avoid blocking on filesystem reads while preventing memory issues
-    // PERF: Also limit total untracked files processed to prevent CPU hang on massive repos
     const untrackedFiles = status.not_added;
-    const MAX_UNTRACKED_FILES = 200; // Limit untracked file processing
+    const MAX_UNTRACKED_FILES = 200;
     const concurrencyLimit = 10;
 
     const limitedUntrackedFiles =
@@ -336,7 +278,6 @@ export async function getWorktreeChangesWithStats(
       await Promise.all(batch.map((file) => addChange(file, "untracked")));
     }
 
-    // Backfill any files that appear in diff stats but not in status
     for (const [absolutePath, stats] of diffStats.entries()) {
       if (changesMap.has(absolutePath)) continue;
       changesMap.set(absolutePath, {
@@ -347,16 +288,13 @@ export async function getWorktreeChangesWithStats(
       });
     }
 
-    // Calculate the latest modification time across all changed files so we can
-    // throttle AI refreshes based on real file activity instead of hash churn.
-    // Also store mtimeMs on each change for recency scoring in AI summaries.
     const mtimes = await Promise.all(
       Array.from(changesMap.values()).map(async (change) => {
         const targetPath = change.status === "deleted" ? dirname(change.path) : change.path;
 
         try {
           const stat = await fs.stat(targetPath);
-          change.mtimeMs = stat.mtimeMs; // Store mtime on the change object
+          change.mtimeMs = stat.mtimeMs;
           return stat.mtimeMs;
         } catch {
           change.mtimeMs = 0;
@@ -386,14 +324,10 @@ export async function getWorktreeChangesWithStats(
     GIT_WORKTREE_CHANGES_CACHE.set(cwd, result);
     return result;
   } catch (error) {
-    // Re-throw WorktreeRemovedError without wrapping or logging
-    // This is an expected lifecycle event (worktree deleted externally), not an error
     if (error instanceof WorktreeRemovedError) {
       throw error;
     }
 
-    // Handle race condition: directory disappeared between fs.access check and git operations
-    // simple-git errors contain the ENOENT message, convert to WorktreeRemovedError
     const errorMessage = error instanceof Error ? error.message : String(error);
     if (
       errorMessage.includes("ENOENT") ||

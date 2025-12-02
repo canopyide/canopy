@@ -1,10 +1,3 @@
-/**
- * DiffViewer Component
- *
- * Renders unified diff output in a syntax-highlighted split or unified view
- * using react-diff-view with refractor for syntax highlighting.
- */
-
 import { useMemo } from "react";
 import { parseDiff, Diff, Hunk, tokenize, markEdits, DiffType, ViewType } from "react-diff-view";
 import type { HunkData, HunkTokens, TokenizeOptions } from "react-diff-view";
@@ -12,45 +5,34 @@ import { refractor } from "refractor";
 import "react-diff-view/style/index.css";
 
 export interface DiffViewerProps {
-  /** Raw unified diff string */
   diff: string;
-  /** File path for language detection */
   filePath: string;
-  /** View mode: unified or split (side-by-side) */
   viewType?: ViewType;
 }
 
-/**
- * Map file extensions to refractor language names
- */
 function getLanguage(filePath: string): string {
   const ext = filePath.split(".").pop()?.toLowerCase() ?? "";
 
   const languageMap: Record<string, string> = {
-    // JavaScript/TypeScript
     js: "javascript",
     jsx: "jsx",
     ts: "typescript",
     tsx: "tsx",
     mjs: "javascript",
     cjs: "javascript",
-    // Web
     html: "markup",
     htm: "markup",
     css: "css",
     scss: "scss",
     sass: "sass",
     less: "less",
-    // Data
     json: "json",
     yaml: "yaml",
     yml: "yaml",
     toml: "toml",
     xml: "markup",
-    // Config
     md: "markdown",
     mdx: "markdown",
-    // Languages
     py: "python",
     rb: "ruby",
     go: "go",
@@ -69,7 +51,6 @@ function getLanguage(filePath: string): string {
     bash: "bash",
     zsh: "bash",
     fish: "bash",
-    // Other
     dockerfile: "docker",
     makefile: "makefile",
     graphql: "graphql",
@@ -79,9 +60,6 @@ function getLanguage(filePath: string): string {
   return languageMap[ext] || "text";
 }
 
-/**
- * Tokenize hunks for syntax highlighting using refractor
- */
 function useTokens(hunks: HunkData[], language: string): HunkTokens | null {
   return useMemo(() => {
     if (!hunks.length) return null;
@@ -96,14 +74,12 @@ function useTokens(hunks: HunkData[], language: string): HunkTokens | null {
     try {
       return tokenize(hunks, options);
     } catch {
-      // Fall back to no syntax highlighting if language not supported
       return null;
     }
   }, [hunks, language]);
 }
 
 export function DiffViewer({ diff, filePath, viewType = "split" }: DiffViewerProps) {
-  // Parse the unified diff
   const files = useMemo(() => {
     try {
       return parseDiff(diff);
@@ -112,7 +88,6 @@ export function DiffViewer({ diff, filePath, viewType = "split" }: DiffViewerPro
     }
   }, [diff]);
 
-  // Handle special cases
   if (!diff || diff === "NO_CHANGES") {
     return (
       <div className="flex items-center justify-center p-8 text-neutral-500">
@@ -169,8 +144,6 @@ interface FileDiffProps {
 
 function FileDiff({ file, viewType, language }: FileDiffProps) {
   const tokens = useTokens(file.hunks ?? [], language);
-
-  // Determine diff type from the parsed file
   const diffType: DiffType = file.type as DiffType;
 
   return (

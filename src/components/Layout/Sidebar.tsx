@@ -13,9 +13,7 @@ interface SidebarProps {
   children?: ReactNode;
   historyContent?: ReactNode;
   className?: string;
-  /** Currently active tab */
   activeTab?: SidebarTab;
-  /** Callback when tab changes */
   onTabChange?: (tab: SidebarTab) => void;
 }
 
@@ -36,12 +34,10 @@ export function Sidebar({
   const sidebarRef = useRef<HTMLElement>(null);
   const currentProject = useProjectStore((state) => state.currentProject);
 
-  // Sync internal state when activeTab prop changes
   useEffect(() => {
     setInternalTab(activeTab);
   }, [activeTab]);
 
-  // Use controlled tab if provided, otherwise internal state
   const currentTab = onTabChange ? activeTab : internalTab;
   const handleTabChange = useCallback(
     (tab: SidebarTab) => {
@@ -90,7 +86,6 @@ export function Sidebar({
     if (isResizing) {
       document.addEventListener("mousemove", resize);
       document.addEventListener("mouseup", stopResizing);
-      // Add cursor style to body during resize
       document.body.style.cursor = "col-resize";
       document.body.style.userSelect = "none";
     }
@@ -113,7 +108,6 @@ export function Sidebar({
         )}
         style={{ width }}
       >
-        {/* Project Switcher at the top */}
         <div className="shrink-0 border-b border-canopy-border">
           <div className="flex items-center">
             <div className="flex-1">
@@ -131,7 +125,6 @@ export function Sidebar({
           </div>
         </div>
 
-        {/* Tab bar */}
         <Tabs
           value={currentTab}
           onChange={(tab) => handleTabChange(tab as SidebarTab)}
@@ -144,15 +137,12 @@ export function Sidebar({
           ariaLabel="Sidebar navigation"
         />
 
-        {/* Sidebar content grows to fill space */}
         <div className="flex-1 overflow-y-auto min-h-0">
           {currentTab === "worktrees" ? children : historyContent}
         </div>
 
-        {/* Project Runners - displays saved and auto-detected run commands */}
         {currentProject && <ProjectRunners projectId={currentProject.id} />}
 
-        {/* Resize handle */}
         <div
           role="separator"
           aria-label="Resize sidebar"

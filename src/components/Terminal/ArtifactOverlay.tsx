@@ -1,10 +1,3 @@
-/**
- * ArtifactOverlay Component
- *
- * Floating overlay showing extracted artifacts from agent output in a terminal.
- * Displays a compact badge that expands to show artifact details and actions.
- */
-
 import { useState, useCallback } from "react";
 import { cn } from "@/lib/utils";
 import { useArtifacts } from "@/hooks/useArtifacts";
@@ -96,7 +89,6 @@ function ArtifactItem({
 
   return (
     <div className={cn("border rounded-md overflow-hidden", colorClass.split(" ")[0])}>
-      {/* Header */}
       <button
         onClick={() => setIsExpanded(!isExpanded)}
         className={cn(
@@ -120,10 +112,8 @@ function ArtifactItem({
         </div>
       </button>
 
-      {/* Expanded Content */}
       {isExpanded && (
         <div className="bg-gray-900/50">
-          {/* Preview */}
           <pre className="font-mono text-xs p-3 overflow-x-auto max-h-32 overflow-y-auto">
             <code className="text-gray-300">
               {previewLines.join("\n")}
@@ -131,7 +121,6 @@ function ArtifactItem({
             </code>
           </pre>
 
-          {/* Action Buttons */}
           <div className="flex items-center gap-2 px-3 py-2 bg-gray-800/50 border-t border-gray-700">
             <button
               onClick={handleCopy}
@@ -222,7 +211,6 @@ export function ArtifactOverlay({ terminalId, worktreeId, cwd, className }: Arti
   return (
     <div className={cn("absolute bottom-4 right-4 z-10", className)}>
       {!isExpanded ? (
-        // Compact Badge
         <button
           onClick={() => setIsExpanded(true)}
           className={cn(
@@ -238,14 +226,12 @@ export function ArtifactOverlay({ terminalId, worktreeId, cwd, className }: Arti
           </span>
         </button>
       ) : (
-        // Expanded Overlay
         <div
           className={cn(
             "bg-gray-800 border border-gray-700 rounded-lg shadow-2xl",
             "w-96 max-h-96 flex flex-col overflow-hidden"
           )}
         >
-          {/* Header */}
           <div className="flex items-center justify-between px-4 py-3 bg-gray-900 border-b border-gray-700">
             <div className="flex items-center gap-2">
               <span className="font-mono text-[var(--color-status-info)]">{}</span>
@@ -269,7 +255,6 @@ export function ArtifactOverlay({ terminalId, worktreeId, cwd, className }: Arti
             </div>
           </div>
 
-          {/* Artifact List */}
           <div className="flex-1 overflow-y-auto p-3 space-y-2">
             {artifacts.map((artifact) => (
               <ArtifactItem

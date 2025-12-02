@@ -1,10 +1,3 @@
-/**
- * LogsContent Component
- *
- * Content component for the Logs tab in the diagnostics dock.
- * Displays log entries extracted from the original LogsPanel.
- */
-
 import { useCallback, useEffect, useMemo, useRef } from "react";
 import { useShallow } from "zustand/react/shallow";
 import { cn } from "@/lib/utils";
@@ -17,12 +10,10 @@ import { logsClient } from "@/clients";
 
 export interface LogsContentProps {
   className?: string;
-  /** Expose sources for toolbar actions */
   onSourcesChange?: (sources: string[]) => void;
 }
 
 export function LogsContent({ className, onSourcesChange }: LogsContentProps) {
-  // Use useShallow to prevent re-renders when unrelated store fields change
   const {
     logs,
     filters,
@@ -55,9 +46,7 @@ export function LogsContent({ className, onSourcesChange }: LogsContentProps) {
   const scrollTimeout = useRef<NodeJS.Timeout | null>(null);
   const sourcesRef = useRef<string[]>([]);
 
-  // Load initial logs and set up subscription
   useEffect(() => {
-    // Load existing logs
     logsClient
       .getAll()
       .then((existingLogs) => {
@@ -67,7 +56,6 @@ export function LogsContent({ className, onSourcesChange }: LogsContentProps) {
         console.error("Failed to load logs:", error);
       });
 
-    // Load sources
     logsClient
       .getSources()
       .then((existingSources) => {
@@ -78,10 +66,8 @@ export function LogsContent({ className, onSourcesChange }: LogsContentProps) {
         console.error("Failed to load log sources:", error);
       });
 
-    // Subscribe to new log entries
     const unsubscribe = logsClient.onEntry((entry: LogEntryType) => {
       addLog(entry);
-      // Update sources if new
       if (entry.source && !sourcesRef.current.includes(entry.source)) {
         sourcesRef.current = [...sourcesRef.current, entry.source].sort();
         onSourcesChange?.(sourcesRef.current);
@@ -93,29 +79,24 @@ export function LogsContent({ className, onSourcesChange }: LogsContentProps) {
     };
   }, [addLog, setLogs, onSourcesChange]);
 
-  // Auto-scroll to bottom when new logs arrive
   useEffect(() => {
     if (autoScroll && containerRef.current && !isUserScrolling.current) {
       isProgrammaticScroll.current = true;
       containerRef.current.scrollTop = containerRef.current.scrollHeight;
-      // Reset flag after scroll completes
       setTimeout(() => {
         isProgrammaticScroll.current = false;
       }, 50);
     }
   }, [logs, autoScroll]);
 
-  // Handle user scrolling
   const handleScroll = useCallback(() => {
     if (!containerRef.current) return;
 
-    // Ignore programmatic scrolls
     if (isProgrammaticScroll.current) return;
 
     const { scrollTop, scrollHeight, clientHeight } = containerRef.current;
     const isAtBottom = scrollHeight - scrollTop - clientHeight < 50;
 
-    // Detect if user is scrolling
     isUserScrolling.current = true;
     if (scrollTimeout.current) {
       clearTimeout(scrollTimeout.current);
@@ -124,7 +105,6 @@ export function LogsContent({ className, onSourcesChange }: LogsContentProps) {
       isUserScrolling.current = false;
     }, 100);
 
-    // Re-enable auto-scroll if user scrolls to bottom
     if (isAtBottom && !autoScroll) {
       setAutoScroll(true);
     } else if (!isAtBottom && autoScroll) {
@@ -132,12 +112,10 @@ export function LogsContent({ className, onSourcesChange }: LogsContentProps) {
     }
   }, [autoScroll, setAutoScroll]);
 
-  // Filter logs (memoized for performance)
   const filteredLogs = useMemo(() => filterLogs(logs, filters), [logs, filters]);
 
   return (
     <div className={cn("flex flex-col h-full", className)}>
-      {/* Filters */}
       <LogFilters
         filters={filters}
         onFiltersChange={setFilters}
@@ -145,7 +123,6 @@ export function LogsContent({ className, onSourcesChange }: LogsContentProps) {
         availableSources={sourcesRef.current}
       />
 
-      {/* Log entries */}
       <div
         ref={containerRef}
         onScroll={handleScroll}
@@ -167,7 +144,6 @@ export function LogsContent({ className, onSourcesChange }: LogsContentProps) {
         )}
       </div>
 
-      {/* Scroll to bottom indicator (when not at bottom) */}
       {!autoScroll && filteredLogs.length > 0 && (
         <button
           onClick={() => {

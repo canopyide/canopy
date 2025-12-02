@@ -1,10 +1,3 @@
-/**
- * DiagnosticsDock Component
- *
- * Unified bottom dock containing Problems, Logs, and Events tabs.
- * Consolidates three separate panels into one organized interface.
- */
-
 import { useCallback, useRef, useState, useEffect, memo } from "react";
 import { X } from "lucide-react";
 import { cn } from "@/lib/utils";
@@ -72,21 +65,17 @@ export function DiagnosticsDock({ onRetry, className }: DiagnosticsDockProps) {
   const errorCount = useErrorStore((state) => state.errors.filter((e) => !e.dismissed).length);
   const prevErrorCountRef = useRef(0);
 
-  // Auto-open dock to Problems tab when first error appears
   useEffect(() => {
-    // Only auto-open when going from 0 to 1+ errors and dock is closed
     if (errorCount > 0 && prevErrorCountRef.current === 0 && !isOpen) {
       openDock("problems");
     }
     prevErrorCountRef.current = errorCount;
   }, [errorCount, isOpen, openDock]);
 
-  // Resize state
   const [isResizing, setIsResizing] = useState(false);
   const resizeStartY = useRef(0);
   const resizeStartHeight = useRef(0);
 
-  // Handle resize drag
   const handleResizeStart = useCallback(
     (e: React.MouseEvent) => {
       e.preventDefault();
@@ -97,7 +86,6 @@ export function DiagnosticsDock({ onRetry, className }: DiagnosticsDockProps) {
     [height]
   );
 
-  // Handle resize drag move
   useEffect(() => {
     if (!isResizing) return;
 
@@ -122,7 +110,6 @@ export function DiagnosticsDock({ onRetry, className }: DiagnosticsDockProps) {
     };
   }, [isResizing, setHeight]);
 
-  // Persist height changes
   useEffect(() => {
     if (!isResizing && isOpen) {
       const timer = setTimeout(async () => {
@@ -137,7 +124,6 @@ export function DiagnosticsDock({ onRetry, className }: DiagnosticsDockProps) {
     return undefined;
   }, [height, isResizing, isOpen]);
 
-  // Restore height from persisted state
   useEffect(() => {
     const restoreHeight = async () => {
       try {
@@ -172,7 +158,6 @@ export function DiagnosticsDock({ onRetry, className }: DiagnosticsDockProps) {
       role="region"
       aria-label="Diagnostics dock"
     >
-      {/* Resize handle */}
       <div
         className={cn(
           "h-1 cursor-ns-resize transition-colors",
@@ -185,9 +170,7 @@ export function DiagnosticsDock({ onRetry, className }: DiagnosticsDockProps) {
         aria-label="Resize diagnostics dock"
       />
 
-      {/* Header with tabs */}
       <div className="flex items-center justify-between px-4 h-10 border-b border-canopy-border bg-canopy-sidebar shrink-0">
-        {/* Tabs */}
         <div className="flex items-center gap-2" role="tablist" aria-label="Diagnostics tabs">
           {tabs.map((tab) => (
             <TabButton
@@ -201,14 +184,11 @@ export function DiagnosticsDock({ onRetry, className }: DiagnosticsDockProps) {
           ))}
         </div>
 
-        {/* Actions */}
         <div className="flex items-center gap-2">
-          {/* Tab-specific actions */}
           {activeTab === "problems" && <ProblemsActions />}
           {activeTab === "logs" && <LogsActions />}
           {activeTab === "events" && <EventsActions />}
 
-          {/* Close button */}
           <button
             onClick={closeDock}
             className="p-1.5 hover:bg-gray-800 rounded transition-colors text-gray-400 hover:text-gray-200"
@@ -220,7 +200,6 @@ export function DiagnosticsDock({ onRetry, className }: DiagnosticsDockProps) {
         </div>
       </div>
 
-      {/* Content */}
       <div className="flex-1 overflow-hidden">
         {activeTab === "problems" && (
           <div

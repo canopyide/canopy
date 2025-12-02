@@ -1,23 +1,9 @@
-/**
- * WaitingAgentChip Component
- *
- * Individual chip displayed in the WaitingForYouStrip for an agent
- * that is currently in "waiting" state (needs user input).
- *
- * Features:
- * - Yellow color scheme indicates attention needed
- * - Pulsing dot reinforces "needs input" status
- * - Click to focus and scroll to the terminal
- * - Shows issue number (preferred) or terminal title
- */
-
 import { useCallback } from "react";
 import { cn } from "@/lib/utils";
 import { useTerminalStore } from "@/store/terminalStore";
 import type { TerminalInstance } from "@/store/terminalStore";
 
 interface WaitingAgentChipProps {
-  /** The terminal instance that is waiting */
   terminal: TerminalInstance;
 }
 
@@ -28,29 +14,22 @@ export function WaitingAgentChip({ terminal }: WaitingAgentChipProps) {
   const isInTrash = useTerminalStore((state) => state.isInTrash);
 
   const handleClick = useCallback(() => {
-    // Fetch the latest terminal state to ensure it still exists and isn't trashed
     const currentTerminal = getTerminal(terminal.id);
     if (!currentTerminal || isInTrash(terminal.id)) {
-      // Terminal was removed or trashed, skip action
       return;
     }
 
-    // If terminal is docked, restore it to grid first
     if (currentTerminal.location === "dock") {
       moveTerminalToGrid(terminal.id);
     }
 
-    // Focus the terminal
     setFocused(terminal.id);
 
-    // Scroll terminal into view with retries
-    // Use requestAnimationFrame to wait for DOM updates after state changes
     const scrollToTerminal = () => {
       const terminalEl = document.querySelector(`[data-terminal-id="${terminal.id}"]`);
       if (terminalEl) {
         terminalEl.scrollIntoView({ behavior: "smooth", block: "nearest" });
       } else {
-        // Retry once more if element not found (may still be mounting)
         requestAnimationFrame(() => {
           const retryEl = document.querySelector(`[data-terminal-id="${terminal.id}"]`);
           if (retryEl) {
@@ -63,8 +42,6 @@ export function WaitingAgentChip({ terminal }: WaitingAgentChipProps) {
     requestAnimationFrame(scrollToTerminal);
   }, [terminal.id, setFocused, moveTerminalToGrid, getTerminal, isInTrash]);
 
-  // Prefer issue number display, fall back to terminal title
-  // Match various patterns: "issue-123", "issue/123", "issues-123", "123-fix-login"
   const issueMatch = terminal.worktreeId?.match(/(?:^|[\W])(?:issue|issues)[-_/]?(\d+)|^(\d+)-/i);
   const issueNumber = issueMatch ? parseInt(issueMatch[1] || issueMatch[2], 10) : null;
 

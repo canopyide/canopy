@@ -1,11 +1,3 @@
-/**
- * Project Settings Dialog Component
- *
- * Modal UI for editing project-level settings including run commands.
- * Shows auto-detected commands from project configuration files (package.json, Makefile, etc.)
- * with the ability to promote them to saved commands.
- */
-
 import { useState, useEffect } from "react";
 import { Plus, Trash2, X, Sparkles, RefreshCw } from "lucide-react";
 import { Button } from "@/components/ui/button";
@@ -33,7 +25,6 @@ export function ProjectSettingsDialog({ projectId, isOpen, onClose }: ProjectSet
   const [promotingIds, setPromotingIds] = useState<Set<string>>(new Set());
   const [isRegenerating, setIsRegenerating] = useState(false);
 
-  // Sync local state when settings load OR when dialog opens (reset unsaved changes)
   useEffect(() => {
     if (isOpen && settings?.runCommands) {
       setCommands([...settings.runCommands]);
@@ -60,7 +51,7 @@ export function ProjectSettingsDialog({ projectId, isOpen, onClose }: ProjectSet
     try {
       await saveSettings({
         ...settings,
-        runCommands: commands.filter((c) => c.name && c.command), // Only save valid commands
+        runCommands: commands.filter((c) => c.name && c.command),
       });
       onClose();
     } catch (error) {
@@ -97,7 +88,6 @@ export function ProjectSettingsDialog({ projectId, isOpen, onClose }: ProjectSet
         aria-modal="true"
         aria-labelledby="project-settings-title"
       >
-        {/* Header */}
         <div className="flex items-center justify-between p-4 border-b border-canopy-border">
           <h2 id="project-settings-title" className="text-lg font-semibold text-canopy-text">
             Project Settings
@@ -111,7 +101,6 @@ export function ProjectSettingsDialog({ projectId, isOpen, onClose }: ProjectSet
           </button>
         </div>
 
-        {/* Content */}
         <div className="p-4 overflow-y-auto flex-1">
           {isLoading && (
             <div className="text-sm text-gray-400 text-center py-8">Loading settings...</div>
@@ -128,7 +117,6 @@ export function ProjectSettingsDialog({ projectId, isOpen, onClose }: ProjectSet
           )}
           {!isLoading && !error && (
             <>
-              {/* Project Identity Section */}
               {currentProject && (
                 <div className="mb-6 pb-6 border-b border-canopy-border">
                   <h3 className="text-sm font-semibold text-canopy-text/80 mb-2">
@@ -139,7 +127,6 @@ export function ProjectSettingsDialog({ projectId, isOpen, onClose }: ProjectSet
                   </p>
 
                   <div className="space-y-4">
-                    {/* Current Identity Display */}
                     <div className="flex items-center gap-3 p-3 rounded-md bg-canopy-bg border border-canopy-border">
                       <div
                         className="flex h-12 w-12 items-center justify-center rounded-md border shrink-0"
@@ -195,7 +182,6 @@ export function ProjectSettingsDialog({ projectId, isOpen, onClose }: ProjectSet
                 </div>
               )}
 
-              {/* Saved Commands Section */}
               <div className="mb-6">
                 <h3 className="text-sm font-semibold text-canopy-text/80 mb-2">Run Commands</h3>
                 <p className="text-xs text-gray-500 mb-4">
@@ -252,7 +238,6 @@ export function ProjectSettingsDialog({ projectId, isOpen, onClose }: ProjectSet
                 </Button>
               </div>
 
-              {/* Suggested Commands Section */}
               {detectedRunners.length > 0 && (
                 <div className="mb-4">
                   <h3 className="text-sm font-semibold text-canopy-text/80 mb-2 flex items-center gap-2">
@@ -295,7 +280,6 @@ export function ProjectSettingsDialog({ projectId, isOpen, onClose }: ProjectSet
                             setSaveError(null);
                             try {
                               await promoteToSaved(cmd);
-                              // Command will be removed from detectedRunners by the hook
                             } catch (err) {
                               const errorMsg =
                                 err instanceof Error ? err.message : "Failed to add command";
@@ -325,7 +309,6 @@ export function ProjectSettingsDialog({ projectId, isOpen, onClose }: ProjectSet
           )}
         </div>
 
-        {/* Footer */}
         <div className="flex justify-end gap-2 p-4 border-t border-canopy-border">
           <Button
             onClick={onClose}

@@ -1,10 +1,3 @@
-/**
- * HistoryPanel Component
- *
- * Main history panel that displays past agent sessions with filtering,
- * search, and navigation to session details.
- */
-
 import { useState, useCallback, useMemo } from "react";
 import { cn } from "@/lib/utils";
 import { useSessionHistory, type SessionFilters } from "@/hooks";
@@ -141,7 +134,6 @@ interface FilterBarProps {
 function FilterBar({ filters, onFiltersChange, worktreeOptions }: FilterBarProps) {
   return (
     <div className="flex flex-wrap gap-2 p-3 border-b border-gray-700 bg-gray-800/30">
-      {/* Agent type filter */}
       <select
         value={filters.agentType || "all"}
         onChange={(e) =>
@@ -155,7 +147,6 @@ function FilterBar({ filters, onFiltersChange, worktreeOptions }: FilterBarProps
         <option value="custom">Custom</option>
       </select>
 
-      {/* Status filter */}
       <select
         value={filters.status || "all"}
         onChange={(e) => onFiltersChange({ status: e.target.value as SessionFilters["status"] })}
@@ -166,7 +157,6 @@ function FilterBar({ filters, onFiltersChange, worktreeOptions }: FilterBarProps
         <option value="failed">Failed</option>
       </select>
 
-      {/* Worktree filter */}
       {worktreeOptions.length > 0 && (
         <select
           value={filters.worktreeId || ""}
@@ -182,7 +172,6 @@ function FilterBar({ filters, onFiltersChange, worktreeOptions }: FilterBarProps
         </select>
       )}
 
-      {/* Search */}
       <input
         type="text"
         placeholder="Search..."
@@ -220,7 +209,6 @@ export function HistoryPanel({ className }: HistoryPanelProps) {
     sessionId: null,
   });
 
-  // Build worktree options for filter dropdown
   const worktreeOptions = useMemo(() => {
     return worktrees.map((wt) => ({
       id: wt.id,
@@ -228,10 +216,8 @@ export function HistoryPanel({ className }: HistoryPanelProps) {
     }));
   }, [worktrees]);
 
-  // Handle resume session - spawn new agent with transcript as context
   const handleResume = useCallback(
     async (session: AgentSession) => {
-      // Find the worktree to use (prefer session's worktree, fall back to first available)
       const worktree = session.worktreeId
         ? worktrees.find((wt) => wt.id === session.worktreeId)
         : worktrees[0];
@@ -241,7 +227,6 @@ export function HistoryPanel({ className }: HistoryPanelProps) {
         return;
       }
 
-      // Generate markdown summary of the session for context
       const contextLines = [
         "# Previous Session Context",
         "",
@@ -254,7 +239,6 @@ export function HistoryPanel({ className }: HistoryPanelProps) {
         "",
       ];
 
-      // Add transcript entries (limit to last 50 for context size)
       const recentTranscript = session.transcript.slice(-50);
       for (const entry of recentTranscript) {
         contextLines.push(`[${entry.type}] ${entry.content}`);
@@ -273,7 +257,6 @@ export function HistoryPanel({ className }: HistoryPanelProps) {
       // Context text is generated for potential future use (e.g., injecting into terminal)
       void contextLines.join("\n");
 
-      // Spawn new agent terminal
       // Note: AgentSession.agentType is "claude" | "gemini" | "custom", not "shell"
       const options: AddTerminalOptions = {
         type: session.agentType,
@@ -289,7 +272,6 @@ export function HistoryPanel({ className }: HistoryPanelProps) {
         // Wait a moment for terminal to initialize, then inject context
         setTimeout(() => {
           if (terminalId) {
-            // Write the context as a comment/reference (the user will see it)
             // Note: This pastes the context as text which the user can reference
             terminalClient.write(terminalId, `# Resuming from previous session\n`);
             terminalClient.write(terminalId, `# Session ID: ${session.id}\n`);
@@ -306,12 +288,10 @@ export function HistoryPanel({ className }: HistoryPanelProps) {
     [worktrees, addTerminal]
   );
 
-  // Handle export session
   const handleExport = useCallback(
     async (sessionId: string, format: "json" | "markdown") => {
       const content = await exportSession(sessionId, format);
       if (content) {
-        // Copy to clipboard
         try {
           await navigator.clipboard.writeText(content);
           console.log(`Session exported to clipboard as ${format}`);
@@ -323,7 +303,6 @@ export function HistoryPanel({ className }: HistoryPanelProps) {
     [exportSession]
   );
 
-  // Handle delete confirmation
   const handleDeleteClick = useCallback((sessionId: string) => {
     setConfirmDelete({ isOpen: true, sessionId });
   }, []);
@@ -359,7 +338,6 @@ export function HistoryPanel({ className }: HistoryPanelProps) {
 
   return (
     <div className={cn("flex flex-col h-full", className)}>
-      {/* Header */}
       <div className="flex items-center justify-between px-4 py-2 border-b border-gray-700">
         <h2 className="section-header">History</h2>
         <button
@@ -375,12 +353,9 @@ export function HistoryPanel({ className }: HistoryPanelProps) {
         </button>
       </div>
 
-      {/* Filters */}
       <FilterBar filters={filters} onFiltersChange={setFilters} worktreeOptions={worktreeOptions} />
 
-      {/* Content */}
       <div className="flex-1 flex overflow-hidden min-h-0">
-        {/* Session list */}
         <div
           className={cn(
             "overflow-y-auto p-3 space-y-2",
@@ -404,7 +379,6 @@ export function HistoryPanel({ className }: HistoryPanelProps) {
           )}
         </div>
 
-        {/* Session detail */}
         {selectedSession && (
           <div className="flex-1 overflow-hidden">
             <SessionViewer
@@ -418,7 +392,6 @@ export function HistoryPanel({ className }: HistoryPanelProps) {
         )}
       </div>
 
-      {/* Delete confirmation dialog */}
       <ConfirmDialog
         isOpen={confirmDelete.isOpen}
         title="Delete Session"

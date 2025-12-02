@@ -1,21 +1,16 @@
-/** Interfaces with CopyTree SDK to generate codebase context for AI agents */
-
 import { copy, ConfigManager } from "copytree";
 import type { CopyResult, CopyOptions as SdkCopyOptions, ProgressEvent } from "copytree";
 import * as path from "path";
 import * as fs from "fs/promises";
 import type { CopyTreeOptions, CopyTreeResult, CopyTreeProgress } from "../types/index.js";
 
-// Re-export types for convenience
 export type { CopyTreeOptions, CopyTreeResult, CopyTreeProgress };
 
-/** Progress callback signature for context generation */
 export type ProgressCallback = (progress: CopyTreeProgress) => void;
 
 class CopyTreeService {
   private activeOperations = new Map<string, AbortController>();
 
-  /** Generate context using CopyTree SDK */
   async generate(
     rootPath: string,
     options: CopyTreeOptions = {},
@@ -44,14 +39,11 @@ class CopyTreeService {
         };
       }
 
-      // Setup cancellation
       const controller = new AbortController();
       this.activeOperations.set(opId, controller);
 
-      // Isolated config
       const config = await ConfigManager.create();
 
-      // Map options to SDK
       const sdkOptions: SdkCopyOptions = {
         config: config,
         signal: controller.signal,
@@ -59,7 +51,6 @@ class CopyTreeService {
         clipboard: false,
         format: options.format || "xml",
 
-        // Filter options
         filter: options.includePaths || options.filter || undefined,
         exclude: options.exclude || undefined,
         always: options.always,
@@ -110,7 +101,6 @@ class CopyTreeService {
     }
   }
 
-  /** Cancel all operations */
   cancelAll(): void {
     for (const controller of this.activeOperations.values()) {
       controller.abort();
@@ -118,7 +108,6 @@ class CopyTreeService {
     this.activeOperations.clear();
   }
 
-  /** Cancel specific operation by ID */
   cancel(opId: string): boolean {
     const controller = this.activeOperations.get(opId);
     if (controller) {
@@ -129,7 +118,6 @@ class CopyTreeService {
     return false;
   }
 
-  /** Handle SDK errors */
   private handleError(error: unknown): CopyTreeResult {
     if (error instanceof Error && error.name === "AbortError") {
       return {
@@ -173,11 +161,9 @@ class CopyTreeService {
     };
   }
 
-  /** Check availability (always true for bundled SDK) */
   async isAvailable(): Promise<boolean> {
     return true;
   }
 }
 
-/** Singleton instance of CopyTreeService */
 export const copyTreeService = new CopyTreeService();

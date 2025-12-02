@@ -1,10 +1,3 @@
-/**
- * Recipe Store
- *
- * Zustand store for managing terminal recipes - saved configurations
- * that spawn multiple terminals with one click.
- */
-
 import { create, type StateCreator } from "zustand";
 import type { TerminalRecipe, RecipeTerminal } from "@/types";
 import { useTerminalStore } from "./terminalStore";
@@ -14,7 +7,6 @@ interface RecipeState {
   recipes: TerminalRecipe[];
   isLoading: boolean;
 
-  // CRUD operations
   loadRecipes: () => Promise<void>;
   createRecipe: (
     name: string,
@@ -27,14 +19,11 @@ interface RecipeState {
   ) => Promise<void>;
   deleteRecipe: (id: string) => Promise<void>;
 
-  // Query operations
   getRecipesForWorktree: (worktreeId: string | undefined) => TerminalRecipe[];
   getRecipeById: (id: string) => TerminalRecipe | undefined;
 
-  // Recipe execution
   runRecipe: (recipeId: string, worktreePath: string, worktreeId?: string) => Promise<void>;
 
-  // Import/Export
   exportRecipe: (id: string) => string | null;
   importRecipe: (json: string) => Promise<void>;
 }
@@ -57,7 +46,6 @@ const createRecipeStore: StateCreator<RecipeState> = (set, get) => ({
   },
 
   createRecipe: async (name, worktreeId, terminals) => {
-    // Validate terminal count
     if (terminals.length === 0) {
       throw new Error("Recipe must contain at least one terminal");
     }
@@ -76,7 +64,6 @@ const createRecipeStore: StateCreator<RecipeState> = (set, get) => ({
     const newRecipes = [...get().recipes, newRecipe];
     set({ recipes: newRecipes });
 
-    // Persist to electron-store
     try {
       await appClient.setState({
         recipes: newRecipes.map((r) => ({
@@ -100,7 +87,6 @@ const createRecipeStore: StateCreator<RecipeState> = (set, get) => ({
       throw new Error(`Recipe ${id} not found`);
     }
 
-    // Validate terminal count if terminals are being updated
     if (updates.terminals) {
       if (updates.terminals.length === 0) {
         throw new Error("Recipe must contain at least one terminal");
@@ -116,7 +102,6 @@ const createRecipeStore: StateCreator<RecipeState> = (set, get) => ({
 
     set({ recipes: newRecipes });
 
-    // Persist to electron-store
     try {
       await appClient.setState({
         recipes: newRecipes.map((r) => ({
@@ -137,7 +122,6 @@ const createRecipeStore: StateCreator<RecipeState> = (set, get) => ({
     const newRecipes = get().recipes.filter((r) => r.id !== id);
     set({ recipes: newRecipes });
 
-    // Persist to electron-store
     try {
       await appClient.setState({
         recipes: newRecipes.map((r) => ({
@@ -156,7 +140,6 @@ const createRecipeStore: StateCreator<RecipeState> = (set, get) => ({
 
   getRecipesForWorktree: (worktreeId) => {
     const recipes = get().recipes;
-    // Return recipes for this worktree + global recipes (no worktreeId)
     return recipes.filter((r) => r.worktreeId === worktreeId || r.worktreeId === undefined);
   },
 
@@ -172,7 +155,6 @@ const createRecipeStore: StateCreator<RecipeState> = (set, get) => ({
 
     const terminalStore = useTerminalStore.getState();
 
-    // Spawn terminals sequentially to avoid overwhelming PTY
     for (const terminal of recipe.terminals) {
       try {
         await terminalStore.addTerminal({
@@ -180,13 +162,10 @@ const createRecipeStore: StateCreator<RecipeState> = (set, get) => ({
           title: terminal.title,
           cwd: worktreePath,
           command: terminal.command,
-          worktreeId: worktreeId, // Use runtime worktree context, not stored recipe worktreeId
-          // Note: env is intentionally omitted from AddTerminalOptions interface
-          // Terminal environment variables would need to be added to the interface first
+          worktreeId: worktreeId,
         });
       } catch (error) {
         console.error(`Failed to spawn terminal for recipe ${recipeId}:`, error);
-        // Continue with remaining terminals
       }
     }
   },
@@ -207,12 +186,10 @@ const createRecipeStore: StateCreator<RecipeState> = (set, get) => ({
       throw new Error("Invalid JSON format");
     }
 
-    // Validate required fields
     if (!recipe.name || !recipe.terminals || !Array.isArray(recipe.terminals)) {
       throw new Error("Invalid recipe format: missing required fields");
     }
 
-    // Validate terminal count
     if (recipe.terminals.length === 0) {
       throw new Error("Recipe must contain at least one terminal");
     }
@@ -220,19 +197,15 @@ const createRecipeStore: StateCreator<RecipeState> = (set, get) => ({
       throw new Error(`Recipe cannot exceed ${MAX_TERMINALS_PER_RECIPE} terminals`);
     }
 
-    // Validate and sanitize terminals
     const ALLOWED_TYPES = ["shell", "claude", "gemini", "custom"];
     const sanitizedTerminals = recipe.terminals
       .filter((terminal) => {
-        // Validate type
         if (!ALLOWED_TYPES.includes(terminal.type)) return false;
-        // Validate command (if present): must be string, no newlines/control chars
         if (terminal.command !== undefined) {
           if (typeof terminal.command !== "string") return false;
           // eslint-disable-next-line no-control-regex
           if (/[\r\n\x00-\x1F]/.test(terminal.command)) return false;
         }
-        // Validate env (if present): must be object with string values
         if (terminal.env !== undefined) {
           if (
             typeof terminal.env !== "object" ||
@@ -257,7 +230,6 @@ const createRecipeStore: StateCreator<RecipeState> = (set, get) => ({
       throw new Error("No valid terminals found in recipe");
     }
 
-    // Generate new ID to avoid conflicts and strip prototype pollution keys
     const importedRecipe: TerminalRecipe = {
       id: `recipe-${Date.now()}-${Math.random().toString(36).slice(2, 9)}`,
       name: String(recipe.name),
@@ -269,7 +241,6 @@ const createRecipeStore: StateCreator<RecipeState> = (set, get) => ({
     const newRecipes = [...get().recipes, importedRecipe];
     set({ recipes: newRecipes });
 
-    // Persist to electron-store
     try {
       await appClient.setState({
         recipes: newRecipes.map((r) => ({

@@ -1,10 +1,3 @@
-/**
- * TrashBinItem Component
- *
- * A single item in the TrashBin popover showing a trashed terminal
- * with restore and delete actions. Shows a countdown timer.
- */
-
 import { useState, useEffect, useCallback } from "react";
 import { RotateCcw, X, Terminal, Command } from "lucide-react";
 import {
@@ -26,20 +19,15 @@ interface TrashBinItemProps {
   trashedInfo: TrashedTerminal;
 }
 
-/**
- * Get terminal icon based on type
- */
 function getTerminalIcon(type: TerminalType, className?: string) {
   const props = { className: cn("w-3.5 h-3.5", className), "aria-hidden": "true" as const };
   switch (type) {
-    // AI Agents
     case "claude":
       return <ClaudeIcon {...props} />;
     case "gemini":
       return <GeminiIcon {...props} />;
     case "codex":
       return <CodexIcon {...props} />;
-    // Package Managers
     case "npm":
       return <NpmIcon {...props} />;
     case "yarn":
@@ -48,7 +36,6 @@ function getTerminalIcon(type: TerminalType, className?: string) {
       return <PnpmIcon {...props} />;
     case "bun":
       return <BunIcon {...props} />;
-    // Generic
     case "custom":
       return <Command {...props} />;
     case "shell":
@@ -61,12 +48,10 @@ export function TrashBinItem({ terminal, trashedInfo }: TrashBinItemProps) {
   const restoreTerminal = useTerminalStore((s) => s.restoreTerminal);
   const removeTerminal = useTerminalStore((s) => s.removeTerminal);
 
-  // Calculate remaining time
   const [timeRemaining, setTimeRemaining] = useState(() => {
     return Math.max(0, trashedInfo.expiresAt - Date.now());
   });
 
-  // Update countdown every second
   useEffect(() => {
     const interval = setInterval(() => {
       const remaining = Math.max(0, trashedInfo.expiresAt - Date.now());
@@ -94,10 +79,8 @@ export function TrashBinItem({ terminal, trashedInfo }: TrashBinItemProps) {
 
   return (
     <div className="flex items-center gap-2 p-2 rounded bg-white/5 hover:bg-white/10 transition-colors group">
-      {/* Icon */}
       <div className="shrink-0 text-white/60">{getTerminalIcon(terminal.type)}</div>
 
-      {/* Content */}
       <div className="flex-1 min-w-0">
         <div className="text-xs font-medium text-white/90 truncate">{terminalName}</div>
         <div className="text-[10px] text-white/40" aria-live="polite">
@@ -105,7 +88,6 @@ export function TrashBinItem({ terminal, trashedInfo }: TrashBinItemProps) {
         </div>
       </div>
 
-      {/* Actions - always visible for quick access */}
       <div className="flex gap-1">
         <button
           onClick={handleRestore}

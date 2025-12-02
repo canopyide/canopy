@@ -3,12 +3,8 @@ import { terminalInstanceService } from "@/services/TerminalInstanceService";
 import { CANOPY_TERMINAL_THEME } from "@/components/Terminal/XtermAdapter";
 
 /**
- * Sync global terminal configuration (theme, font settings) to all active terminals.
- * Since terminals are now owned by a singleton service outside React, they don't
- * automatically get prop updates when settings change. This hook bridges that gap.
- *
- * NOTE: Replace the placeholders below with real values from your settings store
- * when theme/font configuration becomes user-adjustable.
+ * Syncs global terminal config to singleton service.
+ * Terminals live outside React, so they don't receive prop updates automatically.
  */
 export function useTerminalConfig() {
   // TODO: Wire these to user settings/theme once available

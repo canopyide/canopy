@@ -1,30 +1,13 @@
-/**
- * Logs Store
- *
- * Zustand store for managing logs panel state, including
- * log entries, filters, and panel visibility.
- */
-
 import { create, type StateCreator } from "zustand";
 import type { LogEntry, LogFilterOptions } from "@/types";
 
 interface LogsState {
-  // Log entries
   logs: LogEntry[];
-
-  // Panel visibility
   isOpen: boolean;
-
-  // Filters
   filters: LogFilterOptions;
-
-  // Auto-scroll behavior
   autoScroll: boolean;
-
-  // Expanded log entries
   expandedIds: Set<string>;
 
-  // Actions
   addLog: (entry: LogEntry) => void;
   setLogs: (logs: LogEntry[]) => void;
   clearLogs: () => void;
@@ -35,7 +18,6 @@ interface LogsState {
   setAutoScroll: (autoScroll: boolean) => void;
   toggleExpanded: (id: string) => void;
   collapseAll: () => void;
-  /** Reset store to initial state for project switching */
   reset: () => void;
 }
 
@@ -51,7 +33,6 @@ const createLogsStore: StateCreator<LogsState> = (set) => ({
   addLog: (entry) =>
     set((state) => {
       const newLogs = [...state.logs, entry];
-      // Trim if over limit
       if (newLogs.length > MAX_LOGS) {
         return { logs: newLogs.slice(-MAX_LOGS) };
       }
@@ -100,23 +81,17 @@ const createLogsStore: StateCreator<LogsState> = (set) => ({
 
 export const useLogsStore = create<LogsState>()(createLogsStore);
 
-/**
- * Helper to filter logs based on current filters
- */
 export function filterLogs(logs: LogEntry[], filters: LogFilterOptions): LogEntry[] {
   let filtered = logs;
 
-  // Filter by levels
   if (filters.levels && filters.levels.length > 0) {
     filtered = filtered.filter((log) => filters.levels!.includes(log.level));
   }
 
-  // Filter by sources
   if (filters.sources && filters.sources.length > 0) {
     filtered = filtered.filter((log) => log.source && filters.sources!.includes(log.source));
   }
 
-  // Filter by search text
   if (filters.search) {
     const searchLower = filters.search.toLowerCase();
     filtered = filtered.filter(
@@ -127,7 +102,6 @@ export function filterLogs(logs: LogEntry[], filters: LogFilterOptions): LogEntr
     );
   }
 
-  // Filter by time range
   if (filters.startTime !== undefined) {
     filtered = filtered.filter((log) => log.timestamp >= filters.startTime!);
   }

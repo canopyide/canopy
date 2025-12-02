@@ -1,14 +1,10 @@
-/** Detects and extracts artifacts (code blocks, diffs) from terminal output */
-
 import { createHash } from "crypto";
 import type { Artifact } from "../types/index.js";
 
-/** Extract artifacts from text buffer (deduplicated against previous) */
 export function extractArtifacts(text: string, previousArtifacts: Artifact[] = []): Artifact[] {
   const artifacts: Artifact[] = [];
   const previousIds = new Set(previousArtifacts.map((a) => a.id));
 
-  // Extract code blocks
   const codeBlocks = extractCodeBlocks(text);
   for (const block of codeBlocks) {
     const id = generateArtifactId(block.content);
@@ -25,7 +21,6 @@ export function extractArtifacts(text: string, previousArtifacts: Artifact[] = [
     }
   }
 
-  // Extract diffs/patches
   const patches = extractPatches(text);
   for (const patch of patches) {
     const id = generateArtifactId(patch);
@@ -49,7 +44,6 @@ interface CodeBlock {
   content: string;
 }
 
-/** Extract fenced code blocks */
 function extractCodeBlocks(text: string): CodeBlock[] {
   const blocks: CodeBlock[] = [];
   const regex = /```(\w+)?\n([\s\S]*?)```/g;
@@ -66,7 +60,6 @@ function extractCodeBlocks(text: string): CodeBlock[] {
   return blocks;
 }
 
-/** Extract diff/patch blocks (unified diff format) */
 function extractPatches(text: string): string[] {
   const patches: string[] = [];
   const lines = text.split("\n");
@@ -74,7 +67,6 @@ function extractPatches(text: string): string[] {
   let inPatch = false;
 
   for (const line of lines) {
-    // Start of patch
     if (line.startsWith("diff ") || line.startsWith("---")) {
       if (inPatch && currentPatch.length > 0) {
         patches.push(currentPatch.join("\n"));
@@ -91,10 +83,8 @@ function extractPatches(text: string): string[] {
       ) {
         currentPatch.push(line);
       } else if (line.trim() === "") {
-        // Allow blank lines
         currentPatch.push(line);
       } else {
-        // End of patch
         if (currentPatch.length > 3) {
           patches.push(currentPatch.join("\n"));
         }
@@ -111,13 +101,11 @@ function extractPatches(text: string): string[] {
   return patches;
 }
 
-/** Extract filename from patch/diff headers */
 function extractPatchFilename(patch: string): string | undefined {
   const match = patch.match(/^\+\+\+ b\/(.+)$/m) || patch.match(/^---\s*a\/(.+)$/m);
   return match ? match[1] : undefined;
 }
 
-/** Suggest filename from language and content (class/function names) */
 function suggestFilename(language: string, content: string): string | undefined {
   const extensionMap: Record<string, string> = {
     typescript: ".ts",
@@ -167,12 +155,10 @@ function suggestFilename(language: string, content: string): string | undefined 
   return name + extension;
 }
 
-/** Generate stable SHA-256 hash ID for content */
 function generateArtifactId(content: string): string {
   return createHash("sha256").update(content).digest("hex").substring(0, 16);
 }
 
-/** Strip ANSI escape codes */
 export function stripAnsiCodes(text: string): string {
   // eslint-disable-next-line no-control-regex
   return text.replace(/\x1b\[[0-9;]*[a-zA-Z]/g, "");

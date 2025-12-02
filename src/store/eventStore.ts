@@ -1,33 +1,15 @@
-/**
- * Event Inspector Store
- *
- * Zustand store for managing event inspector state, including
- * events, filters, and panel visibility.
- */
-
 import { create, type StateCreator } from "zustand";
 import type { EventRecord, EventFilterOptions, EventCategory, EventPayload } from "@shared/types";
 
-// Re-export types for consumers
 export type { EventRecord, EventFilterOptions, EventCategory, EventPayload };
 
 interface EventsState {
-  // Event records
   events: EventRecord[];
-
-  // Panel visibility
   isOpen: boolean;
-
-  // Filters
   filters: EventFilterOptions;
-
-  // Selected event ID (for detail view)
   selectedEventId: string | null;
-
-  // Auto-scroll behavior
   autoScroll: boolean;
 
-  // Actions
   addEvent: (event: EventRecord) => void;
   addEvents: (events: EventRecord[]) => void;
   setEvents: (events: EventRecord[]) => void;
@@ -38,10 +20,8 @@ interface EventsState {
   clearFilters: () => void;
   setSelectedEvent: (id: string | null) => void;
   setAutoScroll: (autoScroll: boolean) => void;
-  /** Reset store to initial state for project switching */
   reset: () => void;
 
-  // Computed/filtered events
   getFilteredEvents: () => EventRecord[];
 }
 
@@ -56,13 +36,11 @@ const createEventsStore: StateCreator<EventsState> = (set, get) => ({
 
   addEvent: (event) =>
     set((state) => {
-      // Dedupe by ID
       if (state.events.some((e) => e.id === event.id)) {
         return state;
       }
 
       const newEvents = [...state.events, event];
-      // Trim if over limit
       if (newEvents.length > MAX_EVENTS) {
         return { events: newEvents.slice(-MAX_EVENTS) };
       }
@@ -71,12 +49,10 @@ const createEventsStore: StateCreator<EventsState> = (set, get) => ({
 
   addEvents: (events) =>
     set((state) => {
-      // Merge and dedupe by ID
       const existingIds = new Set(state.events.map((e) => e.id));
       const newEvents = events.filter((e) => !existingIds.has(e.id));
       const merged = [...state.events, ...newEvents];
 
-      // Trim if over limit
       if (merged.length > MAX_EVENTS) {
         return { events: merged.slice(-MAX_EVENTS) };
       }
@@ -117,22 +93,18 @@ const createEventsStore: StateCreator<EventsState> = (set, get) => ({
 
     const { filters } = state;
 
-    // Filter by event types
     if (filters.types && filters.types.length > 0) {
       filtered = filtered.filter((event) => filters.types!.includes(event.type));
     }
 
-    // Filter by single event category
     if (filters.category) {
       filtered = filtered.filter((event) => event.category === filters.category);
     }
 
-    // Filter by multiple event categories
     if (filters.categories && filters.categories.length > 0) {
       filtered = filtered.filter((event) => filters.categories!.includes(event.category));
     }
 
-    // Filter by timestamp range
     if (filters.after !== undefined) {
       filtered = filtered.filter((event) => event.timestamp >= filters.after!);
     }
@@ -140,7 +112,6 @@ const createEventsStore: StateCreator<EventsState> = (set, get) => ({
       filtered = filtered.filter((event) => event.timestamp <= filters.before!);
     }
 
-    // Filter by worktree ID
     if (filters.worktreeId) {
       filtered = filtered.filter((event) => {
         const payload = event.payload;
@@ -148,7 +119,6 @@ const createEventsStore: StateCreator<EventsState> = (set, get) => ({
       });
     }
 
-    // Filter by agent ID
     if (filters.agentId) {
       filtered = filtered.filter((event) => {
         const payload = event.payload;
@@ -156,7 +126,6 @@ const createEventsStore: StateCreator<EventsState> = (set, get) => ({
       });
     }
 
-    // Filter by task ID
     if (filters.taskId) {
       filtered = filtered.filter((event) => {
         const payload = event.payload;
@@ -164,7 +133,6 @@ const createEventsStore: StateCreator<EventsState> = (set, get) => ({
       });
     }
 
-    // Filter by trace ID (normalized for case-insensitive matching)
     if (filters.traceId) {
       const normalizedFilter = filters.traceId.toLowerCase();
       filtered = filtered.filter((event) => {
@@ -173,15 +141,12 @@ const createEventsStore: StateCreator<EventsState> = (set, get) => ({
       });
     }
 
-    // Filter by text search
     if (filters.search) {
       const searchLower = filters.search.toLowerCase();
       filtered = filtered.filter((event) => {
-        // Search in event type
         if (event.type.toLowerCase().includes(searchLower)) {
           return true;
         }
-        // Search in stringified payload
         try {
           const payloadStr = JSON.stringify(event.payload).toLowerCase();
           return payloadStr.includes(searchLower);

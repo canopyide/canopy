@@ -1,23 +1,10 @@
 /**
- * Preload Script
- *
- * Exposes a typed, namespaced API to the renderer process via contextBridge.
- * This is the secure bridge between the main process (Node.js) and renderer (browser).
- *
- * Security principles:
- * - Never expose ipcRenderer directly
- * - All APIs are explicitly defined and typed
- * - Listeners provide cleanup functions to prevent memory leaks
- *
- * NOTE: This file is built separately with NodeNext/ESM settings for Electron's preload.
- * Types are imported from the shared module but channel names are inlined to avoid
- * module format conflicts with the ESM main process.
+ * Built separately with NodeNext/ESM settings for Electron's preload.
+ * Channel names are inlined to avoid module format conflicts with ESM main process.
  */
 
 import { contextBridge, ipcRenderer } from "electron";
 
-// Import types from shared module (type-only to avoid bundling shared runtime)
-// Note: Many types are now inferred from IpcInvokeMap/IpcEventMap via typed helpers
 import type {
   WorktreeState,
   DevServerState,
@@ -55,22 +42,8 @@ import type {
 } from "../shared/types/ipc.js";
 import type { TerminalActivityPayload } from "../shared/types/terminal.js";
 
-// Re-export ElectronAPI for type declarations
 export type { ElectronAPI };
 
-// Type-safe IPC helpers
-
-/**
- * Type-safe wrapper for ipcRenderer.invoke
- *
- * Provides compile-time type checking for IPC channel arguments and return types.
- * Use this helper to ensure type safety when calling main process handlers.
- *
- * @example
- * // TypeScript will ensure correct arguments and return type
- * const worktrees = await typedInvoke("worktree:get-all");
- * const state = await typedInvoke("devserver:get-state", worktreeId);
- */
 function _typedInvoke<K extends Extract<keyof IpcInvokeMap, string>>(
   channel: K,
   ...args: IpcInvokeMap[K]["args"]
@@ -78,19 +51,6 @@ function _typedInvoke<K extends Extract<keyof IpcInvokeMap, string>>(
   return ipcRenderer.invoke(channel, ...args);
 }
 
-/**
- * Type-safe wrapper for ipcRenderer.on with automatic cleanup
- *
- * Provides compile-time type checking for event payloads.
- * Returns a cleanup function to remove the listener.
- *
- * @example
- * const cleanup = typedOn("worktree:update", (state) => {
- *   // state is typed as WorktreeState
- *   console.log(state.path);
- * });
- * // Later: cleanup();
- */
 function _typedOn<K extends Extract<keyof IpcEventMap, string>>(
   channel: K,
   callback: (payload: IpcEventMap[K]) => void
@@ -100,8 +60,7 @@ function _typedOn<K extends Extract<keyof IpcEventMap, string>>(
   return () => ipcRenderer.removeListener(channel, handler);
 }
 
-// Inlined channel constants (must match electron/ipc/channels.ts)
-// These are kept inline to avoid runtime module resolution issues with CommonJS
+// Inlined to avoid runtime module resolution issues with CommonJS
 const CHANNELS = {
   // Worktree channels
   WORKTREE_GET_ALL: "worktree:get-all",
@@ -326,8 +285,7 @@ const api: ElectronAPI = {
 
     kill: (id: string) => _typedInvoke(CHANNELS.TERMINAL_KILL, id),
 
-    // Note: terminal:data uses tuple payload [id, data] which requires special handling
-    // for per-terminal filtering, so we keep manual ipcRenderer.on here
+    // Tuple payload [id, data] requires per-terminal filtering
     onData: (id: string, callback: (data: string) => void) => {
       const handler = (_event: Electron.IpcRendererEvent, terminalId: unknown, data: unknown) => {
         if (typeof terminalId === "string" && typeof data === "string" && terminalId === id) {
@@ -338,7 +296,7 @@ const api: ElectronAPI = {
       return () => ipcRenderer.removeListener(CHANNELS.TERMINAL_DATA, handler);
     },
 
-    // Note: terminal:exit uses tuple payload [id, exitCode] which requires special handling
+    // Tuple payload [id, exitCode] requires special handling
     onExit: (callback: (id: string, exitCode: number) => void) => {
       const handler = (_event: Electron.IpcRendererEvent, id: unknown, exitCode: unknown) => {
         if (typeof id === "string" && typeof exitCode === "number") {

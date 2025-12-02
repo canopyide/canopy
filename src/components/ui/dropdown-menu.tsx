@@ -1,9 +1,3 @@
-/**
- * Dropdown Menu Component
- *
- * Based on Radix UI Dropdown Menu primitive with Canopy styling.
- */
-
 import * as React from "react";
 import * as DropdownMenuPrimitive from "@radix-ui/react-dropdown-menu";
 import { cn } from "@/lib/utils";

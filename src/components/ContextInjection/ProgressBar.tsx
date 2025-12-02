@@ -1,15 +1,7 @@
-/**
- * ProgressBar Component
- *
- * Displays progress information during CopyTree context generation.
- * Shows a progress bar, current stage/message, and optional cancel button.
- */
-
 import { cn } from "@/lib/utils";
 import { Loader2, X } from "lucide-react";
 import type { CopyTreeProgress } from "@/hooks/useContextInjection";
 
-/** Mapping from technical stage names to user-friendly labels */
 const STAGE_LABELS: Record<string, string> = {
   FileDiscoveryStage: "Discovering files",
   FormatterStage: "Formatting",
@@ -19,33 +11,22 @@ const STAGE_LABELS: Record<string, string> = {
   Complete: "Complete",
 };
 
-/**
- * Convert technical stage name to user-friendly label.
- * Falls back to removing "Stage" suffix if not in mapping.
- */
 function formatStageName(stage: string): string {
-  // Check if we have a friendly label for this stage
   if (STAGE_LABELS[stage]) {
     return STAGE_LABELS[stage];
   }
 
-  // Fallback: Remove "Stage" suffix and return
   return stage.replace(/Stage$/, "");
 }
 
 export interface ProgressBarProps {
-  /** Current progress information */
   progress: CopyTreeProgress;
-  /** Called when cancel button is clicked */
   onCancel?: () => void;
-  /** Whether to show in compact mode (inline) */
   compact?: boolean;
-  /** Additional CSS classes */
   className?: string;
 }
 
 export function ProgressBar({ progress, onCancel, compact = false, className }: ProgressBarProps) {
-  // Clamp percentage to 0-100 range to handle edge cases
   const percentage = Math.min(100, Math.max(0, Math.round(progress.progress * 100)));
   const friendlyStageName = formatStageName(progress.stage);
 
@@ -90,13 +71,11 @@ export function ProgressBar({ progress, onCancel, compact = false, className }: 
       aria-valuetext={`${friendlyStageName}: ${progress.message || percentage + "%"}`}
       aria-live="polite"
     >
-      {/* Header with message and percentage */}
       <div className="flex justify-between items-center text-xs">
         <span className="text-canopy-text-muted truncate pr-2">{progress.message}</span>
         <span className="text-canopy-text font-mono shrink-0">{percentage}%</span>
       </div>
 
-      {/* Progress bar */}
       <div className="h-1.5 bg-canopy-sidebar rounded-full overflow-hidden">
         <div
           className="h-full bg-canopy-accent transition-all duration-150 ease-out"
@@ -105,7 +84,6 @@ export function ProgressBar({ progress, onCancel, compact = false, className }: 
         />
       </div>
 
-      {/* Footer with stage info and cancel button */}
       <div className="flex justify-between items-center text-xs">
         <span className="text-canopy-text-muted/70 truncate">
           {friendlyStageName}

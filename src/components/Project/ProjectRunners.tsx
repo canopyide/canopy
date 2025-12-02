@@ -1,11 +1,3 @@
-/**
- * Project Runners Component
- *
- * Displays both saved and auto-detected run commands in a collapsible footer.
- * Auto-detected commands are merged with saved commands and deduplicated.
- * Clicking a button spawns a terminal with that command.
- */
-
 import { useState, useMemo } from "react";
 import {
   Play,
@@ -31,15 +23,9 @@ interface ProjectRunnersProps {
 
 type CommandCategory = "Development" | "Build" | "Quality" | "Maintenance" | "Scripts";
 
-/**
- * Determines the category, icon, and color scheme for a command based on its name.
- * Uses heuristics to infer the purpose of npm scripts.
- * Prioritizes specific keywords (test, lint, build) over generic ones (dev, watch).
- */
+// Prioritizes specific keywords (test, lint, build) over generic ones (dev, watch).
 function getCommandMeta(name: string) {
   const n = name.toLowerCase();
-
-  // Check most specific categories first (test, lint, build) before generic (dev, watch)
   if (n.includes("test") || n.includes("lint") || n.includes("check") || n.includes("format")) {
     return {
       category: "Quality" as CommandCategory,
@@ -86,17 +72,14 @@ export function ProjectRunners({ projectId }: ProjectRunnersProps) {
   const currentProject = useProjectStore((state) => state.currentProject);
   const addTerminal = useTerminalStore((state) => state.addTerminal);
 
-  // State for expand/collapse
   const [isExpanded, setIsExpanded] = useState(true);
 
-  // Merge and group commands by category
   const groupedCommands = useMemo(() => {
     const saved = settings?.runCommands || [];
     const savedCmdStrings = new Set(saved.map((c) => c.command));
     const uniqueDetected = (detectedRunners ?? []).filter((d) => !savedCmdStrings.has(d.command));
     const all = [...saved, ...uniqueDetected];
 
-    // Group by category with type-safe keys
     const groups: Record<CommandCategory, RunCommand[]> = {
       Development: [],
       Build: [],
@@ -110,11 +93,9 @@ export function ProjectRunners({ projectId }: ProjectRunnersProps) {
       groups[meta.category].push(cmd);
     });
 
-    // Remove empty groups and return as array of [category, commands]
     return Object.entries(groups).filter(([, cmds]) => cmds.length > 0);
   }, [settings?.runCommands, detectedRunners]);
 
-  // Don't render if no commands exist at all
   if (isLoading || groupedCommands.length === 0) {
     return null;
   }
@@ -126,7 +107,6 @@ export function ProjectRunners({ projectId }: ProjectRunnersProps) {
     }
 
     try {
-      // Detect terminal type from command (npm, yarn, pnpm, bun, or custom)
       const terminalType = detectTerminalTypeFromCommand(cmd.command);
 
       await addTerminal({
@@ -140,7 +120,6 @@ export function ProjectRunners({ projectId }: ProjectRunnersProps) {
     }
   };
 
-  // Calculate total command count for header
   const totalCommands = groupedCommands.reduce((sum, [, cmds]) => sum + cmds.length, 0);
 
   return (
@@ -169,7 +148,6 @@ export function ProjectRunners({ projectId }: ProjectRunnersProps) {
         >
           {groupedCommands.map(([category, commands]) => (
             <div key={category}>
-              {/* Subtle Section Header - only show if multiple categories */}
               {groupedCommands.length > 1 && (
                 <div className="px-2 mb-1 text-[10px] font-bold text-canopy-text/30 uppercase tracking-wider">
                   {category}
@@ -193,18 +171,15 @@ export function ProjectRunners({ projectId }: ProjectRunnersProps) {
                       )}
                       title={cmd.description || cmd.command}
                     >
-                      {/* Semantic Icon */}
                       <Icon
                         className={cn("h-3.5 w-3.5 shrink-0 transition-colors", meta.color)}
                         aria-hidden="true"
                       />
 
-                      {/* Name & Command Preview */}
                       <div className="flex-1 min-w-0 flex items-baseline justify-between gap-2">
                         <span className="text-xs text-canopy-text/90 font-medium truncate group-hover:text-canopy-text">
                           {cmd.name}
                         </span>
-                        {/* Show actual command on hover */}
                         <span className="text-[10px] text-canopy-text/30 font-mono truncate hidden group-hover:block max-w-[120px]">
                           {cmd.command.startsWith("npm run ")
                             ? cmd.command.slice("npm run ".length)
@@ -212,7 +187,6 @@ export function ProjectRunners({ projectId }: ProjectRunnersProps) {
                         </span>
                       </div>
 
-                      {/* Slide-in Play Action on Hover */}
                       <Play
                         className="h-2.5 w-2.5 text-canopy-text/40 opacity-0 -translate-x-2 group-hover:opacity-100 group-hover:translate-x-0 transition-all duration-200"
                         aria-hidden="true"

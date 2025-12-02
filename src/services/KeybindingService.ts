@@ -1,25 +1,5 @@
-/**
- * KeybindingService - Centralized keybinding management
- *
- * Provides a single source of truth for keyboard shortcuts across the application.
- * Features:
- * - Scope-aware shortcuts (global, terminal, modal)
- * - Priority handling for conflict resolution
- * - Modifier key support (Cmd/Ctrl, Shift, Alt)
- */
-
-/**
- * Scope determines where a shortcut is active:
- * - global: Active anywhere in the app (except when in terminal or modal with higher priority)
- * - terminal: Active when a terminal is focused
- * - modal: Active when a modal dialog is open
- * - worktreeList: Active when worktree list is focused
- */
 export type KeyScope = "global" | "terminal" | "modal" | "worktreeList";
 
-/**
- * Configuration for a single keybinding
- */
 export interface KeybindingConfig {
   actionId: string;
   combo: string; // e.g., "Cmd+T", "Ctrl+Shift+P", "Escape"
@@ -28,14 +8,7 @@ export interface KeybindingConfig {
   description?: string;
 }
 
-/**
- * Default keybindings for the application.
- * Organized by scope and functionality.
- */
 const DEFAULT_KEYBINDINGS: KeybindingConfig[] = [
-  // === Global shortcuts (always available unless overridden by scope) ===
-
-  // Terminal management
   {
     actionId: "terminal.palette",
     combo: "Cmd+T",
@@ -78,8 +51,6 @@ const DEFAULT_KEYBINDINGS: KeybindingConfig[] = [
     priority: 0,
     description: "Move terminal right in grid",
   },
-
-  // Agent launchers
   {
     actionId: "agent.claude",
     combo: "Ctrl+Shift+C",
@@ -94,8 +65,6 @@ const DEFAULT_KEYBINDINGS: KeybindingConfig[] = [
     priority: 0,
     description: "Launch Gemini agent",
   },
-
-  // Context injection
   {
     actionId: "context.inject",
     combo: "Ctrl+Shift+I",
@@ -103,8 +72,6 @@ const DEFAULT_KEYBINDINGS: KeybindingConfig[] = [
     priority: 0,
     description: "Inject context into focused terminal",
   },
-
-  // Panels - unified diagnostics dock
   {
     actionId: "panel.logs",
     combo: "Ctrl+Shift+L",
@@ -133,8 +100,6 @@ const DEFAULT_KEYBINDINGS: KeybindingConfig[] = [
     priority: 0,
     description: "Toggle diagnostics dock",
   },
-
-  // === Modal shortcuts (active in dialogs) ===
   {
     actionId: "modal.close",
     combo: "Escape",
@@ -142,8 +107,6 @@ const DEFAULT_KEYBINDINGS: KeybindingConfig[] = [
     priority: 10,
     description: "Close modal dialog",
   },
-
-  // === Worktree list shortcuts (active when list is focused) ===
   {
     actionId: "worktree.up",
     combo: "ArrowUp",
@@ -223,9 +186,6 @@ const DEFAULT_KEYBINDINGS: KeybindingConfig[] = [
   },
 ];
 
-/**
- * Normalize key names to a consistent format
- */
 function normalizeKey(key: string): string {
   const keyMap: Record<string, string> = {
     " ": "Space",
@@ -247,9 +207,6 @@ function normalizeKey(key: string): string {
   return keyMap[key.toLowerCase()] || key;
 }
 
-/**
- * Parse a combo string into modifiers and key
- */
 function parseCombo(combo: string): {
   cmd: boolean;
   ctrl: boolean;
@@ -269,10 +226,6 @@ function parseCombo(combo: string): {
   };
 }
 
-/**
- * KeybindingService manages keybindings for the application.
- * Uses a singleton pattern for global access.
- */
 class KeybindingService {
   private bindings: Map<string, KeybindingConfig> = new Map();
   private currentScope: KeyScope = "global";
@@ -283,37 +236,22 @@ class KeybindingService {
     });
   }
 
-  /**
-   * Set the current active scope
-   */
   setScope(scope: KeyScope): void {
     this.currentScope = scope;
   }
 
-  /**
-   * Get the current scope
-   */
   getScope(): KeyScope {
     return this.currentScope;
   }
 
-  /**
-   * Get binding configuration for an action
-   */
   getBinding(actionId: string): KeybindingConfig | undefined {
     return this.bindings.get(actionId);
   }
 
-  /**
-   * Get all bindings
-   */
   getAllBindings(): KeybindingConfig[] {
     return Array.from(this.bindings.values());
   }
 
-  /**
-   * Check if a keyboard event matches a combo string
-   */
   matchesEvent(event: KeyboardEvent, combo: string): boolean {
     const parsed = parseCombo(combo);
 
@@ -347,9 +285,6 @@ class KeybindingService {
     return true;
   }
 
-  /**
-   * Check if an action can execute in the current scope
-   */
   canExecute(actionId: string): boolean {
     const binding = this.bindings.get(actionId);
     if (!binding) return false;
@@ -361,10 +296,6 @@ class KeybindingService {
     return binding.scope === this.currentScope;
   }
 
-  /**
-   * Find the action that matches a keyboard event
-   * Returns the highest priority match for the current scope
-   */
   findMatchingAction(event: KeyboardEvent): KeybindingConfig | undefined {
     let bestMatch: KeybindingConfig | undefined;
     let bestPriority = -Infinity;
@@ -382,23 +313,14 @@ class KeybindingService {
     return bestMatch;
   }
 
-  /**
-   * Register a custom binding (override default)
-   */
   registerBinding(config: KeybindingConfig): void {
     this.bindings.set(config.actionId, config);
   }
 
-  /**
-   * Remove a binding
-   */
   removeBinding(actionId: string): void {
     this.bindings.delete(actionId);
   }
 
-  /**
-   * Get human-readable description of a keybinding
-   */
   getDisplayCombo(actionId: string): string {
     const binding = this.bindings.get(actionId);
     if (!binding) return "";
@@ -408,7 +330,6 @@ class KeybindingService {
       navigator.platform &&
       navigator.platform.toUpperCase().indexOf("MAC") >= 0;
 
-    // Replace modifier names for display
     let display = binding.combo;
     if (isMac) {
       display = display.replace(/Cmd\+/gi, "⌘");
@@ -423,8 +344,5 @@ class KeybindingService {
   }
 }
 
-// Export singleton instance
 export const keybindingService = new KeybindingService();
-
-// Export class for testing
 export { KeybindingService };

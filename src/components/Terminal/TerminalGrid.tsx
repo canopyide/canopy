@@ -31,7 +31,7 @@ function LauncherCard({ title, description, shortcut, icon, onClick, primary }: 
     <button
       onClick={onClick}
       className={cn(
-        "group flex items-center text-left p-3 rounded-xl border transition-all duration-200 min-h-[90px]", // Added min-h and flex items-center
+        "group flex items-center text-left p-3 rounded-xl border transition-all duration-200 min-h-[90px]",
         "bg-white/[0.02] hover:bg-white/[0.04]",
         primary
           ? "border-canopy-accent/20 hover:border-canopy-accent/50 hover:shadow-[0_0_15px_rgba(16,185,129,0.1)]"
@@ -44,11 +44,9 @@ function LauncherCard({ title, description, shortcut, icon, onClick, primary }: 
 
       <div className="flex-1">
         <div className="flex w-full items-center justify-between mb-1">
-          {" "}
-          {/* mb-1 to reduce vertical space */}
           <h4
             className={cn(
-              "font-medium text-base", // Increased font size for title
+              "font-medium text-base",
               primary ? "text-canopy-text" : "text-canopy-text/80 group-hover:text-canopy-text"
             )}
           >
@@ -76,7 +74,6 @@ function EmptyState({
   return (
     <div className="flex flex-col items-center justify-center h-full w-full p-8 animate-in fade-in duration-500">
       <div className="max-w-3xl w-full flex flex-col items-center">
-        {/* Brand Hero */}
         <div className="mb-10 flex flex-col items-center text-center">
           <CanopyIcon className="h-16 w-16 text-canopy-accent opacity-50 mb-6" />
           <h3 className="text-2xl font-bold text-canopy-text tracking-tight mb-2">
@@ -87,7 +84,6 @@ function EmptyState({
           </p>
         </div>
 
-        {/* Launcher Grid */}
         <div className="grid grid-cols-1 sm:grid-cols-2 gap-4 w-full max-w-3xl mb-12">
           <LauncherCard
             title="Claude Code"
@@ -134,7 +130,6 @@ export function TerminalGrid({ className, defaultCwd }: TerminalGridProps) {
     }))
   );
 
-  // Get actions separately - these are stable references
   const addTerminal = useTerminalStore((state) => state.addTerminal);
   const trashTerminal = useTerminalStore((state) => state.trashTerminal);
   const updateTitle = useTerminalStore((state) => state.updateTitle);
@@ -143,13 +138,11 @@ export function TerminalGrid({ className, defaultCwd }: TerminalGridProps) {
   const moveTerminalToDock = useTerminalStore((state) => state.moveTerminalToDock);
   const isInTrash = useTerminalStore((state) => state.isInTrash);
 
-  // Filter to only show grid terminals (not docked or trashed ones)
   const gridTerminals = useMemo(
     () => terminals.filter((t) => t.location === "grid" || t.location === undefined),
     [terminals]
   );
 
-  // Drag and drop functionality
   const {
     dragState,
     gridRef,
@@ -161,10 +154,8 @@ export function TerminalGrid({ className, defaultCwd }: TerminalGridProps) {
     getDropIndicator,
   } = useTerminalDragAndDrop();
 
-  // Use context injection hook for progress tracking
   const { inject, cancel, isInjecting, progress } = useContextInjection();
 
-  // File picker modal state
   const [filePickerState, setFilePickerState] = useState<{
     isOpen: boolean;
     worktreeId: string | null;
@@ -175,7 +166,6 @@ export function TerminalGrid({ className, defaultCwd }: TerminalGridProps) {
     terminalId: null,
   });
 
-  // Calculate grid columns based on grid terminal count (not docked ones)
   // Use a dynamic formula that scales with terminal count
   const gridCols = useMemo(() => {
     const count = gridTerminals.length;
@@ -186,7 +176,6 @@ export function TerminalGrid({ className, defaultCwd }: TerminalGridProps) {
     return Math.min(Math.ceil(Math.sqrt(count)), 4); // Cap at 4 columns max
   }, [gridTerminals.length]);
 
-  // Handle launching an agent from empty state
   const handleLaunchAgent = useCallback(
     async (type: "claude" | "gemini" | "codex" | "shell") => {
       try {
@@ -200,7 +189,6 @@ export function TerminalGrid({ className, defaultCwd }: TerminalGridProps) {
     [addTerminal, defaultCwd]
   );
 
-  // Handle context injection - open file picker modal
   const handleInjectContext = useCallback((terminalId: string, worktreeId?: string) => {
     if (!worktreeId) return;
     setFilePickerState({
@@ -210,15 +198,12 @@ export function TerminalGrid({ className, defaultCwd }: TerminalGridProps) {
     });
   }, []);
 
-  // Handle file picker confirmation
   const handleFilePickerConfirm = useCallback(
     async (selectedPaths: string[]) => {
       if (!filePickerState.terminalId || !filePickerState.worktreeId) return;
 
-      // Close modal
       setFilePickerState({ isOpen: false, worktreeId: null, terminalId: null });
 
-      // Inject with selected paths
       await inject(
         filePickerState.worktreeId,
         filePickerState.terminalId,
@@ -228,7 +213,6 @@ export function TerminalGrid({ className, defaultCwd }: TerminalGridProps) {
     [filePickerState, inject]
   );
 
-  // Handle file picker cancel
   const handleFilePickerCancel = useCallback(() => {
     setFilePickerState({ isOpen: false, worktreeId: null, terminalId: null });
   }, []);
@@ -263,7 +247,6 @@ export function TerminalGrid({ className, defaultCwd }: TerminalGridProps) {
     };
   }, [gridCols, gridTerminals.length]);
 
-  // If maximized, only show that terminal (must be a grid terminal)
   if (maximizedId) {
     const terminal = gridTerminals.find((t: TerminalInstance) => t.id === maximizedId);
     if (terminal) {
@@ -313,7 +296,7 @@ export function TerminalGrid({ className, defaultCwd }: TerminalGridProps) {
     }
   }
 
-  // Empty state - show when no grid terminals (docked terminals don't count for empty)
+  // Docked terminals don't count for empty state
   if (gridTerminals.length === 0) {
     return (
       <div className={cn("h-full", className)}>
@@ -322,7 +305,6 @@ export function TerminalGrid({ className, defaultCwd }: TerminalGridProps) {
     );
   }
 
-  // Handle drag over for the grid
   const handleGridDragOver = createDragOverHandler("grid");
 
   return (
@@ -340,7 +322,7 @@ export function TerminalGrid({ className, defaultCwd }: TerminalGridProps) {
         gridTemplateColumns: `repeat(${gridCols}, 1fr)`,
         gridAutoRows: "1fr",
         gap: "1px", // 1px gap reveals bg-black underneath = clean dividers
-        padding: "0", // No outer padding
+        padding: "0",
       }}
       role="grid"
       aria-dropeffect={dragState.isDragging ? "move" : undefined}
@@ -348,7 +330,6 @@ export function TerminalGrid({ className, defaultCwd }: TerminalGridProps) {
       onDrop={handleDrop}
       onDragEnd={handleDragEnd}
       onDragLeave={(e) => {
-        // Only clear if leaving the grid entirely
         if (!e.currentTarget.contains(e.relatedTarget as Node)) {
           handleDragEnd();
         }
@@ -415,7 +396,6 @@ export function TerminalGrid({ className, defaultCwd }: TerminalGridProps) {
         );
       })}
 
-      {/* File Picker Modal */}
       {filePickerState.worktreeId && (
         <FilePickerModal
           isOpen={filePickerState.isOpen}

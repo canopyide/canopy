@@ -1,9 +1,4 @@
 /**
- * Shared utilities for AI service integrations
- */
-
-/**
- * Extract text from OpenAI Responses API output.
  * Handles multiple response formats:
  * - Legacy: response.output_text (string)
  * - Modern: content.text.value (nested object)
@@ -18,12 +13,10 @@ export function extractOutputText(response: unknown): string | null {
 
   const resp = response as Record<string, unknown>;
 
-  // 1. Check for plain output_text (legacy format)
   if (typeof resp.output_text === "string" && resp.output_text.trim().length > 0) {
     return resp.output_text;
   }
 
-  // 2. Check for chat completions format (choices[0].message.content)
   if (Array.isArray(resp.choices) && resp.choices.length > 0) {
     const choice = resp.choices[0] as Record<string, unknown>;
     const message = choice.message as Record<string, unknown> | undefined;
@@ -32,7 +25,6 @@ export function extractOutputText(response: unknown): string | null {
     }
   }
 
-  // 3. Check for output array (responses API)
   if (Array.isArray(resp.output)) {
     for (const item of resp.output) {
       if (
@@ -51,17 +43,12 @@ export function extractOutputText(response: unknown): string | null {
   return null;
 }
 
-/**
- * Recursively extract text from a content array.
- * Handles nested content structures.
- */
 function extractFromContentArray(contentArray: unknown[]): string | null {
   for (const content of contentArray) {
     if (!content || typeof content !== "object") continue;
 
     const c = content as Record<string, unknown>;
 
-    // Check for text.value (modern structured format)
     if (typeof c.text === "object" && c.text !== null) {
       const textObj = c.text as Record<string, unknown>;
       if (typeof textObj.value === "string" && textObj.value.trim().length > 0) {
@@ -69,17 +56,14 @@ function extractFromContentArray(contentArray: unknown[]): string | null {
       }
     }
 
-    // Check for text as string (older format)
     if (typeof c.text === "string" && c.text.trim().length > 0) {
       return c.text;
     }
 
-    // Check for parsed field (SDK may populate this for JSON schemas)
     if (c.parsed) {
       return JSON.stringify(c.parsed);
     }
 
-    // Recursively check nested content arrays
     if (Array.isArray(c.content)) {
       const nested = extractFromContentArray(c.content);
       if (nested) return nested;
@@ -88,9 +72,6 @@ function extractFromContentArray(contentArray: unknown[]): string | null {
   return null;
 }
 
-/**
- * Truncate error messages for logging
- */
 const ERROR_SNIPPET_MAX = 400;
 
 export function formatErrorSnippet(raw: unknown): string {
@@ -112,11 +93,9 @@ export function formatErrorSnippet(raw: unknown): string {
 }
 
 /**
- * Resilient JSON parser that can handle malformed JSON responses.
  * Tries standard JSON.parse first, then falls back to regex extraction.
  */
 export function parseResilientJSON(text: string, targetKey: string): string | null {
-  // First try: standard JSON parsing
   try {
     const parsed = JSON.parse(text) as Record<string, unknown>;
     if (parsed && typeof parsed[targetKey] === "string") {
@@ -126,10 +105,9 @@ export function parseResilientJSON(text: string, targetKey: string): string | nu
       return String(parsed[targetKey]);
     }
   } catch {
-    // Fall through to regex parsing
+    // Fall through
   }
 
-  // Second try: regex extraction for string values
   const patterns = [
     new RegExp(`"${targetKey}"\\s*:\\s*"([^"]+)"`),
     new RegExp(`"${targetKey}"\\s*:\\s*'([^']+)'`),
@@ -144,7 +122,6 @@ export function parseResilientJSON(text: string, targetKey: string): string | nu
     }
   }
 
-  // Third try: look for any quoted string after the key (even more lenient)
   const laxMatch = text.match(new RegExp(`"${targetKey}"[^"']*["']([^"']+)["']`));
   if (laxMatch?.[1]) {
     return laxMatch[1].replace(/\s+/g, " ").trim();
@@ -153,9 +130,6 @@ export function parseResilientJSON(text: string, targetKey: string): string | nu
   return null;
 }
 
-/**
- * Simple retry helper for AI operations
- */
 export async function withRetry<T>(
   operation: () => Promise<T>,
   options: {
@@ -178,7 +152,6 @@ export async function withRetry<T>(
         throw error;
       }
 
-      // Exponential backoff
       const delay = baseDelay * Math.pow(2, attempt);
       await new Promise((resolve) => setTimeout(resolve, delay));
     }

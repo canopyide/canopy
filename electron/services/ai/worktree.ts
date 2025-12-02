@@ -1,10 +1,3 @@
-/**
- * AI-powered worktree summary generation
- *
- * Generates concise, contextual summaries of git changes in worktrees
- * using OpenAI's API.
- */
-
 import * as fs from "fs/promises";
 import * as path from "path";
 import type { WorktreeChanges } from "../../types/index.js";
@@ -20,52 +13,38 @@ export interface WorktreeSummary {
 
 const MAX_WORDS = 10;
 
-/**
- * Normalize summary text to a single line with max word count
- */
 function normalizeSummary(text: string): string {
   const firstLine = text.split(/\r?\n/)[0] ?? "";
   let compressed = firstLine.replace(/\s+/g, " ").trim();
   if (!compressed) return "";
 
-  // Ensure space after emoji before alphanumeric characters
   compressed = compressed.replace(/([\u{80}-\u{10ffff}])([a-zA-Z0-9])/gu, "$1 $2");
 
   const words = compressed.split(" ").slice(0, MAX_WORDS);
   return words.join(" ");
 }
 
-/**
- * Resilient JSON parser for summary responses
- * Uses Zod validation as the primary approach, with fallback regex extraction
- */
 function parseSummaryJSON(text: string): string | null {
-  // First try: Zod schema validation
   try {
     const parsed = JSON.parse(text);
     const validated = WorktreeSummaryResponseSchema.safeParse(parsed);
     if (validated.success) {
       return validated.data.summary.replace(/\s+/g, " ").trim();
     }
-    // Zod validation failed but JSON parsed - try extracting summary field directly
     if (parsed && typeof parsed.summary === "string") {
       const candidate = parsed.summary.replace(/\s+/g, " ").trim();
-      // Re-validate the extracted value to ensure it meets constraints
       const revalidated = WorktreeSummaryResponseSchema.safeParse({ summary: candidate });
       if (revalidated.success) {
         return candidate;
       }
-      // If still invalid, log and fall through to regex
       console.warn(
         "[AI] Worktree summary extraction failed Zod validation:",
         candidate.slice(0, 100)
       );
     }
   } catch {
-    // JSON parsing failed - fall through to regex extraction
   }
 
-  // Second try: regex extraction (for malformed JSON)
   const patterns = [
     /"summary"\s*:\s*"([^"]+)"/,
     /"summary"\s*:\s*'([^']+)'/,
@@ -80,7 +59,6 @@ function parseSummaryJSON(text: string): string | null {
     }
   }
 
-  // Third try: look for any quoted string after "summary"
   const laxMatch = text.match(/"summary"[^"']*["']([^"']+)["']/);
   if (laxMatch?.[1]) {
     return laxMatch[1].replace(/\s+/g, " ").trim();
@@ -89,16 +67,6 @@ function parseSummaryJSON(text: string): string | null {
   return null;
 }
 
-/**
- * Generate AI summary for worktree changes
- *
- * @param worktreePath - Absolute path to worktree
- * @param branch - Branch name (used for context)
- * @param mainBranch - Main branch to compare against
- * @param changes - Optional WorktreeChanges with file-level details
- * @param gitService - Optional GitService instance for git operations
- * @returns Summary and modified file count, or null if AI client is unavailable
- */
 export async function generateWorktreeSummary(
   worktreePath: string,
   branch: string | undefined,
@@ -106,7 +74,6 @@ export async function generateWorktreeSummary(
   changes?: WorktreeChanges,
   gitService?: GitService
 ): Promise<WorktreeSummary | null> {
-  // Create GitService instance if not provided (for backwards compatibility)
   if (!gitService) {
     const { GitService: GitServiceClass } = await import("../GitService.js");
     gitService = new GitServiceClass(worktreePath);
@@ -130,7 +97,6 @@ export async function generateWorktreeSummary(
       status.renamed.length +
       status.not_added.length;
 
-    // If no changes, show last commit instead of AI summary
     if (modifiedCount === 0) {
       try {
         const log = await gitService.getLog(worktreePath, { maxCount: 1 });
@@ -144,7 +110,6 @@ export async function generateWorktreeSummary(
           };
         }
       } catch {
-        // Git log failed - fall through to fallback
       }
 
       const branchLabel = branch || "worktree";
@@ -154,7 +119,6 @@ export async function generateWorktreeSummary(
       };
     }
 
-    // Noise filtering patterns
     const IGNORED_PATTERNS = [
       /package-lock\.json$/,
       /yarn\.lock$/,
@@ -182,7 +146,6 @@ export async function generateWorktreeSummary(
 
     const isHighValue = (file: string) => !IGNORED_PATTERNS.some((p) => p.test(file));
 
-    // Build scored file list
     interface ScoredFile {
       path: string;
       relPath: string;
@@ -197,7 +160,6 @@ export async function generateWorktreeSummary(
     const now = Date.now();
 
     if (changes) {
-      // Use detailed change data with scoring
       for (const change of changes.changes) {
         const relPath = path.relative(worktreePath, change.path);
         if (!isHighValue(relPath)) continue;
@@ -234,7 +196,6 @@ export async function generateWorktreeSummary(
         });
       }
     } else {
-      // Fallback to simple git status
       const allFiles = Array.from(new Set([...createdFiles, ...modifiedFiles, ...renamedTargets]));
       for (const file of allFiles) {
         if (!isHighValue(file)) continue;
@@ -252,10 +213,8 @@ export async function generateWorktreeSummary(
       }
     }
 
-    // Sort by score descending
     scoredFiles.sort((a, b) => b.score - a.score);
 
-    // If all changes were ignored, surface a mechanical summary
     if (scoredFiles.length === 0 && createdFiles.length > 0) {
       const target = path.basename(createdFiles[0]);
       return {
@@ -264,20 +223,17 @@ export async function generateWorktreeSummary(
       };
     }
 
-    // Tiered context: Tier 1 (top 3-5 files with rich diffs), Tier 2 (next 5-10 with light summaries)
     const TIER_1_COUNT =
       scoredFiles.length <= 3 ? scoredFiles.length : Math.min(5, scoredFiles.length);
     const TIER_2_COUNT = Math.min(10, scoredFiles.length - TIER_1_COUNT);
     const tier1Files = scoredFiles.slice(0, TIER_1_COUNT);
     const tier2Files = scoredFiles.slice(TIER_1_COUNT, TIER_1_COUNT + TIER_2_COUNT);
 
-    // Budgets
     const META_BUDGET = 500;
     const DIFF_BUDGET = 1000;
     let metaLength = 0;
     let diffLength = 0;
 
-    // Start with deleted files (metadata)
     if (deletedFiles.length > 0) {
       const deletedLines = deletedFiles.map((f) => `deleted: ${f}`).join("\n") + "\n";
       if (metaLength + deletedLines.length <= META_BUDGET) {
@@ -294,7 +250,6 @@ export async function generateWorktreeSummary(
       }
     }
 
-    // Tier 2: Light summaries (metadata budget)
     for (const file of tier2Files) {
       if (metaLength >= META_BUDGET) break;
       const ins = file.insertions > 0 ? `+${file.insertions}` : "";
@@ -307,7 +262,6 @@ export async function generateWorktreeSummary(
       }
     }
 
-    // Tier 1: Rich diffs (diff budget)
     for (const file of tier1Files) {
       if (diffLength >= DIFF_BUDGET) break;
 
@@ -315,7 +269,6 @@ export async function generateWorktreeSummary(
         let diff = "";
 
         if (file.isNew) {
-          // Skeletonize new files
           let content: string | null = null;
           try {
             content = await fs.readFile(file.path, "utf8");
@@ -347,7 +300,6 @@ export async function generateWorktreeSummary(
           }
           diff = `NEW FILE STRUCTURE:\n${skeleton}`;
         } else {
-          // Zero-context diffs with aggressive line filtering
           diff = await gitService.getDiff(worktreePath, [
             "--unified=0",
             "--minimal",
@@ -385,11 +337,9 @@ export async function generateWorktreeSummary(
           }
         }
       } catch {
-        // Skip unreadable files
       }
     }
 
-    // If we have changes but no diff content, create minimal context
     if (!promptContext.trim()) {
       const fileList: string[] = [];
       if (createdFiles.length > 0) fileList.push(...createdFiles.map((f) => `added: ${f}`));
@@ -399,7 +349,6 @@ export async function generateWorktreeSummary(
       promptContext = fileList.slice(0, 5).join("\n");
     }
 
-    // If only mechanical changes, return mechanical summary
     const onlyMechanical =
       mechanicalNewFiles.length > 0 && mechanicalNewFiles.length === modifiedCount;
     if (onlyMechanical) {
@@ -410,10 +359,8 @@ export async function generateWorktreeSummary(
       };
     }
 
-    // --- AI GENERATION ---
     const client = getAIClient();
     if (!client) {
-      // No AI client available
       return null;
     }
 
@@ -463,7 +410,6 @@ Examples:
         );
       }
 
-      // Remove all newlines and carriage returns before parsing
       const cleanedText = text.replace(/[\r\n]+/g, "");
 
       const summary = parseSummaryJSON(cleanedText);

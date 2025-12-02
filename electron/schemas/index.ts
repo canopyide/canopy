@@ -1,14 +1,3 @@
-/**
- * Zod Schema Module
- *
- * Centralized runtime validation schemas for Canopy Command Center.
- * Provides type-safe validation at system boundaries:
- * - Agent events and state transitions
- * - IPC payloads between main and renderer
- * - External data sources (package.json, git output, AI responses)
- */
-
-// Agent schemas
 export {
   TerminalTypeSchema,
   AgentStateSchema,
@@ -28,7 +17,6 @@ export {
   type AgentEventPayload,
 } from "./agent.js";
 
-// IPC schemas
 export {
   TerminalSpawnOptionsSchema,
   TerminalResizePayloadSchema,
@@ -66,7 +54,6 @@ export {
   type HistoryExportSessionPayload as ValidatedHistoryExportSessionPayload,
 } from "./ipc.js";
 
-// External data schemas
 export {
   PackageJsonScriptsSchema,
   PackageJsonSchema,

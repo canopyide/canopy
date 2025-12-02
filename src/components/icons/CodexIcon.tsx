@@ -1,10 +1,4 @@
 /**
- * OpenAI/Codex Icon Component
- *
- * Custom SVG icon based on the official OpenAI brand icon (spiral/knot design).
- * Used to represent Codex CLI in the UI.
- * Rendered as monochrome to inherit text color via currentColor.
- *
  * Source: https://upload.wikimedia.org/wikipedia/commons/4/4d/OpenAI_Logo.svg
  */
 

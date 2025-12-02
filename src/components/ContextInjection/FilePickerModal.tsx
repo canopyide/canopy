@@ -1,10 +1,3 @@
-/**
- * File Picker Modal Component
- *
- * Modal dialog with file tree for selective context injection.
- * Features tri-state checkboxes, lazy loading, and search.
- */
-
 import { useEffect, useCallback, useRef } from "react";
 import { Button } from "@/components/ui/button";
 import { cn } from "@/lib/utils";
@@ -13,13 +6,9 @@ import { useFileTree } from "@/hooks/useFileTree";
 import type { FileTreeNode } from "@shared/types";
 
 export interface FilePickerModalProps {
-  /** Whether the modal is open */
   isOpen: boolean;
-  /** Worktree ID to load files from */
   worktreeId: string;
-  /** Called when user clicks "Inject Context" with selected paths */
   onConfirm: (selectedPaths: string[]) => void;
-  /** Called when user cancels */
   onCancel: () => void;
 }
 
@@ -41,22 +30,18 @@ export function FilePickerModal({ isOpen, worktreeId, onConfirm, onCancel }: Fil
 
   const searchInputRef = useRef<HTMLInputElement>(null);
 
-  // Load tree when modal opens
   useEffect(() => {
     if (isOpen) {
       loadTree();
-      // Focus search input with cleanup
       const timeoutId = setTimeout(() => searchInputRef.current?.focus(), 100);
       return () => clearTimeout(timeoutId);
     } else {
-      // Clear search and selection when closing
       setSearchQuery("");
       clearSelection();
       return undefined;
     }
   }, [isOpen, loadTree, setSearchQuery, clearSelection]);
 
-  // Handle escape key
   const handleKeyDown = useCallback(
     (e: KeyboardEvent) => {
       if (e.key === "Escape") {
@@ -75,7 +60,6 @@ export function FilePickerModal({ isOpen, worktreeId, onConfirm, onCancel }: Fil
   const handleConfirm = () => {
     const paths = getSelectedPaths();
     if (paths.length === 0) {
-      // If no selection, inject all files
       onConfirm([]);
     } else {
       onConfirm(paths);
@@ -93,12 +77,9 @@ export function FilePickerModal({ isOpen, worktreeId, onConfirm, onCancel }: Fil
       aria-modal="true"
       onClick={(e) => e.stopPropagation()}
     >
-      {/* Backdrop */}
       <div className="absolute inset-0 bg-black/50 backdrop-blur-sm" onClick={onCancel} />
 
-      {/* Dialog content */}
       <div className="relative z-10 w-full max-w-2xl max-h-[80vh] flex flex-col bg-neutral-900 border border-neutral-700 rounded-lg shadow-xl">
-        {/* Header */}
         <div className="flex items-center justify-between px-6 py-4 border-b border-neutral-700">
           <div>
             <h2 className="text-lg font-semibold text-neutral-100">Select Files to Inject</h2>
@@ -125,7 +106,6 @@ export function FilePickerModal({ isOpen, worktreeId, onConfirm, onCancel }: Fil
           </button>
         </div>
 
-        {/* Search bar */}
         <div className="px-6 py-3 border-b border-neutral-800">
           <input
             ref={searchInputRef}
@@ -137,7 +117,6 @@ export function FilePickerModal({ isOpen, worktreeId, onConfirm, onCancel }: Fil
           />
         </div>
 
-        {/* File tree */}
         <div className="flex-1 overflow-y-auto px-6 py-4">
           {loading && (
             <div className="flex items-center justify-center py-8 text-neutral-400">Loading...</div>
@@ -157,7 +136,6 @@ export function FilePickerModal({ isOpen, worktreeId, onConfirm, onCancel }: Fil
           )}
         </div>
 
-        {/* Footer */}
         <div className="flex items-center justify-between px-6 py-4 border-t border-neutral-700">
           <Button onClick={clearSelection} variant="ghost" size="sm" disabled={selectedCount === 0}>
             Clear Selection
@@ -176,7 +154,6 @@ export function FilePickerModal({ isOpen, worktreeId, onConfirm, onCancel }: Fil
   );
 }
 
-// File tree view component
 interface FileTreeViewProps {
   nodes: FileTreeNode[];
   expanded: Set<string>;
@@ -211,7 +188,6 @@ function FileTreeView({
   );
 }
 
-// Individual file tree node
 interface FileTreeNodeProps {
   node: FileTreeNode;
   expanded: Set<string>;
@@ -243,7 +219,6 @@ function FileTreeNode({
         style={{ paddingLeft: `${paddingLeft}px` }}
         onClick={() => onToggleSelection(node)}
       >
-        {/* Expand/collapse icon for directories */}
         {node.isDirectory && (
           <button
             type="button"
@@ -265,24 +240,18 @@ function FileTreeNode({
         )}
         {!node.isDirectory && <div className="w-4" />}
 
-        {/* Checkbox */}
         <input
           type="checkbox"
           checked={isSelected === true}
           ref={(el) => {
             if (el) {
-              // Only set indeterminate if explicitly undefined (not just missing from map)
-              // Treat missing entries as unchecked, not indeterminate
-              el.indeterminate = false; // Simplified: true indeterminate requires parent calculation
+              el.indeterminate = false;
             }
           }}
-          onChange={() => {
-            /* Handled by parent div onClick */
-          }}
+          onChange={() => {}}
           className="flex-shrink-0"
         />
 
-        {/* Icon */}
         <span className="flex-shrink-0 w-4 h-4 text-neutral-400">
           {node.isDirectory ? (
             <svg fill="none" viewBox="0 0 24 24" stroke="currentColor">
@@ -305,16 +274,13 @@ function FileTreeNode({
           )}
         </span>
 
-        {/* Name */}
         <span className="flex-1 text-sm text-neutral-200 truncate">{node.name}</span>
 
-        {/* Size for files */}
         {!node.isDirectory && node.size !== undefined && (
           <span className="flex-shrink-0 text-xs text-neutral-500">{formatBytes(node.size)}</span>
         )}
       </div>
 
-      {/* Children */}
       {node.isDirectory && isExpanded && node.children && (
         <FileTreeView
           nodes={node.children}
@@ -328,5 +294,3 @@ function FileTreeNode({
     </div>
   );
 }
-
-// Utility to format bytes

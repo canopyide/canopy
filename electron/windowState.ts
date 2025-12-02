@@ -14,7 +14,6 @@ export function createWindowWithState(
 ): BrowserWindow {
   const windowState = store.get("windowState");
 
-  // Create window with saved state (only include x/y if they are defined)
   const win = new BrowserWindow({
     ...options,
     ...(windowState.x !== undefined && { x: windowState.x }),
@@ -23,17 +22,14 @@ export function createWindowWithState(
     height: windowState.height,
   });
 
-  // Restore maximized state
   if (windowState.isMaximized) {
     win.maximize();
   }
 
-  // Validate position is on a visible display with significant visible area
   const bounds = win.getBounds();
   const display = screen.getDisplayMatching(bounds);
 
   // Check if window is mostly visible (at least 50% on screen)
-  // If no saved position or window is not visible, center it
   if (
     !display ||
     bounds.width <= 0 ||
@@ -58,7 +54,6 @@ export function createWindowWithState(
     }
   }
 
-  // Track last normal bounds for maximized state
   let lastNormalBounds = {
     x: windowState.x,
     y: windowState.y,
@@ -66,14 +61,12 @@ export function createWindowWithState(
     height: windowState.height,
   };
 
-  // Save state on changes
   const saveState = () => {
     if (win.isDestroyed()) return;
 
     const isMaximized = win.isMaximized();
     const currentBounds = win.getBounds();
 
-    // Update last normal bounds when not maximized
     if (!isMaximized) {
       lastNormalBounds = { ...currentBounds };
     }
@@ -87,12 +80,11 @@ export function createWindowWithState(
     });
   };
 
-  // Debounce state saves to reduce disk writes
   const debouncedSaveState = debounce(saveState, 500);
 
   win.on("resize", debouncedSaveState);
   win.on("move", debouncedSaveState);
-  win.on("close", saveState); // Save immediately on close
+  win.on("close", saveState);
 
   return win;
 }

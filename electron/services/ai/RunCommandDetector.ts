@@ -1,25 +1,10 @@
-/**
- * RunCommandDetector Service
- *
- * Scans project directories for available run commands from various
- * build tools and frameworks including package.json, Makefile, Django, and Composer.
- */
-
 import path from "path";
 import fs from "fs/promises";
 import { existsSync } from "fs";
 import type { RunCommand } from "../../types/index.js";
 
 export class RunCommandDetector {
-  /**
-   * Scans a directory for available run commands from various frameworks.
-   * Runs all detectors in parallel for performance.
-   *
-   * @param projectPath - Absolute path to the project root
-   * @returns Array of detected run commands
-   */
   async detect(projectPath: string): Promise<RunCommand[]> {
-    // Run detectors in parallel
     const results = await Promise.all([
       this.detectNpm(projectPath),
       this.detectMakefile(projectPath),
@@ -27,13 +12,9 @@ export class RunCommandDetector {
       this.detectComposer(projectPath),
     ]);
 
-    // Flatten results
     return results.flat();
   }
 
-  /**
-   * Detect npm/yarn/pnpm/bun scripts from package.json
-   */
   private async detectNpm(root: string): Promise<RunCommand[]> {
     const pkgPath = path.join(root, "package.json");
     if (!existsSync(pkgPath)) return [];
@@ -43,7 +24,6 @@ export class RunCommandDetector {
       const pkg = JSON.parse(content);
       if (!pkg.scripts || typeof pkg.scripts !== "object") return [];
 
-      // Determine runner (npm, yarn, pnpm, bun) by checking for lock files
       let runner = "npm run";
       if (existsSync(path.join(root, "bun.lockb"))) {
         runner = "bun run";
@@ -53,12 +33,10 @@ export class RunCommandDetector {
         runner = "yarn";
       }
 
-      const escapeShellArg = (value: string) => value.replace(/(["\\$`])/g, "\\$1");
-
       return Object.entries(pkg.scripts)
         .filter(([_, script]) => typeof script === "string")
         .map(([name, script]) => {
-          const safeName = escapeShellArg(name);
+          const safeName = name.replace(/(["\\$`])/g, "\\$1");
           return {
             id: `npm-${name}`,
             name,
@@ -73,16 +51,12 @@ export class RunCommandDetector {
     }
   }
 
-  /**
-   * Detect Makefile targets
-   */
   private async detectMakefile(root: string): Promise<RunCommand[]> {
     const makePath = path.join(root, "Makefile");
     if (!existsSync(makePath)) return [];
 
     try {
       const content = await fs.readFile(makePath, "utf-8");
-      // Match targets at line start, allowing dots, and skip assignment lines (:=, ?=, +=)
       const targetRegex = /^([A-Za-z0-9][\w.+-]*)\s*:(?![=])/gm;
       const commands: RunCommand[] = [];
       const seen = new Set<string>();
@@ -90,7 +64,6 @@ export class RunCommandDetector {
       let match;
       while ((match = targetRegex.exec(content)) !== null) {
         const target = match[1];
-        // Skip internal targets (starting with .) and .PHONY
         if (target.startsWith(".") || target === "PHONY" || seen.has(target)) {
           continue;
         }
@@ -109,13 +82,9 @@ export class RunCommandDetector {
     }
   }
 
-  /**
-   * Detect Django management commands (if manage.py exists)
-   */
   private async detectDjango(root: string): Promise<RunCommand[]> {
     if (!existsSync(path.join(root, "manage.py"))) return [];
 
-    // Standard Django commands
     const commonCommands = ["runserver", "migrate", "makemigrations", "test", "shell"];
 
     const pythonBin = process.platform === "win32" ? "python" : "python3";
@@ -128,9 +97,6 @@ export class RunCommandDetector {
     }));
   }
 
-  /**
-   * Detect Composer (PHP) scripts from composer.json
-   */
   private async detectComposer(root: string): Promise<RunCommand[]> {
     const composerPath = path.join(root, "composer.json");
     if (!existsSync(composerPath)) return [];
@@ -142,7 +108,6 @@ export class RunCommandDetector {
 
       return Object.keys(json.scripts)
         .filter((name) => {
-          // Filter out lifecycle scripts that aren't meant to be run directly
           const lifecycleScripts = [
             "pre-install-cmd",
             "post-install-cmd",
@@ -168,5 +133,4 @@ export class RunCommandDetector {
   }
 }
 
-// Singleton instance
 export const runCommandDetector = new RunCommandDetector();

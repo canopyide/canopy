@@ -1,9 +1,3 @@
-/**
- * Interpolates between two hex colors.
- * @param startHex - Start color (e.g. "#00FF00")
- * @param endHex - End color (e.g. "#808080")
- * @param factor - 0.0 to 1.0 (0 = start, 1 = end)
- */
 export function interpolateColor(startHex: string, endHex: string, factor: number): string {
   const f = Math.max(0, Math.min(1, factor));
 
@@ -23,13 +17,11 @@ export function interpolateColor(startHex: string, endHex: string, factor: numbe
 }
 
 /**
- * Calculates the heat color based on time elapsed.
- * Uses the Digital Ecology emerald spectrum for activity indication.
- *
- * Strategy:
- * 0s - 5s:   Bright Emerald (High Activity) -> Standard Emerald
- * 5s - 30s:  Standard Emerald -> Teal (Transitioning)
- * 30s - 90s: Teal -> Zinc (Cooling down to dormant)
+ * Four-phase color transition for activity indication:
+ * 0-5s: Bright → Standard Emerald (flash)
+ * 5-30s: Standard Emerald → Teal (working)
+ * 30-90s: Teal → Zinc (cooling)
+ * 90s+: Zinc (dormant)
  */
 export function getHeatColor(lastActivity: number | undefined | null): string {
   if (lastActivity == null) return "#52525b"; // Zinc-600: Default dormant
