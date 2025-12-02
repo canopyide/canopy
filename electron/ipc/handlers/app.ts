@@ -122,7 +122,9 @@ export function registerAppHandlers(deps: HandlerDependencies): () => void {
           const strategy = gridConfig.strategy;
           const value = Number(gridConfig.value);
           if (
-            (strategy === "automatic" || strategy === "fixed-columns" || strategy === "fixed-rows") &&
+            (strategy === "automatic" ||
+              strategy === "fixed-columns" ||
+              strategy === "fixed-rows") &&
             !isNaN(value) &&
             value >= 1 &&
             value <= 10
