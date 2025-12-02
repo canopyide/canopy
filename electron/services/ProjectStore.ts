@@ -410,30 +410,6 @@ export class ProjectStore {
       throw error;
     }
   }
-
-  /**
-   * Migrates recentDirectories to projects list (one-time migration)
-   */
-  async migrateFromRecentDirectories(): Promise<void> {
-    const recentDirs = store.get("appState.recentDirectories", []);
-    if (recentDirs.length === 0) return;
-
-    const projects = this.getAllProjects();
-    if (projects.length > 0) return; // Already migrated
-
-    console.log(`[ProjectStore] Migrating ${recentDirs.length} recent directories to projects`);
-
-    for (const dir of recentDirs) {
-      try {
-        await this.addProject(dir.path);
-      } catch (error) {
-        console.warn(`[ProjectStore] Failed to migrate directory ${dir.path}:`, error);
-      }
-    }
-
-    // Optionally clear recentDirectories after migration
-    // store.set("appState.recentDirectories", []);
-  }
 }
 
 // Singleton instance

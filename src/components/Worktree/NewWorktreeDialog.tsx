@@ -10,7 +10,7 @@ import { useState, useEffect } from "react";
 import { Button } from "@/components/ui/button";
 import { X, FolderOpen, GitBranch, Check, AlertCircle, Loader2 } from "lucide-react";
 import type { BranchInfo, CreateWorktreeOptions } from "@/types/electron";
-import { worktreeClient, directoryClient } from "@/clients";
+import { worktreeClient } from "@/clients";
 
 interface NewWorktreeDialogProps {
   isOpen: boolean;
@@ -218,7 +218,7 @@ export function NewWorktreeDialog({
                     size="sm"
                     onClick={async () => {
                       try {
-                        const selected = await directoryClient.openDialog();
+                        const selected = await window.electron.project.openDialog();
                         if (selected) {
                           setWorktreePath(selected);
                           setError(null); // Clear any previous errors

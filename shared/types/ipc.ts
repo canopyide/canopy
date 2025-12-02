@@ -280,20 +280,6 @@ export interface CliAvailability {
 }
 
 // ============================================================================
-// Directory IPC Payload Types
-// ============================================================================
-
-/** Payload for opening a directory */
-export interface DirectoryOpenPayload {
-  path: string;
-}
-
-/** Payload for removing a recent directory */
-export interface DirectoryRemoveRecentPayload {
-  path: string;
-}
-
-// ============================================================================
 // PR Detection IPC Payload Types
 // ============================================================================
 
@@ -363,18 +349,6 @@ export interface GitHubTokenValidation {
 // App State IPC Types
 // ============================================================================
 
-/** Recent directory entry */
-export interface RecentDirectory {
-  /** Directory path */
-  path: string;
-  /** Last opened timestamp */
-  lastOpened: number;
-  /** Display name */
-  displayName: string;
-  /** Git root directory (if detected) */
-  gitRoot?: string;
-}
-
 /** Saved recipe terminal definition */
 export interface SavedRecipeTerminal {
   /** Terminal type */
@@ -403,16 +377,12 @@ export interface SavedRecipe {
 
 /** Application state for persistence */
 export interface AppState {
-  /** Root project path */
-  rootPath?: string;
   /** Active terminal states */
   terminals: TerminalState[];
   /** Currently active worktree ID */
   activeWorktreeId?: string;
   /** Width of the sidebar in pixels */
   sidebarWidth: number;
-  /** Last opened directory */
-  lastDirectory?: string;
   /** Whether focus mode is active (panels collapsed for max terminal space) */
   focusMode?: boolean;
   /** Saved panel state before entering focus mode (for restoration) */
@@ -422,8 +392,6 @@ export interface AppState {
   };
   /** Height of the diagnostics dock in pixels */
   diagnosticsHeight?: number;
-  /** Recently opened directories */
-  recentDirectories?: RecentDirectory[];
   /** Saved terminal recipes */
   recipes?: SavedRecipe[];
   /** Whether the user has seen the welcome screen */
@@ -1096,24 +1064,10 @@ export interface IpcInvokeMap {
   };
 
   // ============================================
-  // Directory channels
+  // Directory channels (legacy - migrated to Projects system)
   // ============================================
-  "directory:get-recents": {
-    args: [];
-    result: RecentDirectory[];
-  };
-  "directory:open": {
-    args: [payload: DirectoryOpenPayload];
-    result: void;
-  };
-  "directory:open-dialog": {
-    args: [];
-    result: string | null;
-  };
-  "directory:remove-recent": {
-    args: [payload: DirectoryRemoveRecentPayload];
-    result: void;
-  };
+  // Note: Directory channels have been removed as part of the migration
+  // to the Projects system. Use project:* channels instead.
 
   // ============================================
   // Logs channels
@@ -1555,12 +1509,8 @@ export interface ElectronAPI {
     openFile(): Promise<void>;
     onEntry(callback: (entry: LogEntry) => void): () => void;
   };
-  directory: {
-    getRecent(): Promise<RecentDirectory[]>;
-    open(path: string): Promise<void>;
-    openDialog(): Promise<string | null>;
-    removeRecent(path: string): Promise<void>;
-  };
+  // Directory API has been removed - use project API instead
+  directory: Record<string, never>;
   errors: {
     onError(callback: (error: AppError) => void): () => void;
     retry(errorId: string, action: RetryAction, args?: Record<string, unknown>): Promise<void>;

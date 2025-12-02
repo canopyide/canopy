@@ -233,7 +233,6 @@ export function registerAiHandlers(_deps: HandlerDependencies): () => void {
     _event: Electron.IpcMainInvokeEvent,
     agentType?: "claude" | "gemini" | "codex"
   ) => {
-
     if (agentType) {
       // Reset specific agent settings
       if (!["claude", "gemini", "codex"].includes(agentType)) {

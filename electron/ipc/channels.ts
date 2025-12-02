@@ -95,11 +95,8 @@ export const CHANNELS = {
   APP_SET_STATE: "app:set-state",
   APP_GET_VERSION: "app:get-version",
 
-  // Directory channels
-  DIRECTORY_GET_RECENTS: "directory:get-recents",
-  DIRECTORY_OPEN: "directory:open",
-  DIRECTORY_OPEN_DIALOG: "directory:open-dialog",
-  DIRECTORY_REMOVE_RECENT: "directory:remove-recent",
+  // Directory channels (legacy - kept for backward compatibility, but unused)
+  // Note: Directory functionality has been migrated to the Projects system
 
   // Logs channels
   LOGS_GET_ALL: "logs:get-all",

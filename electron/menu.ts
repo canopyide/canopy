@@ -1,12 +1,7 @@
 import { Menu, dialog, BrowserWindow, shell } from "electron";
-import type { RecentDirectory } from "./types/index.js";
-import { store } from "./store.js";
 import { projectStore } from "./services/ProjectStore.js";
 import { worktreeService } from "./services/WorktreeService.js";
 import { CHANNELS } from "./ipc/channels.js";
-import path from "path";
-
-const MAX_RECENT_DIRECTORIES = 10;
 
 /**
  * Creates and sets the application menu
@@ -33,7 +28,7 @@ export function createApplicationMenu(mainWindow: BrowserWindow): void {
         },
         {
           label: "Open Recent",
-          submenu: buildRecentDirectoriesMenu(mainWindow),
+          submenu: buildRecentProjectsMenu(mainWindow),
         },
         { type: "separator" },
         {
@@ -109,41 +104,30 @@ export function createApplicationMenu(mainWindow: BrowserWindow): void {
 }
 
 /**
- * Builds the "Open Recent" submenu from stored recent directories
+ * Builds the "Open Recent" submenu from stored projects
  */
-function buildRecentDirectoriesMenu(
-  mainWindow: BrowserWindow
-): Electron.MenuItemConstructorOptions[] {
-  const recentDirs = store.get("appState.recentDirectories", []);
+function buildRecentProjectsMenu(mainWindow: BrowserWindow): Electron.MenuItemConstructorOptions[] {
+  const projects = projectStore.getAllProjects();
 
-  if (recentDirs.length === 0) {
-    return [{ label: "No Recent Directories", enabled: false }];
+  if (projects.length === 0) {
+    return [{ label: "No Recent Projects", enabled: false }];
   }
 
-  const menuItems: Electron.MenuItemConstructorOptions[] = recentDirs.map((dir) => ({
-    label: `${dir.displayName} - ${dir.path}`,
+  // Sort by lastOpened (most recent first)
+  const sortedProjects = [...projects].sort((a, b) => b.lastOpened - a.lastOpened);
+
+  const menuItems: Electron.MenuItemConstructorOptions[] = sortedProjects.map((project) => ({
+    label: `${project.emoji || "📁"} ${project.name} - ${project.path}`,
     click: async () => {
-      await handleDirectoryOpen(dir.path, mainWindow);
+      await handleDirectoryOpen(project.path, mainWindow);
     },
   }));
-
-  menuItems.push(
-    { type: "separator" },
-    {
-      label: "Clear Recent",
-      click: () => {
-        store.set("appState.recentDirectories", []);
-        // Rebuild menu to reflect cleared list
-        createApplicationMenu(mainWindow);
-      },
-    }
-  );
 
   return menuItems;
 }
 
 /**
- * Handles opening a directory: now uses ProjectStore for multi-project support
+ * Handles opening a directory: uses ProjectStore for multi-project support
  */
 async function handleDirectoryOpen(
   directoryPath: string,
@@ -163,19 +147,13 @@ async function handleDirectoryOpen(
     }
 
     // 4. Refresh worktree service to load worktrees from new project
-    // Note: Current worktreeService.refresh() only re-polls existing monitors
-    // Full project switching requires window reload (handled by renderer)
     await worktreeService.refresh();
 
-    // 5. Notify renderer to update UI (use CHANNELS constant and send updated project)
+    // 5. Notify renderer to update UI
     mainWindow.webContents.send(CHANNELS.PROJECT_ON_SWITCH, updatedProject);
 
-    // 6. Update legacy recent menu (for backward compatibility)
-    addToRecentDirectories(directoryPath);
+    // 6. Update application menu to reflect new recent projects
     createApplicationMenu(mainWindow);
-
-    // 7. Legacy: also send directory-changed for any other listeners
-    mainWindow.webContents.send("directory-changed", directoryPath);
   } catch (error) {
     console.error("Failed to open project:", error);
 
@@ -199,32 +177,8 @@ async function handleDirectoryOpen(
 }
 
 /**
- * Adds a directory to the recent directories list
+ * Updates the application menu (call this when projects change)
  */
-export function addToRecentDirectories(directoryPath: string): void {
-  const recentDirs = store.get("appState.recentDirectories", []);
-
-  // Remove if already exists (to update timestamp)
-  const filtered = recentDirs.filter((dir) => dir.path !== directoryPath);
-
-  // Add to front of list
-  const newRecent: RecentDirectory = {
-    path: directoryPath,
-    displayName: path.basename(directoryPath),
-    lastOpened: Date.now(),
-  };
-
-  filtered.unshift(newRecent);
-
-  // Limit to MAX_RECENT_DIRECTORIES
-  const truncated = filtered.slice(0, MAX_RECENT_DIRECTORIES);
-
-  store.set("appState.recentDirectories", truncated);
-}
-
-/**
- * Updates the "Open Recent" submenu (call this when recent directories change)
- */
-export function updateRecentDirectoriesMenu(mainWindow: BrowserWindow): void {
+export function updateApplicationMenu(mainWindow: BrowserWindow): void {
   createApplicationMenu(mainWindow);
 }
