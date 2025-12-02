@@ -73,7 +73,7 @@ export function TrashContainer({ trashedTerminals }: TrashContainerProps) {
           {/* Header */}
           <div className="px-3 py-2 border-b border-white/10 bg-white/5 flex justify-between items-center">
             <span className="text-xs font-medium text-white/70">Recently Closed</span>
-            <span className="text-[10px] text-white/40">Auto-clears automatically</span>
+            <span className="text-[10px] text-white/40">Auto-clears</span>
           </div>
 
           {/* List */}
