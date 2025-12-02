@@ -133,7 +133,7 @@ export const createTerminalRegistrySlice =
           worktreeId: options.worktreeId,
         });
 
-        const isAgentTerminal = type === "claude" || type === "gemini";
+        const isAgentTerminal = type === "claude" || type === "gemini" || type === "codex";
         const terminal: TerminalInstance = {
           id,
           type,
