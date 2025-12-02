@@ -21,13 +21,7 @@ interface ManagedTerminal {
   lastDetachAt: number;
 }
 
-/**
- * Lightweight throttled writer that adapts to the current refresh tier.
- * Mirrors the behavior previously inside XtermAdapter but is now owned
- * by the terminal instance so it survives React remounts.
- */
-// Window in ms after user input where we bypass buffering for immediate echo
-const INPUT_FAST_PATH_WINDOW_MS = 150;
+const BURST_MODE_WINDOW_MS = 500;
 
 function createThrottledWriter(
   terminal: Terminal,
@@ -35,8 +29,8 @@ function createThrottledWriter(
 ) {
   let buffer = "";
   let timerId: number | null = null;
+  let isRafTimer = false;
   let getRefreshTier = initialProvider;
-  let currentTier: TerminalRefreshTier = getRefreshTier();
   let lastInputTime = 0;
 
   const flush = () => {
@@ -45,53 +39,43 @@ function createThrottledWriter(
       buffer = "";
     }
     timerId = null;
+    isRafTimer = false;
+  };
+
+  const scheduleFlush = (delay: number) => {
+    if (timerId !== null) return;
+
+    if (delay <= 16) {
+      timerId = requestAnimationFrame(flush);
+      isRafTimer = true;
+    } else {
+      timerId = window.setTimeout(flush, delay);
+      isRafTimer = false;
+    }
   };
 
   return {
     write: (data: string) => {
-      const newTier = getRefreshTier();
-
-      // If tier improves (lower value), flush pending data immediately
-      if (newTier < currentTier) {
-        if (timerId !== null) {
-          cancelAnimationFrame(timerId);
-          clearTimeout(timerId);
-          timerId = null;
-        }
-        if (buffer) {
-          flush();
-        }
-        currentTier = newTier;
-      }
-
-      currentTier = newTier;
-
-      // Low-latency fast-path: If terminal is focused and user recently typed,
-      // write immediately to bypass ~16ms RAF lag for keystroke echo.
-      // Only when buffer is empty to maintain strict ordering with any pending content.
-      const inInputWindow = Date.now() - lastInputTime < INPUT_FAST_PATH_WINDOW_MS;
-      if (currentTier === TerminalRefreshTier.FOCUSED && !buffer && inInputWindow) {
-        terminal.write(data);
-        return;
-      }
-
-      // Standard buffering for bulk output
       buffer += data;
 
-      if (timerId) {
-        return;
+      const isBurstMode = Date.now() - lastInputTime < BURST_MODE_WINDOW_MS;
+      const tierDelay = getRefreshTier();
+      const effectiveDelay = isBurstMode ? TerminalRefreshTier.BURST : tierDelay;
+
+      if (timerId !== null && !isRafTimer && effectiveDelay <= 16) {
+        clearTimeout(timerId);
+        timerId = null;
       }
 
-      if (currentTier === TerminalRefreshTier.FOCUSED) {
-        timerId = requestAnimationFrame(flush);
-      } else {
-        timerId = window.setTimeout(flush, currentTier);
-      }
+      scheduleFlush(effectiveDelay);
     },
     dispose: () => {
       if (timerId !== null) {
-        cancelAnimationFrame(timerId);
-        clearTimeout(timerId);
+        if (isRafTimer) {
+          cancelAnimationFrame(timerId);
+        } else {
+          clearTimeout(timerId);
+        }
         timerId = null;
       }
       if (buffer) {
@@ -101,10 +85,30 @@ function createThrottledWriter(
     },
     updateProvider: (provider: RefreshTierProvider) => {
       getRefreshTier = provider;
-      currentTier = provider();
     },
     notifyInput: () => {
       lastInputTime = Date.now();
+      if (buffer && timerId !== null && !isRafTimer) {
+        clearTimeout(timerId);
+        timerId = requestAnimationFrame(flush);
+        isRafTimer = true;
+      }
+    },
+    getDebugInfo: () => {
+      const now = Date.now();
+      const isBurstMode = now - lastInputTime < BURST_MODE_WINDOW_MS;
+      const tierDelay = getRefreshTier();
+      const effectiveDelay = isBurstMode ? TerminalRefreshTier.BURST : tierDelay;
+      const fps = Math.round(1000 / effectiveDelay);
+      const tierName =
+        effectiveDelay === TerminalRefreshTier.BURST
+          ? "BURST"
+          : effectiveDelay === TerminalRefreshTier.FOCUSED
+            ? "FOCUSED"
+            : effectiveDelay === TerminalRefreshTier.VISIBLE
+              ? "VISIBLE"
+              : "BACKGROUND";
+      return { tierName, fps, isBurstMode, effectiveDelay, bufferSize: buffer.length };
     },
   };
 }
@@ -324,7 +328,10 @@ class TerminalInstanceService {
     const managed = this.instances.get(id);
     if (!managed) return;
 
-    const wantsWebgl = tier === TerminalRefreshTier.FOCUSED || tier === TerminalRefreshTier.VISIBLE;
+    const wantsWebgl =
+      tier === TerminalRefreshTier.BURST ||
+      tier === TerminalRefreshTier.FOCUSED ||
+      tier === TerminalRefreshTier.VISIBLE;
 
     if (wantsWebgl && !managed.webglAddon) {
       this.acquireWebgl(id, managed);
@@ -414,6 +421,12 @@ class TerminalInstanceService {
 
   getInstanceCount(): number {
     return this.instances.size;
+  }
+
+  getDebugInfo(id: string) {
+    const managed = this.instances.get(id);
+    if (!managed) return null;
+    return managed.throttledWriter.getDebugInfo();
   }
 }
 
