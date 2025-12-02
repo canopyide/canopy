@@ -116,6 +116,25 @@ export function registerAppHandlers(deps: HandlerDependencies): () => void {
         }
       }
 
+      if ("terminalGridConfig" in partialState) {
+        const gridConfig = partialState.terminalGridConfig;
+        if (gridConfig && typeof gridConfig === "object") {
+          const strategy = gridConfig.strategy;
+          const value = Number(gridConfig.value);
+          if (
+            (strategy === "automatic" || strategy === "fixed-columns" || strategy === "fixed-rows") &&
+            !isNaN(value) &&
+            value >= 1 &&
+            value <= 10
+          ) {
+            updates.terminalGridConfig = {
+              strategy,
+              value,
+            };
+          }
+        }
+      }
+
       store.set("appState", { ...currentState, ...updates });
     } catch (error) {
       console.error("Failed to set app state:", error);

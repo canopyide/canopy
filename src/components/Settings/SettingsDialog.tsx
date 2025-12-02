@@ -1,11 +1,12 @@
 import { useState, useEffect } from "react";
 import { useErrors } from "@/hooks";
 import { useLogsStore } from "@/store";
-import { X, Sparkles, Bot, Github } from "lucide-react";
+import { X, Sparkles, Bot, Github, LayoutGrid } from "lucide-react";
 import { cn } from "@/lib/utils";
 import { appClient } from "@/clients";
 import { AgentSettings } from "./AgentSettings";
 import { GeneralTab } from "./GeneralTab";
+import { TerminalSettingsTab } from "./TerminalSettingsTab";
 import { AISettingsTab } from "./AISettingsTab";
 import { GitHubSettingsTab } from "./GitHubSettingsTab";
 import { TroubleshootingTab } from "./TroubleshootingTab";
@@ -17,7 +18,7 @@ interface SettingsDialogProps {
   onSettingsChange?: () => void;
 }
 
-type SettingsTab = "general" | "agents" | "ai" | "github" | "troubleshooting";
+type SettingsTab = "general" | "terminal" | "agents" | "ai" | "github" | "troubleshooting";
 
 export function SettingsDialog({
   isOpen,
@@ -80,6 +81,18 @@ export function SettingsDialog({
             General
           </button>
           <button
+            onClick={() => setActiveTab("terminal")}
+            className={cn(
+              "text-left px-3 py-2 rounded-md text-sm transition-colors flex items-center gap-2",
+              activeTab === "terminal"
+                ? "bg-canopy-accent/10 text-canopy-accent"
+                : "text-gray-400 hover:bg-canopy-border hover:text-canopy-text"
+            )}
+          >
+            <LayoutGrid className="w-4 h-4" />
+            Terminal
+          </button>
+          <button
             onClick={() => setActiveTab("agents")}
             className={cn(
               "text-left px-3 py-2 rounded-md text-sm transition-colors flex items-center gap-2",
@@ -137,7 +150,9 @@ export function SettingsDialog({
                   ? "Agent Settings"
                   : activeTab === "github"
                     ? "GitHub Integration"
-                    : activeTab}
+                    : activeTab === "terminal"
+                      ? "Terminal Grid"
+                      : activeTab}
             </h3>
             <button
               onClick={onClose}
@@ -151,6 +166,10 @@ export function SettingsDialog({
           <div className="p-6 overflow-y-auto flex-1">
             <div className={activeTab === "general" ? "" : "hidden"}>
               <GeneralTab appVersion={appVersion} />
+            </div>
+
+            <div className={activeTab === "terminal" ? "" : "hidden"}>
+              <TerminalSettingsTab />
             </div>
 
             <div className={activeTab === "agents" ? "" : "hidden"}>

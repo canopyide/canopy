@@ -1,5 +1,18 @@
 import type { KeyMapConfig } from "./keymap.js";
 
+// Terminal Grid Layout Configuration
+
+/** Layout strategy for terminal grid */
+export type TerminalLayoutStrategy = "automatic" | "fixed-columns" | "fixed-rows";
+
+/** Configuration for terminal grid layout */
+export interface TerminalGridConfig {
+  /** Layout strategy to use */
+  strategy: TerminalLayoutStrategy;
+  /** Constraint value for fixed-columns/fixed-rows strategies */
+  value: number;
+}
+
 // Opener Configuration
 
 /** External file opener config */

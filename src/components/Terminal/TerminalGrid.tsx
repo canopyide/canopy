@@ -1,7 +1,7 @@
 import { useMemo, useCallback, useState, useEffect } from "react";
 import { useShallow } from "zustand/react/shallow";
 import { cn } from "@/lib/utils";
-import { useTerminalStore, type TerminalInstance } from "@/store";
+import { useTerminalStore, useLayoutConfigStore, type TerminalInstance } from "@/store";
 import { useContextInjection } from "@/hooks/useContextInjection";
 import { useTerminalDragAndDrop } from "@/hooks/useDragAndDrop";
 import { TerminalPane } from "./TerminalPane";
@@ -143,6 +143,8 @@ export function TerminalGrid({ className, defaultCwd }: TerminalGridProps) {
     [terminals]
   );
 
+  const layoutConfig = useLayoutConfigStore((state) => state.layoutConfig);
+
   const {
     dragState,
     gridRef,
@@ -166,15 +168,26 @@ export function TerminalGrid({ className, defaultCwd }: TerminalGridProps) {
     terminalId: null,
   });
 
-  // Use a dynamic formula that scales with terminal count
   const gridCols = useMemo(() => {
     const count = gridTerminals.length;
+    if (count === 0) return 1;
+
+    const { strategy, value } = layoutConfig;
+
+    if (strategy === "fixed-columns") {
+      return Math.max(1, Math.min(value, 10));
+    }
+
+    if (strategy === "fixed-rows") {
+      const rows = Math.max(1, Math.min(value, 10));
+      return Math.ceil(count / rows);
+    }
+
+    // Automatic (current behavior)
     if (count <= 1) return 1;
     if (count <= 4) return 2;
-    // For 5+ terminals, use ceiling of square root for balanced grid
-    // This gives: 5-6 → 3 cols, 7-9 → 3 cols, 10-12 → 4 cols, etc.
-    return Math.min(Math.ceil(Math.sqrt(count)), 4); // Cap at 4 columns max
-  }, [gridTerminals.length]);
+    return Math.min(Math.ceil(Math.sqrt(count)), 4);
+  }, [gridTerminals.length, layoutConfig]);
 
   const handleLaunchAgent = useCallback(
     async (type: "claude" | "gemini" | "codex" | "shell") => {

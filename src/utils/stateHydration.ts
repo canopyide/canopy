@@ -1,4 +1,5 @@
 import { appClient, projectClient } from "@/clients";
+import { useLayoutConfigStore } from "@/store";
 import type { TerminalType } from "@/types";
 
 export interface HydrationOptions {
@@ -64,6 +65,10 @@ export async function hydrateAppState(options: HydrationOptions): Promise<void> 
     if (appState.developerMode?.enabled && appState.developerMode.autoOpenDiagnostics) {
       const tab = appState.developerMode.focusEventsTab ? "events" : undefined;
       openDiagnosticsDock(tab);
+    }
+
+    if (appState.terminalGridConfig) {
+      useLayoutConfigStore.getState().setLayoutConfig(appState.terminalGridConfig);
     }
   } catch (error) {
     console.error("Failed to hydrate app state:", error);
