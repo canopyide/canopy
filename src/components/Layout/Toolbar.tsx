@@ -19,6 +19,7 @@ import { useProjectStore } from "@/store/projectStore";
 import { useTerminalStore } from "@/store/terminalStore";
 import { useRepositoryStats } from "@/hooks/useRepositoryStats";
 import { githubClient } from "@/clients";
+import type { CliAvailability, AgentSettings } from "@shared/types";
 
 interface ToolbarProps {
   onLaunchAgent: (type: "claude" | "gemini" | "codex" | "shell") => void;
@@ -36,6 +37,10 @@ interface ToolbarProps {
   isRefreshing?: boolean;
   /** Called when welcome/help button is clicked */
   onShowWelcome?: () => void;
+  /** CLI availability status for agent buttons */
+  agentAvailability?: CliAvailability;
+  /** Agent settings (to check enabled status) */
+  agentSettings?: AgentSettings | null;
 }
 
 export function Toolbar({
@@ -48,6 +53,8 @@ export function Toolbar({
   onToggleFocusMode,
   isRefreshing = false,
   onShowWelcome,
+  agentAvailability,
+  agentSettings,
 }: ToolbarProps) {
   const currentProject = useProjectStore((state) => state.currentProject);
   const terminals = useTerminalStore((state) => state.terminals);
@@ -55,6 +62,16 @@ export function Toolbar({
 
   // Show BulkActionsMenu when there are any terminals (actionable or not)
   const showBulkActions = terminals.length > 0;
+
+  // Helper to check if an agent should be shown in the toolbar
+  // Must be installed (availability check) AND enabled in settings (user preference)
+  const shouldShowAgent = (type: "claude" | "gemini" | "codex"): boolean => {
+    // Must be installed (system check) - default to false if availability not yet loaded
+    if (!agentAvailability?.[type]) return false;
+    // Must be enabled in settings (default true if settings not loaded yet)
+    if (agentSettings && agentSettings[type].enabled === false) return false;
+    return true;
+  };
 
   // Handle opening GitHub pages
   const handleOpenIssues = async () => {
@@ -93,45 +110,51 @@ export function Toolbar({
         Each agent shows its brand color on hover and keyboard focus.
       */}
       <div className="flex items-center gap-1 app-no-drag">
-        <Button
-          variant="ghost"
-          size="icon"
-          onClick={() => onLaunchAgent("claude")}
-          className={cn(
-            "text-canopy-text hover:bg-canopy-border h-8 w-8 transition-colors",
-            getAgentBrandColor("claude", "hover")
-          )}
-          title="Start Claude (Opus 4.5 for deep work)"
-          aria-label="Start Claude Agent"
-        >
-          <ClaudeIcon className="h-4 w-4" />
-        </Button>
-        <Button
-          variant="ghost"
-          size="icon"
-          onClick={() => onLaunchAgent("gemini")}
-          className={cn(
-            "text-canopy-text hover:bg-canopy-border h-8 w-8 transition-colors",
-            getAgentBrandColor("gemini", "hover")
-          )}
-          title="Start Gemini (Auto-routing enabled)"
-          aria-label="Start Gemini Agent"
-        >
-          <GeminiIcon className="h-4 w-4" />
-        </Button>
-        <Button
-          variant="ghost"
-          size="icon"
-          onClick={() => onLaunchAgent("codex")}
-          className={cn(
-            "text-canopy-text hover:bg-canopy-border h-8 w-8 transition-colors",
-            getAgentBrandColor("codex", "hover")
-          )}
-          title="Start Codex (GPT-5.1 Max)"
-          aria-label="Start Codex Agent"
-        >
-          <CodexIcon className="h-4 w-4" />
-        </Button>
+        {shouldShowAgent("claude") && (
+          <Button
+            variant="ghost"
+            size="icon"
+            onClick={() => onLaunchAgent("claude")}
+            className={cn(
+              "text-canopy-text hover:bg-canopy-border h-8 w-8 transition-colors",
+              getAgentBrandColor("claude", "hover")
+            )}
+            title="Start Claude (Opus 4.5 for deep work)"
+            aria-label="Start Claude Agent"
+          >
+            <ClaudeIcon className="h-4 w-4" />
+          </Button>
+        )}
+        {shouldShowAgent("gemini") && (
+          <Button
+            variant="ghost"
+            size="icon"
+            onClick={() => onLaunchAgent("gemini")}
+            className={cn(
+              "text-canopy-text hover:bg-canopy-border h-8 w-8 transition-colors",
+              getAgentBrandColor("gemini", "hover")
+            )}
+            title="Start Gemini (Auto-routing enabled)"
+            aria-label="Start Gemini Agent"
+          >
+            <GeminiIcon className="h-4 w-4" />
+          </Button>
+        )}
+        {shouldShowAgent("codex") && (
+          <Button
+            variant="ghost"
+            size="icon"
+            onClick={() => onLaunchAgent("codex")}
+            className={cn(
+              "text-canopy-text hover:bg-canopy-border h-8 w-8 transition-colors",
+              getAgentBrandColor("codex", "hover")
+            )}
+            title="Start Codex (GPT-5.1 Max)"
+            aria-label="Start Codex Agent"
+          >
+            <CodexIcon className="h-4 w-4" />
+          </Button>
+        )}
         <Button
           variant="ghost"
           size="icon"

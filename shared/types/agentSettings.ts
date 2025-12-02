@@ -22,6 +22,8 @@ export type ClaudeApprovalMode = "default" | "bypass" | "yolo";
  * Settings for Claude CLI configuration
  */
 export interface ClaudeSettings {
+  /** Whether the Claude agent is enabled in the toolbar */
+  enabled?: boolean;
   /** Model selection (e.g., "sonnet", "opus", "haiku", or full name) */
   model?: string;
   /** Permission handling mode */
@@ -54,6 +56,8 @@ export type GeminiApprovalMode = "default" | "auto_edit" | "yolo";
  * Settings for Gemini CLI configuration
  */
 export interface GeminiSettings {
+  /** Whether the Gemini agent is enabled in the toolbar */
+  enabled?: boolean;
   /** Model selection */
   model?: string;
   /** Approval mode */
@@ -91,6 +95,8 @@ export type CodexApprovalPolicy = "untrusted" | "on-failure" | "on-request" | "n
  * Settings for Codex CLI configuration
  */
 export interface CodexSettings {
+  /** Whether the Codex agent is enabled in the toolbar */
+  enabled?: boolean;
   /** Model selection (e.g., "o3", "o4-mini") */
   model?: string;
   /** Sandbox policy */
@@ -125,6 +131,7 @@ export interface AgentSettings {
  */
 export const DEFAULT_AGENT_SETTINGS: AgentSettings = {
   claude: {
+    enabled: true,
     model: "",
     approvalMode: "default",
     dangerouslySkipPermissions: false,
@@ -134,6 +141,7 @@ export const DEFAULT_AGENT_SETTINGS: AgentSettings = {
     customFlags: "",
   },
   gemini: {
+    enabled: true,
     model: "",
     approvalMode: "default",
     yolo: false,
@@ -141,6 +149,7 @@ export const DEFAULT_AGENT_SETTINGS: AgentSettings = {
     customFlags: "",
   },
   codex: {
+    enabled: true,
     model: "",
     sandbox: "workspace-write",
     approvalPolicy: "untrusted",

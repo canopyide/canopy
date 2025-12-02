@@ -37,6 +37,8 @@ interface SettingsDialogProps {
   isOpen: boolean;
   onClose: () => void;
   defaultTab?: SettingsTab;
+  /** Called when agent settings change (to refresh toolbar visibility) */
+  onSettingsChange?: () => void;
 }
 
 type SettingsTab = "general" | "agents" | "ai" | "github" | "troubleshooting";
@@ -102,7 +104,12 @@ const formatKey = (key: string): string => {
   return key.replace(/Cmd\+/g, "Ctrl+");
 };
 
-export function SettingsDialog({ isOpen, onClose, defaultTab }: SettingsDialogProps) {
+export function SettingsDialog({
+  isOpen,
+  onClose,
+  defaultTab,
+  onSettingsChange,
+}: SettingsDialogProps) {
   const [activeTab, setActiveTab] = useState<SettingsTab>(defaultTab ?? "ai");
   const { openLogs } = useErrors();
   const clearLogs = useLogsStore((state) => state.clearLogs);
@@ -518,7 +525,7 @@ export function SettingsDialog({ isOpen, onClose, defaultTab }: SettingsDialogPr
               </div>
             )}
 
-            {activeTab === "agents" && <AgentSettings />}
+            {activeTab === "agents" && <AgentSettings onSettingsChange={onSettingsChange} />}
 
             {activeTab === "ai" && (
               <div className="space-y-6">

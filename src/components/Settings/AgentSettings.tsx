@@ -20,35 +20,50 @@ import type {
 } from "@shared/types";
 import { agentSettingsClient } from "@/clients";
 
-type AgentTab = "claude" | "gemini" | "codex";
+type AgentTab = "main" | "claude" | "gemini" | "codex";
 
 interface AgentSettingsProps {
   onSettingsChange?: () => void;
 }
 
 export function AgentSettings({ onSettingsChange }: AgentSettingsProps) {
-  const [activeTab, setActiveTab] = useState<AgentTab>("claude");
+  const [activeTab, setActiveTab] = useState<AgentTab>("main");
   const [settings, setSettings] = useState<AgentSettingsType | null>(null);
   const [isLoading, setIsLoading] = useState(true);
+  const [loadError, setLoadError] = useState<string | null>(null);
   const [showAdvanced, setShowAdvanced] = useState(false);
 
   // Load settings on mount
   useEffect(() => {
+    let cancelled = false;
+
+    const loadSettings = async () => {
+      try {
+        const loaded = await agentSettingsClient.get();
+        if (!cancelled) {
+          setSettings(loaded);
+          setLoadError(null);
+        }
+      } catch (error) {
+        console.error("Failed to load agent settings:", error);
+        if (!cancelled) {
+          setLoadError(error instanceof Error ? error.message : "Failed to load settings");
+        }
+      } finally {
+        if (!cancelled) {
+          setIsLoading(false);
+        }
+      }
+    };
+
     loadSettings();
+
+    return () => {
+      cancelled = true;
+    };
   }, []);
 
-  const loadSettings = async () => {
-    try {
-      const loaded = await agentSettingsClient.get();
-      setSettings(loaded);
-    } catch (error) {
-      console.error("Failed to load agent settings:", error);
-    } finally {
-      setIsLoading(false);
-    }
-  };
-
-  const handleClaudeChange = async (updates: Record<string, unknown>) => {
+  const handleClaudeChange = async (updates: Partial<AgentSettingsType["claude"]>) => {
     try {
       const updated = await agentSettingsClient.setClaude(updates);
       setSettings(updated);
@@ -58,7 +73,7 @@ export function AgentSettings({ onSettingsChange }: AgentSettingsProps) {
     }
   };
 
-  const handleGeminiChange = async (updates: Record<string, unknown>) => {
+  const handleGeminiChange = async (updates: Partial<AgentSettingsType["gemini"]>) => {
     try {
       const updated = await agentSettingsClient.setGemini(updates);
       setSettings(updated);
@@ -68,7 +83,7 @@ export function AgentSettings({ onSettingsChange }: AgentSettingsProps) {
     }
   };
 
-  const handleCodexChange = async (updates: Record<string, unknown>) => {
+  const handleCodexChange = async (updates: Partial<AgentSettingsType["codex"]>) => {
     try {
       const updated = await agentSettingsClient.setCodex(updates);
       setSettings(updated);
@@ -78,7 +93,7 @@ export function AgentSettings({ onSettingsChange }: AgentSettingsProps) {
     }
   };
 
-  const handleReset = async (agentType: AgentTab) => {
+  const handleReset = async (agentType: Exclude<AgentTab, "main">) => {
     try {
       const updated = await agentSettingsClient.reset(agentType);
       setSettings(updated);
@@ -88,7 +103,27 @@ export function AgentSettings({ onSettingsChange }: AgentSettingsProps) {
     }
   };
 
-  if (isLoading || !settings) {
+  const handleToggleEnabled = async (agent: "claude" | "gemini" | "codex") => {
+    if (!settings) return;
+    const current = settings[agent].enabled ?? true;
+
+    try {
+      let updated: AgentSettingsType;
+      if (agent === "claude") {
+        updated = await agentSettingsClient.setClaude({ enabled: !current });
+      } else if (agent === "gemini") {
+        updated = await agentSettingsClient.setGemini({ enabled: !current });
+      } else {
+        updated = await agentSettingsClient.setCodex({ enabled: !current });
+      }
+      setSettings(updated);
+      onSettingsChange?.();
+    } catch (error) {
+      console.error(`Failed to toggle ${agent}:`, error);
+    }
+  };
+
+  if (isLoading) {
     return (
       <div className="flex items-center justify-center h-32">
         <div className="text-gray-400 text-sm">Loading settings...</div>
@@ -96,7 +131,24 @@ export function AgentSettings({ onSettingsChange }: AgentSettingsProps) {
     );
   }
 
+  if (loadError || !settings) {
+    return (
+      <div className="flex flex-col items-center justify-center h-32 gap-3">
+        <div className="text-[var(--color-status-error)] text-sm">
+          {loadError || "Failed to load settings"}
+        </div>
+        <button
+          onClick={() => window.location.reload()}
+          className="text-xs px-3 py-1.5 bg-canopy-accent/10 hover:bg-canopy-accent/20 text-canopy-accent rounded transition-colors"
+        >
+          Reload Application
+        </button>
+      </div>
+    );
+  }
+
   const agentTabs: SegmentedControlTab[] = [
+    { id: "main", label: "Enabled" },
     { id: "claude", label: "Claude", icon: <ClaudeIcon size={14} /> },
     { id: "gemini", label: "Gemini", icon: <GeminiIcon size={14} /> },
     { id: "codex", label: "Codex", icon: <CodexIcon size={14} /> },
@@ -113,6 +165,100 @@ export function AgentSettings({ onSettingsChange }: AgentSettingsProps) {
           setShowAdvanced(false);
         }}
       />
+
+      {/* Main Tab - Enabled Agents */}
+      {activeTab === "main" && settings && (
+        <div className="space-y-4">
+          <div className="space-y-2">
+            <h3 className="text-sm font-medium text-canopy-text">Enabled Agents</h3>
+            <p className="text-xs text-gray-500">
+              Choose which agents appear in your toolbar. Agents must also be installed on your
+              system to appear.
+            </p>
+          </div>
+
+          <div className="space-y-3 bg-canopy-bg border border-canopy-border rounded-md p-4">
+            {/* Claude Toggle */}
+            <div className="flex items-center justify-between">
+              <div className="flex items-center gap-3">
+                <ClaudeIcon size={18} className="text-canopy-text" />
+                <div>
+                  <div className="text-sm font-medium text-canopy-text">Claude</div>
+                  <div className="text-xs text-gray-500">Anthropic's Claude CLI</div>
+                </div>
+              </div>
+              <button
+                onClick={() => handleToggleEnabled("claude")}
+                className={cn(
+                  "relative w-11 h-6 rounded-full transition-colors",
+                  settings.claude.enabled ?? true ? "bg-canopy-accent" : "bg-gray-600"
+                )}
+              >
+                <span
+                  className={cn(
+                    "absolute top-0.5 left-0.5 w-5 h-5 bg-white rounded-full transition-transform",
+                    (settings.claude.enabled ?? true) && "translate-x-5"
+                  )}
+                />
+              </button>
+            </div>
+
+            {/* Gemini Toggle */}
+            <div className="flex items-center justify-between">
+              <div className="flex items-center gap-3">
+                <GeminiIcon size={18} className="text-canopy-text" />
+                <div>
+                  <div className="text-sm font-medium text-canopy-text">Gemini</div>
+                  <div className="text-xs text-gray-500">Google's Gemini CLI</div>
+                </div>
+              </div>
+              <button
+                onClick={() => handleToggleEnabled("gemini")}
+                className={cn(
+                  "relative w-11 h-6 rounded-full transition-colors",
+                  settings.gemini.enabled ?? true ? "bg-canopy-accent" : "bg-gray-600"
+                )}
+              >
+                <span
+                  className={cn(
+                    "absolute top-0.5 left-0.5 w-5 h-5 bg-white rounded-full transition-transform",
+                    (settings.gemini.enabled ?? true) && "translate-x-5"
+                  )}
+                />
+              </button>
+            </div>
+
+            {/* Codex Toggle */}
+            <div className="flex items-center justify-between">
+              <div className="flex items-center gap-3">
+                <CodexIcon size={18} className="text-canopy-text" />
+                <div>
+                  <div className="text-sm font-medium text-canopy-text">Codex</div>
+                  <div className="text-xs text-gray-500">OpenAI's Codex CLI</div>
+                </div>
+              </div>
+              <button
+                onClick={() => handleToggleEnabled("codex")}
+                className={cn(
+                  "relative w-11 h-6 rounded-full transition-colors",
+                  settings.codex.enabled ?? true ? "bg-canopy-accent" : "bg-gray-600"
+                )}
+              >
+                <span
+                  className={cn(
+                    "absolute top-0.5 left-0.5 w-5 h-5 bg-white rounded-full transition-transform",
+                    (settings.codex.enabled ?? true) && "translate-x-5"
+                  )}
+                />
+              </button>
+            </div>
+          </div>
+
+          <p className="text-xs text-gray-500">
+            Note: The Shell button is always available and cannot be disabled.
+          </p>
+        </div>
+      )}
 
       {/* Claude Settings */}
       {activeTab === "claude" && (

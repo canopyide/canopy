@@ -299,7 +299,7 @@ type AppView = "grid" | "welcome";
 
 function App() {
   const { focusNext, focusPrevious, toggleMaximize, focusedId, addTerminal } = useTerminalStore();
-  const { launchAgent } = useAgentLauncher();
+  const { launchAgent, availability, agentSettings, refreshSettings } = useAgentLauncher();
   const { activeWorktreeId, setActiveWorktree } = useWorktreeSelectionStore();
   const { inject, isInjecting } = useContextInjection();
   const loadRecipes = useRecipeStore((state) => state.loadRecipes);
@@ -617,6 +617,8 @@ function App() {
         onRetry={handleErrorRetry}
         isRefreshing={isRefreshing}
         onShowWelcome={handleShowWelcome}
+        agentAvailability={availability}
+        agentSettings={agentSettings}
       >
         {currentView === "welcome" ? (
           <WelcomeScreen onDismiss={handleDismissWelcome} />
@@ -643,6 +645,7 @@ function App() {
         isOpen={isSettingsOpen}
         onClose={() => setIsSettingsOpen(false)}
         defaultTab={settingsTab}
+        onSettingsChange={refreshSettings}
       />
 
       {/* Notifications */}

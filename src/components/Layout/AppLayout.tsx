@@ -7,6 +7,7 @@ import { DiagnosticsDock } from "../Diagnostics";
 import { useFocusStore, useDiagnosticsStore, useErrorStore, type PanelState } from "@/store";
 import type { RetryAction } from "@/store";
 import { appClient } from "@/clients";
+import type { CliAvailability, AgentSettings } from "@shared/types";
 
 interface AppLayoutProps {
   children?: ReactNode;
@@ -21,6 +22,10 @@ interface AppLayoutProps {
   isRefreshing?: boolean;
   /** Called when welcome/help button is clicked */
   onShowWelcome?: () => void;
+  /** CLI availability status for agent buttons */
+  agentAvailability?: CliAvailability;
+  /** Agent settings (to check enabled status) */
+  agentSettings?: AgentSettings | null;
 }
 
 const MIN_SIDEBAR_WIDTH = 200;
@@ -37,6 +42,8 @@ export function AppLayout({
   onRetry,
   isRefreshing,
   onShowWelcome,
+  agentAvailability,
+  agentSettings,
 }: AppLayoutProps) {
   const [sidebarWidth, setSidebarWidth] = useState(DEFAULT_SIDEBAR_WIDTH);
 
@@ -233,6 +240,8 @@ export function AppLayout({
         onToggleFocusMode={handleToggleFocusMode}
         isRefreshing={isRefreshing}
         onShowWelcome={onShowWelcome}
+        agentAvailability={agentAvailability}
+        agentSettings={agentSettings}
       />
       <WaitingForYouStrip />
       <div
