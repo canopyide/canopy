@@ -151,7 +151,7 @@ export class GitService {
   > {
     try {
       const output = await this.git.raw(["worktree", "list", "--porcelain"]);
-      const worktrees: Array<{ 
+      const worktrees: Array<{
         path: string;
         branch: string;
         bare: boolean;

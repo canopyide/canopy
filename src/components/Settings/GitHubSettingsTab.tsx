@@ -37,9 +37,7 @@ export function GitHubSettingsTab() {
       } catch (error) {
         console.error("Failed to load GitHub config:", error);
         if (!cancelled) {
-          setLoadError(
-            error instanceof Error ? error.message : "Failed to load GitHub settings"
-          );
+          setLoadError(error instanceof Error ? error.message : "Failed to load GitHub settings");
         }
       } finally {
         if (!cancelled) {
