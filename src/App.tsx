@@ -298,7 +298,15 @@ function SidebarContent({ onOpenSettings }: SidebarContentProps) {
 type AppView = "grid" | "welcome";
 
 function App() {
-  const { focusNext, focusPrevious, toggleMaximize, focusedId, addTerminal, reorderTerminals, terminals } = useTerminalStore();
+  const {
+    focusNext,
+    focusPrevious,
+    toggleMaximize,
+    focusedId,
+    addTerminal,
+    reorderTerminals,
+    terminals,
+  } = useTerminalStore();
   const { launchAgent, availability, agentSettings, refreshSettings } = useAgentLauncher();
   const { activeWorktreeId, setActiveWorktree } = useWorktreeSelectionStore();
   const { inject, isInjecting } = useContextInjection();
@@ -405,6 +413,13 @@ function App() {
 
         // Load recipes
         await loadRecipes();
+
+        // Handle developer mode auto-open diagnostics
+        if (appState.developerMode?.enabled && appState.developerMode.autoOpenDiagnostics) {
+          // Open diagnostics dock, optionally switching to events tab
+          const tab = appState.developerMode.focusEventsTab ? "events" : undefined;
+          openDiagnosticsDock(tab);
+        }
       } catch (error) {
         console.error("Failed to restore app state:", error);
       } finally {
@@ -413,7 +428,7 @@ function App() {
     };
 
     restoreState();
-  }, [addTerminal, setActiveWorktree, loadRecipes]);
+  }, [addTerminal, setActiveWorktree, loadRecipes, openDiagnosticsDock]);
 
   // Handle agent launcher from toolbar
   const handleLaunchAgent = useCallback(
@@ -537,7 +552,9 @@ function App() {
     () => {
       if (!focusedId) return;
       // Find grid terminals and current index
-      const gridTerminals = terminals.filter((t) => t.location === "grid" || t.location === undefined);
+      const gridTerminals = terminals.filter(
+        (t) => t.location === "grid" || t.location === undefined
+      );
       const currentIndex = gridTerminals.findIndex((t) => t.id === focusedId);
       if (currentIndex > 0) {
         reorderTerminals(currentIndex, currentIndex - 1, "grid");
@@ -550,7 +567,9 @@ function App() {
     () => {
       if (!focusedId) return;
       // Find grid terminals and current index
-      const gridTerminals = terminals.filter((t) => t.location === "grid" || t.location === undefined);
+      const gridTerminals = terminals.filter(
+        (t) => t.location === "grid" || t.location === undefined
+      );
       const currentIndex = gridTerminals.findIndex((t) => t.id === focusedId);
       if (currentIndex >= 0 && currentIndex < gridTerminals.length - 1) {
         reorderTerminals(currentIndex, currentIndex + 1, "grid");

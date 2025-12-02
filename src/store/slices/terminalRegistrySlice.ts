@@ -505,7 +505,7 @@ export const createTerminalRegistrySlice =
       set((state) => {
         // Get terminals in the specified location
         const terminalsInLocation = state.terminals.filter(
-          (t) => (t.location === location) || (location === "grid" && t.location === undefined)
+          (t) => t.location === location || (location === "grid" && t.location === undefined)
         );
 
         // Validate indices
@@ -547,7 +547,7 @@ export const createTerminalRegistrySlice =
         const terminalsInTargetLocation = state.terminals.filter(
           (t) =>
             t.id !== id &&
-            ((t.location === location) || (location === "grid" && t.location === undefined))
+            (t.location === location || (location === "grid" && t.location === undefined))
         );
 
         // Clamp toIndex to valid range
@@ -557,7 +557,7 @@ export const createTerminalRegistrySlice =
         const otherTerminals = state.terminals.filter(
           (t) =>
             t.id !== id &&
-            !((t.location === location) || (location === "grid" && t.location === undefined))
+            !(t.location === location || (location === "grid" && t.location === undefined))
         );
 
         // Update the terminal's location

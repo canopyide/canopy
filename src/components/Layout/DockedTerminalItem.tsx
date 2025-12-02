@@ -156,9 +156,7 @@ export function DockedTerminalItem({
   return (
     <div className="relative flex items-center">
       {/* Drop indicator before this item */}
-      {isDropTarget && (
-        <div className="absolute -left-1.5 w-0.5 h-6 bg-canopy-accent rounded" />
-      )}
+      {isDropTarget && <div className="absolute -left-1.5 w-0.5 h-6 bg-canopy-accent rounded" />}
 
       <Popover open={isOpen} onOpenChange={handleOpenChange}>
         <PopoverTrigger asChild>
@@ -188,48 +186,48 @@ export function DockedTerminalItem({
           </button>
         </PopoverTrigger>
 
-      <PopoverContent
-        className="w-[700px] h-[500px] p-0 border-canopy-border bg-canopy-bg shadow-2xl"
-        side="top"
-        align="start"
-        sideOffset={8}
-      >
-        <div className="flex flex-col h-full">
-          {/* Mini Header */}
-          <div className="h-9 flex items-center justify-between px-3 border-b border-canopy-border bg-canopy-bg shrink-0">
-            <div className="flex items-center gap-2">
-              {getTerminalIcon(terminal.type, "text-canopy-text/70")}
-              {getStateIndicator(terminal.agentState)}
-              <span className="font-mono text-xs text-canopy-text">{terminal.title}</span>
+        <PopoverContent
+          className="w-[700px] h-[500px] p-0 border-canopy-border bg-canopy-bg shadow-2xl"
+          side="top"
+          align="start"
+          sideOffset={8}
+        >
+          <div className="flex flex-col h-full">
+            {/* Mini Header */}
+            <div className="h-9 flex items-center justify-between px-3 border-b border-canopy-border bg-canopy-bg shrink-0">
+              <div className="flex items-center gap-2">
+                {getTerminalIcon(terminal.type, "text-canopy-text/70")}
+                {getStateIndicator(terminal.agentState)}
+                <span className="font-mono text-xs text-canopy-text">{terminal.title}</span>
+              </div>
+
+              <div className="flex items-center gap-1">
+                {/* Restore to Grid Button */}
+                <button
+                  onClick={handleRestore}
+                  className="p-1 hover:bg-canopy-accent/20 rounded transition-colors text-canopy-text/60 hover:text-canopy-text"
+                  title="Restore to grid"
+                >
+                  <Maximize2 className="w-3.5 h-3.5" aria-hidden="true" />
+                </button>
+
+                {/* Close (Kill) Button */}
+                <button
+                  onClick={handleClose}
+                  className="p-1 hover:bg-red-500/20 rounded transition-colors text-canopy-text/60 hover:text-red-400"
+                  title="Close session"
+                >
+                  <X className="w-3.5 h-3.5" aria-hidden="true" />
+                </button>
+              </div>
             </div>
 
-            <div className="flex items-center gap-1">
-              {/* Restore to Grid Button */}
-              <button
-                onClick={handleRestore}
-                className="p-1 hover:bg-canopy-accent/20 rounded transition-colors text-canopy-text/60 hover:text-canopy-text"
-                title="Restore to grid"
-              >
-                <Maximize2 className="w-3.5 h-3.5" aria-hidden="true" />
-              </button>
-
-              {/* Close (Kill) Button */}
-              <button
-                onClick={handleClose}
-                className="p-1 hover:bg-red-500/20 rounded transition-colors text-canopy-text/60 hover:text-red-400"
-                title="Close session"
-              >
-                <X className="w-3.5 h-3.5" aria-hidden="true" />
-              </button>
+            {/* The Actual Terminal */}
+            <div className="flex-1 relative overflow-hidden min-h-0">
+              <XtermAdapter terminalId={terminal.id} className="absolute inset-0" />
             </div>
           </div>
-
-          {/* The Actual Terminal */}
-          <div className="flex-1 relative overflow-hidden min-h-0">
-            <XtermAdapter terminalId={terminal.id} className="absolute inset-0" />
-          </div>
-        </div>
-      </PopoverContent>
+        </PopoverContent>
       </Popover>
     </div>
   );

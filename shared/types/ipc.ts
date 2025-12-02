@@ -429,6 +429,17 @@ export interface AppState {
   recipes?: SavedRecipe[];
   /** Whether the user has seen the welcome screen */
   hasSeenWelcome?: boolean;
+  /** Developer mode settings */
+  developerMode?: {
+    /** Master toggle for all debug features */
+    enabled: boolean;
+    /** Show state debug overlays in terminal headers */
+    showStateDebug: boolean;
+    /** Auto-open diagnostics dock on app startup */
+    autoOpenDiagnostics: boolean;
+    /** Focus events tab when diagnostics opens (requires autoOpenDiagnostics) */
+    focusEventsTab: boolean;
+  };
 }
 
 // ============================================================================
