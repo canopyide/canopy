@@ -1,5 +1,6 @@
 import OpenAI from "openai";
 import { store } from "../../store.js";
+import { secureStorage } from "../SecureStorage.js";
 
 let clientInstance: OpenAI | null = null;
 let lastKey: string | undefined;
@@ -8,7 +9,7 @@ let lastKey: string | undefined;
  * Re-instantiates if the key has changed since last call.
  */
 export function getAIClient(): OpenAI | null {
-  const apiKey = store.get("userConfig.openaiApiKey");
+  const apiKey = secureStorage.get("userConfig.openaiApiKey");
   const aiEnabled = store.get("userConfig.aiEnabled");
 
   if (!aiEnabled || !apiKey) {
@@ -46,7 +47,7 @@ export function getAIModel(): string {
 }
 
 export function isAIAvailable(): boolean {
-  const apiKey = store.get("userConfig.openaiApiKey");
+  const apiKey = secureStorage.get("userConfig.openaiApiKey");
   const aiEnabled = store.get("userConfig.aiEnabled");
   return !!(aiEnabled && apiKey);
 }
@@ -57,7 +58,7 @@ export function getAIConfig(): {
   enabled: boolean;
 } {
   return {
-    hasKey: !!store.get("userConfig.openaiApiKey"),
+    hasKey: !!secureStorage.get("userConfig.openaiApiKey"),
     model: store.get("userConfig.aiModel") || "gpt-5-nano",
     enabled: store.get("userConfig.aiEnabled") ?? true,
   };
@@ -65,7 +66,7 @@ export function getAIConfig(): {
 
 export function setAIConfig(config: { apiKey?: string; model?: string; enabled?: boolean }): void {
   if (config.apiKey !== undefined) {
-    store.set("userConfig.openaiApiKey", config.apiKey);
+    secureStorage.set("userConfig.openaiApiKey", config.apiKey);
     clientInstance = null;
     lastKey = undefined;
   }
@@ -78,7 +79,7 @@ export function setAIConfig(config: { apiKey?: string; model?: string; enabled?:
 }
 
 export function clearAIKey(): void {
-  store.set("userConfig.openaiApiKey", undefined);
+  secureStorage.delete("userConfig.openaiApiKey");
   clientInstance = null;
   lastKey = undefined;
 }

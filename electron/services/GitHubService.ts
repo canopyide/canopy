@@ -1,6 +1,6 @@
 import { graphql, type GraphQlQueryResponseData } from "@octokit/graphql";
 import { GitService } from "./GitService.js";
-import { store } from "../store.js";
+import { secureStorage } from "./SecureStorage.js";
 import { Cache } from "../utils/cache.js";
 import type {
   GitHubIssue,
@@ -68,7 +68,7 @@ const issueListCache = new Cache<string, GitHubListResponse<GitHubIssue>>({ defa
 const prListCache = new Cache<string, GitHubListResponse<GitHubPR>>({ defaultTTL: 60000 });
 
 export function getGitHubToken(): string | undefined {
-  return store.get("userConfig.githubToken");
+  return secureStorage.get("userConfig.githubToken");
 }
 
 export function hasGitHubToken(): boolean {
@@ -76,12 +76,12 @@ export function hasGitHubToken(): boolean {
 }
 
 export function setGitHubToken(token: string): void {
-  store.set("userConfig.githubToken", token);
+  secureStorage.set("userConfig.githubToken", token);
   clearGitHubCaches();
 }
 
 export function clearGitHubToken(): void {
-  store.set("userConfig.githubToken", undefined);
+  secureStorage.delete("userConfig.githubToken");
   clearGitHubCaches();
 }
 
