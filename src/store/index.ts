@@ -29,3 +29,5 @@ export {
 export { useLayoutConfigStore } from "./layoutConfigStore";
 
 export { useScrollbackStore } from "./scrollbackStore";
+
+export { usePerformanceModeStore } from "./performanceModeStore";

@@ -795,6 +795,7 @@ export interface AdaptiveBackoffMetrics {
 /** Terminal configuration for scrollback, etc. */
 export interface TerminalConfig {
   scrollbackLines: number; // -1 for unlimited, otherwise 100-100000
+  performanceMode: boolean;
 }
 
 // IPC Contract Maps
@@ -1201,6 +1202,10 @@ export interface IpcInvokeMap {
     args: [scrollbackLines: number];
     result: void;
   };
+  "terminal-config:set-performance-mode": {
+    args: [performanceMode: boolean];
+    result: void;
+  };
 
   // Git channels
   "git:get-file-diff": {
@@ -1471,5 +1476,6 @@ export interface ElectronAPI {
   terminalConfig: {
     get(): Promise<TerminalConfig>;
     setScrollback(scrollbackLines: number): Promise<void>;
+    setPerformanceMode(performanceMode: boolean): Promise<void>;
   };
 }

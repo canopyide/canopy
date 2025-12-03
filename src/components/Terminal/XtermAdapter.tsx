@@ -4,7 +4,7 @@ import { cn } from "@/lib/utils";
 import { terminalClient } from "@/clients";
 import { TerminalRefreshTier } from "@/types";
 import { terminalInstanceService } from "@/services/TerminalInstanceService";
-import { useScrollbackStore } from "@/store";
+import { useScrollbackStore, usePerformanceModeStore } from "@/store";
 
 export interface XtermAdapterProps {
   terminalId: string;
@@ -41,6 +41,7 @@ export const CANOPY_TERMINAL_THEME = {
 
 const MAX_ZERO_RETRIES = 10;
 const FIT_SETTLE_DELAY_MS = 120;
+const PERFORMANCE_MODE_SCROLLBACK = 2000;
 
 export function XtermAdapter({
   terminalId,
@@ -57,6 +58,15 @@ export function XtermAdapter({
   const exitUnsubRef = useRef<(() => void) | null>(null);
 
   const scrollbackLines = useScrollbackStore((state) => state.scrollbackLines);
+  const performanceMode = usePerformanceModeStore((state) => state.performanceMode);
+
+  // Calculate effective scrollback: performance mode overrides user setting
+  const effectiveScrollback = useMemo(() => {
+    if (performanceMode) {
+      return PERFORMANCE_MODE_SCROLLBACK;
+    }
+    return scrollbackLines === -1 ? 999999 : scrollbackLines;
+  }, [performanceMode, scrollbackLines]);
 
   const terminalOptions = useMemo(
     () => ({
@@ -73,12 +83,12 @@ export function XtermAdapter({
       fontWeightBold: "700" as const,
       theme: CANOPY_TERMINAL_THEME,
       allowProposedApi: true,
-      smoothScrollDuration: 0,
-      scrollback: scrollbackLines === -1 ? 999999 : scrollbackLines,
+      smoothScrollDuration: performanceMode ? 0 : 0, // Already 0, but keep explicit
+      scrollback: effectiveScrollback,
       macOptionIsMeta: true,
       fastScrollModifier: "alt" as const,
     }),
-    [scrollbackLines]
+    [effectiveScrollback, performanceMode]
   );
 
   const scheduleFit = useCallback(() => {

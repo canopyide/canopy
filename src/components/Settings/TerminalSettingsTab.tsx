@@ -1,6 +1,11 @@
-import { LayoutGrid, Columns, Rows, AlertTriangle } from "lucide-react";
+import { LayoutGrid, Columns, Rows, AlertTriangle, Zap } from "lucide-react";
 import { cn } from "@/lib/utils";
-import { useLayoutConfigStore, useScrollbackStore, useTerminalStore } from "@/store";
+import {
+  useLayoutConfigStore,
+  useScrollbackStore,
+  useTerminalStore,
+  usePerformanceModeStore,
+} from "@/store";
 import { appClient, terminalConfigClient } from "@/clients";
 import type { TerminalLayoutStrategy, TerminalGridConfig } from "@/types";
 
@@ -51,6 +56,8 @@ export function TerminalSettingsTab() {
   const scrollbackLines = useScrollbackStore((state) => state.scrollbackLines);
   const setScrollbackLines = useScrollbackStore((state) => state.setScrollbackLines);
   const terminalCount = useTerminalStore((state) => state.terminals.length);
+  const performanceMode = usePerformanceModeStore((state) => state.performanceMode);
+  const setPerformanceMode = usePerformanceModeStore((state) => state.setPerformanceMode);
 
   const handleStrategyChange = (strategy: TerminalLayoutStrategy) => {
     const newConfig: TerminalGridConfig = { ...layoutConfig, strategy };
@@ -88,9 +95,85 @@ export function TerminalSettingsTab() {
     }
   };
 
+  const handlePerformanceModeToggle = async () => {
+    const newValue = !performanceMode;
+    try {
+      await terminalConfigClient.setPerformanceMode(newValue);
+      setPerformanceMode(newValue);
+      // Update DOM attribute for CSS
+      if (newValue) {
+        document.body.setAttribute("data-performance-mode", "true");
+      } else {
+        document.body.removeAttribute("data-performance-mode");
+      }
+    } catch (error) {
+      console.error("Failed to persist performance mode setting:", error);
+    }
+  };
+
   return (
     <div className="space-y-6">
-      <div>
+      <div className="space-y-4">
+        <div>
+          <h4 className="text-sm font-medium text-canopy-text mb-2 flex items-center gap-2">
+            <Zap className="w-4 h-4 text-amber-500" />
+            Performance Mode
+          </h4>
+          <p className="text-xs text-canopy-text/50 mb-4">
+            Optimize for running many terminals simultaneously. Reduces scrollback to 2,000 lines
+            and disables animations.
+          </p>
+        </div>
+
+        <button
+          onClick={handlePerformanceModeToggle}
+          className={cn(
+            "w-full flex items-center justify-between p-4 rounded-lg border transition-all",
+            performanceMode
+              ? "bg-amber-500/10 border-amber-500 text-amber-500"
+              : "border-canopy-border hover:bg-white/5 text-canopy-text/70"
+          )}
+        >
+          <div className="flex items-center gap-3">
+            <Zap
+              className={cn("w-5 h-5", performanceMode ? "text-amber-500" : "text-canopy-text/50")}
+            />
+            <div className="text-left">
+              <div className="text-sm font-medium">
+                {performanceMode ? "Performance Mode Enabled" : "Enable Performance Mode"}
+              </div>
+              <div className="text-xs opacity-70">
+                {performanceMode
+                  ? "Using 2k scrollback, animations disabled"
+                  : "Recommended for 10+ concurrent terminals"}
+              </div>
+            </div>
+          </div>
+          <div
+            className={cn(
+              "w-11 h-6 rounded-full relative transition-colors",
+              performanceMode ? "bg-amber-500" : "bg-canopy-border"
+            )}
+          >
+            <div
+              className={cn(
+                "absolute top-1 w-4 h-4 rounded-full bg-white transition-transform",
+                performanceMode ? "translate-x-6" : "translate-x-1"
+              )}
+            />
+          </div>
+        </button>
+
+        {performanceMode && (
+          <p className="text-xs text-amber-500/80 flex items-center gap-1.5">
+            <AlertTriangle className="w-3 h-3" />
+            New terminals will use reduced scrollback. Existing terminals are unchanged until
+            respawned.
+          </p>
+        )}
+      </div>
+
+      <div className="pt-4 border-t border-canopy-border">
         <h4 className="text-sm font-medium text-canopy-text mb-2">Grid Layout Strategy</h4>
         <p className="text-xs text-canopy-text/50 mb-4">
           Control how terminals arrange in the grid as you add more.
