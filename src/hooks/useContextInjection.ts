@@ -62,7 +62,7 @@ const globalInjectionState = {
   lastProgress: null as CopyTreeProgress | null,
   injectionId: 0, // Incremented on each injection to prevent cross-run interference
   listeners: new Set<InjectionStateListener>(),
-  
+
   snapshot: {
     isInjecting: false,
     activeTerminalId: null as string | null,
