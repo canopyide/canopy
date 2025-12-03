@@ -446,15 +446,15 @@ function TerminalPaneComponent({
               <Copy className="w-3 h-3" aria-hidden="true" />
             </button>
           )}
-          {location === "grid" && onMinimize && !isMaximized && (
+          {onMinimize && !isMaximized && (
             <button
               onClick={(e) => {
                 e.stopPropagation();
                 onMinimize();
               }}
               className="p-1.5 hover:bg-canopy-text/10 focus-visible:bg-canopy-text/10 focus-visible:outline focus-visible:outline-2 focus-visible:outline-canopy-accent text-canopy-text/60 hover:text-canopy-text transition-colors"
-              title="Minimize to dock"
-              aria-label="Minimize to dock"
+              title={location === "dock" ? "Minimize" : "Minimize to dock"}
+              aria-label={location === "dock" ? "Minimize" : "Minimize to dock"}
             >
               <ArrowDownToLine className="w-3 h-3" aria-hidden="true" />
             </button>

@@ -126,14 +126,21 @@ export function DockedTerminalItem({ terminal }: DockedTerminalItemProps) {
     moveTerminalToGrid(terminal.id);
   }, [moveTerminalToGrid, terminal.id]);
 
+  const handleMinimize = useCallback(() => {
+    setIsOpen(false);
+  }, [setIsOpen]);
+
   const handleClose = useCallback(() => {
     trashTerminal(terminal.id);
     setIsOpen(false);
-  }, [trashTerminal, terminal.id]);
+  }, [trashTerminal, terminal.id, setIsOpen]);
 
-  const handleOpenChange = useCallback((open: boolean) => {
-    setIsOpen(open);
-  }, []);
+  const handleOpenChange = useCallback(
+    (open: boolean) => {
+      setIsOpen(open);
+    },
+    [setIsOpen]
+  );
 
   const handleInjectContext = useCallback(async () => {
     if (!terminal.worktreeId) return;
@@ -186,6 +193,7 @@ export function DockedTerminalItem({ terminal }: DockedTerminalItemProps) {
           onFocus={() => {}}
           onClose={handleClose}
           onRestore={handleRestore}
+          onMinimize={handleMinimize}
           onInjectContext={terminal.worktreeId ? handleInjectContext : undefined}
           onCancelInjection={cancel}
         />
