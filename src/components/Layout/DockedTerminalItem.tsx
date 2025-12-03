@@ -25,7 +25,6 @@ interface DockedTerminalItemProps {
   terminal: TerminalInstance;
   index: number;
   isDragging?: boolean;
-  isDropTarget?: boolean;
   onDragStart?: (id: string, index: number) => void;
   onDragEnd?: () => void;
 }
@@ -87,7 +86,6 @@ export function DockedTerminalItem({
   terminal,
   index,
   isDragging,
-  isDropTarget,
   onDragStart,
   onDragEnd,
 }: DockedTerminalItemProps) {
@@ -224,65 +222,61 @@ export function DockedTerminalItem({
   }, [onDragEnd]);
 
   return (
-    <div className="relative flex items-center">
-      {isDropTarget && <div className="absolute -left-1.5 w-0.5 h-6 bg-canopy-accent rounded" />}
-
-      <Popover open={isOpen} onOpenChange={handleOpenChange}>
-        <PopoverTrigger asChild>
-          <button
-            data-docked-terminal-id={terminal.id}
-            className={cn(
-              "flex items-center gap-2 px-3 py-1.5 rounded text-xs border transition-all",
-              "hover:bg-canopy-accent/10 border-canopy-border hover:border-canopy-accent/50",
-              "focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-canopy-accent focus-visible:ring-offset-2 focus-visible:ring-offset-canopy-bg",
-              "cursor-grab active:cursor-grabbing",
-              isOpen && "bg-canopy-accent/20 border-canopy-accent",
-              isDragging && "opacity-50 ring-2 ring-canopy-accent"
-            )}
-            title={`${terminal.title} - Click to preview, drag to reorder`}
-            draggable={!isOpen}
-            onDragStart={handleDragStart}
-            onDragEnd={handleDragEnd}
-            aria-grabbed={isDragging}
-          >
-            {getTerminalIcon(terminal.type)}
-            {getStateIndicator(terminal.agentState)}
-            <span className="truncate max-w-[120px] font-mono">{terminal.title}</span>
-          </button>
-        </PopoverTrigger>
-
-        <PopoverContent
-          className="w-[700px] h-[500px] p-0 border-canopy-border bg-canopy-bg shadow-2xl"
-          side="top"
-          align="start"
-          sideOffset={8}
+    <Popover open={isOpen} onOpenChange={handleOpenChange}>
+      <PopoverTrigger asChild>
+        <button
+          data-docked-terminal-id={terminal.id}
+          className={cn(
+            "flex items-center gap-2 px-3 py-1.5 rounded text-xs border transition-all",
+            "hover:bg-canopy-accent/10 border-canopy-border hover:border-canopy-accent/50",
+            "focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-canopy-accent focus-visible:ring-offset-2 focus-visible:ring-offset-canopy-bg",
+            "cursor-grab active:cursor-grabbing",
+            isOpen && "bg-canopy-accent/20 border-canopy-accent",
+            isDragging && "opacity-50 ring-2 ring-canopy-accent"
+          )}
+          title={`${terminal.title} - Click to preview, drag to reorder`}
+          draggable={!isOpen}
+          onDragStart={handleDragStart}
+          onDragEnd={handleDragEnd}
+          aria-grabbed={isDragging}
         >
-          <TerminalPane
-            id={terminal.id}
-            title={terminal.title}
-            type={terminal.type}
-            worktreeId={terminal.worktreeId}
-            cwd={terminal.cwd}
-            isFocused={true}
-            agentState={terminal.agentState}
-            activity={
-              terminal.activityHeadline
-                ? {
-                    headline: terminal.activityHeadline,
-                    status: terminal.activityStatus ?? "working",
-                    type: terminal.activityType ?? "interactive",
-                  }
-                : null
-            }
-            location="dock"
-            onFocus={() => {}}
-            onClose={handleClose}
-            onRestore={handleRestore}
-            onInjectContext={terminal.worktreeId ? handleInjectContext : undefined}
-            onCancelInjection={cancel}
-          />
-        </PopoverContent>
-      </Popover>
-    </div>
+          {getTerminalIcon(terminal.type)}
+          {getStateIndicator(terminal.agentState)}
+          <span className="truncate max-w-[120px] font-mono">{terminal.title}</span>
+        </button>
+      </PopoverTrigger>
+
+      <PopoverContent
+        className="w-[700px] h-[500px] p-0 border-canopy-border bg-canopy-bg shadow-2xl"
+        side="top"
+        align="start"
+        sideOffset={8}
+      >
+        <TerminalPane
+          id={terminal.id}
+          title={terminal.title}
+          type={terminal.type}
+          worktreeId={terminal.worktreeId}
+          cwd={terminal.cwd}
+          isFocused={true}
+          agentState={terminal.agentState}
+          activity={
+            terminal.activityHeadline
+              ? {
+                  headline: terminal.activityHeadline,
+                  status: terminal.activityStatus ?? "working",
+                  type: terminal.activityType ?? "interactive",
+                }
+              : null
+          }
+          location="dock"
+          onFocus={() => {}}
+          onClose={handleClose}
+          onRestore={handleRestore}
+          onInjectContext={terminal.worktreeId ? handleInjectContext : undefined}
+          onCancelInjection={cancel}
+        />
+      </PopoverContent>
+    </Popover>
   );
 }

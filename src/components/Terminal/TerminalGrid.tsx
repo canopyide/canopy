@@ -5,6 +5,7 @@ import { useTerminalStore, useLayoutConfigStore, type TerminalInstance } from "@
 import { useContextInjection } from "@/hooks/useContextInjection";
 import { useTerminalDragAndDrop } from "@/hooks/useDragAndDrop";
 import { TerminalPane } from "./TerminalPane";
+import { DropPlaceholder } from "./DropPlaceholder";
 import { FilePickerModal } from "@/components/ContextInjection";
 import { Terminal } from "lucide-react";
 import { CanopyIcon, CodexIcon, ClaudeIcon, GeminiIcon } from "@/components/icons";
@@ -154,7 +155,6 @@ export function TerminalGrid({ className, defaultCwd }: TerminalGridProps) {
     handleDrop,
     handleDragEnd,
     isDraggedTerminal,
-    getDropIndicator,
   } = useTerminalDragAndDrop();
 
   // Only need inject/cancel actions - each TerminalPane subscribes to its own progress
@@ -170,8 +170,18 @@ export function TerminalGrid({ className, defaultCwd }: TerminalGridProps) {
     terminalId: null,
   });
 
+  // Calculate if we need to show placeholder (only when dragging from dock into grid)
+  const showPlaceholder =
+    dragState.isDragging &&
+    dragState.dropZone === "grid" &&
+    dragState.sourceLocation === "dock" &&
+    dragState.dropIndex !== null;
+
+  // Calculate effective grid count including placeholder
+  const effectiveGridCount = gridTerminals.length + (showPlaceholder ? 1 : 0);
+
   const gridCols = useMemo(() => {
-    const count = gridTerminals.length;
+    const count = effectiveGridCount;
     if (count === 0) return 1;
 
     const { strategy, value } = layoutConfig;
@@ -189,7 +199,7 @@ export function TerminalGrid({ className, defaultCwd }: TerminalGridProps) {
     if (count <= 1) return 1;
     if (count <= 4) return 2;
     return Math.min(Math.ceil(Math.sqrt(count)), 4);
-  }, [gridTerminals.length, layoutConfig]);
+  }, [effectiveGridCount, layoutConfig]);
 
   const handleLaunchAgent = useCallback(
     async (type: "claude" | "gemini" | "codex" | "shell") => {
@@ -262,6 +272,102 @@ export function TerminalGrid({ className, defaultCwd }: TerminalGridProps) {
     };
   }, [gridCols, gridTerminals.length]);
 
+  const handleGridDragOver = createDragOverHandler("grid");
+
+  // Build render items array with placeholder spliced in at dropIndex when dragging from dock
+  const renderItems = useMemo(() => {
+    const items: React.ReactNode[] = gridTerminals.map(
+      (terminal: TerminalInstance, index: number) => {
+        const isDragging = isDraggedTerminal(terminal.id);
+        const isTerminalInTrash = isInTrash(terminal.id);
+
+        // Show ring indicator when reordering within grid (not dock-to-grid)
+        const showReorderIndicator =
+          dragState.isDragging &&
+          dragState.dropZone === "grid" &&
+          dragState.sourceLocation === "grid" &&
+          dragState.dropIndex === index;
+
+        return (
+          <div
+            key={terminal.id}
+            className={cn(
+              "relative h-full",
+              isDragging && "opacity-50",
+              showReorderIndicator && "ring-2 ring-canopy-accent ring-inset"
+            )}
+          >
+            <TerminalPane
+              id={terminal.id}
+              title={terminal.title}
+              type={terminal.type}
+              worktreeId={terminal.worktreeId}
+              cwd={terminal.cwd}
+              isFocused={terminal.id === focusedId}
+              isMaximized={false}
+              agentState={terminal.agentState}
+              activity={
+                terminal.activityHeadline
+                  ? {
+                      headline: terminal.activityHeadline,
+                      status: terminal.activityStatus ?? "working",
+                      type: terminal.activityType ?? "interactive",
+                    }
+                  : null
+              }
+              location="grid"
+              onFocus={() => setFocused(terminal.id)}
+              onClose={() => trashTerminal(terminal.id)}
+              onInjectContext={
+                terminal.worktreeId
+                  ? () => handleInjectContext(terminal.id, terminal.worktreeId)
+                  : undefined
+              }
+              onCancelInjection={cancel}
+              onToggleMaximize={() => toggleMaximize(terminal.id)}
+              onTitleChange={(newTitle) => updateTitle(terminal.id, newTitle)}
+              onMinimize={() => moveTerminalToDock(terminal.id)}
+              isDragging={isDragging}
+              onDragStart={
+                !isTerminalInTrash ? createDragStartHandler(terminal.id, "grid", index) : undefined
+              }
+            />
+          </div>
+        );
+      }
+    );
+
+    // Inject placeholder at dropIndex when dragging from dock to grid
+    if (showPlaceholder && dragState.dropIndex !== null) {
+      items.splice(
+        dragState.dropIndex,
+        0,
+        <DropPlaceholder key="grid-placeholder" label="Drop to move" />
+      );
+    }
+
+    return items;
+  }, [
+    gridTerminals,
+    dragState.isDragging,
+    dragState.dropZone,
+    dragState.dropIndex,
+    dragState.sourceLocation,
+    showPlaceholder,
+    isDraggedTerminal,
+    isInTrash,
+    focusedId,
+    setFocused,
+    trashTerminal,
+    handleInjectContext,
+    cancel,
+    toggleMaximize,
+    updateTitle,
+    moveTerminalToDock,
+    createDragStartHandler,
+  ]);
+
+  // Maximized terminal takes full screen
   if (maximizedId) {
     const terminal = gridTerminals.find((t: TerminalInstance) => t.id === maximizedId);
     if (terminal) {
@@ -302,22 +408,13 @@ export function TerminalGrid({ className, defaultCwd }: TerminalGridProps) {
     }
   }
 
-  // Docked terminals don't count for empty state
-  if (gridTerminals.length === 0) {
-    return (
-      <div className={cn("h-full", className)}>
-        <EmptyState onLaunchAgent={handleLaunchAgent} />
-      </div>
-    );
-  }
-
-  const handleGridDragOver = createDragOverHandler("grid");
+  const isEmpty = gridTerminals.length === 0;
 
   return (
     <div
       ref={gridRef}
       className={cn(
-        "h-full bg-noise p-1", // Dark background with subtle grain
+        "h-full bg-noise p-1",
         dragState.isDragging &&
           dragState.dropZone === "grid" &&
           "ring-2 ring-canopy-accent/30 ring-inset",
@@ -341,76 +438,13 @@ export function TerminalGrid({ className, defaultCwd }: TerminalGridProps) {
         }
       }}
     >
-      {gridTerminals.map((terminal: TerminalInstance, index: number) => {
-        const dropIndicator = getDropIndicator("grid", index);
-        const isDragging = isDraggedTerminal(terminal.id);
-        const isTerminalInTrash = isInTrash(terminal.id);
-        const showGhostBefore =
-          dropIndicator.showBefore && dragState.sourceLocation === "dock" && dragState.isDragging;
-
-        return (
-          <div
-            key={terminal.id}
-            className={cn(
-              "relative",
-              dropIndicator.showBefore && !showGhostBefore && "ring-2 ring-canopy-accent ring-inset"
-            )}
-          >
-            {showGhostBefore && (
-              <div className="absolute inset-0 bg-canopy-accent/10 border-2 border-dashed border-canopy-accent rounded-lg pointer-events-none z-10 flex items-center justify-center">
-                <span className="text-xs text-canopy-accent font-medium">Drop here</span>
-              </div>
-            )}
-            <TerminalPane
-              id={terminal.id}
-              title={terminal.title}
-              type={terminal.type}
-              worktreeId={terminal.worktreeId}
-              cwd={terminal.cwd}
-              isFocused={terminal.id === focusedId}
-              isMaximized={false}
-              agentState={terminal.agentState}
-              activity={
-                terminal.activityHeadline
-                  ? {
-                      headline: terminal.activityHeadline,
-                      status: terminal.activityStatus ?? "working",
-                      type: terminal.activityType ?? "interactive",
-                    }
-                  : null
-              }
-              location="grid"
-              onFocus={() => setFocused(terminal.id)}
-              onClose={() => trashTerminal(terminal.id)}
-              onInjectContext={
-                terminal.worktreeId
-                  ? () => handleInjectContext(terminal.id, terminal.worktreeId)
-                  : undefined
-              }
-              onCancelInjection={cancel}
-              onToggleMaximize={() => toggleMaximize(terminal.id)}
-              onTitleChange={(newTitle) => updateTitle(terminal.id, newTitle)}
-              onMinimize={() => moveTerminalToDock(terminal.id)}
-              isDragging={isDragging}
-              onDragStart={
-                !isTerminalInTrash ? createDragStartHandler(terminal.id, "grid", index) : undefined
-              }
-            />
-          </div>
-        );
-      })}
-
-      {/* Ghost pane at end position when dropping after last terminal */}
-      {dragState.isDragging &&
-        dragState.dropZone === "grid" &&
-        dragState.dropIndex === gridTerminals.length &&
-        dragState.sourceLocation === "dock" && (
-          <div className="relative">
-            <div className="absolute inset-0 bg-canopy-accent/10 border-2 border-dashed border-canopy-accent rounded-lg pointer-events-none z-10 flex items-center justify-center">
-              <span className="text-xs text-canopy-accent font-medium">Drop here</span>
-            </div>
-          </div>
-        )}
+      {isEmpty && !showPlaceholder ? (
+        <div className="col-span-full row-span-full">
+          <EmptyState onLaunchAgent={handleLaunchAgent} />
+        </div>
+      ) : (
+        renderItems
+      )}
 
       {filePickerState.worktreeId && (
         <FilePickerModal

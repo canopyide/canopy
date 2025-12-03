@@ -1,9 +1,10 @@
-import { useState, useCallback, useRef } from "react";
+import { useState, useCallback, useRef, useMemo } from "react";
 import { useShallow } from "zustand/react/shallow";
 import { cn } from "@/lib/utils";
 import { useTerminalStore } from "@/store";
 import { DockedTerminalItem } from "./DockedTerminalItem";
 import { TrashContainer } from "./TrashContainer";
+import { DropPlaceholder } from "../Terminal/DropPlaceholder";
 import { getTerminalDragData, isTerminalDrag, calculateDropIndex } from "@/utils/dragDrop";
 import { useTerminalDragAndDrop } from "@/hooks/useDragAndDrop";
 
@@ -77,11 +78,11 @@ export function TerminalDock() {
       const { terminalId, sourceLocation } = data;
       const targetIndex = dropIndex ?? activeDockTerminals.length;
 
-      // Map visual indices (excluding trashed) to full dock order (including trashed)
-      const dockOrder = dockTerminals;
-      const fromIndex = dockOrder.findIndex((t) => t.id === terminalId);
+      const fromIndex = dockTerminals.findIndex((t) => t.id === terminalId);
       const targetId = activeDockTerminals[targetIndex]?.id;
-      const toIndex = targetId ? dockOrder.findIndex((t) => t.id === targetId) : dockOrder.length;
+      const toIndex = targetId
+        ? dockTerminals.findIndex((t) => t.id === targetId)
+        : dockTerminals.length;
 
       if (sourceLocation === "dock") {
         if (fromIndex !== toIndex && fromIndex >= 0 && toIndex >= 0) {
@@ -120,6 +121,43 @@ export function TerminalDock() {
 
   const isEmpty = activeDockTerminals.length === 0 && trashedItems.length === 0;
 
+  // Build render dock items array with placeholder spliced in at dropIndex
+  const renderDockItems = useMemo(() => {
+    const items: React.ReactNode[] = activeDockTerminals.map((terminal, index) => (
+      <DockedTerminalItem
+        key={terminal.id}
+        terminal={terminal}
+        index={index}
+        isDragging={draggedId === terminal.id}
+        onDragStart={handleDockItemDragStart}
+        onDragEnd={handleDockItemDragEnd}
+      />
+    ));
+
+    // Inject placeholder if dragging over dock
+    if (isDragOver && dropIndex !== null && dropIndex <= activeDockTerminals.length) {
+      items.splice(
+        dropIndex,
+        0,
+        <div key="dock-placeholder" className="w-32 h-8 flex-shrink-0">
+          <DropPlaceholder
+            className="h-full w-full p-0 border-canopy-accent/40 bg-canopy-accent/5 rounded"
+            label="Drop"
+          />
+        </div>
+      );
+    }
+
+    return items;
+  }, [
+    activeDockTerminals,
+    isDragOver,
+    dropIndex,
+    draggedId,
+    handleDockItemDragStart,
+    handleDockItemDragEnd,
+  ]);
+
   return (
     <div
       ref={dockRef}
@@ -137,37 +175,26 @@ export function TerminalDock() {
       onDrop={handleDrop}
     >
       <div className="flex items-center gap-2 overflow-x-auto flex-1 no-scrollbar">
-        {isEmpty ? (
-          isDragOver ? (
-            <div className="flex-1 flex items-center justify-center text-xs text-canopy-text/40 select-none transition-opacity duration-200 opacity-100">
-              Drop terminals here to minimize
+        {isEmpty && !isDragOver ? (
+          <div className="flex-1 flex items-center justify-center text-xs text-canopy-text/20 select-none">
+            Drag terminals here to minimize
+          </div>
+        ) : isEmpty && isDragOver ? (
+          <div className="flex-1 flex items-center justify-center">
+            <div className="w-32 h-8">
+              <DropPlaceholder
+                className="h-full w-full p-0 border-canopy-accent/40 bg-canopy-accent/5 rounded"
+                label="Drop"
+              />
             </div>
-          ) : (
-            <div className="flex-1 flex items-center justify-center text-xs text-canopy-text/20 select-none">
-              Drag terminals here to minimize
-            </div>
-          )
+          </div>
         ) : (
           <>
             <span className="text-xs text-canopy-text/60 mr-2 shrink-0 select-none">
               Background ({activeDockTerminals.length})
             </span>
 
-            {activeDockTerminals.map((terminal, index) => (
-              <DockedTerminalItem
-                key={terminal.id}
-                terminal={terminal}
-                index={index}
-                isDragging={draggedId === terminal.id}
-                isDropTarget={dropIndex === index && isDragOver}
-                onDragStart={handleDockItemDragStart}
-                onDragEnd={handleDockItemDragEnd}
-              />
-            ))}
-
-            {isDragOver && dropIndex === activeDockTerminals.length && (
-              <div className="w-0.5 h-6 bg-canopy-accent rounded shrink-0" />
-            )}
+            {renderDockItems}
           </>
         )}
       </div>
