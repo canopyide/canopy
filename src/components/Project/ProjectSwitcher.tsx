@@ -1,7 +1,8 @@
-import { useEffect, useState } from "react";
+import { useEffect, useState, useRef } from "react";
 import { ChevronsUpDown, Plus, Check, Sparkles, Loader2 } from "lucide-react";
 import { cn } from "@/lib/utils";
 import { useProjectStore } from "@/store/projectStore";
+import { useNotificationStore } from "@/store/notificationStore";
 import {
   DropdownMenu,
   DropdownMenuContent,
@@ -25,8 +26,10 @@ export function ProjectSwitcher() {
     regenerateIdentity,
   } = useProjectStore();
 
+  const { addNotification } = useNotificationStore();
   const [isOpen, setIsOpen] = useState(false);
   const [regeneratingId, setRegeneratingId] = useState<string | null>(null);
+  const switchTimeoutRef = useRef<NodeJS.Timeout | null>(null);
 
   const handleRegenerate = async (e: React.MouseEvent, projectId: string) => {
     e.stopPropagation();
@@ -38,6 +41,23 @@ export function ProjectSwitcher() {
     }
   };
 
+  const handleProjectSwitch = (projectId: string) => {
+    if (switchTimeoutRef.current) {
+      clearTimeout(switchTimeoutRef.current);
+    }
+
+    addNotification({
+      type: "info",
+      title: "Switching projects",
+      message: "Resetting state for clean project isolation",
+      duration: 1500,
+    });
+
+    switchTimeoutRef.current = setTimeout(() => {
+      switchProject(projectId);
+    }, 1500);
+  };
+
   useEffect(() => {
     loadProjects();
     getCurrentProject();
@@ -47,7 +67,12 @@ export function ProjectSwitcher() {
       loadProjects();
     });
 
-    return cleanup;
+    return () => {
+      cleanup();
+      if (switchTimeoutRef.current) {
+        clearTimeout(switchTimeoutRef.current);
+      }
+    };
   }, [loadProjects, getCurrentProject]);
 
   const renderIcon = (emoji: string, _color?: string, sizeClass = "h-8 w-8 text-lg") => (
@@ -86,7 +111,7 @@ export function ProjectSwitcher() {
               {projects.map((project) => (
                 <DropdownMenuItem
                   key={project.id}
-                  onClick={() => switchProject(project.id)}
+                  onClick={() => handleProjectSwitch(project.id)}
                   className="gap-3 p-2 group cursor-pointer focus:bg-canopy-accent/10"
                 >
                   {renderIcon(project.emoji || "🌲", project.color, "h-8 w-8 text-base")}
@@ -172,7 +197,7 @@ export function ProjectSwitcher() {
                 key={project.id}
                 onClick={() => {
                   if (!isActive && !isLoading) {
-                    switchProject(project.id);
+                    handleProjectSwitch(project.id);
                   }
                 }}
                 disabled={isLoading}
