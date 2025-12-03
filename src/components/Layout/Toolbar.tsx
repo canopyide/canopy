@@ -79,7 +79,7 @@ export function Toolbar({
             size="icon"
             onClick={() => onLaunchAgent("claude")}
             className="text-canopy-text hover:bg-canopy-border h-8 w-8 transition-colors hover:text-canopy-accent focus-visible:text-canopy-accent"
-            title="Start Claude (Opus 4.5 for deep work)"
+            title="Start Claude — Opus 4.5 for deep work (Ctrl+Shift+C)"
             aria-label="Start Claude Agent"
           >
             <ClaudeIcon className="h-4 w-4" brandColor={getBrandColorHex("claude")} />
@@ -91,7 +91,7 @@ export function Toolbar({
             size="icon"
             onClick={() => onLaunchAgent("gemini")}
             className="text-canopy-text hover:bg-canopy-border h-8 w-8 transition-colors hover:text-canopy-accent focus-visible:text-canopy-accent"
-            title="Start Gemini (Auto-routing enabled)"
+            title="Start Gemini — Auto-routing enabled (Ctrl+Shift+G)"
             aria-label="Start Gemini Agent"
           >
             <GeminiIcon className="h-4 w-4" brandColor={getBrandColorHex("gemini")} />
@@ -103,7 +103,7 @@ export function Toolbar({
             size="icon"
             onClick={() => onLaunchAgent("codex")}
             className="text-canopy-text hover:bg-canopy-border h-8 w-8 transition-colors hover:text-canopy-accent focus-visible:text-canopy-accent"
-            title="Start Codex (GPT-5.1 Max)"
+            title="Start Codex — GPT-5.1 Max (Ctrl+Shift+X)"
             aria-label="Start Codex Agent"
           >
             <CodexIcon className="h-4 w-4" brandColor={getBrandColorHex("codex")} />
@@ -114,7 +114,7 @@ export function Toolbar({
           size="icon"
           onClick={() => onLaunchAgent("shell")}
           className="text-canopy-text hover:bg-canopy-border h-8 w-8 transition-colors hover:text-canopy-accent focus-visible:text-canopy-accent"
-          title="Open Shell"
+          title="Open Shell (⌘T for palette)"
           aria-label="Open Shell"
         >
           <Terminal className="h-4 w-4" />
