@@ -11,6 +11,7 @@ Add a new project to Canopy:
 3. Choose a directory containing a Git repository
 
 Canopy will:
+
 - Scan for Git worktrees in the repository
 - Generate an AI-powered project identity (if OpenAI is configured)
 - Save the project to your workspace
@@ -24,6 +25,7 @@ Use the project switcher dropdown in the toolbar to switch between projects.
 When you switch between projects, Canopy performs a **complete state reset** to ensure clean state isolation.
 
 **What gets reset:**
+
 - All terminal sessions are closed
 - Diagnostics panels are cleared
 - Worktree monitoring restarts
@@ -32,12 +34,14 @@ When you switch between projects, Canopy performs a **complete state reset** to 
 - UI state is re-hydrated with new project context
 
 **How it works:**
+
 - Renderer stores are reset synchronously
 - Main process switches project context and restarts services
 - UI re-hydrates from the new project state
 - This ensures no state leakage between projects
 
 **Why a complete reset?**
+
 - Guarantees clean state isolation between projects
 - Simplifies implementation (v1.0 approach)
 - Prevents subtle bugs from shared state
@@ -50,6 +54,7 @@ When you switch between projects, Canopy performs a **complete state reset** to 
 ## Project State Persistence
 
 Each project maintains its own state:
+
 - Active worktree selection
 - Worktree monitoring intervals
 - Dev server configurations
