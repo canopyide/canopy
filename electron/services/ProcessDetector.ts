@@ -4,6 +4,103 @@ import type { TerminalType } from "../../shared/types/domain.js";
 
 const execAsync = promisify(exec);
 
+interface ChildProcess {
+  pid: number;
+  name: string;
+}
+
+/**
+ * Get child processes using PowerShell's Get-CimInstance (modern, fast).
+ * Available on Windows 10+ with PowerShell 5.1+.
+ */
+async function getChildProcessesPowerShell(pid: number): Promise<ChildProcess[]> {
+  const { stdout } = await execAsync(
+    `powershell -NoProfile -Command "Get-CimInstance Win32_Process | Where-Object {$_.ParentProcessId -eq ${pid}} | Select-Object ProcessId,Name | ConvertTo-Json -Compress"`,
+    { timeout: 5000 }
+  );
+
+  const trimmed = stdout.replace(/^\uFEFF/, "").trim();
+  if (!trimmed || trimmed === "null") {
+    return [];
+  }
+
+  let result;
+  try {
+    result = JSON.parse(trimmed);
+  } catch (error) {
+    console.warn("PowerShell process JSON parse failed", {
+      pid,
+      outputSample: trimmed.slice(0, 200),
+    });
+    throw error;
+  }
+  // Single object if one match, array if multiple
+  const processes = Array.isArray(result) ? result : [result];
+
+  return processes
+    .map((p) => ({
+      pid: Number.parseInt(String(p?.ProcessId), 10),
+      name: (p?.Name || "").replace(/\.exe$/i, ""),
+    }))
+    .filter((p) => Number.isInteger(p.pid) && p.pid > 0 && p.name);
+}
+
+/**
+ * Get child processes using wmic (legacy fallback for older Windows).
+ * Deprecated but works on Windows 7-10 systems where wmic is still available.
+ */
+async function getChildProcessesWmic(pid: number): Promise<ChildProcess[]> {
+  const { stdout } = await execAsync(
+    `wmic process where "ParentProcessId=${pid}" get ProcessId,Name /format:csv 2>nul`,
+    { timeout: 5000 }
+  );
+
+  const lines = stdout.split("\n").filter((line) => line.trim());
+  const processes: ChildProcess[] = [];
+
+  // Skip header line (first non-empty line is header in CSV format)
+  for (let i = 1; i < lines.length; i++) {
+    const parts = lines[i].trim().split(",");
+    // CSV format: Node,Name,ProcessId
+    if (parts.length >= 3) {
+      const name = parts[1];
+      const childPid = parseInt(parts[2], 10);
+      if (!isNaN(childPid) && name) {
+        processes.push({
+          pid: childPid,
+          name: name.replace(/\.exe$/i, ""),
+        });
+      }
+    }
+  }
+
+  return processes;
+}
+
+/**
+ * Get child processes on Windows with PowerShell primary, wmic fallback.
+ * Returns empty array if both methods fail (graceful degradation).
+ */
+async function getChildProcessesWindows(pid: number): Promise<ChildProcess[]> {
+  // Try PowerShell first (modern, faster)
+  try {
+    return await getChildProcessesPowerShell(pid);
+  } catch (psError) {
+    // PowerShell failed, try wmic fallback
+    try {
+      return await getChildProcessesWmic(pid);
+    } catch (wmicError) {
+      // Both methods failed - log and return empty (graceful degradation)
+      console.warn("Windows process detection failed:", {
+        pid,
+        powershell: psError instanceof Error ? psError.message : String(psError),
+        wmic: wmicError instanceof Error ? wmicError.message : String(wmicError),
+      });
+      return [];
+    }
+  }
+}
+
 /**
  * Check if a process has any child processes running.
  * Used for shell terminals to determine busy/idle state.
@@ -15,18 +112,8 @@ export async function hasChildProcesses(pid: number): Promise<boolean> {
     }
 
     if (process.platform === "win32") {
-      // Windows: Use wmic to count child processes
-      const { stdout } = await execAsync(
-        `wmic process where (ParentProcessId=${pid}) get ProcessId 2>nul || echo.`,
-        { timeout: 5000 }
-      );
-      // Header + at least one ID means children exist
-      return (
-        stdout
-          .trim()
-          .split("\n")
-          .filter((line) => line.trim()).length > 1
-      );
+      const children = await getChildProcessesWindows(pid);
+      return children.length > 0;
     } else {
       // macOS/Linux: Use pgrep to check for children
       try {
@@ -200,70 +287,43 @@ export class ProcessDetector {
         return { detected: false, isBusy: false };
       }
 
-      const { stdout } = await execAsync(
-        `wmic process where "ParentProcessId=${this.ptyPid}" get ProcessId,Name 2>nul || echo.`,
-        { timeout: 5000 }
-      );
+      // Get direct children of the PTY process
+      const children = await getChildProcessesWindows(this.ptyPid);
+      const isBusy = children.length > 0;
 
-      const lines = stdout.split("\n").slice(1);
-      const childPids: number[] = [];
+      // Check direct children for agent CLIs
+      for (const child of children) {
+        const agentType = AGENT_CLI_NAMES[child.name.toLowerCase()];
+        if (agentType) {
+          return {
+            detected: true,
+            agentType,
+            processName: child.name,
+            isBusy,
+          };
+        }
+      }
 
-      for (const line of lines) {
-        const parts = line.trim().split(/\s+/);
-        if (parts.length >= 2) {
-          const name = parts[0];
-          const pid = parseInt(parts[1], 10);
-
-          if (!isNaN(pid)) {
-            childPids.push(pid);
-
-            const basename = name.replace(/\.exe$/i, "");
-            const agentType = AGENT_CLI_NAMES[basename.toLowerCase()];
-
+      // Check grandchildren (agent may be spawned by intermediate shell)
+      for (const child of children.slice(0, 10)) {
+        try {
+          const grandchildren = await getChildProcessesWindows(child.pid);
+          for (const grandchild of grandchildren) {
+            const agentType = AGENT_CLI_NAMES[grandchild.name.toLowerCase()];
             if (agentType) {
-              // Has child processes = busy
               return {
                 detected: true,
                 agentType,
-                processName: basename,
-                isBusy: childPids.length > 0,
+                processName: grandchild.name,
+                isBusy,
               };
             }
           }
-        }
-      }
-
-      for (const childPid of childPids.slice(0, 10)) {
-        try {
-          const { stdout: childStdout } = await execAsync(
-            `wmic process where "ParentProcessId=${childPid}" get Name 2>nul || echo.`,
-            { timeout: 5000 }
-          );
-
-          const childLines = childStdout.split("\n").slice(1);
-          for (const line of childLines) {
-            const name = line.trim();
-            if (name) {
-              const basename = name.replace(/\.exe$/i, "");
-              const agentType = AGENT_CLI_NAMES[basename.toLowerCase()];
-
-              if (agentType) {
-                return {
-                  detected: true,
-                  agentType,
-                  processName: basename,
-                  isBusy: childPids.length > 0,
-                };
-              }
-            }
-          }
         } catch {
-          // ignore
+          // Ignore errors checking grandchildren
         }
       }
 
-      // Determine busy status: any child processes means commands are running
-      const isBusy = childPids.length > 0;
       return { detected: false, isBusy };
     } catch (_error) {
       return { detected: false, isBusy: false };
