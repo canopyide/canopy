@@ -245,14 +245,6 @@ export function DockedTerminalItem({
             isInjecting={isInjecting}
             injectionProgress={progress}
             agentState={terminal.agentState}
-            stateDebugInfo={
-              terminal.stateChangeTrigger
-                ? {
-                    trigger: terminal.stateChangeTrigger,
-                    confidence: terminal.stateChangeConfidence ?? 0,
-                  }
-                : null
-            }
             activity={
               terminal.activityHeadline
                 ? {
