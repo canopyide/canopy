@@ -108,7 +108,11 @@ export function TerminalPalette({
         )}
         onClick={(e) => e.stopPropagation()}
       >
-        <div className="p-3 border-b border-canopy-border">
+        <div className="px-3 pt-2 pb-1 border-b border-canopy-border">
+          <div className="flex justify-between items-center mb-1.5 text-[11px] text-canopy-text/40">
+            <span>Quick switch</span>
+            <span className="font-mono">⌘T</span>
+          </div>
           <input
             ref={inputRef}
             type="text"

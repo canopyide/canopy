@@ -8,6 +8,7 @@ import { TerminalPane } from "./TerminalPane";
 import { FilePickerModal } from "@/components/ContextInjection";
 import { Terminal } from "lucide-react";
 import { CanopyIcon, CodexIcon, ClaudeIcon, GeminiIcon } from "@/components/icons";
+import { Kbd } from "@/components/ui/Kbd";
 import { getBrandColorHex } from "@/lib/colorUtils";
 import { terminalInstanceService } from "@/services/TerminalInstanceService";
 import { terminalClient } from "@/clients";
@@ -85,7 +86,7 @@ function EmptyState({
           </p>
         </div>
 
-        <div className="grid grid-cols-1 sm:grid-cols-2 gap-4 w-full max-w-3xl mb-12">
+        <div className="grid grid-cols-1 sm:grid-cols-2 gap-4 w-full max-w-3xl mb-8">
           <LauncherCard
             title="Claude Code"
             description="Best for sustained, autonomous refactoring sessions."
@@ -116,6 +117,10 @@ function EmptyState({
             onClick={() => onLaunchAgent("shell")}
           />
         </div>
+
+        <p className="text-xs text-canopy-text/40 text-center">
+          Tip: Press <Kbd>⌘T</Kbd> to open the terminal palette anytime
+        </p>
       </div>
     </div>
   );
