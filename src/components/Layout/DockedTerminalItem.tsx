@@ -96,7 +96,8 @@ export function DockedTerminalItem({
   const moveTerminalToGrid = useTerminalStore((s) => s.moveTerminalToGrid);
   const trashTerminal = useTerminalStore((s) => s.trashTerminal);
 
-  const { inject, cancel, isInjecting, progress } = useContextInjection();
+  // Only need inject/cancel actions - TerminalPane subscribes to its own progress
+  const { inject, cancel } = useContextInjection();
 
   // Toggle buffering based on popover open state
   useEffect(() => {
@@ -263,8 +264,6 @@ export function DockedTerminalItem({
             worktreeId={terminal.worktreeId}
             cwd={terminal.cwd}
             isFocused={true}
-            isInjecting={isInjecting}
-            injectionProgress={progress}
             agentState={terminal.agentState}
             activity={
               terminal.activityHeadline
