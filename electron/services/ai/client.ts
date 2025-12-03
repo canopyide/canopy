@@ -10,7 +10,7 @@ let lastKey: string | undefined;
  */
 export function getAIClient(): OpenAI | null {
   const apiKey = secureStorage.get("userConfig.openaiApiKey");
-  const aiEnabled = store.get("userConfig.aiEnabled");
+  const aiEnabled = store.get("userConfig.aiEnabled") ?? true;
 
   if (!aiEnabled || !apiKey) {
     return null;
@@ -40,16 +40,27 @@ export async function validateAIKey(apiKey: string): Promise<boolean> {
 }
 
 /**
- * Defaults to gpt-5-nano if not configured.
+ * Defaults to gpt-4o-mini if not configured.
  */
 export function getAIModel(): string {
-  return store.get("userConfig.aiModel") || "gpt-5-nano";
+  return store.get("userConfig.aiModel") || "gpt-4o-mini";
 }
 
 export function isAIAvailable(): boolean {
   const apiKey = secureStorage.get("userConfig.openaiApiKey");
-  const aiEnabled = store.get("userConfig.aiEnabled");
+  const aiEnabled = store.get("userConfig.aiEnabled") ?? true;
   return !!(aiEnabled && apiKey);
+}
+
+export type AIUnavailableReason = "no_key" | "disabled" | null;
+
+export function getAIUnavailableReason(): AIUnavailableReason {
+  const apiKey = secureStorage.get("userConfig.openaiApiKey");
+  const aiEnabled = store.get("userConfig.aiEnabled") ?? true;
+
+  if (!aiEnabled) return "disabled";
+  if (!apiKey) return "no_key";
+  return null;
 }
 
 export function getAIConfig(): {
@@ -59,7 +70,7 @@ export function getAIConfig(): {
 } {
   return {
     hasKey: !!secureStorage.get("userConfig.openaiApiKey"),
-    model: store.get("userConfig.aiModel") || "gpt-5-nano",
+    model: store.get("userConfig.aiModel") || "gpt-4o-mini",
     enabled: store.get("userConfig.aiEnabled") ?? true,
   };
 }

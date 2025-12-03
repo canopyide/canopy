@@ -1,4 +1,4 @@
-import { getAIClient, getAIModel } from "./client.js";
+import { getAIClient, getAIModel, getAIUnavailableReason } from "./client.js";
 import { extractOutputText, formatErrorSnippet, withRetry } from "./utils.js";
 import { ProjectIdentityResponseSchema } from "../../schemas/external.js";
 
@@ -9,9 +9,41 @@ export interface ProjectIdentity {
   gradientEnd: string;
 }
 
-export async function generateProjectIdentity(pathOrName: string): Promise<ProjectIdentity | null> {
+export interface IdentityGenerationError {
+  code: "no_key" | "disabled" | "api_error" | "model_not_found" | "rate_limit" | "invalid_response";
+  message: string;
+}
+
+export interface IdentityGenerationResult {
+  success: boolean;
+  identity?: ProjectIdentity;
+  error?: IdentityGenerationError;
+}
+
+export async function generateProjectIdentity(
+  pathOrName: string
+): Promise<IdentityGenerationResult> {
   const client = getAIClient();
-  if (!client) return null;
+  if (!client) {
+    const reason = getAIUnavailableReason();
+    if (reason === "no_key") {
+      return {
+        success: false,
+        error: {
+          code: "no_key",
+          message: "No OpenAI API key configured. Please add your API key in Settings.",
+        },
+      };
+    }
+    return {
+      success: false,
+      error: {
+        code: "disabled",
+        message:
+          "AI features are disabled. Enable them in Settings > AI Features > Advanced Options.",
+      },
+    };
+  }
 
   const model = getAIModel();
 
@@ -101,26 +133,90 @@ Respond with JSON:
   };
 
   try {
-    return await withRetry(callModel, {
+    const identity = await withRetry(callModel, {
       maxRetries: 2,
       baseDelay: 300,
-      shouldRetry: () => true,
+      shouldRetry: (error) => {
+        const errorObj = error as { status?: number };
+        const status = errorObj.status;
+        // Only retry on transient errors (429 rate limit, 5xx server errors)
+        // Don't retry on 401 (invalid key), 404 (model not found), or parse errors
+        if (status === 401 || status === 404) return false;
+        if (status && status >= 500) return true;
+        if (status === 429) return true;
+        // Retry network/timeout errors (no status)
+        if (!status) return true;
+        return false;
+      },
     });
+    return { success: true, identity };
   } catch (error) {
     console.error("[AI] generateProjectIdentity failed:", error);
-    return null;
+
+    // Parse OpenAI API errors for more specific messages
+    const errorObj = error as { status?: number; message?: string; code?: string };
+    const status = errorObj.status;
+    const errorMessage = errorObj.message || String(error);
+
+    if (status === 401) {
+      return {
+        success: false,
+        error: {
+          code: "api_error",
+          message: "Invalid API key. Please check your OpenAI API key in Settings.",
+        },
+      };
+    }
+
+    if (status === 404) {
+      return {
+        success: false,
+        error: {
+          code: "model_not_found",
+          message: `Model '${model}' not available. Try changing to 'gpt-4o-mini' in Settings > AI Features.`,
+        },
+      };
+    }
+
+    if (status === 429) {
+      return {
+        success: false,
+        error: {
+          code: "rate_limit",
+          message: "OpenAI rate limit exceeded. Please wait a moment and try again.",
+        },
+      };
+    }
+
+    if (errorMessage.includes("parse") || errorMessage.includes("Invalid response")) {
+      return {
+        success: false,
+        error: {
+          code: "invalid_response",
+          message: "Failed to parse AI response. Please try again.",
+        },
+      };
+    }
+
+    return {
+      success: false,
+      error: {
+        code: "api_error",
+        message: `AI request failed: ${errorMessage}`,
+      },
+    };
   }
 }
 
 export async function generateProjectNameAndEmoji(
   projectPath: string
 ): Promise<{ name: string; emoji: string; color?: string } | null> {
-  const identity = await generateProjectIdentity(projectPath);
-  if (!identity) return null;
+  const result = await generateProjectIdentity(projectPath);
+  if (!result.success || !result.identity) return null;
 
   return {
-    name: identity.title,
-    emoji: identity.emoji,
-    color: identity.gradientStart, // Use start color as primary
+    name: result.identity.title,
+    emoji: result.identity.emoji,
+    color: result.identity.gradientStart,
   };
 }

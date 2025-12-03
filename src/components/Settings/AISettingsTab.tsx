@@ -15,12 +15,12 @@ import { aiClient } from "@/clients";
 
 const AI_MODELS = [
   {
-    value: "gpt-5-nano",
-    label: "GPT-5 Nano",
-    description: "Fastest and most cost-effective (recommended)",
+    value: "gpt-4o-mini",
+    label: "GPT-4o Mini",
+    description: "Fast and cost-effective (recommended)",
   },
-  { value: "gpt-5-mini", label: "GPT-5 Mini", description: "Balanced speed and capability" },
-  { value: "gpt-5.1", label: "GPT-5.1", description: "Most capable flagship model" },
+  { value: "gpt-4o", label: "GPT-4o", description: "Most capable flagship model" },
+  { value: "gpt-4-turbo", label: "GPT-4 Turbo", description: "High performance with vision" },
 ];
 
 type ValidationResult = "success" | "error" | "test-success" | "test-error" | null;
@@ -31,7 +31,7 @@ export function AISettingsTab() {
   const [isValidating, setIsValidating] = useState(false);
   const [isTesting, setIsTesting] = useState(false);
   const [validationResult, setValidationResult] = useState<ValidationResult>(null);
-  const [selectedModel, setSelectedModel] = useState("gpt-5-nano");
+  const [selectedModel, setSelectedModel] = useState("gpt-4o-mini");
   const [isAdvancedOpen, setIsAdvancedOpen] = useState(false);
   const [isLoading, setIsLoading] = useState(true);
   const [loadError, setLoadError] = useState<string | null>(null);
@@ -44,7 +44,14 @@ export function AISettingsTab() {
         const config = await aiClient.getConfig();
         if (!cancelled) {
           setAiConfig(config);
-          setSelectedModel(config.model);
+          // Validate model against known list, default to gpt-4o-mini if unknown
+          const isValidModel = AI_MODELS.some((m) => m.value === config.model);
+          const modelToUse = isValidModel ? config.model : "gpt-4o-mini";
+          setSelectedModel(modelToUse);
+          // If model was invalid, update backend to match
+          if (!isValidModel && config.model !== "gpt-4o-mini") {
+            await aiClient.setModel("gpt-4o-mini");
+          }
           setLoadError(null);
         }
       } catch (error) {
@@ -320,7 +327,7 @@ export function AISettingsTab() {
                   </label>
                 ))}
               </div>
-              <p className="text-xs text-gray-500">GPT-5 Nano is recommended for most tasks.</p>
+              <p className="text-xs text-gray-500">GPT-4o Mini is recommended for most tasks.</p>
             </div>
 
             <div className="space-y-3">

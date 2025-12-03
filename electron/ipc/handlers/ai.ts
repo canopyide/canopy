@@ -132,7 +132,13 @@ export function registerAiHandlers(_deps: HandlerDependencies): () => void {
     if (typeof projectPath !== "string" || !projectPath.trim()) {
       throw new Error("Invalid projectPath: must be a non-empty string");
     }
-    return await generateProjectIdentity(projectPath.trim());
+    const result = await generateProjectIdentity(projectPath.trim());
+    if (!result.success || !result.identity) {
+      const errorMessage = result.error?.message || "AI identity generation failed";
+      console.error("[AI] generateProjectIdentity failed:", errorMessage);
+      throw new Error(errorMessage);
+    }
+    return result.identity;
   };
   ipcMain.handle(CHANNELS.AI_GENERATE_PROJECT_IDENTITY, handleAIGenerateProjectIdentity);
   handlers.push(() => ipcMain.removeHandler(CHANNELS.AI_GENERATE_PROJECT_IDENTITY));
