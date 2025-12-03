@@ -13,6 +13,7 @@ export interface StoreSchema {
   };
   terminalConfig: {
     scrollbackLines: number; // -1 for unlimited, otherwise 100-100000
+    performanceMode: boolean;
   };
   appState: {
     activeWorktreeId?: string;
@@ -77,6 +78,7 @@ export const store = new Store<StoreSchema>({
     },
     terminalConfig: {
       scrollbackLines: 5000,
+      performanceMode: false,
     },
     appState: {
       sidebarWidth: 350,

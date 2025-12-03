@@ -127,6 +127,7 @@ export const CHANNELS = {
 
   TERMINAL_CONFIG_GET: "terminal-config:get",
   TERMINAL_CONFIG_SET_SCROLLBACK: "terminal-config:set-scrollback",
+  TERMINAL_CONFIG_SET_PERFORMANCE_MODE: "terminal-config:set-performance-mode",
 
   GIT_GET_FILE_DIFF: "git:get-file-diff",
 } as const;

@@ -8,4 +8,8 @@ export const terminalConfigClient = {
   setScrollback: (scrollbackLines: number): Promise<void> => {
     return window.electron.terminalConfig.setScrollback(scrollbackLines);
   },
+
+  setPerformanceMode: (performanceMode: boolean): Promise<void> => {
+    return window.electron.terminalConfig.setPerformanceMode(performanceMode);
+  },
 } as const;

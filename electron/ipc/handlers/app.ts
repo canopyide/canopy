@@ -247,5 +247,18 @@ export function registerAppHandlers(deps: HandlerDependencies): () => void {
   ipcMain.handle(CHANNELS.TERMINAL_CONFIG_SET_SCROLLBACK, handleTerminalConfigSetScrollback);
   handlers.push(() => ipcMain.removeHandler(CHANNELS.TERMINAL_CONFIG_SET_SCROLLBACK));
 
+  const handleTerminalConfigSetPerformanceMode = async (
+    _event: Electron.IpcMainInvokeEvent,
+    performanceMode: boolean
+  ) => {
+    const currentConfig = store.get("terminalConfig");
+    store.set("terminalConfig", { ...currentConfig, performanceMode: Boolean(performanceMode) });
+  };
+  ipcMain.handle(
+    CHANNELS.TERMINAL_CONFIG_SET_PERFORMANCE_MODE,
+    handleTerminalConfigSetPerformanceMode
+  );
+  handlers.push(() => ipcMain.removeHandler(CHANNELS.TERMINAL_CONFIG_SET_PERFORMANCE_MODE));
+
   return () => handlers.forEach((cleanup) => cleanup());
 }

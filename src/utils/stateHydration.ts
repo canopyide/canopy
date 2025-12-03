@@ -1,5 +1,5 @@
 import { appClient, projectClient, terminalConfigClient } from "@/clients";
-import { useLayoutConfigStore, useScrollbackStore } from "@/store";
+import { useLayoutConfigStore, useScrollbackStore, usePerformanceModeStore } from "@/store";
 import type { TerminalType } from "@/types";
 
 export interface HydrationOptions {
@@ -20,14 +20,7 @@ export async function hydrateAppState(options: HydrationOptions): Promise<void> 
   const { addTerminal, setActiveWorktree, loadRecipes, openDiagnosticsDock } = options;
 
   try {
-    const appState = await appClient.getState();
-
-    if (!appState) {
-      console.warn("App state returned undefined during hydration, using defaults");
-      return;
-    }
-
-    // Hydrate terminal config (scrollback) BEFORE restoring terminals
+    // Hydrate terminal config (scrollback, performance mode) BEFORE restoring terminals
     try {
       const terminalConfig = await terminalConfigClient.get();
       if (terminalConfig?.scrollbackLines !== undefined) {
@@ -43,8 +36,25 @@ export async function hydrateAppState(options: HydrationOptions): Promise<void> 
           console.warn("Invalid persisted scrollback value, using default:", scrollbackLines);
         }
       }
+      // Hydrate performance mode
+      if (terminalConfig?.performanceMode !== undefined) {
+        usePerformanceModeStore.getState().setPerformanceMode(terminalConfig.performanceMode);
+        // Apply the data attribute to body immediately
+        if (terminalConfig.performanceMode) {
+          document.body.setAttribute("data-performance-mode", "true");
+        } else {
+          document.body.removeAttribute("data-performance-mode");
+        }
+      }
     } catch (error) {
       console.warn("Failed to hydrate terminal config:", error);
+    }
+
+    const appState = await appClient.getState();
+
+    if (!appState) {
+      console.warn("App state returned undefined during hydration, using defaults");
+      return;
     }
 
     if (appState.terminals && appState.terminals.length > 0) {
