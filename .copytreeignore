@@ -105,6 +105,9 @@ build/icon-source.png
 # Fonts (binary files, not useful for context)
 src/fonts/
 
+# Emoji data (large JSON data files, not useful for context)
+public/emojibase/
+
 # Icon components (SVG boilerplate)
 src/components/icons/
 
