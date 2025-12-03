@@ -1,4 +1,4 @@
-import { app, BrowserWindow, ipcMain } from "electron";
+import { app, BrowserWindow, ipcMain, dialog } from "electron";
 import path from "path";
 import { fileURLToPath } from "url";
 import os from "os";
@@ -18,6 +18,9 @@ import { CHANNELS } from "./ipc/channels.js";
 import { createApplicationMenu } from "./menu.js";
 import { projectStore } from "./services/ProjectStore.js";
 import { getTranscriptManager, disposeTranscriptManager } from "./services/TranscriptManager.js";
+import { store } from "./store.js";
+import { MigrationRunner } from "./services/StoreMigrations.js";
+import { migrations } from "./services/migrations/index.js";
 
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
@@ -124,6 +127,22 @@ async function createWindow(): Promise<void> {
     console.log("[MAIN] Main window already exists, focusing");
     if (mainWindow.isMinimized()) mainWindow.restore();
     mainWindow.focus();
+    return;
+  }
+
+  console.log("[MAIN] Running store migrations...");
+  try {
+    const migrationRunner = new MigrationRunner(store);
+    migrationRunner.runMigrations(migrations);
+    console.log("[MAIN] Store migrations completed");
+  } catch (error) {
+    console.error("[MAIN] Store migration failed:", error);
+    const message = error instanceof Error ? error.message : String(error);
+    dialog.showErrorBox(
+      "Migration Failed",
+      `Failed to migrate application data:\n\n${message}\n\nThe application will now exit. Please check the logs for details.`
+    );
+    app.exit(1);
     return;
   }
 

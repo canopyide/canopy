@@ -4,6 +4,7 @@ import type { AgentSettings, TerminalGridConfig } from "../shared/types/index.js
 import { DEFAULT_AGENT_SETTINGS } from "../shared/types/index.js";
 
 export interface StoreSchema {
+  _schemaVersion: number;
   windowState: {
     x?: number;
     y?: number;
@@ -37,7 +38,7 @@ export interface StoreSchema {
       title: string;
       cwd: string;
       worktreeId?: string;
-      location?: "grid" | "dock";
+      location: "grid" | "dock";
       command?: string;
     }>;
     recipes?: Array<{
@@ -70,6 +71,7 @@ export interface StoreSchema {
 
 export const store = new Store<StoreSchema>({
   defaults: {
+    _schemaVersion: 0,
     windowState: {
       x: undefined,
       y: undefined,
