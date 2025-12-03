@@ -24,15 +24,22 @@ export function useKeybinding(
       if (!binding) return;
 
       // Don't intercept shortcuts if user is typing in an input/textarea or editable content
-      // Exception: terminal scope bindings are allowed (they handle their own guards)
+      // Exception: terminal scope bindings and terminal.* actions are allowed
       const target = e.target as HTMLElement;
       const isEditable =
         target.tagName === "INPUT" ||
         target.tagName === "TEXTAREA" ||
-        target.isContentEditable ||
-        target.closest(".xterm") !== null;
+        target.isContentEditable;
+
+      const isInTerminal = target.closest(".xterm") !== null;
+      const isTerminalAction = actionId.startsWith("terminal.");
 
       if (isEditable && binding.scope !== "terminal") {
+        return;
+      }
+
+      // Allow terminal actions when inside xterm, but block other actions
+      if (isInTerminal && !isTerminalAction && binding.scope !== "terminal") {
         return;
       }
 

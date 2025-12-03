@@ -473,6 +473,16 @@ function App() {
 
   useKeybinding("terminal.palette", () => terminalPalette.toggle(), { enabled: electronAvailable });
 
+  useKeybinding(
+    "terminal.close",
+    () => {
+      if (focusedId) {
+        useTerminalStore.getState().trashTerminal(focusedId);
+      }
+    },
+    { enabled: electronAvailable }
+  );
+
   useKeybinding("terminal.focusNext", () => focusNext(), { enabled: electronAvailable });
   useKeybinding("terminal.focusPrevious", () => focusPrevious(), { enabled: electronAvailable });
   useKeybinding(

@@ -30,8 +30,8 @@ export function createApplicationMenu(mainWindow: BrowserWindow): void {
         { type: "separator" },
         {
           label: "Close Window",
-          accelerator: "CommandOrControl+W",
           role: "close",
+          registerAccelerator: false,
         },
       ],
     },
