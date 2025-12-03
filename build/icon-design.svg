@@ -1,51 +1,46 @@
 <?xml version="1.0" encoding="UTF-8"?>
 <svg width="1024" height="1024" viewBox="0 0 1024 1024" fill="none" xmlns="http://www.w3.org/2000/svg">
   <defs>
-    <!-- Background gradient - deep blue to purple, modern developer tool aesthetic -->
-    <linearGradient id="bgGradient" x1="0%" y1="0%" x2="100%" y2="100%">
-      <stop offset="0%" style="stop-color:#1a365d;stop-opacity:1" />
-      <stop offset="50%" style="stop-color:#2d3748;stop-opacity:1" />
-      <stop offset="100%" style="stop-color:#1e3a5f;stop-opacity:1" />
-    </linearGradient>
-
-    <!-- Logo gradient - subtle emerald/teal to represent canopy/forest -->
-    <linearGradient id="logoGradient" x1="0%" y1="0%" x2="100%" y2="100%">
-      <stop offset="0%" style="stop-color:#34d399;stop-opacity:1" />
-      <stop offset="100%" style="stop-color:#10b981;stop-opacity:1" />
-    </linearGradient>
-
-    <!-- Inner shadow for depth -->
-    <filter id="innerShadow" x="-50%" y="-50%" width="200%" height="200%">
-      <feGaussianBlur in="SourceAlpha" stdDeviation="8" result="blur"/>
-      <feOffset dx="0" dy="4" result="offsetBlur"/>
-      <feComposite in2="SourceAlpha" operator="arithmetic" k2="-1" k3="1" result="shadowDiff"/>
-      <feFlood flood-color="#000000" flood-opacity="0.3"/>
-      <feComposite in2="shadowDiff" operator="in"/>
-      <feComposite in2="SourceGraphic" operator="over"/>
+    <!-- Noise pattern using base64 encoded noise -->
+    <filter id="noise">
+      <feTurbulence type="fractalNoise" baseFrequency="0.9" numOctaves="4" result="noise"/>
+      <feColorMatrix type="saturate" values="0"/>
+      <feComponentTransfer>
+        <feFuncR type="linear" slope="0.03" intercept="0"/>
+        <feFuncG type="linear" slope="0.03" intercept="0"/>
+        <feFuncB type="linear" slope="0.03" intercept="0"/>
+        <feFuncA type="linear" slope="0.15" intercept="0"/>
+      </feComponentTransfer>
+      <feBlend in="SourceGraphic" mode="overlay"/>
     </filter>
 
-    <!-- Subtle outer glow -->
-    <filter id="glow" x="-20%" y="-20%" width="140%" height="140%">
-      <feGaussianBlur stdDeviation="20" result="coloredBlur"/>
-      <feMerge>
-        <feMergeNode in="coloredBlur"/>
-        <feMergeNode in="SourceGraphic"/>
-      </feMerge>
-    </filter>
+    <!-- Subtle inner border gradient -->
+    <linearGradient id="borderGradient" x1="0%" y1="0%" x2="100%" y2="100%">
+      <stop offset="0%" style="stop-color:#3f3f46;stop-opacity:0.6" />
+      <stop offset="100%" style="stop-color:#27272a;stop-opacity:0.3" />
+    </linearGradient>
   </defs>
 
-  <!-- Background with rounded corners (macOS style ~22.37% radius = 229px for 1024px) -->
-  <rect x="0" y="0" width="1024" height="1024" rx="229" ry="229" fill="url(#bgGradient)"/>
+  <!-- Background with macOS corner radius (~22.37% = 229px) -->
+  <!-- Base dark background matching app grid-bg: #0d0d0e -->
+  <rect x="0" y="0" width="1024" height="1024" rx="229" ry="229" fill="#18181b"/>
+
+  <!-- Noise overlay layer -->
+  <rect x="0" y="0" width="1024" height="1024" rx="229" ry="229" fill="#18181b" filter="url(#noise)"/>
 
   <!-- Subtle inner border for depth -->
-  <rect x="8" y="8" width="1008" height="1008" rx="221" ry="221" fill="none" stroke="rgba(255,255,255,0.1)" stroke-width="2"/>
+  <rect x="4" y="4" width="1016" height="1016" rx="225" ry="225" fill="none" stroke="url(#borderGradient)" stroke-width="2"/>
 
-  <!-- Canopy logo - centered and scaled to fit nicely -->
-  <!-- Original viewBox: 0 0 148.3303 171.2764, scaling to fit in ~600px centered area -->
-  <g transform="translate(212, 180) scale(4.05)" filter="url(#glow)">
+  <!-- Canopy logo - centered with ~10% padding -->
+  <!-- Original viewBox: 0 0 148.3303 171.2764 -->
+  <!-- Scaling to fit in ~820px area (80% of 1024) centered -->
+  <!-- Scale: 820 / 171.2764 (height) = ~4.79 -->
+  <!-- Center offset X: (1024 - 148.3303 * 4.79) / 2 = ~157 -->
+  <!-- Center offset Y: (1024 - 171.2764 * 4.79) / 2 = ~102 -->
+  <g transform="translate(157, 102) scale(4.79)">
     <path
       d="M74.165,0L0,42.8188v85.6382l74.165,42.8193,74.1653-42.8193V42.8188L74.165,0ZM74.165,11.2871l59.5024,34.354-25.4973,14.7217-34.0051-19.6323-34.0049,19.6323-25.4971-14.7217L74.165,11.2871ZM79.0527,88.46v-5.4287l-4.8877-3.0366-4.8877-2.8218-19.3418-11.1665,24.2295-13.9888,24.2297,13.9888,4.8877,2.8218v33.6201l-24.2297,13.9888v-27.9771ZM9.7754,54.1064l25.4971,14.7217,9.7754,5.6436,24.2295,13.9883v68.7075L9.7754,122.8135V54.1064ZM138.5549,122.8135l-59.5022,34.354v-29.4434l34.0049-19.6323v-39.2637l25.4973-14.7217v68.707Z"
-      fill="url(#logoGradient)"
+      fill="#10b981"
     />
   </g>
 </svg>
