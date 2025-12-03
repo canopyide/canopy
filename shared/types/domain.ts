@@ -417,10 +417,22 @@ export interface RunCommand {
   description?: string;
 }
 
+/** Dev server configuration for a project */
+export interface ProjectDevServerSettings {
+  /** Enable/disable dev server feature */
+  enabled?: boolean;
+  /** Custom dev server command (overrides auto-detection) */
+  command?: string;
+  /** Auto-start server when project loads */
+  autoStart?: boolean;
+}
+
 /** Project-level settings that persist per repository */
 export interface ProjectSettings {
   /** List of custom run commands for this project */
   runCommands: RunCommand[];
+  /** Dev server configuration */
+  devServer?: ProjectDevServerSettings;
   /** Environment variables to set (future feature) */
   environmentVariables?: Record<string, string>;
   /** Paths to exclude from monitoring (future feature) */

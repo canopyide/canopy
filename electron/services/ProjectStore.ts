@@ -249,6 +249,7 @@ export class ProjectStore {
 
       const settings: ProjectSettings = {
         runCommands: Array.isArray(parsed.runCommands) ? parsed.runCommands : [],
+        devServer: parsed.devServer,
         environmentVariables: parsed.environmentVariables,
         excludedPaths: parsed.excludedPaths,
       };

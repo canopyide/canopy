@@ -1,6 +1,6 @@
 import { useCallback, useState, useEffect, useMemo } from "react";
 import { useShallow } from "zustand/react/shallow";
-import type { WorktreeState } from "../../types";
+import type { WorktreeState, ProjectDevServerSettings } from "../../types";
 import { ActivityLight } from "./ActivityLight";
 import { AgentStatusIndicator } from "./AgentStatusIndicator";
 import { FileChangeList } from "./FileChangeList";
@@ -52,6 +52,7 @@ export interface WorktreeCardProps {
   isInjecting?: boolean;
   onCreateRecipe?: () => void;
   homeDir?: string;
+  devServerSettings?: ProjectDevServerSettings;
 }
 
 const URL_REGEX = /(https?:\/\/[^\s]+)/g;
@@ -99,6 +100,7 @@ export function WorktreeCard({
   onToggleServer,
   onCreateRecipe,
   homeDir,
+  devServerSettings,
 }: WorktreeCardProps) {
   const isExpanded = useWorktreeSelectionStore(
     useCallback((state) => state.expandedWorktrees.has(worktree.id), [worktree.id])
@@ -132,10 +134,12 @@ export function WorktreeCard({
   const {
     state: serverState,
     hasDevScript,
+    isEnabled: devServerEnabled,
     isLoading: serverLoading,
   } = useDevServer({
     worktreeId: worktree.id,
     worktreePath: worktree.path,
+    devServerSettings,
   });
 
   const worktreeErrors = useErrorStore(
@@ -307,8 +311,9 @@ export function WorktreeCard({
     [toggleWorktreeExpanded, worktree.id]
   );
 
+  const showDevServer = devServerEnabled && hasDevScript;
   const hasExpandableContent =
-    hasChanges || effectiveNote || !!worktree.summary || hasDevScript || worktreeErrors.length > 0;
+    hasChanges || effectiveNote || !!worktree.summary || showDevServer || worktreeErrors.length > 0;
 
   const detailsId = useMemo(() => `worktree-${worktree.id}-details`, [worktree.id]);
 
@@ -489,7 +494,7 @@ export function WorktreeCard({
             </div>
           )}
 
-          {hasDevScript && serverState && serverState.status !== "stopped" && (
+          {showDevServer && serverState && serverState.status !== "stopped" && (
             <div className="flex items-center gap-1">
               <Globe className="w-2.5 h-2.5" />
               {getServerStatusIndicator()}
@@ -569,7 +574,7 @@ export function WorktreeCard({
               </div>
             )}
 
-            {hasDevScript && serverState && (
+            {showDevServer && serverState && (
               <div className="flex items-center gap-2 text-xs text-gray-400 font-mono ml-4">
                 <Globe className="w-3 h-3" />
                 <div className="flex items-center gap-1">
