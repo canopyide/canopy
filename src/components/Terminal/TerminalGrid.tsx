@@ -7,6 +7,7 @@ import { useTerminalDragAndDrop } from "@/hooks/useDragAndDrop";
 import { TerminalPane } from "./TerminalPane";
 import { DropPlaceholder } from "./DropPlaceholder";
 import { FilePickerModal } from "@/components/ContextInjection";
+import { ErrorBoundary } from "@/components/ErrorBoundary";
 import { Terminal } from "lucide-react";
 import { CanopyIcon, CodexIcon, ClaudeIcon, GeminiIcon } from "@/components/icons";
 import { Kbd } from "@/components/ui/Kbd";
@@ -295,43 +296,52 @@ export function TerminalGrid({ className, defaultCwd }: TerminalGridProps) {
 
       return (
         <div key={terminal.id} className="relative h-full">
-          <TerminalPane
-            id={terminal.id}
-            title={terminal.title}
-            type={terminal.type}
-            worktreeId={terminal.worktreeId}
-            cwd={terminal.cwd}
-            isFocused={terminal.id === focusedId}
-            isMaximized={false}
-            agentState={terminal.agentState}
-            activity={
-              terminal.activityHeadline
-                ? {
-                    headline: terminal.activityHeadline,
-                    status: terminal.activityStatus ?? "working",
-                    type: terminal.activityType ?? "interactive",
-                  }
-                : null
-            }
-            location="grid"
-            onFocus={() => setFocused(terminal.id)}
-            onClose={() => trashTerminal(terminal.id)}
-            onInjectContext={
-              terminal.worktreeId
-                ? () => handleInjectContext(terminal.id, terminal.worktreeId)
-                : undefined
-            }
-            onCancelInjection={cancel}
-            onToggleMaximize={() => toggleMaximize(terminal.id)}
-            onTitleChange={(newTitle) => updateTitle(terminal.id, newTitle)}
-            onMinimize={() => moveTerminalToDock(terminal.id)}
-            isDragging={false}
-            onDragStart={
-              !isTerminalInTrash
-                ? createDragStartHandler(terminal.id, "grid", originalIndex)
-                : undefined
-            }
-          />
+          <ErrorBoundary
+            variant="component"
+            componentName="TerminalPane"
+            resetKeys={[terminal.id, terminal.worktreeId, terminal.agentState].filter(
+              (key): key is string => key !== undefined
+            )}
+            context={{ terminalId: terminal.id, worktreeId: terminal.worktreeId }}
+          >
+            <TerminalPane
+              id={terminal.id}
+              title={terminal.title}
+              type={terminal.type}
+              worktreeId={terminal.worktreeId}
+              cwd={terminal.cwd}
+              isFocused={terminal.id === focusedId}
+              isMaximized={false}
+              agentState={terminal.agentState}
+              activity={
+                terminal.activityHeadline
+                  ? {
+                      headline: terminal.activityHeadline,
+                      status: terminal.activityStatus ?? "working",
+                      type: terminal.activityType ?? "interactive",
+                    }
+                  : null
+              }
+              location="grid"
+              onFocus={() => setFocused(terminal.id)}
+              onClose={() => trashTerminal(terminal.id)}
+              onInjectContext={
+                terminal.worktreeId
+                  ? () => handleInjectContext(terminal.id, terminal.worktreeId)
+                  : undefined
+              }
+              onCancelInjection={cancel}
+              onToggleMaximize={() => toggleMaximize(terminal.id)}
+              onTitleChange={(newTitle) => updateTitle(terminal.id, newTitle)}
+              onMinimize={() => moveTerminalToDock(terminal.id)}
+              isDragging={false}
+              onDragStart={
+                !isTerminalInTrash
+                  ? createDragStartHandler(terminal.id, "grid", originalIndex)
+                  : undefined
+              }
+            />
+          </ErrorBoundary>
         </div>
       );
     });
@@ -374,36 +384,45 @@ export function TerminalGrid({ className, defaultCwd }: TerminalGridProps) {
     if (terminal) {
       return (
         <div className={cn("h-full", className)}>
-          <TerminalPane
-            id={terminal.id}
-            title={terminal.title}
-            type={terminal.type}
-            worktreeId={terminal.worktreeId}
-            cwd={terminal.cwd}
-            isFocused={true}
-            isMaximized={true}
-            agentState={terminal.agentState}
-            activity={
-              terminal.activityHeadline
-                ? {
-                    headline: terminal.activityHeadline,
-                    status: terminal.activityStatus ?? "working",
-                    type: terminal.activityType ?? "interactive",
-                  }
-                : null
-            }
-            location="grid"
-            onFocus={() => setFocused(terminal.id)}
-            onClose={() => trashTerminal(terminal.id)}
-            onInjectContext={
-              terminal.worktreeId
-                ? () => handleInjectContext(terminal.id, terminal.worktreeId)
-                : undefined
-            }
-            onCancelInjection={cancel}
-            onToggleMaximize={() => toggleMaximize(terminal.id)}
-            onTitleChange={(newTitle) => updateTitle(terminal.id, newTitle)}
-          />
+          <ErrorBoundary
+            variant="component"
+            componentName="TerminalPane"
+            resetKeys={[terminal.id, terminal.worktreeId, terminal.agentState].filter(
+              (key): key is string => key !== undefined
+            )}
+            context={{ terminalId: terminal.id, worktreeId: terminal.worktreeId }}
+          >
+            <TerminalPane
+              id={terminal.id}
+              title={terminal.title}
+              type={terminal.type}
+              worktreeId={terminal.worktreeId}
+              cwd={terminal.cwd}
+              isFocused={true}
+              isMaximized={true}
+              agentState={terminal.agentState}
+              activity={
+                terminal.activityHeadline
+                  ? {
+                      headline: terminal.activityHeadline,
+                      status: terminal.activityStatus ?? "working",
+                      type: terminal.activityType ?? "interactive",
+                    }
+                  : null
+              }
+              location="grid"
+              onFocus={() => setFocused(terminal.id)}
+              onClose={() => trashTerminal(terminal.id)}
+              onInjectContext={
+                terminal.worktreeId
+                  ? () => handleInjectContext(terminal.id, terminal.worktreeId)
+                  : undefined
+              }
+              onCancelInjection={cancel}
+              onToggleMaximize={() => toggleMaximize(terminal.id)}
+              onTitleChange={(newTitle) => updateTitle(terminal.id, newTitle)}
+            />
+          </ErrorBoundary>
         </div>
       );
     }
