@@ -54,8 +54,11 @@ function ArtifactCard({ artifact, isExpanded, onToggle }: ArtifactCardProps) {
         onClick={onToggle}
         className={cn(
           "w-full flex items-center justify-between px-3 py-2 bg-gray-800/50 text-left",
-          "hover:bg-gray-800 transition-colors"
+          "hover:bg-gray-800 transition-colors",
+          "focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-canopy-accent focus-visible:ring-inset"
         )}
+        aria-expanded={isExpanded}
+        aria-controls={`artifact-content-${artifact.id}`}
       >
         <div className="flex items-center gap-2">
           <span className={cn("font-mono text-xs", colorClass.split(" ")[1])}>{icon}</span>
@@ -70,7 +73,7 @@ function ArtifactCard({ artifact, isExpanded, onToggle }: ArtifactCardProps) {
         </div>
       </button>
 
-      <div className="relative">
+      <div className="relative" id={`artifact-content-${artifact.id}`}>
         <pre
           className={cn(
             "font-mono text-xs p-3 overflow-x-auto bg-gray-900/50",
@@ -91,8 +94,10 @@ function ArtifactCard({ artifact, isExpanded, onToggle }: ArtifactCardProps) {
           className={cn(
             "absolute top-2 right-2 px-2 py-1 text-xs rounded",
             "bg-gray-800 hover:bg-gray-700 transition-colors",
+            "focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-canopy-accent",
             copied ? "text-[var(--color-status-success)]" : "text-gray-400"
           )}
+          aria-label={copied ? "Copied to clipboard" : "Copy to clipboard"}
         >
           {copied ? "Copied!" : "Copy"}
         </button>
