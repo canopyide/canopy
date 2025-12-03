@@ -126,12 +126,7 @@ export function useTerminalDragAndDrop(
             (el) => el.getAttribute("data-terminal-id") !== dragState.draggedId
           ) as HTMLElement[];
 
-          dropIndex = calculateGridDropIndex(
-            e.clientX,
-            e.clientY,
-            terminalElements,
-            dragState.sourceLocation === "grid" ? (dragState.sourceIndex ?? undefined) : undefined
-          );
+          dropIndex = calculateGridDropIndex(e.clientX, e.clientY, terminalElements);
         } else {
           // Filter out dragged element from dock calculations too
           const dockItems = Array.from(
@@ -140,13 +135,7 @@ export function useTerminalDragAndDrop(
             (el) => el.getAttribute("data-docked-terminal-id") !== dragState.draggedId
           ) as HTMLElement[];
 
-          dropIndex = calculateDropIndex(
-            e.clientX,
-            e.clientY,
-            dockItems,
-            "horizontal",
-            dragState.sourceLocation === "dock" ? (dragState.sourceIndex ?? undefined) : undefined
-          );
+          dropIndex = calculateDropIndex(e.clientX, e.clientY, dockItems, "horizontal");
         }
       }
 
@@ -156,7 +145,7 @@ export function useTerminalDragAndDrop(
         dropIndex,
       }));
     },
-    [dragState.sourceLocation, dragState.sourceIndex, dragState.dropZone, dragState.draggedId]
+    [dragState.dropZone, dragState.draggedId]
   );
 
   const handleDrop = useCallback(

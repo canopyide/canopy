@@ -1,26 +1,37 @@
+/**
+ * Calculates drop index for a linear layout (horizontal dock or vertical list).
+ * Uses visual insertion point based on element midpoints.
+ * The dragged element should be filtered out before calling this function.
+ */
 export function calculateDropIndex(
   dragX: number,
   dragY: number,
   elements: HTMLElement[],
-  orientation: "horizontal" | "vertical" = "vertical",
-  currentIndex?: number
+  orientation: "horizontal" | "vertical" = "vertical"
 ): number {
   if (elements.length === 0) return 0;
 
+  // Check if past the last item
+  const lastRect = elements[elements.length - 1].getBoundingClientRect();
+  if (orientation === "horizontal") {
+    if (dragX > lastRect.right) return elements.length;
+  } else {
+    if (dragY > lastRect.bottom) return elements.length;
+  }
+
+  // Scan for insertion point
   for (let i = 0; i < elements.length; i++) {
     const rect = elements[i].getBoundingClientRect();
 
     if (orientation === "horizontal") {
       const midpoint = rect.left + rect.width / 2;
       if (dragX < midpoint) {
-        // If dragging within same list and dropping before current position,
-        // account for the fact that removing the item will shift indices
-        return currentIndex !== undefined && i > currentIndex ? i - 1 : i;
+        return i;
       }
     } else {
       const midpoint = rect.top + rect.height / 2;
       if (dragY < midpoint) {
-        return currentIndex !== undefined && i > currentIndex ? i - 1 : i;
+        return i;
       }
     }
   }
@@ -28,41 +39,70 @@ export function calculateDropIndex(
   return elements.length;
 }
 
+/**
+ * Calculates drop index for a Grid layout using reading order (rows then columns).
+ * Groups elements into rows based on vertical position, then finds insertion point.
+ * The dragged element should be filtered out before calling this function.
+ */
 export function calculateGridDropIndex(
   dragX: number,
   dragY: number,
-  elements: HTMLElement[],
-  currentIndex?: number
+  elements: HTMLElement[]
 ): number {
   if (elements.length === 0) return 0;
 
-  let closestIndex = 0;
-  let closestDistance = Infinity;
+  // Group elements into rows based on their top position (with fuzz factor for sub-pixel alignment)
+  const ROW_THRESHOLD = 10;
+  const rows: HTMLElement[][] = [];
+  let currentRow: HTMLElement[] = [];
+  let currentTop = elements[0].getBoundingClientRect().top;
 
-  for (let i = 0; i < elements.length; i++) {
-    const rect = elements[i].getBoundingClientRect();
-    const centerX = rect.left + rect.width / 2;
-    const centerY = rect.top + rect.height / 2;
+  for (const el of elements) {
+    const rect = el.getBoundingClientRect();
+    if (Math.abs(rect.top - currentTop) > ROW_THRESHOLD) {
+      if (currentRow.length > 0) rows.push(currentRow);
+      currentRow = [];
+      currentTop = rect.top;
+    }
+    currentRow.push(el);
+  }
+  if (currentRow.length > 0) rows.push(currentRow);
 
-    const distance = Math.sqrt(Math.pow(dragX - centerX, 2) + Math.pow(dragY - centerY, 2));
+  // Check if above first row
+  const firstRect = elements[0].getBoundingClientRect();
+  if (dragY < firstRect.top) return 0;
 
-    if (distance < closestDistance) {
-      closestDistance = distance;
-      closestIndex = i;
+  // Find the row containing the cursor's Y position
+  let targetRowIndex = -1;
+  for (let i = 0; i < rows.length; i++) {
+    const rowFirst = rows[i][0].getBoundingClientRect();
+    if (dragY <= rowFirst.bottom) {
+      targetRowIndex = i;
+      break;
     }
   }
 
-  const closestRect = elements[closestIndex].getBoundingClientRect();
-  const isBeforeMidpoint = dragX < closestRect.left + closestRect.width / 2;
+  // If below all rows, return length (insert at end)
+  if (targetRowIndex === -1) return elements.length;
 
-  let targetIndex = isBeforeMidpoint ? closestIndex : closestIndex + 1;
-
-  // Adjust for same-list dragging
-  if (currentIndex !== undefined && targetIndex > currentIndex) {
-    targetIndex--;
+  // Count items before target row
+  let itemsBeforeRow = 0;
+  for (let i = 0; i < targetRowIndex; i++) {
+    itemsBeforeRow += rows[i].length;
   }
 
-  return Math.max(0, Math.min(targetIndex, elements.length));
+  // Find column position within target row
+  const targetRow = rows[targetRowIndex];
+  for (let i = 0; i < targetRow.length; i++) {
+    const rect = targetRow[i].getBoundingClientRect();
+    const midpoint = rect.left + rect.width / 2;
+    if (dragX < midpoint) {
+      return itemsBeforeRow + i;
+    }
+  }
+
+  // Past last item in row - insert after it
+  return itemsBeforeRow + targetRow.length;
 }
 
 export function getDropZone(

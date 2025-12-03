@@ -183,8 +183,27 @@ export function TerminalGrid({ className, defaultCwd }: TerminalGridProps) {
   // to prevent unmounting which breaks the drag operation.
   const activeTerminals = gridTerminals;
 
-  // Calculate effective grid count including placeholder
-  const effectiveGridCount = activeTerminals.length + (showPlaceholder ? 1 : 0);
+  // Calculate effective grid count based on visual state, not just list length.
+  // This prevents layout thrashing when dragging items around.
+  const effectiveGridCount = useMemo(() => {
+    let count = activeTerminals.length;
+    const isInternalDrag =
+      dragState.isDragging && dragState.sourceLocation === "grid" && dragState.draggedId !== null;
+
+    if (isInternalDrag) {
+      // Dragging from grid: the source item is hidden (fixed position)
+      // If dropping in grid, placeholder replaces it (net 0 change)
+      // If dropping elsewhere (dock), we lose one item (net -1)
+      if (dragState.dropZone !== "grid") {
+        count -= 1;
+      }
+    } else if (showPlaceholder) {
+      // Dragging from dock into grid: add placeholder slot
+      count += 1;
+    }
+
+    return Math.max(0, count);
+  }, [activeTerminals.length, dragState, showPlaceholder]);
 
   const gridCols = useMemo(() => {
     const count = effectiveGridCount;
@@ -354,13 +373,14 @@ export function TerminalGrid({ className, defaultCwd }: TerminalGridProps) {
     });
 
     // Insert ghost placeholder at drop index when dragging over grid
+    // pointer-events-none allows mouse to pass through for accurate position tracking
     if (showPlaceholder && dragState.dropIndex !== null) {
       items.splice(
         dragState.dropIndex,
         0,
         <div
           key="grid-placeholder"
-          className="relative h-full animate-in fade-in zoom-in-95 duration-200"
+          className="relative h-full animate-in fade-in zoom-in-95 duration-200 pointer-events-none"
         >
           <TerminalGhost label="Drop Here" />
         </div>

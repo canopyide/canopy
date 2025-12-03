@@ -73,20 +73,17 @@ export function TerminalDock() {
       }
 
       if (dockRef.current) {
+        const data = getTerminalDragData(e.dataTransfer);
+        const draggedTerminalId = data?.terminalId;
+
+        // Filter out the dragged element to prevent layout calculation jitter
         const dockItems = Array.from(
           dockRef.current.querySelectorAll("[data-docked-terminal-id]")
+        ).filter(
+          (el) => el.getAttribute("data-docked-terminal-id") !== draggedTerminalId
         ) as HTMLElement[];
 
-        const data = getTerminalDragData(e.dataTransfer);
-        const sourceIndex = data?.sourceLocation === "dock" ? data.sourceIndex : undefined;
-
-        const index = calculateDropIndex(
-          e.clientX,
-          e.clientY,
-          dockItems,
-          "horizontal",
-          sourceIndex
-        );
+        const index = calculateDropIndex(e.clientX, e.clientY, dockItems, "horizontal");
         setDropIndex(index);
       }
     },
@@ -188,11 +185,12 @@ export function TerminalDock() {
     });
 
     // Inject placeholder if dragging over dock (subtle dashed box matching dock item size)
+    // pointer-events-none allows mouse to pass through for accurate position tracking
     if (isDragOver && dropIndex !== null && dropIndex <= activeDockTerminals.length) {
       items.splice(
         dropIndex,
         0,
-        <div key="dock-placeholder" className="flex-shrink-0">
+        <div key="dock-placeholder" className="flex-shrink-0 pointer-events-none">
           <div className="h-[26px] w-24 rounded border border-dashed border-white/20 bg-white/5" />
         </div>
       );
