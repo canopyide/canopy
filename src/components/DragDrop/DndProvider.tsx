@@ -27,11 +27,13 @@ export const GRID_PLACEHOLDER_ID = "__grid-placeholder__";
 interface DndPlaceholderContextValue {
   placeholderIndex: number | null;
   sourceContainer: "grid" | "dock" | null;
+  activeTerminal: TerminalInstance | null;
 }
 
 const DndPlaceholderContext = createContext<DndPlaceholderContextValue>({
   placeholderIndex: null,
   sourceContainer: null,
+  activeTerminal: null,
 });
 
 export function useDndPlaceholder() {
@@ -197,8 +199,8 @@ export function DndProvider({ children }: DndProviderProps) {
       // Handle placeholder for cross-container drag (dock -> grid)
       const sourceContainer = activeDataCurrent?.sourceLocation;
       if (sourceContainer === "dock" && detectedContainer === "grid") {
-        // Find grid terminals to calculate insertion index
-        const gridTerminals = terminals.filter((t) => t.location !== "dock");
+        // Find grid terminals to calculate insertion index (match TerminalGrid filter)
+        const gridTerminals = terminals.filter((t) => t.location === "grid" || t.location === undefined);
         const overId = over.id as string;
         const overIndex = gridTerminals.findIndex((t) => t.id === overId);
 
@@ -274,7 +276,9 @@ export function DndProvider({ children }: DndProviderProps) {
       // Get target index
       let targetIndex = 0;
       const containerTerminals = terminals.filter((t) =>
-        targetContainer === "dock" ? t.location === "dock" : t.location !== "dock"
+        targetContainer === "dock"
+          ? t.location === "dock"
+          : t.location === "grid" || t.location === undefined
       );
 
       // Find index of item we're dropping on
@@ -353,8 +357,9 @@ export function DndProvider({ children }: DndProviderProps) {
     () => ({
       placeholderIndex,
       sourceContainer: activeData?.sourceLocation ?? null,
+      activeTerminal,
     }),
-    [placeholderIndex, activeData?.sourceLocation]
+    [placeholderIndex, activeData?.sourceLocation, activeTerminal]
   );
 
   return (
