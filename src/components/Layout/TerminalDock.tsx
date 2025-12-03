@@ -142,8 +142,11 @@ export function TerminalDock() {
 
   const handleDockItemDragStart = useCallback(
     (id: string, index: number) => {
-      setDraggedId(id);
-      beginDrag(id, "dock", index);
+      // Defer state update to allow browser to capture drag image first
+      setTimeout(() => {
+        setDraggedId(id);
+        beginDrag(id, "dock", index);
+      }, 0);
     },
     [beginDrag]
   );
@@ -158,28 +161,35 @@ export function TerminalDock() {
 
   // Build render dock items array with placeholder spliced in at dropIndex
   const renderDockItems = useMemo(() => {
-    // Filter out dragged terminal when it's from the dock (creates "lift" effect)
-    const visibleDockTerminals = activeDockTerminals.filter((t) =>
-      draggedId && draggedId === t.id ? false : true
-    );
-
-    const items: React.ReactNode[] = visibleDockTerminals.map((terminal) => {
+    // Don't filter - keep all terminals in DOM. Hide the dragged one with CSS instead
+    // to prevent unmounting which breaks the drag operation.
+    const items: React.ReactNode[] = activeDockTerminals.map((terminal) => {
       // Find original index in activeDockTerminals for drag handler
       const originalIndex = activeDockTerminals.findIndex((t) => t.id === terminal.id);
+      // Check if this terminal is being dragged
+      const isBeingDragged = draggedId === terminal.id;
+
       return (
-        <DockedTerminalItem
+        <div
           key={terminal.id}
-          terminal={terminal}
-          index={originalIndex}
-          isDragging={false}
-          onDragStart={handleDockItemDragStart}
-          onDragEnd={handleDockItemDragEnd}
-        />
+          className={cn(
+            // Use fixed positioning to remove from flow but keep in DOM so drag continues
+            isBeingDragged && "fixed top-0 left-0 w-1 h-1 opacity-0 pointer-events-none z-[-1]"
+          )}
+        >
+          <DockedTerminalItem
+            terminal={terminal}
+            index={originalIndex}
+            isDragging={false}
+            onDragStart={handleDockItemDragStart}
+            onDragEnd={handleDockItemDragEnd}
+          />
+        </div>
       );
     });
 
     // Inject placeholder if dragging over dock
-    if (isDragOver && dropIndex !== null && dropIndex <= visibleDockTerminals.length) {
+    if (isDragOver && dropIndex !== null && dropIndex <= activeDockTerminals.length) {
       items.splice(
         dropIndex,
         0,

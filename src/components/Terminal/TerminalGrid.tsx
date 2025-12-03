@@ -179,19 +179,12 @@ export function TerminalGrid({ className, defaultCwd }: TerminalGridProps) {
   const showPlaceholder =
     dragState.isDragging && dragState.dropZone === "grid" && dragState.dropIndex !== null;
 
-  // Filter out dragged terminal when it's from the grid (creates "lift" effect)
-  const visibleTerminals = useMemo(
-    () =>
-      gridTerminals.filter((t) =>
-        dragState.isDragging && dragState.sourceLocation === "grid"
-          ? t.id !== dragState.draggedId
-          : true
-      ),
-    [gridTerminals, dragState.isDragging, dragState.sourceLocation, dragState.draggedId]
-  );
+  // Use all grid terminals - don't filter. We'll hide the dragged one with CSS instead
+  // to prevent unmounting which breaks the drag operation.
+  const activeTerminals = gridTerminals;
 
   // Calculate effective grid count including placeholder
-  const effectiveGridCount = visibleTerminals.length + (showPlaceholder ? 1 : 0);
+  const effectiveGridCount = activeTerminals.length + (showPlaceholder ? 1 : 0);
 
   const gridCols = useMemo(() => {
     const count = effectiveGridCount;
@@ -289,13 +282,27 @@ export function TerminalGrid({ className, defaultCwd }: TerminalGridProps) {
 
   // Build render items array with placeholder spliced in at dropIndex
   const renderItems = useMemo(() => {
-    const items: React.ReactNode[] = visibleTerminals.map((terminal: TerminalInstance) => {
+    const items: React.ReactNode[] = activeTerminals.map((terminal: TerminalInstance) => {
       const isTerminalInTrash = isInTrash(terminal.id);
       // Find original index in gridTerminals for drag handler
       const originalIndex = gridTerminals.findIndex((t) => t.id === terminal.id);
 
+      // Check if this specific terminal is the one being dragged from the grid
+      const isBeingDragged =
+        dragState.isDragging &&
+        dragState.sourceLocation === "grid" &&
+        dragState.draggedId === terminal.id;
+
       return (
-        <div key={terminal.id} className="relative h-full">
+        <div
+          key={terminal.id}
+          className={cn(
+            "relative h-full",
+            // Use fixed positioning to remove from flow (so grid collapses) but keep in DOM (so drag continues)
+            // pointer-events-none and z-[-1] ensure it doesn't block interactions while invisible
+            isBeingDragged && "fixed top-0 left-0 w-1 h-1 opacity-0 pointer-events-none z-[-1]"
+          )}
+        >
           <ErrorBoundary
             variant="component"
             componentName="TerminalPane"
@@ -362,8 +369,11 @@ export function TerminalGrid({ className, defaultCwd }: TerminalGridProps) {
 
     return items;
   }, [
-    visibleTerminals,
+    activeTerminals,
     gridTerminals,
+    dragState.isDragging,
+    dragState.sourceLocation,
+    dragState.draggedId,
     dragState.dropIndex,
     showPlaceholder,
     isInTrash,

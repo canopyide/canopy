@@ -14,8 +14,7 @@ try {
 const shouldSkip = !PtyManagerClass;
 
 describe.skipIf(shouldSkip)("Terminal Buffering Integration", () => {
-  const { cleanupPtyManager, waitForData, spawnShellTerminal, sleep } =
-    testUtils || {};
+  const { cleanupPtyManager, waitForData, spawnShellTerminal, sleep } = testUtils || {};
   let manager: PtyManager;
 
   beforeEach(() => {
@@ -185,7 +184,12 @@ describe.skipIf(shouldSkip)("Terminal Buffering Integration", () => {
       manager.write(id, "echo agent-buffered\n");
       await sleep(300);
 
-      const dataPromise = waitForData(manager, id, (d: string) => d.includes("agent-buffered"), 2000);
+      const dataPromise = waitForData(
+        manager,
+        id,
+        (d: string) => d.includes("agent-buffered"),
+        2000
+      );
       manager.flushBuffer(id);
 
       const data = await dataPromise;

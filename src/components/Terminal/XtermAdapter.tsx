@@ -101,6 +101,12 @@ function XtermAdapterComponent({
       const container = containerRef.current;
       if (!container) return;
 
+      // Ignore fits when container is collapsed/hidden (e.g. during drag)
+      // This prevents xterm from resizing to 0x0/1x1 and scrambling the buffer
+      if (container.clientWidth < 50 || container.clientHeight < 50) {
+        return;
+      }
+
       if (container.clientWidth === 0 || container.clientHeight === 0) {
         if (zeroRetryCountRef.current < MAX_ZERO_RETRIES) {
           zeroRetryCountRef.current++;
@@ -221,11 +227,21 @@ function XtermAdapterComponent({
     resizeObserver.observe(container);
     window.addEventListener("resize", handleResize);
 
+    // Watch for visibility changes (e.g., when hidden class is removed after drag ends)
+    // This ensures fit() is called when the terminal becomes visible again.
+    const visibilityObserver = new IntersectionObserver((entries) => {
+      if (entries[0].isIntersecting) {
+        scheduleFit();
+      }
+    });
+    visibilityObserver.observe(container);
+
     return () => {
       resizeObserver.disconnect();
+      visibilityObserver.disconnect();
       window.removeEventListener("resize", handleResize);
     };
-  }, [handleResize]);
+  }, [handleResize, scheduleFit]);
 
   return (
     <div

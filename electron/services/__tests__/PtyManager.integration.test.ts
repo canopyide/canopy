@@ -229,11 +229,11 @@ describe.skipIf(shouldSkip)("PtyManager Integration", () => {
           resolve(error);
         });
       });
-      
+
       const id = randomUUID();
 
       try {
-         manager.spawn(id, {
+        manager.spawn(id, {
           cwd: "/non/existent/path",
           cols: 80,
           rows: 24,

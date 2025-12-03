@@ -202,7 +202,9 @@ describe.skipIf(shouldSkip)("Agent State Detection Integration", () => {
 
   describe("Edge Cases", () => {
     it("should handle state transition on non-existent terminal gracefully", () => {
-      expect(() => manager.transitionState("non-existent-id", { type: "busy" }, "activity", 1.0)).not.toThrow();
+      expect(() =>
+        manager.transitionState("non-existent-id", { type: "busy" }, "activity", 1.0)
+      ).not.toThrow();
     }, 10000);
 
     it("should handle rapid state transitions", async () => {
@@ -211,12 +213,12 @@ describe.skipIf(shouldSkip)("Agent State Detection Integration", () => {
 
       // states to transition to: "working", "waiting", "working", "completed"
       // events: { type: "busy" }, { type: "prompt" }, { type: "busy" }, { type: "exit", code: 0 }
-      
+
       const events = [
         { type: "busy" },
         { type: "prompt" },
         { type: "busy" },
-        { type: "exit", code: 0 }
+        { type: "exit", code: 0 },
       ] as const;
 
       for (const event of events) {

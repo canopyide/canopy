@@ -89,7 +89,12 @@ export function useTerminalDragAndDrop(
         sourceIndex: index,
       });
 
-      beginDrag(id, location, index);
+      // Defer state update to allow browser to capture drag image first
+      // Without this, React's state update may modify the DOM before the
+      // browser finishes initializing the drag operation, causing it to cancel
+      setTimeout(() => {
+        beginDrag(id, location, index);
+      }, 0);
     },
     [beginDrag]
   );
