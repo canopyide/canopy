@@ -10,6 +10,13 @@ export interface KeybindingConfig {
 
 const DEFAULT_KEYBINDINGS: KeybindingConfig[] = [
   {
+    actionId: "terminal.close",
+    combo: "Cmd+W",
+    scope: "global",
+    priority: 10,
+    description: "Close focused terminal",
+  },
+  {
     actionId: "terminal.palette",
     combo: "Cmd+T",
     scope: "global",
