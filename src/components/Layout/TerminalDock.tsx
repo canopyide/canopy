@@ -118,7 +118,11 @@ export function TerminalDock() {
             )}
 
             {!isCollapsed && (
-              <SortableContext items={terminalIds} strategy={horizontalListSortingStrategy}>
+              <SortableContext
+                id="dock-container"
+                items={terminalIds}
+                strategy={horizontalListSortingStrategy}
+              >
                 <div className="flex items-center gap-2">
                   {activeDockTerminals.map((terminal, index) => (
                     <SortableDockItem key={terminal.id} terminal={terminal} sourceIndex={index}>

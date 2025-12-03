@@ -1,8 +1,12 @@
-import { useState, useCallback, useMemo, useRef } from "react";
+import { useState, useCallback, useMemo, useRef, createContext, useContext } from "react";
 import {
   DndContext,
   DragOverlay,
   useDndMonitor,
+  useSensors,
+  useSensor,
+  MouseSensor,
+  TouchSensor,
   closestCenter,
   rectIntersection,
   pointerWithin,
@@ -14,6 +18,28 @@ import {
 } from "@dnd-kit/core";
 import { useTerminalStore, type TerminalInstance } from "@/store";
 import { TerminalDragPreview } from "./TerminalDragPreview";
+
+// Placeholder ID used when dragging from dock to grid
+export const GRID_PLACEHOLDER_ID = "__grid-placeholder__";
+
+// Context to share placeholder state with TerminalGrid
+interface DndPlaceholderContextValue {
+  placeholderIndex: number | null;
+  sourceContainer: "grid" | "dock" | null;
+}
+
+const DndPlaceholderContext = createContext<DndPlaceholderContextValue>({
+  placeholderIndex: null,
+  sourceContainer: null,
+});
+
+export function useDndPlaceholder() {
+  return useContext(DndPlaceholderContext);
+}
+
+// Minimum distance (px) mouse must move before drag starts
+// This allows clicks to work for popovers without triggering drag
+const DRAG_ACTIVATION_DISTANCE = 8;
 
 // Cursor offset from top of preview (positions cursor in title bar area)
 const TITLE_BAR_CURSOR_OFFSET = 12;
@@ -72,21 +98,18 @@ function DragOverlayWithCursorTracking({
   });
 
   // Modifier that positions overlay at cursor position
-  const cursorOverlayModifier: Modifier = useCallback(
-    ({ transform, overlayNodeRect }) => {
-      const cursor = pointerPositionRef.current;
-      if (!transform || !overlayNodeRect || !cursor) {
-        return transform;
-      }
+  const cursorOverlayModifier: Modifier = useCallback(({ transform, overlayNodeRect }) => {
+    const cursor = pointerPositionRef.current;
+    if (!transform || !overlayNodeRect || !cursor) {
+      return transform;
+    }
 
-      return {
-        ...transform,
-        x: cursor.x - overlayNodeRect.left - overlayNodeRect.width / 2,
-        y: cursor.y - overlayNodeRect.top - TITLE_BAR_CURSOR_OFFSET,
-      };
-    },
-    []
-  );
+    return {
+      ...transform,
+      x: cursor.x - overlayNodeRect.left - overlayNodeRect.width / 2,
+      y: cursor.y - overlayNodeRect.top - TITLE_BAR_CURSOR_OFFSET,
+    };
+  }, []);
 
   return (
     <DragOverlay dropAnimation={null} modifiers={[cursorOverlayModifier]}>
@@ -99,6 +122,19 @@ export function DndProvider({ children }: DndProviderProps) {
   const [activeId, setActiveId] = useState<string | null>(null);
   const [activeData, setActiveData] = useState<DragData | null>(null);
   const [overContainer, setOverContainer] = useState<"grid" | "dock" | null>(null);
+
+  // Placeholder state for cross-container drags (dock -> grid)
+  const [placeholderIndex, setPlaceholderIndex] = useState<number | null>(null);
+
+  // Configure sensors with activation constraint so clicks work for popovers
+  const sensors = useSensors(
+    useSensor(MouseSensor, {
+      activationConstraint: { distance: DRAG_ACTIVATION_DISTANCE },
+    }),
+    useSensor(TouchSensor, {
+      activationConstraint: { delay: 150, tolerance: 5 },
+    })
+  );
 
   const terminals = useTerminalStore((state) => state.terminals);
   const reorderTerminals = useTerminalStore((s) => s.reorderTerminals);
@@ -121,90 +157,165 @@ export function DndProvider({ children }: DndProviderProps) {
     }
   }, []);
 
-  const handleDragOver = useCallback((event: DragOverEvent) => {
-    const { over } = event;
-    if (!over) {
-      setOverContainer(null);
-      return;
-    }
+  const handleDragOver = useCallback(
+    (event: DragOverEvent) => {
+      const { active, over } = event;
+      if (!over) {
+        setOverContainer(null);
+        setPlaceholderIndex(null);
+        return;
+      }
 
-    // Check if over a container (grid or dock)
-    const overData = over.data.current as { container?: "grid" | "dock" } | undefined;
-    if (overData?.container) {
-      setOverContainer(overData.container);
-    }
-  }, []);
+      const activeDataCurrent = active.data.current as DragData | undefined;
+      const overData = over.data.current as
+        | { container?: "grid" | "dock"; sortable?: { containerId?: string; index?: number } }
+        | undefined;
+
+      // Determine which container we're over
+      let detectedContainer: "grid" | "dock" | null = null;
+
+      if (overData?.container) {
+        detectedContainer = overData.container;
+      } else if (overData?.sortable?.containerId) {
+        const containerId = overData.sortable.containerId;
+        if (containerId === "grid-container") {
+          detectedContainer = "grid";
+        } else if (containerId === "dock-container") {
+          detectedContainer = "dock";
+        }
+      } else {
+        const overId = over.id as string;
+        const overTerminal = terminals.find((t) => t.id === overId);
+        if (overTerminal) {
+          detectedContainer = overTerminal.location === "dock" ? "dock" : "grid";
+        }
+      }
+
+      setOverContainer(detectedContainer);
+
+      // Handle placeholder for cross-container drag (dock -> grid)
+      const sourceContainer = activeDataCurrent?.sourceLocation;
+      if (sourceContainer === "dock" && detectedContainer === "grid") {
+        // Find grid terminals to calculate insertion index
+        const gridTerminals = terminals.filter((t) => t.location !== "dock");
+        const overId = over.id as string;
+        const overIndex = gridTerminals.findIndex((t) => t.id === overId);
+
+        if (overIndex !== -1) {
+          setPlaceholderIndex(overIndex);
+        } else if (overData?.sortable?.index !== undefined) {
+          setPlaceholderIndex(overData.sortable.index);
+        } else {
+          // Dropping on empty grid or container itself - append to end
+          setPlaceholderIndex(gridTerminals.length);
+        }
+      } else {
+        setPlaceholderIndex(null);
+      }
+    },
+    [terminals]
+  );
 
   const handleDragEnd = useCallback(
     (event: DragEndEvent) => {
       const { active, over } = event;
 
+      // Capture state before clearing
+      const dropContainer = overContainer;
+
       setActiveId(null);
       setActiveData(null);
       setOverContainer(null);
+      setPlaceholderIndex(null);
 
       if (!over || !activeData) return;
 
-      const activeId = active.id as string;
+      const draggedId = active.id as string;
       const overId = over.id as string;
 
-      // Get source and destination info
+      // Get source info
       const sourceLocation = activeData.sourceLocation;
       const overData = over.data.current as
-        | { container?: "grid" | "dock"; index?: number; terminalId?: string }
+        | {
+            container?: "grid" | "dock";
+            sortable?: { containerId?: string; index?: number };
+          }
         | undefined;
 
-      // Determine target container and index
+      // Determine target container
       let targetContainer: "grid" | "dock" = sourceLocation;
-      let targetIndex = 0;
 
+      // Priority 1: Check if dropped on a container directly
       if (overData?.container) {
         targetContainer = overData.container;
-        targetIndex = overData.index ?? 0;
-      } else if (overData?.terminalId) {
-        // Dropped on a terminal item - find its index
-        const targetTerminal = terminals.find((t) => t.id === overData.terminalId);
-        if (targetTerminal) {
-          targetContainer = targetTerminal.location === "dock" ? "dock" : "grid";
-          const containerTerminals = terminals.filter((t) =>
-            targetContainer === "dock" ? t.location === "dock" : t.location !== "dock"
-          );
-          targetIndex = containerTerminals.findIndex((t) => t.id === overData.terminalId);
+      }
+      // Priority 2: Check sortable containerId
+      else if (overData?.sortable?.containerId) {
+        const containerId = overData.sortable.containerId;
+        if (containerId === "grid-container") {
+          targetContainer = "grid";
+        } else if (containerId === "dock-container") {
+          targetContainer = "dock";
         }
+      }
+      // Priority 3: Use tracked overContainer state
+      else if (dropContainer) {
+        targetContainer = dropContainer;
+      }
+      // Priority 4: Determine from terminal location
+      else {
+        const overTerminal = terminals.find((t) => t.id === overId);
+        if (overTerminal) {
+          targetContainer = overTerminal.location === "dock" ? "dock" : "grid";
+        }
+      }
+
+      // Get target index
+      let targetIndex = 0;
+      const containerTerminals = terminals.filter((t) =>
+        targetContainer === "dock" ? t.location === "dock" : t.location !== "dock"
+      );
+
+      // Find index of item we're dropping on
+      const overTerminalIndex = containerTerminals.findIndex((t) => t.id === overId);
+      if (overTerminalIndex !== -1) {
+        targetIndex = overTerminalIndex;
+      } else if (overData?.sortable?.index !== undefined) {
+        targetIndex = overData.sortable.index;
+      } else {
+        // Dropping on empty container - append to end
+        targetIndex = containerTerminals.length;
       }
 
       // Same container reorder
       if (sourceLocation === targetContainer) {
-        if (activeId !== overId) {
-          const containerTerminals = terminals.filter((t) =>
-            targetContainer === "dock" ? t.location === "dock" : t.location !== "dock"
-          );
-          const oldIndex = containerTerminals.findIndex((t) => t.id === activeId);
-          const newIndex = containerTerminals.findIndex((t) => t.id === overId);
+        if (draggedId !== overId) {
+          const oldIndex = containerTerminals.findIndex((t) => t.id === draggedId);
 
-          if (oldIndex !== -1 && newIndex !== -1 && oldIndex !== newIndex) {
-            reorderTerminals(oldIndex, newIndex, targetContainer);
+          if (oldIndex !== -1 && targetIndex !== -1 && oldIndex !== targetIndex) {
+            reorderTerminals(oldIndex, targetIndex, targetContainer);
           }
         }
       } else {
         // Cross-container move
-        moveTerminalToPosition(activeId, targetIndex, targetContainer);
+        moveTerminalToPosition(draggedId, targetIndex, targetContainer);
 
         // Set focus when moving to grid, clear when moving to dock
         if (targetContainer === "grid") {
-          setFocused(activeId);
+          setFocused(draggedId);
         } else {
           setFocused(null);
         }
       }
     },
-    [activeData, terminals, reorderTerminals, moveTerminalToPosition, setFocused]
+    [activeData, overContainer, terminals, reorderTerminals, moveTerminalToPosition, setFocused]
   );
 
   const handleDragCancel = useCallback(() => {
     setActiveId(null);
     setActiveData(null);
     setOverContainer(null);
+    setPlaceholderIndex(null);
   }, []);
 
   // Use rectIntersection for grid (better for 2D layouts), closestCenter for dock (1D horizontal)
@@ -225,15 +336,26 @@ export function DndProvider({ children }: DndProviderProps) {
     [overContainer]
   );
 
+  const placeholderContextValue = useMemo(
+    () => ({
+      placeholderIndex,
+      sourceContainer: activeData?.sourceLocation ?? null,
+    }),
+    [placeholderIndex, activeData?.sourceLocation]
+  );
+
   return (
     <DndContext
+      sensors={sensors}
       onDragStart={handleDragStart}
       onDragOver={handleDragOver}
       onDragEnd={handleDragEnd}
       onDragCancel={handleDragCancel}
       collisionDetection={collisionDetection}
     >
-      {children}
+      <DndPlaceholderContext.Provider value={placeholderContextValue}>
+        {children}
+      </DndPlaceholderContext.Provider>
       <DragOverlayWithCursorTracking activeTerminal={activeTerminal} />
     </DndContext>
   );
