@@ -290,6 +290,40 @@ class TerminalInstanceService {
   }
 
   /**
+   * Force a full redraw of the terminal canvas.
+   * Useful after drag operations where WebGL canvases may have stale renders.
+   */
+  refresh(id: string): void {
+    const managed = this.instances.get(id);
+    if (!managed) return;
+
+    // Force fit before refresh to align canvas with container
+    try {
+      managed.fitAddon.fit();
+    } catch {
+      // Ignore fit errors (e.g. if terminal is hidden)
+    }
+
+    managed.terminal.refresh(0, managed.terminal.rows - 1);
+  }
+
+  /**
+   * Refresh all active terminal instances.
+   */
+  refreshAll(): void {
+    this.instances.forEach((managed) => {
+      // Force fit before refresh to align canvas with container
+      try {
+        managed.fitAddon.fit();
+      } catch {
+        // Ignore fit errors
+      }
+
+      managed.terminal.refresh(0, managed.terminal.rows - 1);
+    });
+  }
+
+  /**
    * Update terminal options in place (theme/font/reactive settings).
    */
   updateOptions(id: string, options: Partial<Terminal["options"]>): void {

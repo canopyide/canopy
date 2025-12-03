@@ -17,6 +17,7 @@ import {
   type Modifier,
 } from "@dnd-kit/core";
 import { useTerminalStore, type TerminalInstance } from "@/store";
+import { terminalInstanceService } from "@/services/TerminalInstanceService";
 import { TerminalDragPreview } from "./TerminalDragPreview";
 
 // Placeholder ID used when dragging from dock to grid
@@ -307,6 +308,12 @@ export function DndProvider({ children }: DndProviderProps) {
           setFocused(null);
         }
       }
+
+      // Refresh all terminals after drag to fix WebGL canvas rendering artifacts
+      // Use setTimeout instead of requestAnimationFrame to ensure CSS Grid layout has fully settled
+      setTimeout(() => {
+        terminalInstanceService.refreshAll();
+      }, 50);
     },
     [activeData, overContainer, terminals, reorderTerminals, moveTerminalToPosition, setFocused]
   );
@@ -316,6 +323,12 @@ export function DndProvider({ children }: DndProviderProps) {
     setActiveData(null);
     setOverContainer(null);
     setPlaceholderIndex(null);
+
+    // Refresh all terminals after drag cancel to fix WebGL canvas rendering artifacts
+    // Use setTimeout instead of requestAnimationFrame to ensure CSS Grid layout has fully settled
+    setTimeout(() => {
+      terminalInstanceService.refreshAll();
+    }, 50);
   }, []);
 
   // Use rectIntersection for grid (better for 2D layouts), closestCenter for dock (1D horizontal)
