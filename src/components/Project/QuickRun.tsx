@@ -1,5 +1,13 @@
 import { useState, useEffect, useMemo, useRef } from "react";
-import { Play, ChevronDown, ChevronRight, Terminal, Clock, Dock, Zap } from "lucide-react";
+import {
+  CornerDownLeft,
+  LayoutGrid,
+  PanelBottom,
+  Terminal,
+  Clock,
+  ChevronRight,
+  ChevronDown,
+} from "lucide-react";
 import { useProjectSettings } from "@/hooks/useProjectSettings";
 import { useTerminalStore } from "@/store/terminalStore";
 import { useWorktreeSelectionStore } from "@/store/worktreeStore";
@@ -17,7 +25,7 @@ interface HistoryItem {
 }
 
 const HISTORY_KEY_PREFIX = "canopy_cmd_history_";
-const MAX_HISTORY = 5;
+const MAX_HISTORY = 10;
 
 export function QuickRun({ projectId }: QuickRunProps) {
   const { detectedRunners } = useProjectSettings(projectId);
@@ -30,7 +38,9 @@ export function QuickRun({ projectId }: QuickRunProps) {
   const [runAsDocked, setRunAsDocked] = useState(false);
   const [history, setHistory] = useState<HistoryItem[]>([]);
   const [showSuggestions, setShowSuggestions] = useState(false);
+  const [focusedSuggestionIndex, setFocusedSuggestionIndex] = useState(-1);
   const inputRef = useRef<HTMLInputElement>(null);
+  const blurTimerRef = useRef<NodeJS.Timeout | null>(null);
 
   useEffect(() => {
     const saved = localStorage.getItem(`${HISTORY_KEY_PREFIX}${projectId}`);
@@ -53,6 +63,12 @@ export function QuickRun({ projectId }: QuickRunProps) {
         localStorage.removeItem(`${HISTORY_KEY_PREFIX}${projectId}`);
       }
     }
+
+    return () => {
+      if (blurTimerRef.current) {
+        clearTimeout(blurTimerRef.current);
+      }
+    };
   }, [projectId]);
 
   const saveHistory = (cmd: string) => {
@@ -67,26 +83,27 @@ export function QuickRun({ projectId }: QuickRunProps) {
   const suggestions = useMemo(() => {
     const search = input.toLowerCase().trim();
 
-    const scriptCommands = detectedRunners.map((r) => ({
-      label: r.name,
-      value: r.command,
-      type: "script" as const,
-    }));
-
     const allOptions = [
+      ...detectedRunners.map((r) => ({
+        label: r.name,
+        value: r.command,
+        type: "script" as const,
+      })),
       ...history.map((h) => ({ label: h.command, value: h.command, type: "history" as const })),
-      ...scriptCommands,
     ];
 
-    if (!search) return history.length > 0 ? allOptions.slice(0, 5) : scriptCommands.slice(0, 5);
+    const uniqueOptions = allOptions.filter(
+      (v, i, a) => a.findIndex((t) => t.value === v.value) === i
+    );
 
-    return allOptions
+    if (!search) return uniqueOptions.slice(0, 6);
+
+    return uniqueOptions
       .filter(
         (opt) =>
           opt.value.toLowerCase().includes(search) || opt.label.toLowerCase().includes(search)
       )
-      .filter((v, i, a) => a.findIndex((t) => t.value === v.value) === i)
-      .slice(0, 5);
+      .slice(0, 6);
   }, [input, detectedRunners, history]);
 
   const handleRun = async (cmd: string) => {
@@ -95,17 +112,15 @@ export function QuickRun({ projectId }: QuickRunProps) {
     const activeWorktree = activeWorktreeId ? worktreeMap.get(activeWorktreeId) : null;
     const cwd = activeWorktree?.path;
 
-    if (!cwd) {
-      return;
-    }
+    if (!cwd) return;
 
     saveHistory(cmd);
     setShowSuggestions(false);
     setInput("");
+    setFocusedSuggestionIndex(-1);
 
     try {
       const terminalType = detectTerminalTypeFromCommand(cmd);
-
       await addTerminal({
         type: terminalType,
         title: cmd,
@@ -121,29 +136,57 @@ export function QuickRun({ projectId }: QuickRunProps) {
 
   const handleKeyDown = (e: React.KeyboardEvent) => {
     if (e.key === "Enter") {
-      handleRun(input);
+      e.preventDefault();
+      if (focusedSuggestionIndex >= 0 && suggestions[focusedSuggestionIndex]) {
+        handleRun(suggestions[focusedSuggestionIndex].value);
+      } else {
+        handleRun(input);
+      }
+    } else if (e.key === "ArrowDown") {
+      e.preventDefault();
+      setFocusedSuggestionIndex((prev) => Math.min(prev + 1, suggestions.length - 1));
+    } else if (e.key === "ArrowUp") {
+      e.preventDefault();
+      setFocusedSuggestionIndex((prev) => Math.max(prev - 1, -1));
     } else if (e.key === "Escape") {
       setShowSuggestions(false);
+      setFocusedSuggestionIndex(-1);
       inputRef.current?.blur();
     }
   };
 
+  const activeWorktree = activeWorktreeId ? worktreeMap.get(activeWorktreeId) : null;
+  const activeWorktreeName = activeWorktree?.name || "No active worktree";
+  const isWorktreeValid = activeWorktree != null && activeWorktree.path != null;
+
   return (
-    <div className="border-t border-canopy-border bg-canopy-sidebar/50 shrink-0 flex flex-col min-h-0">
+    <div className="border-t border-canopy-border bg-[#121214] shrink-0 flex flex-col min-h-0 text-xs">
+      {/* Header */}
       <button
         onClick={() => setIsExpanded(!isExpanded)}
-        className="w-full flex items-center justify-between px-3 py-2 text-xs font-semibold text-canopy-text/60 hover:text-canopy-text hover:bg-canopy-border/30 transition-colors focus:outline-none"
+        className={cn(
+          "w-full flex items-center justify-between px-3 py-1.5",
+          "text-canopy-text/40 hover:text-canopy-text hover:bg-white/5 transition-colors focus:outline-none font-mono"
+        )}
       >
-        <div className="flex items-center gap-2">
-          <Zap className="h-3 w-3" />
-          <span className="uppercase tracking-wide">Quick Run</span>
+        <div className="flex items-center gap-2 overflow-hidden">
+          {isExpanded ? <ChevronDown className="h-3 w-3" /> : <ChevronRight className="h-3 w-3" />}
+          <span className="truncate">{activeWorktreeName}</span>
         </div>
-        {isExpanded ? <ChevronDown className="h-3 w-3" /> : <ChevronRight className="h-3 w-3" />}
       </button>
 
       {isExpanded && (
-        <div className="p-3 space-y-3">
-          <div className="relative">
+        <div className="px-3 pb-3 pt-1">
+          <div
+            className={cn(
+              "relative flex items-center bg-[#1e1e1e] border border-canopy-border rounded-md",
+              "focus-within:border-canopy-accent/50 focus-within:ring-1 focus-within:ring-canopy-accent/20 transition-all"
+            )}
+          >
+            {/* Prompt Symbol */}
+            <div className="pl-3 pr-2 select-none text-green-500 font-mono font-bold">$</div>
+
+            {/* Input */}
             <input
               ref={inputRef}
               type="text"
@@ -151,84 +194,116 @@ export function QuickRun({ projectId }: QuickRunProps) {
               onChange={(e) => {
                 setInput(e.target.value);
                 setShowSuggestions(true);
+                setFocusedSuggestionIndex(-1);
               }}
-              onFocus={() => setShowSuggestions(true)}
-              onBlur={() => setTimeout(() => setShowSuggestions(false), 200)}
+              onFocus={() => {
+                if (blurTimerRef.current) {
+                  clearTimeout(blurTimerRef.current);
+                  blurTimerRef.current = null;
+                }
+                setShowSuggestions(true);
+              }}
+              onBlur={() => {
+                blurTimerRef.current = setTimeout(() => {
+                  setShowSuggestions(false);
+                }, 200);
+              }}
               onKeyDown={handleKeyDown}
-              placeholder="npm run dev..."
-              disabled={!activeWorktreeId}
+              placeholder="Execute command..."
+              disabled={!isWorktreeValid}
+              aria-label="Command input"
               className={cn(
-                "w-full bg-canopy-bg border border-canopy-border rounded px-3 py-2 text-sm text-canopy-text placeholder:text-canopy-text/30 focus:outline-none focus:border-canopy-accent focus:ring-1 focus:ring-canopy-accent font-mono",
-                !activeWorktreeId && "opacity-50 cursor-not-allowed"
+                "flex-1 bg-transparent py-2.5 text-xs text-canopy-text font-mono placeholder:text-white/20",
+                "focus:outline-none min-w-0"
               )}
+              autoComplete="off"
             />
 
-            <button
-              onClick={() => handleRun(input)}
-              disabled={!activeWorktreeId}
-              className={cn(
-                "absolute right-1.5 top-1.5 p-1 text-canopy-text/50 hover:text-canopy-accent transition-colors",
-                !activeWorktreeId && "opacity-50 cursor-not-allowed"
-              )}
-              title={activeWorktreeId ? "Run Command" : "No active worktree"}
-            >
-              <Play className="h-3.5 w-3.5 fill-current" />
-            </button>
+            {/* Right Side Controls */}
+            <div className="flex items-center pr-1.5 gap-1">
+              {/* Location Toggle */}
+              <button
+                onClick={() => setRunAsDocked(!runAsDocked)}
+                className={cn(
+                  "p-1.5 rounded-sm transition-all",
+                  runAsDocked
+                    ? "bg-canopy-accent/20 text-canopy-accent"
+                    : "text-white/30 hover:text-white/60 hover:bg-white/10"
+                )}
+                title={runAsDocked ? "Running in Dock" : "Running in Grid"}
+                aria-label={runAsDocked ? "Running in Dock mode" : "Running in Grid mode"}
+              >
+                {runAsDocked ? (
+                  <PanelBottom className="h-3.5 w-3.5" />
+                ) : (
+                  <LayoutGrid className="h-3.5 w-3.5" />
+                )}
+              </button>
 
+              {/* Enter Button */}
+              <button
+                onClick={() => handleRun(input)}
+                disabled={!input.trim() || !isWorktreeValid}
+                className={cn(
+                  "p-1.5 rounded-sm transition-all",
+                  input.trim() ? "text-white hover:bg-white/10" : "text-white/10 cursor-not-allowed"
+                )}
+                title="Run Command (Enter)"
+                aria-label="Run command"
+              >
+                <CornerDownLeft className="h-3.5 w-3.5" />
+              </button>
+            </div>
+
+            {/* Autocomplete Menu */}
             {showSuggestions && suggestions.length > 0 && (
-              <div className="absolute bottom-full left-0 right-0 mb-1 bg-canopy-sidebar border border-canopy-border rounded-md shadow-xl overflow-hidden z-50">
-                {suggestions.map((item) => (
+              <div
+                role="listbox"
+                className="absolute bottom-full left-0 right-0 mb-1 bg-[#1e1e1e] border border-canopy-border rounded-md shadow-2xl overflow-hidden z-50"
+              >
+                <div className="text-[10px] text-white/30 px-3 py-1 bg-black/20 border-b border-white/5">
+                  HISTORY & SCRIPTS
+                </div>
+                {suggestions.map((item, index) => (
                   <button
-                    key={item.value}
-                    className="w-full flex items-center gap-2 px-3 py-1.5 text-left text-xs hover:bg-canopy-bg transition-colors group"
+                    key={`${item.value}-${index}`}
+                    role="option"
+                    aria-selected={index === focusedSuggestionIndex}
+                    className={cn(
+                      "w-full flex items-center gap-3 px-3 py-2 text-left text-xs font-mono transition-colors group",
+                      index === focusedSuggestionIndex
+                        ? "bg-canopy-accent/20 text-canopy-text"
+                        : "text-canopy-text/70 hover:bg-white/5"
+                    )}
                     onClick={() => {
                       setInput(item.value);
                       handleRun(item.value);
                     }}
                   >
                     {item.type === "history" ? (
-                      <Clock className="h-3 w-3 text-canopy-text/40" />
+                      <Clock className="h-3 w-3 opacity-40 shrink-0" />
                     ) : (
-                      <Terminal className="h-3 w-3 text-canopy-text/40" />
+                      <Terminal className="h-3 w-3 opacity-40 shrink-0" />
                     )}
-                    <span className="font-mono text-canopy-text/80 group-hover:text-canopy-text truncate">
-                      {item.value}
-                    </span>
-                    {item.type === "script" && item.label !== item.value && (
-                      <span className="ml-auto text-[10px] text-canopy-text/30">{item.label}</span>
-                    )}
+                    <div className="flex-1 truncate">
+                      <span
+                        className={cn(
+                          "group-hover:text-canopy-text",
+                          index === focusedSuggestionIndex ? "text-canopy-accent" : ""
+                        )}
+                      >
+                        {item.value}
+                      </span>
+                      {item.type === "script" && item.label !== item.value && (
+                        <span className="ml-2 text-[10px] opacity-40 font-sans">
+                          ({item.label})
+                        </span>
+                      )}
+                    </div>
                   </button>
                 ))}
               </div>
             )}
-          </div>
-
-          <div className="flex items-center justify-between px-1">
-            <label className="flex items-center gap-2 cursor-pointer group">
-              <div
-                className={cn(
-                  "w-3 h-3 border rounded flex items-center justify-center transition-colors",
-                  runAsDocked
-                    ? "bg-canopy-accent border-canopy-accent"
-                    : "border-canopy-text/30 group-hover:border-canopy-text/50"
-                )}
-              >
-                {runAsDocked && <Dock className="h-2 w-2 text-white" />}
-              </div>
-              <input
-                type="checkbox"
-                className="hidden"
-                checked={runAsDocked}
-                onChange={(e) => setRunAsDocked(e.target.checked)}
-              />
-              <span className="text-xs text-canopy-text/60 group-hover:text-canopy-text/80 select-none">
-                Run in Dock
-              </span>
-            </label>
-
-            <span className="text-[10px] text-canopy-text/30">
-              Active: {worktreeMap.get(activeWorktreeId || "")?.name || "None"}
-            </span>
           </div>
         </div>
       )}
