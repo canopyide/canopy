@@ -17,7 +17,7 @@ import { TerminalPane } from "@/components/Terminal/TerminalPane";
 import { useContextInjection } from "@/hooks/useContextInjection";
 import type { AgentState, TerminalType } from "@/types";
 import { TerminalRefreshTier } from "@/types";
-import { setTerminalDragData } from "@/utils/dragDrop";
+import { setTerminalDragData, createTerminalDragImage } from "@/utils/dragDrop";
 import { terminalClient } from "@/clients";
 import { terminalInstanceService } from "@/services/TerminalInstanceService";
 
@@ -163,43 +163,14 @@ export function DockedTerminalItem({
         return;
       }
 
-      // Create custom drag image that looks like a terminal card
-      const dragIcon = document.createElement("div");
-      const bgColor = getComputedStyle(document.documentElement)
-        .getPropertyValue("--color-canopy-bg")
-        .trim();
-      const borderColor = getComputedStyle(document.documentElement)
-        .getPropertyValue("--color-canopy-border")
-        .trim();
-      const textColor = getComputedStyle(document.documentElement)
-        .getPropertyValue("--color-canopy-text")
-        .trim();
+      // Use shared utility for unified drag image (matches grid terminals)
+      const brandColor = getBrandColorHex(terminal.type);
+      const dragIcon = createTerminalDragImage(terminal.title, brandColor);
 
-      dragIcon.style.cssText = `
-        position: absolute;
-        top: -1000px;
-        width: 200px;
-        height: 150px;
-        background-color: ${bgColor || "#18181b"};
-        border: 1px solid ${borderColor || "#27272a"};
-        border-radius: 8px;
-        padding: 10px;
-        font-family: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, monospace;
-        font-size: 12px;
-        color: ${textColor || "#e5e5e5"};
-        display: flex;
-        align-items: center;
-        justify-content: center;
-        box-shadow: 0 10px 25px rgba(0, 0, 0, 0.5);
-        pointer-events: none;
-      `;
-      dragIcon.innerText = terminal.title;
-      document.body.appendChild(dragIcon);
+      // Offset to position cursor near top-left of the mini terminal (on title bar)
+      e.dataTransfer.setDragImage(dragIcon, 20, 12);
 
-      // Set the custom drag image centered on cursor
-      e.dataTransfer.setDragImage(dragIcon, 100, 75);
-
-      // Clean up after browser captures the image (Firefox/Safari need a tick)
+      // Clean up after browser captures the image
       requestAnimationFrame(() => {
         if (dragIcon.parentNode) {
           dragIcon.remove();
@@ -214,7 +185,7 @@ export function DockedTerminalItem({
 
       onDragStart?.(terminal.id, index);
     },
-    [terminal.id, terminal.title, index, isOpen, onDragStart]
+    [terminal.id, terminal.title, terminal.type, index, isOpen, onDragStart]
   );
 
   const handleDragEnd = useCallback(() => {

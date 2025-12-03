@@ -296,7 +296,8 @@ function TerminalPaneComponent({
 
       const brandColor = getBrandColorHex(type);
       const dragImage = createTerminalDragImage(title, brandColor);
-      e.dataTransfer.setDragImage(dragImage, 10, 15);
+      // Offset to position cursor near top-left of the mini terminal (on title bar)
+      e.dataTransfer.setDragImage(dragImage, 20, 12);
 
       setTimeout(() => {
         document.body.removeChild(dragImage);

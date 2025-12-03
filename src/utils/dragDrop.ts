@@ -199,37 +199,50 @@ export function isTerminalDrag(dataTransfer: DataTransfer): boolean {
 }
 
 /**
- * Creates a compact drag image "pill" with terminal icon and title.
+ * Creates a miniature terminal ghost as the drag image.
+ * Looks like a small terminal window with title bar and dark body.
  * Must be appended to DOM before use, then removed after setDragImage.
  */
 export function createTerminalDragImage(title: string, brandColor?: string): HTMLElement {
-  const el = document.createElement("div");
+  const container = document.createElement("div");
 
   const bgColor = "#18181b";
   const borderColor = "#27272a";
   const textColor = "#e4e4e7";
   const iconColor = brandColor || textColor;
 
-  el.style.cssText = `
+  // Outer container - the terminal window
+  container.style.cssText = `
     position: absolute;
     top: -1000px;
     left: -1000px;
-    padding: 6px 12px;
+    width: 160px;
+    height: 100px;
     background-color: ${bgColor};
     border: 1px solid ${borderColor};
-    border-radius: 6px;
-    box-shadow: 0 4px 12px rgba(0, 0, 0, 0.5);
-    display: flex;
-    align-items: center;
-    gap: 8px;
-    font-family: "JetBrains Mono", monospace;
-    font-size: 12px;
-    color: ${textColor};
+    border-radius: 8px;
+    box-shadow: 0 8px 24px rgba(0, 0, 0, 0.6);
     z-index: 9999;
     pointer-events: none;
-    white-space: nowrap;
+    overflow: hidden;
+    display: flex;
+    flex-direction: column;
   `;
 
+  // Title bar
+  const titleBar = document.createElement("div");
+  titleBar.style.cssText = `
+    height: 24px;
+    padding: 0 8px;
+    background-color: #27272a;
+    border-bottom: 1px solid #3f3f46;
+    display: flex;
+    align-items: center;
+    gap: 6px;
+    flex-shrink: 0;
+  `;
+
+  // Icon dot
   const icon = document.createElement("div");
   icon.style.cssText = `
     width: 8px;
@@ -239,13 +252,49 @@ export function createTerminalDragImage(title: string, brandColor?: string): HTM
     flex-shrink: 0;
   `;
 
+  // Title text
   const text = document.createElement("span");
-  text.innerText = title.length > 24 ? title.slice(0, 24) + "…" : title;
-  text.style.fontWeight = "500";
+  text.innerText = title;
+  text.style.cssText = `
+    font-family: "JetBrains Mono", monospace;
+    font-size: 11px;
+    font-weight: 500;
+    color: ${textColor};
+    white-space: nowrap;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    flex: 1;
+  `;
 
-  el.appendChild(icon);
-  el.appendChild(text);
+  titleBar.appendChild(icon);
+  titleBar.appendChild(text);
 
-  document.body.appendChild(el);
-  return el;
+  // Terminal body (dark area with ghost content)
+  const body = document.createElement("div");
+  body.style.cssText = `
+    flex: 1;
+    padding: 8px;
+    display: flex;
+    flex-direction: column;
+    gap: 4px;
+  `;
+
+  // Ghost lines to simulate terminal content
+  for (let i = 0; i < 3; i++) {
+    const line = document.createElement("div");
+    const width = i === 0 ? "70%" : i === 1 ? "50%" : "40%";
+    line.style.cssText = `
+      height: 6px;
+      width: ${width};
+      background-color: rgba(255, 255, 255, 0.06);
+      border-radius: 2px;
+    `;
+    body.appendChild(line);
+  }
+
+  container.appendChild(titleBar);
+  container.appendChild(body);
+
+  document.body.appendChild(container);
+  return container;
 }
