@@ -256,6 +256,18 @@ export function Toolbar({
               <Maximize2 className="h-4 w-4" aria-hidden="true" />
             )}
           </Button>
+          <span
+            role="status"
+            aria-live="polite"
+            className={cn(
+              "px-2 py-0.5 rounded-full text-[10px] font-medium transition-opacity",
+              isFocusMode
+                ? "bg-canopy-accent/15 text-canopy-accent border border-canopy-accent/40 opacity-100"
+                : "opacity-0 pointer-events-none invisible"
+            )}
+          >
+            Focus
+          </span>
           <Button
             variant="ghost"
             size="icon"
