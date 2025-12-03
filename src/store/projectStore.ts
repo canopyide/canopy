@@ -101,6 +101,7 @@ const createProjectStore: StateCreator<ProjectState> = (set, get) => ({
     } catch (error) {
       console.error("Failed to update project:", error);
       set({ error: "Failed to update project", isLoading: false });
+      throw error;
     }
   },
 
