@@ -47,24 +47,24 @@ const cleanup = window.electron.terminal.onData(id, callback);
 
 ### IPC Namespaces
 
-| Namespace | Purpose | Key Methods |
-|-----------|---------|-------------|
-| `worktree` | Git worktree management | getAll, refresh, setActive, onUpdate |
-| `terminal` | PTY process control | spawn, write, resize, kill, onData |
-| `devServer` | Dev server lifecycle | start, stop, toggle, getState, getLogs |
-| `copyTree` | Context generation | generate, injectToTerminal, onProgress |
-| `project` | Multi-project support | getAll, add, remove, switch |
-| `ai` | OpenAI integration | setKey, validateKey, generateProjectIdentity |
-| `logs` | Log aggregation | getAll, getSources, clear, onEntry |
-| `eventInspector` | Event debugging | getEvents, subscribe, onEvent |
-| `agent` | Agent management | launch, configure |
-| `agentSettings` | Agent configuration | get, update |
-| `system` | System operations | openExternal, openPath, checkCommand |
-| `github` | GitHub integration | fetchPR, fetchIssue |
-| `history` | Session history | getSessions, exportSession |
-| `app` | Application state | getState, setState |
-| `git` | Git operations | status, diff, commit |
-| `error` | Error handling | onError, retry, openLogs |
+| Namespace        | Purpose                 | Key Methods                                  |
+| ---------------- | ----------------------- | -------------------------------------------- |
+| `worktree`       | Git worktree management | getAll, refresh, setActive, onUpdate         |
+| `terminal`       | PTY process control     | spawn, write, resize, kill, onData           |
+| `devServer`      | Dev server lifecycle    | start, stop, toggle, getState, getLogs       |
+| `copyTree`       | Context generation      | generate, injectToTerminal, onProgress       |
+| `project`        | Multi-project support   | getAll, add, remove, switch                  |
+| `ai`             | OpenAI integration      | setKey, validateKey, generateProjectIdentity |
+| `logs`           | Log aggregation         | getAll, getSources, clear, onEntry           |
+| `eventInspector` | Event debugging         | getEvents, subscribe, onEvent                |
+| `agent`          | Agent management        | launch, configure                            |
+| `agentSettings`  | Agent configuration     | get, update                                  |
+| `system`         | System operations       | openExternal, openPath, checkCommand         |
+| `github`         | GitHub integration      | fetchPR, fetchIssue                          |
+| `history`        | Session history         | getSessions, exportSession                   |
+| `app`            | Application state       | getState, setState                           |
+| `git`            | Git operations          | status, diff, commit                         |
+| `error`          | Error handling          | onError, retry, openLogs                     |
 
 Channel definitions: [`electron/ipc/channels.ts`](https://github.com/gregpriday/canopy-electron/blob/main/electron/ipc/channels.ts) (109 channels)
 
@@ -109,18 +109,18 @@ src/
 
 ## Tech Stack
 
-| Component             | Technology                        |
-| --------------------- | --------------------------------- |
-| Runtime               | Electron 33                       |
-| UI Framework          | React 19 + TypeScript             |
-| Build                 | Vite 6                            |
-| State Management      | Zustand                           |
-| Terminal Emulation    | xterm.js + @xterm/addon-fit/webgl |
-| PTY                   | node-pty (native module)          |
-| Git Operations        | simple-git                        |
-| Process Management    | execa                             |
-| Styling               | Tailwind CSS v4                   |
-| AI Integration        | OpenAI SDK                        |
+| Component          | Technology                        |
+| ------------------ | --------------------------------- |
+| Runtime            | Electron 33                       |
+| UI Framework       | React 19 + TypeScript             |
+| Build              | Vite 6                            |
+| State Management   | Zustand                           |
+| Terminal Emulation | xterm.js + @xterm/addon-fit/webgl |
+| PTY                | node-pty (native module)          |
+| Git Operations     | simple-git                        |
+| Process Management | execa                             |
+| Styling            | Tailwind CSS v4                   |
+| AI Integration     | OpenAI SDK                        |
 
 ## Data Flow
 

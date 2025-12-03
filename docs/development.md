@@ -111,6 +111,7 @@ Services live in `electron/services/`. See [Services Reference](services.md) for
 ### Renderer Process
 
 Use Chrome DevTools (View → Toggle Developer Tools or Cmd+Opt+I):
+
 - Console for logs
 - Network for API calls
 - React DevTools (if installed)
@@ -120,15 +121,16 @@ Use Chrome DevTools (View → Toggle Developer Tools or Cmd+Opt+I):
 Logs appear in the terminal where you ran `npm run dev`. Use the logger utility:
 
 ```typescript
-import { logInfo, logError, logWarn, logDebug } from './utils/logger';
+import { logInfo, logError, logWarn, logDebug } from "./utils/logger";
 
-logInfo('MyService', 'Message');
-logError('MyService', 'Error', { details });
+logInfo("MyService", "Message");
+logError("MyService", "Error", { details });
 ```
 
 ### Event Inspector
 
 Canopy includes a built-in event inspector for debugging IPC:
+
 1. Open the Event Inspector panel (View menu or keyboard shortcut)
 2. Filter by source or event type
 3. Inspect event payloads
@@ -136,16 +138,19 @@ Canopy includes a built-in event inspector for debugging IPC:
 ### Common Issues
 
 **node-pty errors:**
+
 ```bash
 npm run rebuild
 ```
 
 **TypeScript errors in Electron code:**
+
 ```bash
 npm run build:main
 ```
 
 **Stale cache:**
+
 ```bash
 rm -rf node_modules/.vite
 npm run dev
@@ -153,8 +158,8 @@ npm run dev
 
 ## Environment Variables
 
-| Variable | Purpose |
-|----------|---------|
+| Variable   | Purpose                          |
+| ---------- | -------------------------------- |
 | `NODE_ENV` | Set to `development` in dev mode |
 
 OpenAI API key and other secrets are stored via electron-store, not environment variables.

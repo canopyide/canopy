@@ -66,6 +66,7 @@ type(scope): description
 Types: `feat`, `fix`, `docs`, `style`, `refactor`, `test`, `chore`
 
 Examples:
+
 ```
 feat(terminal): add bulk close action
 fix(worktree): handle missing branch gracefully

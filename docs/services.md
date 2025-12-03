@@ -77,6 +77,7 @@ Manages pseudo-terminal processes.
 Tracks AI agent lifecycle states.
 
 States:
+
 - `idle` - Agent not running
 - `working` - Agent actively processing
 - `waiting` - Agent waiting for user input
