@@ -27,9 +27,7 @@ export function useKeybinding(
       // Exception: terminal scope bindings and terminal.* actions are allowed
       const target = e.target as HTMLElement;
       const isEditable =
-        target.tagName === "INPUT" ||
-        target.tagName === "TEXTAREA" ||
-        target.isContentEditable;
+        target.tagName === "INPUT" || target.tagName === "TEXTAREA" || target.isContentEditable;
 
       const isInTerminal = target.closest(".xterm") !== null;
       const isTerminalAction = actionId.startsWith("terminal.");
