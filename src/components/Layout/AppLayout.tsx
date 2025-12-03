@@ -3,6 +3,7 @@ import { Toolbar } from "./Toolbar";
 import { Sidebar } from "./Sidebar";
 import { TerminalDock } from "./TerminalDock";
 import { DiagnosticsDock } from "../Diagnostics";
+import { ErrorBoundary } from "../ErrorBoundary";
 import { useFocusStore, useDiagnosticsStore, useErrorStore, type PanelState } from "@/store";
 import type { RetryAction } from "@/store";
 import { appClient } from "@/clients";
@@ -231,31 +232,39 @@ export function AppLayout({
           style={{ flex: 1, display: "flex", overflow: "hidden" }}
         >
           {!isFocusMode && (
-            <Sidebar
-              width={effectiveSidebarWidth}
-              onResize={handleSidebarResize}
-              historyContent={historyContent}
-            >
-              {sidebarContent}
-            </Sidebar>
+            <ErrorBoundary variant="section" componentName="Sidebar">
+              <Sidebar
+                width={effectiveSidebarWidth}
+                onResize={handleSidebarResize}
+                historyContent={historyContent}
+              >
+                {sidebarContent}
+              </Sidebar>
+            </ErrorBoundary>
           )}
-          <main
-            className="flex-1 flex flex-col overflow-hidden bg-canopy-bg"
-            style={{
-              flex: 1,
-              display: "flex",
-              flexDirection: "column",
-              overflow: "hidden",
-              backgroundColor: "#18181b", // Zinc-950
-            }}
-          >
-            <div className="flex-1 overflow-hidden min-h-0">{children}</div>
-            {/* Terminal Dock - appears at bottom only when terminals are docked */}
-            <TerminalDock />
-          </main>
+          <ErrorBoundary variant="section" componentName="MainContent">
+            <main
+              className="flex-1 flex flex-col overflow-hidden bg-canopy-bg"
+              style={{
+                flex: 1,
+                display: "flex",
+                flexDirection: "column",
+                overflow: "hidden",
+                backgroundColor: "#18181b", // Zinc-950
+              }}
+            >
+              <div className="flex-1 overflow-hidden min-h-0">{children}</div>
+              {/* Terminal Dock - appears at bottom only when terminals are docked */}
+              <ErrorBoundary variant="section" componentName="TerminalDock">
+                <TerminalDock />
+              </ErrorBoundary>
+            </main>
+          </ErrorBoundary>
         </div>
         {/* Unified diagnostics dock replaces LogsPanel, EventInspectorPanel, and ProblemsPanel */}
-        <DiagnosticsDock onRetry={onRetry} />
+        <ErrorBoundary variant="section" componentName="DiagnosticsDock">
+          <DiagnosticsDock onRetry={onRetry} />
+        </ErrorBoundary>
       </div>
     </div>
   );

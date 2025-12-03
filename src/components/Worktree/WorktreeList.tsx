@@ -2,6 +2,7 @@ import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import type { WorktreeState } from "../../types";
 import { WorktreeCard } from "./WorktreeCard";
 import { WorktreeCardSkeleton } from "./WorktreeCardSkeleton";
+import { ErrorBoundary } from "../ErrorBoundary";
 
 export interface WorktreeListProps {
   worktrees: WorktreeState[];
@@ -320,25 +321,32 @@ export function WorktreeList({
             aria-current={worktree.id === activeId ? "true" : undefined}
             id={worktree.id}
           >
-            <WorktreeCard
-              worktree={worktree}
-              isActive={worktree.id === activeId}
-              isFocused={index === focusIndex && hasFocus}
-              onSelect={() => onSelect(worktree.id)}
-              onCopyTree={() => onCopyTree(worktree.id)}
-              onOpenEditor={() => onOpenEditor(worktree.id)}
-              onToggleServer={() => onToggleServer(worktree.id)}
-              onOpenIssue={
-                worktree.issueNumber && onOpenIssue
-                  ? () => onOpenIssue(worktree.id, worktree.issueNumber!)
-                  : undefined
-              }
-              onOpenPR={
-                worktree.prUrl && worktree.prNumber && onOpenPR
-                  ? () => onOpenPR(worktree.id, worktree.prUrl!)
-                  : undefined
-              }
-            />
+            <ErrorBoundary
+              variant="component"
+              componentName="WorktreeCard"
+              resetKeys={[worktree.id]}
+              context={{ worktreeId: worktree.id }}
+            >
+              <WorktreeCard
+                worktree={worktree}
+                isActive={worktree.id === activeId}
+                isFocused={index === focusIndex && hasFocus}
+                onSelect={() => onSelect(worktree.id)}
+                onCopyTree={() => onCopyTree(worktree.id)}
+                onOpenEditor={() => onOpenEditor(worktree.id)}
+                onToggleServer={() => onToggleServer(worktree.id)}
+                onOpenIssue={
+                  worktree.issueNumber && onOpenIssue
+                    ? () => onOpenIssue(worktree.id, worktree.issueNumber!)
+                    : undefined
+                }
+                onOpenPR={
+                  worktree.prUrl && worktree.prNumber && onOpenPR
+                    ? () => onOpenPR(worktree.id, worktree.prUrl!)
+                    : undefined
+                }
+              />
+            </ErrorBoundary>
           </div>
         ))}
       </div>

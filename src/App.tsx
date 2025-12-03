@@ -21,6 +21,7 @@ import { RecipeEditor } from "./components/TerminalRecipe/RecipeEditor";
 import { SettingsDialog } from "./components/Settings";
 import { HistoryPanel } from "./components/History";
 import { Toaster } from "./components/ui/toaster";
+import { ErrorBoundary } from "./components/ErrorBoundary";
 import {
   useTerminalStore,
   useWorktreeSelectionStore,
@@ -589,7 +590,7 @@ function App() {
   }
 
   return (
-    <>
+    <ErrorBoundary variant="fullscreen" componentName="App">
       <AppLayout
         sidebarContent={<SidebarContent onOpenSettings={handleOpenSettings} />}
         historyContent={<HistoryPanel />}
@@ -629,7 +630,7 @@ function App() {
       />
 
       <Toaster />
-    </>
+    </ErrorBoundary>
   );
 }
 
