@@ -158,19 +158,28 @@ export function TerminalDock() {
 
   // Build render dock items array with placeholder spliced in at dropIndex
   const renderDockItems = useMemo(() => {
-    const items: React.ReactNode[] = activeDockTerminals.map((terminal, index) => (
-      <DockedTerminalItem
-        key={terminal.id}
-        terminal={terminal}
-        index={index}
-        isDragging={draggedId === terminal.id}
-        onDragStart={handleDockItemDragStart}
-        onDragEnd={handleDockItemDragEnd}
-      />
-    ));
+    // Filter out dragged terminal when it's from the dock (creates "lift" effect)
+    const visibleDockTerminals = activeDockTerminals.filter((t) =>
+      draggedId && draggedId === t.id ? false : true
+    );
+
+    const items: React.ReactNode[] = visibleDockTerminals.map((terminal) => {
+      // Find original index in activeDockTerminals for drag handler
+      const originalIndex = activeDockTerminals.findIndex((t) => t.id === terminal.id);
+      return (
+        <DockedTerminalItem
+          key={terminal.id}
+          terminal={terminal}
+          index={originalIndex}
+          isDragging={false}
+          onDragStart={handleDockItemDragStart}
+          onDragEnd={handleDockItemDragEnd}
+        />
+      );
+    });
 
     // Inject placeholder if dragging over dock
-    if (isDragOver && dropIndex !== null && dropIndex <= activeDockTerminals.length) {
+    if (isDragOver && dropIndex !== null && dropIndex <= visibleDockTerminals.length) {
       items.splice(
         dropIndex,
         0,
@@ -210,40 +219,29 @@ export function TerminalDock() {
       onDrop={handleDrop}
     >
       <div className="flex items-center gap-2 overflow-x-auto flex-1 no-scrollbar">
-        {isEmpty && !isDragOver ? (
-          <div className="flex-1 flex items-center justify-center text-xs text-canopy-text/20 select-none">
-            Drag terminals here to minimize
-          </div>
-        ) : isEmpty && isDragOver ? (
-          <div className="flex-1 flex items-center justify-center">
-            <div className="w-32 h-8">
-              <DropPlaceholder
-                className="h-full w-full p-0 border-canopy-accent/40 bg-canopy-accent/5 rounded"
-                label="Drop"
-              />
-            </div>
-          </div>
-        ) : (
+        {(!isEmpty || isDragOver) && (
           <>
-            <button
-              onClick={handleToggleCollapse}
-              className={cn(
-                "flex items-center gap-1 text-xs text-canopy-text/60 mr-2 shrink-0 select-none",
-                "hover:text-canopy-text transition-colors rounded px-1 py-0.5",
-                "focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-canopy-accent"
-              )}
-              title={isCollapsed ? "Show background terminals" : "Hide background terminals"}
-              aria-expanded={!isCollapsed}
-            >
-              <ChevronDown
+            {!isEmpty && (
+              <button
+                onClick={handleToggleCollapse}
                 className={cn(
-                  "h-3 w-3 transition-transform duration-200",
-                  isCollapsed && "-rotate-90"
+                  "flex items-center gap-1 text-xs text-canopy-text/60 mr-2 shrink-0 select-none",
+                  "hover:text-canopy-text transition-colors rounded px-1 py-0.5",
+                  "focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-canopy-accent"
                 )}
-                aria-hidden="true"
-              />
-              <span>Background ({activeDockTerminals.length})</span>
-            </button>
+                title={isCollapsed ? "Show background terminals" : "Hide background terminals"}
+                aria-expanded={!isCollapsed}
+              >
+                <ChevronDown
+                  className={cn(
+                    "h-3 w-3 transition-transform duration-200",
+                    isCollapsed && "-rotate-90"
+                  )}
+                  aria-hidden="true"
+                />
+                <span>Background ({activeDockTerminals.length})</span>
+              </button>
+            )}
 
             {!isCollapsed && renderDockItems}
           </>

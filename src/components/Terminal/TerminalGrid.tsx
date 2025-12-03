@@ -159,7 +159,6 @@ export function TerminalGrid({ className, defaultCwd }: TerminalGridProps) {
     createDragOverHandler,
     handleDrop,
     handleDragEnd,
-    isDraggedTerminal,
   } = useTerminalDragAndDrop();
 
   // Only need inject/cancel actions - each TerminalPane subscribes to its own progress
@@ -175,15 +174,23 @@ export function TerminalGrid({ className, defaultCwd }: TerminalGridProps) {
     terminalId: null,
   });
 
-  // Calculate if we need to show placeholder (only when dragging from dock into grid)
+  // Calculate if we need to show placeholder (when dragging over grid)
   const showPlaceholder =
-    dragState.isDragging &&
-    dragState.dropZone === "grid" &&
-    dragState.sourceLocation === "dock" &&
-    dragState.dropIndex !== null;
+    dragState.isDragging && dragState.dropZone === "grid" && dragState.dropIndex !== null;
+
+  // Filter out dragged terminal when it's from the grid (creates "lift" effect)
+  const visibleTerminals = useMemo(
+    () =>
+      gridTerminals.filter((t) =>
+        dragState.isDragging && dragState.sourceLocation === "grid"
+          ? t.id !== dragState.draggedId
+          : true
+      ),
+    [gridTerminals, dragState.isDragging, dragState.sourceLocation, dragState.draggedId]
+  );
 
   // Calculate effective grid count including placeholder
-  const effectiveGridCount = gridTerminals.length + (showPlaceholder ? 1 : 0);
+  const effectiveGridCount = visibleTerminals.length + (showPlaceholder ? 1 : 0);
 
   const gridCols = useMemo(() => {
     const count = effectiveGridCount;
@@ -279,87 +286,76 @@ export function TerminalGrid({ className, defaultCwd }: TerminalGridProps) {
 
   const handleGridDragOver = createDragOverHandler("grid");
 
-  // Build render items array with placeholder spliced in at dropIndex when dragging from dock
+  // Build render items array with placeholder spliced in at dropIndex
   const renderItems = useMemo(() => {
-    const items: React.ReactNode[] = gridTerminals.map(
-      (terminal: TerminalInstance, index: number) => {
-        const isDragging = isDraggedTerminal(terminal.id);
-        const isTerminalInTrash = isInTrash(terminal.id);
+    const items: React.ReactNode[] = visibleTerminals.map((terminal: TerminalInstance) => {
+      const isTerminalInTrash = isInTrash(terminal.id);
+      // Find original index in gridTerminals for drag handler
+      const originalIndex = gridTerminals.findIndex((t) => t.id === terminal.id);
 
-        // Show ring indicator when reordering within grid (not dock-to-grid)
-        const showReorderIndicator =
-          dragState.isDragging &&
-          dragState.dropZone === "grid" &&
-          dragState.sourceLocation === "grid" &&
-          dragState.dropIndex === index;
+      return (
+        <div key={terminal.id} className="relative h-full">
+          <TerminalPane
+            id={terminal.id}
+            title={terminal.title}
+            type={terminal.type}
+            worktreeId={terminal.worktreeId}
+            cwd={terminal.cwd}
+            isFocused={terminal.id === focusedId}
+            isMaximized={false}
+            agentState={terminal.agentState}
+            activity={
+              terminal.activityHeadline
+                ? {
+                    headline: terminal.activityHeadline,
+                    status: terminal.activityStatus ?? "working",
+                    type: terminal.activityType ?? "interactive",
+                  }
+                : null
+            }
+            location="grid"
+            onFocus={() => setFocused(terminal.id)}
+            onClose={() => trashTerminal(terminal.id)}
+            onInjectContext={
+              terminal.worktreeId
+                ? () => handleInjectContext(terminal.id, terminal.worktreeId)
+                : undefined
+            }
+            onCancelInjection={cancel}
+            onToggleMaximize={() => toggleMaximize(terminal.id)}
+            onTitleChange={(newTitle) => updateTitle(terminal.id, newTitle)}
+            onMinimize={() => moveTerminalToDock(terminal.id)}
+            isDragging={false}
+            onDragStart={
+              !isTerminalInTrash
+                ? createDragStartHandler(terminal.id, "grid", originalIndex)
+                : undefined
+            }
+          />
+        </div>
+      );
+    });
 
-        return (
-          <div
-            key={terminal.id}
-            className={cn(
-              "relative h-full",
-              isDragging && "opacity-50",
-              showReorderIndicator && "ring-2 ring-canopy-accent ring-inset"
-            )}
-          >
-            <TerminalPane
-              id={terminal.id}
-              title={terminal.title}
-              type={terminal.type}
-              worktreeId={terminal.worktreeId}
-              cwd={terminal.cwd}
-              isFocused={terminal.id === focusedId}
-              isMaximized={false}
-              agentState={terminal.agentState}
-              activity={
-                terminal.activityHeadline
-                  ? {
-                      headline: terminal.activityHeadline,
-                      status: terminal.activityStatus ?? "working",
-                      type: terminal.activityType ?? "interactive",
-                    }
-                  : null
-              }
-              location="grid"
-              onFocus={() => setFocused(terminal.id)}
-              onClose={() => trashTerminal(terminal.id)}
-              onInjectContext={
-                terminal.worktreeId
-                  ? () => handleInjectContext(terminal.id, terminal.worktreeId)
-                  : undefined
-              }
-              onCancelInjection={cancel}
-              onToggleMaximize={() => toggleMaximize(terminal.id)}
-              onTitleChange={(newTitle) => updateTitle(terminal.id, newTitle)}
-              onMinimize={() => moveTerminalToDock(terminal.id)}
-              isDragging={isDragging}
-              onDragStart={
-                !isTerminalInTrash ? createDragStartHandler(terminal.id, "grid", index) : undefined
-              }
-            />
-          </div>
-        );
-      }
-    );
-
-    // Inject placeholder at dropIndex when dragging from dock to grid
+    // Insert placeholder at drop index when dragging over grid
     if (showPlaceholder && dragState.dropIndex !== null) {
       items.splice(
         dragState.dropIndex,
         0,
-        <DropPlaceholder key="grid-placeholder" label="Drop to move" />
+        <div key="grid-placeholder" className="relative h-full">
+          <DropPlaceholder
+            label="Drop to move"
+            className="h-full w-full border-2 border-dashed border-canopy-accent/30 bg-canopy-accent/5 rounded-lg"
+          />
+        </div>
       );
     }
 
     return items;
   }, [
+    visibleTerminals,
     gridTerminals,
-    dragState.isDragging,
-    dragState.dropZone,
     dragState.dropIndex,
-    dragState.sourceLocation,
     showPlaceholder,
-    isDraggedTerminal,
     isInTrash,
     focusedId,
     setFocused,
