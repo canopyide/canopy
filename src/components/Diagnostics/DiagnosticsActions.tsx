@@ -31,7 +31,7 @@ function ActionButton({ onClick, disabled, children, className, title }: ActionB
 }
 
 export function ProblemsActions() {
-  const activeErrors = useErrorStore((state) => state.errors.filter((e) => !e.dismissed));
+  const hasActiveErrors = useErrorStore((state) => state.errors.some((e) => !e.dismissed));
   const clearAll = useErrorStore((state) => state.clearAll);
 
   const handleOpenLogs = useCallback(() => {
@@ -45,7 +45,7 @@ export function ProblemsActions() {
       </ActionButton>
       <ActionButton
         onClick={clearAll}
-        disabled={activeErrors.length === 0}
+        disabled={!hasActiveErrors}
         title="Clear all errors"
       >
         Clear All
