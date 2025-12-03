@@ -34,7 +34,7 @@ function cspTransformPlugin(): Plugin {
 
       if (!cspRegex.test(html)) {
         throw new Error(
-          "CSP meta tag not found in index.html. Expected: <meta http-equiv=\"Content-Security-Policy\" ...>"
+          'CSP meta tag not found in index.html. Expected: <meta http-equiv="Content-Security-Policy" ...>'
         );
       }
 
