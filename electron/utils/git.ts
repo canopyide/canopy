@@ -8,7 +8,7 @@ import { Cache } from "./cache.js";
 
 const GIT_WORKTREE_CHANGES_CACHE = new Cache<string, WorktreeChanges>({
   maxSize: 100,
-  defaultTTL: 5000,
+  defaultTTL: 15000, // 15s to cover 10s background polling + margin
 });
 
 let cleanupInterval: NodeJS.Timeout | null = null;
@@ -42,6 +42,20 @@ export { invalidateWorktreeCache as invalidateGitStatusCache };
 
 export function clearWorktreeCache(): void {
   GIT_WORKTREE_CHANGES_CACHE.clear();
+}
+
+export function getWorktreeCacheMetrics(): {
+  size: number;
+  hits: number;
+  misses: number;
+  hitRate: number;
+  ttl: number;
+} {
+  const stats = GIT_WORKTREE_CHANGES_CACHE.getStats();
+  return {
+    ...stats,
+    ttl: 15000,
+  };
 }
 
 interface DiffStat {
@@ -131,6 +145,15 @@ export async function getWorktreeChangesWithStats(
     const git: SimpleGit = simpleGit(cwd);
     const status: StatusResult = await git.status();
     const gitRoot = realpathSync((await git.revparse(["--show-toplevel"])).trim());
+
+    // Fetch last commit message alongside status (batched to avoid separate git log call)
+    let lastCommitMessage: string | undefined;
+    try {
+      const log = await git.log({ maxCount: 1 });
+      lastCommitMessage = log.latest?.message ?? undefined;
+    } catch {
+      // Silently ignore - this is a non-critical field
+    }
 
     const trackedChangedFiles = [
       ...status.modified,
@@ -319,6 +342,7 @@ export async function getWorktreeChangesWithStats(
       deletions: totalDeletions,
       latestFileMtime,
       lastUpdated: Date.now(),
+      lastCommitMessage,
     };
 
     GIT_WORKTREE_CHANGES_CACHE.set(cwd, result);
