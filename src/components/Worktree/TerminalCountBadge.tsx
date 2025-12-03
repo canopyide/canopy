@@ -17,7 +17,7 @@ const STATE_LABELS: Record<AgentState, string> = {
 function formatStateCounts(byState: Record<AgentState, number>): string {
   const parts: string[] = [];
 
-  const priorityOrder: AgentState[] = ["working", "waiting", "failed", "idle", "completed"];
+  const priorityOrder: AgentState[] = ["working", "failed", "idle", "completed"];
 
   for (const state of priorityOrder) {
     const count = byState[state];
@@ -36,7 +36,6 @@ export function TerminalCountBadge({ counts }: TerminalCountBadgeProps) {
 
   const hasNonIdleStates =
     counts.byState.working > 0 ||
-    counts.byState.waiting > 0 ||
     counts.byState.completed > 0 ||
     counts.byState.failed > 0;
 
