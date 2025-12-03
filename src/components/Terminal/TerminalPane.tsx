@@ -306,8 +306,8 @@ export function TerminalPane({
         // Apply focus styles only if NOT docked
         location !== "dock" &&
           (isFocused
-            ? "terminal-focused border-zinc-600"
-            : "border-zinc-800 hover:border-zinc-700"),
+            ? "terminal-focused border-[color-mix(in_oklab,var(--color-canopy-border)_100%,white_20%)]"
+            : "border-canopy-border hover:border-[color-mix(in_oklab,var(--color-canopy-border)_100%,white_10%)]"),
 
         isExited && "opacity-75 grayscale",
         isDragging && "opacity-50 ring-2 ring-canopy-accent"
@@ -375,7 +375,7 @@ export function TerminalPane({
               onChange={(e) => setEditingValue(e.target.value)}
               onKeyDown={handleTitleInputKeyDown}
               onBlur={handleTitleSave}
-              className="text-sm font-medium bg-black/40 border border-canopy-accent/50 px-1 h-5 min-w-32 outline-none text-canopy-text select-text"
+              className="text-sm font-medium bg-canopy-bg/60 border border-canopy-accent/50 px-1 h-5 min-w-32 outline-none text-canopy-text select-text"
               aria-label={type === "shell" ? "Edit shell title" : "Edit agent title"}
             />
           ) : (
@@ -451,7 +451,7 @@ export function TerminalPane({
                 onInjectContext();
               }}
               className={cn(
-                "p-1.5 hover:bg-white/10 focus-visible:bg-white/10 focus-visible:outline focus-visible:outline-2 focus-visible:outline-canopy-accent text-canopy-text/60 hover:text-[var(--color-state-working)] transition-colors",
+                "p-1.5 hover:bg-canopy-text/10 focus-visible:bg-canopy-text/10 focus-visible:outline focus-visible:outline-2 focus-visible:outline-canopy-accent text-canopy-text/60 hover:text-[var(--color-state-working)] transition-colors",
                 isInjecting && "opacity-50 cursor-not-allowed"
               )}
               title="Inject Context (Ctrl+Shift+I)"
@@ -467,7 +467,7 @@ export function TerminalPane({
                 e.stopPropagation();
                 onMinimize();
               }}
-              className="p-1.5 hover:bg-white/10 focus-visible:bg-white/10 focus-visible:outline focus-visible:outline-2 focus-visible:outline-canopy-accent text-canopy-text/60 hover:text-canopy-text transition-colors"
+              className="p-1.5 hover:bg-canopy-text/10 focus-visible:bg-canopy-text/10 focus-visible:outline focus-visible:outline-2 focus-visible:outline-canopy-accent text-canopy-text/60 hover:text-canopy-text transition-colors"
               title="Minimize to dock"
               aria-label="Minimize to dock"
             >
@@ -480,7 +480,7 @@ export function TerminalPane({
                 e.stopPropagation();
                 onRestore();
               }}
-              className="p-1.5 hover:bg-white/10 focus-visible:bg-white/10 focus-visible:outline focus-visible:outline-2 focus-visible:outline-canopy-accent text-canopy-text/60 hover:text-canopy-text transition-colors"
+              className="p-1.5 hover:bg-canopy-text/10 focus-visible:bg-canopy-text/10 focus-visible:outline focus-visible:outline-2 focus-visible:outline-canopy-accent text-canopy-text/60 hover:text-canopy-text transition-colors"
               title="Restore to grid"
               aria-label="Restore to grid"
             >
@@ -494,7 +494,7 @@ export function TerminalPane({
                 onFocus();
                 onToggleMaximize();
               }}
-              className="p-1.5 hover:bg-white/10 focus-visible:bg-white/10 focus-visible:outline focus-visible:outline-2 focus-visible:outline-canopy-accent text-canopy-text/60 hover:text-canopy-text transition-colors"
+              className="p-1.5 hover:bg-canopy-text/10 focus-visible:bg-canopy-text/10 focus-visible:outline focus-visible:outline-2 focus-visible:outline-canopy-accent text-canopy-text/60 hover:text-canopy-text transition-colors"
               title={isMaximized ? "Restore (Ctrl+Shift+F)" : "Maximize (Ctrl+Shift+F)"}
               aria-label={isMaximized ? "Restore" : "Maximize"}
             >
@@ -510,7 +510,7 @@ export function TerminalPane({
               e.stopPropagation();
               onClose();
             }}
-            className="p-1.5 hover:bg-red-500/20 focus-visible:bg-red-500/20 focus-visible:outline focus-visible:outline-2 focus-visible:outline-[var(--color-status-error)] text-canopy-text/60 hover:text-[var(--color-status-error)] transition-colors"
+            className="p-1.5 hover:bg-[color-mix(in_oklab,var(--color-status-error)_15%,transparent)] focus-visible:bg-[color-mix(in_oklab,var(--color-status-error)_15%,transparent)] focus-visible:outline focus-visible:outline-2 focus-visible:outline-[var(--color-status-error)] text-canopy-text/60 hover:text-[var(--color-status-error)] transition-colors"
             title="Close Session (Ctrl+Shift+W)"
             aria-label="Close session"
           >
@@ -521,12 +521,12 @@ export function TerminalPane({
 
       {isInjecting && injectionProgress && (
         <div className="p-2 bg-canopy-sidebar border-t border-canopy-border shrink-0">
-          <div className="flex items-center justify-between text-xs text-gray-400 mb-1">
+          <div className="flex items-center justify-between text-xs text-canopy-text/60 mb-1">
             <span>Injecting Context</span>
             <span>{Math.min(100, Math.max(0, Math.round(injectionProgress.progress * 100)))}%</span>
           </div>
 
-          <div className="w-full h-2 bg-gray-700 rounded-full overflow-hidden mb-1">
+          <div className="w-full h-2 bg-canopy-border rounded-full overflow-hidden mb-1">
             <div
               className="h-full bg-canopy-accent transition-all duration-200"
               style={{
@@ -535,7 +535,7 @@ export function TerminalPane({
             />
           </div>
 
-          <div className="text-xs text-gray-400">
+          <div className="text-xs text-canopy-text/60">
             {(() => {
               const stageLabels: Record<string, string> = {
                 FileDiscoveryStage: "Discovering files",
@@ -560,7 +560,7 @@ export function TerminalPane({
           </div>
 
           {injectionProgress.currentFile && (
-            <div className="text-xs text-gray-500 truncate mt-0.5">
+            <div className="text-xs text-canopy-text/40 truncate mt-0.5">
               {injectionProgress.currentFile}
             </div>
           )}
@@ -568,7 +568,7 @@ export function TerminalPane({
       )}
 
       {terminalErrors.length > 0 && (
-        <div className="px-2 py-1 border-b border-canopy-border bg-red-900/10 space-y-1 shrink-0">
+        <div className="px-2 py-1 border-b border-canopy-border bg-[color-mix(in_oklab,var(--color-status-error)_5%,transparent)] space-y-1 shrink-0">
           {terminalErrors.slice(0, 2).map((error) => (
             <ErrorBanner
               key={error.id}
@@ -579,7 +579,7 @@ export function TerminalPane({
             />
           ))}
           {terminalErrors.length > 2 && (
-            <div className="text-xs text-gray-500 px-2">
+            <div className="text-xs text-canopy-text/40 px-2">
               +{terminalErrors.length - 2} more errors
             </div>
           )}

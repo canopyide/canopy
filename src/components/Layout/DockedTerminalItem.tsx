@@ -59,15 +59,30 @@ function getStateIndicator(state?: AgentState) {
 
   switch (state) {
     case "working":
-      return <Loader2 className="h-3 w-3 animate-spin text-purple-500" aria-hidden="true" />;
+      return (
+        <Loader2
+          className="h-3 w-3 animate-spin text-[var(--color-state-working)]"
+          aria-hidden="true"
+        />
+      );
     case "waiting":
       return (
-        <span className="w-2 h-2 rounded-full bg-amber-400 animate-pulse" aria-hidden="true" />
+        <span
+          className="w-2 h-2 rounded-full bg-[var(--color-status-warning)] animate-pulse"
+          aria-hidden="true"
+        />
       );
     case "completed":
-      return <span className="w-2 h-2 rounded-full bg-emerald-400" aria-hidden="true" />;
+      return (
+        <span
+          className="w-2 h-2 rounded-full bg-[var(--color-status-success)]"
+          aria-hidden="true"
+        />
+      );
     case "failed":
-      return <span className="w-2 h-2 rounded-full bg-red-400" aria-hidden="true" />;
+      return (
+        <span className="w-2 h-2 rounded-full bg-[var(--color-status-error)]" aria-hidden="true" />
+      );
     default:
       return null;
   }
@@ -156,18 +171,28 @@ export function DockedTerminalItem({
 
       // Create custom drag image that looks like a terminal card
       const dragIcon = document.createElement("div");
+      const bgColor = getComputedStyle(document.documentElement)
+        .getPropertyValue("--color-canopy-bg")
+        .trim();
+      const borderColor = getComputedStyle(document.documentElement)
+        .getPropertyValue("--color-canopy-border")
+        .trim();
+      const textColor = getComputedStyle(document.documentElement)
+        .getPropertyValue("--color-canopy-text")
+        .trim();
+
       dragIcon.style.cssText = `
         position: absolute;
         top: -1000px;
         width: 200px;
         height: 150px;
-        background-color: #18181b;
-        border: 1px solid #27272a;
+        background-color: ${bgColor || "#18181b"};
+        border: 1px solid ${borderColor || "#27272a"};
         border-radius: 8px;
         padding: 10px;
         font-family: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, monospace;
         font-size: 12px;
-        color: #e5e5e5;
+        color: ${textColor || "#e5e5e5"};
         display: flex;
         align-items: center;
         justify-content: center;

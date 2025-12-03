@@ -15,24 +15,24 @@ interface ActivityBadgeProps {
 function getStatusColor(status: ActivityStatus): string {
   switch (status) {
     case "working":
-      return "bg-purple-500/20 text-purple-300 border-purple-500/30";
+      return "bg-[color-mix(in_oklab,var(--color-state-working)_15%,transparent)] text-[var(--color-state-working)] border-[var(--color-state-working)]/40";
     case "waiting":
-      return "bg-amber-500/20 text-amber-300 border-amber-500/30";
+      return "bg-[color-mix(in_oklab,var(--color-status-warning)_15%,transparent)] text-[var(--color-status-warning)] border-[var(--color-status-warning)]/40";
     case "success":
-      return "bg-emerald-500/20 text-emerald-300 border-emerald-500/30";
+      return "bg-[color-mix(in_oklab,var(--color-status-success)_15%,transparent)] text-[var(--color-status-success)] border-[var(--color-status-success)]/40";
     case "failure":
-      return "bg-red-500/20 text-red-300 border-red-500/30";
+      return "bg-[color-mix(in_oklab,var(--color-status-error)_15%,transparent)] text-[var(--color-status-error)] border-[var(--color-status-error)]/40";
   }
 }
 
 function getTypeColor(type: ActivityType): string {
   switch (type) {
     case "background":
-      return "bg-purple-500/20 text-purple-300 border-purple-500/30";
+      return "bg-[color-mix(in_oklab,var(--color-state-working)_15%,transparent)] text-[var(--color-state-working)] border-[var(--color-state-working)]/40";
     case "interactive":
-      return "bg-cyan-500/20 text-cyan-300 border-cyan-500/30";
+      return "bg-[color-mix(in_oklab,var(--color-status-info)_15%,transparent)] text-[var(--color-status-info)] border-[var(--color-status-info)]/40";
     case "idle":
-      return "bg-gray-500/20 text-gray-400 border-gray-500/30";
+      return "bg-canopy-sidebar/20 text-canopy-text/60 border-canopy-border/40";
   }
 }
 

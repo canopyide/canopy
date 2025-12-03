@@ -15,9 +15,9 @@ interface SessionViewerProps {
 type TabId = "transcript" | "artifacts";
 
 const AGENT_COLORS: Record<string, string> = {
-  claude: "text-orange-400",
+  claude: "text-[var(--color-status-warning)]",
   gemini: "text-[var(--color-status-info)]",
-  custom: "text-purple-400",
+  custom: "text-[var(--color-state-working)]",
 };
 
 const STATE_COLORS: Record<string, string> = {
@@ -103,8 +103,8 @@ export function SessionViewer({
   const stateColor = STATE_COLORS[session.state] || STATE_COLORS.active;
 
   return (
-    <div className={cn("flex flex-col bg-gray-900 rounded-lg overflow-hidden", className)}>
-      <div className="flex items-center justify-between px-4 py-3 border-b border-gray-700 bg-gray-800/50">
+    <div className={cn("flex flex-col bg-canopy-bg rounded-lg overflow-hidden", className)}>
+      <div className="flex items-center justify-between px-4 py-3 border-b border-canopy-border bg-canopy-sidebar/50">
         <div className="flex items-center gap-3">
           <div className="flex items-center gap-2">
             <span className={cn("font-semibold capitalize", agentColor)}>{session.agentType}</span>
@@ -123,7 +123,7 @@ export function SessionViewer({
               <select
                 value={exportFormat}
                 onChange={(e) => setExportFormat(e.target.value as "json" | "markdown")}
-                className="text-xs px-2 py-1 bg-gray-700 border border-gray-600 rounded text-gray-300"
+                className="text-xs px-2 py-1 bg-canopy-sidebar border border-canopy-border rounded text-canopy-text"
               >
                 <option value="markdown">Markdown</option>
                 <option value="json">JSON</option>
@@ -133,7 +133,7 @@ export function SessionViewer({
                 disabled={isExporting}
                 className={cn(
                   "text-xs px-3 py-1 rounded border transition-colors",
-                  "border-gray-600 text-gray-300 hover:bg-gray-700",
+                  "border-canopy-border text-canopy-text hover:bg-canopy-sidebar",
                   isExporting && "opacity-50 cursor-not-allowed"
                 )}
               >
@@ -146,7 +146,7 @@ export function SessionViewer({
               onClick={() => onResume(session)}
               className={cn(
                 "text-xs px-3 py-1 rounded border transition-colors",
-                "border-green-600 text-[var(--color-status-success)] hover:bg-green-900"
+                "border-[var(--color-status-success)]/60 text-[var(--color-status-success)] hover:bg-[color-mix(in_oklab,var(--color-status-success)_15%,transparent)]"
               )}
             >
               Resume
@@ -155,7 +155,7 @@ export function SessionViewer({
           {onClose && (
             <button
               onClick={onClose}
-              className="text-gray-400 hover:text-gray-200 px-2"
+              className="text-canopy-text/60 hover:text-canopy-text px-2"
               title="Close"
             >
               ×
@@ -164,7 +164,7 @@ export function SessionViewer({
         </div>
       </div>
 
-      <div className="px-4 py-2 border-b border-gray-700/50 bg-gray-800/30 text-xs text-gray-400 flex flex-wrap gap-x-4 gap-y-1">
+      <div className="px-4 py-2 border-b border-canopy-border/50 bg-canopy-sidebar/30 text-xs text-canopy-text/60 flex flex-wrap gap-x-4 gap-y-1">
         <span>Started: {formatRelativeTime(session.startTime)}</span>
         <span>Duration: {formatDuration(session.startTime, session.endTime)}</span>
         {session.worktreeId && <span>Worktree: {session.worktreeId}</span>}
@@ -189,7 +189,7 @@ export function SessionViewer({
           { value: "transcript", label: `Transcript (${session.transcript.length})` },
           { value: "artifacts", label: `Artifacts (${session.artifacts.length})` },
         ]}
-        className="border-b-gray-700"
+        className="border-b-canopy-border"
         ariaLabel="Session content tabs"
       />
 
@@ -200,23 +200,26 @@ export function SessionViewer({
               onClick={handleCopyTranscript}
               className={cn(
                 "absolute top-2 right-2 px-2 py-1 text-xs rounded z-10",
-                "bg-gray-800 hover:bg-gray-700 text-gray-400 transition-colors"
+                "bg-canopy-sidebar hover:bg-canopy-border text-canopy-text/60 transition-colors"
               )}
             >
               Copy
             </button>
             <div className="p-4 space-y-4">
               {session.transcript.length === 0 ? (
-                <div className="text-center py-8 text-gray-500">No transcript entries</div>
+                <div className="text-center py-8 text-canopy-text/40">No transcript entries</div>
               ) : (
                 session.transcript.map((entry, index) => (
                   <div
                     key={`${entry.timestamp}-${index}`}
                     className={cn(
                       "rounded-md p-3",
-                      entry.type === "user" && "bg-blue-900/20 border border-blue-700/30",
-                      entry.type === "agent" && "bg-gray-800/50 border border-gray-700/30",
-                      entry.type === "system" && "bg-gray-700/30 border border-gray-600/30"
+                      entry.type === "user" &&
+                        "bg-[color-mix(in_oklab,var(--color-status-info)_10%,transparent)] border border-[var(--color-status-info)]/30",
+                      entry.type === "agent" &&
+                        "bg-canopy-sidebar/50 border border-canopy-border/30",
+                      entry.type === "system" &&
+                        "bg-canopy-border/30 border border-canopy-border/30"
                     )}
                   >
                     <div className="flex items-center gap-2 mb-2 text-xs">
@@ -225,16 +228,16 @@ export function SessionViewer({
                           "font-medium capitalize",
                           entry.type === "user" && "text-[var(--color-status-info)]",
                           entry.type === "agent" && agentColor,
-                          entry.type === "system" && "text-gray-500"
+                          entry.type === "system" && "text-canopy-text/40"
                         )}
                       >
                         {entry.type}
                       </span>
-                      <span className="text-gray-500">
+                      <span className="text-canopy-text/40">
                         {new Date(entry.timestamp).toLocaleTimeString()}
                       </span>
                     </div>
-                    <pre className="text-sm text-gray-300 whitespace-pre-wrap font-mono overflow-x-auto">
+                    <pre className="text-sm text-canopy-text whitespace-pre-wrap font-mono overflow-x-auto">
                       {entry.content}
                     </pre>
                   </div>

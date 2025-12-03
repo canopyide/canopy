@@ -11,11 +11,13 @@ interface ArtifactOverlayProps {
 }
 
 const ARTIFACT_TYPE_COLORS: Record<string, string> = {
-  code: "border-blue-500 bg-blue-500/10 text-[var(--color-status-info)]",
-  patch: "border-green-500 bg-green-500/10 text-[var(--color-status-success)]",
-  file: "border-purple-500 bg-purple-500/10 text-purple-400",
-  summary: "border-yellow-500 bg-yellow-500/10 text-[var(--color-status-warning)]",
-  other: "border-gray-500 bg-gray-500/10 text-gray-400",
+  code: "border-[var(--color-status-info)] bg-[color-mix(in_oklab,var(--color-status-info)_10%,transparent)] text-[var(--color-status-info)]",
+  patch:
+    "border-[var(--color-status-success)] bg-[color-mix(in_oklab,var(--color-status-success)_10%,transparent)] text-[var(--color-status-success)]",
+  file: "border-[var(--color-state-working)] bg-[color-mix(in_oklab,var(--color-state-working)_10%,transparent)] text-[var(--color-state-working)]",
+  summary:
+    "border-[var(--color-status-warning)] bg-[color-mix(in_oklab,var(--color-status-warning)_10%,transparent)] text-[var(--color-status-warning)]",
+  other: "border-canopy-border bg-canopy-sidebar/10 text-canopy-text/60",
 };
 
 const ARTIFACT_TYPE_ICONS: Record<string, string> = {
@@ -99,35 +101,35 @@ function ArtifactItem({
       >
         <div className="flex items-center gap-2 min-w-0">
           <span className={cn("font-mono text-xs shrink-0", colorClass.split(" ")[2])}>{icon}</span>
-          <span className="text-sm text-gray-200 font-medium truncate">{title}</span>
+          <span className="text-sm text-canopy-text font-medium truncate">{title}</span>
           {artifact.language && artifact.language !== artifact.type && (
-            <span className="text-xs text-gray-500 shrink-0">{artifact.language}</span>
+            <span className="text-xs text-canopy-text/40 shrink-0">{artifact.language}</span>
           )}
         </div>
         <div className="flex items-center gap-2 shrink-0">
-          <span className="text-xs text-gray-500">
+          <span className="text-xs text-canopy-text/40">
             {lineCount} line{lineCount !== 1 ? "s" : ""}
           </span>
-          <span className="text-gray-400">{isExpanded ? "▼" : "▶"}</span>
+          <span className="text-canopy-text/60">{isExpanded ? "▼" : "▶"}</span>
         </div>
       </button>
 
       {isExpanded && (
-        <div className="bg-gray-900/50">
+        <div className="bg-canopy-bg/50">
           <pre className="font-mono text-xs p-3 overflow-x-auto max-h-32 overflow-y-auto">
-            <code className="text-gray-300">
+            <code className="text-canopy-text">
               {previewLines.join("\n")}
-              {hasMore && <span className="text-gray-500">{"\n"}...</span>}
+              {hasMore && <span className="text-canopy-text/40">{"\n"}...</span>}
             </code>
           </pre>
 
-          <div className="flex items-center gap-2 px-3 py-2 bg-gray-800/50 border-t border-gray-700">
+          <div className="flex items-center gap-2 px-3 py-2 bg-canopy-sidebar/50 border-t border-canopy-border">
             <button
               onClick={handleCopy}
               disabled={isProcessing}
               className={cn(
                 "px-3 py-1 text-xs rounded transition-colors",
-                "bg-blue-600 hover:bg-blue-700 text-white",
+                "bg-[var(--color-status-info)] hover:brightness-110 text-white",
                 "disabled:opacity-50 disabled:cursor-not-allowed"
               )}
             >
@@ -138,7 +140,7 @@ function ArtifactItem({
               disabled={isProcessing}
               className={cn(
                 "px-3 py-1 text-xs rounded transition-colors",
-                "bg-gray-600 hover:bg-gray-700 text-white",
+                "bg-canopy-border hover:bg-[color-mix(in_oklab,var(--color-canopy-border)_100%,white_20%)] text-white",
                 "disabled:opacity-50 disabled:cursor-not-allowed"
               )}
             >
@@ -150,7 +152,7 @@ function ArtifactItem({
                 disabled={isProcessing || !canApplyPatch}
                 className={cn(
                   "px-3 py-1 text-xs rounded transition-colors",
-                  "bg-green-600 hover:bg-green-700 text-white",
+                  "bg-[var(--color-status-success)] hover:brightness-110 text-white",
                   "disabled:opacity-50 disabled:cursor-not-allowed"
                 )}
                 title={!canApplyPatch ? "No worktree context available" : "Apply patch to worktree"}
@@ -215,12 +217,12 @@ export function ArtifactOverlay({ terminalId, worktreeId, cwd, className }: Arti
           onClick={() => setIsExpanded(true)}
           className={cn(
             "px-3 py-2 rounded-md shadow-lg",
-            "bg-blue-600 hover:bg-blue-700 text-white",
+            "bg-[var(--color-status-info)] hover:brightness-110 text-white",
             "text-sm font-medium transition-all",
             "flex items-center gap-2"
           )}
         >
-          <span className="font-mono">{}</span>
+          <span className="font-mono">{"{ }"}</span>
           <span>
             {artifacts.length} artifact{artifacts.length !== 1 ? "s" : ""}
           </span>
@@ -228,27 +230,27 @@ export function ArtifactOverlay({ terminalId, worktreeId, cwd, className }: Arti
       ) : (
         <div
           className={cn(
-            "bg-gray-800 border border-gray-700 rounded-lg shadow-2xl",
+            "bg-canopy-sidebar border border-canopy-border rounded-lg shadow-2xl",
             "w-96 max-h-96 flex flex-col overflow-hidden"
           )}
         >
-          <div className="flex items-center justify-between px-4 py-3 bg-gray-900 border-b border-gray-700">
+          <div className="flex items-center justify-between px-4 py-3 bg-canopy-bg border-b border-canopy-border">
             <div className="flex items-center gap-2">
-              <span className="font-mono text-[var(--color-status-info)]">{}</span>
-              <span className="text-sm font-medium text-gray-200">
+              <span className="font-mono text-[var(--color-status-info)]">{"{ }"}</span>
+              <span className="text-sm font-medium text-canopy-text">
                 {artifacts.length} Artifact{artifacts.length !== 1 ? "s" : ""}
               </span>
             </div>
             <div className="flex items-center gap-2">
               <button
                 onClick={clearArtifacts}
-                className="text-xs text-gray-500 hover:text-gray-300 transition-colors"
+                className="text-xs text-canopy-text/40 hover:text-canopy-text transition-colors"
               >
                 Clear
               </button>
               <button
                 onClick={() => setIsExpanded(false)}
-                className="text-gray-500 hover:text-gray-300 transition-colors"
+                className="text-canopy-text/40 hover:text-canopy-text transition-colors"
               >
                 ×
               </button>
