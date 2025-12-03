@@ -320,7 +320,7 @@ export function WorktreeCard({
   return (
     <div
       className={cn(
-        "group relative overflow-hidden rounded-lg bg-card/30 border border-border/60 px-3 py-2 mb-2 cursor-pointer transition-all duration-200",
+        "group relative overflow-hidden rounded-xl bg-card/30 border border-border/60 p-4 mb-3 cursor-pointer transition-all duration-200",
         isActive
           ? "border-canopy-accent/50 bg-canopy-accent/3"
           : "hover:border-canopy-accent/60 hover:bg-card/60",
@@ -338,6 +338,7 @@ export function WorktreeCard({
       aria-label={`Worktree: ${branchLabel}`}
     >
       <div className="flex flex-col gap-1">
+        {/* Header Row: Expand, Activity, Agent Status, Branch, Menu */}
         <div className="flex items-start justify-between gap-2">
           <div className="flex flex-col min-w-0 flex-1">
             <div className="flex items-center gap-2 text-xs font-mono leading-none">
@@ -362,19 +363,6 @@ export function WorktreeCard({
               {!worktree.branch && (
                 <span className="text-[var(--color-status-warning)] text-[0.65rem]">
                   (detached)
-                </span>
-              )}
-
-              {worktree.prNumber && (
-                <span className="flex items-center gap-0.5 text-[0.65rem] text-[var(--color-status-success)] bg-green-500/10 px-1 rounded">
-                  <GitPullRequest className="w-2.5 h-2.5" />
-                  {worktree.prNumber}
-                </span>
-              )}
-              {worktree.issueNumber && (
-                <span className="flex items-center gap-0.5 text-[0.65rem] text-[var(--color-status-info)] bg-blue-500/10 px-1 rounded">
-                  <CircleDot className="w-2.5 h-2.5" />
-                  {worktree.issueNumber}
                 </span>
               )}
             </div>
@@ -470,7 +458,41 @@ export function WorktreeCard({
           </div>
         </div>
 
-        <div className="flex items-center gap-3 text-[0.7rem] text-gray-400 font-mono ml-4">
+        {/* PR/Issue Badges Row - Dedicated second row */}
+        {(worktree.prNumber || worktree.issueNumber) && (
+          <div className="flex items-center gap-2 mt-1 ml-9">
+            {worktree.prNumber && (
+              <span className="flex items-center gap-1.5 text-xs text-[var(--color-status-success)] bg-green-500/10 px-2 py-0.5 rounded border border-green-500/20">
+                <GitPullRequest className="w-3 h-3" />
+                <span className="font-mono">#{worktree.prNumber}</span>
+              </span>
+            )}
+            {worktree.issueNumber && (
+              <span className="flex items-center gap-1.5 text-xs text-[var(--color-status-info)] bg-blue-500/10 px-2 py-0.5 rounded border border-blue-500/20">
+                <CircleDot className="w-3 h-3" />
+                <span className="font-mono">#{worktree.issueNumber}</span>
+              </span>
+            )}
+          </div>
+        )}
+
+        {/* File Changes Preview - Always visible (2 collapsed, 8 expanded) */}
+        {worktree.worktreeChanges && (
+          <div className="mt-3 ml-9">
+            {hasChanges ? (
+              <FileChangeList
+                changes={worktree.worktreeChanges.changes}
+                rootPath={worktree.worktreeChanges.rootPath}
+                maxVisible={isExpanded ? 8 : 2}
+              />
+            ) : (
+              <div className="text-xs text-gray-500 italic">No file changes</div>
+            )}
+          </div>
+        )}
+
+        {/* Footer Row: Stats */}
+        <div className="flex items-center gap-4 mt-3 ml-9 text-xs text-gray-400 font-mono">
           {terminalCounts.total > 0 && (
             <div className="flex items-center gap-1">
               <Terminal className="w-2.5 h-2.5" />
@@ -509,35 +531,36 @@ export function WorktreeCard({
           )}
         </div>
 
+        {/* Expanded Details Section */}
         <div
           id={detailsId}
           aria-hidden={!isExpanded}
           inert={!isExpanded}
           className={cn(
-            "overflow-hidden transition-[max-height,opacity] duration-200",
-            isExpanded ? "max-h-[500px] opacity-100" : "max-h-0 opacity-0"
+            "overflow-hidden transition-[max-height,opacity] duration-300 ease-out",
+            isExpanded ? "max-h-[800px] opacity-100" : "max-h-0 opacity-0"
           )}
         >
-          <div className="pt-2 space-y-2">
+          <div className="pt-3 mt-3 border-t border-border/40 space-y-2 ml-9">
             <button
               onClick={(e) => {
                 e.stopPropagation();
                 handlePathClick();
               }}
               className={cn(
-                "text-[0.7rem] text-gray-500 hover:text-gray-400 hover:underline text-left font-mono truncate block ml-4",
+                "text-[0.7rem] text-gray-500 hover:text-gray-400 hover:underline text-left font-mono truncate block",
                 isFocused && "underline"
               )}
             >
               {displayPath}
             </button>
 
-            <div className="text-xs leading-relaxed break-words ml-4">{renderSummary()}</div>
+            <div className="text-xs leading-relaxed break-words">{renderSummary()}</div>
 
             {effectiveNote && (
               <div
                 className={cn(
-                  "text-xs text-gray-400 bg-black/20 p-1.5 rounded border-l-2 border-gray-700 font-mono ml-4",
+                  "text-xs text-gray-400 bg-black/20 p-1.5 rounded border-l-2 border-gray-700 font-mono",
                   "line-clamp-none"
                 )}
               >
@@ -564,18 +587,8 @@ export function WorktreeCard({
               </div>
             )}
 
-            {hasChanges && worktree.worktreeChanges && (
-              <div className="ml-4">
-                <FileChangeList
-                  changes={worktree.worktreeChanges.changes}
-                  rootPath={worktree.worktreeChanges.rootPath}
-                  maxVisible={5}
-                />
-              </div>
-            )}
-
             {showDevServer && serverState && (
-              <div className="flex items-center gap-2 text-xs text-gray-400 font-mono ml-4">
+              <div className="flex items-center gap-2 text-xs text-gray-400 font-mono">
                 <Globe className="w-3 h-3" />
                 <div className="flex items-center gap-1">
                   {getServerStatusIndicator()}
@@ -605,7 +618,7 @@ export function WorktreeCard({
             )}
 
             {worktreeErrors.length > 0 && (
-              <div className="space-y-1 ml-4">
+              <div className="space-y-1">
                 {worktreeErrors.slice(0, 3).map((error) => (
                   <ErrorBanner
                     key={error.id}
