@@ -37,7 +37,7 @@ export function useDndPlaceholder() {
   return useContext(DndPlaceholderContext);
 }
 
-// Minimum distance (px) mouse must move before drag starts
+// Minimum distance (px) pointer must move before drag starts
 // This allows clicks to work for popovers without triggering drag
 const DRAG_ACTIVATION_DISTANCE = 8;
 
@@ -64,7 +64,7 @@ function getEventCoordinates(event: Event): { x: number; y: number } {
   return { x: pointerEvent.clientX, y: pointerEvent.clientY };
 }
 
-// Inner component that uses useDndMonitor (must be inside DndContext)
+// Inner component that uses useDndMonitor to track cursor position (must be inside DndContext)
 function DragOverlayWithCursorTracking({
   activeTerminal,
 }: {
@@ -97,7 +97,7 @@ function DragOverlayWithCursorTracking({
     },
   });
 
-  // Modifier that positions overlay at cursor position
+  // Modifier that positions overlay centered horizontally on cursor, with cursor in title bar
   const cursorOverlayModifier: Modifier = useCallback(({ transform, overlayNodeRect }) => {
     const cursor = pointerPositionRef.current;
     if (!transform || !overlayNodeRect || !cursor) {

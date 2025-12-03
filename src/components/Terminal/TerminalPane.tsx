@@ -287,7 +287,6 @@ function TerminalPaneComponent({
   return (
     <div
       ref={containerRef}
-      data-terminal-id={id}
       className={cn(
         "flex flex-col h-full overflow-hidden transition-all duration-200 group",
         "bg-[var(--color-surface)]",

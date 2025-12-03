@@ -1,4 +1,4 @@
-import { useState, useCallback, useRef, useEffect, useMemo } from "react";
+import { useState, useCallback, useEffect, useMemo } from "react";
 import { useShallow } from "zustand/react/shallow";
 import { SortableContext, horizontalListSortingStrategy } from "@dnd-kit/sortable";
 import { useDroppable } from "@dnd-kit/core";
@@ -19,7 +19,6 @@ export function TerminalDock() {
   const terminals = useTerminalStore((state) => state.terminals);
 
   const [isCollapsed, setIsCollapsed] = useState(false);
-  const dockRef = useRef<HTMLDivElement>(null);
 
   // Make the dock a droppable area
   const { setNodeRef, isOver } = useDroppable({
@@ -69,20 +68,9 @@ export function TerminalDock() {
   // Terminal IDs for SortableContext
   const terminalIds = useMemo(() => activeDockTerminals.map((t) => t.id), [activeDockTerminals]);
 
-  // Combine refs for both dnd-kit and our local ref
-  const setRefs = useCallback(
-    (element: HTMLDivElement | null) => {
-      // Set local ref
-      (dockRef as React.MutableRefObject<HTMLDivElement | null>).current = element;
-      // Set dnd-kit ref
-      setNodeRef(element);
-    },
-    [setNodeRef]
-  );
-
   return (
     <div
-      ref={setRefs}
+      ref={setNodeRef}
       className={cn(
         "min-h-[40px] bg-canopy-bg/95 backdrop-blur-sm border-t-2 border-canopy-border/60 shadow-[0_-4px_12px_rgba(0,0,0,0.3)]",
         "flex items-center px-4 gap-2",
