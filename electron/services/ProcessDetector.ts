@@ -51,6 +51,8 @@ export interface DetectionResult {
   detected: boolean;
   agentType?: TerminalType;
   processName?: string;
+  /** Whether the terminal has active child processes (busy/idle status) */
+  isBusy?: boolean;
 }
 
 export type DetectionCallback = (result: DetectionResult) => void;
@@ -61,6 +63,7 @@ export class ProcessDetector {
   private callback: DetectionCallback;
   private intervalHandle: NodeJS.Timeout | null = null;
   private lastDetected: TerminalType | null = null;
+  private lastBusyState: boolean | null = null;
   private pollInterval: number;
   private isWindows: boolean;
   private isDetecting: boolean = false;
@@ -110,12 +113,28 @@ export class ProcessDetector {
     try {
       const result = await this.detectAgent();
 
-      if (result.detected && result.agentType !== this.lastDetected) {
+      // Check if agent detection changed
+      const agentChanged =
+        (result.detected && result.agentType !== this.lastDetected) ||
+        (!result.detected && this.lastDetected !== null);
+
+      // Check if busy state changed
+      const busyChanged = result.isBusy !== undefined && result.isBusy !== this.lastBusyState;
+
+      // Update tracked states
+      if (result.detected) {
         this.lastDetected = result.agentType!;
-        this.callback(result);
-      } else if (!result.detected && this.lastDetected !== null) {
+      } else if (this.lastDetected !== null) {
         this.lastDetected = null;
-        this.callback({ detected: false });
+      }
+
+      if (result.isBusy !== undefined) {
+        this.lastBusyState = result.isBusy;
+      }
+
+      // Fire callback if either agent or busy state changed
+      if (agentChanged || busyChanged) {
+        this.callback(result);
       }
     } catch (error) {
       console.error(`ProcessDetector error for terminal ${this.terminalId}:`, error);
@@ -136,10 +155,12 @@ export class ProcessDetector {
     try {
       if (!Number.isInteger(this.ptyPid) || this.ptyPid <= 0) {
         console.warn(`Invalid PTY PID for terminal ${this.terminalId}: ${this.ptyPid}`);
-        return { detected: false };
+        return { detected: false, isBusy: false };
       }
 
-      const { stdout } = await execAsync(`ps -o comm= -g ${this.ptyPid} 2>/dev/null || true`, {
+      // Use parent-child relationship instead of process group to detect foreground commands
+      // Interactive shells spawn foreground commands as direct children
+      const { stdout } = await execAsync(`ps -o comm= --ppid ${this.ptyPid} 2>/dev/null || true`, {
         timeout: 5000,
       });
 
@@ -148,6 +169,10 @@ export class ProcessDetector {
         .map((line) => line.trim())
         .filter((line) => line.length > 0);
 
+      // Determine busy status: any child processes means commands are running
+      const isBusy = processes.length > 0;
+
+      // Check for agent CLIs in child processes
       for (const proc of processes) {
         const basename = proc.split("/").pop() || proc;
         const agentType = AGENT_CLI_NAMES[basename.toLowerCase()];
@@ -157,13 +182,14 @@ export class ProcessDetector {
             detected: true,
             agentType,
             processName: basename,
+            isBusy,
           };
         }
       }
 
-      return { detected: false };
+      return { detected: false, isBusy };
     } catch (error) {
-      return { detected: false };
+      return { detected: false, isBusy: false };
     }
   }
 
@@ -171,7 +197,7 @@ export class ProcessDetector {
     try {
       if (!Number.isInteger(this.ptyPid) || this.ptyPid <= 0) {
         console.warn(`Invalid PTY PID for terminal ${this.terminalId}: ${this.ptyPid}`);
-        return { detected: false };
+        return { detected: false, isBusy: false };
       }
 
       const { stdout } = await execAsync(
@@ -195,10 +221,12 @@ export class ProcessDetector {
             const agentType = AGENT_CLI_NAMES[basename.toLowerCase()];
 
             if (agentType) {
+              // Has child processes = busy
               return {
                 detected: true,
                 agentType,
                 processName: basename,
+                isBusy: childPids.length > 0,
               };
             }
           }
@@ -224,6 +252,7 @@ export class ProcessDetector {
                   detected: true,
                   agentType,
                   processName: basename,
+                  isBusy: childPids.length > 0,
                 };
               }
             }
@@ -233,9 +262,11 @@ export class ProcessDetector {
         }
       }
 
-      return { detected: false };
+      // Determine busy status: any child processes means commands are running
+      const isBusy = childPids.length > 0;
+      return { detected: false, isBusy };
     } catch (error) {
-      return { detected: false };
+      return { detected: false, isBusy: false };
     }
   }
 

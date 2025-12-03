@@ -7,14 +7,13 @@ import type { AgentState } from "../types/index.js";
 import {
   AgentSpawnedSchema,
   AgentStateChangedSchema,
-  AgentOutputSchema,
   AgentCompletedSchema,
   AgentFailedSchema,
   AgentKilledSchema,
   type AgentStateChangeTrigger,
 } from "../schemas/agent.js";
 import { type PtyPool } from "./PtyPool.js";
-import { ProcessDetector, hasChildProcesses, type DetectionResult } from "./ProcessDetector.js";
+import { ProcessDetector, type DetectionResult } from "./ProcessDetector.js";
 import type { TerminalType } from "../../shared/types/domain.js";
 import { ActivityMonitor } from "./ActivityMonitor.js";
 
@@ -68,6 +67,11 @@ interface TerminalInfo {
   queuedBytes: number;
   maxQueueSize: number;
   maxQueueBytes: number;
+
+  /** Pending semantic buffer data awaiting flush */
+  pendingSemanticData: string;
+  /** Timer for batched semantic buffer updates */
+  semanticFlushTimer: NodeJS.Timeout | null;
 }
 
 export interface PtyManagerEvents {
@@ -96,11 +100,9 @@ export class PtyManager extends EventEmitter {
   private terminals: Map<string, TerminalInfo> = new Map();
   private trashTimeouts: Map<string, NodeJS.Timeout> = new Map();
   private activityMonitors: Map<string, ActivityMonitor> = new Map();
-  private shellActivityPollers: Map<string, NodeJS.Timeout> = new Map();
   private ptyPool: PtyPool | null = null;
 
   private readonly TRASH_TTL_MS = 120 * 1000;
-  private readonly SHELL_POLL_INTERVAL_MS = 1000;
 
   constructor() {
     super();
@@ -120,50 +122,6 @@ export class PtyManager extends EventEmitter {
     const event: AgentEvent = activity === "busy" ? { type: "busy" } : { type: "prompt" };
 
     this.updateAgentState(terminalId, event, "activity", 1.0);
-  }
-
-  /**
-   * Start polling for shell activity using process tree inspection.
-   * This is more accurate than text-based detection for shell terminals.
-   */
-  private startShellActivityPoller(terminalId: string, pid: number): void {
-    // Stop any existing poller for this terminal
-    this.stopShellActivityPoller(terminalId);
-
-    let lastBusyState: boolean | null = null;
-
-    const poller = setInterval(async () => {
-      const terminal = this.terminals.get(terminalId);
-      if (!terminal) {
-        this.stopShellActivityPoller(terminalId);
-        return;
-      }
-
-      const isBusy = await hasChildProcesses(pid);
-
-      // Only emit on state change
-      if (isBusy !== lastBusyState) {
-        lastBusyState = isBusy;
-        events.emit("terminal:activity", {
-          terminalId,
-          activity: isBusy ? "busy" : "idle",
-          source: "process-tree",
-        });
-      }
-    }, this.SHELL_POLL_INTERVAL_MS);
-
-    this.shellActivityPollers.set(terminalId, poller);
-  }
-
-  /**
-   * Stop the shell activity poller for a terminal.
-   */
-  private stopShellActivityPoller(terminalId: string): void {
-    const poller = this.shellActivityPollers.get(terminalId);
-    if (poller) {
-      clearInterval(poller);
-      this.shellActivityPollers.delete(terminalId);
-    }
   }
 
   private inferTrigger(event: AgentEvent): AgentStateChangeTrigger {
@@ -361,6 +319,16 @@ export class PtyManager extends EventEmitter {
         timestamp: Date.now(),
       });
     }
+
+    // Handle busy/idle status for shell terminals (non-agent terminals)
+    // Agent terminals use ActivityMonitor for busy/idle state
+    if (!terminal.agentId && result.isBusy !== undefined) {
+      events.emit("terminal:activity", {
+        terminalId: id,
+        activity: result.isBusy ? "busy" : "idle",
+        source: "process-tree",
+      });
+    }
   }
 
   private static readonly SEMANTIC_BUFFER_MAX_LINES = 50;
@@ -392,6 +360,44 @@ export class PtyManager extends EventEmitter {
       terminal.semanticBuffer = terminal.semanticBuffer.slice(
         -PtyManager.SEMANTIC_BUFFER_MAX_LINES
       );
+    }
+  }
+
+  private static readonly SEMANTIC_FLUSH_INTERVAL_MS = 100;
+
+  /**
+   * Debounce semantic buffer updates to reduce hot path overhead.
+   * Accumulates chunks and flushes every 100ms.
+   */
+  private debouncedSemanticUpdate(terminal: TerminalInfo, data: string): void {
+    terminal.pendingSemanticData += data;
+
+    if (terminal.semanticFlushTimer) {
+      // Timer already running, just accumulate
+      return;
+    }
+
+    terminal.semanticFlushTimer = setTimeout(() => {
+      if (terminal.pendingSemanticData) {
+        this.updateSemanticBuffer(terminal, terminal.pendingSemanticData);
+        terminal.pendingSemanticData = "";
+      }
+      terminal.semanticFlushTimer = null;
+    }, PtyManager.SEMANTIC_FLUSH_INTERVAL_MS);
+  }
+
+  /**
+   * Flush any pending semantic buffer data immediately.
+   * Called before terminal exit to ensure no data is lost.
+   */
+  private flushPendingSemanticData(terminal: TerminalInfo): void {
+    if (terminal.semanticFlushTimer) {
+      clearTimeout(terminal.semanticFlushTimer);
+      terminal.semanticFlushTimer = null;
+    }
+    if (terminal.pendingSemanticData) {
+      this.updateSemanticBuffer(terminal, terminal.pendingSemanticData);
+      terminal.pendingSemanticData = "";
     }
   }
 
@@ -535,8 +541,8 @@ export class PtyManager extends EventEmitter {
           terminal.outputBuffer = terminal.outputBuffer.slice(-OUTPUT_BUFFER_SIZE);
         }
 
-        // Update semantic buffer (needed for transcript capture)
-        this.updateSemanticBuffer(terminal, data);
+        // Update semantic buffer with debouncing (needed for transcript capture)
+        this.debouncedSemanticUpdate(terminal, data);
 
         // Notify activity monitor - it handles busy/idle state transitions
         const monitor = this.activityMonitors.get(id);
@@ -545,31 +551,17 @@ export class PtyManager extends EventEmitter {
         }
 
         // Emit agent:output event for transcript capture
+        // Payload is internally constructed with known-good types - skip runtime validation
+        // to avoid Zod schema traversal overhead on every output chunk
         if (agentId) {
-          const outputPayload = {
+          events.emit("agent:output", {
             agentId,
             data,
             timestamp: Date.now(),
             traceId: terminal.traceId,
-            // EventContext fields for correlation and filtering
             terminalId: id,
             worktreeId: options.worktreeId,
-          };
-
-          const validatedOutput = AgentOutputSchema.safeParse(outputPayload);
-          if (validatedOutput.success) {
-            events.emit("agent:output", validatedOutput.data);
-          } else {
-            // Log validation failures for observability (throttled to avoid noise)
-            if (Math.random() < 0.01) {
-              // Log ~1% of failures to avoid overwhelming logs
-              console.warn(
-                `[PtyManager] Agent output validation failed (terminal ${id}):`,
-                validatedOutput.error.format()
-              );
-            }
-            // Do NOT emit invalid payloads - drop malformed output to protect consumers
-          }
+          });
         }
       }
     });
@@ -603,8 +595,8 @@ export class PtyManager extends EventEmitter {
         this.activityMonitors.delete(id);
       }
 
-      // Stop shell activity poller
-      this.stopShellActivityPoller(id);
+      // Flush any pending semantic buffer data before exit
+      this.flushPendingSemanticData(terminal);
 
       // Flush any buffered output before exit to avoid data loss
       if (terminal.bufferingMode && terminal.outputQueue.length > 0) {
@@ -673,6 +665,9 @@ export class PtyManager extends EventEmitter {
       queuedBytes: 0,
       maxQueueSize: DEFAULT_MAX_QUEUE_SIZE,
       maxQueueBytes: DEFAULT_MAX_QUEUE_BYTES,
+      // Debounced semantic buffer state
+      pendingSemanticData: "",
+      semanticFlushTimer: null,
     };
 
     this.terminals.set(id, terminal);
@@ -685,8 +680,8 @@ export class PtyManager extends EventEmitter {
       this.activityMonitors.set(id, monitor);
     }
 
-    // Start process detection for all terminals (including shell terminals)
-    // This allows detection of agents launched from within shell sessions
+    // Start process detection for all terminals
+    // ProcessDetector handles agent detection and busy/idle status for shell terminals
     const ptyPid = ptyProcess.pid;
     if (ptyPid !== undefined) {
       const detector = new ProcessDetector(id, ptyPid, (result: DetectionResult) => {
@@ -694,12 +689,6 @@ export class PtyManager extends EventEmitter {
       });
       terminal.processDetector = detector;
       detector.start();
-
-      // Start shell activity poller for shell terminals (process tree inspection)
-      // This provides accurate busy/idle detection based on child processes
-      if (!isAgentTerminal) {
-        this.startShellActivityPoller(id, ptyPid);
-      }
     }
 
     // Emit agent:spawned event for agent terminals (Claude, Gemini)
@@ -894,8 +883,8 @@ export class PtyManager extends EventEmitter {
         this.activityMonitors.delete(id);
       }
 
-      // Stop shell activity poller
-      this.stopShellActivityPoller(id);
+      // Flush any pending semantic buffer data before killing
+      this.flushPendingSemanticData(terminal);
 
       // Flush any buffered output before killing to avoid data loss
       if (terminal.bufferingMode && terminal.outputQueue.length > 0) {
@@ -1145,14 +1134,14 @@ export class PtyManager extends EventEmitter {
     }
     this.activityMonitors.clear();
 
-    // Clear all shell activity pollers
-    for (const poller of this.shellActivityPollers.values()) {
-      clearInterval(poller);
-    }
-    this.shellActivityPollers.clear();
-
     for (const [id, terminal] of this.terminals) {
       try {
+        // Clear semantic flush timer
+        if (terminal.semanticFlushTimer) {
+          clearTimeout(terminal.semanticFlushTimer);
+          terminal.semanticFlushTimer = null;
+        }
+
         // Emit agent:killed event for agent terminals during shutdown
         if (terminal.agentId) {
           const killedPayload = {
