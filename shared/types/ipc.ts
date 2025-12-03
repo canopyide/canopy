@@ -792,6 +792,11 @@ export interface AdaptiveBackoffMetrics {
   currentInterval: number;
 }
 
+/** Terminal configuration for scrollback, etc. */
+export interface TerminalConfig {
+  scrollbackLines: number; // -1 for unlimited, otherwise 100-100000
+}
+
 // IPC Contract Maps
 
 /** Maps IPC channels to their args/result types for type-safe invoke/handle */
@@ -1187,6 +1192,16 @@ export interface IpcInvokeMap {
     result: AgentSettings;
   };
 
+  // Terminal config channels
+  "terminal-config:get": {
+    args: [];
+    result: TerminalConfig;
+  };
+  "terminal-config:set-scrollback": {
+    args: [scrollbackLines: number];
+    result: void;
+  };
+
   // Git channels
   "git:get-file-diff": {
     args: [payload: GitGetFileDiffPayload];
@@ -1452,5 +1467,9 @@ export interface ElectronAPI {
   };
   git: {
     getFileDiff(cwd: string, filePath: string, status: GitStatus): Promise<string>;
+  };
+  terminalConfig: {
+    get(): Promise<TerminalConfig>;
+    setScrollback(scrollbackLines: number): Promise<void>;
   };
 }

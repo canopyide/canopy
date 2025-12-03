@@ -1,5 +1,5 @@
-import { appClient, projectClient } from "@/clients";
-import { useLayoutConfigStore } from "@/store";
+import { appClient, projectClient, terminalConfigClient } from "@/clients";
+import { useLayoutConfigStore, useScrollbackStore } from "@/store";
 import type { TerminalType } from "@/types";
 
 export interface HydrationOptions {
@@ -25,6 +25,26 @@ export async function hydrateAppState(options: HydrationOptions): Promise<void> 
     if (!appState) {
       console.warn("App state returned undefined during hydration, using defaults");
       return;
+    }
+
+    // Hydrate terminal config (scrollback) BEFORE restoring terminals
+    try {
+      const terminalConfig = await terminalConfigClient.get();
+      if (terminalConfig?.scrollbackLines !== undefined) {
+        const { scrollbackLines } = terminalConfig;
+        // Validate persisted value
+        if (
+          Number.isFinite(scrollbackLines) &&
+          Number.isInteger(scrollbackLines) &&
+          (scrollbackLines === -1 || (scrollbackLines >= 100 && scrollbackLines <= 100000))
+        ) {
+          useScrollbackStore.getState().setScrollbackLines(scrollbackLines);
+        } else {
+          console.warn("Invalid persisted scrollback value, using default:", scrollbackLines);
+        }
+      }
+    } catch (error) {
+      console.warn("Failed to hydrate terminal config:", error);
     }
 
     if (appState.terminals && appState.terminals.length > 0) {

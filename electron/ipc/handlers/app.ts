@@ -222,5 +222,30 @@ export function registerAppHandlers(deps: HandlerDependencies): () => void {
   ipcMain.handle(CHANNELS.EVENT_INSPECTOR_CLEAR, handleEventInspectorClear);
   handlers.push(() => ipcMain.removeHandler(CHANNELS.EVENT_INSPECTOR_CLEAR));
 
+  const handleTerminalConfigGet = async () => {
+    return store.get("terminalConfig");
+  };
+  ipcMain.handle(CHANNELS.TERMINAL_CONFIG_GET, handleTerminalConfigGet);
+  handlers.push(() => ipcMain.removeHandler(CHANNELS.TERMINAL_CONFIG_GET));
+
+  const handleTerminalConfigSetScrollback = async (
+    _event: Electron.IpcMainInvokeEvent,
+    scrollbackLines: number
+  ) => {
+    // Validate: -1 (unlimited) or 100-100000, must be finite integer
+    if (!Number.isFinite(scrollbackLines) || !Number.isInteger(scrollbackLines)) {
+      console.warn("Invalid scrollback value (not a finite integer):", scrollbackLines);
+      return;
+    }
+    if (scrollbackLines !== -1 && (scrollbackLines < 100 || scrollbackLines > 100000)) {
+      console.warn("Invalid scrollback value (out of range):", scrollbackLines);
+      return;
+    }
+    const currentConfig = store.get("terminalConfig");
+    store.set("terminalConfig", { ...currentConfig, scrollbackLines });
+  };
+  ipcMain.handle(CHANNELS.TERMINAL_CONFIG_SET_SCROLLBACK, handleTerminalConfigSetScrollback);
+  handlers.push(() => ipcMain.removeHandler(CHANNELS.TERMINAL_CONFIG_SET_SCROLLBACK));
+
   return () => handlers.forEach((cleanup) => cleanup());
 }

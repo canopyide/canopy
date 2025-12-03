@@ -4,6 +4,7 @@ import { cn } from "@/lib/utils";
 import { terminalClient } from "@/clients";
 import { TerminalRefreshTier } from "@/types";
 import { terminalInstanceService } from "@/services/TerminalInstanceService";
+import { useScrollbackStore } from "@/store";
 
 export interface XtermAdapterProps {
   terminalId: string;
@@ -55,6 +56,8 @@ export function XtermAdapter({
   const settleTimeoutRef = useRef<number | null>(null);
   const exitUnsubRef = useRef<(() => void) | null>(null);
 
+  const scrollbackLines = useScrollbackStore((state) => state.scrollbackLines);
+
   const terminalOptions = useMemo(
     () => ({
       cursorBlink: true,
@@ -71,11 +74,11 @@ export function XtermAdapter({
       theme: CANOPY_TERMINAL_THEME,
       allowProposedApi: true,
       smoothScrollDuration: 0,
-      scrollback: 10000,
+      scrollback: scrollbackLines === -1 ? 999999 : scrollbackLines,
       macOptionIsMeta: true,
       fastScrollModifier: "alt" as const,
     }),
-    []
+    [scrollbackLines]
   );
 
   const scheduleFit = useCallback(() => {

@@ -211,6 +211,10 @@ const CHANNELS = {
   AGENT_SETTINGS_SET: "agent-settings:set",
   AGENT_SETTINGS_RESET: "agent-settings:reset",
 
+  // Terminal config channels
+  TERMINAL_CONFIG_GET: "terminal-config:get",
+  TERMINAL_CONFIG_SET_SCROLLBACK: "terminal-config:set-scrollback",
+
   // Git channels
   GIT_GET_FILE_DIFF: "git:get-file-diff",
 } as const;
@@ -572,6 +576,14 @@ const api: ElectronAPI = {
   git: {
     getFileDiff: (cwd: string, filePath: string, status: GitStatus) =>
       _typedInvoke(CHANNELS.GIT_GET_FILE_DIFF, { cwd, filePath, status }),
+  },
+
+  // Terminal Config API
+  terminalConfig: {
+    get: () => _typedInvoke(CHANNELS.TERMINAL_CONFIG_GET),
+
+    setScrollback: (scrollbackLines: number) =>
+      _typedInvoke(CHANNELS.TERMINAL_CONFIG_SET_SCROLLBACK, scrollbackLines),
   },
 };
 

@@ -27,3 +27,5 @@ export {
 } from "./diagnosticsStore";
 
 export { useLayoutConfigStore } from "./layoutConfigStore";
+
+export { useScrollbackStore } from "./scrollbackStore";
