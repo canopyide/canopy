@@ -49,3 +49,21 @@ export function getHeatColor(lastActivity: number | undefined | null): string {
   // Phase 4: Idle/Dormant
   return "#52525b"; // Zinc-600
 }
+
+/**
+ * Linear decay from Emerald-500 to Zinc-600 over 90 seconds.
+ * 0s → #10b981, 90s+ → #52525b
+ */
+export function getActivityColor(lastActivityTimestamp: number | null | undefined): string {
+  if (lastActivityTimestamp == null) return "#52525b";
+
+  const DECAY_DURATION = 90 * 1000;
+  const elapsed = Date.now() - lastActivityTimestamp;
+
+  if (elapsed >= DECAY_DURATION) {
+    return "#52525b";
+  }
+
+  const factor = elapsed / DECAY_DURATION;
+  return interpolateColor("#10b981", "#52525b", factor);
+}

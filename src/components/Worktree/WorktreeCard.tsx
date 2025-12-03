@@ -1,6 +1,7 @@
 import { useCallback, useState, useEffect, useMemo } from "react";
 import { useShallow } from "zustand/react/shallow";
 import type { WorktreeState } from "../../types";
+import { ActivityLight } from "./ActivityLight";
 import { AgentStatusIndicator } from "./AgentStatusIndicator";
 import { FileChangeList } from "./FileChangeList";
 import { ErrorBanner } from "../Errors/ErrorBanner";
@@ -102,8 +103,6 @@ export function WorktreeCard({
   onOpenSettings,
   homeDir,
 }: WorktreeCardProps) {
-  const mood = worktree.mood || "stable";
-
   const isExpanded = useWorktreeSelectionStore(
     useCallback((state) => state.expandedWorktrees.has(worktree.id), [worktree.id])
   );
@@ -396,23 +395,9 @@ export function WorktreeCard({
                   )}
                 </button>
               )}
+              <ActivityLight lastActivityTimestamp={worktree.lastActivityTimestamp} />
               <AgentStatusIndicator state={dominantAgentState} />
-              {isActive && (
-                <span
-                  className="text-[var(--color-state-active)] text-[0.6rem]"
-                  aria-label="Active worktree"
-                >
-                  ●
-                </span>
-              )}
-              <span
-                className={cn(
-                  "truncate font-semibold",
-                  mood === "active" ? "text-[var(--color-status-warning)]" : "text-gray-200"
-                )}
-              >
-                {branchLabel}
-              </span>
+              <span className="truncate font-semibold text-gray-200">{branchLabel}</span>
               {!worktree.branch && (
                 <span className="text-[var(--color-status-warning)] text-[0.65rem]">
                   (detached)
