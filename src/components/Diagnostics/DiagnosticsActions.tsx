@@ -43,11 +43,7 @@ export function ProblemsActions() {
       <ActionButton onClick={handleOpenLogs} title="Open log file">
         Open Logs
       </ActionButton>
-      <ActionButton
-        onClick={clearAll}
-        disabled={!hasActiveErrors}
-        title="Clear all errors"
-      >
+      <ActionButton onClick={clearAll} disabled={!hasActiveErrors} title="Clear all errors">
         Clear All
       </ActionButton>
     </div>

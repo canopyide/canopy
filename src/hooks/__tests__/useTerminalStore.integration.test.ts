@@ -24,7 +24,6 @@ vi.mock("@/services/TerminalInstanceService", () => ({
 }));
 
 const { useTerminalStore } = await import("../../store/terminalStore");
-type TerminalInstance = any;
 type AddTerminalOptions = any;
 
 describe("Terminal Store Integration", () => {
@@ -35,7 +34,7 @@ describe("Terminal Store Integration", () => {
       terminals: [],
       focusedId: null,
       maximizedId: null,
-      commandQueue: new Map(),
+      commandQueue: [],
     });
   });
 
@@ -44,14 +43,12 @@ describe("Terminal Store Integration", () => {
       terminals: [],
       focusedId: null,
       maximizedId: null,
-      commandQueue: new Map(),
+      commandQueue: [],
     });
   });
 
   describe("Terminal Addition", () => {
     it("should add terminal to store", async () => {
-      const { addTerminal, terminals } = useTerminalStore.getState();
-
       const mockAddTerminal = vi.fn().mockResolvedValue("test-id-1");
       useTerminalStore.setState({ addTerminal: mockAddTerminal } as any);
 
@@ -106,7 +103,7 @@ describe("Terminal Store Integration", () => {
         cols: 80,
         rows: 24,
         location: "grid",
-      });
+      } as any);
 
       const { focusedId } = useTerminalStore.getState();
       expect(focusedId).toBe("test-id-3");
@@ -132,7 +129,7 @@ describe("Terminal Store Integration", () => {
         cols: 80,
         rows: 24,
         location: "dock",
-      });
+      } as any);
 
       const { focusedId } = useTerminalStore.getState();
       expect(focusedId).not.toBe("test-id-4");
@@ -167,8 +164,6 @@ describe("Terminal Store Integration", () => {
     });
 
     it("should move terminal to dock", () => {
-      const { moveTerminalToDock } = useTerminalStore.getState();
-
       const mockMoveToDock = vi.fn((id: string) => {
         const state = useTerminalStore.getState();
         const terminals = state.terminals.map((t) =>

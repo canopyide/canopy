@@ -238,7 +238,9 @@ describe.skipIf(shouldSkip)("PtyManager Integration", () => {
           cols: 80,
           rows: 24,
         });
-      } catch (e) {}
+      } catch (e) {
+        // Expected to fail
+      }
 
       const error = await Promise.race([errorPromise, sleep(2000).then(() => null)]);
 
