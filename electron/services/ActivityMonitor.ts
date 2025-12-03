@@ -1,8 +1,8 @@
 export class ActivityMonitor {
   private state: "busy" | "idle" = "idle";
   private debounceTimer: NodeJS.Timeout | null = null;
-  // 2 seconds silence required to consider the agent "waiting"
-  private readonly DEBOUNCE_MS = 2000;
+  // 1.5 seconds silence required to consider the agent "waiting"
+  private readonly DEBOUNCE_MS = 1500;
 
   constructor(
     private terminalId: string,
