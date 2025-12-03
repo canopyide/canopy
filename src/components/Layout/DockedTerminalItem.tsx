@@ -11,6 +11,7 @@ import {
 } from "@/components/icons";
 import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover";
 import { cn } from "@/lib/utils";
+import { getBrandColorHex } from "@/lib/colorUtils";
 import { useTerminalStore, type TerminalInstance } from "@/store";
 import { TerminalPane } from "@/components/Terminal/TerminalPane";
 import { useContextInjection } from "@/hooks/useContextInjection";
@@ -30,14 +31,15 @@ interface DockedTerminalItemProps {
 }
 
 function getTerminalIcon(type: TerminalType, className?: string) {
+  const brandColor = getBrandColorHex(type);
   const props = { className: cn("w-3 h-3", className), "aria-hidden": "true" as const };
   switch (type) {
     case "claude":
-      return <ClaudeIcon {...props} />;
+      return <ClaudeIcon {...props} brandColor={brandColor} />;
     case "gemini":
-      return <GeminiIcon {...props} />;
+      return <GeminiIcon {...props} brandColor={brandColor} />;
     case "codex":
-      return <CodexIcon {...props} />;
+      return <CodexIcon {...props} brandColor={brandColor} />;
     case "npm":
       return <NpmIcon {...props} />;
     case "yarn":
@@ -62,13 +64,6 @@ function getStateIndicator(state?: AgentState) {
       return (
         <Loader2
           className="h-3 w-3 animate-spin text-[var(--color-state-working)]"
-          aria-hidden="true"
-        />
-      );
-    case "waiting":
-      return (
-        <span
-          className="w-2 h-2 rounded-full bg-[var(--color-status-warning)] animate-pulse"
           aria-hidden="true"
         />
       );
