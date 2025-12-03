@@ -273,18 +273,21 @@ export function AgentSettings({ onSettingsChange }: AgentSettingsProps) {
                   label: "Default",
                   desc: "Standard permission prompts",
                   warning: false,
+                  danger: false,
                 },
                 {
                   value: "bypass" as const,
                   label: "Bypass Permissions",
                   desc: "Skip standard permission checks",
                   warning: false,
+                  danger: false,
                 },
                 {
                   value: "yolo" as const,
-                  label: "Don't Ask",
-                  desc: "Don't ask for any permissions",
-                  warning: true,
+                  label: "Skip All Permissions",
+                  desc: "Bypass all permission checks (--dangerously-skip-permissions)",
+                  warning: false,
+                  danger: true,
                 },
               ].map((option) => (
                 <label
@@ -321,7 +324,10 @@ export function AgentSettings({ onSettingsChange }: AgentSettingsProps) {
                   <div className="flex-1">
                     <div className="text-sm font-medium text-canopy-text flex items-center gap-2">
                       {option.label}
-                      {option.warning && <AlertTriangle className="w-3.5 h-3.5 text-yellow-500" />}
+                      {option.danger && <AlertTriangle className="w-3.5 h-3.5 text-red-500" />}
+                      {option.warning && !option.danger && (
+                        <AlertTriangle className="w-3.5 h-3.5 text-yellow-500" />
+                      )}
                     </div>
                     <div className="text-xs text-gray-500">{option.desc}</div>
                   </div>
@@ -345,36 +351,6 @@ export function AgentSettings({ onSettingsChange }: AgentSettingsProps) {
 
             {showAdvanced && (
               <div className="mt-4 space-y-4">
-                <label className="flex items-center gap-3 cursor-pointer">
-                  <button
-                    onClick={() =>
-                      handleClaudeChange({
-                        dangerouslySkipPermissions: !settings.claude.dangerouslySkipPermissions,
-                      })
-                    }
-                    className={cn(
-                      "relative w-11 h-6 rounded-full transition-colors",
-                      settings.claude.dangerouslySkipPermissions ? "bg-red-500" : "bg-gray-600"
-                    )}
-                  >
-                    <span
-                      className={cn(
-                        "absolute top-0.5 left-0.5 w-5 h-5 bg-white rounded-full transition-transform",
-                        settings.claude.dangerouslySkipPermissions && "translate-x-5"
-                      )}
-                    />
-                  </button>
-                  <div>
-                    <span className="text-sm text-canopy-text flex items-center gap-2">
-                      Dangerously Skip All Permissions
-                      <AlertTriangle className="w-3.5 h-3.5 text-red-500" />
-                    </span>
-                    <p className="text-xs text-gray-500">
-                      Skip all permission checks entirely (DANGEROUS)
-                    </p>
-                  </div>
-                </label>
-
                 <div className="space-y-2">
                   <label className="text-sm font-medium text-canopy-text">System Prompt</label>
                   <textarea
