@@ -297,10 +297,18 @@ export function TerminalPane({
       ref={containerRef}
       data-terminal-id={id}
       className={cn(
-        "flex flex-col h-full rounded overflow-hidden border transition-all duration-200 group",
-        "bg-[var(--color-surface)] shadow-md",
-        // Subtle focus indicator - neutral glow
-        isFocused ? "terminal-focused border-zinc-600" : "border-zinc-800 hover:border-zinc-700",
+        "flex flex-col h-full overflow-hidden transition-all duration-200 group",
+        "bg-[var(--color-surface)]",
+
+        // Only apply border, rounding, and shadow if NOT in the dock (prevents double-border glitch)
+        location !== "dock" && "rounded border shadow-md",
+
+        // Apply focus styles only if NOT docked
+        location !== "dock" &&
+          (isFocused
+            ? "terminal-focused border-zinc-600"
+            : "border-zinc-800 hover:border-zinc-700"),
+
         isExited && "opacity-75 grayscale",
         isDragging && "opacity-50 ring-2 ring-canopy-accent"
       )}
