@@ -169,3 +169,18 @@ Terminal spawn request (renderer)
     │
     └── Context pasted into active terminal
 ```
+
+### Project Switching
+
+```
+Project switch requested
+    │
+    ├── Reset renderer stores (terminals, diagnostics, logs)
+    │
+    ├── Main process switches project context
+    │       └── Services restart with new project path
+    │
+    └── UI re-hydrates from new project state
+```
+
+**Note:** See [Multi-Project Support](multi-project-support.md) for details on project switching behavior and state management.
