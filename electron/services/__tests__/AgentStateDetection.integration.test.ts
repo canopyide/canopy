@@ -1,0 +1,261 @@
+import { describe, it, expect, beforeEach, afterEach, vi } from "vitest";
+
+let PtyManager: any;
+let testUtils: any;
+
+try {
+  PtyManager = (await import("../PtyManager.js")).PtyManager;
+  testUtils = await import("./helpers/ptyTestUtils.js");
+} catch (error) {
+  console.warn("node-pty not available, skipping agent state detection tests");
+}
+
+const shouldSkip = !PtyManager;
+
+describe.skipIf(shouldSkip)("Agent State Detection Integration", () => {
+  const { cleanupPtyManager, waitForAgentStateChange, spawnShellTerminal, sleep } =
+    testUtils || {};
+  let manager: PtyManager;
+
+  beforeEach(() => {
+    manager = new PtyManager();
+  });
+
+  afterEach(async () => {
+    await cleanupPtyManager(manager);
+  });
+
+  describe("Manual State Transitions", () => {
+    it("should transition agent state manually", async () => {
+      const id = await spawnShellTerminal(manager, { type: "claude" });
+      await sleep(500);
+
+      const statePromise = waitForAgentStateChange(manager, id, 2000);
+      manager.transitionState(id, "working", "manual");
+
+      const stateChange = await statePromise;
+      expect(stateChange.id).toBe(id);
+      expect(stateChange.state).toBe("working");
+      expect(stateChange.trigger).toBe("manual");
+    }, 10000);
+
+    it("should track agent state in terminal info", async () => {
+      const id = await spawnShellTerminal(manager, { type: "claude" });
+      await sleep(500);
+
+      manager.transitionState(id, "working", "manual");
+      await sleep(200);
+
+      const terminal = manager.getTerminal(id);
+      expect(terminal).toBeDefined();
+      expect(terminal?.agentState).toBe("working");
+    }, 10000);
+
+    it("should emit state change event", async () => {
+      const id = await spawnShellTerminal(manager, { type: "gemini" });
+      await sleep(500);
+
+      let eventEmitted = false;
+      const handler = (data: { id: string; state: string }) => {
+        if (data.id === id) {
+          eventEmitted = true;
+        }
+      };
+
+      manager.on("agent:state-changed", handler);
+
+      manager.transitionState(id, "waiting", "manual");
+      await sleep(500);
+
+      expect(eventEmitted).toBe(true);
+      manager.off("agent:state-changed", handler);
+    }, 10000);
+
+    it("should track multiple state transitions", async () => {
+      const id = await spawnShellTerminal(manager, { type: "claude" });
+      await sleep(500);
+
+      const states: string[] = [];
+      const handler = (data: { id: string; state: string }) => {
+        if (data.id === id) {
+          states.push(data.state);
+        }
+      };
+
+      manager.on("agent:state-changed", handler);
+
+      manager.transitionState(id, "working", "manual");
+      await sleep(200);
+      manager.transitionState(id, "waiting", "manual");
+      await sleep(200);
+      manager.transitionState(id, "working", "manual");
+      await sleep(200);
+
+      expect(states.length).toBeGreaterThanOrEqual(1);
+      manager.off("agent:state-changed", handler);
+    }, 10000);
+  });
+
+  describe("State Change Timestamps", () => {
+    it("should record timestamp on state change", async () => {
+      const id = await spawnShellTerminal(manager, { type: "claude" });
+      await sleep(500);
+
+      const before = Date.now();
+      const statePromise = waitForAgentStateChange(manager, id, 2000);
+      manager.transitionState(id, "working", "manual");
+      const stateChange = await statePromise;
+      const after = Date.now();
+
+      expect(stateChange.timestamp).toBeGreaterThanOrEqual(before);
+      expect(stateChange.timestamp).toBeLessThanOrEqual(after);
+    }, 10000);
+
+    it("should update lastStateChange in terminal info", async () => {
+      const id = await spawnShellTerminal(manager, { type: "claude" });
+      await sleep(500);
+
+      const before = Date.now();
+      manager.transitionState(id, "working", "manual");
+      await sleep(200);
+
+      const terminal = manager.getTerminal(id);
+      expect(terminal).toBeDefined();
+      expect(terminal?.lastStateChange).toBeDefined();
+      expect(terminal?.lastStateChange).toBeGreaterThanOrEqual(before);
+    }, 10000);
+  });
+
+  describe("Agent Type Detection", () => {
+    it("should preserve agent type metadata", async () => {
+      const id = await spawnShellTerminal(manager, { type: "claude" });
+      await sleep(500);
+
+      const terminal = manager.getTerminal(id);
+      expect(terminal).toBeDefined();
+      expect(terminal?.type).toBe("claude");
+    }, 10000);
+
+    it("should handle different agent types", async () => {
+      const claudeId = await spawnShellTerminal(manager, { type: "claude" });
+      const geminiId = await spawnShellTerminal(manager, { type: "gemini" });
+      await sleep(500);
+
+      const claudeTerm = manager.getTerminal(claudeId);
+      const geminiTerm = manager.getTerminal(geminiId);
+
+      expect(claudeTerm?.type).toBe("claude");
+      expect(geminiTerm?.type).toBe("gemini");
+    }, 10000);
+  });
+
+  describe("State Transitions for Different Terminal Types", () => {
+    it("should handle state transitions for agent terminals", async () => {
+      const id = await spawnShellTerminal(manager, { type: "claude" });
+      await sleep(500);
+
+      const statePromise = waitForAgentStateChange(manager, id, 2000);
+      manager.transitionState(id, "completed", "manual");
+
+      const stateChange = await statePromise;
+      expect(stateChange.state).toBe("completed");
+    }, 10000);
+
+    it("should handle state transitions for shell terminals", async () => {
+      const id = await spawnShellTerminal(manager, { type: "shell" });
+      await sleep(500);
+
+      const statePromise = waitForAgentStateChange(manager, id, 2000);
+      manager.transitionState(id, "working", "manual");
+
+      const stateChange = await statePromise;
+      expect(stateChange.id).toBe(id);
+    }, 10000);
+  });
+
+  describe("Terminal Snapshot with Agent State", () => {
+    it("should include agent state in snapshot", async () => {
+      const id = await spawnShellTerminal(manager, { type: "claude" });
+      await sleep(500);
+
+      manager.transitionState(id, "working", "manual");
+      await sleep(200);
+
+      const snapshot = manager.getSnapshot(id);
+      expect(snapshot).toBeDefined();
+      expect(snapshot?.agentState).toBe("working");
+    }, 10000);
+
+    it("should include last state change timestamp in snapshot", async () => {
+      const id = await spawnShellTerminal(manager, { type: "claude" });
+      await sleep(500);
+
+      manager.transitionState(id, "working", "manual");
+      await sleep(200);
+
+      const snapshot = manager.getSnapshot(id);
+      expect(snapshot).toBeDefined();
+      expect(snapshot?.lastStateChange).toBeDefined();
+      expect(typeof snapshot?.lastStateChange).toBe("number");
+    }, 10000);
+  });
+
+  describe("Edge Cases", () => {
+    it("should handle state transition on non-existent terminal gracefully", () => {
+      expect(() => manager.transitionState("non-existent-id", "working", "manual")).not.toThrow();
+    }, 10000);
+
+    it("should handle rapid state transitions", async () => {
+      const id = await spawnShellTerminal(manager, { type: "claude" });
+      await sleep(500);
+
+      const states = ["working", "waiting", "working", "completed"] as const;
+
+      for (const state of states) {
+        manager.transitionState(id, state, "manual");
+        await sleep(50);
+      }
+
+      const terminal = manager.getTerminal(id);
+      expect(terminal).toBeDefined();
+      expect(terminal?.agentState).toBeDefined();
+    }, 10000);
+
+    it("should maintain state after terminal writes", async () => {
+      const id = await spawnShellTerminal(manager, { type: "claude" });
+      await sleep(500);
+
+      manager.transitionState(id, "working", "manual");
+      await sleep(200);
+
+      manager.write(id, "echo test\n");
+      await sleep(300);
+
+      const terminal = manager.getTerminal(id);
+      expect(terminal?.agentState).toBe("working");
+    }, 10000);
+  });
+
+  describe("Agent Exit State", () => {
+    it("should handle agent state on terminal exit", async () => {
+      const id = await spawnShellTerminal(manager, { type: "claude" });
+      await sleep(500);
+
+      manager.transitionState(id, "working", "manual");
+      await sleep(200);
+
+      const exitPromise = new Promise((resolve) => {
+        manager.once("exit", (termId) => {
+          if (termId === id) {
+            resolve(termId);
+          }
+        });
+      });
+
+      manager.write(id, "exit\n");
+      await Promise.race([exitPromise, sleep(3000)]);
+
+      expect(manager.getTerminal(id)).toBeUndefined();
+    }, 10000);
+  });
+});
