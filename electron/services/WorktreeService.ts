@@ -1,4 +1,5 @@
 import { BrowserWindow } from "electron";
+import PQueue from "p-queue";
 import { WorktreeMonitor, type WorktreeState } from "./WorktreeMonitor.js";
 import type { Worktree, MonitorConfig, AIConfig } from "../types/index.js";
 import { DEFAULT_CONFIG } from "../types/config.js";
@@ -78,6 +79,7 @@ interface PendingSyncRequest {
 
 export class WorktreeService {
   private monitors = new Map<string, WorktreeMonitor>();
+  private pollQueue = new PQueue({ concurrency: 3 });
   private mainBranch: string = "main";
   private activeWorktreeId: string | null = null;
   private isSyncing: boolean = false;
@@ -275,7 +277,7 @@ export class WorktreeService {
             throw new Error("GitService not initialized - cannot create WorktreeMonitor");
           }
 
-          const monitor = new WorktreeMonitor(wt, this.gitService, this.mainBranch);
+          const monitor = new WorktreeMonitor(wt, this.gitService, this, this.mainBranch);
 
           // Set initial polling interval
           const interval = isActive ? this.pollIntervalActive : this.pollIntervalBackground;
@@ -443,6 +445,9 @@ export class WorktreeService {
     await Promise.all(promises);
     this.monitors.clear();
 
+    // Wait for any pending polls in the queue to complete
+    await this.pollQueue.onIdle();
+
     // Stop PR service
     if (this.prServiceInitialized) {
       pullRequestService.destroy();
@@ -481,6 +486,50 @@ export class WorktreeService {
    */
   public getMonitorCount(): number {
     return this.monitors.size;
+  }
+
+  /**
+   * Execute a poll operation through the shared concurrency queue.
+   * Limits parallel git operations across all monitors to prevent resource spikes.
+   */
+  public async executePoll(monitorId: string, pollFn: () => Promise<void>): Promise<void> {
+    return this.pollQueue.add(async () => {
+      logDebug("Executing queued poll", {
+        monitorId,
+        queueSize: this.pollQueue.size,
+        pending: this.pollQueue.pending,
+      });
+      await pollFn();
+    });
+  }
+
+  /**
+   * Get performance metrics for monitoring and debugging.
+   */
+  public getPerformanceMetrics(): {
+    totalMonitors: number;
+    queueSize: number;
+    queuePending: number;
+    estimatedProcessesPerMinute: number;
+  } {
+    const activeCount = this.activeWorktreeId ? 1 : 0;
+    const backgroundCount = this.monitors.size - activeCount;
+
+    // Estimate based on cache hit assumptions (80% hit rate after fixes)
+    const activePollsPerMin = 30; // 2s interval
+    const backgroundPollsPerMin = backgroundCount * 6; // 10s interval
+    const cacheHitRate = 0.8;
+    const processesPerPoll = 3;
+
+    const estimatedProcesses =
+      (activePollsPerMin + backgroundPollsPerMin) * (1 - cacheHitRate) * processesPerPoll;
+
+    return {
+      totalMonitors: this.monitors.size,
+      queueSize: this.pollQueue.size,
+      queuePending: this.pollQueue.pending,
+      estimatedProcessesPerMinute: Math.round(estimatedProcesses),
+    };
   }
 
   /**

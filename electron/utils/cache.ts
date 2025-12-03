@@ -20,6 +20,8 @@ export class Cache<K, V> {
   private readonly maxSize: number;
   private readonly defaultTTL: number;
   private readonly onEvict?: (key: K, value: V) => void;
+  private hits: number = 0;
+  private misses: number = 0;
 
   constructor(options: CacheOptions = {}) {
     this.maxSize = options.maxSize ?? 1000;
@@ -30,16 +32,38 @@ export class Cache<K, V> {
   get(key: K): V | undefined {
     const entry = this.cache.get(key);
     if (!entry) {
+      this.misses++;
       return undefined;
     }
 
     if (Date.now() > entry.expiresAt) {
       this.invalidate(key);
+      this.misses++;
       return undefined;
     }
 
+    this.hits++;
     entry.lastAccessed = Date.now();
     return entry.value;
+  }
+
+  getHitRate(): number {
+    const total = this.hits + this.misses;
+    return total === 0 ? 0 : this.hits / total;
+  }
+
+  getStats(): { hits: number; misses: number; hitRate: number; size: number } {
+    return {
+      hits: this.hits,
+      misses: this.misses,
+      hitRate: this.getHitRate(),
+      size: this.cache.size,
+    };
+  }
+
+  resetStats(): void {
+    this.hits = 0;
+    this.misses = 0;
   }
 
   set(key: K, value: V, ttl?: number): void {
@@ -71,6 +95,7 @@ export class Cache<K, V> {
       }
     }
     this.cache.clear();
+    this.resetStats();
   }
 
   size(): number {

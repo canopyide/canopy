@@ -13,6 +13,7 @@ import { logWarn, logError, logInfo, logDebug } from "../utils/logger.js";
 import { events } from "./events.js";
 import { extractIssueNumberSync, extractIssueNumber } from "./ai/issueExtractor.js";
 import type { GitService } from "./GitService.js";
+import type { WorktreeService } from "./WorktreeService.js";
 
 const DEFAULT_AI_DEBOUNCE_MS = DEFAULT_CONFIG.ai?.summaryDebounceMs ?? 10000;
 
@@ -36,6 +37,7 @@ export class WorktreeMonitor {
   private state: WorktreeState;
   private mainBranch: string;
   private gitService: GitService;
+  private worktreeService: WorktreeService | null = null;
 
   private previousStateHash: string = "";
   private lastSummarizedHash: string | null = null;
@@ -66,7 +68,12 @@ export class WorktreeMonitor {
 
   private prEventUnsubscribers: (() => void)[] = [];
 
-  constructor(worktree: Worktree, gitService: GitService, mainBranch: string = "main") {
+  constructor(
+    worktree: Worktree,
+    gitService: GitService,
+    worktreeService: WorktreeService | null,
+    mainBranch: string = "main"
+  ) {
     this.id = worktree.id;
     this.path = worktree.path;
     this.name = worktree.name;
@@ -74,6 +81,7 @@ export class WorktreeMonitor {
     this.isCurrent = worktree.isCurrent;
     this.mainBranch = mainBranch;
     this.gitService = gitService;
+    this.worktreeService = worktreeService;
 
     const initialAIStatus: AISummaryStatus = getAIClient() ? "active" : "disabled";
 
@@ -309,12 +317,15 @@ export class WorktreeMonitor {
   }
 
   private calculateStateHash(changes: WorktreeChanges): string {
-    const signature = changes.changes
+    const fileSignature = changes.changes
       .sort((a, b) => a.path.localeCompare(b.path))
       .map((f) => `${f.path}:${f.status}:${f.insertions || 0}:${f.deletions || 0}`)
       .join("|");
 
-    return createHash("md5").update(signature).digest("hex");
+    // Include lastCommitMessage to detect clean-tree commits/pulls
+    const fullSignature = `${fileSignature}|commit:${changes.lastCommitMessage || ""}`;
+
+    return createHash("md5").update(fullSignature).digest("hex");
   }
 
   private async updateGitStatus(forceRefresh: boolean = false): Promise<void> {
@@ -473,6 +484,13 @@ export class WorktreeMonitor {
   }
 
   private async fetchLastCommitMessage(): Promise<string> {
+    // Use cached value from worktreeChanges if available (batched from getWorktreeChangesWithStats)
+    if (this.state.worktreeChanges?.lastCommitMessage) {
+      const firstLine = this.state.worktreeChanges.lastCommitMessage.split("\n")[0].trim();
+      return `✅ ${firstLine}`;
+    }
+
+    // Fallback to direct fetch if cache miss
     try {
       const lastCommitMsg = await this.gitService.getLastCommitMessage(this.path);
 
@@ -692,36 +710,57 @@ export class WorktreeMonitor {
       return;
     }
 
-    const startTime = Date.now();
+    const executePoll = async (): Promise<void> => {
+      const startTime = Date.now();
+
+      try {
+        await this.updateGitStatus();
+
+        this.lastOperationDuration = Date.now() - startTime;
+        this.consecutiveFailures = 0;
+
+        logDebug("Poll completed successfully", {
+          id: this.id,
+          duration: this.lastOperationDuration,
+        });
+      } catch (error) {
+        this.lastOperationDuration = Date.now() - startTime;
+        this.consecutiveFailures++;
+
+        logWarn("Poll failed", {
+          id: this.id,
+          consecutiveFailures: this.consecutiveFailures,
+          threshold: this.circuitBreakerThreshold,
+          error: (error as Error).message,
+        });
+
+        if (this.consecutiveFailures >= this.circuitBreakerThreshold) {
+          this.tripCircuitBreaker();
+          return;
+        }
+      }
+    };
 
     try {
-      await this.updateGitStatus();
-
-      this.lastOperationDuration = Date.now() - startTime;
-      this.consecutiveFailures = 0;
-
-      logDebug("Poll completed successfully", {
-        id: this.id,
-        duration: this.lastOperationDuration,
-      });
+      // Route through WorktreeService queue to limit concurrency
+      if (this.worktreeService) {
+        await this.worktreeService.executePoll(this.id, executePoll);
+      } else {
+        // Fallback to direct execution if no service reference
+        await executePoll();
+      }
     } catch (error) {
-      this.lastOperationDuration = Date.now() - startTime;
-      this.consecutiveFailures++;
-
-      logWarn("Poll failed", {
+      // Handle queue rejections (shutdown, abort, etc.)
+      logWarn("Queue execution failed", {
         id: this.id,
-        consecutiveFailures: this.consecutiveFailures,
-        threshold: this.circuitBreakerThreshold,
         error: (error as Error).message,
       });
-
-      if (this.consecutiveFailures >= this.circuitBreakerThreshold) {
-        this.tripCircuitBreaker();
-        return;
-      }
     }
 
-    this.scheduleNextPoll();
+    // Always reschedule unless stopped/tripped
+    if (this.isRunning && !this.circuitBreakerTripped) {
+      this.scheduleNextPoll();
+    }
   }
 
   private tripCircuitBreaker(): void {

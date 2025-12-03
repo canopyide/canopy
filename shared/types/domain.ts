@@ -48,6 +48,8 @@ export interface WorktreeChanges {
   latestFileMtime?: number;
   /** Timestamp when changes were last calculated */
   lastUpdated?: number;
+  /** Last commit message (cached to avoid extra git log calls) */
+  lastCommitMessage?: string;
 }
 
 // Worktree Types

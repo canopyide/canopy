@@ -50,6 +50,7 @@
     "lucide-react": "^0.555.0",
     "node-pty": "^1.0.0",
     "openai": "^6.9.1",
+    "p-queue": "^9.0.1",
     "react": "^19.0.0",
     "react-diff-view": "^3.3.2",
     "react-dom": "^19.0.0",
