@@ -1,8 +1,8 @@
 # CLAUDE.md
 
-This file provides guidance to Claude Code (claude.ai/code) when working with code in this repository.
+> **Human developers:** See [README.md](README.md) for project overview and [docs/](docs/) for developer documentation.
 
-**See @docs/spec.md for the complete technical specification, architecture, and data models.**
+This file provides guidance to Claude Code (claude.ai/code) when working with code in this repository.
 
 ## Project Overview
 
@@ -109,7 +109,7 @@ electron/
 ├── store.ts             # electron-store wrapper
 ├── windowState.ts       # Window state persistence
 ├── ipc/
-│   ├── channels.ts      # IPC channel name constants (110+ channels)
+│   ├── channels.ts      # IPC channel name constants (109 channels)
 │   ├── handlers.ts      # IPC request handlers
 │   ├── types.ts         # IPC type definitions
 │   └── errorHandlers.ts # Error handling utilities
@@ -277,9 +277,10 @@ The preload script exposes these namespaces via `window.electron`:
 
 ## Documentation
 
-- **Technical Specification:** `docs/spec.md` - Complete architecture and data models
-- **Multi-Project Support:** `docs/multi-project-support.md` - Implementation guide and usage
-- **GitHub Issues:** See pinned issue #22 for the master development plan
+- **Architecture:** `docs/architecture.md` - System design, IPC patterns, project structure
+- **Development Guide:** `docs/development.md` - Setup, commands, debugging
+- **Services Reference:** `docs/services.md` - Main process services documentation
+- **Contributing:** `docs/contributing.md` - Contribution guidelines and code style
 
 ## Migration Context
 
