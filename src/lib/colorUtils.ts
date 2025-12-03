@@ -30,6 +30,9 @@ export function getProjectGradient(color?: string): string | undefined {
     return undefined;
   }
 
-  // Add 'dd' (85% opacity) to the second stop for a subtle fade effect
-  return `linear-gradient(135deg, ${color}, ${color}dd)`;
+  // Only append 'dd' opacity if color doesn't already have alpha channel (8-digit hex)
+  const hasAlpha = color.length === 5 || color.length === 9; // #RGBA or #RRGGBBAA
+  const fadeColor = hasAlpha ? color : `${color}dd`;
+
+  return `linear-gradient(135deg, ${color}, ${fadeColor})`;
 }

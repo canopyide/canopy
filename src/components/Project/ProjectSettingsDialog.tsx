@@ -129,18 +129,14 @@ export function ProjectSettingsDialog({ projectId, isOpen, onClose }: ProjectSet
                   <div className="space-y-4">
                     <div className="flex items-center gap-3 p-3 rounded-md bg-canopy-bg border border-canopy-border">
                       <div
-                        className="flex h-12 w-12 items-center justify-center rounded-md border shrink-0"
+                        className="flex h-14 w-14 items-center justify-center rounded-xl shadow-inner shrink-0 bg-white/5"
                         style={{
                           background: getProjectGradient(currentProject.color),
-                          backgroundColor: !getProjectGradient(currentProject.color)
-                            ? "var(--canopy-bg)"
-                            : undefined,
-                          borderColor: !getProjectGradient(currentProject.color)
-                            ? "var(--canopy-border)"
-                            : "transparent",
                         }}
                       >
-                        <span className="text-2xl">{currentProject.emoji}</span>
+                        <span className="text-3xl select-none filter drop-shadow-sm">
+                          {currentProject.emoji || "🌲"}
+                        </span>
                       </div>
                       <div className="flex-1 min-w-0">
                         <div className="text-sm font-medium text-canopy-text truncate">

@@ -1,6 +1,7 @@
 import { useEffect, useState, useRef } from "react";
 import { ChevronsUpDown, Plus, Check, Sparkles, Loader2 } from "lucide-react";
 import { cn } from "@/lib/utils";
+import { getProjectGradient } from "@/lib/colorUtils";
 import { useProjectStore } from "@/store/projectStore";
 import { useNotificationStore } from "@/store/notificationStore";
 import {
@@ -75,16 +76,18 @@ export function ProjectSwitcher() {
     };
   }, [loadProjects, getCurrentProject]);
 
-  const renderIcon = (emoji: string, _color?: string, sizeClass = "h-8 w-8 text-lg") => (
+  const renderIcon = (emoji: string, color?: string, sizeClass = "h-8 w-8 text-lg") => (
     <div
       className={cn(
-        "flex items-center justify-center rounded-md border shrink-0 transition-all duration-200",
-        "bg-canopy-surface/50",
-        "border-canopy-border/50",
+        "flex items-center justify-center rounded-xl shadow-inner shrink-0 transition-all duration-200",
+        "bg-white/5",
         sizeClass
       )}
+      style={{
+        background: getProjectGradient(color),
+      }}
     >
-      <span className="leading-none select-none">{emoji}</span>
+      <span className="leading-none select-none filter drop-shadow-sm">{emoji}</span>
     </div>
   );
 
@@ -166,7 +169,7 @@ export function ProjectSwitcher() {
             disabled={isLoading}
           >
             <div className="flex items-center gap-3 text-left min-w-0">
-              {renderIcon(currentProject.emoji || "🌲", currentProject.color, "h-9 w-9 text-xl")}
+              {renderIcon(currentProject.emoji || "🌲", currentProject.color, "h-10 w-10 text-2xl")}
 
               <div className="flex flex-col min-w-0 gap-0.5">
                 <span className="truncate font-semibold text-canopy-text text-sm leading-none">
