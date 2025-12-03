@@ -77,6 +77,20 @@ export function registerWorktreeHandlers(deps: HandlerDependencies): () => void 
   ipcMain.handle(CHANNELS.WORKTREE_LIST_BRANCHES, handleWorktreeListBranches);
   handlers.push(() => ipcMain.removeHandler(CHANNELS.WORKTREE_LIST_BRANCHES));
 
+  const handleWorktreeGetDefaultPath = async (
+    _event: Electron.IpcMainInvokeEvent,
+    payload: { rootPath: string; branchName: string }
+  ): Promise<string> => {
+    const { rootPath, branchName } = payload;
+    const repoName = path.basename(rootPath);
+    const sanitizedBranch = branchName.replace(/[^a-zA-Z0-9-_]/g, "-");
+    const worktreesDir = path.join(path.dirname(rootPath), `${repoName}-worktrees`);
+    const worktreePath = path.join(worktreesDir, sanitizedBranch);
+    return path.normalize(worktreePath);
+  };
+  ipcMain.handle(CHANNELS.WORKTREE_GET_DEFAULT_PATH, handleWorktreeGetDefaultPath);
+  handlers.push(() => ipcMain.removeHandler(CHANNELS.WORKTREE_GET_DEFAULT_PATH));
+
   const handleGitGetFileDiff = async (
     _event: Electron.IpcMainInvokeEvent,
     payload: { cwd: string; filePath: string; status: string }

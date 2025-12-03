@@ -39,6 +39,10 @@ export const worktreeClient = {
     return window.electron.worktree.listBranches(rootPath);
   },
 
+  getDefaultPath: (rootPath: string, branchName: string): Promise<string> => {
+    return window.electron.worktree.getDefaultPath(rootPath, branchName);
+  },
+
   setAdaptiveBackoffConfig: (
     enabled: boolean,
     maxInterval?: number,

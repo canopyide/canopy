@@ -821,6 +821,10 @@ export interface IpcInvokeMap {
     args: [payload: { rootPath: string }];
     result: BranchInfo[];
   };
+  "worktree:get-default-path": {
+    args: [payload: { rootPath: string; branchName: string }];
+    result: string;
+  };
   "worktree:set-adaptive-backoff-config": {
     args: [payload: { enabled: boolean; maxInterval?: number; threshold?: number }];
     result: void;
@@ -1292,6 +1296,7 @@ export interface ElectronAPI {
     setActive(worktreeId: string): Promise<void>;
     create(options: CreateWorktreeOptions, rootPath: string): Promise<void>;
     listBranches(rootPath: string): Promise<BranchInfo[]>;
+    getDefaultPath(rootPath: string, branchName: string): Promise<string>;
     setAdaptiveBackoffConfig(
       enabled: boolean,
       maxInterval?: number,
