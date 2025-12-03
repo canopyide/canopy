@@ -266,6 +266,7 @@ export function TerminalGrid({ className, defaultCwd }: TerminalGridProps) {
       cancelled = true;
       clearTimeout(timeoutId);
     };
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [gridCols, gridTerminals.length]);
 
   // Get placeholder state from DnD context

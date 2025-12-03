@@ -168,7 +168,7 @@ export class ErrorService {
     const logPath = join(homedir(), ".config", "canopy", "worktree-debug.log");
     try {
       await shell.openPath(logPath);
-    } catch (error) {
+    } catch (_error) {
       const configDir = join(homedir(), ".config", "canopy");
       await shell.openPath(configDir);
     }

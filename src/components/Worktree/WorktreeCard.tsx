@@ -265,9 +265,9 @@ export function WorktreeCard({
   const branchLabel = worktree.branch ?? worktree.name;
   const hasChanges = (worktree.worktreeChanges?.changedFileCount ?? 0) > 0;
 
-  const renderAISummary = useCallback(() => {
-    const { summary, aiStatus } = worktree;
+  const { summary, aiStatus } = worktree;
 
+  const renderAISummary = useCallback(() => {
     switch (aiStatus) {
       case "loading":
         return (
@@ -311,7 +311,7 @@ export function WorktreeCard({
       default:
         return null;
     }
-  }, [worktree.aiStatus, worktree.summary, hasChanges, onOpenSettings]);
+  }, [aiStatus, summary, hasChanges, onOpenSettings]);
 
   const getServerStatusIndicator = () => {
     if (!serverState) return null;

@@ -136,8 +136,8 @@ export class ProcessDetector {
       if (agentChanged || busyChanged) {
         this.callback(result);
       }
-    } catch (error) {
-      console.error(`ProcessDetector error for terminal ${this.terminalId}:`, error);
+    } catch (_error) {
+      console.error(`ProcessDetector error for terminal ${this.terminalId}:`, _error);
     } finally {
       this.isDetecting = false;
     }
@@ -188,7 +188,7 @@ export class ProcessDetector {
       }
 
       return { detected: false, isBusy };
-    } catch (error) {
+    } catch (_error) {
       return { detected: false, isBusy: false };
     }
   }
@@ -265,7 +265,7 @@ export class ProcessDetector {
       // Determine busy status: any child processes means commands are running
       const isBusy = childPids.length > 0;
       return { detected: false, isBusy };
-    } catch (error) {
+    } catch (_error) {
       return { detected: false, isBusy: false };
     }
   }

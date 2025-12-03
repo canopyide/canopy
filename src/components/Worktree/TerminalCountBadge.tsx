@@ -35,9 +35,7 @@ export function TerminalCountBadge({ counts }: TerminalCountBadgeProps) {
   }
 
   const hasNonIdleStates =
-    counts.byState.working > 0 ||
-    counts.byState.completed > 0 ||
-    counts.byState.failed > 0;
+    counts.byState.working > 0 || counts.byState.completed > 0 || counts.byState.failed > 0;
 
   return (
     <div className="flex items-center gap-1.5 px-2 py-1 text-xs text-canopy-text/50 bg-black/20 rounded-sm">

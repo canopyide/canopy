@@ -223,7 +223,7 @@ export async function getWorktreeChangesWithStats(
         }
 
         return lineCount;
-      } catch (error) {
+      } catch (_error) {
         return null;
       }
     };

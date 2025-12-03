@@ -7,7 +7,7 @@ let testUtils: any;
 try {
   PtyManagerClass = (await import("../PtyManager.js")).PtyManager;
   testUtils = await import("./helpers/ptyTestUtils.js");
-} catch (error) {
+} catch (_error) {
   console.warn("node-pty not available, skipping agent state detection tests");
 }
 

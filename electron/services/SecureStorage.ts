@@ -63,7 +63,7 @@ class SecureStorage {
       try {
         const buffer = Buffer.from(storedValue, "hex");
         return safeStorage.decryptString(buffer);
-      } catch (error) {
+      } catch (_error) {
         console.warn(
           `[SecureStorage] Failed to decrypt ${key}, clearing corrupted entry. User will need to re-enter.`
         );

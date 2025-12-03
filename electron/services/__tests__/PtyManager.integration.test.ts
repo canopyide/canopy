@@ -8,7 +8,7 @@ let testUtils: any;
 try {
   PtyManagerClass = (await import("../PtyManager.js")).PtyManager;
   testUtils = await import("./helpers/ptyTestUtils.js");
-} catch (error) {
+} catch (_error) {
   console.warn("node-pty not available, skipping PTY integration tests");
 }
 
@@ -238,7 +238,7 @@ describe.skipIf(shouldSkip)("PtyManager Integration", () => {
           cols: 80,
           rows: 24,
         });
-      } catch (e) {
+      } catch (_e) {
         // Expected to fail
       }
 
