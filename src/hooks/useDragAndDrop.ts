@@ -118,8 +118,12 @@ export function useTerminalDragAndDrop(
 
       if (containerRef.current) {
         if (zone === "grid") {
+          // Filter out the dragged element itself to prevent layout calculation jitter
+          // The dragged element is visually hidden/fixed but still in DOM at position 0,0
           const terminalElements = Array.from(
             containerRef.current.querySelectorAll("[data-terminal-id]")
+          ).filter(
+            (el) => el.getAttribute("data-terminal-id") !== dragState.draggedId
           ) as HTMLElement[];
 
           dropIndex = calculateGridDropIndex(
@@ -129,8 +133,11 @@ export function useTerminalDragAndDrop(
             dragState.sourceLocation === "grid" ? (dragState.sourceIndex ?? undefined) : undefined
           );
         } else {
+          // Filter out dragged element from dock calculations too
           const dockItems = Array.from(
             containerRef.current.querySelectorAll("[data-docked-terminal-id]")
+          ).filter(
+            (el) => el.getAttribute("data-docked-terminal-id") !== dragState.draggedId
           ) as HTMLElement[];
 
           dropIndex = calculateDropIndex(
@@ -149,7 +156,7 @@ export function useTerminalDragAndDrop(
         dropIndex,
       }));
     },
-    [dragState.sourceLocation, dragState.sourceIndex, dragState.dropZone]
+    [dragState.sourceLocation, dragState.sourceIndex, dragState.dropZone, dragState.draggedId]
   );
 
   const handleDrop = useCallback(
