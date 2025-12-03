@@ -1,13 +1,14 @@
 import { useMemo, useCallback, useState, useEffect } from "react";
 import { useShallow } from "zustand/react/shallow";
+import { SortableContext, rectSortingStrategy } from "@dnd-kit/sortable";
+import { useDroppable } from "@dnd-kit/core";
 import { cn } from "@/lib/utils";
 import { useTerminalStore, useLayoutConfigStore, type TerminalInstance } from "@/store";
 import { useContextInjection } from "@/hooks/useContextInjection";
-import { useTerminalDragAndDrop } from "@/hooks/useDragAndDrop";
 import { TerminalPane } from "./TerminalPane";
-import { TerminalGhost } from "./TerminalGhost";
 import { FilePickerModal } from "@/components/ContextInjection";
 import { ErrorBoundary } from "@/components/ErrorBoundary";
+import { SortableTerminal } from "@/components/DragDrop";
 import { Terminal } from "lucide-react";
 import { CanopyIcon, CodexIcon, ClaudeIcon, GeminiIcon } from "@/components/icons";
 import { Kbd } from "@/components/ui/Kbd";
@@ -129,7 +130,6 @@ function EmptyState({
 }
 
 export function TerminalGrid({ className, defaultCwd }: TerminalGridProps) {
-  // Use useShallow to prevent infinite loops when destructuring store state
   const { terminals, focusedId, maximizedId } = useTerminalStore(
     useShallow((state) => ({
       terminals: state.terminals,
@@ -153,16 +153,12 @@ export function TerminalGrid({ className, defaultCwd }: TerminalGridProps) {
 
   const layoutConfig = useLayoutConfigStore((state) => state.layoutConfig);
 
-  const {
-    dragState,
-    gridRef,
-    createDragStartHandler,
-    createDragOverHandler,
-    handleDrop,
-    handleDragEnd,
-  } = useTerminalDragAndDrop();
+  // Make the grid a droppable area
+  const { setNodeRef, isOver } = useDroppable({
+    id: "grid-container",
+    data: { container: "grid" },
+  });
 
-  // Only need inject/cancel actions - each TerminalPane subscribes to its own progress
   const { inject, cancel } = useContextInjection();
 
   const [filePickerState, setFilePickerState] = useState<{
@@ -175,38 +171,8 @@ export function TerminalGrid({ className, defaultCwd }: TerminalGridProps) {
     terminalId: null,
   });
 
-  // Calculate if we need to show placeholder (when dragging over grid)
-  const showPlaceholder =
-    dragState.isDragging && dragState.dropZone === "grid" && dragState.dropIndex !== null;
-
-  // Use all grid terminals - don't filter. We'll hide the dragged one with CSS instead
-  // to prevent unmounting which breaks the drag operation.
-  const activeTerminals = gridTerminals;
-
-  // Calculate effective grid count based on visual state, not just list length.
-  // This prevents layout thrashing when dragging items around.
-  const effectiveGridCount = useMemo(() => {
-    let count = activeTerminals.length;
-    const isInternalDrag =
-      dragState.isDragging && dragState.sourceLocation === "grid" && dragState.draggedId !== null;
-
-    if (isInternalDrag) {
-      // Dragging from grid: the source item is hidden (fixed position)
-      // If dropping in grid, placeholder replaces it (net 0 change)
-      // If dropping elsewhere (dock), we lose one item (net -1)
-      if (dragState.dropZone !== "grid") {
-        count -= 1;
-      }
-    } else if (showPlaceholder) {
-      // Dragging from dock into grid: add placeholder slot
-      count += 1;
-    }
-
-    return Math.max(0, count);
-  }, [activeTerminals.length, dragState, showPlaceholder]);
-
   const gridCols = useMemo(() => {
-    const count = effectiveGridCount;
+    const count = gridTerminals.length;
     if (count === 0) return 1;
 
     const { strategy, value } = layoutConfig;
@@ -224,7 +190,7 @@ export function TerminalGrid({ className, defaultCwd }: TerminalGridProps) {
     if (count <= 1) return 1;
     if (count <= 4) return 2;
     return Math.min(Math.ceil(Math.sqrt(count)), 4);
-  }, [effectiveGridCount, layoutConfig]);
+  }, [gridTerminals.length, layoutConfig]);
 
   const handleLaunchAgent = useCallback(
     async (type: "claude" | "gemini" | "codex" | "shell") => {
@@ -267,7 +233,7 @@ export function TerminalGrid({ className, defaultCwd }: TerminalGridProps) {
     setFilePickerState({ isOpen: false, worktreeId: null, terminalId: null });
   }, []);
 
-  // Batch-fit visible grid terminals when layout (gridCols/count) changes to avoid synchronous thrash
+  // Batch-fit visible grid terminals when layout (gridCols/count) changes
   useEffect(() => {
     const ids = gridTerminals.map((t) => t.id);
     let cancelled = false;
@@ -289,7 +255,7 @@ export function TerminalGrid({ className, defaultCwd }: TerminalGridProps) {
         requestAnimationFrame(processNext);
       };
       processNext();
-    }, 150); // allow grid to settle
+    }, 150);
 
     return () => {
       cancelled = true;
@@ -297,128 +263,8 @@ export function TerminalGrid({ className, defaultCwd }: TerminalGridProps) {
     };
   }, [gridCols, gridTerminals.length]);
 
-  const handleGridDragOver = createDragOverHandler("grid");
-
-  // Build render items array with placeholder spliced in at dropIndex
-  const renderItems = useMemo(() => {
-    const items: React.ReactNode[] = activeTerminals.map((terminal: TerminalInstance) => {
-      const isTerminalInTrash = isInTrash(terminal.id);
-      // Find original index in gridTerminals for drag handler
-      const originalIndex = gridTerminals.findIndex((t) => t.id === terminal.id);
-
-      // Check if this specific terminal is the one being dragged from the grid
-      const isBeingDragged =
-        dragState.isDragging &&
-        dragState.sourceLocation === "grid" &&
-        dragState.draggedId === terminal.id;
-
-      return (
-        <div
-          key={terminal.id}
-          className={cn(
-            "relative h-full",
-            // Use fixed positioning to remove from flow (so grid collapses) but keep in DOM (so drag continues)
-            // pointer-events-none and z-[-1] ensure it doesn't block interactions while invisible
-            isBeingDragged && "fixed top-0 left-0 w-1 h-1 opacity-0 pointer-events-none z-[-1]"
-          )}
-        >
-          <ErrorBoundary
-            variant="component"
-            componentName="TerminalPane"
-            resetKeys={[terminal.id, terminal.worktreeId, terminal.agentState].filter(
-              (key): key is string => key !== undefined
-            )}
-            context={{ terminalId: terminal.id, worktreeId: terminal.worktreeId }}
-          >
-            <TerminalPane
-              id={terminal.id}
-              title={terminal.title}
-              type={terminal.type}
-              worktreeId={terminal.worktreeId}
-              cwd={terminal.cwd}
-              isFocused={terminal.id === focusedId}
-              isMaximized={false}
-              agentState={terminal.agentState}
-              activity={
-                terminal.activityHeadline
-                  ? {
-                      headline: terminal.activityHeadline,
-                      status: terminal.activityStatus ?? "working",
-                      type: terminal.activityType ?? "interactive",
-                    }
-                  : null
-              }
-              location="grid"
-              onFocus={() => setFocused(terminal.id)}
-              onClose={() => trashTerminal(terminal.id)}
-              onInjectContext={
-                terminal.worktreeId
-                  ? () => handleInjectContext(terminal.id, terminal.worktreeId)
-                  : undefined
-              }
-              onCancelInjection={cancel}
-              onToggleMaximize={() => toggleMaximize(terminal.id)}
-              onTitleChange={(newTitle) => updateTitle(terminal.id, newTitle)}
-              onMinimize={() => moveTerminalToDock(terminal.id)}
-              isDragging={false}
-              onDragStart={
-                !isTerminalInTrash
-                  ? createDragStartHandler(terminal.id, "grid", originalIndex)
-                  : undefined
-              }
-            />
-          </ErrorBoundary>
-        </div>
-      );
-    });
-
-    // Insert ghost placeholder at drop index when dragging over grid
-    // pointer-events-none allows mouse to pass through for accurate position tracking
-    // Fast animation (75ms) for responsive feel during drag
-    if (showPlaceholder && dragState.dropIndex !== null) {
-      // The dropIndex was calculated from a filtered array (without the dragged element),
-      // but we're inserting into the unfiltered items array (which has the hidden dragged element).
-      // When dropping AT OR AFTER the source position, we need to offset by +1 to compensate
-      // because the filtered array shifts all indices >= sourceIdx down by one.
-      const sourceIdx = dragState.sourceLocation === "grid" ? (dragState.sourceIndex ?? -1) : -1;
-      const insertionIndex =
-        sourceIdx >= 0 && dragState.dropIndex >= sourceIdx
-          ? dragState.dropIndex + 1
-          : dragState.dropIndex;
-
-      items.splice(
-        insertionIndex,
-        0,
-        <div
-          key="grid-placeholder"
-          className="relative h-full animate-in fade-in zoom-in-95 duration-75 pointer-events-none"
-        >
-          <TerminalGhost label="Drop Here" />
-        </div>
-      );
-    }
-
-    return items;
-  }, [
-    activeTerminals,
-    gridTerminals,
-    dragState.isDragging,
-    dragState.sourceLocation,
-    dragState.sourceIndex,
-    dragState.draggedId,
-    dragState.dropIndex,
-    showPlaceholder,
-    isInTrash,
-    focusedId,
-    setFocused,
-    trashTerminal,
-    handleInjectContext,
-    cancel,
-    toggleMaximize,
-    updateTitle,
-    moveTerminalToDock,
-    createDragStartHandler,
-  ]);
+  // Terminal IDs for SortableContext
+  const terminalIds = useMemo(() => gridTerminals.map((t) => t.id), [gridTerminals]);
 
   // Maximized terminal takes full screen
   if (maximizedId) {
@@ -473,44 +319,94 @@ export function TerminalGrid({ className, defaultCwd }: TerminalGridProps) {
   const isEmpty = gridTerminals.length === 0;
 
   return (
-    <div
-      ref={gridRef}
-      className={cn("h-full bg-noise p-1", className)}
-      style={{
-        display: "grid",
-        gridTemplateColumns: `repeat(${gridCols}, 1fr)`,
-        gridAutoRows: "1fr",
-        gap: "4px",
-        backgroundColor: "var(--color-grid-bg)",
-      }}
-      role="grid"
-      aria-dropeffect={dragState.isDragging ? "move" : undefined}
-      onDragOver={handleGridDragOver}
-      onDrop={handleDrop}
-      onDragEnd={handleDragEnd}
-      onDragLeave={(e) => {
-        if (!e.currentTarget.contains(e.relatedTarget as Node)) {
-          handleDragEnd();
-        }
-      }}
-    >
-      {isEmpty && !showPlaceholder ? (
-        <div className="col-span-full row-span-full">
-          <EmptyState onLaunchAgent={handleLaunchAgent} />
-        </div>
-      ) : (
-        renderItems
-      )}
+    <SortableContext items={terminalIds} strategy={rectSortingStrategy}>
+      <div
+        ref={setNodeRef}
+        className={cn(
+          "h-full bg-noise p-1",
+          isOver && "ring-2 ring-canopy-accent/30 ring-inset",
+          className
+        )}
+        style={{
+          display: "grid",
+          gridTemplateColumns: `repeat(${gridCols}, 1fr)`,
+          gridAutoRows: "1fr",
+          gap: "4px",
+          backgroundColor: "var(--color-grid-bg)",
+        }}
+        role="grid"
+      >
+        {isEmpty ? (
+          <div className="col-span-full row-span-full">
+            <EmptyState onLaunchAgent={handleLaunchAgent} />
+          </div>
+        ) : (
+          gridTerminals.map((terminal: TerminalInstance, index) => {
+            const isTerminalInTrash = isInTrash(terminal.id);
 
-      {filePickerState.worktreeId && (
-        <FilePickerModal
-          isOpen={filePickerState.isOpen}
-          worktreeId={filePickerState.worktreeId}
-          onConfirm={handleFilePickerConfirm}
-          onCancel={handleFilePickerCancel}
-        />
-      )}
-    </div>
+            return (
+              <SortableTerminal
+                key={terminal.id}
+                terminal={terminal}
+                sourceLocation="grid"
+                sourceIndex={index}
+                disabled={isTerminalInTrash}
+              >
+                <ErrorBoundary
+                  variant="component"
+                  componentName="TerminalPane"
+                  resetKeys={[terminal.id, terminal.worktreeId, terminal.agentState].filter(
+                    (key): key is string => key !== undefined
+                  )}
+                  context={{ terminalId: terminal.id, worktreeId: terminal.worktreeId }}
+                >
+                  <TerminalPane
+                    id={terminal.id}
+                    title={terminal.title}
+                    type={terminal.type}
+                    worktreeId={terminal.worktreeId}
+                    cwd={terminal.cwd}
+                    isFocused={terminal.id === focusedId}
+                    isMaximized={false}
+                    agentState={terminal.agentState}
+                    activity={
+                      terminal.activityHeadline
+                        ? {
+                            headline: terminal.activityHeadline,
+                            status: terminal.activityStatus ?? "working",
+                            type: terminal.activityType ?? "interactive",
+                          }
+                        : null
+                    }
+                    location="grid"
+                    onFocus={() => setFocused(terminal.id)}
+                    onClose={() => trashTerminal(terminal.id)}
+                    onInjectContext={
+                      terminal.worktreeId
+                        ? () => handleInjectContext(terminal.id, terminal.worktreeId)
+                        : undefined
+                    }
+                    onCancelInjection={cancel}
+                    onToggleMaximize={() => toggleMaximize(terminal.id)}
+                    onTitleChange={(newTitle) => updateTitle(terminal.id, newTitle)}
+                    onMinimize={() => moveTerminalToDock(terminal.id)}
+                  />
+                </ErrorBoundary>
+              </SortableTerminal>
+            );
+          })
+        )}
+
+        {filePickerState.worktreeId && (
+          <FilePickerModal
+            isOpen={filePickerState.isOpen}
+            worktreeId={filePickerState.worktreeId}
+            onConfirm={handleFilePickerConfirm}
+            onCancel={handleFilePickerCancel}
+          />
+        )}
+      </div>
+    </SortableContext>
   );
 }
 

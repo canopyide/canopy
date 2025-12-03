@@ -22,6 +22,7 @@ import { SettingsDialog } from "./components/Settings";
 import { HistoryPanel } from "./components/History";
 import { Toaster } from "./components/ui/toaster";
 import { ErrorBoundary } from "./components/ErrorBoundary";
+import { DndProvider } from "./components/DragDrop";
 import {
   useTerminalStore,
   useWorktreeSelectionStore,
@@ -591,24 +592,26 @@ function App() {
 
   return (
     <ErrorBoundary variant="fullscreen" componentName="App">
-      <AppLayout
-        sidebarContent={<SidebarContent onOpenSettings={handleOpenSettings} />}
-        historyContent={<HistoryPanel />}
-        onLaunchAgent={handleLaunchAgent}
-        onRefresh={handleRefresh}
-        onSettings={handleSettings}
-        onRetry={handleErrorRetry}
-        isRefreshing={isRefreshing}
-        onShowWelcome={handleShowWelcome}
-        agentAvailability={availability}
-        agentSettings={agentSettings}
-      >
-        {currentView === "welcome" ? (
-          <WelcomeScreen onDismiss={handleDismissWelcome} />
-        ) : (
-          <TerminalGrid className="h-full w-full" />
-        )}
-      </AppLayout>
+      <DndProvider>
+        <AppLayout
+          sidebarContent={<SidebarContent onOpenSettings={handleOpenSettings} />}
+          historyContent={<HistoryPanel />}
+          onLaunchAgent={handleLaunchAgent}
+          onRefresh={handleRefresh}
+          onSettings={handleSettings}
+          onRetry={handleErrorRetry}
+          isRefreshing={isRefreshing}
+          onShowWelcome={handleShowWelcome}
+          agentAvailability={availability}
+          agentSettings={agentSettings}
+        >
+          {currentView === "welcome" ? (
+            <WelcomeScreen onDismiss={handleDismissWelcome} />
+          ) : (
+            <TerminalGrid className="h-full w-full" />
+          )}
+        </AppLayout>
+      </DndProvider>
 
       <TerminalPalette
         isOpen={terminalPalette.isOpen}

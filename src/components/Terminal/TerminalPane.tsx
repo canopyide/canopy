@@ -31,7 +31,6 @@ import { useErrorStore, useTerminalStore, getTerminalRefreshTier, type RetryActi
 import { useContextInjection } from "@/hooks/useContextInjection";
 import type { AgentState } from "@/types";
 import { errorsClient } from "@/clients";
-import { createTerminalDragImage } from "@/utils/dragDrop";
 
 export type { TerminalType };
 
@@ -60,8 +59,6 @@ export interface TerminalPaneProps {
   onMinimize?: () => void;
   onRestore?: () => void;
   location?: "grid" | "dock";
-  isDragging?: boolean;
-  onDragStart?: (e: React.DragEvent) => void;
 }
 
 interface TerminalIconProps {
@@ -119,8 +116,6 @@ function TerminalPaneComponent({
   onMinimize,
   onRestore,
   location = "grid",
-  isDragging,
-  onDragStart,
 }: TerminalPaneProps) {
   const [isExited, setIsExited] = useState(false);
   const [exitCode, setExitCode] = useState<number | null>(null);
@@ -287,26 +282,7 @@ function TerminalPaneComponent({
     return getTerminalRefreshTier(terminal, isFocused);
   }, [id, isFocused, getTerminal]);
 
-  const canDrag = !isMaximized && !!onDragStart;
   const isWorking = agentState === "working";
-
-  const handleDragStartWithImage = useCallback(
-    (e: React.DragEvent) => {
-      if (!onDragStart) return;
-
-      const brandColor = getBrandColorHex(type);
-      const dragImage = createTerminalDragImage(title, brandColor);
-      // Offset to position cursor near top-left of the mini terminal (on title bar)
-      e.dataTransfer.setDragImage(dragImage, 20, 12);
-
-      setTimeout(() => {
-        document.body.removeChild(dragImage);
-      }, 0);
-
-      onDragStart(e);
-    },
-    [onDragStart, title, type]
-  );
 
   return (
     <div
@@ -325,8 +301,7 @@ function TerminalPaneComponent({
             ? "terminal-focused border-[color-mix(in_oklab,var(--color-canopy-border)_100%,white_20%)]"
             : "border-canopy-border hover:border-[color-mix(in_oklab,var(--color-canopy-border)_100%,white_10%)]"),
 
-        isExited && "opacity-75 grayscale",
-        isDragging && "opacity-50 ring-2 ring-canopy-accent"
+        isExited && "opacity-75 grayscale"
       )}
       onClick={onFocus}
       onFocus={onFocus}
@@ -355,20 +330,15 @@ function TerminalPaneComponent({
             return `${type} session: ${title}`;
         }
       })()}
-      aria-grabbed={isDragging || undefined}
     >
       {/* Header - Uniform background for all terminal types */}
       <div
         className={cn(
           "flex items-center justify-between px-3 h-7 shrink-0 font-mono text-xs transition-colors relative overflow-hidden",
           // Base background - uniform for all types
-          isFocused ? "bg-[var(--color-surface-highlight)]" : "bg-[var(--color-surface)]",
-          // Drag cursor styles
-          canDrag && "cursor-grab active:cursor-grabbing"
+          isFocused ? "bg-[var(--color-surface-highlight)]" : "bg-[var(--color-surface)]"
         )}
         onDoubleClick={onToggleMaximize}
-        draggable={canDrag}
-        onDragStart={canDrag ? handleDragStartWithImage : undefined}
       >
         <div className="flex items-center gap-2 min-w-0">
           <span className="shrink-0 flex items-center justify-center w-3.5 h-3.5 text-canopy-text">
@@ -630,7 +600,6 @@ export const TerminalPane = React.memo(TerminalPaneComponent, (prev, next) => {
     prev.activity?.status === next.activity?.status &&
     prev.activity?.type === next.activity?.type &&
     prev.location === next.location &&
-    prev.isDragging === next.isDragging &&
     prev.onFocus === next.onFocus &&
     prev.onClose === next.onClose &&
     prev.onInjectContext === next.onInjectContext &&
@@ -638,8 +607,7 @@ export const TerminalPane = React.memo(TerminalPaneComponent, (prev, next) => {
     prev.onToggleMaximize === next.onToggleMaximize &&
     prev.onTitleChange === next.onTitleChange &&
     prev.onMinimize === next.onMinimize &&
-    prev.onRestore === next.onRestore &&
-    prev.onDragStart === next.onDragStart
+    prev.onRestore === next.onRestore
   );
 });
 

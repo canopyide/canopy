@@ -17,16 +17,11 @@ import { TerminalPane } from "@/components/Terminal/TerminalPane";
 import { useContextInjection } from "@/hooks/useContextInjection";
 import type { AgentState, TerminalType } from "@/types";
 import { TerminalRefreshTier } from "@/types";
-import { setTerminalDragData, createTerminalDragImage } from "@/utils/dragDrop";
 import { terminalClient } from "@/clients";
 import { terminalInstanceService } from "@/services/TerminalInstanceService";
 
 interface DockedTerminalItemProps {
   terminal: TerminalInstance;
-  index: number;
-  isDragging?: boolean;
-  onDragStart?: (id: string, index: number) => void;
-  onDragEnd?: () => void;
 }
 
 function getTerminalIcon(type: TerminalType, className?: string) {
@@ -82,24 +77,16 @@ function getStateIndicator(state?: AgentState) {
   }
 }
 
-export function DockedTerminalItem({
-  terminal,
-  index,
-  isDragging,
-  onDragStart,
-  onDragEnd,
-}: DockedTerminalItemProps) {
+export function DockedTerminalItem({ terminal }: DockedTerminalItemProps) {
   const [isOpen, setIsOpen] = useState(false);
   const [isRestoring, setIsRestoring] = useState(false);
   const moveTerminalToGrid = useTerminalStore((s) => s.moveTerminalToGrid);
   const trashTerminal = useTerminalStore((s) => s.trashTerminal);
 
-  // Only need inject/cancel actions - TerminalPane subscribes to its own progress
   const { inject, cancel } = useContextInjection();
 
   // Toggle buffering based on popover open state
   useEffect(() => {
-    // Skip if terminal is being restored to avoid race with moveTerminalToGrid
     if (isRestoring) return;
 
     let cancelled = false;
@@ -107,14 +94,12 @@ export function DockedTerminalItem({
     const applyBufferingState = async () => {
       try {
         if (isOpen) {
-          // Popover opened - disable buffering and flush queued data
           if (!cancelled) {
             await terminalClient.setBuffering(terminal.id, false);
             await terminalClient.flush(terminal.id);
             terminalInstanceService.applyRendererPolicy(terminal.id, TerminalRefreshTier.VISIBLE);
           }
         } else {
-          // Popover closed - enable buffering for resource optimization
           if (!cancelled) {
             await terminalClient.setBuffering(terminal.id, true);
             terminalInstanceService.applyRendererPolicy(
@@ -124,7 +109,6 @@ export function DockedTerminalItem({
           }
         }
       } catch (error) {
-        // Terminal may have been trashed/exited - ignore errors
         console.warn(`Failed to apply buffering state for terminal ${terminal.id}:`, error);
       }
     };
@@ -156,42 +140,6 @@ export function DockedTerminalItem({
     await inject(terminal.worktreeId, terminal.id);
   }, [inject, terminal.id, terminal.worktreeId]);
 
-  const handleDragStart = useCallback(
-    (e: React.DragEvent) => {
-      if (isOpen) {
-        e.preventDefault();
-        return;
-      }
-
-      // Use shared utility for unified drag image (matches grid terminals)
-      const brandColor = getBrandColorHex(terminal.type);
-      const dragIcon = createTerminalDragImage(terminal.title, brandColor);
-
-      // Offset to position cursor near top-left of the mini terminal (on title bar)
-      e.dataTransfer.setDragImage(dragIcon, 20, 12);
-
-      // Clean up after browser captures the image
-      requestAnimationFrame(() => {
-        if (dragIcon.parentNode) {
-          dragIcon.remove();
-        }
-      });
-
-      setTerminalDragData(e.dataTransfer, {
-        terminalId: terminal.id,
-        sourceLocation: "dock",
-        sourceIndex: index,
-      });
-
-      onDragStart?.(terminal.id, index);
-    },
-    [terminal.id, terminal.title, terminal.type, index, isOpen, onDragStart]
-  );
-
-  const handleDragEnd = useCallback(() => {
-    onDragEnd?.();
-  }, [onDragEnd]);
-
   return (
     <Popover open={isOpen} onOpenChange={handleOpenChange}>
       <PopoverTrigger asChild>
@@ -202,14 +150,9 @@ export function DockedTerminalItem({
             "hover:bg-canopy-accent/10 border-canopy-border hover:border-canopy-accent/50",
             "focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-canopy-accent focus-visible:ring-offset-2 focus-visible:ring-offset-canopy-bg",
             "cursor-grab active:cursor-grabbing",
-            isOpen && "bg-canopy-accent/20 border-canopy-accent",
-            isDragging && "opacity-50 ring-2 ring-canopy-accent"
+            isOpen && "bg-canopy-accent/20 border-canopy-accent"
           )}
           title={`${terminal.title} - Click to preview, drag to reorder`}
-          draggable={!isOpen}
-          onDragStart={handleDragStart}
-          onDragEnd={handleDragEnd}
-          aria-grabbed={isDragging}
         >
           {getTerminalIcon(terminal.type)}
           {getStateIndicator(terminal.agentState)}
