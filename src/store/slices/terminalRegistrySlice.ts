@@ -9,6 +9,7 @@ import type {
 import { appClient, terminalClient } from "@/clients";
 import { terminalInstanceService } from "@/services/TerminalInstanceService";
 import { TerminalRefreshTier } from "@/types";
+import { debounce } from "@/utils/debounce";
 
 export type TerminalInstance = TerminalInstanceType;
 
@@ -79,8 +80,9 @@ export interface TerminalRegistrySlice {
   moveTerminalToPosition: (id: string, toIndex: number, location: "grid" | "dock") => void;
 }
 
-// Excludes trashed terminals to avoid resurrecting orphaned sessions after restart
-function persistTerminals(terminals: TerminalInstance[]): void {
+// Debounced persistence batches rapid state changes into single disk writes.
+// 500ms delay balances responsive restarts with write reduction during bulk ops.
+const debouncedPersistTerminals = debounce((terminals: TerminalInstance[]) => {
   appClient
     .setState({
       terminals: terminals
@@ -98,6 +100,16 @@ function persistTerminals(terminals: TerminalInstance[]): void {
     .catch((error) => {
       console.error("Failed to persist terminals:", error);
     });
+}, 500);
+
+// Wrapper to call debounced version - excludes trashed terminals
+function persistTerminals(terminals: TerminalInstance[]): void {
+  debouncedPersistTerminals(terminals);
+}
+
+// Flush pending persistence - call on app quit to prevent data loss
+export function flushTerminalPersistence(): void {
+  debouncedPersistTerminals.flush();
 }
 
 export type TerminalRegistryMiddleware = {
