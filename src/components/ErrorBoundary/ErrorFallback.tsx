@@ -68,8 +68,8 @@ export function ErrorFallback({
 
           {variant === "fullscreen" && (
             <p className={cn("text-canopy-text/60", sizes.message)}>
-              The application encountered an unexpected error. You can try restarting or check the logs
-              for more details.
+              The application encountered an unexpected error. You can try restarting or check the
+              logs for more details.
             </p>
           )}
         </div>
