@@ -137,6 +137,10 @@ export function registerAppHandlers(deps: HandlerDependencies): () => void {
         }
       }
 
+      if ("dockCollapsed" in partialState) {
+        updates.dockCollapsed = Boolean(partialState.dockCollapsed);
+      }
+
       store.set("appState", { ...currentState, ...updates });
     } catch (error) {
       console.error("Failed to set app state:", error);
