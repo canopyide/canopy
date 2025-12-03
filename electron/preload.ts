@@ -197,15 +197,6 @@ const CHANNELS = {
   HISTORY_EXPORT_SESSION: "history:export-session",
   HISTORY_DELETE_SESSION: "history:delete-session",
 
-  // AI configuration channels
-  AI_GET_CONFIG: "ai:get-config",
-  AI_SET_KEY: "ai:set-key",
-  AI_CLEAR_KEY: "ai:clear-key",
-  AI_SET_MODEL: "ai:set-model",
-  AI_SET_ENABLED: "ai:set-enabled",
-  AI_VALIDATE_KEY: "ai:validate-key",
-  AI_GENERATE_PROJECT_IDENTITY: "ai:generate-project-identity",
-
   // Agent settings channels
   AGENT_SETTINGS_GET: "agent-settings:get",
   AGENT_SETTINGS_SET: "agent-settings:set",
@@ -476,9 +467,6 @@ const api: ElectronAPI = {
       _typedInvoke(CHANNELS.PROJECT_SAVE_SETTINGS, { projectId, settings }),
 
     detectRunners: (projectId: string) => _typedInvoke(CHANNELS.PROJECT_DETECT_RUNNERS, projectId),
-
-    regenerateIdentity: (projectId: string) =>
-      _typedInvoke(CHANNELS.PROJECT_REGENERATE_IDENTITY, projectId),
   },
 
   // History API (Agent Transcripts & Artifacts)
@@ -492,24 +480,6 @@ const api: ElectronAPI = {
       _typedInvoke(CHANNELS.HISTORY_EXPORT_SESSION, { sessionId, format }),
 
     deleteSession: (sessionId: string) => _typedInvoke(CHANNELS.HISTORY_DELETE_SESSION, sessionId),
-  },
-
-  // AI API
-  ai: {
-    getConfig: () => _typedInvoke(CHANNELS.AI_GET_CONFIG),
-
-    setKey: (apiKey: string) => _typedInvoke(CHANNELS.AI_SET_KEY, apiKey),
-
-    clearKey: () => _typedInvoke(CHANNELS.AI_CLEAR_KEY),
-
-    setModel: (model: string) => _typedInvoke(CHANNELS.AI_SET_MODEL, model),
-
-    setEnabled: (enabled: boolean) => _typedInvoke(CHANNELS.AI_SET_ENABLED, enabled),
-
-    validateKey: (apiKey: string) => _typedInvoke(CHANNELS.AI_VALIDATE_KEY, apiKey),
-
-    generateProjectIdentity: (projectPath: string) =>
-      _typedInvoke(CHANNELS.AI_GENERATE_PROJECT_IDENTITY, projectPath),
   },
 
   // Agent Settings API

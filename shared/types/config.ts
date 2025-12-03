@@ -71,15 +71,7 @@ export interface MonitorConfig {
   circuitBreakerThreshold?: number;
 }
 
-// AI Configuration
-
-/** AI feature config */
-export interface AIConfig {
-  /** Debounce interval for AI summary generation in ms (default: 10000, min: 1000, max: 60000) */
-  summaryDebounceMs?: number;
-}
-
-/** AI note feature config (agents write status to .git/canopy/note) */
+/** Agent note feature config (agents write status to .git/canopy/note) */
 export interface NoteConfig {
   /** Enable/disable the AI note feature (default: true) */
   enabled?: boolean;
@@ -194,9 +186,7 @@ export interface CanopyConfig {
   devServer?: DevServerConfig;
   /** Monitor polling configuration */
   monitor?: MonitorConfig;
-  /** AI feature configuration */
-  ai?: AIConfig;
-  /** AI note display feature */
+  /** Agent note display feature */
   note?: NoteConfig;
   /** CopyTree configuration */
   copytree?: {

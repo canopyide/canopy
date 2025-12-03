@@ -46,11 +46,7 @@ import {
 } from "@/clients";
 import { formatBytes } from "@/lib/formatBytes";
 
-interface SidebarContentProps {
-  onOpenSettings: (tab?: "ai" | "general" | "troubleshooting") => void;
-}
-
-function SidebarContent({ onOpenSettings }: SidebarContentProps) {
+function SidebarContent() {
   const { worktrees, isLoading, error, refresh } = useWorktrees();
   const { inject, isInjecting } = useContextInjection();
   const { activeWorktreeId, focusedWorktreeId, selectWorktree, setActiveWorktree } =
@@ -257,7 +253,6 @@ function SidebarContent({ onOpenSettings }: SidebarContentProps) {
             onInjectContext={focusedTerminalId ? () => handleInjectContext(worktree.id) : undefined}
             isInjecting={isInjecting}
             onCreateRecipe={() => handleCreateRecipe(worktree.id)}
-            onOpenSettings={onOpenSettings}
             homeDir={homeDir}
           />
         ))}
@@ -314,7 +309,7 @@ function App() {
   const removeError = useErrorStore((state) => state.removeError);
 
   const [isSettingsOpen, setIsSettingsOpen] = useState(false);
-  const [settingsTab, setSettingsTab] = useState<"general" | "ai" | "troubleshooting">("general");
+  const [settingsTab, setSettingsTab] = useState<"general" | "troubleshooting">("general");
 
   const [isRefreshing, setIsRefreshing] = useState(false);
 
@@ -423,13 +418,6 @@ function App() {
 
   const handleSettings = useCallback(() => {
     setSettingsTab("general");
-    setIsSettingsOpen(true);
-  }, []);
-
-  const handleOpenSettings = useCallback((tab?: "ai" | "general" | "troubleshooting") => {
-    if (tab) {
-      setSettingsTab(tab);
-    }
     setIsSettingsOpen(true);
   }, []);
 
@@ -594,7 +582,7 @@ function App() {
     <ErrorBoundary variant="fullscreen" componentName="App">
       <DndProvider>
         <AppLayout
-          sidebarContent={<SidebarContent onOpenSettings={handleOpenSettings} />}
+          sidebarContent={<SidebarContent />}
           historyContent={<HistoryPanel />}
           onLaunchAgent={handleLaunchAgent}
           onRefresh={handleRefresh}

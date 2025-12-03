@@ -19,7 +19,6 @@ export type {
   WorktreeChanges,
   // Worktree types
   WorktreeMood,
-  AISummaryStatus,
   Worktree,
   WorktreeState,
   // Dev server types
@@ -124,9 +123,6 @@ export type {
   HistoryGetSessionsPayload,
   HistoryGetSessionPayload,
   HistoryExportSessionPayload,
-  // AI types
-  AIServiceState,
-  ProjectIdentity,
   // Agent state change
   AgentStateChangePayload,
   // Artifact types
@@ -166,8 +162,7 @@ export type {
   QuickLinksConfig,
   // Monitor config
   MonitorConfig,
-  // AI config
-  AIConfig,
+  // Note config
   NoteConfig,
   // Dev server config
   DevServerConfig,

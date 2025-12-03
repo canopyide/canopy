@@ -1,5 +1,5 @@
 import { useState, useEffect } from "react";
-import { Plus, Trash2, X, Sparkles, RefreshCw } from "lucide-react";
+import { Plus, Trash2, X, Sparkles } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { useProjectSettings } from "@/hooks/useProjectSettings";
 import { useProjectStore } from "@/store/projectStore";
@@ -16,14 +16,13 @@ interface ProjectSettingsDialogProps {
 export function ProjectSettingsDialog({ projectId, isOpen, onClose }: ProjectSettingsDialogProps) {
   const { settings, detectedRunners, saveSettings, promoteToSaved, isLoading, error } =
     useProjectSettings(projectId);
-  const { projects, regenerateIdentity } = useProjectStore();
+  const { projects } = useProjectStore();
   const currentProject = projects.find((p) => p.id === projectId);
 
   const [commands, setCommands] = useState<RunCommand[]>([]);
   const [isSaving, setIsSaving] = useState(false);
   const [saveError, setSaveError] = useState<string | null>(null);
   const [promotingIds, setPromotingIds] = useState<Set<string>>(new Set());
-  const [isRegenerating, setIsRegenerating] = useState(false);
 
   useEffect(() => {
     if (isOpen && settings?.runCommands) {
@@ -59,18 +58,6 @@ export function ProjectSettingsDialog({ projectId, isOpen, onClose }: ProjectSet
       setSaveError(error instanceof Error ? error.message : "Failed to save settings");
     } finally {
       setIsSaving(false);
-    }
-  };
-
-  const handleRegenerateIdentity = async () => {
-    setIsRegenerating(true);
-    try {
-      await regenerateIdentity(projectId);
-    } catch (error) {
-      console.error("Failed to regenerate identity:", error);
-      setSaveError(error instanceof Error ? error.message : "Failed to regenerate identity");
-    } finally {
-      setIsRegenerating(false);
     }
   };
 
@@ -123,57 +110,30 @@ export function ProjectSettingsDialog({ projectId, isOpen, onClose }: ProjectSet
                     Project Identity
                   </h3>
                   <p className="text-xs text-gray-500 mb-4">
-                    Customize how your project appears in Canopy, or regenerate with AI.
+                    Your project identity as shown in Canopy.
                   </p>
 
-                  <div className="space-y-4">
-                    <div className="flex items-center gap-3 p-3 rounded-md bg-canopy-bg border border-canopy-border">
-                      <div
-                        className="flex h-14 w-14 items-center justify-center rounded-xl shadow-inner shrink-0 bg-white/5"
-                        style={{
-                          background: getProjectGradient(currentProject.color),
-                        }}
-                      >
-                        <span className="text-3xl select-none filter drop-shadow-sm">
-                          {currentProject.emoji || "🌲"}
-                        </span>
-                      </div>
-                      <div className="flex-1 min-w-0">
-                        <div className="text-sm font-medium text-canopy-text truncate">
-                          {currentProject.name}
-                        </div>
-                        {currentProject.aiGeneratedName && currentProject.aiGeneratedEmoji && (
-                          <div className="text-xs text-gray-500 truncate">
-                            AI suggested: {currentProject.aiGeneratedEmoji}{" "}
-                            {currentProject.aiGeneratedName}
-                          </div>
-                        )}
-                        {currentProject.color && (
-                          <div className="text-xs text-gray-500 mt-1">
-                            Color: {currentProject.color}
-                          </div>
-                        )}
-                      </div>
-                      <Button
-                        onClick={handleRegenerateIdentity}
-                        variant="outline"
-                        size="sm"
-                        disabled={isRegenerating}
-                        className="shrink-0"
-                      >
-                        <RefreshCw
-                          className={cn("h-4 w-4 mr-2", isRegenerating && "animate-spin")}
-                        />
-                        {isRegenerating ? "Regenerating..." : "Regenerate"}
-                      </Button>
+                  <div className="flex items-center gap-3 p-3 rounded-md bg-canopy-bg border border-canopy-border">
+                    <div
+                      className="flex h-14 w-14 items-center justify-center rounded-xl shadow-inner shrink-0 bg-white/5"
+                      style={{
+                        background: getProjectGradient(currentProject.color),
+                      }}
+                    >
+                      <span className="text-3xl select-none filter drop-shadow-sm">
+                        {currentProject.emoji || "🌲"}
+                      </span>
                     </div>
-
-                    {currentProject.aiGeneratedName && (
-                      <div className="text-xs text-gray-400 italic">
-                        Tip: Regenerate to get new AI suggestions based on your project name and
-                        structure.
+                    <div className="flex-1 min-w-0">
+                      <div className="text-sm font-medium text-canopy-text truncate">
+                        {currentProject.name}
                       </div>
-                    )}
+                      {currentProject.color && (
+                        <div className="text-xs text-gray-500 mt-1">
+                          Color: {currentProject.color}
+                        </div>
+                      )}
+                    </div>
                   </div>
                 </div>
               )}

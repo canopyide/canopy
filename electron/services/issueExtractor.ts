@@ -55,7 +55,6 @@ export function extractIssueNumberSync(branchName: string, folderName?: string):
   return null;
 }
 
-// TODO: Add AI fallback when implemented
 export async function extractIssueNumber(
   branchName: string,
   folderName?: string

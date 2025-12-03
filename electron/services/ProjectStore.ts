@@ -6,7 +6,6 @@ import fs from "fs/promises";
 import { existsSync } from "fs";
 import { app } from "electron";
 import { GitService } from "./GitService.js";
-import { generateProjectNameAndEmoji } from "./ai/identity.js";
 
 const SETTINGS_FILENAME = "settings.json";
 
@@ -67,23 +66,12 @@ export class ProjectStore {
       return this.updateProject(existing.id, { lastOpened: Date.now() });
     }
 
-    let identity: { name: string; emoji: string; color?: string } | null = null;
-    try {
-      identity = await generateProjectNameAndEmoji(normalizedPath);
-    } catch (error) {
-      console.warn("[ProjectStore] AI identity generation failed:", error);
-    }
-
     const project: Project = {
       id: this.generateProjectId(normalizedPath),
       path: normalizedPath,
-      name: identity?.name || path.basename(normalizedPath),
-      emoji: identity?.emoji || "🌲",
-      aiGeneratedName: identity?.name,
-      aiGeneratedEmoji: identity?.emoji,
-      color: identity?.color,
+      name: path.basename(normalizedPath),
+      emoji: "🌲",
       lastOpened: Date.now(),
-      isFallbackIdentity: !identity,
     };
 
     const projects = this.getAllProjects();
@@ -127,16 +115,7 @@ export class ProjectStore {
     const safeUpdates: Partial<Project> = {};
     if (updates.name !== undefined) safeUpdates.name = updates.name;
     if (updates.emoji !== undefined) safeUpdates.emoji = updates.emoji;
-
-    if (updates.name !== undefined || updates.emoji !== undefined) {
-      safeUpdates.isFallbackIdentity = false;
-    }
-
     if (updates.color !== undefined) safeUpdates.color = updates.color;
-    if (updates.aiGeneratedName !== undefined)
-      safeUpdates.aiGeneratedName = updates.aiGeneratedName;
-    if (updates.aiGeneratedEmoji !== undefined)
-      safeUpdates.aiGeneratedEmoji = updates.aiGeneratedEmoji;
     if (updates.lastOpened !== undefined) safeUpdates.lastOpened = updates.lastOpened;
 
     const updated = { ...projects[index], ...safeUpdates };

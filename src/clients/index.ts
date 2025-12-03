@@ -1,5 +1,4 @@
 export { agentSettingsClient } from "./agentSettingsClient";
-export { aiClient } from "./aiClient";
 export { terminalConfigClient } from "./terminalConfigClient";
 export { cliAvailabilityClient } from "./cliAvailabilityClient";
 export { appClient } from "./appClient";

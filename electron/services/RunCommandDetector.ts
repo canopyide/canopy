@@ -1,7 +1,7 @@
 import path from "path";
 import fs from "fs/promises";
 import { existsSync } from "fs";
-import type { RunCommand } from "../../types/index.js";
+import type { RunCommand } from "../types/index.js";
 
 export class RunCommandDetector {
   async detect(projectPath: string): Promise<RunCommand[]> {

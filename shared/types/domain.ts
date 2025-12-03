@@ -57,9 +57,6 @@ export interface WorktreeChanges {
 /** Worktree mood indicator */
 export type WorktreeMood = "stable" | "active" | "stale" | "error";
 
-/** AI summary status: active | loading | disabled | error */
-export type AISummaryStatus = "active" | "loading" | "disabled" | "error";
-
 /** Git worktree - multiple working trees on same repo */
 export interface Worktree {
   /** Stable identifier for this worktree (normalized absolute path) */
@@ -83,23 +80,17 @@ export interface Worktree {
   /** Path to the .git directory */
   gitDir?: string;
 
-  /** AI-generated summary of work being done */
+  /** Summary of work being done (last commit message or status) */
   summary?: string;
 
   /** Number of modified files in this worktree */
   modifiedCount?: number;
-
-  /** Loading state for async summary generation */
-  summaryLoading?: boolean;
 
   /** Recent git status changes for this worktree */
   changes?: FileChangeDetail[];
 
   /** High-level mood/state for dashboard sorting */
   mood?: WorktreeMood;
-
-  /** AI summary status indicator for this worktree */
-  aiStatus?: AISummaryStatus;
 
   /** Timestamp of last git activity (milliseconds since epoch, null if no activity yet) */
   lastActivityTimestamp?: number | null;
@@ -134,8 +125,6 @@ export interface WorktreeState extends Worktree {
   worktreeChanges: WorktreeChanges | null;
   /** Override to ensure lastActivityTimestamp is always present */
   lastActivityTimestamp: number | null;
-  /** Override to ensure aiStatus is always present */
-  aiStatus: AISummaryStatus;
 }
 
 // Dev Server Types
@@ -330,19 +319,10 @@ export interface Project {
   name: string;
   /** User-editable emoji (default: tree) */
   emoji: string;
-  /** AI-suggested name (optional) */
-  aiGeneratedName?: string;
-  /** AI-suggested emoji (optional) */
-  aiGeneratedEmoji?: string;
   /** Timestamp of last opening (for sorting) */
   lastOpened: number;
   /** Theme color/gradient (optional) */
   color?: string;
-  /**
-   * If true, indicates the current name/emoji are defaults (folder name + tree)
-   * and should be auto-regenerated or flagged in the UI.
-   */
-  isFallbackIdentity?: boolean;
 }
 
 /** Terminal snapshot for state preservation */

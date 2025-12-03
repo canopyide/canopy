@@ -1,13 +1,12 @@
 import { useState, useEffect } from "react";
 import { useErrors } from "@/hooks";
 import { useLogsStore } from "@/store";
-import { X, Sparkles, Bot, Github, LayoutGrid } from "lucide-react";
+import { X, Bot, Github, LayoutGrid } from "lucide-react";
 import { cn } from "@/lib/utils";
 import { appClient } from "@/clients";
 import { AgentSettings } from "./AgentSettings";
 import { GeneralTab } from "./GeneralTab";
 import { TerminalSettingsTab } from "./TerminalSettingsTab";
-import { AISettingsTab } from "./AISettingsTab";
 import { GitHubSettingsTab } from "./GitHubSettingsTab";
 import { TroubleshootingTab } from "./TroubleshootingTab";
 
@@ -18,7 +17,7 @@ interface SettingsDialogProps {
   onSettingsChange?: () => void;
 }
 
-type SettingsTab = "general" | "terminal" | "agents" | "ai" | "github" | "troubleshooting";
+type SettingsTab = "general" | "terminal" | "agents" | "github" | "troubleshooting";
 
 export function SettingsDialog({
   isOpen,
@@ -26,7 +25,7 @@ export function SettingsDialog({
   defaultTab,
   onSettingsChange,
 }: SettingsDialogProps) {
-  const [activeTab, setActiveTab] = useState<SettingsTab>(defaultTab ?? "ai");
+  const [activeTab, setActiveTab] = useState<SettingsTab>(defaultTab ?? "general");
   const { openLogs } = useErrors();
   const clearLogs = useLogsStore((state) => state.clearLogs);
 
@@ -105,18 +104,6 @@ export function SettingsDialog({
             Agents
           </button>
           <button
-            onClick={() => setActiveTab("ai")}
-            className={cn(
-              "text-left px-3 py-2 rounded-md text-sm transition-colors flex items-center gap-2",
-              activeTab === "ai"
-                ? "bg-canopy-accent/10 text-canopy-accent"
-                : "text-gray-400 hover:bg-canopy-border hover:text-canopy-text"
-            )}
-          >
-            <Sparkles className="w-4 h-4" />
-            AI Features
-          </button>
-          <button
             onClick={() => setActiveTab("github")}
             className={cn(
               "text-left px-3 py-2 rounded-md text-sm transition-colors flex items-center gap-2",
@@ -144,15 +131,13 @@ export function SettingsDialog({
         <div className="flex-1 flex flex-col min-w-0">
           <div className="flex items-center justify-between p-6 border-b border-canopy-border">
             <h3 className="text-lg font-medium text-canopy-text capitalize">
-              {activeTab === "ai"
-                ? "AI Features"
-                : activeTab === "agents"
-                  ? "Agent Settings"
-                  : activeTab === "github"
-                    ? "GitHub Integration"
-                    : activeTab === "terminal"
-                      ? "Terminal Grid"
-                      : activeTab}
+              {activeTab === "agents"
+                ? "Agent Settings"
+                : activeTab === "github"
+                  ? "GitHub Integration"
+                  : activeTab === "terminal"
+                    ? "Terminal Grid"
+                    : activeTab}
             </h3>
             <button
               onClick={onClose}
@@ -174,10 +159,6 @@ export function SettingsDialog({
 
             <div className={activeTab === "agents" ? "" : "hidden"}>
               <AgentSettings onSettingsChange={onSettingsChange} />
-            </div>
-
-            <div className={activeTab === "ai" ? "" : "hidden"}>
-              <AISettingsTab />
             </div>
 
             <div className={activeTab === "github" ? "" : "hidden"}>

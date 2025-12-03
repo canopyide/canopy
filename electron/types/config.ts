@@ -13,7 +13,6 @@ export type {
   QuickLink,
   QuickLinksConfig,
   MonitorConfig,
-  AIConfig,
   NoteConfig,
   DevServerConfig,
   UIConfig,
@@ -85,9 +84,6 @@ export const DEFAULT_CONFIG: CanopyConfig = {
     pollIntervalMax: 30000,
     adaptiveBackoff: true,
     circuitBreakerThreshold: 3,
-  },
-  ai: {
-    summaryDebounceMs: 10000,
   },
   note: {
     enabled: true,

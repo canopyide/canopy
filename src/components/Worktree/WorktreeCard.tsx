@@ -23,7 +23,6 @@ import {
 import { ConfirmDialog } from "../Terminal/ConfirmDialog";
 import {
   AlertCircle,
-  Loader2,
   Copy,
   Code,
   CircleDot,
@@ -52,7 +51,6 @@ export interface WorktreeCardProps {
   onInjectContext?: () => void;
   isInjecting?: boolean;
   onCreateRecipe?: () => void;
-  onOpenSettings?: (tab?: "ai" | "general" | "troubleshooting") => void;
   homeDir?: string;
 }
 
@@ -100,7 +98,6 @@ export function WorktreeCard({
   onOpenPR,
   onToggleServer,
   onCreateRecipe,
-  onOpenSettings,
   homeDir,
 }: WorktreeCardProps) {
   const isExpanded = useWorktreeSelectionStore(
@@ -264,53 +261,17 @@ export function WorktreeCard({
   const branchLabel = worktree.branch ?? worktree.name;
   const hasChanges = (worktree.worktreeChanges?.changedFileCount ?? 0) > 0;
 
-  const { summary, aiStatus } = worktree;
+  const { summary } = worktree;
 
-  const renderAISummary = useCallback(() => {
-    switch (aiStatus) {
-      case "loading":
-        return (
-          <span className="inline-flex items-center gap-1.5 text-gray-400">
-            <Loader2 className="w-3 h-3 animate-spin" />
-            <span className="italic">generating summary…</span>
-          </span>
-        );
-
-      case "disabled":
-        return (
-          <span className="inline-flex items-center gap-1 text-gray-500">
-            <span>AI disabled</span>
-            {onOpenSettings && (
-              <button
-                onClick={(e) => {
-                  e.stopPropagation();
-                  onOpenSettings("ai");
-                }}
-                className="hover:text-canopy-accent hover:underline text-[0.7rem] px-1 border border-gray-700 rounded"
-              >
-                Enable
-              </button>
-            )}
-          </span>
-        );
-
-      case "error":
-        return <span className="text-[var(--color-status-error)]">Summary unavailable</span>;
-
-      case "active": {
-        if (summary) {
-          return <span className="text-gray-300">{summary}</span>;
-        }
-        if (hasChanges) {
-          return <span className="text-gray-400 italic">Changes detected...</span>;
-        }
-        return <span className="text-gray-500 italic">No recent changes</span>;
-      }
-
-      default:
-        return null;
+  const renderSummary = useCallback(() => {
+    if (summary) {
+      return <span className="text-gray-300">{summary}</span>;
     }
-  }, [aiStatus, summary, hasChanges, onOpenSettings]);
+    if (hasChanges) {
+      return <span className="text-gray-400 italic">Changes detected...</span>;
+    }
+    return <span className="text-gray-500 italic">No recent changes</span>;
+  }, [summary, hasChanges]);
 
   const getServerStatusIndicator = () => {
     if (!serverState) return null;
@@ -347,12 +308,7 @@ export function WorktreeCard({
   );
 
   const hasExpandableContent =
-    hasChanges ||
-    effectiveNote ||
-    !!worktree.summary ||
-    worktree.aiStatus === "loading" ||
-    hasDevScript ||
-    worktreeErrors.length > 0;
+    hasChanges || effectiveNote || !!worktree.summary || hasDevScript || worktreeErrors.length > 0;
 
   const detailsId = useMemo(() => `worktree-${worktree.id}-details`, [worktree.id]);
 
@@ -571,7 +527,7 @@ export function WorktreeCard({
               {displayPath}
             </button>
 
-            <div className="text-xs leading-relaxed break-words ml-4">{renderAISummary()}</div>
+            <div className="text-xs leading-relaxed break-words ml-4">{renderSummary()}</div>
 
             {effectiveNote && (
               <div

@@ -61,9 +61,6 @@ export interface StoreSchema {
     currentProjectId?: string;
   };
   userConfig: {
-    openaiApiKey?: string;
-    aiModel?: string;
-    aiEnabled?: boolean;
     githubToken?: string;
   };
   agentSettings: AgentSettings;
@@ -96,11 +93,7 @@ export const store = new Store<StoreSchema>({
       list: [],
       currentProjectId: undefined,
     },
-    userConfig: {
-      openaiApiKey: undefined,
-      aiModel: "gpt-5-nano",
-      aiEnabled: true,
-    },
+    userConfig: {},
     agentSettings: DEFAULT_AGENT_SETTINGS,
   },
   cwd: process.env.CANOPY_USER_DATA,

@@ -3,8 +3,6 @@ import { CHANNELS } from "../channels.js";
 import { store } from "../../store.js";
 import type { HandlerDependencies } from "../types.js";
 import { getTranscriptManager } from "../../services/TranscriptManager.js";
-import { getAIConfig, setAIConfig, clearAIKey, validateAIKey } from "../../services/ai/client.js";
-import { generateProjectIdentity } from "../../services/ai/identity.js";
 import type {
   HistoryGetSessionsPayload,
   HistoryGetSessionPayload,
@@ -67,81 +65,6 @@ export function registerAiHandlers(_deps: HandlerDependencies): () => void {
   };
   ipcMain.handle(CHANNELS.HISTORY_DELETE_SESSION, handleHistoryDeleteSession);
   handlers.push(() => ipcMain.removeHandler(CHANNELS.HISTORY_DELETE_SESSION));
-
-  const handleAIGetConfig = async () => {
-    return getAIConfig();
-  };
-  ipcMain.handle(CHANNELS.AI_GET_CONFIG, handleAIGetConfig);
-  handlers.push(() => ipcMain.removeHandler(CHANNELS.AI_GET_CONFIG));
-
-  const handleAISetKey = async (
-    _event: Electron.IpcMainInvokeEvent,
-    apiKey: string
-  ): Promise<boolean> => {
-    if (typeof apiKey !== "string" || !apiKey.trim()) {
-      return false;
-    }
-
-    const isValid = await validateAIKey(apiKey.trim());
-    if (isValid) {
-      setAIConfig({ apiKey: apiKey.trim() });
-      return true;
-    }
-    return false;
-  };
-  ipcMain.handle(CHANNELS.AI_SET_KEY, handleAISetKey);
-  handlers.push(() => ipcMain.removeHandler(CHANNELS.AI_SET_KEY));
-
-  const handleAIClearKey = async () => {
-    clearAIKey();
-  };
-  ipcMain.handle(CHANNELS.AI_CLEAR_KEY, handleAIClearKey);
-  handlers.push(() => ipcMain.removeHandler(CHANNELS.AI_CLEAR_KEY));
-
-  const handleAISetModel = async (_event: Electron.IpcMainInvokeEvent, model: string) => {
-    if (typeof model !== "string" || !model.trim()) {
-      throw new Error("Invalid model: must be a non-empty string");
-    }
-    setAIConfig({ model: model.trim() });
-  };
-  ipcMain.handle(CHANNELS.AI_SET_MODEL, handleAISetModel);
-  handlers.push(() => ipcMain.removeHandler(CHANNELS.AI_SET_MODEL));
-
-  const handleAISetEnabled = async (_event: Electron.IpcMainInvokeEvent, enabled: boolean) => {
-    setAIConfig({ enabled });
-  };
-  ipcMain.handle(CHANNELS.AI_SET_ENABLED, handleAISetEnabled);
-  handlers.push(() => ipcMain.removeHandler(CHANNELS.AI_SET_ENABLED));
-
-  const handleAIValidateKey = async (
-    _event: Electron.IpcMainInvokeEvent,
-    apiKey: string
-  ): Promise<boolean> => {
-    if (typeof apiKey !== "string" || !apiKey.trim()) {
-      return false;
-    }
-    return await validateAIKey(apiKey.trim());
-  };
-  ipcMain.handle(CHANNELS.AI_VALIDATE_KEY, handleAIValidateKey);
-  handlers.push(() => ipcMain.removeHandler(CHANNELS.AI_VALIDATE_KEY));
-
-  const handleAIGenerateProjectIdentity = async (
-    _event: Electron.IpcMainInvokeEvent,
-    projectPath: string
-  ) => {
-    if (typeof projectPath !== "string" || !projectPath.trim()) {
-      throw new Error("Invalid projectPath: must be a non-empty string");
-    }
-    const result = await generateProjectIdentity(projectPath.trim());
-    if (!result.success || !result.identity) {
-      const errorMessage = result.error?.message || "AI identity generation failed";
-      console.error("[AI] generateProjectIdentity failed:", errorMessage);
-      throw new Error(errorMessage);
-    }
-    return result.identity;
-  };
-  ipcMain.handle(CHANNELS.AI_GENERATE_PROJECT_IDENTITY, handleAIGenerateProjectIdentity);
-  handlers.push(() => ipcMain.removeHandler(CHANNELS.AI_GENERATE_PROJECT_IDENTITY));
 
   const handleAgentSettingsGet = async () => {
     return store.get("agentSettings");

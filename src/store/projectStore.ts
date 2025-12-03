@@ -15,7 +15,6 @@ interface ProjectState {
   switchProject: (projectId: string) => Promise<void>;
   updateProject: (id: string, updates: Partial<Project>) => Promise<void>;
   removeProject: (id: string) => Promise<void>;
-  regenerateIdentity: (projectId: string) => Promise<void>;
 }
 
 const createProjectStore: StateCreator<ProjectState> = (set, get) => ({
@@ -116,25 +115,6 @@ const createProjectStore: StateCreator<ProjectState> = (set, get) => ({
     } catch (error) {
       console.error("Failed to remove project:", error);
       set({ error: "Failed to remove project", isLoading: false });
-    }
-  },
-
-  regenerateIdentity: async (projectId) => {
-    set({ isLoading: true, error: null });
-    try {
-      const updatedProject = await projectClient.regenerateIdentity(projectId);
-
-      const projects = get().projects.map((p) => (p.id === projectId ? updatedProject : p));
-      set({ projects });
-
-      if (get().currentProject?.id === projectId) {
-        set({ currentProject: updatedProject });
-      }
-
-      set({ isLoading: false });
-    } catch (error) {
-      console.error("Failed to regenerate project identity:", error);
-      set({ error: (error as Error).message, isLoading: false });
     }
   },
 });
