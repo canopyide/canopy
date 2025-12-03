@@ -53,6 +53,7 @@ export interface StoreSchema {
       createdAt: number;
     }>;
     terminalGridConfig?: TerminalGridConfig;
+    dockCollapsed?: boolean;
   };
   projects: {
     list: Project[];
@@ -87,6 +88,7 @@ export const store = new Store<StoreSchema>({
       recipes: [],
       hasSeenWelcome: false,
       terminalGridConfig: { strategy: "automatic", value: 3 },
+      dockCollapsed: false,
     },
     projects: {
       list: [],

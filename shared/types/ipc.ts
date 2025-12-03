@@ -383,6 +383,8 @@ export interface AppState {
   };
   /** Terminal grid layout configuration */
   terminalGridConfig?: TerminalGridConfig;
+  /** Whether the terminal dock is collapsed */
+  dockCollapsed?: boolean;
 }
 
 // Log IPC Types

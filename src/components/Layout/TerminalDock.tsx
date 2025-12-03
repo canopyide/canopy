@@ -1,11 +1,13 @@
-import { useState, useCallback, useRef } from "react";
+import { useState, useCallback, useRef, useEffect } from "react";
 import { useShallow } from "zustand/react/shallow";
+import { ChevronDown } from "lucide-react";
 import { cn } from "@/lib/utils";
 import { useTerminalStore } from "@/store";
 import { DockedTerminalItem } from "./DockedTerminalItem";
 import { TrashContainer } from "./TrashContainer";
 import { getTerminalDragData, isTerminalDrag, calculateDropIndex } from "@/utils/dragDrop";
 import { useTerminalDragAndDrop } from "@/hooks/useDragAndDrop";
+import { appClient } from "@/clients";
 
 export function TerminalDock() {
   const dockTerminals = useTerminalStore(
@@ -24,7 +26,26 @@ export function TerminalDock() {
   const [isDragOver, setIsDragOver] = useState(false);
   const [dropIndex, setDropIndex] = useState<number | null>(null);
   const [draggedId, setDraggedId] = useState<string | null>(null);
+  const [isCollapsed, setIsCollapsed] = useState(false);
   const dockRef = useRef<HTMLDivElement>(null);
+
+  useEffect(() => {
+    let cancelled = false;
+    appClient.getState().then((state) => {
+      if (!cancelled && state.dockCollapsed !== undefined) {
+        setIsCollapsed(state.dockCollapsed);
+      }
+    });
+    return () => {
+      cancelled = true;
+    };
+  }, []);
+
+  const handleToggleCollapse = useCallback(() => {
+    const newState = !isCollapsed;
+    setIsCollapsed(newState);
+    appClient.setState({ dockCollapsed: newState });
+  }, [isCollapsed]);
 
   const trashedItems = Array.from(trashedTerminals.values())
     .map((trashed) => ({
@@ -38,25 +59,39 @@ export function TerminalDock() {
 
   const activeDockTerminals = dockTerminals;
 
-  const handleDragOver = useCallback((e: React.DragEvent) => {
-    if (!isTerminalDrag(e.dataTransfer)) return;
+  const handleDragOver = useCallback(
+    (e: React.DragEvent) => {
+      if (!isTerminalDrag(e.dataTransfer)) return;
 
-    e.preventDefault();
-    e.dataTransfer.dropEffect = "move";
-    setIsDragOver(true);
+      e.preventDefault();
+      e.dataTransfer.dropEffect = "move";
+      setIsDragOver(true);
 
-    if (dockRef.current) {
-      const dockItems = Array.from(
-        dockRef.current.querySelectorAll("[data-docked-terminal-id]")
-      ) as HTMLElement[];
+      if (isCollapsed) {
+        setIsCollapsed(false);
+        appClient.setState({ dockCollapsed: false });
+      }
 
-      const data = getTerminalDragData(e.dataTransfer);
-      const sourceIndex = data?.sourceLocation === "dock" ? data.sourceIndex : undefined;
+      if (dockRef.current) {
+        const dockItems = Array.from(
+          dockRef.current.querySelectorAll("[data-docked-terminal-id]")
+        ) as HTMLElement[];
 
-      const index = calculateDropIndex(e.clientX, e.clientY, dockItems, "horizontal", sourceIndex);
-      setDropIndex(index);
-    }
-  }, []);
+        const data = getTerminalDragData(e.dataTransfer);
+        const sourceIndex = data?.sourceLocation === "dock" ? data.sourceIndex : undefined;
+
+        const index = calculateDropIndex(
+          e.clientX,
+          e.clientY,
+          dockItems,
+          "horizontal",
+          sourceIndex
+        );
+        setDropIndex(index);
+      }
+    },
+    [isCollapsed]
+  );
 
   const handleDragLeave = useCallback((e: React.DragEvent) => {
     if (!e.currentTarget.contains(e.relatedTarget as Node)) {
@@ -149,31 +184,51 @@ export function TerminalDock() {
           )
         ) : (
           <>
-            <span className="text-xs text-canopy-text/60 mr-2 shrink-0 select-none">
-              Background ({activeDockTerminals.length})
-            </span>
-
-            {activeDockTerminals.map((terminal, index) => (
-              <DockedTerminalItem
-                key={terminal.id}
-                terminal={terminal}
-                index={index}
-                isDragging={draggedId === terminal.id}
-                isDropTarget={dropIndex === index && isDragOver}
-                onDragStart={handleDockItemDragStart}
-                onDragEnd={handleDockItemDragEnd}
+            <button
+              onClick={handleToggleCollapse}
+              className={cn(
+                "flex items-center gap-1 text-xs text-canopy-text/60 mr-2 shrink-0 select-none",
+                "hover:text-canopy-text transition-colors rounded px-1 py-0.5",
+                "focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-canopy-accent"
+              )}
+              title={isCollapsed ? "Show background terminals" : "Hide background terminals"}
+              aria-expanded={!isCollapsed}
+            >
+              <ChevronDown
+                className={cn(
+                  "h-3 w-3 transition-transform duration-200",
+                  isCollapsed && "-rotate-90"
+                )}
+                aria-hidden="true"
               />
-            ))}
+              <span>Background ({activeDockTerminals.length})</span>
+            </button>
 
-            {isDragOver && dropIndex === activeDockTerminals.length && (
-              <div className="w-0.5 h-6 bg-canopy-accent rounded shrink-0" />
+            {!isCollapsed && (
+              <>
+                {activeDockTerminals.map((terminal, index) => (
+                  <DockedTerminalItem
+                    key={terminal.id}
+                    terminal={terminal}
+                    index={index}
+                    isDragging={draggedId === terminal.id}
+                    isDropTarget={dropIndex === index && isDragOver}
+                    onDragStart={handleDockItemDragStart}
+                    onDragEnd={handleDockItemDragEnd}
+                  />
+                ))}
+
+                {isDragOver && dropIndex === activeDockTerminals.length && (
+                  <div className="w-0.5 h-6 bg-canopy-accent rounded shrink-0" />
+                )}
+              </>
             )}
           </>
         )}
       </div>
 
-      {/* Separator between sections - only show if both have content */}
-      {activeDockTerminals.length > 0 && trashedItems.length > 0 && (
+      {/* Separator between sections - only show if both have content and not collapsed */}
+      {!isCollapsed && activeDockTerminals.length > 0 && trashedItems.length > 0 && (
         <div className="w-px h-5 bg-canopy-border mx-2 shrink-0" />
       )}
 
