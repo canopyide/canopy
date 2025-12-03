@@ -163,3 +163,36 @@ npm run dev
 | `NODE_ENV` | Set to `development` in dev mode |
 
 OpenAI API key and other secrets are stored via electron-store, not environment variables.
+
+## Continuous Integration
+
+GitHub Actions runs automatically on all PRs and pushes to `main`. The CI workflow includes:
+
+### Quality Checks (Ubuntu)
+
+- **TypeScript**: Runs `npm run typecheck` across all tsconfig files
+- **ESLint**: Lints code with `npm run lint`
+- **Prettier**: Checks formatting with `npm run format:check`
+- **Vitest**: Runs tests with `npm run test`
+
+### Cross-Platform Builds
+
+Builds run on macOS, Linux, and Windows to verify:
+
+- Native module compilation (`node-pty` via `electron-rebuild`)
+- TypeScript compilation for main and preload processes
+- Vite production build for renderer
+
+Tests also run on Windows to catch OS-specific issues (path separators, line endings, permissions).
+
+### Native Module Notes
+
+The postinstall script runs `electron-rebuild -f -w node-pty` automatically. CI relies on this to rebuild native modules for each platform.
+
+**Windows requirements**: The Windows build job includes Python and configures `msvs_version 2022` to ensure node-gyp can compile native modules with the Visual Studio Build Tools available on GitHub's Windows runners.
+
+### CI Status
+
+[![CI](https://github.com/gregpriday/canopy-electron/actions/workflows/ci.yml/badge.svg)](https://github.com/gregpriday/canopy-electron/actions/workflows/ci.yml)
+
+View the workflow configuration at [`.github/workflows/ci.yml`](../.github/workflows/ci.yml).
