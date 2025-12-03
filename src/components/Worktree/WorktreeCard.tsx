@@ -529,7 +529,7 @@ export function WorktreeCard({
             <div className="flex items-center gap-1">
               <Terminal className="w-2.5 h-2.5" />
               <span>{terminalCounts.total}</span>
-              {(terminalCounts.byState.working > 0 || terminalCounts.byState.waiting > 0) && (
+              {terminalCounts.byState.working > 0 && (
                 <div className="w-1 h-1 rounded-full bg-[var(--color-status-success)] animate-pulse" />
               )}
             </div>

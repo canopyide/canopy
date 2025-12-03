@@ -51,7 +51,7 @@ const STATE_CONFIG: Record<
 };
 
 export function AgentStatusIndicator({ state, className }: AgentStatusIndicatorProps) {
-  if (!state || state === "idle") {
+  if (!state || state === "idle" || state === "waiting") {
     return null;
   }
 
@@ -63,8 +63,7 @@ export function AgentStatusIndicator({ state, className }: AgentStatusIndicatorP
   return (
     <span
       className={cn(
-        "inline-flex items-center justify-center w-5 h-5 text-xs font-bold",
-        state === "waiting" ? "rounded-sm px-2" : "rounded-full",
+        "inline-flex items-center justify-center w-5 h-5 text-xs font-bold rounded-full",
         config.color,
         config.bgColor,
         config.borderColor && "border",
@@ -82,10 +81,10 @@ export function AgentStatusIndicator({ state, className }: AgentStatusIndicatorP
 }
 
 const STATE_PRIORITY: Record<AgentState, number> = {
-  waiting: 5,
+  failed: 5,
   working: 4,
-  failed: 3,
-  completed: 2,
+  completed: 3,
+  waiting: 2,
   idle: 1,
 };
 
