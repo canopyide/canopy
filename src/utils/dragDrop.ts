@@ -157,3 +157,55 @@ export function getTerminalDragData(dataTransfer: DataTransfer): TerminalDragDat
 export function isTerminalDrag(dataTransfer: DataTransfer): boolean {
   return dataTransfer.types.includes(TERMINAL_DRAG_MIME_TYPE);
 }
+
+/**
+ * Creates a compact drag image "pill" with terminal icon and title.
+ * Must be appended to DOM before use, then removed after setDragImage.
+ */
+export function createTerminalDragImage(title: string, brandColor?: string): HTMLElement {
+  const el = document.createElement("div");
+
+  const bgColor = "#18181b";
+  const borderColor = "#27272a";
+  const textColor = "#e4e4e7";
+  const iconColor = brandColor || textColor;
+
+  el.style.cssText = `
+    position: absolute;
+    top: -1000px;
+    left: -1000px;
+    padding: 6px 12px;
+    background-color: ${bgColor};
+    border: 1px solid ${borderColor};
+    border-radius: 6px;
+    box-shadow: 0 4px 12px rgba(0, 0, 0, 0.5);
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    font-family: "JetBrains Mono", monospace;
+    font-size: 12px;
+    color: ${textColor};
+    z-index: 9999;
+    pointer-events: none;
+    white-space: nowrap;
+  `;
+
+  const icon = document.createElement("div");
+  icon.style.cssText = `
+    width: 8px;
+    height: 8px;
+    border-radius: 50%;
+    background-color: ${iconColor};
+    flex-shrink: 0;
+  `;
+
+  const text = document.createElement("span");
+  text.innerText = title.length > 24 ? title.slice(0, 24) + "…" : title;
+  text.style.fontWeight = "500";
+
+  el.appendChild(icon);
+  el.appendChild(text);
+
+  document.body.appendChild(el);
+  return el;
+}

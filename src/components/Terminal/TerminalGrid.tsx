@@ -5,7 +5,7 @@ import { useTerminalStore, useLayoutConfigStore, type TerminalInstance } from "@
 import { useContextInjection } from "@/hooks/useContextInjection";
 import { useTerminalDragAndDrop } from "@/hooks/useDragAndDrop";
 import { TerminalPane } from "./TerminalPane";
-import { DropPlaceholder } from "./DropPlaceholder";
+import { TerminalGhost } from "./TerminalGhost";
 import { FilePickerModal } from "@/components/ContextInjection";
 import { ErrorBoundary } from "@/components/ErrorBoundary";
 import { Terminal } from "lucide-react";
@@ -353,16 +353,16 @@ export function TerminalGrid({ className, defaultCwd }: TerminalGridProps) {
       );
     });
 
-    // Insert placeholder at drop index when dragging over grid
+    // Insert ghost placeholder at drop index when dragging over grid
     if (showPlaceholder && dragState.dropIndex !== null) {
       items.splice(
         dragState.dropIndex,
         0,
-        <div key="grid-placeholder" className="relative h-full">
-          <DropPlaceholder
-            label="Drop to move"
-            className="h-full w-full border-2 border-dashed border-canopy-accent/30 bg-canopy-accent/5 rounded-lg"
-          />
+        <div
+          key="grid-placeholder"
+          className="relative h-full animate-in fade-in zoom-in-95 duration-200"
+        >
+          <TerminalGhost label="Drop Here" />
         </div>
       );
     }
@@ -443,13 +443,7 @@ export function TerminalGrid({ className, defaultCwd }: TerminalGridProps) {
   return (
     <div
       ref={gridRef}
-      className={cn(
-        "h-full bg-noise p-1",
-        dragState.isDragging &&
-          dragState.dropZone === "grid" &&
-          "ring-2 ring-canopy-accent/30 ring-inset",
-        className
-      )}
+      className={cn("h-full bg-noise p-1", className)}
       style={{
         display: "grid",
         gridTemplateColumns: `repeat(${gridCols}, 1fr)`,

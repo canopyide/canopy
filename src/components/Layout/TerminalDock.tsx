@@ -5,7 +5,6 @@ import { cn } from "@/lib/utils";
 import { useTerminalStore } from "@/store";
 import { DockedTerminalItem } from "./DockedTerminalItem";
 import { TrashContainer } from "./TrashContainer";
-import { DropPlaceholder } from "../Terminal/DropPlaceholder";
 import { getTerminalDragData, isTerminalDrag, calculateDropIndex } from "@/utils/dragDrop";
 import { useTerminalDragAndDrop } from "@/hooks/useDragAndDrop";
 import { appClient } from "@/clients";
@@ -188,16 +187,13 @@ export function TerminalDock() {
       );
     });
 
-    // Inject placeholder if dragging over dock
+    // Inject placeholder if dragging over dock (subtle dashed box matching dock item size)
     if (isDragOver && dropIndex !== null && dropIndex <= activeDockTerminals.length) {
       items.splice(
         dropIndex,
         0,
-        <div key="dock-placeholder" className="w-32 h-8 flex-shrink-0">
-          <DropPlaceholder
-            className="h-full w-full p-0 border-canopy-accent/40 bg-canopy-accent/5 rounded"
-            label="Drop"
-          />
+        <div key="dock-placeholder" className="flex-shrink-0">
+          <div className="h-[26px] w-24 rounded border border-dashed border-white/20 bg-white/5" />
         </div>
       );
     }
@@ -220,7 +216,7 @@ export function TerminalDock() {
         "flex items-center px-4 gap-2",
         "z-40 shrink-0",
         isEmpty && !isDragOver && "h-10",
-        isDragOver && "ring-2 ring-canopy-accent/50 ring-inset bg-canopy-accent/5"
+        isDragOver && "bg-white/[0.03]"
       )}
       role="list"
       aria-dropeffect={isDragOver ? "move" : undefined}

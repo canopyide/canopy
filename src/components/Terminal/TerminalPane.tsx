@@ -31,6 +31,7 @@ import { useErrorStore, useTerminalStore, getTerminalRefreshTier, type RetryActi
 import { useContextInjection } from "@/hooks/useContextInjection";
 import type { AgentState } from "@/types";
 import { errorsClient } from "@/clients";
+import { createTerminalDragImage } from "@/utils/dragDrop";
 
 export type { TerminalType };
 
@@ -289,6 +290,23 @@ function TerminalPaneComponent({
   const canDrag = !isMaximized && !!onDragStart;
   const isWorking = agentState === "working";
 
+  const handleDragStartWithImage = useCallback(
+    (e: React.DragEvent) => {
+      if (!onDragStart) return;
+
+      const brandColor = getBrandColorHex(type);
+      const dragImage = createTerminalDragImage(title, brandColor);
+      e.dataTransfer.setDragImage(dragImage, 10, 15);
+
+      setTimeout(() => {
+        document.body.removeChild(dragImage);
+      }, 0);
+
+      onDragStart(e);
+    },
+    [onDragStart, title, type]
+  );
+
   return (
     <div
       ref={containerRef}
@@ -349,7 +367,7 @@ function TerminalPaneComponent({
         )}
         onDoubleClick={onToggleMaximize}
         draggable={canDrag}
-        onDragStart={canDrag ? onDragStart : undefined}
+        onDragStart={canDrag ? handleDragStartWithImage : undefined}
       >
         <div className="flex items-center gap-2 min-w-0">
           <span className="shrink-0 flex items-center justify-center w-3.5 h-3.5 text-canopy-text">
