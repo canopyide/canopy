@@ -1,10 +1,53 @@
-import { defineConfig } from "vite";
+import { defineConfig, type Plugin } from "vite";
 import react from "@vitejs/plugin-react";
 import tailwindcss from "@tailwindcss/vite";
 import path from "path";
 
+// CSP definitions for development and production
+const DEV_CSP = [
+  "default-src 'self' http://localhost:5173 ws://localhost:5173",
+  "script-src 'self' http://localhost:5173",
+  "style-src 'self' http://localhost:5173 'unsafe-inline'",
+  "font-src 'self' data:",
+  "connect-src 'self' http://localhost:5173 ws://localhost:5173",
+  "img-src 'self' http://localhost:5173 https://avatars.githubusercontent.com",
+  "frame-src 'self' https://www.youtube.com",
+].join("; ");
+
+const PROD_CSP = [
+  "default-src 'self'",
+  "script-src 'self'",
+  "style-src 'self' 'unsafe-inline'",
+  "font-src 'self' data:",
+  "connect-src 'self'",
+  "img-src 'self' https://avatars.githubusercontent.com",
+  "frame-src 'self' https://www.youtube.com",
+].join("; ");
+
+// Plugin to transform CSP meta tag based on build mode
+function cspTransformPlugin(): Plugin {
+  return {
+    name: "csp-transform",
+    transformIndexHtml(html, ctx) {
+      const csp = ctx.server ? DEV_CSP : PROD_CSP;
+      const cspRegex = /<meta\s+[^>]*http-equiv=["']Content-Security-Policy["'][^>]*>/i;
+
+      if (!cspRegex.test(html)) {
+        throw new Error(
+          'CSP meta tag not found in index.html. Expected: <meta http-equiv="Content-Security-Policy" ...>'
+        );
+      }
+
+      return html.replace(
+        cspRegex,
+        `<meta http-equiv="Content-Security-Policy" content="${csp}" />`
+      );
+    },
+  };
+}
+
 export default defineConfig({
-  plugins: [react(), tailwindcss()],
+  plugins: [react(), tailwindcss(), cspTransformPlugin()],
   base: "./",
   build: {
     outDir: "dist",
