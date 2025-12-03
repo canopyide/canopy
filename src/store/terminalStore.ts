@@ -11,6 +11,7 @@ import {
   createTerminalFocusSlice,
   createTerminalCommandQueueSlice,
   createTerminalBulkActionsSlice,
+  flushTerminalPersistence,
   type TerminalRegistrySlice,
   type TerminalFocusSlice,
   type TerminalCommandQueueSlice,
@@ -178,6 +179,7 @@ let activityUnsubscribe: (() => void) | null = null;
 let trashedUnsubscribe: (() => void) | null = null;
 let restoredUnsubscribe: (() => void) | null = null;
 let exitUnsubscribe: (() => void) | null = null;
+let beforeUnloadHandler: (() => void) | null = null;
 
 export function cleanupTerminalStoreListeners() {
   if (agentStateUnsubscribe) {
@@ -199,6 +201,10 @@ export function cleanupTerminalStoreListeners() {
   if (exitUnsubscribe) {
     exitUnsubscribe();
     exitUnsubscribe = null;
+  }
+  if (beforeUnloadHandler) {
+    window.removeEventListener("beforeunload", beforeUnloadHandler);
+    beforeUnloadHandler = null;
   }
 }
 
@@ -265,6 +271,12 @@ export function setupTerminalStoreListeners() {
       state.removeTerminal(id);
     }
   });
+
+  // Flush pending terminal persistence on window close to prevent data loss
+  beforeUnloadHandler = () => {
+    flushTerminalPersistence();
+  };
+  window.addEventListener("beforeunload", beforeUnloadHandler);
 
   return cleanupTerminalStoreListeners;
 }
