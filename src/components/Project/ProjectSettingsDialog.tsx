@@ -1,6 +1,8 @@
 import { useState, useEffect } from "react";
-import { Plus, Trash2, X, Sparkles, RefreshCw } from "lucide-react";
+import { Plus, Trash2, X, Sparkles } from "lucide-react";
+import EmojiPicker, { Theme } from "emoji-picker-react";
 import { Button } from "@/components/ui/button";
+import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover";
 import { useProjectSettings } from "@/hooks/useProjectSettings";
 import { useProjectStore } from "@/store/projectStore";
 import type { RunCommand } from "@/types";
@@ -16,20 +18,35 @@ interface ProjectSettingsDialogProps {
 export function ProjectSettingsDialog({ projectId, isOpen, onClose }: ProjectSettingsDialogProps) {
   const { settings, detectedRunners, saveSettings, promoteToSaved, isLoading, error } =
     useProjectSettings(projectId);
-  const { projects, regenerateIdentity } = useProjectStore();
+  const { projects, updateProject } = useProjectStore();
   const currentProject = projects.find((p) => p.id === projectId);
 
   const [commands, setCommands] = useState<RunCommand[]>([]);
   const [isSaving, setIsSaving] = useState(false);
   const [saveError, setSaveError] = useState<string | null>(null);
   const [promotingIds, setPromotingIds] = useState<Set<string>>(new Set());
-  const [isRegenerating, setIsRegenerating] = useState(false);
+  const [name, setName] = useState(currentProject?.name || "");
+  const [emoji, setEmoji] = useState(currentProject?.emoji || "🌲");
+  const [isEmojiPickerOpen, setIsEmojiPickerOpen] = useState(false);
 
   useEffect(() => {
     if (isOpen && settings?.runCommands) {
       setCommands([...settings.runCommands]);
     }
   }, [settings, isOpen]);
+
+  useEffect(() => {
+    if (isOpen && currentProject) {
+      setName(currentProject.name);
+      setEmoji(currentProject.emoji || "🌲");
+    }
+  }, [isOpen, currentProject]);
+
+  useEffect(() => {
+    if (!isOpen) {
+      setIsEmojiPickerOpen(false);
+    }
+  }, [isOpen]);
 
   const handleAddCommand = () => {
     setCommands([...commands, { id: crypto.randomUUID(), name: "", command: "" }]);
@@ -49,9 +66,18 @@ export function ProjectSettingsDialog({ projectId, isOpen, onClose }: ProjectSet
     setIsSaving(true);
     setSaveError(null);
     try {
+      if (currentProject) {
+        await updateProject(projectId, {
+          name: name.trim() || currentProject.name,
+          emoji: emoji,
+        });
+      }
+
       await saveSettings({
         ...settings,
-        runCommands: commands.filter((c) => c.name && c.command),
+        runCommands: commands
+          .map((c) => ({ ...c, name: c.name.trim(), command: c.command.trim() }))
+          .filter((c) => c.name && c.command),
       });
       onClose();
     } catch (error) {
@@ -59,18 +85,6 @@ export function ProjectSettingsDialog({ projectId, isOpen, onClose }: ProjectSet
       setSaveError(error instanceof Error ? error.message : "Failed to save settings");
     } finally {
       setIsSaving(false);
-    }
-  };
-
-  const handleRegenerateIdentity = async () => {
-    setIsRegenerating(true);
-    try {
-      await regenerateIdentity(projectId);
-    } catch (error) {
-      console.error("Failed to regenerate identity:", error);
-      setSaveError(error instanceof Error ? error.message : "Failed to regenerate identity");
-    } finally {
-      setIsRegenerating(false);
     }
   };
 
@@ -123,57 +137,56 @@ export function ProjectSettingsDialog({ projectId, isOpen, onClose }: ProjectSet
                     Project Identity
                   </h3>
                   <p className="text-xs text-gray-500 mb-4">
-                    Customize how your project appears in Canopy, or regenerate with AI.
+                    Customize how your project appears in the sidebar and dashboard.
                   </p>
 
-                  <div className="space-y-4">
-                    <div className="flex items-center gap-3 p-3 rounded-md bg-canopy-bg border border-canopy-border">
-                      <div
-                        className="flex h-14 w-14 items-center justify-center rounded-xl shadow-inner shrink-0 bg-white/5"
-                        style={{
-                          background: getProjectGradient(currentProject.color),
-                        }}
-                      >
-                        <span className="text-3xl select-none filter drop-shadow-sm">
-                          {currentProject.emoji || "🌲"}
-                        </span>
-                      </div>
-                      <div className="flex-1 min-w-0">
-                        <div className="text-sm font-medium text-canopy-text truncate">
-                          {currentProject.name}
-                        </div>
-                        {currentProject.aiGeneratedName && currentProject.aiGeneratedEmoji && (
-                          <div className="text-xs text-gray-500 truncate">
-                            AI suggested: {currentProject.aiGeneratedEmoji}{" "}
-                            {currentProject.aiGeneratedName}
-                          </div>
-                        )}
-                        {currentProject.color && (
-                          <div className="text-xs text-gray-500 mt-1">
-                            Color: {currentProject.color}
-                          </div>
-                        )}
-                      </div>
-                      <Button
-                        onClick={handleRegenerateIdentity}
-                        variant="outline"
-                        size="sm"
-                        disabled={isRegenerating}
-                        className="shrink-0"
-                      >
-                        <RefreshCw
-                          className={cn("h-4 w-4 mr-2", isRegenerating && "animate-spin")}
+                  <div className="flex items-start gap-3 p-3 rounded-md bg-canopy-bg border border-canopy-border">
+                    <Popover open={isEmojiPickerOpen} onOpenChange={setIsEmojiPickerOpen}>
+                      <PopoverTrigger asChild>
+                        <button
+                          type="button"
+                          aria-label="Change project emoji"
+                          className="flex h-14 w-14 items-center justify-center rounded-xl shadow-inner shrink-0 bg-white/5 hover:bg-white/10 transition-colors border border-transparent hover:border-canopy-border cursor-pointer group"
+                          style={{
+                            background: getProjectGradient(currentProject.color),
+                          }}
+                        >
+                          <span className="text-3xl select-none filter drop-shadow-sm group-hover:scale-110 transition-transform">
+                            {emoji}
+                          </span>
+                        </button>
+                      </PopoverTrigger>
+                      <PopoverContent className="w-auto p-0 border-none bg-transparent shadow-none">
+                        <EmojiPicker
+                          theme={Theme.DARK}
+                          onEmojiClick={(emojiData) => {
+                            setEmoji(emojiData.emoji);
+                            setIsEmojiPickerOpen(false);
+                          }}
+                          lazyLoadEmojis={true}
+                          searchDisabled={false}
+                          width={350}
+                          height={400}
                         />
-                        {isRegenerating ? "Regenerating..." : "Regenerate"}
-                      </Button>
-                    </div>
+                      </PopoverContent>
+                    </Popover>
 
-                    {currentProject.aiGeneratedName && (
-                      <div className="text-xs text-gray-400 italic">
-                        Tip: Regenerate to get new AI suggestions based on your project name and
-                        structure.
-                      </div>
-                    )}
+                    <div className="flex-1 min-w-0 flex flex-col justify-center h-14">
+                      <label
+                        htmlFor="project-name-input"
+                        className="text-xs font-medium text-gray-500 mb-1.5 ml-1"
+                      >
+                        Project Name
+                      </label>
+                      <input
+                        id="project-name-input"
+                        type="text"
+                        value={name}
+                        onChange={(e) => setName(e.target.value)}
+                        className="w-full bg-transparent border border-canopy-border rounded px-3 py-2 text-sm text-canopy-text focus:outline-none focus:border-canopy-accent focus:ring-1 focus:ring-canopy-accent/30 transition-all placeholder:text-gray-600"
+                        placeholder="My Awesome Project"
+                      />
+                    </div>
                   </div>
                 </div>
               )}

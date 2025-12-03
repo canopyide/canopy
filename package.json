@@ -47,6 +47,7 @@
     "copytree": "github:gregpriday/copytree#develop",
     "diff": "^8.0.2",
     "electron-store": "^11.0.2",
+    "emoji-picker-react": "^4.16.1",
     "execa": "^9.6.0",
     "fix-path": "^5.0.0",
     "fuse.js": "^7.1.0",
