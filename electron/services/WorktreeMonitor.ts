@@ -1,25 +1,18 @@
-import type { Worktree, WorktreeChanges, AISummaryStatus } from "../types/index.js";
-import { DEFAULT_CONFIG } from "../types/config.js";
+import type { Worktree, WorktreeChanges } from "../types/index.js";
 import { invalidateGitStatusCache } from "../utils/git.js";
 import { WorktreeRemovedError } from "../utils/errorTypes.js";
-import { getAIClient } from "./ai/client.js";
 import { categorizeWorktree } from "../utils/worktreeMood.js";
 import { logWarn, logError, logInfo, logDebug } from "../utils/logger.js";
 import { events } from "./events.js";
-import { extractIssueNumberSync, extractIssueNumber } from "./ai/issueExtractor.js";
+import { extractIssueNumberSync, extractIssueNumber } from "./issueExtractor.js";
 import type { GitService } from "./GitService.js";
 import type { WorktreeService } from "./WorktreeService.js";
-import { AdaptivePollingStrategy, WorktreeSummarizer, NoteFileReader } from "./worktree/index.js";
-
-const DEFAULT_AI_DEBOUNCE_MS = DEFAULT_CONFIG.ai?.summaryDebounceMs ?? 10000;
+import { AdaptivePollingStrategy, NoteFileReader } from "./worktree/index.js";
 
 export interface WorktreeState extends Worktree {
   worktreeId: string;
   worktreeChanges: WorktreeChanges | null;
   lastActivityTimestamp: number | null;
-  aiStatus: AISummaryStatus;
-  aiNote?: string;
-  aiNoteTimestamp?: number;
   timestamp?: number;
 }
 
@@ -42,13 +35,11 @@ export class WorktreeMonitor {
 
   private isRunning: boolean = false;
   private isUpdating: boolean = false;
-  private hasGeneratedInitialSummary: boolean = false;
   private pollingEnabled: boolean = false;
 
   private prEventUnsubscribers: (() => void)[] = [];
 
   private pollingStrategy: AdaptivePollingStrategy;
-  private summarizer: WorktreeSummarizer;
   private noteReader: NoteFileReader;
 
   constructor(
@@ -70,11 +61,7 @@ export class WorktreeMonitor {
       baseInterval: this.pollingInterval,
     });
 
-    this.summarizer = new WorktreeSummarizer(this.id, gitService, DEFAULT_AI_DEBOUNCE_MS);
-
     this.noteReader = new NoteFileReader(worktree.path);
-
-    const initialAIStatus: AISummaryStatus = getAIClient() ? "active" : "disabled";
 
     const initialIssueNumber = worktree.branch
       ? extractIssueNumberSync(worktree.branch, worktree.name)
@@ -90,13 +77,9 @@ export class WorktreeMonitor {
       worktreeChanges: null,
       mood: "stable",
       summary: worktree.summary,
-      summaryLoading: false,
       modifiedCount: worktree.modifiedCount || 0,
       changes: worktree.changes,
       lastActivityTimestamp: null,
-      aiStatus: initialAIStatus,
-      aiNote: undefined,
-      aiNoteTimestamp: undefined,
       issueNumber: initialIssueNumber ?? undefined,
     };
 
@@ -178,7 +161,6 @@ export class WorktreeMonitor {
     logInfo("Stopping WorktreeMonitor", { id: this.id });
 
     this.stopPolling();
-    this.summarizer.destroy();
 
     for (const unsubscribe of this.prEventUnsubscribers) {
       unsubscribe();
@@ -203,10 +185,6 @@ export class WorktreeMonitor {
       this.pollingTimer = null;
       this.scheduleNextPoll();
     }
-  }
-
-  public setAIBufferDelay(ms: number): void {
-    this.summarizer.setAIBufferDelay(ms);
   }
 
   public setNoteConfig(enabled: boolean, filename?: string): void {
@@ -269,31 +247,20 @@ export class WorktreeMonitor {
     }
   }
 
-  public async refresh(forceAI: boolean = false): Promise<void> {
+  public async refresh(): Promise<void> {
     if (this.pollingStrategy.isCircuitBreakerTripped()) {
       this.resetCircuitBreaker();
     }
 
     await this.updateGitStatus(true);
-    if (forceAI && this.state.worktreeChanges) {
-      this.state.summaryLoading = true;
-      this.emitUpdate();
-      const context = {
-        path: this.path,
-        branch: this.branch,
-        mainBranch: this.mainBranch,
-        changes: this.state.worktreeChanges,
-      };
-      await this.summarizer.generateSummary(context, true, (result) => {
-        if (result.summary) {
-          this.state.summary = result.summary;
-          this.state.modifiedCount = result.modifiedCount;
-        }
-        this.state.aiStatus = result.aiStatus;
-        this.state.summaryLoading = false;
-        this.emitUpdate();
-      });
-    }
+  }
+
+  private calculateStateHash(changes: WorktreeChanges): string {
+    const hashInput = changes.changes
+      .map((c) => `${c.path}:${c.status}:${c.insertions ?? 0}:${c.deletions ?? 0}`)
+      .sort()
+      .join("|");
+    return hashInput;
   }
 
   private async updateGitStatus(forceRefresh: boolean = false): Promise<void> {
@@ -315,7 +282,7 @@ export class WorktreeMonitor {
       }
 
       const noteData = await this.noteReader.read();
-      const currentHash = this.summarizer.calculateStateHash(newChanges);
+      const currentHash = this.calculateStateHash(newChanges);
       const stateChanged = currentHash !== this.previousStateHash;
       const noteChanged =
         noteData?.content !== this.state.aiNote ||
@@ -327,11 +294,9 @@ export class WorktreeMonitor {
 
       const prevChanges = this.state.worktreeChanges;
       const isInitialLoad = this.previousStateHash === "";
-      const wasClean = prevChanges ? prevChanges.changedFileCount === 0 : true;
       const isNowClean = newChanges.changedFileCount === 0;
 
       let nextSummary = this.state.summary;
-      let nextSummaryLoading = this.state.summaryLoading;
       let nextLastActivityTimestamp = this.state.lastActivityTimestamp;
 
       const hasPendingChanges = newChanges.changedFileCount > 0;
@@ -342,34 +307,9 @@ export class WorktreeMonitor {
         nextLastActivityTimestamp = Date.now();
       }
 
-      let shouldTriggerAI = false;
-      let shouldScheduleAI = false;
-
-      if (isNowClean) {
-        this.summarizer.cancelScheduled();
-      }
-
-      if (isNowClean) {
+      // Use last commit message as summary
+      if (isNowClean || isInitialLoad || (prevChanges && prevChanges.changedFileCount === 0)) {
         nextSummary = await this.fetchLastCommitMessage();
-        nextSummaryLoading = false;
-      } else {
-        const isFirstDirty = isInitialLoad || wasClean;
-
-        if (isFirstDirty) {
-          nextSummary = await this.fetchLastCommitMessage();
-          nextSummaryLoading = false;
-
-          if (!(isInitialLoad && this.hasGeneratedInitialSummary)) {
-            this.hasGeneratedInitialSummary = true;
-            shouldTriggerAI = true;
-            nextSummaryLoading = true;
-            logDebug("Will trigger AI summary generation", { id: this.id, isInitialLoad });
-          }
-        } else {
-          shouldScheduleAI = true;
-          nextSummaryLoading = true;
-          logDebug(`Will schedule AI summary`, { id: this.id });
-        }
       }
 
       let nextMood = this.state.mood;
@@ -403,7 +343,6 @@ export class WorktreeMonitor {
         changes: newChanges.changes,
         modifiedCount: newChanges.changedFileCount,
         summary: nextSummary,
-        summaryLoading: nextSummaryLoading,
         lastActivityTimestamp: nextLastActivityTimestamp,
         mood: nextMood,
         aiNote: nextAiNote,
@@ -411,34 +350,6 @@ export class WorktreeMonitor {
       };
 
       this.emitUpdate();
-
-      const summaryContext = {
-        path: this.path,
-        branch: this.branch,
-        mainBranch: this.mainBranch,
-        changes: newChanges,
-      };
-
-      const onSummaryComplete = (result: {
-        summary: string;
-        modifiedCount: number;
-        aiStatus: AISummaryStatus;
-      }) => {
-        if (!this.isRunning) return;
-        if (result.summary) {
-          this.state.summary = result.summary;
-          this.state.modifiedCount = result.modifiedCount;
-        }
-        this.state.aiStatus = result.aiStatus;
-        this.state.summaryLoading = false;
-        this.emitUpdate();
-      };
-
-      if (shouldTriggerAI) {
-        this.summarizer.triggerImmediate(summaryContext, onSummaryComplete);
-      } else if (shouldScheduleAI) {
-        this.summarizer.scheduleGeneration(summaryContext, onSummaryComplete);
-      }
     } catch (error) {
       if (error instanceof WorktreeRemovedError) {
         logWarn("Worktree directory not accessible (transient or deleted)", {
@@ -450,7 +361,6 @@ export class WorktreeMonitor {
           ...this.state,
           mood: "error",
           summary: "⚠️ Directory not accessible",
-          summaryLoading: false,
         };
 
         this.emitUpdate();
@@ -465,7 +375,6 @@ export class WorktreeMonitor {
 
       logError("Failed to update git status", error as Error, { id: this.id });
       this.state.mood = "error";
-      this.state.summaryLoading = false;
       this.emitUpdate();
 
       throw error;

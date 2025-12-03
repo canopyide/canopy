@@ -53,8 +53,4 @@ export const projectClient = {
   detectRunners: (projectId: string): Promise<RunCommand[]> => {
     return window.electron.project.detectRunners(projectId);
   },
-
-  regenerateIdentity: (projectId: string): Promise<Project> => {
-    return window.electron.project.regenerateIdentity(projectId);
-  },
 } as const;

@@ -1,5 +1,5 @@
 import { useEffect, useState, useRef } from "react";
-import { ChevronsUpDown, Plus, Check, Sparkles, Loader2 } from "lucide-react";
+import { ChevronsUpDown, Plus, Check } from "lucide-react";
 import { cn } from "@/lib/utils";
 import { getProjectGradient } from "@/lib/colorUtils";
 import { useProjectStore } from "@/store/projectStore";
@@ -24,23 +24,11 @@ export function ProjectSwitcher() {
     getCurrentProject,
     switchProject,
     addProject,
-    regenerateIdentity,
   } = useProjectStore();
 
   const { addNotification } = useNotificationStore();
   const [isOpen, setIsOpen] = useState(false);
-  const [regeneratingId, setRegeneratingId] = useState<string | null>(null);
   const switchTimeoutRef = useRef<NodeJS.Timeout | null>(null);
-
-  const handleRegenerate = async (e: React.MouseEvent, projectId: string) => {
-    e.stopPropagation();
-    setRegeneratingId(projectId);
-    try {
-      await regenerateIdentity(projectId);
-    } finally {
-      setRegeneratingId(null);
-    }
-  };
 
   const handleProjectSwitch = (projectId: string) => {
     if (switchTimeoutRef.current) {
@@ -225,24 +213,7 @@ export function ProjectSwitcher() {
                   </span>
                 </div>
 
-                {project.isFallbackIdentity ? (
-                  <Button
-                    variant="ghost"
-                    size="icon"
-                    className="h-6 w-6 text-muted-foreground hover:text-canopy-accent hover:bg-canopy-accent/10"
-                    onClick={(e) => handleRegenerate(e, project.id)}
-                    disabled={regeneratingId === project.id}
-                    title="Regenerate Icon & Name"
-                  >
-                    {regeneratingId === project.id ? (
-                      <Loader2 className="h-3 w-3 animate-spin" />
-                    ) : (
-                      <Sparkles className="h-3 w-3" />
-                    )}
-                  </Button>
-                ) : (
-                  isActive && <Check className="h-4 w-4 text-canopy-accent ml-2" />
-                )}
+                {isActive && <Check className="h-4 w-4 text-canopy-accent ml-2" />}
               </DropdownMenuItem>
             );
           })}

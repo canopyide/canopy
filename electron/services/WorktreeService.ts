@@ -1,7 +1,7 @@
 import { BrowserWindow } from "electron";
 import PQueue from "p-queue";
 import { WorktreeMonitor, type WorktreeState } from "./WorktreeMonitor.js";
-import type { Worktree, MonitorConfig, AIConfig } from "../types/index.js";
+import type { Worktree, MonitorConfig } from "../types/index.js";
 import { DEFAULT_CONFIG } from "../types/config.js";
 import { logInfo, logWarn, logDebug, logError } from "../utils/logger.js";
 import { events } from "./events.js";
@@ -15,7 +15,6 @@ import { pullRequestService } from "./PullRequestService.js";
 const DEFAULT_ACTIVE_WORKTREE_INTERVAL_MS = DEFAULT_CONFIG.monitor?.pollIntervalActive ?? 2000;
 const DEFAULT_BACKGROUND_WORKTREE_INTERVAL_MS =
   DEFAULT_CONFIG.monitor?.pollIntervalBackground ?? 10000;
-const DEFAULT_AI_DEBOUNCE_MS = DEFAULT_CONFIG.ai?.summaryDebounceMs ?? 10000;
 
 const NOTE_PATH = DEFAULT_CONFIG.note?.filename ?? "canopy/note";
 
@@ -74,7 +73,6 @@ interface PendingSyncRequest {
   activeWorktreeId: string | null;
   mainBranch: string;
   monitorConfig?: MonitorConfig;
-  aiConfig?: AIConfig;
 }
 
 export class WorktreeService {
@@ -86,7 +84,6 @@ export class WorktreeService {
   private pendingSync: PendingSyncRequest | null = null;
   private pollIntervalActive: number = DEFAULT_ACTIVE_WORKTREE_INTERVAL_MS;
   private pollIntervalBackground: number = DEFAULT_BACKGROUND_WORKTREE_INTERVAL_MS;
-  private aiDebounceMs: number = DEFAULT_AI_DEBOUNCE_MS;
   private adaptiveBackoff: boolean = DEFAULT_CONFIG.monitor?.adaptiveBackoff ?? true;
   private pollIntervalMax: number = DEFAULT_CONFIG.monitor?.pollIntervalMax ?? 30000;
   private circuitBreakerThreshold: number = DEFAULT_CONFIG.monitor?.circuitBreakerThreshold ?? 3;
@@ -149,14 +146,12 @@ export class WorktreeService {
    * @param activeWorktreeId - ID of the currently active worktree
    * @param mainBranch - Main branch name (default: 'main')
    * @param monitorConfig - Optional polling interval configuration
-   * @param aiConfig - Optional AI summary debounce configuration
    */
   public async sync(
     worktrees: Worktree[],
     activeWorktreeId: string | null = null,
     mainBranch: string = "main",
-    monitorConfig?: MonitorConfig,
-    aiConfig?: AIConfig
+    monitorConfig?: MonitorConfig
   ): Promise<void> {
     // If already syncing, queue this request and return
     if (this.isSyncing) {
@@ -166,7 +161,6 @@ export class WorktreeService {
         activeWorktreeId,
         mainBranch,
         monitorConfig,
-        aiConfig,
       };
       return;
     }
@@ -193,11 +187,6 @@ export class WorktreeService {
       }
       if (monitorConfig?.circuitBreakerThreshold !== undefined) {
         this.circuitBreakerThreshold = monitorConfig.circuitBreakerThreshold;
-      }
-
-      // Update AI debounce from config
-      if (aiConfig?.summaryDebounceMs !== undefined) {
-        this.aiDebounceMs = aiConfig.summaryDebounceMs;
       }
 
       // Initialize PR service if we have worktrees and it hasn't been initialized yet
@@ -256,9 +245,6 @@ export class WorktreeService {
 
           existingMonitor.setPollingInterval(interval);
 
-          // Update AI debounce
-          existingMonitor.setAIBufferDelay(this.aiDebounceMs);
-
           // Update adaptive backoff settings
           existingMonitor.setAdaptiveBackoffConfig(
             this.adaptiveBackoff,
@@ -283,9 +269,6 @@ export class WorktreeService {
           const interval = isActive ? this.pollIntervalActive : this.pollIntervalBackground;
 
           monitor.setPollingInterval(interval);
-
-          // Set AI debounce
-          monitor.setAIBufferDelay(this.aiDebounceMs);
 
           // Set adaptive backoff settings
           monitor.setAdaptiveBackoffConfig(
@@ -336,8 +319,7 @@ export class WorktreeService {
           pending.worktrees,
           pending.activeWorktreeId,
           pending.mainBranch,
-          pending.monitorConfig,
-          pending.aiConfig
+          pending.monitorConfig
         );
       }
     }
@@ -394,21 +376,18 @@ export class WorktreeService {
    * Refresh a specific worktree or all worktrees.
    *
    * @param worktreeId - Optional worktree ID. If not provided, refreshes all.
-   * @param forceAI - Force AI summary regeneration (default: false)
    */
-  public async refresh(worktreeId?: string, forceAI: boolean = false): Promise<void> {
+  public async refresh(worktreeId?: string): Promise<void> {
     if (worktreeId) {
       const monitor = this.monitors.get(worktreeId);
       if (monitor) {
-        await monitor.refresh(forceAI);
+        await monitor.refresh();
       } else {
         logWarn("Attempted to refresh non-existent worktree", { worktreeId });
       }
     } else {
       // Refresh all
-      const promises = Array.from(this.monitors.values()).map((monitor) =>
-        monitor.refresh(forceAI)
-      );
+      const promises = Array.from(this.monitors.values()).map((monitor) => monitor.refresh());
       await Promise.all(promises);
     }
   }

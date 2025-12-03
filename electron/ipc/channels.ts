@@ -113,14 +113,6 @@ export const CHANNELS = {
   HISTORY_EXPORT_SESSION: "history:export-session",
   HISTORY_DELETE_SESSION: "history:delete-session",
 
-  AI_GET_CONFIG: "ai:get-config",
-  AI_SET_KEY: "ai:set-key",
-  AI_CLEAR_KEY: "ai:clear-key",
-  AI_SET_MODEL: "ai:set-model",
-  AI_SET_ENABLED: "ai:set-enabled",
-  AI_VALIDATE_KEY: "ai:validate-key",
-  AI_GENERATE_PROJECT_IDENTITY: "ai:generate-project-identity",
-
   AGENT_SETTINGS_GET: "agent-settings:get",
   AGENT_SETTINGS_SET: "agent-settings:set",
   AGENT_SETTINGS_RESET: "agent-settings:reset",

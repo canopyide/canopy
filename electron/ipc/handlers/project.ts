@@ -4,8 +4,7 @@ import os from "os";
 import { CHANNELS } from "../channels.js";
 import { sendToRenderer } from "../utils.js";
 import { projectStore } from "../../services/ProjectStore.js";
-import { generateProjectIdentity } from "../../services/ai/identity.js";
-import { runCommandDetector } from "../../services/ai/RunCommandDetector.js";
+import { runCommandDetector } from "../../services/RunCommandDetector.js";
 import type { HandlerDependencies } from "../types.js";
 import type {
   SystemOpenExternalPayload,
@@ -174,40 +173,6 @@ export function registerProjectHandlers(deps: HandlerDependencies): () => void {
   };
   ipcMain.handle(CHANNELS.PROJECT_UPDATE, handleProjectUpdate);
   handlers.push(() => ipcMain.removeHandler(CHANNELS.PROJECT_UPDATE));
-
-  const handleProjectRegenerateIdentity = async (
-    _event: Electron.IpcMainInvokeEvent,
-    projectId: string
-  ) => {
-    if (typeof projectId !== "string" || !projectId) {
-      throw new Error("Invalid project ID");
-    }
-
-    const project = projectStore.getProjectById(projectId);
-    if (!project) {
-      throw new Error(`Project not found: ${projectId}`);
-    }
-
-    const result = await generateProjectIdentity(project.path);
-
-    if (!result.success || !result.identity) {
-      const errorMessage = result.error?.message || "AI identity generation failed";
-      throw new Error(errorMessage);
-    }
-
-    const updates: Partial<Project> = {
-      aiGeneratedName: result.identity.title,
-      aiGeneratedEmoji: result.identity.emoji,
-      color: result.identity.gradientStart,
-      name: result.identity.title,
-      emoji: result.identity.emoji,
-      isFallbackIdentity: false,
-    };
-
-    return projectStore.updateProject(projectId, updates);
-  };
-  ipcMain.handle(CHANNELS.PROJECT_REGENERATE_IDENTITY, handleProjectRegenerateIdentity);
-  handlers.push(() => ipcMain.removeHandler(CHANNELS.PROJECT_REGENERATE_IDENTITY));
 
   const handleProjectSwitch = async (_event: Electron.IpcMainInvokeEvent, projectId: string) => {
     if (typeof projectId !== "string" || !projectId) {
