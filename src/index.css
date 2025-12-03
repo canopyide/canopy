@@ -356,11 +356,6 @@ body,
     0 2px 8px -2px rgba(0, 0, 0, 0.4);
 }
 
-/* Terminal content padding - breathing room for text */
-.xterm-screen {
-  padding: 8px 0 0 8px;
-}
-
 /* Waiting For You Strip - demands attention */
 @keyframes waiting-strip-pulse {
   0%,
