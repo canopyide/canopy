@@ -7,6 +7,7 @@ export const CHANNELS = {
   WORKTREE_CREATE: "worktree:create",
   WORKTREE_LIST_BRANCHES: "worktree:list-branches",
   WORKTREE_PR_REFRESH: "worktree:pr-refresh",
+  WORKTREE_GET_DEFAULT_PATH: "worktree:get-default-path",
 
   DEVSERVER_START: "devserver:start",
   DEVSERVER_STOP: "devserver:stop",

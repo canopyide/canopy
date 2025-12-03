@@ -52,10 +52,21 @@ export function NewWorktreeDialog({
 
   useEffect(() => {
     if (newBranch && rootPath) {
-      const repoName = rootPath.split("/").pop() || "repo";
-      const sanitizedBranch = newBranch.replace(/[^a-zA-Z0-9-_]/g, "-");
-      const suggestedPath = `${rootPath}/../${repoName}-worktrees/${sanitizedBranch}`;
-      setWorktreePath(suggestedPath);
+      const trimmedBranch = newBranch.trim();
+      worktreeClient
+        .getDefaultPath(rootPath, trimmedBranch)
+        .then((suggestedPath) => {
+          setWorktreePath(suggestedPath);
+        })
+        .catch((err) => {
+          console.error("Failed to get default path:", err);
+          const sanitizedBranch = trimmedBranch.replace(/[^a-zA-Z0-9-_]/g, "-");
+          const separator = rootPath.includes("\\") ? "\\" : "/";
+          const repoName = rootPath.split(/[/\\]/).pop() || "repo";
+          setWorktreePath(
+            `${rootPath}${separator}..${separator}${repoName}-worktrees${separator}${sanitizedBranch}`
+          );
+        });
     }
   }, [newBranch, rootPath]);
 

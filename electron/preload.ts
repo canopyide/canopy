@@ -71,6 +71,7 @@ const CHANNELS = {
   WORKTREE_CREATE: "worktree:create",
   WORKTREE_LIST_BRANCHES: "worktree:list-branches",
   WORKTREE_PR_REFRESH: "worktree:pr-refresh",
+  WORKTREE_GET_DEFAULT_PATH: "worktree:get-default-path",
   WORKTREE_SET_ADAPTIVE_BACKOFF_CONFIG: "worktree:set-adaptive-backoff-config",
   WORKTREE_IS_CIRCUIT_BREAKER_TRIPPED: "worktree:is-circuit-breaker-tripped",
   WORKTREE_GET_ADAPTIVE_BACKOFF_METRICS: "worktree:get-adaptive-backoff-metrics",
@@ -229,6 +230,9 @@ const api: ElectronAPI = {
       _typedInvoke(CHANNELS.WORKTREE_CREATE, { rootPath, options }),
 
     listBranches: (rootPath: string) => _typedInvoke(CHANNELS.WORKTREE_LIST_BRANCHES, { rootPath }),
+
+    getDefaultPath: (rootPath: string, branchName: string): Promise<string> =>
+      _typedInvoke(CHANNELS.WORKTREE_GET_DEFAULT_PATH, { rootPath, branchName }),
 
     setAdaptiveBackoffConfig: (enabled: boolean, maxInterval?: number, threshold?: number) =>
       _typedInvoke(CHANNELS.WORKTREE_SET_ADAPTIVE_BACKOFF_CONFIG, {
