@@ -1,4 +1,4 @@
-import { useState, useCallback, useEffect, useRef } from "react";
+import React, { useState, useCallback, useEffect, useRef } from "react";
 import { useShallow } from "zustand/react/shallow";
 import {
   Terminal,
@@ -28,7 +28,7 @@ import { StateBadge } from "./StateBadge";
 import { ActivityBadge } from "./ActivityBadge";
 import { ErrorBanner } from "../Errors/ErrorBanner";
 import { useErrorStore, useTerminalStore, getTerminalRefreshTier, type RetryAction } from "@/store";
-import { useContextInjection, type CopyTreeProgress } from "@/hooks/useContextInjection";
+import { useContextInjection } from "@/hooks/useContextInjection";
 import type { AgentState } from "@/types";
 import { errorsClient } from "@/clients";
 
@@ -48,8 +48,6 @@ export interface TerminalPaneProps {
   cwd: string;
   isFocused: boolean;
   isMaximized?: boolean;
-  isInjecting?: boolean;
-  injectionProgress?: CopyTreeProgress | null;
   agentState?: AgentState;
   activity?: ActivityState | null;
   onFocus: () => void;
@@ -101,7 +99,7 @@ function getTerminalIcon(type: TerminalType, props: TerminalIconProps) {
   }
 }
 
-export function TerminalPane({
+function TerminalPaneComponent({
   id,
   title,
   type,
@@ -109,8 +107,6 @@ export function TerminalPane({
   cwd,
   isFocused,
   isMaximized,
-  isInjecting,
-  injectionProgress,
   agentState,
   activity,
   onFocus,
@@ -132,7 +128,8 @@ export function TerminalPane({
   const titleInputRef = useRef<HTMLInputElement>(null);
   const containerRef = useRef<HTMLDivElement>(null);
 
-  const { inject } = useContextInjection();
+  // Subscribe to injection progress for this terminal only
+  const { inject, isInjecting, progress: injectionProgress } = useContextInjection(id);
 
   const updateVisibility = useTerminalStore((state) => state.updateVisibility);
   const getTerminal = useTerminalStore((state) => state.getTerminal);
@@ -599,5 +596,32 @@ export function TerminalPane({
     </div>
   );
 }
+
+export const TerminalPane = React.memo(TerminalPaneComponent, (prev, next) => {
+  return (
+    prev.id === next.id &&
+    prev.title === next.title &&
+    prev.type === next.type &&
+    prev.worktreeId === next.worktreeId &&
+    prev.cwd === next.cwd &&
+    prev.isFocused === next.isFocused &&
+    prev.isMaximized === next.isMaximized &&
+    prev.agentState === next.agentState &&
+    prev.activity?.headline === next.activity?.headline &&
+    prev.activity?.status === next.activity?.status &&
+    prev.activity?.type === next.activity?.type &&
+    prev.location === next.location &&
+    prev.isDragging === next.isDragging &&
+    prev.onFocus === next.onFocus &&
+    prev.onClose === next.onClose &&
+    prev.onInjectContext === next.onInjectContext &&
+    prev.onCancelInjection === next.onCancelInjection &&
+    prev.onToggleMaximize === next.onToggleMaximize &&
+    prev.onTitleChange === next.onTitleChange &&
+    prev.onMinimize === next.onMinimize &&
+    prev.onRestore === next.onRestore &&
+    prev.onDragStart === next.onDragStart
+  );
+});
 
 export default TerminalPane;

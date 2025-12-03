@@ -1,4 +1,4 @@
-import { useCallback, useState, useEffect, useRef } from "react";
+import { useCallback, useState, useEffect, useRef, useSyncExternalStore } from "react";
 import { useShallow } from "zustand/react/shallow";
 import { useTerminalStore, type TerminalInstance } from "@/store/terminalStore";
 import { useErrorStore } from "@/store/errorStore";
@@ -52,32 +52,78 @@ function isAgentBusy(agentState: AgentState | undefined): boolean {
   return agentState === "working";
 }
 
-export function useContextInjection(): UseContextInjectionReturn {
-  const [isInjecting, setIsInjecting] = useState(false);
-  const [progress, setProgress] = useState<CopyTreeProgress | null>(null);
+// Global shared state for injection tracking with event-based subscription
+// All hook instances subscribe to this to coordinate progress display
+type InjectionStateListener = () => void;
+
+const globalInjectionState = {
+  isInjecting: false,
+  activeTerminalId: null as string | null,
+  lastProgress: null as CopyTreeProgress | null,
+  injectionId: 0, // Incremented on each injection to prevent cross-run interference
+  listeners: new Set<InjectionStateListener>(),
+
+  notify() {
+    this.listeners.forEach((listener) => listener());
+  },
+
+  subscribe(listener: InjectionStateListener) {
+    this.listeners.add(listener);
+    return () => this.listeners.delete(listener);
+  },
+};
+
+export function useContextInjection(targetTerminalId?: string): UseContextInjectionReturn {
   const [error, setError] = useState<string | null>(null);
   const focusedId = useTerminalStore((state) => state.focusedId);
   const terminals = useTerminalStore(useShallow((state) => state.terminals));
   const addError = useErrorStore((state) => state.addError);
   const removeError = useErrorStore((state) => state.removeError);
 
-  const isInjectingRef = useRef(false);
   const lastProgressAtRef = useRef(0);
   const currentErrorIdRef = useRef<string | null>(null);
+  const localProgressRef = useRef<CopyTreeProgress | null>(null);
 
+  // Subscribe to global injection state using useSyncExternalStore
+  const globalState = useSyncExternalStore(
+    globalInjectionState.subscribe.bind(globalInjectionState),
+    () => ({
+      isInjecting: globalInjectionState.isInjecting,
+      activeTerminalId: globalInjectionState.activeTerminalId,
+      lastProgress: globalInjectionState.lastProgress,
+    })
+  );
+
+  // Determine if this terminal is the injection target
+  const isTargetTerminal = targetTerminalId === globalState.activeTerminalId;
+  const isInjecting = globalState.isInjecting && isTargetTerminal;
+
+  // Only show progress for the active terminal
+  const progress = isInjecting ? localProgressRef.current : null;
+
+  // Subscribe to global injection progress and filter for this terminal
   useEffect(() => {
     const unsubscribe = copyTreeClient.onProgress((p) => {
-      if (!isInjectingRef.current) return;
+      if (!globalInjectionState.isInjecting) return;
+
+      // Update global state
+      globalInjectionState.lastProgress = p;
+
+      // Filter: Only update local state if this terminal is the injection target
+      if (targetTerminalId && globalInjectionState.activeTerminalId !== targetTerminalId) {
+        return;
+      }
 
       // Throttle to 100ms to prevent excessive re-renders
       const now = performance.now();
       if (now - lastProgressAtRef.current < 100) return;
       lastProgressAtRef.current = now;
 
-      setProgress(p);
+      localProgressRef.current = p;
+      globalInjectionState.notify(); // Trigger re-render
     });
     return unsubscribe;
-  }, []);
+  }, [targetTerminalId]);
 
   useEffect(() => {
     return () => {
@@ -87,16 +133,16 @@ export function useContextInjection(): UseContextInjectionReturn {
 
   const inject = useCallback(
     async (worktreeId: string, terminalId?: string, selectedPaths?: string[]) => {
-      const targetTerminalId = terminalId || focusedId;
+      const activeTerminal = terminalId || focusedId;
 
-      if (!targetTerminalId) {
+      if (!activeTerminal) {
         setError("No terminal selected");
         return;
       }
 
-      const terminal = terminals.find((t: TerminalInstance) => t.id === targetTerminalId);
+      const terminal = terminals.find((t: TerminalInstance) => t.id === activeTerminal);
       if (!terminal) {
-        setError(`Terminal not found: ${targetTerminalId}`);
+        setError(`Terminal not found: ${activeTerminal}`);
         return;
       }
 
@@ -105,10 +151,15 @@ export function useContextInjection(): UseContextInjectionReturn {
         console.log("Agent is busy, context will be injected when generation completes");
       }
 
-      setIsInjecting(true);
-      isInjectingRef.current = true;
+      // Set global state so all hook instances can see the active injection
+      globalInjectionState.injectionId++;
+      const currentInjectionId = globalInjectionState.injectionId;
+      globalInjectionState.isInjecting = true;
+      globalInjectionState.activeTerminalId = activeTerminal;
+      globalInjectionState.lastProgress = { stage: "Starting", progress: 0, message: "Initializing..." };
+      globalInjectionState.notify();
+
       setError(null);
-      setProgress({ stage: "Starting", progress: 0, message: "Initializing..." });
 
       try {
         const isAvailable = await copyTreeClient.isAvailable();
@@ -125,7 +176,7 @@ export function useContextInjection(): UseContextInjectionReturn {
           ...(selectedPaths && selectedPaths.length > 0 ? { includePaths: selectedPaths } : {}),
         };
 
-        const result = await copyTreeClient.injectToTerminal(targetTerminalId, worktreeId, options);
+        const result = await copyTreeClient.injectToTerminal(activeTerminal, worktreeId, options);
 
         if (result.error) {
           throw new Error(result.error);
@@ -163,13 +214,13 @@ export function useContextInjection(): UseContextInjectionReturn {
           source: "ContextInjection",
           context: {
             worktreeId,
-            terminalId: targetTerminalId,
+            terminalId: activeTerminal,
           },
           isTransient: true,
           retryAction: "injectContext",
           retryArgs: {
             worktreeId,
-            terminalId: targetTerminalId,
+            terminalId: activeTerminal,
             selectedPaths,
           },
         });
@@ -178,9 +229,14 @@ export function useContextInjection(): UseContextInjectionReturn {
 
         console.error("Context injection failed:", message);
       } finally {
-        setIsInjecting(false);
-        isInjectingRef.current = false;
-        setProgress(null);
+        // Only clear global state if we own this injection (prevent cross-run interference)
+        if (globalInjectionState.injectionId === currentInjectionId) {
+          globalInjectionState.isInjecting = false;
+          globalInjectionState.activeTerminalId = null;
+          globalInjectionState.lastProgress = null;
+          localProgressRef.current = null;
+          globalInjectionState.notify();
+        }
       }
     },
     [focusedId, terminals, addError, removeError]
@@ -188,9 +244,13 @@ export function useContextInjection(): UseContextInjectionReturn {
 
   const cancel = useCallback(() => {
     copyTreeClient.cancel().catch(console.error);
-    setIsInjecting(false);
-    isInjectingRef.current = false;
-    setProgress(null);
+
+    // Clear global state
+    globalInjectionState.isInjecting = false;
+    globalInjectionState.activeTerminalId = null;
+    globalInjectionState.lastProgress = null;
+    localProgressRef.current = null;
+    globalInjectionState.notify();
   }, []);
 
   const clearError = useCallback(() => {

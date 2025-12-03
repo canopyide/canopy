@@ -1,4 +1,4 @@
-import { useCallback, useLayoutEffect, useMemo, useRef } from "react";
+import React, { useCallback, useLayoutEffect, useMemo, useRef } from "react";
 import "@xterm/xterm/css/xterm.css";
 import { cn } from "@/lib/utils";
 import { terminalClient } from "@/clients";
@@ -43,7 +43,7 @@ const MAX_ZERO_RETRIES = 10;
 const FIT_SETTLE_DELAY_MS = 120;
 const PERFORMANCE_MODE_SCROLLBACK = 2000;
 
-export function XtermAdapter({
+function XtermAdapterComponent({
   terminalId,
   onReady,
   onExit,
@@ -237,3 +237,5 @@ export function XtermAdapter({
     />
   );
 }
+
+export const XtermAdapter = React.memo(XtermAdapterComponent);

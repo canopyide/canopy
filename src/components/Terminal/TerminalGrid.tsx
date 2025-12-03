@@ -157,7 +157,8 @@ export function TerminalGrid({ className, defaultCwd }: TerminalGridProps) {
     getDropIndicator,
   } = useTerminalDragAndDrop();
 
-  const { inject, cancel, isInjecting, progress } = useContextInjection();
+  // Only need inject/cancel actions - each TerminalPane subscribes to its own progress
+  const { inject, cancel } = useContextInjection();
 
   const [filePickerState, setFilePickerState] = useState<{
     isOpen: boolean;
@@ -274,8 +275,6 @@ export function TerminalGrid({ className, defaultCwd }: TerminalGridProps) {
             cwd={terminal.cwd}
             isFocused={true}
             isMaximized={true}
-            isInjecting={isInjecting}
-            injectionProgress={progress}
             agentState={terminal.agentState}
             activity={
               terminal.activityHeadline
@@ -370,8 +369,6 @@ export function TerminalGrid({ className, defaultCwd }: TerminalGridProps) {
               cwd={terminal.cwd}
               isFocused={terminal.id === focusedId}
               isMaximized={false}
-              isInjecting={isInjecting}
-              injectionProgress={progress}
               agentState={terminal.agentState}
               activity={
                 terminal.activityHeadline
