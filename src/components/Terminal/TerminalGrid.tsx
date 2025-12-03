@@ -374,13 +374,24 @@ export function TerminalGrid({ className, defaultCwd }: TerminalGridProps) {
 
     // Insert ghost placeholder at drop index when dragging over grid
     // pointer-events-none allows mouse to pass through for accurate position tracking
+    // Fast animation (75ms) for responsive feel during drag
     if (showPlaceholder && dragState.dropIndex !== null) {
+      // The dropIndex was calculated from a filtered array (without the dragged element),
+      // but we're inserting into the unfiltered items array (which has the hidden dragged element).
+      // When dropping AT OR AFTER the source position, we need to offset by +1 to compensate
+      // because the filtered array shifts all indices >= sourceIdx down by one.
+      const sourceIdx = dragState.sourceLocation === "grid" ? (dragState.sourceIndex ?? -1) : -1;
+      const insertionIndex =
+        sourceIdx >= 0 && dragState.dropIndex >= sourceIdx
+          ? dragState.dropIndex + 1
+          : dragState.dropIndex;
+
       items.splice(
-        dragState.dropIndex,
+        insertionIndex,
         0,
         <div
           key="grid-placeholder"
-          className="relative h-full animate-in fade-in zoom-in-95 duration-200 pointer-events-none"
+          className="relative h-full animate-in fade-in zoom-in-95 duration-75 pointer-events-none"
         >
           <TerminalGhost label="Drop Here" />
         </div>
@@ -393,6 +404,7 @@ export function TerminalGrid({ className, defaultCwd }: TerminalGridProps) {
     gridTerminals,
     dragState.isDragging,
     dragState.sourceLocation,
+    dragState.sourceIndex,
     dragState.draggedId,
     dragState.dropIndex,
     showPlaceholder,

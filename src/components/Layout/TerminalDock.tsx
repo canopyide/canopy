@@ -26,6 +26,7 @@ export function TerminalDock() {
   const [isDragOver, setIsDragOver] = useState(false);
   const [dropIndex, setDropIndex] = useState<number | null>(null);
   const [draggedId, setDraggedId] = useState<string | null>(null);
+  const [sourceIndex, setSourceIndex] = useState<number | null>(null);
   const [isCollapsed, setIsCollapsed] = useState(false);
   const dockRef = useRef<HTMLDivElement>(null);
 
@@ -141,6 +142,10 @@ export function TerminalDock() {
       // Defer state update to allow browser to capture drag image first
       setTimeout(() => {
         setDraggedId(id);
+        setSourceIndex(index);
+        // Initialize dropIndex to source position so placeholder appears immediately
+        setDropIndex(index);
+        setIsDragOver(true);
         beginDrag(id, "dock", index);
       }, 0);
     },
@@ -149,6 +154,7 @@ export function TerminalDock() {
 
   const handleDockItemDragEnd = useCallback(() => {
     setDraggedId(null);
+    setSourceIndex(null);
     setIsDragOver(false);
     setDropIndex(null);
   }, []);
@@ -187,8 +193,16 @@ export function TerminalDock() {
     // Inject placeholder if dragging over dock (subtle dashed box matching dock item size)
     // pointer-events-none allows mouse to pass through for accurate position tracking
     if (isDragOver && dropIndex !== null && dropIndex <= activeDockTerminals.length) {
+      // The dropIndex was calculated from a filtered array (without the dragged element),
+      // but we're inserting into the unfiltered items array (which has the hidden dragged element).
+      // When dropping AT OR AFTER the source position, we need to offset by +1 to compensate
+      // because the filtered array shifts all indices >= sourceIdx down by one.
+      const srcIdx = sourceIndex ?? -1;
+      const insertionIndex =
+        srcIdx >= 0 && dropIndex >= srcIdx ? dropIndex + 1 : dropIndex;
+
       items.splice(
-        dropIndex,
+        insertionIndex,
         0,
         <div key="dock-placeholder" className="flex-shrink-0 pointer-events-none">
           <div className="h-[26px] w-24 rounded border border-dashed border-white/20 bg-white/5" />
@@ -202,6 +216,7 @@ export function TerminalDock() {
     isDragOver,
     dropIndex,
     draggedId,
+    sourceIndex,
     handleDockItemDragStart,
     handleDockItemDragEnd,
   ]);

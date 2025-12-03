@@ -1,6 +1,6 @@
 /**
  * Calculates drop index for a linear layout (horizontal dock or vertical list).
- * Uses visual insertion point based on element midpoints.
+ * PRIORITIZES DIRECT INTERSECTION - if mouse is over an element, that's the target.
  * The dragged element should be filtered out before calling this function.
  */
 export function calculateDropIndex(
@@ -11,7 +11,19 @@ export function calculateDropIndex(
 ): number {
   if (elements.length === 0) return 0;
 
-  // Check if past the last item
+  // 1. Direct intersection check (highest priority)
+  for (let i = 0; i < elements.length; i++) {
+    const rect = elements[i].getBoundingClientRect();
+    if (dragX >= rect.left && dragX <= rect.right && dragY >= rect.top && dragY <= rect.bottom) {
+      // Use midpoint to determine before/after within the intersected element
+      const midpoint =
+        orientation === "horizontal" ? rect.left + rect.width / 2 : rect.top + rect.height / 2;
+      const pos = orientation === "horizontal" ? dragX : dragY;
+      return pos < midpoint ? i : i + 1;
+    }
+  }
+
+  // 2. Check if past the last item
   const lastRect = elements[elements.length - 1].getBoundingClientRect();
   if (orientation === "horizontal") {
     if (dragX > lastRect.right) return elements.length;
@@ -19,29 +31,28 @@ export function calculateDropIndex(
     if (dragY > lastRect.bottom) return elements.length;
   }
 
-  // Scan for insertion point
+  // 3. Find closest element by center distance (for gaps between items)
+  let closestIndex = 0;
+  let minDistance = Infinity;
+
   for (let i = 0; i < elements.length; i++) {
     const rect = elements[i].getBoundingClientRect();
+    const centerX = rect.left + rect.width / 2;
+    const centerY = rect.top + rect.height / 2;
+    const dist = Math.hypot(dragX - centerX, dragY - centerY);
 
-    if (orientation === "horizontal") {
-      const midpoint = rect.left + rect.width / 2;
-      if (dragX < midpoint) {
-        return i;
-      }
-    } else {
-      const midpoint = rect.top + rect.height / 2;
-      if (dragY < midpoint) {
-        return i;
-      }
+    if (dist < minDistance) {
+      minDistance = dist;
+      closestIndex = i;
     }
   }
 
-  return elements.length;
+  return closestIndex;
 }
 
 /**
- * Calculates drop index for a Grid layout using reading order (rows then columns).
- * Groups elements into rows based on vertical position, then finds insertion point.
+ * Calculates drop index for a Grid layout.
+ * STRICT GEOMETRY: The cell under the mouse is the target index (highest priority).
  * The dragged element should be filtered out before calling this function.
  */
 export function calculateGridDropIndex(
@@ -51,58 +62,50 @@ export function calculateGridDropIndex(
 ): number {
   if (elements.length === 0) return 0;
 
-  // Group elements into rows based on their top position (with fuzz factor for sub-pixel alignment)
-  const ROW_THRESHOLD = 10;
-  const rows: HTMLElement[][] = [];
-  let currentRow: HTMLElement[] = [];
-  let currentTop = elements[0].getBoundingClientRect().top;
-
-  for (const el of elements) {
-    const rect = el.getBoundingClientRect();
-    if (Math.abs(rect.top - currentTop) > ROW_THRESHOLD) {
-      if (currentRow.length > 0) rows.push(currentRow);
-      currentRow = [];
-      currentTop = rect.top;
-    }
-    currentRow.push(el);
-  }
-  if (currentRow.length > 0) rows.push(currentRow);
-
-  // Check if above first row
-  const firstRect = elements[0].getBoundingClientRect();
-  if (dragY < firstRect.top) return 0;
-
-  // Find the row containing the cursor's Y position
-  let targetRowIndex = -1;
-  for (let i = 0; i < rows.length; i++) {
-    const rowFirst = rows[i][0].getBoundingClientRect();
-    if (dragY <= rowFirst.bottom) {
-      targetRowIndex = i;
-      break;
+  // 1. Direct intersection check (highest priority)
+  // If the mouse is physically inside a terminal's box, that IS the drop index.
+  for (let i = 0; i < elements.length; i++) {
+    const rect = elements[i].getBoundingClientRect();
+    if (dragX >= rect.left && dragX <= rect.right && dragY >= rect.top && dragY <= rect.bottom) {
+      return i;
     }
   }
 
-  // If below all rows, return length (insert at end)
-  if (targetRowIndex === -1) return elements.length;
+  // 2. Proximity check (for gaps between grid cells)
+  // Find the element with the closest center point to the cursor
+  let closestIndex = 0;
+  let minDistance = Infinity;
 
-  // Count items before target row
-  let itemsBeforeRow = 0;
-  for (let i = 0; i < targetRowIndex; i++) {
-    itemsBeforeRow += rows[i].length;
-  }
+  for (let i = 0; i < elements.length; i++) {
+    const rect = elements[i].getBoundingClientRect();
+    const centerX = rect.left + rect.width / 2;
+    const centerY = rect.top + rect.height / 2;
+    const dist = (dragX - centerX) ** 2 + (dragY - centerY) ** 2;
 
-  // Find column position within target row
-  const targetRow = rows[targetRowIndex];
-  for (let i = 0; i < targetRow.length; i++) {
-    const rect = targetRow[i].getBoundingClientRect();
-    const midpoint = rect.left + rect.width / 2;
-    if (dragX < midpoint) {
-      return itemsBeforeRow + i;
+    if (dist < minDistance) {
+      minDistance = dist;
+      closestIndex = i;
     }
   }
 
-  // Past last item in row - insert after it
-  return itemsBeforeRow + targetRow.length;
+  // 3. Edge case: Appending after last item
+  // If cursor is significantly past the last item, append to end
+  if (closestIndex === elements.length - 1) {
+    const lastRect = elements[elements.length - 1].getBoundingClientRect();
+    const lastCenterX = lastRect.left + lastRect.width / 2;
+    const lastCenterY = lastRect.top + lastRect.height / 2;
+
+    // If below and to the right of last item's center, append
+    if (dragY > lastCenterY && dragX > lastCenterX) {
+      return elements.length;
+    }
+    // If significantly below the last row
+    if (dragY > lastRect.bottom) {
+      return elements.length;
+    }
+  }
+
+  return closestIndex;
 }
 
 export function getDropZone(

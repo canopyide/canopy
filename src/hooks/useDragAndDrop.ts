@@ -68,7 +68,8 @@ export function useTerminalDragAndDrop(
 
   // Track per-zone to avoid stale drop state when switching zones
   const lastDragOverTime = useRef<{ grid: number; dock: number }>({ grid: 0, dock: 0 });
-  const DRAG_OVER_THROTTLE_MS = 50;
+  // Reduced throttle for near-instant "pre-update" feel (10ms = ~100fps, capped by display)
+  const DRAG_OVER_THROTTLE_MS = 10;
 
   const beginDrag = useCallback((id: string, location: "grid" | "dock", index: number) => {
     setDragState({
@@ -76,8 +77,9 @@ export function useTerminalDragAndDrop(
       draggedId: id,
       sourceLocation: location,
       sourceIndex: index,
-      dropZone: null,
-      dropIndex: null,
+      // Initialize drop at source position so placeholder appears immediately
+      dropZone: location,
+      dropIndex: index,
     });
   }, []);
 
@@ -139,11 +141,17 @@ export function useTerminalDragAndDrop(
         }
       }
 
-      setDragState((prev) => ({
-        ...prev,
-        dropZone: zone,
-        dropIndex,
-      }));
+      setDragState((prev) => {
+        // Optimization: Don't trigger render if state hasn't changed
+        if (prev.dropZone === zone && prev.dropIndex === dropIndex) {
+          return prev;
+        }
+        return {
+          ...prev,
+          dropZone: zone,
+          dropIndex,
+        };
+      });
     },
     [dragState.dropZone, dragState.draggedId]
   );
