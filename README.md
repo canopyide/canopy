@@ -1,5 +1,7 @@
 # Canopy Command Center
 
+[![CI](https://github.com/gregpriday/canopy-electron/actions/workflows/ci.yml/badge.svg)](https://github.com/gregpriday/canopy-electron/actions/workflows/ci.yml)
+
 **The AI-Native Mini IDE for Agent Orchestration**
 
 Canopy is a feature-rich, Electron-based command center designed to streamline the workflow of developing with AI coding agents. It bridges the gap between your terminal, your git worktrees, and AI CLI tools like Claude Code, Gemini, and Codex.
