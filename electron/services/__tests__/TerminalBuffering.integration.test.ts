@@ -88,7 +88,7 @@ describe.skipIf(shouldSkip)("Terminal Buffering Integration", () => {
         manager,
         id,
         (d) => d.includes("buffered") || d.includes("unbuffered"),
-        3000,
+        3000
       );
 
       manager.write(id, "echo unbuffered\n");
@@ -116,7 +116,7 @@ describe.skipIf(shouldSkip)("Terminal Buffering Integration", () => {
         manager,
         id,
         (d) => d.includes("line1") || d.includes("line2") || d.includes("line3"),
-        2000,
+        2000
       );
       manager.flushBuffer(id);
 

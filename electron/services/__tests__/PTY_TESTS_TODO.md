@@ -11,11 +11,13 @@ The following API mismatches were identified and need to be corrected when setti
 ### 1. PtyManager.spawn() Signature
 
 **Current test code (incorrect):**
+
 ```typescript
 const id = await manager.spawn({ cwd, shell, cols, rows });
 ```
 
 **Actual API:**
+
 ```typescript
 const id = crypto.randomUUID();
 manager.spawn(id, { cwd, shell, cols, rows }); // returns void
@@ -26,11 +28,13 @@ manager.spawn(id, { cwd, shell, cols, rows }); // returns void
 ### 2. Snapshot Method Name
 
 **Current test code (incorrect):**
+
 ```typescript
 const snapshot = manager.getSnapshot(id);
 ```
 
 **Actual API:**
+
 ```typescript
 const snapshot = manager.getTerminalSnapshot(id);
 ```
@@ -40,6 +44,7 @@ const snapshot = manager.getTerminalSnapshot(id);
 ### 3. Agent State Event Subscription
 
 **Current test code (incorrect):**
+
 ```typescript
 manager.on("agent:state-changed", handler);
 ```
@@ -47,6 +52,7 @@ manager.on("agent:state-changed", handler);
 **Actual behavior:** `agent:state-changed` events are emitted on the global `events` bus, not on the PtyManager instance.
 
 **Fix needed:**
+
 ```typescript
 import { events } from "../../services/events.js";
 events.on("agent:state-changed", handler);
@@ -56,11 +62,13 @@ events.on("agent:state-changed", handler);
 ### 4. transitionState() Signature
 
 **Current test code (incorrect):**
+
 ```typescript
 manager.transitionState(id, "working", "manual");
 ```
 
 **Actual API:**
+
 ```typescript
 manager.transitionState(
   id,
@@ -76,6 +84,7 @@ manager.transitionState(
 ### 5. Process Cleanup
 
 **Current implementation:**
+
 ```typescript
 await Promise.all(ids.map((id) => manager.kill(id)));
 ```
@@ -83,16 +92,18 @@ await Promise.all(ids.map((id) => manager.kill(id)));
 **Issue:** `kill()` is synchronous and returns void. The function doesn't wait for process exit events.
 
 **Recommended fix:**
+
 ```typescript
 // Wait for exit events before disposing
-const exitPromises = ids.map(id =>
-  new Promise(resolve => {
-    events.once("exit", (exitId) => {
-      if (exitId === id) resolve(exitId);
-    });
-  })
+const exitPromises = ids.map(
+  (id) =>
+    new Promise((resolve) => {
+      events.once("exit", (exitId) => {
+        if (exitId === id) resolve(exitId);
+      });
+    })
 );
-ids.forEach(id => manager.kill(id));
+ids.forEach((id) => manager.kill(id));
 await Promise.all(exitPromises);
 ```
 

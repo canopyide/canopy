@@ -82,7 +82,7 @@ describe("Terminal Store Integration", () => {
       expect(mockAddTerminal).toHaveBeenCalledWith(
         expect.objectContaining({
           worktreeId: "worktree-1",
-        }),
+        })
       );
     });
 
@@ -172,7 +172,7 @@ describe("Terminal Store Integration", () => {
       const mockMoveToDock = vi.fn((id: string) => {
         const state = useTerminalStore.getState();
         const terminals = state.terminals.map((t) =>
-          t.id === id ? { ...t, location: "dock" as const } : t,
+          t.id === id ? { ...t, location: "dock" as const } : t
         );
 
         const updates: any = { terminals };
@@ -211,7 +211,7 @@ describe("Terminal Store Integration", () => {
       const mockMoveToGrid = vi.fn((id: string) => {
         const state = useTerminalStore.getState();
         const terminals = state.terminals.map((t) =>
-          t.id === id ? { ...t, location: "grid" as const } : t,
+          t.id === id ? { ...t, location: "grid" as const } : t
         );
         useTerminalStore.setState({ terminals, focusedId: id });
       });
@@ -256,7 +256,7 @@ describe("Terminal Store Integration", () => {
       const mockTrash = vi.fn((id: string) => {
         const state = useTerminalStore.getState();
         const terminals = state.terminals.map((t) =>
-          t.id === id ? { ...t, location: "trash" as const } : t,
+          t.id === id ? { ...t, location: "trash" as const } : t
         );
 
         const updates: any = { terminals };
@@ -293,9 +293,9 @@ describe("Terminal Store Integration", () => {
       });
 
       const mockRestore = vi.fn((id: string) => {
-        const terminals = useTerminalStore.getState().terminals.map((t) =>
-          t.id === id ? { ...t, location: "grid" as const } : t,
-        );
+        const terminals = useTerminalStore
+          .getState()
+          .terminals.map((t) => (t.id === id ? { ...t, location: "grid" as const } : t));
         useTerminalStore.setState({ terminals, focusedId: id });
       });
 
@@ -327,7 +327,7 @@ describe("Terminal Store Integration", () => {
       const mockTrash = vi.fn((id: string) => {
         const state = useTerminalStore.getState();
         const terminals = state.terminals.map((t) =>
-          t.id === id ? { ...t, location: "trash" as const } : t,
+          t.id === id ? { ...t, location: "trash" as const } : t
         );
 
         const updates: any = { terminals };
@@ -375,7 +375,7 @@ describe("Terminal Store Integration", () => {
 
       useTerminalStore.setState({
         terminals: terminals.map((t) =>
-          t.id === "term-1" ? { ...t, agentState: "working" as const } : t,
+          t.id === "term-1" ? { ...t, agentState: "working" as const } : t
         ),
       });
 
@@ -407,7 +407,7 @@ describe("Terminal Store Integration", () => {
 
       useTerminalStore.setState({
         terminals: terminals.map((t) =>
-          t.id === "term-1" ? { ...t, agentState: "failed" as const, error: "Test error" } : t,
+          t.id === "term-1" ? { ...t, agentState: "failed" as const, error: "Test error" } : t
         ),
       });
 

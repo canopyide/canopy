@@ -13,8 +13,7 @@ try {
 const shouldSkip = !PtyManager;
 
 describe.skipIf(shouldSkip)("Agent State Detection Integration", () => {
-  const { cleanupPtyManager, waitForAgentStateChange, spawnShellTerminal, sleep } =
-    testUtils || {};
+  const { cleanupPtyManager, waitForAgentStateChange, spawnShellTerminal, sleep } = testUtils || {};
   let manager: PtyManager;
 
   beforeEach(() => {

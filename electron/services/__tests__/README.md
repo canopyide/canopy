@@ -19,6 +19,7 @@ To run the PTY integration tests with actual PTY processes, you would need to ru
 ## Test Categories
 
 ### PTY Lifecycle Tests (`PtyManager.integration.test.ts`)
+
 - Terminal spawn/write/exit lifecycle
 - Multiple terminals simultaneously
 - Rapid spawn/kill cycles
@@ -27,18 +28,21 @@ To run the PTY integration tests with actual PTY processes, you would need to ru
 - Error handling
 
 ### Buffering Tests (`TerminalBuffering.integration.test.ts`)
+
 - Buffering mode enable/disable
 - Buffer flush behavior
 - Queue management
 - Edge cases
 
 ### Agent State Detection (`AgentStateDetection.integration.test.ts`)
+
 - Manual state transitions
 - State change timestamps
 - Agent type detection
 - Terminal state persistence
 
 ### Terminal Store Tests (`src/hooks/__tests__/useTerminalStore.integration.test.ts`)
+
 - Terminal addition/removal
 - Location changes (grid/dock/trash)
 - Focus management
@@ -63,6 +67,7 @@ The tests are designed to be cross-platform but include platform-specific guards
 ### Tests are Skipped
 
 If you see "node-pty not available, skipping PTY integration tests", this means:
+
 - The `node-pty` module couldn't be loaded (missing build for your Node version)
 - Solution: Run `npm run rebuild` to rebuild native modules
 
@@ -73,6 +78,7 @@ Error: The module was compiled against a different Node.js version
 ```
 
 Solution:
+
 ```bash
 npm run rebuild
 ```
@@ -90,6 +96,7 @@ kill <pid>
 ## Test Design Philosophy
 
 These integration tests focus on:
+
 - **Real PTY behavior** - Using actual `node-pty` processes when available
 - **Graceful degradation** - Skipping when environment doesn't support PTYs
 - **Proper cleanup** - Ensuring all spawned processes are killed

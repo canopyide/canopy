@@ -16,7 +16,7 @@ export function sleep(ms: number): Promise<void> {
 export function waitForEvent<T>(
   emitter: { once: (event: string, listener: (...args: unknown[]) => void) => void },
   event: string,
-  timeout = 5000,
+  timeout = 5000
 ): Promise<T> {
   return new Promise((resolve, reject) => {
     const timer = setTimeout(() => {
@@ -34,7 +34,7 @@ export async function waitForData(
   manager: PtyManager,
   terminalId: string,
   matcher: (data: string) => boolean,
-  timeout = 5000,
+  timeout = 5000
 ): Promise<string> {
   return new Promise((resolve, reject) => {
     const timer = setTimeout(() => {
@@ -66,7 +66,7 @@ export async function waitForData(
 export async function waitForExit(
   manager: PtyManager,
   terminalId: string,
-  timeout = 5000,
+  timeout = 5000
 ): Promise<number> {
   return new Promise((resolve, reject) => {
     const timer = setTimeout(() => {
@@ -93,7 +93,7 @@ export async function waitForExit(
 export async function waitForAgentStateChange(
   manager: PtyManager,
   terminalId: string,
-  timeout = 5000,
+  timeout = 5000
 ): Promise<{ id: string; state: string; trigger: string; timestamp: number }> {
   return new Promise((resolve, reject) => {
     const timer = setTimeout(() => {
@@ -120,7 +120,7 @@ export async function waitForAgentStateChange(
 export function collectDataFor(
   manager: PtyManager,
   terminalId: string,
-  duration: number,
+  duration: number
 ): Promise<string[]> {
   return new Promise((resolve) => {
     const chunks: string[] = [];
@@ -166,7 +166,7 @@ export function getShellCommand(command: string): { shell: string; args: string[
 export async function spawnEchoTerminal(
   manager: PtyManager,
   message: string,
-  options?: { type?: string; worktreeId?: string },
+  options?: { type?: string; worktreeId?: string }
 ): Promise<string> {
   const { shell, args } = getShellCommand(`echo "${message}"`);
 
@@ -191,7 +191,7 @@ export async function spawnShellTerminal(
     worktreeId?: string;
     cols?: number;
     rows?: number;
-  },
+  }
 ): Promise<string> {
   const isWindows = process.platform === "win32";
   const shell = isWindows ? "cmd.exe" : "/bin/sh";
