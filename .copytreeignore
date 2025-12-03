@@ -111,6 +111,7 @@ src/components/icons/
 # Build and packaging scripts
 scripts/
 
-# Agent instruction files (already in CLAUDE.md and docs/)
+# Agent instruction files (already in CLAUDE.md)
+docs/
 AGENTS.md
 GEMINI.md
