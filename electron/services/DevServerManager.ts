@@ -4,6 +4,7 @@ import { existsSync } from "node:fs";
 import { readFile } from "node:fs/promises";
 import path from "node:path";
 import type { BrowserWindow } from "electron";
+import stringArgv from "string-argv";
 import { DevServerState, DevServerStatus } from "../types/index.js";
 import { events } from "./events.js";
 
@@ -23,6 +24,55 @@ const PORT_PATTERNS = [/(?:Listening|Started) on (?:port )?(\d+)/i, /port[:\s]+(
 
 const FORCE_KILL_TIMEOUT_MS = 5000;
 const MAX_LOG_LINES = 100;
+
+interface ParsedCommand {
+  executable: string;
+  args: string[];
+  env?: Record<string, string>;
+}
+
+/**
+ * Parse command string into executable and arguments for array-style execution.
+ * Handles quoted arguments, environment variables, and complex command patterns.
+ * Avoids shell: true for security and reliability.
+ */
+function parseCommand(command: string): ParsedCommand {
+  const trimmed = command.trim();
+
+  if (!trimmed) {
+    throw new Error("Command cannot be empty");
+  }
+
+  // Extract environment variables (KEY=VALUE prefixes)
+  const env: Record<string, string> = {};
+  let commandWithoutEnv = trimmed;
+  const envVarRegex = /^(\w+)=(\S+)(?:\s+|$)/;
+  let match;
+
+  while ((match = envVarRegex.exec(commandWithoutEnv))) {
+    env[match[1]] = match[2];
+    commandWithoutEnv = commandWithoutEnv.slice(match[0].length).trim();
+    if (!commandWithoutEnv) break;
+  }
+
+  // Use string-argv for shell-quote-aware parsing
+  const parts = stringArgv(commandWithoutEnv);
+
+  if (parts.length === 0) {
+    throw new Error("Invalid command: no executable found");
+  }
+
+  const result: ParsedCommand = {
+    executable: parts[0],
+    args: parts.slice(1),
+  };
+
+  if (Object.keys(env).length > 0) {
+    result.env = env;
+  }
+
+  return result;
+}
 
 interface DevScriptCacheEntry {
   hasDevScript: boolean;
@@ -89,9 +139,10 @@ export class DevServerManager {
     this.logBuffers.set(worktreeId, []);
 
     try {
-      const proc = execa(resolvedCommand, {
-        shell: true,
+      const parsed = parseCommand(resolvedCommand);
+      const proc = execa(parsed.executable, parsed.args, {
         cwd: worktreePath,
+        env: parsed.env ? { ...process.env, ...parsed.env } : undefined,
         buffer: false,
         cleanup: true,
         reject: false,
