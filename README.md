@@ -49,8 +49,8 @@ npm install -g @openai/codex
 1. **Clone the repository:**
 
    ```bash
-   git clone https://github.com/gregpriday/canopy-app.git
-   cd canopy-app
+   git clone https://github.com/gregpriday/canopy-electron.git
+   cd canopy-electron
    ```
 
 2. **Install dependencies:**
@@ -140,25 +140,12 @@ npm run fix
 npm run test
 ```
 
-## Project Structure
+## Documentation
 
-```
-canopy-app/
-├── electron/               # Main process code
-│   ├── ipc/                # IPC handlers (communication layer)
-│   ├── services/           # Core logic (Git, PTY, AI, Watchers)
-│   ├── types/              # TypeScript types for main process
-│   └── main.ts             # Entry point
-├── src/                    # Renderer process (UI)
-│   ├── components/         # React components
-│   ├── hooks/              # Custom React hooks
-│   ├── store/              # Zustand state stores
-│   ├── types/              # TypeScript declarations
-│   └── App.tsx             # Root component
-├── docs/                   # Documentation
-│   └── spec.md             # Technical specification
-└── dist/                   # Build output
-```
+- [Architecture](docs/architecture.md) - System design, IPC patterns, project structure
+- [Development Guide](docs/development.md) - Setup, commands, debugging
+- [Services Reference](docs/services.md) - Main process services documentation
+- [Contributing](docs/contributing.md) - Contribution guidelines and code style
 
 ## License
 
