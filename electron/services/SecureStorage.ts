@@ -7,13 +7,16 @@ type UserConfigKey = keyof StoreSchema["userConfig"];
 type DotNotatedUserConfigKey = `userConfig.${UserConfigKey}`;
 
 class SecureStorage {
-  private isAvailable: boolean;
+  private _isAvailable: boolean | undefined;
 
-  constructor() {
-    this.isAvailable = safeStorage.isEncryptionAvailable();
-    if (!this.isAvailable) {
-      console.warn("[SecureStorage] OS encryption not available. Falling back to plain text.");
+  private get isAvailable(): boolean {
+    if (this._isAvailable === undefined) {
+      this._isAvailable = safeStorage.isEncryptionAvailable();
+      if (!this._isAvailable) {
+        console.warn("[SecureStorage] OS encryption not available. Falling back to plain text.");
+      }
     }
+    return this._isAvailable;
   }
 
   private isHexEncoded(value: string): boolean {
@@ -46,14 +49,17 @@ class SecureStorage {
     const storedValue = store.get(key as DotNotatedUserConfigKey) as string | undefined;
     if (!storedValue) return undefined;
 
-    if (this.isAvailable) {
-      if (!this.isHexEncoded(storedValue)) {
-        console.warn(
-          `[SecureStorage] Found plain-text ${key}, migrating to encrypted storage on next save.`
-        );
-        return storedValue;
-      }
+    // If it's not hex encoded, it's definitely plain text. Return it directly
+    // without triggering the keychain/encryption check.
+    if (!this.isHexEncoded(storedValue)) {
+      console.warn(
+        `[SecureStorage] Found plain-text ${key}, migrating to encrypted storage on next save.`
+      );
+      return storedValue;
+    }
 
+    // Only check for encryption availability if we have an encrypted value to decrypt
+    if (this.isAvailable) {
       try {
         const buffer = Buffer.from(storedValue, "hex");
         return safeStorage.decryptString(buffer);
@@ -66,6 +72,7 @@ class SecureStorage {
       }
     }
 
+    // Value is hex encoded (looks encrypted) but encryption is not available
     if (this.isHexEncoded(storedValue)) {
       console.warn(
         `[SecureStorage] Found encrypted ${key} but encryption unavailable. Clearing entry, user will need to re-enter.`

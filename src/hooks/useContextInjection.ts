@@ -62,9 +62,24 @@ const globalInjectionState = {
   lastProgress: null as CopyTreeProgress | null,
   injectionId: 0, // Incremented on each injection to prevent cross-run interference
   listeners: new Set<InjectionStateListener>(),
+  
+  snapshot: {
+    isInjecting: false,
+    activeTerminalId: null as string | null,
+    lastProgress: null as CopyTreeProgress | null,
+  },
 
   notify() {
+    this.snapshot = {
+      isInjecting: this.isInjecting,
+      activeTerminalId: this.activeTerminalId,
+      lastProgress: this.lastProgress,
+    };
     this.listeners.forEach((listener) => listener());
+  },
+
+  getSnapshot() {
+    return this.snapshot;
   },
 
   subscribe(listener: InjectionStateListener) {
@@ -87,11 +102,7 @@ export function useContextInjection(targetTerminalId?: string): UseContextInject
   // Subscribe to global injection state using useSyncExternalStore
   const globalState = useSyncExternalStore(
     globalInjectionState.subscribe.bind(globalInjectionState),
-    () => ({
-      isInjecting: globalInjectionState.isInjecting,
-      activeTerminalId: globalInjectionState.activeTerminalId,
-      lastProgress: globalInjectionState.lastProgress,
-    })
+    globalInjectionState.getSnapshot.bind(globalInjectionState)
   );
 
   // Determine if this terminal is the injection target
