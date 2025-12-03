@@ -13,8 +13,6 @@ export interface ClaudeSettings {
   model?: string;
   /** Permission handling mode */
   approvalMode?: ClaudeApprovalMode;
-  /** Skip all permission checks (⚠️ dangerous) */
-  dangerouslySkipPermissions?: boolean;
   /** Whitelist of allowed tools (comma-separated when passed to CLI) */
   allowedTools?: string[];
   /** Blacklist of denied tools (comma-separated when passed to CLI) */
@@ -95,7 +93,6 @@ export const DEFAULT_AGENT_SETTINGS: AgentSettings = {
     enabled: true,
     model: "",
     approvalMode: "default",
-    dangerouslySkipPermissions: false,
     allowedTools: [],
     disallowedTools: [],
     systemPrompt: "",
@@ -131,12 +128,10 @@ export function generateClaudeFlags(settings: ClaudeSettings): string[] {
     flags.push("--model", settings.model);
   }
 
-  if (settings.dangerouslySkipPermissions) {
+  if (settings.approvalMode === "yolo") {
     flags.push("--dangerously-skip-permissions");
   } else if (settings.approvalMode === "bypass") {
     flags.push("--permission-mode", "bypassPermissions");
-  } else if (settings.approvalMode === "yolo") {
-    flags.push("--permission-mode", "dontAsk");
   }
 
   if (settings.allowedTools && settings.allowedTools.length > 0) {
