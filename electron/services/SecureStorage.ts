@@ -31,7 +31,10 @@ class SecureStorage {
         const encrypted = safeStorage.encryptString(value);
         store.set(key as DotNotatedUserConfigKey, encrypted.toString("hex"));
       } catch (error) {
-        console.error(`[SecureStorage] Failed to encrypt ${key}, falling back to plain text:`, error);
+        console.error(
+          `[SecureStorage] Failed to encrypt ${key}, falling back to plain text:`,
+          error
+        );
         store.set(key as DotNotatedUserConfigKey, value);
       }
     } else {
