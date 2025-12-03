@@ -2,7 +2,7 @@ import { useCallback, useEffect, useRef, useState, type ReactNode } from "react"
 import { Settings } from "lucide-react";
 import { cn } from "@/lib/utils";
 import { Tabs } from "@/components/ui/Tabs";
-import { ProjectSwitcher, ProjectRunners, ProjectSettingsDialog } from "@/components/Project";
+import { ProjectSwitcher, ProjectSettingsDialog } from "@/components/Project";
 import { useProjectStore } from "@/store/projectStore";
 
 export type SidebarTab = "worktrees" | "history";
@@ -140,8 +140,6 @@ export function Sidebar({
         <div className="flex-1 overflow-y-auto min-h-0">
           {currentTab === "worktrees" ? children : historyContent}
         </div>
-
-        {currentProject && <ProjectRunners projectId={currentProject.id} />}
 
         <div
           role="separator"

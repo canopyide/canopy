@@ -57,6 +57,7 @@ export type {
   TerminalRecipe,
   // Project settings types
   RunCommand,
+  ProjectDevServerSettings,
   ProjectSettings,
 } from "./domain.js";
 

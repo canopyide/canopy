@@ -10,6 +10,7 @@ import {
   useTerminalPalette,
   useTerminalConfig,
   useKeybinding,
+  useProjectSettings,
 } from "./hooks";
 import { AppLayout } from "./components/Layout";
 import { TerminalGrid } from "./components/Terminal";
@@ -49,6 +50,7 @@ import { formatBytes } from "@/lib/formatBytes";
 function SidebarContent() {
   const { worktrees, isLoading, error, refresh } = useWorktrees();
   const { inject, isInjecting } = useContextInjection();
+  const { settings: projectSettings } = useProjectSettings();
   const { activeWorktreeId, focusedWorktreeId, selectWorktree, setActiveWorktree } =
     useWorktreeSelectionStore(
       useShallow((state) => ({
@@ -147,9 +149,13 @@ function SidebarContent() {
     systemClient.openPath(worktree.path);
   }, []);
 
-  const handleToggleServer = useCallback((worktree: WorktreeState) => {
-    devServerClient.toggle(worktree.id, worktree.path);
-  }, []);
+  const handleToggleServer = useCallback(
+    (worktree: WorktreeState) => {
+      const command = projectSettings?.devServer?.command;
+      devServerClient.toggle(worktree.id, worktree.path, command);
+    },
+    [projectSettings]
+  );
 
   const handleInjectContext = useCallback(
     (worktreeId: string) => {
@@ -254,6 +260,7 @@ function SidebarContent() {
             isInjecting={isInjecting}
             onCreateRecipe={() => handleCreateRecipe(worktree.id)}
             homeDir={homeDir}
+            devServerSettings={projectSettings?.devServer}
           />
         ))}
       </div>
