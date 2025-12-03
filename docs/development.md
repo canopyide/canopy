@@ -189,7 +189,7 @@ Tests also run on Windows to catch OS-specific issues (path separators, line end
 
 The postinstall script runs `electron-rebuild -f -w node-pty` automatically. CI relies on this to rebuild native modules for each platform.
 
-**Windows requirements**: The Windows build job includes Python and configures `msvs_version 2022` to ensure node-gyp can compile native modules with the Visual Studio Build Tools available on GitHub's Windows runners.
+**Windows requirements**: The Windows build job includes Python and sets the `GYP_MSVS_VERSION` environment variable to `2022` to ensure node-gyp can compile native modules with the Visual Studio Build Tools available on GitHub's Windows runners.
 
 ### CI Status
 

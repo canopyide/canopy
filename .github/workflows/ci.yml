@@ -83,10 +83,9 @@ jobs:
         with:
           node-version: "20"
 
-      - name: Configure npm for native modules
-        run: npm config set msvs_version 2022
-
       - name: Install dependencies
+        env:
+          GYP_MSVS_VERSION: 2022
         run: npm install
 
       - name: Build
