@@ -156,7 +156,11 @@ export function useContextInjection(targetTerminalId?: string): UseContextInject
       const currentInjectionId = globalInjectionState.injectionId;
       globalInjectionState.isInjecting = true;
       globalInjectionState.activeTerminalId = activeTerminal;
-      globalInjectionState.lastProgress = { stage: "Starting", progress: 0, message: "Initializing..." };
+      globalInjectionState.lastProgress = {
+        stage: "Starting",
+        progress: 0,
+        message: "Initializing...",
+      };
       globalInjectionState.notify();
 
       setError(null);
