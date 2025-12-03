@@ -15,9 +15,12 @@ interface HistoryPanelProps {
 }
 
 const AGENT_COLORS: Record<string, string> = {
-  claude: "bg-orange-500/20 text-orange-400 border-orange-500/30",
-  gemini: "bg-blue-500/20 text-[var(--color-status-info)] border-blue-500/30",
-  custom: "bg-purple-500/20 text-purple-400 border-purple-500/30",
+  claude:
+    "bg-[color-mix(in_oklab,var(--color-status-warning)_15%,transparent)] text-[var(--color-status-warning)] border-[var(--color-status-warning)]/30",
+  gemini:
+    "bg-[color-mix(in_oklab,var(--color-status-info)_15%,transparent)] text-[var(--color-status-info)] border-[var(--color-status-info)]/30",
+  custom:
+    "bg-[color-mix(in_oklab,var(--color-state-working)_15%,transparent)] text-[var(--color-state-working)] border-[var(--color-state-working)]/30",
 };
 
 const STATE_ICONS: Record<string, string> = {
@@ -74,8 +77,10 @@ function SessionListItem({ session, isSelected, onSelect, onDelete }: SessionLis
     <button
       className={cn(
         "w-full text-left p-3 border rounded-lg cursor-pointer transition-all",
-        "hover:bg-gray-800/50 focus:outline-none focus:ring-2 focus:ring-blue-500",
-        isSelected ? "border-blue-500 bg-blue-500/10" : "border-gray-700 bg-gray-800/30"
+        "hover:bg-canopy-sidebar/50 focus:outline-none focus:ring-2 focus:ring-[var(--color-status-info)]",
+        isSelected
+          ? "border-[var(--color-status-info)] bg-[color-mix(in_oklab,var(--color-status-info)_10%,transparent)]"
+          : "border-canopy-border bg-canopy-sidebar/30"
       )}
       onClick={onSelect}
       aria-pressed={isSelected}
@@ -97,23 +102,23 @@ function SessionListItem({ session, isSelected, onSelect, onDelete }: SessionLis
             e.stopPropagation();
             onDelete();
           }}
-          className="text-gray-500 hover:text-[var(--color-status-error)] transition-colors px-1"
+          className="text-canopy-text/40 hover:text-[var(--color-status-error)] transition-colors px-1"
           title="Delete session"
         >
           ×
         </button>
       </div>
 
-      <div className="text-sm text-gray-300 mb-1">
+      <div className="text-sm text-canopy-text mb-1">
         {formatRelativeTime(session.startTime)}
         {session.endTime && (
-          <span className="text-gray-500 ml-2">
+          <span className="text-canopy-text/40 ml-2">
             ({formatDuration(session.startTime, session.endTime)})
           </span>
         )}
       </div>
 
-      <div className="flex items-center gap-2 text-xs text-gray-500">
+      <div className="flex items-center gap-2 text-xs text-canopy-text/40">
         {session.worktreeId && (
           <span className="truncate max-w-[150px]" title={session.worktreeId}>
             {session.worktreeId.split("/").pop()}
@@ -133,13 +138,13 @@ interface FilterBarProps {
 
 function FilterBar({ filters, onFiltersChange, worktreeOptions }: FilterBarProps) {
   return (
-    <div className="flex flex-wrap gap-2 p-3 border-b border-gray-700 bg-gray-800/30">
+    <div className="flex flex-wrap gap-2 p-3 border-b border-canopy-border bg-canopy-sidebar/30">
       <select
         value={filters.agentType || "all"}
         onChange={(e) =>
           onFiltersChange({ agentType: e.target.value as SessionFilters["agentType"] })
         }
-        className="text-xs px-2 py-1 bg-gray-700 border border-gray-600 rounded text-gray-300"
+        className="text-xs px-2 py-1 bg-canopy-sidebar border border-canopy-border rounded text-canopy-text"
       >
         <option value="all">All Agents</option>
         <option value="claude">Claude</option>
@@ -150,7 +155,7 @@ function FilterBar({ filters, onFiltersChange, worktreeOptions }: FilterBarProps
       <select
         value={filters.status || "all"}
         onChange={(e) => onFiltersChange({ status: e.target.value as SessionFilters["status"] })}
-        className="text-xs px-2 py-1 bg-gray-700 border border-gray-600 rounded text-gray-300"
+        className="text-xs px-2 py-1 bg-canopy-sidebar border border-canopy-border rounded text-canopy-text"
       >
         <option value="all">All Status</option>
         <option value="completed">Completed</option>
@@ -161,7 +166,7 @@ function FilterBar({ filters, onFiltersChange, worktreeOptions }: FilterBarProps
         <select
           value={filters.worktreeId || ""}
           onChange={(e) => onFiltersChange({ worktreeId: e.target.value || undefined })}
-          className="text-xs px-2 py-1 bg-gray-700 border border-gray-600 rounded text-gray-300"
+          className="text-xs px-2 py-1 bg-canopy-sidebar border border-canopy-border rounded text-canopy-text"
         >
           <option value="">All Worktrees</option>
           {worktreeOptions.map((wt) => (
@@ -177,7 +182,7 @@ function FilterBar({ filters, onFiltersChange, worktreeOptions }: FilterBarProps
         placeholder="Search..."
         value={filters.searchQuery || ""}
         onChange={(e) => onFiltersChange({ searchQuery: e.target.value })}
-        className="flex-1 min-w-[100px] text-xs px-2 py-1 bg-gray-700 border border-gray-600 rounded text-gray-300 placeholder-gray-500"
+        className="flex-1 min-w-[100px] text-xs px-2 py-1 bg-canopy-sidebar border border-canopy-border rounded text-canopy-text placeholder-canopy-text/40"
       />
     </div>
   );
@@ -328,7 +333,7 @@ export function HistoryPanel({ className }: HistoryPanelProps) {
         <div className="text-[var(--color-status-error)] text-sm mb-2">{error}</div>
         <button
           onClick={refresh}
-          className="text-xs px-2 py-1 border border-gray-600 rounded hover:bg-gray-800 text-gray-300"
+          className="text-xs px-2 py-1 border border-canopy-border rounded hover:bg-canopy-sidebar text-canopy-text"
         >
           Retry
         </button>
@@ -338,14 +343,14 @@ export function HistoryPanel({ className }: HistoryPanelProps) {
 
   return (
     <div className={cn("flex flex-col h-full", className)}>
-      <div className="flex items-center justify-between px-4 py-2 border-b border-gray-700">
+      <div className="flex items-center justify-between px-4 py-2 border-b border-canopy-border">
         <h2 className="section-header">History</h2>
         <button
           onClick={refresh}
           disabled={isLoading}
           className={cn(
             "text-xs px-2 py-1 rounded transition-colors",
-            "text-gray-400 hover:text-gray-200 hover:bg-gray-800",
+            "text-canopy-text/60 hover:text-canopy-text hover:bg-canopy-sidebar",
             isLoading && "opacity-50 cursor-not-allowed"
           )}
         >
@@ -359,13 +364,13 @@ export function HistoryPanel({ className }: HistoryPanelProps) {
         <div
           className={cn(
             "overflow-y-auto p-3 space-y-2",
-            selectedSession ? "w-1/3 border-r border-gray-700" : "w-full"
+            selectedSession ? "w-1/3 border-r border-canopy-border" : "w-full"
           )}
         >
           {isLoading && sessions.length === 0 ? (
-            <div className="text-center py-8 text-gray-500 text-sm">Loading sessions...</div>
+            <div className="text-center py-8 text-canopy-text/40 text-sm">Loading sessions...</div>
           ) : sessions.length === 0 ? (
-            <div className="text-center py-8 text-gray-500 text-sm">No sessions found</div>
+            <div className="text-center py-8 text-canopy-text/40 text-sm">No sessions found</div>
           ) : (
             sessions.map((session) => (
               <SessionListItem

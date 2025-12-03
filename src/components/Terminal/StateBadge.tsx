@@ -20,27 +20,30 @@ const STATE_CONFIG: Record<
   working: {
     icon: <Loader2 className="h-3 w-3 animate-spin" aria-hidden="true" />,
     label: "Busy",
-    className: "bg-blue-500/20 text-blue-300 border-blue-500/30",
+    className:
+      "bg-[color-mix(in_oklab,var(--color-state-working)_15%,transparent)] text-[var(--color-state-working)] border-[var(--color-state-working)]/40",
     tooltip: "Agent is active",
   },
   completed: {
     icon: (
-      <span className="text-emerald-400" aria-hidden="true">
+      <span className="text-[var(--color-status-success)]" aria-hidden="true">
         ✓
       </span>
     ),
     label: "Done",
-    className: "bg-emerald-500/20 text-emerald-300 border-emerald-500/30",
+    className:
+      "bg-[color-mix(in_oklab,var(--color-status-success)_15%,transparent)] text-[var(--color-status-success)] border-[var(--color-status-success)]/40",
     tooltip: "Agent completed successfully",
   },
   failed: {
     icon: (
-      <span className="text-red-400" aria-hidden="true">
+      <span className="text-[var(--color-status-error)]" aria-hidden="true">
         ✗
       </span>
     ),
     label: "Failed",
-    className: "bg-red-500/20 text-red-300 border-red-500/30",
+    className:
+      "bg-[color-mix(in_oklab,var(--color-status-error)_15%,transparent)] text-[var(--color-status-error)] border-[var(--color-status-error)]/40",
     tooltip: "Agent encountered an error",
   },
 };
