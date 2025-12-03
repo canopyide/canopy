@@ -1,8 +1,8 @@
 import { useState, useEffect } from "react";
 import { Plus, Trash2, X, Sparkles } from "lucide-react";
-import EmojiPicker, { Theme } from "emoji-picker-react";
 import { Button } from "@/components/ui/button";
 import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover";
+import { EmojiPicker } from "@/components/ui/emoji-picker";
 import { useProjectSettings } from "@/hooks/useProjectSettings";
 import { useProjectStore } from "@/store/projectStore";
 import type { RunCommand } from "@/types";
@@ -156,17 +156,12 @@ export function ProjectSettingsDialog({ projectId, isOpen, onClose }: ProjectSet
                           </span>
                         </button>
                       </PopoverTrigger>
-                      <PopoverContent className="w-auto p-0 border-none bg-transparent shadow-none">
+                      <PopoverContent className="w-auto p-0">
                         <EmojiPicker
-                          theme={Theme.DARK}
-                          onEmojiClick={(emojiData) => {
-                            setEmoji(emojiData.emoji);
+                          onEmojiSelect={({ emoji }) => {
+                            setEmoji(emoji);
                             setIsEmojiPickerOpen(false);
                           }}
-                          lazyLoadEmojis={true}
-                          searchDisabled={false}
-                          width={350}
-                          height={400}
                         />
                       </PopoverContent>
                     </Popover>
