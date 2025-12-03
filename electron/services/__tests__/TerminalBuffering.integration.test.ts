@@ -1,24 +1,25 @@
 import { describe, it, expect, beforeEach, afterEach } from "vitest";
+import type { PtyManager } from "../PtyManager.js";
 
-let PtyManager: any;
+let PtyManagerClass: any;
 let testUtils: any;
 
 try {
-  PtyManager = (await import("../PtyManager.js")).PtyManager;
+  PtyManagerClass = (await import("../PtyManager.js")).PtyManager;
   testUtils = await import("./helpers/ptyTestUtils.js");
 } catch (error) {
   console.warn("node-pty not available, skipping buffering integration tests");
 }
 
-const shouldSkip = !PtyManager;
+const shouldSkip = !PtyManagerClass;
 
 describe.skipIf(shouldSkip)("Terminal Buffering Integration", () => {
-  const { cleanupPtyManager, waitForData, spawnShellTerminal, sleep, collectDataFor } =
+  const { cleanupPtyManager, waitForData, spawnShellTerminal, sleep } =
     testUtils || {};
   let manager: PtyManager;
 
   beforeEach(() => {
-    manager = new PtyManager();
+    manager = new PtyManagerClass();
   });
 
   afterEach(async () => {
@@ -54,7 +55,7 @@ describe.skipIf(shouldSkip)("Terminal Buffering Integration", () => {
       manager.write(id, "echo flush-test\n");
       await sleep(300);
 
-      const dataPromise = waitForData(manager, id, (d) => d.includes("flush-test"), 2000);
+      const dataPromise = waitForData(manager, id, (d: string) => d.includes("flush-test"), 2000);
       manager.flushBuffer(id);
 
       const data = await dataPromise;
@@ -67,7 +68,7 @@ describe.skipIf(shouldSkip)("Terminal Buffering Integration", () => {
 
       manager.setBuffering(id, false);
 
-      const dataPromise = waitForData(manager, id, (d) => d.includes("immediate"), 2000);
+      const dataPromise = waitForData(manager, id, (d: string) => d.includes("immediate"), 2000);
       manager.write(id, "echo immediate\n");
 
       const data = await dataPromise;
@@ -87,7 +88,7 @@ describe.skipIf(shouldSkip)("Terminal Buffering Integration", () => {
       const dataPromise = waitForData(
         manager,
         id,
-        (d) => d.includes("buffered") || d.includes("unbuffered"),
+        (d: string) => d.includes("buffered") || d.includes("unbuffered"),
         3000
       );
 
@@ -115,7 +116,7 @@ describe.skipIf(shouldSkip)("Terminal Buffering Integration", () => {
       const dataPromise = waitForData(
         manager,
         id,
-        (d) => d.includes("line1") || d.includes("line2") || d.includes("line3"),
+        (d: string) => d.includes("line1") || d.includes("line2") || d.includes("line3"),
         2000
       );
       manager.flushBuffer(id);
@@ -149,7 +150,7 @@ describe.skipIf(shouldSkip)("Terminal Buffering Integration", () => {
       manager.write(id, "echo exit-flush\n");
       await sleep(300);
 
-      const dataPromise = waitForData(manager, id, (d) => d.length > 0, 2000);
+      const dataPromise = waitForData(manager, id, (d: string) => d.length > 0, 2000);
       manager.write(id, "exit\n");
 
       const data = await dataPromise;
@@ -184,7 +185,7 @@ describe.skipIf(shouldSkip)("Terminal Buffering Integration", () => {
       manager.write(id, "echo agent-buffered\n");
       await sleep(300);
 
-      const dataPromise = waitForData(manager, id, (d) => d.includes("agent-buffered"), 2000);
+      const dataPromise = waitForData(manager, id, (d: string) => d.includes("agent-buffered"), 2000);
       manager.flushBuffer(id);
 
       const data = await dataPromise;

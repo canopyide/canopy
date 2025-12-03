@@ -1,16 +1,18 @@
-import { describe, it, expect, beforeEach, afterEach, vi } from "vitest";
+import { describe, it, expect, beforeEach, afterEach } from "vitest";
+import { randomUUID } from "crypto";
+import type { PtyManager } from "../PtyManager.js";
 
-let PtyManager: any;
+let PtyManagerClass: any;
 let testUtils: any;
 
 try {
-  PtyManager = (await import("../PtyManager.js")).PtyManager;
+  PtyManagerClass = (await import("../PtyManager.js")).PtyManager;
   testUtils = await import("./helpers/ptyTestUtils.js");
 } catch (error) {
   console.warn("node-pty not available, skipping PTY integration tests");
 }
 
-const shouldSkip = !PtyManager;
+const shouldSkip = !PtyManagerClass;
 
 describe.skipIf(shouldSkip)("PtyManager Integration", () => {
   const {
@@ -25,7 +27,7 @@ describe.skipIf(shouldSkip)("PtyManager Integration", () => {
   let manager: PtyManager;
 
   beforeEach(() => {
-    manager = new PtyManager();
+    manager = new PtyManagerClass();
   });
 
   afterEach(async () => {
@@ -36,7 +38,7 @@ describe.skipIf(shouldSkip)("PtyManager Integration", () => {
     it("should spawn terminal and receive data", async () => {
       const id = await spawnEchoTerminal(manager, "test-output");
 
-      const data = await waitForData(manager, id, (d) => d.includes("test-output"), 3000);
+      const data = await waitForData(manager, id, (d: string) => d.includes("test-output"), 3000);
 
       expect(data).toContain("test-output");
     }, 10000);
@@ -46,7 +48,7 @@ describe.skipIf(shouldSkip)("PtyManager Integration", () => {
 
       await sleep(500);
 
-      const dataPromise = waitForData(manager, id, (d) => d.includes("hello"), 3000);
+      const dataPromise = waitForData(manager, id, (d: string) => d.includes("hello"), 3000);
       manager.write(id, "echo hello\n");
 
       const data = await dataPromise;
@@ -55,7 +57,8 @@ describe.skipIf(shouldSkip)("PtyManager Integration", () => {
 
     it("should handle terminal exit with code 0", async () => {
       const { shell, args } = getShellCommand("exit 0");
-      const id = await manager.spawn({
+      const id = randomUUID();
+      manager.spawn(id, {
         cwd: process.cwd(),
         shell,
         args,
@@ -71,7 +74,8 @@ describe.skipIf(shouldSkip)("PtyManager Integration", () => {
 
     it("should handle terminal exit with non-zero code", async () => {
       const { shell, args } = getShellCommand("exit 1");
-      const id = await manager.spawn({
+      const id = randomUUID();
+      manager.spawn(id, {
         cwd: process.cwd(),
         shell,
         args,
@@ -119,9 +123,9 @@ describe.skipIf(shouldSkip)("PtyManager Integration", () => {
       ]);
 
       const dataPromises = [
-        waitForData(manager, ids[0], (d) => d.includes("term1"), 3000),
-        waitForData(manager, ids[1], (d) => d.includes("term2"), 3000),
-        waitForData(manager, ids[2], (d) => d.includes("term3"), 3000),
+        waitForData(manager, ids[0], (d: string) => d.includes("term1"), 3000),
+        waitForData(manager, ids[1], (d: string) => d.includes("term2"), 3000),
+        waitForData(manager, ids[2], (d: string) => d.includes("term3"), 3000),
       ];
 
       const results = await Promise.all(dataPromises);
@@ -201,10 +205,10 @@ describe.skipIf(shouldSkip)("PtyManager Integration", () => {
     it("should get terminal snapshot", async () => {
       const id = await spawnEchoTerminal(manager, "snapshot-test");
 
-      await waitForData(manager, id, (d) => d.includes("snapshot-test"), 3000);
+      await waitForData(manager, id, (d: string) => d.includes("snapshot-test"), 3000);
       await sleep(200);
 
-      const snapshot = manager.getSnapshot(id);
+      const snapshot = manager.getTerminalSnapshot(id);
 
       expect(snapshot).toBeDefined();
       expect(snapshot?.id).toBe(id);
@@ -213,26 +217,28 @@ describe.skipIf(shouldSkip)("PtyManager Integration", () => {
     }, 10000);
 
     it("should return undefined for non-existent terminal", () => {
-      const snapshot = manager.getSnapshot("non-existent-id");
-      expect(snapshot).toBeUndefined();
+      const snapshot = manager.getTerminalSnapshot("non-existent-id");
+      expect(snapshot).toBeNull();
     }, 10000);
   });
 
   describe("Error Handling", () => {
     it("should emit error for invalid cwd", async () => {
       const errorPromise = new Promise((resolve) => {
-        manager.once("error", (_id, error) => {
+        manager.once("error", (_id: string, error: string) => {
           resolve(error);
         });
       });
+      
+      const id = randomUUID();
 
-      await manager
-        .spawn({
+      try {
+         manager.spawn(id, {
           cwd: "/non/existent/path",
           cols: 80,
           rows: 24,
-        })
-        .catch(() => {});
+        });
+      } catch (e) {}
 
       const error = await Promise.race([errorPromise, sleep(2000).then(() => null)]);
 

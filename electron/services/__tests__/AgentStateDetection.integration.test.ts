@@ -1,23 +1,24 @@
-import { describe, it, expect, beforeEach, afterEach, vi } from "vitest";
+import { describe, it, expect, beforeEach, afterEach } from "vitest";
+import type { PtyManager } from "../PtyManager.js";
 
-let PtyManager: any;
+let PtyManagerClass: any;
 let testUtils: any;
 
 try {
-  PtyManager = (await import("../PtyManager.js")).PtyManager;
+  PtyManagerClass = (await import("../PtyManager.js")).PtyManager;
   testUtils = await import("./helpers/ptyTestUtils.js");
 } catch (error) {
   console.warn("node-pty not available, skipping agent state detection tests");
 }
 
-const shouldSkip = !PtyManager;
+const shouldSkip = !PtyManagerClass;
 
 describe.skipIf(shouldSkip)("Agent State Detection Integration", () => {
   const { cleanupPtyManager, waitForAgentStateChange, spawnShellTerminal, sleep } = testUtils || {};
   let manager: PtyManager;
 
   beforeEach(() => {
-    manager = new PtyManager();
+    manager = new PtyManagerClass();
   });
 
   afterEach(async () => {
@@ -30,19 +31,19 @@ describe.skipIf(shouldSkip)("Agent State Detection Integration", () => {
       await sleep(500);
 
       const statePromise = waitForAgentStateChange(manager, id, 2000);
-      manager.transitionState(id, "working", "manual");
+      manager.transitionState(id, { type: "busy" }, "activity", 1.0);
 
       const stateChange = await statePromise;
       expect(stateChange.id).toBe(id);
       expect(stateChange.state).toBe("working");
-      expect(stateChange.trigger).toBe("manual");
+      expect(stateChange.trigger).toBe("activity");
     }, 10000);
 
     it("should track agent state in terminal info", async () => {
       const id = await spawnShellTerminal(manager, { type: "claude" });
       await sleep(500);
 
-      manager.transitionState(id, "working", "manual");
+      manager.transitionState(id, { type: "busy" }, "activity", 1.0);
       await sleep(200);
 
       const terminal = manager.getTerminal(id);
@@ -63,7 +64,7 @@ describe.skipIf(shouldSkip)("Agent State Detection Integration", () => {
 
       manager.on("agent:state-changed", handler);
 
-      manager.transitionState(id, "waiting", "manual");
+      manager.transitionState(id, { type: "prompt" }, "activity", 1.0);
       await sleep(500);
 
       expect(eventEmitted).toBe(true);
@@ -83,11 +84,11 @@ describe.skipIf(shouldSkip)("Agent State Detection Integration", () => {
 
       manager.on("agent:state-changed", handler);
 
-      manager.transitionState(id, "working", "manual");
+      manager.transitionState(id, { type: "busy" }, "activity", 1.0);
       await sleep(200);
-      manager.transitionState(id, "waiting", "manual");
+      manager.transitionState(id, { type: "prompt" }, "activity", 1.0);
       await sleep(200);
-      manager.transitionState(id, "working", "manual");
+      manager.transitionState(id, { type: "busy" }, "activity", 1.0);
       await sleep(200);
 
       expect(states.length).toBeGreaterThanOrEqual(1);
@@ -102,7 +103,7 @@ describe.skipIf(shouldSkip)("Agent State Detection Integration", () => {
 
       const before = Date.now();
       const statePromise = waitForAgentStateChange(manager, id, 2000);
-      manager.transitionState(id, "working", "manual");
+      manager.transitionState(id, { type: "busy" }, "activity", 1.0);
       const stateChange = await statePromise;
       const after = Date.now();
 
@@ -115,7 +116,7 @@ describe.skipIf(shouldSkip)("Agent State Detection Integration", () => {
       await sleep(500);
 
       const before = Date.now();
-      manager.transitionState(id, "working", "manual");
+      manager.transitionState(id, { type: "busy" }, "activity", 1.0);
       await sleep(200);
 
       const terminal = manager.getTerminal(id);
@@ -154,7 +155,7 @@ describe.skipIf(shouldSkip)("Agent State Detection Integration", () => {
       await sleep(500);
 
       const statePromise = waitForAgentStateChange(manager, id, 2000);
-      manager.transitionState(id, "completed", "manual");
+      manager.transitionState(id, { type: "exit", code: 0 }, "activity", 1.0);
 
       const stateChange = await statePromise;
       expect(stateChange.state).toBe("completed");
@@ -165,7 +166,7 @@ describe.skipIf(shouldSkip)("Agent State Detection Integration", () => {
       await sleep(500);
 
       const statePromise = waitForAgentStateChange(manager, id, 2000);
-      manager.transitionState(id, "working", "manual");
+      manager.transitionState(id, { type: "busy" }, "activity", 1.0);
 
       const stateChange = await statePromise;
       expect(stateChange.id).toBe(id);
@@ -177,10 +178,10 @@ describe.skipIf(shouldSkip)("Agent State Detection Integration", () => {
       const id = await spawnShellTerminal(manager, { type: "claude" });
       await sleep(500);
 
-      manager.transitionState(id, "working", "manual");
+      manager.transitionState(id, { type: "busy" }, "activity", 1.0);
       await sleep(200);
 
-      const snapshot = manager.getSnapshot(id);
+      const snapshot = manager.getTerminalSnapshot(id);
       expect(snapshot).toBeDefined();
       expect(snapshot?.agentState).toBe("working");
     }, 10000);
@@ -189,10 +190,10 @@ describe.skipIf(shouldSkip)("Agent State Detection Integration", () => {
       const id = await spawnShellTerminal(manager, { type: "claude" });
       await sleep(500);
 
-      manager.transitionState(id, "working", "manual");
+      manager.transitionState(id, { type: "busy" }, "activity", 1.0);
       await sleep(200);
 
-      const snapshot = manager.getSnapshot(id);
+      const snapshot = manager.getTerminalSnapshot(id);
       expect(snapshot).toBeDefined();
       expect(snapshot?.lastStateChange).toBeDefined();
       expect(typeof snapshot?.lastStateChange).toBe("number");
@@ -201,22 +202,31 @@ describe.skipIf(shouldSkip)("Agent State Detection Integration", () => {
 
   describe("Edge Cases", () => {
     it("should handle state transition on non-existent terminal gracefully", () => {
-      expect(() => manager.transitionState("non-existent-id", "working", "manual")).not.toThrow();
+      expect(() => manager.transitionState("non-existent-id", { type: "busy" }, "activity", 1.0)).not.toThrow();
     }, 10000);
 
     it("should handle rapid state transitions", async () => {
       const id = await spawnShellTerminal(manager, { type: "claude" });
       await sleep(500);
 
-      const states = ["working", "waiting", "working", "completed"] as const;
+      // states to transition to: "working", "waiting", "working", "completed"
+      // events: { type: "busy" }, { type: "prompt" }, { type: "busy" }, { type: "exit", code: 0 }
+      
+      const events = [
+        { type: "busy" },
+        { type: "prompt" },
+        { type: "busy" },
+        { type: "exit", code: 0 }
+      ] as const;
 
-      for (const state of states) {
-        manager.transitionState(id, state, "manual");
+      for (const event of events) {
+        manager.transitionState(id, event as any, "activity", 1.0);
         await sleep(50);
       }
 
       const terminal = manager.getTerminal(id);
       expect(terminal).toBeDefined();
+      // Final state should be completed, but we just check if it's defined
       expect(terminal?.agentState).toBeDefined();
     }, 10000);
 
@@ -224,7 +234,7 @@ describe.skipIf(shouldSkip)("Agent State Detection Integration", () => {
       const id = await spawnShellTerminal(manager, { type: "claude" });
       await sleep(500);
 
-      manager.transitionState(id, "working", "manual");
+      manager.transitionState(id, { type: "busy" }, "activity", 1.0);
       await sleep(200);
 
       manager.write(id, "echo test\n");
@@ -240,11 +250,11 @@ describe.skipIf(shouldSkip)("Agent State Detection Integration", () => {
       const id = await spawnShellTerminal(manager, { type: "claude" });
       await sleep(500);
 
-      manager.transitionState(id, "working", "manual");
+      manager.transitionState(id, { type: "busy" }, "activity", 1.0);
       await sleep(200);
 
       const exitPromise = new Promise((resolve) => {
-        manager.once("exit", (termId) => {
+        manager.once("exit", (termId: string) => {
           if (termId === id) {
             resolve(termId);
           }

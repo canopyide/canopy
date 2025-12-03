@@ -1,4 +1,5 @@
 import { vi } from "vitest";
+import { randomUUID } from "crypto";
 import type { IPty } from "node-pty";
 import { PtyManager } from "../../PtyManager.js";
 
@@ -169,8 +170,9 @@ export async function spawnEchoTerminal(
   options?: { type?: string; worktreeId?: string }
 ): Promise<string> {
   const { shell, args } = getShellCommand(`echo "${message}"`);
+  const id = randomUUID();
 
-  const id = await manager.spawn({
+  manager.spawn(id, {
     cwd: process.cwd(),
     shell,
     args,
@@ -195,8 +197,9 @@ export async function spawnShellTerminal(
 ): Promise<string> {
   const isWindows = process.platform === "win32";
   const shell = isWindows ? "cmd.exe" : "/bin/sh";
+  const id = randomUUID();
 
-  const id = await manager.spawn({
+  manager.spawn(id, {
     cwd: options?.cwd || process.cwd(),
     shell,
     cols: options?.cols || 80,
