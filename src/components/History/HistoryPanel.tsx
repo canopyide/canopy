@@ -74,15 +74,23 @@ function SessionListItem({ session, isSelected, onSelect, onDelete }: SessionLis
   const stateColor = STATE_COLORS[session.state] || STATE_COLORS.active;
 
   return (
-    <button
+    <div
       className={cn(
         "w-full text-left p-3 border rounded-lg cursor-pointer transition-all",
-        "hover:bg-canopy-sidebar/50 focus:outline-none focus:ring-2 focus:ring-[var(--color-status-info)]",
+        "hover:bg-canopy-sidebar/50 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-canopy-accent focus-visible:ring-inset",
         isSelected
           ? "border-[var(--color-status-info)] bg-[color-mix(in_oklab,var(--color-status-info)_10%,transparent)]"
           : "border-canopy-border bg-canopy-sidebar/30"
       )}
       onClick={onSelect}
+      onKeyDown={(e) => {
+        if (e.key === "Enter" || e.key === " ") {
+          e.preventDefault();
+          onSelect();
+        }
+      }}
+      tabIndex={0}
+      role="button"
       aria-pressed={isSelected}
     >
       <div className="flex items-center justify-between mb-2">
@@ -102,7 +110,7 @@ function SessionListItem({ session, isSelected, onSelect, onDelete }: SessionLis
             e.stopPropagation();
             onDelete();
           }}
-          className="text-canopy-text/40 hover:text-[var(--color-status-error)] transition-colors px-1"
+          className="text-canopy-text/40 hover:text-[var(--color-status-error)] transition-colors px-1 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-canopy-accent rounded"
           title="Delete session"
         >
           ×
@@ -126,7 +134,7 @@ function SessionListItem({ session, isSelected, onSelect, onDelete }: SessionLis
         )}
         <span>{session.artifacts.length} artifacts</span>
       </div>
-    </button>
+    </div>
   );
 }
 
@@ -144,7 +152,7 @@ function FilterBar({ filters, onFiltersChange, worktreeOptions }: FilterBarProps
         onChange={(e) =>
           onFiltersChange({ agentType: e.target.value as SessionFilters["agentType"] })
         }
-        className="text-xs px-2 py-1 bg-canopy-sidebar border border-canopy-border rounded text-canopy-text"
+        className="text-xs px-2 py-1 bg-canopy-sidebar border border-canopy-border rounded text-canopy-text focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-canopy-accent focus-visible:ring-offset-2 focus-visible:ring-offset-canopy-sidebar"
       >
         <option value="all">All Agents</option>
         <option value="claude">Claude</option>
@@ -155,7 +163,7 @@ function FilterBar({ filters, onFiltersChange, worktreeOptions }: FilterBarProps
       <select
         value={filters.status || "all"}
         onChange={(e) => onFiltersChange({ status: e.target.value as SessionFilters["status"] })}
-        className="text-xs px-2 py-1 bg-canopy-sidebar border border-canopy-border rounded text-canopy-text"
+        className="text-xs px-2 py-1 bg-canopy-sidebar border border-canopy-border rounded text-canopy-text focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-canopy-accent focus-visible:ring-offset-2 focus-visible:ring-offset-canopy-sidebar"
       >
         <option value="all">All Status</option>
         <option value="completed">Completed</option>
@@ -166,7 +174,7 @@ function FilterBar({ filters, onFiltersChange, worktreeOptions }: FilterBarProps
         <select
           value={filters.worktreeId || ""}
           onChange={(e) => onFiltersChange({ worktreeId: e.target.value || undefined })}
-          className="text-xs px-2 py-1 bg-canopy-sidebar border border-canopy-border rounded text-canopy-text"
+          className="text-xs px-2 py-1 bg-canopy-sidebar border border-canopy-border rounded text-canopy-text focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-canopy-accent focus-visible:ring-offset-2 focus-visible:ring-offset-canopy-sidebar"
         >
           <option value="">All Worktrees</option>
           {worktreeOptions.map((wt) => (
@@ -182,7 +190,7 @@ function FilterBar({ filters, onFiltersChange, worktreeOptions }: FilterBarProps
         placeholder="Search..."
         value={filters.searchQuery || ""}
         onChange={(e) => onFiltersChange({ searchQuery: e.target.value })}
-        className="flex-1 min-w-[100px] text-xs px-2 py-1 bg-canopy-sidebar border border-canopy-border rounded text-canopy-text placeholder-canopy-text/40"
+        className="flex-1 min-w-[100px] text-xs px-2 py-1 bg-canopy-sidebar border border-canopy-border rounded text-canopy-text placeholder-canopy-text/40 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-canopy-accent focus-visible:ring-offset-2 focus-visible:ring-offset-canopy-sidebar"
       />
     </div>
   );
@@ -333,7 +341,7 @@ export function HistoryPanel({ className }: HistoryPanelProps) {
         <div className="text-[var(--color-status-error)] text-sm mb-2">{error}</div>
         <button
           onClick={refresh}
-          className="text-xs px-2 py-1 border border-canopy-border rounded hover:bg-canopy-sidebar text-canopy-text"
+          className="text-xs px-2 py-1 border border-canopy-border rounded hover:bg-canopy-sidebar text-canopy-text focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-canopy-accent focus-visible:ring-offset-2 focus-visible:ring-offset-canopy-bg"
         >
           Retry
         </button>
@@ -351,6 +359,7 @@ export function HistoryPanel({ className }: HistoryPanelProps) {
           className={cn(
             "text-xs px-2 py-1 rounded transition-colors",
             "text-canopy-text/60 hover:text-canopy-text hover:bg-canopy-sidebar",
+            "focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-canopy-accent focus-visible:ring-offset-2 focus-visible:ring-offset-canopy-bg",
             isLoading && "opacity-50 cursor-not-allowed"
           )}
         >
