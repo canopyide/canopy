@@ -188,26 +188,19 @@ export function registerProjectHandlers(deps: HandlerDependencies): () => void {
       throw new Error(`Project not found: ${projectId}`);
     }
 
-    let identity;
-    try {
-      identity = await generateProjectIdentity(project.path);
-    } catch (error) {
-      const message = error instanceof Error ? error.message : "Unknown error";
-      throw new Error(`AI identity generation failed: ${message}`);
-    }
+    const result = await generateProjectIdentity(project.path);
 
-    if (!identity) {
-      throw new Error(
-        "AI identity generation unavailable. Please check that your OpenAI API key is configured in Settings."
-      );
+    if (!result.success || !result.identity) {
+      const errorMessage = result.error?.message || "AI identity generation failed";
+      throw new Error(errorMessage);
     }
 
     const updates: Partial<Project> = {
-      aiGeneratedName: identity.title,
-      aiGeneratedEmoji: identity.emoji,
-      color: identity.gradientStart,
-      name: identity.title,
-      emoji: identity.emoji,
+      aiGeneratedName: result.identity.title,
+      aiGeneratedEmoji: result.identity.emoji,
+      color: result.identity.gradientStart,
+      name: result.identity.title,
+      emoji: result.identity.emoji,
       isFallbackIdentity: false,
     };
 
