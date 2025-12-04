@@ -23,6 +23,7 @@ import { store } from "./store.js";
 import { MigrationRunner } from "./services/StoreMigrations.js";
 import { migrations } from "./services/migrations/index.js";
 import { initializeHibernationService } from "./services/HibernationService.js";
+import { initializeSystemSleepService, getSystemSleepService } from "./services/SystemSleepService.js";
 
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
@@ -220,6 +221,10 @@ async function createWindow(): Promise<void> {
   initializeHibernationService();
   console.log("[MAIN] HibernationService initialized successfully");
 
+  console.log("[MAIN] Initializing SystemSleepService...");
+  initializeSystemSleepService();
+  console.log("[MAIN] SystemSleepService initialized successfully");
+
   console.log("[MAIN] Initializing TranscriptManager...");
   const transcriptManager = getTranscriptManager();
   await transcriptManager.initialize();
@@ -380,6 +385,11 @@ async function createWindow(): Promise<void> {
       ptyClient = null;
     }
     disposePtyClient();
+
+    // Dispose SystemSleepService
+    const sleepService = getSystemSleepService();
+    sleepService.dispose();
+
     setLoggerWindow(null);
     mainWindow = null;
   });

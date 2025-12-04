@@ -230,6 +230,12 @@ const CHANNELS = {
   // Hibernation channels
   HIBERNATION_GET_CONFIG: "hibernation:get-config",
   HIBERNATION_UPDATE_CONFIG: "hibernation:update-config",
+
+  // System Sleep channels
+  SYSTEM_SLEEP_GET_METRICS: "system-sleep:get-metrics",
+  SYSTEM_SLEEP_GET_AWAKE_TIME: "system-sleep:get-awake-time",
+  SYSTEM_SLEEP_RESET: "system-sleep:reset",
+  SYSTEM_SLEEP_ON_WAKE: "system-sleep:on-wake",
 } as const;
 
 const api: ElectronAPI = {
@@ -633,6 +639,19 @@ const api: ElectronAPI = {
       config: Partial<{ enabled: boolean; inactiveThresholdHours: number }>
     ): Promise<{ enabled: boolean; inactiveThresholdHours: number }> =>
       ipcRenderer.invoke(CHANNELS.HIBERNATION_UPDATE_CONFIG, config),
+  },
+
+  // System Sleep API
+  systemSleep: {
+    getMetrics: () => _typedInvoke(CHANNELS.SYSTEM_SLEEP_GET_METRICS),
+
+    getAwakeTimeSince: (startTimestamp: number) =>
+      _typedInvoke(CHANNELS.SYSTEM_SLEEP_GET_AWAKE_TIME, startTimestamp),
+
+    reset: () => _typedInvoke(CHANNELS.SYSTEM_SLEEP_RESET),
+
+    onWake: (callback: (sleepDurationMs: number) => void) =>
+      _typedOn(CHANNELS.SYSTEM_SLEEP_ON_WAKE, callback),
   },
 };
 

@@ -15,6 +15,7 @@ import { registerGithubHandlers } from "./handlers/github.js";
 import { registerAppHandlers } from "./handlers/app.js";
 import { registerSidecarHandlers } from "./handlers/sidecar.js";
 import { registerHibernationHandlers } from "./handlers/hibernation.js";
+import { registerSystemSleepHandlers } from "./handlers/systemSleep.js";
 import { typedHandle, typedSend, sendToRenderer } from "./utils.js";
 
 export { typedHandle, typedSend, sendToRenderer };
@@ -49,6 +50,7 @@ export function registerIpcHandlers(
     registerAppHandlers(deps),
     registerSidecarHandlers(deps),
     registerHibernationHandlers(deps),
+    registerSystemSleepHandlers(deps),
   ];
 
   return () => {
