@@ -60,6 +60,8 @@ export class PtyClient extends EventEmitter {
   private healthCheckInterval: NodeJS.Timeout | null = null;
   private restartAttempts = 0;
   private isHealthCheckPaused = false;
+  private isWaitingForHandshake = false;
+  private handshakeTimeout: NodeJS.Timeout | null = null;
   private pendingSpawns: Map<string, PtyHostSpawnOptions> = new Map();
   private snapshotCallbacks: Map<string, (snapshot: TerminalSnapshot | null) => void> = new Map();
   private allSnapshotsCallback: ((snapshots: TerminalSnapshot[]) => void) | null = null;
@@ -296,7 +298,16 @@ export class PtyClient extends EventEmitter {
       }
 
       case "pong":
-        // Health check passed
+        // If waiting for handshake, this pong confirms host is responsive
+        if (this.isWaitingForHandshake) {
+          this.isWaitingForHandshake = false;
+          if (this.handshakeTimeout) {
+            clearTimeout(this.handshakeTimeout);
+            this.handshakeTimeout = null;
+          }
+          console.log("[PtyClient] Handshake successful - resuming health checks");
+          this.startHealthCheckInterval();
+        }
         break;
 
       case "terminals-for-project": {
@@ -547,10 +558,16 @@ export class PtyClient extends EventEmitter {
       clearInterval(this.healthCheckInterval);
       this.healthCheckInterval = null;
     }
+    // Clear any pending handshake from rapid suspend/resume cycles
+    if (this.handshakeTimeout) {
+      clearTimeout(this.handshakeTimeout);
+      this.handshakeTimeout = null;
+    }
+    this.isWaitingForHandshake = false;
     console.log("[PtyClient] Health check paused");
   }
 
-  /** Resume health check after system wake with reset timestamp */
+  /** Resume health check after system wake with handshake verification */
   resumeHealthCheck(): void {
     if (!this.isHealthCheckPaused) return;
     if (!this.isInitialized || !this.child) {
@@ -561,20 +578,49 @@ export class PtyClient extends EventEmitter {
 
     this.isHealthCheckPaused = false;
 
-    // Clear any existing interval before starting new one
+    // Clear any existing interval before starting handshake
     if (this.healthCheckInterval) {
       clearInterval(this.healthCheckInterval);
       this.healthCheckInterval = null;
     }
 
-    // Restart health check interval
+    // Clear any existing handshake timeout from rapid suspend/resume
+    if (this.handshakeTimeout) {
+      clearTimeout(this.handshakeTimeout);
+      this.handshakeTimeout = null;
+    }
+
+    // Send handshake ping before resuming normal health checks
+    console.log("[PtyClient] System resumed. Initiating handshake...");
+    this.isWaitingForHandshake = true;
+    this.send({ type: "health-check" });
+
+    // Timeout if no response within 5 seconds - fall back to immediate start
+    this.handshakeTimeout = setTimeout(() => {
+      if (this.isWaitingForHandshake) {
+        console.warn("[PtyClient] Handshake timeout - forcing health check resume");
+        this.isWaitingForHandshake = false;
+        this.handshakeTimeout = null;
+        this.startHealthCheckInterval();
+      }
+    }, 5000);
+  }
+
+  /** Start the health check interval (called after handshake or timeout) */
+  private startHealthCheckInterval(): void {
+    // Clear any existing interval
+    if (this.healthCheckInterval) {
+      clearInterval(this.healthCheckInterval);
+      this.healthCheckInterval = null;
+    }
+
     this.healthCheckInterval = setInterval(() => {
       if (this.isInitialized && this.child && !this.isHealthCheckPaused) {
         this.send({ type: "health-check" });
       }
     }, this.config.healthCheckIntervalMs);
 
-    console.log("[PtyClient] Health check resumed");
+    console.log("[PtyClient] Health check interval started");
   }
 
   /** Handle project switch - forward to host */
@@ -600,6 +646,12 @@ export class PtyClient extends EventEmitter {
       clearInterval(this.healthCheckInterval);
       this.healthCheckInterval = null;
     }
+
+    if (this.handshakeTimeout) {
+      clearTimeout(this.handshakeTimeout);
+      this.handshakeTimeout = null;
+    }
+    this.isWaitingForHandshake = false;
 
     if (this.child) {
       this.send({ type: "dispose" });
