@@ -378,6 +378,16 @@ export interface GitHubTokenValidation {
   error?: string;
 }
 
+// Hibernation IPC Types
+
+/** Configuration for auto-hibernation feature */
+export interface HibernationConfig {
+  /** Whether auto-hibernation is enabled */
+  enabled: boolean;
+  /** Hours of inactivity before a project is hibernated */
+  inactiveThresholdHours: number;
+}
+
 // App State IPC Types
 
 /** Saved recipe terminal */
@@ -1546,5 +1556,9 @@ export interface ElectronAPI {
       tabId?: string;
       text: string;
     }): Promise<{ success: boolean; error?: string }>;
+  };
+  hibernation: {
+    getConfig(): Promise<HibernationConfig>;
+    updateConfig(config: Partial<HibernationConfig>): Promise<HibernationConfig>;
   };
 }

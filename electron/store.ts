@@ -16,6 +16,10 @@ export interface StoreSchema {
     scrollbackLines: number; // -1 for unlimited, otherwise 100-100000
     performanceMode: boolean;
   };
+  hibernation: {
+    enabled: boolean;
+    inactiveThresholdHours: number;
+  };
   appState: {
     activeWorktreeId?: string;
     sidebarWidth: number;
@@ -82,6 +86,10 @@ export const store = new Store<StoreSchema>({
     terminalConfig: {
       scrollbackLines: 5000,
       performanceMode: false,
+    },
+    hibernation: {
+      enabled: false,
+      inactiveThresholdHours: 24,
     },
     appState: {
       sidebarWidth: 350,

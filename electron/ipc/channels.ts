@@ -139,6 +139,9 @@ export const CHANNELS = {
   SIDECAR_RELOAD: "sidecar:reload",
   SIDECAR_NAV_EVENT: "sidecar:nav-event",
   SIDECAR_INJECT: "sidecar:inject",
+
+  HIBERNATION_GET_CONFIG: "hibernation:get-config",
+  HIBERNATION_UPDATE_CONFIG: "hibernation:update-config",
 } as const;
 
 export type ChannelName = (typeof CHANNELS)[keyof typeof CHANNELS];

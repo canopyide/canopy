@@ -2,7 +2,12 @@ import { useCallback, useEffect, useRef, useState, type ReactNode } from "react"
 import { Settings } from "lucide-react";
 import { cn } from "@/lib/utils";
 import { Tabs } from "@/components/ui/Tabs";
-import { ProjectSwitcher, ProjectSettingsDialog, QuickRun } from "@/components/Project";
+import {
+  ProjectSwitcher,
+  ProjectSettingsDialog,
+  ProjectResourceBadge,
+  QuickRun,
+} from "@/components/Project";
 import { useProjectStore } from "@/store/projectStore";
 
 export type SidebarTab = "worktrees" | "history";
@@ -123,6 +128,7 @@ export function Sidebar({
               </button>
             )}
           </div>
+          <ProjectResourceBadge />
         </div>
 
         <Tabs

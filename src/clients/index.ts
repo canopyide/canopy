@@ -9,6 +9,7 @@ export { directoryClient } from "./directoryClient";
 export { errorsClient } from "./errorsClient";
 export { eventInspectorClient } from "./eventInspectorClient";
 export { githubClient } from "./githubClient";
+export { hibernationClient } from "./hibernationClient";
 export { historyClient } from "./historyClient";
 export { logsClient } from "./logsClient";
 export { projectClient } from "./projectClient";
