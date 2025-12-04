@@ -1,6 +1,7 @@
 import { Terminal } from "@xterm/xterm";
 import { FitAddon } from "@xterm/addon-fit";
 import { WebglAddon } from "@xterm/addon-webgl";
+import { SerializeAddon } from "@xterm/addon-serialize";
 import { terminalClient } from "@/clients";
 import { TerminalRefreshTier } from "@/types";
 import { InputTracker, VT100_FULL_CLEAR } from "./clearCommandDetection";
@@ -11,6 +12,7 @@ interface ManagedTerminal {
   terminal: Terminal;
   fitAddon: FitAddon;
   webglAddon?: WebglAddon;
+  serializeAddon: SerializeAddon;
   hostElement: HTMLDivElement;
   isOpened: boolean;
   listeners: Array<() => void>;
@@ -198,7 +200,9 @@ class TerminalInstanceService {
 
     const terminal = new Terminal(options);
     const fitAddon = new FitAddon();
+    const serializeAddon = new SerializeAddon();
     terminal.loadAddon(fitAddon);
+    terminal.loadAddon(serializeAddon);
 
     const hostElement = document.createElement("div");
     hostElement.style.width = "100%";
@@ -246,6 +250,7 @@ class TerminalInstanceService {
       terminal,
       fitAddon,
       webglAddon: undefined,
+      serializeAddon,
       hostElement,
       isOpened: false,
       listeners,
@@ -634,6 +639,55 @@ class TerminalInstanceService {
     const managed = this.instances.get(id);
     if (!managed) return null;
     return managed.throttledWriter.getDebugInfo();
+  }
+
+  /**
+   * Restore terminal state from a serialized string (from headless backend).
+   * Writes the serialized state directly to the terminal for instant visual restoration.
+   * @param id Terminal ID
+   * @param serializedState Serialized state from backend headless xterm
+   * @returns true if restoration succeeded, false otherwise
+   */
+  restoreFromSerialized(id: string, serializedState: string): boolean {
+    const managed = this.instances.get(id);
+    if (!managed) {
+      console.warn(`[TerminalInstanceService] Cannot restore: terminal ${id} not found`);
+      return false;
+    }
+
+    try {
+      // Clear pending output and reset terminal state for idempotent restoration
+      managed.throttledWriter.clear();
+      managed.terminal.reset();
+
+      // The serialized state is a sequence of escape codes that reconstructs
+      // the terminal buffer, colors, and cursor position when written
+      managed.terminal.write(serializedState);
+      return true;
+    } catch (error) {
+      console.error(`[TerminalInstanceService] Failed to restore terminal ${id}:`, error);
+      return false;
+    }
+  }
+
+  /**
+   * Fetch serialized state from backend and restore terminal.
+   * Convenience method that combines IPC call and restoration.
+   * @param id Terminal ID
+   * @returns Promise resolving to true if restoration succeeded
+   */
+  async fetchAndRestore(id: string): Promise<boolean> {
+    try {
+      const serializedState = await terminalClient.getSerializedState(id);
+      if (!serializedState) {
+        console.warn(`[TerminalInstanceService] No serialized state for terminal ${id}`);
+        return false;
+      }
+      return this.restoreFromSerialized(id, serializedState);
+    } catch (error) {
+      console.error(`[TerminalInstanceService] Failed to fetch state for terminal ${id}:`, error);
+      return false;
+    }
   }
 }
 

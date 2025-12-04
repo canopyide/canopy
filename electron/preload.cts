@@ -104,6 +104,7 @@ const CHANNELS = {
   TERMINAL_GET_FOR_PROJECT: "terminal:get-for-project",
   TERMINAL_RECONNECT: "terminal:reconnect",
   TERMINAL_REPLAY_HISTORY: "terminal:replay-history",
+  TERMINAL_GET_SERIALIZED_STATE: "terminal:get-serialized-state",
 
   // Agent state channels
   AGENT_STATE_CHANGED: "agent:state-changed",
@@ -373,6 +374,9 @@ const api: ElectronAPI = {
 
     replayHistory: (terminalId: string, maxLines?: number) =>
       ipcRenderer.invoke(CHANNELS.TERMINAL_REPLAY_HISTORY, { terminalId, maxLines }),
+
+    getSerializedState: (terminalId: string) =>
+      _typedInvoke(CHANNELS.TERMINAL_GET_SERIALIZED_STATE, terminalId),
   },
 
   // Artifact API

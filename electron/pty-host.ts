@@ -393,6 +393,17 @@ port.on("message", (rawMsg: any) => {
         break;
       }
 
+      case "get-serialized-state": {
+        const serializedState = ptyManager.getSerializedState(msg.id);
+        sendEvent({
+          type: "serialized-state",
+          requestId: msg.requestId,
+          id: msg.id,
+          state: serializedState,
+        });
+        break;
+      }
+
       case "dispose":
         cleanup();
         break;

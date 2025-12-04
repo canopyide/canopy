@@ -71,6 +71,7 @@ export class PtyClient extends EventEmitter {
   private terminalInfoCallbacks: Map<string, (terminal: TerminalInfoResponse | null) => void> =
     new Map();
   private replayHistoryCallbacks: Map<string, (replayed: number) => void> = new Map();
+  private serializedStateCallbacks: Map<string, (state: string | null) => void> = new Map();
   private readyPromise: Promise<void>;
   private readyResolve: (() => void) | null = null;
 
@@ -338,6 +339,15 @@ export class PtyClient extends EventEmitter {
         break;
       }
 
+      case "serialized-state": {
+        const cb = this.serializedStateCallbacks.get((event as any).requestId);
+        if (cb) {
+          this.serializedStateCallbacks.delete((event as any).requestId);
+          cb((event as any).state ?? null);
+        }
+        break;
+      }
+
       default:
         console.warn("[PtyClient] Unknown event type:", (event as { type: string }).type);
     }
@@ -475,6 +485,27 @@ export class PtyClient extends EventEmitter {
         if (this.replayHistoryCallbacks.has(requestId)) {
           this.replayHistoryCallbacks.delete(requestId);
           resolve(0);
+        }
+      }, 5000);
+    });
+  }
+
+  /**
+   * Get serialized terminal state for fast restoration.
+   * Returns the serialized state from the headless xterm instance.
+   * @param id - Terminal identifier
+   * @returns Serialized state string or null if terminal not found
+   */
+  async getSerializedStateAsync(id: string): Promise<string | null> {
+    return new Promise((resolve) => {
+      const requestId = `serialize-${id}-${Date.now()}`;
+      this.serializedStateCallbacks.set(requestId, resolve);
+      this.send({ type: "get-serialized-state", id, requestId } as PtyHostRequest);
+
+      setTimeout(() => {
+        if (this.serializedStateCallbacks.has(requestId)) {
+          this.serializedStateCallbacks.delete(requestId);
+          resolve(null);
         }
       }, 5000);
     });
@@ -676,6 +707,7 @@ export class PtyClient extends EventEmitter {
     for (const cb of this.terminalsForProjectCallbacks.values()) cb([]);
     for (const cb of this.terminalInfoCallbacks.values()) cb(null);
     for (const cb of this.replayHistoryCallbacks.values()) cb(0);
+    for (const cb of this.serializedStateCallbacks.values()) cb(null);
     if (this.allSnapshotsCallback) {
       this.allSnapshotsCallback([]);
       this.allSnapshotsCallback = null;
@@ -687,6 +719,7 @@ export class PtyClient extends EventEmitter {
     this.terminalsForProjectCallbacks.clear();
     this.terminalInfoCallbacks.clear();
     this.replayHistoryCallbacks.clear();
+    this.serializedStateCallbacks.clear();
     this.removeAllListeners();
 
     console.log("[PtyClient] Disposed");

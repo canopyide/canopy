@@ -35,6 +35,7 @@ export const CHANNELS = {
   TERMINAL_GET_FOR_PROJECT: "terminal:get-for-project",
   TERMINAL_RECONNECT: "terminal:reconnect",
   TERMINAL_REPLAY_HISTORY: "terminal:replay-history",
+  TERMINAL_GET_SERIALIZED_STATE: "terminal:get-serialized-state",
 
   AGENT_STATE_CHANGED: "agent:state-changed",
   AGENT_GET_STATE: "agent:get-state",

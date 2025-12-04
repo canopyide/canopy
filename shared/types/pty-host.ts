@@ -58,7 +58,8 @@ export type PtyHostRequest =
   | { type: "dispose" }
   | { type: "get-terminals-for-project"; projectId: string; requestId: string }
   | { type: "get-terminal"; id: string; requestId: string }
-  | { type: "replay-history"; id: string; maxLines: number; requestId: string };
+  | { type: "replay-history"; id: string; maxLines: number; requestId: string }
+  | { type: "get-serialized-state"; id: string; requestId: string };
 
 /**
  * Terminal snapshot data sent from Host → Main for state queries.
@@ -124,7 +125,8 @@ export type PtyHostEvent =
   | { type: "ready" }
   | { type: "terminals-for-project"; requestId: string; terminalIds: string[] }
   | { type: "terminal-info"; requestId: string; terminal: PtyHostTerminalInfo | null }
-  | { type: "replay-history-result"; requestId: string; replayed: number };
+  | { type: "replay-history-result"; requestId: string; replayed: number }
+  | { type: "serialized-state"; requestId: string; id: string; state: string | null };
 
 /** Terminal info sent from Host → Main for getTerminal queries */
 export interface PtyHostTerminalInfo {

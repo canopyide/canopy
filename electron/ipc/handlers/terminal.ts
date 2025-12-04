@@ -449,6 +449,40 @@ export function registerTerminalHandlers(deps: HandlerDependencies): () => void 
   ipcMain.handle(CHANNELS.TERMINAL_REPLAY_HISTORY, handleTerminalReplayHistory);
   handlers.push(() => ipcMain.removeHandler(CHANNELS.TERMINAL_REPLAY_HISTORY));
 
+  // Get serialized terminal state for fast restoration
+  const handleTerminalGetSerializedState = async (
+    _event: Electron.IpcMainInvokeEvent,
+    terminalId: string
+  ): Promise<string | null> => {
+    try {
+      if (typeof terminalId !== "string" || !terminalId) {
+        throw new Error("Invalid terminal ID: must be a non-empty string");
+      }
+
+      // Check if ptyManager has async method (PtyClient) or sync method (PtyManager)
+      const hasAsyncMethod = "getSerializedStateAsync" in ptyManager;
+
+      let serializedState: string | null;
+      if (hasAsyncMethod) {
+        serializedState = await (ptyManager as any).getSerializedStateAsync(terminalId);
+      } else {
+        serializedState = (ptyManager as any).getSerializedState(terminalId);
+      }
+
+      if (process.env.CANOPY_VERBOSE) {
+        console.log(
+          `[IPC] terminal:getSerializedState(${terminalId}): ${serializedState ? `${serializedState.length} bytes` : "null"}`
+        );
+      }
+      return serializedState;
+    } catch (error) {
+      const errorMessage = error instanceof Error ? error.message : String(error);
+      throw new Error(`Failed to get serialized terminal state: ${errorMessage}`);
+    }
+  };
+  ipcMain.handle(CHANNELS.TERMINAL_GET_SERIALIZED_STATE, handleTerminalGetSerializedState);
+  handlers.push(() => ipcMain.removeHandler(CHANNELS.TERMINAL_GET_SERIALIZED_STATE));
+
   const handleArtifactSaveToFile = async (
     _event: Electron.IpcMainInvokeEvent,
     options: unknown
