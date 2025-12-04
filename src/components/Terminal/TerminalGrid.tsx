@@ -19,7 +19,7 @@ import { CanopyIcon, CodexIcon, ClaudeIcon, GeminiIcon } from "@/components/icon
 import { Kbd } from "@/components/ui/Kbd";
 import { getBrandColorHex } from "@/lib/colorUtils";
 import { terminalInstanceService } from "@/services/TerminalInstanceService";
-import { terminalClient } from "@/clients";
+import { terminalClient, systemClient } from "@/clients";
 import { TerminalRefreshTier } from "@/types";
 
 export interface TerminalGridProps {
@@ -42,7 +42,7 @@ function LauncherCard({ title, description, shortcut, icon, onClick, primary }: 
       onClick={onClick}
       className={cn(
         "group flex items-center text-left p-3 rounded-xl border transition-all duration-200 min-h-[90px]",
-        "bg-white/[0.02] hover:bg-white/[0.04]",
+        "bg-[#18181b] hover:bg-[#202023]",
         primary
           ? "border-canopy-accent/20 hover:border-canopy-accent/50 hover:shadow-[0_0_15px_rgba(16,185,129,0.1)]"
           : "border-white/5 hover:border-white/10"
@@ -81,6 +81,12 @@ function EmptyState({
 }: {
   onLaunchAgent: (type: "claude" | "gemini" | "codex" | "shell") => void;
 }) {
+  const handleOpenHelp = () => {
+    void systemClient.openExternal("https://www.youtube.com/watch?v=dQw4w9WgXcQ").catch((err) => {
+      console.error("Failed to open help video:", err);
+    });
+  };
+
   return (
     <div className="flex flex-col items-center justify-center h-full w-full p-8 animate-in fade-in duration-500">
       <div className="max-w-3xl w-full flex flex-col items-center">
@@ -126,9 +132,27 @@ function EmptyState({
           />
         </div>
 
-        <p className="text-xs text-canopy-text/40 text-center">
-          Tip: Press <Kbd>⌘T</Kbd> to open the terminal palette anytime
-        </p>
+        <div className="flex flex-col items-center gap-4 mt-4">
+          <p className="text-xs text-canopy-text/40 text-center">
+            Tip: Press <Kbd>⌘T</Kbd> to open the terminal palette anytime
+          </p>
+
+          <button
+            type="button"
+            onClick={handleOpenHelp}
+            className="flex items-center gap-3 p-2 pr-4 rounded-lg hover:bg-white/5 border border-transparent hover:border-white/5 focus-visible:ring-2 focus-visible:ring-canopy-accent/50 focus-visible:outline-none transition-all group text-left"
+          >
+            <div className="w-16 h-10 bg-black/40 rounded border border-white/10 flex items-center justify-center relative overflow-hidden group-hover:border-canopy-accent/30 transition-colors">
+              <div className="w-0 h-0 border-t-[4px] border-t-transparent border-l-[8px] border-l-white/70 border-b-[4px] border-b-transparent ml-0.5 group-hover:border-l-canopy-accent transition-colors" />
+            </div>
+            <div className="flex flex-col">
+              <span className="text-xs font-medium text-canopy-text/80 group-hover:text-canopy-text transition-colors">
+                Watch the walkthrough
+              </span>
+              <span className="text-[10px] text-canopy-text/40">2 min video</span>
+            </div>
+          </button>
+        </div>
       </div>
     </div>
   );
