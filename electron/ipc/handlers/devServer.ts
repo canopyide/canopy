@@ -2,6 +2,7 @@ import { ipcMain } from "electron";
 import { CHANNELS } from "../channels.js";
 import { sendToRenderer } from "../utils.js";
 import { events } from "../../services/events.js";
+import { projectStore } from "../../services/ProjectStore.js";
 import type { HandlerDependencies } from "../types.js";
 import {
   DevServerStartPayloadSchema,
@@ -35,7 +36,17 @@ export function registerDevServerHandlers(deps: HandlerDependencies): () => void
     }
 
     const validated = parseResult.data;
-    await devServerManager.start(validated.worktreeId, validated.worktreePath, validated.command);
+
+    // Get current project ID for multi-tenancy
+    const currentProject = projectStore.getCurrentProject();
+    const projectId = currentProject?.id;
+
+    await devServerManager.start(
+      validated.worktreeId,
+      validated.worktreePath,
+      validated.command,
+      projectId // Pass project ID for multi-tenancy
+    );
     return devServerManager.getState(validated.worktreeId);
   };
   ipcMain.handle(CHANNELS.DEVSERVER_START, handleDevServerStart);
@@ -71,7 +82,17 @@ export function registerDevServerHandlers(deps: HandlerDependencies): () => void
     }
 
     const validated = parseResult.data;
-    await devServerManager.toggle(validated.worktreeId, validated.worktreePath, validated.command);
+
+    // Get current project ID for multi-tenancy
+    const currentProject = projectStore.getCurrentProject();
+    const projectId = currentProject?.id;
+
+    await devServerManager.toggle(
+      validated.worktreeId,
+      validated.worktreePath,
+      validated.command,
+      projectId // Pass project ID for multi-tenancy
+    );
     return devServerManager.getState(validated.worktreeId);
   };
   ipcMain.handle(CHANNELS.DEVSERVER_TOGGLE, handleDevServerToggle);
