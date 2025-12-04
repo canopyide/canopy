@@ -4,6 +4,7 @@ import { WebglAddon } from "@xterm/addon-webgl";
 import { terminalClient } from "@/clients";
 import { TerminalRefreshTier } from "@/types";
 import { InputTracker, VT100_FULL_CLEAR } from "./clearCommandDetection";
+import { detectHardware, HardwareProfile } from "@/utils/hardwareDetection";
 
 type RefreshTierProvider = () => TerminalRefreshTier;
 
@@ -182,8 +183,33 @@ function applyJankFix(terminal: Terminal): () => void {
 class TerminalInstanceService {
   private instances = new Map<string, ManagedTerminal>();
   private jankFixDisposers = new Map<string, () => void>();
-  private static readonly MAX_WEBGL_CONTEXTS = 12;
   private webglLru: string[] = [];
+  private hardwareProfile: HardwareProfile;
+
+  private static readonly TERMINAL_COUNT_THRESHOLD = 20;
+  private static readonly BUDGET_SCALE_FACTOR = 0.5;
+  private static readonly MIN_WEBGL_BUDGET = 2;
+
+  constructor() {
+    this.hardwareProfile = detectHardware();
+    console.log("[TerminalInstanceService] Hardware profile:", this.hardwareProfile);
+  }
+
+  private getWebGLBudget(): number {
+    let budget = this.hardwareProfile.baseWebGLBudget;
+
+    // Reduce budget when many terminals are open
+    const terminalCount = this.instances.size;
+    if (terminalCount > TerminalInstanceService.TERMINAL_COUNT_THRESHOLD) {
+      const scaleFactor = Math.max(
+        TerminalInstanceService.BUDGET_SCALE_FACTOR,
+        TerminalInstanceService.TERMINAL_COUNT_THRESHOLD / terminalCount
+      );
+      budget = Math.floor(budget * scaleFactor);
+    }
+
+    return Math.max(TerminalInstanceService.MIN_WEBGL_BUDGET, budget);
+  }
 
   getOrCreate(
     id: string,
@@ -438,17 +464,16 @@ class TerminalInstanceService {
   }
 
   /**
-   * Apply renderer policy based on priority (foreground/background).
-   * Focused/visible terminals keep WebGL; background terminals release it to avoid GPU exhaustion.
+   * Apply renderer policy based on priority tier.
+   * Only FOCUSED and BURST terminals get WebGL; VISIBLE and BACKGROUND use DOM renderer.
+   * This reduces GPU memory usage when many terminals are open.
    */
   applyRendererPolicy(id: string, tier: TerminalRefreshTier): void {
     const managed = this.instances.get(id);
     if (!managed) return;
 
-    const wantsWebgl =
-      tier === TerminalRefreshTier.BURST ||
-      tier === TerminalRefreshTier.FOCUSED ||
-      tier === TerminalRefreshTier.VISIBLE;
+    // Only give WebGL to FOCUSED and BURST terminals
+    const wantsWebgl = tier === TerminalRefreshTier.BURST || tier === TerminalRefreshTier.FOCUSED;
 
     if (wantsWebgl && !managed.webglAddon) {
       this.acquireWebgl(id, managed);
@@ -458,8 +483,11 @@ class TerminalInstanceService {
   }
 
   private acquireWebgl(id: string, managed: ManagedTerminal): void {
-    // Evict LRU if we're at capacity
-    if (this.webglLru.length >= TerminalInstanceService.MAX_WEBGL_CONTEXTS) {
+    const currentBudget = this.getWebGLBudget();
+
+    // Evict LRU entries until we're under budget
+    // Loop handles cases where budget drops significantly (e.g., 8 -> 2 when many terminals open)
+    while (this.webglLru.length >= currentBudget) {
       const evictId = this.webglLru.shift();
       if (evictId && evictId !== id) {
         const evictManaged = this.instances.get(evictId);
@@ -499,10 +527,10 @@ class TerminalInstanceService {
             currentManaged.terminal.refresh(0, currentManaged.terminal.rows - 1);
             console.log(`[XtermAdapter] Canvas fallback active for ${id}`);
 
-            // Attempt to re-acquire WebGL if terminal is visible/focused and under retry limit
+            // Attempt to re-acquire WebGL if terminal qualifies for WebGL (FOCUSED/BURST) and under retry limit
             const tier = currentManaged.getRefreshTier();
             if (
-              (tier === TerminalRefreshTier.FOCUSED || tier === TerminalRefreshTier.VISIBLE) &&
+              (tier === TerminalRefreshTier.FOCUSED || tier === TerminalRefreshTier.BURST) &&
               currentManaged.webglRecoveryAttempts < MAX_WEBGL_RECOVERY_ATTEMPTS
             ) {
               currentManaged.webglRecoveryAttempts++;
