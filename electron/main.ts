@@ -23,7 +23,10 @@ import { store } from "./store.js";
 import { MigrationRunner } from "./services/StoreMigrations.js";
 import { migrations } from "./services/migrations/index.js";
 import { initializeHibernationService } from "./services/HibernationService.js";
-import { initializeSystemSleepService, getSystemSleepService } from "./services/SystemSleepService.js";
+import {
+  initializeSystemSleepService,
+  getSystemSleepService,
+} from "./services/SystemSleepService.js";
 
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);

@@ -41,6 +41,12 @@ const FLOOD_THRESHOLD_BYTES = 5 * 1024 * 1024; // 5MB per second
 const FLOOD_CHECK_INTERVAL_MS = 1000;
 const FLOOD_RESUME_THRESHOLD = FLOOD_THRESHOLD_BYTES * 0.5; // Resume when rate drops to 50%
 
+// Watermark-based queue limits for visible terminals (prevents renderer overload)
+const SOFT_QUEUE_LIMIT_BYTES = 256 * 1024; // 256KB - trigger aggressive flushing
+const HARD_QUEUE_LIMIT_BYTES = 1024 * 1024; // 1MB - drop oldest chunks
+const AGGRESSIVE_FLUSH_INTERVAL_MS = 10; // Fast flush when near limit
+const QUEUE_STATE_HYSTERESIS_MS = 500; // Stay in soft mode for 500ms after dropping below threshold
+
 interface TerminalInfo {
   id: string;
   projectId?: string; // Which project owns this terminal (for multi-tenancy)
@@ -84,6 +90,15 @@ interface TerminalInfo {
   bytesThisSecond: number;
   isFlooded: boolean;
   lastResumedAt: number;
+
+  // Watermark-based queue state for visible terminals
+  queueState: "normal" | "soft" | "hard";
+  lastQueueStateChange: number;
+
+  // Batching state for visible terminals (separate from buffering mode for hidden terminals)
+  batchBuffer: string[];
+  batchBytes: number;
+  batchTimer: NodeJS.Timeout | null;
 }
 
 export interface PtyManagerEvents {
@@ -580,6 +595,136 @@ export class PtyManager extends EventEmitter {
     }
   }
 
+  /**
+   * Enforce queue limits for visible terminals using watermarks.
+   * Soft limit (256KB): Trigger aggressive flushing
+   * Hard limit (1MB): Drop oldest chunks to prevent OOM
+   * Returns the byte length of incoming data (cached for hot-path optimization)
+   */
+  private enforceQueueLimits(terminal: TerminalInfo, incomingData: string): number {
+    const incomingBytes = Buffer.byteLength(incomingData, "utf8");
+    const totalBytes = terminal.batchBytes + incomingBytes;
+    const now = Date.now();
+
+    if (totalBytes > HARD_QUEUE_LIMIT_BYTES) {
+      // Hard limit: drop data to keep total under HARD_QUEUE_LIMIT_BYTES
+      const previousState = terminal.queueState;
+      terminal.queueState = "hard";
+      terminal.lastQueueStateChange = now;
+
+      // Calculate how much to drop to fit incoming data under hard limit
+      const toDrop = totalBytes - HARD_QUEUE_LIMIT_BYTES;
+
+      let droppedBytes = 0;
+      let droppedChunks = 0;
+
+      // Drop from front of buffer until we have room
+      while (droppedBytes < toDrop && terminal.batchBuffer.length > 0) {
+        const chunk = terminal.batchBuffer.shift()!;
+        const chunkBytes = Buffer.byteLength(chunk, "utf8");
+        droppedBytes += chunkBytes;
+        terminal.batchBytes -= chunkBytes;
+        droppedChunks++;
+      }
+
+      // Handle single-chunk oversize: if incoming chunk alone exceeds hard limit, drop everything
+      if (incomingBytes > HARD_QUEUE_LIMIT_BYTES) {
+        // Clear entire buffer since single chunk is too large
+        terminal.batchBuffer = [];
+        terminal.batchBytes = 0;
+        droppedBytes += terminal.batchBytes;
+
+        const mbOversize = (incomingBytes / 1024 / 1024).toFixed(2);
+        console.warn(
+          `[PtyManager] Single chunk (${mbOversize} MB) exceeds hard limit for ${terminal.id}. ` +
+            `Discarding all buffered data.`
+        );
+      }
+
+      if (droppedBytes > 0 || previousState !== "hard") {
+        const mbDropped = (droppedBytes / 1024 / 1024).toFixed(2);
+        console.warn(
+          `[PtyManager] Hard queue limit reached for ${terminal.id}. ` +
+            `Dropped ${droppedChunks} chunks (${mbDropped} MB)`
+        );
+
+        // Emit UI notification on first transition to hard state or when data dropped
+        if (previousState !== "hard") {
+          events.emit("ui:notify", {
+            type: "warning",
+            message: `Terminal ${terminal.title || terminal.id} output overflow. Older data dropped.`,
+          });
+        }
+      }
+    } else if (totalBytes > SOFT_QUEUE_LIMIT_BYTES) {
+      // Soft limit: aggressive flushing
+      if (terminal.queueState === "normal") {
+        terminal.queueState = "soft";
+        terminal.lastQueueStateChange = now;
+      }
+    } else {
+      // Check hysteresis before transitioning back to normal
+      const timeSinceStateChange = now - terminal.lastQueueStateChange;
+      if (terminal.queueState !== "normal" && timeSinceStateChange > QUEUE_STATE_HYSTERESIS_MS) {
+        terminal.queueState = "normal";
+        terminal.lastQueueStateChange = now;
+      }
+    }
+
+    return incomingBytes;
+  }
+
+  /**
+   * Schedule a batch flush with adaptive delay based on queue state.
+   * Normal: no batching (immediate emit)
+   * Soft: aggressive flush at 10ms
+   * Hard: immediate flush (clears existing timer)
+   */
+  private scheduleBatchFlush(terminal: TerminalInfo): void {
+    let delay: number;
+
+    if (terminal.queueState === "hard") {
+      // Hard limit: clear any existing timer and flush immediately
+      if (terminal.batchTimer) {
+        clearTimeout(terminal.batchTimer);
+        terminal.batchTimer = null;
+      }
+      delay = 0;
+    } else if (terminal.queueState === "soft") {
+      // Soft limit: schedule aggressive flush if not already scheduled
+      if (terminal.batchTimer) return;
+      delay = AGGRESSIVE_FLUSH_INTERVAL_MS;
+    } else {
+      // Normal: immediate flush if not already scheduled
+      if (terminal.batchTimer) return;
+      delay = 0;
+    }
+
+    if (delay === 0) {
+      this.flushBatch(terminal);
+    } else {
+      terminal.batchTimer = setTimeout(() => {
+        terminal.batchTimer = null;
+        this.flushBatch(terminal);
+      }, delay);
+    }
+  }
+
+  /**
+   * Flush accumulated batch buffer as a single IPC emit.
+   */
+  private flushBatch(terminal: TerminalInfo): void {
+    if (terminal.batchBuffer.length === 0) return;
+
+    // Combine all buffered chunks
+    const combined = terminal.batchBuffer.join("");
+    terminal.batchBuffer = [];
+    terminal.batchBytes = 0;
+
+    // Emit with project filtering
+    this.emitData(terminal.id, combined);
+  }
+
   spawn(id: string, options: PtySpawnOptions): void {
     // Check if terminal with this ID already exists
     if (this.terminals.has(id)) {
@@ -716,8 +861,16 @@ export class PtyManager extends EventEmitter {
           this.flushBuffer(id);
         }
       } else {
-        // Normal flow: emit with project filtering
-        this.emitData(id, data);
+        // Visible terminal: use watermark-based flow control
+        // Enforce queue limits BEFORE adding to buffer (returns cached byte length)
+        const incomingBytes = this.enforceQueueLimits(terminal, data);
+
+        // Add to batch buffer (use cached byte length to avoid recomputation)
+        terminal.batchBuffer.push(data);
+        terminal.batchBytes += incomingBytes;
+
+        // Schedule flush with adaptive interval based on queue state
+        this.scheduleBatchFlush(terminal);
       }
 
       // For agent terminals, notify activity monitor and emit output events
@@ -790,6 +943,15 @@ export class PtyManager extends EventEmitter {
         this.flushBuffer(id);
       }
 
+      // Flush any pending batch output for visible terminals
+      if (terminal.batchTimer) {
+        clearTimeout(terminal.batchTimer);
+        terminal.batchTimer = null;
+      }
+      if (terminal.batchBuffer.length > 0) {
+        this.flushBatch(terminal);
+      }
+
       this.emit("exit", id, exitCode ?? 0);
 
       // Update agent state on exit
@@ -860,6 +1022,13 @@ export class PtyManager extends EventEmitter {
       bytesThisSecond: 0,
       isFlooded: false,
       lastResumedAt: 0,
+      // Watermark-based queue state
+      queueState: "normal",
+      lastQueueStateChange: spawnedAt,
+      // Batching state for visible terminals
+      batchBuffer: [],
+      batchBytes: 0,
+      batchTimer: null,
     };
 
     this.terminals.set(id, terminal);
@@ -1081,6 +1250,15 @@ export class PtyManager extends EventEmitter {
       // Flush any buffered output before killing to avoid data loss
       if (terminal.bufferingMode && terminal.outputQueue.length > 0) {
         this.flushBuffer(id);
+      }
+
+      // Flush any pending batch output for visible terminals
+      if (terminal.batchTimer) {
+        clearTimeout(terminal.batchTimer);
+        terminal.batchTimer = null;
+      }
+      if (terminal.batchBuffer.length > 0) {
+        this.flushBatch(terminal);
       }
 
       // Mark as killed to prevent agent:completed emission
@@ -1338,6 +1516,12 @@ export class PtyManager extends EventEmitter {
         if (terminal.semanticFlushTimer) {
           clearTimeout(terminal.semanticFlushTimer);
           terminal.semanticFlushTimer = null;
+        }
+
+        // Clear batch timer for visible terminals
+        if (terminal.batchTimer) {
+          clearTimeout(terminal.batchTimer);
+          terminal.batchTimer = null;
         }
 
         // Emit agent:killed event for agent terminals during shutdown
