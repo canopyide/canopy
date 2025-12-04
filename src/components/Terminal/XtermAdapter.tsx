@@ -71,8 +71,8 @@ function XtermAdapterComponent({
   const terminalOptions = useMemo(
     () => ({
       cursorBlink: true,
-      cursorStyle: "bar" as const,
-      cursorWidth: 2,
+      cursorStyle: "block" as const,
+      cursorInactiveStyle: "block" as const,
       fontSize: 13,
       lineHeight: 1.2,
       letterSpacing: 0,
