@@ -1,88 +1,15 @@
 import { execa } from "execa";
 import type { ResultPromise, Result } from "execa";
-import { existsSync } from "node:fs";
-import { readFile } from "node:fs/promises";
-import path from "node:path";
 import type { BrowserWindow } from "electron";
-import stringArgv from "string-argv";
 import { DevServerState, DevServerStatus } from "../types/index.js";
 import { events } from "./events.js";
 import { projectStore } from "./ProjectStore.js";
-
-const URL_PATTERNS = [
-  new RegExp("Local:\\s+(https?://localhost:\\d+/?/?)", "i"),
-  new RegExp("Ready on (https?://localhost:\\d+/?/?)", "i"),
-  new RegExp("Listening on (https?://[\\w.-]+:\\d+/?/?)", "i"),
-  new RegExp("Server (?:is )?(?:running|started) (?:on|at) (https?://[\\w.-]+:\\d+/?/?)", "i"),
-  new RegExp("Local:\\s+(https?://localhost:\\d+/?/?)", "i"),
-  new RegExp("Server is listening on (https?://[\\w.-]+:\\d+/?/?)", "i"),
-  new RegExp("(?:Listening|Started) on (?:port )?(\\d+)", "i"),
-  new RegExp("Project is running at (https?://[\\w.-]+:\\d+/?/?)", "i"),
-  new RegExp("(https?://[\\w.-]+:\\d+/?/?)", "i"),
-];
-
-const PORT_PATTERNS = [/(?:Listening|Started) on (?:port )?(\d+)/i, /port[:\s]+(\d+)/i];
+import { DevServerParser } from "./devserver/DevServerParser.js";
+import { CommandDetector } from "./devserver/CommandDetector.js";
 
 const FORCE_KILL_TIMEOUT_MS = 5000;
 const MAX_LOG_LINES = 100;
 const RESTART_COOLDOWN_MS = 60000; // Prevent restart loops
-
-interface ParsedCommand {
-  executable: string;
-  args: string[];
-  env?: Record<string, string>;
-}
-
-/**
- * Parse command string into executable and arguments for array-style execution.
- * Handles quoted arguments, environment variables, and complex command patterns.
- * Avoids shell: true for security and reliability.
- */
-function parseCommand(command: string): ParsedCommand {
-  const trimmed = command.trim();
-
-  if (!trimmed) {
-    throw new Error("Command cannot be empty");
-  }
-
-  // Extract environment variables (KEY=VALUE prefixes)
-  const env: Record<string, string> = {};
-  let commandWithoutEnv = trimmed;
-  const envVarRegex = /^(\w+)=(\S+)(?:\s+|$)/;
-  let match;
-
-  while ((match = envVarRegex.exec(commandWithoutEnv))) {
-    env[match[1]] = match[2];
-    commandWithoutEnv = commandWithoutEnv.slice(match[0].length).trim();
-    if (!commandWithoutEnv) break;
-  }
-
-  // Use string-argv for shell-quote-aware parsing
-  const parts = stringArgv(commandWithoutEnv);
-
-  if (parts.length === 0) {
-    throw new Error("Invalid command: no executable found");
-  }
-
-  const result: ParsedCommand = {
-    executable: parts[0],
-    args: parts.slice(1),
-  };
-
-  if (Object.keys(env).length > 0) {
-    result.env = env;
-  }
-
-  return result;
-}
-
-interface DevScriptCacheEntry {
-  hasDevScript: boolean;
-  command: string | null;
-  checkedAt: number;
-}
-
-const DEV_SCRIPT_CACHE_TTL_MS = 5 * 60 * 1000;
 
 /**
  * DevServerManager manages dev server processes for worktrees.
@@ -92,7 +19,7 @@ export class DevServerManager {
   private servers = new Map<string, ResultPromise>();
   private states = new Map<string, DevServerState>();
   private logBuffers = new Map<string, string[]>();
-  private devScriptCache = new Map<string, DevScriptCacheEntry>();
+  private commandDetector = new CommandDetector();
   private lastKnownProjectId: string | null = null;
   private activeProjectId: string | null = null; // Filter IPC events by this project
   private lastRestartAttempt = new Map<string, number>(); // Track restart times to prevent loops
@@ -177,7 +104,7 @@ export class DevServerManager {
     this.logBuffers.set(worktreeId, []);
 
     try {
-      const parsed = parseCommand(resolvedCommand);
+      const parsed = this.commandDetector.parseCommand(resolvedCommand);
       const proc = execa(parsed.executable, parsed.args, {
         cwd: worktreePath,
         env: parsed.env ? { ...process.env, ...parsed.env } : undefined,
@@ -524,7 +451,7 @@ export class DevServerManager {
     this.lastKnownProjectId = newProjectId;
 
     // Clear cache since different projects may have different package.json files
-    this.clearCache();
+    this.commandDetector.clearCache();
 
     console.log(
       `[DevServerManager] Project switch complete: ${foregrounded} foregrounded, ${backgrounded} backgrounded`
@@ -606,72 +533,23 @@ export class DevServerManager {
   }
 
   public async detectDevCommandAsync(worktreePath: string): Promise<string | null> {
-    const cached = this.devScriptCache.get(worktreePath);
-    if (cached && Date.now() - cached.checkedAt < DEV_SCRIPT_CACHE_TTL_MS) {
-      return cached.command;
-    }
-
-    const packageJsonPath = path.join(worktreePath, "package.json");
-
-    if (!existsSync(packageJsonPath)) {
-      this.devScriptCache.set(worktreePath, {
-        hasDevScript: false,
-        command: null,
-        checkedAt: Date.now(),
-      });
-      return null;
-    }
-
-    try {
-      const content = await readFile(packageJsonPath, "utf-8");
-      const pkg = JSON.parse(content);
-      const scripts = pkg.scripts || {};
-
-      const candidates = ["dev", "start:dev", "serve", "start"];
-
-      for (const script of candidates) {
-        if (scripts[script]) {
-          const command = `npm run ${script}`;
-          this.devScriptCache.set(worktreePath, {
-            hasDevScript: true,
-            command,
-            checkedAt: Date.now(),
-          });
-          return command;
-        }
-      }
-
-      this.devScriptCache.set(worktreePath, {
-        hasDevScript: false,
-        command: null,
-        checkedAt: Date.now(),
-      });
-      return null;
-    } catch {
-      this.devScriptCache.set(worktreePath, {
-        hasDevScript: false,
-        command: null,
-        checkedAt: Date.now(),
-      });
-      return null;
-    }
+    return this.commandDetector.detectDevCommand(worktreePath);
   }
 
   public async hasDevScriptAsync(worktreePath: string): Promise<boolean> {
-    const command = await this.detectDevCommandAsync(worktreePath);
-    return command !== null;
+    return this.commandDetector.hasDevScript(worktreePath);
   }
 
   public invalidateCache(worktreePath: string): void {
-    this.devScriptCache.delete(worktreePath);
+    this.commandDetector.invalidateCache(worktreePath);
   }
 
   public clearCache(): void {
-    this.devScriptCache.clear();
+    this.commandDetector.clearCache();
   }
 
   public async warmCache(worktreePaths: string[]): Promise<void> {
-    await Promise.all(worktreePaths.map((path) => this.hasDevScriptAsync(path)));
+    await this.commandDetector.warmCache(worktreePaths);
   }
 
   private updateState(
@@ -758,46 +636,16 @@ export class DevServerManager {
       return;
     }
 
-    for (const pattern of URL_PATTERNS) {
-      const match = output.match(pattern);
-      if (match?.[1]) {
-        let url = match[1];
+    const detected = DevServerParser.detectUrl(output);
+    if (detected) {
+      console.log("Detected dev server URL", { worktreeId, ...detected });
 
-        if (/^\d+$/.test(url)) {
-          url = `http://localhost:${url}`;
-        }
-
-        const portMatch = url.match(/:(\d+)/);
-        const port = portMatch ? parseInt(portMatch[1], 10) : undefined;
-
-        console.log("Detected dev server URL", { worktreeId, url, port });
-
-        this.updateState(worktreeId, {
-          status: "running",
-          url,
-          port,
-          errorMessage: undefined,
-        });
-        return;
-      }
-    }
-
-    for (const pattern of PORT_PATTERNS) {
-      const match = output.match(pattern);
-      if (match?.[1]) {
-        const port = parseInt(match[1], 10);
-        const url = `http://localhost:${port}`;
-
-        console.log("Detected dev server port", { worktreeId, url, port });
-
-        this.updateState(worktreeId, {
-          status: "running",
-          url,
-          port,
-          errorMessage: undefined,
-        });
-        return;
-      }
+      this.updateState(worktreeId, {
+        status: "running",
+        url: detected.url,
+        port: detected.port,
+        errorMessage: undefined,
+      });
     }
   }
 }
