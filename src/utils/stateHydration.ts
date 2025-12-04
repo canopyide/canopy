@@ -28,12 +28,26 @@ export async function hydrateAppState(options: HydrationOptions): Promise<void> 
     try {
       const terminalConfig = await terminalConfigClient.get();
       if (terminalConfig?.scrollbackLines !== undefined) {
-        const { scrollbackLines } = terminalConfig;
+        let { scrollbackLines } = terminalConfig;
+        // Migrate legacy values to new defaults (Issue #504 optimization)
+        // - Unlimited (-1) → 1,000 (no longer supported)
+        // - Values > 1,000 → 1,000 (clamp to new default for memory savings)
+        if (scrollbackLines === -1 || scrollbackLines > 1000) {
+          console.log(
+            `Migrating scrollback from ${scrollbackLines} to 1000 (Issue #504 optimization)`
+          );
+          scrollbackLines = 1000;
+          // Persist the migration
+          terminalConfigClient.setScrollback(1000).catch((err) => {
+            console.warn("Failed to persist scrollback migration:", err);
+          });
+        }
         // Validate persisted value
         if (
           Number.isFinite(scrollbackLines) &&
           Number.isInteger(scrollbackLines) &&
-          (scrollbackLines === -1 || (scrollbackLines >= 100 && scrollbackLines <= 100000))
+          scrollbackLines >= 100 &&
+          scrollbackLines <= 1000
         ) {
           useScrollbackStore.getState().setScrollbackLines(scrollbackLines);
         } else {

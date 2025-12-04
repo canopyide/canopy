@@ -13,7 +13,7 @@ export interface StoreSchema {
     isMaximized: boolean;
   };
   terminalConfig: {
-    scrollbackLines: number; // -1 for unlimited, otherwise 100-100000
+    scrollbackLines: number; // 100-1000 (optimized for memory efficiency)
     performanceMode: boolean;
   };
   hibernation: {
@@ -84,7 +84,7 @@ export const store = new Store<StoreSchema>({
       isMaximized: false,
     },
     terminalConfig: {
-      scrollbackLines: 5000,
+      scrollbackLines: 1000,
       performanceMode: false,
     },
     hibernation: {
