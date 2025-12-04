@@ -312,8 +312,18 @@ export function WorktreeCard({
   );
 
   const showDevServer = devServerEnabled && hasDevScript;
+  const showFooter =
+    terminalCounts.total > 0 ||
+    (hasChanges && worktree.worktreeChanges) ||
+    (serverState && serverState.status !== "stopped") ||
+    worktreeErrors.length > 0;
   const hasExpandableContent =
-    hasChanges || effectiveNote || !!worktree.summary || showDevServer || worktreeErrors.length > 0;
+    hasChanges ||
+    effectiveNote ||
+    !!worktree.summary ||
+    showDevServer ||
+    worktreeErrors.length > 0 ||
+    showFooter;
 
   const detailsId = useMemo(() => `worktree-${worktree.id}-details`, [worktree.id]);
 
@@ -498,8 +508,8 @@ export function WorktreeCard({
           </div>
         )}
 
-        {/* File Changes Preview - Always visible (2 collapsed, 8 expanded) */}
-        {worktree.worktreeChanges && (
+        {/* File Changes Preview - Only show if we have changes OR if expanded */}
+        {worktree.worktreeChanges && (hasChanges || isExpanded) && (
           <div className="mt-3 ml-9">
             {hasChanges ? (
               <FileChangeList
@@ -513,45 +523,47 @@ export function WorktreeCard({
           </div>
         )}
 
-        {/* Footer Row: Stats */}
-        <div className="flex items-center gap-4 mt-3 ml-9 text-xs text-gray-400 font-mono">
-          {terminalCounts.total > 0 && (
-            <div className="flex items-center gap-1">
-              <Terminal className="w-2.5 h-2.5" />
-              <span>{terminalCounts.total}</span>
-              {terminalCounts.byState.working > 0 && (
-                <div className="w-1 h-1 rounded-full bg-[var(--color-status-success)] animate-pulse" />
-              )}
-            </div>
-          )}
+        {/* Footer Row: Stats - Only render when there's content to show */}
+        {showFooter && (
+          <div className="flex items-center gap-4 mt-3 ml-9 text-xs text-gray-400 font-mono">
+            {terminalCounts.total > 0 && (
+              <div className="flex items-center gap-1">
+                <Terminal className="w-2.5 h-2.5" />
+                <span>{terminalCounts.total}</span>
+                {terminalCounts.byState.working > 0 && (
+                  <div className="w-1 h-1 rounded-full bg-[var(--color-status-success)] animate-pulse" />
+                )}
+              </div>
+            )}
 
-          {hasChanges && worktree.worktreeChanges && (
-            <div className="flex items-center gap-1">
-              <GitCommitHorizontal className="w-2.5 h-2.5" />
-              <span className="text-[var(--color-status-success)]">
-                +{worktree.worktreeChanges.insertions ?? 0}
-              </span>
-              <span className="text-gray-600">/</span>
-              <span className="text-[var(--color-status-error)]">
-                -{worktree.worktreeChanges.deletions ?? 0}
-              </span>
-            </div>
-          )}
+            {hasChanges && worktree.worktreeChanges && (
+              <div className="flex items-center gap-1">
+                <GitCommitHorizontal className="w-2.5 h-2.5" />
+                <span className="text-[var(--color-status-success)]">
+                  +{worktree.worktreeChanges.insertions ?? 0}
+                </span>
+                <span className="text-gray-600">/</span>
+                <span className="text-[var(--color-status-error)]">
+                  -{worktree.worktreeChanges.deletions ?? 0}
+                </span>
+              </div>
+            )}
 
-          {showDevServer && serverState && serverState.status !== "stopped" && (
-            <div className="flex items-center gap-1">
-              <Globe className="w-2.5 h-2.5" />
-              {getServerStatusIndicator()}
-            </div>
-          )}
+            {showDevServer && serverState && serverState.status !== "stopped" && (
+              <div className="flex items-center gap-1">
+                <Globe className="w-2.5 h-2.5" />
+                {getServerStatusIndicator()}
+              </div>
+            )}
 
-          {worktreeErrors.length > 0 && (
-            <div className="flex items-center gap-1 text-[var(--color-status-error)]">
-              <AlertCircle className="w-2.5 h-2.5" />
-              <span>{worktreeErrors.length}</span>
-            </div>
-          )}
-        </div>
+            {worktreeErrors.length > 0 && (
+              <div className="flex items-center gap-1 text-[var(--color-status-error)]">
+                <AlertCircle className="w-2.5 h-2.5" />
+                <span>{worktreeErrors.length}</span>
+              </div>
+            )}
+          </div>
+        )}
 
         {/* Expanded Details Section */}
         <div
@@ -563,7 +575,12 @@ export function WorktreeCard({
             isExpanded ? "max-h-[800px] opacity-100" : "max-h-0 opacity-0"
           )}
         >
-          <div className="pt-3 mt-3 border-t border-border/40 space-y-2 ml-9">
+          <div
+            className={cn(
+              "pt-3 mt-3 space-y-2 ml-9",
+              (hasChanges || showFooter) && "border-t border-border/40"
+            )}
+          >
             <button
               onClick={(e) => {
                 e.stopPropagation();
