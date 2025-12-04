@@ -210,14 +210,25 @@ function XtermAdapterComponent({
     };
   }, [terminalId, terminalOptions, onExit, onReady, scheduleFit]);
 
+  // Resolve current tier for dependency tracking
+  const currentTier = useMemo(
+    () => (getRefreshTier ? getRefreshTier() : TerminalRefreshTier.FOCUSED),
+    [getRefreshTier]
+  );
+
   useLayoutEffect(() => {
-    const tier = getRefreshTier ? getRefreshTier() : TerminalRefreshTier.FOCUSED;
     terminalInstanceService.updateRefreshTierProvider(
       terminalId,
       getRefreshTier || (() => TerminalRefreshTier.FOCUSED)
     );
-    terminalInstanceService.applyRendererPolicy(terminalId, tier);
-  }, [terminalId, getRefreshTier]);
+    terminalInstanceService.applyRendererPolicy(terminalId, currentTier);
+
+    // If moving to a high-priority state (Focused or Burst), boost the writer
+    // to flush any background buffer immediately.
+    if (currentTier === TerminalRefreshTier.FOCUSED || currentTier === TerminalRefreshTier.BURST) {
+      terminalInstanceService.boostRefreshRate(terminalId);
+    }
+  }, [terminalId, getRefreshTier, currentTier]);
 
   useLayoutEffect(() => {
     const container = containerRef.current;
