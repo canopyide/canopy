@@ -182,6 +182,13 @@ export function AppLayout({
     return () => window.removeEventListener("resize", handleResize);
   }, [sidebarWidth, isFocusMode, updateSidecarLayoutMode]);
 
+  // Hide sidecar WebContentsView when closed (React unmount doesn't trigger IPC)
+  useEffect(() => {
+    if (!sidecarOpen) {
+      window.electron.sidecar.hide();
+    }
+  }, [sidecarOpen]);
+
   const handleSidebarResize = useCallback((newWidth: number) => {
     const clampedWidth = Math.min(Math.max(newWidth, MIN_SIDEBAR_WIDTH), MAX_SIDEBAR_WIDTH);
     setSidebarWidth(clampedWidth);
