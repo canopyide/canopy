@@ -568,7 +568,7 @@ function App() {
           agentAvailability={availability}
           agentSettings={agentSettings}
         >
-          <TerminalGrid className="h-full w-full" />
+          <TerminalGrid className="h-full w-full" onLaunchAgent={handleLaunchAgent} />
         </AppLayout>
       </DndProvider>
 
