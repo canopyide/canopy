@@ -1,0 +1,833 @@
+import * as pty from "node-pty";
+import { existsSync } from "fs";
+import { Terminal as HeadlessTerminal } from "@xterm/headless";
+import { SerializeAddon } from "@xterm/addon-serialize";
+import type { TerminalType } from "../../../shared/types/domain.js";
+import type { ActivityTier } from "../../../shared/types/pty-host.js";
+import { ProcessDetector, type DetectionResult } from "../ProcessDetector.js";
+import { ActivityMonitor } from "../ActivityMonitor.js";
+import { OutputThrottler } from "./OutputThrottler.js";
+import { AgentStateService } from "./AgentStateService.js";
+import {
+  type PtySpawnOptions,
+  type TerminalInfo,
+  type TerminalSnapshot,
+  OUTPUT_BUFFER_SIZE,
+  DEFAULT_MAX_QUEUE_SIZE,
+  DEFAULT_MAX_QUEUE_BYTES,
+  SEMANTIC_BUFFER_MAX_LINES,
+  SEMANTIC_BUFFER_MAX_LINE_LENGTH,
+  SEMANTIC_FLUSH_INTERVAL_MS,
+  SCROLLBACK_BY_TYPE,
+  DEFAULT_SCROLLBACK,
+  WRITE_MAX_CHUNK_SIZE,
+  WRITE_INTERVAL_MS,
+} from "./types.js";
+import { events } from "../events.js";
+import { AgentSpawnedSchema } from "../../schemas/agent.js";
+import type { PtyPool } from "../PtyPool.js";
+
+/**
+ * Split input into chunks for safe PTY writing.
+ * Chunks at max size OR before escape sequences to prevent mid-sequence splits.
+ */
+function chunkInput(data: string): string[] {
+  if (data.length === 0) {
+    return [];
+  }
+  if (data.length <= WRITE_MAX_CHUNK_SIZE) {
+    return [data];
+  }
+
+  const chunks: string[] = [];
+  let start = 0;
+
+  for (let i = 0; i < data.length - 1; i++) {
+    if (i - start + 1 >= WRITE_MAX_CHUNK_SIZE || data[i + 1] === "\x1b") {
+      chunks.push(data.substring(start, i + 1));
+      start = i + 1;
+    }
+  }
+
+  if (start < data.length) {
+    chunks.push(data.substring(start));
+  }
+
+  return chunks;
+}
+
+export interface TerminalProcessCallbacks {
+  emitData: (id: string, data: string) => void;
+  onExit: (id: string, exitCode: number) => void;
+}
+
+export interface TerminalProcessDependencies {
+  agentStateService: AgentStateService;
+  ptyPool: PtyPool | null;
+}
+
+/**
+ * Encapsulates a single terminal session with all associated state and helpers.
+ * Handles PTY spawning, output throttling, agent detection, and activity monitoring.
+ */
+export class TerminalProcess {
+  private throttler: OutputThrottler;
+  private activityMonitor: ActivityMonitor | null = null;
+  private processDetector: ProcessDetector | null = null;
+
+  // Semantic buffer state
+  private pendingSemanticData = "";
+  private semanticFlushTimer: NodeJS.Timeout | null = null;
+
+  // Input write queue for chunked writes
+  private inputWriteQueue: string[] = [];
+  private inputWriteTimeout: NodeJS.Timeout | null = null;
+
+  private readonly terminalInfo: TerminalInfo;
+  private readonly isAgentTerminal: boolean;
+
+  constructor(
+    public readonly id: string,
+    private options: PtySpawnOptions,
+    private callbacks: TerminalProcessCallbacks,
+    private deps: TerminalProcessDependencies
+  ) {
+    const shell = options.shell || this.getDefaultShell();
+    const args = options.args || this.getDefaultShellArgs(shell);
+    const spawnedAt = Date.now();
+
+    this.isAgentTerminal =
+      options.type === "claude" ||
+      options.type === "gemini" ||
+      options.type === "codex" ||
+      options.type === "custom";
+    const agentId = this.isAgentTerminal ? id : undefined;
+
+    // Merge environment
+    const baseEnv = process.env as Record<string, string | undefined>;
+    const mergedEnv = { ...baseEnv, ...options.env };
+    const env = Object.fromEntries(
+      Object.entries(mergedEnv).filter(([_, value]) => value !== undefined)
+    ) as Record<string, string>;
+
+    // Try to acquire from pool for shell terminals
+    const canUsePool =
+      deps.ptyPool && !this.isAgentTerminal && !options.shell && !options.env && !options.args;
+    let pooledPty = canUsePool ? deps.ptyPool!.acquire() : null;
+
+    let ptyProcess: pty.IPty;
+
+    if (pooledPty) {
+      try {
+        pooledPty.resize(options.cols, options.rows);
+      } catch (resizeError) {
+        console.warn(
+          `[TerminalProcess] Failed to resize pooled PTY for ${id}, falling back to spawn:`,
+          resizeError
+        );
+        try {
+          pooledPty.kill();
+        } catch {
+          // Ignore kill errors
+        }
+        pooledPty = null;
+      }
+    }
+
+    if (pooledPty) {
+      ptyProcess = pooledPty;
+
+      // Change directory if needed
+      if (process.platform === "win32") {
+        const shellLower = shell.toLowerCase();
+        if (shellLower.includes("powershell") || shellLower.includes("pwsh")) {
+          ptyProcess.write(`Set-Location "${options.cwd.replace(/"/g, '""')}"\r`);
+        } else {
+          ptyProcess.write(`cd /d "${options.cwd.replace(/"/g, '\\"')}"\r`);
+        }
+      } else {
+        ptyProcess.write(`cd "${options.cwd.replace(/"/g, '\\"')}"\r`);
+      }
+
+      if (process.env.CANOPY_VERBOSE) {
+        console.log(`[TerminalProcess] Acquired terminal ${id} from pool (instant spawn)`);
+      }
+    } else {
+      try {
+        ptyProcess = pty.spawn(shell, args, {
+          name: "xterm-256color",
+          cols: options.cols,
+          rows: options.rows,
+          cwd: options.cwd,
+          env,
+        });
+      } catch (error) {
+        const errorMessage = error instanceof Error ? error.message : String(error);
+        console.error(`Failed to spawn terminal ${id}:`, errorMessage);
+        throw new Error(`Failed to spawn terminal: ${errorMessage}`);
+      }
+    }
+
+    // Create headless terminal
+    const scrollback = options.type
+      ? (SCROLLBACK_BY_TYPE[options.type] ?? DEFAULT_SCROLLBACK)
+      : DEFAULT_SCROLLBACK;
+    const headlessTerminal = new HeadlessTerminal({
+      cols: options.cols,
+      rows: options.rows,
+      scrollback,
+      allowProposedApi: true,
+    });
+    const serializeAddon = new SerializeAddon();
+    headlessTerminal.loadAddon(serializeAddon);
+
+    // Create terminal info
+    this.terminalInfo = {
+      id,
+      projectId: options.projectId,
+      ptyProcess,
+      cwd: options.cwd,
+      shell,
+      type: options.type,
+      title: options.title,
+      worktreeId: options.worktreeId,
+      agentId,
+      spawnedAt,
+      agentState: this.isAgentTerminal ? "idle" : undefined,
+      lastStateChange: this.isAgentTerminal ? spawnedAt : undefined,
+      outputBuffer: "",
+      lastInputTime: spawnedAt,
+      lastOutputTime: spawnedAt,
+      lastCheckTime: spawnedAt,
+      semanticBuffer: [],
+      bufferingMode: false,
+      outputQueue: [],
+      queuedBytes: 0,
+      maxQueueSize: DEFAULT_MAX_QUEUE_SIZE,
+      maxQueueBytes: DEFAULT_MAX_QUEUE_BYTES,
+      pendingSemanticData: "",
+      semanticFlushTimer: null,
+      bytesThisSecond: 0,
+      isFlooded: false,
+      lastResumedAt: 0,
+      inputWriteQueue: [],
+      inputWriteTimeout: null,
+      queueState: "normal",
+      lastQueueStateChange: spawnedAt,
+      activityTier: "focused",
+      lastTierChangeAt: 0,
+      batchBuffer: [],
+      batchBytes: 0,
+      batchTimer: null,
+      headlessTerminal,
+      serializeAddon,
+    };
+
+    // Create output throttler
+    this.throttler = new OutputThrottler(
+      id,
+      (data) => this.emitData(data),
+      { title: options.title }
+    );
+
+    // Set up PTY event handlers
+    this.setupPtyHandlers(ptyProcess);
+
+    // Create activity monitor for agent terminals
+    if (this.isAgentTerminal) {
+      this.activityMonitor = new ActivityMonitor(id, (_termId, state) => {
+        deps.agentStateService.handleActivityState(this.terminalInfo, state);
+      });
+    }
+
+    // Start process detection
+    const ptyPid = ptyProcess.pid;
+    if (ptyPid !== undefined) {
+      this.processDetector = new ProcessDetector(id, ptyPid, (result: DetectionResult) => {
+        this.handleAgentDetection(result);
+      });
+      this.terminalInfo.processDetector = this.processDetector;
+      this.processDetector.start();
+    }
+
+    // Emit agent:spawned event
+    if (this.isAgentTerminal && agentId && options.type) {
+      const spawnedPayload = {
+        agentId,
+        terminalId: id,
+        type: options.type,
+        worktreeId: options.worktreeId,
+        timestamp: spawnedAt,
+      };
+
+      const validatedSpawned = AgentSpawnedSchema.safeParse(spawnedPayload);
+      if (validatedSpawned.success) {
+        events.emit("agent:spawned", validatedSpawned.data);
+      } else {
+        console.error(
+          "[TerminalProcess] Invalid agent:spawned payload:",
+          validatedSpawned.error.format()
+        );
+      }
+    }
+  }
+
+  /**
+   * Get the terminal info object.
+   */
+  getInfo(): TerminalInfo {
+    return this.terminalInfo;
+  }
+
+  /**
+   * Write data to terminal stdin with chunking.
+   */
+  write(data: string, traceId?: string): void {
+    const terminal = this.terminalInfo;
+    terminal.lastInputTime = Date.now();
+
+    if (traceId !== undefined) {
+      terminal.traceId = traceId || undefined;
+    }
+
+    // Notify activity monitor of input
+    if (this.activityMonitor) {
+      this.activityMonitor.onInput(data);
+    }
+
+    // Chunk input and queue for writing
+    const chunks = chunkInput(data);
+    this.inputWriteQueue.push(...chunks);
+    this.startWrite();
+  }
+
+  /**
+   * Resize terminal.
+   */
+  resize(cols: number, rows: number): void {
+    if (
+      !Number.isFinite(cols) ||
+      !Number.isFinite(rows) ||
+      cols <= 0 ||
+      rows <= 0 ||
+      cols !== Math.floor(cols) ||
+      rows !== Math.floor(rows)
+    ) {
+      console.warn(`Invalid terminal dimensions for ${this.id}: ${cols}x${rows}`);
+      return;
+    }
+
+    const terminal = this.terminalInfo;
+    try {
+      const currentCols = terminal.ptyProcess.cols;
+      const currentRows = terminal.ptyProcess.rows;
+
+      if (currentCols === cols && currentRows === rows) {
+        return;
+      }
+
+      terminal.ptyProcess.resize(cols, rows);
+      terminal.headlessTerminal.resize(cols, rows);
+    } catch (error) {
+      console.error(`Failed to resize terminal ${this.id}:`, error);
+    }
+  }
+
+  /**
+   * Kill the terminal process.
+   */
+  kill(reason?: string): void {
+    const terminal = this.terminalInfo;
+
+    // Stop process detector
+    if (this.processDetector) {
+      this.processDetector.stop();
+      this.processDetector = null;
+      terminal.processDetector = undefined;
+    }
+
+    // Dispose activity monitor
+    if (this.activityMonitor) {
+      this.activityMonitor.dispose();
+      this.activityMonitor = null;
+    }
+
+    // Flush pending data
+    this.flushPendingSemanticData();
+    this.throttler.flushBatch();
+    this.throttler.flush();
+
+    // Clear pending input writes
+    if (this.inputWriteTimeout) {
+      clearTimeout(this.inputWriteTimeout);
+      this.inputWriteTimeout = null;
+    }
+    this.inputWriteQueue = [];
+
+    // Mark as killed
+    terminal.wasKilled = true;
+
+    // Update agent state
+    if (terminal.agentId) {
+      this.deps.agentStateService.updateAgentState(terminal, {
+        type: "error",
+        error: reason || "Agent killed by user",
+      });
+      this.deps.agentStateService.emitAgentKilled(terminal, reason);
+    }
+
+    // Dispose headless terminal
+    terminal.headlessTerminal.dispose();
+
+    // Kill PTY process
+    terminal.ptyProcess.kill();
+  }
+
+  /**
+   * Set buffering mode.
+   */
+  setBuffering(enabled: boolean): void {
+    this.throttler.setBuffering(enabled);
+    this.terminalInfo.bufferingMode = enabled;
+  }
+
+  /**
+   * Flush buffered output.
+   */
+  flushBuffer(): void {
+    this.throttler.flush();
+  }
+
+  /**
+   * Set activity tier for IPC batching.
+   */
+  setActivityTier(tier: ActivityTier): void {
+    this.throttler.setActivityTier(tier);
+    this.terminalInfo.activityTier = tier;
+  }
+
+  /**
+   * Get activity tier.
+   */
+  getActivityTier(): ActivityTier {
+    return this.throttler.getActivityTier();
+  }
+
+  /**
+   * Check and apply flood protection.
+   */
+  checkFlooding(): { flooded: boolean; resumed: boolean } {
+    const result = this.throttler.checkFlooding(this.terminalInfo.ptyProcess);
+    this.terminalInfo.isFlooded = this.throttler.isCurrentlyFlooded();
+    return result;
+  }
+
+  /**
+   * Get terminal snapshot for external analysis.
+   */
+  getSnapshot(): TerminalSnapshot {
+    const terminal = this.terminalInfo;
+    return {
+      id: terminal.id,
+      lines: [...terminal.semanticBuffer],
+      lastInputTime: terminal.lastInputTime,
+      lastOutputTime: terminal.lastOutputTime,
+      lastCheckTime: terminal.lastCheckTime,
+      type: terminal.type,
+      worktreeId: terminal.worktreeId,
+      agentId: terminal.agentId,
+      agentState: terminal.agentState,
+      lastStateChange: terminal.lastStateChange,
+      error: terminal.error,
+      spawnedAt: terminal.spawnedAt,
+    };
+  }
+
+  /**
+   * Get serialized terminal state for fast restoration.
+   */
+  getSerializedState(): string | null {
+    try {
+      return this.terminalInfo.serializeAddon.serialize();
+    } catch (error) {
+      console.error(`[TerminalProcess] Failed to serialize terminal ${this.id}:`, error);
+      return null;
+    }
+  }
+
+  /**
+   * Mark terminal's check time.
+   */
+  markChecked(): void {
+    this.terminalInfo.lastCheckTime = Date.now();
+  }
+
+  /**
+   * Replay history from semantic buffer.
+   */
+  replayHistory(maxLines: number = 100): number {
+    const terminal = this.terminalInfo;
+    const bufferSize = terminal.semanticBuffer.length;
+    const linesToReplay = Math.min(maxLines, bufferSize);
+
+    if (linesToReplay === 0) {
+      return 0;
+    }
+
+    const recentLines = terminal.semanticBuffer.slice(-linesToReplay);
+    const historyChunk = recentLines.join("\n") + "\n";
+    this.callbacks.emitData(this.id, historyChunk);
+
+    return linesToReplay;
+  }
+
+  /**
+   * Get PTY process reference (for external use).
+   */
+  getPtyProcess(): pty.IPty {
+    return this.terminalInfo.ptyProcess;
+  }
+
+  /**
+   * Start/restart process detector.
+   */
+  startProcessDetector(): void {
+    const ptyPid = this.terminalInfo.ptyProcess.pid;
+    if (ptyPid !== undefined && !this.processDetector) {
+      this.processDetector = new ProcessDetector(this.id, ptyPid, (result) => {
+        this.handleAgentDetection(result);
+      });
+      this.terminalInfo.processDetector = this.processDetector;
+      this.processDetector.start();
+    }
+  }
+
+  /**
+   * Stop process detector.
+   */
+  stopProcessDetector(): void {
+    if (this.processDetector) {
+      this.processDetector.stop();
+      this.processDetector = null;
+      this.terminalInfo.processDetector = undefined;
+    }
+  }
+
+  /**
+   * Start activity monitor for agent terminals.
+   */
+  startActivityMonitor(): void {
+    if (this.isAgentTerminal && !this.activityMonitor) {
+      this.activityMonitor = new ActivityMonitor(this.id, (_termId, state) => {
+        this.deps.agentStateService.handleActivityState(this.terminalInfo, state);
+      });
+    }
+  }
+
+  /**
+   * Stop activity monitor.
+   */
+  stopActivityMonitor(): void {
+    if (this.activityMonitor) {
+      this.activityMonitor.dispose();
+      this.activityMonitor = null;
+    }
+  }
+
+  /**
+   * Clean up resources.
+   */
+  dispose(): void {
+    this.stopProcessDetector();
+    this.stopActivityMonitor();
+
+    if (this.semanticFlushTimer) {
+      clearTimeout(this.semanticFlushTimer);
+      this.semanticFlushTimer = null;
+    }
+
+    if (this.inputWriteTimeout) {
+      clearTimeout(this.inputWriteTimeout);
+      this.inputWriteTimeout = null;
+    }
+
+    this.throttler.dispose();
+    this.terminalInfo.headlessTerminal.dispose();
+
+    try {
+      this.terminalInfo.ptyProcess.kill();
+    } catch {
+      // Ignore kill errors - process may already be dead
+    }
+  }
+
+  private setupPtyHandlers(ptyProcess: pty.IPty): void {
+    const terminal = this.terminalInfo;
+
+    ptyProcess.onData((data) => {
+      // Verify this is still the active terminal
+      if (terminal.ptyProcess !== ptyProcess) {
+        return;
+      }
+
+      terminal.lastOutputTime = Date.now();
+
+      // Write to headless terminal for authoritative state
+      terminal.headlessTerminal.write(data);
+
+      // Track bytes and apply throttling
+      terminal.bytesThisSecond += data.length;
+      const shouldProcess = this.throttler.write(data);
+
+      if (!shouldProcess) {
+        return;
+      }
+
+      // For agent terminals, handle additional processing
+      if (this.isAgentTerminal) {
+        // Update sliding window buffer
+        terminal.outputBuffer += data;
+        if (terminal.outputBuffer.length > OUTPUT_BUFFER_SIZE) {
+          terminal.outputBuffer = terminal.outputBuffer.slice(-OUTPUT_BUFFER_SIZE);
+        }
+
+        // Update semantic buffer with debouncing
+        this.debouncedSemanticUpdate(data);
+
+        // Notify activity monitor
+        if (this.activityMonitor) {
+          this.activityMonitor.onData();
+        }
+
+        // Emit agent:output event
+        if (terminal.agentId) {
+          events.emit("agent:output", {
+            agentId: terminal.agentId,
+            data,
+            timestamp: Date.now(),
+            traceId: terminal.traceId,
+            terminalId: this.id,
+            worktreeId: this.options.worktreeId,
+          });
+        }
+      }
+    });
+
+    ptyProcess.onExit(({ exitCode }) => {
+      // Verify this is still the active terminal
+      if (terminal.ptyProcess !== ptyProcess) {
+        return;
+      }
+
+      // Stop detectors
+      this.stopProcessDetector();
+      this.stopActivityMonitor();
+
+      // Flush pending data
+      this.flushPendingSemanticData();
+      this.throttler.flushBatch();
+      this.throttler.flush();
+
+      // Clear pending input writes
+      if (this.inputWriteTimeout) {
+        clearTimeout(this.inputWriteTimeout);
+        this.inputWriteTimeout = null;
+      }
+      this.inputWriteQueue = [];
+
+      this.callbacks.onExit(this.id, exitCode ?? 0);
+
+      // Update agent state on exit
+      if (this.isAgentTerminal && !terminal.wasKilled) {
+        this.deps.agentStateService.updateAgentState(terminal, {
+          type: "exit",
+          code: exitCode ?? 0,
+        });
+      }
+
+      // Emit agent:completed event
+      if (
+        this.isAgentTerminal &&
+        terminal.agentId &&
+        !terminal.wasKilled &&
+        terminal.agentState !== "failed"
+      ) {
+        this.deps.agentStateService.emitAgentCompleted(terminal, exitCode ?? 0);
+      }
+
+      // Dispose headless terminal
+      terminal.headlessTerminal.dispose();
+    });
+  }
+
+  private emitData(data: string): void {
+    this.callbacks.emitData(this.id, data);
+  }
+
+  private handleAgentDetection(result: DetectionResult): void {
+    const terminal = this.terminalInfo;
+
+    if (result.detected && result.agentType) {
+      const previousType = terminal.detectedAgentType;
+
+      if (previousType !== result.agentType) {
+        terminal.detectedAgentType = result.agentType;
+        terminal.type = result.agentType;
+
+        if (!terminal.title || terminal.title === previousType || terminal.title === "Shell") {
+          const agentNames: Record<TerminalType, string> = {
+            claude: "Claude",
+            gemini: "Gemini",
+            codex: "Codex",
+            shell: "Shell",
+            custom: "Custom",
+            npm: "NPM",
+            yarn: "Yarn",
+            pnpm: "PNPM",
+            bun: "Bun",
+          };
+          terminal.title = agentNames[result.agentType];
+        }
+
+        events.emit("agent:detected", {
+          terminalId: this.id,
+          agentType: result.agentType,
+          processName: result.processName || result.agentType,
+          timestamp: Date.now(),
+        });
+      }
+    } else if (!result.detected && terminal.detectedAgentType) {
+      const previousType = terminal.detectedAgentType;
+      terminal.detectedAgentType = undefined;
+      terminal.type = "shell";
+      terminal.title = "Shell";
+
+      events.emit("agent:exited", {
+        terminalId: this.id,
+        agentType: previousType,
+        timestamp: Date.now(),
+      });
+    }
+
+    // Handle busy/idle for shell terminals
+    if (!terminal.agentId && result.isBusy !== undefined) {
+      events.emit("terminal:activity", {
+        terminalId: this.id,
+        activity: result.isBusy ? "busy" : "idle",
+        source: "process-tree",
+      });
+    }
+  }
+
+  private debouncedSemanticUpdate(data: string): void {
+    this.pendingSemanticData += data;
+
+    if (this.semanticFlushTimer) {
+      return;
+    }
+
+    this.semanticFlushTimer = setTimeout(() => {
+      if (this.pendingSemanticData) {
+        this.updateSemanticBuffer(this.pendingSemanticData);
+        this.pendingSemanticData = "";
+      }
+      this.semanticFlushTimer = null;
+    }, SEMANTIC_FLUSH_INTERVAL_MS);
+  }
+
+  private updateSemanticBuffer(chunk: string): void {
+    const terminal = this.terminalInfo;
+    const normalized = chunk.replace(/\r\n/g, "\n").replace(/\r/g, "\n");
+    const lines = normalized.split("\n");
+
+    if (terminal.semanticBuffer.length > 0 && lines.length > 0 && !normalized.startsWith("\n")) {
+      terminal.semanticBuffer[terminal.semanticBuffer.length - 1] += lines[0];
+      lines.shift();
+    }
+
+    const processedLines = lines
+      .filter((line) => line.length > 0 || terminal.semanticBuffer.length > 0)
+      .map((line) => {
+        if (line.length > SEMANTIC_BUFFER_MAX_LINE_LENGTH) {
+          return line.substring(0, SEMANTIC_BUFFER_MAX_LINE_LENGTH) + "... [truncated]";
+        }
+        return line;
+      });
+
+    terminal.semanticBuffer.push(...processedLines);
+
+    if (terminal.semanticBuffer.length > SEMANTIC_BUFFER_MAX_LINES) {
+      terminal.semanticBuffer = terminal.semanticBuffer.slice(-SEMANTIC_BUFFER_MAX_LINES);
+    }
+  }
+
+  private flushPendingSemanticData(): void {
+    if (this.semanticFlushTimer) {
+      clearTimeout(this.semanticFlushTimer);
+      this.semanticFlushTimer = null;
+    }
+    if (this.pendingSemanticData) {
+      this.updateSemanticBuffer(this.pendingSemanticData);
+      this.pendingSemanticData = "";
+    }
+  }
+
+  private startWrite(): void {
+    if (this.inputWriteTimeout !== null || this.inputWriteQueue.length === 0) {
+      return;
+    }
+
+    this.doWrite();
+
+    if (this.inputWriteQueue.length > 0) {
+      this.inputWriteTimeout = setTimeout(() => {
+        this.inputWriteTimeout = null;
+        this.startWrite();
+      }, WRITE_INTERVAL_MS);
+    }
+  }
+
+  private doWrite(): void {
+    if (this.inputWriteQueue.length === 0) {
+      return;
+    }
+
+    const chunk = this.inputWriteQueue.shift()!;
+    this.terminalInfo.ptyProcess.write(chunk);
+  }
+
+  private getDefaultShell(): string {
+    if (process.platform === "win32") {
+      return process.env.COMSPEC || "powershell.exe";
+    }
+
+    if (process.env.SHELL) {
+      return process.env.SHELL;
+    }
+
+    const commonShells = ["/bin/zsh", "/bin/bash", "/bin/sh"];
+    for (const shell of commonShells) {
+      try {
+        if (existsSync(shell)) {
+          return shell;
+        }
+      } catch {
+        // Continue to next shell
+      }
+    }
+
+    return "/bin/sh";
+  }
+
+  private getDefaultShellArgs(shell: string): string[] {
+    const shellName = shell.toLowerCase();
+
+    if (process.platform !== "win32") {
+      if (shellName.includes("zsh") || shellName.includes("bash")) {
+        return ["-l"];
+      }
+    }
+
+    return [];
+  }
+}
