@@ -1,4 +1,4 @@
-import { useState } from "react";
+import { useState, memo } from "react";
 import { ArrowLeft, ArrowRight, RotateCw, X, Plus, Globe, Search } from "lucide-react";
 import {
   DndContext,
@@ -47,7 +47,7 @@ function LinkIcon({ link, className }: { link: SidecarLink; className?: string }
   }
 }
 
-function SortableTab({
+const SortableTab = memo(function SortableTab({
   tab,
   isActive,
   onClick,
@@ -60,11 +60,16 @@ function SortableTab({
 }) {
   const { attributes, listeners, setNodeRef, transform, transition, isDragging } = useSortable({
     id: tab.id,
+    transition: {
+      duration: 150,
+      easing: "cubic-bezier(0.25, 1, 0.5, 1)",
+    },
   });
 
   const style = {
-    transform: CSS.Translate.toString(transform),
+    transform: CSS.Transform.toString(transform),
     transition,
+    zIndex: isDragging ? 50 : "auto",
   };
 
   return (
@@ -72,10 +77,11 @@ function SortableTab({
       ref={setNodeRef}
       style={style}
       {...attributes}
+      {...listeners}
       role="tab"
       aria-selected={isActive}
       aria-label={tab.title}
-      tabIndex={0}
+      tabIndex={isActive ? 0 : -1}
       onClick={() => onClick(tab.id)}
       onKeyDown={(e) => {
         if (e.key === "Enter" || e.key === " ") {
@@ -84,14 +90,16 @@ function SortableTab({
         }
       }}
       className={cn(
-        "group relative flex items-center gap-2 px-3 py-1.5 rounded-t-md text-xs font-medium cursor-pointer select-none transition-all border-t border-x border-b-0 min-w-[100px] max-w-[200px]",
+        "group relative flex items-center gap-2 px-3 py-1.5 text-xs font-medium cursor-pointer select-none transition-all",
+        "rounded-full border shadow-sm",
+        "min-w-[80px] max-w-[200px]",
         isActive
-          ? "bg-zinc-200 text-zinc-900 border-zinc-200 shadow-sm z-10"
-          : "bg-zinc-900/50 text-zinc-500 border-transparent hover:bg-zinc-800 hover:text-zinc-300",
-        isDragging && "opacity-30 z-50"
+          ? "bg-zinc-100 text-zinc-900 border-zinc-200 ring-1 ring-zinc-200/50"
+          : "bg-zinc-800/50 text-zinc-400 border-zinc-700/50 hover:bg-zinc-800 hover:text-zinc-200 hover:border-zinc-600",
+        isDragging && "opacity-80 scale-105 shadow-xl cursor-grabbing"
       )}
     >
-      <span className="truncate max-w-[120px]" {...listeners}>
+      <span className="truncate max-w-[120px]">
         {tab.title}
       </span>
       <button
@@ -101,17 +109,17 @@ function SortableTab({
         }}
         aria-label={`Close ${tab.title}`}
         className={cn(
-          "p-0.5 rounded-full transition-colors",
+          "p-0.5 rounded-full transition-colors ml-1",
           isActive
-            ? "text-zinc-500 hover:text-zinc-700 hover:bg-zinc-300/50"
-            : "text-zinc-500 hover:text-zinc-300 hover:bg-zinc-700/50 opacity-0 group-hover:opacity-100"
+            ? "text-zinc-500 hover:text-zinc-900 hover:bg-zinc-300"
+            : "text-zinc-500 hover:text-zinc-200 hover:bg-zinc-700 opacity-0 group-hover:opacity-100 focus-visible:opacity-100"
         )}
       >
         <X className="w-3 h-3" />
       </button>
     </div>
   );
-}
+});
 
 interface SidecarToolbarProps {
   tabs: SidecarTab[];
@@ -214,7 +222,26 @@ export function SidecarToolbar({
       <div className="px-2 pb-2">
         <DndContext sensors={sensors} collisionDetection={closestCorners} onDragEnd={handleDragEnd}>
           <SortableContext items={tabs.map((t) => t.id)} strategy={horizontalListSortingStrategy}>
-            <div className="flex flex-wrap gap-2" role="tablist">
+            <div
+              className="flex flex-wrap gap-2"
+              role="tablist"
+              onKeyDown={(e) => {
+                if (e.key === "ArrowLeft" || e.key === "ArrowRight") {
+                  e.preventDefault();
+                  const currentIndex = tabs.findIndex((t) => t.id === activeTabId);
+                  if (currentIndex === -1) return;
+                  const nextIndex =
+                    e.key === "ArrowLeft"
+                      ? currentIndex > 0
+                        ? currentIndex - 1
+                        : tabs.length - 1
+                      : currentIndex < tabs.length - 1
+                        ? currentIndex + 1
+                        : 0;
+                  onTabClick(tabs[nextIndex].id);
+                }
+              }}
+            >
               {tabs.map((tab) => (
                 <SortableTab
                   key={tab.id}
@@ -231,7 +258,7 @@ export function SidecarToolbar({
                     onClick={onNewTab}
                     onMouseEnter={() => setIsNewTabHovered(true)}
                     onMouseLeave={() => setIsNewTabHovered(false)}
-                    className="flex items-center justify-center w-7 h-7 rounded-md bg-zinc-800/50 hover:bg-zinc-700 text-zinc-400 hover:text-zinc-200 border border-transparent hover:border-zinc-600 transition-all mt-1"
+                    className="flex items-center justify-center w-8 h-[26px] rounded-full bg-zinc-800/50 hover:bg-zinc-700 text-zinc-400 hover:text-zinc-200 border border-zinc-700/50 hover:border-zinc-600 transition-all"
                     title="New Tab"
                   >
                     <Plus className="w-4 h-4" />
