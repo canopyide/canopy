@@ -92,6 +92,29 @@ export class DevServerManager {
   private logBuffers = new Map<string, string[]>();
   private devScriptCache = new Map<string, DevScriptCacheEntry>();
   private lastKnownProjectId: string | null = null;
+  private activeProjectId: string | null = null; // Filter IPC events by this project
+
+  /**
+   * Set the active project for IPC event filtering.
+   * Only servers belonging to the active project will emit update events to the renderer.
+   */
+  public setActiveProject(projectId: string | null): void {
+    const previousProjectId = this.activeProjectId;
+    this.activeProjectId = projectId;
+
+    if (process.env.CANOPY_VERBOSE) {
+      console.log(
+        `[DevServerManager] Active project changed: ${previousProjectId || "none"} → ${projectId || "none"}`
+      );
+    }
+  }
+
+  /**
+   * Get the current active project ID.
+   */
+  public getActiveProjectId(): string | null {
+    return this.activeProjectId;
+  }
 
   public initialize(
     _mainWindow: BrowserWindow,
@@ -470,10 +493,27 @@ export class DevServerManager {
   }
 
   private emitUpdate(state: DevServerState): void {
-    events.emit("server:update", {
-      ...state,
-      timestamp: Date.now(),
-    });
+    // No active project filter → emit all
+    if (!this.activeProjectId) {
+      events.emit("server:update", {
+        ...state,
+        timestamp: Date.now(),
+      });
+      return;
+    }
+
+    // Use same classification logic as onProjectSwitch for consistency
+    const serverProjectId = state.projectId || this.lastKnownProjectId;
+
+    // Only emit if server belongs to active project
+    // Servers without any projectId (even after fallback) are backgrounded to be safe
+    if (serverProjectId && serverProjectId === this.activeProjectId) {
+      events.emit("server:update", {
+        ...state,
+        timestamp: Date.now(),
+      });
+    }
+    // Else: server belongs to backgrounded project - suppress IPC event
   }
 
   private emitError(worktreeId: string, error: string): void {
