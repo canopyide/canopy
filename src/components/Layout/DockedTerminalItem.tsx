@@ -1,4 +1,5 @@
 import { useState, useCallback, useEffect } from "react";
+import { useDndMonitor } from "@dnd-kit/core";
 import { Loader2, Terminal, Command } from "lucide-react";
 import {
   ClaudeIcon,
@@ -120,6 +121,15 @@ export function DockedTerminalItem({ terminal }: DockedTerminalItemProps) {
       cancelled = true;
     };
   }, [isOpen, terminal.id, isRestoring]);
+
+  // Auto-close popover when drag starts for this terminal
+  useDndMonitor({
+    onDragStart: ({ active }) => {
+      if (active.id === terminal.id && isOpen) {
+        setIsOpen(false);
+      }
+    },
+  });
 
   const handleRestore = useCallback(() => {
     setIsRestoring(true);
