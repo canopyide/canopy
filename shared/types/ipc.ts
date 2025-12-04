@@ -300,6 +300,38 @@ export interface PRClearedPayload {
   worktreeId: string;
 }
 
+// Project Close IPC Types
+
+/** Result from project:close operation */
+export interface ProjectCloseResult {
+  /** Whether the operation succeeded */
+  success: boolean;
+  /** Total number of processes killed */
+  processesKilled: number;
+  /** Number of terminals killed */
+  terminalsKilled: number;
+  /** Number of dev servers stopped */
+  serversStopped: number;
+  /** Error message if operation failed */
+  error?: string;
+}
+
+/** Project resource statistics */
+export interface ProjectStats {
+  /** Total number of running processes */
+  processCount: number;
+  /** Number of terminal processes */
+  terminalCount: number;
+  /** Number of dev server processes */
+  serverCount: number;
+  /** Estimated memory usage in MB */
+  estimatedMemoryMB: number;
+  /** Terminal types breakdown */
+  terminalTypes: Record<string, number>;
+  /** Process IDs of running terminals */
+  processIds: number[];
+}
+
 // GitHub IPC Types
 
 /** Repository stats from GitHub API */
@@ -1449,6 +1481,8 @@ export interface ElectronAPI {
     getSettings(projectId: string): Promise<ProjectSettings>;
     saveSettings(projectId: string, settings: ProjectSettings): Promise<void>;
     detectRunners(projectId: string): Promise<RunCommand[]>;
+    close(projectId: string): Promise<ProjectCloseResult>;
+    getStats(projectId: string): Promise<ProjectStats>;
   };
   history: {
     getSessions(filters?: HistoryGetSessionsPayload): Promise<AgentSession[]>;

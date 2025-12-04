@@ -1,5 +1,5 @@
-import { useEffect, useState, useRef } from "react";
-import { ChevronsUpDown, Plus, Check } from "lucide-react";
+import { useEffect, useState, useRef, useCallback } from "react";
+import { ChevronsUpDown, Plus, Check, XCircle, Circle } from "lucide-react";
 import { cn } from "@/lib/utils";
 import { getProjectGradient } from "@/lib/colorUtils";
 import { useProjectStore } from "@/store/projectStore";
@@ -14,6 +14,7 @@ import {
 } from "@/components/ui/dropdown-menu";
 import { Button } from "@/components/ui/button";
 import { projectClient } from "@/clients";
+import type { ProjectStats } from "@shared/types";
 
 export function ProjectSwitcher() {
   const {
@@ -24,10 +25,12 @@ export function ProjectSwitcher() {
     getCurrentProject,
     switchProject,
     addProject,
+    closeProject,
   } = useProjectStore();
 
   const { addNotification } = useNotificationStore();
   const [isOpen, setIsOpen] = useState(false);
+  const [projectStats, setProjectStats] = useState<Map<string, ProjectStats>>(new Map());
   const switchTimeoutRef = useRef<NodeJS.Timeout | null>(null);
 
   const handleProjectSwitch = (projectId: string) => {
@@ -47,6 +50,82 @@ export function ProjectSwitcher() {
     }, 1500);
   };
 
+  const fetchProjectStats = useCallback(async () => {
+    const stats = new Map<string, ProjectStats>();
+    const results = await Promise.allSettled(
+      projects.map((project) => projectClient.getStats(project.id))
+    );
+
+    results.forEach((result, index) => {
+      if (result.status === "fulfilled") {
+        stats.set(projects[index].id, result.value);
+      } else {
+        console.warn(`Failed to fetch stats for ${projects[index].id}:`, result.reason);
+      }
+    });
+
+    setProjectStats(stats);
+  }, [projects]);
+
+  const handleCloseProject = async (projectId: string, e: React.MouseEvent) => {
+    e.stopPropagation(); // Prevent dropdown from closing
+
+    const stats = projectStats.get(projectId);
+
+    const project = projects.find((p) => p.id === projectId);
+
+    // Handle case where stats are unavailable
+    if (!stats) {
+      const confirmed = window.confirm(
+        `Close "${project?.name}"?\n\n` +
+          `Process stats unavailable. This will kill any running terminals and dev servers for this project.`
+      );
+
+      if (!confirmed) return;
+    } else {
+      const processCount = stats.processCount;
+
+      if (processCount === 0) {
+        addNotification({
+          type: "info",
+          title: "No processes running",
+          message: "This project has no active processes",
+          duration: 3000,
+        });
+        return;
+      }
+
+      const confirmed = window.confirm(
+        `Close "${project?.name}"?\n\n` +
+          `This will kill ${processCount} process(es):\n` +
+          `- ${stats.terminalCount} terminal(s)\n` +
+          `- ${stats.serverCount} dev server(s)`
+      );
+
+      if (!confirmed) return;
+    }
+
+    // Proceed with close
+    try {
+      const result = await closeProject(projectId);
+      addNotification({
+        type: "success",
+        title: "Project closed",
+        message: `Killed ${result.processesKilled} process(es)`,
+        duration: 3000,
+      });
+      // Refresh stats after close
+      await fetchProjectStats();
+    } catch (error) {
+      addNotification({
+        type: "error",
+        title: "Failed to close project",
+        message: error instanceof Error ? error.message : "Unknown error",
+        duration: 5000,
+      });
+    }
+  };
+
   useEffect(() => {
     loadProjects();
     getCurrentProject();
@@ -63,6 +142,16 @@ export function ProjectSwitcher() {
       }
     };
   }, [loadProjects, getCurrentProject]);
+
+  // Poll for project stats when dropdown is open
+  useEffect(() => {
+    if (!isOpen || projects.length === 0) return;
+
+    fetchProjectStats(); // Initial fetch
+    const interval = setInterval(fetchProjectStats, 5000); // Poll every 5s
+
+    return () => clearInterval(interval);
+  }, [isOpen, projects, fetchProjectStats]);
 
   const renderIcon = (emoji: string, color?: string, sizeClass = "h-8 w-8 text-lg") => (
     <div
@@ -183,6 +272,20 @@ export function ProjectSwitcher() {
 
           {projects.map((project) => {
             const isActive = project.id === currentProject.id;
+            const stats = projectStats.get(project.id);
+            const isRunning = stats && stats.processCount > 0;
+
+            const getStatsTooltip = () => {
+              if (!stats || stats.processCount === 0) return "";
+              const parts = [];
+              parts.push(`${stats.terminalCount} terminal${stats.terminalCount !== 1 ? "s" : ""}`);
+              if (stats.serverCount > 0) {
+                parts.push(`${stats.serverCount} server${stats.serverCount !== 1 ? "s" : ""}`);
+              }
+              parts.push(`~${stats.estimatedMemoryMB} MB`);
+              return parts.join(", ");
+            };
+
             return (
               <DropdownMenuItem
                 key={project.id}
@@ -193,10 +296,19 @@ export function ProjectSwitcher() {
                 }}
                 disabled={isLoading}
                 className={cn(
-                  "gap-3 p-2 cursor-pointer mb-0.5 rounded-md transition-colors",
+                  "gap-2 p-2 cursor-pointer mb-0.5 rounded-md transition-colors",
                   isActive ? "bg-accent/50" : "focus:bg-accent/30"
                 )}
               >
+                {/* Running indicator */}
+                <div className="w-3 flex items-center justify-center shrink-0">
+                  {isRunning && (
+                    <span title={getStatsTooltip()}>
+                      <Circle className="h-2 w-2 fill-green-500 text-green-500" />
+                    </span>
+                  )}
+                </div>
+
                 {renderIcon(project.emoji || "🌲", project.color, "h-8 w-8 text-base")}
 
                 <div className="flex flex-col min-w-0 flex-1">
@@ -213,7 +325,18 @@ export function ProjectSwitcher() {
                   </span>
                 </div>
 
-                {isActive && <Check className="h-4 w-4 text-canopy-accent ml-2" />}
+                {isActive && <Check className="h-4 w-4 text-canopy-accent ml-2 shrink-0" />}
+
+                {/* Close button - only for non-active projects with running processes */}
+                {!isActive && isRunning && (
+                  <button
+                    onClick={(e) => handleCloseProject(project.id, e)}
+                    className="p-1 rounded hover:bg-destructive/20 text-muted-foreground hover:text-destructive transition-colors shrink-0"
+                    title="Close project and kill processes"
+                  >
+                    <XCircle className="h-4 w-4" />
+                  </button>
+                )}
               </DropdownMenuItem>
             );
           })}

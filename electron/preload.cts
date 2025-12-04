@@ -193,6 +193,8 @@ const CHANNELS = {
   PROJECT_SAVE_SETTINGS: "project:save-settings",
   PROJECT_DETECT_RUNNERS: "project:detect-runners",
   PROJECT_REGENERATE_IDENTITY: "project:regenerate-identity",
+  PROJECT_CLOSE: "project:close",
+  PROJECT_GET_STATS: "project:get-stats",
 
   // History channels (agent transcripts & artifacts)
   HISTORY_GET_SESSIONS: "history:get-sessions",
@@ -491,6 +493,10 @@ const api: ElectronAPI = {
       _typedInvoke(CHANNELS.PROJECT_SAVE_SETTINGS, { projectId, settings }),
 
     detectRunners: (projectId: string) => _typedInvoke(CHANNELS.PROJECT_DETECT_RUNNERS, projectId),
+
+    close: (projectId: string) => ipcRenderer.invoke(CHANNELS.PROJECT_CLOSE, projectId),
+
+    getStats: (projectId: string) => ipcRenderer.invoke(CHANNELS.PROJECT_GET_STATS, projectId),
   },
 
   // History API (Agent Transcripts & Artifacts)

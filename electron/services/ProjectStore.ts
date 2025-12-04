@@ -297,6 +297,34 @@ export class ProjectStore {
       throw error;
     }
   }
+
+  /**
+   * Clear persisted state for a project.
+   * Deletes the state.json file, forcing fresh state on next load.
+   * Used when explicitly closing a project to free resources.
+   * @param projectId - Project ID to clear state for
+   */
+  async clearProjectState(projectId: string): Promise<void> {
+    const stateFilePath = this.getStateFilePath(projectId);
+
+    if (!stateFilePath) {
+      console.warn(`[ProjectStore] Invalid project ID: ${projectId}`);
+      return;
+    }
+
+    if (!existsSync(stateFilePath)) {
+      console.log(`[ProjectStore] No state file to clear for project ${projectId}`);
+      return;
+    }
+
+    try {
+      await fs.unlink(stateFilePath);
+      console.log(`[ProjectStore] Cleared state for project ${projectId}`);
+    } catch (error) {
+      console.error(`[ProjectStore] Failed to clear state for ${projectId}:`, error);
+      throw error;
+    }
+  }
 }
 
 export const projectStore = new ProjectStore();
