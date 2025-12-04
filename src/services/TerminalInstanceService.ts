@@ -595,6 +595,16 @@ class TerminalInstanceService {
     return this.instances.has(id);
   }
 
+  /**
+   * Get the buffer line count for a terminal (used for resize debouncing decisions).
+   * Uses active buffer to handle full-screen apps running in alternate buffer.
+   */
+  getBufferLineCount(id: string): number {
+    const managed = this.instances.get(id);
+    if (!managed) return 0;
+    return managed.terminal.buffer.active.length ?? managed.terminal.buffer.normal.length ?? 0;
+  }
+
   getInstanceCount(): number {
     return this.instances.size;
   }
