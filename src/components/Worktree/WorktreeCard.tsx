@@ -4,7 +4,7 @@ import type { WorktreeState, ProjectDevServerSettings } from "../../types";
 import { ActivityLight } from "./ActivityLight";
 import { AgentStatusIndicator } from "./AgentStatusIndicator";
 import { FileChangeList } from "./FileChangeList";
-import { ErrorBanner } from "../Errors/ErrorBanner";
+import { WorktreeDetails } from "./WorktreeDetails";
 import { useDevServer } from "../../hooks/useDevServer";
 import { useWorktreeTerminals } from "../../hooks/useWorktreeTerminals";
 import { useErrorStore, useTerminalStore, type RetryAction } from "../../store";
@@ -53,37 +53,6 @@ export interface WorktreeCardProps {
   onCreateRecipe?: () => void;
   homeDir?: string;
   devServerSettings?: ProjectDevServerSettings;
-}
-
-const URL_REGEX = /(https?:\/\/[^\s]+)/g;
-
-function parseNoteWithLinks(text: string): Array<{ type: "text" | "link"; content: string }> {
-  const segments: Array<{ type: "text" | "link"; content: string }> = [];
-  let lastIndex = 0;
-  const regex = new RegExp(URL_REGEX.source, "g");
-  let match: RegExpExecArray | null;
-
-  while ((match = regex.exec(text)) !== null) {
-    if (match.index > lastIndex) {
-      segments.push({ type: "text", content: text.slice(lastIndex, match.index) });
-    }
-    segments.push({ type: "link", content: match[1] });
-    lastIndex = match.index + match[0].length;
-  }
-
-  if (lastIndex < text.length) {
-    segments.push({ type: "text", content: text.slice(lastIndex) });
-  }
-
-  return segments;
-}
-
-function formatPath(targetPath: string, homeDir?: string): string {
-  const home = homeDir || "";
-  if (home && targetPath.startsWith(home)) {
-    return targetPath.replace(home, "~");
-  }
-  return targetPath;
 }
 
 const MAIN_WORKTREE_NOTE_TTL_MS = 10 * 60 * 1000; // 10 minutes
@@ -199,10 +168,6 @@ export function WorktreeCard({
     return trimmed;
   }, [worktree.aiNote, isMainWorktree, worktree.aiNoteTimestamp, now]);
 
-  const parsedNoteSegments = useMemo(() => {
-    return effectiveNote ? parseNoteWithLinks(effectiveNote) : [];
-  }, [effectiveNote]);
-
   const handlePathClick = useCallback(() => {
     systemClient.openPath(worktree.path);
   }, [worktree.path]);
@@ -261,7 +226,6 @@ export function WorktreeCard({
     });
   }, [totalTerminalCount, bulkCloseByWorktree, worktree.id, closeConfirmDialog]);
 
-  const displayPath = formatPath(worktree.path, homeDir);
   const branchLabel = worktree.branch ?? worktree.name;
   const hasChanges = (worktree.worktreeChanges?.changedFileCount ?? 0) > 0;
 
@@ -293,16 +257,6 @@ export function WorktreeCard({
     }
   };
 
-  const getServerLabel = () => {
-    if (!serverState) return null;
-    if (serverState.status === "running" && serverState.url) {
-      return serverState.url.replace(/^https?:\/\//, "").replace(/\/$/, "");
-    }
-    if (serverState.status === "error") return "Error";
-    if (serverState.status === "starting") return "Starting";
-    return "Dev Server";
-  };
-
   const handleToggleExpand = useCallback(
     (e: React.MouseEvent) => {
       e.stopPropagation();
@@ -314,8 +268,8 @@ export function WorktreeCard({
   const showDevServer = devServerEnabled && hasDevScript;
   const showFooter =
     terminalCounts.total > 0 ||
-    (hasChanges && worktree.worktreeChanges) ||
-    (serverState && serverState.status !== "stopped") ||
+    (hasChanges && !!worktree.worktreeChanges) ||
+    (showDevServer && serverState && serverState.status !== "stopped") ||
     worktreeErrors.length > 0;
   const hasExpandableContent =
     hasChanges ||
@@ -587,106 +541,23 @@ export function WorktreeCard({
             isExpanded ? "max-h-[800px] opacity-100" : "max-h-0 opacity-0"
           )}
         >
-          <div
-            className={cn(
-              "pt-2 mt-2 space-y-2",
-              (hasChanges || showFooter) && "border-t border-border/40"
-            )}
-          >
-            <button
-              onClick={(e) => {
-                e.stopPropagation();
-                handlePathClick();
-              }}
-              className={cn(
-                "text-[0.7rem] text-gray-500 hover:text-gray-400 hover:underline text-left font-mono truncate block",
-                isFocused && "underline"
-              )}
-            >
-              {displayPath}
-            </button>
-
-            <div className="text-xs leading-relaxed break-words">{renderSummary()}</div>
-
-            {effectiveNote && (
-              <div
-                className={cn(
-                  "text-xs text-gray-400 bg-black/20 p-1.5 rounded border-l-2 border-gray-700 font-mono",
-                  "line-clamp-none"
-                )}
-              >
-                {parsedNoteSegments.map((segment, index) =>
-                  segment.type === "link" ? (
-                    <a
-                      key={index}
-                      href={segment.content}
-                      target="_blank"
-                      rel="noopener noreferrer"
-                      className="text-[var(--color-status-info)] underline hover:text-blue-300"
-                      onClick={(e) => {
-                        e.stopPropagation();
-                        e.preventDefault();
-                        systemClient.openExternal(segment.content);
-                      }}
-                    >
-                      {segment.content}
-                    </a>
-                  ) : (
-                    <span key={index}>{segment.content}</span>
-                  )
-                )}
-              </div>
-            )}
-
-            {showDevServer && serverState && (
-              <div className="flex items-center gap-2 text-xs text-gray-400 font-mono">
-                <Globe className="w-3 h-3" />
-                <div className="flex items-center gap-1">
-                  {getServerStatusIndicator()}
-                  <span className="truncate max-w-[120px]">{getServerLabel()}</span>
-                </div>
-                <button
-                  onClick={(e) => {
-                    e.stopPropagation();
-                    if (!serverLoading && serverState.status !== "starting") {
-                      onToggleServer();
-                    }
-                  }}
-                  disabled={serverLoading || serverState.status === "starting"}
-                  className={cn(
-                    "ml-1 p-0.5 rounded hover:bg-gray-700 transition-colors",
-                    serverLoading ? "opacity-50" : ""
-                  )}
-                  title={serverState.status === "running" ? "Stop Server" : "Start Server"}
-                >
-                  {serverState.status === "running" ? (
-                    <div className="w-1.5 h-1.5 bg-[var(--color-status-error)] rounded-sm" />
-                  ) : (
-                    <Play className="w-2 h-2 fill-current" />
-                  )}
-                </button>
-              </div>
-            )}
-
-            {worktreeErrors.length > 0 && (
-              <div className="space-y-1">
-                {worktreeErrors.slice(0, 3).map((error) => (
-                  <ErrorBanner
-                    key={error.id}
-                    error={error}
-                    onDismiss={dismissError}
-                    onRetry={handleErrorRetry}
-                    compact
-                  />
-                ))}
-                {worktreeErrors.length > 3 && (
-                  <div className="text-[0.65rem] text-gray-500 text-center">
-                    +{worktreeErrors.length - 3} more errors
-                  </div>
-                )}
-              </div>
-            )}
-          </div>
+          <WorktreeDetails
+            worktree={worktree}
+            homeDir={homeDir}
+            effectiveNote={effectiveNote}
+            showDevServer={showDevServer}
+            serverState={serverState}
+            serverLoading={serverLoading}
+            worktreeErrors={worktreeErrors}
+            hasChanges={hasChanges}
+            showFooter={showFooter}
+            isFocused={isFocused}
+            onPathClick={handlePathClick}
+            onToggleServer={onToggleServer}
+            onDismissError={dismissError}
+            onRetryError={handleErrorRetry}
+            renderSummary={renderSummary}
+          />
         </div>
 
         <ConfirmDialog

@@ -375,8 +375,7 @@ export class PtyManager extends EventEmitter {
     this.ptyPool = pool;
   }
 
-  private emitActivityState(terminalId: string, activity: "busy" | "idle"):
-    void {
+  private emitActivityState(terminalId: string, activity: "busy" | "idle"): void {
     const terminal = this.terminals.get(terminalId);
     if (!terminal || !terminal.agentId) {
       return;
@@ -830,13 +829,16 @@ export class PtyManager extends EventEmitter {
     const now = Date.now();
     if (now - terminal.lastTierChangeAt < 100) {
       // Schedule this tier change to apply after debounce period
-      setTimeout(() => {
-        // Only apply if terminal still exists and tier hasn't changed again
-        const t = this.terminals.get(id);
-        if (t && t.activityTier === previousTier) {
-          this.setActivityTier(id, tier);
-        }
-      }, 100 - (now - terminal.lastTierChangeAt));
+      setTimeout(
+        () => {
+          // Only apply if terminal still exists and tier hasn't changed again
+          const t = this.terminals.get(id);
+          if (t && t.activityTier === previousTier) {
+            this.setActivityTier(id, tier);
+          }
+        },
+        100 - (now - terminal.lastTierChangeAt)
+      );
       return;
     }
 
@@ -1977,9 +1979,7 @@ export class PtyManager extends EventEmitter {
    * @param projectId - Project ID to get stats for
    * @returns Stats object with counts and terminal types
    */
-  getProjectStats(
-    projectId: string
-  ): {
+  getProjectStats(projectId: string): {
     terminalCount: number;
     processIds: number[];
     terminalTypes: Record<string, number>;
