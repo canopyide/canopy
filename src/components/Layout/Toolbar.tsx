@@ -3,7 +3,6 @@ import { useShallow } from "zustand/react/shallow";
 import { Button } from "@/components/ui/button";
 import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover";
 import {
-  RefreshCw,
   Settings,
   Terminal,
   AlertCircle,
@@ -12,7 +11,6 @@ import {
   GitCommit,
   GitPullRequest,
   AlertTriangle,
-  CircleHelp,
   PanelRightOpen,
   PanelRightClose,
 } from "lucide-react";
@@ -29,28 +27,22 @@ import type { CliAvailability, AgentSettings } from "@shared/types";
 
 interface ToolbarProps {
   onLaunchAgent: (type: "claude" | "gemini" | "codex" | "shell") => void;
-  onRefresh: () => void;
   onSettings: () => void;
   errorCount?: number;
   onToggleProblems?: () => void;
   isFocusMode?: boolean;
   onToggleFocusMode?: () => void;
-  isRefreshing?: boolean;
-  onShowWelcome?: () => void;
   agentAvailability?: CliAvailability;
   agentSettings?: AgentSettings | null;
 }
 
 export function Toolbar({
   onLaunchAgent,
-  onRefresh,
   onSettings,
   errorCount = 0,
   onToggleProblems,
   isFocusMode = false,
   onToggleFocusMode,
-  isRefreshing = false,
-  onShowWelcome,
   agentAvailability,
   agentSettings,
 }: ToolbarProps) {
@@ -245,24 +237,6 @@ export function Toolbar({
           <Button
             variant="ghost"
             size="icon"
-            onClick={toggleSidecar}
-            className={cn(
-              "text-canopy-text hover:bg-canopy-border hover:text-canopy-accent h-8 w-8",
-              sidecarOpen && "bg-canopy-accent/20 text-canopy-accent"
-            )}
-            title={sidecarOpen ? "Close Context Sidecar" : "Open Context Sidecar"}
-            aria-label={sidecarOpen ? "Close context sidecar" : "Open context sidecar"}
-            aria-pressed={sidecarOpen}
-          >
-            {sidecarOpen ? (
-              <PanelRightClose className="h-4 w-4" aria-hidden="true" />
-            ) : (
-              <PanelRightOpen className="h-4 w-4" aria-hidden="true" />
-            )}
-          </Button>
-          <Button
-            variant="ghost"
-            size="icon"
             onClick={onToggleFocusMode}
             className={cn(
               "text-canopy-text hover:bg-canopy-border hover:text-canopy-accent h-8 w-8",
@@ -316,16 +290,6 @@ export function Toolbar({
           <Button
             variant="ghost"
             size="icon"
-            onClick={onShowWelcome}
-            className="text-canopy-text hover:bg-canopy-border hover:text-canopy-accent h-8 w-8"
-            title="Welcome & Help"
-            aria-label="Show welcome screen"
-          >
-            <CircleHelp className="h-4 w-4" />
-          </Button>
-          <Button
-            variant="ghost"
-            size="icon"
             onClick={onSettings}
             className="text-canopy-text hover:bg-canopy-border hover:text-canopy-accent h-8 w-8"
             title="Open Settings"
@@ -336,16 +300,20 @@ export function Toolbar({
           <Button
             variant="ghost"
             size="icon"
-            onClick={onRefresh}
-            disabled={isRefreshing}
+            onClick={toggleSidecar}
             className={cn(
               "text-canopy-text hover:bg-canopy-border hover:text-canopy-accent h-8 w-8",
-              isRefreshing && "cursor-not-allowed opacity-50"
+              sidecarOpen && "bg-canopy-accent/20 text-canopy-accent"
             )}
-            title="Refresh Worktrees"
-            aria-label="Refresh worktrees"
+            title={sidecarOpen ? "Close Context Sidecar" : "Open Context Sidecar"}
+            aria-label={sidecarOpen ? "Close context sidecar" : "Open context sidecar"}
+            aria-pressed={sidecarOpen}
           >
-            <RefreshCw className={cn("h-4 w-4", isRefreshing && "animate-spin")} />
+            {sidecarOpen ? (
+              <PanelRightClose className="h-4 w-4" aria-hidden="true" />
+            ) : (
+              <PanelRightOpen className="h-4 w-4" aria-hidden="true" />
+            )}
           </Button>
         </div>
       </div>
