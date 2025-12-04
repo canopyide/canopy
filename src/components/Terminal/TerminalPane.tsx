@@ -343,7 +343,7 @@ function TerminalPaneComponent({
       {/* Header - Uniform background for all terminal types */}
       <div
         className={cn(
-          "flex items-center justify-between px-3 h-7 shrink-0 font-mono text-xs transition-colors relative overflow-hidden",
+          "flex items-center justify-between px-3 h-8 shrink-0 font-mono text-xs transition-colors relative overflow-hidden",
           // Base background - uniform for all types
           isFocused ? "bg-[var(--color-surface-highlight)]" : "bg-[var(--color-surface)]"
         )}
