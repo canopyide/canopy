@@ -440,6 +440,7 @@ class TerminalInstanceService {
   /**
    * Apply renderer policy based on priority (foreground/background).
    * Focused/visible terminals keep WebGL; background terminals release it to avoid GPU exhaustion.
+   * Also propagates activity tier to main process for IPC batching.
    */
   applyRendererPolicy(id: string, tier: TerminalRefreshTier): void {
     const managed = this.instances.get(id);
@@ -454,6 +455,26 @@ class TerminalInstanceService {
       this.acquireWebgl(id, managed);
     } else if (!wantsWebgl && managed.webglAddon) {
       this.releaseWebgl(id, managed);
+    }
+
+    // Map refresh tier to IPC activity tier and propagate to main process
+    const activityTier = this.mapToActivityTier(tier);
+    terminalClient.setActivityTier(id, activityTier);
+  }
+
+  /**
+   * Map TerminalRefreshTier to IPC activity tier.
+   */
+  private mapToActivityTier(tier: TerminalRefreshTier): "focused" | "visible" | "background" {
+    switch (tier) {
+      case TerminalRefreshTier.BURST:
+      case TerminalRefreshTier.FOCUSED:
+        return "focused";
+      case TerminalRefreshTier.VISIBLE:
+        return "visible";
+      case TerminalRefreshTier.BACKGROUND:
+      default:
+        return "background";
     }
   }
 

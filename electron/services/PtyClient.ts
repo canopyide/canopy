@@ -17,6 +17,7 @@ import type {
   PtyHostRequest,
   PtyHostEvent,
   PtyHostSpawnOptions,
+  ActivityTier,
 } from "../../shared/types/pty-host.js";
 import type { TerminalSnapshot } from "./PtyManager.js";
 import type { AgentStateChangeTrigger } from "../types/index.js";
@@ -401,6 +402,11 @@ export class PtyClient extends EventEmitter {
 
   flushBuffer(id: string): void {
     this.send({ type: "flush-buffer", id });
+  }
+
+  /** Set the activity tier for IPC batching (affects flush timing) */
+  setActivityTier(id: string, tier: ActivityTier): void {
+    this.send({ type: "set-activity-tier", id, tier });
   }
 
   /** Get terminal IDs for a specific project */

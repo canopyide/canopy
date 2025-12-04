@@ -8,6 +8,7 @@ import { projectStore } from "../../services/ProjectStore.js";
 import { events } from "../../services/events.js";
 import type { HandlerDependencies } from "../types.js";
 import type { TerminalSpawnOptions, TerminalResizePayload } from "../../types/index.js";
+import type { ActivityTier } from "../../../shared/types/pty-host.js";
 import { TerminalSpawnOptionsSchema, TerminalResizePayloadSchema } from "../../schemas/ipc.js";
 
 export function registerTerminalHandlers(deps: HandlerDependencies): () => void {
@@ -285,6 +286,34 @@ export function registerTerminalHandlers(deps: HandlerDependencies): () => void 
   };
   ipcMain.handle(CHANNELS.TERMINAL_FLUSH, handleTerminalFlush);
   handlers.push(() => ipcMain.removeHandler(CHANNELS.TERMINAL_FLUSH));
+
+  const handleTerminalSetActivityTier = (
+    _event: Electron.IpcMainEvent,
+    payload: { id: string; tier: ActivityTier }
+  ) => {
+    try {
+      if (!payload || typeof payload !== "object") {
+        console.error("Invalid setActivityTier payload");
+        return;
+      }
+      if (typeof payload.id !== "string" || !payload.id) {
+        console.error("Invalid terminal ID: must be a non-empty string");
+        return;
+      }
+      const validTiers: ActivityTier[] = ["focused", "visible", "background"];
+      if (!validTiers.includes(payload.tier)) {
+        console.error(`Invalid activity tier: ${payload.tier}`);
+        return;
+      }
+      ptyManager.setActivityTier(payload.id, payload.tier);
+    } catch (error) {
+      console.error("Error setting terminal activity tier:", error);
+    }
+  };
+  ipcMain.on(CHANNELS.TERMINAL_SET_ACTIVITY_TIER, handleTerminalSetActivityTier);
+  handlers.push(() =>
+    ipcMain.removeListener(CHANNELS.TERMINAL_SET_ACTIVITY_TIER, handleTerminalSetActivityTier)
+  );
 
   // Query terminals for a specific project
   const handleTerminalGetForProject = async (

@@ -16,6 +16,8 @@ import { type PtyPool } from "./PtyPool.js";
 import { ProcessDetector, type DetectionResult } from "./ProcessDetector.js";
 import type { TerminalType } from "../../shared/types/domain.js";
 import { ActivityMonitor } from "./ActivityMonitor.js";
+import type { ActivityTier } from "../../shared/types/pty-host.js";
+export type { ActivityTier } from "../../shared/types/pty-host.js";
 
 export interface PtySpawnOptions {
   cwd: string;
@@ -136,6 +138,10 @@ interface TerminalInfo {
   // Watermark-based queue state for visible terminals
   queueState: "normal" | "soft" | "hard";
   lastQueueStateChange: number;
+
+  // IPC batching state for activity-tiered output coalescing
+  activityTier: ActivityTier;
+  lastTierChangeAt: number;
 
   // Batching state for visible terminals (separate from buffering mode for hidden terminals)
   batchBuffer: string[];
@@ -717,54 +723,137 @@ export class PtyManager extends EventEmitter {
   }
 
   /**
-   * Schedule a batch flush with adaptive delay based on queue state.
-   * Normal: no batching (immediate emit)
-   * Soft: aggressive flush at 10ms
-   * Hard: immediate flush (clears existing timer)
+   * Get flush delay based on activity tier.
+   * FOCUSED: 0ms (immediate), VISIBLE: 100ms, BACKGROUND: 1000ms
+   */
+  private getFlushDelay(tier: ActivityTier): number {
+    switch (tier) {
+      case "focused":
+        return 0;
+      case "visible":
+        return 100;
+      case "background":
+        return 1000;
+      default:
+        return 100;
+    }
+  }
+
+  /**
+   * Schedule a batch flush with adaptive delay based on queue state and activity tier.
    */
   private scheduleBatchFlush(terminal: TerminalInfo): void {
+    if (terminal.batchTimer) return;
+
     let delay: number;
 
     if (terminal.queueState === "hard") {
-      // Hard limit: clear any existing timer and flush immediately
-      if (terminal.batchTimer) {
-        clearTimeout(terminal.batchTimer);
-        terminal.batchTimer = null;
-      }
+      // Hard limit: immediate flush
       delay = 0;
     } else if (terminal.queueState === "soft") {
-      // Soft limit: schedule aggressive flush if not already scheduled
-      if (terminal.batchTimer) return;
+      // Soft limit: fast flush (10ms)
       delay = AGGRESSIVE_FLUSH_INTERVAL_MS;
     } else {
-      // Normal: immediate flush if not already scheduled
-      if (terminal.batchTimer) return;
-      delay = 0;
+      // Normal state: use tier-based delay
+      delay = this.getFlushDelay(terminal.activityTier);
     }
 
     if (delay === 0) {
-      this.flushBatch(terminal);
+      this.flushBatchBuffer(terminal.id);
     } else {
       terminal.batchTimer = setTimeout(() => {
-        terminal.batchTimer = null;
-        this.flushBatch(terminal);
+        this.flushBatchBuffer(terminal.id);
       }, delay);
     }
   }
 
   /**
-   * Flush accumulated batch buffer as a single IPC emit.
+   * Flush the batch buffer for a terminal, emitting all accumulated data as one IPC message.
    */
-  private flushBatch(terminal: TerminalInfo): void {
-    if (terminal.batchBuffer.length === 0) return;
+  private flushBatchBuffer(id: string): void {
+    const terminal = this.terminals.get(id);
+    if (!terminal || terminal.batchBuffer.length === 0) return;
 
-    // Combine all buffered chunks
     const combined = terminal.batchBuffer.join("");
     terminal.batchBuffer = [];
     terminal.batchBytes = 0;
+    if (terminal.batchTimer) {
+      clearTimeout(terminal.batchTimer);
+      terminal.batchTimer = null;
+    }
 
-    // Emit with project filtering
-    this.emitData(terminal.id, combined);
+    this.emitData(id, combined);
+  }
+
+  /**
+   * Set the activity tier for a terminal, affecting batch flush timing.
+   * FOCUSED: immediate, VISIBLE: 100ms, BACKGROUND: 1000ms.
+   * If tier changes to FOCUSED, pending batch is flushed immediately.
+   * Tier promotions reschedule existing timers to use faster flush delays.
+   */
+  setActivityTier(id: string, tier: ActivityTier): void {
+    const terminal = this.terminals.get(id);
+    if (!terminal) {
+      if (process.env.CANOPY_VERBOSE) {
+        console.warn(`[PtyManager] Cannot set activity tier: terminal ${id} not found`);
+      }
+      return;
+    }
+
+    const previousTier = terminal.activityTier;
+    if (previousTier === tier) return;
+
+    // Debounce rapid tier changes (100ms) to prevent oscillation
+    // Schedule deferred tier change instead of dropping it
+    const now = Date.now();
+    if (now - terminal.lastTierChangeAt < 100) {
+      // Schedule this tier change to apply after debounce period
+      setTimeout(() => {
+        // Only apply if terminal still exists and tier hasn't changed again
+        const t = this.terminals.get(id);
+        if (t && t.activityTier === previousTier) {
+          this.setActivityTier(id, tier);
+        }
+      }, 100 - (now - terminal.lastTierChangeAt));
+      return;
+    }
+
+    terminal.activityTier = tier;
+    terminal.lastTierChangeAt = now;
+
+    if (process.env.CANOPY_VERBOSE) {
+      console.log(`[PtyManager] Activity tier for ${id}: ${previousTier} → ${tier}`);
+    }
+
+    // Handle tier changes when there's pending batch data
+    if (terminal.batchBuffer.length > 0) {
+      const newDelay = this.getFlushDelay(tier);
+
+      if (newDelay === 0) {
+        // FOCUSED tier: flush immediately
+        if (terminal.batchTimer) {
+          clearTimeout(terminal.batchTimer);
+          terminal.batchTimer = null;
+        }
+        this.flushBatchBuffer(id);
+      } else if (terminal.batchTimer) {
+        // Tier promotion to faster delay: reschedule with shorter timer
+        const oldDelay = this.getFlushDelay(previousTier);
+        if (newDelay < oldDelay) {
+          clearTimeout(terminal.batchTimer);
+          terminal.batchTimer = setTimeout(() => {
+            this.flushBatchBuffer(id);
+          }, newDelay);
+        }
+      }
+    }
+  }
+
+  /**
+   * Get the current activity tier for a terminal.
+   */
+  getActivityTier(id: string): ActivityTier | undefined {
+    return this.terminals.get(id)?.activityTier;
   }
 
   spawn(id: string, options: PtySpawnOptions): void {
@@ -810,7 +899,7 @@ export class PtyManager extends EventEmitter {
         pooledPty.resize(options.cols, options.rows);
       } catch (resizeError) {
         console.warn(
-          `[PtyManager] Failed to resize pooled PTY for ${id}, falling back to spawn:`,
+          `[PtyManager] Failed to resize pooled PTY for ${id}, falling back to spawn`,
           resizeError
         );
         // Pooled PTY is likely dead - kill it and spawn fresh
@@ -903,7 +992,7 @@ export class PtyManager extends EventEmitter {
           this.flushBuffer(id);
         }
       } else {
-        // Visible terminal: use watermark-based flow control
+        // Visible terminal: use watermark-based flow control AND activity tiers
         // Enforce queue limits BEFORE adding to buffer (returns cached byte length)
         const incomingBytes = this.enforceQueueLimits(terminal, data);
 
@@ -911,7 +1000,7 @@ export class PtyManager extends EventEmitter {
         terminal.batchBuffer.push(data);
         terminal.batchBytes += incomingBytes;
 
-        // Schedule flush with adaptive interval based on queue state
+        // Schedule flush with adaptive interval based on queue state and activity tier
         this.scheduleBatchFlush(terminal);
       }
 
@@ -980,6 +1069,11 @@ export class PtyManager extends EventEmitter {
       // Flush any pending semantic buffer data before exit
       this.flushPendingSemanticData(terminal);
 
+      // Flush any pending batch buffer before exit to avoid data loss
+      if (terminal.batchBuffer.length > 0) {
+        this.flushBatchBuffer(id);
+      }
+
       // Flush any buffered output before exit to avoid data loss
       if (terminal.bufferingMode && terminal.outputQueue.length > 0) {
         this.flushBuffer(id);
@@ -998,7 +1092,7 @@ export class PtyManager extends EventEmitter {
         terminal.batchTimer = null;
       }
       if (terminal.batchBuffer.length > 0) {
-        this.flushBatch(terminal);
+        this.flushBatchBuffer(id);
       }
 
       this.emit("exit", id, exitCode ?? 0);
@@ -1077,6 +1171,9 @@ export class PtyManager extends EventEmitter {
       // Watermark-based queue state
       queueState: "normal",
       lastQueueStateChange: spawnedAt,
+      // IPC batching state - terminals start FOCUSED (visible in UI)
+      activityTier: "focused",
+      lastTierChangeAt: 0,
       // Batching state for visible terminals
       batchBuffer: [],
       batchBytes: 0,
@@ -1341,6 +1438,11 @@ export class PtyManager extends EventEmitter {
       // Flush any pending semantic buffer data before killing
       this.flushPendingSemanticData(terminal);
 
+      // Flush any pending batch buffer before killing to avoid data loss
+      if (terminal.batchBuffer.length > 0) {
+        this.flushBatchBuffer(id);
+      }
+
       // Flush any buffered output before killing to avoid data loss
       if (terminal.bufferingMode && terminal.outputQueue.length > 0) {
         this.flushBuffer(id);
@@ -1359,7 +1461,7 @@ export class PtyManager extends EventEmitter {
         terminal.batchTimer = null;
       }
       if (terminal.batchBuffer.length > 0) {
-        this.flushBatch(terminal);
+        this.flushBatchBuffer(id);
       }
 
       // Mark as killed to prevent agent:completed emission
@@ -1626,7 +1728,7 @@ export class PtyManager extends EventEmitter {
         }
         terminal.inputWriteQueue = [];
 
-        // Clear batch timer for visible terminals
+        // Clear batch timer
         if (terminal.batchTimer) {
           clearTimeout(terminal.batchTimer);
           terminal.batchTimer = null;

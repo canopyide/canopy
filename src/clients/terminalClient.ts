@@ -68,6 +68,14 @@ export const terminalClient = {
   },
 
   /**
+   * Sets the activity tier for IPC batching.
+   * FOCUSED: immediate flush (0ms), VISIBLE: 100ms, BACKGROUND: 1000ms
+   */
+  setActivityTier: (id: string, tier: "focused" | "visible" | "background"): void => {
+    window.electron.terminal.setActivityTier(id, tier);
+  },
+
+  /**
    * Query backend for terminals belonging to a specific project.
    * Used during state hydration to reconcile UI with backend processes.
    */
