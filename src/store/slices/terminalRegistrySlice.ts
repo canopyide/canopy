@@ -7,10 +7,10 @@ import type {
   TerminalSettings,
   AgentStateChangeTrigger,
 } from "@/types";
-import { appClient, terminalClient } from "@/clients";
+import { terminalClient } from "@/clients";
 import { terminalInstanceService } from "@/services/TerminalInstanceService";
 import { TerminalRefreshTier } from "@/types";
-import { debounce } from "@/utils/debounce";
+import { terminalPersistence } from "../persistence/terminalPersistence";
 
 export type TerminalInstance = TerminalInstanceType;
 
@@ -88,37 +88,9 @@ export interface TerminalRegistrySlice {
   updateTerminalSettings: (id: string, updates: Partial<TerminalSettings>) => void;
 }
 
-// Debounced persistence batches rapid state changes into single disk writes.
-// 500ms delay balances responsive restarts with write reduction during bulk ops.
-const debouncedPersistTerminals = debounce((terminals: TerminalInstance[]) => {
-  appClient
-    .setState({
-      terminals: terminals
-        .filter((t) => t.location !== "trash")
-        .map((t) => ({
-          id: t.id,
-          type: t.type,
-          title: t.title,
-          cwd: t.cwd,
-          worktreeId: t.worktreeId,
-          location: t.location,
-          command: t.command?.trim() || undefined,
-          settings: t.settings,
-        })),
-    })
-    .catch((error) => {
-      console.error("Failed to persist terminals:", error);
-    });
-}, 500);
-
-// Wrapper to call debounced version - excludes trashed terminals
-function persistTerminals(terminals: TerminalInstance[]): void {
-  debouncedPersistTerminals(terminals);
-}
-
 // Flush pending persistence - call on app quit to prevent data loss
 export function flushTerminalPersistence(): void {
-  debouncedPersistTerminals.flush();
+  terminalPersistence.flush();
 }
 
 export type TerminalRegistryMiddleware = {
@@ -187,7 +159,7 @@ export const createTerminalRegistrySlice =
 
         set((state) => {
           const newTerminals = [...state.terminals, terminal];
-          persistTerminals(newTerminals);
+          terminalPersistence.save(newTerminals);
           return { terminals: newTerminals };
         });
 
@@ -220,7 +192,7 @@ export const createTerminalRegistrySlice =
         const newTrashed = new Map(state.trashedTerminals);
         newTrashed.delete(id);
 
-        persistTerminals(newTerminals);
+        terminalPersistence.save(newTerminals);
         return { terminals: newTerminals, trashedTerminals: newTrashed };
       });
 
@@ -238,7 +210,7 @@ export const createTerminalRegistrySlice =
           t.id === id ? { ...t, title: effectiveTitle } : t
         );
 
-        persistTerminals(newTerminals);
+        terminalPersistence.save(newTerminals);
         return { terminals: newTerminals };
       });
     },
@@ -321,7 +293,7 @@ export const createTerminalRegistrySlice =
           t.id === id ? { ...t, location: "dock" as const } : t
         );
 
-        persistTerminals(newTerminals);
+        terminalPersistence.save(newTerminals);
         return { terminals: newTerminals };
       });
 
@@ -341,7 +313,7 @@ export const createTerminalRegistrySlice =
           t.id === id ? { ...t, location: "grid" as const } : t
         );
 
-        persistTerminals(newTerminals);
+        terminalPersistence.save(newTerminals);
         return { terminals: newTerminals };
       });
 
@@ -391,7 +363,7 @@ export const createTerminalRegistrySlice =
         const newTrashed = new Map(state.trashedTerminals);
         // Use placeholder expiresAt - will be updated when IPC event arrives
         newTrashed.set(id, { id, expiresAt: Date.now() + 120000, originalLocation });
-        persistTerminals(newTerminals);
+        terminalPersistence.save(newTerminals);
         return { terminals: newTerminals, trashedTerminals: newTrashed };
       });
 
@@ -416,7 +388,7 @@ export const createTerminalRegistrySlice =
         );
         const newTrashed = new Map(state.trashedTerminals);
         newTrashed.delete(id);
-        persistTerminals(newTerminals);
+        terminalPersistence.save(newTerminals);
         return { terminals: newTerminals, trashedTerminals: newTrashed };
       });
 
@@ -458,7 +430,7 @@ export const createTerminalRegistrySlice =
         const newTerminals = state.terminals.map((t) =>
           t.id === id ? { ...t, location: "trash" as const } : t
         );
-        persistTerminals(newTerminals);
+        terminalPersistence.save(newTerminals);
         return { trashedTerminals: newTrashed, terminals: newTerminals };
       });
 
@@ -484,7 +456,7 @@ export const createTerminalRegistrySlice =
         const newTerminals = state.terminals.map((t) =>
           t.id === id ? { ...t, location: restoreLocation } : t
         );
-        persistTerminals(newTerminals);
+        terminalPersistence.save(newTerminals);
         return { trashedTerminals: newTrashed, terminals: newTerminals };
       });
 
@@ -544,7 +516,7 @@ export const createTerminalRegistrySlice =
           newTerminals = [...gridTerminals, ...reorderedInLocation, ...trashedTerminals];
         }
 
-        persistTerminals(newTerminals);
+        terminalPersistence.save(newTerminals);
         return { terminals: newTerminals };
       });
     },
@@ -588,7 +560,7 @@ export const createTerminalRegistrySlice =
           newTerminals = [...gridTerminals, ...reorderedTargetLocation, ...trashedTerminals];
         }
 
-        persistTerminals(newTerminals);
+        terminalPersistence.save(newTerminals);
         return { terminals: newTerminals };
       });
 
@@ -636,7 +608,7 @@ export const createTerminalRegistrySlice =
             : t
         );
 
-        persistTerminals(newTerminals);
+        terminalPersistence.save(newTerminals);
         return { terminals: newTerminals };
       });
     },
