@@ -19,6 +19,6 @@
     "noFallthroughCasesInSwitch": true
   },
   "include": ["./**/*.ts"],
-  "exclude": ["node_modules", "preload.ts"],
+  "exclude": ["node_modules", "preload.cts"],
   "references": [{ "path": "../shared/tsconfig.json" }]
 }
