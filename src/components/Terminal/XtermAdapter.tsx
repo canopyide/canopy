@@ -252,6 +252,11 @@ function XtermAdapterComponent({
         "w-full h-full bg-[#18181b] text-white overflow-hidden rounded-b-lg pl-2 pt-2 pb-2",
         className
       )}
+      style={{
+        // Force GPU layer promotion to prevent WebGL canvas snapshot DPI issues during drag
+        willChange: "transform",
+        transform: "translateZ(0)",
+      }}
     />
   );
 }

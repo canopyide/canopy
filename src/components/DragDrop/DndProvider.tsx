@@ -315,11 +315,12 @@ export function DndProvider({ children }: DndProviderProps) {
         }
       }
 
-      // Refresh all terminals after drag to fix WebGL canvas rendering artifacts
-      // Use setTimeout instead of requestAnimationFrame to ensure CSS Grid layout has fully settled
+      // Reset WebGL renderers after drag to fix rendering artifacts
+      // Use setTimeout with longer delay to ensure CSS Grid layout has fully settled
+      // before measuring container dimensions for fit()
       setTimeout(() => {
-        terminalInstanceService.refreshAll();
-      }, 50);
+        terminalInstanceService.resetAllRenderers();
+      }, 100);
     },
     [activeData, overContainer, terminals, reorderTerminals, moveTerminalToPosition, setFocused]
   );
@@ -330,11 +331,11 @@ export function DndProvider({ children }: DndProviderProps) {
     setOverContainer(null);
     setPlaceholderIndex(null);
 
-    // Refresh all terminals after drag cancel to fix WebGL canvas rendering artifacts
-    // Use setTimeout instead of requestAnimationFrame to ensure CSS Grid layout has fully settled
+    // Reset WebGL renderers after drag cancel to fix rendering artifacts
+    // Use setTimeout with longer delay to ensure CSS Grid layout has fully settled
     setTimeout(() => {
-      terminalInstanceService.refreshAll();
-    }, 50);
+      terminalInstanceService.resetAllRenderers();
+    }, 100);
   }, []);
 
   // Use rectIntersection for grid (better for 2D layouts), closestCenter for dock (1D horizontal)
