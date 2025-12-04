@@ -68,6 +68,10 @@ export function TerminalDock() {
   // Terminal IDs for SortableContext
   const terminalIds = useMemo(() => activeDockTerminals.map((t) => t.id), [activeDockTerminals]);
 
+  if (isEmpty) {
+    return null;
+  }
+
   return (
     <div
       ref={setNodeRef}
@@ -80,46 +84,37 @@ export function TerminalDock() {
       role="list"
     >
       <div className="flex items-center gap-2 overflow-x-auto flex-1 no-scrollbar">
-        {(!isEmpty || isOver) && (
-          <>
-            {!isEmpty && (
-              <button
-                onClick={handleToggleCollapse}
-                className={cn(
-                  "flex items-center gap-1 text-xs text-canopy-text/60 mr-2 shrink-0 select-none",
-                  "hover:text-canopy-text transition-colors rounded px-1 py-0.5",
-                  "focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-canopy-accent"
-                )}
-                title={isCollapsed ? "Show background terminals" : "Hide background terminals"}
-                aria-expanded={!isCollapsed}
-              >
-                <ChevronDown
-                  className={cn(
-                    "h-3 w-3 transition-transform duration-200",
-                    isCollapsed && "-rotate-90"
-                  )}
-                  aria-hidden="true"
-                />
-                <span>Background ({activeDockTerminals.length})</span>
-              </button>
-            )}
+        <button
+          onClick={handleToggleCollapse}
+          className={cn(
+            "flex items-center gap-1 text-xs text-canopy-text/60 mr-2 shrink-0 select-none",
+            "hover:text-canopy-text transition-colors rounded px-1 py-0.5",
+            "focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-canopy-accent"
+          )}
+          title={isCollapsed ? "Show background terminals" : "Hide background terminals"}
+          aria-expanded={!isCollapsed}
+        >
+          <ChevronDown
+            className={cn("h-3 w-3 transition-transform duration-200", isCollapsed && "-rotate-90")}
+            aria-hidden="true"
+          />
+          <span>Background ({activeDockTerminals.length})</span>
+        </button>
 
-            {!isCollapsed && (
-              <SortableContext
-                id="dock-container"
-                items={terminalIds}
-                strategy={horizontalListSortingStrategy}
-              >
-                <div className="flex items-center gap-2">
-                  {activeDockTerminals.map((terminal, index) => (
-                    <SortableDockItem key={terminal.id} terminal={terminal} sourceIndex={index}>
-                      <DockedTerminalItem terminal={terminal} />
-                    </SortableDockItem>
-                  ))}
-                </div>
-              </SortableContext>
-            )}
-          </>
+        {!isCollapsed && (
+          <SortableContext
+            id="dock-container"
+            items={terminalIds}
+            strategy={horizontalListSortingStrategy}
+          >
+            <div className="flex items-center gap-2">
+              {activeDockTerminals.map((terminal, index) => (
+                <SortableDockItem key={terminal.id} terminal={terminal} sourceIndex={index}>
+                  <DockedTerminalItem terminal={terminal} />
+                </SortableDockItem>
+              ))}
+            </div>
+          </SortableContext>
         )}
       </div>
 
