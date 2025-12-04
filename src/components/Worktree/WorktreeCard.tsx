@@ -462,16 +462,38 @@ export function WorktreeCard({
         {(worktree.prNumber || worktree.issueNumber) && (
           <div className="flex items-center gap-2 mt-1 ml-9">
             {worktree.prNumber && (
-              <span className="flex items-center gap-1.5 text-xs text-[var(--color-status-success)] bg-green-500/10 px-2 py-0.5 rounded border border-green-500/20">
+              <button
+                onClick={(e) => {
+                  e.stopPropagation();
+                  onOpenPR?.();
+                }}
+                className={cn(
+                  "flex items-center gap-1.5 text-xs text-[var(--color-status-success)]",
+                  "bg-green-500/10 px-2 py-0.5 rounded border border-green-500/20",
+                  "hover:bg-green-500/20 transition-colors cursor-pointer"
+                )}
+                title="Open Pull Request on GitHub"
+              >
                 <GitPullRequest className="w-3 h-3" />
                 <span className="font-mono">#{worktree.prNumber}</span>
-              </span>
+              </button>
             )}
             {worktree.issueNumber && (
-              <span className="flex items-center gap-1.5 text-xs text-[var(--color-status-info)] bg-blue-500/10 px-2 py-0.5 rounded border border-blue-500/20">
+              <button
+                onClick={(e) => {
+                  e.stopPropagation();
+                  onOpenIssue?.();
+                }}
+                className={cn(
+                  "flex items-center gap-1.5 text-xs text-[var(--color-status-info)]",
+                  "bg-blue-500/10 px-2 py-0.5 rounded border border-blue-500/20",
+                  "hover:bg-blue-500/20 transition-colors cursor-pointer"
+                )}
+                title="Open Issue on GitHub"
+              >
                 <CircleDot className="w-3 h-3" />
                 <span className="font-mono">#{worktree.issueNumber}</span>
-              </span>
+              </button>
             )}
           </div>
         )}
