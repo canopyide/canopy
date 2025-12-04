@@ -9,6 +9,7 @@ export function useLinkDiscovery() {
 
   useEffect(() => {
     if (discoveryComplete) return;
+    if (typeof window === "undefined" || !window.electron) return;
 
     const runDiscovery = async () => {
       try {
@@ -25,6 +26,7 @@ export function useLinkDiscovery() {
   }, [discoveryComplete, setDiscoveredLinks, markDiscoveryComplete]);
 
   const rescan = useCallback(async () => {
+    if (typeof window === "undefined" || !window.electron) return;
     setIsScanning(true);
     try {
       const availability = await window.electron.system.refreshCliAvailability();

@@ -11,6 +11,7 @@ import {
   useTerminalConfig,
   useKeybinding,
   useProjectSettings,
+  useLinkDiscovery,
 } from "./hooks";
 import { AppLayout } from "./components/Layout";
 import { TerminalGrid } from "./components/Terminal";
@@ -342,6 +343,7 @@ function App() {
   const { inject, isInjecting } = useContextInjection();
   const loadRecipes = useRecipeStore((state) => state.loadRecipes);
   useTerminalConfig();
+  useLinkDiscovery();
 
   const terminalPalette = useTerminalPalette();
 

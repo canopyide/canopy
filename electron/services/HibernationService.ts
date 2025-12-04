@@ -120,7 +120,10 @@ export class HibernationService {
     }
     if (config.inactiveThresholdHours !== undefined) {
       // Clamp to valid range (1-168 hours)
-      current.inactiveThresholdHours = Math.max(1, Math.min(168, Math.round(config.inactiveThresholdHours)));
+      current.inactiveThresholdHours = Math.max(
+        1,
+        Math.min(168, Math.round(config.inactiveThresholdHours))
+      );
     }
 
     store.set("hibernation", current);
