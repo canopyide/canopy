@@ -354,8 +354,6 @@ function App() {
   const [isStateLoaded, setIsStateLoaded] = useState(false);
 
   const hasRestoredState = useRef(false);
-  const isCtrlKPressed = useRef(false);
-  const chordTimeout = useRef<NodeJS.Timeout | null>(null);
 
   useEffect(() => {
     if (!isElectronAvailable() || hasRestoredState.current) {
@@ -528,48 +526,18 @@ function App() {
     enabled: electronAvailable,
   });
   useKeybinding("panel.diagnostics", () => toggleDiagnosticsDock(), { enabled: electronAvailable });
+  useKeybinding(
+    "nav.toggleSidebar",
+    () => {
+      window.dispatchEvent(new CustomEvent("canopy:toggle-focus-mode"));
+    },
+    { enabled: electronAvailable }
+  );
 
   useEffect(() => {
     if (!electronAvailable) return;
     const cleanup = setupTerminalStoreListeners();
     return cleanup;
-  }, [electronAvailable]);
-
-  useEffect(() => {
-    if (!electronAvailable) return;
-
-    const handleKeyDown = (e: KeyboardEvent) => {
-      if ((e.metaKey || e.ctrlKey) && e.key === "k" && !e.shiftKey) {
-        e.preventDefault();
-        isCtrlKPressed.current = true;
-        if (chordTimeout.current) {
-          clearTimeout(chordTimeout.current);
-        }
-        chordTimeout.current = setTimeout(() => {
-          isCtrlKPressed.current = false;
-        }, 1000);
-        return;
-      }
-
-      if (isCtrlKPressed.current && (e.key === "z" || e.key === "Z") && !e.metaKey && !e.ctrlKey) {
-        e.preventDefault();
-        isCtrlKPressed.current = false;
-        if (chordTimeout.current) {
-          clearTimeout(chordTimeout.current);
-          chordTimeout.current = null;
-        }
-        window.dispatchEvent(new CustomEvent("canopy:toggle-focus-mode"));
-        return;
-      }
-    };
-
-    window.addEventListener("keydown", handleKeyDown);
-    return () => {
-      window.removeEventListener("keydown", handleKeyDown);
-      if (chordTimeout.current) {
-        clearTimeout(chordTimeout.current);
-      }
-    };
   }, [electronAvailable]);
 
   if (!isElectronAvailable()) {

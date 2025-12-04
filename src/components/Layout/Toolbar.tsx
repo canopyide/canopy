@@ -6,13 +6,13 @@ import {
   Settings,
   Terminal,
   AlertCircle,
-  Maximize2,
-  Minimize2,
   GitCommit,
   GitPullRequest,
   AlertTriangle,
   PanelRightOpen,
   PanelRightClose,
+  PanelLeft,
+  PanelLeftClose,
 } from "lucide-react";
 import { ClaudeIcon, GeminiIcon, CodexIcon } from "@/components/icons";
 import { cn } from "@/lib/utils";
@@ -71,6 +71,19 @@ export function Toolbar({
       <div className="w-20 shrink-0" />
 
       <div className="flex items-center gap-1 app-no-drag">
+        <Button
+          variant="ghost"
+          size="icon"
+          onClick={onToggleFocusMode}
+          className={cn(
+            "text-canopy-text hover:bg-canopy-border h-8 w-8 transition-colors mr-2",
+            isFocusMode && "text-canopy-text/50"
+          )}
+          title={isFocusMode ? "Show Sidebar (Cmd+B)" : "Hide Sidebar (Cmd+B)"}
+          aria-label="Toggle Sidebar"
+        >
+          {isFocusMode ? <PanelLeft className="h-4 w-4" /> : <PanelLeftClose className="h-4 w-4" />}
+        </Button>
         {shouldShowAgent("claude") && (
           <Button
             variant="ghost"
@@ -234,38 +247,6 @@ export function Toolbar({
         )}
 
         <div className="flex items-center gap-1">
-          <Button
-            variant="ghost"
-            size="icon"
-            onClick={onToggleFocusMode}
-            className={cn(
-              "text-canopy-text hover:bg-canopy-border hover:text-canopy-accent h-8 w-8",
-              isFocusMode && "bg-canopy-accent/20 text-canopy-accent"
-            )}
-            title={
-              isFocusMode ? "Exit Focus Mode (Cmd/Ctrl+K, Z)" : "Toggle Focus Mode (Cmd/Ctrl+K, Z)"
-            }
-            aria-label={isFocusMode ? "Exit focus mode" : "Enter focus mode"}
-            aria-pressed={isFocusMode}
-          >
-            {isFocusMode ? (
-              <Minimize2 className="h-4 w-4" aria-hidden="true" />
-            ) : (
-              <Maximize2 className="h-4 w-4" aria-hidden="true" />
-            )}
-          </Button>
-          <span
-            role="status"
-            aria-live="polite"
-            className={cn(
-              "px-2 py-0.5 rounded-full text-[10px] font-medium transition-opacity",
-              isFocusMode
-                ? "bg-canopy-accent/15 text-canopy-accent border border-canopy-accent/40 opacity-100"
-                : "opacity-0 pointer-events-none invisible"
-            )}
-          >
-            Focus
-          </span>
           <Button
             variant="ghost"
             size="icon"

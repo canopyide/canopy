@@ -108,6 +108,13 @@ const DEFAULT_KEYBINDINGS: KeybindingConfig[] = [
     description: "Toggle diagnostics dock",
   },
   {
+    actionId: "nav.toggleSidebar",
+    combo: "Cmd+B",
+    scope: "global",
+    priority: 0,
+    description: "Toggle sidebar",
+  },
+  {
     actionId: "modal.close",
     combo: "Escape",
     scope: "modal",
