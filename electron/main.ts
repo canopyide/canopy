@@ -305,7 +305,7 @@ async function createWindow(): Promise<void> {
     }
 
     // 2-second delay allows OS network/disk subsystems to stabilize
-    resumeTimeout = setTimeout(() => {
+    resumeTimeout = setTimeout(async () => {
       resumeTimeout = null;
       try {
         if (ptyClient) {
@@ -313,6 +313,11 @@ async function createWindow(): Promise<void> {
         }
         worktreeService.setPollingEnabled(true);
         void worktreeService.refresh();
+
+        // Check and recover dev servers that died during sleep
+        if (devServerManager) {
+          await devServerManager.onSystemResume();
+        }
       } catch (error) {
         console.error("[MAIN] Error during resume:", error);
       }
