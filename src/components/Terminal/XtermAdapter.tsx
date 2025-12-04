@@ -1,10 +1,11 @@
-import React, { useCallback, useLayoutEffect, useMemo, useRef } from "react";
+import React, { useCallback, useLayoutEffect, useMemo, useRef, useState, useEffect } from "react";
 import "@xterm/xterm/css/xterm.css";
 import { cn } from "@/lib/utils";
 import { terminalClient } from "@/clients";
 import { TerminalRefreshTier } from "@/types";
 import { terminalInstanceService } from "@/services/TerminalInstanceService";
 import { useScrollbackStore, usePerformanceModeStore } from "@/store";
+import { TerminalResizeDebouncer } from "@/services/TerminalResizeDebouncer";
 
 export interface XtermAdapterProps {
   terminalId: string;
@@ -51,11 +52,14 @@ function XtermAdapterComponent({
   getRefreshTier,
 }: XtermAdapterProps) {
   const containerRef = useRef<HTMLDivElement>(null);
-  const resizeFrameIdRef = useRef<number | null>(null);
   const prevDimensionsRef = useRef<{ cols: number; rows: number } | null>(null);
   const zeroRetryCountRef = useRef<number>(0);
   const settleTimeoutRef = useRef<number | null>(null);
   const exitUnsubRef = useRef<(() => void) | null>(null);
+  const debouncerRef = useRef<TerminalResizeDebouncer | null>(null);
+
+  // Track visibility for resize optimization (start pessimistic for offscreen mounts)
+  const [isVisible, setIsVisible] = useState(false);
 
   const scrollbackLines = useScrollbackStore((state) => state.scrollbackLines);
   const performanceMode = usePerformanceModeStore((state) => state.performanceMode);
@@ -91,6 +95,41 @@ function XtermAdapterComponent({
     [effectiveScrollback, performanceMode]
   );
 
+  // Initialize debouncer with callbacks for separate X/Y resize handling
+  useLayoutEffect(() => {
+    debouncerRef.current = new TerminalResizeDebouncer(
+      // Resize X only (horizontal reflow - expensive)
+      (cols) => {
+        const managed = terminalInstanceService.get(terminalId);
+        if (managed) {
+          managed.terminal.resize(cols, managed.terminal.rows);
+          terminalClient.resize(terminalId, cols, managed.terminal.rows);
+        }
+      },
+      // Resize Y only (vertical - cheap)
+      (rows) => {
+        const managed = terminalInstanceService.get(terminalId);
+        if (managed) {
+          managed.terminal.resize(managed.terminal.cols, rows);
+          terminalClient.resize(terminalId, managed.terminal.cols, rows);
+        }
+      },
+      // Resize both (for small buffers or immediate mode)
+      (cols, rows) => {
+        const managed = terminalInstanceService.get(terminalId);
+        if (managed) {
+          managed.terminal.resize(cols, rows);
+        }
+        terminalClient.resize(terminalId, cols, rows);
+      }
+    );
+
+    return () => {
+      debouncerRef.current?.dispose();
+      debouncerRef.current = null;
+    };
+  }, [terminalId]);
+
   const scheduleFit = useCallback(() => {
     if (settleTimeoutRef.current !== null) {
       clearTimeout(settleTimeoutRef.current);
@@ -102,7 +141,6 @@ function XtermAdapterComponent({
       if (!container) return;
 
       // Ignore fits when container is collapsed/hidden (e.g. during drag)
-      // This prevents xterm from resizing to 0x0/1x1 and scrambling the buffer
       if (container.clientWidth < 50 || container.clientHeight < 50) {
         return;
       }
@@ -134,18 +172,22 @@ function XtermAdapterComponent({
         }
 
         prevDimensionsRef.current = { cols, rows };
-        terminalClient.resize(terminalId, cols, rows);
+
+        // Use advanced debouncer for resize - considers visibility and buffer size
+        const bufferLines = terminalInstanceService.getBufferLineCount(terminalId);
+        debouncerRef.current?.resize(cols, rows, {
+          immediate: false,
+          bufferLineCount: bufferLines,
+          isVisible,
+        });
       }
     }, FIT_SETTLE_DELAY_MS);
-  }, [terminalId]);
+  }, [terminalId, isVisible]);
 
   const handleResize = useCallback(() => {
-    if (resizeFrameIdRef.current !== null) {
-      cancelAnimationFrame(resizeFrameIdRef.current);
-    }
-    resizeFrameIdRef.current = requestAnimationFrame(() => {
+    // Use requestAnimationFrame to coalesce rapid resize events
+    requestAnimationFrame(() => {
       scheduleFit();
-      resizeFrameIdRef.current = null;
     });
   }, [scheduleFit]);
 
@@ -189,10 +231,6 @@ function XtermAdapterComponent({
     onReady?.();
 
     return () => {
-      if (resizeFrameIdRef.current !== null) {
-        cancelAnimationFrame(resizeFrameIdRef.current);
-        resizeFrameIdRef.current = null;
-      }
       if (settleTimeoutRef.current !== null) {
         clearTimeout(settleTimeoutRef.current);
         settleTimeoutRef.current = null;
@@ -230,6 +268,31 @@ function XtermAdapterComponent({
     }
   }, [terminalId, getRefreshTier, currentTier]);
 
+  // Track visibility for advanced resize debouncing
+  useEffect(() => {
+    const container = containerRef.current;
+    if (!container) return;
+
+    const visibilityObserver = new IntersectionObserver(
+      ([entry]) => {
+        const nowVisible = entry.isIntersecting;
+        setIsVisible(nowVisible);
+
+        // Flush pending resizes when terminal becomes visible to prevent stale dimensions
+        if (nowVisible) {
+          // Clear any idle callbacks that may have been scheduled while hidden
+          debouncerRef.current?.clear();
+          // Trigger immediate fit with fresh dimensions
+          scheduleFit();
+        }
+      },
+      { threshold: 0.1 }
+    );
+    visibilityObserver.observe(container);
+
+    return () => visibilityObserver.disconnect();
+  }, [scheduleFit]);
+
   useLayoutEffect(() => {
     const container = containerRef.current;
     if (!container) return;
@@ -238,21 +301,11 @@ function XtermAdapterComponent({
     resizeObserver.observe(container);
     window.addEventListener("resize", handleResize);
 
-    // Watch for visibility changes (e.g., when hidden class is removed after drag ends)
-    // This ensures fit() is called when the terminal becomes visible again.
-    const visibilityObserver = new IntersectionObserver((entries) => {
-      if (entries[0].isIntersecting) {
-        scheduleFit();
-      }
-    });
-    visibilityObserver.observe(container);
-
     return () => {
       resizeObserver.disconnect();
-      visibilityObserver.disconnect();
       window.removeEventListener("resize", handleResize);
     };
-  }, [handleResize, scheduleFit]);
+  }, [handleResize]);
 
   return (
     <div
