@@ -311,6 +311,59 @@ class TerminalInstanceService {
   }
 
   /**
+   * Reset the WebGL renderer by disposing and recreating the WebGL addon.
+   * Forces a full WebGL context reset to resolve rendering artifacts.
+   * Used after drag operations where the canvas may have incorrect dimensions.
+   */
+  resetRenderer(id: string): void {
+    const managed = this.instances.get(id);
+    if (!managed) return;
+
+    // Skip if terminal is detached or container has invalid dimensions
+    if (!managed.hostElement.isConnected) return;
+    if (managed.hostElement.clientWidth < 50 || managed.hostElement.clientHeight < 50) return;
+
+    const hadWebgl = !!managed.webglAddon;
+
+    // Dispose existing WebGL addon
+    if (managed.webglAddon) {
+      managed.webglAddon.dispose();
+      managed.webglAddon = undefined;
+      this.webglLru = this.webglLru.filter((existing) => existing !== id);
+    }
+
+    // Force fit to recalculate dimensions
+    try {
+      managed.fitAddon.fit();
+    } catch {
+      // Ignore fit errors
+    }
+
+    // Recreate WebGL if it was active
+    if (hadWebgl) {
+      const tier = managed.getRefreshTier();
+      this.applyRendererPolicy(id, tier);
+    }
+
+    // Force terminal refresh
+    managed.terminal.refresh(0, managed.terminal.rows - 1);
+  }
+
+  /**
+   * Reset renderers for all terminal instances with active WebGL.
+   * Used after drag operations to ensure all terminals render correctly.
+   * Only resets terminals that have WebGL enabled to avoid unnecessary overhead.
+   */
+  resetAllRenderers(): void {
+    this.instances.forEach((managed, id) => {
+      // Only reset terminals with active WebGL addons to avoid unnecessary overhead
+      if (managed.webglAddon) {
+        this.resetRenderer(id);
+      }
+    });
+  }
+
+  /**
    * Refresh all active terminal instances.
    */
   refreshAll(): void {
@@ -389,6 +442,8 @@ class TerminalInstanceService {
 
     try {
       const webglAddon = new WebglAddon();
+      // Reset recovery counter on successful WebGL acquisition
+      managed.webglRecoveryAttempts = 0;
       webglAddon.onContextLoss(() => {
         console.warn(`[XtermAdapter] WebGL context lost for ${id}. Attempting recovery...`);
         webglAddon.dispose();
