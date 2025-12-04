@@ -621,6 +621,7 @@ function TerminalPaneComponent({
       <div className="flex-1 relative min-h-0 bg-canopy-bg">
         <XtermAdapter
           terminalId={id}
+          terminalType={type}
           onReady={handleReady}
           onExit={handleExit}
           className="absolute inset-2"
