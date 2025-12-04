@@ -36,16 +36,14 @@ interface LauncherCardProps {
   primary?: boolean;
 }
 
-function LauncherCard({ title, description, shortcut, icon, onClick, primary }: LauncherCardProps) {
+function LauncherCard({ title, description, shortcut, icon, onClick }: LauncherCardProps) {
   return (
     <button
       onClick={onClick}
       className={cn(
-        "group flex items-center text-left p-3 rounded-xl border transition-all duration-200 min-h-[90px]",
+        "group flex items-center text-left p-4 rounded-xl border transition-all duration-200 min-h-[100px]",
         "bg-[#18181b] hover:bg-[#202023]",
-        primary
-          ? "border-canopy-accent/20 hover:border-canopy-accent/50 hover:shadow-[0_0_15px_rgba(16,185,129,0.1)]"
-          : "border-white/5 hover:border-white/10"
+        "border-white/5 hover:border-white/10 hover:shadow-lg"
       )}
     >
       <div className="flex items-center justify-center p-2 rounded-lg mr-3 transition-colors">
@@ -54,12 +52,7 @@ function LauncherCard({ title, description, shortcut, icon, onClick, primary }: 
 
       <div className="flex-1">
         <div className="flex w-full items-center justify-between mb-1">
-          <h4
-            className={cn(
-              "font-medium text-base",
-              primary ? "text-canopy-text" : "text-canopy-text/80 group-hover:text-canopy-text"
-            )}
-          >
+          <h4 className="font-medium text-base text-canopy-text/80 group-hover:text-canopy-text">
             {title}
           </h4>
           {shortcut && (
@@ -68,7 +61,7 @@ function LauncherCard({ title, description, shortcut, icon, onClick, primary }: 
             </span>
           )}
         </div>
-        <p className="text-xs text-canopy-text/50 group-hover:text-canopy-text/70 transition-colors leading-relaxed">
+        <p className="text-xs text-canopy-text/60 group-hover:text-canopy-text/80 transition-colors leading-relaxed">
           {description}
         </p>
       </div>
@@ -90,13 +83,13 @@ function EmptyState({
   return (
     <div className="flex flex-col items-center justify-center h-full w-full p-8 animate-in fade-in duration-500">
       <div className="max-w-3xl w-full flex flex-col items-center">
-        <div className="mb-10 flex flex-col items-center text-center">
-          <CanopyIcon className="h-16 w-16 text-canopy-accent opacity-50 mb-6" />
-          <h3 className="text-2xl font-bold text-canopy-text tracking-tight mb-2">
+        <div className="mb-12 flex flex-col items-center text-center">
+          <CanopyIcon className="h-20 w-20 text-canopy-accent opacity-25 mb-8" />
+          <h3 className="text-2xl font-semibold text-canopy-text tracking-tight mb-3">
             Canopy Command Center
           </h3>
-          <p className="text-sm text-canopy-text/50 max-w-md leading-relaxed">
-            Orchestrate your development workflow with AI agents. Select a runtime to begin.
+          <p className="text-sm text-canopy-text/60 max-w-md leading-relaxed font-medium">
+            Orchestrate your development workflow with AI agents.
           </p>
         </div>
 
@@ -133,23 +126,22 @@ function EmptyState({
         </div>
 
         <div className="flex flex-col items-center gap-4 mt-4">
-          <p className="text-xs text-canopy-text/40 text-center">
+          <p className="text-xs text-canopy-text/60 text-center">
             Tip: Press <Kbd>⌘T</Kbd> to open the terminal palette anytime
           </p>
 
           <button
             type="button"
             onClick={handleOpenHelp}
-            className="flex items-center gap-3 p-2 pr-4 rounded-lg hover:bg-white/5 border border-transparent hover:border-white/5 focus-visible:ring-2 focus-visible:ring-canopy-accent/50 focus-visible:outline-none transition-all group text-left"
+            className="flex items-center gap-3 p-2 pr-4 rounded-full hover:bg-white/5 transition-all group text-left border border-transparent hover:border-white/5"
           >
-            <div className="w-16 h-10 bg-black/40 rounded border border-white/10 flex items-center justify-center relative overflow-hidden group-hover:border-canopy-accent/30 transition-colors">
-              <div className="w-0 h-0 border-t-[4px] border-t-transparent border-l-[8px] border-l-white/70 border-b-[4px] border-b-transparent ml-0.5 group-hover:border-l-canopy-accent transition-colors" />
+            <div className="w-8 h-8 bg-white/10 rounded-full flex items-center justify-center group-hover:bg-canopy-accent/20 transition-colors">
+              <div className="w-0 h-0 border-t-[3px] border-t-transparent border-l-[6px] border-l-white/70 border-b-[3px] border-b-transparent ml-0.5 group-hover:border-l-canopy-accent transition-colors" />
             </div>
             <div className="flex flex-col">
-              <span className="text-xs font-medium text-canopy-text/80 group-hover:text-canopy-text transition-colors">
+              <span className="text-xs font-medium text-canopy-text/60 group-hover:text-canopy-text transition-colors">
                 Watch the walkthrough
               </span>
-              <span className="text-[10px] text-canopy-text/40">2 min video</span>
             </div>
           </button>
         </div>
