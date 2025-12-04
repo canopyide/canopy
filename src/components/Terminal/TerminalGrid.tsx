@@ -145,6 +145,7 @@ export function TerminalGrid({ className, defaultCwd }: TerminalGridProps) {
 
   const addTerminal = useTerminalStore((state) => state.addTerminal);
   const trashTerminal = useTerminalStore((state) => state.trashTerminal);
+  const removeTerminal = useTerminalStore((state) => state.removeTerminal);
   const updateTitle = useTerminalStore((state) => state.updateTitle);
   const setFocused = useTerminalStore((state) => state.setFocused);
   const toggleMaximize = useTerminalStore((state) => state.toggleMaximize);
@@ -314,7 +315,9 @@ export function TerminalGrid({ className, defaultCwd }: TerminalGridProps) {
               }
               location="grid"
               onFocus={() => setFocused(terminal.id)}
-              onClose={() => trashTerminal(terminal.id)}
+              onClose={(force) =>
+                force ? removeTerminal(terminal.id) : trashTerminal(terminal.id)
+              }
               onInjectContext={
                 terminal.worktreeId
                   ? () => handleInjectContext(terminal.id, terminal.worktreeId)
@@ -402,7 +405,9 @@ export function TerminalGrid({ className, defaultCwd }: TerminalGridProps) {
                       }
                       location="grid"
                       onFocus={() => setFocused(terminal.id)}
-                      onClose={() => trashTerminal(terminal.id)}
+                      onClose={(force) =>
+                        force ? removeTerminal(terminal.id) : trashTerminal(terminal.id)
+                      }
                       onInjectContext={
                         terminal.worktreeId
                           ? () => handleInjectContext(terminal.id, terminal.worktreeId)

@@ -82,6 +82,7 @@ export function DockedTerminalItem({ terminal }: DockedTerminalItemProps) {
   const [isRestoring, setIsRestoring] = useState(false);
   const moveTerminalToGrid = useTerminalStore((s) => s.moveTerminalToGrid);
   const trashTerminal = useTerminalStore((s) => s.trashTerminal);
+  const removeTerminal = useTerminalStore((s) => s.removeTerminal);
 
   const { inject, cancel } = useContextInjection();
 
@@ -130,10 +131,17 @@ export function DockedTerminalItem({ terminal }: DockedTerminalItemProps) {
     setIsOpen(false);
   }, [setIsOpen]);
 
-  const handleClose = useCallback(() => {
-    trashTerminal(terminal.id);
-    setIsOpen(false);
-  }, [trashTerminal, terminal.id, setIsOpen]);
+  const handleClose = useCallback(
+    (force?: boolean) => {
+      if (force) {
+        removeTerminal(terminal.id);
+      } else {
+        trashTerminal(terminal.id);
+      }
+      setIsOpen(false);
+    },
+    [trashTerminal, removeTerminal, terminal.id, setIsOpen]
+  );
 
   const handleOpenChange = useCallback(
     (open: boolean) => {
