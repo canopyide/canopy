@@ -286,6 +286,140 @@ export function registerTerminalHandlers(deps: HandlerDependencies): () => void 
   ipcMain.handle(CHANNELS.TERMINAL_FLUSH, handleTerminalFlush);
   handlers.push(() => ipcMain.removeHandler(CHANNELS.TERMINAL_FLUSH));
 
+  // Query terminals for a specific project
+  const handleTerminalGetForProject = async (
+    _event: Electron.IpcMainInvokeEvent,
+    projectId: string
+  ) => {
+    try {
+      if (typeof projectId !== "string" || !projectId) {
+        throw new Error("Invalid project ID: must be a non-empty string");
+      }
+
+      // Check if ptyManager has async method (PtyClient) or sync method (PtyManager)
+      const hasAsyncMethod = "getTerminalsForProjectAsync" in ptyManager;
+
+      let terminalIds: string[];
+      if (hasAsyncMethod) {
+        terminalIds = await (ptyManager as any).getTerminalsForProjectAsync(projectId);
+      } else {
+        terminalIds = ptyManager.getTerminalsForProject(projectId);
+      }
+
+      // Get terminal info for each ID
+      const terminals = [];
+      for (const id of terminalIds) {
+        let terminal;
+        if (hasAsyncMethod) {
+          terminal = await (ptyManager as any).getTerminalAsync(id);
+        } else {
+          terminal = ptyManager.getTerminal(id);
+        }
+        if (terminal) {
+          terminals.push({
+            id: terminal.id,
+            projectId: terminal.projectId,
+            type: terminal.type,
+            title: terminal.title,
+            cwd: terminal.cwd,
+            worktreeId: terminal.worktreeId,
+            agentState: terminal.agentState,
+            spawnedAt: terminal.spawnedAt,
+          });
+        }
+      }
+
+      console.log(
+        `[IPC] terminal:getForProject(${projectId}): found ${terminals.length} terminals`
+      );
+      return terminals;
+    } catch (error) {
+      const errorMessage = error instanceof Error ? error.message : String(error);
+      throw new Error(`Failed to get terminals for project: ${errorMessage}`);
+    }
+  };
+  ipcMain.handle(CHANNELS.TERMINAL_GET_FOR_PROJECT, handleTerminalGetForProject);
+  handlers.push(() => ipcMain.removeHandler(CHANNELS.TERMINAL_GET_FOR_PROJECT));
+
+  // Reconnect to an existing terminal (verify it exists)
+  const handleTerminalReconnect = async (
+    _event: Electron.IpcMainInvokeEvent,
+    terminalId: string
+  ) => {
+    try {
+      if (typeof terminalId !== "string" || !terminalId) {
+        throw new Error("Invalid terminal ID: must be a non-empty string");
+      }
+
+      // Check if ptyManager has async method (PtyClient) or sync method (PtyManager)
+      const hasAsyncMethod = "getTerminalAsync" in ptyManager;
+
+      let terminal;
+      if (hasAsyncMethod) {
+        terminal = await (ptyManager as any).getTerminalAsync(terminalId);
+      } else {
+        terminal = ptyManager.getTerminal(terminalId);
+      }
+
+      if (!terminal) {
+        console.warn(`[IPC] terminal:reconnect: Terminal ${terminalId} not found`);
+        return { exists: false, error: "Terminal not found in backend" };
+      }
+
+      console.log(`[IPC] terminal:reconnect: Reconnecting to ${terminalId}`);
+
+      return {
+        exists: true,
+        id: terminal.id,
+        type: terminal.type,
+        cwd: terminal.cwd,
+        agentState: terminal.agentState,
+      };
+    } catch (error) {
+      const errorMessage = error instanceof Error ? error.message : String(error);
+      throw new Error(`Failed to reconnect to terminal: ${errorMessage}`);
+    }
+  };
+  ipcMain.handle(CHANNELS.TERMINAL_RECONNECT, handleTerminalReconnect);
+  handlers.push(() => ipcMain.removeHandler(CHANNELS.TERMINAL_RECONNECT));
+
+  // Replay terminal history (uses existing replayHistory from Phase 2)
+  const handleTerminalReplayHistory = async (
+    _event: Electron.IpcMainInvokeEvent,
+    payload: { terminalId: string; maxLines?: number }
+  ) => {
+    try {
+      if (!payload || typeof payload !== "object") {
+        throw new Error("Invalid payload");
+      }
+      if (typeof payload.terminalId !== "string" || !payload.terminalId) {
+        throw new Error("Invalid terminal ID: must be a non-empty string");
+      }
+
+      const maxLines = payload.maxLines ?? 100;
+
+      // Check if ptyManager has async method (PtyClient) or sync method (PtyManager)
+      const hasAsyncMethod = "replayHistoryAsync" in ptyManager;
+
+      let replayed: number;
+      if (hasAsyncMethod) {
+        replayed = await (ptyManager as any).replayHistoryAsync(payload.terminalId, maxLines);
+      } else {
+        replayed = ptyManager.replayHistory(payload.terminalId, maxLines);
+      }
+
+      console.log(
+        `[IPC] terminal:replayHistory(${payload.terminalId}): replayed ${replayed} lines`
+      );
+      return { replayed };
+    } catch (error) {
+      const errorMessage = error instanceof Error ? error.message : String(error);
+      throw new Error(`Failed to replay terminal history: ${errorMessage}`);
+    }
+  };
+  ipcMain.handle(CHANNELS.TERMINAL_REPLAY_HISTORY, handleTerminalReplayHistory);
+  handlers.push(() => ipcMain.removeHandler(CHANNELS.TERMINAL_REPLAY_HISTORY));
+
   const handleArtifactSaveToFile = async (
     _event: Electron.IpcMainInvokeEvent,
     options: unknown

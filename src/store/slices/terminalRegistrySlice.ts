@@ -23,6 +23,10 @@ export interface AddTerminalOptions {
   command?: string;
   location?: TerminalLocation;
   settings?: TerminalSettings;
+  agentState?: AgentState;
+  lastStateChange?: number;
+  /** If provided, reconnect to existing backend process instead of spawning */
+  existingId?: string;
 }
 
 const TYPE_TITLES: Record<TerminalType, string> = {
@@ -139,18 +143,30 @@ export const createTerminalRegistrySlice =
       const location = options.location || "grid";
 
       try {
-        const id = await terminalClient.spawn({
-          cwd: options.cwd,
-          shell: options.shell,
-          cols: 80,
-          rows: 24,
-          command: options.command,
-          type,
-          title,
-          worktreeId: options.worktreeId,
-        });
+        let id: string;
+
+        if (options.existingId) {
+          // Reconnecting to existing backend process - don't spawn new
+          id = options.existingId;
+          console.log(`[TerminalStore] Reconnecting to existing terminal: ${id}`);
+        } else {
+          // Spawn new process
+          id = await terminalClient.spawn({
+            cwd: options.cwd,
+            shell: options.shell,
+            cols: 80,
+            rows: 24,
+            command: options.command,
+            type,
+            title,
+            worktreeId: options.worktreeId,
+          });
+        }
 
         const isAgentTerminal = type === "claude" || type === "gemini" || type === "codex";
+        const agentState = options.agentState ?? (isAgentTerminal ? "idle" : undefined);
+        const lastStateChange =
+          options.lastStateChange ?? (agentState !== undefined ? Date.now() : undefined);
         const terminal: TerminalInstance = {
           id,
           type,
@@ -159,8 +175,8 @@ export const createTerminalRegistrySlice =
           cwd: options.cwd,
           cols: 80,
           rows: 24,
-          agentState: isAgentTerminal ? "idle" : undefined,
-          lastStateChange: isAgentTerminal ? Date.now() : undefined,
+          agentState,
+          lastStateChange,
           location,
           command: options.command,
           // Initialize grid terminals as visible to avoid initial under-throttling

@@ -100,6 +100,9 @@ const CHANNELS = {
   TERMINAL_RESTORED: "terminal:restored",
   TERMINAL_SET_BUFFERING: "terminal:set-buffering",
   TERMINAL_FLUSH: "terminal:flush",
+  TERMINAL_GET_FOR_PROJECT: "terminal:get-for-project",
+  TERMINAL_RECONNECT: "terminal:reconnect",
+  TERMINAL_REPLAY_HISTORY: "terminal:replay-history",
 
   // Agent state channels
   AGENT_STATE_CHANGED: "agent:state-changed",
@@ -346,6 +349,14 @@ const api: ElectronAPI = {
       _typedInvoke(CHANNELS.TERMINAL_SET_BUFFERING, { id, enabled }),
 
     flush: (id: string) => _typedInvoke(CHANNELS.TERMINAL_FLUSH, id),
+
+    getForProject: (projectId: string) =>
+      ipcRenderer.invoke(CHANNELS.TERMINAL_GET_FOR_PROJECT, projectId),
+
+    reconnect: (terminalId: string) => ipcRenderer.invoke(CHANNELS.TERMINAL_RECONNECT, terminalId),
+
+    replayHistory: (terminalId: string, maxLines?: number) =>
+      ipcRenderer.invoke(CHANNELS.TERMINAL_REPLAY_HISTORY, { terminalId, maxLines }),
   },
 
   // Artifact API

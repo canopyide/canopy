@@ -1,6 +1,6 @@
-import { appClient, projectClient, terminalConfigClient } from "@/clients";
+import { appClient, projectClient, terminalConfigClient, terminalClient } from "@/clients";
 import { useLayoutConfigStore, useScrollbackStore, usePerformanceModeStore } from "@/store";
-import type { TerminalType, TerminalSettings } from "@/types";
+import type { TerminalType, TerminalSettings, TerminalState, AgentState } from "@/types";
 
 export interface HydrationOptions {
   addTerminal: (options: {
@@ -11,6 +11,9 @@ export interface HydrationOptions {
     location?: "grid" | "dock";
     command?: string;
     settings?: TerminalSettings;
+    agentState?: AgentState;
+    lastStateChange?: number;
+    existingId?: string; // Pass to reconnect to existing backend process
   }) => Promise<string>;
   setActiveWorktree: (id: string | null) => void;
   loadRecipes: () => Promise<void>;
@@ -60,11 +63,25 @@ export async function hydrateAppState(options: HydrationOptions): Promise<void> 
 
     if (appState.terminals && appState.terminals.length > 0) {
       let projectRoot: string | undefined;
+      let currentProjectId: string | undefined;
       try {
         const currentProject = await projectClient.getCurrent();
         projectRoot = currentProject?.path;
+        currentProjectId = currentProject?.id;
       } catch (error) {
         console.warn("Failed to get current project for terminal restoration:", error);
+      }
+
+      // Query backend for existing terminals in this project
+      let backendTerminalIds = new Set<string>();
+      if (currentProjectId) {
+        try {
+          const backendTerminals = await terminalClient.getForProject(currentProjectId);
+          backendTerminalIds = new Set(backendTerminals.map((t) => t.id));
+          console.log(`[Hydration] Found ${backendTerminalIds.size} existing terminals in backend`);
+        } catch (error) {
+          console.warn("Failed to query backend terminals:", error);
+        }
       }
 
       for (const terminal of appState.terminals) {
@@ -73,19 +90,53 @@ export async function hydrateAppState(options: HydrationOptions): Promise<void> 
 
           const cwd = terminal.cwd || projectRoot || "";
 
-          // Only pass command if autoRestart is explicitly true
-          const autoRestart = terminal.settings?.autoRestart ?? false;
-          const commandToRun = autoRestart ? terminal.command : undefined;
+          // Check if backend already has this terminal (from Phase 1 process preservation)
+          if (backendTerminalIds.has(terminal.id)) {
+            console.log(`[Hydration] Reconnecting to existing terminal: ${terminal.id}`);
 
-          await addTerminal({
-            type: terminal.type,
-            title: terminal.title,
-            cwd,
-            worktreeId: terminal.worktreeId,
-            location: terminal.location === "dock" ? "dock" : "grid",
-            command: commandToRun,
-            settings: terminal.settings,
-          });
+            // Verify terminal still exists and get current state
+            let reconnectResult;
+            try {
+              reconnectResult = await terminalClient.reconnect(terminal.id);
+            } catch (reconnectError) {
+              console.warn(`[Hydration] Reconnect failed for ${terminal.id}:`, reconnectError);
+              await spawnNewTerminal(terminal, cwd, addTerminal);
+              continue;
+            }
+
+            if (reconnectResult.exists) {
+              // Add to UI without spawning new process, preserving agent state
+              const agentState = reconnectResult.agentState as AgentState | undefined;
+              await addTerminal({
+                type: terminal.type,
+                title: terminal.title,
+                cwd,
+                worktreeId: terminal.worktreeId,
+                location: terminal.location === "dock" ? "dock" : "grid",
+                settings: terminal.settings,
+                existingId: terminal.id, // Flag to skip spawning
+                agentState,
+                lastStateChange: agentState ? Date.now() : undefined,
+              });
+
+              // Request history replay for seamless restoration
+              try {
+                const { replayed } = await terminalClient.replayHistory(terminal.id, 100);
+                console.log(`[Hydration] Replayed ${replayed} lines for terminal ${terminal.id}`);
+              } catch (replayError) {
+                console.warn(`[Hydration] History replay failed for ${terminal.id}:`, replayError);
+              }
+            } else {
+              // Backend lost this terminal - spawn new
+              console.warn(
+                `[Hydration] Terminal ${terminal.id} not found in backend, spawning new`
+              );
+              await spawnNewTerminal(terminal, cwd, addTerminal);
+            }
+          } else {
+            // No existing process - spawn new
+            await spawnNewTerminal(terminal, cwd, addTerminal);
+          }
         } catch (error) {
           console.warn(`Failed to restore terminal ${terminal.id}:`, error);
         }
@@ -110,4 +161,24 @@ export async function hydrateAppState(options: HydrationOptions): Promise<void> 
     console.error("Failed to hydrate app state:", error);
     throw error;
   }
+}
+
+// Helper function for spawning new terminals
+async function spawnNewTerminal(
+  terminal: TerminalState,
+  cwd: string,
+  addTerminal: HydrationOptions["addTerminal"]
+): Promise<void> {
+  const autoRestart = terminal.settings?.autoRestart ?? false;
+  const commandToRun = autoRestart ? terminal.command : undefined;
+
+  await addTerminal({
+    type: terminal.type,
+    title: terminal.title,
+    cwd,
+    worktreeId: terminal.worktreeId,
+    location: terminal.location === "dock" ? "dock" : "grid",
+    command: commandToRun,
+    settings: terminal.settings,
+  });
 }

@@ -72,6 +72,8 @@ export type {
   TerminalKillPayload,
   TerminalExitPayload,
   TerminalErrorPayload,
+  BackendTerminalInfo,
+  TerminalReconnectResult,
   // CopyTree IPC types
   CopyTreeOptions,
   CopyTreeGeneratePayload,
