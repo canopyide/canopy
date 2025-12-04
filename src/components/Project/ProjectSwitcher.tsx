@@ -1,4 +1,4 @@
-import { useEffect, useState, useRef, useCallback } from "react";
+import { useEffect, useState, useRef, useCallback, useMemo } from "react";
 import { ChevronsUpDown, Plus, Check, XCircle, Circle } from "lucide-react";
 import { cn } from "@/lib/utils";
 import { getProjectGradient } from "@/lib/colorUtils";
@@ -14,7 +14,52 @@ import {
 } from "@/components/ui/dropdown-menu";
 import { Button } from "@/components/ui/button";
 import { projectClient } from "@/clients";
-import type { ProjectStats } from "@shared/types";
+import type { Project, ProjectStats } from "@shared/types";
+
+interface GroupedProjects {
+  active: Project[];
+  running: Project[];
+  recent: Project[];
+}
+
+function groupProjects(
+  projects: Project[],
+  currentProjectId: string | null,
+  projectStats: Map<string, ProjectStats>
+): GroupedProjects {
+  const groups: GroupedProjects = {
+    active: [],
+    running: [],
+    recent: [],
+  };
+
+  for (const project of projects) {
+    if (project.id === currentProjectId) {
+      groups.active.push(project);
+    } else {
+      const stats = projectStats.get(project.id);
+      const hasProcesses = stats && stats.processCount > 0;
+
+      if (hasProcesses) {
+        groups.running.push(project);
+      } else {
+        groups.recent.push(project);
+      }
+    }
+  }
+
+  // Sort running projects by process count (most active first)
+  groups.running.sort((a, b) => {
+    const statsA = projectStats.get(a.id);
+    const statsB = projectStats.get(b.id);
+    return (statsB?.processCount || 0) - (statsA?.processCount || 0);
+  });
+
+  // Sort recent projects by lastOpened (most recent first)
+  groups.recent.sort((a, b) => b.lastOpened - a.lastOpened);
+
+  return groups;
+}
 
 export function ProjectSwitcher() {
   const {
@@ -147,10 +192,20 @@ export function ProjectSwitcher() {
   useEffect(() => {
     if (!isOpen || projects.length === 0) return;
 
-    fetchProjectStats(); // Initial fetch
-    const interval = setInterval(fetchProjectStats, 5000); // Poll every 5s
+    let cancelled = false;
 
-    return () => clearInterval(interval);
+    const runFetch = async () => {
+      if (cancelled) return;
+      await fetchProjectStats();
+    };
+
+    void runFetch(); // Initial fetch
+    const interval = setInterval(() => void runFetch(), 5000); // Poll every 5s
+
+    return () => {
+      cancelled = true;
+      clearInterval(interval);
+    };
   }, [isOpen, projects, fetchProjectStats]);
 
   const renderIcon = (emoji: string, color?: string, sizeClass = "h-8 w-8 text-lg") => (
@@ -167,6 +222,124 @@ export function ProjectSwitcher() {
       <span className="leading-none select-none filter drop-shadow-sm">{emoji}</span>
     </div>
   );
+
+  const groupedProjects = useMemo(
+    () => groupProjects(projects, currentProject?.id || null, projectStats),
+    [projects, currentProject?.id, projectStats]
+  );
+
+  const getStatsTooltip = (stats: ProjectStats | undefined) => {
+    if (!stats || stats.processCount === 0) return "";
+    const parts = [];
+    parts.push(`${stats.terminalCount} terminal${stats.terminalCount !== 1 ? "s" : ""}`);
+    if (stats.serverCount > 0) {
+      parts.push(`${stats.serverCount} server${stats.serverCount !== 1 ? "s" : ""}`);
+    }
+    parts.push(`~${stats.estimatedMemoryMB} MB`);
+    return parts.join(", ");
+  };
+
+  const renderProjectItem = (project: Project, isActive: boolean) => {
+    const stats = projectStats.get(project.id);
+    const isRunning = stats && stats.processCount > 0;
+
+    return (
+      <DropdownMenuItem
+        key={project.id}
+        onClick={() => {
+          if (!isActive && !isLoading) {
+            handleProjectSwitch(project.id);
+          }
+        }}
+        disabled={isLoading}
+        className={cn(
+          "gap-2 p-2 cursor-pointer mb-0.5 rounded-md transition-colors",
+          isActive ? "bg-accent/50" : "focus:bg-accent/30"
+        )}
+      >
+        <div className="w-3 flex items-center justify-center shrink-0">
+          {isRunning && (
+            <span title={getStatsTooltip(stats)}>
+              <Circle className="h-2 w-2 fill-green-500 text-green-500" />
+            </span>
+          )}
+        </div>
+
+        {renderIcon(project.emoji || "🌲", project.color, "h-8 w-8 text-base")}
+
+        <div className="flex flex-col min-w-0 flex-1">
+          <span
+            className={cn(
+              "truncate text-sm font-medium",
+              isActive ? "text-foreground" : "text-foreground/80"
+            )}
+          >
+            {project.name}
+          </span>
+          <span className="truncate text-[10px] text-muted-foreground/70">
+            {project.path.split(/[/\\]/).pop()}
+          </span>
+        </div>
+
+        {isActive && <Check className="h-4 w-4 text-canopy-accent ml-2 shrink-0" />}
+
+        {!isActive && isRunning && (
+          <button
+            onClick={(e) => handleCloseProject(project.id, e)}
+            className="p-1 rounded hover:bg-destructive/20 text-muted-foreground hover:text-destructive transition-colors shrink-0"
+            title="Close project and kill processes"
+          >
+            <XCircle className="h-4 w-4" />
+          </button>
+        )}
+      </DropdownMenuItem>
+    );
+  };
+
+  const renderGroupedProjects = () => {
+    const sections: React.ReactNode[] = [];
+
+    // Active Project Section
+    if (groupedProjects.active.length > 0) {
+      sections.push(
+        <div key="active">
+          <DropdownMenuLabel className="text-[10px] font-semibold text-muted-foreground/50 uppercase tracking-widest px-2 py-1.5">
+            Active
+          </DropdownMenuLabel>
+          {groupedProjects.active.map((project) => renderProjectItem(project, true))}
+        </div>
+      );
+    }
+
+    // Running Projects Section
+    if (groupedProjects.running.length > 0) {
+      sections.push(
+        <div key="running">
+          {sections.length > 0 && <DropdownMenuSeparator className="my-1 bg-border/40" />}
+          <DropdownMenuLabel className="text-[10px] font-semibold text-muted-foreground/50 uppercase tracking-widest px-2 py-1.5 flex items-center gap-2">
+            <Circle className="h-2 w-2 fill-green-500 text-green-500" />
+            Running ({groupedProjects.running.length})
+          </DropdownMenuLabel>
+          {groupedProjects.running.map((project) => renderProjectItem(project, false))}
+        </div>
+      );
+    }
+
+    // Recent Projects Section
+    if (groupedProjects.recent.length > 0) {
+      sections.push(
+        <div key="recent">
+          {sections.length > 0 && <DropdownMenuSeparator className="my-1 bg-border/40" />}
+          <DropdownMenuLabel className="text-[10px] font-semibold text-muted-foreground/50 uppercase tracking-widest px-2 py-1.5">
+            Recent
+          </DropdownMenuLabel>
+          {groupedProjects.recent.map((project) => renderProjectItem(project, false))}
+        </div>
+      );
+    }
+
+    return sections;
+  };
 
   if (!currentProject) {
     if (projects.length > 0) {
@@ -266,80 +439,7 @@ export function ProjectSwitcher() {
           align="start"
           sideOffset={8}
         >
-          <DropdownMenuLabel className="text-[10px] font-semibold text-muted-foreground/50 uppercase tracking-widest px-2 py-1.5">
-            Switch Project
-          </DropdownMenuLabel>
-
-          {projects.map((project) => {
-            const isActive = project.id === currentProject.id;
-            const stats = projectStats.get(project.id);
-            const isRunning = stats && stats.processCount > 0;
-
-            const getStatsTooltip = () => {
-              if (!stats || stats.processCount === 0) return "";
-              const parts = [];
-              parts.push(`${stats.terminalCount} terminal${stats.terminalCount !== 1 ? "s" : ""}`);
-              if (stats.serverCount > 0) {
-                parts.push(`${stats.serverCount} server${stats.serverCount !== 1 ? "s" : ""}`);
-              }
-              parts.push(`~${stats.estimatedMemoryMB} MB`);
-              return parts.join(", ");
-            };
-
-            return (
-              <DropdownMenuItem
-                key={project.id}
-                onClick={() => {
-                  if (!isActive && !isLoading) {
-                    handleProjectSwitch(project.id);
-                  }
-                }}
-                disabled={isLoading}
-                className={cn(
-                  "gap-2 p-2 cursor-pointer mb-0.5 rounded-md transition-colors",
-                  isActive ? "bg-accent/50" : "focus:bg-accent/30"
-                )}
-              >
-                {/* Running indicator */}
-                <div className="w-3 flex items-center justify-center shrink-0">
-                  {isRunning && (
-                    <span title={getStatsTooltip()}>
-                      <Circle className="h-2 w-2 fill-green-500 text-green-500" />
-                    </span>
-                  )}
-                </div>
-
-                {renderIcon(project.emoji || "🌲", project.color, "h-8 w-8 text-base")}
-
-                <div className="flex flex-col min-w-0 flex-1">
-                  <span
-                    className={cn(
-                      "truncate text-sm font-medium",
-                      isActive ? "text-foreground" : "text-foreground/80"
-                    )}
-                  >
-                    {project.name}
-                  </span>
-                  <span className="truncate text-[10px] text-muted-foreground/70">
-                    {project.path.split(/[/\\]/).pop()}
-                  </span>
-                </div>
-
-                {isActive && <Check className="h-4 w-4 text-canopy-accent ml-2 shrink-0" />}
-
-                {/* Close button - only for non-active projects with running processes */}
-                {!isActive && isRunning && (
-                  <button
-                    onClick={(e) => handleCloseProject(project.id, e)}
-                    className="p-1 rounded hover:bg-destructive/20 text-muted-foreground hover:text-destructive transition-colors shrink-0"
-                    title="Close project and kill processes"
-                  >
-                    <XCircle className="h-4 w-4" />
-                  </button>
-                )}
-              </DropdownMenuItem>
-            );
-          })}
+          {renderGroupedProjects()}
 
           <DropdownMenuSeparator className="my-1 bg-border/40" />
 

@@ -227,6 +227,10 @@ const CHANNELS = {
   SIDECAR_RELOAD: "sidecar:reload",
   SIDECAR_NAV_EVENT: "sidecar:nav-event",
   SIDECAR_INJECT: "sidecar:inject",
+
+  // Hibernation channels
+  HIBERNATION_GET_CONFIG: "hibernation:get-config",
+  HIBERNATION_UPDATE_CONFIG: "hibernation:update-config",
 } as const;
 
 const api: ElectronAPI = {
@@ -625,6 +629,17 @@ const api: ElectronAPI = {
       text: string;
     }): Promise<{ success: boolean; error?: string }> =>
       ipcRenderer.invoke(CHANNELS.SIDECAR_INJECT, payload),
+  },
+
+  // Hibernation API
+  hibernation: {
+    getConfig: (): Promise<{ enabled: boolean; inactiveThresholdHours: number }> =>
+      ipcRenderer.invoke(CHANNELS.HIBERNATION_GET_CONFIG),
+
+    updateConfig: (
+      config: Partial<{ enabled: boolean; inactiveThresholdHours: number }>
+    ): Promise<{ enabled: boolean; inactiveThresholdHours: number }> =>
+      ipcRenderer.invoke(CHANNELS.HIBERNATION_UPDATE_CONFIG, config),
   },
 };
 

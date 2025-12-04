@@ -106,6 +106,8 @@ export type {
   GitHubCliStatus,
   GitHubTokenConfig,
   GitHubTokenValidation,
+  // Hibernation types
+  HibernationConfig,
   // App state types
   SavedRecipeTerminal,
   SavedRecipe,

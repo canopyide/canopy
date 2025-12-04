@@ -22,6 +22,7 @@ import { getTranscriptManager, disposeTranscriptManager } from "./services/Trans
 import { store } from "./store.js";
 import { MigrationRunner } from "./services/StoreMigrations.js";
 import { migrations } from "./services/migrations/index.js";
+import { initializeHibernationService } from "./services/HibernationService.js";
 
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
@@ -213,6 +214,10 @@ async function createWindow(): Promise<void> {
   console.log("[MAIN] Initializing ProjectStore...");
   await projectStore.initialize();
   console.log("[MAIN] ProjectStore initialized successfully");
+
+  console.log("[MAIN] Initializing HibernationService...");
+  initializeHibernationService();
+  console.log("[MAIN] HibernationService initialized successfully");
 
   console.log("[MAIN] Initializing TranscriptManager...");
   const transcriptManager = getTranscriptManager();

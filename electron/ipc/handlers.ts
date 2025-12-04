@@ -14,6 +14,7 @@ import { registerProjectHandlers } from "./handlers/project.js";
 import { registerGithubHandlers } from "./handlers/github.js";
 import { registerAppHandlers } from "./handlers/app.js";
 import { registerSidecarHandlers } from "./handlers/sidecar.js";
+import { registerHibernationHandlers } from "./handlers/hibernation.js";
 import { typedHandle, typedSend, sendToRenderer } from "./utils.js";
 
 export { typedHandle, typedSend, sendToRenderer };
@@ -47,6 +48,7 @@ export function registerIpcHandlers(
     registerGithubHandlers(deps),
     registerAppHandlers(deps),
     registerSidecarHandlers(deps),
+    registerHibernationHandlers(deps),
   ];
 
   return () => {
