@@ -9,7 +9,15 @@ import {
   Copy,
   ArrowDownToLine,
   Loader2,
+  Settings2,
 } from "lucide-react";
+import {
+  DropdownMenu,
+  DropdownMenuContent,
+  DropdownMenuCheckboxItem,
+  DropdownMenuTrigger,
+  DropdownMenuLabel,
+} from "@/components/ui/dropdown-menu";
 import {
   ClaudeIcon,
   GeminiIcon,
@@ -129,6 +137,8 @@ function TerminalPaneComponent({
 
   const updateVisibility = useTerminalStore((state) => state.updateVisibility);
   const getTerminal = useTerminalStore((state) => state.getTerminal);
+  const updateTerminalSettings = useTerminalStore((state) => state.updateTerminalSettings);
+  const terminal = useTerminalStore((state) => state.terminals.find((t) => t.id === id));
 
   const queueCount = useTerminalStore(
     useShallow((state) => state.commandQueue.filter((c) => c.terminalId === id).length)
@@ -429,6 +439,29 @@ function TerminalPaneComponent({
         </div>
 
         <div className="flex items-center gap-1 opacity-0 group-hover:opacity-100 group-focus-within:opacity-100 transition-opacity">
+          <DropdownMenu>
+            <DropdownMenuTrigger asChild>
+              <button
+                className="p-1.5 hover:bg-canopy-text/10 focus-visible:bg-canopy-text/10 focus-visible:outline focus-visible:outline-2 focus-visible:outline-canopy-accent text-canopy-text/60 hover:text-canopy-text transition-colors rounded"
+                onClick={(e) => e.stopPropagation()}
+                title="Terminal Settings"
+                aria-label="Terminal settings"
+              >
+                <Settings2 className="w-3 h-3" aria-hidden="true" />
+              </button>
+            </DropdownMenuTrigger>
+            <DropdownMenuContent align="end" className="w-56">
+              <DropdownMenuLabel>Terminal Settings</DropdownMenuLabel>
+              <DropdownMenuCheckboxItem
+                checked={terminal?.settings?.autoRestart ?? false}
+                onCheckedChange={(checked) =>
+                  updateTerminalSettings(id, { autoRestart: checked === true })
+                }
+              >
+                Auto-restart on open
+              </DropdownMenuCheckboxItem>
+            </DropdownMenuContent>
+          </DropdownMenu>
           {worktreeId && onInjectContext && (
             <button
               onClick={(e) => {

@@ -239,6 +239,12 @@ export enum TerminalRefreshTier {
   BACKGROUND = 1000, // 1fps
 }
 
+/** Per-terminal configuration settings */
+export interface TerminalSettings {
+  /** Whether to automatically re-execute the command on app restart */
+  autoRestart?: boolean;
+}
+
 /** Represents a terminal instance in the application */
 export interface TerminalInstance {
   /** Unique identifier for this terminal */
@@ -281,6 +287,8 @@ export interface TerminalInstance {
   command?: string;
   /** Whether the terminal pane is currently visible in the viewport */
   isVisible?: boolean;
+  /** Per-terminal configuration settings */
+  settings?: TerminalSettings;
 }
 
 /** Options for spawning a new PTY process */
