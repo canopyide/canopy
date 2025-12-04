@@ -1,11 +1,6 @@
 import { LayoutGrid, Columns, Rows, AlertTriangle, Zap } from "lucide-react";
 import { cn } from "@/lib/utils";
-import {
-  useLayoutConfigStore,
-  useScrollbackStore,
-  useTerminalStore,
-  usePerformanceModeStore,
-} from "@/store";
+import { useLayoutConfigStore, usePerformanceModeStore } from "@/store";
 import { appClient, terminalConfigClient } from "@/clients";
 import type { TerminalLayoutStrategy, TerminalGridConfig } from "@/types";
 
@@ -35,27 +30,9 @@ const STRATEGIES: Array<{
   },
 ];
 
-const SCROLLBACK_PRESETS = [
-  { value: 1000, label: "1k" },
-  { value: 5000, label: "5k" },
-  { value: 10000, label: "10k" },
-  { value: -1, label: "Unlimited" },
-] as const;
-
-function calculateMemoryEstimate(lines: number, terminalCount: number): string {
-  if (lines === -1) return "∞ (unlimited)";
-  const bytesPerLine = 100;
-  const bytesPerTerminal = lines * bytesPerLine;
-  const totalMB = (bytesPerTerminal * terminalCount) / 1024 / 1024;
-  return `~${totalMB.toFixed(1)}MB`;
-}
-
 export function TerminalSettingsTab() {
   const layoutConfig = useLayoutConfigStore((state) => state.layoutConfig);
   const setLayoutConfig = useLayoutConfigStore((state) => state.setLayoutConfig);
-  const scrollbackLines = useScrollbackStore((state) => state.scrollbackLines);
-  const setScrollbackLines = useScrollbackStore((state) => state.setScrollbackLines);
-  const terminalCount = useTerminalStore((state) => state.terminals.length);
   const performanceMode = usePerformanceModeStore((state) => state.performanceMode);
   const setPerformanceMode = usePerformanceModeStore((state) => state.setPerformanceMode);
 
@@ -71,27 +48,6 @@ export function TerminalSettingsTab() {
       const newConfig: TerminalGridConfig = { ...layoutConfig, value: num };
       setLayoutConfig(newConfig);
       appClient.setState({ terminalGridConfig: newConfig });
-    }
-  };
-
-  const handleScrollbackPreset = async (value: number) => {
-    setScrollbackLines(value);
-    try {
-      await terminalConfigClient.setScrollback(value);
-    } catch (error) {
-      console.error("Failed to persist scrollback setting:", error);
-    }
-  };
-
-  const handleScrollbackInput = async (val: string) => {
-    const num = parseInt(val, 10);
-    if (!isNaN(num) && num >= 100 && num <= 100000) {
-      setScrollbackLines(num);
-      try {
-        await terminalConfigClient.setScrollback(num);
-      } catch (error) {
-        console.error("Failed to persist scrollback setting:", error);
-      }
     }
   };
 
@@ -120,8 +76,8 @@ export function TerminalSettingsTab() {
             Performance Mode
           </h4>
           <p className="text-xs text-canopy-text/50 mb-4">
-            Optimize for running many terminals simultaneously. Reduces scrollback to 2,000 lines
-            and disables animations.
+            Optimize for high-density workflows. Reduces visual overhead for smoother performance
+            with many active agents.
           </p>
         </div>
 
@@ -144,8 +100,8 @@ export function TerminalSettingsTab() {
               </div>
               <div className="text-xs opacity-70">
                 {performanceMode
-                  ? "Using 2k scrollback, animations disabled"
-                  : "Recommended for 10+ concurrent terminals"}
+                  ? "100 line scrollback (viewport only), animations disabled"
+                  : "1,000 line scrollback, animations enabled"}
               </div>
             </div>
           </div>
@@ -229,78 +185,6 @@ export function TerminalSettingsTab() {
             `Maintains exactly ${layoutConfig.value} column${layoutConfig.value > 1 ? "s" : ""}, adding new rows as you open more terminals.`}
           {layoutConfig.strategy === "fixed-rows" &&
             `Maintains exactly ${layoutConfig.value} row${layoutConfig.value > 1 ? "s" : ""}, adding new columns as you open more terminals.`}
-        </p>
-      </div>
-
-      <div className="pt-4 border-t border-canopy-border space-y-4">
-        <div>
-          <h4 className="text-sm font-medium text-canopy-text mb-2">Scrollback Buffer</h4>
-          <p className="text-xs text-canopy-text/50 mb-4">
-            Number of lines each terminal keeps in its scrollback buffer. Lower values save memory
-            when running many terminals.
-          </p>
-        </div>
-
-        <div className="flex gap-2">
-          {SCROLLBACK_PRESETS.map(({ value, label }) => (
-            <button
-              key={value}
-              onClick={() => handleScrollbackPreset(value)}
-              className={cn(
-                "flex items-center gap-1 px-3 py-1.5 rounded-md text-xs font-medium transition-all",
-                scrollbackLines === value
-                  ? value === -1
-                    ? "bg-amber-500/10 border border-amber-500 text-amber-500"
-                    : "bg-canopy-accent/10 border border-canopy-accent text-canopy-accent"
-                  : value === -1
-                    ? "border border-amber-500/50 hover:bg-amber-500/5 text-amber-500/80"
-                    : "border border-canopy-border hover:bg-white/5 text-canopy-text/70"
-              )}
-            >
-              {value === -1 && <AlertTriangle className="w-3 h-3" />}
-              {label}
-            </button>
-          ))}
-        </div>
-
-        {scrollbackLines !== -1 && (
-          <div className="space-y-2">
-            <label className="text-sm text-canopy-text/70">Custom Value (100-100,000)</label>
-            <input
-              type="number"
-              min="100"
-              max="100000"
-              value={scrollbackLines}
-              onBlur={(e) => handleScrollbackInput(e.target.value)}
-              onChange={(e) => {
-                const num = parseInt(e.target.value, 10);
-                if (!isNaN(num)) {
-                  setScrollbackLines(num);
-                }
-              }}
-              className="bg-canopy-bg border border-canopy-border rounded px-3 py-2 text-canopy-text w-full focus:border-canopy-accent focus:outline-none transition-colors"
-            />
-          </div>
-        )}
-
-        <div className="flex items-center justify-between text-xs text-canopy-text/50">
-          <span>
-            Estimated memory (~100 bytes/line):{" "}
-            {terminalCount > 0
-              ? `${calculateMemoryEstimate(scrollbackLines, terminalCount)} for ${terminalCount} terminal${terminalCount > 1 ? "s" : ""}`
-              : `${calculateMemoryEstimate(scrollbackLines, 1)} (assuming 1 terminal)`}
-          </span>
-        </div>
-
-        {scrollbackLines === -1 && (
-          <p className="text-xs text-amber-500/80 flex items-center gap-1.5">
-            <AlertTriangle className="w-3 h-3" />
-            Unlimited scrollback may cause high memory usage with active terminals.
-          </p>
-        )}
-
-        <p className="text-xs text-canopy-text/40">
-          Changes apply to new terminals only. Valid range: 100–100,000 lines.
         </p>
       </div>
     </div>

@@ -41,7 +41,7 @@ export const CANOPY_TERMINAL_THEME = {
 
 const MAX_ZERO_RETRIES = 10;
 const FIT_SETTLE_DELAY_MS = 120;
-const PERFORMANCE_MODE_SCROLLBACK = 2000;
+const PERFORMANCE_MODE_SCROLLBACK = 100;
 
 function XtermAdapterComponent({
   terminalId,
@@ -65,7 +65,7 @@ function XtermAdapterComponent({
     if (performanceMode) {
       return PERFORMANCE_MODE_SCROLLBACK;
     }
-    return scrollbackLines === -1 ? 999999 : scrollbackLines;
+    return scrollbackLines > 0 ? scrollbackLines : 1000;
   }, [performanceMode, scrollbackLines]);
 
   const terminalOptions = useMemo(
