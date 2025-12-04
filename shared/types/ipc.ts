@@ -1159,6 +1159,44 @@ export interface IpcInvokeMap {
     args: [payload: GitGetFileDiffPayload];
     result: string;
   };
+
+  // Sidecar channels
+  "sidecar:create": {
+    args: [payload: import("./sidecar.js").SidecarCreatePayload];
+    result: void;
+  };
+  "sidecar:show": {
+    args: [payload: import("./sidecar.js").SidecarShowPayload];
+    result: void;
+  };
+  "sidecar:hide": {
+    args: [];
+    result: void;
+  };
+  "sidecar:resize": {
+    args: [bounds: import("./sidecar.js").SidecarBounds];
+    result: void;
+  };
+  "sidecar:close-tab": {
+    args: [payload: import("./sidecar.js").SidecarCloseTabPayload];
+    result: void;
+  };
+  "sidecar:navigate": {
+    args: [payload: import("./sidecar.js").SidecarNavigatePayload];
+    result: void;
+  };
+  "sidecar:go-back": {
+    args: [tabId: string];
+    result: boolean;
+  };
+  "sidecar:go-forward": {
+    args: [tabId: string];
+    result: boolean;
+  };
+  "sidecar:reload": {
+    args: [tabId: string];
+    result: void;
+  };
 }
 
 /**
@@ -1235,6 +1273,9 @@ export interface IpcEventMap {
 
   // Project events
   "project:on-switch": Project;
+
+  // Sidecar events
+  "sidecar:nav-event": import("./sidecar.js").SidecarNavEvent;
 }
 
 /**
@@ -1414,5 +1455,17 @@ export interface ElectronAPI {
     get(): Promise<TerminalConfig>;
     setScrollback(scrollbackLines: number): Promise<void>;
     setPerformanceMode(performanceMode: boolean): Promise<void>;
+  };
+  sidecar: {
+    create(payload: import("./sidecar.js").SidecarCreatePayload): Promise<void>;
+    show(payload: import("./sidecar.js").SidecarShowPayload): Promise<void>;
+    hide(): Promise<void>;
+    resize(bounds: import("./sidecar.js").SidecarBounds): Promise<void>;
+    closeTab(payload: import("./sidecar.js").SidecarCloseTabPayload): Promise<void>;
+    navigate(payload: import("./sidecar.js").SidecarNavigatePayload): Promise<void>;
+    goBack(tabId: string): Promise<boolean>;
+    goForward(tabId: string): Promise<boolean>;
+    reload(tabId: string): Promise<void>;
+    onNavEvent(callback: (data: import("./sidecar.js").SidecarNavEvent) => void): () => void;
   };
 }

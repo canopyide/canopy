@@ -122,6 +122,17 @@ export const CHANNELS = {
   TERMINAL_CONFIG_SET_PERFORMANCE_MODE: "terminal-config:set-performance-mode",
 
   GIT_GET_FILE_DIFF: "git:get-file-diff",
+
+  SIDECAR_CREATE: "sidecar:create",
+  SIDECAR_SHOW: "sidecar:show",
+  SIDECAR_HIDE: "sidecar:hide",
+  SIDECAR_RESIZE: "sidecar:resize",
+  SIDECAR_CLOSE_TAB: "sidecar:close-tab",
+  SIDECAR_NAVIGATE: "sidecar:navigate",
+  SIDECAR_GO_BACK: "sidecar:go-back",
+  SIDECAR_GO_FORWARD: "sidecar:go-forward",
+  SIDECAR_RELOAD: "sidecar:reload",
+  SIDECAR_NAV_EVENT: "sidecar:nav-event",
 } as const;
 
 export type ChannelName = (typeof CHANNELS)[keyof typeof CHANNELS];

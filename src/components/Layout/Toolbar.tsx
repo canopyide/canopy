@@ -13,6 +13,8 @@ import {
   GitPullRequest,
   AlertTriangle,
   CircleHelp,
+  PanelRightOpen,
+  PanelRightClose,
 } from "lucide-react";
 import { ClaudeIcon, GeminiIcon, CodexIcon } from "@/components/icons";
 import { cn } from "@/lib/utils";
@@ -21,6 +23,7 @@ import { BulkActionsMenu } from "@/components/Terminal";
 import { GitHubResourceList } from "@/components/GitHub";
 import { useProjectStore } from "@/store/projectStore";
 import { useTerminalStore } from "@/store/terminalStore";
+import { useSidecarStore } from "@/store";
 import { useRepositoryStats } from "@/hooks/useRepositoryStats";
 import type { CliAvailability, AgentSettings } from "@shared/types";
 
@@ -54,6 +57,9 @@ export function Toolbar({
   const currentProject = useProjectStore((state) => state.currentProject);
   const terminals = useTerminalStore(useShallow((state) => state.terminals));
   const { stats, error: statsError, refresh: refreshStats } = useRepositoryStats();
+
+  const sidecarOpen = useSidecarStore((state) => state.isOpen);
+  const toggleSidecar = useSidecarStore((state) => state.toggle);
 
   const [issuesOpen, setIssuesOpen] = useState(false);
   const [prsOpen, setPrsOpen] = useState(false);
@@ -236,6 +242,24 @@ export function Toolbar({
         )}
 
         <div className="flex items-center gap-1">
+          <Button
+            variant="ghost"
+            size="icon"
+            onClick={toggleSidecar}
+            className={cn(
+              "text-canopy-text hover:bg-canopy-border hover:text-canopy-accent h-8 w-8",
+              sidecarOpen && "bg-canopy-accent/20 text-canopy-accent"
+            )}
+            title={sidecarOpen ? "Close Context Sidecar" : "Open Context Sidecar"}
+            aria-label={sidecarOpen ? "Close context sidecar" : "Open context sidecar"}
+            aria-pressed={sidecarOpen}
+          >
+            {sidecarOpen ? (
+              <PanelRightClose className="h-4 w-4" aria-hidden="true" />
+            ) : (
+              <PanelRightOpen className="h-4 w-4" aria-hidden="true" />
+            )}
+          </Button>
           <Button
             variant="ghost"
             size="icon"

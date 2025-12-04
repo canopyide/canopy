@@ -3,6 +3,7 @@ import type { DevServerManager } from "../services/DevServerManager.js";
 import type { WorktreeService } from "../services/WorktreeService.js";
 import type { CliAvailabilityService } from "../services/CliAvailabilityService.js";
 import type { EventBuffer } from "../services/EventBuffer.js";
+import type { SidecarManager } from "../services/SidecarManager.js";
 import { HandlerDependencies, TerminalManager } from "./types.js";
 import { registerWorktreeHandlers } from "./handlers/worktree.js";
 import { registerTerminalHandlers } from "./handlers/terminal.js";
@@ -12,6 +13,7 @@ import { registerAiHandlers } from "./handlers/ai.js";
 import { registerProjectHandlers } from "./handlers/project.js";
 import { registerGithubHandlers } from "./handlers/github.js";
 import { registerAppHandlers } from "./handlers/app.js";
+import { registerSidecarHandlers } from "./handlers/sidecar.js";
 import { typedHandle, typedSend, sendToRenderer } from "./utils.js";
 
 export { typedHandle, typedSend, sendToRenderer };
@@ -22,7 +24,8 @@ export function registerIpcHandlers(
   devServerManager?: DevServerManager,
   worktreeService?: WorktreeService,
   eventBuffer?: EventBuffer,
-  cliAvailabilityService?: CliAvailabilityService
+  cliAvailabilityService?: CliAvailabilityService,
+  sidecarManager?: SidecarManager
 ): () => void {
   const deps: HandlerDependencies = {
     mainWindow,
@@ -31,6 +34,7 @@ export function registerIpcHandlers(
     worktreeService,
     eventBuffer,
     cliAvailabilityService,
+    sidecarManager,
   };
 
   const cleanupFunctions = [
@@ -42,6 +46,7 @@ export function registerIpcHandlers(
     registerProjectHandlers(deps),
     registerGithubHandlers(deps),
     registerAppHandlers(deps),
+    registerSidecarHandlers(deps),
   ];
 
   return () => {

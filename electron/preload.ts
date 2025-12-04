@@ -209,6 +209,18 @@ const CHANNELS = {
 
   // Git channels
   GIT_GET_FILE_DIFF: "git:get-file-diff",
+
+  // Sidecar channels
+  SIDECAR_CREATE: "sidecar:create",
+  SIDECAR_SHOW: "sidecar:show",
+  SIDECAR_HIDE: "sidecar:hide",
+  SIDECAR_RESIZE: "sidecar:resize",
+  SIDECAR_CLOSE_TAB: "sidecar:close-tab",
+  SIDECAR_NAVIGATE: "sidecar:navigate",
+  SIDECAR_GO_BACK: "sidecar:go-back",
+  SIDECAR_GO_FORWARD: "sidecar:go-forward",
+  SIDECAR_RELOAD: "sidecar:reload",
+  SIDECAR_NAV_EVENT: "sidecar:nav-event",
 } as const;
 
 const api: ElectronAPI = {
@@ -558,6 +570,37 @@ const api: ElectronAPI = {
 
     setPerformanceMode: (performanceMode: boolean) =>
       _typedInvoke(CHANNELS.TERMINAL_CONFIG_SET_PERFORMANCE_MODE, performanceMode),
+  },
+
+  // Sidecar API
+  sidecar: {
+    create: (payload: { tabId: string; url: string }) =>
+      ipcRenderer.invoke(CHANNELS.SIDECAR_CREATE, payload),
+
+    show: (payload: {
+      tabId: string;
+      bounds: { x: number; y: number; width: number; height: number };
+    }) => ipcRenderer.invoke(CHANNELS.SIDECAR_SHOW, payload),
+
+    hide: () => ipcRenderer.invoke(CHANNELS.SIDECAR_HIDE),
+
+    resize: (bounds: { x: number; y: number; width: number; height: number }) =>
+      ipcRenderer.invoke(CHANNELS.SIDECAR_RESIZE, bounds),
+
+    closeTab: (payload: { tabId: string }) =>
+      ipcRenderer.invoke(CHANNELS.SIDECAR_CLOSE_TAB, payload),
+
+    navigate: (payload: { tabId: string; url: string }) =>
+      ipcRenderer.invoke(CHANNELS.SIDECAR_NAVIGATE, payload),
+
+    goBack: (tabId: string) => ipcRenderer.invoke(CHANNELS.SIDECAR_GO_BACK, tabId),
+
+    goForward: (tabId: string) => ipcRenderer.invoke(CHANNELS.SIDECAR_GO_FORWARD, tabId),
+
+    reload: (tabId: string) => ipcRenderer.invoke(CHANNELS.SIDECAR_RELOAD, tabId),
+
+    onNavEvent: (callback: (data: { tabId: string; title: string; url: string }) => void) =>
+      _typedOn(CHANNELS.SIDECAR_NAV_EVENT, callback),
   },
 };
 

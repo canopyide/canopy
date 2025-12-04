@@ -235,3 +235,23 @@ export type {
   AgentFailedPayload,
   AgentKilledPayload,
 } from "./pty-host.js";
+
+// Sidecar types - browser dock
+export type {
+  SidecarLayoutMode,
+  SidecarTab,
+  SidecarBounds,
+  SidecarNavEvent,
+  SidecarCreatePayload,
+  SidecarShowPayload,
+  SidecarCloseTabPayload,
+  SidecarNavigatePayload,
+} from "./sidecar.js";
+
+export {
+  DEFAULT_SIDECAR_TABS,
+  SIDECAR_MIN_WIDTH,
+  SIDECAR_MAX_WIDTH,
+  SIDECAR_DEFAULT_WIDTH,
+  MIN_GRID_WIDTH,
+} from "./sidecar.js";
