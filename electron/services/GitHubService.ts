@@ -1,6 +1,5 @@
-import { graphql, type GraphQlQueryResponseData } from "@octokit/graphql";
+import type { GraphQlQueryResponseData } from "@octokit/graphql";
 import { GitService } from "./GitService.js";
-import { secureStorage } from "./SecureStorage.js";
 import { Cache } from "../utils/cache.js";
 import type {
   GitHubIssue,
@@ -8,150 +7,67 @@ import type {
   GitHubListOptions,
   GitHubListResponse,
 } from "../../shared/types/github.js";
-export interface GitHubTokenConfig {
-  hasToken: boolean;
-  scopes?: string[];
-  username?: string;
-}
 
-export interface GitHubTokenValidation {
-  valid: boolean;
-  scopes: string[];
-  username?: string;
-  error?: string;
-}
+import {
+  GitHubAuth,
+  REPO_STATS_QUERY,
+  LIST_ISSUES_QUERY,
+  LIST_PRS_QUERY,
+  SEARCH_QUERY,
+  buildBatchPRQuery,
+} from "./github/index.js";
 
-export interface RepoContext {
-  owner: string;
-  repo: string;
-}
+import type {
+  RepoContext,
+  RepoStats,
+  RepoStatsResult,
+  LinkedPR,
+  PRCheckResult,
+  PRCheckCandidate,
+  BatchPRCheckResult,
+} from "./github/index.js";
 
-export interface RepoStats {
-  issueCount: number;
-  prCount: number;
-}
-
-export interface RepoStatsResult {
-  stats: RepoStats | null;
-  error?: string;
-}
-
-export interface LinkedPR {
-  number: number;
-  url: string;
-  state: "open" | "merged" | "closed";
-  isDraft: boolean;
-}
-
-export interface PRCheckResult {
-  issueNumber?: number;
-  branchName?: string;
-  pr: LinkedPR | null;
-}
-
-export interface PRCheckCandidate {
-  worktreeId: string;
-  issueNumber?: number;
-  branchName?: string;
-}
-
-export interface BatchPRCheckResult {
-  results: Map<string, PRCheckResult>;
-  error?: string;
-}
+export type { GitHubTokenConfig, GitHubTokenValidation } from "./github/index.js";
+export type {
+  RepoContext,
+  RepoStats,
+  RepoStatsResult,
+  LinkedPR,
+  PRCheckResult,
+  PRCheckCandidate,
+  BatchPRCheckResult,
+};
 
 // Caches
 const repoContextCache = new Cache<string, RepoContext>({ defaultTTL: 300000 });
 const repoStatsCache = new Cache<string, RepoStats>({ defaultTTL: 60000 });
-const prCheckCache = new Cache<string, PRCheckResult>({ defaultTTL: 60000 });
 const issueListCache = new Cache<string, GitHubListResponse<GitHubIssue>>({ defaultTTL: 60000 });
 const prListCache = new Cache<string, GitHubListResponse<GitHubPR>>({ defaultTTL: 60000 });
 
 export function getGitHubToken(): string | undefined {
-  return secureStorage.get("userConfig.githubToken");
+  return GitHubAuth.getToken();
 }
 
 export function hasGitHubToken(): boolean {
-  return !!getGitHubToken();
+  return GitHubAuth.hasToken();
 }
 
 export function setGitHubToken(token: string): void {
-  secureStorage.set("userConfig.githubToken", token);
+  GitHubAuth.setToken(token);
   clearGitHubCaches();
 }
 
 export function clearGitHubToken(): void {
-  secureStorage.delete("userConfig.githubToken");
+  GitHubAuth.clearToken();
   clearGitHubCaches();
 }
 
-export function getGitHubConfig(): GitHubTokenConfig {
-  const token = getGitHubToken();
-  return {
-    hasToken: !!token,
-  };
+export function getGitHubConfig() {
+  return GitHubAuth.getConfig();
 }
 
-function createGraphQLClient(): typeof graphql | null {
-  const token = getGitHubToken();
-  if (!token) return null;
-
-  return graphql.defaults({
-    headers: {
-      authorization: `token ${token}`,
-    },
-  });
-}
-
-export async function validateGitHubToken(token: string): Promise<GitHubTokenValidation> {
-  if (!token || token.trim() === "") {
-    return { valid: false, scopes: [], error: "Token is empty" };
-  }
-
-  if (!token.startsWith("ghp_") && !token.startsWith("github_pat_") && !token.startsWith("gho_")) {
-    if (token.length < 40) {
-      return { valid: false, scopes: [], error: "Invalid token format" };
-    }
-  }
-
-  try {
-    const response = await fetch("https://api.github.com/user", {
-      headers: {
-        Authorization: `token ${token}`,
-        Accept: "application/vnd.github.v3+json",
-      },
-    });
-
-    if (!response.ok) {
-      if (response.status === 401) {
-        return { valid: false, scopes: [], error: "Invalid or expired token" };
-      }
-      if (response.status === 403) {
-        return { valid: false, scopes: [], error: "Token lacks required permissions" };
-      }
-      return { valid: false, scopes: [], error: `GitHub API error: ${response.statusText}` };
-    }
-
-    const userData = (await response.json()) as { login?: string };
-    const scopesHeader = response.headers.get("x-oauth-scopes");
-    const scopes = scopesHeader ? scopesHeader.split(",").map((s) => s.trim()) : [];
-
-    return {
-      valid: true,
-      scopes,
-      username: userData.login,
-    };
-  } catch (error) {
-    const message = error instanceof Error ? error.message : String(error);
-    if (message.includes("ENOTFOUND") || message.includes("ETIMEDOUT")) {
-      return {
-        valid: false,
-        scopes: [],
-        error: "Cannot reach GitHub. Check your internet connection.",
-      };
-    }
-    return { valid: false, scopes: [], error: message };
-  }
+export async function validateGitHubToken(token: string) {
+  return GitHubAuth.validate(token);
 }
 
 export async function getRepoContext(cwd: string): Promise<RepoContext | null> {
@@ -177,7 +93,7 @@ export async function getRepoContext(cwd: string): Promise<RepoContext | null> {
 }
 
 export async function getRepoStats(cwd: string): Promise<RepoStatsResult> {
-  const client = createGraphQLClient();
+  const client = GitHubAuth.createClient();
   if (!client) {
     return { stats: null, error: "GitHub token not configured" };
   }
@@ -193,17 +109,8 @@ export async function getRepoStats(cwd: string): Promise<RepoStatsResult> {
     return { stats: cached };
   }
 
-  const query = `
-    query GetRepoStats($owner: String!, $repo: String!) {
-      repository(owner: $owner, name: $repo) {
-        issues(states: OPEN) { totalCount }
-        pullRequests(states: OPEN) { totalCount }
-      }
-    }
-  `;
-
   try {
-    const result = (await client(query, {
+    const result = (await client(REPO_STATS_QUERY, {
       owner: context.owner,
       repo: context.repo,
     })) as GraphQlQueryResponseData;
@@ -227,59 +134,6 @@ export async function getRepoStats(cwd: string): Promise<RepoStatsResult> {
 
 export async function getRepoInfo(cwd: string): Promise<RepoContext | null> {
   return getRepoContext(cwd);
-}
-
-function buildBatchPRQuery(owner: string, repo: string, candidates: PRCheckCandidate[]): string {
-  const issueQueries: string[] = [];
-  const branchQueries: string[] = [];
-
-  for (let i = 0; i < candidates.length; i++) {
-    const candidate = candidates[i];
-    const alias = `wt_${i}`;
-
-    if (candidate.issueNumber) {
-      issueQueries.push(`
-        ${alias}_issue: repository(owner: "${owner}", name: "${repo}") {
-          issue(number: ${candidate.issueNumber}) {
-            timelineItems(itemTypes: [CROSS_REFERENCED_EVENT], last: 10) {
-              nodes {
-                ... on CrossReferencedEvent {
-                  source {
-                    ... on PullRequest {
-                      number
-                      url
-                      state
-                      isDraft
-                      merged
-                    }
-                  }
-                }
-              }
-            }
-          }
-        }
-      `);
-    }
-
-    if (candidate.branchName) {
-      const escapedBranch = JSON.stringify(candidate.branchName).slice(1, -1);
-      branchQueries.push(`
-        ${alias}_branch: repository(owner: "${owner}", name: "${repo}") {
-          pullRequests(first: 1, states: [OPEN, MERGED, CLOSED], headRefName: "${escapedBranch}", orderBy: {field: UPDATED_AT, direction: DESC}) {
-            nodes {
-              number
-              url
-              state
-              isDraft
-              merged
-            }
-          }
-        }
-      `);
-    }
-  }
-
-  return `query { ${issueQueries.join("\n")} ${branchQueries.join("\n")} }`;
 }
 
 function parseBatchPRResponse(
@@ -373,7 +227,7 @@ export async function batchCheckLinkedPRs(
     return { results: new Map() };
   }
 
-  const client = createGraphQLClient();
+  const client = GitHubAuth.createClient();
   if (!client) {
     return { results: new Map(), error: "GitHub token not configured" };
   }
@@ -435,122 +289,9 @@ function parseGitHubError(error: unknown): string {
 export function clearGitHubCaches(): void {
   repoContextCache.clear();
   repoStatsCache.clear();
-  prCheckCache.clear();
   issueListCache.clear();
   prListCache.clear();
 }
-
-const LIST_ISSUES_QUERY = `
-  query GetIssues($owner: String!, $repo: String!, $states: [IssueState!], $cursor: String, $limit: Int = 20) {
-    repository(owner: $owner, name: $repo) {
-      issues(first: $limit, after: $cursor, states: $states, orderBy: {field: UPDATED_AT, direction: DESC}) {
-        pageInfo {
-          hasNextPage
-          endCursor
-        }
-        nodes {
-          number
-          title
-          url
-          state
-          updatedAt
-          author {
-            login
-            avatarUrl
-          }
-          assignees(first: 5) {
-            nodes {
-              login
-              avatarUrl
-            }
-          }
-          comments {
-            totalCount
-          }
-        }
-      }
-    }
-  }
-`;
-
-const LIST_PRS_QUERY = `
-  query GetPRs($owner: String!, $repo: String!, $states: [PullRequestState!], $cursor: String, $limit: Int = 20) {
-    repository(owner: $owner, name: $repo) {
-      pullRequests(first: $limit, after: $cursor, states: $states, orderBy: {field: UPDATED_AT, direction: DESC}) {
-        pageInfo {
-          hasNextPage
-          endCursor
-        }
-        nodes {
-          number
-          title
-          url
-          state
-          isDraft
-          updatedAt
-          merged
-          author {
-            login
-            avatarUrl
-          }
-          reviews(first: 1) {
-            totalCount
-          }
-        }
-      }
-    }
-  }
-`;
-
-const SEARCH_QUERY = `
-  query SearchItems($query: String!, $type: SearchType!, $cursor: String, $limit: Int = 20) {
-    search(query: $query, type: $type, first: $limit, after: $cursor) {
-      issueCount
-      pageInfo {
-        hasNextPage
-        endCursor
-      }
-      nodes {
-        ... on Issue {
-          number
-          title
-          url
-          state
-          updatedAt
-          author {
-            login
-            avatarUrl
-          }
-          assignees(first: 5) {
-            nodes {
-              login
-              avatarUrl
-            }
-          }
-          comments {
-            totalCount
-          }
-        }
-        ... on PullRequest {
-          number
-          title
-          url
-          state
-          isDraft
-          updatedAt
-          merged
-          author {
-            login
-            avatarUrl
-          }
-          reviews(first: 1) {
-            totalCount
-          }
-        }
-      }
-    }
-  }
-`;
 
 function buildListCacheKey(
   type: "issue" | "pr",
@@ -630,7 +371,7 @@ function parsePRNode(node: Record<string, unknown>): GitHubPR {
 export async function listIssues(
   options: GitHubListOptions
 ): Promise<GitHubListResponse<GitHubIssue>> {
-  const client = createGraphQLClient();
+  const client = GitHubAuth.createClient();
   if (!client) {
     throw new Error("GitHub token not configured");
   }
@@ -714,7 +455,7 @@ export async function listIssues(
 export async function listPullRequests(
   options: GitHubListOptions
 ): Promise<GitHubListResponse<GitHubPR>> {
-  const client = createGraphQLClient();
+  const client = GitHubAuth.createClient();
   if (!client) {
     throw new Error("GitHub token not configured");
   }
