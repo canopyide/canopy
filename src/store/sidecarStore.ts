@@ -1,11 +1,6 @@
 import { create, type StateCreator } from "zustand";
 import { persist, createJSONStorage } from "zustand/middleware";
-import type {
-  SidecarLayoutMode,
-  SidecarTab,
-  SidecarLink,
-  CliAvailability,
-} from "@shared/types";
+import type { SidecarLayoutMode, SidecarTab, SidecarLink, CliAvailability } from "@shared/types";
 import {
   DEFAULT_SIDECAR_TABS,
   SIDECAR_MIN_WIDTH,
@@ -203,8 +198,12 @@ const createSidecarStore: StateCreator<SidecarState & SidecarActions> = (set, ge
 
   setDiscoveredLinks: (availability) =>
     set((s) => {
-      const existingUserLinks = s.links.filter((l) => l.type === "user").sort((a, b) => a.order - b.order);
-      const existingSystemLinks = s.links.filter((l) => l.type === "system").sort((a, b) => a.order - b.order);
+      const existingUserLinks = s.links
+        .filter((l) => l.type === "user")
+        .sort((a, b) => a.order - b.order);
+      const existingSystemLinks = s.links
+        .filter((l) => l.type === "system")
+        .sort((a, b) => a.order - b.order);
       const existingDiscoveredLinks = s.links.filter((l) => l.type === "discovered");
 
       const newLinks: SidecarLink[] = [];
@@ -266,7 +265,9 @@ const sidecarStoreCreator: StateCreator<
   [["zustand/persist", Partial<SidecarState>]]
 > = persist(createSidecarStore, {
   name: "sidecar-storage",
-  storage: createJSONStorage(() => (typeof window !== "undefined" ? localStorage : undefined as any)),
+  storage: createJSONStorage(() =>
+    typeof window !== "undefined" ? localStorage : (undefined as any)
+  ),
   partialize: (state) => ({
     links: state.links,
     width: state.width,

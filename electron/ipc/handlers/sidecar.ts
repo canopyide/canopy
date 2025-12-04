@@ -85,6 +85,9 @@ export function registerSidecarHandlers(deps: HandlerDependencies): () => void {
     payload: SidecarCloseTabPayload
   ) => {
     if (!sidecarManager) return;
+    if (!payload || typeof payload !== "object" || typeof payload.tabId !== "string") {
+      return;
+    }
     sidecarManager.closeTab(payload.tabId);
   };
   ipcMain.handle(CHANNELS.SIDECAR_CLOSE_TAB, handleSidecarCloseTab);
@@ -95,6 +98,14 @@ export function registerSidecarHandlers(deps: HandlerDependencies): () => void {
     payload: SidecarNavigatePayload
   ) => {
     if (!sidecarManager) return;
+    if (
+      !payload ||
+      typeof payload !== "object" ||
+      typeof payload.tabId !== "string" ||
+      typeof payload.url !== "string"
+    ) {
+      return;
+    }
     sidecarManager.navigate(payload.tabId, payload.url);
   };
   ipcMain.handle(CHANNELS.SIDECAR_NAVIGATE, handleSidecarNavigate);
@@ -105,6 +116,7 @@ export function registerSidecarHandlers(deps: HandlerDependencies): () => void {
     tabId: string
   ): Promise<boolean> => {
     if (!sidecarManager) return false;
+    if (typeof tabId !== "string") return false;
     return sidecarManager.goBack(tabId);
   };
   ipcMain.handle(CHANNELS.SIDECAR_GO_BACK, handleSidecarGoBack);
@@ -115,6 +127,7 @@ export function registerSidecarHandlers(deps: HandlerDependencies): () => void {
     tabId: string
   ): Promise<boolean> => {
     if (!sidecarManager) return false;
+    if (typeof tabId !== "string") return false;
     return sidecarManager.goForward(tabId);
   };
   ipcMain.handle(CHANNELS.SIDECAR_GO_FORWARD, handleSidecarGoForward);
@@ -122,10 +135,31 @@ export function registerSidecarHandlers(deps: HandlerDependencies): () => void {
 
   const handleSidecarReload = async (_event: Electron.IpcMainInvokeEvent, tabId: string) => {
     if (!sidecarManager) return;
+    if (typeof tabId !== "string") return;
     sidecarManager.reload(tabId);
   };
   ipcMain.handle(CHANNELS.SIDECAR_RELOAD, handleSidecarReload);
   handlers.push(() => ipcMain.removeHandler(CHANNELS.SIDECAR_RELOAD));
+
+  const handleSidecarInject = async (
+    _event: Electron.IpcMainInvokeEvent,
+    payload: { tabId?: string; text: string }
+  ): Promise<{ success: boolean; error?: string }> => {
+    if (!sidecarManager) {
+      return { success: false, error: "Sidecar manager not available" };
+    }
+
+    if (!payload?.text || typeof payload.text !== "string") {
+      return { success: false, error: "Invalid text payload" };
+    }
+
+    if (payload.tabId) {
+      return sidecarManager.injectToTab(payload.tabId, payload.text);
+    }
+    return sidecarManager.injectToActiveTab(payload.text);
+  };
+  ipcMain.handle(CHANNELS.SIDECAR_INJECT, handleSidecarInject);
+  handlers.push(() => ipcMain.removeHandler(CHANNELS.SIDECAR_INJECT));
 
   return () => handlers.forEach((cleanup) => cleanup());
 }
