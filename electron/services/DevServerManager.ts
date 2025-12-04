@@ -7,6 +7,7 @@ import type { BrowserWindow } from "electron";
 import stringArgv from "string-argv";
 import { DevServerState, DevServerStatus } from "../types/index.js";
 import { events } from "./events.js";
+import { projectStore } from "./ProjectStore.js";
 
 const URL_PATTERNS = [
   new RegExp("Local:\\s+(https?://localhost:\\d+/?/?)", "i"),
@@ -24,6 +25,7 @@ const PORT_PATTERNS = [/(?:Listening|Started) on (?:port )?(\d+)/i, /port[:\s]+(
 
 const FORCE_KILL_TIMEOUT_MS = 5000;
 const MAX_LOG_LINES = 100;
+const RESTART_COOLDOWN_MS = 60000; // Prevent restart loops
 
 interface ParsedCommand {
   executable: string;
@@ -93,6 +95,9 @@ export class DevServerManager {
   private devScriptCache = new Map<string, DevScriptCacheEntry>();
   private lastKnownProjectId: string | null = null;
   private activeProjectId: string | null = null; // Filter IPC events by this project
+  private lastRestartAttempt = new Map<string, number>(); // Track restart times to prevent loops
+  private worktreePaths = new Map<string, string>(); // Cache worktree paths for restart
+  private resumeInProgress = false; // Prevent overlapping resume operations
 
   /**
    * Set the active project for IPC event filtering.
@@ -164,6 +169,9 @@ export class DevServerManager {
 
     console.log("Starting dev server", { worktreeId, projectId, command: resolvedCommand });
 
+    // Cache worktree path for potential restart after sleep
+    this.worktreePaths.set(worktreeId, worktreePath);
+
     this.updateState(worktreeId, { status: "starting", errorMessage: undefined, projectId });
 
     this.logBuffers.set(worktreeId, []);
@@ -179,7 +187,8 @@ export class DevServerManager {
       });
 
       this.servers.set(worktreeId, proc);
-      this.updateState(worktreeId, { pid: proc.pid });
+      const serverPid = proc.pid;
+      this.updateState(worktreeId, { pid: serverPid });
 
       if (proc.stdout) {
         proc.stdout.on("data", (data: Buffer) => {
@@ -207,6 +216,16 @@ export class DevServerManager {
           this.servers.delete(worktreeId);
 
           const currentState = this.states.get(worktreeId);
+
+          // Ignore stale promise if PID doesn't match (server was restarted)
+          if (currentState?.pid && currentState.pid !== serverPid) {
+            console.log("[DevServerManager] Ignoring stale exit for restarted server", {
+              worktreeId,
+              stalePid: serverPid,
+              currentPid: currentState.pid,
+            });
+            return;
+          }
 
           if (currentState?.status !== "error") {
             const exitCode = result.exitCode ?? null;
@@ -267,6 +286,8 @@ export class DevServerManager {
         pid: undefined,
         errorMessage: undefined,
       });
+      // Clean up cached path when server stops
+      this.worktreePaths.delete(worktreeId);
       return;
     }
 
@@ -285,6 +306,7 @@ export class DevServerManager {
       proc.finally(() => {
         clearTimeout(forceKillTimer);
         this.servers.delete(worktreeId);
+        this.worktreePaths.delete(worktreeId);
         this.updateState(worktreeId, {
           status: "stopped",
           url: undefined,
@@ -327,6 +349,138 @@ export class DevServerManager {
     this.servers.clear();
     this.states.clear();
     this.logBuffers.clear();
+    this.worktreePaths.clear();
+  }
+
+  /**
+   * Handle system resume from sleep. Check if dev server processes are still alive
+   * and mark dead ones appropriately. Optionally auto-restart if project has autoStart enabled.
+   */
+  public async onSystemResume(): Promise<void> {
+    // Prevent overlapping resume operations
+    if (this.resumeInProgress) {
+      console.log("[DevServerManager] Resume already in progress, skipping");
+      return;
+    }
+
+    this.resumeInProgress = true;
+    try {
+      console.log("[DevServerManager] Handling system resume");
+
+      const deadServers: Array<{ worktreeId: string; projectId?: string; pid: number }> = [];
+
+      for (const [worktreeId, state] of this.states.entries()) {
+        // Check servers that are running or starting with a pid
+        if ((state.status !== "running" && state.status !== "starting") || !state.pid) continue;
+
+        // Re-read current state to avoid racing with manual stop operations
+        const currentState = this.states.get(worktreeId);
+        if (!currentState || currentState.status === "stopped" || !currentState.pid) continue;
+
+        const serverPid = currentState.pid;
+        const serverProc = this.servers.get(worktreeId);
+
+        let alive = true;
+        try {
+          // Signal 0 tests if process exists without killing it
+          process.kill(serverPid, 0);
+
+          // Verify the process is actually our child by checking if it matches the tracked promise
+          if (serverProc && serverProc.pid !== serverPid) {
+            // PID was reused by a different process
+            alive = false;
+          }
+        } catch (error: unknown) {
+          const errorCode =
+            error && typeof error === "object" && "code" in error ? error.code : null;
+          // ESRCH means process doesn't exist (dead)
+          // EPERM means process exists but we can't signal it (treat as alive for our own children)
+          if (errorCode === "ESRCH") {
+            alive = false;
+          }
+        }
+
+        if (!alive) {
+          console.warn("[DevServerManager] Dev server died during sleep", {
+            worktreeId,
+            pid: serverPid,
+            url: currentState.url,
+          });
+
+          // Remove from servers map since process is dead
+          this.servers.delete(worktreeId);
+
+          this.updateState(worktreeId, {
+            status: "error",
+            errorMessage: "Dev server stopped while system was asleep",
+            pid: undefined,
+            url: undefined,
+            port: undefined,
+          });
+
+          this.emitError(worktreeId, "Dev server stopped while system was asleep");
+          deadServers.push({ worktreeId, projectId: currentState.projectId, pid: serverPid });
+        }
+      }
+
+      if (deadServers.length === 0) {
+        console.log("[DevServerManager] All dev servers survived sleep");
+        return;
+      }
+
+      console.log(`[DevServerManager] ${deadServers.length} dev server(s) died during sleep`);
+
+      // Auto-restart servers if their project has autoStart enabled
+      for (const { worktreeId, projectId } of deadServers) {
+        try {
+          const shouldRestart = await this.shouldAutoRestart(worktreeId, projectId);
+          if (shouldRestart) {
+            const worktreePath = this.worktreePaths.get(worktreeId);
+            if (worktreePath) {
+              console.log("[DevServerManager] Auto-restarting dev server", { worktreeId });
+              await this.start(worktreeId, worktreePath, undefined, projectId);
+              // Mark restart time after successful start
+              this.lastRestartAttempt.set(worktreeId, Date.now());
+            } else {
+              console.warn("[DevServerManager] Cannot auto-restart: worktree path not cached", {
+                worktreeId,
+              });
+            }
+          }
+        } catch (error) {
+          console.error("[DevServerManager] Auto-restart failed", { worktreeId, error });
+          // Continue processing other dead servers
+        }
+      }
+    } finally {
+      this.resumeInProgress = false;
+    }
+  }
+
+  /**
+   * Check if a dev server should auto-restart after sleep.
+   * Requires project autoStart setting and respects cooldown.
+   */
+  private async shouldAutoRestart(
+    worktreeId: string,
+    projectId: string | undefined
+  ): Promise<boolean> {
+    if (!projectId) return false;
+
+    // Check cooldown to prevent restart loops
+    const lastAttempt = this.lastRestartAttempt.get(worktreeId);
+    if (lastAttempt && Date.now() - lastAttempt < RESTART_COOLDOWN_MS) {
+      console.log("[DevServerManager] Skipping auto-restart (cooldown)", { worktreeId });
+      return false;
+    }
+
+    try {
+      const settings = await projectStore.getProjectSettings(projectId);
+      return settings.devServer?.autoStart ?? false;
+    } catch (error) {
+      console.error("[DevServerManager] Failed to check project settings", { projectId, error });
+      return false;
+    }
   }
 
   /**
