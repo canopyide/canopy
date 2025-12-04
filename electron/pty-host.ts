@@ -297,6 +297,55 @@ port.on("message", (rawMsg: any) => {
         sendEvent({ type: "pong" });
         break;
 
+      case "pause-all": {
+        console.log("[PtyHost] Pausing all PTY processes for system sleep");
+        const terminals = ptyManager.getAll();
+        let pausedCount = 0;
+
+        for (const terminal of terminals) {
+          try {
+            terminal.ptyProcess.pause();
+            pausedCount++;
+          } catch {
+            // Ignore errors - process may already be dead
+          }
+        }
+
+        console.log(`[PtyHost] Paused ${pausedCount}/${terminals.length} PTY processes`);
+        break;
+      }
+
+      case "resume-all": {
+        console.log("[PtyHost] Resuming all PTY processes after system wake");
+        const terminals = ptyManager.getAll();
+
+        if (terminals.length === 0) {
+          console.log("[PtyHost] No PTY processes to resume");
+          break;
+        }
+
+        // Resume incrementally to prevent thundering herd
+        // Stagger by 50ms to spread disk/CPU load
+        const RESUME_STAGGER_MS = 50;
+        let i = 0;
+
+        const resumeInterval = setInterval(() => {
+          if (i >= terminals.length) {
+            clearInterval(resumeInterval);
+            console.log(`[PtyHost] Resumed all ${terminals.length} PTY processes`);
+            return;
+          }
+
+          const terminal = terminals[i++];
+          try {
+            terminal.ptyProcess.resume();
+          } catch {
+            // Ignore errors - process may be dead
+          }
+        }, RESUME_STAGGER_MS);
+        break;
+      }
+
       case "get-terminals-for-project":
         sendEvent({
           type: "terminals-for-project",

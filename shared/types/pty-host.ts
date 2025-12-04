@@ -49,6 +49,8 @@ export type PtyHostRequest =
       spawnedAt?: number;
     }
   | { type: "health-check" }
+  | { type: "pause-all" }
+  | { type: "resume-all" }
   | { type: "dispose" }
   | { type: "get-terminals-for-project"; projectId: string; requestId: string }
   | { type: "get-terminal"; id: string; requestId: string }
