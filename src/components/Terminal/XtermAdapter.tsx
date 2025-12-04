@@ -3,12 +3,15 @@ import "@xterm/xterm/css/xterm.css";
 import { cn } from "@/lib/utils";
 import { terminalClient } from "@/clients";
 import { TerminalRefreshTier } from "@/types";
+import type { TerminalType } from "@/types";
 import { terminalInstanceService } from "@/services/TerminalInstanceService";
 import { useScrollbackStore, usePerformanceModeStore } from "@/store";
 import { TerminalResizeDebouncer } from "@/services/TerminalResizeDebouncer";
+import { getScrollbackForType } from "@/utils/scrollbackConfig";
 
 export interface XtermAdapterProps {
   terminalId: string;
+  terminalType?: TerminalType;
   onReady?: () => void;
   onExit?: (exitCode: number) => void;
   className?: string;
@@ -46,6 +49,7 @@ const PERFORMANCE_MODE_SCROLLBACK = 100;
 
 function XtermAdapterComponent({
   terminalId,
+  terminalType = "shell",
   onReady,
   onExit,
   className,
@@ -64,13 +68,14 @@ function XtermAdapterComponent({
   const scrollbackLines = useScrollbackStore((state) => state.scrollbackLines);
   const performanceMode = usePerformanceModeStore((state) => state.performanceMode);
 
-  // Calculate effective scrollback: performance mode overrides user setting
+  // Calculate effective scrollback: performance mode overrides, otherwise use type-based policy
   const effectiveScrollback = useMemo(() => {
     if (performanceMode) {
       return PERFORMANCE_MODE_SCROLLBACK;
     }
-    return scrollbackLines > 0 ? scrollbackLines : 1000;
-  }, [performanceMode, scrollbackLines]);
+    // Use scrollbackLines directly (0 means unlimited, handled by getScrollbackForType)
+    return getScrollbackForType(terminalType, scrollbackLines);
+  }, [performanceMode, scrollbackLines, terminalType]);
 
   const terminalOptions = useMemo(
     () => ({

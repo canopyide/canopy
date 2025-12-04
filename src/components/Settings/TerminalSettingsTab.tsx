@@ -1,8 +1,18 @@
-import { LayoutGrid, Columns, Rows, AlertTriangle, Zap } from "lucide-react";
+import {
+  LayoutGrid,
+  Columns,
+  Rows,
+  AlertTriangle,
+  Zap,
+  HardDrive,
+  ChevronDown,
+} from "lucide-react";
+import { useState, useMemo } from "react";
 import { cn } from "@/lib/utils";
-import { useLayoutConfigStore, usePerformanceModeStore } from "@/store";
+import { useLayoutConfigStore, usePerformanceModeStore, useScrollbackStore } from "@/store";
 import { appClient, terminalConfigClient } from "@/clients";
-import type { TerminalLayoutStrategy, TerminalGridConfig } from "@/types";
+import type { TerminalLayoutStrategy, TerminalGridConfig, TerminalType } from "@/types";
+import { getScrollbackForType, estimateMemoryUsage, formatBytes } from "@/utils/scrollbackConfig";
 
 const STRATEGIES: Array<{
   id: TerminalLayoutStrategy;
@@ -30,11 +40,57 @@ const STRATEGIES: Array<{
   },
 ];
 
+const SCROLLBACK_OPTIONS = [
+  { value: 1000, label: "1,000 lines", description: "Low memory" },
+  { value: 5000, label: "5,000 lines", description: "Balanced" },
+  { value: 10000, label: "10,000 lines", description: "Full history" },
+] as const;
+
+const TYPICAL_TERMINAL_COUNTS: Partial<Record<TerminalType, number>> = {
+  claude: 2,
+  gemini: 2,
+  codex: 2,
+  shell: 6,
+  npm: 2,
+};
+
 export function TerminalSettingsTab() {
   const layoutConfig = useLayoutConfigStore((state) => state.layoutConfig);
   const setLayoutConfig = useLayoutConfigStore((state) => state.setLayoutConfig);
   const performanceMode = usePerformanceModeStore((state) => state.performanceMode);
   const setPerformanceMode = usePerformanceModeStore((state) => state.setPerformanceMode);
+  const scrollbackLines = useScrollbackStore((state) => state.scrollbackLines);
+  const setScrollbackLines = useScrollbackStore((state) => state.setScrollbackLines);
+  const [showMemoryDetails, setShowMemoryDetails] = useState(false);
+
+  const memoryEstimate = useMemo(() => {
+    return estimateMemoryUsage(TYPICAL_TERMINAL_COUNTS, scrollbackLines);
+  }, [scrollbackLines]);
+
+  const scrollbackLimits = useMemo(() => {
+    const effectiveBase = performanceMode ? 100 : scrollbackLines;
+    const types: Array<{ type: TerminalType; label: string }> = [
+      { type: "claude", label: "Agent (Claude/Gemini/Codex/Custom)" },
+      { type: "shell", label: "Shell" },
+      { type: "npm", label: "Dev Server (npm/yarn/pnpm/bun)" },
+    ];
+    return types.map(({ type, label }) => ({
+      label,
+      limit: performanceMode ? 100 : getScrollbackForType(type, effectiveBase),
+    }));
+  }, [scrollbackLines, performanceMode]);
+
+  const handleScrollbackChange = async (value: number) => {
+    const previousValue = scrollbackLines;
+    setScrollbackLines(value);
+    try {
+      await terminalConfigClient.setScrollback(value);
+    } catch (error) {
+      console.error("Failed to persist scrollback setting:", error);
+      // Revert on failure
+      setScrollbackLines(previousValue);
+    }
+  };
 
   const handleStrategyChange = (strategy: TerminalLayoutStrategy) => {
     const newConfig: TerminalGridConfig = { ...layoutConfig, strategy };
@@ -110,6 +166,8 @@ export function TerminalSettingsTab() {
               "w-11 h-6 rounded-full relative transition-colors",
               performanceMode ? "bg-amber-500" : "bg-canopy-border"
             )}
+            role="switch"
+            aria-checked={performanceMode}
           >
             <div
               className={cn(
@@ -126,6 +184,105 @@ export function TerminalSettingsTab() {
             New terminals will use reduced scrollback. Existing terminals are unchanged until
             respawned.
           </p>
+        )}
+      </div>
+
+      <div className="pt-4 border-t border-canopy-border space-y-4">
+        <div>
+          <h4 className="text-sm font-medium text-canopy-text mb-2 flex items-center gap-2">
+            <HardDrive className="w-4 h-4 text-canopy-accent" />
+            Scrollback History
+          </h4>
+          <p className="text-xs text-canopy-text/50 mb-4">
+            Base scrollback applies to agent terminals. Shells and dev servers use reduced limits
+            automatically.
+          </p>
+        </div>
+
+        <div className="grid grid-cols-3 gap-2" role="radiogroup" aria-label="Scrollback presets">
+          {SCROLLBACK_OPTIONS.map(({ value, label, description }) => (
+            <button
+              key={value}
+              onClick={() => handleScrollbackChange(value)}
+              disabled={performanceMode}
+              role="radio"
+              aria-checked={scrollbackLines === value}
+              aria-label={`${label} - ${description}`}
+              className={cn(
+                "flex flex-col items-center justify-center p-3 rounded-md border transition-all",
+                performanceMode && "opacity-50 cursor-not-allowed",
+                scrollbackLines === value
+                  ? "bg-canopy-accent/10 border-canopy-accent text-canopy-accent"
+                  : "border-canopy-border hover:bg-white/5 text-canopy-text/70"
+              )}
+            >
+              <span className="text-xs font-medium">{label}</span>
+              <span className="text-[10px] mt-0.5 opacity-60">{description}</span>
+            </button>
+          ))}
+        </div>
+
+        <div className="text-xs text-canopy-text/50 space-y-1.5 bg-canopy-bg/50 rounded-md p-3">
+          <div className="font-medium text-canopy-text/70 mb-2">
+            Effective limits per type{performanceMode ? " (performance mode)" : ""}:
+          </div>
+          {scrollbackLimits.map(({ label, limit }) => (
+            <div key={label} className="flex justify-between">
+              <span>{label}</span>
+              <span className="font-mono text-canopy-text/70">{limit.toLocaleString()} lines</span>
+            </div>
+          ))}
+        </div>
+
+        <button
+          onClick={() => setShowMemoryDetails(!showMemoryDetails)}
+          className="flex items-center gap-1.5 text-xs text-canopy-text/50 hover:text-canopy-text/70 transition-colors"
+          aria-expanded={showMemoryDetails}
+          aria-controls="memory-details"
+        >
+          <ChevronDown
+            className={cn("w-3 h-3 transition-transform", showMemoryDetails && "rotate-180")}
+          />
+          <span>Estimated memory usage</span>
+        </button>
+
+        {showMemoryDetails && (
+          <div
+            id="memory-details"
+            className="text-xs text-canopy-text/50 space-y-1.5 bg-canopy-bg/50 rounded-md p-3"
+          >
+            <div className="font-medium text-canopy-text/70 mb-2">
+              Typical session (6 agents, 6 shells, 2 dev servers):
+            </div>
+            <div className="flex justify-between">
+              <span>Agent terminals (6)</span>
+              <span className="font-mono text-canopy-text/70">
+                {formatBytes(
+                  (memoryEstimate.perType.claude ?? 0) +
+                    (memoryEstimate.perType.gemini ?? 0) +
+                    (memoryEstimate.perType.codex ?? 0)
+                )}
+              </span>
+            </div>
+            <div className="flex justify-between">
+              <span>Shell terminals (6)</span>
+              <span className="font-mono text-canopy-text/70">
+                {formatBytes(memoryEstimate.perType.shell ?? 0)}
+              </span>
+            </div>
+            <div className="flex justify-between">
+              <span>Dev servers (2)</span>
+              <span className="font-mono text-canopy-text/70">
+                {formatBytes(memoryEstimate.perType.npm ?? 0)}
+              </span>
+            </div>
+            <div className="flex justify-between pt-1.5 border-t border-canopy-border mt-1.5">
+              <span className="font-medium text-canopy-text/70">Total estimated</span>
+              <span className="font-mono font-medium text-canopy-accent">
+                {formatBytes(memoryEstimate.total)}
+              </span>
+            </div>
+          </div>
         )}
       </div>
 
