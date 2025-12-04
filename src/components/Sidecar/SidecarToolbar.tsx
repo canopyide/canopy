@@ -1,5 +1,4 @@
-import { useState } from "react";
-import { ArrowLeft, ArrowRight, RotateCw, X, Plus, Globe, Search } from "lucide-react";
+import { ArrowLeft, ArrowRight, RotateCw, X, Plus } from "lucide-react";
 import {
   DndContext,
   closestCorners,
@@ -16,36 +15,9 @@ import {
   horizontalListSortingStrategy,
 } from "@dnd-kit/sortable";
 import { CSS } from "@dnd-kit/utilities";
-import type { SidecarTab, SidecarLink } from "@shared/types";
+import type { SidecarTab } from "@shared/types";
 import { cn } from "@/lib/utils";
 import { useSidecarStore } from "@/store/sidecarStore";
-import {
-  DropdownMenu,
-  DropdownMenuContent,
-  DropdownMenuItem,
-  DropdownMenuTrigger,
-  DropdownMenuLabel,
-  DropdownMenuSeparator,
-} from "@/components/ui/dropdown-menu";
-import { ClaudeIcon, GeminiIcon, CodexIcon } from "@/components/icons";
-import { getBrandColorHex } from "@/lib/colorUtils";
-
-function LinkIcon({ link, className }: { link: SidecarLink; className?: string }) {
-  const iconClass = cn("w-4 h-4", className);
-
-  switch (link.icon) {
-    case "claude":
-      return <ClaudeIcon className={iconClass} brandColor={getBrandColorHex("claude")} />;
-    case "gemini":
-      return <GeminiIcon className={iconClass} brandColor={getBrandColorHex("gemini")} />;
-    case "openai":
-      return <CodexIcon className={iconClass} brandColor={getBrandColorHex("codex")} />;
-    case "search":
-      return <Search className={iconClass} />;
-    default:
-      return <Globe className={iconClass} />;
-  }
-}
 
 function SortableTab({
   tab,
@@ -136,20 +108,7 @@ export function SidecarToolbar({
   onGoForward,
   onReload,
 }: SidecarToolbarProps) {
-  const [isNewTabHovered, setIsNewTabHovered] = useState(false);
   const reorderTabs = useSidecarStore((s) => s.reorderTabs);
-  const links = useSidecarStore((s) => s.links);
-  const createTab = useSidecarStore((s) => s.createTab);
-
-  const enabledLinks = links.filter((l) => l.enabled).sort((a, b) => a.order - b.order);
-
-  const handleDirectOpen = (url: string, title: string) => {
-    const tabId = createTab(url, title);
-    useSidecarStore.getState().markTabCreated(tabId);
-    window.electron.sidecar.create({ tabId, url });
-    onTabClick(tabId);
-    setIsNewTabHovered(false);
-  };
 
   const sensors = useSensors(
     useSensor(PointerSensor, { activationConstraint: { distance: 5 } }),
@@ -225,49 +184,13 @@ export function SidecarToolbar({
                 />
               ))}
 
-              <DropdownMenu open={isNewTabHovered} onOpenChange={setIsNewTabHovered}>
-                <DropdownMenuTrigger asChild>
-                  <button
-                    onClick={onNewTab}
-                    onMouseEnter={() => setIsNewTabHovered(true)}
-                    onMouseLeave={() => setIsNewTabHovered(false)}
-                    className="flex items-center justify-center w-7 h-7 rounded-md bg-zinc-800/50 hover:bg-zinc-700 text-zinc-400 hover:text-zinc-200 border border-transparent hover:border-zinc-600 transition-all mt-1"
-                    title="New Tab"
-                  >
-                    <Plus className="w-4 h-4" />
-                  </button>
-                </DropdownMenuTrigger>
-
-                <DropdownMenuContent
-                  align="start"
-                  side="bottom"
-                  className="w-48"
-                  onMouseEnter={() => setIsNewTabHovered(true)}
-                  onMouseLeave={() => setIsNewTabHovered(false)}
-                >
-                  <DropdownMenuLabel>New Tab</DropdownMenuLabel>
-                  <DropdownMenuItem onClick={onNewTab}>
-                    <Plus className="w-4 h-4 mr-2" />
-                    <span>Blank Page</span>
-                  </DropdownMenuItem>
-
-                  {enabledLinks.length > 0 && (
-                    <>
-                      <DropdownMenuSeparator />
-                      <DropdownMenuLabel>Quick Launch</DropdownMenuLabel>
-                      {enabledLinks.map((link) => (
-                        <DropdownMenuItem
-                          key={link.id}
-                          onClick={() => handleDirectOpen(link.url, link.title)}
-                        >
-                          <LinkIcon link={link} className="mr-2" />
-                          <span>{link.title}</span>
-                        </DropdownMenuItem>
-                      ))}
-                    </>
-                  )}
-                </DropdownMenuContent>
-              </DropdownMenu>
+              <button
+                onClick={onNewTab}
+                className="flex items-center justify-center w-7 h-7 rounded-md bg-zinc-800/50 hover:bg-zinc-700 text-zinc-400 hover:text-zinc-200 border border-transparent hover:border-zinc-600 transition-all mt-1"
+                title="New Tab"
+              >
+                <Plus className="w-4 h-4" />
+              </button>
             </div>
           </SortableContext>
         </DndContext>
