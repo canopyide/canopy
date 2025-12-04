@@ -169,7 +169,9 @@ async function spawnNewTerminal(
   cwd: string,
   addTerminal: HydrationOptions["addTerminal"]
 ): Promise<void> {
-  const autoRestart = terminal.settings?.autoRestart ?? false;
+  // Agent terminals default to auto-restart to preserve session context/flags
+  const isAgent = ["claude", "gemini", "codex"].includes(terminal.type);
+  const autoRestart = terminal.settings?.autoRestart ?? isAgent;
   const commandToRun = autoRestart ? terminal.command : undefined;
 
   await addTerminal({
