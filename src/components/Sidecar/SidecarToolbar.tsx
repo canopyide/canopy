@@ -1,4 +1,4 @@
-import { useState, memo } from "react";
+import { memo } from "react";
 import { ArrowLeft, ArrowRight, RotateCw, X, Plus } from "lucide-react";
 import {
   DndContext,
@@ -72,9 +72,7 @@ const SortableTab = memo(function SortableTab({
         isDragging && "opacity-80 scale-105 shadow-xl cursor-grabbing"
       )}
     >
-      <span className="truncate max-w-[120px]">
-        {tab.title}
-      </span>
+      <span className="truncate max-w-[120px]">{tab.title}</span>
       <button
         onClick={(e) => {
           e.stopPropagation();
@@ -182,7 +180,7 @@ export function SidecarToolbar({
       <div className="px-2 pb-2">
         <DndContext sensors={sensors} collisionDetection={closestCorners} onDragEnd={handleDragEnd}>
           <SortableContext items={tabs.map((t) => t.id)} strategy={horizontalListSortingStrategy}>
-            <div 
+            <div
               className="flex flex-wrap gap-2 items-center"
               role="tablist"
               onKeyDown={(e) => {
