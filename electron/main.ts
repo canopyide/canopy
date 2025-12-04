@@ -277,7 +277,6 @@ async function createWindow(): Promise<void> {
   if (process.env.NODE_ENV === "development") {
     console.log("[MAIN] Loading Vite dev server at http://localhost:5173");
     mainWindow.loadURL("http://localhost:5173");
-    mainWindow.webContents.openDevTools();
   } else {
     console.log("[MAIN] Loading production build");
     mainWindow.loadFile(path.join(__dirname, "../../dist/index.html"));
