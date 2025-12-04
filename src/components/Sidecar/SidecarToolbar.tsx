@@ -9,6 +9,8 @@ import {
   Check,
   AlertCircle,
   Plus,
+  Globe,
+  Search,
 } from "lucide-react";
 import {
   DndContext,
@@ -23,14 +25,41 @@ import {
   SortableContext,
   sortableKeyboardCoordinates,
   useSortable,
-  rectSortingStrategy,
+  horizontalListSortingStrategy,
 } from "@dnd-kit/sortable";
 import { CSS } from "@dnd-kit/utilities";
-import type { SidecarTab } from "@shared/types";
+import type { SidecarTab, SidecarLink } from "@shared/types";
 import { cn } from "@/lib/utils";
 import { useSidecarStore } from "@/store/sidecarStore";
+import {
+  DropdownMenu,
+  DropdownMenuContent,
+  DropdownMenuItem,
+  DropdownMenuTrigger,
+  DropdownMenuLabel,
+  DropdownMenuSeparator,
+} from "@/components/ui/dropdown-menu";
+import { ClaudeIcon, GeminiIcon, CodexIcon } from "@/components/icons";
+import { getBrandColorHex } from "@/lib/colorUtils";
 
 type InjectStatus = "idle" | "loading" | "success" | "error";
+
+function LinkIcon({ link, className }: { link: SidecarLink; className?: string }) {
+  const iconClass = cn("w-4 h-4", className);
+
+  switch (link.icon) {
+    case "claude":
+      return <ClaudeIcon className={iconClass} brandColor={getBrandColorHex("claude")} />;
+    case "gemini":
+      return <GeminiIcon className={iconClass} brandColor={getBrandColorHex("gemini")} />;
+    case "openai":
+      return <CodexIcon className={iconClass} brandColor={getBrandColorHex("codex")} />;
+    case "search":
+      return <Search className={iconClass} />;
+    default:
+      return <Globe className={iconClass} />;
+  }
+}
 
 function SortableTab({
   tab,
@@ -48,29 +77,37 @@ function SortableTab({
   });
 
   const style = {
-    transform: CSS.Transform.toString(transform),
+    transform: CSS.Translate.toString(transform),
     transition,
   };
 
   return (
-    <button
+    <div
       ref={setNodeRef}
       style={style}
       {...attributes}
-      {...listeners}
-      onClick={() => onClick(tab.id)}
       role="tab"
       aria-selected={isActive}
       aria-label={tab.title}
+      tabIndex={0}
+      onClick={() => onClick(tab.id)}
+      onKeyDown={(e) => {
+        if (e.key === "Enter" || e.key === " ") {
+          e.preventDefault();
+          onClick(tab.id);
+        }
+      }}
       className={cn(
-        "group flex items-center gap-2 px-3 py-1.5 rounded-full text-xs font-medium cursor-pointer select-none transition-all border",
+        "group relative flex items-center gap-2 px-3 py-1.5 rounded-t-md text-xs font-medium cursor-pointer select-none transition-all border-t border-x border-b-0 min-w-[100px] max-w-[200px]",
         isActive
-          ? "bg-canopy-accent text-white border-canopy-accent"
-          : "bg-zinc-800 text-zinc-400 border-zinc-700 hover:bg-zinc-700 hover:text-zinc-200",
-        isDragging && "opacity-50"
+          ? "bg-zinc-200 text-zinc-900 border-zinc-200 shadow-sm z-10"
+          : "bg-zinc-900/50 text-zinc-500 border-transparent hover:bg-zinc-800 hover:text-zinc-300",
+        isDragging && "opacity-30 z-50"
       )}
     >
-      <span className="truncate max-w-[120px]">{tab.title}</span>
+      <span className="truncate max-w-[120px]" {...listeners}>
+        {tab.title}
+      </span>
       <button
         onClick={(e) => {
           e.stopPropagation();
@@ -78,15 +115,15 @@ function SortableTab({
         }}
         aria-label={`Close ${tab.title}`}
         className={cn(
-          "p-0.5 rounded-full hover:bg-white/20 transition-colors",
+          "p-0.5 rounded-full transition-colors",
           isActive
-            ? "text-white/80 hover:text-white"
-            : "text-zinc-500 hover:text-zinc-300 opacity-0 group-hover:opacity-100"
+            ? "text-zinc-500 hover:text-zinc-700 hover:bg-zinc-300/50"
+            : "text-zinc-500 hover:text-zinc-300 hover:bg-zinc-700/50 opacity-0 group-hover:opacity-100"
         )}
       >
         <X className="w-3 h-3" />
       </button>
-    </button>
+    </div>
   );
 }
 
@@ -115,7 +152,20 @@ export function SidecarToolbar({
 }: SidecarToolbarProps) {
   const [injectStatus, setInjectStatus] = useState<InjectStatus>("idle");
   const [errorMsg, setErrorMsg] = useState("");
+  const [isNewTabHovered, setIsNewTabHovered] = useState(false);
   const reorderTabs = useSidecarStore((s) => s.reorderTabs);
+  const links = useSidecarStore((s) => s.links);
+  const createTab = useSidecarStore((s) => s.createTab);
+
+  const enabledLinks = links.filter((l) => l.enabled).sort((a, b) => a.order - b.order);
+
+  const handleDirectOpen = (url: string, title: string) => {
+    const tabId = createTab(url, title);
+    useSidecarStore.getState().markTabCreated(tabId);
+    window.electron.sidecar.create({ tabId, url });
+    onTabClick(tabId);
+    setIsNewTabHovered(false);
+  };
 
   const sensors = useSensors(
     useSensor(PointerSensor, { activationConstraint: { distance: 5 } }),
@@ -235,7 +285,7 @@ export function SidecarToolbar({
       {/* Bottom Row: Tab Pills */}
       <div className="px-2 pb-2">
         <DndContext sensors={sensors} collisionDetection={closestCorners} onDragEnd={handleDragEnd}>
-          <SortableContext items={tabs.map((t) => t.id)} strategy={rectSortingStrategy}>
+          <SortableContext items={tabs.map((t) => t.id)} strategy={horizontalListSortingStrategy}>
             <div className="flex flex-wrap gap-2" role="tablist">
               {tabs.map((tab) => (
                 <SortableTab
@@ -247,13 +297,49 @@ export function SidecarToolbar({
                 />
               ))}
 
-              <button
-                onClick={onNewTab}
-                className="flex items-center justify-center w-7 h-7 rounded-full bg-zinc-800 hover:bg-zinc-700 text-zinc-400 hover:text-zinc-200 border border-zinc-700 transition-colors"
-                title="New Tab"
-              >
-                <Plus className="w-3.5 h-3.5" />
-              </button>
+              <DropdownMenu open={isNewTabHovered} onOpenChange={setIsNewTabHovered}>
+                <DropdownMenuTrigger asChild>
+                  <button
+                    onClick={onNewTab}
+                    onMouseEnter={() => setIsNewTabHovered(true)}
+                    onMouseLeave={() => setIsNewTabHovered(false)}
+                    className="flex items-center justify-center w-7 h-7 rounded-md bg-zinc-800/50 hover:bg-zinc-700 text-zinc-400 hover:text-zinc-200 border border-transparent hover:border-zinc-600 transition-all mt-1"
+                    title="New Tab"
+                  >
+                    <Plus className="w-4 h-4" />
+                  </button>
+                </DropdownMenuTrigger>
+
+                <DropdownMenuContent
+                  align="start"
+                  side="bottom"
+                  className="w-48"
+                  onMouseEnter={() => setIsNewTabHovered(true)}
+                  onMouseLeave={() => setIsNewTabHovered(false)}
+                >
+                  <DropdownMenuLabel>New Tab</DropdownMenuLabel>
+                  <DropdownMenuItem onClick={onNewTab}>
+                    <Plus className="w-4 h-4 mr-2" />
+                    <span>Blank Page</span>
+                  </DropdownMenuItem>
+
+                  {enabledLinks.length > 0 && (
+                    <>
+                      <DropdownMenuSeparator />
+                      <DropdownMenuLabel>Quick Launch</DropdownMenuLabel>
+                      {enabledLinks.map((link) => (
+                        <DropdownMenuItem
+                          key={link.id}
+                          onClick={() => handleDirectOpen(link.url, link.title)}
+                        >
+                          <LinkIcon link={link} className="mr-2" />
+                          <span>{link.title}</span>
+                        </DropdownMenuItem>
+                      ))}
+                    </>
+                  )}
+                </DropdownMenuContent>
+              </DropdownMenu>
             </div>
           </SortableContext>
         </DndContext>
