@@ -652,6 +652,16 @@ export class PtyManager extends EventEmitter {
    * Hard limit (1MB): drops oldest data to prevent OOM.
    */
   private addToBatchBuffer(terminal: TerminalInfo, data: string): void {
+    // Handle single chunk exceeding hard limit: truncate to soft limit
+    if (data.length > BATCH_HARD_LIMIT_BYTES) {
+      if (process.env.CANOPY_VERBOSE) {
+        console.warn(
+          `[PtyManager] Single chunk (${data.length} bytes) exceeds hard limit, truncating`
+        );
+      }
+      data = data.slice(-BATCH_SOFT_LIMIT_BYTES);
+    }
+
     terminal.batchBuffer.push(data);
     terminal.batchBytes += data.length;
 
@@ -686,6 +696,7 @@ export class PtyManager extends EventEmitter {
    * Set the activity tier for a terminal, affecting batch flush timing.
    * FOCUSED: immediate, VISIBLE: 100ms, BACKGROUND: 1000ms.
    * If tier changes to FOCUSED, pending batch is flushed immediately.
+   * Tier promotions reschedule existing timers to use faster flush delays.
    */
   setActivityTier(id: string, tier: ActivityTier): void {
     const terminal = this.terminals.get(id);
@@ -700,8 +711,17 @@ export class PtyManager extends EventEmitter {
     if (previousTier === tier) return;
 
     // Debounce rapid tier changes (100ms) to prevent oscillation
+    // Schedule deferred tier change instead of dropping it
     const now = Date.now();
     if (now - terminal.lastTierChangeAt < 100) {
+      // Schedule this tier change to apply after debounce period
+      setTimeout(() => {
+        // Only apply if terminal still exists and tier hasn't changed again
+        const t = this.terminals.get(id);
+        if (t && t.activityTier === previousTier) {
+          this.setActivityTier(id, tier);
+        }
+      }, 100 - (now - terminal.lastTierChangeAt));
       return;
     }
 
@@ -712,13 +732,27 @@ export class PtyManager extends EventEmitter {
       console.log(`[PtyManager] Activity tier for ${id}: ${previousTier} → ${tier}`);
     }
 
-    // If promoted to FOCUSED, flush pending batch immediately
-    if (tier === "focused" && terminal.batchBuffer.length > 0) {
-      if (terminal.batchTimer) {
-        clearTimeout(terminal.batchTimer);
-        terminal.batchTimer = null;
+    // Handle tier changes when there's pending batch data
+    if (terminal.batchBuffer.length > 0) {
+      const newDelay = this.getFlushDelay(tier);
+
+      if (newDelay === 0) {
+        // FOCUSED tier: flush immediately
+        if (terminal.batchTimer) {
+          clearTimeout(terminal.batchTimer);
+          terminal.batchTimer = null;
+        }
+        this.flushBatchBuffer(id);
+      } else if (terminal.batchTimer) {
+        // Tier promotion to faster delay: reschedule with shorter timer
+        const oldDelay = this.getFlushDelay(previousTier);
+        if (newDelay < oldDelay) {
+          clearTimeout(terminal.batchTimer);
+          terminal.batchTimer = setTimeout(() => {
+            this.flushBatchBuffer(id);
+          }, newDelay);
+        }
       }
-      this.flushBatchBuffer(id);
     }
   }
 
