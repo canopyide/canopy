@@ -1,17 +1,5 @@
 import { useState } from "react";
-import {
-  ArrowLeft,
-  ArrowRight,
-  RotateCw,
-  X,
-  Clipboard,
-  Loader2,
-  Check,
-  AlertCircle,
-  Plus,
-  Globe,
-  Search,
-} from "lucide-react";
+import { ArrowLeft, ArrowRight, RotateCw, X, Plus, Globe, Search } from "lucide-react";
 import {
   DndContext,
   closestCorners,
@@ -41,8 +29,6 @@ import {
 } from "@/components/ui/dropdown-menu";
 import { ClaudeIcon, GeminiIcon, CodexIcon } from "@/components/icons";
 import { getBrandColorHex } from "@/lib/colorUtils";
-
-type InjectStatus = "idle" | "loading" | "success" | "error";
 
 function LinkIcon({ link, className }: { link: SidecarLink; className?: string }) {
   const iconClass = cn("w-4 h-4", className);
@@ -150,8 +136,6 @@ export function SidecarToolbar({
   onGoForward,
   onReload,
 }: SidecarToolbarProps) {
-  const [injectStatus, setInjectStatus] = useState<InjectStatus>("idle");
-  const [errorMsg, setErrorMsg] = useState("");
   const [isNewTabHovered, setIsNewTabHovered] = useState(false);
   const reorderTabs = useSidecarStore((s) => s.reorderTabs);
   const links = useSidecarStore((s) => s.links);
@@ -178,37 +162,6 @@ export function SidecarToolbar({
       const oldIndex = tabs.findIndex((t) => t.id === active.id);
       const newIndex = tabs.findIndex((t) => t.id === over.id);
       reorderTabs(oldIndex, newIndex);
-    }
-  };
-
-  const handleInject = async () => {
-    setInjectStatus("loading");
-    setErrorMsg("");
-
-    try {
-      const text = await navigator.clipboard.readText();
-
-      if (!text.trim()) {
-        setInjectStatus("error");
-        setErrorMsg("Clipboard is empty");
-        setTimeout(() => setInjectStatus("idle"), 3000);
-        return;
-      }
-
-      const result = await window.electron.sidecar.inject({ text });
-
-      if (result.success) {
-        setInjectStatus("success");
-        setTimeout(() => setInjectStatus("idle"), 2000);
-      } else {
-        setInjectStatus("error");
-        setErrorMsg(result.error || "Injection failed");
-        setTimeout(() => setInjectStatus("idle"), 3000);
-      }
-    } catch (_error) {
-      setInjectStatus("error");
-      setErrorMsg("Failed to read clipboard");
-      setTimeout(() => setInjectStatus("idle"), 3000);
     }
   };
 
@@ -247,31 +200,6 @@ export function SidecarToolbar({
         </div>
 
         <div className="flex items-center gap-1">
-          <button
-            onClick={handleInject}
-            disabled={!activeTabId || injectStatus === "loading"}
-            className={cn(
-              "flex items-center gap-1.5 px-2 py-1 text-xs rounded transition-colors",
-              injectStatus === "error"
-                ? "bg-red-900/50 text-red-400"
-                : injectStatus === "success"
-                  ? "bg-green-900/50 text-green-400"
-                  : "bg-zinc-700 hover:bg-zinc-600 text-zinc-300 disabled:opacity-50"
-            )}
-            title={injectStatus === "error" ? errorMsg : "Inject clipboard content"}
-          >
-            {injectStatus === "loading" && <Loader2 className="w-3 h-3 animate-spin" />}
-            {injectStatus === "success" && <Check className="w-3 h-3" />}
-            {injectStatus === "error" && <AlertCircle className="w-3 h-3" />}
-            {injectStatus === "idle" && <Clipboard className="w-3 h-3" />}
-            <span>
-              {injectStatus === "loading" && "Injecting..."}
-              {injectStatus === "success" && "Injected!"}
-              {injectStatus === "error" && "Failed"}
-              {injectStatus === "idle" && "Inject"}
-            </span>
-          </button>
-
           <button
             onClick={onClose}
             className="p-1 rounded hover:bg-zinc-700 text-zinc-400 hover:text-zinc-200 transition-colors ml-1"

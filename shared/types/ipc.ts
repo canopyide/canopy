@@ -1273,10 +1273,6 @@ export interface IpcInvokeMap {
     args: [tabId: string];
     result: void;
   };
-  "sidecar:inject": {
-    args: [payload: { tabId?: string; text: string }];
-    result: { success: boolean; error?: string };
-  };
 }
 
 /**
@@ -1552,10 +1548,6 @@ export interface ElectronAPI {
     goForward(tabId: string): Promise<boolean>;
     reload(tabId: string): Promise<void>;
     onNavEvent(callback: (data: import("./sidecar.js").SidecarNavEvent) => void): () => void;
-    inject(payload: {
-      tabId?: string;
-      text: string;
-    }): Promise<{ success: boolean; error?: string }>;
   };
   hibernation: {
     getConfig(): Promise<HibernationConfig>;
