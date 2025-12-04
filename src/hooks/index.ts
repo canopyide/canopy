@@ -39,3 +39,5 @@ export {
   useFocusedTerminal,
   useWaitingTerminalIds,
 } from "./useTerminalSelectors";
+
+export { useLinkDiscovery } from "./useLinkDiscovery";

@@ -1,7 +1,7 @@
 import { useState, useEffect } from "react";
 import { useErrors } from "@/hooks";
 import { useLogsStore } from "@/store";
-import { X, Bot, Github, LayoutGrid } from "lucide-react";
+import { X, Bot, Github, LayoutGrid, PanelRight } from "lucide-react";
 import { cn } from "@/lib/utils";
 import { appClient } from "@/clients";
 import { AgentSettings } from "./AgentSettings";
@@ -9,6 +9,7 @@ import { GeneralTab } from "./GeneralTab";
 import { TerminalSettingsTab } from "./TerminalSettingsTab";
 import { GitHubSettingsTab } from "./GitHubSettingsTab";
 import { TroubleshootingTab } from "./TroubleshootingTab";
+import { SidecarSettingsTab } from "./SidecarSettingsTab";
 
 interface SettingsDialogProps {
   isOpen: boolean;
@@ -17,7 +18,7 @@ interface SettingsDialogProps {
   onSettingsChange?: () => void;
 }
 
-type SettingsTab = "general" | "terminal" | "agents" | "github" | "troubleshooting";
+type SettingsTab = "general" | "terminal" | "agents" | "github" | "sidecar" | "troubleshooting";
 
 export function SettingsDialog({
   isOpen,
@@ -116,6 +117,18 @@ export function SettingsDialog({
             GitHub
           </button>
           <button
+            onClick={() => setActiveTab("sidecar")}
+            className={cn(
+              "text-left px-3 py-2 rounded-md text-sm transition-colors flex items-center gap-2",
+              activeTab === "sidecar"
+                ? "bg-canopy-accent/10 text-canopy-accent"
+                : "text-gray-400 hover:bg-canopy-border hover:text-canopy-text"
+            )}
+          >
+            <PanelRight className="w-4 h-4" />
+            Sidecar
+          </button>
+          <button
             onClick={() => setActiveTab("troubleshooting")}
             className={cn(
               "text-left px-3 py-2 rounded-md text-sm transition-colors",
@@ -137,7 +150,9 @@ export function SettingsDialog({
                   ? "GitHub Integration"
                   : activeTab === "terminal"
                     ? "Terminal Grid"
-                    : activeTab}
+                    : activeTab === "sidecar"
+                      ? "Sidecar Links"
+                      : activeTab}
             </h3>
             <button
               onClick={onClose}
@@ -163,6 +178,10 @@ export function SettingsDialog({
 
             <div className={activeTab === "github" ? "" : "hidden"}>
               <GitHubSettingsTab />
+            </div>
+
+            <div className={activeTab === "sidecar" ? "" : "hidden"}>
+              <SidecarSettingsTab />
             </div>
 
             <div className={activeTab === "troubleshooting" ? "" : "hidden"}>
