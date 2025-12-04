@@ -21,11 +21,8 @@ interface AppLayoutProps {
   sidebarContent?: ReactNode;
   historyContent?: ReactNode;
   onLaunchAgent?: (type: "claude" | "gemini" | "codex" | "shell") => void;
-  onRefresh?: () => void;
   onSettings?: () => void;
   onRetry?: (id: string, action: RetryAction, args?: Record<string, unknown>) => void;
-  isRefreshing?: boolean;
-  onShowWelcome?: () => void;
   agentAvailability?: CliAvailability;
   agentSettings?: AgentSettings | null;
 }
@@ -39,11 +36,8 @@ export function AppLayout({
   sidebarContent,
   historyContent,
   onLaunchAgent,
-  onRefresh,
   onSettings,
   onRetry,
-  isRefreshing,
-  onShowWelcome,
   agentAvailability,
   agentSettings,
 }: AppLayoutProps) {
@@ -208,10 +202,6 @@ export function AppLayout({
     [onLaunchAgent]
   );
 
-  const handleRefresh = useCallback(() => {
-    onRefresh?.();
-  }, [onRefresh]);
-
   const handleSettings = useCallback(() => {
     onSettings?.();
   }, [onSettings]);
@@ -232,14 +222,11 @@ export function AppLayout({
     >
       <Toolbar
         onLaunchAgent={handleLaunchAgent}
-        onRefresh={handleRefresh}
         onSettings={handleSettings}
         errorCount={errorCount}
         onToggleProblems={handleToggleProblems}
         isFocusMode={isFocusMode}
         onToggleFocusMode={handleToggleFocusMode}
-        isRefreshing={isRefreshing}
-        onShowWelcome={onShowWelcome}
         agentAvailability={agentAvailability}
         agentSettings={agentSettings}
       />

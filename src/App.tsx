@@ -1,7 +1,7 @@
 import { useCallback, useEffect, useRef, useState } from "react";
 import { hydrateAppState } from "./utils/stateHydration";
 import "@xterm/xterm/css/xterm.css";
-import { FolderOpen } from "lucide-react";
+import { FolderOpen, RefreshCw } from "lucide-react";
 import {
   isElectronAvailable,
   useAgentLauncher,
@@ -14,7 +14,6 @@ import {
 } from "./hooks";
 import { AppLayout } from "./components/Layout";
 import { TerminalGrid } from "./components/Terminal";
-import { WelcomeScreen } from "./components/Welcome/WelcomeScreen";
 import { WorktreeCard } from "./components/Worktree";
 import { NewWorktreeDialog } from "./components/Worktree/NewWorktreeDialog";
 import { TerminalPalette } from "./components/TerminalPalette";
@@ -39,13 +38,12 @@ import type { WorktreeState } from "./types";
 import {
   systemClient,
   copyTreeClient,
-  appClient,
   projectClient,
-  worktreeClient,
   errorsClient,
   devServerClient,
 } from "@/clients";
 import { formatBytes } from "@/lib/formatBytes";
+import { cn } from "@/lib/utils";
 
 function SidebarContent() {
   const { worktrees, isLoading, error, refresh } = useWorktrees();
@@ -70,8 +68,18 @@ function SidebarContent() {
   );
 
   const [isNewWorktreeDialogOpen, setIsNewWorktreeDialogOpen] = useState(false);
+  const [isRefreshing, setIsRefreshing] = useState(false);
 
   const [homeDir, setHomeDir] = useState<string | undefined>(undefined);
+
+  const handleRefresh = useCallback(async () => {
+    setIsRefreshing(true);
+    try {
+      await refresh();
+    } finally {
+      setIsRefreshing(false);
+    }
+  }, [refresh]);
 
   useEffect(() => {
     systemClient.getHomeDir().then(setHomeDir).catch(console.error);
@@ -205,7 +213,22 @@ function SidebarContent() {
   if (worktrees.length === 0) {
     return (
       <div className="p-4">
-        <h2 className="text-canopy-text font-semibold text-sm mb-4">Worktrees</h2>
+        <div className="flex items-center justify-between mb-4">
+          <div className="flex items-center gap-2">
+            <h2 className="text-canopy-text font-semibold text-sm">Worktrees</h2>
+            <button
+              onClick={handleRefresh}
+              className={cn(
+                "p-1 text-canopy-text/40 hover:text-canopy-text hover:bg-white/5 rounded transition-colors",
+                isRefreshing && "animate-spin text-canopy-text"
+              )}
+              title="Refresh worktrees"
+              disabled={isRefreshing}
+            >
+              <RefreshCw className="w-3.5 h-3.5" />
+            </button>
+          </div>
+        </div>
 
         <div className="flex flex-col items-center justify-center py-12 px-4 text-center">
           <FolderOpen className="w-12 h-12 text-gray-500 mb-3" aria-hidden="true" />
@@ -236,7 +259,20 @@ function SidebarContent() {
   return (
     <div className="p-4">
       <div className="flex items-center justify-between mb-4">
-        <h2 className="text-canopy-text font-semibold text-sm">Worktrees</h2>
+        <div className="flex items-center gap-2">
+          <h2 className="text-canopy-text font-semibold text-sm">Worktrees</h2>
+          <button
+            onClick={handleRefresh}
+            className={cn(
+              "p-1 text-canopy-text/40 hover:text-canopy-text hover:bg-white/5 rounded transition-colors",
+              isRefreshing && "animate-spin text-canopy-text"
+            )}
+            title="Refresh worktrees"
+            disabled={isRefreshing}
+          >
+            <RefreshCw className="w-3.5 h-3.5" />
+          </button>
+        </div>
         <button
           onClick={() => setIsNewWorktreeDialogOpen(true)}
           className="text-xs px-2 py-1 bg-canopy-accent/10 hover:bg-canopy-accent/20 text-canopy-accent rounded transition-colors"
@@ -283,8 +319,6 @@ function SidebarContent() {
   );
 }
 
-type AppView = "grid" | "welcome";
-
 function App() {
   const { focusNext, focusPrevious, toggleMaximize, focusedId, addTerminal, reorderTerminals } =
     useTerminalStore(
@@ -317,10 +351,6 @@ function App() {
 
   const [isSettingsOpen, setIsSettingsOpen] = useState(false);
   const [settingsTab, setSettingsTab] = useState<"general" | "troubleshooting">("general");
-
-  const [isRefreshing, setIsRefreshing] = useState(false);
-
-  const [currentView, setCurrentView] = useState<AppView>("welcome");
   const [isStateLoaded, setIsStateLoaded] = useState(false);
 
   const hasRestoredState = useRef(false);
@@ -336,18 +366,6 @@ function App() {
 
     const restoreState = async () => {
       try {
-        const appState = await appClient.getState();
-
-        if (!appState) {
-          console.warn("App state returned undefined, using defaults");
-          setCurrentView("welcome");
-          setIsStateLoaded(true);
-          return;
-        }
-
-        const hasSeenWelcome = appState.hasSeenWelcome ?? false;
-        setCurrentView(hasSeenWelcome ? "grid" : "welcome");
-
         await hydrateAppState({
           addTerminal,
           setActiveWorktree,
@@ -404,36 +422,9 @@ function App() {
     [launchAgent]
   );
 
-  const handleRefresh = useCallback(async () => {
-    if (!isElectronAvailable()) {
-      return;
-    }
-
-    if (isRefreshing) {
-      return;
-    }
-
-    try {
-      setIsRefreshing(true);
-      await worktreeClient.refresh();
-    } catch (error) {
-      console.error("Failed to refresh worktrees:", error);
-    } finally {
-      setIsRefreshing(false);
-    }
-  }, [isRefreshing]);
-
   const handleSettings = useCallback(() => {
     setSettingsTab("general");
     setIsSettingsOpen(true);
-  }, []);
-
-  const handleShowWelcome = useCallback(() => {
-    setCurrentView("welcome");
-  }, []);
-
-  const handleDismissWelcome = useCallback(() => {
-    setCurrentView("grid");
   }, []);
 
   const handleInjectContextShortcut = useCallback(() => {
@@ -602,19 +593,12 @@ function App() {
           sidebarContent={<SidebarContent />}
           historyContent={<HistoryPanel />}
           onLaunchAgent={handleLaunchAgent}
-          onRefresh={handleRefresh}
           onSettings={handleSettings}
           onRetry={handleErrorRetry}
-          isRefreshing={isRefreshing}
-          onShowWelcome={handleShowWelcome}
           agentAvailability={availability}
           agentSettings={agentSettings}
         >
-          {currentView === "welcome" ? (
-            <WelcomeScreen onDismiss={handleDismissWelcome} />
-          ) : (
-            <TerminalGrid className="h-full w-full" />
-          )}
+          <TerminalGrid className="h-full w-full" />
         </AppLayout>
       </DndProvider>
 
