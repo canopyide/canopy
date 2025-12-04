@@ -72,14 +72,16 @@ export function useTerminalPalette(): UseTerminalPaletteReturn {
   }, [query]);
 
   const searchableTerminals = useMemo<SearchableTerminal[]>(() => {
-    return terminals.map((t) => ({
-      id: t.id,
-      title: t.title,
-      type: t.type,
-      worktreeId: t.worktreeId,
-      worktreeName: t.worktreeId ? worktreeMap.get(t.worktreeId)?.name : undefined,
-      cwd: t.cwd,
-    }));
+    return terminals
+      .filter((t) => t.location !== "trash")
+      .map((t) => ({
+        id: t.id,
+        title: t.title,
+        type: t.type,
+        worktreeId: t.worktreeId,
+        worktreeName: t.worktreeId ? worktreeMap.get(t.worktreeId)?.name : undefined,
+        cwd: t.cwd,
+      }));
   }, [terminals, worktreeMap]);
 
   const fuse = useMemo(() => {
