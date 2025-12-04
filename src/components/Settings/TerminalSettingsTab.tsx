@@ -67,7 +67,6 @@ export function TerminalSettingsTab() {
 
   // Performance Mode Store
   const performanceMode = usePerformanceModeStore((state) => state.performanceMode);
-  // const setPerformanceMode = usePerformanceModeStore((state) => state.setPerformanceMode); // Kept for consistency if needed, but enable/disable are better
   const autoEnabled = usePerformanceModeStore((state) => state.autoEnabled);
   const autoEnableThreshold = usePerformanceModeStore((state) => state.autoEnableThreshold);
   const enablePerformanceMode = usePerformanceModeStore((state) => state.enablePerformanceMode);
