@@ -6,10 +6,20 @@ import {
   Zap,
   HardDrive,
   ChevronDown,
+  Monitor,
 } from "lucide-react";
 import { useState, useMemo } from "react";
 import { cn } from "@/lib/utils";
-import { useLayoutConfigStore, usePerformanceModeStore, useScrollbackStore } from "@/store";
+import {
+  useLayoutConfigStore,
+  usePerformanceModeStore,
+  useScrollbackStore,
+  useTerminalStore,
+} from "@/store";
+import {
+  AUTO_ENABLE_THRESHOLD_MIN,
+  AUTO_ENABLE_THRESHOLD_MAX,
+} from "@/store/performanceModeStore";
 import { appClient, terminalConfigClient } from "@/clients";
 import type { TerminalLayoutStrategy, TerminalGridConfig, TerminalType } from "@/types";
 import { getScrollbackForType, estimateMemoryUsage, formatBytes } from "@/utils/scrollbackConfig";
@@ -57,10 +67,23 @@ const TYPICAL_TERMINAL_COUNTS: Partial<Record<TerminalType, number>> = {
 export function TerminalSettingsTab() {
   const layoutConfig = useLayoutConfigStore((state) => state.layoutConfig);
   const setLayoutConfig = useLayoutConfigStore((state) => state.setLayoutConfig);
+  
+  // Performance Mode Store
   const performanceMode = usePerformanceModeStore((state) => state.performanceMode);
-  const setPerformanceMode = usePerformanceModeStore((state) => state.setPerformanceMode);
+  const setPerformanceMode = usePerformanceModeStore((state) => state.setPerformanceMode); // Kept for consistency if needed, but enable/disable are better
+  const autoEnabled = usePerformanceModeStore((state) => state.autoEnabled);
+  const autoEnableThreshold = usePerformanceModeStore((state) => state.autoEnableThreshold);
+  const enablePerformanceMode = usePerformanceModeStore((state) => state.enablePerformanceMode);
+  const disablePerformanceMode = usePerformanceModeStore((state) => state.disablePerformanceMode);
+  const setAutoEnableThreshold = usePerformanceModeStore((state) => state.setAutoEnableThreshold);
+  
+  // Terminal Store (for count)
+  const terminalCount = useTerminalStore((state) => state.terminals.length);
+
+  // Scrollback Store
   const scrollbackLines = useScrollbackStore((state) => state.scrollbackLines);
   const setScrollbackLines = useScrollbackStore((state) => state.setScrollbackLines);
+  
   const [showMemoryDetails, setShowMemoryDetails] = useState(false);
 
   const memoryEstimate = useMemo(() => {
@@ -111,15 +134,27 @@ export function TerminalSettingsTab() {
     const newValue = !performanceMode;
     try {
       await terminalConfigClient.setPerformanceMode(newValue);
-      setPerformanceMode(newValue);
-      // Update DOM attribute for CSS
       if (newValue) {
+        enablePerformanceMode(false); // Manual enable
         document.body.setAttribute("data-performance-mode", "true");
       } else {
+        disablePerformanceMode(); // Manual disable
         document.body.removeAttribute("data-performance-mode");
       }
     } catch (error) {
       console.error("Failed to persist performance mode setting:", error);
+    }
+  };
+
+  const handleThresholdChange = async (e: React.ChangeEvent<HTMLInputElement>) => {
+    const value = parseInt(e.target.value, 10);
+    if (!isNaN(value)) {
+      setAutoEnableThreshold(value);
+      try {
+        await appClient.setState({ performanceModeAutoEnableThreshold: value });
+      } catch (error) {
+        console.error("Failed to persist auto-enable threshold:", error);
+      }
     }
   };
 
@@ -133,12 +168,29 @@ export function TerminalSettingsTab() {
           </h4>
           <p className="text-xs text-canopy-text/50 mb-4">
             Optimize for high-density workflows. Reduces visual overhead for smoother performance
-            with many active agents.
+            with many active agents. Auto-enables at {autoEnableThreshold}+ terminals.
           </p>
+        </div>
+
+        <div className="flex items-center gap-2 p-3 rounded-lg bg-canopy-bg/50 border border-canopy-border">
+          <Monitor className="w-4 h-4 text-canopy-text/50" />
+          <span className="text-sm text-canopy-text/70">Active terminals:</span>
+          <span
+            className={cn(
+              "text-sm font-medium",
+              terminalCount >= autoEnableThreshold ? "text-amber-500" : "text-canopy-text"
+            )}
+          >
+            {terminalCount}
+          </span>
+          <span className="text-sm text-canopy-text/50">/ {autoEnableThreshold} threshold</span>
         </div>
 
         <button
           onClick={handlePerformanceModeToggle}
+          role="switch"
+          aria-checked={performanceMode}
+          aria-label="Performance Mode Toggle"
           className={cn(
             "w-full flex items-center justify-between p-4 rounded-lg border transition-all",
             performanceMode
@@ -152,7 +204,11 @@ export function TerminalSettingsTab() {
             />
             <div className="text-left">
               <div className="text-sm font-medium">
-                {performanceMode ? "Performance Mode Enabled" : "Enable Performance Mode"}
+                {performanceMode
+                  ? autoEnabled
+                    ? "Performance Mode (Auto-Enabled)"
+                    : "Performance Mode Enabled"
+                  : "Enable Performance Mode"}
               </div>
               <div className="text-xs opacity-70">
                 {performanceMode
@@ -166,8 +222,7 @@ export function TerminalSettingsTab() {
               "w-11 h-6 rounded-full relative transition-colors",
               performanceMode ? "bg-amber-500" : "bg-canopy-border"
             )}
-            role="switch"
-            aria-checked={performanceMode}
+            aria-hidden="true"
           >
             <div
               className={cn(
@@ -181,10 +236,31 @@ export function TerminalSettingsTab() {
         {performanceMode && (
           <p className="text-xs text-amber-500/80 flex items-center gap-1.5">
             <AlertTriangle className="w-3 h-3" />
-            New terminals will use reduced scrollback. Existing terminals are unchanged until
-            respawned.
+            {autoEnabled
+              ? `Auto-enabled at ${autoEnableThreshold} terminals. Toggle off to override, or adjust the threshold below.`
+              : "New terminals will use reduced scrollback. Existing terminals are unchanged until respawned."}
           </p>
         )}
+
+        <div className="space-y-2">
+          <label htmlFor="threshold-input" className="text-sm text-canopy-text/70">
+            Auto-Enable Threshold
+          </label>
+          <input
+            id="threshold-input"
+            type="number"
+            min={AUTO_ENABLE_THRESHOLD_MIN}
+            max={AUTO_ENABLE_THRESHOLD_MAX}
+            value={autoEnableThreshold}
+            onChange={handleThresholdChange}
+            aria-describedby="threshold-help"
+            className="bg-canopy-bg border border-canopy-border rounded px-3 py-2 text-canopy-text w-full focus:border-canopy-accent focus:outline-none transition-colors"
+          />
+          <p id="threshold-help" className="text-xs text-canopy-text/40">
+            Performance mode auto-enables when terminal count reaches this threshold (
+            {AUTO_ENABLE_THRESHOLD_MIN}-{AUTO_ENABLE_THRESHOLD_MAX}).
+          </p>
+        </div>
       </div>
 
       <div className="pt-4 border-t border-canopy-border space-y-4">
