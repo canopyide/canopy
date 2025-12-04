@@ -25,6 +25,7 @@ import { TerminalRefreshTier } from "@/types";
 export interface TerminalGridProps {
   className?: string;
   defaultCwd?: string;
+  onLaunchAgent?: (type: "claude" | "gemini" | "codex" | "shell") => Promise<void> | void;
 }
 
 interface LauncherCardProps {
@@ -150,7 +151,7 @@ function EmptyState({
   );
 }
 
-export function TerminalGrid({ className, defaultCwd }: TerminalGridProps) {
+export function TerminalGrid({ className, defaultCwd, onLaunchAgent }: TerminalGridProps) {
   const { terminals, focusedId, maximizedId } = useTerminalStore(
     useShallow((state) => ({
       terminals: state.terminals,
@@ -218,6 +219,15 @@ export function TerminalGrid({ className, defaultCwd }: TerminalGridProps) {
 
   const handleLaunchAgent = useCallback(
     async (type: "claude" | "gemini" | "codex" | "shell") => {
+      if (onLaunchAgent) {
+        try {
+          await onLaunchAgent(type);
+        } catch (error) {
+          console.error(`Failed to launch ${type}:`, error);
+        }
+        return;
+      }
+
       try {
         const cwd = defaultCwd || "";
         const command = type !== "shell" ? type : undefined;
@@ -226,7 +236,7 @@ export function TerminalGrid({ className, defaultCwd }: TerminalGridProps) {
         console.error(`Failed to launch ${type}:`, error);
       }
     },
-    [addTerminal, defaultCwd]
+    [addTerminal, defaultCwd, onLaunchAgent]
   );
 
   const handleInjectContext = useCallback((terminalId: string, worktreeId?: string) => {
