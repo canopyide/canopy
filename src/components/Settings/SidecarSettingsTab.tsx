@@ -36,14 +36,7 @@ function FaviconIcon({ url }: { url: string }) {
       return <Globe className="w-4 h-4" />;
     }
 
-    return (
-      <img
-        src={faviconUrl}
-        alt=""
-        className="w-4 h-4"
-        onError={() => setHasError(true)}
-      />
-    );
+    return <img src={faviconUrl} alt="" className="w-4 h-4" onError={() => setHasError(true)} />;
   } catch {
     return <Globe className="w-4 h-4" />;
   }
@@ -72,7 +65,7 @@ export function SidecarSettingsTab() {
 
     try {
       const url = new URL(newLinkUrl);
-      if (!['http:', 'https:'].includes(url.protocol)) {
+      if (!["http:", "https:"].includes(url.protocol)) {
         return;
       }
     } catch {
@@ -102,7 +95,7 @@ export function SidecarSettingsTab() {
 
     try {
       const url = new URL(editUrl);
-      if (!['http:', 'https:'].includes(url.protocol)) {
+      if (!["http:", "https:"].includes(url.protocol)) {
         return;
       }
     } catch {
