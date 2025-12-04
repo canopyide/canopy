@@ -3,37 +3,29 @@ import { useSidecarStore } from "@/store";
 import { SidecarToolbar } from "./SidecarToolbar";
 import { SidecarLaunchpad } from "./SidecarLaunchpad";
 import { SIDECAR_MIN_WIDTH, SIDECAR_MAX_WIDTH } from "@shared/types";
-import type { SidecarTab } from "@shared/types";
 
 export function SidecarDock() {
   const {
     width,
     activeTabId,
+    tabs,
     links,
-    isTabCreated,
-    markTabCreated,
     setActiveTab,
     setWidth,
     setOpen,
+    createTab,
+    closeTab,
+    markTabCreated,
   } = useSidecarStore();
   const placeholderRef = useRef<HTMLDivElement>(null);
   const [isResizing, setIsResizing] = useState(false);
-  const [showLaunchpad, setShowLaunchpad] = useState(true);
 
   const enabledLinks = useMemo(
     () => links.filter((l) => l.enabled).sort((a, b) => a.order - b.order),
     [links]
   );
 
-  const tabs: SidecarTab[] = useMemo(
-    () =>
-      enabledLinks.map((link) => ({
-        id: link.id,
-        url: link.url,
-        title: link.title,
-      })),
-    [enabledLinks]
-  );
+  const showLaunchpad = activeTabId === null || tabs.length === 0;
 
   const syncBounds = useCallback(() => {
     if (!placeholderRef.current || !activeTabId) return;
@@ -71,15 +63,8 @@ export function SidecarDock() {
 
   const handleTabClick = useCallback(
     async (tabId: string) => {
-      const link = enabledLinks.find((l) => l.id === tabId);
-      if (!link) return;
-
-      setShowLaunchpad(false);
-
-      if (!isTabCreated(tabId)) {
-        await window.electron.sidecar.create({ tabId, url: link.url });
-        markTabCreated(tabId);
-      }
+      const tab = tabs.find((t) => t.id === tabId);
+      if (!tab) return;
 
       setActiveTab(tabId);
 
@@ -96,7 +81,45 @@ export function SidecarDock() {
         });
       }
     },
-    [enabledLinks, isTabCreated, markTabCreated, setActiveTab]
+    [tabs, setActiveTab]
+  );
+
+  const handleTabClose = useCallback(
+    (tabId: string, e: React.MouseEvent) => {
+      e.stopPropagation();
+      closeTab(tabId);
+    },
+    [closeTab]
+  );
+
+  const handleNewTab = useCallback(() => {
+    setActiveTab(null);
+    window.electron.sidecar.hide();
+  }, [setActiveTab]);
+
+  const handleOpenUrl = useCallback(
+    async (url: string, title: string) => {
+      const tabId = createTab(url, title);
+      markTabCreated(tabId);
+
+      await window.electron.sidecar.create({ tabId, url });
+
+      requestAnimationFrame(() => {
+        if (placeholderRef.current) {
+          const rect = placeholderRef.current.getBoundingClientRect();
+          window.electron.sidecar.show({
+            tabId,
+            bounds: {
+              x: Math.round(rect.x),
+              y: Math.round(rect.y),
+              width: Math.round(rect.width),
+              height: Math.round(rect.height),
+            },
+          });
+        }
+      });
+    },
+    [createTab, markTabCreated]
   );
 
   const handleClose = useCallback(async () => {
@@ -161,40 +184,25 @@ export function SidecarDock() {
     };
   }, []);
 
-  useEffect(() => {
-    if (activeTabId && !showLaunchpad) {
-      const linkExists = enabledLinks.some((l) => l.id === activeTabId);
-      if (!linkExists) {
-        setShowLaunchpad(true);
-        setActiveTab("");
-      }
-    }
-  }, [activeTabId, enabledLinks, showLaunchpad, setActiveTab]);
-
-  const handleLaunchpadSelect = useCallback(
-    (linkId: string) => {
-      handleTabClick(linkId);
-    },
-    [handleTabClick]
-  );
-
   return (
-    <div className="flex flex-col h-full bg-zinc-900" style={{ width }}>
+    <div className="flex flex-col h-full bg-zinc-900 relative" style={{ width }}>
       <div
         className={`absolute left-0 top-0 bottom-0 w-1 cursor-ew-resize hover:bg-blue-500/50 transition-colors ${isResizing ? "bg-blue-500" : ""}`}
         onMouseDown={handleResizeStart}
       />
       <SidecarToolbar
         tabs={tabs}
-        activeTabId={showLaunchpad ? null : activeTabId}
+        activeTabId={activeTabId}
         onTabClick={handleTabClick}
+        onTabClose={handleTabClose}
+        onNewTab={handleNewTab}
         onClose={handleClose}
         onGoBack={handleGoBack}
         onGoForward={handleGoForward}
         onReload={handleReload}
       />
       {showLaunchpad ? (
-        <SidecarLaunchpad onSelectLink={handleLaunchpadSelect} />
+        <SidecarLaunchpad links={enabledLinks} onOpenUrl={handleOpenUrl} />
       ) : (
         <div ref={placeholderRef} className="flex-1 bg-zinc-950" id="sidecar-placeholder" />
       )}
