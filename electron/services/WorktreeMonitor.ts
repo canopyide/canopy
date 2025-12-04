@@ -31,6 +31,7 @@ export class WorktreeMonitor {
   private previousStateHash: string = "";
 
   private pollingTimer: NodeJS.Timeout | null = null;
+  private resumeTimer: NodeJS.Timeout | null = null;
   private pollingInterval: number = 2000;
 
   private isRunning: boolean = false;
@@ -161,6 +162,11 @@ export class WorktreeMonitor {
     logInfo("Stopping WorktreeMonitor", { id: this.id });
 
     this.stopPolling();
+
+    if (this.resumeTimer) {
+      clearTimeout(this.resumeTimer);
+      this.resumeTimer = null;
+    }
 
     for (const unsubscribe of this.prEventUnsubscribers) {
       unsubscribe();
@@ -508,17 +514,43 @@ export class WorktreeMonitor {
     if (!this.pollingEnabled) return;
     this.pollingEnabled = false;
     this.stopPolling();
+    if (this.resumeTimer) {
+      clearTimeout(this.resumeTimer);
+      this.resumeTimer = null;
+    }
     logDebug("WorktreeMonitor paused", { id: this.id });
   }
 
   /** Resume polling (used after system wake) */
   public resume(): void {
     if (this.pollingEnabled) return;
+
+    // Reset polling strategy to clear stale metrics from before sleep
+    // After sleep, lastOperationDuration may show absurd values from time drift
+    this.pollingStrategy.reset();
+
     this.pollingEnabled = true;
+
     if (this.isRunning && !this.pollingStrategy.isCircuitBreakerTripped()) {
-      this.scheduleNextPoll();
+      // Add random jitter (0-2000ms) to prevent thundering herd
+      // All worktrees waking at once can freeze the UI with disk I/O
+      const jitter = Math.random() * 2000;
+
+      logDebug("WorktreeMonitor resuming with jitter", {
+        id: this.id,
+        jitterMs: Math.round(jitter),
+      });
+
+      this.resumeTimer = setTimeout(() => {
+        this.resumeTimer = null;
+        // Verify still running (user might have stopped during jitter)
+        if (this.isRunning && this.pollingEnabled) {
+          this.scheduleNextPoll();
+        }
+      }, jitter);
+    } else {
+      logDebug("WorktreeMonitor resumed", { id: this.id });
     }
-    logDebug("WorktreeMonitor resumed", { id: this.id });
   }
 
   private stopPolling(): void {
