@@ -109,6 +109,18 @@ function createThrottledWriter(
               : "BACKGROUND";
       return { tierName, fps, isBurstMode, effectiveDelay, bufferSize: buffer.length };
     },
+    boost: () => {
+      // Activate burst mode so subsequent writes are fast
+      lastInputTime = Date.now();
+
+      // If we have pending data and a timer running, force a quick flush.
+      // This catches the case where data came in while backgrounded (long timer)
+      // and we want to show it NOW because the user clicked the tab.
+      if (timerId !== null) {
+        clearTimeout(timerId);
+        timerId = window.setTimeout(flush, INPUT_DEBOUNCE_MS);
+      }
+    },
   };
 }
 
@@ -461,6 +473,22 @@ class TerminalInstanceService {
     if (!managed) return;
     managed.getRefreshTier = provider;
     managed.throttledWriter.updateProvider(provider);
+  }
+
+  /**
+   * Boosts the refresh rate for a specific terminal.
+   * Call this when a terminal is focused or interacted with to ensure
+   * immediate rendering of any buffered background output.
+   */
+  boostRefreshRate(id: string): void {
+    const managed = this.instances.get(id);
+    if (!managed) return;
+
+    // Trigger the writer boost logic
+    managed.throttledWriter.boost();
+
+    // Also ensure WebGL is acquired if it was dropped in background
+    this.applyRendererPolicy(id, TerminalRefreshTier.BURST);
   }
 
   addExitListener(id: string, cb: (exitCode: number) => void): () => void {

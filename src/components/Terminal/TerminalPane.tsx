@@ -39,6 +39,7 @@ import { useErrorStore, useTerminalStore, getTerminalRefreshTier, type RetryActi
 import { useContextInjection } from "@/hooks/useContextInjection";
 import type { AgentState } from "@/types";
 import { errorsClient } from "@/clients";
+import { terminalInstanceService } from "@/services/TerminalInstanceService";
 
 export type { TerminalType };
 
@@ -292,6 +293,12 @@ function TerminalPaneComponent({
     return getTerminalRefreshTier(terminal, isFocused);
   }, [id, isFocused, getTerminal]);
 
+  // Handler for container clicks - calls focus and boosts refresh rate
+  const handleClick = useCallback(() => {
+    onFocus();
+    terminalInstanceService.boostRefreshRate(id);
+  }, [onFocus, id]);
+
   const isWorking = agentState === "working";
 
   return (
@@ -312,7 +319,7 @@ function TerminalPaneComponent({
 
         isExited && "opacity-75 grayscale"
       )}
-      onClick={onFocus}
+      onClick={handleClick}
       onFocus={onFocus}
       onKeyDown={handleKeyDown}
       tabIndex={0}
