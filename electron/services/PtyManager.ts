@@ -37,10 +37,7 @@ export class PtyManager extends EventEmitter {
     super();
     this.registry = new TerminalRegistry();
     this.agentStateService = new AgentStateService();
-    this.floodCheckInterval = setInterval(
-      () => this.checkFlooding(),
-      FLOOD_CHECK_INTERVAL_MS
-    );
+    this.floodCheckInterval = setInterval(() => this.checkFlooding(), FLOOD_CHECK_INTERVAL_MS);
   }
 
   /**

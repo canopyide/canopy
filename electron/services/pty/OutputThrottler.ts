@@ -229,9 +229,7 @@ export class OutputThrottler {
           // Process may already be dead
         }
 
-        this.emitFn(
-          `\r\n\x1b[32m[CANOPY] Output rate normalized. Process resumed.\x1b[0m\r\n`
-        );
+        this.emitFn(`\r\n\x1b[32m[CANOPY] Output rate normalized. Process resumed.\x1b[0m\r\n`);
       }
     }
 

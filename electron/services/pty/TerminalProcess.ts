@@ -224,11 +224,9 @@ export class TerminalProcess {
     };
 
     // Create output throttler
-    this.throttler = new OutputThrottler(
-      id,
-      (data) => this.emitData(data),
-      { title: options.title }
-    );
+    this.throttler = new OutputThrottler(id, (data) => this.emitData(data), {
+      title: options.title,
+    });
 
     // Set up PTY event handlers
     this.setupPtyHandlers(ptyProcess);
