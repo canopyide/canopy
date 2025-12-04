@@ -15,6 +15,7 @@ import {
 import type { RetryAction } from "@/store";
 import { appClient } from "@/clients";
 import type { CliAvailability, AgentSettings } from "@shared/types";
+import { useTerminalPerformance } from "@/hooks/useTerminalPerformance";
 
 interface AppLayoutProps {
   children?: ReactNode;
@@ -41,6 +42,8 @@ export function AppLayout({
   agentAvailability,
   agentSettings,
 }: AppLayoutProps) {
+  useTerminalPerformance();
+
   const [sidebarWidth, setSidebarWidth] = useState(DEFAULT_SIDEBAR_WIDTH);
 
   const isFocusMode = useFocusStore((state) => state.isFocusMode);
