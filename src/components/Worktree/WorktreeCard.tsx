@@ -379,6 +379,18 @@ export function WorktreeCard({
           </div>
 
           <div className="flex items-center gap-0.5 -mt-0.5">
+            <button
+              onClick={(e) => {
+                e.stopPropagation();
+                onCopyTree();
+              }}
+              className="p-1.5 rounded hover:bg-white/10 text-gray-400 hover:text-canopy-accent transition-colors mr-1"
+              title="Copy Context"
+              aria-label="Copy Context"
+            >
+              <Copy className="w-3.5 h-3.5" />
+            </button>
+
             <DropdownMenu>
               <DropdownMenuTrigger asChild>
                 <button
@@ -470,7 +482,7 @@ export function WorktreeCard({
 
         {/* PR/Issue Badges Row - Dedicated second row */}
         {(worktree.prNumber || worktree.issueNumber) && (
-          <div className="flex items-center gap-2 mt-1 ml-9">
+          <div className="flex items-center gap-2 mt-2">
             {worktree.prNumber && (
               <button
                 onClick={(e) => {
@@ -510,7 +522,7 @@ export function WorktreeCard({
 
         {/* File Changes Preview - Only show if we have changes OR if expanded */}
         {worktree.worktreeChanges && (hasChanges || isExpanded) && (
-          <div className="mt-3 ml-9">
+          <div className="mt-2">
             {hasChanges ? (
               <FileChangeList
                 changes={worktree.worktreeChanges.changes}
@@ -525,7 +537,7 @@ export function WorktreeCard({
 
         {/* Footer Row: Stats - Only render when there's content to show */}
         {showFooter && (
-          <div className="flex items-center gap-4 mt-3 ml-9 text-xs text-gray-400 font-mono">
+          <div className="flex items-center gap-4 mt-2 text-xs text-gray-400 font-mono">
             {terminalCounts.total > 0 && (
               <div className="flex items-center gap-1">
                 <Terminal className="w-2.5 h-2.5" />
@@ -577,7 +589,7 @@ export function WorktreeCard({
         >
           <div
             className={cn(
-              "pt-3 mt-3 space-y-2 ml-9",
+              "pt-2 mt-2 space-y-2",
               (hasChanges || showFooter) && "border-t border-border/40"
             )}
           >
