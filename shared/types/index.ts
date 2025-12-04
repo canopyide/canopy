@@ -239,6 +239,9 @@ export type {
 // Sidecar types - browser dock
 export type {
   SidecarLayoutMode,
+  SidecarLinkType,
+  SidecarLink,
+  LinkTemplate,
   SidecarTab,
   SidecarBounds,
   SidecarNavEvent,
@@ -249,6 +252,7 @@ export type {
 } from "./sidecar.js";
 
 export {
+  LINK_TEMPLATES,
   DEFAULT_SIDECAR_TABS,
   SIDECAR_MIN_WIDTH,
   SIDECAR_MAX_WIDTH,
