@@ -3,6 +3,7 @@ import { FitAddon } from "@xterm/addon-fit";
 import { WebglAddon } from "@xterm/addon-webgl";
 import { terminalClient } from "@/clients";
 import { TerminalRefreshTier } from "@/types";
+import { InputTracker, VT100_FULL_CLEAR } from "./clearCommandDetection";
 
 type RefreshTierProvider = () => TerminalRefreshTier;
 
@@ -121,6 +122,14 @@ function createThrottledWriter(
         timerId = window.setTimeout(flush, INPUT_DEBOUNCE_MS);
       }
     },
+    clear: () => {
+      // Discard pending buffer without writing it (prevents ghost echoes after clear)
+      if (timerId !== null) {
+        clearTimeout(timerId);
+        timerId = null;
+      }
+      buffer = "";
+    },
   };
 }
 
@@ -198,6 +207,7 @@ class TerminalInstanceService {
     hostElement.style.flexDirection = "column";
 
     const throttledWriter = createThrottledWriter(terminal, getRefreshTier);
+    const inputTracker = new InputTracker();
 
     const listeners: Array<() => void> = [];
     const exitSubscribers = new Set<(exitCode: number) => void>();
@@ -216,6 +226,14 @@ class TerminalInstanceService {
     listeners.push(unsubExit);
 
     const inputDisposable = terminal.onData((data) => {
+      // Check for clear command (special handling for AI agents)
+      if (inputTracker.process(data)) {
+        // 1. Clear pending output buffer (prevent ghost echoes)
+        throttledWriter.clear();
+        // 2. Force clear visual terminal state immediately
+        terminal.write(VT100_FULL_CLEAR);
+      }
+
       throttledWriter.notifyInput();
       terminalClient.write(id, data);
     });
