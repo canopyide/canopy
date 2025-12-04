@@ -64,8 +64,10 @@ export class CommandDetector {
       if (envMatch) {
         let value = envMatch[2];
         // Strip surrounding quotes if present (string-argv preserves them)
-        if ((value.startsWith('"') && value.endsWith('"')) ||
-            (value.startsWith("'") && value.endsWith("'"))) {
+        if (
+          (value.startsWith('"') && value.endsWith('"')) ||
+          (value.startsWith("'") && value.endsWith("'"))
+        ) {
           value = value.slice(1, -1);
         }
         env[envMatch[1]] = value;
