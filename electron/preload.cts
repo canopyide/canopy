@@ -134,6 +134,7 @@ const CHANNELS = {
   SYSTEM_GET_HOME_DIR: "system:get-home-dir",
   SYSTEM_GET_CLI_AVAILABILITY: "system:get-cli-availability",
   SYSTEM_REFRESH_CLI_AVAILABILITY: "system:refresh-cli-availability",
+  SYSTEM_WAKE: "system:wake",
 
   // PR detection channels
   PR_DETECTED: "pr:detected",
@@ -417,6 +418,13 @@ const api: ElectronAPI = {
     getCliAvailability: () => _typedInvoke(CHANNELS.SYSTEM_GET_CLI_AVAILABILITY),
 
     refreshCliAvailability: () => _typedInvoke(CHANNELS.SYSTEM_REFRESH_CLI_AVAILABILITY),
+
+    onWake: (callback: (data: { sleepDuration: number; timestamp: number }) => void) => {
+      const handler = (_event: Electron.IpcRendererEvent, data: { sleepDuration: number; timestamp: number }) =>
+        callback(data);
+      ipcRenderer.on(CHANNELS.SYSTEM_WAKE, handler);
+      return () => ipcRenderer.removeListener(CHANNELS.SYSTEM_WAKE, handler);
+    },
   },
 
   // App State API

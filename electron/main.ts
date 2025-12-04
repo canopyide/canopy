@@ -286,6 +286,8 @@ async function createWindow(): Promise<void> {
 
   // Power management: pause services during sleep to prevent time-drift crashes
   console.log("[MAIN] Registering power monitor handlers...");
+  let suspendTime: number | null = null;
+
   powerMonitor.on("suspend", () => {
     console.log("[MAIN] System suspending. Pausing health checks and monitors.");
 
@@ -297,8 +299,13 @@ async function createWindow(): Promise<void> {
 
     if (ptyClient) {
       ptyClient.pauseHealthCheck();
+      // Proactively pause all PTY processes to prevent buffer overflow during sleep
+      ptyClient.pauseAll();
     }
     worktreeService.setPollingEnabled(false);
+
+    // Record suspend time to calculate sleep duration on wake
+    suspendTime = Date.now();
   });
 
   powerMonitor.on("resume", () => {
@@ -314,10 +321,22 @@ async function createWindow(): Promise<void> {
       resumeTimeout = null;
       try {
         if (ptyClient) {
+          // Resume PTY processes incrementally before resuming health checks
+          ptyClient.resumeAll();
           ptyClient.resumeHealthCheck();
         }
         worktreeService.setPollingEnabled(true);
         void worktreeService.refresh();
+
+        // Notify renderer that system has woken
+        const sleepDuration = suspendTime ? Date.now() - suspendTime : 0;
+        BrowserWindow.getAllWindows().forEach((win) => {
+          win.webContents.send(CHANNELS.SYSTEM_WAKE, {
+            sleepDuration,
+            timestamp: Date.now(),
+          });
+        });
+        suspendTime = null;
       } catch (error) {
         console.error("[MAIN] Error during resume:", error);
       }

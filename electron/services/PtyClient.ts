@@ -529,6 +529,16 @@ export class PtyClient extends EventEmitter {
     });
   }
 
+  /** Pause all PTY processes during system sleep to prevent buffer overflow */
+  pauseAll(): void {
+    this.send({ type: "pause-all" });
+  }
+
+  /** Resume all PTY processes after system wake with incremental stagger */
+  resumeAll(): void {
+    this.send({ type: "resume-all" });
+  }
+
   /** Pause health check during system sleep to prevent time-drift false positives */
   pauseHealthCheck(): void {
     if (this.isHealthCheckPaused) return;

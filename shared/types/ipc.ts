@@ -274,6 +274,14 @@ export interface SystemOpenPathPayload {
   path: string;
 }
 
+/** System wake event payload */
+export interface SystemWakePayload {
+  /** Duration of sleep in milliseconds */
+  sleepDuration: number;
+  /** Timestamp when the system woke */
+  timestamp: number;
+}
+
 /** CLI availability status for AI agents */
 export interface CliAvailability {
   /** Whether the Claude CLI is available */
@@ -1385,6 +1393,9 @@ export interface IpcEventMap {
   // Project events
   "project:on-switch": Project;
 
+  // System events
+  "system:wake": SystemWakePayload;
+
   // Sidecar events
   "sidecar:nav-event": import("./sidecar.js").SidecarNavEvent;
 
@@ -1485,6 +1496,7 @@ export interface ElectronAPI {
     getHomeDir(): Promise<string>;
     getCliAvailability(): Promise<CliAvailability>;
     refreshCliAvailability(): Promise<CliAvailability>;
+    onWake(callback: (data: SystemWakePayload) => void): () => void;
   };
   app: {
     getState(): Promise<AppState>;

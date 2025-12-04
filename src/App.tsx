@@ -42,6 +42,7 @@ import {
   projectClient,
   errorsClient,
   devServerClient,
+  worktreeClient,
 } from "@/clients";
 import { formatBytes } from "@/lib/formatBytes";
 import { cn } from "@/lib/utils";
@@ -539,6 +540,29 @@ function App() {
   useEffect(() => {
     if (!electronAvailable) return;
     const cleanup = setupTerminalStoreListeners();
+    return cleanup;
+  }, [electronAvailable]);
+
+  // Handle system wake events for renderer-side re-hydration
+  useEffect(() => {
+    if (!electronAvailable) return;
+
+    const cleanup = systemClient.onWake(({ sleepDuration }) => {
+      console.log(`[App] System woke after ${Math.round(sleepDuration / 1000)}s sleep`);
+
+      // Dispatch event to notify terminal components to refresh WebGL contexts
+      window.dispatchEvent(new CustomEvent("canopy:system-wake"));
+
+      // If sleep was long (>5min), refresh worktree status
+      const LONG_SLEEP_THRESHOLD_MS = 5 * 60 * 1000;
+      if (sleepDuration > LONG_SLEEP_THRESHOLD_MS) {
+        console.log("[App] Long sleep detected, refreshing worktree status");
+        worktreeClient.refresh().catch((err) => {
+          console.warn("[App] Failed to refresh worktrees after wake:", err);
+        });
+      }
+    });
+
     return cleanup;
   }, [electronAvailable]);
 
