@@ -90,6 +90,7 @@ export class WorktreeService {
   private gitService: GitService | null = null;
   private rootPath: string | null = null;
   private prServiceInitialized: boolean = false;
+  private pollingEnabled: boolean = true;
 
   public async loadProject(rootPath: string): Promise<void> {
     logInfo("Loading project worktrees", { rootPath });
@@ -294,6 +295,11 @@ export class WorktreeService {
             // Start monitoring
             await monitor.start();
             this.monitors.set(wt.id, monitor);
+
+            // If polling is disabled (e.g., during system sleep), pause the new monitor
+            if (!this.pollingEnabled) {
+              monitor.pause();
+            }
           } catch (error) {
             // If monitor startup fails, clean up the event bus subscription
             unsubscribe();
@@ -389,6 +395,32 @@ export class WorktreeService {
       // Refresh all
       const promises = Array.from(this.monitors.values()).map((monitor) => monitor.refresh());
       await Promise.all(promises);
+    }
+  }
+
+  /**
+   * Enable or disable polling for all monitors.
+   * Used during system sleep/wake to prevent operations while I/O is unavailable.
+   *
+   * @param enabled - Whether polling should be enabled
+   */
+  public setPollingEnabled(enabled: boolean): void {
+    if (this.pollingEnabled === enabled) return;
+
+    this.pollingEnabled = enabled;
+
+    if (!enabled) {
+      // Stop all monitors from polling
+      for (const monitor of this.monitors.values()) {
+        monitor.pause();
+      }
+      logInfo("WorktreeService polling disabled");
+    } else {
+      // Resume all monitors
+      for (const monitor of this.monitors.values()) {
+        monitor.resume();
+      }
+      logInfo("WorktreeService polling enabled");
     }
   }
 

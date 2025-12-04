@@ -19,11 +19,13 @@ interface ManagedTerminal {
   keyHandlerInstalled: boolean;
   lastAttachAt: number;
   lastDetachAt: number;
+  webglRecoveryAttempts: number;
 }
 
 const BURST_MODE_WINDOW_MS = 500;
 // Debounce to catch split PTY packets (Clear + Redraw) before rendering
 const INPUT_DEBOUNCE_MS = 8;
+const MAX_WEBGL_RECOVERY_ATTEMPTS = 3;
 
 function createThrottledWriter(
   terminal: Terminal,
@@ -223,6 +225,7 @@ class TerminalInstanceService {
       keyHandlerInstalled: false,
       lastAttachAt: 0,
       lastDetachAt: 0,
+      webglRecoveryAttempts: 0,
     };
 
     this.instances.set(id, managed);
@@ -387,10 +390,51 @@ class TerminalInstanceService {
     try {
       const webglAddon = new WebglAddon();
       webglAddon.onContextLoss(() => {
-        console.warn(`[XtermAdapter] ⚠️ WebGL Context LOST for ${id} (Too many active contexts?)`);
+        console.warn(`[XtermAdapter] WebGL context lost for ${id}. Attempting recovery...`);
         webglAddon.dispose();
         managed.webglAddon = undefined;
         this.webglLru = this.webglLru.filter((existing) => existing !== id);
+
+        // Auto-recovery: wait for GPU to stabilize, then attempt to restore
+        setTimeout(() => {
+          // Verify terminal still exists (not destroyed)
+          if (!this.instances.has(id)) {
+            console.log(`[XtermAdapter] Terminal ${id} destroyed, skipping WebGL recovery`);
+            return;
+          }
+
+          const currentManaged = this.instances.get(id);
+          if (!currentManaged || !currentManaged.terminal.element) {
+            console.log(`[XtermAdapter] Terminal ${id} detached, skipping WebGL recovery`);
+            return;
+          }
+
+          // Force canvas refresh as fallback
+          try {
+            currentManaged.terminal.refresh(0, currentManaged.terminal.rows - 1);
+            console.log(`[XtermAdapter] Canvas fallback active for ${id}`);
+
+            // Attempt to re-acquire WebGL if terminal is visible/focused and under retry limit
+            const tier = currentManaged.getRefreshTier();
+            if (
+              (tier === TerminalRefreshTier.FOCUSED || tier === TerminalRefreshTier.VISIBLE) &&
+              currentManaged.webglRecoveryAttempts < MAX_WEBGL_RECOVERY_ATTEMPTS
+            ) {
+              currentManaged.webglRecoveryAttempts++;
+              console.log(
+                `[XtermAdapter] Attempting WebGL recovery for ${id} (attempt ${currentManaged.webglRecoveryAttempts}/${MAX_WEBGL_RECOVERY_ATTEMPTS})`
+              );
+              this.acquireWebgl(id, currentManaged);
+            } else if (currentManaged.webglRecoveryAttempts >= MAX_WEBGL_RECOVERY_ATTEMPTS) {
+              console.warn(
+                `[XtermAdapter] Max WebGL recovery attempts reached for ${id}, staying in canvas mode`
+              );
+            }
+          } catch (error) {
+            console.error(`[XtermAdapter] Recovery failed for ${id}:`, error);
+            // Terminal continues with canvas renderer
+          }
+        }, 1000);
       });
       managed.terminal.loadAddon(webglAddon);
       managed.webglAddon = webglAddon;

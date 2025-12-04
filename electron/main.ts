@@ -1,4 +1,4 @@
-import { app, BrowserWindow, ipcMain, dialog } from "electron";
+import { app, BrowserWindow, ipcMain, dialog, powerMonitor } from "electron";
 import path from "path";
 import { fileURLToPath } from "url";
 import os from "os";
@@ -48,6 +48,7 @@ let eventBufferUnsubscribe: (() => void) | null = null;
 const DEFAULT_TERMINAL_ID = "default";
 
 let isQuitting = false;
+let resumeTimeout: NodeJS.Timeout | null = null;
 
 const gotTheLock = app.requestSingleInstanceLock();
 
@@ -277,6 +278,47 @@ async function createWindow(): Promise<void> {
     ipcMain.removeAllListeners(CHANNELS.EVENT_INSPECTOR_UNSUBSCRIBE);
   };
   console.log("[MAIN] EventBuffer initialized and events forwarding to renderer (when subscribed)");
+
+  // Power management: pause services during sleep to prevent time-drift crashes
+  console.log("[MAIN] Registering power monitor handlers...");
+  powerMonitor.on("suspend", () => {
+    console.log("[MAIN] System suspending. Pausing health checks and monitors.");
+
+    // Clear any pending resume timeout from rapid suspend/resume cycles
+    if (resumeTimeout) {
+      clearTimeout(resumeTimeout);
+      resumeTimeout = null;
+    }
+
+    if (ptyClient) {
+      ptyClient.pauseHealthCheck();
+    }
+    worktreeService.setPollingEnabled(false);
+  });
+
+  powerMonitor.on("resume", () => {
+    console.log("[MAIN] System resuming. Restoring services after stabilization delay.");
+
+    // Clear any existing timeout to prevent stale resume operations
+    if (resumeTimeout) {
+      clearTimeout(resumeTimeout);
+    }
+
+    // 2-second delay allows OS network/disk subsystems to stabilize
+    resumeTimeout = setTimeout(() => {
+      resumeTimeout = null;
+      try {
+        if (ptyClient) {
+          ptyClient.resumeHealthCheck();
+        }
+        worktreeService.setPollingEnabled(true);
+        void worktreeService.refresh();
+      } catch (error) {
+        console.error("[MAIN] Error during resume:", error);
+      }
+    }, 2000);
+  });
+  console.log("[MAIN] Power monitor handlers registered");
 
   console.log("[MAIN] All services initialized, loading renderer...");
   if (process.env.NODE_ENV === "development") {
