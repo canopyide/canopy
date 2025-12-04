@@ -263,7 +263,7 @@
     inset: 0;
     background-image: url("./assets/noise.png");
     background-repeat: repeat;
-    opacity: 0.03;
+    opacity: 0.015;
     pointer-events: none;
     z-index: 0;
   }
