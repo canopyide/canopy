@@ -4,7 +4,14 @@ import { Sidebar } from "./Sidebar";
 import { TerminalDock } from "./TerminalDock";
 import { DiagnosticsDock } from "../Diagnostics";
 import { ErrorBoundary } from "../ErrorBoundary";
-import { useFocusStore, useDiagnosticsStore, useErrorStore, type PanelState } from "@/store";
+import { SidecarDock } from "../Sidecar";
+import {
+  useFocusStore,
+  useDiagnosticsStore,
+  useErrorStore,
+  useSidecarStore,
+  type PanelState,
+} from "@/store";
 import type { RetryAction } from "@/store";
 import { appClient } from "@/clients";
 import type { CliAvailability, AgentSettings } from "@shared/types";
@@ -50,6 +57,10 @@ export function AppLayout({
   const diagnosticsOpen = useDiagnosticsStore((state) => state.isOpen);
   const setDiagnosticsOpen = useDiagnosticsStore((state) => state.setOpen);
   const openDiagnosticsDock = useDiagnosticsStore((state) => state.openDock);
+
+  const sidecarOpen = useSidecarStore((state) => state.isOpen);
+  const sidecarLayoutMode = useSidecarStore((state) => state.layoutMode);
+  const updateSidecarLayoutMode = useSidecarStore((state) => state.updateLayoutMode);
 
   const errorCount = useErrorStore((state) => state.errors.filter((e) => !e.dismissed).length);
 
@@ -176,6 +187,15 @@ export function AppLayout({
     };
   }, [handleToggleFocusMode]);
 
+  useEffect(() => {
+    const handleResize = () => {
+      updateSidecarLayoutMode(window.innerWidth, isFocusMode ? 0 : sidebarWidth);
+    };
+    window.addEventListener("resize", handleResize);
+    handleResize();
+    return () => window.removeEventListener("resize", handleResize);
+  }, [sidebarWidth, isFocusMode, updateSidecarLayoutMode]);
+
   const handleSidebarResize = useCallback((newWidth: number) => {
     const clampedWidth = Math.min(Math.max(newWidth, MIN_SIDEBAR_WIDTH), MAX_SIDEBAR_WIDTH);
     setSidebarWidth(clampedWidth);
@@ -244,7 +264,7 @@ export function AppLayout({
           )}
           <ErrorBoundary variant="section" componentName="MainContent">
             <main
-              className="flex-1 flex flex-col overflow-hidden bg-canopy-bg"
+              className="flex-1 flex flex-col overflow-hidden bg-canopy-bg relative"
               style={{
                 flex: 1,
                 display: "flex",
@@ -258,8 +278,24 @@ export function AppLayout({
               <ErrorBoundary variant="section" componentName="TerminalDock">
                 <TerminalDock />
               </ErrorBoundary>
+              {/* Overlay mode - sidecar floats over content */}
+              {sidecarOpen && sidecarLayoutMode === "overlay" && (
+                <ErrorBoundary variant="section" componentName="SidecarDock">
+                  <div className="absolute right-0 top-0 bottom-0 z-50 shadow-2xl border-l border-zinc-800">
+                    <SidecarDock />
+                  </div>
+                </ErrorBoundary>
+              )}
             </main>
           </ErrorBoundary>
+          {/* Push mode - sidecar is part of flex layout */}
+          {sidecarOpen && sidecarLayoutMode === "push" && (
+            <ErrorBoundary variant="section" componentName="SidecarDock">
+              <div className="border-l border-zinc-800 flex-shrink-0">
+                <SidecarDock />
+              </div>
+            </ErrorBoundary>
+          )}
         </div>
         {/* Unified diagnostics dock replaces LogsPanel, EventInspectorPanel, and ProblemsPanel */}
         <ErrorBoundary variant="section" componentName="DiagnosticsDock">

@@ -11,6 +11,7 @@ import { PtyClient, disposePtyClient } from "./services/PtyClient.js";
 import { DevServerManager } from "./services/DevServerManager.js";
 import { worktreeService } from "./services/WorktreeService.js";
 import { CliAvailabilityService } from "./services/CliAvailabilityService.js";
+import { SidecarManager } from "./services/SidecarManager.js";
 import { createWindowWithState } from "./windowState.js";
 import { setLoggerWindow } from "./utils/logger.js";
 import { EventBuffer } from "./services/EventBuffer.js";
@@ -37,6 +38,7 @@ let mainWindow: BrowserWindow | null = null;
 let ptyClient: PtyClient | null = null;
 let devServerManager: DevServerManager | null = null;
 let cliAvailabilityService: CliAvailabilityService | null = null;
+let sidecarManager: SidecarManager | null = null;
 let cleanupIpcHandlers: (() => void) | null = null;
 let cleanupErrorHandlers: (() => void) | null = null;
 let eventBuffer: EventBuffer | null = null;
@@ -221,6 +223,10 @@ async function createWindow(): Promise<void> {
   eventBuffer = new EventBuffer(1000);
   eventBuffer.start();
 
+  console.log("[MAIN] Initializing SidecarManager...");
+  sidecarManager = new SidecarManager(mainWindow);
+  console.log("[MAIN] SidecarManager initialized successfully");
+
   // IMPORTANT: Register handlers BEFORE loading renderer to avoid race conditions
   console.log("[MAIN] Registering IPC handlers...");
   cleanupIpcHandlers = registerIpcHandlers(
@@ -229,7 +235,8 @@ async function createWindow(): Promise<void> {
     devServerManager,
     worktreeService,
     eventBuffer,
-    cliAvailabilityService
+    cliAvailabilityService,
+    sidecarManager
   );
   console.log("[MAIN] IPC handlers registered successfully");
 
@@ -318,6 +325,10 @@ async function createWindow(): Promise<void> {
       devServerManager = null;
     }
     await disposeTranscriptManager();
+    if (sidecarManager) {
+      sidecarManager.destroy();
+      sidecarManager = null;
+    }
     if (ptyClient) {
       ptyClient.dispose();
       ptyClient = null;
