@@ -253,6 +253,32 @@ export const EVENT_META: Record<keyof CanopyEventMap, EventMetadata> = {
     requiresTimestamp: false,
     description: "Terminal activity state changed (busy/idle via process tree)",
   },
+  "terminal:backgrounded": {
+    category: "agent",
+    requiresContext: false,
+    requiresTimestamp: true,
+    description: "Terminal backgrounded during project switch (kept alive but hidden)",
+  },
+  "terminal:foregrounded": {
+    category: "agent",
+    requiresContext: false,
+    requiresTimestamp: true,
+    description: "Terminal foregrounded during project switch (visible again)",
+  },
+
+  // Server multi-tenancy events
+  "server:backgrounded": {
+    category: "server",
+    requiresContext: false,
+    requiresTimestamp: true,
+    description: "Dev server backgrounded during project switch (kept running but hidden)",
+  },
+  "server:foregrounded": {
+    category: "server",
+    requiresContext: false,
+    requiresTimestamp: true,
+    description: "Dev server foregrounded during project switch (visible again)",
+  },
 
   // Task events
   "task:created": {
@@ -419,7 +445,7 @@ export type CanopyEventMap = {
   "watcher:change": WatcherChangePayload;
 
   "server:update": WithContext<DevServerState>;
-  "server:error": WithContext<{ error: string; errorMessage?: string }>;
+  "server:error": WithContext<{ error: string; errorMessage?: string; projectId?: string }>;
 
   "sys:pr:detected": {
     worktreeId: string;
@@ -562,6 +588,46 @@ export type CanopyEventMap = {
     source: "process-tree" | "data-flow";
   };
 
+  /**
+   * Emitted when a terminal is backgrounded during project switch.
+   * The process stays alive but is hidden from the UI.
+   */
+  "terminal:backgrounded": {
+    id: string;
+    projectId: string;
+    timestamp: number;
+  };
+
+  /**
+   * Emitted when a terminal is foregrounded during project switch.
+   * The terminal becomes visible again in the UI.
+   */
+  "terminal:foregrounded": {
+    id: string;
+    projectId: string;
+    timestamp: number;
+  };
+
+  /**
+   * Emitted when a dev server is backgrounded during project switch.
+   * The server stays running but is hidden from the UI.
+   */
+  "server:backgrounded": {
+    worktreeId: string;
+    projectId: string;
+    timestamp: number;
+  };
+
+  /**
+   * Emitted when a dev server is foregrounded during project switch.
+   * The server becomes visible again in the UI.
+   */
+  "server:foregrounded": {
+    worktreeId: string;
+    projectId: string;
+    timestamp: number;
+  };
+
   // Task Lifecycle Events (Future-proof for task management)
 
   /**
@@ -653,6 +719,10 @@ export const ALL_EVENT_TYPES: Array<keyof CanopyEventMap> = [
   "terminal:trashed",
   "terminal:restored",
   "terminal:activity",
+  "terminal:backgrounded",
+  "terminal:foregrounded",
+  "server:backgrounded",
+  "server:foregrounded",
   "task:created",
   "task:assigned",
   "task:state-changed",

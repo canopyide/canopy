@@ -192,10 +192,12 @@ export function registerProjectHandlers(deps: HandlerDependencies): () => void {
 
     console.log("[ProjectSwitch] Cleaning up previous project state...");
 
+    // Pass projectId to PtyManager and DevServerManager for multi-tenancy
+    // (they background instead of kill processes from other projects)
     const cleanupResults = await Promise.allSettled([
       deps.worktreeService?.onProjectSwitch() ?? Promise.resolve(),
-      deps.devServerManager?.onProjectSwitch() ?? Promise.resolve(),
-      Promise.resolve(ptyManager.onProjectSwitch()),
+      deps.devServerManager?.onProjectSwitch(projectId) ?? Promise.resolve(),
+      Promise.resolve(ptyManager.onProjectSwitch(projectId)),
       Promise.resolve(logBuffer.onProjectSwitch()),
       Promise.resolve(deps.eventBuffer?.onProjectSwitch()),
     ]);

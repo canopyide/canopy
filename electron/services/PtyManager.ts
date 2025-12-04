@@ -27,6 +27,7 @@ export interface PtySpawnOptions {
   type?: TerminalType;
   title?: string;
   worktreeId?: string;
+  projectId?: string; // Which project owns this terminal (for multi-tenancy)
 }
 
 const OUTPUT_BUFFER_SIZE = 2000;
@@ -37,6 +38,7 @@ const DEFAULT_MAX_QUEUE_BYTES = 1024 * 1024;
 
 interface TerminalInfo {
   id: string;
+  projectId?: string; // Which project owns this terminal (for multi-tenancy)
   ptyProcess: pty.IPty;
   cwd: string;
   shell: string;
@@ -101,6 +103,7 @@ export class PtyManager extends EventEmitter {
   private trashTimeouts: Map<string, NodeJS.Timeout> = new Map();
   private activityMonitors: Map<string, ActivityMonitor> = new Map();
   private ptyPool: PtyPool | null = null;
+  private lastKnownProjectId: string | null = null;
 
   private readonly TRASH_TTL_MS = 120 * 1000;
 
@@ -642,6 +645,7 @@ export class PtyManager extends EventEmitter {
 
     const terminal: TerminalInfo = {
       id,
+      projectId: options.projectId, // Store project ID for multi-tenancy
       ptyProcess,
       cwd: options.cwd,
       shell,
@@ -1171,21 +1175,95 @@ export class PtyManager extends EventEmitter {
   }
 
   /**
-   * Handle project switch - kill all terminals and reset state.
-   * This ensures no terminals from the previous project leak into the new project.
-   * Reuses existing dispose() logic to ensure complete cleanup.
+   * Handle project switch - filter terminals by project instead of killing.
+   * Terminals from other projects are "backgrounded" (kept alive but hidden from UI).
+   * @param newProjectId - The ID of the project being switched to
    */
-  onProjectSwitch(): void {
-    console.log("Handling project switch in PtyManager");
+  onProjectSwitch(newProjectId: string): void {
+    console.log(`[PtyManager] Switching to project: ${newProjectId}`);
 
-    // Use dispose() to ensure complete cleanup (stops detectors, clears buffers, kills PTYs)
-    // This reuses the existing teardown logic that properly cleans up all resources
-    this.dispose();
+    let backgrounded = 0;
+    let foregrounded = 0;
 
-    // Note: dispose() already clears terminals and trash timeouts
-    // No need to duplicate that logic here
+    for (const [id, terminal] of this.terminals) {
+      // For legacy terminals without projectId, use lastKnownProjectId (not newProjectId)
+      // This prevents legacy terminals from appearing in every project they don't belong to
+      const terminalProjectId = terminal.projectId || this.lastKnownProjectId;
 
-    console.log("PtyManager state reset for project switch");
+      // If still no projectId (very first switch), background the terminal to be safe
+      if (!terminalProjectId || terminalProjectId !== newProjectId) {
+        // Terminal belongs to different project (or unknown) - background it
+        backgrounded++;
+        events.emit("terminal:backgrounded", {
+          id,
+          projectId: terminalProjectId || "unknown",
+          timestamp: Date.now(),
+        });
+
+        // Enable buffering mode and stop detectors to reduce overhead for hidden terminals
+        this.setBuffering(id, true);
+        if (terminal.processDetector) {
+          terminal.processDetector.stop();
+        }
+        const monitor = this.activityMonitors.get(id);
+        if (monitor) {
+          monitor.dispose();
+          this.activityMonitors.delete(id);
+        }
+      } else {
+        // Terminal belongs to current project - foreground it
+        foregrounded++;
+        events.emit("terminal:foregrounded", {
+          id,
+          projectId: terminalProjectId,
+          timestamp: Date.now(),
+        });
+
+        // Disable buffering and flush any queued output
+        this.setBuffering(id, false);
+        this.flushBuffer(id);
+
+        // Restart detectors/monitors if they were stopped
+        if (!terminal.processDetector && terminal.ptyProcess.pid !== undefined) {
+          const detector = new ProcessDetector(id, terminal.ptyProcess.pid, (result) => {
+            this.handleAgentDetection(id, result);
+          });
+          terminal.processDetector = detector;
+          detector.start();
+        }
+        if (terminal.agentId && !this.activityMonitors.has(id)) {
+          const monitor = new ActivityMonitor(id, (termId, state) => {
+            this.emitActivityState(termId, state);
+          });
+          this.activityMonitors.set(id, monitor);
+        }
+      }
+    }
+
+    // Update lastKnownProjectId for future legacy terminals
+    this.lastKnownProjectId = newProjectId;
+
+    console.log(
+      `[PtyManager] Project switch complete: ${foregrounded} foregrounded, ${backgrounded} backgrounded`
+    );
+  }
+
+  /**
+   * Get terminals for a specific project.
+   * Uses same classification logic as onProjectSwitch for consistency.
+   * @param projectId - The project ID to filter by
+   * @returns Array of terminal IDs belonging to the project
+   */
+  getTerminalsForProject(projectId: string): string[] {
+    const result: string[] = [];
+    for (const [id, terminal] of this.terminals) {
+      // Use same fallback logic as onProjectSwitch
+      const terminalProjectId = terminal.projectId || this.lastKnownProjectId;
+      if (terminalProjectId === projectId) {
+        result.push(id);
+      }
+    }
+    return result;
   }
 
   /**

@@ -105,6 +105,10 @@ export function registerTerminalHandlers(deps: HandlerDependencies): () => void 
       cwd = await getValidatedFallback();
     }
 
+    // Get current project ID for multi-tenancy
+    const currentProject = projectStore.getCurrentProject();
+    const projectId = currentProject?.id;
+
     try {
       ptyManager.spawn(id, {
         cwd,
@@ -115,6 +119,7 @@ export function registerTerminalHandlers(deps: HandlerDependencies): () => void 
         type,
         title,
         worktreeId,
+        projectId, // Pass project ID for multi-tenancy
       });
 
       if (validatedOptions.command) {

@@ -136,6 +136,8 @@ export type DevServerStatus = "stopped" | "starting" | "running" | "error";
 export interface DevServerState {
   /** ID of the worktree this server belongs to */
   worktreeId: string;
+  /** ID of the project this server belongs to (for multi-tenancy) */
+  projectId?: string;
   /** Current server status */
   status: DevServerStatus;
   /** URL where the server is accessible */

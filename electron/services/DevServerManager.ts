@@ -91,6 +91,7 @@ export class DevServerManager {
   private states = new Map<string, DevServerState>();
   private logBuffers = new Map<string, string[]>();
   private devScriptCache = new Map<string, DevScriptCacheEntry>();
+  private lastKnownProjectId: string | null = null;
 
   public initialize(
     _mainWindow: BrowserWindow,
@@ -115,7 +116,12 @@ export class DevServerManager {
     return state?.status === "running" || state?.status === "starting";
   }
 
-  public async start(worktreeId: string, worktreePath: string, command?: string): Promise<void> {
+  public async start(
+    worktreeId: string,
+    worktreePath: string,
+    command?: string,
+    projectId?: string // Which project owns this server (for multi-tenancy)
+  ): Promise<void> {
     if (this.isRunning(worktreeId)) {
       console.warn("Dev server already running for worktree", worktreeId);
       return;
@@ -127,14 +133,15 @@ export class DevServerManager {
       this.updateState(worktreeId, {
         status: "error",
         errorMessage: "No dev script found in package.json",
+        projectId, // Store project ID even for errors
       });
       this.emitError(worktreeId, "No dev script found in package.json");
       return;
     }
 
-    console.log("Starting dev server", { worktreeId, command: resolvedCommand });
+    console.log("Starting dev server", { worktreeId, projectId, command: resolvedCommand });
 
-    this.updateState(worktreeId, { status: "starting", errorMessage: undefined });
+    this.updateState(worktreeId, { status: "starting", errorMessage: undefined, projectId });
 
     this.logBuffers.set(worktreeId, []);
 
@@ -273,11 +280,16 @@ export class DevServerManager {
     });
   }
 
-  public async toggle(worktreeId: string, worktreePath: string, command?: string): Promise<void> {
+  public async toggle(
+    worktreeId: string,
+    worktreePath: string,
+    command?: string,
+    projectId?: string
+  ): Promise<void> {
     const state = this.getState(worktreeId);
 
     if (state.status === "stopped" || state.status === "error") {
-      await this.start(worktreeId, worktreePath, command);
+      await this.start(worktreeId, worktreePath, command, projectId);
     } else {
       await this.stop(worktreeId);
     }
@@ -294,11 +306,70 @@ export class DevServerManager {
     this.logBuffers.clear();
   }
 
-  public async onProjectSwitch(): Promise<void> {
-    console.log("Handling project switch in DevServerManager");
-    await this.stopAll();
+  /**
+   * Handle project switch - filter servers by project instead of stopping.
+   * Servers from other projects are "backgrounded" (kept running but hidden from UI).
+   * @param newProjectId - The ID of the project being switched to
+   */
+  public async onProjectSwitch(newProjectId: string): Promise<void> {
+    console.log(`[DevServerManager] Switching to project: ${newProjectId}`);
+
+    let backgrounded = 0;
+    let foregrounded = 0;
+
+    // Do NOT stop servers - just emit state changes for UI filtering
+    for (const [worktreeId, state] of this.states) {
+      // For legacy servers without projectId, use lastKnownProjectId (not newProjectId)
+      // This prevents legacy servers from appearing in every project they don't belong to
+      const serverProjectId = state.projectId || this.lastKnownProjectId;
+
+      // If still no projectId (very first switch), background the server to be safe
+      if (!serverProjectId || serverProjectId !== newProjectId) {
+        // Server belongs to different project (or unknown) - background it
+        backgrounded++;
+        events.emit("server:backgrounded", {
+          worktreeId,
+          projectId: serverProjectId || "unknown",
+          timestamp: Date.now(),
+        });
+      } else {
+        // Server belongs to current project - foreground it
+        foregrounded++;
+        events.emit("server:foregrounded", {
+          worktreeId,
+          projectId: serverProjectId,
+          timestamp: Date.now(),
+        });
+      }
+    }
+
+    // Update lastKnownProjectId for future legacy servers
+    this.lastKnownProjectId = newProjectId;
+
+    // Clear cache since different projects may have different package.json files
     this.clearCache();
-    console.log("DevServerManager state reset for project switch");
+
+    console.log(
+      `[DevServerManager] Project switch complete: ${foregrounded} foregrounded, ${backgrounded} backgrounded`
+    );
+  }
+
+  /**
+   * Get servers for a specific project.
+   * Uses same classification logic as onProjectSwitch for consistency.
+   * @param projectId - The project ID to filter by
+   * @returns Array of worktree IDs with servers belonging to the project
+   */
+  public getServersForProject(projectId: string): string[] {
+    const result: string[] = [];
+    for (const [worktreeId, state] of this.states) {
+      // Use same fallback logic as onProjectSwitch
+      const serverProjectId = state.projectId || this.lastKnownProjectId;
+      if (serverProjectId === projectId) {
+        result.push(worktreeId);
+      }
+    }
+    return result;
   }
 
   public getLogs(worktreeId: string): string[] {
@@ -389,6 +460,7 @@ export class DevServerManager {
       current.url !== next.url ||
       current.port !== next.port ||
       current.pid !== next.pid ||
+      current.projectId !== next.projectId ||
       current.errorMessage !== next.errorMessage;
 
     if (hasChanged) {
@@ -405,8 +477,11 @@ export class DevServerManager {
   }
 
   private emitError(worktreeId: string, error: string): void {
+    // Include projectId in error event for proper correlation
+    const state = this.states.get(worktreeId);
     events.emit("server:error", {
       worktreeId,
+      projectId: state?.projectId,
       error,
       timestamp: Date.now(),
     });
