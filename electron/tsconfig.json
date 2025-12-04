@@ -4,8 +4,8 @@
     "module": "NodeNext",
     "moduleResolution": "NodeNext",
     "lib": ["ES2022"],
-    "outDir": "../dist-electron",
-    "rootDir": "..",
+    "outDir": "../dist-electron/electron",
+    "rootDir": ".",
     "strict": true,
     "esModuleInterop": true,
     "skipLibCheck": true,
@@ -13,14 +13,12 @@
     "resolveJsonModule": true,
     "declaration": true,
     "declarationMap": true,
+    "composite": true,
     "noUnusedLocals": true,
     "noUnusedParameters": true,
-    "noFallthroughCasesInSwitch": true,
-    "baseUrl": "..",
-    "paths": {
-      "@shared/*": ["./shared/*"]
-    }
+    "noFallthroughCasesInSwitch": true
   },
-  "include": ["./**/*.ts", "../shared/**/*.ts"],
-  "exclude": ["node_modules", "preload.ts"]
+  "include": ["./**/*.ts"],
+  "exclude": ["node_modules", "preload.ts"],
+  "references": [{ "path": "../shared/tsconfig.json" }]
 }

@@ -6,10 +6,10 @@
   "main": "dist-electron/electron/main.js",
   "type": "module",
   "scripts": {
-    "dev": "concurrently -k \"npm run dev:electron\" \"vite\" \"npm run watch:main\"",
+    "dev": "concurrently -k \"npm run watch:main\" \"vite\" \"wait-on dist-electron/electron/main.js && npm run dev:electron\"",
     "dev:vite": "vite",
-    "dev:electron": "npm run build:main && nodemon --delay 500ms --watch dist-electron --ext js --exec \"cross-env NODE_ENV=development electron .\"",
-    "build:main": "tsc -p electron/tsconfig.preload.json && tsc -p electron/tsconfig.json",
+    "dev:electron": "nodemon --delay 500ms --watch dist-electron --ext js --exec \"cross-env NODE_ENV=development electron .\"",
+    "build:main": "tsc -b electron/tsconfig.preload.json electron/tsconfig.json",
     "watch:main": "tsc -b electron/tsconfig.preload.json electron/tsconfig.json --watch",
     "build": "tsc && vite build && npm run build:main",
     "package": "npm run build && electron-builder",
@@ -26,7 +26,7 @@
     "lint:fix": "eslint . --fix",
     "format": "prettier --write .",
     "format:check": "prettier --check .",
-    "typecheck": "tsc --noEmit && tsc -p electron/tsconfig.json --noEmit && tsc -p electron/tsconfig.preload.json --noEmit",
+    "typecheck": "tsc --noEmit && tsc -b electron/tsconfig.preload.json electron/tsconfig.json --noEmit",
     "check": "npm run typecheck && npm run lint && npm run format:check",
     "fix": "npm run format && npm run lint:fix"
   },
