@@ -36,12 +36,10 @@ export class TerminalPersistence {
     this.options = { ...DEFAULT_OPTIONS, ...options };
 
     this.debouncedSave = debounce((transformed: TerminalState[]) => {
-      this.pendingPersist = this.client
-        .setState({ terminals: transformed })
-        .catch((error) => {
-          console.error("Failed to persist terminals:", error);
-          throw error;
-        });
+      this.pendingPersist = this.client.setState({ terminals: transformed }).catch((error) => {
+        console.error("Failed to persist terminals:", error);
+        throw error;
+      });
     }, this.options.debounceMs);
   }
 
