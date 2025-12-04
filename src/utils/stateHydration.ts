@@ -1,6 +1,6 @@
 import { appClient, projectClient, terminalConfigClient } from "@/clients";
 import { useLayoutConfigStore, useScrollbackStore, usePerformanceModeStore } from "@/store";
-import type { TerminalType } from "@/types";
+import type { TerminalType, TerminalSettings } from "@/types";
 
 export interface HydrationOptions {
   addTerminal: (options: {
@@ -10,6 +10,7 @@ export interface HydrationOptions {
     worktreeId?: string;
     location?: "grid" | "dock";
     command?: string;
+    settings?: TerminalSettings;
   }) => Promise<string>;
   setActiveWorktree: (id: string | null) => void;
   loadRecipes: () => Promise<void>;
@@ -72,13 +73,18 @@ export async function hydrateAppState(options: HydrationOptions): Promise<void> 
 
           const cwd = terminal.cwd || projectRoot || "";
 
+          // Only pass command if autoRestart is explicitly true
+          const autoRestart = terminal.settings?.autoRestart ?? false;
+          const commandToRun = autoRestart ? terminal.command : undefined;
+
           await addTerminal({
             type: terminal.type,
             title: terminal.title,
             cwd,
             worktreeId: terminal.worktreeId,
-            location: "grid",
-            command: terminal.command,
+            location: terminal.location === "dock" ? "dock" : "grid",
+            command: commandToRun,
+            settings: terminal.settings,
           });
         } catch (error) {
           console.warn(`Failed to restore terminal ${terminal.id}:`, error);

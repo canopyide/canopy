@@ -4,6 +4,7 @@ import type {
   AgentState,
   TerminalType,
   TerminalLocation,
+  TerminalSettings,
   AgentStateChangeTrigger,
 } from "@/types";
 import { appClient, terminalClient } from "@/clients";
@@ -21,6 +22,7 @@ export interface AddTerminalOptions {
   shell?: string;
   command?: string;
   location?: TerminalLocation;
+  settings?: TerminalSettings;
 }
 
 const TYPE_TITLES: Record<TerminalType, string> = {
@@ -78,6 +80,8 @@ export interface TerminalRegistrySlice {
 
   reorderTerminals: (fromIndex: number, toIndex: number, location?: "grid" | "dock") => void;
   moveTerminalToPosition: (id: string, toIndex: number, location: "grid" | "dock") => void;
+
+  updateTerminalSettings: (id: string, updates: Partial<TerminalSettings>) => void;
 }
 
 // Debounced persistence batches rapid state changes into single disk writes.
@@ -95,6 +99,7 @@ const debouncedPersistTerminals = debounce((terminals: TerminalInstance[]) => {
           worktreeId: t.worktreeId,
           location: t.location,
           command: t.command?.trim() || undefined,
+          settings: t.settings,
         })),
     })
     .catch((error) => {
@@ -161,6 +166,7 @@ export const createTerminalRegistrySlice =
           // Initialize grid terminals as visible to avoid initial under-throttling
           // IntersectionObserver will update this once mounted
           isVisible: location === "grid" ? true : false,
+          settings: options.settings ?? { autoRestart: false },
         };
 
         set((state) => {
@@ -592,5 +598,30 @@ export const createTerminalRegistrySlice =
 
         terminalInstanceService.applyRendererPolicy(id, TerminalRefreshTier.VISIBLE);
       }
+    },
+
+    updateTerminalSettings: (id, updates) => {
+      set((state) => {
+        const terminal = state.terminals.find((t) => t.id === id);
+        if (!terminal) {
+          console.warn(`Cannot update settings: terminal ${id} not found`);
+          return state;
+        }
+
+        const newTerminals = state.terminals.map((t) =>
+          t.id === id
+            ? {
+                ...t,
+                settings: {
+                  ...(t.settings ?? { autoRestart: false }),
+                  ...updates,
+                },
+              }
+            : t
+        );
+
+        persistTerminals(newTerminals);
+        return { terminals: newTerminals };
+      });
     },
   });

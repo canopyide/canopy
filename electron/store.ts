@@ -34,12 +34,15 @@ export interface StoreSchema {
     };
     terminals: Array<{
       id: string;
-      type: "shell" | "claude" | "gemini" | "codex" | "custom";
+      type: "shell" | "claude" | "gemini" | "codex" | "npm" | "yarn" | "pnpm" | "bun" | "custom";
       title: string;
       cwd: string;
       worktreeId?: string;
       location: "grid" | "dock";
       command?: string;
+      settings?: {
+        autoRestart?: boolean;
+      };
     }>;
     recipes?: Array<{
       id: string;
