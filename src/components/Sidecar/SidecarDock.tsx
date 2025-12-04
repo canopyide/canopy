@@ -16,6 +16,7 @@ export function SidecarDock() {
     createTab,
     closeTab,
     markTabCreated,
+    isTabCreated,
   } = useSidecarStore();
   const placeholderRef = useRef<HTMLDivElement>(null);
   const [isResizing, setIsResizing] = useState(false);
@@ -53,6 +54,22 @@ export function SidecarDock() {
     };
   }, [activeTabId, syncBounds]);
 
+  // Show sidecar tab after DOM is ready (handles launchpad-to-tab and collapse/expand)
+  useEffect(() => {
+    if (activeTabId && placeholderRef.current && isTabCreated(activeTabId)) {
+      const rect = placeholderRef.current.getBoundingClientRect();
+      window.electron.sidecar.show({
+        tabId: activeTabId,
+        bounds: {
+          x: Math.round(rect.x),
+          y: Math.round(rect.y),
+          width: Math.round(rect.width),
+          height: Math.round(rect.height),
+        },
+      });
+    }
+  }, [activeTabId, isTabCreated]);
+
   useEffect(() => {
     const cleanup = window.electron.sidecar.onNavEvent((data) => {
       useSidecarStore.getState().updateTabTitle(data.tabId, data.title);
@@ -62,24 +79,11 @@ export function SidecarDock() {
   }, []);
 
   const handleTabClick = useCallback(
-    async (tabId: string) => {
+    (tabId: string) => {
       const tab = tabs.find((t) => t.id === tabId);
       if (!tab) return;
-
+      // useEffect handles the sidecar.show() call after DOM is ready
       setActiveTab(tabId);
-
-      if (placeholderRef.current) {
-        const rect = placeholderRef.current.getBoundingClientRect();
-        await window.electron.sidecar.show({
-          tabId,
-          bounds: {
-            x: Math.round(rect.x),
-            y: Math.round(rect.y),
-            width: Math.round(rect.width),
-            height: Math.round(rect.height),
-          },
-        });
-      }
     },
     [tabs, setActiveTab]
   );
@@ -100,24 +104,11 @@ export function SidecarDock() {
   const handleOpenUrl = useCallback(
     async (url: string, title: string) => {
       const tabId = createTab(url, title);
-      markTabCreated(tabId);
 
       await window.electron.sidecar.create({ tabId, url });
 
-      requestAnimationFrame(() => {
-        if (placeholderRef.current) {
-          const rect = placeholderRef.current.getBoundingClientRect();
-          window.electron.sidecar.show({
-            tabId,
-            bounds: {
-              x: Math.round(rect.x),
-              y: Math.round(rect.y),
-              width: Math.round(rect.width),
-              height: Math.round(rect.height),
-            },
-          });
-        }
-      });
+      // Mark as created after sidecar window exists, so effect can safely show it
+      markTabCreated(tabId);
     },
     [createTab, markTabCreated]
   );
