@@ -2,6 +2,8 @@ import type {
   TerminalSpawnOptions,
   AgentStateChangePayload,
   TerminalActivityPayload,
+  BackendTerminalInfo,
+  TerminalReconnectResult,
 } from "@shared/types";
 
 export const terminalClient = {
@@ -63,5 +65,29 @@ export const terminalClient = {
 
   flush: (id: string): Promise<void> => {
     return window.electron.terminal.flush(id);
+  },
+
+  /**
+   * Query backend for terminals belonging to a specific project.
+   * Used during state hydration to reconcile UI with backend processes.
+   */
+  getForProject: (projectId: string): Promise<BackendTerminalInfo[]> => {
+    return window.electron.terminal.getForProject(projectId);
+  },
+
+  /**
+   * Reconnect to an existing terminal process in the backend.
+   * Returns the terminal info if it exists, error otherwise.
+   */
+  reconnect: (terminalId: string): Promise<TerminalReconnectResult> => {
+    return window.electron.terminal.reconnect(terminalId);
+  },
+
+  /**
+   * Replay terminal history from backend semantic buffer.
+   * Used after reconnecting to restore terminal output.
+   */
+  replayHistory: (terminalId: string, maxLines?: number): Promise<{ replayed: number }> => {
+    return window.electron.terminal.replayHistory(terminalId, maxLines);
   },
 } as const;

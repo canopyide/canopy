@@ -98,6 +98,28 @@ export interface TerminalErrorPayload {
   error: string;
 }
 
+/** Terminal info from backend for reconnection */
+export interface BackendTerminalInfo {
+  id: string;
+  projectId?: string;
+  type?: TerminalType;
+  title?: string;
+  cwd: string;
+  worktreeId?: string;
+  agentState?: string;
+  spawnedAt: number;
+}
+
+/** Result from terminal reconnect operation */
+export interface TerminalReconnectResult {
+  exists: boolean;
+  id?: string;
+  type?: TerminalType;
+  cwd?: string;
+  agentState?: string;
+  error?: string;
+}
+
 // CopyTree IPC Types
 
 /** CopyTree generation options */
@@ -876,6 +898,18 @@ export interface IpcInvokeMap {
     args: [id: string];
     result: void;
   };
+  "terminal:get-for-project": {
+    args: [projectId: string];
+    result: BackendTerminalInfo[];
+  };
+  "terminal:reconnect": {
+    args: [terminalId: string];
+    result: TerminalReconnectResult;
+  };
+  "terminal:replay-history": {
+    args: [payload: { terminalId: string; maxLines?: number }];
+    result: { replayed: number };
+  };
 
   // Agent channels
   "agent:get-state": {
@@ -1338,6 +1372,9 @@ export interface ElectronAPI {
     restore(id: string): Promise<boolean>;
     setBuffering(id: string, enabled: boolean): Promise<void>;
     flush(id: string): Promise<void>;
+    getForProject(projectId: string): Promise<BackendTerminalInfo[]>;
+    reconnect(terminalId: string): Promise<TerminalReconnectResult>;
+    replayHistory(terminalId: string, maxLines?: number): Promise<{ replayed: number }>;
     onData(id: string, callback: (data: string) => void): () => void;
     onExit(callback: (id: string, exitCode: number) => void): () => void;
     onAgentStateChanged(callback: (data: AgentStateChangePayload) => void): () => void;

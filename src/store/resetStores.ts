@@ -8,7 +8,9 @@ import { useErrorStore } from "./errorStore";
 import { useNotificationStore } from "./notificationStore";
 
 export async function resetAllStoresForProjectSwitch(): Promise<void> {
-  await useTerminalStore.getState().reset();
+  // Use resetWithoutKilling instead of reset
+  // This preserves backend processes while clearing UI state
+  await useTerminalStore.getState().resetWithoutKilling();
 
   useWorktreeSelectionStore.getState().reset();
   useLogsStore.getState().reset();

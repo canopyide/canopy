@@ -297,6 +297,45 @@ port.on("message", (rawMsg: any) => {
         sendEvent({ type: "pong" });
         break;
 
+      case "get-terminals-for-project":
+        sendEvent({
+          type: "terminals-for-project",
+          requestId: msg.requestId,
+          terminalIds: ptyManager.getTerminalsForProject(msg.projectId),
+        });
+        break;
+
+      case "get-terminal": {
+        const terminal = ptyManager.getTerminal(msg.id);
+        sendEvent({
+          type: "terminal-info",
+          requestId: msg.requestId,
+          terminal: terminal
+            ? {
+                id: terminal.id,
+                projectId: terminal.projectId,
+                type: terminal.type,
+                title: terminal.title,
+                cwd: terminal.cwd,
+                worktreeId: terminal.worktreeId,
+                agentState: terminal.agentState,
+                spawnedAt: terminal.spawnedAt,
+              }
+            : null,
+        });
+        break;
+      }
+
+      case "replay-history": {
+        const replayed = ptyManager.replayHistory(msg.id, msg.maxLines);
+        sendEvent({
+          type: "replay-history-result",
+          requestId: msg.requestId,
+          replayed,
+        });
+        break;
+      }
+
       case "dispose":
         cleanup();
         break;

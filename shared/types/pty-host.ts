@@ -20,6 +20,7 @@ export interface PtyHostSpawnOptions {
   type?: TerminalType;
   title?: string;
   worktreeId?: string;
+  projectId?: string;
 }
 
 /**
@@ -48,7 +49,10 @@ export type PtyHostRequest =
       spawnedAt?: number;
     }
   | { type: "health-check" }
-  | { type: "dispose" };
+  | { type: "dispose" }
+  | { type: "get-terminals-for-project"; projectId: string; requestId: string }
+  | { type: "get-terminal"; id: string; requestId: string }
+  | { type: "replay-history"; id: string; maxLines: number; requestId: string };
 
 /**
  * Terminal snapshot data sent from Host → Main for state queries.
@@ -111,7 +115,22 @@ export type PtyHostEvent =
   | { type: "all-snapshots"; snapshots: PtyHostTerminalSnapshot[] }
   | { type: "transition-result"; id: string; requestId: string; success: boolean }
   | { type: "pong" }
-  | { type: "ready" };
+  | { type: "ready" }
+  | { type: "terminals-for-project"; requestId: string; terminalIds: string[] }
+  | { type: "terminal-info"; requestId: string; terminal: PtyHostTerminalInfo | null }
+  | { type: "replay-history-result"; requestId: string; replayed: number };
+
+/** Terminal info sent from Host → Main for getTerminal queries */
+export interface PtyHostTerminalInfo {
+  id: string;
+  projectId?: string;
+  type?: TerminalType;
+  title?: string;
+  cwd: string;
+  worktreeId?: string;
+  agentState?: AgentState;
+  spawnedAt: number;
+}
 
 /** Payload for agent:spawned event */
 export interface AgentSpawnedPayload {

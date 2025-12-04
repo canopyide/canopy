@@ -56,6 +56,7 @@ export interface TerminalGridState
     TerminalCommandQueueSlice,
     TerminalBulkActionsSlice {
   reset: () => Promise<void>;
+  resetWithoutKilling: () => Promise<void>;
 }
 
 export const useTerminalStore = create<TerminalGridState>()((set, get, api) => {
@@ -162,6 +163,35 @@ export const useTerminalStore = create<TerminalGridState>()((set, get, api) => {
       );
 
       await Promise.all(killPromises);
+
+      set({
+        terminals: [],
+        trashedTerminals: new Map(),
+        focusedId: null,
+        maximizedId: null,
+        commandQueue: [],
+      });
+    },
+
+    resetWithoutKilling: async () => {
+      const state = get();
+
+      flushTerminalPersistence();
+
+      // Destroy xterm.js instances (renderer-side cleanup only)
+      const { terminalInstanceService } = await import("@/services/TerminalInstanceService");
+      for (const terminal of state.terminals) {
+        try {
+          terminalInstanceService.destroy(terminal.id);
+        } catch (error) {
+          console.warn(`Failed to destroy terminal instance ${terminal.id}:`, error);
+        }
+      }
+
+      // DO NOT send kill commands to backend - processes stay alive from Phase 1
+      console.log(
+        `[TerminalStore] Reset UI state for ${state.terminals.length} terminals (processes preserved)`
+      );
 
       set({
         terminals: [],

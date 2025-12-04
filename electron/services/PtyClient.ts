@@ -24,6 +24,18 @@ import type { AgentStateChangeTrigger } from "../types/index.js";
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
 
+/** Terminal info response from Pty Host */
+interface TerminalInfoResponse {
+  id: string;
+  projectId?: string;
+  type?: string;
+  title?: string;
+  cwd: string;
+  worktreeId?: string;
+  agentState?: string;
+  spawnedAt: number;
+}
+
 /** Configuration for PtyClient */
 export interface PtyClientConfig {
   /** Maximum restart attempts before giving up */
@@ -51,6 +63,10 @@ export class PtyClient extends EventEmitter {
   private snapshotCallbacks: Map<string, (snapshot: TerminalSnapshot | null) => void> = new Map();
   private allSnapshotsCallback: ((snapshots: TerminalSnapshot[]) => void) | null = null;
   private transitionCallbacks: Map<string, (success: boolean) => void> = new Map();
+  private terminalsForProjectCallbacks: Map<string, (ids: string[]) => void> = new Map();
+  private terminalInfoCallbacks: Map<string, (terminal: TerminalInfoResponse | null) => void> =
+    new Map();
+  private replayHistoryCallbacks: Map<string, (replayed: number) => void> = new Map();
   private readyPromise: Promise<void>;
   private readyResolve: (() => void) | null = null;
 
@@ -280,6 +296,33 @@ export class PtyClient extends EventEmitter {
         // Health check passed, nothing to do
         break;
 
+      case "terminals-for-project": {
+        const cb = this.terminalsForProjectCallbacks.get((event as any).requestId);
+        if (cb) {
+          this.terminalsForProjectCallbacks.delete((event as any).requestId);
+          cb((event as any).terminalIds ?? []);
+        }
+        break;
+      }
+
+      case "terminal-info": {
+        const cb = this.terminalInfoCallbacks.get((event as any).requestId);
+        if (cb) {
+          this.terminalInfoCallbacks.delete((event as any).requestId);
+          cb((event as any).terminal ?? null);
+        }
+        break;
+      }
+
+      case "replay-history-result": {
+        const cb = this.replayHistoryCallbacks.get((event as any).requestId);
+        if (cb) {
+          this.replayHistoryCallbacks.delete((event as any).requestId);
+          cb((event as any).replayed ?? 0);
+        }
+        break;
+      }
+
       default:
         console.warn("[PtyClient] Unknown event type:", (event as { type: string }).type);
     }
@@ -344,6 +387,77 @@ export class PtyClient extends EventEmitter {
 
   flushBuffer(id: string): void {
     this.send({ type: "flush-buffer", id });
+  }
+
+  /** Get terminal IDs for a specific project */
+  getTerminalsForProject(_projectId: string): string[] {
+    // Note: This is async in PtyClient but returns empty array synchronously
+    // Use getTerminalsForProjectAsync for proper async behavior
+    console.warn(
+      "[PtyClient] getTerminalsForProject called synchronously - use getTerminalsForProjectAsync instead"
+    );
+    return [];
+  }
+
+  /** Get terminal IDs for a specific project (async) */
+  async getTerminalsForProjectAsync(projectId: string): Promise<string[]> {
+    return new Promise((resolve) => {
+      const requestId = `terminals-${projectId}-${Date.now()}`;
+      this.terminalsForProjectCallbacks.set(requestId, resolve);
+      this.send({ type: "get-terminals-for-project", projectId, requestId } as any);
+
+      setTimeout(() => {
+        if (this.terminalsForProjectCallbacks.has(requestId)) {
+          this.terminalsForProjectCallbacks.delete(requestId);
+          resolve([]);
+        }
+      }, 5000);
+    });
+  }
+
+  /** Get terminal info by ID (returns undefined sync, use getTerminalAsync for async) */
+  getTerminal(_id: string): undefined {
+    // Note: This is async in PtyClient
+    console.warn("[PtyClient] getTerminal called synchronously - use getTerminalAsync instead");
+    return undefined;
+  }
+
+  /** Get terminal info by ID (async) */
+  async getTerminalAsync(id: string): Promise<TerminalInfoResponse | null> {
+    return new Promise((resolve) => {
+      const requestId = `terminal-${id}-${Date.now()}`;
+      this.terminalInfoCallbacks.set(requestId, resolve);
+      this.send({ type: "get-terminal", id, requestId } as any);
+
+      setTimeout(() => {
+        if (this.terminalInfoCallbacks.has(requestId)) {
+          this.terminalInfoCallbacks.delete(requestId);
+          resolve(null);
+        }
+      }, 5000);
+    });
+  }
+
+  /** Replay terminal history (returns 0 sync, use replayHistoryAsync for async) */
+  replayHistory(_id: string, _maxLines?: number): number {
+    console.warn("[PtyClient] replayHistory called synchronously - use replayHistoryAsync instead");
+    return 0;
+  }
+
+  /** Replay terminal history (async) */
+  async replayHistoryAsync(id: string, maxLines: number = 100): Promise<number> {
+    return new Promise((resolve) => {
+      const requestId = `replay-${id}-${Date.now()}`;
+      this.replayHistoryCallbacks.set(requestId, resolve);
+      this.send({ type: "replay-history", id, maxLines, requestId } as any);
+
+      setTimeout(() => {
+        if (this.replayHistoryCallbacks.has(requestId)) {
+          this.replayHistoryCallbacks.delete(requestId);
+          resolve(0);
+        }
+      }, 5000);
+    });
   }
 
   /** Get a snapshot of terminal state (async due to IPC) */
@@ -447,10 +561,23 @@ export class PtyClient extends EventEmitter {
       }, 1000);
     }
 
+    // Resolve pending callbacks before clearing to prevent hanging promises
+    for (const cb of this.snapshotCallbacks.values()) cb(null);
+    for (const cb of this.transitionCallbacks.values()) cb(false);
+    for (const cb of this.terminalsForProjectCallbacks.values()) cb([]);
+    for (const cb of this.terminalInfoCallbacks.values()) cb(null);
+    for (const cb of this.replayHistoryCallbacks.values()) cb(0);
+    if (this.allSnapshotsCallback) {
+      this.allSnapshotsCallback([]);
+      this.allSnapshotsCallback = null;
+    }
+
     this.pendingSpawns.clear();
     this.snapshotCallbacks.clear();
     this.transitionCallbacks.clear();
-    this.allSnapshotsCallback = null;
+    this.terminalsForProjectCallbacks.clear();
+    this.terminalInfoCallbacks.clear();
+    this.replayHistoryCallbacks.clear();
     this.removeAllListeners();
 
     console.log("[PtyClient] Disposed");

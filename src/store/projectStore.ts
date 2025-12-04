@@ -1,7 +1,8 @@
 import { create, type StateCreator } from "zustand";
 import type { Project } from "@shared/types";
-import { projectClient } from "@/clients";
+import { projectClient, appClient } from "@/clients";
 import { resetAllStoresForProjectSwitch } from "./resetStores";
+import { flushTerminalPersistence } from "./slices";
 
 interface ProjectState {
   projects: Project[];
@@ -71,6 +72,30 @@ const createProjectStore: StateCreator<ProjectState> = (set, get) => ({
   switchProject: async (projectId) => {
     set({ isLoading: true, error: null });
     try {
+      const currentProject = get().currentProject;
+      const oldProjectId = currentProject?.id;
+
+      // Save current project state BEFORE switching
+      // The backend persists terminals to electron-store so they're restored on hydration
+      if (oldProjectId) {
+        flushTerminalPersistence(); // ensure debounced terminal state is persisted
+        console.log("[ProjectSwitch] Saving state for project:", oldProjectId);
+        try {
+          const currentState = await appClient.getState();
+          if (currentState) {
+            // Save current terminal state - backend handles per-project persistence
+            await appClient.setState({
+              terminals: currentState.terminals || [],
+              activeWorktreeId: currentState.activeWorktreeId,
+              terminalGridConfig: currentState.terminalGridConfig,
+            });
+          }
+        } catch (saveError) {
+          // Don't fail the switch if state save fails
+          console.warn("[ProjectSwitch] Failed to save state:", saveError);
+        }
+      }
+
       console.log("[ProjectSwitch] Resetting renderer stores...");
       await resetAllStoresForProjectSwitch();
 
