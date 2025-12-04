@@ -39,36 +39,14 @@ interface SidecarActions {
   updateLink: (id: string, updates: Partial<SidecarLink>) => void;
   toggleLink: (id: string) => void;
   reorderLinks: (fromIndex: number, toIndex: number) => void;
+  reorderTabs: (fromIndex: number, toIndex: number) => void;
   setDiscoveredLinks: (cliAvailability: CliAvailability) => void;
   markDiscoveryComplete: () => void;
   initializeDefaultLinks: () => void;
 }
 
 function createDefaultLinks(): SidecarLink[] {
-  let order = 0;
-  return [
-    {
-      id: "ai-claude",
-      ...LINK_TEMPLATES.claude,
-      type: "system",
-      enabled: true,
-      order: order++,
-    },
-    {
-      id: "ai-gemini",
-      ...LINK_TEMPLATES.gemini,
-      type: "system",
-      enabled: true,
-      order: order++,
-    },
-    {
-      id: "ai-chatgpt",
-      ...LINK_TEMPLATES.chatgpt,
-      type: "system",
-      enabled: true,
-      order: order++,
-    },
-  ];
+  return [];
 }
 
 const initialState: SidecarState = {
@@ -237,10 +215,36 @@ const createSidecarStore: StateCreator<SidecarState & SidecarActions> = (set, ge
 
   reorderLinks: (fromIndex, toIndex) =>
     set((s) => {
+      if (
+        fromIndex === toIndex ||
+        fromIndex < 0 ||
+        toIndex < 0 ||
+        fromIndex >= s.links.length ||
+        toIndex >= s.links.length
+      ) {
+        return s;
+      }
       const links = [...s.links];
       const [moved] = links.splice(fromIndex, 1);
       links.splice(toIndex, 0, moved);
       return { links: links.map((l, i) => ({ ...l, order: i })) };
+    }),
+
+  reorderTabs: (fromIndex, toIndex) =>
+    set((s) => {
+      if (
+        fromIndex === toIndex ||
+        fromIndex < 0 ||
+        toIndex < 0 ||
+        fromIndex >= s.tabs.length ||
+        toIndex >= s.tabs.length
+      ) {
+        return s;
+      }
+      const newTabs = [...s.tabs];
+      const [moved] = newTabs.splice(fromIndex, 1);
+      newTabs.splice(toIndex, 0, moved);
+      return { tabs: newTabs };
     }),
 
   setDiscoveredLinks: (availability) =>
@@ -248,19 +252,20 @@ const createSidecarStore: StateCreator<SidecarState & SidecarActions> = (set, ge
       const existingUserLinks = s.links
         .filter((l) => l.type === "user")
         .sort((a, b) => a.order - b.order);
-      const existingSystemLinks = s.links
-        .filter((l) => l.type === "system")
-        .sort((a, b) => a.order - b.order);
       const existingDiscoveredLinks = s.links.filter((l) => l.type === "discovered");
+      const findExisting = (id: string) => existingDiscoveredLinks.find((l) => l.id === id);
 
       const newLinks: SidecarLink[] = [];
       let order = 0;
 
       if (availability.claude) {
-        const existing = existingDiscoveredLinks.find((l) => l.id === "discovered-claude");
+        const id = "discovered-claude";
+        const existing = findExisting(id);
         newLinks.push({
-          id: "discovered-claude",
+          id,
           ...LINK_TEMPLATES.claude,
+          title: existing?.title ?? LINK_TEMPLATES.claude.title,
+          url: existing?.url ?? LINK_TEMPLATES.claude.url,
           type: "discovered",
           enabled: existing?.enabled ?? true,
           order: order++,
@@ -268,10 +273,13 @@ const createSidecarStore: StateCreator<SidecarState & SidecarActions> = (set, ge
       }
 
       if (availability.gemini) {
-        const existing = existingDiscoveredLinks.find((l) => l.id === "discovered-gemini");
+        const id = "discovered-gemini";
+        const existing = findExisting(id);
         newLinks.push({
-          id: "discovered-gemini",
+          id,
           ...LINK_TEMPLATES.gemini,
+          title: existing?.title ?? LINK_TEMPLATES.gemini.title,
+          url: existing?.url ?? LINK_TEMPLATES.gemini.url,
           type: "discovered",
           enabled: existing?.enabled ?? true,
           order: order++,
@@ -279,20 +287,22 @@ const createSidecarStore: StateCreator<SidecarState & SidecarActions> = (set, ge
       }
 
       if (availability.codex) {
-        const existing = existingDiscoveredLinks.find((l) => l.id === "discovered-chatgpt");
+        const id = "discovered-chatgpt";
+        const existing = findExisting(id);
         newLinks.push({
-          id: "discovered-chatgpt",
+          id,
           ...LINK_TEMPLATES.chatgpt,
+          title: existing?.title ?? LINK_TEMPLATES.chatgpt.title,
+          url: existing?.url ?? LINK_TEMPLATES.chatgpt.url,
           type: "discovered",
           enabled: existing?.enabled ?? true,
           order: order++,
         });
       }
 
-      const systemLinks = existingSystemLinks.map((l) => ({ ...l, order: order++ }));
       const userLinks = existingUserLinks.map((l) => ({ ...l, order: order++ }));
 
-      return { links: [...newLinks, ...systemLinks, ...userLinks] };
+      return { links: [...newLinks, ...userLinks] };
     }),
 
   markDiscoveryComplete: () => set({ discoveryComplete: true }),

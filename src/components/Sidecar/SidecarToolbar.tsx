@@ -10,10 +10,85 @@ import {
   AlertCircle,
   Plus,
 } from "lucide-react";
+import {
+  DndContext,
+  closestCorners,
+  KeyboardSensor,
+  PointerSensor,
+  useSensor,
+  useSensors,
+  type DragEndEvent,
+} from "@dnd-kit/core";
+import {
+  SortableContext,
+  sortableKeyboardCoordinates,
+  useSortable,
+  rectSortingStrategy,
+} from "@dnd-kit/sortable";
+import { CSS } from "@dnd-kit/utilities";
 import type { SidecarTab } from "@shared/types";
 import { cn } from "@/lib/utils";
+import { useSidecarStore } from "@/store/sidecarStore";
 
 type InjectStatus = "idle" | "loading" | "success" | "error";
+
+function SortableTab({
+  tab,
+  isActive,
+  onClick,
+  onClose,
+}: {
+  tab: SidecarTab;
+  isActive: boolean;
+  onClick: (id: string) => void;
+  onClose: (id: string, e: React.MouseEvent) => void;
+}) {
+  const { attributes, listeners, setNodeRef, transform, transition, isDragging } = useSortable({
+    id: tab.id,
+  });
+
+  const style = {
+    transform: CSS.Transform.toString(transform),
+    transition,
+  };
+
+  return (
+    <button
+      ref={setNodeRef}
+      style={style}
+      {...attributes}
+      {...listeners}
+      onClick={() => onClick(tab.id)}
+      role="tab"
+      aria-selected={isActive}
+      aria-label={tab.title}
+      className={cn(
+        "group flex items-center gap-2 px-3 py-1.5 rounded-full text-xs font-medium cursor-pointer select-none transition-all border",
+        isActive
+          ? "bg-canopy-accent text-white border-canopy-accent"
+          : "bg-zinc-800 text-zinc-400 border-zinc-700 hover:bg-zinc-700 hover:text-zinc-200",
+        isDragging && "opacity-50"
+      )}
+    >
+      <span className="truncate max-w-[120px]">{tab.title}</span>
+      <button
+        onClick={(e) => {
+          e.stopPropagation();
+          onClose(tab.id, e);
+        }}
+        aria-label={`Close ${tab.title}`}
+        className={cn(
+          "p-0.5 rounded-full hover:bg-white/20 transition-colors",
+          isActive
+            ? "text-white/80 hover:text-white"
+            : "text-zinc-500 hover:text-zinc-300 opacity-0 group-hover:opacity-100"
+        )}
+      >
+        <X className="w-3 h-3" />
+      </button>
+    </button>
+  );
+}
 
 interface SidecarToolbarProps {
   tabs: SidecarTab[];
@@ -40,6 +115,21 @@ export function SidecarToolbar({
 }: SidecarToolbarProps) {
   const [injectStatus, setInjectStatus] = useState<InjectStatus>("idle");
   const [errorMsg, setErrorMsg] = useState("");
+  const reorderTabs = useSidecarStore((s) => s.reorderTabs);
+
+  const sensors = useSensors(
+    useSensor(PointerSensor, { activationConstraint: { distance: 5 } }),
+    useSensor(KeyboardSensor, { coordinateGetter: sortableKeyboardCoordinates })
+  );
+
+  const handleDragEnd = (event: DragEndEvent) => {
+    const { active, over } = event;
+    if (over && active.id !== over.id) {
+      const oldIndex = tabs.findIndex((t) => t.id === active.id);
+      const newIndex = tabs.findIndex((t) => t.id === over.id);
+      reorderTabs(oldIndex, newIndex);
+    }
+  };
 
   const handleInject = async () => {
     setInjectStatus("loading");
@@ -142,48 +232,31 @@ export function SidecarToolbar({
         </div>
       </div>
 
-      {/* Bottom Row: Tab Strip */}
-      <div
-        className="flex items-center px-2 pb-1.5 gap-1 overflow-x-auto no-scrollbar"
-        role="tablist"
-      >
-        {tabs.map((tab) => (
-          <button
-            key={tab.id}
-            onClick={() => onTabClick(tab.id)}
-            role="tab"
-            aria-selected={activeTabId === tab.id}
-            aria-label={tab.title}
-            className={cn(
-              "group flex items-center gap-2 px-3 py-1.5 rounded-t-md min-w-0 transition-colors focus-visible:outline focus-visible:outline-2 focus-visible:outline-blue-500 focus-visible:outline-offset-2",
-              activeTabId === tab.id
-                ? "bg-zinc-800 text-zinc-100"
-                : "text-zinc-500 hover:bg-zinc-800/50 hover:text-zinc-300"
-            )}
-          >
-            <span className="truncate text-xs max-w-[100px]">{tab.title}</span>
-            <button
-              onClick={(e) => {
-                e.stopPropagation();
-                onTabClose(tab.id, e);
-              }}
-              aria-label={`Close ${tab.title}`}
-              className="opacity-0 group-hover:opacity-100 group-focus-within:opacity-100 p-0.5 rounded hover:bg-zinc-600 focus-visible:opacity-100 focus-visible:outline focus-visible:outline-2 focus-visible:outline-blue-500 transition-opacity"
-              title="Close tab"
-            >
-              <X className="w-3 h-3" />
-            </button>
-          </button>
-        ))}
+      {/* Bottom Row: Tab Pills */}
+      <div className="px-2 pb-2">
+        <DndContext sensors={sensors} collisionDetection={closestCorners} onDragEnd={handleDragEnd}>
+          <SortableContext items={tabs.map((t) => t.id)} strategy={rectSortingStrategy}>
+            <div className="flex flex-wrap gap-2" role="tablist">
+              {tabs.map((tab) => (
+                <SortableTab
+                  key={tab.id}
+                  tab={tab}
+                  isActive={activeTabId === tab.id}
+                  onClick={onTabClick}
+                  onClose={onTabClose}
+                />
+              ))}
 
-        <button
-          onClick={onNewTab}
-          aria-label="New tab"
-          className="p-1.5 rounded hover:bg-zinc-700 text-zinc-400 hover:text-zinc-200 transition-colors flex-shrink-0 focus-visible:outline focus-visible:outline-2 focus-visible:outline-blue-500"
-          title="New tab"
-        >
-          <Plus className="w-3.5 h-3.5" />
-        </button>
+              <button
+                onClick={onNewTab}
+                className="flex items-center justify-center w-7 h-7 rounded-full bg-zinc-800 hover:bg-zinc-700 text-zinc-400 hover:text-zinc-200 border border-zinc-700 transition-colors"
+                title="New Tab"
+              >
+                <Plus className="w-3.5 h-3.5" />
+              </button>
+            </div>
+          </SortableContext>
+        </DndContext>
       </div>
     </div>
   );

@@ -2,6 +2,7 @@ import { useState } from "react";
 import { Globe, Search } from "lucide-react";
 import { ClaudeIcon, GeminiIcon, CodexIcon } from "@/components/icons";
 import type { SidecarLink } from "@shared/types";
+import { getBrandColorHex } from "@/lib/colorUtils";
 
 function LinkIcon({ link, size = 32 }: { link: SidecarLink; size?: number }) {
   const [showFallback, setShowFallback] = useState(false);
@@ -13,11 +14,11 @@ function LinkIcon({ link, size = 32 }: { link: SidecarLink; size?: number }) {
 
   switch (link.icon) {
     case "claude":
-      return <ClaudeIcon className={iconClass} />;
+      return <ClaudeIcon className={iconClass} brandColor={getBrandColorHex("claude")} />;
     case "gemini":
-      return <GeminiIcon className={iconClass} />;
+      return <GeminiIcon className={iconClass} brandColor={getBrandColorHex("gemini")} />;
     case "openai":
-      return <CodexIcon className={iconClass} />;
+      return <CodexIcon className={iconClass} brandColor={getBrandColorHex("codex")} />;
     case "search":
       return <Search className={iconClass} />;
     default:

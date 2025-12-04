@@ -41,17 +41,6 @@ export const LINK_TEMPLATES: Record<string, LinkTemplate> = {
     icon: "gemini",
     cliDetector: "gemini",
   },
-  localhost: {
-    title: "Localhost",
-    url: "http://localhost:3000",
-    icon: "globe",
-    alwaysEnabled: true,
-  },
-  google: {
-    title: "Google",
-    url: "https://www.google.com",
-    icon: "search",
-  },
 };
 
 export interface SidecarTab {
