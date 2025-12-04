@@ -226,7 +226,6 @@ const CHANNELS = {
   SIDECAR_GO_FORWARD: "sidecar:go-forward",
   SIDECAR_RELOAD: "sidecar:reload",
   SIDECAR_NAV_EVENT: "sidecar:nav-event",
-  SIDECAR_INJECT: "sidecar:inject",
 
   // Hibernation channels
   HIBERNATION_GET_CONFIG: "hibernation:get-config",
@@ -623,12 +622,6 @@ const api: ElectronAPI = {
 
     onNavEvent: (callback: (data: { tabId: string; title: string; url: string }) => void) =>
       _typedOn(CHANNELS.SIDECAR_NAV_EVENT, callback),
-
-    inject: (payload: {
-      tabId?: string;
-      text: string;
-    }): Promise<{ success: boolean; error?: string }> =>
-      ipcRenderer.invoke(CHANNELS.SIDECAR_INJECT, payload),
   },
 
   // Hibernation API

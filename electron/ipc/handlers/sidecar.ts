@@ -141,25 +141,5 @@ export function registerSidecarHandlers(deps: HandlerDependencies): () => void {
   ipcMain.handle(CHANNELS.SIDECAR_RELOAD, handleSidecarReload);
   handlers.push(() => ipcMain.removeHandler(CHANNELS.SIDECAR_RELOAD));
 
-  const handleSidecarInject = async (
-    _event: Electron.IpcMainInvokeEvent,
-    payload: { tabId?: string; text: string }
-  ): Promise<{ success: boolean; error?: string }> => {
-    if (!sidecarManager) {
-      return { success: false, error: "Sidecar manager not available" };
-    }
-
-    if (!payload?.text || typeof payload.text !== "string") {
-      return { success: false, error: "Invalid text payload" };
-    }
-
-    if (payload.tabId) {
-      return sidecarManager.injectToTab(payload.tabId, payload.text);
-    }
-    return sidecarManager.injectToActiveTab(payload.text);
-  };
-  ipcMain.handle(CHANNELS.SIDECAR_INJECT, handleSidecarInject);
-  handlers.push(() => ipcMain.removeHandler(CHANNELS.SIDECAR_INJECT));
-
   return () => handlers.forEach((cleanup) => cleanup());
 }

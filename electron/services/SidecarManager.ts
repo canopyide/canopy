@@ -1,14 +1,12 @@
 import { BrowserWindow, WebContentsView } from "electron";
 import type { SidecarBounds, SidecarNavEvent } from "../../shared/types/sidecar.js";
 import { CHANNELS } from "../ipc/channels.js";
-import { SidecarInjector, type InjectionResult } from "./SidecarInjector.js";
 
 export class SidecarManager {
   private window: BrowserWindow;
   private viewMap = new Map<string, WebContentsView>();
   private activeView: WebContentsView | null = null;
   private activeTabId: string | null = null;
-  private injector = new SidecarInjector();
 
   constructor(window: BrowserWindow) {
     this.window = window;
@@ -187,23 +185,6 @@ export class SidecarManager {
 
   hasTab(tabId: string): boolean {
     return this.viewMap.has(tabId);
-  }
-
-  async injectToActiveTab(text: string): Promise<InjectionResult> {
-    if (!this.activeView) {
-      return { success: false, error: "No active sidecar tab" };
-    }
-
-    return this.injector.inject(this.activeView.webContents, text);
-  }
-
-  async injectToTab(tabId: string, text: string): Promise<InjectionResult> {
-    const view = this.viewMap.get(tabId);
-    if (!view) {
-      return { success: false, error: `Tab ${tabId} not found` };
-    }
-
-    return this.injector.inject(view.webContents, text);
   }
 
   destroy(): void {
