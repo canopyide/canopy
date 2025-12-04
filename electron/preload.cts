@@ -420,8 +420,10 @@ const api: ElectronAPI = {
     refreshCliAvailability: () => _typedInvoke(CHANNELS.SYSTEM_REFRESH_CLI_AVAILABILITY),
 
     onWake: (callback: (data: { sleepDuration: number; timestamp: number }) => void) => {
-      const handler = (_event: Electron.IpcRendererEvent, data: { sleepDuration: number; timestamp: number }) =>
-        callback(data);
+      const handler = (
+        _event: Electron.IpcRendererEvent,
+        data: { sleepDuration: number; timestamp: number }
+      ) => callback(data);
       ipcRenderer.on(CHANNELS.SYSTEM_WAKE, handler);
       return () => ipcRenderer.removeListener(CHANNELS.SYSTEM_WAKE, handler);
     },

@@ -41,6 +41,44 @@ const FLOOD_THRESHOLD_BYTES = 5 * 1024 * 1024; // 5MB per second
 const FLOOD_CHECK_INTERVAL_MS = 1000;
 const FLOOD_RESUME_THRESHOLD = FLOOD_THRESHOLD_BYTES * 0.5; // Resume when rate drops to 50%
 
+// Input chunking constants (VS Code pattern: prevent data corruption on large pastes)
+const WRITE_MAX_CHUNK_SIZE = 50; // chars per chunk
+const WRITE_INTERVAL_MS = 5; // delay between chunks
+
+/**
+ * Split input into chunks for safe PTY writing.
+ * Chunks at max size OR before escape sequences to prevent mid-sequence splits.
+ * Based on VS Code's terminalProcess.ts implementation.
+ */
+function chunkInput(data: string): string[] {
+  // Fast path: empty or small inputs
+  if (data.length === 0) {
+    return [];
+  }
+  if (data.length <= WRITE_MAX_CHUNK_SIZE) {
+    return [data];
+  }
+
+  const chunks: string[] = [];
+  let start = 0;
+
+  for (let i = 0; i < data.length - 1; i++) {
+    // Chunk at max size OR before escape sequences (don't split ESC sequences)
+    if (i - start + 1 >= WRITE_MAX_CHUNK_SIZE || data[i + 1] === "\x1b") {
+      chunks.push(data.substring(start, i + 1));
+      start = i + 1;
+      // Don't skip next char - we need to check every position for escape sequences
+    }
+  }
+
+  // Push remaining data
+  if (start < data.length) {
+    chunks.push(data.substring(start));
+  }
+
+  return chunks;
+}
+
 interface TerminalInfo {
   id: string;
   projectId?: string; // Which project owns this terminal (for multi-tenancy)
@@ -84,6 +122,10 @@ interface TerminalInfo {
   bytesThisSecond: number;
   isFlooded: boolean;
   lastResumedAt: number;
+
+  // Input write queue for chunked writes (prevents data corruption on large pastes)
+  inputWriteQueue: string[];
+  inputWriteTimeout: NodeJS.Timeout | null;
 }
 
 export interface PtyManagerEvents {
@@ -790,6 +832,13 @@ export class PtyManager extends EventEmitter {
         this.flushBuffer(id);
       }
 
+      // Clear pending input writes to prevent stray timers and memory leaks
+      if (terminal.inputWriteTimeout) {
+        clearTimeout(terminal.inputWriteTimeout);
+        terminal.inputWriteTimeout = null;
+      }
+      terminal.inputWriteQueue = [];
+
       this.emit("exit", id, exitCode ?? 0);
 
       // Update agent state on exit
@@ -860,6 +909,9 @@ export class PtyManager extends EventEmitter {
       bytesThisSecond: 0,
       isFlooded: false,
       lastResumedAt: 0,
+      // Input write queue for chunked writes
+      inputWriteQueue: [],
+      inputWriteTimeout: null,
     };
 
     this.terminals.set(id, terminal);
@@ -908,34 +960,76 @@ export class PtyManager extends EventEmitter {
   }
 
   /**
-   * Write data to terminal stdin
+   * Write data to terminal stdin with chunking for large inputs.
+   * Chunks at 50 chars or before escape sequences, with 5ms delays between chunks.
+   * This prevents data corruption on large pastes and race conditions in node-pty.
    * @param id - Terminal identifier
    * @param data - Data to write
    * @param traceId - Optional trace ID for event correlation
    */
   write(id: string, data: string, traceId?: string): void {
     const terminal = this.terminals.get(id);
-    if (terminal) {
-      // Track input timing for silence detection
-      terminal.lastInputTime = Date.now();
-
-      // Store traceId if provided, or clear it if explicitly undefined
-      // This ensures each traced operation gets a fresh ID and prevents cross-operation bleed
-      if (traceId !== undefined) {
-        terminal.traceId = traceId || undefined;
-      }
-
-      // Notify activity monitor of input (detects Enter key for busy state)
-      // ActivityMonitor is the single source of truth for busy/idle transitions
-      const monitor = this.activityMonitors.get(id);
-      if (monitor) {
-        monitor.onInput(data);
-      }
-
-      terminal.ptyProcess.write(data);
-    } else {
+    if (!terminal) {
       console.warn(`Terminal ${id} not found, cannot write data`);
+      return;
     }
+
+    // Track input timing for silence detection
+    terminal.lastInputTime = Date.now();
+
+    // Store traceId if provided, or clear it if explicitly undefined
+    // This ensures each traced operation gets a fresh ID and prevents cross-operation bleed
+    if (traceId !== undefined) {
+      terminal.traceId = traceId || undefined;
+    }
+
+    // Notify activity monitor of input (detects Enter key for busy state)
+    // ActivityMonitor is the single source of truth for busy/idle transitions
+    const monitor = this.activityMonitors.get(id);
+    if (monitor) {
+      monitor.onInput(data);
+    }
+
+    // Chunk input and queue for writing (prevents data corruption on large pastes)
+    const chunks = chunkInput(data);
+    terminal.inputWriteQueue.push(...chunks);
+
+    this._startWrite(id);
+  }
+
+  /**
+   * Start the write queue processing for a terminal.
+   * Writes the first chunk immediately, then schedules subsequent chunks with delays.
+   */
+  private _startWrite(id: string): void {
+    const terminal = this.terminals.get(id);
+    if (!terminal || terminal.inputWriteTimeout !== null || terminal.inputWriteQueue.length === 0) {
+      return;
+    }
+
+    // Write first chunk immediately
+    this._doWrite(id);
+
+    // Schedule next write if queue not empty
+    if (terminal.inputWriteQueue.length > 0) {
+      terminal.inputWriteTimeout = setTimeout(() => {
+        terminal.inputWriteTimeout = null;
+        this._startWrite(id);
+      }, WRITE_INTERVAL_MS);
+    }
+  }
+
+  /**
+   * Write the next chunk from the queue to the PTY.
+   */
+  private _doWrite(id: string): void {
+    const terminal = this.terminals.get(id);
+    if (!terminal || terminal.inputWriteQueue.length === 0) {
+      return;
+    }
+
+    const chunk = terminal.inputWriteQueue.shift()!;
+    terminal.ptyProcess.write(chunk);
   }
 
   /**
@@ -1082,6 +1176,13 @@ export class PtyManager extends EventEmitter {
       if (terminal.bufferingMode && terminal.outputQueue.length > 0) {
         this.flushBuffer(id);
       }
+
+      // Clear pending input writes
+      if (terminal.inputWriteTimeout) {
+        clearTimeout(terminal.inputWriteTimeout);
+        terminal.inputWriteTimeout = null;
+      }
+      terminal.inputWriteQueue = [];
 
       // Mark as killed to prevent agent:completed emission
       terminal.wasKilled = true;
@@ -1339,6 +1440,13 @@ export class PtyManager extends EventEmitter {
           clearTimeout(terminal.semanticFlushTimer);
           terminal.semanticFlushTimer = null;
         }
+
+        // Clear input write queue timer and empty queue
+        if (terminal.inputWriteTimeout) {
+          clearTimeout(terminal.inputWriteTimeout);
+          terminal.inputWriteTimeout = null;
+        }
+        terminal.inputWriteQueue = [];
 
         // Emit agent:killed event for agent terminals during shutdown
         if (terminal.agentId) {
