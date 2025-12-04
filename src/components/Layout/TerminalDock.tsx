@@ -72,10 +72,9 @@ export function TerminalDock() {
     <div
       ref={setNodeRef}
       className={cn(
-        "min-h-[40px] bg-canopy-bg/95 backdrop-blur-sm border-t-2 border-canopy-border/60 shadow-[0_-4px_12px_rgba(0,0,0,0.3)]",
-        "flex items-center px-4 gap-2",
+        "bg-canopy-bg/95 backdrop-blur-sm border-t-2 border-canopy-border/60 shadow-[0_-4px_12px_rgba(0,0,0,0.3)]",
+        "flex items-center px-4 py-2 gap-2",
         "z-40 shrink-0",
-        isEmpty && !isOver && "h-10",
         isOver && "bg-white/[0.03] ring-2 ring-canopy-accent/30 ring-inset"
       )}
       role="list"
