@@ -93,14 +93,9 @@ export interface SidecarNavigatePayload {
   url: string;
 }
 
-export const DEFAULT_SIDECAR_TABS: SidecarTab[] = [
-  { id: "claude", url: "https://claude.ai/new", title: "Claude" },
-  { id: "chatgpt", url: "https://chatgpt.com/", title: "ChatGPT" },
-  { id: "localhost", url: "http://localhost:3000", title: "Localhost" },
-  { id: "google", url: "https://www.google.com", title: "Google" },
-];
+export const DEFAULT_SIDECAR_TABS: SidecarTab[] = [];
 
-export const SIDECAR_MIN_WIDTH = 400;
+export const SIDECAR_MIN_WIDTH = 450;
 export const SIDECAR_MAX_WIDTH = 1200;
-export const SIDECAR_DEFAULT_WIDTH = 800;
-export const MIN_GRID_WIDTH = 600;
+export const SIDECAR_DEFAULT_WIDTH = 600;
+export const MIN_GRID_WIDTH = 400;

@@ -25,7 +25,9 @@ interface SidecarActions {
   toggle: () => void;
   setOpen: (open: boolean) => void;
   setWidth: (width: number) => void;
-  setActiveTab: (id: string) => void;
+  setActiveTab: (id: string | null) => void;
+  createTab: (url: string, title: string) => string;
+  closeTab: (id: string) => void;
   updateTabTitle: (id: string, title: string) => void;
   updateTabUrl: (id: string, url: string) => void;
   updateLayoutMode: (windowWidth: number, sidebarWidth: number) => void;
@@ -44,25 +46,29 @@ interface SidecarActions {
 
 function createDefaultLinks(): SidecarLink[] {
   let order = 0;
-  const links: SidecarLink[] = [];
-
-  links.push({
-    id: "system-localhost",
-    ...LINK_TEMPLATES.localhost,
-    type: "system",
-    enabled: true,
-    order: order++,
-  });
-
-  links.push({
-    id: "system-google",
-    ...LINK_TEMPLATES.google,
-    type: "system",
-    enabled: true,
-    order: order++,
-  });
-
-  return links;
+  return [
+    {
+      id: "ai-claude",
+      ...LINK_TEMPLATES.claude,
+      type: "system",
+      enabled: true,
+      order: order++,
+    },
+    {
+      id: "ai-gemini",
+      ...LINK_TEMPLATES.gemini,
+      type: "system",
+      enabled: true,
+      order: order++,
+    },
+    {
+      id: "ai-chatgpt",
+      ...LINK_TEMPLATES.chatgpt,
+      type: "system",
+      enabled: true,
+      order: order++,
+    },
+  ];
 }
 
 const initialState: SidecarState = {
@@ -118,6 +124,47 @@ const createSidecarStore: StateCreator<SidecarState & SidecarActions> = (set, ge
   },
 
   setActiveTab: (id) => set({ activeTabId: id }),
+
+  createTab: (url, title) => {
+    const newTabId = `tab-${Date.now()}-${Math.random().toString(36).slice(2, 7)}`;
+    const newTab: SidecarTab = { id: newTabId, url, title };
+    set((s) => ({
+      tabs: [...s.tabs, newTab],
+      activeTabId: newTabId,
+    }));
+    return newTabId;
+  },
+
+  closeTab: (id) => {
+    const state = get();
+    const newTabs = state.tabs.filter((t) => t.id !== id);
+    let newActiveId = state.activeTabId;
+    if (id === state.activeTabId) {
+      newActiveId = newTabs.length > 0 ? newTabs[newTabs.length - 1].id : null;
+    }
+    set({ tabs: newTabs, activeTabId: newActiveId });
+    window.electron.sidecar.closeTab({ tabId: id });
+
+    if (newActiveId) {
+      setTimeout(() => {
+        const placeholder = document.getElementById("sidecar-placeholder");
+        if (placeholder) {
+          const rect = placeholder.getBoundingClientRect();
+          window.electron.sidecar.show({
+            tabId: newActiveId,
+            bounds: {
+              x: Math.round(rect.x),
+              y: Math.round(rect.y),
+              width: Math.round(rect.width),
+              height: Math.round(rect.height),
+            },
+          });
+        }
+      }, 0);
+    } else {
+      window.electron.sidecar.hide();
+    }
+  },
 
   updateTabTitle: (id, title) =>
     set((s) => ({

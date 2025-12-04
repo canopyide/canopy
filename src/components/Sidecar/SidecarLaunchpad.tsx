@@ -1,6 +1,5 @@
 import { useState } from "react";
-import { Globe, Search, Settings } from "lucide-react";
-import { useSidecarStore } from "@/store/sidecarStore";
+import { Globe, Search } from "lucide-react";
 import { ClaudeIcon, GeminiIcon, CodexIcon } from "@/components/icons";
 import type { SidecarLink } from "@shared/types";
 
@@ -43,50 +42,43 @@ function LinkIcon({ link, size = 32 }: { link: SidecarLink; size?: number }) {
 }
 
 interface SidecarLaunchpadProps {
-  onSelectLink: (linkId: string) => void;
-  onOpenSettings?: () => void;
+  links: SidecarLink[];
+  onOpenUrl: (url: string, title: string) => void;
 }
 
-export function SidecarLaunchpad({ onSelectLink, onOpenSettings }: SidecarLaunchpadProps) {
-  const links = useSidecarStore((s) => s.links);
-  const enabledLinks = links.filter((l) => l.enabled).sort((a, b) => a.order - b.order);
-
-  if (enabledLinks.length === 0) {
+export function SidecarLaunchpad({ links, onOpenUrl }: SidecarLaunchpadProps) {
+  if (links.length === 0) {
     return (
       <div className="flex-1 flex flex-col items-center justify-center text-zinc-500 p-6">
         <Globe className="w-12 h-12 mb-4 opacity-50" />
-        <p className="text-sm mb-4">No links configured</p>
-        {onOpenSettings && (
-          <button
-            onClick={onOpenSettings}
-            className="flex items-center gap-2 px-4 py-2 rounded-md bg-zinc-800 hover:bg-zinc-700 transition-colors text-zinc-300 text-sm"
-          >
-            <Settings className="w-4 h-4" />
-            Add links in Settings
-          </button>
-        )}
+        <p className="text-sm">No AI agents configured</p>
       </div>
     );
   }
 
   return (
-    <div className="flex-1 p-6 overflow-y-auto">
-      <h2 className="text-sm font-medium mb-4 text-zinc-400">Quick Links</h2>
-      <div className="grid grid-cols-2 gap-3">
-        {enabledLinks.map((link) => (
-          <button
-            key={link.id}
-            onClick={() => onSelectLink(link.id)}
-            className="flex flex-col items-center gap-2 p-4 rounded-lg bg-zinc-800/50 hover:bg-zinc-800 border border-zinc-700/50 hover:border-zinc-600 transition-all group"
-          >
-            <div className="w-8 h-8 flex items-center justify-center text-zinc-300 group-hover:text-white transition-colors">
-              <LinkIcon link={link} size={32} />
-            </div>
-            <span className="text-sm text-zinc-400 group-hover:text-zinc-200 transition-colors truncate max-w-full">
-              {link.title}
-            </span>
-          </button>
-        ))}
+    <div className="flex-1 flex flex-col items-center justify-center p-8">
+      <div className="w-full max-w-sm">
+        <h2 className="text-lg font-medium mb-6 text-zinc-200 text-center">New Chat</h2>
+        <div className="grid grid-cols-1 gap-4">
+          {links.map((link) => (
+            <button
+              key={link.id}
+              onClick={() => onOpenUrl(link.url, link.title)}
+              className="flex items-center gap-4 p-4 rounded-xl bg-zinc-800/50 hover:bg-zinc-800 border border-zinc-700/50 hover:border-zinc-600 transition-all group focus-visible:outline focus-visible:outline-2 focus-visible:outline-blue-500 focus-visible:outline-offset-2"
+            >
+              <div className="w-8 h-8 flex items-center justify-center text-zinc-300 group-hover:text-white transition-colors">
+                <LinkIcon link={link} size={32} />
+              </div>
+              <div className="text-left">
+                <div className="font-medium text-zinc-200 group-hover:text-white transition-colors">
+                  {link.title}
+                </div>
+                <div className="text-xs text-zinc-500">Open web client</div>
+              </div>
+            </button>
+          ))}
+        </div>
       </div>
     </div>
   );
