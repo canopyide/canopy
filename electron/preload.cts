@@ -100,6 +100,7 @@ const CHANNELS = {
   TERMINAL_RESTORED: "terminal:restored",
   TERMINAL_SET_BUFFERING: "terminal:set-buffering",
   TERMINAL_FLUSH: "terminal:flush",
+  TERMINAL_SET_ACTIVITY_TIER: "terminal:set-activity-tier",
   TERMINAL_GET_FOR_PROJECT: "terminal:get-for-project",
   TERMINAL_RECONNECT: "terminal:reconnect",
   TERMINAL_REPLAY_HISTORY: "terminal:replay-history",
@@ -362,6 +363,9 @@ const api: ElectronAPI = {
 
     flush: (id: string) => _typedInvoke(CHANNELS.TERMINAL_FLUSH, id),
 
+    setActivityTier: (id: string, tier: "focused" | "visible" | "background") =>
+      ipcRenderer.send(CHANNELS.TERMINAL_SET_ACTIVITY_TIER, { id, tier }),
+
     getForProject: (projectId: string) =>
       ipcRenderer.invoke(CHANNELS.TERMINAL_GET_FOR_PROJECT, projectId),
 
@@ -420,8 +424,10 @@ const api: ElectronAPI = {
     refreshCliAvailability: () => _typedInvoke(CHANNELS.SYSTEM_REFRESH_CLI_AVAILABILITY),
 
     onWake: (callback: (data: { sleepDuration: number; timestamp: number }) => void) => {
-      const handler = (_event: Electron.IpcRendererEvent, data: { sleepDuration: number; timestamp: number }) =>
-        callback(data);
+      const handler = (
+        _event: Electron.IpcRendererEvent,
+        data: { sleepDuration: number; timestamp: number }
+      ) => callback(data);
       ipcRenderer.on(CHANNELS.SYSTEM_WAKE, handler);
       return () => ipcRenderer.removeListener(CHANNELS.SYSTEM_WAKE, handler);
     },

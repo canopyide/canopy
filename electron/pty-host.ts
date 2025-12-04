@@ -15,7 +15,11 @@ import { PtyManager } from "./services/PtyManager.js";
 import { PtyPool, getPtyPool } from "./services/PtyPool.js";
 import { events } from "./services/events.js";
 import type { AgentEvent } from "./services/AgentStateMachine.js";
-import type { PtyHostEvent, PtyHostTerminalSnapshot } from "../shared/types/pty-host.js";
+import type {
+  PtyHostEvent,
+  PtyHostTerminalSnapshot,
+  ActivityTier,
+} from "../shared/types/pty-host.js";
 
 // Validate we're running in UtilityProcess context
 if (!process.parentPort) {
@@ -241,6 +245,10 @@ port.on("message", (rawMsg: any) => {
 
       case "flush-buffer":
         ptyManager.flushBuffer(msg.id);
+        break;
+
+      case "set-activity-tier":
+        ptyManager.setActivityTier(msg.id, msg.tier as ActivityTier);
         break;
 
       case "get-snapshot":
