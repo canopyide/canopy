@@ -143,7 +143,10 @@ export function SidecarToolbar({
       </div>
 
       {/* Bottom Row: Tab Strip */}
-      <div className="flex items-center px-2 pb-1.5 gap-1 overflow-x-auto no-scrollbar" role="tablist">
+      <div
+        className="flex items-center px-2 pb-1.5 gap-1 overflow-x-auto no-scrollbar"
+        role="tablist"
+      >
         {tabs.map((tab) => (
           <button
             key={tab.id}
