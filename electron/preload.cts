@@ -103,6 +103,7 @@ const CHANNELS = {
   TERMINAL_GET_FOR_PROJECT: "terminal:get-for-project",
   TERMINAL_RECONNECT: "terminal:reconnect",
   TERMINAL_REPLAY_HISTORY: "terminal:replay-history",
+  TERMINAL_GET_SERIALIZED_STATE: "terminal:get-serialized-state",
 
   // Agent state channels
   AGENT_STATE_CHANGED: "agent:state-changed",
@@ -369,6 +370,9 @@ const api: ElectronAPI = {
 
     replayHistory: (terminalId: string, maxLines?: number) =>
       ipcRenderer.invoke(CHANNELS.TERMINAL_REPLAY_HISTORY, { terminalId, maxLines }),
+
+    getSerializedState: (terminalId: string) =>
+      _typedInvoke(CHANNELS.TERMINAL_GET_SERIALIZED_STATE, terminalId),
   },
 
   // Artifact API
@@ -420,8 +424,10 @@ const api: ElectronAPI = {
     refreshCliAvailability: () => _typedInvoke(CHANNELS.SYSTEM_REFRESH_CLI_AVAILABILITY),
 
     onWake: (callback: (data: { sleepDuration: number; timestamp: number }) => void) => {
-      const handler = (_event: Electron.IpcRendererEvent, data: { sleepDuration: number; timestamp: number }) =>
-        callback(data);
+      const handler = (
+        _event: Electron.IpcRendererEvent,
+        data: { sleepDuration: number; timestamp: number }
+      ) => callback(data);
       ipcRenderer.on(CHANNELS.SYSTEM_WAKE, handler);
       return () => ipcRenderer.removeListener(CHANNELS.SYSTEM_WAKE, handler);
     },

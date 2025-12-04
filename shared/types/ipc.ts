@@ -981,6 +981,10 @@ export interface IpcInvokeMap {
     args: [payload: { terminalId: string; maxLines?: number }];
     result: { replayed: number };
   };
+  "terminal:get-serialized-state": {
+    args: [terminalId: string];
+    result: string | null;
+  };
 
   // Agent channels
   "agent:get-state": {
@@ -1462,6 +1466,7 @@ export interface ElectronAPI {
     getForProject(projectId: string): Promise<BackendTerminalInfo[]>;
     reconnect(terminalId: string): Promise<TerminalReconnectResult>;
     replayHistory(terminalId: string, maxLines?: number): Promise<{ replayed: number }>;
+    getSerializedState(terminalId: string): Promise<string | null>;
     onData(id: string, callback: (data: string) => void): () => void;
     onExit(callback: (id: string, exitCode: number) => void): () => void;
     onAgentStateChanged(callback: (data: AgentStateChangePayload) => void): () => void;

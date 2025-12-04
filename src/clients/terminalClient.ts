@@ -90,4 +90,13 @@ export const terminalClient = {
   replayHistory: (terminalId: string, maxLines?: number): Promise<{ replayed: number }> => {
     return window.electron.terminal.replayHistory(terminalId, maxLines);
   },
+
+  /**
+   * Get serialized terminal state from headless xterm backend.
+   * Returns full terminal state including colors, formatting, cursor position.
+   * Used for fast restoration on app reload.
+   */
+  getSerializedState: (terminalId: string): Promise<string | null> => {
+    return window.electron.terminal.getSerializedState(terminalId);
+  },
 } as const;

@@ -1,6 +1,8 @@
 import * as pty from "node-pty";
 import { EventEmitter } from "events";
 import { existsSync } from "fs";
+import { Terminal as HeadlessTerminal } from "@xterm/headless";
+import { SerializeAddon } from "@xterm/addon-serialize";
 import { events } from "./events.js";
 import { nextAgentState, getStateChangeTimestamp, type AgentEvent } from "./AgentStateMachine.js";
 import type { AgentState } from "../types/index.js";
@@ -40,6 +42,20 @@ const DEFAULT_MAX_QUEUE_BYTES = 1024 * 1024;
 const FLOOD_THRESHOLD_BYTES = 5 * 1024 * 1024; // 5MB per second
 const FLOOD_CHECK_INTERVAL_MS = 1000;
 const FLOOD_RESUME_THRESHOLD = FLOOD_THRESHOLD_BYTES * 0.5; // Resume when rate drops to 50%
+
+// Scrollback configuration per terminal type (headless terminal)
+const SCROLLBACK_BY_TYPE: Record<TerminalType, number> = {
+  claude: 10000,
+  gemini: 10000,
+  codex: 10000,
+  custom: 10000,
+  shell: 2000,
+  npm: 500,
+  yarn: 500,
+  pnpm: 500,
+  bun: 500,
+};
+const DEFAULT_SCROLLBACK = 1000;
 
 interface TerminalInfo {
   id: string;
@@ -84,6 +100,11 @@ interface TerminalInfo {
   bytesThisSecond: number;
   isFlooded: boolean;
   lastResumedAt: number;
+
+  /** Headless xterm instance for persistent terminal state */
+  headlessTerminal: HeadlessTerminal;
+  /** Serialize addon attached to headless terminal */
+  serializeAddon: SerializeAddon;
 }
 
 export interface PtyManagerEvents {
@@ -682,6 +703,19 @@ export class PtyManager extends EventEmitter {
       }
     }
 
+    // Create headless terminal for persistent state (colors, formatting, cursor position)
+    const scrollback = options.type
+      ? (SCROLLBACK_BY_TYPE[options.type] ?? DEFAULT_SCROLLBACK)
+      : DEFAULT_SCROLLBACK;
+    const headlessTerminal = new HeadlessTerminal({
+      cols: options.cols,
+      rows: options.rows,
+      scrollback,
+      allowProposedApi: true,
+    });
+    const serializeAddon = new SerializeAddon();
+    headlessTerminal.loadAddon(serializeAddon);
+
     // Forward PTY data events
     ptyProcess.onData((data) => {
       // Verify this is still the active terminal (prevent race with respawn)
@@ -701,6 +735,9 @@ export class PtyManager extends EventEmitter {
 
       // Track output timing for silence detection
       terminal.lastOutputTime = Date.now();
+
+      // Write to headless terminal to maintain authoritative state (colors, cursor, wrapping)
+      terminal.headlessTerminal.write(data);
 
       // Check if we're in buffering mode (terminal is hidden/docked)
       if (terminal.bufferingMode) {
@@ -824,6 +861,9 @@ export class PtyManager extends EventEmitter {
         }
       }
 
+      // Dispose headless terminal to prevent memory leaks
+      terminal.headlessTerminal.dispose();
+
       this.terminals.delete(id);
     });
 
@@ -860,6 +900,9 @@ export class PtyManager extends EventEmitter {
       bytesThisSecond: 0,
       isFlooded: false,
       lastResumedAt: 0,
+      // Headless terminal for persistent state
+      headlessTerminal,
+      serializeAddon,
     };
 
     this.terminals.set(id, terminal);
@@ -971,6 +1014,9 @@ export class PtyManager extends EventEmitter {
         }
 
         terminal.ptyProcess.resize(cols, rows);
+
+        // Resize headless terminal to keep state in sync
+        terminal.headlessTerminal.resize(cols, rows);
 
         // Optional: Log resize events when verbose logging enabled
         if (process.env.CANOPY_VERBOSE) {
@@ -1118,6 +1164,10 @@ export class PtyManager extends EventEmitter {
           );
         }
       }
+
+      // Dispose headless terminal resources
+      terminal.headlessTerminal.dispose();
+
       terminal.ptyProcess.kill();
       // Don't delete here - let the exit handler do it to avoid race conditions
     }
@@ -1260,6 +1310,25 @@ export class PtyManager extends EventEmitter {
   }
 
   /**
+   * Get serialized terminal state for fast restoration.
+   * Uses the headless xterm instance to serialize full terminal state including
+   * colors, formatting, cursor position, and line wrapping.
+   * @param id - Terminal identifier
+   * @returns Serialized state string or null if terminal not found
+   */
+  getSerializedState(id: string): string | null {
+    const terminal = this.terminals.get(id);
+    if (!terminal) return null;
+
+    try {
+      return terminal.serializeAddon.serialize();
+    } catch (error) {
+      console.error(`[PtyManager] Failed to serialize terminal ${id}:`, error);
+      return null;
+    }
+  }
+
+  /**
    * Mark a terminal's check time (for AI/heuristic analysis throttling).
    * External services call this after running state detection to prevent
    * redundant checks.
@@ -1334,6 +1403,12 @@ export class PtyManager extends EventEmitter {
 
     for (const [id, terminal] of this.terminals) {
       try {
+        // Stop process detector
+        if (terminal.processDetector) {
+          terminal.processDetector.stop();
+          terminal.processDetector = undefined;
+        }
+
         // Clear semantic flush timer
         if (terminal.semanticFlushTimer) {
           clearTimeout(terminal.semanticFlushTimer);
@@ -1358,6 +1433,10 @@ export class PtyManager extends EventEmitter {
           }
           // Skip error logging during cleanup to avoid noise
         }
+
+        // Dispose headless terminal
+        terminal.headlessTerminal.dispose();
+
         terminal.ptyProcess.kill();
       } catch (error) {
         // Ignore errors during cleanup - process may already be dead
