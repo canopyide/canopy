@@ -192,52 +192,78 @@ export function registerProjectHandlers(deps: HandlerDependencies): () => void {
 
     console.log("[ProjectSwitch] Cleaning up previous project state...");
 
-    // Pass projectId to PtyManager and DevServerManager for multi-tenancy
-    // (they background instead of kill processes from other projects)
-    const cleanupResults = await Promise.allSettled([
-      deps.worktreeService?.onProjectSwitch() ?? Promise.resolve(),
-      deps.devServerManager?.onProjectSwitch(projectId) ?? Promise.resolve(),
-      Promise.resolve(ptyManager.onProjectSwitch(projectId)),
-      Promise.resolve(logBuffer.onProjectSwitch()),
-      Promise.resolve(deps.eventBuffer?.onProjectSwitch()),
-    ]);
+    // Store previous project for rollback on failure
+    const previousProjectId = ptyManager.getActiveProjectId();
 
-    cleanupResults.forEach((result, index) => {
-      if (result.status === "rejected") {
-        const serviceNames = [
-          "WorktreeService",
-          "DevServerManager",
-          "PtyManager",
-          "LogBuffer",
-          "EventBuffer",
-        ];
-        console.error(`[ProjectSwitch] ${serviceNames[index]} cleanup failed:`, result.reason);
+    try {
+      // First: Background terminals/servers and enable buffering (onProjectSwitch)
+      // This ensures output is buffered before we filter it
+      const cleanupResults = await Promise.allSettled([
+        deps.worktreeService?.onProjectSwitch() ?? Promise.resolve(),
+        deps.devServerManager?.onProjectSwitch(projectId) ?? Promise.resolve(),
+        Promise.resolve(ptyManager.onProjectSwitch(projectId)),
+        Promise.resolve(logBuffer.onProjectSwitch()),
+        Promise.resolve(deps.eventBuffer?.onProjectSwitch()),
+      ]);
+
+      cleanupResults.forEach((result, index) => {
+        if (result.status === "rejected") {
+          const serviceNames = [
+            "WorktreeService",
+            "DevServerManager",
+            "PtyManager",
+            "LogBuffer",
+            "EventBuffer",
+          ];
+          console.error(`[ProjectSwitch] ${serviceNames[index]} cleanup failed:`, result.reason);
+        }
+      });
+
+      // Second: Set active project filter AFTER buffering is in place
+      // This prevents event loss during transition - buffered output is preserved for replay
+      ptyManager.setActiveProject(projectId);
+      deps.devServerManager?.setActiveProject(projectId);
+
+      console.log("[ProjectSwitch] Previous project state cleaned up");
+
+      await projectStore.setCurrentProject(projectId);
+
+      const updatedProject = projectStore.getProjectById(projectId);
+      if (!updatedProject) {
+        throw new Error(`Project not found after update: ${projectId}`);
       }
-    });
 
-    console.log("[ProjectSwitch] Previous project state cleaned up");
-
-    await projectStore.setCurrentProject(projectId);
-
-    const updatedProject = projectStore.getProjectById(projectId);
-    if (!updatedProject) {
-      throw new Error(`Project not found after update: ${projectId}`);
-    }
-
-    if (worktreeService) {
+      // Replay terminal history after successful switch for smooth transition
       try {
-        console.log("[ProjectSwitch] Loading worktrees for new project...");
-        await worktreeService.loadProject(project.path);
-        console.log("[ProjectSwitch] Worktrees loaded successfully");
-      } catch (err) {
-        console.error("Failed to load worktrees for project:", err);
+        const replayedCount = ptyManager.replayProjectHistory(projectId, 100);
+        if (replayedCount > 0) {
+          console.log(`[ProjectSwitch] Replayed history for ${replayedCount} terminals`);
+        }
+      } catch (replayError) {
+        console.error("[ProjectSwitch] History replay failed (non-fatal):", replayError);
       }
+
+      if (worktreeService) {
+        try {
+          console.log("[ProjectSwitch] Loading worktrees for new project...");
+          await worktreeService.loadProject(project.path);
+          console.log("[ProjectSwitch] Worktrees loaded successfully");
+        } catch (err) {
+          console.error("Failed to load worktrees for project:", err);
+        }
+      }
+
+      sendToRenderer(mainWindow, CHANNELS.PROJECT_ON_SWITCH, updatedProject);
+
+      console.log("[ProjectSwitch] Project switch complete");
+      return updatedProject;
+    } catch (error) {
+      // Rollback active project filter on failure
+      console.error("[ProjectSwitch] Project switch failed, rolling back:", error);
+      ptyManager.setActiveProject(previousProjectId);
+      deps.devServerManager?.setActiveProject(previousProjectId);
+      throw error;
     }
-
-    sendToRenderer(mainWindow, CHANNELS.PROJECT_ON_SWITCH, updatedProject);
-
-    console.log("[ProjectSwitch] Project switch complete");
-    return updatedProject;
   };
   ipcMain.handle(CHANNELS.PROJECT_SWITCH, handleProjectSwitch);
   handlers.push(() => ipcMain.removeHandler(CHANNELS.PROJECT_SWITCH));

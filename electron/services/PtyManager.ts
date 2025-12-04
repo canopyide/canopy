@@ -104,11 +104,122 @@ export class PtyManager extends EventEmitter {
   private activityMonitors: Map<string, ActivityMonitor> = new Map();
   private ptyPool: PtyPool | null = null;
   private lastKnownProjectId: string | null = null;
+  private activeProjectId: string | null = null; // Filter IPC events by this project
 
   private readonly TRASH_TTL_MS = 120 * 1000;
 
   constructor() {
     super();
+  }
+
+  /**
+   * Set the active project for IPC event filtering.
+   * Only terminals belonging to the active project will emit data events to the renderer.
+   * Backgrounded projects continue running but emit nothing over IPC.
+   */
+  setActiveProject(projectId: string | null): void {
+    const previousProjectId = this.activeProjectId;
+    this.activeProjectId = projectId;
+
+    if (process.env.CANOPY_VERBOSE) {
+      console.log(
+        `[PtyManager] Active project changed: ${previousProjectId || "none"} → ${projectId || "none"}`
+      );
+    }
+  }
+
+  /**
+   * Get the current active project ID.
+   */
+  getActiveProjectId(): string | null {
+    return this.activeProjectId;
+  }
+
+  /**
+   * Emit terminal data with project-based filtering.
+   * Only emits if the terminal belongs to the active project.
+   * Uses lastKnownProjectId fallback for legacy terminals without projectId.
+   */
+  private emitData(id: string, data: string): void {
+    const terminal = this.terminals.get(id);
+    if (!terminal) {
+      return;
+    }
+
+    // No active project filter → emit all (useful for debugging or single-project mode)
+    if (!this.activeProjectId) {
+      this.emit("data", id, data);
+      return;
+    }
+
+    // Use same classification logic as onProjectSwitch for consistency
+    const terminalProjectId = terminal.projectId || this.lastKnownProjectId;
+
+    // Only emit if terminal belongs to active project
+    // Terminals without any projectId (even after fallback) are backgrounded to be safe
+    if (terminalProjectId && terminalProjectId === this.activeProjectId) {
+      this.emit("data", id, data);
+    }
+    // Else: backgrounded terminal - output is still buffered, just not sent over IPC
+  }
+
+  /**
+   * Replay recent terminal history for seamless project restoration.
+   * Sends the last N lines from the semantic buffer as a single data event.
+   * Uses direct emit (bypasses filtering) since this is an explicit replay request.
+   */
+  replayHistory(terminalId: string, maxLines: number = 100): number {
+    const terminal = this.terminals.get(terminalId);
+    if (!terminal) {
+      return 0;
+    }
+
+    const bufferSize = terminal.semanticBuffer.length;
+    const linesToReplay = Math.min(maxLines, bufferSize);
+
+    if (linesToReplay === 0) {
+      return 0;
+    }
+
+    const recentLines = terminal.semanticBuffer.slice(-linesToReplay);
+    const historyChunk = recentLines.join("\n") + "\n";
+
+    // Direct emit (bypass filtering) since this is explicit replay
+    this.emit("data", terminalId, historyChunk);
+
+    if (process.env.CANOPY_VERBOSE) {
+      console.log(
+        `[PtyManager] Replayed ${linesToReplay}/${bufferSize} lines for terminal ${terminalId}`
+      );
+    }
+
+    return linesToReplay;
+  }
+
+  /**
+   * Replay history for all terminals in a specific project.
+   * Uses same classification logic as onProjectSwitch for consistency.
+   * Useful when foregrounding a project to restore all terminal states.
+   */
+  replayProjectHistory(projectId: string, maxLines: number = 100): number {
+    let count = 0;
+
+    for (const [id, terminal] of this.terminals) {
+      // Use same fallback logic as onProjectSwitch and emitData
+      const terminalProjectId = terminal.projectId || this.lastKnownProjectId;
+      if (terminalProjectId === projectId) {
+        const replayed = this.replayHistory(id, maxLines);
+        if (replayed > 0) {
+          count++;
+        }
+      }
+    }
+
+    if (process.env.CANOPY_VERBOSE) {
+      console.log(`[PtyManager] Replayed history for ${count} terminals in project ${projectId}`);
+    }
+
+    return count;
   }
 
   setPtyPool(pool: PtyPool): void {
@@ -532,8 +643,8 @@ export class PtyManager extends EventEmitter {
           this.flushBuffer(id);
         }
       } else {
-        // Normal flow: emit immediately
-        this.emit("data", id, data);
+        // Normal flow: emit with project filtering
+        this.emitData(id, data);
       }
 
       // For agent terminals, notify activity monitor and emit output events
@@ -851,8 +962,8 @@ export class PtyManager extends EventEmitter {
     terminal.outputQueue = [];
     terminal.queuedBytes = 0;
 
-    // Send as single IPC message for efficiency
-    this.emit("data", id, combined);
+    // Send as single IPC message with project filtering
+    this.emitData(id, combined);
 
     if (process.env.CANOPY_VERBOSE) {
       console.log(`[PtyManager] Flushed ${combined.length} bytes (${chunkCount} chunks) for ${id}`);
