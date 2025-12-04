@@ -141,6 +141,11 @@ export const CHANNELS = {
 
   HIBERNATION_GET_CONFIG: "hibernation:get-config",
   HIBERNATION_UPDATE_CONFIG: "hibernation:update-config",
+
+  SYSTEM_SLEEP_GET_METRICS: "system-sleep:get-metrics",
+  SYSTEM_SLEEP_GET_AWAKE_TIME: "system-sleep:get-awake-time",
+  SYSTEM_SLEEP_RESET: "system-sleep:reset",
+  SYSTEM_SLEEP_ON_WAKE: "system-sleep:on-wake",
 } as const;
 
 export type ChannelName = (typeof CHANNELS)[keyof typeof CHANNELS];

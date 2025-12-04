@@ -108,6 +108,9 @@ export type {
   GitHubTokenValidation,
   // Hibernation types
   HibernationConfig,
+  // System Sleep types
+  SleepPeriod,
+  SystemSleepMetrics,
   // App state types
   SavedRecipeTerminal,
   SavedRecipe,

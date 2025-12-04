@@ -388,6 +388,27 @@ export interface HibernationConfig {
   inactiveThresholdHours: number;
 }
 
+// System Sleep IPC Types
+
+/** Individual sleep period record */
+export interface SleepPeriod {
+  start: number;
+  end: number;
+  duration: number;
+}
+
+/** Metrics for system sleep tracking */
+export interface SystemSleepMetrics {
+  /** Total accumulated sleep time in milliseconds since service started */
+  totalSleepMs: number;
+  /** Array of recorded sleep periods */
+  sleepPeriods: SleepPeriod[];
+  /** Whether the system is currently sleeping */
+  isCurrentlySleeping: boolean;
+  /** Timestamp when current sleep started, if sleeping */
+  currentSleepStart: number | null;
+}
+
 // App State IPC Types
 
 /** Saved recipe terminal */
@@ -1273,6 +1294,20 @@ export interface IpcInvokeMap {
     args: [tabId: string];
     result: void;
   };
+
+  // System Sleep channels
+  "system-sleep:get-metrics": {
+    args: [];
+    result: SystemSleepMetrics;
+  };
+  "system-sleep:get-awake-time": {
+    args: [startTimestamp: number];
+    result: number;
+  };
+  "system-sleep:reset": {
+    args: [];
+    result: void;
+  };
 }
 
 /**
@@ -1352,6 +1387,9 @@ export interface IpcEventMap {
 
   // Sidecar events
   "sidecar:nav-event": import("./sidecar.js").SidecarNavEvent;
+
+  // System Sleep events
+  "system-sleep:on-wake": number;
 }
 
 /**
@@ -1552,5 +1590,15 @@ export interface ElectronAPI {
   hibernation: {
     getConfig(): Promise<HibernationConfig>;
     updateConfig(config: Partial<HibernationConfig>): Promise<HibernationConfig>;
+  };
+  systemSleep: {
+    /** Get metrics about system sleep tracking */
+    getMetrics(): Promise<SystemSleepMetrics>;
+    /** Get elapsed awake time since timestamp, excluding sleep periods */
+    getAwakeTimeSince(startTimestamp: number): Promise<number>;
+    /** Reset accumulated sleep tracking */
+    reset(): Promise<void>;
+    /** Subscribe to wake events with sleep duration */
+    onWake(callback: (sleepDurationMs: number) => void): () => void;
   };
 }
