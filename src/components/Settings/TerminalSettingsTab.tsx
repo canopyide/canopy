@@ -16,10 +16,7 @@ import {
   useScrollbackStore,
   useTerminalStore,
 } from "@/store";
-import {
-  AUTO_ENABLE_THRESHOLD_MIN,
-  AUTO_ENABLE_THRESHOLD_MAX,
-} from "@/store/performanceModeStore";
+import { AUTO_ENABLE_THRESHOLD_MIN, AUTO_ENABLE_THRESHOLD_MAX } from "@/store/performanceModeStore";
 import { appClient, terminalConfigClient } from "@/clients";
 import type { TerminalLayoutStrategy, TerminalGridConfig, TerminalType } from "@/types";
 import { getScrollbackForType, estimateMemoryUsage, formatBytes } from "@/utils/scrollbackConfig";
@@ -67,7 +64,7 @@ const TYPICAL_TERMINAL_COUNTS: Partial<Record<TerminalType, number>> = {
 export function TerminalSettingsTab() {
   const layoutConfig = useLayoutConfigStore((state) => state.layoutConfig);
   const setLayoutConfig = useLayoutConfigStore((state) => state.setLayoutConfig);
-  
+
   // Performance Mode Store
   const performanceMode = usePerformanceModeStore((state) => state.performanceMode);
   const setPerformanceMode = usePerformanceModeStore((state) => state.setPerformanceMode); // Kept for consistency if needed, but enable/disable are better
@@ -76,14 +73,14 @@ export function TerminalSettingsTab() {
   const enablePerformanceMode = usePerformanceModeStore((state) => state.enablePerformanceMode);
   const disablePerformanceMode = usePerformanceModeStore((state) => state.disablePerformanceMode);
   const setAutoEnableThreshold = usePerformanceModeStore((state) => state.setAutoEnableThreshold);
-  
+
   // Terminal Store (for count)
   const terminalCount = useTerminalStore((state) => state.terminals.length);
 
   // Scrollback Store
   const scrollbackLines = useScrollbackStore((state) => state.scrollbackLines);
   const setScrollbackLines = useScrollbackStore((state) => state.setScrollbackLines);
-  
+
   const [showMemoryDetails, setShowMemoryDetails] = useState(false);
 
   const memoryEstimate = useMemo(() => {
