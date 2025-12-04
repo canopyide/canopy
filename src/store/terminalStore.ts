@@ -267,9 +267,18 @@ export function setupTerminalStoreListeners() {
 
   exitUnsubscribe = terminalClient.onExit((id) => {
     const state = useTerminalStore.getState();
-    if (state.terminals.some((t) => t.id === id)) {
+    const terminal = state.terminals.find((t) => t.id === id);
+
+    if (!terminal) return;
+
+    // If already trashed, this is TTL expiry cleanup - permanently remove
+    if (terminal.location === "trash") {
       state.removeTerminal(id);
+      return;
     }
+
+    // Auto-trash on exit preserves history for review (consistent with manual close)
+    state.trashTerminal(id);
   });
 
   // Flush pending terminal persistence on window close to prevent data loss
