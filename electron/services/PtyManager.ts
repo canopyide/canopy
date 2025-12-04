@@ -36,6 +36,11 @@ const DEFAULT_MAX_QUEUE_SIZE = 100;
 
 const DEFAULT_MAX_QUEUE_BYTES = 1024 * 1024;
 
+// Circuit breaker: pause PTY when output rate exceeds threshold (prevents IPC flooding after wake)
+const FLOOD_THRESHOLD_BYTES = 5 * 1024 * 1024; // 5MB per second
+const FLOOD_CHECK_INTERVAL_MS = 1000;
+const FLOOD_RESUME_THRESHOLD = FLOOD_THRESHOLD_BYTES * 0.5; // Resume when rate drops to 50%
+
 interface TerminalInfo {
   id: string;
   projectId?: string; // Which project owns this terminal (for multi-tenancy)
@@ -74,6 +79,11 @@ interface TerminalInfo {
   pendingSemanticData: string;
   /** Timer for batched semantic buffer updates */
   semanticFlushTimer: NodeJS.Timeout | null;
+
+  // Circuit breaker state for flood protection
+  bytesThisSecond: number;
+  isFlooded: boolean;
+  lastResumedAt: number;
 }
 
 export interface PtyManagerEvents {
@@ -105,11 +115,66 @@ export class PtyManager extends EventEmitter {
   private ptyPool: PtyPool | null = null;
   private lastKnownProjectId: string | null = null;
   private activeProjectId: string | null = null; // Filter IPC events by this project
+  private floodCheckInterval: NodeJS.Timeout | null = null;
 
   private readonly TRASH_TTL_MS = 120 * 1000;
 
   constructor() {
     super();
+    // Start flood monitoring
+    this.floodCheckInterval = setInterval(() => this.checkFlooding(), FLOOD_CHECK_INTERVAL_MS);
+  }
+
+  /** Check all terminals for output flooding and apply circuit breaker */
+  private checkFlooding(): void {
+    const now = Date.now();
+    for (const [id, terminal] of this.terminals) {
+      if (terminal.bytesThisSecond > FLOOD_THRESHOLD_BYTES) {
+        if (!terminal.isFlooded) {
+          terminal.isFlooded = true;
+          // Pause the PTY to stop output
+          try {
+            terminal.ptyProcess.pause();
+          } catch {
+            // Ignore pause errors (process may already be dead)
+          }
+
+          const mbPerSecond = (terminal.bytesThisSecond / 1024 / 1024).toFixed(1);
+          this.emitData(
+            id,
+            `\r\n\x1b[31m[CANOPY] Output flood detected (${mbPerSecond} MB/s). Process paused to prevent crash.\x1b[0m\r\n`
+          );
+
+          events.emit("ui:notify", {
+            type: "error",
+            message: `Terminal ${terminal.title || id} paused due to excessive output.`,
+          });
+        }
+        // Don't reset counter while flooded - let it accumulate to prove sustained low rate
+      } else if (terminal.isFlooded && terminal.bytesThisSecond < FLOOD_RESUME_THRESHOLD) {
+        // Require at least 2 seconds of low output before resuming to avoid oscillation
+        const timeSinceResume = now - terminal.lastResumedAt;
+        if (timeSinceResume > 2000) {
+          terminal.isFlooded = false;
+          terminal.lastResumedAt = now;
+          try {
+            terminal.ptyProcess.resume();
+          } catch {
+            // Ignore resume errors
+          }
+
+          this.emitData(
+            id,
+            `\r\n\x1b[32m[CANOPY] Output rate normalized. Process resumed.\x1b[0m\r\n`
+          );
+        }
+        // Reset counter to start tracking low-rate period
+        terminal.bytesThisSecond = 0;
+      } else if (!terminal.isFlooded) {
+        // Normal operation - reset counter for next interval
+        terminal.bytesThisSecond = 0;
+      }
+    }
   }
 
   /**
@@ -626,6 +691,14 @@ export class PtyManager extends EventEmitter {
         return;
       }
 
+      // Track byte rate for flood protection
+      terminal.bytesThisSecond += data.length;
+
+      // Drop data if flooded to prevent IPC overflow
+      if (terminal.isFlooded) {
+        return;
+      }
+
       // Track output timing for silence detection
       terminal.lastOutputTime = Date.now();
 
@@ -783,6 +856,10 @@ export class PtyManager extends EventEmitter {
       // Debounced semantic buffer state
       pendingSemanticData: "",
       semanticFlushTimer: null,
+      // Circuit breaker state
+      bytesThisSecond: 0,
+      isFlooded: false,
+      lastResumedAt: 0,
     };
 
     this.terminals.set(id, terminal);
@@ -1237,6 +1314,12 @@ export class PtyManager extends EventEmitter {
    * Clean up all terminals (called on app quit)
    */
   dispose(): void {
+    // Clear flood check interval
+    if (this.floodCheckInterval) {
+      clearInterval(this.floodCheckInterval);
+      this.floodCheckInterval = null;
+    }
+
     // Clear all trash timeouts to prevent them from firing during shutdown
     for (const timeout of this.trashTimeouts.values()) {
       clearTimeout(timeout);

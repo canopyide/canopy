@@ -503,6 +503,24 @@ export class WorktreeMonitor {
     }
   }
 
+  /** Pause polling (used during system sleep) */
+  public pause(): void {
+    if (!this.pollingEnabled) return;
+    this.pollingEnabled = false;
+    this.stopPolling();
+    logDebug("WorktreeMonitor paused", { id: this.id });
+  }
+
+  /** Resume polling (used after system wake) */
+  public resume(): void {
+    if (this.pollingEnabled) return;
+    this.pollingEnabled = true;
+    if (this.isRunning && !this.pollingStrategy.isCircuitBreakerTripped()) {
+      this.scheduleNextPoll();
+    }
+    logDebug("WorktreeMonitor resumed", { id: this.id });
+  }
+
   private stopPolling(): void {
     if (this.pollingTimer) {
       clearTimeout(this.pollingTimer);

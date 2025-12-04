@@ -59,6 +59,7 @@ export class PtyClient extends EventEmitter {
   private isDisposed = false;
   private healthCheckInterval: NodeJS.Timeout | null = null;
   private restartAttempts = 0;
+  private isHealthCheckPaused = false;
   private pendingSpawns: Map<string, PtyHostSpawnOptions> = new Map();
   private snapshotCallbacks: Map<string, (snapshot: TerminalSnapshot | null) => void> = new Map();
   private allSnapshotsCallback: ((snapshots: TerminalSnapshot[]) => void) | null = null;
@@ -170,12 +171,14 @@ export class PtyClient extends EventEmitter {
       }
     });
 
-    // Start health check
-    this.healthCheckInterval = setInterval(() => {
-      if (this.isInitialized && this.child) {
-        this.send({ type: "health-check" });
-      }
-    }, this.config.healthCheckIntervalMs);
+    // Start health check (only if not paused by system sleep)
+    if (!this.isHealthCheckPaused) {
+      this.healthCheckInterval = setInterval(() => {
+        if (this.isInitialized && this.child && !this.isHealthCheckPaused) {
+          this.send({ type: "health-check" });
+        }
+      }, this.config.healthCheckIntervalMs);
+    }
 
     console.log("[PtyClient] Pty Host started");
   }
@@ -293,7 +296,7 @@ export class PtyClient extends EventEmitter {
       }
 
       case "pong":
-        // Health check passed, nothing to do
+        // Health check passed
         break;
 
       case "terminals-for-project": {
@@ -524,6 +527,44 @@ export class PtyClient extends EventEmitter {
         }
       }, 5000);
     });
+  }
+
+  /** Pause health check during system sleep to prevent time-drift false positives */
+  pauseHealthCheck(): void {
+    if (this.isHealthCheckPaused) return;
+    this.isHealthCheckPaused = true;
+    if (this.healthCheckInterval) {
+      clearInterval(this.healthCheckInterval);
+      this.healthCheckInterval = null;
+    }
+    console.log("[PtyClient] Health check paused");
+  }
+
+  /** Resume health check after system wake with reset timestamp */
+  resumeHealthCheck(): void {
+    if (!this.isHealthCheckPaused) return;
+    if (!this.isInitialized || !this.child) {
+      console.warn("[PtyClient] Cannot resume health check - host not ready");
+      this.isHealthCheckPaused = false;
+      return;
+    }
+
+    this.isHealthCheckPaused = false;
+
+    // Clear any existing interval before starting new one
+    if (this.healthCheckInterval) {
+      clearInterval(this.healthCheckInterval);
+      this.healthCheckInterval = null;
+    }
+
+    // Restart health check interval
+    this.healthCheckInterval = setInterval(() => {
+      if (this.isInitialized && this.child && !this.isHealthCheckPaused) {
+        this.send({ type: "health-check" });
+      }
+    }, this.config.healthCheckIntervalMs);
+
+    console.log("[PtyClient] Health check resumed");
   }
 
   /** Handle project switch - forward to host */
