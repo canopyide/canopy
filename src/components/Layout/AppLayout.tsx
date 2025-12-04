@@ -140,9 +140,9 @@ export function AppLayout({
 
   const handleToggleFocusMode = useCallback(async () => {
     if (isFocusMode) {
+      // Expanding sidebar - restore saved width only, not diagnostics state
       if (savedPanelState) {
         setSidebarWidth((savedPanelState as PanelState).sidebarWidth);
-        setDiagnosticsOpen((savedPanelState as PanelState).diagnosticsOpen);
       }
       toggleFocusMode({ sidebarWidth, diagnosticsOpen } as PanelState);
       try {
@@ -151,24 +151,16 @@ export function AppLayout({
         console.error("Failed to clear focus panel state:", error);
       }
     } else {
+      // Collapsing sidebar - only affect sidebar, not diagnostics
       const currentPanelState: PanelState = { sidebarWidth, diagnosticsOpen };
       toggleFocusMode(currentPanelState);
-      setDiagnosticsOpen(false);
-      // Persist panel state for restoration after restart
       try {
         await appClient.setState({ focusPanelState: currentPanelState });
       } catch (error) {
         console.error("Failed to persist focus panel state:", error);
       }
     }
-  }, [
-    isFocusMode,
-    savedPanelState,
-    sidebarWidth,
-    diagnosticsOpen,
-    toggleFocusMode,
-    setDiagnosticsOpen,
-  ]);
+  }, [isFocusMode, savedPanelState, sidebarWidth, diagnosticsOpen, toggleFocusMode]);
 
   useEffect(() => {
     const handleFocusModeToggle = () => {
