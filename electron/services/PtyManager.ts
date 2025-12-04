@@ -1378,6 +1378,79 @@ export class PtyManager extends EventEmitter {
   }
 
   /**
+   * Kill all terminals for a specific project.
+   * Used when explicitly closing a project to free resources.
+   * @param projectId - Project ID to kill terminals for
+   * @returns Number of terminals killed
+   */
+  killByProject(projectId: string): number {
+    const terminalsToKill = Array.from(this.terminals.entries())
+      .filter(([_, terminal]) => {
+        const terminalProjectId = terminal.projectId || this.lastKnownProjectId;
+        return terminalProjectId === projectId;
+      })
+      .map(([id]) => id);
+
+    if (terminalsToKill.length === 0) {
+      console.log(`[PtyManager] No terminals to kill for project ${projectId}`);
+      return 0;
+    }
+
+    console.log(
+      `[PtyManager] Killing ${terminalsToKill.length} terminal(s) for project ${projectId}`
+    );
+
+    let killed = 0;
+    for (const terminalId of terminalsToKill) {
+      try {
+        this.kill(terminalId, "project-closed");
+        killed++;
+      } catch (error) {
+        console.error(`[PtyManager] Failed to kill terminal ${terminalId}:`, error);
+      }
+    }
+
+    console.log(`[PtyManager] Killed ${killed}/${terminalsToKill.length} terminals`);
+    return killed;
+  }
+
+  /**
+   * Get statistics about processes for a project.
+   * Used for resource monitoring and UI indicators.
+   * @param projectId - Project ID to get stats for
+   * @returns Stats object with counts and terminal types
+   */
+  getProjectStats(projectId: string): {
+    terminalCount: number;
+    processIds: number[];
+    terminalTypes: Record<string, number>;
+  } {
+    const projectTerminals = Array.from(this.terminals.values()).filter((t) => {
+      const terminalProjectId = t.projectId || this.lastKnownProjectId;
+      return terminalProjectId === projectId;
+    });
+
+    const processIds = projectTerminals
+      .map((t) => t.ptyProcess.pid)
+      .filter((pid): pid is number => pid !== undefined);
+
+    const terminalTypes = projectTerminals.reduce(
+      (acc, t) => {
+        const type = t.type || "shell";
+        acc[type] = (acc[type] || 0) + 1;
+        return acc;
+      },
+      {} as Record<string, number>
+    );
+
+    return {
+      terminalCount: projectTerminals.length,
+      processIds,
+      terminalTypes,
+    };
+  }
+
+  /**
    * Get the default shell for the current platform
    * Tries multiple fallbacks to ensure a valid shell is found
    */

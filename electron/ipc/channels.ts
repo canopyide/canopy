@@ -110,6 +110,8 @@ export const CHANNELS = {
   PROJECT_SAVE_SETTINGS: "project:save-settings",
   PROJECT_DETECT_RUNNERS: "project:detect-runners",
   PROJECT_REGENERATE_IDENTITY: "project:regenerate-identity",
+  PROJECT_CLOSE: "project:close",
+  PROJECT_GET_STATS: "project:get-stats",
 
   HISTORY_GET_SESSIONS: "history:get-sessions",
   HISTORY_GET_SESSION: "history:get-session",

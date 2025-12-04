@@ -395,6 +395,58 @@ export class DevServerManager {
     return result;
   }
 
+  /**
+   * Stop all dev servers for a specific project.
+   * Used when explicitly closing a project to free resources.
+   * @param projectId - Project ID to stop servers for
+   * @returns Number of servers stopped
+   */
+  public async stopByProject(projectId: string): Promise<number> {
+    const serversToStop: string[] = [];
+
+    for (const [worktreeId, state] of this.states.entries()) {
+      const serverProjectId = state.projectId || this.lastKnownProjectId;
+      if (serverProjectId === projectId && this.servers.has(worktreeId)) {
+        serversToStop.push(worktreeId);
+      }
+    }
+
+    if (serversToStop.length === 0) {
+      console.log(`[DevServerManager] No servers to stop for project ${projectId}`);
+      return 0;
+    }
+
+    console.log(
+      `[DevServerManager] Stopping ${serversToStop.length} server(s) for project ${projectId}`
+    );
+
+    const results = await Promise.allSettled(serversToStop.map((id) => this.stop(id)));
+    const stopped = results.filter((r) => r.status === "fulfilled").length;
+
+    console.log(`[DevServerManager] Stopped ${stopped}/${serversToStop.length} servers`);
+    return stopped;
+  }
+
+  /**
+   * Get dev server count for a project.
+   * @param projectId - Project ID to count servers for
+   * @returns Number of running servers for this project
+   */
+  public getProjectServerCount(projectId: string): number {
+    let count = 0;
+    for (const [worktreeId, state] of this.states.entries()) {
+      const serverProjectId = state.projectId || this.lastKnownProjectId;
+      if (
+        serverProjectId === projectId &&
+        (state.status === "running" || state.status === "starting") &&
+        this.servers.has(worktreeId)
+      ) {
+        count++;
+      }
+    }
+    return count;
+  }
+
   public getLogs(worktreeId: string): string[] {
     return this.logBuffers.get(worktreeId) ?? [];
   }

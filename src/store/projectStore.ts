@@ -1,5 +1,5 @@
 import { create, type StateCreator } from "zustand";
-import type { Project } from "@shared/types";
+import type { Project, ProjectCloseResult } from "@shared/types";
 import { projectClient, appClient } from "@/clients";
 import { resetAllStoresForProjectSwitch } from "./resetStores";
 import { flushTerminalPersistence } from "./slices";
@@ -16,6 +16,7 @@ interface ProjectState {
   switchProject: (projectId: string) => Promise<void>;
   updateProject: (id: string, updates: Partial<Project>) => Promise<void>;
   removeProject: (id: string) => Promise<void>;
+  closeProject: (projectId: string) => Promise<ProjectCloseResult>;
 }
 
 const createProjectStore: StateCreator<ProjectState> = (set, get) => ({
@@ -141,6 +142,32 @@ const createProjectStore: StateCreator<ProjectState> = (set, get) => ({
     } catch (error) {
       console.error("Failed to remove project:", error);
       set({ error: "Failed to remove project", isLoading: false });
+    }
+  },
+
+  closeProject: async (projectId) => {
+    const currentProjectId = get().currentProject?.id;
+
+    // Prevent closing active project
+    if (projectId === currentProjectId) {
+      throw new Error("Cannot close the active project. Switch to another project first.");
+    }
+
+    try {
+      const result = await projectClient.close(projectId);
+
+      if (!result.success) {
+        throw new Error(result.error || "Failed to close project");
+      }
+
+      console.log(
+        `[ProjectStore] Closed project ${projectId}: ${result.processesKilled} processes killed`
+      );
+
+      return result;
+    } catch (error) {
+      console.error(`[ProjectStore] Failed to close project ${projectId}:`, error);
+      throw error;
     }
   },
 });

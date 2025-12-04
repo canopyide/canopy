@@ -334,5 +334,89 @@ export function registerProjectHandlers(deps: HandlerDependencies): () => void {
   ipcMain.handle(CHANNELS.PROJECT_DETECT_RUNNERS, handleProjectDetectRunners);
   handlers.push(() => ipcMain.removeHandler(CHANNELS.PROJECT_DETECT_RUNNERS));
 
+  const handleProjectClose = async (_event: Electron.IpcMainInvokeEvent, projectId: string) => {
+    if (typeof projectId !== "string" || !projectId) {
+      throw new Error("Invalid project ID");
+    }
+
+    console.log(`[IPC] project:close: ${projectId}`);
+
+    const { getPtyManager } = await import("../../services/PtyManager.js");
+    const ptyManager = getPtyManager();
+
+    // Prevent closing the active project - check both ptyManager and projectStore
+    const ptyActiveProjectId = ptyManager.getActiveProjectId();
+    const storeActiveProjectId = projectStore.getCurrentProjectId();
+
+    if (projectId === ptyActiveProjectId || projectId === storeActiveProjectId) {
+      throw new Error("Cannot close the active project. Switch to another project first.");
+    }
+
+    try {
+      // Kill terminals and stop servers concurrently
+      const [terminalsKilled, serversStopped] = await Promise.all([
+        ptyManager.killByProject(projectId),
+        deps.devServerManager?.stopByProject(projectId) ?? Promise.resolve(0),
+      ]);
+
+      // Clear persisted state
+      await projectStore.clearProjectState(projectId);
+
+      const totalProcesses = terminalsKilled + serversStopped;
+      console.log(
+        `[IPC] project:close: Closed ${totalProcesses} processes ` +
+          `(${terminalsKilled} terminals, ${serversStopped} servers)`
+      );
+
+      return {
+        success: true,
+        processesKilled: totalProcesses,
+        terminalsKilled,
+        serversStopped,
+      };
+    } catch (error) {
+      console.error(`[IPC] project:close: Failed to close project ${projectId}:`, error);
+      return {
+        success: false,
+        error: error instanceof Error ? error.message : String(error),
+        processesKilled: 0,
+        terminalsKilled: 0,
+        serversStopped: 0,
+      };
+    }
+  };
+  ipcMain.handle(CHANNELS.PROJECT_CLOSE, handleProjectClose);
+  handlers.push(() => ipcMain.removeHandler(CHANNELS.PROJECT_CLOSE));
+
+  const handleProjectGetStats = async (_event: Electron.IpcMainInvokeEvent, projectId: string) => {
+    if (typeof projectId !== "string" || !projectId) {
+      throw new Error("Invalid project ID");
+    }
+
+    const { getPtyManager } = await import("../../services/PtyManager.js");
+    const ptyManager = getPtyManager();
+
+    const ptyStats = ptyManager.getProjectStats(projectId);
+    const serverCount = deps.devServerManager?.getProjectServerCount(projectId) ?? 0;
+
+    // Estimate memory (rough approximation)
+    const MEMORY_PER_TERMINAL_MB = 50;
+    const MEMORY_PER_SERVER_MB = 100;
+
+    const estimatedMemoryMB =
+      ptyStats.terminalCount * MEMORY_PER_TERMINAL_MB + serverCount * MEMORY_PER_SERVER_MB;
+
+    return {
+      processCount: ptyStats.terminalCount + serverCount,
+      terminalCount: ptyStats.terminalCount,
+      serverCount,
+      estimatedMemoryMB,
+      terminalTypes: ptyStats.terminalTypes,
+      processIds: ptyStats.processIds,
+    };
+  };
+  ipcMain.handle(CHANNELS.PROJECT_GET_STATS, handleProjectGetStats);
+  handlers.push(() => ipcMain.removeHandler(CHANNELS.PROJECT_GET_STATS));
+
   return () => handlers.forEach((cleanup) => cleanup());
 }

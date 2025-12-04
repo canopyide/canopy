@@ -1,4 +1,10 @@
-import type { Project, ProjectSettings, RunCommand } from "@shared/types";
+import type {
+  Project,
+  ProjectSettings,
+  RunCommand,
+  ProjectCloseResult,
+  ProjectStats,
+} from "@shared/types";
 
 /**
  * @example
@@ -52,5 +58,13 @@ export const projectClient = {
 
   detectRunners: (projectId: string): Promise<RunCommand[]> => {
     return window.electron.project.detectRunners(projectId);
+  },
+
+  close: (projectId: string): Promise<ProjectCloseResult> => {
+    return window.electron.project.close(projectId);
+  },
+
+  getStats: (projectId: string): Promise<ProjectStats> => {
+    return window.electron.project.getStats(projectId);
   },
 } as const;

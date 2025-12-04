@@ -98,6 +98,9 @@ export type {
   // PR detection IPC types
   PRDetectedPayload,
   PRClearedPayload,
+  // Project close IPC types
+  ProjectCloseResult,
+  ProjectStats,
   // GitHub IPC types
   RepositoryStats,
   GitHubCliStatus,
