@@ -131,7 +131,8 @@ Ready in 1.2s
     });
 
     it("should detect create-react-app output", () => {
-      const output = "Compiled successfully!\n\nYou can now view my-app in the browser.\n\n  Local:            http://localhost:3000";
+      const output =
+        "Compiled successfully!\n\nYou can now view my-app in the browser.\n\n  Local:            http://localhost:3000";
       const result = DevServerParser.detectUrl(output);
 
       expect(result).toEqual({

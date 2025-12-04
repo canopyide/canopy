@@ -89,7 +89,9 @@ describe("CommandDetector", () => {
     });
 
     it("should throw error for environment variables only", () => {
-      expect(() => detector.parseCommand("PORT=3000")).toThrow("Invalid command: no executable found");
+      expect(() => detector.parseCommand("PORT=3000")).toThrow(
+        "Invalid command: no executable found"
+      );
     });
 
     it("should parse complex npm script command", () => {
@@ -154,7 +156,7 @@ describe("CommandDetector", () => {
     });
 
     it("should handle environment variables with complex values", () => {
-      const result = detector.parseCommand('API_URL=http://localhost:3000 npm run dev');
+      const result = detector.parseCommand("API_URL=http://localhost:3000 npm run dev");
 
       expect(result).toEqual({
         executable: "npm",
@@ -417,10 +419,7 @@ describe("CommandDetector", () => {
       mkdirSync(testDir2, { recursive: true });
 
       try {
-        writeFileSync(
-          join(testDir, "package.json"),
-          JSON.stringify({ scripts: { dev: "vite" } })
-        );
+        writeFileSync(join(testDir, "package.json"), JSON.stringify({ scripts: { dev: "vite" } }));
         writeFileSync(
           join(testDir2, "package.json"),
           JSON.stringify({ scripts: { start: "node server.js" } })
@@ -453,10 +452,7 @@ describe("CommandDetector", () => {
       mkdirSync(testDir2, { recursive: true });
 
       try {
-        writeFileSync(
-          join(testDir, "package.json"),
-          JSON.stringify({ scripts: { dev: "vite" } })
-        );
+        writeFileSync(join(testDir, "package.json"), JSON.stringify({ scripts: { dev: "vite" } }));
         writeFileSync(
           join(testDir2, "package.json"),
           JSON.stringify({ scripts: { start: "node server.js" } })
