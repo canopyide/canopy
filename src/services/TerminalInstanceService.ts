@@ -2,7 +2,8 @@ import { Terminal } from "@xterm/xterm";
 import { FitAddon } from "@xterm/addon-fit";
 import { WebglAddon } from "@xterm/addon-webgl";
 import { SerializeAddon } from "@xterm/addon-serialize";
-import { terminalClient } from "@/clients";
+import { WebLinksAddon } from "@xterm/addon-web-links";
+import { terminalClient, systemClient } from "@/clients";
 import { TerminalRefreshTier } from "@/types";
 import { InputTracker, VT100_FULL_CLEAR } from "./clearCommandDetection";
 import { detectHardware, HardwareProfile } from "@/utils/hardwareDetection";
@@ -14,6 +15,7 @@ interface ManagedTerminal {
   fitAddon: FitAddon;
   webglAddon?: WebglAddon;
   serializeAddon: SerializeAddon;
+  webLinksAddon: WebLinksAddon;
   hostElement: HTMLDivElement;
   isOpened: boolean;
   listeners: Array<() => void>;
@@ -230,6 +232,35 @@ class TerminalInstanceService {
     terminal.loadAddon(fitAddon);
     terminal.loadAddon(serializeAddon);
 
+    const webLinksAddon = new WebLinksAddon(
+      (event, uri) => {
+        event.preventDefault();
+
+        // Normalize URLs without scheme to https://
+        let normalizedUri = uri;
+        if (!/^https?:\/\//i.test(uri)) {
+          normalizedUri = `https://${uri}`;
+        }
+
+        // Validate http/https only to prevent file:// or other protocols
+        if (!/^https?:\/\//i.test(normalizedUri)) {
+          console.warn(`[TerminalInstanceService] Blocked non-HTTP(S) URL: ${uri}`);
+          return;
+        }
+
+        // Open with error handling
+        systemClient.openExternal(normalizedUri).catch((error) => {
+          console.error(`[TerminalInstanceService] Failed to open URL "${normalizedUri}":`, error);
+        });
+      },
+      {
+        // Restrict to http/https URLs only
+        urlRegex:
+          /https?:\/\/(?:www\.)?[-a-zA-Z0-9@:%._+~#=]{1,256}\.[a-zA-Z0-9()]{1,6}\b(?:[-a-zA-Z0-9()@:%_+.~#?&/=]*)/gi,
+      }
+    );
+    terminal.loadAddon(webLinksAddon);
+
     const hostElement = document.createElement("div");
     hostElement.style.width = "100%";
     hostElement.style.height = "100%";
@@ -277,6 +308,7 @@ class TerminalInstanceService {
       fitAddon,
       webglAddon: undefined,
       serializeAddon,
+      webLinksAddon,
       hostElement,
       isOpened: false,
       listeners,
@@ -632,6 +664,7 @@ class TerminalInstanceService {
     managed.listeners.forEach((cleanup) => cleanup());
     managed.throttledWriter.dispose();
     managed.webglAddon?.dispose();
+    managed.webLinksAddon.dispose();
     this.webglLru = this.webglLru.filter((existing) => existing !== id);
 
     const disposeJank = this.jankFixDisposers.get(id);
