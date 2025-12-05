@@ -13,7 +13,6 @@ export function SidecarDock() {
     setActiveTab,
     setWidth,
     setOpen,
-    createTab,
     createBlankTab,
     closeTab,
     markTabCreated,
@@ -23,6 +22,18 @@ export function SidecarDock() {
   } = useSidecarStore();
   const placeholderRef = useRef<HTMLDivElement>(null);
   const [isResizing, setIsResizing] = useState(false);
+  const [isSwitching, setIsSwitching] = useState(false);
+
+  const getPlaceholderBounds = useCallback(() => {
+    if (!placeholderRef.current) return null;
+    const rect = placeholderRef.current.getBoundingClientRect();
+    return {
+      x: Math.round(rect.x),
+      y: Math.round(rect.y),
+      width: Math.round(rect.width),
+      height: Math.round(rect.height),
+    };
+  }, []);
 
   const enabledLinks = useMemo(
     () => links.filter((l) => l.enabled).sort((a, b) => a.order - b.order),
@@ -59,32 +70,6 @@ export function SidecarDock() {
     };
   }, [activeTabId, syncBounds]);
 
-  // Show sidecar tab after DOM is ready (handles launchpad-to-tab and collapse/expand)
-  useEffect(() => {
-    if (!activeTabId || !placeholderRef.current) return;
-
-    const tab = tabs.find((t) => t.id === activeTabId);
-    // Skip if tab has no URL (blank tab) - launchpad will be shown instead
-    if (!tab?.url) return;
-
-    if (createdTabs.has(activeTabId)) {
-      const rect = placeholderRef.current.getBoundingClientRect();
-      window.electron.sidecar.show({
-        tabId: activeTabId,
-        bounds: {
-          x: Math.round(rect.x),
-          y: Math.round(rect.y),
-          width: Math.round(rect.width),
-          height: Math.round(rect.height),
-        },
-      });
-    } else {
-      window.electron.sidecar.create({ tabId: activeTabId, url: tab.url }).then(() => {
-        markTabCreated(activeTabId);
-      });
-    }
-  }, [activeTabId, createdTabs, tabs, markTabCreated]);
-
   useEffect(() => {
     const cleanup = window.electron.sidecar.onNavEvent((data) => {
       useSidecarStore.getState().updateTabTitle(data.tabId, data.title);
@@ -94,18 +79,57 @@ export function SidecarDock() {
   }, []);
 
   const handleTabClick = useCallback(
-    (tabId: string) => {
+    async (tabId: string) => {
+      if (tabId === activeTabId || isSwitching) return;
+
       const tab = tabs.find((t) => t.id === tabId);
       if (!tab) return;
-      // useEffect handles the sidecar.show() call after DOM is ready
-      setActiveTab(tabId);
+
+      // Blank tabs (no URL) switch instantly - no webview to wait for
+      if (!tab.url) {
+        setActiveTab(tabId);
+        window.electron.sidecar.hide();
+        return;
+      }
+
+      const bounds = getPlaceholderBounds();
+      if (!bounds) return;
+
+      setIsSwitching(true);
+
+      try {
+        // Ensure the tab exists in main process
+        if (!createdTabs.has(tabId)) {
+          await window.electron.sidecar.create({ tabId, url: tab.url });
+          markTabCreated(tabId);
+        }
+
+        // Wait for webview to switch before updating UI
+        await window.electron.sidecar.show({ tabId, bounds });
+
+        // Only now update the UI to highlight the tab
+        setActiveTab(tabId);
+      } catch (error) {
+        console.error("Failed to switch tab:", error);
+      } finally {
+        setIsSwitching(false);
+      }
     },
-    [tabs, setActiveTab]
+    [
+      activeTabId,
+      tabs,
+      createdTabs,
+      getPlaceholderBounds,
+      markTabCreated,
+      setActiveTab,
+      isSwitching,
+    ]
   );
 
   const handleTabClose = useCallback(
     (tabId: string, e: React.MouseEvent) => {
       e.stopPropagation();
+      // Store's closeTab handles state update and deferred webview switching
       closeTab(tabId);
     },
     [closeTab]
@@ -118,25 +142,66 @@ export function SidecarDock() {
 
   const handleOpenUrl = useCallback(
     async (url: string, title: string) => {
-      // Reuse blank tab if active, otherwise create new tab
-      const currentTab = activeTabId ? tabs.find((t) => t.id === activeTabId) : null;
-      const isCurrentBlank = currentTab && !currentTab.url;
+      setIsSwitching(true);
 
-      let tabId: string;
-      if (isCurrentBlank && activeTabId) {
-        // Reuse the blank tab
-        tabId = activeTabId;
-        updateTabUrl(tabId, url);
-        updateTabTitle(tabId, title);
-      } else {
-        // Create new tab
-        tabId = createTab(url, title);
+      try {
+        // Reuse blank tab if active, otherwise create new tab
+        const currentTab = activeTabId ? tabs.find((t) => t.id === activeTabId) : null;
+        const isCurrentBlank = currentTab && !currentTab.url;
+
+        let tabId: string;
+        if (isCurrentBlank && activeTabId) {
+          // Reuse the blank tab
+          tabId = activeTabId;
+          updateTabUrl(tabId, url);
+          updateTabTitle(tabId, title);
+        } else {
+          // Create new tab without auto-activating
+          const newTabId = `tab-${Date.now()}-${Math.random().toString(36).slice(2, 7)}`;
+          const newTab = { id: newTabId, url, title };
+          useSidecarStore.setState((s) => ({
+            tabs: [...s.tabs, newTab],
+          }));
+          tabId = newTabId;
+        }
+
+        // Wait for placeholder to exist if showing launchpad
+        let bounds = getPlaceholderBounds();
+        if (!bounds) {
+          // Placeholder not rendered yet - wait a tick for React to update
+          await new Promise((resolve) => setTimeout(resolve, 0));
+          bounds = getPlaceholderBounds();
+          if (!bounds) {
+            throw new Error("Failed to get sidecar bounds");
+          }
+        }
+
+        // Create in main process
+        await window.electron.sidecar.create({ tabId, url });
+        markTabCreated(tabId);
+
+        // Show webview and wait for it
+        await window.electron.sidecar.show({ tabId, bounds });
+
+        // Now update UI state to highlight the tab
+        setActiveTab(tabId);
+      } catch (error) {
+        console.error("Failed to open URL in sidecar:", error);
+        // Rollback: hide any partial webview
+        await window.electron.sidecar.hide().catch(() => {});
+      } finally {
+        setIsSwitching(false);
       }
-
-      await window.electron.sidecar.create({ tabId, url });
-      markTabCreated(tabId);
     },
-    [activeTabId, tabs, createTab, markTabCreated, updateTabUrl, updateTabTitle]
+    [
+      activeTabId,
+      tabs,
+      markTabCreated,
+      updateTabUrl,
+      updateTabTitle,
+      getPlaceholderBounds,
+      setActiveTab,
+    ]
   );
 
   const handleClose = useCallback(async () => {
