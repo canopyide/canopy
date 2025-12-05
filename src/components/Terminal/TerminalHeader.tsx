@@ -9,6 +9,7 @@ import {
   ArrowDownToLine,
   Loader2,
   Settings2,
+  RotateCcw,
 } from "lucide-react";
 import {
   DropdownMenu,
@@ -101,6 +102,7 @@ export interface TerminalHeaderProps {
   onTitleChange?: (newTitle: string) => void;
   onMinimize?: () => void;
   onRestore?: () => void;
+  onRestart?: () => void;
   onUpdateSettings: (updates: Partial<TerminalSettings>) => void;
 
   isMaximized?: boolean;
@@ -136,6 +138,7 @@ function TerminalHeaderComponent({
   onTitleChange,
   onMinimize,
   onRestore,
+  onRestart,
   onUpdateSettings,
   isMaximized,
   isInjecting,
@@ -280,6 +283,19 @@ function TerminalHeaderComponent({
             disabled={isExited || isInjecting}
           >
             <Copy className="w-3 h-3" aria-hidden="true" />
+          </button>
+        )}
+        {onRestart && (
+          <button
+            onClick={(e) => {
+              e.stopPropagation();
+              onRestart();
+            }}
+            className="p-1.5 hover:bg-canopy-text/10 focus-visible:bg-canopy-text/10 focus-visible:outline focus-visible:outline-2 focus-visible:outline-canopy-accent text-canopy-text/60 hover:text-canopy-text transition-colors"
+            title="Restart Session"
+            aria-label="Restart Session"
+          >
+            <RotateCcw className="w-3 h-3" aria-hidden="true" />
           </button>
         )}
         {onMinimize && !isMaximized && (

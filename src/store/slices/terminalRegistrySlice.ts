@@ -86,6 +86,8 @@ export interface TerminalRegistrySlice {
   moveTerminalToPosition: (id: string, toIndex: number, location: "grid" | "dock") => void;
 
   updateTerminalSettings: (id: string, updates: Partial<TerminalSettings>) => void;
+
+  restartTerminal: (id: string) => Promise<void>;
 }
 
 // Flush pending persistence - call on app quit to prevent data loss
@@ -627,5 +629,41 @@ export const createTerminalRegistrySlice =
         terminalPersistence.save(newTerminals);
         return { terminals: newTerminals };
       });
+    },
+
+    restartTerminal: async (id) => {
+      const state = get();
+      const terminal = state.terminals.find((t) => t.id === id);
+
+      if (!terminal) {
+        console.warn(`[TerminalStore] Cannot restart: terminal ${id} not found`);
+        return;
+      }
+
+      let targetLocation = terminal.location;
+      if (terminal.location === "trash") {
+        const trashedInfo = state.trashedTerminals.get(id);
+        targetLocation = trashedInfo?.originalLocation ?? "grid";
+      }
+
+      const config: AddTerminalOptions = {
+        type: terminal.type,
+        title: terminal.title,
+        cwd: terminal.cwd,
+        worktreeId: terminal.worktreeId,
+        command: terminal.command,
+        location: targetLocation,
+        settings: terminal.settings,
+      };
+
+      get().removeTerminal(id);
+
+      await new Promise((resolve) => setTimeout(resolve, 50));
+
+      try {
+        await get().addTerminal(config);
+      } catch (error) {
+        console.error(`[TerminalStore] Failed to restart terminal ${id}:`, error);
+      }
     },
   });
