@@ -32,6 +32,7 @@ import { cn } from "@/lib/utils";
 import { getBrandColorHex } from "@/lib/colorUtils";
 import { StateBadge } from "./StateBadge";
 import { ActivityBadge } from "./ActivityBadge";
+import { TerminalContextMenu } from "./TerminalContextMenu";
 import type { ActivityState } from "./TerminalPane";
 
 interface TerminalIconProps {
@@ -111,7 +112,7 @@ export interface TerminalHeaderProps {
 }
 
 function TerminalHeaderComponent({
-  id: _id,
+  id,
   title,
   type,
   worktreeId,
@@ -153,7 +154,8 @@ function TerminalHeaderComponent({
   };
 
   return (
-    <div
+    <TerminalContextMenu terminalId={id} forceLocation={location}>
+      <div
       className={cn(
         "flex items-center justify-between px-3 h-8 shrink-0 font-mono text-xs transition-colors relative overflow-hidden",
         isFocused ? "bg-[var(--color-surface-highlight)]" : "bg-[var(--color-surface)]"
@@ -361,7 +363,8 @@ function TerminalHeaderComponent({
           <X className="w-3 h-3" aria-hidden="true" />
         </button>
       </div>
-    </div>
+      </div>
+    </TerminalContextMenu>
   );
 }
 
