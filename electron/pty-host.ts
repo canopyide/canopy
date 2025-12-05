@@ -48,8 +48,11 @@ process.on("unhandledRejection", (reason) => {
 const ptyManager = new PtyManager();
 let ptyPool: PtyPool | null = null;
 
-// Zero-copy ring buffer for terminal I/O (set via init-buffer message)
-let ringBuffer: SharedRingBuffer | null = null;
+// Zero-copy ring buffers for terminal I/O (set via init-buffers message)
+// Visual buffer: consumed by renderer (xterm.js) - critical path
+// Analysis buffer: consumed by Web Worker - best-effort, can drop frames
+let visualBuffer: SharedRingBuffer | null = null;
+let analysisBuffer: SharedRingBuffer | null = null;
 const packetFramer = new PacketFramer();
 
 // Helper to send events to Main process
@@ -59,26 +62,38 @@ function sendEvent(event: PtyHostEvent): void {
 
 // Wire up PtyManager events
 ptyManager.on("data", (id: string, data: string) => {
-  // Use ring buffer if available (zero-copy path)
-  if (ringBuffer) {
+  // Use ring buffers if available (zero-copy path)
+  if (visualBuffer) {
     const packet = packetFramer.frame(id, data);
     if (packet) {
-      const written = ringBuffer.write(packet);
-      if (written === 0) {
-        // Buffer full - fall back to IPC for this message
-        console.warn(`[PtyHost] Ring buffer full, falling back to IPC for terminal ${id}`);
+      // Write to visual buffer (critical path - must succeed)
+      const visualWritten = visualBuffer.write(packet);
+      if (visualWritten === 0) {
+        // Visual buffer full - fall back to IPC for this message
+        console.warn(`[PtyHost] Visual ring buffer full, falling back to IPC for terminal ${id}`);
         sendEvent({ type: "data", id, data });
         return;
-      } else if (written < packet.length) {
+      } else if (visualWritten < packet.length) {
         // Partial write - treat as failure, send via IPC to avoid data loss
         console.warn(
-          `[PtyHost] Partial write to ring buffer: ${written}/${packet.length} bytes, ` +
+          `[PtyHost] Partial write to visual ring buffer: ${visualWritten}/${packet.length} bytes, ` +
             `falling back to IPC`
         );
         sendEvent({ type: "data", id, data });
         return;
       }
-      // Successful complete write - no IPC needed, renderer will poll the buffer
+
+      // Write to analysis buffer (best-effort - drop frames if full)
+      if (analysisBuffer) {
+        const analysisWritten = analysisBuffer.write(packet);
+        if (analysisWritten === 0 && process.env.CANOPY_VERBOSE) {
+          // Analysis buffer full - acceptable, semantic analysis can lag
+          console.log(`[PtyHost] Analysis buffer full - dropping frame for terminal ${id}`);
+        }
+        // We don't fall back to IPC for analysis - it's best-effort
+      }
+
+      // Successful visual write - no IPC needed, renderer will poll the buffer
       return;
     }
     // Packet framing failed (ID too long or data >64KB) - fall back to IPC
@@ -247,13 +262,28 @@ port.on("message", (rawMsg: any) => {
   try {
     switch (msg.type) {
       case "init-buffer":
-        // Initialize SharedArrayBuffer ring buffer for zero-copy I/O
+        // Legacy: single buffer init (backwards compatibility)
         if (msg.buffer instanceof SharedArrayBuffer) {
-          ringBuffer = new SharedRingBuffer(msg.buffer);
-          console.log("[PtyHost] SharedArrayBuffer ring buffer initialized");
+          visualBuffer = new SharedRingBuffer(msg.buffer);
+          console.log("[PtyHost] Single SharedArrayBuffer ring buffer initialized (legacy)");
         } else {
           console.warn("[PtyHost] init-buffer received but buffer is not SharedArrayBuffer");
         }
+        break;
+
+      case "init-buffers":
+        // Dual buffer init: visual + analysis
+        if (msg.visualBuffer instanceof SharedArrayBuffer) {
+          visualBuffer = new SharedRingBuffer(msg.visualBuffer);
+        } else {
+          console.warn("[PtyHost] init-buffers: visualBuffer is not SharedArrayBuffer");
+        }
+        if (msg.analysisBuffer instanceof SharedArrayBuffer) {
+          analysisBuffer = new SharedRingBuffer(msg.analysisBuffer);
+        } else {
+          console.warn("[PtyHost] init-buffers: analysisBuffer is not SharedArrayBuffer");
+        }
+        console.log("[PtyHost] Dual SharedArrayBuffer ring buffers initialized");
         break;
 
       case "spawn":

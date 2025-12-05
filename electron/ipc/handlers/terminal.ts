@@ -483,7 +483,7 @@ export function registerTerminalHandlers(deps: HandlerDependencies): () => void 
   ipcMain.handle(CHANNELS.TERMINAL_GET_SERIALIZED_STATE, handleTerminalGetSerializedState);
   handlers.push(() => ipcMain.removeHandler(CHANNELS.TERMINAL_GET_SERIALIZED_STATE));
 
-  // Get SharedArrayBuffer for zero-copy terminal I/O
+  // Get SharedArrayBuffer for zero-copy terminal I/O (visual rendering)
   const handleTerminalGetSharedBuffer = async (): Promise<SharedArrayBuffer | null> => {
     try {
       // Check if ptyManager has the getSharedBuffer method (PtyClient only)
@@ -498,6 +498,22 @@ export function registerTerminalHandlers(deps: HandlerDependencies): () => void 
   };
   ipcMain.handle(CHANNELS.TERMINAL_GET_SHARED_BUFFER, handleTerminalGetSharedBuffer);
   handlers.push(() => ipcMain.removeHandler(CHANNELS.TERMINAL_GET_SHARED_BUFFER));
+
+  // Get SharedArrayBuffer for semantic analysis (Web Worker)
+  const handleTerminalGetAnalysisBuffer = async (): Promise<SharedArrayBuffer | null> => {
+    try {
+      // Check if ptyManager has the getAnalysisBuffer method (PtyClient only)
+      if ("getAnalysisBuffer" in ptyManager && typeof ptyManager.getAnalysisBuffer === "function") {
+        return ptyManager.getAnalysisBuffer();
+      }
+      return null;
+    } catch (error) {
+      console.warn("[IPC] Failed to get analysis buffer:", error);
+      return null;
+    }
+  };
+  ipcMain.handle(CHANNELS.TERMINAL_GET_ANALYSIS_BUFFER, handleTerminalGetAnalysisBuffer);
+  handlers.push(() => ipcMain.removeHandler(CHANNELS.TERMINAL_GET_ANALYSIS_BUFFER));
 
   const handleArtifactSaveToFile = async (
     _event: Electron.IpcMainInvokeEvent,

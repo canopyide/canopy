@@ -987,6 +987,14 @@ export interface IpcInvokeMap {
     args: [terminalId: string];
     result: string | null;
   };
+  "terminal:get-shared-buffer": {
+    args: [];
+    result: SharedArrayBuffer | null;
+  };
+  "terminal:get-analysis-buffer": {
+    args: [];
+    result: SharedArrayBuffer | null;
+  };
 
   // Agent channels
   "agent:get-state": {
@@ -1471,6 +1479,7 @@ export interface ElectronAPI {
     replayHistory(terminalId: string, maxLines?: number): Promise<{ replayed: number }>;
     getSerializedState(terminalId: string): Promise<string | null>;
     getSharedBuffer(): Promise<SharedArrayBuffer | null>;
+    getAnalysisBuffer(): Promise<SharedArrayBuffer | null>;
     onData(id: string, callback: (data: string) => void): () => void;
     onExit(callback: (id: string, exitCode: number) => void): () => void;
     onAgentStateChanged(callback: (data: AgentStateChangePayload) => void): () => void;

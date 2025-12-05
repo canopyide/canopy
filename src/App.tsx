@@ -1,5 +1,6 @@
 import { useCallback, useEffect, useRef, useState } from "react";
 import { hydrateAppState } from "./utils/stateHydration";
+import { semanticAnalysisService } from "./services/SemanticAnalysisService";
 import "@xterm/xterm/css/xterm.css";
 import { FolderOpen, RefreshCw } from "lucide-react";
 import {
@@ -540,6 +541,19 @@ function App() {
     if (!electronAvailable) return;
     const cleanup = setupTerminalStoreListeners();
     return cleanup;
+  }, [electronAvailable]);
+
+  // Initialize semantic analysis Web Worker
+  useEffect(() => {
+    if (!electronAvailable) return;
+
+    semanticAnalysisService.initialize().catch((error) => {
+      console.warn("[App] Failed to initialize semantic analysis service:", error);
+    });
+
+    return () => {
+      semanticAnalysisService.dispose();
+    };
   }, [electronAvailable]);
 
   // Handle system wake events for renderer-side re-hydration

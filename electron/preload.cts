@@ -106,6 +106,7 @@ const CHANNELS = {
   TERMINAL_REPLAY_HISTORY: "terminal:replay-history",
   TERMINAL_GET_SERIALIZED_STATE: "terminal:get-serialized-state",
   TERMINAL_GET_SHARED_BUFFER: "terminal:get-shared-buffer",
+  TERMINAL_GET_ANALYSIS_BUFFER: "terminal:get-analysis-buffer",
 
   // Agent state channels
   AGENT_STATE_CHANGED: "agent:state-changed",
@@ -381,6 +382,9 @@ const api: ElectronAPI = {
 
     getSharedBuffer: (): Promise<SharedArrayBuffer | null> =>
       ipcRenderer.invoke(CHANNELS.TERMINAL_GET_SHARED_BUFFER),
+
+    getAnalysisBuffer: (): Promise<SharedArrayBuffer | null> =>
+      ipcRenderer.invoke(CHANNELS.TERMINAL_GET_ANALYSIS_BUFFER),
   },
 
   // Artifact API
