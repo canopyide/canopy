@@ -253,7 +253,7 @@ function TerminalPaneComponent({
           terminalType={type}
           onReady={handleReady}
           onExit={handleExit}
-          className="absolute inset-2"
+          className={cn("absolute", location === "dock" ? "inset-0" : "inset-2")}
           getRefreshTier={getRefreshTierCallback}
         />
         <ArtifactOverlay terminalId={id} worktreeId={worktreeId} cwd={cwd} />
