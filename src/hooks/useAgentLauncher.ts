@@ -38,9 +38,16 @@ const AGENT_CONFIGS: Record<AgentType, AgentConfig> = {
   },
 };
 
+export interface LaunchAgentOptions {
+  /** Override terminal location (default: "grid") */
+  location?: AddTerminalOptions["location"];
+  /** Override working directory */
+  cwd?: string;
+}
+
 export interface UseAgentLauncherReturn {
   /** Launch an agent terminal */
-  launchAgent: (type: AgentType) => Promise<string | null>;
+  launchAgent: (type: AgentType, options?: LaunchAgentOptions) => Promise<string | null>;
   /** CLI availability status */
   availability: CliAvailability;
   /** Whether availability check is in progress */
@@ -138,7 +145,7 @@ export function useAgentLauncher(): UseAgentLauncherReturn {
   }, [checkAvailabilityAndLoadSettings]);
 
   const launchAgent = useCallback(
-    async (type: AgentType): Promise<string | null> => {
+    async (type: AgentType, launchOptions?: LaunchAgentOptions): Promise<string | null> => {
       if (!isElectronAvailable()) {
         console.warn("Electron API not available");
         return null;
@@ -148,7 +155,7 @@ export function useAgentLauncher(): UseAgentLauncherReturn {
 
       const activeWorktree = activeId ? worktreeMap.get(activeId) : null;
       // Pass project root if no worktree; Main process handles HOME fallback as last resort
-      const cwd = activeWorktree?.path || currentProject?.path || "";
+      const cwd = launchOptions?.cwd ?? activeWorktree?.path ?? currentProject?.path ?? "";
 
       let command = config.command;
       if (command && agentSettings) {
@@ -177,6 +184,7 @@ export function useAgentLauncher(): UseAgentLauncherReturn {
         cwd,
         worktreeId: activeId || undefined,
         command,
+        location: launchOptions?.location,
       };
 
       try {

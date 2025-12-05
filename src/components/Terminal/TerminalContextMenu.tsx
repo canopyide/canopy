@@ -11,7 +11,7 @@ import {
   ContextMenuSubContent,
   ContextMenuCheckboxItem,
 } from "@/components/ui/context-menu";
-import { Maximize2, Minimize2, Trash2, ArrowUp, Copy, Settings2, Skull } from "lucide-react";
+import { Maximize2, Minimize2, Trash2, ArrowUp, ArrowDownToLine, Copy, Settings2, Skull, RotateCcw } from "lucide-react";
 import { useTerminalStore } from "@/store";
 import { useContextInjection } from "@/hooks/useContextInjection";
 import type { TerminalLocation } from "@/types";
@@ -40,6 +40,7 @@ export function TerminalContextMenu({
   const removeTerminal = useTerminalStore((s) => s.removeTerminal);
   const toggleMaximize = useTerminalStore((s) => s.toggleMaximize);
   const updateTerminalSettings = useTerminalStore((s) => s.updateTerminalSettings);
+  const restartTerminal = useTerminalStore((s) => s.restartTerminal);
   const isMaximized = useTerminalStore((s) => s.maximizedId === terminalId);
 
   const { inject } = useContextInjection();
@@ -63,7 +64,7 @@ export function TerminalContextMenu({
         {/* Layout Actions */}
         {currentLocation === "grid" ? (
           <ContextMenuItem onClick={() => moveTerminalToDock(terminalId)}>
-            <Minimize2 className="w-4 h-4 mr-2" aria-hidden="true" />
+            <ArrowDownToLine className="w-4 h-4 mr-2" aria-hidden="true" />
             Minimize to Dock
           </ContextMenuItem>
         ) : (
@@ -118,6 +119,11 @@ export function TerminalContextMenu({
             </ContextMenuCheckboxItem>
           </ContextMenuSubContent>
         </ContextMenuSub>
+
+        <ContextMenuItem onClick={() => restartTerminal(terminalId)}>
+          <RotateCcw className="w-4 h-4 mr-2" aria-hidden="true" />
+          Restart Terminal
+        </ContextMenuItem>
 
         <ContextMenuSeparator />
 

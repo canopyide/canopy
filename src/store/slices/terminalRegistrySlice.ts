@@ -27,6 +27,8 @@ export interface AddTerminalOptions {
   lastStateChange?: number;
   /** If provided, reconnect to existing backend process instead of spawning */
   existingId?: string;
+  /** Store command on instance but don't execute it on spawn */
+  skipCommandExecution?: boolean;
 }
 
 const TYPE_TITLES: Record<TerminalType, string> = {
@@ -124,13 +126,14 @@ export const createTerminalRegistrySlice =
           id = options.existingId;
           console.log(`[TerminalStore] Reconnecting to existing terminal: ${id}`);
         } else {
-          // Spawn new process
+          // Spawn new process - only execute command if not skipping
+          const commandToExecute = options.skipCommandExecution ? undefined : options.command;
           id = await terminalClient.spawn({
             cwd: options.cwd,
             shell: options.shell,
             cols: 80,
             rows: 24,
-            command: options.command,
+            command: commandToExecute,
             type,
             title,
             worktreeId: options.worktreeId,

@@ -14,6 +14,7 @@ export interface HydrationOptions {
     agentState?: AgentState;
     lastStateChange?: number;
     existingId?: string; // Pass to reconnect to existing backend process
+    skipCommandExecution?: boolean; // Store command but don't execute on spawn
   }) => Promise<string>;
   setActiveWorktree: (id: string | null) => void;
   loadRecipes: () => Promise<void>;
@@ -119,7 +120,7 @@ export async function hydrateAppState(options: HydrationOptions): Promise<void> 
             }
 
             if (reconnectResult.exists) {
-              // Add to UI without spawning new process, preserving agent state
+              // Add to UI without spawning new process, preserving agent state and command
               const agentState = reconnectResult.agentState as AgentState | undefined;
               await addTerminal({
                 type: terminal.type,
@@ -127,6 +128,7 @@ export async function hydrateAppState(options: HydrationOptions): Promise<void> 
                 cwd,
                 worktreeId: terminal.worktreeId,
                 location: terminal.location === "dock" ? "dock" : "grid",
+                command: terminal.command, // Preserve for manual refresh
                 settings: terminal.settings,
                 existingId: terminal.id, // Flag to skip spawning
                 agentState,
