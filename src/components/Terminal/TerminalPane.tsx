@@ -65,6 +65,7 @@ function TerminalPaneComponent({
   const updateVisibility = useTerminalStore((state) => state.updateVisibility);
   const getTerminal = useTerminalStore((state) => state.getTerminal);
   const updateTerminalSettings = useTerminalStore((state) => state.updateTerminalSettings);
+  const restartTerminal = useTerminalStore((state) => state.restartTerminal);
   const terminal = useTerminalStore((state) => state.terminals.find((t) => t.id === id));
 
   const queueCount = useTerminalStore(
@@ -151,6 +152,10 @@ function TerminalPaneComponent({
     terminalInstanceService.boostRefreshRate(id);
   }, [onFocus, id]);
 
+  const handleRestart = useCallback(() => {
+    restartTerminal(id);
+  }, [restartTerminal, id]);
+
   const isWorking = agentState === "working";
 
   return (
@@ -222,6 +227,7 @@ function TerminalPaneComponent({
         onTitleChange={onTitleChange}
         onMinimize={onMinimize}
         onRestore={onRestore}
+        onRestart={handleRestart}
         onUpdateSettings={(updates) => updateTerminalSettings(id, updates)}
         isMaximized={isMaximized}
         isInjecting={isInjecting}
