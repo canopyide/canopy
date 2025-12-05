@@ -1,7 +1,9 @@
 import * as pty from "node-pty";
 import { existsSync } from "fs";
-import { Terminal as HeadlessTerminal } from "@xterm/headless";
-import { SerializeAddon } from "@xterm/addon-serialize";
+import headless from "@xterm/headless";
+const { Terminal: HeadlessTerminal } = headless;
+import serialize from "@xterm/addon-serialize";
+const { SerializeAddon } = serialize;
 import type { TerminalType } from "../../../shared/types/domain.js";
 import type { ActivityTier } from "../../../shared/types/pty-host.js";
 import { ProcessDetector, type DetectionResult } from "../ProcessDetector.js";
