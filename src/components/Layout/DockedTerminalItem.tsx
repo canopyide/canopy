@@ -52,16 +52,9 @@ function getTerminalIcon(type: TerminalType, className?: string) {
 }
 
 function getStateIndicator(state?: AgentState) {
-  if (!state || state === "idle") return null;
+  if (!state || state === "idle" || state === "working") return null;
 
   switch (state) {
-    case "working":
-      return (
-        <Loader2
-          className="h-3 w-3 animate-spin text-[var(--color-state-working)]"
-          aria-hidden="true"
-        />
-      );
     case "completed":
       return (
         <span
@@ -165,6 +158,9 @@ export function DockedTerminalItem({ terminal }: DockedTerminalItemProps) {
     await inject(terminal.worktreeId, terminal.id);
   }, [inject, terminal.id, terminal.worktreeId]);
 
+  const isWorking = terminal.agentState === "working";
+  const brandColor = getBrandColorHex(terminal.type);
+
   return (
     <Popover open={isOpen} onOpenChange={handleOpenChange}>
       <PopoverTrigger asChild>
@@ -178,7 +174,15 @@ export function DockedTerminalItem({ terminal }: DockedTerminalItemProps) {
           )}
           title={`${terminal.title} - Click to preview, drag to reorder`}
         >
-          {getTerminalIcon(terminal.type)}
+          {isWorking ? (
+            <Loader2
+              className="w-3 h-3 animate-spin"
+              style={{ color: brandColor }}
+              aria-hidden="true"
+            />
+          ) : (
+            getTerminalIcon(terminal.type)
+          )}
           {getStateIndicator(terminal.agentState)}
           <span className="truncate max-w-[120px] font-mono">{terminal.title}</span>
         </button>
