@@ -1,4 +1,4 @@
-import { useMemo, Fragment, useState } from "react";
+import { useMemo, useState } from "react";
 import type { FileChangeDetail, GitStatus } from "../../types";
 import { cn } from "../../lib/utils";
 import { FileDiffModal } from "./FileDiffModal";
@@ -26,14 +26,14 @@ function getBasename(filePath: string): string {
   return lastSlash === -1 ? normalized : normalized.slice(lastSlash + 1);
 }
 
-const STATUS_ICONS: Record<GitStatus, { icon: string; color: string }> = {
-  added: { icon: "A", color: "text-[var(--color-status-success)]" },
-  modified: { icon: "M", color: "text-[var(--color-status-warning)]" },
-  deleted: { icon: "D", color: "text-[var(--color-status-error)]" },
-  renamed: { icon: "R", color: "text-[var(--color-status-info)]" },
-  copied: { icon: "C", color: "text-cyan-400" },
-  untracked: { icon: "?", color: "text-gray-400" },
-  ignored: { icon: "I", color: "text-gray-500" },
+const STATUS_CONFIG: Record<GitStatus, { label: string; color: string }> = {
+  modified: { label: "M", color: "text-amber-400" },
+  added: { label: "A", color: "text-green-400" },
+  deleted: { label: "D", color: "text-red-400" },
+  untracked: { label: "?", color: "text-green-400" },
+  renamed: { label: "R", color: "text-blue-400" },
+  copied: { label: "C", color: "text-blue-400" },
+  ignored: { label: "I", color: "text-gray-600" },
 };
 
 const STATUS_PRIORITY: Record<GitStatus, number> = {
@@ -114,53 +114,44 @@ export function FileChangeList({ changes, maxVisible = 4, rootPath }: FileChange
 
   return (
     <>
-      <div className="mt-2">
-        <div className="grid grid-cols-[auto_minmax(0,1fr)_auto] gap-x-3 gap-y-1 text-xs font-mono">
-          {visibleChanges.map((change) => {
-            const { icon, color } = STATUS_ICONS[change.status] || {
-              icon: "?",
-              color: "text-gray-400",
-            };
-            const relativePath = isAbsolutePath(change.path)
-              ? getRelativePath(rootPath, change.path)
-              : change.path;
+      <div className="flex flex-col gap-0.5 w-full">
+        {visibleChanges.map((change) => {
+          const config = STATUS_CONFIG[change.status] || STATUS_CONFIG.untracked;
+          const relativePath = isAbsolutePath(change.path)
+            ? getRelativePath(rootPath, change.path)
+            : change.path;
+          const { dir, base } = splitPath(relativePath);
 
-            const { dir, base } = splitPath(relativePath);
-            const additionsLabel = change.insertions !== null ? `+${change.insertions}` : "";
-            const deletionsLabel = change.deletions !== null ? `-${change.deletions}` : "";
+          return (
+            <div
+              key={`${change.path}-${change.status}`}
+              className="group flex items-center text-xs font-mono hover:bg-white/5 rounded px-1.5 py-0.5 -mx-1.5 cursor-pointer transition-colors"
+              onClick={() => handleFileClick(change)}
+            >
+              {/* Status Letter */}
+              <span className={cn("w-4 font-bold shrink-0", config.color)}>{config.label}</span>
 
-            return (
-              <Fragment key={`${change.path}-${change.status}`}>
-                <div className={cn(color, "font-bold flex items-center")}>{icon}</div>
+              {/* File Path */}
+              <div className="flex-1 min-w-0 truncate text-gray-400 group-hover:text-gray-300 mr-2">
+                <span className="opacity-60">{dir ? `${dir}/` : ""}</span>
+                <span className="text-gray-300 group-hover:text-white">{base}</span>
+              </div>
 
-                <button
-                  type="button"
-                  className="min-w-0 overflow-hidden text-ellipsis whitespace-nowrap text-left text-gray-500 hover:text-gray-300 hover:underline cursor-pointer transition-colors"
-                  dir="rtl"
-                  title={`Click to view diff for ${relativePath}`}
-                  onClick={() => handleFileClick(change)}
-                >
-                  <span dir="ltr">
-                    {dir && <span className="text-gray-500 group-hover:text-gray-400">{dir}/</span>}
-                    <span className="text-gray-200 group-hover:text-gray-100">{base}</span>
-                  </span>
-                </button>
-
-                <div className="flex items-center gap-2 justify-end">
-                  {additionsLabel && (
-                    <span className="text-[var(--color-status-success)]">{additionsLabel}</span>
-                  )}
-                  {deletionsLabel && (
-                    <span className="text-[var(--color-status-error)]">{deletionsLabel}</span>
-                  )}
-                </div>
-              </Fragment>
-            );
-          })}
-        </div>
+              {/* Stats */}
+              <div className="flex items-center gap-2 shrink-0 text-[10px]">
+                {(change.insertions ?? 0) > 0 && (
+                  <span className="text-green-500/80">+{change.insertions}</span>
+                )}
+                {(change.deletions ?? 0) > 0 && (
+                  <span className="text-red-500/80">-{change.deletions}</span>
+                )}
+              </div>
+            </div>
+          );
+        })}
 
         {remainingCount > 0 && (
-          <div className="mt-1.5 text-gray-500 text-xs pl-0.5">
+          <div className="text-[10px] text-gray-500 pl-5 pt-1">
             ...and {remainingCount} more
             {remainingFiles.length > 0 && (
               <span className="ml-1 opacity-75">
