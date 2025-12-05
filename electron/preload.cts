@@ -318,9 +318,14 @@ const api: ElectronAPI = {
     kill: (id: string) => _typedInvoke(CHANNELS.TERMINAL_KILL, id),
 
     // Tuple payload [id, data] requires per-terminal filtering
-    onData: (id: string, callback: (data: string) => void) => {
+    // Accepts both string and Uint8Array/Buffer (binary optimization for reduced GC pressure)
+    onData: (id: string, callback: (data: string | Uint8Array) => void) => {
       const handler = (_event: Electron.IpcRendererEvent, terminalId: unknown, data: unknown) => {
-        if (typeof terminalId === "string" && typeof data === "string" && terminalId === id) {
+        if (typeof terminalId !== "string" || terminalId !== id) {
+          return;
+        }
+        // Accept string, Uint8Array, or Buffer (Node.js extends Uint8Array)
+        if (typeof data === "string" || data instanceof Uint8Array || Buffer.isBuffer(data)) {
           callback(data);
         }
       };

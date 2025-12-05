@@ -59,7 +59,7 @@ function chunkInput(data: string): string[] {
 }
 
 export interface TerminalProcessCallbacks {
-  emitData: (id: string, data: string) => void;
+  emitData: (id: string, data: string | Uint8Array) => void;
   onExit: (id: string, exitCode: number) => void;
 }
 
@@ -660,7 +660,7 @@ export class TerminalProcess {
     });
   }
 
-  private emitData(data: string): void {
+  private emitData(data: string | Uint8Array): void {
     this.callbacks.emitData(this.id, data);
   }
 

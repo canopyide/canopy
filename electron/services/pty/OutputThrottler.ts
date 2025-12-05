@@ -14,6 +14,8 @@ import { events } from "../events.js";
 
 export type QueueState = "normal" | "soft" | "hard";
 
+export type EmitFunction = (data: string | Uint8Array) => void;
+
 export interface OutputThrottlerOptions {
   maxQueueSize?: number;
   maxQueueBytes?: number;
@@ -22,19 +24,23 @@ export interface OutputThrottlerOptions {
 
 /**
  * Handles output buffering, throttling, and flood protection for a terminal.
+ * Uses Uint8Array buffers to minimize GC pressure during high-throughput output.
  * Manages both buffering mode (for hidden terminals) and IPC batch mode (for visible terminals).
  */
 export class OutputThrottler {
   // Buffering mode state (for hidden terminals)
   private bufferingMode = false;
-  private outputQueue: string[] = [];
+  private chunkQueue: Uint8Array[] = [];
   private queuedBytes = 0;
   private maxQueueSize: number;
   private maxQueueBytes: number;
 
   // IPC batching state (for visible terminals)
-  private batchBuffer: string[] = [];
+  private batchChunks: Uint8Array[] = [];
   private batchBytes = 0;
+
+  // Text encoder for string-to-binary conversion (allocated once)
+  private encoder = new TextEncoder();
   private batchTimer: NodeJS.Timeout | null = null;
   private activityTier: ActivityTier = "focused";
   private lastTierChangeAt = 0;
@@ -52,7 +58,7 @@ export class OutputThrottler {
 
   constructor(
     private terminalId: string,
-    private emitFn: (data: string) => void,
+    private emitFn: EmitFunction,
     options: OutputThrottlerOptions = {}
   ) {
     this.maxQueueSize = options.maxQueueSize ?? DEFAULT_MAX_QUEUE_SIZE;
@@ -63,11 +69,15 @@ export class OutputThrottler {
 
   /**
    * Process incoming data, applying buffering or batching as needed.
+   * Accepts string or Uint8Array input; normalizes to Uint8Array internally.
    * Returns true if data should be processed further, false if flooded.
    */
-  write(data: string): boolean {
+  write(data: string | Uint8Array): boolean {
+    // Normalize to Uint8Array
+    const bytes = typeof data === "string" ? this.encoder.encode(data) : data;
+
     // Track byte rate for flood protection
-    this.bytesThisSecond += data.length;
+    this.bytesThisSecond += bytes.length;
 
     // Drop data if flooded
     if (this.isFlooded) {
@@ -76,17 +86,17 @@ export class OutputThrottler {
 
     if (this.bufferingMode) {
       // Buffer data instead of emitting
-      this.outputQueue.push(data);
-      this.queuedBytes += data.length;
+      this.chunkQueue.push(bytes);
+      this.queuedBytes += bytes.length;
 
       // Auto-flush if buffer exceeds limits
-      if (this.outputQueue.length >= this.maxQueueSize || this.queuedBytes >= this.maxQueueBytes) {
+      if (this.chunkQueue.length >= this.maxQueueSize || this.queuedBytes >= this.maxQueueBytes) {
         this.flush();
       }
     } else {
       // Visible terminal: use watermark-based flow control
-      const incomingBytes = this.enforceQueueLimits(data);
-      this.batchBuffer.push(data);
+      const incomingBytes = this.enforceQueueLimits(bytes);
+      this.batchChunks.push(bytes);
       this.batchBytes += incomingBytes;
       this.scheduleBatchFlush();
     }
@@ -107,28 +117,30 @@ export class OutputThrottler {
 
   /**
    * Flush all buffered output (for hidden terminals).
+   * Merges queued Uint8Array chunks efficiently and emits as binary.
    */
   flush(): void {
-    if (this.outputQueue.length === 0) {
+    if (this.chunkQueue.length === 0) {
       return;
     }
 
-    const combined = this.outputQueue.join("");
-    this.outputQueue = [];
+    const combined = this.concatChunks(this.chunkQueue, this.queuedBytes);
+    this.chunkQueue = [];
     this.queuedBytes = 0;
     this.emitFn(combined);
   }
 
   /**
    * Flush the batch buffer (for visible terminals).
+   * Merges batched Uint8Array chunks efficiently and emits as binary.
    */
   flushBatch(): void {
-    if (this.batchBuffer.length === 0) {
+    if (this.batchChunks.length === 0) {
       return;
     }
 
-    const combined = this.batchBuffer.join("");
-    this.batchBuffer = [];
+    const combined = this.concatChunks(this.batchChunks, this.batchBytes);
+    this.batchChunks = [];
     this.batchBytes = 0;
 
     if (this.batchTimer) {
@@ -159,7 +171,7 @@ export class OutputThrottler {
     this.lastTierChangeAt = now;
 
     // Handle tier changes when there's pending batch data
-    if (this.batchBuffer.length > 0) {
+    if (this.batchChunks.length > 0) {
       const newDelay = this.getFlushDelay(tier);
 
       if (newDelay === 0) {
@@ -270,8 +282,8 @@ export class OutputThrottler {
       clearTimeout(this.batchTimer);
       this.batchTimer = null;
     }
-    this.outputQueue = [];
-    this.batchBuffer = [];
+    this.chunkQueue = [];
+    this.batchChunks = [];
   }
 
   private getFlushDelay(tier: ActivityTier): number {
@@ -288,10 +300,6 @@ export class OutputThrottler {
   }
 
   private scheduleBatchFlush(): void {
-    if (this.batchTimer) {
-      return;
-    }
-
     let delay: number;
     if (this.queueState === "hard") {
       delay = 0;
@@ -299,6 +307,16 @@ export class OutputThrottler {
       delay = AGGRESSIVE_FLUSH_INTERVAL_MS;
     } else {
       delay = this.getFlushDelay(this.activityTier);
+    }
+
+    // If timer exists and new delay is shorter, reschedule for faster flush
+    if (this.batchTimer && delay === 0) {
+      clearTimeout(this.batchTimer);
+      this.batchTimer = null;
+    }
+
+    if (this.batchTimer) {
+      return;
     }
 
     if (delay === 0) {
@@ -310,8 +328,32 @@ export class OutputThrottler {
     }
   }
 
-  private enforceQueueLimits(incomingData: string): number {
-    const incomingBytes = Buffer.byteLength(incomingData, "utf8");
+  /**
+   * Efficiently concatenate Uint8Array chunks.
+   * Uses Buffer.concat in Node.js (C++ optimized) or manual copy in browser.
+   */
+  private concatChunks(chunks: Uint8Array[], totalLength: number): Uint8Array {
+    if (chunks.length === 1) {
+      return chunks[0];
+    }
+
+    // Node.js: use optimized C++ Buffer.concat
+    if (typeof Buffer !== "undefined") {
+      return Buffer.concat(chunks, totalLength);
+    }
+
+    // Browser fallback: manual concatenation
+    const result = new Uint8Array(totalLength);
+    let offset = 0;
+    for (const chunk of chunks) {
+      result.set(chunk, offset);
+      offset += chunk.length;
+    }
+    return result;
+  }
+
+  private enforceQueueLimits(incomingData: Uint8Array): number {
+    const incomingBytes = incomingData.length;
     const totalBytes = this.batchBytes + incomingBytes;
     const now = Date.now();
 
@@ -324,18 +366,18 @@ export class OutputThrottler {
       let droppedBytes = 0;
       let droppedChunks = 0;
 
-      while (droppedBytes < toDrop && this.batchBuffer.length > 0) {
-        const chunk = this.batchBuffer.shift()!;
-        const chunkBytes = Buffer.byteLength(chunk, "utf8");
-        droppedBytes += chunkBytes;
-        this.batchBytes -= chunkBytes;
+      while (droppedBytes < toDrop && this.batchChunks.length > 0) {
+        const chunk = this.batchChunks.shift()!;
+        droppedBytes += chunk.length;
+        this.batchBytes -= chunk.length;
         droppedChunks++;
       }
 
       if (incomingBytes > HARD_QUEUE_LIMIT_BYTES) {
-        this.batchBuffer = [];
+        const previousBufferedBytes = this.batchBytes;
+        this.batchChunks = [];
         this.batchBytes = 0;
-        droppedBytes += this.batchBytes;
+        droppedBytes += previousBufferedBytes;
         const mbOversize = (incomingBytes / 1024 / 1024).toFixed(2);
         console.warn(
           `[OutputThrottler] Single chunk (${mbOversize} MB) exceeds hard limit for ${this.terminalId}. ` +
@@ -343,7 +385,7 @@ export class OutputThrottler {
         );
       }
 
-      if (droppedBytes > 0 || previousState !== "hard") {
+      if (droppedBytes > 0) {
         const mbDropped = (droppedBytes / 1024 / 1024).toFixed(2);
         console.warn(
           `[OutputThrottler] Hard queue limit reached for ${this.terminalId}. ` +

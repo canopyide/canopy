@@ -31,7 +31,7 @@ export const terminalClient = {
     return window.electron.terminal.restore(id);
   },
 
-  onData: (id: string, callback: (data: string) => void): (() => void) => {
+  onData: (id: string, callback: (data: string | Uint8Array) => void): (() => void) => {
     return window.electron.terminal.onData(id, callback);
   },
 

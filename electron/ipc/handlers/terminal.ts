@@ -15,7 +15,7 @@ export function registerTerminalHandlers(deps: HandlerDependencies): () => void 
   const { mainWindow, ptyManager, worktreeService } = deps;
   const handlers: Array<() => void> = [];
 
-  const handlePtyData = (id: string, data: string) => {
+  const handlePtyData = (id: string, data: string | Uint8Array) => {
     sendToRenderer(mainWindow, CHANNELS.TERMINAL_DATA, id, data);
   };
   ptyManager.on("data", handlePtyData);
