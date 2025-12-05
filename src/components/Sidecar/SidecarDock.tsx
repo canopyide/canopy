@@ -14,8 +14,11 @@ export function SidecarDock() {
     setWidth,
     setOpen,
     createTab,
+    createBlankTab,
     closeTab,
     markTabCreated,
+    updateTabUrl,
+    updateTabTitle,
     createdTabs,
   } = useSidecarStore();
   const placeholderRef = useRef<HTMLDivElement>(null);
@@ -26,7 +29,9 @@ export function SidecarDock() {
     [links]
   );
 
-  const showLaunchpad = activeTabId === null || tabs.length === 0;
+  const activeTab = tabs.find((t) => t.id === activeTabId);
+  const isBlankTab = activeTabId !== null && activeTab && !activeTab.url;
+  const showLaunchpad = activeTabId === null || tabs.length === 0 || isBlankTab;
 
   const syncBounds = useCallback(() => {
     if (!placeholderRef.current || !activeTabId) return;
@@ -58,6 +63,10 @@ export function SidecarDock() {
   useEffect(() => {
     if (!activeTabId || !placeholderRef.current) return;
 
+    const tab = tabs.find((t) => t.id === activeTabId);
+    // Skip if tab has no URL (blank tab) - launchpad will be shown instead
+    if (!tab?.url) return;
+
     if (createdTabs.has(activeTabId)) {
       const rect = placeholderRef.current.getBoundingClientRect();
       window.electron.sidecar.show({
@@ -70,12 +79,9 @@ export function SidecarDock() {
         },
       });
     } else {
-      const tab = tabs.find((t) => t.id === activeTabId);
-      if (tab) {
-        window.electron.sidecar.create({ tabId: activeTabId, url: tab.url }).then(() => {
-          markTabCreated(activeTabId);
-        });
-      }
+      window.electron.sidecar.create({ tabId: activeTabId, url: tab.url }).then(() => {
+        markTabCreated(activeTabId);
+      });
     }
   }, [activeTabId, createdTabs, tabs, markTabCreated]);
 
@@ -106,20 +112,31 @@ export function SidecarDock() {
   );
 
   const handleNewTab = useCallback(() => {
-    setActiveTab(null);
+    createBlankTab();
     window.electron.sidecar.hide();
-  }, [setActiveTab]);
+  }, [createBlankTab]);
 
   const handleOpenUrl = useCallback(
     async (url: string, title: string) => {
-      const tabId = createTab(url, title);
+      // Reuse blank tab if active, otherwise create new tab
+      const currentTab = activeTabId ? tabs.find((t) => t.id === activeTabId) : null;
+      const isCurrentBlank = currentTab && !currentTab.url;
+
+      let tabId: string;
+      if (isCurrentBlank && activeTabId) {
+        // Reuse the blank tab
+        tabId = activeTabId;
+        updateTabUrl(tabId, url);
+        updateTabTitle(tabId, title);
+      } else {
+        // Create new tab
+        tabId = createTab(url, title);
+      }
 
       await window.electron.sidecar.create({ tabId, url });
-
-      // Mark as created after sidecar window exists, so effect can safely show it
       markTabCreated(tabId);
     },
-    [createTab, markTabCreated]
+    [activeTabId, tabs, createTab, markTabCreated, updateTabUrl, updateTabTitle]
   );
 
   const handleClose = useCallback(async () => {

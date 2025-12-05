@@ -45,7 +45,7 @@ export const LINK_TEMPLATES: Record<string, LinkTemplate> = {
 
 export interface SidecarTab {
   id: string;
-  url: string;
+  url: string | null;
   title: string;
   favicon?: string;
 }

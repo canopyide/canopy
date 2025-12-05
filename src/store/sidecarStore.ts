@@ -27,6 +27,7 @@ interface SidecarActions {
   setWidth: (width: number) => void;
   setActiveTab: (id: string | null) => void;
   createTab: (url: string, title: string) => string;
+  createBlankTab: () => string;
   closeTab: (id: string) => void;
   updateTabTitle: (id: string, title: string) => void;
   updateTabUrl: (id: string, url: string) => void;
@@ -106,6 +107,16 @@ const createSidecarStore: StateCreator<SidecarState & SidecarActions> = (set, ge
   createTab: (url, title) => {
     const newTabId = `tab-${Date.now()}-${Math.random().toString(36).slice(2, 7)}`;
     const newTab: SidecarTab = { id: newTabId, url, title };
+    set((s) => ({
+      tabs: [...s.tabs, newTab],
+      activeTabId: newTabId,
+    }));
+    return newTabId;
+  },
+
+  createBlankTab: () => {
+    const newTabId = `tab-${Date.now()}-${Math.random().toString(36).slice(2, 7)}`;
+    const newTab: SidecarTab = { id: newTabId, url: null, title: "New Tab" };
     set((s) => ({
       tabs: [...s.tabs, newTab],
       activeTabId: newTabId,

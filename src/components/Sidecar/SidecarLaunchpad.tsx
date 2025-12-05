@@ -50,7 +50,7 @@ interface SidecarLaunchpadProps {
 export function SidecarLaunchpad({ links, onOpenUrl }: SidecarLaunchpadProps) {
   if (links.length === 0) {
     return (
-      <div className="flex-1 flex flex-col items-center justify-center text-zinc-500 p-6">
+      <div className="flex-1 flex flex-col items-center justify-start pt-8 text-zinc-500 px-6">
         <Globe className="w-12 h-12 mb-4 opacity-50" />
         <p className="text-sm">No AI agents configured</p>
       </div>
@@ -58,7 +58,7 @@ export function SidecarLaunchpad({ links, onOpenUrl }: SidecarLaunchpadProps) {
   }
 
   return (
-    <div className="flex-1 flex flex-col items-center justify-center p-8">
+    <div className="flex-1 flex flex-col items-center justify-start pt-8 px-8">
       <div className="w-full max-w-sm">
         <h2 className="text-lg font-medium mb-6 text-zinc-200 text-center">New Chat</h2>
         <div className="grid grid-cols-1 gap-4">
