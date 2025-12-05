@@ -16,6 +16,7 @@ import { cn } from "@/lib/utils";
 import { getBrandColorHex } from "@/lib/colorUtils";
 import { useTerminalStore, useSidecarStore, type TerminalInstance } from "@/store";
 import { TerminalPane } from "@/components/Terminal/TerminalPane";
+import { TerminalContextMenu } from "@/components/Terminal/TerminalContextMenu";
 import { useContextInjection } from "@/hooks/useContextInjection";
 import type { AgentState, TerminalType } from "@/types";
 import { TerminalRefreshTier } from "@/types";
@@ -178,30 +179,32 @@ export function DockedTerminalItem({ terminal }: DockedTerminalItemProps) {
 
   return (
     <Popover open={isOpen} onOpenChange={handleOpenChange}>
-      <PopoverTrigger asChild>
-        <button
-          className={cn(
-            "flex items-center gap-2 px-3 py-1.5 rounded text-xs border transition-all",
-            "hover:bg-canopy-accent/10 border-canopy-border hover:border-canopy-accent/50",
-            "focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-canopy-accent focus-visible:ring-offset-2 focus-visible:ring-offset-canopy-bg",
-            "cursor-grab active:cursor-grabbing",
-            isOpen && "bg-canopy-accent/20 border-canopy-accent"
-          )}
-          title={`${terminal.title} - Click to preview, drag to reorder`}
-        >
-          {isWorking ? (
-            <Loader2
-              className="w-3 h-3 animate-spin"
-              style={{ color: brandColor }}
-              aria-hidden="true"
-            />
-          ) : (
-            getTerminalIcon(terminal.type)
-          )}
-          {getStateIndicator(terminal.agentState)}
-          <span className="truncate max-w-[120px] font-mono">{terminal.title}</span>
-        </button>
-      </PopoverTrigger>
+      <TerminalContextMenu terminalId={terminal.id} forceLocation="dock">
+        <PopoverTrigger asChild>
+          <button
+            className={cn(
+              "flex items-center gap-2 px-3 py-1.5 rounded text-xs border transition-all",
+              "hover:bg-canopy-accent/10 border-canopy-border hover:border-canopy-accent/50",
+              "focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-canopy-accent focus-visible:ring-offset-2 focus-visible:ring-offset-canopy-bg",
+              "cursor-grab active:cursor-grabbing",
+              isOpen && "bg-canopy-accent/20 border-canopy-accent"
+            )}
+            title={`${terminal.title} - Click to preview, drag to reorder`}
+          >
+            {isWorking ? (
+              <Loader2
+                className="w-3 h-3 animate-spin"
+                style={{ color: brandColor }}
+                aria-hidden="true"
+              />
+            ) : (
+              getTerminalIcon(terminal.type)
+            )}
+            {getStateIndicator(terminal.agentState)}
+            <span className="truncate max-w-[120px] font-mono">{terminal.title}</span>
+          </button>
+        </PopoverTrigger>
+      </TerminalContextMenu>
 
       <PopoverContent
         className="w-[700px] h-[500px] p-0 border-canopy-border bg-canopy-bg shadow-2xl"
