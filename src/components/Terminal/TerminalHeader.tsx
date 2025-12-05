@@ -7,16 +7,8 @@ import {
   Minimize2,
   ArrowDownToLine,
   Loader2,
-  Settings2,
   RotateCcw,
 } from "lucide-react";
-import {
-  DropdownMenu,
-  DropdownMenuContent,
-  DropdownMenuCheckboxItem,
-  DropdownMenuTrigger,
-  DropdownMenuLabel,
-} from "@/components/ui/dropdown-menu";
 import {
   ClaudeIcon,
   GeminiIcon,
@@ -26,7 +18,7 @@ import {
   PnpmIcon,
   BunIcon,
 } from "@/components/icons";
-import type { TerminalType, TerminalInstance, AgentState, TerminalSettings } from "@/types";
+import type { TerminalType, AgentState } from "@/types";
 import { cn } from "@/lib/utils";
 import { getBrandColorHex } from "@/lib/colorUtils";
 import { StateBadge } from "./StateBadge";
@@ -81,7 +73,6 @@ export interface TerminalHeaderProps {
   agentState?: AgentState;
   activity?: ActivityState | null;
   queueCount: number;
-  terminal?: TerminalInstance;
 
   // Title editing
   isEditingTitle: boolean;
@@ -101,7 +92,6 @@ export interface TerminalHeaderProps {
   onMinimize?: () => void;
   onRestore?: () => void;
   onRestart?: () => void;
-  onUpdateSettings: (updates: Partial<TerminalSettings>) => void;
 
   isMaximized?: boolean;
   location?: "grid" | "dock";
@@ -118,7 +108,6 @@ function TerminalHeaderComponent({
   agentState,
   activity,
   queueCount,
-  terminal,
   isEditingTitle,
   editingValue,
   titleInputRef,
@@ -134,7 +123,6 @@ function TerminalHeaderComponent({
   onMinimize,
   onRestore,
   onRestart,
-  onUpdateSettings,
   isMaximized,
   location = "grid",
 }: TerminalHeaderProps) {
@@ -243,29 +231,6 @@ function TerminalHeaderComponent({
         </div>
 
         <div className="flex items-center gap-1 opacity-0 group-hover:opacity-100 group-focus-within:opacity-100 transition-opacity">
-          <DropdownMenu>
-            <DropdownMenuTrigger asChild>
-              <button
-                className="p-1.5 hover:bg-canopy-text/10 focus-visible:bg-canopy-text/10 focus-visible:outline focus-visible:outline-2 focus-visible:outline-canopy-accent text-canopy-text/60 hover:text-canopy-text transition-colors rounded"
-                onClick={(e) => e.stopPropagation()}
-                title="Terminal Settings"
-                aria-label="Terminal settings"
-              >
-                <Settings2 className="w-3 h-3" aria-hidden="true" />
-              </button>
-            </DropdownMenuTrigger>
-            <DropdownMenuContent align="end" className="w-56">
-              <DropdownMenuLabel>Terminal Settings</DropdownMenuLabel>
-              <DropdownMenuCheckboxItem
-                checked={
-                  terminal?.settings?.autoRestart ?? ["claude", "gemini", "codex"].includes(type)
-                }
-                onCheckedChange={(checked) => onUpdateSettings({ autoRestart: checked === true })}
-              >
-                Auto-restart on open
-              </DropdownMenuCheckboxItem>
-            </DropdownMenuContent>
-          </DropdownMenu>
           {onRestart && (
             <button
               onClick={(e) => {

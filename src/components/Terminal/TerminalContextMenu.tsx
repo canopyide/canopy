@@ -5,10 +5,6 @@ import {
   ContextMenuSeparator,
   ContextMenuTrigger,
   ContextMenuShortcut,
-  ContextMenuSub,
-  ContextMenuSubTrigger,
-  ContextMenuSubContent,
-  ContextMenuCheckboxItem,
 } from "@/components/ui/context-menu";
 import {
   Maximize2,
@@ -16,7 +12,6 @@ import {
   Trash2,
   ArrowUp,
   ArrowDownToLine,
-  Settings2,
   Skull,
   RotateCcw,
 } from "lucide-react";
@@ -45,14 +40,12 @@ export function TerminalContextMenu({
   const trashTerminal = useTerminalStore((s) => s.trashTerminal);
   const removeTerminal = useTerminalStore((s) => s.removeTerminal);
   const toggleMaximize = useTerminalStore((s) => s.toggleMaximize);
-  const updateTerminalSettings = useTerminalStore((s) => s.updateTerminalSettings);
   const restartTerminal = useTerminalStore((s) => s.restartTerminal);
   const isMaximized = useTerminalStore((s) => s.maximizedId === terminalId);
 
   if (!terminal) return <>{children}</>;
 
   const currentLocation: TerminalLocation = forceLocation ?? terminal.location ?? "grid";
-  const isAgent = ["claude", "gemini", "codex"].includes(terminal.type);
 
   return (
     <ContextMenu>
@@ -90,24 +83,6 @@ export function TerminalContextMenu({
         )}
 
         <ContextMenuSeparator />
-
-        {/* Functionality Actions */}
-        <ContextMenuSub>
-          <ContextMenuSubTrigger>
-            <Settings2 className="w-4 h-4 mr-2" aria-hidden="true" />
-            Settings
-          </ContextMenuSubTrigger>
-          <ContextMenuSubContent>
-            <ContextMenuCheckboxItem
-              checked={terminal.settings?.autoRestart ?? isAgent}
-              onCheckedChange={(checked) =>
-                updateTerminalSettings(terminalId, { autoRestart: checked === true })
-              }
-            >
-              Auto-restart on open
-            </ContextMenuCheckboxItem>
-          </ContextMenuSubContent>
-        </ContextMenuSub>
 
         <ContextMenuItem onClick={() => restartTerminal(terminalId)}>
           <RotateCcw className="w-4 h-4 mr-2" aria-hidden="true" />

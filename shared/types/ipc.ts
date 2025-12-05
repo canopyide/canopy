@@ -1,7 +1,6 @@
 import type {
   TerminalType,
   TerminalLocation,
-  TerminalSettings,
   DevServerState,
   WorktreeState,
   Project,
@@ -60,8 +59,6 @@ export interface TerminalState {
   location?: TerminalLocation;
   /** Command to execute after shell starts (e.g., 'claude' for AI agents) */
   command?: string;
-  /** Per-terminal configuration settings */
-  settings?: TerminalSettings;
   /** Last detected agent type (for restoration hints) */
   lastDetectedAgent?: TerminalType;
   /** Last detected agent title (for restoration hints) */

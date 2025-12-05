@@ -4,10 +4,10 @@ import type {
   AgentState,
   TerminalType,
   TerminalLocation,
-  TerminalSettings,
   AgentStateChangeTrigger,
 } from "@/types";
-import { terminalClient } from "@/clients";
+import { terminalClient, agentSettingsClient } from "@/clients";
+import { generateClaudeFlags, generateGeminiFlags, generateCodexFlags } from "@shared/types";
 import { terminalInstanceService } from "@/services/TerminalInstanceService";
 import { TerminalRefreshTier } from "@/types";
 import { terminalPersistence } from "../persistence/terminalPersistence";
@@ -22,7 +22,6 @@ export interface AddTerminalOptions {
   shell?: string;
   command?: string;
   location?: TerminalLocation;
-  settings?: TerminalSettings;
   agentState?: AgentState;
   lastStateChange?: number;
   /** If provided, reconnect to existing backend process instead of spawning */
@@ -87,8 +86,6 @@ export interface TerminalRegistrySlice {
   reorderTerminals: (fromIndex: number, toIndex: number, location?: "grid" | "dock") => void;
   moveTerminalToPosition: (id: string, toIndex: number, location: "grid" | "dock") => void;
 
-  updateTerminalSettings: (id: string, updates: Partial<TerminalSettings>) => void;
-
   restartTerminal: (id: string) => Promise<void>;
 }
 
@@ -142,13 +139,6 @@ export const createTerminalRegistrySlice =
 
         const isAgentTerminal = type === "claude" || type === "gemini" || type === "codex";
 
-        // Default autoRestart to true for agent terminals, false for others
-        // Spread options.settings to allow explicit overrides
-        const initialSettings: TerminalSettings = {
-          autoRestart: isAgentTerminal,
-          ...options.settings,
-        };
-
         const agentState = options.agentState ?? (isAgentTerminal ? "idle" : undefined);
         const lastStateChange =
           options.lastStateChange ?? (agentState !== undefined ? Date.now() : undefined);
@@ -167,7 +157,6 @@ export const createTerminalRegistrySlice =
           // Initialize grid terminals as visible to avoid initial under-throttling
           // IntersectionObserver will update this once mounted
           isVisible: location === "grid" ? true : false,
-          settings: initialSettings,
         };
 
         set((state) => {
@@ -601,38 +590,6 @@ export const createTerminalRegistrySlice =
       }
     },
 
-    updateTerminalSettings: (id, updates) => {
-      set((state) => {
-        const terminal = state.terminals.find((t) => t.id === id);
-        if (!terminal) {
-          console.warn(`Cannot update settings: terminal ${id} not found`);
-          return state;
-        }
-
-        const newTerminals = state.terminals.map((t) => {
-          if (t.id !== id) return t;
-
-          // Default autoRestart based on terminal type (matches addTerminal logic)
-          const isAgentTerminal = t.type === "claude" || t.type === "gemini" || t.type === "codex";
-          const defaultSettings: TerminalSettings = {
-            autoRestart: isAgentTerminal,
-          };
-
-          return {
-            ...t,
-            settings: {
-              ...defaultSettings,
-              ...t.settings,
-              ...updates,
-            },
-          };
-        });
-
-        terminalPersistence.save(newTerminals);
-        return { terminals: newTerminals };
-      });
-    },
-
     restartTerminal: async (id) => {
       const state = get();
       const terminal = state.terminals.find((t) => t.id === id);
@@ -648,14 +605,44 @@ export const createTerminalRegistrySlice =
         targetLocation = trashedInfo?.originalLocation ?? "grid";
       }
 
+      // For agent terminals, regenerate command from current settings
+      // For other terminals, use the saved command
+      let commandToRun = terminal.command;
+      const isAgent = ["claude", "gemini", "codex"].includes(terminal.type);
+
+      if (isAgent) {
+        try {
+          const agentSettings = await agentSettingsClient.get();
+          if (agentSettings) {
+            const baseCommand = terminal.type;
+            let flags: string[] = [];
+            switch (terminal.type) {
+              case "claude":
+                flags = generateClaudeFlags(agentSettings.claude);
+                break;
+              case "gemini":
+                flags = generateGeminiFlags(agentSettings.gemini);
+                break;
+              case "codex":
+                flags = generateCodexFlags(agentSettings.codex);
+                break;
+            }
+            commandToRun = flags.length > 0 ? `${baseCommand} ${flags.join(" ")}` : baseCommand;
+          }
+          // If settings unavailable, keep using the saved command
+        } catch (error) {
+          console.warn("[TerminalStore] Failed to load agent settings for restart, using saved command:", error);
+          // Keep using terminal.command as fallback
+        }
+      }
+
       const config: AddTerminalOptions = {
         type: terminal.type,
         title: terminal.title,
         cwd: terminal.cwd,
         worktreeId: terminal.worktreeId,
-        command: terminal.command,
+        command: commandToRun,
         location: targetLocation,
-        settings: terminal.settings,
       };
 
       get().removeTerminal(id);

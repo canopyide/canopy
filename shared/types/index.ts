@@ -36,7 +36,6 @@ export type {
   TerminalType,
   TerminalLocation,
   AgentStateChangeTrigger,
-  TerminalSettings,
   TerminalInstance,
   PtySpawnOptions,
   TerminalDimensions,

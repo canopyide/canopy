@@ -1,6 +1,18 @@
-import { appClient, projectClient, terminalConfigClient, terminalClient } from "@/clients";
+import {
+  appClient,
+  projectClient,
+  terminalConfigClient,
+  terminalClient,
+  agentSettingsClient,
+} from "@/clients";
 import { useLayoutConfigStore, useScrollbackStore, usePerformanceModeStore } from "@/store";
-import type { TerminalType, TerminalSettings, TerminalState, AgentState } from "@/types";
+import type { TerminalType, TerminalState, AgentState } from "@/types";
+import {
+  generateClaudeFlags,
+  generateGeminiFlags,
+  generateCodexFlags,
+  type AgentSettings,
+} from "@shared/types";
 
 export interface HydrationOptions {
   addTerminal: (options: {
@@ -10,7 +22,6 @@ export interface HydrationOptions {
     worktreeId?: string;
     location?: "grid" | "dock";
     command?: string;
-    settings?: TerminalSettings;
     agentState?: AgentState;
     lastStateChange?: number;
     existingId?: string; // Pass to reconnect to existing backend process
@@ -87,6 +98,14 @@ export async function hydrateAppState(options: HydrationOptions): Promise<void> 
         console.warn("Failed to get current project for terminal restoration:", error);
       }
 
+      // Load current agent settings for regenerating agent commands
+      let agentSettings: AgentSettings | null = null;
+      try {
+        agentSettings = await agentSettingsClient.get();
+      } catch (error) {
+        console.warn("Failed to load agent settings for terminal restoration:", error);
+      }
+
       // Query backend for existing terminals in this project
       let backendTerminalIds = new Set<string>();
       if (currentProjectId) {
@@ -115,13 +134,13 @@ export async function hydrateAppState(options: HydrationOptions): Promise<void> 
               reconnectResult = await terminalClient.reconnect(terminal.id);
             } catch (reconnectError) {
               console.warn(`[Hydration] Reconnect failed for ${terminal.id}:`, reconnectError);
-              await spawnNewTerminal(terminal, cwd, addTerminal);
+              await spawnNewTerminal(terminal, cwd, addTerminal, agentSettings);
               continue;
             }
 
             if (reconnectResult.exists) {
               // Add to UI without spawning new process, preserving agent state and command
-              const agentState = reconnectResult.agentState as AgentState | undefined;
+              const currentAgentState = reconnectResult.agentState as AgentState | undefined;
               await addTerminal({
                 type: terminal.type,
                 title: terminal.title,
@@ -129,10 +148,9 @@ export async function hydrateAppState(options: HydrationOptions): Promise<void> 
                 worktreeId: terminal.worktreeId,
                 location: terminal.location === "dock" ? "dock" : "grid",
                 command: terminal.command, // Preserve for manual refresh
-                settings: terminal.settings,
                 existingId: terminal.id, // Flag to skip spawning
-                agentState,
-                lastStateChange: agentState ? Date.now() : undefined,
+                agentState: currentAgentState,
+                lastStateChange: currentAgentState ? Date.now() : undefined,
               });
 
               // Request history replay for seamless restoration
@@ -147,11 +165,11 @@ export async function hydrateAppState(options: HydrationOptions): Promise<void> 
               console.warn(
                 `[Hydration] Terminal ${terminal.id} not found in backend, spawning new`
               );
-              await spawnNewTerminal(terminal, cwd, addTerminal);
+              await spawnNewTerminal(terminal, cwd, addTerminal, agentSettings);
             }
           } else {
             // No existing process - spawn new
-            await spawnNewTerminal(terminal, cwd, addTerminal);
+            await spawnNewTerminal(terminal, cwd, addTerminal, agentSettings);
           }
         } catch (error) {
           console.warn(`Failed to restore terminal ${terminal.id}:`, error);
@@ -179,16 +197,59 @@ export async function hydrateAppState(options: HydrationOptions): Promise<void> 
   }
 }
 
+/**
+ * Generate the command to run for a terminal on restart.
+ *
+ * - For agents (claude, gemini, codex): Regenerate command from current settings
+ * - For other types with a saved command (scripts, package managers): Use saved command
+ * - For plain shells (type=shell with no command): No command
+ */
+function getRestartCommand(
+  terminal: TerminalState,
+  agentSettings: AgentSettings | null
+): string | undefined {
+  const isAgent = ["claude", "gemini", "codex"].includes(terminal.type);
+
+  if (isAgent) {
+    // Regenerate command from current agent settings
+    const baseCommand = terminal.type; // "claude", "gemini", or "codex"
+
+    if (!agentSettings) {
+      // Fallback to saved command if settings unavailable
+      // This preserves the user's last-known configuration
+      return terminal.command?.trim() || baseCommand;
+    }
+
+    let flags: string[] = [];
+    switch (terminal.type) {
+      case "claude":
+        flags = generateClaudeFlags(agentSettings.claude);
+        break;
+      case "gemini":
+        flags = generateGeminiFlags(agentSettings.gemini);
+        break;
+      case "codex":
+        flags = generateCodexFlags(agentSettings.codex);
+        break;
+    }
+
+    return flags.length > 0 ? `${baseCommand} ${flags.join(" ")}` : baseCommand;
+  }
+
+  // For non-agent terminals: use saved command if present
+  // This covers scripts from QuickRun, package manager commands, etc.
+  // Plain shells (type=shell with no command) will return undefined
+  return terminal.command?.trim() || undefined;
+}
+
 // Helper function for spawning new terminals
 async function spawnNewTerminal(
   terminal: TerminalState,
   cwd: string,
-  addTerminal: HydrationOptions["addTerminal"]
+  addTerminal: HydrationOptions["addTerminal"],
+  agentSettings: AgentSettings | null
 ): Promise<void> {
-  // Agent terminals default to auto-restart to preserve session context/flags
-  const isAgent = ["claude", "gemini", "codex"].includes(terminal.type);
-  const autoRestart = terminal.settings?.autoRestart ?? isAgent;
-  const commandToRun = autoRestart ? terminal.command : undefined;
+  const commandToRun = getRestartCommand(terminal, agentSettings);
 
   await addTerminal({
     type: terminal.type,
@@ -197,6 +258,5 @@ async function spawnNewTerminal(
     worktreeId: terminal.worktreeId,
     location: terminal.location === "dock" ? "dock" : "grid",
     command: commandToRun,
-    settings: terminal.settings,
   });
 }

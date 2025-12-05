@@ -10,7 +10,6 @@ const createMockTerminal = (overrides: Partial<TerminalInstance> = {}): Terminal
   cols: 80,
   rows: 24,
   location: "grid",
-  settings: { autoRestart: false },
   ...overrides,
 });
 
@@ -100,7 +99,6 @@ describe("TerminalPersistence", () => {
         worktreeId: "wt-1",
         location: "grid",
         command: "  claude --model sonnet-4  ",
-        settings: { autoRestart: true },
         agentState: "working",
         activityHeadline: "Processing",
       });
@@ -118,7 +116,6 @@ describe("TerminalPersistence", () => {
             worktreeId: "wt-1",
             location: "grid",
             command: "claude --model sonnet-4",
-            settings: { autoRestart: true },
           },
         ],
       });
