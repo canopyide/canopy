@@ -156,213 +156,216 @@ function TerminalHeaderComponent({
   return (
     <TerminalContextMenu terminalId={id} forceLocation={location}>
       <div
-      className={cn(
-        "flex items-center justify-between px-3 h-8 shrink-0 font-mono text-xs transition-colors relative overflow-hidden",
-        isFocused ? "bg-[var(--color-surface-highlight)]" : "bg-[var(--color-surface)]"
-      )}
-      onDoubleClick={handleHeaderDoubleClick}
-    >
-      <div className="flex items-center gap-2 min-w-0">
-        <span className="shrink-0 flex items-center justify-center w-3.5 h-3.5 text-canopy-text">
-          {isWorking ? (
-            <Loader2
-              className="w-3.5 h-3.5 animate-spin"
-              style={{ color: getBrandColorHex(type) }}
-              aria-hidden="true"
+        className={cn(
+          "flex items-center justify-between px-3 h-8 shrink-0 font-mono text-xs transition-colors relative overflow-hidden",
+          isFocused ? "bg-[var(--color-surface-highlight)]" : "bg-[var(--color-surface)]"
+        )}
+        onDoubleClick={handleHeaderDoubleClick}
+      >
+        <div className="flex items-center gap-2 min-w-0">
+          <span className="shrink-0 flex items-center justify-center w-3.5 h-3.5 text-canopy-text">
+            {isWorking ? (
+              <Loader2
+                className="w-3.5 h-3.5 animate-spin"
+                style={{ color: getBrandColorHex(type) }}
+                aria-hidden="true"
+              />
+            ) : (
+              getTerminalIcon(type, { brandColor: getBrandColorHex(type) })
+            )}
+          </span>
+
+          {isEditingTitle ? (
+            <input
+              ref={titleInputRef}
+              type="text"
+              value={editingValue}
+              onChange={(e) => onEditingValueChange(e.target.value)}
+              onKeyDown={onTitleInputKeyDown}
+              onBlur={onTitleSave}
+              className="text-sm font-medium bg-canopy-bg/60 border border-canopy-accent/50 px-1 h-5 min-w-32 outline-none text-canopy-text select-text"
+              aria-label={type === "shell" ? "Edit shell title" : "Edit agent title"}
             />
           ) : (
-            getTerminalIcon(type, { brandColor: getBrandColorHex(type) })
-          )}
-        </span>
-
-        {isEditingTitle ? (
-          <input
-            ref={titleInputRef}
-            type="text"
-            value={editingValue}
-            onChange={(e) => onEditingValueChange(e.target.value)}
-            onKeyDown={onTitleInputKeyDown}
-            onBlur={onTitleSave}
-            className="text-sm font-medium bg-canopy-bg/60 border border-canopy-accent/50 px-1 h-5 min-w-32 outline-none text-canopy-text select-text"
-            aria-label={type === "shell" ? "Edit shell title" : "Edit agent title"}
-          />
-        ) : (
-          <span
-            className={cn(
-              isFocused ? "text-canopy-text" : "text-canopy-text/70",
-              "font-medium truncate select-none",
-              onTitleChange && "cursor-text hover:text-canopy-text"
-            )}
-            onDoubleClick={onTitleDoubleClick}
-            onKeyDown={onTitleKeyDown}
-            tabIndex={onTitleChange ? 0 : undefined}
-            role={onTitleChange ? "button" : undefined}
-            title={onTitleChange ? `${title} — Double-click or press Enter to edit` : title}
-            aria-label={
-              onTitleChange
-                ? type === "shell"
-                  ? `Shell title: ${title}. Press Enter or F2 to edit`
-                  : `Agent title: ${title}. Press Enter or F2 to edit`
-                : undefined
-            }
-          >
-            {title}
-          </span>
-        )}
-
-        {isExited && (
-          <span
-            className="text-xs font-mono text-[var(--color-status-error)] ml-1"
-            role="status"
-            aria-live="polite"
-          >
-            [exit {exitCode}]
-          </span>
-        )}
-
-        {agentState &&
-          agentState !== "idle" &&
-          agentState !== "waiting" &&
-          agentState !== "working" && <StateBadge state={agentState} className="ml-2" />}
-
-        {activity && activity.headline && agentState !== "failed" && agentState !== "completed" && (
-          <ActivityBadge
-            headline={activity.headline}
-            status={activity.status}
-            type={activity.type}
-            className="ml-2"
-          />
-        )}
-
-        {queueCount > 0 && (
-          <div
-            className="text-xs font-mono bg-canopy-accent/15 text-canopy-text px-1.5 py-0.5 rounded ml-1"
-            role="status"
-            aria-live="polite"
-            title={`${queueCount} command${queueCount > 1 ? "s" : ""} queued`}
-          >
-            {queueCount} queued
-          </div>
-        )}
-      </div>
-
-      <div className="flex items-center gap-1 opacity-0 group-hover:opacity-100 group-focus-within:opacity-100 transition-opacity">
-        <DropdownMenu>
-          <DropdownMenuTrigger asChild>
-            <button
-              className="p-1.5 hover:bg-canopy-text/10 focus-visible:bg-canopy-text/10 focus-visible:outline focus-visible:outline-2 focus-visible:outline-canopy-accent text-canopy-text/60 hover:text-canopy-text transition-colors rounded"
-              onClick={(e) => e.stopPropagation()}
-              title="Terminal Settings"
-              aria-label="Terminal settings"
-            >
-              <Settings2 className="w-3 h-3" aria-hidden="true" />
-            </button>
-          </DropdownMenuTrigger>
-          <DropdownMenuContent align="end" className="w-56">
-            <DropdownMenuLabel>Terminal Settings</DropdownMenuLabel>
-            <DropdownMenuCheckboxItem
-              checked={
-                terminal?.settings?.autoRestart ?? ["claude", "gemini", "codex"].includes(type)
+            <span
+              className={cn(
+                isFocused ? "text-canopy-text" : "text-canopy-text/70",
+                "font-medium truncate select-none",
+                onTitleChange && "cursor-text hover:text-canopy-text"
+              )}
+              onDoubleClick={onTitleDoubleClick}
+              onKeyDown={onTitleKeyDown}
+              tabIndex={onTitleChange ? 0 : undefined}
+              role={onTitleChange ? "button" : undefined}
+              title={onTitleChange ? `${title} — Double-click or press Enter to edit` : title}
+              aria-label={
+                onTitleChange
+                  ? type === "shell"
+                    ? `Shell title: ${title}. Press Enter or F2 to edit`
+                    : `Agent title: ${title}. Press Enter or F2 to edit`
+                  : undefined
               }
-              onCheckedChange={(checked) => onUpdateSettings({ autoRestart: checked === true })}
             >
-              Auto-restart on open
-            </DropdownMenuCheckboxItem>
-          </DropdownMenuContent>
-        </DropdownMenu>
-        {worktreeId && onInjectContext && (
-          <button
-            onClick={(e) => {
-              e.stopPropagation();
-              onInjectContext();
-            }}
-            className={cn(
-              "p-1.5 hover:bg-canopy-text/10 focus-visible:bg-canopy-text/10 focus-visible:outline focus-visible:outline-2 focus-visible:outline-canopy-accent text-canopy-text/60 hover:text-[var(--color-state-working)] transition-colors",
-              isInjecting && "opacity-50 cursor-not-allowed"
+              {title}
+            </span>
+          )}
+
+          {isExited && (
+            <span
+              className="text-xs font-mono text-[var(--color-status-error)] ml-1"
+              role="status"
+              aria-live="polite"
+            >
+              [exit {exitCode}]
+            </span>
+          )}
+
+          {agentState &&
+            agentState !== "idle" &&
+            agentState !== "waiting" &&
+            agentState !== "working" && <StateBadge state={agentState} className="ml-2" />}
+
+          {activity &&
+            activity.headline &&
+            agentState !== "failed" &&
+            agentState !== "completed" && (
+              <ActivityBadge
+                headline={activity.headline}
+                status={activity.status}
+                type={activity.type}
+                className="ml-2"
+              />
             )}
-            title="Inject Context (Ctrl+Shift+I)"
-            aria-label="Inject worktree context"
-            disabled={isExited || isInjecting}
-          >
-            <Copy className="w-3 h-3" aria-hidden="true" />
-          </button>
-        )}
-        {onRestart && (
-          <button
-            onClick={(e) => {
-              e.stopPropagation();
-              onRestart();
-            }}
-            className="p-1.5 hover:bg-canopy-text/10 focus-visible:bg-canopy-text/10 focus-visible:outline focus-visible:outline-2 focus-visible:outline-canopy-accent text-canopy-text/60 hover:text-canopy-text transition-colors"
-            title="Restart Session"
-            aria-label="Restart Session"
-          >
-            <RotateCcw className="w-3 h-3" aria-hidden="true" />
-          </button>
-        )}
-        {onMinimize && !isMaximized && (
-          <button
-            onClick={(e) => {
-              e.stopPropagation();
-              onMinimize();
-            }}
-            className="p-1.5 hover:bg-canopy-text/10 focus-visible:bg-canopy-text/10 focus-visible:outline focus-visible:outline-2 focus-visible:outline-canopy-accent text-canopy-text/60 hover:text-canopy-text transition-colors"
-            title={location === "dock" ? "Minimize" : "Minimize to dock"}
-            aria-label={location === "dock" ? "Minimize" : "Minimize to dock"}
-          >
-            <ArrowDownToLine className="w-3 h-3" aria-hidden="true" />
-          </button>
-        )}
-        {location === "dock" && onRestore && (
-          <button
-            onClick={(e) => {
-              e.stopPropagation();
-              onRestore();
-            }}
-            className="p-1.5 hover:bg-canopy-text/10 focus-visible:bg-canopy-text/10 focus-visible:outline focus-visible:outline-2 focus-visible:outline-canopy-accent text-canopy-text/60 hover:text-canopy-text transition-colors"
-            title="Restore to grid"
-            aria-label="Restore to grid"
-          >
-            <Maximize2 className="w-3 h-3" aria-hidden="true" />
-          </button>
-        )}
-        {onToggleMaximize && (
-          <button
-            onClick={(e) => {
-              e.stopPropagation();
-              onFocus();
-              onToggleMaximize();
-            }}
-            className="p-1.5 hover:bg-canopy-text/10 focus-visible:bg-canopy-text/10 focus-visible:outline focus-visible:outline-2 focus-visible:outline-canopy-accent text-canopy-text/60 hover:text-canopy-text transition-colors"
-            title={isMaximized ? "Restore (Ctrl+Shift+F)" : "Maximize (Ctrl+Shift+F)"}
-            aria-label={isMaximized ? "Restore" : "Maximize"}
-          >
-            {isMaximized ? (
-              <Minimize2 className="w-3 h-3" aria-hidden="true" />
-            ) : (
+
+          {queueCount > 0 && (
+            <div
+              className="text-xs font-mono bg-canopy-accent/15 text-canopy-text px-1.5 py-0.5 rounded ml-1"
+              role="status"
+              aria-live="polite"
+              title={`${queueCount} command${queueCount > 1 ? "s" : ""} queued`}
+            >
+              {queueCount} queued
+            </div>
+          )}
+        </div>
+
+        <div className="flex items-center gap-1 opacity-0 group-hover:opacity-100 group-focus-within:opacity-100 transition-opacity">
+          <DropdownMenu>
+            <DropdownMenuTrigger asChild>
+              <button
+                className="p-1.5 hover:bg-canopy-text/10 focus-visible:bg-canopy-text/10 focus-visible:outline focus-visible:outline-2 focus-visible:outline-canopy-accent text-canopy-text/60 hover:text-canopy-text transition-colors rounded"
+                onClick={(e) => e.stopPropagation()}
+                title="Terminal Settings"
+                aria-label="Terminal settings"
+              >
+                <Settings2 className="w-3 h-3" aria-hidden="true" />
+              </button>
+            </DropdownMenuTrigger>
+            <DropdownMenuContent align="end" className="w-56">
+              <DropdownMenuLabel>Terminal Settings</DropdownMenuLabel>
+              <DropdownMenuCheckboxItem
+                checked={
+                  terminal?.settings?.autoRestart ?? ["claude", "gemini", "codex"].includes(type)
+                }
+                onCheckedChange={(checked) => onUpdateSettings({ autoRestart: checked === true })}
+              >
+                Auto-restart on open
+              </DropdownMenuCheckboxItem>
+            </DropdownMenuContent>
+          </DropdownMenu>
+          {worktreeId && onInjectContext && (
+            <button
+              onClick={(e) => {
+                e.stopPropagation();
+                onInjectContext();
+              }}
+              className={cn(
+                "p-1.5 hover:bg-canopy-text/10 focus-visible:bg-canopy-text/10 focus-visible:outline focus-visible:outline-2 focus-visible:outline-canopy-accent text-canopy-text/60 hover:text-[var(--color-state-working)] transition-colors",
+                isInjecting && "opacity-50 cursor-not-allowed"
+              )}
+              title="Inject Context (Ctrl+Shift+I)"
+              aria-label="Inject worktree context"
+              disabled={isExited || isInjecting}
+            >
+              <Copy className="w-3 h-3" aria-hidden="true" />
+            </button>
+          )}
+          {onRestart && (
+            <button
+              onClick={(e) => {
+                e.stopPropagation();
+                onRestart();
+              }}
+              className="p-1.5 hover:bg-canopy-text/10 focus-visible:bg-canopy-text/10 focus-visible:outline focus-visible:outline-2 focus-visible:outline-canopy-accent text-canopy-text/60 hover:text-canopy-text transition-colors"
+              title="Restart Session"
+              aria-label="Restart Session"
+            >
+              <RotateCcw className="w-3 h-3" aria-hidden="true" />
+            </button>
+          )}
+          {onMinimize && !isMaximized && (
+            <button
+              onClick={(e) => {
+                e.stopPropagation();
+                onMinimize();
+              }}
+              className="p-1.5 hover:bg-canopy-text/10 focus-visible:bg-canopy-text/10 focus-visible:outline focus-visible:outline-2 focus-visible:outline-canopy-accent text-canopy-text/60 hover:text-canopy-text transition-colors"
+              title={location === "dock" ? "Minimize" : "Minimize to dock"}
+              aria-label={location === "dock" ? "Minimize" : "Minimize to dock"}
+            >
+              <ArrowDownToLine className="w-3 h-3" aria-hidden="true" />
+            </button>
+          )}
+          {location === "dock" && onRestore && (
+            <button
+              onClick={(e) => {
+                e.stopPropagation();
+                onRestore();
+              }}
+              className="p-1.5 hover:bg-canopy-text/10 focus-visible:bg-canopy-text/10 focus-visible:outline focus-visible:outline-2 focus-visible:outline-canopy-accent text-canopy-text/60 hover:text-canopy-text transition-colors"
+              title="Restore to grid"
+              aria-label="Restore to grid"
+            >
               <Maximize2 className="w-3 h-3" aria-hidden="true" />
-            )}
-          </button>
-        )}
-        <button
-          onClick={(e) => {
-            e.stopPropagation();
-            onClose(e.altKey);
-          }}
-          onKeyDown={(e) => {
-            if ((e.key === "Enter" || e.key === " ") && e.altKey) {
-              e.preventDefault();
+            </button>
+          )}
+          {onToggleMaximize && (
+            <button
+              onClick={(e) => {
+                e.stopPropagation();
+                onFocus();
+                onToggleMaximize();
+              }}
+              className="p-1.5 hover:bg-canopy-text/10 focus-visible:bg-canopy-text/10 focus-visible:outline focus-visible:outline-2 focus-visible:outline-canopy-accent text-canopy-text/60 hover:text-canopy-text transition-colors"
+              title={isMaximized ? "Restore (Ctrl+Shift+F)" : "Maximize (Ctrl+Shift+F)"}
+              aria-label={isMaximized ? "Restore" : "Maximize"}
+            >
+              {isMaximized ? (
+                <Minimize2 className="w-3 h-3" aria-hidden="true" />
+              ) : (
+                <Maximize2 className="w-3 h-3" aria-hidden="true" />
+              )}
+            </button>
+          )}
+          <button
+            onClick={(e) => {
               e.stopPropagation();
-              onClose(true);
-            }
-          }}
-          className="p-1.5 hover:bg-[color-mix(in_oklab,var(--color-status-error)_15%,transparent)] focus-visible:bg-[color-mix(in_oklab,var(--color-status-error)_15%,transparent)] focus-visible:outline focus-visible:outline-2 focus-visible:outline-[var(--color-status-error)] text-canopy-text/60 hover:text-[var(--color-status-error)] transition-colors"
-          title="Close Session (Alt+Click to force close)"
-          aria-label="Close session. Hold Alt and click to force close without recovery."
-        >
-          <X className="w-3 h-3" aria-hidden="true" />
-        </button>
-      </div>
+              onClose(e.altKey);
+            }}
+            onKeyDown={(e) => {
+              if ((e.key === "Enter" || e.key === " ") && e.altKey) {
+                e.preventDefault();
+                e.stopPropagation();
+                onClose(true);
+              }
+            }}
+            className="p-1.5 hover:bg-[color-mix(in_oklab,var(--color-status-error)_15%,transparent)] focus-visible:bg-[color-mix(in_oklab,var(--color-status-error)_15%,transparent)] focus-visible:outline focus-visible:outline-2 focus-visible:outline-[var(--color-status-error)] text-canopy-text/60 hover:text-[var(--color-status-error)] transition-colors"
+            title="Close Session (Alt+Click to force close)"
+            aria-label="Close session. Hold Alt and click to force close without recovery."
+          >
+            <X className="w-3 h-3" aria-hidden="true" />
+          </button>
+        </div>
       </div>
     </TerminalContextMenu>
   );
