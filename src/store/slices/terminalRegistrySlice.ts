@@ -136,6 +136,14 @@ export const createTerminalRegistrySlice =
         }
 
         const isAgentTerminal = type === "claude" || type === "gemini" || type === "codex";
+
+        // Default autoRestart to true for agent terminals, false for others
+        // Spread options.settings to allow explicit overrides
+        const initialSettings: TerminalSettings = {
+          autoRestart: isAgentTerminal,
+          ...options.settings,
+        };
+
         const agentState = options.agentState ?? (isAgentTerminal ? "idle" : undefined);
         const lastStateChange =
           options.lastStateChange ?? (agentState !== undefined ? Date.now() : undefined);
@@ -154,7 +162,7 @@ export const createTerminalRegistrySlice =
           // Initialize grid terminals as visible to avoid initial under-throttling
           // IntersectionObserver will update this once mounted
           isVisible: location === "grid" ? true : false,
-          settings: options.settings ?? { autoRestart: false },
+          settings: initialSettings,
         };
 
         set((state) => {
@@ -596,17 +604,25 @@ export const createTerminalRegistrySlice =
           return state;
         }
 
-        const newTerminals = state.terminals.map((t) =>
-          t.id === id
-            ? {
-                ...t,
-                settings: {
-                  ...(t.settings ?? { autoRestart: false }),
-                  ...updates,
-                },
-              }
-            : t
-        );
+        const newTerminals = state.terminals.map((t) => {
+          if (t.id !== id) return t;
+
+          // Default autoRestart based on terminal type (matches addTerminal logic)
+          const isAgentTerminal =
+            t.type === "claude" || t.type === "gemini" || t.type === "codex";
+          const defaultSettings: TerminalSettings = {
+            autoRestart: isAgentTerminal,
+          };
+
+          return {
+            ...t,
+            settings: {
+              ...defaultSettings,
+              ...t.settings,
+              ...updates,
+            },
+          };
+        });
 
         terminalPersistence.save(newTerminals);
         return { terminals: newTerminals };

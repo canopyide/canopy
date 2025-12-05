@@ -256,7 +256,9 @@ function TerminalHeaderComponent({
           <DropdownMenuContent align="end" className="w-56">
             <DropdownMenuLabel>Terminal Settings</DropdownMenuLabel>
             <DropdownMenuCheckboxItem
-              checked={terminal?.settings?.autoRestart ?? false}
+              checked={
+                terminal?.settings?.autoRestart ?? ["claude", "gemini", "codex"].includes(type)
+              }
               onCheckedChange={(checked) => onUpdateSettings({ autoRestart: checked === true })}
             >
               Auto-restart on open
