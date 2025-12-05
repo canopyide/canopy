@@ -11,7 +11,17 @@ import {
   ContextMenuSubContent,
   ContextMenuCheckboxItem,
 } from "@/components/ui/context-menu";
-import { Maximize2, Minimize2, Trash2, ArrowUp, ArrowDownToLine, Copy, Settings2, Skull, RotateCcw } from "lucide-react";
+import {
+  Maximize2,
+  Minimize2,
+  Trash2,
+  ArrowUp,
+  ArrowDownToLine,
+  Copy,
+  Settings2,
+  Skull,
+  RotateCcw,
+} from "lucide-react";
 import { useTerminalStore } from "@/store";
 import { useContextInjection } from "@/hooks/useContextInjection";
 import type { TerminalLocation } from "@/types";

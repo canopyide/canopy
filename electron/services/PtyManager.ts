@@ -72,8 +72,9 @@ export class PtyManager extends EventEmitter {
 
   /**
    * Emit terminal data with project-based filtering.
+   * Accepts both string and Uint8Array data for binary optimization.
    */
-  private emitData(id: string, data: string): void {
+  private emitData(id: string, data: string | Uint8Array): void {
     const terminalInfo = this.registry.get(id);
     if (!terminalInfo) {
       return;

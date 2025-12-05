@@ -34,19 +34,28 @@ const BURST_MODE_WINDOW_MS = 500;
 const INPUT_DEBOUNCE_MS = 8;
 const MAX_WEBGL_RECOVERY_ATTEMPTS = 3;
 
+/**
+ * Creates a throttled writer that batches terminal output for efficient rendering.
+ * Uses Uint8Array storage to reduce GC pressure from string concatenation.
+ * xterm.js write() accepts both string and Uint8Array directly.
+ */
 function createThrottledWriter(
   terminal: Terminal,
   initialProvider: RefreshTierProvider = () => TerminalRefreshTier.FOCUSED
 ) {
-  let buffer = "";
+  // Use array of chunks instead of string concatenation to reduce GC pressure
+  let chunks: (string | Uint8Array)[] = [];
   let timerId: number | null = null;
   let getRefreshTier = initialProvider;
   let lastInputTime = 0;
 
   const flush = () => {
-    if (buffer) {
-      terminal.write(buffer);
-      buffer = "";
+    if (chunks.length > 0) {
+      // xterm.js efficiently handles multiple writes
+      for (const chunk of chunks) {
+        terminal.write(chunk);
+      }
+      chunks = [];
     }
     timerId = null;
   };
@@ -64,8 +73,8 @@ function createThrottledWriter(
   };
 
   return {
-    write: (data: string) => {
-      buffer += data;
+    write: (data: string | Uint8Array) => {
+      chunks.push(data);
 
       const isBurstMode = Date.now() - lastInputTime < BURST_MODE_WINDOW_MS;
       const tierDelay = getRefreshTier();
@@ -84,9 +93,12 @@ function createThrottledWriter(
         clearTimeout(timerId);
         timerId = null;
       }
-      if (buffer) {
-        terminal.write(buffer);
-        buffer = "";
+      // Flush any remaining chunks
+      if (chunks.length > 0) {
+        for (const chunk of chunks) {
+          terminal.write(chunk);
+        }
+        chunks = [];
       }
     },
     updateProvider: (provider: RefreshTierProvider) => {
@@ -95,7 +107,7 @@ function createThrottledWriter(
     notifyInput: () => {
       lastInputTime = Date.now();
       // If pending data on slow timer, switch to fast debounce
-      if (buffer && timerId !== null) {
+      if (chunks.length > 0 && timerId !== null) {
         clearTimeout(timerId);
         timerId = window.setTimeout(flush, INPUT_DEBOUNCE_MS);
       }
@@ -114,7 +126,15 @@ function createThrottledWriter(
             : effectiveDelay === TerminalRefreshTier.VISIBLE
               ? "VISIBLE"
               : "BACKGROUND";
-      return { tierName, fps, isBurstMode, effectiveDelay, bufferSize: buffer.length };
+      // Calculate total buffered bytes for debug info (use byte length for strings)
+      const bufferSize = chunks.reduce((sum, chunk) => {
+        if (typeof chunk === "string") {
+          // Use TextEncoder to get actual byte length (UTF-8)
+          return sum + new TextEncoder().encode(chunk).length;
+        }
+        return sum + chunk.length;
+      }, 0);
+      return { tierName, fps, isBurstMode, effectiveDelay, bufferSize };
     },
     boost: () => {
       // Activate burst mode so subsequent writes are fast
@@ -129,12 +149,12 @@ function createThrottledWriter(
       }
     },
     clear: () => {
-      // Discard pending buffer without writing it (prevents ghost echoes after clear)
+      // Discard pending chunks without writing them (prevents ghost echoes after clear)
       if (timerId !== null) {
         clearTimeout(timerId);
         timerId = null;
       }
-      buffer = "";
+      chunks = [];
     },
   };
 }
@@ -368,7 +388,8 @@ class TerminalInstanceService {
     // ALWAYS subscribe to IPC data events for fallback scenarios
     // When SharedArrayBuffer is enabled, normal data comes through polling,
     // but IPC handles fallback cases (buffer full, packet framing errors, etc.)
-    const unsubData = terminalClient.onData(id, (data: string) => {
+    // Now accepts both string and Uint8Array for binary optimization
+    const unsubData = terminalClient.onData(id, (data: string | Uint8Array) => {
       throttledWriter.write(data);
     });
     listeners.push(unsubData);

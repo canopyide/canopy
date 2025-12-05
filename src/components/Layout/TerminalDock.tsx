@@ -162,7 +162,9 @@ export function TerminalDock() {
           >
             <Icon
               className="w-4 h-4"
-              style={type !== "shell" ? { color: getBrandColorHex(type as TerminalType) } : undefined}
+              style={
+                type !== "shell" ? { color: getBrandColorHex(type as TerminalType) } : undefined
+              }
             />
             <span>New {label}</span>
           </ContextMenuItem>
