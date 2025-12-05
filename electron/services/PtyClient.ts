@@ -81,6 +81,8 @@ export class PtyClient extends EventEmitter {
 
   /** SharedArrayBuffer for zero-copy terminal I/O (null if unavailable) */
   private sharedBuffer: SharedArrayBuffer | null = null;
+  /** SharedArrayBuffer for semantic analysis (separate from visual buffer) */
+  private analysisBuffer: SharedArrayBuffer | null = null;
   private sharedBufferEnabled = false;
 
   constructor(config: PtyClientConfig = {}) {
@@ -92,14 +94,17 @@ export class PtyClient extends EventEmitter {
       this.readyResolve = resolve;
     });
 
-    // Try to create SharedArrayBuffer for zero-copy terminal I/O
+    // Try to create SharedArrayBuffers for zero-copy terminal I/O
+    // Two separate buffers: one for visual rendering, one for semantic analysis
     try {
       this.sharedBuffer = SharedRingBuffer.create(DEFAULT_RING_BUFFER_SIZE);
+      this.analysisBuffer = SharedRingBuffer.create(DEFAULT_RING_BUFFER_SIZE);
       this.sharedBufferEnabled = true;
-      console.log("[PtyClient] SharedArrayBuffer enabled (10MB ring buffer)");
+      console.log("[PtyClient] SharedArrayBuffer enabled (dual 10MB ring buffers)");
     } catch (error) {
       console.warn("[PtyClient] SharedArrayBuffer unavailable, using IPC fallback:", error);
       this.sharedBuffer = null;
+      this.analysisBuffer = null;
       this.sharedBufferEnabled = false;
     }
 
@@ -147,14 +152,15 @@ export class PtyClient extends EventEmitter {
       this.handleHostEvent(msg);
     });
 
-    // Send SharedArrayBuffer to host immediately after spawn
-    if (this.sharedBuffer) {
+    // Send both SharedArrayBuffers to host immediately after spawn
+    if (this.sharedBuffer && this.analysisBuffer) {
       try {
         this.child.postMessage({
-          type: "init-buffer",
-          buffer: this.sharedBuffer,
+          type: "init-buffers",
+          visualBuffer: this.sharedBuffer,
+          analysisBuffer: this.analysisBuffer,
         });
-        console.log("[PtyClient] SharedArrayBuffer sent to Pty Host");
+        console.log("[PtyClient] Dual SharedArrayBuffers sent to Pty Host");
       } catch (error) {
         console.warn(
           "[PtyClient] SharedArrayBuffer transfer failed (using IPC fallback):",
@@ -162,6 +168,7 @@ export class PtyClient extends EventEmitter {
         );
         // Fallback to IPC-only mode
         this.sharedBuffer = null;
+        this.analysisBuffer = null;
         this.sharedBufferEnabled = false;
       }
     }
@@ -769,11 +776,19 @@ export class PtyClient extends EventEmitter {
   }
 
   /**
-   * Get the SharedArrayBuffer for zero-copy terminal I/O.
+   * Get the SharedArrayBuffer for zero-copy terminal I/O (visual rendering).
    * Returns null if SharedArrayBuffer is not available.
    */
   getSharedBuffer(): SharedArrayBuffer | null {
     return this.sharedBuffer;
+  }
+
+  /**
+   * Get the SharedArrayBuffer for semantic analysis (Web Worker).
+   * Returns null if SharedArrayBuffer is not available.
+   */
+  getAnalysisBuffer(): SharedArrayBuffer | null {
+    return this.analysisBuffer;
   }
 
   /**

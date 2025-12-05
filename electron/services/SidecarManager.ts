@@ -65,7 +65,7 @@ export class SidecarManager {
           tabId,
           title: view.webContents.getTitle(),
           url,
-      });
+        });
       });
 
       view.webContents.once("destroyed", () => {
