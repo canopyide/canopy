@@ -10,6 +10,7 @@ import {
 import { Button } from "@/components/ui/button";
 import { ChevronDown, CheckCircle, XCircle, Clock, Trash2, RefreshCw } from "lucide-react";
 import { useTerminalStore } from "@/store/terminalStore";
+import { useSidecarStore } from "@/store/sidecarStore";
 import { ConfirmDialog } from "./ConfirmDialog";
 
 export interface BulkActionsMenuProps {
@@ -24,6 +25,15 @@ export function BulkActionsMenu({ worktreeId, trigger, className }: BulkActionsM
   const bulkCloseByWorktree = useTerminalStore((state) => state.bulkCloseByWorktree);
   const bulkCloseAll = useTerminalStore((state) => state.bulkCloseAll);
   const restartFailedAgents = useTerminalStore((state) => state.restartFailedAgents);
+
+  const sidecarOpen = useSidecarStore((state) => state.isOpen);
+  const sidecarWidth = useSidecarStore((state) => state.width);
+  const layoutMode = useSidecarStore((state) => state.layoutMode);
+
+  // Collision padding to prevent dropdown from being hidden behind sidecar in overlay mode
+  const collisionPadding = {
+    right: sidecarOpen && layoutMode === "overlay" ? sidecarWidth + 20 : 10,
+  };
 
   const [confirmDialog, setConfirmDialog] = useState<{
     isOpen: boolean;
@@ -134,7 +144,7 @@ export function BulkActionsMenu({ worktreeId, trigger, className }: BulkActionsM
     <>
       <DropdownMenu>
         <DropdownMenuTrigger asChild>{trigger || defaultTrigger}</DropdownMenuTrigger>
-        <DropdownMenuContent align="start" className="w-56">
+        <DropdownMenuContent align="start" className="w-56" collisionPadding={collisionPadding}>
           <DropdownMenuItem
             onClick={handleCloseCompleted}
             disabled={completedCount === 0}
