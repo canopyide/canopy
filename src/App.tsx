@@ -20,7 +20,6 @@ import { NewWorktreeDialog } from "./components/Worktree/NewWorktreeDialog";
 import { TerminalPalette } from "./components/TerminalPalette";
 import { RecipeEditor } from "./components/TerminalRecipe/RecipeEditor";
 import { SettingsDialog } from "./components/Settings";
-import { HistoryPanel } from "./components/History";
 import { Toaster } from "./components/ui/toaster";
 import { ErrorBoundary } from "./components/ErrorBoundary";
 import { DndProvider } from "./components/DragDrop";
@@ -585,7 +584,6 @@ function App() {
       <DndProvider>
         <AppLayout
           sidebarContent={<SidebarContent />}
-          historyContent={<HistoryPanel />}
           onLaunchAgent={handleLaunchAgent}
           onSettings={handleSettings}
           onRetry={handleErrorRetry}
