@@ -15,6 +15,7 @@ export function SidecarDock() {
     setOpen,
     createBlankTab,
     closeTab,
+    closeAllTabs,
     markTabCreated,
     updateTabUrl,
     updateTabTitle,
@@ -207,9 +208,10 @@ export function SidecarDock() {
   );
 
   const handleClose = useCallback(async () => {
+    closeAllTabs();
     await window.electron.sidecar.hide();
     setOpen(false);
-  }, [setOpen]);
+  }, [closeAllTabs, setOpen]);
 
   const handleGoBack = useCallback(async () => {
     if (activeTabId) {

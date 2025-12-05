@@ -29,6 +29,7 @@ interface SidecarActions {
   createTab: (url: string, title: string) => string;
   createBlankTab: () => string;
   closeTab: (id: string) => void;
+  closeAllTabs: () => void;
   updateTabTitle: (id: string, title: string) => void;
   updateTabUrl: (id: string, url: string) => void;
   updateLayoutMode: (windowWidth: number, sidebarWidth: number) => void;
@@ -153,6 +154,14 @@ const createSidecarStore: StateCreator<SidecarState & SidecarActions> = (set, ge
     } else {
       window.electron.sidecar.hide();
     }
+  },
+
+  closeAllTabs: () => {
+    const state = get();
+    for (const tab of state.tabs) {
+      window.electron.sidecar.closeTab({ tabId: tab.id });
+    }
+    set({ tabs: [], activeTabId: null, createdTabs: new Set<string>() });
   },
 
   updateTabTitle: (id, title) =>
