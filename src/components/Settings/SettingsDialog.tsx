@@ -1,6 +1,6 @@
 import { useState, useEffect } from "react";
 import { useErrors, useOverlayState } from "@/hooks";
-import { useLogsStore } from "@/store";
+import { useLogsStore, useSidecarStore } from "@/store";
 import { X, Bot, Github, LayoutGrid, PanelRight } from "lucide-react";
 import { cn } from "@/lib/utils";
 import { appClient } from "@/clients";
@@ -29,6 +29,14 @@ export function SettingsDialog({
   useOverlayState(isOpen);
 
   const [activeTab, setActiveTab] = useState<SettingsTab>(defaultTab ?? "general");
+  const setSidecarOpen = useSidecarStore((state) => state.setOpen);
+
+  // Close sidecar when settings opens to prevent z-index conflicts
+  useEffect(() => {
+    if (isOpen) {
+      setSidecarOpen(false);
+    }
+  }, [isOpen, setSidecarOpen]);
   const { openLogs } = useErrors();
   const clearLogs = useLogsStore((state) => state.clearLogs);
 

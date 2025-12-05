@@ -52,10 +52,12 @@ export function Toolbar({
 
   const sidecarOpen = useSidecarStore((state) => state.isOpen);
   const sidecarWidth = useSidecarStore((state) => state.width);
+  const layoutMode = useSidecarStore((state) => state.layoutMode);
   const toggleSidecar = useSidecarStore((state) => state.toggle);
 
-  // Collision padding for dropdowns near sidecar boundary
-  const rightCollisionPadding = sidecarOpen ? sidecarWidth + 10 : 10;
+  // Collision padding for dropdowns - only apply in overlay mode where sidecar occludes content
+  const rightCollisionPadding =
+    sidecarOpen && layoutMode === "overlay" ? sidecarWidth + 20 : 10;
 
   const [issuesOpen, setIssuesOpen] = useState(false);
   const [prsOpen, setPrsOpen] = useState(false);
