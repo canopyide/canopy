@@ -34,6 +34,7 @@ export function SortableDockItem({ terminal, sourceIndex, children }: SortableDo
       className={cn("flex-shrink-0", isDragging && "opacity-40")}
       {...attributes}
       {...listeners}
+      role="listitem"
     >
       {children}
     </div>

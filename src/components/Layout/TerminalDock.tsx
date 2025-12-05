@@ -1,14 +1,13 @@
-import { useState, useCallback, useEffect, useMemo } from "react";
+import { useMemo, useRef } from "react";
 import { useShallow } from "zustand/react/shallow";
 import { SortableContext, horizontalListSortingStrategy } from "@dnd-kit/sortable";
 import { useDroppable } from "@dnd-kit/core";
-import { ChevronDown } from "lucide-react";
+import { ChevronLeft, ChevronRight } from "lucide-react";
 import { cn } from "@/lib/utils";
 import { useTerminalStore } from "@/store";
 import { DockedTerminalItem } from "./DockedTerminalItem";
 import { TrashContainer } from "./TrashContainer";
 import { SortableDockItem } from "@/components/DragDrop";
-import { appClient } from "@/clients";
 
 export function TerminalDock() {
   const dockTerminals = useTerminalStore(
@@ -18,39 +17,23 @@ export function TerminalDock() {
   const trashedTerminals = useTerminalStore(useShallow((state) => state.trashedTerminals));
   const terminals = useTerminalStore((state) => state.terminals);
 
-  const [isCollapsed, setIsCollapsed] = useState(false);
+  const scrollContainerRef = useRef<HTMLDivElement>(null);
 
-  // Make the dock a droppable area
-  const { setNodeRef, isOver } = useDroppable({
+  // Make the dock terminals area droppable
+  const { setNodeRef: setDockDropRef, isOver } = useDroppable({
     id: "dock-container",
     data: { container: "dock" },
   });
 
-  useEffect(() => {
-    let cancelled = false;
-    appClient.getState().then((state) => {
-      if (!cancelled && state.dockCollapsed !== undefined) {
-        setIsCollapsed(state.dockCollapsed);
-      }
-    });
-    return () => {
-      cancelled = true;
-    };
-  }, []);
-
-  const handleToggleCollapse = useCallback(() => {
-    const newState = !isCollapsed;
-    setIsCollapsed(newState);
-    appClient.setState({ dockCollapsed: newState });
-  }, [isCollapsed]);
-
-  // Auto-expand when dragging over collapsed dock
-  useEffect(() => {
-    if (isOver && isCollapsed) {
-      setIsCollapsed(false);
-      appClient.setState({ dockCollapsed: false });
+  const handleScroll = (direction: "left" | "right") => {
+    if (scrollContainerRef.current) {
+      const scrollAmount = 200;
+      scrollContainerRef.current.scrollBy({
+        left: direction === "left" ? -scrollAmount : scrollAmount,
+        behavior: "smooth",
+      });
     }
-  }, [isOver, isCollapsed]);
+  };
 
   const trashedItems = Array.from(trashedTerminals.values())
     .map((trashed) => ({
@@ -74,34 +57,36 @@ export function TerminalDock() {
 
   return (
     <div
-      ref={setNodeRef}
       className={cn(
         "bg-canopy-bg/95 backdrop-blur-sm border-t-2 border-canopy-border/60 shadow-[0_-4px_12px_rgba(0,0,0,0.3)]",
-        "flex items-center px-4 py-2 gap-2",
-        "z-40 shrink-0",
-        isOver && "bg-white/[0.03] ring-2 ring-canopy-accent/30 ring-inset"
+        "flex items-center px-2 py-2 gap-2",
+        "z-40 shrink-0"
       )}
       role="list"
     >
-      <div className="flex items-center gap-2 overflow-x-auto flex-1 no-scrollbar">
+      <div className="flex items-center gap-1 flex-1 min-w-0">
+        {/* Left Scroll Chevron */}
         <button
-          onClick={handleToggleCollapse}
-          className={cn(
-            "flex items-center gap-1 text-xs text-canopy-text/60 mr-2 shrink-0 select-none",
-            "hover:text-canopy-text transition-colors rounded px-1 py-0.5",
-            "focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-canopy-accent"
-          )}
-          title={isCollapsed ? "Show background terminals" : "Hide background terminals"}
-          aria-expanded={!isCollapsed}
+          onClick={() => handleScroll("left")}
+          disabled={activeDockTerminals.length === 0}
+          className="p-1 text-canopy-text/40 hover:text-canopy-text hover:bg-white/10 rounded transition-colors shrink-0 disabled:opacity-30 disabled:cursor-not-allowed disabled:hover:text-canopy-text/40 disabled:hover:bg-transparent"
+          aria-label="Scroll left"
+          title="Scroll left"
         >
-          <ChevronDown
-            className={cn("h-3 w-3 transition-transform duration-200", isCollapsed && "-rotate-90")}
-            aria-hidden="true"
-          />
-          <span>Background ({activeDockTerminals.length})</span>
+          <ChevronLeft className="w-4 h-4" />
         </button>
 
-        {!isCollapsed && (
+        {/* Scrollable Container */}
+        <div
+          ref={(node) => {
+            scrollContainerRef.current = node;
+            setDockDropRef(node);
+          }}
+          className={cn(
+            "flex items-center gap-2 overflow-x-auto flex-1 no-scrollbar scroll-smooth px-1",
+            isOver && "bg-white/[0.03] ring-2 ring-canopy-accent/30 ring-inset rounded"
+          )}
+        >
           <SortableContext
             id="dock-container"
             items={terminalIds}
@@ -115,15 +100,26 @@ export function TerminalDock() {
               ))}
             </div>
           </SortableContext>
-        )}
+        </div>
+
+        {/* Right Scroll Chevron */}
+        <button
+          onClick={() => handleScroll("right")}
+          disabled={activeDockTerminals.length === 0}
+          className="p-1 text-canopy-text/40 hover:text-canopy-text hover:bg-white/10 rounded transition-colors shrink-0 disabled:opacity-30 disabled:cursor-not-allowed disabled:hover:text-canopy-text/40 disabled:hover:bg-transparent"
+          aria-label="Scroll right"
+          title="Scroll right"
+        >
+          <ChevronRight className="w-4 h-4" />
+        </button>
       </div>
 
-      {/* Separator between sections - only show if both have content and not collapsed */}
-      {!isCollapsed && activeDockTerminals.length > 0 && trashedItems.length > 0 && (
-        <div className="w-px h-5 bg-canopy-border mx-2 shrink-0" />
+      {/* Separator between sections - only show if both have content */}
+      {activeDockTerminals.length > 0 && trashedItems.length > 0 && (
+        <div className="w-px h-5 bg-canopy-border mx-1 shrink-0" />
       )}
 
-      <div className="shrink-0">
+      <div className="shrink-0 pl-1">
         <TrashContainer trashedTerminals={trashedItems} />
       </div>
     </div>
