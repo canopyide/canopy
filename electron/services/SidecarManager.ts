@@ -13,6 +13,7 @@ export class SidecarManager {
   }
 
   createTab(tabId: string, url: string): void {
+    console.log(`[SidecarManager] Creating tab ${tabId} for ${url}`);
     if (this.viewMap.has(tabId)) return;
 
     try {
@@ -25,60 +26,68 @@ export class SidecarManager {
       return;
     }
 
-    const view = new WebContentsView({
-      webPreferences: {
-        nodeIntegration: false,
-        contextIsolation: true,
-        sandbox: true,
-        partition: "persist:sidecar",
-      },
-    });
-
-    view.webContents.setWindowOpenHandler(() => ({ action: "deny" }));
-
-    const sendNavEvent = (navEvent: SidecarNavEvent) => {
-      if (!this.window?.isDestroyed()) {
-        this.window.webContents.send(CHANNELS.SIDECAR_NAV_EVENT, navEvent);
-      }
-    };
-
-    view.webContents.on("page-title-updated", (_, title) => {
-      sendNavEvent({
-        tabId,
-        title,
-        url: view.webContents.getURL(),
+    try {
+      const view = new WebContentsView({
+        webPreferences: {
+          nodeIntegration: false,
+          contextIsolation: true,
+          sandbox: true,
+          partition: "persist:sidecar",
+        },
       });
-    });
 
-    view.webContents.on("did-navigate", (_, url) => {
-      sendNavEvent({
-        tabId,
-        title: view.webContents.getTitle(),
-        url,
+      view.webContents.setWindowOpenHandler(() => ({ action: "deny" }));
+
+      const sendNavEvent = (navEvent: SidecarNavEvent) => {
+        if (!this.window?.isDestroyed()) {
+          this.window.webContents.send(CHANNELS.SIDECAR_NAV_EVENT, navEvent);
+        }
+      };
+
+      view.webContents.on("page-title-updated", (_, title) => {
+        sendNavEvent({
+          tabId,
+          title,
+          url: view.webContents.getURL(),
+        });
       });
-    });
 
-    view.webContents.on("did-navigate-in-page", (_, url) => {
-      sendNavEvent({
-        tabId,
-        title: view.webContents.getTitle(),
-        url,
+      view.webContents.on("did-navigate", (_, url) => {
+        sendNavEvent({
+          tabId,
+          title: view.webContents.getTitle(),
+          url,
+        });
       });
-    });
 
-    view.webContents.once("destroyed", () => {
-      this.viewMap.delete(tabId);
-      if (this.activeTabId === tabId) {
-        this.activeView = null;
-        this.activeTabId = null;
-      }
-    });
+      view.webContents.on("did-navigate-in-page", (_, url) => {
+        sendNavEvent({
+          tabId,
+          title: view.webContents.getTitle(),
+          url,
+      });
+      });
 
-    view.webContents.loadURL(url);
-    this.viewMap.set(tabId, view);
+      view.webContents.once("destroyed", () => {
+        this.viewMap.delete(tabId);
+        if (this.activeTabId === tabId) {
+          this.activeView = null;
+          this.activeTabId = null;
+        }
+      });
+
+      view.webContents.loadURL(url).catch((err) => {
+        console.error(`[SidecarManager] Failed to load URL ${url} in tab ${tabId}:`, err);
+      });
+      this.viewMap.set(tabId, view);
+    } catch (error) {
+      console.error(`[SidecarManager] Failed to create tab ${tabId}:`, error);
+      throw error;
+    }
   }
 
   showTab(tabId: string, bounds: SidecarBounds): void {
+    console.log(`[SidecarManager] Showing tab ${tabId}`, bounds);
     const view = this.viewMap.get(tabId);
     if (!view) return;
 

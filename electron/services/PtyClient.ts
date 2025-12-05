@@ -149,11 +149,21 @@ export class PtyClient extends EventEmitter {
 
     // Send SharedArrayBuffer to host immediately after spawn
     if (this.sharedBuffer) {
-      this.child.postMessage({
-        type: "init-buffer",
-        buffer: this.sharedBuffer,
-      });
-      console.log("[PtyClient] SharedArrayBuffer sent to Pty Host");
+      try {
+        this.child.postMessage({
+          type: "init-buffer",
+          buffer: this.sharedBuffer,
+        });
+        console.log("[PtyClient] SharedArrayBuffer sent to Pty Host");
+      } catch (error) {
+        console.warn(
+          "[PtyClient] SharedArrayBuffer transfer failed (using IPC fallback):",
+          error instanceof Error ? error.message : String(error)
+        );
+        // Fallback to IPC-only mode
+        this.sharedBuffer = null;
+        this.sharedBufferEnabled = false;
+      }
     }
 
     this.child.on("exit", (code) => {

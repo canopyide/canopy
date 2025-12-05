@@ -156,35 +156,37 @@ export function SidecarDock() {
           updateTabUrl(tabId, url);
           updateTabTitle(tabId, title);
         } else {
-          // Create new tab without auto-activating
+          // Create new tab
           const newTabId = `tab-${Date.now()}-${Math.random().toString(36).slice(2, 7)}`;
           const newTab = { id: newTabId, url, title };
           useSidecarStore.setState((s) => ({
             tabs: [...s.tabs, newTab],
           }));
           tabId = newTabId;
+          // Switch to it immediately so the placeholder renders
+          setActiveTab(tabId);
         }
 
-        // Wait for placeholder to exist if showing launchpad
+        // Poll for placeholder to exist (wait for React render cycle)
+        // The placeholder needs a frame to appear after showLaunchpad becomes false
         let bounds = getPlaceholderBounds();
-        if (!bounds) {
-          // Placeholder not rendered yet - wait a tick for React to update
-          await new Promise((resolve) => setTimeout(resolve, 0));
+        let attempts = 0;
+        while (!bounds && attempts < 20) {
+          await new Promise((resolve) => setTimeout(resolve, 50));
           bounds = getPlaceholderBounds();
-          if (!bounds) {
-            throw new Error("Failed to get sidecar bounds");
-          }
+          attempts++;
+        }
+
+        if (!bounds) {
+          throw new Error("Failed to get sidecar bounds after waiting for render");
         }
 
         // Create in main process
         await window.electron.sidecar.create({ tabId, url });
         markTabCreated(tabId);
 
-        // Show webview and wait for it
+        // Show webview
         await window.electron.sidecar.show({ tabId, bounds });
-
-        // Now update UI state to highlight the tab
-        setActiveTab(tabId);
       } catch (error) {
         console.error("Failed to open URL in sidecar:", error);
         // Rollback: hide any partial webview

@@ -345,9 +345,10 @@ class TerminalInstanceService {
         });
       },
       {
-        // Restrict to http/https URLs only
+        // Restrict to http/https URLs only.
+        // NOTE: Do not use 'g' or 'y' flags here as xterm.js internals may add them or fail on them.
         urlRegex:
-          /https?:\/\/(?:www\.)?[-a-zA-Z0-9@:%._+~#=]{1,256}\.[a-zA-Z0-9()]{1,6}\b(?:[-a-zA-Z0-9()@:%_+.~#?&/=]*)/gi,
+          /https?:\/\/(?:www\.)?[-a-zA-Z0-9@:%._+~#=]{1,256}\.[a-zA-Z0-9()]{1,6}\b(?:[-a-zA-Z0-9()@:%_+.~#?&/=]*)/,
       }
     );
     terminal.loadAddon(webLinksAddon);

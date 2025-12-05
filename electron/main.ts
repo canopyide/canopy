@@ -1,4 +1,4 @@
-import { app, BrowserWindow, ipcMain, dialog, powerMonitor, session } from "electron";
+import { app, BrowserWindow, ipcMain, dialog, powerMonitor } from "electron";
 import path from "path";
 import { fileURLToPath } from "url";
 import os from "os";
@@ -6,22 +6,6 @@ import fixPath from "fix-path";
 
 fixPath();
 
-/**
- * Configure Cross-Origin-Opener-Policy and Cross-Origin-Embedder-Policy headers
- * to enable SharedArrayBuffer for zero-copy terminal I/O.
- */
-function configureSharedArrayBufferHeaders(): void {
-  session.defaultSession.webRequest.onHeadersReceived((details, callback) => {
-    callback({
-      responseHeaders: {
-        ...details.responseHeaders,
-        "Cross-Origin-Opener-Policy": ["same-origin"],
-        "Cross-Origin-Embedder-Policy": ["require-corp"],
-      },
-    });
-  });
-  console.log("[MAIN] SharedArrayBuffer headers configured (COOP/COEP)");
-}
 import { registerIpcHandlers, sendToRenderer } from "./ipc/handlers.js";
 import { registerErrorHandlers } from "./ipc/errorHandlers.js";
 import { PtyClient, disposePtyClient } from "./services/PtyClient.js";
@@ -154,9 +138,6 @@ async function createWindow(): Promise<void> {
     mainWindow.focus();
     return;
   }
-
-  // Enable SharedArrayBuffer via COOP/COEP headers before creating window
-  configureSharedArrayBufferHeaders();
 
   console.log("[MAIN] Running store migrations...");
   try {
