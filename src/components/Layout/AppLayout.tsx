@@ -20,7 +20,6 @@ import { useTerminalPerformance } from "@/hooks/useTerminalPerformance";
 interface AppLayoutProps {
   children?: ReactNode;
   sidebarContent?: ReactNode;
-  historyContent?: ReactNode;
   onLaunchAgent?: (type: "claude" | "gemini" | "codex" | "shell") => void;
   onSettings?: () => void;
   onRetry?: (id: string, action: RetryAction, args?: Record<string, unknown>) => void;
@@ -35,7 +34,6 @@ const DEFAULT_SIDEBAR_WIDTH = 350;
 export function AppLayout({
   children,
   sidebarContent,
-  historyContent,
   onLaunchAgent,
   onSettings,
   onRetry,
@@ -242,11 +240,7 @@ export function AppLayout({
         >
           {!isFocusMode && (
             <ErrorBoundary variant="section" componentName="Sidebar">
-              <Sidebar
-                width={effectiveSidebarWidth}
-                onResize={handleSidebarResize}
-                historyContent={historyContent}
-              >
+              <Sidebar width={effectiveSidebarWidth} onResize={handleSidebarResize}>
                 {sidebarContent}
               </Sidebar>
             </ErrorBoundary>

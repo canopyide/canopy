@@ -1,7 +1,6 @@
 import { useCallback, useEffect, useRef, useState, type ReactNode } from "react";
 import { Settings } from "lucide-react";
 import { cn } from "@/lib/utils";
-import { Tabs } from "@/components/ui/Tabs";
 import {
   ProjectSwitcher,
   ProjectSettingsDialog,
@@ -10,50 +9,20 @@ import {
 } from "@/components/Project";
 import { useProjectStore } from "@/store/projectStore";
 
-export type SidebarTab = "worktrees" | "history";
-
 interface SidebarProps {
   width: number;
   onResize: (width: number) => void;
   children?: ReactNode;
-  historyContent?: ReactNode;
   className?: string;
-  activeTab?: SidebarTab;
-  onTabChange?: (tab: SidebarTab) => void;
 }
 
 const RESIZE_STEP = 10;
 
-export function Sidebar({
-  width,
-  onResize,
-  children,
-  historyContent,
-  className,
-  activeTab = "worktrees",
-  onTabChange,
-}: SidebarProps) {
+export function Sidebar({ width, onResize, children, className }: SidebarProps) {
   const [isResizing, setIsResizing] = useState(false);
   const [isSettingsOpen, setIsSettingsOpen] = useState(false);
-  const [internalTab, setInternalTab] = useState<SidebarTab>(activeTab);
   const sidebarRef = useRef<HTMLElement>(null);
   const currentProject = useProjectStore((state) => state.currentProject);
-
-  useEffect(() => {
-    setInternalTab(activeTab);
-  }, [activeTab]);
-
-  const currentTab = onTabChange ? activeTab : internalTab;
-  const handleTabChange = useCallback(
-    (tab: SidebarTab) => {
-      if (onTabChange) {
-        onTabChange(tab);
-      } else {
-        setInternalTab(tab);
-      }
-    },
-    [onTabChange]
-  );
 
   const startResizing = useCallback((e: React.MouseEvent) => {
     e.preventDefault();
@@ -131,21 +100,7 @@ export function Sidebar({
           <ProjectResourceBadge />
         </div>
 
-        <Tabs
-          value={currentTab}
-          onChange={(tab) => handleTabChange(tab as SidebarTab)}
-          options={[
-            { value: "worktrees", label: "Worktrees" },
-            { value: "history", label: "History" },
-          ]}
-          fullWidth
-          className="shrink-0"
-          ariaLabel="Sidebar navigation"
-        />
-
-        <div className="flex-1 overflow-y-auto min-h-0">
-          {currentTab === "worktrees" ? children : historyContent}
-        </div>
+        <div className="flex-1 overflow-y-auto min-h-0">{children}</div>
 
         {currentProject && <QuickRun projectId={currentProject.id} />}
 
