@@ -51,7 +51,11 @@ export function Toolbar({
   const { stats, error: statsError, refresh: refreshStats } = useRepositoryStats();
 
   const sidecarOpen = useSidecarStore((state) => state.isOpen);
+  const sidecarWidth = useSidecarStore((state) => state.width);
   const toggleSidecar = useSidecarStore((state) => state.toggle);
+
+  // Collision padding for dropdowns near sidecar boundary
+  const rightCollisionPadding = sidecarOpen ? sidecarWidth + 10 : 10;
 
   const [issuesOpen, setIssuesOpen] = useState(false);
   const [prsOpen, setPrsOpen] = useState(false);
@@ -184,7 +188,12 @@ export function Toolbar({
                     <span className="text-xs font-medium">{stats.issueCount ?? "?"}</span>
                   </Button>
                 </PopoverTrigger>
-                <PopoverContent className="p-0" align="end" sideOffset={8}>
+                <PopoverContent
+                  className="p-0"
+                  align="end"
+                  sideOffset={8}
+                  collisionPadding={{ right: rightCollisionPadding }}
+                >
                   <GitHubResourceList
                     type="issue"
                     projectPath={currentProject.path}
@@ -218,7 +227,12 @@ export function Toolbar({
                     <span className="text-xs font-medium">{stats.prCount ?? "?"}</span>
                   </Button>
                 </PopoverTrigger>
-                <PopoverContent className="p-0" align="end" sideOffset={8}>
+                <PopoverContent
+                  className="p-0"
+                  align="end"
+                  sideOffset={8}
+                  collisionPadding={{ right: rightCollisionPadding }}
+                >
                   <GitHubResourceList
                     type="pr"
                     projectPath={currentProject.path}

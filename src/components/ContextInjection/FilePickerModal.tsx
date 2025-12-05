@@ -3,6 +3,7 @@ import { Button } from "@/components/ui/button";
 import { cn } from "@/lib/utils";
 import { formatBytes } from "@/lib/formatBytes";
 import { useFileTree } from "@/hooks/useFileTree";
+import { useOverlayState } from "@/hooks";
 import type { FileTreeNode } from "@shared/types";
 
 export interface FilePickerModalProps {
@@ -13,6 +14,8 @@ export interface FilePickerModalProps {
 }
 
 export function FilePickerModal({ isOpen, worktreeId, onConfirm, onCancel }: FilePickerModalProps) {
+  useOverlayState(isOpen);
+
   const {
     nodes,
     expanded,

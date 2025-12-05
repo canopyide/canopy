@@ -1,5 +1,5 @@
 import { useState, useEffect } from "react";
-import { useErrors } from "@/hooks";
+import { useErrors, useOverlayState } from "@/hooks";
 import { useLogsStore } from "@/store";
 import { X, Bot, Github, LayoutGrid, PanelRight } from "lucide-react";
 import { cn } from "@/lib/utils";
@@ -26,6 +26,8 @@ export function SettingsDialog({
   defaultTab,
   onSettingsChange,
 }: SettingsDialogProps) {
+  useOverlayState(isOpen);
+
   const [activeTab, setActiveTab] = useState<SettingsTab>(defaultTab ?? "general");
   const { openLogs } = useErrors();
   const clearLogs = useLogsStore((state) => state.clearLogs);

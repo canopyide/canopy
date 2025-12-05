@@ -2,6 +2,7 @@ import { useEffect, useCallback, useState, useRef, useId } from "react";
 import { Button } from "@/components/ui/button";
 import { cn } from "@/lib/utils";
 import { DiffViewer } from "./DiffViewer";
+import { useOverlayState } from "@/hooks";
 import type { ViewType } from "react-diff-view";
 import type { GitStatus } from "@shared/types";
 
@@ -22,6 +23,8 @@ export function FileDiffModal({
   worktreePath,
   onClose,
 }: FileDiffModalProps) {
+  useOverlayState(isOpen);
+
   const [diff, setDiff] = useState<string | null>(null);
   const [loadingState, setLoadingState] = useState<LoadingState>("loading");
   const [error, setError] = useState<string | null>(null);
