@@ -48,8 +48,6 @@ export interface WorktreeCardProps {
   onOpenIssue?: () => void;
   onOpenPR?: () => void;
   onToggleServer: () => void;
-  onInjectContext?: () => void;
-  isInjecting?: boolean;
   onCreateRecipe?: () => void;
   homeDir?: string;
   devServerSettings?: ProjectDevServerSettings;

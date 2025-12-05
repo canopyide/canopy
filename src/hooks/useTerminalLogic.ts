@@ -1,6 +1,5 @@
 import { useState, useCallback, useEffect, useRef } from "react";
 import type { RetryAction } from "@/store";
-import { useContextInjection } from "@/hooks/useContextInjection";
 import { errorsClient } from "@/clients";
 
 interface UseTerminalLogicOptions {
@@ -33,11 +32,6 @@ export interface UseTerminalLogicReturn {
   isExited: boolean;
   exitCode: number | null;
   handleExit: (code: number) => void;
-
-  // Context injection
-  inject: ReturnType<typeof useContextInjection>["inject"];
-  isInjecting: boolean;
-  injectionProgress: ReturnType<typeof useContextInjection>["progress"];
 }
 
 export function useTerminalLogic({
@@ -52,8 +46,6 @@ export function useTerminalLogic({
   const [editingValue, setEditingValue] = useState(title);
   const titleInputRef = useRef<HTMLInputElement | null>(null);
   const cancelledRef = useRef(false);
-
-  const { inject, isInjecting, progress: injectionProgress } = useContextInjection(id);
 
   // Reset exit state when terminal ID changes
   useEffect(() => {
@@ -135,27 +127,13 @@ export function useTerminalLogic({
   const handleErrorRetry = useCallback(
     async (errorId: string, action: RetryAction, args?: Record<string, unknown>) => {
       try {
-        if (action === "injectContext") {
-          const worktreeIdArg = args?.worktreeId as string | undefined;
-          const terminalIdArg = args?.terminalId as string | undefined;
-          const selectedPaths = args?.selectedPaths as string[] | undefined;
-
-          if (!worktreeIdArg || !terminalIdArg) {
-            console.error("Missing worktreeId or terminalId for injectContext retry");
-            return;
-          }
-
-          await inject(worktreeIdArg, terminalIdArg, selectedPaths);
-          removeError(errorId);
-        } else {
-          await errorsClient.retry(errorId, action, args);
-          removeError(errorId);
-        }
+        await errorsClient.retry(errorId, action, args);
+        removeError(errorId);
       } catch (error) {
         console.error("Error retry failed:", error);
       }
     },
-    [inject, removeError]
+    [removeError]
   );
 
   return {
@@ -177,10 +155,5 @@ export function useTerminalLogic({
     isExited,
     exitCode,
     handleExit,
-
-    // Context injection
-    inject,
-    isInjecting,
-    injectionProgress,
   };
 }

@@ -31,8 +31,6 @@ export interface TerminalPaneProps {
   activity?: ActivityState | null;
   onFocus: () => void;
   onClose: (force?: boolean) => void;
-  onInjectContext?: () => void;
-  onCancelInjection?: () => void;
   onToggleMaximize?: () => void;
   onTitleChange?: (newTitle: string) => void;
   onMinimize?: () => void;
@@ -52,8 +50,6 @@ function TerminalPaneComponent({
   activity,
   onFocus,
   onClose,
-  onInjectContext,
-  onCancelInjection,
   onToggleMaximize,
   onTitleChange,
   onMinimize,
@@ -91,8 +87,6 @@ function TerminalPaneComponent({
     exitCode,
     handleExit,
     handleErrorRetry,
-    isInjecting,
-    injectionProgress,
   } = useTerminalLogic({
     id,
     title,
@@ -203,7 +197,6 @@ function TerminalPaneComponent({
         id={id}
         title={title}
         type={type}
-        worktreeId={worktreeId}
         isFocused={isFocused}
         isExited={isExited}
         exitCode={exitCode}
@@ -222,7 +215,6 @@ function TerminalPaneComponent({
         onTitleSave={handleTitleSave}
         onClose={onClose}
         onFocus={onFocus}
-        onInjectContext={onInjectContext}
         onToggleMaximize={onToggleMaximize}
         onTitleChange={onTitleChange}
         onMinimize={onMinimize}
@@ -230,73 +222,8 @@ function TerminalPaneComponent({
         onRestart={handleRestart}
         onUpdateSettings={(updates) => updateTerminalSettings(id, updates)}
         isMaximized={isMaximized}
-        isInjecting={isInjecting}
         location={location}
       />
-
-      {isInjecting && injectionProgress && (
-        <div className="p-2 bg-canopy-sidebar border-t border-canopy-border shrink-0">
-          <div className="flex items-center justify-between text-xs text-canopy-text/60 mb-1">
-            <span>Injecting Context</span>
-            <div className="flex items-center gap-2">
-              {onCancelInjection && (
-                <button
-                  type="button"
-                  onClick={(e) => {
-                    e.stopPropagation();
-                    onCancelInjection();
-                  }}
-                  className="px-2 py-0.5 rounded border border-canopy-border hover:border-canopy-accent text-canopy-text/60 hover:text-canopy-text transition-colors"
-                >
-                  Cancel
-                </button>
-              )}
-              <span>
-                {Math.min(100, Math.max(0, Math.round(injectionProgress.progress * 100)))}%
-              </span>
-            </div>
-          </div>
-
-          <div className="w-full h-2 bg-canopy-border rounded-full overflow-hidden mb-1">
-            <div
-              className="h-full bg-canopy-accent transition-all duration-200"
-              style={{
-                width: `${Math.min(100, Math.max(0, injectionProgress.progress * 100))}%`,
-              }}
-            />
-          </div>
-
-          <div className="text-xs text-canopy-text/60">
-            {(() => {
-              const stageLabels: Record<string, string> = {
-                FileDiscoveryStage: "Discovering files",
-                FormatterStage: "Formatting",
-                OutputStage: "Writing output",
-                Starting: "Starting",
-                Initializing: "Initializing",
-                Complete: "Complete",
-              };
-              const friendlyStage =
-                stageLabels[injectionProgress.stage] ||
-                injectionProgress.stage.replace(/Stage$/, "");
-              return friendlyStage;
-            })()}
-            {injectionProgress.filesProcessed !== undefined &&
-              injectionProgress.totalFiles !== undefined && (
-                <>
-                  {" · "}
-                  {injectionProgress.filesProcessed}/{injectionProgress.totalFiles} files
-                </>
-              )}
-          </div>
-
-          {injectionProgress.currentFile && (
-            <div className="text-xs text-canopy-text/40 truncate mt-0.5">
-              {injectionProgress.currentFile}
-            </div>
-          )}
-        </div>
-      )}
 
       {terminalErrors.length > 0 && (
         <div className="px-2 py-1 border-b border-canopy-border bg-[color-mix(in_oklab,var(--color-status-error)_5%,transparent)] space-y-1 shrink-0">
@@ -348,8 +275,6 @@ export const TerminalPane = React.memo(TerminalPaneComponent, (prev, next) => {
     prev.location === next.location &&
     prev.onFocus === next.onFocus &&
     prev.onClose === next.onClose &&
-    prev.onInjectContext === next.onInjectContext &&
-    prev.onCancelInjection === next.onCancelInjection &&
     prev.onToggleMaximize === next.onToggleMaximize &&
     prev.onTitleChange === next.onTitleChange &&
     prev.onMinimize === next.onMinimize &&

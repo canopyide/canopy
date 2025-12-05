@@ -5,7 +5,6 @@ import {
   X,
   Maximize2,
   Minimize2,
-  Copy,
   ArrowDownToLine,
   Loader2,
   Settings2,
@@ -75,7 +74,6 @@ export interface TerminalHeaderProps {
   id: string;
   title: string;
   type: TerminalType;
-  worktreeId?: string;
   isFocused: boolean;
   isExited: boolean;
   exitCode: number | null;
@@ -98,7 +96,6 @@ export interface TerminalHeaderProps {
   // Actions
   onClose: (force?: boolean) => void;
   onFocus: () => void;
-  onInjectContext?: () => void;
   onToggleMaximize?: () => void;
   onTitleChange?: (newTitle: string) => void;
   onMinimize?: () => void;
@@ -107,7 +104,6 @@ export interface TerminalHeaderProps {
   onUpdateSettings: (updates: Partial<TerminalSettings>) => void;
 
   isMaximized?: boolean;
-  isInjecting?: boolean;
   location?: "grid" | "dock";
 }
 
@@ -115,7 +111,6 @@ function TerminalHeaderComponent({
   id,
   title,
   type,
-  worktreeId,
   isFocused,
   isExited,
   exitCode,
@@ -134,7 +129,6 @@ function TerminalHeaderComponent({
   onTitleSave,
   onClose,
   onFocus,
-  onInjectContext,
   onToggleMaximize,
   onTitleChange,
   onMinimize,
@@ -142,7 +136,6 @@ function TerminalHeaderComponent({
   onRestart,
   onUpdateSettings,
   isMaximized,
-  isInjecting,
   location = "grid",
 }: TerminalHeaderProps) {
   const handleHeaderDoubleClick = (e: React.MouseEvent<HTMLDivElement>) => {
@@ -273,23 +266,6 @@ function TerminalHeaderComponent({
               </DropdownMenuCheckboxItem>
             </DropdownMenuContent>
           </DropdownMenu>
-          {worktreeId && onInjectContext && (
-            <button
-              onClick={(e) => {
-                e.stopPropagation();
-                onInjectContext();
-              }}
-              className={cn(
-                "p-1.5 hover:bg-canopy-text/10 focus-visible:bg-canopy-text/10 focus-visible:outline focus-visible:outline-2 focus-visible:outline-canopy-accent text-canopy-text/60 hover:text-[var(--color-state-working)] transition-colors",
-                isInjecting && "opacity-50 cursor-not-allowed"
-              )}
-              title="Inject Context (Ctrl+Shift+I)"
-              aria-label="Inject worktree context"
-              disabled={isExited || isInjecting}
-            >
-              <Copy className="w-3 h-3" aria-hidden="true" />
-            </button>
-          )}
           {onRestart && (
             <button
               onClick={(e) => {

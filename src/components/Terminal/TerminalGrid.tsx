@@ -1,12 +1,10 @@
-import { useMemo, useCallback, useState, useEffect } from "react";
+import { useMemo, useCallback, useEffect } from "react";
 import { useShallow } from "zustand/react/shallow";
 import { SortableContext, rectSortingStrategy } from "@dnd-kit/sortable";
 import { useDroppable } from "@dnd-kit/core";
 import { cn } from "@/lib/utils";
 import { useTerminalStore, useLayoutConfigStore, type TerminalInstance } from "@/store";
-import { useContextInjection } from "@/hooks/useContextInjection";
 import { TerminalPane } from "./TerminalPane";
-import { FilePickerModal } from "@/components/ContextInjection";
 import { ErrorBoundary } from "@/components/ErrorBoundary";
 import {
   SortableTerminal,
@@ -182,18 +180,6 @@ export function TerminalGrid({ className, defaultCwd, onLaunchAgent }: TerminalG
     data: { container: "grid" },
   });
 
-  const { inject, cancel } = useContextInjection();
-
-  const [filePickerState, setFilePickerState] = useState<{
-    isOpen: boolean;
-    worktreeId: string | null;
-    terminalId: string | null;
-  }>({
-    isOpen: false,
-    worktreeId: null,
-    terminalId: null,
-  });
-
   const gridCols = useMemo(() => {
     const count = gridTerminals.length;
     if (count === 0) return 1;
@@ -238,34 +224,6 @@ export function TerminalGrid({ className, defaultCwd, onLaunchAgent }: TerminalG
     },
     [addTerminal, defaultCwd, onLaunchAgent]
   );
-
-  const handleInjectContext = useCallback((terminalId: string, worktreeId?: string) => {
-    if (!worktreeId) return;
-    setFilePickerState({
-      isOpen: true,
-      worktreeId,
-      terminalId,
-    });
-  }, []);
-
-  const handleFilePickerConfirm = useCallback(
-    async (selectedPaths: string[]) => {
-      if (!filePickerState.terminalId || !filePickerState.worktreeId) return;
-
-      setFilePickerState({ isOpen: false, worktreeId: null, terminalId: null });
-
-      await inject(
-        filePickerState.worktreeId,
-        filePickerState.terminalId,
-        selectedPaths.length > 0 ? selectedPaths : undefined
-      );
-    },
-    [filePickerState, inject]
-  );
-
-  const handleFilePickerCancel = useCallback(() => {
-    setFilePickerState({ isOpen: false, worktreeId: null, terminalId: null });
-  }, []);
 
   // Batch-fit visible grid terminals when layout (gridCols/count) changes
   useEffect(() => {
@@ -344,12 +302,6 @@ export function TerminalGrid({ className, defaultCwd, onLaunchAgent }: TerminalG
               onClose={(force) =>
                 force ? removeTerminal(terminal.id) : trashTerminal(terminal.id)
               }
-              onInjectContext={
-                terminal.worktreeId
-                  ? () => handleInjectContext(terminal.id, terminal.worktreeId)
-                  : undefined
-              }
-              onCancelInjection={cancel}
               onToggleMaximize={() => toggleMaximize(terminal.id)}
               onTitleChange={(newTitle) => updateTitle(terminal.id, newTitle)}
             />
@@ -434,12 +386,6 @@ export function TerminalGrid({ className, defaultCwd, onLaunchAgent }: TerminalG
                       onClose={(force) =>
                         force ? removeTerminal(terminal.id) : trashTerminal(terminal.id)
                       }
-                      onInjectContext={
-                        terminal.worktreeId
-                          ? () => handleInjectContext(terminal.id, terminal.worktreeId)
-                          : undefined
-                      }
-                      onCancelInjection={cancel}
                       onToggleMaximize={() => toggleMaximize(terminal.id)}
                       onTitleChange={(newTitle) => updateTitle(terminal.id, newTitle)}
                       onMinimize={() => moveTerminalToDock(terminal.id)}
@@ -459,15 +405,6 @@ export function TerminalGrid({ className, defaultCwd, onLaunchAgent }: TerminalG
             {/* Show placeholder when grid is empty and dragging from dock */}
             {isEmpty && showPlaceholder && <GridPlaceholder key={GRID_PLACEHOLDER_ID} />}
           </>
-        )}
-
-        {filePickerState.worktreeId && (
-          <FilePickerModal
-            isOpen={filePickerState.isOpen}
-            worktreeId={filePickerState.worktreeId}
-            onConfirm={handleFilePickerConfirm}
-            onCancel={handleFilePickerCancel}
-          />
         )}
       </div>
     </SortableContext>

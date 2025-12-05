@@ -1,4 +1,3 @@
-import { useCallback } from "react";
 import {
   ContextMenu,
   ContextMenuContent,
@@ -11,9 +10,17 @@ import {
   ContextMenuSubContent,
   ContextMenuCheckboxItem,
 } from "@/components/ui/context-menu";
-import { Maximize2, Minimize2, Trash2, ArrowUp, ArrowDownToLine, Copy, Settings2, Skull, RotateCcw } from "lucide-react";
+import {
+  Maximize2,
+  Minimize2,
+  Trash2,
+  ArrowUp,
+  ArrowDownToLine,
+  Settings2,
+  Skull,
+  RotateCcw,
+} from "lucide-react";
 import { useTerminalStore } from "@/store";
-import { useContextInjection } from "@/hooks/useContextInjection";
 import type { TerminalLocation } from "@/types";
 
 interface TerminalContextMenuProps {
@@ -24,7 +31,6 @@ interface TerminalContextMenuProps {
 
 /**
  * Right-click context menu for terminal components.
- * Integrates with terminal store for actions and context injection.
  * Used by both DockedTerminalItem and TerminalHeader.
  */
 export function TerminalContextMenu({
@@ -43,19 +49,10 @@ export function TerminalContextMenu({
   const restartTerminal = useTerminalStore((s) => s.restartTerminal);
   const isMaximized = useTerminalStore((s) => s.maximizedId === terminalId);
 
-  const { inject } = useContextInjection();
-
-  const handleInjectContext = useCallback(() => {
-    if (terminal?.worktreeId) {
-      inject(terminal.worktreeId, terminalId);
-    }
-  }, [terminal, terminalId, inject]);
-
   if (!terminal) return <>{children}</>;
 
   const currentLocation: TerminalLocation = forceLocation ?? terminal.location ?? "grid";
   const isAgent = ["claude", "gemini", "codex"].includes(terminal.type);
-  const canInjectContext = terminal.worktreeId && isAgent;
 
   return (
     <ContextMenu>
@@ -95,14 +92,6 @@ export function TerminalContextMenu({
         <ContextMenuSeparator />
 
         {/* Functionality Actions */}
-        {terminal.worktreeId && (
-          <ContextMenuItem onClick={handleInjectContext} disabled={!canInjectContext}>
-            <Copy className="w-4 h-4 mr-2" aria-hidden="true" />
-            Inject Context
-            <ContextMenuShortcut>^⇧I</ContextMenuShortcut>
-          </ContextMenuItem>
-        )}
-
         <ContextMenuSub>
           <ContextMenuSubTrigger>
             <Settings2 className="w-4 h-4 mr-2" aria-hidden="true" />

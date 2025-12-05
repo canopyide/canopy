@@ -17,7 +17,6 @@ import { getBrandColorHex } from "@/lib/colorUtils";
 import { useTerminalStore, useSidecarStore, type TerminalInstance } from "@/store";
 import { TerminalPane } from "@/components/Terminal/TerminalPane";
 import { TerminalContextMenu } from "@/components/Terminal/TerminalContextMenu";
-import { useContextInjection } from "@/hooks/useContextInjection";
 import type { AgentState, TerminalType } from "@/types";
 import { TerminalRefreshTier } from "@/types";
 import { terminalClient } from "@/clients";
@@ -83,8 +82,6 @@ export function DockedTerminalItem({ terminal }: DockedTerminalItemProps) {
   const { isOpen: sidecarOpen, width: sidecarWidth } = useSidecarStore(
     useShallow((s) => ({ isOpen: s.isOpen, width: s.width }))
   );
-
-  const { inject, cancel } = useContextInjection();
 
   const collisionPadding = useMemo(() => {
     const basePadding = 16;
@@ -169,11 +166,6 @@ export function DockedTerminalItem({ terminal }: DockedTerminalItemProps) {
     [setIsOpen]
   );
 
-  const handleInjectContext = useCallback(async () => {
-    if (!terminal.worktreeId) return;
-    await inject(terminal.worktreeId, terminal.id);
-  }, [inject, terminal.id, terminal.worktreeId]);
-
   const isWorking = terminal.agentState === "working";
   const brandColor = getBrandColorHex(terminal.type);
 
@@ -235,8 +227,6 @@ export function DockedTerminalItem({ terminal }: DockedTerminalItemProps) {
           onClose={handleClose}
           onRestore={handleRestore}
           onMinimize={handleMinimize}
-          onInjectContext={terminal.worktreeId ? handleInjectContext : undefined}
-          onCancelInjection={cancel}
         />
       </PopoverContent>
     </Popover>

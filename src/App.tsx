@@ -7,7 +7,6 @@ import {
   isElectronAvailable,
   useAgentLauncher,
   useWorktrees,
-  useContextInjection,
   useTerminalPalette,
   useTerminalConfig,
   useKeybinding,
@@ -49,7 +48,6 @@ import { cn } from "@/lib/utils";
 
 function SidebarContent() {
   const { worktrees, isLoading, error, refresh } = useWorktrees();
-  const { inject, isInjecting } = useContextInjection();
   const { settings: projectSettings } = useProjectSettings();
   const { activeWorktreeId, focusedWorktreeId, selectWorktree, setActiveWorktree } =
     useWorktreeSelectionStore(
@@ -62,7 +60,6 @@ function SidebarContent() {
     );
   const addError = useErrorStore((state) => state.addError);
   const addNotification = useNotificationStore((state) => state.addNotification);
-  const focusedTerminalId = useTerminalStore((state) => state.focusedId);
 
   const [isRecipeEditorOpen, setIsRecipeEditorOpen] = useState(false);
   const [recipeEditorWorktreeId, setRecipeEditorWorktreeId] = useState<string | undefined>(
@@ -165,17 +162,6 @@ function SidebarContent() {
       devServerClient.toggle(worktree.id, worktree.path, command);
     },
     [projectSettings]
-  );
-
-  const handleInjectContext = useCallback(
-    (worktreeId: string) => {
-      if (focusedTerminalId) {
-        inject(worktreeId, focusedTerminalId);
-      } else {
-        console.warn("No terminal focused for context injection");
-      }
-    },
-    [inject, focusedTerminalId]
   );
 
   const handleCreateRecipe = useCallback((worktreeId: string) => {
@@ -294,8 +280,6 @@ function SidebarContent() {
             onCopyTree={() => handleCopyTree(worktree)}
             onOpenEditor={() => handleOpenEditor(worktree)}
             onToggleServer={() => handleToggleServer(worktree)}
-            onInjectContext={focusedTerminalId ? () => handleInjectContext(worktree.id) : undefined}
-            isInjecting={isInjecting}
             onCreateRecipe={() => handleCreateRecipe(worktree.id)}
             homeDir={homeDir}
             devServerSettings={projectSettings?.devServer}
@@ -335,13 +319,7 @@ function App() {
     );
   const terminals = useTerminalStore(useShallow((state) => state.terminals));
   const { launchAgent, availability, agentSettings, refreshSettings } = useAgentLauncher();
-  const { activeWorktreeId, setActiveWorktree } = useWorktreeSelectionStore(
-    useShallow((state) => ({
-      activeWorktreeId: state.activeWorktreeId,
-      setActiveWorktree: state.setActiveWorktree,
-    }))
-  );
-  const { inject, isInjecting } = useContextInjection();
+  const setActiveWorktree = useWorktreeSelectionStore((state) => state.setActiveWorktree);
   const loadRecipes = useRecipeStore((state) => state.loadRecipes);
   useTerminalConfig();
   useLinkDiscovery();
@@ -428,37 +406,16 @@ function App() {
     setIsSettingsOpen(true);
   }, []);
 
-  const handleInjectContextShortcut = useCallback(() => {
-    if (activeWorktreeId && focusedId && !isInjecting) {
-      inject(activeWorktreeId, focusedId);
-    }
-  }, [activeWorktreeId, focusedId, isInjecting, inject]);
-
   const handleErrorRetry = useCallback(
     async (errorId: string, action: RetryAction, args?: Record<string, unknown>) => {
       try {
-        if (action === "injectContext") {
-          const worktreeId = args?.worktreeId as string | undefined;
-          const terminalId = args?.terminalId as string | undefined;
-          const selectedPaths = args?.selectedPaths as string[] | undefined;
-
-          if (!worktreeId || !terminalId) {
-            console.error("Missing worktreeId or terminalId for injectContext retry");
-            return;
-          }
-
-          await inject(worktreeId, terminalId, selectedPaths);
-
-          removeError(errorId);
-        } else {
-          await errorsClient.retry(errorId, action, args);
-          removeError(errorId);
-        }
+        await errorsClient.retry(errorId, action, args);
+        removeError(errorId);
       } catch (error) {
         console.error("Error retry failed:", error);
       }
     },
-    [inject, removeError]
+    [removeError]
   );
 
   const electronAvailable = isElectronAvailable();
@@ -487,10 +444,6 @@ function App() {
 
   useKeybinding("agent.claude", () => handleLaunchAgent("claude"), { enabled: electronAvailable });
   useKeybinding("agent.gemini", () => handleLaunchAgent("gemini"), { enabled: electronAvailable });
-
-  useKeybinding("context.inject", () => handleInjectContextShortcut(), {
-    enabled: electronAvailable,
-  });
 
   useKeybinding(
     "terminal.moveLeft",
