@@ -188,6 +188,9 @@ describe("TerminalPersistence", () => {
       persistence.save([createMockTerminal()]);
       await vi.advanceTimersByTimeAsync(100);
 
+      // Handle the rejection to avoid unhandled rejection error
+      await expect(persistence.whenIdle()).rejects.toThrow("Persist failed");
+
       await vi.waitFor(() => {
         expect(consoleError).toHaveBeenCalledWith(
           "Failed to persist terminals:",
