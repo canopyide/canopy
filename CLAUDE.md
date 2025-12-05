@@ -8,7 +8,7 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 
 Canopy Command Center is a feature-rich Electron-based mini IDE for orchestrating AI coding agents. It provides integrated terminals, a visual worktree dashboard, context injection for AI agents, agent lifecycle tracking, and session transcripts.
 
-**Original Canopy CLI location:** `/Users/gpriday/Projects/CopyTree/canopy`
+**Codex MCP:** When using Codex MCP, use the `gpt-5.1-codex-max` model.
 
 ## Development Commands
 
@@ -281,17 +281,6 @@ The preload script exposes these namespaces via `window.electron`:
 - **Development Guide:** `docs/development.md` - Setup, commands, debugging
 - **Services Reference:** `docs/services.md` - Main process services documentation
 - **Contributing:** `docs/contributing.md` - Contribution guidelines and code style
-
-## Migration Context
-
-This project migrated code from the original Canopy CLI. **The migration is complete.** When working on related features:
-
-1. Original source files are in `/Users/gpriday/Projects/CopyTree/canopy`
-2. Services live in `electron/services/`
-3. UI components are React DOM with Tailwind
-4. Event bus calls became IPC sends
-
-**Use Codex MCP to explore the original CLI:** When you have questions about the original Canopy CLI implementation, use the Codex MCP tool with `cwd: "/Users/gpriday/Projects/CopyTree/canopy"` to analyze the source code.
 
 ## Current State
 

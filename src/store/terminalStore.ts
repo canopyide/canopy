@@ -75,7 +75,12 @@ export const useTerminalStore = create<TerminalGridState>()((set, get, api) => {
   const bulkActionsSlice = createTerminalBulkActionsSlice(
     getTerminals,
     (id) => get().removeTerminal(id),
-    (id) => get().restartTerminal(id)
+    (id) => get().restartTerminal(id),
+    (id) => get().trashTerminal(id),
+    (id) => get().moveTerminalToDock(id),
+    (id) => get().moveTerminalToGrid(id),
+    () => get().focusedId,
+    (id) => set({ focusedId: id })
   )(set, get, api);
 
   return {
@@ -96,9 +101,19 @@ export const useTerminalStore = create<TerminalGridState>()((set, get, api) => {
       const state = get();
       registrySlice.moveTerminalToDock(id);
 
+      const updates: Partial<TerminalGridState> = {};
+
       if (state.focusedId === id) {
         const gridTerminals = state.terminals.filter((t) => t.id !== id && t.location === "grid");
-        set({ focusedId: gridTerminals[0]?.id ?? null });
+        updates.focusedId = gridTerminals[0]?.id ?? null;
+      }
+
+      if (state.maximizedId === id) {
+        updates.maximizedId = null;
+      }
+
+      if (Object.keys(updates).length > 0) {
+        set(updates);
       }
     },
 

@@ -6,15 +6,7 @@ import {
   ContextMenuTrigger,
   ContextMenuShortcut,
 } from "@/components/ui/context-menu";
-import {
-  Maximize2,
-  Minimize2,
-  Trash2,
-  ArrowUp,
-  ArrowDownToLine,
-  Skull,
-  RotateCcw,
-} from "lucide-react";
+import { Maximize2, Minimize2, Trash2, ArrowUp, ArrowDownToLine, X, RotateCcw } from "lucide-react";
 import { useTerminalStore } from "@/store";
 import type { TerminalLocation } from "@/types";
 
@@ -103,8 +95,8 @@ export function TerminalContextMenu({
           onClick={() => removeTerminal(terminalId)}
           className="text-[var(--color-status-error)] focus:text-[var(--color-status-error)]"
         >
-          <Skull className="w-4 h-4 mr-2" aria-hidden="true" />
-          Force Kill
+          <X className="w-4 h-4 mr-2" aria-hidden="true" />
+          Kill Terminal
         </ContextMenuItem>
       </ContextMenuContent>
     </ContextMenu>

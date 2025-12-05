@@ -8,31 +8,38 @@ import {
   DropdownMenuTrigger,
 } from "@/components/ui/dropdown-menu";
 import { Button } from "@/components/ui/button";
-import { ChevronDown, CheckCircle, Trash2, RefreshCw, Play } from "lucide-react";
+import {
+  ChevronDown,
+  ArrowDownToLine,
+  Minimize2,
+  Maximize2,
+  Trash2,
+  X,
+  RotateCcw,
+} from "lucide-react";
 import { useTerminalStore } from "@/store/terminalStore";
 import { useSidecarStore } from "@/store/sidecarStore";
 import { ConfirmDialog } from "./ConfirmDialog";
-import { isAgentTerminal } from "@/store/utils/terminalTypeGuards";
 
 export interface BulkActionsMenuProps {
-  worktreeId?: string;
   trigger?: React.ReactNode;
   className?: string;
 }
 
-export function BulkActionsMenu({ worktreeId, trigger, className }: BulkActionsMenuProps) {
+export function BulkActionsMenu({ trigger, className }: BulkActionsMenuProps) {
   const terminals = useTerminalStore(useShallow((state) => state.terminals));
-  const bulkCloseByState = useTerminalStore((state) => state.bulkCloseByState);
-  const bulkCloseByWorktree = useTerminalStore((state) => state.bulkCloseByWorktree);
+  const focusedId = useTerminalStore((state) => state.focusedId);
+  const moveTerminalToDock = useTerminalStore((state) => state.moveTerminalToDock);
+  const bulkMoveToDock = useTerminalStore((state) => state.bulkMoveToDock);
+  const bulkMoveToGrid = useTerminalStore((state) => state.bulkMoveToGrid);
+  const bulkTrashAll = useTerminalStore((state) => state.bulkTrashAll);
   const bulkCloseAll = useTerminalStore((state) => state.bulkCloseAll);
-  const restartFailedAgents = useTerminalStore((state) => state.restartFailedAgents);
-  const restartIdleAgents = useTerminalStore((state) => state.restartIdleAgents);
+  const bulkRestartAll = useTerminalStore((state) => state.bulkRestartAll);
 
   const sidecarOpen = useSidecarStore((state) => state.isOpen);
   const sidecarWidth = useSidecarStore((state) => state.width);
   const layoutMode = useSidecarStore((state) => state.layoutMode);
 
-  // Collision padding to prevent dropdown from being hidden behind sidecar in overlay mode
   const collisionPadding = {
     right: sidecarOpen && layoutMode === "overlay" ? sidecarWidth + 20 : 10,
   };
@@ -49,63 +56,70 @@ export function BulkActionsMenu({ worktreeId, trigger, className }: BulkActionsM
     onConfirm: () => {},
   });
 
-  const scopedTerminals = worktreeId
-    ? terminals.filter((t) => t.worktreeId === worktreeId)
-    : terminals;
+  const activeTerminals = terminals.filter((t) => t.location !== "trash");
+  const gridTerminals = terminals.filter((t) => t.location === "grid");
+  const dockedTerminals = terminals.filter((t) => t.location === "dock");
 
-  const completedCount = scopedTerminals.filter((t) => t.agentState === "completed").length;
-  const totalCount = scopedTerminals.length;
+  const totalCount = activeTerminals.length;
+  const gridCount = gridTerminals.length;
+  const dockedCount = dockedTerminals.length;
 
-  const failedAgentCount = scopedTerminals.filter(
-    (t) => t.agentState === "failed" && isAgentTerminal(t.type)
-  ).length;
-  const idleAgentCount = scopedTerminals.filter(
-    (t) => t.agentState === "idle" && isAgentTerminal(t.type)
-  ).length;
+  const focusedTerminal = focusedId ? terminals.find((t) => t.id === focusedId) : null;
+  const canMinimizeFocused = focusedTerminal?.location === "grid";
 
   const closeConfirmDialog = useCallback(() => {
     setConfirmDialog((prev) => ({ ...prev, isOpen: false }));
   }, []);
 
-  const handleRestartIdle = useCallback(() => {
-    restartIdleAgents();
-  }, [restartIdleAgents]);
-
-  const handleRestartFailed = useCallback(() => {
-    restartFailedAgents();
-  }, [restartFailedAgents]);
-
-  const handleCloseCompleted = useCallback(() => {
-    if (worktreeId) {
-      bulkCloseByWorktree(worktreeId, "completed");
-    } else {
-      bulkCloseByState("completed");
+  const handleMinimizeToDock = useCallback(() => {
+    if (focusedId && canMinimizeFocused) {
+      moveTerminalToDock(focusedId);
     }
-  }, [worktreeId, bulkCloseByState, bulkCloseByWorktree]);
+  }, [focusedId, canMinimizeFocused, moveTerminalToDock]);
+
+  const handleMinimizeAll = useCallback(() => {
+    bulkMoveToDock();
+  }, [bulkMoveToDock]);
+
+  const handleMaximizeAll = useCallback(() => {
+    bulkMoveToGrid();
+  }, [bulkMoveToGrid]);
 
   const handleCloseAll = useCallback(() => {
-    const count = worktreeId ? totalCount : terminals.length;
     setConfirmDialog({
       isOpen: true,
-      title: "Close All Sessions",
-      description: `This will close ${count} session${count !== 1 ? "s" : ""} (including agents and shells). This action cannot be undone.`,
+      title: "Close All Terminals",
+      description: `This will close ${totalCount} terminal${totalCount !== 1 ? "s" : ""}. They can be restored from the trash.`,
       onConfirm: () => {
-        if (worktreeId) {
-          bulkCloseByWorktree(worktreeId);
-        } else {
-          bulkCloseAll();
-        }
+        bulkTrashAll();
         closeConfirmDialog();
       },
     });
-  }, [
-    worktreeId,
-    totalCount,
-    terminals.length,
-    bulkCloseByWorktree,
-    bulkCloseAll,
-    closeConfirmDialog,
-  ]);
+  }, [totalCount, bulkTrashAll, closeConfirmDialog]);
+
+  const handleKillAll = useCallback(() => {
+    setConfirmDialog({
+      isOpen: true,
+      title: "Kill All Terminals",
+      description: `This will permanently kill ${totalCount} terminal${totalCount !== 1 ? "s" : ""} and their processes. This action cannot be undone.`,
+      onConfirm: () => {
+        bulkCloseAll();
+        closeConfirmDialog();
+      },
+    });
+  }, [totalCount, bulkCloseAll, closeConfirmDialog]);
+
+  const handleRestartAll = useCallback(() => {
+    setConfirmDialog({
+      isOpen: true,
+      title: "Restart All Terminals",
+      description: `This will restart ${totalCount} terminal${totalCount !== 1 ? "s" : ""}.`,
+      onConfirm: () => {
+        bulkRestartAll();
+        closeConfirmDialog();
+      },
+    });
+  }, [totalCount, bulkRestartAll, closeConfirmDialog]);
 
   const defaultTrigger = (
     <Button
@@ -122,35 +136,36 @@ export function BulkActionsMenu({ worktreeId, trigger, className }: BulkActionsM
     <>
       <DropdownMenu>
         <DropdownMenuTrigger asChild>{trigger || defaultTrigger}</DropdownMenuTrigger>
-        <DropdownMenuContent align="start" className="w-60" collisionPadding={collisionPadding}>
+        <DropdownMenuContent align="start" className="w-56" collisionPadding={collisionPadding}>
           <DropdownMenuItem
-            onClick={handleRestartIdle}
-            disabled={idleAgentCount === 0}
+            onClick={handleMinimizeToDock}
+            disabled={!canMinimizeFocused}
             className="flex items-center gap-2"
           >
-            <Play className="h-4 w-4 text-[var(--color-state-waiting)]" />
-            <span>Restart Idle Agents</span>
-            <span className="ml-auto text-xs text-canopy-text/50">({idleAgentCount})</span>
+            <ArrowDownToLine className="h-4 w-4" />
+            <span>Minimize to Dock</span>
+          </DropdownMenuItem>
+
+          <DropdownMenuSeparator />
+
+          <DropdownMenuItem
+            onClick={handleMinimizeAll}
+            disabled={gridCount === 0}
+            className="flex items-center gap-2"
+          >
+            <Minimize2 className="h-4 w-4" />
+            <span>Minimize All Terminals</span>
+            <span className="ml-auto text-xs text-canopy-text/50">({gridCount})</span>
           </DropdownMenuItem>
 
           <DropdownMenuItem
-            onClick={handleCloseCompleted}
-            disabled={completedCount === 0}
+            onClick={handleMaximizeAll}
+            disabled={dockedCount === 0}
             className="flex items-center gap-2"
           >
-            <CheckCircle className="h-4 w-4 text-[var(--color-status-success)]" />
-            <span>Close Completed</span>
-            <span className="ml-auto text-xs text-canopy-text/50">({completedCount})</span>
-          </DropdownMenuItem>
-
-          <DropdownMenuItem
-            onClick={handleRestartFailed}
-            disabled={failedAgentCount === 0}
-            className="flex items-center gap-2"
-          >
-            <RefreshCw className="h-4 w-4 text-[var(--color-status-warning)]" />
-            <span>Restart Failed Agents</span>
-            <span className="ml-auto text-xs text-canopy-text/50">({failedAgentCount})</span>
+            <Maximize2 className="h-4 w-4" />
+            <span>Maximize All Terminals</span>
+            <span className="ml-auto text-xs text-canopy-text/50">({dockedCount})</span>
           </DropdownMenuItem>
 
           <DropdownMenuSeparator />
@@ -158,10 +173,32 @@ export function BulkActionsMenu({ worktreeId, trigger, className }: BulkActionsM
           <DropdownMenuItem
             onClick={handleCloseAll}
             disabled={totalCount === 0}
-            className="flex items-center gap-2 text-[var(--color-status-error)] focus:text-[var(--color-status-error)]"
+            className="flex items-center gap-2"
           >
             <Trash2 className="h-4 w-4" />
-            <span>Close All Sessions...</span>
+            <span>Close All Terminals</span>
+            <span className="ml-auto text-xs text-canopy-text/50">({totalCount})</span>
+          </DropdownMenuItem>
+
+          <DropdownMenuItem
+            onClick={handleKillAll}
+            disabled={totalCount === 0}
+            className="flex items-center gap-2 text-[var(--color-status-error)] focus:text-[var(--color-status-error)]"
+          >
+            <X className="h-4 w-4" />
+            <span>Kill All Terminals</span>
+            <span className="ml-auto text-xs text-canopy-text/50">({totalCount})</span>
+          </DropdownMenuItem>
+
+          <DropdownMenuSeparator />
+
+          <DropdownMenuItem
+            onClick={handleRestartAll}
+            disabled={totalCount === 0}
+            className="flex items-center gap-2"
+          >
+            <RotateCcw className="h-4 w-4" />
+            <span>Restart All Terminals</span>
             <span className="ml-auto text-xs text-canopy-text/50">({totalCount})</span>
           </DropdownMenuItem>
         </DropdownMenuContent>

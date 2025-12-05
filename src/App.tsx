@@ -2,7 +2,7 @@ import { useCallback, useEffect, useRef, useState } from "react";
 import { hydrateAppState } from "./utils/stateHydration";
 import { semanticAnalysisService } from "./services/SemanticAnalysisService";
 import "@xterm/xterm/css/xterm.css";
-import { FolderOpen, RefreshCw } from "lucide-react";
+import { FolderOpen } from "lucide-react";
 import {
   isElectronAvailable,
   useAgentLauncher,
@@ -44,7 +44,6 @@ import {
   worktreeClient,
 } from "@/clients";
 import { formatBytes } from "@/lib/formatBytes";
-import { cn } from "@/lib/utils";
 
 function SidebarContent() {
   const { worktrees, isLoading, error, refresh } = useWorktrees();
@@ -67,18 +66,8 @@ function SidebarContent() {
   );
 
   const [isNewWorktreeDialogOpen, setIsNewWorktreeDialogOpen] = useState(false);
-  const [isRefreshing, setIsRefreshing] = useState(false);
 
   const [homeDir, setHomeDir] = useState<string | undefined>(undefined);
-
-  const handleRefresh = useCallback(async () => {
-    setIsRefreshing(true);
-    try {
-      await refresh();
-    } finally {
-      setIsRefreshing(false);
-    }
-  }, [refresh]);
 
   useEffect(() => {
     systemClient.getHomeDir().then(setHomeDir).catch(console.error);
@@ -201,22 +190,7 @@ function SidebarContent() {
   if (worktrees.length === 0) {
     return (
       <div className="p-4">
-        <div className="flex items-center justify-between mb-4">
-          <div className="flex items-center gap-2">
-            <h2 className="text-canopy-text font-semibold text-sm">Worktrees</h2>
-            <button
-              onClick={handleRefresh}
-              className={cn(
-                "p-1 text-canopy-text/40 hover:text-canopy-text hover:bg-white/5 rounded transition-colors",
-                isRefreshing && "animate-spin text-canopy-text"
-              )}
-              title="Refresh worktrees"
-              disabled={isRefreshing}
-            >
-              <RefreshCw className="w-3.5 h-3.5" />
-            </button>
-          </div>
-        </div>
+        <h2 className="text-canopy-text font-semibold text-sm mb-4">Worktrees</h2>
 
         <div className="flex flex-col items-center justify-center py-12 px-4 text-center">
           <FolderOpen className="w-12 h-12 text-gray-500 mb-3" aria-hidden="true" />
@@ -248,20 +222,7 @@ function SidebarContent() {
     <div className="flex flex-col h-full">
       {/* Header Section */}
       <div className="flex items-center justify-between px-4 py-3 border-b border-white/5 bg-[#18181b] shrink-0">
-        <div className="flex items-center gap-2">
-          <h2 className="text-gray-200 font-semibold text-sm tracking-wide">Worktrees</h2>
-          <button
-            onClick={handleRefresh}
-            className={cn(
-              "p-1.5 text-gray-500 hover:text-gray-300 hover:bg-white/5 rounded-md transition-all",
-              isRefreshing && "animate-spin text-gray-300"
-            )}
-            title="Refresh worktrees"
-            disabled={isRefreshing}
-          >
-            <RefreshCw className="w-3.5 h-3.5" />
-          </button>
-        </div>
+        <h2 className="text-gray-200 font-semibold text-sm tracking-wide">Worktrees</h2>
         <button
           onClick={() => setIsNewWorktreeDialogOpen(true)}
           className="flex items-center gap-1.5 text-xs font-medium px-3 py-1.5 bg-[#10b981] hover:bg-[#059669] text-white rounded-md transition-colors shadow-sm"
