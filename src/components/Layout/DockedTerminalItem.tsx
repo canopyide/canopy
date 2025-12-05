@@ -223,6 +223,7 @@ export function DockedTerminalItem({ terminal }: DockedTerminalItemProps) {
               : null
           }
           location="dock"
+          restartKey={terminal.restartKey}
           onFocus={() => {}}
           onClose={handleClose}
           onRestore={handleRestore}

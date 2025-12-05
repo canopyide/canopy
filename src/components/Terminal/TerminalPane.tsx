@@ -36,6 +36,8 @@ export interface TerminalPaneProps {
   onMinimize?: () => void;
   onRestore?: () => void;
   location?: "grid" | "dock";
+  /** Counter incremented on restart to trigger XtermAdapter re-mount */
+  restartKey?: number;
 }
 
 function TerminalPaneComponent({
@@ -55,6 +57,7 @@ function TerminalPaneComponent({
   onMinimize,
   onRestore,
   location = "grid",
+  restartKey = 0,
 }: TerminalPaneProps) {
   const containerRef = useRef<HTMLDivElement>(null);
 
@@ -242,6 +245,7 @@ function TerminalPaneComponent({
 
       <div className="flex-1 relative min-h-0 bg-canopy-bg">
         <XtermAdapter
+          key={`${id}-${restartKey}`}
           terminalId={id}
           terminalType={type}
           onReady={handleReady}
@@ -269,6 +273,7 @@ export const TerminalPane = React.memo(TerminalPaneComponent, (prev, next) => {
     prev.activity?.status === next.activity?.status &&
     prev.activity?.type === next.activity?.type &&
     prev.location === next.location &&
+    prev.restartKey === next.restartKey &&
     prev.onFocus === next.onFocus &&
     prev.onClose === next.onClose &&
     prev.onToggleMaximize === next.onToggleMaximize &&

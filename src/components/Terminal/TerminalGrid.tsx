@@ -298,6 +298,7 @@ export function TerminalGrid({ className, defaultCwd, onLaunchAgent }: TerminalG
                   : null
               }
               location="grid"
+              restartKey={terminal.restartKey}
               onFocus={() => setFocused(terminal.id)}
               onClose={(force) =>
                 force ? removeTerminal(terminal.id) : trashTerminal(terminal.id)
@@ -382,6 +383,7 @@ export function TerminalGrid({ className, defaultCwd, onLaunchAgent }: TerminalG
                           : null
                       }
                       location="grid"
+                      restartKey={terminal.restartKey}
                       onFocus={() => setFocused(terminal.id)}
                       onClose={(force) =>
                         force ? removeTerminal(terminal.id) : trashTerminal(terminal.id)

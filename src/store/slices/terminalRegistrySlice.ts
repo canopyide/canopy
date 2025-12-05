@@ -629,32 +629,70 @@ export const createTerminalRegistrySlice =
             }
             commandToRun = flags.length > 0 ? `${baseCommand} ${flags.join(" ")}` : baseCommand;
           }
-          // If settings unavailable, keep using the saved command
         } catch (error) {
           console.warn(
             "[TerminalStore] Failed to load agent settings for restart, using saved command:",
             error
           );
-          // Keep using terminal.command as fallback
         }
       }
 
-      const config: AddTerminalOptions = {
-        type: terminal.type,
-        title: terminal.title,
-        cwd: terminal.cwd,
-        worktreeId: terminal.worktreeId,
-        command: commandToRun,
-        location: targetLocation,
-      };
-
-      get().removeTerminal(id);
-
-      await new Promise((resolve) => setTimeout(resolve, 50));
-
       try {
-        await get().addTerminal(config);
+        // Enable buffering to capture output from new PTY before XtermAdapter remounts
+        await terminalClient.setBuffering(id, true);
+
+        // Kill the old PTY backend (but don't remove from store)
+        await terminalClient.kill(id);
+
+        // Spawn a new PTY with the SAME ID - output goes to buffer
+        await terminalClient.spawn({
+          id, // Reuse the same ID
+          cwd: terminal.cwd,
+          cols: terminal.cols || 80,
+          rows: terminal.rows || 24,
+          type: terminal.type,
+          title: terminal.title,
+          worktreeId: terminal.worktreeId,
+          command: commandToRun,
+        });
+
+        // Now safe to destroy old xterm - spawn succeeded
+        terminalInstanceService.destroy(id);
+
+        // Update terminal in store: increment restartKey, reset agent state, update location
+        // This triggers XtermAdapter remount with new xterm instance
+        set((state) => {
+          const newTerminals = state.terminals.map((t) =>
+            t.id === id
+              ? {
+                  ...t,
+                  location: targetLocation,
+                  restartKey: (t.restartKey ?? 0) + 1,
+                  agentState: isAgent ? ("idle" as const) : undefined,
+                  lastStateChange: isAgent ? Date.now() : undefined,
+                  command: commandToRun,
+                }
+              : t
+          );
+          terminalPersistence.save(newTerminals);
+          return { terminals: newTerminals };
+        });
+
+        // Allow XtermAdapter to remount and set up data listeners
+        await new Promise((resolve) => setTimeout(resolve, 100));
+
+        // Disable buffering and flush captured output (unless docked)
+        if (targetLocation === "dock") {
+          // Keep buffering enabled for docked terminals
+        } else {
+          await terminalClient.setBuffering(id, false);
+          terminalClient.flush(id).catch((error) => {
+            console.error("Failed to flush terminal buffer:", error);
+          });
+        }
       } catch (error) {
+        // Re-enable normal mode if restart failed
+        terminalClient.setBuffering(id, false).catch(() => {});
         console.error(`[TerminalStore] Failed to restart terminal ${id}:`, error);
       }
     },

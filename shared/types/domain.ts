@@ -283,6 +283,8 @@ export interface TerminalInstance {
   command?: string;
   /** Whether the terminal pane is currently visible in the viewport */
   isVisible?: boolean;
+  /** Counter incremented on restart to trigger React re-render without unmounting parent */
+  restartKey?: number;
 }
 
 /** Options for spawning a new PTY process */
