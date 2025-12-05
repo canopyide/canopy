@@ -1,7 +1,7 @@
-import { useState } from "react";
+import { useRef, useState } from "react";
 import { useShallow } from "zustand/react/shallow";
 import { Button } from "@/components/ui/button";
-import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover";
+import { FixedDropdown } from "@/components/ui/fixed-dropdown";
 import {
   Settings,
   Terminal,
@@ -51,15 +51,12 @@ export function Toolbar({
   const { stats, error: statsError, refresh: refreshStats } = useRepositoryStats();
 
   const sidecarOpen = useSidecarStore((state) => state.isOpen);
-  const sidecarWidth = useSidecarStore((state) => state.width);
   const toggleSidecar = useSidecarStore((state) => state.toggle);
-
-  // Sidecar uses a native WebContentsView, which sits above all DOM elements.
-  // Apply collision padding whenever sidecar is open, regardless of layout mode.
-  const rightCollisionPadding = sidecarOpen ? sidecarWidth + 20 : 10;
 
   const [issuesOpen, setIssuesOpen] = useState(false);
   const [prsOpen, setPrsOpen] = useState(false);
+  const issuesButtonRef = useRef<HTMLButtonElement>(null);
+  const prsButtonRef = useRef<HTMLButtonElement>(null);
 
   const showBulkActions = terminals.length > 0;
 
@@ -164,83 +161,85 @@ export function Toolbar({
         {stats && currentProject && (
           <>
             <div className="flex items-center gap-1">
-              <Popover open={issuesOpen} onOpenChange={setIssuesOpen}>
-                <PopoverTrigger asChild>
-                  <Button
-                    variant="ghost"
-                    size="sm"
-                    onClick={statsError ? refreshStats : undefined}
-                    className={cn(
-                      "text-canopy-text hover:bg-canopy-border hover:text-canopy-accent h-7 px-2 gap-1.5",
-                      (stats.issueCount === 0 || statsError) && "opacity-50",
-                      statsError && "text-[var(--color-status-error)]",
-                      issuesOpen && "bg-canopy-border text-canopy-accent"
-                    )}
-                    title={
-                      statsError
-                        ? `GitHub error: ${statsError} (click to retry)`
-                        : "Browse GitHub Issues"
-                    }
-                    aria-label={
-                      statsError ? "GitHub stats error" : `${stats.issueCount ?? 0} open issues`
-                    }
-                  >
-                    <AlertTriangle className="h-3.5 w-3.5" />
-                    <span className="text-xs font-medium">{stats.issueCount ?? "?"}</span>
-                  </Button>
-                </PopoverTrigger>
-                <PopoverContent
-                  className="p-0"
-                  align="end"
-                  sideOffset={8}
-                  collisionPadding={{ right: rightCollisionPadding }}
-                >
-                  <GitHubResourceList
-                    type="issue"
-                    projectPath={currentProject.path}
-                    onClose={() => setIssuesOpen(false)}
-                  />
-                </PopoverContent>
-              </Popover>
+              <Button
+                ref={issuesButtonRef}
+                variant="ghost"
+                size="sm"
+                onClick={() => {
+                  if (statsError) refreshStats();
+                  setPrsOpen(false);
+                  setIssuesOpen((prev) => !prev);
+                }}
+                className={cn(
+                  "text-canopy-text hover:bg-canopy-border hover:text-canopy-accent h-7 px-2 gap-1.5",
+                  (stats.issueCount === 0 || statsError) && "opacity-50",
+                  statsError && "text-[var(--color-status-error)]",
+                  issuesOpen && "bg-canopy-border text-canopy-accent"
+                )}
+                title={
+                  statsError
+                    ? `GitHub error: ${statsError} (click to retry)`
+                    : "Browse GitHub Issues"
+                }
+                aria-label={
+                  statsError ? "GitHub stats error" : `${stats.issueCount ?? 0} open issues`
+                }
+              >
+                <AlertTriangle className="h-3.5 w-3.5" />
+                <span className="text-xs font-medium">{stats.issueCount ?? "?"}</span>
+              </Button>
+              <FixedDropdown
+                open={issuesOpen}
+                onOpenChange={setIssuesOpen}
+                anchorRef={issuesButtonRef}
+                className="p-0 w-[450px]"
+              >
+                <GitHubResourceList
+                  type="issue"
+                  projectPath={currentProject.path}
+                  onClose={() => setIssuesOpen(false)}
+                />
+              </FixedDropdown>
 
-              <Popover open={prsOpen} onOpenChange={setPrsOpen}>
-                <PopoverTrigger asChild>
-                  <Button
-                    variant="ghost"
-                    size="sm"
-                    onClick={statsError ? refreshStats : undefined}
-                    className={cn(
-                      "text-canopy-text hover:bg-canopy-border hover:text-canopy-accent h-7 px-2 gap-1.5",
-                      (stats.prCount === 0 || statsError) && "opacity-50",
-                      statsError && "text-[var(--color-status-error)]",
-                      prsOpen && "bg-canopy-border text-canopy-accent"
-                    )}
-                    title={
-                      statsError
-                        ? `GitHub error: ${statsError} (click to retry)`
-                        : "Browse GitHub Pull Requests"
-                    }
-                    aria-label={
-                      statsError ? "GitHub stats error" : `${stats.prCount ?? 0} open pull requests`
-                    }
-                  >
-                    <GitPullRequest className="h-3.5 w-3.5" />
-                    <span className="text-xs font-medium">{stats.prCount ?? "?"}</span>
-                  </Button>
-                </PopoverTrigger>
-                <PopoverContent
-                  className="p-0"
-                  align="end"
-                  sideOffset={8}
-                  collisionPadding={{ right: rightCollisionPadding }}
-                >
-                  <GitHubResourceList
-                    type="pr"
-                    projectPath={currentProject.path}
-                    onClose={() => setPrsOpen(false)}
-                  />
-                </PopoverContent>
-              </Popover>
+              <Button
+                ref={prsButtonRef}
+                variant="ghost"
+                size="sm"
+                onClick={() => {
+                  if (statsError) refreshStats();
+                  setIssuesOpen(false);
+                  setPrsOpen((prev) => !prev);
+                }}
+                className={cn(
+                  "text-canopy-text hover:bg-canopy-border hover:text-canopy-accent h-7 px-2 gap-1.5",
+                  (stats.prCount === 0 || statsError) && "opacity-50",
+                  statsError && "text-[var(--color-status-error)]",
+                  prsOpen && "bg-canopy-border text-canopy-accent"
+                )}
+                title={
+                  statsError
+                    ? `GitHub error: ${statsError} (click to retry)`
+                    : "Browse GitHub Pull Requests"
+                }
+                aria-label={
+                  statsError ? "GitHub stats error" : `${stats.prCount ?? 0} open pull requests`
+                }
+              >
+                <GitPullRequest className="h-3.5 w-3.5" />
+                <span className="text-xs font-medium">{stats.prCount ?? "?"}</span>
+              </Button>
+              <FixedDropdown
+                open={prsOpen}
+                onOpenChange={setPrsOpen}
+                anchorRef={prsButtonRef}
+                className="p-0 w-[450px]"
+              >
+                <GitHubResourceList
+                  type="pr"
+                  projectPath={currentProject.path}
+                  onClose={() => setPrsOpen(false)}
+                />
+              </FixedDropdown>
 
               <div
                 className={cn(
