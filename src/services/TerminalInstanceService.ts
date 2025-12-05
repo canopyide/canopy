@@ -27,6 +27,10 @@ interface ManagedTerminal {
   lastAttachAt: number;
   lastDetachAt: number;
   webglRecoveryAttempts: number;
+  // Visibility-aware LRU tracking
+  isVisible: boolean;
+  lastActiveTime: number;
+  hasWebglError: boolean;
 }
 
 const BURST_MODE_WINDOW_MS = 500;
@@ -222,6 +226,7 @@ class TerminalInstanceService {
   private static readonly BUDGET_SCALE_FACTOR = 0.5;
   private static readonly MIN_WEBGL_BUDGET = 2;
   private static readonly POLL_TIME_BUDGET_MS = 4; // Max time per frame for polling
+  private static readonly MAX_WEBGL_CONTEXTS = 12; // Conservative limit below browser max (16)
 
   constructor() {
     this.hardwareProfile = detectHardware();
@@ -324,6 +329,82 @@ class TerminalInstanceService {
     }
 
     return Math.max(TerminalInstanceService.MIN_WEBGL_BUDGET, budget);
+  }
+
+  /**
+   * Enforce WebGL context budget using visibility-aware LRU eviction.
+   * Prioritizes visible terminals over hidden ones.
+   */
+  private enforceWebglBudget(): void {
+    const activeContexts: string[] = [];
+    this.instances.forEach((term, id) => {
+      if (term.webglAddon) {
+        activeContexts.push(id);
+      }
+    });
+
+    // Use the lesser of dynamic budget and hard limit
+    const effectiveBudget = Math.min(
+      this.getWebGLBudget(),
+      TerminalInstanceService.MAX_WEBGL_CONTEXTS
+    );
+
+    if (activeContexts.length < effectiveBudget) {
+      return;
+    }
+
+    // Sort by priority (lowest first - index 0 is evicted first):
+    // 1. Hidden terminals sorted by lastActiveTime (oldest first)
+    // 2. Visible terminals sorted by lastActiveTime (oldest first)
+    activeContexts.sort((aId, bId) => {
+      const a = this.instances.get(aId)!;
+      const b = this.instances.get(bId)!;
+
+      if (a.isVisible !== b.isVisible) {
+        return a.isVisible ? 1 : -1;
+      }
+      return a.lastActiveTime - b.lastActiveTime;
+    });
+
+    // Evict contexts until under budget (handles sharp budget drops)
+    while (activeContexts.length >= effectiveBudget) {
+      const victimId = activeContexts.shift();
+      if (!victimId) break;
+      const victim = this.instances.get(victimId);
+
+      if (victim?.webglAddon) {
+        console.log(
+          `[TerminalInstanceService] Evicting WebGL context for ${victimId} (Visible: ${victim.isVisible})`
+        );
+        this.releaseWebgl(victimId, victim);
+        victim.terminal.refresh(0, victim.terminal.rows - 1);
+      }
+    }
+  }
+
+  /**
+   * Update visibility state for a terminal.
+   * Called by React's IntersectionObserver when terminal enters/leaves viewport.
+   */
+  setVisible(id: string, isVisible: boolean): void {
+    const managed = this.instances.get(id);
+    if (!managed) return;
+
+    if (managed.isVisible !== isVisible) {
+      managed.isVisible = isVisible;
+      managed.lastActiveTime = Date.now();
+
+      if (isVisible) {
+        // If becoming visible, try to upgrade to WebGL
+        this.applyRendererPolicy(id, managed.getRefreshTier());
+      } else {
+        // If hiding, release WebGL immediately to free resources
+        if (managed.webglAddon) {
+          this.releaseWebgl(id, managed);
+          managed.terminal.refresh(0, managed.terminal.rows - 1);
+        }
+      }
+    }
   }
 
   getOrCreate(
@@ -435,6 +516,9 @@ class TerminalInstanceService {
       lastAttachAt: 0,
       lastDetachAt: 0,
       webglRecoveryAttempts: 0,
+      isVisible: false,
+      lastActiveTime: Date.now(),
+      hasWebglError: false,
     };
 
     this.instances.set(id, managed);
@@ -617,36 +701,42 @@ class TerminalInstanceService {
   }
 
   /**
-   * Apply renderer policy based on priority tier.
-   * Only FOCUSED and BURST terminals get WebGL; VISIBLE and BACKGROUND use DOM renderer.
-   * This reduces GPU memory usage when many terminals are open.
+   * Apply renderer policy based on priority tier and visibility.
+   * Visible terminals with FOCUSED/BURST/VISIBLE tier get WebGL.
+   * BACKGROUND terminals and hidden terminals surrender WebGL to save resources.
    * Also propagates activity tier to main process for IPC batching.
    */
   applyRendererPolicy(id: string, tier: TerminalRefreshTier): void {
     const managed = this.instances.get(id);
     if (!managed) return;
 
-    // Give WebGL to FOCUSED, BURST, and VISIBLE terminals
-    // This prevents visual jitter (text kerning shift) when switching focus between visible terminals in a grid.
-    // BACKGROUND terminals (hidden tabs) surrender WebGL to save resources.
+    // Update activity timestamp on focus/burst events
+    if (tier === TerminalRefreshTier.FOCUSED || tier === TerminalRefreshTier.BURST) {
+      managed.lastActiveTime = Date.now();
+      // Clear error flag on explicit user interaction
+      managed.hasWebglError = false;
+    }
+
+    // Terminal must be visible AND have appropriate tier to want WebGL
     const wantsWebgl =
-      tier === TerminalRefreshTier.BURST ||
-      tier === TerminalRefreshTier.FOCUSED ||
-      tier === TerminalRefreshTier.VISIBLE;
+      managed.isVisible &&
+      (tier === TerminalRefreshTier.BURST ||
+        tier === TerminalRefreshTier.FOCUSED ||
+        tier === TerminalRefreshTier.VISIBLE);
 
     if (wantsWebgl) {
       if (!managed.webglAddon) {
         this.acquireWebgl(id, managed);
       } else if (tier === TerminalRefreshTier.FOCUSED || tier === TerminalRefreshTier.BURST) {
         // Promote FOCUSED/BURST terminals to end of LRU to protect from eviction
-        // We don't promote VISIBLE-only updates to avoid thrashing if they aren't the active user focus
         const idx = this.webglLru.indexOf(id);
         if (idx !== -1 && idx < this.webglLru.length - 1) {
           this.webglLru.splice(idx, 1);
           this.webglLru.push(id);
         }
       }
-    } else if (managed.webglAddon) {
+    } else if (tier === TerminalRefreshTier.BACKGROUND && managed.webglAddon) {
+      // Release WebGL for BACKGROUND tier (hidden tabs)
       this.releaseWebgl(id, managed);
     }
 
@@ -672,78 +762,86 @@ class TerminalInstanceService {
   }
 
   private acquireWebgl(id: string, managed: ManagedTerminal): void {
-    const currentBudget = this.getWebGLBudget();
+    // Don't retry if we've hit an error state or exhausted recovery attempts
+    if (managed.hasWebglError || managed.webglRecoveryAttempts >= MAX_WEBGL_RECOVERY_ATTEMPTS) {
+      return;
+    }
 
-    // Evict LRU entries until we're under budget
-    // Loop handles cases where budget drops significantly (e.g., 8 -> 2 when many terminals open)
-    while (this.webglLru.length >= currentBudget) {
-      const evictId = this.webglLru.shift();
-      if (evictId && evictId !== id) {
-        const evictManaged = this.instances.get(evictId);
-        if (evictManaged?.webglAddon) {
-          evictManaged.webglAddon.dispose();
-          evictManaged.webglAddon = undefined;
-        }
-      }
+    // Use visibility-aware budget enforcement
+    this.enforceWebglBudget();
+
+    // Double-check budget (in case enforce failed or we're at limit)
+    let activeCount = 0;
+    this.instances.forEach((t) => {
+      if (t.webglAddon) activeCount++;
+    });
+
+    const effectiveBudget = Math.min(
+      this.getWebGLBudget(),
+      TerminalInstanceService.MAX_WEBGL_CONTEXTS
+    );
+
+    if (activeCount >= effectiveBudget) {
+      // Over budget - stay with DOM renderer
+      return;
     }
 
     try {
       const webglAddon = new WebglAddon();
-      // Reset recovery counter on successful WebGL acquisition
       managed.webglRecoveryAttempts = 0;
+
       webglAddon.onContextLoss(() => {
-        console.warn(`[XtermAdapter] WebGL context lost for ${id}. Attempting recovery...`);
+        console.warn(`[TerminalInstanceService] WebGL context lost for ${id}`);
         webglAddon.dispose();
         managed.webglAddon = undefined;
         this.webglLru = this.webglLru.filter((existing) => existing !== id);
 
-        // Auto-recovery: wait for GPU to stabilize, then attempt to restore
+        // Mark as error state to prevent thrashing loop
+        managed.hasWebglError = true;
+
+        // Auto-recovery after GPU stabilizes
         setTimeout(() => {
-          // Verify terminal still exists (not destroyed)
-          if (!this.instances.has(id)) {
-            console.log(`[XtermAdapter] Terminal ${id} destroyed, skipping WebGL recovery`);
-            return;
-          }
+          if (!this.instances.has(id)) return;
 
           const currentManaged = this.instances.get(id);
-          if (!currentManaged || !currentManaged.terminal.element) {
-            console.log(`[XtermAdapter] Terminal ${id} detached, skipping WebGL recovery`);
-            return;
-          }
+          if (!currentManaged || !currentManaged.terminal.element) return;
 
-          // Force canvas refresh as fallback
           try {
             currentManaged.terminal.refresh(0, currentManaged.terminal.rows - 1);
-            console.log(`[XtermAdapter] Canvas fallback active for ${id}`);
+            console.log(`[TerminalInstanceService] Canvas fallback active for ${id}`);
 
-            // Attempt to re-acquire WebGL if terminal qualifies for WebGL (FOCUSED/BURST) and under retry limit
+            // Retry WebGL if terminal is focused/burst and under retry limit
             const tier = currentManaged.getRefreshTier();
             if (
               (tier === TerminalRefreshTier.FOCUSED || tier === TerminalRefreshTier.BURST) &&
               currentManaged.webglRecoveryAttempts < MAX_WEBGL_RECOVERY_ATTEMPTS
             ) {
               currentManaged.webglRecoveryAttempts++;
+              currentManaged.hasWebglError = false; // Clear error flag for retry
               console.log(
-                `[XtermAdapter] Attempting WebGL recovery for ${id} (attempt ${currentManaged.webglRecoveryAttempts}/${MAX_WEBGL_RECOVERY_ATTEMPTS})`
+                `[TerminalInstanceService] Attempting WebGL recovery for ${id} (${currentManaged.webglRecoveryAttempts}/${MAX_WEBGL_RECOVERY_ATTEMPTS})`
               );
               this.acquireWebgl(id, currentManaged);
             } else if (currentManaged.webglRecoveryAttempts >= MAX_WEBGL_RECOVERY_ATTEMPTS) {
               console.warn(
-                `[XtermAdapter] Max WebGL recovery attempts reached for ${id}, staying in canvas mode`
+                `[TerminalInstanceService] Max WebGL recovery attempts reached for ${id}, staying in canvas mode`
               );
             }
           } catch (error) {
-            console.error(`[XtermAdapter] Recovery failed for ${id}:`, error);
-            // Terminal continues with canvas renderer
+            console.error(`[TerminalInstanceService] Recovery failed for ${id}:`, error);
           }
         }, 1000);
       });
+
       managed.terminal.loadAddon(webglAddon);
       managed.webglAddon = webglAddon;
+      managed.hasWebglError = false;
+
       this.webglLru = this.webglLru.filter((existing) => existing !== id);
       this.webglLru.push(id);
     } catch (error) {
-      console.warn("WebGL addon failed to load:", error);
+      console.warn("[TerminalInstanceService] WebGL addon failed to load:", error);
+      managed.hasWebglError = true;
     }
   }
 
