@@ -14,6 +14,11 @@ export class ActivityMonitor {
    * Proactively transitions to BUSY on Enter key.
    */
   onInput(data: string): void {
+    // Ignore Shift+Enter sequence (\x1b\r) sent by XtermAdapter for soft line breaks.
+    if (data === "\x1b\r") {
+      return;
+    }
+
     // Use includes() to handle pasted text or grouped keystrokes.
     // We look for \r (Return) or \n (Newline).
     const hasEnter = data.includes("\r") || data.includes("\n");
