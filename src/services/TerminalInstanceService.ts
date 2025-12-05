@@ -31,6 +31,9 @@ interface ManagedTerminal {
   isVisible: boolean;
   lastActiveTime: number;
   hasWebglError: boolean;
+  // Geometry caching for resize optimization
+  lastWidth: number;
+  lastHeight: number;
 }
 
 const BURST_MODE_WINDOW_MS = 500;
@@ -395,6 +398,15 @@ class TerminalInstanceService {
       managed.lastActiveTime = Date.now();
 
       if (isVisible) {
+        // Always bust cache when becoming visible to force fresh measurement
+        managed.lastWidth = 0;
+        managed.lastHeight = 0;
+
+        // Force resize when becoming visible to sync dimensions
+        const rect = managed.hostElement.getBoundingClientRect();
+        if (rect.width > 0 && rect.height > 0) {
+          this.resize(id, rect.width, rect.height);
+        }
         // If becoming visible, try to upgrade to WebGL
         this.applyRendererPolicy(id, managed.getRefreshTier());
       } else {
@@ -519,6 +531,8 @@ class TerminalInstanceService {
       isVisible: false,
       lastActiveTime: Date.now(),
       hasWebglError: false,
+      lastWidth: 0,
+      lastHeight: 0,
     };
 
     this.instances.set(id, managed);
@@ -581,6 +595,58 @@ class TerminalInstanceService {
       return { cols, rows };
     } catch (error) {
       console.warn("Terminal fit failed:", error);
+      return null;
+    }
+  }
+
+  /**
+   * Smart resize: accepts explicit dimensions from ResizeObserver.
+   * Prevents the addon from forcing a synchronous layout read to measure the container.
+   * Returns {cols, rows} if resized, null if skipped (cached) or error.
+   */
+  resize(id: string, width: number, height: number): { cols: number; rows: number } | null {
+    const managed = this.instances.get(id);
+    if (!managed) return null;
+
+    // Geometry caching check - ignore sub-pixel changes
+    if (Math.abs(managed.lastWidth - width) < 1 && Math.abs(managed.lastHeight - height) < 1) {
+      return null;
+    }
+
+    // Calculate cols/rows using proposeDimensions if available (avoids DOM read)
+    try {
+      // FitAddon.proposeDimensions accepts optional dimensions override
+      // @ts-expect-error - internal API, may not be in type definitions
+      const proposed = managed.fitAddon.proposeDimensions?.({ width, height });
+
+      if (!proposed) {
+        // Fallback to fit() if proposeDimensions not available
+        managed.fitAddon.fit();
+        const result = { cols: managed.terminal.cols, rows: managed.terminal.rows };
+        // Update cache after successful fallback fit
+        managed.lastWidth = width;
+        managed.lastHeight = height;
+        return result;
+      }
+
+      const { cols, rows } = proposed;
+
+      // Skip if dimensions unchanged
+      if (managed.terminal.cols === cols && managed.terminal.rows === rows) {
+        return null;
+      }
+
+      // Apply resize
+      managed.terminal.resize(cols, rows);
+
+      // Update cache only after successful resize
+      managed.lastWidth = width;
+      managed.lastHeight = height;
+
+      return { cols, rows };
+    } catch (error) {
+      console.warn(`[TerminalInstanceService] Resize failed for ${id}:`, error);
+      // Don't update cache on error - allow retry with same dimensions
       return null;
     }
   }
@@ -678,21 +744,42 @@ class TerminalInstanceService {
   updateOptions(id: string, options: Partial<Terminal["options"]>): void {
     const managed = this.instances.get(id);
     if (!managed) return;
+
+    // Check if any text metric options are changing (affects cell size)
+    const textMetricKeys = ["fontSize", "fontFamily", "lineHeight", "letterSpacing", "fontWeight"];
+    const textMetricsChanged = textMetricKeys.some((key) => key in options);
+
     Object.entries(options).forEach(([key, value]) => {
       // @ts-expect-error xterm options are indexable
       managed.terminal.options[key] = value;
     });
+
+    // Bust geometry cache when text metrics change so resize recalculates cols/rows
+    if (textMetricsChanged) {
+      managed.lastWidth = 0;
+      managed.lastHeight = 0;
+    }
   }
 
   /**
    * Broadcast option changes (theme, font size) to all active terminals.
    */
   applyGlobalOptions(options: Partial<Terminal["options"]>): void {
+    // Check if any text metric options are changing (affects cell size)
+    const textMetricKeys = ["fontSize", "fontFamily", "lineHeight", "letterSpacing", "fontWeight"];
+    const textMetricsChanged = textMetricKeys.some((key) => key in options);
+
     this.instances.forEach((managed) => {
       Object.entries(options).forEach(([key, value]) => {
         // @ts-expect-error xterm options are indexable
         managed.terminal.options[key] = value;
       });
+
+      // Bust geometry cache when text metrics change
+      if (textMetricsChanged) {
+        managed.lastWidth = 0;
+        managed.lastHeight = 0;
+      }
 
       if (options.theme) {
         managed.terminal.refresh(0, managed.terminal.rows - 1);

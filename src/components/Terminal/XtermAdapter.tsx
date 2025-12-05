@@ -43,9 +43,8 @@ export const CANOPY_TERMINAL_THEME = {
   brightWhite: "#fafafa",
 };
 
-const MAX_ZERO_RETRIES = 10;
-const FIT_SETTLE_DELAY_MS = 120;
 const PERFORMANCE_MODE_SCROLLBACK = 100;
+const MIN_CONTAINER_SIZE = 50;
 
 function XtermAdapterComponent({
   terminalId,
@@ -57,13 +56,13 @@ function XtermAdapterComponent({
 }: XtermAdapterProps) {
   const containerRef = useRef<HTMLDivElement>(null);
   const prevDimensionsRef = useRef<{ cols: number; rows: number } | null>(null);
-  const zeroRetryCountRef = useRef<number>(0);
-  const settleTimeoutRef = useRef<number | null>(null);
   const exitUnsubRef = useRef<(() => void) | null>(null);
   const debouncerRef = useRef<TerminalResizeDebouncer | null>(null);
+  const rafIdRef = useRef<number | null>(null);
 
   // Track visibility for resize optimization (start pessimistic for offscreen mounts)
   const [isVisible, setIsVisible] = useState(false);
+  const isVisibleRef = useRef(false);
 
   const scrollbackLines = useScrollbackStore((state) => state.scrollbackLines);
   const performanceMode = usePerformanceModeStore((state) => state.performanceMode);
@@ -134,66 +133,78 @@ function XtermAdapterComponent({
     };
   }, [terminalId]);
 
-  const scheduleFit = useCallback(() => {
-    if (settleTimeoutRef.current !== null) {
-      clearTimeout(settleTimeoutRef.current);
-      settleTimeoutRef.current = null;
-    }
+  // Push-based resize handler using ResizeObserver dimensions directly
+  const handleResizeEntry = useCallback(
+    (entry: ResizeObserverEntry) => {
+      // Early exit if not visible (use ref for latest value)
+      if (!isVisibleRef.current) return;
 
-    settleTimeoutRef.current = window.setTimeout(() => {
-      const container = containerRef.current;
-      if (!container) return;
+      // Get dimensions from observer (zero DOM reads)
+      const { width, height } = entry.contentRect;
 
-      // Ignore fits when container is collapsed/hidden (e.g. during drag)
-      if (container.clientWidth < 50 || container.clientHeight < 50) {
-        return;
-      }
+      // Filter collapsed/zero states
+      if (width === 0 || height === 0) return;
+      if (width < MIN_CONTAINER_SIZE || height < MIN_CONTAINER_SIZE) return;
 
-      if (container.clientWidth === 0 || container.clientHeight === 0) {
-        if (zeroRetryCountRef.current < MAX_ZERO_RETRIES) {
-          zeroRetryCountRef.current++;
-          scheduleFit();
-        } else {
-          console.warn(`Terminal container has zero dimensions after ${MAX_ZERO_RETRIES} retries`);
-          zeroRetryCountRef.current = 0;
-        }
-        return;
-      }
+      // Service handles geometry caching check
+      const dims = terminalInstanceService.resize(terminalId, width, height);
 
-      zeroRetryCountRef.current = 0;
-
-      const dims = terminalInstanceService.fit(terminalId);
       if (dims) {
         const managed = terminalInstanceService.get(terminalId);
         const { cols, rows } = dims;
 
-        if (prevDimensionsRef.current) {
+        // Preserve shrink refresh logic
+        if (prevDimensionsRef.current && managed) {
           const shrunk =
             cols < prevDimensionsRef.current.cols || rows < prevDimensionsRef.current.rows;
-          if (shrunk && managed) {
+          if (shrunk) {
             managed.terminal.refresh(0, managed.terminal.rows - 1);
           }
         }
-
         prevDimensionsRef.current = { cols, rows };
 
-        // Use advanced debouncer for resize - considers visibility and buffer size
+        // Debounce IPC to main process
         const bufferLines = terminalInstanceService.getBufferLineCount(terminalId);
         debouncerRef.current?.resize(cols, rows, {
           immediate: false,
           bufferLineCount: bufferLines,
-          isVisible,
+          isVisible: true,
         });
       }
-    }, FIT_SETTLE_DELAY_MS);
-  }, [terminalId, isVisible]);
+    },
+    [terminalId]
+  );
 
-  const handleResize = useCallback(() => {
-    // Use requestAnimationFrame to coalesce rapid resize events
-    requestAnimationFrame(() => {
-      scheduleFit();
-    });
-  }, [scheduleFit]);
+  // Fallback fit for initial mount and visibility changes
+  const performFit = useCallback(() => {
+    const container = containerRef.current;
+    if (!container) return;
+
+    const { clientWidth, clientHeight } = container;
+    if (clientWidth < MIN_CONTAINER_SIZE || clientHeight < MIN_CONTAINER_SIZE) return;
+
+    const dims = terminalInstanceService.resize(terminalId, clientWidth, clientHeight);
+    if (dims) {
+      const managed = terminalInstanceService.get(terminalId);
+      const { cols, rows } = dims;
+
+      if (prevDimensionsRef.current && managed) {
+        const shrunk =
+          cols < prevDimensionsRef.current.cols || rows < prevDimensionsRef.current.rows;
+        if (shrunk) {
+          managed.terminal.refresh(0, managed.terminal.rows - 1);
+        }
+      }
+      prevDimensionsRef.current = { cols, rows };
+
+      const bufferLines = terminalInstanceService.getBufferLineCount(terminalId);
+      debouncerRef.current?.resize(cols, rows, {
+        immediate: false,
+        bufferLineCount: bufferLines,
+        isVisible,
+      });
+    }
+  }, [terminalId, isVisible]);
 
   useLayoutEffect(() => {
     const container = containerRef.current;
@@ -231,14 +242,12 @@ function XtermAdapterComponent({
       onExit?.(code);
     });
 
-    scheduleFit();
+    performFit();
     onReady?.();
 
     return () => {
-      if (settleTimeoutRef.current !== null) {
-        clearTimeout(settleTimeoutRef.current);
-        settleTimeoutRef.current = null;
-      }
+      // Flush pending resizes before unmount
+      debouncerRef.current?.flush();
 
       terminalInstanceService.detach(terminalId, containerRef.current);
 
@@ -248,9 +257,8 @@ function XtermAdapterComponent({
       }
 
       prevDimensionsRef.current = null;
-      zeroRetryCountRef.current = 0;
     };
-  }, [terminalId, terminalOptions, onExit, onReady, scheduleFit]);
+  }, [terminalId, terminalOptions, onExit, onReady, performFit]);
 
   // Resolve current tier for dependency tracking
   const currentTier = useMemo(
@@ -272,7 +280,7 @@ function XtermAdapterComponent({
     }
   }, [terminalId, getRefreshTier, currentTier]);
 
-  // Track visibility for advanced resize debouncing
+  // Track visibility for advanced resize debouncing and WebGL management
   useEffect(() => {
     const container = containerRef.current;
     if (!container) return;
@@ -281,13 +289,16 @@ function XtermAdapterComponent({
       ([entry]) => {
         const nowVisible = entry.isIntersecting;
         setIsVisible(nowVisible);
+        isVisibleRef.current = nowVisible;
 
-        // Flush pending resizes when terminal becomes visible to prevent stale dimensions
+        // Notify the service about visibility change (handles WebGL and forced resize)
+        terminalInstanceService.setVisible(terminalId, nowVisible);
+
         if (nowVisible) {
-          // Clear any idle callbacks that may have been scheduled while hidden
+          // Clear pending debounced resizes
           debouncerRef.current?.clear();
-          // Trigger immediate fit with fresh dimensions
-          scheduleFit();
+          // Force immediate fit with fresh dimensions
+          performFit();
         }
       },
       { threshold: 0.1 }
@@ -295,21 +306,41 @@ function XtermAdapterComponent({
     visibilityObserver.observe(container);
 
     return () => visibilityObserver.disconnect();
-  }, [scheduleFit]);
+  }, [terminalId, performFit]);
 
+  // ResizeObserver wrapped in requestAnimationFrame to batch at frame boundaries
   useLayoutEffect(() => {
     const container = containerRef.current;
     if (!container) return;
 
-    const resizeObserver = new ResizeObserver(handleResize);
+    const resizeObserver = new ResizeObserver((entries) => {
+      // Cancel any pending RAF before scheduling a new one
+      if (rafIdRef.current !== null) {
+        cancelAnimationFrame(rafIdRef.current);
+      }
+
+      // Wrap in requestAnimationFrame to align with render cycle
+      // and prevent "ResizeObserver loop limit exceeded" errors
+      rafIdRef.current = requestAnimationFrame(() => {
+        rafIdRef.current = null;
+        for (const entry of entries) {
+          handleResizeEntry(entry);
+        }
+      });
+    });
     resizeObserver.observe(container);
-    window.addEventListener("resize", handleResize);
+
+    // No need for window.addEventListener("resize") - ResizeObserver handles this
 
     return () => {
+      // Cancel pending RAF to prevent post-unmount execution
+      if (rafIdRef.current !== null) {
+        cancelAnimationFrame(rafIdRef.current);
+        rafIdRef.current = null;
+      }
       resizeObserver.disconnect();
-      window.removeEventListener("resize", handleResize);
     };
-  }, [handleResize]);
+  }, [handleResizeEntry]);
 
   return (
     <div
