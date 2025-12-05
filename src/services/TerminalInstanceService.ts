@@ -233,7 +233,7 @@ class TerminalInstanceService {
     terminal.loadAddon(serializeAddon);
 
     const webLinksAddon = new WebLinksAddon(
-      (event, uri) => {
+      (event: MouseEvent, uri: string) => {
         event.preventDefault();
 
         // Normalize URLs without scheme to https://
