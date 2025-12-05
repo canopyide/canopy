@@ -510,12 +510,27 @@ class TerminalInstanceService {
     const managed = this.instances.get(id);
     if (!managed) return;
 
-    // Only give WebGL to FOCUSED and BURST terminals
-    const wantsWebgl = tier === TerminalRefreshTier.BURST || tier === TerminalRefreshTier.FOCUSED;
+    // Give WebGL to FOCUSED, BURST, and VISIBLE terminals
+    // This prevents visual jitter (text kerning shift) when switching focus between visible terminals in a grid.
+    // BACKGROUND terminals (hidden tabs) surrender WebGL to save resources.
+    const wantsWebgl =
+      tier === TerminalRefreshTier.BURST ||
+      tier === TerminalRefreshTier.FOCUSED ||
+      tier === TerminalRefreshTier.VISIBLE;
 
-    if (wantsWebgl && !managed.webglAddon) {
-      this.acquireWebgl(id, managed);
-    } else if (!wantsWebgl && managed.webglAddon) {
+    if (wantsWebgl) {
+      if (!managed.webglAddon) {
+        this.acquireWebgl(id, managed);
+      } else if (tier === TerminalRefreshTier.FOCUSED || tier === TerminalRefreshTier.BURST) {
+        // Promote FOCUSED/BURST terminals to end of LRU to protect from eviction
+        // We don't promote VISIBLE-only updates to avoid thrashing if they aren't the active user focus
+        const idx = this.webglLru.indexOf(id);
+        if (idx !== -1 && idx < this.webglLru.length - 1) {
+          this.webglLru.splice(idx, 1);
+          this.webglLru.push(id);
+        }
+      }
+    } else if (managed.webglAddon) {
       this.releaseWebgl(id, managed);
     }
 
