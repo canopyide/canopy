@@ -141,7 +141,13 @@ export function registerCopyTreeHandlers(deps: HandlerDependencies): () => void 
       await fs.mkdir(tempDir, { recursive: true });
 
       const timestamp = new Date().toISOString().replace(/[:.]/g, "-");
-      const filename = `context-${worktree.branch || "head"}-${timestamp}.xml`;
+      const safeBranch =
+        (worktree.branch || "head")
+          .replace(/[^a-zA-Z0-9-_]/g, "-")
+          .replace(/-+/g, "-")
+          .replace(/^-+|-+$/g, "")
+          .slice(0, 100) || "head";
+      const filename = `context-${safeBranch}-${timestamp}.xml`;
       const filePath = path.join(tempDir, filename);
 
       await fs.writeFile(filePath, result.content, "utf-8");
