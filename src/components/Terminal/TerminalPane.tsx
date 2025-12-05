@@ -102,6 +102,8 @@ function TerminalPaneComponent({
     const observer = new IntersectionObserver(
       ([entry]) => {
         updateVisibility(id, entry.isIntersecting);
+        // Notify service for WebGL management
+        terminalInstanceService.setVisible(id, entry.isIntersecting);
       },
       {
         threshold: 0.1,
@@ -113,6 +115,7 @@ function TerminalPaneComponent({
     return () => {
       observer.disconnect();
       updateVisibility(id, false);
+      terminalInstanceService.setVisible(id, false);
     };
   }, [id, updateVisibility]);
 
