@@ -7,6 +7,7 @@ import { terminalClient, systemClient } from "@/clients";
 import { TerminalRefreshTier } from "@/types";
 import { InputTracker, VT100_FULL_CLEAR } from "./clearCommandDetection";
 import { detectHardware, HardwareProfile } from "@/utils/hardwareDetection";
+import { SharedRingBuffer, PacketParser } from "@shared/utils/SharedRingBuffer";
 
 type RefreshTierProvider = () => TerminalRefreshTier;
 
@@ -190,13 +191,103 @@ class TerminalInstanceService {
   private webglLru: string[] = [];
   private hardwareProfile: HardwareProfile;
 
+  // Zero-copy ring buffer polling state
+  private ringBuffer: SharedRingBuffer | null = null;
+  private packetParser = new PacketParser();
+  private pollingActive = false;
+  private rafId: number | null = null;
+  private sharedBufferEnabled = false;
+
   private static readonly TERMINAL_COUNT_THRESHOLD = 20;
   private static readonly BUDGET_SCALE_FACTOR = 0.5;
   private static readonly MIN_WEBGL_BUDGET = 2;
+  private static readonly POLL_TIME_BUDGET_MS = 4; // Max time per frame for polling
 
   constructor() {
     this.hardwareProfile = detectHardware();
     console.log("[TerminalInstanceService] Hardware profile:", this.hardwareProfile);
+
+    // Initialize SharedArrayBuffer polling
+    this.initializeSharedBuffer();
+  }
+
+  /**
+   * Initialize SharedArrayBuffer for zero-copy terminal I/O.
+   * Falls back to IPC if unavailable.
+   */
+  private async initializeSharedBuffer(): Promise<void> {
+    try {
+      const buffer = await terminalClient.getSharedBuffer();
+      if (buffer) {
+        this.ringBuffer = new SharedRingBuffer(buffer);
+        this.sharedBufferEnabled = true;
+        this.startPolling();
+        console.log("[TerminalInstanceService] SharedArrayBuffer polling enabled");
+      } else {
+        console.log("[TerminalInstanceService] SharedArrayBuffer unavailable, using IPC");
+      }
+    } catch (error) {
+      console.warn("[TerminalInstanceService] Failed to initialize SharedArrayBuffer:", error);
+    }
+  }
+
+  /**
+   * Start the polling loop for reading from the shared ring buffer.
+   * Uses requestAnimationFrame for smooth 60fps synchronization.
+   */
+  private startPolling(): void {
+    if (this.pollingActive || !this.ringBuffer) return;
+    this.pollingActive = true;
+    this.poll();
+  }
+
+  /**
+   * Stop the polling loop (called on service disposal).
+   */
+  stopPolling(): void {
+    this.pollingActive = false;
+    if (this.rafId !== null) {
+      cancelAnimationFrame(this.rafId);
+      this.rafId = null;
+    }
+  }
+
+  /**
+   * Poll the ring buffer and dispatch data to terminals.
+   * Runs within a time budget per frame to avoid blocking the main thread.
+   */
+  private poll = (): void => {
+    if (!this.pollingActive || !this.ringBuffer) return;
+
+    const start = performance.now();
+
+    // Read and dispatch data within time budget
+    while (performance.now() - start < TerminalInstanceService.POLL_TIME_BUDGET_MS) {
+      const data = this.ringBuffer.read();
+      if (!data) break; // Buffer empty
+
+      // Parse packets and dispatch to terminals
+      const packets = this.packetParser.parse(data);
+      for (const packet of packets) {
+        const managed = this.instances.get(packet.id);
+        if (managed) {
+          managed.throttledWriter.write(packet.data);
+        } else {
+          // Terminal not found in renderer (may have been closed)
+          // Data is discarded - this is expected for terminals that closed
+        }
+      }
+    }
+
+    // Schedule next poll
+    this.rafId = requestAnimationFrame(this.poll);
+  };
+
+  /**
+   * Check if SharedArrayBuffer-based I/O is enabled.
+   */
+  isSharedBufferEnabled(): boolean {
+    return this.sharedBufferEnabled;
   }
 
   private getWebGLBudget(): number {
@@ -273,6 +364,9 @@ class TerminalInstanceService {
     const listeners: Array<() => void> = [];
     const exitSubscribers = new Set<(exitCode: number) => void>();
 
+    // ALWAYS subscribe to IPC data events for fallback scenarios
+    // When SharedArrayBuffer is enabled, normal data comes through polling,
+    // but IPC handles fallback cases (buffer full, packet framing errors, etc.)
     const unsubData = terminalClient.onData(id, (data: string) => {
       throttledWriter.write(data);
     });

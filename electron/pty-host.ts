@@ -14,6 +14,7 @@ import os from "node:os";
 import { PtyManager } from "./services/PtyManager.js";
 import { PtyPool, getPtyPool } from "./services/PtyPool.js";
 import { events } from "./services/events.js";
+import { SharedRingBuffer, PacketFramer } from "../shared/utils/SharedRingBuffer.js";
 import type { AgentEvent } from "./services/AgentStateMachine.js";
 import type {
   PtyHostEvent,
@@ -47,6 +48,10 @@ process.on("unhandledRejection", (reason) => {
 const ptyManager = new PtyManager();
 let ptyPool: PtyPool | null = null;
 
+// Zero-copy ring buffer for terminal I/O (set via init-buffer message)
+let ringBuffer: SharedRingBuffer | null = null;
+const packetFramer = new PacketFramer();
+
 // Helper to send events to Main process
 function sendEvent(event: PtyHostEvent): void {
   port.postMessage(event);
@@ -54,6 +59,32 @@ function sendEvent(event: PtyHostEvent): void {
 
 // Wire up PtyManager events
 ptyManager.on("data", (id: string, data: string) => {
+  // Use ring buffer if available (zero-copy path)
+  if (ringBuffer) {
+    const packet = packetFramer.frame(id, data);
+    if (packet) {
+      const written = ringBuffer.write(packet);
+      if (written === 0) {
+        // Buffer full - fall back to IPC for this message
+        console.warn(`[PtyHost] Ring buffer full, falling back to IPC for terminal ${id}`);
+        sendEvent({ type: "data", id, data });
+        return;
+      } else if (written < packet.length) {
+        // Partial write - treat as failure, send via IPC to avoid data loss
+        console.warn(
+          `[PtyHost] Partial write to ring buffer: ${written}/${packet.length} bytes, ` +
+            `falling back to IPC`
+        );
+        sendEvent({ type: "data", id, data });
+        return;
+      }
+      // Successful complete write - no IPC needed, renderer will poll the buffer
+      return;
+    }
+    // Packet framing failed (ID too long or data >64KB) - fall back to IPC
+    console.warn(`[PtyHost] Packet framing failed for terminal ${id}, using IPC fallback`);
+  }
+  // Fallback: use traditional IPC
   sendEvent({ type: "data", id, data });
 });
 
@@ -215,6 +246,16 @@ port.on("message", (rawMsg: any) => {
 
   try {
     switch (msg.type) {
+      case "init-buffer":
+        // Initialize SharedArrayBuffer ring buffer for zero-copy I/O
+        if (msg.buffer instanceof SharedArrayBuffer) {
+          ringBuffer = new SharedRingBuffer(msg.buffer);
+          console.log("[PtyHost] SharedArrayBuffer ring buffer initialized");
+        } else {
+          console.warn("[PtyHost] init-buffer received but buffer is not SharedArrayBuffer");
+        }
+        break;
+
       case "spawn":
         ptyManager.spawn(msg.id, msg.options);
         break;
