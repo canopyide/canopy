@@ -245,15 +245,16 @@ function SidebarContent() {
     worktrees.length > 0 && worktrees[0].path ? worktrees[0].path.split("/.git/")[0] : "";
 
   return (
-    <div className="p-4">
-      <div className="flex items-center justify-between mb-4">
+    <div className="flex flex-col h-full">
+      {/* Header Section */}
+      <div className="flex items-center justify-between px-4 py-3 border-b border-white/5 bg-[#18181b] shrink-0">
         <div className="flex items-center gap-2">
-          <h2 className="text-canopy-text font-semibold text-sm">Worktrees</h2>
+          <h2 className="text-gray-200 font-semibold text-sm tracking-wide">Worktrees</h2>
           <button
             onClick={handleRefresh}
             className={cn(
-              "p-1 text-canopy-text/40 hover:text-canopy-text hover:bg-white/5 rounded transition-colors",
-              isRefreshing && "animate-spin text-canopy-text"
+              "p-1.5 text-gray-500 hover:text-gray-300 hover:bg-white/5 rounded-md transition-all",
+              isRefreshing && "animate-spin text-gray-300"
             )}
             title="Refresh worktrees"
             disabled={isRefreshing}
@@ -263,28 +264,32 @@ function SidebarContent() {
         </div>
         <button
           onClick={() => setIsNewWorktreeDialogOpen(true)}
-          className="text-xs px-2 py-1 bg-canopy-accent/10 hover:bg-canopy-accent/20 text-canopy-accent rounded transition-colors"
+          className="flex items-center gap-1.5 text-xs font-medium px-3 py-1.5 bg-[#10b981] hover:bg-[#059669] text-white rounded-md transition-colors shadow-sm"
           title="Create new worktree"
         >
-          + New
+          <span className="text-[10px]">+</span> New
         </button>
       </div>
-      <div className="space-y-2">
-        {worktrees.map((worktree) => (
-          <WorktreeCard
-            key={worktree.id}
-            worktree={worktree}
-            isActive={worktree.id === activeWorktreeId}
-            isFocused={worktree.id === focusedWorktreeId}
-            onSelect={() => selectWorktree(worktree.id)}
-            onCopyTree={() => handleCopyTree(worktree)}
-            onOpenEditor={() => handleOpenEditor(worktree)}
-            onToggleServer={() => handleToggleServer(worktree)}
-            onCreateRecipe={() => handleCreateRecipe(worktree.id)}
-            homeDir={homeDir}
-            devServerSettings={projectSettings?.devServer}
-          />
-        ))}
+
+      {/* List Section - Flat list with borders */}
+      <div className="flex-1 overflow-y-auto">
+        <div className="flex flex-col">
+          {worktrees.map((worktree) => (
+            <WorktreeCard
+              key={worktree.id}
+              worktree={worktree}
+              isActive={worktree.id === activeWorktreeId}
+              isFocused={worktree.id === focusedWorktreeId}
+              onSelect={() => selectWorktree(worktree.id)}
+              onCopyTree={() => handleCopyTree(worktree)}
+              onOpenEditor={() => handleOpenEditor(worktree)}
+              onToggleServer={() => handleToggleServer(worktree)}
+              onCreateRecipe={() => handleCreateRecipe(worktree.id)}
+              homeDir={homeDir}
+              devServerSettings={projectSettings?.devServer}
+            />
+          ))}
+        </div>
       </div>
 
       <RecipeEditor

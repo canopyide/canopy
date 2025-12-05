@@ -214,7 +214,7 @@ export function WorktreeList({
     return (
       <div className="relative h-full">
         <div
-          className="flex flex-col gap-2 p-2 h-full overflow-y-auto"
+          className="flex flex-col h-full overflow-y-auto"
           tabIndex={0}
           role="list"
           aria-label="Worktree list"
@@ -308,7 +308,7 @@ export function WorktreeList({
       <div
         ref={listRef}
         onScroll={handleScroll}
-        className="flex flex-col gap-1 p-1 h-full overflow-y-auto"
+        className="flex flex-col h-full overflow-y-auto"
         tabIndex={0}
         role="list"
         aria-label="Worktree list"
