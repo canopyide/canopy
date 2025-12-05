@@ -36,6 +36,7 @@ export const CHANNELS = {
   TERMINAL_RECONNECT: "terminal:reconnect",
   TERMINAL_REPLAY_HISTORY: "terminal:replay-history",
   TERMINAL_GET_SERIALIZED_STATE: "terminal:get-serialized-state",
+  TERMINAL_GET_SHARED_BUFFER: "terminal:get-shared-buffer",
 
   AGENT_STATE_CHANGED: "agent:state-changed",
   AGENT_GET_STATE: "agent:get-state",

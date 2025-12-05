@@ -107,4 +107,12 @@ export const terminalClient = {
   getSerializedState: (terminalId: string): Promise<string | null> => {
     return window.electron.terminal.getSerializedState(terminalId);
   },
+
+  /**
+   * Get SharedArrayBuffer for zero-copy terminal I/O.
+   * Returns null if SharedArrayBuffer is unavailable (fallback to IPC).
+   */
+  getSharedBuffer: (): Promise<SharedArrayBuffer | null> => {
+    return window.electron.terminal.getSharedBuffer();
+  },
 } as const;

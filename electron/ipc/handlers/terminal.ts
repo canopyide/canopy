@@ -483,6 +483,22 @@ export function registerTerminalHandlers(deps: HandlerDependencies): () => void 
   ipcMain.handle(CHANNELS.TERMINAL_GET_SERIALIZED_STATE, handleTerminalGetSerializedState);
   handlers.push(() => ipcMain.removeHandler(CHANNELS.TERMINAL_GET_SERIALIZED_STATE));
 
+  // Get SharedArrayBuffer for zero-copy terminal I/O
+  const handleTerminalGetSharedBuffer = async (): Promise<SharedArrayBuffer | null> => {
+    try {
+      // Check if ptyManager has the getSharedBuffer method (PtyClient only)
+      if ("getSharedBuffer" in ptyManager && typeof ptyManager.getSharedBuffer === "function") {
+        return ptyManager.getSharedBuffer();
+      }
+      return null;
+    } catch (error) {
+      console.warn("[IPC] Failed to get shared buffer:", error);
+      return null;
+    }
+  };
+  ipcMain.handle(CHANNELS.TERMINAL_GET_SHARED_BUFFER, handleTerminalGetSharedBuffer);
+  handlers.push(() => ipcMain.removeHandler(CHANNELS.TERMINAL_GET_SHARED_BUFFER));
+
   const handleArtifactSaveToFile = async (
     _event: Electron.IpcMainInvokeEvent,
     options: unknown

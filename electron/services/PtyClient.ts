@@ -13,6 +13,7 @@ import { EventEmitter } from "events";
 import path from "path";
 import { fileURLToPath } from "url";
 import { events } from "./events.js";
+import { SharedRingBuffer } from "../../shared/utils/SharedRingBuffer.js";
 import type {
   PtyHostRequest,
   PtyHostEvent,
@@ -53,6 +54,9 @@ const DEFAULT_CONFIG: Required<PtyClientConfig> = {
   showCrashDialog: true,
 };
 
+/** Default ring buffer size: 10MB for high-throughput terminal output */
+const DEFAULT_RING_BUFFER_SIZE = 10 * 1024 * 1024;
+
 export class PtyClient extends EventEmitter {
   private child: UtilityProcess | null = null;
   private config: Required<PtyClientConfig>;
@@ -75,6 +79,10 @@ export class PtyClient extends EventEmitter {
   private readyPromise: Promise<void>;
   private readyResolve: (() => void) | null = null;
 
+  /** SharedArrayBuffer for zero-copy terminal I/O (null if unavailable) */
+  private sharedBuffer: SharedArrayBuffer | null = null;
+  private sharedBufferEnabled = false;
+
   constructor(config: PtyClientConfig = {}) {
     super();
     this.config = { ...DEFAULT_CONFIG, ...config };
@@ -83,6 +91,17 @@ export class PtyClient extends EventEmitter {
     this.readyPromise = new Promise((resolve) => {
       this.readyResolve = resolve;
     });
+
+    // Try to create SharedArrayBuffer for zero-copy terminal I/O
+    try {
+      this.sharedBuffer = SharedRingBuffer.create(DEFAULT_RING_BUFFER_SIZE);
+      this.sharedBufferEnabled = true;
+      console.log("[PtyClient] SharedArrayBuffer enabled (10MB ring buffer)");
+    } catch (error) {
+      console.warn("[PtyClient] SharedArrayBuffer unavailable, using IPC fallback:", error);
+      this.sharedBuffer = null;
+      this.sharedBufferEnabled = false;
+    }
 
     this.startHost();
   }
@@ -127,6 +146,15 @@ export class PtyClient extends EventEmitter {
     this.child.on("message", (msg: PtyHostEvent) => {
       this.handleHostEvent(msg);
     });
+
+    // Send SharedArrayBuffer to host immediately after spawn
+    if (this.sharedBuffer) {
+      this.child.postMessage({
+        type: "init-buffer",
+        buffer: this.sharedBuffer,
+      });
+      console.log("[PtyClient] SharedArrayBuffer sent to Pty Host");
+    }
 
     this.child.on("exit", (code) => {
       console.error(`[PtyClient] Pty Host exited with code ${code}`);
@@ -728,6 +756,21 @@ export class PtyClient extends EventEmitter {
   /** Check if host is running and initialized */
   isReady(): boolean {
     return this.isInitialized && this.child !== null;
+  }
+
+  /**
+   * Get the SharedArrayBuffer for zero-copy terminal I/O.
+   * Returns null if SharedArrayBuffer is not available.
+   */
+  getSharedBuffer(): SharedArrayBuffer | null {
+    return this.sharedBuffer;
+  }
+
+  /**
+   * Check if SharedArrayBuffer-based I/O is enabled.
+   */
+  isSharedBufferEnabled(): boolean {
+    return this.sharedBufferEnabled;
   }
 }
 
