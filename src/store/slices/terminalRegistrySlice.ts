@@ -631,7 +631,10 @@ export const createTerminalRegistrySlice =
           }
           // If settings unavailable, keep using the saved command
         } catch (error) {
-          console.warn("[TerminalStore] Failed to load agent settings for restart, using saved command:", error);
+          console.warn(
+            "[TerminalStore] Failed to load agent settings for restart, using saved command:",
+            error
+          );
           // Keep using terminal.command as fallback
         }
       }

@@ -12,8 +12,6 @@ import {
   Trash2,
   ArrowUp,
   ArrowDownToLine,
-  Copy,
-  Settings2,
   Skull,
   RotateCcw,
 } from "lucide-react";
