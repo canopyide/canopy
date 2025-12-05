@@ -209,23 +209,27 @@ export function AppLayout({
 
   const effectiveSidebarWidth = isFocusMode ? 0 : sidebarWidth;
 
-  // CSS variable for components that need to avoid sidecar (toasts, floating UI)
-  const sidecarRightOffset = sidecarOpen ? `${sidecarWidth}px` : "0px";
+  // Sync sidecar offset to document.body so Portals (like Toaster) can access it
+  useEffect(() => {
+    const offset = sidecarOpen ? `${sidecarWidth}px` : "0px";
+    document.body.style.setProperty("--sidecar-right-offset", offset);
+
+    return () => {
+      document.body.style.removeProperty("--sidecar-right-offset");
+    };
+  }, [sidecarOpen, sidecarWidth]);
 
   return (
     <div
       className="h-screen flex flex-col bg-canopy-bg"
-      style={
-        {
-          height: "100vh",
-          width: "100vw",
-          backgroundColor: "#18181b", // Fallback for bg-canopy-bg (Zinc-950)
-          display: "flex",
-          flexDirection: "column",
-          color: "#e4e4e7", // Fallback for text-canopy-text (Zinc-200)
-          "--sidecar-right-offset": sidecarRightOffset,
-        } as React.CSSProperties
-      }
+      style={{
+        height: "100vh",
+        width: "100vw",
+        backgroundColor: "#18181b", // Fallback for bg-canopy-bg (Zinc-950)
+        display: "flex",
+        flexDirection: "column",
+        color: "#e4e4e7", // Fallback for text-canopy-text (Zinc-200)
+      }}
     >
       <SidecarVisibilityController />
       <Toolbar
