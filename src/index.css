@@ -1,30 +1,5 @@
 @import "tailwindcss";
 
-/* JetBrains Mono - Self-hosted for CSP compliance and offline support */
-@font-face {
-  font-family: "JetBrains Mono";
-  font-style: normal;
-  font-weight: 400;
-  font-display: swap;
-  src: url("./fonts/JetBrainsMono-Regular.woff2") format("woff2");
-}
-
-@font-face {
-  font-family: "JetBrains Mono";
-  font-style: normal;
-  font-weight: 500;
-  font-display: swap;
-  src: url("./fonts/JetBrainsMono-Medium.woff2") format("woff2");
-}
-
-@font-face {
-  font-family: "JetBrains Mono";
-  font-style: normal;
-  font-weight: 700;
-  font-display: swap;
-  src: url("./fonts/JetBrainsMono-Bold.woff2") format("woff2");
-}
-
 @theme inline {
   --color-background: var(--background);
   --color-foreground: var(--foreground);
@@ -244,13 +219,13 @@
     background: #71717a; /* Zinc-500: Lighter on hover */
   }
 
-  /* Consistent monospace font stack */
+  /* Consistent monospace font stack - VS Code defaults */
   code,
   kbd,
   samp,
   pre,
   .font-mono {
-    font-family: "JetBrains Mono", "Fira Code", "Menlo", "Consolas", monospace;
+    font-family: Menlo, Monaco, Consolas, "Andale Mono", "Ubuntu Mono", "Courier New", monospace;
   }
 
   /* Subtle noise texture for grid background */
@@ -420,7 +395,7 @@ body,
  * ============================================================================ */
 
 .diff-viewer {
-  font-family: "JetBrains Mono", "Fira Code", "Menlo", "Consolas", monospace;
+  font-family: Menlo, Monaco, Consolas, "Andale Mono", "Ubuntu Mono", "Courier New", monospace;
   font-size: 12px;
   line-height: 1.5;
 }

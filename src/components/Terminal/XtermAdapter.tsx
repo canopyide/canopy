@@ -85,10 +85,9 @@ function XtermAdapterComponent({
       fontSize: 13,
       lineHeight: 1.2,
       letterSpacing: 0,
-      fontFamily:
-        '"JetBrains Mono", "Fira Code", "Cascadia Code", Menlo, Consolas, "Courier New", monospace',
-      fontLigatures: true,
-      fontWeight: "500" as const,
+      fontFamily: 'Menlo, Monaco, Consolas, "Andale Mono", "Ubuntu Mono", "Courier New", monospace',
+      fontLigatures: false,
+      fontWeight: "normal" as const,
       fontWeightBold: "700" as const,
       theme: CANOPY_TERMINAL_THEME,
       allowProposedApi: true,

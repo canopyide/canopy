@@ -11,7 +11,7 @@ export function useTerminalConfig() {
   const theme = CANOPY_TERMINAL_THEME;
   const fontSize = 13;
   const fontFamily =
-    '"JetBrains Mono", "Fira Code", "Cascadia Code", Menlo, Consolas, "Courier New", monospace';
+    'Menlo, Monaco, Consolas, "Andale Mono", "Ubuntu Mono", "Courier New", monospace';
 
   useEffect(() => {
     terminalInstanceService.applyGlobalOptions({

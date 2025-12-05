@@ -16,7 +16,7 @@ export function SidecarDock() {
     createTab,
     closeTab,
     markTabCreated,
-    isTabCreated,
+    createdTabs,
   } = useSidecarStore();
   const placeholderRef = useRef<HTMLDivElement>(null);
   const [isResizing, setIsResizing] = useState(false);
@@ -56,7 +56,9 @@ export function SidecarDock() {
 
   // Show sidecar tab after DOM is ready (handles launchpad-to-tab and collapse/expand)
   useEffect(() => {
-    if (activeTabId && placeholderRef.current && isTabCreated(activeTabId)) {
+    if (!activeTabId || !placeholderRef.current) return;
+
+    if (createdTabs.has(activeTabId)) {
       const rect = placeholderRef.current.getBoundingClientRect();
       window.electron.sidecar.show({
         tabId: activeTabId,
@@ -67,8 +69,15 @@ export function SidecarDock() {
           height: Math.round(rect.height),
         },
       });
+    } else {
+      const tab = tabs.find((t) => t.id === activeTabId);
+      if (tab) {
+        window.electron.sidecar.create({ tabId: activeTabId, url: tab.url }).then(() => {
+          markTabCreated(activeTabId);
+        });
+      }
     }
-  }, [activeTabId, isTabCreated]);
+  }, [activeTabId, createdTabs, tabs, markTabCreated]);
 
   useEffect(() => {
     const cleanup = window.electron.sidecar.onNavEvent((data) => {
