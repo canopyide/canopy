@@ -315,9 +315,8 @@ function XtermAdapterComponent({
     <div
       ref={containerRef}
       className={cn(
-        // pl-2 pt-2 pb-2 provides 8px padding that FitAddon can measure correctly
-        // (previously was on .xterm-screen in CSS which caused measurement mismatches)
-        "w-full h-full bg-[#18181b] text-white overflow-hidden rounded-b-lg pl-2 pt-2 pb-2",
+        // pl-2 pt-2 pb-4: left/top padding for FitAddon measurement; pb-4 prevents text from touching bottom edge
+        "w-full h-full bg-[#18181b] text-white overflow-hidden rounded-b-lg pl-2 pt-2 pb-4",
         className
       )}
       style={{
