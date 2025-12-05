@@ -3,6 +3,7 @@ import { createPortal } from "react-dom";
 import { X, CheckCircle, AlertCircle, Info, AlertTriangle } from "lucide-react";
 import { cn } from "@/lib/utils";
 import { useNotificationStore, type Notification } from "@/store/notificationStore";
+import { useSidecarStore } from "@/store";
 
 const ICONS = {
   success: CheckCircle,
@@ -63,6 +64,8 @@ function Toast({ notification }: { notification: Notification }) {
 export function Toaster() {
   const notifications = useNotificationStore((state) => state.notifications);
   const [mounted, setMounted] = useState(false);
+  const sidecarOpen = useSidecarStore((state) => state.isOpen);
+  const sidecarWidth = useSidecarStore((state) => state.width);
 
   useEffect(() => {
     setMounted(true);
@@ -70,8 +73,14 @@ export function Toaster() {
 
   if (!mounted) return null;
 
+  // When sidecar is open, offset toast to the left of the sidecar
+  const rightOffset = sidecarOpen ? sidecarWidth + 16 : 16;
+
   return createPortal(
-    <div className="fixed bottom-4 right-4 z-[100] flex flex-col gap-2 w-full max-w-sm pointer-events-none">
+    <div
+      className="fixed bottom-4 z-[100] flex flex-col gap-2 w-full max-w-sm pointer-events-none"
+      style={{ right: rightOffset }}
+    >
       {notifications.map((notification) => (
         <Toast key={notification.id} notification={notification} />
       ))}
