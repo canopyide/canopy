@@ -57,8 +57,7 @@ export const createTerminalBulkActionsSlice = (
 
     bulkCloseAll: () => {
       const terminals = getTerminals();
-      const activeTerminals = terminals.filter((t) => t.location !== "trash");
-      activeTerminals.forEach((t) => removeTerminal(t.id));
+      terminals.forEach((t) => removeTerminal(t.id));
     },
 
     bulkTrashAll: () => {
