@@ -40,6 +40,8 @@ export class TerminalPersistence {
         console.error("Failed to persist terminals:", error);
         throw error;
       });
+      // Prevent unhandled rejection warning since this runs in background
+      this.pendingPersist.catch(() => {});
     }, this.options.debounceMs);
   }
 

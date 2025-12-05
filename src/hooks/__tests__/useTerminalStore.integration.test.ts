@@ -15,6 +15,9 @@ vi.mock("@/clients", () => ({
     onExit: vi.fn(),
     onAgentStateChanged: vi.fn(),
   },
+  appClient: {
+    setState: vi.fn().mockResolvedValue(undefined),
+  },
 }));
 
 vi.mock("@/services/TerminalInstanceService", () => ({
