@@ -610,8 +610,7 @@ export const createTerminalRegistrySlice =
           if (t.id !== id) return t;
 
           // Default autoRestart based on terminal type (matches addTerminal logic)
-          const isAgentTerminal =
-            t.type === "claude" || t.type === "gemini" || t.type === "codex";
+          const isAgentTerminal = t.type === "claude" || t.type === "gemini" || t.type === "codex";
           const defaultSettings: TerminalSettings = {
             autoRestart: isAgentTerminal,
           };

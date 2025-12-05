@@ -75,7 +75,7 @@ export const useTerminalStore = create<TerminalGridState>()((set, get, api) => {
   const bulkActionsSlice = createTerminalBulkActionsSlice(
     getTerminals,
     (id) => get().removeTerminal(id),
-    (options) => get().addTerminal(options)
+    (id) => get().restartTerminal(id)
   )(set, get, api);
 
   return {

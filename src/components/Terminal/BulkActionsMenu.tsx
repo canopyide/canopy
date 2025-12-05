@@ -8,9 +8,10 @@ import {
   DropdownMenuTrigger,
 } from "@/components/ui/dropdown-menu";
 import { Button } from "@/components/ui/button";
-import { ChevronDown, CheckCircle, XCircle, Clock, Trash2, RefreshCw } from "lucide-react";
+import { ChevronDown, CheckCircle, Trash2, RefreshCw, Play } from "lucide-react";
 import { useTerminalStore } from "@/store/terminalStore";
 import { ConfirmDialog } from "./ConfirmDialog";
+import { isAgentTerminal } from "@/store/utils/terminalTypeGuards";
 
 export interface BulkActionsMenuProps {
   worktreeId?: string;
@@ -24,6 +25,7 @@ export function BulkActionsMenu({ worktreeId, trigger, className }: BulkActionsM
   const bulkCloseByWorktree = useTerminalStore((state) => state.bulkCloseByWorktree);
   const bulkCloseAll = useTerminalStore((state) => state.bulkCloseAll);
   const restartFailedAgents = useTerminalStore((state) => state.restartFailedAgents);
+  const restartIdleAgents = useTerminalStore((state) => state.restartIdleAgents);
 
   const [confirmDialog, setConfirmDialog] = useState<{
     isOpen: boolean;
@@ -42,39 +44,32 @@ export function BulkActionsMenu({ worktreeId, trigger, className }: BulkActionsM
     : terminals;
 
   const completedCount = scopedTerminals.filter((t) => t.agentState === "completed").length;
-  const failedCount = scopedTerminals.filter((t) => t.agentState === "failed").length;
-  const idleCount = scopedTerminals.filter((t) => t.agentState === "idle").length;
   const totalCount = scopedTerminals.length;
 
-  const restartableCount = scopedTerminals.filter(
-    (t) => t.agentState === "failed" && (t.type === "claude" || t.type === "gemini")
+  const failedAgentCount = scopedTerminals.filter(
+    (t) => t.agentState === "failed" && isAgentTerminal(t.type)
+  ).length;
+  const idleAgentCount = scopedTerminals.filter(
+    (t) => t.agentState === "idle" && isAgentTerminal(t.type)
   ).length;
 
   const closeConfirmDialog = useCallback(() => {
     setConfirmDialog((prev) => ({ ...prev, isOpen: false }));
   }, []);
 
+  const handleRestartIdle = useCallback(() => {
+    restartIdleAgents();
+  }, [restartIdleAgents]);
+
+  const handleRestartFailed = useCallback(() => {
+    restartFailedAgents();
+  }, [restartFailedAgents]);
+
   const handleCloseCompleted = useCallback(() => {
     if (worktreeId) {
       bulkCloseByWorktree(worktreeId, "completed");
     } else {
       bulkCloseByState("completed");
-    }
-  }, [worktreeId, bulkCloseByState, bulkCloseByWorktree]);
-
-  const handleCloseFailed = useCallback(() => {
-    if (worktreeId) {
-      bulkCloseByWorktree(worktreeId, "failed");
-    } else {
-      bulkCloseByState("failed");
-    }
-  }, [worktreeId, bulkCloseByState, bulkCloseByWorktree]);
-
-  const handleCloseIdle = useCallback(() => {
-    if (worktreeId) {
-      bulkCloseByWorktree(worktreeId, "idle");
-    } else {
-      bulkCloseByState("idle");
     }
   }, [worktreeId, bulkCloseByState, bulkCloseByWorktree]);
 
@@ -102,23 +97,6 @@ export function BulkActionsMenu({ worktreeId, trigger, className }: BulkActionsM
     closeConfirmDialog,
   ]);
 
-  const handleRestartFailed = useCallback(() => {
-    // Note: This restarts ALL failed agents globally, not just for this worktree
-    const globalRestartMessage = worktreeId
-      ? `This will restart ${restartableCount} failed agent${restartableCount !== 1 ? "s" : ""} across ALL worktrees (not just this one). Sessions will be closed and new ones spawned with the same configuration.`
-      : `This will restart ${restartableCount} failed agent${restartableCount !== 1 ? "s" : ""}. Sessions will be closed and new ones spawned with the same configuration.`;
-
-    setConfirmDialog({
-      isOpen: true,
-      title: "Restart Failed Agents",
-      description: globalRestartMessage,
-      onConfirm: async () => {
-        await restartFailedAgents();
-        closeConfirmDialog();
-      },
-    });
-  }, [worktreeId, restartableCount, restartFailedAgents, closeConfirmDialog]);
-
   const defaultTrigger = (
     <Button
       variant="ghost"
@@ -134,7 +112,17 @@ export function BulkActionsMenu({ worktreeId, trigger, className }: BulkActionsM
     <>
       <DropdownMenu>
         <DropdownMenuTrigger asChild>{trigger || defaultTrigger}</DropdownMenuTrigger>
-        <DropdownMenuContent align="start" className="w-56">
+        <DropdownMenuContent align="start" className="w-60">
+          <DropdownMenuItem
+            onClick={handleRestartIdle}
+            disabled={idleAgentCount === 0}
+            className="flex items-center gap-2"
+          >
+            <Play className="h-4 w-4 text-[var(--color-state-waiting)]" />
+            <span>Restart Idle Agents</span>
+            <span className="ml-auto text-xs text-canopy-text/50">({idleAgentCount})</span>
+          </DropdownMenuItem>
+
           <DropdownMenuItem
             onClick={handleCloseCompleted}
             disabled={completedCount === 0}
@@ -144,35 +132,19 @@ export function BulkActionsMenu({ worktreeId, trigger, className }: BulkActionsM
             <span>Close Completed</span>
             <span className="ml-auto text-xs text-canopy-text/50">({completedCount})</span>
           </DropdownMenuItem>
-          <DropdownMenuItem
-            onClick={handleCloseFailed}
-            disabled={failedCount === 0}
-            className="flex items-center gap-2"
-          >
-            <XCircle className="h-4 w-4 text-[var(--color-status-error)]" />
-            <span>Close Failed</span>
-            <span className="ml-auto text-xs text-canopy-text/50">({failedCount})</span>
-          </DropdownMenuItem>
-          <DropdownMenuItem
-            onClick={handleCloseIdle}
-            disabled={idleCount === 0}
-            className="flex items-center gap-2"
-          >
-            <Clock className="h-4 w-4 text-gray-400" />
-            <span>Close Idle</span>
-            <span className="ml-auto text-xs text-canopy-text/50">({idleCount})</span>
-          </DropdownMenuItem>
-          <DropdownMenuSeparator />
+
           <DropdownMenuItem
             onClick={handleRestartFailed}
-            disabled={restartableCount === 0}
+            disabled={failedAgentCount === 0}
             className="flex items-center gap-2"
           >
             <RefreshCw className="h-4 w-4 text-[var(--color-status-warning)]" />
             <span>Restart Failed Agents</span>
-            <span className="ml-auto text-xs text-canopy-text/50">({restartableCount})</span>
+            <span className="ml-auto text-xs text-canopy-text/50">({failedAgentCount})</span>
           </DropdownMenuItem>
+
           <DropdownMenuSeparator />
+
           <DropdownMenuItem
             onClick={handleCloseAll}
             disabled={totalCount === 0}
