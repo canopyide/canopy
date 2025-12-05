@@ -1,4 +1,5 @@
-import { useState, useCallback, useEffect } from "react";
+import { useState, useCallback, useEffect, useMemo } from "react";
+import { useShallow } from "zustand/react/shallow";
 import { useDndMonitor } from "@dnd-kit/core";
 import { Loader2, Terminal, Command } from "lucide-react";
 import {
@@ -13,7 +14,7 @@ import {
 import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover";
 import { cn } from "@/lib/utils";
 import { getBrandColorHex } from "@/lib/colorUtils";
-import { useTerminalStore, type TerminalInstance } from "@/store";
+import { useTerminalStore, useSidecarStore, type TerminalInstance } from "@/store";
 import { TerminalPane } from "@/components/Terminal/TerminalPane";
 import { useContextInjection } from "@/hooks/useContextInjection";
 import type { AgentState, TerminalType } from "@/types";
@@ -78,7 +79,21 @@ export function DockedTerminalItem({ terminal }: DockedTerminalItemProps) {
   const trashTerminal = useTerminalStore((s) => s.trashTerminal);
   const removeTerminal = useTerminalStore((s) => s.removeTerminal);
 
+  const { isOpen: sidecarOpen, width: sidecarWidth } = useSidecarStore(
+    useShallow((s) => ({ isOpen: s.isOpen, width: s.width }))
+  );
+
   const { inject, cancel } = useContextInjection();
+
+  const collisionPadding = useMemo(() => {
+    const basePadding = 16;
+    return {
+      top: basePadding,
+      left: basePadding,
+      bottom: basePadding,
+      right: sidecarOpen ? sidecarWidth + basePadding : basePadding,
+    };
+  }, [sidecarOpen, sidecarWidth]);
 
   // Toggle buffering based on popover open state
   useEffect(() => {
@@ -193,6 +208,7 @@ export function DockedTerminalItem({ terminal }: DockedTerminalItemProps) {
         side="top"
         align="start"
         sideOffset={8}
+        collisionPadding={collisionPadding}
       >
         <TerminalPane
           id={terminal.id}
