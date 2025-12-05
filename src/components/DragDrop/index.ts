@@ -3,3 +3,4 @@ export { SortableTerminal } from "./SortableTerminal";
 export { SortableDockItem } from "./SortableDockItem";
 export { TerminalDragPreview } from "./TerminalDragPreview";
 export { GridPlaceholder } from "./GridPlaceholder";
+export { DockPlaceholder } from "./DockPlaceholder";

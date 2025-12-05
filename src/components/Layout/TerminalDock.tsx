@@ -8,7 +8,7 @@ import { getBrandColorHex } from "@/lib/colorUtils";
 import { useTerminalStore, useProjectStore } from "@/store";
 import { DockedTerminalItem } from "./DockedTerminalItem";
 import { TrashContainer } from "./TrashContainer";
-import { SortableDockItem } from "@/components/DragDrop";
+import { SortableDockItem, DockPlaceholder, useDndPlaceholder } from "@/components/DragDrop";
 import { ClaudeIcon, GeminiIcon, CodexIcon } from "@/components/icons";
 import {
   ContextMenu,
@@ -43,6 +43,9 @@ export function TerminalDock() {
   const cwd = activeWorktree?.path ?? currentProject?.path ?? "";
 
   const scrollContainerRef = useRef<HTMLDivElement>(null);
+
+  // Check if a drag is in progress
+  const { activeTerminal: isDragging } = useDndPlaceholder();
 
   // Make the dock terminals area droppable
   const { setNodeRef: setDockDropRef, isOver } = useDroppable({
@@ -127,6 +130,8 @@ export function TerminalDock() {
                       <DockedTerminalItem terminal={terminal} />
                     </SortableDockItem>
                   ))}
+                  {/* Show drop zone placeholder when dock is empty and dragging */}
+                  {activeDockTerminals.length === 0 && isDragging && <DockPlaceholder />}
                 </div>
               </SortableContext>
             </div>
