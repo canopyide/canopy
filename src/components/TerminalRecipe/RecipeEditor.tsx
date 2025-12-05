@@ -2,6 +2,7 @@ import { useState, useEffect } from "react";
 import type { TerminalRecipe, RecipeTerminal, RecipeTerminalType } from "@/types";
 import { Button } from "@/components/ui/button";
 import { useRecipeStore } from "@/store/recipeStore";
+import { useOverlayState } from "@/hooks";
 
 interface RecipeEditorProps {
   recipe?: TerminalRecipe;
@@ -22,6 +23,8 @@ const TYPE_LABELS: Record<RecipeTerminalType, string> = {
 };
 
 export function RecipeEditor({ recipe, worktreeId, isOpen, onClose, onSave }: RecipeEditorProps) {
+  useOverlayState(isOpen);
+
   const createRecipe = useRecipeStore((state) => state.createRecipe);
   const updateRecipe = useRecipeStore((state) => state.updateRecipe);
 

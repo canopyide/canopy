@@ -4,7 +4,7 @@ import { Sidebar } from "./Sidebar";
 import { TerminalDock } from "./TerminalDock";
 import { DiagnosticsDock } from "../Diagnostics";
 import { ErrorBoundary } from "../ErrorBoundary";
-import { SidecarDock } from "../Sidecar";
+import { SidecarDock, SidecarVisibilityController } from "../Sidecar";
 import {
   useFocusStore,
   useDiagnosticsStore,
@@ -56,6 +56,7 @@ export function AppLayout({
   const openDiagnosticsDock = useDiagnosticsStore((state) => state.openDock);
 
   const sidecarOpen = useSidecarStore((state) => state.isOpen);
+  const sidecarWidth = useSidecarStore((state) => state.width);
   const sidecarLayoutMode = useSidecarStore((state) => state.layoutMode);
   const updateSidecarLayoutMode = useSidecarStore((state) => state.updateLayoutMode);
 
@@ -210,18 +211,25 @@ export function AppLayout({
 
   const effectiveSidebarWidth = isFocusMode ? 0 : sidebarWidth;
 
+  // CSS variable for components that need to avoid sidecar (toasts, floating UI)
+  const sidecarRightOffset = sidecarOpen ? `${sidecarWidth}px` : "0px";
+
   return (
     <div
       className="h-screen flex flex-col bg-canopy-bg"
-      style={{
-        height: "100vh",
-        width: "100vw",
-        backgroundColor: "#18181b", // Fallback for bg-canopy-bg (Zinc-950)
-        display: "flex",
-        flexDirection: "column",
-        color: "#e4e4e7", // Fallback for text-canopy-text (Zinc-200)
-      }}
+      style={
+        {
+          height: "100vh",
+          width: "100vw",
+          backgroundColor: "#18181b", // Fallback for bg-canopy-bg (Zinc-950)
+          display: "flex",
+          flexDirection: "column",
+          color: "#e4e4e7", // Fallback for text-canopy-text (Zinc-200)
+          "--sidecar-right-offset": sidecarRightOffset,
+        } as React.CSSProperties
+      }
     >
+      <SidecarVisibilityController />
       <Toolbar
         onLaunchAgent={handleLaunchAgent}
         onSettings={handleSettings}

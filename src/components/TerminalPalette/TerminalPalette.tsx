@@ -1,6 +1,7 @@
 import { useEffect, useRef, useCallback } from "react";
 import { cn } from "@/lib/utils";
 import { TerminalListItem } from "./TerminalListItem";
+import { useOverlayState } from "@/hooks";
 import type { SearchableTerminal } from "@/hooks/useTerminalPalette";
 
 export interface TerminalPaletteProps {
@@ -26,6 +27,8 @@ export function TerminalPalette({
   onSelect,
   onClose,
 }: TerminalPaletteProps) {
+  useOverlayState(isOpen);
+
   const inputRef = useRef<HTMLInputElement>(null);
   const listRef = useRef<HTMLDivElement>(null);
 

@@ -41,3 +41,5 @@ export {
 } from "./useTerminalSelectors";
 
 export { useLinkDiscovery } from "./useLinkDiscovery";
+
+export { useOverlayState } from "./useOverlayState";

@@ -3,7 +3,7 @@ import { X, Server, Info } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover";
 import { EmojiPicker } from "@/components/ui/emoji-picker";
-import { useProjectSettings } from "@/hooks/useProjectSettings";
+import { useProjectSettings, useOverlayState } from "@/hooks";
 import { useProjectStore } from "@/store/projectStore";
 import type { ProjectDevServerSettings } from "@/types";
 import { cn } from "@/lib/utils";
@@ -17,6 +17,8 @@ interface ProjectSettingsDialogProps {
 }
 
 export function ProjectSettingsDialog({ projectId, isOpen, onClose }: ProjectSettingsDialogProps) {
+  useOverlayState(isOpen);
+
   const { settings, saveSettings, isLoading, error } = useProjectSettings(projectId);
   const { projects, updateProject } = useProjectStore();
   const currentProject = projects.find((p) => p.id === projectId);

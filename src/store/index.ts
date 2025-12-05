@@ -33,3 +33,5 @@ export { useScrollbackStore } from "./scrollbackStore";
 export { usePerformanceModeStore } from "./performanceModeStore";
 
 export { useSidecarStore } from "./sidecarStore";
+
+export { useUIStore } from "./uiStore";

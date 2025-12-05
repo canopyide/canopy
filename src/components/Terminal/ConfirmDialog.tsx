@@ -1,6 +1,7 @@
 import { useEffect, useCallback, useRef, useId } from "react";
 import { Button } from "@/components/ui/button";
 import { cn } from "@/lib/utils";
+import { useOverlayState } from "@/hooks";
 
 export interface ConfirmDialogProps {
   isOpen: boolean;
@@ -23,6 +24,8 @@ export function ConfirmDialog({
   onConfirm,
   onCancel,
 }: ConfirmDialogProps) {
+  useOverlayState(isOpen);
+
   const dialogTitleId = useId();
   const dialogDescriptionId = useId();
   const cancelButtonRef = useRef<HTMLButtonElement>(null);

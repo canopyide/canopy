@@ -1,6 +1,7 @@
 import { useState, useEffect } from "react";
 import { Button } from "@/components/ui/button";
 import { X, FolderOpen, GitBranch, Check, AlertCircle, Loader2 } from "lucide-react";
+import { useOverlayState } from "@/hooks";
 import type { BranchInfo, CreateWorktreeOptions } from "@/types/electron";
 import { worktreeClient } from "@/clients";
 
@@ -17,6 +18,8 @@ export function NewWorktreeDialog({
   rootPath,
   onWorktreeCreated,
 }: NewWorktreeDialogProps) {
+  useOverlayState(isOpen);
+
   const [branches, setBranches] = useState<BranchInfo[]>([]);
   const [loading, setLoading] = useState(false);
   const [creating, setCreating] = useState(false);
