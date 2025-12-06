@@ -238,14 +238,10 @@ Displayed for main/master branches with no changes:
    - Muted styling, 80% opacity
    - Answers "What is main currently at?"
 
-2. **Compact Status Indicators** (only when meaningful)
-   - **Server badge:** Only shown when dev server is running
-     - Displays `:5173` (port) with green accent
-     - Hidden when stopped/starting
-   - **Terminal badge:** Only shown when `terminalCounts.total > 0`
-     - Shows count (e.g., `2`)
-     - Pulsing dot if any terminals are in "working" state
-     - Hidden when zero terminals
+2. **Server Indicator** (only when running)
+   - Displays `:5173` (port) with green accent badge
+   - Hidden when stopped/starting
+   - Terminal count is not shown here (already in pinned meta footer)
 
 3. **AI Note** (fallback if no commit message)
    - Shown if `effectiveNote` exists and no commit message
