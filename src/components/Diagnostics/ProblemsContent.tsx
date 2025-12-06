@@ -1,6 +1,7 @@
-import { useMemo, useCallback, useState } from "react";
+import { useMemo, useCallback, useState, useRef, useEffect } from "react";
 import { cn } from "@/lib/utils";
 import { useErrorStore, type AppError, type RetryAction } from "@/store";
+import { Copy, Check } from "lucide-react";
 
 const ERROR_TYPE_LABELS: Record<string, string> = {
   git: "Git",
@@ -42,6 +43,53 @@ function ErrorRow({ error, isExpanded, onToggleExpand, onDismiss, onRetry }: Err
   const typeLabel = ERROR_TYPE_LABELS[error.type] || "Error";
   const typeColor = ERROR_TYPE_COLORS[error.type] || "text-[var(--color-status-error)]";
   const canRetry = error.isTransient && error.retryAction && onRetry;
+  const [copied, setCopied] = useState(false);
+  const copyTimeoutRef = useRef<NodeJS.Timeout | null>(null);
+
+  useEffect(() => {
+    return () => {
+      if (copyTimeoutRef.current) {
+        clearTimeout(copyTimeoutRef.current);
+        copyTimeoutRef.current = null;
+      }
+    };
+  }, [error.id]);
+
+  const handleCopyDetails = async () => {
+    const detailsText = [
+      `Error: ${error.message}`,
+      `Type: ${typeLabel}`,
+      `Time: ${formatTimestamp(error.timestamp)}`,
+      `Source: ${error.source || "unknown"}`,
+      "",
+      "Details:",
+      error.details || "No additional details",
+    ];
+
+    if (error.context && Object.keys(error.context).length > 0) {
+      detailsText.push("");
+      detailsText.push("Context:");
+      Object.entries(error.context)
+        .filter(([, v]) => v !== undefined)
+        .forEach(([k, v]) => detailsText.push(`  ${k}: ${v}`));
+    }
+
+    try {
+      await navigator.clipboard.writeText(detailsText.join("\n"));
+      setCopied(true);
+
+      if (copyTimeoutRef.current) {
+        clearTimeout(copyTimeoutRef.current);
+      }
+
+      copyTimeoutRef.current = setTimeout(() => {
+        setCopied(false);
+        copyTimeoutRef.current = null;
+      }, 2000);
+    } catch (err) {
+      console.error("Failed to copy to clipboard:", err);
+    }
+  };
 
   return (
     <>
@@ -92,9 +140,24 @@ function ErrorRow({ error, isExpanded, onToggleExpand, onDismiss, onRetry }: Err
       {isExpanded && error.details && (
         <tr className="bg-canopy-sidebar/50" id={`error-details-${error.id}`}>
           <td colSpan={5} className="px-3 py-2">
-            <pre className="text-xs text-canopy-text/60 whitespace-pre-wrap break-all font-mono max-h-40 overflow-y-auto">
-              {error.details}
-            </pre>
+            <div className="flex items-start justify-between gap-2">
+              <pre className="text-xs text-canopy-text/60 whitespace-pre-wrap break-all font-mono max-h-40 overflow-y-auto flex-1">
+                {error.details}
+              </pre>
+              <button
+                type="button"
+                onClick={handleCopyDetails}
+                className="shrink-0 p-1.5 text-canopy-text/60 hover:text-canopy-text hover:bg-canopy-border/50 rounded transition-colors"
+                title={copied ? "Copied!" : "Copy error details"}
+                aria-label={copied ? "Copied to clipboard" : "Copy error details to clipboard"}
+              >
+                {copied ? (
+                  <Check className="w-4 h-4 text-green-400" />
+                ) : (
+                  <Copy className="w-4 h-4" />
+                )}
+              </button>
+            </div>
             {error.context && Object.keys(error.context).length > 0 && (
               <div className="mt-2 text-xs text-canopy-text/60">
                 <span className="font-medium">Context: </span>
