@@ -365,7 +365,7 @@ export function WorktreeCard({
               </div>
 
               {/* Action Buttons */}
-              <div className="flex items-center shrink-0">
+              <div className="flex items-center shrink-0 opacity-0 group-hover:opacity-100 group-focus-within:opacity-100 transition-opacity">
                 <button
                   onClick={(e) => {
                     e.stopPropagation();
@@ -520,8 +520,8 @@ export function WorktreeCard({
                   <div className="text-xs text-gray-300 truncate mb-0.5">{effectiveSummary}</div>
                 )}
 
-                {/* 2. File Changes List (The primary "activity") */}
-                {worktree.worktreeChanges && (
+                {/* 2. File Changes List - HIDE WHEN EXPANDED to avoid duplication with Details */}
+                {worktree.worktreeChanges && !isExpanded && (
                   <div className="mt-0.5">
                     <FileChangeList
                       changes={worktree.worktreeChanges.changes}
@@ -586,7 +586,9 @@ export function WorktreeCard({
                     /* Expanded: Commit "teleported" to details, show nothing here to avoid duplication */
                     null
                   ) : (
-                    <span className="text-gray-500 italic">No recent activity</span>
+                    <span className="text-[10px] uppercase tracking-wider font-semibold text-gray-600/80 select-none">
+                      No Activity
+                    </span>
                   )}
                 </div>
 
