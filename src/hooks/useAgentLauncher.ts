@@ -166,8 +166,7 @@ export function useAgentLauncher(): UseAgentLauncherReturn {
       }
 
       // Determine cwd: explicit override, target worktree path, project root, or empty
-      const cwd =
-        launchOptions?.cwd ?? targetWorktree?.path ?? currentProject?.path ?? "";
+      const cwd = launchOptions?.cwd ?? targetWorktree?.path ?? currentProject?.path ?? "";
 
       let command = config.command;
       if (command && agentSettings) {

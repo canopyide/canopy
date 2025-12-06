@@ -685,36 +685,24 @@ export function WorktreeCard({
     return cardContent;
   }
 
-  const isClaudeEnabled =
-    agentAvailability?.claude && agentSettings?.claude.enabled;
-  const isGeminiEnabled =
-    agentAvailability?.gemini && agentSettings?.gemini.enabled;
-  const isCodexEnabled =
-    agentAvailability?.codex && agentSettings?.codex.enabled;
+  const isClaudeEnabled = agentAvailability?.claude && agentSettings?.claude.enabled;
+  const isGeminiEnabled = agentAvailability?.gemini && agentSettings?.gemini.enabled;
+  const isCodexEnabled = agentAvailability?.codex && agentSettings?.codex.enabled;
 
   return (
     <ContextMenu>
       <ContextMenuTrigger asChild>{cardContent}</ContextMenuTrigger>
       <ContextMenuContent onClick={(e) => e.stopPropagation()}>
         <ContextMenuLabel>Launch Agent</ContextMenuLabel>
-        <ContextMenuItem
-          onClick={() => handleLaunchAgent("claude")}
-          disabled={!isClaudeEnabled}
-        >
+        <ContextMenuItem onClick={() => handleLaunchAgent("claude")} disabled={!isClaudeEnabled}>
           <ClaudeIcon className="w-3.5 h-3.5 mr-2" />
           Claude
         </ContextMenuItem>
-        <ContextMenuItem
-          onClick={() => handleLaunchAgent("gemini")}
-          disabled={!isGeminiEnabled}
-        >
+        <ContextMenuItem onClick={() => handleLaunchAgent("gemini")} disabled={!isGeminiEnabled}>
           <GeminiIcon className="w-3.5 h-3.5 mr-2" />
           Gemini
         </ContextMenuItem>
-        <ContextMenuItem
-          onClick={() => handleLaunchAgent("codex")}
-          disabled={!isCodexEnabled}
-        >
+        <ContextMenuItem onClick={() => handleLaunchAgent("codex")} disabled={!isCodexEnabled}>
           <CodexIcon className="w-3.5 h-3.5 mr-2" />
           Codex
         </ContextMenuItem>
