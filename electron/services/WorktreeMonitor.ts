@@ -563,13 +563,20 @@ export class WorktreeMonitor {
   private emitUpdate(): void {
     const state = this.getState();
     const payload = { ...state, timestamp: Date.now() };
-    logDebug("emitUpdate called", {
+
+    const debugContext: Record<string, unknown> = {
       id: this.id,
       summary: state.summary ? `${state.summary.substring(0, 50)}...` : undefined,
       modifiedCount: state.modifiedCount,
       mood: state.mood,
-      stack: new Error().stack?.split("\n").slice(2, 5).join(" <-\n"),
-    });
+    };
+
+    // Only capture expensive stack trace when explicitly debugging worktree updates
+    if (process.env.CANOPY_DEBUG_WORKTREE === "1") {
+      debugContext.stack = new Error().stack?.split("\n").slice(2, 5).join(" <-\n");
+    }
+
+    logDebug("emitUpdate called", debugContext);
     events.emit("sys:worktree:update", payload);
   }
 }

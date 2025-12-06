@@ -41,6 +41,7 @@ import type {
   ApplyPatchOptions,
 } from "../shared/types/ipc.js";
 import type { TerminalActivityPayload } from "../shared/types/terminal.js";
+import type { KeyAction } from "../shared/types/keymap.js";
 
 export type { ElectronAPI };
 
@@ -695,10 +696,10 @@ const api: ElectronAPI = {
   keybinding: {
     getOverrides: () => _typedInvoke(CHANNELS.KEYBINDING_GET_OVERRIDES),
 
-    setOverride: (actionId: string, combo: string[]) =>
+    setOverride: (actionId: KeyAction, combo: string[]) =>
       _typedInvoke(CHANNELS.KEYBINDING_SET_OVERRIDE, { actionId, combo }),
 
-    removeOverride: (actionId: string) =>
+    removeOverride: (actionId: KeyAction) =>
       _typedInvoke(CHANNELS.KEYBINDING_REMOVE_OVERRIDE, actionId),
 
     resetAll: () => _typedInvoke(CHANNELS.KEYBINDING_RESET_ALL),
