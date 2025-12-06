@@ -147,7 +147,7 @@ export function WorktreeDetails({
                   href={segment.content}
                   target="_blank"
                   rel="noopener noreferrer"
-                  className="text-[var(--color-status-info)] underline hover:text-blue-300"
+                  className="text-[var(--color-status-info)] underline hover:text-blue-300 rounded focus-visible:outline focus-visible:outline-2 focus-visible:outline-canopy-accent focus-visible:outline-offset-2"
                   onClick={(e) => handleLinkClick(e, segment.content)}
                 >
                   {segment.content}
@@ -193,6 +193,7 @@ export function WorktreeDetails({
                 disabled={serverLoading || serverState.status === "starting"}
                 className={cn(
                   "px-2 py-1 rounded text-xs font-medium transition-colors",
+                  "focus-visible:outline focus-visible:outline-2 focus-visible:outline-canopy-accent",
                   serverState.status === "running"
                     ? "bg-red-500/10 text-red-400 hover:bg-red-500/20"
                     : "bg-green-500/10 text-green-400 hover:bg-green-500/20",
@@ -275,7 +276,8 @@ export function WorktreeDetails({
               onPathClick();
             }}
             className={cn(
-              "text-[0.7rem] text-canopy-text/60 hover:text-canopy-text/80 hover:underline text-left font-mono truncate flex-1 min-w-0 flex items-center gap-1.5",
+              "text-[0.7rem] text-canopy-text/60 hover:text-canopy-text/80 hover:underline text-left font-mono truncate flex-1 min-w-0 flex items-center gap-1.5 rounded",
+              "focus-visible:outline focus-visible:outline-2 focus-visible:outline-canopy-accent",
               isFocused && "underline"
             )}
             title={`Open folder: ${worktree.path}`}
@@ -287,7 +289,7 @@ export function WorktreeDetails({
           <button
             type="button"
             onClick={handleCopyPath}
-            className="shrink-0 p-1 text-canopy-text/60 hover:text-canopy-text/80 hover:bg-white/5 rounded transition-colors"
+            className="shrink-0 p-1 text-canopy-text/60 hover:text-canopy-text/80 hover:bg-white/5 rounded transition-colors focus-visible:outline focus-visible:outline-2 focus-visible:outline-canopy-accent"
             title={pathCopied ? "Copied!" : "Copy full path"}
             aria-label={pathCopied ? "Path copied to clipboard" : "Copy path to clipboard"}
           >

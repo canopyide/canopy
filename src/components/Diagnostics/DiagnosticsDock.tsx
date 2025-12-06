@@ -35,8 +35,9 @@ const TabButton = memo(function TabButton({
       id={`diagnostics-${tab}-tab`}
       onClick={onClick}
       className={cn(
-        "px-3 py-1.5 text-sm font-medium transition-colors relative",
+        "px-3 py-1.5 text-sm font-medium transition-colors relative rounded",
         "hover:text-canopy-text",
+        "focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-canopy-accent focus-visible:ring-offset-2 focus-visible:ring-offset-canopy-sidebar",
         isActive ? "text-canopy-text" : "text-canopy-text/60"
       )}
       role="tab"
@@ -179,7 +180,7 @@ export function DiagnosticsDock({ onRetry, className }: DiagnosticsDockProps) {
       <div
         className={cn(
           "group h-1.5 cursor-ns-resize transition-colors flex items-center justify-center",
-          "hover:bg-canopy-accent/30 focus:outline-none focus:bg-canopy-accent/50",
+          "hover:bg-canopy-accent/30 focus-visible:outline-none focus-visible:bg-canopy-accent/50",
           isResizing && "bg-canopy-accent/50"
         )}
         onMouseDown={handleResizeStart}
@@ -223,7 +224,7 @@ export function DiagnosticsDock({ onRetry, className }: DiagnosticsDockProps) {
 
           <button
             onClick={closeDock}
-            className="p-1.5 hover:bg-canopy-border rounded transition-colors text-canopy-text/60 hover:text-canopy-text"
+            className="p-1.5 hover:bg-canopy-border rounded transition-colors text-canopy-text/60 hover:text-canopy-text focus-visible:outline focus-visible:outline-2 focus-visible:outline-canopy-accent"
             title="Close diagnostics dock"
             aria-label="Close diagnostics dock"
           >
