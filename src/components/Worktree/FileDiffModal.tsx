@@ -120,10 +120,10 @@ export function FileDiffModal({
       />
 
       <div
-        className="relative z-10 w-full max-w-6xl max-h-[90vh] mx-4 flex flex-col bg-neutral-900 border border-neutral-700 rounded-lg shadow-xl overflow-hidden"
+        className="relative z-10 w-full max-w-6xl max-h-[90vh] mx-4 flex flex-col bg-canopy-bg border border-canopy-border rounded-lg shadow-xl overflow-hidden"
         onClick={(e) => e.stopPropagation()}
       >
-        <div className="flex items-center justify-between px-4 py-3 border-b border-neutral-700 bg-neutral-800/50">
+        <div className="flex items-center justify-between px-4 py-3 border-b border-canopy-border bg-canopy-sidebar/50">
           <div className="flex items-center gap-3 min-w-0">
             <span
               className={cn(
@@ -135,22 +135,22 @@ export function FileDiffModal({
               {statusInfo.label}
             </span>
 
-            <h2 id={dialogTitleId} className="text-sm font-medium text-neutral-200 truncate">
-              <span className="text-neutral-500">{filePath.replace(fileName, "")}</span>
-              <span className="text-neutral-100">{fileName}</span>
+            <h2 id={dialogTitleId} className="text-sm font-medium text-canopy-text truncate">
+              <span className="text-muted-foreground">{filePath.replace(fileName, "")}</span>
+              <span className="text-canopy-text">{fileName}</span>
             </h2>
           </div>
 
           <div className="flex items-center gap-2">
-            <div className="flex bg-neutral-800 rounded p-0.5">
+            <div className="flex bg-canopy-sidebar rounded p-0.5">
               <button
                 type="button"
                 onClick={() => setViewType("split")}
                 className={cn(
                   "px-2.5 py-1 text-xs font-medium rounded transition-colors",
                   viewType === "split"
-                    ? "bg-neutral-700 text-neutral-100"
-                    : "text-neutral-400 hover:text-neutral-200"
+                    ? "bg-canopy-border text-canopy-text"
+                    : "text-muted-foreground hover:text-canopy-text"
                 )}
               >
                 Split
@@ -161,8 +161,8 @@ export function FileDiffModal({
                 className={cn(
                   "px-2.5 py-1 text-xs font-medium rounded transition-colors",
                   viewType === "unified"
-                    ? "bg-neutral-700 text-neutral-100"
-                    : "text-neutral-400 hover:text-neutral-200"
+                    ? "bg-canopy-border text-canopy-text"
+                    : "text-muted-foreground hover:text-canopy-text"
                 )}
               >
                 Unified
@@ -174,7 +174,8 @@ export function FileDiffModal({
               variant="ghost"
               size="sm"
               onClick={onClose}
-              className="text-neutral-400 hover:text-neutral-100 hover:bg-neutral-700"
+              className="text-muted-foreground hover:text-canopy-text hover:bg-canopy-border"
+              aria-label="Close"
             >
               <svg className="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor">
                 <path
@@ -191,7 +192,7 @@ export function FileDiffModal({
         <div className="flex-1 overflow-auto min-h-0">
           {loadingState === "loading" && (
             <div className="flex items-center justify-center h-64">
-              <div className="flex items-center gap-3 text-neutral-400">
+              <div className="flex items-center gap-3 text-muted-foreground">
                 <svg className="w-5 h-5 animate-spin" viewBox="0 0 24 24">
                   <circle
                     className="opacity-25"
@@ -228,7 +229,7 @@ export function FileDiffModal({
                 onClick={() => fetchDiff()}
                 variant="ghost"
                 size="sm"
-                className="text-neutral-300 hover:bg-neutral-700"
+                className="text-canopy-text hover:bg-canopy-border"
               >
                 Retry
               </Button>
@@ -240,7 +241,7 @@ export function FileDiffModal({
           )}
         </div>
 
-        <div className="flex items-center justify-end px-4 py-3 border-t border-neutral-700 bg-neutral-800/50">
+        <div className="flex items-center justify-end px-4 py-3 border-t border-canopy-border bg-canopy-sidebar/50">
           <Button variant="ghost" onClick={onClose}>
             Close
           </Button>
@@ -283,8 +284,8 @@ function getStatusInfo(status: GitStatus): {
     case "copied":
       return {
         label: "C",
-        bgColor: "bg-cyan-500/20",
-        textColor: "text-cyan-400",
+        bgColor: "bg-[var(--color-status-info)]/20",
+        textColor: "text-[var(--color-status-info)]",
       };
     case "untracked":
       return {

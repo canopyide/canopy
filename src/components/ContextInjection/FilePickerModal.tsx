@@ -82,11 +82,11 @@ export function FilePickerModal({ isOpen, worktreeId, onConfirm, onCancel }: Fil
     >
       <div className="absolute inset-0 bg-black/50 backdrop-blur-sm" onClick={onCancel} />
 
-      <div className="relative z-10 w-full max-w-2xl max-h-[80vh] flex flex-col bg-neutral-900 border border-neutral-700 rounded-lg shadow-xl">
-        <div className="flex items-center justify-between px-6 py-4 border-b border-neutral-700">
+      <div className="relative z-10 w-full max-w-2xl max-h-[80vh] flex flex-col bg-canopy-bg border border-canopy-border rounded-lg shadow-xl">
+        <div className="flex items-center justify-between px-6 py-4 border-b border-canopy-border">
           <div>
-            <h2 className="text-lg font-semibold text-neutral-100">Select Files to Inject</h2>
-            <p className="text-sm text-neutral-400 mt-1">
+            <h2 className="text-lg font-semibold text-canopy-text">Select Files to Inject</h2>
+            <p className="text-sm text-muted-foreground mt-1">
               {selectedCount > 0
                 ? `${selectedCount} ${selectedCount === 1 ? "file" : "files"} selected`
                 : "No files selected (all files will be injected)"}
@@ -95,7 +95,7 @@ export function FilePickerModal({ isOpen, worktreeId, onConfirm, onCancel }: Fil
           <button
             type="button"
             onClick={onCancel}
-            className="text-neutral-400 hover:text-neutral-200 transition-colors"
+            className="text-muted-foreground hover:text-canopy-text transition-colors"
             aria-label="Close"
           >
             <svg className="w-5 h-5" fill="none" viewBox="0 0 24 24" stroke="currentColor">
@@ -109,24 +109,24 @@ export function FilePickerModal({ isOpen, worktreeId, onConfirm, onCancel }: Fil
           </button>
         </div>
 
-        <div className="px-6 py-3 border-b border-neutral-800">
+        <div className="px-6 py-3 border-b border-canopy-border">
           <input
             ref={searchInputRef}
             type="text"
             placeholder="Search files..."
             value={searchQuery}
             onChange={(e) => setSearchQuery(e.target.value)}
-            className="w-full px-3 py-2 bg-neutral-800 border border-neutral-700 rounded text-neutral-100 placeholder-neutral-500 focus:outline-none focus:ring-2 focus:ring-blue-500"
+            className="w-full px-3 py-2 bg-canopy-sidebar border border-canopy-border rounded text-canopy-text placeholder-muted-foreground focus:outline-none focus:ring-2 focus:ring-canopy-accent"
           />
         </div>
 
         <div className="flex-1 overflow-y-auto px-6 py-4">
           {loading && (
-            <div className="flex items-center justify-center py-8 text-neutral-400">Loading...</div>
+            <div className="flex items-center justify-center py-8 text-muted-foreground">Loading...</div>
           )}
           {error && <div className="text-[var(--color-status-error)] py-4">Error: {error}</div>}
           {!loading && !error && nodes.length === 0 && (
-            <div className="text-neutral-500 py-8 text-center">No files found</div>
+            <div className="text-muted-foreground py-8 text-center">No files found</div>
           )}
           {!loading && !error && nodes.length > 0 && (
             <FileTreeView
@@ -139,7 +139,7 @@ export function FilePickerModal({ isOpen, worktreeId, onConfirm, onCancel }: Fil
           )}
         </div>
 
-        <div className="flex items-center justify-between px-6 py-4 border-t border-neutral-700">
+        <div className="flex items-center justify-between px-6 py-4 border-t border-canopy-border">
           <Button onClick={clearSelection} variant="ghost" size="sm" disabled={selectedCount === 0}>
             Clear Selection
           </Button>
@@ -216,8 +216,8 @@ function FileTreeNode({
     <div>
       <div
         className={cn(
-          "flex items-center gap-2 py-1 px-2 rounded hover:bg-neutral-800 cursor-pointer",
-          isSelected && "bg-neutral-800/50"
+          "flex items-center gap-2 py-1 px-2 rounded hover:bg-canopy-sidebar cursor-pointer",
+          isSelected && "bg-canopy-sidebar/50"
         )}
         style={{ paddingLeft: `${paddingLeft}px` }}
         onClick={() => onToggleSelection(node)}
@@ -229,7 +229,7 @@ function FileTreeNode({
               e.stopPropagation();
               onToggleExpand(node.path);
             }}
-            className="flex-shrink-0 w-4 h-4 text-neutral-400 hover:text-neutral-200"
+            className="flex-shrink-0 w-4 h-4 text-muted-foreground hover:text-canopy-text"
           >
             <svg
               className={cn("w-4 h-4 transition-transform", isExpanded && "rotate-90")}
@@ -255,7 +255,7 @@ function FileTreeNode({
           className="flex-shrink-0"
         />
 
-        <span className="flex-shrink-0 w-4 h-4 text-neutral-400">
+        <span className="flex-shrink-0 w-4 h-4 text-muted-foreground">
           {node.isDirectory ? (
             <svg fill="none" viewBox="0 0 24 24" stroke="currentColor">
               <path
@@ -277,10 +277,10 @@ function FileTreeNode({
           )}
         </span>
 
-        <span className="flex-1 text-sm text-neutral-200 truncate">{node.name}</span>
+        <span className="flex-1 text-sm text-canopy-text truncate">{node.name}</span>
 
         {!node.isDirectory && node.size !== undefined && (
-          <span className="flex-shrink-0 text-xs text-neutral-500">{formatBytes(node.size)}</span>
+          <span className="flex-shrink-0 text-xs text-muted-foreground">{formatBytes(node.size)}</span>
         )}
       </div>
 
