@@ -90,7 +90,7 @@ export function Sidebar({ width, onResize, children, className }: SidebarProps) 
             {currentProject && (
               <button
                 onClick={() => setIsSettingsOpen(true)}
-                className="p-2 mr-1 text-gray-400 hover:text-canopy-text hover:bg-canopy-border/50 rounded transition-colors"
+                className="p-2 mr-1 text-canopy-text/60 hover:text-canopy-text hover:bg-canopy-border/50 rounded transition-colors"
                 title="Project Settings"
               >
                 <Settings className="h-4 w-4" />

@@ -203,7 +203,7 @@ function SidebarContent() {
         <div className="text-[var(--color-status-error)] text-sm mb-2">{error}</div>
         <button
           onClick={refresh}
-          className="text-xs px-2 py-1 border border-gray-600 rounded hover:bg-gray-800 text-gray-300"
+          className="text-xs px-2 py-1 border border-canopy-border rounded hover:bg-canopy-border text-canopy-text"
         >
           Retry
         </button>
@@ -217,16 +217,16 @@ function SidebarContent() {
         <h2 className="text-canopy-text font-semibold text-sm mb-4">Worktrees</h2>
 
         <div className="flex flex-col items-center justify-center py-12 px-4 text-center">
-          <FolderOpen className="w-12 h-12 text-gray-500 mb-3" aria-hidden="true" />
+          <FolderOpen className="w-12 h-12 text-canopy-text/60 mb-3" aria-hidden="true" />
 
           <h3 className="text-canopy-text font-medium mb-2">No Worktrees Found</h3>
 
-          <p className="text-sm text-gray-400 mb-4 max-w-xs">
+          <p className="text-sm text-canopy-text/60 mb-4 max-w-xs">
             Open a Git repository with worktrees to get started. Use{" "}
-            <kbd className="px-1.5 py-0.5 bg-gray-700 rounded text-xs">File → Open Directory</kbd>
+            <kbd className="px-1.5 py-0.5 bg-canopy-border rounded text-xs">File → Open Directory</kbd>
           </p>
 
-          <div className="text-xs text-gray-500 text-left w-full max-w-xs">
+          <div className="text-xs text-canopy-text/60 text-left w-full max-w-xs">
             <div className="font-medium mb-1">Quick Start:</div>
             <ol className="space-y-1 list-decimal list-inside">
               <li>Open a repository</li>
@@ -246,10 +246,10 @@ function SidebarContent() {
     <div className="flex flex-col h-full">
       {/* Header Section */}
       <div className="flex items-center justify-between px-4 py-3 border-b border-white/5 bg-[#18181b] shrink-0">
-        <h2 className="text-gray-200 font-semibold text-sm tracking-wide">Worktrees</h2>
+        <h2 className="text-canopy-text font-semibold text-sm tracking-wide">Worktrees</h2>
         <button
           onClick={() => setIsNewWorktreeDialogOpen(true)}
-          className="flex items-center gap-1.5 text-xs font-medium px-2.5 py-1 text-gray-400 hover:text-gray-200 hover:bg-white/5 rounded transition-colors"
+          className="flex items-center gap-1.5 text-xs font-medium px-2.5 py-1 text-canopy-text/60 hover:text-canopy-text hover:bg-white/5 rounded transition-colors"
           title="Create new worktree"
         >
           <span className="text-[10px]">+</span> New

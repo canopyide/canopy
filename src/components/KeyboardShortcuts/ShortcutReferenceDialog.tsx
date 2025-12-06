@@ -108,17 +108,17 @@ export function ShortcutReferenceDialog({ isOpen, onClose }: ShortcutReferenceDi
         role="dialog"
         aria-modal="true"
         aria-labelledby="shortcuts-dialog-title"
-        className="bg-gray-900 rounded-lg shadow-2xl w-full max-w-4xl max-h-[80vh] flex flex-col border border-gray-700"
+        className="bg-canopy-sidebar rounded-lg shadow-2xl w-full max-w-4xl max-h-[80vh] flex flex-col border border-canopy-border"
         onClick={(e) => e.stopPropagation()}
       >
-        <div className="p-6 border-b border-gray-700">
+        <div className="p-6 border-b border-canopy-border">
           <div className="flex items-center justify-between mb-4">
-            <h2 id="shortcuts-dialog-title" className="text-2xl font-semibold text-gray-100">
+            <h2 id="shortcuts-dialog-title" className="text-2xl font-semibold text-canopy-text">
               Keyboard Shortcuts
             </h2>
             <button
               onClick={onClose}
-              className="text-gray-400 hover:text-gray-200 text-2xl leading-none"
+              className="text-canopy-text/60 hover:text-canopy-text text-2xl leading-none"
               aria-label="Close"
             >
               ×
@@ -130,36 +130,36 @@ export function ShortcutReferenceDialog({ isOpen, onClose }: ShortcutReferenceDi
             placeholder="Search shortcuts..."
             value={searchQuery}
             onChange={(e) => setSearchQuery(e.target.value)}
-            className="w-full px-4 py-2 bg-gray-800 border border-gray-600 rounded-md text-gray-100 placeholder-gray-500 focus:outline-none focus:ring-2 focus:ring-blue-500"
+            className="w-full px-4 py-2 bg-canopy-bg border border-canopy-border rounded-md text-canopy-text placeholder-canopy-text/40 focus:outline-none focus:ring-2 focus:ring-canopy-accent"
           />
         </div>
 
         <div className="flex-1 overflow-y-auto p-6">
           {sortedCategories.length === 0 ? (
-            <div className="text-center text-gray-500 py-8">
+            <div className="text-center text-canopy-text/60 py-8">
               No shortcuts found matching "{searchQuery}"
             </div>
           ) : (
             <div className="space-y-8">
               {sortedCategories.map((category) => (
                 <div key={category}>
-                  <h3 className="text-lg font-semibold text-gray-300 mb-3 pb-2 border-b border-gray-700">
+                  <h3 className="text-lg font-semibold text-canopy-text mb-3 pb-2 border-b border-canopy-border">
                     {category}
                   </h3>
                   <div className="space-y-2">
                     {filteredGroups[category].map((binding) => (
                       <div
                         key={binding.actionId}
-                        className="flex items-center justify-between py-2 px-3 rounded hover:bg-gray-800/50"
+                        className="flex items-center justify-between py-2 px-3 rounded hover:bg-canopy-border/50"
                       >
                         <div className="flex-1">
-                          <div className="text-gray-200 font-medium">{binding.description}</div>
+                          <div className="text-canopy-text font-medium">{binding.description}</div>
                           {binding.scope !== "global" && (
-                            <div className="text-xs text-gray-500 mt-1">Scope: {binding.scope}</div>
+                            <div className="text-xs text-canopy-text/60 mt-1">Scope: {binding.scope}</div>
                           )}
                         </div>
                         <div className="ml-4">
-                          <kbd className="px-3 py-1.5 bg-gray-800 border border-gray-600 rounded text-sm font-mono text-gray-300 shadow-sm">
+                          <kbd className="px-3 py-1.5 bg-canopy-bg border border-canopy-border rounded text-sm font-mono text-canopy-text shadow-sm">
                             {keybindingService.getDisplayCombo(binding.actionId)}
                           </kbd>
                         </div>
@@ -172,9 +172,9 @@ export function ShortcutReferenceDialog({ isOpen, onClose }: ShortcutReferenceDi
           )}
         </div>
 
-        <div className="p-4 border-t border-gray-700 bg-gray-800/50">
-          <div className="text-sm text-gray-400 text-center">
-            Press <kbd className="px-2 py-1 bg-gray-700 rounded text-xs">Esc</kbd> to close
+        <div className="p-4 border-t border-canopy-border bg-canopy-bg/50">
+          <div className="text-sm text-canopy-text/60 text-center">
+            Press <kbd className="px-2 py-1 bg-canopy-border rounded text-xs">Esc</kbd> to close
           </div>
         </div>
       </div>

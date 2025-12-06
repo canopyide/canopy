@@ -137,7 +137,7 @@ export function NewWorktreeDialog({
           </h2>
           <button
             onClick={onClose}
-            className="text-gray-400 hover:text-canopy-text transition-colors"
+            className="text-canopy-text/60 hover:text-canopy-text transition-colors"
             disabled={creating}
           >
             <X className="h-5 w-5" />
@@ -148,7 +148,7 @@ export function NewWorktreeDialog({
           {loading ? (
             <div className="flex items-center justify-center py-12">
               <Loader2 className="w-6 h-6 animate-spin text-canopy-accent" />
-              <span className="ml-2 text-sm text-gray-400">Loading branches...</span>
+              <span className="ml-2 text-sm text-canopy-text/60">Loading branches...</span>
             </div>
           ) : (
             <>
@@ -171,7 +171,7 @@ export function NewWorktreeDialog({
                     </option>
                   ))}
                 </select>
-                <p className="text-xs text-gray-400">The branch to create the new worktree from</p>
+                <p className="text-xs text-canopy-text/60">The branch to create the new worktree from</p>
               </div>
 
               <div className="space-y-2">
@@ -187,7 +187,7 @@ export function NewWorktreeDialog({
                   className="w-full px-3 py-2 bg-canopy-bg border border-canopy-border rounded-md text-canopy-text focus:outline-none focus:ring-2 focus:ring-canopy-accent"
                   disabled={creating}
                 />
-                <p className="text-xs text-gray-400">Name for the new branch</p>
+                <p className="text-xs text-canopy-text/60">Name for the new branch</p>
               </div>
 
               <div className="space-y-2">
@@ -229,7 +229,7 @@ export function NewWorktreeDialog({
                     <FolderOpen className="w-4 h-4" />
                   </Button>
                 </div>
-                <p className="text-xs text-gray-400">
+                <p className="text-xs text-canopy-text/60">
                   Directory where the worktree will be created
                 </p>
               </div>

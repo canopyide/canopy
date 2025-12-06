@@ -289,20 +289,20 @@ function getStatusInfo(status: GitStatus): {
     case "untracked":
       return {
         label: "?",
-        bgColor: "bg-gray-500/20",
-        textColor: "text-gray-400",
+        bgColor: "bg-canopy-border/20",
+        textColor: "text-canopy-text/60",
       };
     case "ignored":
       return {
         label: "I",
-        bgColor: "bg-gray-600/20",
-        textColor: "text-gray-500",
+        bgColor: "bg-canopy-border/30",
+        textColor: "text-canopy-text/60",
       };
     default:
       return {
         label: "?",
-        bgColor: "bg-gray-500/20",
-        textColor: "text-gray-400",
+        bgColor: "bg-canopy-border/20",
+        textColor: "text-canopy-text/60",
       };
   }
 }

@@ -259,7 +259,7 @@ export function WorktreeList({
         {onRetry && (
           <button
             onClick={onRetry}
-            className="text-xs px-3 py-1 border border-gray-600 rounded hover:bg-gray-800 text-gray-300"
+            className="text-xs px-3 py-1 border border-canopy-border rounded hover:bg-canopy-border text-canopy-text"
           >
             Retry
           </button>
@@ -271,12 +271,12 @@ export function WorktreeList({
   if (sortedWorktrees.length === 0) {
     return (
       <div
-        className="flex flex-col items-center justify-center h-full p-4 text-gray-500"
+        className="flex flex-col items-center justify-center h-full p-4 text-canopy-text/60"
         role="status"
         aria-live="polite"
       >
         <svg
-          className="w-8 h-8 mb-2 text-gray-600"
+          className="w-8 h-8 mb-2 text-canopy-text/40"
           fill="none"
           viewBox="0 0 24 24"
           stroke="currentColor"
@@ -290,7 +290,7 @@ export function WorktreeList({
           />
         </svg>
         <span className="text-sm">No worktrees found</span>
-        <span className="text-xs text-gray-600 mt-1">
+        <span className="text-xs text-canopy-text/40 mt-1">
           Open a git repository with worktrees to get started
         </span>
       </div>
@@ -301,7 +301,7 @@ export function WorktreeList({
     <div className="relative h-full" onFocus={handleFocus} onBlur={handleBlur}>
       {showScrollUp && (
         <div className="absolute top-0 left-0 right-0 h-8 bg-gradient-to-b from-canopy-sidebar to-transparent pointer-events-none z-10 flex items-center justify-center">
-          <span className="text-xs text-gray-500">↑ more worktrees</span>
+          <span className="text-xs text-canopy-text/60">↑ more worktrees</span>
         </div>
       )}
 
@@ -353,7 +353,7 @@ export function WorktreeList({
 
       {showScrollDown && (
         <div className="absolute bottom-0 left-0 right-0 h-8 bg-gradient-to-t from-canopy-sidebar to-transparent pointer-events-none z-10 flex items-center justify-center">
-          <span className="text-xs text-gray-500">↓ more worktrees</span>
+          <span className="text-xs text-canopy-text/60">↓ more worktrees</span>
         </div>
       )}
     </div>

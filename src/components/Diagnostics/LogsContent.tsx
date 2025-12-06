@@ -129,7 +129,7 @@ export function LogsContent({ className, onSourcesChange }: LogsContentProps) {
         className="flex-1 overflow-y-auto overflow-x-hidden font-mono relative"
       >
         {filteredLogs.length === 0 ? (
-          <div className="flex items-center justify-center h-full text-gray-500 text-sm">
+          <div className="flex items-center justify-center h-full text-canopy-text/60 text-sm">
             {logs.length === 0 ? "No logs yet" : "No logs match filters"}
           </div>
         ) : (

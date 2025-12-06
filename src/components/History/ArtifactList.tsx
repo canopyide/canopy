@@ -18,7 +18,7 @@ const ARTIFACT_TYPE_COLORS: Record<string, string> = {
   patch: "border-green-500 text-[var(--color-status-success)]",
   file: "border-purple-500 text-purple-400",
   summary: "border-yellow-500 text-[var(--color-status-warning)]",
-  other: "border-gray-500 text-gray-400",
+  other: "border-canopy-border text-canopy-text/60",
 };
 
 const ARTIFACT_TYPE_ICONS: Record<string, string> = {
@@ -53,8 +53,8 @@ function ArtifactCard({ artifact, isExpanded, onToggle }: ArtifactCardProps) {
       <button
         onClick={onToggle}
         className={cn(
-          "w-full flex items-center justify-between px-3 py-2 bg-gray-800/50 text-left",
-          "hover:bg-gray-800 transition-colors",
+          "w-full flex items-center justify-between px-3 py-2 bg-canopy-bg/50 text-left",
+          "hover:bg-canopy-border transition-colors",
           "focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-canopy-accent focus-visible:ring-inset"
         )}
         aria-expanded={isExpanded}
@@ -62,14 +62,14 @@ function ArtifactCard({ artifact, isExpanded, onToggle }: ArtifactCardProps) {
       >
         <div className="flex items-center gap-2">
           <span className={cn("font-mono text-xs", colorClass.split(" ")[1])}>{icon}</span>
-          <span className="text-sm text-gray-200 font-medium">{title}</span>
+          <span className="text-sm text-canopy-text font-medium">{title}</span>
           {artifact.language && artifact.language !== artifact.type && (
-            <span className="text-xs text-gray-500">{artifact.language}</span>
+            <span className="text-xs text-canopy-text/60">{artifact.language}</span>
           )}
         </div>
         <div className="flex items-center gap-2">
-          <span className="text-xs text-gray-500">{artifact.content.split("\n").length} lines</span>
-          <span className="text-gray-500">{isExpanded ? "−" : "+"}</span>
+          <span className="text-xs text-canopy-text/60">{artifact.content.split("\n").length} lines</span>
+          <span className="text-canopy-text/60">{isExpanded ? "−" : "+"}</span>
         </div>
       </button>
 
@@ -80,9 +80,9 @@ function ArtifactCard({ artifact, isExpanded, onToggle }: ArtifactCardProps) {
             !isExpanded && "max-h-20 overflow-hidden"
           )}
         >
-          <code className="text-gray-300">
+          <code className="text-canopy-text">
             {isExpanded ? artifact.content : previewLines.join("\n")}
-            {!isExpanded && hasMore && <span className="text-gray-500">{"\n"}...</span>}
+            {!isExpanded && hasMore && <span className="text-canopy-text/60">{"\n"}...</span>}
           </code>
         </pre>
 
@@ -93,9 +93,9 @@ function ArtifactCard({ artifact, isExpanded, onToggle }: ArtifactCardProps) {
           }}
           className={cn(
             "absolute top-2 right-2 px-2 py-1 text-xs rounded",
-            "bg-gray-800 hover:bg-gray-700 transition-colors",
+            "bg-canopy-border hover:bg-canopy-border/80 transition-colors",
             "focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-canopy-accent",
-            copied ? "text-[var(--color-status-success)]" : "text-gray-400"
+            copied ? "text-[var(--color-status-success)]" : "text-canopy-text/60"
           )}
           aria-label={copied ? "Copied to clipboard" : "Copy to clipboard"}
         >
@@ -123,7 +123,7 @@ export function ArtifactList({ artifacts, className }: ArtifactListProps) {
 
   if (artifacts.length === 0) {
     return (
-      <div className={cn("text-center py-8 text-gray-500 text-sm", className)}>
+      <div className={cn("text-center py-8 text-canopy-text/60 text-sm", className)}>
         No artifacts extracted from this session
       </div>
     );

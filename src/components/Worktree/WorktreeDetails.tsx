@@ -40,7 +40,7 @@ function getServerStatusIndicator(serverState: DevServerState | null): React.Rea
   if (!serverState) return null;
   switch (serverState.status) {
     case "stopped":
-      return <span className="text-gray-600">○</span>;
+      return <span className="text-canopy-text/40">○</span>;
     case "starting":
       return <span className="text-[var(--color-server-starting)]">◐</span>;
     case "running":
@@ -48,7 +48,7 @@ function getServerStatusIndicator(serverState: DevServerState | null): React.Rea
     case "error":
       return <span className="text-[var(--color-server-error)]">●</span>;
     default:
-      return <span className="text-gray-600">○</span>;
+      return <span className="text-canopy-text/40">○</span>;
   }
 }
 
@@ -97,7 +97,7 @@ export function WorktreeDetails({
       {/* Zone 1: Context & Narrative */}
       {effectiveNote && (
         <div className="bg-yellow-500/5 p-2 rounded border-l-2 border-yellow-500/30">
-          <div className="text-xs text-gray-300 whitespace-pre-wrap font-mono">
+          <div className="text-xs text-canopy-text whitespace-pre-wrap font-mono">
             {parsedNoteSegments.map((segment, index) =>
               segment.type === "link" ? (
                 <a
@@ -119,7 +119,7 @@ export function WorktreeDetails({
       )}
 
       {showLastCommit && rawLastCommitMsg && (
-        <div className="text-xs text-gray-400 italic flex gap-2 p-2 bg-white/[0.02] rounded">
+        <div className="text-xs text-canopy-text/60 italic flex gap-2 p-2 bg-white/[0.02] rounded">
           <GitCommit className="w-3.5 h-3.5 mt-0.5 shrink-0 opacity-60" />
           <div className="whitespace-pre-wrap leading-relaxed min-w-0">{rawLastCommitMsg}</div>
         </div>
@@ -128,13 +128,13 @@ export function WorktreeDetails({
       {/* Zone 2: Operational Controls (The "Cockpit") */}
       {(showDevServer && serverState) || (terminalCounts && terminalCounts.total > 0) ? (
         <div className="space-y-2 p-2 bg-white/[0.02] rounded border border-white/5">
-          <div className="text-[10px] uppercase tracking-wider text-gray-500 font-semibold">
+          <div className="text-[10px] uppercase tracking-wider text-canopy-text/60 font-semibold">
             Controls
           </div>
 
           {showDevServer && serverState && (
             <div className="flex items-center justify-between text-xs">
-              <div className="flex items-center gap-2 text-gray-400 font-mono">
+              <div className="flex items-center gap-2 text-canopy-text/60 font-mono">
                 <Globe className="w-3.5 h-3.5" />
                 <div className="flex items-center gap-1.5">
                   {getServerStatusIndicator(serverState)}
@@ -174,7 +174,7 @@ export function WorktreeDetails({
           )}
 
           {terminalCounts && terminalCounts.total > 0 && (
-            <div className="flex items-center gap-2 text-xs text-gray-400 font-mono">
+            <div className="flex items-center gap-2 text-xs text-canopy-text/60 font-mono">
               <Terminal className="w-3.5 h-3.5" />
               <span>
                 {terminalCounts.total} terminal{terminalCounts.total !== 1 ? "s" : ""} active
@@ -202,7 +202,7 @@ export function WorktreeDetails({
             />
           ))}
           {worktreeErrors.length > 3 && (
-            <div className="text-[0.65rem] text-gray-500 text-center">
+            <div className="text-[0.65rem] text-canopy-text/60 text-center">
               +{worktreeErrors.length - 3} more errors
             </div>
           )}
@@ -212,7 +212,7 @@ export function WorktreeDetails({
       {/* Zone 3: The Work (Teleported File List) */}
       {hasChanges && worktree.worktreeChanges && (
         <div className="space-y-2">
-          <div className="text-[10px] uppercase tracking-wider text-gray-500 font-semibold">
+          <div className="text-[10px] uppercase tracking-wider text-canopy-text/60 font-semibold">
             Changed Files
           </div>
           <FileChangeList
@@ -231,7 +231,7 @@ export function WorktreeDetails({
             onPathClick();
           }}
           className={cn(
-            "text-[0.7rem] text-gray-500 hover:text-gray-400 hover:underline text-left font-mono truncate block w-full",
+            "text-[0.7rem] text-canopy-text/60 hover:text-canopy-text/80 hover:underline text-left font-mono truncate block w-full",
             isFocused && "underline"
           )}
           title={worktree.path}

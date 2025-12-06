@@ -13,7 +13,7 @@ interface BranchLabelProps {
 const COLORS = {
   teal: { bg: "bg-teal-500/10", border: "border-teal-500/30", text: "text-teal-400" },
   red: { bg: "bg-red-500/10", border: "border-red-500/30", text: "text-red-400" },
-  gray: { bg: "bg-gray-500/10", border: "border-gray-500/30", text: "text-gray-400" },
+  gray: { bg: "bg-canopy-border/20", border: "border-canopy-border", text: "text-canopy-text/60" },
   blue: { bg: "bg-blue-500/10", border: "border-blue-500/30", text: "text-blue-400" },
   purple: { bg: "bg-purple-500/10", border: "border-purple-500/30", text: "text-purple-400" },
   yellow: { bg: "bg-yellow-500/10", border: "border-yellow-500/30", text: "text-yellow-400" },
@@ -111,7 +111,7 @@ export function BranchLabel({ label, isActive, isMainWorktree, className }: Bran
       <span
         className={cn(
           "truncate font-semibold text-[13px]",
-          isActive ? "text-white" : "text-gray-300",
+          isActive ? "text-white" : "text-canopy-text",
           isMainWorktree && "font-bold tracking-wide"
         )}
       >

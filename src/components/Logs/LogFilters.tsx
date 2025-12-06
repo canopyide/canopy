@@ -10,7 +10,7 @@ interface LogFiltersProps {
 }
 
 const LOG_LEVELS: { level: LogLevel; label: string; color: string }[] = [
-  { level: "debug", label: "Debug", color: "text-gray-400 hover:bg-gray-700" },
+  { level: "debug", label: "Debug", color: "text-canopy-text/60 hover:bg-canopy-border" },
   { level: "info", label: "Info", color: "text-[var(--color-status-info)] hover:bg-blue-900/30" },
   {
     level: "warn",
@@ -70,7 +70,7 @@ export function LogFilters({
     filters.search;
 
   return (
-    <div className="flex flex-wrap items-center gap-2 p-2 border-b border-gray-800 bg-gray-900/50">
+    <div className="flex flex-wrap items-center gap-2 p-2 border-b border-canopy-border bg-canopy-sidebar/50">
       <div className="relative flex-1 min-w-[150px] max-w-[250px]">
         <input
           type="text"
@@ -79,15 +79,15 @@ export function LogFilters({
           placeholder="Search logs..."
           className={cn(
             "w-full px-2 py-1 text-xs rounded",
-            "bg-gray-800 border border-gray-700",
-            "text-gray-200 placeholder-gray-500",
+            "bg-canopy-bg border border-canopy-border",
+            "text-canopy-text placeholder-canopy-text/40",
             "focus:outline-none focus:border-blue-500"
           )}
         />
         {searchValue && (
           <button
             onClick={() => setSearchValue("")}
-            className="absolute right-2 top-1/2 -translate-y-1/2 text-gray-500 hover:text-gray-300"
+            className="absolute right-2 top-1/2 -translate-y-1/2 text-canopy-text/60 hover:text-canopy-text"
           >
             x
           </button>
@@ -95,7 +95,7 @@ export function LogFilters({
       </div>
 
       <div className="flex items-center gap-1">
-        <span className="text-gray-500 text-xs mr-1">Level:</span>
+        <span className="text-canopy-text/60 text-xs mr-1">Level:</span>
         {LOG_LEVELS.map(({ level, label, color }) => {
           const isActive = filters.levels?.includes(level);
           return (
@@ -104,7 +104,7 @@ export function LogFilters({
               onClick={() => handleLevelToggle(level)}
               className={cn(
                 "px-2 py-0.5 text-xs rounded transition-colors",
-                isActive ? "bg-gray-700 font-medium" : "bg-gray-800/50",
+                isActive ? "bg-canopy-border font-medium" : "bg-canopy-bg/50",
                 color
               )}
             >
@@ -119,8 +119,8 @@ export function LogFilters({
           <button
             className={cn(
               "px-2 py-0.5 text-xs rounded transition-colors",
-              "bg-gray-800 border border-gray-700 text-gray-300",
-              "hover:bg-gray-700"
+              "bg-canopy-bg border border-canopy-border text-canopy-text",
+              "hover:bg-canopy-border"
             )}
           >
             Sources {filters.sources?.length ? `(${filters.sources.length})` : ""}
@@ -128,7 +128,7 @@ export function LogFilters({
           <div
             className={cn(
               "absolute left-0 top-full mt-1 z-50",
-              "bg-gray-800 border border-gray-700 rounded shadow-lg",
+              "bg-canopy-bg border border-canopy-border rounded shadow-lg",
               "min-w-[150px] max-h-[200px] overflow-y-auto",
               "hidden group-hover:block"
             )}
@@ -141,8 +141,8 @@ export function LogFilters({
                   onClick={() => handleSourceToggle(source)}
                   className={cn(
                     "w-full px-3 py-1.5 text-xs text-left",
-                    "hover:bg-gray-700 transition-colors",
-                    isActive ? "text-[var(--color-status-info)] bg-blue-900/20" : "text-gray-300"
+                    "hover:bg-canopy-border transition-colors",
+                    isActive ? "text-[var(--color-status-info)] bg-blue-900/20" : "text-canopy-text"
                   )}
                 >
                   {isActive && "* "}
@@ -157,7 +157,7 @@ export function LogFilters({
       {hasActiveFilters && (
         <button
           onClick={handleClearAll}
-          className="px-2 py-0.5 text-xs rounded bg-gray-800 text-gray-400 hover:text-gray-200 hover:bg-gray-700"
+          className="px-2 py-0.5 text-xs rounded bg-canopy-bg text-canopy-text/60 hover:text-canopy-text hover:bg-canopy-border"
         >
           Clear
         </button>
