@@ -41,6 +41,10 @@
   --radius-xl: calc(var(--radius) + 4px);
   --radius-2xl: calc(var(--radius) + 8px);
   --radius-3xl: calc(var(--radius) + 12px);
+  --height-xs: 1.75rem;
+  --height-sm: 2rem;
+  --height-md: 2.5rem;
+  --height-lg: 3rem;
 
   /* Digital Ecology theme colors - The Forest Floor (Backgrounds) */
   --color-canopy-bg: #18181b; /* Zinc-950: Neutral, deep charcoal */

@@ -106,7 +106,7 @@ export function TerminalPalette({
     >
       <div
         className={cn(
-          "w-full max-w-xl bg-canopy-bg border border-canopy-border rounded-lg shadow-2xl overflow-hidden",
+          "w-full max-w-xl bg-canopy-bg border border-canopy-border rounded-[var(--radius-xl)] shadow-2xl overflow-hidden",
           "animate-in fade-in slide-in-from-top-4 duration-150"
         )}
         onClick={(e) => e.stopPropagation()}
@@ -125,7 +125,7 @@ export function TerminalPalette({
             placeholder="Search agents and shells..."
             className={cn(
               "w-full px-3 py-2 text-sm",
-              "bg-canopy-sidebar border border-canopy-border rounded-md",
+              "bg-canopy-sidebar border border-canopy-border rounded-[var(--radius-md)]",
               "text-canopy-text placeholder:text-canopy-text/40",
               "focus:outline-none focus:border-canopy-accent focus:ring-1 focus:ring-canopy-accent"
             )}
@@ -175,16 +175,16 @@ export function TerminalPalette({
 
         <div className="px-3 py-2 border-t border-canopy-border bg-canopy-sidebar/50 text-xs text-canopy-text/40 flex items-center gap-4">
           <span>
-            <kbd className="px-1.5 py-0.5 rounded bg-canopy-border text-canopy-text/60">↑</kbd>
-            <kbd className="px-1.5 py-0.5 rounded bg-canopy-border text-canopy-text/60 ml-1">↓</kbd>
+            <kbd className="px-1.5 py-0.5 rounded-[var(--radius-sm)] bg-canopy-border text-canopy-text/60">↑</kbd>
+            <kbd className="px-1.5 py-0.5 rounded-[var(--radius-sm)] bg-canopy-border text-canopy-text/60 ml-1">↓</kbd>
             <span className="ml-1.5">to navigate</span>
           </span>
           <span>
-            <kbd className="px-1.5 py-0.5 rounded bg-canopy-border text-canopy-text/60">Enter</kbd>
+            <kbd className="px-1.5 py-0.5 rounded-[var(--radius-sm)] bg-canopy-border text-canopy-text/60">Enter</kbd>
             <span className="ml-1.5">to select</span>
           </span>
           <span>
-            <kbd className="px-1.5 py-0.5 rounded bg-canopy-border text-canopy-text/60">Esc</kbd>
+            <kbd className="px-1.5 py-0.5 rounded-[var(--radius-sm)] bg-canopy-border text-canopy-text/60">Esc</kbd>
             <span className="ml-1.5">to close</span>
           </span>
         </div>

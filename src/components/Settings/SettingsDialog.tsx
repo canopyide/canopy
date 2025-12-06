@@ -77,7 +77,7 @@ export function SettingsDialog({
       onClick={onClose}
     >
       <div
-        className="bg-canopy-sidebar border border-canopy-border rounded-lg shadow-xl w-full max-w-2xl h-[550px] flex overflow-hidden"
+        className="bg-canopy-sidebar border border-canopy-border rounded-[var(--radius-xl)] shadow-xl w-full max-w-2xl h-[550px] flex overflow-hidden"
         onClick={(e) => e.stopPropagation()}
         role="dialog"
         aria-modal="true"
@@ -90,7 +90,7 @@ export function SettingsDialog({
           <button
             onClick={() => setActiveTab("general")}
             className={cn(
-              "text-left px-3 py-2 rounded-md text-sm transition-colors",
+              "text-left px-3 py-2 rounded-[var(--radius-md)] text-sm transition-colors",
               activeTab === "general"
                 ? "bg-canopy-accent/10 text-canopy-accent"
                 : "text-canopy-text/60 hover:bg-canopy-border hover:text-canopy-text"
@@ -101,7 +101,7 @@ export function SettingsDialog({
           <button
             onClick={() => setActiveTab("keyboard")}
             className={cn(
-              "text-left px-3 py-2 rounded-md text-sm transition-colors flex items-center gap-2",
+              "text-left px-3 py-2 rounded-[var(--radius-md)] text-sm transition-colors flex items-center gap-2",
               activeTab === "keyboard"
                 ? "bg-canopy-accent/10 text-canopy-accent"
                 : "text-canopy-text/60 hover:bg-canopy-border hover:text-canopy-text"
@@ -113,7 +113,7 @@ export function SettingsDialog({
           <button
             onClick={() => setActiveTab("terminal")}
             className={cn(
-              "text-left px-3 py-2 rounded-md text-sm transition-colors flex items-center gap-2",
+              "text-left px-3 py-2 rounded-[var(--radius-md)] text-sm transition-colors flex items-center gap-2",
               activeTab === "terminal"
                 ? "bg-canopy-accent/10 text-canopy-accent"
                 : "text-canopy-text/60 hover:bg-canopy-border hover:text-canopy-text"
@@ -125,7 +125,7 @@ export function SettingsDialog({
           <button
             onClick={() => setActiveTab("agents")}
             className={cn(
-              "text-left px-3 py-2 rounded-md text-sm transition-colors flex items-center gap-2",
+              "text-left px-3 py-2 rounded-[var(--radius-md)] text-sm transition-colors flex items-center gap-2",
               activeTab === "agents"
                 ? "bg-canopy-accent/10 text-canopy-accent"
                 : "text-canopy-text/60 hover:bg-canopy-border hover:text-canopy-text"
@@ -137,7 +137,7 @@ export function SettingsDialog({
           <button
             onClick={() => setActiveTab("github")}
             className={cn(
-              "text-left px-3 py-2 rounded-md text-sm transition-colors flex items-center gap-2",
+              "text-left px-3 py-2 rounded-[var(--radius-md)] text-sm transition-colors flex items-center gap-2",
               activeTab === "github"
                 ? "bg-canopy-accent/10 text-canopy-accent"
                 : "text-canopy-text/60 hover:bg-canopy-border hover:text-canopy-text"
@@ -149,7 +149,7 @@ export function SettingsDialog({
           <button
             onClick={() => setActiveTab("sidecar")}
             className={cn(
-              "text-left px-3 py-2 rounded-md text-sm transition-colors flex items-center gap-2",
+              "text-left px-3 py-2 rounded-[var(--radius-md)] text-sm transition-colors flex items-center gap-2",
               activeTab === "sidecar"
                 ? "bg-canopy-accent/10 text-canopy-accent"
                 : "text-canopy-text/60 hover:bg-canopy-border hover:text-canopy-text"
@@ -161,7 +161,7 @@ export function SettingsDialog({
           <button
             onClick={() => setActiveTab("troubleshooting")}
             className={cn(
-              "text-left px-3 py-2 rounded-md text-sm transition-colors",
+              "text-left px-3 py-2 rounded-[var(--radius-md)] text-sm transition-colors",
               activeTab === "troubleshooting"
                 ? "bg-canopy-accent/10 text-canopy-accent"
                 : "text-canopy-text/60 hover:bg-canopy-border hover:text-canopy-text"
