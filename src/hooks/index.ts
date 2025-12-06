@@ -43,3 +43,6 @@ export {
 export { useLinkDiscovery } from "./useLinkDiscovery";
 
 export { useOverlayState } from "./useOverlayState";
+
+export { useGridNavigation } from "./useGridNavigation";
+export type { NavigationDirection } from "./useGridNavigation";

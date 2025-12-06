@@ -40,6 +40,7 @@ export function SortableTerminal({
     <div
       ref={setNodeRef}
       style={style}
+      data-terminal-id={terminal.id}
       className={cn("h-full", isDragging && "opacity-40 ring-2 ring-canopy-accent/50 rounded")}
       {...attributes}
       {...listeners}
