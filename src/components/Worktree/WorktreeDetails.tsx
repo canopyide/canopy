@@ -166,12 +166,13 @@ export function WorktreeDetails({
 
       {/* Last Commit Message (if requested) */}
       {showLastCommit && rawLastCommitMsg && (
-        <div className="text-xs text-gray-500 italic px-1 flex flex-col gap-1.5 mb-2">
-          <div className="flex items-center gap-1.5 opacity-70">
-            <GitCommit className="w-3 h-3 shrink-0" />
-            <span>Last commit:</span>
+        <div className="text-xs text-gray-500 italic flex gap-1.5 mb-2">
+          <div className="pt-0.5 shrink-0 opacity-70">
+            <GitCommit className="w-3 h-3" />
           </div>
-          <span className="whitespace-pre-wrap">{rawLastCommitMsg}</span>
+          <div className="whitespace-pre-wrap leading-normal min-w-0">
+            {rawLastCommitMsg}
+          </div>
         </div>
       )}
 

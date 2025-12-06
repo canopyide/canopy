@@ -238,6 +238,11 @@ export function WorktreeCard({
 
   const effectiveSummary = isSummarySameAsCommit ? null : worktree.summary;
 
+  // UX Logic: Teleporting Content
+  // Clean State: Show commit in header only when contracted. When expanded, it "teleports" to details.
+  // Dirty State: Never show commit in header (File changes take priority). Always show in details as context.
+  const showCommitInHeader = !hasChanges && !isExpanded && !effectiveSummary;
+
   const getServerStatusIndicator = () => {
     if (!serverState) return null;
     switch (serverState.status) {
@@ -566,15 +571,20 @@ export function WorktreeCard({
                 </div>
               </div>
             ) : (
-              /* CLEAN STATE: Show Last Commit */
+              /* CLEAN STATE: Show Summary OR Last Commit (unless expanded) */
               <div className="flex flex-col gap-1">
-                {/* 1. Last Commit Message (The primary "activity") */}
+                {/* 1. Activity Headline */}
                 <div className="text-xs text-gray-400 truncate min-h-[1.2em]">
-                  {firstLineLastCommitMessage ? (
+                  {effectiveSummary ? (
+                    <span className="text-gray-300">{effectiveSummary}</span>
+                  ) : showCommitInHeader && firstLineLastCommitMessage ? (
                     <div className="flex items-center gap-1.5 opacity-80">
                       <GitCommit className="w-3 h-3 shrink-0" />
                       <span className="truncate">{firstLineLastCommitMessage}</span>
                     </div>
+                  ) : isExpanded ? (
+                    /* Expanded: Commit "teleported" to details, show nothing here to avoid duplication */
+                    null
                   ) : (
                     <span className="text-gray-500 italic">No recent activity</span>
                   )}
@@ -637,7 +647,7 @@ export function WorktreeCard({
               onToggleServer={onToggleServer}
               onDismissError={dismissError}
               onRetryError={handleErrorRetry}
-              showLastCommit={hasChanges} // Show commit in details ONLY if we are dirty (because it's hidden in header)
+              showLastCommit={true} // Always show in details (it's hidden in header when expanded OR when dirty)
             />
           </div>
 
