@@ -4,6 +4,7 @@ import type { WorktreeState, ProjectDevServerSettings } from "../../types";
 import { ActivityLight } from "./ActivityLight";
 import { AgentStatusIndicator } from "./AgentStatusIndicator";
 import { FileChangeList } from "./FileChangeList";
+import { LiveTimeAgo } from "./LiveTimeAgo";
 import { WorktreeDetails } from "./WorktreeDetails";
 import { useDevServer } from "../../hooks/useDevServer";
 import { useWorktreeTerminals } from "../../hooks/useWorktreeTerminals";
@@ -12,7 +13,7 @@ import { useRecipeStore } from "../../store/recipeStore";
 import { useWorktreeSelectionStore } from "../../store/worktreeStore";
 import { systemClient, errorsClient } from "@/clients";
 import { cn } from "../../lib/utils";
-import { formatTimestamp, middleTruncate } from "../../utils/textParsing";
+import { middleTruncate } from "../../utils/textParsing";
 import {
   DropdownMenu,
   DropdownMenuContent,
@@ -226,7 +227,6 @@ export function WorktreeCard({
   const hasChanges = (worktree.worktreeChanges?.changedFileCount ?? 0) > 0;
   const rawLastCommitMessage = worktree.worktreeChanges?.lastCommitMessage;
   const firstLineLastCommitMessage = rawLastCommitMessage?.split("\n")[0].trim();
-  const relativeTime = formatTimestamp(worktree.lastActivityTimestamp);
 
   // The summary often duplicates the last commit message.
   const isSummarySameAsCommit = useMemo(() => {
@@ -307,9 +307,7 @@ export function WorktreeCard({
           style={{ gridTemplateColumns: "20px 1fr", columnGap: "20px", rowGap: "6px" }}
         >
           {/* Row 1: The Meta Layer - Context & Recency */}
-          <div className="flex items-center justify-center">
-            <ActivityLight lastActivityTimestamp={worktree.lastActivityTimestamp} />
-          </div>
+          <div />
           <div className="flex items-center justify-between gap-2 min-w-0 min-h-[18px]">
             <div className="flex flex-wrap items-center gap-1.5 text-xs font-mono leading-none">
               <AgentStatusIndicator state={dominantAgentState} />
@@ -351,8 +349,14 @@ export function WorktreeCard({
               )}
             </div>
 
-            {/* Relative Time - Right aligned */}
-            <span className="text-[10px] text-gray-500 font-medium shrink-0">{relativeTime}</span>
+            {/* Activity + Live Time - Right aligned */}
+            <div className="flex items-center gap-1.5 shrink-0">
+              <ActivityLight lastActivityTimestamp={worktree.lastActivityTimestamp} />
+              <LiveTimeAgo
+                timestamp={worktree.lastActivityTimestamp}
+                className="text-[10px] text-gray-500 font-medium"
+              />
+            </div>
           </div>
 
           {/* Row 2: The Identity Layer */}
