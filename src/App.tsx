@@ -12,6 +12,7 @@ import {
   useKeybinding,
   useProjectSettings,
   useLinkDiscovery,
+  useGridNavigation,
 } from "./hooks";
 import { AppLayout } from "./components/Layout";
 import { TerminalGrid } from "./components/Terminal";
@@ -272,23 +273,38 @@ function SidebarContent() {
 }
 
 function App() {
-  const { focusNext, focusPrevious, toggleMaximize, focusedId, addTerminal, reorderTerminals } =
-    useTerminalStore(
-      useShallow((state) => ({
-        focusNext: state.focusNext,
-        focusPrevious: state.focusPrevious,
-        toggleMaximize: state.toggleMaximize,
-        focusedId: state.focusedId,
-        addTerminal: state.addTerminal,
-        reorderTerminals: state.reorderTerminals,
-      }))
-    );
+  const {
+    focusNext,
+    focusPrevious,
+    focusDirection,
+    focusByIndex,
+    focusDockDirection,
+    toggleMaximize,
+    focusedId,
+    addTerminal,
+    reorderTerminals,
+  } = useTerminalStore(
+    useShallow((state) => ({
+      focusNext: state.focusNext,
+      focusPrevious: state.focusPrevious,
+      focusDirection: state.focusDirection,
+      focusByIndex: state.focusByIndex,
+      focusDockDirection: state.focusDockDirection,
+      toggleMaximize: state.toggleMaximize,
+      focusedId: state.focusedId,
+      addTerminal: state.addTerminal,
+      reorderTerminals: state.reorderTerminals,
+    }))
+  );
   const terminals = useTerminalStore(useShallow((state) => state.terminals));
   const { launchAgent, availability, agentSettings, refreshSettings } = useAgentLauncher();
   const setActiveWorktree = useWorktreeSelectionStore((state) => state.setActiveWorktree);
   const loadRecipes = useRecipeStore((state) => state.loadRecipes);
   useTerminalConfig();
   useLinkDiscovery();
+
+  // Grid navigation hook for directional terminal switching
+  const { findNearest, findByIndex, findDockByIndex, getCurrentLocation } = useGridNavigation();
 
   const terminalPalette = useTerminalPalette();
 
@@ -455,6 +471,91 @@ function App() {
     },
     { enabled: electronAvailable }
   );
+
+  // Directional terminal navigation (Option+Arrow keys)
+  // Skip when typing in terminal to avoid stealing shell word-jump behavior
+  const isTypingInTerminal = useCallback(() => {
+    const activeElement = document.activeElement;
+    return activeElement?.classList.contains("xterm-helper-textarea");
+  }, []);
+
+  useKeybinding(
+    "terminal.focusUp",
+    () => {
+      if (isTypingInTerminal()) return;
+      const location = getCurrentLocation();
+      if (location === "grid") {
+        focusDirection("up", findNearest);
+      }
+    },
+    { enabled: electronAvailable && !!focusedId }
+  );
+  useKeybinding(
+    "terminal.focusDown",
+    () => {
+      if (isTypingInTerminal()) return;
+      const location = getCurrentLocation();
+      if (location === "grid") {
+        focusDirection("down", findNearest);
+      }
+    },
+    { enabled: electronAvailable && !!focusedId }
+  );
+  useKeybinding(
+    "terminal.focusLeft",
+    () => {
+      if (isTypingInTerminal()) return;
+      const location = getCurrentLocation();
+      if (location === "grid") {
+        focusDirection("left", findNearest);
+      } else if (location === "dock") {
+        focusDockDirection("left", findDockByIndex);
+      }
+    },
+    { enabled: electronAvailable && !!focusedId }
+  );
+  useKeybinding(
+    "terminal.focusRight",
+    () => {
+      if (isTypingInTerminal()) return;
+      const location = getCurrentLocation();
+      if (location === "grid") {
+        focusDirection("right", findNearest);
+      } else if (location === "dock") {
+        focusDockDirection("right", findDockByIndex);
+      }
+    },
+    { enabled: electronAvailable && !!focusedId }
+  );
+
+  // Index-based terminal navigation (Option+1-9)
+  useKeybinding("terminal.focusIndex1", () => focusByIndex(1, findByIndex), {
+    enabled: electronAvailable,
+  });
+  useKeybinding("terminal.focusIndex2", () => focusByIndex(2, findByIndex), {
+    enabled: electronAvailable,
+  });
+  useKeybinding("terminal.focusIndex3", () => focusByIndex(3, findByIndex), {
+    enabled: electronAvailable,
+  });
+  useKeybinding("terminal.focusIndex4", () => focusByIndex(4, findByIndex), {
+    enabled: electronAvailable,
+  });
+  useKeybinding("terminal.focusIndex5", () => focusByIndex(5, findByIndex), {
+    enabled: electronAvailable,
+  });
+  useKeybinding("terminal.focusIndex6", () => focusByIndex(6, findByIndex), {
+    enabled: electronAvailable,
+  });
+  useKeybinding("terminal.focusIndex7", () => focusByIndex(7, findByIndex), {
+    enabled: electronAvailable,
+  });
+  useKeybinding("terminal.focusIndex8", () => focusByIndex(8, findByIndex), {
+    enabled: electronAvailable,
+  });
+  useKeybinding("terminal.focusIndex9", () => focusByIndex(9, findByIndex), {
+    enabled: electronAvailable,
+  });
 
   useEffect(() => {
     if (!electronAvailable) return;

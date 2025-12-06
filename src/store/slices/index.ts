@@ -8,7 +8,11 @@ export {
   type TrashedTerminal,
 } from "./terminalRegistrySlice";
 
-export { createTerminalFocusSlice, type TerminalFocusSlice } from "./terminalFocusSlice";
+export {
+  createTerminalFocusSlice,
+  type TerminalFocusSlice,
+  type NavigationDirection,
+} from "./terminalFocusSlice";
 
 export {
   createTerminalCommandQueueSlice,

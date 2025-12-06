@@ -1,6 +1,8 @@
 import type { StateCreator } from "zustand";
 import type { TerminalInstance } from "./terminalRegistrySlice";
 
+export type NavigationDirection = "up" | "down" | "left" | "right";
+
 export interface TerminalFocusSlice {
   focusedId: string | null;
   maximizedId: string | null;
@@ -9,6 +11,15 @@ export interface TerminalFocusSlice {
   toggleMaximize: (id: string) => void;
   focusNext: () => void;
   focusPrevious: () => void;
+  focusDirection: (
+    direction: NavigationDirection,
+    findNearest: (id: string, dir: NavigationDirection) => string | null
+  ) => void;
+  focusByIndex: (index: number, findByIndex: (idx: number) => string | null) => void;
+  focusDockDirection: (
+    direction: "left" | "right",
+    findDockByIndex: (id: string, dir: "left" | "right") => string | null
+  ) => void;
 
   handleTerminalRemoved: (
     removedId: string,
@@ -59,6 +70,35 @@ export const createTerminalFocusSlice =
           : 0;
         const prevIndex = currentIndex <= 0 ? gridTerminals.length - 1 : currentIndex - 1;
         return { focusedId: gridTerminals[prevIndex].id };
+      });
+    },
+
+    focusDirection: (direction, findNearest) => {
+      set((state) => {
+        if (!state.focusedId) return state;
+        const nextId = findNearest(state.focusedId, direction);
+        if (nextId) {
+          return { focusedId: nextId };
+        }
+        return state;
+      });
+    },
+
+    focusByIndex: (index, findByIndex) => {
+      const nextId = findByIndex(index);
+      if (nextId) {
+        set({ focusedId: nextId });
+      }
+    },
+
+    focusDockDirection: (direction, findDockByIndex) => {
+      set((state) => {
+        if (!state.focusedId) return state;
+        const nextId = findDockByIndex(state.focusedId, direction);
+        if (nextId) {
+          return { focusedId: nextId };
+        }
+        return state;
       });
     },
 
