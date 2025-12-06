@@ -20,7 +20,9 @@ export function useWorktreeTerminals(worktreeId: string): UseWorktreeTerminalsRe
   // Without this, .filter() returns a new reference every render,
   // breaking React's useSyncExternalStore contract.
   const terminals = useTerminalStore(
-    useShallow((state) => state.terminals.filter((t) => t.worktreeId === worktreeId))
+    useShallow((state) =>
+      state.terminals.filter((t) => t.worktreeId === worktreeId && t.location !== "trash")
+    )
   );
 
   return useMemo(() => {

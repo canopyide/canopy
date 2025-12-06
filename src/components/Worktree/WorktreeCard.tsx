@@ -10,7 +10,7 @@ import { TerminalCountBadge } from "./TerminalCountBadge";
 import { WorktreeDetails } from "./WorktreeDetails";
 import { useDevServer } from "../../hooks/useDevServer";
 import { useWorktreeTerminals } from "../../hooks/useWorktreeTerminals";
-import { useErrorStore, useTerminalStore, type RetryAction } from "../../store";
+import { useErrorStore, useTerminalStore, type RetryAction, type TerminalInstance } from "../../store";
 import { useRecipeStore } from "../../store/recipeStore";
 import { useWorktreeSelectionStore } from "../../store/worktreeStore";
 import { systemClient, errorsClient } from "@/clients";
@@ -98,7 +98,13 @@ export function WorktreeCard({
   const recipes = getRecipesForWorktree(worktree.id);
   const [runningRecipeId, setRunningRecipeId] = useState<string | null>(null);
 
-  const { counts: terminalCounts, dominantAgentState } = useWorktreeTerminals(worktree.id);
+  const {
+    counts: terminalCounts,
+    dominantAgentState,
+    terminals: worktreeTerminals,
+  } = useWorktreeTerminals(worktree.id);
+
+  const setFocused = useTerminalStore((state) => state.setFocused);
 
   const bulkCloseByWorktree = useTerminalStore((state) => state.bulkCloseByWorktree);
   const completedCount = terminalCounts.byState.completed;
@@ -246,6 +252,13 @@ export function WorktreeCard({
       onLaunchAgent?.(type);
     },
     [onLaunchAgent]
+  );
+
+  const handleTerminalSelect = useCallback(
+    (terminal: TerminalInstance) => {
+      setFocused(terminal.id);
+    },
+    [setFocused]
   );
 
   const branchLabel = worktree.branch ?? worktree.name;
@@ -621,7 +634,11 @@ export function WorktreeCard({
               <div className="flex items-center justify-between mt-2 pt-2 border-t border-white/5 text-[10px] font-mono">
                 <div className="flex flex-wrap items-center gap-1.5">
                   <AgentStatusIndicator state={dominantAgentState} />
-                  <TerminalCountBadge counts={terminalCounts} />
+                  <TerminalCountBadge
+                    counts={terminalCounts}
+                    terminals={worktreeTerminals}
+                    onSelectTerminal={handleTerminalSelect}
+                  />
                 </div>
                 <div className="flex items-center gap-1.5">
                   {worktree.issueNumber && (
