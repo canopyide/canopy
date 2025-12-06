@@ -110,7 +110,10 @@ ptyManager.on("data", (id: string, data: string) => {
                   terminal.ptyProcess.resume();
                   console.log(`[PtyHost] Visual buffer removed. Resumed PTY ${id}`);
                 } catch (error) {
-                  console.error(`[PtyHost] Failed to resume PTY ${id} after buffer removal:`, error);
+                  console.error(
+                    `[PtyHost] Failed to resume PTY ${id} after buffer removal:`,
+                    error
+                  );
                 }
               }
               clearInterval(checkInterval);
