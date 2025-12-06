@@ -168,6 +168,8 @@ export function QuickRun({ projectId }: QuickRunProps) {
           "w-full flex items-center justify-between px-3 py-1.5",
           "text-canopy-text/40 hover:text-canopy-text hover:bg-white/5 transition-colors focus:outline-none font-mono"
         )}
+        aria-expanded={isExpanded}
+        aria-controls="quick-run-panel"
       >
         <div className="flex items-center gap-2 overflow-hidden">
           {isExpanded ? <ChevronDown className="h-3 w-3" /> : <ChevronRight className="h-3 w-3" />}
@@ -176,135 +178,142 @@ export function QuickRun({ projectId }: QuickRunProps) {
       </button>
 
       {isExpanded && (
-        <div className="px-3 pb-3 pt-1">
-          <div
-            className={cn(
-              "relative flex items-center bg-surface border border-canopy-border rounded-md",
-              "focus-within:border-canopy-accent/50 focus-within:ring-1 focus-within:ring-canopy-accent/20 transition-all"
-            )}
-          >
-            {/* Prompt Symbol */}
-            <div className="pl-3 pr-2 select-none text-green-500 font-mono font-bold">$</div>
-
-            {/* Input */}
-            <input
-              ref={inputRef}
-              type="text"
-              value={input}
-              onChange={(e) => {
-                setInput(e.target.value);
-                setShowSuggestions(true);
-                setFocusedSuggestionIndex(-1);
-              }}
-              onFocus={() => {
-                if (blurTimerRef.current) {
-                  clearTimeout(blurTimerRef.current);
-                  blurTimerRef.current = null;
-                }
-                setShowSuggestions(true);
-              }}
-              onBlur={() => {
-                blurTimerRef.current = setTimeout(() => {
-                  setShowSuggestions(false);
-                }, 200);
-              }}
-              onKeyDown={handleKeyDown}
-              placeholder="Execute command..."
-              disabled={!isWorktreeValid}
-              aria-label="Command input"
-              className={cn(
-                "flex-1 bg-transparent py-2.5 text-xs text-canopy-text font-mono placeholder:text-white/20",
-                "focus:outline-none min-w-0"
-              )}
-              autoComplete="off"
-            />
-
-            {/* Right Side Controls */}
-            <div className="flex items-center pr-1.5 gap-1">
-              {/* Location Toggle */}
-              <button
-                onClick={() => setRunAsDocked(!runAsDocked)}
-                className={cn(
-                  "p-1.5 rounded-sm transition-all",
-                  runAsDocked
-                    ? "bg-canopy-accent/20 text-canopy-accent"
-                    : "text-white/30 hover:text-white/60 hover:bg-white/10"
-                )}
-                title={runAsDocked ? "Running in Dock" : "Running in Grid"}
-                aria-label={runAsDocked ? "Running in Dock mode" : "Running in Grid mode"}
-              >
-                {runAsDocked ? (
-                  <PanelBottom className="h-3.5 w-3.5" />
-                ) : (
-                  <LayoutGrid className="h-3.5 w-3.5" />
-                )}
-              </button>
-
-              {/* Enter Button */}
-              <button
-                onClick={() => handleRun(input)}
-                disabled={!input.trim() || !isWorktreeValid}
-                className={cn(
-                  "p-1.5 rounded-sm transition-all",
-                  input.trim() ? "text-white hover:bg-white/10" : "text-white/10 cursor-not-allowed"
-                )}
-                title="Run Command (Enter)"
-                aria-label="Run command"
-              >
-                <CornerDownLeft className="h-3.5 w-3.5" />
-              </button>
+        <div id="quick-run-panel" className="px-3 pb-3 pt-1">
+          {!isWorktreeValid ? (
+            <div className="text-xs text-gray-500 text-center py-2">
+              Select a worktree above to enable Quick Run
             </div>
+          ) : (
+            <div
+              className={cn(
+                "relative flex items-center bg-surface border border-canopy-border rounded-md",
+                "focus-within:border-canopy-accent/50 focus-within:ring-1 focus-within:ring-canopy-accent/20 transition-all"
+              )}
+            >
+              {/* Prompt Symbol */}
+              <div className="pl-3 pr-2 select-none text-green-500 font-mono font-bold">$</div>
 
-            {/* Autocomplete Menu */}
-            {showSuggestions && suggestions.length > 0 && (
-              <div
-                role="listbox"
-                className="absolute bottom-full left-0 right-0 mb-1 bg-surface border border-canopy-border rounded-md shadow-2xl overflow-hidden z-50"
-              >
-                <div className="text-[10px] text-white/30 px-3 py-1 bg-black/20 border-b border-white/5">
-                  HISTORY & SCRIPTS
-                </div>
-                {suggestions.map((item, index) => (
-                  <button
-                    key={`${item.value}-${index}`}
-                    role="option"
-                    aria-selected={index === focusedSuggestionIndex}
-                    className={cn(
-                      "w-full flex items-center gap-3 px-3 py-2 text-left text-xs font-mono transition-colors group",
-                      index === focusedSuggestionIndex
-                        ? "bg-canopy-accent/20 text-canopy-text"
-                        : "text-canopy-text/70 hover:bg-white/5"
-                    )}
-                    onClick={() => {
-                      setInput(item.value);
-                      handleRun(item.value);
-                    }}
-                  >
-                    {item.type === "history" ? (
-                      <Clock className="h-3 w-3 opacity-40 shrink-0" />
-                    ) : (
-                      <Terminal className="h-3 w-3 opacity-40 shrink-0" />
-                    )}
-                    <div className="flex-1 truncate">
-                      <span
-                        className={cn(
-                          "group-hover:text-canopy-text",
-                          index === focusedSuggestionIndex ? "text-canopy-accent" : ""
-                        )}
-                      >
-                        {item.value}
-                      </span>
-                      {item.type === "script" && item.label !== item.value && (
-                        <span className="ml-2 text-[10px] opacity-40 font-sans">
-                          ({item.label})
-                        </span>
-                      )}
-                    </div>
-                  </button>
-                ))}
+              {/* Input */}
+              <input
+                ref={inputRef}
+                type="text"
+                value={input}
+                onChange={(e) => {
+                  setInput(e.target.value);
+                  setShowSuggestions(true);
+                  setFocusedSuggestionIndex(-1);
+                }}
+                onFocus={() => {
+                  if (blurTimerRef.current) {
+                    clearTimeout(blurTimerRef.current);
+                    blurTimerRef.current = null;
+                  }
+                  setShowSuggestions(true);
+                }}
+                onBlur={() => {
+                  blurTimerRef.current = setTimeout(() => {
+                    setShowSuggestions(false);
+                  }, 200);
+                }}
+                onKeyDown={handleKeyDown}
+                placeholder="Execute command..."
+                aria-label="Command input"
+                className={cn(
+                  "flex-1 bg-transparent py-2.5 text-xs text-canopy-text font-mono placeholder:text-white/20",
+                  "focus:outline-none min-w-0"
+                )}
+                autoComplete="off"
+              />
+
+              {/* Right Side Controls */}
+              <div className="flex items-center pr-1.5 gap-1">
+                {/* Location Toggle */}
+                <button
+                  onClick={() => setRunAsDocked(!runAsDocked)}
+                  className={cn(
+                    "p-1.5 rounded-sm transition-all",
+                    runAsDocked
+                      ? "bg-canopy-accent/20 text-canopy-accent"
+                      : "text-white/30 hover:text-white/60 hover:bg-white/10"
+                  )}
+                  title={runAsDocked ? "Running in Dock" : "Running in Grid"}
+                  aria-label={runAsDocked ? "Running in Dock mode" : "Running in Grid mode"}
+                >
+                  {runAsDocked ? (
+                    <PanelBottom className="h-3.5 w-3.5" />
+                  ) : (
+                    <LayoutGrid className="h-3.5 w-3.5" />
+                  )}
+                </button>
+
+                {/* Enter Button */}
+                <button
+                  onClick={() => handleRun(input)}
+                  disabled={!input.trim()}
+                  className={cn(
+                    "p-1.5 rounded-sm transition-all",
+                    input.trim()
+                      ? "text-white hover:bg-white/10"
+                      : "text-white/10 cursor-not-allowed"
+                  )}
+                  title="Run Command (Enter)"
+                  aria-label="Run command"
+                >
+                  <CornerDownLeft className="h-3.5 w-3.5" />
+                </button>
               </div>
-            )}
-          </div>
+
+              {/* Autocomplete Menu */}
+              {showSuggestions && suggestions.length > 0 && (
+                <div
+                  role="listbox"
+                  className="absolute bottom-full left-0 right-0 mb-1 bg-surface border border-canopy-border rounded-md shadow-2xl overflow-hidden z-50"
+                >
+                  <div className="text-[10px] text-white/30 px-3 py-1 bg-black/20 border-b border-white/5">
+                    HISTORY & SCRIPTS
+                  </div>
+                  {suggestions.map((item, index) => (
+                    <button
+                      key={`${item.value}-${index}`}
+                      role="option"
+                      aria-selected={index === focusedSuggestionIndex}
+                      className={cn(
+                        "w-full flex items-center gap-3 px-3 py-2 text-left text-xs font-mono transition-colors group",
+                        index === focusedSuggestionIndex
+                          ? "bg-canopy-accent/20 text-canopy-text"
+                          : "text-canopy-text/70 hover:bg-white/5"
+                      )}
+                      onClick={() => {
+                        setInput(item.value);
+                        handleRun(item.value);
+                      }}
+                    >
+                      {item.type === "history" ? (
+                        <Clock className="h-3 w-3 opacity-40 shrink-0" />
+                      ) : (
+                        <Terminal className="h-3 w-3 opacity-40 shrink-0" />
+                      )}
+                      <div className="flex-1 truncate">
+                        <span
+                          className={cn(
+                            "group-hover:text-canopy-text",
+                            index === focusedSuggestionIndex ? "text-canopy-accent" : ""
+                          )}
+                        >
+                          {item.value}
+                        </span>
+                        {item.type === "script" && item.label !== item.value && (
+                          <span className="ml-2 text-[10px] opacity-40 font-sans">
+                            ({item.label})
+                          </span>
+                        )}
+                      </div>
+                    </button>
+                  ))}
+                </div>
+              )}
+            </div>
+          )}
         </div>
       )}
     </div>

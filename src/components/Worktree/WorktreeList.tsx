@@ -289,9 +289,9 @@ export function WorktreeList({
             d="M3 7v10a2 2 0 002 2h14a2 2 0 002-2V9a2 2 0 00-2-2h-6l-2-2H5a2 2 0 00-2 2z"
           />
         </svg>
-        <span className="text-sm">No worktrees found</span>
-        <span className="text-xs text-gray-600 mt-1">
-          Open a git repository with worktrees to get started
+        <span className="text-sm font-medium">No worktrees found</span>
+        <span className="text-xs text-gray-600 mt-1 text-center max-w-[200px]">
+          Use <strong>File → Open Directory</strong> to open a git repository
         </span>
       </div>
     );
