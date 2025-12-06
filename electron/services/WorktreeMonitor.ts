@@ -581,7 +581,7 @@ export class WorktreeMonitor {
         summary: state.summary ? `${state.summary.substring(0, 50)}...` : undefined,
         modifiedCount: state.modifiedCount,
         mood: state.mood,
-        stack: new Error().stack?.split("\n").slice(2, 5).join(" <-\n"),
+        stack: new Error().stack?.split("\n").slice(2, 5).join(" <-\\n"),
       });
     }
     events.emit("sys:worktree:update", payload);

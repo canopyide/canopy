@@ -42,6 +42,7 @@ import type {
   ApplyPatchOptions,
 } from "../shared/types/ipc.js";
 import type { TerminalActivityPayload } from "../shared/types/terminal.js";
+import type { KeyAction } from "../shared/types/keymap.js";
 
 export type { ElectronAPI };
 

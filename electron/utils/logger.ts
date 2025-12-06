@@ -160,7 +160,8 @@ function writeToLogFile(level: string, message: string, context?: LogContext): v
 }
 
 function log(level: LogLevel, message: string, context?: LogContext): LogEntry {
-  const source = getCallerSource();
+  // Only capture source in development or for errors/warnings
+  const source = IS_DEBUG || level === "warn" || level === "error" ? getCallerSource() : undefined;
 
   const safeContext = context ? redactSensitiveData(context) : undefined;
 
