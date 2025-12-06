@@ -263,21 +263,30 @@ export function ProjectSettingsDialog({ projectId, isOpen, onClose }: ProjectSet
                       !devServerEnabled && "opacity-50 pointer-events-none"
                     )}
                   >
-                    <label className="flex items-center gap-3 cursor-pointer">
-                      <input
-                        type="checkbox"
-                        checked={devServerAutoStart}
-                        onChange={(e) => setDevServerAutoStart(e.target.checked)}
-                        disabled={!devServerEnabled}
-                        className="w-4 h-4 rounded border-canopy-border bg-canopy-sidebar text-canopy-accent focus:ring-canopy-accent/50 disabled:opacity-50"
-                      />
-                      <div>
-                        <span className="text-sm text-canopy-text">Auto-start on project load</span>
-                        <p className="text-xs text-canopy-text/60">
-                          Automatically start the dev server when switching to this project
+                    <div className="space-y-2">
+                      <label className="flex items-center gap-3 cursor-pointer">
+                        <input
+                          type="checkbox"
+                          checked={devServerAutoStart}
+                          onChange={(e) => setDevServerAutoStart(e.target.checked)}
+                          disabled={!devServerEnabled}
+                          className="w-4 h-4 rounded border-canopy-border bg-canopy-sidebar text-canopy-accent focus:ring-canopy-accent/50 disabled:opacity-50"
+                        />
+                        <div>
+                          <span className="text-sm text-canopy-text">
+                            Auto-start on project load
+                          </span>
+                          <p className="text-xs text-canopy-text/60">
+                            Automatically start the dev server when switching to this project
+                          </p>
+                        </div>
+                      </label>
+                      {devServerAutoStart && devServerEnabled && (
+                        <p className="text-xs text-[var(--color-status-success)] ml-7">
+                          Dev server will start automatically when you open this project
                         </p>
-                      </div>
-                    </label>
+                      )}
+                    </div>
 
                     <div className="space-y-2">
                       <label

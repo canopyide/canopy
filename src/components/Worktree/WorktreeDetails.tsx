@@ -62,6 +62,21 @@ function getServerLabel(serverState: DevServerState | null): string | null {
   return "Dev Server";
 }
 
+function getServerStatusTooltip(serverState: DevServerState | null): string {
+  if (!serverState) return "Dev server status unknown";
+  switch (serverState.status) {
+    case "running":
+      return serverState.url ? `Dev server running at ${serverState.url}` : "Dev server is running";
+    case "starting":
+      return "Dev server is starting...";
+    case "error":
+      return "Dev server failed to start";
+    case "stopped":
+    default:
+      return "Dev server is stopped";
+  }
+}
+
 export function WorktreeDetails({
   worktree,
   homeDir,
@@ -176,7 +191,10 @@ export function WorktreeDetails({
 
           {showDevServer && serverState && (
             <div className="flex items-center justify-between text-xs">
-              <div className="flex items-center gap-2 text-canopy-text/60 font-mono">
+              <div
+                className="flex items-center gap-2 text-canopy-text/60 font-mono"
+                title={getServerStatusTooltip(serverState)}
+              >
                 <Globe className="w-3.5 h-3.5" />
                 <div className="flex items-center gap-1.5">
                   {getServerStatusIndicator(serverState)}
@@ -191,6 +209,24 @@ export function WorktreeDetails({
                   }
                 }}
                 disabled={serverLoading || serverState.status === "starting"}
+                title={
+                  serverState.status === "running"
+                    ? "Stop dev server"
+                    : serverState.status === "starting"
+                      ? "Server is starting..."
+                      : serverState.status === "error"
+                        ? "Retry dev server (last start failed)"
+                        : "Start dev server"
+                }
+                aria-label={
+                  serverState.status === "running"
+                    ? "Stop dev server"
+                    : serverState.status === "starting"
+                      ? "Dev server is starting"
+                      : serverState.status === "error"
+                        ? "Retry dev server"
+                        : "Start dev server"
+                }
                 className={cn(
                   "px-2 py-1 rounded text-xs font-medium transition-colors",
                   "focus-visible:outline focus-visible:outline-2 focus-visible:outline-canopy-accent",
