@@ -1,5 +1,6 @@
 import { useState, useMemo, useEffect } from "react";
 import { cn } from "@/lib/utils";
+import { Button } from "@/components/ui/button";
 import { Search, X, Filter, Tag } from "lucide-react";
 import type { EventRecord, EventFilterOptions, EventCategory } from "@/store/eventStore";
 
@@ -175,12 +176,14 @@ export function EventFilters({ events, filters, onFiltersChange, className }: Ev
             )}
           />
           {searchInput && (
-            <button
+            <Button
+              variant="ghost"
+              size="icon-sm"
               onClick={clearSearch}
-              className="absolute right-3 top-1/2 -translate-y-1/2 text-muted-foreground hover:text-foreground"
+              className="absolute right-1 top-1/2 -translate-y-1/2 h-6 w-6"
             >
               <X className="w-4 h-4" />
-            </button>
+            </Button>
           )}
         </div>
 
@@ -202,12 +205,14 @@ export function EventFilters({ events, filters, onFiltersChange, className }: Ev
               )}
             />
             {traceIdInput && (
-              <button
+              <Button
+                variant="ghost"
+                size="icon-sm"
                 onClick={clearTraceId}
-                className="absolute right-3 top-1/2 -translate-y-1/2 text-muted-foreground hover:text-foreground"
+                className="absolute right-1 top-1/2 -translate-y-1/2 h-6 w-6"
               >
                 <X className="w-4 h-4" />
-              </button>
+              </Button>
             )}
           </div>
         </div>
@@ -219,12 +224,9 @@ export function EventFilters({ events, filters, onFiltersChange, className }: Ev
               <span>Categories</span>
             </div>
             {filters.categories && filters.categories.length > 0 && (
-              <button
-                onClick={clearCategoryFilters}
-                className="text-xs text-muted-foreground hover:text-foreground"
-              >
+              <Button variant="ghost" size="xs" onClick={clearCategoryFilters} className="h-auto p-0">
                 Clear
-              </button>
+              </Button>
             )}
           </div>
           <div className="flex flex-wrap gap-1.5">
@@ -234,11 +236,12 @@ export function EventFilters({ events, filters, onFiltersChange, className }: Ev
               const config = CATEGORY_CONFIG[category];
 
               return (
-                <button
+                <Button
                   key={category}
+                  variant="outline"
+                  size="xs"
                   onClick={() => toggleCategoryFilter(category)}
                   className={cn(
-                    "inline-flex items-center gap-1.5 px-2 py-1 text-xs rounded-md border transition-colors",
                     isActive
                       ? config.color
                       : "bg-muted/30 text-muted-foreground border-transparent hover:bg-muted/50"
@@ -250,20 +253,18 @@ export function EventFilters({ events, filters, onFiltersChange, className }: Ev
                       {count}
                     </span>
                   )}
-                </button>
+                </Button>
               );
             })}
           </div>
         </div>
 
         <div className="flex items-center justify-between">
-          <button
+          <Button
+            variant="ghost"
+            size="sm"
             onClick={() => setShowTypeFilters(!showTypeFilters)}
-            className={cn(
-              "flex items-center gap-2 px-3 py-1.5 text-sm rounded-md transition-colors",
-              "hover:bg-muted/50",
-              showTypeFilters && "bg-muted"
-            )}
+            className={cn(showTypeFilters && "bg-muted")}
           >
             <Filter className="w-3.5 h-3.5" />
             <span>Event Types</span>
@@ -272,14 +273,11 @@ export function EventFilters({ events, filters, onFiltersChange, className }: Ev
                 {activeFilterCount}
               </span>
             )}
-          </button>
+          </Button>
           {filters.types && filters.types.length > 0 && (
-            <button
-              onClick={clearTypeFilters}
-              className="text-xs text-muted-foreground hover:text-foreground"
-            >
+            <Button variant="ghost" size="xs" onClick={clearTypeFilters} className="h-auto p-0">
               Clear filters
-            </button>
+            </Button>
           )}
         </div>
       </div>

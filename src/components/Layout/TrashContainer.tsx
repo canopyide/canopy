@@ -1,6 +1,7 @@
 import { useState } from "react";
 import { Trash2 } from "lucide-react";
 import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover";
+import { Button } from "@/components/ui/button";
 import { cn } from "@/lib/utils";
 import type { TerminalInstance } from "@/store";
 import type { TrashedTerminal } from "@/store/slices";
@@ -28,10 +29,11 @@ export function TrashContainer({ trashedTerminals }: TrashContainerProps) {
   return (
     <Popover open={isOpen} onOpenChange={setIsOpen}>
       <PopoverTrigger asChild>
-        <button
+        <Button
+          variant="pill"
+          size="sm"
           className={cn(
-            "flex items-center gap-2 px-3 py-1.5 rounded text-xs border transition-all",
-            "bg-canopy-bg/50 border-canopy-border text-canopy-text/60 hover:bg-canopy-border hover:border-canopy-border",
+            "px-3",
             isOpen && "bg-canopy-border border-canopy-border ring-1 ring-canopy-accent/20"
           )}
           title="View recently closed terminals"
@@ -42,7 +44,7 @@ export function TrashContainer({ trashedTerminals }: TrashContainerProps) {
         >
           <Trash2 className="w-3.5 h-3.5" aria-hidden="true" />
           <span className="font-medium">Trash ({count})</span>
-        </button>
+        </Button>
       </PopoverTrigger>
 
       <PopoverContent

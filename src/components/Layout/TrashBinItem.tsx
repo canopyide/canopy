@@ -10,6 +10,7 @@ import {
   BunIcon,
 } from "@/components/icons";
 import { cn } from "@/lib/utils";
+import { Button } from "@/components/ui/button";
 import { useTerminalStore, type TerminalInstance } from "@/store";
 import type { TrashedTerminal } from "@/store/slices";
 import type { TerminalType } from "@/types";
@@ -89,22 +90,24 @@ export function TrashBinItem({ terminal, trashedInfo }: TrashBinItemProps) {
       </div>
 
       <div className="flex gap-1">
-        <button
+        <Button
+          variant="ghost-success"
+          size="icon-sm"
           onClick={handleRestore}
-          className="p-1.5 rounded hover:bg-green-500/20 text-green-400 transition-colors"
           aria-label={`Restore ${terminalName}`}
           title={`Restore ${terminalName}`}
         >
-          <RotateCcw className="w-3.5 h-3.5" aria-hidden="true" />
-        </button>
-        <button
+          <RotateCcw aria-hidden="true" />
+        </Button>
+        <Button
+          variant="ghost-danger"
+          size="icon-sm"
           onClick={handleKill}
-          className="p-1.5 rounded hover:bg-red-500/20 text-red-400 transition-colors"
           aria-label={`Remove ${terminalName} permanently`}
           title={`Remove ${terminalName} permanently`}
         >
-          <X className="w-3.5 h-3.5" aria-hidden="true" />
-        </button>
+          <X aria-hidden="true" />
+        </Button>
       </div>
     </div>
   );

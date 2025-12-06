@@ -1,5 +1,6 @@
 import { useState, useCallback } from "react";
 import { cn } from "@/lib/utils";
+import { Button } from "@/components/ui/button";
 import type { AppError, RetryAction } from "@/store/errorStore";
 
 export interface ErrorBannerProps {
@@ -72,24 +73,24 @@ export function ErrorBanner({
         <span className="shrink-0">{typeIcon}</span>
         <span className="text-[var(--color-status-error)] truncate flex-1">{error.message}</span>
         {canRetry && (
-          <button
+          <Button
+            variant="outline"
+            size="xs"
             onClick={handleRetry}
             disabled={isRetrying}
-            className={cn(
-              "px-1.5 py-0.5 text-xs text-[var(--color-status-success)] hover:text-[var(--color-status-success)]/80 border border-[var(--color-status-success)]/50 rounded",
-              isRetrying && "opacity-50 cursor-not-allowed"
-            )}
+            className="border-[var(--color-status-success)]/50 text-[var(--color-status-success)] hover:text-[var(--color-status-success)]/80"
           >
             {isRetrying ? "..." : "Retry"}
-          </button>
+          </Button>
         )}
-        <button
+        <Button
+          variant="ghost-danger"
+          size="icon-sm"
           onClick={handleDismiss}
-          className="text-[var(--color-status-error)] hover:text-[var(--color-status-error)]/80"
           aria-label="Dismiss error"
         >
           ×
-        </button>
+        </Button>
       </div>
     );
   }
@@ -117,37 +118,43 @@ export function ErrorBanner({
         </div>
         <div className="flex items-center gap-1 shrink-0">
           {error.details && (
-            <button
+            <Button
+              variant="ghost-danger"
+              size="xs"
               onClick={toggleExpanded}
-              className="px-2 py-1 text-xs text-[var(--color-status-error)] hover:text-[var(--color-status-error)]/80 hover:bg-[var(--color-status-error)]/10 rounded"
+              aria-expanded={isExpanded}
+              aria-controls={`error-details-${error.id}`}
             >
               {isExpanded ? "Hide" : "Details"}
-            </button>
+            </Button>
           )}
           {canRetry && (
-            <button
+            <Button
+              variant="outline"
+              size="xs"
               onClick={handleRetry}
               disabled={isRetrying}
-              className={cn(
-                "px-2 py-1 text-xs text-[var(--color-status-success)] hover:text-[var(--color-status-success)]/80 border border-[var(--color-status-success)]/50 hover:bg-[var(--color-status-success)]/10 rounded",
-                isRetrying && "opacity-50 cursor-not-allowed"
-              )}
+              className="border-[var(--color-status-success)]/50 text-[var(--color-status-success)] hover:text-[var(--color-status-success)]/80 hover:bg-[var(--color-status-success)]/10"
             >
               {isRetrying ? "Retrying..." : "Retry"}
-            </button>
+            </Button>
           )}
-          <button
+          <Button
+            variant="ghost-danger"
+            size="icon-sm"
             onClick={handleDismiss}
-            className="p-1 text-[var(--color-status-error)] hover:text-[var(--color-status-error)]/80 hover:bg-[var(--color-status-error)]/10 rounded"
             aria-label="Dismiss error"
           >
             ×
-          </button>
+          </Button>
         </div>
       </div>
 
       {isExpanded && error.details && (
-        <div className="px-3 py-2 border-t border-[var(--color-status-error)]/30 bg-[color-mix(in_oklab,var(--color-status-error)_12%,transparent)]">
+        <div
+          id={`error-details-${error.id}`}
+          className="px-3 py-2 border-t border-[var(--color-status-error)]/30 bg-[color-mix(in_oklab,var(--color-status-error)_12%,transparent)]"
+        >
           <pre className="text-xs text-[var(--color-status-error)]/80 whitespace-pre-wrap break-all font-mono overflow-x-auto">
             {error.details}
           </pre>

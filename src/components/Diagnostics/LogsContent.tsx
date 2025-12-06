@@ -1,6 +1,7 @@
 import { useCallback, useEffect, useMemo, useRef } from "react";
 import { useShallow } from "zustand/react/shallow";
 import { cn } from "@/lib/utils";
+import { Button } from "@/components/ui/button";
 import { useLogsStore, filterLogs } from "@/store";
 import { LogEntry } from "../Logs/LogEntry";
 import { LogFilters } from "../Logs/LogFilters";
@@ -123,11 +124,12 @@ export function LogsContent({ className, onSourcesChange }: LogsContentProps) {
         availableSources={sourcesRef.current}
       />
 
-      <div
-        ref={containerRef}
-        onScroll={handleScroll}
-        className="flex-1 overflow-y-auto overflow-x-hidden font-mono relative"
-      >
+      <div className="flex-1 relative">
+        <div
+          ref={containerRef}
+          onScroll={handleScroll}
+          className="absolute inset-0 overflow-y-auto overflow-x-hidden font-mono"
+        >
         {filteredLogs.length === 0 ? (
           <div className="flex items-center justify-center h-full text-canopy-text/60 text-sm">
             {logs.length === 0 ? "No logs yet" : "No logs match filters"}
@@ -142,10 +144,13 @@ export function LogsContent({ className, onSourcesChange }: LogsContentProps) {
             />
           ))
         )}
-      </div>
+        </div>
 
-      {!autoScroll && filteredLogs.length > 0 && (
-        <button
+        {!autoScroll && filteredLogs.length > 0 && (
+        <Button
+          variant="info"
+          size="sm"
+          className="absolute bottom-4 right-4 rounded-full shadow-lg"
           onClick={() => {
             setAutoScroll(true);
             if (containerRef.current) {
@@ -156,15 +161,11 @@ export function LogsContent({ className, onSourcesChange }: LogsContentProps) {
               }, 50);
             }
           }}
-          className={cn(
-            "absolute bottom-4 right-4 px-3 py-1.5 text-xs rounded-full",
-            "bg-[var(--color-status-info)] text-white shadow-lg",
-            "hover:brightness-110 transition-all"
-          )}
         >
           Scroll to bottom
-        </button>
-      )}
+        </Button>
+        )}
+      </div>
     </div>
   );
 }
