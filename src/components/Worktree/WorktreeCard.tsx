@@ -289,7 +289,7 @@ export function WorktreeCard({
   return (
     <div
       className={cn(
-        "group relative border-b border-white/5 transition-colors duration-200",
+        "group relative border-b-2 border-white/5 transition-colors duration-200",
         isActive ? "bg-white/[0.03]" : "hover:bg-white/[0.02] bg-transparent",
         isFocused && "bg-white/[0.04]",
         // Current worktree accent: persistent left border indicating "you are here"
@@ -306,7 +306,7 @@ export function WorktreeCard({
       role="button"
       aria-label={`Worktree: ${branchLabel}${worktree.isCurrent ? " (current)" : ""}`}
     >
-      <div className="px-3 py-3">
+      <div className="px-3 py-5">
         {/* Golden Gutter Grid Structure */}
         <div
           className="grid"
