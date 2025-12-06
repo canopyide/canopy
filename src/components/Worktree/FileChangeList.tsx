@@ -64,6 +64,13 @@ function splitPath(filePath: string): { dir: string; base: string } {
   };
 }
 
+function formatDirForDisplay(dir: string, maxSegments = 2): string {
+  if (!dir) return "";
+  const segments = dir.split("/");
+  if (segments.length <= maxSegments) return dir;
+  return "…/" + segments.slice(-maxSegments).join("/");
+}
+
 interface SelectedFile {
   path: string;
   status: GitStatus;
@@ -122,19 +129,28 @@ export function FileChangeList({ changes, maxVisible = 4, rootPath }: FileChange
             : change.path;
           const { dir, base } = splitPath(relativePath);
 
+          const displayDir = formatDirForDisplay(dir);
+
           return (
             <div
               key={`${change.path}-${change.status}`}
               className="group flex items-center text-xs font-mono hover:bg-white/5 rounded px-1.5 py-0.5 -mx-1.5 cursor-pointer transition-colors"
               onClick={() => handleFileClick(change)}
+              title={relativePath}
             >
               {/* Status Letter */}
               <span className={cn("w-4 font-bold shrink-0", config.color)}>{config.label}</span>
 
-              {/* File Path */}
-              <div className="flex-1 min-w-0 truncate text-gray-400 group-hover:text-gray-300 mr-2">
-                <span className="opacity-60">{dir ? `${dir}/` : ""}</span>
-                <span className="text-gray-300 group-hover:text-white">{base}</span>
+              {/* File Path - directory truncates, filename is protected */}
+              <div className="flex-1 min-w-0 flex items-center mr-2">
+                {displayDir && (
+                  <span className="truncate text-gray-400 opacity-60 group-hover:opacity-80">
+                    {displayDir}/
+                  </span>
+                )}
+                <span className="text-gray-300 group-hover:text-white font-medium shrink-0">
+                  {base}
+                </span>
               </div>
 
               {/* Stats */}

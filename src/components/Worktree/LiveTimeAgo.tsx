@@ -1,51 +1,82 @@
-import { useState, useEffect } from "react";
+import { useState, useEffect, useMemo } from "react";
 
 interface LiveTimeAgoProps {
   timestamp?: number | null;
   className?: string;
 }
 
+function formatTimeAgo(diffMs: number): { label: string; fullLabel: string } {
+  const seconds = Math.floor(diffMs / 1000);
+  const minutes = Math.floor(seconds / 60);
+  const hours = Math.floor(minutes / 60);
+  const days = Math.floor(hours / 24);
+
+  let label: string;
+  let fullLabel: string;
+
+  if (seconds < 5) {
+    label = "now";
+    fullLabel = "just now";
+  } else if (seconds < 60) {
+    label = `${seconds}s`;
+    fullLabel = `${seconds} seconds ago`;
+  } else if (minutes < 60) {
+    label = `${minutes}m`;
+    fullLabel = `${minutes} minute${minutes !== 1 ? "s" : ""} ago`;
+  } else if (hours < 24) {
+    label = `${hours}h`;
+    fullLabel = `${hours} hour${hours !== 1 ? "s" : ""} ago`;
+  } else if (days < 7) {
+    label = `${days}d`;
+    fullLabel = `${days} day${days !== 1 ? "s" : ""} ago`;
+  } else if (days < 30) {
+    const weeks = Math.floor(days / 7);
+    label = `${weeks}w`;
+    fullLabel = `${weeks} week${weeks !== 1 ? "s" : ""} ago`;
+  } else if (days < 365) {
+    const months = Math.floor(days / 30);
+    label = `${months}mo`;
+    fullLabel = `${months} month${months !== 1 ? "s" : ""} ago`;
+  } else {
+    const years = Math.floor(days / 365);
+    label = `${years}y`;
+    fullLabel = `${years} year${years !== 1 ? "s" : ""} ago`;
+  }
+
+  return { label, fullLabel };
+}
+
 export function LiveTimeAgo({ timestamp, className }: LiveTimeAgoProps) {
-  const [, setTick] = useState(0);
+  const [tick, setTick] = useState(0);
 
   useEffect(() => {
     if (!timestamp) return;
 
-    // Calculate time until next update based on age
-    const getUpdateInterval = () => {
-      const diff = Date.now() - timestamp;
-      const minutes = Math.floor(diff / 60000);
-
-      // Update more frequently for recent activity
-      if (minutes < 1) return 10000; // Every 10s for "just now"
-      if (minutes < 60) return 60000; // Every minute for minutes
-      return 300000; // Every 5 minutes for hours/days
-    };
-
-    const timer = setInterval(() => {
+    const id = window.setInterval(() => {
       setTick((t) => t + 1);
-    }, getUpdateInterval());
+    }, 1000);
 
-    return () => clearInterval(timer);
+    return () => clearInterval(id);
   }, [timestamp]);
 
-  if (!timestamp) {
-    return <span className={className}>Never</span>;
-  }
+  const { label, fullLabel, formattedDate } = useMemo(() => {
+    // Include tick in calculation to ensure recalculation on interval
+    void tick;
 
-  const getLabel = () => {
-    const diff = Date.now() - timestamp;
-    const seconds = Math.floor(diff / 1000);
-    const minutes = Math.floor(diff / 60000);
-    const hours = Math.floor(minutes / 60);
-    const days = Math.floor(hours / 24);
+    if (!timestamp) {
+      return { label: "Never", fullLabel: "Never", formattedDate: "" };
+    }
 
-    if (seconds < 60) return "just now";
-    if (minutes < 60) return `${minutes}m ago`;
-    if (hours < 24) return `${hours}h ago`;
-    if (days === 1) return "yesterday";
-    return `${days}d ago`;
-  };
+    const diffMs = Date.now() - timestamp;
+    const { label, fullLabel } = formatTimeAgo(diffMs);
+    const formattedDate = new Date(timestamp).toLocaleString();
 
-  return <span className={className}>{getLabel()}</span>;
+    return { label, fullLabel, formattedDate };
+  }, [timestamp, tick]);
+
+  return (
+    <span className={className} title={`${fullLabel} (${formattedDate})`} aria-label={fullLabel}>
+      {label}
+    </span>
+  );
 }

@@ -44,6 +44,7 @@ import {
   errorsClient,
   devServerClient,
   worktreeClient,
+  githubClient,
 } from "@/clients";
 import { formatBytes } from "@/lib/formatBytes";
 
@@ -165,6 +166,18 @@ function SidebarContent() {
     setRecipeEditorWorktreeId(undefined);
   }, []);
 
+  const handleOpenIssue = useCallback((worktree: WorktreeState) => {
+    if (worktree.issueNumber) {
+      githubClient.openIssue(worktree.path, worktree.issueNumber);
+    }
+  }, []);
+
+  const handleOpenPR = useCallback((worktree: WorktreeState) => {
+    if (worktree.prUrl) {
+      githubClient.openPR(worktree.prUrl);
+    }
+  }, []);
+
   if (isLoading) {
     return (
       <div className="p-4">
@@ -247,6 +260,8 @@ function SidebarContent() {
               onCopyTree={() => handleCopyTree(worktree)}
               onOpenEditor={() => handleOpenEditor(worktree)}
               onToggleServer={() => handleToggleServer(worktree)}
+              onOpenIssue={worktree.issueNumber ? () => handleOpenIssue(worktree) : undefined}
+              onOpenPR={worktree.prUrl ? () => handleOpenPR(worktree) : undefined}
               onCreateRecipe={() => handleCreateRecipe(worktree.id)}
               homeDir={homeDir}
               devServerSettings={projectSettings?.devServer}

@@ -31,10 +31,15 @@ const createWorktreeSelectionStore: StateCreator<WorktreeSelectionState> = (set)
   setFocusedWorktree: (id) => set({ focusedWorktreeId: id }),
 
   selectWorktree: (id) => {
-    set({ activeWorktreeId: id, focusedWorktreeId: id });
+    set((state) => {
+      // Toggle: clicking the active worktree deselects it
+      const newId = state.activeWorktreeId === id ? null : id;
 
-    appClient.setState({ activeWorktreeId: id }).catch((error) => {
-      console.error("Failed to persist active worktree:", error);
+      appClient.setState({ activeWorktreeId: newId ?? undefined }).catch((error) => {
+        console.error("Failed to persist active worktree:", error);
+      });
+
+      return { activeWorktreeId: newId, focusedWorktreeId: newId };
     });
   },
 

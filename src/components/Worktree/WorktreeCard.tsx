@@ -3,8 +3,10 @@ import { useShallow } from "zustand/react/shallow";
 import type { WorktreeState, ProjectDevServerSettings } from "../../types";
 import { ActivityLight } from "./ActivityLight";
 import { AgentStatusIndicator } from "./AgentStatusIndicator";
+import { BranchLabel } from "./BranchLabel";
 import { FileChangeList } from "./FileChangeList";
 import { LiveTimeAgo } from "./LiveTimeAgo";
+import { TerminalCountBadge } from "./TerminalCountBadge";
 import { WorktreeDetails } from "./WorktreeDetails";
 import { useDevServer } from "../../hooks/useDevServer";
 import { useWorktreeTerminals } from "../../hooks/useWorktreeTerminals";
@@ -13,7 +15,6 @@ import { useRecipeStore } from "../../store/recipeStore";
 import { useWorktreeSelectionStore } from "../../store/worktreeStore";
 import { systemClient, errorsClient } from "@/clients";
 import { cn } from "../../lib/utils";
-import { middleTruncate } from "../../utils/textParsing";
 import {
   DropdownMenu,
   DropdownMenuContent,
@@ -33,7 +34,6 @@ import {
   MoreHorizontal,
   Terminal,
   Globe,
-  GitCommitHorizontal,
   Folder,
   ChevronDown,
   ChevronRight,
@@ -223,7 +223,6 @@ export function WorktreeCard({
   }, [totalTerminalCount, bulkCloseByWorktree, worktree.id, closeConfirmDialog]);
 
   const branchLabel = worktree.branch ?? worktree.name;
-  const truncatedBranchLabel = middleTruncate(branchLabel, 40);
   const hasChanges = (worktree.worktreeChanges?.changedFileCount ?? 0) > 0;
   const rawLastCommitMessage = worktree.worktreeChanges?.lastCommitMessage;
   const firstLineLastCommitMessage = rawLastCommitMessage?.split("\n")[0].trim();
@@ -270,6 +269,12 @@ export function WorktreeCard({
     showFooter ||
     !!rawLastCommitMessage; // Can expand to see details even if just clean
 
+  const showMetaFooter =
+    !!dominantAgentState ||
+    terminalCounts.total > 0 ||
+    !!worktree.issueNumber ||
+    !!worktree.prNumber;
+
   const detailsId = useMemo(() => `worktree-${worktree.id}-details`, [worktree.id]);
 
   const workspaceScenario: "dirty" | "clean-feature" | "clean-main" = useMemo(() => {
@@ -286,8 +291,8 @@ export function WorktreeCard({
     <div
       className={cn(
         "group relative border-b border-white/5 transition-colors duration-200",
-        isActive ? "bg-white/[0.04]" : "hover:bg-white/[0.02] bg-transparent",
-        isFocused && "ring-1 ring-inset ring-[#10b981]/50"
+        isActive ? "bg-white/[0.03]" : "hover:bg-white/[0.02] bg-transparent",
+        isFocused && "bg-white/[0.04]"
       )}
       onClick={onSelect}
       onKeyDown={(e) => {
@@ -300,68 +305,19 @@ export function WorktreeCard({
       role="button"
       aria-label={`Worktree: ${branchLabel}`}
     >
-      <div className="px-3 py-4">
+      <div className="px-3 py-3">
         {/* Golden Gutter Grid Structure */}
         <div
           className="grid"
-          style={{ gridTemplateColumns: "20px 1fr", columnGap: "20px", rowGap: "6px" }}
+          style={{
+            gridTemplateColumns: hasExpandableContent ? "16px 1fr" : "0px 1fr",
+            columnGap: "14px",
+            rowGap: "4px",
+          }}
         >
-          {/* Row 1: The Meta Layer - Context & Recency */}
-          <div />
-          <div className="flex items-center justify-between gap-2 min-w-0 min-h-[18px]">
-            <div className="flex flex-wrap items-center gap-1.5 text-xs font-mono leading-none">
-              <AgentStatusIndicator state={dominantAgentState} />
-
-              {worktree.issueNumber && (
-                <button
-                  onClick={(e) => {
-                    e.stopPropagation();
-                    onOpenIssue?.();
-                  }}
-                  className={cn(
-                    "flex items-center gap-1 text-[10px] text-[var(--color-status-info)]",
-                    "bg-blue-500/10 px-1.5 py-0.5 rounded border border-blue-500/20",
-                    "hover:bg-blue-500/20 transition-colors cursor-pointer"
-                  )}
-                  title="Open Issue on GitHub"
-                >
-                  <CircleDot className="w-2.5 h-2.5" />
-                  <span className="font-mono">#{worktree.issueNumber}</span>
-                </button>
-              )}
-
-              {worktree.prNumber && (
-                <button
-                  onClick={(e) => {
-                    e.stopPropagation();
-                    onOpenPR?.();
-                  }}
-                  className={cn(
-                    "flex items-center gap-1 text-[10px] text-[var(--color-status-success)]",
-                    "bg-green-500/10 px-1.5 py-0.5 rounded border border-green-500/20",
-                    "hover:bg-green-500/20 transition-colors cursor-pointer"
-                  )}
-                  title="Open Pull Request on GitHub"
-                >
-                  <GitPullRequest className="w-2.5 h-2.5" />
-                  <span className="font-mono">#{worktree.prNumber}</span>
-                </button>
-              )}
-            </div>
-
-            {/* Activity + Live Time - Right aligned */}
-            <div className="flex items-center gap-1.5 shrink-0">
-              <ActivityLight lastActivityTimestamp={worktree.lastActivityTimestamp} />
-              <LiveTimeAgo
-                timestamp={worktree.lastActivityTimestamp}
-                className="text-[10px] text-gray-500 font-medium"
-              />
-            </div>
-          </div>
-
-          {/* Row 2: The Identity Layer */}
+          {/* Row 1: Identity + Recency */}
           <div className="flex items-center justify-center">
-            {hasExpandableContent ? (
+            {hasExpandableContent && (
               <button
                 onClick={handleToggleExpand}
                 className="p-0.5 text-gray-500 hover:text-gray-300 transition-colors"
@@ -375,26 +331,26 @@ export function WorktreeCard({
                   <ChevronRight className="w-4 h-4" />
                 )}
               </button>
-            ) : null}
+            )}
           </div>
-          <div className="group/identity min-w-0 flex items-center justify-between gap-2 min-h-[24px] relative">
-            <div className="flex items-center gap-2 min-w-0 pr-16">
+          <div className="group/identity min-w-0 flex items-center justify-between gap-2 min-h-[22px] relative">
+            <div className="flex items-baseline gap-1.5 min-w-0 pr-16">
               {isMainWorktree && (
-                <Shield className="w-3.5 h-3.5 text-gray-600 opacity-30 shrink-0" />
+                <Shield className="w-3.5 h-3.5 text-gray-600 opacity-30 shrink-0 self-center" />
               )}
-              <span
-                className={cn(
-                  "truncate font-semibold text-[14px]",
-                  isActive ? "text-white" : "text-gray-300",
-                  isMainWorktree && "font-bold tracking-wide"
-                )}
-                title={branchLabel}
-              >
-                {truncatedBranchLabel}
-              </span>
+              <BranchLabel label={branchLabel} isActive={isActive} isMainWorktree={isMainWorktree} />
               {!worktree.branch && (
                 <span className="text-amber-500 text-[10px] font-medium shrink-0">(detached)</span>
               )}
+            </div>
+
+            {/* Activity + Live Time - Right aligned */}
+            <div className="flex items-center gap-1.5 shrink-0 text-[10px] text-gray-500">
+              <ActivityLight lastActivityTimestamp={worktree.lastActivityTimestamp} />
+              <LiveTimeAgo
+                timestamp={worktree.lastActivityTimestamp}
+                className="font-medium"
+              />
             </div>
 
             {/* Action Buttons - visible on hover/focus */}
@@ -504,24 +460,19 @@ export function WorktreeCard({
             </div>
           </div>
 
-          {/* Row 3: The Dynamic Activity Layer (Polymorphic) */}
+          {/* Row 2: Dynamic Activity Layer (Polymorphic) */}
           <div />
           <div className="flex flex-col gap-1 min-w-0">
             {workspaceScenario === "dirty" && !isExpanded ? (
               <>
-                {effectiveSummary && (
-                  <div className="text-xs text-gray-300 truncate">{effectiveSummary}</div>
-                )}
+                {/* Diff summary pill first */}
                 {worktree.worktreeChanges && (
-                  <FileChangeList
-                    changes={worktree.worktreeChanges.changes}
-                    rootPath={worktree.worktreeChanges.rootPath}
-                    maxVisible={3}
-                  />
-                )}
-                {worktree.worktreeChanges && (
-                  <div className="flex items-center gap-2 text-xs text-gray-400 font-mono mt-1">
-                    <GitCommitHorizontal className="w-2.5 h-2.5" />
+                  <div className="flex items-center gap-2 text-[11px] font-mono text-gray-400">
+                    <span>
+                      {worktree.worktreeChanges.changedFileCount} file
+                      {worktree.worktreeChanges.changedFileCount !== 1 ? "s" : ""}
+                    </span>
+                    <span className="text-gray-600">·</span>
                     <span className="text-[var(--color-status-success)]">
                       +{worktree.worktreeChanges.insertions ?? 0}
                     </span>
@@ -530,6 +481,16 @@ export function WorktreeCard({
                       -{worktree.worktreeChanges.deletions ?? 0}
                     </span>
                   </div>
+                )}
+                {worktree.worktreeChanges && (
+                  <FileChangeList
+                    changes={worktree.worktreeChanges.changes}
+                    rootPath={worktree.worktreeChanges.rootPath}
+                    maxVisible={3}
+                  />
+                )}
+                {effectiveSummary && (
+                  <div className="text-xs text-gray-400 truncate mt-0.5">{effectiveSummary}</div>
                 )}
               </>
             ) : workspaceScenario === "clean-feature" ? (
@@ -587,7 +548,7 @@ export function WorktreeCard({
             ) : null}
           </div>
 
-          {/* Expanded Details Section */}
+          {/* Row 3: Expanded Details */}
           <div />
           <div
             id={detailsId}
@@ -616,6 +577,55 @@ export function WorktreeCard({
               showLastCommit={true}
             />
           </div>
+
+          {/* Row 4: Pinned Meta Footer */}
+          {showMetaFooter && (
+            <>
+              <div />
+              <div className="flex items-center justify-between mt-2 pt-2 border-t border-white/5 text-[10px] font-mono">
+                <div className="flex flex-wrap items-center gap-1.5">
+                  <AgentStatusIndicator state={dominantAgentState} />
+                  <TerminalCountBadge counts={terminalCounts} />
+                </div>
+                <div className="flex items-center gap-1.5">
+                  {worktree.issueNumber && (
+                    <button
+                      onClick={(e) => {
+                        e.stopPropagation();
+                        onOpenIssue?.();
+                      }}
+                      className={cn(
+                        "flex items-center gap-1 text-[10px] text-[var(--color-status-info)]",
+                        "bg-blue-500/10 px-1.5 py-0.5 rounded border border-blue-500/20",
+                        "hover:bg-blue-500/20 transition-colors cursor-pointer"
+                      )}
+                      title="Open Issue on GitHub"
+                    >
+                      <CircleDot className="w-2.5 h-2.5" />
+                      <span className="font-mono">#{worktree.issueNumber}</span>
+                    </button>
+                  )}
+                  {worktree.prNumber && (
+                    <button
+                      onClick={(e) => {
+                        e.stopPropagation();
+                        onOpenPR?.();
+                      }}
+                      className={cn(
+                        "flex items-center gap-1 text-[10px] text-[var(--color-status-success)]",
+                        "bg-green-500/10 px-1.5 py-0.5 rounded border border-green-500/20",
+                        "hover:bg-green-500/20 transition-colors cursor-pointer"
+                      )}
+                      title="Open Pull Request on GitHub"
+                    >
+                      <GitPullRequest className="w-2.5 h-2.5" />
+                      <span className="font-mono">#{worktree.prNumber}</span>
+                    </button>
+                  )}
+                </div>
+              </div>
+            </>
+          )}
         </div>
 
         <ConfirmDialog
