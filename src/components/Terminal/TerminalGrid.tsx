@@ -398,14 +398,12 @@ export function TerminalGrid({ className, defaultCwd, onLaunchAgent }: TerminalG
 
               return elements;
             })}
-            {/* Placeholder at end if dropping after all terminals */}
+            {/* Placeholder at end if dropping after all terminals (also handles empty grid) */}
             {showPlaceholder &&
               placeholderIndex !== null &&
               placeholderIndex >= gridTerminals.length && (
                 <GridPlaceholder key={GRID_PLACEHOLDER_ID} />
               )}
-            {/* Show placeholder when grid is empty and dragging from dock */}
-            {isEmpty && showPlaceholder && <GridPlaceholder key={GRID_PLACEHOLDER_ID} />}
           </>
         )}
       </div>
