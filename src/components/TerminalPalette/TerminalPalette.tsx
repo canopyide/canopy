@@ -175,16 +175,24 @@ export function TerminalPalette({
 
         <div className="px-3 py-2 border-t border-canopy-border bg-canopy-sidebar/50 text-xs text-canopy-text/40 flex items-center gap-4">
           <span>
-            <kbd className="px-1.5 py-0.5 rounded-[var(--radius-sm)] bg-canopy-border text-canopy-text/60">↑</kbd>
-            <kbd className="px-1.5 py-0.5 rounded-[var(--radius-sm)] bg-canopy-border text-canopy-text/60 ml-1">↓</kbd>
+            <kbd className="px-1.5 py-0.5 rounded-[var(--radius-sm)] bg-canopy-border text-canopy-text/60">
+              ↑
+            </kbd>
+            <kbd className="px-1.5 py-0.5 rounded-[var(--radius-sm)] bg-canopy-border text-canopy-text/60 ml-1">
+              ↓
+            </kbd>
             <span className="ml-1.5">to navigate</span>
           </span>
           <span>
-            <kbd className="px-1.5 py-0.5 rounded-[var(--radius-sm)] bg-canopy-border text-canopy-text/60">Enter</kbd>
+            <kbd className="px-1.5 py-0.5 rounded-[var(--radius-sm)] bg-canopy-border text-canopy-text/60">
+              Enter
+            </kbd>
             <span className="ml-1.5">to select</span>
           </span>
           <span>
-            <kbd className="px-1.5 py-0.5 rounded-[var(--radius-sm)] bg-canopy-border text-canopy-text/60">Esc</kbd>
+            <kbd className="px-1.5 py-0.5 rounded-[var(--radius-sm)] bg-canopy-border text-canopy-text/60">
+              Esc
+            </kbd>
             <span className="ml-1.5">to close</span>
           </span>
         </div>
