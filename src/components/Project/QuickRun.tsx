@@ -160,7 +160,7 @@ export function QuickRun({ projectId }: QuickRunProps) {
   const isWorktreeValid = activeWorktree != null && activeWorktree.path != null;
 
   return (
-    <div className="border-t border-canopy-border bg-[#121214] shrink-0 flex flex-col min-h-0 text-xs">
+    <div className="border-t border-canopy-border bg-canopy-sidebar shrink-0 flex flex-col min-h-0 text-xs">
       {/* Header */}
       <button
         onClick={() => setIsExpanded(!isExpanded)}
@@ -179,7 +179,7 @@ export function QuickRun({ projectId }: QuickRunProps) {
         <div className="px-3 pb-3 pt-1">
           <div
             className={cn(
-              "relative flex items-center bg-[#1e1e1e] border border-canopy-border rounded-md",
+              "relative flex items-center bg-surface border border-canopy-border rounded-md",
               "focus-within:border-canopy-accent/50 focus-within:ring-1 focus-within:ring-canopy-accent/20 transition-all"
             )}
           >
@@ -259,7 +259,7 @@ export function QuickRun({ projectId }: QuickRunProps) {
             {showSuggestions && suggestions.length > 0 && (
               <div
                 role="listbox"
-                className="absolute bottom-full left-0 right-0 mb-1 bg-[#1e1e1e] border border-canopy-border rounded-md shadow-2xl overflow-hidden z-50"
+                className="absolute bottom-full left-0 right-0 mb-1 bg-surface border border-canopy-border rounded-md shadow-2xl overflow-hidden z-50"
               >
                 <div className="text-[10px] text-white/30 px-3 py-1 bg-black/20 border-b border-white/5">
                   HISTORY & SCRIPTS

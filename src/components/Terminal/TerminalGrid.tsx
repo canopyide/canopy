@@ -41,8 +41,8 @@ function LauncherCard({ title, description, shortcut, icon, onClick }: LauncherC
       onClick={onClick}
       className={cn(
         "group flex items-center text-left p-4 rounded-xl border transition-all duration-200 min-h-[100px]",
-        "bg-[#18181b] hover:bg-[#202023]",
-        "border-white/5 hover:border-white/10 hover:shadow-lg"
+        "bg-canopy-bg hover:bg-surface",
+        "border-canopy-border/20 hover:border-canopy-border/40 hover:shadow-lg"
       )}
     >
       <div className="flex items-center justify-center p-2 rounded-lg mr-3 transition-colors">

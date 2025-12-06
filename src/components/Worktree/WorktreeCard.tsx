@@ -369,7 +369,7 @@ export function WorktreeCard({
             </div>
 
             {/* Action Buttons - visible on hover/focus */}
-            <div className="absolute right-0 flex items-center gap-0.5 opacity-0 group-hover/identity:opacity-100 group-focus-within/identity:opacity-100 focus-within:opacity-100 transition-opacity bg-gradient-to-l from-[#18181b] from-70% to-transparent pl-6 z-10">
+            <div className="absolute right-0 flex items-center gap-0.5 opacity-0 group-hover/identity:opacity-100 group-focus-within/identity:opacity-100 focus-within:opacity-100 transition-opacity bg-gradient-to-l from-canopy-bg from-70% to-transparent pl-6 z-10">
               <button
                 onClick={(e) => {
                   e.stopPropagation();

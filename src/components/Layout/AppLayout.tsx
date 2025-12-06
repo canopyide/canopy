@@ -225,10 +225,10 @@ export function AppLayout({
       style={{
         height: "100vh",
         width: "100vw",
-        backgroundColor: "#18181b", // Fallback for bg-canopy-bg (Zinc-950)
+        backgroundColor: "var(--color-canopy-bg)",
         display: "flex",
         flexDirection: "column",
-        color: "#e4e4e7", // Fallback for text-canopy-text (Zinc-200)
+        color: "var(--color-canopy-text)",
       }}
     >
       <SidecarVisibilityController />
@@ -265,7 +265,7 @@ export function AppLayout({
                 display: "flex",
                 flexDirection: "column",
                 overflow: "hidden",
-                backgroundColor: "#18181b", // Zinc-950
+                backgroundColor: "var(--color-canopy-bg)",
               }}
             >
               <div className="flex-1 overflow-hidden min-h-0">{children}</div>
@@ -276,7 +276,7 @@ export function AppLayout({
               {/* Overlay mode - sidecar floats over content */}
               {sidecarOpen && sidecarLayoutMode === "overlay" && (
                 <ErrorBoundary variant="section" componentName="SidecarDock">
-                  <div className="absolute right-0 top-0 bottom-0 z-50 shadow-2xl border-l border-zinc-800">
+                  <div className="absolute right-0 top-0 bottom-0 z-50 shadow-2xl border-l border-canopy-border">
                     <SidecarDock />
                   </div>
                 </ErrorBoundary>
@@ -286,7 +286,7 @@ export function AppLayout({
           {/* Push mode - sidecar is part of flex layout */}
           {sidecarOpen && sidecarLayoutMode === "push" && (
             <ErrorBoundary variant="section" componentName="SidecarDock">
-              <div className="border-l border-zinc-800 flex-shrink-0">
+              <div className="border-l border-canopy-border flex-shrink-0">
                 <SidecarDock />
               </div>
             </ErrorBoundary>
