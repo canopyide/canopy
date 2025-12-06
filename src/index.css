@@ -33,10 +33,14 @@
   --color-sidebar-accent-foreground: var(--sidebar-accent-foreground);
   --color-sidebar-border: var(--sidebar-border);
   --color-sidebar-ring: var(--sidebar-ring);
+  --radius: 0.625rem;
+  --radius-xs: calc(var(--radius) - 6px);
   --radius-sm: calc(var(--radius) - 4px);
   --radius-md: calc(var(--radius) - 2px);
   --radius-lg: var(--radius);
   --radius-xl: calc(var(--radius) + 4px);
+  --radius-2xl: calc(var(--radius) + 8px);
+  --radius-3xl: calc(var(--radius) + 12px);
 
   /* Digital Ecology theme colors - The Forest Floor (Backgrounds) */
   --color-canopy-bg: #18181b; /* Zinc-950: Neutral, deep charcoal */
@@ -101,7 +105,6 @@
   --chart-3: oklch(0.398 0.07 227.392);
   --chart-4: oklch(0.828 0.189 84.429);
   --chart-5: oklch(0.769 0.188 70.08);
-  --radius: 0.625rem;
   --sidebar: oklch(0.985 0 0);
   --sidebar-foreground: oklch(0.145 0 0);
   --sidebar-primary: oklch(0.205 0 0);
@@ -212,7 +215,7 @@
 
   .xterm-viewport::-webkit-scrollbar-thumb {
     background: var(--color-state-idle);
-    border-radius: 4px;
+    border-radius: var(--radius-sm);
   }
 
   .xterm-viewport::-webkit-scrollbar-thumb:hover {
@@ -448,12 +451,12 @@ body,
 /* Word-level change highlighting */
 .diff-viewer .diff-code-edit .diff-code-insert-edit {
   background: rgba(158, 206, 106, 0.3);
-  border-radius: 2px;
+  border-radius: var(--radius-xs);
 }
 
 .diff-viewer .diff-code-edit .diff-code-delete-edit {
   background: rgba(247, 118, 142, 0.3);
-  border-radius: 2px;
+  border-radius: var(--radius-xs);
 }
 
 /* Hunk header styling */
@@ -502,7 +505,7 @@ body,
 
 .diff-viewer::-webkit-scrollbar-thumb {
   background: #565f89;
-  border-radius: 4px;
+  border-radius: var(--radius-sm);
 }
 
 .diff-viewer::-webkit-scrollbar-thumb:hover {
