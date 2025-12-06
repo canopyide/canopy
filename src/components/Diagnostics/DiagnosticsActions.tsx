@@ -71,7 +71,7 @@ export function LogsActions() {
         className={cn(
           "px-2 py-0.5 text-xs rounded transition-colors",
           autoScroll
-            ? "bg-blue-600 text-white"
+            ? "bg-[var(--color-status-info)] text-white hover:brightness-110"
             : "bg-canopy-bg text-canopy-text/60 hover:text-canopy-text hover:bg-canopy-border"
         )}
         title={autoScroll ? "Auto-scroll enabled" : "Auto-scroll disabled"}

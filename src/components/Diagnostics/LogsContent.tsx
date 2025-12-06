@@ -158,8 +158,8 @@ export function LogsContent({ className, onSourcesChange }: LogsContentProps) {
           }}
           className={cn(
             "absolute bottom-4 right-4 px-3 py-1.5 text-xs rounded-full",
-            "bg-blue-600 text-white shadow-lg",
-            "hover:bg-blue-500 transition-colors"
+            "bg-[var(--color-status-info)] text-white shadow-lg",
+            "hover:brightness-110 transition-all"
           )}
         >
           Scroll to bottom
