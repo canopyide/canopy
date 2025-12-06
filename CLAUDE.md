@@ -8,7 +8,7 @@
 1. **Dependencies:** ALWAYS use `npm install`. NEVER use `npm ci` (package-lock is ignored).
 2. **Native Modules:** `node-pty` must be rebuilt for Electron. `npm install` runs the rebuild hook automatically. If errors occur, run `npm run rebuild`.
 3. **Code Style:** Minimal comments. No decorative headers. High signal-to-noise ratio.
-4. **MCP:** If using Codex MCP, use `gpt-5.1-codex-max`.
+4. **Codex MCP:** Use `gpt-5.1-codex-max` model. Include file paths in prompts—Codex reads files directly and gives better advice when it can see the actual code.
 
 ## Development
 
