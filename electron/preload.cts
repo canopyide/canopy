@@ -241,6 +241,12 @@ const CHANNELS = {
   SYSTEM_SLEEP_GET_AWAKE_TIME: "system-sleep:get-awake-time",
   SYSTEM_SLEEP_RESET: "system-sleep:reset",
   SYSTEM_SLEEP_ON_WAKE: "system-sleep:on-wake",
+
+  // Keybinding channels
+  KEYBINDING_GET_OVERRIDES: "keybinding:get-overrides",
+  KEYBINDING_SET_OVERRIDE: "keybinding:set-override",
+  KEYBINDING_REMOVE_OVERRIDE: "keybinding:remove-override",
+  KEYBINDING_RESET_ALL: "keybinding:reset-all",
 } as const;
 
 const api: ElectronAPI = {
@@ -683,6 +689,19 @@ const api: ElectronAPI = {
 
     onWake: (callback: (sleepDurationMs: number) => void) =>
       _typedOn(CHANNELS.SYSTEM_SLEEP_ON_WAKE, callback),
+  },
+
+  // Keybinding API
+  keybinding: {
+    getOverrides: () => _typedInvoke(CHANNELS.KEYBINDING_GET_OVERRIDES),
+
+    setOverride: (actionId: string, combo: string[]) =>
+      _typedInvoke(CHANNELS.KEYBINDING_SET_OVERRIDE, { actionId, combo }),
+
+    removeOverride: (actionId: string) =>
+      _typedInvoke(CHANNELS.KEYBINDING_REMOVE_OVERRIDE, actionId),
+
+    resetAll: () => _typedInvoke(CHANNELS.KEYBINDING_RESET_ALL),
   },
 };
 

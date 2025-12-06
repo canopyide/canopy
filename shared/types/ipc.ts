@@ -16,6 +16,7 @@ import type {
   CodexSettings,
 } from "./agentSettings.js";
 import type { TerminalGridConfig } from "./config.js";
+import type { KeyAction } from "./keymap.js";
 
 // Terminal IPC Types
 
@@ -1327,6 +1328,24 @@ export interface IpcInvokeMap {
     args: [];
     result: void;
   };
+
+  // Keybinding channels
+  "keybinding:get-overrides": {
+    args: [];
+    result: Record<KeyAction, string[]>;
+  };
+  "keybinding:set-override": {
+    args: [payload: { actionId: KeyAction; combo: string[] }];
+    result: void;
+  };
+  "keybinding:remove-override": {
+    args: [actionId: KeyAction];
+    result: void;
+  };
+  "keybinding:reset-all": {
+    args: [];
+    result: void;
+  };
 }
 
 /**
@@ -1627,5 +1646,15 @@ export interface ElectronAPI {
     reset(): Promise<void>;
     /** Subscribe to wake events with sleep duration */
     onWake(callback: (sleepDurationMs: number) => void): () => void;
+  };
+  keybinding: {
+    /** Get current keybinding overrides */
+    getOverrides(): Promise<Record<KeyAction, string[]>>;
+    /** Set override for a specific action */
+    setOverride(actionId: KeyAction, combo: string[]): Promise<void>;
+    /** Remove override for a specific action (revert to default) */
+    removeOverride(actionId: KeyAction): Promise<void>;
+    /** Reset all overrides to defaults */
+    resetAll(): Promise<void>;
   };
 }
