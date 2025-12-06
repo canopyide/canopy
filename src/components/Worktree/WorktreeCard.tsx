@@ -297,31 +297,31 @@ export function WorktreeCard({
       role="button"
       aria-label={`Worktree: ${branchLabel}`}
     >
-      <div className="px-4 py-3">
+      <div className="px-2 py-3">
         <div className="flex flex-col gap-1">
           {/* Header Row: Expand, Activity, Agent Status, Branch, Menu */}
-          <div className="flex items-start justify-between gap-2">
-            <div className="flex items-start gap-2 min-w-0 flex-1">
-              {/* Left-aligned Expand Chevron */}
-              {hasExpandableContent ? (
-                <button
-                  onClick={handleToggleExpand}
-                  className="mt-0.5 p-0.5 text-gray-500 hover:text-gray-300 transition-colors"
-                  aria-label={isExpanded ? "Collapse details" : "Expand details"}
-                  aria-expanded={isExpanded}
-                  aria-controls={detailsId}
-                >
-                  {isExpanded ? (
-                    <ChevronDown className="w-4 h-4" />
-                  ) : (
-                    <ChevronRight className="w-4 h-4" />
-                  )}
-                </button>
-              ) : (
-                <div className="w-5" />
-              )}
+          <div className="flex items-start justify-between gap-1.5">
+            <div className="flex items-start gap-1.5 min-w-0 flex-1">
+              {/* Chevron + Branch row with vertical centering */}
+              <div className="flex items-center gap-1.5">
+                {hasExpandableContent ? (
+                  <button
+                    onClick={handleToggleExpand}
+                    className="p-0.5 text-gray-500 hover:text-gray-300 transition-colors"
+                    aria-label={isExpanded ? "Collapse details" : "Expand details"}
+                    aria-expanded={isExpanded}
+                    aria-controls={detailsId}
+                  >
+                    {isExpanded ? (
+                      <ChevronDown className="w-4 h-4" />
+                    ) : (
+                      <ChevronRight className="w-4 h-4" />
+                    )}
+                  </button>
+                ) : (
+                  <div className="w-5" />
+                )}
 
-              <div className="flex flex-col min-w-0">
                 <div className="flex items-center gap-2 text-xs font-mono leading-none">
                   <ActivityLight lastActivityTimestamp={worktree.lastActivityTimestamp} />
                   <AgentStatusIndicator state={dominantAgentState} />
@@ -448,7 +448,7 @@ export function WorktreeCard({
 
           {/* PR/Issue Badges Row - Dedicated second row */}
           {(worktree.prNumber || worktree.issueNumber) && (
-            <div className="flex items-center gap-2 mt-1 ml-7">
+            <div className="flex items-center gap-2 mt-1 ml-6">
               {worktree.prNumber && (
                 <button
                   onClick={(e) => {
@@ -488,7 +488,7 @@ export function WorktreeCard({
 
           {/* File Changes Preview - Only show if we have changes OR if expanded */}
           {worktree.worktreeChanges && (hasChanges || isExpanded) && (
-            <div className="mt-2 ml-7">
+            <div className="mt-2 ml-6">
               {hasChanges ? (
                 <FileChangeList
                   changes={worktree.worktreeChanges.changes}
@@ -503,7 +503,7 @@ export function WorktreeCard({
 
           {/* Footer Row: Stats - Only render when there's content to show */}
           {showFooter && (
-            <div className="flex items-center gap-4 mt-2 ml-7 text-xs text-gray-400 font-mono">
+            <div className="flex items-center gap-4 mt-2 ml-6 text-xs text-gray-400 font-mono">
               {terminalCounts.total > 0 && (
                 <div className="flex items-center gap-1">
                   <Terminal className="w-2.5 h-2.5" />
@@ -549,7 +549,7 @@ export function WorktreeCard({
             aria-hidden={!isExpanded}
             inert={!isExpanded}
             className={cn(
-              "overflow-hidden transition-[max-height,opacity] duration-300 ease-out ml-7",
+              "overflow-hidden transition-[max-height,opacity] duration-300 ease-out ml-6",
               isExpanded ? "max-h-[800px] opacity-100" : "max-h-0 opacity-0"
             )}
           >

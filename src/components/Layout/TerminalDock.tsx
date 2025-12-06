@@ -8,7 +8,7 @@ import { getBrandColorHex } from "@/lib/colorUtils";
 import { useTerminalStore, useProjectStore } from "@/store";
 import { DockedTerminalItem } from "./DockedTerminalItem";
 import { TrashContainer } from "./TrashContainer";
-import { SortableDockItem, DockPlaceholder, useDndPlaceholder } from "@/components/DragDrop";
+import { SortableDockItem } from "@/components/DragDrop";
 import { ClaudeIcon, GeminiIcon, CodexIcon } from "@/components/icons";
 import {
   ContextMenu,
@@ -44,14 +44,21 @@ export function TerminalDock() {
 
   const scrollContainerRef = useRef<HTMLDivElement>(null);
 
-  // Check if a drag is in progress
-  const { activeTerminal: isDragging } = useDndPlaceholder();
-
   // Make the dock terminals area droppable
   const { setNodeRef: setDockDropRef, isOver } = useDroppable({
     id: "dock-container",
     data: { container: "dock" },
   });
+
+  // Sync droppable ref with scroll container ref using stable callback
+  // This prevents ResizeObserver thrashing that causes infinite update loops
+  const combinedRef = useCallback(
+    (node: HTMLDivElement | null) => {
+      scrollContainerRef.current = node;
+      setDockDropRef(node);
+    },
+    [setDockDropRef]
+  );
 
   const handleScroll = (direction: "left" | "right") => {
     if (scrollContainerRef.current) {
@@ -108,14 +115,11 @@ export function TerminalDock() {
               <ChevronLeft className="w-4 h-4" />
             </button>
 
-            {/* Scrollable Container */}
+            {/* Scrollable Container - min-h ensures droppable area when empty */}
             <div
-              ref={(node) => {
-                scrollContainerRef.current = node;
-                setDockDropRef(node);
-              }}
+              ref={combinedRef}
               className={cn(
-                "flex items-center gap-2 overflow-x-auto flex-1 no-scrollbar scroll-smooth px-1",
+                "flex items-center gap-2 overflow-x-auto flex-1 min-h-[36px] no-scrollbar scroll-smooth px-1",
                 isOver && "bg-white/[0.03] ring-2 ring-canopy-accent/30 ring-inset rounded"
               )}
             >
@@ -124,14 +128,14 @@ export function TerminalDock() {
                 items={terminalIds}
                 strategy={horizontalListSortingStrategy}
               >
-                <div className="flex items-center gap-2">
+                {/* min-w/min-h prevent dnd-kit measureRects loop when empty
+                    (dnd-kit measures first child, which collapses to 0×0 without this) */}
+                <div className="flex items-center gap-2 min-w-[100px] min-h-[32px]">
                   {activeDockTerminals.map((terminal, index) => (
                     <SortableDockItem key={terminal.id} terminal={terminal} sourceIndex={index}>
                       <DockedTerminalItem terminal={terminal} />
                     </SortableDockItem>
                   ))}
-                  {/* Show drop zone placeholder when dock is empty and dragging */}
-                  {activeDockTerminals.length === 0 && isDragging && <DockPlaceholder />}
                 </div>
               </SortableContext>
             </div>
