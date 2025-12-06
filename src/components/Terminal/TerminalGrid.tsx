@@ -3,7 +3,12 @@ import { useShallow } from "zustand/react/shallow";
 import { SortableContext, rectSortingStrategy } from "@dnd-kit/sortable";
 import { useDroppable } from "@dnd-kit/core";
 import { cn } from "@/lib/utils";
-import { useTerminalStore, useLayoutConfigStore, type TerminalInstance } from "@/store";
+import {
+  useTerminalStore,
+  useLayoutConfigStore,
+  useWorktreeSelectionStore,
+  type TerminalInstance,
+} from "@/store";
 import { TerminalPane } from "./TerminalPane";
 import { ErrorBoundary } from "@/components/ErrorBoundary";
 import {
@@ -12,7 +17,7 @@ import {
   GRID_PLACEHOLDER_ID,
   GridPlaceholder,
 } from "@/components/DragDrop";
-import { Terminal } from "lucide-react";
+import { Terminal, AlertTriangle } from "lucide-react";
 import { CanopyIcon, CodexIcon, ClaudeIcon, GeminiIcon } from "@/components/icons";
 import { Kbd } from "@/components/ui/Kbd";
 import { getBrandColorHex } from "@/lib/colorUtils";
@@ -70,13 +75,17 @@ function LauncherCard({ title, description, shortcut, icon, onClick }: LauncherC
 
 function EmptyState({
   onLaunchAgent,
+  hasActiveWorktree,
 }: {
   onLaunchAgent: (type: "claude" | "gemini" | "codex" | "shell") => void;
+  hasActiveWorktree: boolean;
 }) {
   const handleOpenHelp = () => {
-    void systemClient.openExternal("https://www.youtube.com/watch?v=dQw4w9WgXcQ").catch((err) => {
-      console.error("Failed to open help video:", err);
-    });
+    void systemClient
+      .openExternal("https://github.com/gregpriday/canopy-electron#readme")
+      .catch((err) => {
+        console.error("Failed to open documentation:", err);
+      });
   };
 
   return (
@@ -92,20 +101,43 @@ function EmptyState({
           </p>
         </div>
 
+        {!hasActiveWorktree && (
+          <div
+            className="flex items-center gap-2 text-xs text-amber-400 bg-amber-500/10 border border-amber-500/20 rounded px-3 py-2 mb-6 max-w-md text-center"
+            role="status"
+            aria-live="assertive"
+          >
+            <AlertTriangle className="h-4 w-4 shrink-0" />
+            <span>Select a worktree in the sidebar to set the working directory for agents</span>
+          </div>
+        )}
+
         <div className="grid grid-cols-1 sm:grid-cols-2 gap-4 w-full max-w-3xl mb-8">
           <LauncherCard
             title="Claude Code"
             description="Best for sustained, autonomous refactoring sessions."
             shortcut="Ctrl+Shift+C"
             icon={<ClaudeIcon className="h-5 w-5" brandColor={getBrandColorHex("claude")} />}
-            onClick={() => onLaunchAgent("claude")}
+            onClick={
+              hasActiveWorktree
+                ? () => onLaunchAgent("claude")
+                : () => {
+                    console.warn("Cannot launch agent: no active worktree");
+                  }
+            }
             primary
           />
           <LauncherCard
             title="Codex CLI"
             description="Top-tier reasoning depth with context compaction."
             icon={<CodexIcon className="h-5 w-5" brandColor={getBrandColorHex("codex")} />}
-            onClick={() => onLaunchAgent("codex")}
+            onClick={
+              hasActiveWorktree
+                ? () => onLaunchAgent("codex")
+                : () => {
+                    console.warn("Cannot launch agent: no active worktree");
+                  }
+            }
             primary
           />
           <LauncherCard
@@ -113,14 +145,26 @@ function EmptyState({
             description="Fast auto-routing and multi-modal image input."
             shortcut="Ctrl+Shift+G"
             icon={<GeminiIcon className="h-5 w-5" brandColor={getBrandColorHex("gemini")} />}
-            onClick={() => onLaunchAgent("gemini")}
+            onClick={
+              hasActiveWorktree
+                ? () => onLaunchAgent("gemini")
+                : () => {
+                    console.warn("Cannot launch agent: no active worktree");
+                  }
+            }
             primary
           />
           <LauncherCard
             title="Terminal"
             description="Standard shell access."
             icon={<Terminal className="h-5 w-5" />}
-            onClick={() => onLaunchAgent("shell")}
+            onClick={
+              hasActiveWorktree
+                ? () => onLaunchAgent("shell")
+                : () => {
+                    console.warn("Cannot launch agent: no active worktree");
+                  }
+            }
           />
         </div>
 
@@ -139,7 +183,7 @@ function EmptyState({
             </div>
             <div className="flex flex-col">
               <span className="text-xs font-medium text-canopy-text/60 group-hover:text-canopy-text transition-colors">
-                Watch the walkthrough
+                View documentation
               </span>
             </div>
           </button>
@@ -157,6 +201,9 @@ export function TerminalGrid({ className, defaultCwd, onLaunchAgent }: TerminalG
       maximizedId: state.maximizedId,
     }))
   );
+
+  const activeWorktreeId = useWorktreeSelectionStore((state) => state.activeWorktreeId);
+  const hasActiveWorktree = activeWorktreeId !== null;
 
   const addTerminal = useTerminalStore((state) => state.addTerminal);
   const trashTerminal = useTerminalStore((state) => state.trashTerminal);
@@ -334,7 +381,7 @@ export function TerminalGrid({ className, defaultCwd, onLaunchAgent }: TerminalG
       >
         {isEmpty && !showPlaceholder ? (
           <div className="col-span-full row-span-full">
-            <EmptyState onLaunchAgent={handleLaunchAgent} />
+            <EmptyState onLaunchAgent={handleLaunchAgent} hasActiveWorktree={hasActiveWorktree} />
           </div>
         ) : (
           <>
