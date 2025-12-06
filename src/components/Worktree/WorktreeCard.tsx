@@ -302,12 +302,15 @@ export function WorktreeCard({
     >
       <div className="px-3 py-4">
         {/* Golden Gutter Grid Structure */}
-        <div className="grid" style={{ gridTemplateColumns: "20px 1fr", columnGap: "20px", rowGap: "6px" }}>
-          {/* Row 1: The Meta Layer */}
+        <div
+          className="grid"
+          style={{ gridTemplateColumns: "20px 1fr", columnGap: "20px", rowGap: "6px" }}
+        >
+          {/* Row 1: The Meta Layer - Context & Recency */}
           <div className="flex items-center justify-center">
             <ActivityLight lastActivityTimestamp={worktree.lastActivityTimestamp} />
           </div>
-          <div className="flex items-center justify-between gap-2 min-w-0">
+          <div className="flex items-center justify-between gap-2 min-w-0 min-h-[18px]">
             <div className="flex flex-wrap items-center gap-1.5 text-xs font-mono leading-none">
               <AgentStatusIndicator state={dominantAgentState} />
 
@@ -318,13 +321,13 @@ export function WorktreeCard({
                     onOpenIssue?.();
                   }}
                   className={cn(
-                    "flex items-center gap-1 text-xs text-[var(--color-status-info)]",
+                    "flex items-center gap-1 text-[10px] text-[var(--color-status-info)]",
                     "bg-blue-500/10 px-1.5 py-0.5 rounded border border-blue-500/20",
                     "hover:bg-blue-500/20 transition-colors cursor-pointer"
                   )}
                   title="Open Issue on GitHub"
                 >
-                  <CircleDot className="w-3 h-3" />
+                  <CircleDot className="w-2.5 h-2.5" />
                   <span className="font-mono">#{worktree.issueNumber}</span>
                 </button>
               )}
@@ -336,125 +339,20 @@ export function WorktreeCard({
                     onOpenPR?.();
                   }}
                   className={cn(
-                    "flex items-center gap-1 text-xs text-[var(--color-status-success)]",
+                    "flex items-center gap-1 text-[10px] text-[var(--color-status-success)]",
                     "bg-green-500/10 px-1.5 py-0.5 rounded border border-green-500/20",
                     "hover:bg-green-500/20 transition-colors cursor-pointer"
                   )}
                   title="Open Pull Request on GitHub"
                 >
-                  <GitPullRequest className="w-3 h-3" />
+                  <GitPullRequest className="w-2.5 h-2.5" />
                   <span className="font-mono">#{worktree.prNumber}</span>
                 </button>
               )}
             </div>
 
-            <div className="flex items-center gap-2 shrink-0">
-              <span className="text-[10px] text-gray-500 font-mono">{relativeTime}</span>
-              <div className="flex items-center opacity-0 group-hover:opacity-100 group-focus-within:opacity-100 transition-opacity">
-                <button
-                  onClick={(e) => {
-                    e.stopPropagation();
-                    onCopyTree();
-                  }}
-                  className="p-1.5 text-gray-500 hover:text-gray-200 hover:bg-white/10 rounded transition-colors"
-                  title="Copy Context"
-                  aria-label="Copy Context"
-                >
-                  <Copy className="w-3.5 h-3.5" />
-                </button>
-
-                <DropdownMenu>
-                  <DropdownMenuTrigger asChild>
-                    <button
-                      onClick={(e) => e.stopPropagation()}
-                      className="p-1.5 text-gray-500 hover:text-gray-200 hover:bg-white/10 rounded transition-colors"
-                      aria-label="More actions"
-                    >
-                      <MoreHorizontal className="w-3.5 h-3.5" />
-                    </button>
-                  </DropdownMenuTrigger>
-                  <DropdownMenuContent
-                    align="end"
-                    sideOffset={4}
-                    onClick={(e) => e.stopPropagation()}
-                  >
-                    <DropdownMenuItem onClick={() => onCopyTree()}>
-                      <Copy className="w-3 h-3 mr-2" />
-                      Copy Context
-                    </DropdownMenuItem>
-                    <DropdownMenuItem onClick={() => onOpenEditor()}>
-                      <Code className="w-3 h-3 mr-2" />
-                      Open in Editor
-                    </DropdownMenuItem>
-                    <DropdownMenuItem onClick={() => handlePathClick()}>
-                      <Folder className="w-3 h-3 mr-2" />
-                      Reveal in Finder
-                    </DropdownMenuItem>
-
-                    {(worktree.issueNumber || worktree.prNumber) && <DropdownMenuSeparator />}
-
-                    {worktree.issueNumber && onOpenIssue && (
-                      <DropdownMenuItem onClick={() => handleOpenIssue()}>
-                        <CircleDot className="w-3 h-3 mr-2" />
-                        Open Issue #{worktree.issueNumber}
-                      </DropdownMenuItem>
-                    )}
-                    {worktree.prNumber && onOpenPR && (
-                      <DropdownMenuItem onClick={() => handleOpenPR()}>
-                        <GitPullRequest className="w-3 h-3 mr-2" />
-                        Open PR #{worktree.prNumber}
-                      </DropdownMenuItem>
-                    )}
-
-                    {(recipes.length > 0 || onCreateRecipe) && <DropdownMenuSeparator />}
-
-                    {recipes.length > 0 && (
-                      <>
-                        <DropdownMenuLabel>Recipes</DropdownMenuLabel>
-                        {recipes.map((recipe) => (
-                          <DropdownMenuItem
-                            key={recipe.id}
-                            onClick={() => handleRunRecipe(recipe.id)}
-                            disabled={runningRecipeId !== null}
-                          >
-                            <Play className="w-3 h-3 mr-2" />
-                            {recipe.name}
-                          </DropdownMenuItem>
-                        ))}
-                      </>
-                    )}
-                    {onCreateRecipe && (
-                      <DropdownMenuItem onClick={onCreateRecipe}>
-                        <Plus className="w-3 h-3 mr-2" />
-                        Create Recipe...
-                      </DropdownMenuItem>
-                    )}
-
-                    {totalTerminalCount > 0 && (
-                      <>
-                        <DropdownMenuSeparator />
-                        <DropdownMenuLabel>Sessions</DropdownMenuLabel>
-                        <DropdownMenuItem
-                          onClick={handleCloseCompleted}
-                          disabled={completedCount === 0}
-                        >
-                          Close Completed ({completedCount})
-                        </DropdownMenuItem>
-                        <DropdownMenuItem onClick={handleCloseFailed} disabled={failedCount === 0}>
-                          Close Failed ({failedCount})
-                        </DropdownMenuItem>
-                        <DropdownMenuItem
-                          onClick={handleCloseAllTerminals}
-                          className="text-[var(--color-status-error)] focus:text-[var(--color-status-error)]"
-                        >
-                          Close All...
-                        </DropdownMenuItem>
-                      </>
-                    )}
-                  </DropdownMenuContent>
-                </DropdownMenu>
-              </div>
-            </div>
+            {/* Relative Time - Right aligned */}
+            <span className="text-[10px] text-gray-500 font-medium shrink-0">{relativeTime}</span>
           </div>
 
           {/* Row 2: The Identity Layer */}
@@ -475,32 +373,142 @@ export function WorktreeCard({
               </button>
             ) : null}
           </div>
-          <div className="min-w-0 flex items-center gap-2">
-            {isMainWorktree && <Shield className="w-3.5 h-3.5 text-gray-600 opacity-30 shrink-0" />}
-            <span
-              className={cn(
-                "font-semibold text-[14px]",
-                isActive ? "text-white" : "text-gray-300",
-                isMainWorktree && "font-bold"
+          <div className="group/identity min-w-0 flex items-center justify-between gap-2 min-h-[24px] relative">
+            <div className="flex items-center gap-2 min-w-0 pr-16">
+              {isMainWorktree && (
+                <Shield className="w-3.5 h-3.5 text-gray-600 opacity-30 shrink-0" />
               )}
-              title={branchLabel}
-            >
-              {truncatedBranchLabel}
-            </span>
-            {!worktree.branch && (
-              <span className="text-amber-500 text-[10px] font-medium shrink-0">(detached)</span>
-            )}
+              <span
+                className={cn(
+                  "truncate font-semibold text-[14px]",
+                  isActive ? "text-white" : "text-gray-300",
+                  isMainWorktree && "font-bold tracking-wide"
+                )}
+                title={branchLabel}
+              >
+                {truncatedBranchLabel}
+              </span>
+              {!worktree.branch && (
+                <span className="text-amber-500 text-[10px] font-medium shrink-0">(detached)</span>
+              )}
+            </div>
+
+            {/* Action Buttons - visible on hover/focus */}
+            <div className="absolute right-0 flex items-center gap-0.5 opacity-0 group-hover/identity:opacity-100 group-focus-within/identity:opacity-100 focus-within:opacity-100 transition-opacity bg-gradient-to-l from-[#18181b] from-70% to-transparent pl-6 z-10">
+              <button
+                onClick={(e) => {
+                  e.stopPropagation();
+                  onCopyTree();
+                }}
+                className="p-1 text-gray-400 hover:text-white hover:bg-white/10 rounded transition-colors"
+                title="Copy Context"
+                aria-label="Copy Context"
+              >
+                <Copy className="w-3.5 h-3.5" />
+              </button>
+
+              <DropdownMenu>
+                <DropdownMenuTrigger asChild>
+                  <button
+                    onClick={(e) => e.stopPropagation()}
+                    className="p-1 text-gray-400 hover:text-white hover:bg-white/10 rounded transition-colors"
+                    aria-label="More actions"
+                  >
+                    <MoreHorizontal className="w-3.5 h-3.5" />
+                  </button>
+                </DropdownMenuTrigger>
+                <DropdownMenuContent
+                  align="end"
+                  sideOffset={4}
+                  onClick={(e) => e.stopPropagation()}
+                >
+                  <DropdownMenuItem onClick={() => onCopyTree()}>
+                    <Copy className="w-3 h-3 mr-2" />
+                    Copy Context
+                  </DropdownMenuItem>
+                  <DropdownMenuItem onClick={() => onOpenEditor()}>
+                    <Code className="w-3 h-3 mr-2" />
+                    Open in Editor
+                  </DropdownMenuItem>
+                  <DropdownMenuItem onClick={() => handlePathClick()}>
+                    <Folder className="w-3 h-3 mr-2" />
+                    Reveal in Finder
+                  </DropdownMenuItem>
+
+                  {(worktree.issueNumber || worktree.prNumber) && <DropdownMenuSeparator />}
+
+                  {worktree.issueNumber && onOpenIssue && (
+                    <DropdownMenuItem onClick={() => handleOpenIssue()}>
+                      <CircleDot className="w-3 h-3 mr-2" />
+                      Open Issue #{worktree.issueNumber}
+                    </DropdownMenuItem>
+                  )}
+                  {worktree.prNumber && onOpenPR && (
+                    <DropdownMenuItem onClick={() => handleOpenPR()}>
+                      <GitPullRequest className="w-3 h-3 mr-2" />
+                      Open PR #{worktree.prNumber}
+                    </DropdownMenuItem>
+                  )}
+
+                  {(recipes.length > 0 || onCreateRecipe) && <DropdownMenuSeparator />}
+
+                  {recipes.length > 0 && (
+                    <>
+                      <DropdownMenuLabel>Recipes</DropdownMenuLabel>
+                      {recipes.map((recipe) => (
+                        <DropdownMenuItem
+                          key={recipe.id}
+                          onClick={() => handleRunRecipe(recipe.id)}
+                          disabled={runningRecipeId !== null}
+                        >
+                          <Play className="w-3 h-3 mr-2" />
+                          {recipe.name}
+                        </DropdownMenuItem>
+                      ))}
+                    </>
+                  )}
+                  {onCreateRecipe && (
+                    <DropdownMenuItem onClick={onCreateRecipe}>
+                      <Plus className="w-3 h-3 mr-2" />
+                      Create Recipe...
+                    </DropdownMenuItem>
+                  )}
+
+                  {totalTerminalCount > 0 && (
+                    <>
+                      <DropdownMenuSeparator />
+                      <DropdownMenuLabel>Sessions</DropdownMenuLabel>
+                      <DropdownMenuItem
+                        onClick={handleCloseCompleted}
+                        disabled={completedCount === 0}
+                      >
+                        Close Completed ({completedCount})
+                      </DropdownMenuItem>
+                      <DropdownMenuItem onClick={handleCloseFailed} disabled={failedCount === 0}>
+                        Close Failed ({failedCount})
+                      </DropdownMenuItem>
+                      <DropdownMenuItem
+                        onClick={handleCloseAllTerminals}
+                        className="text-[var(--color-status-error)] focus:text-[var(--color-status-error)]"
+                      >
+                        Close All...
+                      </DropdownMenuItem>
+                    </>
+                  )}
+                </DropdownMenuContent>
+              </DropdownMenu>
+            </div>
           </div>
 
           {/* Row 3: The Dynamic Activity Layer (Polymorphic) */}
           <div />
           <div className="flex flex-col gap-1 min-w-0">
-            {workspaceScenario === "dirty" ? (
+            {workspaceScenario === "dirty" && !isExpanded ? (
               <>
                 {effectiveSummary && (
                   <div className="text-xs text-gray-300 truncate">{effectiveSummary}</div>
                 )}
-                {worktree.worktreeChanges && !isExpanded && (
+                {worktree.worktreeChanges && (
                   <FileChangeList
                     changes={worktree.worktreeChanges.changes}
                     rootPath={worktree.worktreeChanges.rootPath}
@@ -508,7 +516,7 @@ export function WorktreeCard({
                   />
                 )}
                 {worktree.worktreeChanges && (
-                  <div className="flex items-center gap-1 text-xs text-gray-400 font-mono mt-1">
+                  <div className="flex items-center gap-2 text-xs text-gray-400 font-mono mt-1">
                     <GitCommitHorizontal className="w-2.5 h-2.5" />
                     <span className="text-[var(--color-status-success)]">
                       +{worktree.worktreeChanges.insertions ?? 0}
@@ -532,31 +540,45 @@ export function WorktreeCard({
                 ) : null}
               </>
             ) : workspaceScenario === "clean-main" && !isExpanded ? (
-              <div className="flex items-center gap-3 text-xs text-gray-400 font-mono">
-                {showDevServer && serverState && (
-                  <div className="flex items-center gap-1">
-                    <Globe className="w-3 h-3" />
-                    {serverState.status === "running" ? (
-                      <>
-                        <span className="text-[var(--color-server-running)]">●</span>
-                        <span className="text-gray-300">
-                          :{serverState.url?.split(":").pop()?.replace(/\/$/, "") ?? "3000"}
-                        </span>
-                      </>
-                    ) : (
-                      <span className="text-gray-600">stopped</span>
-                    )}
-                  </div>
-                )}
-                {terminalCounts.total > 0 && (
-                  <div className="flex items-center gap-1">
-                    <Terminal className="w-3 h-3" />
-                    <span>{terminalCounts.total} Active</span>
-                    {terminalCounts.byState.working > 0 && (
-                      <div className="w-1.5 h-1.5 rounded-full bg-[var(--color-status-success)] animate-pulse" />
-                    )}
-                  </div>
-                )}
+              <div className="flex items-center gap-2 text-[11px] font-mono font-medium">
+                {/* Server Pill */}
+                <div
+                  className={cn(
+                    "flex items-center gap-1.5 px-2.5 py-1 rounded border",
+                    serverState?.status === "running"
+                      ? "bg-[var(--color-server-running)]/10 text-[var(--color-server-running)] border-[var(--color-server-running)]/20"
+                      : "bg-gray-800/60 text-gray-500 border-gray-700/50"
+                  )}
+                >
+                  <Globe className="w-3 h-3" />
+                  <span>
+                    {serverState?.status === "running" && serverState.port
+                      ? `:${serverState.port}`
+                      : "Server"}
+                  </span>
+                </div>
+
+                {/* Terminal Pill */}
+                <div
+                  className={cn(
+                    "flex items-center gap-1.5 px-2.5 py-1 rounded border",
+                    terminalCounts.total > 0
+                      ? "bg-gray-800/60 text-gray-300 border-gray-700/50"
+                      : "bg-gray-800/60 text-gray-600 border-gray-700/50"
+                  )}
+                >
+                  <Terminal className="w-3 h-3" />
+                  <span>{terminalCounts.total} Active</span>
+                  {terminalCounts.byState.working > 0 && (
+                    <div className="w-1.5 h-1.5 rounded-full bg-[var(--color-status-success)] animate-pulse" />
+                  )}
+                </div>
+
+                {/* Version Pill */}
+                <div className="flex items-center gap-1.5 px-2.5 py-1 rounded border bg-gray-800/60 text-gray-500 border-gray-700/50">
+                  <GitCommit className="w-3 h-3" />
+                  <span>HEAD</span>
+                </div>
               </div>
             ) : null}
           </div>
