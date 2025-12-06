@@ -577,8 +577,7 @@ export function WorktreeCard({
                       <GitCommit className="w-3 h-3 shrink-0" />
                       <span className="truncate">{firstLineLastCommitMessage}</span>
                     </div>
-                  ) : isExpanded ? /* Expanded: Commit "teleported" to details, show nothing here to avoid duplication */
-                  null : (
+                  ) : isExpanded /* Expanded: Commit "teleported" to details, show nothing here to avoid duplication */ ? null : (
                     <span className="text-[10px] uppercase tracking-wider font-semibold text-gray-600/80 select-none">
                       No Activity
                     </span>
