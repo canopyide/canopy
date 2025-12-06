@@ -30,14 +30,6 @@ export const useNotificationStore = create<NotificationStore>((set) => ({
       notifications: [...state.notifications, newNotification],
     }));
 
-    if (notification.duration !== 0) {
-      setTimeout(() => {
-        set((state) => ({
-          notifications: state.notifications.filter((n) => n.id !== id),
-        }));
-      }, notification.duration || 5000);
-    }
-
     return id;
   },
   removeNotification: (id) =>
