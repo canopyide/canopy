@@ -18,7 +18,13 @@ const DEFAULT_BACKGROUND_WORKTREE_INTERVAL_MS =
 
 const NOTE_PATH = DEFAULT_CONFIG.note?.filename ?? "canopy/note";
 
+const gitDirCache = new Map<string, string | null>();
+
 function getGitDir(worktreePath: string): string | null {
+  if (gitDirCache.has(worktreePath)) {
+    return gitDirCache.get(worktreePath)!;
+  }
+
   try {
     const result = execSync("git rev-parse --git-dir", {
       cwd: worktreePath,
@@ -27,11 +33,11 @@ function getGitDir(worktreePath: string): string | null {
       stdio: ["pipe", "pipe", "pipe"],
     }).trim();
 
-    if (!result.startsWith("/")) {
-      return pathJoin(worktreePath, result);
-    }
-    return result;
+    const resolved = result.startsWith("/") ? result : pathJoin(worktreePath, result);
+    gitDirCache.set(worktreePath, resolved);
+    return resolved;
   } catch {
+    gitDirCache.set(worktreePath, null);
     return null;
   }
 }
@@ -488,6 +494,9 @@ export class WorktreeService {
     // Reset adaptive backoff state by clearing monitors
     // (already done in stopAll, but this makes intent explicit)
     this.monitors.clear();
+
+    // Clear git-dir cache to prevent stale paths when switching projects
+    gitDirCache.clear();
 
     logInfo("WorktreeService state reset for project switch");
   }
