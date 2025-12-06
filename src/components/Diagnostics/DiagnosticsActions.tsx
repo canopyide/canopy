@@ -20,6 +20,7 @@ function ActionButton({ onClick, disabled, children, className, title }: ActionB
       className={cn(
         "px-2 py-0.5 text-xs rounded transition-colors",
         "bg-canopy-bg text-canopy-text/60 hover:text-canopy-text hover:bg-canopy-border",
+        "focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-canopy-accent focus-visible:ring-offset-1 focus-visible:ring-offset-canopy-bg",
         disabled && "opacity-50 cursor-not-allowed",
         className
       )}
@@ -43,7 +44,12 @@ export function ProblemsActions() {
       <ActionButton onClick={handleOpenLogs} title="Open log file">
         Open Logs
       </ActionButton>
-      <ActionButton onClick={clearAll} disabled={!hasActiveErrors} title="Clear all errors">
+      <ActionButton
+        onClick={clearAll}
+        disabled={!hasActiveErrors}
+        title="Clear all errors"
+        className="focus-visible:ring-[var(--color-status-error)] focus-visible:ring-offset-canopy-bg"
+      >
         Clear All
       </ActionButton>
     </div>
@@ -70,6 +76,7 @@ export function LogsActions() {
         onClick={() => setAutoScroll(!autoScroll)}
         className={cn(
           "px-2 py-0.5 text-xs rounded transition-colors",
+          "focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-canopy-accent focus-visible:ring-offset-1 focus-visible:ring-offset-canopy-bg",
           autoScroll
             ? "bg-[var(--color-status-info)] text-white hover:brightness-110"
             : "bg-canopy-bg text-canopy-text/60 hover:text-canopy-text hover:bg-canopy-border"
@@ -81,7 +88,11 @@ export function LogsActions() {
       <ActionButton onClick={handleOpenFile} title="Open log file">
         Open File
       </ActionButton>
-      <ActionButton onClick={handleClearLogs} title="Clear logs">
+      <ActionButton
+        onClick={handleClearLogs}
+        title="Clear logs"
+        className="focus-visible:ring-[var(--color-status-error)] focus-visible:ring-offset-canopy-bg"
+      >
         Clear
       </ActionButton>
     </div>
@@ -102,7 +113,11 @@ export function EventsActions() {
 
   return (
     <div className="flex items-center gap-2">
-      <ActionButton onClick={handleClearEvents} title="Clear all events">
+      <ActionButton
+        onClick={handleClearEvents}
+        title="Clear all events"
+        className="focus-visible:ring-[var(--color-status-error)] focus-visible:ring-offset-canopy-bg"
+      >
         Clear
       </ActionButton>
     </div>
