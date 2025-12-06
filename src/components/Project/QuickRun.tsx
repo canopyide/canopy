@@ -171,9 +171,14 @@ export function QuickRun({ projectId }: QuickRunProps) {
         aria-expanded={isExpanded}
         aria-controls="quick-run-panel"
       >
-        <div className="flex items-center gap-2 overflow-hidden">
+        <div className="flex items-center gap-2 overflow-hidden min-w-0">
           {isExpanded ? <ChevronDown className="h-3 w-3" /> : <ChevronRight className="h-3 w-3" />}
-          <span className="truncate">{activeWorktreeName}</span>
+          <span className="flex items-center gap-1.5 min-w-0">
+            <span className="opacity-50 font-medium shrink-0">Run on</span>
+            <span className={cn("truncate", isWorktreeValid ? "text-canopy-text" : "text-canopy-text/50")}>
+              {activeWorktreeName}
+            </span>
+          </span>
         </div>
       </button>
 
@@ -236,8 +241,16 @@ export function QuickRun({ projectId }: QuickRunProps) {
                       ? "bg-canopy-accent/20 text-canopy-accent"
                       : "text-white/30 hover:text-white/60 hover:bg-white/10"
                   )}
-                  title={runAsDocked ? "Running in Dock" : "Running in Grid"}
-                  aria-label={runAsDocked ? "Running in Dock mode" : "Running in Grid mode"}
+                  title={
+                    runAsDocked
+                      ? "Output: Dock (Background Task)"
+                      : "Output: Grid (Interactive Terminal)"
+                  }
+                  aria-label={
+                    runAsDocked
+                      ? "Send output to Dock (background task)"
+                      : "Send output to Grid (interactive terminal)"
+                  }
                 >
                   {runAsDocked ? (
                     <PanelBottom className="h-3.5 w-3.5" />
