@@ -6,9 +6,21 @@ import {
   ContextMenuTrigger,
   ContextMenuShortcut,
 } from "@/components/ui/context-menu";
-import { Maximize2, Minimize2, Trash2, ArrowUp, ArrowDownToLine, X, RotateCcw } from "lucide-react";
+import {
+  Maximize2,
+  Minimize2,
+  Trash2,
+  ArrowUp,
+  ArrowDownToLine,
+  X,
+  RotateCcw,
+  Copy,
+  Eraser,
+} from "lucide-react";
 import { useTerminalStore } from "@/store";
 import type { TerminalLocation } from "@/types";
+import { terminalInstanceService } from "@/services/TerminalInstanceService";
+import { VT100_FULL_CLEAR } from "@/services/clearCommandDetection";
 
 interface TerminalContextMenuProps {
   terminalId: string;
@@ -33,7 +45,31 @@ export function TerminalContextMenu({
   const removeTerminal = useTerminalStore((s) => s.removeTerminal);
   const toggleMaximize = useTerminalStore((s) => s.toggleMaximize);
   const restartTerminal = useTerminalStore((s) => s.restartTerminal);
+  const addTerminal = useTerminalStore((s) => s.addTerminal);
   const isMaximized = useTerminalStore((s) => s.maximizedId === terminalId);
+
+  const handleDuplicate = async () => {
+    if (!terminal) return;
+    try {
+      await addTerminal({
+        type: terminal.type,
+        cwd: terminal.cwd,
+        location: terminal.location === "trash" ? "grid" : terminal.location,
+        title: `${terminal.title} (copy)`,
+        worktreeId: terminal.worktreeId,
+        command: terminal.command,
+      });
+    } catch (error) {
+      console.error("Failed to duplicate terminal:", error);
+    }
+  };
+
+  const handleClearBuffer = () => {
+    const managed = terminalInstanceService.get(terminalId);
+    if (managed?.terminal) {
+      managed.terminal.write(VT100_FULL_CLEAR);
+    }
+  };
 
   if (!terminal) return <>{children}</>;
 
@@ -79,6 +115,16 @@ export function TerminalContextMenu({
         <ContextMenuItem onClick={() => restartTerminal(terminalId)}>
           <RotateCcw className="w-4 h-4 mr-2" aria-hidden="true" />
           Restart Terminal
+        </ContextMenuItem>
+
+        <ContextMenuItem onClick={handleDuplicate}>
+          <Copy className="w-4 h-4 mr-2" aria-hidden="true" />
+          Duplicate Terminal
+        </ContextMenuItem>
+
+        <ContextMenuItem onClick={handleClearBuffer}>
+          <Eraser className="w-4 h-4 mr-2" aria-hidden="true" />
+          Clear Scrollback
         </ContextMenuItem>
 
         <ContextMenuSeparator />
