@@ -1,5 +1,6 @@
-import { useCallback, useEffect, useState } from "react";
+import { useCallback, useEffect, useState, useRef } from "react";
 import { cn } from "@/lib/utils";
+import { Button } from "@/components/ui/button";
 import type { LogLevel, LogFilterOptions } from "@/types";
 
 interface LogFiltersProps {
@@ -27,6 +28,8 @@ export function LogFilters({
   availableSources,
 }: LogFiltersProps) {
   const [searchValue, setSearchValue] = useState(filters.search || "");
+  const [isSourcesOpen, setIsSourcesOpen] = useState(false);
+  const sourcesRef = useRef<HTMLDivElement>(null);
 
   useEffect(() => {
     const timer = setTimeout(() => {
@@ -64,6 +67,19 @@ export function LogFilters({
     onClear();
   }, [onClear]);
 
+  useEffect(() => {
+    if (!isSourcesOpen) return;
+
+    const handleClickOutside = (event: MouseEvent) => {
+      if (sourcesRef.current && !sourcesRef.current.contains(event.target as Node)) {
+        setIsSourcesOpen(false);
+      }
+    };
+
+    document.addEventListener("mousedown", handleClickOutside);
+    return () => document.removeEventListener("mousedown", handleClickOutside);
+  }, [isSourcesOpen]);
+
   const hasActiveFilters =
     (filters.levels && filters.levels.length > 0) ||
     (filters.sources && filters.sources.length > 0) ||
@@ -85,12 +101,15 @@ export function LogFilters({
           )}
         />
         {searchValue && (
-          <button
+          <Button
+            variant="ghost"
+            size="icon-sm"
             onClick={() => setSearchValue("")}
-            className="absolute right-2 top-1/2 -translate-y-1/2 text-canopy-text/60 hover:text-canopy-text"
+            className="absolute right-1 top-1/2 -translate-y-1/2 h-6 w-6"
+            aria-label="Clear search"
           >
-            x
-          </button>
+            ×
+          </Button>
         )}
       </div>
 
@@ -99,68 +118,64 @@ export function LogFilters({
         {LOG_LEVELS.map(({ level, label, color }) => {
           const isActive = filters.levels?.includes(level);
           return (
-            <button
+            <Button
               key={level}
+              variant="subtle"
+              size="xs"
               onClick={() => handleLevelToggle(level)}
-              className={cn(
-                "px-2 py-0.5 text-xs rounded transition-colors",
-                isActive ? "bg-canopy-border font-medium" : "bg-canopy-bg/50",
-                color
-              )}
+              className={cn(isActive ? "bg-canopy-border font-medium" : "bg-canopy-bg/50", color)}
             >
               {label}
-            </button>
+            </Button>
           );
         })}
       </div>
 
       {availableSources.length > 0 && (
-        <div className="relative group">
-          <button
-            className={cn(
-              "px-2 py-0.5 text-xs rounded transition-colors",
-              "bg-canopy-bg border border-canopy-border text-canopy-text",
-              "hover:bg-canopy-border"
-            )}
+        <div ref={sourcesRef} className="relative">
+          <Button
+            variant="outline"
+            size="xs"
+            onClick={() => setIsSourcesOpen(!isSourcesOpen)}
+            aria-expanded={isSourcesOpen}
           >
             Sources {filters.sources?.length ? `(${filters.sources.length})` : ""}
-          </button>
-          <div
-            className={cn(
-              "absolute left-0 top-full mt-1 z-50",
-              "bg-canopy-bg border border-canopy-border rounded shadow-lg",
-              "min-w-[150px] max-h-[200px] overflow-y-auto",
-              "hidden group-hover:block"
-            )}
-          >
-            {availableSources.map((source) => {
-              const isActive = filters.sources?.includes(source);
-              return (
-                <button
-                  key={source}
-                  onClick={() => handleSourceToggle(source)}
-                  className={cn(
-                    "w-full px-3 py-1.5 text-xs text-left",
-                    "hover:bg-canopy-border transition-colors",
-                    isActive ? "text-[var(--color-status-info)] bg-blue-900/20" : "text-canopy-text"
-                  )}
-                >
-                  {isActive && "* "}
-                  {source}
-                </button>
-              );
-            })}
-          </div>
+          </Button>
+          {isSourcesOpen && (
+            <div
+              className={cn(
+                "absolute left-0 top-full mt-1 z-50",
+                "bg-canopy-bg border border-canopy-border rounded shadow-lg",
+                "min-w-[150px] max-h-[200px] overflow-y-auto"
+              )}
+            >
+              {availableSources.map((source) => {
+                const isActive = filters.sources?.includes(source);
+                return (
+                  <Button
+                    key={source}
+                    variant="ghost"
+                    size="xs"
+                    onClick={() => handleSourceToggle(source)}
+                    className={cn(
+                      "w-full justify-start rounded-none",
+                      isActive ? "text-[var(--color-status-info)] bg-blue-900/20" : "text-canopy-text"
+                    )}
+                  >
+                    {isActive && "* "}
+                    {source}
+                  </Button>
+                );
+              })}
+            </div>
+          )}
         </div>
       )}
 
       {hasActiveFilters && (
-        <button
-          onClick={handleClearAll}
-          className="px-2 py-0.5 text-xs rounded bg-canopy-bg text-canopy-text/60 hover:text-canopy-text hover:bg-canopy-border"
-        >
+        <Button variant="subtle" size="xs" onClick={handleClearAll}>
           Clear
-        </button>
+        </Button>
       )}
     </div>
   );

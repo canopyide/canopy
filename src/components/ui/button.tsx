@@ -18,12 +18,24 @@ const buttonVariants = cva(
           "bg-secondary text-secondary-foreground shadow-sm hover:bg-secondary/80 active:scale-95",
         ghost: "hover:bg-accent hover:text-accent-foreground active:scale-95",
         link: "text-primary underline-offset-4 hover:underline",
+        subtle:
+          "bg-canopy-bg text-canopy-text/60 hover:bg-canopy-border hover:text-canopy-text active:scale-95",
+        pill: "rounded-full bg-canopy-bg/50 border border-canopy-border text-canopy-text/60 hover:bg-canopy-border active:scale-95",
+        "ghost-danger":
+          "text-[var(--color-status-error)] hover:bg-[var(--color-status-error)]/10 active:scale-95",
+        "ghost-success":
+          "text-[var(--color-status-success)] hover:bg-[var(--color-status-success)]/10 active:scale-95",
+        "ghost-info":
+          "text-[var(--color-status-info)] hover:bg-[var(--color-status-info)]/10 active:scale-95",
+        info: "bg-[var(--color-status-info)] text-white hover:brightness-110 active:scale-95",
       },
       size: {
         default: "h-9 px-4 py-2",
         sm: "h-8 px-3 text-xs",
+        xs: "h-6 px-2 text-xs",
         lg: "h-10 px-8",
         icon: "h-9 w-9",
+        "icon-sm": "h-7 w-7 [&_svg]:size-3.5",
       },
     },
     defaultVariants: {
