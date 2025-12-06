@@ -187,6 +187,20 @@ async function createWindow(): Promise<void> {
     return { action: "deny" };
   });
 
+  // Intercept Cmd+W (macOS) / Ctrl+W (Windows/Linux) to prevent window close.
+  // The renderer handles this shortcut via KeybindingService to close the focused tab.
+  mainWindow.webContents.on("before-input-event", (event, input) => {
+    const isMac = process.platform === "darwin";
+    const isCloseShortcut =
+      input.key.toLowerCase() === "w" &&
+      ((isMac && input.meta && !input.control) || (!isMac && input.control && !input.meta)) &&
+      !input.alt;
+
+    if (isCloseShortcut) {
+      event.preventDefault();
+    }
+  });
+
   setLoggerWindow(mainWindow);
 
   console.log("[MAIN] Creating application menu...");

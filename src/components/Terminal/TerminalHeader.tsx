@@ -165,7 +165,7 @@ function TerminalHeaderComponent({
               onKeyDown={onTitleInputKeyDown}
               onBlur={onTitleSave}
               className="text-sm font-medium bg-canopy-bg/60 border border-canopy-accent/50 px-1 h-5 min-w-32 outline-none text-canopy-text select-text"
-              aria-label={type === "shell" ? "Edit shell title" : "Edit agent title"}
+              aria-label={type === "shell" ? "Edit terminal title" : "Edit agent title"}
             />
           ) : (
             <span
@@ -182,7 +182,7 @@ function TerminalHeaderComponent({
               aria-label={
                 onTitleChange
                   ? type === "shell"
-                    ? `Shell title: ${title}. Press Enter or F2 to edit`
+                    ? `Terminal title: ${title}. Press Enter or F2 to edit`
                     : `Agent title: ${title}. Press Enter or F2 to edit`
                   : undefined
               }

@@ -22,8 +22,8 @@ const KEYBOARD_SHORTCUTS = [
   {
     category: "Navigation",
     shortcuts: [
-      { key: "Ctrl+Tab", description: "Focus next agent or shell" },
-      { key: "Ctrl+Shift+Tab", description: "Focus previous agent or shell" },
+      { key: "Ctrl+Tab", description: "Focus next agent or terminal" },
+      { key: "Ctrl+Shift+Tab", description: "Focus previous agent or terminal" },
       { key: "Ctrl+Shift+F", description: "Toggle maximize focused tile" },
     ],
   },

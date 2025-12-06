@@ -242,7 +242,7 @@ export function AgentSettings({ onSettingsChange }: AgentSettingsProps) {
           </div>
 
           <p className="text-xs text-canopy-text/60">
-            Note: The Shell button is always available and cannot be disabled.
+            Note: The Terminal button is always available and cannot be disabled.
           </p>
         </div>
       )}

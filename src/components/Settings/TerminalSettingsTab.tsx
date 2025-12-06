@@ -90,7 +90,7 @@ export function TerminalSettingsTab() {
     const effectiveBase = performanceMode ? 100 : scrollbackLines;
     const types: Array<{ type: TerminalType; label: string }> = [
       { type: "claude", label: "Agent (Claude/Gemini/Codex/Custom)" },
-      { type: "shell", label: "Shell" },
+      { type: "shell", label: "Terminal" },
       { type: "npm", label: "Dev Server (npm/yarn/pnpm/bun)" },
     ];
     return types.map(({ type, label }) => ({
@@ -337,7 +337,7 @@ export function TerminalSettingsTab() {
               </span>
             </div>
             <div className="flex justify-between">
-              <span>Shell terminals (6)</span>
+              <span>Terminals (6)</span>
               <span className="font-mono text-canopy-text/70">
                 {formatBytes(memoryEstimate.perType.shell ?? 0)}
               </span>

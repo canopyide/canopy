@@ -177,7 +177,7 @@ function TerminalPaneComponent({
       aria-label={(() => {
         switch (type) {
           case "shell":
-            return `Shell terminal: ${title}`;
+            return `Terminal: ${title}`;
           case "claude":
             return `Claude agent: ${title}`;
           case "gemini":

@@ -118,10 +118,7 @@ export function TerminalCountBadge({
           {terminals.map((term) => (
             <DropdownMenuItem
               key={term.id}
-              onSelect={(e) => {
-                e.preventDefault();
-                onSelectTerminal(term);
-              }}
+              onSelect={() => onSelectTerminal(term)}
               className="flex items-center gap-3 py-2 cursor-pointer"
             >
               <div className="shrink-0 opacity-80">{getTerminalIcon(term.type)}</div>

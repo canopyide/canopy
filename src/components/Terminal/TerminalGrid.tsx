@@ -159,7 +159,7 @@ function EmptyState({
           />
           <LauncherCard
             title="Terminal"
-            description="Direct shell access."
+            description="Direct terminal access."
             icon={<Terminal className="h-5 w-5" />}
             onClick={
               hasActiveWorktree

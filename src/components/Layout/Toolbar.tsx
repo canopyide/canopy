@@ -198,8 +198,8 @@ export function Toolbar({
           size="icon"
           onClick={() => onLaunchAgent("shell")}
           className="text-canopy-text hover:bg-canopy-border h-8 w-8 transition-colors hover:text-canopy-accent focus-visible:text-canopy-accent"
-          title="Open Shell (⌘T for palette)"
-          aria-label="Open Shell"
+          title="Open Terminal (⌘T for palette)"
+          aria-label="Open Terminal"
         >
           <Terminal className="h-4 w-4" />
         </Button>

@@ -24,7 +24,7 @@ const AGENT_OPTIONS = [
   { type: "claude" as const, label: "Claude", Icon: ClaudeIcon },
   { type: "gemini" as const, label: "Gemini", Icon: GeminiIcon },
   { type: "codex" as const, label: "Codex", Icon: CodexIcon },
-  { type: "shell" as const, label: "Shell", Icon: Terminal },
+  { type: "shell" as const, label: "Terminal", Icon: Terminal },
 ];
 
 export function TerminalDock() {
