@@ -1,11 +1,11 @@
-import { useMemo } from "react";
+import { useMemo, useState, useRef, useEffect } from "react";
 import type { WorktreeState, DevServerState } from "../../types";
 import type { AppError, RetryAction } from "../../store/errorStore";
 import { ErrorBanner } from "../Errors/ErrorBanner";
 import { FileChangeList } from "./FileChangeList";
 import { cn } from "../../lib/utils";
 import { systemClient } from "@/clients";
-import { Globe, Play, GitCommit, Square, Terminal } from "lucide-react";
+import { Globe, Play, GitCommit, Square, Terminal, Copy, Check, ExternalLink } from "lucide-react";
 import { parseNoteWithLinks, formatPath, type TextSegment } from "../../utils/textParsing";
 
 export interface WorktreeDetailsProps {
@@ -81,6 +81,20 @@ export function WorktreeDetails({
 }: WorktreeDetailsProps) {
   const displayPath = formatPath(worktree.path, homeDir);
   const rawLastCommitMsg = worktree.worktreeChanges?.lastCommitMessage;
+  const [pathCopied, setPathCopied] = useState(false);
+  const copyTimeoutRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const isMountedRef = useRef(true);
+
+  useEffect(() => {
+    isMountedRef.current = true;
+    return () => {
+      isMountedRef.current = false;
+      if (copyTimeoutRef.current) {
+        clearTimeout(copyTimeoutRef.current);
+        copyTimeoutRef.current = null;
+      }
+    };
+  }, []);
 
   const parsedNoteSegments: TextSegment[] = useMemo(() => {
     return effectiveNote ? parseNoteWithLinks(effectiveNote) : [];
@@ -90,6 +104,34 @@ export function WorktreeDetails({
     e.stopPropagation();
     e.preventDefault();
     systemClient.openExternal(url);
+  };
+
+  const handleCopyPath = async (e: React.MouseEvent) => {
+    e.stopPropagation();
+    try {
+      if (navigator.clipboard && navigator.clipboard.writeText) {
+        await navigator.clipboard.writeText(worktree.path);
+      } else {
+        throw new Error("Clipboard API not available");
+      }
+
+      if (!isMountedRef.current) return;
+
+      setPathCopied(true);
+
+      if (copyTimeoutRef.current) {
+        clearTimeout(copyTimeoutRef.current);
+      }
+
+      copyTimeoutRef.current = setTimeout(() => {
+        if (isMountedRef.current) {
+          setPathCopied(false);
+          copyTimeoutRef.current = null;
+        }
+      }, 2000);
+    } catch (err) {
+      console.error("Failed to copy path:", err);
+    }
   };
 
   return (
@@ -225,19 +267,40 @@ export function WorktreeDetails({
 
       {/* Folder path at the bottom */}
       <div className="pt-2 border-t border-border/40">
-        <button
-          onClick={(e) => {
-            e.stopPropagation();
-            onPathClick();
-          }}
-          className={cn(
-            "text-[0.7rem] text-canopy-text/60 hover:text-canopy-text/80 hover:underline text-left font-mono truncate block w-full",
-            isFocused && "underline"
-          )}
-          title={worktree.path}
-        >
-          {displayPath}
-        </button>
+        <div className="flex items-center gap-2">
+          <button
+            type="button"
+            onClick={(e) => {
+              e.stopPropagation();
+              onPathClick();
+            }}
+            className={cn(
+              "text-[0.7rem] text-canopy-text/60 hover:text-canopy-text/80 hover:underline text-left font-mono truncate flex-1 min-w-0 flex items-center gap-1.5",
+              isFocused && "underline"
+            )}
+            title={`Open folder: ${worktree.path}`}
+          >
+            <ExternalLink className="w-3 h-3 shrink-0 opacity-60" />
+            <span className="truncate">{displayPath}</span>
+          </button>
+
+          <button
+            type="button"
+            onClick={handleCopyPath}
+            className="shrink-0 p-1 text-canopy-text/60 hover:text-canopy-text/80 hover:bg-white/5 rounded transition-colors"
+            title={pathCopied ? "Copied!" : "Copy full path"}
+            aria-label={pathCopied ? "Path copied to clipboard" : "Copy path to clipboard"}
+          >
+            {pathCopied ? (
+              <Check className="w-3 h-3 text-green-400" />
+            ) : (
+              <Copy className="w-3 h-3" />
+            )}
+          </button>
+          <div className="sr-only" role="status" aria-live="polite" aria-atomic="true">
+            {pathCopied ? "Path copied to clipboard" : ""}
+          </div>
+        </div>
       </div>
     </div>
   );
