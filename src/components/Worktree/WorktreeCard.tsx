@@ -12,6 +12,7 @@ import { useRecipeStore } from "../../store/recipeStore";
 import { useWorktreeSelectionStore } from "../../store/worktreeStore";
 import { systemClient, errorsClient } from "@/clients";
 import { cn } from "../../lib/utils";
+import { formatTimestamp, middleTruncate } from "../../utils/textParsing";
 import {
   DropdownMenu,
   DropdownMenuContent,
@@ -22,7 +23,6 @@ import {
 } from "../ui/dropdown-menu";
 import { ConfirmDialog } from "../Terminal/ConfirmDialog";
 import {
-  AlertCircle,
   Copy,
   Code,
   CircleDot,
@@ -37,6 +37,7 @@ import {
   ChevronDown,
   ChevronRight,
   GitCommit,
+  Shield,
 } from "lucide-react";
 
 export interface WorktreeCardProps {
@@ -221,9 +222,11 @@ export function WorktreeCard({
   }, [totalTerminalCount, bulkCloseByWorktree, worktree.id, closeConfirmDialog]);
 
   const branchLabel = worktree.branch ?? worktree.name;
+  const truncatedBranchLabel = middleTruncate(branchLabel, 40);
   const hasChanges = (worktree.worktreeChanges?.changedFileCount ?? 0) > 0;
   const rawLastCommitMessage = worktree.worktreeChanges?.lastCommitMessage;
   const firstLineLastCommitMessage = rawLastCommitMessage?.split("\n")[0].trim();
+  const relativeTime = formatTimestamp(worktree.lastActivityTimestamp);
 
   // The summary often duplicates the last commit message.
   const isSummarySameAsCommit = useMemo(() => {
@@ -242,27 +245,6 @@ export function WorktreeCard({
   }, [worktree.summary, rawLastCommitMessage, firstLineLastCommitMessage]);
 
   const effectiveSummary = isSummarySameAsCommit ? null : worktree.summary;
-
-  // UX Logic: Teleporting Content
-  // Clean State: Show commit in header only when contracted. When expanded, it "teleports" to details.
-  // Dirty State: Never show commit in header (File changes take priority). Always show in details as context.
-  const showCommitInHeader = !hasChanges && !isExpanded && !effectiveSummary;
-
-  const getServerStatusIndicator = () => {
-    if (!serverState) return null;
-    switch (serverState.status) {
-      case "stopped":
-        return <span className="text-gray-600">○</span>;
-      case "starting":
-        return <span className="text-[var(--color-server-starting)]">◐</span>;
-      case "running":
-        return <span className="text-[var(--color-server-running)]">●</span>;
-      case "error":
-        return <span className="text-[var(--color-server-error)]">●</span>;
-      default:
-        return <span className="text-gray-600">○</span>;
-    }
-  };
 
   const handleToggleExpand = useCallback(
     (e: React.MouseEvent) => {
@@ -290,6 +272,16 @@ export function WorktreeCard({
 
   const detailsId = useMemo(() => `worktree-${worktree.id}-details`, [worktree.id]);
 
+  const workspaceScenario: "dirty" | "clean-feature" | "clean-main" = useMemo(() => {
+    if (hasChanges) {
+      return "dirty";
+    }
+    if (isMainWorktree) {
+      return "clean-main";
+    }
+    return "clean-feature";
+  }, [hasChanges, isMainWorktree]);
+
   return (
     <div
       className={cn(
@@ -309,58 +301,56 @@ export function WorktreeCard({
       aria-label={`Worktree: ${branchLabel}`}
     >
       <div className="px-3 py-4">
-        <div className="flex flex-col gap-1.5">
-          {/* Row 1: Activity Dot (Gutter) + Status Badges & Actions */}
-          <div className="flex items-center gap-1.5">
-            {/* Gutter: Activity Dot - Centered in w-5 to match Chevron */}
-            <div className="w-5 shrink-0 flex items-center justify-center">
-              <ActivityLight lastActivityTimestamp={worktree.lastActivityTimestamp} />
+        {/* Golden Gutter Grid Structure */}
+        <div className="grid" style={{ gridTemplateColumns: "20px 1fr", columnGap: "20px", rowGap: "6px" }}>
+          {/* Row 1: The Meta Layer */}
+          <div className="flex items-center justify-center">
+            <ActivityLight lastActivityTimestamp={worktree.lastActivityTimestamp} />
+          </div>
+          <div className="flex items-center justify-between gap-2 min-w-0">
+            <div className="flex flex-wrap items-center gap-1.5 text-xs font-mono leading-none">
+              <AgentStatusIndicator state={dominantAgentState} />
+
+              {worktree.issueNumber && (
+                <button
+                  onClick={(e) => {
+                    e.stopPropagation();
+                    onOpenIssue?.();
+                  }}
+                  className={cn(
+                    "flex items-center gap-1 text-xs text-[var(--color-status-info)]",
+                    "bg-blue-500/10 px-1.5 py-0.5 rounded border border-blue-500/20",
+                    "hover:bg-blue-500/20 transition-colors cursor-pointer"
+                  )}
+                  title="Open Issue on GitHub"
+                >
+                  <CircleDot className="w-3 h-3" />
+                  <span className="font-mono">#{worktree.issueNumber}</span>
+                </button>
+              )}
+
+              {worktree.prNumber && (
+                <button
+                  onClick={(e) => {
+                    e.stopPropagation();
+                    onOpenPR?.();
+                  }}
+                  className={cn(
+                    "flex items-center gap-1 text-xs text-[var(--color-status-success)]",
+                    "bg-green-500/10 px-1.5 py-0.5 rounded border border-green-500/20",
+                    "hover:bg-green-500/20 transition-colors cursor-pointer"
+                  )}
+                  title="Open Pull Request on GitHub"
+                >
+                  <GitPullRequest className="w-3 h-3" />
+                  <span className="font-mono">#{worktree.prNumber}</span>
+                </button>
+              )}
             </div>
 
-            {/* Content: Badges + Actions */}
-            <div className="flex items-center justify-between gap-2 flex-1 min-w-0">
-              <div className="flex flex-wrap items-center gap-1.5 text-xs font-mono leading-none">
-                <AgentStatusIndicator state={dominantAgentState} />
-
-                {worktree.issueNumber && (
-                  <button
-                    onClick={(e) => {
-                      e.stopPropagation();
-                      onOpenIssue?.();
-                    }}
-                    className={cn(
-                      "flex items-center gap-1 text-xs text-[var(--color-status-info)]",
-                      "bg-blue-500/10 px-1.5 py-0.5 rounded border border-blue-500/20",
-                      "hover:bg-blue-500/20 transition-colors cursor-pointer"
-                    )}
-                    title="Open Issue on GitHub"
-                  >
-                    <CircleDot className="w-3 h-3" />
-                    <span className="font-mono">#{worktree.issueNumber}</span>
-                  </button>
-                )}
-
-                {worktree.prNumber && (
-                  <button
-                    onClick={(e) => {
-                      e.stopPropagation();
-                      onOpenPR?.();
-                    }}
-                    className={cn(
-                      "flex items-center gap-1 text-xs text-[var(--color-status-success)]",
-                      "bg-green-500/10 px-1.5 py-0.5 rounded border border-green-500/20",
-                      "hover:bg-green-500/20 transition-colors cursor-pointer"
-                    )}
-                    title="Open Pull Request on GitHub"
-                  >
-                    <GitPullRequest className="w-3 h-3" />
-                    <span className="font-mono">#{worktree.prNumber}</span>
-                  </button>
-                )}
-              </div>
-
-              {/* Action Buttons */}
-              <div className="flex items-center shrink-0 opacity-0 group-hover:opacity-100 group-focus-within:opacity-100 transition-opacity">
+            <div className="flex items-center gap-2 shrink-0">
+              <span className="text-[10px] text-gray-500 font-mono">{relativeTime}</span>
+              <div className="flex items-center opacity-0 group-hover:opacity-100 group-focus-within:opacity-100 transition-opacity">
                 <button
                   onClick={(e) => {
                     e.stopPropagation();
@@ -467,162 +457,118 @@ export function WorktreeCard({
             </div>
           </div>
 
-          {/* Row 2: Chevron (Gutter) + Branch Name */}
-          <div className="flex items-center gap-1.5 min-w-0">
-            <div className="w-5 shrink-0 flex items-center justify-center pt-0.5">
-              {hasExpandableContent ? (
-                <button
-                  onClick={handleToggleExpand}
-                  className="p-0.5 text-gray-500 hover:text-gray-300 transition-colors"
-                  aria-label={isExpanded ? "Collapse details" : "Expand details"}
-                  aria-expanded={isExpanded}
-                  aria-controls={detailsId}
-                >
-                  {isExpanded ? (
-                    <ChevronDown className="w-4 h-4" />
-                  ) : (
-                    <ChevronRight className="w-4 h-4" />
-                  )}
-                </button>
-              ) : (
-                <div className="w-4 h-4" />
-              )}
-            </div>
-
-            <div className="min-w-0 flex-1 flex items-center gap-2">
-              <span
-                className={cn(
-                  "truncate font-semibold text-[14px]",
-                  isActive ? "text-white" : "text-gray-300"
-                )}
-                title={branchLabel}
+          {/* Row 2: The Identity Layer */}
+          <div className="flex items-center justify-center">
+            {hasExpandableContent ? (
+              <button
+                onClick={handleToggleExpand}
+                className="p-0.5 text-gray-500 hover:text-gray-300 transition-colors"
+                aria-label={isExpanded ? "Collapse details" : "Expand details"}
+                aria-expanded={isExpanded}
+                aria-controls={detailsId}
               >
-                {branchLabel}
-              </span>
-              {!worktree.branch && (
-                <span className="text-amber-500 text-[10px] shrink-0">(detached)</span>
-              )}
-            </div>
+                {isExpanded ? (
+                  <ChevronDown className="w-4 h-4" />
+                ) : (
+                  <ChevronRight className="w-4 h-4" />
+                )}
+              </button>
+            ) : null}
           </div>
-
-          {/* Row 3: Activity Body - Mutually Exclusive "Current Work" */}
-          <div className="ml-[1.625rem]">
-            {hasChanges ? (
-              /* DIRTY STATE: Show Changes */
-              <div className="flex flex-col gap-1">
-                {/* 1. Distinct Summary (e.g. "Implementing auth") - Only if not commit msg */}
-                {effectiveSummary && (
-                  <div className="text-xs text-gray-300 truncate mb-0.5">{effectiveSummary}</div>
-                )}
-
-                {/* 2. File Changes List - HIDE WHEN EXPANDED to avoid duplication with Details */}
-                {worktree.worktreeChanges && !isExpanded && (
-                  <div className="mt-0.5">
-                    <FileChangeList
-                      changes={worktree.worktreeChanges.changes}
-                      rootPath={worktree.worktreeChanges.rootPath}
-                      maxVisible={isExpanded ? 8 : 3}
-                    />
-                  </div>
-                )}
-
-                {/* 3. Dirty Stats Footer (Insertions/Deletions) */}
-                <div className="flex items-center gap-4 mt-1 text-xs text-gray-400 font-mono min-h-[1.2em]">
-                  {worktree.worktreeChanges && (
-                    <div className="flex items-center gap-1">
-                      <GitCommitHorizontal className="w-2.5 h-2.5" />
-                      <span className="text-[var(--color-status-success)]">
-                        +{worktree.worktreeChanges.insertions ?? 0}
-                      </span>
-                      <span className="text-gray-600">/</span>
-                      <span className="text-[var(--color-status-error)]">
-                        -{worktree.worktreeChanges.deletions ?? 0}
-                      </span>
-                    </div>
-                  )}
-
-                  {/* Shared Footer Items (Terminals, Server, Errors) */}
-                  {terminalCounts.total > 0 && (
-                    <div className="flex items-center gap-1">
-                      <Terminal className="w-2.5 h-2.5" />
-                      <span>{terminalCounts.total}</span>
-                      {terminalCounts.byState.working > 0 && (
-                        <div className="w-1 h-1 rounded-full bg-[var(--color-status-success)] animate-pulse" />
-                      )}
-                    </div>
-                  )}
-                  {showDevServer && serverState && serverState.status !== "stopped" && (
-                    <div className="flex items-center gap-1">
-                      <Globe className="w-2.5 h-2.5" />
-                      {getServerStatusIndicator()}
-                    </div>
-                  )}
-                  {worktreeErrors.length > 0 && (
-                    <div className="flex items-center gap-1 text-[var(--color-status-error)]">
-                      <AlertCircle className="w-2.5 h-2.5" />
-                      <span>{worktreeErrors.length}</span>
-                    </div>
-                  )}
-                </div>
-              </div>
-            ) : (
-              /* CLEAN STATE: Show Summary OR Last Commit (unless expanded) */
-              <div className="flex flex-col gap-1">
-                {/* 1. Activity Headline */}
-                <div className="text-xs text-gray-400 truncate min-h-[1.2em]">
-                  {effectiveSummary ? (
-                    <span className="text-gray-300">{effectiveSummary}</span>
-                  ) : showCommitInHeader && firstLineLastCommitMessage ? (
-                    <div className="flex items-center gap-1.5 opacity-80">
-                      <GitCommit className="w-3 h-3 shrink-0" />
-                      <span className="truncate">{firstLineLastCommitMessage}</span>
-                    </div>
-                  ) : isExpanded /* Expanded: Commit "teleported" to details, show nothing here to avoid duplication */ ? null : (
-                    <span className="text-[10px] uppercase tracking-wider font-semibold text-gray-600/80 select-none">
-                      No Activity
-                    </span>
-                  )}
-                </div>
-
-                {/* 2. Clean Footer (Terminals, Server, Errors ONLY - No Git Stats) */}
-                {(terminalCounts.total > 0 ||
-                  (showDevServer && serverState && serverState.status !== "stopped") ||
-                  worktreeErrors.length > 0) && (
-                  <div className="flex items-center gap-4 mt-1 text-xs text-gray-400 font-mono">
-                    {terminalCounts.total > 0 && (
-                      <div className="flex items-center gap-1">
-                        <Terminal className="w-2.5 h-2.5" />
-                        <span>{terminalCounts.total}</span>
-                        {terminalCounts.byState.working > 0 && (
-                          <div className="w-1 h-1 rounded-full bg-[var(--color-status-success)] animate-pulse" />
-                        )}
-                      </div>
-                    )}
-                    {showDevServer && serverState && serverState.status !== "stopped" && (
-                      <div className="flex items-center gap-1">
-                        <Globe className="w-2.5 h-2.5" />
-                        {getServerStatusIndicator()}
-                      </div>
-                    )}
-                    {worktreeErrors.length > 0 && (
-                      <div className="flex items-center gap-1 text-[var(--color-status-error)]">
-                        <AlertCircle className="w-2.5 h-2.5" />
-                        <span>{worktreeErrors.length}</span>
-                      </div>
-                    )}
-                  </div>
-                )}
-              </div>
+          <div className="min-w-0 flex items-center gap-2">
+            {isMainWorktree && <Shield className="w-3.5 h-3.5 text-gray-600 opacity-30 shrink-0" />}
+            <span
+              className={cn(
+                "font-semibold text-[14px]",
+                isActive ? "text-white" : "text-gray-300",
+                isMainWorktree && "font-bold"
+              )}
+              title={branchLabel}
+            >
+              {truncatedBranchLabel}
+            </span>
+            {!worktree.branch && (
+              <span className="text-amber-500 text-[10px] font-medium shrink-0">(detached)</span>
             )}
           </div>
 
+          {/* Row 3: The Dynamic Activity Layer (Polymorphic) */}
+          <div />
+          <div className="flex flex-col gap-1 min-w-0">
+            {workspaceScenario === "dirty" ? (
+              <>
+                {effectiveSummary && (
+                  <div className="text-xs text-gray-300 truncate">{effectiveSummary}</div>
+                )}
+                {worktree.worktreeChanges && !isExpanded && (
+                  <FileChangeList
+                    changes={worktree.worktreeChanges.changes}
+                    rootPath={worktree.worktreeChanges.rootPath}
+                    maxVisible={3}
+                  />
+                )}
+                {worktree.worktreeChanges && (
+                  <div className="flex items-center gap-1 text-xs text-gray-400 font-mono mt-1">
+                    <GitCommitHorizontal className="w-2.5 h-2.5" />
+                    <span className="text-[var(--color-status-success)]">
+                      +{worktree.worktreeChanges.insertions ?? 0}
+                    </span>
+                    <span className="text-gray-600">/</span>
+                    <span className="text-[var(--color-status-error)]">
+                      -{worktree.worktreeChanges.deletions ?? 0}
+                    </span>
+                  </div>
+                )}
+              </>
+            ) : workspaceScenario === "clean-feature" ? (
+              <>
+                {effectiveNote && !isExpanded ? (
+                  <div className="text-xs text-gray-300 truncate">{effectiveNote}</div>
+                ) : !isExpanded && firstLineLastCommitMessage ? (
+                  <div className="flex items-center gap-1.5 text-xs text-gray-400 opacity-80">
+                    <GitCommit className="w-3 h-3 shrink-0" />
+                    <span className="truncate">{firstLineLastCommitMessage}</span>
+                  </div>
+                ) : null}
+              </>
+            ) : workspaceScenario === "clean-main" && !isExpanded ? (
+              <div className="flex items-center gap-3 text-xs text-gray-400 font-mono">
+                {showDevServer && serverState && (
+                  <div className="flex items-center gap-1">
+                    <Globe className="w-3 h-3" />
+                    {serverState.status === "running" ? (
+                      <>
+                        <span className="text-[var(--color-server-running)]">●</span>
+                        <span className="text-gray-300">
+                          :{serverState.url?.split(":").pop()?.replace(/\/$/, "") ?? "3000"}
+                        </span>
+                      </>
+                    ) : (
+                      <span className="text-gray-600">stopped</span>
+                    )}
+                  </div>
+                )}
+                {terminalCounts.total > 0 && (
+                  <div className="flex items-center gap-1">
+                    <Terminal className="w-3 h-3" />
+                    <span>{terminalCounts.total} Active</span>
+                    {terminalCounts.byState.working > 0 && (
+                      <div className="w-1.5 h-1.5 rounded-full bg-[var(--color-status-success)] animate-pulse" />
+                    )}
+                  </div>
+                )}
+              </div>
+            ) : null}
+          </div>
+
           {/* Expanded Details Section */}
+          <div />
           <div
             id={detailsId}
             aria-hidden={!isExpanded}
             inert={!isExpanded}
             className={cn(
-              "overflow-hidden transition-[max-height,opacity] duration-300 ease-out ml-[1.625rem]",
+              "overflow-hidden transition-[max-height,opacity] duration-300 ease-out",
               isExpanded ? "max-h-[800px] opacity-100" : "max-h-0 opacity-0"
             )}
           >
@@ -635,24 +581,24 @@ export function WorktreeCard({
               serverLoading={serverLoading}
               worktreeErrors={worktreeErrors}
               hasChanges={hasChanges}
-              showFooter={false} // Footer is now handled in the main body
               isFocused={isFocused}
+              terminalCounts={terminalCounts}
               onPathClick={handlePathClick}
               onToggleServer={onToggleServer}
               onDismissError={dismissError}
               onRetryError={handleErrorRetry}
-              showLastCommit={true} // Always show in details (it's hidden in header when expanded OR when dirty)
+              showLastCommit={true}
             />
           </div>
-
-          <ConfirmDialog
-            isOpen={confirmDialog.isOpen}
-            title={confirmDialog.title}
-            description={confirmDialog.description}
-            onConfirm={confirmDialog.onConfirm}
-            onCancel={closeConfirmDialog}
-          />
         </div>
+
+        <ConfirmDialog
+          isOpen={confirmDialog.isOpen}
+          title={confirmDialog.title}
+          description={confirmDialog.description}
+          onConfirm={confirmDialog.onConfirm}
+          onCancel={closeConfirmDialog}
+        />
       </div>
     </div>
   );

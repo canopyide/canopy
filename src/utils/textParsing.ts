@@ -33,3 +33,78 @@ export function formatPath(targetPath: string, homeDir?: string): string {
   }
   return targetPath;
 }
+
+export function middleTruncate(text: string, maxLength: number = 40): string {
+  if (text.length <= maxLength) {
+    return text;
+  }
+
+  const ellipsis = "...";
+  const charsToShow = maxLength - ellipsis.length;
+  const frontChars = Math.ceil(charsToShow / 2);
+  const backChars = Math.floor(charsToShow / 2);
+
+  return text.slice(0, frontChars) + ellipsis + text.slice(text.length - backChars);
+}
+
+export function formatTimestamp(timestamp: number | null | undefined): string {
+  if (!timestamp) {
+    return "Never active";
+  }
+
+  const now = Date.now();
+  const diff = now - timestamp;
+
+  if (diff < 1000) {
+    return "Just now";
+  }
+
+  const seconds = Math.floor(diff / 1000);
+  const minutes = Math.floor(seconds / 60);
+  const hours = Math.floor(minutes / 60);
+  const days = Math.floor(hours / 24);
+
+  if (seconds < 60) {
+    return `${seconds}s ago`;
+  } else if (minutes < 60) {
+    return `${minutes}m ago`;
+  } else if (hours < 24) {
+    return `${hours}h ago`;
+  } else {
+    return `${days}d ago`;
+  }
+}
+
+export function formatTimestampExact(timestamp: number | null | undefined): string {
+  if (!timestamp) {
+    return "No recent activity";
+  }
+
+  const date = new Date(timestamp);
+  const now = new Date();
+
+  const isToday = date.toDateString() === now.toDateString();
+  const timeStr = date.toLocaleTimeString(undefined, {
+    hour: "2-digit",
+    minute: "2-digit",
+  });
+
+  if (isToday) {
+    return `Last active: today at ${timeStr}`;
+  }
+
+  const yesterday = new Date(now);
+  yesterday.setDate(yesterday.getDate() - 1);
+  const isYesterday = date.toDateString() === yesterday.toDateString();
+
+  if (isYesterday) {
+    return `Last active: yesterday at ${timeStr}`;
+  }
+
+  const dateStr = date.toLocaleDateString(undefined, {
+    month: "short",
+    day: "numeric",
+  });
+
+  return `Last active: ${dateStr} at ${timeStr}`;
+}

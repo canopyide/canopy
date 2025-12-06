@@ -2,9 +2,10 @@ import { useMemo } from "react";
 import type { WorktreeState, DevServerState } from "../../types";
 import type { AppError, RetryAction } from "../../store/errorStore";
 import { ErrorBanner } from "../Errors/ErrorBanner";
+import { FileChangeList } from "./FileChangeList";
 import { cn } from "../../lib/utils";
 import { systemClient } from "@/clients";
-import { Globe, Play, GitCommit } from "lucide-react";
+import { Globe, Play, GitCommit, Square, Terminal } from "lucide-react";
 import { parseNoteWithLinks, formatPath, type TextSegment } from "../../utils/textParsing";
 
 export interface WorktreeDetailsProps {
@@ -16,9 +17,18 @@ export interface WorktreeDetailsProps {
   serverLoading: boolean;
   worktreeErrors: AppError[];
   hasChanges: boolean;
-  showFooter: boolean;
   isFocused: boolean;
   showLastCommit?: boolean;
+  terminalCounts?: {
+    total: number;
+    byState: {
+      idle: number;
+      working: number;
+      waiting: number;
+      completed: number;
+      failed: number;
+    };
+  };
 
   onPathClick: () => void;
   onToggleServer: () => void;
@@ -61,8 +71,8 @@ export function WorktreeDetails({
   serverLoading,
   worktreeErrors,
   hasChanges,
-  showFooter,
   isFocused,
+  terminalCounts,
   onPathClick,
   onToggleServer,
   onDismissError,
@@ -83,67 +93,102 @@ export function WorktreeDetails({
   };
 
   return (
-    <div
-      className={cn(
-        "pt-2 mt-2 space-y-2",
-        (hasChanges || showFooter) && "border-t border-border/40"
-      )}
-    >
+    <div className="pt-2 mt-2 space-y-3">
+      {/* Zone 1: Context & Narrative */}
       {effectiveNote && (
-        <div
-          className={cn(
-            "text-xs text-gray-400 bg-black/20 p-1.5 rounded border-l-2 border-gray-700 font-mono",
-            "line-clamp-none whitespace-pre-wrap"
-          )}
-        >
-          {parsedNoteSegments.map((segment, index) =>
-            segment.type === "link" ? (
-              <a
-                key={index}
-                href={segment.content}
-                target="_blank"
-                rel="noopener noreferrer"
-                className="text-[var(--color-status-info)] underline hover:text-blue-300"
-                onClick={(e) => handleLinkClick(e, segment.content)}
-              >
-                {segment.content}
-              </a>
-            ) : (
-              <span key={index}>{segment.content}</span>
-            )
-          )}
+        <div className="bg-yellow-500/5 p-2 rounded border-l-2 border-yellow-500/30">
+          <div className="text-xs text-gray-300 whitespace-pre-wrap font-mono">
+            {parsedNoteSegments.map((segment, index) =>
+              segment.type === "link" ? (
+                <a
+                  key={index}
+                  href={segment.content}
+                  target="_blank"
+                  rel="noopener noreferrer"
+                  className="text-[var(--color-status-info)] underline hover:text-blue-300"
+                  onClick={(e) => handleLinkClick(e, segment.content)}
+                >
+                  {segment.content}
+                </a>
+              ) : (
+                <span key={index}>{segment.content}</span>
+              )
+            )}
+          </div>
         </div>
       )}
 
-      {showDevServer && serverState && (
-        <div className="flex items-center gap-2 text-xs text-gray-400 font-mono">
-          <Globe className="w-3 h-3" />
-          <div className="flex items-center gap-1">
-            {getServerStatusIndicator(serverState)}
-            <span className="truncate max-w-[120px]">{getServerLabel(serverState)}</span>
-          </div>
-          <button
-            onClick={(e) => {
-              e.stopPropagation();
-              if (!serverLoading && serverState.status !== "starting") {
-                onToggleServer();
-              }
-            }}
-            disabled={serverLoading || serverState.status === "starting"}
-            className={cn(
-              "ml-1 p-0.5 rounded hover:bg-gray-700 transition-colors",
-              serverLoading ? "opacity-50" : ""
-            )}
-            title={serverState.status === "running" ? "Stop Server" : "Start Server"}
-          >
-            {serverState.status === "running" ? (
-              <div className="w-1.5 h-1.5 bg-[var(--color-status-error)] rounded-sm" />
-            ) : (
-              <Play className="w-2 h-2 fill-current" />
-            )}
-          </button>
+      {showLastCommit && rawLastCommitMsg && (
+        <div className="text-xs text-gray-400 italic flex gap-2 p-2 bg-white/[0.02] rounded">
+          <GitCommit className="w-3.5 h-3.5 mt-0.5 shrink-0 opacity-60" />
+          <div className="whitespace-pre-wrap leading-relaxed min-w-0">{rawLastCommitMsg}</div>
         </div>
       )}
+
+      {/* Zone 2: Operational Controls (The "Cockpit") */}
+      {(showDevServer && serverState) || (terminalCounts && terminalCounts.total > 0) ? (
+        <div className="space-y-2 p-2 bg-white/[0.02] rounded border border-white/5">
+          <div className="text-[10px] uppercase tracking-wider text-gray-500 font-semibold">
+            Controls
+          </div>
+
+          {showDevServer && serverState && (
+            <div className="flex items-center justify-between text-xs">
+              <div className="flex items-center gap-2 text-gray-400 font-mono">
+                <Globe className="w-3.5 h-3.5" />
+                <div className="flex items-center gap-1.5">
+                  {getServerStatusIndicator(serverState)}
+                  <span>{getServerLabel(serverState)}</span>
+                </div>
+              </div>
+              <button
+                onClick={(e) => {
+                  e.stopPropagation();
+                  if (!serverLoading && serverState.status !== "starting") {
+                    onToggleServer();
+                  }
+                }}
+                disabled={serverLoading || serverState.status === "starting"}
+                className={cn(
+                  "px-2 py-1 rounded text-xs font-medium transition-colors",
+                  serverState.status === "running"
+                    ? "bg-red-500/10 text-red-400 hover:bg-red-500/20"
+                    : "bg-green-500/10 text-green-400 hover:bg-green-500/20",
+                  (serverLoading || serverState.status === "starting") &&
+                    "opacity-50 cursor-not-allowed"
+                )}
+              >
+                {serverState.status === "running" ? (
+                  <div className="flex items-center gap-1">
+                    <Square className="w-3 h-3" />
+                    <span>Stop</span>
+                  </div>
+                ) : (
+                  <div className="flex items-center gap-1">
+                    <Play className="w-3 h-3" />
+                    <span>Start</span>
+                  </div>
+                )}
+              </button>
+            </div>
+          )}
+
+          {terminalCounts && terminalCounts.total > 0 && (
+            <div className="flex items-center gap-2 text-xs text-gray-400 font-mono">
+              <Terminal className="w-3.5 h-3.5" />
+              <span>
+                {terminalCounts.total} terminal{terminalCounts.total !== 1 ? "s" : ""} active
+              </span>
+              {terminalCounts.byState.working > 0 && (
+                <div className="flex items-center gap-1 text-[var(--color-status-success)]">
+                  <div className="w-1.5 h-1.5 rounded-full bg-current animate-pulse" />
+                  <span>{terminalCounts.byState.working} running</span>
+                </div>
+              )}
+            </div>
+          )}
+        </div>
+      ) : null}
 
       {worktreeErrors.length > 0 && (
         <div className="space-y-1">
@@ -164,13 +209,17 @@ export function WorktreeDetails({
         </div>
       )}
 
-      {/* Last Commit Message (if requested) */}
-      {showLastCommit && rawLastCommitMsg && (
-        <div className="text-xs text-gray-500 italic flex gap-1.5 mb-2">
-          <div className="pt-0.5 shrink-0 opacity-70">
-            <GitCommit className="w-3 h-3" />
+      {/* Zone 3: The Work (Teleported File List) */}
+      {hasChanges && worktree.worktreeChanges && (
+        <div className="space-y-2">
+          <div className="text-[10px] uppercase tracking-wider text-gray-500 font-semibold">
+            Changed Files
           </div>
-          <div className="whitespace-pre-wrap leading-normal min-w-0">{rawLastCommitMsg}</div>
+          <FileChangeList
+            changes={worktree.worktreeChanges.changes}
+            rootPath={worktree.worktreeChanges.rootPath}
+            maxVisible={8}
+          />
         </div>
       )}
 
@@ -182,9 +231,10 @@ export function WorktreeDetails({
             onPathClick();
           }}
           className={cn(
-            "text-[0.7rem] text-gray-500 hover:text-gray-400 hover:underline text-left font-mono truncate block",
+            "text-[0.7rem] text-gray-500 hover:text-gray-400 hover:underline text-left font-mono truncate block w-full",
             isFocused && "underline"
           )}
+          title={worktree.path}
         >
           {displayPath}
         </button>
