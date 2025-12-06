@@ -8,7 +8,7 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 
 Canopy Command Center is a feature-rich Electron-based mini IDE for orchestrating AI coding agents. It provides integrated terminals, a visual worktree dashboard, context injection for AI agents, agent lifecycle tracking, and session transcripts.
 
-**Codex MCP:** When using Codex MCP, use the `gpt-5.1-codex-max` model.
+**Codex MCP:** When using Codex MCP, use the `gpt-5.1-codex-max` model. Include file references (paths to relevant files) in your prompts—Codex can read them directly and provides better advice when it can see the actual code you're working with.
 
 ## Development Commands
 

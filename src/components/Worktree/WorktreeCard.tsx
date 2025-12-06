@@ -36,6 +36,7 @@ import {
   Folder,
   ChevronDown,
   ChevronRight,
+  GitCommit,
 } from "lucide-react";
 
 export interface WorktreeCardProps {
@@ -86,12 +87,7 @@ export function WorktreeCard({
   const failedCount = terminalCounts.byState.failed;
   const totalTerminalCount = terminalCounts.total;
 
-  const [confirmDialog, setConfirmDialog] = useState<{
-    isOpen: boolean;
-    title: string;
-    description: string;
-    onConfirm: () => void;
-  }>({
+  const [confirmDialog, setConfirmDialog] = useState({
     isOpen: false,
     title: "",
     description: "",
@@ -216,7 +212,7 @@ export function WorktreeCard({
     setConfirmDialog({
       isOpen: true,
       title: "Close All Sessions",
-      description: `This will close ${totalTerminalCount} session${totalTerminalCount !== 1 ? "s" : ""} (including agents and shells) for this worktree. This action cannot be undone.`,
+      description: `This will close ${totalTerminalCount} session${totalTerminalCount !== 1 ? "s" : ""} (including agents and shells) for this worktree. This action cannot be undone.`, 
       onConfirm: () => {
         bulkCloseByWorktree(worktree.id);
         closeConfirmDialog();
@@ -226,18 +222,21 @@ export function WorktreeCard({
 
   const branchLabel = worktree.branch ?? worktree.name;
   const hasChanges = (worktree.worktreeChanges?.changedFileCount ?? 0) > 0;
+  const rawLastCommitMessage = worktree.worktreeChanges?.lastCommitMessage;
+  const firstLineLastCommitMessage = rawLastCommitMessage?.split("\n")[0].trim();
 
-  const { summary } = worktree;
+  // The summary often duplicates the last commit message.
+  const isSummarySameAsCommit = useMemo(() => {
+    if (!worktree.summary || !rawLastCommitMessage) return false;
+    const s = worktree.summary.trim().toLowerCase();
+    const c = rawLastCommitMessage.trim().toLowerCase();
+    // Check if summary is equal to the raw message, or includes it, or vice versa.
+    // Also check against the first line of the commit message.
+    const firstLineC = firstLineLastCommitMessage?.toLowerCase();
+    return s === c || s.includes(c) || c.includes(s) || (firstLineC && (s === firstLineC || s.includes(firstLineC)));
+  }, [worktree.summary, rawLastCommitMessage, firstLineLastCommitMessage]);
 
-  const renderSummary = useCallback(() => {
-    if (summary) {
-      return <span className="text-gray-300">{summary}</span>;
-    }
-    if (hasChanges) {
-      return <span className="text-gray-400 italic">Changes detected...</span>;
-    }
-    return <span className="text-gray-500 italic">No recent changes</span>;
-  }, [summary, hasChanges]);
+  const effectiveSummary = isSummarySameAsCommit ? null : worktree.summary;
 
   const getServerStatusIndicator = () => {
     if (!serverState) return null;
@@ -264,20 +263,31 @@ export function WorktreeCard({
   );
 
   const showDevServer = devServerEnabled && hasDevScript;
-  const showFooter =
+  const showFooter = 
     terminalCounts.total > 0 ||
     (hasChanges && !!worktree.worktreeChanges) ||
     (showDevServer && serverState && serverState.status !== "stopped") ||
     worktreeErrors.length > 0;
-  const hasExpandableContent =
-    hasChanges ||
-    effectiveNote ||
-    !!worktree.summary ||
-    showDevServer ||
-    worktreeErrors.length > 0 ||
-    showFooter;
-
-  const detailsId = useMemo(() => `worktree-${worktree.id}-details`, [worktree.id]);
+  
+        const hasExpandableContent =
+  
+          hasChanges ||
+  
+          effectiveNote ||
+  
+          !!effectiveSummary ||
+  
+          showDevServer ||
+  
+          worktreeErrors.length > 0 ||
+  
+          showFooter ||
+  
+          !!rawLastCommitMessage; // Can expand to see details even if just clean
+  
+      
+  
+        const detailsId = useMemo(() => `worktree-${worktree.id}-details`, [worktree.id]);
 
   return (
     <div
@@ -297,251 +307,310 @@ export function WorktreeCard({
       role="button"
       aria-label={`Worktree: ${branchLabel}`}
     >
-      <div className="px-2 py-3">
-        <div className="flex flex-col gap-1">
-          {/* Header Row: Expand, Activity, Agent Status, Branch, Menu */}
-          <div className="flex items-start justify-between gap-1.5">
-            <div className="flex items-start gap-1.5 min-w-0 flex-1">
-              {/* Chevron + Branch row with vertical centering */}
-              <div className="flex items-center gap-1.5">
-                {hasExpandableContent ? (
-                  <button
-                    onClick={handleToggleExpand}
-                    className="p-0.5 text-gray-500 hover:text-gray-300 transition-colors"
-                    aria-label={isExpanded ? "Collapse details" : "Expand details"}
-                    aria-expanded={isExpanded}
-                    aria-controls={detailsId}
-                  >
-                    {isExpanded ? (
-                      <ChevronDown className="w-4 h-4" />
-                    ) : (
-                      <ChevronRight className="w-4 h-4" />
-                    )}
-                  </button>
-                ) : (
-                  <div className="w-5" />
-                )}
-
-                <div className="flex items-center gap-2 text-xs font-mono leading-none">
-                  <ActivityLight lastActivityTimestamp={worktree.lastActivityTimestamp} />
-                  <AgentStatusIndicator state={dominantAgentState} />
-                  <span
-                    className={cn(
-                      "truncate font-semibold text-[13px]",
-                      isActive ? "text-white" : "text-gray-300"
-                    )}
-                  >
-                    {branchLabel}
-                  </span>
-                  {!worktree.branch && (
-                    <span className="text-amber-500 text-[10px]">(detached)</span>
-                  )}
-                </div>
-              </div>
+      <div className="px-3 py-4">
+        <div className="flex flex-col gap-1.5">
+          
+          {/* Row 1: Activity Dot (Gutter) + Status Badges & Actions */}
+          <div className="flex items-center gap-1.5">
+            {/* Gutter: Activity Dot - Centered in w-5 to match Chevron */}
+            <div className="w-5 shrink-0 flex items-center justify-center">
+              <ActivityLight lastActivityTimestamp={worktree.lastActivityTimestamp} />
             </div>
 
-            <div className="flex items-center opacity-0 group-hover:opacity-100 transition-opacity">
-              <button
-                onClick={(e) => {
-                  e.stopPropagation();
-                  onCopyTree();
-                }}
-                className="p-1.5 text-gray-500 hover:text-gray-200 transition-colors"
-                title="Copy Context"
-                aria-label="Copy Context"
-              >
-                <Copy className="w-3.5 h-3.5" />
-              </button>
+            {/* Content: Badges + Actions */}
+            <div className="flex items-center justify-between gap-2 flex-1 min-w-0">
+              <div className="flex flex-wrap items-center gap-1.5 text-xs font-mono leading-none">
+                <AgentStatusIndicator state={dominantAgentState} />
 
-              <DropdownMenu>
-                <DropdownMenuTrigger asChild>
+                {worktree.issueNumber && (
                   <button
-                    onClick={(e) => e.stopPropagation()}
-                    className="p-1.5 text-gray-500 hover:text-gray-200"
-                    aria-label="More actions"
+                    onClick={(e) => {
+                      e.stopPropagation();
+                      onOpenIssue?.();
+                    }}
+                    className={cn(
+                      "flex items-center gap-1 text-xs text-[var(--color-status-info)]",
+                      "bg-blue-500/10 px-1.5 py-0.5 rounded border border-blue-500/20",
+                      "hover:bg-blue-500/20 transition-colors cursor-pointer"
+                    )}
+                    title="Open Issue on GitHub"
                   >
-                    <MoreHorizontal className="w-3.5 h-3.5" />
+                    <CircleDot className="w-3 h-3" />
+                    <span className="font-mono">#{worktree.issueNumber}</span>
                   </button>
-                </DropdownMenuTrigger>
-                <DropdownMenuContent
-                  align="end"
-                  sideOffset={4}
-                  onClick={(e) => e.stopPropagation()}
+                )}
+
+                {worktree.prNumber && (
+                  <button
+                    onClick={(e) => {
+                      e.stopPropagation();
+                      onOpenPR?.();
+                    }}
+                    className={cn(
+                      "flex items-center gap-1 text-xs text-[var(--color-status-success)]",
+                      "bg-green-500/10 px-1.5 py-0.5 rounded border border-green-500/20",
+                      "hover:bg-green-500/20 transition-colors cursor-pointer"
+                    )}
+                    title="Open Pull Request on GitHub"
+                  >
+                    <GitPullRequest className="w-3 h-3" />
+                    <span className="font-mono">#{worktree.prNumber}</span>
+                  </button>
+                )}
+              </div>
+
+              {/* Action Buttons */}
+              <div className="flex items-center shrink-0">
+                <button
+                  onClick={(e) => {
+                    e.stopPropagation();
+                    onCopyTree();
+                  }}
+                  className="p-1.5 text-gray-500 hover:text-gray-200 hover:bg-white/10 rounded transition-colors"
+                  title="Copy Context"
+                  aria-label="Copy Context"
                 >
-                  <DropdownMenuItem onClick={() => onCopyTree()}>
-                    <Copy className="w-3 h-3 mr-2" />
-                    Copy Context
-                  </DropdownMenuItem>
-                  <DropdownMenuItem onClick={() => onOpenEditor()}>
-                    <Code className="w-3 h-3 mr-2" />
-                    Open in Editor
-                  </DropdownMenuItem>
-                  <DropdownMenuItem onClick={() => handlePathClick()}>
-                    <Folder className="w-3 h-3 mr-2" />
-                    Reveal in Finder
-                  </DropdownMenuItem>
+                  <Copy className="w-3.5 h-3.5" />
+                </button>
 
-                  {(worktree.issueNumber || worktree.prNumber) && <DropdownMenuSeparator />}
-
-                  {worktree.issueNumber && onOpenIssue && (
-                    <DropdownMenuItem onClick={() => handleOpenIssue()}>
-                      <CircleDot className="w-3 h-3 mr-2" />
-                      Open Issue #{worktree.issueNumber}
+                <DropdownMenu>
+                  <DropdownMenuTrigger asChild>
+                    <button
+                      onClick={(e) => e.stopPropagation()}
+                      className="p-1.5 text-gray-500 hover:text-gray-200 hover:bg-white/10 rounded transition-colors"
+                      aria-label="More actions"
+                    >
+                      <MoreHorizontal className="w-3.5 h-3.5" />
+                    </button>
+                  </DropdownMenuTrigger>
+                  <DropdownMenuContent
+                    align="end"
+                    sideOffset={4}
+                    onClick={(e) => e.stopPropagation()}
+                  >
+                    <DropdownMenuItem onClick={() => onCopyTree()}>
+                      <Copy className="w-3 h-3 mr-2" />
+                      Copy Context
                     </DropdownMenuItem>
-                  )}
-                  {worktree.prNumber && onOpenPR && (
-                    <DropdownMenuItem onClick={() => handleOpenPR()}>
-                      <GitPullRequest className="w-3 h-3 mr-2" />
-                      Open PR #{worktree.prNumber}
+                    <DropdownMenuItem onClick={() => onOpenEditor()}>
+                      <Code className="w-3 h-3 mr-2" />
+                      Open in Editor
                     </DropdownMenuItem>
-                  )}
+                    <DropdownMenuItem onClick={() => handlePathClick()}>
+                      <Folder className="w-3 h-3 mr-2" />
+                      Reveal in Finder
+                    </DropdownMenuItem>
 
-                  {(recipes.length > 0 || onCreateRecipe) && <DropdownMenuSeparator />}
+                    {(worktree.issueNumber || worktree.prNumber) && <DropdownMenuSeparator />}
 
-                  {recipes.length > 0 && (
-                    <>
-                      <DropdownMenuLabel>Recipes</DropdownMenuLabel>
-                      {recipes.map((recipe) => (
+                    {worktree.issueNumber && onOpenIssue && (
+                      <DropdownMenuItem onClick={() => handleOpenIssue()}>
+                        <CircleDot className="w-3 h-3 mr-2" />
+                        Open Issue #{worktree.issueNumber}
+                      </DropdownMenuItem>
+                    )}
+                    {worktree.prNumber && onOpenPR && (
+                      <DropdownMenuItem onClick={() => handleOpenPR()}>
+                        <GitPullRequest className="w-3 h-3 mr-2" />
+                        Open PR #{worktree.prNumber}
+                      </DropdownMenuItem>
+                    )}
+
+                    {(recipes.length > 0 || onCreateRecipe) && <DropdownMenuSeparator />}
+
+                    {recipes.length > 0 && (
+                      <>
+                        <DropdownMenuLabel>Recipes</DropdownMenuLabel>
+                        {recipes.map((recipe) => (
+                          <DropdownMenuItem
+                            key={recipe.id}
+                            onClick={() => handleRunRecipe(recipe.id)}
+                            disabled={runningRecipeId !== null}
+                          >
+                            <Play className="w-3 h-3 mr-2" />
+                            {recipe.name}
+                          </DropdownMenuItem>
+                        ))}
+                      </>
+                    )}
+                    {onCreateRecipe && (
+                      <DropdownMenuItem onClick={onCreateRecipe}>
+                        <Plus className="w-3 h-3 mr-2" />
+                        Create Recipe...
+                      </DropdownMenuItem>
+                    )}
+
+                    {totalTerminalCount > 0 && (
+                      <>
+                        <DropdownMenuSeparator />
+                        <DropdownMenuLabel>Sessions</DropdownMenuLabel>
                         <DropdownMenuItem
-                          key={recipe.id}
-                          onClick={() => handleRunRecipe(recipe.id)}
-                          disabled={runningRecipeId !== null}
+                          onClick={handleCloseCompleted}
+                          disabled={completedCount === 0}
                         >
-                          <Play className="w-3 h-3 mr-2" />
-                          {recipe.name}
+                          Close Completed ({completedCount})
                         </DropdownMenuItem>
-                      ))}
-                    </>
-                  )}
-                  {onCreateRecipe && (
-                    <DropdownMenuItem onClick={onCreateRecipe}>
-                      <Plus className="w-3 h-3 mr-2" />
-                      Create Recipe...
-                    </DropdownMenuItem>
-                  )}
-
-                  {totalTerminalCount > 0 && (
-                    <>
-                      <DropdownMenuSeparator />
-                      <DropdownMenuLabel>Sessions</DropdownMenuLabel>
-                      <DropdownMenuItem
-                        onClick={handleCloseCompleted}
-                        disabled={completedCount === 0}
-                      >
-                        Close Completed ({completedCount})
-                      </DropdownMenuItem>
-                      <DropdownMenuItem onClick={handleCloseFailed} disabled={failedCount === 0}>
-                        Close Failed ({failedCount})
-                      </DropdownMenuItem>
-                      <DropdownMenuItem
-                        onClick={handleCloseAllTerminals}
-                        className="text-[var(--color-status-error)] focus:text-[var(--color-status-error)]"
-                      >
-                        Close All...
-                      </DropdownMenuItem>
-                    </>
-                  )}
-                </DropdownMenuContent>
-              </DropdownMenu>
+                        <DropdownMenuItem onClick={handleCloseFailed} disabled={failedCount === 0}>
+                          Close Failed ({failedCount})
+                        </DropdownMenuItem>
+                        <DropdownMenuItem
+                          onClick={handleCloseAllTerminals}
+                          className="text-[var(--color-status-error)] focus:text-[var(--color-status-error)]"
+                        >
+                          Close All...
+                        </DropdownMenuItem>
+                      </>
+                    )}
+                  </DropdownMenuContent>
+                </DropdownMenu>
+              </div>
             </div>
           </div>
 
-          {/* PR/Issue Badges Row - Dedicated second row */}
-          {(worktree.prNumber || worktree.issueNumber) && (
-            <div className="flex items-center gap-2 mt-1 ml-6">
-              {worktree.prNumber && (
+          {/* Row 2: Chevron (Gutter) + Branch Name */}
+          <div className="flex items-center gap-1.5 min-w-0">
+            <div className="w-5 shrink-0 flex items-center justify-center pt-0.5">
+              {hasExpandableContent ? (
                 <button
-                  onClick={(e) => {
-                    e.stopPropagation();
-                    onOpenPR?.();
-                  }}
-                  className={cn(
-                    "flex items-center gap-1.5 text-xs text-[var(--color-status-success)]",
-                    "bg-green-500/10 px-2 py-0.5 rounded border border-green-500/20",
-                    "hover:bg-green-500/20 transition-colors cursor-pointer"
-                  )}
-                  title="Open Pull Request on GitHub"
+                  onClick={handleToggleExpand}
+                  className="p-0.5 text-gray-500 hover:text-gray-300 transition-colors"
+                  aria-label={isExpanded ? "Collapse details" : "Expand details"}
+                  aria-expanded={isExpanded}
+                  aria-controls={detailsId}
                 >
-                  <GitPullRequest className="w-3 h-3" />
-                  <span className="font-mono">#{worktree.prNumber}</span>
-                </button>
-              )}
-              {worktree.issueNumber && (
-                <button
-                  onClick={(e) => {
-                    e.stopPropagation();
-                    onOpenIssue?.();
-                  }}
-                  className={cn(
-                    "flex items-center gap-1.5 text-xs text-[var(--color-status-info)]",
-                    "bg-blue-500/10 px-2 py-0.5 rounded border border-blue-500/20",
-                    "hover:bg-blue-500/20 transition-colors cursor-pointer"
+                  {isExpanded ? (
+                    <ChevronDown className="w-4 h-4" />
+                  ) : (
+                    <ChevronRight className="w-4 h-4" />
                   )}
-                  title="Open Issue on GitHub"
-                >
-                  <CircleDot className="w-3 h-3" />
-                  <span className="font-mono">#{worktree.issueNumber}</span>
                 </button>
-              )}
-            </div>
-          )}
-
-          {/* File Changes Preview - Only show if we have changes OR if expanded */}
-          {worktree.worktreeChanges && (hasChanges || isExpanded) && (
-            <div className="mt-2 ml-6">
-              {hasChanges ? (
-                <FileChangeList
-                  changes={worktree.worktreeChanges.changes}
-                  rootPath={worktree.worktreeChanges.rootPath}
-                  maxVisible={isExpanded ? 8 : 2}
-                />
               ) : (
-                <div className="text-xs text-gray-500 italic">No file changes</div>
+                <div className="w-4 h-4" /> 
               )}
             </div>
-          )}
 
-          {/* Footer Row: Stats - Only render when there's content to show */}
-          {showFooter && (
-            <div className="flex items-center gap-4 mt-2 ml-6 text-xs text-gray-400 font-mono">
-              {terminalCounts.total > 0 && (
-                <div className="flex items-center gap-1">
-                  <Terminal className="w-2.5 h-2.5" />
-                  <span>{terminalCounts.total}</span>
-                  {terminalCounts.byState.working > 0 && (
-                    <div className="w-1 h-1 rounded-full bg-[var(--color-status-success)] animate-pulse" />
+            <div className="min-w-0 flex-1 flex items-center gap-2">
+              <span
+                className={cn(
+                  "truncate font-semibold text-[14px]",
+                  isActive ? "text-white" : "text-gray-300"
+                )}
+                title={branchLabel}
+              >
+                {branchLabel}
+              </span>
+              {!worktree.branch && (
+                <span className="text-amber-500 text-[10px] shrink-0">(detached)</span>
+              )}
+            </div>
+          </div>
+
+          {/* Row 3: Activity Body - Mutually Exclusive "Current Work" */}
+          <div className="ml-[1.625rem]">
+            {hasChanges ? (
+              /* DIRTY STATE: Show Changes */
+              <div className="flex flex-col gap-1">
+                {/* 1. Distinct Summary (e.g. "Implementing auth") - Only if not commit msg */}
+                {effectiveSummary && (
+                  <div className="text-xs text-gray-300 truncate mb-0.5">{effectiveSummary}</div>
+                )}
+
+                {/* 2. File Changes List (The primary "activity") */}
+                {worktree.worktreeChanges && (
+                  <div className="mt-0.5">
+                    <FileChangeList
+                      changes={worktree.worktreeChanges.changes}
+                      rootPath={worktree.worktreeChanges.rootPath}
+                      maxVisible={isExpanded ? 8 : 3}
+                    />
+                  </div>
+                )}
+
+                {/* 3. Dirty Stats Footer (Insertions/Deletions) */}
+                <div className="flex items-center gap-4 mt-1 text-xs text-gray-400 font-mono min-h-[1.2em]">
+                  {worktree.worktreeChanges && (
+                    <div className="flex items-center gap-1">
+                      <GitCommitHorizontal className="w-2.5 h-2.5" />
+                      <span className="text-[var(--color-status-success)]">
+                        +{worktree.worktreeChanges.insertions ?? 0}
+                      </span>
+                      <span className="text-gray-600">/</span>
+                      <span className="text-[var(--color-status-error)]">
+                        -{worktree.worktreeChanges.deletions ?? 0}
+                      </span>
+                    </div>
+                  )}
+
+                  {/* Shared Footer Items (Terminals, Server, Errors) */}
+                  {terminalCounts.total > 0 && (
+                    <div className="flex items-center gap-1">
+                      <Terminal className="w-2.5 h-2.5" />
+                      <span>{terminalCounts.total}</span>
+                      {terminalCounts.byState.working > 0 && (
+                        <div className="w-1 h-1 rounded-full bg-[var(--color-status-success)] animate-pulse" />
+                      )}
+                    </div>
+                  )}
+                  {showDevServer && serverState && serverState.status !== "stopped" && (
+                    <div className="flex items-center gap-1">
+                      <Globe className="w-2.5 h-2.5" />
+                      {getServerStatusIndicator()}
+                    </div>
+                  )}
+                  {worktreeErrors.length > 0 && (
+                    <div className="flex items-center gap-1 text-[var(--color-status-error)]">
+                      <AlertCircle className="w-2.5 h-2.5" />
+                      <span>{worktreeErrors.length}</span>
+                    </div>
                   )}
                 </div>
-              )}
-
-              {hasChanges && worktree.worktreeChanges && (
-                <div className="flex items-center gap-1">
-                  <GitCommitHorizontal className="w-2.5 h-2.5" />
-                  <span className="text-[var(--color-status-success)]">
-                    +{worktree.worktreeChanges.insertions ?? 0}
-                  </span>
-                  <span className="text-gray-600">/</span>
-                  <span className="text-[var(--color-status-error)]">
-                    -{worktree.worktreeChanges.deletions ?? 0}
-                  </span>
+              </div>
+            ) : (
+              /* CLEAN STATE: Show Last Commit */
+              <div className="flex flex-col gap-1">
+                {/* 1. Last Commit Message (The primary "activity") */}
+                <div className="text-xs text-gray-400 truncate min-h-[1.2em]">
+                  {firstLineLastCommitMessage ? (
+                    <div className="flex items-center gap-1.5 opacity-80">
+                      <GitCommit className="w-3 h-3 shrink-0" />
+                      <span className="truncate">{firstLineLastCommitMessage}</span>
+                    </div>
+                  ) : (
+                    <span className="text-gray-500 italic">No recent activity</span>
+                  )}
                 </div>
-              )}
 
-              {showDevServer && serverState && serverState.status !== "stopped" && (
-                <div className="flex items-center gap-1">
-                  <Globe className="w-2.5 h-2.5" />
-                  {getServerStatusIndicator()}
-                </div>
-              )}
-
-              {worktreeErrors.length > 0 && (
-                <div className="flex items-center gap-1 text-[var(--color-status-error)]">
-                  <AlertCircle className="w-2.5 h-2.5" />
-                  <span>{worktreeErrors.length}</span>
-                </div>
-              )}
-            </div>
-          )}
+                {/* 2. Clean Footer (Terminals, Server, Errors ONLY - No Git Stats) */}
+                {(terminalCounts.total > 0 ||
+                  (showDevServer && serverState && serverState.status !== "stopped") ||
+                  worktreeErrors.length > 0) && (
+                  <div className="flex items-center gap-4 mt-1 text-xs text-gray-400 font-mono">
+                    {terminalCounts.total > 0 && (
+                      <div className="flex items-center gap-1">
+                        <Terminal className="w-2.5 h-2.5" />
+                        <span>{terminalCounts.total}</span>
+                        {terminalCounts.byState.working > 0 && (
+                          <div className="w-1 h-1 rounded-full bg-[var(--color-status-success)] animate-pulse" />
+                        )}
+                      </div>
+                    )}
+                    {showDevServer && serverState && serverState.status !== "stopped" && (
+                      <div className="flex items-center gap-1">
+                        <Globe className="w-2.5 h-2.5" />
+                        {getServerStatusIndicator()}
+                      </div>
+                    )}
+                    {worktreeErrors.length > 0 && (
+                      <div className="flex items-center gap-1 text-[var(--color-status-error)]">
+                        <AlertCircle className="w-2.5 h-2.5" />
+                        <span>{worktreeErrors.length}</span>
+                      </div>
+                    )}
+                  </div>
+                )}
+              </div>
+            )}
+          </div>
 
           {/* Expanded Details Section */}
           <div
@@ -549,7 +618,7 @@ export function WorktreeCard({
             aria-hidden={!isExpanded}
             inert={!isExpanded}
             className={cn(
-              "overflow-hidden transition-[max-height,opacity] duration-300 ease-out ml-6",
+              "overflow-hidden transition-[max-height,opacity] duration-300 ease-out ml-[1.625rem]",
               isExpanded ? "max-h-[800px] opacity-100" : "max-h-0 opacity-0"
             )}
           >
@@ -562,13 +631,13 @@ export function WorktreeCard({
               serverLoading={serverLoading}
               worktreeErrors={worktreeErrors}
               hasChanges={hasChanges}
-              showFooter={showFooter}
+              showFooter={false} // Footer is now handled in the main body
               isFocused={isFocused}
               onPathClick={handlePathClick}
               onToggleServer={onToggleServer}
               onDismissError={dismissError}
               onRetryError={handleErrorRetry}
-              renderSummary={renderSummary}
+              showLastCommit={hasChanges} // Show commit in details ONLY if we are dirty (because it's hidden in header)
             />
           </div>
 

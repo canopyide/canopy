@@ -4,7 +4,7 @@ import type { AppError, RetryAction } from "../../store/errorStore";
 import { ErrorBanner } from "../Errors/ErrorBanner";
 import { cn } from "../../lib/utils";
 import { systemClient } from "@/clients";
-import { Globe, Play } from "lucide-react";
+import { Globe, Play, GitCommit } from "lucide-react";
 import { parseNoteWithLinks, formatPath, type TextSegment } from "../../utils/textParsing";
 
 export interface WorktreeDetailsProps {
@@ -18,12 +18,12 @@ export interface WorktreeDetailsProps {
   hasChanges: boolean;
   showFooter: boolean;
   isFocused: boolean;
+  showLastCommit?: boolean;
 
   onPathClick: () => void;
   onToggleServer: () => void;
   onDismissError: (id: string) => void;
   onRetryError: (id: string, action: RetryAction, args?: Record<string, unknown>) => Promise<void>;
-  renderSummary: () => React.ReactNode;
 }
 
 function getServerStatusIndicator(serverState: DevServerState | null): React.ReactNode {
@@ -67,9 +67,10 @@ export function WorktreeDetails({
   onToggleServer,
   onDismissError,
   onRetryError,
-  renderSummary,
+  showLastCommit,
 }: WorktreeDetailsProps) {
   const displayPath = formatPath(worktree.path, homeDir);
+  const rawLastCommitMsg = worktree.worktreeChanges?.lastCommitMessage;
 
   const parsedNoteSegments: TextSegment[] = useMemo(() => {
     return effectiveNote ? parseNoteWithLinks(effectiveNote) : [];
@@ -88,21 +89,6 @@ export function WorktreeDetails({
         (hasChanges || showFooter) && "border-t border-border/40"
       )}
     >
-      <button
-        onClick={(e) => {
-          e.stopPropagation();
-          onPathClick();
-        }}
-        className={cn(
-          "text-[0.7rem] text-gray-500 hover:text-gray-400 hover:underline text-left font-mono truncate block",
-          isFocused && "underline"
-        )}
-      >
-        {displayPath}
-      </button>
-
-      <div className="text-xs leading-relaxed break-words">{renderSummary()}</div>
-
       {effectiveNote && (
         <div
           className={cn(
@@ -177,6 +163,33 @@ export function WorktreeDetails({
           )}
         </div>
       )}
+
+      {/* Last Commit Message (if requested) */}
+      {showLastCommit && rawLastCommitMsg && (
+        <div className="text-xs text-gray-500 italic px-1 flex flex-col gap-1.5 mb-2">
+          <div className="flex items-center gap-1.5 opacity-70">
+            <GitCommit className="w-3 h-3 shrink-0" />
+            <span>Last commit:</span>
+          </div>
+          <span className="whitespace-pre-wrap">{rawLastCommitMsg}</span>
+        </div>
+      )}
+
+      {/* Folder path at the bottom */}
+      <div className="pt-2 border-t border-border/40">
+        <button
+          onClick={(e) => {
+            e.stopPropagation();
+            onPathClick();
+          }}
+          className={cn(
+            "text-[0.7rem] text-gray-500 hover:text-gray-400 hover:underline text-left font-mono truncate block",
+            isFocused && "underline"
+          )}
+        >
+          {displayPath}
+        </button>
+      </div>
     </div>
   );
 }
