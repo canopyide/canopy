@@ -565,6 +565,13 @@ function App() {
     { enabled: electronAvailable }
   );
   useKeybinding(
+    "panel.toggleDockAlt",
+    () => {
+      window.dispatchEvent(new CustomEvent("canopy:toggle-terminal-dock"));
+    },
+    { enabled: electronAvailable }
+  );
+  useKeybinding(
     "panel.toggleSidecar",
     () => {
       window.dispatchEvent(new CustomEvent("canopy:toggle-sidecar"));

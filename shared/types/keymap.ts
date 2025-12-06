@@ -69,6 +69,7 @@ export type KeyAction =
   | "terminal.restore"
   | "terminal.restoreAll"
   | "terminal.palette"
+  | "terminal.reopenLast"
   | "terminal.maximize"
   | "terminal.inject"
   | "terminal.focusNext"
@@ -90,6 +91,7 @@ export type KeyAction =
   | "terminal.moveRight"
 
   // Agent spawning
+  | "agent.palette"
   | "agent.claude"
   | "agent.gemini"
   | "agent.codex"
@@ -97,6 +99,7 @@ export type KeyAction =
 
   // Panel management
   | "panel.toggleDock"
+  | "panel.toggleDockAlt"
   | "panel.toggleDiagnostics"
   | "panel.toggleSidecar"
   | "panel.diagnosticsLogs"
