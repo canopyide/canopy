@@ -10,12 +10,20 @@ import { generateClaudeFlags, generateGeminiFlags, generateCodexFlags } from "@s
 export type AgentType = "claude" | "gemini" | "codex" | "shell";
 
 /**
+ * Detect if running on Windows using browser APIs.
+ * Works in renderer process where Node's `process` global is unavailable.
+ */
+function isWindows(): boolean {
+  return navigator.platform.toLowerCase().startsWith("win");
+}
+
+/**
  * Escape a string for safe use as a shell argument.
  * Platform-aware escaping for POSIX (macOS/Linux) and Windows.
  */
 function escapeShellArg(arg: string): string {
   // On Windows, cmd.exe and PowerShell require different quoting
-  if (process.platform === "win32") {
+  if (isWindows()) {
     // Escape double quotes and wrap in double quotes for Windows
     // This works for both cmd.exe and PowerShell
     return `"${arg.replace(/"/g, '""')}"`;

@@ -102,8 +102,9 @@ export function WorktreeCard({
   const recipes = getRecipesForWorktree(worktree.id);
   const [runningRecipeId, setRunningRecipeId] = useState<string | null>(null);
 
-  const { counts: terminalCounts, terminals: worktreeTerminals } =
-    useWorktreeTerminals(worktree.id);
+  const { counts: terminalCounts, terminals: worktreeTerminals } = useWorktreeTerminals(
+    worktree.id
+  );
 
   const setFocused = useTerminalStore((state) => state.setFocused);
 
@@ -309,8 +310,7 @@ export function WorktreeCard({
     showFooter ||
     !!rawLastCommitMessage; // Can expand to see details even if just clean
 
-  const showMetaFooter =
-    terminalCounts.total > 0 || !!worktree.issueNumber || !!worktree.prNumber;
+  const showMetaFooter = terminalCounts.total > 0 || !!worktree.issueNumber || !!worktree.prNumber;
 
   const detailsId = useMemo(() => `worktree-${worktree.id}-details`, [worktree.id]);
 
@@ -705,9 +705,9 @@ export function WorktreeCard({
     return cardContent;
   }
 
-  const isClaudeEnabled = agentAvailability?.claude && agentSettings?.claude.enabled;
-  const isGeminiEnabled = agentAvailability?.gemini && agentSettings?.gemini.enabled;
-  const isCodexEnabled = agentAvailability?.codex && agentSettings?.codex.enabled;
+  const isClaudeEnabled = agentAvailability?.claude && (agentSettings?.claude?.enabled ?? true);
+  const isGeminiEnabled = agentAvailability?.gemini && (agentSettings?.gemini?.enabled ?? true);
+  const isCodexEnabled = agentAvailability?.codex && (agentSettings?.codex?.enabled ?? true);
 
   return (
     <ContextMenu>
