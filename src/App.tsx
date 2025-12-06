@@ -602,7 +602,8 @@ function App() {
       const currentIndex = activeWorktreeId
         ? worktrees.findIndex((w) => w.id === activeWorktreeId)
         : -1;
-      const prevIndex = currentIndex === -1 ? 0 : (currentIndex - 1 + worktrees.length) % worktrees.length;
+      const prevIndex =
+        currentIndex === -1 ? 0 : (currentIndex - 1 + worktrees.length) % worktrees.length;
       selectWorktree(worktrees[prevIndex].id);
     },
     { enabled: electronAvailable && worktrees.length > 1 }
@@ -610,7 +611,9 @@ function App() {
 
   // Help and settings
   useKeybinding("help.shortcuts", () => setIsShortcutsOpen(true), { enabled: electronAvailable });
-  useKeybinding("help.shortcutsAlt", () => setIsShortcutsOpen(true), { enabled: electronAvailable });
+  useKeybinding("help.shortcutsAlt", () => setIsShortcutsOpen(true), {
+    enabled: electronAvailable,
+  });
   useKeybinding("app.settings", () => handleSettings(), { enabled: electronAvailable });
 
   // Directional terminal navigation (Option+Arrow keys)
