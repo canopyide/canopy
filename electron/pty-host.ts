@@ -54,6 +54,7 @@ let ptyPool: PtyPool | null = null;
 let visualBuffer: SharedRingBuffer | null = null;
 let analysisBuffer: SharedRingBuffer | null = null;
 const packetFramer = new PacketFramer();
+const textDecoder = new TextDecoder();
 
 // Track terminals paused due to ring buffer backpressure
 // Maps terminal ID to the interval timer used for resume checking
@@ -69,8 +70,13 @@ function sendEvent(event: PtyHostEvent): void {
   port.postMessage(event);
 }
 
+// Helper to convert data to string for IPC fallback (IPC events expect string)
+function toStringForIpc(data: string | Uint8Array): string {
+  return typeof data === "string" ? data : textDecoder.decode(data);
+}
+
 // Wire up PtyManager events
-ptyManager.on("data", (id: string, data: string) => {
+ptyManager.on("data", (id: string, data: string | Uint8Array) => {
   // Use ring buffers if available (zero-copy path)
   if (visualBuffer) {
     const packet = packetFramer.frame(id, data);
@@ -92,7 +98,7 @@ ptyManager.on("data", (id: string, data: string) => {
             } catch (error) {
               console.error(`[PtyHost] Failed to pause PTY ${id}:`, error);
               // If pause fails, fall back to IPC to avoid data loss
-              sendEvent({ type: "data", id, data });
+              sendEvent({ type: "data", id, data: toStringForIpc(data) });
               return;
             }
           }
@@ -171,7 +177,7 @@ ptyManager.on("data", (id: string, data: string) => {
           `[PtyHost] Partial write to visual ring buffer: ${visualWritten}/${packet.length} bytes, ` +
             `falling back to IPC`
         );
-        sendEvent({ type: "data", id, data });
+        sendEvent({ type: "data", id, data: toStringForIpc(data) });
         return;
       }
 
@@ -192,7 +198,7 @@ ptyManager.on("data", (id: string, data: string) => {
     console.warn(`[PtyHost] Packet framing failed for terminal ${id}, using IPC fallback`);
   }
   // Fallback: use traditional IPC
-  sendEvent({ type: "data", id, data });
+  sendEvent({ type: "data", id, data: toStringForIpc(data) });
 });
 
 ptyManager.on("exit", (id: string, exitCode: number) => {

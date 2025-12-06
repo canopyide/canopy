@@ -76,7 +76,7 @@ export interface TerminalInfo {
 }
 
 export interface PtyManagerEvents {
-  data: (id: string, data: string) => void;
+  data: (id: string, data: string | Uint8Array) => void;
   exit: (id: string, exitCode: number) => void;
   error: (id: string, error: string) => void;
 }

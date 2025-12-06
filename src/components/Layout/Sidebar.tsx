@@ -90,7 +90,7 @@ export function Sidebar({ width, onResize, children, className }: SidebarProps) 
             {currentProject && (
               <button
                 onClick={() => setIsSettingsOpen(true)}
-                className="p-2 mr-1 text-canopy-text/60 hover:text-canopy-text hover:bg-canopy-border/50 rounded transition-colors"
+                className="p-2 mr-1 text-canopy-text/60 hover:text-canopy-text hover:bg-canopy-border/50 rounded transition-colors focus-visible:outline focus-visible:outline-2 focus-visible:outline-canopy-accent"
                 title="Project Settings"
               >
                 <Settings className="h-4 w-4" />
@@ -109,10 +109,12 @@ export function Sidebar({ width, onResize, children, className }: SidebarProps) 
           aria-label="Resize sidebar"
           aria-orientation="vertical"
           aria-valuenow={width}
+          aria-valuemin={200}
+          aria-valuemax={600}
           tabIndex={0}
           className={cn(
             "group absolute top-0 right-0 w-1.5 h-full cursor-col-resize flex items-center justify-center",
-            "hover:bg-canopy-accent/30 transition-colors focus:outline-none focus:bg-canopy-accent/50",
+            "hover:bg-canopy-accent/30 transition-colors focus-visible:outline-none focus-visible:bg-canopy-accent/50",
             isResizing && "bg-canopy-accent/50"
           )}
           onMouseDown={startResizing}
