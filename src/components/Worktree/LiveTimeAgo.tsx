@@ -59,12 +59,12 @@ export function LiveTimeAgo({ timestamp, className }: LiveTimeAgoProps) {
     return () => clearInterval(id);
   }, [timestamp]);
 
-  const { label, fullLabel, formattedDate } = useMemo(() => {
+  const timeData = useMemo(() => {
     // Include tick in calculation to ensure recalculation on interval
     void tick;
 
     if (!timestamp) {
-      return { label: "Never", fullLabel: "Never", formattedDate: "" };
+      return null;
     }
 
     const diffMs = Date.now() - timestamp;
@@ -74,9 +74,17 @@ export function LiveTimeAgo({ timestamp, className }: LiveTimeAgoProps) {
     return { label, fullLabel, formattedDate };
   }, [timestamp, tick]);
 
+  if (!timeData) {
+    return null;
+  }
+
   return (
-    <span className={className} title={`${fullLabel} (${formattedDate})`} aria-label={fullLabel}>
-      {label}
+    <span
+      className={className}
+      title={`${timeData.fullLabel} (${timeData.formattedDate})`}
+      aria-label={timeData.fullLabel}
+    >
+      {timeData.label}
     </span>
   );
 }

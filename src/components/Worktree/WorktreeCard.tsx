@@ -401,6 +401,7 @@ export function WorktreeCard({
               <button
                 onClick={(e) => {
                   e.stopPropagation();
+                  e.currentTarget.blur();
                   onCopyTree();
                 }}
                 className="p-1 text-gray-400 hover:text-white hover:bg-white/10 rounded transition-colors"
