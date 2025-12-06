@@ -90,7 +90,7 @@ export function SegmentedControl({
                 "flex-1 flex items-center justify-center gap-2 px-3 py-1.5 text-sm font-medium rounded-md transition-all duration-200 ease-out",
                 isActive
                   ? "bg-canopy-accent/10 text-canopy-accent"
-                  : "text-gray-400 hover:text-gray-200 hover:bg-white/5"
+                  : "text-canopy-text/60 hover:text-canopy-text hover:bg-white/5"
               )}
             >
               {tab.icon && (

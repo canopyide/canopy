@@ -37,7 +37,7 @@ const TabButton = memo(function TabButton({
       className={cn(
         "px-3 py-1.5 text-sm font-medium transition-colors relative",
         "hover:text-canopy-text",
-        isActive ? "text-canopy-text" : "text-gray-400"
+        isActive ? "text-canopy-text" : "text-canopy-text/60"
       )}
       role="tab"
       aria-selected={isActive}
@@ -191,7 +191,7 @@ export function DiagnosticsDock({ onRetry, className }: DiagnosticsDockProps) {
 
           <button
             onClick={closeDock}
-            className="p-1.5 hover:bg-gray-800 rounded transition-colors text-gray-400 hover:text-gray-200"
+            className="p-1.5 hover:bg-canopy-border rounded transition-colors text-canopy-text/60 hover:text-canopy-text"
             title="Close diagnostics dock"
             aria-label="Close diagnostics dock"
           >

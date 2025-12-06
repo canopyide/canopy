@@ -19,7 +19,7 @@ function ActionButton({ onClick, disabled, children, className, title }: ActionB
       disabled={disabled}
       className={cn(
         "px-2 py-0.5 text-xs rounded transition-colors",
-        "bg-gray-800 text-gray-400 hover:text-gray-200 hover:bg-gray-700",
+        "bg-canopy-bg text-canopy-text/60 hover:text-canopy-text hover:bg-canopy-border",
         disabled && "opacity-50 cursor-not-allowed",
         className
       )}
@@ -72,7 +72,7 @@ export function LogsActions() {
           "px-2 py-0.5 text-xs rounded transition-colors",
           autoScroll
             ? "bg-blue-600 text-white"
-            : "bg-gray-800 text-gray-400 hover:text-gray-200 hover:bg-gray-700"
+            : "bg-canopy-bg text-canopy-text/60 hover:text-canopy-text hover:bg-canopy-border"
         )}
         title={autoScroll ? "Auto-scroll enabled" : "Auto-scroll disabled"}
       >

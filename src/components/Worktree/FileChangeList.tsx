@@ -33,7 +33,7 @@ const STATUS_CONFIG: Record<GitStatus, { label: string; color: string }> = {
   untracked: { label: "?", color: "text-green-400" },
   renamed: { label: "R", color: "text-blue-400" },
   copied: { label: "C", color: "text-blue-400" },
-  ignored: { label: "I", color: "text-gray-600" },
+  ignored: { label: "I", color: "text-canopy-text/40" },
 };
 
 const STATUS_PRIORITY: Record<GitStatus, number> = {
@@ -144,11 +144,11 @@ export function FileChangeList({ changes, maxVisible = 4, rootPath }: FileChange
               {/* File Path - directory truncates, filename is protected */}
               <div className="flex-1 min-w-0 flex items-center mr-2">
                 {displayDir && (
-                  <span className="truncate text-gray-400 opacity-60 group-hover:opacity-80">
+                  <span className="truncate text-canopy-text/60 opacity-60 group-hover:opacity-80">
                     {displayDir}/
                   </span>
                 )}
-                <span className="text-gray-300 group-hover:text-white font-medium shrink-0">
+                <span className="text-canopy-text group-hover:text-white font-medium shrink-0">
                   {base}
                 </span>
               </div>
@@ -167,7 +167,7 @@ export function FileChangeList({ changes, maxVisible = 4, rootPath }: FileChange
         })}
 
         {remainingCount > 0 && (
-          <div className="text-[10px] text-gray-500 pl-5 pt-1">
+          <div className="text-[10px] text-canopy-text/60 pl-5 pt-1">
             ...and {remainingCount} more
             {remainingFiles.length > 0 && (
               <span className="ml-1 opacity-75">

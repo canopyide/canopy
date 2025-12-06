@@ -39,7 +39,7 @@ export function EventTimeline({
     return (
       CATEGORY_STYLES[category] || {
         label: "???",
-        color: "bg-gray-500/20 text-gray-400 border-gray-500/30",
+        color: "bg-canopy-border/20 text-canopy-text/60 border-canopy-border/30",
       }
     );
   };

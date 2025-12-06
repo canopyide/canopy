@@ -93,7 +93,7 @@ export function SettingsDialog({
               "text-left px-3 py-2 rounded-md text-sm transition-colors",
               activeTab === "general"
                 ? "bg-canopy-accent/10 text-canopy-accent"
-                : "text-gray-400 hover:bg-canopy-border hover:text-canopy-text"
+                : "text-canopy-text/60 hover:bg-canopy-border hover:text-canopy-text"
             )}
           >
             General
@@ -104,7 +104,7 @@ export function SettingsDialog({
               "text-left px-3 py-2 rounded-md text-sm transition-colors flex items-center gap-2",
               activeTab === "keyboard"
                 ? "bg-canopy-accent/10 text-canopy-accent"
-                : "text-gray-400 hover:bg-canopy-border hover:text-canopy-text"
+                : "text-canopy-text/60 hover:bg-canopy-border hover:text-canopy-text"
             )}
           >
             <Keyboard className="w-4 h-4" />
@@ -116,7 +116,7 @@ export function SettingsDialog({
               "text-left px-3 py-2 rounded-md text-sm transition-colors flex items-center gap-2",
               activeTab === "terminal"
                 ? "bg-canopy-accent/10 text-canopy-accent"
-                : "text-gray-400 hover:bg-canopy-border hover:text-canopy-text"
+                : "text-canopy-text/60 hover:bg-canopy-border hover:text-canopy-text"
             )}
           >
             <LayoutGrid className="w-4 h-4" />
@@ -128,7 +128,7 @@ export function SettingsDialog({
               "text-left px-3 py-2 rounded-md text-sm transition-colors flex items-center gap-2",
               activeTab === "agents"
                 ? "bg-canopy-accent/10 text-canopy-accent"
-                : "text-gray-400 hover:bg-canopy-border hover:text-canopy-text"
+                : "text-canopy-text/60 hover:bg-canopy-border hover:text-canopy-text"
             )}
           >
             <Bot className="w-4 h-4" />
@@ -140,7 +140,7 @@ export function SettingsDialog({
               "text-left px-3 py-2 rounded-md text-sm transition-colors flex items-center gap-2",
               activeTab === "github"
                 ? "bg-canopy-accent/10 text-canopy-accent"
-                : "text-gray-400 hover:bg-canopy-border hover:text-canopy-text"
+                : "text-canopy-text/60 hover:bg-canopy-border hover:text-canopy-text"
             )}
           >
             <Github className="w-4 h-4" />
@@ -152,7 +152,7 @@ export function SettingsDialog({
               "text-left px-3 py-2 rounded-md text-sm transition-colors flex items-center gap-2",
               activeTab === "sidecar"
                 ? "bg-canopy-accent/10 text-canopy-accent"
-                : "text-gray-400 hover:bg-canopy-border hover:text-canopy-text"
+                : "text-canopy-text/60 hover:bg-canopy-border hover:text-canopy-text"
             )}
           >
             <PanelRight className="w-4 h-4" />
@@ -164,7 +164,7 @@ export function SettingsDialog({
               "text-left px-3 py-2 rounded-md text-sm transition-colors",
               activeTab === "troubleshooting"
                 ? "bg-canopy-accent/10 text-canopy-accent"
-                : "text-gray-400 hover:bg-canopy-border hover:text-canopy-text"
+                : "text-canopy-text/60 hover:bg-canopy-border hover:text-canopy-text"
             )}
           >
             Troubleshooting
@@ -188,7 +188,7 @@ export function SettingsDialog({
             </h3>
             <button
               onClick={onClose}
-              className="text-gray-400 hover:text-canopy-text transition-colors"
+              className="text-canopy-text/60 hover:text-canopy-text transition-colors"
               aria-label="Close settings"
             >
               <X className="h-5 w-5" />

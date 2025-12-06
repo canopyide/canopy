@@ -348,7 +348,7 @@ export function WorktreeCard({
             {hasExpandableContent && (
               <button
                 onClick={handleToggleExpand}
-                className="p-0.5 text-gray-500 hover:text-gray-300 transition-colors"
+                className="p-0.5 text-canopy-text/60 hover:text-canopy-text transition-colors"
                 aria-label={isExpanded ? "Collapse details" : "Expand details"}
                 aria-expanded={isExpanded}
                 aria-controls={detailsId}
@@ -364,7 +364,7 @@ export function WorktreeCard({
           <div className="group/identity min-w-0 flex items-center justify-between gap-2 min-h-[22px] relative">
             <div className="flex items-baseline gap-1.5 min-w-0 pr-16">
               {isMainWorktree && (
-                <Shield className="w-3.5 h-3.5 text-gray-600 opacity-30 shrink-0 self-center" />
+                <Shield className="w-3.5 h-3.5 text-canopy-text/40 opacity-30 shrink-0 self-center" />
               )}
               <BranchLabel
                 label={branchLabel}
@@ -381,8 +381,8 @@ export function WorktreeCard({
               className={cn(
                 "flex items-center gap-1.5 shrink-0 text-[10px] px-2 py-0.5 rounded-full",
                 worktree.lastActivityTimestamp
-                  ? "bg-white/[0.03] text-gray-400"
-                  : "bg-transparent text-gray-600"
+                  ? "bg-white/[0.03] text-canopy-text/60"
+                  : "bg-transparent text-canopy-text/40"
               )}
               title={
                 worktree.lastActivityTimestamp
@@ -403,7 +403,7 @@ export function WorktreeCard({
                   e.stopPropagation();
                   onCopyTree();
                 }}
-                className="p-1 text-gray-400 hover:text-white hover:bg-white/10 rounded transition-colors"
+                className="p-1 text-canopy-text/60 hover:text-white hover:bg-white/10 rounded transition-colors"
                 title="Copy Context"
                 aria-label="Copy Context"
               >
@@ -414,7 +414,7 @@ export function WorktreeCard({
                 <DropdownMenuTrigger asChild>
                   <button
                     onClick={(e) => e.stopPropagation()}
-                    className="p-1 text-gray-400 hover:text-white hover:bg-white/10 rounded transition-colors"
+                    className="p-1 text-canopy-text/60 hover:text-white hover:bg-white/10 rounded transition-colors"
                     aria-label="More actions"
                   >
                     <MoreHorizontal className="w-3.5 h-3.5" />
@@ -510,7 +510,7 @@ export function WorktreeCard({
               <>
                 {/* Diff summary pill */}
                 {worktree.worktreeChanges && (
-                  <div className="inline-flex items-center gap-2 text-[11px] font-mono text-gray-400 bg-white/[0.02] border border-white/5 rounded px-2 py-0.5">
+                  <div className="inline-flex items-center gap-2 text-[11px] font-mono text-canopy-text/60 bg-white/[0.02] border border-white/5 rounded px-2 py-0.5">
                     <span>
                       {worktree.worktreeChanges.changedFileCount} file
                       {worktree.worktreeChanges.changedFileCount !== 1 ? "s" : ""}
@@ -518,7 +518,7 @@ export function WorktreeCard({
                     {((worktree.worktreeChanges.insertions ?? 0) > 0 ||
                       (worktree.worktreeChanges.deletions ?? 0) > 0) && (
                       <>
-                        <span className="text-gray-600">·</span>
+                        <span className="text-canopy-text/40">·</span>
                         {(worktree.worktreeChanges.insertions ?? 0) > 0 && (
                           <span className="text-[var(--color-status-success)]">
                             +{worktree.worktreeChanges.insertions}
@@ -526,7 +526,7 @@ export function WorktreeCard({
                         )}
                         {(worktree.worktreeChanges.insertions ?? 0) > 0 &&
                           (worktree.worktreeChanges.deletions ?? 0) > 0 && (
-                            <span className="text-gray-600">/</span>
+                            <span className="text-canopy-text/40">/</span>
                           )}
                         {(worktree.worktreeChanges.deletions ?? 0) > 0 && (
                           <span className="text-[var(--color-status-error)]">
@@ -545,15 +545,15 @@ export function WorktreeCard({
                   />
                 )}
                 {effectiveSummary && (
-                  <div className="text-xs text-gray-400 truncate mt-0.5">{effectiveSummary}</div>
+                  <div className="text-xs text-canopy-text/60 truncate mt-0.5">{effectiveSummary}</div>
                 )}
               </>
             ) : workspaceScenario === "clean-feature" ? (
               <>
                 {effectiveNote && !isExpanded ? (
-                  <div className="text-xs text-gray-300 truncate">{effectiveNote}</div>
+                  <div className="text-xs text-canopy-text truncate">{effectiveNote}</div>
                 ) : !isExpanded && firstLineLastCommitMessage ? (
-                  <div className="flex items-center gap-1.5 text-xs text-gray-400 opacity-80">
+                  <div className="flex items-center gap-1.5 text-xs text-canopy-text/60 opacity-80">
                     <GitCommit className="w-3 h-3 shrink-0" />
                     <span className="truncate">{firstLineLastCommitMessage}</span>
                   </div>
@@ -563,7 +563,7 @@ export function WorktreeCard({
               <>
                 {/* Last commit message - same as clean-feature */}
                 {firstLineLastCommitMessage ? (
-                  <div className="flex items-center gap-1.5 text-xs text-gray-400 opacity-80">
+                  <div className="flex items-center gap-1.5 text-xs text-canopy-text/60 opacity-80">
                     <GitCommit className="w-3 h-3 shrink-0" />
                     <span className="truncate">{firstLineLastCommitMessage}</span>
                     {/* Server indicator - only shown when running (terminal count is in footer) */}
@@ -578,7 +578,7 @@ export function WorktreeCard({
                     )}
                   </div>
                 ) : effectiveNote ? (
-                  <div className="text-xs text-gray-300 truncate">{effectiveNote}</div>
+                  <div className="text-xs text-canopy-text truncate">{effectiveNote}</div>
                 ) : null}
               </>
             ) : null}

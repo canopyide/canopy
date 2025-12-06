@@ -10,9 +10,9 @@ interface LogEntryProps {
 
 const LEVEL_COLORS: Record<LogLevel, { bg: string; text: string; border: string }> = {
   debug: {
-    bg: "bg-gray-500/20",
-    text: "text-gray-400",
-    border: "border-gray-500/30",
+    bg: "bg-canopy-border/20",
+    text: "text-canopy-text/60",
+    border: "border-canopy-border/30",
   },
   info: {
     bg: "bg-blue-500/20",
@@ -69,9 +69,9 @@ function LogEntryComponent({ entry, isExpanded, onToggle }: LogEntryProps) {
   return (
     <div
       className={cn(
-        "border-b border-gray-800/50 py-1.5 px-2",
-        hasContext && "cursor-pointer hover:bg-gray-800/30",
-        isExpanded && "bg-gray-800/20"
+        "border-b border-canopy-border/50 py-1.5 px-2",
+        hasContext && "cursor-pointer hover:bg-canopy-border/30",
+        isExpanded && "bg-canopy-border/20"
       )}
       onClick={handleClick}
       onKeyDown={handleKeyDown}
@@ -87,7 +87,7 @@ function LogEntryComponent({ entry, isExpanded, onToggle }: LogEntryProps) {
     >
       <div className="flex items-start gap-2 min-w-0">
         <span
-          className="text-gray-500 text-xs font-mono shrink-0"
+          className="text-canopy-text/60 text-xs font-mono shrink-0"
           title={new Date(entry.timestamp).toISOString()}
         >
           {formatTimestamp(entry.timestamp)}
@@ -107,12 +107,12 @@ function LogEntryComponent({ entry, isExpanded, onToggle }: LogEntryProps) {
           <span className="text-purple-400 text-xs font-mono shrink-0">[{entry.source}]</span>
         )}
 
-        <span className="text-gray-200 text-xs font-mono break-words min-w-0 flex-1">
+        <span className="text-canopy-text text-xs font-mono break-words min-w-0 flex-1">
           {entry.message}
         </span>
 
         {hasContext && (
-          <span className="text-gray-500 text-xs shrink-0">{isExpanded ? "[-]" : "[+]"}</span>
+          <span className="text-canopy-text/60 text-xs shrink-0">{isExpanded ? "[-]" : "[+]"}</span>
         )}
       </div>
 
@@ -122,12 +122,12 @@ function LogEntryComponent({ entry, isExpanded, onToggle }: LogEntryProps) {
           className={cn(
             "mt-2 ml-[72px] p-2 rounded border text-xs font-mono overflow-x-auto",
             colors.border,
-            "bg-gray-900/50"
+            "bg-canopy-sidebar/50"
           )}
           role="region"
           aria-label="Log entry context"
         >
-          <pre className="text-gray-300 whitespace-pre-wrap">{formatContext(entry.context!)}</pre>
+          <pre className="text-canopy-text whitespace-pre-wrap">{formatContext(entry.context!)}</pre>
         </div>
       )}
     </div>

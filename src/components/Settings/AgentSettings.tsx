@@ -118,7 +118,7 @@ export function AgentSettings({ onSettingsChange }: AgentSettingsProps) {
   if (isLoading) {
     return (
       <div className="flex items-center justify-center h-32">
-        <div className="text-gray-400 text-sm">Loading settings...</div>
+        <div className="text-canopy-text/60 text-sm">Loading settings...</div>
       </div>
     );
   }
@@ -161,7 +161,7 @@ export function AgentSettings({ onSettingsChange }: AgentSettingsProps) {
         <div className="space-y-4">
           <div className="space-y-2">
             <h3 className="text-sm font-medium text-canopy-text">Enabled Agents</h3>
-            <p className="text-xs text-gray-500">
+            <p className="text-xs text-canopy-text/60">
               Choose which agents appear in your toolbar. Agents must also be installed on your
               system to appear.
             </p>
@@ -173,14 +173,14 @@ export function AgentSettings({ onSettingsChange }: AgentSettingsProps) {
                 <ClaudeIcon size={18} className="text-canopy-text" />
                 <div>
                   <div className="text-sm font-medium text-canopy-text">Claude</div>
-                  <div className="text-xs text-gray-500">Anthropic's Claude CLI</div>
+                  <div className="text-xs text-canopy-text/60">Anthropic's Claude CLI</div>
                 </div>
               </div>
               <button
                 onClick={() => handleToggleEnabled("claude")}
                 className={cn(
                   "relative w-11 h-6 rounded-full transition-colors",
-                  (settings.claude.enabled ?? true) ? "bg-canopy-accent" : "bg-gray-600"
+                  (settings.claude.enabled ?? true) ? "bg-canopy-accent" : "bg-canopy-border"
                 )}
               >
                 <span
@@ -197,14 +197,14 @@ export function AgentSettings({ onSettingsChange }: AgentSettingsProps) {
                 <GeminiIcon size={18} className="text-canopy-text" />
                 <div>
                   <div className="text-sm font-medium text-canopy-text">Gemini</div>
-                  <div className="text-xs text-gray-500">Google's Gemini CLI</div>
+                  <div className="text-xs text-canopy-text/60">Google's Gemini CLI</div>
                 </div>
               </div>
               <button
                 onClick={() => handleToggleEnabled("gemini")}
                 className={cn(
                   "relative w-11 h-6 rounded-full transition-colors",
-                  (settings.gemini.enabled ?? true) ? "bg-canopy-accent" : "bg-gray-600"
+                  (settings.gemini.enabled ?? true) ? "bg-canopy-accent" : "bg-canopy-border"
                 )}
               >
                 <span
@@ -221,14 +221,14 @@ export function AgentSettings({ onSettingsChange }: AgentSettingsProps) {
                 <CodexIcon size={18} className="text-canopy-text" />
                 <div>
                   <div className="text-sm font-medium text-canopy-text">Codex</div>
-                  <div className="text-xs text-gray-500">OpenAI's Codex CLI</div>
+                  <div className="text-xs text-canopy-text/60">OpenAI's Codex CLI</div>
                 </div>
               </div>
               <button
                 onClick={() => handleToggleEnabled("codex")}
                 className={cn(
                   "relative w-11 h-6 rounded-full transition-colors",
-                  (settings.codex.enabled ?? true) ? "bg-canopy-accent" : "bg-gray-600"
+                  (settings.codex.enabled ?? true) ? "bg-canopy-accent" : "bg-canopy-border"
                 )}
               >
                 <span
@@ -241,7 +241,7 @@ export function AgentSettings({ onSettingsChange }: AgentSettingsProps) {
             </div>
           </div>
 
-          <p className="text-xs text-gray-500">
+          <p className="text-xs text-canopy-text/60">
             Note: The Shell button is always available and cannot be disabled.
           </p>
         </div>
@@ -256,9 +256,9 @@ export function AgentSettings({ onSettingsChange }: AgentSettingsProps) {
               value={settings.claude.model || ""}
               onChange={(e) => handleClaudeChange({ model: e.target.value })}
               placeholder="e.g., opus-4.5, sonnet-4.5"
-              className="w-full bg-canopy-bg border border-canopy-border rounded-md px-3 py-2 text-sm text-canopy-text placeholder:text-gray-500 focus:outline-none focus:ring-1 focus:ring-canopy-accent"
+              className="w-full bg-canopy-bg border border-canopy-border rounded-md px-3 py-2 text-sm text-canopy-text placeholder:text-canopy-text/40 focus:outline-none focus:ring-1 focus:ring-canopy-accent"
             />
-            <p className="text-xs text-gray-500">
+            <p className="text-xs text-canopy-text/60">
               Opus 4.5 recommended for long-horizon autonomous tasks. Leave empty to use Claude CLI
               default.
             </p>
@@ -296,7 +296,7 @@ export function AgentSettings({ onSettingsChange }: AgentSettingsProps) {
                     "flex items-start gap-3 p-3 rounded-md border cursor-pointer transition-colors",
                     settings.claude.approvalMode === option.value
                       ? "border-canopy-accent bg-canopy-accent/10"
-                      : "border-canopy-border hover:border-gray-500"
+                      : "border-canopy-border hover:border-canopy-border"
                   )}
                 >
                   <input
@@ -314,7 +314,7 @@ export function AgentSettings({ onSettingsChange }: AgentSettingsProps) {
                       "w-4 h-4 rounded-full border-2 flex items-center justify-center mt-0.5",
                       settings.claude.approvalMode === option.value
                         ? "border-canopy-accent"
-                        : "border-gray-500"
+                        : "border-canopy-border"
                     )}
                   >
                     {settings.claude.approvalMode === option.value && (
@@ -329,7 +329,7 @@ export function AgentSettings({ onSettingsChange }: AgentSettingsProps) {
                         <AlertTriangle className="w-3.5 h-3.5 text-yellow-500" />
                       )}
                     </div>
-                    <div className="text-xs text-gray-500">{option.desc}</div>
+                    <div className="text-xs text-canopy-text/60">{option.desc}</div>
                   </div>
                 </label>
               ))}
@@ -339,7 +339,7 @@ export function AgentSettings({ onSettingsChange }: AgentSettingsProps) {
           <div className="border-t border-canopy-border pt-4">
             <button
               onClick={() => setShowAdvanced(!showAdvanced)}
-              className="flex items-center gap-2 text-sm text-gray-400 hover:text-canopy-text transition-colors"
+              className="flex items-center gap-2 text-sm text-canopy-text/60 hover:text-canopy-text transition-colors"
             >
               {showAdvanced ? (
                 <ChevronUp className="w-4 h-4" />
@@ -358,7 +358,7 @@ export function AgentSettings({ onSettingsChange }: AgentSettingsProps) {
                     onChange={(e) => handleClaudeChange({ systemPrompt: e.target.value })}
                     placeholder="Custom system instructions..."
                     rows={3}
-                    className="w-full bg-canopy-bg border border-canopy-border rounded-md px-3 py-2 text-sm text-canopy-text placeholder:text-gray-500 focus:outline-none focus:ring-1 focus:ring-canopy-accent resize-none"
+                    className="w-full bg-canopy-bg border border-canopy-border rounded-md px-3 py-2 text-sm text-canopy-text placeholder:text-canopy-text/40 focus:outline-none focus:ring-1 focus:ring-canopy-accent resize-none"
                   />
                 </div>
 
@@ -369,9 +369,9 @@ export function AgentSettings({ onSettingsChange }: AgentSettingsProps) {
                     value={settings.claude.customFlags || ""}
                     onChange={(e) => handleClaudeChange({ customFlags: e.target.value })}
                     placeholder="e.g., --verbose --no-color"
-                    className="w-full bg-canopy-bg border border-canopy-border rounded-md px-3 py-2 text-sm text-canopy-text placeholder:text-gray-500 focus:outline-none focus:ring-1 focus:ring-canopy-accent"
+                    className="w-full bg-canopy-bg border border-canopy-border rounded-md px-3 py-2 text-sm text-canopy-text placeholder:text-canopy-text/40 focus:outline-none focus:ring-1 focus:ring-canopy-accent"
                   />
-                  <p className="text-xs text-gray-500">
+                  <p className="text-xs text-canopy-text/60">
                     Additional CLI flags to pass to Claude (space-separated)
                   </p>
                 </div>
@@ -384,7 +384,7 @@ export function AgentSettings({ onSettingsChange }: AgentSettingsProps) {
               variant="outline"
               size="sm"
               onClick={() => handleReset("claude")}
-              className="text-gray-400 border-canopy-border hover:bg-canopy-border hover:text-canopy-text"
+              className="text-canopy-text/60 border-canopy-border hover:bg-canopy-border hover:text-canopy-text"
             >
               <RotateCcw className="w-4 h-4 mr-2" />
               Reset to Defaults
@@ -402,9 +402,9 @@ export function AgentSettings({ onSettingsChange }: AgentSettingsProps) {
               value={settings.gemini.model || ""}
               onChange={(e) => handleGeminiChange({ model: e.target.value })}
               placeholder="e.g., gemini-3-pro"
-              className="w-full bg-canopy-bg border border-canopy-border rounded-md px-3 py-2 text-sm text-canopy-text placeholder:text-gray-500 focus:outline-none focus:ring-1 focus:ring-canopy-accent"
+              className="w-full bg-canopy-bg border border-canopy-border rounded-md px-3 py-2 text-sm text-canopy-text placeholder:text-canopy-text/40 focus:outline-none focus:ring-1 focus:ring-canopy-accent"
             />
-            <p className="text-xs text-gray-500">
+            <p className="text-xs text-canopy-text/60">
               Leave empty to use 'Auto' routing (switches between Pro/Flash based on complexity).
             </p>
           </div>
@@ -438,7 +438,7 @@ export function AgentSettings({ onSettingsChange }: AgentSettingsProps) {
                     "flex items-start gap-3 p-3 rounded-md border cursor-pointer transition-colors",
                     settings.gemini.approvalMode === option.value
                       ? "border-canopy-accent bg-canopy-accent/10"
-                      : "border-canopy-border hover:border-gray-500"
+                      : "border-canopy-border hover:border-canopy-border"
                   )}
                 >
                   <input
@@ -456,7 +456,7 @@ export function AgentSettings({ onSettingsChange }: AgentSettingsProps) {
                       "w-4 h-4 rounded-full border-2 flex items-center justify-center mt-0.5",
                       settings.gemini.approvalMode === option.value
                         ? "border-canopy-accent"
-                        : "border-gray-500"
+                        : "border-canopy-border"
                     )}
                   >
                     {settings.gemini.approvalMode === option.value && (
@@ -468,7 +468,7 @@ export function AgentSettings({ onSettingsChange }: AgentSettingsProps) {
                       {option.label}
                       {option.warning && <AlertTriangle className="w-3.5 h-3.5 text-yellow-500" />}
                     </div>
-                    <div className="text-xs text-gray-500">{option.desc}</div>
+                    <div className="text-xs text-canopy-text/60">{option.desc}</div>
                   </div>
                 </label>
               ))}
@@ -478,7 +478,7 @@ export function AgentSettings({ onSettingsChange }: AgentSettingsProps) {
           <div className="border-t border-canopy-border pt-4">
             <button
               onClick={() => setShowAdvanced(!showAdvanced)}
-              className="flex items-center gap-2 text-sm text-gray-400 hover:text-canopy-text transition-colors"
+              className="flex items-center gap-2 text-sm text-canopy-text/60 hover:text-canopy-text transition-colors"
             >
               {showAdvanced ? (
                 <ChevronUp className="w-4 h-4" />
@@ -495,7 +495,7 @@ export function AgentSettings({ onSettingsChange }: AgentSettingsProps) {
                     onClick={() => handleGeminiChange({ sandbox: !settings.gemini.sandbox })}
                     className={cn(
                       "relative w-11 h-6 rounded-full transition-colors",
-                      settings.gemini.sandbox ? "bg-canopy-accent" : "bg-gray-600"
+                      settings.gemini.sandbox ? "bg-canopy-accent" : "bg-canopy-border"
                     )}
                   >
                     <span
@@ -507,7 +507,7 @@ export function AgentSettings({ onSettingsChange }: AgentSettingsProps) {
                   </button>
                   <div>
                     <span className="text-sm text-canopy-text">Enable Sandbox Mode</span>
-                    <p className="text-xs text-gray-500">Run Gemini in a sandboxed environment</p>
+                    <p className="text-xs text-canopy-text/60">Run Gemini in a sandboxed environment</p>
                   </div>
                 </label>
 
@@ -518,9 +518,9 @@ export function AgentSettings({ onSettingsChange }: AgentSettingsProps) {
                     value={settings.gemini.customFlags || ""}
                     onChange={(e) => handleGeminiChange({ customFlags: e.target.value })}
                     placeholder="e.g., --verbose"
-                    className="w-full bg-canopy-bg border border-canopy-border rounded-md px-3 py-2 text-sm text-canopy-text placeholder:text-gray-500 focus:outline-none focus:ring-1 focus:ring-canopy-accent"
+                    className="w-full bg-canopy-bg border border-canopy-border rounded-md px-3 py-2 text-sm text-canopy-text placeholder:text-canopy-text/40 focus:outline-none focus:ring-1 focus:ring-canopy-accent"
                   />
-                  <p className="text-xs text-gray-500">
+                  <p className="text-xs text-canopy-text/60">
                     Additional CLI flags to pass to Gemini (space-separated)
                   </p>
                 </div>
@@ -533,7 +533,7 @@ export function AgentSettings({ onSettingsChange }: AgentSettingsProps) {
               variant="outline"
               size="sm"
               onClick={() => handleReset("gemini")}
-              className="text-gray-400 border-canopy-border hover:bg-canopy-border hover:text-canopy-text"
+              className="text-canopy-text/60 border-canopy-border hover:bg-canopy-border hover:text-canopy-text"
             >
               <RotateCcw className="w-4 h-4 mr-2" />
               Reset to Defaults
@@ -551,9 +551,9 @@ export function AgentSettings({ onSettingsChange }: AgentSettingsProps) {
               value={settings.codex.model || ""}
               onChange={(e) => handleCodexChange({ model: e.target.value })}
               placeholder="e.g., gpt-5.1-codex-max"
-              className="w-full bg-canopy-bg border border-canopy-border rounded-md px-3 py-2 text-sm text-canopy-text placeholder:text-gray-500 focus:outline-none focus:ring-1 focus:ring-canopy-accent"
+              className="w-full bg-canopy-bg border border-canopy-border rounded-md px-3 py-2 text-sm text-canopy-text placeholder:text-canopy-text/40 focus:outline-none focus:ring-1 focus:ring-canopy-accent"
             />
-            <p className="text-xs text-gray-500">
+            <p className="text-xs text-canopy-text/60">
               Tip: Set effort to 'xhigh' for complex architecture decisions. Leave empty to use
               Codex CLI default.
             </p>
@@ -588,7 +588,7 @@ export function AgentSettings({ onSettingsChange }: AgentSettingsProps) {
                     "flex items-start gap-3 p-3 rounded-md border cursor-pointer transition-colors",
                     settings.codex.sandbox === option.value
                       ? "border-canopy-accent bg-canopy-accent/10"
-                      : "border-canopy-border hover:border-gray-500"
+                      : "border-canopy-border hover:border-canopy-border"
                   )}
                 >
                   <input
@@ -606,7 +606,7 @@ export function AgentSettings({ onSettingsChange }: AgentSettingsProps) {
                       "w-4 h-4 rounded-full border-2 flex items-center justify-center mt-0.5",
                       settings.codex.sandbox === option.value
                         ? "border-canopy-accent"
-                        : "border-gray-500"
+                        : "border-canopy-border"
                     )}
                   >
                     {settings.codex.sandbox === option.value && (
@@ -618,7 +618,7 @@ export function AgentSettings({ onSettingsChange }: AgentSettingsProps) {
                       {option.label}
                       {option.warning && <AlertTriangle className="w-3.5 h-3.5 text-yellow-500" />}
                     </div>
-                    <div className="text-xs text-gray-500">{option.desc}</div>
+                    <div className="text-xs text-canopy-text/60">{option.desc}</div>
                   </div>
                 </label>
               ))}
@@ -639,7 +639,7 @@ export function AgentSettings({ onSettingsChange }: AgentSettingsProps) {
               <option value="on-request">On Request (approve when asked)</option>
               <option value="never">Never Ask</option>
             </select>
-            <p className="text-xs text-gray-500">
+            <p className="text-xs text-canopy-text/60">
               When to ask for approval before executing shell commands
             </p>
           </div>
@@ -647,7 +647,7 @@ export function AgentSettings({ onSettingsChange }: AgentSettingsProps) {
           <div className="border-t border-canopy-border pt-4">
             <button
               onClick={() => setShowAdvanced(!showAdvanced)}
-              className="flex items-center gap-2 text-sm text-gray-400 hover:text-canopy-text transition-colors"
+              className="flex items-center gap-2 text-sm text-canopy-text/60 hover:text-canopy-text transition-colors"
             >
               {showAdvanced ? (
                 <ChevronUp className="w-4 h-4" />
@@ -664,7 +664,7 @@ export function AgentSettings({ onSettingsChange }: AgentSettingsProps) {
                     onClick={() => handleCodexChange({ fullAuto: !settings.codex.fullAuto })}
                     className={cn(
                       "relative w-11 h-6 rounded-full transition-colors",
-                      settings.codex.fullAuto ? "bg-canopy-accent" : "bg-gray-600"
+                      settings.codex.fullAuto ? "bg-canopy-accent" : "bg-canopy-border"
                     )}
                   >
                     <span
@@ -676,7 +676,7 @@ export function AgentSettings({ onSettingsChange }: AgentSettingsProps) {
                   </button>
                   <div>
                     <span className="text-sm text-canopy-text">Full Auto Mode</span>
-                    <p className="text-xs text-gray-500">Low-friction sandboxed execution</p>
+                    <p className="text-xs text-canopy-text/60">Low-friction sandboxed execution</p>
                   </div>
                 </label>
 
@@ -685,7 +685,7 @@ export function AgentSettings({ onSettingsChange }: AgentSettingsProps) {
                     onClick={() => handleCodexChange({ search: !settings.codex.search })}
                     className={cn(
                       "relative w-11 h-6 rounded-full transition-colors",
-                      settings.codex.search ? "bg-canopy-accent" : "bg-gray-600"
+                      settings.codex.search ? "bg-canopy-accent" : "bg-canopy-border"
                     )}
                   >
                     <span
@@ -697,7 +697,7 @@ export function AgentSettings({ onSettingsChange }: AgentSettingsProps) {
                   </button>
                   <div>
                     <span className="text-sm text-canopy-text">Enable Web Search</span>
-                    <p className="text-xs text-gray-500">Allow Codex to search the web</p>
+                    <p className="text-xs text-canopy-text/60">Allow Codex to search the web</p>
                   </div>
                 </label>
 
@@ -728,7 +728,7 @@ export function AgentSettings({ onSettingsChange }: AgentSettingsProps) {
                       Bypass All Checks
                       <AlertTriangle className="w-3.5 h-3.5 text-red-500" />
                     </span>
-                    <p className="text-xs text-gray-500">
+                    <p className="text-xs text-canopy-text/60">
                       Skip sandbox and approval checks (EXTREMELY DANGEROUS)
                     </p>
                   </div>
@@ -741,9 +741,9 @@ export function AgentSettings({ onSettingsChange }: AgentSettingsProps) {
                     value={settings.codex.customFlags || ""}
                     onChange={(e) => handleCodexChange({ customFlags: e.target.value })}
                     placeholder="e.g., --verbose"
-                    className="w-full bg-canopy-bg border border-canopy-border rounded-md px-3 py-2 text-sm text-canopy-text placeholder:text-gray-500 focus:outline-none focus:ring-1 focus:ring-canopy-accent"
+                    className="w-full bg-canopy-bg border border-canopy-border rounded-md px-3 py-2 text-sm text-canopy-text placeholder:text-canopy-text/40 focus:outline-none focus:ring-1 focus:ring-canopy-accent"
                   />
-                  <p className="text-xs text-gray-500">
+                  <p className="text-xs text-canopy-text/60">
                     Additional CLI flags to pass to Codex (space-separated)
                   </p>
                 </div>
@@ -756,7 +756,7 @@ export function AgentSettings({ onSettingsChange }: AgentSettingsProps) {
               variant="outline"
               size="sm"
               onClick={() => handleReset("codex")}
-              className="text-gray-400 border-canopy-border hover:bg-canopy-border hover:text-canopy-text"
+              className="text-canopy-text/60 border-canopy-border hover:bg-canopy-border hover:text-canopy-text"
             >
               <RotateCcw className="w-4 h-4 mr-2" />
               Reset to Defaults

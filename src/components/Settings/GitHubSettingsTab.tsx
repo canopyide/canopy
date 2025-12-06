@@ -124,7 +124,7 @@ export function GitHubSettingsTab() {
   if (isLoading) {
     return (
       <div className="flex items-center justify-center h-32">
-        <div className="text-gray-400 text-sm">Loading GitHub settings...</div>
+        <div className="text-canopy-text/60 text-sm">Loading GitHub settings...</div>
       </div>
     );
   }
@@ -169,7 +169,7 @@ export function GitHubSettingsTab() {
             placeholder={
               githubConfig?.hasToken ? "Enter new token to replace" : "ghp_... or github_pat_..."
             }
-            className="flex-1 bg-canopy-bg border border-canopy-border rounded-md px-3 py-2 text-sm text-canopy-text placeholder:text-gray-500 focus:outline-none focus:ring-1 focus:ring-canopy-accent"
+            className="flex-1 bg-canopy-bg border border-canopy-border rounded-md px-3 py-2 text-sm text-canopy-text placeholder:text-canopy-text/40 focus:outline-none focus:ring-1 focus:ring-canopy-accent"
             disabled={isValidating || isTesting}
           />
           <Button
@@ -233,7 +233,7 @@ export function GitHubSettingsTab() {
           </p>
         )}
 
-        <p className="text-xs text-gray-500">
+        <p className="text-xs text-canopy-text/60">
           Used for repository statistics, issue/PR detection, and linking worktrees to GitHub.
           Eliminates the need for the gh CLI.
         </p>
@@ -241,7 +241,7 @@ export function GitHubSettingsTab() {
 
       <div className="space-y-3 border border-canopy-border rounded-md p-4">
         <h4 className="text-sm font-medium text-canopy-text">Create a New Token</h4>
-        <p className="text-xs text-gray-400">
+        <p className="text-xs text-canopy-text/60">
           To create a personal access token with the required scopes (repo, read:org), click the
           button below. This will open GitHub in your browser.
         </p>
@@ -255,8 +255,8 @@ export function GitHubSettingsTab() {
           Create Token on GitHub
         </Button>
         <div className="mt-2 space-y-1">
-          <p className="text-xs text-gray-500">Required scopes:</p>
-          <ul className="text-xs text-gray-500 list-disc list-inside">
+          <p className="text-xs text-canopy-text/60">Required scopes:</p>
+          <ul className="text-xs text-canopy-text/60 list-disc list-inside">
             <li>
               <code className="text-canopy-text bg-canopy-bg px-1 rounded">repo</code> - Access
               repository data

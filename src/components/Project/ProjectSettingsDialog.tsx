@@ -154,7 +154,7 @@ export function ProjectSettingsDialog({ projectId, isOpen, onClose }: ProjectSet
           </h2>
           <button
             onClick={onClose}
-            className="text-gray-400 hover:text-canopy-text transition-colors"
+            className="text-canopy-text/60 hover:text-canopy-text transition-colors"
             aria-label="Close settings"
           >
             <X className="h-5 w-5" />
@@ -163,7 +163,7 @@ export function ProjectSettingsDialog({ projectId, isOpen, onClose }: ProjectSet
 
         <div className="p-4 overflow-y-auto flex-1">
           {isLoading && (
-            <div className="text-sm text-gray-400 text-center py-8">Loading settings...</div>
+            <div className="text-sm text-canopy-text/60 text-center py-8">Loading settings...</div>
           )}
           {error && (
             <div className="text-sm text-[var(--color-status-error)] bg-red-900/20 border border-red-900/30 rounded p-3 mb-4">
@@ -182,7 +182,7 @@ export function ProjectSettingsDialog({ projectId, isOpen, onClose }: ProjectSet
                   <h3 className="text-sm font-semibold text-canopy-text/80 mb-2">
                     Project Identity
                   </h3>
-                  <p className="text-xs text-gray-500 mb-4">
+                  <p className="text-xs text-canopy-text/60 mb-4">
                     Customize how your project appears in the sidebar and dashboard.
                   </p>
 
@@ -215,7 +215,7 @@ export function ProjectSettingsDialog({ projectId, isOpen, onClose }: ProjectSet
                     <div className="flex-1 min-w-0 flex flex-col justify-center h-14">
                       <label
                         htmlFor="project-name-input"
-                        className="text-xs font-medium text-gray-500 mb-1.5 ml-1"
+                        className="text-xs font-medium text-canopy-text/60 mb-1.5 ml-1"
                       >
                         Project Name
                       </label>
@@ -224,7 +224,7 @@ export function ProjectSettingsDialog({ projectId, isOpen, onClose }: ProjectSet
                         type="text"
                         value={name}
                         onChange={(e) => setName(e.target.value)}
-                        className="w-full bg-transparent border border-canopy-border rounded px-3 py-2 text-sm text-canopy-text focus:outline-none focus:border-canopy-accent focus:ring-1 focus:ring-canopy-accent/30 transition-all placeholder:text-gray-600"
+                        className="w-full bg-transparent border border-canopy-border rounded px-3 py-2 text-sm text-canopy-text focus:outline-none focus:border-canopy-accent focus:ring-1 focus:ring-canopy-accent/30 transition-all placeholder:text-canopy-text/40"
                         placeholder="My Awesome Project"
                       />
                     </div>
@@ -237,7 +237,7 @@ export function ProjectSettingsDialog({ projectId, isOpen, onClose }: ProjectSet
                   <Server className="h-4 w-4" />
                   Dev Server
                 </h3>
-                <p className="text-xs text-gray-500 mb-4">
+                <p className="text-xs text-canopy-text/60 mb-4">
                   Configure how the development server is managed for this project.
                 </p>
 
@@ -251,7 +251,7 @@ export function ProjectSettingsDialog({ projectId, isOpen, onClose }: ProjectSet
                     />
                     <div>
                       <span className="text-sm text-canopy-text">Enable dev server management</span>
-                      <p className="text-xs text-gray-500">
+                      <p className="text-xs text-canopy-text/60">
                         Show dev server controls on worktree cards
                       </p>
                     </div>
@@ -273,7 +273,7 @@ export function ProjectSettingsDialog({ projectId, isOpen, onClose }: ProjectSet
                       />
                       <div>
                         <span className="text-sm text-canopy-text">Auto-start on project load</span>
-                        <p className="text-xs text-gray-500">
+                        <p className="text-xs text-canopy-text/60">
                           Automatically start the dev server when switching to this project
                         </p>
                       </div>
@@ -295,11 +295,11 @@ export function ProjectSettingsDialog({ projectId, isOpen, onClose }: ProjectSet
                         className={cn(
                           "w-full bg-canopy-sidebar border border-canopy-border rounded px-3 py-2 text-sm text-canopy-text font-mono",
                           "focus:outline-none focus:border-canopy-accent focus:ring-1 focus:ring-canopy-accent/30 transition-all",
-                          "placeholder:text-gray-600 disabled:opacity-50"
+                          "placeholder:text-canopy-text/40 disabled:opacity-50"
                         )}
                         placeholder={detectedCommand || "npm run dev"}
                       />
-                      <div className="flex items-start gap-2 text-xs text-gray-500">
+                      <div className="flex items-start gap-2 text-xs text-canopy-text/60">
                         <Info className="h-3.5 w-3.5 mt-0.5 shrink-0" />
                         <span>
                           Leave blank to use auto-detection. Supports any command: npm, yarn, pnpm,
@@ -323,7 +323,7 @@ export function ProjectSettingsDialog({ projectId, isOpen, onClose }: ProjectSet
           <Button
             onClick={onClose}
             variant="ghost"
-            className="text-gray-400 hover:text-canopy-text"
+            className="text-canopy-text/60 hover:text-canopy-text"
           >
             Cancel
           </Button>

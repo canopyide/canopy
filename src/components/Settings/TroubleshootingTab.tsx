@@ -110,7 +110,7 @@ export function TroubleshootingTab({ openLogs, clearLogs }: TroubleshootingTabPr
       <div className="space-y-4">
         <div>
           <h4 className="text-sm font-medium text-canopy-text mb-1">Application Logs</h4>
-          <p className="text-xs text-gray-400 mb-3">
+          <p className="text-xs text-canopy-text/60 mb-3">
             View internal application logs for debugging purposes.
           </p>
           <div className="flex gap-3">
@@ -142,7 +142,7 @@ export function TroubleshootingTab({ openLogs, clearLogs }: TroubleshootingTabPr
             <Bug className="w-4 h-4" />
             Developer Mode
           </h4>
-          <p className="text-xs text-gray-400 mb-3">
+          <p className="text-xs text-canopy-text/60 mb-3">
             Enable enhanced debugging features for development and troubleshooting.
           </p>
 
@@ -151,7 +151,7 @@ export function TroubleshootingTab({ openLogs, clearLogs }: TroubleshootingTabPr
               onClick={handleToggleDeveloperMode}
               className={cn(
                 "relative w-11 h-6 rounded-full transition-colors shrink-0",
-                developerMode ? "bg-canopy-accent" : "bg-gray-600"
+                developerMode ? "bg-canopy-accent" : "bg-canopy-border"
               )}
             >
               <span
@@ -163,7 +163,7 @@ export function TroubleshootingTab({ openLogs, clearLogs }: TroubleshootingTabPr
             </button>
             <div>
               <span className="text-sm text-canopy-text font-medium">Enable Developer Mode</span>
-              <p className="text-xs text-gray-400">Activates all debugging features below</p>
+              <p className="text-xs text-canopy-text/60">Activates all debugging features below</p>
             </div>
           </label>
 
@@ -179,11 +179,11 @@ export function TroubleshootingTab({ openLogs, clearLogs }: TroubleshootingTabPr
                 checked={autoOpenDiagnostics}
                 onChange={handleToggleAutoOpenDiagnostics}
                 disabled={!developerMode}
-                className="w-4 h-4 rounded border-gray-600 bg-gray-700 text-canopy-accent focus:ring-canopy-accent focus:ring-offset-0 disabled:opacity-50"
+                className="w-4 h-4 rounded border-canopy-border bg-canopy-bg text-canopy-accent focus:ring-canopy-accent focus:ring-offset-0 disabled:opacity-50"
               />
               <div>
                 <span className="text-sm text-canopy-text">Auto-Open Diagnostics Dock</span>
-                <p className="text-xs text-gray-400">
+                <p className="text-xs text-canopy-text/60">
                   Automatically open diagnostics panel on app startup
                 </p>
               </div>
@@ -200,11 +200,11 @@ export function TroubleshootingTab({ openLogs, clearLogs }: TroubleshootingTabPr
                 checked={focusEventsTab}
                 onChange={handleToggleFocusEventsTab}
                 disabled={!developerMode || !autoOpenDiagnostics}
-                className="w-4 h-4 rounded border-gray-600 bg-gray-700 text-canopy-accent focus:ring-canopy-accent focus:ring-offset-0 disabled:opacity-50"
+                className="w-4 h-4 rounded border-canopy-border bg-canopy-bg text-canopy-accent focus:ring-canopy-accent focus:ring-offset-0 disabled:opacity-50"
               />
               <div>
                 <span className="text-sm text-canopy-text">Focus Events Tab</span>
-                <p className="text-xs text-gray-400">
+                <p className="text-xs text-canopy-text/60">
                   Default to Events tab when diagnostics opens
                 </p>
               </div>
@@ -215,18 +215,18 @@ export function TroubleshootingTab({ openLogs, clearLogs }: TroubleshootingTabPr
             <h5 className="text-xs font-medium text-canopy-text mb-2">
               Advanced: Main Process Logging
             </h5>
-            <p className="text-xs text-gray-400 mb-2">
+            <p className="text-xs text-canopy-text/60 mb-2">
               For verbose main process logs, restart the app with environment variables:
             </p>
             <code className="block text-xs bg-canopy-bg p-2 rounded border border-canopy-border font-mono text-canopy-text">
               CANOPY_DEBUG=1 CANOPY_VERBOSE=1 npm run dev
             </code>
             <div className="mt-2 space-y-1">
-              <p className="text-xs text-gray-400">
+              <p className="text-xs text-canopy-text/60">
                 <span className="font-medium text-canopy-text">CANOPY_DEBUG</span> — General logger
                 verbosity
               </p>
-              <p className="text-xs text-gray-400">
+              <p className="text-xs text-canopy-text/60">
                 <span className="font-medium text-canopy-text">CANOPY_VERBOSE</span> — Service-level
                 debug output
               </p>
@@ -238,7 +238,7 @@ export function TroubleshootingTab({ openLogs, clearLogs }: TroubleshootingTabPr
       <div className="space-y-4">
         <div>
           <h4 className="text-sm font-medium text-canopy-text mb-1">Keyboard Shortcuts</h4>
-          <p className="text-xs text-gray-400 mb-3">
+          <p className="text-xs text-canopy-text/60 mb-3">
             Use Cmd+Option+I (Mac) or Ctrl+Shift+I (Windows/Linux) to open DevTools.
           </p>
         </div>

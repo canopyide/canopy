@@ -122,11 +122,11 @@ export function GeneralTab({ appVersion }: GeneralTabProps) {
             </div>
             <div>
               <div className="font-semibold text-canopy-text text-lg">Canopy</div>
-              <div className="text-sm text-gray-400">Command Center</div>
+              <div className="text-sm text-canopy-text/60">Command Center</div>
             </div>
           </div>
           <div className="space-y-2 text-sm">
-            <div className="flex justify-between text-gray-400">
+            <div className="flex justify-between text-canopy-text/60">
               <span>Version</span>
               <span className="font-mono text-canopy-text">{appVersion}</span>
             </div>
@@ -136,7 +136,7 @@ export function GeneralTab({ appVersion }: GeneralTabProps) {
 
       <div className="space-y-2">
         <h4 className="text-sm font-medium text-canopy-text">Description</h4>
-        <p className="text-sm text-gray-400">
+        <p className="text-sm text-canopy-text/60">
           An orchestration board for AI coding agents. Start agents on worktrees, monitor their
           progress, and inject context to help them understand your codebase.
         </p>
@@ -238,7 +238,7 @@ export function GeneralTab({ appVersion }: GeneralTabProps) {
           onClick={() => setIsShortcutsOpen(!isShortcutsOpen)}
           aria-expanded={isShortcutsOpen}
           aria-controls="keyboard-shortcuts-content"
-          className="w-full flex items-center gap-2 px-3 py-2 text-sm text-gray-400 hover:text-canopy-text transition-colors"
+          className="w-full flex items-center gap-2 px-3 py-2 text-sm text-canopy-text/60 hover:text-canopy-text transition-colors"
         >
           {isShortcutsOpen ? (
             <ChevronDown className="w-4 h-4" />
@@ -255,7 +255,7 @@ export function GeneralTab({ appVersion }: GeneralTabProps) {
           >
             {KEYBOARD_SHORTCUTS.map((category) => (
               <div key={category.category} className="space-y-2">
-                <h5 className="text-xs font-medium text-gray-400 uppercase tracking-wide">
+                <h5 className="text-xs font-medium text-canopy-text/60 uppercase tracking-wide">
                   {category.category}
                 </h5>
                 <dl className="space-y-1">
@@ -264,7 +264,7 @@ export function GeneralTab({ appVersion }: GeneralTabProps) {
                       key={shortcut.key}
                       className="flex items-center justify-between text-sm py-1"
                     >
-                      <dt className="text-gray-300">{shortcut.description}</dt>
+                      <dt className="text-canopy-text">{shortcut.description}</dt>
                       <dd>
                         <kbd className="px-2 py-1 bg-canopy-bg border border-canopy-border rounded text-xs font-mono text-canopy-text">
                           {formatKey(shortcut.key)}

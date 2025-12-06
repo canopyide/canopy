@@ -112,7 +112,7 @@ export function Tabs({
               fullWidth && "flex-1",
               isActive
                 ? "text-canopy-accent border-b-2 border-canopy-accent -mb-px"
-                : "text-gray-400 hover:text-gray-200"
+                : "text-canopy-text/60 hover:text-canopy-text"
             )}
           >
             {option.icon && <span className="mr-2">{option.icon}</span>}

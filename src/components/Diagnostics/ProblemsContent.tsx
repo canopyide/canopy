@@ -45,14 +45,14 @@ function ErrorRow({ error, isExpanded, onToggleExpand, onDismiss, onRetry }: Err
 
   return (
     <>
-      <tr className={cn("hover:bg-gray-800/50 transition-colors", isExpanded && "bg-gray-800/30")}>
-        <td className="px-3 py-2 text-xs text-gray-500 whitespace-nowrap">
+      <tr className={cn("hover:bg-canopy-border/50 transition-colors", isExpanded && "bg-canopy-border/30")}>
+        <td className="px-3 py-2 text-xs text-canopy-text/60 whitespace-nowrap">
           {formatTimestamp(error.timestamp)}
         </td>
         <td className={cn("px-3 py-2 text-xs whitespace-nowrap font-medium", typeColor)}>
           {typeLabel}
         </td>
-        <td className="px-3 py-2 text-sm text-gray-300 max-w-md">
+        <td className="px-3 py-2 text-sm text-canopy-text max-w-md">
           <button
             onClick={onToggleExpand}
             className="text-left w-full hover:text-white transition-colors"
@@ -62,7 +62,7 @@ function ErrorRow({ error, isExpanded, onToggleExpand, onDismiss, onRetry }: Err
             <span className="truncate block">{error.message}</span>
           </button>
         </td>
-        <td className="px-3 py-2 text-xs text-gray-500 whitespace-nowrap">{error.source || "-"}</td>
+        <td className="px-3 py-2 text-xs text-canopy-text/60 whitespace-nowrap">{error.source || "-"}</td>
         <td className="px-3 py-2 whitespace-nowrap">
           <div className="flex items-center gap-1">
             {canRetry && (
@@ -81,7 +81,7 @@ function ErrorRow({ error, isExpanded, onToggleExpand, onDismiss, onRetry }: Err
                 e.stopPropagation();
                 onDismiss();
               }}
-              className="p-1 text-gray-500 hover:text-gray-300"
+              className="p-1 text-canopy-text/60 hover:text-canopy-text"
               aria-label="Dismiss error"
             >
               ×
@@ -90,13 +90,13 @@ function ErrorRow({ error, isExpanded, onToggleExpand, onDismiss, onRetry }: Err
         </td>
       </tr>
       {isExpanded && error.details && (
-        <tr className="bg-gray-900/50" id={`error-details-${error.id}`}>
+        <tr className="bg-canopy-sidebar/50" id={`error-details-${error.id}`}>
           <td colSpan={5} className="px-3 py-2">
-            <pre className="text-xs text-gray-400 whitespace-pre-wrap break-all font-mono max-h-40 overflow-y-auto">
+            <pre className="text-xs text-canopy-text/60 whitespace-pre-wrap break-all font-mono max-h-40 overflow-y-auto">
               {error.details}
             </pre>
             {error.context && Object.keys(error.context).length > 0 && (
-              <div className="mt-2 text-xs text-gray-500">
+              <div className="mt-2 text-xs text-canopy-text/60">
                 <span className="font-medium">Context: </span>
                 {Object.entries(error.context)
                   .filter(([, v]) => v !== undefined)
@@ -141,18 +141,18 @@ export function ProblemsContent({ onRetry, className }: ProblemsContentProps) {
   return (
     <div className={cn("h-full overflow-auto", className)}>
       {activeErrors.length === 0 ? (
-        <div className="flex items-center justify-center h-full text-gray-500 text-sm">
+        <div className="flex items-center justify-center h-full text-canopy-text/60 text-sm">
           No problems detected
         </div>
       ) : (
         <table className="w-full">
           <thead className="sticky top-0 bg-canopy-sidebar border-b border-canopy-border">
             <tr>
-              <th className="px-3 py-2 text-left text-xs font-medium text-gray-400 w-24">Time</th>
-              <th className="px-3 py-2 text-left text-xs font-medium text-gray-400 w-20">Type</th>
-              <th className="px-3 py-2 text-left text-xs font-medium text-gray-400">Message</th>
-              <th className="px-3 py-2 text-left text-xs font-medium text-gray-400 w-28">Source</th>
-              <th className="px-3 py-2 text-left text-xs font-medium text-gray-400 w-24">
+              <th className="px-3 py-2 text-left text-xs font-medium text-canopy-text/60 w-24">Time</th>
+              <th className="px-3 py-2 text-left text-xs font-medium text-canopy-text/60 w-20">Type</th>
+              <th className="px-3 py-2 text-left text-xs font-medium text-canopy-text/60">Message</th>
+              <th className="px-3 py-2 text-left text-xs font-medium text-canopy-text/60 w-28">Source</th>
+              <th className="px-3 py-2 text-left text-xs font-medium text-canopy-text/60 w-24">
                 Actions
               </th>
             </tr>
