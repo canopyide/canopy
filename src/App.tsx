@@ -13,6 +13,7 @@ import {
   useProjectSettings,
   useLinkDiscovery,
   useGridNavigation,
+  type AgentType,
 } from "./hooks";
 import { AppLayout } from "./components/Layout";
 import { TerminalGrid } from "./components/Terminal";
@@ -51,6 +52,7 @@ import { formatBytes } from "@/lib/formatBytes";
 function SidebarContent() {
   const { worktrees, isLoading, error, refresh } = useWorktrees();
   const { settings: projectSettings } = useProjectSettings();
+  const { launchAgent, availability, agentSettings } = useAgentLauncher();
   const { activeWorktreeId, focusedWorktreeId, selectWorktree, setActiveWorktree } =
     useWorktreeSelectionStore(
       useShallow((state) => ({
@@ -178,6 +180,13 @@ function SidebarContent() {
     }
   }, []);
 
+  const handleLaunchAgentForWorktree = useCallback(
+    (worktreeId: string, type: AgentType) => {
+      launchAgent(type, { worktreeId, location: "grid" });
+    },
+    [launchAgent]
+  );
+
   if (isLoading) {
     return (
       <div className="p-4">
@@ -263,6 +272,9 @@ function SidebarContent() {
               onOpenIssue={worktree.issueNumber ? () => handleOpenIssue(worktree) : undefined}
               onOpenPR={worktree.prUrl ? () => handleOpenPR(worktree) : undefined}
               onCreateRecipe={() => handleCreateRecipe(worktree.id)}
+              onLaunchAgent={(type) => handleLaunchAgentForWorktree(worktree.id, type)}
+              agentAvailability={availability}
+              agentSettings={agentSettings}
               homeDir={homeDir}
               devServerSettings={projectSettings?.devServer}
             />

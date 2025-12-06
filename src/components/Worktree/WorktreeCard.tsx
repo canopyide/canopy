@@ -23,6 +23,14 @@ import {
   DropdownMenuTrigger,
   DropdownMenuLabel,
 } from "../ui/dropdown-menu";
+import {
+  ContextMenu,
+  ContextMenuContent,
+  ContextMenuItem,
+  ContextMenuSeparator,
+  ContextMenuTrigger,
+  ContextMenuLabel,
+} from "../ui/context-menu";
 import { ConfirmDialog } from "../Terminal/ConfirmDialog";
 import {
   Copy,
@@ -38,7 +46,10 @@ import {
   ChevronRight,
   GitCommit,
   Shield,
+  Terminal,
 } from "lucide-react";
+import { ClaudeIcon, GeminiIcon, CodexIcon } from "@/components/icons";
+import type { AgentType, UseAgentLauncherReturn } from "@/hooks/useAgentLauncher";
 
 export interface WorktreeCardProps {
   worktree: WorktreeState;
@@ -51,6 +62,9 @@ export interface WorktreeCardProps {
   onOpenPR?: () => void;
   onToggleServer: () => void;
   onCreateRecipe?: () => void;
+  onLaunchAgent?: (type: AgentType) => void;
+  agentAvailability?: UseAgentLauncherReturn["availability"];
+  agentSettings?: UseAgentLauncherReturn["agentSettings"];
   homeDir?: string;
   devServerSettings?: ProjectDevServerSettings;
 }
@@ -68,6 +82,9 @@ export function WorktreeCard({
   onOpenPR,
   onToggleServer,
   onCreateRecipe,
+  onLaunchAgent,
+  agentAvailability,
+  agentSettings,
   homeDir,
   devServerSettings,
 }: WorktreeCardProps) {
@@ -221,6 +238,16 @@ export function WorktreeCard({
     });
   }, [totalTerminalCount, bulkCloseByWorktree, worktree.id, closeConfirmDialog]);
 
+  const handleLaunchAgent = useCallback(
+    (type: AgentType, e?: React.MouseEvent) => {
+      if (e) {
+        e.stopPropagation();
+      }
+      onLaunchAgent?.(type);
+    },
+    [onLaunchAgent]
+  );
+
   const branchLabel = worktree.branch ?? worktree.name;
   const hasChanges = (worktree.worktreeChanges?.changedFileCount ?? 0) > 0;
   const rawLastCommitMessage = worktree.worktreeChanges?.lastCommitMessage;
@@ -286,7 +313,7 @@ export function WorktreeCard({
     return "clean-feature";
   }, [hasChanges, isMainWorktree]);
 
-  return (
+  const cardContent = (
     <div
       className={cn(
         "group relative border-b border-white/5 transition-colors duration-200",
@@ -651,5 +678,51 @@ export function WorktreeCard({
         />
       </div>
     </div>
+  );
+
+  if (!onLaunchAgent) {
+    return cardContent;
+  }
+
+  const isClaudeEnabled =
+    agentAvailability?.claude && agentSettings?.claude.enabled;
+  const isGeminiEnabled =
+    agentAvailability?.gemini && agentSettings?.gemini.enabled;
+  const isCodexEnabled =
+    agentAvailability?.codex && agentSettings?.codex.enabled;
+
+  return (
+    <ContextMenu>
+      <ContextMenuTrigger asChild>{cardContent}</ContextMenuTrigger>
+      <ContextMenuContent onClick={(e) => e.stopPropagation()}>
+        <ContextMenuLabel>Launch Agent</ContextMenuLabel>
+        <ContextMenuItem
+          onClick={() => handleLaunchAgent("claude")}
+          disabled={!isClaudeEnabled}
+        >
+          <ClaudeIcon className="w-3.5 h-3.5 mr-2" />
+          Claude
+        </ContextMenuItem>
+        <ContextMenuItem
+          onClick={() => handleLaunchAgent("gemini")}
+          disabled={!isGeminiEnabled}
+        >
+          <GeminiIcon className="w-3.5 h-3.5 mr-2" />
+          Gemini
+        </ContextMenuItem>
+        <ContextMenuItem
+          onClick={() => handleLaunchAgent("codex")}
+          disabled={!isCodexEnabled}
+        >
+          <CodexIcon className="w-3.5 h-3.5 mr-2" />
+          Codex
+        </ContextMenuItem>
+        <ContextMenuSeparator />
+        <ContextMenuItem onClick={() => handleLaunchAgent("shell")}>
+          <Terminal className="w-3.5 h-3.5 mr-2" />
+          Open Shell
+        </ContextMenuItem>
+      </ContextMenuContent>
+    </ContextMenu>
   );
 }
