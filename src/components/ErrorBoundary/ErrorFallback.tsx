@@ -12,7 +12,8 @@ export interface ErrorFallbackProps {
 const VARIANT_STYLES = {
   fullscreen: "h-screen w-screen flex items-center justify-center bg-canopy-bg",
   section: "h-full w-full flex items-center justify-center p-8",
-  component: "p-4 rounded-lg bg-red-900/20 border border-red-700/50",
+  component:
+    "p-4 rounded-lg bg-[color-mix(in_oklab,var(--color-status-error)_12%,transparent)] border border-[var(--color-status-error)]/30",
 } as const;
 
 const VARIANT_SIZES = {
@@ -55,10 +56,10 @@ export function ErrorFallback({
   return (
     <div className={cn(VARIANT_STYLES[variant])}>
       <div className="flex flex-col items-center gap-4 max-w-2xl">
-        <div className={cn("text-red-500", sizes.icon)}>⚠️</div>
+        <div className={cn("text-[var(--color-status-error)]", sizes.icon)}>⚠️</div>
 
         <div className="text-center space-y-2">
-          <h2 className={cn("font-semibold text-red-400", sizes.title)}>
+          <h2 className={cn("font-semibold text-[var(--color-status-error)]", sizes.title)}>
             {variant === "fullscreen" && "Application Error"}
             {variant === "section" && "Section Error"}
             {variant === "component" && `${componentName || "Component"} Error`}
@@ -79,7 +80,7 @@ export function ErrorFallback({
             type="button"
             onClick={resetError}
             className={cn(
-              "bg-red-600 hover:bg-red-700 text-white rounded transition-colors",
+              "bg-[var(--color-status-error)] hover:bg-[color-mix(in_oklab,var(--color-status-error)_85%,transparent)] text-white rounded transition-colors",
               sizes.button
             )}
           >
@@ -91,7 +92,7 @@ export function ErrorFallback({
               type="button"
               onClick={onReport}
               className={cn(
-                "bg-gray-700 hover:bg-gray-600 text-white rounded transition-colors",
+                "bg-canopy-border hover:bg-canopy-border/80 text-canopy-text rounded transition-colors",
                 sizes.button
               )}
             >
@@ -103,7 +104,7 @@ export function ErrorFallback({
             type="button"
             onClick={handleOpenLogs}
             className={cn(
-              "bg-gray-700 hover:bg-gray-600 text-white rounded transition-colors",
+              "bg-canopy-border hover:bg-canopy-border/80 text-canopy-text rounded transition-colors",
               sizes.button
             )}
           >
@@ -116,7 +117,7 @@ export function ErrorFallback({
             <summary className="cursor-pointer text-xs text-canopy-text/60 hover:text-canopy-text/80">
               Technical Details
             </summary>
-            <pre className="mt-2 p-3 bg-black/30 rounded text-xs text-red-300/80 overflow-auto max-h-48">
+            <pre className="mt-2 p-3 bg-black/30 rounded text-xs text-[var(--color-status-error)]/80 overflow-auto max-h-48">
               {error.stack || "No stack trace available"}
               {"\n\nComponent Stack:\n"}
               {errorInfo.componentStack}
