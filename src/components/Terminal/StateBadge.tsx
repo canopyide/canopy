@@ -22,7 +22,7 @@ const STATE_CONFIG: Record<
     label: "Busy",
     className:
       "bg-[color-mix(in_oklab,var(--color-state-working)_15%,transparent)] text-[var(--color-state-working)] border-[var(--color-state-working)]/40",
-    tooltip: "Agent is active",
+    tooltip: "Agent is working on your request",
   },
   completed: {
     icon: (
@@ -33,7 +33,7 @@ const STATE_CONFIG: Record<
     label: "Done",
     className:
       "bg-[color-mix(in_oklab,var(--color-status-success)_15%,transparent)] text-[var(--color-status-success)] border-[var(--color-status-success)]/40",
-    tooltip: "Agent completed successfully",
+    tooltip: "Agent finished this task",
   },
   failed: {
     icon: (
@@ -44,7 +44,7 @@ const STATE_CONFIG: Record<
     label: "Failed",
     className:
       "bg-[color-mix(in_oklab,var(--color-status-error)_15%,transparent)] text-[var(--color-status-error)] border-[var(--color-status-error)]/40",
-    tooltip: "Agent encountered an error",
+    tooltip: "Agent ran into an issue",
   },
 };
 
