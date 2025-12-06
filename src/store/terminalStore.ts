@@ -57,6 +57,7 @@ export interface TerminalGridState
     TerminalBulkActionsSlice {
   reset: () => Promise<void>;
   resetWithoutKilling: () => Promise<void>;
+  restoreLastTrashed: () => void;
 }
 
 export const useTerminalStore = create<TerminalGridState>()((set, get, api) => {
@@ -145,6 +146,15 @@ export const useTerminalStore = create<TerminalGridState>()((set, get, api) => {
     restoreTerminal: (id: string) => {
       registrySlice.restoreTerminal(id);
       set({ focusedId: id });
+    },
+
+    restoreLastTrashed: () => {
+      const trashedIds = Array.from(get().trashedTerminals.keys());
+      if (trashedIds.length === 0) {
+        return;
+      }
+      const lastId = trashedIds[trashedIds.length - 1];
+      get().restoreTerminal(lastId);
     },
 
     moveTerminalToPosition: (id: string, toIndex: number, location: "grid" | "dock") => {

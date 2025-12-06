@@ -59,7 +59,6 @@ export type KeyAction =
   | "worktree.toggleServer"
 
   // Terminal actions
-  | "terminal.new"
   | "terminal.close"
   | "terminal.closeAll"
   | "terminal.killAll"

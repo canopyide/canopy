@@ -19,16 +19,8 @@ const DEFAULT_KEYBINDINGS: KeybindingConfig[] = [
     category: "Terminal",
   },
   {
-    actionId: "terminal.new",
-    combo: "Cmd+T",
-    scope: "global",
-    priority: 0,
-    description: "Create new terminal in current worktree",
-    category: "Terminal",
-  },
-  {
     actionId: "terminal.palette",
-    combo: "Cmd+P",
+    combo: "Cmd+T",
     scope: "global",
     priority: 0,
     description: "Open terminal palette",
@@ -173,7 +165,7 @@ const DEFAULT_KEYBINDINGS: KeybindingConfig[] = [
   // Directional terminal navigation
   {
     actionId: "terminal.focusUp",
-    combo: "Alt+ArrowUp",
+    combo: "Ctrl+Alt+ArrowUp",
     scope: "global",
     priority: 0,
     description: "Focus terminal above",
@@ -181,7 +173,7 @@ const DEFAULT_KEYBINDINGS: KeybindingConfig[] = [
   },
   {
     actionId: "terminal.focusDown",
-    combo: "Alt+ArrowDown",
+    combo: "Ctrl+Alt+ArrowDown",
     scope: "global",
     priority: 0,
     description: "Focus terminal below",
@@ -189,7 +181,7 @@ const DEFAULT_KEYBINDINGS: KeybindingConfig[] = [
   },
   {
     actionId: "terminal.focusLeft",
-    combo: "Alt+ArrowLeft",
+    combo: "Ctrl+Alt+ArrowLeft",
     scope: "global",
     priority: 0,
     description: "Focus terminal to the left",
@@ -197,7 +189,7 @@ const DEFAULT_KEYBINDINGS: KeybindingConfig[] = [
   },
   {
     actionId: "terminal.focusRight",
-    combo: "Alt+ArrowRight",
+    combo: "Ctrl+Alt+ArrowRight",
     scope: "global",
     priority: 0,
     description: "Focus terminal to the right",

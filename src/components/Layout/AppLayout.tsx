@@ -43,6 +43,7 @@ export function AppLayout({
   agentSettings,
 }: AppLayoutProps) {
   useTerminalPerformance();
+  const [isTerminalDockVisible, setIsTerminalDockVisible] = useState(true);
 
   const [sidebarWidth, setSidebarWidth] = useState(DEFAULT_SIDEBAR_WIDTH);
 
@@ -55,6 +56,7 @@ export function AppLayout({
   const setDiagnosticsOpen = useDiagnosticsStore((state) => state.setOpen);
   const openDiagnosticsDock = useDiagnosticsStore((state) => state.openDock);
 
+  const toggleSidecar = useSidecarStore((state) => state.toggle);
   const sidecarOpen = useSidecarStore((state) => state.isOpen);
   const sidecarWidth = useSidecarStore((state) => state.width);
   const sidecarLayoutMode = useSidecarStore((state) => state.layoutMode);
@@ -178,6 +180,24 @@ export function AppLayout({
   }, [handleToggleFocusMode]);
 
   useEffect(() => {
+    const handleDockToggle = () => {
+      setIsTerminalDockVisible((visible) => !visible);
+    };
+
+    window.addEventListener("canopy:toggle-terminal-dock", handleDockToggle);
+    return () => window.removeEventListener("canopy:toggle-terminal-dock", handleDockToggle);
+  }, []);
+
+  useEffect(() => {
+    const handleSidecarToggle = () => {
+      toggleSidecar();
+    };
+
+    window.addEventListener("canopy:toggle-sidecar", handleSidecarToggle);
+    return () => window.removeEventListener("canopy:toggle-sidecar", handleSidecarToggle);
+  }, [toggleSidecar]);
+
+  useEffect(() => {
     const handleResize = () => {
       updateSidecarLayoutMode(window.innerWidth, isFocusMode ? 0 : sidebarWidth);
     };
@@ -273,9 +293,11 @@ export function AppLayout({
             >
               <div className="flex-1 overflow-hidden min-h-0">{children}</div>
               {/* Terminal Dock - appears at bottom only when terminals are docked */}
-              <ErrorBoundary variant="section" componentName="TerminalDock">
-                <TerminalDock />
-              </ErrorBoundary>
+              {isTerminalDockVisible && (
+                <ErrorBoundary variant="section" componentName="TerminalDock">
+                  <TerminalDock />
+                </ErrorBoundary>
+              )}
               {/* Overlay mode - sidecar floats over content */}
               {sidecarOpen && sidecarLayoutMode === "overlay" && (
                 <ErrorBoundary variant="section" componentName="SidecarDock">

@@ -6,6 +6,7 @@ export interface UseKeybindingOptions {
   scope?: KeyScope;
   preventDefault?: boolean;
   stopPropagation?: boolean;
+  capture?: boolean;
 }
 
 export function useKeybinding(
@@ -13,7 +14,13 @@ export function useKeybinding(
   callback: (e: KeyboardEvent) => void,
   options: UseKeybindingOptions = {}
 ): void {
-  const { enabled = true, scope, preventDefault = true, stopPropagation = true } = options;
+  const {
+    enabled = true,
+    scope,
+    preventDefault = true,
+    stopPropagation = true,
+    capture = true,
+  } = options;
 
   // Memoize handler to prevent unnecessary re-registrations
   const handler = useCallback(
@@ -22,6 +29,9 @@ export function useKeybinding(
 
       const binding = keybindingService.getBinding(actionId);
       if (!binding) return;
+
+      const effectiveCombo = keybindingService.getEffectiveCombo(actionId);
+      if (!effectiveCombo) return;
 
       // Don't intercept shortcuts if user is typing in an input/textarea or editable content
       // Exception: terminal scope bindings and terminal.* actions are allowed
@@ -32,12 +42,14 @@ export function useKeybinding(
       const isInTerminal = target.closest(".xterm") !== null;
       const isTerminalAction = actionId.startsWith("terminal.");
 
-      if (isEditable && binding.scope !== "terminal") {
+      const allowTerminalContext = isTerminalAction || binding.scope === "terminal";
+
+      if (isEditable && !allowTerminalContext) {
         return;
       }
 
       // Allow terminal actions when inside xterm, but block other actions
-      if (isInTerminal && !isTerminalAction && binding.scope !== "terminal") {
+      if (isInTerminal && !allowTerminalContext) {
         return;
       }
 
@@ -50,7 +62,7 @@ export function useKeybinding(
         return;
       }
 
-      if (!keybindingService.matchesEvent(e, binding.combo)) {
+      if (!keybindingService.matchesEvent(e, effectiveCombo)) {
         return;
       }
 
@@ -68,9 +80,9 @@ export function useKeybinding(
   useEffect(() => {
     if (!enabled) return;
 
-    window.addEventListener("keydown", handler);
-    return () => window.removeEventListener("keydown", handler);
-  }, [handler, enabled]);
+    window.addEventListener("keydown", handler, { capture });
+    return () => window.removeEventListener("keydown", handler, { capture });
+  }, [handler, enabled, capture]);
 }
 
 export function useKeybindingScope(scope: KeyScope, active: boolean = true): void {

@@ -10,6 +10,7 @@ import {
   useTerminalPalette,
   useTerminalConfig,
   useKeybinding,
+  useContextInjection,
   useProjectSettings,
   useLinkDiscovery,
   useGridNavigation,
@@ -320,6 +321,7 @@ function App() {
     bulkRestartAll,
     bulkMoveToDock,
     bulkMoveToGrid,
+    restoreLastTrashed,
   } = useTerminalStore(
     useShallow((state) => ({
       focusNext: state.focusNext,
@@ -338,6 +340,7 @@ function App() {
       bulkRestartAll: state.bulkRestartAll,
       bulkMoveToDock: state.bulkMoveToDock,
       bulkMoveToGrid: state.bulkMoveToGrid,
+      restoreLastTrashed: state.restoreLastTrashed,
     }))
   );
   const terminals = useTerminalStore(useShallow((state) => state.terminals));
@@ -453,8 +456,10 @@ function App() {
   );
 
   const electronAvailable = isElectronAvailable();
+  const { inject } = useContextInjection();
 
   useKeybinding("terminal.palette", () => terminalPalette.toggle(), { enabled: electronAvailable });
+  useKeybinding("agent.palette", () => terminalPalette.open(), { enabled: electronAvailable });
 
   useKeybinding(
     "terminal.close",
@@ -462,6 +467,14 @@ function App() {
       if (focusedId) {
         useTerminalStore.getState().trashTerminal(focusedId);
       }
+    },
+    { enabled: electronAvailable }
+  );
+
+  useKeybinding(
+    "terminal.reopenLast",
+    () => {
+      restoreLastTrashed();
     },
     { enabled: electronAvailable }
   );
@@ -597,6 +610,16 @@ function App() {
     }))
   );
 
+  useKeybinding(
+    "terminal.inject",
+    () => {
+      if (activeWorktreeId) {
+        inject(activeWorktreeId);
+      }
+    },
+    { enabled: electronAvailable && !!activeWorktreeId }
+  );
+
   useKeybinding("worktree.switch1", () => worktrees[0] && selectWorktree(worktrees[0].id), {
     enabled: electronAvailable && worktrees.length >= 1,
   });
@@ -660,16 +683,9 @@ function App() {
   useKeybinding("app.settings", () => handleSettings(), { enabled: electronAvailable });
 
   // Directional terminal navigation (Option+Arrow keys)
-  // Skip when typing in terminal to avoid stealing shell word-jump behavior
-  const isTypingInTerminal = useCallback(() => {
-    const activeElement = document.activeElement;
-    return activeElement?.classList.contains("xterm-helper-textarea");
-  }, []);
-
   useKeybinding(
     "terminal.focusUp",
     () => {
-      if (isTypingInTerminal()) return;
       const location = getCurrentLocation();
       if (location === "grid") {
         focusDirection("up", findNearest);
@@ -680,7 +696,6 @@ function App() {
   useKeybinding(
     "terminal.focusDown",
     () => {
-      if (isTypingInTerminal()) return;
       const location = getCurrentLocation();
       if (location === "grid") {
         focusDirection("down", findNearest);
@@ -691,7 +706,6 @@ function App() {
   useKeybinding(
     "terminal.focusLeft",
     () => {
-      if (isTypingInTerminal()) return;
       const location = getCurrentLocation();
       if (location === "grid") {
         focusDirection("left", findNearest);
@@ -704,7 +718,6 @@ function App() {
   useKeybinding(
     "terminal.focusRight",
     () => {
-      if (isTypingInTerminal()) return;
       const location = getCurrentLocation();
       if (location === "grid") {
         focusDirection("right", findNearest);
