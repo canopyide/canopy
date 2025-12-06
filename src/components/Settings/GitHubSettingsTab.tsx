@@ -156,7 +156,7 @@ export function GitHubSettingsTab() {
           {githubConfig?.hasToken && (
             <span className="text-xs text-[var(--color-status-success)] flex items-center gap-1">
               <Check className="w-3 h-3" />
-              Token configured
+              GitHub connected
             </span>
           )}
         </div>

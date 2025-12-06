@@ -132,7 +132,7 @@ function App() {
             }}
           >
             <div style={{ fontSize: "12px", color: "#888", marginBottom: "10px" }}>
-              No worktrees found
+              No worktrees yet
             </div>
             <div style={{ fontSize: "11px", color: "#666", lineHeight: "1.5" }}>
               This directory is not a Git repository. Run{" "}

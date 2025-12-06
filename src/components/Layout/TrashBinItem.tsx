@@ -100,8 +100,8 @@ export function TrashBinItem({ terminal, trashedInfo }: TrashBinItemProps) {
         <button
           onClick={handleKill}
           className="p-1.5 rounded hover:bg-red-500/20 text-red-400 transition-colors"
-          aria-label={`Delete ${terminalName} permanently`}
-          title={`Delete ${terminalName} permanently`}
+          aria-label={`Remove ${terminalName} permanently`}
+          title={`Remove ${terminalName} permanently`}
         >
           <X className="w-3.5 h-3.5" aria-hidden="true" />
         </button>

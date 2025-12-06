@@ -219,7 +219,7 @@ function SidebarContent() {
         <div className="flex flex-col items-center justify-center py-12 px-4 text-center">
           <FolderOpen className="w-12 h-12 text-canopy-text/60 mb-3" aria-hidden="true" />
 
-          <h3 className="text-canopy-text font-medium mb-2">No Worktrees Found</h3>
+          <h3 className="text-canopy-text font-medium mb-2">No worktrees yet</h3>
 
           <p className="text-sm text-canopy-text/60 mb-4 max-w-xs">
             Open a Git repository with worktrees to get started. Use{" "}

@@ -55,7 +55,7 @@ const DEFAULT_KEYBINDINGS: KeybindingConfig[] = [
     combo: "Cmd+K Cmd+K",
     scope: "global",
     priority: 0,
-    description: "Kill all terminals",
+    description: "End all terminals",
     category: "Terminal",
   },
   {

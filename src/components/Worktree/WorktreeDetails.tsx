@@ -171,7 +171,7 @@ export function WorktreeDetails({
       {(showDevServer && serverState) || (terminalCounts && terminalCounts.total > 0) ? (
         <div className="space-y-2 p-2 bg-white/[0.02] rounded border border-white/5">
           <div className="text-[10px] uppercase tracking-wider text-canopy-text/60 font-semibold">
-            Controls
+            Activity
           </div>
 
           {showDevServer && serverState && (
