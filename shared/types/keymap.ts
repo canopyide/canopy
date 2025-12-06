@@ -21,6 +21,7 @@ export type KeyAction =
   | "nav.expand"
   | "nav.collapse"
   | "nav.primary"
+  | "nav.toggleSidebar"
 
   // File operations
   | "file.open"
@@ -34,11 +35,83 @@ export type KeyAction =
   // Git/Worktree actions
   | "git.toggle"
   | "worktree.next"
+  | "worktree.previous"
   | "worktree.panel"
+  | "worktree.switch1"
+  | "worktree.switch2"
+  | "worktree.switch3"
+  | "worktree.switch4"
+  | "worktree.switch5"
+  | "worktree.switch6"
+  | "worktree.switch7"
+  | "worktree.switch8"
+  | "worktree.switch9"
+  | "worktree.up"
+  | "worktree.down"
+  | "worktree.upVim"
+  | "worktree.downVim"
+  | "worktree.home"
+  | "worktree.end"
+  | "worktree.select"
+  | "worktree.selectSpace"
+  | "worktree.copyTree"
+  | "worktree.openEditor"
+  | "worktree.toggleServer"
+
+  // Terminal actions
+  | "terminal.new"
+  | "terminal.close"
+  | "terminal.closeAll"
+  | "terminal.killAll"
+  | "terminal.restartAll"
+  | "terminal.minimize"
+  | "terminal.minimizeAll"
+  | "terminal.restore"
+  | "terminal.restoreAll"
+  | "terminal.palette"
+  | "terminal.maximize"
+  | "terminal.inject"
+  | "terminal.focusNext"
+  | "terminal.focusPrevious"
+  | "terminal.focusUp"
+  | "terminal.focusDown"
+  | "terminal.focusLeft"
+  | "terminal.focusRight"
+  | "terminal.focusIndex1"
+  | "terminal.focusIndex2"
+  | "terminal.focusIndex3"
+  | "terminal.focusIndex4"
+  | "terminal.focusIndex5"
+  | "terminal.focusIndex6"
+  | "terminal.focusIndex7"
+  | "terminal.focusIndex8"
+  | "terminal.focusIndex9"
+  | "terminal.moveLeft"
+  | "terminal.moveRight"
+
+  // Agent spawning
+  | "agent.claude"
+  | "agent.gemini"
+  | "agent.codex"
+  | "agent.shell"
+
+  // Panel management
+  | "panel.toggleDock"
+  | "panel.toggleDiagnostics"
+  | "panel.toggleSidecar"
+  | "panel.diagnosticsLogs"
+  | "panel.diagnosticsEvents"
+  | "panel.diagnosticsMessages"
+
+  // Help/Settings
+  | "help.shortcuts"
+  | "help.shortcutsAlt"
+  | "app.settings"
 
   // System actions
   | "app.quit"
-  | "app.forceQuit";
+  | "app.forceQuit"
+  | "modal.close";
 
 /**
  * Available keymap presets.

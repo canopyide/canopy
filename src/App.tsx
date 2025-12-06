@@ -21,6 +21,7 @@ import { NewWorktreeDialog } from "./components/Worktree/NewWorktreeDialog";
 import { TerminalPalette } from "./components/TerminalPalette";
 import { RecipeEditor } from "./components/TerminalRecipe/RecipeEditor";
 import { SettingsDialog } from "./components/Settings";
+import { ShortcutReferenceDialog } from "./components/KeyboardShortcuts";
 import { Toaster } from "./components/ui/toaster";
 import { ErrorBoundary } from "./components/ErrorBoundary";
 import { DndProvider } from "./components/DragDrop";
@@ -283,6 +284,13 @@ function App() {
     focusedId,
     addTerminal,
     reorderTerminals,
+    moveTerminalToDock,
+    moveTerminalToGrid,
+    trashTerminal,
+    bulkTrashAll,
+    bulkRestartAll,
+    bulkMoveToDock,
+    bulkMoveToGrid,
   } = useTerminalStore(
     useShallow((state) => ({
       focusNext: state.focusNext,
@@ -294,6 +302,13 @@ function App() {
       focusedId: state.focusedId,
       addTerminal: state.addTerminal,
       reorderTerminals: state.reorderTerminals,
+      moveTerminalToDock: state.moveTerminalToDock,
+      moveTerminalToGrid: state.moveTerminalToGrid,
+      trashTerminal: state.trashTerminal,
+      bulkTrashAll: state.bulkTrashAll,
+      bulkRestartAll: state.bulkRestartAll,
+      bulkMoveToDock: state.bulkMoveToDock,
+      bulkMoveToGrid: state.bulkMoveToGrid,
     }))
   );
   const terminals = useTerminalStore(useShallow((state) => state.terminals));
@@ -314,6 +329,7 @@ function App() {
 
   const [isSettingsOpen, setIsSettingsOpen] = useState(false);
   const [settingsTab, setSettingsTab] = useState<"general" | "troubleshooting">("general");
+  const [isShortcutsOpen, setIsShortcutsOpen] = useState(false);
   const [isStateLoaded, setIsStateLoaded] = useState(false);
 
   const hasRestoredState = useRef(false);
@@ -426,6 +442,8 @@ function App() {
 
   useKeybinding("agent.claude", () => handleLaunchAgent("claude"), { enabled: electronAvailable });
   useKeybinding("agent.gemini", () => handleLaunchAgent("gemini"), { enabled: electronAvailable });
+  useKeybinding("agent.codex", () => handleLaunchAgent("codex"), { enabled: electronAvailable });
+  useKeybinding("agent.shell", () => handleLaunchAgent("shell"), { enabled: electronAvailable });
 
   useKeybinding(
     "terminal.moveLeft",
@@ -456,14 +474,69 @@ function App() {
     { enabled: electronAvailable && !!focusedId }
   );
 
-  useKeybinding("panel.logs", () => openDiagnosticsDock("logs"), { enabled: electronAvailable });
-  useKeybinding("panel.events", () => openDiagnosticsDock("events"), {
+  // Terminal dock operations
+  useKeybinding(
+    "terminal.minimize",
+    () => {
+      if (focusedId) moveTerminalToDock(focusedId);
+    },
+    { enabled: electronAvailable && !!focusedId }
+  );
+  useKeybinding(
+    "terminal.restore",
+    () => {
+      const dockTerminals = terminals.filter((t) => t.location === "dock");
+      if (dockTerminals.length > 0) {
+        moveTerminalToGrid(dockTerminals[0].id);
+      }
+    },
+    { enabled: electronAvailable }
+  );
+
+  // Terminal bulk operations
+  useKeybinding("terminal.closeAll", () => bulkTrashAll(), { enabled: electronAvailable });
+  useKeybinding(
+    "terminal.killAll",
+    () => {
+      terminals.forEach((t) => {
+        if (t.location !== "trash") trashTerminal(t.id);
+      });
+    },
+    { enabled: electronAvailable }
+  );
+  useKeybinding("terminal.restartAll", () => bulkRestartAll(), { enabled: electronAvailable });
+  useKeybinding("terminal.minimizeAll", () => bulkMoveToDock(), { enabled: electronAvailable });
+  useKeybinding("terminal.restoreAll", () => bulkMoveToGrid(), { enabled: electronAvailable });
+
+  // Panel management
+  useKeybinding("panel.diagnosticsLogs", () => openDiagnosticsDock("logs"), {
     enabled: electronAvailable,
   });
-  useKeybinding("panel.problems", () => openDiagnosticsDock("problems"), {
+  useKeybinding("panel.diagnosticsEvents", () => openDiagnosticsDock("events"), {
     enabled: electronAvailable,
   });
-  useKeybinding("panel.diagnostics", () => toggleDiagnosticsDock(), { enabled: electronAvailable });
+  useKeybinding("panel.diagnosticsMessages", () => openDiagnosticsDock("problems"), {
+    enabled: electronAvailable,
+  });
+  useKeybinding("panel.toggleDiagnostics", () => toggleDiagnosticsDock(), {
+    enabled: electronAvailable,
+  });
+  useKeybinding(
+    "panel.toggleDock",
+    () => {
+      window.dispatchEvent(new CustomEvent("canopy:toggle-terminal-dock"));
+    },
+    { enabled: electronAvailable }
+  );
+  useKeybinding(
+    "panel.toggleSidecar",
+    () => {
+      window.dispatchEvent(new CustomEvent("canopy:toggle-sidecar"));
+    },
+    { enabled: electronAvailable }
+  );
+
+  // Navigation
   useKeybinding(
     "nav.toggleSidebar",
     () => {
@@ -471,6 +544,74 @@ function App() {
     },
     { enabled: electronAvailable }
   );
+
+  // Worktree navigation
+  const { worktrees } = useWorktrees();
+  const { selectWorktree, activeWorktreeId } = useWorktreeSelectionStore(
+    useShallow((state) => ({
+      selectWorktree: state.selectWorktree,
+      activeWorktreeId: state.activeWorktreeId,
+    }))
+  );
+
+  useKeybinding("worktree.switch1", () => worktrees[0] && selectWorktree(worktrees[0].id), {
+    enabled: electronAvailable && worktrees.length >= 1,
+  });
+  useKeybinding("worktree.switch2", () => worktrees[1] && selectWorktree(worktrees[1].id), {
+    enabled: electronAvailable && worktrees.length >= 2,
+  });
+  useKeybinding("worktree.switch3", () => worktrees[2] && selectWorktree(worktrees[2].id), {
+    enabled: electronAvailable && worktrees.length >= 3,
+  });
+  useKeybinding("worktree.switch4", () => worktrees[3] && selectWorktree(worktrees[3].id), {
+    enabled: electronAvailable && worktrees.length >= 4,
+  });
+  useKeybinding("worktree.switch5", () => worktrees[4] && selectWorktree(worktrees[4].id), {
+    enabled: electronAvailable && worktrees.length >= 5,
+  });
+  useKeybinding("worktree.switch6", () => worktrees[5] && selectWorktree(worktrees[5].id), {
+    enabled: electronAvailable && worktrees.length >= 6,
+  });
+  useKeybinding("worktree.switch7", () => worktrees[6] && selectWorktree(worktrees[6].id), {
+    enabled: electronAvailable && worktrees.length >= 7,
+  });
+  useKeybinding("worktree.switch8", () => worktrees[7] && selectWorktree(worktrees[7].id), {
+    enabled: electronAvailable && worktrees.length >= 8,
+  });
+  useKeybinding("worktree.switch9", () => worktrees[8] && selectWorktree(worktrees[8].id), {
+    enabled: electronAvailable && worktrees.length >= 9,
+  });
+
+  useKeybinding(
+    "worktree.next",
+    () => {
+      if (worktrees.length === 0) return;
+      const currentIndex = activeWorktreeId
+        ? worktrees.findIndex((w) => w.id === activeWorktreeId)
+        : -1;
+      const nextIndex = currentIndex === -1 ? 0 : (currentIndex + 1) % worktrees.length;
+      selectWorktree(worktrees[nextIndex].id);
+    },
+    { enabled: electronAvailable && worktrees.length > 1 }
+  );
+
+  useKeybinding(
+    "worktree.previous",
+    () => {
+      if (worktrees.length === 0) return;
+      const currentIndex = activeWorktreeId
+        ? worktrees.findIndex((w) => w.id === activeWorktreeId)
+        : -1;
+      const prevIndex = currentIndex === -1 ? 0 : (currentIndex - 1 + worktrees.length) % worktrees.length;
+      selectWorktree(worktrees[prevIndex].id);
+    },
+    { enabled: electronAvailable && worktrees.length > 1 }
+  );
+
+  // Help and settings
+  useKeybinding("help.shortcuts", () => setIsShortcutsOpen(true), { enabled: electronAvailable });
+  useKeybinding("help.shortcutsAlt", () => setIsShortcutsOpen(true), { enabled: electronAvailable });
+  useKeybinding("app.settings", () => handleSettings(), { enabled: electronAvailable });
 
   // Directional terminal navigation (Option+Arrow keys)
   // Skip when typing in terminal to avoid stealing shell word-jump behavior
@@ -646,6 +787,8 @@ function App() {
         defaultTab={settingsTab}
         onSettingsChange={refreshSettings}
       />
+
+      <ShortcutReferenceDialog isOpen={isShortcutsOpen} onClose={() => setIsShortcutsOpen(false)} />
 
       <Toaster />
     </ErrorBoundary>
