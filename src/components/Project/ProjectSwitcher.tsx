@@ -123,7 +123,7 @@ export function ProjectSwitcher() {
     if (!stats) {
       const confirmed = window.confirm(
         `Close "${project?.name}"?\n\n` +
-          `Process stats unavailable. This will kill any running terminals and dev servers for this project.`
+          `Process stats unavailable. This will close any running terminals and dev servers for this project.`
       );
 
       if (!confirmed) return;
@@ -142,7 +142,7 @@ export function ProjectSwitcher() {
 
       const confirmed = window.confirm(
         `Close "${project?.name}"?\n\n` +
-          `This will kill ${processCount} process(es):\n` +
+          `This will close ${processCount} process(es):\n` +
           `- ${stats.terminalCount} terminal(s)\n` +
           `- ${stats.serverCount} dev server(s)`
       );
@@ -156,7 +156,7 @@ export function ProjectSwitcher() {
       addNotification({
         type: "success",
         title: "Project closed",
-        message: `Killed ${result.processesKilled} process(es)`,
+        message: `Ended ${result.processesKilled} process(es)`,
         duration: 3000,
       });
       // Refresh stats after close
@@ -287,7 +287,7 @@ export function ProjectSwitcher() {
           <button
             onClick={(e) => handleCloseProject(project.id, e)}
             className="p-1 rounded hover:bg-destructive/20 text-muted-foreground hover:text-destructive transition-colors shrink-0"
-            title="Close project and kill processes"
+            title="Close project and end processes"
           >
             <XCircle className="h-4 w-4" />
           </button>

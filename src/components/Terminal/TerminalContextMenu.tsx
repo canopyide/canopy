@@ -142,7 +142,7 @@ export function TerminalContextMenu({
           className="text-[var(--color-status-error)] focus:text-[var(--color-status-error)]"
         >
           <X className="w-4 h-4 mr-2" aria-hidden="true" />
-          Kill Terminal
+          End Terminal
         </ContextMenuItem>
       </ContextMenuContent>
     </ContextMenu>

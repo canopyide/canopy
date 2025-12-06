@@ -82,8 +82,8 @@ export function BulkActionsMenu({ trigger, className }: BulkActionsMenuProps) {
   const handleKillAll = useCallback(() => {
     setConfirmDialog({
       isOpen: true,
-      title: "Kill All Terminals",
-      description: `This will permanently kill ${allCount} terminal${allCount !== 1 ? "s" : ""} and their processes. This action cannot be undone.`,
+      title: "End All Terminals",
+      description: `This will permanently end ${allCount} terminal${allCount !== 1 ? "s" : ""} and their processes. This action cannot be undone.`,
       onConfirm: () => {
         bulkCloseAll();
         closeConfirmDialog();
@@ -157,7 +157,7 @@ export function BulkActionsMenu({ trigger, className }: BulkActionsMenuProps) {
             className="flex items-center gap-2 text-[var(--color-status-error)] focus:text-[var(--color-status-error)]"
           >
             <X className="h-4 w-4" />
-            <span>Kill All Terminals</span>
+            <span>End All Terminals</span>
             <span className="ml-auto text-xs text-canopy-text/50">({allCount})</span>
           </DropdownMenuItem>
 
