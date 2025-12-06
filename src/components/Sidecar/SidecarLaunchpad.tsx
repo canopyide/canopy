@@ -50,7 +50,7 @@ interface SidecarLaunchpadProps {
 export function SidecarLaunchpad({ links, onOpenUrl }: SidecarLaunchpadProps) {
   if (links.length === 0) {
     return (
-      <div className="flex-1 flex flex-col items-center justify-start pt-8 text-zinc-500 px-6">
+      <div className="flex-1 flex flex-col items-center justify-start pt-8 text-muted-foreground px-6">
         <Globe className="w-12 h-12 mb-4 opacity-50" />
         <p className="text-sm">No AI agents configured</p>
       </div>
@@ -60,22 +60,22 @@ export function SidecarLaunchpad({ links, onOpenUrl }: SidecarLaunchpadProps) {
   return (
     <div className="flex-1 flex flex-col items-center justify-start pt-8 px-8">
       <div className="w-full max-w-sm">
-        <h2 className="text-lg font-medium mb-6 text-zinc-200 text-center">New Chat</h2>
+        <h2 className="text-lg font-medium mb-6 text-foreground text-center">New Chat</h2>
         <div className="grid grid-cols-1 gap-4">
           {links.map((link) => (
             <button
               key={link.id}
               onClick={() => onOpenUrl(link.url, link.title)}
-              className="flex items-center gap-4 p-4 rounded-xl bg-zinc-800/50 hover:bg-zinc-800 border border-zinc-700/50 hover:border-zinc-600 transition-all group focus-visible:outline focus-visible:outline-2 focus-visible:outline-blue-500 focus-visible:outline-offset-2"
+              className="flex items-center gap-4 p-4 rounded-xl bg-canopy-border hover:bg-canopy-border/80 border border-canopy-border hover:border-canopy-border transition-all group focus-visible:outline focus-visible:outline-2 focus-visible:outline-blue-500 focus-visible:outline-offset-2"
             >
-              <div className="w-8 h-8 flex items-center justify-center text-zinc-300 group-hover:text-white transition-colors">
+              <div className="w-8 h-8 flex items-center justify-center text-foreground group-hover:text-white transition-colors">
                 <LinkIcon link={link} size={32} />
               </div>
               <div className="text-left">
-                <div className="font-medium text-zinc-200 group-hover:text-white transition-colors">
+                <div className="font-medium text-foreground group-hover:text-white transition-colors">
                   {link.title}
                 </div>
-                <div className="text-xs text-zinc-500">Open web client</div>
+                <div className="text-xs text-canopy-text/70">Open web client</div>
               </div>
             </button>
           ))}

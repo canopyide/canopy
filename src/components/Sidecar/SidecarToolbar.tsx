@@ -67,8 +67,8 @@ const SortableTab = memo(function SortableTab({
         "rounded-full border shadow-sm",
         "min-w-[80px] max-w-[200px]",
         isActive
-          ? "bg-zinc-100 text-zinc-900 border-zinc-200 ring-1 ring-zinc-200/50"
-          : "bg-zinc-800/50 text-zinc-400 border-zinc-700/50 hover:bg-zinc-800 hover:text-zinc-200 hover:border-zinc-600",
+          ? "bg-foreground text-background border-foreground/20 ring-1 ring-foreground/30"
+          : "bg-canopy-border text-canopy-text border-canopy-border hover:bg-canopy-border/80 hover:text-foreground hover:border-canopy-border",
         isDragging && "opacity-80 scale-105 shadow-xl cursor-grabbing"
       )}
     >
@@ -82,8 +82,8 @@ const SortableTab = memo(function SortableTab({
         className={cn(
           "p-0.5 rounded-full transition-colors ml-1",
           isActive
-            ? "text-zinc-500 hover:text-zinc-900 hover:bg-zinc-300"
-            : "text-zinc-500 hover:text-zinc-200 hover:bg-zinc-700 opacity-0 group-hover:opacity-100 focus-visible:opacity-100"
+            ? "text-background hover:text-background hover:bg-foreground/20"
+            : "text-muted-foreground hover:text-foreground hover:bg-canopy-bg opacity-0 group-hover:opacity-100 focus-visible:opacity-100"
         )}
       >
         <X className="w-3 h-3" />
@@ -132,7 +132,7 @@ export function SidecarToolbar({
   };
 
   return (
-    <div className="flex flex-col bg-zinc-900 border-b border-zinc-800">
+    <div className="flex flex-col bg-canopy-bg border-b border-canopy-border">
       {/* Top Row: Navigation Controls */}
       <div className="flex items-center justify-between px-2 py-1.5">
         <div className="flex items-center gap-0.5">
@@ -140,7 +140,7 @@ export function SidecarToolbar({
             onClick={onGoBack}
             disabled={!activeTabId}
             aria-label="Go back"
-            className="p-1 rounded hover:bg-zinc-700 text-zinc-400 hover:text-zinc-200 transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
+            className="p-1 rounded hover:bg-canopy-border text-muted-foreground hover:text-canopy-text transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
             title="Go back"
           >
             <ArrowLeft className="w-3.5 h-3.5" />
@@ -149,7 +149,7 @@ export function SidecarToolbar({
             onClick={onGoForward}
             disabled={!activeTabId}
             aria-label="Go forward"
-            className="p-1 rounded hover:bg-zinc-700 text-zinc-400 hover:text-zinc-200 transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
+            className="p-1 rounded hover:bg-canopy-border text-muted-foreground hover:text-canopy-text transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
             title="Go forward"
           >
             <ArrowRight className="w-3.5 h-3.5" />
@@ -158,7 +158,7 @@ export function SidecarToolbar({
             onClick={onReload}
             disabled={!activeTabId}
             aria-label="Reload"
-            className="p-1 rounded hover:bg-zinc-700 text-zinc-400 hover:text-zinc-200 transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
+            className="p-1 rounded hover:bg-canopy-border text-muted-foreground hover:text-canopy-text transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
             title="Reload"
           >
             <RotateCw className="w-3.5 h-3.5" />
@@ -168,7 +168,7 @@ export function SidecarToolbar({
         <div className="flex items-center gap-1">
           <button
             onClick={onClose}
-            className="p-1 rounded hover:bg-zinc-700 text-zinc-400 hover:text-zinc-200 transition-colors ml-1"
+            className="p-1 rounded hover:bg-canopy-border text-muted-foreground hover:text-canopy-text transition-colors ml-1"
             title="Close sidecar"
           >
             <X className="w-4 h-4" />
@@ -212,7 +212,7 @@ export function SidecarToolbar({
 
               <button
                 onClick={onNewTab}
-                className="flex items-center justify-center w-8 h-[26px] rounded-full bg-zinc-800/50 hover:bg-zinc-700 text-zinc-400 hover:text-zinc-200 border border-zinc-700/50 hover:border-zinc-600 transition-all"
+                className="flex items-center justify-center w-8 h-[26px] rounded-full bg-canopy-border hover:bg-canopy-border/80 text-canopy-text hover:text-foreground border border-canopy-border hover:border-canopy-border transition-all"
                 title="New Tab"
               >
                 <Plus className="w-4 h-4" />
