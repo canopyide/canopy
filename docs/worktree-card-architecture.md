@@ -123,29 +123,32 @@ When there's no expandable content, the gutter collapses to bring content flush 
 
 3. **BranchLabel**
    - Splits branch name on first `/` into prefix and rest
-   - **Prefix styling:** `10px`, uppercase, semibold, color-coded:
-     - `feature`/`feat` → teal
-     - `bugfix`/`hotfix`/`fix` → red
-     - `chore` → gray
-     - `docs` → blue
-     - `refactor` → purple
-     - `test` → yellow
-   - **Rest:** `14px`, semibold, truncated with `middleTruncate(36)`
+   - **Prefix styling:** Rendered as a subtle pill (not inline uppercase text):
+     - `10px` text in sentence case ("Feature", "Fix", "Docs")
+     - Rounded pill with colored background/border (e.g., `bg-teal-500/10`, `border-teal-500/30`)
+     - Color mapping:
+       - `feature`/`feat` → teal
+       - `bugfix`/`hotfix`/`fix` → red
+       - `chore` → gray
+       - `docs` → blue
+       - `refactor` → purple
+       - `test` → yellow
+     - Unknown prefixes show raw branch name without pill
+   - **Branch name:** `13px`, semibold, truncated with `middleTruncate(36)`
    - Main branches get bold + tracking-wide
 
 4. **Detached Badge**
    - Shown when `worktree.branch` is undefined
    - Amber text: "(detached)"
 
-5. **ActivityLight** (right side)
-   - 2.5×2.5 pixel rounded dot
-   - Color fades from green → gray over 90 seconds
-   - Updates every second while fading
-   - Tooltip shows exact timestamp
-
-6. **LiveTimeAgo** (right side)
-   - Updates every 1 second
-   - Format: `now`, `Xs`, `Xm`, `Xh`, `Xd`, `Xw`, `Xmo`, `Xy`
+5. **Recency Chip** (right side, unified ActivityLight + LiveTimeAgo)
+   - Wrapped in a subtle pill (`bg-white/[0.03]`, `rounded-full`) for visual cohesion
+   - **ActivityLight:** 2.5×2.5 pixel rounded dot
+     - Color fades from green → gray over 90 seconds
+     - Hidden when no activity timestamp (shows "Never" text only)
+   - **LiveTimeAgo:** Updates every 1 second
+     - Format: `now`, `Xs`, `Xm`, `Xh`, `Xd`, `Xw`, `Xmo`, `Xy`
+     - Shows "Never" when no timestamp
    - Tooltip shows full timestamp + human-readable duration
 
 7. **Action Buttons** (hover overlay)
@@ -189,9 +192,14 @@ const workspaceScenario = useMemo(() => {
 
 Displayed when `worktreeChanges.changedFileCount > 0`:
 
-1. **Diff Summary Line**
-   - Format: `{N} file(s) · +{insertions} / -{deletions}`
+1. **Diff Summary Pill**
+   - Wrapped in subtle pill styling (`bg-white/[0.02]`, `border border-white/5`, `rounded`)
+   - Format: `{N} file(s)` + optional `· +{insertions}` / `-{deletions}`
    - Monospace, `11px`
+   - **Smart display:** Only shows stats that are non-zero
+     - Only additions: `3 files · +12`
+     - Only deletions: `2 files · -8`
+     - Mixed: `5 files · +20 / -3`
    - Insertions in green, deletions in red
 
 2. **FileChangeList** (top 3 files)
@@ -309,7 +317,11 @@ Left side:
 
 Right side:
 - **Issue Badge:** Blue, shows `#{issueNumber}`, opens GitHub
-- **PR Badge:** Green, shows `#{prNumber}`, opens GitHub
+- **PR Badge:** State-colored, shows `#{prNumber}`, opens GitHub
+  - `open` → green (`bg-green-500/10`, `text-green-400`)
+  - `merged` → purple (`bg-purple-500/10`, `text-purple-400`)
+  - `closed` → red (`bg-red-500/10`, `text-red-400`)
+  - Tooltip shows state: "PR #123 · merged"
 
 ---
 
@@ -317,12 +329,17 @@ Right side:
 
 ### Selection States
 
-| State | Background | Ring |
-|-------|------------|------|
-| Default | `transparent` | none |
-| Hover | `white/[0.02]` | none |
-| Active (selected) | `white/[0.04]` | none |
-| Focused (keyboard) | current bg | `ring-[#10b981]/50` inset |
+| State | Background | Ring | Accent |
+|-------|------------|------|--------|
+| Default | `transparent` | none | none |
+| Hover | `white/[0.02]` | none | none |
+| Active (selected) | `white/[0.04]` | none | none |
+| Focused (keyboard) | current bg | `ring-[#10b981]/50` inset | none |
+| Current (working dir) | current bg | none | `border-l-2 border-l-teal-500/50` |
+
+### Current Worktree Accent
+
+The worktree containing the current working directory (`worktree.isCurrent === true`) displays a persistent 2px teal accent bar on the left edge. This helps answer "where am I actually working?" vs "which card is selected for keybindings?"
 
 ### AI Note TTL
 

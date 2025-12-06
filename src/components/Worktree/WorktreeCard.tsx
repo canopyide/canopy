@@ -292,7 +292,9 @@ export function WorktreeCard({
       className={cn(
         "group relative border-b border-white/5 transition-colors duration-200",
         isActive ? "bg-white/[0.03]" : "hover:bg-white/[0.02] bg-transparent",
-        isFocused && "bg-white/[0.04]"
+        isFocused && "bg-white/[0.04]",
+        // Current worktree accent: persistent left border indicating "you are here"
+        worktree.isCurrent && "border-l-2 border-l-teal-500/50"
       )}
       onClick={onSelect}
       onKeyDown={(e) => {
@@ -303,7 +305,7 @@ export function WorktreeCard({
       }}
       tabIndex={0}
       role="button"
-      aria-label={`Worktree: ${branchLabel}`}
+      aria-label={`Worktree: ${branchLabel}${worktree.isCurrent ? " (current)" : ""}`}
     >
       <div className="px-3 py-3">
         {/* Golden Gutter Grid Structure */}
@@ -344,9 +346,23 @@ export function WorktreeCard({
               )}
             </div>
 
-            {/* Activity + Live Time - Right aligned */}
-            <div className="flex items-center gap-1.5 shrink-0 text-[10px] text-gray-500">
-              <ActivityLight lastActivityTimestamp={worktree.lastActivityTimestamp} />
+            {/* Activity + Live Time - Unified recency chip */}
+            <div
+              className={cn(
+                "flex items-center gap-1.5 shrink-0 text-[10px] px-2 py-0.5 rounded-full",
+                worktree.lastActivityTimestamp
+                  ? "bg-white/[0.03] text-gray-400"
+                  : "bg-transparent text-gray-600"
+              )}
+              title={
+                worktree.lastActivityTimestamp
+                  ? `Last activity: ${new Date(worktree.lastActivityTimestamp).toLocaleString()}`
+                  : "No recent activity recorded"
+              }
+            >
+              {worktree.lastActivityTimestamp && (
+                <ActivityLight lastActivityTimestamp={worktree.lastActivityTimestamp} />
+              )}
               <LiveTimeAgo
                 timestamp={worktree.lastActivityTimestamp}
                 className="font-medium"
@@ -462,24 +478,36 @@ export function WorktreeCard({
 
           {/* Row 2: Dynamic Activity Layer (Polymorphic) */}
           <div />
-          <div className="flex flex-col gap-1 min-w-0">
+          <div className="flex flex-col gap-1 min-w-0 mt-1.5">
             {workspaceScenario === "dirty" && !isExpanded ? (
               <>
-                {/* Diff summary pill first */}
+                {/* Diff summary pill */}
                 {worktree.worktreeChanges && (
-                  <div className="flex items-center gap-2 text-[11px] font-mono text-gray-400">
+                  <div className="inline-flex items-center gap-2 text-[11px] font-mono text-gray-400 bg-white/[0.02] border border-white/5 rounded px-2 py-0.5">
                     <span>
                       {worktree.worktreeChanges.changedFileCount} file
                       {worktree.worktreeChanges.changedFileCount !== 1 ? "s" : ""}
                     </span>
-                    <span className="text-gray-600">·</span>
-                    <span className="text-[var(--color-status-success)]">
-                      +{worktree.worktreeChanges.insertions ?? 0}
-                    </span>
-                    <span className="text-gray-600">/</span>
-                    <span className="text-[var(--color-status-error)]">
-                      -{worktree.worktreeChanges.deletions ?? 0}
-                    </span>
+                    {((worktree.worktreeChanges.insertions ?? 0) > 0 ||
+                      (worktree.worktreeChanges.deletions ?? 0) > 0) && (
+                      <>
+                        <span className="text-gray-600">·</span>
+                        {(worktree.worktreeChanges.insertions ?? 0) > 0 && (
+                          <span className="text-[var(--color-status-success)]">
+                            +{worktree.worktreeChanges.insertions}
+                          </span>
+                        )}
+                        {(worktree.worktreeChanges.insertions ?? 0) > 0 &&
+                          (worktree.worktreeChanges.deletions ?? 0) > 0 && (
+                            <span className="text-gray-600">/</span>
+                          )}
+                        {(worktree.worktreeChanges.deletions ?? 0) > 0 && (
+                          <span className="text-[var(--color-status-error)]">
+                            -{worktree.worktreeChanges.deletions}
+                          </span>
+                        )}
+                      </>
+                    )}
                   </div>
                 )}
                 {worktree.worktreeChanges && (
@@ -612,11 +640,17 @@ export function WorktreeCard({
                         onOpenPR?.();
                       }}
                       className={cn(
-                        "flex items-center gap-1 text-[10px] text-[var(--color-status-success)]",
-                        "bg-green-500/10 px-1.5 py-0.5 rounded border border-green-500/20",
-                        "hover:bg-green-500/20 transition-colors cursor-pointer"
+                        "flex items-center gap-1 text-[10px]",
+                        "px-1.5 py-0.5 rounded border",
+                        "hover:brightness-125 transition-colors cursor-pointer",
+                        // Color based on PR state (open=green, merged=purple, closed=red)
+                        worktree.prState === "merged"
+                          ? "text-purple-400 bg-purple-500/10 border-purple-500/20"
+                          : worktree.prState === "closed"
+                            ? "text-red-400 bg-red-500/10 border-red-500/20"
+                            : "text-[var(--color-status-success)] bg-green-500/10 border-green-500/20"
                       )}
-                      title="Open Pull Request on GitHub"
+                      title={`PR #${worktree.prNumber} · ${worktree.prState ?? "open"}`}
                     >
                       <GitPullRequest className="w-2.5 h-2.5" />
                       <span className="font-mono">#{worktree.prNumber}</span>
