@@ -339,7 +339,11 @@ export function WorktreeCard({
               {isMainWorktree && (
                 <Shield className="w-3.5 h-3.5 text-gray-600 opacity-30 shrink-0 self-center" />
               )}
-              <BranchLabel label={branchLabel} isActive={isActive} isMainWorktree={isMainWorktree} />
+              <BranchLabel
+                label={branchLabel}
+                isActive={isActive}
+                isMainWorktree={isMainWorktree}
+              />
               {!worktree.branch && (
                 <span className="text-amber-500 text-[10px] font-medium shrink-0">(detached)</span>
               )}
@@ -362,10 +366,7 @@ export function WorktreeCard({
               {worktree.lastActivityTimestamp && (
                 <ActivityLight lastActivityTimestamp={worktree.lastActivityTimestamp} />
               )}
-              <LiveTimeAgo
-                timestamp={worktree.lastActivityTimestamp}
-                className="font-medium"
-              />
+              <LiveTimeAgo timestamp={worktree.lastActivityTimestamp} className="font-medium" />
             </div>
 
             {/* Action Buttons - visible on hover/focus */}

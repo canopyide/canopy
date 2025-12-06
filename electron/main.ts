@@ -174,7 +174,10 @@ async function createWindow(): Promise<void> {
 
   mainWindow.webContents.setWindowOpenHandler(({ url }) => {
     console.log("[MAIN] setWindowOpenHandler triggered with URL:", url);
-    if (url && (url.startsWith("http://") || url.startsWith("https://") || url.startsWith("mailto:"))) {
+    if (
+      url &&
+      (url.startsWith("http://") || url.startsWith("https://") || url.startsWith("mailto:"))
+    ) {
       void openExternalUrl(url).catch((error) => {
         console.error("[MAIN] Failed to open external URL:", error);
       });

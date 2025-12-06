@@ -22,7 +22,10 @@ const COLORS = {
 
 // Prefix configuration: maps raw prefix to display name and color
 // Supports both long forms ("feature" → "Feature") and short forms ("feat" → "FEAT")
-const PREFIX_CONFIG: Record<string, { displayName: string; colors: (typeof COLORS)[keyof typeof COLORS] }> = {
+const PREFIX_CONFIG: Record<
+  string,
+  { displayName: string; colors: (typeof COLORS)[keyof typeof COLORS] }
+> = {
   // Feature branches
   feature: { displayName: "Feature", colors: COLORS.teal },
   feat: { displayName: "FEAT", colors: COLORS.teal },
@@ -83,7 +86,8 @@ export function BranchLabel({ label, isActive, isMainWorktree, className }: Bran
       // Unknown prefix - show as-is with gray styling
       return {
         prefix: p,
-        displayName: p.length <= 4 ? p.toUpperCase() : p.charAt(0).toUpperCase() + p.slice(1).toLowerCase(),
+        displayName:
+          p.length <= 4 ? p.toUpperCase() : p.charAt(0).toUpperCase() + p.slice(1).toLowerCase(),
         colors: DEFAULT_CONFIG.colors,
         rest: middleTruncate(tail.join("/"), 36),
       };

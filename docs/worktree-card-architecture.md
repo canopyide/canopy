@@ -40,44 +40,44 @@ WorktreeCard
 
 The card receives a `WorktreeState` object containing:
 
-| Field | Type | Description |
-|-------|------|-------------|
-| `id` | `string` | Stable identifier (normalized path) |
-| `path` | `string` | Absolute filesystem path |
-| `name` | `string` | Human-readable name (branch or folder name) |
-| `branch` | `string?` | Git branch name (undefined for detached HEAD) |
-| `isCurrent` | `boolean` | Whether this worktree contains the current working directory |
-| `isMainWorktree` | `boolean?` | Whether this is the primary worktree (not a linked worktree) |
-| `summary` | `string?` | Work summary (often the last commit message) |
-| `lastActivityTimestamp` | `number \| null` | Milliseconds since epoch of last meaningful activity |
-| `aiNote` | `string?` | Content from `.git/canopy/note` file |
-| `aiNoteTimestamp` | `number?` | When the AI note was last modified |
-| `issueNumber` | `number?` | Extracted GitHub issue number from branch name |
-| `prNumber` | `number?` | Linked GitHub pull request number |
-| `prUrl` | `string?` | GitHub PR URL |
-| `prState` | `'open' \| 'merged' \| 'closed'?` | PR lifecycle state |
-| `worktreeChanges` | `WorktreeChanges \| null` | Aggregated git status information |
+| Field                   | Type                              | Description                                                  |
+| ----------------------- | --------------------------------- | ------------------------------------------------------------ |
+| `id`                    | `string`                          | Stable identifier (normalized path)                          |
+| `path`                  | `string`                          | Absolute filesystem path                                     |
+| `name`                  | `string`                          | Human-readable name (branch or folder name)                  |
+| `branch`                | `string?`                         | Git branch name (undefined for detached HEAD)                |
+| `isCurrent`             | `boolean`                         | Whether this worktree contains the current working directory |
+| `isMainWorktree`        | `boolean?`                        | Whether this is the primary worktree (not a linked worktree) |
+| `summary`               | `string?`                         | Work summary (often the last commit message)                 |
+| `lastActivityTimestamp` | `number \| null`                  | Milliseconds since epoch of last meaningful activity         |
+| `aiNote`                | `string?`                         | Content from `.git/canopy/note` file                         |
+| `aiNoteTimestamp`       | `number?`                         | When the AI note was last modified                           |
+| `issueNumber`           | `number?`                         | Extracted GitHub issue number from branch name               |
+| `prNumber`              | `number?`                         | Linked GitHub pull request number                            |
+| `prUrl`                 | `string?`                         | GitHub PR URL                                                |
+| `prState`               | `'open' \| 'merged' \| 'closed'?` | PR lifecycle state                                           |
+| `worktreeChanges`       | `WorktreeChanges \| null`         | Aggregated git status information                            |
 
 ### WorktreeChanges (Nested)
 
-| Field | Type | Description |
-|-------|------|-------------|
-| `rootPath` | `string` | Worktree root for relative path calculation |
-| `changes` | `FileChangeDetail[]` | Individual file changes |
-| `changedFileCount` | `number` | Total count of changed files |
-| `insertions` | `number?` | Total lines added |
-| `deletions` | `number?` | Total lines removed |
-| `lastCommitMessage` | `string?` | Most recent commit message |
+| Field               | Type                 | Description                                 |
+| ------------------- | -------------------- | ------------------------------------------- |
+| `rootPath`          | `string`             | Worktree root for relative path calculation |
+| `changes`           | `FileChangeDetail[]` | Individual file changes                     |
+| `changedFileCount`  | `number`             | Total count of changed files                |
+| `insertions`        | `number?`            | Total lines added                           |
+| `deletions`         | `number?`            | Total lines removed                         |
+| `lastCommitMessage` | `string?`            | Most recent commit message                  |
 
 ### FileChangeDetail
 
-| Field | Type | Description |
-|-------|------|-------------|
-| `path` | `string` | Relative file path |
-| `status` | `GitStatus` | `modified`, `added`, `deleted`, `untracked`, `renamed`, `copied`, `ignored` |
-| `insertions` | `number \| null` | Lines added in this file |
-| `deletions` | `number \| null` | Lines removed in this file |
-| `mtimeMs` | `number?` | File modification time (for recency sorting) |
+| Field        | Type             | Description                                                                 |
+| ------------ | ---------------- | --------------------------------------------------------------------------- |
+| `path`       | `string`         | Relative file path                                                          |
+| `status`     | `GitStatus`      | `modified`, `added`, `deleted`, `untracked`, `renamed`, `copied`, `ignored` |
+| `insertions` | `number \| null` | Lines added in this file                                                    |
+| `deletions`  | `number \| null` | Lines removed in this file                                                  |
+| `mtimeMs`    | `number?`        | File modification time (for recency sorting)                                |
 
 ---
 
@@ -95,12 +95,12 @@ When there's no expandable content, the gutter collapses to bring content flush 
 
 ### Row Structure
 
-| Row | Left Column (16px) | Right Column (1fr) |
-|-----|-------------------|-------------------|
-| **1: Identity** | Chevron (expand/collapse) | Branch label + Activity light + Time + Actions |
-| **2: Dynamic** | Empty | Scenario-specific content |
-| **3: Expanded** | Empty | `WorktreeDetails` (animated) |
-| **4: Footer** | Empty | Agent status + Terminal count + Issue/PR badges |
+| Row             | Left Column (16px)        | Right Column (1fr)                              |
+| --------------- | ------------------------- | ----------------------------------------------- |
+| **1: Identity** | Chevron (expand/collapse) | Branch label + Activity light + Time + Actions  |
+| **2: Dynamic**  | Empty                     | Scenario-specific content                       |
+| **3: Expanded** | Empty                     | `WorktreeDetails` (animated)                    |
+| **4: Footer**   | Empty                     | Agent status + Terminal count + Issue/PR badges |
 
 ---
 
@@ -151,7 +151,7 @@ When there's no expandable content, the gutter collapses to bring content flush 
      - Shows "Never" when no timestamp
    - Tooltip shows full timestamp + human-readable duration
 
-7. **Action Buttons** (hover overlay)
+6. **Action Buttons** (hover overlay)
    - Gradient fade from transparent → background color
    - **Copy Context button:** Copies directory tree for AI context
    - **More menu (...):**
@@ -295,15 +295,13 @@ Only rendered when `showMetaFooter` is true:
 
 ```typescript
 const showMetaFooter =
-  !!dominantAgentState ||
-  terminalCounts.total > 0 ||
-  !!worktree.issueNumber ||
-  !!worktree.prNumber;
+  !!dominantAgentState || terminalCounts.total > 0 || !!worktree.issueNumber || !!worktree.prNumber;
 ```
 
 ### Layout
 
 Left side:
+
 - **AgentStatusIndicator:** Shows dominant state across all terminals
   - Working: spinning icon
   - Completed: green checkmark
@@ -314,6 +312,7 @@ Left side:
   - Falls back to: `{N} terminal(s)`
 
 Right side:
+
 - **Issue Badge:** Blue, shows `#{issueNumber}`, opens GitHub
 - **PR Badge:** State-colored, shows `#{prNumber}`, opens GitHub
   - `open` → green (`bg-green-500/10`, `text-green-400`)
@@ -327,13 +326,13 @@ Right side:
 
 ### Selection States
 
-| State | Background | Ring | Accent |
-|-------|------------|------|--------|
-| Default | `transparent` | none | none |
-| Hover | `white/[0.02]` | none | none |
-| Active (selected) | `white/[0.04]` | none | none |
-| Focused (keyboard) | current bg | `ring-[#10b981]/50` inset | none |
-| Current (working dir) | current bg | none | `border-l-2 border-l-teal-500/50` |
+| State                 | Background     | Ring                      | Accent                            |
+| --------------------- | -------------- | ------------------------- | --------------------------------- |
+| Default               | `transparent`  | none                      | none                              |
+| Hover                 | `white/[0.02]` | none                      | none                              |
+| Active (selected)     | `white/[0.04]` | none                      | none                              |
+| Focused (keyboard)    | current bg     | `ring-[#10b981]/50` inset | none                              |
+| Current (working dir) | current bg     | none                      | `border-l-2 border-l-teal-500/50` |
 
 ### Current Worktree Accent
 
@@ -356,6 +355,7 @@ This prevents stale "agent is working" messages from lingering on the main branc
 ### hasExpandableContent
 
 True if any of:
+
 - Has uncommitted changes
 - Has an AI note (effectiveNote)
 - Has a summary different from commit message
@@ -367,6 +367,7 @@ True if any of:
 ### showFooter (internal)
 
 True if any of:
+
 - Has terminals
 - Has changes with worktreeChanges data
 - Dev server is running/not-stopped
@@ -375,6 +376,7 @@ True if any of:
 ### effectiveNote
 
 AI note with special handling:
+
 1. Trimmed for whitespace
 2. Expires after 10 minutes on main/master branches
 3. Returns undefined if empty or expired
@@ -382,6 +384,7 @@ AI note with special handling:
 ### effectiveSummary
 
 Worktree summary with deduplication:
+
 - Compares against last commit message (case-insensitive)
 - Returns null if summary equals, contains, or is contained by commit message
 - Prevents redundant display of same information
