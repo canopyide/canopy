@@ -231,22 +231,24 @@ Displayed for non-main branches with no changes:
 
 Displayed for main/master branches with no changes:
 
-Three status pills in a horizontal row:
+**Same as clean feature branches** — shows last commit message with optional compact status indicators:
 
-1. **Server Pill**
-   - Globe icon
-   - When running: port number (`:5173`), green styling
-   - When stopped: "Server", gray styling
+1. **Last Commit Message** (primary content)
+   - GitCommit icon + first line of commit message
+   - Muted styling, 80% opacity
+   - Answers "What is main currently at?"
 
-2. **Terminal Pill**
-   - Terminal icon
-   - Shows: `{N} Active`
-   - Pulsing green dot if any terminals are in "working" state
+2. **Compact Status Indicators** (only when meaningful)
+   - **Server badge:** Only shown when dev server is running
+     - Displays `:5173` (port) with green accent
+     - Hidden when stopped/starting
+   - **Terminal badge:** Only shown when `terminalCounts.total > 0`
+     - Shows count (e.g., `2`)
+     - Pulsing dot if any terminals are in "working" state
+     - Hidden when zero terminals
 
-3. **Version Pill**
-   - GitCommit icon
-   - Shows: "HEAD"
-   - Placeholder for future version/tag display
+3. **AI Note** (fallback if no commit message)
+   - Shown if `effectiveNote` exists and no commit message
 
 ---
 

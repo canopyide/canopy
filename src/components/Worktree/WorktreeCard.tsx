@@ -533,46 +533,43 @@ export function WorktreeCard({
                 ) : null}
               </>
             ) : workspaceScenario === "clean-main" && !isExpanded ? (
-              <div className="flex items-center gap-2 text-[11px] font-mono font-medium">
-                {/* Server Pill */}
-                <div
-                  className={cn(
-                    "flex items-center gap-1.5 px-2.5 py-1 rounded border",
-                    serverState?.status === "running"
-                      ? "bg-[var(--color-server-running)]/10 text-[var(--color-server-running)] border-[var(--color-server-running)]/20"
-                      : "bg-gray-800/60 text-gray-500 border-gray-700/50"
-                  )}
-                >
-                  <Globe className="w-3 h-3" />
-                  <span>
-                    {serverState?.status === "running" && serverState.port
-                      ? `:${serverState.port}`
-                      : "Server"}
-                  </span>
-                </div>
-
-                {/* Terminal Pill */}
-                <div
-                  className={cn(
-                    "flex items-center gap-1.5 px-2.5 py-1 rounded border",
-                    terminalCounts.total > 0
-                      ? "bg-gray-800/60 text-gray-300 border-gray-700/50"
-                      : "bg-gray-800/60 text-gray-600 border-gray-700/50"
-                  )}
-                >
-                  <Terminal className="w-3 h-3" />
-                  <span>{terminalCounts.total} Active</span>
-                  {terminalCounts.byState.working > 0 && (
-                    <div className="w-1.5 h-1.5 rounded-full bg-[var(--color-status-success)] animate-pulse" />
-                  )}
-                </div>
-
-                {/* Version Pill */}
-                <div className="flex items-center gap-1.5 px-2.5 py-1 rounded border bg-gray-800/60 text-gray-500 border-gray-700/50">
-                  <GitCommit className="w-3 h-3" />
-                  <span>HEAD</span>
-                </div>
-              </div>
+              <>
+                {/* Last commit message - same as clean-feature */}
+                {firstLineLastCommitMessage ? (
+                  <div className="flex items-center gap-1.5 text-xs text-gray-400 opacity-80">
+                    <GitCommit className="w-3 h-3 shrink-0" />
+                    <span className="truncate">{firstLineLastCommitMessage}</span>
+                    {/* Compact status indicators - only shown when meaningful */}
+                    {(serverState?.status === "running" || terminalCounts.total > 0) && (
+                      <div className="flex items-center gap-1.5 ml-2 shrink-0">
+                        {serverState?.status === "running" && serverState.port && (
+                          <span
+                            className="flex items-center gap-1 text-[10px] text-[var(--color-server-running)] bg-[var(--color-server-running)]/10 px-1.5 py-0.5 rounded border border-[var(--color-server-running)]/20"
+                            title="Dev server running"
+                          >
+                            <Globe className="w-2.5 h-2.5" />
+                            <span className="font-mono">:{serverState.port}</span>
+                          </span>
+                        )}
+                        {terminalCounts.total > 0 && (
+                          <span
+                            className="flex items-center gap-1 text-[10px] text-gray-400 bg-gray-500/10 px-1.5 py-0.5 rounded border border-gray-500/20"
+                            title={`${terminalCounts.total} terminal${terminalCounts.total !== 1 ? "s" : ""} active`}
+                          >
+                            <Terminal className="w-2.5 h-2.5" />
+                            <span className="font-mono">{terminalCounts.total}</span>
+                            {terminalCounts.byState.working > 0 && (
+                              <div className="w-1.5 h-1.5 rounded-full bg-[var(--color-status-success)] animate-pulse" />
+                            )}
+                          </span>
+                        )}
+                      </div>
+                    )}
+                  </div>
+                ) : effectiveNote ? (
+                  <div className="text-xs text-gray-300 truncate">{effectiveNote}</div>
+                ) : null}
+              </>
             ) : null}
           </div>
 
