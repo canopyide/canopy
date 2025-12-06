@@ -76,6 +76,8 @@ export function DiagnosticsDock({ onRetry, className }: DiagnosticsDockProps) {
   const resizeStartY = useRef(0);
   const resizeStartHeight = useRef(0);
 
+  const RESIZE_STEP = 10;
+
   const handleResizeStart = useCallback(
     (e: React.MouseEvent) => {
       e.preventDefault();
@@ -84,6 +86,22 @@ export function DiagnosticsDock({ onRetry, className }: DiagnosticsDockProps) {
       resizeStartHeight.current = height;
     },
     [height]
+  );
+
+  const handleKeyDown = useCallback(
+    (e: React.KeyboardEvent) => {
+      if (e.key === "ArrowUp") {
+        e.preventDefault();
+        const maxHeight = window.innerHeight * DIAGNOSTICS_MAX_HEIGHT_RATIO;
+        const newHeight = Math.min(height + RESIZE_STEP, maxHeight);
+        setHeight(newHeight);
+      } else if (e.key === "ArrowDown") {
+        e.preventDefault();
+        const newHeight = Math.max(height - RESIZE_STEP, DIAGNOSTICS_MIN_HEIGHT);
+        setHeight(newHeight);
+      }
+    },
+    [height, setHeight]
   );
 
   useEffect(() => {
@@ -160,15 +178,29 @@ export function DiagnosticsDock({ onRetry, className }: DiagnosticsDockProps) {
     >
       <div
         className={cn(
-          "h-1 cursor-ns-resize transition-colors",
-          "hover:bg-canopy-accent/50",
-          isResizing && "bg-canopy-accent"
+          "group h-1.5 cursor-ns-resize transition-colors flex items-center justify-center",
+          "hover:bg-canopy-accent/30 focus:outline-none focus:bg-canopy-accent/50",
+          isResizing && "bg-canopy-accent/50"
         )}
         onMouseDown={handleResizeStart}
+        onKeyDown={handleKeyDown}
         role="separator"
         aria-orientation="horizontal"
         aria-label="Resize diagnostics dock"
-      />
+        aria-valuenow={Math.round(height)}
+        aria-valuemin={DIAGNOSTICS_MIN_HEIGHT}
+        aria-valuemax={Math.round(window.innerHeight * DIAGNOSTICS_MAX_HEIGHT_RATIO)}
+        tabIndex={0}
+      >
+        <div
+          className={cn(
+            "w-8 h-0.5 rounded-full transition-colors",
+            "bg-canopy-text/20",
+            "group-hover:bg-canopy-accent/70 group-focus:bg-canopy-accent",
+            isResizing && "bg-canopy-accent"
+          )}
+        />
+      </div>
 
       <div className="flex items-center justify-between px-4 h-10 border-b border-canopy-border bg-canopy-sidebar shrink-0">
         <div className="flex items-center gap-2" role="tablist" aria-label="Diagnostics tabs">

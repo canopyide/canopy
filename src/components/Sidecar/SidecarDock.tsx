@@ -1,5 +1,6 @@
 import { useRef, useEffect, useCallback, useState, useMemo } from "react";
 import { useSidecarStore } from "@/store";
+import { cn } from "@/lib/utils";
 import { SidecarToolbar } from "./SidecarToolbar";
 import { SidecarLaunchpad } from "./SidecarLaunchpad";
 import { SIDECAR_MIN_WIDTH, SIDECAR_MAX_WIDTH } from "@shared/types";
@@ -231,6 +232,8 @@ export function SidecarDock() {
     }
   }, [activeTabId]);
 
+  const RESIZE_STEP = 10;
+
   const handleResizeStart = useCallback(
     (e: React.MouseEvent) => {
       e.preventDefault();
@@ -264,6 +267,21 @@ export function SidecarDock() {
     [width, setWidth]
   );
 
+  const handleKeyDown = useCallback(
+    (e: React.KeyboardEvent) => {
+      if (e.key === "ArrowLeft") {
+        e.preventDefault();
+        const newWidth = Math.min(width + RESIZE_STEP, SIDECAR_MAX_WIDTH);
+        setWidth(newWidth);
+      } else if (e.key === "ArrowRight") {
+        e.preventDefault();
+        const newWidth = Math.max(width - RESIZE_STEP, SIDECAR_MIN_WIDTH);
+        setWidth(newWidth);
+      }
+    },
+    [width, setWidth]
+  );
+
   useEffect(() => {
     return () => {
       setIsResizing(false);
@@ -273,9 +291,30 @@ export function SidecarDock() {
   return (
     <div className="flex flex-col h-full bg-zinc-900 relative" style={{ width }}>
       <div
-        className={`absolute left-0 top-0 bottom-0 w-1 cursor-ew-resize hover:bg-blue-500/50 transition-colors ${isResizing ? "bg-blue-500" : ""}`}
+        role="separator"
+        aria-label="Resize sidecar panel"
+        aria-orientation="vertical"
+        aria-valuenow={Math.round(width)}
+        aria-valuemin={SIDECAR_MIN_WIDTH}
+        aria-valuemax={SIDECAR_MAX_WIDTH}
+        tabIndex={0}
+        className={cn(
+          "group absolute left-0 top-0 bottom-0 w-1.5 cursor-ew-resize flex items-center justify-center",
+          "hover:bg-canopy-accent/30 transition-colors focus:outline-none focus:bg-canopy-accent/50",
+          isResizing && "bg-canopy-accent/50"
+        )}
         onMouseDown={handleResizeStart}
-      />
+        onKeyDown={handleKeyDown}
+      >
+        <div
+          className={cn(
+            "w-0.5 h-8 rounded-full transition-colors",
+            "bg-canopy-text/20",
+            "group-hover:bg-canopy-accent/70 group-focus:bg-canopy-accent",
+            isResizing && "bg-canopy-accent"
+          )}
+        />
+      </div>
       <SidecarToolbar
         tabs={tabs}
         activeTabId={activeTabId}
