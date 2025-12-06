@@ -49,7 +49,7 @@ export function TrashContainer({ trashedTerminals }: TrashContainerProps) {
         id={contentId}
         role="dialog"
         aria-label="Recently closed terminals"
-        className="w-80 p-0 border-white/20 bg-[#1a1a1a] shadow-2xl"
+        className="w-80 p-0 border-white/20 bg-canopy-sidebar shadow-2xl"
         side="top"
         align="end"
         sideOffset={8}

@@ -207,11 +207,11 @@
   }
 
   .xterm-viewport::-webkit-scrollbar-track {
-    background: #18181b; /* Match terminal bg - Zinc-950 */
+    background: var(--color-canopy-bg);
   }
 
   .xterm-viewport::-webkit-scrollbar-thumb {
-    background: #52525b; /* Zinc-600: Improved contrast */
+    background: var(--color-state-idle);
     border-radius: 4px;
   }
 

@@ -37,7 +37,7 @@ function Toast({ notification }: { notification: Notification }) {
   return (
     <div
       className={cn(
-        "pointer-events-auto flex w-full max-w-sm gap-2 rounded border p-3 transition-opacity duration-150 ease-out bg-[#1e1e1e]/90",
+        "pointer-events-auto flex w-full max-w-sm gap-2 rounded border p-3 transition-opacity duration-150 ease-out bg-surface/90",
         isVisible ? "opacity-100" : "opacity-0",
         variantClass
       )}
