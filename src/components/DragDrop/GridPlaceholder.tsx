@@ -53,7 +53,7 @@ export function GridPlaceholder({ className }: GridPlaceholderProps) {
 
   // Fallback: render simple background if terminal data unavailable
   if (!activeTerminal) {
-    return <div className={cn("h-full rounded-lg bg-white/5", className)} />;
+    return <div className={cn("h-full rounded-lg bg-canopy-bg/50", className)} />;
   }
 
   const { title, type } = activeTerminal;

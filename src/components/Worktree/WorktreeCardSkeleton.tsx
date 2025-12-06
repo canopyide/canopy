@@ -5,7 +5,7 @@ export function WorktreeCardSkeleton() {
     <div
       className={cn(
         "border rounded-lg p-3 mb-2",
-        "border-transparent bg-white/5",
+        "border-transparent bg-canopy-bg/50",
         "motion-safe:animate-pulse motion-reduce:animate-none"
       )}
       role="status"

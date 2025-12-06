@@ -31,8 +31,8 @@ export function TrashContainer({ trashedTerminals }: TrashContainerProps) {
         <button
           className={cn(
             "flex items-center gap-2 px-3 py-1.5 rounded text-xs border transition-all",
-            "bg-white/5 border-white/10 text-white/60 hover:bg-white/10 hover:border-white/20",
-            isOpen && "bg-white/10 border-white/20 ring-1 ring-white/20"
+            "bg-canopy-bg/50 border-canopy-border text-canopy-text/60 hover:bg-canopy-border hover:border-canopy-border",
+            isOpen && "bg-canopy-border border-canopy-border ring-1 ring-canopy-accent/20"
           )}
           title="View recently closed terminals"
           aria-haspopup="dialog"
@@ -49,15 +49,15 @@ export function TrashContainer({ trashedTerminals }: TrashContainerProps) {
         id={contentId}
         role="dialog"
         aria-label="Recently closed terminals"
-        className="w-80 p-0 border-white/20 bg-canopy-sidebar shadow-2xl"
+        className="w-80 p-0 border-canopy-border bg-canopy-sidebar shadow-2xl"
         side="top"
         align="end"
         sideOffset={8}
       >
         <div className="flex flex-col">
-          <div className="px-3 py-2 border-b border-white/10 bg-white/5 flex justify-between items-center">
-            <span className="text-xs font-medium text-white/70">Recently Closed</span>
-            <span className="text-[10px] text-white/40">Auto-clears</span>
+          <div className="px-3 py-2 border-b border-canopy-border bg-canopy-bg/50 flex justify-between items-center">
+            <span className="text-xs font-medium text-canopy-text/70">Recently Closed</span>
+            <span className="text-[10px] text-canopy-text/40">Auto-clears</span>
           </div>
 
           <div className="p-2 flex flex-col gap-1 max-h-[300px] overflow-y-auto">

@@ -78,12 +78,12 @@ export function TrashBinItem({ terminal, trashedInfo }: TrashBinItemProps) {
   const terminalName = terminal.title || terminal.type || "Terminal";
 
   return (
-    <div className="flex items-center gap-2 p-2 rounded bg-white/5 hover:bg-white/10 transition-colors group">
-      <div className="shrink-0 text-white/60">{getTerminalIcon(terminal.type)}</div>
+    <div className="flex items-center gap-2 p-2 rounded bg-canopy-bg/50 hover:bg-canopy-border transition-colors group">
+      <div className="shrink-0 text-canopy-text/60">{getTerminalIcon(terminal.type)}</div>
 
       <div className="flex-1 min-w-0">
-        <div className="text-xs font-medium text-white/90 truncate">{terminalName}</div>
-        <div className="text-[10px] text-white/40" aria-live="polite">
+        <div className="text-xs font-medium text-canopy-text/90 truncate">{terminalName}</div>
+        <div className="text-[10px] text-canopy-text/40" aria-live="polite">
           {seconds}s remaining
         </div>
       </div>
