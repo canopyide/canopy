@@ -576,15 +576,120 @@ function parseCombo(combo: string): {
 
 class KeybindingService {
   private bindings: Map<string, KeybindingConfig> = new Map();
+  private overrides: Map<string, string[]> = new Map();
   private currentScope: KeyScope = "global";
   private pendingChord: string | null = null;
   private chordTimeout: NodeJS.Timeout | null = null;
   private readonly CHORD_TIMEOUT_MS = 1000;
+  private listeners: Array<() => void> = [];
 
   constructor() {
     DEFAULT_KEYBINDINGS.forEach((binding) => {
       this.bindings.set(binding.actionId, binding);
     });
+  }
+
+  async loadOverrides(): Promise<void> {
+    if (typeof window !== "undefined" && window.electron?.keybinding) {
+      const overrides = await window.electron.keybinding.getOverrides();
+      this.overrides.clear();
+      if (overrides && typeof overrides === "object") {
+        Object.entries(overrides).forEach(([actionId, combos]) => {
+          if (Array.isArray(combos)) {
+            this.overrides.set(actionId, combos);
+          }
+        });
+      }
+      this.notifyListeners();
+    }
+  }
+
+  async setOverride(actionId: string, combo: string[]): Promise<void> {
+    if (typeof window !== "undefined" && window.electron?.keybinding) {
+      await window.electron.keybinding.setOverride(
+        actionId as import("../../shared/types/keymap.js").KeyAction,
+        combo
+      );
+      this.overrides.set(actionId, combo);
+      this.notifyListeners();
+    }
+  }
+
+  async removeOverride(actionId: string): Promise<void> {
+    if (typeof window !== "undefined" && window.electron?.keybinding) {
+      await window.electron.keybinding.removeOverride(
+        actionId as import("../../shared/types/keymap.js").KeyAction
+      );
+      this.overrides.delete(actionId);
+      this.notifyListeners();
+    }
+  }
+
+  async resetAllOverrides(): Promise<void> {
+    if (typeof window !== "undefined" && window.electron?.keybinding) {
+      await window.electron.keybinding.resetAll();
+      this.overrides.clear();
+      this.notifyListeners();
+    }
+  }
+
+  hasOverride(actionId: string): boolean {
+    return this.overrides.has(actionId);
+  }
+
+  getOverride(actionId: string): string[] | undefined {
+    return this.overrides.get(actionId);
+  }
+
+  getDefaultCombo(actionId: string): string | undefined {
+    const defaultBinding = DEFAULT_KEYBINDINGS.find((b) => b.actionId === actionId);
+    return defaultBinding?.combo;
+  }
+
+  getEffectiveCombo(actionId: string): string | undefined {
+    const override = this.overrides.get(actionId);
+    if (override && override.length > 0) {
+      return override[0];
+    }
+    return this.getDefaultCombo(actionId);
+  }
+
+  findConflicts(combo: string, excludeActionId?: string): KeybindingConfig[] {
+    const conflicts: KeybindingConfig[] = [];
+    const normalizedCombo = combo.trim().toLowerCase();
+
+    for (const binding of this.bindings.values()) {
+      if (excludeActionId && binding.actionId === excludeActionId) continue;
+
+      const overrideCombos = this.overrides.get(binding.actionId) || [];
+      const allCombos = [...overrideCombos];
+
+      if (overrideCombos.length === 0) {
+        const defaultCombo = this.getDefaultCombo(binding.actionId);
+        if (defaultCombo) {
+          allCombos.push(defaultCombo);
+        }
+      }
+
+      for (const existingCombo of allCombos) {
+        if (existingCombo.trim().toLowerCase() === normalizedCombo) {
+          conflicts.push(binding);
+          break;
+        }
+      }
+    }
+    return conflicts;
+  }
+
+  subscribe(listener: () => void): () => void {
+    this.listeners.push(listener);
+    return () => {
+      this.listeners = this.listeners.filter((l) => l !== listener);
+    };
+  }
+
+  private notifyListeners(): void {
+    this.listeners.forEach((listener) => listener());
   }
 
   setScope(scope: KeyScope): void {
@@ -701,15 +806,18 @@ class KeybindingService {
     for (const binding of this.bindings.values()) {
       if (!this.canExecute(binding.actionId)) continue;
 
+      const effectiveCombo = this.getEffectiveCombo(binding.actionId);
+      if (!effectiveCombo) continue;
+
       // Check if this is a chord binding
-      const chordParts = binding.combo.split(" ");
+      const chordParts = effectiveCombo.split(" ");
       const isChord = chordParts.length > 1;
 
       if (isChord) {
         // If we have a pending chord, check if this completes it
         if (this.pendingChord) {
           const fullChord = `${this.pendingChord} ${currentCombo}`;
-          if (fullChord === binding.combo) {
+          if (fullChord === effectiveCombo) {
             if (binding.priority > bestPriority) {
               bestMatch = binding;
               bestPriority = binding.priority;
@@ -723,7 +831,7 @@ class KeybindingService {
         }
       } else {
         // Regular non-chord binding
-        if (this.matchesEvent(event, binding.combo)) {
+        if (this.matchesEvent(event, effectiveCombo)) {
           if (binding.priority > bestPriority) {
             bestMatch = binding;
             bestPriority = binding.priority;
@@ -755,15 +863,19 @@ class KeybindingService {
   }
 
   getDisplayCombo(actionId: string): string {
-    const binding = this.bindings.get(actionId);
-    if (!binding) return "";
+    const effectiveCombo = this.getEffectiveCombo(actionId);
+    if (!effectiveCombo) return "";
 
+    return this.formatComboForDisplay(effectiveCombo);
+  }
+
+  formatComboForDisplay(combo: string): string {
     const isMac =
       typeof navigator !== "undefined" &&
       navigator.platform &&
       navigator.platform.toUpperCase().indexOf("MAC") >= 0;
 
-    let display = binding.combo;
+    let display = combo;
     if (isMac) {
       display = display.replace(/Cmd\+/gi, "⌘");
       display = display.replace(/Ctrl\+/gi, "⌃");
@@ -774,6 +886,23 @@ class KeybindingService {
     }
 
     return display;
+  }
+
+  getAllBindingsWithEffectiveCombos(): Array<KeybindingConfig & { effectiveCombo: string }> {
+    return Array.from(this.bindings.values()).map((binding) => ({
+      ...binding,
+      effectiveCombo: this.getEffectiveCombo(binding.actionId) || binding.combo,
+    }));
+  }
+
+  getCategories(): string[] {
+    const categories = new Set<string>();
+    for (const binding of this.bindings.values()) {
+      if (binding.category) {
+        categories.add(binding.category);
+      }
+    }
+    return Array.from(categories).sort();
   }
 }
 

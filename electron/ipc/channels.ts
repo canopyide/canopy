@@ -151,6 +151,11 @@ export const CHANNELS = {
   SYSTEM_SLEEP_GET_AWAKE_TIME: "system-sleep:get-awake-time",
   SYSTEM_SLEEP_RESET: "system-sleep:reset",
   SYSTEM_SLEEP_ON_WAKE: "system-sleep:on-wake",
+
+  KEYBINDING_GET_OVERRIDES: "keybinding:get-overrides",
+  KEYBINDING_SET_OVERRIDE: "keybinding:set-override",
+  KEYBINDING_REMOVE_OVERRIDE: "keybinding:remove-override",
+  KEYBINDING_RESET_ALL: "keybinding:reset-all",
 } as const;
 
 export type ChannelName = (typeof CHANNELS)[keyof typeof CHANNELS];

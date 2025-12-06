@@ -71,6 +71,9 @@ export interface StoreSchema {
     githubToken?: string;
   };
   agentSettings: AgentSettings;
+  keybindingOverrides: {
+    overrides: Record<string, string[]>;
+  };
 }
 
 export const store = new Store<StoreSchema>({
@@ -106,6 +109,9 @@ export const store = new Store<StoreSchema>({
     },
     userConfig: {},
     agentSettings: DEFAULT_AGENT_SETTINGS,
+    keybindingOverrides: {
+      overrides: {},
+    },
   },
   cwd: process.env.CANOPY_USER_DATA,
 });

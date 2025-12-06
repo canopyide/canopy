@@ -1,7 +1,7 @@
 import { useState, useEffect } from "react";
 import { useErrors, useOverlayState } from "@/hooks";
 import { useLogsStore, useSidecarStore } from "@/store";
-import { X, Bot, Github, LayoutGrid, PanelRight } from "lucide-react";
+import { X, Bot, Github, LayoutGrid, PanelRight, Keyboard } from "lucide-react";
 import { cn } from "@/lib/utils";
 import { appClient } from "@/clients";
 import { AgentSettings } from "./AgentSettings";
@@ -10,6 +10,7 @@ import { TerminalSettingsTab } from "./TerminalSettingsTab";
 import { GitHubSettingsTab } from "./GitHubSettingsTab";
 import { TroubleshootingTab } from "./TroubleshootingTab";
 import { SidecarSettingsTab } from "./SidecarSettingsTab";
+import { KeyboardShortcutsTab } from "./KeyboardShortcutsTab";
 
 interface SettingsDialogProps {
   isOpen: boolean;
@@ -18,7 +19,14 @@ interface SettingsDialogProps {
   onSettingsChange?: () => void;
 }
 
-type SettingsTab = "general" | "terminal" | "agents" | "github" | "sidecar" | "troubleshooting";
+type SettingsTab =
+  | "general"
+  | "keyboard"
+  | "terminal"
+  | "agents"
+  | "github"
+  | "sidecar"
+  | "troubleshooting";
 
 export function SettingsDialog({
   isOpen,
@@ -89,6 +97,18 @@ export function SettingsDialog({
             )}
           >
             General
+          </button>
+          <button
+            onClick={() => setActiveTab("keyboard")}
+            className={cn(
+              "text-left px-3 py-2 rounded-md text-sm transition-colors flex items-center gap-2",
+              activeTab === "keyboard"
+                ? "bg-canopy-accent/10 text-canopy-accent"
+                : "text-gray-400 hover:bg-canopy-border hover:text-canopy-text"
+            )}
+          >
+            <Keyboard className="w-4 h-4" />
+            Keyboard
           </button>
           <button
             onClick={() => setActiveTab("terminal")}
@@ -162,7 +182,9 @@ export function SettingsDialog({
                     ? "Terminal Grid"
                     : activeTab === "sidecar"
                       ? "Sidecar Links"
-                      : activeTab}
+                      : activeTab === "keyboard"
+                        ? "Keyboard Shortcuts"
+                        : activeTab}
             </h3>
             <button
               onClick={onClose}
@@ -176,6 +198,10 @@ export function SettingsDialog({
           <div className="p-6 overflow-y-auto flex-1">
             <div className={activeTab === "general" ? "" : "hidden"}>
               <GeneralTab appVersion={appVersion} />
+            </div>
+
+            <div className={activeTab === "keyboard" ? "" : "hidden"}>
+              <KeyboardShortcutsTab />
             </div>
 
             <div className={activeTab === "terminal" ? "" : "hidden"}>
