@@ -11,3 +11,4 @@ export type { ConfirmDialogProps } from "./ConfirmDialog";
 export { StateBadge } from "./StateBadge";
 export { ActivityBadge } from "./ActivityBadge";
 export type { ActivityStatus, ActivityType } from "./ActivityBadge";
+export { TerminalCountWarning, SOFT_TERMINAL_LIMIT } from "./TerminalCountWarning";

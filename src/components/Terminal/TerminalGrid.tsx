@@ -10,6 +10,7 @@ import {
   type TerminalInstance,
 } from "@/store";
 import { TerminalPane } from "./TerminalPane";
+import { TerminalCountWarning } from "./TerminalCountWarning";
 import { ErrorBoundary } from "@/components/ErrorBoundary";
 import {
   SortableTerminal,
@@ -362,99 +363,101 @@ export function TerminalGrid({ className, defaultCwd, onLaunchAgent }: TerminalG
   const isEmpty = gridTerminals.length === 0;
 
   return (
-    <SortableContext id="grid-container" items={terminalIds} strategy={rectSortingStrategy}>
-      <div
-        ref={setNodeRef}
-        className={cn(
-          "h-full bg-noise p-1",
-          isOver && "ring-2 ring-canopy-accent/30 ring-inset",
-          className
-        )}
-        style={{
-          display: "grid",
-          gridTemplateColumns: `repeat(${gridCols}, 1fr)`,
-          gridAutoRows: "1fr",
-          gap: "4px",
-          backgroundColor: "var(--color-grid-bg)",
-        }}
-        role="grid"
-      >
-        {isEmpty && !showPlaceholder ? (
-          <div className="col-span-full row-span-full">
-            <EmptyState onLaunchAgent={handleLaunchAgent} hasActiveWorktree={hasActiveWorktree} />
-          </div>
-        ) : (
-          <>
-            {/* Render placeholder at the correct position when dragging from dock */}
-            {gridTerminals.map((terminal, index) => {
-              const isTerminalInTrash = isInTrash(terminal.id);
-              const elements: React.ReactNode[] = [];
+    <div className={cn("h-full flex flex-col", className)}>
+      <TerminalCountWarning className="mx-1 mt-1 shrink-0" />
+      <SortableContext id="grid-container" items={terminalIds} strategy={rectSortingStrategy}>
+        <div
+          ref={setNodeRef}
+          className={cn(
+            "flex-1 min-h-0 bg-noise p-1",
+            isOver && "ring-2 ring-canopy-accent/30 ring-inset"
+          )}
+          style={{
+            display: "grid",
+            gridTemplateColumns: `repeat(${gridCols}, 1fr)`,
+            gridAutoRows: "1fr",
+            gap: "4px",
+            backgroundColor: "var(--color-grid-bg)",
+          }}
+          role="grid"
+        >
+          {isEmpty && !showPlaceholder ? (
+            <div className="col-span-full row-span-full">
+              <EmptyState onLaunchAgent={handleLaunchAgent} hasActiveWorktree={hasActiveWorktree} />
+            </div>
+          ) : (
+            <>
+              {/* Render placeholder at the correct position when dragging from dock */}
+              {gridTerminals.map((terminal, index) => {
+                const isTerminalInTrash = isInTrash(terminal.id);
+                const elements: React.ReactNode[] = [];
 
-              // Insert placeholder before this terminal if needed
-              if (showPlaceholder && placeholderIndex === index) {
-                elements.push(<GridPlaceholder key={GRID_PLACEHOLDER_ID} />);
-              }
+                // Insert placeholder before this terminal if needed
+                if (showPlaceholder && placeholderIndex === index) {
+                  elements.push(<GridPlaceholder key={GRID_PLACEHOLDER_ID} />);
+                }
 
-              elements.push(
-                <SortableTerminal
-                  key={terminal.id}
-                  terminal={terminal}
-                  sourceLocation="grid"
-                  sourceIndex={index}
-                  disabled={isTerminalInTrash}
-                >
-                  <ErrorBoundary
-                    variant="component"
-                    componentName="TerminalPane"
-                    resetKeys={[terminal.id, terminal.worktreeId, terminal.agentState].filter(
-                      (key): key is string => key !== undefined
-                    )}
-                    context={{ terminalId: terminal.id, worktreeId: terminal.worktreeId }}
+                elements.push(
+                  <SortableTerminal
+                    key={terminal.id}
+                    terminal={terminal}
+                    sourceLocation="grid"
+                    sourceIndex={index}
+                    disabled={isTerminalInTrash}
                   >
-                    <TerminalPane
-                      id={terminal.id}
-                      title={terminal.title}
-                      type={terminal.type}
-                      worktreeId={terminal.worktreeId}
-                      cwd={terminal.cwd}
-                      isFocused={terminal.id === focusedId}
-                      isMaximized={false}
-                      agentState={terminal.agentState}
-                      activity={
-                        terminal.activityHeadline
-                          ? {
-                              headline: terminal.activityHeadline,
-                              status: terminal.activityStatus ?? "working",
-                              type: terminal.activityType ?? "interactive",
-                            }
-                          : null
-                      }
-                      location="grid"
-                      restartKey={terminal.restartKey}
-                      onFocus={() => setFocused(terminal.id)}
-                      onClose={(force) =>
-                        force ? removeTerminal(terminal.id) : trashTerminal(terminal.id)
-                      }
-                      onToggleMaximize={() => toggleMaximize(terminal.id)}
-                      onTitleChange={(newTitle) => updateTitle(terminal.id, newTitle)}
-                      onMinimize={() => moveTerminalToDock(terminal.id)}
-                    />
-                  </ErrorBoundary>
-                </SortableTerminal>
-              );
+                    <ErrorBoundary
+                      variant="component"
+                      componentName="TerminalPane"
+                      resetKeys={[terminal.id, terminal.worktreeId, terminal.agentState].filter(
+                        (key): key is string => key !== undefined
+                      )}
+                      context={{ terminalId: terminal.id, worktreeId: terminal.worktreeId }}
+                    >
+                      <TerminalPane
+                        id={terminal.id}
+                        title={terminal.title}
+                        type={terminal.type}
+                        worktreeId={terminal.worktreeId}
+                        cwd={terminal.cwd}
+                        isFocused={terminal.id === focusedId}
+                        isMaximized={false}
+                        agentState={terminal.agentState}
+                        activity={
+                          terminal.activityHeadline
+                            ? {
+                                headline: terminal.activityHeadline,
+                                status: terminal.activityStatus ?? "working",
+                                type: terminal.activityType ?? "interactive",
+                              }
+                            : null
+                        }
+                        location="grid"
+                        restartKey={terminal.restartKey}
+                        onFocus={() => setFocused(terminal.id)}
+                        onClose={(force) =>
+                          force ? removeTerminal(terminal.id) : trashTerminal(terminal.id)
+                        }
+                        onToggleMaximize={() => toggleMaximize(terminal.id)}
+                        onTitleChange={(newTitle) => updateTitle(terminal.id, newTitle)}
+                        onMinimize={() => moveTerminalToDock(terminal.id)}
+                      />
+                    </ErrorBoundary>
+                  </SortableTerminal>
+                );
 
-              return elements;
-            })}
-            {/* Placeholder at end if dropping after all terminals (also handles empty grid) */}
-            {showPlaceholder &&
-              placeholderIndex !== null &&
-              placeholderIndex >= gridTerminals.length && (
-                <GridPlaceholder key={GRID_PLACEHOLDER_ID} />
-              )}
-          </>
-        )}
-      </div>
-    </SortableContext>
+                return elements;
+              })}
+              {/* Placeholder at end if dropping after all terminals (also handles empty grid) */}
+              {showPlaceholder &&
+                placeholderIndex !== null &&
+                placeholderIndex >= gridTerminals.length && (
+                  <GridPlaceholder key={GRID_PLACEHOLDER_ID} />
+                )}
+            </>
+          )}
+        </div>
+      </SortableContext>
+    </div>
   );
 }
 

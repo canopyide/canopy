@@ -156,13 +156,15 @@ export class PacketFramer {
 
   /**
    * Create a framed packet for a terminal.
+   * Accepts both string and Uint8Array for future compatibility with binary output.
+   *
    * @param id Terminal ID (max 255 bytes when encoded)
-   * @param data Terminal output data
+   * @param data Terminal output data (string from node-pty or binary)
    * @returns Framed packet as Uint8Array, or null if ID is too long or data exceeds max size
    */
-  frame(id: string, data: string): Uint8Array | null {
+  frame(id: string, data: string | Uint8Array): Uint8Array | null {
     const idBytes = this.encoder.encode(id);
-    const dataBytes = this.encoder.encode(data);
+    const dataBytes = typeof data === "string" ? this.encoder.encode(data) : data;
 
     if (idBytes.length > 255) {
       console.warn(`[PacketFramer] Terminal ID too long: ${idBytes.length} bytes`);
