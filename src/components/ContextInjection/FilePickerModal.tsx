@@ -122,7 +122,9 @@ export function FilePickerModal({ isOpen, worktreeId, onConfirm, onCancel }: Fil
 
         <div className="flex-1 overflow-y-auto px-6 py-4">
           {loading && (
-            <div className="flex items-center justify-center py-8 text-muted-foreground">Loading...</div>
+            <div className="flex items-center justify-center py-8 text-muted-foreground">
+              Loading...
+            </div>
           )}
           {error && <div className="text-[var(--color-status-error)] py-4">Error: {error}</div>}
           {!loading && !error && nodes.length === 0 && (
@@ -280,7 +282,9 @@ function FileTreeNode({
         <span className="flex-1 text-sm text-canopy-text truncate">{node.name}</span>
 
         {!node.isDirectory && node.size !== undefined && (
-          <span className="flex-shrink-0 text-xs text-muted-foreground">{formatBytes(node.size)}</span>
+          <span className="flex-shrink-0 text-xs text-muted-foreground">
+            {formatBytes(node.size)}
+          </span>
         )}
       </div>
 

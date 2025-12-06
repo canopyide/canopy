@@ -2,10 +2,7 @@ import { useEffect, useState, useCallback } from "react";
 import { createPortal } from "react-dom";
 import { X, CheckCircle2, XCircle, Info, AlertTriangle } from "lucide-react";
 import { cn } from "@/lib/utils";
-import {
-  useNotificationStore,
-  type Notification,
-} from "@/store/notificationStore";
+import { useNotificationStore, type Notification } from "@/store/notificationStore";
 
 const STATUS_CONFIG = {
   success: {
@@ -35,9 +32,7 @@ const STATUS_CONFIG = {
 };
 
 function Toast({ notification }: { notification: Notification }) {
-  const removeNotification = useNotificationStore(
-    (state) => state.removeNotification
-  );
+  const removeNotification = useNotificationStore((state) => state.removeNotification);
   const [isVisible, setIsVisible] = useState(false);
   const [isPaused, setIsPaused] = useState(false);
 
