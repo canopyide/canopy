@@ -9,6 +9,8 @@ import type { GitService } from "./GitService.js";
 import type { WorktreeService } from "./WorktreeService.js";
 import { AdaptivePollingStrategy, NoteFileReader } from "./worktree/index.js";
 
+const VERBOSE_WORKTREE_LOGS = process.env.CANOPY_DEBUG_WORKTREE === "1";
+
 export interface WorktreeState extends Worktree {
   worktreeId: string;
   worktreeChanges: WorktreeChanges | null;
@@ -119,11 +121,13 @@ export class WorktreeMonitor {
         this.emitUpdate();
       }
     } catch (error) {
-      logDebug("Failed to extract issue number from branch", {
-        branch: branchName,
-        folder: folderName,
-        error: (error as Error).message,
-      });
+      if (VERBOSE_WORKTREE_LOGS) {
+        logDebug("Failed to extract issue number from branch", {
+          branch: branchName,
+          folder: folderName,
+          error: (error as Error).message,
+        });
+      }
     }
   }
 
@@ -420,11 +424,13 @@ export class WorktreeMonitor {
 
     const nextInterval = this.pollingStrategy.calculateNextInterval();
 
-    logDebug("Scheduling next poll", {
-      id: this.id,
-      nextInterval,
-      ...this.pollingStrategy.getMetrics(),
-    });
+    if (VERBOSE_WORKTREE_LOGS) {
+      logDebug("Scheduling next poll", {
+        id: this.id,
+        nextInterval,
+        ...this.pollingStrategy.getMetrics(),
+      });
+    }
 
     this.pollingTimer = setTimeout(() => {
       this.pollingTimer = null;
@@ -444,10 +450,12 @@ export class WorktreeMonitor {
         await this.updateGitStatus();
         this.pollingStrategy.recordSuccess(Date.now() - startTime);
 
-        logDebug("Poll completed successfully", {
-          id: this.id,
-          duration: Date.now() - startTime,
-        });
+        if (VERBOSE_WORKTREE_LOGS) {
+          logDebug("Poll completed successfully", {
+            id: this.id,
+            duration: Date.now() - startTime,
+          });
+        }
       } catch (error) {
         const tripped = this.pollingStrategy.recordFailure(Date.now() - startTime);
 
@@ -518,7 +526,9 @@ export class WorktreeMonitor {
       clearTimeout(this.resumeTimer);
       this.resumeTimer = null;
     }
-    logDebug("WorktreeMonitor paused", { id: this.id });
+    if (VERBOSE_WORKTREE_LOGS) {
+      logDebug("WorktreeMonitor paused", { id: this.id });
+    }
   }
 
   /** Resume polling (used after system wake) */
@@ -536,10 +546,12 @@ export class WorktreeMonitor {
       // All worktrees waking at once can freeze the UI with disk I/O
       const jitter = Math.random() * 2000;
 
-      logDebug("WorktreeMonitor resuming with jitter", {
-        id: this.id,
-        jitterMs: Math.round(jitter),
-      });
+      if (VERBOSE_WORKTREE_LOGS) {
+        logDebug("WorktreeMonitor resuming with jitter", {
+          id: this.id,
+          jitterMs: Math.round(jitter),
+        });
+      }
 
       this.resumeTimer = setTimeout(() => {
         this.resumeTimer = null;
@@ -548,7 +560,7 @@ export class WorktreeMonitor {
           this.scheduleNextPoll();
         }
       }, jitter);
-    } else {
+    } else if (VERBOSE_WORKTREE_LOGS) {
       logDebug("WorktreeMonitor resumed", { id: this.id });
     }
   }
@@ -563,13 +575,15 @@ export class WorktreeMonitor {
   private emitUpdate(): void {
     const state = this.getState();
     const payload = { ...state, timestamp: Date.now() };
-    logDebug("emitUpdate called", {
-      id: this.id,
-      summary: state.summary ? `${state.summary.substring(0, 50)}...` : undefined,
-      modifiedCount: state.modifiedCount,
-      mood: state.mood,
-      stack: new Error().stack?.split("\n").slice(2, 5).join(" <-\n"),
-    });
+    if (VERBOSE_WORKTREE_LOGS) {
+      logDebug("emitUpdate called", {
+        id: this.id,
+        summary: state.summary ? `${state.summary.substring(0, 50)}...` : undefined,
+        modifiedCount: state.modifiedCount,
+        mood: state.mood,
+        stack: new Error().stack?.split("\n").slice(2, 5).join(" <-\n"),
+      });
+    }
     events.emit("sys:worktree:update", payload);
   }
 }
