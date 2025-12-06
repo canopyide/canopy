@@ -72,7 +72,7 @@ export function TerminalListItem({
       id={id}
       type="button"
       className={cn(
-        "w-full flex items-center gap-3 px-3 py-2 rounded-md text-left",
+        "w-full flex items-center gap-3 px-3 py-2 rounded-[var(--radius-md)] text-left",
         "transition-colors duration-100",
         isSelected
           ? "bg-canopy-accent/20 border border-canopy-accent"
@@ -92,7 +92,7 @@ export function TerminalListItem({
           <span className="text-sm font-medium text-canopy-text truncate">{title}</span>
 
           {worktreeName && (
-            <span className="shrink-0 px-1.5 py-0.5 text-xs rounded bg-canopy-accent/10 text-canopy-accent border border-canopy-accent/30">
+            <span className="shrink-0 px-1.5 py-0.5 text-xs rounded-[var(--radius-sm)] bg-canopy-accent/10 text-canopy-accent border border-canopy-accent/30">
               {worktreeName}
             </span>
           )}

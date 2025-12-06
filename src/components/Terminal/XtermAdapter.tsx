@@ -347,7 +347,7 @@ function XtermAdapterComponent({
       ref={containerRef}
       className={cn(
         // pl-2 pt-2 pb-4: left/top padding for FitAddon measurement; pb-4 prevents text from touching bottom edge
-        "w-full h-full bg-canopy-bg text-white overflow-hidden rounded-b-lg pl-2 pt-2 pb-4",
+        "w-full h-full bg-canopy-bg text-white overflow-hidden rounded-b-[var(--radius-lg)] pl-2 pt-2 pb-4",
         className
       )}
       style={{
