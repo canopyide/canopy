@@ -23,7 +23,7 @@ const STATE_CONFIG: Record<
     color: "status-working",
     pulse: false,
     label: "working",
-    tooltip: "Agent is processing",
+    tooltip: "Agent is working on your request",
   },
   waiting: {
     icon: "?",
@@ -31,14 +31,14 @@ const STATE_CONFIG: Record<
     bgColor: "bg-[var(--color-state-waiting)]",
     pulse: false,
     label: "waiting",
-    tooltip: "Agent is waiting for input",
+    tooltip: "Agent is waiting for your direction",
   },
   completed: {
     icon: "✓",
     color: "text-[var(--color-status-success)]",
     pulse: false,
     label: "completed",
-    tooltip: "Agent completed successfully",
+    tooltip: "Agent finished this task",
   },
   failed: {
     icon: "✗",
@@ -46,7 +46,7 @@ const STATE_CONFIG: Record<
     borderColor: "border-[var(--color-status-error)]",
     pulse: false,
     label: "failed",
-    tooltip: "Agent encountered an error",
+    tooltip: "Agent ran into an issue",
   },
 };
 
