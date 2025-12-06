@@ -202,7 +202,7 @@ export function DiagnosticsDock({ onRetry, className }: DiagnosticsDockProps) {
         />
       </div>
 
-      <div className="flex items-center justify-between px-4 h-10 border-b border-canopy-border bg-canopy-sidebar shrink-0">
+      <div className="flex items-center justify-between px-4 h-9 border-b border-canopy-border bg-canopy-sidebar shrink-0">
         <div className="flex items-center gap-2" role="tablist" aria-label="Diagnostics tabs">
           {tabs.map((tab) => (
             <TabButton

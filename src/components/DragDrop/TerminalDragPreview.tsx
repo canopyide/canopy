@@ -18,7 +18,7 @@ export function TerminalDragPreview({ terminal }: TerminalDragPreviewProps) {
         height: 100,
         backgroundColor: "var(--color-canopy-bg)",
         border: "1px solid var(--color-canopy-border)",
-        borderRadius: 8,
+        borderRadius: "var(--radius-md)",
         boxShadow: "0 8px 24px rgba(0, 0, 0, 0.6)",
         overflow: "hidden",
         display: "flex",
@@ -91,7 +91,7 @@ export function TerminalDragPreview({ terminal }: TerminalDragPreviewProps) {
             height: 6,
             width: "70%",
             backgroundColor: "rgba(255, 255, 255, 0.06)",
-            borderRadius: 2,
+            borderRadius: "var(--radius-sm)",
           }}
         />
         <div
@@ -99,7 +99,7 @@ export function TerminalDragPreview({ terminal }: TerminalDragPreviewProps) {
             height: 6,
             width: "50%",
             backgroundColor: "rgba(255, 255, 255, 0.06)",
-            borderRadius: 2,
+            borderRadius: "var(--radius-sm)",
           }}
         />
         <div
@@ -107,7 +107,7 @@ export function TerminalDragPreview({ terminal }: TerminalDragPreviewProps) {
             height: 6,
             width: "40%",
             backgroundColor: "rgba(255, 255, 255, 0.06)",
-            borderRadius: 2,
+            borderRadius: "var(--radius-sm)",
           }}
         />
       </div>
