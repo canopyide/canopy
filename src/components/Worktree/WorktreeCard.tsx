@@ -338,7 +338,8 @@ export function WorktreeCard({
         isActive ? "bg-white/[0.03]" : "hover:bg-white/[0.02] bg-transparent",
         isFocused && "bg-white/[0.04]",
         // Current worktree accent: persistent left border indicating "you are here"
-        worktree.isCurrent && "border-l-2 border-l-teal-500/50"
+        worktree.isCurrent && "border-l-2 border-l-teal-500/50",
+        "focus-visible:outline focus-visible:outline-2 focus-visible:outline-canopy-accent focus-visible:outline-offset-2"
       )}
       onClick={onSelect}
       onKeyDown={(e) => {
@@ -366,7 +367,7 @@ export function WorktreeCard({
             {hasExpandableContent && (
               <button
                 onClick={handleToggleExpand}
-                className="p-0.5 text-canopy-text/60 hover:text-canopy-text transition-colors"
+                className="p-0.5 text-canopy-text/60 hover:text-canopy-text transition-colors rounded focus-visible:outline focus-visible:outline-2 focus-visible:outline-canopy-accent"
                 aria-label={isExpanded ? "Collapse details" : "Expand details"}
                 aria-expanded={isExpanded}
                 aria-controls={detailsId}
@@ -422,7 +423,7 @@ export function WorktreeCard({
                   e.currentTarget.blur();
                   onCopyTree();
                 }}
-                className="p-1 text-canopy-text/60 hover:text-white hover:bg-white/10 rounded transition-colors"
+                className="p-1 text-canopy-text/60 hover:text-white hover:bg-white/10 rounded transition-colors focus-visible:outline focus-visible:outline-2 focus-visible:outline-canopy-accent"
                 title="Copy Context"
                 aria-label="Copy Context"
               >
@@ -433,7 +434,7 @@ export function WorktreeCard({
                 <DropdownMenuTrigger asChild>
                   <button
                     onClick={(e) => e.stopPropagation()}
-                    className="p-1 text-canopy-text/60 hover:text-white hover:bg-white/10 rounded transition-colors"
+                    className="p-1 text-canopy-text/60 hover:text-white hover:bg-white/10 rounded transition-colors focus-visible:outline focus-visible:outline-2 focus-visible:outline-canopy-accent"
                     aria-label="More actions"
                   >
                     <MoreHorizontal className="w-3.5 h-3.5" />
@@ -658,7 +659,8 @@ export function WorktreeCard({
                       className={cn(
                         "flex items-center gap-1 text-[10px] text-[var(--color-status-info)]",
                         "bg-blue-500/10 px-1.5 py-0.5 rounded border border-blue-500/20",
-                        "hover:bg-blue-500/20 transition-colors cursor-pointer"
+                        "hover:bg-blue-500/20 transition-colors cursor-pointer",
+                        "focus-visible:outline focus-visible:outline-2 focus-visible:outline-canopy-accent"
                       )}
                       title="Open Issue on GitHub"
                     >
@@ -676,6 +678,7 @@ export function WorktreeCard({
                         "flex items-center gap-1 text-[10px]",
                         "px-1.5 py-0.5 rounded border",
                         "hover:brightness-125 transition-colors cursor-pointer",
+                        "focus-visible:outline focus-visible:outline-2 focus-visible:outline-canopy-accent",
                         // Color based on PR state (open=green, merged=purple, closed=red)
                         worktree.prState === "merged"
                           ? "text-purple-400 bg-purple-500/10 border-purple-500/20"

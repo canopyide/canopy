@@ -91,6 +91,7 @@ export function SettingsDialog({
             onClick={() => setActiveTab("general")}
             className={cn(
               "text-left px-3 py-2 rounded-[var(--radius-md)] text-sm transition-colors",
+              "focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-canopy-accent focus-visible:ring-offset-2 focus-visible:ring-offset-canopy-bg",
               activeTab === "general"
                 ? "bg-canopy-accent/10 text-canopy-accent"
                 : "text-canopy-text/60 hover:bg-canopy-border hover:text-canopy-text"
@@ -102,6 +103,7 @@ export function SettingsDialog({
             onClick={() => setActiveTab("keyboard")}
             className={cn(
               "text-left px-3 py-2 rounded-[var(--radius-md)] text-sm transition-colors flex items-center gap-2",
+              "focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-canopy-accent focus-visible:ring-offset-2 focus-visible:ring-offset-canopy-bg",
               activeTab === "keyboard"
                 ? "bg-canopy-accent/10 text-canopy-accent"
                 : "text-canopy-text/60 hover:bg-canopy-border hover:text-canopy-text"
@@ -114,6 +116,7 @@ export function SettingsDialog({
             onClick={() => setActiveTab("terminal")}
             className={cn(
               "text-left px-3 py-2 rounded-[var(--radius-md)] text-sm transition-colors flex items-center gap-2",
+              "focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-canopy-accent focus-visible:ring-offset-2 focus-visible:ring-offset-canopy-bg",
               activeTab === "terminal"
                 ? "bg-canopy-accent/10 text-canopy-accent"
                 : "text-canopy-text/60 hover:bg-canopy-border hover:text-canopy-text"
@@ -126,6 +129,7 @@ export function SettingsDialog({
             onClick={() => setActiveTab("agents")}
             className={cn(
               "text-left px-3 py-2 rounded-[var(--radius-md)] text-sm transition-colors flex items-center gap-2",
+              "focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-canopy-accent focus-visible:ring-offset-2 focus-visible:ring-offset-canopy-bg",
               activeTab === "agents"
                 ? "bg-canopy-accent/10 text-canopy-accent"
                 : "text-canopy-text/60 hover:bg-canopy-border hover:text-canopy-text"
@@ -138,6 +142,7 @@ export function SettingsDialog({
             onClick={() => setActiveTab("github")}
             className={cn(
               "text-left px-3 py-2 rounded-[var(--radius-md)] text-sm transition-colors flex items-center gap-2",
+              "focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-canopy-accent focus-visible:ring-offset-2 focus-visible:ring-offset-canopy-bg",
               activeTab === "github"
                 ? "bg-canopy-accent/10 text-canopy-accent"
                 : "text-canopy-text/60 hover:bg-canopy-border hover:text-canopy-text"
@@ -150,6 +155,7 @@ export function SettingsDialog({
             onClick={() => setActiveTab("sidecar")}
             className={cn(
               "text-left px-3 py-2 rounded-[var(--radius-md)] text-sm transition-colors flex items-center gap-2",
+              "focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-canopy-accent focus-visible:ring-offset-2 focus-visible:ring-offset-canopy-bg",
               activeTab === "sidecar"
                 ? "bg-canopy-accent/10 text-canopy-accent"
                 : "text-canopy-text/60 hover:bg-canopy-border hover:text-canopy-text"
@@ -162,6 +168,7 @@ export function SettingsDialog({
             onClick={() => setActiveTab("troubleshooting")}
             className={cn(
               "text-left px-3 py-2 rounded-[var(--radius-md)] text-sm transition-colors",
+              "focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-canopy-accent focus-visible:ring-offset-2 focus-visible:ring-offset-canopy-bg",
               activeTab === "troubleshooting"
                 ? "bg-canopy-accent/10 text-canopy-accent"
                 : "text-canopy-text/60 hover:bg-canopy-border hover:text-canopy-text"
@@ -188,7 +195,7 @@ export function SettingsDialog({
             </h3>
             <button
               onClick={onClose}
-              className="text-canopy-text/60 hover:text-canopy-text transition-colors"
+              className="text-canopy-text/60 hover:text-canopy-text transition-colors p-1 rounded focus-visible:outline focus-visible:outline-2 focus-visible:outline-canopy-accent"
               aria-label="Close settings"
             >
               <X className="h-5 w-5" />
