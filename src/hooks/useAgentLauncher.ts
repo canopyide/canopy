@@ -43,6 +43,8 @@ export interface LaunchAgentOptions {
   location?: AddTerminalOptions["location"];
   /** Override working directory */
   cwd?: string;
+  /** Override worktree ID (derives cwd from worktree if provided) */
+  worktreeId?: string;
 }
 
 export interface UseAgentLauncherReturn {
@@ -153,9 +155,19 @@ export function useAgentLauncher(): UseAgentLauncherReturn {
 
       const config = AGENT_CONFIGS[type];
 
-      const activeWorktree = activeId ? worktreeMap.get(activeId) : null;
-      // Pass project root if no worktree; Main process handles HOME fallback as last resort
-      const cwd = launchOptions?.cwd ?? activeWorktree?.path ?? currentProject?.path ?? "";
+      // Determine target worktree: explicit override, or active worktree
+      const targetWorktreeId = launchOptions?.worktreeId ?? activeId;
+      const targetWorktree = targetWorktreeId ? worktreeMap.get(targetWorktreeId) : null;
+
+      // If worktreeId was explicitly provided but doesn't exist, fail early
+      if (launchOptions?.worktreeId && !targetWorktree) {
+        console.warn(`Worktree ${launchOptions.worktreeId} not found, cannot launch agent`);
+        return null;
+      }
+
+      // Determine cwd: explicit override, target worktree path, project root, or empty
+      const cwd =
+        launchOptions?.cwd ?? targetWorktree?.path ?? currentProject?.path ?? "";
 
       let command = config.command;
       if (command && agentSettings) {
@@ -182,7 +194,7 @@ export function useAgentLauncher(): UseAgentLauncherReturn {
         type: config.type,
         title: config.title,
         cwd,
-        worktreeId: activeId || undefined,
+        worktreeId: targetWorktreeId || undefined,
         command,
         location: launchOptions?.location,
       };
