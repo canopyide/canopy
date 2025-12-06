@@ -1,4 +1,5 @@
-import { useState, useEffect, useMemo } from "react";
+import { useMemo } from "react";
+import { useGlobalSecondTicker } from "@/hooks/useGlobalSecondTicker";
 
 interface LiveTimeAgoProps {
   timestamp?: number | null;
@@ -47,23 +48,12 @@ function formatTimeAgo(diffMs: number): { label: string; fullLabel: string } {
 }
 
 export function LiveTimeAgo({ timestamp, className }: LiveTimeAgoProps) {
-  const [tick, setTick] = useState(0);
-
-  useEffect(() => {
-    if (!timestamp) return;
-
-    const id = window.setInterval(() => {
-      setTick((t) => t + 1);
-    }, 1000);
-
-    return () => clearInterval(id);
-  }, [timestamp]);
+  const globalTick = useGlobalSecondTicker();
 
   const timeData = useMemo(() => {
-    // Include tick in calculation to ensure recalculation on interval
-    void tick;
+    void globalTick;
 
-    if (!timestamp) {
+    if (timestamp == null) {
       return null;
     }
 
@@ -72,7 +62,7 @@ export function LiveTimeAgo({ timestamp, className }: LiveTimeAgoProps) {
     const formattedDate = new Date(timestamp).toLocaleString();
 
     return { label, fullLabel, formattedDate };
-  }, [timestamp, tick]);
+  }, [timestamp, globalTick]);
 
   if (!timeData) {
     return null;

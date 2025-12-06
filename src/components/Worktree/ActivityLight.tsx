@@ -2,37 +2,36 @@ import { useState, useEffect } from "react";
 import { cn } from "@/lib/utils";
 import { getActivityColor } from "@/utils/colorInterpolation";
 import { formatTimestampExact } from "@/utils/textParsing";
+import { useGlobalSecondTicker } from "@/hooks/useGlobalSecondTicker";
 
 interface ActivityLightProps {
   lastActivityTimestamp?: number | null;
   className?: string;
 }
 
+const GRAY_COLOR = "#52525b";
+
 /**
  * Activity indicator that fades from green to gray over 90 seconds.
- * Updates every second to create smooth fade effect.
+ * Uses a shared global ticker for efficiency.
  */
 export function ActivityLight({ lastActivityTimestamp, className }: ActivityLightProps) {
+  const globalTick = useGlobalSecondTicker();
   const [color, setColor] = useState(() => getActivityColor(lastActivityTimestamp));
 
   useEffect(() => {
-    setColor(getActivityColor(lastActivityTimestamp));
-
     if (lastActivityTimestamp == null) {
+      setColor(GRAY_COLOR);
       return;
     }
 
-    const interval = setInterval(() => {
-      const newColor = getActivityColor(lastActivityTimestamp);
-      setColor(newColor);
+    const newColor = getActivityColor(lastActivityTimestamp);
+    setColor(newColor);
 
-      if (newColor === "#52525b") {
-        clearInterval(interval);
-      }
-    }, 1000);
-
-    return () => clearInterval(interval);
-  }, [lastActivityTimestamp]);
+    if (newColor === GRAY_COLOR) {
+      return;
+    }
+  }, [lastActivityTimestamp, globalTick]);
 
   const tooltipText = formatTimestampExact(lastActivityTimestamp);
 
