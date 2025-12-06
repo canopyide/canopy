@@ -430,40 +430,29 @@ class TerminalInstanceService {
       return existing;
     }
 
-    const terminal = new Terminal(options);
+    const openLink = (url: string) => {
+      let normalizedUrl = url;
+      if (!/^https?:\/\//i.test(url)) {
+        normalizedUrl = `https://${url}`;
+      }
+      console.log("[TerminalInstanceService] Opening external URL:", normalizedUrl);
+      systemClient.openExternal(normalizedUrl).catch((error) => {
+        console.error("[TerminalInstanceService] Failed to open URL:", error);
+      });
+    };
+
+    const terminal = new Terminal({
+      ...options,
+      linkHandler: {
+        activate: (_event, text) => openLink(text),
+      },
+    });
     const fitAddon = new FitAddon();
     const serializeAddon = new SerializeAddon();
     terminal.loadAddon(fitAddon);
     terminal.loadAddon(serializeAddon);
 
-    const webLinksAddon = new WebLinksAddon(
-      (event: MouseEvent, uri: string) => {
-        event.preventDefault();
-
-        // Normalize URLs without scheme to https://
-        let normalizedUri = uri;
-        if (!/^https?:\/\//i.test(uri)) {
-          normalizedUri = `https://${uri}`;
-        }
-
-        // Validate http/https only to prevent file:// or other protocols
-        if (!/^https?:\/\//i.test(normalizedUri)) {
-          console.warn(`[TerminalInstanceService] Blocked non-HTTP(S) URL: ${uri}`);
-          return;
-        }
-
-        // Open with error handling
-        systemClient.openExternal(normalizedUri).catch((error) => {
-          console.error(`[TerminalInstanceService] Failed to open URL "${normalizedUri}":`, error);
-        });
-      },
-      {
-        // Restrict to http/https URLs only.
-        // NOTE: Do not use 'g' or 'y' flags here as xterm.js internals may add them or fail on them.
-        urlRegex:
-          /https?:\/\/(?:www\.)?[-a-zA-Z0-9@:%._+~#=]{1,256}\.[a-zA-Z0-9()]{1,6}\b(?:[-a-zA-Z0-9()@:%_+.~#?&/=]*)/,
-      }
-    );
+    const webLinksAddon = new WebLinksAddon((_event, uri) => openLink(uri));
     terminal.loadAddon(webLinksAddon);
 
     const hostElement = document.createElement("div");

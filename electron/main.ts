@@ -15,6 +15,7 @@ import { CliAvailabilityService } from "./services/CliAvailabilityService.js";
 import { SidecarManager } from "./services/SidecarManager.js";
 import { createWindowWithState } from "./windowState.js";
 import { setLoggerWindow } from "./utils/logger.js";
+import { openExternalUrl } from "./utils/openExternal.js";
 import { EventBuffer } from "./services/EventBuffer.js";
 import { CHANNELS } from "./ipc/channels.js";
 import { createApplicationMenu } from "./menu.js";
@@ -170,6 +171,18 @@ async function createWindow(): Promise<void> {
   });
 
   console.log("[MAIN] Window created, loading content...");
+
+  mainWindow.webContents.setWindowOpenHandler(({ url }) => {
+    console.log("[MAIN] setWindowOpenHandler triggered with URL:", url);
+    if (url && (url.startsWith("http://") || url.startsWith("https://") || url.startsWith("mailto:"))) {
+      void openExternalUrl(url).catch((error) => {
+        console.error("[MAIN] Failed to open external URL:", error);
+      });
+    } else {
+      console.warn(`[MAIN] Blocked window.open for unsupported/empty URL: ${url}`);
+    }
+    return { action: "deny" };
+  });
 
   setLoggerWindow(mainWindow);
 

@@ -3,6 +3,7 @@ import path from "path";
 import os from "os";
 import { CHANNELS } from "../channels.js";
 import { sendToRenderer } from "../utils.js";
+import { openExternalUrl } from "../../utils/openExternal.js";
 import { projectStore } from "../../services/ProjectStore.js";
 import { runCommandDetector } from "../../services/RunCommandDetector.js";
 import type { HandlerDependencies } from "../types.js";
@@ -21,15 +22,12 @@ export function registerProjectHandlers(deps: HandlerDependencies): () => void {
     _event: Electron.IpcMainInvokeEvent,
     payload: SystemOpenExternalPayload
   ) => {
+    console.log("[IPC] system:open-external called with:", payload.url);
     try {
-      const url = new URL(payload.url);
-      const allowedProtocols = ["http:", "https:", "mailto:"];
-      if (!allowedProtocols.includes(url.protocol)) {
-        throw new Error(`Protocol ${url.protocol} is not allowed`);
-      }
-      await shell.openExternal(payload.url);
+      await openExternalUrl(payload.url);
+      console.log("[IPC] system:open-external completed successfully");
     } catch (error) {
-      console.error("Failed to open external URL:", error);
+      console.error("[IPC] Failed to open external URL:", error);
       throw error;
     }
   };
