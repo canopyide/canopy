@@ -28,6 +28,7 @@ import type { CliAvailability, AgentSettings } from "@shared/types";
 interface ToolbarProps {
   onLaunchAgent: (type: "claude" | "gemini" | "codex" | "shell") => void;
   onSettings: () => void;
+  onOpenAgentSettings?: () => void;
   errorCount?: number;
   onToggleProblems?: () => void;
   isFocusMode?: boolean;
@@ -39,6 +40,7 @@ interface ToolbarProps {
 export function Toolbar({
   onLaunchAgent,
   onSettings,
+  onOpenAgentSettings,
   errorCount = 0,
   onToggleProblems,
   isFocusMode = false,
@@ -70,14 +72,20 @@ export function Toolbar({
       show: isEnabled,
       available: isAvailable ?? false,
       isLoading,
-      tooltip:
-        isLoading || isAvailable
+      tooltip: isLoading
+        ? `Checking ${agentNames[type]} CLI availability...`
+        : isAvailable
           ? type === "claude"
             ? "Start Claude — Opus 4.5 for deep work (Ctrl+Shift+C)"
             : type === "gemini"
               ? "Start Gemini — Auto-routing enabled (Ctrl+Shift+G)"
               : "Start Codex — GPT-5.1 Max (Ctrl+Shift+X)"
           : `${agentNames[type]} CLI not found. Click to install.`,
+      ariaLabel: isLoading
+        ? `Checking ${agentNames[type]} availability`
+        : isAvailable
+          ? `Start ${agentNames[type]} Agent`
+          : `${agentNames[type]} CLI not installed`,
     };
   };
 
@@ -108,14 +116,17 @@ export function Toolbar({
             <Button
               variant="ghost"
               size="icon"
-              onClick={() => (status.available ? onLaunchAgent("claude") : onSettings())}
+              onClick={() =>
+                status.available ? onLaunchAgent("claude") : (onOpenAgentSettings ?? onSettings)()
+              }
+              disabled={status.isLoading}
               className={cn(
                 "text-canopy-text hover:bg-canopy-border h-8 w-8 transition-colors",
                 status.available && "hover:text-canopy-accent focus-visible:text-canopy-accent",
                 !status.available && !status.isLoading && "opacity-60"
               )}
               title={status.tooltip}
-              aria-label={status.available ? "Start Claude Agent" : "Claude CLI not installed"}
+              aria-label={status.ariaLabel}
             >
               <div className="relative">
                 <ClaudeIcon className="h-4 w-4" brandColor={getBrandColorHex("claude")} />
@@ -133,14 +144,17 @@ export function Toolbar({
             <Button
               variant="ghost"
               size="icon"
-              onClick={() => (status.available ? onLaunchAgent("gemini") : onSettings())}
+              onClick={() =>
+                status.available ? onLaunchAgent("gemini") : (onOpenAgentSettings ?? onSettings)()
+              }
+              disabled={status.isLoading}
               className={cn(
                 "text-canopy-text hover:bg-canopy-border h-8 w-8 transition-colors",
                 status.available && "hover:text-canopy-accent focus-visible:text-canopy-accent",
                 !status.available && !status.isLoading && "opacity-60"
               )}
               title={status.tooltip}
-              aria-label={status.available ? "Start Gemini Agent" : "Gemini CLI not installed"}
+              aria-label={status.ariaLabel}
             >
               <div className="relative">
                 <GeminiIcon className="h-4 w-4" brandColor={getBrandColorHex("gemini")} />
@@ -158,14 +172,17 @@ export function Toolbar({
             <Button
               variant="ghost"
               size="icon"
-              onClick={() => (status.available ? onLaunchAgent("codex") : onSettings())}
+              onClick={() =>
+                status.available ? onLaunchAgent("codex") : (onOpenAgentSettings ?? onSettings)()
+              }
+              disabled={status.isLoading}
               className={cn(
                 "text-canopy-text hover:bg-canopy-border h-8 w-8 transition-colors",
                 status.available && "hover:text-canopy-accent focus-visible:text-canopy-accent",
                 !status.available && !status.isLoading && "opacity-60"
               )}
               title={status.tooltip}
-              aria-label={status.available ? "Start Codex Agent" : "Codex CLI not installed"}
+              aria-label={status.ariaLabel}
             >
               <div className="relative">
                 <CodexIcon className="h-4 w-4" brandColor={getBrandColorHex("codex")} />

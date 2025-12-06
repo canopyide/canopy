@@ -357,7 +357,9 @@ function App() {
   const removeError = useErrorStore((state) => state.removeError);
 
   const [isSettingsOpen, setIsSettingsOpen] = useState(false);
-  const [settingsTab, setSettingsTab] = useState<"general" | "troubleshooting">("general");
+  const [settingsTab, setSettingsTab] = useState<"general" | "agents" | "troubleshooting">(
+    "general"
+  );
   const [isShortcutsOpen, setIsShortcutsOpen] = useState(false);
   const [isStateLoaded, setIsStateLoaded] = useState(false);
 
@@ -430,6 +432,11 @@ function App() {
 
   const handleSettings = useCallback(() => {
     setSettingsTab("general");
+    setIsSettingsOpen(true);
+  }, []);
+
+  const handleOpenAgentSettings = useCallback(() => {
+    setSettingsTab("agents");
     setIsSettingsOpen(true);
   }, []);
 
@@ -793,6 +800,7 @@ function App() {
           sidebarContent={<SidebarContent />}
           onLaunchAgent={handleLaunchAgent}
           onSettings={handleSettings}
+          onOpenAgentSettings={handleOpenAgentSettings}
           onRetry={handleErrorRetry}
           agentAvailability={availability}
           agentSettings={agentSettings}
