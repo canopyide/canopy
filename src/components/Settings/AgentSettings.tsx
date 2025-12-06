@@ -507,7 +507,9 @@ export function AgentSettings({ onSettingsChange }: AgentSettingsProps) {
                   </button>
                   <div>
                     <span className="text-sm text-canopy-text">Enable Sandbox Mode</span>
-                    <p className="text-xs text-canopy-text/60">Run Gemini in a sandboxed environment</p>
+                    <p className="text-xs text-canopy-text/60">
+                      Run Gemini in a sandboxed environment
+                    </p>
                   </div>
                 </label>
 

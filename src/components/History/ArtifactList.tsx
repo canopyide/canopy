@@ -68,7 +68,9 @@ function ArtifactCard({ artifact, isExpanded, onToggle }: ArtifactCardProps) {
           )}
         </div>
         <div className="flex items-center gap-2">
-          <span className="text-xs text-canopy-text/60">{artifact.content.split("\n").length} lines</span>
+          <span className="text-xs text-canopy-text/60">
+            {artifact.content.split("\n").length} lines
+          </span>
           <span className="text-canopy-text/60">{isExpanded ? "−" : "+"}</span>
         </div>
       </button>

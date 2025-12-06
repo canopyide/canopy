@@ -9,7 +9,15 @@ import {
   DropdownMenuLabel,
   DropdownMenuSeparator,
 } from "@/components/ui/dropdown-menu";
-import { ClaudeIcon, GeminiIcon, CodexIcon, NpmIcon, YarnIcon, PnpmIcon, BunIcon } from "@/components/icons";
+import {
+  ClaudeIcon,
+  GeminiIcon,
+  CodexIcon,
+  NpmIcon,
+  YarnIcon,
+  PnpmIcon,
+  BunIcon,
+} from "@/components/icons";
 import { getBrandColorHex } from "@/lib/colorUtils";
 import { cn } from "@/lib/utils";
 
@@ -66,7 +74,11 @@ function getTerminalIcon(type: TerminalType) {
   }
 }
 
-export function TerminalCountBadge({ counts, terminals, onSelectTerminal }: TerminalCountBadgeProps) {
+export function TerminalCountBadge({
+  counts,
+  terminals,
+  onSelectTerminal,
+}: TerminalCountBadgeProps) {
   if (counts.total === 0) {
     return null;
   }

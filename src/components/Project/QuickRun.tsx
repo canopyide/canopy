@@ -175,7 +175,12 @@ export function QuickRun({ projectId }: QuickRunProps) {
           {isExpanded ? <ChevronDown className="h-3 w-3" /> : <ChevronRight className="h-3 w-3" />}
           <span className="flex items-center gap-1.5 min-w-0">
             <span className="opacity-50 font-medium shrink-0">Run on</span>
-            <span className={cn("truncate", isWorktreeValid ? "text-canopy-text" : "text-canopy-text/50")}>
+            <span
+              className={cn(
+                "truncate",
+                isWorktreeValid ? "text-canopy-text" : "text-canopy-text/50"
+              )}
+            >
               {activeWorktreeName}
             </span>
           </span>

@@ -155,7 +155,9 @@ export function ShortcutReferenceDialog({ isOpen, onClose }: ShortcutReferenceDi
                         <div className="flex-1">
                           <div className="text-canopy-text font-medium">{binding.description}</div>
                           {binding.scope !== "global" && (
-                            <div className="text-xs text-canopy-text/60 mt-1">Scope: {binding.scope}</div>
+                            <div className="text-xs text-canopy-text/60 mt-1">
+                              Scope: {binding.scope}
+                            </div>
                           )}
                         </div>
                         <div className="ml-4">

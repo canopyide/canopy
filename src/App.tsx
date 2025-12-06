@@ -223,7 +223,9 @@ function SidebarContent() {
 
           <p className="text-sm text-canopy-text/60 mb-4 max-w-xs">
             Open a Git repository with worktrees to get started. Use{" "}
-            <kbd className="px-1.5 py-0.5 bg-canopy-border rounded text-xs">File → Open Directory</kbd>
+            <kbd className="px-1.5 py-0.5 bg-canopy-border rounded text-xs">
+              File → Open Directory
+            </kbd>
           </p>
 
           <div className="text-xs text-canopy-text/60 text-left w-full max-w-xs">

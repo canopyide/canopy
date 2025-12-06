@@ -93,7 +93,12 @@ function ErrorRow({ error, isExpanded, onToggleExpand, onDismiss, onRetry }: Err
 
   return (
     <>
-      <tr className={cn("hover:bg-canopy-border/50 transition-colors", isExpanded && "bg-canopy-border/30")}>
+      <tr
+        className={cn(
+          "hover:bg-canopy-border/50 transition-colors",
+          isExpanded && "bg-canopy-border/30"
+        )}
+      >
         <td className="px-3 py-2 text-xs text-canopy-text/60 whitespace-nowrap">
           {formatTimestamp(error.timestamp)}
         </td>
@@ -110,7 +115,9 @@ function ErrorRow({ error, isExpanded, onToggleExpand, onDismiss, onRetry }: Err
             <span className="truncate block">{error.message}</span>
           </button>
         </td>
-        <td className="px-3 py-2 text-xs text-canopy-text/60 whitespace-nowrap">{error.source || "-"}</td>
+        <td className="px-3 py-2 text-xs text-canopy-text/60 whitespace-nowrap">
+          {error.source || "-"}
+        </td>
         <td className="px-3 py-2 whitespace-nowrap">
           <div className="flex items-center gap-1">
             {canRetry && (
@@ -211,10 +218,18 @@ export function ProblemsContent({ onRetry, className }: ProblemsContentProps) {
         <table className="w-full">
           <thead className="sticky top-0 bg-canopy-sidebar border-b border-canopy-border">
             <tr>
-              <th className="px-3 py-2 text-left text-xs font-medium text-canopy-text/60 w-24">Time</th>
-              <th className="px-3 py-2 text-left text-xs font-medium text-canopy-text/60 w-20">Type</th>
-              <th className="px-3 py-2 text-left text-xs font-medium text-canopy-text/60">Message</th>
-              <th className="px-3 py-2 text-left text-xs font-medium text-canopy-text/60 w-28">Source</th>
+              <th className="px-3 py-2 text-left text-xs font-medium text-canopy-text/60 w-24">
+                Time
+              </th>
+              <th className="px-3 py-2 text-left text-xs font-medium text-canopy-text/60 w-20">
+                Type
+              </th>
+              <th className="px-3 py-2 text-left text-xs font-medium text-canopy-text/60">
+                Message
+              </th>
+              <th className="px-3 py-2 text-left text-xs font-medium text-canopy-text/60 w-28">
+                Source
+              </th>
               <th className="px-3 py-2 text-left text-xs font-medium text-canopy-text/60 w-24">
                 Actions
               </th>

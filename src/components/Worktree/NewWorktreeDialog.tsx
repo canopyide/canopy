@@ -171,7 +171,9 @@ export function NewWorktreeDialog({
                     </option>
                   ))}
                 </select>
-                <p className="text-xs text-canopy-text/60">The branch to create the new worktree from</p>
+                <p className="text-xs text-canopy-text/60">
+                  The branch to create the new worktree from
+                </p>
               </div>
 
               <div className="space-y-2">

@@ -5,16 +5,16 @@ The `useAgentLauncher` hook provides a unified interface for spawning AI agent t
 ## Basic Usage
 
 ```tsx
-import { useAgentLauncher } from '@/hooks/useAgentLauncher'
+import { useAgentLauncher } from "@/hooks/useAgentLauncher";
 
 function MyComponent() {
-  const { launchAgent, availability } = useAgentLauncher()
+  const { launchAgent, availability } = useAgentLauncher();
 
   // Launch an interactive Claude session
-  await launchAgent('claude')
+  await launchAgent("claude");
 
   // Launch Gemini in a specific worktree
-  await launchAgent('gemini', { worktreeId: 'some-worktree-id' })
+  await launchAgent("gemini", { worktreeId: "some-worktree-id" });
 }
 ```
 
@@ -24,27 +24,27 @@ You can spawn an agent with an initial prompt pre-loaded:
 
 ```tsx
 // Interactive mode (default) - agent stays open after responding
-await launchAgent('claude', {
-  prompt: 'Explain the authentication flow in this codebase',
+await launchAgent("claude", {
+  prompt: "Explain the authentication flow in this codebase",
   interactive: true,
-})
+});
 
 // One-shot mode - agent exits after responding
-await launchAgent('claude', {
-  prompt: 'What is 2 + 2?',
+await launchAgent("claude", {
+  prompt: "What is 2 + 2?",
   interactive: false,
-})
+});
 ```
 
 ### CLI Command Formats
 
 The hook constructs the appropriate CLI command based on agent type and mode:
 
-| Agent  | Interactive Mode         | One-Shot Mode              |
-|--------|--------------------------|----------------------------|
-| Claude | `claude 'prompt'`        | `claude -p 'prompt'`       |
-| Gemini | `gemini -i 'prompt'`     | `gemini 'prompt'`          |
-| Codex  | `codex 'prompt'`         | `codex exec 'prompt'`      |
+| Agent  | Interactive Mode     | One-Shot Mode         |
+| ------ | -------------------- | --------------------- |
+| Claude | `claude 'prompt'`    | `claude -p 'prompt'`  |
+| Gemini | `gemini -i 'prompt'` | `gemini 'prompt'`     |
+| Codex  | `codex 'prompt'`     | `codex exec 'prompt'` |
 
 ## Shell Escaping
 
@@ -60,19 +60,19 @@ You don't need to escape prompts yourself. Multi-line prompts and prompts contai
 ```typescript
 interface LaunchAgentOptions {
   /** Override terminal location (default: "grid") */
-  location?: 'grid' | 'dock'
+  location?: "grid" | "dock";
 
   /** Override working directory */
-  cwd?: string
+  cwd?: string;
 
   /** Override worktree ID (derives cwd from worktree if provided) */
-  worktreeId?: string
+  worktreeId?: string;
 
   /** Initial prompt to send to the agent */
-  prompt?: string
+  prompt?: string;
 
   /** Whether to keep session interactive after prompt (default: true) */
-  interactive?: boolean
+  interactive?: boolean;
 }
 ```
 
@@ -81,19 +81,19 @@ interface LaunchAgentOptions {
 ```typescript
 interface UseAgentLauncherReturn {
   /** Launch an agent terminal, returns terminal ID or null on failure */
-  launchAgent: (type: AgentType, options?: LaunchAgentOptions) => Promise<string | null>
+  launchAgent: (type: AgentType, options?: LaunchAgentOptions) => Promise<string | null>;
 
   /** CLI availability status for each agent */
-  availability: { claude: boolean; gemini: boolean; codex: boolean }
+  availability: { claude: boolean; gemini: boolean; codex: boolean };
 
   /** Whether availability check is in progress */
-  isCheckingAvailability: boolean
+  isCheckingAvailability: boolean;
 
   /** Current agent settings */
-  agentSettings: AgentSettings | null
+  agentSettings: AgentSettings | null;
 
   /** Force refresh settings */
-  refreshSettings: () => Promise<void>
+  refreshSettings: () => Promise<void>;
 }
 ```
 

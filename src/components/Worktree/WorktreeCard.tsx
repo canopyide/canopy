@@ -10,7 +10,12 @@ import { TerminalCountBadge } from "./TerminalCountBadge";
 import { WorktreeDetails } from "./WorktreeDetails";
 import { useDevServer } from "../../hooks/useDevServer";
 import { useWorktreeTerminals } from "../../hooks/useWorktreeTerminals";
-import { useErrorStore, useTerminalStore, type RetryAction, type TerminalInstance } from "../../store";
+import {
+  useErrorStore,
+  useTerminalStore,
+  type RetryAction,
+  type TerminalInstance,
+} from "../../store";
 import { useRecipeStore } from "../../store/recipeStore";
 import { useWorktreeSelectionStore } from "../../store/worktreeStore";
 import { systemClient, errorsClient } from "@/clients";
@@ -559,7 +564,9 @@ export function WorktreeCard({
                   />
                 )}
                 {effectiveSummary && (
-                  <div className="text-xs text-canopy-text/60 truncate mt-0.5">{effectiveSummary}</div>
+                  <div className="text-xs text-canopy-text/60 truncate mt-0.5">
+                    {effectiveSummary}
+                  </div>
                 )}
               </>
             ) : workspaceScenario === "clean-feature" ? (
