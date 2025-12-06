@@ -90,7 +90,7 @@ export function TerminalDragPreview({ terminal }: TerminalDragPreviewProps) {
           style={{
             height: 6,
             width: "70%",
-            backgroundColor: "rgba(255, 255, 255, 0.06)",
+            backgroundColor: "color-mix(in srgb, var(--color-canopy-text) 6%, transparent)",
             borderRadius: "var(--radius-sm)",
           }}
         />
@@ -98,7 +98,7 @@ export function TerminalDragPreview({ terminal }: TerminalDragPreviewProps) {
           style={{
             height: 6,
             width: "50%",
-            backgroundColor: "rgba(255, 255, 255, 0.06)",
+            backgroundColor: "color-mix(in srgb, var(--color-canopy-text) 6%, transparent)",
             borderRadius: "var(--radius-sm)",
           }}
         />
@@ -106,7 +106,7 @@ export function TerminalDragPreview({ terminal }: TerminalDragPreviewProps) {
           style={{
             height: 6,
             width: "40%",
-            backgroundColor: "rgba(255, 255, 255, 0.06)",
+            backgroundColor: "color-mix(in srgb, var(--color-canopy-text) 6%, transparent)",
             borderRadius: "var(--radius-sm)",
           }}
         />
