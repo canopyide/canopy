@@ -172,22 +172,28 @@ export interface UseAgentLauncherReturn {
  * function Toolbar() {
  *   const { launchAgent, availability } = useAgentLauncher()
  *
+ *   // Launch an interactive agent session
+ *   const handleLaunchClaude = () => launchAgent('claude')
+ *
+ *   // Launch with an initial prompt (interactive - stays open after response)
+ *   const handleAskQuestion = () => launchAgent('claude', {
+ *     prompt: 'Explain the authentication flow in this codebase',
+ *     interactive: true, // default
+ *   })
+ *
+ *   // Launch one-shot mode (exits after response)
+ *   const handleQuickQuery = () => launchAgent('claude', {
+ *     prompt: 'What is 2 + 2?',
+ *     interactive: false,
+ *   })
+ *
  *   return (
  *     <div>
- *       <button
- *         onClick={() => launchAgent('claude')}
- *         disabled={!availability.claude}
- *       >
+ *       <button onClick={handleLaunchClaude} disabled={!availability.claude}>
  *         Claude
  *       </button>
- *       <button
- *         onClick={() => launchAgent('gemini')}
- *         disabled={!availability.gemini}
- *       >
- *         Gemini
- *       </button>
- *       <button onClick={() => launchAgent('shell')}>
- *         Shell
+ *       <button onClick={handleAskQuestion} disabled={!availability.claude}>
+ *         Ask Claude
  *       </button>
  *     </div>
  *   )
