@@ -60,10 +60,25 @@ export function Toolbar({
 
   const showBulkActions = terminals.length > 0;
 
-  const shouldShowAgent = (type: "claude" | "gemini" | "codex"): boolean => {
-    if (!agentAvailability?.[type]) return false;
-    if (agentSettings && agentSettings[type].enabled === false) return false;
-    return true;
+  const getAgentStatus = (type: "claude" | "gemini" | "codex") => {
+    const isAvailable = agentAvailability?.[type];
+    const isEnabled = agentSettings?.[type]?.enabled ?? true;
+    const agentNames = { claude: "Claude", gemini: "Gemini", codex: "Codex" };
+    const isLoading = isAvailable === undefined;
+
+    return {
+      show: isEnabled,
+      available: isAvailable ?? false,
+      isLoading,
+      tooltip:
+        isLoading || isAvailable
+          ? type === "claude"
+            ? "Start Claude — Opus 4.5 for deep work (Ctrl+Shift+C)"
+            : type === "gemini"
+              ? "Start Gemini — Auto-routing enabled (Ctrl+Shift+G)"
+              : "Start Codex — GPT-5.1 Max (Ctrl+Shift+X)"
+          : `${agentNames[type]} CLI not found. Click to install.`,
+    };
   };
 
   return (
@@ -86,42 +101,81 @@ export function Toolbar({
         >
           {isFocusMode ? <PanelLeft className="h-4 w-4" /> : <PanelLeftClose className="h-4 w-4" />}
         </Button>
-        {shouldShowAgent("claude") && (
-          <Button
-            variant="ghost"
-            size="icon"
-            onClick={() => onLaunchAgent("claude")}
-            className="text-canopy-text hover:bg-canopy-border h-8 w-8 transition-colors hover:text-canopy-accent focus-visible:text-canopy-accent"
-            title="Start Claude — Opus 4.5 for deep work (Ctrl+Shift+C)"
-            aria-label="Start Claude Agent"
-          >
-            <ClaudeIcon className="h-4 w-4" brandColor={getBrandColorHex("claude")} />
-          </Button>
-        )}
-        {shouldShowAgent("gemini") && (
-          <Button
-            variant="ghost"
-            size="icon"
-            onClick={() => onLaunchAgent("gemini")}
-            className="text-canopy-text hover:bg-canopy-border h-8 w-8 transition-colors hover:text-canopy-accent focus-visible:text-canopy-accent"
-            title="Start Gemini — Auto-routing enabled (Ctrl+Shift+G)"
-            aria-label="Start Gemini Agent"
-          >
-            <GeminiIcon className="h-4 w-4" brandColor={getBrandColorHex("gemini")} />
-          </Button>
-        )}
-        {shouldShowAgent("codex") && (
-          <Button
-            variant="ghost"
-            size="icon"
-            onClick={() => onLaunchAgent("codex")}
-            className="text-canopy-text hover:bg-canopy-border h-8 w-8 transition-colors hover:text-canopy-accent focus-visible:text-canopy-accent"
-            title="Start Codex — GPT-5.1 Max (Ctrl+Shift+X)"
-            aria-label="Start Codex Agent"
-          >
-            <CodexIcon className="h-4 w-4" brandColor={getBrandColorHex("codex")} />
-          </Button>
-        )}
+        {(() => {
+          const status = getAgentStatus("claude");
+          if (!status.show) return null;
+          return (
+            <Button
+              variant="ghost"
+              size="icon"
+              onClick={() => (status.available ? onLaunchAgent("claude") : onSettings())}
+              className={cn(
+                "text-canopy-text hover:bg-canopy-border h-8 w-8 transition-colors",
+                status.available && "hover:text-canopy-accent focus-visible:text-canopy-accent",
+                !status.available && !status.isLoading && "opacity-60"
+              )}
+              title={status.tooltip}
+              aria-label={status.available ? "Start Claude Agent" : "Claude CLI not installed"}
+            >
+              <div className="relative">
+                <ClaudeIcon className="h-4 w-4" brandColor={getBrandColorHex("claude")} />
+                {!status.available && !status.isLoading && (
+                  <div className="absolute -top-1 -right-1 w-2 h-2 bg-amber-500 rounded-full" />
+                )}
+              </div>
+            </Button>
+          );
+        })()}
+        {(() => {
+          const status = getAgentStatus("gemini");
+          if (!status.show) return null;
+          return (
+            <Button
+              variant="ghost"
+              size="icon"
+              onClick={() => (status.available ? onLaunchAgent("gemini") : onSettings())}
+              className={cn(
+                "text-canopy-text hover:bg-canopy-border h-8 w-8 transition-colors",
+                status.available && "hover:text-canopy-accent focus-visible:text-canopy-accent",
+                !status.available && !status.isLoading && "opacity-60"
+              )}
+              title={status.tooltip}
+              aria-label={status.available ? "Start Gemini Agent" : "Gemini CLI not installed"}
+            >
+              <div className="relative">
+                <GeminiIcon className="h-4 w-4" brandColor={getBrandColorHex("gemini")} />
+                {!status.available && !status.isLoading && (
+                  <div className="absolute -top-1 -right-1 w-2 h-2 bg-amber-500 rounded-full" />
+                )}
+              </div>
+            </Button>
+          );
+        })()}
+        {(() => {
+          const status = getAgentStatus("codex");
+          if (!status.show) return null;
+          return (
+            <Button
+              variant="ghost"
+              size="icon"
+              onClick={() => (status.available ? onLaunchAgent("codex") : onSettings())}
+              className={cn(
+                "text-canopy-text hover:bg-canopy-border h-8 w-8 transition-colors",
+                status.available && "hover:text-canopy-accent focus-visible:text-canopy-accent",
+                !status.available && !status.isLoading && "opacity-60"
+              )}
+              title={status.tooltip}
+              aria-label={status.available ? "Start Codex Agent" : "Codex CLI not installed"}
+            >
+              <div className="relative">
+                <CodexIcon className="h-4 w-4" brandColor={getBrandColorHex("codex")} />
+                {!status.available && !status.isLoading && (
+                  <div className="absolute -top-1 -right-1 w-2 h-2 bg-amber-500 rounded-full" />
+                )}
+              </div>
+            </Button>
+          );
+        })()}
         <Button
           variant="ghost"
           size="icon"
