@@ -15,7 +15,7 @@ const KEYBOARD_SHORTCUTS = [
       { key: "Ctrl+Shift+C", description: "Start Claude agent" },
       { key: "Ctrl+Shift+G", description: "Start Gemini agent" },
       { key: "Ctrl+Shift+I", description: "Inject context to agent" },
-      { key: "Cmd+T", description: "Open agent palette" },
+      { key: "Cmd+T", description: "Open terminal palette" },
     ],
   },
   {

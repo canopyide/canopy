@@ -102,7 +102,7 @@ export function TerminalPalette({
       onClick={handleBackdropClick}
       role="dialog"
       aria-modal="true"
-      aria-label="Agent palette"
+      aria-label="Terminal palette"
     >
       <div
         className={cn(
