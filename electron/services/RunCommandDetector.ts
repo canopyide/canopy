@@ -35,16 +35,13 @@ export class RunCommandDetector {
 
       return Object.entries(pkg.scripts)
         .filter(([_, script]) => typeof script === "string")
-        .map(([name, script]) => {
-          const safeName = name.replace(/(["\\$`])/g, "\\$1");
-          return {
-            id: `npm-${name}`,
-            name,
-            command: `${runner} "${safeName}"`,
-            icon: "npm",
-            description: script as string,
-          };
-        });
+        .map(([name, script]) => ({
+          id: `npm-${name}`,
+          name,
+          command: `${runner} ${name}`,
+          icon: "npm",
+          description: script as string,
+        }));
     } catch (error) {
       console.warn(`[RunCommandDetector] Failed to parse ${pkgPath}:`, error);
       return [];
