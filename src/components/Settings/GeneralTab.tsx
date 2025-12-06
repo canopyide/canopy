@@ -1,11 +1,12 @@
 import { useState, useEffect } from "react";
-import { ChevronDown, ChevronRight, TreePine, Moon } from "lucide-react";
+import { ChevronDown, ChevronRight, TreePine, Moon, CheckCircle, AlertCircle } from "lucide-react";
 import { cn } from "@/lib/utils";
-import { hibernationClient } from "@/clients";
-import type { HibernationConfig } from "@shared/types";
+import { hibernationClient, cliAvailabilityClient, agentSettingsClient } from "@/clients";
+import type { HibernationConfig, CliAvailability, AgentSettings } from "@shared/types";
 
 interface GeneralTabProps {
   appVersion: string;
+  onNavigateToAgents?: () => void;
 }
 
 const KEYBOARD_SHORTCUTS = [
@@ -62,11 +63,13 @@ const THRESHOLD_PRESETS = [
   { value: 72, label: "72h" },
 ] as const;
 
-export function GeneralTab({ appVersion }: GeneralTabProps) {
+export function GeneralTab({ appVersion, onNavigateToAgents }: GeneralTabProps) {
   const [isShortcutsOpen, setIsShortcutsOpen] = useState(false);
   const [hibernationConfig, setHibernationConfig] = useState<HibernationConfig | null>(null);
   const [isSaving, setIsSaving] = useState(false);
   const [configError, setConfigError] = useState<string | null>(null);
+  const [cliAvailability, setCliAvailability] = useState<CliAvailability | null>(null);
+  const [agentSettings, setAgentSettings] = useState<AgentSettings | null>(null);
 
   useEffect(() => {
     hibernationClient
@@ -78,6 +81,17 @@ export function GeneralTab({ appVersion }: GeneralTabProps) {
       .catch((error) => {
         console.error("Failed to load hibernation config:", error);
         setConfigError(error instanceof Error ? error.message : "Failed to load settings");
+      });
+  }, []);
+
+  useEffect(() => {
+    Promise.all([cliAvailabilityClient.get(), agentSettingsClient.get()])
+      .then(([availability, settings]) => {
+        setCliAvailability(availability);
+        setAgentSettings(settings);
+      })
+      .catch((error) => {
+        console.error("Failed to load agent availability:", error);
       });
   }, []);
 
@@ -140,6 +154,56 @@ export function GeneralTab({ appVersion }: GeneralTabProps) {
           An orchestration board for AI coding agents. Start agents on worktrees, monitor their
           progress, and inject context to help them understand your codebase.
         </p>
+      </div>
+
+      <div className="space-y-2">
+        <h4 className="text-sm font-medium text-canopy-text">System Status</h4>
+        <div className="bg-canopy-bg border border-canopy-border rounded-md p-4 space-y-3">
+          {!cliAvailability || !agentSettings ? (
+            <div className="text-sm text-canopy-text/40">Loading agent status...</div>
+          ) : (
+            (
+              [
+                { name: "Claude", type: "claude" as const },
+                { name: "Gemini", type: "gemini" as const },
+                { name: "Codex", type: "codex" as const },
+              ] as const
+            ).map((agent) => {
+              const isEnabled = agentSettings[agent.type]?.enabled ?? true;
+              const isAvailable = cliAvailability[agent.type] ?? false;
+
+              return (
+                <div key={agent.type} className="flex items-center justify-between text-sm">
+                  <span className="text-canopy-text/70">{agent.name}</span>
+                  <div className="flex items-center gap-2">
+                    {!isEnabled ? (
+                      <span className="text-canopy-text/40 text-xs">Disabled</span>
+                    ) : isAvailable ? (
+                      <>
+                        <CheckCircle className="w-4 h-4 text-green-400" />
+                        <span className="text-green-400 text-xs">Ready</span>
+                      </>
+                    ) : (
+                      <>
+                        <AlertCircle className="w-4 h-4 text-amber-400" />
+                        <span className="text-amber-400 text-xs">CLI not found</span>
+                      </>
+                    )}
+                  </div>
+                </div>
+              );
+            })
+          )}
+
+          {onNavigateToAgents && (
+            <button
+              onClick={onNavigateToAgents}
+              className="text-xs text-canopy-accent hover:underline mt-2"
+            >
+              Configure agents →
+            </button>
+          )}
+        </div>
       </div>
 
       {configError ? (

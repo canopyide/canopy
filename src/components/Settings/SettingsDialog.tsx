@@ -197,7 +197,7 @@ export function SettingsDialog({
 
           <div className="p-6 overflow-y-auto flex-1">
             <div className={activeTab === "general" ? "" : "hidden"}>
-              <GeneralTab appVersion={appVersion} />
+              <GeneralTab appVersion={appVersion} onNavigateToAgents={() => setActiveTab("agents")} />
             </div>
 
             <div className={activeTab === "keyboard" ? "" : "hidden"}>
