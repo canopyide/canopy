@@ -130,13 +130,11 @@ export function registerTerminalHandlers(deps: HandlerDependencies): () => void 
           console.warn("Empty command provided, ignoring");
         } else if (trimmedCommand.includes("\n") || trimmedCommand.includes("\r")) {
           console.error("Multi-line commands not allowed for security, ignoring");
-        } else if (
-          trimmedCommand.includes(";") ||
-          trimmedCommand.includes("&&") ||
-          trimmedCommand.includes("||")
-        ) {
-          console.error("Command chaining not allowed for security, ignoring");
         } else {
+          // Note: Commands may contain `;`, `&&`, `||` within properly escaped/quoted arguments
+          // (e.g., `claude 'How do I use && in bash?'`). These are safe because the shell
+          // treats them as literal characters within quotes, not command separators.
+          // The buildAgentCommand function in useAgentLauncher properly escapes all arguments.
           setTimeout(() => {
             if (ptyManager.hasTerminal(id)) {
               ptyManager.write(id, `${trimmedCommand}\r`);

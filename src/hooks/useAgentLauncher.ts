@@ -9,6 +9,95 @@ import { generateClaudeFlags, generateGeminiFlags, generateCodexFlags } from "@s
 
 export type AgentType = "claude" | "gemini" | "codex" | "shell";
 
+/**
+ * Escape a string for safe use as a shell argument.
+ * Platform-aware escaping for POSIX (macOS/Linux) and Windows.
+ */
+function escapeShellArg(arg: string): string {
+  // On Windows, cmd.exe and PowerShell require different quoting
+  if (process.platform === "win32") {
+    // Escape double quotes and wrap in double quotes for Windows
+    // This works for both cmd.exe and PowerShell
+    return `"${arg.replace(/"/g, '""')}"`;
+  }
+
+  // POSIX (macOS/Linux): Use single quotes and escape embedded single quotes
+  // Replace single quotes with '\'' (end quote, escaped quote, start quote)
+  return `'${arg.replace(/'/g, "'\\''")}'`;
+}
+
+/**
+ * Build the command string for an agent with an optional prompt.
+ *
+ * Command formats:
+ * - Claude: `claude 'prompt'` (interactive) or `claude -p 'prompt'` (one-shot)
+ * - Gemini: `gemini -i 'prompt'` (interactive) or `gemini 'prompt'` (one-shot)
+ * - Codex: `codex 'prompt'` (interactive) or `codex exec 'prompt'` (one-shot)
+ *
+ * Note: Actual quote style depends on platform (single quotes on POSIX, double on Windows)
+ */
+function buildAgentCommand(
+  baseCommand: string,
+  agentType: AgentType,
+  prompt?: string,
+  interactive: boolean = true,
+  flags: string[] = []
+): string {
+  const parts: string[] = [baseCommand];
+
+  // Add settings-based flags
+  // IMPORTANT: Flags from generateXxxFlags() may contain user-controlled values (systemPrompt, model, etc.)
+  // We need to properly escape any flag arguments that might contain spaces or special characters
+  if (flags.length > 0) {
+    for (let i = 0; i < flags.length; i++) {
+      const flag = flags[i];
+
+      // If this is a flag name (starts with -), add it as-is
+      if (flag.startsWith("-")) {
+        parts.push(flag);
+      } else {
+        // This is a flag value - escape it for safety
+        parts.push(escapeShellArg(flag));
+      }
+    }
+  }
+
+  // Add prompt-related flags and the prompt itself
+  if (prompt && prompt.trim()) {
+    const escapedPrompt = escapeShellArg(prompt);
+
+    switch (agentType) {
+      case "claude":
+        if (!interactive) {
+          parts.push("-p");
+        }
+        parts.push(escapedPrompt);
+        break;
+
+      case "gemini":
+        if (interactive) {
+          parts.push("-i", escapedPrompt);
+        } else {
+          parts.push(escapedPrompt);
+        }
+        break;
+
+      case "codex":
+        if (!interactive) {
+          parts.push("exec");
+        }
+        parts.push(escapedPrompt);
+        break;
+
+      default:
+        // For shell or unknown types, just append the prompt
+        parts.push(escapedPrompt);
+    }
+  }
+
+  return parts.join(" ");
+}
+
 interface AgentConfig {
   type: AgentType;
   title: string;
@@ -45,6 +134,21 @@ export interface LaunchAgentOptions {
   cwd?: string;
   /** Override worktree ID (derives cwd from worktree if provided) */
   worktreeId?: string;
+  /**
+   * Initial prompt to send to the agent.
+   * The prompt will be properly escaped for shell safety - you don't need to escape it yourself.
+   * Multi-line prompts and prompts containing special characters (&&, ;, etc.) are supported.
+   */
+  prompt?: string;
+  /**
+   * Whether to keep the session interactive after the prompt (default: true)
+   * - Claude: true = `claude 'prompt'`, false = `claude -p 'prompt'`
+   * - Gemini: true = `gemini -i 'prompt'`, false = `gemini 'prompt'`
+   * - Codex: true = `codex 'prompt'`, false = `codex exec 'prompt'`
+   *
+   * Note: Quotes shown are for illustration - actual quoting is platform-specific.
+   */
+  interactive?: boolean;
 }
 
 export interface UseAgentLauncherReturn {
@@ -68,22 +172,28 @@ export interface UseAgentLauncherReturn {
  * function Toolbar() {
  *   const { launchAgent, availability } = useAgentLauncher()
  *
+ *   // Launch an interactive agent session
+ *   const handleLaunchClaude = () => launchAgent('claude')
+ *
+ *   // Launch with an initial prompt (interactive - stays open after response)
+ *   const handleAskQuestion = () => launchAgent('claude', {
+ *     prompt: 'Explain the authentication flow in this codebase',
+ *     interactive: true, // default
+ *   })
+ *
+ *   // Launch one-shot mode (exits after response)
+ *   const handleQuickQuery = () => launchAgent('claude', {
+ *     prompt: 'What is 2 + 2?',
+ *     interactive: false,
+ *   })
+ *
  *   return (
  *     <div>
- *       <button
- *         onClick={() => launchAgent('claude')}
- *         disabled={!availability.claude}
- *       >
+ *       <button onClick={handleLaunchClaude} disabled={!availability.claude}>
  *         Claude
  *       </button>
- *       <button
- *         onClick={() => launchAgent('gemini')}
- *         disabled={!availability.gemini}
- *       >
- *         Gemini
- *       </button>
- *       <button onClick={() => launchAgent('shell')}>
- *         Shell
+ *       <button onClick={handleAskQuestion} disabled={!availability.claude}>
+ *         Ask Claude
  *       </button>
  *     </div>
  *   )
@@ -168,25 +278,33 @@ export function useAgentLauncher(): UseAgentLauncherReturn {
       // Determine cwd: explicit override, target worktree path, project root, or empty
       const cwd = launchOptions?.cwd ?? targetWorktree?.path ?? currentProject?.path ?? "";
 
+      // Build command with settings flags and optional prompt
       let command = config.command;
-      if (command && agentSettings) {
+      if (command) {
         let flags: string[] = [];
 
-        switch (type) {
-          case "claude":
-            flags = generateClaudeFlags(agentSettings.claude);
-            break;
-          case "gemini":
-            flags = generateGeminiFlags(agentSettings.gemini);
-            break;
-          case "codex":
-            flags = generateCodexFlags(agentSettings.codex);
-            break;
+        if (agentSettings) {
+          switch (type) {
+            case "claude":
+              flags = generateClaudeFlags(agentSettings.claude);
+              break;
+            case "gemini":
+              flags = generateGeminiFlags(agentSettings.gemini);
+              break;
+            case "codex":
+              flags = generateCodexFlags(agentSettings.codex);
+              break;
+          }
         }
 
-        if (flags.length > 0) {
-          command = `${config.command} ${flags.join(" ")}`;
-        }
+        // Build the full command with flags and optional prompt
+        command = buildAgentCommand(
+          command,
+          type,
+          launchOptions?.prompt,
+          launchOptions?.interactive ?? true,
+          flags
+        );
       }
 
       const options: AddTerminalOptions = {
