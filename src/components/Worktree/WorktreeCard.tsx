@@ -2,7 +2,6 @@ import { useCallback, useState, useEffect, useMemo } from "react";
 import { useShallow } from "zustand/react/shallow";
 import type { WorktreeState, ProjectDevServerSettings } from "../../types";
 import { ActivityLight } from "./ActivityLight";
-import { AgentStatusIndicator } from "./AgentStatusIndicator";
 import { BranchLabel } from "./BranchLabel";
 import { FileChangeList } from "./FileChangeList";
 import { LiveTimeAgo } from "./LiveTimeAgo";
@@ -103,11 +102,8 @@ export function WorktreeCard({
   const recipes = getRecipesForWorktree(worktree.id);
   const [runningRecipeId, setRunningRecipeId] = useState<string | null>(null);
 
-  const {
-    counts: terminalCounts,
-    dominantAgentState,
-    terminals: worktreeTerminals,
-  } = useWorktreeTerminals(worktree.id);
+  const { counts: terminalCounts, terminals: worktreeTerminals } =
+    useWorktreeTerminals(worktree.id);
 
   const setFocused = useTerminalStore((state) => state.setFocused);
 
@@ -314,10 +310,7 @@ export function WorktreeCard({
     !!rawLastCommitMessage; // Can expand to see details even if just clean
 
   const showMetaFooter =
-    !!dominantAgentState ||
-    terminalCounts.total > 0 ||
-    !!worktree.issueNumber ||
-    !!worktree.prNumber;
+    terminalCounts.total > 0 || !!worktree.issueNumber || !!worktree.prNumber;
 
   const detailsId = useMemo(() => `worktree-${worktree.id}-details`, [worktree.id]);
 
@@ -642,7 +635,6 @@ export function WorktreeCard({
               <div />
               <div className="flex items-center justify-between mt-2 pt-2 border-t border-white/5 text-[10px] font-mono">
                 <div className="flex flex-wrap items-center gap-1.5">
-                  <AgentStatusIndicator state={dominantAgentState} />
                   <TerminalCountBadge
                     counts={terminalCounts}
                     terminals={worktreeTerminals}
