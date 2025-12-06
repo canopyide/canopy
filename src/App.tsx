@@ -240,7 +240,7 @@ function SidebarContent() {
         <h2 className="text-gray-200 font-semibold text-sm tracking-wide">Worktrees</h2>
         <button
           onClick={() => setIsNewWorktreeDialogOpen(true)}
-          className="flex items-center gap-1.5 text-xs font-medium px-3 py-1.5 bg-[#10b981] hover:bg-[#059669] text-white rounded-md transition-colors shadow-sm"
+          className="flex items-center gap-1.5 text-xs font-medium px-2.5 py-1 text-gray-400 hover:text-gray-200 hover:bg-white/5 rounded transition-colors"
           title="Create new worktree"
         >
           <span className="text-[10px]">+</span> New
