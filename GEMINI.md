@@ -69,6 +69,7 @@ src/
 ## Common Tasks
 
 **Adding IPC channel:**
+
 1. Define in `electron/ipc/channels.ts`
 2. Implement in `electron/ipc/handlers.ts`
 3. Expose in `electron/preload.ts`

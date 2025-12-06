@@ -1,6 +1,7 @@
 import { useState, useEffect } from "react";
 import { cn } from "@/lib/utils";
 import { getActivityColor } from "@/utils/colorInterpolation";
+import { formatTimestampExact } from "@/utils/textParsing";
 
 interface ActivityLightProps {
   lastActivityTimestamp?: number | null;
@@ -33,8 +34,7 @@ export function ActivityLight({ lastActivityTimestamp, className }: ActivityLigh
     return () => clearInterval(interval);
   }, [lastActivityTimestamp]);
 
-  const hasActivity = lastActivityTimestamp != null;
-  const label = hasActivity ? "Recent file activity" : "No recent activity";
+  const tooltipText = formatTimestampExact(lastActivityTimestamp);
 
   return (
     <div
@@ -43,9 +43,9 @@ export function ActivityLight({ lastActivityTimestamp, className }: ActivityLigh
         className
       )}
       style={{ backgroundColor: color }}
-      title={label}
+      title={tooltipText}
       role="status"
-      aria-label={label}
+      aria-label={tooltipText}
     />
   );
 }
