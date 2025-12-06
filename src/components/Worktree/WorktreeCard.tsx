@@ -212,7 +212,7 @@ export function WorktreeCard({
     setConfirmDialog({
       isOpen: true,
       title: "Close All Sessions",
-      description: `This will close ${totalTerminalCount} session${totalTerminalCount !== 1 ? "s" : ""} (including agents and shells) for this worktree. This action cannot be undone.`, 
+      description: `This will close ${totalTerminalCount} session${totalTerminalCount !== 1 ? "s" : ""} (including agents and shells) for this worktree. This action cannot be undone.`,
       onConfirm: () => {
         bulkCloseByWorktree(worktree.id);
         closeConfirmDialog();
@@ -233,7 +233,12 @@ export function WorktreeCard({
     // Check if summary is equal to the raw message, or includes it, or vice versa.
     // Also check against the first line of the commit message.
     const firstLineC = firstLineLastCommitMessage?.toLowerCase();
-    return s === c || s.includes(c) || c.includes(s) || (firstLineC && (s === firstLineC || s.includes(firstLineC)));
+    return (
+      s === c ||
+      s.includes(c) ||
+      c.includes(s) ||
+      (firstLineC && (s === firstLineC || s.includes(firstLineC)))
+    );
   }, [worktree.summary, rawLastCommitMessage, firstLineLastCommitMessage]);
 
   const effectiveSummary = isSummarySameAsCommit ? null : worktree.summary;
@@ -268,31 +273,22 @@ export function WorktreeCard({
   );
 
   const showDevServer = devServerEnabled && hasDevScript;
-  const showFooter = 
+  const showFooter =
     terminalCounts.total > 0 ||
     (hasChanges && !!worktree.worktreeChanges) ||
     (showDevServer && serverState && serverState.status !== "stopped") ||
     worktreeErrors.length > 0;
-  
-        const hasExpandableContent =
-  
-          hasChanges ||
-  
-          effectiveNote ||
-  
-          !!effectiveSummary ||
-  
-          showDevServer ||
-  
-          worktreeErrors.length > 0 ||
-  
-          showFooter ||
-  
-          !!rawLastCommitMessage; // Can expand to see details even if just clean
-  
-      
-  
-        const detailsId = useMemo(() => `worktree-${worktree.id}-details`, [worktree.id]);
+
+  const hasExpandableContent =
+    hasChanges ||
+    effectiveNote ||
+    !!effectiveSummary ||
+    showDevServer ||
+    worktreeErrors.length > 0 ||
+    showFooter ||
+    !!rawLastCommitMessage; // Can expand to see details even if just clean
+
+  const detailsId = useMemo(() => `worktree-${worktree.id}-details`, [worktree.id]);
 
   return (
     <div
@@ -314,7 +310,6 @@ export function WorktreeCard({
     >
       <div className="px-3 py-4">
         <div className="flex flex-col gap-1.5">
-          
           {/* Row 1: Activity Dot (Gutter) + Status Badges & Actions */}
           <div className="flex items-center gap-1.5">
             {/* Gutter: Activity Dot - Centered in w-5 to match Chevron */}
@@ -490,7 +485,7 @@ export function WorktreeCard({
                   )}
                 </button>
               ) : (
-                <div className="w-4 h-4" /> 
+                <div className="w-4 h-4" />
               )}
             </div>
 
@@ -582,10 +577,8 @@ export function WorktreeCard({
                       <GitCommit className="w-3 h-3 shrink-0" />
                       <span className="truncate">{firstLineLastCommitMessage}</span>
                     </div>
-                  ) : isExpanded ? (
-                    /* Expanded: Commit "teleported" to details, show nothing here to avoid duplication */
-                    null
-                  ) : (
+                  ) : isExpanded ? /* Expanded: Commit "teleported" to details, show nothing here to avoid duplication */
+                  null : (
                     <span className="text-[10px] uppercase tracking-wider font-semibold text-gray-600/80 select-none">
                       No Activity
                     </span>

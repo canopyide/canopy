@@ -170,9 +170,7 @@ export function WorktreeDetails({
           <div className="pt-0.5 shrink-0 opacity-70">
             <GitCommit className="w-3 h-3" />
           </div>
-          <div className="whitespace-pre-wrap leading-normal min-w-0">
-            {rawLastCommitMsg}
-          </div>
+          <div className="whitespace-pre-wrap leading-normal min-w-0">{rawLastCommitMsg}</div>
         </div>
       )}
 
