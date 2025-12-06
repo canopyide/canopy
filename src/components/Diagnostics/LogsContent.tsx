@@ -130,40 +130,40 @@ export function LogsContent({ className, onSourcesChange }: LogsContentProps) {
           onScroll={handleScroll}
           className="absolute inset-0 overflow-y-auto overflow-x-hidden font-mono"
         >
-        {filteredLogs.length === 0 ? (
-          <div className="flex items-center justify-center h-full text-canopy-text/60 text-sm">
-            {logs.length === 0 ? "No logs yet" : "No logs match filters"}
-          </div>
-        ) : (
-          filteredLogs.map((entry) => (
-            <LogEntry
-              key={entry.id}
-              entry={entry}
-              isExpanded={expandedIds.has(entry.id)}
-              onToggle={() => toggleExpanded(entry.id)}
-            />
-          ))
-        )}
+          {filteredLogs.length === 0 ? (
+            <div className="flex items-center justify-center h-full text-canopy-text/60 text-sm">
+              {logs.length === 0 ? "No logs yet" : "No logs match filters"}
+            </div>
+          ) : (
+            filteredLogs.map((entry) => (
+              <LogEntry
+                key={entry.id}
+                entry={entry}
+                isExpanded={expandedIds.has(entry.id)}
+                onToggle={() => toggleExpanded(entry.id)}
+              />
+            ))
+          )}
         </div>
 
         {!autoScroll && filteredLogs.length > 0 && (
-        <Button
-          variant="info"
-          size="sm"
-          className="absolute bottom-4 right-4 rounded-full shadow-lg"
-          onClick={() => {
-            setAutoScroll(true);
-            if (containerRef.current) {
-              isProgrammaticScroll.current = true;
-              containerRef.current.scrollTop = containerRef.current.scrollHeight;
-              setTimeout(() => {
-                isProgrammaticScroll.current = false;
-              }, 50);
-            }
-          }}
-        >
-          Scroll to bottom
-        </Button>
+          <Button
+            variant="info"
+            size="sm"
+            className="absolute bottom-4 right-4 rounded-full shadow-lg"
+            onClick={() => {
+              setAutoScroll(true);
+              if (containerRef.current) {
+                isProgrammaticScroll.current = true;
+                containerRef.current.scrollTop = containerRef.current.scrollHeight;
+                setTimeout(() => {
+                  isProgrammaticScroll.current = false;
+                }, 50);
+              }
+            }}
+          >
+            Scroll to bottom
+          </Button>
         )}
       </div>
     </div>

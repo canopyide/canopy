@@ -224,7 +224,12 @@ export function EventFilters({ events, filters, onFiltersChange, className }: Ev
               <span>Categories</span>
             </div>
             {filters.categories && filters.categories.length > 0 && (
-              <Button variant="ghost" size="xs" onClick={clearCategoryFilters} className="h-auto p-0">
+              <Button
+                variant="ghost"
+                size="xs"
+                onClick={clearCategoryFilters}
+                className="h-auto p-0"
+              >
                 Clear
               </Button>
             )}
