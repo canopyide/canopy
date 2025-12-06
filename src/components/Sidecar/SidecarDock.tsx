@@ -289,7 +289,7 @@ export function SidecarDock() {
   }, []);
 
   return (
-    <div className="flex flex-col h-full bg-zinc-900 relative" style={{ width }}>
+    <div className="flex flex-col h-full bg-canopy-bg relative" style={{ width }}>
       <div
         role="separator"
         aria-label="Resize sidecar panel"
@@ -329,7 +329,7 @@ export function SidecarDock() {
       {showLaunchpad ? (
         <SidecarLaunchpad links={enabledLinks} onOpenUrl={handleOpenUrl} />
       ) : (
-        <div ref={placeholderRef} className="flex-1 bg-zinc-950" id="sidecar-placeholder" />
+        <div ref={placeholderRef} className="flex-1 bg-canopy-sidebar" id="sidecar-placeholder" />
       )}
     </div>
   );
