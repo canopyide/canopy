@@ -1,4 +1,5 @@
 import { useState, useEffect } from "react";
+import { createPortal } from "react-dom";
 import type { TerminalRecipe, RecipeTerminal, RecipeTerminalType } from "@/types";
 import { Button } from "@/components/ui/button";
 import { useRecipeStore } from "@/store/recipeStore";
@@ -120,9 +121,9 @@ export function RecipeEditor({ recipe, worktreeId, isOpen, onClose, onSave }: Re
 
   if (!isOpen) return null;
 
-  return (
+  return createPortal(
     <div
-      className="fixed inset-0 z-50 flex items-center justify-center bg-black/50"
+      className="fixed inset-0 z-[var(--z-modal)] flex items-center justify-center bg-black/50"
       onClick={() => {
         if (!isSaving) {
           onClose();
@@ -130,7 +131,7 @@ export function RecipeEditor({ recipe, worktreeId, isOpen, onClose, onSave }: Re
       }}
     >
       <div
-        className="bg-canopy-sidebar border border-canopy-border rounded-lg shadow-xl max-w-2xl w-full max-h-[80vh] overflow-hidden"
+        className="bg-canopy-sidebar border border-canopy-border rounded-lg shadow-xl max-w-2xl w-full mx-4 max-h-[80vh] overflow-hidden"
         onClick={(e) => e.stopPropagation()}
         role="dialog"
         aria-modal="true"
@@ -256,6 +257,7 @@ export function RecipeEditor({ recipe, worktreeId, isOpen, onClose, onSave }: Re
           </Button>
         </div>
       </div>
-    </div>
+    </div>,
+    document.body
   );
 }

@@ -74,7 +74,7 @@ export function FixedDropdown({
   if (!open || !mounted || !position) return null;
 
   return createPortal(
-    <div className="fixed inset-0 z-[100] pointer-events-none">
+    <div className="fixed inset-0 z-[var(--z-popover)] pointer-events-none">
       <div
         ref={contentRef}
         className={cn(

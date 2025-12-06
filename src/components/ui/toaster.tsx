@@ -118,7 +118,7 @@ export function Toaster() {
 
   return createPortal(
     <div
-      className="fixed bottom-6 z-[100] flex flex-col gap-3 w-full max-w-[420px] pointer-events-none p-4"
+      className="fixed bottom-6 z-[var(--z-toast)] flex flex-col gap-3 w-full max-w-[420px] pointer-events-none p-4"
       style={{ right: "calc(var(--sidecar-right-offset, 0px))" }}
     >
       {notifications.map((notification) => (

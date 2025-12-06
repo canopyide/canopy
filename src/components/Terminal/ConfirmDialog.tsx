@@ -1,4 +1,5 @@
 import { useEffect, useCallback, useRef, useId } from "react";
+import { createPortal } from "react-dom";
 import { Button } from "@/components/ui/button";
 import { cn } from "@/lib/utils";
 import { useOverlayState } from "@/hooks";
@@ -53,9 +54,9 @@ export function ConfirmDialog({
 
   if (!isOpen) return null;
 
-  return (
+  return createPortal(
     <div
-      className="fixed inset-0 z-50 flex items-center justify-center"
+      className="fixed inset-0 z-[var(--z-modal)] flex items-center justify-center"
       role="dialog"
       aria-modal="true"
       aria-labelledby={dialogTitleId}
@@ -72,7 +73,7 @@ export function ConfirmDialog({
       />
 
       <div
-        className="relative z-10 w-full max-w-md rounded-lg border border-canopy-border bg-canopy-sidebar p-6 shadow-xl"
+        className="relative z-10 w-full max-w-md mx-4 rounded-lg border border-canopy-border bg-canopy-sidebar p-6 shadow-xl"
         onClick={(e) => e.stopPropagation()}
       >
         <h2 id={dialogTitleId} className="text-lg font-semibold text-canopy-text mb-2">
@@ -104,6 +105,7 @@ export function ConfirmDialog({
           </Button>
         </div>
       </div>
-    </div>
+    </div>,
+    document.body
   );
 }

@@ -48,7 +48,9 @@ function LauncherCard({ title, description, shortcut, icon, onClick }: LauncherC
       className={cn(
         "group flex items-center text-left p-4 rounded-xl border transition-all duration-200 min-h-[100px]",
         "bg-canopy-bg hover:bg-surface",
-        "border-canopy-border/20 hover:border-canopy-border/40 hover:shadow-lg"
+        "border-canopy-border/20 hover:border-canopy-border/40",
+        "shadow-[inset_0_1px_0_0_rgba(255,255,255,0.03),inset_0_-1px_0_0_rgba(0,0,0,0.2)]",
+        "hover:shadow-[inset_0_1px_0_0_rgba(255,255,255,0.05),inset_0_-1px_0_0_rgba(0,0,0,0.3),0_4px_12px_-4px_rgba(0,0,0,0.4)]"
       )}
     >
       <div className="flex items-center justify-center p-2 rounded-lg mr-3 transition-colors">
@@ -95,10 +97,10 @@ function EmptyState({
         <div className="mb-12 flex flex-col items-center text-center">
           <CanopyIcon className="h-20 w-20 text-canopy-accent opacity-25 mb-8" />
           <h3 className="text-2xl font-semibold text-canopy-text tracking-tight mb-3">
-            Canopy Command Center
+            Orchestrate Intelligence.
           </h3>
           <p className="text-sm text-canopy-text/60 max-w-md leading-relaxed font-medium">
-            Orchestrate your development workflow with AI agents.
+            A calm command center for your AI coding agents.
           </p>
         </div>
 
@@ -116,7 +118,7 @@ function EmptyState({
         <div className="grid grid-cols-1 sm:grid-cols-2 gap-4 w-full max-w-3xl mb-8">
           <LauncherCard
             title="Claude Code"
-            description="Best for sustained, autonomous refactoring sessions."
+            description="Great for deep, steady refactors."
             shortcut="Ctrl+Shift+C"
             icon={<ClaudeIcon className="h-5 w-5" brandColor={getBrandColorHex("claude")} />}
             onClick={
@@ -130,7 +132,7 @@ function EmptyState({
           />
           <LauncherCard
             title="Codex CLI"
-            description="Top-tier reasoning depth with context compaction."
+            description="Good for careful, step-by-step changes."
             icon={<CodexIcon className="h-5 w-5" brandColor={getBrandColorHex("codex")} />}
             onClick={
               hasActiveWorktree
@@ -143,7 +145,7 @@ function EmptyState({
           />
           <LauncherCard
             title="Gemini CLI"
-            description="Fast auto-routing and multi-modal image input."
+            description="Ideal for quick explorations and visual tasks."
             shortcut="Ctrl+Shift+G"
             icon={<GeminiIcon className="h-5 w-5" brandColor={getBrandColorHex("gemini")} />}
             onClick={
@@ -157,7 +159,7 @@ function EmptyState({
           />
           <LauncherCard
             title="Terminal"
-            description="Standard shell access."
+            description="Direct shell access."
             icon={<Terminal className="h-5 w-5" />}
             onClick={
               hasActiveWorktree

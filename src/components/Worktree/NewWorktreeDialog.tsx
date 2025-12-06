@@ -1,4 +1,5 @@
 import { useState, useEffect } from "react";
+import { createPortal } from "react-dom";
 import { Button } from "@/components/ui/button";
 import { X, FolderOpen, GitBranch, Check, AlertCircle, Loader2 } from "lucide-react";
 import { useOverlayState } from "@/hooks";
@@ -115,13 +116,13 @@ export function NewWorktreeDialog({
 
   if (!isOpen) return null;
 
-  return (
+  return createPortal(
     <div
-      className="fixed inset-0 z-50 flex items-center justify-center bg-black/50 backdrop-blur-sm"
+      className="fixed inset-0 z-[var(--z-modal)] flex items-center justify-center bg-black/50 backdrop-blur-sm"
       onClick={onClose}
     >
       <div
-        className="bg-canopy-sidebar border border-canopy-border rounded-lg shadow-xl w-full max-w-lg"
+        className="bg-canopy-sidebar border border-canopy-border rounded-lg shadow-xl w-full max-w-lg mx-4"
         onClick={(e) => e.stopPropagation()}
         role="dialog"
         aria-modal="true"
@@ -279,6 +280,7 @@ export function NewWorktreeDialog({
           </Button>
         </div>
       </div>
-    </div>
+    </div>,
+    document.body
   );
 }

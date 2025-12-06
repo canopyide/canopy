@@ -113,7 +113,7 @@ export function TerminalCountWarning({ className, onOpenBulkActions }: TerminalC
             {activeCount} terminals open
           </p>
           <p className="text-xs text-canopy-text/70 mt-0.5">
-            Consider closing idle terminals to maintain performance.
+            Consider closing idle terminals to keep the board light.
             {completedCount > 0 && (
               <>
                 {" "}

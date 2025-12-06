@@ -1,4 +1,5 @@
 import { useEffect, useCallback, useState, useRef, useId } from "react";
+import { createPortal } from "react-dom";
 import { Button } from "@/components/ui/button";
 import { cn } from "@/lib/utils";
 import { DiffViewer } from "./DiffViewer";
@@ -105,9 +106,9 @@ export function FileDiffModal({
   const fileName = filePath.split("/").pop() || filePath;
   const statusInfo = getStatusInfo(status);
 
-  return (
+  return createPortal(
     <div
-      className="fixed inset-0 z-50 flex items-center justify-center"
+      className="fixed inset-0 z-[var(--z-modal)] flex items-center justify-center"
       role="dialog"
       aria-modal="true"
       aria-labelledby={dialogTitleId}
@@ -247,7 +248,8 @@ export function FileDiffModal({
           </Button>
         </div>
       </div>
-    </div>
+    </div>,
+    document.body
   );
 }
 

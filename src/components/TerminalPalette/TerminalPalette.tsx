@@ -1,4 +1,5 @@
 import { useEffect, useRef, useCallback } from "react";
+import { createPortal } from "react-dom";
 import { cn } from "@/lib/utils";
 import { TerminalListItem } from "./TerminalListItem";
 import { useOverlayState } from "@/hooks";
@@ -96,9 +97,9 @@ export function TerminalPalette({
     return null;
   }
 
-  return (
+  return createPortal(
     <div
-      className="fixed inset-0 z-50 flex items-start justify-center pt-[15vh] bg-black/50 backdrop-blur-sm"
+      className="fixed inset-0 z-[var(--z-modal)] flex items-start justify-center pt-[15vh] bg-black/50 backdrop-blur-sm"
       onClick={handleBackdropClick}
       role="dialog"
       aria-modal="true"
@@ -106,7 +107,7 @@ export function TerminalPalette({
     >
       <div
         className={cn(
-          "w-full max-w-xl bg-canopy-bg border border-canopy-border rounded-[var(--radius-xl)] shadow-2xl overflow-hidden",
+          "w-full max-w-xl mx-4 bg-canopy-bg border border-canopy-border rounded-[var(--radius-xl)] shadow-2xl overflow-hidden",
           "animate-in fade-in slide-in-from-top-4 duration-150"
         )}
         onClick={(e) => e.stopPropagation()}
@@ -197,7 +198,8 @@ export function TerminalPalette({
           </span>
         </div>
       </div>
-    </div>
+    </div>,
+    document.body
   );
 }
 

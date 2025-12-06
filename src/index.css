@@ -83,6 +83,22 @@
 }
 
 :root {
+  /* Z-index tier system
+   * Establishes a clear stacking hierarchy for UI layers.
+   * Higher tiers always appear above lower tiers.
+   *
+   * Tier 40: Fixed panels (dock, sidebars)
+   * Tier 50: Sidecar overlay
+   * Tier 60: Modal dialogs (full-screen overlays)
+   * Tier 70: Popovers, dropdowns, tooltips (can appear above modals)
+   * Tier 80: Toast notifications (always visible)
+   */
+  --z-panel: 40;
+  --z-sidecar: 50;
+  --z-modal: 60;
+  --z-popover: 70;
+  --z-toast: 80;
+
   --animation-duration: 150ms;
   --transition-duration: 150ms;
   --background: oklch(1 0 0);

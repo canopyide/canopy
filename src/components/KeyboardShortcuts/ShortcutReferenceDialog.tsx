@@ -1,4 +1,5 @@
 import { useState, useMemo, useEffect, useRef } from "react";
+import { createPortal } from "react-dom";
 import { keybindingService } from "../../services/KeybindingService";
 import type { KeybindingConfig } from "../../services/KeybindingService";
 
@@ -98,9 +99,9 @@ export function ShortcutReferenceDialog({ isOpen, onClose }: ShortcutReferenceDi
 
   if (!isOpen) return null;
 
-  return (
+  return createPortal(
     <div
-      className="fixed inset-0 z-50 flex items-center justify-center bg-black/50"
+      className="fixed inset-0 z-[var(--z-modal)] flex items-center justify-center bg-black/50"
       onClick={onClose}
     >
       <div
@@ -108,7 +109,7 @@ export function ShortcutReferenceDialog({ isOpen, onClose }: ShortcutReferenceDi
         role="dialog"
         aria-modal="true"
         aria-labelledby="shortcuts-dialog-title"
-        className="bg-canopy-sidebar rounded-lg shadow-2xl w-full max-w-4xl max-h-[80vh] flex flex-col border border-canopy-border"
+        className="bg-canopy-sidebar rounded-lg shadow-2xl w-full max-w-4xl mx-4 max-h-[80vh] flex flex-col border border-canopy-border"
         onClick={(e) => e.stopPropagation()}
       >
         <div className="p-6 border-b border-canopy-border">
@@ -180,6 +181,7 @@ export function ShortcutReferenceDialog({ isOpen, onClose }: ShortcutReferenceDi
           </div>
         </div>
       </div>
-    </div>
+    </div>,
+    document.body
   );
 }

@@ -1,4 +1,5 @@
 import { useEffect, useCallback, useRef } from "react";
+import { createPortal } from "react-dom";
 import { Button } from "@/components/ui/button";
 import { cn } from "@/lib/utils";
 import { formatBytes } from "@/lib/formatBytes";
@@ -73,16 +74,16 @@ export function FilePickerModal({ isOpen, worktreeId, onConfirm, onCancel }: Fil
 
   const selectedCount = getSelectedPaths().length;
 
-  return (
+  return createPortal(
     <div
-      className="fixed inset-0 z-50 flex items-center justify-center"
+      className="fixed inset-0 z-[var(--z-modal)] flex items-center justify-center"
       role="dialog"
       aria-modal="true"
       onClick={(e) => e.stopPropagation()}
     >
       <div className="absolute inset-0 bg-black/50 backdrop-blur-sm" onClick={onCancel} />
 
-      <div className="relative z-10 w-full max-w-2xl max-h-[80vh] flex flex-col bg-canopy-bg border border-canopy-border rounded-lg shadow-xl">
+      <div className="relative z-10 w-full max-w-2xl mx-4 max-h-[80vh] flex flex-col bg-canopy-bg border border-canopy-border rounded-lg shadow-xl">
         <div className="flex items-center justify-between px-6 py-4 border-b border-canopy-border">
           <div>
             <h2 className="text-lg font-semibold text-canopy-text">Select Files to Inject</h2>
@@ -155,7 +156,8 @@ export function FilePickerModal({ isOpen, worktreeId, onConfirm, onCancel }: Fil
           </div>
         </div>
       </div>
-    </div>
+    </div>,
+    document.body
   );
 }
 

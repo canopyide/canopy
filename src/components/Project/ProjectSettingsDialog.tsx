@@ -1,4 +1,5 @@
 import { useState, useEffect, useCallback } from "react";
+import { createPortal } from "react-dom";
 import { X, Server, Info } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover";
@@ -135,14 +136,14 @@ export function ProjectSettingsDialog({ projectId, isOpen, onClose }: ProjectSet
 
   if (!isOpen) return null;
 
-  return (
+  return createPortal(
     <div
-      className="fixed inset-0 z-50 flex items-center justify-center bg-black/50 backdrop-blur-sm"
+      className="fixed inset-0 z-[var(--z-modal)] flex items-center justify-center bg-black/50 backdrop-blur-sm"
       onClick={onClose}
       onKeyDown={handleKeyDown}
     >
       <div
-        className="bg-canopy-sidebar border border-canopy-border rounded-lg shadow-xl w-[600px] max-h-[80vh] flex flex-col"
+        className="bg-canopy-sidebar border border-canopy-border rounded-lg shadow-xl w-[600px] max-w-[calc(100%-2rem)] max-h-[80vh] flex flex-col"
         onClick={(e) => e.stopPropagation()}
         role="dialog"
         aria-modal="true"
@@ -341,6 +342,7 @@ export function ProjectSettingsDialog({ projectId, isOpen, onClose }: ProjectSet
           </Button>
         </div>
       </div>
-    </div>
+    </div>,
+    document.body
   );
 }

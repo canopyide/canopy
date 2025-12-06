@@ -13,6 +13,7 @@ const STATE_CONFIG: Record<
     color: string;
     bgColor?: string;
     borderColor?: string;
+    glow?: string;
     pulse: boolean;
     label: string;
     tooltip: string;
@@ -29,6 +30,7 @@ const STATE_CONFIG: Record<
     icon: "?",
     color: "text-canopy-bg",
     bgColor: "bg-[var(--color-state-waiting)]",
+    glow: "shadow-[0_0_8px_rgba(251,191,36,0.4)]",
     pulse: false,
     label: "waiting",
     tooltip: "Agent is waiting for your direction",
@@ -68,6 +70,7 @@ export function AgentStatusIndicator({ state, className }: AgentStatusIndicatorP
         config.bgColor,
         config.borderColor && "border",
         config.borderColor,
+        config.glow,
         config.pulse && "animate-agent-pulse",
         className
       )}

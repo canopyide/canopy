@@ -1,4 +1,5 @@
 import { useState, useEffect } from "react";
+import { createPortal } from "react-dom";
 import { useErrors, useOverlayState } from "@/hooks";
 import { useLogsStore, useSidecarStore } from "@/store";
 import { X, Bot, Github, LayoutGrid, PanelRight, Keyboard } from "lucide-react";
@@ -71,13 +72,13 @@ export function SettingsDialog({
 
   if (!isOpen) return null;
 
-  return (
+  return createPortal(
     <div
-      className="fixed inset-0 z-50 flex items-center justify-center bg-black/50 backdrop-blur-sm"
+      className="fixed inset-0 z-[var(--z-modal)] flex items-center justify-center bg-black/50 backdrop-blur-sm"
       onClick={onClose}
     >
       <div
-        className="bg-canopy-sidebar border border-canopy-border rounded-[var(--radius-xl)] shadow-xl w-full max-w-2xl h-[550px] flex overflow-hidden"
+        className="bg-canopy-sidebar border border-canopy-border rounded-[var(--radius-xl)] shadow-xl w-full max-w-2xl mx-4 h-[550px] flex overflow-hidden"
         onClick={(e) => e.stopPropagation()}
         role="dialog"
         aria-modal="true"
@@ -236,6 +237,7 @@ export function SettingsDialog({
           </div>
         </div>
       </div>
-    </div>
+    </div>,
+    document.body
   );
 }

@@ -76,10 +76,10 @@ export function Toolbar({
         ? `Checking ${agentNames[type]} CLI availability...`
         : isAvailable
           ? type === "claude"
-            ? "Start Claude — Opus 4.5 for deep work (Ctrl+Shift+C)"
+            ? "Start Claude — deep, focused work (Ctrl+Shift+C)"
             : type === "gemini"
-              ? "Start Gemini — Auto-routing enabled (Ctrl+Shift+G)"
-              : "Start Codex — GPT-5.1 Max (Ctrl+Shift+X)"
+              ? "Start Gemini — quick exploration (Ctrl+Shift+G)"
+              : "Start Codex — careful, methodical runs (Ctrl+Shift+X)"
           : `${agentNames[type]} CLI not found. Click to install.`,
       ariaLabel: isLoading
         ? `Checking ${agentNames[type]} availability`
@@ -90,7 +90,7 @@ export function Toolbar({
   };
 
   return (
-    <header className="relative h-12 flex items-center px-4 shrink-0 app-drag-region bg-canopy-sidebar border-b border-canopy-border shadow-sm">
+    <header className="relative h-12 flex items-center px-4 shrink-0 app-drag-region bg-canopy-sidebar/95 backdrop-blur-sm border-b border-canopy-border shadow-sm">
       <div className="window-resize-strip" />
 
       <div className="w-20 shrink-0" />
