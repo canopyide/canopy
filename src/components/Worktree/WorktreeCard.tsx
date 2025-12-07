@@ -51,6 +51,7 @@ import {
   TerminalSquare,
   LayoutGrid,
   PanelBottom,
+  ExternalLink,
 } from "lucide-react";
 import {
   ClaudeIcon,
@@ -466,11 +467,12 @@ export function WorktreeCard({
                         e.stopPropagation();
                         onOpenIssue?.();
                       }}
-                      className="flex items-center gap-1 text-[10px] text-blue-400 hover:text-blue-300 hover:underline transition-colors focus-visible:outline focus-visible:outline-2 focus-visible:outline-canopy-accent"
+                      className="group/issue flex items-center gap-1 text-[10px] text-blue-400 hover:text-blue-300 hover:underline transition-colors focus-visible:outline focus-visible:outline-2 focus-visible:outline-canopy-accent"
                       title="Open Issue on GitHub"
                     >
                       <CircleDot className="w-2.5 h-2.5" />
                       <span className="font-mono">#{worktree.issueNumber}</span>
+                      <ExternalLink className="w-3 h-3 opacity-60 group-hover/issue:opacity-100 transition-opacity" />
                     </button>
                   )}
                   {worktree.prNumber && (
@@ -480,7 +482,7 @@ export function WorktreeCard({
                         onOpenPR?.();
                       }}
                       className={cn(
-                        "flex items-center gap-1 text-[10px] hover:underline transition-colors",
+                        "group/pr flex items-center gap-1 text-[10px] hover:underline transition-colors",
                         "focus-visible:outline focus-visible:outline-2 focus-visible:outline-canopy-accent",
                         worktree.prState === "merged"
                           ? "text-purple-400 hover:text-purple-300"
@@ -492,6 +494,7 @@ export function WorktreeCard({
                     >
                       <GitPullRequest className="w-2.5 h-2.5" />
                       <span className="font-mono">#{worktree.prNumber}</span>
+                      <ExternalLink className="w-3 h-3 opacity-60 group-hover/pr:opacity-100 transition-opacity" />
                     </button>
                   )}
                 </div>
