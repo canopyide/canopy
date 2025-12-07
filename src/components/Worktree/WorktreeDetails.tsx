@@ -12,6 +12,7 @@ export interface WorktreeDetailsProps {
   worktree: WorktreeState;
   homeDir?: string;
   effectiveNote?: string;
+  effectiveSummary?: string | null;
   showDevServer: boolean;
   serverState: DevServerState | null;
   serverLoading: boolean;
@@ -45,6 +46,7 @@ export function WorktreeDetails({
   worktree,
   homeDir,
   effectiveNote,
+  effectiveSummary,
   showDevServer,
   serverState,
   serverLoading,
@@ -116,6 +118,7 @@ export function WorktreeDetails({
     (showDevServer && serverState) ||
     worktreeErrors.length > 0 ||
     effectiveNote ||
+    effectiveSummary ||
     (showLastCommit && rawLastCommitMsg) ||
     (hasChanges && worktree.worktreeChanges);
 
@@ -264,7 +267,7 @@ export function WorktreeDetails({
         </div>
       )}
 
-      {/* Block 2: Narrative (AI note or commit message) */}
+      {/* Block 2: Narrative (AI note, summary, or commit message) */}
       {effectiveNote && (
         <div className="p-3 rounded-lg bg-yellow-500/5 border border-yellow-500/20">
           <div className="text-xs text-yellow-200/90 whitespace-pre-wrap font-mono">
@@ -287,10 +290,22 @@ export function WorktreeDetails({
           </div>
         </div>
       )}
-      {!effectiveNote && showLastCommit && rawLastCommitMsg && (
+      {!effectiveNote && effectiveSummary && (
+        <div className="text-xs text-canopy-text/70 whitespace-pre-wrap leading-relaxed p-2 bg-white/[0.02] rounded">
+          {effectiveSummary}
+        </div>
+      )}
+      {!effectiveNote && !effectiveSummary && showLastCommit && rawLastCommitMsg && (
         <div className="text-xs text-canopy-text/60 italic flex gap-2 p-2 bg-white/[0.02] rounded">
           <GitCommit className="w-3.5 h-3.5 mt-0.5 shrink-0 opacity-60" />
           <div className="whitespace-pre-wrap leading-relaxed min-w-0">{rawLastCommitMsg}</div>
+        </div>
+      )}
+
+      {/* Placeholder when no AI summary or note exists */}
+      {!effectiveNote && !effectiveSummary && !rawLastCommitMsg && (
+        <div className="text-[11px] text-canopy-text/40 italic">
+          No AI summary yet. Run an agent task or use Copy Context to generate one.
         </div>
       )}
 
