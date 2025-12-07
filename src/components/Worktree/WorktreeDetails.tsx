@@ -36,32 +36,6 @@ export interface WorktreeDetailsProps {
   onRetryError: (id: string, action: RetryAction, args?: Record<string, unknown>) => Promise<void>;
 }
 
-function getServerStatusIndicator(serverState: DevServerState | null): React.ReactNode {
-  if (!serverState) return null;
-  switch (serverState.status) {
-    case "stopped":
-      return <span className="text-canopy-text/40">○</span>;
-    case "starting":
-      return <span className="text-[var(--color-server-starting)]">◐</span>;
-    case "running":
-      return <span className="text-[var(--color-server-running)]">●</span>;
-    case "error":
-      return <span className="text-[var(--color-server-error)]">●</span>;
-    default:
-      return <span className="text-canopy-text/40">○</span>;
-  }
-}
-
-function getServerLabel(serverState: DevServerState | null): string | null {
-  if (!serverState) return null;
-  if (serverState.status === "running" && serverState.url) {
-    return serverState.url.replace(/^https?:\/\//, "").replace(/\/$/, "");
-  }
-  if (serverState.status === "error") return "Error";
-  if (serverState.status === "starting") return "Starting";
-  return "Dev Server";
-}
-
 function getServerStatusTooltip(serverState: DevServerState | null): string {
   if (!serverState) return "Dev server status unknown";
   switch (serverState.status) {
@@ -149,126 +123,137 @@ export function WorktreeDetails({
     }
   };
 
+  const showOpsDashboard =
+    (showDevServer && serverState) || (terminalCounts && terminalCounts.total > 0);
+
   return (
-    <div className="pt-2 mt-2 space-y-3">
-      {/* Zone 1: Context & Narrative */}
-      {effectiveNote && (
-        <div className="bg-yellow-500/5 p-2 rounded border-l-2 border-yellow-500/30">
-          <div className="text-xs text-canopy-text whitespace-pre-wrap font-mono">
-            {parsedNoteSegments.map((segment, index) =>
-              segment.type === "link" ? (
-                <a
-                  key={index}
-                  href={segment.content}
-                  target="_blank"
-                  rel="noopener noreferrer"
-                  className="text-[var(--color-status-info)] underline hover:text-blue-300 rounded focus-visible:outline focus-visible:outline-2 focus-visible:outline-canopy-accent focus-visible:outline-offset-2"
-                  onClick={(e) => handleLinkClick(e, segment.content)}
+    <div className="pt-3 mt-2 p-3 space-y-4 bg-white/[0.01] rounded-lg border border-white/5 shadow-inner">
+      {/* Block 1: Ops Dashboard (2-column grid) */}
+      {showOpsDashboard && (
+        <div className="grid grid-cols-2 gap-4">
+          {/* Left: Server Control */}
+          <div className="space-y-2">
+            <div className="text-[10px] uppercase tracking-wider text-canopy-text/60 font-semibold">
+              Dev Server
+            </div>
+            {showDevServer && serverState ? (
+              <div className="space-y-2">
+                <button
+                  onClick={(e) => {
+                    e.stopPropagation();
+                    if (!serverLoading && serverState.status !== "starting") {
+                      onToggleServer();
+                    }
+                  }}
+                  disabled={serverLoading || serverState.status === "starting"}
+                  title={getServerStatusTooltip(serverState)}
+                  aria-label={
+                    serverState.status === "running"
+                      ? "Stop dev server"
+                      : serverState.status === "starting"
+                        ? "Dev server is starting"
+                        : serverState.status === "error"
+                          ? "Retry dev server"
+                          : "Start dev server"
+                  }
+                  className={cn(
+                    "w-full py-2 px-3 rounded-lg font-medium text-sm transition-colors",
+                    "focus-visible:outline focus-visible:outline-2 focus-visible:outline-canopy-accent",
+                    serverState.status === "running"
+                      ? "bg-green-500/20 text-green-400 hover:bg-green-500/30"
+                      : serverState.status === "error"
+                        ? "bg-red-500/10 text-red-400 hover:bg-red-500/20"
+                        : "bg-white/5 text-canopy-text/60 hover:bg-white/10",
+                    (serverLoading || serverState.status === "starting") &&
+                      "opacity-50 cursor-not-allowed"
+                  )}
                 >
-                  {segment.content}
-                </a>
-              ) : (
-                <span key={index}>{segment.content}</span>
-              )
+                  <div className="flex items-center justify-center gap-2">
+                    {serverState.status === "running" ? (
+                      <>
+                        <div className="w-2 h-2 bg-green-400 rounded-full animate-pulse" />
+                        <span>Running</span>
+                      </>
+                    ) : serverState.status === "starting" ? (
+                      <>
+                        <div className="w-2 h-2 bg-amber-400 rounded-full animate-pulse" />
+                        <span>Starting...</span>
+                      </>
+                    ) : serverState.status === "error" ? (
+                      <>
+                        <Square className="w-3 h-3" />
+                        <span>Error - Retry</span>
+                      </>
+                    ) : (
+                      <>
+                        <Play className="w-3 h-3" />
+                        <span>Start Server</span>
+                      </>
+                    )}
+                  </div>
+                </button>
+                {serverState.status === "running" && serverState.url && (
+                  <a
+                    href={serverState.url}
+                    target="_blank"
+                    rel="noopener noreferrer"
+                    onClick={(e) => {
+                      e.stopPropagation();
+                      e.preventDefault();
+                      systemClient.openExternal(serverState.url!);
+                    }}
+                    className="flex items-center justify-center gap-1.5 text-xs text-blue-400 hover:text-blue-300 hover:underline"
+                  >
+                    <Globe className="w-3 h-3" />
+                    {serverState.url.replace(/^https?:\/\//, "")}
+                  </a>
+                )}
+              </div>
+            ) : (
+              <div className="text-xs text-canopy-text/40 py-2">No dev script configured</div>
+            )}
+          </div>
+
+          {/* Right: Terminal Stack */}
+          <div className="space-y-2">
+            <div className="text-[10px] uppercase tracking-wider text-canopy-text/60 font-semibold">
+              Sessions
+            </div>
+            {terminalCounts && terminalCounts.total > 0 ? (
+              <div className="space-y-1.5">
+                <div className="flex items-center gap-2 text-xs text-canopy-text/60">
+                  <Terminal className="w-3.5 h-3.5" />
+                  <span>
+                    {terminalCounts.total} terminal{terminalCounts.total !== 1 ? "s" : ""}
+                  </span>
+                </div>
+                {terminalCounts.byState.working > 0 && (
+                  <div className="flex items-center gap-1.5 text-xs text-[var(--color-status-success)]">
+                    <div className="w-1.5 h-1.5 rounded-full bg-current animate-pulse" />
+                    <span>{terminalCounts.byState.working} running</span>
+                  </div>
+                )}
+                {terminalCounts.byState.waiting > 0 && (
+                  <div className="flex items-center gap-1.5 text-xs text-amber-400">
+                    <div className="w-1.5 h-1.5 rounded-full bg-current" />
+                    <span>{terminalCounts.byState.waiting} waiting</span>
+                  </div>
+                )}
+                {terminalCounts.byState.completed > 0 && (
+                  <div className="flex items-center gap-1.5 text-xs text-canopy-text/40">
+                    <div className="w-1.5 h-1.5 rounded-full bg-current" />
+                    <span>{terminalCounts.byState.completed} completed</span>
+                  </div>
+                )}
+              </div>
+            ) : (
+              <div className="text-xs text-canopy-text/40 py-2">No active sessions</div>
             )}
           </div>
         </div>
       )}
 
-      {showLastCommit && rawLastCommitMsg && (
-        <div className="text-xs text-canopy-text/60 italic flex gap-2 p-2 bg-white/[0.02] rounded">
-          <GitCommit className="w-3.5 h-3.5 mt-0.5 shrink-0 opacity-60" />
-          <div className="whitespace-pre-wrap leading-relaxed min-w-0">{rawLastCommitMsg}</div>
-        </div>
-      )}
-
-      {/* Zone 2: Operational Controls (The "Cockpit") */}
-      {(showDevServer && serverState) || (terminalCounts && terminalCounts.total > 0) ? (
-        <div className="space-y-2 p-2 bg-white/[0.02] rounded border border-white/5">
-          <div className="text-[10px] uppercase tracking-wider text-canopy-text/60 font-semibold">
-            Activity
-          </div>
-
-          {showDevServer && serverState && (
-            <div className="flex items-center justify-between text-xs">
-              <div
-                className="flex items-center gap-2 text-canopy-text/60 font-mono"
-                title={getServerStatusTooltip(serverState)}
-              >
-                <Globe className="w-3.5 h-3.5" />
-                <div className="flex items-center gap-1.5">
-                  {getServerStatusIndicator(serverState)}
-                  <span>{getServerLabel(serverState)}</span>
-                </div>
-              </div>
-              <button
-                onClick={(e) => {
-                  e.stopPropagation();
-                  if (!serverLoading && serverState.status !== "starting") {
-                    onToggleServer();
-                  }
-                }}
-                disabled={serverLoading || serverState.status === "starting"}
-                title={
-                  serverState.status === "running"
-                    ? "Stop dev server"
-                    : serverState.status === "starting"
-                      ? "Server is starting..."
-                      : serverState.status === "error"
-                        ? "Retry dev server (last start failed)"
-                        : "Start dev server"
-                }
-                aria-label={
-                  serverState.status === "running"
-                    ? "Stop dev server"
-                    : serverState.status === "starting"
-                      ? "Dev server is starting"
-                      : serverState.status === "error"
-                        ? "Retry dev server"
-                        : "Start dev server"
-                }
-                className={cn(
-                  "px-2 py-1 rounded text-xs font-medium transition-colors",
-                  "focus-visible:outline focus-visible:outline-2 focus-visible:outline-canopy-accent",
-                  serverState.status === "running"
-                    ? "bg-red-500/10 text-red-400 hover:bg-red-500/20"
-                    : "bg-green-500/10 text-green-400 hover:bg-green-500/20",
-                  (serverLoading || serverState.status === "starting") &&
-                    "opacity-50 cursor-not-allowed"
-                )}
-              >
-                {serverState.status === "running" ? (
-                  <div className="flex items-center gap-1">
-                    <Square className="w-3 h-3" />
-                    <span>Stop</span>
-                  </div>
-                ) : (
-                  <div className="flex items-center gap-1">
-                    <Play className="w-3 h-3" />
-                    <span>Start</span>
-                  </div>
-                )}
-              </button>
-            </div>
-          )}
-
-          {terminalCounts && terminalCounts.total > 0 && (
-            <div className="flex items-center gap-2 text-xs text-canopy-text/60 font-mono">
-              <Terminal className="w-3.5 h-3.5" />
-              <span>
-                {terminalCounts.total} terminal{terminalCounts.total !== 1 ? "s" : ""} active
-              </span>
-              {terminalCounts.byState.working > 0 && (
-                <div className="flex items-center gap-1 text-[var(--color-status-success)]">
-                  <div className="w-1.5 h-1.5 rounded-full bg-current animate-pulse" />
-                  <span>{terminalCounts.byState.working} running</span>
-                </div>
-              )}
-            </div>
-          )}
-        </div>
-      ) : null}
-
+      {/* Errors (if any) */}
       {worktreeErrors.length > 0 && (
         <div className="space-y-1">
           {worktreeErrors.slice(0, 3).map((error) => (
@@ -288,7 +273,37 @@ export function WorktreeDetails({
         </div>
       )}
 
-      {/* Zone 3: The Work (Teleported File List) */}
+      {/* Block 2: Narrative (AI note or commit message) */}
+      {effectiveNote && (
+        <div className="p-3 rounded-lg bg-yellow-500/5 border border-yellow-500/20">
+          <div className="text-xs text-yellow-200/90 whitespace-pre-wrap font-mono">
+            {parsedNoteSegments.map((segment, index) =>
+              segment.type === "link" ? (
+                <a
+                  key={index}
+                  href={segment.content}
+                  target="_blank"
+                  rel="noopener noreferrer"
+                  className="text-blue-400 underline hover:text-blue-300 rounded focus-visible:outline focus-visible:outline-2 focus-visible:outline-canopy-accent focus-visible:outline-offset-2"
+                  onClick={(e) => handleLinkClick(e, segment.content)}
+                >
+                  {segment.content}
+                </a>
+              ) : (
+                <span key={index}>{segment.content}</span>
+              )
+            )}
+          </div>
+        </div>
+      )}
+      {!effectiveNote && showLastCommit && rawLastCommitMsg && (
+        <div className="text-xs text-canopy-text/60 italic flex gap-2 p-2 bg-white/[0.02] rounded">
+          <GitCommit className="w-3.5 h-3.5 mt-0.5 shrink-0 opacity-60" />
+          <div className="whitespace-pre-wrap leading-relaxed min-w-0">{rawLastCommitMsg}</div>
+        </div>
+      )}
+
+      {/* Block 3: Artifacts (grouped file changes + system path) */}
       {hasChanges && worktree.worktreeChanges && (
         <div className="space-y-2">
           <div className="text-[10px] uppercase tracking-wider text-canopy-text/60 font-semibold">
@@ -297,13 +312,14 @@ export function WorktreeDetails({
           <FileChangeList
             changes={worktree.worktreeChanges.changes}
             rootPath={worktree.worktreeChanges.rootPath}
-            maxVisible={8}
+            maxVisible={15}
+            groupByFolder={worktree.worktreeChanges.changedFileCount > 5}
           />
         </div>
       )}
 
-      {/* Folder path at the bottom */}
-      <div className="pt-2 border-t border-border/40">
+      {/* System path footer */}
+      <div className="pt-3 border-t border-white/5">
         <div className="flex items-center gap-2">
           <button
             type="button"
@@ -312,9 +328,9 @@ export function WorktreeDetails({
               onPathClick();
             }}
             className={cn(
-              "text-[0.7rem] text-canopy-text/60 hover:text-canopy-text/80 hover:underline text-left font-mono truncate flex-1 min-w-0 flex items-center gap-1.5 rounded",
+              "text-[10px] text-canopy-text/40 hover:text-canopy-text/60 text-left font-mono truncate flex-1 min-w-0 flex items-center gap-1.5 rounded",
               "focus-visible:outline focus-visible:outline-2 focus-visible:outline-canopy-accent",
-              isFocused && "underline"
+              isFocused && "text-canopy-text/60"
             )}
             title={`Open folder: ${worktree.path}`}
           >
@@ -325,7 +341,7 @@ export function WorktreeDetails({
           <button
             type="button"
             onClick={handleCopyPath}
-            className="shrink-0 p-1 text-canopy-text/60 hover:text-canopy-text/80 hover:bg-white/5 rounded transition-colors focus-visible:outline focus-visible:outline-2 focus-visible:outline-canopy-accent"
+            className="shrink-0 p-1 text-canopy-text/40 hover:text-canopy-text/60 hover:bg-white/5 rounded transition-colors focus-visible:outline focus-visible:outline-2 focus-visible:outline-canopy-accent"
             title={pathCopied ? "Copied!" : "Copy full path"}
             aria-label={pathCopied ? "Path copied to clipboard" : "Copy path to clipboard"}
           >
