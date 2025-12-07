@@ -10,12 +10,12 @@ import {
   useDiagnosticsStore,
   useErrorStore,
   useSidecarStore,
+  usePerformanceModeStore,
   type PanelState,
 } from "@/store";
 import type { RetryAction } from "@/store";
 import { appClient } from "@/clients";
 import type { CliAvailability, AgentSettings } from "@shared/types";
-import { useTerminalPerformance } from "@/hooks/useTerminalPerformance";
 
 interface AppLayoutProps {
   children?: ReactNode;
@@ -42,8 +42,17 @@ export function AppLayout({
   agentAvailability,
   agentSettings,
 }: AppLayoutProps) {
-  useTerminalPerformance();
   const [isTerminalDockVisible, setIsTerminalDockVisible] = useState(true);
+
+  const performanceMode = usePerformanceModeStore((state) => state.performanceMode);
+
+  useEffect(() => {
+    if (performanceMode) {
+      document.body.setAttribute("data-performance-mode", "true");
+    } else {
+      document.body.removeAttribute("data-performance-mode");
+    }
+  }, [performanceMode]);
 
   const [sidebarWidth, setSidebarWidth] = useState(DEFAULT_SIDEBAR_WIDTH);
 

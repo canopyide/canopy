@@ -479,8 +479,6 @@ export interface AppState {
   terminalGridConfig?: TerminalGridConfig;
   /** Whether the terminal dock is collapsed */
   dockCollapsed?: boolean;
-  /** Auto-enable threshold for performance mode */
-  performanceModeAutoEnableThreshold?: number;
 }
 
 // Log IPC Types
