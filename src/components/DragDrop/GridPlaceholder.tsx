@@ -1,4 +1,6 @@
 import { Terminal, Command } from "lucide-react";
+import { useSortable } from "@dnd-kit/sortable";
+import { CSS } from "@dnd-kit/utilities";
 import {
   ClaudeIcon,
   GeminiIcon,
@@ -10,7 +12,7 @@ import {
 } from "@/components/icons";
 import { cn } from "@/lib/utils";
 import { getBrandColorHex } from "@/lib/colorUtils";
-import { useDndPlaceholder } from "./DndProvider";
+import { useDndPlaceholder, GRID_PLACEHOLDER_ID } from "./DndProvider";
 import type { TerminalType } from "@/types";
 
 interface GridPlaceholderProps {
@@ -83,6 +85,31 @@ export function GridPlaceholder({ className }: GridPlaceholderProps) {
 
       {/* Empty Body */}
       <div className="flex-1 w-full bg-transparent" />
+    </div>
+  );
+}
+
+export function SortableGridPlaceholder() {
+  const { attributes, listeners, setNodeRef, transform, transition } = useSortable({
+    id: GRID_PLACEHOLDER_ID,
+    data: { container: "grid", isPlaceholder: true },
+  });
+
+  const style = {
+    transform: CSS.Transform.toString(transform),
+    transition,
+  };
+
+  return (
+    <div
+      ref={setNodeRef}
+      style={style}
+      {...attributes}
+      {...listeners}
+      className="h-full"
+      data-placeholder-id={GRID_PLACEHOLDER_ID}
+    >
+      <GridPlaceholder />
     </div>
   );
 }

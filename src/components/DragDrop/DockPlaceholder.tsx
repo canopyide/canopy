@@ -1,10 +1,13 @@
-import { ArrowDown } from "lucide-react";
+import { useSortable } from "@dnd-kit/sortable";
+import { CSS } from "@dnd-kit/utilities";
 import { cn } from "@/lib/utils";
 import { useDndPlaceholder } from "./DndProvider";
 
 interface DockPlaceholderProps {
   className?: string;
 }
+
+export const DOCK_PLACEHOLDER_ID = "__dock-placeholder__";
 
 export function DockPlaceholder({ className }: DockPlaceholderProps) {
   const { activeTerminal } = useDndPlaceholder();
@@ -16,16 +19,36 @@ export function DockPlaceholder({ className }: DockPlaceholderProps) {
   return (
     <div
       className={cn(
-        "flex items-center justify-center gap-2 px-4 py-1 min-w-[120px]",
-        "rounded border-2 border-dashed border-canopy-accent/50 bg-canopy-accent/5",
-        "text-canopy-accent/70 text-xs font-medium",
-        "animate-in fade-in duration-150",
+        "flex items-center justify-center gap-2 px-4 py-1 min-w-[120px] h-full",
+        "rounded",
         className
       )}
       aria-hidden="true"
+    />
+  );
+}
+
+export function SortableDockPlaceholder() {
+  const { attributes, listeners, setNodeRef, transform, transition } = useSortable({
+    id: DOCK_PLACEHOLDER_ID,
+    data: { container: "dock", isPlaceholder: true },
+  });
+
+  const style = {
+    transform: CSS.Transform.toString(transform),
+    transition,
+  };
+
+  return (
+    <div
+      ref={setNodeRef}
+      style={style}
+      {...attributes}
+      {...listeners}
+      className="h-full"
+      data-placeholder-id={DOCK_PLACEHOLDER_ID}
     >
-      <ArrowDown className="w-3 h-3" />
-      <span>Drop here</span>
+      <DockPlaceholder />
     </div>
   );
 }

@@ -19,7 +19,7 @@ import {
   SortableTerminal,
   useDndPlaceholder,
   GRID_PLACEHOLDER_ID,
-  GridPlaceholder,
+  SortableGridPlaceholder,
 } from "@/components/DragDrop";
 import { Terminal, AlertTriangle } from "lucide-react";
 import { CanopyIcon, CodexIcon, ClaudeIcon, GeminiIcon } from "@/components/icons";
@@ -323,8 +323,18 @@ export function TerminalGrid({ className, defaultCwd, onLaunchAgent }: TerminalG
     [addTerminal, defaultCwd, onLaunchAgent]
   );
 
-  // Terminal IDs for SortableContext - DON'T include placeholder to avoid infinite loop
-  const terminalIds = useMemo(() => gridTerminals.map((t) => t.id), [gridTerminals]);
+  const placeholderInGrid =
+    placeholderIndex !== null && placeholderIndex >= 0 && placeholderIndex <= gridTerminals.length;
+
+  // Terminal IDs for SortableContext - Include placeholder if visible
+  const terminalIds = useMemo(() => {
+    const ids = gridTerminals.map((t) => t.id);
+    if (showPlaceholder && placeholderInGrid) {
+      const insertIndex = Math.min(Math.max(0, placeholderIndex), ids.length);
+      ids.splice(insertIndex, 0, GRID_PLACEHOLDER_ID);
+    }
+    return ids;
+  }, [gridTerminals, showPlaceholder, placeholderIndex, placeholderInGrid]);
 
   // Batch-fit grid terminals when layout (gridCols/count) changes
   useEffect(() => {
@@ -358,9 +368,6 @@ export function TerminalGrid({ className, defaultCwd, onLaunchAgent }: TerminalG
 
   // Show "grid full" overlay when trying to drag from dock to a full grid
   const showGridFullOverlay = sourceContainer === "dock" && isGridFull;
-
-  const placeholderInGrid =
-    placeholderIndex !== null && placeholderIndex >= 0 && placeholderIndex <= gridTerminals.length;
 
   // Maximized terminal takes full screen
   if (maximizedId) {
@@ -451,7 +458,7 @@ export function TerminalGrid({ className, defaultCwd, onLaunchAgent }: TerminalG
                   const elements: React.ReactNode[] = [];
 
                   if (showPlaceholder && placeholderInGrid && placeholderIndex === index) {
-                    elements.push(<GridPlaceholder key={GRID_PLACEHOLDER_ID} />);
+                    elements.push(<SortableGridPlaceholder key={GRID_PLACEHOLDER_ID} />);
                   }
 
                   elements.push(
@@ -510,7 +517,7 @@ export function TerminalGrid({ className, defaultCwd, onLaunchAgent }: TerminalG
                 {showPlaceholder &&
                   placeholderInGrid &&
                   placeholderIndex === gridTerminals.length && (
-                    <GridPlaceholder key={GRID_PLACEHOLDER_ID} />
+                    <SortableGridPlaceholder key={GRID_PLACEHOLDER_ID} />
                   )}
               </>
             )}

@@ -9,7 +9,7 @@ import { useTerminalStore, useProjectStore } from "@/store";
 import { DockedTerminalItem } from "./DockedTerminalItem";
 import { TrashContainer } from "./TrashContainer";
 import { WaitingContainer } from "./WaitingContainer";
-import { SortableDockItem } from "@/components/DragDrop";
+import { SortableDockItem, SortableDockPlaceholder, DOCK_PLACEHOLDER_ID } from "@/components/DragDrop";
 import { ClaudeIcon, GeminiIcon, CodexIcon } from "@/components/icons";
 import {
   ContextMenu,
@@ -91,7 +91,12 @@ export function TerminalDock() {
   const activeDockTerminals = dockTerminals;
 
   // Terminal IDs for SortableContext
-  const terminalIds = useMemo(() => activeDockTerminals.map((t) => t.id), [activeDockTerminals]);
+  const terminalIds = useMemo(() => {
+    if (activeDockTerminals.length === 0) {
+      return [DOCK_PLACEHOLDER_ID];
+    }
+    return activeDockTerminals.map((t) => t.id);
+  }, [activeDockTerminals]);
 
   return (
     <ContextMenu>
@@ -132,11 +137,19 @@ export function TerminalDock() {
                 {/* min-w/min-h prevent dnd-kit measureRects loop when empty
                     (dnd-kit measures first child, which collapses to 0×0 without this) */}
                 <div className="flex items-center gap-2 min-w-[100px] min-h-[32px]">
-                  {activeDockTerminals.map((terminal, index) => (
-                    <SortableDockItem key={terminal.id} terminal={terminal} sourceIndex={index}>
-                      <DockedTerminalItem terminal={terminal} />
-                    </SortableDockItem>
-                  ))}
+                  {activeDockTerminals.length === 0 ? (
+                    <SortableDockPlaceholder />
+                  ) : (
+                    activeDockTerminals.map((terminal, index) => (
+                      <SortableDockItem
+                        key={terminal.id}
+                        terminal={terminal}
+                        sourceIndex={index}
+                      >
+                        <DockedTerminalItem terminal={terminal} />
+                      </SortableDockItem>
+                    ))
+                  )}
                 </div>
               </SortableContext>
             </div>
