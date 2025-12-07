@@ -67,124 +67,124 @@ export const createTerminalFocusSlice =
         }, 600);
       },
 
-    toggleMaximize: (id) =>
-      set((state) => ({
-        maximizedId: state.maximizedId === id ? null : id,
-      })),
+      toggleMaximize: (id) =>
+        set((state) => ({
+          maximizedId: state.maximizedId === id ? null : id,
+        })),
 
-    focusNext: () => {
-      const terminals = getTerminals();
-      // Only navigate through grid terminals (not docked ones)
-      const gridTerminals = terminals.filter((t) => t.location === "grid" || !t.location);
-      if (gridTerminals.length === 0) return;
+      focusNext: () => {
+        const terminals = getTerminals();
+        // Only navigate through grid terminals (not docked ones)
+        const gridTerminals = terminals.filter((t) => t.location === "grid" || !t.location);
+        if (gridTerminals.length === 0) return;
 
-      set((state) => {
-        const currentIndex = state.focusedId
-          ? gridTerminals.findIndex((t) => t.id === state.focusedId)
-          : -1;
-        const nextIndex = (currentIndex + 1) % gridTerminals.length;
-        return { focusedId: gridTerminals[nextIndex].id };
-      });
-    },
+        set((state) => {
+          const currentIndex = state.focusedId
+            ? gridTerminals.findIndex((t) => t.id === state.focusedId)
+            : -1;
+          const nextIndex = (currentIndex + 1) % gridTerminals.length;
+          return { focusedId: gridTerminals[nextIndex].id };
+        });
+      },
 
-    focusPrevious: () => {
-      const terminals = getTerminals();
-      // Only navigate through grid terminals (not docked ones)
-      const gridTerminals = terminals.filter((t) => t.location === "grid" || !t.location);
-      if (gridTerminals.length === 0) return;
+      focusPrevious: () => {
+        const terminals = getTerminals();
+        // Only navigate through grid terminals (not docked ones)
+        const gridTerminals = terminals.filter((t) => t.location === "grid" || !t.location);
+        if (gridTerminals.length === 0) return;
 
-      set((state) => {
-        const currentIndex = state.focusedId
-          ? gridTerminals.findIndex((t) => t.id === state.focusedId)
-          : 0;
-        const prevIndex = currentIndex <= 0 ? gridTerminals.length - 1 : currentIndex - 1;
-        return { focusedId: gridTerminals[prevIndex].id };
-      });
-    },
+        set((state) => {
+          const currentIndex = state.focusedId
+            ? gridTerminals.findIndex((t) => t.id === state.focusedId)
+            : 0;
+          const prevIndex = currentIndex <= 0 ? gridTerminals.length - 1 : currentIndex - 1;
+          return { focusedId: gridTerminals[prevIndex].id };
+        });
+      },
 
-    focusDirection: (direction, findNearest) => {
-      set((state) => {
-        if (!state.focusedId) return state;
-        const nextId = findNearest(state.focusedId, direction);
-        if (nextId) {
-          return { focusedId: nextId };
-        }
-        return state;
-      });
-    },
-
-    focusByIndex: (index, findByIndex) => {
-      const nextId = findByIndex(index);
-      if (nextId) {
-        set({ focusedId: nextId });
-      }
-    },
-
-    focusDockDirection: (direction, findDockByIndex) => {
-      set((state) => {
-        if (!state.focusedId) return state;
-        const nextId = findDockByIndex(state.focusedId, direction);
-        if (nextId) {
-          return { focusedId: nextId };
-        }
-        return state;
-      });
-    },
-
-    openDockTerminal: (id) => set({ activeDockTerminalId: id, focusedId: id }),
-
-    closeDockTerminal: () => set({ activeDockTerminalId: null }),
-
-    activateTerminal: (id) => {
-      const terminals = getTerminals();
-      const terminal = terminals.find((t) => t.id === id);
-      if (!terminal) return;
-
-      if (terminal.location === "dock") {
-        set({ activeDockTerminalId: id, focusedId: id });
-      } else {
-        set({ focusedId: id, activeDockTerminalId: null });
-      }
-    },
-
-    handleTerminalRemoved: (removedId, remainingTerminals, removedIndex) => {
-      const state = get();
-      if (state.pingedId === removedId && pingTimeout) {
-        clearTimeout(pingTimeout);
-        pingTimeout = null;
-      }
-
-      set((state) => {
-        const updates: Partial<TerminalFocusSlice> = {};
-
-        if (state.pingedId === removedId) {
-          updates.pingedId = null;
-        }
-
-        if (state.focusedId === removedId) {
-          // Only focus grid terminals (not docked ones)
-          const gridTerminals = remainingTerminals.filter(
-            (t) => t.location === "grid" || !t.location
-          );
-
-          if (gridTerminals.length > 0) {
-            const nextIndex = Math.min(removedIndex, gridTerminals.length - 1);
-            updates.focusedId = gridTerminals[nextIndex]?.id || null;
-          } else {
-            updates.focusedId = null;
+      focusDirection: (direction, findNearest) => {
+        set((state) => {
+          if (!state.focusedId) return state;
+          const nextId = findNearest(state.focusedId, direction);
+          if (nextId) {
+            return { focusedId: nextId };
           }
+          return state;
+        });
+      },
+
+      focusByIndex: (index, findByIndex) => {
+        const nextId = findByIndex(index);
+        if (nextId) {
+          set({ focusedId: nextId });
+        }
+      },
+
+      focusDockDirection: (direction, findDockByIndex) => {
+        set((state) => {
+          if (!state.focusedId) return state;
+          const nextId = findDockByIndex(state.focusedId, direction);
+          if (nextId) {
+            return { focusedId: nextId };
+          }
+          return state;
+        });
+      },
+
+      openDockTerminal: (id) => set({ activeDockTerminalId: id, focusedId: id }),
+
+      closeDockTerminal: () => set({ activeDockTerminalId: null }),
+
+      activateTerminal: (id) => {
+        const terminals = getTerminals();
+        const terminal = terminals.find((t) => t.id === id);
+        if (!terminal) return;
+
+        if (terminal.location === "dock") {
+          set({ activeDockTerminalId: id, focusedId: id });
+        } else {
+          set({ focusedId: id, activeDockTerminalId: null });
+        }
+      },
+
+      handleTerminalRemoved: (removedId, remainingTerminals, removedIndex) => {
+        const state = get();
+        if (state.pingedId === removedId && pingTimeout) {
+          clearTimeout(pingTimeout);
+          pingTimeout = null;
         }
 
-        if (state.maximizedId === removedId) {
-          updates.maximizedId = null;
-        }
+        set((state) => {
+          const updates: Partial<TerminalFocusSlice> = {};
 
-        if (state.activeDockTerminalId === removedId) {
-          updates.activeDockTerminalId = null;
-        }
+          if (state.pingedId === removedId) {
+            updates.pingedId = null;
+          }
 
-        return Object.keys(updates).length > 0 ? updates : state;
-      });
-    },
+          if (state.focusedId === removedId) {
+            // Only focus grid terminals (not docked ones)
+            const gridTerminals = remainingTerminals.filter(
+              (t) => t.location === "grid" || !t.location
+            );
+
+            if (gridTerminals.length > 0) {
+              const nextIndex = Math.min(removedIndex, gridTerminals.length - 1);
+              updates.focusedId = gridTerminals[nextIndex]?.id || null;
+            } else {
+              updates.focusedId = null;
+            }
+          }
+
+          if (state.maximizedId === removedId) {
+            updates.maximizedId = null;
+          }
+
+          if (state.activeDockTerminalId === removedId) {
+            updates.activeDockTerminalId = null;
+          }
+
+          return Object.keys(updates).length > 0 ? updates : state;
+        });
+      },
+    };
   };
-};

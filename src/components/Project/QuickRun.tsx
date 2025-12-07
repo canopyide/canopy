@@ -229,8 +229,7 @@ export function QuickRun({ projectId }: QuickRunProps) {
     if (!search) return uniqueOptions;
 
     return uniqueOptions.filter(
-      (opt) =>
-        opt.value.toLowerCase().includes(search) || opt.label.toLowerCase().includes(search)
+      (opt) => opt.value.toLowerCase().includes(search) || opt.label.toLowerCase().includes(search)
     );
   }, [input, allDetectedRunners, history, settings]);
 
