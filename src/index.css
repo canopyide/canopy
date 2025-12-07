@@ -442,23 +442,54 @@ body,
   }
 }
 
-/* Terminal Header Ping Animation - brief brightness flash for visual feedback */
-@keyframes ping-highlight {
+/* Terminal Header Ping Animation - emerald sweep for visual feedback
+ * A subtle "radar scan" effect that passes across the header to indicate
+ * "Canopy just brought you to this terminal" without harsh white flashes.
+ * Fits the "calm partner / mission control" brand voice.
+ */
+@keyframes ping-sweep {
   0% {
-    background-color: rgba(255, 255, 255, 0.25);
+    transform: translateX(-120%);
+    opacity: 0;
+  }
+  20% {
+    opacity: 0.5;
+  }
+  80% {
+    opacity: 0.3;
   }
   100% {
-    background-color: var(--color-surface-highlight);
+    transform: translateX(120%);
+    opacity: 0;
   }
 }
 
 .animate-ping-header {
-  animation: ping-highlight 600ms ease-out;
+  /* Parent styling - keeps the slightly brighter background */
+}
+
+.animate-ping-header::before {
+  content: "";
+  position: absolute;
+  inset: 0;
+  pointer-events: none;
+  will-change: transform, opacity;
+
+  /* Emerald-tinted scan line using the Digital Ecology palette */
+  background: linear-gradient(
+    90deg,
+    transparent 0%,
+    color-mix(in oklch, var(--color-canopy-accent) 45%, transparent) 50%,
+    transparent 100%
+  );
+
+  animation: ping-sweep 600ms ease-out;
 }
 
 @media (prefers-reduced-motion: reduce) {
-  .animate-ping-header {
+  .animate-ping-header::before {
     animation: none;
+    opacity: 0;
   }
 }
 
