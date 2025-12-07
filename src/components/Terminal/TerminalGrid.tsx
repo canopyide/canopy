@@ -26,6 +26,7 @@ import { getBrandColorHex } from "@/lib/colorUtils";
 import { terminalInstanceService } from "@/services/TerminalInstanceService";
 import { terminalClient, systemClient } from "@/clients";
 import { TerminalRefreshTier } from "@/types";
+import { getAutoGridCols } from "@/lib/terminalLayout";
 
 export interface TerminalGridProps {
   className?: string;
@@ -247,11 +248,7 @@ export function TerminalGrid({ className, defaultCwd, onLaunchAgent }: TerminalG
     }
 
     // Automatic (vertical-first for AI workflows)
-    // AI outputs are vertical streams - prioritize pane height over width
-    if (count <= 1) return 1;
-    if (count <= 3) return count; // 1-3 terminals: single row
-    if (count <= 9) return 3; // 4-9 terminals: max 3 columns
-    return 4; // 10+ terminals: keep rows <=3 for taller panes
+    return getAutoGridCols(count);
   }, [gridTerminals.length, layoutConfig]);
 
   const handleLaunchAgent = useCallback(
