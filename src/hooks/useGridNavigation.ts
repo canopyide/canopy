@@ -164,7 +164,25 @@ export function useGridNavigation(options: UseGridNavigationOptions = {}) {
           break;
       }
 
-      const result = candidates[0]?.terminalId ?? null;
+      let result = candidates[0]?.terminalId ?? null;
+
+      // If we hit an edge, fall back to linear reading order (row-major)
+      if (!result) {
+        const sortedPositions = [...gridLayout].sort((a, b) => {
+          if (a.row !== b.row) return a.row - b.row;
+          return a.col - b.col;
+        });
+
+        const currentIndex = sortedPositions.findIndex((p) => p.terminalId === currentId);
+        if (currentIndex !== -1) {
+          if (direction === "right" || direction === "down") {
+            result = sortedPositions[currentIndex + 1]?.terminalId ?? null;
+          } else {
+            result = sortedPositions[currentIndex - 1]?.terminalId ?? null;
+          }
+        }
+      }
+
       directionCache.current.set(cacheKey, result);
       return result;
     },
