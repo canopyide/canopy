@@ -83,12 +83,12 @@ export function TerminalContextMenu({
         {currentLocation === "grid" ? (
           <ContextMenuItem onClick={() => moveTerminalToDock(terminalId)}>
             <ArrowDownToLine className="w-4 h-4 mr-2" aria-hidden="true" />
-            Minimize to Dock
+            Move to Dock
           </ContextMenuItem>
         ) : (
           <ContextMenuItem onClick={() => moveTerminalToGrid(terminalId)}>
             <ArrowUp className="w-4 h-4 mr-2" aria-hidden="true" />
-            Restore to Grid
+            Move to Grid
           </ContextMenuItem>
         )}
 
@@ -134,7 +134,7 @@ export function TerminalContextMenu({
           className="text-[var(--color-status-error)] focus:text-[var(--color-status-error)]"
         >
           <Trash2 className="w-4 h-4 mr-2" aria-hidden="true" />
-          Close Terminal
+          Trash Terminal
         </ContextMenuItem>
 
         <ContextMenuItem
@@ -142,7 +142,7 @@ export function TerminalContextMenu({
           className="text-[var(--color-status-error)] focus:text-[var(--color-status-error)]"
         >
           <X className="w-4 h-4 mr-2" aria-hidden="true" />
-          End Terminal
+          Kill Terminal
         </ContextMenuItem>
       </ContextMenuContent>
     </ContextMenu>
