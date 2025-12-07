@@ -20,7 +20,6 @@ import type {
   EventFilterOptions,
   RetryAction,
   AppError,
-  HistoryGetSessionsPayload,
   ElectronAPI,
   CreateWorktreeOptions,
   IpcInvokeMap,
@@ -198,15 +197,8 @@ const CHANNELS = {
   PROJECT_GET_SETTINGS: "project:get-settings",
   PROJECT_SAVE_SETTINGS: "project:save-settings",
   PROJECT_DETECT_RUNNERS: "project:detect-runners",
-  PROJECT_REGENERATE_IDENTITY: "project:regenerate-identity",
   PROJECT_CLOSE: "project:close",
   PROJECT_GET_STATS: "project:get-stats",
-
-  // History channels (agent transcripts & artifacts)
-  HISTORY_GET_SESSIONS: "history:get-sessions",
-  HISTORY_GET_SESSION: "history:get-session",
-  HISTORY_EXPORT_SESSION: "history:export-session",
-  HISTORY_DELETE_SESSION: "history:delete-session",
 
   // Agent settings channels
   AGENT_SETTINGS_GET: "agent-settings:get",
@@ -483,13 +475,6 @@ const api: ElectronAPI = {
     onEntry: (callback: (entry: LogEntry) => void) => _typedOn(CHANNELS.LOGS_ENTRY, callback),
   },
 
-  // Directory API (legacy - migrated to Projects system)
-  directory: {
-    // Note: getRecent, open, openDialog, and removeRecent have been removed
-    // as part of the migration to the Projects system.
-    // Use the project API for project management.
-  },
-
   // Error API
   errors: {
     onError: (callback: (error: AppError) => void) => _typedOn(CHANNELS.ERROR_NOTIFY, callback),
@@ -547,19 +532,6 @@ const api: ElectronAPI = {
     close: (projectId: string) => ipcRenderer.invoke(CHANNELS.PROJECT_CLOSE, projectId),
 
     getStats: (projectId: string) => ipcRenderer.invoke(CHANNELS.PROJECT_GET_STATS, projectId),
-  },
-
-  // History API (Agent Transcripts & Artifacts)
-  history: {
-    getSessions: (filters?: HistoryGetSessionsPayload) =>
-      _typedInvoke(CHANNELS.HISTORY_GET_SESSIONS, filters),
-
-    getSession: (sessionId: string) => _typedInvoke(CHANNELS.HISTORY_GET_SESSION, { sessionId }),
-
-    exportSession: (sessionId: string, format: "json" | "markdown") =>
-      _typedInvoke(CHANNELS.HISTORY_EXPORT_SESSION, { sessionId, format }),
-
-    deleteSession: (sessionId: string) => _typedInvoke(CHANNELS.HISTORY_DELETE_SESSION, sessionId),
   },
 
   // Agent Settings API
