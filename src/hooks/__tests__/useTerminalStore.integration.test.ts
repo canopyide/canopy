@@ -212,6 +212,7 @@ describe("Terminal Store Integration", () => {
           t.id === id ? { ...t, location: "grid" as const } : t
         );
         useTerminalStore.setState({ terminals, focusedId: id });
+        return true;
       });
 
       useTerminalStore.setState({ moveTerminalToGrid: mockMoveToGrid });

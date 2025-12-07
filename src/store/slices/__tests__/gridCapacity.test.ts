@@ -39,10 +39,7 @@ vi.mock("../../persistence/terminalPersistence", () => ({
 
 const { useTerminalStore } = await import("../../terminalStore");
 
-function createMockTerminal(
-  id: string,
-  location: "grid" | "dock" | "trash" = "grid"
-): any {
+function createMockTerminal(id: string, location: "grid" | "dock" | "trash" = "grid"): any {
   return {
     id,
     type: "shell",

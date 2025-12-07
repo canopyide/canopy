@@ -123,6 +123,7 @@ export const useTerminalStore = create<TerminalGridState>()((set, get, api) => {
       if (moveSucceeded) {
         set({ focusedId: id, activeDockTerminalId: null });
       }
+      return moveSucceeded;
     },
 
     trashTerminal: (id: string) => {
