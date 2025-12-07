@@ -4,6 +4,8 @@ export { MAX_GRID_TERMINALS } from "./slices/terminalRegistrySlice";
 
 export { useWorktreeSelectionStore } from "./worktreeStore";
 
+export { useWorktreeDataStore, cleanupWorktreeDataStore } from "./worktreeDataStore";
+
 export { useLogsStore, filterLogs } from "./logsStore";
 
 export { useErrorStore } from "./errorStore";

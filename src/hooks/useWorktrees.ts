@@ -1,5 +1,6 @@
-import { useState, useEffect, useCallback, useMemo } from "react";
+import { useEffect, useCallback, useMemo } from "react";
 import type { WorktreeState } from "../types";
+import { useWorktreeDataStore } from "@/store/worktreeDataStore";
 import { worktreeClient } from "@/clients";
 
 export interface UseWorktreesReturn {
@@ -13,92 +14,24 @@ export interface UseWorktreesReturn {
 }
 
 export function useWorktrees(): UseWorktreesReturn {
-  const [worktreeMap, setWorktreeMap] = useState<Map<string, WorktreeState>>(new Map());
-  const [activeId, setActiveId] = useState<string | null>(null);
-  const [isLoading, setIsLoading] = useState(true);
-  const [error, setError] = useState<string | null>(null);
+  const worktreeMap = useWorktreeDataStore((state) => state.worktrees);
+  const isLoading = useWorktreeDataStore((state) => state.isLoading);
+  const error = useWorktreeDataStore((state) => state.error);
+  const isInitialized = useWorktreeDataStore((state) => state.isInitialized);
+  const initialize = useWorktreeDataStore((state) => state.initialize);
+  const storeRefresh = useWorktreeDataStore((state) => state.refresh);
 
   useEffect(() => {
-    let cancelled = false;
-
-    async function loadWorktrees() {
-      try {
-        setIsLoading(true);
-        setError(null);
-        const states = await worktreeClient.getAll();
-        if (!cancelled) {
-          const map = new Map(states.map((s) => [s.id, s]));
-          setWorktreeMap(map);
-
-          if (states.length > 0 && activeId === null) {
-            const currentWorktree = states.find((s) => s.isCurrent);
-            const mainWorktree = states.find((s) => s.isMainWorktree);
-            const initialActive = currentWorktree?.id ?? mainWorktree?.id ?? states[0].id;
-            setActiveId(initialActive);
-
-            worktreeClient.setActive(initialActive).catch(() => {});
-          }
-        }
-      } catch (e) {
-        if (!cancelled) {
-          setError(e instanceof Error ? e.message : "Failed to load worktrees");
-        }
-      } finally {
-        if (!cancelled) {
-          setIsLoading(false);
-        }
-      }
+    if (!isInitialized) {
+      initialize();
     }
-
-    loadWorktrees();
-
-    return () => {
-      cancelled = true;
-    };
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, []);
-
-  useEffect(() => {
-    const unsubUpdate = worktreeClient.onUpdate((state) => {
-      setWorktreeMap((prev) => {
-        const next = new Map(prev);
-        next.set(state.id, state);
-        return next;
-      });
-    });
-
-    const unsubRemove = worktreeClient.onRemove(({ worktreeId }) => {
-      setWorktreeMap((prev) => {
-        const next = new Map(prev);
-        next.delete(worktreeId);
-        return next;
-      });
-
-      setActiveId((current) => {
-        if (current === worktreeId) {
-          return null;
-        }
-        return current;
-      });
-    });
-
-    return () => {
-      unsubUpdate();
-      unsubRemove();
-    };
-  }, []);
+  }, [isInitialized, initialize]);
 
   const refresh = useCallback(async () => {
-    try {
-      setError(null);
-      await worktreeClient.refresh();
-    } catch (e) {
-      setError(e instanceof Error ? e.message : "Failed to refresh worktrees");
-    }
-  }, []);
+    await storeRefresh();
+  }, [storeRefresh]);
 
   const setActive = useCallback((id: string) => {
-    setActiveId(id);
     worktreeClient.setActive(id).catch(() => {});
   }, []);
 
@@ -117,7 +50,7 @@ export function useWorktrees(): UseWorktreesReturn {
   return {
     worktrees,
     worktreeMap,
-    activeId,
+    activeId: worktrees.length > 0 ? worktrees[0].id : null,
     isLoading,
     error,
     refresh,
@@ -126,48 +59,15 @@ export function useWorktrees(): UseWorktreesReturn {
 }
 
 export function useWorktree(worktreeId: string): WorktreeState | null {
-  const [worktree, setWorktree] = useState<WorktreeState | null>(null);
+  const getWorktree = useWorktreeDataStore((state) => state.getWorktree);
+  const isInitialized = useWorktreeDataStore((state) => state.isInitialized);
+  const initialize = useWorktreeDataStore((state) => state.initialize);
 
   useEffect(() => {
-    let cancelled = false;
+    if (!isInitialized) {
+      initialize();
+    }
+  }, [isInitialized, initialize]);
 
-    worktreeClient
-      .getAll()
-      .then((states) => {
-        if (!cancelled) {
-          const found = states.find((s) => s.id === worktreeId);
-          setWorktree(found ?? null);
-        }
-      })
-      .catch(() => {
-        if (!cancelled) {
-          setWorktree(null);
-        }
-      });
-
-    return () => {
-      cancelled = true;
-    };
-  }, [worktreeId]);
-
-  useEffect(() => {
-    const unsubUpdate = worktreeClient.onUpdate((state) => {
-      if (state.id === worktreeId) {
-        setWorktree(state);
-      }
-    });
-
-    const unsubRemove = worktreeClient.onRemove(({ worktreeId: removedId }) => {
-      if (removedId === worktreeId) {
-        setWorktree(null);
-      }
-    });
-
-    return () => {
-      unsubUpdate();
-      unsubRemove();
-    };
-  }, [worktreeId]);
-
-  return worktree;
+  return getWorktree(worktreeId) ?? null;
 }

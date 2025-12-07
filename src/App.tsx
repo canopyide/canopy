@@ -390,11 +390,9 @@ function App() {
   const { findNearest, findByIndex, findDockByIndex, getCurrentLocation } = useGridNavigation();
 
   const terminalPalette = useTerminalPalette();
-  const { worktreeMap } = useWorktrees();
+  const { worktrees, worktreeMap } = useWorktrees();
   const newTerminalPalette = useNewTerminalPalette({ launchAgent, worktreeMap });
   const currentProject = useProjectStore((state) => state.currentProject);
-
-  const { worktrees } = useWorktrees();
   const { setActiveWorktree, selectWorktree, activeWorktreeId } = useWorktreeSelectionStore(
     useShallow((state) => ({
       setActiveWorktree: state.setActiveWorktree,

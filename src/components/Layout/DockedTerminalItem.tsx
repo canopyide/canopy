@@ -42,6 +42,7 @@ function getStateIndicator(state?: AgentState) {
 export function DockedTerminalItem({ terminal }: DockedTerminalItemProps) {
   const [isRestoring, setIsRestoring] = useState(false);
   const [isTrashing, setIsTrashing] = useState(false);
+  const updateTitle = useTerminalStore((s) => s.updateTitle);
   const moveTerminalToGrid = useTerminalStore((s) => s.moveTerminalToGrid);
   const trashTerminal = useTerminalStore((s) => s.trashTerminal);
   const removeTerminal = useTerminalStore((s) => s.removeTerminal);
@@ -239,6 +240,7 @@ export function DockedTerminalItem({ terminal }: DockedTerminalItemProps) {
           onClose={handleClose}
           onRestore={handleRestore}
           onMinimize={handleMinimize}
+          onTitleChange={(newTitle) => updateTitle(terminal.id, newTitle)}
           isTrashing={isTrashing}
         />
       </PopoverContent>
