@@ -3,6 +3,8 @@ import { createPortal } from "react-dom";
 import { Button } from "@/components/ui/button";
 import { AlertTriangle, Trash2 } from "lucide-react";
 import { useOverlayState } from "@/hooks/useOverlayState";
+import { useWorktreeTerminals } from "@/hooks/useWorktreeTerminals";
+import { useTerminalStore } from "@/store";
 import { worktreeClient } from "@/clients";
 import type { WorktreeState } from "@/types";
 
@@ -16,14 +18,20 @@ export function WorktreeDeleteDialog({ isOpen, onClose, worktree }: WorktreeDele
   useOverlayState(isOpen);
   const [isDeleting, setIsDeleting] = useState(false);
   const [force, setForce] = useState(false);
+  const [closeTerminals, setCloseTerminals] = useState(true);
   const [error, setError] = useState<string | null>(null);
   const dialogRef = useRef<HTMLDivElement>(null);
 
+  const { counts: terminalCounts } = useWorktreeTerminals(worktree.id);
+  const bulkCloseByWorktree = useTerminalStore((state) => state.bulkCloseByWorktree);
+
   const hasChanges = (worktree.worktreeChanges?.changedFileCount ?? 0) > 0;
+  const hasTerminals = terminalCounts.total > 0;
 
   useEffect(() => {
     if (isOpen) {
       setForce(false);
+      setCloseTerminals(true);
       setError(null);
       setTimeout(() => dialogRef.current?.focus(), 0);
     }
@@ -46,6 +54,9 @@ export function WorktreeDeleteDialog({ isOpen, onClose, worktree }: WorktreeDele
     setIsDeleting(true);
     setError(null);
     try {
+      if (closeTerminals && hasTerminals) {
+        bulkCloseByWorktree(worktree.id);
+      }
       await worktreeClient.delete(worktree.id, force);
       onClose();
     } catch (err) {
@@ -129,6 +140,18 @@ export function WorktreeDeleteDialog({ isOpen, onClose, worktree }: WorktreeDele
             />
             <span className="text-sm text-canopy-text">
               Force delete (lose uncommitted changes)
+            </span>
+          </label>
+
+          <label className="flex items-center gap-2 cursor-pointer">
+            <input
+              type="checkbox"
+              checked={closeTerminals}
+              onChange={(e) => setCloseTerminals(e.target.checked)}
+              className="rounded border-canopy-border bg-canopy-bg text-canopy-accent focus:ring-canopy-accent"
+            />
+            <span className="text-sm text-canopy-text">
+              Close all terminals{hasTerminals ? ` (${terminalCounts.total})` : ""}
             </span>
           </label>
         </div>
