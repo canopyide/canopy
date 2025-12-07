@@ -85,12 +85,14 @@ function TerminalHeaderComponent({
   location = "grid",
 }: TerminalHeaderProps) {
   // Get background activity stats for Zen Mode header (optimized single-pass)
+  // Only count grid terminals - docked terminals are visually separate
+  // Treat undefined location as grid for compatibility with persisted data
   const { activeCount, workingCount } = useTerminalStore(
     useShallow((state) => {
       let active = 0;
       let working = 0;
       for (const t of state.terminals) {
-        if (t.id !== id && t.location !== "trash") {
+        if (t.id !== id && (t.location === "grid" || t.location === undefined)) {
           active++;
           if (t.agentState === "working") working++;
         }
