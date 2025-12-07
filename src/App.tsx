@@ -952,6 +952,7 @@ function App() {
         query={newTerminalPalette.query}
         results={newTerminalPalette.results}
         selectedIndex={newTerminalPalette.selectedIndex}
+        hasCustomOption={newTerminalPalette.hasCustomOption}
         onQueryChange={newTerminalPalette.setQuery}
         onSelectPrevious={newTerminalPalette.selectPrevious}
         onSelectNext={newTerminalPalette.selectNext}

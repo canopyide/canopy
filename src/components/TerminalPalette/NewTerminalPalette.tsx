@@ -9,6 +9,7 @@ interface NewTerminalPaletteProps {
   query: string;
   results: LaunchOption[];
   selectedIndex: number;
+  hasCustomOption: boolean;
   onQueryChange: (q: string) => void;
   onSelectPrevious: () => void;
   onSelectNext: () => void;
@@ -22,6 +23,7 @@ export function NewTerminalPalette({
   query,
   results,
   selectedIndex,
+  hasCustomOption,
   onQueryChange,
   onSelectPrevious,
   onSelectNext,
@@ -143,8 +145,17 @@ export function NewTerminalPalette({
           className="max-h-[50vh] overflow-y-auto p-2 space-y-1"
         >
           {results.length === 0 ? (
-            <div className="px-3 py-8 text-center text-canopy-text/50 text-sm">
-              No terminal types match "{query}"
+            <div className="px-3 py-8 text-center text-canopy-text/50 text-sm space-y-1">
+              <div>No terminal types match "{query}"</div>
+              {query.trim() && hasCustomOption && (
+                <div className="text-xs text-canopy-text/40">
+                  Press{" "}
+                  <kbd className="px-1.5 py-0.5 rounded-[var(--radius-sm)] bg-canopy-border text-canopy-text/60">
+                    Enter
+                  </kbd>{" "}
+                  to use Custom Command
+                </div>
+              )}
             </div>
           ) : (
             results.map((option, index) => (
