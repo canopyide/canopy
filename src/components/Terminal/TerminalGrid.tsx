@@ -3,6 +3,7 @@ import { useShallow } from "zustand/react/shallow";
 import { SortableContext, rectSortingStrategy } from "@dnd-kit/sortable";
 import { useDroppable } from "@dnd-kit/core";
 import { cn } from "@/lib/utils";
+import { getTerminalAnimationDuration } from "@/lib/animationUtils";
 import {
   useTerminalStore,
   useLayoutConfigStore,
@@ -218,6 +219,24 @@ export function TerminalGrid({ className, defaultCwd, onLaunchAgent }: TerminalG
   const moveTerminalToDock = useTerminalStore((state) => state.moveTerminalToDock);
   const isInTrash = useTerminalStore((state) => state.isInTrash);
 
+  const [trashingIds, setTrashingIds] = useState<Set<string>>(new Set());
+
+  const handleTrashWithAnimation = useCallback(
+    (id: string) => {
+      const duration = getTerminalAnimationDuration();
+      setTrashingIds((prev) => new Set(prev).add(id));
+      setTimeout(() => {
+        trashTerminal(id);
+        setTrashingIds((prev) => {
+          const next = new Set(prev);
+          next.delete(id);
+          return next;
+        });
+      }, duration);
+    },
+    [trashTerminal]
+  );
+
   const gridTerminals = useMemo(
     () => terminals.filter((t) => t.location === "grid" || t.location === undefined),
     [terminals]
@@ -378,10 +397,11 @@ export function TerminalGrid({ className, defaultCwd, onLaunchAgent }: TerminalG
               restartKey={terminal.restartKey}
               onFocus={() => setFocused(terminal.id)}
               onClose={(force) =>
-                force ? removeTerminal(terminal.id) : trashTerminal(terminal.id)
+                force ? removeTerminal(terminal.id) : handleTrashWithAnimation(terminal.id)
               }
               onToggleMaximize={() => toggleMaximize(terminal.id)}
               onTitleChange={(newTitle) => updateTitle(terminal.id, newTitle)}
+              isTrashing={trashingIds.has(terminal.id)}
             />
           </ErrorBoundary>
         </div>
@@ -471,11 +491,14 @@ export function TerminalGrid({ className, defaultCwd, onLaunchAgent }: TerminalG
                           restartKey={terminal.restartKey}
                           onFocus={() => setFocused(terminal.id)}
                           onClose={(force) =>
-                            force ? removeTerminal(terminal.id) : trashTerminal(terminal.id)
+                            force
+                              ? removeTerminal(terminal.id)
+                              : handleTrashWithAnimation(terminal.id)
                           }
                           onToggleMaximize={() => toggleMaximize(terminal.id)}
                           onTitleChange={(newTitle) => updateTitle(terminal.id, newTitle)}
                           onMinimize={() => moveTerminalToDock(terminal.id)}
+                          isTrashing={trashingIds.has(terminal.id)}
                         />
                       </ErrorBoundary>
                     </SortableTerminal>

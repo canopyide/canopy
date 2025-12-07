@@ -1,7 +1,8 @@
-import React, { useCallback, useEffect, useRef } from "react";
+import React, { useCallback, useEffect, useRef, useState } from "react";
 import { useShallow } from "zustand/react/shallow";
 import type { TerminalType } from "@/types";
 import { cn } from "@/lib/utils";
+import { getTerminalAnimationDuration } from "@/lib/animationUtils";
 import { XtermAdapter } from "./XtermAdapter";
 import { ArtifactOverlay } from "./ArtifactOverlay";
 import { TerminalHeader } from "./TerminalHeader";
@@ -38,6 +39,8 @@ export interface TerminalPaneProps {
   location?: "grid" | "dock";
   /** Counter incremented on restart to trigger XtermAdapter re-mount */
   restartKey?: number;
+  /** Terminal is animating out before being trashed */
+  isTrashing?: boolean;
 }
 
 function TerminalPaneComponent({
@@ -58,8 +61,17 @@ function TerminalPaneComponent({
   onRestore,
   location = "grid",
   restartKey = 0,
+  isTrashing = false,
 }: TerminalPaneProps) {
   const containerRef = useRef<HTMLDivElement>(null);
+  const [isRestoring, setIsRestoring] = useState(true);
+
+  useEffect(() => {
+    if (!isRestoring) return;
+    const duration = getTerminalAnimationDuration();
+    const timer = setTimeout(() => setIsRestoring(false), duration);
+    return () => clearTimeout(timer);
+  }, [isRestoring]);
 
   const updateVisibility = useTerminalStore((state) => state.updateVisibility);
   const getTerminal = useTerminalStore((state) => state.getTerminal);
@@ -185,7 +197,13 @@ function TerminalPaneComponent({
         // Zen Mode styles (maximized - full immersion, no inset needed)
         location === "grid" && isMaximized && "border-0 rounded-none z-50",
 
-        isExited && "opacity-75 grayscale"
+        isExited && "opacity-75 grayscale",
+
+        // Restore animation on mount (skip if trashing)
+        isRestoring && !isTrashing && "terminal-restoring",
+
+        // Trash animation when being removed
+        isTrashing && "terminal-trashing"
       )}
       onClick={handleClick}
       onFocus={onFocus}
@@ -300,7 +318,8 @@ export const TerminalPane = React.memo(TerminalPaneComponent, (prev, next) => {
     prev.onToggleMaximize === next.onToggleMaximize &&
     prev.onTitleChange === next.onTitleChange &&
     prev.onMinimize === next.onMinimize &&
-    prev.onRestore === next.onRestore
+    prev.onRestore === next.onRestore &&
+    prev.isTrashing === next.isTrashing
   );
 });
 
