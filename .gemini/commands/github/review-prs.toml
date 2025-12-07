@@ -68,6 +68,7 @@ For each PR in the calculated order:
 #### 2.2: Checkout
 *   **Delete Worktree:** If a git worktree exists for the PR branch, **DELETE IT** (`git worktree remove --force`). The merge must happen in the main directory.
 *   **Checkout:** `git fetch origin` -> `git checkout {headRefName}` -> `git pull origin {headRefName}`.
+*   **DO NOT REBASE** unless absolutely necessary for conflict resolution. Rebasing changes commit hashes and breaks the link between the PR and the merge, preventing GitHub from auto-closing linked issues.
 
 #### 2.3: Address Feedback (Automated & Manual)
 *   **Scan Comments:** Look for P1/P2 priority comments from bots or humans in the fetched data.
@@ -101,6 +102,10 @@ For each PR in the calculated order:
 
 #### 2.6: Finalize
 *   **Push:** `git push origin {target-branch}`
+*   **Verify Issues Closed:**
+    *   Check if the PR description closes any issues (look for 'Closes #123', 'Fixes #123').
+    *   If yes, verify the issue is closed: `gh issue view {issue_number} --json state`.
+    *   If open, close it manually: `gh issue close {issue_number} --comment "Fixed via manual merge of PR #{number}"`.
 *   **Close PR:** `gh pr close {number}` (if not auto-closed).
 *   **Delete Branch:** `git push origin --delete {headRefName}` && `git branch -D {headRefName}`.
 *   **Update Session Context:** Record what was merged (files changed, key logic) to inform the next PRs.
