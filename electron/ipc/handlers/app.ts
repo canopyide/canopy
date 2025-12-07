@@ -4,6 +4,7 @@ import { homedir } from "os";
 import { CHANNELS } from "../channels.js";
 import { store } from "../../store.js";
 import { logBuffer } from "../../services/LogBuffer.js";
+import { setVerboseLogging, isVerboseLogging, logInfo } from "../../utils/logger.js";
 import type { HandlerDependencies } from "../types.js";
 import type { FilterOptions as LogFilterOptions } from "../../services/LogBuffer.js";
 import type { FilterOptions as EventFilterOptions } from "../../services/EventBuffer.js";
@@ -195,6 +196,24 @@ export function registerAppHandlers(deps: HandlerDependencies): () => void {
   };
   ipcMain.handle(CHANNELS.LOGS_OPEN_FILE, handleLogsOpenFile);
   handlers.push(() => ipcMain.removeHandler(CHANNELS.LOGS_OPEN_FILE));
+
+  const handleLogsSetVerbose = async (_event: Electron.IpcMainInvokeEvent, enabled: boolean) => {
+    if (typeof enabled !== "boolean") {
+      console.error("Invalid verbose logging payload:", enabled);
+      return { success: false };
+    }
+    setVerboseLogging(enabled);
+    logInfo(`Verbose logging ${enabled ? "enabled" : "disabled"} by user`);
+    return { success: true };
+  };
+  ipcMain.handle(CHANNELS.LOGS_SET_VERBOSE, handleLogsSetVerbose);
+  handlers.push(() => ipcMain.removeHandler(CHANNELS.LOGS_SET_VERBOSE));
+
+  const handleLogsGetVerbose = async () => {
+    return isVerboseLogging();
+  };
+  ipcMain.handle(CHANNELS.LOGS_GET_VERBOSE, handleLogsGetVerbose);
+  handlers.push(() => ipcMain.removeHandler(CHANNELS.LOGS_GET_VERBOSE));
 
   const handleEventInspectorGetEvents = async () => {
     if (!eventBuffer) {

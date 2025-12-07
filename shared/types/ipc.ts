@@ -1095,6 +1095,14 @@ export interface IpcInvokeMap {
     args: [];
     result: void;
   };
+  "logs:set-verbose": {
+    args: [enabled: boolean];
+    result: { success: boolean };
+  };
+  "logs:get-verbose": {
+    args: [];
+    result: boolean;
+  };
 
   // Error channels
   "error:retry": {
@@ -1540,6 +1548,8 @@ export interface ElectronAPI {
     getSources(): Promise<string[]>;
     clear(): Promise<void>;
     openFile(): Promise<void>;
+    setVerbose(enabled: boolean): Promise<{ success: boolean }>;
+    getVerbose(): Promise<boolean>;
     onEntry(callback: (entry: LogEntry) => void): () => void;
   };
   // Directory API has been removed - use project API instead

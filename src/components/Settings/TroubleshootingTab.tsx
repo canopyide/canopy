@@ -1,6 +1,6 @@
 import { useState, useEffect, useCallback } from "react";
 import { Button } from "@/components/ui/button";
-import { FileText, Trash2, Bug } from "lucide-react";
+import { FileText, Trash2, Bug, AlertTriangle } from "lucide-react";
 import { cn } from "@/lib/utils";
 import { appClient, logsClient } from "@/clients";
 import type { AppState } from "@shared/types";
@@ -14,6 +14,8 @@ export function TroubleshootingTab({ openLogs, clearLogs }: TroubleshootingTabPr
   const [developerMode, setDeveloperMode] = useState(false);
   const [autoOpenDiagnostics, setAutoOpenDiagnostics] = useState(false);
   const [focusEventsTab, setFocusEventsTab] = useState(false);
+  const [verboseLogging, setVerboseLogging] = useState(false);
+  const [verboseLoggingPending, setVerboseLoggingPending] = useState(false);
 
   useEffect(() => {
     appClient.getState().then((appState) => {
@@ -23,6 +25,15 @@ export function TroubleshootingTab({ openLogs, clearLogs }: TroubleshootingTabPr
         setFocusEventsTab(appState.developerMode.focusEventsTab);
       }
     });
+
+    logsClient
+      .getVerbose()
+      .then((enabled) => {
+        setVerboseLogging(enabled);
+      })
+      .catch((error) => {
+        console.error("Failed to get verbose logging state:", error);
+      });
   }, []);
 
   const saveDeveloperModeSettings = useCallback(
@@ -95,6 +106,27 @@ export function TroubleshootingTab({ openLogs, clearLogs }: TroubleshootingTabPr
       focusEventsTab: newState,
     });
   }, [focusEventsTab, developerMode, autoOpenDiagnostics, saveDeveloperModeSettings]);
+
+  const handleToggleVerboseLogging = useCallback(async () => {
+    if (verboseLoggingPending) return;
+
+    const newState = !verboseLogging;
+    setVerboseLoggingPending(true);
+    setVerboseLogging(newState);
+
+    try {
+      const result = await logsClient.setVerbose(newState);
+      if (!result.success) {
+        console.error("Backend rejected verbose logging toggle");
+        setVerboseLogging(!newState);
+      }
+    } catch (error) {
+      console.error("Failed to set verbose logging:", error);
+      setVerboseLogging(!newState);
+    } finally {
+      setVerboseLoggingPending(false);
+    }
+  }, [verboseLogging, verboseLoggingPending]);
 
   const handleClearLogs = async () => {
     try {
@@ -211,26 +243,63 @@ export function TroubleshootingTab({ openLogs, clearLogs }: TroubleshootingTabPr
             </label>
           </div>
 
+          <div className="mt-4 p-3 border border-canopy-border rounded-md">
+            <label
+              className="flex items-center gap-3 cursor-pointer"
+              onClick={handleToggleVerboseLogging}
+            >
+              <button
+                type="button"
+                role="switch"
+                aria-checked={verboseLogging}
+                aria-label="Enable verbose logging"
+                disabled={verboseLoggingPending}
+                className={cn(
+                  "relative w-11 h-6 rounded-full transition-colors shrink-0",
+                  verboseLogging ? "bg-amber-500" : "bg-canopy-border",
+                  verboseLoggingPending && "opacity-50 cursor-wait"
+                )}
+              >
+                <span
+                  className={cn(
+                    "absolute top-0.5 left-0.5 w-5 h-5 bg-white rounded-full transition-transform",
+                    verboseLogging && "translate-x-5"
+                  )}
+                />
+              </button>
+              <div className="flex-1">
+                <div className="flex items-center gap-2">
+                  <span className="text-sm text-canopy-text font-medium">
+                    Enable Verbose Logging
+                  </span>
+                  <span className="text-xs px-1.5 py-0.5 bg-canopy-border rounded text-canopy-text/70">
+                    This session only
+                  </span>
+                </div>
+                <p className="text-xs text-canopy-text/60">
+                  Captures detailed debug output for troubleshooting. Resets on app restart.
+                </p>
+              </div>
+            </label>
+            {verboseLogging && (
+              <div className="mt-2 flex items-start gap-2 text-xs text-amber-400/90">
+                <AlertTriangle className="w-3.5 h-3.5 shrink-0 mt-0.5" />
+                <span>Verbose logging may impact performance and increase log file size.</span>
+              </div>
+            )}
+          </div>
+
           <div className="mt-4 p-3 bg-canopy-border/30 rounded-md">
             <h5 className="text-xs font-medium text-canopy-text mb-2">
-              Advanced: Main Process Logging
+              Advanced: Persistent Verbose Logging
             </h5>
             <p className="text-xs text-canopy-text/60 mb-2">
-              For verbose main process logs, restart the app with environment variables:
+              Use the toggle above for quick debugging. For persistent verbose logs across restarts,
+              launch the app with environment variables:
             </p>
             <code className="block text-xs bg-canopy-bg p-2 rounded border border-canopy-border font-mono text-canopy-text">
-              CANOPY_DEBUG=1 CANOPY_VERBOSE=1 npm run dev
+              CANOPY_DEBUG=1 npm run dev
             </code>
-            <div className="mt-2 space-y-1">
-              <p className="text-xs text-canopy-text/60">
-                <span className="font-medium text-canopy-text">CANOPY_DEBUG</span> — General logger
-                verbosity
-              </p>
-              <p className="text-xs text-canopy-text/60">
-                <span className="font-medium text-canopy-text">CANOPY_VERBOSE</span> — Service-level
-                debug output
-              </p>
-            </div>
           </div>
         </div>
       </div>

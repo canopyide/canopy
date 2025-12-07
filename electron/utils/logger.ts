@@ -28,14 +28,24 @@ const ENABLE_FILE_LOGGING = process.env.NODE_ENV === "development";
 const SENSITIVE_KEYS = new Set([
   "token",
   "password",
-  "apiKey",
+  "apikey",
   "secret",
-  "accessToken",
-  "refreshToken",
+  "accesstoken",
+  "refreshtoken",
 ]);
 
-const IS_DEBUG = process.env.NODE_ENV === "development" || process.env.CANOPY_DEBUG;
+const IS_DEBUG_BOOT = process.env.NODE_ENV === "development" || Boolean(process.env.CANOPY_DEBUG);
 const IS_TEST = process.env.NODE_ENV === "test";
+
+let verboseLogging = IS_DEBUG_BOOT;
+
+export function setVerboseLogging(enabled: boolean): void {
+  verboseLogging = enabled;
+}
+
+export function isVerboseLogging(): boolean {
+  return verboseLogging;
+}
 
 let mainWindow: BrowserWindow | null = null;
 
@@ -160,8 +170,9 @@ function writeToLogFile(level: string, message: string, context?: LogContext): v
 }
 
 function log(level: LogLevel, message: string, context?: LogContext): LogEntry {
-  // Only capture source in development or for errors/warnings
-  const source = IS_DEBUG || level === "warn" || level === "error" ? getCallerSource() : undefined;
+  // Only capture source in verbose mode or for errors/warnings
+  const source =
+    isVerboseLogging() || level === "warn" || level === "error" ? getCallerSource() : undefined;
 
   const safeContext = context ? redactSensitiveData(context) : undefined;
 
@@ -202,7 +213,7 @@ function redactSensitiveData(obj: Record<string, unknown>): Record<string, unkno
 export function logDebug(message: string, context?: LogContext): void {
   log("debug", message, context);
   writeToLogFile("DEBUG", message, context);
-  if (IS_DEBUG && !IS_TEST) {
+  if (isVerboseLogging() && !IS_TEST) {
     console.log(`[DEBUG] ${message}`, context ? safeStringify(context) : "");
   }
 }
@@ -210,7 +221,7 @@ export function logDebug(message: string, context?: LogContext): void {
 export function logInfo(message: string, context?: LogContext): void {
   log("info", message, context);
   writeToLogFile("INFO", message, context);
-  if (IS_DEBUG && !IS_TEST) {
+  if (isVerboseLogging() && !IS_TEST) {
     console.log(`[INFO] ${message}`, context ? safeStringify(context) : "");
   }
 }
@@ -218,7 +229,7 @@ export function logInfo(message: string, context?: LogContext): void {
 export function logWarn(message: string, context?: LogContext): void {
   log("warn", message, context);
   writeToLogFile("WARN", message, context);
-  if (IS_DEBUG && !IS_TEST) {
+  if (isVerboseLogging() && !IS_TEST) {
     console.warn(`[WARN] ${message}`, context ? safeStringify(context) : "");
   }
 }
