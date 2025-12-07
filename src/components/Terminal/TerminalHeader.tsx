@@ -53,6 +53,7 @@ export interface TerminalHeaderProps {
 
   isMaximized?: boolean;
   location?: "grid" | "dock";
+  isPinged?: boolean;
 }
 
 function TerminalHeaderComponent({
@@ -83,6 +84,7 @@ function TerminalHeaderComponent({
   onRestart,
   isMaximized,
   location = "grid",
+  isPinged,
 }: TerminalHeaderProps) {
   // Get background activity stats for Zen Mode header (optimized single-pass)
   // Only count grid terminals - docked terminals are visually separate
@@ -116,7 +118,9 @@ function TerminalHeaderComponent({
           "flex items-center justify-between px-3 shrink-0 font-mono text-xs transition-colors relative overflow-hidden",
           isMaximized ? "h-10 bg-canopy-sidebar border-b border-canopy-border" : "h-8",
           !isMaximized &&
-            (isFocused ? "bg-[var(--color-surface-highlight)]" : "bg-[var(--color-surface)]")
+            !isPinged &&
+            (isFocused ? "bg-[var(--color-surface-highlight)]" : "bg-[var(--color-surface)]"),
+          isPinged && !isMaximized && "animate-ping-header bg-[var(--color-surface-highlight)]"
         )}
         onDoubleClick={handleHeaderDoubleClick}
       >

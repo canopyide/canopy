@@ -1,4 +1,4 @@
-import React, { useCallback, useEffect, useRef, useState } from "react";
+import React, { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { useShallow } from "zustand/react/shallow";
 import type { TerminalType } from "@/types";
 import { cn } from "@/lib/utils";
@@ -80,6 +80,12 @@ function TerminalPaneComponent({
   const queueCount = useTerminalStore(
     useShallow((state) => state.commandQueue.filter((c) => c.terminalId === id).length)
   );
+
+  const pingedIdSelector = useMemo(
+    () => (state: ReturnType<typeof useTerminalStore.getState>) => state.pingedId === id,
+    [id]
+  );
+  const isPinged = useTerminalStore(pingedIdSelector);
 
   const terminalErrors = useErrorStore(
     useShallow((state) => state.errors.filter((e) => e.context?.terminalId === id && !e.dismissed))
@@ -261,6 +267,7 @@ function TerminalPaneComponent({
         onRestart={handleRestart}
         isMaximized={isMaximized}
         location={location}
+        isPinged={isPinged}
       />
 
       {terminalErrors.length > 0 && (
@@ -298,29 +305,6 @@ function TerminalPaneComponent({
   );
 }
 
-export const TerminalPane = React.memo(TerminalPaneComponent, (prev, next) => {
-  return (
-    prev.id === next.id &&
-    prev.title === next.title &&
-    prev.type === next.type &&
-    prev.worktreeId === next.worktreeId &&
-    prev.cwd === next.cwd &&
-    prev.isFocused === next.isFocused &&
-    prev.isMaximized === next.isMaximized &&
-    prev.agentState === next.agentState &&
-    prev.activity?.headline === next.activity?.headline &&
-    prev.activity?.status === next.activity?.status &&
-    prev.activity?.type === next.activity?.type &&
-    prev.location === next.location &&
-    prev.restartKey === next.restartKey &&
-    prev.onFocus === next.onFocus &&
-    prev.onClose === next.onClose &&
-    prev.onToggleMaximize === next.onToggleMaximize &&
-    prev.onTitleChange === next.onTitleChange &&
-    prev.onMinimize === next.onMinimize &&
-    prev.onRestore === next.onRestore &&
-    prev.isTrashing === next.isTrashing
-  );
-});
+export const TerminalPane = React.memo(TerminalPaneComponent);
 
 export default TerminalPane;

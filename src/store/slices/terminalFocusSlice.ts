@@ -7,8 +7,10 @@ export interface TerminalFocusSlice {
   focusedId: string | null;
   maximizedId: string | null;
   activeDockTerminalId: string | null;
+  pingedId: string | null;
 
-  setFocused: (id: string | null) => void;
+  setFocused: (id: string | null, shouldPing?: boolean) => void;
+  pingTerminal: (id: string) => void;
   toggleMaximize: (id: string) => void;
   focusNext: () => void;
   focusPrevious: () => void;
@@ -38,12 +40,32 @@ export const createTerminalFocusSlice =
   (
     getTerminals: () => TerminalInstance[]
   ): StateCreator<TerminalFocusSlice, [], [], TerminalFocusSlice> =>
-  (set) => ({
-    focusedId: null,
-    maximizedId: null,
-    activeDockTerminalId: null,
+  (set, get) => {
+    let pingTimeout: ReturnType<typeof setTimeout> | null = null;
 
-    setFocused: (id) => set({ focusedId: id }),
+    return {
+      focusedId: null,
+      maximizedId: null,
+      activeDockTerminalId: null,
+      pingedId: null,
+
+      setFocused: (id, shouldPing = false) => {
+        set({ focusedId: id });
+        if (id && shouldPing) {
+          get().pingTerminal(id);
+        }
+      },
+
+      pingTerminal: (id) => {
+        if (pingTimeout) clearTimeout(pingTimeout);
+        set({ pingedId: id });
+        pingTimeout = setTimeout(() => {
+          if (get().pingedId === id) {
+            set({ pingedId: null });
+          }
+          pingTimeout = null;
+        }, 600);
+      },
 
     toggleMaximize: (id) =>
       set((state) => ({
@@ -126,8 +148,18 @@ export const createTerminalFocusSlice =
     },
 
     handleTerminalRemoved: (removedId, remainingTerminals, removedIndex) => {
+      const state = get();
+      if (state.pingedId === removedId && pingTimeout) {
+        clearTimeout(pingTimeout);
+        pingTimeout = null;
+      }
+
       set((state) => {
         const updates: Partial<TerminalFocusSlice> = {};
+
+        if (state.pingedId === removedId) {
+          updates.pingedId = null;
+        }
 
         if (state.focusedId === removedId) {
           // Only focus grid terminals (not docked ones)
@@ -154,4 +186,5 @@ export const createTerminalFocusSlice =
         return Object.keys(updates).length > 0 ? updates : state;
       });
     },
-  });
+  };
+};
