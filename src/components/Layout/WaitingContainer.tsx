@@ -8,6 +8,7 @@ import { getBrandColorHex } from "@/lib/colorUtils";
 import { useTerminalStore } from "@/store/terminalStore";
 import { useWaitingTerminalIds } from "@/hooks/useTerminalSelectors";
 import { useWorktrees } from "@/hooks/useWorktrees";
+import { useKeybindingDisplay } from "@/hooks/useKeybinding";
 import { ClaudeIcon, GeminiIcon, CodexIcon } from "@/components/icons";
 import type { TerminalType } from "@shared/types";
 
@@ -31,6 +32,7 @@ export function WaitingContainer() {
   const waitingIds = useWaitingTerminalIds();
   const activateTerminal = useTerminalStore((state) => state.activateTerminal);
   const { worktreeMap } = useWorktrees();
+  const shortcut = useKeybindingDisplay("agent.focusNextWaiting");
 
   const waitingTerminals = useTerminalStore(
     useShallow((state) =>
@@ -53,7 +55,7 @@ export function WaitingContainer() {
             "px-3",
             isOpen && "bg-canopy-border border-canopy-border ring-1 ring-canopy-accent/20"
           )}
-          title="View agents waiting for input"
+          title={`View agents waiting for input${shortcut ? ` (${shortcut})` : ""}`}
           aria-haspopup="dialog"
           aria-expanded={isOpen}
           aria-controls={contentId}

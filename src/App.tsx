@@ -343,6 +343,7 @@ function App() {
     focusDirection,
     focusByIndex,
     focusDockDirection,
+    focusNextWaiting,
     toggleMaximize,
     focusedId,
     addTerminal,
@@ -355,6 +356,7 @@ function App() {
     bulkMoveToDock,
     bulkMoveToGrid,
     restoreLastTrashed,
+    isInTrash,
   } = useTerminalStore(
     useShallow((state) => ({
       focusNext: state.focusNext,
@@ -362,6 +364,7 @@ function App() {
       focusDirection: state.focusDirection,
       focusByIndex: state.focusByIndex,
       focusDockDirection: state.focusDockDirection,
+      focusNextWaiting: state.focusNextWaiting,
       toggleMaximize: state.toggleMaximize,
       focusedId: state.focusedId,
       addTerminal: state.addTerminal,
@@ -374,6 +377,7 @@ function App() {
       bulkMoveToDock: state.bulkMoveToDock,
       bulkMoveToGrid: state.bulkMoveToGrid,
       restoreLastTrashed: state.restoreLastTrashed,
+      isInTrash: state.isInTrash,
     }))
   );
   const terminals = useTerminalStore(useShallow((state) => state.terminals));
@@ -671,6 +675,9 @@ function App() {
   useKeybinding("agent.gemini", () => handleLaunchAgent("gemini"), { enabled: electronAvailable });
   useKeybinding("agent.codex", () => handleLaunchAgent("codex"), { enabled: electronAvailable });
   useKeybinding("agent.shell", () => handleLaunchAgent("shell"), { enabled: electronAvailable });
+  useKeybinding("agent.focusNextWaiting", () => focusNextWaiting(isInTrash), {
+    enabled: electronAvailable,
+  });
 
   useKeybinding(
     "terminal.moveLeft",
