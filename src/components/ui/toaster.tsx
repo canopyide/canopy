@@ -86,9 +86,9 @@ function Toast({ notification }: { notification: Notification }) {
             {notification.title}
           </h4>
         )}
-        <p className="text-xs text-canopy-text/80 leading-relaxed break-words">
+        <div className="text-xs text-canopy-text/80 leading-relaxed break-words">
           {notification.message}
-        </p>
+        </div>
       </div>
 
       <button

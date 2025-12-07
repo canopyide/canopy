@@ -13,6 +13,7 @@ import {
   generateCodexFlags,
   type AgentSettings,
 } from "@shared/types";
+import { keybindingService } from "@/services/KeybindingService";
 
 export interface HydrationOptions {
   addTerminal: (options: {
@@ -36,6 +37,8 @@ export async function hydrateAppState(options: HydrationOptions): Promise<void> 
   const { addTerminal, setActiveWorktree, loadRecipes, openDiagnosticsDock } = options;
 
   try {
+    await keybindingService.loadOverrides();
+
     // Hydrate terminal config (scrollback, performance mode) BEFORE restoring terminals
     try {
       const terminalConfig = await terminalConfigClient.get();

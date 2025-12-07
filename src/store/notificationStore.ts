@@ -1,4 +1,5 @@
 import { create } from "zustand";
+import type { ReactNode } from "react";
 
 const uuidv4 = () => crypto.randomUUID();
 
@@ -8,7 +9,7 @@ export interface Notification {
   id: string;
   type: NotificationType;
   title?: string;
-  message: string;
+  message: string | ReactNode;
   duration?: number;
 }
 
