@@ -94,11 +94,15 @@ export function useNewTerminalPalette({ launchAgent, worktreeMap }: UseNewTermin
     [activeWorktreeId, worktreeMap, currentProject, launchAgent, addTerminal, close]
   );
 
+  const customOption = useMemo(() => options.find((opt) => opt.type === "custom"), [options]);
+
   const confirmSelection = useCallback(() => {
     if (filteredOptions.length > 0 && selectedIndex < filteredOptions.length) {
       handleSelect(filteredOptions[selectedIndex]);
+    } else if (filteredOptions.length === 0 && query.trim() && customOption) {
+      handleSelect(customOption);
     }
-  }, [filteredOptions, selectedIndex, handleSelect]);
+  }, [filteredOptions, selectedIndex, handleSelect, query, customOption]);
 
   return {
     isOpen,
@@ -112,5 +116,6 @@ export function useNewTerminalPalette({ launchAgent, worktreeMap }: UseNewTermin
     selectPrevious,
     handleSelect,
     confirmSelection,
+    hasCustomOption: Boolean(customOption),
   };
 }
