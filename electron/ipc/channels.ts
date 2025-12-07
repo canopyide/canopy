@@ -154,6 +154,9 @@ export const CHANNELS = {
   KEYBINDING_REMOVE_OVERRIDE: "keybinding:remove-override",
   KEYBINDING_RESET_ALL: "keybinding:reset-all",
 
+  WORKTREE_CONFIG_GET: "worktree-config:get",
+  WORKTREE_CONFIG_SET_PATTERN: "worktree-config:set-pattern",
+
   WINDOW_FULLSCREEN_CHANGE: "window:fullscreen-change",
 } as const;
 

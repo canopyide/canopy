@@ -2,7 +2,7 @@ import { useState, useEffect } from "react";
 import { createPortal } from "react-dom";
 import { useErrors, useOverlayState } from "@/hooks";
 import { useLogsStore, useSidecarStore } from "@/store";
-import { X, Bot, Github, LayoutGrid, PanelRight, Keyboard } from "lucide-react";
+import { X, Bot, Github, LayoutGrid, PanelRight, Keyboard, GitBranch } from "lucide-react";
 import { cn } from "@/lib/utils";
 import { appClient } from "@/clients";
 import { AgentSettings } from "./AgentSettings";
@@ -12,6 +12,7 @@ import { GitHubSettingsTab } from "./GitHubSettingsTab";
 import { TroubleshootingTab } from "./TroubleshootingTab";
 import { SidecarSettingsTab } from "./SidecarSettingsTab";
 import { KeyboardShortcutsTab } from "./KeyboardShortcutsTab";
+import { WorktreeSettingsTab } from "./WorktreeSettingsTab";
 
 interface SettingsDialogProps {
   isOpen: boolean;
@@ -24,6 +25,7 @@ type SettingsTab =
   | "general"
   | "keyboard"
   | "terminal"
+  | "worktree"
   | "agents"
   | "github"
   | "sidecar"
@@ -137,6 +139,19 @@ export function SettingsDialog({
             Terminal
           </button>
           <button
+            onClick={() => setActiveTab("worktree")}
+            className={cn(
+              "text-left px-3 py-2 rounded-[var(--radius-md)] text-sm transition-colors flex items-center gap-2",
+              "focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-canopy-accent focus-visible:ring-offset-2 focus-visible:ring-offset-canopy-bg",
+              activeTab === "worktree"
+                ? "bg-canopy-accent/10 text-canopy-accent"
+                : "text-canopy-text/60 hover:bg-canopy-border hover:text-canopy-text"
+            )}
+          >
+            <GitBranch className="w-4 h-4" />
+            Worktree
+          </button>
+          <button
             onClick={() => setActiveTab("agents")}
             className={cn(
               "text-left px-3 py-2 rounded-[var(--radius-md)] text-sm transition-colors flex items-center gap-2",
@@ -198,11 +213,13 @@ export function SettingsDialog({
                   ? "GitHub Integration"
                   : activeTab === "terminal"
                     ? "Terminal Grid"
-                    : activeTab === "sidecar"
-                      ? "Sidecar Links"
-                      : activeTab === "keyboard"
-                        ? "Keyboard Shortcuts"
-                        : activeTab}
+                    : activeTab === "worktree"
+                      ? "Worktree Paths"
+                      : activeTab === "sidecar"
+                        ? "Sidecar Links"
+                        : activeTab === "keyboard"
+                          ? "Keyboard Shortcuts"
+                          : activeTab}
             </h3>
             <button
               onClick={onClose}
@@ -227,6 +244,10 @@ export function SettingsDialog({
 
             <div className={activeTab === "terminal" ? "" : "hidden"}>
               <TerminalSettingsTab />
+            </div>
+
+            <div className={activeTab === "worktree" ? "" : "hidden"}>
+              <WorktreeSettingsTab />
             </div>
 
             <div className={activeTab === "agents" ? "" : "hidden"}>

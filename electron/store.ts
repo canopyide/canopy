@@ -70,6 +70,9 @@ export interface StoreSchema {
   userConfig: {
     githubToken?: string;
   };
+  worktreeConfig: {
+    pathPattern: string;
+  };
   agentSettings: AgentSettings;
   keybindingOverrides: {
     overrides: Record<string, string[]>;
@@ -108,6 +111,9 @@ export const store = new Store<StoreSchema>({
       currentProjectId: undefined,
     },
     userConfig: {},
+    worktreeConfig: {
+      pathPattern: "{parent-dir}/{base-folder}-worktrees/{branch-slug}",
+    },
     agentSettings: DEFAULT_AGENT_SETTINGS,
     keybindingOverrides: {
       overrides: {},

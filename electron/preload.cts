@@ -244,6 +244,10 @@ const CHANNELS = {
   KEYBINDING_REMOVE_OVERRIDE: "keybinding:remove-override",
   KEYBINDING_RESET_ALL: "keybinding:reset-all",
 
+  // Worktree Config channels
+  WORKTREE_CONFIG_GET: "worktree-config:get",
+  WORKTREE_CONFIG_SET_PATTERN: "worktree-config:set-pattern",
+
   // Window channels
   WINDOW_FULLSCREEN_CHANGE: "window:fullscreen-change",
 } as const;
@@ -688,6 +692,14 @@ const api: ElectronAPI = {
       _typedInvoke(CHANNELS.KEYBINDING_REMOVE_OVERRIDE, actionId),
 
     resetAll: () => _typedInvoke(CHANNELS.KEYBINDING_RESET_ALL),
+  },
+
+  // Worktree Config API
+  worktreeConfig: {
+    get: () => _typedInvoke(CHANNELS.WORKTREE_CONFIG_GET),
+
+    setPattern: (pattern: string) =>
+      _typedInvoke(CHANNELS.WORKTREE_CONFIG_SET_PATTERN, { pattern }),
   },
 
   // Window API

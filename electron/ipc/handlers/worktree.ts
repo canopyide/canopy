@@ -3,8 +3,14 @@ import fs from "fs";
 import path from "path";
 import { CHANNELS } from "../channels.js";
 import { GitService } from "../../services/GitService.js";
+import { store } from "../../store.js";
 import type { HandlerDependencies } from "../types.js";
 import type { WorktreeSetActivePayload, WorktreeDeletePayload } from "../../types/index.js";
+import {
+  generateWorktreePath,
+  DEFAULT_WORKTREE_PATH_PATTERN,
+  validatePathPattern,
+} from "../../../shared/utils/pathPattern.js";
 
 export function registerWorktreeHandlers(deps: HandlerDependencies): () => void {
   const { worktreeService } = deps;
@@ -81,12 +87,32 @@ export function registerWorktreeHandlers(deps: HandlerDependencies): () => void 
     _event: Electron.IpcMainInvokeEvent,
     payload: { rootPath: string; branchName: string }
   ): Promise<string> => {
+    if (!payload || typeof payload !== "object") {
+      throw new Error("Invalid payload for worktree:get-default-path");
+    }
+
     const { rootPath, branchName } = payload;
-    const repoName = path.basename(rootPath);
-    const sanitizedBranch = branchName.replace(/[^a-zA-Z0-9-_]/g, "-");
-    const worktreesDir = path.join(path.dirname(rootPath), `${repoName}-worktrees`);
-    const worktreePath = path.join(worktreesDir, sanitizedBranch);
-    return path.normalize(worktreePath);
+
+    if (typeof rootPath !== "string" || !rootPath.trim()) {
+      throw new Error("Invalid rootPath: must be a non-empty string");
+    }
+
+    if (typeof branchName !== "string" || !branchName.trim()) {
+      throw new Error("Invalid branchName: must be a non-empty string");
+    }
+
+    const configPattern = store.get("worktreeConfig.pathPattern");
+    const pattern =
+      typeof configPattern === "string" && configPattern.trim()
+        ? configPattern
+        : DEFAULT_WORKTREE_PATH_PATTERN;
+
+    const validation = validatePathPattern(pattern);
+    if (!validation.valid) {
+      throw new Error(`Invalid stored pattern: ${validation.error}`);
+    }
+
+    return generateWorktreePath(rootPath, branchName, pattern);
   };
   ipcMain.handle(CHANNELS.WORKTREE_GET_DEFAULT_PATH, handleWorktreeGetDefaultPath);
   handlers.push(() => ipcMain.removeHandler(CHANNELS.WORKTREE_GET_DEFAULT_PATH));
