@@ -14,6 +14,7 @@ import {
 import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover";
 import { cn } from "@/lib/utils";
 import { getBrandColorHex } from "@/lib/colorUtils";
+import { getTerminalAnimationDuration } from "@/lib/animationUtils";
 import { useTerminalStore, useSidecarStore, type TerminalInstance } from "@/store";
 import { TerminalPane } from "@/components/Terminal/TerminalPane";
 import { TerminalContextMenu } from "@/components/Terminal/TerminalContextMenu";
@@ -75,6 +76,7 @@ function getStateIndicator(state?: AgentState) {
 export function DockedTerminalItem({ terminal }: DockedTerminalItemProps) {
   const [isOpen, setIsOpen] = useState(false);
   const [isRestoring, setIsRestoring] = useState(false);
+  const [isTrashing, setIsTrashing] = useState(false);
   const moveTerminalToGrid = useTerminalStore((s) => s.moveTerminalToGrid);
   const trashTerminal = useTerminalStore((s) => s.trashTerminal);
   const removeTerminal = useTerminalStore((s) => s.removeTerminal);
@@ -152,10 +154,15 @@ export function DockedTerminalItem({ terminal }: DockedTerminalItemProps) {
     (force?: boolean) => {
       if (force) {
         removeTerminal(terminal.id);
+        setIsOpen(false);
       } else {
-        trashTerminal(terminal.id);
+        const duration = getTerminalAnimationDuration();
+        setIsTrashing(true);
+        setTimeout(() => {
+          trashTerminal(terminal.id);
+          setIsOpen(false);
+        }, duration);
       }
-      setIsOpen(false);
     },
     [trashTerminal, removeTerminal, terminal.id, setIsOpen]
   );
@@ -233,6 +240,7 @@ export function DockedTerminalItem({ terminal }: DockedTerminalItemProps) {
           onClose={handleClose}
           onRestore={handleRestore}
           onMinimize={handleMinimize}
+          isTrashing={isTrashing}
         />
       </PopoverContent>
     </Popover>

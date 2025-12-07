@@ -13,6 +13,7 @@ This command is **fully automated**. Your job is to merge as many PRs as possibl
 - **DO NOT** over-analyze mechanical fixes — make decisions quickly.
 - **DO** fix issues yourself instead of deferring to the user.
 - **DO** continue to the next PR if one fails — never stop the batch.
+- **DO NOT** run tests on the feature branch. Only run tests **AFTER** merging into the target branch.
 
 **Default stance:** Act first, report results at the end. The user wants PRs merged, not status updates.
 
@@ -24,7 +25,7 @@ Review, test, and merge all open pull requests in a logical order based on depen
 
 ### Step 0: Plan & Setup
 
-1.  **Worktree Cleanup:** Worktrees are deleted on-demand in Step 6.4.
+1.  **Worktree Cleanup:** Worktrees are deleted on-demand in Step 2.2.
 2.  **Environment Check:**
     *   Check current location: `pwd`
     *   Record current branch: `git branch --show-current`
@@ -59,41 +60,43 @@ For each PR in the calculated order:
 
 #### 2.1: Context & Setup
 *   **Log:** `🔄 Processing PR #{number}: {title}`
-*   **Fetch Details:** Get comments and reviews using `gh pr view` and `gh api` (specifically looking for `chatgpt-codex-connector[bot]` or similar automated feedback).
+*   **Fetch Details:** Get comments and reviews using `gh pr view` and `gh api` (specifically looking for automated feedback).
 *   **Context Check:**
     *   Does this PR conflict with changes *already merged in this session*?
-    *   If yes, use `codebase_investigator` or `read_file` to understand the integration points.
+    *   If yes, use `read_file` to understand the integration points.
     *   Adapt the PR code using `replace` if necessary to fit the new state.
 
-#### 2.2: Checkout
-*   **Delete Worktree:** If a git worktree exists for the PR branch, **DELETE IT** (`git worktree remove --force`). The merge must happen in the main directory.
-*   **Checkout:** `git fetch origin` -> `git checkout {headRefName}` -> `git pull origin {headRefName}`.
-*   **DO NOT REBASE** unless absolutely necessary for conflict resolution. Rebasing changes commit hashes and breaks the link between the PR and the merge, preventing GitHub from auto-closing linked issues.
+#### 2.2: Delete Worktree (CRITICAL)
+*   **Identify Worktree:** Check if a git worktree exists for the PR branch: `git worktree list`.
+*   **DELETE IT:** If found, remove it immediately: `git worktree remove --force {path}`.
+*   **Verify:** Ensure the worktree is gone. The merge **MUST** happen in the main directory.
 
-#### 2.3: Address Feedback (Automated & Manual)
-*   **Scan Comments:** Look for P1/P2 priority comments from bots or humans in the fetched data.
-*   **Fix Issues:** If valid feedback exists:
-    *   Use `read_file` to inspect.
-    *   Use `replace` or `write_file` to fix.
-    *   React to bot comments if applicable (`gh api ... reactions`).
+#### 2.3: Checkout PR Branch (For Review Only)
+*   **Fetch & Checkout:** `git fetch origin` -> `git checkout {headRefName}` -> `git pull origin {headRefName}`.
+*   **Address Feedback:**
+    *   Scan comments for P1/P2 priority.
+    *   Fix issues using `replace` or `write_file`.
     *   Commit fixes: `git commit -am "fix: address review feedback"`
+*   **DO NOT** merge `main` into the feature branch here.
+*   **DO NOT REBASE** unless absolutely necessary for conflict resolution. Rebasing changes commit hashes and breaks the link between the PR and the merge, preventing GitHub from auto-closing linked issues.
+*   **DO NOT** run tests here.
 
-#### 2.4: Merge
-*   **Identify Target:** Default to current branch, or `develop`/`main` if Gitflow is detected.
-*   **Execute Merge:**
-    *   Checkout target branch.
-    *   `git merge --no-ff {headRefName} -m "Merge pull request #{number}: {title}"`
+#### 2.4: Merge into Target
+*   **Identify Target:** Default to current branch, or `develop`/`main` if Gitflow is detected (based on PR baseRefName).
+*   **Checkout Target:** `git checkout {target_branch}`.
+*   **Pull Target:** `git pull origin {target_branch}`.
+*   **Execute Merge:** `git merge --no-ff {headRefName} -m "Merge pull request #{number}: {title}"`
 *   **Handle Conflicts:**
     *   **Simple (lockfiles, whitespace):** Resolve automatically (e.g., `checkout --theirs package-lock.json`).
-    *   **Complex:** Use `read_file` to see markers. Use your **Expert Judgment** to resolve. If you cannot resolve it safely, abort the merge and mark PR as FAILED.
+    *   **Complex:** Use `read_file` to inspect markers (`<<<<<<<`). Use your **Expert Judgment** to resolve. If you cannot resolve it safely, abort the merge (`git merge --abort`) and mark PR as FAILED.
 *   **Cleanup Artifacts:**
     *   Grep for `<<<<<<<`, `=======`. If found, fix them immediately.
 
-#### 2.5: Post-Merge Verification
-**ONLY run tests/lint/format HERE.**
+#### 2.5: Post-Merge Verification (CRITICAL)
+**Run tests/lint/format ONLY HERE (after merge).**
 1.  **Run Checks:** Detect and run:
     *   Tests (e.g., `npm test`, `cargo test`)
-    *   Lint (e.g., `npm run lint`)
+    *   Lint (e.g., `npm run lint` or `npm run check`)
     *   Format (e.g., `npm run format`)
 2.  **Fix Loop (Max 3 attempts):**
     *   If failure: Analyze output -> Fix code -> Re-run.
@@ -108,7 +111,7 @@ For each PR in the calculated order:
     *   If open, close it manually: `gh issue close {issue_number} --comment "Fixed via manual merge of PR #{number}"`.
 *   **Close PR:** `gh pr close {number}` (if not auto-closed).
 *   **Delete Branch:** `git push origin --delete {headRefName}` && `git branch -D {headRefName}`.
-*   **Update Session Context:** Record what was merged (files changed, key logic) to inform the next PRs.
+*   **Update Session Context:** Record what was merged to inform the next PRs.
 *   **Return:** `git checkout {starting-branch}`.
 
 ### Step 3: Final Report
@@ -120,5 +123,5 @@ After all PRs are processed:
     *   ❌ Failed: [List with reasons]
     *   ⏭️ Skipped: [Drafts]
 
-**Reminder:** You are an expert engineer. Trust your judgment. Bias for action.
+**Reminder:** You are an expert engineer. Trust your judgment. Bias for action. Speed is key.
 """

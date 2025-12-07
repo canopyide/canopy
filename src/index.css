@@ -101,6 +101,7 @@
 
   --animation-duration: 150ms;
   --transition-duration: 150ms;
+  --terminal-animation-duration: 150ms;
   --background: oklch(1 0 0);
   --foreground: oklch(0.145 0 0);
   --card: oklch(1 0 0);
@@ -344,6 +345,44 @@ body,
   [type="reset"] {
     transform: none !important;
     transition: none !important;
+  }
+}
+
+/* Terminal trash/restore animations */
+@keyframes terminal-restore {
+  from {
+    opacity: 0;
+    transform: translateY(4px);
+  }
+  to {
+    opacity: 1;
+    transform: translateY(0);
+  }
+}
+
+@keyframes terminal-trash {
+  from {
+    opacity: 1;
+    transform: translateY(0);
+  }
+  to {
+    opacity: 0;
+    transform: translateY(4px);
+  }
+}
+
+.terminal-restoring {
+  animation: terminal-restore var(--terminal-animation-duration) ease-out;
+}
+
+.terminal-trashing {
+  animation: terminal-trash var(--terminal-animation-duration) ease-out forwards;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .terminal-restoring,
+  .terminal-trashing {
+    animation: none;
   }
 }
 
