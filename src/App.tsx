@@ -570,10 +570,7 @@ function App() {
   useKeybinding(
     "terminal.close",
     () => {
-      const targetId =
-        focusedId ??
-        terminals.find((t) => t.location !== "trash")?.id ??
-        null;
+      const targetId = focusedId ?? terminals.find((t) => t.location !== "trash")?.id ?? null;
 
       if (!targetId) return;
       useTerminalStore.getState().trashTerminal(targetId);

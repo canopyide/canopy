@@ -52,13 +52,15 @@ find src electron -type f \( -name "*.ts" -o -name "*.tsx" \) \
 ```
 
 **What this does**:
+
 - `find src electron -type f \( -name "*.ts" -o -name "*.tsx" \)` — finds all .ts and .tsx files in src/ and electron/
 - `grep -v -E "(node_modules|dist|build|\.d\.ts$)"` — excludes build artifacts and declaration files
 - `grep -v -E "\.(test|spec)\.(ts|tsx)$"` — excludes test files
-- `grep -v -E "__tests__/"` — excludes __tests__ directories
+- `grep -v -E "__tests__/"` — excludes **tests** directories
 - `sort` — alphabetical order for consistent chunking
 
 **Output**: A master file list. Example:
+
 ```
 MASTER FILE LIST (47 files):
 1. src/App.tsx
@@ -74,16 +76,19 @@ Display the total count prominently: **"Found X files to process."**
 **Goal**: Divide the master list into chunks that sub-agents will process.
 
 **Logic**:
+
 - Each sub-agent will receive **5 files** to process sequentially
 - You will dispatch **5 sub-agents in parallel** per batch
 - Therefore, each batch processes **25 files** (5 agents × 5 files)
 
 **Steps**:
+
 1. Take the master file list
 2. Split into chunks of 5 files each
 3. Group chunks into batches of 5 chunks each
 
 **Example with 47 files**:
+
 ```
 Chunk 1:  files 1-5    ─┐
 Chunk 2:  files 6-10    │
@@ -107,6 +112,7 @@ Display the batch plan: **"Will process in X batches of 5 parallel agents each."
 **For each batch, do the following**:
 
 ## Step 3.1: Announce the Batch
+
 ```
 ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
 BATCH 1 of 2 — Processing files 1-25
@@ -122,6 +128,7 @@ Use the **Task tool** to spawn exactly 5 sub-agents simultaneously in a single m
 - Instruct the agent to process files sequentially and report results
 
 **Example prompt for each sub-agent**:
+
 ```
 Curate comments in these files:
 
@@ -149,6 +156,7 @@ When finished, summarize: "Curated X/5 files. Removed Y redundant comments, kept
 ## Step 3.3: Wait and Collect Results
 
 After dispatching, you will receive results from all 5 sub-agents. For each:
+
 - Record success/failure
 - Note the number of comment blocks removed
 - If a sub-agent failed, log the error and affected files
@@ -156,6 +164,7 @@ After dispatching, you will receive results from all 5 sub-agents. For each:
 ## Step 3.4: Update Progress
 
 After each batch completes, display:
+
 ```
 BATCH 1 COMPLETE
 ├─ Agent 1: ✓ 5/5 files, removed 3 redundant, kept 15 useful
@@ -179,12 +188,14 @@ Only after ALL 5 sub-agents have returned, move to the next batch. Repeat from S
 **Goal**: Be resilient. Don't stop for individual file failures.
 
 **Rules**:
+
 - If a sub-agent fails to process a file, log it and continue
 - If an entire sub-agent crashes, log all its assigned files as errors
 - Keep a running list of failed files throughout execution
 - At the end, report all failures together
 
 **Error tracking format**:
+
 ```
 ERRORS (3 files):
 - electron/services/PtyManager.ts: "Edit failed - file locked"
@@ -233,12 +244,12 @@ Next step: Run `npm run typecheck` to verify no code was broken.
 
 # Quick Reference
 
-| Metric | Value |
-|--------|-------|
-| Files per sub-agent | 5 |
-| Sub-agents per batch | 5 |
-| Files per batch | 25 |
-| Sub-agent type | `comment-janitor` |
-| Target directories | `src/`, `electron/` |
-| Target extensions | `.ts`, `.tsx` |
-| Excluded | `node_modules`, `dist`, `build`, `.d.ts`, tests |
+| Metric               | Value                                           |
+| -------------------- | ----------------------------------------------- |
+| Files per sub-agent  | 5                                               |
+| Sub-agents per batch | 5                                               |
+| Files per batch      | 25                                              |
+| Sub-agent type       | `comment-janitor`                               |
+| Target directories   | `src/`, `electron/`                             |
+| Target extensions    | `.ts`, `.tsx`                                   |
+| Excluded             | `node_modules`, `dist`, `build`, `.d.ts`, tests |

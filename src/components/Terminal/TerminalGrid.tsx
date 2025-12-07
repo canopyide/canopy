@@ -97,9 +97,7 @@ function EmptyState({
       <div className="max-w-3xl w-full flex flex-col items-center">
         <div className="mb-12 flex flex-col items-center text-center">
           <CanopyIcon className="h-20 w-20 text-canopy-accent opacity-25 mb-8" />
-          <h3 className="text-2xl font-semibold text-canopy-text tracking-tight mb-3">
-            Canopy
-          </h3>
+          <h3 className="text-2xl font-semibold text-canopy-text tracking-tight mb-3">Canopy</h3>
           <p className="text-sm text-canopy-text/60 max-w-md leading-relaxed font-medium">
             A habitat for your AI coding agents.
           </p>
@@ -224,15 +222,8 @@ export function TerminalGrid({ className, defaultCwd, onLaunchAgent }: TerminalG
     [terminals]
   );
 
-  const {
-    visibleTerminals,
-    currentPage,
-    totalPages,
-    hasNext,
-    hasPrev,
-    pageSize,
-    setPage,
-  } = useTerminalPagination(gridTerminals);
+  const { visibleTerminals, currentPage, totalPages, hasNext, hasPrev, pageSize, setPage } =
+    useTerminalPagination(gridTerminals);
 
   const layoutConfig = useLayoutConfigStore((state) => state.layoutConfig);
 
@@ -328,8 +319,7 @@ export function TerminalGrid({ className, defaultCwd, onLaunchAgent }: TerminalG
 
   // Adjust placeholder index for current page
   const pageStartIndex = currentPage * pageSize;
-  const placeholderPageIndex =
-    placeholderIndex !== null ? placeholderIndex - pageStartIndex : null;
+  const placeholderPageIndex = placeholderIndex !== null ? placeholderIndex - pageStartIndex : null;
   const placeholderInPage =
     placeholderPageIndex !== null &&
     placeholderPageIndex >= 0 &&
@@ -426,7 +416,10 @@ export function TerminalGrid({ className, defaultCwd, onLaunchAgent }: TerminalG
           >
             {isEmpty && !showPlaceholder ? (
               <div className="col-span-full row-span-full">
-                <EmptyState onLaunchAgent={handleLaunchAgent} hasActiveWorktree={hasActiveWorktree} />
+                <EmptyState
+                  onLaunchAgent={handleLaunchAgent}
+                  hasActiveWorktree={hasActiveWorktree}
+                />
               </div>
             ) : (
               <>

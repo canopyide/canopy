@@ -98,7 +98,9 @@ export function Toolbar({
     <header className="relative h-12 flex items-center px-4 shrink-0 app-drag-region bg-canopy-sidebar/95 backdrop-blur-sm border-b border-canopy-border shadow-sm">
       <div className="window-resize-strip" />
 
-      <div className={cn("shrink-0 transition-[width] duration-200", isFullscreen ? "w-0" : "w-16")} />
+      <div
+        className={cn("shrink-0 transition-[width] duration-200", isFullscreen ? "w-0" : "w-16")}
+      />
 
       <div className="flex items-center gap-1 app-no-drag">
         <Button

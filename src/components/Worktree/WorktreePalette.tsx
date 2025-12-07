@@ -28,7 +28,9 @@ function WorktreeListItem({ worktree, isActive, isSelected, onClick }: WorktreeL
       <div className="flex items-center justify-between text-sm">
         <span className="font-medium text-canopy-text">{worktree.name}</span>
         <div className="flex items-center gap-2 text-xs text-canopy-text/60">
-          {worktree.branch && <span className="font-mono text-canopy-text/70">{worktree.branch}</span>}
+          {worktree.branch && (
+            <span className="font-mono text-canopy-text/70">{worktree.branch}</span>
+          )}
           {isActive && (
             <span className="px-1.5 py-0.5 rounded-md bg-canopy-accent/15 text-canopy-accent text-[10px] font-semibold">
               Active
@@ -186,11 +188,7 @@ export function WorktreePalette({
         >
           {results.length === 0 ? (
             <div className="px-3 py-8 text-center text-canopy-text/50 text-sm">
-              {query.trim() ? (
-                <>No worktrees match "{query}"</>
-              ) : (
-                <>No worktrees available</>
-              )}
+              {query.trim() ? <>No worktrees match "{query}"</> : <>No worktrees available</>}
             </div>
           ) : (
             results.map((worktree, index) => (
