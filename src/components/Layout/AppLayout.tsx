@@ -5,17 +5,11 @@ import { TerminalDock } from "./TerminalDock";
 import { DiagnosticsDock } from "../Diagnostics";
 import { ErrorBoundary } from "../ErrorBoundary";
 import { SidecarDock, SidecarVisibilityController } from "../Sidecar";
-import {
-  useFocusStore,
-  useDiagnosticsStore,
-  useErrorStore,
-  useSidecarStore,
-  usePerformanceModeStore,
-  type PanelState,
-} from "@/store";
+import { useDiagnosticsStore, type PanelState } from "@/store";
 import type { RetryAction } from "@/store";
 import { appClient } from "@/clients";
 import type { CliAvailability, AgentSettings } from "@shared/types";
+import { useLayoutState } from "@/hooks";
 
 interface AppLayoutProps {
   children?: ReactNode;
@@ -43,44 +37,26 @@ export function AppLayout({
   agentSettings,
 }: AppLayoutProps) {
   const [isTerminalDockVisible, setIsTerminalDockVisible] = useState(true);
+  const [sidebarWidth, setSidebarWidth] = useState(DEFAULT_SIDEBAR_WIDTH);
 
-  const performanceMode = usePerformanceModeStore((state) => state.performanceMode);
+  const layout = useLayoutState();
 
   useEffect(() => {
-    if (performanceMode) {
+    if (layout.performanceMode) {
       document.body.setAttribute("data-performance-mode", "true");
     } else {
       document.body.removeAttribute("data-performance-mode");
     }
-  }, [performanceMode]);
-
-  const [sidebarWidth, setSidebarWidth] = useState(DEFAULT_SIDEBAR_WIDTH);
-
-  const isFocusMode = useFocusStore((state) => state.isFocusMode);
-  const toggleFocusMode = useFocusStore((state) => state.toggleFocusMode);
-  const setFocusMode = useFocusStore((state) => state.setFocusMode);
-  const savedPanelState = useFocusStore((state) => state.savedPanelState);
-
-  const diagnosticsOpen = useDiagnosticsStore((state) => state.isOpen);
-  const setDiagnosticsOpen = useDiagnosticsStore((state) => state.setOpen);
-  const openDiagnosticsDock = useDiagnosticsStore((state) => state.openDock);
-
-  const toggleSidecar = useSidecarStore((state) => state.toggle);
-  const sidecarOpen = useSidecarStore((state) => state.isOpen);
-  const sidecarWidth = useSidecarStore((state) => state.width);
-  const sidecarLayoutMode = useSidecarStore((state) => state.layoutMode);
-  const updateSidecarLayoutMode = useSidecarStore((state) => state.updateLayoutMode);
-
-  const errorCount = useErrorStore((state) => state.errors.filter((e) => !e.dismissed).length);
+  }, [layout.performanceMode]);
 
   const handleToggleProblems = useCallback(() => {
     const dock = useDiagnosticsStore.getState();
     if (!dock.isOpen || dock.activeTab !== "problems") {
-      openDiagnosticsDock("problems");
+      layout.openDiagnosticsDock("problems");
     } else {
-      setDiagnosticsOpen(false);
+      layout.setDiagnosticsOpen(false);
     }
-  }, [openDiagnosticsDock, setDiagnosticsOpen]);
+  }, [layout.openDiagnosticsDock, layout.setDiagnosticsOpen]);
 
   useEffect(() => {
     const restoreState = async () => {
@@ -94,8 +70,6 @@ export function AppLayout({
           setSidebarWidth(clampedWidth);
         }
         if (appState.focusMode) {
-          // Restore the saved panel state from before focus mode was activated
-          // Handle migration from legacy format (logsOpen/eventInspectorOpen) to new format (diagnosticsOpen)
           const legacyState = appState.focusPanelState as
             | PanelState
             | { sidebarWidth: number; logsOpen?: boolean; eventInspectorOpen?: boolean }
@@ -113,18 +87,17 @@ export function AppLayout({
                 sidebarWidth: appState.sidebarWidth ?? DEFAULT_SIDEBAR_WIDTH,
                 diagnosticsOpen: false,
               };
-          setFocusMode(true, savedState);
+          layout.setFocusMode(true, savedState);
         }
       } catch (error) {
         console.error("Failed to restore app state:", error);
       }
     };
     restoreState();
-  }, [setFocusMode]);
+  }, [layout.setFocusMode]);
 
   useEffect(() => {
-    // Don't persist when in focus mode (sidebar is collapsed)
-    if (isFocusMode) return;
+    if (layout.isFocusMode) return;
 
     const persistSidebarWidth = async () => {
       try {
@@ -134,48 +107,56 @@ export function AppLayout({
       }
     };
 
-    // Only persist after initial mount (to avoid overwriting on restore)
     const timer = setTimeout(persistSidebarWidth, 300);
     return () => clearTimeout(timer);
-  }, [sidebarWidth, isFocusMode]);
+  }, [sidebarWidth, layout.isFocusMode]);
 
   useEffect(() => {
     const persistFocusMode = async () => {
       try {
-        await appClient.setState({ focusMode: isFocusMode });
+        await appClient.setState({ focusMode: layout.isFocusMode });
       } catch (error) {
         console.error("Failed to persist focus mode:", error);
       }
     };
 
-    // Debounce to avoid rapid persistence during state transitions
     const timer = setTimeout(persistFocusMode, 100);
     return () => clearTimeout(timer);
-  }, [isFocusMode]);
+  }, [layout.isFocusMode]);
 
   const handleToggleFocusMode = useCallback(async () => {
-    if (isFocusMode) {
-      // Expanding sidebar - restore saved width only, not diagnostics state
-      if (savedPanelState) {
-        setSidebarWidth((savedPanelState as PanelState).sidebarWidth);
+    if (layout.isFocusMode) {
+      if (layout.savedPanelState) {
+        setSidebarWidth((layout.savedPanelState as PanelState).sidebarWidth);
       }
-      toggleFocusMode({ sidebarWidth, diagnosticsOpen } as PanelState);
+      layout.toggleFocusMode({
+        sidebarWidth,
+        diagnosticsOpen: layout.diagnosticsOpen,
+      } as PanelState);
       try {
         await appClient.setState({ focusPanelState: undefined });
       } catch (error) {
         console.error("Failed to clear focus panel state:", error);
       }
     } else {
-      // Collapsing sidebar - only affect sidebar, not diagnostics
-      const currentPanelState: PanelState = { sidebarWidth, diagnosticsOpen };
-      toggleFocusMode(currentPanelState);
+      const currentPanelState: PanelState = {
+        sidebarWidth,
+        diagnosticsOpen: layout.diagnosticsOpen,
+      };
+      layout.toggleFocusMode(currentPanelState);
       try {
         await appClient.setState({ focusPanelState: currentPanelState });
       } catch (error) {
         console.error("Failed to persist focus panel state:", error);
       }
     }
-  }, [isFocusMode, savedPanelState, sidebarWidth, diagnosticsOpen, toggleFocusMode]);
+  }, [
+    layout.isFocusMode,
+    layout.savedPanelState,
+    layout.toggleFocusMode,
+    layout.diagnosticsOpen,
+    sidebarWidth,
+  ]);
 
   useEffect(() => {
     const handleFocusModeToggle = () => {
@@ -199,28 +180,27 @@ export function AppLayout({
 
   useEffect(() => {
     const handleSidecarToggle = () => {
-      toggleSidecar();
+      layout.toggleSidecar();
     };
 
     window.addEventListener("canopy:toggle-sidecar", handleSidecarToggle);
     return () => window.removeEventListener("canopy:toggle-sidecar", handleSidecarToggle);
-  }, [toggleSidecar]);
+  }, [layout.toggleSidecar]);
 
   useEffect(() => {
     const handleResize = () => {
-      updateSidecarLayoutMode(window.innerWidth, isFocusMode ? 0 : sidebarWidth);
+      layout.updateSidecarLayoutMode(window.innerWidth, layout.isFocusMode ? 0 : sidebarWidth);
     };
     window.addEventListener("resize", handleResize);
     handleResize();
     return () => window.removeEventListener("resize", handleResize);
-  }, [sidebarWidth, isFocusMode, updateSidecarLayoutMode]);
+  }, [sidebarWidth, layout.updateSidecarLayoutMode, layout.isFocusMode]);
 
-  // Hide sidecar WebContentsView when closed (React unmount doesn't trigger IPC)
   useEffect(() => {
-    if (!sidecarOpen) {
+    if (!layout.sidecarOpen) {
       window.electron.sidecar.hide();
     }
-  }, [sidecarOpen]);
+  }, [layout.sidecarOpen]);
 
   const handleSidebarResize = useCallback((newWidth: number) => {
     const clampedWidth = Math.min(Math.max(newWidth, MIN_SIDEBAR_WIDTH), MAX_SIDEBAR_WIDTH);
@@ -238,17 +218,16 @@ export function AppLayout({
     onSettings?.();
   }, [onSettings]);
 
-  const effectiveSidebarWidth = isFocusMode ? 0 : sidebarWidth;
+  const effectiveSidebarWidth = layout.isFocusMode ? 0 : sidebarWidth;
 
-  // Sync sidecar offset to document.body so Portals (like Toaster) can access it
   useEffect(() => {
-    const offset = sidecarOpen ? `${sidecarWidth}px` : "0px";
+    const offset = layout.sidecarOpen ? `${layout.sidecarWidth}px` : "0px";
     document.body.style.setProperty("--sidecar-right-offset", offset);
 
     return () => {
       document.body.style.removeProperty("--sidecar-right-offset");
     };
-  }, [sidecarOpen, sidecarWidth]);
+  }, [layout.sidecarOpen, layout.sidecarWidth]);
 
   return (
     <div
@@ -267,9 +246,9 @@ export function AppLayout({
         onLaunchAgent={handleLaunchAgent}
         onSettings={handleSettings}
         onOpenAgentSettings={onOpenAgentSettings}
-        errorCount={errorCount}
+        errorCount={layout.errorCount}
         onToggleProblems={handleToggleProblems}
-        isFocusMode={isFocusMode}
+        isFocusMode={layout.isFocusMode}
         onToggleFocusMode={handleToggleFocusMode}
         agentAvailability={agentAvailability}
         agentSettings={agentSettings}
@@ -282,7 +261,7 @@ export function AppLayout({
           className="flex-1 flex overflow-hidden"
           style={{ flex: 1, display: "flex", overflow: "hidden" }}
         >
-          {!isFocusMode && (
+          {!layout.isFocusMode && (
             <ErrorBoundary variant="section" componentName="Sidebar">
               <Sidebar width={effectiveSidebarWidth} onResize={handleSidebarResize}>
                 {sidebarContent}
@@ -308,7 +287,7 @@ export function AppLayout({
                 </ErrorBoundary>
               )}
               {/* Overlay mode - sidecar floats over content */}
-              {sidecarOpen && sidecarLayoutMode === "overlay" && (
+              {layout.sidecarOpen && layout.sidecarLayoutMode === "overlay" && (
                 <ErrorBoundary variant="section" componentName="SidecarDock">
                   <div className="absolute right-0 top-0 bottom-0 z-50 shadow-2xl border-l border-canopy-border">
                     <SidecarDock />
@@ -318,7 +297,7 @@ export function AppLayout({
             </main>
           </ErrorBoundary>
           {/* Push mode - sidecar is part of flex layout */}
-          {sidecarOpen && sidecarLayoutMode === "push" && (
+          {layout.sidecarOpen && layout.sidecarLayoutMode === "push" && (
             <ErrorBoundary variant="section" componentName="SidecarDock">
               <div className="border-l border-canopy-border flex-shrink-0">
                 <SidecarDock />

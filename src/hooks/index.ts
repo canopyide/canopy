@@ -44,3 +44,6 @@ export { useOverlayState } from "./useOverlayState";
 
 export { useGridNavigation } from "./useGridNavigation";
 export type { NavigationDirection } from "./useGridNavigation";
+
+export { useLayoutState } from "./useLayoutState";
+export type { LayoutState } from "./useLayoutState";
