@@ -116,7 +116,7 @@ const DEFAULT_KEYBINDINGS: KeybindingConfig[] = [
   },
   {
     actionId: "terminal.moveLeft",
-    combo: "Cmd+Alt+ArrowLeft",
+    combo: "Cmd+Shift+Alt+ArrowLeft",
     scope: "global",
     priority: 0,
     description: "Move terminal left in grid",
@@ -124,7 +124,7 @@ const DEFAULT_KEYBINDINGS: KeybindingConfig[] = [
   },
   {
     actionId: "terminal.moveRight",
-    combo: "Cmd+Alt+ArrowRight",
+    combo: "Cmd+Shift+Alt+ArrowRight",
     scope: "global",
     priority: 0,
     description: "Move terminal right in grid",
@@ -178,10 +178,10 @@ const DEFAULT_KEYBINDINGS: KeybindingConfig[] = [
     description: "Inject context into focused terminal",
     category: "Terminal",
   },
-  // Directional terminal navigation
+  // Directional terminal navigation (Ghostty-style: Cmd+Option+Arrow)
   {
     actionId: "terminal.focusUp",
-    combo: "Ctrl+Alt+ArrowUp",
+    combo: "Cmd+Alt+ArrowUp",
     scope: "global",
     priority: 0,
     description: "Focus terminal above",
@@ -189,7 +189,7 @@ const DEFAULT_KEYBINDINGS: KeybindingConfig[] = [
   },
   {
     actionId: "terminal.focusDown",
-    combo: "Ctrl+Alt+ArrowDown",
+    combo: "Cmd+Alt+ArrowDown",
     scope: "global",
     priority: 0,
     description: "Focus terminal below",
@@ -197,7 +197,7 @@ const DEFAULT_KEYBINDINGS: KeybindingConfig[] = [
   },
   {
     actionId: "terminal.focusLeft",
-    combo: "Ctrl+Alt+ArrowLeft",
+    combo: "Cmd+Alt+ArrowLeft",
     scope: "global",
     priority: 0,
     description: "Focus terminal to the left",
@@ -205,7 +205,7 @@ const DEFAULT_KEYBINDINGS: KeybindingConfig[] = [
   },
   {
     actionId: "terminal.focusRight",
-    combo: "Ctrl+Alt+ArrowRight",
+    combo: "Cmd+Alt+ArrowRight",
     scope: "global",
     priority: 0,
     description: "Focus terminal to the right",
@@ -422,7 +422,7 @@ const DEFAULT_KEYBINDINGS: KeybindingConfig[] = [
   },
   {
     actionId: "worktree.next",
-    combo: "Cmd+Alt+ArrowDown",
+    combo: "Cmd+Alt+PageDown",
     scope: "global",
     priority: 0,
     description: "Switch to next worktree",
@@ -430,7 +430,7 @@ const DEFAULT_KEYBINDINGS: KeybindingConfig[] = [
   },
   {
     actionId: "worktree.previous",
-    combo: "Cmd+Alt+ArrowUp",
+    combo: "Cmd+Alt+PageUp",
     scope: "global",
     priority: 0,
     description: "Switch to previous worktree",
