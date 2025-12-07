@@ -169,12 +169,22 @@ function TerminalPaneComponent({
       ref={containerRef}
       className={cn(
         "flex flex-col h-full overflow-hidden transition-all duration-200 group",
-        "bg-[var(--color-surface)]",
-        location !== "dock" && "rounded border shadow-md",
-        location !== "dock" &&
+
+        // Background color: surface tint for cards, canvas for maximized
+        location === "grid" && !isMaximized && "bg-[var(--color-surface)]",
+        (location === "dock" || isMaximized) && "bg-canopy-bg",
+
+        // Grid styles (standard - non-maximized)
+        location === "grid" && !isMaximized && "rounded border shadow-md",
+        location === "grid" &&
+          !isMaximized &&
           (isFocused
             ? "terminal-focused border-[color-mix(in_oklab,var(--color-canopy-border)_100%,white_20%)]"
             : "border-canopy-border hover:border-[color-mix(in_oklab,var(--color-canopy-border)_100%,white_10%)]"),
+
+        // Zen Mode styles (maximized - full immersion, no inset needed)
+        location === "grid" && isMaximized && "border-0 rounded-none z-50",
+
         isExited && "opacity-75 grayscale"
       )}
       onClick={handleClick}
@@ -261,7 +271,7 @@ function TerminalPaneComponent({
           terminalType={type}
           onReady={handleReady}
           onExit={handleExit}
-          className={cn("absolute", location === "dock" ? "inset-0" : "inset-2")}
+          className={cn("absolute", location === "dock" || isMaximized ? "inset-0" : "inset-2")}
           getRefreshTier={getRefreshTierCallback}
         />
         <ArtifactOverlay terminalId={id} worktreeId={worktreeId} cwd={cwd} />

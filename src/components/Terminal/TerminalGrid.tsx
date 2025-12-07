@@ -347,7 +347,7 @@ export function TerminalGrid({ className, defaultCwd, onLaunchAgent }: TerminalG
     const terminal = gridTerminals.find((t: TerminalInstance) => t.id === maximizedId);
     if (terminal) {
       return (
-        <div className={cn("h-full", className)}>
+        <div className={cn("h-full relative bg-canopy-bg", className)}>
           <ErrorBoundary
             variant="component"
             componentName="TerminalPane"

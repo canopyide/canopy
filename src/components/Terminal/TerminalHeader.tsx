@@ -8,6 +8,8 @@ import {
   ArrowDownToLine,
   Loader2,
   RotateCcw,
+  Grid2X2,
+  Activity,
 } from "lucide-react";
 import {
   ClaudeIcon,
@@ -25,6 +27,8 @@ import { StateBadge } from "./StateBadge";
 import { ActivityBadge } from "./ActivityBadge";
 import { TerminalContextMenu } from "./TerminalContextMenu";
 import type { ActivityState } from "./TerminalPane";
+import { useTerminalStore } from "@/store";
+import { useShallow } from "zustand/react/shallow";
 
 interface TerminalIconProps {
   className?: string;
@@ -126,6 +130,21 @@ function TerminalHeaderComponent({
   isMaximized,
   location = "grid",
 }: TerminalHeaderProps) {
+  // Get background activity stats for Zen Mode header (optimized single-pass)
+  const { activeCount, workingCount } = useTerminalStore(
+    useShallow((state) => {
+      let active = 0;
+      let working = 0;
+      for (const t of state.terminals) {
+        if (t.id !== id && t.location !== "trash") {
+          active++;
+          if (t.agentState === "working") working++;
+        }
+      }
+      return { activeCount: active, workingCount: working };
+    })
+  );
+
   const handleHeaderDoubleClick = (e: React.MouseEvent<HTMLDivElement>) => {
     const target = e.target as HTMLElement;
     if (target.tagName === "INPUT" || target.tagName === "BUTTON") {
@@ -138,8 +157,10 @@ function TerminalHeaderComponent({
     <TerminalContextMenu terminalId={id} forceLocation={location}>
       <div
         className={cn(
-          "flex items-center justify-between px-3 h-8 shrink-0 font-mono text-xs transition-colors relative overflow-hidden",
-          isFocused ? "bg-[var(--color-surface-highlight)]" : "bg-[var(--color-surface)]"
+          "flex items-center justify-between px-3 shrink-0 font-mono text-xs transition-colors relative overflow-hidden",
+          isMaximized ? "h-10 bg-canopy-sidebar border-b border-canopy-border" : "h-8",
+          !isMaximized &&
+            (isFocused ? "bg-[var(--color-surface-highlight)]" : "bg-[var(--color-surface)]")
         )}
         onDoubleClick={handleHeaderDoubleClick}
       >
@@ -230,6 +251,26 @@ function TerminalHeaderComponent({
           )}
         </div>
 
+        {/* Centered Zen Mode indicator (only visible when maximized) */}
+        {isMaximized && activeCount > 0 && (
+          <div
+            className="absolute left-1/2 top-1/2 -translate-x-1/2 -translate-y-1/2 flex items-center gap-3 text-canopy-text/40 select-none pointer-events-none"
+            role="status"
+            aria-live="polite"
+          >
+            <div className="flex items-center gap-1.5 text-[10px] uppercase tracking-wider font-semibold">
+              <Grid2X2 className="w-3 h-3" aria-hidden="true" />
+              <span>{activeCount} Background</span>
+              {workingCount > 0 && (
+                <span className="flex items-center gap-1 text-[var(--color-state-working)] ml-1">
+                  <Activity className="w-3 h-3 animate-pulse" aria-hidden="true" />
+                  {workingCount} working
+                </span>
+              )}
+            </div>
+          </div>
+        )}
+
         <div className="flex items-center gap-1 opacity-0 group-hover:opacity-100 group-focus-within:opacity-100 transition-opacity">
           {onRestart && (
             <button
@@ -270,23 +311,35 @@ function TerminalHeaderComponent({
               <Maximize2 className="w-3 h-3" aria-hidden="true" />
             </button>
           )}
-          {onToggleMaximize && (
+          {onToggleMaximize && isMaximized ? (
             <button
               onClick={(e) => {
                 e.stopPropagation();
                 onFocus();
                 onToggleMaximize();
               }}
-              className="p-1.5 hover:bg-canopy-text/10 focus-visible:bg-canopy-text/10 focus-visible:outline focus-visible:outline-2 focus-visible:outline-canopy-accent text-canopy-text/60 hover:text-canopy-text transition-colors"
-              title={isMaximized ? "Restore (Ctrl+Shift+F)" : "Maximize (Ctrl+Shift+F)"}
-              aria-label={isMaximized ? "Restore" : "Maximize"}
+              className="flex items-center gap-1.5 px-2 py-1 bg-canopy-accent/10 text-canopy-accent hover:bg-canopy-accent/20 rounded transition-colors mr-1"
+              title="Restore Grid View (Ctrl+Shift+F)"
+              aria-label="Exit Focus mode and restore grid view"
             >
-              {isMaximized ? (
-                <Minimize2 className="w-3 h-3" aria-hidden="true" />
-              ) : (
-                <Maximize2 className="w-3 h-3" aria-hidden="true" />
-              )}
+              <Minimize2 className="w-3.5 h-3.5" aria-hidden="true" />
+              <span className="font-medium">Exit Focus</span>
             </button>
+          ) : (
+            onToggleMaximize && (
+              <button
+                onClick={(e) => {
+                  e.stopPropagation();
+                  onFocus();
+                  onToggleMaximize();
+                }}
+                className="p-1.5 hover:bg-canopy-text/10 focus-visible:bg-canopy-text/10 focus-visible:outline focus-visible:outline-2 focus-visible:outline-canopy-accent text-canopy-text/60 hover:text-canopy-text transition-colors"
+                title="Maximize (Ctrl+Shift+F)"
+                aria-label="Maximize"
+              >
+                <Maximize2 className="w-3 h-3" aria-hidden="true" />
+              </button>
+            )
           )}
           <button
             onClick={(e) => {
