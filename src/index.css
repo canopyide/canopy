@@ -442,6 +442,26 @@ body,
   }
 }
 
+/* Terminal Header Ping Animation - brief brightness flash for visual feedback */
+@keyframes ping-highlight {
+  0% {
+    background-color: rgba(255, 255, 255, 0.25);
+  }
+  100% {
+    background-color: var(--color-surface-highlight);
+  }
+}
+
+.animate-ping-header {
+  animation: ping-highlight 600ms ease-out;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .animate-ping-header {
+    animation: none;
+  }
+}
+
 /* Section header pattern - for organizing content hierarchically */
 .section-header {
   @apply text-xs font-bold tracking-widest text-muted-foreground uppercase;
