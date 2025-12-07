@@ -8,6 +8,7 @@ import {
   ChevronRight,
   ChevronDown,
   Pin,
+  PinOff,
 } from "lucide-react";
 import { useProjectSettings } from "@/hooks/useProjectSettings";
 import { useTerminalStore } from "@/store/terminalStore";
@@ -51,7 +52,8 @@ const HISTORY_KEY_PREFIX = "canopy_cmd_history_";
 const MAX_HISTORY = 10;
 
 export function QuickRun({ projectId }: QuickRunProps) {
-  const { detectedRunners, settings, promoteToSaved } = useProjectSettings(projectId);
+  const { detectedRunners, allDetectedRunners, settings, promoteToSaved, removeFromSaved } =
+    useProjectSettings(projectId);
   const addTerminal = useTerminalStore((state) => state.addTerminal);
   const activeWorktreeId = useWorktreeSelectionStore((state) => state.activeWorktreeId);
   const { worktreeMap } = useWorktrees();
@@ -127,20 +129,51 @@ export function QuickRun({ projectId }: QuickRunProps) {
     }
   };
 
+  const handleUnpin = async (e: React.MouseEvent, item: SuggestionItem) => {
+    e.stopPropagation();
+    e.preventDefault();
+
+    try {
+      await removeFromSaved(item.value);
+    } catch (err) {
+      console.error("Failed to unpin command:", err);
+    }
+  };
+
   const suggestions = useMemo((): SuggestionItem[] => {
     const search = input.toLowerCase().trim();
     const savedCommands = settings?.runCommands || [];
-
     const savedCommandStrings = new Set(savedCommands.map((c) => c.command));
+    const detectedCommandStrings = new Set(allDetectedRunners.map((r) => r.command));
 
-    const savedOptions: SuggestionItem[] = savedCommands.map((cmd) => ({
-      label: cmd.name,
-      value: cmd.command,
-      type: "saved" as const,
-      icon: cmd.icon,
-      description: cmd.description,
-    }));
+    // Pinned commands that came from package.json - preserve package.json order
+    const savedDetected: SuggestionItem[] = allDetectedRunners
+      .filter((r) => savedCommandStrings.has(r.command))
+      .map((r) => {
+        const saved = savedCommands.find((s) => s.command === r.command)!;
+        return {
+          label: saved.name,
+          value: saved.command,
+          type: "saved" as const,
+          icon: saved.icon,
+          description: saved.description,
+        };
+      });
 
+    // Custom pinned commands (user-typed, not from package.json) - appear after script pins
+    const savedCustom: SuggestionItem[] = savedCommands
+      .filter((cmd) => !detectedCommandStrings.has(cmd.command))
+      .map((cmd) => ({
+        label: cmd.name,
+        value: cmd.command,
+        type: "saved" as const,
+        icon: cmd.icon,
+        description: cmd.description,
+      }));
+
+    const savedOptions = [...savedDetected, ...savedCustom];
+
+    // Remaining detected scripts (not pinned) - preserve package.json order
     const scriptOptions: SuggestionItem[] = detectedRunners.map((r) => ({
       label: r.name,
       value: r.command,
@@ -149,6 +182,7 @@ export function QuickRun({ projectId }: QuickRunProps) {
       description: r.description,
     }));
 
+    // History - most recent first, excluding saved commands
     const historyOptions: SuggestionItem[] = history
       .filter((h) => !savedCommandStrings.has(h.command))
       .map((h) => ({
@@ -159,19 +193,18 @@ export function QuickRun({ projectId }: QuickRunProps) {
 
     const allOptions = [...savedOptions, ...scriptOptions, ...historyOptions];
 
+    // Remove duplicates (keep first occurrence)
     const uniqueOptions = allOptions.filter(
       (v, i, a) => a.findIndex((t) => t.value === v.value) === i
     );
 
-    if (!search) return uniqueOptions.slice(0, 10);
+    if (!search) return uniqueOptions;
 
-    return uniqueOptions
-      .filter(
-        (opt) =>
-          opt.value.toLowerCase().includes(search) || opt.label.toLowerCase().includes(search)
-      )
-      .slice(0, 10);
-  }, [input, detectedRunners, history, settings]);
+    return uniqueOptions.filter(
+      (opt) =>
+        opt.value.toLowerCase().includes(search) || opt.label.toLowerCase().includes(search)
+    );
+  }, [input, detectedRunners, allDetectedRunners, history, settings]);
 
   const handleRun = async (cmd: string) => {
     if (!cmd.trim()) return;
@@ -352,71 +385,82 @@ export function QuickRun({ projectId }: QuickRunProps) {
               {showSuggestions && suggestions.length > 0 && (
                 <div
                   role="listbox"
-                  className="absolute bottom-full left-0 right-0 mb-1 bg-surface border border-canopy-border rounded-md shadow-2xl overflow-hidden z-50"
+                  className="absolute bottom-full left-0 right-0 mb-1 bg-surface border border-canopy-border rounded-md shadow-2xl overflow-hidden z-50 max-h-64 flex flex-col"
                 >
-                  <div className="text-[10px] text-white/30 px-3 py-1 bg-black/20 border-b border-white/5">
+                  <div className="text-[10px] text-white/30 px-3 py-1 bg-black/20 border-b border-white/5 shrink-0">
                     {settings?.runCommands?.length
                       ? "PINNED, SCRIPTS & HISTORY"
                       : "SCRIPTS & HISTORY"}
                   </div>
-                  {suggestions.map((item, index) => (
-                    <button
-                      key={`${item.value}-${index}`}
-                      role="option"
-                      aria-selected={index === focusedSuggestionIndex}
-                      className={cn(
-                        "w-full flex items-center gap-3 px-3 py-2 text-left text-xs font-mono transition-colors group",
-                        index === focusedSuggestionIndex
-                          ? "bg-canopy-accent/20 text-canopy-text"
-                          : "text-canopy-text/70 hover:bg-white/5"
-                      )}
-                      onClick={() => {
-                        setInput(item.value);
-                        handleRun(item.value);
-                      }}
-                    >
-                      {item.type === "saved" ? (
-                        <Pin className="h-3 w-3 text-canopy-accent shrink-0 fill-canopy-accent" />
-                      ) : item.type === "history" ? (
-                        <Clock className="h-3 w-3 opacity-40 shrink-0" />
-                      ) : (
-                        <Terminal className="h-3 w-3 opacity-40 shrink-0" />
-                      )}
-                      <div className="flex-1 truncate flex items-center justify-between min-w-0">
-                        <div className="truncate">
-                          <span
-                            className={cn(
-                              "group-hover:text-canopy-text",
-                              index === focusedSuggestionIndex ? "text-canopy-accent" : "",
-                              item.type === "saved" ? "font-semibold text-canopy-text" : ""
+                  <div className="overflow-y-auto flex-1">
+                    {suggestions.map((item, index) => (
+                      <button
+                        key={`${item.value}-${index}`}
+                        role="option"
+                        aria-selected={index === focusedSuggestionIndex}
+                        className={cn(
+                          "w-full flex items-center gap-3 px-3 py-2 text-left text-xs font-mono transition-colors group",
+                          index === focusedSuggestionIndex
+                            ? "bg-canopy-accent/20 text-canopy-text"
+                            : "text-canopy-text/70 hover:bg-white/5"
+                        )}
+                        onClick={() => {
+                          setInput(item.value);
+                          handleRun(item.value);
+                        }}
+                      >
+                        {item.type === "saved" ? (
+                          <Pin className="h-3 w-3 text-canopy-accent shrink-0 fill-canopy-accent" />
+                        ) : item.type === "history" ? (
+                          <Clock className="h-3 w-3 opacity-40 shrink-0" />
+                        ) : (
+                          <Terminal className="h-3 w-3 opacity-40 shrink-0" />
+                        )}
+                        <div className="flex-1 truncate flex items-center justify-between min-w-0">
+                          <div className="truncate">
+                            <span
+                              className={cn(
+                                "group-hover:text-canopy-text",
+                                index === focusedSuggestionIndex ? "text-canopy-accent" : "",
+                                item.type === "saved" ? "font-semibold text-canopy-text" : ""
+                              )}
+                            >
+                              {item.type === "saved" ? item.label : item.value}
+                            </span>
+                            {item.type === "script" && item.label !== item.value && (
+                              <span className="ml-2 text-[10px] opacity-40 font-sans">
+                                ({item.label})
+                              </span>
                             )}
-                          >
-                            {item.type === "saved" ? item.label : item.value}
-                          </span>
-                          {item.type === "script" && item.label !== item.value && (
-                            <span className="ml-2 text-[10px] opacity-40 font-sans">
-                              ({item.label})
-                            </span>
-                          )}
-                          {item.type === "saved" && item.label !== item.value && (
-                            <span className="ml-2 text-[10px] opacity-40 font-sans">
-                              {item.value}
-                            </span>
+                            {item.type === "saved" && item.label !== item.value && (
+                              <span className="ml-2 text-[10px] opacity-40 font-sans">
+                                {item.value}
+                              </span>
+                            )}
+                          </div>
+                          {item.type === "saved" ? (
+                            <button
+                              type="button"
+                              onClick={(e) => handleUnpin(e, item)}
+                              className="opacity-0 group-hover:opacity-100 p-1 hover:bg-white/10 rounded transition-opacity ml-2 shrink-0"
+                              aria-label="Unpin this command"
+                            >
+                              <PinOff className="h-3 w-3 text-canopy-text/40 hover:text-red-400" />
+                            </button>
+                          ) : (
+                            <button
+                              type="button"
+                              onClick={(e) => handlePin(e, item)}
+                              className="opacity-0 group-hover:opacity-100 p-1 hover:bg-white/10 rounded transition-opacity ml-2 shrink-0"
+                              aria-label="Pin this command"
+                            >
+                              <Pin className="h-3 w-3 text-canopy-text/40 hover:text-canopy-accent" />
+                            </button>
                           )}
                         </div>
-                        {item.type !== "saved" && (
-                          <button
-                            type="button"
-                            onClick={(e) => handlePin(e, item)}
-                            className="opacity-0 group-hover:opacity-100 p-1 hover:bg-white/10 rounded transition-opacity ml-2 shrink-0"
-                            aria-label="Pin this command"
-                          >
-                            <Pin className="h-3 w-3 text-canopy-text/40 hover:text-canopy-accent" />
-                          </button>
-                        )}
-                      </div>
-                    </button>
-                  ))}
+                      </button>
+                    ))}
+                  </div>
                 </div>
               )}
             </div>

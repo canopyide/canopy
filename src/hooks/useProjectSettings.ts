@@ -6,10 +6,12 @@ import { projectClient } from "@/clients";
 interface UseProjectSettingsReturn {
   settings: ProjectSettings | null;
   detectedRunners: RunCommand[];
+  allDetectedRunners: RunCommand[];
   isLoading: boolean;
   error: string | null;
   saveSettings: (settings: ProjectSettings) => Promise<void>;
   promoteToSaved: (command: RunCommand) => Promise<void>;
+  removeFromSaved: (commandString: string) => Promise<void>;
   refresh: () => Promise<void>;
 }
 
@@ -19,6 +21,7 @@ export function useProjectSettings(projectId?: string): UseProjectSettingsReturn
 
   const [settings, setSettings] = useState<ProjectSettings | null>(null);
   const [detectedRunners, setDetectedRunners] = useState<RunCommand[]>([]);
+  const [allDetectedRunners, setAllDetectedRunners] = useState<RunCommand[]>([]);
   const [isLoading, setIsLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
@@ -29,6 +32,7 @@ export function useProjectSettings(projectId?: string): UseProjectSettingsReturn
     if (!targetId) {
       setSettings({ runCommands: [] });
       setDetectedRunners([]);
+      setAllDetectedRunners([]);
       return;
     }
 
@@ -44,6 +48,7 @@ export function useProjectSettings(projectId?: string): UseProjectSettingsReturn
 
       if (requestedProjectId === latestTargetIdRef.current) {
         setSettings(data);
+        setAllDetectedRunners(detected);
 
         const savedCommandStrings = new Set(data.runCommands?.map((c) => c.command) || []);
         const newDetected = detected.filter((d) => !savedCommandStrings.has(d.command));
@@ -55,6 +60,7 @@ export function useProjectSettings(projectId?: string): UseProjectSettingsReturn
         setError(err instanceof Error ? err.message : "Unknown error");
         setSettings({ runCommands: [] });
         setDetectedRunners([]);
+        setAllDetectedRunners([]);
       }
     } finally {
       if (requestedProjectId === latestTargetIdRef.current) {
@@ -118,6 +124,33 @@ export function useProjectSettings(projectId?: string): UseProjectSettingsReturn
     [settings, targetId]
   );
 
+  const removeFromSaved = useCallback(
+    async (commandString: string) => {
+      if (!settings || !targetId) return;
+
+      const updated = settings.runCommands.filter((c) => c.command !== commandString);
+
+      try {
+        await projectClient.saveSettings(targetId, {
+          ...settings,
+          runCommands: updated,
+        });
+
+        setSettings({
+          ...settings,
+          runCommands: updated,
+        });
+
+        setError(null);
+      } catch (err) {
+        console.error("Failed to remove command:", err);
+        setError(err instanceof Error ? err.message : "Unknown error");
+        throw err;
+      }
+    },
+    [settings, targetId]
+  );
+
   useEffect(() => {
     fetchSettings();
   }, [fetchSettings]);
@@ -125,10 +158,12 @@ export function useProjectSettings(projectId?: string): UseProjectSettingsReturn
   return {
     settings,
     detectedRunners,
+    allDetectedRunners,
     isLoading,
     error,
     saveSettings,
     promoteToSaved,
+    removeFromSaved,
     refresh: fetchSettings,
   };
 }

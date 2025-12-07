@@ -220,6 +220,34 @@
     -moz-osx-font-smoothing: grayscale;
   }
 
+  /* Global scrollbar styling */
+  * {
+    scrollbar-width: thin;
+    scrollbar-color: var(--color-state-idle) transparent;
+  }
+
+  *::-webkit-scrollbar {
+    width: 6px;
+    height: 6px;
+  }
+
+  *::-webkit-scrollbar-track {
+    background: transparent;
+  }
+
+  *::-webkit-scrollbar-thumb {
+    background: var(--color-state-idle);
+    border-radius: 3px;
+  }
+
+  *::-webkit-scrollbar-thumb:hover {
+    background: #71717a;
+  }
+
+  *::-webkit-scrollbar-corner {
+    background: transparent;
+  }
+
   /* Terminal scrollbar styling - Digital Ecology theme */
   .xterm-viewport {
     scrollbar-width: thin;
