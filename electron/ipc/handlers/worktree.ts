@@ -4,7 +4,7 @@ import path from "path";
 import { CHANNELS } from "../channels.js";
 import { GitService } from "../../services/GitService.js";
 import type { HandlerDependencies } from "../types.js";
-import type { WorktreeSetActivePayload } from "../../types/index.js";
+import type { WorktreeSetActivePayload, WorktreeDeletePayload } from "../../types/index.js";
 
 export function registerWorktreeHandlers(deps: HandlerDependencies): () => void {
   const { worktreeService } = deps;
@@ -90,6 +90,27 @@ export function registerWorktreeHandlers(deps: HandlerDependencies): () => void 
   };
   ipcMain.handle(CHANNELS.WORKTREE_GET_DEFAULT_PATH, handleWorktreeGetDefaultPath);
   handlers.push(() => ipcMain.removeHandler(CHANNELS.WORKTREE_GET_DEFAULT_PATH));
+
+  const handleWorktreeDelete = async (
+    _event: Electron.IpcMainInvokeEvent,
+    payload: WorktreeDeletePayload
+  ) => {
+    if (!worktreeService) {
+      throw new Error("WorktreeService not initialized");
+    }
+    if (!payload || typeof payload !== "object") {
+      throw new Error("Invalid payload");
+    }
+    if (typeof payload.worktreeId !== "string" || !payload.worktreeId) {
+      throw new Error("Invalid worktree ID");
+    }
+    if (payload.force !== undefined && typeof payload.force !== "boolean") {
+      throw new Error("Invalid force parameter");
+    }
+    await worktreeService.deleteWorktree(payload.worktreeId, payload.force);
+  };
+  ipcMain.handle(CHANNELS.WORKTREE_DELETE, handleWorktreeDelete);
+  handlers.push(() => ipcMain.removeHandler(CHANNELS.WORKTREE_DELETE));
 
   const handleGitGetFileDiff = async (
     _event: Electron.IpcMainInvokeEvent,

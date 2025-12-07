@@ -85,6 +85,7 @@ export type {
   // Worktree IPC types
   WorktreeRemovePayload,
   WorktreeSetActivePayload,
+  WorktreeDeletePayload,
   // Dev server IPC types
   DevServerStartPayload,
   DevServerStopPayload,

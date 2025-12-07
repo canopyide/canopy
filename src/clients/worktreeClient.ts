@@ -59,6 +59,10 @@ export const worktreeClient = {
     return window.electron.worktree.getAdaptiveBackoffMetrics(worktreeId);
   },
 
+  delete: (worktreeId: string, force?: boolean): Promise<void> => {
+    return window.electron.worktree.delete(worktreeId, force);
+  },
+
   onUpdate: (callback: (state: WorktreeState) => void): (() => void) => {
     return window.electron.worktree.onUpdate(callback);
   },

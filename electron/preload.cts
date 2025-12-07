@@ -75,6 +75,7 @@ const CHANNELS = {
   WORKTREE_SET_ADAPTIVE_BACKOFF_CONFIG: "worktree:set-adaptive-backoff-config",
   WORKTREE_IS_CIRCUIT_BREAKER_TRIPPED: "worktree:is-circuit-breaker-tripped",
   WORKTREE_GET_ADAPTIVE_BACKOFF_METRICS: "worktree:get-adaptive-backoff-metrics",
+  WORKTREE_DELETE: "worktree:delete",
 
   // Dev server channels
   DEVSERVER_START: "devserver:start",
@@ -278,6 +279,9 @@ const api: ElectronAPI = {
 
     getAdaptiveBackoffMetrics: (worktreeId: string) =>
       _typedInvoke(CHANNELS.WORKTREE_GET_ADAPTIVE_BACKOFF_METRICS, worktreeId),
+
+    delete: (worktreeId: string, force?: boolean) =>
+      _typedInvoke(CHANNELS.WORKTREE_DELETE, { worktreeId, force }),
 
     onUpdate: (callback: (state: WorktreeState) => void) =>
       _typedOn(CHANNELS.WORKTREE_UPDATE, callback),
