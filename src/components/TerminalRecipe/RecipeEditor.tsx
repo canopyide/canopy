@@ -1,9 +1,8 @@
-import { useState, useEffect } from "react";
-import { createPortal } from "react-dom";
+import { useState, useEffect, useRef } from "react";
 import type { TerminalRecipe, RecipeTerminal, RecipeTerminalType } from "@/types";
 import { Button } from "@/components/ui/button";
+import { AppDialog } from "@/components/ui/AppDialog";
 import { useRecipeStore } from "@/store/recipeStore";
-import { useOverlayState } from "@/hooks";
 
 interface RecipeEditorProps {
   recipe?: TerminalRecipe;
@@ -32,8 +31,6 @@ export function RecipeEditor({
   onClose,
   onSave,
 }: RecipeEditorProps) {
-  useOverlayState(isOpen);
-
   const createRecipe = useRecipeStore((state) => state.createRecipe);
   const updateRecipe = useRecipeStore((state) => state.updateRecipe);
 
@@ -43,6 +40,7 @@ export function RecipeEditor({
   ]);
   const [isSaving, setIsSaving] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  const recipeNameInputRef = useRef<HTMLInputElement>(null);
 
   useEffect(() => {
     if (recipe) {
@@ -57,6 +55,12 @@ export function RecipeEditor({
     }
     setError(null);
   }, [recipe, initialTerminals, isOpen]);
+
+  useEffect(() => {
+    if (isOpen) {
+      setTimeout(() => recipeNameInputRef.current?.focus(), 0);
+    }
+  }, [isOpen]);
 
   const handleAddTerminal = () => {
     if (terminals.length >= 10) {
@@ -130,146 +134,121 @@ export function RecipeEditor({
     }
   };
 
-  if (!isOpen) return null;
+  return (
+    <AppDialog isOpen={isOpen} onClose={onClose} size="lg" dismissible={!isSaving}>
+      <AppDialog.Header>
+        <AppDialog.Title>{recipe ? "Edit Recipe" : "Create Recipe"}</AppDialog.Title>
+      </AppDialog.Header>
 
-  return createPortal(
-    <div
-      className="fixed inset-0 z-[var(--z-modal)] flex items-center justify-center bg-black/50"
-      onClick={() => {
-        if (!isSaving) {
-          onClose();
-        }
-      }}
-    >
-      <div
-        className="bg-canopy-sidebar border border-canopy-border rounded-lg shadow-xl max-w-2xl w-full mx-4 max-h-[80vh] overflow-hidden"
-        onClick={(e) => e.stopPropagation()}
-        role="dialog"
-        aria-modal="true"
-        aria-labelledby="recipe-editor-title"
-      >
-        <div className="px-6 py-4 border-b border-canopy-border">
-          <h2 id="recipe-editor-title" className="text-lg font-semibold text-canopy-text">
-            {recipe ? "Edit Recipe" : "Create Recipe"}
-          </h2>
+      <AppDialog.Body>
+        <div className="mb-4">
+          <label htmlFor="recipe-name" className="block text-sm font-medium text-canopy-text mb-1">
+            Recipe Name
+          </label>
+          <input
+            ref={recipeNameInputRef}
+            id="recipe-name"
+            type="text"
+            value={recipeName}
+            onChange={(e) => setRecipeName(e.target.value)}
+            placeholder="e.g., Full Stack Dev"
+            className="w-full px-3 py-2 bg-canopy-background border border-canopy-border rounded-md text-canopy-text focus:outline-none focus:ring-2 focus:ring-canopy-accent"
+          />
         </div>
 
-        <div className="px-6 py-4 overflow-y-auto max-h-[calc(80vh-180px)]">
-          <div className="mb-4">
-            <label
-              htmlFor="recipe-name"
-              className="block text-sm font-medium text-canopy-text mb-1"
-            >
-              Recipe Name
+        <div className="mb-4">
+          <div className="flex items-center justify-between mb-2">
+            <label className="block text-sm font-medium text-canopy-text">
+              Terminals ({terminals.length}/10)
             </label>
-            <input
-              id="recipe-name"
-              type="text"
-              value={recipeName}
-              onChange={(e) => setRecipeName(e.target.value)}
-              placeholder="e.g., Full Stack Dev"
-              className="w-full px-3 py-2 bg-canopy-background border border-canopy-border rounded-md text-canopy-text focus:outline-none focus:ring-2 focus:ring-canopy-accent"
-              autoFocus
-            />
+            <Button size="sm" onClick={handleAddTerminal} disabled={terminals.length >= 10}>
+              + Add Terminal
+            </Button>
           </div>
 
-          <div className="mb-4">
-            <div className="flex items-center justify-between mb-2">
-              <label className="block text-sm font-medium text-canopy-text">
-                Terminals ({terminals.length}/10)
-              </label>
-              <Button size="sm" onClick={handleAddTerminal} disabled={terminals.length >= 10}>
-                + Add Terminal
-              </Button>
-            </div>
-
-            <div className="space-y-3">
-              {terminals.map((terminal, index) => (
-                <div
-                  key={index}
-                  className="bg-canopy-background border border-canopy-border rounded-md p-3"
-                >
-                  <div className="flex items-start gap-3">
-                    <div className="flex-1">
-                      <label className="block text-xs font-medium text-canopy-text mb-1">
-                        Type
-                      </label>
-                      <select
-                        value={terminal.type}
-                        onChange={(e) =>
-                          handleTerminalChange(index, "type", e.target.value as RecipeTerminalType)
-                        }
-                        className="w-full px-2 py-1.5 bg-canopy-sidebar border border-canopy-border rounded text-sm text-canopy-text"
-                      >
-                        {TERMINAL_TYPES.map((type) => (
-                          <option key={type} value={type}>
-                            {TYPE_LABELS[type]}
-                          </option>
-                        ))}
-                      </select>
-                    </div>
-
-                    <div className="flex-1">
-                      <label className="block text-xs font-medium text-canopy-text mb-1">
-                        Title (optional)
-                      </label>
-                      <input
-                        type="text"
-                        value={terminal.title || ""}
-                        onChange={(e) => handleTerminalChange(index, "title", e.target.value)}
-                        placeholder="Default"
-                        className="w-full px-2 py-1.5 bg-canopy-sidebar border border-canopy-border rounded text-sm text-canopy-text"
-                      />
-                    </div>
-
-                    <div className="pt-5">
-                      <Button
-                        size="sm"
-                        variant="destructive"
-                        onClick={() => handleRemoveTerminal(index)}
-                        disabled={terminals.length === 1}
-                      >
-                        Remove
-                      </Button>
-                    </div>
+          <div className="space-y-3">
+            {terminals.map((terminal, index) => (
+              <div
+                key={index}
+                className="bg-canopy-background border border-canopy-border rounded-md p-3"
+              >
+                <div className="flex items-start gap-3">
+                  <div className="flex-1">
+                    <label className="block text-xs font-medium text-canopy-text mb-1">Type</label>
+                    <select
+                      value={terminal.type}
+                      onChange={(e) =>
+                        handleTerminalChange(index, "type", e.target.value as RecipeTerminalType)
+                      }
+                      className="w-full px-2 py-1.5 bg-canopy-sidebar border border-canopy-border rounded text-sm text-canopy-text"
+                    >
+                      {TERMINAL_TYPES.map((type) => (
+                        <option key={type} value={type}>
+                          {TYPE_LABELS[type]}
+                        </option>
+                      ))}
+                    </select>
                   </div>
 
-                  {terminal.type === "custom" && (
-                    <div className="mt-2">
-                      <label className="block text-xs font-medium text-canopy-text mb-1">
-                        Command (optional)
-                      </label>
-                      <input
-                        type="text"
-                        value={terminal.command || ""}
-                        onChange={(e) => handleTerminalChange(index, "command", e.target.value)}
-                        placeholder="e.g., npm run dev"
-                        className="w-full px-2 py-1.5 bg-canopy-sidebar border border-canopy-border rounded text-sm text-canopy-text"
-                      />
-                    </div>
-                  )}
+                  <div className="flex-1">
+                    <label className="block text-xs font-medium text-canopy-text mb-1">
+                      Title (optional)
+                    </label>
+                    <input
+                      type="text"
+                      value={terminal.title || ""}
+                      onChange={(e) => handleTerminalChange(index, "title", e.target.value)}
+                      placeholder="Default"
+                      className="w-full px-2 py-1.5 bg-canopy-sidebar border border-canopy-border rounded text-sm text-canopy-text"
+                    />
+                  </div>
+
+                  <div className="pt-5">
+                    <Button
+                      size="sm"
+                      variant="destructive"
+                      onClick={() => handleRemoveTerminal(index)}
+                      disabled={terminals.length === 1}
+                    >
+                      Remove
+                    </Button>
+                  </div>
                 </div>
-              ))}
-            </div>
+
+                {terminal.type === "custom" && (
+                  <div className="mt-2">
+                    <label className="block text-xs font-medium text-canopy-text mb-1">
+                      Command (optional)
+                    </label>
+                    <input
+                      type="text"
+                      value={terminal.command || ""}
+                      onChange={(e) => handleTerminalChange(index, "command", e.target.value)}
+                      placeholder="e.g., npm run dev"
+                      className="w-full px-2 py-1.5 bg-canopy-sidebar border border-canopy-border rounded text-sm text-canopy-text"
+                    />
+                  </div>
+                )}
+              </div>
+            ))}
           </div>
-
-          {error && (
-            <div className="mb-4 p-3 bg-red-500/10 border border-red-500/30 rounded-md text-[var(--color-status-error)] text-sm">
-              {error}
-            </div>
-          )}
         </div>
 
-        <div className="px-6 py-4 border-t border-canopy-border flex justify-end gap-3">
-          <Button variant="outline" onClick={onClose} disabled={isSaving}>
-            Cancel
-          </Button>
-          <Button onClick={handleSave} disabled={isSaving}>
-            {isSaving ? "Saving..." : recipe ? "Update Recipe" : "Create Recipe"}
-          </Button>
-        </div>
-      </div>
-    </div>,
-    document.body
+        {error && (
+          <div className="mb-4 p-3 bg-red-500/10 border border-red-500/30 rounded-md text-[var(--color-status-error)] text-sm">
+            {error}
+          </div>
+        )}
+      </AppDialog.Body>
+
+      <AppDialog.Footer>
+        <Button variant="outline" onClick={onClose} disabled={isSaving}>
+          Cancel
+        </Button>
+        <Button onClick={handleSave} disabled={isSaving}>
+          {isSaving ? "Saving..." : recipe ? "Update Recipe" : "Create Recipe"}
+        </Button>
+      </AppDialog.Footer>
+    </AppDialog>
   );
 }

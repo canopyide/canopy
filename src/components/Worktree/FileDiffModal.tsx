@@ -108,23 +108,21 @@ export function FileDiffModal({
 
   return createPortal(
     <div
-      className="fixed inset-0 z-[var(--z-modal)] flex items-center justify-center"
+      className="fixed inset-0 z-[var(--z-modal)] flex items-center justify-center bg-black/50 backdrop-blur-sm"
       role="dialog"
       aria-modal="true"
       aria-labelledby={dialogTitleId}
-      onClick={(e) => e.stopPropagation()}
+      onClick={(e) => {
+        if (e.target === e.currentTarget) {
+          onClose();
+        }
+      }}
     >
       <div
-        className="absolute inset-0 bg-black/60 backdrop-blur-sm"
-        onClick={onClose}
-        aria-hidden="true"
-      />
-
-      <div
-        className="relative z-10 w-full max-w-6xl max-h-[90vh] mx-4 flex flex-col bg-canopy-bg border border-canopy-border rounded-lg shadow-xl overflow-hidden"
+        className="relative w-full max-w-6xl max-h-[90vh] mx-4 flex flex-col bg-canopy-bg border border-canopy-border rounded-[var(--radius-xl)] shadow-xl overflow-hidden"
         onClick={(e) => e.stopPropagation()}
       >
-        <div className="flex items-center justify-between px-4 py-3 border-b border-canopy-border bg-canopy-sidebar/50">
+        <div className="flex items-center justify-between px-4 py-3 border-b border-canopy-border bg-canopy-sidebar/50 shrink-0">
           <div className="flex items-center gap-3 min-w-0">
             <span
               className={cn(
@@ -242,7 +240,7 @@ export function FileDiffModal({
           )}
         </div>
 
-        <div className="flex items-center justify-end px-4 py-3 border-t border-canopy-border bg-canopy-sidebar/50">
+        <div className="flex items-center justify-end px-4 py-3 border-t border-canopy-border bg-canopy-sidebar/50 shrink-0">
           <Button variant="ghost" onClick={onClose}>
             Close
           </Button>

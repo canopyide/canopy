@@ -1,8 +1,7 @@
-import { useState, useEffect } from "react";
-import { createPortal } from "react-dom";
+import { useState, useEffect, useRef } from "react";
 import { Button } from "@/components/ui/button";
-import { X, FolderOpen, GitBranch, Check, AlertCircle, Loader2 } from "lucide-react";
-import { useOverlayState } from "@/hooks";
+import { AppDialog } from "@/components/ui/AppDialog";
+import { FolderOpen, GitBranch, Check, AlertCircle, Loader2 } from "lucide-react";
 import type { BranchInfo, CreateWorktreeOptions } from "@/types/electron";
 import { worktreeClient } from "@/clients";
 
@@ -19,8 +18,6 @@ export function NewWorktreeDialog({
   rootPath,
   onWorktreeCreated,
 }: NewWorktreeDialogProps) {
-  useOverlayState(isOpen);
-
   const [branches, setBranches] = useState<BranchInfo[]>([]);
   const [loading, setLoading] = useState(false);
   const [creating, setCreating] = useState(false);
@@ -30,6 +27,8 @@ export function NewWorktreeDialog({
   const [newBranch, setNewBranch] = useState("");
   const [worktreePath, setWorktreePath] = useState("");
   const [fromRemote, setFromRemote] = useState(false);
+
+  const newBranchInputRef = useRef<HTMLInputElement>(null);
 
   useEffect(() => {
     if (!isOpen) return;
@@ -53,6 +52,12 @@ export function NewWorktreeDialog({
         setLoading(false);
       });
   }, [isOpen, rootPath]);
+
+  useEffect(() => {
+    if (isOpen && !loading) {
+      setTimeout(() => newBranchInputRef.current?.focus(), 0);
+    }
+  }, [isOpen, loading]);
 
   useEffect(() => {
     if (newBranch && rootPath) {
@@ -107,180 +112,154 @@ export function NewWorktreeDialog({
       setNewBranch("");
       setWorktreePath("");
       setFromRemote(false);
-    } catch (err: any) {
-      setError(err.message || "Failed to create worktree");
+    } catch (err: unknown) {
+      const message = err instanceof Error ? err.message : "Failed to create worktree";
+      setError(message);
     } finally {
       setCreating(false);
     }
   };
 
-  if (!isOpen) return null;
+  return (
+    <AppDialog isOpen={isOpen} onClose={onClose} size="md" dismissible={!creating}>
+      <AppDialog.Header>
+        <AppDialog.Title icon={<GitBranch className="w-5 h-5 text-canopy-accent" />}>
+          Create New Worktree
+        </AppDialog.Title>
+        <AppDialog.CloseButton />
+      </AppDialog.Header>
 
-  return createPortal(
-    <div
-      className="fixed inset-0 z-[var(--z-modal)] flex items-center justify-center bg-black/50 backdrop-blur-sm"
-      onClick={onClose}
-    >
-      <div
-        className="bg-canopy-sidebar border border-canopy-border rounded-lg shadow-xl w-full max-w-lg mx-4"
-        onClick={(e) => e.stopPropagation()}
-        role="dialog"
-        aria-modal="true"
-        aria-labelledby="new-worktree-title"
-      >
-        <div className="flex items-center justify-between p-6 border-b border-canopy-border">
-          <h2
-            id="new-worktree-title"
-            className="text-lg font-medium text-canopy-text flex items-center gap-2"
-          >
-            <GitBranch className="w-5 h-5 text-canopy-accent" />
-            Create New Worktree
-          </h2>
-          <button
-            onClick={onClose}
-            className="text-canopy-text/60 hover:text-canopy-text transition-colors"
-            disabled={creating}
-          >
-            <X className="h-5 w-5" />
-          </button>
-        </div>
-
-        <div className="p-6 space-y-4">
-          {loading ? (
-            <div className="flex items-center justify-center py-12">
-              <Loader2 className="w-6 h-6 animate-spin text-canopy-accent" />
-              <span className="ml-2 text-sm text-canopy-text/60">Loading branches...</span>
+      <AppDialog.Body>
+        {loading ? (
+          <div className="flex items-center justify-center py-12">
+            <Loader2 className="w-6 h-6 animate-spin text-canopy-accent" />
+            <span className="ml-2 text-sm text-canopy-text/60">Loading branches...</span>
+          </div>
+        ) : (
+          <div className="space-y-4">
+            <div className="space-y-2">
+              <label htmlFor="base-branch" className="block text-sm font-medium text-canopy-text">
+                Base Branch
+              </label>
+              <select
+                id="base-branch"
+                value={baseBranch}
+                onChange={(e) => setBaseBranch(e.target.value)}
+                className="w-full px-3 py-2 bg-canopy-bg border border-canopy-border rounded-md text-canopy-text focus:outline-none focus:ring-2 focus:ring-canopy-accent"
+                disabled={creating}
+              >
+                {branches.map((branch) => (
+                  <option key={branch.name} value={branch.name}>
+                    {branch.name}
+                    {branch.current ? " (current)" : ""}
+                    {branch.remote ? " (remote)" : ""}
+                  </option>
+                ))}
+              </select>
+              <p className="text-xs text-canopy-text/60">
+                The branch to create the new worktree from
+              </p>
             </div>
+
+            <div className="space-y-2">
+              <label htmlFor="new-branch" className="block text-sm font-medium text-canopy-text">
+                New Branch Name
+              </label>
+              <input
+                ref={newBranchInputRef}
+                id="new-branch"
+                type="text"
+                value={newBranch}
+                onChange={(e) => setNewBranch(e.target.value)}
+                placeholder="feature/my-feature"
+                className="w-full px-3 py-2 bg-canopy-bg border border-canopy-border rounded-md text-canopy-text focus:outline-none focus:ring-2 focus:ring-canopy-accent"
+                disabled={creating}
+              />
+              <p className="text-xs text-canopy-text/60">Name for the new branch</p>
+            </div>
+
+            <div className="space-y-2">
+              <label htmlFor="worktree-path" className="block text-sm font-medium text-canopy-text">
+                Worktree Path
+              </label>
+              <div className="flex gap-2">
+                <input
+                  id="worktree-path"
+                  type="text"
+                  value={worktreePath}
+                  onChange={(e) => setWorktreePath(e.target.value)}
+                  placeholder="/path/to/worktree"
+                  className="flex-1 px-3 py-2 bg-canopy-bg border border-canopy-border rounded-md text-canopy-text focus:outline-none focus:ring-2 focus:ring-canopy-accent"
+                  disabled={creating}
+                />
+                <Button
+                  variant="outline"
+                  size="sm"
+                  onClick={async () => {
+                    try {
+                      const selected = await window.electron.project.openDialog();
+                      if (selected) {
+                        setWorktreePath(selected);
+                        setError(null);
+                      }
+                    } catch (err: unknown) {
+                      console.error("Failed to open directory picker:", err);
+                      const message = err instanceof Error ? err.message : "Unknown error";
+                      setError(`Failed to open directory picker: ${message}`);
+                    }
+                  }}
+                  disabled={creating}
+                >
+                  <FolderOpen className="w-4 h-4" />
+                </Button>
+              </div>
+              <p className="text-xs text-canopy-text/60">
+                Directory where the worktree will be created
+              </p>
+            </div>
+
+            <div className="flex items-center gap-2">
+              <input
+                id="from-remote"
+                type="checkbox"
+                checked={fromRemote}
+                onChange={(e) => setFromRemote(e.target.checked)}
+                className="rounded border-canopy-border text-canopy-accent focus:ring-canopy-accent"
+                disabled={creating}
+              />
+              <label htmlFor="from-remote" className="text-sm text-canopy-text">
+                Create from remote branch
+              </label>
+            </div>
+
+            {error && (
+              <div className="flex items-start gap-2 p-3 bg-red-500/10 border border-red-500/20 rounded-md">
+                <AlertCircle className="w-4 h-4 text-[var(--color-status-error)] mt-0.5 flex-shrink-0" />
+                <p className="text-sm text-[var(--color-status-error)]">{error}</p>
+              </div>
+            )}
+          </div>
+        )}
+      </AppDialog.Body>
+
+      <AppDialog.Footer>
+        <Button variant="ghost" onClick={onClose} disabled={creating}>
+          Cancel
+        </Button>
+        <Button onClick={handleCreate} disabled={creating || loading} className="min-w-[100px]">
+          {creating ? (
+            <>
+              <Loader2 className="w-4 h-4 mr-2 animate-spin" />
+              Creating...
+            </>
           ) : (
             <>
-              <div className="space-y-2">
-                <label htmlFor="base-branch" className="block text-sm font-medium text-canopy-text">
-                  Base Branch
-                </label>
-                <select
-                  id="base-branch"
-                  value={baseBranch}
-                  onChange={(e) => setBaseBranch(e.target.value)}
-                  className="w-full px-3 py-2 bg-canopy-bg border border-canopy-border rounded-md text-canopy-text focus:outline-none focus:ring-2 focus:ring-canopy-accent"
-                  disabled={creating}
-                >
-                  {branches.map((branch) => (
-                    <option key={branch.name} value={branch.name}>
-                      {branch.name}
-                      {branch.current ? " (current)" : ""}
-                      {branch.remote ? " (remote)" : ""}
-                    </option>
-                  ))}
-                </select>
-                <p className="text-xs text-canopy-text/60">
-                  The branch to create the new worktree from
-                </p>
-              </div>
-
-              <div className="space-y-2">
-                <label htmlFor="new-branch" className="block text-sm font-medium text-canopy-text">
-                  New Branch Name
-                </label>
-                <input
-                  id="new-branch"
-                  type="text"
-                  value={newBranch}
-                  onChange={(e) => setNewBranch(e.target.value)}
-                  placeholder="feature/my-feature"
-                  className="w-full px-3 py-2 bg-canopy-bg border border-canopy-border rounded-md text-canopy-text focus:outline-none focus:ring-2 focus:ring-canopy-accent"
-                  disabled={creating}
-                />
-                <p className="text-xs text-canopy-text/60">Name for the new branch</p>
-              </div>
-
-              <div className="space-y-2">
-                <label
-                  htmlFor="worktree-path"
-                  className="block text-sm font-medium text-canopy-text"
-                >
-                  Worktree Path
-                </label>
-                <div className="flex gap-2">
-                  <input
-                    id="worktree-path"
-                    type="text"
-                    value={worktreePath}
-                    onChange={(e) => setWorktreePath(e.target.value)}
-                    placeholder="/path/to/worktree"
-                    className="flex-1 px-3 py-2 bg-canopy-bg border border-canopy-border rounded-md text-canopy-text focus:outline-none focus:ring-2 focus:ring-canopy-accent"
-                    disabled={creating}
-                  />
-                  <Button
-                    variant="outline"
-                    size="sm"
-                    onClick={async () => {
-                      try {
-                        const selected = await window.electron.project.openDialog();
-                        if (selected) {
-                          setWorktreePath(selected);
-                          setError(null);
-                        }
-                      } catch (err: any) {
-                        console.error("Failed to open directory picker:", err);
-                        setError(
-                          `Failed to open directory picker: ${err.message || "Unknown error"}`
-                        );
-                      }
-                    }}
-                    disabled={creating}
-                  >
-                    <FolderOpen className="w-4 h-4" />
-                  </Button>
-                </div>
-                <p className="text-xs text-canopy-text/60">
-                  Directory where the worktree will be created
-                </p>
-              </div>
-
-              <div className="flex items-center gap-2">
-                <input
-                  id="from-remote"
-                  type="checkbox"
-                  checked={fromRemote}
-                  onChange={(e) => setFromRemote(e.target.checked)}
-                  className="rounded border-canopy-border text-canopy-accent focus:ring-canopy-accent"
-                  disabled={creating}
-                />
-                <label htmlFor="from-remote" className="text-sm text-canopy-text">
-                  Create from remote branch
-                </label>
-              </div>
-
-              {error && (
-                <div className="flex items-start gap-2 p-3 bg-red-500/10 border border-red-500/20 rounded-md">
-                  <AlertCircle className="w-4 h-4 text-[var(--color-status-error)] mt-0.5 flex-shrink-0" />
-                  <p className="text-sm text-[var(--color-status-error)]">{error}</p>
-                </div>
-              )}
+              <Check className="w-4 h-4 mr-2" />
+              Create
             </>
           )}
-        </div>
-
-        <div className="flex items-center justify-end gap-3 p-6 border-t border-canopy-border">
-          <Button variant="ghost" onClick={onClose} disabled={creating}>
-            Cancel
-          </Button>
-          <Button onClick={handleCreate} disabled={creating || loading} className="min-w-[100px]">
-            {creating ? (
-              <>
-                <Loader2 className="w-4 h-4 mr-2 animate-spin" />
-                Creating...
-              </>
-            ) : (
-              <>
-                <Check className="w-4 h-4 mr-2" />
-                Create
-              </>
-            )}
-          </Button>
-        </div>
-      </div>
-    </div>,
-    document.body
+        </Button>
+      </AppDialog.Footer>
+    </AppDialog>
   );
 }
