@@ -9,12 +9,14 @@ import {
   type AgentStateChangeTrigger,
 } from "../../schemas/agent.js";
 import type { TerminalInfo } from "./types.js";
+import { ActivityHeadlineGenerator } from "../ActivityHeadlineGenerator.js";
 
 /**
  * Service responsible for agent state machine logic and event emission.
  * Handles state transitions, trigger inference, and emits validated agent events.
  */
 export class AgentStateService {
+  private headlineGenerator = new ActivityHeadlineGenerator();
   /**
    * Infer the trigger type from an agent event.
    */
@@ -137,6 +139,9 @@ export class AgentStateService {
         validatedStateChange.error.format()
       );
     }
+
+    // Emit terminal activity event for UI headline updates
+    this.emitTerminalActivity(terminal);
 
     // Emit specific failure event
     if (newState === "failed" && event.type === "error") {
@@ -269,5 +274,27 @@ export class AgentStateService {
 
     const event: AgentEvent = activity === "busy" ? { type: "busy" } : { type: "prompt" };
     this.updateAgentState(terminal, event, "activity", 1.0);
+  }
+
+  /**
+   * Emit terminal:activity event with generated headline.
+   */
+  emitTerminalActivity(terminal: TerminalInfo): void {
+    const { headline, status, type } = this.headlineGenerator.generate({
+      terminalId: terminal.id,
+      terminalType: terminal.type,
+      agentId: terminal.agentId,
+      agentState: terminal.agentState,
+    });
+
+    events.emit("terminal:activity", {
+      terminalId: terminal.id,
+      headline,
+      status,
+      type,
+      confidence: 1.0,
+      timestamp: Date.now(),
+      worktreeId: terminal.worktreeId,
+    });
   }
 }
