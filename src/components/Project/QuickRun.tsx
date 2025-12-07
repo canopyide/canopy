@@ -51,8 +51,22 @@ type SuggestionItem =
 const HISTORY_KEY_PREFIX = "canopy_cmd_history_";
 const MAX_HISTORY = 10;
 
+/**
+ * Normalize a command string for comparison.
+ * Removes quotes around tokens that don't contain spaces.
+ * e.g., `npm run "test"` -> `npm run test`
+ * but keeps `npm run "test with spaces"` as is.
+ */
+function normalizeCommand(cmd: string): string {
+  return cmd
+    .trim()
+    .replace(/\s+/g, " ")
+    .replace(/"([^"\s]+)"/g, "$1")
+    .replace(/'([^'\s]+)'/g, "$1");
+}
+
 export function QuickRun({ projectId }: QuickRunProps) {
-  const { detectedRunners, allDetectedRunners, settings, promoteToSaved, removeFromSaved } =
+  const { allDetectedRunners, settings, promoteToSaved, removeFromSaved } =
     useProjectSettings(projectId);
   const addTerminal = useTerminalStore((state) => state.addTerminal);
   const activeWorktreeId = useWorktreeSelectionStore((state) => state.activeWorktreeId);
@@ -65,7 +79,6 @@ export function QuickRun({ projectId }: QuickRunProps) {
   const [showSuggestions, setShowSuggestions] = useState(false);
   const [focusedSuggestionIndex, setFocusedSuggestionIndex] = useState(-1);
   const inputRef = useRef<HTMLInputElement>(null);
-  const blurTimerRef = useRef<NodeJS.Timeout | null>(null);
 
   useEffect(() => {
     const saved = localStorage.getItem(`${HISTORY_KEY_PREFIX}${projectId}`);
@@ -88,18 +101,18 @@ export function QuickRun({ projectId }: QuickRunProps) {
         localStorage.removeItem(`${HISTORY_KEY_PREFIX}${projectId}`);
       }
     }
-
-    return () => {
-      if (blurTimerRef.current) {
-        clearTimeout(blurTimerRef.current);
-      }
-    };
   }, [projectId]);
 
   const saveHistory = (cmd: string) => {
     setHistory((prev) => {
       const newItem = { command: cmd, timestamp: Date.now() };
-      const newHistory = [newItem, ...prev.filter((h) => h.command !== cmd)].slice(0, MAX_HISTORY);
+      const normalizedNew = normalizeCommand(cmd);
+      // Use normalized comparison to avoid duplicates with quote variations
+      // but keep the original command value
+      const newHistory = [
+        newItem,
+        ...prev.filter((h) => normalizeCommand(h.command) !== normalizedNew),
+      ].slice(0, MAX_HISTORY);
       localStorage.setItem(`${HISTORY_KEY_PREFIX}${projectId}`, JSON.stringify(newHistory));
       return newHistory;
     });
@@ -143,29 +156,33 @@ export function QuickRun({ projectId }: QuickRunProps) {
   const suggestions = useMemo((): SuggestionItem[] => {
     const search = input.toLowerCase().trim();
     const savedCommands = settings?.runCommands || [];
-    const savedCommandStrings = new Set(savedCommands.map((c) => c.command));
-    const detectedCommandStrings = new Set(allDetectedRunners.map((r) => r.command));
+
+    // Use normalized commands for comparison to handle quote variations
+    const savedNormalized = new Set(savedCommands.map((c) => normalizeCommand(c.command)));
+    const detectedNormalized = new Set(allDetectedRunners.map((r) => normalizeCommand(r.command)));
 
     // Pinned commands that came from package.json - preserve package.json order
     const savedDetected: SuggestionItem[] = allDetectedRunners
-      .filter((r) => savedCommandStrings.has(r.command))
+      .filter((r) => savedNormalized.has(normalizeCommand(r.command)))
       .map((r) => {
-        const saved = savedCommands.find((s) => s.command === r.command)!;
+        const saved = savedCommands.find(
+          (s) => normalizeCommand(s.command) === normalizeCommand(r.command)
+        );
         return {
-          label: saved.name,
-          value: saved.command,
+          label: saved?.name || r.name,
+          value: r.command, // Use detected command (clean, no quotes)
           type: "saved" as const,
-          icon: saved.icon,
-          description: saved.description,
+          icon: saved?.icon || r.icon,
+          description: saved?.description || r.description,
         };
       });
 
     // Custom pinned commands (user-typed, not from package.json) - appear after script pins
     const savedCustom: SuggestionItem[] = savedCommands
-      .filter((cmd) => !detectedCommandStrings.has(cmd.command))
+      .filter((cmd) => !detectedNormalized.has(normalizeCommand(cmd.command)))
       .map((cmd) => ({
         label: cmd.name,
-        value: cmd.command,
+        value: cmd.command, // Keep original command
         type: "saved" as const,
         icon: cmd.icon,
         description: cmd.description,
@@ -173,30 +190,41 @@ export function QuickRun({ projectId }: QuickRunProps) {
 
     const savedOptions = [...savedDetected, ...savedCustom];
 
-    // Remaining detected scripts (not pinned) - preserve package.json order
-    const scriptOptions: SuggestionItem[] = detectedRunners.map((r) => ({
-      label: r.name,
-      value: r.command,
-      type: "script" as const,
-      icon: r.icon,
-      description: r.description,
-    }));
+    // Remaining detected scripts (not pinned) - filter from allDetectedRunners to preserve package.json order
+    // This ensures unpinned commands return to their original position
+    const scriptOptions: SuggestionItem[] = allDetectedRunners
+      .filter((r) => !savedNormalized.has(normalizeCommand(r.command)))
+      .map((r) => ({
+        label: r.name,
+        value: r.command,
+        type: "script" as const,
+        icon: r.icon,
+        description: r.description,
+      }));
 
-    // History - most recent first, excluding saved commands
+    // History - most recent first, excluding saved and detected commands
+    const seenNormalized = new Set([
+      ...savedNormalized,
+      ...allDetectedRunners.map((r) => normalizeCommand(r.command)),
+    ]);
     const historyOptions: SuggestionItem[] = history
-      .filter((h) => !savedCommandStrings.has(h.command))
+      .filter((h) => !seenNormalized.has(normalizeCommand(h.command)))
       .map((h) => ({
         label: h.command,
-        value: h.command,
+        value: h.command, // Keep original command
         type: "history" as const,
       }));
 
     const allOptions = [...savedOptions, ...scriptOptions, ...historyOptions];
 
-    // Remove duplicates (keep first occurrence)
-    const uniqueOptions = allOptions.filter(
-      (v, i, a) => a.findIndex((t) => t.value === v.value) === i
-    );
+    // Remove duplicates using normalized comparison (keep first occurrence)
+    const seen = new Set<string>();
+    const uniqueOptions = allOptions.filter((opt) => {
+      const normalized = normalizeCommand(opt.value);
+      if (seen.has(normalized)) return false;
+      seen.add(normalized);
+      return true;
+    });
 
     if (!search) return uniqueOptions;
 
@@ -204,7 +232,7 @@ export function QuickRun({ projectId }: QuickRunProps) {
       (opt) =>
         opt.value.toLowerCase().includes(search) || opt.label.toLowerCase().includes(search)
     );
-  }, [input, detectedRunners, allDetectedRunners, history, settings]);
+  }, [input, allDetectedRunners, history, settings]);
 
   const handleRun = async (cmd: string) => {
     if (!cmd.trim()) return;
@@ -313,18 +341,8 @@ export function QuickRun({ projectId }: QuickRunProps) {
                   setShowSuggestions(true);
                   setFocusedSuggestionIndex(-1);
                 }}
-                onFocus={() => {
-                  if (blurTimerRef.current) {
-                    clearTimeout(blurTimerRef.current);
-                    blurTimerRef.current = null;
-                  }
-                  setShowSuggestions(true);
-                }}
-                onBlur={() => {
-                  blurTimerRef.current = setTimeout(() => {
-                    setShowSuggestions(false);
-                  }, 200);
-                }}
+                onFocus={() => setShowSuggestions(true)}
+                onBlur={() => setShowSuggestions(false)}
                 onKeyDown={handleKeyDown}
                 placeholder="Execute command..."
                 aria-label="Command input"
@@ -385,12 +403,11 @@ export function QuickRun({ projectId }: QuickRunProps) {
               {showSuggestions && suggestions.length > 0 && (
                 <div
                   role="listbox"
+                  onMouseDown={(e) => e.preventDefault()}
                   className="absolute bottom-full left-0 right-0 mb-1 bg-surface border border-canopy-border rounded-md shadow-2xl overflow-hidden z-50 max-h-64 flex flex-col"
                 >
                   <div className="text-[10px] text-white/30 px-3 py-1 bg-black/20 border-b border-white/5 shrink-0">
-                    {settings?.runCommands?.length
-                      ? "PINNED, SCRIPTS & HISTORY"
-                      : "SCRIPTS & HISTORY"}
+                    COMMANDS
                   </div>
                   <div className="overflow-y-auto flex-1">
                     {suggestions.map((item, index) => (
