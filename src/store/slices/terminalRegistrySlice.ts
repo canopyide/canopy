@@ -76,7 +76,7 @@ export interface TerminalRegistrySlice {
   getTerminal: (id: string) => TerminalInstance | undefined;
 
   moveTerminalToDock: (id: string) => void;
-  moveTerminalToGrid: (id: string) => void;
+  moveTerminalToGrid: (id: string) => boolean;
   toggleTerminalLocation: (id: string) => void;
 
   trashTerminal: (id: string) => void;
@@ -318,10 +318,21 @@ export const createTerminalRegistrySlice =
     },
 
     moveTerminalToGrid: (id) => {
+      let moveSucceeded = false;
+
       set((state) => {
         const terminal = state.terminals.find((t) => t.id === id);
         if (!terminal || terminal.location === "grid") return state;
 
+        // Check grid capacity (count both "grid" and undefined as grid)
+        const gridCount = state.terminals.filter(
+          (t) => t.location === "grid" || t.location === undefined
+        ).length;
+        if (gridCount >= MAX_GRID_TERMINALS) {
+          return state;
+        }
+
+        moveSucceeded = true;
         const newTerminals = state.terminals.map((t) =>
           t.id === id ? { ...t, location: "grid" as const } : t
         );
@@ -330,21 +341,26 @@ export const createTerminalRegistrySlice =
         return { terminals: newTerminals };
       });
 
-      // Delay flush to ensure the UI has subscribed to onData
-      terminalClient
-        .setBuffering(id, false)
-        .then(() => {
-          setTimeout(() => {
-            terminalClient.flush(id).catch((error) => {
-              console.error("Failed to flush terminal buffer:", error);
-            });
-          }, 100);
-        })
-        .catch((error) => {
-          console.error("Failed to disable terminal buffering:", error);
-        });
+      // Only apply side effects if the move succeeded
+      if (moveSucceeded) {
+        // Delay flush to ensure the UI has subscribed to onData
+        terminalClient
+          .setBuffering(id, false)
+          .then(() => {
+            setTimeout(() => {
+              terminalClient.flush(id).catch((error) => {
+                console.error("Failed to flush terminal buffer:", error);
+              });
+            }, 100);
+          })
+          .catch((error) => {
+            console.error("Failed to disable terminal buffering:", error);
+          });
 
-      terminalInstanceService.applyRendererPolicy(id, TerminalRefreshTier.VISIBLE);
+        terminalInstanceService.applyRendererPolicy(id, TerminalRefreshTier.VISIBLE);
+      }
+
+      return moveSucceeded;
     },
 
     toggleTerminalLocation: (id) => {

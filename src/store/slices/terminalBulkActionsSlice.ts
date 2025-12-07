@@ -1,5 +1,6 @@
 import type { StateCreator } from "zustand";
 import type { TerminalInstance } from "./terminalRegistrySlice";
+import { MAX_GRID_TERMINALS } from "./terminalRegistrySlice";
 import type { AgentState } from "@/types";
 import { isAgentTerminal } from "../utils/terminalTypeGuards";
 
@@ -83,6 +84,16 @@ export const createTerminalBulkActionsSlice = (
       const dockedTerminals = terminals.filter((t) => t.location === "dock");
       if (dockedTerminals.length === 0) return;
 
+      // Calculate available capacity (count both "grid" and undefined as grid)
+      const gridCount = terminals.filter(
+        (t) => t.location === "grid" || t.location === undefined
+      ).length;
+      const availableSlots = MAX_GRID_TERMINALS - gridCount;
+      if (availableSlots <= 0) return;
+
+      // Only move terminals that fit
+      const terminalsToMove = dockedTerminals.slice(0, availableSlots);
+
       // Preserve existing grid focus if one exists
       const currentFocusId = getFocusedId();
       const currentFocusedTerminal = currentFocusId
@@ -90,7 +101,7 @@ export const createTerminalBulkActionsSlice = (
         : null;
       const hasGridFocus = currentFocusedTerminal?.location === "grid";
 
-      dockedTerminals.forEach((t) => moveTerminalToGrid(t.id));
+      terminalsToMove.forEach((t) => moveTerminalToGrid(t.id));
 
       // Restore the original grid focus if it existed
       if (hasGridFocus && currentFocusId) {

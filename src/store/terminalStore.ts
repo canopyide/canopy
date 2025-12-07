@@ -119,8 +119,10 @@ export const useTerminalStore = create<TerminalGridState>()((set, get, api) => {
     },
 
     moveTerminalToGrid: (id: string) => {
-      registrySlice.moveTerminalToGrid(id);
-      set({ focusedId: id, activeDockTerminalId: null });
+      const moveSucceeded = registrySlice.moveTerminalToGrid(id);
+      if (moveSucceeded) {
+        set({ focusedId: id, activeDockTerminalId: null });
+      }
     },
 
     trashTerminal: (id: string) => {
