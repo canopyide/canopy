@@ -302,7 +302,7 @@ export function DndProvider({ children }: DndProviderProps) {
       if (sourceLocation === "dock" && targetContainer === "grid" && isGridFull) {
         // Grid is full, cancel the drop
         setTimeout(() => {
-          terminalInstanceService.resetAllRenderers();
+          terminalInstanceService.refreshAll();
         }, 100);
         return;
       }
@@ -328,11 +328,11 @@ export function DndProvider({ children }: DndProviderProps) {
         }
       }
 
-      // Reset WebGL renderers after drag to fix rendering artifacts
+      // Refresh terminals after drag to ensure correct rendering
       // Use setTimeout with longer delay to ensure CSS Grid layout has fully settled
       // before measuring container dimensions for fit()
       setTimeout(() => {
-        terminalInstanceService.resetAllRenderers();
+        terminalInstanceService.refreshAll();
       }, 100);
     },
     [activeData, overContainer, terminals, reorderTerminals, moveTerminalToPosition, setFocused]
@@ -344,10 +344,10 @@ export function DndProvider({ children }: DndProviderProps) {
     setOverContainer(null);
     setPlaceholderIndex(null);
 
-    // Reset WebGL renderers after drag cancel to fix rendering artifacts
+    // Refresh terminals after drag cancel to ensure correct rendering
     // Use setTimeout with longer delay to ensure CSS Grid layout has fully settled
     setTimeout(() => {
-      terminalInstanceService.resetAllRenderers();
+      terminalInstanceService.refreshAll();
     }, 100);
   }, []);
 
