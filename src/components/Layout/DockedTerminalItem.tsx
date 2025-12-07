@@ -1,16 +1,7 @@
 import { useState, useCallback, useEffect, useMemo, useRef } from "react";
 import { useShallow } from "zustand/react/shallow";
 import { useDndMonitor } from "@dnd-kit/core";
-import { Loader2, Terminal, Command } from "lucide-react";
-import {
-  ClaudeIcon,
-  GeminiIcon,
-  CodexIcon,
-  NpmIcon,
-  YarnIcon,
-  PnpmIcon,
-  BunIcon,
-} from "@/components/icons";
+import { Loader2 } from "lucide-react";
 import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover";
 import { cn } from "@/lib/utils";
 import { getBrandColorHex } from "@/lib/colorUtils";
@@ -18,39 +9,14 @@ import { getTerminalAnimationDuration } from "@/lib/animationUtils";
 import { useTerminalStore, useSidecarStore, type TerminalInstance } from "@/store";
 import { TerminalPane } from "@/components/Terminal/TerminalPane";
 import { TerminalContextMenu } from "@/components/Terminal/TerminalContextMenu";
-import type { AgentState, TerminalType } from "@/types";
+import { TerminalIcon } from "@/components/Terminal/TerminalIcon";
+import type { AgentState } from "@/types";
 import { TerminalRefreshTier } from "@/types";
 import { terminalClient } from "@/clients";
 import { terminalInstanceService } from "@/services/TerminalInstanceService";
 
 interface DockedTerminalItemProps {
   terminal: TerminalInstance;
-}
-
-function getTerminalIcon(type: TerminalType, className?: string) {
-  const brandColor = getBrandColorHex(type);
-  const props = { className: cn("w-3 h-3", className), "aria-hidden": "true" as const };
-  switch (type) {
-    case "claude":
-      return <ClaudeIcon {...props} brandColor={brandColor} />;
-    case "gemini":
-      return <GeminiIcon {...props} brandColor={brandColor} />;
-    case "codex":
-      return <CodexIcon {...props} brandColor={brandColor} />;
-    case "npm":
-      return <NpmIcon {...props} />;
-    case "yarn":
-      return <YarnIcon {...props} />;
-    case "pnpm":
-      return <PnpmIcon {...props} />;
-    case "bun":
-      return <BunIcon {...props} />;
-    case "custom":
-      return <Command {...props} />;
-    case "shell":
-    default:
-      return <Terminal {...props} />;
-  }
 }
 
 function getStateIndicator(state?: AgentState) {
@@ -230,7 +196,7 @@ export function DockedTerminalItem({ terminal }: DockedTerminalItemProps) {
                 aria-hidden="true"
               />
             ) : (
-              getTerminalIcon(terminal.type)
+              <TerminalIcon type={terminal.type} className="w-3 h-3" brandColor={brandColor} />
             )}
             {getStateIndicator(terminal.agentState)}
             <span className="truncate max-w-[120px] font-mono">{terminal.title}</span>

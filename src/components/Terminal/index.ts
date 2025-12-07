@@ -14,3 +14,5 @@ export type { ActivityStatus, ActivityType } from "./ActivityBadge";
 export { TerminalCountWarning, SOFT_TERMINAL_LIMIT } from "./TerminalCountWarning";
 export { GridFullOverlay } from "./GridFullOverlay";
 export type { GridFullOverlayProps } from "./GridFullOverlay";
+export { TerminalIcon } from "./TerminalIcon";
+export type { TerminalIconProps } from "./TerminalIcon";
