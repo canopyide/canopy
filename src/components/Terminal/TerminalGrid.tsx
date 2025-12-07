@@ -97,10 +97,10 @@ function EmptyState({
     <div className="flex flex-col items-center justify-center h-full w-full p-8 animate-in fade-in duration-500">
       <div className="max-w-3xl w-full flex flex-col items-center">
         <div className="mb-12 flex flex-col items-center text-center">
-          <CanopyIcon className="h-20 w-20 text-canopy-accent opacity-25 mb-8" />
+          <CanopyIcon className="h-28 w-28 text-white/80 mb-8" />
           <h3 className="text-2xl font-semibold text-canopy-text tracking-tight mb-3">Canopy</h3>
           <p className="text-sm text-canopy-text/60 max-w-md leading-relaxed font-medium">
-            A habitat for your AI coding agents.
+            A habitat for your AI agents.
           </p>
         </div>
 
