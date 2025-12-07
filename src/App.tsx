@@ -3,6 +3,9 @@ import { hydrateAppState } from "./utils/stateHydration";
 import { semanticAnalysisService } from "./services/SemanticAnalysisService";
 import "@xterm/xterm/css/xterm.css";
 import { FolderOpen } from "lucide-react";
+import { shouldShowFirstRunToast, markFirstRunToastSeen } from "./lib/firstRunToast";
+import { keybindingService } from "./services/KeybindingService";
+import { Kbd } from "./components/ui/Kbd";
 import {
   isElectronAvailable,
   useAgentLauncher,
@@ -491,6 +494,40 @@ function App() {
 
     restoreState();
   }, [addTerminal, setActiveWorktree, loadRecipes, openDiagnosticsDock]);
+
+  const addNotification = useNotificationStore((state) => state.addNotification);
+
+  useEffect(() => {
+    if (!isElectronAvailable() || !isStateLoaded) {
+      return;
+    }
+
+    if (shouldShowFirstRunToast()) {
+      markFirstRunToastSeen();
+
+      const shortcuts = [
+        { id: "terminal.palette", label: "switch terminals" },
+        { id: "terminal.new", label: "new terminal" },
+        { id: "worktree.openPalette", label: "worktrees" },
+      ];
+
+      const shortcutElements = shortcuts.map(({ id, label }, index) => {
+        const combo = keybindingService.getDisplayCombo(id);
+        return (
+          <span key={id}>
+            <Kbd>{combo}</Kbd> ({label}){index < shortcuts.length - 1 ? ", " : ""}
+          </span>
+        );
+      });
+
+      addNotification({
+        type: "info",
+        title: "Quick Shortcuts",
+        message: <div className="flex flex-wrap gap-x-1">{shortcutElements}</div>,
+        duration: 9000,
+      });
+    }
+  }, [isStateLoaded, addNotification]);
 
   useEffect(() => {
     if (!isElectronAvailable()) {
