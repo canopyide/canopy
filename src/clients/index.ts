@@ -15,3 +15,4 @@ export { systemClient } from "./systemClient";
 export { terminalClient } from "./terminalClient";
 export { worktreeClient } from "./worktreeClient";
 export { worktreeConfigClient } from "./worktreeConfigClient";
+export { historyClient } from "./historyClient";

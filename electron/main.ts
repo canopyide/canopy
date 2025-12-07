@@ -28,6 +28,7 @@ import {
   initializeSystemSleepService,
   getSystemSleepService,
 } from "./services/SystemSleepService.js";
+import { getTranscriptService, disposeTranscriptService } from "./services/TranscriptService.js";
 
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
@@ -266,6 +267,11 @@ async function createWindow(): Promise<void> {
   initializeSystemSleepService();
   console.log("[MAIN] SystemSleepService initialized successfully");
 
+  console.log("[MAIN] Initializing TranscriptService...");
+  const transcriptService = getTranscriptService();
+  await transcriptService.initialize();
+  console.log("[MAIN] TranscriptService initialized successfully");
+
   console.log("[MAIN] Initializing EventBuffer...");
   eventBuffer = new EventBuffer(1000);
   eventBuffer.start();
@@ -448,6 +454,9 @@ async function createWindow(): Promise<void> {
     // Dispose SystemSleepService
     const sleepService = getSystemSleepService();
     sleepService.dispose();
+
+    // Dispose TranscriptService
+    disposeTranscriptService();
 
     setLoggerWindow(null);
     mainWindow = null;
