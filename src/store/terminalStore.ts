@@ -120,7 +120,7 @@ export const useTerminalStore = create<TerminalGridState>()((set, get, api) => {
 
     moveTerminalToGrid: (id: string) => {
       registrySlice.moveTerminalToGrid(id);
-      set({ focusedId: id });
+      set({ focusedId: id, activeDockTerminalId: null });
     },
 
     trashTerminal: (id: string) => {
@@ -138,6 +138,10 @@ export const useTerminalStore = create<TerminalGridState>()((set, get, api) => {
         updates.maximizedId = null;
       }
 
+      if (state.activeDockTerminalId === id) {
+        updates.activeDockTerminalId = null;
+      }
+
       if (Object.keys(updates).length > 0) {
         set(updates);
       }
@@ -145,7 +149,7 @@ export const useTerminalStore = create<TerminalGridState>()((set, get, api) => {
 
     restoreTerminal: (id: string) => {
       registrySlice.restoreTerminal(id);
-      set({ focusedId: id });
+      set({ focusedId: id, activeDockTerminalId: null });
     },
 
     restoreLastTrashed: () => {
@@ -162,7 +166,7 @@ export const useTerminalStore = create<TerminalGridState>()((set, get, api) => {
       registrySlice.moveTerminalToPosition(id, toIndex, location);
 
       if (location === "grid") {
-        set({ focusedId: id });
+        set({ focusedId: id, activeDockTerminalId: null });
       } else if (state.focusedId === id) {
         const gridTerminals = state.terminals.filter((t) => t.id !== id && t.location === "grid");
         set({ focusedId: gridTerminals[0]?.id ?? null });
@@ -194,6 +198,7 @@ export const useTerminalStore = create<TerminalGridState>()((set, get, api) => {
         trashedTerminals: new Map(),
         focusedId: null,
         maximizedId: null,
+        activeDockTerminalId: null,
         commandQueue: [],
       });
     },
@@ -223,6 +228,7 @@ export const useTerminalStore = create<TerminalGridState>()((set, get, api) => {
         trashedTerminals: new Map(),
         focusedId: null,
         maximizedId: null,
+        activeDockTerminalId: null,
         commandQueue: [],
       });
     },

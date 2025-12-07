@@ -8,6 +8,7 @@ import { getBrandColorHex } from "@/lib/colorUtils";
 import { useTerminalStore, useProjectStore } from "@/store";
 import { DockedTerminalItem } from "./DockedTerminalItem";
 import { TrashContainer } from "./TrashContainer";
+import { WaitingContainer } from "./WaitingContainer";
 import { SortableDockItem } from "@/components/DragDrop";
 import { ClaudeIcon, GeminiIcon, CodexIcon } from "@/components/icons";
 import {
@@ -152,12 +153,14 @@ export function TerminalDock() {
             </button>
           </div>
 
-          {/* Separator between sections - only show if both have content */}
-          {activeDockTerminals.length > 0 && trashedItems.length > 0 && (
+          {/* Separator between terminals and action containers */}
+          {activeDockTerminals.length > 0 && (
             <div className="w-px h-5 bg-canopy-border mx-1 shrink-0" />
           )}
 
-          <div className="shrink-0 pl-1">
+          {/* Action containers: Waiting + Trash */}
+          <div className="shrink-0 pl-1 flex items-center gap-2">
+            <WaitingContainer />
             <TrashContainer trashedTerminals={trashedItems} />
           </div>
         </div>

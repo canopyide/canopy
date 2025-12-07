@@ -6,6 +6,7 @@ export type NavigationDirection = "up" | "down" | "left" | "right";
 export interface TerminalFocusSlice {
   focusedId: string | null;
   maximizedId: string | null;
+  activeDockTerminalId: string | null;
 
   setFocused: (id: string | null) => void;
   toggleMaximize: (id: string) => void;
@@ -21,6 +22,11 @@ export interface TerminalFocusSlice {
     findDockByIndex: (id: string, dir: "left" | "right") => string | null
   ) => void;
 
+  // Dock terminal activation
+  openDockTerminal: (id: string) => void;
+  closeDockTerminal: () => void;
+  activateTerminal: (id: string) => void;
+
   handleTerminalRemoved: (
     removedId: string,
     terminals: TerminalInstance[],
@@ -35,6 +41,7 @@ export const createTerminalFocusSlice =
   (set) => ({
     focusedId: null,
     maximizedId: null,
+    activeDockTerminalId: null,
 
     setFocused: (id) => set({ focusedId: id }),
 
@@ -102,6 +109,22 @@ export const createTerminalFocusSlice =
       });
     },
 
+    openDockTerminal: (id) => set({ activeDockTerminalId: id, focusedId: id }),
+
+    closeDockTerminal: () => set({ activeDockTerminalId: null }),
+
+    activateTerminal: (id) => {
+      const terminals = getTerminals();
+      const terminal = terminals.find((t) => t.id === id);
+      if (!terminal) return;
+
+      if (terminal.location === "dock") {
+        set({ activeDockTerminalId: id, focusedId: id });
+      } else {
+        set({ focusedId: id, activeDockTerminalId: null });
+      }
+    },
+
     handleTerminalRemoved: (removedId, remainingTerminals, removedIndex) => {
       set((state) => {
         const updates: Partial<TerminalFocusSlice> = {};
@@ -122,6 +145,10 @@ export const createTerminalFocusSlice =
 
         if (state.maximizedId === removedId) {
           updates.maximizedId = null;
+        }
+
+        if (state.activeDockTerminalId === removedId) {
+          updates.activeDockTerminalId = null;
         }
 
         return Object.keys(updates).length > 0 ? updates : state;

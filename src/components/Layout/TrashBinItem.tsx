@@ -18,6 +18,7 @@ import type { TerminalType } from "@/types";
 interface TrashBinItemProps {
   terminal: TerminalInstance;
   trashedInfo: TrashedTerminal;
+  worktreeName?: string;
 }
 
 function getTerminalIcon(type: TerminalType, className?: string) {
@@ -45,7 +46,7 @@ function getTerminalIcon(type: TerminalType, className?: string) {
   }
 }
 
-export function TrashBinItem({ terminal, trashedInfo }: TrashBinItemProps) {
+export function TrashBinItem({ terminal, trashedInfo, worktreeName }: TrashBinItemProps) {
   const restoreTerminal = useTerminalStore((s) => s.restoreTerminal);
   const removeTerminal = useTerminalStore((s) => s.removeTerminal);
 
@@ -83,7 +84,12 @@ export function TrashBinItem({ terminal, trashedInfo }: TrashBinItemProps) {
       <div className="shrink-0 text-canopy-text/60">{getTerminalIcon(terminal.type)}</div>
 
       <div className="flex-1 min-w-0">
-        <div className="text-xs font-medium text-canopy-text/90 truncate">{terminalName}</div>
+        <div className="text-xs font-medium text-canopy-text/90 truncate">
+          {terminalName}
+          {worktreeName && (
+            <span className="text-canopy-text/50 ml-1 font-normal">({worktreeName})</span>
+          )}
+        </div>
         <div className="text-[10px] text-canopy-text/40" aria-live="polite">
           {seconds}s remaining
         </div>

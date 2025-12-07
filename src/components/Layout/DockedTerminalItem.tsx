@@ -1,4 +1,4 @@
-import { useState, useCallback, useEffect, useMemo } from "react";
+import { useState, useCallback, useEffect, useMemo, useRef } from "react";
 import { useShallow } from "zustand/react/shallow";
 import { useDndMonitor } from "@dnd-kit/core";
 import { Loader2, Terminal, Command } from "lucide-react";
@@ -74,13 +74,36 @@ function getStateIndicator(state?: AgentState) {
 }
 
 export function DockedTerminalItem({ terminal }: DockedTerminalItemProps) {
-  const [isOpen, setIsOpen] = useState(false);
   const [isRestoring, setIsRestoring] = useState(false);
   const [isTrashing, setIsTrashing] = useState(false);
   const moveTerminalToGrid = useTerminalStore((s) => s.moveTerminalToGrid);
   const trashTerminal = useTerminalStore((s) => s.trashTerminal);
   const removeTerminal = useTerminalStore((s) => s.removeTerminal);
   const setFocused = useTerminalStore((s) => s.setFocused);
+  const activeDockTerminalId = useTerminalStore((s) => s.activeDockTerminalId);
+  const openDockTerminal = useTerminalStore((s) => s.openDockTerminal);
+  const closeDockTerminal = useTerminalStore((s) => s.closeDockTerminal);
+
+  // Derive isOpen from store state
+  const isOpen = activeDockTerminalId === terminal.id;
+
+  // Track when popover was just programmatically opened to ignore immediate close events
+  const wasJustOpenedRef = useRef(false);
+  const prevIsOpenRef = useRef(isOpen);
+
+  useEffect(() => {
+    prevIsOpenRef.current = isOpen;
+
+    // Detect programmatic open (isOpen changed from false to true externally)
+    if (!isOpen) return;
+
+    wasJustOpenedRef.current = true;
+    // Clear the flag after a short delay to allow the popover to stabilize
+    const timer = setTimeout(() => {
+      wasJustOpenedRef.current = false;
+    }, 100);
+    return () => clearTimeout(timer);
+  }, [isOpen]);
 
   const { isOpen: sidecarOpen, width: sidecarWidth } = useSidecarStore(
     useShallow((s) => ({ isOpen: s.isOpen, width: s.width }))
@@ -135,46 +158,51 @@ export function DockedTerminalItem({ terminal }: DockedTerminalItemProps) {
   useDndMonitor({
     onDragStart: ({ active }) => {
       if (active.id === terminal.id && isOpen) {
-        setIsOpen(false);
+        closeDockTerminal();
       }
     },
   });
 
   const handleRestore = useCallback(() => {
     setIsRestoring(true);
-    setIsOpen(false);
+    closeDockTerminal();
     moveTerminalToGrid(terminal.id);
-  }, [moveTerminalToGrid, terminal.id]);
+  }, [moveTerminalToGrid, terminal.id, closeDockTerminal]);
 
   const handleMinimize = useCallback(() => {
-    setIsOpen(false);
-  }, [setIsOpen]);
+    closeDockTerminal();
+  }, [closeDockTerminal]);
 
   const handleClose = useCallback(
     (force?: boolean) => {
       if (force) {
         removeTerminal(terminal.id);
-        setIsOpen(false);
+        closeDockTerminal();
       } else {
         const duration = getTerminalAnimationDuration();
         setIsTrashing(true);
         setTimeout(() => {
           trashTerminal(terminal.id);
-          setIsOpen(false);
+          closeDockTerminal();
         }, duration);
       }
     },
-    [trashTerminal, removeTerminal, terminal.id, setIsOpen]
+    [trashTerminal, removeTerminal, terminal.id, closeDockTerminal]
   );
 
   const handleOpenChange = useCallback(
     (open: boolean) => {
-      setIsOpen(open);
       if (open) {
-        setFocused(terminal.id);
+        openDockTerminal(terminal.id);
+      } else {
+        // Ignore close events immediately after programmatic open
+        if (wasJustOpenedRef.current) {
+          return;
+        }
+        closeDockTerminal();
       }
     },
-    [setFocused, setIsOpen, terminal.id]
+    [terminal.id, openDockTerminal, closeDockTerminal]
   );
 
   const isWorking = terminal.agentState === "working";
@@ -216,6 +244,11 @@ export function DockedTerminalItem({ terminal }: DockedTerminalItemProps) {
         align="start"
         sideOffset={8}
         collisionPadding={collisionPadding}
+        onOpenAutoFocus={(event) => {
+          event.preventDefault();
+          // Small delay to ensure xterm is fully mounted before focusing
+          setTimeout(() => terminalInstanceService.focus(terminal.id), 50);
+        }}
       >
         <TerminalPane
           id={terminal.id}

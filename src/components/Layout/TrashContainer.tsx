@@ -3,6 +3,7 @@ import { Trash2 } from "lucide-react";
 import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover";
 import { Button } from "@/components/ui/button";
 import { cn } from "@/lib/utils";
+import { useWorktrees } from "@/hooks/useWorktrees";
 import type { TerminalInstance } from "@/store";
 import type { TrashedTerminal } from "@/store/slices";
 import { TrashBinItem } from "./TrashBinItem";
@@ -16,6 +17,7 @@ interface TrashContainerProps {
 
 export function TrashContainer({ trashedTerminals }: TrashContainerProps) {
   const [isOpen, setIsOpen] = useState(false);
+  const { worktreeMap } = useWorktrees();
 
   if (trashedTerminals.length === 0) return null;
 
@@ -42,7 +44,7 @@ export function TrashContainer({ trashedTerminals }: TrashContainerProps) {
           aria-controls={contentId}
           aria-label={`Trash: ${count} terminal${count === 1 ? "" : "s"}`}
         >
-          <Trash2 className="w-3.5 h-3.5" aria-hidden="true" />
+          <Trash2 className="w-3.5 h-3.5 text-canopy-text/60" aria-hidden="true" />
           <span className="font-medium">Trash ({count})</span>
         </Button>
       </PopoverTrigger>
@@ -63,9 +65,19 @@ export function TrashContainer({ trashedTerminals }: TrashContainerProps) {
           </div>
 
           <div className="p-2 flex flex-col gap-1 max-h-[300px] overflow-y-auto">
-            {sortedItems.map(({ terminal, trashedInfo }) => (
-              <TrashBinItem key={terminal.id} terminal={terminal} trashedInfo={trashedInfo} />
-            ))}
+            {sortedItems.map(({ terminal, trashedInfo }) => {
+              const worktreeName = terminal.worktreeId
+                ? worktreeMap.get(terminal.worktreeId)?.name
+                : undefined;
+              return (
+                <TrashBinItem
+                  key={terminal.id}
+                  terminal={terminal}
+                  trashedInfo={trashedInfo}
+                  worktreeName={worktreeName}
+                />
+              );
+            })}
           </div>
         </div>
       </PopoverContent>
