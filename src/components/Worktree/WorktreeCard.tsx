@@ -663,72 +663,76 @@ export function WorktreeCard({
               />
             ) : (
               /* Collapsed: Pulse line summary */
-              <button
-                onClick={handleToggleExpand}
-                className="w-full flex items-center justify-between min-w-0 text-left transition-colors focus-visible:outline focus-visible:outline-2 focus-visible:outline-canopy-accent focus-visible:outline-offset-2"
-              >
-                {/* LEFT SLOT: Git Signal + Commit Message */}
-                <div className="flex items-center gap-2 min-w-0 flex-1 text-[11px] font-mono text-canopy-text/60">
-                  {workspaceScenario === "dirty" && worktree.worktreeChanges && (
-                    <>
-                      <span className="shrink-0">
-                        {worktree.worktreeChanges.changedFileCount} file
-                        {worktree.worktreeChanges.changedFileCount !== 1 ? "s" : ""}
-                      </span>
-                      {((worktree.worktreeChanges.insertions ?? 0) > 0 ||
-                        (worktree.worktreeChanges.deletions ?? 0) > 0) && (
-                        <>
-                          <span className="text-canopy-text/40 shrink-0">·</span>
-                          <span className="shrink-0">
-                            {(worktree.worktreeChanges.insertions ?? 0) > 0 && (
-                              <span className="text-[var(--color-status-success)]">
-                                +{worktree.worktreeChanges.insertions}
-                              </span>
-                            )}
-                            {(worktree.worktreeChanges.insertions ?? 0) > 0 &&
-                              (worktree.worktreeChanges.deletions ?? 0) > 0 && (
-                                <span className="text-canopy-text/40">/</span>
+              <div className="-m-3">
+                <button
+                  onClick={handleToggleExpand}
+                  aria-expanded={false}
+                  aria-controls={detailsId}
+                  className="w-full p-3 flex items-center justify-between min-w-0 text-left rounded-lg transition-colors hover:bg-white/[0.02] focus-visible:outline focus-visible:outline-2 focus-visible:outline-canopy-accent focus-visible:outline-offset-[-2px]"
+                >
+                  {/* LEFT SLOT: Git Signal + Commit Message */}
+                  <div className="flex items-center gap-2 min-w-0 flex-1 text-[11px] font-mono text-canopy-text/60">
+                    {workspaceScenario === "dirty" && worktree.worktreeChanges && (
+                      <>
+                        <span className="shrink-0">
+                          {worktree.worktreeChanges.changedFileCount} file
+                          {worktree.worktreeChanges.changedFileCount !== 1 ? "s" : ""}
+                        </span>
+                        {((worktree.worktreeChanges.insertions ?? 0) > 0 ||
+                          (worktree.worktreeChanges.deletions ?? 0) > 0) && (
+                          <>
+                            <span className="text-canopy-text/40 shrink-0">·</span>
+                            <span className="shrink-0">
+                              {(worktree.worktreeChanges.insertions ?? 0) > 0 && (
+                                <span className="text-[var(--color-status-success)]">
+                                  +{worktree.worktreeChanges.insertions}
+                                </span>
                               )}
-                            {(worktree.worktreeChanges.deletions ?? 0) > 0 && (
-                              <span className="text-[var(--color-status-error)]">
-                                -{worktree.worktreeChanges.deletions}
-                              </span>
-                            )}
-                          </span>
-                        </>
-                      )}
-                      {/* Commit message in remaining space */}
-                      {firstLineLastCommitMessage && (
-                        <>
-                          <span className="text-canopy-text/30 shrink-0">·</span>
-                          <span className="truncate text-canopy-text/40">
-                            {firstLineLastCommitMessage}
-                          </span>
-                        </>
-                      )}
-                    </>
-                  )}
-                  {workspaceScenario !== "dirty" && firstLineLastCommitMessage && (
-                    <>
-                      <GitCommit className="w-3 h-3 shrink-0 opacity-60" />
-                      <span className="truncate">{firstLineLastCommitMessage}</span>
-                    </>
-                  )}
-                </div>
-
-                {/* RIGHT SLOT: Runtime Signal (server only) */}
-                {serverState?.status === "running" && serverState.port && (
-                  <div className="flex items-center shrink-0 ml-2">
-                    <span
-                      className="flex items-center gap-1 text-[10px] text-[var(--color-server-running)]"
-                      title="Dev server running"
-                    >
-                      <div className="w-2 h-2 bg-[var(--color-server-running)] rounded-full animate-pulse" />
-                      <span className="font-mono">:{serverState.port}</span>
-                    </span>
+                              {(worktree.worktreeChanges.insertions ?? 0) > 0 &&
+                                (worktree.worktreeChanges.deletions ?? 0) > 0 && (
+                                  <span className="text-canopy-text/40">/</span>
+                                )}
+                              {(worktree.worktreeChanges.deletions ?? 0) > 0 && (
+                                <span className="text-[var(--color-status-error)]">
+                                  -{worktree.worktreeChanges.deletions}
+                                </span>
+                              )}
+                            </span>
+                          </>
+                        )}
+                        {/* Commit message in remaining space */}
+                        {firstLineLastCommitMessage && (
+                          <>
+                            <span className="text-canopy-text/30 shrink-0">·</span>
+                            <span className="truncate text-canopy-text/40">
+                              {firstLineLastCommitMessage}
+                            </span>
+                          </>
+                        )}
+                      </>
+                    )}
+                    {workspaceScenario !== "dirty" && firstLineLastCommitMessage && (
+                      <>
+                        <GitCommit className="w-3 h-3 shrink-0 opacity-60" />
+                        <span className="truncate">{firstLineLastCommitMessage}</span>
+                      </>
+                    )}
                   </div>
-                )}
-              </button>
+
+                  {/* RIGHT SLOT: Runtime Signal (server only) */}
+                  {serverState?.status === "running" && serverState.port && (
+                    <div className="flex items-center shrink-0 ml-2">
+                      <span
+                        className="flex items-center gap-1 text-[10px] text-[var(--color-server-running)]"
+                        title="Dev server running"
+                      >
+                        <div className="w-2 h-2 bg-[var(--color-server-running)] rounded-full animate-pulse" />
+                        <span className="font-mono">:{serverState.port}</span>
+                      </span>
+                    </div>
+                  )}
+                </button>
+              </div>
             )}
           </div>
         )}
