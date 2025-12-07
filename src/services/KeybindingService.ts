@@ -171,6 +171,14 @@ const DEFAULT_KEYBINDINGS: KeybindingConfig[] = [
     category: "Agents",
   },
   {
+    actionId: "agent.focusNextWaiting",
+    combo: "Cmd+Alt+W",
+    scope: "global",
+    priority: 0,
+    description: "Jump to next waiting agent",
+    category: "Agents",
+  },
+  {
     actionId: "terminal.inject",
     combo: "Cmd+Shift+I",
     scope: "global",

@@ -98,6 +98,7 @@ export type KeyAction =
   | "agent.gemini"
   | "agent.codex"
   | "agent.shell"
+  | "agent.focusNextWaiting"
 
   // Panel management
   | "panel.toggleDock"

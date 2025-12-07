@@ -29,6 +29,9 @@ export interface TerminalFocusSlice {
   closeDockTerminal: () => void;
   activateTerminal: (id: string) => void;
 
+  // Waiting agent navigation
+  focusNextWaiting: (isInTrash: (id: string) => boolean) => void;
+
   handleTerminalRemoved: (
     removedId: string,
     terminals: TerminalInstance[],
@@ -145,6 +148,29 @@ export const createTerminalFocusSlice =
         } else {
           set({ focusedId: id, activeDockTerminalId: null });
         }
+      },
+
+      focusNextWaiting: (isInTrash) => {
+        const terminals = getTerminals();
+        const { focusedId, activateTerminal, pingTerminal } = get();
+
+        // Find all waiting terminals excluding trash
+        const waitingTerminals = terminals.filter(
+          (t) => t.agentState === "waiting" && !isInTrash(t.id)
+        );
+
+        if (waitingTerminals.length === 0) return;
+
+        // Find current index in waiting list
+        const currentIndex = waitingTerminals.findIndex((t) => t.id === focusedId);
+
+        // Calculate next index with wrap-around
+        const nextIndex = (currentIndex + 1) % waitingTerminals.length;
+        const nextTerminal = waitingTerminals[nextIndex];
+
+        // Activate and ping the terminal for visual feedback
+        activateTerminal(nextTerminal.id);
+        pingTerminal(nextTerminal.id);
       },
 
       handleTerminalRemoved: (removedId, remainingTerminals, removedIndex) => {
