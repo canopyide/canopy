@@ -13,6 +13,7 @@ const KEYBOARD_SHORTCUTS = [
   {
     category: "Agents",
     shortcuts: [
+      { key: "Cmd+N", description: "New terminal (select type)" },
       { key: "Cmd+Alt+C", description: "Start Claude agent" },
       { key: "Cmd+Alt+G", description: "Start Gemini agent" },
       { key: "Cmd+Alt+X", description: "Start Codex agent" },

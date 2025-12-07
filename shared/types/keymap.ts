@@ -69,6 +69,7 @@ export type KeyAction =
   | "terminal.restore"
   | "terminal.restoreAll"
   | "terminal.new"
+  | "terminal.spawnPalette"
   | "terminal.palette"
   | "terminal.reopenLast"
   | "terminal.maximize"

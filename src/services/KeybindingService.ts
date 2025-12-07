@@ -35,6 +35,14 @@ const DEFAULT_KEYBINDINGS: KeybindingConfig[] = [
     category: "Terminal",
   },
   {
+    actionId: "terminal.spawnPalette",
+    combo: "Cmd+N",
+    scope: "global",
+    priority: 0,
+    description: "New terminal...",
+    category: "Terminal",
+  },
+  {
     actionId: "terminal.reopenLast",
     combo: "Cmd+Shift+T",
     scope: "global",
