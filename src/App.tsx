@@ -570,9 +570,13 @@ function App() {
   useKeybinding(
     "terminal.close",
     () => {
-      if (focusedId) {
-        useTerminalStore.getState().trashTerminal(focusedId);
-      }
+      const targetId =
+        focusedId ??
+        terminals.find((t) => t.location !== "trash")?.id ??
+        null;
+
+      if (!targetId) return;
+      useTerminalStore.getState().trashTerminal(targetId);
     },
     { enabled: electronAvailable }
   );
@@ -705,15 +709,6 @@ function App() {
       window.dispatchEvent(new CustomEvent("canopy:toggle-focus-mode"));
     },
     { enabled: electronAvailable }
-  );
-
-  // Worktree navigation
-  const { worktrees } = useWorktrees();
-  const { selectWorktree, activeWorktreeId } = useWorktreeSelectionStore(
-    useShallow((state) => ({
-      selectWorktree: state.selectWorktree,
-      activeWorktreeId: state.activeWorktreeId,
-    }))
   );
 
   useKeybinding(

@@ -640,6 +640,11 @@ class TerminalInstanceService {
     }
   }
 
+  focus(id: string): void {
+    const managed = this.instances.get(id);
+    managed?.terminal.focus();
+  }
+
   /**
    * Force a full redraw of the terminal canvas.
    * Useful after drag operations where WebGL canvases may have stale renders.

@@ -154,6 +154,14 @@ function TerminalPaneComponent({
     restartTerminal(id);
   }, [restartTerminal, id]);
 
+  useEffect(() => {
+    if (isFocused) {
+      requestAnimationFrame(() => {
+        terminalInstanceService.focus(id);
+      });
+    }
+  }, [isFocused, id]);
+
   const isWorking = agentState === "working";
 
   return (

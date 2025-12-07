@@ -78,6 +78,7 @@ export function DockedTerminalItem({ terminal }: DockedTerminalItemProps) {
   const moveTerminalToGrid = useTerminalStore((s) => s.moveTerminalToGrid);
   const trashTerminal = useTerminalStore((s) => s.trashTerminal);
   const removeTerminal = useTerminalStore((s) => s.removeTerminal);
+  const setFocused = useTerminalStore((s) => s.setFocused);
 
   const { isOpen: sidecarOpen, width: sidecarWidth } = useSidecarStore(
     useShallow((s) => ({ isOpen: s.isOpen, width: s.width }))
@@ -162,8 +163,11 @@ export function DockedTerminalItem({ terminal }: DockedTerminalItemProps) {
   const handleOpenChange = useCallback(
     (open: boolean) => {
       setIsOpen(open);
+      if (open) {
+        setFocused(terminal.id);
+      }
     },
-    [setIsOpen]
+    [setFocused, setIsOpen, terminal.id]
   );
 
   const isWorking = terminal.agentState === "working";
@@ -181,6 +185,7 @@ export function DockedTerminalItem({ terminal }: DockedTerminalItemProps) {
               "cursor-grab active:cursor-grabbing",
               isOpen && "bg-canopy-accent/20 border-canopy-accent"
             )}
+            onClick={() => setFocused(terminal.id)}
             title={`${terminal.title} - Click to preview, drag to reorder`}
           >
             {isWorking ? (
@@ -224,7 +229,7 @@ export function DockedTerminalItem({ terminal }: DockedTerminalItemProps) {
           }
           location="dock"
           restartKey={terminal.restartKey}
-          onFocus={() => {}}
+          onFocus={() => setFocused(terminal.id)}
           onClose={handleClose}
           onRestore={handleRestore}
           onMinimize={handleMinimize}
