@@ -685,11 +685,10 @@ class TerminalInstanceService {
       this.webglLru = this.webglLru.filter((existing) => existing !== id);
     }
 
-    // Force fit to recalculate dimensions
-    try {
-      managed.fitAddon.fit();
-    } catch {
-      // Ignore fit errors
+    // Force fit to recalculate dimensions and sync to backend PTY
+    const dims = this.fit(id);
+    if (dims) {
+      terminalClient.resize(id, dims.cols, dims.rows);
     }
 
     // Recreate WebGL if it was active
