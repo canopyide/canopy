@@ -7,6 +7,7 @@ import { useOverlayState } from "@/hooks";
 
 interface RecipeEditorProps {
   recipe?: TerminalRecipe;
+  initialTerminals?: RecipeTerminal[];
   worktreeId?: string;
   isOpen: boolean;
   onClose: () => void;
@@ -23,7 +24,14 @@ const TYPE_LABELS: Record<RecipeTerminalType, string> = {
   custom: "Custom",
 };
 
-export function RecipeEditor({ recipe, worktreeId, isOpen, onClose, onSave }: RecipeEditorProps) {
+export function RecipeEditor({
+  recipe,
+  initialTerminals,
+  worktreeId,
+  isOpen,
+  onClose,
+  onSave,
+}: RecipeEditorProps) {
   useOverlayState(isOpen);
 
   const createRecipe = useRecipeStore((state) => state.createRecipe);
@@ -40,12 +48,15 @@ export function RecipeEditor({ recipe, worktreeId, isOpen, onClose, onSave }: Re
     if (recipe) {
       setRecipeName(recipe.name);
       setTerminals(recipe.terminals.map((t) => ({ ...t })));
+    } else if (initialTerminals && initialTerminals.length > 0) {
+      setRecipeName("");
+      setTerminals(initialTerminals.map((t) => ({ ...t })));
     } else {
       setRecipeName("");
       setTerminals([{ type: "shell", title: "", command: "", env: {} }]);
     }
     setError(null);
-  }, [recipe, isOpen]);
+  }, [recipe, initialTerminals, isOpen]);
 
   const handleAddTerminal = () => {
     if (terminals.length >= 10) {
@@ -158,6 +169,7 @@ export function RecipeEditor({ recipe, worktreeId, isOpen, onClose, onSave }: Re
               onChange={(e) => setRecipeName(e.target.value)}
               placeholder="e.g., Full Stack Dev"
               className="w-full px-3 py-2 bg-canopy-background border border-canopy-border rounded-md text-canopy-text focus:outline-none focus:ring-2 focus:ring-canopy-accent"
+              autoFocus
             />
           </div>
 
@@ -252,7 +264,7 @@ export function RecipeEditor({ recipe, worktreeId, isOpen, onClose, onSave }: Re
           <Button variant="outline" onClick={onClose} disabled={isSaving}>
             Cancel
           </Button>
-          <Button onClick={handleSave} disabled={isSaving} autoFocus>
+          <Button onClick={handleSave} disabled={isSaving}>
             {isSaving ? "Saving..." : recipe ? "Update Recipe" : "Create Recipe"}
           </Button>
         </div>
