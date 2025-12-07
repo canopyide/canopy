@@ -8,6 +8,7 @@ import {
   useAgentLauncher,
   useWorktrees,
   useTerminalPalette,
+  useNewTerminalPalette,
   useTerminalConfig,
   useKeybinding,
   useContextInjection,
@@ -20,7 +21,7 @@ import { AppLayout } from "./components/Layout";
 import { TerminalGrid } from "./components/Terminal";
 import { WorktreeCard, WorktreePalette } from "./components/Worktree";
 import { NewWorktreeDialog } from "./components/Worktree/NewWorktreeDialog";
-import { TerminalPalette } from "./components/TerminalPalette";
+import { TerminalPalette, NewTerminalPalette } from "./components/TerminalPalette";
 import { RecipeEditor } from "./components/TerminalRecipe/RecipeEditor";
 import { SettingsDialog } from "./components/Settings";
 import { ShortcutReferenceDialog } from "./components/KeyboardShortcuts";
@@ -354,6 +355,8 @@ function App() {
   const { findNearest, findByIndex, findDockByIndex, getCurrentLocation } = useGridNavigation();
 
   const terminalPalette = useTerminalPalette();
+  const { worktreeMap } = useWorktrees();
+  const newTerminalPalette = useNewTerminalPalette({ launchAgent, worktreeMap });
   const currentProject = useProjectStore((state) => state.currentProject);
 
   const { worktrees } = useWorktrees();
@@ -566,6 +569,9 @@ function App() {
     },
     { enabled: electronAvailable }
   );
+  useKeybinding("terminal.spawnPalette", () => newTerminalPalette.open(), {
+    enabled: electronAvailable,
+  });
 
   useKeybinding(
     "terminal.close",
@@ -940,6 +946,18 @@ function App() {
         onSelectNext={terminalPalette.selectNext}
         onSelect={terminalPalette.selectTerminal}
         onClose={terminalPalette.close}
+      />
+      <NewTerminalPalette
+        isOpen={newTerminalPalette.isOpen}
+        query={newTerminalPalette.query}
+        results={newTerminalPalette.results}
+        selectedIndex={newTerminalPalette.selectedIndex}
+        onQueryChange={newTerminalPalette.setQuery}
+        onSelectPrevious={newTerminalPalette.selectPrevious}
+        onSelectNext={newTerminalPalette.selectNext}
+        onSelect={newTerminalPalette.handleSelect}
+        onConfirm={newTerminalPalette.confirmSelection}
+        onClose={newTerminalPalette.close}
       />
       <WorktreePalette
         isOpen={isWorktreePaletteOpen}
