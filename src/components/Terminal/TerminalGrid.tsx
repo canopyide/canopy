@@ -1,4 +1,4 @@
-import { useMemo, useCallback, useEffect } from "react";
+import { useMemo, useCallback, useEffect, useRef, useState } from "react";
 import { useShallow } from "zustand/react/shallow";
 import { SortableContext, rectSortingStrategy } from "@dnd-kit/sortable";
 import { useDroppable } from "@dnd-kit/core";
@@ -23,6 +23,7 @@ import { Terminal, AlertTriangle, Ban } from "lucide-react";
 import { CanopyIcon, CodexIcon, ClaudeIcon, GeminiIcon } from "@/components/icons";
 import { Kbd } from "@/components/ui/Kbd";
 import { getBrandColorHex } from "@/lib/colorUtils";
+import { getAutoGridCols } from "@/lib/terminalLayout";
 import { terminalInstanceService } from "@/services/TerminalInstanceService";
 import { terminalClient, systemClient } from "@/clients";
 import { TerminalRefreshTier } from "@/types";
@@ -231,8 +232,38 @@ export function TerminalGrid({ className, defaultCwd, onLaunchAgent }: TerminalG
     data: { container: "grid" },
   });
 
+  // Track container width for responsive layout decisions
+  const gridContainerRef = useRef<HTMLDivElement>(null);
+  const [gridWidth, setGridWidth] = useState<number | null>(null);
+
+  useEffect(() => {
+    const container = gridContainerRef.current;
+    if (!container) return;
+
+    const observer = new ResizeObserver((entries) => {
+      const entry = entries[0];
+      if (entry) {
+        const newWidth = entry.contentRect.width;
+        setGridWidth((prev) => (prev === newWidth ? prev : newWidth));
+      }
+    });
+
+    observer.observe(container);
+    setGridWidth(container.clientWidth);
+
+    return () => observer.disconnect();
+  }, []);
+
+  // Get placeholder state from DnD context (moved earlier for gridCols calculation)
+  const { placeholderIndex, sourceContainer } = useDndPlaceholder();
+
+  // Show placeholder when dragging from dock to grid (only if grid not full)
+  const showPlaceholder = placeholderIndex !== null && sourceContainer === "dock" && !isGridFull;
+
   const gridCols = useMemo(() => {
-    const count = gridTerminals.length;
+    // Count includes placeholder when dragging from dock to grid
+    const baseCount = gridTerminals.length;
+    const count = showPlaceholder ? baseCount + 1 : baseCount;
     if (count === 0) return 1;
 
     const { strategy, value } = layoutConfig;
@@ -246,13 +277,9 @@ export function TerminalGrid({ className, defaultCwd, onLaunchAgent }: TerminalG
       return Math.ceil(count / rows);
     }
 
-    // Automatic (vertical-first for AI workflows)
-    // AI outputs are vertical streams - prioritize pane height over width
-    if (count <= 1) return 1;
-    if (count <= 3) return count; // 1-3 terminals: single row
-    if (count <= 9) return 3; // 4-9 terminals: max 3 columns
-    return 4; // 10+ terminals: keep rows <=3 for taller panes
-  }, [gridTerminals.length, layoutConfig]);
+    // Automatic rectangular layout via deterministic mapping
+    return getAutoGridCols(count, gridWidth);
+  }, [gridTerminals.length, layoutConfig, gridWidth, showPlaceholder]);
 
   const handleLaunchAgent = useCallback(
     async (type: "claude" | "gemini" | "codex" | "shell") => {
@@ -308,12 +335,6 @@ export function TerminalGrid({ className, defaultCwd, onLaunchAgent }: TerminalG
       clearTimeout(timeoutId);
     };
   }, [gridCols, terminalIds, gridTerminals]);
-
-  // Get placeholder state from DnD context
-  const { placeholderIndex, sourceContainer } = useDndPlaceholder();
-
-  // Show placeholder when dragging from dock to grid (only if grid not full)
-  const showPlaceholder = placeholderIndex !== null && sourceContainer === "dock" && !isGridFull;
 
   // Show "grid full" overlay when trying to drag from dock to a full grid
   const showGridFullOverlay = sourceContainer === "dock" && isGridFull;
@@ -376,7 +397,10 @@ export function TerminalGrid({ className, defaultCwd, onLaunchAgent }: TerminalG
       <div className="relative flex-1 min-h-0">
         <SortableContext id="grid-container" items={terminalIds} strategy={rectSortingStrategy}>
           <div
-            ref={setNodeRef}
+            ref={(node) => {
+              setNodeRef(node);
+              gridContainerRef.current = node;
+            }}
             className={cn(
               "h-full bg-noise p-1",
               isOver && "ring-2 ring-canopy-accent/30 ring-inset"
