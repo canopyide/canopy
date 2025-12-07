@@ -11,7 +11,8 @@ import { useErrorStore } from "@/store";
 import { ProblemsContent } from "./ProblemsContent";
 import { LogsContent } from "./LogsContent";
 import { EventsContent } from "./EventsContent";
-import { ProblemsActions, LogsActions, EventsActions } from "./DiagnosticsActions";
+import { HistoryContent } from "./HistoryContent";
+import { ProblemsActions, LogsActions, EventsActions, HistoryActions } from "./DiagnosticsActions";
 import type { RetryAction } from "@/store";
 import { appClient } from "@/clients";
 
@@ -163,6 +164,7 @@ export function DiagnosticsDock({ onRetry, className }: DiagnosticsDockProps) {
     { id: "problems", label: "Problems", badge: errorCount },
     { id: "logs", label: "Logs" },
     { id: "events", label: "Events" },
+    { id: "history", label: "History" },
   ];
 
   return (
@@ -221,6 +223,7 @@ export function DiagnosticsDock({ onRetry, className }: DiagnosticsDockProps) {
           {activeTab === "problems" && <ProblemsActions />}
           {activeTab === "logs" && <LogsActions />}
           {activeTab === "events" && <EventsActions />}
+          {activeTab === "history" && <HistoryActions />}
 
           <button
             onClick={closeDock}
@@ -262,6 +265,16 @@ export function DiagnosticsDock({ onRetry, className }: DiagnosticsDockProps) {
             className="h-full"
           >
             <EventsContent />
+          </div>
+        )}
+        {activeTab === "history" && (
+          <div
+            id="diagnostics-history-panel"
+            role="tabpanel"
+            aria-labelledby="diagnostics-history-tab"
+            className="h-full"
+          >
+            <HistoryContent />
           </div>
         )}
       </div>

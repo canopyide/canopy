@@ -1346,6 +1346,24 @@ export interface IpcInvokeMap {
     args: [payload: { pattern: string }];
     result: WorktreeConfig;
   };
+
+  // History channels
+  "history:get-all": {
+    args: [];
+    result: AgentSession[];
+  };
+  "history:get-session": {
+    args: [id: string];
+    result: AgentSession | null;
+  };
+  "history:delete": {
+    args: [id: string];
+    result: void;
+  };
+  "history:export": {
+    args: [id: string];
+    result: string | null;
+  };
 }
 
 /**
@@ -1661,5 +1679,15 @@ export interface ElectronAPI {
   window: {
     /** Subscribe to fullscreen state changes */
     onFullscreenChange(callback: (isFullscreen: boolean) => void): () => void;
+  };
+  history: {
+    /** Get all saved agent sessions */
+    getAll(): Promise<AgentSession[]>;
+    /** Get a specific session by ID */
+    getSession(id: string): Promise<AgentSession | null>;
+    /** Delete a session by ID */
+    deleteSession(id: string): Promise<void>;
+    /** Export a session to markdown file, returns the file path or null if cancelled */
+    exportSession(id: string): Promise<string | null>;
   };
 }
