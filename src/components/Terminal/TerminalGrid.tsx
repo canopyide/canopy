@@ -119,7 +119,7 @@ function EmptyState({
           <LauncherCard
             title="Claude Code"
             description="Great for deep, steady refactors."
-            shortcut="Ctrl+Shift+C"
+            shortcut="Cmd/Ctrl+Alt+C"
             icon={<ClaudeIcon className="h-5 w-5" brandColor={getBrandColorHex("claude")} />}
             onClick={
               hasActiveWorktree
@@ -146,7 +146,7 @@ function EmptyState({
           <LauncherCard
             title="Gemini CLI"
             description="Ideal for quick explorations and visual tasks."
-            shortcut="Ctrl+Shift+G"
+            shortcut="Cmd/Ctrl+Alt+G"
             icon={<GeminiIcon className="h-5 w-5" brandColor={getBrandColorHex("gemini")} />}
             onClick={
               hasActiveWorktree
@@ -173,7 +173,8 @@ function EmptyState({
 
         <div className="flex flex-col items-center gap-4 mt-4">
           <p className="text-xs text-canopy-text/60 text-center">
-            Tip: Press <Kbd>⌘T</Kbd> to open the terminal palette anytime
+            Tip: Press <Kbd>⌘P</Kbd> to open the terminal palette or <Kbd>⌘T</Kbd> to start a new
+            terminal
           </p>
 
           <button

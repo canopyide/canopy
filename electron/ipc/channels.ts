@@ -156,6 +156,8 @@ export const CHANNELS = {
   KEYBINDING_SET_OVERRIDE: "keybinding:set-override",
   KEYBINDING_REMOVE_OVERRIDE: "keybinding:remove-override",
   KEYBINDING_RESET_ALL: "keybinding:reset-all",
+
+  WINDOW_FULLSCREEN_CHANGE: "window:fullscreen-change",
 } as const;
 
 export type ChannelName = (typeof CHANNELS)[keyof typeof CHANNELS];

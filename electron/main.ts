@@ -167,6 +167,7 @@ async function createWindow(): Promise<void> {
       sandbox: true,
     },
     titleBarStyle: "hiddenInset",
+    trafficLightPosition: { x: 12, y: 16 },
     backgroundColor: "#18181b",
   });
 
@@ -202,6 +203,14 @@ async function createWindow(): Promise<void> {
   });
 
   setLoggerWindow(mainWindow);
+
+  // Notify renderer of fullscreen state changes (traffic lights are hidden in fullscreen)
+  mainWindow.on("enter-full-screen", () => {
+    sendToRenderer(mainWindow!, CHANNELS.WINDOW_FULLSCREEN_CHANGE, true);
+  });
+  mainWindow.on("leave-full-screen", () => {
+    sendToRenderer(mainWindow!, CHANNELS.WINDOW_FULLSCREEN_CHANGE, false);
+  });
 
   console.log("[MAIN] Creating application menu...");
   createApplicationMenu(mainWindow);

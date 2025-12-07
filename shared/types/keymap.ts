@@ -57,6 +57,7 @@ export type KeyAction =
   | "worktree.copyTree"
   | "worktree.openEditor"
   | "worktree.toggleServer"
+  | "worktree.openPalette"
 
   // Terminal actions
   | "terminal.close"
@@ -67,6 +68,7 @@ export type KeyAction =
   | "terminal.minimizeAll"
   | "terminal.restore"
   | "terminal.restoreAll"
+  | "terminal.new"
   | "terminal.palette"
   | "terminal.reopenLast"
   | "terminal.maximize"

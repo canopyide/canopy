@@ -1657,4 +1657,8 @@ export interface ElectronAPI {
     /** Reset all overrides to defaults */
     resetAll(): Promise<void>;
   };
+  window: {
+    /** Subscribe to fullscreen state changes */
+    onFullscreenChange(callback: (isFullscreen: boolean) => void): () => void;
+  };
 }

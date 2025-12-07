@@ -1,33 +1,73 @@
 import { useEffect, useRef, useCallback } from "react";
 import { createPortal } from "react-dom";
 import { cn } from "@/lib/utils";
-import { TerminalListItem } from "./TerminalListItem";
 import { useOverlayState } from "@/hooks";
-import type { SearchableTerminal } from "@/hooks/useTerminalPalette";
+import type { WorktreeState } from "@/types";
 
-export interface TerminalPaletteProps {
+interface WorktreeListItemProps {
+  worktree: WorktreeState;
+  isActive: boolean;
+  isSelected: boolean;
+  onClick: () => void;
+}
+
+function WorktreeListItem({ worktree, isActive, isSelected, onClick }: WorktreeListItemProps) {
+  return (
+    <button
+      type="button"
+      onClick={onClick}
+      className={cn(
+        "w-full text-left px-3 py-2 rounded-lg border flex flex-col gap-0.5",
+        "border-canopy-border/40 hover:border-canopy-border/60",
+        "bg-canopy-bg hover:bg-surface transition-colors",
+        isSelected && "border-canopy-accent/60 bg-canopy-accent/10"
+      )}
+      aria-selected={isSelected}
+      role="option"
+    >
+      <div className="flex items-center justify-between text-sm">
+        <span className="font-medium text-canopy-text">{worktree.name}</span>
+        <div className="flex items-center gap-2 text-xs text-canopy-text/60">
+          {worktree.branch && <span className="font-mono text-canopy-text/70">{worktree.branch}</span>}
+          {isActive && (
+            <span className="px-1.5 py-0.5 rounded-md bg-canopy-accent/15 text-canopy-accent text-[10px] font-semibold">
+              Active
+            </span>
+          )}
+        </div>
+      </div>
+      <div className="text-[11px] text-canopy-text/50 truncate">{worktree.path}</div>
+    </button>
+  );
+}
+
+export interface WorktreePaletteProps {
   isOpen: boolean;
   query: string;
-  results: SearchableTerminal[];
+  results: WorktreeState[];
+  activeWorktreeId: string | null;
   selectedIndex: number;
   onQueryChange: (query: string) => void;
   onSelectPrevious: () => void;
   onSelectNext: () => void;
-  onSelect: (terminal: SearchableTerminal) => void;
+  onSelect: (worktree: WorktreeState) => void;
+  onConfirm: () => void;
   onClose: () => void;
 }
 
-export function TerminalPalette({
+export function WorktreePalette({
   isOpen,
   query,
   results,
+  activeWorktreeId,
   selectedIndex,
   onQueryChange,
   onSelectPrevious,
   onSelectNext,
   onSelect,
+  onConfirm,
   onClose,
-}: TerminalPaletteProps) {
+}: WorktreePaletteProps) {
   useOverlayState(isOpen);
 
   const inputRef = useRef<HTMLInputElement>(null);
@@ -44,9 +84,7 @@ export function TerminalPalette({
   useEffect(() => {
     if (listRef.current && selectedIndex >= 0) {
       const selectedItem = listRef.current.children[selectedIndex] as HTMLElement;
-      if (selectedItem) {
-        selectedItem.scrollIntoView({ block: "nearest" });
-      }
+      selectedItem?.scrollIntoView({ block: "nearest" });
     }
   }, [selectedIndex]);
 
@@ -63,9 +101,7 @@ export function TerminalPalette({
           break;
         case "Enter":
           e.preventDefault();
-          if (results.length > 0 && selectedIndex >= 0) {
-            onSelect(results[selectedIndex]);
-          }
+          onConfirm();
           break;
         case "Escape":
           e.preventDefault();
@@ -81,7 +117,7 @@ export function TerminalPalette({
           break;
       }
     },
-    [results, selectedIndex, onSelectPrevious, onSelectNext, onSelect, onClose]
+    [onSelectPrevious, onSelectNext, onConfirm, onClose]
   );
 
   const handleBackdropClick = useCallback(
@@ -93,9 +129,7 @@ export function TerminalPalette({
     [onClose]
   );
 
-  if (!isOpen) {
-    return null;
-  }
+  if (!isOpen) return null;
 
   return createPortal(
     <div
@@ -103,7 +137,7 @@ export function TerminalPalette({
       onClick={handleBackdropClick}
       role="dialog"
       aria-modal="true"
-      aria-label="Terminal palette"
+      aria-label="Worktree palette"
     >
       <div
         className={cn(
@@ -114,8 +148,8 @@ export function TerminalPalette({
       >
         <div className="px-3 pt-2 pb-1 border-b border-canopy-border">
           <div className="flex justify-between items-center mb-1.5 text-[11px] text-canopy-text/40">
-            <span>Quick switch</span>
-            <span className="font-mono">⌘P</span>
+            <span>Worktree switcher</span>
+            <span className="font-mono">⌘K, W</span>
           </div>
           <input
             ref={inputRef}
@@ -123,7 +157,7 @@ export function TerminalPalette({
             value={query}
             onChange={(e) => onQueryChange(e.target.value)}
             onKeyDown={handleKeyDown}
-            placeholder="Search agents and terminals..."
+            placeholder="Search worktrees..."
             className={cn(
               "w-full px-3 py-2 text-sm",
               "bg-canopy-sidebar border border-canopy-border rounded-[var(--radius-md)]",
@@ -133,11 +167,11 @@ export function TerminalPalette({
             role="combobox"
             aria-expanded={isOpen}
             aria-haspopup="listbox"
-            aria-label="Search agents and terminals"
-            aria-controls="terminal-list"
+            aria-label="Search worktrees"
+            aria-controls="worktree-palette-list"
             aria-activedescendant={
               results.length > 0 && selectedIndex >= 0
-                ? `terminal-option-${results[selectedIndex].id}`
+                ? `worktree-option-${results[selectedIndex].id}`
                 : undefined
             }
           />
@@ -145,30 +179,27 @@ export function TerminalPalette({
 
         <div
           ref={listRef}
-          id="terminal-list"
+          id="worktree-palette-list"
           role="listbox"
-          aria-label="Agents and terminals"
+          aria-label="Worktrees"
           className="max-h-[50vh] overflow-y-auto p-2 space-y-1"
         >
           {results.length === 0 ? (
             <div className="px-3 py-8 text-center text-canopy-text/50 text-sm">
               {query.trim() ? (
-                <>No agents or terminals match "{query}"</>
+                <>No worktrees match "{query}"</>
               ) : (
-                <>No agents or terminals running</>
+                <>No worktrees available</>
               )}
             </div>
           ) : (
-            results.map((terminal, index) => (
-              <TerminalListItem
-                key={terminal.id}
-                id={`terminal-option-${terminal.id}`}
-                title={terminal.title}
-                type={terminal.type}
-                worktreeName={terminal.worktreeName}
-                cwd={terminal.cwd}
+            results.map((worktree, index) => (
+              <WorktreeListItem
+                key={worktree.id}
+                worktree={worktree}
+                isActive={worktree.id === activeWorktreeId}
                 isSelected={index === selectedIndex}
-                onClick={() => onSelect(terminal)}
+                onClick={() => onSelect(worktree)}
               />
             ))
           )}
@@ -203,4 +234,4 @@ export function TerminalPalette({
   );
 }
 
-export default TerminalPalette;
+export default WorktreePalette;

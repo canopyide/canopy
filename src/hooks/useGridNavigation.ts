@@ -179,7 +179,7 @@ export function useGridNavigation(options: UseGridNavigationOptions = {}) {
         return a.col - b.col;
       });
 
-      // Index is 1-based for user convenience (Option+1 = first terminal)
+      // Index is 1-based for user convenience (Cmd+1 = first terminal)
       const position = sortedPositions[index - 1];
       return position?.terminalId ?? null;
     },

@@ -1,4 +1,4 @@
-import { useRef, useState } from "react";
+import { useRef, useState, useEffect } from "react";
 import { useShallow } from "zustand/react/shallow";
 import { Button } from "@/components/ui/button";
 import { FixedDropdown } from "@/components/ui/fixed-dropdown";
@@ -57,8 +57,13 @@ export function Toolbar({
 
   const [issuesOpen, setIssuesOpen] = useState(false);
   const [prsOpen, setPrsOpen] = useState(false);
+  const [isFullscreen, setIsFullscreen] = useState(false);
   const issuesButtonRef = useRef<HTMLButtonElement>(null);
   const prsButtonRef = useRef<HTMLButtonElement>(null);
+
+  useEffect(() => {
+    return window.electron.window.onFullscreenChange(setIsFullscreen);
+  }, []);
 
   const showBulkActions = terminals.length > 0;
 
@@ -76,10 +81,10 @@ export function Toolbar({
         ? `Checking ${agentNames[type]} CLI availability...`
         : isAvailable
           ? type === "claude"
-            ? "Start Claude — deep, focused work (Ctrl+Shift+C)"
+            ? "Start Claude — deep, focused work (Cmd/Ctrl+Alt+C)"
             : type === "gemini"
-              ? "Start Gemini — quick exploration (Ctrl+Shift+G)"
-              : "Start Codex — careful, methodical runs (Ctrl+Shift+X)"
+              ? "Start Gemini — quick exploration (Cmd/Ctrl+Alt+G)"
+              : "Start Codex — careful, methodical runs (Cmd/Ctrl+Alt+X)"
           : `${agentNames[type]} CLI not found. Click to install.`,
       ariaLabel: isLoading
         ? `Checking ${agentNames[type]} availability`
@@ -93,7 +98,7 @@ export function Toolbar({
     <header className="relative h-12 flex items-center px-4 shrink-0 app-drag-region bg-canopy-sidebar/95 backdrop-blur-sm border-b border-canopy-border shadow-sm">
       <div className="window-resize-strip" />
 
-      <div className="w-20 shrink-0" />
+      <div className={cn("shrink-0 transition-[width] duration-200", isFullscreen ? "w-0" : "w-16")} />
 
       <div className="flex items-center gap-1 app-no-drag">
         <Button

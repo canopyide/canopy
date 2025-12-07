@@ -20,10 +20,18 @@ const DEFAULT_KEYBINDINGS: KeybindingConfig[] = [
   },
   {
     actionId: "terminal.palette",
-    combo: "Cmd+T",
+    combo: "Cmd+P",
     scope: "global",
     priority: 0,
     description: "Open terminal palette",
+    category: "Terminal",
+  },
+  {
+    actionId: "terminal.new",
+    combo: "Cmd+T",
+    scope: "global",
+    priority: 0,
+    description: "New terminal",
     category: "Terminal",
   },
   {
@@ -156,7 +164,7 @@ const DEFAULT_KEYBINDINGS: KeybindingConfig[] = [
   },
   {
     actionId: "terminal.inject",
-    combo: "Cmd+Alt+I",
+    combo: "Cmd+Shift+I",
     scope: "global",
     priority: 0,
     description: "Inject context into focused terminal",
@@ -195,10 +203,10 @@ const DEFAULT_KEYBINDINGS: KeybindingConfig[] = [
     description: "Focus terminal to the right",
     category: "Terminal",
   },
-  // Index-based terminal navigation (Option+1-9)
+  // Index-based terminal navigation (Cmd+1-9)
   {
     actionId: "terminal.focusIndex1",
-    combo: "Alt+1",
+    combo: "Cmd+1",
     scope: "global",
     priority: 0,
     description: "Focus terminal 1",
@@ -206,7 +214,7 @@ const DEFAULT_KEYBINDINGS: KeybindingConfig[] = [
   },
   {
     actionId: "terminal.focusIndex2",
-    combo: "Alt+2",
+    combo: "Cmd+2",
     scope: "global",
     priority: 0,
     description: "Focus terminal 2",
@@ -214,7 +222,7 @@ const DEFAULT_KEYBINDINGS: KeybindingConfig[] = [
   },
   {
     actionId: "terminal.focusIndex3",
-    combo: "Alt+3",
+    combo: "Cmd+3",
     scope: "global",
     priority: 0,
     description: "Focus terminal 3",
@@ -222,7 +230,7 @@ const DEFAULT_KEYBINDINGS: KeybindingConfig[] = [
   },
   {
     actionId: "terminal.focusIndex4",
-    combo: "Alt+4",
+    combo: "Cmd+4",
     scope: "global",
     priority: 0,
     description: "Focus terminal 4",
@@ -230,7 +238,7 @@ const DEFAULT_KEYBINDINGS: KeybindingConfig[] = [
   },
   {
     actionId: "terminal.focusIndex5",
-    combo: "Alt+5",
+    combo: "Cmd+5",
     scope: "global",
     priority: 0,
     description: "Focus terminal 5",
@@ -238,7 +246,7 @@ const DEFAULT_KEYBINDINGS: KeybindingConfig[] = [
   },
   {
     actionId: "terminal.focusIndex6",
-    combo: "Alt+6",
+    combo: "Cmd+6",
     scope: "global",
     priority: 0,
     description: "Focus terminal 6",
@@ -246,7 +254,7 @@ const DEFAULT_KEYBINDINGS: KeybindingConfig[] = [
   },
   {
     actionId: "terminal.focusIndex7",
-    combo: "Alt+7",
+    combo: "Cmd+7",
     scope: "global",
     priority: 0,
     description: "Focus terminal 7",
@@ -254,7 +262,7 @@ const DEFAULT_KEYBINDINGS: KeybindingConfig[] = [
   },
   {
     actionId: "terminal.focusIndex8",
-    combo: "Alt+8",
+    combo: "Cmd+8",
     scope: "global",
     priority: 0,
     description: "Focus terminal 8",
@@ -262,7 +270,7 @@ const DEFAULT_KEYBINDINGS: KeybindingConfig[] = [
   },
   {
     actionId: "terminal.focusIndex9",
-    combo: "Alt+9",
+    combo: "Cmd+9",
     scope: "global",
     priority: 0,
     description: "Focus terminal 9",
@@ -334,7 +342,7 @@ const DEFAULT_KEYBINDINGS: KeybindingConfig[] = [
   },
   {
     actionId: "worktree.switch1",
-    combo: "Cmd+1",
+    combo: "Cmd+Alt+1",
     scope: "global",
     priority: 0,
     description: "Switch to worktree 1",
@@ -342,7 +350,7 @@ const DEFAULT_KEYBINDINGS: KeybindingConfig[] = [
   },
   {
     actionId: "worktree.switch2",
-    combo: "Cmd+2",
+    combo: "Cmd+Alt+2",
     scope: "global",
     priority: 0,
     description: "Switch to worktree 2",
@@ -350,7 +358,7 @@ const DEFAULT_KEYBINDINGS: KeybindingConfig[] = [
   },
   {
     actionId: "worktree.switch3",
-    combo: "Cmd+3",
+    combo: "Cmd+Alt+3",
     scope: "global",
     priority: 0,
     description: "Switch to worktree 3",
@@ -358,7 +366,7 @@ const DEFAULT_KEYBINDINGS: KeybindingConfig[] = [
   },
   {
     actionId: "worktree.switch4",
-    combo: "Cmd+4",
+    combo: "Cmd+Alt+4",
     scope: "global",
     priority: 0,
     description: "Switch to worktree 4",
@@ -366,7 +374,7 @@ const DEFAULT_KEYBINDINGS: KeybindingConfig[] = [
   },
   {
     actionId: "worktree.switch5",
-    combo: "Cmd+5",
+    combo: "Cmd+Alt+5",
     scope: "global",
     priority: 0,
     description: "Switch to worktree 5",
@@ -374,7 +382,7 @@ const DEFAULT_KEYBINDINGS: KeybindingConfig[] = [
   },
   {
     actionId: "worktree.switch6",
-    combo: "Cmd+6",
+    combo: "Cmd+Alt+6",
     scope: "global",
     priority: 0,
     description: "Switch to worktree 6",
@@ -382,7 +390,7 @@ const DEFAULT_KEYBINDINGS: KeybindingConfig[] = [
   },
   {
     actionId: "worktree.switch7",
-    combo: "Cmd+7",
+    combo: "Cmd+Alt+7",
     scope: "global",
     priority: 0,
     description: "Switch to worktree 7",
@@ -390,7 +398,7 @@ const DEFAULT_KEYBINDINGS: KeybindingConfig[] = [
   },
   {
     actionId: "worktree.switch8",
-    combo: "Cmd+8",
+    combo: "Cmd+Alt+8",
     scope: "global",
     priority: 0,
     description: "Switch to worktree 8",
@@ -398,7 +406,7 @@ const DEFAULT_KEYBINDINGS: KeybindingConfig[] = [
   },
   {
     actionId: "worktree.switch9",
-    combo: "Cmd+9",
+    combo: "Cmd+Alt+9",
     scope: "global",
     priority: 0,
     description: "Switch to worktree 9",
@@ -418,6 +426,14 @@ const DEFAULT_KEYBINDINGS: KeybindingConfig[] = [
     scope: "global",
     priority: 0,
     description: "Switch to previous worktree",
+    category: "Worktrees",
+  },
+  {
+    actionId: "worktree.openPalette",
+    combo: "Cmd+K W",
+    scope: "global",
+    priority: 0,
+    description: "Open worktree palette",
     category: "Worktrees",
   },
   {

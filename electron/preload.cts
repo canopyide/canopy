@@ -248,6 +248,9 @@ const CHANNELS = {
   KEYBINDING_SET_OVERRIDE: "keybinding:set-override",
   KEYBINDING_REMOVE_OVERRIDE: "keybinding:remove-override",
   KEYBINDING_RESET_ALL: "keybinding:reset-all",
+
+  // Window channels
+  WINDOW_FULLSCREEN_CHANGE: "window:fullscreen-change",
 } as const;
 
 const api: ElectronAPI = {
@@ -703,6 +706,16 @@ const api: ElectronAPI = {
       _typedInvoke(CHANNELS.KEYBINDING_REMOVE_OVERRIDE, actionId),
 
     resetAll: () => _typedInvoke(CHANNELS.KEYBINDING_RESET_ALL),
+  },
+
+  // Window API
+  window: {
+    onFullscreenChange: (callback: (isFullscreen: boolean) => void) => {
+      const handler = (_event: Electron.IpcRendererEvent, isFullscreen: boolean) =>
+        callback(isFullscreen);
+      ipcRenderer.on(CHANNELS.WINDOW_FULLSCREEN_CHANGE, handler);
+      return () => ipcRenderer.removeListener(CHANNELS.WINDOW_FULLSCREEN_CHANGE, handler);
+    },
   },
 };
 

@@ -13,10 +13,13 @@ const KEYBOARD_SHORTCUTS = [
   {
     category: "Agents",
     shortcuts: [
-      { key: "Ctrl+Shift+C", description: "Start Claude agent" },
-      { key: "Ctrl+Shift+G", description: "Start Gemini agent" },
-      { key: "Ctrl+Shift+I", description: "Inject context to agent" },
-      { key: "Cmd+T", description: "Open terminal palette" },
+      { key: "Cmd+Alt+C", description: "Start Claude agent" },
+      { key: "Cmd+Alt+G", description: "Start Gemini agent" },
+      { key: "Cmd+Alt+X", description: "Start Codex agent" },
+      { key: "Cmd+Alt+N", description: "Start shell agent" },
+      { key: "Cmd+Shift+I", description: "Inject context to agent" },
+      { key: "Cmd+P", description: "Open terminal palette" },
+      { key: "Cmd+T", description: "New terminal" },
     ],
   },
   {

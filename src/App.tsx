@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useRef, useState } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { hydrateAppState } from "./utils/stateHydration";
 import { semanticAnalysisService } from "./services/SemanticAnalysisService";
 import "@xterm/xterm/css/xterm.css";
@@ -18,7 +18,7 @@ import {
 } from "./hooks";
 import { AppLayout } from "./components/Layout";
 import { TerminalGrid } from "./components/Terminal";
-import { WorktreeCard } from "./components/Worktree";
+import { WorktreeCard, WorktreePalette } from "./components/Worktree";
 import { NewWorktreeDialog } from "./components/Worktree/NewWorktreeDialog";
 import { TerminalPalette } from "./components/TerminalPalette";
 import { RecipeEditor } from "./components/TerminalRecipe/RecipeEditor";
@@ -30,6 +30,7 @@ import { DndProvider } from "./components/DragDrop";
 import {
   useTerminalStore,
   useWorktreeSelectionStore,
+  useProjectStore,
   useErrorStore,
   useNotificationStore,
   useDiagnosticsStore,
@@ -345,7 +346,6 @@ function App() {
   );
   const terminals = useTerminalStore(useShallow((state) => state.terminals));
   const { launchAgent, availability, agentSettings, refreshSettings } = useAgentLauncher();
-  const setActiveWorktree = useWorktreeSelectionStore((state) => state.setActiveWorktree);
   const loadRecipes = useRecipeStore((state) => state.loadRecipes);
   useTerminalConfig();
   useLinkDiscovery();
@@ -354,6 +354,102 @@ function App() {
   const { findNearest, findByIndex, findDockByIndex, getCurrentLocation } = useGridNavigation();
 
   const terminalPalette = useTerminalPalette();
+  const currentProject = useProjectStore((state) => state.currentProject);
+
+  const { worktrees } = useWorktrees();
+  const { setActiveWorktree, selectWorktree, activeWorktreeId } = useWorktreeSelectionStore(
+    useShallow((state) => ({
+      setActiveWorktree: state.setActiveWorktree,
+      selectWorktree: state.selectWorktree,
+      activeWorktreeId: state.activeWorktreeId,
+    }))
+  );
+  const activeWorktree = useMemo(
+    () => worktrees.find((w) => w.id === activeWorktreeId) ?? null,
+    [worktrees, activeWorktreeId]
+  );
+  const defaultTerminalCwd = useMemo(
+    () => activeWorktree?.path ?? currentProject?.path ?? "",
+    [activeWorktree, currentProject]
+  );
+
+  const [isWorktreePaletteOpen, setIsWorktreePaletteOpen] = useState(false);
+  const [worktreePaletteQuery, setWorktreePaletteQuery] = useState("");
+  const [worktreePaletteSelectedIndex, setWorktreePaletteSelectedIndex] = useState(0);
+  const worktreePaletteResults = useMemo(() => {
+    const search = worktreePaletteQuery.trim().toLowerCase();
+    const sorted = [...worktrees].sort((a, b) => {
+      if (a.id === activeWorktreeId) return -1;
+      if (b.id === activeWorktreeId) return 1;
+      if (a.isMainWorktree && !b.isMainWorktree) return -1;
+      if (!a.isMainWorktree && b.isMainWorktree) return 1;
+      return a.name.localeCompare(b.name);
+    });
+
+    const filtered = sorted.filter((worktree) => {
+      if (!search) return true;
+      const branch = worktree.branch ?? "";
+      return (
+        worktree.name.toLowerCase().includes(search) ||
+        branch.toLowerCase().includes(search) ||
+        worktree.path.toLowerCase().includes(search)
+      );
+    });
+
+    return filtered.slice(0, 20);
+  }, [worktrees, worktreePaletteQuery, activeWorktreeId]);
+
+  useEffect(() => {
+    setWorktreePaletteSelectedIndex(0);
+  }, [worktreePaletteResults]);
+
+  const closeWorktreePalette = useCallback(() => {
+    setIsWorktreePaletteOpen(false);
+    setWorktreePaletteQuery("");
+    setWorktreePaletteSelectedIndex(0);
+  }, []);
+
+  const openWorktreePalette = useCallback(() => {
+    setIsWorktreePaletteOpen(true);
+    setWorktreePaletteQuery("");
+    setWorktreePaletteSelectedIndex(0);
+  }, []);
+
+  const selectWorktreeFromPalette = useCallback(
+    (worktreeId: string) => {
+      selectWorktree(worktreeId);
+      closeWorktreePalette();
+    },
+    [selectWorktree, closeWorktreePalette]
+  );
+
+  const selectPreviousWorktreeResult = useCallback(() => {
+    if (worktreePaletteResults.length === 0) return;
+    setWorktreePaletteSelectedIndex((prev) =>
+      prev <= 0 ? worktreePaletteResults.length - 1 : prev - 1
+    );
+  }, [worktreePaletteResults]);
+
+  const selectNextWorktreeResult = useCallback(() => {
+    if (worktreePaletteResults.length === 0) return;
+    setWorktreePaletteSelectedIndex((prev) =>
+      prev >= worktreePaletteResults.length - 1 ? 0 : prev + 1
+    );
+  }, [worktreePaletteResults]);
+
+  const confirmWorktreePaletteSelection = useCallback(() => {
+    if (worktreePaletteResults.length === 0) {
+      closeWorktreePalette();
+      return;
+    }
+    const boundedIndex = Math.min(worktreePaletteSelectedIndex, worktreePaletteResults.length - 1);
+    selectWorktreeFromPalette(worktreePaletteResults[boundedIndex].id);
+  }, [
+    worktreePaletteResults,
+    worktreePaletteSelectedIndex,
+    selectWorktreeFromPalette,
+    closeWorktreePalette,
+  ]);
 
   const openDiagnosticsDock = useDiagnosticsStore((state) => state.openDock);
   const toggleDiagnosticsDock = useDiagnosticsStore((state) => state.toggleDock);
@@ -460,6 +556,16 @@ function App() {
 
   useKeybinding("terminal.palette", () => terminalPalette.toggle(), { enabled: electronAvailable });
   useKeybinding("agent.palette", () => terminalPalette.open(), { enabled: electronAvailable });
+  useKeybinding(
+    "terminal.new",
+    () => {
+      const worktreeId = activeWorktree?.id;
+      addTerminal({ type: "shell", cwd: defaultTerminalCwd, worktreeId }).catch((error) => {
+        console.error("Failed to create terminal:", error);
+      });
+    },
+    { enabled: electronAvailable }
+  );
 
   useKeybinding(
     "terminal.close",
@@ -674,6 +780,9 @@ function App() {
     },
     { enabled: electronAvailable && worktrees.length > 1 }
   );
+  useKeybinding("worktree.openPalette", () => openWorktreePalette(), {
+    enabled: electronAvailable,
+  });
 
   // Help and settings
   useKeybinding("help.shortcuts", () => setIsShortcutsOpen(true), { enabled: electronAvailable });
@@ -682,7 +791,7 @@ function App() {
   });
   useKeybinding("app.settings", () => handleSettings(), { enabled: electronAvailable });
 
-  // Directional terminal navigation (Option+Arrow keys)
+  // Directional terminal navigation (Ctrl+Alt+Arrow keys)
   useKeybinding(
     "terminal.focusUp",
     () => {
@@ -728,7 +837,7 @@ function App() {
     { enabled: electronAvailable && !!focusedId }
   );
 
-  // Index-based terminal navigation (Option+1-9)
+  // Index-based terminal navigation (Cmd+1-9)
   useKeybinding("terminal.focusIndex1", () => focusByIndex(1, findByIndex), {
     enabled: electronAvailable,
   });
@@ -839,6 +948,19 @@ function App() {
         onSelectNext={terminalPalette.selectNext}
         onSelect={terminalPalette.selectTerminal}
         onClose={terminalPalette.close}
+      />
+      <WorktreePalette
+        isOpen={isWorktreePaletteOpen}
+        query={worktreePaletteQuery}
+        results={worktreePaletteResults}
+        activeWorktreeId={activeWorktreeId}
+        selectedIndex={worktreePaletteSelectedIndex}
+        onQueryChange={setWorktreePaletteQuery}
+        onSelectPrevious={selectPreviousWorktreeResult}
+        onSelectNext={selectNextWorktreeResult}
+        onSelect={(worktree) => selectWorktreeFromPalette(worktree.id)}
+        onConfirm={confirmWorktreePaletteSelection}
+        onClose={closeWorktreePalette}
       />
 
       <SettingsDialog
