@@ -7,6 +7,7 @@ import {
   Clock,
   ChevronRight,
   ChevronDown,
+  Pin,
 } from "lucide-react";
 import { useProjectSettings } from "@/hooks/useProjectSettings";
 import { useTerminalStore } from "@/store/terminalStore";
@@ -14,6 +15,7 @@ import { useWorktreeSelectionStore } from "@/store/worktreeStore";
 import { useWorktrees } from "@/hooks/useWorktrees";
 import { cn } from "@/lib/utils";
 import { detectTerminalTypeFromCommand } from "@/utils/terminalType";
+import type { RunCommand } from "@/types";
 
 interface QuickRunProps {
   projectId: string;
@@ -24,11 +26,32 @@ interface HistoryItem {
   timestamp: number;
 }
 
+type SuggestionItem =
+  | {
+      label: string;
+      value: string;
+      type: "saved";
+      icon?: string;
+      description?: string;
+    }
+  | {
+      label: string;
+      value: string;
+      type: "script";
+      icon?: string;
+      description?: string;
+    }
+  | {
+      label: string;
+      value: string;
+      type: "history";
+    };
+
 const HISTORY_KEY_PREFIX = "canopy_cmd_history_";
 const MAX_HISTORY = 10;
 
 export function QuickRun({ projectId }: QuickRunProps) {
-  const { detectedRunners } = useProjectSettings(projectId);
+  const { detectedRunners, settings, promoteToSaved } = useProjectSettings(projectId);
   const addTerminal = useTerminalStore((state) => state.addTerminal);
   const activeWorktreeId = useWorktreeSelectionStore((state) => state.activeWorktreeId);
   const { worktreeMap } = useWorktrees();
@@ -80,31 +103,71 @@ export function QuickRun({ projectId }: QuickRunProps) {
     });
   };
 
-  const suggestions = useMemo(() => {
-    const search = input.toLowerCase().trim();
+  const handlePin = async (e: React.MouseEvent, item: SuggestionItem) => {
+    e.stopPropagation();
+    e.preventDefault();
 
-    const allOptions = [
-      ...detectedRunners.map((r) => ({
-        label: r.name,
-        value: r.command,
-        type: "script" as const,
-      })),
-      ...history.map((h) => ({ label: h.command, value: h.command, type: "history" as const })),
-    ];
+    const commandToSave: RunCommand = {
+      id: `cmd-${Date.now()}-${Math.random().toString(36).slice(2, 9)}`,
+      name: item.label,
+      command: item.value,
+      icon: item.icon || "terminal",
+      description:
+        item.description || (item.type === "script" ? "Pinned script" : "Pinned from history"),
+    };
+
+    try {
+      await promoteToSaved(commandToSave);
+    } catch (err) {
+      console.error("Failed to pin command:", err);
+    }
+  };
+
+  const suggestions = useMemo((): SuggestionItem[] => {
+    const search = input.toLowerCase().trim();
+    const savedCommands = settings?.runCommands || [];
+
+    const savedCommandStrings = new Set(savedCommands.map((c) => c.command));
+
+    const savedOptions: SuggestionItem[] = savedCommands.map((cmd) => ({
+      label: cmd.name,
+      value: cmd.command,
+      type: "saved" as const,
+      icon: cmd.icon,
+      description: cmd.description,
+    }));
+
+    const scriptOptions: SuggestionItem[] = detectedRunners.map((r) => ({
+      label: r.name,
+      value: r.command,
+      type: "script" as const,
+      icon: r.icon,
+      description: r.description,
+    }));
+
+    const historyOptions: SuggestionItem[] = history
+      .filter((h) => !savedCommandStrings.has(h.command))
+      .map((h) => ({
+        label: h.command,
+        value: h.command,
+        type: "history" as const,
+      }));
+
+    const allOptions = [...savedOptions, ...scriptOptions, ...historyOptions];
 
     const uniqueOptions = allOptions.filter(
       (v, i, a) => a.findIndex((t) => t.value === v.value) === i
     );
 
-    if (!search) return uniqueOptions.slice(0, 6);
+    if (!search) return uniqueOptions.slice(0, 10);
 
     return uniqueOptions
       .filter(
         (opt) =>
           opt.value.toLowerCase().includes(search) || opt.label.toLowerCase().includes(search)
       )
-      .slice(0, 6);
-  }, [input, detectedRunners, history]);
+      .slice(0, 10);
+  }, [input, detectedRunners, history, settings]);
 
   const handleRun = async (cmd: string) => {
     if (!cmd.trim()) return;
@@ -288,7 +351,9 @@ export function QuickRun({ projectId }: QuickRunProps) {
                   className="absolute bottom-full left-0 right-0 mb-1 bg-surface border border-canopy-border rounded-md shadow-2xl overflow-hidden z-50"
                 >
                   <div className="text-[10px] text-white/30 px-3 py-1 bg-black/20 border-b border-white/5">
-                    HISTORY & SCRIPTS
+                    {settings?.runCommands?.length
+                      ? "PINNED, SCRIPTS & HISTORY"
+                      : "SCRIPTS & HISTORY"}
                   </div>
                   {suggestions.map((item, index) => (
                     <button
@@ -306,24 +371,44 @@ export function QuickRun({ projectId }: QuickRunProps) {
                         handleRun(item.value);
                       }}
                     >
-                      {item.type === "history" ? (
+                      {item.type === "saved" ? (
+                        <Pin className="h-3 w-3 text-canopy-accent shrink-0 fill-canopy-accent" />
+                      ) : item.type === "history" ? (
                         <Clock className="h-3 w-3 opacity-40 shrink-0" />
                       ) : (
                         <Terminal className="h-3 w-3 opacity-40 shrink-0" />
                       )}
-                      <div className="flex-1 truncate">
-                        <span
-                          className={cn(
-                            "group-hover:text-canopy-text",
-                            index === focusedSuggestionIndex ? "text-canopy-accent" : ""
-                          )}
-                        >
-                          {item.value}
-                        </span>
-                        {item.type === "script" && item.label !== item.value && (
-                          <span className="ml-2 text-[10px] opacity-40 font-sans">
-                            ({item.label})
+                      <div className="flex-1 truncate flex items-center justify-between min-w-0">
+                        <div className="truncate">
+                          <span
+                            className={cn(
+                              "group-hover:text-canopy-text",
+                              index === focusedSuggestionIndex ? "text-canopy-accent" : "",
+                              item.type === "saved" ? "font-semibold text-canopy-text" : ""
+                            )}
+                          >
+                            {item.type === "saved" ? item.label : item.value}
                           </span>
+                          {item.type === "script" && item.label !== item.value && (
+                            <span className="ml-2 text-[10px] opacity-40 font-sans">
+                              ({item.label})
+                            </span>
+                          )}
+                          {item.type === "saved" && item.label !== item.value && (
+                            <span className="ml-2 text-[10px] opacity-40 font-sans">
+                              {item.value}
+                            </span>
+                          )}
+                        </div>
+                        {item.type !== "saved" && (
+                          <button
+                            type="button"
+                            onClick={(e) => handlePin(e, item)}
+                            className="opacity-0 group-hover:opacity-100 p-1 hover:bg-white/10 rounded transition-opacity ml-2 shrink-0"
+                            aria-label="Pin this command"
+                          >
+                            <Pin className="h-3 w-3 text-canopy-text/40 hover:text-canopy-accent" />
+                          </button>
                         )}
                       </div>
                     </button>

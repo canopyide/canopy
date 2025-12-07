@@ -90,9 +90,9 @@ export function useProjectSettings(projectId?: string): UseProjectSettingsReturn
   const promoteToSaved = useCallback(
     async (command: RunCommand) => {
       if (!settings || !targetId) return;
+      if (settings.runCommands.some((c) => c.command === command.command)) return;
 
-      const currentSettings = settings;
-      const updated = [...currentSettings.runCommands, command];
+      const updated = [...settings.runCommands, command];
 
       try {
         await projectClient.saveSettings(targetId, {
