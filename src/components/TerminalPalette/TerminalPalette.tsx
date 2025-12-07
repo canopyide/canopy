@@ -1,8 +1,6 @@
 import { useEffect, useRef, useCallback } from "react";
-import { createPortal } from "react-dom";
-import { cn } from "@/lib/utils";
+import { AppPaletteDialog } from "@/components/ui/AppPaletteDialog";
 import { TerminalListItem } from "./TerminalListItem";
-import { useOverlayState } from "@/hooks";
 import type { SearchableTerminal } from "@/hooks/useTerminalPalette";
 
 export interface TerminalPaletteProps {
@@ -28,8 +26,6 @@ export function TerminalPalette({
   onSelect,
   onClose,
 }: TerminalPaletteProps) {
-  useOverlayState(isOpen);
-
   const inputRef = useRef<HTMLInputElement>(null);
   const listRef = useRef<HTMLDivElement>(null);
 
@@ -84,80 +80,36 @@ export function TerminalPalette({
     [results, selectedIndex, onSelectPrevious, onSelectNext, onSelect, onClose]
   );
 
-  const handleBackdropClick = useCallback(
-    (e: React.MouseEvent) => {
-      if (e.target === e.currentTarget) {
-        onClose();
-      }
-    },
-    [onClose]
-  );
+  return (
+    <AppPaletteDialog isOpen={isOpen} onClose={onClose} ariaLabel="Terminal palette">
+      <AppPaletteDialog.Header label="Quick switch" keyHint="⌘P">
+        <AppPaletteDialog.Input
+          inputRef={inputRef}
+          value={query}
+          onChange={(e) => onQueryChange(e.target.value)}
+          onKeyDown={handleKeyDown}
+          placeholder="Search agents and terminals..."
+          role="combobox"
+          aria-expanded={isOpen}
+          aria-haspopup="listbox"
+          aria-label="Search agents and terminals"
+          aria-controls="terminal-list"
+          aria-activedescendant={
+            results.length > 0 && selectedIndex >= 0
+              ? `terminal-option-${results[selectedIndex].id}`
+              : undefined
+          }
+        />
+      </AppPaletteDialog.Header>
 
-  if (!isOpen) {
-    return null;
-  }
-
-  return createPortal(
-    <div
-      className="fixed inset-0 z-[var(--z-modal)] flex items-start justify-center pt-[15vh] bg-black/50 backdrop-blur-sm"
-      onClick={handleBackdropClick}
-      role="dialog"
-      aria-modal="true"
-      aria-label="Terminal palette"
-    >
-      <div
-        className={cn(
-          "w-full max-w-xl mx-4 bg-canopy-bg border border-canopy-border rounded-[var(--radius-xl)] shadow-2xl overflow-hidden",
-          "animate-in fade-in slide-in-from-top-4 duration-150"
-        )}
-        onClick={(e) => e.stopPropagation()}
-      >
-        <div className="px-3 pt-2 pb-1 border-b border-canopy-border">
-          <div className="flex justify-between items-center mb-1.5 text-[11px] text-canopy-text/40">
-            <span>Quick switch</span>
-            <span className="font-mono">⌘P</span>
-          </div>
-          <input
-            ref={inputRef}
-            type="text"
-            value={query}
-            onChange={(e) => onQueryChange(e.target.value)}
-            onKeyDown={handleKeyDown}
-            placeholder="Search agents and terminals..."
-            className={cn(
-              "w-full px-3 py-2 text-sm",
-              "bg-canopy-sidebar border border-canopy-border rounded-[var(--radius-md)]",
-              "text-canopy-text placeholder:text-canopy-text/40",
-              "focus:outline-none focus:border-canopy-accent focus:ring-1 focus:ring-canopy-accent"
-            )}
-            role="combobox"
-            aria-expanded={isOpen}
-            aria-haspopup="listbox"
-            aria-label="Search agents and terminals"
-            aria-controls="terminal-list"
-            aria-activedescendant={
-              results.length > 0 && selectedIndex >= 0
-                ? `terminal-option-${results[selectedIndex].id}`
-                : undefined
-            }
-          />
-        </div>
-
-        <div
-          ref={listRef}
-          id="terminal-list"
-          role="listbox"
-          aria-label="Agents and terminals"
-          className="max-h-[50vh] overflow-y-auto p-2 space-y-1"
-        >
+      <AppPaletteDialog.Body>
+        <div ref={listRef} id="terminal-list" role="listbox" aria-label="Agents and terminals">
           {results.length === 0 ? (
-            <div className="px-3 py-8 text-center text-canopy-text/50 text-sm">
-              {query.trim() ? (
-                <>No agents or terminals match "{query}"</>
-              ) : (
-                <>No agents or terminals running</>
-              )}
-            </div>
+            <AppPaletteDialog.Empty
+              query={query}
+              emptyMessage="No agents or terminals running"
+              noMatchMessage={`No agents or terminals match "${query}"`}
+            />
           ) : (
             results.map((terminal, index) => (
               <TerminalListItem
@@ -173,33 +125,10 @@ export function TerminalPalette({
             ))
           )}
         </div>
+      </AppPaletteDialog.Body>
 
-        <div className="px-3 py-2 border-t border-canopy-border bg-canopy-sidebar/50 text-xs text-canopy-text/40 flex items-center gap-4">
-          <span>
-            <kbd className="px-1.5 py-0.5 rounded-[var(--radius-sm)] bg-canopy-border text-canopy-text/60">
-              ↑
-            </kbd>
-            <kbd className="px-1.5 py-0.5 rounded-[var(--radius-sm)] bg-canopy-border text-canopy-text/60 ml-1">
-              ↓
-            </kbd>
-            <span className="ml-1.5">to navigate</span>
-          </span>
-          <span>
-            <kbd className="px-1.5 py-0.5 rounded-[var(--radius-sm)] bg-canopy-border text-canopy-text/60">
-              Enter
-            </kbd>
-            <span className="ml-1.5">to select</span>
-          </span>
-          <span>
-            <kbd className="px-1.5 py-0.5 rounded-[var(--radius-sm)] bg-canopy-border text-canopy-text/60">
-              Esc
-            </kbd>
-            <span className="ml-1.5">to close</span>
-          </span>
-        </div>
-      </div>
-    </div>,
-    document.body
+      <AppPaletteDialog.Footer />
+    </AppPaletteDialog>
   );
 }
 

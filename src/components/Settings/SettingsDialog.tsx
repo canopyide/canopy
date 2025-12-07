@@ -40,7 +40,6 @@ export function SettingsDialog({
   const [activeTab, setActiveTab] = useState<SettingsTab>(defaultTab ?? "general");
   const setSidecarOpen = useSidecarStore((state) => state.setOpen);
 
-  // Close sidecar when settings opens to prevent z-index conflicts
   useEffect(() => {
     if (isOpen) {
       setSidecarOpen(false);
@@ -70,6 +69,17 @@ export function SettingsDialog({
     }
   }, [isOpen]);
 
+  useEffect(() => {
+    if (!isOpen) return;
+    const handleKeyDown = (e: KeyboardEvent) => {
+      if (e.key === "Escape") {
+        onClose();
+      }
+    };
+    window.addEventListener("keydown", handleKeyDown);
+    return () => window.removeEventListener("keydown", handleKeyDown);
+  }, [isOpen, onClose]);
+
   if (!isOpen) return null;
 
   return createPortal(
@@ -78,13 +88,13 @@ export function SettingsDialog({
       onClick={onClose}
     >
       <div
-        className="bg-canopy-sidebar border border-canopy-border rounded-[var(--radius-xl)] shadow-xl w-full max-w-2xl mx-4 h-[550px] flex overflow-hidden"
+        className="bg-canopy-sidebar border border-canopy-border rounded-[var(--radius-xl)] shadow-xl w-full max-w-2xl mx-4 max-h-[80vh] min-h-[400px] flex overflow-hidden"
         onClick={(e) => e.stopPropagation()}
         role="dialog"
         aria-modal="true"
         aria-labelledby="settings-title"
       >
-        <div className="w-48 border-r border-canopy-border bg-canopy-bg/50 p-4 flex flex-col gap-2">
+        <div className="w-48 border-r border-canopy-border bg-canopy-bg/50 p-4 flex flex-col gap-2 shrink-0">
           <h2 id="settings-title" className="text-sm font-semibold text-canopy-text mb-4 px-2">
             Settings
           </h2>
@@ -180,7 +190,7 @@ export function SettingsDialog({
         </div>
 
         <div className="flex-1 flex flex-col min-w-0">
-          <div className="flex items-center justify-between p-6 border-b border-canopy-border">
+          <div className="flex items-center justify-between px-6 py-4 border-b border-canopy-border bg-canopy-sidebar/50 shrink-0">
             <h3 className="text-lg font-medium text-canopy-text capitalize">
               {activeTab === "agents"
                 ? "Agent Settings"
