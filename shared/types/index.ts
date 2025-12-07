@@ -131,9 +131,6 @@ export type {
   TranscriptEntry,
   Artifact,
   AgentSession,
-  HistoryGetSessionsPayload,
-  HistoryGetSessionPayload,
-  HistoryExportSessionPayload,
   // Agent state change
   AgentStateChangePayload,
   // Artifact types

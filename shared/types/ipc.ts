@@ -700,27 +700,6 @@ export interface AgentSession {
   };
 }
 
-/** Payload for querying agent sessions */
-export interface HistoryGetSessionsPayload {
-  /** Filter by worktree */
-  worktreeId?: string;
-  /** Filter by agent type */
-  agentType?: "claude" | "gemini" | "custom";
-  /** Maximum number of sessions to return */
-  limit?: number;
-}
-
-/** Payload for getting a single session */
-export interface HistoryGetSessionPayload {
-  sessionId: string;
-}
-
-/** Payload for exporting a session */
-export interface HistoryExportSessionPayload {
-  sessionId: string;
-  format: "json" | "markdown";
-}
-
 // Agent State Change Payload
 
 /** Agent state change trigger */
@@ -1169,23 +1148,13 @@ export interface IpcInvokeMap {
     args: [projectId: string];
     result: RunCommand[];
   };
-
-  // History channels
-  "history:get-sessions": {
-    args: [filters?: HistoryGetSessionsPayload];
-    result: AgentSession[];
+  "project:close": {
+    args: [projectId: string];
+    result: ProjectCloseResult;
   };
-  "history:get-session": {
-    args: [payload: HistoryGetSessionPayload];
-    result: AgentSession | null;
-  };
-  "history:export-session": {
-    args: [payload: HistoryExportSessionPayload];
-    result: string | null;
-  };
-  "history:delete-session": {
-    args: [sessionId: string];
-    result: void;
+  "project:get-stats": {
+    args: [projectId: string];
+    result: ProjectStats;
   };
 
   // GitHub channels
@@ -1552,8 +1521,6 @@ export interface ElectronAPI {
     getVerbose(): Promise<boolean>;
     onEntry(callback: (entry: LogEntry) => void): () => void;
   };
-  // Directory API has been removed - use project API instead
-  directory: Record<string, never>;
   errors: {
     onError(callback: (error: AppError) => void): () => void;
     retry(errorId: string, action: RetryAction, args?: Record<string, unknown>): Promise<void>;
@@ -1581,12 +1548,6 @@ export interface ElectronAPI {
     detectRunners(projectId: string): Promise<RunCommand[]>;
     close(projectId: string): Promise<ProjectCloseResult>;
     getStats(projectId: string): Promise<ProjectStats>;
-  };
-  history: {
-    getSessions(filters?: HistoryGetSessionsPayload): Promise<AgentSession[]>;
-    getSession(sessionId: string): Promise<AgentSession | null>;
-    exportSession(sessionId: string, format: "json" | "markdown"): Promise<string | null>;
-    deleteSession(sessionId: string): Promise<void>;
   };
   agentSettings: {
     get(): Promise<AgentSettings>;

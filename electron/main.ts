@@ -20,7 +20,6 @@ import { EventBuffer } from "./services/EventBuffer.js";
 import { CHANNELS } from "./ipc/channels.js";
 import { createApplicationMenu } from "./menu.js";
 import { projectStore } from "./services/ProjectStore.js";
-import { getTranscriptManager, disposeTranscriptManager } from "./services/TranscriptManager.js";
 import { store } from "./store.js";
 import { MigrationRunner } from "./services/StoreMigrations.js";
 import { migrations } from "./services/migrations/index.js";
@@ -103,7 +102,6 @@ if (!gotTheLock) {
     Promise.all([
       worktreeService.stopAll(),
       devServerManager ? devServerManager.stopAll() : Promise.resolve(),
-      disposeTranscriptManager(),
       new Promise<void>((resolve) => {
         if (ptyClient) {
           ptyClient.dispose();
@@ -267,11 +265,6 @@ async function createWindow(): Promise<void> {
   console.log("[MAIN] Initializing SystemSleepService...");
   initializeSystemSleepService();
   console.log("[MAIN] SystemSleepService initialized successfully");
-
-  console.log("[MAIN] Initializing TranscriptManager...");
-  const transcriptManager = getTranscriptManager();
-  await transcriptManager.initialize();
-  console.log("[MAIN] TranscriptManager initialized successfully");
 
   console.log("[MAIN] Initializing EventBuffer...");
   eventBuffer = new EventBuffer(1000);
@@ -442,7 +435,6 @@ async function createWindow(): Promise<void> {
       await devServerManager.stopAll();
       devServerManager = null;
     }
-    await disposeTranscriptManager();
     if (sidecarManager) {
       sidecarManager.destroy();
       sidecarManager = null;

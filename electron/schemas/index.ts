@@ -33,9 +33,6 @@ export {
   SystemOpenPathPayloadSchema,
   WorktreeSetActivePayloadSchema,
   WorktreeCreatePayloadSchema,
-  HistoryGetSessionsPayloadSchema,
-  HistoryGetSessionPayloadSchema,
-  HistoryExportSessionPayloadSchema,
   type TerminalSpawnOptions as ValidatedTerminalSpawnOptions,
   type TerminalResizePayload as ValidatedTerminalResizePayload,
   type DevServerStartPayload as ValidatedDevServerStartPayload,
@@ -49,9 +46,6 @@ export {
   type SystemOpenPathPayload as ValidatedSystemOpenPathPayload,
   type WorktreeSetActivePayload as ValidatedWorktreeSetActivePayload,
   type WorktreeCreatePayload as ValidatedWorktreeCreatePayload,
-  type HistoryGetSessionsPayload as ValidatedHistoryGetSessionsPayload,
-  type HistoryGetSessionPayload as ValidatedHistoryGetSessionPayload,
-  type HistoryExportSessionPayload as ValidatedHistoryExportSessionPayload,
 } from "./ipc.js";
 
 export {

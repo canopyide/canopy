@@ -115,23 +115,6 @@ export const WorktreeCreatePayloadSchema = z.object({
   }),
 });
 
-export const HistoryGetSessionsPayloadSchema = z
-  .object({
-    worktreeId: z.string().optional(),
-    agentType: z.enum(["claude", "gemini", "custom"]).optional(),
-    limit: z.number().int().positive().optional(),
-  })
-  .optional();
-
-export const HistoryGetSessionPayloadSchema = z.object({
-  sessionId: z.string().min(1),
-});
-
-export const HistoryExportSessionPayloadSchema = z.object({
-  sessionId: z.string().min(1),
-  format: z.enum(["json", "markdown"]),
-});
-
 export type TerminalSpawnOptions = z.infer<typeof TerminalSpawnOptionsSchema>;
 export type TerminalResizePayload = z.infer<typeof TerminalResizePayloadSchema>;
 export type DevServerStartPayload = z.infer<typeof DevServerStartPayloadSchema>;
@@ -149,6 +132,3 @@ export type SystemOpenExternalPayload = z.infer<typeof SystemOpenExternalPayload
 export type SystemOpenPathPayload = z.infer<typeof SystemOpenPathPayloadSchema>;
 export type WorktreeSetActivePayload = z.infer<typeof WorktreeSetActivePayloadSchema>;
 export type WorktreeCreatePayload = z.infer<typeof WorktreeCreatePayloadSchema>;
-export type HistoryGetSessionsPayload = z.infer<typeof HistoryGetSessionsPayloadSchema>;
-export type HistoryGetSessionPayload = z.infer<typeof HistoryGetSessionPayloadSchema>;
-export type HistoryExportSessionPayload = z.infer<typeof HistoryExportSessionPayloadSchema>;
