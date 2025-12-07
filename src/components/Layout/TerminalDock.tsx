@@ -9,7 +9,11 @@ import { useTerminalStore, useProjectStore } from "@/store";
 import { DockedTerminalItem } from "./DockedTerminalItem";
 import { TrashContainer } from "./TrashContainer";
 import { WaitingContainer } from "./WaitingContainer";
-import { SortableDockItem, SortableDockPlaceholder, DOCK_PLACEHOLDER_ID } from "@/components/DragDrop";
+import {
+  SortableDockItem,
+  SortableDockPlaceholder,
+  DOCK_PLACEHOLDER_ID,
+} from "@/components/DragDrop";
 import { ClaudeIcon, GeminiIcon, CodexIcon } from "@/components/icons";
 import {
   ContextMenu,
@@ -141,11 +145,7 @@ export function TerminalDock() {
                     <SortableDockPlaceholder />
                   ) : (
                     activeDockTerminals.map((terminal, index) => (
-                      <SortableDockItem
-                        key={terminal.id}
-                        terminal={terminal}
-                        sourceIndex={index}
-                      >
+                      <SortableDockItem key={terminal.id} terminal={terminal} sourceIndex={index}>
                         <DockedTerminalItem terminal={terminal} />
                       </SortableDockItem>
                     ))
