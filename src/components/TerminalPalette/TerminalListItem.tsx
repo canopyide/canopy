@@ -1,15 +1,7 @@
-import { Terminal, Command } from "lucide-react";
-import {
-  ClaudeIcon,
-  GeminiIcon,
-  CodexIcon,
-  NpmIcon,
-  YarnIcon,
-  PnpmIcon,
-  BunIcon,
-} from "@/components/icons";
 import { cn } from "@/lib/utils";
-import type { TerminalType } from "@/components/Terminal/TerminalPane";
+import { TerminalIcon } from "@/components/Terminal/TerminalIcon";
+import { getBrandColorHex } from "@/lib/colorUtils";
+import type { TerminalType } from "@/types";
 
 export interface TerminalListItemProps {
   id: string;
@@ -19,31 +11,6 @@ export interface TerminalListItemProps {
   cwd: string;
   isSelected: boolean;
   onClick: () => void;
-}
-
-function getIcon(type: TerminalType) {
-  const props = { className: "w-4 h-4", "aria-hidden": "true" as const };
-  switch (type) {
-    case "claude":
-      return <ClaudeIcon {...props} />;
-    case "gemini":
-      return <GeminiIcon {...props} />;
-    case "codex":
-      return <CodexIcon {...props} />;
-    case "npm":
-      return <NpmIcon {...props} />;
-    case "yarn":
-      return <YarnIcon {...props} />;
-    case "pnpm":
-      return <PnpmIcon {...props} />;
-    case "bun":
-      return <BunIcon {...props} />;
-    case "custom":
-      return <Command {...props} />;
-    case "shell":
-    default:
-      return <Terminal {...props} />;
-  }
 }
 
 function truncatePath(path: string, maxLength: number = 40): string {
@@ -84,7 +51,7 @@ export function TerminalListItem({
       role="option"
     >
       <span className="shrink-0 text-canopy-text/70" aria-hidden="true">
-        {getIcon(type)}
+        <TerminalIcon type={type} brandColor={getBrandColorHex(type)} />
       </span>
 
       <div className="flex-1 min-w-0 overflow-hidden">

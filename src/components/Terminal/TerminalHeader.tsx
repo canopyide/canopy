@@ -1,7 +1,5 @@
 import React from "react";
 import {
-  Terminal,
-  Command,
   X,
   Maximize2,
   Minimize2,
@@ -11,60 +9,16 @@ import {
   Grid2X2,
   Activity,
 } from "lucide-react";
-import {
-  ClaudeIcon,
-  GeminiIcon,
-  CodexIcon,
-  NpmIcon,
-  YarnIcon,
-  PnpmIcon,
-  BunIcon,
-} from "@/components/icons";
 import type { TerminalType, AgentState } from "@/types";
 import { cn } from "@/lib/utils";
 import { getBrandColorHex } from "@/lib/colorUtils";
 import { StateBadge } from "./StateBadge";
 import { ActivityBadge } from "./ActivityBadge";
 import { TerminalContextMenu } from "./TerminalContextMenu";
+import { TerminalIcon } from "./TerminalIcon";
 import type { ActivityState } from "./TerminalPane";
 import { useTerminalStore } from "@/store";
 import { useShallow } from "zustand/react/shallow";
-
-interface TerminalIconProps {
-  className?: string;
-  brandColor?: string;
-}
-
-function getTerminalIcon(type: TerminalType, props: TerminalIconProps) {
-  const finalProps = {
-    className: cn("w-3.5 h-3.5", props.className),
-    "aria-hidden": "true" as const,
-  };
-
-  const customIconProps = { ...finalProps, brandColor: props.brandColor };
-
-  switch (type) {
-    case "claude":
-      return <ClaudeIcon {...customIconProps} />;
-    case "gemini":
-      return <GeminiIcon {...customIconProps} />;
-    case "codex":
-      return <CodexIcon {...customIconProps} />;
-    case "npm":
-      return <NpmIcon {...finalProps} />;
-    case "yarn":
-      return <YarnIcon {...finalProps} />;
-    case "pnpm":
-      return <PnpmIcon {...finalProps} />;
-    case "bun":
-      return <BunIcon {...finalProps} />;
-    case "custom":
-      return <Command {...finalProps} />;
-    case "shell":
-    default:
-      return <Terminal {...finalProps} />;
-  }
-}
 
 export interface TerminalHeaderProps {
   id: string;
@@ -173,7 +127,11 @@ function TerminalHeaderComponent({
                 aria-hidden="true"
               />
             ) : (
-              getTerminalIcon(type, { brandColor: getBrandColorHex(type) })
+              <TerminalIcon
+                type={type}
+                className="w-3.5 h-3.5"
+                brandColor={getBrandColorHex(type)}
+              />
             )}
           </span>
 
