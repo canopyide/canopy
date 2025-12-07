@@ -10,6 +10,7 @@ import { ProcessDetector, type DetectionResult } from "../ProcessDetector.js";
 import { ActivityMonitor } from "../ActivityMonitor.js";
 import { OutputThrottler } from "./OutputThrottler.js";
 import { AgentStateService } from "./AgentStateService.js";
+import { ActivityHeadlineGenerator } from "../ActivityHeadlineGenerator.js";
 import {
   type PtySpawnOptions,
   type TerminalInfo,
@@ -76,6 +77,7 @@ export class TerminalProcess {
   private throttler: OutputThrottler;
   private activityMonitor: ActivityMonitor | null = null;
   private processDetector: ProcessDetector | null = null;
+  private headlineGenerator = new ActivityHeadlineGenerator();
 
   // Semantic buffer state
   private pendingSemanticData = "";
@@ -709,14 +711,58 @@ export class TerminalProcess {
       });
     }
 
-    // Handle busy/idle for shell terminals
+    // Handle busy/idle for shell terminals - emit full activity payload
     if (!terminal.agentId && result.isBusy !== undefined) {
+      const { headline, status, type } = this.headlineGenerator.generate({
+        terminalId: this.id,
+        terminalType: terminal.type,
+        activity: result.isBusy ? "busy" : "idle",
+        lastCommand: this.getLastCommand(),
+      });
+
       events.emit("terminal:activity", {
         terminalId: this.id,
-        activity: result.isBusy ? "busy" : "idle",
-        source: "process-tree",
+        headline,
+        status,
+        type,
+        confidence: 1.0,
+        timestamp: Date.now(),
+        worktreeId: this.options.worktreeId,
       });
     }
+  }
+
+  /**
+   * Get the last command executed in this terminal (for headline generation).
+   */
+  private getLastCommand(): string | undefined {
+    const buffer = this.terminalInfo.semanticBuffer;
+    if (buffer.length === 0) return undefined;
+
+    // Look for command-like lines in the recent buffer
+    for (let i = buffer.length - 1; i >= 0 && i >= buffer.length - 10; i--) {
+      let line = buffer[i].trim();
+
+      // Skip empty lines
+      if (line.length === 0) continue;
+
+      // Strip common prompt prefixes (user@host, paths, prompt symbols)
+      // Match patterns like "user@host:~/path $", "~/path %", etc.
+      line = line.replace(/^[^@]*@[^:]*:[^\s]*\s*[$>%#]\s*/, "");
+      line = line.replace(/^~?[^\s]*[$>%#]\s*/, "");
+      line = line.replace(/^[$>%#]\s*/, "");
+
+      // After stripping prompts, check if it's a command
+      if (
+        line.length > 0 &&
+        line.match(
+          /^(npm|yarn|pnpm|bun|git|docker|node|python|python3|pip|cargo|go|make|curl|wget|tsc|eslint|prettier|jest|vitest|mocha)/i
+        )
+      ) {
+        return line;
+      }
+    }
+    return undefined;
   }
 
   private debouncedSemanticUpdate(data: string): void {

@@ -250,8 +250,8 @@ export const EVENT_META: Record<keyof CanopyEventMap, EventMetadata> = {
   "terminal:activity": {
     category: "agent",
     requiresContext: false,
-    requiresTimestamp: false,
-    description: "Terminal activity state changed (busy/idle via process tree)",
+    requiresTimestamp: true,
+    description: "Terminal activity state changed with human-readable headlines",
   },
   "terminal:backgrounded": {
     category: "agent",
@@ -581,11 +581,16 @@ export type CanopyEventMap = {
   /**
    * Emitted when a terminal's activity state changes (busy/idle).
    * For shell terminals, this uses process tree inspection for accuracy.
+   * For agent terminals, this includes human-readable status headlines.
    */
   "terminal:activity": {
     terminalId: string;
-    activity: "busy" | "idle";
-    source: "process-tree" | "data-flow";
+    headline: string;
+    status: "working" | "waiting" | "success" | "failure";
+    type: "interactive" | "background" | "idle";
+    confidence: number;
+    timestamp: number;
+    worktreeId?: string;
   };
 
   /**

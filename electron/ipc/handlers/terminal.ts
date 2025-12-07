@@ -5,7 +5,7 @@ import path from "path";
 import { CHANNELS } from "../channels.js";
 import { sendToRenderer } from "../utils.js";
 import { projectStore } from "../../services/ProjectStore.js";
-import { events } from "../../services/events.js";
+import { events, type CanopyEventMap } from "../../services/events.js";
 import type { HandlerDependencies } from "../types.js";
 import type { TerminalSpawnOptions, TerminalResizePayload } from "../../types/index.js";
 import type { ActivityTier } from "../../../shared/types/pty-host.js";
@@ -52,6 +52,14 @@ export function registerTerminalHandlers(deps: HandlerDependencies): () => void 
     sendToRenderer(mainWindow, CHANNELS.ARTIFACT_DETECTED, payload);
   });
   handlers.push(unsubArtifactDetected);
+
+  const unsubTerminalActivity = events.on(
+    "terminal:activity",
+    (payload: CanopyEventMap["terminal:activity"]) => {
+      sendToRenderer(mainWindow, CHANNELS.TERMINAL_ACTIVITY, payload);
+    }
+  );
+  handlers.push(unsubTerminalActivity);
 
   const handleTerminalSpawn = async (
     _event: Electron.IpcMainInvokeEvent,

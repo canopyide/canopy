@@ -1,6 +1,7 @@
 import { useState, useCallback, useEffect, type ReactNode } from "react";
 import { Toolbar } from "./Toolbar";
 import { Sidebar } from "./Sidebar";
+import { WaitingStrip } from "./WaitingStrip";
 import { TerminalDock } from "./TerminalDock";
 import { DiagnosticsDock } from "../Diagnostics";
 import { ErrorBoundary } from "../ErrorBoundary";
@@ -274,6 +275,9 @@ export function AppLayout({
         agentAvailability={agentAvailability}
         agentSettings={agentSettings}
       />
+      <ErrorBoundary variant="section" componentName="WaitingStrip">
+        <WaitingStrip />
+      </ErrorBoundary>
       <div
         className="flex-1 flex flex-col overflow-hidden"
         style={{ flex: 1, display: "flex", flexDirection: "column", overflow: "hidden" }}
