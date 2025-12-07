@@ -66,15 +66,8 @@ export async function hydrateAppState(options: HydrationOptions): Promise<void> 
           console.warn("Invalid persisted scrollback value, using default:", scrollbackLines);
         }
       }
-      // Hydrate performance mode
       if (terminalConfig?.performanceMode !== undefined) {
         usePerformanceModeStore.getState().setPerformanceMode(terminalConfig.performanceMode);
-        // Apply the data attribute to body immediately
-        if (terminalConfig.performanceMode) {
-          document.body.setAttribute("data-performance-mode", "true");
-        } else {
-          document.body.removeAttribute("data-performance-mode");
-        }
       }
     } catch (error) {
       console.warn("Failed to hydrate terminal config:", error);
