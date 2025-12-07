@@ -141,6 +141,34 @@ const createEventsStore: StateCreator<EventsState> = (set, get) => ({
       });
     }
 
+    if (filters.runId) {
+      filtered = filtered.filter((event) => {
+        const payload = event.payload;
+        return payload && payload.runId === filters.runId;
+      });
+    }
+
+    if (filters.terminalId) {
+      filtered = filtered.filter((event) => {
+        const payload = event.payload;
+        return payload && payload.terminalId === filters.terminalId;
+      });
+    }
+
+    if (filters.issueNumber !== undefined) {
+      filtered = filtered.filter((event) => {
+        const payload = event.payload;
+        return payload && payload.issueNumber === filters.issueNumber;
+      });
+    }
+
+    if (filters.prNumber !== undefined) {
+      filtered = filtered.filter((event) => {
+        const payload = event.payload;
+        return payload && payload.prNumber === filters.prNumber;
+      });
+    }
+
     if (filters.search) {
       const searchLower = filters.search.toLowerCase();
       filtered = filtered.filter((event) => {
