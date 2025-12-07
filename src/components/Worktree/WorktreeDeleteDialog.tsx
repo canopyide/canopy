@@ -31,7 +31,6 @@ export function WorktreeDeleteDialog({ isOpen, onClose, worktree }: WorktreeDele
   useEffect(() => {
     if (isOpen) {
       setForce(false);
-      setCloseTerminals(true);
       setError(null);
       setTimeout(() => dialogRef.current?.focus(), 0);
     }
