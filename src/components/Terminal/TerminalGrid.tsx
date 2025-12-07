@@ -13,6 +13,7 @@ import {
 } from "@/store";
 import { TerminalPane } from "./TerminalPane";
 import { TerminalCountWarning } from "./TerminalCountWarning";
+import { GridFullOverlay } from "./GridFullOverlay";
 import { ErrorBoundary } from "@/components/ErrorBoundary";
 import {
   SortableTerminal,
@@ -20,7 +21,7 @@ import {
   GRID_PLACEHOLDER_ID,
   GridPlaceholder,
 } from "@/components/DragDrop";
-import { Terminal, AlertTriangle, Ban } from "lucide-react";
+import { Terminal, AlertTriangle } from "lucide-react";
 import { CanopyIcon, CodexIcon, ClaudeIcon, GeminiIcon } from "@/components/icons";
 import { Kbd } from "@/components/ui/Kbd";
 import { getBrandColorHex } from "@/lib/colorUtils";
@@ -516,19 +517,7 @@ export function TerminalGrid({ className, defaultCwd, onLaunchAgent }: TerminalG
           </div>
         </SortableContext>
 
-        {showGridFullOverlay && (
-          <div className="absolute inset-0 z-50 flex items-center justify-center bg-black/60 backdrop-blur-sm pointer-events-none">
-            <div className="flex flex-col items-center gap-3 text-center px-6 py-4 rounded-xl bg-canopy-bg/90 border border-canopy-border/40 shadow-xl">
-              <Ban className="h-8 w-8 text-amber-400" />
-              <div>
-                <p className="text-sm font-medium text-canopy-text">Grid is full</p>
-                <p className="text-xs text-canopy-text/60 mt-1">
-                  Maximum {MAX_GRID_TERMINALS} terminals. Close one to add more.
-                </p>
-              </div>
-            </div>
-          </div>
-        )}
+        <GridFullOverlay maxTerminals={MAX_GRID_TERMINALS} show={showGridFullOverlay} />
       </div>
     </div>
   );
