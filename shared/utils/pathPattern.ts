@@ -1,4 +1,38 @@
-import * as path from "path";
+import * as _path from "path";
+
+// Browser-compatible path implementation
+const browserPath = {
+  isAbsolute: (p: string) => {
+    return /^([a-zA-Z]:|[\\/])/.test(p);
+  },
+  basename: (p: string) => {
+    return p.split(/[\\/]/).pop() || "";
+  },
+  dirname: (p: string) => {
+    const parts = p.split(/[\\/]/);
+    parts.pop();
+    return parts.join("/") || ".";
+  },
+  resolve: (...paths: string[]) => {
+    let resolved = "";
+    for (const p of paths) {
+      if (!p) continue;
+      if (/^([a-zA-Z]:|[\\/])/.test(p)) {
+        resolved = p;
+      } else {
+        resolved = resolved ? `${resolved}/${p}` : p;
+      }
+    }
+    return browserPath.normalize(resolved);
+  },
+  normalize: (p: string) => {
+    // Basic normalization for preview purposes
+    return p.replace(/\\/g, "/").replace(/\/+/g, "/");
+  },
+};
+
+// Use native path if available (Node.js), otherwise fallback to browser implementation
+const path = _path && typeof _path.isAbsolute === "function" ? _path : browserPath;
 
 export interface PathPatternVariables {
   "base-folder": string;
