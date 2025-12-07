@@ -328,20 +328,14 @@ export function WorktreeCard({
   );
 
   const showDevServer = devServerEnabled && hasDevScript;
-  const showFooter =
-    terminalCounts.total > 0 ||
-    (hasChanges && !!worktree.worktreeChanges) ||
-    (showDevServer && serverState && serverState.status !== "stopped") ||
-    worktreeErrors.length > 0;
-
   const hasExpandableContent =
     hasChanges ||
     effectiveNote ||
     !!effectiveSummary ||
     showDevServer ||
     worktreeErrors.length > 0 ||
-    showFooter ||
-    !!rawLastCommitMessage; // Can expand to see details even if just clean
+    terminalCounts.total > 0 ||
+    !!rawLastCommitMessage;
 
   const showMetaFooter = terminalCounts.total > 0;
 
@@ -622,6 +616,7 @@ export function WorktreeCard({
                 worktree={worktree}
                 homeDir={homeDir}
                 effectiveNote={effectiveNote}
+                effectiveSummary={effectiveSummary}
                 showDevServer={showDevServer}
                 serverState={serverState}
                 serverLoading={serverLoading}
