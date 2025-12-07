@@ -168,7 +168,6 @@ export function registerTerminalHandlers(deps: HandlerDependencies): () => void 
 
   const handleTerminalResize = (_event: Electron.IpcMainEvent, payload: TerminalResizePayload) => {
     try {
-      // Validate with Zod schema
       const parseResult = TerminalResizePayloadSchema.safeParse(payload);
       if (!parseResult.success) {
         console.error("[IPC] Invalid terminal resize payload:", parseResult.error.format());

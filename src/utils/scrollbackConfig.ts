@@ -41,10 +41,8 @@ export function getScrollbackForType(type: TerminalType, baseScrollback: number)
     return policy.maxLines;
   }
 
-  // Calculate from base with multiplier
+  // Calculate from base with multiplier, clamped to policy limits
   const calculated = Math.floor(baseScrollback * policy.multiplier);
-
-  // Clamp to min/max
   return Math.max(policy.minLines, Math.min(policy.maxLines, calculated));
 }
 

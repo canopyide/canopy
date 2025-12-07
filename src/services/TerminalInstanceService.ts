@@ -952,7 +952,6 @@ class TerminalInstanceService {
     const managed = this.instances.get(id);
     if (!managed) return;
 
-    // Trigger the writer boost logic
     managed.throttledWriter.boost();
 
     // Also ensure WebGL is acquired if it was dropped in background

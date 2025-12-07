@@ -305,7 +305,6 @@ export function useAgentLauncher(): UseAgentLauncherReturn {
           }
         }
 
-        // Build the full command with flags and optional prompt
         command = buildAgentCommand(
           command,
           type,

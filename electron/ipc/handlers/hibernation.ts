@@ -24,12 +24,10 @@ export function registerHibernationHandlers(_deps: HandlerDependencies): () => v
       throw new Error("Invalid config object");
     }
 
-    // Validate enabled
     if (config.enabled !== undefined && typeof config.enabled !== "boolean") {
       throw new Error("enabled must be a boolean");
     }
 
-    // Validate threshold
     if (config.inactiveThresholdHours !== undefined) {
       if (typeof config.inactiveThresholdHours !== "number") {
         throw new Error("inactiveThresholdHours must be a number");

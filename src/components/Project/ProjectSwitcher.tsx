@@ -150,7 +150,6 @@ export function ProjectSwitcher() {
       if (!confirmed) return;
     }
 
-    // Proceed with close
     try {
       const result = await closeProject(projectId);
       addNotification({

@@ -1,11 +1,6 @@
 /**
- * NPM Icon Component
- *
- * Custom SVG icon based on the official NPM brand icon.
- * Uses the simplified npm wordmark shape, rendered as monochrome via currentColor.
- *
- * Brand Color Reference: #CB3837 (NPM Red)
  * Source: https://github.com/npm/logos
+ * Brand color: #CB3837
  */
 
 import { cn } from "@/lib/utils";

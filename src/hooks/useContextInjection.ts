@@ -117,7 +117,6 @@ export function useContextInjection(targetTerminalId?: string): UseContextInject
     const unsubscribe = copyTreeClient.onProgress((p) => {
       if (!globalInjectionState.isInjecting) return;
 
-      // Update global state
       globalInjectionState.lastProgress = p;
 
       // Filter: Only update local state if this terminal is the injection target
@@ -260,7 +259,6 @@ export function useContextInjection(targetTerminalId?: string): UseContextInject
   const cancel = useCallback(() => {
     copyTreeClient.cancel().catch(console.error);
 
-    // Clear global state
     globalInjectionState.isInjecting = false;
     globalInjectionState.activeTerminalId = null;
     globalInjectionState.lastProgress = null;

@@ -211,7 +211,6 @@ export function HistoryPanel({ className }: HistoryPanelProps) {
   } = useSessionHistory();
 
   const { worktrees } = useWorktrees();
-  // Single function selector - stable reference, no useShallow needed
   const addTerminal = useTerminalStore((state) => state.addTerminal);
 
   const [confirmDelete, setConfirmDelete] = useState<{

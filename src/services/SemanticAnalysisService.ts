@@ -188,7 +188,6 @@ class SemanticAnalysisService {
     // Wait a bit before restarting to avoid rapid restart loops
     await new Promise((resolve) => setTimeout(resolve, 1000));
 
-    // Reinitialize
     await this.initialize(this.handlers);
 
     // Re-register all previously registered terminals

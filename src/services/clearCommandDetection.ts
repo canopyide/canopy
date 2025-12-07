@@ -14,7 +14,6 @@ export const VT100_FULL_CLEAR = `${VT100_CLEAR_SCROLLBACK}${VT100_CURSOR_HOME}${
 export class InputTracker {
   private buffer = "";
 
-  // Returns true if a clear command was detected
   process(data: string): boolean {
     // Process each character in the chunk (handles paste and multi-char input)
     for (let i = 0; i < data.length; i++) {
