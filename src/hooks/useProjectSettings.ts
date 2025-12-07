@@ -96,12 +96,12 @@ export function useProjectSettings(projectId?: string): UseProjectSettingsReturn
 
       try {
         await projectClient.saveSettings(targetId, {
-          ...currentSettings,
+          ...settings,
           runCommands: updated,
         });
 
         setSettings({
-          ...currentSettings,
+          ...settings,
           runCommands: updated,
         });
 

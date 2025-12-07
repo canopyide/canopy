@@ -111,9 +111,13 @@ export function QuickRun({ projectId }: QuickRunProps) {
       id: `cmd-${Date.now()}-${Math.random().toString(36).slice(2, 9)}`,
       name: item.label,
       command: item.value,
-      icon: item.icon || "terminal",
+      icon: "icon" in item ? item.icon || "terminal" : "terminal",
       description:
-        item.description || (item.type === "script" ? "Pinned script" : "Pinned from history"),
+        "description" in item && item.description
+          ? item.description
+          : item.type === "script"
+            ? "Pinned script"
+            : "Pinned from history",
     };
 
     try {
