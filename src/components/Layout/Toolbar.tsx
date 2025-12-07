@@ -229,9 +229,14 @@ export function Toolbar({
             </span>
           </div>
         ) : (
-          <span className="text-xs font-medium text-canopy-text tracking-wide select-none">
-            Canopy Command Center
-          </span>
+          <div className="flex items-center gap-2 select-none">
+            <span className="text-xs font-medium text-canopy-text tracking-wide">
+              Canopy Command Center
+            </span>
+            <span className="text-xs font-medium px-1.5 py-0.5 rounded-full bg-canopy-accent/20 text-canopy-accent">
+              Beta
+            </span>
+          </div>
         )}
       </div>
 

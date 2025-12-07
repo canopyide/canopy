@@ -139,7 +139,12 @@ export function GeneralTab({ appVersion, onNavigateToAgents }: GeneralTabProps) 
               <TreePine className="w-6 h-6 text-canopy-accent" />
             </div>
             <div>
-              <div className="font-semibold text-canopy-text text-lg">Canopy</div>
+              <div className="font-semibold text-canopy-text text-lg flex items-center gap-2">
+                Canopy
+                <span className="text-xs font-medium px-1.5 py-0.5 rounded-full bg-canopy-accent/20 text-canopy-accent">
+                  Beta
+                </span>
+              </div>
               <div className="text-sm text-canopy-text/60">Command Center</div>
             </div>
           </div>
