@@ -489,7 +489,9 @@ class TerminalInstanceService {
       if (inputTracker.process(data)) {
         // 1. Clear pending output buffer (prevent ghost echoes)
         throttledWriter.clear();
-        // 2. Force clear visual terminal state immediately
+        // 2. Use xterm.js clear() API to reset internal buffer state
+        terminal.clear();
+        // 3. Write escape codes to force cursor reset and visual screen wipe
         terminal.write(VT100_FULL_CLEAR);
       }
 
