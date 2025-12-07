@@ -18,13 +18,14 @@ import {
   GRID_PLACEHOLDER_ID,
   GridPlaceholder,
 } from "@/components/DragDrop";
-import { Terminal, AlertTriangle } from "lucide-react";
+import { Terminal, AlertTriangle, ChevronLeft, ChevronRight } from "lucide-react";
 import { CanopyIcon, CodexIcon, ClaudeIcon, GeminiIcon } from "@/components/icons";
 import { Kbd } from "@/components/ui/Kbd";
 import { getBrandColorHex } from "@/lib/colorUtils";
 import { terminalInstanceService } from "@/services/TerminalInstanceService";
 import { terminalClient, systemClient } from "@/clients";
 import { TerminalRefreshTier } from "@/types";
+import { useTerminalPagination } from "@/hooks";
 
 export interface TerminalGridProps {
   className?: string;
@@ -223,6 +224,16 @@ export function TerminalGrid({ className, defaultCwd, onLaunchAgent }: TerminalG
     [terminals]
   );
 
+  const {
+    visibleTerminals,
+    currentPage,
+    totalPages,
+    hasNext,
+    hasPrev,
+    pageSize,
+    setPage,
+  } = useTerminalPagination(gridTerminals);
+
   const layoutConfig = useLayoutConfigStore((state) => state.layoutConfig);
 
   // Make the grid a droppable area
@@ -232,7 +243,7 @@ export function TerminalGrid({ className, defaultCwd, onLaunchAgent }: TerminalG
   });
 
   const gridCols = useMemo(() => {
-    const count = gridTerminals.length;
+    const count = visibleTerminals.length;
     if (count === 0) return 1;
 
     const { strategy, value } = layoutConfig;
@@ -252,7 +263,7 @@ export function TerminalGrid({ className, defaultCwd, onLaunchAgent }: TerminalG
     if (count <= 3) return count; // 1-3 terminals: single row
     if (count <= 9) return 3; // 4-9 terminals: max 3 columns
     return 4; // 10+ terminals: keep rows <=3 for taller panes
-  }, [gridTerminals.length, layoutConfig]);
+  }, [visibleTerminals.length, layoutConfig]);
 
   const handleLaunchAgent = useCallback(
     async (type: "claude" | "gemini" | "codex" | "shell") => {
@@ -276,9 +287,12 @@ export function TerminalGrid({ className, defaultCwd, onLaunchAgent }: TerminalG
     [addTerminal, defaultCwd, onLaunchAgent]
   );
 
+  // Terminal IDs for SortableContext - DON'T include placeholder to avoid infinite loop
+  const terminalIds = useMemo(() => visibleTerminals.map((t) => t.id), [visibleTerminals]);
+
   // Batch-fit visible grid terminals when layout (gridCols/count) changes
   useEffect(() => {
-    const ids = gridTerminals.map((t) => t.id);
+    const ids = visibleTerminals.map((t) => t.id);
     let cancelled = false;
 
     const timeoutId = window.setTimeout(() => {
@@ -304,8 +318,7 @@ export function TerminalGrid({ className, defaultCwd, onLaunchAgent }: TerminalG
       cancelled = true;
       clearTimeout(timeoutId);
     };
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [gridCols, gridTerminals.length]);
+  }, [gridCols, terminalIds, currentPage]);
 
   // Get placeholder state from DnD context
   const { placeholderIndex, sourceContainer } = useDndPlaceholder();
@@ -313,8 +326,14 @@ export function TerminalGrid({ className, defaultCwd, onLaunchAgent }: TerminalG
   // Show placeholder when dragging from dock to grid
   const showPlaceholder = placeholderIndex !== null && sourceContainer === "dock";
 
-  // Terminal IDs for SortableContext - DON'T include placeholder to avoid infinite loop
-  const terminalIds = useMemo(() => gridTerminals.map((t) => t.id), [gridTerminals]);
+  // Adjust placeholder index for current page
+  const pageStartIndex = currentPage * pageSize;
+  const placeholderPageIndex =
+    placeholderIndex !== null ? placeholderIndex - pageStartIndex : null;
+  const placeholderInPage =
+    placeholderPageIndex !== null &&
+    placeholderPageIndex >= 0 &&
+    placeholderPageIndex <= visibleTerminals.length;
 
   // Maximized terminal takes full screen
   if (maximizedId) {
@@ -364,102 +383,161 @@ export function TerminalGrid({ className, defaultCwd, onLaunchAgent }: TerminalG
   }
 
   const isEmpty = gridTerminals.length === 0;
+  const showPagination = totalPages > 1;
 
   return (
     <div className={cn("h-full flex flex-col", className)}>
       <TerminalCountWarning className="mx-1 mt-1 shrink-0" />
-      <SortableContext id="grid-container" items={terminalIds} strategy={rectSortingStrategy}>
-        <div
-          ref={setNodeRef}
-          className={cn(
-            "flex-1 min-h-0 bg-noise p-1",
-            isOver && "ring-2 ring-canopy-accent/30 ring-inset"
-          )}
-          style={{
-            display: "grid",
-            gridTemplateColumns: `repeat(${gridCols}, 1fr)`,
-            gridAutoRows: "1fr",
-            gap: "4px",
-            backgroundColor: "var(--color-grid-bg)",
-          }}
-          role="grid"
-        >
-          {isEmpty && !showPlaceholder ? (
-            <div className="col-span-full row-span-full">
-              <EmptyState onLaunchAgent={handleLaunchAgent} hasActiveWorktree={hasActiveWorktree} />
-            </div>
-          ) : (
-            <>
-              {/* Render placeholder at the correct position when dragging from dock */}
-              {gridTerminals.map((terminal, index) => {
-                const isTerminalInTrash = isInTrash(terminal.id);
-                const elements: React.ReactNode[] = [];
+      <div className="relative flex-1 min-h-0">
+        {hasPrev && (
+          <button
+            onClick={() => setPage(currentPage - 1)}
+            className={cn(
+              "absolute left-2 top-1/2 -translate-y-1/2 z-50",
+              "p-2 bg-canopy-bg/80 hover:bg-canopy-accent/20",
+              "border border-canopy-border/40 rounded-lg",
+              "shadow-xl backdrop-blur-sm transition-all focus-visible:outline focus-visible:outline-2 focus-visible:outline-canopy-accent"
+            )}
+            aria-label="Previous page"
+            aria-controls="terminal-grid"
+          >
+            <ChevronLeft className="h-5 w-5 text-canopy-text/60" />
+          </button>
+        )}
 
-                // Insert placeholder before this terminal if needed
-                if (showPlaceholder && placeholderIndex === index) {
-                  elements.push(<GridPlaceholder key={GRID_PLACEHOLDER_ID} />);
-                }
+        <SortableContext id="grid-container" items={terminalIds} strategy={rectSortingStrategy}>
+          <div
+            ref={setNodeRef}
+            className={cn(
+              "h-full bg-noise p-1",
+              isOver && "ring-2 ring-canopy-accent/30 ring-inset",
+              showPagination && "pb-8"
+            )}
+            style={{
+              display: "grid",
+              gridTemplateColumns: `repeat(${gridCols}, 1fr)`,
+              gridAutoRows: "1fr",
+              gap: "4px",
+              backgroundColor: "var(--color-grid-bg)",
+            }}
+            role="grid"
+            id="terminal-grid"
+            aria-label="Terminal grid"
+          >
+            {isEmpty && !showPlaceholder ? (
+              <div className="col-span-full row-span-full">
+                <EmptyState onLaunchAgent={handleLaunchAgent} hasActiveWorktree={hasActiveWorktree} />
+              </div>
+            ) : (
+              <>
+                {visibleTerminals.map((terminal, index) => {
+                  const isTerminalInTrash = isInTrash(terminal.id);
+                  const elements: React.ReactNode[] = [];
 
-                elements.push(
-                  <SortableTerminal
-                    key={terminal.id}
-                    terminal={terminal}
-                    sourceLocation="grid"
-                    sourceIndex={index}
-                    disabled={isTerminalInTrash}
-                  >
-                    <ErrorBoundary
-                      variant="component"
-                      componentName="TerminalPane"
-                      resetKeys={[terminal.id, terminal.worktreeId, terminal.agentState].filter(
-                        (key): key is string => key !== undefined
-                      )}
-                      context={{ terminalId: terminal.id, worktreeId: terminal.worktreeId }}
+                  if (showPlaceholder && placeholderInPage && placeholderPageIndex === index) {
+                    elements.push(<GridPlaceholder key={GRID_PLACEHOLDER_ID} />);
+                  }
+
+                  elements.push(
+                    <SortableTerminal
+                      key={terminal.id}
+                      terminal={terminal}
+                      sourceLocation="grid"
+                      sourceIndex={index}
+                      disabled={isTerminalInTrash}
                     >
-                      <TerminalPane
-                        id={terminal.id}
-                        title={terminal.title}
-                        type={terminal.type}
-                        worktreeId={terminal.worktreeId}
-                        cwd={terminal.cwd}
-                        isFocused={terminal.id === focusedId}
-                        isMaximized={false}
-                        agentState={terminal.agentState}
-                        activity={
-                          terminal.activityHeadline
-                            ? {
-                                headline: terminal.activityHeadline,
-                                status: terminal.activityStatus ?? "working",
-                                type: terminal.activityType ?? "interactive",
-                              }
-                            : null
-                        }
-                        location="grid"
-                        restartKey={terminal.restartKey}
-                        onFocus={() => setFocused(terminal.id)}
-                        onClose={(force) =>
-                          force ? removeTerminal(terminal.id) : trashTerminal(terminal.id)
-                        }
-                        onToggleMaximize={() => toggleMaximize(terminal.id)}
-                        onTitleChange={(newTitle) => updateTitle(terminal.id, newTitle)}
-                        onMinimize={() => moveTerminalToDock(terminal.id)}
-                      />
-                    </ErrorBoundary>
-                  </SortableTerminal>
-                );
+                      <ErrorBoundary
+                        variant="component"
+                        componentName="TerminalPane"
+                        resetKeys={[terminal.id, terminal.worktreeId, terminal.agentState].filter(
+                          (key): key is string => key !== undefined
+                        )}
+                        context={{ terminalId: terminal.id, worktreeId: terminal.worktreeId }}
+                      >
+                        <TerminalPane
+                          id={terminal.id}
+                          title={terminal.title}
+                          type={terminal.type}
+                          worktreeId={terminal.worktreeId}
+                          cwd={terminal.cwd}
+                          isFocused={terminal.id === focusedId}
+                          isMaximized={false}
+                          agentState={terminal.agentState}
+                          activity={
+                            terminal.activityHeadline
+                              ? {
+                                  headline: terminal.activityHeadline,
+                                  status: terminal.activityStatus ?? "working",
+                                  type: terminal.activityType ?? "interactive",
+                                }
+                              : null
+                          }
+                          location="grid"
+                          restartKey={terminal.restartKey}
+                          onFocus={() => setFocused(terminal.id)}
+                          onClose={(force) =>
+                            force ? removeTerminal(terminal.id) : trashTerminal(terminal.id)
+                          }
+                          onToggleMaximize={() => toggleMaximize(terminal.id)}
+                          onTitleChange={(newTitle) => updateTitle(terminal.id, newTitle)}
+                          onMinimize={() => moveTerminalToDock(terminal.id)}
+                        />
+                      </ErrorBoundary>
+                    </SortableTerminal>
+                  );
 
-                return elements;
-              })}
-              {/* Placeholder at end if dropping after all terminals (also handles empty grid) */}
-              {showPlaceholder &&
-                placeholderIndex !== null &&
-                placeholderIndex >= gridTerminals.length && (
-                  <GridPlaceholder key={GRID_PLACEHOLDER_ID} />
+                  return elements;
+                })}
+                {showPlaceholder &&
+                  placeholderInPage &&
+                  placeholderPageIndex === visibleTerminals.length && (
+                    <GridPlaceholder key={GRID_PLACEHOLDER_ID} />
+                  )}
+              </>
+            )}
+          </div>
+        </SortableContext>
+
+        {hasNext && (
+          <button
+            onClick={() => setPage(currentPage + 1)}
+            className={cn(
+              "absolute right-2 top-1/2 -translate-y-1/2 z-50",
+              "p-2 bg-canopy-bg/80 hover:bg-canopy-accent/20",
+              "border border-canopy-border/40 rounded-lg",
+              "shadow-xl backdrop-blur-sm transition-all focus-visible:outline focus-visible:outline-2 focus-visible:outline-canopy-accent"
+            )}
+            aria-label="Next page"
+            aria-controls="terminal-grid"
+          >
+            <ChevronRight className="h-5 w-5 text-canopy-text/60" />
+          </button>
+        )}
+
+        {showPagination && (
+          <div
+            className="absolute bottom-0 left-0 right-0 h-8 flex justify-center items-center gap-3 bg-canopy-bg/60 border-t border-canopy-border/20 backdrop-blur-sm"
+            role="navigation"
+            aria-label="Terminal pages"
+          >
+            {Array.from({ length: totalPages }).map((_, i) => (
+              <button
+                key={i}
+                onClick={() => setPage(i)}
+                className={cn(
+                  "w-3 h-3 rounded-full transition-all focus-visible:outline focus-visible:outline-2 focus-visible:outline-canopy-accent",
+                  i === currentPage
+                    ? "bg-canopy-accent w-4"
+                    : "bg-canopy-text/20 hover:bg-canopy-text/40"
                 )}
-            </>
-          )}
-        </div>
-      </SortableContext>
+                aria-label={`Go to page ${i + 1}`}
+                aria-current={i === currentPage ? "page" : undefined}
+                aria-controls="terminal-grid"
+              />
+            ))}
+          </div>
+        )}
+      </div>
     </div>
   );
 }
