@@ -54,6 +54,7 @@ import {
   PanelBottom,
   ExternalLink,
   Trash2,
+  Save,
 } from "lucide-react";
 import {
   ClaudeIcon,
@@ -103,6 +104,7 @@ export interface WorktreeCardProps {
   onOpenPR?: () => void;
   onToggleServer: () => void;
   onCreateRecipe?: () => void;
+  onSaveLayout?: () => void;
   onLaunchAgent?: (type: AgentType) => void;
   agentAvailability?: UseAgentLauncherReturn["availability"];
   agentSettings?: UseAgentLauncherReturn["agentSettings"];
@@ -123,6 +125,7 @@ export function WorktreeCard({
   onOpenPR,
   onToggleServer,
   onCreateRecipe,
+  onSaveLayout,
   onLaunchAgent,
   agentAvailability,
   agentSettings,
@@ -583,6 +586,12 @@ export function WorktreeCard({
                       <DropdownMenuItem onClick={onCreateRecipe}>
                         <Plus className="w-3 h-3 mr-2" />
                         Create Recipe...
+                      </DropdownMenuItem>
+                    )}
+                    {onSaveLayout && totalTerminalCount > 0 && (
+                      <DropdownMenuItem onClick={onSaveLayout}>
+                        <Save className="w-3 h-3 mr-2" />
+                        Save Layout as Recipe
                       </DropdownMenuItem>
                     )}
 

@@ -43,7 +43,7 @@ import {
 import { useShallow } from "zustand/react/shallow";
 import { useRecipeStore } from "./store/recipeStore";
 import { setupTerminalStoreListeners } from "./store/terminalStore";
-import type { WorktreeState } from "./types";
+import type { WorktreeState, RecipeTerminal } from "./types";
 import {
   systemClient,
   copyTreeClient,
@@ -75,6 +75,9 @@ function SidebarContent() {
   const [recipeEditorWorktreeId, setRecipeEditorWorktreeId] = useState<string | undefined>(
     undefined
   );
+  const [recipeEditorInitialTerminals, setRecipeEditorInitialTerminals] = useState<
+    RecipeTerminal[] | undefined
+  >(undefined);
 
   const [isNewWorktreeDialogOpen, setIsNewWorktreeDialogOpen] = useState(false);
 
@@ -166,12 +169,35 @@ function SidebarContent() {
 
   const handleCreateRecipe = useCallback((worktreeId: string) => {
     setRecipeEditorWorktreeId(worktreeId);
+    setRecipeEditorInitialTerminals(undefined);
     setIsRecipeEditorOpen(true);
   }, []);
+
+  const handleSaveLayout = useCallback(
+    (worktree: WorktreeState) => {
+      const terminals = useRecipeStore.getState().generateRecipeFromActiveTerminals(worktree.id);
+
+      if (terminals.length === 0) {
+        addError({
+          type: "config",
+          message: "No active terminals to save in this worktree.",
+          source: "Save Layout",
+          isTransient: true,
+        });
+        return;
+      }
+
+      setRecipeEditorWorktreeId(worktree.id);
+      setRecipeEditorInitialTerminals(terminals);
+      setIsRecipeEditorOpen(true);
+    },
+    [addError]
+  );
 
   const handleCloseRecipeEditor = useCallback(() => {
     setIsRecipeEditorOpen(false);
     setRecipeEditorWorktreeId(undefined);
+    setRecipeEditorInitialTerminals(undefined);
   }, []);
 
   const handleOpenIssue = useCallback((worktree: WorktreeState) => {
@@ -280,6 +306,7 @@ function SidebarContent() {
               onOpenIssue={worktree.issueNumber ? () => handleOpenIssue(worktree) : undefined}
               onOpenPR={worktree.prUrl ? () => handleOpenPR(worktree) : undefined}
               onCreateRecipe={() => handleCreateRecipe(worktree.id)}
+              onSaveLayout={() => handleSaveLayout(worktree)}
               onLaunchAgent={(type) => handleLaunchAgentForWorktree(worktree.id, type)}
               agentAvailability={availability}
               agentSettings={agentSettings}
@@ -292,6 +319,7 @@ function SidebarContent() {
 
       <RecipeEditor
         worktreeId={recipeEditorWorktreeId}
+        initialTerminals={recipeEditorInitialTerminals}
         isOpen={isRecipeEditorOpen}
         onClose={handleCloseRecipeEditor}
       />

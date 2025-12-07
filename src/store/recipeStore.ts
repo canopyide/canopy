@@ -1,7 +1,33 @@
 import { create, type StateCreator } from "zustand";
-import type { TerminalRecipe, RecipeTerminal } from "@/types";
-import { useTerminalStore } from "./terminalStore";
+import type { TerminalRecipe, RecipeTerminal, RecipeTerminalType } from "@/types";
+import { useTerminalStore, type TerminalInstance } from "./terminalStore";
 import { appClient } from "@/clients";
+
+const PACKAGE_MANAGERS = ["npm", "yarn", "pnpm", "bun"] as const;
+
+function terminalToRecipeTerminal(terminal: TerminalInstance): RecipeTerminal {
+  const isPackageManager = PACKAGE_MANAGERS.includes(
+    terminal.type as (typeof PACKAGE_MANAGERS)[number]
+  );
+
+  let type: RecipeTerminalType;
+  if (isPackageManager) {
+    type = "custom";
+  } else if (["shell", "claude", "gemini", "codex", "custom"].includes(terminal.type)) {
+    type = terminal.type as RecipeTerminalType;
+  } else {
+    type = "custom";
+  }
+
+  const command = terminal.command;
+
+  return {
+    type,
+    title: terminal.title || undefined,
+    command: command || undefined,
+    env: {},
+  };
+}
 
 interface RecipeState {
   recipes: TerminalRecipe[];
@@ -26,6 +52,8 @@ interface RecipeState {
 
   exportRecipe: (id: string) => string | null;
   importRecipe: (json: string) => Promise<void>;
+
+  generateRecipeFromActiveTerminals: (worktreeId: string) => RecipeTerminal[];
 }
 
 const MAX_TERMINALS_PER_RECIPE = 10;
@@ -197,7 +225,7 @@ const createRecipeStore: StateCreator<RecipeState> = (set, get) => ({
       throw new Error(`Recipe cannot exceed ${MAX_TERMINALS_PER_RECIPE} terminals`);
     }
 
-    const ALLOWED_TYPES = ["shell", "claude", "gemini", "custom"];
+    const ALLOWED_TYPES = ["shell", "claude", "gemini", "codex", "custom"];
     const sanitizedTerminals = recipe.terminals
       .filter((terminal) => {
         if (!ALLOWED_TYPES.includes(terminal.type)) return false;
@@ -255,6 +283,18 @@ const createRecipeStore: StateCreator<RecipeState> = (set, get) => ({
       console.error("Failed to persist imported recipe:", _error);
       throw _error;
     }
+  },
+
+  generateRecipeFromActiveTerminals: (worktreeId) => {
+    const terminalStore = useTerminalStore.getState();
+
+    const activeTerminals = terminalStore.terminals.filter(
+      (t) => t.location !== "trash" && t.worktreeId === worktreeId
+    );
+
+    const terminalsToCapture = activeTerminals.slice(0, MAX_TERMINALS_PER_RECIPE);
+
+    return terminalsToCapture.map(terminalToRecipeTerminal);
   },
 });
 
