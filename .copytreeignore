@@ -56,6 +56,10 @@ components.json
 *.sublime-project
 *.sublime-workspace
 
+# Agent files
+.claude/
+.gemini/
+
 # OS files
 .DS_Store
 .AppleDouble
@@ -115,6 +119,5 @@ src/components/icons/
 scripts/
 
 # Agent instruction files (already in CLAUDE.md)
-docs/
 AGENTS.md
 GEMINI.md
