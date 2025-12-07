@@ -172,7 +172,7 @@ const DEFAULT_KEYBINDINGS: KeybindingConfig[] = [
   },
   {
     actionId: "agent.focusNextWaiting",
-    combo: "Cmd+Alt+W",
+    combo: "Cmd+Alt+/",
     scope: "global",
     priority: 0,
     description: "Jump to next waiting agent",
@@ -574,6 +574,23 @@ const DEFAULT_KEYBINDINGS: KeybindingConfig[] = [
   },
 ];
 
+// Map physical key codes to standard characters
+// Fixes issues where Option/Alt changes the character (e.g., Option+/ becomes ÷ on Mac)
+const CODE_TO_KEY: Record<string, string> = {
+  Slash: "/",
+  Backslash: "\\",
+  Comma: ",",
+  Period: ".",
+  Semicolon: ";",
+  Quote: "'",
+  BracketLeft: "[",
+  BracketRight: "]",
+  Backquote: "`",
+  Minus: "-",
+  Equal: "=",
+  IntlBackslash: "\\",
+};
+
 function normalizeKey(key: string): string {
   const keyMap: Record<string, string> = {
     " ": "Space",
@@ -779,9 +796,15 @@ class KeybindingService {
 
     // Check key
     const eventKey = normalizeKey(event.key);
-    if (eventKey.toLowerCase() !== parsed.key.toLowerCase()) return false;
 
-    return true;
+    // Try exact match on the produced character
+    if (eventKey.toLowerCase() === parsed.key.toLowerCase()) return true;
+
+    // Fallback: Try physical key code mapping
+    // This fixes issues where Option/Alt changes the character (e.g., Option+/ becomes ÷ on Mac)
+    if (event.code && CODE_TO_KEY[event.code] === parsed.key) return true;
+
+    return false;
   }
 
   canExecute(actionId: string): boolean {

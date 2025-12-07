@@ -41,14 +41,16 @@ export function useKeybinding(
 
       const isInTerminal = target.closest(".xterm") !== null;
       const isTerminalAction = actionId.startsWith("terminal.");
+      const isAgentAction = actionId.startsWith("agent.");
 
-      const allowTerminalContext = isTerminalAction || binding.scope === "terminal";
+      const allowTerminalContext =
+        isTerminalAction || isAgentAction || binding.scope === "terminal";
 
       if (isEditable && !allowTerminalContext) {
         return;
       }
 
-      // Allow terminal actions when inside xterm, but block other actions
+      // Allow terminal and agent actions when inside xterm, but block other actions
       if (isInTerminal && !allowTerminalContext) {
         return;
       }

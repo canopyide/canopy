@@ -30,7 +30,12 @@ function getTerminalIcon(type: TerminalType) {
 export function WaitingContainer() {
   const [isOpen, setIsOpen] = useState(false);
   const waitingIds = useWaitingTerminalIds();
-  const activateTerminal = useTerminalStore((state) => state.activateTerminal);
+  const { activateTerminal, pingTerminal } = useTerminalStore(
+    useShallow((state) => ({
+      activateTerminal: state.activateTerminal,
+      pingTerminal: state.pingTerminal,
+    }))
+  );
   const { worktreeMap } = useWorktrees();
   const shortcut = useKeybindingDisplay("agent.focusNextWaiting");
 
@@ -91,6 +96,7 @@ export function WaitingContainer() {
                   key={terminal.id}
                   onClick={() => {
                     activateTerminal(terminal.id);
+                    pingTerminal(terminal.id);
                     setIsOpen(false);
                   }}
                   className="flex items-center gap-2 p-2 rounded bg-canopy-bg/50 hover:bg-canopy-border transition-colors group text-left w-full"
