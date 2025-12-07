@@ -233,6 +233,12 @@ export interface WorktreeSetActivePayload {
   worktreeId: string;
 }
 
+/** Payload for deleting a worktree */
+export interface WorktreeDeletePayload {
+  worktreeId: string;
+  force?: boolean;
+}
+
 // Dev Server IPC Payloads
 
 /** Dev server start payload */
@@ -894,6 +900,10 @@ export interface IpcInvokeMap {
     args: [worktreeId: string];
     result: AdaptiveBackoffMetrics | null;
   };
+  "worktree:delete": {
+    args: [payload: WorktreeDeletePayload];
+    result: void;
+  };
 
   // Dev server channels
   "devserver:start": {
@@ -1442,6 +1452,7 @@ export interface ElectronAPI {
     ): Promise<void>;
     isCircuitBreakerTripped(worktreeId: string): Promise<boolean>;
     getAdaptiveBackoffMetrics(worktreeId: string): Promise<AdaptiveBackoffMetrics | null>;
+    delete(worktreeId: string, force?: boolean): Promise<void>;
     onUpdate(callback: (state: WorktreeState) => void): () => void;
     onRemove(callback: (data: { worktreeId: string }) => void): () => void;
   };

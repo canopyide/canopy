@@ -34,6 +34,7 @@ import {
   ContextMenuLabel,
 } from "../ui/context-menu";
 import { ConfirmDialog } from "../Terminal/ConfirmDialog";
+import { WorktreeDeleteDialog } from "./WorktreeDeleteDialog";
 import {
   Copy,
   Code,
@@ -52,6 +53,7 @@ import {
   LayoutGrid,
   PanelBottom,
   ExternalLink,
+  Trash2,
 } from "lucide-react";
 import {
   ClaudeIcon,
@@ -153,6 +155,8 @@ export function WorktreeCard({
     description: "",
     onConfirm: () => {},
   });
+
+  const [showDeleteDialog, setShowDeleteDialog] = useState(false);
 
   const {
     state: serverState,
@@ -603,6 +607,22 @@ export function WorktreeCard({
                         </DropdownMenuItem>
                       </>
                     )}
+
+                    {!isMainWorktree && (
+                      <>
+                        <DropdownMenuSeparator />
+                        <DropdownMenuItem
+                          onClick={(e) => {
+                            e.stopPropagation();
+                            setShowDeleteDialog(true);
+                          }}
+                          className="text-[var(--color-status-error)] focus:text-[var(--color-status-error)]"
+                        >
+                          <Trash2 className="w-3 h-3 mr-2" />
+                          Delete Worktree...
+                        </DropdownMenuItem>
+                      </>
+                    )}
                   </DropdownMenuContent>
                 </DropdownMenu>
               </div>
@@ -815,6 +835,12 @@ export function WorktreeCard({
           onConfirm={confirmDialog.onConfirm}
           onCancel={closeConfirmDialog}
         />
+
+        <WorktreeDeleteDialog
+          isOpen={showDeleteDialog}
+          onClose={() => setShowDeleteDialog(false)}
+          worktree={worktree}
+        />
       </div>
     </div>
   );
@@ -849,6 +875,21 @@ export function WorktreeCard({
           <Terminal className="w-3.5 h-3.5 mr-2" />
           Open Terminal
         </ContextMenuItem>
+        {!isMainWorktree && (
+          <>
+            <ContextMenuSeparator />
+            <ContextMenuItem
+              onClick={(e) => {
+                e.stopPropagation();
+                setShowDeleteDialog(true);
+              }}
+              className="text-[var(--color-status-error)] focus:text-[var(--color-status-error)]"
+            >
+              <Trash2 className="w-3.5 h-3.5 mr-2" />
+              Delete Worktree
+            </ContextMenuItem>
+          </>
+        )}
       </ContextMenuContent>
     </ContextMenu>
   );

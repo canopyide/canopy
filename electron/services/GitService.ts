@@ -360,6 +360,20 @@ ${lines.map((l) => "+" + l).join("\n")}`;
     }, "getDiff");
   }
 
+  async removeWorktree(worktreePath: string, force: boolean = false): Promise<void> {
+    logDebug("Removing worktree", { worktreePath, force });
+
+    const args = ["worktree", "remove"];
+    if (force) {
+      args.push("--force");
+    }
+    args.push(worktreePath);
+
+    return this.handleGitOperation(async () => {
+      await this.git.raw(args);
+    }, "removeWorktree");
+  }
+
   private async handleGitOperation<T>(operation: () => Promise<T>, context: string): Promise<T> {
     try {
       return await operation();

@@ -648,6 +648,63 @@ export class WorktreeService {
     }
   }
 
+  public async deleteWorktree(worktreeId: string, force: boolean = false): Promise<void> {
+    const monitor = this.monitors.get(worktreeId);
+    if (!monitor) {
+      throw new Error(`Worktree not found: ${worktreeId}`);
+    }
+
+    const state = monitor.getState();
+    if (state.isMainWorktree) {
+      throw new Error(
+        "Cannot delete the main worktree. Use standard directory deletion if you wish to remove the repository entirely."
+      );
+    }
+
+    if (state.isCurrent) {
+      throw new Error(
+        "Cannot delete the currently active worktree. Switch to another worktree first."
+      );
+    }
+
+    if (!force && (state.worktreeChanges?.changedFileCount ?? 0) > 0) {
+      throw new Error(
+        "Worktree has uncommitted changes. Use force delete to proceed or commit/stash changes first."
+      );
+    }
+
+    logInfo("Deleting worktree", { worktreeId, force });
+
+    await monitor.stop();
+    this.monitors.delete(worktreeId);
+
+    const unsubscribe = (monitor as any)._eventBusUnsubscribe;
+
+    if (this.gitService) {
+      try {
+        await this.gitService.removeWorktree(monitor.path, force);
+      } catch (error) {
+        this.monitors.set(worktreeId, monitor);
+        if (unsubscribe) {
+          (monitor as any)._eventBusUnsubscribe = unsubscribe;
+        }
+        try {
+          await monitor.start();
+        } catch {
+          // Ignore restart error
+        }
+        throw error;
+      }
+    }
+
+    if (unsubscribe) {
+      unsubscribe();
+    }
+
+    this.sendToRenderer(CHANNELS.WORKTREE_REMOVE, { worktreeId });
+    logInfo("Worktree deleted successfully", { worktreeId });
+  }
+
   /**
    * Helper method to send IPC events to all renderer windows.
    *
