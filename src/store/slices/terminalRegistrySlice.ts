@@ -12,6 +12,8 @@ import { terminalInstanceService } from "@/services/TerminalInstanceService";
 import { TerminalRefreshTier } from "@/types";
 import { terminalPersistence } from "../persistence/terminalPersistence";
 
+export const MAX_GRID_TERMINALS = 16;
+
 export type TerminalInstance = TerminalInstanceType;
 
 export interface AddTerminalOptions {
@@ -113,7 +115,16 @@ export const createTerminalRegistrySlice =
     addTerminal: async (options) => {
       const type = options.type || "shell";
       const title = options.title || TYPE_TITLES[type];
-      const location = options.location || "grid";
+
+      // Auto-dock if grid is full and user requested grid location
+      const currentGridCount = get().terminals.filter(
+        (t) => t.location === "grid" || t.location === undefined
+      ).length;
+      const requestedLocation = options.location || "grid";
+      const location =
+        requestedLocation === "grid" && currentGridCount >= MAX_GRID_TERMINALS
+          ? "dock"
+          : requestedLocation;
 
       try {
         let id: string;

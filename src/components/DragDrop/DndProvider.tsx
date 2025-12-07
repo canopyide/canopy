@@ -16,7 +16,7 @@ import {
   type CollisionDetection,
   type Modifier,
 } from "@dnd-kit/core";
-import { useTerminalStore, type TerminalInstance } from "@/store";
+import { useTerminalStore, type TerminalInstance, MAX_GRID_TERMINALS } from "@/store";
 import { terminalInstanceService } from "@/services/TerminalInstanceService";
 import { TerminalDragPreview } from "./TerminalDragPreview";
 
@@ -292,6 +292,19 @@ export function DndProvider({ children }: DndProviderProps) {
       } else {
         // Dropping on empty container - append to end
         targetIndex = containerTerminals.length;
+      }
+
+      // Block cross-container move from dock to grid if grid is full
+      const gridTerminals = terminals.filter(
+        (t) => t.location === "grid" || t.location === undefined
+      );
+      const isGridFull = gridTerminals.length >= MAX_GRID_TERMINALS;
+      if (sourceLocation === "dock" && targetContainer === "grid" && isGridFull) {
+        // Grid is full, cancel the drop
+        setTimeout(() => {
+          terminalInstanceService.resetAllRenderers();
+        }, 100);
+        return;
       }
 
       // Same container reorder

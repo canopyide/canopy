@@ -7,6 +7,7 @@ import {
   useTerminalStore,
   useLayoutConfigStore,
   useWorktreeSelectionStore,
+  MAX_GRID_TERMINALS,
   type TerminalInstance,
 } from "@/store";
 import { TerminalPane } from "./TerminalPane";
@@ -18,14 +19,13 @@ import {
   GRID_PLACEHOLDER_ID,
   GridPlaceholder,
 } from "@/components/DragDrop";
-import { Terminal, AlertTriangle, ChevronLeft, ChevronRight } from "lucide-react";
+import { Terminal, AlertTriangle, Ban } from "lucide-react";
 import { CanopyIcon, CodexIcon, ClaudeIcon, GeminiIcon } from "@/components/icons";
 import { Kbd } from "@/components/ui/Kbd";
 import { getBrandColorHex } from "@/lib/colorUtils";
 import { terminalInstanceService } from "@/services/TerminalInstanceService";
 import { terminalClient, systemClient } from "@/clients";
 import { TerminalRefreshTier } from "@/types";
-import { useTerminalPagination } from "@/hooks";
 
 export interface TerminalGridProps {
   className?: string;
@@ -222,10 +222,8 @@ export function TerminalGrid({ className, defaultCwd, onLaunchAgent }: TerminalG
     [terminals]
   );
 
-  const { visibleTerminals, currentPage, totalPages, hasNext, hasPrev, pageSize, setPage } =
-    useTerminalPagination(gridTerminals);
-
   const layoutConfig = useLayoutConfigStore((state) => state.layoutConfig);
+  const isGridFull = gridTerminals.length >= MAX_GRID_TERMINALS;
 
   // Make the grid a droppable area
   const { setNodeRef, isOver } = useDroppable({
@@ -234,7 +232,7 @@ export function TerminalGrid({ className, defaultCwd, onLaunchAgent }: TerminalG
   });
 
   const gridCols = useMemo(() => {
-    const count = visibleTerminals.length;
+    const count = gridTerminals.length;
     if (count === 0) return 1;
 
     const { strategy, value } = layoutConfig;
@@ -254,7 +252,7 @@ export function TerminalGrid({ className, defaultCwd, onLaunchAgent }: TerminalG
     if (count <= 3) return count; // 1-3 terminals: single row
     if (count <= 9) return 3; // 4-9 terminals: max 3 columns
     return 4; // 10+ terminals: keep rows <=3 for taller panes
-  }, [visibleTerminals.length, layoutConfig]);
+  }, [gridTerminals.length, layoutConfig]);
 
   const handleLaunchAgent = useCallback(
     async (type: "claude" | "gemini" | "codex" | "shell") => {
@@ -279,11 +277,11 @@ export function TerminalGrid({ className, defaultCwd, onLaunchAgent }: TerminalG
   );
 
   // Terminal IDs for SortableContext - DON'T include placeholder to avoid infinite loop
-  const terminalIds = useMemo(() => visibleTerminals.map((t) => t.id), [visibleTerminals]);
+  const terminalIds = useMemo(() => gridTerminals.map((t) => t.id), [gridTerminals]);
 
-  // Batch-fit visible grid terminals when layout (gridCols/count) changes
+  // Batch-fit grid terminals when layout (gridCols/count) changes
   useEffect(() => {
-    const ids = visibleTerminals.map((t) => t.id);
+    const ids = gridTerminals.map((t) => t.id);
     let cancelled = false;
 
     const timeoutId = window.setTimeout(() => {
@@ -309,21 +307,19 @@ export function TerminalGrid({ className, defaultCwd, onLaunchAgent }: TerminalG
       cancelled = true;
       clearTimeout(timeoutId);
     };
-  }, [gridCols, terminalIds, currentPage]);
+  }, [gridCols, terminalIds, gridTerminals]);
 
   // Get placeholder state from DnD context
   const { placeholderIndex, sourceContainer } = useDndPlaceholder();
 
-  // Show placeholder when dragging from dock to grid
-  const showPlaceholder = placeholderIndex !== null && sourceContainer === "dock";
+  // Show placeholder when dragging from dock to grid (only if grid not full)
+  const showPlaceholder = placeholderIndex !== null && sourceContainer === "dock" && !isGridFull;
 
-  // Adjust placeholder index for current page
-  const pageStartIndex = currentPage * pageSize;
-  const placeholderPageIndex = placeholderIndex !== null ? placeholderIndex - pageStartIndex : null;
-  const placeholderInPage =
-    placeholderPageIndex !== null &&
-    placeholderPageIndex >= 0 &&
-    placeholderPageIndex <= visibleTerminals.length;
+  // Show "grid full" overlay when trying to drag from dock to a full grid
+  const showGridFullOverlay = sourceContainer === "dock" && isGridFull;
+
+  const placeholderInGrid =
+    placeholderIndex !== null && placeholderIndex >= 0 && placeholderIndex <= gridTerminals.length;
 
   // Maximized terminal takes full screen
   if (maximizedId) {
@@ -373,35 +369,17 @@ export function TerminalGrid({ className, defaultCwd, onLaunchAgent }: TerminalG
   }
 
   const isEmpty = gridTerminals.length === 0;
-  const showPagination = totalPages > 1;
 
   return (
     <div className={cn("h-full flex flex-col", className)}>
       <TerminalCountWarning className="mx-1 mt-1 shrink-0" />
       <div className="relative flex-1 min-h-0">
-        {hasPrev && (
-          <button
-            onClick={() => setPage(currentPage - 1)}
-            className={cn(
-              "absolute left-2 top-1/2 -translate-y-1/2 z-50",
-              "p-2 bg-canopy-bg/80 hover:bg-canopy-accent/20",
-              "border border-canopy-border/40 rounded-lg",
-              "shadow-xl backdrop-blur-sm transition-all focus-visible:outline focus-visible:outline-2 focus-visible:outline-canopy-accent"
-            )}
-            aria-label="Previous page"
-            aria-controls="terminal-grid"
-          >
-            <ChevronLeft className="h-5 w-5 text-canopy-text/60" />
-          </button>
-        )}
-
         <SortableContext id="grid-container" items={terminalIds} strategy={rectSortingStrategy}>
           <div
             ref={setNodeRef}
             className={cn(
               "h-full bg-noise p-1",
-              isOver && "ring-2 ring-canopy-accent/30 ring-inset",
-              showPagination && "pb-8"
+              isOver && "ring-2 ring-canopy-accent/30 ring-inset"
             )}
             style={{
               display: "grid",
@@ -423,11 +401,11 @@ export function TerminalGrid({ className, defaultCwd, onLaunchAgent }: TerminalG
               </div>
             ) : (
               <>
-                {visibleTerminals.map((terminal, index) => {
+                {gridTerminals.map((terminal, index) => {
                   const isTerminalInTrash = isInTrash(terminal.id);
                   const elements: React.ReactNode[] = [];
 
-                  if (showPlaceholder && placeholderInPage && placeholderPageIndex === index) {
+                  if (showPlaceholder && placeholderInGrid && placeholderIndex === index) {
                     elements.push(<GridPlaceholder key={GRID_PLACEHOLDER_ID} />);
                   }
 
@@ -482,8 +460,8 @@ export function TerminalGrid({ className, defaultCwd, onLaunchAgent }: TerminalG
                   return elements;
                 })}
                 {showPlaceholder &&
-                  placeholderInPage &&
-                  placeholderPageIndex === visibleTerminals.length && (
+                  placeholderInGrid &&
+                  placeholderIndex === gridTerminals.length && (
                     <GridPlaceholder key={GRID_PLACEHOLDER_ID} />
                   )}
               </>
@@ -491,43 +469,17 @@ export function TerminalGrid({ className, defaultCwd, onLaunchAgent }: TerminalG
           </div>
         </SortableContext>
 
-        {hasNext && (
-          <button
-            onClick={() => setPage(currentPage + 1)}
-            className={cn(
-              "absolute right-2 top-1/2 -translate-y-1/2 z-50",
-              "p-2 bg-canopy-bg/80 hover:bg-canopy-accent/20",
-              "border border-canopy-border/40 rounded-lg",
-              "shadow-xl backdrop-blur-sm transition-all focus-visible:outline focus-visible:outline-2 focus-visible:outline-canopy-accent"
-            )}
-            aria-label="Next page"
-            aria-controls="terminal-grid"
-          >
-            <ChevronRight className="h-5 w-5 text-canopy-text/60" />
-          </button>
-        )}
-
-        {showPagination && (
-          <div
-            className="absolute bottom-0 left-0 right-0 h-8 flex justify-center items-center gap-3 bg-canopy-bg/60 border-t border-canopy-border/20 backdrop-blur-sm"
-            role="navigation"
-            aria-label="Terminal pages"
-          >
-            {Array.from({ length: totalPages }).map((_, i) => (
-              <button
-                key={i}
-                onClick={() => setPage(i)}
-                className={cn(
-                  "w-3 h-3 rounded-full transition-all focus-visible:outline focus-visible:outline-2 focus-visible:outline-canopy-accent",
-                  i === currentPage
-                    ? "bg-canopy-accent w-4"
-                    : "bg-canopy-text/20 hover:bg-canopy-text/40"
-                )}
-                aria-label={`Go to page ${i + 1}`}
-                aria-current={i === currentPage ? "page" : undefined}
-                aria-controls="terminal-grid"
-              />
-            ))}
+        {showGridFullOverlay && (
+          <div className="absolute inset-0 z-50 flex items-center justify-center bg-black/60 backdrop-blur-sm pointer-events-none">
+            <div className="flex flex-col items-center gap-3 text-center px-6 py-4 rounded-xl bg-canopy-bg/90 border border-canopy-border/40 shadow-xl">
+              <Ban className="h-8 w-8 text-amber-400" />
+              <div>
+                <p className="text-sm font-medium text-canopy-text">Grid is full</p>
+                <p className="text-xs text-canopy-text/60 mt-1">
+                  Maximum {MAX_GRID_TERMINALS} terminals. Close one to add more.
+                </p>
+              </div>
+            </div>
           </div>
         )}
       </div>

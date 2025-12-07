@@ -47,5 +47,3 @@ export { useOverlayState } from "./useOverlayState";
 
 export { useGridNavigation } from "./useGridNavigation";
 export type { NavigationDirection } from "./useGridNavigation";
-
-export { useTerminalPagination } from "./useTerminalPagination";
