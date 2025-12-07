@@ -23,10 +23,10 @@ import { Terminal, AlertTriangle, Ban } from "lucide-react";
 import { CanopyIcon, CodexIcon, ClaudeIcon, GeminiIcon } from "@/components/icons";
 import { Kbd } from "@/components/ui/Kbd";
 import { getBrandColorHex } from "@/lib/colorUtils";
-import { getAutoGridCols } from "@/lib/terminalLayout";
 import { terminalInstanceService } from "@/services/TerminalInstanceService";
 import { terminalClient, systemClient } from "@/clients";
 import { TerminalRefreshTier } from "@/types";
+import { getAutoGridCols } from "@/lib/terminalLayout";
 
 export interface TerminalGridProps {
   className?: string;
@@ -254,7 +254,7 @@ export function TerminalGrid({ className, defaultCwd, onLaunchAgent }: TerminalG
     return () => observer.disconnect();
   }, []);
 
-  // Get placeholder state from DnD context (moved earlier for gridCols calculation)
+  // Get placeholder state from DnD context
   const { placeholderIndex, sourceContainer } = useDndPlaceholder();
 
   // Show placeholder when dragging from dock to grid (only if grid not full)

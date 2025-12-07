@@ -2,6 +2,7 @@ import { useMemo, useState } from "react";
 import type { FileChangeDetail, GitStatus } from "../../types";
 import { cn } from "../../lib/utils";
 import { FileDiffModal } from "./FileDiffModal";
+import { Folder } from "lucide-react";
 
 function isAbsolutePath(filePath: string): boolean {
   return (
@@ -50,6 +51,7 @@ interface FileChangeListProps {
   changes: FileChangeDetail[];
   maxVisible?: number;
   rootPath: string;
+  groupByFolder?: boolean;
 }
 
 function splitPath(filePath: string): { dir: string; base: string } {
@@ -76,41 +78,93 @@ interface SelectedFile {
   status: GitStatus;
 }
 
-export function FileChangeList({ changes, maxVisible = 4, rootPath }: FileChangeListProps) {
+interface FileChangeWithRelativePath extends FileChangeDetail {
+  relativePath: string;
+}
+
+interface FolderGroup {
+  dir: string;
+  displayDir: string;
+  files: FileChangeWithRelativePath[];
+}
+
+export function FileChangeList({
+  changes,
+  maxVisible = 4,
+  rootPath,
+  groupByFolder = false,
+}: FileChangeListProps) {
   const [selectedFile, setSelectedFile] = useState<SelectedFile | null>(null);
 
   const sortedChanges = useMemo(() => {
-    return [...changes].sort((a, b) => {
-      const churnA = (a.insertions ?? 0) + (a.deletions ?? 0);
-      const churnB = (b.insertions ?? 0) + (b.deletions ?? 0);
-      if (churnA !== churnB) {
-        return churnB - churnA;
-      }
+    return [...changes]
+      .map((change) => ({
+        ...change,
+        relativePath: isAbsolutePath(change.path)
+          ? getRelativePath(rootPath, change.path)
+          : change.path,
+      }))
+      .sort((a, b) => {
+        const churnA = (a.insertions ?? 0) + (a.deletions ?? 0);
+        const churnB = (b.insertions ?? 0) + (b.deletions ?? 0);
+        if (churnA !== churnB) {
+          return churnB - churnA;
+        }
 
-      const priorityA = STATUS_PRIORITY[a.status] ?? 99;
-      const priorityB = STATUS_PRIORITY[b.status] ?? 99;
-      if (priorityA !== priorityB) {
-        return priorityA - priorityB;
-      }
+        const priorityA = STATUS_PRIORITY[a.status] ?? 99;
+        const priorityB = STATUS_PRIORITY[b.status] ?? 99;
+        if (priorityA !== priorityB) {
+          return priorityA - priorityB;
+        }
 
-      return a.path.localeCompare(b.path);
-    });
-  }, [changes]);
+        return a.path.localeCompare(b.path);
+      });
+  }, [changes, rootPath]);
 
-  const visibleChanges = sortedChanges.slice(0, maxVisible);
+  const visibleChanges = useMemo(
+    () => sortedChanges.slice(0, maxVisible),
+    [sortedChanges, maxVisible]
+  );
   const remainingCount = Math.max(0, sortedChanges.length - maxVisible);
-  const remainingFiles = sortedChanges.slice(maxVisible, maxVisible + 2);
+  const remainingFiles = useMemo(
+    () => sortedChanges.slice(maxVisible, maxVisible + 2),
+    [sortedChanges, maxVisible]
+  );
+
+  const groupedChanges = useMemo((): FolderGroup[] => {
+    if (!groupByFolder) return [];
+
+    const groups = new Map<string, FileChangeWithRelativePath[]>();
+
+    visibleChanges.forEach((change) => {
+      const { dir } = splitPath(change.relativePath);
+      const groupKey = dir || "(root)";
+      if (!groups.has(groupKey)) {
+        groups.set(groupKey, []);
+      }
+      groups.get(groupKey)!.push(change);
+    });
+
+    return Array.from(groups.entries())
+      .map(([dir, files]) => ({
+        dir,
+        displayDir: dir === "(root)" ? "(root)" : formatDirForDisplay(dir, 3),
+        files,
+      }))
+      .sort((a, b) => {
+        if (a.dir === "(root)") return -1;
+        if (b.dir === "(root)") return 1;
+        return a.dir.localeCompare(b.dir);
+      });
+  }, [visibleChanges, groupByFolder]);
 
   if (changes.length === 0) {
     return null;
   }
 
-  const handleFileClick = (change: FileChangeDetail) => {
-    const relativePath = isAbsolutePath(change.path)
-      ? getRelativePath(rootPath, change.path)
-      : change.path;
+  const handleFileClick = (change: FileChangeWithRelativePath) => {
     setSelectedFile({
-      path: relativePath,
+      path: change.relativePath,
       status: change.status,
     });
   };
@@ -119,52 +173,87 @@ export function FileChangeList({ changes, maxVisible = 4, rootPath }: FileChange
     setSelectedFile(null);
   };
 
+  const renderFileItem = (change: FileChangeWithRelativePath, showDir: boolean) => {
+    const config = STATUS_CONFIG[change.status] || STATUS_CONFIG.untracked;
+    const { dir, base } = splitPath(change.relativePath);
+    const displayDir = formatDirForDisplay(dir);
+
+    return (
+      <div
+        key={`${change.path}-${change.status}`}
+        className="group flex items-center text-xs font-mono hover:bg-white/5 rounded px-1.5 py-0.5 -mx-1.5 cursor-pointer transition-colors"
+        onClick={() => handleFileClick(change)}
+        title={change.relativePath}
+      >
+        <span className={cn("w-4 font-bold shrink-0", config.color)}>{config.label}</span>
+
+        <div className="flex-1 min-w-0 flex items-center mr-2">
+          {showDir && displayDir && (
+            <span className="truncate text-canopy-text/60 opacity-60 group-hover:opacity-80">
+              {displayDir}/
+            </span>
+          )}
+          <span className="text-canopy-text group-hover:text-white font-medium shrink-0">
+            {base}
+          </span>
+        </div>
+
+        <div className="flex items-center gap-2 shrink-0 text-[10px]">
+          {(change.insertions ?? 0) > 0 && (
+            <span className="text-green-500/80">+{change.insertions}</span>
+          )}
+          {(change.deletions ?? 0) > 0 && (
+            <span className="text-red-500/80">-{change.deletions}</span>
+          )}
+        </div>
+      </div>
+    );
+  };
+
+  if (groupByFolder && groupedChanges.length > 0) {
+    return (
+      <>
+        <div className="space-y-3 w-full">
+          {groupedChanges.map((group) => (
+            <div key={group.dir}>
+              <div className="flex items-center gap-1.5 text-[10px] text-canopy-text/40 mb-1">
+                <Folder className="w-3 h-3" />
+                <span className="font-mono">{group.displayDir}</span>
+                <span className="text-canopy-text/30">({group.files.length})</span>
+              </div>
+              <div className="pl-4 flex flex-col gap-0.5">
+                {group.files.map((file) => renderFileItem(file, false))}
+              </div>
+            </div>
+          ))}
+          {remainingCount > 0 && (
+            <div className="text-[10px] text-canopy-text/60 pl-4 pt-1">
+              ...and {remainingCount} more
+              {remainingFiles.length > 0 && (
+                <span className="ml-1 opacity-75">
+                  ({remainingFiles.map((f) => getBasename(f.relativePath)).join(", ")}
+                  {sortedChanges.length > maxVisible + 2 && ", ..."})
+                </span>
+              )}
+            </div>
+          )}
+        </div>
+
+        <FileDiffModal
+          isOpen={selectedFile !== null}
+          filePath={selectedFile?.path ?? ""}
+          status={selectedFile?.status ?? "modified"}
+          worktreePath={rootPath}
+          onClose={closeModal}
+        />
+      </>
+    );
+  }
+
   return (
     <>
       <div className="flex flex-col gap-0.5 w-full">
-        {visibleChanges.map((change) => {
-          const config = STATUS_CONFIG[change.status] || STATUS_CONFIG.untracked;
-          const relativePath = isAbsolutePath(change.path)
-            ? getRelativePath(rootPath, change.path)
-            : change.path;
-          const { dir, base } = splitPath(relativePath);
-
-          const displayDir = formatDirForDisplay(dir);
-
-          return (
-            <div
-              key={`${change.path}-${change.status}`}
-              className="group flex items-center text-xs font-mono hover:bg-white/5 rounded px-1.5 py-0.5 -mx-1.5 cursor-pointer transition-colors"
-              onClick={() => handleFileClick(change)}
-              title={relativePath}
-            >
-              {/* Status Letter */}
-              <span className={cn("w-4 font-bold shrink-0", config.color)}>{config.label}</span>
-
-              {/* File Path - directory truncates, filename is protected */}
-              <div className="flex-1 min-w-0 flex items-center mr-2">
-                {displayDir && (
-                  <span className="truncate text-canopy-text/60 opacity-60 group-hover:opacity-80">
-                    {displayDir}/
-                  </span>
-                )}
-                <span className="text-canopy-text group-hover:text-white font-medium shrink-0">
-                  {base}
-                </span>
-              </div>
-
-              {/* Stats */}
-              <div className="flex items-center gap-2 shrink-0 text-[10px]">
-                {(change.insertions ?? 0) > 0 && (
-                  <span className="text-green-500/80">+{change.insertions}</span>
-                )}
-                {(change.deletions ?? 0) > 0 && (
-                  <span className="text-red-500/80">-{change.deletions}</span>
-                )}
-              </div>
-            </div>
-          );
-        })}
+        {visibleChanges.map((change) => renderFileItem(change, true))}
 
         {remainingCount > 0 && (
           <div className="text-[10px] text-canopy-text/60 pl-5 pt-1">
