@@ -7,6 +7,7 @@ import type { LogEntry, LogFilterOptions } from "@shared/types";
  *
  * const logs = await logsClient.getAll({ levels: ["error", "warn"] });
  * const cleanup = logsClient.onEntry((entry) => console.log(entry));
+ * await logsClient.setVerbose(true); // Enable verbose logging
  * ```
  */
 export const logsClient = {
@@ -24,6 +25,14 @@ export const logsClient = {
 
   openFile: (): Promise<void> => {
     return window.electron.logs.openFile();
+  },
+
+  setVerbose: (enabled: boolean): Promise<{ success: boolean }> => {
+    return window.electron.logs.setVerbose(enabled);
+  },
+
+  getVerbose: (): Promise<boolean> => {
+    return window.electron.logs.getVerbose();
   },
 
   onEntry: (callback: (entry: LogEntry) => void): (() => void) => {

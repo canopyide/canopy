@@ -170,6 +170,8 @@ const CHANNELS = {
   LOGS_CLEAR: "logs:clear",
   LOGS_ENTRY: "logs:entry",
   LOGS_OPEN_FILE: "logs:open-file",
+  LOGS_SET_VERBOSE: "logs:set-verbose",
+  LOGS_GET_VERBOSE: "logs:get-verbose",
 
   // Directory channels (legacy - migrated to Projects system)
 
@@ -479,6 +481,10 @@ const api: ElectronAPI = {
     clear: () => _typedInvoke(CHANNELS.LOGS_CLEAR),
 
     openFile: () => _typedInvoke(CHANNELS.LOGS_OPEN_FILE),
+
+    setVerbose: (enabled: boolean) => _typedInvoke(CHANNELS.LOGS_SET_VERBOSE, enabled),
+
+    getVerbose: () => _typedInvoke(CHANNELS.LOGS_GET_VERBOSE),
 
     onEntry: (callback: (entry: LogEntry) => void) => _typedOn(CHANNELS.LOGS_ENTRY, callback),
   },

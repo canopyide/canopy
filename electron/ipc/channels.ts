@@ -91,6 +91,8 @@ export const CHANNELS = {
   LOGS_CLEAR: "logs:clear",
   LOGS_ENTRY: "logs:entry",
   LOGS_OPEN_FILE: "logs:open-file",
+  LOGS_SET_VERBOSE: "logs:set-verbose",
+  LOGS_GET_VERBOSE: "logs:get-verbose",
 
   ERROR_NOTIFY: "error:notify",
   ERROR_RETRY: "error:retry",
