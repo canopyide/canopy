@@ -14,11 +14,11 @@ import {
   PanelLeft,
   PanelLeftClose,
 } from "lucide-react";
-import { ClaudeIcon, GeminiIcon, CodexIcon } from "@/components/icons";
 import { cn } from "@/lib/utils";
-import { getProjectGradient, getBrandColorHex } from "@/lib/colorUtils";
+import { getProjectGradient } from "@/lib/colorUtils";
 import { BulkActionsMenu } from "@/components/Terminal";
 import { GitHubResourceList } from "@/components/GitHub";
+import { AgentButton } from "./AgentButton";
 import { useProjectStore } from "@/store/projectStore";
 import { useTerminalStore } from "@/store/terminalStore";
 import { useSidecarStore } from "@/store";
@@ -66,33 +66,7 @@ export function Toolbar({
   }, []);
 
   const showBulkActions = terminals.length > 0;
-
-  const getAgentStatus = (type: "claude" | "gemini" | "codex") => {
-    const isAvailable = agentAvailability?.[type];
-    const isEnabled = agentSettings?.[type]?.enabled ?? true;
-    const agentNames = { claude: "Claude", gemini: "Gemini", codex: "Codex" };
-    const isLoading = isAvailable === undefined;
-
-    return {
-      show: isEnabled,
-      available: isAvailable ?? false,
-      isLoading,
-      tooltip: isLoading
-        ? `Checking ${agentNames[type]} CLI availability...`
-        : isAvailable
-          ? type === "claude"
-            ? "Start Claude — deep, focused work (Cmd/Ctrl+Alt+C)"
-            : type === "gemini"
-              ? "Start Gemini — quick exploration (Cmd/Ctrl+Alt+G)"
-              : "Start Codex — careful, methodical runs (Cmd/Ctrl+Alt+X)"
-          : `${agentNames[type]} CLI not found. Click to install.`,
-      ariaLabel: isLoading
-        ? `Checking ${agentNames[type]} availability`
-        : isAvailable
-          ? `Start ${agentNames[type]} Agent`
-          : `${agentNames[type]} CLI not installed`,
-    };
-  };
+  const openAgentSettings = onOpenAgentSettings ?? onSettings;
 
   return (
     <header className="relative h-12 flex items-center px-4 shrink-0 app-drag-region bg-canopy-sidebar/95 backdrop-blur-sm border-b border-canopy-border shadow-sm">
@@ -116,90 +90,27 @@ export function Toolbar({
         >
           {isFocusMode ? <PanelLeft className="h-4 w-4" /> : <PanelLeftClose className="h-4 w-4" />}
         </Button>
-        {(() => {
-          const status = getAgentStatus("claude");
-          if (!status.show) return null;
-          return (
-            <Button
-              variant="ghost"
-              size="icon"
-              onClick={() =>
-                status.available ? onLaunchAgent("claude") : (onOpenAgentSettings ?? onSettings)()
-              }
-              disabled={status.isLoading}
-              className={cn(
-                "text-canopy-text hover:bg-canopy-border h-8 w-8 transition-colors",
-                status.available && "hover:text-canopy-accent focus-visible:text-canopy-accent",
-                !status.available && !status.isLoading && "opacity-60"
-              )}
-              title={status.tooltip}
-              aria-label={status.ariaLabel}
-            >
-              <div className="relative">
-                <ClaudeIcon className="h-4 w-4" brandColor={getBrandColorHex("claude")} />
-                {!status.available && !status.isLoading && (
-                  <div className="absolute -top-1 -right-1 w-2 h-2 bg-amber-500 rounded-full" />
-                )}
-              </div>
-            </Button>
-          );
-        })()}
-        {(() => {
-          const status = getAgentStatus("gemini");
-          if (!status.show) return null;
-          return (
-            <Button
-              variant="ghost"
-              size="icon"
-              onClick={() =>
-                status.available ? onLaunchAgent("gemini") : (onOpenAgentSettings ?? onSettings)()
-              }
-              disabled={status.isLoading}
-              className={cn(
-                "text-canopy-text hover:bg-canopy-border h-8 w-8 transition-colors",
-                status.available && "hover:text-canopy-accent focus-visible:text-canopy-accent",
-                !status.available && !status.isLoading && "opacity-60"
-              )}
-              title={status.tooltip}
-              aria-label={status.ariaLabel}
-            >
-              <div className="relative">
-                <GeminiIcon className="h-4 w-4" brandColor={getBrandColorHex("gemini")} />
-                {!status.available && !status.isLoading && (
-                  <div className="absolute -top-1 -right-1 w-2 h-2 bg-amber-500 rounded-full" />
-                )}
-              </div>
-            </Button>
-          );
-        })()}
-        {(() => {
-          const status = getAgentStatus("codex");
-          if (!status.show) return null;
-          return (
-            <Button
-              variant="ghost"
-              size="icon"
-              onClick={() =>
-                status.available ? onLaunchAgent("codex") : (onOpenAgentSettings ?? onSettings)()
-              }
-              disabled={status.isLoading}
-              className={cn(
-                "text-canopy-text hover:bg-canopy-border h-8 w-8 transition-colors",
-                status.available && "hover:text-canopy-accent focus-visible:text-canopy-accent",
-                !status.available && !status.isLoading && "opacity-60"
-              )}
-              title={status.tooltip}
-              aria-label={status.ariaLabel}
-            >
-              <div className="relative">
-                <CodexIcon className="h-4 w-4" brandColor={getBrandColorHex("codex")} />
-                {!status.available && !status.isLoading && (
-                  <div className="absolute -top-1 -right-1 w-2 h-2 bg-amber-500 rounded-full" />
-                )}
-              </div>
-            </Button>
-          );
-        })()}
+        <AgentButton
+          type="claude"
+          availability={agentAvailability?.claude}
+          isEnabled={agentSettings?.claude?.enabled ?? true}
+          onLaunch={() => onLaunchAgent("claude")}
+          onOpenSettings={openAgentSettings}
+        />
+        <AgentButton
+          type="gemini"
+          availability={agentAvailability?.gemini}
+          isEnabled={agentSettings?.gemini?.enabled ?? true}
+          onLaunch={() => onLaunchAgent("gemini")}
+          onOpenSettings={openAgentSettings}
+        />
+        <AgentButton
+          type="codex"
+          availability={agentAvailability?.codex}
+          isEnabled={agentSettings?.codex?.enabled ?? true}
+          onLaunch={() => onLaunchAgent("codex")}
+          onOpenSettings={openAgentSettings}
+        />
         <Button
           variant="ghost"
           size="icon"
