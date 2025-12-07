@@ -855,6 +855,11 @@ export interface TerminalConfig {
   performanceMode: boolean;
 }
 
+/** Worktree path pattern configuration */
+export interface WorktreeConfig {
+  pathPattern: string;
+}
+
 // IPC Contract Maps
 
 /** Maps IPC channels to their args/result types for type-safe invoke/handle */
@@ -1331,6 +1336,16 @@ export interface IpcInvokeMap {
     args: [];
     result: void;
   };
+
+  // Worktree Config channels
+  "worktree-config:get": {
+    args: [];
+    result: WorktreeConfig;
+  };
+  "worktree-config:set-pattern": {
+    args: [payload: { pattern: string }];
+    result: WorktreeConfig;
+  };
 }
 
 /**
@@ -1636,6 +1651,12 @@ export interface ElectronAPI {
     removeOverride(actionId: KeyAction): Promise<void>;
     /** Reset all overrides to defaults */
     resetAll(): Promise<void>;
+  };
+  worktreeConfig: {
+    /** Get worktree path pattern configuration */
+    get(): Promise<WorktreeConfig>;
+    /** Set worktree path pattern */
+    setPattern(pattern: string): Promise<WorktreeConfig>;
   };
   window: {
     /** Subscribe to fullscreen state changes */

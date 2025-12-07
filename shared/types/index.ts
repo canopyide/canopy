@@ -150,6 +150,8 @@ export type {
   AdaptiveBackoffMetrics,
   // Terminal config
   TerminalConfig,
+  // Worktree config
+  WorktreeConfig,
   // IPC Contract Maps
   IpcInvokeMap,
   IpcEventMap,

@@ -11,7 +11,11 @@ export default defineConfig({
   test: {
     globals: true,
     environment: "node",
-    include: ["electron/**/*.{test,spec}.{js,ts}", "src/**/*.{test,spec}.{js,ts,jsx,tsx}"],
+    include: [
+      "electron/**/*.{test,spec}.{js,ts}",
+      "src/**/*.{test,spec}.{js,ts,jsx,tsx}",
+      "shared/**/*.{test,spec}.{js,ts}",
+    ],
     exclude: ["node_modules", "dist", "dist-electron", "build", "release"],
     testTimeout: 15000,
   },
