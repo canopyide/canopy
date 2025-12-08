@@ -186,7 +186,7 @@ function TerminalPaneComponent({
     <div
       ref={containerRef}
       className={cn(
-        "flex flex-col h-full overflow-hidden transition-all duration-200 group",
+        "flex flex-col h-full overflow-hidden group",
 
         // Background color: surface tint for cards, canvas for maximized
         location === "grid" && !isMaximized && "bg-[var(--color-surface)]",
