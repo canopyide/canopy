@@ -39,6 +39,7 @@ export const CHANNELS = {
   TERMINAL_GET_SERIALIZED_STATE: "terminal:get-serialized-state",
   TERMINAL_GET_SHARED_BUFFER: "terminal:get-shared-buffer",
   TERMINAL_GET_ANALYSIS_BUFFER: "terminal:get-analysis-buffer",
+  TERMINAL_GET_INFO: "terminal:get-info",
 
   AGENT_STATE_CHANGED: "agent:state-changed",
   AGENT_GET_STATE: "agent:get-state",

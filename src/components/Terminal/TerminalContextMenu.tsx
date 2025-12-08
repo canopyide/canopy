@@ -1,3 +1,4 @@
+import { useState } from "react";
 import {
   ContextMenu,
   ContextMenuContent,
@@ -16,11 +17,13 @@ import {
   RotateCcw,
   Copy,
   Eraser,
+  Info,
 } from "lucide-react";
 import { useTerminalStore } from "@/store";
 import type { TerminalLocation } from "@/types";
 import { terminalInstanceService } from "@/services/TerminalInstanceService";
 import { VT100_FULL_CLEAR } from "@/services/clearCommandDetection";
+import { TerminalInfoDialog } from "./TerminalInfoDialog";
 
 interface TerminalContextMenuProps {
   terminalId: string;
@@ -37,6 +40,7 @@ export function TerminalContextMenu({
   children,
   forceLocation,
 }: TerminalContextMenuProps) {
+  const [isInfoDialogOpen, setIsInfoDialogOpen] = useState(false);
   const terminal = useTerminalStore((state) => state.terminals.find((t) => t.id === terminalId));
 
   const moveTerminalToDock = useTerminalStore((s) => s.moveTerminalToDock);
@@ -127,6 +131,11 @@ export function TerminalContextMenu({
           Clear Scrollback
         </ContextMenuItem>
 
+        <ContextMenuItem onClick={() => setIsInfoDialogOpen(true)}>
+          <Info className="w-4 h-4 mr-2" aria-hidden="true" />
+          View Terminal Info
+        </ContextMenuItem>
+
         <ContextMenuSeparator />
 
         <ContextMenuItem
@@ -145,6 +154,11 @@ export function TerminalContextMenu({
           Kill Terminal
         </ContextMenuItem>
       </ContextMenuContent>
+      <TerminalInfoDialog
+        isOpen={isInfoDialogOpen}
+        onClose={() => setIsInfoDialogOpen(false)}
+        terminalId={terminalId}
+      />
     </ContextMenu>
   );
 }

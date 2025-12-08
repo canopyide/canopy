@@ -495,6 +495,40 @@ export function registerTerminalHandlers(deps: HandlerDependencies): () => void 
   ipcMain.handle(CHANNELS.TERMINAL_GET_SERIALIZED_STATE, handleTerminalGetSerializedState);
   handlers.push(() => ipcMain.removeHandler(CHANNELS.TERMINAL_GET_SERIALIZED_STATE));
 
+  // Get terminal information for diagnostic display
+  const handleTerminalGetInfo = async (
+    _event: Electron.IpcMainInvokeEvent,
+    id: string
+  ): Promise<import("../../../shared/types/ipc.js").TerminalInfoPayload> => {
+    try {
+      if (typeof id !== "string" || !id) {
+        throw new Error("Invalid terminal ID: must be a non-empty string");
+      }
+
+      const hasAsyncMethod =
+        "getTerminalInfo" in ptyManager &&
+        typeof (ptyManager as any).getTerminalInfo === "function";
+
+      let terminalInfo: import("../../../shared/types/ipc.js").TerminalInfoPayload | null;
+      if (hasAsyncMethod && "getTerminalInfo" in ptyManager) {
+        terminalInfo = await (ptyManager as any).getTerminalInfo(id);
+      } else {
+        terminalInfo = (ptyManager as any).getTerminalInfo(id);
+      }
+
+      if (!terminalInfo) {
+        throw new Error(`Terminal ${id} not found`);
+      }
+
+      return terminalInfo;
+    } catch (error) {
+      const errorMessage = error instanceof Error ? error.message : String(error);
+      throw new Error(`Failed to get terminal info: ${errorMessage}`);
+    }
+  };
+  ipcMain.handle(CHANNELS.TERMINAL_GET_INFO, handleTerminalGetInfo);
+  handlers.push(() => ipcMain.removeHandler(CHANNELS.TERMINAL_GET_INFO));
+
   // Get SharedArrayBuffer for zero-copy terminal I/O (visual rendering)
   const handleTerminalGetSharedBuffer = async (): Promise<SharedArrayBuffer | null> => {
     try {

@@ -73,6 +73,8 @@ export interface TerminalInfo {
 
   headlessTerminal: HeadlessTerminal;
   serializeAddon: SerializeAddon;
+
+  restartCount: number;
 }
 
 export interface PtyManagerEvents {
