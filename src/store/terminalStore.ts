@@ -34,6 +34,11 @@ export function getTerminalRefreshTier(
     return TerminalRefreshTier.BACKGROUND;
   }
 
+  // Always use maximum refresh rate when agent is working to prevent render jitter
+  if (terminal.agentState === "working") {
+    return TerminalRefreshTier.FOCUSED;
+  }
+
   if (isFocused) {
     return TerminalRefreshTier.FOCUSED;
   }

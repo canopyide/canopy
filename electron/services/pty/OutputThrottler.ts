@@ -13,7 +13,7 @@ import {
 
 // Threshold for bulk data mode - when buffer exceeds this, wait longer to
 // coalesce large outputs (like MCP dumps) into atomic frame updates.
-const BULK_DATA_THRESHOLD_BYTES = 4096;
+const BULK_DATA_THRESHOLD_BYTES = 65536;
 import { events } from "../events.js";
 
 export type QueueState = "normal" | "soft" | "hard";
@@ -311,7 +311,7 @@ export class OutputThrottler {
     // Bulk data mode: if buffer is large (MCP dump, large output), wait longer
     // to coalesce into atomic frame updates and prevent tearing.
     if (this.batchBytes > BULK_DATA_THRESHOLD_BYTES) {
-      return 16; // One frame - allows more data to arrive
+      return 4; // High throughput mode - keep 4ms to ensure smooth updates
     }
 
     switch (tier) {
