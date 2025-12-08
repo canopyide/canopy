@@ -44,7 +44,7 @@ interface ManagedTerminal {
   tierChangeTimer?: number;
 }
 
-const MAX_WEBGL_RECOVERY_ATTEMPTS = 3;
+const MAX_WEBGL_RECOVERY_ATTEMPTS = 4; // Supports full 1s → 2s → 4s → 8s backoff sequence
 const WEBGL_DISPOSE_GRACE_MS = 10000; // 10s grace period before releasing WebGL on hide
 const TIER_DOWNGRADE_HYSTERESIS_MS = 500; // Delay before applying tier downgrades to prevent flapping
 
@@ -116,11 +116,12 @@ class TerminalInstanceService {
   private rafId: number | null = null;
   private pollTimeoutId: number | null = null;
   private sharedBufferEnabled = false;
+  private textEncoder = new TextEncoder(); // Reused encoder to avoid allocations
 
   private static readonly TERMINAL_COUNT_THRESHOLD = 20;
   private static readonly BUDGET_SCALE_FACTOR = 0.5;
   private static readonly MIN_WEBGL_BUDGET = 2;
-  private static readonly POLL_TIME_BUDGET_MS = 4; // Max time per frame for polling
+  private static readonly POLL_TIME_BUDGET_MS = 12; // Max time per frame for polling (12ms to capture full TUI clear+repaint sequences)
   private static readonly MAX_WEBGL_CONTEXTS = 12; // Conservative limit below browser max (16)
 
   constructor() {
@@ -179,10 +180,10 @@ class TerminalInstanceService {
   /**
    * Poll the ring buffer and dispatch data to terminals.
    *
-   * Changes from previous "Render-Aware Polling":
-   * - Removed client-side throttling/backpressure.
-   * - Data is dispatched to xterm.js immediately.
-   * - Flow control is handled by backend pausing PTY based on unacknowledged bytes.
+   * Greedy consumer strategy: Uses 12ms budget (of 16ms frame) to capture
+   * complete TUI update sequences (clear + repaint) in a single frame.
+   * Uses Uint8Array accumulation for efficiency, merging all packets per
+   * terminal into a single atomic write to prevent visual flicker.
    */
   private poll = (): void => {
     if (!this.pollingActive || !this.ringBuffer) return;
@@ -190,47 +191,69 @@ class TerminalInstanceService {
     const start = performance.now();
     let hasData = false;
 
-    // Pre-dispatch coalescing: accumulate packets per terminal ID
-    const coalescedUpdates = new Map<string, string[]>();
+    // Accumulate raw bytes instead of strings for efficiency
+    const coalescedUpdates = new Map<string, Uint8Array[]>();
+    const coalescedLength = new Map<string, number>();
 
-    // Read phase: collect all available packets within time budget
+    // PHASE 1: Greedy Read - drain buffer up to 12ms budget
     while (performance.now() - start < TerminalInstanceService.POLL_TIME_BUDGET_MS) {
       const data = this.ringBuffer.read();
-      if (!data) break; // Buffer empty
+      if (!data) break; // Buffer exhausted
 
       hasData = true;
       const packets = this.packetParser.parse(data);
+
       for (const packet of packets) {
+        // Accumulate raw bytes per terminal ID
         let chunks = coalescedUpdates.get(packet.id);
         if (!chunks) {
           chunks = [];
           coalescedUpdates.set(packet.id, chunks);
+          coalescedLength.set(packet.id, 0);
         }
-        chunks.push(packet.data);
+
+        // Convert string packets to Uint8Array if needed (reuse encoder)
+        const bytes =
+          typeof packet.data === "string" ? this.textEncoder.encode(packet.data) : packet.data;
+
+        chunks.push(bytes);
+        coalescedLength.set(packet.id, coalescedLength.get(packet.id)! + bytes.length);
       }
     }
 
-    // Dispatch phase: merge and write once per terminal
-    if (hasData) {
-      coalescedUpdates.forEach((chunks, id) => {
-        const managed = this.instances.get(id);
-        if (!managed) return;
+    // PHASE 2: Atomic Dispatch - single write per terminal
+    coalescedUpdates.forEach((chunks, id) => {
+      const managed = this.instances.get(id);
+      if (!managed) return;
 
-        if (chunks.length === 1) {
-          managed.throttledWriter.write(chunks[0]);
-        } else {
-          managed.throttledWriter.write(chunks.join(""));
-        }
-      });
-    }
+      // Fast path: single chunk needs no merge
+      if (chunks.length === 1) {
+        managed.throttledWriter.write(chunks[0]);
+        return;
+      }
 
+      // Merge multiple chunks into one contiguous buffer
+      const totalLen = coalescedLength.get(id)!;
+      const merged = new Uint8Array(totalLen);
+      let offset = 0;
+      for (const chunk of chunks) {
+        merged.set(chunk, offset);
+        offset += chunk.length;
+      }
+
+      // Single atomic write forces xterm to process clear+draw together
+      managed.throttledWriter.write(merged);
+    });
+
+    // PHASE 3: Tight Loop - continue while data available
     if (hasData) {
       this.rafId = window.requestAnimationFrame(() => {
         this.rafId = null;
         this.poll();
       });
     } else {
-      this.pollTimeoutId = window.setTimeout(this.poll, 16);
+      // Reduced idle polling interval from 16ms to 6ms for faster burst detection
+      this.pollTimeoutId = window.setTimeout(this.poll, 6);
     }
   };
 
@@ -325,6 +348,12 @@ class TerminalInstanceService {
         if (managed.webglDisposeTimer !== undefined) {
           clearTimeout(managed.webglDisposeTimer);
           managed.webglDisposeTimer = undefined;
+        }
+
+        // Reset WebGL recovery state when becoming visible so deferred recovery can proceed
+        if (managed.hasWebglError) {
+          managed.webglRecoveryAttempts = 0;
+          managed.hasWebglError = false;
         }
 
         // Only bust geometry cache if dimensions actually changed
@@ -865,7 +894,6 @@ class TerminalInstanceService {
 
     try {
       const webglAddon = new WebglAddon();
-      managed.webglRecoveryAttempts = 0;
 
       webglAddon.onContextLoss(() => {
         console.warn(`[TerminalInstanceService] WebGL context lost for ${id}`);
@@ -876,40 +904,55 @@ class TerminalInstanceService {
         // Mark as error state to prevent thrashing loop
         managed.hasWebglError = true;
 
-        // Auto-recovery after GPU stabilizes
+        // Calculate exponential backoff delay: 1s → 2s → 4s → 8s → 10s cap
+        const attempt = managed.webglRecoveryAttempts + 1;
+        const delay = Math.min(1000 * Math.pow(2, attempt - 1), 10000);
+
+        // Schedule recovery with exponential backoff
         setTimeout(() => {
-          if (!this.instances.has(id)) return;
-
+          // PRE-CHECK: Is terminal still registered and visible?
           const currentManaged = this.instances.get(id);
-          if (!currentManaged || !currentManaged.terminal.element) return;
+          if (!currentManaged) return;
 
-          try {
-            // Retry WebGL if terminal is focused/burst and under retry limit
-            const tier = currentManaged.getRefreshTier();
-            if (
-              (tier === TerminalRefreshTier.FOCUSED || tier === TerminalRefreshTier.BURST) &&
-              currentManaged.webglRecoveryAttempts < MAX_WEBGL_RECOVERY_ATTEMPTS
-            ) {
-              currentManaged.webglRecoveryAttempts++;
-              currentManaged.hasWebglError = false; // Clear error flag for retry
-              console.log(
-                `[TerminalInstanceService] Attempting WebGL recovery for ${id} (${currentManaged.webglRecoveryAttempts}/${MAX_WEBGL_RECOVERY_ATTEMPTS})`
-              );
-              this.acquireWebgl(id, currentManaged);
-            } else if (currentManaged.webglRecoveryAttempts >= MAX_WEBGL_RECOVERY_ATTEMPTS) {
-              console.warn(
-                `[TerminalInstanceService] Max WebGL recovery attempts reached for ${id}, staying in canvas mode`
-              );
-            }
-          } catch (error) {
-            console.error(`[TerminalInstanceService] Recovery failed for ${id}:`, error);
+          // Skip recovery if terminal is hidden - will retry when it becomes visible
+          if (!currentManaged.isVisible) {
+            console.log(`[TerminalInstanceService] Deferring WebGL recovery for ${id} (hidden)`);
+            // Reset state so visibility change triggers fresh attempt
+            currentManaged.webglRecoveryAttempts = 0;
+            currentManaged.hasWebglError = false;
+            return;
           }
-        }, 1000);
+
+          // Align recovery with animation frame for stable DOM dimensions
+          requestAnimationFrame(() => {
+            const retryManaged = this.instances.get(id);
+            if (!retryManaged || !retryManaged.terminal.element) return;
+
+            try {
+              // Retry WebGL if under retry limit
+              if (retryManaged.webglRecoveryAttempts < MAX_WEBGL_RECOVERY_ATTEMPTS) {
+                retryManaged.webglRecoveryAttempts = attempt;
+                retryManaged.hasWebglError = false; // Clear error flag for retry
+                console.log(
+                  `[TerminalInstanceService] Attempting WebGL recovery for ${id} (attempt ${attempt}/${MAX_WEBGL_RECOVERY_ATTEMPTS}, delay was ${delay}ms)`
+                );
+                this.acquireWebgl(id, retryManaged);
+              } else {
+                console.warn(
+                  `[TerminalInstanceService] Max WebGL recovery attempts reached for ${id}, staying in canvas mode`
+                );
+              }
+            } catch (error) {
+              console.error(`[TerminalInstanceService] Recovery failed for ${id}:`, error);
+            }
+          });
+        }, delay);
       });
 
       managed.terminal.loadAddon(webglAddon);
       managed.webglAddon = webglAddon;
       managed.hasWebglError = false;
+      managed.webglRecoveryAttempts = 0; // Reset counter after successful load
 
       this.webglLru = this.webglLru.filter((existing) => existing !== id);
       this.webglLru.push(id);
