@@ -3,6 +3,7 @@ import { FitAddon } from "@xterm/addon-fit";
 import { WebglAddon } from "@xterm/addon-webgl";
 import { SerializeAddon } from "@xterm/addon-serialize";
 import { WebLinksAddon } from "@xterm/addon-web-links";
+import { ImageAddon } from "@xterm/addon-image";
 import { terminalClient, systemClient } from "@/clients";
 import { TerminalRefreshTier } from "@/types";
 import { InputTracker, VT100_FULL_CLEAR } from "./clearCommandDetection";
@@ -17,6 +18,7 @@ interface ManagedTerminal {
   webglAddon?: WebglAddon;
   serializeAddon: SerializeAddon;
   webLinksAddon: WebLinksAddon;
+  imageAddon: ImageAddon;
   hostElement: HTMLDivElement;
   isOpened: boolean;
   listeners: Array<() => void>;
@@ -45,6 +47,7 @@ interface ManagedTerminal {
 const MAX_WEBGL_RECOVERY_ATTEMPTS = 3;
 const WEBGL_DISPOSE_GRACE_MS = 10000; // 10s grace period before releasing WebGL on hide
 const TIER_DOWNGRADE_HYSTERESIS_MS = 500; // Delay before applying tier downgrades to prevent flapping
+const MAX_PENDING_WRITES = 5; // Max pending writes before backpressure kicks in
 
 /**
  * Creates a simple writer that passes data directly to xterm.
@@ -57,10 +60,17 @@ function createThrottledWriter(
   terminal: Terminal,
   _initialProvider: RefreshTierProvider = () => TerminalRefreshTier.FOCUSED
 ) {
+  let pendingWrites = 0;
   return {
+    get pendingWrites() {
+      return pendingWrites;
+    },
     write: (data: string | Uint8Array) => {
       // Direct write to xterm - all batching happens in the backend OutputThrottler
-      terminal.write(data);
+      pendingWrites++;
+      terminal.write(data, () => {
+        pendingWrites--;
+      });
     },
     dispose: () => {
       // Nothing to clean up - we don't buffer
@@ -78,6 +88,7 @@ function createThrottledWriter(
         isBurstMode: false,
         effectiveDelay: 0,
         bufferSize: 0,
+        pendingWrites,
       };
     },
     boost: () => {
@@ -85,6 +96,7 @@ function createThrottledWriter(
     },
     clear: () => {
       // No-op - we don't buffer
+      pendingWrites = 0;
     },
   };
 }
@@ -101,6 +113,8 @@ class TerminalInstanceService {
   private rafId: number | null = null;
   private pollTimeoutId: number | null = null;
   private sharedBufferEnabled = false;
+  // Pending buffers for terminals experiencing backpressure
+  private pendingBuffers = new Map<string, string[]>();
 
   private static readonly TERMINAL_COUNT_THRESHOLD = 20;
   private static readonly BUDGET_SCALE_FACTOR = 0.5;
@@ -163,18 +177,10 @@ class TerminalInstanceService {
 
   /**
    * Poll the ring buffer and dispatch data to terminals.
-   * Uses a hybrid approach: high-frequency setTimeout for responsiveness,
-   * with time budgeting to avoid blocking the main thread.
-   *
-   * Pre-dispatch coalescing: Instead of writing each packet immediately,
-   * we accumulate all packets per terminal during the read phase, then
-   * merge and write once per terminal. This ensures multi-packet TUI
-   * updates (clear + draw) arrive as atomic writes to xterm.js.
-   *
-   * Why not requestAnimationFrame?
-   * RAF runs at ~60fps (16ms intervals) which adds noticeable latency to
-   * keystroke echoes. A 2ms setTimeout provides much faster response while
-   * still allowing the browser to breathe between polls.
+   * Implements "Render-Aware Polling" (Soft Backpressure):
+   * - Tracks pending writes to xterm.js.
+   * - If pending writes exceed limit, buffers data locally instead of overwhelming xterm.
+   * - Retries aggressively (1ms) to clear backlog.
    */
   private poll = (): void => {
     if (!this.pollingActive || !this.ringBuffer) return;
@@ -183,8 +189,16 @@ class TerminalInstanceService {
     let hasData = false;
 
     // Pre-dispatch coalescing: accumulate packets per terminal ID
-    // This ensures multi-packet updates are merged before writing
     const coalescedUpdates = new Map<string, string[]>();
+
+    // 1. Re-queue any pending buffers from previous backpressure events
+    if (this.pendingBuffers.size > 0) {
+      hasData = true;
+      this.pendingBuffers.forEach((chunks, id) => {
+        coalescedUpdates.set(id, [...chunks]);
+      });
+      this.pendingBuffers.clear();
+    }
 
     // Read phase: collect all available packets within time budget
     while (performance.now() - start < TerminalInstanceService.POLL_TIME_BUDGET_MS) {
@@ -209,21 +223,28 @@ class TerminalInstanceService {
         const managed = this.instances.get(id);
         if (!managed) return;
 
+        // Check for backpressure
+        if (managed.throttledWriter.pendingWrites > MAX_PENDING_WRITES) {
+          let pending = this.pendingBuffers.get(id);
+          if (!pending) {
+            pending = [];
+            this.pendingBuffers.set(id, pending);
+          }
+          pending.push(...chunks);
+          return;
+        }
+
         if (chunks.length === 1) {
-          // Single chunk: fast path, no merge needed
           managed.throttledWriter.write(chunks[0]);
         } else {
-          // Multiple chunks: concatenate for atomic write
           managed.throttledWriter.write(chunks.join(""));
         }
       });
     }
 
-    // Adaptive polling: poll faster when data is flowing, slower when idle.
-    // This balances responsiveness with CPU efficiency.
-    // - 1ms when data present: near-instant keystroke echo
-    // - 4ms when idle: low CPU usage while still responsive
-    const nextPollDelay = hasData ? 1 : 4;
+    // Poll faster (1ms) if we have data or active backpressure to clear buffers ASAP.
+    // Otherwise idle at 4ms.
+    const nextPollDelay = hasData || this.pendingBuffers.size > 0 ? 1 : 4;
     this.pollTimeoutId = window.setTimeout(this.poll, nextPollDelay);
   };
 
@@ -391,6 +412,9 @@ class TerminalInstanceService {
     const webLinksAddon = new WebLinksAddon((_event, uri) => openLink(uri));
     terminal.loadAddon(webLinksAddon);
 
+    const imageAddon = new ImageAddon();
+    terminal.loadAddon(imageAddon);
+
     const hostElement = document.createElement("div");
     hostElement.style.width = "100%";
     hostElement.style.height = "100%";
@@ -444,6 +468,7 @@ class TerminalInstanceService {
       webglAddon: undefined,
       serializeAddon,
       webLinksAddon,
+      imageAddon,
       hostElement,
       isOpened: false,
       listeners,
@@ -990,6 +1015,7 @@ class TerminalInstanceService {
     managed.throttledWriter.dispose();
     managed.webglAddon?.dispose();
     managed.webLinksAddon.dispose();
+    managed.imageAddon.dispose();
     this.webglLru = this.webglLru.filter((existing) => existing !== id);
 
     managed.terminal.dispose();
