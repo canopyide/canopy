@@ -772,13 +772,16 @@ async function initialize(): Promise<void> {
     // Initialize pool
     ptyPool = getPtyPool({ poolSize: 2 });
     const homedir = process.env.HOME || os.homedir();
-    
+
     // Warm pool in background
-    ptyPool.warmPool(homedir).then(() => {
+    ptyPool
+      .warmPool(homedir)
+      .then(() => {
         console.log("[PtyHost] PTY pool warmed in background");
-    }).catch(err => {
+      })
+      .catch((err) => {
         console.error("[PtyHost] Failed to warm pool:", err);
-    });
+      });
 
     ptyManager.setPtyPool(ptyPool);
   } catch (error) {

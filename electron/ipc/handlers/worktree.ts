@@ -1,63 +1,45 @@
 import { ipcMain } from "electron";
-import fs from "fs";
-import path from "path";
 import { CHANNELS } from "../channels.js";
-import { GitService } from "../../services/GitService.js";
 import { store } from "../../store.js";
-import type { HandlerDependencies, WorkspaceManager } from "../types.js";
+import type { HandlerDependencies } from "../types.js";
 import type { WorktreeSetActivePayload, WorktreeDeletePayload } from "../../types/index.js";
 import {
   generateWorktreePath,
   DEFAULT_WORKTREE_PATH_PATTERN,
   validatePathPattern,
 } from "../../../shared/utils/pathPattern.js";
-
-// Type guard to check if worktreeService has async getAllStatesAsync method
-function hasAsyncGetAllStates(
-  service: WorkspaceManager
-): service is WorkspaceManager & { getAllStatesAsync: () => Promise<unknown[]> } {
-  return typeof (service as any).getAllStatesAsync === "function";
-}
-
-// Type guard to check if worktreeService has async getFileDiff method
-function hasAsyncGetFileDiff(service: WorkspaceManager): service is WorkspaceManager & {
-  getFileDiff: (cwd: string, filePath: string, status: string) => Promise<string>;
-} {
-  return typeof (service as any).getFileDiff === "function";
-}
+import type { WorkspaceClient } from "../../services/WorkspaceClient.js";
 
 export function registerWorktreeHandlers(deps: HandlerDependencies): () => void {
   const { worktreeService } = deps;
+  // Enforce Multi-Process Architecture: strictly use Client implementations
+  const workspaceClient = worktreeService as WorkspaceClient | undefined;
+
   const handlers: Array<() => void> = [];
 
   const handleWorktreeGetAll = async () => {
-    if (!worktreeService) {
+    if (!workspaceClient) {
       return [];
     }
-    // WorkspaceClient has getAllStatesAsync, WorktreeService has getAllStates
-    if (hasAsyncGetAllStates(worktreeService)) {
-      return await worktreeService.getAllStatesAsync();
-    }
-    const statesMap = worktreeService.getAllStates();
-    return Array.from(statesMap.values());
+    return await workspaceClient.getAllStatesAsync();
   };
   ipcMain.handle(CHANNELS.WORKTREE_GET_ALL, handleWorktreeGetAll);
   handlers.push(() => ipcMain.removeHandler(CHANNELS.WORKTREE_GET_ALL));
 
   const handleWorktreeRefresh = async () => {
-    if (!worktreeService) {
+    if (!workspaceClient) {
       return;
     }
-    await worktreeService.refresh();
+    await workspaceClient.refresh();
   };
   ipcMain.handle(CHANNELS.WORKTREE_REFRESH, handleWorktreeRefresh);
   handlers.push(() => ipcMain.removeHandler(CHANNELS.WORKTREE_REFRESH));
 
   const handleWorktreePRRefresh = async () => {
-    if (!worktreeService) {
+    if (!workspaceClient) {
       return;
     }
-    await worktreeService.refreshPullRequests();
+    await workspaceClient.refreshPullRequests();
   };
   ipcMain.handle(CHANNELS.WORKTREE_PR_REFRESH, handleWorktreePRRefresh);
   handlers.push(() => ipcMain.removeHandler(CHANNELS.WORKTREE_PR_REFRESH));
@@ -66,10 +48,10 @@ export function registerWorktreeHandlers(deps: HandlerDependencies): () => void 
     _event: Electron.IpcMainInvokeEvent,
     payload: WorktreeSetActivePayload
   ) => {
-    if (!worktreeService) {
+    if (!workspaceClient) {
       return;
     }
-    await worktreeService.setActiveWorktree(payload.worktreeId);
+    await workspaceClient.setActiveWorktree(payload.worktreeId);
   };
   ipcMain.handle(CHANNELS.WORKTREE_SET_ACTIVE, handleWorktreeSetActive);
   handlers.push(() => ipcMain.removeHandler(CHANNELS.WORKTREE_SET_ACTIVE));
@@ -81,10 +63,10 @@ export function registerWorktreeHandlers(deps: HandlerDependencies): () => void 
       options: { baseBranch: string; newBranch: string; path: string; fromRemote?: boolean };
     }
   ) => {
-    if (!worktreeService) {
+    if (!workspaceClient) {
       throw new Error("WorktreeService not initialized");
     }
-    await worktreeService.createWorktree(payload.rootPath, payload.options);
+    await workspaceClient.createWorktree(payload.rootPath, payload.options);
   };
   ipcMain.handle(CHANNELS.WORKTREE_CREATE, handleWorktreeCreate);
   handlers.push(() => ipcMain.removeHandler(CHANNELS.WORKTREE_CREATE));
@@ -93,10 +75,10 @@ export function registerWorktreeHandlers(deps: HandlerDependencies): () => void 
     _event: Electron.IpcMainInvokeEvent,
     payload: { rootPath: string }
   ) => {
-    if (!worktreeService) {
+    if (!workspaceClient) {
       throw new Error("WorktreeService not initialized");
     }
-    return await worktreeService.listBranches(payload.rootPath);
+    return await workspaceClient.listBranches(payload.rootPath);
   };
   ipcMain.handle(CHANNELS.WORKTREE_LIST_BRANCHES, handleWorktreeListBranches);
   handlers.push(() => ipcMain.removeHandler(CHANNELS.WORKTREE_LIST_BRANCHES));
@@ -139,7 +121,7 @@ export function registerWorktreeHandlers(deps: HandlerDependencies): () => void 
     _event: Electron.IpcMainInvokeEvent,
     payload: WorktreeDeletePayload
   ) => {
-    if (!worktreeService) {
+    if (!workspaceClient) {
       throw new Error("WorktreeService not initialized");
     }
     if (!payload || typeof payload !== "object") {
@@ -151,7 +133,7 @@ export function registerWorktreeHandlers(deps: HandlerDependencies): () => void 
     if (payload.force !== undefined && typeof payload.force !== "boolean") {
       throw new Error("Invalid force parameter");
     }
-    await worktreeService.deleteWorktree(payload.worktreeId, payload.force);
+    await workspaceClient.deleteWorktree(payload.worktreeId, payload.force);
   };
   ipcMain.handle(CHANNELS.WORKTREE_DELETE, handleWorktreeDelete);
   handlers.push(() => ipcMain.removeHandler(CHANNELS.WORKTREE_DELETE));
@@ -176,38 +158,15 @@ export function registerWorktreeHandlers(deps: HandlerDependencies): () => void 
       throw new Error("Invalid file status");
     }
 
-    // If WorkspaceClient is available with getFileDiff, use it (offloads to UtilityProcess)
-    if (worktreeService && hasAsyncGetFileDiff(worktreeService)) {
-      try {
-        return await worktreeService.getFileDiff(cwd, filePath, status);
-      } catch (error) {
-        const errorMessage = error instanceof Error ? error.message : String(error);
-        console.error("[Git] Failed to get file diff via WorkspaceClient:", errorMessage);
-        throw new Error(`Failed to get file diff: ${errorMessage}`);
-      }
-    }
-
-    // Fallback: use GitService directly (original behavior)
-    if (!fs.existsSync(cwd)) {
-      throw new Error("Working directory does not exist");
-    }
-
-    const cwdStats = fs.statSync(cwd);
-    if (!cwdStats.isDirectory()) {
-      throw new Error("Working directory path is not a directory");
-    }
-
-    const gitDir = path.join(cwd, ".git");
-    if (!fs.existsSync(gitDir)) {
-      throw new Error("Working directory is not a git repository");
+    if (!workspaceClient) {
+      throw new Error("WorkspaceClient not initialized");
     }
 
     try {
-      const gitService = new GitService(cwd);
-      return await gitService.getFileDiff(filePath, status as any);
+      return await workspaceClient.getFileDiff(cwd, filePath, status);
     } catch (error) {
       const errorMessage = error instanceof Error ? error.message : String(error);
-      console.error("[Git] Failed to get file diff:", errorMessage);
+      console.error("[Git] Failed to get file diff via WorkspaceClient:", errorMessage);
       throw new Error(`Failed to get file diff: ${errorMessage}`);
     }
   };

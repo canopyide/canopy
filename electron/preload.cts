@@ -179,6 +179,7 @@ const CHANNELS = {
   APP_GET_STATE: "app:get-state",
   APP_SET_STATE: "app:set-state",
   APP_GET_VERSION: "app:get-version",
+  APP_HYDRATE: "app:hydrate",
 
   // Logs channels
   LOGS_GET_ALL: "logs:get-all",

@@ -1,10 +1,5 @@
-import {
-  appClient,
-  projectClient,
-  terminalConfigClient,
-  terminalClient,
-  agentSettingsClient,
-} from "@/clients";
+import { appClient, terminalClient } from "@/clients";
+import { terminalConfigClient } from "@/clients/terminalConfigClient";
 import { useLayoutConfigStore, useScrollbackStore, usePerformanceModeStore } from "@/store";
 import type { TerminalType, TerminalState, AgentState } from "@/types";
 import {

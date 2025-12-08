@@ -1,7 +1,7 @@
 import type { Worktree, WorktreeChanges } from "../types/index.js";
 import { invalidateGitStatusCache } from "../utils/git.js";
 import { WorktreeRemovedError } from "../utils/errorTypes.js";
-import { categorizeWorktree } from "../utils/worktreeMood.js";
+import { categorizeWorktree } from "./worktree/mood.js";
 import { logWarn, logError, logInfo, logDebug } from "../utils/logger.js";
 import { events } from "./events.js";
 import { extractIssueNumberSync, extractIssueNumber } from "./issueExtractor.js";

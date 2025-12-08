@@ -17,6 +17,7 @@ const createMockClient = () => ({
   getState: vi.fn().mockResolvedValue({}),
   setState: vi.fn().mockResolvedValue(undefined),
   getVersion: vi.fn().mockResolvedValue("1.0.0"),
+  hydrate: vi.fn().mockResolvedValue({}),
 });
 
 describe("TerminalPersistence", () => {

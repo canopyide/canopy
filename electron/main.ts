@@ -312,7 +312,7 @@ async function createWindow(): Promise<void> {
     cliAvailabilityService,
     sidecarManager
   );
-  cleanupErrorHandlers = registerIpcHandlers(
+  cleanupErrorHandlers = registerErrorHandlers(
     mainWindow,
     devServerManager,
     workspaceClient,
@@ -434,7 +434,7 @@ async function createWindow(): Promise<void> {
           await workspaceClient.refresh();
         }
         if (devServerManager) await devServerManager.onSystemResume();
-        
+
         const sleepDuration = suspendTime ? Date.now() - suspendTime : 0;
         BrowserWindow.getAllWindows().forEach((win) => {
           win.webContents.send(CHANNELS.SYSTEM_WAKE, {
@@ -465,14 +465,14 @@ async function createWindow(): Promise<void> {
     if (eventBuffer) eventBuffer.stop();
     if (cleanupIpcHandlers) cleanupIpcHandlers();
     if (cleanupErrorHandlers) cleanupErrorHandlers();
-    
+
     if (workspaceClient) workspaceClient.dispose();
     disposeWorkspaceClient();
-    
+
     if (devServerManager) await devServerManager.stopAll();
-    
+
     if (sidecarManager) sidecarManager.destroy();
-    
+
     if (ptyClient) ptyClient.dispose();
     disposePtyClient();
 

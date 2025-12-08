@@ -115,6 +115,7 @@ export type {
   SavedRecipeTerminal,
   SavedRecipe,
   AppState,
+  HydrateResult,
   // Log types
   LogLevel,
   LogEntry,

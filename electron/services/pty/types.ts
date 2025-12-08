@@ -2,21 +2,11 @@ import type * as pty from "node-pty";
 import type { Terminal as HeadlessTerminal } from "@xterm/headless";
 import type { SerializeAddon } from "@xterm/addon-serialize";
 import type { AgentState, TerminalType } from "../../../shared/types/domain.js";
-import type { ActivityTier } from "../../../shared/types/pty-host.js";
+import type { ActivityTier, PtyHostSpawnOptions } from "../../../shared/types/pty-host.js";
 import type { ProcessDetector } from "../ProcessDetector.js";
 
-export interface PtySpawnOptions {
-  cwd: string;
-  shell?: string;
-  args?: string[];
-  env?: Record<string, string>;
-  cols: number;
-  rows: number;
-  type?: TerminalType;
-  title?: string;
-  worktreeId?: string;
-  projectId?: string;
-}
+// Re-export PtyHostSpawnOptions as PtySpawnOptions for backward compatibility/internal usage
+export type PtySpawnOptions = PtyHostSpawnOptions;
 
 export interface TerminalInfo {
   id: string;

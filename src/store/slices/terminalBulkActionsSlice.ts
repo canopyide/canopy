@@ -2,7 +2,7 @@ import type { StateCreator } from "zustand";
 import type { TerminalInstance } from "./terminalRegistrySlice";
 import { MAX_GRID_TERMINALS } from "./terminalRegistrySlice";
 import type { AgentState } from "@/types";
-import { isAgentTerminal } from "../utils/terminalTypeGuards";
+import { isAgentTerminal } from "../../utils/terminalType";
 
 export interface TerminalBulkActionsSlice {
   bulkCloseByState: (states: AgentState | AgentState[]) => void;

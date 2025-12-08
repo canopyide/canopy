@@ -3,14 +3,12 @@ import crypto from "crypto";
 import path from "path";
 import { CHANNELS } from "../channels.js";
 import { sendToRenderer } from "../utils.js";
-import { copyTreeService } from "../../services/CopyTreeService.js";
-import type { HandlerDependencies, WorkspaceManager } from "../types.js";
+import type { HandlerDependencies } from "../types.js";
 import type {
   CopyTreeGeneratePayload,
   CopyTreeGenerateAndCopyFilePayload,
   CopyTreeInjectPayload,
   CopyTreeGetFileTreePayload,
-  CopyTreeOptions,
   CopyTreeResult,
   CopyTreeProgress,
   FileTreeNode,
@@ -21,36 +19,16 @@ import {
   CopyTreeInjectPayloadSchema,
   CopyTreeGetFileTreePayloadSchema,
 } from "../../schemas/ipc.js";
-
-// Type guard to check if worktreeService has async getAllStatesAsync method (WorkspaceClient)
-function hasAsyncGetAllStates(service: WorkspaceManager): service is WorkspaceManager & {
-  getAllStatesAsync: () => Promise<Array<{ id: string; path: string; branch?: string }>>;
-} {
-  return typeof (service as any).getAllStatesAsync === "function";
-}
-
-// Type guard to check if worktreeService has async getMonitorAsync method (WorkspaceClient)
-function hasAsyncGetMonitor(service: WorkspaceManager): service is WorkspaceManager & {
-  getMonitorAsync: (worktreeId: string) => Promise<{ path: string } | null>;
-} {
-  return typeof (service as any).getMonitorAsync === "function";
-}
-
-// Type guard to check if worktreeService has generateContext method (WorkspaceClient)
-function hasGenerateContext(service: WorkspaceManager): service is WorkspaceManager & {
-  generateContext: (
-    rootPath: string,
-    options?: CopyTreeOptions,
-    onProgress?: (progress: CopyTreeProgress) => void
-  ) => Promise<CopyTreeResult>;
-  cancelAllContext: () => void;
-} {
-  return typeof (service as any).generateContext === "function";
-}
+import type { WorkspaceClient } from "../../services/WorkspaceClient.js";
+import type { PtyClient } from "../../services/PtyClient.js";
 
 export function registerCopyTreeHandlers(deps: HandlerDependencies): () => void {
   const { mainWindow, worktreeService, ptyManager } = deps;
   const handlers: Array<() => void> = [];
+
+  // Enforce Multi-Process Architecture: strictly use Client implementations
+  const workspaceClient = worktreeService as WorkspaceClient | undefined;
+  const ptyClient = ptyManager as PtyClient;
 
   const injectionsInProgress = new Set<string>();
 
@@ -73,7 +51,7 @@ export function registerCopyTreeHandlers(deps: HandlerDependencies): () => void 
 
     const validated = parseResult.data;
 
-    if (!worktreeService) {
+    if (!workspaceClient) {
       return {
         content: "",
         fileCount: 0,
@@ -81,15 +59,8 @@ export function registerCopyTreeHandlers(deps: HandlerDependencies): () => void 
       };
     }
 
-    // Support both sync (WorktreeService) and async (WorkspaceClient) APIs
-    let worktree: { id: string; path: string; branch?: string } | undefined;
-    if (hasAsyncGetAllStates(worktreeService)) {
-      const states = await worktreeService.getAllStatesAsync();
-      worktree = states.find((wt) => wt.id === validated.worktreeId);
-    } else {
-      const statesMap = worktreeService.getAllStates();
-      worktree = statesMap.get(validated.worktreeId);
-    }
+    const states = await workspaceClient.getAllStatesAsync();
+    const worktree = states.find((wt) => wt.id === validated.worktreeId);
 
     if (!worktree) {
       return {
@@ -103,13 +74,7 @@ export function registerCopyTreeHandlers(deps: HandlerDependencies): () => void 
       sendToRenderer(mainWindow, CHANNELS.COPYTREE_PROGRESS, { ...progress, traceId });
     };
 
-    // Use WorkspaceClient if available (runs in workspace-host UtilityProcess)
-    if (hasGenerateContext(worktreeService)) {
-      return worktreeService.generateContext(worktree.path, validated.options, onProgress);
-    }
-
-    // Fall back to direct CopyTreeService (runs in Main process)
-    return copyTreeService.generate(worktree.path, validated.options, onProgress, traceId);
+    return workspaceClient.generateContext(worktree.path, validated.options, onProgress);
   };
   ipcMain.handle(CHANNELS.COPYTREE_GENERATE, handleCopyTreeGenerate);
   handlers.push(() => ipcMain.removeHandler(CHANNELS.COPYTREE_GENERATE));
@@ -138,7 +103,7 @@ export function registerCopyTreeHandlers(deps: HandlerDependencies): () => void 
 
     const validated = parseResult.data;
 
-    if (!worktreeService) {
+    if (!workspaceClient) {
       return {
         content: "",
         fileCount: 0,
@@ -146,15 +111,8 @@ export function registerCopyTreeHandlers(deps: HandlerDependencies): () => void 
       };
     }
 
-    // Support both sync (WorktreeService) and async (WorkspaceClient) APIs
-    let worktree: { id: string; path: string; branch?: string } | undefined;
-    if (hasAsyncGetAllStates(worktreeService)) {
-      const states = await worktreeService.getAllStatesAsync();
-      worktree = states.find((wt) => wt.id === validated.worktreeId);
-    } else {
-      const statesMap = worktreeService.getAllStates();
-      worktree = statesMap.get(validated.worktreeId);
-    }
+    const states = await workspaceClient.getAllStatesAsync();
+    const worktree = states.find((wt) => wt.id === validated.worktreeId);
 
     if (!worktree) {
       return {
@@ -168,19 +126,11 @@ export function registerCopyTreeHandlers(deps: HandlerDependencies): () => void 
       sendToRenderer(mainWindow, CHANNELS.COPYTREE_PROGRESS, { ...progress, traceId });
     };
 
-    // Use WorkspaceClient if available (runs in workspace-host UtilityProcess)
-    let result: CopyTreeResult;
-    if (hasGenerateContext(worktreeService)) {
-      result = await worktreeService.generateContext(worktree.path, validated.options, onProgress);
-    } else {
-      // Fall back to direct CopyTreeService (runs in Main process)
-      result = await copyTreeService.generate(
-        worktree.path,
-        validated.options,
-        onProgress,
-        traceId
-      );
-    }
+    const result = await workspaceClient.generateContext(
+      worktree.path,
+      validated.options,
+      onProgress
+    );
 
     if (result.error) {
       return result;
@@ -265,7 +215,7 @@ export function registerCopyTreeHandlers(deps: HandlerDependencies): () => void 
       };
     }
 
-    if (!worktreeService) {
+    if (!workspaceClient) {
       return {
         content: "",
         fileCount: 0,
@@ -276,15 +226,8 @@ export function registerCopyTreeHandlers(deps: HandlerDependencies): () => void 
     injectionsInProgress.add(validated.terminalId);
 
     try {
-      // Support both sync (WorktreeService) and async (WorkspaceClient) APIs
-      let worktree: { id: string; path: string; branch?: string } | undefined;
-      if (hasAsyncGetAllStates(worktreeService)) {
-        const states = await worktreeService.getAllStatesAsync();
-        worktree = states.find((wt) => wt.id === validated.worktreeId);
-      } else {
-        const statesMap = worktreeService.getAllStates();
-        worktree = statesMap.get(validated.worktreeId);
-      }
+      const states = await workspaceClient.getAllStatesAsync();
+      const worktree = states.find((wt) => wt.id === validated.worktreeId);
 
       if (!worktree) {
         return {
@@ -294,7 +237,7 @@ export function registerCopyTreeHandlers(deps: HandlerDependencies): () => void 
         };
       }
 
-      if (!ptyManager.hasTerminal(validated.terminalId)) {
+      if (!ptyClient.hasTerminal(validated.terminalId)) {
         return {
           content: "",
           fileCount: 0,
@@ -306,23 +249,11 @@ export function registerCopyTreeHandlers(deps: HandlerDependencies): () => void 
         sendToRenderer(mainWindow, CHANNELS.COPYTREE_PROGRESS, { ...progress, traceId });
       };
 
-      // Use WorkspaceClient if available (runs in workspace-host UtilityProcess)
-      let result: CopyTreeResult;
-      if (hasGenerateContext(worktreeService)) {
-        result = await worktreeService.generateContext(
-          worktree.path,
-          validated.options || {},
-          onProgress
-        );
-      } else {
-        // Fall back to direct CopyTreeService (runs in Main process)
-        result = await copyTreeService.generate(
-          worktree.path,
-          validated.options || {},
-          onProgress,
-          traceId
-        );
-      }
+      const result = await workspaceClient.generateContext(
+        worktree.path,
+        validated.options || {},
+        onProgress
+      );
 
       if (result.error) {
         return result;
@@ -332,7 +263,7 @@ export function registerCopyTreeHandlers(deps: HandlerDependencies): () => void 
       const content = result.content;
 
       for (let i = 0; i < content.length; i += CHUNK_SIZE) {
-        if (!ptyManager.hasTerminal(validated.terminalId)) {
+        if (!ptyClient.hasTerminal(validated.terminalId)) {
           return {
             content: "",
             fileCount: 0,
@@ -341,7 +272,7 @@ export function registerCopyTreeHandlers(deps: HandlerDependencies): () => void 
         }
 
         const chunk = content.slice(i, i + CHUNK_SIZE);
-        ptyManager.write(validated.terminalId, chunk, traceId);
+        ptyClient.write(validated.terminalId, chunk, traceId);
         if (i + CHUNK_SIZE < content.length) {
           await new Promise((resolve) => setTimeout(resolve, 1));
         }
@@ -357,18 +288,16 @@ export function registerCopyTreeHandlers(deps: HandlerDependencies): () => void 
   handlers.push(() => ipcMain.removeHandler(CHANNELS.COPYTREE_INJECT));
 
   const handleCopyTreeAvailable = async (): Promise<boolean> => {
-    return copyTreeService.isAvailable();
+    // With Multi-Process architecture, it's always available via workspace-host
+    return !!workspaceClient && workspaceClient.isReady();
   };
   ipcMain.handle(CHANNELS.COPYTREE_AVAILABLE, handleCopyTreeAvailable);
   handlers.push(() => ipcMain.removeHandler(CHANNELS.COPYTREE_AVAILABLE));
 
   const handleCopyTreeCancel = async (): Promise<void> => {
-    // Cancel in workspace-host if available
-    if (worktreeService && hasGenerateContext(worktreeService)) {
-      worktreeService.cancelAllContext();
+    if (workspaceClient) {
+      workspaceClient.cancelAllContext();
     }
-    // Also cancel in Main process (fallback mode)
-    copyTreeService.cancelAll();
   };
   ipcMain.handle(CHANNELS.COPYTREE_CANCEL, handleCopyTreeCancel);
   handlers.push(() => ipcMain.removeHandler(CHANNELS.COPYTREE_CANCEL));
@@ -394,22 +323,18 @@ export function registerCopyTreeHandlers(deps: HandlerDependencies): () => void 
       }
     }
 
-    if (!worktreeService) {
+    if (!workspaceClient) {
       throw new Error("Worktree service not available");
     }
 
-    // Support both sync (WorktreeService) and async (WorkspaceClient) APIs
-    let monitor: { path: string } | null | undefined;
-    if (hasAsyncGetMonitor(worktreeService)) {
-      monitor = await worktreeService.getMonitorAsync(validated.worktreeId);
-    } else {
-      monitor = worktreeService.getMonitor(validated.worktreeId);
-    }
+    const monitor = await workspaceClient.getMonitorAsync(validated.worktreeId);
 
     if (!monitor) {
       throw new Error(`Worktree not found: ${validated.worktreeId}`);
     }
 
+    // TODO: Ideally move file tree generation to utility process too,
+    // but for now we read it from main process using the path from monitor
     const { getFileTree } = await import("../../utils/fileTree.js");
     return getFileTree(monitor.path, validated.dirPath);
   };

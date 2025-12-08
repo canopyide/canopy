@@ -31,15 +31,14 @@ async function run() {
   // Config for ESM files (Main, Hosts)
   const esmConfig = {
     ...common,
-    entryPoints: [
-      "electron/main.ts",
-      "electron/pty-host.ts",
-      "electron/workspace-host.ts",
-    ],
+    entryPoints: ["electron/main.ts", "electron/pty-host.ts", "electron/workspace-host.ts"],
     outdir: "dist-electron/electron",
     format: "esm",
     splitting: true, // Share chunks between main/hosts
     chunkNames: "chunks/[name]-[hash]",
+    banner: {
+      js: `import { createRequire } from 'module'; const require = createRequire(import.meta.url);`,
+    },
   };
 
   // Config for CJS file (Preload)
@@ -55,7 +54,7 @@ async function run() {
     if (isWatch) {
       const ctxEsm = await context(esmConfig);
       const ctxCjs = await context(cjsConfig);
-      
+
       await Promise.all([ctxEsm.watch(), ctxCjs.watch()]);
       console.log("[Build] Watching for changes...");
     } else {

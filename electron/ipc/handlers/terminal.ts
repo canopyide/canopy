@@ -6,20 +6,20 @@ import { CHANNELS } from "../channels.js";
 import { sendToRenderer } from "../utils.js";
 import { projectStore } from "../../services/ProjectStore.js";
 import { events, type CanopyEventMap } from "../../services/events.js";
-import type { HandlerDependencies, WorkspaceManager } from "../types.js";
+import type { HandlerDependencies } from "../types.js";
 import type { TerminalSpawnOptions, TerminalResizePayload } from "../../types/index.js";
 import type { ActivityTier } from "../../../shared/types/pty-host.js";
 import { TerminalSpawnOptionsSchema, TerminalResizePayloadSchema } from "../../schemas/ipc.js";
-
-// Type guard to check if worktreeService has async getAllStatesAsync method (WorkspaceClient)
-function hasAsyncGetAllStates(
-  service: WorkspaceManager
-): service is WorkspaceManager & { getAllStatesAsync: () => Promise<Array<{ path: string }>> } {
-  return typeof (service as any).getAllStatesAsync === "function";
-}
+import type { PtyClient } from "../../services/PtyClient.js";
+import type { WorkspaceClient } from "../../services/WorkspaceClient.js";
 
 export function registerTerminalHandlers(deps: HandlerDependencies): () => void {
   const { mainWindow, ptyManager, worktreeService } = deps;
+
+  // Enforce Multi-Process Architecture: strictly use Client implementations
+  const ptyClient = ptyManager as PtyClient;
+  const workspaceClient = worktreeService as WorkspaceClient | undefined;
+
   const handlers: Array<() => void> = [];
 
   const handlePtyData = (id: string, data: string | Uint8Array) => {
@@ -126,7 +126,7 @@ export function registerTerminalHandlers(deps: HandlerDependencies): () => void 
     const projectId = currentProject?.id;
 
     try {
-      ptyManager.spawn(id, {
+      ptyClient.spawn(id, {
         cwd,
         shell: validatedOptions.shell,
         cols,
@@ -151,8 +151,8 @@ export function registerTerminalHandlers(deps: HandlerDependencies): () => void 
           // treats them as literal characters within quotes, not command separators.
           // The buildAgentCommand function in useAgentLauncher properly escapes all arguments.
           setTimeout(() => {
-            if (ptyManager.hasTerminal(id)) {
-              ptyManager.write(id, `${trimmedCommand}\r`);
+            if (ptyClient.hasTerminal(id)) {
+              ptyClient.write(id, `${trimmedCommand}\r`);
             }
           }, 100);
         }
@@ -173,7 +173,7 @@ export function registerTerminalHandlers(deps: HandlerDependencies): () => void 
         console.error("Invalid terminal input parameters");
         return;
       }
-      ptyManager.write(id, data);
+      ptyClient.write(id, data);
     } catch (error) {
       console.error("Error writing to terminal:", error);
     }
@@ -193,7 +193,7 @@ export function registerTerminalHandlers(deps: HandlerDependencies): () => void 
       const clampedCols = Math.max(1, Math.min(500, Math.floor(cols)));
       const clampedRows = Math.max(1, Math.min(500, Math.floor(rows)));
 
-      ptyManager.resize(id, clampedCols, clampedRows);
+      ptyClient.resize(id, clampedCols, clampedRows);
     } catch (error) {
       console.error("Error resizing terminal:", error);
     }
@@ -206,7 +206,7 @@ export function registerTerminalHandlers(deps: HandlerDependencies): () => void 
       if (typeof id !== "string") {
         throw new Error("Invalid terminal ID: must be a string");
       }
-      ptyManager.kill(id);
+      ptyClient.kill(id);
     } catch (error) {
       const errorMessage = error instanceof Error ? error.message : String(error);
       throw new Error(`Failed to kill terminal: ${errorMessage}`);
@@ -220,7 +220,7 @@ export function registerTerminalHandlers(deps: HandlerDependencies): () => void 
       if (typeof id !== "string") {
         throw new Error("Invalid terminal ID: must be a string");
       }
-      ptyManager.trash(id);
+      ptyClient.trash(id);
     } catch (error) {
       const errorMessage = error instanceof Error ? error.message : String(error);
       throw new Error(`Failed to trash terminal: ${errorMessage}`);
@@ -237,7 +237,7 @@ export function registerTerminalHandlers(deps: HandlerDependencies): () => void 
       if (typeof id !== "string") {
         throw new Error("Invalid terminal ID: must be a string");
       }
-      return ptyManager.restore(id);
+      return ptyClient.restore(id);
     } catch (error) {
       const errorMessage = error instanceof Error ? error.message : String(error);
       throw new Error(`Failed to restore terminal: ${errorMessage}`);
@@ -273,7 +273,7 @@ export function registerTerminalHandlers(deps: HandlerDependencies): () => void 
       if (typeof payload.enabled !== "boolean") {
         throw new Error("Invalid enabled flag: must be a boolean");
       }
-      ptyManager.setBuffering(payload.id, payload.enabled);
+      ptyClient.setBuffering(payload.id, payload.enabled);
     } catch (error) {
       const errorMessage = error instanceof Error ? error.message : String(error);
       throw new Error(`Failed to set terminal buffering: ${errorMessage}`);
@@ -290,7 +290,7 @@ export function registerTerminalHandlers(deps: HandlerDependencies): () => void 
       if (typeof id !== "string" || !id) {
         throw new Error("Invalid terminal ID: must be a non-empty string");
       }
-      ptyManager.flushBuffer(id);
+      ptyClient.flushBuffer(id);
     } catch (error) {
       const errorMessage = error instanceof Error ? error.message : String(error);
       throw new Error(`Failed to flush terminal buffer: ${errorMessage}`);
@@ -317,7 +317,7 @@ export function registerTerminalHandlers(deps: HandlerDependencies): () => void 
         console.error(`Invalid activity tier: ${payload.tier}`);
         return;
       }
-      ptyManager.setActivityTier(payload.id, payload.tier);
+      ptyClient.setActivityTier(payload.id, payload.tier);
     } catch (error) {
       console.error("Error setting terminal activity tier:", error);
     }
@@ -337,25 +337,12 @@ export function registerTerminalHandlers(deps: HandlerDependencies): () => void 
         throw new Error("Invalid project ID: must be a non-empty string");
       }
 
-      // Check if ptyManager has async method (PtyClient) or sync method (PtyManager)
-      const hasAsyncMethod = "getTerminalsForProjectAsync" in ptyManager;
-
-      let terminalIds: string[];
-      if (hasAsyncMethod) {
-        terminalIds = await (ptyManager as any).getTerminalsForProjectAsync(projectId);
-      } else {
-        terminalIds = ptyManager.getTerminalsForProject(projectId);
-      }
+      const terminalIds = await ptyClient.getTerminalsForProjectAsync(projectId);
 
       // Get terminal info for each ID
       const terminals = [];
       for (const id of terminalIds) {
-        let terminal;
-        if (hasAsyncMethod) {
-          terminal = await (ptyManager as any).getTerminalAsync(id);
-        } else {
-          terminal = ptyManager.getTerminal(id);
-        }
+        const terminal = await ptyClient.getTerminalAsync(id);
         if (terminal) {
           terminals.push({
             id: terminal.id,
@@ -392,15 +379,7 @@ export function registerTerminalHandlers(deps: HandlerDependencies): () => void 
         throw new Error("Invalid terminal ID: must be a non-empty string");
       }
 
-      // Check if ptyManager has async method (PtyClient) or sync method (PtyManager)
-      const hasAsyncMethod = "getTerminalAsync" in ptyManager;
-
-      let terminal;
-      if (hasAsyncMethod) {
-        terminal = await (ptyManager as any).getTerminalAsync(terminalId);
-      } else {
-        terminal = ptyManager.getTerminal(terminalId);
-      }
+      const terminal = await ptyClient.getTerminalAsync(terminalId);
 
       if (!terminal) {
         console.warn(`[IPC] terminal:reconnect: Terminal ${terminalId} not found`);
@@ -439,15 +418,7 @@ export function registerTerminalHandlers(deps: HandlerDependencies): () => void 
 
       const maxLines = payload.maxLines ?? 100;
 
-      // Check if ptyManager has async method (PtyClient) or sync method (PtyManager)
-      const hasAsyncMethod = "replayHistoryAsync" in ptyManager;
-
-      let replayed: number;
-      if (hasAsyncMethod) {
-        replayed = await (ptyManager as any).replayHistoryAsync(payload.terminalId, maxLines);
-      } else {
-        replayed = ptyManager.replayHistory(payload.terminalId, maxLines);
-      }
+      const replayed = await ptyClient.replayHistoryAsync(payload.terminalId, maxLines);
 
       console.log(
         `[IPC] terminal:replayHistory(${payload.terminalId}): replayed ${replayed} lines`
@@ -471,15 +442,7 @@ export function registerTerminalHandlers(deps: HandlerDependencies): () => void 
         throw new Error("Invalid terminal ID: must be a non-empty string");
       }
 
-      // Check if ptyManager has async method (PtyClient) or sync method (PtyManager)
-      const hasAsyncMethod = "getSerializedStateAsync" in ptyManager;
-
-      let serializedState: string | null;
-      if (hasAsyncMethod) {
-        serializedState = await (ptyManager as any).getSerializedStateAsync(terminalId);
-      } else {
-        serializedState = (ptyManager as any).getSerializedState(terminalId);
-      }
+      const serializedState = await ptyClient.getSerializedStateAsync(terminalId);
 
       if (process.env.CANOPY_VERBOSE) {
         console.log(
@@ -505,16 +468,7 @@ export function registerTerminalHandlers(deps: HandlerDependencies): () => void 
         throw new Error("Invalid terminal ID: must be a non-empty string");
       }
 
-      const hasAsyncMethod =
-        "getTerminalInfo" in ptyManager &&
-        typeof (ptyManager as any).getTerminalInfo === "function";
-
-      let terminalInfo: import("../../../shared/types/ipc.js").TerminalInfoPayload | null;
-      if (hasAsyncMethod && "getTerminalInfo" in ptyManager) {
-        terminalInfo = await (ptyManager as any).getTerminalInfo(id);
-      } else {
-        terminalInfo = (ptyManager as any).getTerminalInfo(id);
-      }
+      const terminalInfo = await ptyClient.getTerminalInfo(id);
 
       if (!terminalInfo) {
         throw new Error(`Terminal ${id} not found`);
@@ -532,11 +486,7 @@ export function registerTerminalHandlers(deps: HandlerDependencies): () => void 
   // Get SharedArrayBuffer for zero-copy terminal I/O (visual rendering)
   const handleTerminalGetSharedBuffer = async (): Promise<SharedArrayBuffer | null> => {
     try {
-      // Check if ptyManager has the getSharedBuffer method (PtyClient only)
-      if ("getSharedBuffer" in ptyManager && typeof ptyManager.getSharedBuffer === "function") {
-        return ptyManager.getSharedBuffer();
-      }
-      return null;
+      return ptyClient.getSharedBuffer();
     } catch (error) {
       console.warn("[IPC] Failed to get shared buffer:", error);
       return null;
@@ -548,11 +498,7 @@ export function registerTerminalHandlers(deps: HandlerDependencies): () => void 
   // Get SharedArrayBuffer for semantic analysis (Web Worker)
   const handleTerminalGetAnalysisBuffer = async (): Promise<SharedArrayBuffer | null> => {
     try {
-      // Check if ptyManager has the getAnalysisBuffer method (PtyClient only)
-      if ("getAnalysisBuffer" in ptyManager && typeof ptyManager.getAnalysisBuffer === "function") {
-        return ptyManager.getAnalysisBuffer();
-      }
-      return null;
+      return ptyClient.getAnalysisBuffer();
     } catch (error) {
       console.warn("[IPC] Failed to get analysis buffer:", error);
       return null;
@@ -672,20 +618,12 @@ export function registerTerminalHandlers(deps: HandlerDependencies): () => void 
           };
         }
 
-        if (worktreeService) {
-          // Support both sync (WorktreeService) and async (WorkspaceClient) APIs
-          let isValidWorktree = false;
-          if (hasAsyncGetAllStates(worktreeService)) {
-            const states = await worktreeService.getAllStatesAsync();
-            isValidWorktree = states.some(
-              (wt: { path: string }) => path.resolve(wt.path) === resolvedCwd
-            );
-          } else {
-            const worktrees = worktreeService.getAllStates();
-            isValidWorktree = Array.from(worktrees.values()).some(
-              (wt: { path: string }) => path.resolve(wt.path) === resolvedCwd
-            );
-          }
+        if (workspaceClient) {
+          const states = await workspaceClient.getAllStatesAsync();
+          const isValidWorktree = states.some(
+            (wt: { path: string }) => path.resolve(wt.path) === resolvedCwd
+          );
+
           if (!isValidWorktree) {
             return {
               success: false,

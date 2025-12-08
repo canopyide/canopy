@@ -1,6 +1,6 @@
 import { simpleGit } from "simple-git";
-import type { Worktree, WorktreeChanges, WorktreeMood } from "../types/index.js";
-import { logWarn } from "./logger.js";
+import type { Worktree, WorktreeChanges, WorktreeMood } from "../../types/index.js";
+import { logWarn } from "../../utils/logger.js";
 
 const MS_PER_DAY = 1000 * 60 * 60 * 24;
 

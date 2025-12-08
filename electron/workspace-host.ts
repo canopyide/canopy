@@ -27,7 +27,7 @@ import type {
 } from "../shared/types/workspace-host.js";
 import { invalidateGitStatusCache, getWorktreeChangesWithStats } from "./utils/git.js";
 import { WorktreeRemovedError } from "./utils/errorTypes.js";
-import { categorizeWorktree } from "./utils/worktreeMood.js";
+import { categorizeWorktree } from "./services/worktree/mood.js";
 import { extractIssueNumberSync, extractIssueNumber } from "./services/issueExtractor.js";
 import { AdaptivePollingStrategy, NoteFileReader } from "./services/worktree/index.js";
 import { initializeLogger } from "./utils/logger.js";
