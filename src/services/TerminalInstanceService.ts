@@ -6,7 +6,6 @@ import { WebLinksAddon } from "@xterm/addon-web-links";
 import { ImageAddon } from "@xterm/addon-image";
 import { terminalClient, systemClient } from "@/clients";
 import { TerminalRefreshTier } from "@/types";
-import { InputTracker, VT100_FULL_CLEAR } from "./clearCommandDetection";
 import { detectHardware, HardwareProfile } from "@/utils/hardwareDetection";
 import { SharedRingBuffer, PacketParser } from "@shared/utils/SharedRingBuffer";
 
@@ -440,7 +439,6 @@ class TerminalInstanceService {
     hostElement.style.flexDirection = "column";
 
     const throttledWriter = createThrottledWriter(id, terminal, getRefreshTier);
-    const inputTracker = new InputTracker();
 
     const listeners: Array<() => void> = [];
     const exitSubscribers = new Set<(exitCode: number) => void>();
@@ -465,16 +463,6 @@ class TerminalInstanceService {
     listeners.push(unsubExit);
 
     const inputDisposable = terminal.onData((data) => {
-      // Check for clear command (special handling for AI agents)
-      if (inputTracker.process(data)) {
-        // 1. Clear pending output buffer (prevent ghost echoes)
-        throttledWriter.clear();
-        // 2. Use xterm.js clear() API to reset internal buffer state
-        terminal.clear();
-        // 3. Write escape codes to force cursor reset and visual screen wipe
-        terminal.write(VT100_FULL_CLEAR);
-      }
-
       throttledWriter.notifyInput();
       terminalClient.write(id, data);
     });
