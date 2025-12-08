@@ -10,7 +10,7 @@ let messagePort: MessagePort | null = null;
 let portInitialized = false;
 
 // Start acquiring port immediately on module load
-if (!portInitialized) {
+if (!portInitialized && typeof window !== "undefined" && window.electron) {
   portInitialized = true;
   window.electron.terminal
     .getMessagePort()

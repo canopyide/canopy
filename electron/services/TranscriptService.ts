@@ -2,6 +2,7 @@ import { app } from "electron";
 import path from "path";
 import fs from "fs/promises";
 import { events } from "./events.js";
+import { getPtyClient } from "./PtyClient.js";
 import type { AgentSession } from "../../shared/types/ipc.js";
 import type { TerminalType } from "../types/index.js";
 
@@ -56,26 +57,37 @@ class TranscriptService {
     events.on("agent:spawned", spawnedHandler);
     this.eventCleanups.push(() => events.off("agent:spawned", spawnedHandler));
 
-    const outputHandler = (payload: {
-      terminalId?: string;
-      agentId?: string;
-      data: string;
-      timestamp?: number;
+    // Listen for transcript:ready from pty-host (ANSI sanitization happens there)
+    const transcriptReadyHandler = async (payload: {
+      terminalId: string;
+      chunkCount: number;
+      totalSize: number;
     }) => {
-      const sessionId = payload.terminalId ?? payload.agentId;
-      if (!sessionId) return;
+      const session = this.activeSessions.get(payload.terminalId);
+      if (!session) return;
 
-      const session = this.activeSessions.get(sessionId);
-      if (session) {
-        session.transcript.push({
-          timestamp: payload.timestamp ?? Date.now(),
-          type: "agent",
-          content: payload.data,
-        });
+      // Fetch sanitized transcript from pty-host
+      try {
+        const ptyClient = getPtyClient();
+        const chunks = await ptyClient.getTranscript(payload.terminalId);
+
+        // Convert chunks to transcript entries
+        for (const chunk of chunks) {
+          session.transcript.push({
+            timestamp: chunk.timestamp,
+            type: "agent",
+            content: chunk.content, // Already sanitized in pty-host
+          });
+        }
+      } catch (err) {
+        console.error(
+          `[TranscriptService] Failed to fetch transcript for ${payload.terminalId}:`,
+          err
+        );
       }
     };
-    events.on("agent:output", outputHandler);
-    this.eventCleanups.push(() => events.off("agent:output", outputHandler));
+    events.on("transcript:ready", transcriptReadyHandler);
+    this.eventCleanups.push(() => events.off("transcript:ready", transcriptReadyHandler));
 
     const artifactHandler = (payload: { terminalId: string; artifacts: unknown[] }) => {
       const session = this.activeSessions.get(payload.terminalId);
@@ -145,10 +157,10 @@ class TranscriptService {
       session.metadata.exitCode = exitCode;
     }
 
+    // Generate summary from last entry (already sanitized by pty-host)
     const lastEntry = session.transcript.slice(-1)[0];
     if (lastEntry) {
-      const ansiRegex = /\x1b\[[0-9;]*m/g; // eslint-disable-line no-control-regex
-      const summary = lastEntry.content.replace(ansiRegex, "").slice(0, 100).trim();
+      const summary = lastEntry.content.slice(0, 100).trim();
       (session as AgentSession & { summary?: string }).summary = summary;
     }
 
@@ -290,12 +302,11 @@ class TranscriptService {
     lines.push("## Transcript");
     lines.push("");
 
-    const ansiStripRegex = /\x1b\[[0-9;]*m/g; // eslint-disable-line no-control-regex
+    // Content is already sanitized by pty-host, no ANSI stripping needed
     for (const entry of session.transcript) {
       const time = new Date(entry.timestamp).toLocaleTimeString();
       lines.push(`**[${time}] ${entry.type}**`);
-      const cleanContent = entry.content.replace(ansiStripRegex, "");
-      lines.push(cleanContent);
+      lines.push(entry.content);
       lines.push("");
     }
 

@@ -11,6 +11,7 @@
 
 import { MessagePort } from "node:worker_threads";
 import os from "node:os";
+import stripAnsi from "strip-ansi";
 import { PtyManager } from "./services/PtyManager.js";
 import { PtyPool, getPtyPool } from "./services/PtyPool.js";
 import { events } from "./services/events.js";
@@ -20,6 +21,7 @@ import type {
   PtyHostEvent,
   PtyHostTerminalSnapshot,
   ActivityTier,
+  TranscriptChunk,
 } from "../shared/types/pty-host.js";
 
 // Validate we're running in UtilityProcess context
@@ -67,8 +69,23 @@ const BACKPRESSURE_MAX_PAUSE_MS = 5000; // Force resume after 5 seconds to preve
 
 // MessagePort for direct Renderer ↔ Pty Host communication (bypasses Main)
 // Note: Currently stored but not used elsewhere; could be extended for future features
-// @ts-ignore - stored for future use
+// @ts-expect-error - stored for future use
 let rendererPort: MessagePort | null = null;
+
+// Transcript buffer configuration
+const MAX_TRANSCRIPT_SIZE = 10 * 1024 * 1024; // 10MB per session
+
+// Per-terminal transcript buffers (sanitized ANSI output)
+interface TranscriptBuffer {
+  chunks: TranscriptChunk[];
+  totalSize: number;
+  enabled: boolean;
+}
+const transcriptBuffers = new Map<string, TranscriptBuffer>();
+
+function createTranscriptBuffer(): TranscriptBuffer {
+  return { chunks: [], totalSize: 0, enabled: true };
+}
 
 // Helper to send events to Main process
 function sendEvent(event: PtyHostEvent): void {
@@ -82,6 +99,30 @@ function toStringForIpc(data: string | Uint8Array): string {
 
 // Wire up PtyManager events
 ptyManager.on("data", (id: string, data: string | Uint8Array) => {
+  // Transcript buffering: sanitize and store output
+  const transcriptBuffer = transcriptBuffers.get(id);
+  if (transcriptBuffer?.enabled) {
+    const sanitized = stripAnsi(toStringForIpc(data));
+    if (sanitized.length > 0) {
+      const chunkSize = Buffer.byteLength(sanitized, "utf8");
+
+      // Evict old chunks if over size limit (FIFO)
+      while (
+        transcriptBuffer.totalSize + chunkSize > MAX_TRANSCRIPT_SIZE &&
+        transcriptBuffer.chunks.length > 0
+      ) {
+        const evicted = transcriptBuffer.chunks.shift()!;
+        transcriptBuffer.totalSize -= Buffer.byteLength(evicted.content, "utf8");
+      }
+
+      transcriptBuffer.chunks.push({
+        timestamp: Date.now(),
+        content: sanitized,
+      });
+      transcriptBuffer.totalSize += chunkSize;
+    }
+  }
+
   // Use ring buffers if available (zero-copy path)
   if (visualBuffer) {
     const packet = packetFramer.frame(id, data);
@@ -212,6 +253,18 @@ ptyManager.on("exit", (id: string, exitCode: number) => {
   if (checkInterval) {
     clearInterval(checkInterval);
     pausedTerminals.delete(id);
+  }
+
+  // Notify Main that transcript is ready for retrieval
+  const transcriptBuffer = transcriptBuffers.get(id);
+  if (transcriptBuffer && transcriptBuffer.chunks.length > 0) {
+    sendEvent({
+      type: "transcript-ready",
+      id,
+      chunkCount: transcriptBuffer.chunks.length,
+      totalSize: transcriptBuffer.totalSize,
+    });
+    // Keep buffer until Main fetches it (don't delete here)
   }
 
   sendEvent({ type: "exit", id, exitCode });
@@ -390,12 +443,24 @@ port.on("message", (rawMsg: any) => {
             }
 
             try {
-              if (portMsg.type === "write" && typeof portMsg.id === "string" && typeof portMsg.data === "string") {
+              if (
+                portMsg.type === "write" &&
+                typeof portMsg.id === "string" &&
+                typeof portMsg.data === "string"
+              ) {
                 ptyManager.write(portMsg.id, portMsg.data, portMsg.traceId);
-              } else if (portMsg.type === "resize" && typeof portMsg.id === "string" && typeof portMsg.cols === "number" && typeof portMsg.rows === "number") {
+              } else if (
+                portMsg.type === "resize" &&
+                typeof portMsg.id === "string" &&
+                typeof portMsg.cols === "number" &&
+                typeof portMsg.rows === "number"
+              ) {
                 ptyManager.resize(portMsg.id, portMsg.cols, portMsg.rows);
               } else {
-                console.warn("[PtyHost] Unknown or invalid MessagePort message type:", portMsg.type);
+                console.warn(
+                  "[PtyHost] Unknown or invalid MessagePort message type:",
+                  portMsg.type
+                );
               }
             } catch (error) {
               console.error("[PtyHost] Error handling MessagePort message:", error);
@@ -434,6 +499,7 @@ port.on("message", (rawMsg: any) => {
         break;
 
       case "spawn":
+        transcriptBuffers.set(msg.id, createTranscriptBuffer());
         ptyManager.spawn(msg.id, msg.options);
         break;
 
@@ -622,6 +688,37 @@ port.on("message", (rawMsg: any) => {
         break;
       }
 
+      case "get-transcript": {
+        const buffer = transcriptBuffers.get(msg.id);
+        sendEvent({
+          type: "transcript",
+          id: msg.id,
+          requestId: msg.requestId,
+          chunks: buffer?.chunks ?? [],
+        });
+        // Clean up buffer after it's been fetched
+        transcriptBuffers.delete(msg.id);
+        break;
+      }
+
+      case "start-transcript": {
+        let buffer = transcriptBuffers.get(msg.id);
+        if (!buffer) {
+          buffer = createTranscriptBuffer();
+          transcriptBuffers.set(msg.id, buffer);
+        }
+        buffer.enabled = true;
+        break;
+      }
+
+      case "stop-transcript": {
+        const buffer = transcriptBuffers.get(msg.id);
+        if (buffer) {
+          buffer.enabled = false;
+        }
+        break;
+      }
+
       case "dispose":
         cleanup();
         break;
@@ -643,6 +740,9 @@ function cleanup(): void {
     console.log(`[PtyHost] Cleared backpressure monitor for terminal ${id}`);
   }
   pausedTerminals.clear();
+
+  // Clear all transcript buffers
+  transcriptBuffers.clear();
 
   if (ptyPool) {
     ptyPool.dispose();

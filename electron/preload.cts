@@ -45,8 +45,8 @@ import type { TerminalActivityPayload } from "../shared/types/terminal.js";
 export type { ElectronAPI };
 
 // Store MessagePort for direct Renderer ↔ Pty Host communication
-let terminalMessagePort: any | null = null;
-const terminalPortHandlers: Array<(port: any) => void> = [];
+let terminalMessagePort: MessagePort | null = null;
+const terminalPortHandlers: Array<(port: MessagePort) => void> = [];
 
 // Listen for MessagePort from Main
 ipcRenderer.on("terminal-port", (event) => {
@@ -426,7 +426,7 @@ const api: ElectronAPI = {
     getAnalysisBuffer: (): Promise<SharedArrayBuffer | null> =>
       ipcRenderer.invoke(CHANNELS.TERMINAL_GET_ANALYSIS_BUFFER),
 
-    getMessagePort: (): Promise<any | null> => {
+    getMessagePort: (): Promise<MessagePort | null> => {
       return new Promise((resolve) => {
         if (terminalMessagePort) {
           resolve(terminalMessagePort);
