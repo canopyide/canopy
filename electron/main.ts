@@ -351,6 +351,8 @@ async function createWindow(): Promise<void> {
   // Create placeholder instances for IPC registration
   // These will be properly initialized in deferred services
   devServerManager = new DevServerManager();
+  // Connect DevServerManager to WorkspaceClient for offloading URL parsing
+  devServerManager.setWorkspaceClient(workspaceClient);
   cliAvailabilityService = new CliAvailabilityService();
   eventBuffer = new EventBuffer(1000);
   sidecarManager = new SidecarManager(mainWindow);

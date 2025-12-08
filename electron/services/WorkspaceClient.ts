@@ -23,6 +23,7 @@ import type {
   MonitorConfig,
   CreateWorktreeOptions,
   BranchInfo,
+  DevServerDetectedUrls,
 } from "../../shared/types/workspace-host.js";
 import type { Worktree } from "../../shared/types/domain.js";
 import type { CopyTreeOptions, CopyTreeProgress, CopyTreeResult } from "../../shared/types/ipc.js";
@@ -298,6 +299,11 @@ export class WorkspaceClient extends EventEmitter {
           success: false,
           error: event.error,
         });
+        break;
+
+      // DevServer events
+      case "devserver:urls-detected":
+        this.handleRequestResult({ ...event, success: true });
         break;
 
       default:
@@ -595,6 +601,24 @@ export class WorkspaceClient extends EventEmitter {
 
     this.copyTreeProgressCallbacks.clear();
     this.activeCopyTreeOperations.clear();
+  }
+
+  // DevServer methods
+
+  async parseDevOutput(worktreeId: string, output: string): Promise<DevServerDetectedUrls | null> {
+    const requestId = this.generateRequestId();
+
+    const result = await this.sendWithResponse<{ detected: DevServerDetectedUrls | null }>(
+      {
+        type: "devserver:parse-output",
+        requestId,
+        worktreeId,
+        output,
+      },
+      5000
+    );
+
+    return result.detected;
   }
 
   /** Pause health check during system sleep */

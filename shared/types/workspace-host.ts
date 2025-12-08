@@ -125,7 +125,15 @@ export type WorkspaceHostRequest =
       rootPath: string;
       options?: CopyTreeOptions;
     }
-  | { type: "copytree:cancel"; operationId: string };
+  | { type: "copytree:cancel"; operationId: string }
+  // DevServer parsing operations
+  | { type: "devserver:parse-output"; requestId: string; worktreeId: string; output: string };
+
+/** Result of DevServer URL detection */
+export interface DevServerDetectedUrls {
+  url?: string;
+  port?: number;
+}
 
 /**
  * Events sent from Workspace Host → Main.
@@ -173,7 +181,14 @@ export type WorkspaceHostEvent =
       operationId: string;
       result: CopyTreeResult;
     }
-  | { type: "copytree:error"; requestId: string; operationId: string; error: string };
+  | { type: "copytree:error"; requestId: string; operationId: string; error: string }
+  // DevServer events
+  | {
+      type: "devserver:urls-detected";
+      requestId: string;
+      worktreeId: string;
+      detected: DevServerDetectedUrls | null;
+    };
 
 /** Configuration for WorkspaceClient */
 export interface WorkspaceClientConfig {

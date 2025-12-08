@@ -6,6 +6,7 @@ import { events } from "./events.js";
 import { projectStore } from "./ProjectStore.js";
 import { DevServerParser } from "./devserver/DevServerParser.js";
 import { CommandDetector } from "./devserver/CommandDetector.js";
+import type { WorkspaceClient } from "./WorkspaceClient.js";
 
 const FORCE_KILL_TIMEOUT_MS = 5000;
 const MAX_LOG_LINES = 100;
@@ -25,6 +26,7 @@ export class DevServerManager {
   private lastRestartAttempt = new Map<string, number>(); // Track restart times to prevent loops
   private worktreePaths = new Map<string, string>(); // Cache worktree paths for restart
   private resumeInProgress = false; // Prevent overlapping resume operations
+  private workspaceClient: WorkspaceClient | null = null; // For offloading URL parsing to workspace-host
 
   /**
    * Set the active project for IPC event filtering.
@@ -46,6 +48,14 @@ export class DevServerManager {
    */
   public getActiveProjectId(): string | null {
     return this.activeProjectId;
+  }
+
+  /**
+   * Set the WorkspaceClient reference for offloading URL parsing to workspace-host.
+   * This enables CPU-intensive regex parsing to run in a UtilityProcess instead of Main.
+   */
+  public setWorkspaceClient(client: WorkspaceClient): void {
+    this.workspaceClient = client;
   }
 
   public initialize(
@@ -636,16 +646,78 @@ export class DevServerManager {
       return;
     }
 
-    const detected = DevServerParser.detectUrl(output);
-    if (detected) {
-      console.log("Detected dev server URL", { worktreeId, ...detected });
+    // Use workspace-host for parsing if available (offloads regex work from Main thread)
+    if (this.workspaceClient?.isReady()) {
+      void this.detectUrlViaWorkspaceHost(worktreeId, output);
+    } else {
+      // Fallback to direct parsing if workspace-host not available
+      const detected = DevServerParser.detectUrl(output);
+      if (detected) {
+        console.log("Detected dev server URL", { worktreeId, ...detected });
+        this.updateState(worktreeId, {
+          status: "running",
+          url: detected.url,
+          port: detected.port,
+          errorMessage: undefined,
+        });
+      }
+    }
+  }
 
-      this.updateState(worktreeId, {
-        status: "running",
-        url: detected.url,
-        port: detected.port,
-        errorMessage: undefined,
-      });
+  private async detectUrlViaWorkspaceHost(worktreeId: string, output: string): Promise<void> {
+    const currentState = this.states.get(worktreeId);
+    if (!currentState) return;
+
+    const serverPid = currentState.pid;
+
+    try {
+      const detected = await this.workspaceClient!.parseDevOutput(worktreeId, output);
+
+      // If no URL detected by workspace-host, try local parser as fallback
+      if (!detected?.url) {
+        const localDetected = DevServerParser.detectUrl(output);
+        if (localDetected) {
+          const state = this.states.get(worktreeId);
+          if (state?.status === "starting" && state.pid === serverPid) {
+            console.log("Detected dev server URL (local fallback)", { worktreeId, ...localDetected });
+            this.updateState(worktreeId, {
+              status: "running",
+              url: localDetected.url,
+              port: localDetected.port,
+              errorMessage: undefined,
+            });
+          }
+        }
+        return;
+      }
+
+      // Verify state and PID haven't changed during async operation
+      const state = this.states.get(worktreeId);
+      if (state?.status === "starting" && state.pid === serverPid) {
+        console.log("Detected dev server URL via workspace-host", { worktreeId, ...detected });
+        this.updateState(worktreeId, {
+          status: "running",
+          url: detected.url,
+          port: detected.port,
+          errorMessage: undefined,
+        });
+      }
+    } catch (error) {
+      console.warn("[DevServerManager] Workspace-host parse failed, using local fallback:", error);
+      // Fallback to direct parsing if workspace-host call fails
+      const detected = DevServerParser.detectUrl(output);
+      if (detected) {
+        const state = this.states.get(worktreeId);
+        if (state?.status === "starting" && state.pid === serverPid) {
+          console.log("Detected dev server URL (error fallback)", { worktreeId, ...detected });
+          this.updateState(worktreeId, {
+            status: "running",
+            url: detected.url,
+            port: detected.port,
+            errorMessage: undefined,
+          });
+        }
+      }
     }
   }
 }
