@@ -51,6 +51,17 @@ export const useWorktreeDataStore = create<WorktreeDataStore>()((set, get) => ({
 
           const unsubRemove = worktreeClient.onRemove(({ worktreeId }) => {
             set((prev) => {
+              const worktree = prev.worktrees.get(worktreeId);
+
+              // Safeguard: Never remove main worktree from the store
+              if (worktree?.isMainWorktree) {
+                console.warn("[WorktreeStore] Attempted to remove main worktree - blocked", {
+                  worktreeId,
+                  branch: worktree.branch,
+                });
+                return prev;
+              }
+
               const next = new Map(prev.worktrees);
               next.delete(worktreeId);
               return { worktrees: next };
@@ -85,11 +96,9 @@ export const useWorktreeDataStore = create<WorktreeDataStore>()((set, get) => ({
 
   getWorktreeList: () => {
     return Array.from(get().worktrees.values()).sort((a, b) => {
-      const aIsMain = a.branch === "main" || a.branch === "master";
-      const bIsMain = b.branch === "main" || b.branch === "master";
-      if (aIsMain !== bIsMain) {
-        return aIsMain ? -1 : 1;
-      }
+      // Use isMainWorktree flag for consistent sorting
+      if (a.isMainWorktree && !b.isMainWorktree) return -1;
+      if (!a.isMainWorktree && b.isMainWorktree) return 1;
       return a.name.localeCompare(b.name);
     });
   },

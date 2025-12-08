@@ -224,6 +224,18 @@ export class WorktreeService {
       // 1. Remove stale monitors (worktrees that no longer exist)
       for (const [id, monitor] of this.monitors) {
         if (!currentIds.has(id)) {
+          const state = monitor.getState();
+
+          // Safeguard: Never remove main worktree monitor
+          if (state.isMainWorktree) {
+            logWarn("Attempted to remove main worktree monitor - blocked", {
+              id,
+              branch: state.branch,
+              reason: "Main worktree missing from git worktree list (possible transient git error)",
+            });
+            continue;
+          }
+
           logInfo("Removing stale WorktreeMonitor", { id });
           // Clean up event bus subscription to prevent memory leak
           const unsubscribe = (monitor as any)._eventBusUnsubscribe;

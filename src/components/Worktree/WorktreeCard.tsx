@@ -193,7 +193,8 @@ export function WorktreeCard({
   );
 
   const [now, setNow] = useState(() => Date.now());
-  const isMainWorktree = worktree.branch === "main" || worktree.branch === "master";
+  // Use the isMainWorktree flag from the worktree state for consistent detection
+  const isMainWorktree = worktree.isMainWorktree;
 
   useEffect(() => {
     if (!isMainWorktree || !worktree.aiNote || !worktree.aiNoteTimestamp) {
