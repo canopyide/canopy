@@ -7,24 +7,21 @@ import type {
 } from "@shared/types";
 
 let messagePort: MessagePort | null = null;
-let portInitialized = false;
 
-// Start acquiring port immediately on module load
-if (!portInitialized && typeof window !== "undefined" && window.electron) {
-  portInitialized = true;
-  window.electron.terminal
-    .getMessagePort()
-    .then((port) => {
-      if (port) {
-        messagePort = port;
-        console.log("[TerminalClient] MessagePort acquired for direct terminal I/O");
-      } else {
-        console.log("[TerminalClient] MessagePort unavailable, using IPC fallback");
-      }
-    })
-    .catch((error) => {
-      console.warn("[TerminalClient] Failed to get MessagePort, using IPC fallback:", error);
-    });
+// Listen for MessagePort transferred from preload
+if (typeof window !== "undefined") {
+  window.addEventListener("message", (event) => {
+    if (event.data?.type === "terminal-port" && event.ports?.[0]) {
+      messagePort = event.ports[0];
+      messagePort.start();
+      console.log("[TerminalClient] MessagePort acquired via postMessage");
+    }
+  });
+
+  // Check if port was already sent (unlikely given race, but good practice if we add handshake later)
+  // For now, we rely on the event listener.
+  // We can also call the deprecated method just to be safe if we reverted the preload change,
+  // but since we controlled the preload change, we know it returns null.
 }
 
 export const terminalClient = {

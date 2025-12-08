@@ -45,19 +45,17 @@ import type { TerminalActivityPayload } from "../shared/types/terminal.js";
 export type { ElectronAPI };
 
 // Store MessagePort for direct Renderer ↔ Pty Host communication
-let terminalMessagePort: MessagePort | null = null;
-const terminalPortHandlers: Array<(port: MessagePort) => void> = [];
+// Note: We cannot return MessagePort via contextBridge (it's not cloneable/transferable via that API).
+// Instead, we use window.postMessage to transfer it to the main world.
 
 // Listen for MessagePort from Main
 ipcRenderer.on("terminal-port", (event) => {
   if (event.ports && event.ports.length > 0) {
-    terminalMessagePort = event.ports[0];
-    terminalMessagePort.start();
-    console.log("[Preload] MessagePort received for direct terminal I/O");
-
-    // Notify any waiting handlers
-    terminalPortHandlers.forEach((handler) => handler(terminalMessagePort!));
-    terminalPortHandlers.length = 0;
+    const port = event.ports[0];
+    // We must NOT start the port here if we want to transfer it.
+    // Transfer it to the main world immediately.
+    window.postMessage({ type: "terminal-port" }, "*", [port]);
+    console.log("[Preload] MessagePort transferred to main world");
   }
 });
 
@@ -427,23 +425,11 @@ const api: ElectronAPI = {
       ipcRenderer.invoke(CHANNELS.TERMINAL_GET_ANALYSIS_BUFFER),
 
     getMessagePort: (): Promise<MessagePort | null> => {
-      return new Promise((resolve) => {
-        if (terminalMessagePort) {
-          resolve(terminalMessagePort);
-        } else {
-          terminalPortHandlers.push(resolve);
-          setTimeout(() => {
-            const index = terminalPortHandlers.indexOf(resolve);
-            if (index !== -1) {
-              terminalPortHandlers.splice(index, 1);
-              resolve(null);
-            }
-          }, 5000);
-        }
-      });
+      // MessagePort is now transferred via window.postMessage
+      return Promise.resolve(null);
     },
 
-    isMessagePortAvailable: (): boolean => terminalMessagePort !== null,
+    isMessagePortAvailable: (): boolean => false,
   },
 
   // Artifact API
