@@ -31,6 +31,10 @@ import { events } from "../events.js";
 import { AgentSpawnedSchema } from "../../schemas/agent.js";
 import type { PtyPool } from "../PtyPool.js";
 
+// Flow Control Constants (VS Code values)
+const HIGH_WATERMARK_CHARS = 100000;
+const LOW_WATERMARK_CHARS = 5000;
+
 /**
  * Split input into chunks for safe PTY writing.
  * Chunks at max size OR before escape sequences to prevent mid-sequence splits.
@@ -80,6 +84,10 @@ export class TerminalProcess {
   private processDetector: ProcessDetector | null = null;
   private headlineGenerator = new ActivityHeadlineGenerator();
   private inputTracker = new InputTracker();
+
+  // Flow control state
+  private _unacknowledgedCharCount = 0;
+  private _isPtyPaused = false;
 
   // Semantic buffer state
   private pendingSemanticData = "";
@@ -282,6 +290,31 @@ export class TerminalProcess {
    */
   getInfo(): TerminalInfo {
     return this.terminalInfo;
+  }
+
+  /**
+   * Acknowledge data processing from frontend (Flow Control).
+   */
+  acknowledgeData(charCount: number): void {
+    if (this.terminalInfo.wasKilled) {
+      return;
+    }
+
+    this._unacknowledgedCharCount = Math.max(0, this._unacknowledgedCharCount - charCount);
+
+    if (this._isPtyPaused && this._unacknowledgedCharCount < LOW_WATERMARK_CHARS) {
+      if (process.env.CANOPY_VERBOSE) {
+        console.log(
+          `[TerminalProcess] Flow control: Resuming ${this.id} (${this._unacknowledgedCharCount} < ${LOW_WATERMARK_CHARS})`
+        );
+      }
+      try {
+        this.terminalInfo.ptyProcess.resume();
+      } catch {
+        // Process might be dead
+      }
+      this._isPtyPaused = false;
+    }
   }
 
   /**
@@ -585,6 +618,22 @@ export class TerminalProcess {
       // Verify this is still the active terminal
       if (terminal.ptyProcess !== ptyProcess) {
         return;
+      }
+
+      // Flow Control: Pause if backlog is too high
+      this._unacknowledgedCharCount += data.length;
+      if (!this._isPtyPaused && this._unacknowledgedCharCount > HIGH_WATERMARK_CHARS) {
+        if (process.env.CANOPY_VERBOSE) {
+          console.log(
+            `[TerminalProcess] Flow control: Pausing ${this.id} (${this._unacknowledgedCharCount} > ${HIGH_WATERMARK_CHARS})`
+          );
+        }
+        try {
+          ptyProcess.pause();
+        } catch {
+          // Process might be dead
+        }
+        this._isPtyPaused = true;
       }
 
       terminal.lastOutputTime = Date.now();

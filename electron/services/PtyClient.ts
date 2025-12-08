@@ -519,6 +519,13 @@ export class PtyClient extends EventEmitter {
     this.send({ type: "flush-buffer", id });
   }
 
+  /**
+   * Acknowledge data processing for flow control.
+   */
+  acknowledgeData(id: string, charCount: number): void {
+    this.send({ type: "acknowledge-data", id, charCount } as any);
+  }
+
   /** Set the activity tier for IPC batching (affects flush timing) */
   setActivityTier(id: string, tier: ActivityTier): void {
     this.send({ type: "set-activity-tier", id, tier });

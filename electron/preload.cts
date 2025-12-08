@@ -124,6 +124,7 @@ const CHANNELS = {
   TERMINAL_GET_SHARED_BUFFER: "terminal:get-shared-buffer",
   TERMINAL_GET_ANALYSIS_BUFFER: "terminal:get-analysis-buffer",
   TERMINAL_GET_INFO: "terminal:get-info",
+  TERMINAL_ACKNOWLEDGE_DATA: "terminal:acknowledge-data",
 
   // Agent state channels
   AGENT_STATE_CHANGED: "agent:state-changed",
@@ -405,6 +406,9 @@ const api: ElectronAPI = {
       _typedInvoke(CHANNELS.TERMINAL_SET_BUFFERING, { id, enabled }),
 
     flush: (id: string) => _typedInvoke(CHANNELS.TERMINAL_FLUSH, id),
+
+    acknowledgeData: (id: string, length: number) =>
+      ipcRenderer.send(CHANNELS.TERMINAL_ACKNOWLEDGE_DATA, { id, length }),
 
     setActivityTier: (id: string, tier: "focused" | "visible" | "background") =>
       ipcRenderer.send(CHANNELS.TERMINAL_SET_ACTIVITY_TIER, { id, tier }),

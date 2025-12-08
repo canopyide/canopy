@@ -1547,6 +1547,7 @@ export interface ElectronAPI {
     restore(id: string): Promise<boolean>;
     setBuffering(id: string, enabled: boolean): Promise<void>;
     flush(id: string): Promise<void>;
+    acknowledgeData(id: string, length: number): void;
     setActivityTier(id: string, tier: "focused" | "visible" | "background"): void;
     getForProject(projectId: string): Promise<BackendTerminalInfo[]>;
     reconnect(terminalId: string): Promise<TerminalReconnectResult>;

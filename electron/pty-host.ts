@@ -523,6 +523,10 @@ port.on("message", (rawMsg: any) => {
         ptyManager.flushBuffer(msg.id);
         break;
 
+      case "acknowledge-data":
+        ptyManager.acknowledgeData(msg.id, msg.charCount);
+        break;
+
       case "set-activity-tier":
         ptyManager.setActivityTier(msg.id, msg.tier as ActivityTier);
         break;

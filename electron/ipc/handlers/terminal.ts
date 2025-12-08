@@ -299,6 +299,27 @@ export function registerTerminalHandlers(deps: HandlerDependencies): () => void 
   ipcMain.handle(CHANNELS.TERMINAL_FLUSH, handleTerminalFlush);
   handlers.push(() => ipcMain.removeHandler(CHANNELS.TERMINAL_FLUSH));
 
+  const handleTerminalAcknowledgeData = (
+    _event: Electron.IpcMainEvent,
+    payload: { id: string; length: number }
+  ) => {
+    try {
+      if (!payload || typeof payload !== "object") {
+        return;
+      }
+      if (typeof payload.id !== "string" || typeof payload.length !== "number") {
+        return;
+      }
+      ptyClient.acknowledgeData(payload.id, payload.length);
+    } catch (error) {
+      console.error("Error acknowledging terminal data:", error);
+    }
+  };
+  ipcMain.on(CHANNELS.TERMINAL_ACKNOWLEDGE_DATA, handleTerminalAcknowledgeData);
+  handlers.push(() =>
+    ipcMain.removeListener(CHANNELS.TERMINAL_ACKNOWLEDGE_DATA, handleTerminalAcknowledgeData)
+  );
+
   const handleTerminalSetActivityTier = (
     _event: Electron.IpcMainEvent,
     payload: { id: string; tier: ActivityTier }

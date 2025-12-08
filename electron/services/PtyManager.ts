@@ -195,6 +195,16 @@ export class PtyManager extends EventEmitter {
   }
 
   /**
+   * Acknowledge data processing for flow control.
+   */
+  acknowledgeData(id: string, charCount: number): void {
+    const terminal = this.terminals.get(id);
+    if (terminal) {
+      terminal.acknowledgeData(charCount);
+    }
+  }
+
+  /**
    * Set buffering mode for a terminal.
    */
   setBuffering(id: string, enabled: boolean): void {

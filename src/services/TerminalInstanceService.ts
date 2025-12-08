@@ -47,7 +47,6 @@ interface ManagedTerminal {
 const MAX_WEBGL_RECOVERY_ATTEMPTS = 3;
 const WEBGL_DISPOSE_GRACE_MS = 10000; // 10s grace period before releasing WebGL on hide
 const TIER_DOWNGRADE_HYSTERESIS_MS = 500; // Delay before applying tier downgrades to prevent flapping
-const MAX_PENDING_WRITES = 5; // Max pending writes before backpressure kicks in
 
 /**
  * Creates a simple writer that passes data directly to xterm.
@@ -57,6 +56,7 @@ const MAX_PENDING_WRITES = 5; // Max pending writes before backpressure kicks in
  * This avoids complex heuristics that can add latency to keystroke echoes.
  */
 function createThrottledWriter(
+  id: string,
   terminal: Terminal,
   _initialProvider: RefreshTierProvider = () => TerminalRefreshTier.FOCUSED
 ) {
@@ -70,6 +70,9 @@ function createThrottledWriter(
       pendingWrites++;
       terminal.write(data, () => {
         pendingWrites--;
+        // Flow Control: Acknowledge processed data to backend
+        // This allows the backend to resume the PTY if it was paused
+        terminalClient.acknowledgeData(id, data.length);
       });
     },
     dispose: () => {
@@ -113,8 +116,6 @@ class TerminalInstanceService {
   private rafId: number | null = null;
   private pollTimeoutId: number | null = null;
   private sharedBufferEnabled = false;
-  // Pending buffers for terminals experiencing backpressure
-  private pendingBuffers = new Map<string, string[]>();
 
   private static readonly TERMINAL_COUNT_THRESHOLD = 20;
   private static readonly BUDGET_SCALE_FACTOR = 0.5;
@@ -177,10 +178,11 @@ class TerminalInstanceService {
 
   /**
    * Poll the ring buffer and dispatch data to terminals.
-   * Implements "Render-Aware Polling" (Soft Backpressure):
-   * - Tracks pending writes to xterm.js.
-   * - If pending writes exceed limit, buffers data locally instead of overwhelming xterm.
-   * - Retries aggressively (1ms) to clear backlog.
+   *
+   * Changes from previous "Render-Aware Polling":
+   * - Removed client-side throttling/backpressure.
+   * - Data is dispatched to xterm.js immediately.
+   * - Flow control is handled by backend pausing PTY based on unacknowledged bytes.
    */
   private poll = (): void => {
     if (!this.pollingActive || !this.ringBuffer) return;
@@ -190,15 +192,6 @@ class TerminalInstanceService {
 
     // Pre-dispatch coalescing: accumulate packets per terminal ID
     const coalescedUpdates = new Map<string, string[]>();
-
-    // 1. Re-queue any pending buffers from previous backpressure events
-    if (this.pendingBuffers.size > 0) {
-      hasData = true;
-      this.pendingBuffers.forEach((chunks, id) => {
-        coalescedUpdates.set(id, [...chunks]);
-      });
-      this.pendingBuffers.clear();
-    }
 
     // Read phase: collect all available packets within time budget
     while (performance.now() - start < TerminalInstanceService.POLL_TIME_BUDGET_MS) {
@@ -223,22 +216,6 @@ class TerminalInstanceService {
         const managed = this.instances.get(id);
         if (!managed) return;
 
-        // Check for backpressure
-        if (managed.throttledWriter.pendingWrites > MAX_PENDING_WRITES) {
-          if (!this.pendingBuffers.has(id)) {
-            console.warn(
-              `[TerminalInstanceService] Backpressure active for ${id} (${managed.throttledWriter.pendingWrites} pending writes)`
-            );
-          }
-          let pending = this.pendingBuffers.get(id);
-          if (!pending) {
-            pending = [];
-            this.pendingBuffers.set(id, pending);
-          }
-          pending.push(...chunks);
-          return;
-        }
-
         if (chunks.length === 1) {
           managed.throttledWriter.write(chunks[0]);
         } else {
@@ -247,9 +224,9 @@ class TerminalInstanceService {
       });
     }
 
-    // Poll faster (1ms) if we have data or active backpressure to clear buffers ASAP.
-    // Otherwise idle at 4ms (or slower on low-end hardware).
-    let nextPollDelay = hasData || this.pendingBuffers.size > 0 ? 1 : 4;
+    // Poll faster (1ms) if we have data to keep draining buffer ASAP.
+    // Otherwise idle at 4ms.
+    let nextPollDelay = hasData ? 1 : 4;
 
     // Throttle polling on low-end devices when idle with many terminals
     if (
@@ -436,7 +413,7 @@ class TerminalInstanceService {
     hostElement.style.display = "flex";
     hostElement.style.flexDirection = "column";
 
-    const throttledWriter = createThrottledWriter(terminal, getRefreshTier);
+    const throttledWriter = createThrottledWriter(id, terminal, getRefreshTier);
     const inputTracker = new InputTracker();
 
     const listeners: Array<() => void> = [];

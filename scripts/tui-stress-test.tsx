@@ -2,142 +2,119 @@
 /**
  * TUI Stress Test for Terminal Flicker Issue (#800)
  *
- * Uses actual Ink framework to reproduce the exact rendering behavior
- * that causes flickering in xterm.js-based terminals.
+ * Reproduces the exact Claude Code / Canopy flickering scenario:
+ *
+ * ROOT CAUSE (from Codex analysis):
+ * When Ink renders an animation frame, it sends:
+ *   1. CSI A (cursor up N lines)
+ *   2. CSI J (erase from cursor to end of screen)
+ *   3. New frame content
+ *
+ * If the erase sequence (CSI J) and redraw content don't arrive in the same
+ * write batch to xterm.js, there's a visible frame where content below the
+ * animation is erased but not yet redrawn - causing flicker.
+ *
+ * This test stresses that scenario with:
+ * - Large MCP status blocks with glowing/pulsing dots (like Codex calls)
+ * - Multiple concurrent animations (multiplies the effect)
+ * - Lots of static content below that must be redrawn each frame
+ * - Static history above that should NEVER flicker
  *
  * TODO: Remove this file once issue #800 is resolved.
  */
 
 import React, { useState, useEffect } from 'react';
-import { render, Box, Text, Newline } from 'ink';
+import { render, Box, Text, useInput, useApp, useStdout } from 'ink';
 import Spinner from 'ink-spinner';
 
-// Simulated AI agent output
-const agentOutput = `
-Claude I'll help you implement the terminal rendering optimization. Let me start by analyzing the current codebase.
+// Simulated conversation history (like Claude Code's scrollback)
+// This is a LOT of text to simulate real usage
+const conversationHistory = `
+\x1b[1m\x1b[36m╭─\x1b[0m \x1b[1muser\x1b[0m
+\x1b[1m\x1b[36m│\x1b[0m Please can you ask Codex to do a full breakdown of what this project is.
+\x1b[1m\x1b[36m│\x1b[0m You can give it some guidance, but overall, just tell it what this thing is.
+\x1b[1m\x1b[36m╰─\x1b[0m
 
-> Read src/components/Terminal/XtermAdapter.tsx
+\x1b[1m\x1b[35m╭─\x1b[0m \x1b[1massistant\x1b[0m
+\x1b[1m\x1b[35m│\x1b[0m I'll ask Codex to analyze the Canopy Command Center project. Let me use the
+\x1b[1m\x1b[35m│\x1b[0m Codex MCP to get a comprehensive breakdown.
+\x1b[1m\x1b[35m│\x1b[0m
+\x1b[1m\x1b[35m│\x1b[0m \x1b[2m> Using Codex MCP with model gpt-5.1-codex-max\x1b[0m
+\x1b[1m\x1b[35m│\x1b[0m
+\x1b[1m\x1b[35m│\x1b[0m The project appears to be an Electron-based IDE for orchestrating AI coding
+\x1b[1m\x1b[35m│\x1b[0m agents. Key features include:
+\x1b[1m\x1b[35m│\x1b[0m
+\x1b[1m\x1b[35m│\x1b[0m 1. \x1b[1mIntegrated Terminals\x1b[0m - Multiple PTY instances with xterm.js rendering
+\x1b[1m\x1b[35m│\x1b[0m 2. \x1b[1mWorktree Dashboard\x1b[0m - Git worktree management and visualization
+\x1b[1m\x1b[35m│\x1b[0m 3. \x1b[1mAgent State Tracking\x1b[0m - Monitors Claude, Gemini, Codex activity
+\x1b[1m\x1b[35m│\x1b[0m 4. \x1b[1mContext Injection\x1b[0m - CopyTree service for feeding context to agents
+\x1b[1m\x1b[35m│\x1b[0m 5. \x1b[1mSession Transcripts\x1b[0m - Records and exports agent conversations
+\x1b[1m\x1b[35m│\x1b[0m
+\x1b[1m\x1b[35m│\x1b[0m The architecture follows Electron's main/renderer split:
+\x1b[1m\x1b[35m│\x1b[0m
+\x1b[1m\x1b[35m│\x1b[0m \x1b[38;5;245m┌──────────────────────────────────────────────────────────────────────────┐\x1b[0m
+\x1b[1m\x1b[35m│\x1b[0m \x1b[38;5;245m│\x1b[0m \x1b[38;5;81mMain Process\x1b[0m (electron/)                                               \x1b[38;5;245m│\x1b[0m
+\x1b[1m\x1b[35m│\x1b[0m \x1b[38;5;245m│\x1b[0m   - PtyManager: node-pty process management                             \x1b[38;5;245m│\x1b[0m
+\x1b[1m\x1b[35m│\x1b[0m \x1b[38;5;245m│\x1b[0m   - WorktreeService: Git operations and monitoring                      \x1b[38;5;245m│\x1b[0m
+\x1b[1m\x1b[35m│\x1b[0m \x1b[38;5;245m│\x1b[0m   - DevServerManager: Dev server lifecycle                              \x1b[38;5;245m│\x1b[0m
+\x1b[1m\x1b[35m│\x1b[0m \x1b[38;5;245m│\x1b[0m   - AgentStateMachine: Tracks agent states via output heuristics        \x1b[38;5;245m│\x1b[0m
+\x1b[1m\x1b[35m│\x1b[0m \x1b[38;5;245m├──────────────────────────────────────────────────────────────────────────┤\x1b[0m
+\x1b[1m\x1b[35m│\x1b[0m \x1b[38;5;245m│\x1b[0m \x1b[38;5;81mRenderer Process\x1b[0m (src/)                                                \x1b[38;5;245m│\x1b[0m
+\x1b[1m\x1b[35m│\x1b[0m \x1b[38;5;245m│\x1b[0m   - React 19 UI with Tailwind CSS v4                                   \x1b[38;5;245m│\x1b[0m
+\x1b[1m\x1b[35m│\x1b[0m \x1b[38;5;245m│\x1b[0m   - XtermAdapter: xterm.js integration with WebGL                      \x1b[38;5;245m│\x1b[0m
+\x1b[1m\x1b[35m│\x1b[0m \x1b[38;5;245m│\x1b[0m   - Zustand stores for state management                                \x1b[38;5;245m│\x1b[0m
+\x1b[1m\x1b[35m│\x1b[0m \x1b[38;5;245m│\x1b[0m   - IPC bridge via window.electron                                     \x1b[38;5;245m│\x1b[0m
+\x1b[1m\x1b[35m│\x1b[0m \x1b[38;5;245m└──────────────────────────────────────────────────────────────────────────┘\x1b[0m
+\x1b[1m\x1b[35m│\x1b[0m
+\x1b[1m\x1b[35m│\x1b[0m Let me get more details from Codex about the terminal rendering pipeline...
+\x1b[1m\x1b[35m╰─\x1b[0m
 
-I can see the XtermAdapter component handles the xterm.js integration. The key areas for optimization are:
+\x1b[1m\x1b[36m╭─\x1b[0m \x1b[1muser\x1b[0m
+\x1b[1m\x1b[36m│\x1b[0m Great, can you also analyze the flickering issue we're seeing?
+\x1b[1m\x1b[36m╰─\x1b[0m
 
-1. Refresh Management - The current implementation calls terminal.refresh(0, rows-1) which forces a full redraw
-2. WebGL Renderer - The addon is being recreated on visibility changes
-3. Output Throttling - Data is written directly without batching on the renderer side
-
-Let me look at the TerminalInstanceService to understand the data flow better.
-
-> Read src/services/TerminalInstanceService.ts
-
-The service uses a ring buffer polling mechanism with a 1-4ms interval. Here's the relevant code:
-
-\`\`\`typescript
-private poll = (): void => {
-  const now = performance.now();
-  const isActive = now - this.lastActivityTime < this.ACTIVE_THRESHOLD;
-  const delay = isActive ? 1 : 4;
-
-  for (const [terminalId, instance] of this.instances) {
-    if (instance.buffer.available() > 0) {
-      const data = instance.buffer.read();
-      instance.terminal.write(data);
-    }
-  }
-
-  this.pollTimer = setTimeout(this.poll, delay);
-};
-\`\`\`
-
-The issue is that when TUI frameworks like Ink send rapid updates with cursor movement
-and erase sequences, each write triggers xterm.js to recalculate and potentially redraw
-affected regions. The eraseDown sequence is particularly problematic.
-
-> Read electron/services/pty/TerminalProcess.ts
-
-Looking at the PTY side, I can see the OutputThrottler batches at 4ms intervals:
-
-\`\`\`typescript
-export class OutputThrottler {
-  private buffer: string[] = [];
-  private timer: NodeJS.Timeout | null = null;
-  private readonly THROTTLE_MS = 4;
-
-  write(data: string): void {
-    this.buffer.push(data);
-    if (!this.timer) {
-      this.timer = setTimeout(() => this.flush(), this.THROTTLE_MS);
-    }
-  }
-
-  private flush(): void {
-    const combined = this.buffer.join('');
-    this.buffer = [];
-    this.timer = null;
-    this.onData(combined);
-  }
-}
-\`\`\`
-
-This batching helps but may not be sufficient for high-frequency TUI animations.
-
-Root Cause Analysis:
-
-When Ink renders an animation frame, it sends:
-1. Cursor up N lines
-2. Erase from cursor to end of screen
-3. New frame content with ANSI styling
-
-The erase sequence invalidates all rows below the cursor in xterm.js's internal
-buffer, causing the WebGL renderer to mark those cells as dirty.
-
-Proposed Solutions:
-
-1. Frame Coalescing - Batch multiple writes within a single animation frame
-2. Dirty Region Optimization - Track which rows actually changed vs just erased
-3. Double Buffering - Render to offscreen buffer before displaying
-4. Refresh Throttling - Limit refresh calls during high-frequency updates
-
-> Edit src/services/TerminalInstanceService.ts
-
-\`\`\`typescript
-// Add requestAnimationFrame-based write coalescing
-private pendingWrites = new Map<string, string[]>();
-private rafHandle: number | null = null;
-
-private scheduleWrite(terminalId: string, data: string): void {
-  if (!this.pendingWrites.has(terminalId)) {
-    this.pendingWrites.set(terminalId, []);
-  }
-  this.pendingWrites.get(terminalId)!.push(data);
-
-  if (!this.rafHandle) {
-    this.rafHandle = requestAnimationFrame(() => {
-      this.flushWrites();
-      this.rafHandle = null;
-    });
-  }
-}
-\`\`\`
-
-✓ Changes applied successfully.
-
-> Bash npm run typecheck
-
-✓ TypeScript compilation successful - no errors
-
-> Bash npm run test
-
-Running test suite...
-
-  ✓ TerminalInstanceService.test.ts (12 tests)
-  ✓ XtermAdapter.test.ts (8 tests)
-  ✓ OutputThrottler.test.ts (5 tests)
-
-All 25 tests passed in 3.42s
-
-The implementation is complete. Would you like me to run the stress test to verify the fix?
+\x1b[1m\x1b[35m╭─\x1b[0m \x1b[1massistant\x1b[0m
+\x1b[1m\x1b[35m│\x1b[0m I'll have Codex analyze the terminal flickering issue. This requires looking
+\x1b[1m\x1b[35m│\x1b[0m at the rendering pipeline from PTY through to xterm.js.
+\x1b[1m\x1b[35m╰─\x1b[0m
 `.trim();
 
-function ProgressBar({ percent, width = 30 }) {
+// Help text - check first before printing history
+if (process.argv.includes('--help') || process.argv.includes('-h')) {
+  console.log(`
+\x1b[1mTUI Stress Test for Terminal Flicker Issue (#800)\x1b[0m
+
+\x1b[2mUsage:\x1b[0m npm run stress-test
+
+\x1b[1mWhat this tests:\x1b[0m
+Reproduces the exact Claude Code rendering pattern:
+  - Lots of conversation history text above
+  - Large MCP blocks with glowing/pulsing dots
+  - Multiple concurrent animations
+  - Full-width separator lines
+  - Input prompt at the bottom
+
+\x1b[1mRoot Cause:\x1b[0m
+Even though only small dots change, Ink redraws everything from
+the top of its render area. The CSI J erases ALL content below,
+including the input prompt, which must be redrawn every frame.
+
+\x1b[1mSuccess criteria:\x1b[0m
+  - Conversation history (scrollback) stays stable
+  - Input prompt and separator lines don't flash
+  - Only the glowing dots should visibly animate
+
+\x1b[2mPress Ctrl+C to stop. Runs for 60 seconds.\x1b[0m
+`);
+  process.exit(0);
+}
+
+// Print static history immediately (not part of Ink)
+console.log(conversationHistory);
+console.log('');
+
+// Progress bar component
+function ProgressBar({ percent, width = 20 }: { percent: number; width?: number }) {
   const filled = Math.floor((percent / 100) * width);
   const empty = width - filled;
   return (
@@ -148,257 +125,324 @@ function ProgressBar({ percent, width = 30 }) {
   );
 }
 
-function Task({ name, status, progress, color }) {
+// Glowing dot that pulses from dark to light (like Codex MCP status)
+function GlowingDot({ frame, baseColor = 'cyan' }: { frame: number; baseColor?: string }) {
+  // Cycle through brightness levels to create a glow/pulse effect
+  const brightness = Math.sin(frame * 0.15) * 0.5 + 0.5; // 0 to 1
+
+  // Use different shades based on brightness
+  if (brightness > 0.8) {
+    return <Text color="whiteBright">●</Text>;
+  } else if (brightness > 0.6) {
+    return <Text color="cyanBright">●</Text>;
+  } else if (brightness > 0.4) {
+    return <Text color="cyan">●</Text>;
+  } else if (brightness > 0.2) {
+    return <Text color="blue">●</Text>;
+  } else {
+    return <Text color="blueBright">●</Text>;
+  }
+}
+
+// Large MCP call block with glowing dot - simulates Codex MCP
+function CodexMcpBlock({
+  title,
+  promptText,
+  frame,
+  taskOffset,
+}: {
+  title: string;
+  promptText: string;
+  frame: number;
+  taskOffset: number;
+}) {
+  const elapsed = ((frame * 0.08) + taskOffset * 0.5).toFixed(0);
+  const tokens = 404 + frame * 3 + taskOffset * 200;
+
+  const messages = ['Herding…', 'Thinking…', 'Processing…', 'Analyzing…'];
+  const msg = messages[Math.floor((frame + taskOffset) / 15) % messages.length];
+
+  // Split prompt into multiple lines for realistic display
+  const lines: string[] = [];
+  let remaining = promptText;
+  const lineWidth = 100;
+  while (remaining.length > 0) {
+    lines.push(remaining.slice(0, lineWidth));
+    remaining = remaining.slice(lineWidth);
+  }
+
   return (
     <Box flexDirection="column">
+      {/* MCP call header */}
+      <Box>
+        <GlowingDot frame={frame + taskOffset} />
+        <Text> </Text>
+        <Text bold color="white">{title}</Text>
+        <Text dimColor> - </Text>
+        <Text>codex</Text>
+        <Text dimColor> (MCP)</Text>
+        <Text color="yellow">(</Text>
+        <Text dimColor>prompt: "</Text>
+      </Box>
+
+      {/* Multi-line prompt text */}
+      {lines.map((line, i) => (
+        <Box key={i}>
+          <Text dimColor>                     {line}</Text>
+        </Box>
+      ))}
+
+      <Box>
+        <Text dimColor>                     ", model: "gpt-5.1-codex-max", cwd: "/Users/dev/project", sandbox: "read-only"</Text>
+        <Text color="yellow">)</Text>
+      </Box>
+
+      {/* Animated status line with spinner */}
+      <Box marginTop={1}>
+        <Text dimColor>  · </Text>
+        <Text color="cyan"><Spinner type="dots" /></Text>
+        <Text color="cyan"> {msg}</Text>
+        <Text dimColor> (esc to interrupt · {elapsed}s · </Text>
+        <Text color="gray">↓ </Text>
+        <Text>{tokens}</Text>
+        <Text dimColor> tokens)</Text>
+      </Box>
+    </Box>
+  );
+}
+
+// Individual MCP-style task box with multiple animations
+function McpTaskBox({
+  title,
+  color,
+  frame,
+  taskOffset,
+}: {
+  title: string;
+  color: string;
+  frame: number;
+  taskOffset: number;
+}) {
+  const files = [
+    'src/components/Terminal/XtermAdapter.tsx',
+    'electron/services/pty/TerminalProcess.ts',
+    'src/services/TerminalInstanceService.ts',
+    'electron/services/WorktreeService.ts',
+    'src/store/terminalStore.ts',
+  ];
+
+  const operations = ['Reading', 'Analyzing', 'Processing', 'Checking', 'Scanning'];
+  const currentFile = files[(frame + taskOffset) % files.length];
+  const currentOp = operations[Math.floor((frame + taskOffset) / 3) % operations.length];
+
+  const todos = [
+    { content: 'Analyze codebase structure', done: frame > 10 + taskOffset },
+    { content: 'Identify optimization targets', done: frame > 25 + taskOffset },
+    { content: 'Generate recommendations', done: false },
+  ];
+
+  const elapsed = ((frame * 0.08) + taskOffset * 0.5).toFixed(1);
+  const tokens = ((1247 + frame * 23 + taskOffset * 500) % 50000);
+  const contextUsed = Math.min(95, 35 + frame * 0.15 + taskOffset * 10);
+
+  const activityMsgs = [
+    `Parsed ${currentFile.split('/').pop()}`,
+    'Found optimization opportunity',
+    'Analyzing dependencies',
+    'Checking type safety',
+  ];
+
+  return (
+    <Box flexDirection="column" borderStyle="round" borderColor={color} paddingX={1}>
+      {/* Header with spinner */}
       <Box>
         <Text color={color}><Spinner type="dots" /></Text>
-        <Text bold> {name.padEnd(14)}</Text>
-        <Text color={progress > 80 ? 'green' : progress > 40 ? 'yellow' : 'cyan'}>
-          {status.padEnd(20)}
+        <Text bold color={color}> {title}</Text>
+        <Text dimColor> • {elapsed}s • </Text>
+        <Text color="yellow">{tokens.toLocaleString()}</Text>
+        <Text dimColor> tokens</Text>
+      </Box>
+
+      {/* Current file being processed */}
+      <Box marginTop={1}>
+        <Text color="cyan"><Spinner type="dots12" /></Text>
+        <Text> </Text>
+        <Text color="yellow">{currentOp}</Text>
+        <Text> </Text>
+        <Text dimColor>{currentFile}</Text>
+      </Box>
+
+      {/* Todo list */}
+      <Box flexDirection="column" marginTop={1}>
+        <Text bold dimColor>Tasks:</Text>
+        {todos.map((todo, i) => (
+          <Box key={i}>
+            <Text>  </Text>
+            {todo.done ? (
+              <Text color="green">✓</Text>
+            ) : (
+              <Text color="cyan"><Spinner type="dots" /></Text>
+            )}
+            <Text> </Text>
+            <Text color={todo.done ? 'green' : 'white'} strikethrough={todo.done}>
+              {todo.content}
+            </Text>
+          </Box>
+        ))}
+      </Box>
+
+      {/* Progress indicators */}
+      <Box marginTop={1}>
+        <Text dimColor>Context: </Text>
+        <Text>[</Text>
+        <ProgressBar percent={contextUsed} width={20} />
+        <Text>] </Text>
+        <Text color={contextUsed > 80 ? 'red' : contextUsed > 60 ? 'yellow' : 'green'}>
+          {contextUsed.toFixed(0)}%
         </Text>
       </Box>
-      <Box marginLeft={2}>
-        <Text>[</Text>
-        <ProgressBar percent={progress} width={40} />
-        <Text>] {String(progress).padStart(3)}%</Text>
+
+      {/* Activity log - each line has its own spinner */}
+      <Box flexDirection="column" marginTop={1}>
+        <Text bold dimColor>Activity:</Text>
+        {[0, 1, 2].map(i => {
+          const ts = new Date(Date.now() - (2 - i) * 800).toISOString().slice(11, 19);
+          return (
+            <Box key={i}>
+              <Text dimColor>  {ts} </Text>
+              <Text color="cyan"><Spinner type="dots" /></Text>
+              <Text> {activityMsgs[(frame + i + taskOffset) % activityMsgs.length]}</Text>
+            </Box>
+          );
+        })}
       </Box>
     </Box>
   );
 }
 
-function LogEntry({ timestamp, message, tokens, frame, index }) {
-  return (
-    <Box>
-      <Text dimColor>{timestamp}</Text>
-      <Text> </Text>
-      <Text color="cyan"><Spinner type="dots12" /></Text>
-      <Text> </Text>
-      <Text dimColor>{message}</Text>
-      <Text dimColor> ({tokens.toLocaleString()} tokens)</Text>
-    </Box>
-  );
-}
-
+// Main stress test component
 function StressTest() {
+  const { exit } = useApp();
+  const { stdout } = useStdout();
   const [frame, setFrame] = useState(0);
-  const [phase, setPhase] = useState('output'); // 'output' | 'animate'
-  const [outputLines, setOutputLines] = useState([]);
-  const [outputIndex, setOutputIndex] = useState(0);
+  const [inputText, setInputText] = useState('');
+  const [cursorVisible, setCursorVisible] = useState(true);
 
-  const allOutputLines = agentOutput.split('\n');
+  // Get terminal width for full-width separators
+  const terminalWidth = stdout?.columns || 120;
 
-  // Phase 1: Stream output
+  // Animation loop - 80ms interval (12.5 fps) to match typical TUI refresh
   useEffect(() => {
-    if (phase !== 'output') return;
-
-    if (outputIndex < allOutputLines.length) {
-      const timer = setTimeout(() => {
-        setOutputLines(prev => [...prev, allOutputLines[outputIndex]]);
-        setOutputIndex(prev => prev + 1);
-      }, 20);
-      return () => clearTimeout(timer);
-    } else {
-      // Transition to animation phase after a brief pause
-      const timer = setTimeout(() => setPhase('animate'), 1500);
-      return () => clearTimeout(timer);
-    }
-  }, [phase, outputIndex, allOutputLines]);
-
-  // Phase 2: Animation loop
-  useEffect(() => {
-    if (phase !== 'animate') return;
-
     const timer = setInterval(() => {
       setFrame(f => f + 1);
     }, 80);
 
-    // Run for 45 seconds
+    // Run for 60 seconds
     const stopTimer = setTimeout(() => {
       clearInterval(timer);
-      process.exit(0);
-    }, 45000);
+      exit();
+    }, 60000);
 
     return () => {
       clearInterval(timer);
       clearTimeout(stopTimer);
     };
-  }, [phase]);
+  }, [exit]);
 
-  const tasks = [
-    { name: 'Codex MCP', status: 'Analyzing codebase...', color: 'green' },
-    { name: 'Code Review', status: 'Checking issues...', color: 'yellow' },
-    { name: 'Test Runner', status: 'Running tests...', color: 'cyan' },
-    { name: 'Type Check', status: 'Validating types...', color: 'magenta' },
-    { name: 'Lint Check', status: 'Running ESLint...', color: 'blue' },
-  ];
+  // Cursor blink (530ms is typical terminal cursor blink rate)
+  useEffect(() => {
+    const timer = setInterval(() => {
+      setCursorVisible(v => !v);
+    }, 530);
+    return () => clearInterval(timer);
+  }, []);
 
-  const logMessages = [
-    'Processing src/components/Terminal/XtermAdapter.tsx',
-    'Analyzing electron/services/pty/TerminalProcess.ts',
-    'Checking src/services/TerminalInstanceService.ts',
-    'Reviewing electron/services/WorktreeService.ts',
-    'Scanning src/store/terminalStore.ts',
-    'Validating src/components/Layout/Sidebar.tsx',
-  ];
+  // Handle input
+  useInput((input, key) => {
+    if (key.ctrl && input === 'c') {
+      exit();
+    } else if (key.backspace || key.delete) {
+      setInputText(t => t.slice(0, -1));
+    } else if (key.return) {
+      setInputText('');
+    } else if (input && !key.ctrl && !key.meta) {
+      setInputText(t => t + input);
+    }
+  });
 
-  const elapsed = (frame * 0.08).toFixed(1);
-  const remaining = Math.max(0, 45 - parseFloat(elapsed)).toFixed(0);
+  // Full-width separator line
+  const separatorLine = '─'.repeat(terminalWidth);
 
-  if (phase === 'output') {
-    return (
-      <Box flexDirection="column">
-        <Box marginBottom={1}>
-          <Text bold>━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━</Text>
-        </Box>
-        <Box marginBottom={1}>
-          <Text bold>  TUI STRESS TEST - Terminal Flicker Issue #800</Text>
-        </Box>
-        <Box marginBottom={1}>
-          <Text bold>━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━</Text>
-        </Box>
-        <Box marginBottom={1}>
-          <Text dimColor>  Phase 1: Streaming agent output... ({outputIndex}/{allOutputLines.length})</Text>
-        </Box>
-        <Box flexDirection="column">
-          {outputLines.map((line, i) => (
-            <Text key={i}>{line}</Text>
-          ))}
-        </Box>
-      </Box>
-    );
-  }
+  const codexPrompt1 = "Please do a comprehensive breakdown of this project - Canopy Command Center. Explore the codebase thoroughly and explain: 1. What is this project? - The core purpose and value proposition 2. Architecture overview - How the Electron main/renderer processes work together 3. Key features - What can users actually do with this tool? 4. Technical implementation - How are the major features built (terminals, worktrees, agent state tracking, etc.) 5. Target users - Who is this for and what problems does it solve? Look at the actual code structure, the services, the React components, and the IPC bridge to understand how everything fits together.";
+
+  const codexPrompt2 = "Analyze the terminal rendering pipeline in this Electron app. Focus on: 1. How PTY output flows from node-pty through IPC to xterm.js 2. The SharedRingBuffer implementation for zero-copy I/O 3. WebGL renderer management and context limits 4. Output throttling and batching strategies 5. The flickering issue when TUI frameworks like Ink render animations. Identify the root cause and propose solutions.";
 
   return (
     <Box flexDirection="column">
-      {/* Header */}
-      <Box>
-        <Text bold color="white">╔{'═'.repeat(96)}╗</Text>
-      </Box>
-      <Box>
-        <Text bold>║ </Text>
-        <Text color="cyan"><Spinner type="dots" /></Text>
-        <Text bold color="cyan"> PROCESSING</Text>
-        <Text dimColor> | Frame: {String(frame).padStart(5)} | {elapsed}s elapsed | {remaining}s remaining</Text>
-        <Text>{' '.repeat(Math.max(0, 40))}</Text>
-        <Text bold>║</Text>
-      </Box>
-      <Box>
-        <Text bold color="white">╠{'═'.repeat(96)}╣</Text>
+      {/* Large Codex MCP blocks with glowing dots */}
+      <CodexMcpBlock
+        title="codex"
+        promptText={codexPrompt1}
+        frame={frame}
+        taskOffset={0}
+      />
+
+      <Box marginTop={1}>
+        <CodexMcpBlock
+          title="codex"
+          promptText={codexPrompt2}
+          frame={frame}
+          taskOffset={7}
+        />
       </Box>
 
-      {/* Tasks */}
-      {tasks.map((task, i) => {
-        const progress = ((frame * (i + 1) * 2 + i * 20) % 100);
-        return (
-          <Box key={i} flexDirection="column">
-            <Box>
-              <Text bold>║ </Text>
-              <Task {...task} progress={progress} />
-              <Text>{' '.repeat(Math.max(0, 20))}</Text>
-              <Text bold>║</Text>
-            </Box>
-          </Box>
-        );
-      })}
-
-      <Box>
-        <Text bold color="white">╠{'═'.repeat(96)}╣</Text>
+      {/* TWO parallel MCP task boxes with lots of animations */}
+      <Box marginTop={1}>
+        <McpTaskBox title="Codex Analysis #1" color="magenta" frame={frame} taskOffset={0} />
       </Box>
 
-      {/* Activity Log */}
-      <Box>
-        <Text bold>║ Activity Log:{' '.repeat(82)}║</Text>
-      </Box>
-      {logMessages.map((msg, i) => {
-        const timestamp = new Date(Date.now() - (5 - i) * 800).toISOString().slice(11, 23);
-        const tokens = ((frame + i) * 347 % 9999);
-        return (
-          <Box key={i}>
-            <Text bold>║ </Text>
-            <LogEntry timestamp={timestamp} message={msg} tokens={tokens} frame={frame} index={i} />
-            <Text>{' '.repeat(Math.max(0, 10))}</Text>
-            <Text bold>║</Text>
-          </Box>
-        );
-      })}
-
-      <Box>
-        <Text bold color="white">╠{'═'.repeat(96)}╣</Text>
+      <Box marginTop={1}>
+        <McpTaskBox title="Codex Analysis #2" color="blue" frame={frame} taskOffset={5} />
       </Box>
 
-      {/* System Metrics */}
-      <Box>
-        <Text bold>║ System: </Text>
-        <Text>CPU [</Text>
-        <ProgressBar percent={(45 + Math.sin(frame * 0.08) * 25) | 0} width={12} />
-        <Text>] {String((45 + Math.sin(frame * 0.08) * 25) | 0).padStart(2)}%  </Text>
-        <Text>MEM [</Text>
-        <ProgressBar percent={(55 + Math.sin(frame * 0.05) * 20) | 0} width={12} />
-        <Text>] {String((55 + Math.sin(frame * 0.05) * 20) | 0).padStart(2)}%  </Text>
-        <Text>GPU [</Text>
-        <ProgressBar percent={(40 + Math.sin(frame * 0.06) * 30) | 0} width={12} />
-        <Text>] {String((40 + Math.sin(frame * 0.06) * 30) | 0).padStart(2)}%</Text>
-        <Text>{' '.repeat(5)}</Text>
-        <Text bold>║</Text>
+      {/* System status bar with multiple spinners */}
+      <Box marginTop={1} paddingX={1}>
+        <Text color="green"><Spinner type="dots" /></Text>
+        <Text> System </Text>
+        <Text dimColor>CPU:</Text>
+        <Text> {((45 + Math.sin(frame * 0.1) * 20) | 0)}% </Text>
+        <Text dimColor>MEM:</Text>
+        <Text> {((55 + Math.sin(frame * 0.07) * 15) | 0)}% </Text>
+        <Text dimColor>Frame:</Text>
+        <Text> {frame} </Text>
+        <Text dimColor>({(frame * 0.08).toFixed(1)}s)</Text>
       </Box>
 
-      <Box>
-        <Text bold color="white">╚{'═'.repeat(96)}╝</Text>
+      {/* Full-width separator line - THIS SHOULD NOT FLICKER */}
+      <Box marginTop={1}>
+        <Text dimColor>{separatorLine}</Text>
       </Box>
 
-      <Newline />
-
-      {/* Static content warning */}
+      {/* Input prompt area - THIS SHOULD NOT FLICKER */}
       <Box>
-        <Text backgroundColor="yellow" color="red" bold>  ⚠ STATIC CONTENT BELOW - THIS REGION SHOULD NOT FLICKER ⚠  </Text>
+        <Text dimColor>{">"}</Text>
+        <Text>  </Text>
+        <Text>{inputText}</Text>
+        <Text color="white">{cursorVisible ? '█' : ' '}</Text>
       </Box>
-      <Newline />
-      <Text dimColor>  The following text is OUTSIDE the Ink animated region.</Text>
-      <Text dimColor>  If you see ANY flickering in these lines, the bug is confirmed.</Text>
-      <Newline />
-      <Text>  ┌─────────────────────────────────────────────────────────────────────────┐</Text>
-      <Text>  │  This box should remain perfectly stable and never redraw.             │</Text>
-      <Text>  │                                                                         │</Text>
-      <Text>  │  Lorem ipsum dolor sit amet, consectetur adipiscing elit. Sed do       │</Text>
-      <Text>  │  eiusmod tempor incididunt ut labore et dolore magna aliqua. Ut enim   │</Text>
-      <Text>  │  ad minim veniam, quis nostrud exercitation ullamco laboris nisi ut    │</Text>
-      <Text>  │  aliquip ex ea commodo consequat.                                      │</Text>
-      <Text>  │                                                                         │</Text>
-      <Text>  │  Duis aute irure dolor in reprehenderit in voluptate velit esse        │</Text>
-      <Text>  │  cillum dolore eu fugiat nulla pariatur.                               │</Text>
-      <Text>  └─────────────────────────────────────────────────────────────────────────┘</Text>
-      <Newline />
-      <Text dimColor>  On a correctly functioning terminal, ONLY the content above the yellow</Text>
-      <Text dimColor>  warning banner should be updating. Everything below should be static.</Text>
+
+      {/* Another full-width separator */}
+      <Text dimColor>{separatorLine}</Text>
+
+      {/* Status hint line - THIS SHOULD NOT FLICKER */}
+      <Box>
+        <Text>  </Text>
+        <Text color="cyan">{"⏵⏵"}</Text>
+        <Text> bypass permissions on </Text>
+        <Text dimColor>(shift+tab to cycle)</Text>
+      </Box>
     </Box>
   );
-}
-
-// Help text
-if (process.argv.includes('--help') || process.argv.includes('-h')) {
-  console.log(`
-\x1b[1mTUI Stress Test for Terminal Flicker Issue (#800)\x1b[0m
-
-\x1b[2mUsage:\x1b[0m npm run stress-test
-
-This test uses the actual Ink framework to reproduce terminal flickering:
-
-\x1b[1mPhase 1:\x1b[0m Streams simulated Claude Code output
-  - Creates scrollback buffer before animation
-
-\x1b[1mPhase 2:\x1b[0m Runs 45 seconds of Ink-rendered animation
-  - 5 concurrent task spinners with progress bars
-  - 6-line activity log
-  - System metrics
-  - Real Ink rendering (cursor-up + erase-down)
-
-The yellow "STATIC CONTENT" section should NOT flicker.
-If it flickers, the xterm.js rendering bug is confirmed.
-
-\x1b[2mPress Ctrl+C to stop.\x1b[0m
-`);
-  process.exit(0);
 }
 
 render(<StressTest />);

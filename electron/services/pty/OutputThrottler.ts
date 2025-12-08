@@ -13,7 +13,6 @@ import {
 
 // Threshold for bulk data mode - when buffer exceeds this, wait longer to
 // coalesce large outputs (like MCP dumps) into atomic frame updates.
-const BULK_DATA_THRESHOLD_BYTES = 65536;
 import { events } from "../events.js";
 
 export type QueueState = "normal" | "soft" | "hard";
@@ -308,20 +307,9 @@ export class OutputThrottler {
   }
 
   private getFlushDelay(tier: ActivityTier): number {
-    // Bulk data mode: if buffer is large (MCP dump, large output), wait longer
-    // to coalesce into atomic frame updates and prevent tearing.
-    if (this.batchBytes > BULK_DATA_THRESHOLD_BYTES) {
-      return 4; // High throughput mode - keep 4ms to ensure smooth updates
-    }
-
     switch (tier) {
       case "focused":
-        // Small delay to coalesce PTY output (e.g., "clear + draw" sequences)
-        // into single IPC packets, reducing TUI tearing in the renderer.
-        // VS Code uses 5ms, but complex TUIs (like Ink) can have generation gaps > 5ms.
-        // 12ms ensures we capture the full "Clear + Draw" cycle in one frame
-        // without introducing perceptible input latency.
-        return 12;
+        return 0; // Immediate flush for focused terminals to prevent "Clear + Draw" frame gaps
       case "visible":
         return 100;
       case "background":

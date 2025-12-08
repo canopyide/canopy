@@ -94,8 +94,14 @@ export const terminalClient = {
   },
 
   /**
+   * Acknowledge processed data bytes to the backend (Flow Control).
+   */
+  acknowledgeData: (id: string, length: number): void => {
+    window.electron.terminal.acknowledgeData(id, length);
+  },
+
+  /**
    * Sets the activity tier for IPC batching.
-   * FOCUSED: immediate flush (0ms), VISIBLE: 100ms, BACKGROUND: 1000ms
    */
   setActivityTier: (id: string, tier: "focused" | "visible" | "background"): void => {
     window.electron.terminal.setActivityTier(id, tier);
