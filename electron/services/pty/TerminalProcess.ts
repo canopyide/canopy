@@ -11,6 +11,7 @@ import { ActivityMonitor } from "../ActivityMonitor.js";
 import { OutputThrottler } from "./OutputThrottler.js";
 import { AgentStateService } from "./AgentStateService.js";
 import { ActivityHeadlineGenerator } from "../ActivityHeadlineGenerator.js";
+import { InputTracker } from "../../utils/inputTracker.js";
 import {
   type PtySpawnOptions,
   type TerminalInfo,
@@ -78,6 +79,7 @@ export class TerminalProcess {
   private activityMonitor: ActivityMonitor | null = null;
   private processDetector: ProcessDetector | null = null;
   private headlineGenerator = new ActivityHeadlineGenerator();
+  private inputTracker = new InputTracker();
 
   // Semantic buffer state
   private pendingSemanticData = "";
@@ -290,6 +292,18 @@ export class TerminalProcess {
 
     if (traceId !== undefined) {
       terminal.traceId = traceId || undefined;
+    }
+
+    // Check for clear command and synchronize buffer state
+    if (this.inputTracker.process(data)) {
+      this.throttler.clear();
+      terminal.semanticBuffer = [];
+      terminal.outputBuffer = "";
+      this.pendingSemanticData = "";
+      if (this.semanticFlushTimer) {
+        clearTimeout(this.semanticFlushTimer);
+        this.semanticFlushTimer = null;
+      }
     }
 
     // Notify activity monitor of input

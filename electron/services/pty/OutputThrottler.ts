@@ -286,6 +286,23 @@ export class OutputThrottler {
     this.batchChunks = [];
   }
 
+  /**
+   * Clear all queued output buffers.
+   * Used when terminal receives a clear command to prevent ghost text.
+   */
+  clear(): void {
+    this.chunkQueue = [];
+    this.queuedBytes = 0;
+    this.batchChunks = [];
+    this.batchBytes = 0;
+    if (this.batchTimer) {
+      clearTimeout(this.batchTimer);
+      this.batchTimer = null;
+    }
+    this.queueState = "normal";
+    this.lastQueueStateChange = Date.now();
+  }
+
   private getFlushDelay(tier: ActivityTier): number {
     switch (tier) {
       case "focused":
