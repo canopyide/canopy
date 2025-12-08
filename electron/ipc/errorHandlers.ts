@@ -12,8 +12,7 @@ import {
   isTransientError,
 } from "../utils/errorTypes.js";
 import type { DevServerManager } from "../services/DevServerManager.js";
-import type { WorktreeService } from "../services/WorktreeService.js";
-import type { TerminalManager } from "./types.js";
+import type { TerminalManager, WorkspaceManager } from "./types.js";
 
 type ErrorType = "git" | "process" | "filesystem" | "network" | "config" | "unknown";
 
@@ -93,13 +92,13 @@ export function createAppError(
 export class ErrorService {
   private mainWindow: BrowserWindow | null = null;
   private devServerManager: DevServerManager | null = null;
-  private worktreeService: WorktreeService | null = null;
+  private worktreeService: WorkspaceManager | null = null;
   private ptyManager: TerminalManager | null = null;
 
   initialize(
     mainWindow: BrowserWindow,
     devServerManager: DevServerManager | null,
-    worktreeService: WorktreeService | null,
+    worktreeService: WorkspaceManager | null,
     ptyManager: TerminalManager | null
   ) {
     this.mainWindow = mainWindow;
@@ -180,7 +179,7 @@ export const errorService = new ErrorService();
 export function registerErrorHandlers(
   mainWindow: BrowserWindow,
   devServerManager: DevServerManager | null,
-  worktreeService: WorktreeService | null,
+  worktreeService: WorkspaceManager | null,
   ptyManager: TerminalManager | null
 ): () => void {
   const handlers: Array<() => void> = [];

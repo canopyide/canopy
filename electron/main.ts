@@ -10,7 +10,7 @@ import { registerIpcHandlers, sendToRenderer } from "./ipc/handlers.js";
 import { registerErrorHandlers } from "./ipc/errorHandlers.js";
 import { PtyClient, disposePtyClient } from "./services/PtyClient.js";
 import { DevServerManager } from "./services/DevServerManager.js";
-import { worktreeService } from "./services/WorktreeService.js";
+import { WorkspaceClient, disposeWorkspaceClient } from "./services/WorkspaceClient.js";
 import { CliAvailabilityService } from "./services/CliAvailabilityService.js";
 import { SidecarManager } from "./services/SidecarManager.js";
 import { createWindowWithState } from "./windowState.js";
@@ -44,6 +44,7 @@ process.on("unhandledRejection", (reason, promise) => {
 let mainWindow: BrowserWindow | null = null;
 let ptyClient: PtyClient | null = null;
 let devServerManager: DevServerManager | null = null;
+let workspaceClient: WorkspaceClient | null = null;
 let cliAvailabilityService: CliAvailabilityService | null = null;
 let sidecarManager: SidecarManager | null = null;
 let cleanupIpcHandlers: (() => void) | null = null;
@@ -101,7 +102,7 @@ if (!gotTheLock) {
     // 3. Overwriting would strip command field, breaking agent terminal restoration
 
     Promise.all([
-      worktreeService.stopAll(),
+      workspaceClient ? workspaceClient.dispose() : Promise.resolve(),
       devServerManager ? devServerManager.stopAll() : Promise.resolve(),
       new Promise<void>((resolve) => {
         if (ptyClient) {
@@ -109,6 +110,7 @@ if (!gotTheLock) {
           ptyClient = null;
         }
         disposePtyClient();
+        disposeWorkspaceClient();
         resolve();
       }),
     ])
@@ -289,6 +291,27 @@ async function createWindow(): Promise<void> {
     throw error;
   }
 
+  // Initialize WorkspaceClient (replaces WorktreeService)
+  // The WorkspaceClient spawns a UtilityProcess (workspace-host) that handles all git operations
+  // and worktree monitoring, keeping the Main process responsive.
+  console.log("[MAIN] Initializing WorkspaceClient (Workspace Host pattern)...");
+  try {
+    workspaceClient = new WorkspaceClient({
+      maxRestartAttempts: 3,
+      healthCheckIntervalMs: 60000,
+      showCrashDialog: true,
+    });
+
+    workspaceClient.on("host-crash", (code) => {
+      console.error(`[MAIN] Workspace Host crashed with code ${code}`);
+    });
+
+    await workspaceClient.waitForReady();
+    console.log("[MAIN] WorkspaceClient initialized successfully (Workspace Host ready)");
+  } catch (error) {
+    console.error("[MAIN] Failed to initialize WorkspaceClient:", error);
+    throw error;
+  }
   console.log("[MAIN] Initializing ProjectStore...");
   await projectStore.initialize();
   console.log("[MAIN] ProjectStore initialized successfully");
@@ -306,7 +329,7 @@ async function createWindow(): Promise<void> {
     mainWindow,
     ptyClient,
     devServerManager,
-    worktreeService,
+    workspaceClient,
     eventBuffer,
     cliAvailabilityService,
     sidecarManager
@@ -317,7 +340,7 @@ async function createWindow(): Promise<void> {
   cleanupErrorHandlers = registerErrorHandlers(
     mainWindow,
     devServerManager,
-    worktreeService,
+    workspaceClient,
     ptyClient
   );
   console.log("[MAIN] Error handlers registered successfully");
@@ -364,7 +387,10 @@ async function createWindow(): Promise<void> {
       // Proactively pause all PTY processes to prevent buffer overflow during sleep
       ptyClient.pauseAll();
     }
-    worktreeService.setPollingEnabled(false);
+    if (workspaceClient) {
+      workspaceClient.pauseHealthCheck();
+      workspaceClient.setPollingEnabled(false);
+    }
 
     // Record suspend time to calculate sleep duration on wake
     suspendTime = Date.now();
@@ -387,8 +413,13 @@ async function createWindow(): Promise<void> {
           ptyClient.resumeAll();
           ptyClient.resumeHealthCheck();
         }
-        worktreeService.setPollingEnabled(true);
-        void worktreeService.refresh();
+        if (workspaceClient) {
+          // Wait for workspace host to be ready after sleep
+          await workspaceClient.waitForReady();
+          workspaceClient.setPollingEnabled(true);
+          workspaceClient.resumeHealthCheck();
+          await workspaceClient.refresh();
+        }
 
         // Check and recover dev servers that died during sleep
         if (devServerManager) {
@@ -467,7 +498,11 @@ async function createWindow(): Promise<void> {
       cleanupErrorHandlers();
       cleanupErrorHandlers = null;
     }
-    await worktreeService.stopAll();
+    if (workspaceClient) {
+      workspaceClient.dispose();
+      workspaceClient = null;
+    }
+    disposeWorkspaceClient();
     if (devServerManager) {
       await devServerManager.stopAll();
       devServerManager = null;

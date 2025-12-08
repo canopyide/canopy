@@ -1,10 +1,9 @@
 import { BrowserWindow } from "electron";
 import type { DevServerManager } from "../services/DevServerManager.js";
-import type { WorktreeService } from "../services/WorktreeService.js";
 import type { CliAvailabilityService } from "../services/CliAvailabilityService.js";
 import type { EventBuffer } from "../services/EventBuffer.js";
 import type { SidecarManager } from "../services/SidecarManager.js";
-import { HandlerDependencies, TerminalManager } from "./types.js";
+import { HandlerDependencies, TerminalManager, WorkspaceManager } from "./types.js";
 import { registerWorktreeHandlers } from "./handlers/worktree.js";
 import { registerTerminalHandlers } from "./handlers/terminal.js";
 import { registerDevServerHandlers } from "./handlers/devServer.js";
@@ -27,7 +26,7 @@ export function registerIpcHandlers(
   mainWindow: BrowserWindow,
   ptyManager: TerminalManager,
   devServerManager?: DevServerManager,
-  worktreeService?: WorktreeService,
+  worktreeService?: WorkspaceManager,
   eventBuffer?: EventBuffer,
   cliAvailabilityService?: CliAvailabilityService,
   sidecarManager?: SidecarManager
