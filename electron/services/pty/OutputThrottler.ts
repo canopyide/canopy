@@ -306,7 +306,10 @@ export class OutputThrottler {
   private getFlushDelay(tier: ActivityTier): number {
     switch (tier) {
       case "focused":
-        return 0;
+        // Small delay to coalesce PTY output (e.g., "clear + draw" sequences)
+        // into single IPC packets, reducing TUI tearing in the renderer.
+        // 4ms is well under frame time (16ms) so latency is imperceptible.
+        return 4;
       case "visible":
         return 100;
       case "background":

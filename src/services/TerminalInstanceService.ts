@@ -44,10 +44,11 @@ interface ManagedTerminal {
 
 const BURST_MODE_WINDOW_MS = 500;
 const MAX_WEBGL_RECOVERY_ATTEMPTS = 3;
-// Coalescing window: writes within this window after an immediate write get queued.
+// Coalescing window: writes within this window after any write get queued.
 // This batches TUI redraw sequences (clear + draw) that arrive as separate chunks,
 // while still allowing the first write (keystroke echo) to be immediate.
-const COALESCE_WINDOW_MS = 6;
+// 16ms ~= one frame; this avoids mid-frame tearing when larger updates straddle a flush.
+const COALESCE_WINDOW_MS = 16;
 const WEBGL_DISPOSE_GRACE_MS = 10000; // 10s grace period before releasing WebGL on hide
 const TIER_DOWNGRADE_HYSTERESIS_MS = 500; // Delay before applying tier downgrades to prevent flapping
 
@@ -67,16 +68,19 @@ function createThrottledWriter(
   let getRefreshTier = initialProvider;
   let lastInputTime = 0;
   let lastOutputTime = 0;
-  // Track last immediate write for coalescing window
-  let lastImmediateWriteTime = 0;
+  // Track last write (immediate or flush) for coalescing window
+  let lastWriteTime = 0;
 
   const flush = () => {
     if (chunks.length > 0) {
+      const now = performance.now();
       // xterm.js efficiently handles multiple writes
       for (const chunk of chunks) {
         terminal.write(chunk);
       }
       chunks = [];
+      lastWriteTime = now;
+      lastOutputTime = now;
     }
     timerId = null;
     rafId = null;
@@ -102,18 +106,22 @@ function createThrottledWriter(
       const now = performance.now();
       const isSmallChunk = typeof data === "string" ? data.length < 512 : data.byteLength < 512;
 
-      // Coalescing window: if we just did an immediate write, queue subsequent
-      // small writes to batch TUI redraw sequences (clear + draw) together.
-      // This prevents flashing while keeping first write (keystroke echo) instant.
-      const withinCoalesceWindow = now - lastImmediateWriteTime < COALESCE_WINDOW_MS;
+      // Coalescing window: batch writes that arrive within a frame of each other.
+      // This prevents TUI flashing from "clear + draw" sequences.
+      const withinCoalesceWindow = now - lastWriteTime < COALESCE_WINDOW_MS;
+
+      // Keystroke echo detection: if data arrives shortly after user input,
+      // it's likely the echo of what they just typed. Bypass coalescing for
+      // immediate feedback. 50ms window covers round-trip to PTY and back.
+      const isLikelyKeystrokeEcho = now - lastInputTime < 50;
 
       // Immediate write conditions:
       // - Queue is empty (no pending data)
       // - Small chunk (likely keystroke echo or small ANSI response)
-      // - NOT within coalescing window (not a follow-up redraw chunk)
-      if (chunks.length === 0 && isSmallChunk && !withinCoalesceWindow) {
+      // - Either: outside coalescing window OR likely a keystroke echo
+      if (chunks.length === 0 && isSmallChunk && (!withinCoalesceWindow || isLikelyKeystrokeEcho)) {
         terminal.write(data);
-        lastImmediateWriteTime = now;
+        lastWriteTime = now;
         lastOutputTime = now;
         return;
       }
