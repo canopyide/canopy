@@ -302,6 +302,11 @@ export class TerminalProcess {
     const terminal = this.terminalInfo;
     terminal.lastInputTime = Date.now();
 
+    // If the PTY has already exited or been disposed, ignore input
+    if (!terminal.ptyProcess) {
+      return;
+    }
+
     if (traceId !== undefined) {
       terminal.traceId = traceId || undefined;
     }
@@ -851,7 +856,15 @@ export class TerminalProcess {
     }
 
     const chunk = this.inputWriteQueue.shift()!;
-    this.terminalInfo.ptyProcess.write(chunk);
+    const terminal = this.terminalInfo;
+    if (!terminal.ptyProcess) {
+      return;
+    }
+    try {
+      terminal.ptyProcess.write(chunk);
+    } catch {
+      // Process may already be dead; swallow write errors
+    }
   }
 
   private getDefaultShell(): string {
