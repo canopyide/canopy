@@ -1,5 +1,5 @@
 import { useMemo, useCallback, useRef, useEffect } from "react";
-import { useTerminalStore, useLayoutConfigStore } from "@/store";
+import { useTerminalStore } from "@/store";
 import { useShallow } from "zustand/react/shallow";
 
 export type NavigationDirection = "up" | "down" | "left" | "right";
@@ -24,8 +24,6 @@ export function useGridNavigation(options: UseGridNavigationOptions = {}) {
       focusedId: state.focusedId,
     }))
   );
-
-  const layoutConfig = useLayoutConfigStore((state) => state.layoutConfig);
 
   const gridTerminals = useMemo(
     () => terminals.filter((t) => t.location === "grid" || t.location === undefined),
@@ -97,7 +95,7 @@ export function useGridNavigation(options: UseGridNavigationOptions = {}) {
     }
 
     return positions;
-  }, [gridTerminals, containerSelector, layoutConfig]);
+  }, [gridTerminals, containerSelector]);
 
   // Clear cache when grid layout changes
   useEffect(() => {
