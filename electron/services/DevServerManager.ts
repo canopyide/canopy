@@ -684,7 +684,10 @@ export class DevServerManager {
         if (localDetected) {
           const state = this.states.get(worktreeId);
           if (state?.status === "starting" && state.pid === serverPid) {
-            console.log("Detected dev server URL (local fallback)", { worktreeId, ...localDetected });
+            console.log("Detected dev server URL (local fallback)", {
+              worktreeId,
+              ...localDetected,
+            });
             this.updateState(worktreeId, {
               status: "running",
               url: localDetected.url,
