@@ -10,7 +10,6 @@ import { ProcessDetector, type DetectionResult } from "../ProcessDetector.js";
 import { ActivityMonitor } from "../ActivityMonitor.js";
 import { AgentStateService } from "./AgentStateService.js";
 import { ActivityHeadlineGenerator } from "../ActivityHeadlineGenerator.js";
-import { InputTracker } from "../../utils/inputTracker.js";
 import {
   type PtySpawnOptions,
   type TerminalInfo,
@@ -81,7 +80,6 @@ export class TerminalProcess {
   private activityMonitor: ActivityMonitor | null = null;
   private processDetector: ProcessDetector | null = null;
   private headlineGenerator = new ActivityHeadlineGenerator();
-  private inputTracker = new InputTracker();
 
   // Flow control state
   private _unacknowledgedCharCount = 0;

@@ -22,7 +22,6 @@ import {
 import { useTerminalStore } from "@/store";
 import type { TerminalLocation } from "@/types";
 import { terminalInstanceService } from "@/services/TerminalInstanceService";
-import { VT100_FULL_CLEAR } from "@/services/clearCommandDetection";
 import { TerminalInfoDialog } from "./TerminalInfoDialog";
 
 interface TerminalContextMenuProps {
@@ -71,7 +70,9 @@ export function TerminalContextMenu({
   const handleClearBuffer = () => {
     const managed = terminalInstanceService.get(terminalId);
     if (managed?.terminal) {
-      managed.terminal.write(VT100_FULL_CLEAR);
+      // VS Code-style clear: clear the frontend buffer only and let the
+      // shell decide how to handle `clear`/`reset` commands.
+      managed.terminal.clear();
     }
   };
 
