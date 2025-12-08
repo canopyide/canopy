@@ -180,10 +180,21 @@ function XtermAdapterComponent({
     const container = containerRef.current;
     if (!container) return;
 
-    const { clientWidth, clientHeight } = container;
-    if (clientWidth < MIN_CONTAINER_SIZE || clientHeight < MIN_CONTAINER_SIZE) return;
+    // Subtract padding to match ResizeObserver's contentRect behavior.
+    // clientWidth/Height INCLUDE padding, but contentRect EXCLUDES it.
+    // This ensures consistent dimensions between performFit and handleResizeEntry.
+    const style = window.getComputedStyle(container);
+    const paddingLeft = parseFloat(style.paddingLeft) || 0;
+    const paddingRight = parseFloat(style.paddingRight) || 0;
+    const paddingTop = parseFloat(style.paddingTop) || 0;
+    const paddingBottom = parseFloat(style.paddingBottom) || 0;
 
-    const dims = terminalInstanceService.resize(terminalId, clientWidth, clientHeight);
+    const width = container.clientWidth - paddingLeft - paddingRight;
+    const height = container.clientHeight - paddingTop - paddingBottom;
+
+    if (width < MIN_CONTAINER_SIZE || height < MIN_CONTAINER_SIZE) return;
+
+    const dims = terminalInstanceService.resize(terminalId, width, height);
     if (dims) {
       const managed = terminalInstanceService.get(terminalId);
       const { cols, rows } = dims;

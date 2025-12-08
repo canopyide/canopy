@@ -9,6 +9,9 @@ export interface ResizeConfig {
 const START_DEBOUNCING_THRESHOLD = 200;
 // Horizontal resize debounce delay (reflow is expensive)
 const HORIZONTAL_DEBOUNCE_MS = 100;
+// Vertical resize throttle delay - TUI apps redraw entire screen on height changes.
+// Use leading-edge + trailing throttle to balance responsiveness with TUI redraw storms.
+const VERTICAL_THROTTLE_MS = 50;
 // Max wait time for idle callbacks (both X and Y)
 const IDLE_CALLBACK_TIMEOUT_MS = 1000;
 
@@ -26,6 +29,9 @@ export class TerminalResizeDebouncer {
 
   private resizeXJob: JobId | null = null;
   private resizeYJob: JobId | null = null;
+
+  // Track last Y resize time for leading-edge throttle
+  private lastYResizeTime = 0;
 
   private resizeXCallback: ResizeXCallback;
   private resizeYCallback: ResizeYCallback;
@@ -54,8 +60,8 @@ export class TerminalResizeDebouncer {
       return;
     }
 
-    // Visible terminals: resize Y immediately (cheap), debounce X (expensive reflow)
-    this.resizeYCallback(rows);
+    // Visible terminals: throttle Y (TUI apps redraw on height change), debounce X (expensive reflow)
+    this.throttleResizeY(rows);
     this.debounceResizeX(cols);
   }
 
@@ -126,6 +132,38 @@ export class TerminalResizeDebouncer {
       this.resizeXJob = null;
     }, HORIZONTAL_DEBOUNCE_MS);
     this.resizeXJob = { type: "timeout", id };
+  }
+
+  // Leading-edge throttle for Y resize: fire immediately on first call,
+  // then schedule trailing update if more changes come within throttle window.
+  // This balances quick visual alignment with TUI redraw storm prevention.
+  private throttleResizeY(rows: number): void {
+    const now = Date.now();
+    const timeSinceLastY = now - this.lastYResizeTime;
+
+    // Leading edge: if enough time has passed, fire immediately
+    if (timeSinceLastY >= VERTICAL_THROTTLE_MS) {
+      this.lastYResizeTime = now;
+      // Clear any pending trailing update
+      if (this.resizeYJob) {
+        this.clearJob(this.resizeYJob);
+        this.resizeYJob = null;
+      }
+      this.resizeYCallback(rows);
+      return;
+    }
+
+    // Within throttle window: schedule trailing update if not already scheduled
+    if (!this.resizeYJob) {
+      const remainingTime = VERTICAL_THROTTLE_MS - timeSinceLastY;
+      const id = window.setTimeout(() => {
+        this.lastYResizeTime = Date.now();
+        this.resizeYCallback(this.latestRows);
+        this.resizeYJob = null;
+      }, remainingTime);
+      this.resizeYJob = { type: "timeout", id };
+    }
+    // If already scheduled, the trailing update will use latestRows
   }
 
   private clearJob(job: JobId): void {

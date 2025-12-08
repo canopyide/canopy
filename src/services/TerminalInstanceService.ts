@@ -44,6 +44,10 @@ interface ManagedTerminal {
 
 const BURST_MODE_WINDOW_MS = 500;
 const MAX_WEBGL_RECOVERY_ATTEMPTS = 3;
+// Coalescing window: writes within this window after an immediate write get queued.
+// This batches TUI redraw sequences (clear + draw) that arrive as separate chunks,
+// while still allowing the first write (keystroke echo) to be immediate.
+const COALESCE_WINDOW_MS = 6;
 const WEBGL_DISPOSE_GRACE_MS = 10000; // 10s grace period before releasing WebGL on hide
 const TIER_DOWNGRADE_HYSTERESIS_MS = 500; // Delay before applying tier downgrades to prevent flapping
 
@@ -63,6 +67,8 @@ function createThrottledWriter(
   let getRefreshTier = initialProvider;
   let lastInputTime = 0;
   let lastOutputTime = 0;
+  // Track last immediate write for coalescing window
+  let lastImmediateWriteTime = 0;
 
   const flush = () => {
     if (chunks.length > 0) {
@@ -93,12 +99,34 @@ function createThrottledWriter(
 
   return {
     write: (data: string | Uint8Array) => {
+      const now = performance.now();
+      const isSmallChunk = typeof data === "string" ? data.length < 512 : data.byteLength < 512;
+
+      // Coalescing window: if we just did an immediate write, queue subsequent
+      // small writes to batch TUI redraw sequences (clear + draw) together.
+      // This prevents flashing while keeping first write (keystroke echo) instant.
+      const withinCoalesceWindow = now - lastImmediateWriteTime < COALESCE_WINDOW_MS;
+
+      // Immediate write conditions:
+      // - Queue is empty (no pending data)
+      // - Small chunk (likely keystroke echo or small ANSI response)
+      // - NOT within coalescing window (not a follow-up redraw chunk)
+      if (chunks.length === 0 && isSmallChunk && !withinCoalesceWindow) {
+        terminal.write(data);
+        lastImmediateWriteTime = now;
+        lastOutputTime = now;
+        return;
+      }
+
+      // Capture time since last output BEFORE updating (for burst mode detection)
+      const timeSinceOutput = now - lastOutputTime;
+
+      // Queue the data for batched flush
       chunks.push(data);
-      lastOutputTime = Date.now();
+      lastOutputTime = now;
 
       // Consider recent input OR output for burst mode to handle streaming agent output
-      const timeSinceInput = Date.now() - lastInputTime;
-      const timeSinceOutput = Date.now() - lastOutputTime;
+      const timeSinceInput = now - lastInputTime;
       const isBurstMode =
         timeSinceInput < BURST_MODE_WINDOW_MS || timeSinceOutput < BURST_MODE_WINDOW_MS;
       const tierDelay = getRefreshTier();
@@ -133,7 +161,7 @@ function createThrottledWriter(
       getRefreshTier = provider;
     },
     notifyInput: () => {
-      lastInputTime = Date.now();
+      lastInputTime = performance.now();
       // If pending data on slow timer, switch to fast RAF
       if (chunks.length > 0 && timerId !== null) {
         clearTimeout(timerId);
@@ -142,7 +170,7 @@ function createThrottledWriter(
       }
     },
     getDebugInfo: () => {
-      const now = Date.now();
+      const now = performance.now();
       const timeSinceInput = now - lastInputTime;
       const timeSinceOutput = now - lastOutputTime;
       const isBurstMode =
@@ -170,7 +198,7 @@ function createThrottledWriter(
     },
     boost: () => {
       // Activate burst mode so subsequent writes are fast
-      lastInputTime = Date.now();
+      lastInputTime = performance.now();
 
       // If we have pending data and a timer running, force a quick flush via RAF.
       // This catches the case where data came in while backgrounded (long timer)
@@ -206,6 +234,7 @@ class TerminalInstanceService {
   private packetParser = new PacketParser();
   private pollingActive = false;
   private rafId: number | null = null;
+  private pollTimeoutId: number | null = null;
   private sharedBufferEnabled = false;
 
   private static readonly TERMINAL_COUNT_THRESHOLD = 20;
@@ -261,37 +290,50 @@ class TerminalInstanceService {
       cancelAnimationFrame(this.rafId);
       this.rafId = null;
     }
+    if (this.pollTimeoutId !== null) {
+      clearTimeout(this.pollTimeoutId);
+      this.pollTimeoutId = null;
+    }
   }
 
   /**
    * Poll the ring buffer and dispatch data to terminals.
-   * Runs within a time budget per frame to avoid blocking the main thread.
+   * Uses a hybrid approach: high-frequency setTimeout for responsiveness,
+   * with time budgeting to avoid blocking the main thread.
+   *
+   * Why not requestAnimationFrame?
+   * RAF runs at ~60fps (16ms intervals) which adds noticeable latency to
+   * keystroke echoes. A 2ms setTimeout provides much faster response while
+   * still allowing the browser to breathe between polls.
    */
   private poll = (): void => {
     if (!this.pollingActive || !this.ringBuffer) return;
 
     const start = performance.now();
+    let hasData = false;
 
     // Read and dispatch data within time budget
     while (performance.now() - start < TerminalInstanceService.POLL_TIME_BUDGET_MS) {
       const data = this.ringBuffer.read();
       if (!data) break; // Buffer empty
 
+      hasData = true;
       // Parse packets and dispatch to terminals
       const packets = this.packetParser.parse(data);
       for (const packet of packets) {
         const managed = this.instances.get(packet.id);
         if (managed) {
           managed.throttledWriter.write(packet.data);
-        } else {
-          // Terminal not found in renderer (may have been closed)
-          // Data is discarded - this is expected for terminals that closed
         }
       }
     }
 
-    // Schedule next poll
-    this.rafId = requestAnimationFrame(this.poll);
+    // Adaptive polling: poll faster when data is flowing, slower when idle.
+    // This balances responsiveness with CPU efficiency.
+    // - 1ms when data present: near-instant keystroke echo
+    // - 4ms when idle: low CPU usage while still responsive
+    const nextPollDelay = hasData ? 1 : 4;
+    this.pollTimeoutId = window.setTimeout(this.poll, nextPollDelay);
   };
 
   /**
@@ -470,11 +512,13 @@ class TerminalInstanceService {
     const listeners: Array<() => void> = [];
     const exitSubscribers = new Set<(exitCode: number) => void>();
 
-    // ALWAYS subscribe to IPC data events for fallback scenarios
-    // When SharedArrayBuffer is enabled, normal data comes through polling,
-    // but IPC handles fallback cases (buffer full, packet framing errors, etc.)
-    // Now accepts both string and Uint8Array for binary optimization
+    // Subscribe to IPC data events only when SharedArrayBuffer is unavailable.
+    // When SharedArrayBuffer is enabled, data comes exclusively through polling.
+    // The main process pauses PTYs during buffer backpressure, so IPC fallback
+    // is not needed for normal operation.
     const unsubData = terminalClient.onData(id, (data: string | Uint8Array) => {
+      // Skip IPC data when SharedArrayBuffer polling is active
+      if (this.sharedBufferEnabled && this.pollingActive) return;
       throttledWriter.write(data);
     });
     listeners.push(unsubData);
