@@ -664,6 +664,11 @@ export class DevServerManager {
     }
   }
 
+  /**
+   * Delegates URL detection to the workspace-host utility process.
+   * Includes protection against race conditions where the server might have restarted
+   * while the async parsing was in progress.
+   */
   private async detectUrlViaWorkspaceHost(worktreeId: string, output: string): Promise<void> {
     const currentState = this.states.get(worktreeId);
     if (!currentState) return;
