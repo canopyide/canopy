@@ -34,12 +34,18 @@ interface ManagedTerminal {
   // Geometry caching for resize optimization
   lastWidth: number;
   lastHeight: number;
+  // WebGL dispose grace period timer
+  webglDisposeTimer?: number;
+  // Renderer policy hysteresis state
+  lastAppliedTier?: TerminalRefreshTier; // The tier currently in effect
+  pendingTier?: TerminalRefreshTier; // Target tier for scheduled downgrade
+  tierChangeTimer?: number;
 }
 
 const BURST_MODE_WINDOW_MS = 500;
-// Debounce to catch split PTY packets (Clear + Redraw) before rendering
-const INPUT_DEBOUNCE_MS = 8;
 const MAX_WEBGL_RECOVERY_ATTEMPTS = 3;
+const WEBGL_DISPOSE_GRACE_MS = 10000; // 10s grace period before releasing WebGL on hide
+const TIER_DOWNGRADE_HYSTERESIS_MS = 500; // Delay before applying tier downgrades to prevent flapping
 
 /**
  * Creates a throttled writer that batches terminal output for efficient rendering.
@@ -53,8 +59,10 @@ function createThrottledWriter(
   // Use array of chunks instead of string concatenation to reduce GC pressure
   let chunks: (string | Uint8Array)[] = [];
   let timerId: number | null = null;
+  let rafId: number | null = null;
   let getRefreshTier = initialProvider;
   let lastInputTime = 0;
+  let lastOutputTime = 0;
 
   const flush = () => {
     if (chunks.length > 0) {
@@ -65,30 +73,39 @@ function createThrottledWriter(
       chunks = [];
     }
     timerId = null;
+    rafId = null;
   };
 
   const scheduleFlush = (delay: number) => {
-    if (timerId !== null) return;
+    if (timerId !== null || rafId !== null) return;
 
-    // Use setTimeout instead of RAF for burst mode to avoid split-packet flashing.
-    // RAF can fire instantly if called near frame boundary, rendering "Clear" before "Redraw".
-    if (delay <= 16) {
-      timerId = window.setTimeout(flush, INPUT_DEBOUNCE_MS);
+    // Use requestAnimationFrame for BURST mode (high frequency updates).
+    // This ensures that all chunks arriving within a single frame (e.g., Clear + Redraw)
+    // are batched and executed together before the browser paints.
+    // This eliminates the "flash" of an empty screen between a Clear and a Write.
+    // IMPORTANT: When document is hidden, RAF is paused. Use setTimeout fallback to prevent freeze.
+    if (delay <= 16 && document.visibilityState === "visible") {
+      rafId = requestAnimationFrame(flush);
     } else {
-      timerId = window.setTimeout(flush, delay);
+      timerId = window.setTimeout(flush, delay <= 16 ? delay : delay);
     }
   };
 
   return {
     write: (data: string | Uint8Array) => {
       chunks.push(data);
+      lastOutputTime = Date.now();
 
-      const isBurstMode = Date.now() - lastInputTime < BURST_MODE_WINDOW_MS;
+      // Consider recent input OR output for burst mode to handle streaming agent output
+      const timeSinceInput = Date.now() - lastInputTime;
+      const timeSinceOutput = Date.now() - lastOutputTime;
+      const isBurstMode =
+        timeSinceInput < BURST_MODE_WINDOW_MS || timeSinceOutput < BURST_MODE_WINDOW_MS;
       const tierDelay = getRefreshTier();
       const effectiveDelay = isBurstMode ? TerminalRefreshTier.BURST : tierDelay;
 
       // If switching to faster mode, cancel slow timer and reschedule
-      if (timerId !== null && effectiveDelay < tierDelay) {
+      if (timerId !== null && effectiveDelay <= 16) {
         clearTimeout(timerId);
         timerId = null;
       }
@@ -99,6 +116,10 @@ function createThrottledWriter(
       if (timerId !== null) {
         clearTimeout(timerId);
         timerId = null;
+      }
+      if (rafId !== null) {
+        cancelAnimationFrame(rafId);
+        rafId = null;
       }
       // Flush any remaining chunks
       if (chunks.length > 0) {
@@ -113,15 +134,19 @@ function createThrottledWriter(
     },
     notifyInput: () => {
       lastInputTime = Date.now();
-      // If pending data on slow timer, switch to fast debounce
+      // If pending data on slow timer, switch to fast RAF
       if (chunks.length > 0 && timerId !== null) {
         clearTimeout(timerId);
-        timerId = window.setTimeout(flush, INPUT_DEBOUNCE_MS);
+        timerId = null;
+        rafId = requestAnimationFrame(flush);
       }
     },
     getDebugInfo: () => {
       const now = Date.now();
-      const isBurstMode = now - lastInputTime < BURST_MODE_WINDOW_MS;
+      const timeSinceInput = now - lastInputTime;
+      const timeSinceOutput = now - lastOutputTime;
+      const isBurstMode =
+        timeSinceInput < BURST_MODE_WINDOW_MS || timeSinceOutput < BURST_MODE_WINDOW_MS;
       const tierDelay = getRefreshTier();
       const effectiveDelay = isBurstMode ? TerminalRefreshTier.BURST : tierDelay;
       const fps = Math.round(1000 / effectiveDelay);
@@ -147,12 +172,13 @@ function createThrottledWriter(
       // Activate burst mode so subsequent writes are fast
       lastInputTime = Date.now();
 
-      // If we have pending data and a timer running, force a quick flush.
+      // If we have pending data and a timer running, force a quick flush via RAF.
       // This catches the case where data came in while backgrounded (long timer)
       // and we want to show it NOW because the user clicked the tab.
       if (timerId !== null) {
         clearTimeout(timerId);
-        timerId = window.setTimeout(flush, INPUT_DEBOUNCE_MS);
+        timerId = null;
+        rafId = requestAnimationFrame(flush);
       }
     },
     clear: () => {
@@ -161,60 +187,17 @@ function createThrottledWriter(
         clearTimeout(timerId);
         timerId = null;
       }
+      if (rafId !== null) {
+        cancelAnimationFrame(rafId);
+        rafId = null;
+      }
       chunks = [];
     },
   };
 }
 
-/**
- * Applies the "jank fix" to a terminal instance.
- * Blocks cursor-home sequences during active scrolling to prevent jumpiness.
- */
-function applyJankFix(terminal: Terminal): () => void {
-  let blockCursorHome = false;
-  let lastScrollTime = 0;
-  let timeoutId: number | null = null;
-
-  const scrollDisposable = terminal.onScroll(() => {
-    lastScrollTime = Date.now();
-    blockCursorHome = true;
-
-    if (timeoutId !== null) {
-      clearTimeout(timeoutId);
-    }
-
-    timeoutId = window.setTimeout(() => {
-      if (Date.now() - lastScrollTime > 100) {
-        blockCursorHome = false;
-      }
-      timeoutId = null;
-    }, 150);
-  });
-
-  const csiDisposable = terminal.parser.registerCsiHandler({ final: "H" }, (params) => {
-    const row = (params.length > 0 && params[0]) || 1;
-    const col = (params.length > 1 && params[1]) || 1;
-
-    if (blockCursorHome && row === 1 && col === 1) {
-      return true;
-    }
-
-    return false;
-  });
-
-  return () => {
-    if (timeoutId !== null) {
-      clearTimeout(timeoutId);
-      timeoutId = null;
-    }
-    scrollDisposable.dispose();
-    csiDisposable.dispose();
-  };
-}
-
 class TerminalInstanceService {
   private instances = new Map<string, ManagedTerminal>();
-  private jankFixDisposers = new Map<string, () => void>();
   private webglLru: string[] = [];
   private hardwareProfile: HardwareProfile;
 
@@ -398,22 +381,42 @@ class TerminalInstanceService {
       managed.lastActiveTime = Date.now();
 
       if (isVisible) {
-        // Always bust cache when becoming visible to force fresh measurement
-        managed.lastWidth = 0;
-        managed.lastHeight = 0;
+        // Cancel pending WebGL disposal if becoming visible again
+        if (managed.webglDisposeTimer !== undefined) {
+          clearTimeout(managed.webglDisposeTimer);
+          managed.webglDisposeTimer = undefined;
+        }
 
-        // Force resize when becoming visible to sync dimensions
+        // Only bust geometry cache if dimensions actually changed
+        // This prevents redundant reflows on quick tab switches where container size is unchanged
+        // The XtermAdapter's performFit() will handle the actual resize and IPC
         const rect = managed.hostElement.getBoundingClientRect();
         if (rect.width > 0 && rect.height > 0) {
-          this.resize(id, rect.width, rect.height);
+          const widthChanged = Math.abs(managed.lastWidth - rect.width) >= 1;
+          const heightChanged = Math.abs(managed.lastHeight - rect.height) >= 1;
+
+          if (widthChanged || heightChanged) {
+            // Bust cache so performFit() will trigger a resize
+            managed.lastWidth = 0;
+            managed.lastHeight = 0;
+          }
         }
         // If becoming visible, try to upgrade to WebGL
         this.applyRendererPolicy(id, managed.getRefreshTier());
       } else {
-        // If hiding, release WebGL immediately to free resources
-        if (managed.webglAddon) {
-          this.releaseWebgl(id, managed);
-          managed.terminal.refresh(0, managed.terminal.rows - 1);
+        // If hiding, wait grace period before releasing WebGL (prevents flicker on quick tab switches)
+        if (managed.webglAddon && managed.webglDisposeTimer === undefined) {
+          managed.webglDisposeTimer = window.setTimeout(() => {
+            // Re-check: terminal might have become visible or been destroyed during grace period
+            const current = this.instances.get(id);
+            if (current && !current.isVisible && current.webglAddon) {
+              this.releaseWebgl(id, current);
+              current.terminal.refresh(0, current.terminal.rows - 1);
+            }
+            if (current) {
+              current.webglDisposeTimer = undefined;
+            }
+          }, WEBGL_DISPOSE_GRACE_MS);
         }
       }
     }
@@ -499,9 +502,6 @@ class TerminalInstanceService {
       terminalClient.write(id, data);
     });
     listeners.push(() => inputDisposable.dispose());
-
-    const jankDispose = applyJankFix(terminal);
-    this.jankFixDisposers.set(id, jankDispose);
 
     const managed: ManagedTerminal = {
       terminal,
@@ -787,6 +787,10 @@ class TerminalInstanceService {
    * Visible terminals with FOCUSED/BURST/VISIBLE tier get WebGL.
    * BACKGROUND terminals and hidden terminals surrender WebGL to save resources.
    * Also propagates activity tier to main process for IPC batching.
+   *
+   * Uses hysteresis for downgrades: tier changes from higher to lower priority
+   * are delayed by TIER_DOWNGRADE_HYSTERESIS_MS to prevent rapid WebGL churn
+   * during MCP state transitions.
    */
   applyRendererPolicy(id: string, tier: TerminalRefreshTier): void {
     const managed = this.instances.get(id);
@@ -798,6 +802,70 @@ class TerminalInstanceService {
       // Clear error flag on explicit user interaction
       managed.hasWebglError = false;
     }
+
+    // Use the last actually applied tier as baseline (not pending or getRefreshTier)
+    // Lower tier values = higher priority (BURST=8 < FOCUSED=16 < VISIBLE=100 < BACKGROUND=1000)
+    const currentAppliedTier =
+      managed.lastAppliedTier ?? managed.getRefreshTier() ?? TerminalRefreshTier.FOCUSED;
+
+    // Same tier as currently applied: nothing to do
+    if (tier === currentAppliedTier) {
+      // Cancel any pending downgrade since we're staying at current tier
+      if (managed.tierChangeTimer !== undefined) {
+        clearTimeout(managed.tierChangeTimer);
+        managed.tierChangeTimer = undefined;
+        managed.pendingTier = undefined;
+      }
+      return;
+    }
+
+    const isUpgrade = tier < currentAppliedTier;
+
+    // For upgrades: apply immediately and cancel any pending downgrade
+    if (isUpgrade) {
+      if (managed.tierChangeTimer !== undefined) {
+        clearTimeout(managed.tierChangeTimer);
+        managed.tierChangeTimer = undefined;
+      }
+      managed.pendingTier = undefined;
+      this.applyRendererPolicyImmediate(id, managed, tier);
+      return;
+    }
+
+    // For downgrades: apply with hysteresis to prevent flapping
+    // If already pending the same tier, skip scheduling another timer
+    if (managed.pendingTier === tier && managed.tierChangeTimer !== undefined) {
+      return;
+    }
+
+    // Cancel any existing timer and schedule new one
+    if (managed.tierChangeTimer !== undefined) {
+      clearTimeout(managed.tierChangeTimer);
+    }
+
+    managed.pendingTier = tier;
+    managed.tierChangeTimer = window.setTimeout(() => {
+      const current = this.instances.get(id);
+      if (current && current.pendingTier === tier) {
+        this.applyRendererPolicyImmediate(id, current, tier);
+        current.pendingTier = undefined;
+      }
+      if (current) {
+        current.tierChangeTimer = undefined;
+      }
+    }, TIER_DOWNGRADE_HYSTERESIS_MS);
+  }
+
+  /**
+   * Internal: Apply renderer policy immediately without hysteresis.
+   */
+  private applyRendererPolicyImmediate(
+    id: string,
+    managed: ManagedTerminal,
+    tier: TerminalRefreshTier
+  ): void {
+    // Track the last applied tier for hysteresis baseline
+    managed.lastAppliedTier = tier;
 
     // Terminal must be visible AND have appropriate tier to want WebGL
     const wantsWebgl =
@@ -971,17 +1039,23 @@ class TerminalInstanceService {
     const managed = this.instances.get(id);
     if (!managed) return;
 
+    // Clear pending WebGL dispose timer
+    if (managed.webglDisposeTimer !== undefined) {
+      clearTimeout(managed.webglDisposeTimer);
+      managed.webglDisposeTimer = undefined;
+    }
+
+    // Clear pending tier change timer
+    if (managed.tierChangeTimer !== undefined) {
+      clearTimeout(managed.tierChangeTimer);
+      managed.tierChangeTimer = undefined;
+    }
+
     managed.listeners.forEach((cleanup) => cleanup());
     managed.throttledWriter.dispose();
     managed.webglAddon?.dispose();
     managed.webLinksAddon.dispose();
     this.webglLru = this.webglLru.filter((existing) => existing !== id);
-
-    const disposeJank = this.jankFixDisposers.get(id);
-    if (disposeJank) {
-      disposeJank();
-      this.jankFixDisposers.delete(id);
-    }
 
     managed.terminal.dispose();
     managed.hostElement.remove();
