@@ -403,9 +403,9 @@ export function WorktreeCard({
       />
       <div className="px-3 py-5">
         {/* Header section with chevron gutter (grid layout) */}
-        <div className="flex gap-3">
+        <div className="flex gap-2">
           {/* Chevron column */}
-          <div className="flex items-start pt-0.5 w-5 shrink-0">
+          <div className="flex items-start pt-0.5 w-4 shrink-0">
             {hasExpandableContent && (
               <button
                 onClick={handleToggleExpand}
@@ -425,109 +425,63 @@ export function WorktreeCard({
 
           {/* Main content column */}
           <div className="flex-1 min-w-0 space-y-1">
-            {/* Row 1: Identity + Recency */}
-            <div className="group/identity min-w-0 flex flex-col gap-1 relative">
-              {/* Row 1: Branch name + recency */}
-              <div className="flex items-center justify-between gap-2 min-h-[22px]">
-                <div className="flex items-center gap-1.5 min-w-0 flex-1 overflow-hidden">
-                  <button
-                    onClick={(e) => {
-                      e.stopPropagation();
-                      e.currentTarget.blur();
-                      onCopyTree();
-                    }}
-                    className={cn(
-                      "p-1 -ml-1.5 rounded transition-colors shrink-0",
-                      "text-canopy-text/40 hover:text-canopy-text hover:bg-white/10",
-                      "focus-visible:outline focus-visible:outline-2 focus-visible:outline-canopy-accent",
-                      "opacity-0 group-hover/identity:opacity-100 focus-visible:opacity-100 transition-opacity",
-                      "pointer-events-none group-hover/identity:pointer-events-auto focus-visible:pointer-events-auto"
-                    )}
-                    title="Copy Context"
-                    aria-label="Copy Context"
-                  >
-                    <Copy className="w-3.5 h-3.5" />
-                  </button>
-                  {isMainWorktree && (
-                    <Shield className="w-3.5 h-3.5 text-canopy-text/40 opacity-30 shrink-0" />
-                  )}
-                  <BranchLabel
-                    label={branchLabel}
-                    isActive={isActive}
-                    isMainWorktree={isMainWorktree}
-                  />
-                  {!worktree.branch && (
-                    <span className="text-amber-500 text-[10px] font-medium shrink-0">
-                      (detached)
-                    </span>
-                  )}
-                </div>
-
-                {/* Activity + Live Time - Unified recency chip */}
-                <div
-                  className={cn(
-                    "flex items-center gap-1.5 shrink-0 text-[10px] px-2 py-0.5 rounded-full",
-                    worktree.lastActivityTimestamp
-                      ? "bg-white/[0.03] text-canopy-text/60"
-                      : "bg-transparent text-canopy-text/40"
-                  )}
-                  title={
-                    worktree.lastActivityTimestamp
-                      ? `Last activity: ${new Date(worktree.lastActivityTimestamp).toLocaleString()}`
-                      : "No recent activity recorded"
-                  }
-                >
-                  {worktree.lastActivityTimestamp && (
-                    <ActivityLight lastActivityTimestamp={worktree.lastActivityTimestamp} />
-                  )}
-                  <LiveTimeAgo timestamp={worktree.lastActivityTimestamp} className="font-medium" />
-                </div>
+            {/* Row 1: Identity bar */}
+            <div className="flex items-center gap-2 min-h-[22px]">
+              {/* Left: Branch identity */}
+              <div className="flex items-center gap-1.5 min-w-0 flex-1">
+                {isMainWorktree && (
+                  <Shield className="w-3.5 h-3.5 text-canopy-text/30 shrink-0" />
+                )}
+                <BranchLabel
+                  label={branchLabel}
+                  isActive={isActive}
+                  isMainWorktree={isMainWorktree}
+                />
+                {!worktree.branch && (
+                  <span className="text-amber-500 text-[10px] font-medium shrink-0">
+                    (detached)
+                  </span>
+                )}
               </div>
 
-              {/* Row 2: Context Badges (PR/Issue) - separate line */}
-              {(worktree.issueNumber || worktree.prNumber) && (
-                <div className="flex items-center gap-2">
-                  {worktree.issueNumber && (
-                    <button
-                      onClick={(e) => {
-                        e.stopPropagation();
-                        onOpenIssue?.();
-                      }}
-                      className="group/issue flex items-center gap-1 text-[10px] text-blue-400 hover:text-blue-300 hover:underline transition-colors focus-visible:outline focus-visible:outline-2 focus-visible:outline-canopy-accent"
-                      title="Open Issue on GitHub"
-                    >
-                      <CircleDot className="w-2.5 h-2.5" />
-                      <span className="font-mono">#{worktree.issueNumber}</span>
-                      <ExternalLink className="w-3 h-3 opacity-60 group-hover/issue:opacity-100 transition-opacity" />
-                    </button>
-                  )}
-                  {worktree.prNumber && (
-                    <button
-                      onClick={(e) => {
-                        e.stopPropagation();
-                        onOpenPR?.();
-                      }}
-                      className={cn(
-                        "group/pr flex items-center gap-1 text-[10px] hover:underline transition-colors",
-                        "focus-visible:outline focus-visible:outline-2 focus-visible:outline-canopy-accent",
-                        worktree.prState === "merged"
-                          ? "text-purple-400 hover:text-purple-300"
-                          : worktree.prState === "closed"
-                            ? "text-red-400 hover:text-red-300"
-                            : "text-green-400 hover:text-green-300"
-                      )}
-                      title={`PR #${worktree.prNumber} · ${worktree.prState ?? "open"}`}
-                    >
-                      <GitPullRequest className="w-2.5 h-2.5" />
-                      <span className="font-mono">#{worktree.prNumber}</span>
-                      <ExternalLink className="w-3 h-3 opacity-60 group-hover/pr:opacity-100 transition-opacity" />
-                    </button>
-                  )}
-                </div>
-              )}
+              {/* Center: Activity chip */}
+              <div
+                className={cn(
+                  "flex items-center gap-1.5 shrink-0 text-[10px] px-2 py-0.5 rounded-full",
+                  worktree.lastActivityTimestamp
+                    ? "bg-white/[0.03] text-canopy-text/60"
+                    : "bg-transparent text-canopy-text/40"
+                )}
+                title={
+                  worktree.lastActivityTimestamp
+                    ? `Last activity: ${new Date(worktree.lastActivityTimestamp).toLocaleString()}`
+                    : "No recent activity recorded"
+                }
+              >
+                {worktree.lastActivityTimestamp && (
+                  <ActivityLight lastActivityTimestamp={worktree.lastActivityTimestamp} />
+                )}
+                <LiveTimeAgo timestamp={worktree.lastActivityTimestamp} className="font-medium" />
+              </div>
 
-              {/* Action Buttons - visible on hover/focus */}
-              <div className="absolute right-0 flex items-center gap-0.5 opacity-0 group-hover/identity:opacity-100 group-focus-within/identity:opacity-100 focus-within:opacity-100 transition-opacity bg-gradient-to-l from-canopy-bg from-70% to-transparent pl-6 z-10">
+              {/* Right: Actions */}
+              <div className="flex items-center gap-1 shrink-0">
+                <button
+                  onClick={(e) => {
+                    e.stopPropagation();
+                    e.currentTarget.blur();
+                    onCopyTree();
+                  }}
+                  className={cn(
+                    "p-1 rounded transition-colors",
+                    "text-canopy-text/40 hover:text-canopy-text hover:bg-white/10",
+                    "focus-visible:outline focus-visible:outline-2 focus-visible:outline-canopy-accent"
+                  )}
+                  title="Copy Context"
+                  aria-label="Copy Context"
+                >
+                  <Copy className="w-3.5 h-3.5" />
+                </button>
                 <DropdownMenu>
                   <DropdownMenuTrigger asChild>
                     <button
@@ -642,6 +596,48 @@ export function WorktreeCard({
                 </DropdownMenu>
               </div>
             </div>
+
+            {/* Row 2: Context Badges (PR/Issue) */}
+            {(worktree.issueNumber || worktree.prNumber) && (
+              <div className="flex items-center gap-2">
+                {worktree.issueNumber && (
+                  <button
+                    onClick={(e) => {
+                      e.stopPropagation();
+                      onOpenIssue?.();
+                    }}
+                    className="group/issue flex items-center gap-1 text-[10px] text-blue-400 hover:text-blue-300 hover:underline transition-colors focus-visible:outline focus-visible:outline-2 focus-visible:outline-canopy-accent"
+                    title="Open Issue on GitHub"
+                  >
+                    <CircleDot className="w-2.5 h-2.5" />
+                    <span className="font-mono">#{worktree.issueNumber}</span>
+                    <ExternalLink className="w-3 h-3 opacity-60 group-hover/issue:opacity-100 transition-opacity" />
+                  </button>
+                )}
+                {worktree.prNumber && (
+                  <button
+                    onClick={(e) => {
+                      e.stopPropagation();
+                      onOpenPR?.();
+                    }}
+                    className={cn(
+                      "group/pr flex items-center gap-1 text-[10px] hover:underline transition-colors",
+                      "focus-visible:outline focus-visible:outline-2 focus-visible:outline-canopy-accent",
+                      worktree.prState === "merged"
+                        ? "text-purple-400 hover:text-purple-300"
+                        : worktree.prState === "closed"
+                          ? "text-red-400 hover:text-red-300"
+                          : "text-green-400 hover:text-green-300"
+                    )}
+                    title={`PR #${worktree.prNumber} · ${worktree.prState ?? "open"}`}
+                  >
+                    <GitPullRequest className="w-2.5 h-2.5" />
+                    <span className="font-mono">#{worktree.prNumber}</span>
+                    <ExternalLink className="w-3 h-3 opacity-60 group-hover/pr:opacity-100 transition-opacity" />
+                  </button>
+                )}
+              </div>
+            )}
           </div>
         </div>
 
