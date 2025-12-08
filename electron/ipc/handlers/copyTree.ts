@@ -10,6 +10,7 @@ import type {
   CopyTreeGenerateAndCopyFilePayload,
   CopyTreeInjectPayload,
   CopyTreeGetFileTreePayload,
+  CopyTreeOptions,
   CopyTreeResult,
   CopyTreeProgress,
   FileTreeNode,
@@ -33,6 +34,18 @@ function hasAsyncGetMonitor(service: WorkspaceManager): service is WorkspaceMana
   getMonitorAsync: (worktreeId: string) => Promise<{ path: string } | null>;
 } {
   return typeof (service as any).getMonitorAsync === "function";
+}
+
+// Type guard to check if worktreeService has generateContext method (WorkspaceClient)
+function hasGenerateContext(service: WorkspaceManager): service is WorkspaceManager & {
+  generateContext: (
+    rootPath: string,
+    options?: CopyTreeOptions,
+    onProgress?: (progress: CopyTreeProgress) => void
+  ) => Promise<CopyTreeResult>;
+  cancelAllContext: () => void;
+} {
+  return typeof (service as any).generateContext === "function";
 }
 
 export function registerCopyTreeHandlers(deps: HandlerDependencies): () => void {
@@ -90,6 +103,12 @@ export function registerCopyTreeHandlers(deps: HandlerDependencies): () => void 
       sendToRenderer(mainWindow, CHANNELS.COPYTREE_PROGRESS, { ...progress, traceId });
     };
 
+    // Use WorkspaceClient if available (runs in workspace-host UtilityProcess)
+    if (hasGenerateContext(worktreeService)) {
+      return worktreeService.generateContext(worktree.path, validated.options, onProgress);
+    }
+
+    // Fall back to direct CopyTreeService (runs in Main process)
     return copyTreeService.generate(worktree.path, validated.options, onProgress, traceId);
   };
   ipcMain.handle(CHANNELS.COPYTREE_GENERATE, handleCopyTreeGenerate);
@@ -149,12 +168,14 @@ export function registerCopyTreeHandlers(deps: HandlerDependencies): () => void 
       sendToRenderer(mainWindow, CHANNELS.COPYTREE_PROGRESS, { ...progress, traceId });
     };
 
-    const result = await copyTreeService.generate(
-      worktree.path,
-      validated.options,
-      onProgress,
-      traceId
-    );
+    // Use WorkspaceClient if available (runs in workspace-host UtilityProcess)
+    let result: CopyTreeResult;
+    if (hasGenerateContext(worktreeService)) {
+      result = await worktreeService.generateContext(worktree.path, validated.options, onProgress);
+    } else {
+      // Fall back to direct CopyTreeService (runs in Main process)
+      result = await copyTreeService.generate(worktree.path, validated.options, onProgress, traceId);
+    }
 
     if (result.error) {
       return result;
@@ -280,12 +301,23 @@ export function registerCopyTreeHandlers(deps: HandlerDependencies): () => void 
         sendToRenderer(mainWindow, CHANNELS.COPYTREE_PROGRESS, { ...progress, traceId });
       };
 
-      const result = await copyTreeService.generate(
-        worktree.path,
-        validated.options || {},
-        onProgress,
-        traceId
-      );
+      // Use WorkspaceClient if available (runs in workspace-host UtilityProcess)
+      let result: CopyTreeResult;
+      if (hasGenerateContext(worktreeService)) {
+        result = await worktreeService.generateContext(
+          worktree.path,
+          validated.options || {},
+          onProgress
+        );
+      } else {
+        // Fall back to direct CopyTreeService (runs in Main process)
+        result = await copyTreeService.generate(
+          worktree.path,
+          validated.options || {},
+          onProgress,
+          traceId
+        );
+      }
 
       if (result.error) {
         return result;
@@ -326,6 +358,11 @@ export function registerCopyTreeHandlers(deps: HandlerDependencies): () => void 
   handlers.push(() => ipcMain.removeHandler(CHANNELS.COPYTREE_AVAILABLE));
 
   const handleCopyTreeCancel = async (): Promise<void> => {
+    // Cancel in workspace-host if available
+    if (worktreeService && hasGenerateContext(worktreeService)) {
+      worktreeService.cancelAllContext();
+    }
+    // Also cancel in Main process (fallback mode)
     copyTreeService.cancelAll();
   };
   ipcMain.handle(CHANNELS.COPYTREE_CANCEL, handleCopyTreeCancel);

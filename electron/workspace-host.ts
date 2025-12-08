@@ -31,6 +31,8 @@ import { categorizeWorktree } from "./utils/worktreeMood.js";
 import { extractIssueNumberSync, extractIssueNumber } from "./services/issueExtractor.js";
 import { AdaptivePollingStrategy, NoteFileReader } from "./services/worktree/index.js";
 import { initializeLogger } from "./utils/logger.js";
+import { copyTreeService } from "./services/CopyTreeService.js";
+import type { CopyTreeProgress } from "../shared/types/ipc.js";
 
 // Validate we're running in UtilityProcess context
 if (!process.parentPort) {
@@ -1041,6 +1043,41 @@ port.on("message", async (rawMsg: any) => {
 
       case "dispose":
         workspaceHost.dispose();
+        break;
+
+      case "copytree:generate": {
+        const { requestId, operationId, rootPath, options } = request;
+        console.log(`[WorkspaceHost] CopyTree generate started: ${operationId}`);
+
+        const onProgress = (progress: CopyTreeProgress) => {
+          sendEvent({
+            type: "copytree:progress",
+            operationId,
+            progress,
+          });
+        };
+
+        try {
+          const result = await copyTreeService.generate(rootPath, options || {}, onProgress);
+          sendEvent({
+            type: "copytree:complete",
+            requestId,
+            operationId,
+            result,
+          });
+        } catch (error) {
+          sendEvent({
+            type: "copytree:error",
+            requestId,
+            operationId,
+            error: (error as Error).message,
+          });
+        }
+        break;
+      }
+
+      case "copytree:cancel":
+        copyTreeService.cancel(request.operationId);
         break;
 
       default:

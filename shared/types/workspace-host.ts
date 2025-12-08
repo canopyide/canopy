@@ -13,6 +13,7 @@
  */
 
 import type { Worktree, WorktreeChanges, FileChangeDetail, WorktreeMood } from "./domain.js";
+import type { CopyTreeOptions, CopyTreeProgress, CopyTreeResult } from "./ipc.js";
 
 /** Options for creating a new worktree */
 export interface CreateWorktreeOptions {
@@ -115,7 +116,16 @@ export type WorkspaceHostRequest =
   // Health check
   | { type: "health-check" }
   // Lifecycle
-  | { type: "dispose" };
+  | { type: "dispose" }
+  // CopyTree operations
+  | {
+      type: "copytree:generate";
+      requestId: string;
+      operationId: string;
+      rootPath: string;
+      options?: CopyTreeOptions;
+    }
+  | { type: "copytree:cancel"; operationId: string };
 
 /**
  * Events sent from Workspace Host → Main.
@@ -154,7 +164,16 @@ export type WorkspaceHostEvent =
       prUrl: string;
       prState: "open" | "merged" | "closed";
     }
-  | { type: "pr-cleared"; worktreeId: string };
+  | { type: "pr-cleared"; worktreeId: string }
+  // CopyTree events
+  | { type: "copytree:progress"; operationId: string; progress: CopyTreeProgress }
+  | {
+      type: "copytree:complete";
+      requestId: string;
+      operationId: string;
+      result: CopyTreeResult;
+    }
+  | { type: "copytree:error"; requestId: string; operationId: string; error: string };
 
 /** Configuration for WorkspaceClient */
 export interface WorkspaceClientConfig {
