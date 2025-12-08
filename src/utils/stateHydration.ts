@@ -39,9 +39,16 @@ export async function hydrateAppState(options: HydrationOptions): Promise<void> 
   try {
     await keybindingService.loadOverrides();
 
+    // Batch fetch initial state
+    const {
+      appState,
+      terminalConfig,
+      project: currentProject,
+      agentSettings,
+    } = await appClient.hydrate();
+
     // Hydrate terminal config (scrollback, performance mode) BEFORE restoring terminals
     try {
-      const terminalConfig = await terminalConfigClient.get();
       if (terminalConfig?.scrollbackLines !== undefined) {
         let { scrollbackLines } = terminalConfig;
         // Migrate legacy values to new defaults (Issue #504 optimization)
@@ -76,31 +83,14 @@ export async function hydrateAppState(options: HydrationOptions): Promise<void> 
       console.warn("Failed to hydrate terminal config:", error);
     }
 
-    const appState = await appClient.getState();
-
     if (!appState) {
       console.warn("App state returned undefined during hydration, using defaults");
       return;
     }
 
     if (appState.terminals && appState.terminals.length > 0) {
-      let projectRoot: string | undefined;
-      let currentProjectId: string | undefined;
-      try {
-        const currentProject = await projectClient.getCurrent();
-        projectRoot = currentProject?.path;
-        currentProjectId = currentProject?.id;
-      } catch (error) {
-        console.warn("Failed to get current project for terminal restoration:", error);
-      }
-
-      // Load current agent settings for regenerating agent commands
-      let agentSettings: AgentSettings | null = null;
-      try {
-        agentSettings = await agentSettingsClient.get();
-      } catch (error) {
-        console.warn("Failed to load agent settings for terminal restoration:", error);
-      }
+      const projectRoot = currentProject?.path;
+      const currentProjectId = currentProject?.id;
 
       // Query backend for existing terminals in this project
       let backendTerminalIds = new Set<string>();

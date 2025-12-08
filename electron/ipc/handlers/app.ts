@@ -3,6 +3,7 @@ import { join } from "path";
 import { homedir } from "os";
 import { CHANNELS } from "../channels.js";
 import { store } from "../../store.js";
+import { projectStore } from "../../services/ProjectStore.js";
 import { logBuffer } from "../../services/LogBuffer.js";
 import { setVerboseLogging, isVerboseLogging, logInfo } from "../../utils/logger.js";
 import type { HandlerDependencies } from "../types.js";
@@ -12,6 +13,17 @@ import type { FilterOptions as EventFilterOptions } from "../../services/EventBu
 export function registerAppHandlers(deps: HandlerDependencies): () => void {
   const { eventBuffer } = deps;
   const handlers: Array<() => void> = [];
+
+  const handleAppHydrate = async () => {
+    return {
+      appState: store.get("appState"),
+      terminalConfig: store.get("terminalConfig"),
+      project: projectStore.getCurrentProject(),
+      agentSettings: store.get("agentSettings"),
+    };
+  };
+  ipcMain.handle(CHANNELS.APP_HYDRATE, handleAppHydrate);
+  handlers.push(() => ipcMain.removeHandler(CHANNELS.APP_HYDRATE));
 
   const handleAppGetState = async () => {
     return store.get("appState");

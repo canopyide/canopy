@@ -67,6 +67,7 @@ export const CHANNELS = {
   SYSTEM_GET_CLI_AVAILABILITY: "system:get-cli-availability",
   SYSTEM_REFRESH_CLI_AVAILABILITY: "system:refresh-cli-availability",
   SYSTEM_WAKE: "system:wake",
+  SYSTEM_BACKEND_READY: "system:backend-ready",
 
   PR_DETECTED: "pr:detected",
   PR_CLEARED: "pr:cleared",
@@ -87,6 +88,7 @@ export const CHANNELS = {
   APP_GET_STATE: "app:get-state",
   APP_SET_STATE: "app:set-state",
   APP_GET_VERSION: "app:get-version",
+  APP_HYDRATE: "app:hydrate",
 
   LOGS_GET_ALL: "logs:get-all",
   LOGS_GET_SOURCES: "logs:get-sources",

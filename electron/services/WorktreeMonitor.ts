@@ -142,7 +142,18 @@ export class WorktreeMonitor {
     this.isRunning = true;
     this.pollingEnabled = true;
 
-    await this.updateGitStatus(true);
+    if (this.isCurrent) {
+      // Active worktree: Go immediately
+      await this.updateGitStatus(true);
+    } else {
+      // Background worktree: Random delay 100ms-2000ms to prevent thundering herd
+      const jitter = 100 + Math.random() * 1900;
+      setTimeout(() => {
+        if (this.isRunning && this.pollingEnabled) {
+          void this.updateGitStatus(true);
+        }
+      }, jitter);
+    }
 
     if (this.isRunning) {
       this.scheduleNextPoll();

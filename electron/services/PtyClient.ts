@@ -137,8 +137,8 @@ export class PtyClient extends EventEmitter {
       this.readyResolve = resolve;
     });
 
-    // Path to compiled pty-host.js
-    const hostPath = path.join(__dirname, "../pty-host.js");
+    // Path to compiled pty-host.js (bundled in same directory)
+    const hostPath = path.join(__dirname, "pty-host.js");
 
     console.log(`[PtyClient] Starting Pty Host from: ${hostPath}`);
 

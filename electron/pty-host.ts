@@ -765,20 +765,25 @@ process.on("exit", () => {
 // Initialize pool asynchronously
 async function initialize(): Promise<void> {
   try {
+    // Notify Main that we're ready immediately
+    sendEvent({ type: "ready" });
+    console.log("[PtyHost] Initialized and ready (accepting IPC)");
+
     // Initialize pool
     ptyPool = getPtyPool({ poolSize: 2 });
     const homedir = process.env.HOME || os.homedir();
-    await ptyPool.warmPool(homedir);
-    ptyManager.setPtyPool(ptyPool);
-    console.log("[PtyHost] PTY pool warmed");
+    
+    // Warm pool in background
+    ptyPool.warmPool(homedir).then(() => {
+        console.log("[PtyHost] PTY pool warmed in background");
+    }).catch(err => {
+        console.error("[PtyHost] Failed to warm pool:", err);
+    });
 
-    // Notify Main that we're ready
-    sendEvent({ type: "ready" });
-    console.log("[PtyHost] Initialized and ready");
+    ptyManager.setPtyPool(ptyPool);
   } catch (error) {
     console.error("[PtyHost] Initialization failed:", error);
-    // Still send ready to unblock Main, but log the error
-    sendEvent({ type: "ready" });
+    // Even on error, we might want to stay alive to report it
   }
 }
 

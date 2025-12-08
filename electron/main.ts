@@ -228,7 +228,16 @@ async function createWindow(): Promise<void> {
     backgroundColor: "#18181b",
   });
 
-  console.log("[MAIN] Window created, loading content...");
+  console.log("[MAIN] Window created, loading content immediately (Paint First)...");
+
+  // LOAD RENDERER IMMEDIATELY
+  if (process.env.NODE_ENV === "development") {
+    console.log("[MAIN] Loading Vite dev server at http://localhost:5173");
+    mainWindow.loadURL("http://localhost:5173");
+  } else {
+    console.log("[MAIN] Loading production build");
+    mainWindow.loadFile(path.join(__dirname, "../../dist/index.html"));
+  }
 
   mainWindow.webContents.setWindowOpenHandler(({ url }) => {
     console.log("[MAIN] setWindowOpenHandler triggered with URL:", url);
@@ -246,7 +255,6 @@ async function createWindow(): Promise<void> {
   });
 
   // Intercept Cmd+W (macOS) / Ctrl+W (Windows/Linux) to prevent window close.
-  // The renderer handles this shortcut via KeybindingService to close the focused tab.
   mainWindow.webContents.on("before-input-event", (event, input) => {
     const isMac = process.platform === "darwin";
     const isCloseShortcut =
@@ -261,7 +269,6 @@ async function createWindow(): Promise<void> {
 
   setLoggerWindow(mainWindow);
 
-  // Notify renderer of fullscreen state changes (traffic lights are hidden in fullscreen)
   mainWindow.on("enter-full-screen", () => {
     sendToRenderer(mainWindow!, CHANNELS.WINDOW_FULLSCREEN_CHANGE, true);
   });
@@ -272,92 +279,29 @@ async function createWindow(): Promise<void> {
   console.log("[MAIN] Creating application menu...");
   createApplicationMenu(mainWindow);
 
-  // CRITICAL SERVICES: Must complete before renderer loads
-  // PtyClient, ProjectStore - terminals and workspace context required immediately
-  console.log("[MAIN] Initializing critical services...");
+  // Initialize Service Instances (Start processes in background)
+  console.log("[MAIN] Starting critical services...");
 
-  console.log("[MAIN] Initializing PtyClient (Pty Host pattern)...");
-  try {
-    ptyClient = new PtyClient({
-      maxRestartAttempts: 3,
-      healthCheckIntervalMs: 30000,
-      showCrashDialog: true,
-    });
+  ptyClient = new PtyClient({
+    maxRestartAttempts: 3,
+    healthCheckIntervalMs: 30000,
+    showCrashDialog: true,
+  });
 
-    ptyClient.on("host-crash", (code) => {
-      console.error(`[MAIN] Pty Host crashed with code ${code}`);
-    });
+  workspaceClient = new WorkspaceClient({
+    maxRestartAttempts: 3,
+    healthCheckIntervalMs: 60000,
+    showCrashDialog: true,
+  });
 
-    await ptyClient.waitForReady();
-    console.log("[MAIN] PtyClient initialized successfully (Pty Host ready)");
-  } catch (error) {
-    console.error("[MAIN] Failed to initialize PtyClient:", error);
-    throw error;
-  }
-
-  // Create MessagePort channel for direct Renderer ↔ Pty Host terminal I/O
-  console.log("[MAIN] Creating MessagePort channel for direct terminal I/O...");
-
-  function createAndDistributePorts(): void {
-    const { port1, port2 } = new MessageChannelMain();
-
-    if (ptyClient) {
-      ptyClient.connectMessagePort(port2);
-      console.log("[MAIN] MessagePort sent to Pty Host");
-    }
-
-    if (mainWindow && !mainWindow.isDestroyed()) {
-      mainWindow.webContents.postMessage("terminal-port", null, [port1]);
-      console.log("[MAIN] MessagePort sent to renderer");
-    }
-  }
-
-  // Create initial ports
-  createAndDistributePorts();
-
-  // Set up callback to refresh ports on host restart
-  if (ptyClient) {
-    ptyClient.setPortRefreshCallback(() => {
-      console.log("[MAIN] Pty Host restarted, creating fresh MessagePorts...");
-      createAndDistributePorts();
-    });
-  }
-
-  // Initialize WorkspaceClient (replaces WorktreeService)
-  // The WorkspaceClient spawns a UtilityProcess (workspace-host) that handles all git operations
-  // and worktree monitoring, keeping the Main process responsive.
-  console.log("[MAIN] Initializing WorkspaceClient (Workspace Host pattern)...");
-  try {
-    workspaceClient = new WorkspaceClient({
-      maxRestartAttempts: 3,
-      healthCheckIntervalMs: 60000,
-      showCrashDialog: true,
-    });
-
-    workspaceClient.on("host-crash", (code) => {
-      console.error(`[MAIN] Workspace Host crashed with code ${code}`);
-    });
-
-    await workspaceClient.waitForReady();
-    console.log("[MAIN] WorkspaceClient initialized successfully (Workspace Host ready)");
-  } catch (error) {
-    console.error("[MAIN] Failed to initialize WorkspaceClient:", error);
-    throw error;
-  }
-  console.log("[MAIN] Initializing ProjectStore...");
-  await projectStore.initialize();
-  console.log("[MAIN] ProjectStore initialized successfully");
-
-  // Create placeholder instances for IPC registration
-  // These will be properly initialized in deferred services
+  // Initialize Placeholder Services
   devServerManager = new DevServerManager();
-  // Connect DevServerManager to WorkspaceClient for offloading URL parsing
   devServerManager.setWorkspaceClient(workspaceClient);
   cliAvailabilityService = new CliAvailabilityService();
   eventBuffer = new EventBuffer(1000);
   sidecarManager = new SidecarManager(mainWindow);
 
-  // IMPORTANT: Register handlers BEFORE loading renderer to avoid race conditions
+  // Register Handlers IMMEDIATELY (so IPC doesn't fail if UI is fast)
   console.log("[MAIN] Registering IPC handlers...");
   cleanupIpcHandlers = registerIpcHandlers(
     mainWindow,
@@ -368,31 +312,87 @@ async function createWindow(): Promise<void> {
     cliAvailabilityService,
     sidecarManager
   );
-  console.log("[MAIN] IPC handlers registered successfully");
-
-  console.log("[MAIN] Registering error handlers...");
-  cleanupErrorHandlers = registerErrorHandlers(
+  cleanupErrorHandlers = registerIpcHandlers(
     mainWindow,
     devServerManager,
     workspaceClient,
     ptyClient
   );
-  console.log("[MAIN] Error handlers registered successfully");
+
+  // Define port distribution logic
+  function createAndDistributePorts(): void {
+    const { port1, port2 } = new MessageChannelMain();
+
+    if (ptyClient) {
+      ptyClient.connectMessagePort(port2);
+      // console.log("[MAIN] MessagePort sent to Pty Host");
+    }
+
+    if (mainWindow && !mainWindow.isDestroyed()) {
+      mainWindow.webContents.postMessage("terminal-port", null, [port1]);
+      // console.log("[MAIN] MessagePort sent to renderer");
+    }
+  }
+
+  // Handle reloads
+  mainWindow.webContents.on("did-finish-load", () => {
+    console.log("[MAIN] Renderer loaded, ensuring MessagePort connection...");
+    createAndDistributePorts();
+  });
+
+  // Handle Host Crashes
+  ptyClient.on("host-crash", (code) => {
+    console.error(`[MAIN] Pty Host crashed with code ${code}`);
+  });
+  ptyClient.setPortRefreshCallback(() => {
+    console.log("[MAIN] Pty Host restarted, refreshing ports...");
+    createAndDistributePorts();
+  });
+  workspaceClient.on("host-crash", (code) => {
+    console.error(`[MAIN] Workspace Host crashed with code ${code}`);
+  });
+
+  // WAIT for services to be ready (Parallel)
+  console.log("[MAIN] Waiting for services to initialize...");
+  try {
+    await Promise.all([
+      ptyClient.waitForReady(),
+      workspaceClient.waitForReady(),
+      projectStore.initialize(),
+    ]);
+    console.log("[MAIN] All critical services ready");
+  } catch (error) {
+    console.error("[MAIN] Critical service initialization failed:", error);
+    // Continue anyway? Or show error?
+    // If critical services fail, app is broken. But we have error handlers.
+  }
+
+  // Now fully ready
+  createAndDistributePorts();
+  sendToRenderer(mainWindow, CHANNELS.SYSTEM_BACKEND_READY);
+
+  // Spawn Default Terminal
+  console.log("[MAIN] Spawning default terminal...");
+  try {
+    ptyClient.spawn(DEFAULT_TERMINAL_ID, {
+      cwd: process.env.HOME || os.homedir(),
+      cols: 80,
+      rows: 30,
+    });
+  } catch (error) {
+    console.error("[MAIN] Failed to spawn default terminal:", error);
+  }
 
   let eventInspectorActive = false;
-
   ipcMain.on(CHANNELS.EVENT_INSPECTOR_SUBSCRIBE, () => {
     eventInspectorActive = true;
-    console.log("[MAIN] Event inspector subscribed");
   });
   ipcMain.on(CHANNELS.EVENT_INSPECTOR_UNSUBSCRIBE, () => {
     eventInspectorActive = false;
-    console.log("[MAIN] Event inspector unsubscribed");
   });
 
   const unsubscribeFromEventBuffer = eventBuffer.onRecord((record) => {
     if (!eventInspectorActive) return;
-
     sendToRenderer(mainWindow!, CHANNELS.EVENT_INSPECTOR_EVENT, record);
   });
 
@@ -401,66 +401,40 @@ async function createWindow(): Promise<void> {
     ipcMain.removeAllListeners(CHANNELS.EVENT_INSPECTOR_SUBSCRIBE);
     ipcMain.removeAllListeners(CHANNELS.EVENT_INSPECTOR_UNSUBSCRIBE);
   };
-  console.log("[MAIN] EventBuffer subscriptions ready (will start with deferred services)");
 
-  // Power management: pause services during sleep to prevent time-drift crashes
-  console.log("[MAIN] Registering power monitor handlers...");
+  // Power Monitor
   let suspendTime: number | null = null;
-
   powerMonitor.on("suspend", () => {
-    console.log("[MAIN] System suspending. Pausing health checks and monitors.");
-
-    // Clear any pending resume timeout from rapid suspend/resume cycles
-    if (resumeTimeout) {
-      clearTimeout(resumeTimeout);
-      resumeTimeout = null;
-    }
-
+    if (resumeTimeout) clearTimeout(resumeTimeout);
+    resumeTimeout = null;
     if (ptyClient) {
       ptyClient.pauseHealthCheck();
-      // Proactively pause all PTY processes to prevent buffer overflow during sleep
       ptyClient.pauseAll();
     }
     if (workspaceClient) {
       workspaceClient.pauseHealthCheck();
       workspaceClient.setPollingEnabled(false);
     }
-
-    // Record suspend time to calculate sleep duration on wake
     suspendTime = Date.now();
   });
 
   powerMonitor.on("resume", () => {
-    console.log("[MAIN] System resuming. Restoring services after stabilization delay.");
-
-    // Clear any existing timeout to prevent stale resume operations
-    if (resumeTimeout) {
-      clearTimeout(resumeTimeout);
-    }
-
-    // 2-second delay allows OS network/disk subsystems to stabilize
+    if (resumeTimeout) clearTimeout(resumeTimeout);
     resumeTimeout = setTimeout(async () => {
       resumeTimeout = null;
       try {
         if (ptyClient) {
-          // Resume PTY processes incrementally before resuming health checks
           ptyClient.resumeAll();
           ptyClient.resumeHealthCheck();
         }
         if (workspaceClient) {
-          // Wait for workspace host to be ready after sleep
           await workspaceClient.waitForReady();
           workspaceClient.setPollingEnabled(true);
           workspaceClient.resumeHealthCheck();
           await workspaceClient.refresh();
         }
-
-        // Check and recover dev servers that died during sleep
-        if (devServerManager) {
-          await devServerManager.onSystemResume();
-        }
-
-        // Notify renderer that system has woken
+        if (devServerManager) await devServerManager.onSystemResume();
+        
         const sleepDuration = suspendTime ? Date.now() - suspendTime : 0;
         BrowserWindow.getAllWindows().forEach((win) => {
           win.webContents.send(CHANNELS.SYSTEM_WAKE, {
@@ -474,37 +448,8 @@ async function createWindow(): Promise<void> {
       }
     }, 2000);
   });
-  console.log("[MAIN] Power monitor handlers registered");
 
-  // LOAD RENDERER: Don't wait for deferred services
-  console.log("[MAIN] Critical services ready, loading renderer...");
-  if (process.env.NODE_ENV === "development") {
-    console.log("[MAIN] Loading Vite dev server at http://localhost:5173");
-    mainWindow.loadURL("http://localhost:5173");
-  } else {
-    console.log("[MAIN] Loading production build");
-    mainWindow.loadFile(path.join(__dirname, "../../dist/index.html"));
-  }
-
-  // Send MessagePort on every renderer load (handles HMR and reloads)
-  mainWindow.webContents.on("did-finish-load", () => {
-    console.log("[MAIN] Renderer loaded, sending MessagePort for direct terminal I/O...");
-    createAndDistributePorts();
-  });
-
-  console.log("[MAIN] Spawning default terminal...");
-  try {
-    ptyClient.spawn(DEFAULT_TERMINAL_ID, {
-      cwd: process.env.HOME || os.homedir(),
-      cols: 80,
-      rows: 30,
-    });
-    console.log("[MAIN] Default terminal spawned successfully");
-  } catch (error) {
-    console.error("[MAIN] Failed to spawn default terminal:", error);
-  }
-
-  // DEFERRED SERVICES: Initialize in background after renderer loads
+  // Initialize Deferred Services
   initializeDeferredServices(
     mainWindow,
     devServerManager!,
@@ -514,54 +459,24 @@ async function createWindow(): Promise<void> {
     console.error("[MAIN] Deferred services initialization failed:", error);
   });
 
+  // Cleanup handler
   mainWindow.on("closed", async () => {
-    // NOTE: Terminal state is persisted by the renderer via appClient.setState()
-    // in terminalRegistrySlice.ts. We don't save terminals here because:
-    // 1. Renderer state includes command/location fields needed for restoration
-    // 2. PtyClient doesn't have synchronous access to terminal metadata
-    // 3. Terminal state is already saved by renderer on state changes
-
-    if (eventBufferUnsubscribe) {
-      eventBufferUnsubscribe();
-      eventBufferUnsubscribe = null;
-    }
-    if (eventBuffer) {
-      eventBuffer.stop();
-      eventBuffer = null;
-    }
-
-    if (cleanupIpcHandlers) {
-      cleanupIpcHandlers();
-      cleanupIpcHandlers = null;
-    }
-    if (cleanupErrorHandlers) {
-      cleanupErrorHandlers();
-      cleanupErrorHandlers = null;
-    }
-    if (workspaceClient) {
-      workspaceClient.dispose();
-      workspaceClient = null;
-    }
+    if (eventBufferUnsubscribe) eventBufferUnsubscribe();
+    if (eventBuffer) eventBuffer.stop();
+    if (cleanupIpcHandlers) cleanupIpcHandlers();
+    if (cleanupErrorHandlers) cleanupErrorHandlers();
+    
+    if (workspaceClient) workspaceClient.dispose();
     disposeWorkspaceClient();
-    if (devServerManager) {
-      await devServerManager.stopAll();
-      devServerManager = null;
-    }
-    if (sidecarManager) {
-      sidecarManager.destroy();
-      sidecarManager = null;
-    }
-    if (ptyClient) {
-      ptyClient.dispose();
-      ptyClient = null;
-    }
+    
+    if (devServerManager) await devServerManager.stopAll();
+    
+    if (sidecarManager) sidecarManager.destroy();
+    
+    if (ptyClient) ptyClient.dispose();
     disposePtyClient();
 
-    // Dispose SystemSleepService
-    const sleepService = getSystemSleepService();
-    sleepService.dispose();
-
-    // Dispose TranscriptService
+    getSystemSleepService().dispose();
     disposeTranscriptService();
 
     setLoggerWindow(null);

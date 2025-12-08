@@ -510,6 +510,14 @@ export interface AppState {
   dockCollapsed?: boolean;
 }
 
+/** Result from app hydration */
+export interface HydrateResult {
+  appState: AppState;
+  terminalConfig: TerminalConfig;
+  project: Project | null;
+  agentSettings: AgentSettings;
+}
+
 // Log IPC Types
 
 /** Log level */
@@ -1094,6 +1102,10 @@ export interface IpcInvokeMap {
     args: [];
     result: string;
   };
+  "app:hydrate": {
+    args: [];
+    result: HydrateResult;
+  };
 
   // Directory channels (legacy - migrated to Projects system)
   // Note: Directory channels have been removed as part of the migration
@@ -1585,6 +1597,7 @@ export interface ElectronAPI {
     getState(): Promise<AppState>;
     setState(partialState: Partial<AppState>): Promise<void>;
     getVersion(): Promise<string>;
+    hydrate(): Promise<HydrateResult>;
   };
   logs: {
     getAll(filters?: LogFilterOptions): Promise<LogEntry[]>;

@@ -501,6 +501,8 @@ const api: ElectronAPI = {
       _typedInvoke(CHANNELS.APP_SET_STATE, partialState),
 
     getVersion: () => _typedInvoke(CHANNELS.APP_GET_VERSION),
+
+    hydrate: () => _typedInvoke(CHANNELS.APP_HYDRATE),
   },
 
   // Logs API

@@ -1,4 +1,4 @@
-import type { AppState } from "@shared/types";
+import type { AppState, HydrateResult } from "@shared/types";
 
 /**
  * @example
@@ -16,5 +16,9 @@ export const appClient = {
 
   getVersion: (): Promise<string> => {
     return window.electron.app.getVersion();
+  },
+
+  hydrate: (): Promise<HydrateResult> => {
+    return window.electron.app.hydrate();
   },
 } as const;
