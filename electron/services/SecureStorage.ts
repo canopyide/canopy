@@ -49,12 +49,16 @@ class SecureStorage {
     const storedValue = store.get(key as DotNotatedUserConfigKey) as string | undefined;
     if (!storedValue) return undefined;
 
-    // If it's not hex encoded, it's definitely plain text. Return it directly
-    // without triggering the keychain/encryption check.
+    // If it's not hex encoded, it's definitely plain text.
     if (!this.isHexEncoded(storedValue)) {
-      console.warn(
-        `[SecureStorage] Found plain-text ${key}, migrating to encrypted storage on next save.`
-      );
+      if (this.isAvailable) {
+        console.info(`[SecureStorage] Found plain-text ${key}, migrating to encrypted storage.`);
+        this.set(key, storedValue);
+      } else {
+        console.warn(
+          `[SecureStorage] Found plain-text ${key}, but encryption is unavailable. Keeping as plain-text.`
+        );
+      }
       return storedValue;
     }
 
