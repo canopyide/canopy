@@ -37,8 +37,6 @@ interface ManagedTerminal {
 }
 
 const BURST_MODE_WINDOW_MS = 500;
-// Debounce to catch split PTY packets (Clear + Redraw) before rendering
-const INPUT_DEBOUNCE_MS = 8;
 const MAX_WEBGL_RECOVERY_ATTEMPTS = 3;
 
 /**
@@ -53,8 +51,10 @@ function createThrottledWriter(
   // Use array of chunks instead of string concatenation to reduce GC pressure
   let chunks: (string | Uint8Array)[] = [];
   let timerId: number | null = null;
+  let rafId: number | null = null;
   let getRefreshTier = initialProvider;
   let lastInputTime = 0;
+  let lastOutputTime = 0;
 
   const flush = () => {
     if (chunks.length > 0) {
@@ -65,30 +65,38 @@ function createThrottledWriter(
       chunks = [];
     }
     timerId = null;
+    rafId = null;
   };
 
   const scheduleFlush = (delay: number) => {
-    if (timerId !== null) return;
+    if (timerId !== null || rafId !== null) return;
 
-    // Use setTimeout instead of RAF for burst mode to avoid split-packet flashing.
-    // RAF can fire instantly if called near frame boundary, rendering "Clear" before "Redraw".
-    if (delay <= 16) {
-      timerId = window.setTimeout(flush, INPUT_DEBOUNCE_MS);
+    // Use requestAnimationFrame for BURST mode (high frequency updates).
+    // This ensures that all chunks arriving within a single frame (e.g., Clear + Redraw)
+    // are batched and executed together before the browser paints.
+    // This eliminates the "flash" of an empty screen between a Clear and a Write.
+    // IMPORTANT: When document is hidden, RAF is paused. Use setTimeout fallback to prevent freeze.
+    if (delay <= 16 && document.visibilityState === "visible") {
+      rafId = requestAnimationFrame(flush);
     } else {
-      timerId = window.setTimeout(flush, delay);
+      timerId = window.setTimeout(flush, delay <= 16 ? delay : delay);
     }
   };
 
   return {
     write: (data: string | Uint8Array) => {
       chunks.push(data);
+      lastOutputTime = Date.now();
 
-      const isBurstMode = Date.now() - lastInputTime < BURST_MODE_WINDOW_MS;
+      // Consider recent input OR output for burst mode to handle streaming agent output
+      const timeSinceInput = Date.now() - lastInputTime;
+      const timeSinceOutput = Date.now() - lastOutputTime;
+      const isBurstMode = timeSinceInput < BURST_MODE_WINDOW_MS || timeSinceOutput < BURST_MODE_WINDOW_MS;
       const tierDelay = getRefreshTier();
       const effectiveDelay = isBurstMode ? TerminalRefreshTier.BURST : tierDelay;
 
       // If switching to faster mode, cancel slow timer and reschedule
-      if (timerId !== null && effectiveDelay < tierDelay) {
+      if (timerId !== null && effectiveDelay <= 16) {
         clearTimeout(timerId);
         timerId = null;
       }
@@ -99,6 +107,10 @@ function createThrottledWriter(
       if (timerId !== null) {
         clearTimeout(timerId);
         timerId = null;
+      }
+      if (rafId !== null) {
+        cancelAnimationFrame(rafId);
+        rafId = null;
       }
       // Flush any remaining chunks
       if (chunks.length > 0) {
@@ -113,15 +125,18 @@ function createThrottledWriter(
     },
     notifyInput: () => {
       lastInputTime = Date.now();
-      // If pending data on slow timer, switch to fast debounce
+      // If pending data on slow timer, switch to fast RAF
       if (chunks.length > 0 && timerId !== null) {
         clearTimeout(timerId);
-        timerId = window.setTimeout(flush, INPUT_DEBOUNCE_MS);
+        timerId = null;
+        rafId = requestAnimationFrame(flush);
       }
     },
     getDebugInfo: () => {
       const now = Date.now();
-      const isBurstMode = now - lastInputTime < BURST_MODE_WINDOW_MS;
+      const timeSinceInput = now - lastInputTime;
+      const timeSinceOutput = now - lastOutputTime;
+      const isBurstMode = timeSinceInput < BURST_MODE_WINDOW_MS || timeSinceOutput < BURST_MODE_WINDOW_MS;
       const tierDelay = getRefreshTier();
       const effectiveDelay = isBurstMode ? TerminalRefreshTier.BURST : tierDelay;
       const fps = Math.round(1000 / effectiveDelay);
@@ -147,12 +162,13 @@ function createThrottledWriter(
       // Activate burst mode so subsequent writes are fast
       lastInputTime = Date.now();
 
-      // If we have pending data and a timer running, force a quick flush.
+      // If we have pending data and a timer running, force a quick flush via RAF.
       // This catches the case where data came in while backgrounded (long timer)
       // and we want to show it NOW because the user clicked the tab.
       if (timerId !== null) {
         clearTimeout(timerId);
-        timerId = window.setTimeout(flush, INPUT_DEBOUNCE_MS);
+        timerId = null;
+        rafId = requestAnimationFrame(flush);
       }
     },
     clear: () => {
@@ -161,60 +177,17 @@ function createThrottledWriter(
         clearTimeout(timerId);
         timerId = null;
       }
+      if (rafId !== null) {
+        cancelAnimationFrame(rafId);
+        rafId = null;
+      }
       chunks = [];
     },
   };
 }
 
-/**
- * Applies the "jank fix" to a terminal instance.
- * Blocks cursor-home sequences during active scrolling to prevent jumpiness.
- */
-function applyJankFix(terminal: Terminal): () => void {
-  let blockCursorHome = false;
-  let lastScrollTime = 0;
-  let timeoutId: number | null = null;
-
-  const scrollDisposable = terminal.onScroll(() => {
-    lastScrollTime = Date.now();
-    blockCursorHome = true;
-
-    if (timeoutId !== null) {
-      clearTimeout(timeoutId);
-    }
-
-    timeoutId = window.setTimeout(() => {
-      if (Date.now() - lastScrollTime > 100) {
-        blockCursorHome = false;
-      }
-      timeoutId = null;
-    }, 150);
-  });
-
-  const csiDisposable = terminal.parser.registerCsiHandler({ final: "H" }, (params) => {
-    const row = (params.length > 0 && params[0]) || 1;
-    const col = (params.length > 1 && params[1]) || 1;
-
-    if (blockCursorHome && row === 1 && col === 1) {
-      return true;
-    }
-
-    return false;
-  });
-
-  return () => {
-    if (timeoutId !== null) {
-      clearTimeout(timeoutId);
-      timeoutId = null;
-    }
-    scrollDisposable.dispose();
-    csiDisposable.dispose();
-  };
-}
-
 class TerminalInstanceService {
   private instances = new Map<string, ManagedTerminal>();
-  private jankFixDisposers = new Map<string, () => void>();
   private webglLru: string[] = [];
   private hardwareProfile: HardwareProfile;
 
@@ -497,9 +470,6 @@ class TerminalInstanceService {
       terminalClient.write(id, data);
     });
     listeners.push(() => inputDisposable.dispose());
-
-    const jankDispose = applyJankFix(terminal);
-    this.jankFixDisposers.set(id, jankDispose);
 
     const managed: ManagedTerminal = {
       terminal,
@@ -974,12 +944,6 @@ class TerminalInstanceService {
     managed.webglAddon?.dispose();
     managed.webLinksAddon.dispose();
     this.webglLru = this.webglLru.filter((existing) => existing !== id);
-
-    const disposeJank = this.jankFixDisposers.get(id);
-    if (disposeJank) {
-      disposeJank();
-      this.jankFixDisposers.delete(id);
-    }
 
     managed.terminal.dispose();
     managed.hostElement.remove();
