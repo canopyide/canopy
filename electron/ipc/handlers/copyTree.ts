@@ -174,7 +174,12 @@ export function registerCopyTreeHandlers(deps: HandlerDependencies): () => void 
       result = await worktreeService.generateContext(worktree.path, validated.options, onProgress);
     } else {
       // Fall back to direct CopyTreeService (runs in Main process)
-      result = await copyTreeService.generate(worktree.path, validated.options, onProgress, traceId);
+      result = await copyTreeService.generate(
+        worktree.path,
+        validated.options,
+        onProgress,
+        traceId
+      );
     }
 
     if (result.error) {
