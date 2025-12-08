@@ -11,6 +11,7 @@
 import { utilityProcess, UtilityProcess, dialog, app, BrowserWindow } from "electron";
 import { EventEmitter } from "events";
 import path from "path";
+import crypto from "crypto";
 import { fileURLToPath } from "url";
 import { events } from "./events.js";
 import { CHANNELS } from "../ipc/channels.js";
@@ -24,6 +25,9 @@ import type {
   BranchInfo,
 } from "../../shared/types/workspace-host.js";
 import type { Worktree } from "../../shared/types/domain.js";
+import type { CopyTreeOptions, CopyTreeProgress, CopyTreeResult } from "../../shared/types/ipc.js";
+
+export type CopyTreeProgressCallback = (progress: CopyTreeProgress) => void;
 
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
@@ -53,6 +57,11 @@ export class WorkspaceClient extends EventEmitter {
       timeout: NodeJS.Timeout;
     }
   >();
+
+  // CopyTree progress callbacks by operationId
+  private copyTreeProgressCallbacks = new Map<string, CopyTreeProgressCallback>();
+  // Track active CopyTree operations: operationId -> requestId
+  private activeCopyTreeOperations = new Map<string, string>();
 
   // Ready promise
   private readyPromise: Promise<void>;
@@ -272,6 +281,25 @@ export class WorkspaceClient extends EventEmitter {
         events.emit("sys:pr:cleared", { worktreeId: event.worktreeId });
         break;
 
+      // CopyTree events
+      case "copytree:progress": {
+        const callback = this.copyTreeProgressCallbacks.get(event.operationId);
+        callback?.(event.progress);
+        break;
+      }
+
+      case "copytree:complete":
+        this.handleRequestResult({ ...event, success: true });
+        break;
+
+      case "copytree:error":
+        this.handleRequestResult({
+          requestId: event.requestId,
+          success: false,
+          error: event.error,
+        });
+        break;
+
       default:
         console.warn("[WorkspaceClient] Unknown event type:", (event as { type: string }).type);
     }
@@ -299,14 +327,17 @@ export class WorkspaceClient extends EventEmitter {
     this.child.postMessage(request);
   }
 
-  private sendWithResponse<T>(request: WorkspaceHostRequest & { requestId: string }): Promise<T> {
+  private sendWithResponse<T>(
+    request: WorkspaceHostRequest & { requestId: string },
+    timeoutMs: number = 30000
+  ): Promise<T> {
     return new Promise((resolve, reject) => {
       const timeout = setTimeout(() => {
         if (this.pendingRequests.has(request.requestId)) {
           this.pendingRequests.delete(request.requestId);
           reject(new Error("Request timeout"));
         }
-      }, 30000);
+      }, timeoutMs);
 
       this.pendingRequests.set(request.requestId, { resolve, reject, timeout });
       this.send(request);
@@ -493,6 +524,77 @@ export class WorkspaceClient extends EventEmitter {
     });
 
     return result.diff;
+  }
+
+  // CopyTree methods
+
+  async generateContext(
+    rootPath: string,
+    options?: CopyTreeOptions,
+    onProgress?: CopyTreeProgressCallback
+  ): Promise<CopyTreeResult> {
+    const requestId = this.generateRequestId();
+    const operationId = crypto.randomUUID();
+
+    if (onProgress) {
+      this.copyTreeProgressCallbacks.set(operationId, onProgress);
+    }
+
+    this.activeCopyTreeOperations.set(operationId, requestId);
+
+    try {
+      const result = await this.sendWithResponse<{ result: CopyTreeResult }>(
+        {
+          type: "copytree:generate",
+          requestId,
+          operationId,
+          rootPath,
+          options,
+        },
+        120000
+      );
+
+      return result.result;
+    } finally {
+      this.copyTreeProgressCallbacks.delete(operationId);
+      this.activeCopyTreeOperations.delete(operationId);
+    }
+  }
+
+  cancelContext(operationId: string): void {
+    this.send({ type: "copytree:cancel", operationId });
+
+    const requestId = this.activeCopyTreeOperations.get(operationId);
+    if (requestId) {
+      const pending = this.pendingRequests.get(requestId);
+      if (pending) {
+        clearTimeout(pending.timeout);
+        this.pendingRequests.delete(requestId);
+        pending.reject(new Error("Context generation cancelled"));
+      }
+    }
+
+    this.copyTreeProgressCallbacks.delete(operationId);
+    this.activeCopyTreeOperations.delete(operationId);
+  }
+
+  cancelAllContext(): void {
+    for (const operationId of this.activeCopyTreeOperations.keys()) {
+      this.send({ type: "copytree:cancel", operationId });
+
+      const requestId = this.activeCopyTreeOperations.get(operationId);
+      if (requestId) {
+        const pending = this.pendingRequests.get(requestId);
+        if (pending) {
+          clearTimeout(pending.timeout);
+          this.pendingRequests.delete(requestId);
+          pending.reject(new Error("Context generation cancelled"));
+        }
+      }
+    }
+
+    this.copyTreeProgressCallbacks.clear();
+    this.activeCopyTreeOperations.clear();
   }
 
   /** Pause health check during system sleep */
