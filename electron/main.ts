@@ -1,4 +1,4 @@
-import { app, BrowserWindow, ipcMain, dialog, powerMonitor } from "electron";
+import { app, BrowserWindow, ipcMain, dialog, powerMonitor, MessageChannelMain } from "electron";
 import path from "path";
 import { fileURLToPath } from "url";
 import os from "os";
@@ -295,6 +295,34 @@ async function createWindow(): Promise<void> {
     throw error;
   }
 
+  // Create MessagePort channel for direct Renderer ↔ Pty Host terminal I/O
+  console.log("[MAIN] Creating MessagePort channel for direct terminal I/O...");
+
+  function createAndDistributePorts(): void {
+    const { port1, port2 } = new MessageChannelMain();
+
+    if (ptyClient) {
+      ptyClient.connectMessagePort(port2);
+      console.log("[MAIN] MessagePort sent to Pty Host");
+    }
+
+    if (mainWindow && !mainWindow.isDestroyed()) {
+      mainWindow.webContents.postMessage("terminal-port", null, [port1]);
+      console.log("[MAIN] MessagePort sent to renderer");
+    }
+  }
+
+  // Create initial ports
+  createAndDistributePorts();
+
+  // Set up callback to refresh ports on host restart
+  if (ptyClient) {
+    ptyClient.setPortRefreshCallback(() => {
+      console.log("[MAIN] Pty Host restarted, creating fresh MessagePorts...");
+      createAndDistributePorts();
+    });
+  }
+
   // Initialize WorkspaceClient (replaces WorktreeService)
   // The WorkspaceClient spawns a UtilityProcess (workspace-host) that handles all git operations
   // and worktree monitoring, keeping the Main process responsive.
@@ -455,6 +483,12 @@ async function createWindow(): Promise<void> {
     console.log("[MAIN] Loading production build");
     mainWindow.loadFile(path.join(__dirname, "../../dist/index.html"));
   }
+
+  // Send MessagePort on every renderer load (handles HMR and reloads)
+  mainWindow.webContents.on("did-finish-load", () => {
+    console.log("[MAIN] Renderer loaded, sending MessagePort for direct terminal I/O...");
+    createAndDistributePorts();
+  });
 
   console.log("[MAIN] Spawning default terminal...");
   try {

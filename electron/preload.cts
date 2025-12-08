@@ -44,6 +44,23 @@ import type { TerminalActivityPayload } from "../shared/types/terminal.js";
 
 export type { ElectronAPI };
 
+// Store MessagePort for direct Renderer ↔ Pty Host communication
+let terminalMessagePort: any | null = null;
+const terminalPortHandlers: Array<(port: any) => void> = [];
+
+// Listen for MessagePort from Main
+ipcRenderer.on("terminal-port", (event) => {
+  if (event.ports && event.ports.length > 0) {
+    terminalMessagePort = event.ports[0];
+    terminalMessagePort.start();
+    console.log("[Preload] MessagePort received for direct terminal I/O");
+
+    // Notify any waiting handlers
+    terminalPortHandlers.forEach((handler) => handler(terminalMessagePort!));
+    terminalPortHandlers.length = 0;
+  }
+});
+
 function _typedInvoke<K extends Extract<keyof IpcInvokeMap, string>>(
   channel: K,
   ...args: IpcInvokeMap[K]["args"]
@@ -408,6 +425,25 @@ const api: ElectronAPI = {
 
     getAnalysisBuffer: (): Promise<SharedArrayBuffer | null> =>
       ipcRenderer.invoke(CHANNELS.TERMINAL_GET_ANALYSIS_BUFFER),
+
+    getMessagePort: (): Promise<any | null> => {
+      return new Promise((resolve) => {
+        if (terminalMessagePort) {
+          resolve(terminalMessagePort);
+        } else {
+          terminalPortHandlers.push(resolve);
+          setTimeout(() => {
+            const index = terminalPortHandlers.indexOf(resolve);
+            if (index !== -1) {
+              terminalPortHandlers.splice(index, 1);
+              resolve(null);
+            }
+          }, 5000);
+        }
+      });
+    },
+
+    isMessagePortAvailable: (): boolean => terminalMessagePort !== null,
   },
 
   // Artifact API

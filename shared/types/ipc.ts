@@ -1515,6 +1515,8 @@ export interface ElectronAPI {
     getSerializedState(terminalId: string): Promise<string | null>;
     getSharedBuffer(): Promise<SharedArrayBuffer | null>;
     getAnalysisBuffer(): Promise<SharedArrayBuffer | null>;
+    getMessagePort(): Promise<any | null>;
+    isMessagePortAvailable(): boolean;
     onData(id: string, callback: (data: string | Uint8Array) => void): () => void;
     onExit(callback: (id: string, exitCode: number) => void): () => void;
     onAgentStateChanged(callback: (data: AgentStateChangePayload) => void): () => void;

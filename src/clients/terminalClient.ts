@@ -6,17 +6,46 @@ import type {
   TerminalReconnectResult,
 } from "@shared/types";
 
+let messagePort: MessagePort | null = null;
+let portInitialized = false;
+
+// Start acquiring port immediately on module load
+if (!portInitialized) {
+  portInitialized = true;
+  window.electron.terminal
+    .getMessagePort()
+    .then((port) => {
+      if (port) {
+        messagePort = port;
+        console.log("[TerminalClient] MessagePort acquired for direct terminal I/O");
+      } else {
+        console.log("[TerminalClient] MessagePort unavailable, using IPC fallback");
+      }
+    })
+    .catch((error) => {
+      console.warn("[TerminalClient] Failed to get MessagePort, using IPC fallback:", error);
+    });
+}
+
 export const terminalClient = {
   spawn: (options: TerminalSpawnOptions): Promise<string> => {
     return window.electron.terminal.spawn(options);
   },
 
   write: (id: string, data: string): void => {
-    window.electron.terminal.write(id, data);
+    if (messagePort) {
+      messagePort.postMessage({ type: "write", id, data });
+    } else {
+      window.electron.terminal.write(id, data);
+    }
   },
 
   resize: (id: string, cols: number, rows: number): void => {
-    window.electron.terminal.resize(id, cols, rows);
+    if (messagePort) {
+      messagePort.postMessage({ type: "resize", id, cols, rows });
+    } else {
+      window.electron.terminal.resize(id, cols, rows);
+    }
   },
 
   kill: (id: string): Promise<void> => {

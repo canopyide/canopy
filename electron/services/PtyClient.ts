@@ -8,7 +8,7 @@
  * Interface matches PtyManager for seamless integration with existing code.
  */
 
-import { utilityProcess, UtilityProcess, dialog, app } from "electron";
+import { utilityProcess, UtilityProcess, dialog, app, MessagePortMain } from "electron";
 import { EventEmitter } from "events";
 import path from "path";
 import { fileURLToPath } from "url";
@@ -84,6 +84,9 @@ export class PtyClient extends EventEmitter {
   /** SharedArrayBuffer for semantic analysis (separate from visual buffer) */
   private analysisBuffer: SharedArrayBuffer | null = null;
   private sharedBufferEnabled = false;
+
+  /** Callback to notify renderer when MessagePort needs to be refreshed */
+  private onPortRefresh: (() => void) | null = null;
 
   constructor(config: PtyClientConfig = {}) {
     super();
@@ -407,10 +410,35 @@ export class PtyClient extends EventEmitter {
   }
 
   private respawnPending(): void {
+    // Notify that ports need refresh after host restart
+    if (this.onPortRefresh) {
+      this.onPortRefresh();
+    }
+
     // Respawn terminals that were active when host crashed
     for (const [id, options] of this.pendingSpawns) {
       console.log(`[PtyClient] Respawning terminal: ${id}`);
       this.send({ type: "spawn", id, options });
+    }
+  }
+
+  /** Set callback for MessagePort refresh (called on host restart) */
+  setPortRefreshCallback(callback: () => void): void {
+    this.onPortRefresh = callback;
+  }
+
+  /** Forward MessagePort to Pty Host for direct Renderer↔PtyHost communication */
+  connectMessagePort(port: MessagePortMain): void {
+    if (!this.child) {
+      console.warn("[PtyClient] Cannot connect MessagePort - host not running, will retry");
+      return;
+    }
+
+    try {
+      this.child.postMessage({ type: "connect-port" }, [port]);
+      console.log("[PtyClient] MessagePort forwarded to Pty Host");
+    } catch (error) {
+      console.error("[PtyClient] Failed to forward MessagePort to Pty Host:", error);
     }
   }
 

@@ -59,7 +59,9 @@ export type PtyHostRequest =
   | { type: "get-terminals-for-project"; projectId: string; requestId: string }
   | { type: "get-terminal"; id: string; requestId: string }
   | { type: "replay-history"; id: string; maxLines: number; requestId: string }
-  | { type: "get-serialized-state"; id: string; requestId: string };
+  | { type: "get-serialized-state"; id: string; requestId: string }
+  | { type: "init-buffers"; visualBuffer: SharedArrayBuffer; analysisBuffer: SharedArrayBuffer }
+  | { type: "connect-port" };
 
 /**
  * Terminal snapshot data sent from Host → Main for state queries.
@@ -189,3 +191,11 @@ export interface AgentKilledPayload {
   terminalId?: string;
   worktreeId?: string;
 }
+
+/**
+ * Messages sent from Renderer → Pty Host via MessagePort (direct channel).
+ * These bypass the Main process for low-latency terminal input.
+ */
+export type RendererToPtyHostMessage =
+  | { type: "write"; id: string; data: string; traceId?: string }
+  | { type: "resize"; id: string; cols: number; rows: number };
