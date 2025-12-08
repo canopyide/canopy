@@ -1058,7 +1058,12 @@ port.on("message", async (rawMsg: any) => {
         };
 
         try {
-          const result = await copyTreeService.generate(rootPath, options || {}, onProgress);
+          const result = await copyTreeService.generate(
+            rootPath,
+            options || {},
+            onProgress,
+            operationId
+          );
           sendEvent({
             type: "copytree:complete",
             requestId,

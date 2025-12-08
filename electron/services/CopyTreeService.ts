@@ -17,8 +17,8 @@ class CopyTreeService {
     onProgress?: ProgressCallback,
     traceId?: string
   ): Promise<CopyTreeResult> {
-    const opId = crypto.randomUUID();
-    const effectiveTraceId = traceId || opId;
+    const opId = traceId || crypto.randomUUID();
+    const effectiveTraceId = opId;
 
     try {
       if (!path.isAbsolute(rootPath)) {
