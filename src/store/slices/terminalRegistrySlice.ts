@@ -14,6 +14,15 @@ import { terminalPersistence } from "../persistence/terminalPersistence";
 
 export const MAX_GRID_TERMINALS = 16;
 
+const DOCK_WIDTH = 700;
+const DOCK_HEIGHT = 500;
+const HEADER_HEIGHT = 32;
+const PADDING_X = 8;
+const PADDING_Y = 24;
+
+const DOCK_TERM_WIDTH = DOCK_WIDTH - PADDING_X;
+const DOCK_TERM_HEIGHT = DOCK_HEIGHT - HEADER_HEIGHT - PADDING_Y;
+
 export type TerminalInstance = TerminalInstanceType;
 
 export interface AddTerminalOptions {
@@ -104,6 +113,19 @@ export type TerminalRegistryMiddleware = {
   ) => void;
 };
 
+const optimizeForDock = (id: string) => {
+  terminalClient.setBuffering(id, true).catch((error) => {
+    console.error("Failed to enable terminal buffering:", error);
+  });
+
+  terminalInstanceService.applyRendererPolicy(id, TerminalRefreshTier.BACKGROUND);
+
+  const dims = terminalInstanceService.resize(id, DOCK_TERM_WIDTH, DOCK_TERM_HEIGHT);
+  if (dims) {
+    terminalClient.resize(id, dims.cols, dims.rows);
+  }
+};
+
 export const createTerminalRegistrySlice =
   (
     middleware?: TerminalRegistryMiddleware
@@ -177,9 +199,7 @@ export const createTerminalRegistrySlice =
         });
 
         if (location === "dock") {
-          terminalClient.setBuffering(id, true).catch((error) => {
-            console.error("Failed to enable terminal buffering:", error);
-          });
+          optimizeForDock(id);
         }
 
         return id;
@@ -310,11 +330,7 @@ export const createTerminalRegistrySlice =
         return { terminals: newTerminals };
       });
 
-      terminalClient.setBuffering(id, true).catch((error) => {
-        console.error("Failed to enable terminal buffering:", error);
-      });
-
-      terminalInstanceService.applyRendererPolicy(id, TerminalRefreshTier.BACKGROUND);
+      optimizeForDock(id);
     },
 
     moveTerminalToGrid: (id) => {
@@ -422,10 +438,7 @@ export const createTerminalRegistrySlice =
       });
 
       if (restoreLocation === "dock") {
-        terminalClient.setBuffering(id, true).catch((error) => {
-          console.error("Failed to enable terminal buffering:", error);
-        });
-        terminalInstanceService.applyRendererPolicy(id, TerminalRefreshTier.BACKGROUND);
+        optimizeForDock(id);
       } else {
         terminalClient
           .setBuffering(id, false)
@@ -490,10 +503,7 @@ export const createTerminalRegistrySlice =
       });
 
       if (restoreLocation === "dock") {
-        terminalClient.setBuffering(id, true).catch((error) => {
-          console.error("Failed to enable terminal buffering:", error);
-        });
-        terminalInstanceService.applyRendererPolicy(id, TerminalRefreshTier.BACKGROUND);
+        optimizeForDock(id);
       } else {
         terminalClient
           .setBuffering(id, false)
@@ -594,11 +604,7 @@ export const createTerminalRegistrySlice =
       });
 
       if (location === "dock") {
-        terminalClient.setBuffering(id, true).catch((error) => {
-          console.error("Failed to enable terminal buffering:", error);
-        });
-
-        terminalInstanceService.applyRendererPolicy(id, TerminalRefreshTier.BACKGROUND);
+        optimizeForDock(id);
       } else {
         terminalClient
           .setBuffering(id, false)
@@ -676,12 +682,22 @@ export const createTerminalRegistrySlice =
         // Kill the old PTY backend (but don't remove from store)
         await terminalClient.kill(id);
 
+        let spawnCols = terminal.cols || 80;
+        let spawnRows = terminal.rows || 24;
+        if (targetLocation === "dock") {
+          const dims = terminalInstanceService.resize(id, DOCK_TERM_WIDTH, DOCK_TERM_HEIGHT);
+          if (dims) {
+            spawnCols = dims.cols;
+            spawnRows = dims.rows;
+          }
+        }
+
         // Spawn a new PTY with the SAME ID - output goes to buffer
         await terminalClient.spawn({
           id, // Reuse the same ID
           cwd: terminal.cwd,
-          cols: terminal.cols || 80,
-          rows: terminal.rows || 24,
+          cols: spawnCols,
+          rows: spawnRows,
           type: terminal.type,
           title: terminal.title,
           worktreeId: terminal.worktreeId,
@@ -714,9 +730,8 @@ export const createTerminalRegistrySlice =
         // Allow XtermAdapter to remount and set up data listeners
         await new Promise((resolve) => setTimeout(resolve, 100));
 
-        // Disable buffering and flush captured output (unless docked)
         if (targetLocation === "dock") {
-          // Keep buffering enabled for docked terminals
+          optimizeForDock(id);
         } else {
           await terminalClient.setBuffering(id, false);
           terminalClient.flush(id).catch((error) => {
