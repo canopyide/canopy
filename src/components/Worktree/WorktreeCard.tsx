@@ -429,6 +429,24 @@ export function WorktreeCard({
               {/* Row 1: Branch name + recency */}
               <div className="flex items-center justify-between gap-2 min-h-[22px]">
                 <div className="flex items-center gap-1.5 min-w-0 flex-1 overflow-hidden">
+                  <button
+                    onClick={(e) => {
+                      e.stopPropagation();
+                      e.currentTarget.blur();
+                      onCopyTree();
+                    }}
+                    className={cn(
+                      "p-1 -ml-1.5 rounded transition-colors shrink-0",
+                      "text-canopy-text/40 hover:text-canopy-text hover:bg-white/10",
+                      "focus-visible:outline focus-visible:outline-2 focus-visible:outline-canopy-accent",
+                      "opacity-0 group-hover/identity:opacity-100 focus-visible:opacity-100 transition-opacity",
+                      "pointer-events-none group-hover/identity:pointer-events-auto focus-visible:pointer-events-auto"
+                    )}
+                    title="Copy Context"
+                    aria-label="Copy Context"
+                  >
+                    <Copy className="w-3.5 h-3.5" />
+                  </button>
                   {isMainWorktree && (
                     <Shield className="w-3.5 h-3.5 text-canopy-text/40 opacity-30 shrink-0" />
                   )}
@@ -509,19 +527,6 @@ export function WorktreeCard({
 
               {/* Action Buttons - visible on hover/focus */}
               <div className="absolute right-0 flex items-center gap-0.5 opacity-0 group-hover/identity:opacity-100 group-focus-within/identity:opacity-100 focus-within:opacity-100 transition-opacity bg-gradient-to-l from-canopy-bg from-70% to-transparent pl-6 z-10">
-                <button
-                  onClick={(e) => {
-                    e.stopPropagation();
-                    e.currentTarget.blur();
-                    onCopyTree();
-                  }}
-                  className="p-1 text-canopy-text/60 hover:text-white hover:bg-white/10 rounded transition-colors focus-visible:outline focus-visible:outline-2 focus-visible:outline-canopy-accent"
-                  title="Copy Context"
-                  aria-label="Copy Context"
-                >
-                  <Copy className="w-3.5 h-3.5" />
-                </button>
-
                 <DropdownMenu>
                   <DropdownMenuTrigger asChild>
                     <button
