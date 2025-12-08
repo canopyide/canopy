@@ -42,7 +42,15 @@ class CopyTreeService {
       const controller = new AbortController();
       this.activeOperations.set(opId, controller);
 
-      const config = await ConfigManager.create();
+      let config;
+      try {
+        config = await ConfigManager.create();
+      } catch (error) {
+        console.warn(
+          "[CopyTreeService] Failed to load default config (likely missing configuration files in bundle), proceeding with defaults:",
+          error
+        );
+      }
 
       const sdkOptions: SdkCopyOptions = {
         config: config,

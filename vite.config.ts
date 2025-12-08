@@ -6,7 +6,7 @@ import path from "path";
 // CSP definitions for development and production
 const DEV_CSP = [
   "default-src 'self' http://localhost:5173 ws://localhost:5173",
-  "script-src 'self' http://localhost:5173",
+  "script-src 'self' http://localhost:5173 'unsafe-eval'",
   "style-src 'self' http://localhost:5173 'unsafe-inline'",
   "font-src 'self' data:",
   "connect-src 'self' http://localhost:5173 ws://localhost:5173",
@@ -16,7 +16,7 @@ const DEV_CSP = [
 
 const PROD_CSP = [
   "default-src 'self'",
-  "script-src 'self'",
+  "script-src 'self' 'unsafe-eval'",
   "style-src 'self' 'unsafe-inline'",
   "font-src 'self' data:",
   "connect-src 'self'",

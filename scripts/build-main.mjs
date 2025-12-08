@@ -12,6 +12,8 @@ const external = [
   "electron",
   "node-pty", // Native module
   "esbuild", // Build tool
+  "copytree", // Externalize to preserve file structure (config files)
+  "simple-git", // Externalize to avoid dynamic require issues
 ];
 
 const common = {
