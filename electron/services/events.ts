@@ -253,6 +253,12 @@ export const EVENT_META: Record<keyof CanopyEventMap, EventMetadata> = {
     requiresTimestamp: true,
     description: "Terminal activity state changed with human-readable headlines",
   },
+  "transcript:ready": {
+    category: "agent",
+    requiresContext: false,
+    requiresTimestamp: false,
+    description: "Terminal transcript ready for retrieval from pty-host",
+  },
   "terminal:backgrounded": {
     category: "agent",
     requiresContext: false,
@@ -633,6 +639,18 @@ export type CanopyEventMap = {
     timestamp: number;
   };
 
+  // Transcript Events
+
+  /**
+   * Emitted when a terminal's transcript is ready for retrieval from pty-host.
+   * TranscriptService listens for this to fetch sanitized (ANSI-stripped) transcript data.
+   */
+  "transcript:ready": {
+    terminalId: string;
+    chunkCount: number;
+    totalSize: number;
+  };
+
   // Task Lifecycle Events (Future-proof for task management)
 
   /**
@@ -724,6 +742,7 @@ export const ALL_EVENT_TYPES: Array<keyof CanopyEventMap> = [
   "terminal:trashed",
   "terminal:restored",
   "terminal:activity",
+  "transcript:ready",
   "terminal:backgrounded",
   "terminal:foregrounded",
   "server:backgrounded",

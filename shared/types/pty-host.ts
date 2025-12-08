@@ -59,7 +59,10 @@ export type PtyHostRequest =
   | { type: "get-terminals-for-project"; projectId: string; requestId: string }
   | { type: "get-terminal"; id: string; requestId: string }
   | { type: "replay-history"; id: string; maxLines: number; requestId: string }
-  | { type: "get-serialized-state"; id: string; requestId: string };
+  | { type: "get-serialized-state"; id: string; requestId: string }
+  | { type: "get-transcript"; id: string; requestId: string }
+  | { type: "start-transcript"; id: string }
+  | { type: "stop-transcript"; id: string };
 
 /**
  * Terminal snapshot data sent from Host → Main for state queries.
@@ -126,7 +129,9 @@ export type PtyHostEvent =
   | { type: "terminals-for-project"; requestId: string; terminalIds: string[] }
   | { type: "terminal-info"; requestId: string; terminal: PtyHostTerminalInfo | null }
   | { type: "replay-history-result"; requestId: string; replayed: number }
-  | { type: "serialized-state"; requestId: string; id: string; state: string | null };
+  | { type: "serialized-state"; requestId: string; id: string; state: string | null }
+  | { type: "transcript"; id: string; requestId: string; chunks: TranscriptChunk[] }
+  | { type: "transcript-ready"; id: string; chunkCount: number; totalSize: number };
 
 /** Terminal info sent from Host → Main for getTerminal queries */
 export interface PtyHostTerminalInfo {
@@ -188,4 +193,24 @@ export interface AgentKilledPayload {
   traceId?: string;
   terminalId?: string;
   worktreeId?: string;
+}
+
+/** Single chunk of transcript content (ANSI-sanitized) */
+export interface TranscriptChunk {
+  timestamp: number;
+  content: string;
+}
+
+/** Transcript ready notification sent when a terminal exits */
+export interface TranscriptReadyPayload {
+  terminalId: string;
+  chunkCount: number;
+  totalSize: number;
+}
+
+/** Response containing transcript chunks */
+export interface TranscriptResponse {
+  terminalId: string;
+  requestId: string;
+  chunks: TranscriptChunk[];
 }
