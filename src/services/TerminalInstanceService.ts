@@ -224,20 +224,14 @@ class TerminalInstanceService {
       });
     }
 
-    // Poll faster (1ms) if we have data to keep draining buffer ASAP.
-    // Otherwise idle at 4ms.
-    let nextPollDelay = hasData ? 1 : 4;
-
-    // Throttle polling on low-end devices when idle with many terminals
-    if (
-      nextPollDelay === 4 &&
-      this.hardwareProfile.estimatedGpuTier === "low" &&
-      this.instances.size > 10
-    ) {
-      nextPollDelay = 16;
+    if (hasData) {
+      this.rafId = window.requestAnimationFrame(() => {
+        this.rafId = null;
+        this.poll();
+      });
+    } else {
+      this.pollTimeoutId = window.setTimeout(this.poll, 16);
     }
-
-    this.pollTimeoutId = window.setTimeout(this.poll, nextPollDelay);
   };
 
   /**
@@ -599,22 +593,15 @@ class TerminalInstanceService {
     managed?.terminal.focus();
   }
 
-  /**
-   * Force a full redraw of the terminal canvas.
-   * Useful after drag operations where WebGL canvases may have stale renders.
-   */
   refresh(id: string): void {
     const managed = this.instances.get(id);
     if (!managed) return;
 
-    // Force fit before refresh to align canvas with container
     try {
       managed.fitAddon.fit();
-    } catch {
-      // Ignore fit errors (e.g. if terminal is hidden)
+    } catch (error) {
+      console.warn("[TerminalInstanceService] Refresh fit failed:", error);
     }
-
-    managed.terminal.refresh(0, managed.terminal.rows - 1);
   }
 
   /**
@@ -651,8 +638,7 @@ class TerminalInstanceService {
       this.applyRendererPolicy(id, tier);
     }
 
-    // Force terminal refresh
-    managed.terminal.refresh(0, managed.terminal.rows - 1);
+    // Rely on xterm to repaint after resize and renderer changes
   }
 
   /**
@@ -669,19 +655,13 @@ class TerminalInstanceService {
     });
   }
 
-  /**
-   * Refresh all active terminal instances.
-   */
   refreshAll(): void {
     this.instances.forEach((managed) => {
-      // Force fit before refresh to align canvas with container
       try {
         managed.fitAddon.fit();
-      } catch {
-        // Ignore fit errors
+      } catch (error) {
+        console.warn("[TerminalInstanceService] RefreshAll fit failed:", error);
       }
-
-      managed.terminal.refresh(0, managed.terminal.rows - 1);
     });
   }
 
@@ -722,14 +702,9 @@ class TerminalInstanceService {
         managed.terminal.options[key] = value;
       });
 
-      // Bust geometry cache when text metrics change
       if (textMetricsChanged) {
         managed.lastWidth = 0;
         managed.lastHeight = 0;
-      }
-
-      if (options.theme) {
-        managed.terminal.refresh(0, managed.terminal.rows - 1);
       }
     });
   }
@@ -909,9 +884,6 @@ class TerminalInstanceService {
           if (!currentManaged || !currentManaged.terminal.element) return;
 
           try {
-            currentManaged.terminal.refresh(0, currentManaged.terminal.rows - 1);
-            console.log(`[TerminalInstanceService] Canvas fallback active for ${id}`);
-
             // Retry WebGL if terminal is focused/burst and under retry limit
             const tier = currentManaged.getRefreshTier();
             if (
