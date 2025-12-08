@@ -146,24 +146,12 @@ function XtermAdapterComponent({
       if (width === 0 || height === 0) return;
       if (width < MIN_CONTAINER_SIZE || height < MIN_CONTAINER_SIZE) return;
 
-      // Service handles geometry caching check
       const dims = terminalInstanceService.resize(terminalId, width, height);
 
       if (dims) {
-        const managed = terminalInstanceService.get(terminalId);
         const { cols, rows } = dims;
-
-        // Preserve shrink refresh logic
-        if (prevDimensionsRef.current && managed) {
-          const shrunk =
-            cols < prevDimensionsRef.current.cols || rows < prevDimensionsRef.current.rows;
-          if (shrunk) {
-            managed.terminal.refresh(0, managed.terminal.rows - 1);
-          }
-        }
         prevDimensionsRef.current = { cols, rows };
 
-        // Debounce IPC to main process
         const bufferLines = terminalInstanceService.getBufferLineCount(terminalId);
         debouncerRef.current?.resize(cols, rows, {
           immediate: false,
@@ -196,16 +184,7 @@ function XtermAdapterComponent({
 
     const dims = terminalInstanceService.resize(terminalId, width, height);
     if (dims) {
-      const managed = terminalInstanceService.get(terminalId);
       const { cols, rows } = dims;
-
-      if (prevDimensionsRef.current && managed) {
-        const shrunk =
-          cols < prevDimensionsRef.current.cols || rows < prevDimensionsRef.current.rows;
-        if (shrunk) {
-          managed.terminal.refresh(0, managed.terminal.rows - 1);
-        }
-      }
       prevDimensionsRef.current = { cols, rows };
 
       const bufferLines = terminalInstanceService.getBufferLineCount(terminalId);
