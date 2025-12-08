@@ -76,6 +76,7 @@ export class WorktreeMonitor {
       name: worktree.name,
       branch: worktree.branch,
       isCurrent: worktree.isCurrent,
+      isMainWorktree: Boolean(worktree.isMainWorktree),
       worktreeId: worktree.id,
       worktreeChanges: null,
       mood: "stable",

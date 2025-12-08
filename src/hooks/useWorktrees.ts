@@ -37,10 +37,15 @@ export function useWorktrees(): UseWorktreesReturn {
 
   const worktrees = useMemo(() => {
     return Array.from(worktreeMap.values()).sort((a, b) => {
-      const aIsMain = a.branch === "main" || a.branch === "master";
-      const bIsMain = b.branch === "main" || b.branch === "master";
-      if (aIsMain !== bIsMain) {
-        return aIsMain ? -1 : 1;
+      // Use isMainWorktree flag for consistent sorting
+      if (a.isMainWorktree && !b.isMainWorktree) return -1;
+      if (!a.isMainWorktree && b.isMainWorktree) return 1;
+
+      // Secondary sort by last activity
+      const timeA = a.lastActivityTimestamp ?? 0;
+      const timeB = b.lastActivityTimestamp ?? 0;
+      if (timeA !== timeB) {
+        return timeB - timeA;
       }
 
       return a.name.localeCompare(b.name);
