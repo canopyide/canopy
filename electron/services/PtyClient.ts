@@ -19,6 +19,7 @@ import type {
   PtyHostEvent,
   PtyHostSpawnOptions,
   ActivityTier,
+  TranscriptChunk,
 } from "../../shared/types/pty-host.js";
 import type { TerminalSnapshot } from "./PtyManager.js";
 import type { AgentStateChangeTrigger } from "../types/index.js";
@@ -76,6 +77,7 @@ export class PtyClient extends EventEmitter {
     new Map();
   private replayHistoryCallbacks: Map<string, (replayed: number) => void> = new Map();
   private serializedStateCallbacks: Map<string, (state: string | null) => void> = new Map();
+  private transcriptCallbacks: Map<string, (chunks: TranscriptChunk[]) => void> = new Map();
   private readyPromise: Promise<void>;
   private readyResolve: (() => void) | null = null;
 
@@ -393,6 +395,23 @@ export class PtyClient extends EventEmitter {
         break;
       }
 
+      case "transcript": {
+        const cb = this.transcriptCallbacks.get((event as any).requestId);
+        if (cb) {
+          this.transcriptCallbacks.delete((event as any).requestId);
+          cb((event as any).chunks ?? []);
+        }
+        break;
+      }
+
+      case "transcript-ready":
+        events.emit("transcript:ready", {
+          terminalId: event.id,
+          chunkCount: event.chunkCount,
+          totalSize: event.totalSize,
+        });
+        break;
+
       default:
         console.warn("[PtyClient] Unknown event type:", (event as { type: string }).type);
     }
@@ -554,6 +573,37 @@ export class PtyClient extends EventEmitter {
         }
       }, 5000);
     });
+  }
+
+  /**
+   * Get the sanitized transcript for a terminal.
+   * The transcript is ANSI-stripped and ready for storage.
+   * @param terminalId - Terminal identifier
+   * @returns Array of transcript chunks (already sanitized in pty-host)
+   */
+  async getTranscript(terminalId: string): Promise<TranscriptChunk[]> {
+    return new Promise((resolve) => {
+      const requestId = `transcript-${terminalId}-${Date.now()}`;
+      this.transcriptCallbacks.set(requestId, resolve);
+      this.send({ type: "get-transcript", id: terminalId, requestId });
+
+      setTimeout(() => {
+        if (this.transcriptCallbacks.has(requestId)) {
+          this.transcriptCallbacks.delete(requestId);
+          resolve([]);
+        }
+      }, 10000); // Longer timeout for potentially large transcripts
+    });
+  }
+
+  /** Start transcript recording for a terminal */
+  startTranscript(terminalId: string): void {
+    this.send({ type: "start-transcript", id: terminalId });
+  }
+
+  /** Stop transcript recording for a terminal (data is retained until fetched) */
+  stopTranscript(terminalId: string): void {
+    this.send({ type: "stop-transcript", id: terminalId });
   }
 
   /** Get a snapshot of terminal state (async due to IPC) */
@@ -753,6 +803,7 @@ export class PtyClient extends EventEmitter {
     for (const cb of this.terminalInfoCallbacks.values()) cb(null);
     for (const cb of this.replayHistoryCallbacks.values()) cb(0);
     for (const cb of this.serializedStateCallbacks.values()) cb(null);
+    for (const cb of this.transcriptCallbacks.values()) cb([]);
     if (this.allSnapshotsCallback) {
       this.allSnapshotsCallback([]);
       this.allSnapshotsCallback = null;
@@ -765,6 +816,7 @@ export class PtyClient extends EventEmitter {
     this.terminalInfoCallbacks.clear();
     this.replayHistoryCallbacks.clear();
     this.serializedStateCallbacks.clear();
+    this.transcriptCallbacks.clear();
     this.removeAllListeners();
 
     console.log("[PtyClient] Disposed");
