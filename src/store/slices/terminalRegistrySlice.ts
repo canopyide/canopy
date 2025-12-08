@@ -628,9 +628,7 @@ export const createTerminalRegistrySlice =
 
       // Mark as restarting BEFORE killing old PTY to prevent auto-trash from exit event
       set((state) => ({
-        terminals: state.terminals.map((t) =>
-          t.id === id ? { ...t, isRestarting: true } : t
-        ),
+        terminals: state.terminals.map((t) => (t.id === id ? { ...t, isRestarting: true } : t)),
       }));
 
       let targetLocation = terminal.location;
@@ -730,9 +728,7 @@ export const createTerminalRegistrySlice =
         // The exit event from the killed PTY was suppressed by isRestarting,
         // so we must explicitly clean up the dead terminal
         set((state) => ({
-          terminals: state.terminals.map((t) =>
-            t.id === id ? { ...t, isRestarting: false } : t
-          ),
+          terminals: state.terminals.map((t) => (t.id === id ? { ...t, isRestarting: false } : t)),
         }));
         // Re-enable normal mode if restart failed
         terminalClient.setBuffering(id, false).catch(() => {});
