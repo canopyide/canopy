@@ -227,6 +227,7 @@ export class TerminalProcess {
       batchTimer: null,
       headlessTerminal,
       serializeAddon,
+      restartCount: 0,
     };
 
     // Create output throttler

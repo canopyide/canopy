@@ -118,6 +118,29 @@ export interface TerminalReconnectResult {
   error?: string;
 }
 
+/** Terminal information payload for diagnostic display */
+export interface TerminalInfoPayload {
+  id: string;
+  projectId?: string;
+  type?: TerminalType;
+  title?: string;
+  cwd: string;
+  worktreeId?: string;
+  agentState?: import("./domain.js").AgentState;
+  spawnedAt: number;
+  lastInputTime: number;
+  lastOutputTime: number;
+  lastStateChange?: number;
+  activityTier: "focused" | "visible" | "background";
+  outputBufferSize: number;
+  queueState: "normal" | "soft" | "hard";
+  isFlooded: boolean;
+  bytesThisSecond: number;
+  semanticBufferLines: number;
+  queuedBytes: number;
+  restartCount: number;
+}
+
 // CopyTree IPC Types
 
 /** CopyTree generation options */
@@ -985,6 +1008,10 @@ export interface IpcInvokeMap {
     args: [];
     result: SharedArrayBuffer | null;
   };
+  "terminal:get-info": {
+    args: [id: string];
+    result: TerminalInfoPayload;
+  };
 
   // Agent channels
   "agent:get-state": {
@@ -1515,6 +1542,7 @@ export interface ElectronAPI {
     getSerializedState(terminalId: string): Promise<string | null>;
     getSharedBuffer(): Promise<SharedArrayBuffer | null>;
     getAnalysisBuffer(): Promise<SharedArrayBuffer | null>;
+    getInfo(id: string): Promise<TerminalInfoPayload>;
     getMessagePort(): Promise<any | null>;
     isMessagePortAvailable(): boolean;
     onData(id: string, callback: (data: string | Uint8Array) => void): () => void;

@@ -78,6 +78,10 @@ export class PtyClient extends EventEmitter {
   private replayHistoryCallbacks: Map<string, (replayed: number) => void> = new Map();
   private serializedStateCallbacks: Map<string, (state: string | null) => void> = new Map();
   private transcriptCallbacks: Map<string, (chunks: TranscriptChunk[]) => void> = new Map();
+  private terminalDiagnosticInfoCallbacks: Map<
+    string,
+    (info: import("../../shared/types/ipc.js").TerminalInfoPayload | null) => void
+  > = new Map();
   private readyPromise: Promise<void>;
   private readyResolve: (() => void) | null = null;
 
@@ -597,6 +601,26 @@ export class PtyClient extends EventEmitter {
       setTimeout(() => {
         if (this.serializedStateCallbacks.has(requestId)) {
           this.serializedStateCallbacks.delete(requestId);
+          resolve(null);
+        }
+      }, 5000);
+    });
+  }
+
+  /**
+   * Get terminal information for diagnostic display.
+   */
+  async getTerminalInfo(
+    id: string
+  ): Promise<import("../../shared/types/ipc.js").TerminalInfoPayload | null> {
+    return new Promise((resolve) => {
+      const requestId = `terminal-info-${id}-${Date.now()}`;
+      this.terminalDiagnosticInfoCallbacks.set(requestId, resolve);
+      this.send({ type: "get-terminal-info", id, requestId } as any);
+
+      setTimeout(() => {
+        if (this.terminalDiagnosticInfoCallbacks.has(requestId)) {
+          this.terminalDiagnosticInfoCallbacks.delete(requestId);
           resolve(null);
         }
       }, 5000);

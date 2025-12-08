@@ -333,6 +333,38 @@ export class PtyManager extends EventEmitter {
   }
 
   /**
+   * Get terminal information for diagnostic display.
+   */
+  getTerminalInfo(id: string): import("../../shared/types/ipc.js").TerminalInfoPayload | null {
+    const terminalInfo = this.registry.get(id);
+    if (!terminalInfo) {
+      return null;
+    }
+
+    return {
+      id: terminalInfo.id,
+      projectId: terminalInfo.projectId,
+      type: terminalInfo.type,
+      title: terminalInfo.title,
+      cwd: terminalInfo.cwd,
+      worktreeId: terminalInfo.worktreeId,
+      agentState: terminalInfo.agentState,
+      spawnedAt: terminalInfo.spawnedAt,
+      lastInputTime: terminalInfo.lastInputTime,
+      lastOutputTime: terminalInfo.lastOutputTime,
+      lastStateChange: terminalInfo.lastStateChange,
+      activityTier: terminalInfo.activityTier,
+      outputBufferSize: terminalInfo.outputBuffer.length,
+      queueState: terminalInfo.queueState,
+      isFlooded: terminalInfo.isFlooded,
+      bytesThisSecond: terminalInfo.bytesThisSecond,
+      semanticBufferLines: terminalInfo.semanticBuffer.length,
+      queuedBytes: terminalInfo.queuedBytes,
+      restartCount: terminalInfo.restartCount,
+    };
+  }
+
+  /**
    * Mark terminal's check time.
    */
   markChecked(id: string): void {

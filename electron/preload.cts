@@ -123,6 +123,7 @@ const CHANNELS = {
   TERMINAL_GET_SERIALIZED_STATE: "terminal:get-serialized-state",
   TERMINAL_GET_SHARED_BUFFER: "terminal:get-shared-buffer",
   TERMINAL_GET_ANALYSIS_BUFFER: "terminal:get-analysis-buffer",
+  TERMINAL_GET_INFO: "terminal:get-info",
 
   // Agent state channels
   AGENT_STATE_CHANGED: "agent:state-changed",
@@ -417,6 +418,8 @@ const api: ElectronAPI = {
 
     getSerializedState: (terminalId: string) =>
       _typedInvoke(CHANNELS.TERMINAL_GET_SERIALIZED_STATE, terminalId),
+
+    getInfo: (id: string) => _typedInvoke(CHANNELS.TERMINAL_GET_INFO, id),
 
     getSharedBuffer: (): Promise<SharedArrayBuffer | null> =>
       ipcRenderer.invoke(CHANNELS.TERMINAL_GET_SHARED_BUFFER),
