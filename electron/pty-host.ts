@@ -711,6 +711,16 @@ port.on("message", (rawMsg: any) => {
         break;
       }
 
+      case "get-terminal-info": {
+        const info = ptyManager.getTerminalInfo(msg.id);
+        sendEvent({
+          type: "terminal-diagnostic-info",
+          requestId: msg.requestId,
+          info,
+        });
+        break;
+      }
+
       case "dispose":
         cleanup();
         break;

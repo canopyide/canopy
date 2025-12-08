@@ -64,7 +64,8 @@ export type PtyHostRequest =
   | { type: "connect-port" }
   | { type: "get-transcript"; id: string; requestId: string }
   | { type: "start-transcript"; id: string }
-  | { type: "stop-transcript"; id: string };
+  | { type: "stop-transcript"; id: string }
+  | { type: "get-terminal-info"; id: string; requestId: string };
 
 /**
  * Terminal snapshot data sent from Host → Main for state queries.
@@ -133,7 +134,8 @@ export type PtyHostEvent =
   | { type: "replay-history-result"; requestId: string; replayed: number }
   | { type: "serialized-state"; requestId: string; id: string; state: string | null }
   | { type: "transcript"; id: string; requestId: string; chunks: TranscriptChunk[] }
-  | { type: "transcript-ready"; id: string; chunkCount: number; totalSize: number };
+  | { type: "transcript-ready"; id: string; chunkCount: number; totalSize: number }
+  | { type: "terminal-diagnostic-info"; requestId: string; info: any };
 
 /** Terminal info sent from Host → Main for getTerminal queries */
 export interface PtyHostTerminalInfo {

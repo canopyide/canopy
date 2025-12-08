@@ -74,9 +74,9 @@ function InfoRow({ label, value, mono = false }: InfoRowProps) {
   const displayValue = value ?? "N/A";
   return (
     <div className="flex justify-between items-start gap-4 text-sm">
-      <span className="text-canopy-text/70 shrink-0">{label}:</span>
+      <span className="text-canopy-text/70 shrink-0 select-none">{label}:</span>
       <span
-        className={`text-canopy-text text-right ${mono ? "font-mono text-xs" : ""}`}
+        className={`text-canopy-text text-right select-text ${mono ? "font-mono text-xs" : ""}`}
         title={typeof displayValue === "string" ? displayValue : undefined}
       >
         {displayValue}
@@ -185,11 +185,11 @@ Performance & Diagnostics:
 
         {error && (
           <div
-            className="bg-red-500/10 border border-red-500/30 rounded-lg p-4 text-red-400"
+            className="bg-red-500/10 border border-red-500/30 rounded-lg p-4 text-red-400 select-text"
             role="alert"
           >
             <p className="font-semibold mb-1">Failed to load terminal information</p>
-            <p className="text-sm">{error}</p>
+            <p className="text-sm font-mono break-all">{error}</p>
           </div>
         )}
 

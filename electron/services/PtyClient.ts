@@ -419,6 +419,15 @@ export class PtyClient extends EventEmitter {
         });
         break;
 
+      case "terminal-diagnostic-info": {
+        const cb = this.terminalDiagnosticInfoCallbacks.get(event.requestId);
+        if (cb) {
+          this.terminalDiagnosticInfoCallbacks.delete(event.requestId);
+          cb(event.info);
+        }
+        break;
+      }
+
       default:
         console.warn("[PtyClient] Unknown event type:", (event as { type: string }).type);
     }
