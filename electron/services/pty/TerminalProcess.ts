@@ -406,7 +406,6 @@ export class TerminalProcess {
    * Set buffering mode.
    */
   setBuffering(enabled: boolean): void {
-    this.throttler.setBuffering(enabled);
     this.terminalInfo.bufferingMode = enabled;
   }
 
@@ -414,7 +413,7 @@ export class TerminalProcess {
    * Flush buffered output.
    */
   flushBuffer(): void {
-    this.throttler.flush();
+    // No-op in baseline: output is emitted immediately.
   }
 
   /**
