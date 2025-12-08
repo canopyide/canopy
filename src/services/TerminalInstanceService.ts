@@ -225,6 +225,11 @@ class TerminalInstanceService {
 
         // Check for backpressure
         if (managed.throttledWriter.pendingWrites > MAX_PENDING_WRITES) {
+          if (!this.pendingBuffers.has(id)) {
+            console.warn(
+              `[TerminalInstanceService] Backpressure active for ${id} (${managed.throttledWriter.pendingWrites} pending writes)`
+            );
+          }
           let pending = this.pendingBuffers.get(id);
           if (!pending) {
             pending = [];
@@ -243,8 +248,18 @@ class TerminalInstanceService {
     }
 
     // Poll faster (1ms) if we have data or active backpressure to clear buffers ASAP.
-    // Otherwise idle at 4ms.
-    const nextPollDelay = hasData || this.pendingBuffers.size > 0 ? 1 : 4;
+    // Otherwise idle at 4ms (or slower on low-end hardware).
+    let nextPollDelay = hasData || this.pendingBuffers.size > 0 ? 1 : 4;
+
+    // Throttle polling on low-end devices when idle with many terminals
+    if (
+      nextPollDelay === 4 &&
+      this.hardwareProfile.estimatedGpuTier === "low" &&
+      this.instances.size > 10
+    ) {
+      nextPollDelay = 16;
+    }
+
     this.pollTimeoutId = window.setTimeout(this.poll, nextPollDelay);
   };
 

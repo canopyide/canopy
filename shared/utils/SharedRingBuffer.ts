@@ -58,9 +58,10 @@ export class SharedRingBuffer {
       availableSpace = readIndex - writeIndex - 1;
     }
 
-    if (availableSpace === 0) return 0;
+    // Atomic write: never partially write a packet
+    if (availableSpace < data.length) return 0;
 
-    const toWrite = Math.min(data.length, availableSpace);
+    const toWrite = data.length;
 
     // First chunk: from writeIndex to end of buffer
     const firstChunk = Math.min(toWrite, this.capacity - writeIndex);

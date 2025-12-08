@@ -115,10 +115,26 @@ async function pollBuffer(): Promise<void> {
       // Parse framed packets (handles partial packets across reads)
       const packets = packetParser.parse(rawData);
 
-      // Process each packet asynchronously
+      // Group packets by terminal ID to enable concurrent processing per terminal
+      const packetsByTerminal = new Map<string, string[]>();
       for (const packet of packets) {
-        await processPacket(packet.id, packet.data);
+        let terminalPackets = packetsByTerminal.get(packet.id);
+        if (!terminalPackets) {
+          terminalPackets = [];
+          packetsByTerminal.set(packet.id, terminalPackets);
+        }
+        terminalPackets.push(packet.data);
       }
+
+      // Process each terminal's packets concurrently
+      await Promise.all(
+        Array.from(packetsByTerminal.entries()).map(async ([terminalId, dataChunks]) => {
+          // Process chunks for this terminal sequentially to maintain state order
+          for (const data of dataChunks) {
+            await processPacket(terminalId, data);
+          }
+        })
+      );
     }
   } catch (error) {
     // Log error but don't stop polling loop

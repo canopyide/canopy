@@ -217,14 +217,6 @@ ptyManager.on("data", (id: string, data: string | Uint8Array) => {
         }
         // Data is dropped during backpressure - acceptable, PTY is paused
         return;
-      } else if (visualWritten < packet.length) {
-        // Partial write - treat as failure, send via IPC to avoid data loss
-        console.warn(
-          `[PtyHost] Partial write to visual ring buffer: ${visualWritten}/${packet.length} bytes, ` +
-            `falling back to IPC`
-        );
-        sendEvent({ type: "data", id, data: toStringForIpc(data) });
-        return;
       }
 
       // Write to analysis buffer (best-effort - drop frames if full)
