@@ -35,22 +35,44 @@ export function NewWorktreeDialog({
 
     setLoading(true);
     setError(null);
+    setBranches([]);
+    setBaseBranch("");
+    setFromRemote(false);
+
+    let isCurrent = true;
 
     worktreeClient
       .listBranches(rootPath)
       .then((branchList) => {
+        if (!isCurrent) return;
+
         setBranches(branchList);
         const currentBranch = branchList.find((b) => b.current);
         const mainBranch =
           branchList.find((b) => b.name === "main") || branchList.find((b) => b.name === "master");
-        setBaseBranch(mainBranch?.name || currentBranch?.name || branchList[0]?.name || "");
+
+        const initialBranch = mainBranch?.name || currentBranch?.name || branchList[0]?.name || "";
+        setBaseBranch(initialBranch);
+
+        // Auto-set fromRemote based on the initial branch type
+        const initialBranchInfo = branchList.find((b) => b.name === initialBranch);
+        setFromRemote(!!initialBranchInfo?.remote);
       })
       .catch((err) => {
+        if (!isCurrent) return;
         setError(`Failed to load branches: ${err.message}`);
+        setBranches([]);
+        setBaseBranch("");
+        setFromRemote(false);
       })
       .finally(() => {
+        if (!isCurrent) return;
         setLoading(false);
       });
+
+    return () => {
+      isCurrent = false;
+    };
   }, [isOpen, rootPath]);
 
   useEffect(() => {
@@ -144,7 +166,13 @@ export function NewWorktreeDialog({
               <select
                 id="base-branch"
                 value={baseBranch}
-                onChange={(e) => setBaseBranch(e.target.value)}
+                onChange={(e) => {
+                  const val = e.target.value;
+                  setBaseBranch(val);
+                  // Auto-update checkbox: if branch is remote, check it; else uncheck it
+                  const branchInfo = branches.find((b) => b.name === val);
+                  setFromRemote(!!branchInfo?.remote);
+                }}
                 className="w-full px-3 py-2 bg-canopy-bg border border-canopy-border rounded-md text-canopy-text focus:outline-none focus:ring-2 focus:ring-canopy-accent"
                 disabled={creating}
               >
@@ -182,7 +210,7 @@ export function NewWorktreeDialog({
               <label htmlFor="worktree-path" className="block text-sm font-medium text-canopy-text">
                 Worktree Path
               </label>
-              <div className="flex gap-2">
+              <div className="flex gap-2 items-center">
                 <input
                   id="worktree-path"
                   type="text"
@@ -227,7 +255,7 @@ export function NewWorktreeDialog({
                 className="rounded border-canopy-border text-canopy-accent focus:ring-canopy-accent"
                 disabled={creating}
               />
-              <label htmlFor="from-remote" className="text-sm text-canopy-text">
+              <label htmlFor="from-remote" className="text-sm text-canopy-text select-none">
                 Create from remote branch
               </label>
             </div>
