@@ -6,10 +6,17 @@ import { CHANNELS } from "../channels.js";
 import { sendToRenderer } from "../utils.js";
 import { projectStore } from "../../services/ProjectStore.js";
 import { events, type CanopyEventMap } from "../../services/events.js";
-import type { HandlerDependencies } from "../types.js";
+import type { HandlerDependencies, WorkspaceManager } from "../types.js";
 import type { TerminalSpawnOptions, TerminalResizePayload } from "../../types/index.js";
 import type { ActivityTier } from "../../../shared/types/pty-host.js";
 import { TerminalSpawnOptionsSchema, TerminalResizePayloadSchema } from "../../schemas/ipc.js";
+
+// Type guard to check if worktreeService has async getAllStatesAsync method (WorkspaceClient)
+function hasAsyncGetAllStates(
+  service: WorkspaceManager
+): service is WorkspaceManager & { getAllStatesAsync: () => Promise<Array<{ path: string }>> } {
+  return typeof (service as any).getAllStatesAsync === "function";
+}
 
 export function registerTerminalHandlers(deps: HandlerDependencies): () => void {
   const { mainWindow, ptyManager, worktreeService } = deps;
@@ -632,10 +639,19 @@ export function registerTerminalHandlers(deps: HandlerDependencies): () => void 
         }
 
         if (worktreeService) {
-          const worktrees = worktreeService.getAllStates();
-          const isValidWorktree = Array.from(worktrees.values()).some(
-            (wt: { path: string }) => path.resolve(wt.path) === resolvedCwd
-          );
+          // Support both sync (WorktreeService) and async (WorkspaceClient) APIs
+          let isValidWorktree = false;
+          if (hasAsyncGetAllStates(worktreeService)) {
+            const states = await worktreeService.getAllStatesAsync();
+            isValidWorktree = states.some(
+              (wt: { path: string }) => path.resolve(wt.path) === resolvedCwd
+            );
+          } else {
+            const worktrees = worktreeService.getAllStates();
+            isValidWorktree = Array.from(worktrees.values()).some(
+              (wt: { path: string }) => path.resolve(wt.path) === resolvedCwd
+            );
+          }
           if (!isValidWorktree) {
             return {
               success: false,

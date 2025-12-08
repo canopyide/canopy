@@ -4,7 +4,7 @@ import path from "path";
 import { CHANNELS } from "../channels.js";
 import { sendToRenderer } from "../utils.js";
 import { copyTreeService } from "../../services/CopyTreeService.js";
-import type { HandlerDependencies } from "../types.js";
+import type { HandlerDependencies, WorkspaceManager } from "../types.js";
 import type {
   CopyTreeGeneratePayload,
   CopyTreeGenerateAndCopyFilePayload,
@@ -20,6 +20,20 @@ import {
   CopyTreeInjectPayloadSchema,
   CopyTreeGetFileTreePayloadSchema,
 } from "../../schemas/ipc.js";
+
+// Type guard to check if worktreeService has async getAllStatesAsync method (WorkspaceClient)
+function hasAsyncGetAllStates(service: WorkspaceManager): service is WorkspaceManager & {
+  getAllStatesAsync: () => Promise<Array<{ id: string; path: string; branch?: string }>>;
+} {
+  return typeof (service as any).getAllStatesAsync === "function";
+}
+
+// Type guard to check if worktreeService has async getMonitorAsync method (WorkspaceClient)
+function hasAsyncGetMonitor(service: WorkspaceManager): service is WorkspaceManager & {
+  getMonitorAsync: (worktreeId: string) => Promise<{ path: string } | null>;
+} {
+  return typeof (service as any).getMonitorAsync === "function";
+}
 
 export function registerCopyTreeHandlers(deps: HandlerDependencies): () => void {
   const { mainWindow, worktreeService, ptyManager } = deps;
@@ -54,8 +68,15 @@ export function registerCopyTreeHandlers(deps: HandlerDependencies): () => void 
       };
     }
 
-    const statesMap = worktreeService.getAllStates();
-    const worktree = statesMap.get(validated.worktreeId);
+    // Support both sync (WorktreeService) and async (WorkspaceClient) APIs
+    let worktree: { id: string; path: string; branch?: string } | undefined;
+    if (hasAsyncGetAllStates(worktreeService)) {
+      const states = await worktreeService.getAllStatesAsync();
+      worktree = states.find((wt) => wt.id === validated.worktreeId);
+    } else {
+      const statesMap = worktreeService.getAllStates();
+      worktree = statesMap.get(validated.worktreeId);
+    }
 
     if (!worktree) {
       return {
@@ -106,8 +127,15 @@ export function registerCopyTreeHandlers(deps: HandlerDependencies): () => void 
       };
     }
 
-    const statesMap = worktreeService.getAllStates();
-    const worktree = statesMap.get(validated.worktreeId);
+    // Support both sync (WorktreeService) and async (WorkspaceClient) APIs
+    let worktree: { id: string; path: string; branch?: string } | undefined;
+    if (hasAsyncGetAllStates(worktreeService)) {
+      const states = await worktreeService.getAllStatesAsync();
+      worktree = states.find((wt) => wt.id === validated.worktreeId);
+    } else {
+      const statesMap = worktreeService.getAllStates();
+      worktree = statesMap.get(validated.worktreeId);
+    }
 
     if (!worktree) {
       return {
@@ -222,8 +250,15 @@ export function registerCopyTreeHandlers(deps: HandlerDependencies): () => void 
     injectionsInProgress.add(validated.terminalId);
 
     try {
-      const statesMap = worktreeService.getAllStates();
-      const worktree = statesMap.get(validated.worktreeId);
+      // Support both sync (WorktreeService) and async (WorkspaceClient) APIs
+      let worktree: { id: string; path: string; branch?: string } | undefined;
+      if (hasAsyncGetAllStates(worktreeService)) {
+        const states = await worktreeService.getAllStatesAsync();
+        worktree = states.find((wt) => wt.id === validated.worktreeId);
+      } else {
+        const statesMap = worktreeService.getAllStates();
+        worktree = statesMap.get(validated.worktreeId);
+      }
 
       if (!worktree) {
         return {
@@ -320,7 +355,15 @@ export function registerCopyTreeHandlers(deps: HandlerDependencies): () => void 
     if (!worktreeService) {
       throw new Error("Worktree service not available");
     }
-    const monitor = worktreeService.getMonitor(validated.worktreeId);
+
+    // Support both sync (WorktreeService) and async (WorkspaceClient) APIs
+    let monitor: { path: string } | null | undefined;
+    if (hasAsyncGetMonitor(worktreeService)) {
+      monitor = await worktreeService.getMonitorAsync(validated.worktreeId);
+    } else {
+      monitor = worktreeService.getMonitor(validated.worktreeId);
+    }
+
     if (!monitor) {
       throw new Error(`Worktree not found: ${validated.worktreeId}`);
     }

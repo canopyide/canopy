@@ -85,8 +85,9 @@ export class WorkspaceClient extends EventEmitter {
       return;
     }
 
-    // Reject previous ready promise if host is restarting
-    if (this.readyReject && !this.isInitialized) {
+    // Reject previous ready promise only if host is restarting (not on initial boot)
+    // Check isInitialized to identify restart vs first start
+    if (this.readyReject && this.isInitialized) {
       this.readyReject(new Error("Workspace Host restarting"));
     }
 
