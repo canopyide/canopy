@@ -10,6 +10,10 @@ import {
   FLOOD_THRESHOLD_BYTES,
   FLOOD_RESUME_THRESHOLD,
 } from "./types.js";
+
+// Threshold for bulk data mode - when buffer exceeds this, wait longer to
+// coalesce large outputs (like MCP dumps) into atomic frame updates.
+const BULK_DATA_THRESHOLD_BYTES = 4096;
 import { events } from "../events.js";
 
 export type QueueState = "normal" | "soft" | "hard";
@@ -304,6 +308,12 @@ export class OutputThrottler {
   }
 
   private getFlushDelay(tier: ActivityTier): number {
+    // Bulk data mode: if buffer is large (MCP dump, large output), wait longer
+    // to coalesce into atomic frame updates and prevent tearing.
+    if (this.batchBytes > BULK_DATA_THRESHOLD_BYTES) {
+      return 16; // One frame - allows more data to arrive
+    }
+
     switch (tier) {
       case "focused":
         // Small delay to coalesce PTY output (e.g., "clear + draw" sequences)

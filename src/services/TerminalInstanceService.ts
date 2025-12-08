@@ -49,6 +49,9 @@ const MAX_WEBGL_RECOVERY_ATTEMPTS = 3;
 // while still allowing the first write (keystroke echo) to be immediate.
 // 16ms ~= one frame; this avoids mid-frame tearing when larger updates straddle a flush.
 const COALESCE_WINDOW_MS = 16;
+// Safety valve: force flush if pending data exceeds this limit.
+// Prevents memory buildup if data arrives faster than RAF can flush.
+const MAX_PENDING_BYTES = 32768; // 32KB
 const WEBGL_DISPOSE_GRACE_MS = 10000; // 10s grace period before releasing WebGL on hide
 const TIER_DOWNGRADE_HYSTERESIS_MS = 500; // Delay before applying tier downgrades to prevent flapping
 
@@ -63,6 +66,7 @@ function createThrottledWriter(
 ) {
   // Use array of chunks instead of string concatenation to reduce GC pressure
   let chunks: (string | Uint8Array)[] = [];
+  let pendingBytes = 0; // Track total bytes for safety valve
   let timerId: number | null = null;
   let rafId: number | null = null;
   let getRefreshTier = initialProvider;
@@ -79,6 +83,7 @@ function createThrottledWriter(
         terminal.write(chunk);
       }
       chunks = [];
+      pendingBytes = 0;
       lastWriteTime = now;
       lastOutputTime = now;
     }
@@ -130,8 +135,25 @@ function createThrottledWriter(
       const timeSinceOutput = now - lastOutputTime;
 
       // Queue the data for batched flush
+      const chunkSize = typeof data === "string" ? data.length : data.byteLength;
       chunks.push(data);
+      pendingBytes += chunkSize;
       lastOutputTime = now;
+
+      // Safety valve: force immediate flush if buffer gets too large.
+      // Prevents memory buildup if data arrives faster than RAF can flush.
+      if (pendingBytes > MAX_PENDING_BYTES) {
+        if (rafId !== null) {
+          cancelAnimationFrame(rafId);
+          rafId = null;
+        }
+        if (timerId !== null) {
+          clearTimeout(timerId);
+          timerId = null;
+        }
+        flush();
+        return;
+      }
 
       // Consider recent input OR output for burst mode to handle streaming agent output
       const timeSinceInput = now - lastInputTime;
@@ -228,6 +250,7 @@ function createThrottledWriter(
         rafId = null;
       }
       chunks = [];
+      pendingBytes = 0;
     },
   };
 }
@@ -309,6 +332,11 @@ class TerminalInstanceService {
    * Uses a hybrid approach: high-frequency setTimeout for responsiveness,
    * with time budgeting to avoid blocking the main thread.
    *
+   * Pre-dispatch coalescing: Instead of writing each packet immediately,
+   * we accumulate all packets per terminal during the read phase, then
+   * merge and write once per terminal. This ensures multi-packet TUI
+   * updates (clear + draw) arrive as atomic writes to xterm.js.
+   *
    * Why not requestAnimationFrame?
    * RAF runs at ~60fps (16ms intervals) which adds noticeable latency to
    * keystroke echoes. A 2ms setTimeout provides much faster response while
@@ -320,20 +348,41 @@ class TerminalInstanceService {
     const start = performance.now();
     let hasData = false;
 
-    // Read and dispatch data within time budget
+    // Pre-dispatch coalescing: accumulate packets per terminal ID
+    // This ensures multi-packet updates are merged before writing
+    const coalescedUpdates = new Map<string, string[]>();
+
+    // Read phase: collect all available packets within time budget
     while (performance.now() - start < TerminalInstanceService.POLL_TIME_BUDGET_MS) {
       const data = this.ringBuffer.read();
       if (!data) break; // Buffer empty
 
       hasData = true;
-      // Parse packets and dispatch to terminals
       const packets = this.packetParser.parse(data);
       for (const packet of packets) {
-        const managed = this.instances.get(packet.id);
-        if (managed) {
-          managed.throttledWriter.write(packet.data);
+        let chunks = coalescedUpdates.get(packet.id);
+        if (!chunks) {
+          chunks = [];
+          coalescedUpdates.set(packet.id, chunks);
         }
+        chunks.push(packet.data);
       }
+    }
+
+    // Dispatch phase: merge and write once per terminal
+    if (hasData) {
+      coalescedUpdates.forEach((chunks, id) => {
+        const managed = this.instances.get(id);
+        if (!managed) return;
+
+        if (chunks.length === 1) {
+          // Single chunk: fast path, no merge needed
+          managed.throttledWriter.write(chunks[0]);
+        } else {
+          // Multiple chunks: concatenate for atomic write
+          managed.throttledWriter.write(chunks.join(""));
+        }
+      });
     }
 
     // Adaptive polling: poll faster when data is flowing, slower when idle.
