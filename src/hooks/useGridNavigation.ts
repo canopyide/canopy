@@ -176,9 +176,11 @@ export function useGridNavigation(options: UseGridNavigationOptions = {}) {
         const currentIndex = sortedPositions.findIndex((p) => p.terminalId === currentId);
         if (currentIndex !== -1) {
           if (direction === "right" || direction === "down") {
-            result = sortedPositions[currentIndex + 1]?.terminalId ?? null;
+            const nextIndex = (currentIndex + 1) % sortedPositions.length;
+            result = sortedPositions[nextIndex].terminalId;
           } else {
-            result = sortedPositions[currentIndex - 1]?.terminalId ?? null;
+            const prevIndex = (currentIndex - 1 + sortedPositions.length) % sortedPositions.length;
+            result = sortedPositions[prevIndex].terminalId;
           }
         }
       }
