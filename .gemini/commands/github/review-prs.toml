@@ -58,27 +58,37 @@ Review, test, and merge all open pull requests in a logical order based on depen
 
 For each PR in the calculated order:
 
-#### 2.1: Context & Setup
+#### 2.1: Deep Analysis & Review (The Gatekeeper)
 *   **Log:** `🔄 Processing PR #{number}: {title}`
-*   **Fetch Details:** Get comments and reviews using `gh pr view` and `gh api` (specifically looking for automated feedback).
-*   **Context Check:**
-    *   Does this PR conflict with changes *already merged in this session*?
-    *   If yes, use `read_file` to understand the integration points.
-    *   Adapt the PR code using `replace` if necessary to fit the new state.
+*   **Fetch Context:**
+    *   Get PR body and comments: `gh pr view {number} --json body,title,url,comments,reviews`
+    *   **Identify Linked Issue:** Scan for "Closes #X" or "Fixes #Y".
+    *   **Fetch Issue Details:** If found, `gh issue view {issue_number} --json body,title`.
+*   **Active Code Review (CRITICAL):**
+    *   **Analyze Changes:** Use `gh pr diff {number}` to see the code.
+    *   **Verify Requirements:** Does the code actually solve the problem described in the issue?
+    *   **Quality Check:**
+        *   Are there obvious bugs or logic errors?
+        *   Is error handling present?
+        *   Does it follow project patterns (e.g., naming, structure)?
+    *   **Pass/Fail Decision:**
+        *   If MAJOR flaws (wrong architecture, missing core logic): **Reject.** Comment on PR and skip.
+        *   If MINOR flaws (bugs, typos, edge cases): **Plan to Fix** in Step 2.3.
 
 #### 2.2: Delete Worktree (CRITICAL)
 *   **Identify Worktree:** Check if a git worktree exists for the PR branch: `git worktree list`.
 *   **DELETE IT:** If found, remove it immediately: `git worktree remove --force {path}`.
 *   **Verify:** Ensure the worktree is gone. The merge **MUST** happen in the main directory.
 
-#### 2.3: Checkout PR Branch (For Review Only)
+#### 2.3: Checkout & Fix (The Builder)
 *   **Fetch & Checkout:** `git fetch origin` -> `git checkout {headRefName}` -> `git pull origin {headRefName}`.
-*   **Address Feedback:**
-    *   Scan comments for P1/P2 priority.
-    *   Fix issues using `replace` or `write_file`.
-    *   Commit fixes: `git commit -am "fix: address review feedback"`
+*   **Apply Fixes:**
+    *   **Execute the "Plan to Fix"** from Step 2.1.
+    *   Address any existing PR comments (P1/P2 priority).
+    *   Use `replace` or `write_file` to improve the code.
+*   **Commit Fixes:** `git commit -am "fix: address review feedback and polish code"`
 *   **DO NOT** merge `main` into the feature branch here.
-*   **DO NOT REBASE** unless absolutely necessary for conflict resolution. Rebasing changes commit hashes and breaks the link between the PR and the merge, preventing GitHub from auto-closing linked issues.
+*   **DO NOT REBASE** unless absolutely necessary.
 *   **DO NOT** run tests here.
 
 #### 2.4: Merge into Target
