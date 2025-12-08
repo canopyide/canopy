@@ -5,9 +5,9 @@
  * responsive. It runs WorktreeService and GitService in an isolated context,
  * communicating with Main via IPC messages.
  *
- * Phase 1: Git operations (this implementation)
- * Phase 2: CopyTreeService (future - #790)
- * Phase 3: DevServerManager parsing (future - #789)
+ * Phase 1: Git operations (implemented)
+ * Phase 2: CopyTreeService (implemented - #790)
+ * Phase 3: DevServer log parsing (implemented - #789)
  */
 
 import { MessagePort } from "node:worker_threads";
@@ -32,6 +32,7 @@ import { extractIssueNumberSync, extractIssueNumber } from "./services/issueExtr
 import { AdaptivePollingStrategy, NoteFileReader } from "./services/worktree/index.js";
 import { initializeLogger } from "./utils/logger.js";
 import { copyTreeService } from "./services/CopyTreeService.js";
+import { DevServerParser } from "./services/devserver/DevServerParser.js";
 import type { CopyTreeProgress } from "../shared/types/ipc.js";
 
 // Validate we're running in UtilityProcess context
@@ -1084,6 +1085,26 @@ port.on("message", async (rawMsg: any) => {
       case "copytree:cancel":
         copyTreeService.cancel(request.operationId);
         break;
+
+      case "devserver:parse-output": {
+        const { requestId, worktreeId, output } = request;
+        try {
+          const detected = DevServerParser.detectUrl(output);
+          sendEvent({
+            type: "devserver:urls-detected",
+            requestId,
+            worktreeId,
+            detected,
+          });
+        } catch (error) {
+          sendEvent({
+            type: "error",
+            error: (error as Error).message,
+            requestId,
+          });
+        }
+        break;
+      }
 
       default:
         console.warn("[WorkspaceHost] Unknown message type:", (msg as { type: string }).type);
