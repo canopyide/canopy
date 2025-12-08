@@ -335,6 +335,11 @@ export function setupTerminalStoreListeners() {
 
     if (!terminal) return;
 
+    // Ignore exit events during restart - the exit is expected from killing the old PTY
+    if (terminal.isRestarting) {
+      return;
+    }
+
     // If already trashed, this is TTL expiry cleanup - permanently remove
     if (terminal.location === "trash") {
       state.removeTerminal(id);

@@ -626,6 +626,13 @@ export const createTerminalRegistrySlice =
         return;
       }
 
+      // Mark as restarting BEFORE killing old PTY to prevent auto-trash from exit event
+      set((state) => ({
+        terminals: state.terminals.map((t) =>
+          t.id === id ? { ...t, isRestarting: true } : t
+        ),
+      }));
+
       let targetLocation = terminal.location;
       if (terminal.location === "trash") {
         const trashedInfo = state.trashedTerminals.get(id);
@@ -698,6 +705,7 @@ export const createTerminalRegistrySlice =
                   agentState: isAgent ? ("idle" as const) : undefined,
                   lastStateChange: isAgent ? Date.now() : undefined,
                   command: commandToRun,
+                  isRestarting: false, // Clear the restart guard flag
                 }
               : t
           );
@@ -718,9 +726,19 @@ export const createTerminalRegistrySlice =
           });
         }
       } catch (error) {
+        // Clear restart flag and trash terminal since restart failed after killing PTY
+        // The exit event from the killed PTY was suppressed by isRestarting,
+        // so we must explicitly clean up the dead terminal
+        set((state) => ({
+          terminals: state.terminals.map((t) =>
+            t.id === id ? { ...t, isRestarting: false } : t
+          ),
+        }));
         // Re-enable normal mode if restart failed
         terminalClient.setBuffering(id, false).catch(() => {});
         console.error(`[TerminalStore] Failed to restart terminal ${id}:`, error);
+        // Trash the terminal since it has no backend process after failed restart
+        get().trashTerminal(id);
       }
     },
   });

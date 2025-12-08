@@ -285,6 +285,8 @@ export interface TerminalInstance {
   isVisible?: boolean;
   /** Counter incremented on restart to trigger React re-render without unmounting parent */
   restartKey?: number;
+  /** Guard flag to prevent auto-trash during restart flow (exit event race condition) */
+  isRestarting?: boolean;
 }
 
 /** Options for spawning a new PTY process */
