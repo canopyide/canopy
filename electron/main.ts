@@ -131,6 +131,58 @@ if (!gotTheLock) {
   });
 }
 
+async function initializeDeferredServices(
+  window: BrowserWindow,
+  devServer: DevServerManager,
+  cliService: CliAvailabilityService,
+  eventBuf: EventBuffer
+): Promise<void> {
+  console.log("[MAIN] Initializing deferred services in background...");
+  const startTime = Date.now();
+
+  // Initialize DevServerManager
+  devServer.initialize(window, (channel: string, ...args: unknown[]) => {
+    if (window && !window.isDestroyed()) {
+      sendToRenderer(window, channel, ...args);
+    }
+  });
+  console.log("[MAIN] DevServerManager initialized");
+
+  // Parallelize independent async services
+  const results = await Promise.allSettled([
+    cliService.checkAvailability().then((availability) => {
+      console.log("[MAIN] CLI availability checked:", availability);
+      return availability;
+    }),
+    getTranscriptService()
+      .initialize()
+      .then(() => {
+        console.log("[MAIN] TranscriptService initialized");
+      }),
+  ]);
+
+  // Log any failures
+  results.forEach((result, index) => {
+    if (result.status === "rejected") {
+      const serviceName = ["CliAvailabilityService", "TranscriptService"][index];
+      console.error(`[MAIN] ${serviceName} initialization failed:`, result.reason);
+    }
+  });
+
+  // Synchronous services
+  initializeHibernationService();
+  console.log("[MAIN] HibernationService initialized");
+
+  initializeSystemSleepService();
+  console.log("[MAIN] SystemSleepService initialized");
+
+  eventBuf.start();
+  console.log("[MAIN] EventBuffer started");
+
+  const elapsed = Date.now() - startTime;
+  console.log(`[MAIN] All deferred services initialized in ${elapsed}ms`);
+}
+
 async function createWindow(): Promise<void> {
   if (mainWindow && !mainWindow.isDestroyed()) {
     console.log("[MAIN] Main window already exists, focusing");
@@ -214,9 +266,10 @@ async function createWindow(): Promise<void> {
   console.log("[MAIN] Creating application menu...");
   createApplicationMenu(mainWindow);
 
-  // Initialize PtyClient (replaces PtyManager + TerminalObserver + PtyPool)
-  // The PtyClient spawns a UtilityProcess (pty-host) that handles all terminal I/O
-  // and state analysis, keeping the Main process responsive.
+  // CRITICAL SERVICES: Must complete before renderer loads
+  // PtyClient, ProjectStore - terminals and workspace context required immediately
+  console.log("[MAIN] Initializing critical services...");
+
   console.log("[MAIN] Initializing PtyClient (Pty Host pattern)...");
   try {
     ptyClient = new PtyClient({
@@ -225,13 +278,10 @@ async function createWindow(): Promise<void> {
       showCrashDialog: true,
     });
 
-    // Listen for host crashes
     ptyClient.on("host-crash", (code) => {
       console.error(`[MAIN] Pty Host crashed with code ${code}`);
-      // The PtyClient handles restart attempts internally
     });
 
-    // Wait for host to be ready before proceeding
     await ptyClient.waitForReady();
     console.log("[MAIN] PtyClient initialized successfully (Pty Host ready)");
   } catch (error) {
@@ -239,46 +289,16 @@ async function createWindow(): Promise<void> {
     throw error;
   }
 
-  console.log("[MAIN] Initializing DevServerManager...");
-  devServerManager = new DevServerManager();
-  devServerManager.initialize(mainWindow, (channel: string, ...args: unknown[]) => {
-    if (mainWindow) {
-      sendToRenderer(mainWindow, channel, ...args);
-    }
-  });
-  console.log("[MAIN] DevServerManager initialized successfully");
-
-  console.log("[MAIN] Initializing CliAvailabilityService...");
-  cliAvailabilityService = new CliAvailabilityService();
-  cliAvailabilityService.checkAvailability().then((availability) => {
-    console.log("[MAIN] CLI availability checked:", availability);
-  });
-  console.log("[MAIN] CliAvailabilityService initialized successfully");
-
   console.log("[MAIN] Initializing ProjectStore...");
   await projectStore.initialize();
   console.log("[MAIN] ProjectStore initialized successfully");
 
-  console.log("[MAIN] Initializing HibernationService...");
-  initializeHibernationService();
-  console.log("[MAIN] HibernationService initialized successfully");
-
-  console.log("[MAIN] Initializing SystemSleepService...");
-  initializeSystemSleepService();
-  console.log("[MAIN] SystemSleepService initialized successfully");
-
-  console.log("[MAIN] Initializing TranscriptService...");
-  const transcriptService = getTranscriptService();
-  await transcriptService.initialize();
-  console.log("[MAIN] TranscriptService initialized successfully");
-
-  console.log("[MAIN] Initializing EventBuffer...");
+  // Create placeholder instances for IPC registration
+  // These will be properly initialized in deferred services
+  devServerManager = new DevServerManager();
+  cliAvailabilityService = new CliAvailabilityService();
   eventBuffer = new EventBuffer(1000);
-  eventBuffer.start();
-
-  console.log("[MAIN] Initializing SidecarManager...");
   sidecarManager = new SidecarManager(mainWindow);
-  console.log("[MAIN] SidecarManager initialized successfully");
 
   // IMPORTANT: Register handlers BEFORE loading renderer to avoid race conditions
   console.log("[MAIN] Registering IPC handlers...");
@@ -324,7 +344,7 @@ async function createWindow(): Promise<void> {
     ipcMain.removeAllListeners(CHANNELS.EVENT_INSPECTOR_SUBSCRIBE);
     ipcMain.removeAllListeners(CHANNELS.EVENT_INSPECTOR_UNSUBSCRIBE);
   };
-  console.log("[MAIN] EventBuffer initialized and events forwarding to renderer (when subscribed)");
+  console.log("[MAIN] EventBuffer subscriptions ready (will start with deferred services)");
 
   // Power management: pause services during sleep to prevent time-drift crashes
   console.log("[MAIN] Registering power monitor handlers...");
@@ -391,7 +411,8 @@ async function createWindow(): Promise<void> {
   });
   console.log("[MAIN] Power monitor handlers registered");
 
-  console.log("[MAIN] All services initialized, loading renderer...");
+  // LOAD RENDERER: Don't wait for deferred services
+  console.log("[MAIN] Critical services ready, loading renderer...");
   if (process.env.NODE_ENV === "development") {
     console.log("[MAIN] Loading Vite dev server at http://localhost:5173");
     mainWindow.loadURL("http://localhost:5173");
@@ -411,6 +432,16 @@ async function createWindow(): Promise<void> {
   } catch (error) {
     console.error("[MAIN] Failed to spawn default terminal:", error);
   }
+
+  // DEFERRED SERVICES: Initialize in background after renderer loads
+  initializeDeferredServices(
+    mainWindow,
+    devServerManager!,
+    cliAvailabilityService!,
+    eventBuffer!
+  ).catch((error) => {
+    console.error("[MAIN] Deferred services initialization failed:", error);
+  });
 
   mainWindow.on("closed", async () => {
     // NOTE: Terminal state is persisted by the renderer via appClient.setState()

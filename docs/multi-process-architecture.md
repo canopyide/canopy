@@ -56,6 +56,7 @@ By moving heavy work to UtilityProcesses, the Main process stays responsive rega
 **Role:** Lightweight coordinator and window manager.
 
 **Responsibilities:**
+
 - Create and manage BrowserWindow
 - Route IPC messages between Renderer and UtilityProcesses
 - Handle application lifecycle (ready, quit, activate)
@@ -63,6 +64,7 @@ By moving heavy work to UtilityProcesses, the Main process stays responsive rega
 - Spawn and monitor UtilityProcesses
 
 **What it does NOT do:**
+
 - Git operations or parsing
 - File system traversal (CopyTree)
 - Terminal data processing
@@ -75,12 +77,14 @@ By moving heavy work to UtilityProcesses, the Main process stays responsive rega
 **File:** `electron/workspace-host.ts`
 
 **Responsibilities:**
+
 - **Git Operations:** Worktree listing, status, create, delete
 - **Git Watching:** File system watcher on `.git` folder for reactive updates
 - **CopyTree Generation:** File traversal, content aggregation, token counting
 - **DevServer Parsing:** Regex matching on server logs to detect URLs
 
 **Why isolated:**
+
 - Git operations spawn child processes and parse large outputs
 - CopyTree reads hundreds of files and concatenates large strings
 - DevServer parsing runs regex on every line of server output
@@ -92,18 +96,19 @@ Prefer **file watching over polling** for git status updates:
 
 ```typescript
 // Use @parcel/watcher for native performance
-import { subscribe } from '@parcel/watcher';
+import { subscribe } from "@parcel/watcher";
 
 // Watch .git folder for changes
 const subscription = await subscribe(gitDir, (err, events) => {
   // Debounce and trigger git status after 100ms
-  if (events.some(e => e.path.includes('HEAD') || e.path.includes('index'))) {
+  if (events.some((e) => e.path.includes("HEAD") || e.path.includes("index"))) {
     debouncedGitStatus();
   }
 });
 ```
 
 **Benefits over polling:**
+
 - Instant updates (<200ms) vs waiting 2-10 seconds
 - Zero CPU when idle vs constant polling overhead
 - More responsive user experience
@@ -115,6 +120,7 @@ const subscription = await subscribe(gitDir, (err, events) => {
 **File:** `electron/pty-host.ts`
 
 **Responsibilities:**
+
 - **Terminal Management:** Spawn, resize, kill PTY processes
 - **Data Routing:** Receive PTY output, send to Renderer
 - **State Machine:** Track agent states (idle, working, waiting, completed)
@@ -122,6 +128,7 @@ const subscription = await subscribe(gitDir, (err, events) => {
 - **Backpressure:** Handle slow consumers via ring buffer flow control
 
 **Performance Optimizations:**
+
 - SharedArrayBuffer ring buffers for zero-copy terminal output
 - Dual buffers: visual (Renderer) and analysis (Web Worker)
 - Backpressure detection with automatic PTY pause/resume
@@ -131,12 +138,14 @@ const subscription = await subscribe(gitDir, (err, events) => {
 **Role:** User interface and user interaction.
 
 **Responsibilities:**
+
 - React component rendering
 - Zustand state management
 - xterm.js terminal rendering
 - User input handling
 
 **Communication:**
+
 - IPC to Main via `window.electron` bridge
 - SharedArrayBuffer for high-throughput terminal data
 
@@ -151,6 +160,7 @@ Renderer ↔ IPC (Main) ↔ postMessage ↔ UtilityProcess
 ```
 
 **Problems with this approach:**
+
 - Every message is serialized twice (Renderer→Main, Main→Utility)
 - Main thread jitter delays messages (window resize, menu handling)
 - Terminal keystrokes lag when Main is busy
@@ -164,36 +174,37 @@ Renderer ↔ MessagePort ↔ UtilityProcess  (Main not involved)
 ```
 
 **Setup:**
+
 ```typescript
 // Main process creates the channel once
 const { port1, port2 } = new MessageChannelMain();
 
 // Send port1 to Renderer (via preload)
-mainWindow.webContents.postMessage('utility-port', null, [port1]);
+mainWindow.webContents.postMessage("utility-port", null, [port1]);
 
 // Send port2 to UtilityProcess
-utilityProcess.postMessage({ type: 'connect-port' }, [port2]);
+utilityProcess.postMessage({ type: "connect-port" }, [port2]);
 
 // Result: Renderer and UtilityProcess communicate directly
 ```
 
 ### IPC Methods
 
-| Method | Use Case | Performance | Complexity |
-|--------|----------|-------------|------------|
-| `postMessage` via Main | Infrequent control messages | Adequate | Low |
-| `MessagePort` (direct) | Frequent updates, user input | Fast | Medium |
-| `postMessage` + Transferables | Large binary data (one-way) | Zero-copy | Medium |
-| `SharedArrayBuffer` | Real-time streaming | Fastest | High |
+| Method                        | Use Case                     | Performance | Complexity |
+| ----------------------------- | ---------------------------- | ----------- | ---------- |
+| `postMessage` via Main        | Infrequent control messages  | Adequate    | Low        |
+| `MessagePort` (direct)        | Frequent updates, user input | Fast        | Medium     |
+| `postMessage` + Transferables | Large binary data (one-way)  | Zero-copy   | Medium     |
+| `SharedArrayBuffer`           | Real-time streaming          | Fastest     | High       |
 
 ### When to Use Each Method
 
-| Data Type | Frequency | Method |
-|-----------|-----------|--------|
-| Git status updates | Every few seconds | `postMessage` via Main |
-| Terminal keystrokes | 10-100/second | `MessagePort` (direct) |
-| Terminal output | Continuous stream | `SharedArrayBuffer` |
-| CopyTree result | Once per operation | `Transferables` (zero-copy) |
+| Data Type           | Frequency          | Method                      |
+| ------------------- | ------------------ | --------------------------- |
+| Git status updates  | Every few seconds  | `postMessage` via Main      |
+| Terminal keystrokes | 10-100/second      | `MessagePort` (direct)      |
+| Terminal output     | Continuous stream  | `SharedArrayBuffer`         |
+| CopyTree result     | Once per operation | `Transferables` (zero-copy) |
 
 ### Workspace-Host Communication
 
@@ -203,7 +214,7 @@ Uses `postMessage` via Main for control, optional MessagePort for frequent updat
 // WorkspaceClient.ts (Main process)
 this.child.postMessage({
   type: "git:list-worktrees",
-  projectPath: "/path/to/project"
+  projectPath: "/path/to/project",
 });
 
 // workspace-host.ts (UtilityProcess)
@@ -216,6 +227,7 @@ port.on("message", async (msg) => {
 ```
 
 **Why postMessage is sufficient:**
+
 - Git data is small (kilobytes, not megabytes)
 - Operations are infrequent (every 2-10 seconds)
 - No real-time streaming requirement
@@ -231,11 +243,12 @@ ptyClient.send({ type: "write", id, data });
 ptyClient.send({ type: "resize", id, cols, rows });
 
 // Terminal output via SharedArrayBuffer (zero-copy)
-const visualBuffer = new SharedArrayBuffer(10 * 1024 * 1024);  // 10MB
+const visualBuffer = new SharedArrayBuffer(10 * 1024 * 1024); // 10MB
 const analysisBuffer = new SharedArrayBuffer(10 * 1024 * 1024); // 10MB
 ```
 
 **Why SharedArrayBuffer for terminal output:**
+
 - Terminal output can be megabytes per second
 - 60fps rendering requires <16ms latency
 - Copying data via IPC would be too slow
@@ -324,6 +337,7 @@ port.on("message", (msg) => {
 ```
 
 **Crash Recovery:**
+
 - UtilityProcesses are monitored for crashes
 - Automatic restart with exponential backoff (max 3 attempts)
 - Pending operations are re-queued after restart
@@ -336,15 +350,15 @@ UtilityProcesses are single-threaded. If a heavy operation (like CopyTree) block
 
 ```typescript
 // workspace-host.ts
-import { Worker } from 'node:worker_threads';
+import { Worker } from "node:worker_threads";
 
 // Heavy CopyTree runs in a Worker, keeping main event loop responsive
-const worker = new Worker('./copytree-worker.js', {
-  workerData: { rootPath, options }
+const worker = new Worker("./copytree-worker.js", {
+  workerData: { rootPath, options },
 });
 
-worker.on('message', (result) => {
-  port.postMessage({ type: 'copytree:complete', result });
+worker.on("message", (result) => {
+  port.postMessage({ type: "copytree:complete", result });
 });
 
 // Health checks still work because workspace-host event loop is free
@@ -356,12 +370,12 @@ When Main crashes, child processes (bash, git) may become orphans.
 
 ```typescript
 // In pty-host.ts and workspace-host.ts
-import { kill } from 'tree-kill';
+import { kill } from "tree-kill";
 
-process.parentPort.on('close', () => {
+process.parentPort.on("close", () => {
   // Parent died - clean up all children
   for (const [id, terminal] of terminals) {
-    kill(terminal.pid, 'SIGTERM');
+    kill(terminal.pid, "SIGTERM");
   }
   process.exit(0);
 });
@@ -371,23 +385,23 @@ process.parentPort.on('close', () => {
 
 ### Expected Metrics After Implementation
 
-| Metric | Before | After |
-|--------|--------|-------|
-| Time to first paint | 2-4s | <1s |
-| Main CPU during git polling | 60-80% | <10% |
-| Terminal input latency | 100-300ms | <16ms |
-| CopyTree UI freeze | 500ms-2s | 0ms |
-| Memory overhead | ~40MB | ~80-100MB |
+| Metric                      | Before    | After     |
+| --------------------------- | --------- | --------- |
+| Time to first paint         | 2-4s      | <1s       |
+| Main CPU during git polling | 60-80%    | <10%      |
+| Terminal input latency      | 100-300ms | <16ms     |
+| CopyTree UI freeze          | 500ms-2s  | 0ms       |
+| Memory overhead             | ~40MB     | ~80-100MB |
 
 ### Memory Budget
 
-| Process | Expected Memory |
-|---------|-----------------|
-| Main | ~40-60MB |
-| Workspace-Host | ~20-30MB |
-| Pty-Host | ~20-30MB |
-| Renderer | ~100-200MB |
-| **Total** | **~200-320MB** |
+| Process        | Expected Memory |
+| -------------- | --------------- |
+| Main           | ~40-60MB        |
+| Workspace-Host | ~20-30MB        |
+| Pty-Host       | ~20-30MB        |
+| Renderer       | ~100-200MB      |
+| **Total**      | **~200-320MB**  |
 
 The additional ~40-60MB for UtilityProcesses is an acceptable trade-off for guaranteed UI responsiveness.
 
@@ -420,15 +434,15 @@ shared/
 
 ## Implementation Status
 
-| Component | Status | Issue |
-|-----------|--------|-------|
-| Pty-Host | ✅ Implemented | - |
-| Workspace-Host (Git) | 📋 Planned | #786 |
-| Workspace-Host (CopyTree) | 📋 Planned | #790 |
-| Workspace-Host (DevServer) | 📋 Planned | #789 |
-| Deferred Initialization | 📋 Planned | #788 |
-| Transcript to Pty-Host | 📋 Planned | #791 |
-| MessagePorts (optional) | 📋 Planned | #787 |
+| Component                  | Status         | Issue |
+| -------------------------- | -------------- | ----- |
+| Pty-Host                   | ✅ Implemented | -     |
+| Workspace-Host (Git)       | 📋 Planned     | #786  |
+| Workspace-Host (CopyTree)  | 📋 Planned     | #790  |
+| Workspace-Host (DevServer) | 📋 Planned     | #789  |
+| Deferred Initialization    | 📋 Planned     | #788  |
+| Transcript to Pty-Host     | 📋 Planned     | #791  |
+| MessagePorts (optional)    | 📋 Planned     | #787  |
 
 ## Deployment Considerations
 
@@ -442,9 +456,9 @@ session.defaultSession.webRequest.onHeadersReceived((details, callback) => {
   callback({
     responseHeaders: {
       ...details.responseHeaders,
-      'Cross-Origin-Opener-Policy': ['same-origin'],
-      'Cross-Origin-Embedder-Policy': ['require-corp']
-    }
+      "Cross-Origin-Opener-Policy": ["same-origin"],
+      "Cross-Origin-Embedder-Policy": ["require-corp"],
+    },
   });
 });
 ```
@@ -471,7 +485,7 @@ For large repositories, consider:
 ```typescript
 // Send large results as Transferable (zero-copy)
 const buffer = new TextEncoder().encode(result).buffer;
-port.postMessage({ type: 'copytree:complete', data: buffer }, [buffer]);
+port.postMessage({ type: "copytree:complete", data: buffer }, [buffer]);
 // Note: buffer is now detached (unusable) in workspace-host
 ```
 
