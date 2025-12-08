@@ -30,10 +30,15 @@ import { WorktreeRemovedError } from "./utils/errorTypes.js";
 import { categorizeWorktree } from "./utils/worktreeMood.js";
 import { extractIssueNumberSync, extractIssueNumber } from "./services/issueExtractor.js";
 import { AdaptivePollingStrategy, NoteFileReader } from "./services/worktree/index.js";
+import { initializeLogger } from "./utils/logger.js";
 
 // Validate we're running in UtilityProcess context
 if (!process.parentPort) {
   throw new Error("[WorkspaceHost] Must run in UtilityProcess context");
+}
+
+if (process.env.CANOPY_USER_DATA) {
+  initializeLogger(process.env.CANOPY_USER_DATA);
 }
 
 const port = process.parentPort as unknown as MessagePort;

@@ -14,11 +14,15 @@ import { WorkspaceClient, disposeWorkspaceClient } from "./services/WorkspaceCli
 import { CliAvailabilityService } from "./services/CliAvailabilityService.js";
 import { SidecarManager } from "./services/SidecarManager.js";
 import { createWindowWithState } from "./windowState.js";
-import { setLoggerWindow } from "./utils/logger.js";
+import { setLoggerWindow, initializeLogger } from "./utils/logger.js";
 import { openExternalUrl } from "./utils/openExternal.js";
 import { EventBuffer } from "./services/EventBuffer.js";
 import { CHANNELS } from "./ipc/channels.js";
 import { createApplicationMenu } from "./menu.js";
+
+// Initialize logger early with userData path
+initializeLogger(app.getPath("userData"));
+
 import { projectStore } from "./services/ProjectStore.js";
 import { store } from "./store.js";
 import { MigrationRunner } from "./services/StoreMigrations.js";

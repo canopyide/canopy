@@ -1,7 +1,6 @@
 import { getErrorDetails } from "./errorTypes.js";
 import { appendFileSync, mkdirSync, existsSync } from "fs";
 import { join } from "path";
-import { app } from "electron";
 import type { BrowserWindow } from "electron";
 import { logBuffer, type LogEntry } from "../services/LogBuffer.js";
 
@@ -11,12 +10,30 @@ interface LogContext {
   [key: string]: unknown;
 }
 
+let storagePath: string | null = null;
+
+export function initializeLogger(path: string): void {
+  storagePath = path;
+}
+
 function getLogDirectory(): string {
-  if (process.env.NODE_ENV === "development") {
-    const appPath = app.getAppPath();
-    return join(appPath, "logs");
+  // Priority 1: Environment variable (Utility Processes)
+  if (process.env.CANOPY_USER_DATA) {
+    return join(process.env.CANOPY_USER_DATA, "logs");
   }
-  return join(app.getPath("userData"), "logs");
+
+  // Priority 2: Explicitly initialized path (Main Process)
+  if (storagePath) {
+    return join(storagePath, "logs");
+  }
+
+  // Priority 3: Development fallback
+  if (process.env.NODE_ENV === "development") {
+    return join(process.cwd(), "logs");
+  }
+
+  // Fallback
+  return join(process.cwd(), "logs");
 }
 
 function getLogFilePath(): string {
