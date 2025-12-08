@@ -1,4 +1,4 @@
-import { useCallback, useState, useEffect, useMemo } from "react";
+import { useCallback, useState, useEffect, useMemo, useRef } from "react";
 import { useShallow } from "zustand/react/shallow";
 import type { WorktreeState, ProjectDevServerSettings } from "../../types";
 import { ActivityLight } from "./ActivityLight";
@@ -36,6 +36,7 @@ import {
 import { ConfirmDialog } from "../Terminal/ConfirmDialog";
 import { WorktreeDeleteDialog } from "./WorktreeDeleteDialog";
 import {
+  Check,
   Copy,
   Code,
   CircleDot,
@@ -141,6 +142,21 @@ export function WorktreeCard({
   const runRecipe = useRecipeStore((state) => state.runRecipe);
   const recipes = getRecipesForWorktree(worktree.id);
   const [runningRecipeId, setRunningRecipeId] = useState<string | null>(null);
+
+  const [treeCopied, setTreeCopied] = useState(false);
+  const treeCopyTimeoutRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const isMountedRef = useRef(true);
+
+  useEffect(() => {
+    isMountedRef.current = true;
+    return () => {
+      isMountedRef.current = false;
+      if (treeCopyTimeoutRef.current) {
+        clearTimeout(treeCopyTimeoutRef.current);
+        treeCopyTimeoutRef.current = null;
+      }
+    };
+  }, []);
 
   const { counts: terminalCounts, terminals: worktreeTerminals } = useWorktreeTerminals(
     worktree.id
@@ -305,6 +321,29 @@ export function WorktreeCard({
     [setFocused]
   );
 
+  const handleCopyTreeClick = useCallback(
+    (e: React.MouseEvent<HTMLButtonElement>) => {
+      e.stopPropagation();
+      e.currentTarget.blur();
+
+      onCopyTree();
+
+      setTreeCopied(true);
+
+      if (treeCopyTimeoutRef.current) {
+        clearTimeout(treeCopyTimeoutRef.current);
+      }
+
+      treeCopyTimeoutRef.current = setTimeout(() => {
+        if (isMountedRef.current) {
+          setTreeCopied(false);
+          treeCopyTimeoutRef.current = null;
+        }
+      }, 2000);
+    },
+    [onCopyTree]
+  );
+
   const branchLabel = worktree.branch ?? worktree.name;
   const hasChanges = (worktree.worktreeChanges?.changedFileCount ?? 0) > 0;
   const rawLastCommitMessage = worktree.worktreeChanges?.lastCommitMessage;
@@ -465,20 +504,20 @@ export function WorktreeCard({
               {/* Right: Actions */}
               <div className="flex items-center gap-1 shrink-0">
                 <button
-                  onClick={(e) => {
-                    e.stopPropagation();
-                    e.currentTarget.blur();
-                    onCopyTree();
-                  }}
+                  onClick={handleCopyTreeClick}
                   className={cn(
                     "p-1 rounded transition-colors",
                     "text-canopy-text/40 hover:text-canopy-text hover:bg-white/10",
                     "focus-visible:outline focus-visible:outline-2 focus-visible:outline-canopy-accent"
                   )}
-                  title="Copy Context"
-                  aria-label="Copy Context"
+                  title={treeCopied ? "Context Copied!" : "Copy Context"}
+                  aria-label={treeCopied ? "Context Copied" : "Copy Context"}
                 >
-                  <Copy className="w-3.5 h-3.5" />
+                  {treeCopied ? (
+                    <Check className="w-3.5 h-3.5 text-green-400" />
+                  ) : (
+                    <Copy className="w-3.5 h-3.5" />
+                  )}
                 </button>
                 <DropdownMenu>
                   <DropdownMenuTrigger asChild>
