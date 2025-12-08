@@ -42,215 +42,49 @@ interface ManagedTerminal {
   tierChangeTimer?: number;
 }
 
-const BURST_MODE_WINDOW_MS = 500;
 const MAX_WEBGL_RECOVERY_ATTEMPTS = 3;
-// Coalescing window: writes within this window after any write get queued.
-// This batches TUI redraw sequences (clear + draw) that arrive as separate chunks,
-// while still allowing the first write (keystroke echo) to be immediate.
-// 16ms ~= one frame; this avoids mid-frame tearing when larger updates straddle a flush.
-const COALESCE_WINDOW_MS = 16;
-// Safety valve: force flush if pending data exceeds this limit.
-// Prevents memory buildup if data arrives faster than RAF can flush.
-const MAX_PENDING_BYTES = 32768; // 32KB
 const WEBGL_DISPOSE_GRACE_MS = 10000; // 10s grace period before releasing WebGL on hide
 const TIER_DOWNGRADE_HYSTERESIS_MS = 500; // Delay before applying tier downgrades to prevent flapping
 
 /**
- * Creates a throttled writer that batches terminal output for efficient rendering.
- * Uses Uint8Array storage to reduce GC pressure from string concatenation.
- * xterm.js write() accepts both string and Uint8Array directly.
+ * Creates a simple writer that passes data directly to xterm.
+ *
+ * VS Code's approach: All batching is done at the PTY host level (OutputThrottler
+ * with 4ms delay for focused terminals). The renderer just writes directly to xterm.
+ * This avoids complex heuristics that can add latency to keystroke echoes.
  */
 function createThrottledWriter(
   terminal: Terminal,
-  initialProvider: RefreshTierProvider = () => TerminalRefreshTier.FOCUSED
+  _initialProvider: RefreshTierProvider = () => TerminalRefreshTier.FOCUSED
 ) {
-  // Use array of chunks instead of string concatenation to reduce GC pressure
-  let chunks: (string | Uint8Array)[] = [];
-  let pendingBytes = 0; // Track total bytes for safety valve
-  let timerId: number | null = null;
-  let rafId: number | null = null;
-  let getRefreshTier = initialProvider;
-  let lastInputTime = 0;
-  let lastOutputTime = 0;
-  // Track last write (immediate or flush) for coalescing window
-  let lastWriteTime = 0;
-
-  const flush = () => {
-    if (chunks.length > 0) {
-      const now = performance.now();
-      // xterm.js efficiently handles multiple writes
-      for (const chunk of chunks) {
-        terminal.write(chunk);
-      }
-      chunks = [];
-      pendingBytes = 0;
-      lastWriteTime = now;
-      lastOutputTime = now;
-    }
-    timerId = null;
-    rafId = null;
-  };
-
-  const scheduleFlush = (delay: number) => {
-    if (timerId !== null || rafId !== null) return;
-
-    // Use requestAnimationFrame for BURST mode (high frequency updates).
-    // This ensures that all chunks arriving within a single frame (e.g., Clear + Redraw)
-    // are batched and executed together before the browser paints.
-    // This eliminates the "flash" of an empty screen between a Clear and a Write.
-    // IMPORTANT: When document is hidden, RAF is paused. Use setTimeout fallback to prevent freeze.
-    if (delay <= 16 && document.visibilityState === "visible") {
-      rafId = requestAnimationFrame(flush);
-    } else {
-      timerId = window.setTimeout(flush, delay <= 16 ? delay : delay);
-    }
-  };
-
   return {
     write: (data: string | Uint8Array) => {
-      const now = performance.now();
-      const isSmallChunk = typeof data === "string" ? data.length < 512 : data.byteLength < 512;
-
-      // Coalescing window: batch writes that arrive within a frame of each other.
-      // This prevents TUI flashing from "clear + draw" sequences.
-      const withinCoalesceWindow = now - lastWriteTime < COALESCE_WINDOW_MS;
-
-      // Keystroke echo detection: if data arrives shortly after user input,
-      // it's likely the echo of what they just typed. Bypass coalescing for
-      // immediate feedback. 50ms window covers round-trip to PTY and back.
-      const isLikelyKeystrokeEcho = now - lastInputTime < 50;
-
-      // Immediate write conditions:
-      // - Queue is empty (no pending data)
-      // - Small chunk (likely keystroke echo or small ANSI response)
-      // - Either: outside coalescing window OR likely a keystroke echo
-      if (chunks.length === 0 && isSmallChunk && (!withinCoalesceWindow || isLikelyKeystrokeEcho)) {
-        terminal.write(data);
-        lastWriteTime = now;
-        lastOutputTime = now;
-        return;
-      }
-
-      // Capture time since last output BEFORE updating (for burst mode detection)
-      const timeSinceOutput = now - lastOutputTime;
-
-      // Queue the data for batched flush
-      const chunkSize = typeof data === "string" ? data.length : data.byteLength;
-      chunks.push(data);
-      pendingBytes += chunkSize;
-      lastOutputTime = now;
-
-      // Safety valve: force immediate flush if buffer gets too large.
-      // Prevents memory buildup if data arrives faster than RAF can flush.
-      if (pendingBytes > MAX_PENDING_BYTES) {
-        if (rafId !== null) {
-          cancelAnimationFrame(rafId);
-          rafId = null;
-        }
-        if (timerId !== null) {
-          clearTimeout(timerId);
-          timerId = null;
-        }
-        flush();
-        return;
-      }
-
-      // Consider recent input OR output for burst mode to handle streaming agent output
-      const timeSinceInput = now - lastInputTime;
-      const isBurstMode =
-        timeSinceInput < BURST_MODE_WINDOW_MS || timeSinceOutput < BURST_MODE_WINDOW_MS;
-      const tierDelay = getRefreshTier();
-      const effectiveDelay = isBurstMode ? TerminalRefreshTier.BURST : tierDelay;
-
-      // If switching to faster mode, cancel slow timer and reschedule
-      if (timerId !== null && effectiveDelay <= 16) {
-        clearTimeout(timerId);
-        timerId = null;
-      }
-
-      scheduleFlush(effectiveDelay);
+      // Direct write to xterm - all batching happens in the backend OutputThrottler
+      terminal.write(data);
     },
     dispose: () => {
-      if (timerId !== null) {
-        clearTimeout(timerId);
-        timerId = null;
-      }
-      if (rafId !== null) {
-        cancelAnimationFrame(rafId);
-        rafId = null;
-      }
-      // Flush any remaining chunks
-      if (chunks.length > 0) {
-        for (const chunk of chunks) {
-          terminal.write(chunk);
-        }
-        chunks = [];
-      }
+      // Nothing to clean up - we don't buffer
     },
-    updateProvider: (provider: RefreshTierProvider) => {
-      getRefreshTier = provider;
+    updateProvider: (_provider: RefreshTierProvider) => {
+      // No-op - we don't use tiers for batching anymore
     },
     notifyInput: () => {
-      lastInputTime = performance.now();
-      // If pending data on slow timer, switch to fast RAF
-      if (chunks.length > 0 && timerId !== null) {
-        clearTimeout(timerId);
-        timerId = null;
-        rafId = requestAnimationFrame(flush);
-      }
+      // No-op - keystroke timing not needed without renderer-side batching
     },
     getDebugInfo: () => {
-      const now = performance.now();
-      const timeSinceInput = now - lastInputTime;
-      const timeSinceOutput = now - lastOutputTime;
-      const isBurstMode =
-        timeSinceInput < BURST_MODE_WINDOW_MS || timeSinceOutput < BURST_MODE_WINDOW_MS;
-      const tierDelay = getRefreshTier();
-      const effectiveDelay = isBurstMode ? TerminalRefreshTier.BURST : tierDelay;
-      const fps = Math.round(1000 / effectiveDelay);
-      const tierName =
-        effectiveDelay === TerminalRefreshTier.BURST
-          ? "BURST"
-          : effectiveDelay === TerminalRefreshTier.FOCUSED
-            ? "FOCUSED"
-            : effectiveDelay === TerminalRefreshTier.VISIBLE
-              ? "VISIBLE"
-              : "BACKGROUND";
-      // Calculate total buffered bytes for debug info (use byte length for strings)
-      const bufferSize = chunks.reduce((sum, chunk) => {
-        if (typeof chunk === "string") {
-          // Use TextEncoder to get actual byte length (UTF-8)
-          return sum + new TextEncoder().encode(chunk).length;
-        }
-        return sum + chunk.length;
-      }, 0);
-      return { tierName, fps, isBurstMode, effectiveDelay, bufferSize };
+      return {
+        tierName: "DIRECT",
+        fps: 0,
+        isBurstMode: false,
+        effectiveDelay: 0,
+        bufferSize: 0,
+      };
     },
     boost: () => {
-      // Activate burst mode so subsequent writes are fast
-      lastInputTime = performance.now();
-
-      // If we have pending data and a timer running, force a quick flush via RAF.
-      // This catches the case where data came in while backgrounded (long timer)
-      // and we want to show it NOW because the user clicked the tab.
-      if (timerId !== null) {
-        clearTimeout(timerId);
-        timerId = null;
-        rafId = requestAnimationFrame(flush);
-      }
+      // No-op - we don't buffer
     },
     clear: () => {
-      // Discard pending chunks without writing them (prevents ghost echoes after clear)
-      if (timerId !== null) {
-        clearTimeout(timerId);
-        timerId = null;
-      }
-      if (rafId !== null) {
-        cancelAnimationFrame(rafId);
-        rafId = null;
-      }
-      chunks = [];
-      pendingBytes = 0;
+      // No-op - we don't buffer
     },
   };
 }
