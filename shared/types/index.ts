@@ -268,3 +268,14 @@ export {
   SIDECAR_DEFAULT_WIDTH,
   MIN_GRID_WIDTH,
 } from "./sidecar.js";
+
+// Workspace Host types - IPC protocol for workspace management
+export type {
+  WorkspaceHostRequest,
+  WorkspaceHostEvent,
+  WorkspaceClientConfig,
+  WorktreeSnapshot,
+  MonitorConfig as WorkspaceMonitorConfig,
+  CreateWorktreeOptions as WorkspaceCreateWorktreeOptions,
+  BranchInfo as WorkspaceBranchInfo,
+} from "./workspace-host.js";

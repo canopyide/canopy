@@ -429,9 +429,7 @@ export function WorktreeCard({
             <div className="flex items-center gap-2 min-h-[22px]">
               {/* Left: Branch identity */}
               <div className="flex items-center gap-1.5 min-w-0 flex-1">
-                {isMainWorktree && (
-                  <Shield className="w-3.5 h-3.5 text-canopy-text/30 shrink-0" />
-                )}
+                {isMainWorktree && <Shield className="w-3.5 h-3.5 text-canopy-text/30 shrink-0" />}
                 <BranchLabel
                   label={branchLabel}
                   isActive={isActive}

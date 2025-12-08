@@ -4,13 +4,27 @@ import path from "path";
 import { CHANNELS } from "../channels.js";
 import { GitService } from "../../services/GitService.js";
 import { store } from "../../store.js";
-import type { HandlerDependencies } from "../types.js";
+import type { HandlerDependencies, WorkspaceManager } from "../types.js";
 import type { WorktreeSetActivePayload, WorktreeDeletePayload } from "../../types/index.js";
 import {
   generateWorktreePath,
   DEFAULT_WORKTREE_PATH_PATTERN,
   validatePathPattern,
 } from "../../../shared/utils/pathPattern.js";
+
+// Type guard to check if worktreeService has async getAllStatesAsync method
+function hasAsyncGetAllStates(
+  service: WorkspaceManager
+): service is WorkspaceManager & { getAllStatesAsync: () => Promise<unknown[]> } {
+  return typeof (service as any).getAllStatesAsync === "function";
+}
+
+// Type guard to check if worktreeService has async getFileDiff method
+function hasAsyncGetFileDiff(service: WorkspaceManager): service is WorkspaceManager & {
+  getFileDiff: (cwd: string, filePath: string, status: string) => Promise<string>;
+} {
+  return typeof (service as any).getFileDiff === "function";
+}
 
 export function registerWorktreeHandlers(deps: HandlerDependencies): () => void {
   const { worktreeService } = deps;
@@ -19,6 +33,10 @@ export function registerWorktreeHandlers(deps: HandlerDependencies): () => void 
   const handleWorktreeGetAll = async () => {
     if (!worktreeService) {
       return [];
+    }
+    // WorkspaceClient has getAllStatesAsync, WorktreeService has getAllStates
+    if (hasAsyncGetAllStates(worktreeService)) {
+      return await worktreeService.getAllStatesAsync();
     }
     const statesMap = worktreeService.getAllStates();
     return Array.from(statesMap.values());
@@ -51,7 +69,7 @@ export function registerWorktreeHandlers(deps: HandlerDependencies): () => void 
     if (!worktreeService) {
       return;
     }
-    worktreeService.setActiveWorktree(payload.worktreeId);
+    await worktreeService.setActiveWorktree(payload.worktreeId);
   };
   ipcMain.handle(CHANNELS.WORKTREE_SET_ACTIVE, handleWorktreeSetActive);
   handlers.push(() => ipcMain.removeHandler(CHANNELS.WORKTREE_SET_ACTIVE));
@@ -158,6 +176,18 @@ export function registerWorktreeHandlers(deps: HandlerDependencies): () => void 
       throw new Error("Invalid file status");
     }
 
+    // If WorkspaceClient is available with getFileDiff, use it (offloads to UtilityProcess)
+    if (worktreeService && hasAsyncGetFileDiff(worktreeService)) {
+      try {
+        return await worktreeService.getFileDiff(cwd, filePath, status);
+      } catch (error) {
+        const errorMessage = error instanceof Error ? error.message : String(error);
+        console.error("[Git] Failed to get file diff via WorkspaceClient:", errorMessage);
+        throw new Error(`Failed to get file diff: ${errorMessage}`);
+      }
+    }
+
+    // Fallback: use GitService directly (original behavior)
     if (!fs.existsSync(cwd)) {
       throw new Error("Working directory does not exist");
     }
