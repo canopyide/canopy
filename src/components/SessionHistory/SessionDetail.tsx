@@ -182,7 +182,7 @@ export function SessionDetail({ session, onDelete, onExport, className }: Sessio
                           className={cn(
                             "px-1.5 py-0.5 rounded text-[10px] font-medium",
                             entry.type === "agent"
-                              ? "bg-purple-500/20 text-purple-400"
+                              ? "bg-emerald-500/20 text-emerald-400"
                               : entry.type === "user"
                                 ? "bg-blue-500/20 text-blue-400"
                                 : "bg-gray-500/20 text-gray-400"

@@ -1,4 +1,12 @@
-import { TerminalSquare, LayoutGrid, PanelBottom } from "lucide-react";
+import {
+  TerminalSquare,
+  LayoutGrid,
+  PanelBottom,
+  Loader2,
+  AlertCircle,
+  CheckCircle2,
+  XCircle,
+} from "lucide-react";
 import type { WorktreeTerminalCounts } from "@/hooks/useWorktreeTerminals";
 import type { AgentState, TerminalInstance, TerminalType } from "@/types";
 import {
@@ -119,37 +127,59 @@ export function TerminalCountBadge({
             <DropdownMenuItem
               key={term.id}
               onSelect={() => onSelectTerminal(term)}
-              className="flex items-center gap-3 py-2 cursor-pointer"
+              className="flex items-center justify-between gap-3 py-2 cursor-pointer group"
             >
-              <div className="shrink-0 opacity-80">{getTerminalIcon(term.type)}</div>
-              <div className="flex-1 min-w-0 flex flex-col">
-                <span className="text-sm font-medium truncate">{term.title}</span>
-                <span className="text-[10px] text-muted-foreground truncate flex items-center gap-1.5">
-                  {term.location === "dock" ? (
-                    <>
-                      <PanelBottom className="w-3 h-3" /> Docked
-                    </>
-                  ) : (
-                    <>
-                      <LayoutGrid className="w-3 h-3" /> Grid
-                    </>
-                  )}
-                  {term.agentState && term.agentState !== "idle" && (
-                    <>
-                      <span>•</span>
-                      <span
-                        className={cn(
-                          term.agentState === "working" && "text-[var(--color-state-working)]",
-                          term.agentState === "failed" && "text-[var(--color-status-error)]",
-                          term.agentState === "completed" && "text-[var(--color-status-success)]",
-                          term.agentState === "waiting" && "text-[var(--color-state-waiting)]"
-                        )}
-                      >
-                        {term.agentState}
-                      </span>
-                    </>
-                  )}
+              {/* LEFT SIDE: Icon + Title */}
+              <div className="flex items-center gap-2.5 min-w-0 flex-1">
+                <div className="shrink-0 opacity-70 group-hover:opacity-100 transition-opacity">
+                  {getTerminalIcon(term.type)}
+                </div>
+                <span className="text-sm font-medium truncate text-canopy-text/90 group-hover:text-canopy-text">
+                  {term.title}
                 </span>
+              </div>
+
+              {/* RIGHT SIDE: State Icons + Location */}
+              <div className="flex items-center gap-3 shrink-0">
+                {term.agentState === "working" && (
+                  <Loader2
+                    className="w-3.5 h-3.5 animate-spin text-[var(--color-state-working)]"
+                    aria-label="Working"
+                  />
+                )}
+
+                {term.agentState === "waiting" && (
+                  <AlertCircle
+                    className="w-3.5 h-3.5 text-amber-400"
+                    aria-label="Waiting for input"
+                  />
+                )}
+
+                {term.agentState === "failed" && (
+                  <XCircle
+                    className="w-3.5 h-3.5 text-[var(--color-status-error)]"
+                    aria-label="Failed"
+                  />
+                )}
+
+                {term.agentState === "completed" && (
+                  <CheckCircle2
+                    className="w-3.5 h-3.5 text-[var(--color-status-success)]"
+                    aria-label="Completed"
+                  />
+                )}
+
+                {/* Location Indicator (Grid vs Dock) */}
+                <div
+                  className="text-muted-foreground/40"
+                  title={term.location === "dock" ? "Docked" : "On Grid"}
+                >
+                  {term.location === "dock" ? (
+                    <PanelBottom className="w-3.5 h-3.5" />
+                  ) : (
+                    <LayoutGrid className="w-3.5 h-3.5" />
+                  )}
+                </div>
               </div>
             </DropdownMenuItem>
           ))}

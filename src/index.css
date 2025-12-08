@@ -65,7 +65,7 @@
   /* Semantic state colors - for agent/terminal lifecycle states */
   --color-state-active: #10b981; /* Emerald-500: Active Worktree */
   --color-state-idle: #52525b; /* Zinc-600: Dormant */
-  --color-state-working: #a855f7; /* Purple-500: AI is Thinking (Magic) */
+  --color-state-working: #10b981; /* Emerald-500: AI is Working (Matches Brand) */
   --color-state-waiting: #fbbf24; /* Amber-400: Needs Attention */
 
   /* Server status colors - for dev server states */
@@ -338,19 +338,19 @@ body,
   will-change: opacity;
 }
 
-/* Agent status working state - pulsing gradient animation (violet for AI "thinking") */
+/* Agent status working state - pulsing gradient animation */
 @keyframes status-pulse {
   0%,
   100% {
-    color: #a855f7;
-  } /* Purple-500: Violet */
+    color: #10b981;
+  } /* Emerald-500 */
   50% {
-    color: #c084fc;
-  } /* Purple-400: Lighter violet */
+    color: #34d399;
+  } /* Emerald-400: Lighter green */
 }
 
 .status-working {
-  color: #a855f7; /* Fallback color for reduced motion - Purple-500 */
+  color: #10b981; /* Fallback color for reduced motion */
   animation: status-pulse 2s ease-in-out infinite;
 }
 

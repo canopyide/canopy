@@ -318,8 +318,10 @@ export class OutputThrottler {
       case "focused":
         // Small delay to coalesce PTY output (e.g., "clear + draw" sequences)
         // into single IPC packets, reducing TUI tearing in the renderer.
-        // 4ms is well under frame time (16ms) so latency is imperceptible.
-        return 4;
+        // VS Code uses 5ms, but complex TUIs (like Ink) can have generation gaps > 5ms.
+        // 12ms ensures we capture the full "Clear + Draw" cycle in one frame
+        // without introducing perceptible input latency.
+        return 12;
       case "visible":
         return 100;
       case "background":
