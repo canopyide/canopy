@@ -14,7 +14,6 @@ import {
   type TerminalInfo,
   type TerminalSnapshot,
   type PtyManagerEvents,
-  FLOOD_CHECK_INTERVAL_MS,
 } from "./pty/index.js";
 
 /**
@@ -31,22 +30,11 @@ export class PtyManager extends EventEmitter {
   private terminals: Map<string, TerminalProcess> = new Map();
   private ptyPool: PtyPool | null = null;
   private activeProjectId: string | null = null;
-  private floodCheckInterval: NodeJS.Timeout | null = null;
 
   constructor() {
     super();
     this.registry = new TerminalRegistry();
     this.agentStateService = new AgentStateService();
-    this.floodCheckInterval = setInterval(() => this.checkFlooding(), FLOOD_CHECK_INTERVAL_MS);
-  }
-
-  /**
-   * Check all terminals for output flooding.
-   */
-  private checkFlooding(): void {
-    for (const [_, terminal] of this.terminals) {
-      terminal.checkFlooding();
-    }
   }
 
   /**
