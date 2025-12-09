@@ -5,13 +5,12 @@ import { cn } from "@/lib/utils";
 import { RotateCcw, AlertTriangle, ChevronDown, ChevronUp } from "lucide-react";
 import { ClaudeIcon, GeminiIcon, CodexIcon } from "@/components/icons";
 import type {
-  AgentSettings as AgentSettingsType,
   ClaudeApprovalMode,
   GeminiApprovalMode,
   CodexSandboxPolicy,
   CodexApprovalPolicy,
 } from "@shared/types";
-import { agentSettingsClient } from "@/clients";
+import { useAgentSettingsStore } from "@/store";
 
 type AgentTab = "main" | "claude" | "gemini" | "codex";
 
@@ -21,64 +20,45 @@ interface AgentSettingsProps {
 
 export function AgentSettings({ onSettingsChange }: AgentSettingsProps) {
   const [activeTab, setActiveTab] = useState<AgentTab>("main");
-  const [settings, setSettings] = useState<AgentSettingsType | null>(null);
-  const [isLoading, setIsLoading] = useState(true);
-  const [loadError, setLoadError] = useState<string | null>(null);
   const [showAdvanced, setShowAdvanced] = useState(false);
+  const [togglingAgent, setTogglingAgent] = useState<string | null>(null);
+
+  const {
+    settings,
+    isLoading,
+    error: loadError,
+    initialize,
+    setClaude,
+    setGemini,
+    setCodex,
+    reset,
+  } = useAgentSettingsStore();
 
   useEffect(() => {
-    let cancelled = false;
+    initialize();
+  }, [initialize]);
 
-    const loadSettings = async () => {
-      try {
-        const loaded = await agentSettingsClient.get();
-        if (!cancelled) {
-          setSettings(loaded);
-          setLoadError(null);
-        }
-      } catch (error) {
-        console.error("Failed to load agent settings:", error);
-        if (!cancelled) {
-          setLoadError(error instanceof Error ? error.message : "Failed to load settings");
-        }
-      } finally {
-        if (!cancelled) {
-          setIsLoading(false);
-        }
-      }
-    };
-
-    loadSettings();
-
-    return () => {
-      cancelled = true;
-    };
-  }, []);
-
-  const handleClaudeChange = async (updates: Partial<AgentSettingsType["claude"]>) => {
+  const handleClaudeChange = async (updates: Partial<NonNullable<typeof settings>["claude"]>) => {
     try {
-      const updated = await agentSettingsClient.setClaude(updates);
-      setSettings(updated);
+      await setClaude(updates);
       onSettingsChange?.();
     } catch (error) {
       console.error("Failed to update Claude settings:", error);
     }
   };
 
-  const handleGeminiChange = async (updates: Partial<AgentSettingsType["gemini"]>) => {
+  const handleGeminiChange = async (updates: Partial<NonNullable<typeof settings>["gemini"]>) => {
     try {
-      const updated = await agentSettingsClient.setGemini(updates);
-      setSettings(updated);
+      await setGemini(updates);
       onSettingsChange?.();
     } catch (error) {
       console.error("Failed to update Gemini settings:", error);
     }
   };
 
-  const handleCodexChange = async (updates: Partial<AgentSettingsType["codex"]>) => {
+  const handleCodexChange = async (updates: Partial<NonNullable<typeof settings>["codex"]>) => {
     try {
-      const updated = await agentSettingsClient.setCodex(updates);
-      setSettings(updated);
+      await setCodex(updates);
       onSettingsChange?.();
     } catch (error) {
       console.error("Failed to update Codex settings:", error);
@@ -87,8 +67,7 @@ export function AgentSettings({ onSettingsChange }: AgentSettingsProps) {
 
   const handleReset = async (agentType: Exclude<AgentTab, "main">) => {
     try {
-      const updated = await agentSettingsClient.reset(agentType);
-      setSettings(updated);
+      await reset(agentType);
       onSettingsChange?.();
     } catch (error) {
       console.error(`Failed to reset ${agentType} settings:`, error);
@@ -96,22 +75,23 @@ export function AgentSettings({ onSettingsChange }: AgentSettingsProps) {
   };
 
   const handleToggleEnabled = async (agent: "claude" | "gemini" | "codex") => {
-    if (!settings) return;
+    if (!settings || togglingAgent === agent) return;
     const current = settings[agent].enabled ?? true;
 
+    setTogglingAgent(agent);
     try {
-      let updated: AgentSettingsType;
       if (agent === "claude") {
-        updated = await agentSettingsClient.setClaude({ enabled: !current });
+        await setClaude({ enabled: !current });
       } else if (agent === "gemini") {
-        updated = await agentSettingsClient.setGemini({ enabled: !current });
+        await setGemini({ enabled: !current });
       } else {
-        updated = await agentSettingsClient.setCodex({ enabled: !current });
+        await setCodex({ enabled: !current });
       }
-      setSettings(updated);
       onSettingsChange?.();
     } catch (error) {
       console.error(`Failed to toggle ${agent}:`, error);
+    } finally {
+      setTogglingAgent(null);
     }
   };
 
