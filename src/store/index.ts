@@ -40,3 +40,7 @@ export { useTerminalFontStore } from "./terminalFontStore";
 export { useSidecarStore } from "./sidecarStore";
 
 export { useUIStore } from "./uiStore";
+
+export { useGitHubConfigStore, cleanupGitHubConfigStore } from "./githubConfigStore";
+
+export { useAgentSettingsStore, cleanupAgentSettingsStore } from "./agentSettingsStore";

@@ -1,49 +1,28 @@
 import { useState, useEffect, useCallback } from "react";
 import { Button } from "@/components/ui/button";
 import { Key, Check, AlertCircle, Loader2, FlaskConical, ExternalLink } from "lucide-react";
-import type { GitHubTokenConfig } from "@/types";
 import { githubClient } from "@/clients";
+import { useGitHubConfigStore } from "@/store";
 
 type ValidationResult = "success" | "error" | "test-success" | "test-error" | null;
 
 export function GitHubSettingsTab() {
-  const [githubConfig, setGithubConfig] = useState<GitHubTokenConfig | null>(null);
+  const {
+    config: githubConfig,
+    isLoading,
+    error: loadError,
+    initialize,
+    updateConfig,
+  } = useGitHubConfigStore();
   const [githubToken, setGithubToken] = useState("");
   const [isValidating, setIsValidating] = useState(false);
   const [isTesting, setIsTesting] = useState(false);
   const [validationResult, setValidationResult] = useState<ValidationResult>(null);
   const [errorMessage, setErrorMessage] = useState<string | null>(null);
-  const [isLoading, setIsLoading] = useState(true);
-  const [loadError, setLoadError] = useState<string | null>(null);
 
   useEffect(() => {
-    let cancelled = false;
-
-    const loadConfig = async () => {
-      try {
-        const config = await githubClient.getConfig();
-        if (!cancelled) {
-          setGithubConfig(config);
-          setLoadError(null);
-        }
-      } catch (error) {
-        console.error("Failed to load GitHub config:", error);
-        if (!cancelled) {
-          setLoadError(error instanceof Error ? error.message : "Failed to load GitHub settings");
-        }
-      } finally {
-        if (!cancelled) {
-          setIsLoading(false);
-        }
-      }
-    };
-
-    loadConfig();
-
-    return () => {
-      cancelled = true;
-    };
-  }, []);
+    initialize();
+  }, [initialize]);
 
   useEffect(() => {
     if (!validationResult) return;
@@ -67,7 +46,7 @@ export function GitHubSettingsTab() {
         setGithubToken("");
         setValidationResult("success");
         const config = await githubClient.getConfig();
-        setGithubConfig(config);
+        updateConfig(config);
       } else {
         setValidationResult("error");
         setErrorMessage(result.error || "Invalid token");
@@ -79,19 +58,21 @@ export function GitHubSettingsTab() {
     } finally {
       setIsValidating(false);
     }
-  }, [githubToken]);
+  }, [githubToken, updateConfig]);
 
   const handleClearToken = useCallback(async () => {
     try {
       await githubClient.clearToken();
       const config = await githubClient.getConfig();
-      setGithubConfig(config);
+      updateConfig(config);
       setValidationResult(null);
       setErrorMessage(null);
     } catch (error) {
       console.error("Failed to clear GitHub token:", error);
+      setValidationResult("error");
+      setErrorMessage("Failed to clear token");
     }
-  }, []);
+  }, [updateConfig]);
 
   const handleTestToken = useCallback(async () => {
     if (!githubToken.trim()) return;
