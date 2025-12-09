@@ -842,7 +842,14 @@ class TerminalInstanceService {
     const managed = this.instances.get(id);
     if (!managed) return;
 
+    const previousState = managed.agentState;
     managed.agentState = state;
+
+    // When entering a working state, assume the user is at the bottom and
+    // wants to follow output until they explicitly scroll up.
+    if (state === "working" && previousState !== "working") {
+      managed.userScrolledUp = false;
+    }
 
     // When agent completes work, snap to bottom to show final output
     // Don't snap on transition to working - respect user scroll position
