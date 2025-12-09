@@ -81,7 +81,7 @@ export function GitHubListItem({ item, type }: GitHubListItemProps) {
     }
 
     try {
-      await navigator.clipboard.writeText(item.number.toString());
+      await navigator.clipboard.writeText(`#${item.number}`);
       setCopied(true);
       setCopyError(false);
       timeoutRef.current = window.setTimeout(() => setCopied(false), 2000);
