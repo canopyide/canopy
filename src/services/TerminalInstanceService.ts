@@ -283,34 +283,52 @@ class TerminalInstanceService {
         return;
       }
 
-      // Check scroll decision before writing to avoid race with async processing
-      const shouldScroll = this.shouldSnapToBottom(managed);
-
       if (chunks.length === 1) {
-        managed.throttledWriter.write(chunks[0]);
+        this.writeToTerminal(id, chunks[0]);
       } else {
         // If all chunks are strings, join as a single string; otherwise fall
         // back to writing each chunk in sequence.
         const allStrings = chunks.every((c) => typeof c === "string");
         if (allStrings) {
-          managed.throttledWriter.write((chunks as string[]).join(""));
+          this.writeToTerminal(id, (chunks as string[]).join(""));
         } else {
           for (const chunk of chunks) {
-            managed.throttledWriter.write(chunk);
+            this.writeToTerminal(id, chunk);
           }
         }
       }
+    }, TerminalInstanceService.BUFFER_FLUSH_DELAY_MS);
+  }
 
-      // Apply smart sticky scrolling after writes
-      // Only scroll if still at bottom (avoid redundant scrolls in TUI mode)
+  /**
+   * Centralized method to write data to a terminal and apply smart scrolling policies.
+   * Used by both the SharedArrayBuffer poller and the IPC fallback listener.
+   */
+  private writeToTerminal(id: string, data: string | Uint8Array): void {
+    const managed = this.instances.get(id);
+    if (!managed) return;
+
+    // Check scroll decision BEFORE writing to capture state before new data shifts the buffer
+    const shouldScroll = this.shouldSnapToBottom(managed);
+
+    // Write data and apply scroll after xterm processes the buffer update
+    const terminal = managed.terminal;
+    terminal.write(data, () => {
+      // Flow control acknowledgement
+      const len = typeof data === "string" ? data.length : data.byteLength;
+      terminalClient.acknowledgeData(id, len);
+
+      // Apply smart sticky scrolling after the buffer has been updated
+      // If the agent is working and the user hasn't explicitly scrolled up,
+      // force the viewport to follow the new data.
       if (shouldScroll) {
-        const buffer = managed.terminal.buffer.active;
+        const buffer = terminal.buffer.active;
         const isAtBottom = buffer.baseY - buffer.viewportY < 1;
         if (!isAtBottom) {
           this.scrollToBottom(id);
         }
       }
-    }, TerminalInstanceService.BUFFER_FLUSH_DELAY_MS);
+    });
   }
 
   /**
@@ -513,7 +531,9 @@ class TerminalInstanceService {
     const unsubData = terminalClient.onData(id, (data: string | Uint8Array) => {
       // Skip IPC data when SharedArrayBuffer polling is active
       if (this.sharedBufferEnabled && this.pollingActive) return;
-      throttledWriter.write(data);
+      // Use the centralized write method to ensure smart scrolling applies
+      // even when using IPC fallback
+      this.writeToTerminal(id, data);
     });
     listeners.push(unsubData);
 
@@ -760,6 +780,9 @@ class TerminalInstanceService {
     if (managed) {
       managed.suppressScrollEvents = true;
       managed.terminal.scrollToBottom();
+      // Clear the userScrolledUp flag when we programmatically snap to bottom
+      // This ensures future auto-scroll will work for working agents
+      managed.userScrolledUp = false;
       requestAnimationFrame(() => {
         managed.suppressScrollEvents = false;
       });
