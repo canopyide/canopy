@@ -32,7 +32,6 @@ export const useAgentSettingsStore = create<AgentSettingsStore>()((set, get) => 
     if (initPromise) return initPromise;
 
     initPromise = (async () => {
-
       try {
         set({ isLoading: true, error: null });
 
