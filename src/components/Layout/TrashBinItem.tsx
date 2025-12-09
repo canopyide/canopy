@@ -22,7 +22,7 @@ interface TrashBinItemProps {
 }
 
 function getTerminalIcon(type: TerminalType, className?: string) {
-  const props = { className: cn("w-3.5 h-3.5", className), "aria-hidden": "true" as const };
+  const props = { className: cn("w-3 h-3", className), "aria-hidden": "true" as const };
   switch (type) {
     case "claude":
       return <ClaudeIcon {...props} />;
@@ -80,11 +80,13 @@ export function TrashBinItem({ terminal, trashedInfo, worktreeName }: TrashBinIt
   const terminalName = terminal.title || terminal.type || "Terminal";
 
   return (
-    <div className="flex items-center gap-2 p-2 rounded bg-canopy-bg/50 hover:bg-canopy-border transition-colors group">
-      <div className="shrink-0 text-canopy-text/60">{getTerminalIcon(terminal.type)}</div>
+    <div className="flex items-center gap-2 px-2.5 py-1.5 rounded-sm bg-transparent hover:bg-white/5 transition-colors group">
+      <div className="shrink-0 opacity-60 group-hover:opacity-100 transition-opacity">
+        {getTerminalIcon(terminal.type)}
+      </div>
 
       <div className="flex-1 min-w-0">
-        <div className="text-xs font-medium text-canopy-text/90 truncate">
+        <div className="text-xs font-medium text-canopy-text/70 group-hover:text-canopy-text truncate transition-colors">
           {terminalName}
           {worktreeName && (
             <span className="text-canopy-text/50 ml-1 font-normal">({worktreeName})</span>
