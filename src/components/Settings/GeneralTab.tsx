@@ -98,7 +98,6 @@ export function GeneralTab({ appVersion, onNavigateToAgents }: GeneralTabProps) 
         console.error("Failed to load agent availability:", error);
       });
   }, []);
-
   const handleHibernationToggle = async () => {
     if (!hibernationConfig || isSaving) return;
     setIsSaving(true);

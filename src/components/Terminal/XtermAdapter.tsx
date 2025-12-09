@@ -5,9 +5,10 @@ import { terminalClient } from "@/clients";
 import { TerminalRefreshTier } from "@/types";
 import type { TerminalType } from "@/types";
 import { terminalInstanceService } from "@/services/TerminalInstanceService";
-import { useScrollbackStore, usePerformanceModeStore } from "@/store";
+import { useScrollbackStore, usePerformanceModeStore, useTerminalFontStore } from "@/store";
 import { TerminalResizeDebouncer } from "@/services/TerminalResizeDebouncer";
 import { getScrollbackForType } from "@/utils/scrollbackConfig";
+import { DEFAULT_TERMINAL_FONT_FAMILY } from "@/config/terminalFont";
 
 export interface XtermAdapterProps {
   terminalId: string;
@@ -66,6 +67,8 @@ function XtermAdapterComponent({
 
   const scrollbackLines = useScrollbackStore((state) => state.scrollbackLines);
   const performanceMode = usePerformanceModeStore((state) => state.performanceMode);
+  const fontSize = useTerminalFontStore((state) => state.fontSize);
+  const fontFamily = useTerminalFontStore((state) => state.fontFamily);
 
   // Calculate effective scrollback: performance mode overrides, otherwise use type-based policy
   const effectiveScrollback = useMemo(() => {
@@ -81,10 +84,10 @@ function XtermAdapterComponent({
       cursorBlink: true,
       cursorStyle: "block" as const,
       cursorInactiveStyle: "block" as const,
-      fontSize: 13,
+      fontSize,
       lineHeight: 1.2,
       letterSpacing: 0,
-      fontFamily: 'Menlo, Monaco, Consolas, "Andale Mono", "Ubuntu Mono", "Courier New", monospace',
+      fontFamily: fontFamily || DEFAULT_TERMINAL_FONT_FAMILY,
       fontLigatures: false,
       fontWeight: "normal" as const,
       fontWeightBold: "700" as const,
@@ -95,7 +98,7 @@ function XtermAdapterComponent({
       macOptionIsMeta: true,
       fastScrollModifier: "alt" as const,
     }),
-    [effectiveScrollback, performanceMode]
+    [effectiveScrollback, performanceMode, fontSize, fontFamily]
   );
 
   // Initialize debouncer with callbacks for separate X/Y resize handling

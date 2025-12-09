@@ -12,4 +12,12 @@ export const terminalConfigClient = {
   setPerformanceMode: (performanceMode: boolean): Promise<void> => {
     return window.electron.terminalConfig.setPerformanceMode(performanceMode);
   },
+
+  setFontSize: (fontSize: number): Promise<void> => {
+    return window.electron.terminalConfig.setFontSize(fontSize);
+  },
+
+  setFontFamily: (fontFamily: string): Promise<void> => {
+    return window.electron.terminalConfig.setFontFamily(fontFamily);
+  },
 } as const;
