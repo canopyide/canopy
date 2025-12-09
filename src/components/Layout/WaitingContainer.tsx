@@ -34,11 +34,10 @@ function getLocationIcon(location: TerminalLocation | undefined) {
 export function WaitingContainer() {
   const [isOpen, setIsOpen] = useState(false);
   const waitingIds = useWaitingTerminalIds();
-  const { activateTerminal, pingTerminal, focusedId } = useTerminalStore(
+  const { activateTerminal, pingTerminal } = useTerminalStore(
     useShallow((state) => ({
       activateTerminal: state.activateTerminal,
       pingTerminal: state.pingTerminal,
-      focusedId: state.focusedId,
     }))
   );
   const shortcut = useKeybindingDisplay("agent.focusNextWaiting");
@@ -93,7 +92,6 @@ export function WaitingContainer() {
           <div className="p-1 flex flex-col gap-1 max-h-[300px] overflow-y-auto">
             {waitingTerminals.map((terminal) => {
               if (!terminal) return null;
-              const isFocused = terminal.id === focusedId;
 
               return (
                 <button
@@ -103,24 +101,13 @@ export function WaitingContainer() {
                     pingTerminal(terminal.id);
                     setIsOpen(false);
                   }}
-                  className={cn(
-                    "flex items-center justify-between gap-2.5 w-full px-2.5 py-1.5 rounded-sm transition-colors group text-left outline-none",
-                    "hover:bg-white/5 focus:bg-white/5",
-                    isFocused && "bg-white/[0.03]"
-                  )}
+                  className="flex items-center justify-between gap-2.5 w-full px-2.5 py-1.5 rounded-sm transition-colors group text-left outline-none hover:bg-white/5 focus:bg-white/5"
                 >
                   <div className="flex items-center gap-2 min-w-0 flex-1">
                     <div className="shrink-0 opacity-60 group-hover:opacity-100 transition-opacity">
                       {getTerminalIcon(terminal.type)}
                     </div>
-                    <span
-                      className={cn(
-                        "text-xs truncate font-medium",
-                        isFocused
-                          ? "text-canopy-text"
-                          : "text-canopy-text/70 group-hover:text-canopy-text"
-                      )}
-                    >
+                    <span className="text-xs truncate font-medium text-canopy-text/70 group-hover:text-canopy-text transition-colors">
                       {terminal.title}
                     </span>
                   </div>
