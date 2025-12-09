@@ -1678,4 +1678,8 @@ export interface ElectronAPI {
     /** Subscribe to fullscreen state changes */
     onFullscreenChange(callback: (isFullscreen: boolean) => void): () => void;
   };
+  notification: {
+    /** Update window title and dock badge based on terminal attention state */
+    updateBadge(state: { waitingCount: number; failedCount: number }): void;
+  };
 }
