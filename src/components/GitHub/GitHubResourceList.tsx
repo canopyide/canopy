@@ -10,6 +10,7 @@ interface GitHubResourceListProps {
   type: "issue" | "pr";
   projectPath: string;
   onClose?: () => void;
+  initialCount?: number | null;
 }
 
 type IssueStateFilter = "open" | "closed" | "all";
@@ -27,7 +28,15 @@ function useDebounce<T>(value: T, delay: number): T {
   return debouncedValue;
 }
 
-export function GitHubResourceList({ type, projectPath, onClose }: GitHubResourceListProps) {
+const ITEM_HEIGHT_PX = 64;
+const MAX_SKELETON_ITEMS = 6;
+
+export function GitHubResourceList({
+  type,
+  projectPath,
+  onClose,
+  initialCount,
+}: GitHubResourceListProps) {
   const [searchQuery, setSearchQuery] = useState("");
   const [filterState, setFilterState] = useState<StateFilter>("open");
   const [data, setData] = useState<(GitHubIssue | GitHubPR)[]>([]);
@@ -154,23 +163,43 @@ export function GitHubResourceList({ type, projectPath, onClose }: GitHubResourc
     fetchData(null, false, undefined);
   };
 
-  // Calculate skeleton count to fill max-h-[500px] container:
-  // - Container: 500px max - header (~80px) - footer (~48px) = ~372px available
-  // - Each item: ~44px (16px icon + 16px title + 12px metadata + spacing)
-  // - 372px / 44px ≈ 8 items to prevent layout shift
-  const renderSkeleton = () => (
-    <div className="space-y-3 p-3">
-      {Array.from({ length: 8 }).map((_, i) => (
-        <div key={i} className="flex items-start gap-3 animate-pulse">
-          <div className="w-4 h-4 rounded-full bg-muted mt-0.5" />
-          <div className="flex-1 space-y-2">
-            <div className="h-4 bg-muted rounded w-3/4" />
-            <div className="h-3 bg-muted rounded w-1/2" />
+  const renderSkeleton = (count: number) => {
+    const safeCount = Number.isFinite(count) ? Math.floor(count) : MAX_SKELETON_ITEMS;
+    const renderCount = Math.min(Math.max(1, safeCount), MAX_SKELETON_ITEMS);
+
+    return (
+      <div className="divide-y divide-canopy-border">
+        {Array.from({ length: renderCount }).map((_, i) => (
+          <div
+            key={i}
+            className="p-3 animate-pulse box-border"
+            style={{ height: `${ITEM_HEIGHT_PX}px` }}
+          >
+            <div className="flex items-start gap-3 h-full">
+              <div className="w-4 h-4 rounded-full bg-muted mt-0.5 shrink-0" />
+              <div className="flex-1 min-w-0">
+                <div className="flex items-center gap-2">
+                  <div className="h-5 bg-muted rounded w-3/4" />
+                  <div className="h-4 bg-muted rounded w-10 shrink-0" />
+                </div>
+                <div className="mt-1 flex items-center gap-1.5">
+                  <div className="h-4 bg-muted rounded w-10" />
+                  <div className="h-4 bg-muted rounded w-12" />
+                  <div className="h-4 bg-muted rounded w-14" />
+                </div>
+              </div>
+              <div className="flex items-center gap-2 shrink-0">
+                <div className="flex -space-x-1.5">
+                  <div className="w-5 h-5 rounded-full bg-muted border-2 border-canopy-sidebar" />
+                  <div className="w-5 h-5 rounded-full bg-muted border-2 border-canopy-sidebar" />
+                </div>
+              </div>
+            </div>
           </div>
-        </div>
-      ))}
-    </div>
-  );
+        ))}
+      </div>
+    );
+  };
 
   const renderError = () => (
     <div className="p-4 m-3 rounded-md bg-red-500/10 border border-red-500/20">
@@ -250,7 +279,11 @@ export function GitHubResourceList({ type, projectPath, onClose }: GitHubResourc
 
       <div className="overflow-y-auto flex-1 min-h-0">
         {loading && !data.length ? (
-          renderSkeleton()
+          initialCount === 0 ? (
+            renderEmpty()
+          ) : (
+            renderSkeleton(initialCount ?? MAX_SKELETON_ITEMS)
+          )
         ) : error ? (
           renderError()
         ) : data.length === 0 ? (
