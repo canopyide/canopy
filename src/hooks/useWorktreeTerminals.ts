@@ -1,4 +1,4 @@
-import { useMemo } from "react";
+import { useMemo, useState, useEffect, useRef } from "react";
 import { useShallow } from "zustand/react/shallow";
 import { useTerminalStore, type TerminalInstance } from "@/store/terminalStore";
 import type { AgentState } from "@/types";
@@ -15,6 +15,28 @@ export interface UseWorktreeTerminalsResult {
   dominantAgentState: AgentState | null;
 }
 
+function useDebouncedValue<T>(value: T, delay: number): T {
+  const [debouncedValue, setDebouncedValue] = useState(value);
+  const isFirstRender = useRef(true);
+
+  useEffect(() => {
+    // On first render, use the value immediately (no delay)
+    if (isFirstRender.current) {
+      isFirstRender.current = false;
+      setDebouncedValue(value);
+      return;
+    }
+
+    const timer = setTimeout(() => {
+      setDebouncedValue(value);
+    }, delay);
+
+    return () => clearTimeout(timer);
+  }, [value, delay]);
+
+  return debouncedValue;
+}
+
 export function useWorktreeTerminals(worktreeId: string): UseWorktreeTerminalsResult {
   // Use useShallow to prevent infinite loops.
   // Without this, .filter() returns a new reference every render,
@@ -25,7 +47,7 @@ export function useWorktreeTerminals(worktreeId: string): UseWorktreeTerminalsRe
     )
   );
 
-  return useMemo(() => {
+  const result = useMemo(() => {
     const byState: Record<AgentState, number> = {
       idle: 0,
       working: 0,
@@ -58,4 +80,13 @@ export function useWorktreeTerminals(worktreeId: string): UseWorktreeTerminalsRe
       dominantAgentState,
     };
   }, [terminals]);
+
+  // Debounce counts to prevent UI jitter during rapid state changes (e.g., app restart)
+  const debouncedCounts = useDebouncedValue(result.counts, 250);
+
+  return {
+    terminals: result.terminals,
+    counts: debouncedCounts,
+    dominantAgentState: result.dominantAgentState,
+  };
 }
