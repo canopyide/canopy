@@ -656,6 +656,12 @@ const api: ElectronAPI = {
 
     setPerformanceMode: (performanceMode: boolean) =>
       _typedInvoke(CHANNELS.TERMINAL_CONFIG_SET_PERFORMANCE_MODE, performanceMode),
+
+    setFontSize: (fontSize: number) =>
+      _typedInvoke(CHANNELS.TERMINAL_CONFIG_SET_FONT_SIZE, fontSize),
+
+    setFontFamily: (fontFamily: string) =>
+      _typedInvoke(CHANNELS.TERMINAL_CONFIG_SET_FONT_FAMILY, fontFamily),
   },
 
   // Sidecar API

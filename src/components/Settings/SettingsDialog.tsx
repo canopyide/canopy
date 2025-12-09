@@ -2,12 +2,13 @@ import { useState, useEffect } from "react";
 import { createPortal } from "react-dom";
 import { useErrors, useOverlayState } from "@/hooks";
 import { useLogsStore, useSidecarStore } from "@/store";
-import { X, Bot, Github, LayoutGrid, PanelRight, Keyboard, GitBranch } from "lucide-react";
+import { X, Bot, Github, LayoutGrid, PanelRight, Keyboard, GitBranch, Terminal } from "lucide-react";
 import { cn } from "@/lib/utils";
 import { appClient } from "@/clients";
 import { AgentSettings } from "./AgentSettings";
 import { GeneralTab } from "./GeneralTab";
 import { TerminalSettingsTab } from "./TerminalSettingsTab";
+import { TerminalAppearanceTab } from "./TerminalAppearanceTab";
 import { GitHubSettingsTab } from "./GitHubSettingsTab";
 import { TroubleshootingTab } from "./TroubleshootingTab";
 import { SidecarSettingsTab } from "./SidecarSettingsTab";
@@ -25,6 +26,7 @@ type SettingsTab =
   | "general"
   | "keyboard"
   | "terminal"
+  | "terminalAppearance"
   | "worktree"
   | "agents"
   | "github"
@@ -139,6 +141,19 @@ export function SettingsDialog({
             Terminal
           </button>
           <button
+            onClick={() => setActiveTab("terminalAppearance")}
+            className={cn(
+              "text-left px-3 py-2 rounded-[var(--radius-md)] text-sm transition-colors flex items-center gap-2",
+              "focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-canopy-accent focus-visible:ring-offset-2 focus-visible:ring-offset-canopy-bg",
+              activeTab === "terminalAppearance"
+                ? "bg-canopy-accent/10 text-canopy-accent"
+                : "text-canopy-text/60 hover:bg-canopy-border hover:text-canopy-text"
+            )}
+          >
+            <Terminal className="w-4 h-4" />
+            Terminal Appearance
+          </button>
+          <button
             onClick={() => setActiveTab("worktree")}
             className={cn(
               "text-left px-3 py-2 rounded-[var(--radius-md)] text-sm transition-colors flex items-center gap-2",
@@ -211,9 +226,11 @@ export function SettingsDialog({
                 ? "Agent Settings"
                 : activeTab === "github"
                   ? "GitHub Integration"
-                  : activeTab === "terminal"
+              : activeTab === "terminal"
                     ? "Terminal Grid"
-                    : activeTab === "worktree"
+                    : activeTab === "terminalAppearance"
+                      ? "Terminal Appearance"
+                      : activeTab === "worktree"
                       ? "Worktree Paths"
                       : activeTab === "sidecar"
                         ? "Sidecar Links"
@@ -244,6 +261,10 @@ export function SettingsDialog({
 
             <div className={activeTab === "terminal" ? "" : "hidden"}>
               <TerminalSettingsTab />
+            </div>
+
+            <div className={activeTab === "terminalAppearance" ? "" : "hidden"}>
+              <TerminalAppearanceTab />
             </div>
 
             <div className={activeTab === "worktree" ? "" : "hidden"}>

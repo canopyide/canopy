@@ -295,5 +295,37 @@ export function registerAppHandlers(deps: HandlerDependencies): () => void {
   );
   handlers.push(() => ipcMain.removeHandler(CHANNELS.TERMINAL_CONFIG_SET_PERFORMANCE_MODE));
 
+  const handleTerminalConfigSetFontSize = async (
+    _event: Electron.IpcMainInvokeEvent,
+    fontSize: number
+  ) => {
+    if (!Number.isFinite(fontSize) || !Number.isInteger(fontSize)) {
+      console.warn("Invalid terminal fontSize (not a finite integer):", fontSize);
+      return;
+    }
+    if (fontSize < 8 || fontSize > 24) {
+      console.warn("Invalid terminal fontSize (out of range 8-24):", fontSize);
+      return;
+    }
+    const currentConfig = store.get("terminalConfig");
+    store.set("terminalConfig", { ...currentConfig, fontSize });
+  };
+  ipcMain.handle(CHANNELS.TERMINAL_CONFIG_SET_FONT_SIZE, handleTerminalConfigSetFontSize);
+  handlers.push(() => ipcMain.removeHandler(CHANNELS.TERMINAL_CONFIG_SET_FONT_SIZE));
+
+  const handleTerminalConfigSetFontFamily = async (
+    _event: Electron.IpcMainInvokeEvent,
+    fontFamily: string
+  ) => {
+    if (typeof fontFamily !== "string" || !fontFamily.trim()) {
+      console.warn("Invalid terminal fontFamily:", fontFamily);
+      return;
+    }
+    const currentConfig = store.get("terminalConfig");
+    store.set("terminalConfig", { ...currentConfig, fontFamily });
+  };
+  ipcMain.handle(CHANNELS.TERMINAL_CONFIG_SET_FONT_FAMILY, handleTerminalConfigSetFontFamily);
+  handlers.push(() => ipcMain.removeHandler(CHANNELS.TERMINAL_CONFIG_SET_FONT_FAMILY));
+
   return () => handlers.forEach((cleanup) => cleanup());
 }

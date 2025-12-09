@@ -35,6 +35,8 @@ export { useScrollbackStore } from "./scrollbackStore";
 
 export { usePerformanceModeStore } from "./performanceModeStore";
 
+export { useTerminalFontStore } from "./terminalFontStore";
+
 export { useSidecarStore } from "./sidecarStore";
 
 export { useUIStore } from "./uiStore";

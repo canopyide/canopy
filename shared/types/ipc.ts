@@ -844,6 +844,8 @@ export interface AdaptiveBackoffMetrics {
 export interface TerminalConfig {
   scrollbackLines: number; // -1 for unlimited, otherwise 100-100000
   performanceMode: boolean;
+  fontSize?: number;
+  fontFamily?: string;
 }
 
 /** Worktree path pattern configuration */
@@ -1259,6 +1261,14 @@ export interface IpcInvokeMap {
     args: [performanceMode: boolean];
     result: void;
   };
+  "terminal-config:set-font-size": {
+    args: [fontSize: number];
+    result: void;
+  };
+  "terminal-config:set-font-family": {
+    args: [fontFamily: string];
+    result: void;
+  };
 
   // Git channels
   "git:get-file-diff": {
@@ -1619,6 +1629,8 @@ export interface ElectronAPI {
     get(): Promise<TerminalConfig>;
     setScrollback(scrollbackLines: number): Promise<void>;
     setPerformanceMode(performanceMode: boolean): Promise<void>;
+    setFontSize(fontSize: number): Promise<void>;
+    setFontFamily(fontFamily: string): Promise<void>;
   };
   sidecar: {
     create(payload: import("./sidecar.js").SidecarCreatePayload): Promise<void>;
