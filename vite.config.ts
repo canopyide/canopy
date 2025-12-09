@@ -10,7 +10,7 @@ const DEV_CSP = [
   "style-src 'self' http://localhost:5173 'unsafe-inline'",
   "font-src 'self' data:",
   "connect-src 'self' http://localhost:5173 ws://localhost:5173",
-  "img-src 'self' http://localhost:5173 https://avatars.githubusercontent.com",
+  "img-src 'self' http://localhost:5173 https://avatars.githubusercontent.com data:",
   "frame-src 'self' https://www.youtube.com",
 ].join("; ");
 
@@ -20,7 +20,7 @@ const PROD_CSP = [
   "style-src 'self' 'unsafe-inline'",
   "font-src 'self' data:",
   "connect-src 'self'",
-  "img-src 'self' https://avatars.githubusercontent.com",
+  "img-src 'self' https://avatars.githubusercontent.com data:",
   "frame-src 'self' https://www.youtube.com",
 ].join("; ");
 
