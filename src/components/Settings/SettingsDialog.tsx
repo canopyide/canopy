@@ -160,7 +160,7 @@ export function SettingsDialog({
             )}
           >
             <Terminal className="w-4 h-4" />
-            Terminal Appearance
+            Appearance
           </button>
           <button
             onClick={() => setActiveTab("worktree")}
@@ -238,7 +238,7 @@ export function SettingsDialog({
                   : activeTab === "terminal"
                     ? "Terminal Grid"
                     : activeTab === "terminalAppearance"
-                      ? "Terminal Appearance"
+                      ? "Appearance"
                       : activeTab === "worktree"
                         ? "Worktree Paths"
                         : activeTab === "sidecar"

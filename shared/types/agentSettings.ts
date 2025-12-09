@@ -194,7 +194,10 @@ export function generateCodexFlags(settings: CodexSettings): string[] {
     flags.push("--model", settings.model);
   }
 
-  if (settings.dangerouslyBypassApprovalsAndSandbox) {
+  const isDangerModeCombo =
+    settings.sandbox === "danger-full-access" && settings.approvalPolicy === "untrusted";
+
+  if (settings.dangerouslyBypassApprovalsAndSandbox || isDangerModeCombo) {
     flags.push("--dangerously-bypass-approvals-and-sandbox");
   } else {
     if (settings.sandbox) {
