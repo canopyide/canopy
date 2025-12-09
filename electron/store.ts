@@ -79,7 +79,7 @@ export interface StoreSchema {
   };
 }
 
-export const store = new Store<StoreSchema>({
+const storeOptions = {
   defaults: {
     _schemaVersion: 0,
     windowState: {
@@ -103,7 +103,7 @@ export const store = new Store<StoreSchema>({
       terminals: [],
       recipes: [],
       hasSeenWelcome: false,
-      terminalGridConfig: { strategy: "automatic", value: 3 },
+      terminalGridConfig: { strategy: "automatic" as const, value: 3 },
       dockCollapsed: false,
     },
     projects: {
@@ -120,4 +120,28 @@ export const store = new Store<StoreSchema>({
     },
   },
   cwd: process.env.CANOPY_USER_DATA,
-});
+};
+
+let storeInstance: Store<StoreSchema>;
+
+try {
+  storeInstance = new Store<StoreSchema>(storeOptions);
+} catch (error) {
+  console.warn(
+    "[Store] Failed to initialize electron-store (likely in UtilityProcess), using in-memory fallback:",
+    error
+  );
+  // Minimal in-memory fallback to prevent crash on import
+  const memoryStore = new Map();
+  storeInstance = {
+    get: (key: string) => memoryStore.get(key),
+    set: (key: string, value: any) => memoryStore.set(key, value),
+    delete: (key: string) => memoryStore.delete(key),
+    has: (key: string) => memoryStore.has(key),
+    clear: () => memoryStore.clear(),
+    store: {},
+    path: "",
+  } as unknown as Store<StoreSchema>;
+}
+
+export const store = storeInstance;

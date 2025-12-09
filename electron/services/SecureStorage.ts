@@ -1,4 +1,4 @@
-import { safeStorage } from "electron";
+import * as electron from "electron";
 import { store, type StoreSchema } from "../store.js";
 
 export type SecureKey = "userConfig.openaiApiKey" | "userConfig.githubToken";
@@ -10,8 +10,11 @@ class SecureStorage {
   private _isAvailable: boolean | undefined;
 
   private get isAvailable(): boolean {
+    if (!electron.safeStorage) {
+      return false;
+    }
     if (this._isAvailable === undefined) {
-      this._isAvailable = safeStorage.isEncryptionAvailable();
+      this._isAvailable = electron.safeStorage.isEncryptionAvailable();
       if (!this._isAvailable) {
         console.warn("[SecureStorage] OS encryption not available. Falling back to plain text.");
       }
@@ -31,7 +34,7 @@ class SecureStorage {
 
     if (this.isAvailable) {
       try {
-        const encrypted = safeStorage.encryptString(value);
+        const encrypted = electron.safeStorage.encryptString(value);
         store.set(key as DotNotatedUserConfigKey, encrypted.toString("hex"));
       } catch (error) {
         console.error(
@@ -40,7 +43,8 @@ class SecureStorage {
         );
         store.set(key as DotNotatedUserConfigKey, value);
       }
-    } else {
+    }
+    else {
       store.set(key as DotNotatedUserConfigKey, value);
     }
   }
@@ -66,7 +70,7 @@ class SecureStorage {
     if (this.isAvailable) {
       try {
         const buffer = Buffer.from(storedValue, "hex");
-        return safeStorage.decryptString(buffer);
+        return electron.safeStorage.decryptString(buffer);
       } catch (_error) {
         console.warn(
           `[SecureStorage] Failed to decrypt ${key}, clearing corrupted entry. User will need to re-enter.`
@@ -87,7 +91,6 @@ class SecureStorage {
 
     return storedValue;
   }
-
   public delete(key: SecureKey): void {
     store.delete(key as DotNotatedUserConfigKey);
   }
