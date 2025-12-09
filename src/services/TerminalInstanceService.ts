@@ -54,6 +54,7 @@ interface ManagedTerminal {
   latestWasAtBottom: boolean;
   // Smart Sticky Scrolling state
   agentState: "working" | "idle" | "waiting" | "completed" | "failed";
+  isFocused: boolean;
   userScrolledUp: boolean;
   suppressScrollEvents: boolean;
 }
@@ -578,6 +579,7 @@ class TerminalInstanceService {
       latestRows: 0,
       latestWasAtBottom: true,
       agentState: "idle",
+      isFocused: false,
       userScrolledUp: false,
       suppressScrollEvents: false,
     };
@@ -806,8 +808,12 @@ class TerminalInstanceService {
     const isAlternateBuffer = buffer.type === "alternate";
 
     // CASE 1: TUI Mode (Claude Code, Vim, etc.)
-    // TUIs manage their own viewport. Always ensure alignment with cursor/bottom.
+    // TUIs manage their own viewport. Always ensure alignment with cursor/bottom,
+    // but if the user has explicitly scrolled while focused, don't fight them.
     if (isAlternateBuffer) {
+      if (managed.isFocused && managed.userScrolledUp) {
+        return false;
+      }
       return true;
     }
 
@@ -870,6 +876,20 @@ class TerminalInstanceService {
     const isAtBottom = buffer.baseY - buffer.viewportY < 1;
     // Only preserve position if user is actively scrolled up
     return !(managed.userScrolledUp && !isAtBottom);
+  }
+
+  setFocused(id: string, isFocused: boolean): void {
+    const managed = this.instances.get(id);
+    if (!managed) return;
+
+    managed.isFocused = isFocused;
+    managed.lastActiveTime = Date.now();
+
+    // When a terminal loses focus, re-enable sticky scrolling by snapping to bottom.
+    // This ensures background terminals keep the viewport at the latest output.
+    if (!isFocused) {
+      this.scrollToBottom(id);
+    }
   }
 
   private clearResizeJobs(managed: ManagedTerminal): void {

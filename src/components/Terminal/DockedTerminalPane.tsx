@@ -74,6 +74,9 @@ export function DockedTerminalPane({ terminal, onPopoverClose }: DockedTerminalP
     [updateTitle, terminal.id]
   );
 
+  const focusedId = useTerminalStore((state) => state.focusedId);
+  const isFocused = focusedId === terminal.id;
+
   return (
     <TerminalPane
       id={terminal.id}
@@ -81,7 +84,7 @@ export function DockedTerminalPane({ terminal, onPopoverClose }: DockedTerminalP
       type={terminal.type}
       worktreeId={terminal.worktreeId}
       cwd={terminal.cwd}
-      isFocused={true}
+      isFocused={isFocused}
       agentState={terminal.agentState}
       activity={
         terminal.activityHeadline
