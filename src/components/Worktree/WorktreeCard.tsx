@@ -528,9 +528,7 @@ export function WorktreeCard({
                       : "No recent activity recorded"
                   }
                 >
-                  {worktree.lastActivityTimestamp && (
-                    <ActivityLight lastActivityTimestamp={worktree.lastActivityTimestamp} />
-                  )}
+                  <ActivityLight lastActivityTimestamp={worktree.lastActivityTimestamp} />
                   <LiveTimeAgo timestamp={worktree.lastActivityTimestamp} className="font-medium" />
                 </div>
               )}
@@ -822,17 +820,11 @@ export function WorktreeCard({
                             : "No recent activity recorded"
                         }
                       >
-                        {worktree.lastActivityTimestamp && (
                           <ActivityLight
-                            lastActivityTimestamp={worktree.lastActivityTimestamp}
-                            className="w-1.5 h-1.5"
-                          />
-                        )}
-                        {worktree.lastActivityTimestamp ? (
-                          <LiveTimeAgo timestamp={worktree.lastActivityTimestamp} />
-                        ) : (
-                          <span>No activity</span>
-                        )}
+                          lastActivityTimestamp={worktree.lastActivityTimestamp}
+                          className="w-1.5 h-1.5"
+                        />
+                        <LiveTimeAgo timestamp={worktree.lastActivityTimestamp} />
                       </div>
                     )}
 
@@ -908,7 +900,7 @@ export function WorktreeCard({
               sideOffset={0}
               onClick={(e) => e.stopPropagation()}
             >
-              <DropdownMenuLabel className="text-xs text-muted-foreground font-normal">
+              <DropdownMenuLabel className="text-xs text-muted-foreground font-normal normal-case">
                 Active Sessions ({worktreeTerminals.length})
               </DropdownMenuLabel>
               <DropdownMenuSeparator />
