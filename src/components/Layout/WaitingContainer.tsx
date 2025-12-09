@@ -12,7 +12,7 @@ import { ClaudeIcon, GeminiIcon, CodexIcon } from "@/components/icons";
 import type { TerminalType, TerminalLocation } from "@shared/types";
 
 function getTerminalIcon(type: TerminalType) {
-  const iconProps = { className: "h-3.5 w-3.5 shrink-0" };
+  const iconProps = { className: "h-3 w-3 shrink-0" };
 
   switch (type) {
     case "claude":
@@ -27,8 +27,8 @@ function getTerminalIcon(type: TerminalType) {
 }
 
 function getLocationIcon(location: TerminalLocation | undefined) {
-  if (location === "dock") return <PanelBottom className="w-3.5 h-3.5" />;
-  return <LayoutGrid className="w-3.5 h-3.5" />;
+  if (location === "dock") return <PanelBottom className="w-3 h-3" />;
+  return <LayoutGrid className="w-3 h-3" />;
 }
 
 export function WaitingContainer() {
@@ -104,33 +104,35 @@ export function WaitingContainer() {
                     setIsOpen(false);
                   }}
                   className={cn(
-                    "flex items-center justify-between gap-3 w-full px-2 py-2 rounded-sm transition-colors group text-left outline-none",
+                    "flex items-center justify-between gap-2.5 w-full px-2.5 py-1.5 rounded-sm transition-colors group text-left outline-none",
                     "hover:bg-white/5 focus:bg-white/5",
-                    isFocused && "bg-white/5"
+                    isFocused && "bg-white/[0.03]"
                   )}
                 >
-                  <div className="flex items-center gap-2.5 min-w-0 flex-1">
-                    <div className="shrink-0 opacity-70 group-hover:opacity-100 transition-opacity">
+                  <div className="flex items-center gap-2 min-w-0 flex-1">
+                    <div className="shrink-0 opacity-60 group-hover:opacity-100 transition-opacity">
                       {getTerminalIcon(terminal.type)}
                     </div>
                     <span
                       className={cn(
-                        "text-sm truncate text-canopy-text/90 group-hover:text-canopy-text",
-                        isFocused ? "font-bold text-canopy-text" : "font-medium"
+                        "text-xs truncate font-medium",
+                        isFocused
+                          ? "text-canopy-text"
+                          : "text-canopy-text/70 group-hover:text-canopy-text"
                       )}
                     >
                       {terminal.title}
                     </span>
                   </div>
 
-                  <div className="flex items-center gap-3 shrink-0">
+                  <div className="flex items-center gap-2.5 shrink-0">
                     <AlertCircle
-                      className="w-3.5 h-3.5 text-amber-400"
+                      className="w-3 h-3 text-amber-400"
                       aria-label="Waiting for input"
                     />
 
                     <div
-                      className="text-muted-foreground/40 group-hover:text-muted-foreground/60"
+                      className="text-muted-foreground/40 group-hover:text-muted-foreground/60 transition-colors"
                       title={terminal.location === "dock" ? "Docked" : "On Grid"}
                     >
                       {getLocationIcon(terminal.location)}
