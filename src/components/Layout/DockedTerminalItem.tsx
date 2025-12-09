@@ -236,7 +236,6 @@ export function DockedTerminalItem({ terminal }: DockedTerminalItemProps) {
           }
           location="dock"
           restartKey={terminal.restartKey}
-          hasBeenAutoRenamed={terminal.hasBeenAutoRenamed}
           onFocus={() => setFocused(terminal.id)}
           onClose={handleClose}
           onRestore={handleRestore}
