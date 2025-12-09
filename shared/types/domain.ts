@@ -241,6 +241,27 @@ export enum TerminalRefreshTier {
   BACKGROUND = 1000, // 1fps
 }
 
+/** Structured error state for terminal restart failures */
+export interface TerminalRestartError {
+  /** Human-readable error message */
+  message: string;
+  /** Error code (e.g., ENOENT, EPERM, EACCES) */
+  code?: string;
+  /** Timestamp when error occurred (milliseconds since epoch) */
+  timestamp: number;
+  /** Whether this error can be fixed by user action (e.g., changing CWD) */
+  recoverable: boolean;
+  /** Additional context for debugging */
+  context?: {
+    /** The CWD that failed */
+    failedCwd?: string;
+    /** The command that failed */
+    command?: string;
+    /** Any additional metadata */
+    [key: string]: unknown;
+  };
+}
+
 /** Represents a terminal instance in the application */
 export interface TerminalInstance {
   /** Unique identifier for this terminal */
@@ -287,6 +308,8 @@ export interface TerminalInstance {
   restartKey?: number;
   /** Guard flag to prevent auto-trash during restart flow (exit event race condition) */
   isRestarting?: boolean;
+  /** Restart failure error - set when restart fails, cleared on success or manual action */
+  restartError?: TerminalRestartError;
 }
 
 /** Options for spawning a new PTY process */

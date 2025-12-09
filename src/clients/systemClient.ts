@@ -20,6 +20,10 @@ export const systemClient = {
     return window.electron.system.checkCommand(command);
   },
 
+  checkDirectory: (path: string): Promise<boolean> => {
+    return window.electron.system.checkDirectory(path);
+  },
+
   getHomeDir: (): Promise<string> => {
     return window.electron.system.getHomeDir();
   },

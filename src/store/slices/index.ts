@@ -24,4 +24,5 @@ export {
 export {
   createTerminalBulkActionsSlice,
   type TerminalBulkActionsSlice,
+  type BulkRestartValidation,
 } from "./terminalBulkActionsSlice";
