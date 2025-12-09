@@ -529,34 +529,55 @@ export function WorktreeCard({
 
               {/* Right: Actions */}
               <div className="flex items-center gap-1 shrink-0">
-                <button
-                  onClick={handleCopyTreeClick}
-                  disabled={isCopyingTree}
-                  className={cn(
-                    "p-1 rounded transition-colors",
-                    treeCopied
-                      ? "text-green-400 bg-green-400/10"
-                      : "text-canopy-text/40 hover:text-canopy-text hover:bg-white/10",
-                    "focus-visible:outline focus-visible:outline-2 focus-visible:outline-canopy-accent",
-                    isCopyingTree && "cursor-wait opacity-70"
-                  )}
-                  title={
-                    isCopyingTree
-                      ? "Generating context..."
-                      : treeCopied
-                        ? copyFeedback
-                        : "Copy Context"
-                  }
-                  aria-label={treeCopied ? "Context Copied" : "Copy Context"}
-                >
-                  {isCopyingTree ? (
-                    <Loader2 className="w-3.5 h-3.5 animate-spin text-canopy-text" />
-                  ) : treeCopied ? (
-                    <Check className="w-3.5 h-3.5" />
-                  ) : (
-                    <Copy className="w-3.5 h-3.5" />
-                  )}
-                </button>
+                <div className="relative flex items-center">
+                  <button
+                    onClick={handleCopyTreeClick}
+                    disabled={isCopyingTree}
+                    className={cn(
+                      "p-1 rounded transition-colors",
+                      treeCopied
+                        ? "text-green-400 bg-green-400/10"
+                        : "text-canopy-text/40 hover:text-canopy-text hover:bg-white/10",
+                      "focus-visible:outline focus-visible:outline-2 focus-visible:outline-canopy-accent",
+                      isCopyingTree && "cursor-wait opacity-70"
+                    )}
+                    title={
+                      isCopyingTree
+                        ? "Generating context..."
+                        : treeCopied
+                          ? copyFeedback
+                          : "Copy Context"
+                    }
+                    aria-label={treeCopied ? "Context Copied" : "Copy Context"}
+                  >
+                    {isCopyingTree ? (
+                      <Loader2 className="w-3.5 h-3.5 animate-spin text-canopy-text" />
+                    ) : treeCopied ? (
+                      <Check className="w-3.5 h-3.5" />
+                    ) : (
+                      <Copy className="w-3.5 h-3.5" />
+                    )}
+                  </button>
+
+                  {/* Success Tooltip */}
+                  <div
+                    role="status"
+                    aria-live="polite"
+                    aria-hidden={!treeCopied}
+                    className={cn(
+                      "absolute top-full left-1/2 -translate-x-1/2 mt-2 z-50 px-3 py-1.5",
+                      "bg-[#18181b] border border-[#27272a] rounded-md shadow-xl",
+                      "text-xs font-medium text-canopy-text whitespace-nowrap",
+                      "transition-all duration-200 ease-out origin-top",
+                      treeCopied
+                        ? "opacity-100 scale-100 translate-y-0"
+                        : "opacity-0 scale-95 -translate-y-1 pointer-events-none"
+                    )}
+                  >
+                    {copyFeedback}
+                    <div className="absolute -top-1 left-1/2 -translate-x-1/2 w-2 h-2 bg-[#18181b] border-t border-l border-[#27272a] rotate-45" />
+                  </div>
+                </div>
                 <DropdownMenu>
                   <DropdownMenuTrigger asChild>
                     <button
