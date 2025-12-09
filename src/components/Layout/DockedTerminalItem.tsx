@@ -87,6 +87,31 @@ export function DockedTerminalItem({ terminal }: DockedTerminalItemProps) {
       try {
         if (isOpen) {
           if (!cancelled) {
+            // Wait for Popover DOM to be fully mounted and measurable
+            await new Promise((resolve) => requestAnimationFrame(resolve));
+
+            if (cancelled) return;
+
+            // Force xterm to measure the actual DOM and calculate exact dimensions
+            const dims = terminalInstanceService.fit(terminal.id);
+            if (!dims) {
+              console.warn(`Failed to fit terminal ${terminal.id}, skipping dimension sync`);
+              return;
+            }
+
+            if (cancelled) return;
+
+            // Synchronize PTY to match the exact frontend dimensions
+            try {
+              await terminalClient.resize(terminal.id, dims.cols, dims.rows);
+            } catch (resizeError) {
+              console.warn(`Failed to resize PTY for terminal ${terminal.id}:`, resizeError);
+              return;
+            }
+
+            if (cancelled) return;
+
+            // NOW it's safe to flush - backend and frontend dimensions match
             await terminalClient.setBuffering(terminal.id, false);
             await terminalClient.flush(terminal.id);
             terminalInstanceService.applyRendererPolicy(terminal.id, TerminalRefreshTier.VISIBLE);
