@@ -195,6 +195,7 @@ export function Toolbar({
                   type="issue"
                   projectPath={currentProject.path}
                   onClose={() => setIssuesOpen(false)}
+                  initialCount={stats.issueCount}
                 />
               </FixedDropdown>
 
@@ -238,6 +239,7 @@ export function Toolbar({
                   type="pr"
                   projectPath={currentProject.path}
                   onClose={() => setPrsOpen(false)}
+                  initialCount={stats.prCount}
                 />
               </FixedDropdown>
 
