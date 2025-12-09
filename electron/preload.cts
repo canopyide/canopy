@@ -153,6 +153,7 @@ const CHANNELS = {
   SYSTEM_OPEN_EXTERNAL: "system:open-external",
   SYSTEM_OPEN_PATH: "system:open-path",
   SYSTEM_CHECK_COMMAND: "system:check-command",
+  SYSTEM_CHECK_DIRECTORY: "system:check-directory",
   SYSTEM_GET_HOME_DIR: "system:get-home-dir",
   SYSTEM_GET_CLI_AVAILABILITY: "system:get-cli-availability",
   SYSTEM_REFRESH_CLI_AVAILABILITY: "system:refresh-cli-availability",
@@ -480,6 +481,8 @@ const api: ElectronAPI = {
     openPath: (path: string) => _typedInvoke(CHANNELS.SYSTEM_OPEN_PATH, { path }),
 
     checkCommand: (command: string) => _typedInvoke(CHANNELS.SYSTEM_CHECK_COMMAND, command),
+
+    checkDirectory: (path: string) => _typedInvoke(CHANNELS.SYSTEM_CHECK_DIRECTORY, path),
 
     getHomeDir: () => _typedInvoke(CHANNELS.SYSTEM_GET_HOME_DIR),
 

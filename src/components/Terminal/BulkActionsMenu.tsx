@@ -1,4 +1,5 @@
 import { useState, useCallback } from "react";
+import type { ReactNode } from "react";
 import { useShallow } from "zustand/react/shallow";
 import {
   DropdownMenu,
@@ -14,7 +15,7 @@ import { useSidecarStore } from "@/store/sidecarStore";
 import { ConfirmDialog } from "./ConfirmDialog";
 
 export interface BulkActionsMenuProps {
-  trigger?: React.ReactNode;
+  trigger?: ReactNode;
   className?: string;
 }
 
@@ -25,6 +26,8 @@ export function BulkActionsMenu({ trigger, className }: BulkActionsMenuProps) {
   const bulkTrashAll = useTerminalStore((state) => state.bulkTrashAll);
   const bulkCloseAll = useTerminalStore((state) => state.bulkCloseAll);
   const bulkRestartAll = useTerminalStore((state) => state.bulkRestartAll);
+  const bulkRestartPreflightCheck = useTerminalStore((state) => state.bulkRestartPreflightCheck);
+  const [isValidating, setIsValidating] = useState(false);
 
   const sidecarOpen = useSidecarStore((state) => state.isOpen);
   const sidecarWidth = useSidecarStore((state) => state.width);
@@ -91,17 +94,33 @@ export function BulkActionsMenu({ trigger, className }: BulkActionsMenuProps) {
     });
   }, [allCount, bulkCloseAll, closeConfirmDialog]);
 
-  const handleRestartAll = useCallback(() => {
-    setConfirmDialog({
-      isOpen: true,
-      title: "Restart All Terminals",
-      description: `This will restart ${activeCount} terminal${activeCount !== 1 ? "s" : ""}.`,
-      onConfirm: () => {
-        bulkRestartAll();
-        closeConfirmDialog();
-      },
-    });
-  }, [activeCount, bulkRestartAll, closeConfirmDialog]);
+  const handleRestartAll = useCallback(async () => {
+    setIsValidating(true);
+    try {
+      const result = await bulkRestartPreflightCheck();
+
+      const hasIssues = result.invalid.length > 0;
+      const validCount = result.valid.length;
+      const invalidCount = result.invalid.length;
+
+      let description = `This will restart ${validCount} terminal${validCount !== 1 ? "s" : ""}.`;
+      if (hasIssues) {
+        description += `\n\n${invalidCount} terminal${invalidCount !== 1 ? "s" : ""} cannot be restarted due to invalid configuration (e.g., missing working directory).`;
+      }
+
+      setConfirmDialog({
+        isOpen: true,
+        title: hasIssues ? "Restart Terminals (Some Issues Found)" : "Restart All Terminals",
+        description,
+        onConfirm: () => {
+          bulkRestartAll();
+          closeConfirmDialog();
+        },
+      });
+    } finally {
+      setIsValidating(false);
+    }
+  }, [bulkRestartPreflightCheck, bulkRestartAll, closeConfirmDialog]);
 
   const defaultTrigger = (
     <Button
@@ -165,11 +184,11 @@ export function BulkActionsMenu({ trigger, className }: BulkActionsMenuProps) {
 
           <DropdownMenuItem
             onClick={handleRestartAll}
-            disabled={activeCount === 0}
+            disabled={activeCount === 0 || isValidating}
             className="flex items-center gap-2"
           >
-            <RotateCcw className="h-4 w-4" />
-            <span>Restart All Terminals</span>
+            <RotateCcw className={`h-4 w-4 ${isValidating ? "animate-spin" : ""}`} />
+            <span>{isValidating ? "Checking..." : "Restart All Terminals"}</span>
             <span className="ml-auto text-xs text-canopy-text/50">({activeCount})</span>
           </DropdownMenuItem>
         </DropdownMenuContent>

@@ -3,6 +3,12 @@ import type { TerminalInstance } from "./terminalRegistrySlice";
 import { MAX_GRID_TERMINALS } from "./terminalRegistrySlice";
 import type { AgentState } from "@/types";
 import { isAgentTerminal } from "../../utils/terminalType";
+import { validateTerminals, type ValidationResult } from "@/utils/terminalValidation";
+
+export interface BulkRestartValidation {
+  valid: TerminalInstance[];
+  invalid: Array<{ terminal: TerminalInstance; errors: ValidationResult }>;
+}
 
 export interface TerminalBulkActionsSlice {
   bulkCloseByState: (states: AgentState | AgentState[]) => void;
@@ -10,6 +16,7 @@ export interface TerminalBulkActionsSlice {
   bulkCloseAll: () => void;
   bulkTrashAll: () => void;
   bulkRestartAll: () => Promise<void>;
+  bulkRestartPreflightCheck: () => Promise<BulkRestartValidation>;
   bulkMoveToDock: () => void;
   bulkMoveToGrid: () => void;
   restartFailedAgents: () => Promise<void>;
@@ -71,6 +78,27 @@ export const createTerminalBulkActionsSlice = (
       const terminals = getTerminals();
       const activeTerminals = terminals.filter((t) => t.location !== "trash");
       await restartTerminals(activeTerminals);
+    },
+
+    bulkRestartPreflightCheck: async () => {
+      const terminals = getTerminals();
+      const activeTerminals = terminals.filter((t) => t.location !== "trash");
+
+      const validationResults = await validateTerminals(activeTerminals);
+
+      const valid: TerminalInstance[] = [];
+      const invalid: Array<{ terminal: TerminalInstance; errors: ValidationResult }> = [];
+
+      for (const terminal of activeTerminals) {
+        const result = validationResults.get(terminal.id);
+        if (result) {
+          invalid.push({ terminal, errors: result });
+        } else {
+          valid.push(terminal);
+        }
+      }
+
+      return { valid, invalid };
     },
 
     bulkMoveToDock: () => {

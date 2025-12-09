@@ -80,6 +80,31 @@ export function registerProjectHandlers(deps: HandlerDependencies): () => void {
   ipcMain.handle(CHANNELS.SYSTEM_CHECK_COMMAND, handleSystemCheckCommand);
   handlers.push(() => ipcMain.removeHandler(CHANNELS.SYSTEM_CHECK_COMMAND));
 
+  const handleSystemCheckDirectory = async (
+    _event: Electron.IpcMainInvokeEvent,
+    directoryPath: string
+  ): Promise<boolean> => {
+    if (typeof directoryPath !== "string" || !directoryPath.trim()) {
+      return false;
+    }
+
+    const path = await import("path");
+    if (!path.isAbsolute(directoryPath)) {
+      console.warn(`Directory path "${directoryPath}" is not absolute, rejecting`);
+      return false;
+    }
+
+    try {
+      const fs = await import("fs");
+      const stats = await fs.promises.stat(directoryPath);
+      return stats.isDirectory();
+    } catch {
+      return false;
+    }
+  };
+  ipcMain.handle(CHANNELS.SYSTEM_CHECK_DIRECTORY, handleSystemCheckDirectory);
+  handlers.push(() => ipcMain.removeHandler(CHANNELS.SYSTEM_CHECK_DIRECTORY));
+
   const handleSystemGetHomeDir = async () => {
     return os.homedir();
   };
