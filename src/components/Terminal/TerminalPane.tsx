@@ -161,10 +161,14 @@ function TerminalPaneComponent({
 
       if (e.key === "Enter" || e.key === " ") {
         e.preventDefault();
-        onFocus();
+        if (focusedId === id) {
+          setFocused(null);
+        } else {
+          setFocused(id);
+        }
       }
     },
-    [onFocus]
+    [focusedId, id, setFocused]
   );
 
   const getRefreshTierCallback = useCallback(() => {
@@ -176,7 +180,7 @@ function TerminalPaneComponent({
     if (focusedId === id) {
       setFocused(null);
     } else {
-      onFocus();
+      setFocused(id);
     }
     terminalInstanceService.boostRefreshRate(id);
   }, [focusedId, id, onFocus, setFocused]);
@@ -220,7 +224,8 @@ function TerminalPaneComponent({
         "flex flex-col h-full overflow-hidden group",
 
         // Background color: surface tint for cards, canvas for maximized
-        location === "grid" && !isMaximized && "bg-[var(--color-surface)]",
+        // When focused, .terminal-selected handles the background color
+        location === "grid" && !isMaximized && !isFocused && "bg-[var(--color-surface)]",
         (location === "dock" || isMaximized) && "bg-canopy-bg",
 
         // Grid styles (standard - non-maximized)
@@ -228,8 +233,8 @@ function TerminalPaneComponent({
         location === "grid" &&
           !isMaximized &&
           (isFocused
-            ? "terminal-focused border-[color-mix(in_oklab,var(--color-canopy-border)_100%,white_20%)]"
-            : "border-canopy-border hover:border-[color-mix(in_oklab,var(--color-canopy-border)_100%,white_10%)]"),
+            ? "terminal-selected"
+            : "border-canopy-border hover:border-white/10"),
 
         // Zen Mode styles (maximized - full immersion, no inset needed)
         location === "grid" && isMaximized && "border-0 rounded-none z-50",
@@ -243,7 +248,6 @@ function TerminalPaneComponent({
         isTrashing && "terminal-trashing"
       )}
       onClick={handleClick}
-      onFocus={onFocus}
       onKeyDown={handleKeyDown}
       tabIndex={0}
       role="group"

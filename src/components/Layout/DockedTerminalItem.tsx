@@ -174,26 +174,41 @@ export function DockedTerminalItem({ terminal }: DockedTerminalItemProps) {
         <PopoverTrigger asChild>
           <button
             className={cn(
-              "flex items-center gap-2 px-3 py-1.5 rounded-full text-xs border transition-all",
-              "hover:bg-canopy-accent/10 border-canopy-border hover:border-canopy-accent/50",
-              "focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-canopy-accent focus-visible:ring-offset-2 focus-visible:ring-offset-canopy-bg",
+              "flex items-center gap-2.5 px-3 py-1.5 h-8 rounded-md text-xs border transition-all",
+              "bg-[var(--color-surface)] border-canopy-border text-canopy-text/80",
+              "hover:text-canopy-text hover:border-canopy-accent/30 hover:bg-[var(--color-surface-highlight)]",
+              "focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-canopy-accent",
               "cursor-grab active:cursor-grabbing",
-              isOpen && "bg-canopy-accent/20 border-canopy-accent"
+              isOpen &&
+                "bg-[var(--color-surface-highlight)] border-white/20 text-canopy-text shadow-sm"
             )}
             onClick={() => setFocused(terminal.id)}
             title={`${terminal.title} - Click to preview, drag to reorder`}
           >
-            {isWorking ? (
-              <Loader2
-                className="w-3 h-3 animate-spin"
-                style={{ color: brandColor }}
-                aria-hidden="true"
-              />
-            ) : (
-              <TerminalIcon type={terminal.type} className="w-3 h-3" brandColor={brandColor} />
-            )}
+            <div
+              className={cn(
+                "flex items-center justify-center transition-opacity",
+                isOpen || isWorking ? "opacity-100" : "opacity-70"
+              )}
+            >
+              {isWorking ? (
+                <Loader2
+                  className="w-3.5 h-3.5 animate-spin"
+                  style={{ color: brandColor }}
+                  aria-hidden="true"
+                />
+              ) : (
+                <TerminalIcon
+                  type={terminal.type}
+                  className="w-3.5 h-3.5"
+                  brandColor={brandColor}
+                />
+              )}
+            </div>
             {getStateIndicator(terminal.agentState)}
-            <span className="truncate max-w-[120px] font-mono">{terminal.title}</span>
+            <span className="truncate max-w-[120px] font-mono font-medium">
+              {terminal.title}
+            </span>
           </button>
         </PopoverTrigger>
       </TerminalContextMenu>

@@ -116,19 +116,16 @@ function TerminalHeaderComponent({
       <div
         className={cn(
           "flex items-center justify-between px-3 shrink-0 font-mono text-xs transition-colors relative overflow-hidden",
-          isMaximized ? "h-10 bg-canopy-sidebar border-b border-canopy-border" : "h-8",
-          !isMaximized &&
-            !isPinged &&
-            (isFocused ? "bg-[var(--color-surface-highlight)]" : "bg-[var(--color-surface)]"),
-          isPinged && !isMaximized && "animate-ping-header bg-[var(--color-surface-highlight)]"
+          // Base height and separator border
+          "h-8 border-b border-black/20",
+          // Maximized overrides: taller height, sidebar background, standard border color
+          isMaximized
+            ? "h-10 bg-canopy-sidebar border-canopy-border"
+            : location === "dock"
+              ? "bg-[var(--color-surface)]"
+              : "bg-transparent",
+          isPinged && !isMaximized && "animate-ping-header"
         )}
-        style={
-          !isMaximized && getBrandColorHex(type)
-            ? {
-                backgroundImage: `linear-gradient(to right, ${getBrandColorHex(type)}0c 0%, transparent 60%)`,
-              }
-            : undefined
-        }
         onDoubleClick={handleHeaderDoubleClick}
       >
         <div className="flex items-center gap-2 min-w-0">

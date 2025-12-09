@@ -108,7 +108,7 @@ export function TerminalDock() {
         <div
           className={cn(
             "bg-canopy-bg/95 backdrop-blur-sm border-t-2 border-canopy-border/60 shadow-[0_-4px_12px_rgba(0,0,0,0.3)]",
-            "flex items-center px-1.5 py-1.5 gap-1.5",
+            "flex items-center px-1.5 py-1 gap-1.5",
             "z-40 shrink-0"
           )}
           role="list"
@@ -130,7 +130,7 @@ export function TerminalDock() {
               ref={combinedRef}
               className={cn(
                 "flex items-center gap-1.5 overflow-x-auto flex-1 min-h-[36px] no-scrollbar scroll-smooth px-1",
-                isOver && "bg-white/[0.03] ring-2 ring-canopy-accent/30 ring-inset rounded-full"
+                isOver && "bg-white/[0.03] ring-2 ring-canopy-accent/30 ring-inset rounded-md"
               )}
             >
               <SortableContext
