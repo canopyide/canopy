@@ -206,9 +206,7 @@ export function DockedTerminalItem({ terminal }: DockedTerminalItemProps) {
               )}
             </div>
             {getStateIndicator(terminal.agentState)}
-            <span className="truncate max-w-[120px] font-mono font-medium">
-              {terminal.title}
-            </span>
+            <span className="truncate max-w-[120px] font-mono font-medium">{terminal.title}</span>
           </button>
         </PopoverTrigger>
       </TerminalContextMenu>
