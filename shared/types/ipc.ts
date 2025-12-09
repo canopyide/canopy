@@ -1038,6 +1038,10 @@ export interface IpcInvokeMap {
     args: [command: string];
     result: boolean;
   };
+  "system:check-directory": {
+    args: [path: string];
+    result: boolean;
+  };
   "system:get-home-dir": {
     args: [];
     result: string;
@@ -1541,6 +1545,7 @@ export interface ElectronAPI {
     openExternal(url: string): Promise<void>;
     openPath(path: string): Promise<void>;
     checkCommand(command: string): Promise<boolean>;
+    checkDirectory(path: string): Promise<boolean>;
     getHomeDir(): Promise<string>;
     getCliAvailability(): Promise<CliAvailability>;
     refreshCliAvailability(): Promise<CliAvailability>;
