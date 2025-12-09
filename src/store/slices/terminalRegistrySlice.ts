@@ -1,6 +1,7 @@
 import type { StateCreator } from "zustand";
 import type {
   TerminalInstance as TerminalInstanceType,
+  TerminalRestartError,
   AgentState,
   TerminalType,
   TerminalLocation,
@@ -11,6 +12,7 @@ import { generateClaudeFlags, generateGeminiFlags, generateCodexFlags } from "@s
 import { terminalInstanceService } from "@/services/TerminalInstanceService";
 import { TerminalRefreshTier } from "@/types";
 import { terminalPersistence } from "../persistence/terminalPersistence";
+import { validateTerminalConfig } from "@/utils/terminalValidation";
 
 export const MAX_GRID_TERMINALS = 16;
 
@@ -98,6 +100,8 @@ export interface TerminalRegistrySlice {
   moveTerminalToPosition: (id: string, toIndex: number, location: "grid" | "dock") => void;
 
   restartTerminal: (id: string) => Promise<void>;
+  clearTerminalError: (id: string) => void;
+  updateTerminalCwd: (id: string, cwd: string) => void;
 }
 
 // Flush pending persistence - call on app quit to prevent data loss
@@ -632,29 +636,97 @@ export const createTerminalRegistrySlice =
         return;
       }
 
-      // Mark as restarting BEFORE killing old PTY to prevent auto-trash from exit event
+      // Clear any previous restart error and mark as restarting
       set((state) => ({
-        terminals: state.terminals.map((t) => (t.id === id ? { ...t, isRestarting: true } : t)),
+        terminals: state.terminals.map((t) =>
+          t.id === id ? { ...t, restartError: undefined, isRestarting: true } : t
+        ),
       }));
 
-      let targetLocation = terminal.location;
+      // Validate configuration before attempting restart
+      let validation;
+      try {
+        validation = await validateTerminalConfig(terminal);
+      } catch (error) {
+        // Validation itself failed (e.g., IPC error)
+        const restartError: TerminalRestartError = {
+          message: "Failed to validate terminal configuration",
+          timestamp: Date.now(),
+          recoverable: false,
+          context: {
+            failedCwd: terminal.cwd,
+            validationError: error instanceof Error ? error.message : String(error),
+          },
+        };
+
+        set((state) => ({
+          terminals: state.terminals.map((t) =>
+            t.id === id ? { ...t, isRestarting: false, restartError } : t
+          ),
+        }));
+        console.error(`[TerminalStore] Validation error for terminal ${id}:`, error);
+        return;
+      }
+
+      if (!validation.valid) {
+        // Set error state instead of attempting doomed restart
+        // Use the first non-recoverable error's code, or the first error's code
+        const primaryError =
+          validation.errors.find((e) => !e.recoverable) || validation.errors[0];
+
+        const restartError: TerminalRestartError = {
+          message: validation.errors.map((e) => e.message).join("; "),
+          code: primaryError?.code,
+          timestamp: Date.now(),
+          recoverable: validation.errors.every((e) => e.recoverable),
+          context: {
+            failedCwd: terminal.cwd,
+            errors: validation.errors,
+          },
+        };
+
+        set((state) => ({
+          terminals: state.terminals.map((t) =>
+            t.id === id ? { ...t, isRestarting: false, restartError } : t
+          ),
+        }));
+        console.warn(`[TerminalStore] Restart validation failed for terminal ${id}:`, restartError);
+        return;
+      }
+
+      // Re-read terminal from state in case it was modified during async validation
+      const currentState = get();
+      const currentTerminal = currentState.terminals.find((t) => t.id === id);
+
+      if (!currentTerminal || currentTerminal.location === "trash") {
+        // Terminal was removed or trashed while we were validating
+        set((state) => ({
+          terminals: state.terminals.map((t) =>
+            t.id === id ? { ...t, isRestarting: false } : t
+          ),
+        }));
+        console.warn(`[TerminalStore] Terminal ${id} no longer exists or was trashed`);
+        return;
+      }
+
+      let targetLocation = currentTerminal.location;
       if (terminal.location === "trash") {
-        const trashedInfo = state.trashedTerminals.get(id);
+        const trashedInfo = currentState.trashedTerminals.get(id);
         targetLocation = trashedInfo?.originalLocation ?? "grid";
       }
 
       // For agent terminals, regenerate command from current settings
       // For other terminals, use the saved command
-      let commandToRun = terminal.command;
-      const isAgent = ["claude", "gemini", "codex"].includes(terminal.type);
+      let commandToRun = currentTerminal.command;
+      const isAgent = ["claude", "gemini", "codex"].includes(currentTerminal.type);
 
       if (isAgent) {
         try {
           const agentSettings = await agentSettingsClient.get();
           if (agentSettings) {
-            const baseCommand = terminal.type;
+            const baseCommand = currentTerminal.type;
             let flags: string[] = [];
-            switch (terminal.type) {
+            switch (currentTerminal.type) {
               case "claude":
                 flags = generateClaudeFlags(agentSettings.claude);
                 break;
@@ -682,8 +754,8 @@ export const createTerminalRegistrySlice =
         // Kill the old PTY backend (but don't remove from store)
         await terminalClient.kill(id);
 
-        let spawnCols = terminal.cols || 80;
-        let spawnRows = terminal.rows || 24;
+        let spawnCols = currentTerminal.cols || 80;
+        let spawnRows = currentTerminal.rows || 24;
         if (targetLocation === "dock") {
           const dims = terminalInstanceService.resize(id, DOCK_TERM_WIDTH, DOCK_TERM_HEIGHT);
           if (dims) {
@@ -695,12 +767,12 @@ export const createTerminalRegistrySlice =
         // Spawn a new PTY with the SAME ID - output goes to buffer
         await terminalClient.spawn({
           id, // Reuse the same ID
-          cwd: terminal.cwd,
+          cwd: currentTerminal.cwd,
           cols: spawnCols,
           rows: spawnRows,
-          type: terminal.type,
-          title: terminal.title,
-          worktreeId: terminal.worktreeId,
+          type: currentTerminal.type,
+          title: currentTerminal.title,
+          worktreeId: currentTerminal.worktreeId,
           command: commandToRun,
         });
 
@@ -719,7 +791,8 @@ export const createTerminalRegistrySlice =
                   agentState: isAgent ? ("idle" as const) : undefined,
                   lastStateChange: isAgent ? Date.now() : undefined,
                   command: commandToRun,
-                  isRestarting: false, // Clear the restart guard flag
+                  isRestarting: false,
+                  restartError: undefined,
                 }
               : t
           );
@@ -739,17 +812,48 @@ export const createTerminalRegistrySlice =
           });
         }
       } catch (error) {
-        // Clear restart flag and trash terminal since restart failed after killing PTY
-        // The exit event from the killed PTY was suppressed by isRestarting,
-        // so we must explicitly clean up the dead terminal
+        // Set error state instead of trashing the terminal
+        const errorMessage = error instanceof Error ? error.message : String(error);
+        const errorCode = (error as { code?: string })?.code;
+
+        const restartError: TerminalRestartError = {
+          message: errorMessage,
+          code: errorCode,
+          timestamp: Date.now(),
+          recoverable: errorCode === "ENOENT",
+          context: {
+            failedCwd: currentTerminal.cwd,
+            command: commandToRun,
+          },
+        };
+
         set((state) => ({
-          terminals: state.terminals.map((t) => (t.id === id ? { ...t, isRestarting: false } : t)),
+          terminals: state.terminals.map((t) =>
+            t.id === id ? { ...t, isRestarting: false, restartError } : t
+          ),
         }));
+
         // Re-enable normal mode if restart failed
         terminalClient.setBuffering(id, false).catch(() => {});
         console.error(`[TerminalStore] Failed to restart terminal ${id}:`, error);
-        // Trash the terminal since it has no backend process after failed restart
-        get().trashTerminal(id);
       }
+    },
+
+    clearTerminalError: (id) => {
+      set((state) => ({
+        terminals: state.terminals.map((t) =>
+          t.id === id ? { ...t, restartError: undefined } : t
+        ),
+      }));
+    },
+
+    updateTerminalCwd: (id, cwd) => {
+      set((state) => {
+        const newTerminals = state.terminals.map((t) =>
+          t.id === id ? { ...t, cwd, restartError: undefined } : t
+        );
+        terminalPersistence.save(newTerminals);
+        return { terminals: newTerminals };
+      });
     },
   });

@@ -106,6 +106,7 @@ export function GridTerminalPane({
         }
         location="grid"
         restartKey={terminal.restartKey}
+        restartError={terminal.restartError}
         onFocus={handleFocus}
         onClose={handleClose}
         onToggleMaximize={handleToggleMaximize}

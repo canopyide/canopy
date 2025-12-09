@@ -1,6 +1,6 @@
 import React, { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { useShallow } from "zustand/react/shallow";
-import type { TerminalType } from "@/types";
+import type { TerminalType, TerminalRestartError } from "@/types";
 import { cn } from "@/lib/utils";
 import { getTerminalAnimationDuration } from "@/lib/animationUtils";
 import { XtermAdapter } from "./XtermAdapter";
@@ -8,6 +8,8 @@ import { ArtifactOverlay } from "./ArtifactOverlay";
 import { TerminalHeader } from "./TerminalHeader";
 import { TerminalSearchBar } from "./TerminalSearchBar";
 import { TerminalRestartBanner } from "./TerminalRestartBanner";
+import { TerminalErrorBanner } from "./TerminalErrorBanner";
+import { UpdateCwdDialog } from "./UpdateCwdDialog";
 import { ErrorBanner } from "../Errors/ErrorBanner";
 import { useErrorStore, useTerminalStore, getTerminalRefreshTier } from "@/store";
 import { useTerminalLogic } from "@/hooks/useTerminalLogic";
@@ -43,6 +45,8 @@ export interface TerminalPaneProps {
   restartKey?: number;
   /** Terminal is animating out before being trashed */
   isTrashing?: boolean;
+  /** Error from a failed restart attempt */
+  restartError?: TerminalRestartError;
 }
 
 function TerminalPaneComponent({
@@ -64,11 +68,13 @@ function TerminalPaneComponent({
   location = "grid",
   restartKey = 0,
   isTrashing = false,
+  restartError,
 }: TerminalPaneProps) {
   const containerRef = useRef<HTMLDivElement>(null);
   const [isRestoring, setIsRestoring] = useState(true);
   const [dismissedRestartPrompt, setDismissedRestartPrompt] = useState(false);
   const [isSearchOpen, setIsSearchOpen] = useState(false);
+  const [isUpdateCwdOpen, setIsUpdateCwdOpen] = useState(false);
 
   useEffect(() => {
     if (!isRestoring) return;
@@ -84,6 +90,7 @@ function TerminalPaneComponent({
   const updateVisibility = useTerminalStore((state) => state.updateVisibility);
   const getTerminal = useTerminalStore((state) => state.getTerminal);
   const restartTerminal = useTerminalStore((state) => state.restartTerminal);
+  const trashTerminal = useTerminalStore((state) => state.trashTerminal);
   const focusedId = useTerminalStore((state) => state.focusedId);
   const setFocused = useTerminalStore((state) => state.setFocused);
 
@@ -201,6 +208,14 @@ function TerminalPaneComponent({
   const handleRestart = useCallback(() => {
     restartTerminal(id);
   }, [restartTerminal, id]);
+
+  const handleUpdateCwd = useCallback(() => {
+    setIsUpdateCwdOpen(true);
+  }, []);
+
+  const handleTrash = useCallback(() => {
+    trashTerminal(id);
+  }, [trashTerminal, id]);
 
   useEffect(() => {
     terminalInstanceService.setFocused(id, isFocused);
@@ -324,11 +339,22 @@ function TerminalPaneComponent({
         </div>
       )}
 
+      {restartError && (
+        <TerminalErrorBanner
+          terminalId={id}
+          error={restartError}
+          onUpdateCwd={handleUpdateCwd}
+          onRetry={handleRestart}
+          onTrash={handleTrash}
+        />
+      )}
+
       {isExited &&
         exitCode !== null &&
         exitCode !== 0 &&
         exitCode !== 130 &&
-        !dismissedRestartPrompt && (
+        !dismissedRestartPrompt &&
+        !restartError && (
           <TerminalRestartBanner
             exitCode={exitCode}
             onRestart={handleRestart}
@@ -357,6 +383,13 @@ function TerminalPaneComponent({
           />
         )}
       </div>
+
+      <UpdateCwdDialog
+        isOpen={isUpdateCwdOpen}
+        terminalId={id}
+        currentCwd={cwd}
+        onClose={() => setIsUpdateCwdOpen(false)}
+      />
     </div>
   );
 }
