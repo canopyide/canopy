@@ -30,7 +30,6 @@ export const useGitHubConfigStore = create<GitHubConfigStore>()((set, get) => ({
     if (initPromise) return initPromise;
 
     initPromise = (async () => {
-
       try {
         set({ isLoading: true, error: null });
 
