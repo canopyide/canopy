@@ -1,8 +1,5 @@
 import { create } from "zustand";
-import {
-  DEFAULT_TERMINAL_FONT_FAMILY,
-  DEFAULT_TERMINAL_FONT_SIZE,
-} from "@/config/terminalFont";
+import { DEFAULT_TERMINAL_FONT_FAMILY, DEFAULT_TERMINAL_FONT_SIZE } from "@/config/terminalFont";
 
 interface TerminalFontState {
   fontSize: number;
@@ -17,4 +14,3 @@ export const useTerminalFontStore = create<TerminalFontState>()((set) => ({
   setFontSize: (size) => set({ fontSize: size }),
   setFontFamily: (family) => set({ fontFamily: family }),
 }));
-

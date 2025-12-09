@@ -2,7 +2,16 @@ import { useState, useEffect } from "react";
 import { createPortal } from "react-dom";
 import { useErrors, useOverlayState } from "@/hooks";
 import { useLogsStore, useSidecarStore } from "@/store";
-import { X, Bot, Github, LayoutGrid, PanelRight, Keyboard, GitBranch, Terminal } from "lucide-react";
+import {
+  X,
+  Bot,
+  Github,
+  LayoutGrid,
+  PanelRight,
+  Keyboard,
+  GitBranch,
+  Terminal,
+} from "lucide-react";
 import { cn } from "@/lib/utils";
 import { appClient } from "@/clients";
 import { AgentSettings } from "./AgentSettings";
@@ -226,17 +235,17 @@ export function SettingsDialog({
                 ? "Agent Settings"
                 : activeTab === "github"
                   ? "GitHub Integration"
-              : activeTab === "terminal"
+                  : activeTab === "terminal"
                     ? "Terminal Grid"
                     : activeTab === "terminalAppearance"
                       ? "Terminal Appearance"
                       : activeTab === "worktree"
-                      ? "Worktree Paths"
-                      : activeTab === "sidecar"
-                        ? "Sidecar Links"
-                        : activeTab === "keyboard"
-                          ? "Keyboard Shortcuts"
-                          : activeTab}
+                        ? "Worktree Paths"
+                        : activeTab === "sidecar"
+                          ? "Sidecar Links"
+                          : activeTab === "keyboard"
+                            ? "Keyboard Shortcuts"
+                            : activeTab}
             </h3>
             <button
               onClick={onClose}
