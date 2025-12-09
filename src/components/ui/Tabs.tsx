@@ -8,8 +8,8 @@ export interface TabOption {
 }
 
 export interface TabsProps {
-  value: string | null;
-  onChange: (value: string | null) => void;
+  value: string;
+  onChange: (value: string) => void;
   options: TabOption[];
   className?: string;
   fullWidth?: boolean;
@@ -85,7 +85,7 @@ export function Tabs({
       className={cn("flex border-b border-canopy-border", className)}
     >
       {options.map((option, index) => {
-        const isActive = value !== null && value === option.value;
+        const isActive = value === option.value;
         const tabId = idPrefix ? `${idPrefix}-tab-${option.value}` : undefined;
         const panelId = idPrefix ? `${idPrefix}-panel-${option.value}` : undefined;
 
@@ -100,11 +100,9 @@ export function Tabs({
             id={tabId}
             aria-selected={isActive}
             aria-controls={panelId}
-            tabIndex={isActive ? 0 : value === null && index === 0 ? 0 : -1}
+            tabIndex={isActive ? 0 : -1}
             onClick={() => {
-              if (value === option.value) {
-                onChange(null);
-              } else {
+              if (value !== option.value) {
                 onChange(option.value);
               }
             }}
