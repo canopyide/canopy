@@ -507,7 +507,7 @@ export function WorktreeCard({
                   isMainWorktree={isMainWorktree}
                 />
                 {!worktree.branch && (
-                  <span className="text-amber-500 text-[10px] font-medium shrink-0">
+                  <span className="text-amber-500 text-xs font-medium shrink-0">
                     (detached)
                   </span>
                 )}
@@ -517,7 +517,7 @@ export function WorktreeCard({
               {showTimeInHeader && (
                 <div
                   className={cn(
-                    "flex items-center gap-1.5 shrink-0 text-[10px] px-2 py-0.5 rounded-full",
+                    "flex items-center gap-1.5 shrink-0 text-xs px-2 py-0.5 rounded-full",
                     worktree.lastActivityTimestamp
                       ? "bg-white/[0.03] text-canopy-text/60"
                       : "bg-transparent text-canopy-text/40"
@@ -691,7 +691,7 @@ export function WorktreeCard({
                       e.stopPropagation();
                       onOpenIssue?.();
                     }}
-                    className="group/issue flex items-center gap-1 text-[10px] text-blue-400 hover:text-blue-300 hover:underline transition-colors focus-visible:outline focus-visible:outline-2 focus-visible:outline-canopy-accent"
+                    className="group/issue flex items-center gap-1 text-xs text-blue-400 hover:text-blue-300 hover:underline transition-colors focus-visible:outline focus-visible:outline-2 focus-visible:outline-canopy-accent"
                     title="Open Issue on GitHub"
                   >
                     <CircleDot className="w-2.5 h-2.5" />
@@ -706,7 +706,7 @@ export function WorktreeCard({
                       onOpenPR?.();
                     }}
                     className={cn(
-                      "group/pr flex items-center gap-1 text-[10px] hover:underline transition-colors",
+                      "group/pr flex items-center gap-1 text-xs hover:underline transition-colors",
                       "focus-visible:outline focus-visible:outline-2 focus-visible:outline-canopy-accent",
                       worktree.prState === "merged"
                         ? "text-purple-400 hover:text-purple-300"
@@ -760,7 +760,7 @@ export function WorktreeCard({
                   className="w-full p-3 flex items-center justify-between min-w-0 text-left rounded-lg transition-colors hover:bg-white/5 focus-visible:outline focus-visible:outline-2 focus-visible:outline-canopy-accent focus-visible:outline-offset-[-2px]"
                 >
                   {/* LEFT SLOT: Git Signal + Commit Message */}
-                  <div className="flex items-center gap-2 min-w-0 flex-1 text-[11px] font-mono text-canopy-text/60">
+                  <div className="flex items-center gap-2 min-w-0 flex-1 text-xs font-mono text-canopy-text/60">
                     {workspaceScenario === "dirty" && worktree.worktreeChanges && (
                       <>
                         <span className="shrink-0">
@@ -813,7 +813,7 @@ export function WorktreeCard({
                     {/* Time display (only when moved from header) */}
                     {!showTimeInHeader && (
                       <div
-                        className="flex items-center gap-1.5 text-[10px] text-canopy-text/40"
+                        className="flex items-center gap-1.5 text-xs text-canopy-text/40"
                         title={
                           worktree.lastActivityTimestamp
                             ? `Last activity: ${new Date(worktree.lastActivityTimestamp).toLocaleString()}`
@@ -831,7 +831,7 @@ export function WorktreeCard({
                     {/* Dev Server Indicator */}
                     {serverState?.status === "running" && serverState.port && (
                       <span
-                        className="flex items-center gap-1 text-[10px] text-[var(--color-server-running)]"
+                        className="flex items-center gap-1 text-xs text-[var(--color-server-running)]"
                         title="Dev server running"
                       >
                         <div className="w-2 h-2 bg-[var(--color-server-running)] rounded-full animate-pulse" />
@@ -850,7 +850,7 @@ export function WorktreeCard({
           <DropdownMenu>
             <DropdownMenuTrigger asChild>
               <button
-                className="w-full flex items-center justify-between mt-5 py-1.5 px-2 text-[10px] text-canopy-text/60 hover:text-canopy-text/80 bg-white/[0.02] rounded transition-colors cursor-pointer focus-visible:outline focus-visible:outline-2 focus-visible:outline-canopy-accent"
+                className="w-full flex items-center justify-between mt-5 py-1.5 px-2 text-xs text-canopy-text/60 hover:text-canopy-text/80 bg-white/[0.02] rounded transition-colors cursor-pointer focus-visible:outline focus-visible:outline-2 focus-visible:outline-canopy-accent"
                 onClick={(e) => e.stopPropagation()}
               >
                 {/* Left: Terminal icon + total count */}

@@ -140,7 +140,7 @@ export function WorktreeDetails({
               onPathClick();
             }}
             className={cn(
-              "text-[10px] text-canopy-text/40 hover:text-canopy-text/60 text-left font-mono truncate flex-1 min-w-0 flex items-center gap-1.5 rounded",
+              "text-xs text-canopy-text/40 hover:text-canopy-text/60 text-left font-mono truncate flex-1 min-w-0 flex items-center gap-1.5 rounded",
               "focus-visible:outline focus-visible:outline-2 focus-visible:outline-canopy-accent",
               isFocused && "text-canopy-text/60"
             )}
@@ -177,7 +177,7 @@ export function WorktreeDetails({
       {showTime && lastActivityTimestamp && (
         <div className="flex items-center gap-2 pb-2 border-b border-white/5">
           <div className="flex items-center gap-1.5 text-xs text-canopy-text/50">
-            <span className="text-[10px] uppercase tracking-wider font-semibold">Last Active</span>
+            <span className="text-xs font-medium">Last active:</span>
             <ActivityLight lastActivityTimestamp={lastActivityTimestamp} />
             <LiveTimeAgo timestamp={lastActivityTimestamp} />
           </div>
@@ -187,7 +187,7 @@ export function WorktreeDetails({
       {/* Dev Server Controls */}
       {showDevServer && serverState && (
         <div className="space-y-2">
-          <div className="text-[10px] uppercase tracking-wider text-canopy-text/60 font-semibold">
+          <div className="text-xs text-canopy-text/60 font-medium">
             Dev Server
           </div>
           <div className="flex items-center gap-3">
@@ -322,7 +322,7 @@ export function WorktreeDetails({
 
       {/* Placeholder when no AI summary or note exists */}
       {!effectiveNote && !effectiveSummary && !rawLastCommitMsg && (
-        <div className="text-[11px] text-canopy-text/40 italic">
+        <div className="text-xs text-canopy-text/40 italic">
           No AI summary yet. Run an agent task or use Copy Context to generate one.
         </div>
       )}
@@ -330,7 +330,7 @@ export function WorktreeDetails({
       {/* Block 3: Artifacts (grouped file changes + system path) */}
       {hasChanges && worktree.worktreeChanges && (
         <div className="space-y-2">
-          <div className="text-[10px] uppercase tracking-wider text-canopy-text/60 font-semibold">
+          <div className="text-xs text-canopy-text/60 font-medium">
             Changed Files
           </div>
           <FileChangeList
@@ -352,7 +352,7 @@ export function WorktreeDetails({
               onPathClick();
             }}
             className={cn(
-              "text-[10px] text-canopy-text/40 hover:text-canopy-text/60 text-left font-mono truncate flex-1 min-w-0 flex items-center gap-1.5 rounded",
+              "text-xs text-canopy-text/40 hover:text-canopy-text/60 text-left font-mono truncate flex-1 min-w-0 flex items-center gap-1.5 rounded",
               "focus-visible:outline focus-visible:outline-2 focus-visible:outline-canopy-accent",
               isFocused && "text-canopy-text/60"
             )}
