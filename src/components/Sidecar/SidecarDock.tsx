@@ -46,7 +46,8 @@ export function SidecarDock() {
   const activeTab = tabs.find((t) => t.id === activeTabId);
   const isBlankTab = activeTabId !== null && activeTab && !activeTab.url;
   const showLaunchpad = activeTabId === null || tabs.length === 0 || isBlankTab;
-  const hasActiveUrl = activeTab?.url !== undefined && activeTab.url !== null && activeTab.url !== "";
+  const hasActiveUrl =
+    activeTab?.url !== undefined && activeTab.url !== null && activeTab.url !== "";
 
   const syncBounds = useCallback(() => {
     if (!placeholderRef.current || !activeTabId) return;
