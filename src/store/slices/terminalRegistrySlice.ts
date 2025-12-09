@@ -17,7 +17,7 @@ export const MAX_GRID_TERMINALS = 16;
 const DOCK_WIDTH = 700;
 const DOCK_HEIGHT = 500;
 const HEADER_HEIGHT = 32;
-const PADDING_X = 8;
+const PADDING_X = 24;
 const PADDING_Y = 24;
 
 const DOCK_TERM_WIDTH = DOCK_WIDTH - PADDING_X;
