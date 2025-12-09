@@ -287,8 +287,6 @@ export interface TerminalInstance {
   restartKey?: number;
   /** Guard flag to prevent auto-trash during restart flow (exit event race condition) */
   isRestarting?: boolean;
-  /** Whether the terminal has been auto-renamed from the first user prompt */
-  hasBeenAutoRenamed?: boolean;
 }
 
 /** Options for spawning a new PTY process */

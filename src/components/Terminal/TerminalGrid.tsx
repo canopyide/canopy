@@ -403,7 +403,6 @@ export function TerminalGrid({ className, defaultCwd, onLaunchAgent }: TerminalG
               }
               location="grid"
               restartKey={terminal.restartKey}
-              hasBeenAutoRenamed={terminal.hasBeenAutoRenamed}
               onFocus={() => setFocused(terminal.id)}
               onClose={(force) =>
                 force ? removeTerminal(terminal.id) : handleTrashWithAnimation(terminal.id)
@@ -498,7 +497,6 @@ export function TerminalGrid({ className, defaultCwd, onLaunchAgent }: TerminalG
                           }
                           location="grid"
                           restartKey={terminal.restartKey}
-                          hasBeenAutoRenamed={terminal.hasBeenAutoRenamed}
                           onFocus={() => setFocused(terminal.id)}
                           onClose={(force) =>
                             force
