@@ -31,6 +31,15 @@ export interface BranchInfo {
   remote?: string;
 }
 
+/** Pull request service status */
+export interface PRServiceStatus {
+  isRunning: boolean;
+  candidateCount: number;
+  resolvedPRCount: number;
+  lastCheckTime?: number;
+  circuitBreakerTripped?: boolean;
+}
+
 /** Worktree state snapshot for IPC transport */
 export interface WorktreeSnapshot {
   id: string;
@@ -89,6 +98,8 @@ export type WorkspaceHostRequest =
   | { type: "set-active"; requestId: string; worktreeId: string }
   | { type: "refresh"; requestId: string; worktreeId?: string }
   | { type: "refresh-prs"; requestId: string }
+  | { type: "get-pr-status"; requestId: string }
+  | { type: "reset-pr-state"; requestId: string }
   | {
       type: "create-worktree";
       requestId: string;
@@ -157,6 +168,8 @@ export type WorkspaceHostEvent =
   | { type: "set-active-result"; requestId: string; success: boolean }
   | { type: "refresh-result"; requestId: string; success: boolean; error?: string }
   | { type: "refresh-prs-result"; requestId: string; success: boolean; error?: string }
+  | { type: "get-pr-status-result"; requestId: string; status: PRServiceStatus | null }
+  | { type: "reset-pr-state-result"; requestId: string; success: boolean }
   | { type: "create-worktree-result"; requestId: string; success: boolean; error?: string }
   | { type: "delete-worktree-result"; requestId: string; success: boolean; error?: string }
   // Branch operation responses

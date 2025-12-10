@@ -34,7 +34,10 @@ import { initializeLogger } from "./utils/logger.js";
 import { copyTreeService } from "./services/CopyTreeService.js";
 import { DevServerParser } from "./services/devserver/DevServerParser.js";
 import { GitHubAuth } from "./services/github/GitHubAuth.js";
+import { pullRequestService } from "./services/PullRequestService.js";
+import { events } from "./services/events.js";
 import type { CopyTreeProgress } from "../shared/types/ipc.js";
+import type { PRServiceStatus } from "../shared/types/workspace-host.js";
 
 // Validate we're running in UtilityProcess context
 if (!process.parentPort) {
@@ -120,9 +123,12 @@ class WorkspaceHost {
   private circuitBreakerThreshold: number = 3;
   private git: SimpleGit | null = null;
   private pollingEnabled: boolean = true;
+  private projectRootPath: string | null = null;
+  private prEventUnsubscribers: (() => void)[] = [];
 
   async loadProject(requestId: string, projectRootPath: string): Promise<void> {
     try {
+      this.projectRootPath = projectRootPath;
       this.git = simpleGit(projectRootPath);
 
       const rawWorktrees = await this.listWorktreesFromGit();
@@ -144,6 +150,8 @@ class WorkspaceHost {
 
       await this.syncMonitors(worktrees, this.activeWorktreeId, this.mainBranch);
       await this.refreshAll();
+
+      this.initializePRService();
 
       sendEvent({ type: "load-project-result", requestId, success: true });
     } catch (error) {
@@ -239,6 +247,7 @@ class WorkspaceHost {
         this.stopMonitor(monitor);
         this.monitors.delete(id);
         sendEvent({ type: "worktree-removed", worktreeId: id });
+        events.emit("sys:worktree:remove", { worktreeId: id });
       }
     }
 
@@ -558,6 +567,12 @@ class WorkspaceHost {
     };
 
     sendEvent({ type: "worktree-update", worktree: snapshot });
+
+    events.emit("sys:worktree:update", {
+      worktreeId: monitor.id,
+      branch: monitor.branch,
+      issueNumber: monitor.issueNumber,
+    });
   }
 
   getAllStates(requestId: string): void {
@@ -902,7 +917,65 @@ ${lines.map((l) => "+" + l).join("\n")}`;
     }
   }
 
+  private initializePRService(): void {
+    if (!this.projectRootPath) {
+      return;
+    }
+
+    this.cleanupPRService();
+
+    pullRequestService.initialize(this.projectRootPath);
+    pullRequestService.start();
+
+    this.prEventUnsubscribers.push(
+      events.on("sys:pr:detected", (data: any) => {
+        const monitor = this.monitors.get(data.worktreeId);
+        if (monitor) {
+          monitor.prNumber = data.prNumber;
+          monitor.prUrl = data.prUrl;
+          monitor.prState = data.prState;
+          this.emitUpdate(monitor);
+        }
+
+        sendEvent({
+          type: "pr-detected",
+          worktreeId: data.worktreeId,
+          prNumber: data.prNumber,
+          prUrl: data.prUrl,
+          prState: data.prState,
+        });
+      })
+    );
+
+    this.prEventUnsubscribers.push(
+      events.on("sys:pr:cleared", (data: any) => {
+        const monitor = this.monitors.get(data.worktreeId);
+        if (monitor) {
+          monitor.prNumber = undefined;
+          monitor.prUrl = undefined;
+          monitor.prState = undefined;
+          this.emitUpdate(monitor);
+        }
+
+        sendEvent({
+          type: "pr-cleared",
+          worktreeId: data.worktreeId,
+        });
+      })
+    );
+  }
+
+  private cleanupPRService(): void {
+    pullRequestService.destroy();
+    for (const unsubscribe of this.prEventUnsubscribers) {
+      unsubscribe();
+    }
+    this.prEventUnsubscribers = [];
+  }
+
   async onProjectSwitch(requestId: string): Promise<void> {
+    this.cleanupPRService();
+
     // Stop all monitors
     for (const monitor of this.monitors.values()) {
       this.stopMonitor(monitor);
@@ -916,6 +989,7 @@ ${lines.map((l) => "+" + l).join("\n")}`;
     this.activeWorktreeId = null;
     this.mainBranch = "main";
     this.git = null;
+    this.projectRootPath = null;
 
     // Clear caches
     clearGitDirCache();
@@ -924,6 +998,7 @@ ${lines.map((l) => "+" + l).join("\n")}`;
   }
 
   dispose(): void {
+    this.cleanupPRService();
     for (const monitor of this.monitors.values()) {
       this.stopMonitor(monitor);
     }
@@ -986,8 +1061,39 @@ port.on("message", async (rawMsg: any) => {
         break;
 
       case "refresh-prs":
-        // PR service is not implemented in workspace-host yet (stays in Main for now)
-        sendEvent({ type: "refresh-prs-result", requestId: request.requestId, success: true });
+        try {
+          await pullRequestService.refresh();
+          sendEvent({ type: "refresh-prs-result", requestId: request.requestId, success: true });
+        } catch (error) {
+          sendEvent({
+            type: "refresh-prs-result",
+            requestId: request.requestId,
+            success: false,
+            error: (error as Error).message,
+          });
+        }
+        break;
+
+      case "get-pr-status": {
+        const status = pullRequestService.getStatus();
+        const prStatus: PRServiceStatus = {
+          isRunning: status.isPolling,
+          candidateCount: status.candidateCount,
+          resolvedPRCount: status.resolvedCount,
+          lastCheckTime: undefined,
+          circuitBreakerTripped: !status.isEnabled,
+        };
+        sendEvent({ type: "get-pr-status-result", requestId: request.requestId, status: prStatus });
+        break;
+      }
+
+      case "reset-pr-state":
+        pullRequestService.reset();
+        if (this.projectRootPath) {
+          pullRequestService.initialize(this.projectRootPath);
+          pullRequestService.start();
+        }
+        sendEvent({ type: "reset-pr-state-result", requestId: request.requestId, success: true });
         break;
 
       case "create-worktree":
@@ -1085,11 +1191,14 @@ port.on("message", async (rawMsg: any) => {
 
       case "update-github-token": {
         GitHubAuth.setMemoryToken(request.token);
-        const { pullRequestService } = await import("./services/PullRequestService.js");
         if (request.token) {
           pullRequestService.refresh();
         } else {
           pullRequestService.reset();
+          if (this.projectRootPath) {
+            pullRequestService.initialize(this.projectRootPath);
+            pullRequestService.start();
+          }
         }
         break;
       }
