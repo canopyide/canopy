@@ -597,6 +597,9 @@ export class TerminalProcess {
       // via char-count acknowledgements from the renderer.
       this.emitData(data);
 
+      // Always keep a semantic buffer for activity headlines and history replay
+      this.debouncedSemanticUpdate(data);
+
       // For agent terminals, handle additional processing
       if (this.isAgentTerminal) {
         // Update sliding window buffer
@@ -604,9 +607,6 @@ export class TerminalProcess {
         if (terminal.outputBuffer.length > OUTPUT_BUFFER_SIZE) {
           terminal.outputBuffer = terminal.outputBuffer.slice(-OUTPUT_BUFFER_SIZE);
         }
-
-        // Update semantic buffer with debouncing
-        this.debouncedSemanticUpdate(data);
 
         // Notify activity monitor
         if (this.activityMonitor) {
@@ -723,11 +723,13 @@ export class TerminalProcess {
 
     // Handle busy/idle for shell terminals - emit full activity payload
     if (!terminal.agentId && result.isBusy !== undefined) {
+      // Prefer process-based current command, fall back to semantic buffer heuristic
+      const lastCommand = result.currentCommand || this.getLastCommand();
       const { headline, status, type } = this.headlineGenerator.generate({
         terminalId: this.id,
         terminalType: terminal.type,
         activity: result.isBusy ? "busy" : "idle",
-        lastCommand: this.getLastCommand(),
+        lastCommand,
       });
 
       events.emit("terminal:activity", {
@@ -738,6 +740,7 @@ export class TerminalProcess {
         confidence: 1.0,
         timestamp: Date.now(),
         worktreeId: this.options.worktreeId,
+        lastCommand,
       });
 
       // Update pseudo-agent state for shells to reflect "running" status

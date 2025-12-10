@@ -418,6 +418,52 @@ export function WorktreeCard({
 
   const showMetaFooter = terminalCounts.total > 0;
 
+  const orderedWorktreeTerminals = useMemo(() => {
+    if (worktreeTerminals.length === 0) return worktreeTerminals;
+
+    const getStatePriority = (state: AgentState): number => {
+      switch (state) {
+        case "working":
+          return 0;
+        case "waiting":
+          return 1;
+        case "running":
+          return 2;
+        case "idle":
+          return 3;
+        case "completed":
+          return 4;
+        case "failed":
+          return 5;
+        default:
+          return 10;
+      }
+    };
+
+    const isAgentTerminal = (terminal: TerminalInstance) =>
+      terminal.type === "claude" || terminal.type === "gemini" || terminal.type === "codex";
+
+    return [...worktreeTerminals].sort((a, b) => {
+      const aIsAgent = isAgentTerminal(a);
+      const bIsAgent = isAgentTerminal(b);
+
+      if (aIsAgent !== bIsAgent) {
+        return aIsAgent ? -1 : 1;
+      }
+
+      const aState = a.agentState ?? "idle";
+      const bState = b.agentState ?? "idle";
+      const aPriority = getStatePriority(aState);
+      const bPriority = getStatePriority(bState);
+
+      if (aPriority !== bPriority) {
+        return aPriority - bPriority;
+      }
+
+      return (a.title || "").localeCompare(b.title || "");
+    });
+  }, [worktreeTerminals]);
+
   const detailsId = useMemo(() => `worktree-${worktree.id}-details`, [worktree.id]);
 
   const workspaceScenario: "dirty" | "clean-feature" | "clean-main" = useMemo(() => {
@@ -867,16 +913,16 @@ export function WorktreeCard({
                       {terminalCounts.byState.working} working
                     </span>
                   )}
-                  {terminalCounts.byState.running > 0 && (
-                    <span className="flex items-center gap-1 text-[var(--color-status-info)]">
-                      <span className="w-1.5 h-1.5 rounded-full bg-current" />
-                      {terminalCounts.byState.running} running
-                    </span>
-                  )}
                   {terminalCounts.byState.waiting > 0 && (
                     <span className="flex items-center gap-1 text-amber-400">
                       <span className="w-1.5 h-1.5 rounded-full bg-current" />
                       {terminalCounts.byState.waiting} waiting
+                    </span>
+                  )}
+                  {terminalCounts.byState.running > 0 && (
+                    <span className="flex items-center gap-1 text-[var(--color-status-info)]">
+                      <span className="w-1.5 h-1.5 rounded-full bg-current" />
+                      {terminalCounts.byState.running} running
                     </span>
                   )}
                   {terminalCounts.byState.idle > 0 && (
@@ -911,7 +957,7 @@ export function WorktreeCard({
               </DropdownMenuLabel>
               <DropdownMenuSeparator />
               <div className="max-h-[300px] overflow-y-auto">
-                {worktreeTerminals.map((term) => (
+                {orderedWorktreeTerminals.map((term) => (
                   <DropdownMenuItem
                     key={term.id}
                     onSelect={() => handleTerminalSelect(term)}

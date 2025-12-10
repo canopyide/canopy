@@ -298,6 +298,8 @@ export interface TerminalInstance {
   activityType?: "interactive" | "background" | "idle";
   /** Timestamp when activity was last updated */
   activityTimestamp?: number;
+  /** Last detected command for this terminal (e.g., 'npm run dev') */
+  lastCommand?: string;
   /** Location in the UI - grid (main view) or dock (minimized) */
   location: TerminalLocation;
   /** Command to execute after shell starts (e.g., 'claude --model sonnet-4' for AI agents) */

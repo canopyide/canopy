@@ -104,6 +104,7 @@ export function GridTerminalPane({
               }
             : null
         }
+        lastCommand={terminal.lastCommand}
         location="grid"
         restartKey={terminal.restartKey}
         restartError={terminal.restartError}

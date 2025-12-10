@@ -95,6 +95,7 @@ export function DockedTerminalPane({ terminal, onPopoverClose }: DockedTerminalP
             }
           : null
       }
+      lastCommand={terminal.lastCommand}
       location="dock"
       restartKey={terminal.restartKey}
       restartError={terminal.restartError}

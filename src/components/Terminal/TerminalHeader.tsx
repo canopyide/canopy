@@ -1,19 +1,9 @@
 import React from "react";
-import {
-  X,
-  Maximize2,
-  Minimize2,
-  ArrowDownToLine,
-  Loader2,
-  RotateCcw,
-  Grid2X2,
-  Activity,
-} from "lucide-react";
+import { X, Maximize2, Minimize2, ArrowDownToLine, Loader2, RotateCcw, Grid2X2, Activity } from "lucide-react";
 import type { TerminalType, AgentState } from "@/types";
 import { cn } from "@/lib/utils";
 import { getBrandColorHex } from "@/lib/colorUtils";
 import { StateBadge } from "./StateBadge";
-import { ActivityBadge } from "./ActivityBadge";
 import { TerminalContextMenu } from "./TerminalContextMenu";
 import { TerminalIcon } from "./TerminalIcon";
 import type { ActivityState } from "./TerminalPane";
@@ -30,6 +20,7 @@ export interface TerminalHeaderProps {
   isWorking: boolean;
   agentState?: AgentState;
   activity?: ActivityState | null;
+  lastCommand?: string;
   queueCount: number;
 
   // Title editing
@@ -67,6 +58,7 @@ function TerminalHeaderComponent({
   agentState,
   activity,
   queueCount,
+  lastCommand,
   isEditingTitle,
   editingValue,
   titleInputRef,
@@ -86,6 +78,7 @@ function TerminalHeaderComponent({
   location = "grid",
   isPinged,
 }: TerminalHeaderProps) {
+  const isAgentType = type === "claude" || type === "gemini" || type === "codex";
   // Get background activity stats for Zen Mode header (optimized single-pass)
   // Only count grid terminals - docked terminals are visually separate
   // Treat undefined location as grid for compatibility with persisted data
@@ -157,27 +150,38 @@ function TerminalHeaderComponent({
               aria-label={type === "shell" ? "Edit terminal title" : "Edit agent title"}
             />
           ) : (
-            <span
-              className={cn(
-                isFocused ? "text-canopy-text" : "text-canopy-text/70",
-                "font-medium truncate select-none",
-                onTitleChange && "cursor-text hover:text-canopy-text"
+            <div className="flex items-baseline gap-2 min-w-0">
+              <span
+                className={cn(
+                  isFocused ? "text-canopy-text" : "text-canopy-text/70",
+                  "font-medium truncate select-none",
+                  onTitleChange && "cursor-text hover:text-canopy-text"
+                )}
+                onDoubleClick={onTitleDoubleClick}
+                onKeyDown={onTitleKeyDown}
+                tabIndex={onTitleChange ? 0 : undefined}
+                role={onTitleChange ? "button" : undefined}
+                title={onTitleChange ? `${title} — Double-click or press Enter to edit` : title}
+                aria-label={
+                  onTitleChange
+                    ? type === "shell"
+                      ? `Terminal title: ${title}. Press Enter or F2 to edit`
+                      : `Agent title: ${title}. Press Enter or F2 to edit`
+                    : undefined
+                }
+              >
+                {title}
+              </span>
+
+              {!isAgentType && lastCommand && (
+                <span
+                  className="ml-2 px-1.5 py-0.5 rounded-sm text-[10px] font-mono bg-white/5 text-canopy-text/50 truncate max-w-[20rem]"
+                  title={lastCommand}
+                >
+                  {lastCommand}
+                </span>
               )}
-              onDoubleClick={onTitleDoubleClick}
-              onKeyDown={onTitleKeyDown}
-              tabIndex={onTitleChange ? 0 : undefined}
-              role={onTitleChange ? "button" : undefined}
-              title={onTitleChange ? `${title} — Double-click or press Enter to edit` : title}
-              aria-label={
-                onTitleChange
-                  ? type === "shell"
-                    ? `Terminal title: ${title}. Press Enter or F2 to edit`
-                    : `Agent title: ${title}. Press Enter or F2 to edit`
-                  : undefined
-              }
-            >
-              {title}
-            </span>
+            </div>
           )}
 
           {isExited && (
@@ -193,18 +197,9 @@ function TerminalHeaderComponent({
           {agentState &&
             agentState !== "idle" &&
             agentState !== "waiting" &&
-            agentState !== "working" && <StateBadge state={agentState} className="ml-2" />}
-
-          {activity &&
-            activity.headline &&
-            agentState !== "failed" &&
-            agentState !== "completed" && (
-              <ActivityBadge
-                headline={activity.headline}
-                status={activity.status}
-                type={activity.type}
-                className="ml-2"
-              />
+            agentState !== "working" &&
+            agentState !== "running" && (
+              <StateBadge state={agentState} className="ml-2" />
             )}
 
           {queueCount > 0 && (

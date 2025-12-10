@@ -81,7 +81,8 @@ export interface TerminalRegistrySlice {
     headline: string,
     status: "working" | "waiting" | "success" | "failure",
     type: "interactive" | "background" | "idle",
-    timestamp: number
+    timestamp: number,
+    lastCommand?: string
   ) => void;
   updateVisibility: (id: string, isVisible: boolean) => void;
   getTerminal: (id: string) => TerminalInstance | undefined;
@@ -277,7 +278,7 @@ export const createTerminalRegistrySlice =
       });
     },
 
-    updateActivity: (id, headline, status, type, timestamp) => {
+    updateActivity: (id, headline, status, type, timestamp, lastCommand) => {
       set((state) => {
         const terminal = state.terminals.find((t) => t.id === id);
         if (!terminal) {
@@ -292,6 +293,7 @@ export const createTerminalRegistrySlice =
                 activityStatus: status,
                 activityType: type,
                 activityTimestamp: timestamp,
+                lastCommand,
               }
             : t
         );

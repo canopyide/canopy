@@ -53,4 +53,6 @@ export interface TerminalActivity {
 export interface TerminalActivityPayload extends TerminalActivity {
   /** Associated worktree ID (if applicable) */
   worktreeId?: string;
+  /** Last detected command for this terminal (e.g., 'npm run dev') */
+  lastCommand?: string;
 }
