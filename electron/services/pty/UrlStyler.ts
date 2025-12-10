@@ -1,21 +1,24 @@
 /**
- * URL Styling for terminal output.
+ * URL Styling for terminal output using OSC 8 hyperlinks.
  *
- * Links in xterm.js terminals are clickable via WebLinksAddon but not visually styled.
- * CSS cannot style Canvas/WebGL-rendered text, so we inject ANSI escape sequences
- * into the PTY output stream to make URLs blue and underlined.
+ * Links in xterm.js terminals need explicit hyperlink sequences to be both
+ * visually styled and clickable. OSC 8 is the standard terminal hyperlink
+ * escape sequence, supported natively by xterm.js without requiring WebLinksAddon.
  *
- * Note: The WebLinksAddon's `linkDecorationOptions` feature is only available in
- * beta versions. This PTY-level approach works with the current stable releases.
+ * OSC 8 Format: \x1b]8;;URI\x07DISPLAY_TEXT\x1b]8;;\x07
  */
 
-// ANSI escape sequences for URL styling
-// Using ESC [ syntax for escape codes
+// OSC 8 escape sequence components
+const ESC = "\x1b";
+const BEL = "\x07"; // String Terminator
+const OSC_START = `${ESC}]8;;`; // Start hyperlink: ESC ] 8 ; params ; URI
+const OSC_END = `${ESC}]8;;${BEL}`; // End hyperlink: ESC ] 8 ; ; ST
+
+// ANSI styling for the link text (blue + underline)
 const ANSI = {
-  BLUE_FG: "\x1b[38;2;56;189;248m", // #38bdf8 (sky-400)
-  UNDERLINE_ON: "\x1b[4m",
-  UNDERLINE_BLUE: "\x1b[58;2;56;189;248m", // Underline color (SGR 58)
-  RESET: "\x1b[0m",
+  BLUE_FG: `${ESC}[38;2;56;189;248m`, // #38bdf8 (sky-400)
+  UNDERLINE_ON: `${ESC}[4m`,
+  RESET: `${ESC}[0m`,
 } as const;
 
 // Compiled URL regex for performance
@@ -23,36 +26,43 @@ const ANSI = {
 // eslint-disable-next-line no-useless-escape
 const URL_REGEX = /https?:\/\/[^\s<>"{}|\\^`\[\]]+/g;
 
-// Pattern to detect existing ANSI escape sequences (ESC [)
-// eslint-disable-next-line no-control-regex
-const ANSI_ESCAPE_REGEX = /\x1b\[/;
+// Pattern to detect existing ANSI/OSC escape sequences
+// eslint-disable-next-line no-control-regex, no-useless-escape
+const ESCAPE_REGEX = /\x1b[\[\]]/;
 
 /**
- * Wrap a URL with ANSI escape codes for blue text + underline.
+ * Wrap a URL with OSC 8 hyperlink sequence and ANSI styling.
+ *
+ * Creates a native terminal hyperlink that is:
+ * - Clickable without WebLinksAddon
+ * - Styled with blue color and underline
  */
 function wrapUrl(url: string): string {
-  return `${ANSI.BLUE_FG}${ANSI.UNDERLINE_ON}${ANSI.UNDERLINE_BLUE}${url}${ANSI.RESET}`;
+  // OSC 8 hyperlink with ANSI styling for the display text
+  // Format: OSC_START + URI + BEL + STYLED_TEXT + OSC_END
+  const styledText = `${ANSI.BLUE_FG}${ANSI.UNDERLINE_ON}${url}${ANSI.RESET}`;
+  return `${OSC_START}${url}${BEL}${styledText}${OSC_END}`;
 }
 
 /**
- * Style URLs in terminal output with ANSI escape codes.
+ * Style URLs in terminal output with OSC 8 hyperlinks.
  *
  * Strategy:
- * - Skip text that already contains ANSI codes (let apps style themselves)
- * - Replace URLs with ANSI-styled versions
+ * - Skip text that already contains escape sequences (let apps style themselves)
+ * - Replace URLs with OSC 8 hyperlink sequences
  * - Preserve all other text unchanged
  *
  * @param text - Raw terminal output
- * @returns Text with URLs styled via ANSI codes
+ * @returns Text with URLs as OSC 8 hyperlinks
  */
 export function styleUrls(text: string): string {
-  // Skip if text already contains ANSI escape codes
+  // Skip if text already contains escape sequences
   // This preserves styling from applications like `ls --color`
-  if (ANSI_ESCAPE_REGEX.test(text)) {
+  if (ESCAPE_REGEX.test(text)) {
     return text;
   }
 
-  // Replace URLs with styled versions
+  // Replace URLs with OSC 8 hyperlinks
   return text.replace(URL_REGEX, (url) => wrapUrl(url));
 }
 

@@ -1,32 +1,42 @@
 import { describe, it, expect } from "vitest";
 import { styleUrls, containsUrl } from "../UrlStyler.js";
 
-// ANSI escape sequences used in the implementation
+// OSC 8 and ANSI escape sequences used in the implementation
+const ESC = "\x1b";
+const BEL = "\x07";
+const OSC_START = `${ESC}]8;;`;
+const OSC_END = `${ESC}]8;;${BEL}`;
 const ANSI = {
-  BLUE_FG: "\x1b[38;2;56;189;248m",
-  UNDERLINE_ON: "\x1b[4m",
-  UNDERLINE_BLUE: "\x1b[58;2;56;189;248m",
-  RESET: "\x1b[0m",
+  BLUE_FG: `${ESC}[38;2;56;189;248m`,
+  UNDERLINE_ON: `${ESC}[4m`,
+  RESET: `${ESC}[0m`,
 } as const;
+
+/**
+ * Helper to create expected OSC 8 hyperlink output
+ */
+function expectedHyperlink(url: string): string {
+  const styledText = `${ANSI.BLUE_FG}${ANSI.UNDERLINE_ON}${url}${ANSI.RESET}`;
+  return `${OSC_START}${url}${BEL}${styledText}${OSC_END}`;
+}
 
 describe("UrlStyler", () => {
   describe("styleUrls", () => {
-    describe("basic URL styling", () => {
-      it("styles a simple HTTP URL", () => {
+    describe("basic URL styling with OSC 8", () => {
+      it("creates OSC 8 hyperlink for simple HTTP URL", () => {
         const input = "Check http://example.com for details";
         const output = styleUrls(input);
 
-        expect(output).toContain(ANSI.BLUE_FG);
-        expect(output).toContain(ANSI.UNDERLINE_ON);
-        expect(output).toContain(ANSI.RESET);
+        expect(output).toContain(OSC_START);
+        expect(output).toContain(OSC_END);
         expect(output).toContain("http://example.com");
       });
 
-      it("styles a simple HTTPS URL", () => {
+      it("creates OSC 8 hyperlink for simple HTTPS URL", () => {
         const input = "Visit https://github.com/user/repo";
         const output = styleUrls(input);
 
-        expect(output).toContain(ANSI.BLUE_FG);
+        expect(output).toContain(OSC_START);
         expect(output).toContain("https://github.com/user/repo");
       });
 
@@ -34,7 +44,7 @@ describe("UrlStyler", () => {
         const input = "https://example.com is a great site";
         const output = styleUrls(input);
 
-        expect(output.startsWith(ANSI.BLUE_FG)).toBe(true);
+        expect(output.startsWith(OSC_START)).toBe(true);
         expect(output).toContain(" is a great site");
       });
 
@@ -42,7 +52,7 @@ describe("UrlStyler", () => {
         const input = "Visit the site at https://example.com";
         const output = styleUrls(input);
 
-        expect(output.endsWith(ANSI.RESET)).toBe(true);
+        expect(output.endsWith(OSC_END)).toBe(true);
         expect(output).toContain("Visit the site at ");
       });
 
@@ -50,18 +60,26 @@ describe("UrlStyler", () => {
         const input = "https://example.com/path";
         const output = styleUrls(input);
 
-        expect(output).toBe(
-          `${ANSI.BLUE_FG}${ANSI.UNDERLINE_ON}${ANSI.UNDERLINE_BLUE}https://example.com/path${ANSI.RESET}`
-        );
+        expect(output).toBe(expectedHyperlink("https://example.com/path"));
       });
 
       it("handles multiple URLs in single line", () => {
         const input = "See https://a.com and https://b.com for info";
         const output = styleUrls(input);
 
-        // Count occurrences of BLUE_FG escape sequence
-        const blueCount = output.split(ANSI.BLUE_FG).length - 1;
-        expect(blueCount).toBe(2);
+        // Each URL produces 2 OSC_START sequences (start + end of hyperlink)
+        // So 2 URLs = 4 OSC_START occurrences
+        const oscCount = output.split(OSC_START).length - 1;
+        expect(oscCount).toBe(4);
+      });
+
+      it("includes ANSI styling within the hyperlink", () => {
+        const input = "https://example.com";
+        const output = styleUrls(input);
+
+        expect(output).toContain(ANSI.BLUE_FG);
+        expect(output).toContain(ANSI.UNDERLINE_ON);
+        expect(output).toContain(ANSI.RESET);
       });
     });
 
@@ -71,7 +89,7 @@ describe("UrlStyler", () => {
         const output = styleUrls(input);
 
         expect(output).toContain("http://localhost:3000/api");
-        expect(output).toContain(ANSI.BLUE_FG);
+        expect(output).toContain(OSC_START);
       });
 
       it("styles URLs with query parameters", () => {
@@ -79,7 +97,7 @@ describe("UrlStyler", () => {
         const output = styleUrls(input);
 
         expect(output).toContain("https://google.com/search?q=test&lang=en");
-        expect(output).toContain(ANSI.BLUE_FG);
+        expect(output).toContain(OSC_START);
       });
 
       it("styles URLs with fragments", () => {
@@ -87,7 +105,7 @@ describe("UrlStyler", () => {
         const output = styleUrls(input);
 
         expect(output).toContain("https://docs.com/page#section");
-        expect(output).toContain(ANSI.BLUE_FG);
+        expect(output).toContain(OSC_START);
       });
 
       it("styles URLs with authentication", () => {
@@ -95,7 +113,7 @@ describe("UrlStyler", () => {
         const output = styleUrls(input);
 
         expect(output).toContain("https://user:pass@api.example.com");
-        expect(output).toContain(ANSI.BLUE_FG);
+        expect(output).toContain(OSC_START);
       });
 
       it("handles complex URLs with all components", () => {
@@ -103,14 +121,14 @@ describe("UrlStyler", () => {
           "Full URL: https://user@example.com:8080/path/to/resource?key=value&foo=bar#section";
         const output = styleUrls(input);
 
-        expect(output).toContain(ANSI.BLUE_FG);
+        expect(output).toContain(OSC_START);
         expect(output).toContain(
           "https://user@example.com:8080/path/to/resource?key=value&foo=bar#section"
         );
       });
     });
 
-    describe("preserving existing ANSI codes", () => {
+    describe("preserving existing escape sequences", () => {
       it("does not modify text with existing ANSI codes", () => {
         const input = "\x1b[31mError:\x1b[0m https://example.com";
         const output = styleUrls(input);
@@ -131,6 +149,13 @@ describe("UrlStyler", () => {
 
         expect(output).toBe(input);
       });
+
+      it("does not modify text with existing OSC sequences", () => {
+        const input = "\x1b]0;Window Title\x07 https://example.com";
+        const output = styleUrls(input);
+
+        expect(output).toBe(input);
+      });
     });
 
     describe("edge cases", () => {
@@ -147,7 +172,7 @@ describe("UrlStyler", () => {
         const input = "Line 1\nhttps://example.com\nLine 3";
         const output = styleUrls(input);
 
-        expect(output).toContain(ANSI.BLUE_FG);
+        expect(output).toContain(OSC_START);
         expect(output).toContain("\n");
       });
 
@@ -155,7 +180,7 @@ describe("UrlStyler", () => {
         const input = "Tab:\thttps://example.com\ttab";
         const output = styleUrls(input);
 
-        expect(output).toContain(ANSI.BLUE_FG);
+        expect(output).toContain(OSC_START);
         expect(output).toContain("\t");
       });
 
@@ -163,7 +188,7 @@ describe("UrlStyler", () => {
         const input = "Email: <https://example.com>";
         const output = styleUrls(input);
 
-        expect(output).toContain(ANSI.BLUE_FG);
+        expect(output).toContain(OSC_START);
         expect(output).toContain("https://example.com");
       });
 
@@ -171,7 +196,7 @@ describe("UrlStyler", () => {
         const input = 'URL is "https://example.com"';
         const output = styleUrls(input);
 
-        expect(output).toContain(ANSI.BLUE_FG);
+        expect(output).toContain(OSC_START);
         expect(output).toContain("https://example.com");
       });
 
@@ -179,7 +204,7 @@ describe("UrlStyler", () => {
         const input = "Go to https://example.com. Then continue.";
         const output = styleUrls(input);
 
-        expect(output).toContain(ANSI.BLUE_FG);
+        expect(output).toContain(OSC_START);
         expect(output).toContain("Then continue.");
       });
 
@@ -187,8 +212,31 @@ describe("UrlStyler", () => {
         const input = "Sites like https://a.com, https://b.com work";
         const output = styleUrls(input);
 
-        const blueCount = output.split(ANSI.BLUE_FG).length - 1;
-        expect(blueCount).toBe(2);
+        // Each URL produces 2 OSC_START sequences (start + end of hyperlink)
+        const oscCount = output.split(OSC_START).length - 1;
+        expect(oscCount).toBe(4);
+      });
+    });
+
+    describe("OSC 8 format verification", () => {
+      it("produces correct OSC 8 sequence structure", () => {
+        const url = "https://example.com";
+        const output = styleUrls(url);
+
+        // Verify the structure: OSC_START + URL + BEL + styled_text + OSC_END
+        // eslint-disable-next-line no-control-regex
+        expect(output).toMatch(/^\x1b\]8;;https:\/\/example\.com\x07/);
+        // eslint-disable-next-line no-control-regex
+        expect(output).toMatch(/\x1b\]8;;\x07$/);
+      });
+
+      it("URL appears twice - once in link and once in display text", () => {
+        const url = "https://test.com";
+        const output = styleUrls(url);
+
+        // URL should appear twice: in the OSC 8 URI and in the display text
+        const urlCount = output.split(url).length - 1;
+        expect(urlCount).toBe(2);
       });
     });
 
@@ -200,7 +248,7 @@ describe("UrlStyler", () => {
         const output = styleUrls(input);
         const duration = performance.now() - start;
 
-        expect(output).toContain(ANSI.BLUE_FG);
+        expect(output).toContain(OSC_START);
         expect(duration).toBeLessThan(100);
       });
 
