@@ -26,6 +26,7 @@ import {
 import { events } from "../events.js";
 import { AgentSpawnedSchema, AgentStateChangedSchema } from "../../schemas/agent.js";
 import type { PtyPool } from "../PtyPool.js";
+import { styleUrls } from "./UrlStyler.js";
 
 // Flow Control Constants (VS Code values)
 const HIGH_WATERMARK_CHARS = 100000;
@@ -670,7 +671,16 @@ export class TerminalProcess {
   }
 
   private emitData(data: string | Uint8Array): void {
-    this.callbacks.emitData(this.id, data);
+    // Apply URL styling to string data
+    if (typeof data === "string") {
+      const styled = styleUrls(data);
+      this.callbacks.emitData(this.id, styled);
+    } else {
+      // For Uint8Array, decode to string, style, and re-encode
+      const text = new TextDecoder().decode(data);
+      const styled = styleUrls(text);
+      this.callbacks.emitData(this.id, styled);
+    }
   }
 
   private handleAgentDetection(result: DetectionResult): void {
