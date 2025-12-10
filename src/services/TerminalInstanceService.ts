@@ -572,7 +572,9 @@ class TerminalInstanceService {
    */
   private filterProblematicSequences(data: string, id: string): string {
     const managed = this.instances.get(id);
-    if (!managed || managed.type !== "claude") {
+    // Filter only for Claude terminals that are NOT focused.
+    // This prevents background bouncing while preserving interactive TUI features (menus, selection) when focused.
+    if (!managed || managed.type !== "claude" || managed.isFocused) {
       return data;
     }
 
@@ -585,6 +587,9 @@ class TerminalInstanceService {
     // Strip Alternate Screen Buffer (?1049h/l, ?47h/l)
     filtered = filtered.replace(/\u001b\[\?1049[hl]/g, "");
     filtered = filtered.replace(/\u001b\[\?47[hl]/g, "");
+
+    // Strip Scroll Region (\u001b[top;bottomr)
+    filtered = filtered.replace(/\u001b\[\d+;\d+r/g, "");
 
     // Strip Scrollback Clear (3J)
     filtered = filtered.replace(/\u001b\[3J/g, "");
