@@ -159,8 +159,11 @@ export function registerTerminalHandlers(deps: HandlerDependencies): () => void 
           const isAgent = AGENT_TYPES.includes(type as TerminalType);
           if (isAgent) {
             if (process.platform === "win32") {
-              const shell = (validatedOptions.shell || process.env.COMSPEC || "powershell.exe")
-                .toLowerCase();
+              const shell = (
+                validatedOptions.shell ||
+                process.env.COMSPEC ||
+                "powershell.exe"
+              ).toLowerCase();
               if (shell.includes("cmd")) {
                 finalCommand = `${trimmedCommand} & exit`;
               } else {
