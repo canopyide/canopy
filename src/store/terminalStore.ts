@@ -311,8 +311,10 @@ export function setupTerminalStoreListeners() {
   });
 
   activityUnsubscribe = terminalClient.onActivity((data) => {
-    const { terminalId, headline, status, type, timestamp } = data;
-    useTerminalStore.getState().updateActivity(terminalId, headline, status, type, timestamp);
+    const { terminalId, headline, status, type, timestamp, lastCommand } = data;
+    useTerminalStore
+      .getState()
+      .updateActivity(terminalId, headline, status, type, timestamp, lastCommand);
   });
 
   trashedUnsubscribe = terminalClient.onTrashed((data) => {

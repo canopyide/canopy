@@ -7,6 +7,7 @@ const execAsync = promisify(exec);
 interface ChildProcess {
   pid: number;
   name: string;
+  command?: string;
 }
 
 /**
@@ -41,6 +42,10 @@ async function getChildProcessesPowerShell(pid: number): Promise<ChildProcess[]>
     .map((p) => ({
       pid: Number.parseInt(String(p?.ProcessId), 10),
       name: (p?.Name || "").replace(/\.exe$/i, ""),
+      command:
+        typeof p?.CommandLine === "string" && p.CommandLine.trim().length > 0
+          ? String(p.CommandLine).trim()
+          : undefined,
     }))
     .filter((p) => Number.isInteger(p.pid) && p.pid > 0 && p.name);
 }
@@ -115,12 +120,12 @@ export async function hasChildProcesses(pid: number): Promise<boolean> {
       const children = await getChildProcessesWindows(pid);
       return children.length > 0;
     } else {
-      // macOS/Linux: Use pgrep to check for children
+      // macOS/Linux: pgrep returns 0 when children exist, 1 when none exist
       try {
         await execAsync(`pgrep -P ${pid}`, { timeout: 5000 });
-        return true; // pgrep returns 0 exit code if processes found
+        return true;
       } catch {
-        return false; // pgrep returns 1 if no processes found
+        return false;
       }
     }
   } catch {
@@ -140,6 +145,8 @@ export interface DetectionResult {
   processName?: string;
   /** Whether the terminal has active child processes (busy/idle status) */
   isBusy?: boolean;
+  /** Best-effort current command line for the foreground process */
+  currentCommand?: string;
 }
 
 export type DetectionCallback = (result: DetectionResult) => void;
@@ -151,6 +158,7 @@ export class ProcessDetector {
   private intervalHandle: NodeJS.Timeout | null = null;
   private lastDetected: TerminalType | null = null;
   private lastBusyState: boolean | null = null;
+  private lastCurrentCommand: string | undefined;
   private pollInterval: number;
   private isWindows: boolean;
   private isDetecting: boolean = false;
@@ -208,6 +216,9 @@ export class ProcessDetector {
       // Check if busy state changed
       const busyChanged = result.isBusy !== undefined && result.isBusy !== this.lastBusyState;
 
+      // Check if the foreground command changed (e.g., npm install -> npm run dev)
+      const commandChanged = result.currentCommand !== this.lastCurrentCommand;
+
       // Update tracked states
       if (result.detected) {
         this.lastDetected = result.agentType!;
@@ -219,8 +230,10 @@ export class ProcessDetector {
         this.lastBusyState = result.isBusy;
       }
 
-      // Fire callback if either agent or busy state changed
-      if (agentChanged || busyChanged) {
+      this.lastCurrentCommand = result.currentCommand;
+
+      // Fire callback if agent, busy state, or current command changed
+      if (agentChanged || busyChanged || commandChanged) {
         this.callback(result);
       }
     } catch (_error) {
@@ -245,23 +258,71 @@ export class ProcessDetector {
         return { detected: false, isBusy: false };
       }
 
-      // Use parent-child relationship instead of process group to detect foreground commands
-      // Interactive shells spawn foreground commands as direct children
-      const { stdout } = await execAsync(`ps -o comm= --ppid ${this.ptyPid} 2>/dev/null || true`, {
+      // Use pgrep to find direct children of the PTY process.
+      // -P <pid>: list children of the given parent
+      const { stdout } = await execAsync(`pgrep -P ${this.ptyPid}`, {
         timeout: 5000,
       });
 
-      const processes = stdout
+      const childPids = stdout
         .split("\n")
         .map((line) => line.trim())
-        .filter((line) => line.length > 0);
+        .filter((line) => line.length > 0)
+        .map((line) => Number.parseInt(line, 10))
+        .filter((pid) => Number.isInteger(pid) && pid > 0);
 
-      // Determine busy status: any child processes means commands are running
-      const isBusy = processes.length > 0;
+      // Any direct children mean the shell is running a foreground command
+      const isBusy = childPids.length > 0;
+      if (!isBusy) {
+        return { detected: false, isBusy: false, currentCommand: undefined };
+      }
+
+      let processes: ChildProcess[] = childPids.map((pid) => ({ pid, name: String(pid) }));
+      let currentCommand: string | undefined;
+
+      try {
+        // ps -o pid=,comm=,command= works on both macOS (BSD ps) and Linux.
+        const { stdout: psOut } = await execAsync(
+          `ps -o pid=,comm=,command= -p ${childPids.join(",")}`,
+          { timeout: 5000 }
+        );
+
+        const byPid = new Map<number, ChildProcess>();
+
+        psOut
+          .split("\n")
+          .map((line) => line.trim())
+          .filter((line) => line.length > 0)
+          .forEach((line) => {
+            // Format: "<pid> <comm> <command...>"
+            const match = line.match(/^(\d+)\s+(\S+)\s+(.+)$/);
+            const pid = match ? Number.parseInt(match[1], 10) : NaN;
+            if (!Number.isInteger(pid) || pid <= 0) return;
+
+            const name = match ? match[2] : "";
+            const command = match ? match[3].trim() : "";
+
+            byPid.set(pid, {
+              pid,
+              name: name || String(pid),
+              command: command || undefined,
+            });
+          });
+
+        processes = childPids.map((pid) => byPid.get(pid) || { pid, name: String(pid) });
+        const primaryPid = childPids[0];
+        const primary = byPid.get(primaryPid);
+        if (primary?.command) {
+          currentCommand = primary.command;
+        }
+      } catch {
+        // If ps fails, fall back to pid-based names only
+        processes = childPids.map((pid) => ({ pid, name: String(pid) }));
+      }
 
       // Check for agent CLIs in child processes
       for (const proc of processes) {
-        const basename = proc.split("/").pop() || proc;
+        const basename = proc.name.split("/").pop() || proc.name;
         const agentType = AGENT_CLI_NAMES[basename.toLowerCase()];
 
         if (agentType) {
@@ -270,13 +331,15 @@ export class ProcessDetector {
             agentType,
             processName: basename,
             isBusy,
+            currentCommand,
           };
         }
       }
 
-      return { detected: false, isBusy };
+      return { detected: false, isBusy, currentCommand };
     } catch (_error) {
-      return { detected: false, isBusy: false };
+      // pgrep exits with code 1 when no processes are found – treat as idle shell
+      return { detected: false, isBusy: false, currentCommand: undefined };
     }
   }
 
@@ -290,6 +353,7 @@ export class ProcessDetector {
       // Get direct children of the PTY process
       const children = await getChildProcessesWindows(this.ptyPid);
       const isBusy = children.length > 0;
+      const currentCommand = children[0]?.command || children[0]?.name;
 
       // Check direct children for agent CLIs
       for (const child of children) {
@@ -300,6 +364,7 @@ export class ProcessDetector {
             agentType,
             processName: child.name,
             isBusy,
+            currentCommand,
           };
         }
       }
@@ -316,6 +381,7 @@ export class ProcessDetector {
                 agentType,
                 processName: grandchild.name,
                 isBusy,
+                currentCommand: grandchild.command || grandchild.name,
               };
             }
           }
@@ -324,9 +390,9 @@ export class ProcessDetector {
         }
       }
 
-      return { detected: false, isBusy };
+      return { detected: false, isBusy, currentCommand };
     } catch (_error) {
-      return { detected: false, isBusy: false };
+      return { detected: false, isBusy: false, currentCommand: undefined };
     }
   }
 

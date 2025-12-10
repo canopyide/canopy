@@ -295,6 +295,8 @@ export class AgentStateService {
       confidence: 1.0,
       timestamp: Date.now(),
       worktreeId: terminal.worktreeId,
+      // lastCommand is only populated for shell terminals currently
+      lastCommand: undefined,
     });
   }
 }

@@ -34,6 +34,7 @@ export interface TerminalPaneProps {
   isMaximized?: boolean;
   agentState?: AgentState;
   activity?: ActivityState | null;
+  lastCommand?: string;
   onFocus: () => void;
   onClose: (force?: boolean) => void;
   onToggleMaximize?: () => void;
@@ -59,6 +60,7 @@ function TerminalPaneComponent({
   isMaximized,
   agentState,
   activity,
+  lastCommand,
   onFocus,
   onClose,
   onToggleMaximize,
@@ -290,6 +292,7 @@ function TerminalPaneComponent({
         isWorking={isWorking}
         agentState={agentState}
         activity={activity}
+        lastCommand={lastCommand}
         queueCount={queueCount}
         isEditingTitle={isEditingTitle}
         editingValue={editingValue}
