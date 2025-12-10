@@ -48,7 +48,6 @@ export function useWorktreeActions({
           throw new Error(result.error);
         }
 
-        console.log(`Copied ${result.fileCount} files as file reference`);
         const sizeStr = result.stats?.totalSize ? formatBytes(result.stats.totalSize) : "";
 
         return `Copied ${result.fileCount} files${sizeStr ? ` (${sizeStr})` : ""} to clipboard`;

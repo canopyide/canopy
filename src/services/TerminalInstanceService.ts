@@ -791,11 +791,8 @@ class TerminalInstanceService {
     }
 
     const openLink = (url: string) => {
-      let normalizedUrl = url;
-      if (!/^https?:\/\//i.test(url)) {
-        normalizedUrl = `https://${url}`;
-      }
-      console.log("[TerminalInstanceService] Opening external URL:", normalizedUrl);
+      const normalizedUrl = /^https?:\/\//i.test(url) ? url : `https://${url}`;
+
       systemClient.openExternal(normalizedUrl).catch((error) => {
         console.error("[TerminalInstanceService] Failed to open URL:", error);
       });
