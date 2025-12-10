@@ -87,7 +87,6 @@ function TerminalHeaderComponent({
   location = "grid",
   isPinged,
 }: TerminalHeaderProps) {
-  console.log(`[TerminalHeader] lastCommand: ${lastCommand}`);
   const showCommandPill = type === "terminal" && agentState === "running" && !!lastCommand;
   // Get background activity stats for Zen Mode header (optimized single-pass)
   // Only count grid terminals - docked terminals are visually separate
