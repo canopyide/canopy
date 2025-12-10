@@ -56,7 +56,7 @@ function TerminalHeaderComponent({
   exitCode,
   isWorking,
   agentState,
-  activity,
+  activity: _activity,
   queueCount,
   lastCommand,
   isEditingTitle,

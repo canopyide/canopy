@@ -953,9 +953,21 @@ export function WorktreeCard({
                       <div className="shrink-0 opacity-60 group-hover:opacity-100 transition-opacity">
                         {getTerminalIcon(term.type)}
                       </div>
-                      <span className="text-xs font-medium truncate text-canopy-text/70 group-hover:text-canopy-text transition-colors">
-                        {term.title}
-                      </span>
+                      <div className="flex flex-col min-w-0">
+                        <span className="text-xs font-medium truncate text-canopy-text/70 group-hover:text-canopy-text transition-colors">
+                          {term.title}
+                        </span>
+                        {term.type === "terminal" &&
+                          term.agentState === "running" &&
+                          term.lastCommand && (
+                            <span
+                              className="text-[10px] font-mono text-canopy-text/50 truncate"
+                              title={term.lastCommand}
+                            >
+                              {term.lastCommand}
+                            </span>
+                          )}
+                      </div>
                     </div>
 
                     {/* RIGHT SIDE: State Icons + Location */}
