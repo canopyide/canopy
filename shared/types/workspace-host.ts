@@ -13,7 +13,7 @@
  */
 
 import type { Worktree, WorktreeChanges, FileChangeDetail, WorktreeMood } from "./domain.js";
-import type { CopyTreeOptions, CopyTreeProgress, CopyTreeResult } from "./ipc.js";
+import type { CopyTreeOptions, CopyTreeProgress, CopyTreeResult, FileTreeNode } from "./ipc.js";
 
 /** Options for creating a new worktree */
 export interface CreateWorktreeOptions {
@@ -129,7 +129,14 @@ export type WorkspaceHostRequest =
   // DevServer parsing operations
   | { type: "devserver:parse-output"; requestId: string; worktreeId: string; output: string }
   // GitHub token propagation
-  | { type: "update-github-token"; token: string | null };
+  | { type: "update-github-token"; token: string | null }
+  // File tree operations
+  | {
+      type: "get-file-tree";
+      requestId: string;
+      worktreePath: string;
+      dirPath?: string;
+    };
 
 /** Result of DevServer URL detection */
 export interface DevServerDetectedUrls {
@@ -190,6 +197,13 @@ export type WorkspaceHostEvent =
       requestId: string;
       worktreeId: string;
       detected: DevServerDetectedUrls | null;
+    }
+  // File tree events
+  | {
+      type: "file-tree-result";
+      requestId: string;
+      nodes: FileTreeNode[];
+      error?: string;
     };
 
 /** Configuration for WorkspaceClient */
