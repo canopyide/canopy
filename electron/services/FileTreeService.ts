@@ -11,7 +11,9 @@ export class FileTreeService {
       throw new Error("Invalid directory path: absolute paths not allowed");
     }
 
-    const normalizedDirPath = path.normalize(dirPath).replace(/^(\.\.[\/\\])+/, "");
+    const normalizedDirPath = path
+      .normalize(dirPath)
+      .replace(new RegExp("^(\\.\\.[\\\\/])+", "g"), "");
     const targetPath = path.resolve(resolvedBasePath, normalizedDirPath);
     const relativeTarget = path.relative(resolvedBasePath, targetPath);
 
