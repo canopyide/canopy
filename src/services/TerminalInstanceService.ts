@@ -70,8 +70,13 @@ const IDLE_CALLBACK_TIMEOUT_MS = 1000;
 
 // Adaptive flush timing for "Atomic Painting" to eliminate TUI flicker
 const STANDARD_FLUSH_DELAY_MS = 4; // Preserves typing latency (standard mode)
-const REDRAW_FLUSH_DELAY_MS = 16; // ~1 frame @ 60fps to capture full repaint
-const MAX_FLUSH_DELAY_MS = 32; // Cap to prevent timer starvation on continuous redraws
+const REDRAW_FLUSH_DELAY_MS = 16; // ~1 frame @ 60fps to capture full repaint (frame settle delay)
+const MAX_FLUSH_DELAY_MS = 32; // Max time to hold a frame before forced flush
+const MIN_FRAME_INTERVAL_MS = 33; // Target ~30fps for intense TUI redraws
+const FRAME_SETTLE_DELAY_MS = REDRAW_FLUSH_DELAY_MS;
+const FRAME_DEADLINE_MS = MAX_FLUSH_DELAY_MS;
+const REDRAW_LOOKBACK_CHARS = 32; // Stream-level detection window for ANSI patterns
+const EARLY_HOME_BYTE_WINDOW = 256; // Only treat bare \x1b[H as redraw when it appears early
 
 /**
  * Creates a simple writer that passes data directly to xterm.
@@ -144,8 +149,20 @@ class TerminalInstanceService {
   // Per-terminal coalescing buffers for SAB data
   private sabBuffers = new Map<
     string,
-    { chunks: (string | Uint8Array)[]; timeoutId: number | null; firstScheduledAt: number | null }
+    {
+      chunks: (string | Uint8Array)[];
+      flushMode: "normal" | "frame";
+      normalTimeoutId: number | null;
+      frameSettleTimeoutId: number | null;
+      frameDeadlineTimeoutId: number | null;
+      recentChars: string;
+      bytesSinceStart: number;
+      firstDataAt: number;
+      lastDataAt: number;
+    }
   >();
+  // Per-terminal last frame flush time for FPS-style limiting in frame mode
+  private sabFrameLastFlushAt = new Map<string, number>();
 
   private static readonly TERMINAL_COUNT_THRESHOLD = 20;
   private static readonly BUDGET_SCALE_FACTOR = 0.5;
@@ -257,49 +274,181 @@ class TerminalInstanceService {
   };
 
   /**
-   * Buffer data for a terminal with adaptive flush timing.
-   * - Standard: 4ms (keeps typing responsive)
-   * - Redraw Detected: 16ms (waits for full frame to arrive to prevent flicker)
+   * Buffer data for a terminal with adaptive, frame-aware flush timing.
    *
-   * Detects Clear Screen (\x1b[2J) or Cursor Home (\x1b[H) sequences which
-   * typically precede full screen repaints. By waiting ~1 frame (16ms),
-   * we allow content packets to arrive and flush atomically with the clear
-   * command, eliminating the visible "blank flash" between clear and repaint.
+   * Normal mode:
+   *   - Small 4ms coalescing window for low-latency typing and simple output.
+   *
+   * Frame mode:
+   *   - Triggered when we detect full-screen redraw patterns in the stream.
+   *   - Accumulates clear + repaint content and flushes atomically after either:
+   *       • A short quiet period (FRAME_SETTLE_DELAY_MS) or
+   *       • A hard deadline (FRAME_DEADLINE_MS) to avoid starvation.
    */
   private bufferTerminalData(id: string, data: string | Uint8Array): void {
-    let entry = this.sabBuffers.get(id);
-    if (!entry) {
-      entry = { chunks: [], timeoutId: null, firstScheduledAt: null };
-      this.sabBuffers.set(id, entry);
-    }
-    entry.chunks.push(data);
-
-    // Detect redraw patterns in string data (most common case)
-    let isRedraw = false;
-    if (typeof data === "string") {
-      isRedraw = data.includes("\x1b[2J") || data.includes("\x1b[H");
-    }
-
     const now = Date.now();
 
-    // If a flush is already pending
-    if (entry.timeoutId !== null) {
-      // If we just detected a redraw signal, extend timer to capture full repaint
-      // But cap the total delay to prevent timer starvation on continuous redraws
-      if (isRedraw && entry.firstScheduledAt) {
-        const elapsed = now - entry.firstScheduledAt;
-        if (elapsed < MAX_FLUSH_DELAY_MS) {
-          window.clearTimeout(entry.timeoutId);
-          entry.timeoutId = window.setTimeout(() => this.flushBuffer(id), REDRAW_FLUSH_DELAY_MS);
-        }
+    let entry = this.sabBuffers.get(id);
+
+    const stringData = typeof data === "string" ? data : "";
+    const dataLength = typeof data === "string" ? data.length : data.byteLength;
+    const prevRecent = entry ? entry.recentChars : "";
+    const prevBytes = entry ? entry.bytesSinceStart : 0;
+    const combinedRecent = (prevRecent + stringData).slice(-REDRAW_LOOKBACK_CHARS);
+    const bytesSinceStart = prevBytes + dataLength;
+
+    const isRedraw = this.detectRedrawPatternInStream(combinedRecent, bytesSinceStart);
+
+    if (!entry) {
+      entry = {
+        chunks: [],
+        flushMode: isRedraw ? "frame" : "normal",
+        normalTimeoutId: null,
+        frameSettleTimeoutId: null,
+        frameDeadlineTimeoutId: null,
+        recentChars: combinedRecent,
+        bytesSinceStart,
+        firstDataAt: now,
+        lastDataAt: now,
+      };
+      this.sabBuffers.set(id, entry);
+      entry.chunks.push(data);
+
+      if (entry.flushMode === "normal") {
+        entry.normalTimeoutId = window.setTimeout(
+          () => this.flushBuffer(id),
+          STANDARD_FLUSH_DELAY_MS
+        );
+      } else {
+        entry.frameSettleTimeoutId = window.setTimeout(
+          () => this.onFrameSettle(id),
+          FRAME_SETTLE_DELAY_MS
+        );
+        entry.frameDeadlineTimeoutId = window.setTimeout(
+          () => this.flushBuffer(id),
+          FRAME_DEADLINE_MS
+        );
       }
       return;
     }
 
-    // Schedule new flush with appropriate delay
-    const delay = isRedraw ? REDRAW_FLUSH_DELAY_MS : STANDARD_FLUSH_DELAY_MS;
-    entry.firstScheduledAt = now;
-    entry.timeoutId = window.setTimeout(() => this.flushBuffer(id), delay);
+    // If we see a new redraw signal while we already have buffered data,
+    // treat it as the start of the next frame. To avoid over-updating,
+    // drop the in-flight frame when redraws arrive above our FPS cap
+    // and start a fresh frame from this new redraw boundary.
+    if (isRedraw && entry.chunks.length > 0) {
+      const lastFlushAt = this.sabFrameLastFlushAt.get(id);
+      if (lastFlushAt !== undefined) {
+        const delta = now - lastFlushAt;
+        if (delta < MIN_FRAME_INTERVAL_MS) {
+          if (entry.normalTimeoutId !== null) {
+            window.clearTimeout(entry.normalTimeoutId);
+            entry.normalTimeoutId = null;
+          }
+          if (entry.frameSettleTimeoutId !== null) {
+            window.clearTimeout(entry.frameSettleTimeoutId);
+            entry.frameSettleTimeoutId = null;
+          }
+          if (entry.frameDeadlineTimeoutId !== null) {
+            window.clearTimeout(entry.frameDeadlineTimeoutId);
+            entry.frameDeadlineTimeoutId = null;
+          }
+
+          entry.chunks = [data];
+          entry.flushMode = "frame";
+          entry.bytesSinceStart = dataLength;
+          entry.recentChars = combinedRecent;
+          entry.firstDataAt = now;
+          entry.lastDataAt = now;
+
+          const remaining = MIN_FRAME_INTERVAL_MS - delta;
+          const settleDelay = Math.max(FRAME_SETTLE_DELAY_MS, remaining);
+
+          entry.frameSettleTimeoutId = window.setTimeout(
+            () => this.onFrameSettle(id),
+            settleDelay
+          );
+          entry.frameDeadlineTimeoutId = window.setTimeout(
+            () => this.flushBuffer(id),
+            Math.max(FRAME_DEADLINE_MS, settleDelay)
+          );
+
+          return;
+        }
+      }
+
+      this.flushBuffer(id);
+      this.bufferTerminalData(id, data);
+      return;
+    }
+
+    entry.chunks.push(data);
+    entry.lastDataAt = now;
+    entry.bytesSinceStart = bytesSinceStart;
+    entry.recentChars = combinedRecent;
+
+    if (entry.flushMode === "normal") {
+      if (entry.normalTimeoutId === null) {
+        entry.normalTimeoutId = window.setTimeout(
+          () => this.flushBuffer(id),
+          STANDARD_FLUSH_DELAY_MS
+        );
+      }
+      return;
+    }
+
+    if (entry.frameSettleTimeoutId !== null) {
+      window.clearTimeout(entry.frameSettleTimeoutId);
+    }
+    entry.frameSettleTimeoutId = window.setTimeout(
+      () => this.onFrameSettle(id),
+      FRAME_SETTLE_DELAY_MS
+    );
+
+    if (entry.frameDeadlineTimeoutId === null) {
+      entry.frameDeadlineTimeoutId = window.setTimeout(
+        () => this.flushBuffer(id),
+        FRAME_DEADLINE_MS
+      );
+    }
+  }
+
+  /**
+   * Called when a frame's settle timer fires. If no new data has arrived
+   * since the timer was scheduled, we treat the current buffer as a
+   * complete frame and flush it atomically.
+   */
+  private onFrameSettle(id: string): void {
+    const entry = this.sabBuffers.get(id);
+    if (!entry) return;
+
+    entry.frameSettleTimeoutId = null;
+
+    const now = Date.now();
+    if (now - entry.lastDataAt >= FRAME_SETTLE_DELAY_MS - 1) {
+      this.flushBuffer(id);
+    }
+  }
+
+  /**
+   * Stream-level redraw detection that is robust to chunk boundaries.
+   * We look for well-known full-screen repaint patterns in the recent
+   * characters of the stream:
+   *   - ESC[2J  (clear screen)
+   *   - ESC[H   (cursor home) when it appears early in the burst
+   */
+  private detectRedrawPatternInStream(recent: string, bytesSinceStart: number): boolean {
+    if (!recent) return false;
+
+    if (recent.includes("\x1b[2J")) {
+      return true;
+    }
+
+    if (recent.includes("\x1b[H") && bytesSinceStart <= EARLY_HOME_BYTE_WINDOW) {
+      return true;
+    }
+
+    return false;
   }
 
   /**
@@ -310,30 +459,54 @@ class TerminalInstanceService {
     const managed = this.instances.get(id);
     const entry = this.sabBuffers.get(id);
 
-    // Cleanup buffer entry immediately (including timing state)
-    if (entry) {
-      this.sabBuffers.delete(id);
-    }
-
     if (!managed || !entry || entry.chunks.length === 0) {
+      if (entry) {
+        if (entry.normalTimeoutId !== null) {
+          window.clearTimeout(entry.normalTimeoutId);
+        }
+        if (entry.frameSettleTimeoutId !== null) {
+          window.clearTimeout(entry.frameSettleTimeoutId);
+        }
+        if (entry.frameDeadlineTimeoutId !== null) {
+          window.clearTimeout(entry.frameDeadlineTimeoutId);
+        }
+        this.sabBuffers.delete(id);
+      }
       return;
     }
 
+    if (entry.flushMode === "frame") {
+      this.sabFrameLastFlushAt.set(id, Date.now());
+    }
+
+    // Clear any outstanding timers and remove the buffer entry.
+    if (entry.normalTimeoutId !== null) {
+      window.clearTimeout(entry.normalTimeoutId);
+    }
+    if (entry.frameSettleTimeoutId !== null) {
+      window.clearTimeout(entry.frameSettleTimeoutId);
+    }
+    if (entry.frameDeadlineTimeoutId !== null) {
+      window.clearTimeout(entry.frameDeadlineTimeoutId);
+    }
+    this.sabBuffers.delete(id);
+
     const { chunks } = entry;
 
-    // Optimization: Join string chunks to reduce xterm write overhead
     if (chunks.length === 1) {
       this.writeToTerminal(id, chunks[0]);
-    } else {
-      const allStrings = chunks.every((c) => typeof c === "string");
-      if (allStrings) {
-        this.writeToTerminal(id, (chunks as string[]).join(""));
-      } else {
-        // Mixed binary/string - write sequentially (rare path)
-        for (const chunk of chunks) {
-          this.writeToTerminal(id, chunk);
-        }
-      }
+      return;
+    }
+
+    const allStrings = chunks.every((c) => typeof c === "string");
+    if (allStrings) {
+      this.writeToTerminal(id, (chunks as string[]).join(""));
+      return;
+    }
+
+    // Mixed binary/string - write sequentially (rare path)
+    for (const chunk of chunks) {
+      this.writeToTerminal(id, chunk);
     }
   }
 
