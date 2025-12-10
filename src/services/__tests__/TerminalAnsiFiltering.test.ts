@@ -14,6 +14,9 @@ function filterProblematicSequences(data: string): string {
   filtered = filtered.replace(/\u001b\[\?1049[hl]/g, "");
   filtered = filtered.replace(/\u001b\[\?47[hl]/g, "");
 
+  // Strip Scroll Region (\u001b[top;bottomr)
+  filtered = filtered.replace(/\u001b\[\d+;\d+r/g, "");
+
   // Strip Scrollback Clear (3J)
   filtered = filtered.replace(/\u001b\[3J/g, "");
   /* eslint-enable no-control-regex */
@@ -30,6 +33,11 @@ describe("Terminal ANSI Filtering Logic", () => {
   it("strips alternate screen buffer sequences", () => {
     const input = "Start\u001b[?1049hApp\u001b[?1049lEnd";
     expect(filterProblematicSequences(input)).toBe("StartAppEnd");
+  });
+
+  it("strips scroll region sequences", () => {
+    const input = "Begin\u001b[1;24rEnd";
+    expect(filterProblematicSequences(input)).toBe("BeginEnd");
   });
 
   it("strips scrollback clear (3J)", () => {
