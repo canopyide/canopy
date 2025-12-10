@@ -7,6 +7,7 @@ import {
   CheckCircle2,
   XCircle,
   Play,
+  Circle,
 } from "lucide-react";
 import type { WorktreeTerminalCounts } from "@/hooks/useWorktreeTerminals";
 import type { AgentState, TerminalInstance } from "@/types";
@@ -20,41 +21,58 @@ import { useTerminalStore } from "@/store/terminalStore";
 import { TerminalIcon } from "@/components/Terminal/TerminalIcon";
 import { cn } from "@/lib/utils";
 
-interface TerminalCountBadgeProps {
-  counts: WorktreeTerminalCounts;
-  terminals: TerminalInstance[];
-  onSelectTerminal: (terminal: TerminalInstance) => void;
-}
+const STATE_ICONS: Record<
+  AgentState,
+  React.ComponentType<{ className?: string; "aria-label"?: string }>
+> = {
+  working: Loader2,
+  running: Play,
+  waiting: AlertCircle,
+  idle: Circle,
+  completed: CheckCircle2,
+  failed: XCircle,
+};
+
+const STATE_COLORS: Record<AgentState, string> = {
+  working: "text-[var(--color-state-working)]",
+  running: "text-[var(--color-status-info)]",
+  waiting: "text-amber-400",
+  idle: "text-canopy-text/40",
+  completed: "text-[var(--color-status-success)]",
+  failed: "text-[var(--color-status-error)]",
+};
 
 const STATE_LABELS: Record<AgentState, string> = {
   working: "working",
   running: "running",
   idle: "idle",
   waiting: "waiting",
-  completed: "done",
-  failed: "error",
+  completed: "completed",
+  failed: "failed",
 };
 
-function formatStateCounts(byState: Record<AgentState, number>): string {
-  const parts: string[] = [];
+interface StateIconProps {
+  state: AgentState;
+  count: number;
+}
 
-  const priorityOrder: AgentState[] = [
-    "working",
-    "running",
-    "waiting",
-    "failed",
-    "idle",
-    "completed",
-  ];
+function StateIcon({ state, count }: StateIconProps) {
+  const Icon = STATE_ICONS[state];
+  const colorClass = STATE_COLORS[state];
+  const label = STATE_LABELS[state];
 
-  for (const state of priorityOrder) {
-    const count = byState[state];
-    if (count > 0) {
-      parts.push(`${count} ${STATE_LABELS[state]}`);
-    }
-  }
+  return (
+    <span className={cn("flex items-center gap-1", colorClass)}>
+      <Icon className={cn("w-3 h-3", state === "working" && "animate-spin")} aria-label={label} />
+      <span className="font-mono">{count}</span>
+    </span>
+  );
+}
 
-  return parts.join(" · ");
+interface TerminalCountBadgeProps {
+  counts: WorktreeTerminalCounts;
+  terminals: TerminalInstance[];
+  onSelectTerminal: (terminal: TerminalInstance) => void;
 }
 
 export function TerminalCountBadge({
@@ -94,11 +112,19 @@ export function TerminalCountBadge({
           onClick={(e) => e.stopPropagation()}
           aria-haspopup="menu"
           aria-controls={contentId}
-          aria-label={`Active Sessions: ${counts.total} terminal${counts.total === 1 ? "" : "s"}`}
+          aria-label={`Active Sessions: ${counts.total} terminal${counts.total === 1 ? "" : "s"}${hasNonIdleStates ? (["working", "waiting", "running", "idle", "completed", "failed"] as AgentState[]).map((state) => (counts.byState[state] > 0 ? ` — ${STATE_LABELS[state]} ${counts.byState[state]}` : "")).join("") : ""}`}
         >
           <TerminalSquare className="w-3 h-3 opacity-70" aria-hidden="true" />
           {hasNonIdleStates ? (
-            <span className="font-mono">{formatStateCounts(counts.byState)}</span>
+            <span className="flex items-center gap-2 font-mono">
+              {(
+                ["working", "waiting", "running", "idle", "completed", "failed"] as AgentState[]
+              ).map((state) => {
+                const count = counts.byState[state];
+                if (count === 0) return null;
+                return <StateIcon key={state} state={state} count={count} />;
+              })}
+            </span>
           ) : (
             <span className="font-mono">
               {counts.total} {counts.total === 1 ? "terminal" : "terminals"}

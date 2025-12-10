@@ -60,10 +60,59 @@ import {
   AlertCircle,
   CheckCircle2,
   XCircle,
+  Circle,
 } from "lucide-react";
 import { ClaudeIcon, GeminiIcon, CodexIcon } from "@/components/icons";
 import { TerminalIcon } from "@/components/Terminal/TerminalIcon";
 import type { AgentType, UseAgentLauncherReturn } from "@/hooks/useAgentLauncher";
+
+const STATE_ICONS: Record<
+  AgentState,
+  React.ComponentType<{ className?: string; "aria-label"?: string }>
+> = {
+  working: Loader2,
+  running: Play,
+  waiting: AlertCircle,
+  idle: Circle,
+  completed: CheckCircle2,
+  failed: XCircle,
+};
+
+const STATE_COLORS: Record<AgentState, string> = {
+  working: "text-[var(--color-state-working)]",
+  running: "text-[var(--color-status-info)]",
+  waiting: "text-amber-400",
+  idle: "text-canopy-text/40",
+  completed: "text-[var(--color-status-success)]",
+  failed: "text-[var(--color-status-error)]",
+};
+
+const STATE_LABELS: Record<AgentState, string> = {
+  working: "working",
+  running: "running",
+  idle: "idle",
+  waiting: "waiting",
+  completed: "completed",
+  failed: "failed",
+};
+
+interface StateIconProps {
+  state: AgentState;
+  count: number;
+}
+
+function StateIcon({ state, count }: StateIconProps) {
+  const Icon = STATE_ICONS[state];
+  const colorClass = STATE_COLORS[state];
+  const label = STATE_LABELS[state];
+
+  return (
+    <span className={cn("flex items-center gap-1", colorClass)}>
+      <Icon className={cn("w-3 h-3", state === "working" && "animate-spin")} aria-label={label} />
+      <span className="font-mono">{count}</span>
+    </span>
+  );
+}
 
 export interface WorktreeCardProps {
   worktree: WorktreeState;
@@ -864,6 +913,7 @@ export function WorktreeCard({
               <button
                 className="w-full flex items-center justify-between mt-5 py-1.5 px-2 text-xs text-canopy-text/60 hover:text-canopy-text/80 bg-white/[0.02] rounded transition-colors cursor-pointer focus-visible:outline focus-visible:outline-2 focus-visible:outline-canopy-accent"
                 onClick={(e) => e.stopPropagation()}
+                aria-label={`Active Sessions: ${terminalCounts.total} total${(["working", "waiting", "running", "idle", "completed", "failed"] as AgentState[]).map((state) => (terminalCounts.byState[state] > 0 ? ` — ${STATE_LABELS[state]} ${terminalCounts.byState[state]}` : "")).join("")}`}
               >
                 {/* Left: Terminal icon + total count */}
                 <div className="flex items-center gap-1.5">
@@ -873,42 +923,13 @@ export function WorktreeCard({
 
                 {/* Right: State breakdown */}
                 <div className="flex items-center gap-3">
-                  {terminalCounts.byState.working > 0 && (
-                    <span className="flex items-center gap-1 text-[var(--color-state-working)]">
-                      <span className="w-1.5 h-1.5 rounded-full bg-current animate-pulse" />
-                      {terminalCounts.byState.working} working
-                    </span>
-                  )}
-                  {terminalCounts.byState.waiting > 0 && (
-                    <span className="flex items-center gap-1 text-amber-400">
-                      <span className="w-1.5 h-1.5 rounded-full bg-current" />
-                      {terminalCounts.byState.waiting} waiting
-                    </span>
-                  )}
-                  {terminalCounts.byState.running > 0 && (
-                    <span className="flex items-center gap-1 text-[var(--color-status-info)]">
-                      <span className="w-1.5 h-1.5 rounded-full bg-current" />
-                      {terminalCounts.byState.running} running
-                    </span>
-                  )}
-                  {terminalCounts.byState.idle > 0 && (
-                    <span className="flex items-center gap-1 text-canopy-text/40">
-                      <span className="w-1.5 h-1.5 rounded-full bg-current" />
-                      {terminalCounts.byState.idle} idle
-                    </span>
-                  )}
-                  {terminalCounts.byState.completed > 0 && (
-                    <span className="flex items-center gap-1 text-canopy-text/40">
-                      <span className="w-1.5 h-1.5 rounded-full bg-current" />
-                      {terminalCounts.byState.completed} completed
-                    </span>
-                  )}
-                  {terminalCounts.byState.failed > 0 && (
-                    <span className="flex items-center gap-1 text-red-400">
-                      <span className="w-1.5 h-1.5 rounded-full bg-current" />
-                      {terminalCounts.byState.failed} failed
-                    </span>
-                  )}
+                  {(
+                    ["working", "waiting", "running", "idle", "completed", "failed"] as AgentState[]
+                  ).map((state) => {
+                    const count = terminalCounts.byState[state];
+                    if (count === 0) return null;
+                    return <StateIcon key={state} state={state} count={count} />;
+                  })}
                 </div>
               </button>
             </DropdownMenuTrigger>
