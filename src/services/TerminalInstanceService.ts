@@ -6,7 +6,7 @@ import { WebLinksAddon } from "@xterm/addon-web-links";
 import { ImageAddon } from "@xterm/addon-image";
 import { SearchAddon } from "@xterm/addon-search";
 import { terminalClient, systemClient } from "@/clients";
-import { TerminalRefreshTier } from "@/types";
+import { TerminalRefreshTier, TerminalType } from "@/types";
 import { detectHardware, HardwareProfile } from "@/utils/hardwareDetection";
 import { SharedRingBuffer, PacketParser } from "@shared/utils/SharedRingBuffer";
 
@@ -16,6 +16,7 @@ type ResizeJobId = { type: "timeout"; id: number } | { type: "idle"; id: number 
 
 interface ManagedTerminal {
   terminal: Terminal;
+  type: TerminalType;
   fitAddon: FitAddon;
   webglAddon?: WebglAddon;
   serializeAddon: SerializeAddon;
@@ -566,6 +567,33 @@ class TerminalInstanceService {
   }
 
   /**
+   * Filter problematic ANSI sequences for Claude Code terminals.
+   * Strips mouse tracking, alternate screen buffers, and scrollback clearing.
+   */
+  private filterProblematicSequences(data: string, id: string): string {
+    const managed = this.instances.get(id);
+    if (!managed || managed.type !== "claude") {
+      return data;
+    }
+
+    let filtered = data;
+
+    /* eslint-disable no-control-regex */
+    // Strip Mouse Tracking (?1000h - ?1006h)
+    filtered = filtered.replace(/\u001b\[\?100[0-6][hl]/g, "");
+
+    // Strip Alternate Screen Buffer (?1049h/l, ?47h/l)
+    filtered = filtered.replace(/\u001b\[\?1049[hl]/g, "");
+    filtered = filtered.replace(/\u001b\[\?47[hl]/g, "");
+
+    // Strip Scrollback Clear (3J)
+    filtered = filtered.replace(/\u001b\[3J/g, "");
+    /* eslint-enable no-control-regex */
+
+    return filtered;
+  }
+
+  /**
    * Execute the buffered write to the terminal.
    * Joins string chunks for efficient single xterm.write() call.
    */
@@ -603,14 +631,19 @@ class TerminalInstanceService {
 
     const { chunks } = entry;
 
+    // Filter sequences for Claude terminals
+    const processedChunks = chunks.map((c) =>
+      typeof c === "string" ? this.filterProblematicSequences(c, id) : c
+    );
+
     if (entry.flushMode === "normal") {
-      this.writeFrameChunks(id, chunks);
+      this.writeFrameChunks(id, processedChunks);
       this.recordFrameFlush(id);
       return;
     }
 
     // Frame mode: enqueue completed frame for presentation at capped FPS.
-    this.enqueueFrame(id, chunks);
+    this.enqueueFrame(id, processedChunks);
   }
 
   /**
@@ -780,6 +813,7 @@ class TerminalInstanceService {
 
   getOrCreate(
     id: string,
+    type: TerminalType,
     options: ConstructorParameters<typeof Terminal>[0],
     getRefreshTier: RefreshTierProvider = () => TerminalRefreshTier.FOCUSED,
     onInput?: (data: string) => void
@@ -852,6 +886,7 @@ class TerminalInstanceService {
 
     const managed: ManagedTerminal = {
       terminal,
+      type,
       fitAddon,
       webglAddon: undefined,
       serializeAddon,

@@ -156,6 +156,7 @@ function XtermAdapterComponent({
 
     const managed = terminalInstanceService.getOrCreate(
       terminalId,
+      terminalType,
       terminalOptions,
       getRefreshTier || (() => TerminalRefreshTier.FOCUSED),
       onInput
@@ -220,7 +221,7 @@ function XtermAdapterComponent({
 
       prevDimensionsRef.current = null;
     };
-  }, [terminalId, terminalOptions, onExit, onReady, performFit]);
+  }, [terminalId, terminalType, terminalOptions, onExit, onReady, performFit]);
 
   // Resolve current tier for dependency tracking
   const currentTier = useMemo(
