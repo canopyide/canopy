@@ -76,9 +76,7 @@ const MIN_FRAME_INTERVAL_MS = 50; // Target ~20fps for intense TUI redraws
 const FRAME_SETTLE_DELAY_MS = REDRAW_FLUSH_DELAY_MS;
 const FRAME_DEADLINE_MS = MAX_FLUSH_DELAY_MS;
 const TUI_BURST_THRESHOLD_MS = 50; // Repeated clears within this window treated as TUI burst
-const REDRAW_LOOKBACK_CHARS = 32; // Stream-level detection window for ANSI patterns
-const EARLY_HOME_BYTE_WINDOW = 256; // Only treat bare \x1b[H as redraw when it appears early
-
+const REDRAW_LOOKBACK_CHARS = 128; // Stream-level detection window for ANSI patterns. Increased to catch \x1b[H further into the stream.
 /**
  * Creates a simple writer that passes data directly to xterm.
  *
@@ -308,7 +306,7 @@ class TerminalInstanceService {
     const combinedRecent = (prevRecent + stringData).slice(-REDRAW_LOOKBACK_CHARS);
     const bytesSinceStart = prevBytes + dataLength;
 
-    const isRedraw = this.detectRedrawPatternInStream(combinedRecent, bytesSinceStart);
+    const isRedraw = this.detectRedrawPatternInStream(combinedRecent);
 
     if (!entry) {
       entry = {
@@ -552,14 +550,14 @@ class TerminalInstanceService {
    *   - ESC[2J  (clear screen)
    *   - ESC[H   (cursor home) when it appears early in the burst
    */
-  private detectRedrawPatternInStream(recent: string, bytesSinceStart: number): boolean {
+  private detectRedrawPatternInStream(recent: string): boolean {
     if (!recent) return false;
 
     if (recent.includes("\x1b[2J")) {
       return true;
     }
 
-    if (recent.includes("\x1b[H") && bytesSinceStart <= EARLY_HOME_BYTE_WINDOW) {
+    if (recent.includes("\x1b[H")) {
       return true;
     }
 
