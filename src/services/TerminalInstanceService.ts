@@ -954,14 +954,36 @@ class TerminalInstanceService {
     managed.terminal.parser.registerCsiHandler({ final: "J" }, (params) => {
       if (!shouldBlock()) return false;
 
-      // Block '3' (Clear Scrollback) to prevent history loss and jump-to-top
-      const hasClearScrollback = params.some((p) => {
+      // Block '2' (Clear Screen) and '3' (Clear Scrollback)
+      // This prevents the "blank slate" effect that usually precedes a jump-to-top
+      const hasBlockedParam = params.some((p) => {
         const val = typeof p === "number" ? p : p[0];
-        return val === 3;
+        return val === 2 || val === 3;
       });
 
-      return hasClearScrollback;
+      return hasBlockedParam;
     });
+
+    // 5. Intercept CUP (CSI ... H) and HVP (CSI ... f) - Cursor Position
+    // Block attempts to move cursor to the top row (Row 1), which causes viewport jumping
+    const handleCursorMove = (params: (number | number[])[]) => {
+      if (!shouldBlock()) return false;
+
+      // Default is 1;1 if no params
+      if (params.length === 0) return true;
+
+      // Check Row (1st param)
+      const row = typeof params[0] === "number" ? params[0] : params[0][0];
+
+      // Block if explicit Row 1 (or default/missing which implies 1)
+      if (row === 1 || row === undefined) {
+        return true;
+      }
+      return false;
+    };
+
+    managed.terminal.parser.registerCsiHandler({ final: "H" }, handleCursorMove);
+    managed.terminal.parser.registerCsiHandler({ final: "f" }, handleCursorMove);
   }
 
   /**
