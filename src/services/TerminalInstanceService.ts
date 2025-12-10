@@ -75,6 +75,7 @@ const MAX_FLUSH_DELAY_MS = 32; // Max time to hold a frame before forced flush
 const MIN_FRAME_INTERVAL_MS = 33; // Target ~30fps for intense TUI redraws
 const FRAME_SETTLE_DELAY_MS = REDRAW_FLUSH_DELAY_MS;
 const FRAME_DEADLINE_MS = MAX_FLUSH_DELAY_MS;
+const TUI_BURST_THRESHOLD_MS = 50; // Repeated clears within this window treated as TUI burst
 const REDRAW_LOOKBACK_CHARS = 32; // Stream-level detection window for ANSI patterns
 const EARLY_HOME_BYTE_WINDOW = 256; // Only treat bare \x1b[H as redraw when it appears early
 
@@ -159,6 +160,8 @@ class TerminalInstanceService {
       bytesSinceStart: number;
       firstDataAt: number;
       lastDataAt: number;
+      lastRedrawAt: number | null;
+      flushOnRedrawOnly: boolean;
     }
   >();
   // Per-terminal last frame flush time for FPS-style limiting in frame mode
@@ -310,6 +313,8 @@ class TerminalInstanceService {
         bytesSinceStart,
         firstDataAt: now,
         lastDataAt: now,
+        lastRedrawAt: isRedraw ? now : null,
+        flushOnRedrawOnly: false,
       };
       this.sabBuffers.set(id, entry);
       entry.chunks.push(data);
@@ -330,6 +335,17 @@ class TerminalInstanceService {
         );
       }
       return;
+    }
+
+    // Existing entry: update TUI burst detection state.
+    if (isRedraw) {
+      if (entry.lastRedrawAt !== null) {
+        const clearDelta = now - entry.lastRedrawAt;
+        if (clearDelta <= TUI_BURST_THRESHOLD_MS) {
+          entry.flushOnRedrawOnly = true;
+        }
+      }
+      entry.lastRedrawAt = now;
     }
 
     // If we see a new redraw signal while we already have buffered data,
@@ -416,7 +432,9 @@ class TerminalInstanceService {
   /**
    * Called when a frame's settle timer fires. If no new data has arrived
    * since the timer was scheduled, we treat the current buffer as a
-   * complete frame and flush it atomically.
+   * complete frame. In normal frame mode we flush immediately; in
+   * TUI burst mode we defer flush to the next redraw signal so we
+   * can safely be one frame behind without mid-frame flicker.
    */
   private onFrameSettle(id: string): void {
     const entry = this.sabBuffers.get(id);
@@ -426,6 +444,11 @@ class TerminalInstanceService {
 
     const now = Date.now();
     if (now - entry.lastDataAt >= FRAME_SETTLE_DELAY_MS - 1) {
+      if (entry.flushMode === "frame" && entry.flushOnRedrawOnly) {
+        // In TUI burst mode we rely on the next redraw to trigger
+        // flush of the completed frame, so do nothing here.
+        return;
+      }
       this.flushBuffer(id);
     }
   }
