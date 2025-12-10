@@ -34,6 +34,7 @@ import { initializeLogger } from "./utils/logger.js";
 import { copyTreeService } from "./services/CopyTreeService.js";
 import { DevServerParser } from "./services/devserver/DevServerParser.js";
 import { GitHubAuth } from "./services/github/GitHubAuth.js";
+import { fileTreeService } from "./services/FileTreeService.js";
 import type { CopyTreeProgress } from "../shared/types/ipc.js";
 
 // Validate we're running in UtilityProcess context
@@ -1090,6 +1091,26 @@ port.on("message", async (rawMsg: any) => {
           pullRequestService.refresh();
         } else {
           pullRequestService.reset();
+        }
+        break;
+      }
+
+      case "get-file-tree": {
+        const { requestId, worktreePath, dirPath } = request;
+        try {
+          const nodes = await fileTreeService.getFileTree(worktreePath, dirPath);
+          sendEvent({
+            type: "file-tree-result",
+            requestId,
+            nodes,
+          });
+        } catch (error) {
+          sendEvent({
+            type: "file-tree-result",
+            requestId,
+            nodes: [],
+            error: (error as Error).message,
+          });
         }
         break;
       }
