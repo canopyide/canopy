@@ -241,6 +241,8 @@ export class WorkspaceClient extends EventEmitter {
       case "set-active-result":
       case "refresh-result":
       case "refresh-prs-result":
+      case "get-pr-status-result":
+      case "reset-pr-state-result":
       case "create-worktree-result":
       case "delete-worktree-result":
         this.handleRequestResult(event);
@@ -276,19 +278,27 @@ export class WorkspaceClient extends EventEmitter {
         this.sendToRenderer(CHANNELS.WORKTREE_REMOVE, { worktreeId: event.worktreeId });
         break;
 
-      case "pr-detected":
-        events.emit("sys:pr:detected", {
+      case "pr-detected": {
+        const prPayload = {
           worktreeId: event.worktreeId,
           prNumber: event.prNumber,
           prUrl: event.prUrl,
           prState: event.prState,
-          issueNumber: 0, // TODO: extract from worktree
+        };
+        events.emit("sys:pr:detected", {
+          ...prPayload,
+          issueNumber: 0,
         });
+        this.sendToRenderer(CHANNELS.PR_DETECTED, prPayload);
         break;
+      }
 
-      case "pr-cleared":
-        events.emit("sys:pr:cleared", { worktreeId: event.worktreeId });
+      case "pr-cleared": {
+        const clearPayload = { worktreeId: event.worktreeId };
+        events.emit("sys:pr:cleared", clearPayload);
+        this.sendToRenderer(CHANNELS.PR_CLEARED, clearPayload);
         break;
+      }
 
       // CopyTree events
       case "copytree:progress": {
@@ -464,6 +474,28 @@ export class WorkspaceClient extends EventEmitter {
 
     await this.sendWithResponse({
       type: "refresh-prs",
+      requestId,
+    });
+  }
+
+  async getPRStatus(): Promise<import("../../shared/types/workspace-host.js").PRServiceStatus | null> {
+    const requestId = this.generateRequestId();
+
+    const result = await this.sendWithResponse<{
+      status: import("../../shared/types/workspace-host.js").PRServiceStatus | null;
+    }>({
+      type: "get-pr-status",
+      requestId,
+    });
+
+    return result.status;
+  }
+
+  async resetPRState(): Promise<void> {
+    const requestId = this.generateRequestId();
+
+    await this.sendWithResponse({
+      type: "reset-pr-state",
       requestId,
     });
   }
