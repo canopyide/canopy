@@ -567,38 +567,6 @@ class TerminalInstanceService {
   }
 
   /**
-   * Filter problematic ANSI sequences for Claude Code terminals.
-   * Strips mouse tracking, alternate screen buffers, and scrollback clearing.
-   */
-  private filterProblematicSequences(data: string, id: string): string {
-    const managed = this.instances.get(id);
-    // Filter only for Claude terminals that are NOT focused.
-    // This prevents background bouncing while preserving interactive TUI features (menus, selection) when focused.
-    if (!managed || managed.type !== "claude" || managed.isFocused) {
-      return data;
-    }
-
-    let filtered = data;
-
-    /* eslint-disable no-control-regex */
-    // Strip Mouse Tracking (?1000h - ?1006h)
-    filtered = filtered.replace(/\u001b\[\?100[0-6][hl]/g, "");
-
-    // Strip Alternate Screen Buffer (?1049h/l, ?47h/l)
-    filtered = filtered.replace(/\u001b\[\?1049[hl]/g, "");
-    filtered = filtered.replace(/\u001b\[\?47[hl]/g, "");
-
-    // Strip Scroll Region (\u001b[top;bottomr)
-    filtered = filtered.replace(/\u001b\[\d+;\d+r/g, "");
-
-    // Strip Scrollback Clear (3J)
-    filtered = filtered.replace(/\u001b\[3J/g, "");
-    /* eslint-enable no-control-regex */
-
-    return filtered;
-  }
-
-  /**
    * Execute the buffered write to the terminal.
    * Joins string chunks for efficient single xterm.write() call.
    */
@@ -636,19 +604,14 @@ class TerminalInstanceService {
 
     const { chunks } = entry;
 
-    // Filter sequences for Claude terminals
-    const processedChunks = chunks.map((c) =>
-      typeof c === "string" ? this.filterProblematicSequences(c, id) : c
-    );
-
     if (entry.flushMode === "normal") {
-      this.writeFrameChunks(id, processedChunks);
+      this.writeFrameChunks(id, chunks);
       this.recordFrameFlush(id);
       return;
     }
 
     // Frame mode: enqueue completed frame for presentation at capped FPS.
-    this.enqueueFrame(id, processedChunks);
+    this.enqueueFrame(id, chunks);
   }
 
   /**
@@ -931,9 +894,76 @@ class TerminalInstanceService {
 
     this.instances.set(id, managed);
 
+    // Apply specific parser hooks for agent terminals
+    this.setupParserHandlers(managed);
+
     const initialTier = getRefreshTier ? getRefreshTier() : TerminalRefreshTier.FOCUSED;
     this.applyRendererPolicy(id, initialTier);
     return managed;
+  }
+
+  /**
+   * Set up xterm.js parser hooks to intercept and block problematic sequences.
+   * This is more robust than regex filtering as it handles stream chunking correctly.
+   */
+  private setupParserHandlers(managed: ManagedTerminal): void {
+    if (managed.type !== "claude") return;
+
+    // Helper to check if we should block the sequence
+    const shouldBlock = () => {
+      // Block always for Claude terminals to prevent TUI mode hijacking and bouncing
+      return true;
+    };
+
+    // 1. Intercept DECSET (CSI ? ... h) - Enable Mode
+    managed.terminal.parser.registerCsiHandler({ prefix: "?", final: "h" }, (params) => {
+      if (!shouldBlock()) return false;
+
+      // Block Mouse Tracking (1000, 1002, 1003, 1006)
+      // Block Alt Screen (1049, 47)
+      const blockList = [1000, 1002, 1003, 1006, 1049, 47];
+      const hasBlockedParam = params.some((p) => {
+        // xterm.js params are (number | number[])[]
+        const val = typeof p === "number" ? p : p[0];
+        return blockList.includes(val);
+      });
+
+      return hasBlockedParam; // true = handled (swallowed), false = pass to default
+    });
+
+    // 2. Intercept DECRST (CSI ? ... l) - Disable Mode
+    managed.terminal.parser.registerCsiHandler({ prefix: "?", final: "l" }, (params) => {
+      if (!shouldBlock()) return false;
+
+      // Same block list for disabling
+      const blockList = [1000, 1002, 1003, 1006, 1049, 47];
+      const hasBlockedParam = params.some((p) => {
+        const val = typeof p === "number" ? p : p[0];
+        return blockList.includes(val);
+      });
+
+      return hasBlockedParam;
+    });
+
+    // 3. Intercept DECSTBM (CSI ... r) - Set Scroll Region
+    managed.terminal.parser.registerCsiHandler({ final: "r" }, () => {
+      if (!shouldBlock()) return false;
+      // Block ALL scroll region changes for Claude to keep the buffer linear
+      return true;
+    });
+
+    // 4. Intercept ED (CSI ... J) - Erase in Display
+    managed.terminal.parser.registerCsiHandler({ final: "J" }, (params) => {
+      if (!shouldBlock()) return false;
+
+      // Block '3' (Clear Scrollback) to prevent history loss and jump-to-top
+      const hasClearScrollback = params.some((p) => {
+        const val = typeof p === "number" ? p : p[0];
+        return val === 3;
+      });
+
+      return hasClearScrollback;
+    });
   }
 
   /**
