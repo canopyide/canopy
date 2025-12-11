@@ -6,6 +6,26 @@ import os from "os";
 const MAX_SAFE_SIZE = 50 * 1024 * 1024; // 50 MB
 
 export class ClipboardFileInjector {
+  /**
+   * Synchronously check if clipboard contains file data.
+   * This is a fast check to decide whether to intercept paste.
+   */
+  static hasFileDataInClipboard(): boolean {
+    const formats = clipboard.availableFormats();
+    const platform = process.platform;
+
+    if (platform === "darwin") {
+      return formats.includes("public.file-url");
+    } else if (platform === "win32") {
+      return formats.includes("FileNameW") || formats.includes("FileName");
+    } else if (platform === "linux") {
+      // On Linux, file URIs are often in text/uri-list format
+      return formats.includes("text/uri-list");
+    }
+
+    return false;
+  }
+
   static async getFilePathsFromClipboard(): Promise<string[]> {
     const platform = process.platform;
 
