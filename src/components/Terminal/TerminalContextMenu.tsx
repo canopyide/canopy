@@ -94,12 +94,12 @@ export function TerminalContextMenu({
         {/* Layout Actions */}
         {currentLocation === "grid" ? (
           <ContextMenuItem onClick={() => moveTerminalToDock(terminalId)}>
-            <ArrowDownToLine className="w-4 h-4 mr-2" aria-hidden="true" />
+            <ArrowDownToLine className="w-3.5 h-3.5 mr-2" aria-hidden="true" />
             Move to Dock
           </ContextMenuItem>
         ) : (
           <ContextMenuItem onClick={() => moveTerminalToGrid(terminalId)}>
-            <ArrowUp className="w-4 h-4 mr-2" aria-hidden="true" />
+            <ArrowUp className="w-3.5 h-3.5 mr-2" aria-hidden="true" />
             Move to Grid
           </ContextMenuItem>
         )}
@@ -108,13 +108,13 @@ export function TerminalContextMenu({
           <ContextMenuItem onClick={() => toggleMaximize(terminalId)}>
             {isMaximized ? (
               <>
-                <Minimize2 className="w-4 h-4 mr-2" aria-hidden="true" />
+                <Minimize2 className="w-3.5 h-3.5 mr-2" aria-hidden="true" />
                 Restore Size
                 <ContextMenuShortcut>^⇧F</ContextMenuShortcut>
               </>
             ) : (
               <>
-                <Maximize2 className="w-4 h-4 mr-2" aria-hidden="true" />
+                <Maximize2 className="w-3.5 h-3.5 mr-2" aria-hidden="true" />
                 Maximize
                 <ContextMenuShortcut>^⇧F</ContextMenuShortcut>
               </>
@@ -149,22 +149,22 @@ export function TerminalContextMenu({
         <ContextMenuSeparator />
 
         <ContextMenuItem onClick={() => restartTerminal(terminalId)}>
-          <RotateCcw className="w-4 h-4 mr-2" aria-hidden="true" />
+          <RotateCcw className="w-3.5 h-3.5 mr-2" aria-hidden="true" />
           Restart Terminal
         </ContextMenuItem>
 
         <ContextMenuItem onClick={handleDuplicate}>
-          <Copy className="w-4 h-4 mr-2" aria-hidden="true" />
+          <Copy className="w-3.5 h-3.5 mr-2" aria-hidden="true" />
           Duplicate Terminal
         </ContextMenuItem>
 
         <ContextMenuItem onClick={handleClearBuffer}>
-          <Eraser className="w-4 h-4 mr-2" aria-hidden="true" />
+          <Eraser className="w-3.5 h-3.5 mr-2" aria-hidden="true" />
           Clear Scrollback
         </ContextMenuItem>
 
         <ContextMenuItem onClick={() => setIsInfoDialogOpen(true)}>
-          <Info className="w-4 h-4 mr-2" aria-hidden="true" />
+          <Info className="w-3.5 h-3.5 mr-2" aria-hidden="true" />
           View Terminal Info
         </ContextMenuItem>
 
@@ -174,7 +174,7 @@ export function TerminalContextMenu({
           onClick={() => trashTerminal(terminalId)}
           className="text-[var(--color-status-error)] focus:text-[var(--color-status-error)]"
         >
-          <Trash2 className="w-4 h-4 mr-2" aria-hidden="true" />
+          <Trash2 className="w-3.5 h-3.5 mr-2" aria-hidden="true" />
           Trash Terminal
         </ContextMenuItem>
 
@@ -182,7 +182,7 @@ export function TerminalContextMenu({
           onClick={() => removeTerminal(terminalId)}
           className="text-[var(--color-status-error)] focus:text-[var(--color-status-error)]"
         >
-          <X className="w-4 h-4 mr-2" aria-hidden="true" />
+          <X className="w-3.5 h-3.5 mr-2" aria-hidden="true" />
           Kill Terminal
         </ContextMenuItem>
       </ContextMenuContent>
