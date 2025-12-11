@@ -939,6 +939,8 @@ class TerminalInstanceService {
         const absoluteEnd = buffer.baseY + end;
         if (absoluteEnd > managed.maxContentRow) {
           managed.maxContentRow = absoluteEnd;
+          // Update host height to match actual content
+          this.updateHostHeight(managed);
         }
         // Check if we need to grow the canvas
         this.checkAndGrowRows(id);
@@ -1327,7 +1329,8 @@ class TerminalInstanceService {
   }
 
   /**
-   * Update host element height to match current row count.
+   * Update host element height to match actual content.
+   * Uses maxContentRow (actual content) not currentRows (preallocated buffer).
    */
   private updateHostHeight(managed: ManagedTerminal): void {
     const dimensions = (managed.terminal as any)._core?._renderService?.dimensions;
@@ -1336,7 +1339,13 @@ class TerminalInstanceService {
     const charHeight = dimensions.css?.cell?.height ?? dimensions.actualCellHeight;
     if (!charHeight || charHeight <= 0) return;
 
-    const totalHeight = managed.currentRows * charHeight;
+    // Use actual content rows, not preallocated buffer
+    // maxContentRow is 0-indexed, so add 1 for row count
+    // Also consider cursor position (cursor may be ahead of rendered content)
+    const cursorRow = managed.terminal.buffer.active.cursorY;
+    const contentRows = Math.max(managed.maxContentRow + 1, cursorRow + 1, managed.viewportRows);
+
+    const totalHeight = contentRows * charHeight;
     managed.hostElement.style.height = `${totalHeight}px`;
   }
 
@@ -1400,6 +1409,11 @@ class TerminalInstanceService {
 
     // Update host element height
     this.updateHostHeight(managed);
+
+    // Scroll to bottom immediately after growing (no RAF delay)
+    if (managed.scrollContainer && !managed.userIsScrolling) {
+      managed.scrollContainer.scrollTop = managed.scrollContainer.scrollHeight;
+    }
   }
 
   /**

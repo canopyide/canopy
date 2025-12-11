@@ -313,10 +313,12 @@ function XtermAdapterComponent({
     <div
       ref={scrollViewportRef}
       className={cn(
-        "w-full h-full bg-canopy-bg text-white rounded-b-[var(--radius-lg)]",
+        "w-full h-full bg-canopy-bg text-white",
         // Agent terminals use custom scrolling with flexbox for bottom-pinned layout
         // Standard terminals use overflow-hidden (xterm handles internal scrolling)
-        isAgent ? "overflow-y-auto overflow-x-hidden flex flex-col" : "overflow-hidden",
+        isAgent ? "overflow-y-auto overflow-x-hidden flex flex-col pl-2 pr-2 pt-2" : "overflow-hidden",
+        // Only apply rounded corners to standard terminals (agent scroll container fills to edge)
+        !isAgent && "rounded-b-[var(--radius-lg)]",
         className
       )}
       style={{
@@ -325,9 +327,17 @@ function XtermAdapterComponent({
         transform: "translateZ(0)",
       }}
     >
-      {/* Spacer pushes terminal to bottom for agent terminals */}
-      {isAgent && <div className="flex-1 min-h-0" />}
-      <div ref={containerRef} className={cn("pl-2 pt-2 pb-4", isAgent && "flex-shrink-0")} />
+      {isAgent ? (
+        <>
+          {/* Spacer pushes terminal to bottom */}
+          <div className="flex-1 min-h-0" />
+          {/* Terminal container - min-h-full ensures it starts at viewport size */}
+          <div ref={containerRef} className="flex-shrink-0" />
+        </>
+      ) : (
+        // Standard terminals: simple container with padding
+        <div ref={containerRef} className="pl-2 pt-2 pb-4 h-full" />
+      )}
     </div>
   );
 }

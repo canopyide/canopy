@@ -17,6 +17,7 @@ import type { AgentState } from "@/types";
 import { terminalInstanceService } from "@/services/TerminalInstanceService";
 import { InputTracker } from "@/services/clearCommandDetection";
 import { getAgentConfig } from "@/config/agents";
+import { isAgentTerminal } from "@/utils/terminalType";
 
 export type { TerminalType };
 
@@ -397,7 +398,13 @@ function TerminalPaneComponent({
           onReady={handleReady}
           onExit={handleExit}
           onInput={handleInput}
-          className={cn("absolute", location === "dock" || isMaximized ? "inset-0" : "inset-2")}
+          className={cn(
+            "absolute",
+            // Agent terminals: no inset (scroll container needs full space for scrollbar)
+            // Standard terminals in grid: inset-2 for card padding
+            // Dock/maximized: no inset
+            location === "dock" || isMaximized || isAgentTerminal(type) ? "inset-0" : "inset-2"
+          )}
           getRefreshTier={getRefreshTierCallback}
         />
         <ArtifactOverlay terminalId={id} worktreeId={worktreeId} cwd={cwd} />
