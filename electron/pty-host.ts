@@ -64,7 +64,7 @@ const BACKPRESSURE_MAX_PAUSE_MS = 5000; // Force resume after 5 seconds to preve
 // MessagePort for direct Renderer ↔ Pty Host communication (bypasses Main)
 // Note: This variable holds the port reference so the message handler stays active
 // @ts-expect-error - stored to keep port reference alive
-const rendererPort: MessagePort | null = null;
+let rendererPort: MessagePort | null = null;
 
 // Helper to send events to Main process
 function sendEvent(event: PtyHostEvent): void {
@@ -370,9 +370,58 @@ function toHostSnapshot(id: string): PtyHostTerminalSnapshot | null {
 port.on("message", (rawMsg: any) => {
   // Electron/Node might wrap the message in { data: ..., ports: [] }
   const msg = rawMsg?.data ? rawMsg.data : rawMsg;
+  const ports = rawMsg?.ports || [];
 
   try {
     switch (msg.type) {
+      case "connect-port":
+        // Receive MessagePort for direct Renderer ↔ Pty Host communication
+        if (ports && ports.length > 0) {
+          const receivedPort = ports[0];
+          rendererPort = receivedPort;
+          receivedPort.start();
+          console.log("[PtyHost] MessagePort received from Main, starting listener...");
+
+          receivedPort.on("message", (event: any) => {
+            const portMsg = event?.data ? event.data : event;
+
+            // Validate message structure
+            if (!portMsg || typeof portMsg !== "object") {
+              console.warn("[PtyHost] Invalid MessagePort message:", portMsg);
+              return;
+            }
+
+            try {
+              if (
+                portMsg.type === "write" &&
+                typeof portMsg.id === "string" &&
+                typeof portMsg.data === "string"
+              ) {
+                ptyManager.write(portMsg.id, portMsg.data, portMsg.traceId);
+              } else if (
+                portMsg.type === "resize" &&
+                typeof portMsg.id === "string" &&
+                typeof portMsg.cols === "number" &&
+                typeof portMsg.rows === "number"
+              ) {
+                ptyManager.resize(portMsg.id, portMsg.cols, portMsg.rows);
+              } else {
+                console.warn(
+                  "[PtyHost] Unknown or invalid MessagePort message type:",
+                  portMsg.type
+                );
+              }
+            } catch (error) {
+              console.error("[PtyHost] Error handling MessagePort message:", error);
+            }
+          });
+
+          console.log("[PtyHost] MessagePort listener installed");
+        } else {
+          console.warn("[PtyHost] connect-port message received but no ports provided");
+        }
+        break;
+
       case "init-buffers":
         // Dual buffer init: visual + analysis
         if (msg.visualBuffer instanceof SharedArrayBuffer) {
