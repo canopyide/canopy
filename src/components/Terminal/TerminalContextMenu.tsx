@@ -125,7 +125,7 @@ export function TerminalContextMenu({
         {worktrees.length > 1 && (
           <ContextMenuSub>
             <ContextMenuSubTrigger>
-              <GitBranch className="w-4 h-4 mr-2" aria-hidden="true" />
+              <GitBranch className="w-3.5 h-3.5 mr-2" aria-hidden="true" />
               Move to Worktree
             </ContextMenuSubTrigger>
             <ContextMenuSubContent className="w-48">
