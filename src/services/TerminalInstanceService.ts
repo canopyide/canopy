@@ -1584,26 +1584,6 @@ class TerminalInstanceService {
       // Release WebGL for BACKGROUND tier (hidden tabs)
       this.releaseWebgl(id, managed);
     }
-
-    // Map refresh tier to IPC activity tier and propagate to main process
-    const activityTier = this.mapToActivityTier(tier);
-    terminalClient.setActivityTier(id, activityTier);
-  }
-
-  /**
-   * Map TerminalRefreshTier to IPC activity tier.
-   */
-  private mapToActivityTier(tier: TerminalRefreshTier): "focused" | "visible" | "background" {
-    switch (tier) {
-      case TerminalRefreshTier.BURST:
-      case TerminalRefreshTier.FOCUSED:
-        return "focused";
-      case TerminalRefreshTier.VISIBLE:
-        return "visible";
-      case TerminalRefreshTier.BACKGROUND:
-      default:
-        return "background";
-    }
   }
 
   private acquireWebgl(id: string, managed: ManagedTerminal): void {
