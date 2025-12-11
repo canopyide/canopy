@@ -66,6 +66,8 @@ interface ManagedTerminal {
   userIsScrolling: boolean;
   userScrollTimeout?: number;
   pendingScrollUpdate: boolean;
+  // Tracked content bottom (incremental, O(1) updates via onRender)
+  maxContentRow: number;
   // Cached content metrics for scroll clamping
   cachedContentHeight: number;
   cachedMaxScrollTop: number;
@@ -915,6 +917,7 @@ class TerminalInstanceService {
       // Tall canvas mode state
       userIsScrolling: false,
       pendingScrollUpdate: false,
+      maxContentRow: 0,
       cachedContentHeight: 0,
       cachedMaxScrollTop: 0,
     };
@@ -928,16 +931,27 @@ class TerminalInstanceService {
     });
     listeners.push(() => inputDisposable.dispose());
 
-    // For agent terminals, hook cursor movement and data writes to manage scrolling
+    // For agent terminals, hook render events to track content bottom efficiently
     if (isAgent) {
+      // Track maxContentRow incrementally via onRender (O(1) per frame)
+      const renderDisposable = terminal.onRender(({ end }) => {
+        const buffer = terminal.buffer.active;
+        const absoluteEnd = buffer.baseY + end;
+        if (absoluteEnd > managed.maxContentRow) {
+          managed.maxContentRow = absoluteEnd;
+          this.updateContentMetrics(id);
+        }
+      });
+      listeners.push(() => renderDisposable.dispose());
+
+      // Cursor moves trigger scroll-to-cursor
       const cursorDisposable = terminal.onCursorMove(() => {
-        this.updateContentMetrics(id);
         this.scrollToCursor(id);
       });
       listeners.push(() => cursorDisposable.dispose());
 
+      // Writes may extend content, scroll to follow
       const writeDisposable = terminal.onWriteParsed(() => {
-        this.updateContentMetrics(id);
         this.scrollToCursor(id);
       });
       listeners.push(() => writeDisposable.dispose());
@@ -1409,29 +1423,8 @@ class TerminalInstanceService {
   }
 
   /**
-   * Calculate the last row with actual content by scanning buffer from bottom.
-   * Returns the 0-based row index of the last non-empty line.
-   */
-  private getLastContentRow(managed: ManagedTerminal): number {
-    const buffer = managed.terminal.buffer.active;
-    const totalRows = buffer.length;
-
-    // Scan from bottom to find last non-empty line
-    // Use translateToString(true).length to get trimmed content length
-    for (let row = totalRows - 1; row >= 0; row--) {
-      const line = buffer.getLine(row);
-      if (line && line.translateToString(true).length > 0) {
-        return row;
-      }
-    }
-
-    // If no content found, use cursor position as minimum
-    return buffer.cursorY;
-  }
-
-  /**
    * Update cached content metrics for scroll clamping.
-   * Called on cursor moves, writes, and resize.
+   * Uses incrementally tracked maxContentRow (updated via onRender) for O(1) performance.
    */
   private updateContentMetrics(id: string): void {
     const managed = this.instances.get(id);
@@ -1443,10 +1436,9 @@ class TerminalInstanceService {
     const charHeight = dimensions.css?.cell?.height ?? dimensions.actualCellHeight;
     if (!charHeight || charHeight <= 0) return;
 
-    // Find last content row and include cursor position
-    const lastContentRow = this.getLastContentRow(managed);
+    // Use tracked maxContentRow (from onRender) and cursor position
     const cursorY = managed.terminal.buffer.active.cursorY;
-    const effectiveLastRow = Math.max(lastContentRow, cursorY);
+    const effectiveLastRow = Math.max(managed.maxContentRow, cursorY);
 
     // Content height = (lastRow + 1) rows * charHeight
     // Add a small buffer (1 row) to ensure cursor is always visible
@@ -1455,6 +1447,18 @@ class TerminalInstanceService {
     // Max scroll = contentHeight - viewportHeight (but never negative)
     const viewportHeight = managed.scrollContainer.clientHeight;
     managed.cachedMaxScrollTop = Math.max(0, managed.cachedContentHeight - viewportHeight);
+  }
+
+  /**
+   * Reset maxContentRow on terminal clear/reset.
+   * Called when screen is cleared to prevent stale content bounds.
+   */
+  resetContentTracking(id: string): void {
+    const managed = this.instances.get(id);
+    if (!managed) return;
+
+    managed.maxContentRow = managed.terminal.buffer.active.cursorY;
+    this.updateContentMetrics(id);
   }
 
   /**
