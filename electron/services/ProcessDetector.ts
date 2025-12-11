@@ -149,10 +149,11 @@ export interface DetectionResult {
   currentCommand?: string;
 }
 
-export type DetectionCallback = (result: DetectionResult) => void;
+export type DetectionCallback = (result: DetectionResult, spawnedAt: number) => void;
 
 export class ProcessDetector {
   private terminalId: string;
+  private spawnedAt: number;
   private ptyPid: number;
   private callback: DetectionCallback;
   private intervalHandle: NodeJS.Timeout | null = null;
@@ -165,11 +166,13 @@ export class ProcessDetector {
 
   constructor(
     terminalId: string,
+    spawnedAt: number,
     ptyPid: number,
     callback: DetectionCallback,
     pollInterval: number = 1000
   ) {
     this.terminalId = terminalId;
+    this.spawnedAt = spawnedAt;
     this.ptyPid = ptyPid;
     this.callback = callback;
     this.pollInterval = pollInterval;
@@ -234,7 +237,7 @@ export class ProcessDetector {
 
       // Fire callback if agent, busy state, or current command changed
       if (agentChanged || busyChanged || commandChanged) {
-        this.callback(result);
+        this.callback(result, this.spawnedAt);
       }
     } catch (_error) {
       console.error(`ProcessDetector error for terminal ${this.terminalId}:`, _error);
