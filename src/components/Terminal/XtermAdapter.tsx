@@ -314,9 +314,9 @@ function XtermAdapterComponent({
       ref={scrollViewportRef}
       className={cn(
         "w-full h-full bg-canopy-bg text-white rounded-b-[var(--radius-lg)]",
-        // Agent terminals use custom scrolling for tall canvas mode
+        // Agent terminals use custom scrolling with flexbox for bottom-pinned layout
         // Standard terminals use overflow-hidden (xterm handles internal scrolling)
-        isAgent ? "overflow-y-auto overflow-x-hidden" : "overflow-hidden",
+        isAgent ? "overflow-y-auto overflow-x-hidden flex flex-col" : "overflow-hidden",
         className
       )}
       style={{
@@ -325,7 +325,9 @@ function XtermAdapterComponent({
         transform: "translateZ(0)",
       }}
     >
-      <div ref={containerRef} className="pl-2 pt-2 pb-4" />
+      {/* Spacer pushes terminal to bottom for agent terminals */}
+      {isAgent && <div className="flex-1 min-h-0" />}
+      <div ref={containerRef} className={cn("pl-2 pt-2 pb-4", isAgent && "flex-shrink-0")} />
     </div>
   );
 }

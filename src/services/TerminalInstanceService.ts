@@ -59,7 +59,7 @@ interface ManagedTerminal {
   latestWasAtBottom: boolean;
   // Focus-aware scrolling state
   isFocused: boolean;
-  // Tall canvas mode (agent terminals only)
+  // Dynamic canvas mode (agent terminals only)
   scrollContainer?: HTMLElement;
   scrollListener?: () => void;
   wheelListener?: (e: WheelEvent) => void;
@@ -68,9 +68,10 @@ interface ManagedTerminal {
   pendingScrollUpdate: boolean;
   // Tracked content bottom (incremental, O(1) updates via onRender)
   maxContentRow: number;
-  // Cached content metrics for scroll clamping
-  cachedContentHeight: number;
-  cachedMaxScrollTop: number;
+  // Base viewport rows (minimum height, set on attach based on container size)
+  viewportRows: number;
+  // Current allocated rows (grows dynamically, capped at MAX_AGENT_ROWS)
+  currentRows: number;
 }
 
 type SabFlushMode = "normal" | "frame";
@@ -79,9 +80,9 @@ const MAX_WEBGL_RECOVERY_ATTEMPTS = 4; // Supports full 1s → 2s → 4s → 8s 
 const WEBGL_DISPOSE_GRACE_MS = 10000; // 10s grace period before releasing WebGL on hide
 const TIER_DOWNGRADE_HYSTERESIS_MS = 500; // Delay before applying tier downgrades to prevent flapping
 
-// Tall Canvas Mode: Agent terminals use a fixed 500-row canvas with custom scrolling
-// to eliminate viewport bouncing during TUI redraws
-const TALL_ROW_COUNT = 500;
+// Dynamic Canvas Mode: Agent terminals grow dynamically up to MAX_AGENT_ROWS
+// Terminal is pinned to bottom of scroll container, grows as content is written
+const MAX_AGENT_ROWS = 500;
 
 const START_DEBOUNCING_THRESHOLD = 200;
 const HORIZONTAL_DEBOUNCE_MS = 100;
@@ -818,20 +819,19 @@ class TerminalInstanceService {
       });
     };
 
-    // Check if this is an agent terminal for tall canvas mode
+    // Check if this is an agent terminal for dynamic canvas mode
     const isAgent = isAgentTerminal(type);
 
-    // Build terminal options - agent terminals use tall canvas mode
+    // Build terminal options - agent terminals use dynamic canvas mode
     const terminalOptions = {
       ...options,
       linkHandler: {
         activate: (_event: MouseEvent, text: string) => openLink(text),
       },
-      // Tall canvas mode for agent terminals: fixed 500 rows with no scrollback
+      // Dynamic canvas mode for agent terminals: no scrollback, rows set dynamically on attach
       // Standard terminals: use passed options (dynamic rows with scrollback)
       ...(isAgent
         ? {
-            rows: TALL_ROW_COUNT,
             scrollback: 0,
             scrollOnUserInput: false,
           }
@@ -914,12 +914,12 @@ class TerminalInstanceService {
       latestRows: 0,
       latestWasAtBottom: true,
       isFocused: false,
-      // Tall canvas mode state
+      // Dynamic canvas mode state
       userIsScrolling: false,
       pendingScrollUpdate: false,
       maxContentRow: 0,
-      cachedContentHeight: 0,
-      cachedMaxScrollTop: 0,
+      viewportRows: 0,
+      currentRows: 0,
     };
 
     const inputDisposable = terminal.onData((data) => {
@@ -931,21 +931,23 @@ class TerminalInstanceService {
     });
     listeners.push(() => inputDisposable.dispose());
 
-    // For agent terminals, hook render events to track content bottom efficiently
+    // For agent terminals, hook render events for dynamic canvas growth
     if (isAgent) {
-      // Track maxContentRow incrementally via onRender (O(1) per frame)
+      // Track maxContentRow and check for growth needs via onRender (O(1) per frame)
       const renderDisposable = terminal.onRender(({ end }) => {
         const buffer = terminal.buffer.active;
         const absoluteEnd = buffer.baseY + end;
         if (absoluteEnd > managed.maxContentRow) {
           managed.maxContentRow = absoluteEnd;
-          this.updateContentMetrics(id);
         }
+        // Check if we need to grow the canvas
+        this.checkAndGrowRows(id);
       });
       listeners.push(() => renderDisposable.dispose());
 
-      // Cursor moves trigger scroll-to-cursor
+      // Cursor moves trigger scroll-to-cursor and growth check
       const cursorDisposable = terminal.onCursorMove(() => {
+        this.checkAndGrowRows(id);
         this.scrollToCursor(id);
       });
       listeners.push(() => cursorDisposable.dispose());
@@ -1082,7 +1084,7 @@ class TerminalInstanceService {
       container.appendChild(managed.hostElement);
     }
 
-    // Store scroll container reference for agent terminals (tall canvas mode)
+    // Store scroll container reference for agent terminals (dynamic canvas mode)
     if (scrollContainer) {
       // Clean up any existing listeners before adding new ones
       if (managed.scrollListener && managed.scrollContainer) {
@@ -1094,6 +1096,13 @@ class TerminalInstanceService {
 
       managed.scrollContainer = scrollContainer;
 
+      // Calculate initial viewport rows from container height
+      const dimensions = (managed.terminal as any)._core?._renderService?.dimensions;
+      const charHeight = dimensions?.css?.cell?.height ?? dimensions?.actualCellHeight ?? 17;
+      const viewportRows = Math.max(10, Math.floor(scrollContainer.clientHeight / charHeight));
+      managed.viewportRows = viewportRows;
+      managed.currentRows = viewportRows;
+
       // Block wheel events from reaching xterm - intercept in capture phase
       // This prevents xterm's internal scroll handling while allowing our wrapper to scroll
       managed.wheelListener = (e: WheelEvent) => {
@@ -1102,7 +1111,7 @@ class TerminalInstanceService {
       };
       scrollContainer.addEventListener("wheel", managed.wheelListener, true);
 
-      // Set up user scroll detection and scroll clamping
+      // Set up user scroll detection
       managed.scrollListener = () => {
         managed.userIsScrolling = true;
         if (managed.userScrollTimeout !== undefined) {
@@ -1111,15 +1120,9 @@ class TerminalInstanceService {
         managed.userScrollTimeout = window.setTimeout(() => {
           managed.userIsScrolling = false;
         }, 1000);
-
-        // Clamp scroll position to prevent scrolling past content
-        this.clampScrollPosition(id);
       };
 
       scrollContainer.addEventListener("scroll", managed.scrollListener);
-
-      // Initialize content metrics
-      this.updateContentMetrics(id);
     }
 
     if (!managed.isOpened) {
@@ -1153,8 +1156,8 @@ class TerminalInstanceService {
     }
     managed.scrollContainer = undefined;
     managed.userIsScrolling = false;
-    managed.cachedContentHeight = 0;
-    managed.cachedMaxScrollTop = 0;
+    managed.viewportRows = 0;
+    managed.currentRows = 0;
 
     if (managed.hostElement.parentElement === container) {
       container.removeChild(managed.hostElement);
@@ -1200,10 +1203,10 @@ class TerminalInstanceService {
    * Preserves scroll position if user was scrolled up viewing history.
    * Returns {cols, rows} if resized, null if skipped (cached) or error.
    *
-   * For agent terminals in tall canvas mode:
-   * - Rows are fixed at TALL_ROW_COUNT
-   * - Only columns resize dynamically based on width
-   * - Host element height is set explicitly to match the tall canvas
+   * For agent terminals in dynamic canvas mode:
+   * - Columns resize based on width
+   * - Rows are managed separately (grow dynamically via checkAndGrowRows)
+   * - Host element height matches current row count
    */
   resize(
     id: string,
@@ -1216,8 +1219,8 @@ class TerminalInstanceService {
 
     const isAgent = isAgentTerminal(managed.type);
 
-    // For agent terminals (tall canvas mode), only width changes matter
-    // Standard terminals check both width and height
+    // For agent terminals (dynamic canvas mode), only width changes matter for cols
+    // Rows are managed separately
     if (isAgent) {
       if (Math.abs(managed.lastWidth - width) < 1) {
         return null;
@@ -1244,37 +1247,40 @@ class TerminalInstanceService {
         // Fallback to fit() if proposeDimensions not available
         managed.fitAddon.fit();
         const { cols } = managed.terminal;
-        // Agent terminals: force fixed rows
-        const rows = isAgent ? TALL_ROW_COUNT : managed.terminal.rows;
+        // Agent terminals: use current dynamic rows, standard: use terminal rows
+        const rows = isAgent ? managed.currentRows || managed.terminal.rows : managed.terminal.rows;
 
         managed.lastWidth = width;
         managed.lastHeight = height;
         managed.latestCols = cols;
         managed.latestRows = rows;
         managed.latestWasAtBottom = wasAtBottom;
+
         // Focus-aware scroll: only snap deselected terminals to bottom after resize
         if (!managed.isFocused && !wasAtBottom) {
           this.scrollToBottom(id);
         }
         terminalClient.resize(id, cols, rows);
 
-        // Set host element height for tall canvas
+        // Update host element height for dynamic canvas
         if (isAgent) {
-          this.setTallCanvasHeight(managed);
+          this.updateHostHeight(managed);
+          // Update viewport rows based on new container size
+          this.updateViewportRows(id, height);
         }
 
         return { cols, rows };
       }
 
-      // Agent terminals: use proposed cols but fixed rows
+      // Agent terminals: use proposed cols, keep current rows (or init to proposed)
       const cols = proposed.cols;
-      const rows = isAgent ? TALL_ROW_COUNT : proposed.rows;
+      const rows = isAgent ? managed.currentRows || proposed.rows : proposed.rows;
 
       // Skip if dimensions unchanged
-      // For agent terminals, always update height even if cols/rows unchanged (handles font/DPI changes)
       if (managed.terminal.cols === cols && managed.terminal.rows === rows) {
+        // For agents, still update viewport rows on height change
         if (isAgent) {
-          this.setTallCanvasHeight(managed);
+          this.updateViewportRows(id, height);
         }
         return null;
       }
@@ -1289,14 +1295,15 @@ class TerminalInstanceService {
       const bufferLineCount = this.getBufferLineCount(id);
 
       // Immediate resize for small buffers or explicit immediate flag
-      // Agent terminals always resize immediately (no debouncing for column-only changes)
+      // Agent terminals always resize immediately (column changes are safe)
       if (options.immediate || bufferLineCount < START_DEBOUNCING_THRESHOLD || isAgent) {
         this.clearResizeJobs(managed);
         this.applyResize(id, cols, rows);
 
-        // Set host element height for tall canvas
+        // Update host element height and viewport rows
         if (isAgent) {
-          this.setTallCanvasHeight(managed);
+          this.updateHostHeight(managed);
+          this.updateViewportRows(id, height);
         }
 
         return { cols, rows };
@@ -1320,18 +1327,79 @@ class TerminalInstanceService {
   }
 
   /**
-   * Set the host element height for tall canvas mode.
-   * This ensures the terminal canvas is tall enough to contain all TALL_ROW_COUNT rows.
+   * Update host element height to match current row count.
    */
-  private setTallCanvasHeight(managed: ManagedTerminal): void {
+  private updateHostHeight(managed: ManagedTerminal): void {
     const dimensions = (managed.terminal as any)._core?._renderService?.dimensions;
     if (!dimensions) return;
 
     const charHeight = dimensions.css?.cell?.height ?? dimensions.actualCellHeight;
     if (!charHeight || charHeight <= 0) return;
 
-    const totalHeight = TALL_ROW_COUNT * charHeight;
+    const totalHeight = managed.currentRows * charHeight;
     managed.hostElement.style.height = `${totalHeight}px`;
+  }
+
+  /**
+   * Update viewport rows when container height changes.
+   * This is the minimum row count (base size).
+   */
+  private updateViewportRows(id: string, containerHeight: number): void {
+    const managed = this.instances.get(id);
+    if (!managed || !managed.scrollContainer) return;
+
+    const dimensions = (managed.terminal as any)._core?._renderService?.dimensions;
+    const charHeight = dimensions?.css?.cell?.height ?? dimensions?.actualCellHeight ?? 17;
+    const newViewportRows = Math.max(10, Math.floor(containerHeight / charHeight));
+
+    managed.viewportRows = newViewportRows;
+
+    // If current rows is less than viewport, expand to fill viewport
+    if (managed.currentRows < newViewportRows) {
+      this.growRowsTo(id, newViewportRows);
+    }
+  }
+
+  /**
+   * Check if rows need to grow and grow if needed.
+   * Grows exactly when cursor reaches the last row, adding one row at a time.
+   * Called on cursor move and render events.
+   */
+  private checkAndGrowRows(id: string): void {
+    const managed = this.instances.get(id);
+    if (!managed || !managed.scrollContainer) return;
+
+    const cursorY = managed.terminal.buffer.active.cursorY;
+    const currentRows = managed.currentRows || managed.terminal.rows;
+
+    // Grow when cursor is on the last row (cursorY is 0-indexed)
+    // This ensures we always have room for the next line
+    if (cursorY >= currentRows - 1 && currentRows < MAX_AGENT_ROWS) {
+      // Grow by exactly 1 row
+      this.growRowsTo(id, currentRows + 1);
+    }
+  }
+
+  /**
+   * Grow terminal rows to target count.
+   */
+  private growRowsTo(id: string, targetRows: number): void {
+    const managed = this.instances.get(id);
+    if (!managed) return;
+
+    const currentRows = managed.currentRows || managed.terminal.rows;
+    if (targetRows <= currentRows) return;
+
+    const cols = managed.terminal.cols;
+    managed.currentRows = targetRows;
+    managed.latestRows = targetRows;
+
+    // Resize terminal and notify PTY
+    managed.terminal.resize(cols, targetRows);
+    terminalClient.resize(id, cols, targetRows);
+
+    // Update host element height
+    this.updateHostHeight(managed);
   }
 
   /**
@@ -1408,8 +1476,9 @@ class TerminalInstanceService {
 
     // Apply scroll without triggering userIsScrolling flag
     if (newScrollTop !== null) {
-      // Clamp to valid range
-      newScrollTop = Math.max(0, Math.min(newScrollTop, managed.cachedMaxScrollTop));
+      // Clamp to valid range (0 to max scroll position)
+      const maxScroll = container.scrollHeight - containerHeight;
+      newScrollTop = Math.max(0, Math.min(newScrollTop, maxScroll));
 
       // Temporarily mark this as a programmatic scroll
       const wasProgrammatic = managed.userIsScrolling;
@@ -1423,62 +1492,23 @@ class TerminalInstanceService {
   }
 
   /**
-   * Update cached content metrics for scroll clamping.
-   * Uses incrementally tracked maxContentRow (updated via onRender) for O(1) performance.
+   * Reset terminal to viewport size on clear/reset.
+   * Called when screen is cleared to reset dynamic canvas to base size.
    */
-  private updateContentMetrics(id: string): void {
+  resetDynamicCanvas(id: string): void {
     const managed = this.instances.get(id);
     if (!managed || !managed.scrollContainer) return;
 
-    const dimensions = (managed.terminal as any)._core?._renderService?.dimensions;
-    if (!dimensions) return;
+    // Reset to viewport rows
+    if (managed.viewportRows > 0 && managed.currentRows !== managed.viewportRows) {
+      const cols = managed.terminal.cols;
+      managed.currentRows = managed.viewportRows;
+      managed.latestRows = managed.viewportRows;
+      managed.maxContentRow = 0;
 
-    const charHeight = dimensions.css?.cell?.height ?? dimensions.actualCellHeight;
-    if (!charHeight || charHeight <= 0) return;
-
-    // Use tracked maxContentRow (from onRender) and cursor position
-    const cursorY = managed.terminal.buffer.active.cursorY;
-    const effectiveLastRow = Math.max(managed.maxContentRow, cursorY);
-
-    // Content height = (lastRow + 1) rows * charHeight
-    // Add a small buffer (1 row) to ensure cursor is always visible
-    managed.cachedContentHeight = (effectiveLastRow + 2) * charHeight;
-
-    // Max scroll = contentHeight - viewportHeight (but never negative)
-    const viewportHeight = managed.scrollContainer.clientHeight;
-    managed.cachedMaxScrollTop = Math.max(0, managed.cachedContentHeight - viewportHeight);
-  }
-
-  /**
-   * Reset maxContentRow on terminal clear/reset.
-   * Called when screen is cleared to prevent stale content bounds.
-   */
-  resetContentTracking(id: string): void {
-    const managed = this.instances.get(id);
-    if (!managed) return;
-
-    managed.maxContentRow = managed.terminal.buffer.active.cursorY;
-    this.updateContentMetrics(id);
-  }
-
-  /**
-   * Clamp scroll position to prevent scrolling past content.
-   */
-  private clampScrollPosition(id: string): void {
-    const managed = this.instances.get(id);
-    if (!managed || !managed.scrollContainer) return;
-
-    // Update metrics first
-    this.updateContentMetrics(id);
-
-    const container = managed.scrollContainer;
-    const currentScroll = container.scrollTop;
-
-    // Clamp to valid range
-    if (currentScroll > managed.cachedMaxScrollTop) {
-      container.scrollTop = managed.cachedMaxScrollTop;
-    } else if (currentScroll < 0) {
-      container.scrollTop = 0;
+      managed.terminal.resize(cols, managed.viewportRows);
+      terminalClient.resize(id, cols, managed.viewportRows);
+      this.updateHostHeight(managed);
     }
   }
 
