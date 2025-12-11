@@ -370,58 +370,9 @@ function toHostSnapshot(id: string): PtyHostTerminalSnapshot | null {
 port.on("message", (rawMsg: any) => {
   // Electron/Node might wrap the message in { data: ..., ports: [] }
   const msg = rawMsg?.data ? rawMsg.data : rawMsg;
-  const ports = rawMsg?.ports || [];
 
   try {
     switch (msg.type) {
-      case "connect-port":
-        // Receive MessagePort for direct Renderer ↔ Pty Host communication
-        if (ports && ports.length > 0) {
-          const port = ports[0];
-          rendererPort = port;
-          port.start();
-          console.log("[PtyHost] MessagePort received from Main, starting listener...");
-
-          port.on("message", (event: any) => {
-            const portMsg = event?.data ? event.data : event;
-
-            // Validate message structure
-            if (!portMsg || typeof portMsg !== "object") {
-              console.warn("[PtyHost] Invalid MessagePort message:", portMsg);
-              return;
-            }
-
-            try {
-              if (
-                portMsg.type === "write" &&
-                typeof portMsg.id === "string" &&
-                typeof portMsg.data === "string"
-              ) {
-                ptyManager.write(portMsg.id, portMsg.data, portMsg.traceId);
-              } else if (
-                portMsg.type === "resize" &&
-                typeof portMsg.id === "string" &&
-                typeof portMsg.cols === "number" &&
-                typeof portMsg.rows === "number"
-              ) {
-                ptyManager.resize(portMsg.id, portMsg.cols, portMsg.rows);
-              } else {
-                console.warn(
-                  "[PtyHost] Unknown or invalid MessagePort message type:",
-                  portMsg.type
-                );
-              }
-            } catch (error) {
-              console.error("[PtyHost] Error handling MessagePort message:", error);
-            }
-          });
-
-          console.log("[PtyHost] MessagePort listener installed");
-        } else {
-          console.warn("[PtyHost] connect-port message received but no ports provided");
-        }
-        break;
-
       case "init-buffers":
         // Dual buffer init: visual + analysis
         if (msg.visualBuffer instanceof SharedArrayBuffer) {
