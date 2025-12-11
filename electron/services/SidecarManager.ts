@@ -1,4 +1,4 @@
-import { BrowserWindow, WebContentsView, clipboard } from "electron";
+import { BrowserWindow, WebContentsView } from "electron";
 import type { SidecarBounds, SidecarNavEvent } from "../../shared/types/sidecar.js";
 import { CHANNELS } from "../ipc/channels.js";
 import { ClipboardFileInjector } from "./ClipboardFileInjector.js";
@@ -87,6 +87,15 @@ export class SidecarManager {
           input.type === "keyDown";
 
         if (isPasteShortcut) {
+          // Check synchronously if clipboard has file data before intercepting
+          const hasFileData = ClipboardFileInjector.hasFileDataInClipboard();
+
+          if (!hasFileData) {
+            // No file data - let native paste handle it (text, images, rich content)
+            return;
+          }
+
+          // File data detected - intercept and handle
           event.preventDefault();
 
           ClipboardFileInjector.getFilePathsFromClipboard()
@@ -102,20 +111,19 @@ export class SidecarManager {
                   await ClipboardFileInjector.injectFileIntoPaste(view.webContents, filePaths[0]);
                 } catch (error) {
                   console.error("[SidecarManager] Failed to inject file paste:", error);
-                }
-              } else {
-                const textContent = clipboard.readText();
-                if (textContent) {
+                  // Fallback to native paste on injection failure
                   view.webContents.paste();
                 }
+              } else {
+                // File format detected but validation failed (too large, outside home, etc.)
+                // Fall back to native paste
+                view.webContents.paste();
               }
             })
             .catch((error) => {
               console.error("[SidecarManager] Error checking clipboard for files:", error);
-              const textContent = clipboard.readText();
-              if (textContent) {
-                view.webContents.paste();
-              }
+              // Always fallback to native paste on error
+              view.webContents.paste();
             });
         }
       });
