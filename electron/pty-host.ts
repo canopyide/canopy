@@ -64,7 +64,7 @@ const BACKPRESSURE_MAX_PAUSE_MS = 5000; // Force resume after 5 seconds to preve
 // MessagePort for direct Renderer ↔ Pty Host communication (bypasses Main)
 // Note: This variable holds the port reference so the message handler stays active
 // @ts-expect-error - stored to keep port reference alive
-let rendererPort: MessagePort | null = null;
+const rendererPort: MessagePort | null = null;
 
 // Helper to send events to Main process
 function sendEvent(event: PtyHostEvent): void {
