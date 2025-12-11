@@ -148,7 +148,7 @@ export function NewWorktreeDialog({
       return;
     }
 
-    if (/[\/\\:]/.test(trimmedBranch) || trimmedBranch.includes("..")) {
+    if (/[/\\:]/.test(trimmedBranch) || trimmedBranch.includes("..")) {
       setError("Branch name contains invalid characters");
       return;
     }
