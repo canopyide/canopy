@@ -545,9 +545,9 @@ export function WorktreeCard({
                 aria-controls={detailsId}
               >
                 {isExpanded ? (
-                  <ChevronDown className="w-4 h-4" />
+                  <ChevronDown className="w-3.5 h-3.5" />
                 ) : (
-                  <ChevronRight className="w-4 h-4" />
+                  <ChevronRight className="w-3.5 h-3.5" />
                 )}
               </button>
             )}
@@ -646,15 +646,15 @@ export function WorktreeCard({
                     onClick={(e) => e.stopPropagation()}
                   >
                     <DropdownMenuItem onClick={() => handleCopyTree()} disabled={isCopyingTree}>
-                      <Copy className="w-3 h-3 mr-2" />
+                      <Copy className="w-3.5 h-3.5 mr-2" />
                       Copy Context
                     </DropdownMenuItem>
                     <DropdownMenuItem onClick={() => onOpenEditor()}>
-                      <Code className="w-3 h-3 mr-2" />
+                      <Code className="w-3.5 h-3.5 mr-2" />
                       Open in Editor
                     </DropdownMenuItem>
                     <DropdownMenuItem onClick={() => handlePathClick()}>
-                      <Folder className="w-3 h-3 mr-2" />
+                      <Folder className="w-3.5 h-3.5 mr-2" />
                       Reveal in Finder
                     </DropdownMenuItem>
 
@@ -662,13 +662,13 @@ export function WorktreeCard({
 
                     {worktree.issueNumber && onOpenIssue && (
                       <DropdownMenuItem onClick={() => handleOpenIssue()}>
-                        <CircleDot className="w-3 h-3 mr-2" />
+                        <CircleDot className="w-3.5 h-3.5 mr-2" />
                         Open Issue #{worktree.issueNumber}
                       </DropdownMenuItem>
                     )}
                     {worktree.prNumber && onOpenPR && (
                       <DropdownMenuItem onClick={() => handleOpenPR()}>
-                        <GitPullRequest className="w-3 h-3 mr-2" />
+                        <GitPullRequest className="w-3.5 h-3.5 mr-2" />
                         Open PR #{worktree.prNumber}
                       </DropdownMenuItem>
                     )}
@@ -684,7 +684,7 @@ export function WorktreeCard({
                             onClick={() => handleRunRecipe(recipe.id)}
                             disabled={runningRecipeId !== null}
                           >
-                            <Play className="w-3 h-3 mr-2" />
+                            <Play className="w-3.5 h-3.5 mr-2" />
                             {recipe.name}
                           </DropdownMenuItem>
                         ))}
@@ -692,13 +692,13 @@ export function WorktreeCard({
                     )}
                     {onCreateRecipe && (
                       <DropdownMenuItem onClick={onCreateRecipe}>
-                        <Plus className="w-3 h-3 mr-2" />
+                        <Plus className="w-3.5 h-3.5 mr-2" />
                         Create Recipe...
                       </DropdownMenuItem>
                     )}
                     {onSaveLayout && totalTerminalCount > 0 && (
                       <DropdownMenuItem onClick={onSaveLayout}>
-                        <Save className="w-3 h-3 mr-2" />
+                        <Save className="w-3.5 h-3.5 mr-2" />
                         Save Layout as Recipe
                       </DropdownMenuItem>
                     )}
@@ -735,7 +735,7 @@ export function WorktreeCard({
                           }}
                           className="text-[var(--color-status-error)] focus:text-[var(--color-status-error)]"
                         >
-                          <Trash2 className="w-3 h-3 mr-2" />
+                          <Trash2 className="w-3.5 h-3.5 mr-2" />
                           Delete Worktree...
                         </DropdownMenuItem>
                       </>
