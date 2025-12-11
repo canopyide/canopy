@@ -217,7 +217,15 @@ export class TerminalProcess {
 
     // Create activity monitor for agent terminals
     if (this.isAgentTerminal) {
-      this.activityMonitor = new ActivityMonitor(id, (_termId, state) => {
+      this.activityMonitor = new ActivityMonitor(id, spawnedAt, (_termId, cbSpawnedAt, state) => {
+        // Validate session token to prevent stale monitor callbacks
+        if (this.terminalInfo.spawnedAt !== cbSpawnedAt) {
+          console.warn(
+            `[TerminalProcess] Rejected stale activity state from old monitor ${_termId} ` +
+              `(session ${cbSpawnedAt} vs current ${this.terminalInfo.spawnedAt})`
+          );
+          return;
+        }
         deps.agentStateService.handleActivityState(this.terminalInfo, state);
       });
     }
@@ -225,9 +233,14 @@ export class TerminalProcess {
     // Start process detection
     const ptyPid = ptyProcess.pid;
     if (ptyPid !== undefined) {
-      this.processDetector = new ProcessDetector(id, ptyPid, (result: DetectionResult) => {
-        this.handleAgentDetection(result);
-      });
+      this.processDetector = new ProcessDetector(
+        id,
+        spawnedAt,
+        ptyPid,
+        (result: DetectionResult, cbSpawnedAt: number) => {
+          this.handleAgentDetection(result, cbSpawnedAt);
+        }
+      );
       this.terminalInfo.processDetector = this.processDetector;
       this.processDetector.start();
     }
@@ -477,9 +490,14 @@ export class TerminalProcess {
   startProcessDetector(): void {
     const ptyPid = this.terminalInfo.ptyProcess.pid;
     if (ptyPid !== undefined && !this.processDetector) {
-      this.processDetector = new ProcessDetector(this.id, ptyPid, (result) => {
-        this.handleAgentDetection(result);
-      });
+      this.processDetector = new ProcessDetector(
+        this.id,
+        this.terminalInfo.spawnedAt,
+        ptyPid,
+        (result, cbSpawnedAt) => {
+          this.handleAgentDetection(result, cbSpawnedAt);
+        }
+      );
       this.terminalInfo.processDetector = this.processDetector;
       this.processDetector.start();
     }
@@ -501,9 +519,21 @@ export class TerminalProcess {
    */
   startActivityMonitor(): void {
     if (this.isAgentTerminal && !this.activityMonitor) {
-      this.activityMonitor = new ActivityMonitor(this.id, (_termId, state) => {
-        this.deps.agentStateService.handleActivityState(this.terminalInfo, state);
-      });
+      this.activityMonitor = new ActivityMonitor(
+        this.id,
+        this.terminalInfo.spawnedAt,
+        (_termId, cbSpawnedAt, state) => {
+          // Validate session token to prevent stale monitor callbacks
+          if (this.terminalInfo.spawnedAt !== cbSpawnedAt) {
+            console.warn(
+              `[TerminalProcess] Rejected stale activity state from old monitor ${_termId} ` +
+                `(session ${cbSpawnedAt} vs current ${this.terminalInfo.spawnedAt})`
+            );
+            return;
+          }
+          this.deps.agentStateService.handleActivityState(this.terminalInfo, state);
+        }
+      );
     }
   }
 
@@ -664,8 +694,22 @@ export class TerminalProcess {
     }
   }
 
-  private handleAgentDetection(result: DetectionResult): void {
+  private handleAgentDetection(result: DetectionResult, spawnedAt: number): void {
+    // Validate session token to prevent stale detector callbacks
+    if (this.terminalInfo.spawnedAt !== spawnedAt) {
+      console.warn(
+        `[TerminalProcess] Rejected stale detection from old ProcessDetector ${this.id} ` +
+          `(session ${spawnedAt} vs current ${this.terminalInfo.spawnedAt})`
+      );
+      return;
+    }
+
     const terminal = this.terminalInfo;
+
+    // Reject callbacks for killed terminals to prevent race conditions
+    if (terminal.wasKilled) {
+      return;
+    }
 
     if (result.detected && result.agentType) {
       const previousType = terminal.detectedAgentType;
