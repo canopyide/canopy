@@ -10,7 +10,8 @@ export class ActivityMonitor {
 
   constructor(
     private terminalId: string,
-    private onStateChange: (id: string, state: "busy" | "idle") => void
+    private spawnedAt: number,
+    private onStateChange: (id: string, spawnedAt: number, state: "busy" | "idle") => void
   ) {}
 
   /**
@@ -91,7 +92,7 @@ export class ActivityMonitor {
     // Only fire state change if we weren't already busy
     if (this.state !== "busy") {
       this.state = "busy";
-      this.onStateChange(this.terminalId, "busy");
+      this.onStateChange(this.terminalId, this.spawnedAt, "busy");
     }
   }
 
@@ -102,7 +103,7 @@ export class ActivityMonitor {
 
     this.debounceTimer = setTimeout(() => {
       this.state = "idle";
-      this.onStateChange(this.terminalId, "idle");
+      this.onStateChange(this.terminalId, this.spawnedAt, "idle");
       this.debounceTimer = null;
     }, this.DEBOUNCE_MS);
   }
