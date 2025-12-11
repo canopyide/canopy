@@ -62,9 +62,13 @@ interface ManagedTerminal {
   // Tall canvas mode (agent terminals only)
   scrollContainer?: HTMLElement;
   scrollListener?: () => void;
+  wheelListener?: (e: WheelEvent) => void;
   userIsScrolling: boolean;
   userScrollTimeout?: number;
   pendingScrollUpdate: boolean;
+  // Cached content metrics for scroll clamping
+  cachedContentHeight: number;
+  cachedMaxScrollTop: number;
 }
 
 type SabFlushMode = "normal" | "frame";
@@ -911,6 +915,8 @@ class TerminalInstanceService {
       // Tall canvas mode state
       userIsScrolling: false,
       pendingScrollUpdate: false,
+      cachedContentHeight: 0,
+      cachedMaxScrollTop: 0,
     };
 
     const inputDisposable = terminal.onData((data) => {
@@ -925,11 +931,13 @@ class TerminalInstanceService {
     // For agent terminals, hook cursor movement and data writes to manage scrolling
     if (isAgent) {
       const cursorDisposable = terminal.onCursorMove(() => {
+        this.updateContentMetrics(id);
         this.scrollToCursor(id);
       });
       listeners.push(() => cursorDisposable.dispose());
 
       const writeDisposable = terminal.onWriteParsed(() => {
+        this.updateContentMetrics(id);
         this.scrollToCursor(id);
       });
       listeners.push(() => writeDisposable.dispose());
@@ -1062,14 +1070,25 @@ class TerminalInstanceService {
 
     // Store scroll container reference for agent terminals (tall canvas mode)
     if (scrollContainer) {
-      // Clean up any existing scroll listener before adding a new one
+      // Clean up any existing listeners before adding new ones
       if (managed.scrollListener && managed.scrollContainer) {
         managed.scrollContainer.removeEventListener("scroll", managed.scrollListener);
+      }
+      if (managed.wheelListener && managed.scrollContainer) {
+        managed.scrollContainer.removeEventListener("wheel", managed.wheelListener, true);
       }
 
       managed.scrollContainer = scrollContainer;
 
-      // Set up user scroll detection to pause auto-scroll while user is manually scrolling
+      // Block wheel events from reaching xterm - intercept in capture phase
+      // This prevents xterm's internal scroll handling while allowing our wrapper to scroll
+      managed.wheelListener = (e: WheelEvent) => {
+        e.stopImmediatePropagation();
+        // Don't preventDefault - let the scroll container handle the wheel naturally
+      };
+      scrollContainer.addEventListener("wheel", managed.wheelListener, true);
+
+      // Set up user scroll detection and scroll clamping
       managed.scrollListener = () => {
         managed.userIsScrolling = true;
         if (managed.userScrollTimeout !== undefined) {
@@ -1078,9 +1097,15 @@ class TerminalInstanceService {
         managed.userScrollTimeout = window.setTimeout(() => {
           managed.userIsScrolling = false;
         }, 1000);
+
+        // Clamp scroll position to prevent scrolling past content
+        this.clampScrollPosition(id);
       };
 
       scrollContainer.addEventListener("scroll", managed.scrollListener);
+
+      // Initialize content metrics
+      this.updateContentMetrics(id);
     }
 
     if (!managed.isOpened) {
@@ -1099,10 +1124,14 @@ class TerminalInstanceService {
     const managed = this.instances.get(id);
     if (!managed || !container) return;
 
-    // Clean up scroll container listener and reference
+    // Clean up scroll container listeners and reference
     if (managed.scrollListener && managed.scrollContainer) {
       managed.scrollContainer.removeEventListener("scroll", managed.scrollListener);
       managed.scrollListener = undefined;
+    }
+    if (managed.wheelListener && managed.scrollContainer) {
+      managed.scrollContainer.removeEventListener("wheel", managed.wheelListener, true);
+      managed.wheelListener = undefined;
     }
     if (managed.userScrollTimeout !== undefined) {
       clearTimeout(managed.userScrollTimeout);
@@ -1110,6 +1139,8 @@ class TerminalInstanceService {
     }
     managed.scrollContainer = undefined;
     managed.userIsScrolling = false;
+    managed.cachedContentHeight = 0;
+    managed.cachedMaxScrollTop = 0;
 
     if (managed.hostElement.parentElement === container) {
       container.removeChild(managed.hostElement);
@@ -1363,6 +1394,9 @@ class TerminalInstanceService {
 
     // Apply scroll without triggering userIsScrolling flag
     if (newScrollTop !== null) {
+      // Clamp to valid range
+      newScrollTop = Math.max(0, Math.min(newScrollTop, managed.cachedMaxScrollTop));
+
       // Temporarily mark this as a programmatic scroll
       const wasProgrammatic = managed.userIsScrolling;
       managed.userIsScrolling = false;
@@ -1371,6 +1405,76 @@ class TerminalInstanceService {
       if (wasProgrammatic) {
         managed.userIsScrolling = true;
       }
+    }
+  }
+
+  /**
+   * Calculate the last row with actual content by scanning buffer from bottom.
+   * Returns the 0-based row index of the last non-empty line.
+   */
+  private getLastContentRow(managed: ManagedTerminal): number {
+    const buffer = managed.terminal.buffer.active;
+    const totalRows = buffer.length;
+
+    // Scan from bottom to find last non-empty line
+    // Use translateToString(true).length to get trimmed content length
+    for (let row = totalRows - 1; row >= 0; row--) {
+      const line = buffer.getLine(row);
+      if (line && line.translateToString(true).length > 0) {
+        return row;
+      }
+    }
+
+    // If no content found, use cursor position as minimum
+    return buffer.cursorY;
+  }
+
+  /**
+   * Update cached content metrics for scroll clamping.
+   * Called on cursor moves, writes, and resize.
+   */
+  private updateContentMetrics(id: string): void {
+    const managed = this.instances.get(id);
+    if (!managed || !managed.scrollContainer) return;
+
+    const dimensions = (managed.terminal as any)._core?._renderService?.dimensions;
+    if (!dimensions) return;
+
+    const charHeight = dimensions.css?.cell?.height ?? dimensions.actualCellHeight;
+    if (!charHeight || charHeight <= 0) return;
+
+    // Find last content row and include cursor position
+    const lastContentRow = this.getLastContentRow(managed);
+    const cursorY = managed.terminal.buffer.active.cursorY;
+    const effectiveLastRow = Math.max(lastContentRow, cursorY);
+
+    // Content height = (lastRow + 1) rows * charHeight
+    // Add a small buffer (1 row) to ensure cursor is always visible
+    managed.cachedContentHeight = (effectiveLastRow + 2) * charHeight;
+
+    // Max scroll = contentHeight - viewportHeight (but never negative)
+    const viewportHeight = managed.scrollContainer.clientHeight;
+    managed.cachedMaxScrollTop = Math.max(0, managed.cachedContentHeight - viewportHeight);
+  }
+
+  /**
+   * Clamp scroll position to prevent scrolling past content.
+   */
+  private clampScrollPosition(id: string): void {
+    const managed = this.instances.get(id);
+    if (!managed || !managed.scrollContainer) return;
+
+    // Update metrics first
+    this.updateContentMetrics(id);
+
+    const container = managed.scrollContainer;
+    const currentScroll = container.scrollTop;
+
+    // Clamp to valid range
+    if (currentScroll > managed.cachedMaxScrollTop) {
+      container.scrollTop = managed.cachedMaxScrollTop;
+    } else if (currentScroll < 0) {
+      container.scrollTop = 0;
     }
   }
 
@@ -1961,6 +2065,10 @@ class TerminalInstanceService {
     if (managed.scrollListener && managed.scrollContainer) {
       managed.scrollContainer.removeEventListener("scroll", managed.scrollListener);
       managed.scrollListener = undefined;
+    }
+    if (managed.wheelListener && managed.scrollContainer) {
+      managed.scrollContainer.removeEventListener("wheel", managed.wheelListener, true);
+      managed.wheelListener = undefined;
     }
     if (managed.userScrollTimeout !== undefined) {
       clearTimeout(managed.userScrollTimeout);
