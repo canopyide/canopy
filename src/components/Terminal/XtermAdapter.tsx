@@ -8,6 +8,7 @@ import { terminalInstanceService } from "@/services/TerminalInstanceService";
 import { useScrollbackStore, usePerformanceModeStore, useTerminalFontStore } from "@/store";
 import { getScrollbackForType, PERFORMANCE_MODE_SCROLLBACK } from "@/utils/scrollbackConfig";
 import { DEFAULT_TERMINAL_FONT_FAMILY } from "@/config/terminalFont";
+import { isAgentTerminal } from "@/utils/terminalType";
 
 export interface XtermAdapterProps {
   terminalId: string;
@@ -56,12 +57,16 @@ function XtermAdapterComponent({
   getRefreshTier,
 }: XtermAdapterProps) {
   const containerRef = useRef<HTMLDivElement>(null);
+  const scrollViewportRef = useRef<HTMLDivElement>(null);
   const prevDimensionsRef = useRef<{ cols: number; rows: number } | null>(null);
   const exitUnsubRef = useRef<(() => void) | null>(null);
   const rafIdRef = useRef<number | null>(null);
 
   // Track visibility for resize optimization (start pessimistic for offscreen mounts)
   const isVisibleRef = useRef(false);
+
+  // Detect if this is an agent terminal that should use tall canvas mode
+  const isAgent = isAgentTerminal(terminalType);
 
   const scrollbackLines = useScrollbackStore((state) => state.scrollbackLines);
   const performanceMode = usePerformanceModeStore((state) => state.performanceMode);
@@ -160,7 +165,12 @@ function XtermAdapterComponent({
       getRefreshTier || (() => TerminalRefreshTier.FOCUSED),
       onInput
     );
-    terminalInstanceService.attach(terminalId, container);
+    // Pass scroll container for agent terminals to enable tall canvas mode
+    terminalInstanceService.attach(
+      terminalId,
+      container,
+      isAgent ? (scrollViewportRef.current ?? undefined) : undefined
+    );
 
     if (!managed.keyHandlerInstalled) {
       managed.terminal.attachCustomKeyEventHandler((event: KeyboardEvent) => {
@@ -220,7 +230,7 @@ function XtermAdapterComponent({
 
       prevDimensionsRef.current = null;
     };
-  }, [terminalId, terminalType, terminalOptions, onExit, onReady, performFit]);
+  }, [terminalId, terminalType, terminalOptions, onExit, onReady, performFit, isAgent]);
 
   // Resolve current tier for dependency tracking
   const currentTier = useMemo(
@@ -301,10 +311,12 @@ function XtermAdapterComponent({
 
   return (
     <div
-      ref={containerRef}
+      ref={scrollViewportRef}
       className={cn(
-        // pl-2 pt-2 pb-4: left/top padding for FitAddon measurement; pb-4 prevents text from touching bottom edge
-        "w-full h-full bg-canopy-bg text-white overflow-hidden rounded-b-[var(--radius-lg)] pl-2 pt-2 pb-4",
+        "w-full h-full bg-canopy-bg text-white rounded-b-[var(--radius-lg)]",
+        // Agent terminals use custom scrolling for tall canvas mode
+        // Standard terminals use overflow-hidden (xterm handles internal scrolling)
+        isAgent ? "overflow-y-auto overflow-x-hidden" : "overflow-hidden",
         className
       )}
       style={{
@@ -312,7 +324,9 @@ function XtermAdapterComponent({
         willChange: "transform",
         transform: "translateZ(0)",
       }}
-    />
+    >
+      <div ref={containerRef} className="pl-2 pt-2 pb-4" />
+    </div>
   );
 }
 

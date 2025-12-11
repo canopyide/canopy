@@ -10,6 +10,7 @@ import { TerminalRefreshTier, TerminalType, TerminalKind } from "@/types";
 import { detectHardware, HardwareProfile } from "@/utils/hardwareDetection";
 import { SharedRingBuffer, PacketParser } from "@shared/utils/SharedRingBuffer";
 import { getAgentConfig } from "@/config/agents";
+import { isAgentTerminal } from "@/utils/terminalType";
 
 type RefreshTierProvider = () => TerminalRefreshTier;
 
@@ -58,6 +59,12 @@ interface ManagedTerminal {
   latestWasAtBottom: boolean;
   // Focus-aware scrolling state
   isFocused: boolean;
+  // Tall canvas mode (agent terminals only)
+  scrollContainer?: HTMLElement;
+  scrollListener?: () => void;
+  userIsScrolling: boolean;
+  userScrollTimeout?: number;
+  pendingScrollUpdate: boolean;
 }
 
 type SabFlushMode = "normal" | "frame";
@@ -65,6 +72,10 @@ type SabFlushMode = "normal" | "frame";
 const MAX_WEBGL_RECOVERY_ATTEMPTS = 4; // Supports full 1s → 2s → 4s → 8s backoff sequence
 const WEBGL_DISPOSE_GRACE_MS = 10000; // 10s grace period before releasing WebGL on hide
 const TIER_DOWNGRADE_HYSTERESIS_MS = 500; // Delay before applying tier downgrades to prevent flapping
+
+// Tall Canvas Mode: Agent terminals use a fixed 500-row canvas with custom scrolling
+// to eliminate viewport bouncing during TUI redraws
+const TALL_ROW_COUNT = 500;
 
 const START_DEBOUNCING_THRESHOLD = 200;
 const HORIZONTAL_DEBOUNCE_MS = 100;
@@ -801,12 +812,27 @@ class TerminalInstanceService {
       });
     };
 
-    const terminal = new Terminal({
+    // Check if this is an agent terminal for tall canvas mode
+    const isAgent = isAgentTerminal(type);
+
+    // Build terminal options - agent terminals use tall canvas mode
+    const terminalOptions = {
       ...options,
       linkHandler: {
-        activate: (_event, text) => openLink(text),
+        activate: (_event: MouseEvent, text: string) => openLink(text),
       },
-    });
+      // Tall canvas mode for agent terminals: fixed 500 rows with no scrollback
+      // Standard terminals: use passed options (dynamic rows with scrollback)
+      ...(isAgent
+        ? {
+            rows: TALL_ROW_COUNT,
+            scrollback: 0,
+            scrollOnUserInput: false,
+          }
+        : {}),
+    };
+
+    const terminal = new Terminal(terminalOptions);
     const fitAddon = new FitAddon();
     const serializeAddon = new SerializeAddon();
     terminal.loadAddon(fitAddon);
@@ -882,6 +908,9 @@ class TerminalInstanceService {
       latestRows: 0,
       latestWasAtBottom: true,
       isFocused: false,
+      // Tall canvas mode state
+      userIsScrolling: false,
+      pendingScrollUpdate: false,
     };
 
     const inputDisposable = terminal.onData((data) => {
@@ -892,6 +921,19 @@ class TerminalInstanceService {
       }
     });
     listeners.push(() => inputDisposable.dispose());
+
+    // For agent terminals, hook cursor movement and data writes to manage scrolling
+    if (isAgent) {
+      const cursorDisposable = terminal.onCursorMove(() => {
+        this.scrollToCursor(id);
+      });
+      listeners.push(() => cursorDisposable.dispose());
+
+      const writeDisposable = terminal.onWriteParsed(() => {
+        this.scrollToCursor(id);
+      });
+      listeners.push(() => writeDisposable.dispose());
+    }
 
     this.instances.set(id, managed);
 
@@ -1004,13 +1046,41 @@ class TerminalInstanceService {
 
   /**
    * Attach terminal DOM to the provided container. Opens the terminal on first attach.
+   * @param scrollContainer Optional scroll container for tall canvas mode (agent terminals)
    */
-  attach(id: string, container: HTMLElement): ManagedTerminal | null {
+  attach(
+    id: string,
+    container: HTMLElement,
+    scrollContainer?: HTMLElement
+  ): ManagedTerminal | null {
     const managed = this.instances.get(id);
     if (!managed) return null;
 
     if (managed.hostElement.parentElement !== container) {
       container.appendChild(managed.hostElement);
+    }
+
+    // Store scroll container reference for agent terminals (tall canvas mode)
+    if (scrollContainer) {
+      // Clean up any existing scroll listener before adding a new one
+      if (managed.scrollListener && managed.scrollContainer) {
+        managed.scrollContainer.removeEventListener("scroll", managed.scrollListener);
+      }
+
+      managed.scrollContainer = scrollContainer;
+
+      // Set up user scroll detection to pause auto-scroll while user is manually scrolling
+      managed.scrollListener = () => {
+        managed.userIsScrolling = true;
+        if (managed.userScrollTimeout !== undefined) {
+          clearTimeout(managed.userScrollTimeout);
+        }
+        managed.userScrollTimeout = window.setTimeout(() => {
+          managed.userIsScrolling = false;
+        }, 1000);
+      };
+
+      scrollContainer.addEventListener("scroll", managed.scrollListener);
     }
 
     if (!managed.isOpened) {
@@ -1028,6 +1098,18 @@ class TerminalInstanceService {
   detach(id: string, container: HTMLElement | null): void {
     const managed = this.instances.get(id);
     if (!managed || !container) return;
+
+    // Clean up scroll container listener and reference
+    if (managed.scrollListener && managed.scrollContainer) {
+      managed.scrollContainer.removeEventListener("scroll", managed.scrollListener);
+      managed.scrollListener = undefined;
+    }
+    if (managed.userScrollTimeout !== undefined) {
+      clearTimeout(managed.userScrollTimeout);
+      managed.userScrollTimeout = undefined;
+    }
+    managed.scrollContainer = undefined;
+    managed.userIsScrolling = false;
 
     if (managed.hostElement.parentElement === container) {
       container.removeChild(managed.hostElement);
@@ -1072,6 +1154,11 @@ class TerminalInstanceService {
    * Handles geometry caching, debouncing, xterm resize, and backend IPC.
    * Preserves scroll position if user was scrolled up viewing history.
    * Returns {cols, rows} if resized, null if skipped (cached) or error.
+   *
+   * For agent terminals in tall canvas mode:
+   * - Rows are fixed at TALL_ROW_COUNT
+   * - Only columns resize dynamically based on width
+   * - Host element height is set explicitly to match the tall canvas
    */
   resize(
     id: string,
@@ -1082,9 +1169,19 @@ class TerminalInstanceService {
     const managed = this.instances.get(id);
     if (!managed) return null;
 
-    // Geometry caching check - ignore sub-pixel changes
-    if (Math.abs(managed.lastWidth - width) < 1 && Math.abs(managed.lastHeight - height) < 1) {
-      return null;
+    const isAgent = isAgentTerminal(managed.type);
+
+    // For agent terminals (tall canvas mode), only width changes matter
+    // Standard terminals check both width and height
+    if (isAgent) {
+      if (Math.abs(managed.lastWidth - width) < 1) {
+        return null;
+      }
+    } else {
+      // Geometry caching check - ignore sub-pixel changes
+      if (Math.abs(managed.lastWidth - width) < 1 && Math.abs(managed.lastHeight - height) < 1) {
+        return null;
+      }
     }
 
     // Capture scroll state before resize to preserve position when viewing history
@@ -1101,7 +1198,10 @@ class TerminalInstanceService {
       if (!proposed) {
         // Fallback to fit() if proposeDimensions not available
         managed.fitAddon.fit();
-        const { cols, rows } = managed.terminal;
+        const { cols } = managed.terminal;
+        // Agent terminals: force fixed rows
+        const rows = isAgent ? TALL_ROW_COUNT : managed.terminal.rows;
+
         managed.lastWidth = width;
         managed.lastHeight = height;
         managed.latestCols = cols;
@@ -1112,13 +1212,25 @@ class TerminalInstanceService {
           this.scrollToBottom(id);
         }
         terminalClient.resize(id, cols, rows);
+
+        // Set host element height for tall canvas
+        if (isAgent) {
+          this.setTallCanvasHeight(managed);
+        }
+
         return { cols, rows };
       }
 
-      const { cols, rows } = proposed;
+      // Agent terminals: use proposed cols but fixed rows
+      const cols = proposed.cols;
+      const rows = isAgent ? TALL_ROW_COUNT : proposed.rows;
 
       // Skip if dimensions unchanged
+      // For agent terminals, always update height even if cols/rows unchanged (handles font/DPI changes)
       if (managed.terminal.cols === cols && managed.terminal.rows === rows) {
+        if (isAgent) {
+          this.setTallCanvasHeight(managed);
+        }
         return null;
       }
 
@@ -1132,9 +1244,16 @@ class TerminalInstanceService {
       const bufferLineCount = this.getBufferLineCount(id);
 
       // Immediate resize for small buffers or explicit immediate flag
-      if (options.immediate || bufferLineCount < START_DEBOUNCING_THRESHOLD) {
+      // Agent terminals always resize immediately (no debouncing for column-only changes)
+      if (options.immediate || bufferLineCount < START_DEBOUNCING_THRESHOLD || isAgent) {
         this.clearResizeJobs(managed);
         this.applyResize(id, cols, rows);
+
+        // Set host element height for tall canvas
+        if (isAgent) {
+          this.setTallCanvasHeight(managed);
+        }
+
         return { cols, rows };
       }
 
@@ -1156,6 +1275,21 @@ class TerminalInstanceService {
   }
 
   /**
+   * Set the host element height for tall canvas mode.
+   * This ensures the terminal canvas is tall enough to contain all TALL_ROW_COUNT rows.
+   */
+  private setTallCanvasHeight(managed: ManagedTerminal): void {
+    const dimensions = (managed.terminal as any)._core?._renderService?.dimensions;
+    if (!dimensions) return;
+
+    const charHeight = dimensions.css?.cell?.height ?? dimensions.actualCellHeight;
+    if (!charHeight || charHeight <= 0) return;
+
+    const totalHeight = TALL_ROW_COUNT * charHeight;
+    managed.hostElement.style.height = `${totalHeight}px`;
+  }
+
+  /**
    * Force the terminal to scroll to the bottom.
    * Intended for explicit user actions (e.g., "Scroll to Bottom" button).
    */
@@ -1163,6 +1297,80 @@ class TerminalInstanceService {
     const managed = this.instances.get(id);
     if (managed) {
       managed.terminal.scrollToBottom();
+    }
+  }
+
+  /**
+   * Scroll the viewport to keep the cursor visible (tall canvas mode).
+   * Uses requestAnimationFrame for throttling to prevent excessive scroll updates.
+   */
+  private scrollToCursor(id: string): void {
+    const managed = this.instances.get(id);
+    if (!managed || !managed.scrollContainer) return;
+
+    // Don't auto-scroll while user is manually scrolling
+    if (managed.userIsScrolling) return;
+
+    // Throttle scroll updates using RAF
+    if (managed.pendingScrollUpdate) return;
+    managed.pendingScrollUpdate = true;
+
+    requestAnimationFrame(() => {
+      managed.pendingScrollUpdate = false;
+      this.scrollToCursorImmediate(id);
+    });
+  }
+
+  /**
+   * Immediately scroll to cursor position without throttling.
+   */
+  private scrollToCursorImmediate(id: string): void {
+    const managed = this.instances.get(id);
+    if (!managed || !managed.scrollContainer) return;
+
+    const term = managed.terminal;
+    const buffer = term.buffer.active;
+    const cursorY = buffer.cursorY;
+
+    // Get cell dimensions from xterm's internal metrics
+    const dimensions = (term as any)._core?._renderService?.dimensions;
+    if (!dimensions) return;
+
+    const charHeight = dimensions.css?.cell?.height ?? dimensions.actualCellHeight;
+    if (!charHeight || charHeight <= 0) return;
+
+    // Calculate cursor position in pixels
+    const cursorTop = cursorY * charHeight;
+    const cursorBottom = cursorTop + charHeight;
+
+    const container = managed.scrollContainer;
+    const containerHeight = container.clientHeight;
+    const scrollTop = container.scrollTop;
+
+    // Keep cursor visible with some padding (2 lines)
+    const padding = charHeight * 2;
+
+    let newScrollTop: number | null = null;
+
+    // Scroll down if cursor is below viewport
+    if (cursorBottom > scrollTop + containerHeight - padding) {
+      newScrollTop = cursorBottom - containerHeight + padding;
+    }
+    // Scroll up if cursor is above viewport
+    else if (cursorTop < scrollTop + padding) {
+      newScrollTop = Math.max(0, cursorTop - padding);
+    }
+
+    // Apply scroll without triggering userIsScrolling flag
+    if (newScrollTop !== null) {
+      // Temporarily mark this as a programmatic scroll
+      const wasProgrammatic = managed.userIsScrolling;
+      managed.userIsScrolling = false;
+      container.scrollTop = newScrollTop;
+      // Restore previous state (don't reset user scroll detection)
+      if (wasProgrammatic) {
+        managed.userIsScrolling = true;
+      }
     }
   }
 
@@ -1748,6 +1956,17 @@ class TerminalInstanceService {
       clearTimeout(managed.tierChangeTimer);
       managed.tierChangeTimer = undefined;
     }
+
+    // Clean up tall canvas mode resources
+    if (managed.scrollListener && managed.scrollContainer) {
+      managed.scrollContainer.removeEventListener("scroll", managed.scrollListener);
+      managed.scrollListener = undefined;
+    }
+    if (managed.userScrollTimeout !== undefined) {
+      clearTimeout(managed.userScrollTimeout);
+      managed.userScrollTimeout = undefined;
+    }
+    managed.scrollContainer = undefined;
 
     managed.listeners.forEach((cleanup) => cleanup());
     managed.throttledWriter.dispose();
