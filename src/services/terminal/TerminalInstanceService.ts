@@ -1,0 +1,944 @@
+import { Terminal } from "@xterm/xterm";
+import { terminalClient, systemClient } from "@/clients";
+import { TerminalRefreshTier, TerminalType } from "@/types";
+import { detectHardware, HardwareProfile } from "@/utils/hardwareDetection";
+import {
+  ManagedTerminal,
+  RefreshTierProvider,
+  ResizeJobId,
+  TIER_DOWNGRADE_HYSTERESIS_MS,
+} from "./types";
+import { TALL_CANVAS_ROWS, getSafeTallCanvasRows, measureCellHeight } from "./TerminalConfig";
+import { TerminalAddonManager } from "./TerminalAddonManager";
+import { TerminalDataBuffer } from "./TerminalDataBuffer";
+import { createThrottledWriter } from "./ThrottledWriter";
+
+const START_DEBOUNCING_THRESHOLD = 200;
+const HORIZONTAL_DEBOUNCE_MS = 100;
+const VERTICAL_THROTTLE_MS = 150;
+const IDLE_CALLBACK_TIMEOUT_MS = 1000;
+
+class TerminalInstanceService {
+  private instances = new Map<string, ManagedTerminal>();
+  private hardwareProfile: HardwareProfile;
+  private addonManager: TerminalAddonManager;
+  private dataBuffer: TerminalDataBuffer;
+
+  constructor() {
+    this.hardwareProfile = detectHardware();
+    console.log("[TerminalInstanceService] Hardware profile:", this.hardwareProfile);
+
+    this.addonManager = new TerminalAddonManager(
+      this.hardwareProfile,
+      (id) => this.instances.get(id),
+      (cb) => this.instances.forEach(cb)
+    );
+
+    this.dataBuffer = new TerminalDataBuffer((id, data) => this.writeToTerminal(id, data));
+    this.dataBuffer.initialize();
+  }
+
+  stopPolling(): void {
+    this.dataBuffer.stopPolling();
+  }
+
+  isSharedBufferEnabled(): boolean {
+    return this.dataBuffer.isEnabled();
+  }
+
+  /**
+   * Centralized method to write data to a terminal.
+   * Used by both the SharedArrayBuffer poller and the IPC fallback listener.
+   */
+  private writeToTerminal(id: string, data: string | Uint8Array): void {
+    const managed = this.instances.get(id);
+    if (!managed) return;
+
+    // Write data and apply flow control acknowledgement after xterm processes the buffer update
+    const terminal = managed.terminal;
+    terminal.write(data, () => {
+      // Flow control acknowledgement
+      const len = typeof data === "string" ? data.length : data.byteLength;
+      terminalClient.acknowledgeData(id, len);
+
+      // Notify output subscribers (for tall canvas scroll sync)
+      if (managed.outputSubscribers.size > 0) {
+        managed.outputSubscribers.forEach((cb) => cb());
+      }
+
+      if (managed.isTallCanvas) {
+        return;
+      }
+
+      // Focus-aware scroll behavior: only snap deselected terminals to bottom
+      if (!managed.isFocused) {
+        const buffer = terminal.buffer.active;
+        const isAtBottom = buffer.baseY - buffer.viewportY < 1;
+        if (!isAtBottom) {
+          terminal.scrollToBottom();
+        }
+      }
+    });
+  }
+
+  setVisible(id: string, isVisible: boolean): void {
+    const managed = this.instances.get(id);
+    if (!managed) return;
+
+    if (managed.isVisible !== isVisible) {
+      managed.isVisible = isVisible;
+      managed.lastActiveTime = Date.now();
+
+      if (isVisible) {
+        this.addonManager.cancelWebglDispose(managed);
+
+        // Reset WebGL recovery state when becoming visible
+        if (managed.hasWebglError) {
+          managed.webglRecoveryAttempts = 0;
+          managed.hasWebglError = false;
+        }
+
+        const rect = managed.hostElement.getBoundingClientRect();
+        if (rect.width > 0 && rect.height > 0) {
+          const widthChanged = Math.abs(managed.lastWidth - rect.width) >= 1;
+          const heightChanged = Math.abs(managed.lastHeight - rect.height) >= 1;
+
+          if (widthChanged || heightChanged) {
+            managed.lastWidth = 0;
+            managed.lastHeight = 0;
+          }
+        }
+        this.applyRendererPolicy(id, managed.getRefreshTier());
+      } else {
+        this.addonManager.disposeWebglWithGrace(id);
+      }
+    }
+  }
+
+  getOrCreate(
+    id: string,
+    type: TerminalType,
+    options: ConstructorParameters<typeof Terminal>[0],
+    getRefreshTier: RefreshTierProvider = () => TerminalRefreshTier.FOCUSED,
+    onInput?: (data: string) => void,
+    tallCanvasOptions?: { isTallCanvas?: boolean; agentId?: string }
+  ): ManagedTerminal {
+    const existing = this.instances.get(id);
+    if (existing) {
+      existing.getRefreshTier = getRefreshTier;
+      return existing;
+    }
+
+    const isTallCanvas = tallCanvasOptions?.isTallCanvas ?? false;
+    const agentId = tallCanvasOptions?.agentId;
+
+    const openLink = (url: string) => {
+      const normalizedUrl = /^https?:\/\//i.test(url) ? url : `https://${url}`;
+      systemClient.openExternal(normalizedUrl).catch((error) => {
+        console.error("[TerminalInstanceService] Failed to open URL:", error);
+      });
+    };
+
+    const terminalOptions = isTallCanvas
+      ? {
+          ...options,
+          rows: TALL_CANVAS_ROWS,
+          scrollback: 0,
+          linkHandler: {
+            activate: (_event: MouseEvent, text: string) => openLink(text),
+          },
+        }
+      : {
+          ...options,
+          linkHandler: {
+            activate: (_event: MouseEvent, text: string) => openLink(text),
+          },
+        };
+
+    const terminal = new Terminal(terminalOptions);
+    const addons = this.addonManager.setupAddons(terminal, openLink);
+
+    const hostElement = document.createElement("div");
+    hostElement.style.width = "100%";
+    hostElement.style.height = "100%";
+    hostElement.style.display = "flex";
+    hostElement.style.flexDirection = "column";
+
+    const throttledWriter = createThrottledWriter(id, terminal, getRefreshTier);
+
+    const listeners: Array<() => void> = [];
+    const exitSubscribers = new Set<(exitCode: number) => void>();
+    const outputSubscribers = new Set<() => void>();
+
+    const unsubData = terminalClient.onData(id, (data: string | Uint8Array) => {
+      if (this.dataBuffer.isPolling()) return;
+      this.dataBuffer.bufferData(id, data);
+    });
+    listeners.push(unsubData);
+
+    const unsubExit = terminalClient.onExit((termId, exitCode) => {
+      if (termId !== id) return;
+      throttledWriter.dispose();
+      terminal.write(`\r\n\x1b[90m[Process exited with code ${exitCode}]\x1b[0m\r\n`);
+      exitSubscribers.forEach((cb) => cb(exitCode));
+    });
+    listeners.push(unsubExit);
+
+    const managed: ManagedTerminal = {
+      terminal,
+      type,
+      kind: isTallCanvas ? "agent" : undefined,
+      agentId,
+      ...addons,
+      webglAddon: undefined, // Setup by addonManager
+      hostElement,
+      isOpened: false,
+      listeners,
+      exitSubscribers,
+      outputSubscribers,
+      throttledWriter,
+      getRefreshTier,
+      keyHandlerInstalled: false,
+      lastAttachAt: 0,
+      lastDetachAt: 0,
+      webglRecoveryAttempts: 0,
+      isVisible: false,
+      lastActiveTime: Date.now(),
+      hasWebglError: false,
+      lastWidth: 0,
+      lastHeight: 0,
+      lastYResizeTime: 0,
+      latestCols: 0,
+      latestRows: isTallCanvas ? TALL_CANVAS_ROWS : 0,
+      latestWasAtBottom: true,
+      isFocused: false,
+      isTallCanvas,
+      effectiveTallRows: TALL_CANVAS_ROWS,
+      tallCanvasFollowLog: true,
+      tallCanvasLastScrollTop: 0,
+    };
+
+    const inputDisposable = terminal.onData((data) => {
+      throttledWriter.notifyInput();
+      terminalClient.write(id, data);
+      if (onInput) {
+        onInput(data);
+      }
+    });
+    listeners.push(() => inputDisposable.dispose());
+
+    this.instances.set(id, managed);
+
+    const initialTier = getRefreshTier ? getRefreshTier() : TerminalRefreshTier.FOCUSED;
+    this.applyRendererPolicy(id, initialTier);
+    return managed;
+  }
+
+  get(id: string): ManagedTerminal | null {
+    return this.instances.get(id) ?? null;
+  }
+
+  attach(id: string, container: HTMLElement): ManagedTerminal | null {
+    const managed = this.instances.get(id);
+    if (!managed) return null;
+
+    if (managed.hostElement.parentElement !== container) {
+      container.appendChild(managed.hostElement);
+    }
+
+    if (!managed.isOpened) {
+      managed.terminal.open(managed.hostElement);
+      managed.isOpened = true;
+
+      if (managed.isTallCanvas) {
+        const cellHeight = measureCellHeight(managed.terminal);
+        const safeRows = getSafeTallCanvasRows(cellHeight);
+        managed.effectiveTallRows = safeRows;
+        if (safeRows !== managed.terminal.rows) {
+          managed.terminal.resize(managed.terminal.cols, safeRows);
+          terminalClient.resize(id, managed.terminal.cols, safeRows);
+        }
+      }
+    }
+    managed.lastAttachAt = Date.now();
+
+    return managed;
+  }
+
+  detach(id: string, container: HTMLElement | null): void {
+    const managed = this.instances.get(id);
+    if (!managed || !container) return;
+
+    if (managed.hostElement.parentElement === container) {
+      container.removeChild(managed.hostElement);
+    }
+    managed.lastDetachAt = Date.now();
+  }
+
+  fit(id: string): { cols: number; rows: number } | null {
+    const managed = this.instances.get(id);
+    if (!managed) return null;
+
+    try {
+      if (managed.isTallCanvas) {
+        const container = managed.hostElement.parentElement;
+        if (!container) return null;
+        const width = container.clientWidth;
+        // @ts-expect-error - internal API
+        const proposed = managed.fitAddon.proposeDimensions?.({ width, height: 1 });
+        const cols = proposed?.cols ?? managed.terminal.cols;
+        const rows = managed.effectiveTallRows;
+        if (cols !== managed.terminal.cols) {
+          managed.terminal.resize(cols, rows);
+          terminalClient.resize(id, cols, rows);
+        }
+        return { cols, rows };
+      }
+
+      managed.fitAddon.fit();
+      const { cols, rows } = managed.terminal;
+      terminalClient.resize(id, cols, rows);
+      return { cols, rows };
+    } catch (error) {
+      console.warn("Terminal fit failed:", error);
+      return null;
+    }
+  }
+
+  flushResize(id: string): void {
+    const managed = this.instances.get(id);
+    if (!managed) return;
+
+    if (managed.resizeXJob || managed.resizeYJob) {
+      this.clearResizeJobs(managed);
+      this.applyResize(id, managed.latestCols, managed.latestRows);
+    }
+  }
+
+  resize(
+    id: string,
+    width: number,
+    height: number,
+    options: { immediate?: boolean; isTallCanvas?: boolean } = {}
+  ): { cols: number; rows: number } | null {
+    const managed = this.instances.get(id);
+    if (!managed) return null;
+
+    const isTallCanvas = options.isTallCanvas ?? managed.isTallCanvas;
+
+    if (isTallCanvas) {
+      if (Math.abs(managed.lastWidth - width) < 1) {
+        return null;
+      }
+    } else {
+      if (Math.abs(managed.lastWidth - width) < 1 && Math.abs(managed.lastHeight - height) < 1) {
+        return null;
+      }
+    }
+
+    const buffer = managed.terminal.buffer.active;
+    const wasAtBottom = isTallCanvas ? true : buffer.baseY - buffer.viewportY < 1;
+
+    try {
+      // @ts-expect-error - internal API
+      const proposed = managed.fitAddon.proposeDimensions?.({ width, height });
+
+      if (!proposed) {
+        if (!isTallCanvas) {
+          managed.fitAddon.fit();
+        }
+        const cols = managed.terminal.cols;
+        const rows = isTallCanvas ? managed.effectiveTallRows : managed.terminal.rows;
+        managed.lastWidth = width;
+        managed.lastHeight = height;
+        managed.latestCols = cols;
+        managed.latestRows = rows;
+        managed.latestWasAtBottom = wasAtBottom;
+        if (!isTallCanvas && !managed.isFocused && !wasAtBottom) {
+          this.scrollToBottom(id);
+        }
+        terminalClient.resize(id, cols, rows);
+        return { cols, rows };
+      }
+
+      const cols = proposed.cols;
+      const rows = isTallCanvas ? managed.effectiveTallRows : proposed.rows;
+
+      if (managed.terminal.cols === cols && managed.terminal.rows === rows) {
+        return null;
+      }
+
+      managed.lastWidth = width;
+      managed.lastHeight = height;
+      managed.latestCols = cols;
+      managed.latestRows = rows;
+      managed.latestWasAtBottom = wasAtBottom;
+
+      const bufferLineCount = this.getBufferLineCount(id);
+
+      if (isTallCanvas) {
+        this.clearResizeJobs(managed);
+        this.applyResize(id, cols, rows);
+        return { cols, rows };
+      }
+
+      if (options.immediate || bufferLineCount < START_DEBOUNCING_THRESHOLD) {
+        this.clearResizeJobs(managed);
+        this.applyResize(id, cols, rows);
+        return { cols, rows };
+      }
+
+      if (!managed.isVisible) {
+        this.scheduleIdleResize(id, managed);
+        return { cols, rows };
+      }
+
+      this.throttleResizeY(id, managed, rows);
+      this.debounceResizeX(id, managed, cols);
+
+      return { cols, rows };
+    } catch (error) {
+      console.warn(`[TerminalInstanceService] Resize failed for ${id}:`, error);
+      return null;
+    }
+  }
+
+  scrollToBottom(id: string): void {
+    const managed = this.instances.get(id);
+    if (managed) {
+      managed.terminal.scrollToBottom();
+    }
+  }
+
+  getSelectionRow(id: string): number | null {
+    const managed = this.instances.get(id);
+    if (!managed) return null;
+
+    const selection = managed.terminal.getSelectionPosition();
+    if (!selection) return null;
+
+    return selection.start.y;
+  }
+
+  isTallCanvasMode(id: string): boolean {
+    const managed = this.instances.get(id);
+    return managed?.isTallCanvas ?? false;
+  }
+
+  setTallCanvasScrollCallback(id: string, callback: ((row: number) => void) | null): void {
+    const managed = this.instances.get(id);
+    if (managed) {
+      managed.tallCanvasScrollToRow = callback ?? undefined;
+    }
+  }
+
+  scrollTallCanvasToRow(id: string, row: number): void {
+    const managed = this.instances.get(id);
+    if (managed && managed.tallCanvasScrollToRow) {
+      managed.tallCanvasScrollToRow(row);
+    }
+  }
+
+  getEffectiveTallRows(id: string): number {
+    const managed = this.instances.get(id);
+    return managed?.effectiveTallRows ?? TALL_CANVAS_ROWS;
+  }
+
+  // Tall canvas follow state - persisted across component remounts
+  getTallCanvasFollowLog(id: string): boolean {
+    const managed = this.instances.get(id);
+    return managed?.tallCanvasFollowLog ?? true;
+  }
+
+  setTallCanvasFollowLog(id: string, follow: boolean): void {
+    const managed = this.instances.get(id);
+    if (managed) {
+      managed.tallCanvasFollowLog = follow;
+    }
+  }
+
+  getTallCanvasLastScrollTop(id: string): number {
+    const managed = this.instances.get(id);
+    return managed?.tallCanvasLastScrollTop ?? 0;
+  }
+
+  setTallCanvasLastScrollTop(id: string, scrollTop: number): void {
+    const managed = this.instances.get(id);
+    if (managed) {
+      managed.tallCanvasLastScrollTop = scrollTop;
+    }
+  }
+
+  /**
+   * Request a tall canvas sync (height update + scroll sync).
+   * Use this after frontend-only operations like terminal.clear() that don't trigger
+   * the output listener but do change the visual state.
+   */
+  requestTallCanvasSync(id: string): void {
+    const managed = this.instances.get(id);
+    if (!managed || !managed.isTallCanvas) return;
+
+    // Trigger output subscribers which will update height and scroll
+    if (managed.outputSubscribers.size > 0) {
+      managed.outputSubscribers.forEach((cb) => cb());
+    }
+  }
+
+  getContentBottom(id: string): number {
+    const managed = this.instances.get(id);
+    if (!managed) return 0;
+
+    const buffer = managed.terminal.buffer.active;
+    const cursorY = buffer.cursorY;
+    const totalRows = managed.terminal.rows;
+
+    let lastContentRow = cursorY;
+
+    for (let row = totalRows - 1; row > cursorY; row--) {
+      const line = buffer.getLine(row);
+      if (line && line.translateToString(true).trim().length > 0) {
+        lastContentRow = Math.max(lastContentRow, row);
+        break;
+      }
+    }
+
+    return lastContentRow;
+  }
+
+  setAgentState(
+    _id: string,
+    _state: "working" | "running" | "idle" | "waiting" | "completed" | "failed"
+  ): void {
+    // No-op
+  }
+
+  private applyResize(id: string, cols: number, rows: number): void {
+    const managed = this.instances.get(id);
+    if (!managed) return;
+
+    this.dataBuffer.resetForTerminal(id);
+    managed.terminal.resize(cols, rows);
+
+    terminalClient.resize(id, cols, rows);
+  }
+
+  setFocused(id: string, isFocused: boolean): void {
+    const managed = this.instances.get(id);
+    if (!managed) return;
+
+    managed.isFocused = isFocused;
+    managed.lastActiveTime = Date.now();
+  }
+
+  private clearResizeJobs(managed: ManagedTerminal): void {
+    if (managed.resizeXJob) {
+      this.clearJob(managed.resizeXJob);
+      managed.resizeXJob = undefined;
+    }
+    if (managed.resizeYJob) {
+      this.clearJob(managed.resizeYJob);
+      managed.resizeYJob = undefined;
+    }
+  }
+
+  private clearJob(job: ResizeJobId): void {
+    if (job.type === "idle") {
+      const win = window as typeof window & {
+        cancelIdleCallback?: (handle: number) => void;
+      };
+      win.cancelIdleCallback?.(job.id);
+    } else {
+      clearTimeout(job.id);
+    }
+  }
+
+  private scheduleIdleResize(id: string, managed: ManagedTerminal): void {
+    const win = window as typeof window & {
+      requestIdleCallback?: (callback: () => void, options?: { timeout?: number }) => number;
+      cancelIdleCallback?: (handle: number) => void;
+    };
+    const hasIdleCallback = typeof win.requestIdleCallback === "function";
+
+    if (!managed.resizeXJob) {
+      if (hasIdleCallback && win.requestIdleCallback) {
+        const idleId = win.requestIdleCallback(
+          () => {
+            const current = this.instances.get(id);
+            if (current) {
+              this.dataBuffer.resetForTerminal(id);
+              current.terminal.resize(current.latestCols, current.terminal.rows);
+              terminalClient.resize(id, current.latestCols, current.terminal.rows);
+              current.resizeXJob = undefined;
+            }
+          },
+          { timeout: IDLE_CALLBACK_TIMEOUT_MS }
+        );
+        managed.resizeXJob = { type: "idle", id: idleId };
+      } else {
+        const timeoutId = window.setTimeout(() => {
+          const current = this.instances.get(id);
+          if (current) {
+            this.dataBuffer.resetForTerminal(id);
+            current.terminal.resize(current.latestCols, current.terminal.rows);
+            terminalClient.resize(id, current.latestCols, current.terminal.rows);
+            current.resizeXJob = undefined;
+          }
+        }, IDLE_CALLBACK_TIMEOUT_MS);
+        managed.resizeXJob = { type: "timeout", id: timeoutId };
+      }
+    }
+
+    if (!managed.resizeYJob) {
+      if (hasIdleCallback && win.requestIdleCallback) {
+        const idleId = win.requestIdleCallback(
+          () => {
+            const current = this.instances.get(id);
+            if (current) {
+              this.dataBuffer.resetForTerminal(id);
+              current.terminal.resize(current.latestCols, current.latestRows);
+              terminalClient.resize(id, current.latestCols, current.latestRows);
+              current.resizeYJob = undefined;
+            }
+          },
+          { timeout: IDLE_CALLBACK_TIMEOUT_MS }
+        );
+        managed.resizeYJob = { type: "idle", id: idleId };
+      } else {
+        const timeoutId = window.setTimeout(() => {
+          const current = this.instances.get(id);
+          if (current) {
+            this.dataBuffer.resetForTerminal(id);
+            current.terminal.resize(current.latestCols, current.latestRows);
+            terminalClient.resize(id, current.latestCols, current.latestRows);
+            current.resizeYJob = undefined;
+          }
+        }, IDLE_CALLBACK_TIMEOUT_MS);
+        managed.resizeYJob = { type: "timeout", id: timeoutId };
+      }
+    }
+  }
+
+  private debounceResizeX(id: string, managed: ManagedTerminal, cols: number): void {
+    if (managed.resizeXJob) {
+      this.clearJob(managed.resizeXJob);
+      managed.resizeXJob = undefined;
+    }
+
+    const timeoutId = window.setTimeout(() => {
+      const current = this.instances.get(id);
+      if (current) {
+        this.dataBuffer.resetForTerminal(id);
+        current.terminal.resize(cols, current.terminal.rows);
+        terminalClient.resize(id, cols, current.terminal.rows);
+        current.resizeXJob = undefined;
+      }
+    }, HORIZONTAL_DEBOUNCE_MS);
+    managed.resizeXJob = { type: "timeout", id: timeoutId };
+  }
+
+  private throttleResizeY(id: string, managed: ManagedTerminal, rows: number): void {
+    const now = Date.now();
+    const timeSinceLastY = now - managed.lastYResizeTime;
+
+    if (timeSinceLastY >= VERTICAL_THROTTLE_MS) {
+      managed.lastYResizeTime = now;
+      if (managed.resizeYJob) {
+        this.clearJob(managed.resizeYJob);
+        managed.resizeYJob = undefined;
+      }
+      this.dataBuffer.resetForTerminal(id);
+      managed.terminal.resize(managed.latestCols, rows);
+      terminalClient.resize(id, managed.latestCols, rows);
+      return;
+    }
+
+    if (!managed.resizeYJob) {
+      const remainingTime = VERTICAL_THROTTLE_MS - timeSinceLastY;
+      const timeoutId = window.setTimeout(() => {
+        const current = this.instances.get(id);
+        if (current) {
+          current.lastYResizeTime = Date.now();
+          this.dataBuffer.resetForTerminal(id);
+          current.terminal.resize(current.latestCols, current.latestRows);
+          terminalClient.resize(id, current.latestCols, current.latestRows);
+          current.resizeYJob = undefined;
+        }
+      }, remainingTime);
+      managed.resizeYJob = { type: "timeout", id: timeoutId };
+    }
+  }
+
+  focus(id: string): void {
+    const managed = this.instances.get(id);
+    managed?.terminal.focus();
+  }
+
+  refresh(id: string): void {
+    const managed = this.instances.get(id);
+    if (!managed) return;
+
+    try {
+      managed.fitAddon.fit();
+    } catch (error) {
+      console.warn("[TerminalInstanceService] Refresh fit failed:", error);
+    }
+  }
+
+  resetRenderer(id: string): void {
+    const managed = this.instances.get(id);
+    if (!managed) return;
+
+    this.addonManager.resetRenderer(id);
+
+    // Re-apply policy to potentially restore WebGL if managed.webglAddon is now undefined
+    if (managed.hostElement.isConnected) {
+      const dims = this.fit(id);
+      if (dims) {
+        terminalClient.resize(id, dims.cols, dims.rows);
+      }
+      const tier = managed.getRefreshTier();
+      this.applyRendererPolicy(id, tier);
+    }
+  }
+
+  resetAllRenderers(): void {
+    this.instances.forEach((managed, id) => {
+      if (managed.webglAddon) {
+        this.resetRenderer(id);
+      }
+    });
+  }
+
+  refreshAll(): void {
+    this.instances.forEach((_, id) => {
+      this.fit(id);
+    });
+  }
+
+  updateOptions(id: string, options: Partial<Terminal["options"]>): void {
+    const managed = this.instances.get(id);
+    if (!managed) return;
+
+    const textMetricKeys = ["fontSize", "fontFamily", "lineHeight", "letterSpacing", "fontWeight"];
+    const textMetricsChanged = textMetricKeys.some((key) => key in options);
+
+    Object.entries(options).forEach(([key, value]) => {
+      // @ts-expect-error xterm options are indexable
+      managed.terminal.options[key] = value;
+    });
+
+    if (textMetricsChanged) {
+      managed.lastWidth = 0;
+      managed.lastHeight = 0;
+    }
+  }
+
+  applyGlobalOptions(options: Partial<Terminal["options"]>): void {
+    const textMetricKeys = ["fontSize", "fontFamily", "lineHeight", "letterSpacing", "fontWeight"];
+    const textMetricsChanged = textMetricKeys.some((key) => key in options);
+
+    this.instances.forEach((managed) => {
+      Object.entries(options).forEach(([key, value]) => {
+        // @ts-expect-error xterm options are indexable
+        managed.terminal.options[key] = value;
+      });
+
+      if (textMetricsChanged) {
+        managed.lastWidth = 0;
+        managed.lastHeight = 0;
+      }
+    });
+  }
+
+  applyRendererPolicy(id: string, tier: TerminalRefreshTier): void {
+    const managed = this.instances.get(id);
+    if (!managed) return;
+
+    if (tier === TerminalRefreshTier.FOCUSED || tier === TerminalRefreshTier.BURST) {
+      managed.lastActiveTime = Date.now();
+      managed.hasWebglError = false;
+    }
+
+    const currentAppliedTier =
+      managed.lastAppliedTier ?? managed.getRefreshTier() ?? TerminalRefreshTier.FOCUSED;
+
+    if (tier === currentAppliedTier) {
+      if (managed.tierChangeTimer !== undefined) {
+        clearTimeout(managed.tierChangeTimer);
+        managed.tierChangeTimer = undefined;
+        managed.pendingTier = undefined;
+      }
+      return;
+    }
+
+    const isUpgrade = tier < currentAppliedTier;
+
+    if (isUpgrade) {
+      if (managed.tierChangeTimer !== undefined) {
+        clearTimeout(managed.tierChangeTimer);
+        managed.tierChangeTimer = undefined;
+      }
+      managed.pendingTier = undefined;
+      this.applyRendererPolicyImmediate(id, managed, tier);
+      return;
+    }
+
+    if (managed.pendingTier === tier && managed.tierChangeTimer !== undefined) {
+      return;
+    }
+
+    if (managed.tierChangeTimer !== undefined) {
+      clearTimeout(managed.tierChangeTimer);
+    }
+
+    managed.pendingTier = tier;
+    managed.tierChangeTimer = window.setTimeout(() => {
+      const current = this.instances.get(id);
+      if (current && current.pendingTier === tier) {
+        this.applyRendererPolicyImmediate(id, current, tier);
+        current.pendingTier = undefined;
+      }
+      if (current) {
+        current.tierChangeTimer = undefined;
+      }
+    }, TIER_DOWNGRADE_HYSTERESIS_MS);
+  }
+
+  private applyRendererPolicyImmediate(
+    id: string,
+    managed: ManagedTerminal,
+    tier: TerminalRefreshTier
+  ): void {
+    managed.lastAppliedTier = tier;
+
+    if (managed.isTallCanvas) {
+      if (managed.webglAddon) {
+        this.addonManager.releaseWebgl(id, managed);
+        managed.terminal.refresh(0, managed.terminal.rows - 1);
+      }
+      return;
+    }
+
+    const wantsWebgl =
+      managed.isVisible &&
+      (tier === TerminalRefreshTier.BURST ||
+        tier === TerminalRefreshTier.FOCUSED ||
+        tier === TerminalRefreshTier.VISIBLE);
+
+    if (wantsWebgl) {
+      if (!managed.webglAddon) {
+        this.addonManager.acquireWebgl(id, managed);
+      } else if (tier === TerminalRefreshTier.FOCUSED || tier === TerminalRefreshTier.BURST) {
+        this.addonManager.promoteInLru(id);
+      }
+    } else if (tier === TerminalRefreshTier.BACKGROUND && managed.webglAddon) {
+      this.addonManager.releaseWebgl(id, managed);
+    }
+  }
+
+  updateRefreshTierProvider(id: string, provider: RefreshTierProvider): void {
+    const managed = this.instances.get(id);
+    if (!managed) return;
+    managed.getRefreshTier = provider;
+    managed.throttledWriter.updateProvider(provider);
+  }
+
+  boostRefreshRate(id: string): void {
+    const managed = this.instances.get(id);
+    if (!managed) return;
+
+    managed.throttledWriter.boost();
+    this.applyRendererPolicy(id, TerminalRefreshTier.BURST);
+  }
+
+  addExitListener(id: string, cb: (exitCode: number) => void): () => void {
+    const managed = this.instances.get(id);
+    if (!managed) return () => {};
+    managed.exitSubscribers.add(cb);
+    return () => managed.exitSubscribers.delete(cb);
+  }
+
+  addOutputListener(id: string, cb: () => void): () => void {
+    const managed = this.instances.get(id);
+    if (!managed) return () => {};
+    managed.outputSubscribers.add(cb);
+    return () => managed.outputSubscribers.delete(cb);
+  }
+
+  destroy(id: string): void {
+    const managed = this.instances.get(id);
+    if (!managed) return;
+
+    this.clearResizeJobs(managed);
+    this.addonManager.cancelWebglDispose(managed);
+    this.dataBuffer.resetForTerminal(id);
+
+    if (managed.tierChangeTimer !== undefined) {
+      clearTimeout(managed.tierChangeTimer);
+      managed.tierChangeTimer = undefined;
+    }
+
+    managed.exitSubscribers.clear();
+    managed.outputSubscribers.clear();
+
+    managed.throttledWriter.dispose();
+
+    managed.terminal.dispose();
+    this.addonManager.releaseWebgl(id, managed);
+
+    if (managed.hostElement.parentElement) {
+      managed.hostElement.parentElement.removeChild(managed.hostElement);
+    }
+
+    this.instances.delete(id);
+  }
+
+  dispose(): void {
+    this.stopPolling();
+    this.instances.forEach((_, id) => this.destroy(id));
+  }
+
+  async fetchAndRestore(id: string): Promise<boolean> {
+    try {
+      const serializedState = await terminalClient.getSerializedState(id);
+      if (!serializedState) {
+        console.warn(`[TerminalInstanceService] No serialized state for terminal ${id}`);
+        return false;
+      }
+      return this.restoreFromSerialized(id, serializedState);
+    } catch (error) {
+      console.error(`[TerminalInstanceService] Failed to fetch state for terminal ${id}:`, error);
+      return false;
+    }
+  }
+
+  restoreFromSerialized(id: string, serializedState: string): boolean {
+    const managed = this.instances.get(id);
+    if (!managed) {
+      console.warn(`[TerminalInstanceService] Cannot restore: terminal ${id} not found`);
+      return false;
+    }
+
+    try {
+      // Clear pending output and reset terminal state for idempotent restoration
+      managed.throttledWriter.clear();
+      managed.terminal.reset();
+
+      // The serialized state is a sequence of escape codes that reconstructs
+      // the terminal buffer, colors, and cursor position when written
+      managed.terminal.write(serializedState);
+      return true;
+    } catch (error) {
+      console.error(`[TerminalInstanceService] Failed to restore terminal ${id}:`, error);
+      return false;
+    }
+  }
+
+  private getBufferLineCount(id: string): number {
+    const managed = this.instances.get(id);
+    if (!managed) return 0;
+    return managed.terminal.buffer.active.length;
+  }
+}
+
+export const terminalInstanceService = new TerminalInstanceService();

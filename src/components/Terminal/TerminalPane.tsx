@@ -187,6 +187,9 @@ function TerminalPaneComponent({
           if (managed?.terminal) {
             try {
               managed.terminal.clear();
+              // Trigger tall canvas sync for frontend-only clear operations
+              // (outputListener only fires for PTY data, not frontend clear)
+              terminalInstanceService.requestTallCanvasSync(id);
             } catch (error) {
               console.warn(`Failed to clear terminal ${id}:`, error);
             }
@@ -394,10 +397,11 @@ function TerminalPaneComponent({
           key={`${id}-${restartKey}`}
           terminalId={id}
           terminalType={type}
+          agentId={agentId}
           onReady={handleReady}
           onExit={handleExit}
           onInput={handleInput}
-          className={cn("absolute", location === "dock" || isMaximized ? "inset-0" : "inset-2")}
+          className="absolute inset-0"
           getRefreshTier={getRefreshTierCallback}
         />
         <ArtifactOverlay terminalId={id} worktreeId={worktreeId} cwd={cwd} />
