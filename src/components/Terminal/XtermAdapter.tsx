@@ -152,6 +152,8 @@ function XtermAdapterComponent({
   }, [terminalId, fontSize]);
 
   // Calculate target scroll position to keep cursor visible (tall canvas mode)
+  // Returns the scroll position that places the cursor at the bottom of the viewport
+  // Uses same math as maxScroll in handleTallCanvasScroll to prevent slack/bounce
   const calculateScrollTarget = useCallback(() => {
     if (!isTallCanvas || !viewportRef.current) return 0;
 
@@ -163,8 +165,9 @@ function XtermAdapterComponent({
     const viewportHeight = viewportRef.current.clientHeight;
 
     // Position cursor at bottom of viewport (terminal-like behavior)
-    // Account for top padding which pushes content down
-    const cursorPixelY = (cursorRow + 1) * cellHeight + TALL_PADDING_TOP;
+    // Include TALL_PADDING_BOTTOM so follow target equals maxScroll when at content bottom
+    // This prevents the "slack then snap back" bounce described in the scroll analysis
+    const cursorPixelY = (cursorRow + 1) * cellHeight + TALL_PADDING_TOP + TALL_PADDING_BOTTOM;
     const target = Math.max(0, cursorPixelY - viewportHeight);
 
     return target;
@@ -604,24 +607,28 @@ function XtermAdapterComponent({
     };
   }, [handleResizeEntry]);
 
-  // Subscribe to output for tall canvas height updates and scroll sync
+  // Subscribe to terminal render events for tall canvas height updates and scroll sync
+  // Using onRender instead of outputListener catches ALL visual changes:
+  // - PTY output (handled by outputListener too)
+  // - Frontend-only clear commands (terminal.clear())
+  // - Any plugin/addon modifications to the buffer
+  // This fixes the "clear lag" where clear commands didn't trigger height recalculation
   useEffect(() => {
     if (!isTallCanvas) return;
 
     const managed = terminalInstanceService.get(terminalId);
     if (!managed) return;
 
-    // Register callback for when output is written
-    const unsubscribe = terminalInstanceService.addOutputListener(terminalId, () => {
-      // Update height first (expands scroll area as content grows)
-      // Then sync scroll position
+    // onRender fires after each xterm render frame
+    const renderDisposable = managed.terminal.onRender(() => {
+      // Batch updates using requestAnimationFrame to avoid layout thrashing
       requestAnimationFrame(() => {
         updateInnerHostHeight();
         syncTallCanvasScroll();
       });
     });
 
-    return unsubscribe;
+    return () => renderDisposable.dispose();
   }, [terminalId, isTallCanvas, updateInnerHostHeight, syncTallCanvasScroll]);
 
   // Render tall canvas mode
@@ -647,11 +654,15 @@ function XtermAdapterComponent({
           onScroll={handleTallCanvasScroll}
         >
           {/* Inner tall host - padding here so browser includes it in scrollable area */}
+          {/* overflow:hidden clips the oversized xterm canvas (600 rows) to match content height */}
+          {/* This creates a hard scroll lock - users physically cannot scroll past content */}
           <div
             ref={innerHostRef}
-            className="w-full relative pl-2 pt-2 pb-4"
+            className="w-full relative pl-2 pt-2 pb-4 overflow-hidden"
             style={{
               // Height will be set dynamically by updateInnerHostHeight
+              // The scroll range = innerHostRef.height - viewportRef.height
+              // overflow:hidden ensures xterm's tall canvas doesn't expand the scroll range
               minHeight: "100%",
             }}
           />
