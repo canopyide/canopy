@@ -2,6 +2,8 @@ import { Menu, dialog, BrowserWindow, shell, app } from "electron";
 import { projectStore } from "./services/ProjectStore.js";
 import { getWorkspaceClient } from "./services/WorkspaceClient.js";
 import { CHANNELS } from "./ipc/channels.js";
+import { AGENT_REGISTRY } from "../shared/config/agentRegistry.js";
+import type { CliAvailabilityService } from "./services/CliAvailabilityService.js";
 
 app.setAboutPanelOptions({
   applicationName: "Canopy",
@@ -11,11 +13,38 @@ app.setAboutPanelOptions({
   website: "https://github.com/gregpriday/canopy-electron",
 });
 
-export function createApplicationMenu(mainWindow: BrowserWindow): void {
+function convertShortcutToAccelerator(shortcut: string): string {
+  return shortcut.replace("Cmd/Ctrl", "CommandOrControl");
+}
+
+export function createApplicationMenu(
+  mainWindow: BrowserWindow,
+  cliAvailabilityService?: CliAvailabilityService
+): void {
   const sendAction = (action: string) => {
     if (mainWindow && !mainWindow.isDestroyed()) {
       mainWindow.webContents.send(CHANNELS.MENU_ACTION, action);
     }
+  };
+
+  const availability = cliAvailabilityService?.getAvailability();
+
+  const buildAgentMenuItems = (): Electron.MenuItemConstructorOptions[] => {
+    const items: Electron.MenuItemConstructorOptions[] = [];
+
+    Object.values(AGENT_REGISTRY).forEach((agent) => {
+      const isAvailable = availability?.[agent.id] ?? false;
+
+      if (isAvailable) {
+        items.push({
+          label: `New ${agent.name}`,
+          accelerator: agent.shortcut ? convertShortcutToAccelerator(agent.shortcut) : undefined,
+          click: () => sendAction(`launch-agent:${agent.id}`),
+        });
+      }
+    });
+
+    return items;
   };
 
   const template: Electron.MenuItemConstructorOptions[] = [
@@ -34,7 +63,7 @@ export function createApplicationMenu(mainWindow: BrowserWindow): void {
 
             if (!result.canceled && result.filePaths.length > 0) {
               const directoryPath = result.filePaths[0];
-              await handleDirectoryOpen(directoryPath, mainWindow);
+              await handleDirectoryOpen(directoryPath, mainWindow, cliAvailabilityService);
             }
           },
         },
@@ -45,7 +74,7 @@ export function createApplicationMenu(mainWindow: BrowserWindow): void {
         },
         {
           label: "Open Recent",
-          submenu: buildRecentProjectsMenu(mainWindow),
+          submenu: buildRecentProjectsMenu(mainWindow, cliAvailabilityService),
         },
         { type: "separator" },
         {
@@ -100,15 +129,16 @@ export function createApplicationMenu(mainWindow: BrowserWindow): void {
           accelerator: "CommandOrControl+T",
           click: () => sendAction("new-terminal"),
         },
+        ...(buildAgentMenuItems().length > 0
+          ? [
+              { type: "separator" as const },
+              ...buildAgentMenuItems(),
+              { type: "separator" as const },
+            ]
+          : [{ type: "separator" as const }]),
         {
-          label: "Split Terminal",
-          accelerator: "CommandOrControl+\\",
-          click: () => sendAction("split-terminal"),
-        },
-        { type: "separator" },
-        {
-          label: "Run Agent...",
-          accelerator: "CommandOrControl+Shift+A",
+          label: "Terminal Palette...",
+          accelerator: "CommandOrControl+P",
           click: () => sendAction("open-agent-palette"),
         },
       ],
@@ -157,7 +187,10 @@ export function createApplicationMenu(mainWindow: BrowserWindow): void {
   Menu.setApplicationMenu(menu);
 }
 
-function buildRecentProjectsMenu(mainWindow: BrowserWindow): Electron.MenuItemConstructorOptions[] {
+function buildRecentProjectsMenu(
+  mainWindow: BrowserWindow,
+  cliAvailabilityService?: CliAvailabilityService
+): Electron.MenuItemConstructorOptions[] {
   const projects = projectStore.getAllProjects();
 
   if (projects.length === 0) {
@@ -169,7 +202,7 @@ function buildRecentProjectsMenu(mainWindow: BrowserWindow): Electron.MenuItemCo
   const menuItems: Electron.MenuItemConstructorOptions[] = sortedProjects.map((project) => ({
     label: `${project.emoji || "📁"} ${project.name} - ${project.path}`,
     click: async () => {
-      await handleDirectoryOpen(project.path, mainWindow);
+      await handleDirectoryOpen(project.path, mainWindow, cliAvailabilityService);
     },
   }));
 
@@ -178,7 +211,8 @@ function buildRecentProjectsMenu(mainWindow: BrowserWindow): Electron.MenuItemCo
 
 async function handleDirectoryOpen(
   directoryPath: string,
-  mainWindow: BrowserWindow
+  mainWindow: BrowserWindow,
+  cliAvailabilityService?: CliAvailabilityService
 ): Promise<void> {
   if (mainWindow.isDestroyed()) return;
 
@@ -198,7 +232,7 @@ async function handleDirectoryOpen(
       mainWindow.webContents.send(CHANNELS.PROJECT_ON_SWITCH, updatedProject);
     }
 
-    createApplicationMenu(mainWindow);
+    createApplicationMenu(mainWindow, cliAvailabilityService);
   } catch (error) {
     console.error("Failed to open project:", error);
 
@@ -219,6 +253,9 @@ async function handleDirectoryOpen(
   }
 }
 
-export function updateApplicationMenu(mainWindow: BrowserWindow): void {
-  createApplicationMenu(mainWindow);
+export function updateApplicationMenu(
+  mainWindow: BrowserWindow,
+  cliAvailabilityService?: CliAvailabilityService
+): void {
+  createApplicationMenu(mainWindow, cliAvailabilityService);
 }

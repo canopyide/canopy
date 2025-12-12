@@ -544,11 +544,12 @@ function App() {
     onOpenSettings: handleSettings,
     onToggleSidebar: handleToggleSidebar,
     onOpenAgentPalette: terminalPalette.open,
+    onLaunchAgent: handleLaunchAgent,
     defaultCwd: defaultTerminalCwd,
     activeWorktreeId: activeWorktree?.id,
   });
 
-  useKeybinding("terminal.palette", () => terminalPalette.toggle(), { enabled: electronAvailable });
+  useKeybinding("terminal.palette", () => terminalPalette.open(), { enabled: electronAvailable });
   useKeybinding("agent.palette", () => terminalPalette.open(), { enabled: electronAvailable });
   useKeybinding(
     "terminal.new",
