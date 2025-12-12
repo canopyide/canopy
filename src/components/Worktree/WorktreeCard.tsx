@@ -502,9 +502,9 @@ export function WorktreeCard({
       className={cn(
         "group relative border-b-2 border-white/5 transition-all duration-200",
         isActive
-          ? "bg-white/[0.08] shadow-[inset_0_1px_0_0_rgba(255,255,255,0.05)]"
-          : "hover:bg-white/5 bg-transparent",
-        isFocused && !isActive && "bg-white/[0.04]",
+          ? "bg-white/[0.03] shadow-[inset_0_1px_0_0_rgba(255,255,255,0.05)]"
+          : "hover:bg-white/[0.02] bg-transparent",
+        isFocused && !isActive && "bg-white/[0.02]",
         (isIdleCard || isStaleCard) && !isActive && !isFocused && "opacity-70 hover:opacity-100",
         "focus-visible:outline focus-visible:outline-2 focus-visible:outline-canopy-accent focus-visible:outline-offset-2"
       )}
