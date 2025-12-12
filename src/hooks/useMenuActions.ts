@@ -7,6 +7,7 @@ export interface UseMenuActionsOptions {
   onOpenSettings: () => void;
   onToggleSidebar: () => void;
   onOpenAgentPalette: () => void;
+  onLaunchAgent: (agentId: "claude" | "gemini" | "codex" | "terminal") => void;
   defaultCwd: string;
   activeWorktreeId?: string;
 }
@@ -15,6 +16,7 @@ export function useMenuActions({
   onOpenSettings,
   onToggleSidebar,
   onOpenAgentPalette,
+  onLaunchAgent,
   defaultCwd,
   activeWorktreeId,
 }: UseMenuActionsOptions): void {
@@ -25,6 +27,20 @@ export function useMenuActions({
     if (!isElectronAvailable()) return;
 
     const unsubscribe = window.electron.app.onMenuAction((action) => {
+      const LAUNCH_AGENT_PREFIX = "launch-agent:";
+
+      if (action.startsWith(LAUNCH_AGENT_PREFIX)) {
+        const agentId = action.slice(LAUNCH_AGENT_PREFIX.length);
+
+        if (!agentId) {
+          console.warn("[Menu] Empty agent ID in action:", action);
+          return;
+        }
+
+        onLaunchAgent(agentId as "claude" | "gemini" | "codex" | "terminal");
+        return;
+      }
+
       switch (action) {
         case "new-terminal":
           addTerminal({
@@ -53,9 +69,6 @@ export function useMenuActions({
           onOpenAgentPalette();
           break;
 
-        case "split-terminal":
-          break;
-
         default:
           console.warn("[Menu] Unhandled action:", action);
       }
@@ -68,6 +81,7 @@ export function useMenuActions({
     onOpenSettings,
     onToggleSidebar,
     onOpenAgentPalette,
+    onLaunchAgent,
     defaultCwd,
     activeWorktreeId,
   ]);
