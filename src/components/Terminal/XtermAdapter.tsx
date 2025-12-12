@@ -51,9 +51,14 @@ const MIN_CONTAINER_SIZE = 50;
 // Threshold in pixels for "at bottom" detection
 const FOLLOW_THRESHOLD_ROWS = 2;
 
-// Padding constants matching Tailwind classes: pt-2 (8px), pb-4 (16px)
-const TALL_PADDING_TOP = 8;
-const TALL_PADDING_BOTTOM = 16;
+// Layout constants
+// pl-3 = 12px. Matches the padding class applied to inner/container elements.
+const PADDING_LEFT_PX = 12;
+
+// Vertical padding for Tall Canvas Mode calculations
+// pt-3 (12px) + pb-3 (12px) = 24px vertical padding total
+const TALL_PADDING_TOP = 12;
+const TALL_PADDING_BOTTOM = 12;
 
 function XtermAdapterComponent({
   terminalId,
@@ -294,10 +299,10 @@ function XtermAdapterComponent({
       if (width === 0 || height === 0) return;
       if (width < MIN_CONTAINER_SIZE || height < MIN_CONTAINER_SIZE) return;
 
-      // For tall canvas: innerHostRef has pl-2 (8px) padding that terminal lives inside
+      // For tall canvas: innerHostRef has padding that terminal lives inside
       // Subtract this from width so cols calculation accounts for it
       if (isTallCanvas) {
-        width -= 8; // pl-2 = 8px left padding on innerHostRef
+        width -= PADDING_LEFT_PX;
       }
 
       const dims = terminalInstanceService.resize(terminalId, width, height, {
@@ -337,10 +342,10 @@ function XtermAdapterComponent({
     let width = container.clientWidth - paddingLeft - paddingRight;
     const height = container.clientHeight - paddingTop - paddingBottom;
 
-    // For tall canvas: innerHostRef has pl-2 (8px) padding that terminal lives inside
+    // For tall canvas: innerHostRef has padding that terminal lives inside
     // Subtract this from width so cols calculation accounts for it
     if (isTallCanvas) {
-      width -= 8; // pl-2 = 8px left padding on innerHostRef
+      width -= PADDING_LEFT_PX;
     }
 
     if (width < MIN_CONTAINER_SIZE || height < MIN_CONTAINER_SIZE) return;
@@ -658,7 +663,7 @@ function XtermAdapterComponent({
           {/* This creates a hard scroll lock - users physically cannot scroll past content */}
           <div
             ref={innerHostRef}
-            className="w-full relative pl-2 pt-2 pb-4 overflow-hidden"
+            className="w-full relative pl-3 pt-3 pb-3 pr-2 overflow-hidden"
             style={{
               // Height will be set dynamically by updateInnerHostHeight
               // The scroll range = innerHostRef.height - viewportRef.height
@@ -676,8 +681,8 @@ function XtermAdapterComponent({
     <div
       ref={containerRef}
       className={cn(
-        // pl-2 pt-2 pb-4: left/top padding for FitAddon measurement; pb-4 prevents text from touching bottom edge
-        "w-full h-full bg-canopy-bg text-white overflow-hidden rounded-b-[var(--radius-lg)] pl-2 pt-2 pb-4",
+        // pl-3 pt-3 pb-3 pr-2: Clean padding on all sides, with space for scrollbar on right
+        "w-full h-full bg-canopy-bg text-white overflow-hidden rounded-b-[var(--radius-lg)] pl-3 pt-3 pb-3 pr-2",
         className
       )}
       style={{
