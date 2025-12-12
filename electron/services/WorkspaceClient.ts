@@ -32,6 +32,7 @@ import type {
   CopyTreeResult,
   FileTreeNode,
 } from "../../shared/types/ipc.js";
+import type { ProjectPulse, PulseRangeDays } from "../../shared/types/pulse.js";
 import { GitHubAuth } from "./github/GitHubAuth.js";
 
 export type CopyTreeProgressCallback = (progress: CopyTreeProgress) => void;
@@ -332,6 +333,15 @@ export class WorkspaceClient extends EventEmitter {
       // File tree events
       case "file-tree-result":
         this.handleRequestResult({ ...event, success: !event.error });
+        break;
+
+      // Project Pulse events
+      case "git:project-pulse":
+        this.handleRequestResult({ ...event, success: true });
+        break;
+
+      case "git:project-pulse-error":
+        this.handleRequestResult({ ...event, success: false });
         break;
 
       default:
@@ -652,6 +662,34 @@ export class WorkspaceClient extends EventEmitter {
     );
 
     return result.detected;
+  }
+
+  // Project Pulse methods
+
+  async getProjectPulse(
+    worktreePath: string,
+    worktreeId: string,
+    mainBranch: string,
+    rangeDays: PulseRangeDays,
+    options?: { includeDelta?: boolean; includeRecentCommits?: boolean }
+  ): Promise<ProjectPulse> {
+    const requestId = this.generateRequestId();
+
+    const result = await this.sendWithResponse<{ data: ProjectPulse }>(
+      {
+        type: "git:get-project-pulse",
+        requestId,
+        worktreePath,
+        worktreeId,
+        mainBranch,
+        rangeDays,
+        includeDelta: options?.includeDelta,
+        includeRecentCommits: options?.includeRecentCommits,
+      },
+      30000
+    );
+
+    return result.data;
   }
 
   // File tree methods

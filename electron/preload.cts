@@ -228,6 +228,7 @@ const CHANNELS = {
 
   // Git channels
   GIT_GET_FILE_DIFF: "git:get-file-diff",
+  GIT_GET_PROJECT_PULSE: "git:get-project-pulse",
 
   // Sidecar channels
   SIDECAR_CREATE: "sidecar:create",
@@ -622,6 +623,13 @@ const api: ElectronAPI = {
   git: {
     getFileDiff: (cwd: string, filePath: string, status: GitStatus) =>
       _typedInvoke(CHANNELS.GIT_GET_FILE_DIFF, { cwd, filePath, status }),
+
+    getProjectPulse: (options: {
+      worktreeId: string;
+      rangeDays: 14 | 30 | 56 | 90;
+      includeDelta?: boolean;
+      includeRecentCommits?: boolean;
+    }) => ipcRenderer.invoke(CHANNELS.GIT_GET_PROJECT_PULSE, options),
   },
 
   // Terminal Config API

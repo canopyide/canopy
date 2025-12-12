@@ -135,6 +135,7 @@ export const CHANNELS = {
   TERMINAL_CONFIG_SET_FONT_FAMILY: "terminal-config:set-font-family",
 
   GIT_GET_FILE_DIFF: "git:get-file-diff",
+  GIT_GET_PROJECT_PULSE: "git:get-project-pulse",
 
   SIDECAR_CREATE: "sidecar:create",
   SIDECAR_SHOW: "sidecar:show",

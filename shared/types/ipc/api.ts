@@ -210,6 +210,12 @@ export interface ElectronAPI {
   };
   git: {
     getFileDiff(cwd: string, filePath: string, status: GitStatus): Promise<string>;
+    getProjectPulse(options: {
+      worktreeId: string;
+      rangeDays: import("../pulse.js").PulseRangeDays;
+      includeDelta?: boolean;
+      includeRecentCommits?: boolean;
+    }): Promise<import("../pulse.js").ProjectPulse>;
   };
   terminalConfig: {
     get(): Promise<TerminalConfig>;
