@@ -1065,6 +1065,7 @@ class TerminalInstanceService {
 
   /**
    * Attach terminal DOM to the provided container. Opens the terminal on first attach.
+   * For tall canvas terminals, validates rows against canvas limits after open.
    */
   attach(id: string, container: HTMLElement): ManagedTerminal | null {
     const managed = this.instances.get(id);
@@ -1077,10 +1078,34 @@ class TerminalInstanceService {
     if (!managed.isOpened) {
       managed.terminal.open(managed.hostElement);
       managed.isOpened = true;
+
+      // For tall canvas, validate rows against canvas height limits
+      // Cell height is only measurable after open()
+      if (managed.isTallCanvas) {
+        const cellHeight = this.measureCellHeight(managed.terminal);
+        const safeRows = getSafeTallCanvasRows(cellHeight);
+        if (safeRows < TALL_CANVAS_ROWS && safeRows !== managed.terminal.rows) {
+          managed.terminal.resize(managed.terminal.cols, safeRows);
+          terminalClient.resize(id, managed.terminal.cols, safeRows);
+        }
+      }
     }
     managed.lastAttachAt = Date.now();
 
     return managed;
+  }
+
+  /**
+   * Measure cell height from terminal's render dimensions.
+   * Falls back to fontSize-based estimate if internal API unavailable.
+   */
+  private measureCellHeight(terminal: Terminal): number {
+    // @ts-expect-error - internal xterm API
+    const cellHeight = terminal._core?._renderService?.dimensions?.css?.cell?.height;
+    if (cellHeight && cellHeight > 0) return cellHeight;
+    // Fallback: estimate from fontSize
+    const fontSize = terminal.options.fontSize ?? 14;
+    return fontSize * 1.1 + 2;
   }
 
   /**
@@ -1099,12 +1124,30 @@ class TerminalInstanceService {
   /**
    * Trigger a fit and send resize to backend.
    * Consolidates xterm fit and IPC in single call.
+   * For tall canvas terminals, only adjusts cols (rows are fixed).
    */
   fit(id: string): { cols: number; rows: number } | null {
     const managed = this.instances.get(id);
     if (!managed) return null;
 
     try {
+      if (managed.isTallCanvas) {
+        // For tall canvas: compute cols only, preserve fixed rows
+        // Use proposeDimensions to get new cols without actually fitting
+        const container = managed.hostElement.parentElement;
+        if (!container) return null;
+        const width = container.clientWidth;
+        // @ts-expect-error - internal API
+        const proposed = managed.fitAddon.proposeDimensions?.({ width, height: 1 });
+        const cols = proposed?.cols ?? managed.terminal.cols;
+        const rows = TALL_CANVAS_ROWS;
+        if (cols !== managed.terminal.cols) {
+          managed.terminal.resize(cols, rows);
+          terminalClient.resize(id, cols, rows);
+        }
+        return { cols, rows };
+      }
+
       managed.fitAddon.fit();
       const { cols, rows } = managed.terminal;
       terminalClient.resize(id, cols, rows);
@@ -1573,12 +1616,9 @@ class TerminalInstanceService {
   }
 
   refreshAll(): void {
-    this.instances.forEach((managed) => {
-      try {
-        managed.fitAddon.fit();
-      } catch (error) {
-        console.warn("[TerminalInstanceService] RefreshAll fit failed:", error);
-      }
+    this.instances.forEach((_, id) => {
+      // Use fit() which properly handles tall canvas terminals
+      this.fit(id);
     });
   }
 

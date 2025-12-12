@@ -80,6 +80,7 @@ function XtermAdapterComponent({
   const lastScrollTopRef = useRef(0);
   const isSelectingRef = useRef(false);
   const cellHeightRef = useRef(0);
+  const maxCursorRowRef = useRef(0); // Monotonic - only grows, never shrinks (except on clear)
 
   // Determine if this terminal should use tall canvas mode
   const isTallCanvas = useMemo(() => {
@@ -217,7 +218,8 @@ function XtermAdapterComponent({
   }, [isTallCanvas, calculateScrollTarget]);
 
   // Update inner host height based on cursor position (tall canvas mode)
-  // Height extends only to where content exists, preventing scroll into empty space
+  // Uses monotonic growth: maxCursorRowRef only increases, preventing jitter from TUI redraws
+  // Height is based on max cursor row seen, not current cursor (which can move up during redraws)
   const updateInnerHostHeight = useCallback(() => {
     if (!isTallCanvas || !innerHostRef.current || !viewportRef.current) return;
 
@@ -228,11 +230,15 @@ function XtermAdapterComponent({
     const cursorRow = managed.terminal.buffer.active.cursorY;
     const viewportHeight = viewportRef.current.clientHeight;
 
+    // Track maximum cursor row seen (monotonic growth prevents height shrinking)
+    // This avoids flicker when TUI-style agents move cursor up during redraws
+    maxCursorRowRef.current = Math.max(maxCursorRowRef.current, cursorRow);
+
     // Height should be the greater of:
     // 1. Viewport height (so content fills the view when little output)
-    // 2. Cursor position in pixels (so we can scroll up to see history)
+    // 2. Max cursor position in pixels (so we can scroll up to see history)
     // Account for padding (top + bottom) to ensure container wraps full content
-    const contentHeight = (cursorRow + 1) * cellHeight + TALL_PADDING_TOP + TALL_PADDING_BOTTOM;
+    const contentHeight = (maxCursorRowRef.current + 1) * cellHeight + TALL_PADDING_TOP + TALL_PADDING_BOTTOM;
     const totalHeight = Math.max(viewportHeight, contentHeight);
 
     innerHostRef.current.style.height = `${totalHeight}px`;
@@ -269,11 +275,17 @@ function XtermAdapterComponent({
       if (!isVisibleRef.current) return;
 
       // Get dimensions from observer (zero DOM reads)
-      const { width, height } = entry.contentRect;
+      let { width, height } = entry.contentRect;
 
       // Filter collapsed/zero states
       if (width === 0 || height === 0) return;
       if (width < MIN_CONTAINER_SIZE || height < MIN_CONTAINER_SIZE) return;
+
+      // For tall canvas: innerHostRef has pl-2 (8px) padding that terminal lives inside
+      // Subtract this from width so cols calculation accounts for it
+      if (isTallCanvas) {
+        width -= 8; // pl-2 = 8px left padding on innerHostRef
+      }
 
       const dims = terminalInstanceService.resize(terminalId, width, height, {
         isTallCanvas,
@@ -309,8 +321,14 @@ function XtermAdapterComponent({
     const paddingTop = parseFloat(style.paddingTop) || 0;
     const paddingBottom = parseFloat(style.paddingBottom) || 0;
 
-    const width = container.clientWidth - paddingLeft - paddingRight;
+    let width = container.clientWidth - paddingLeft - paddingRight;
     const height = container.clientHeight - paddingTop - paddingBottom;
+
+    // For tall canvas: innerHostRef has pl-2 (8px) padding that terminal lives inside
+    // Subtract this from width so cols calculation accounts for it
+    if (isTallCanvas) {
+      width -= 8; // pl-2 = 8px left padding on innerHostRef
+    }
 
     if (width < MIN_CONTAINER_SIZE || height < MIN_CONTAINER_SIZE) return;
 
