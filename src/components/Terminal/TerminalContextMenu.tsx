@@ -80,6 +80,8 @@ export function TerminalContextMenu({
       // VS Code-style clear: clear the frontend buffer only and let the
       // shell decide how to handle `clear`/`reset` commands.
       managed.terminal.clear();
+      // Trigger tall canvas sync for frontend-only clear operations
+      terminalInstanceService.requestTallCanvasSync(terminalId);
     }
   };
 

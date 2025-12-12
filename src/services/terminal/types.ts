@@ -79,6 +79,9 @@ export interface ManagedTerminal {
   effectiveTallRows: number;
   // Callback for tall canvas scroll sync
   tallCanvasScrollToRow?: (row: number) => void;
+  // Persisted scroll state for tall canvas (survives component remounts)
+  tallCanvasFollowLog: boolean;
+  tallCanvasLastScrollTop: number;
 }
 
 export type SabFlushMode = "normal" | "frame";
