@@ -6,6 +6,7 @@ import serialize from "@xterm/addon-serialize";
 const { SerializeAddon } = serialize;
 import type { TerminalType } from "../../../shared/types/domain.js";
 import { ProcessDetector, type DetectionResult } from "../ProcessDetector.js";
+import type { ProcessTreeCache } from "../ProcessTreeCache.js";
 import { ActivityMonitor } from "../ActivityMonitor.js";
 import { AgentStateService } from "./AgentStateService.js";
 import { ActivityHeadlineGenerator } from "../ActivityHeadlineGenerator.js";
@@ -82,6 +83,7 @@ export interface TerminalProcessCallbacks {
 export interface TerminalProcessDependencies {
   agentStateService: AgentStateService;
   ptyPool: PtyPool | null;
+  processTreeCache: ProcessTreeCache | null;
 }
 
 /**
@@ -244,16 +246,17 @@ export class TerminalProcess {
       });
     }
 
-    // Start process detection
+    // Start process detection (only if cache is available)
     const ptyPid = ptyProcess.pid;
-    if (ptyPid !== undefined) {
+    if (ptyPid !== undefined && deps.processTreeCache) {
       this.processDetector = new ProcessDetector(
         id,
         spawnedAt,
         ptyPid,
         (result: DetectionResult, cbSpawnedAt: number) => {
           this.handleAgentDetection(result, cbSpawnedAt);
-        }
+        },
+        deps.processTreeCache
       );
       this.terminalInfo.processDetector = this.processDetector;
       this.processDetector.start();
@@ -544,14 +547,15 @@ export class TerminalProcess {
    */
   startProcessDetector(): void {
     const ptyPid = this.terminalInfo.ptyProcess.pid;
-    if (ptyPid !== undefined && !this.processDetector) {
+    if (ptyPid !== undefined && !this.processDetector && this.deps.processTreeCache) {
       this.processDetector = new ProcessDetector(
         this.id,
         this.terminalInfo.spawnedAt,
         ptyPid,
         (result, cbSpawnedAt) => {
           this.handleAgentDetection(result, cbSpawnedAt);
-        }
+        },
+        this.deps.processTreeCache
       );
       this.terminalInfo.processDetector = this.processDetector;
       this.processDetector.start();

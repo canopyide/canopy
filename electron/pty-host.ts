@@ -13,6 +13,7 @@ import { MessagePort } from "node:worker_threads";
 import os from "node:os";
 import { PtyManager } from "./services/PtyManager.js";
 import { PtyPool, getPtyPool } from "./services/PtyPool.js";
+import { ProcessTreeCache } from "./services/ProcessTreeCache.js";
 import { events } from "./services/events.js";
 import { SharedRingBuffer, PacketFramer } from "../shared/utils/SharedRingBuffer.js";
 import type { AgentEvent } from "./services/AgentStateMachine.js";
@@ -46,6 +47,7 @@ process.on("unhandledRejection", (reason) => {
 
 // Initialize services
 const ptyManager = new PtyManager();
+const processTreeCache = new ProcessTreeCache(1000);
 let ptyPool: PtyPool | null = null;
 
 // Zero-copy ring buffers for terminal I/O (set via init-buffers message)
@@ -751,6 +753,9 @@ function cleanup(): void {
   pauseStartTimes.clear();
   terminalStatuses.clear();
 
+  // Stop process tree cache
+  processTreeCache.stop();
+
   if (ptyPool) {
     ptyPool.dispose();
     ptyPool = null;
@@ -770,7 +775,12 @@ process.on("exit", () => {
 // Initialize pool asynchronously
 async function initialize(): Promise<void> {
   try {
-    // Notify Main that we're ready immediately
+    // Start the process tree cache (shared across all terminals)
+    processTreeCache.start();
+    ptyManager.setProcessTreeCache(processTreeCache);
+    console.log("[PtyHost] ProcessTreeCache started");
+
+    // Notify Main that we're ready after cache is initialized
     sendEvent({ type: "ready" });
     console.log("[PtyHost] Initialized and ready (accepting IPC)");
 

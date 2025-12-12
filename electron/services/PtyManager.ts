@@ -3,6 +3,7 @@ import { events } from "./events.js";
 import type { AgentEvent } from "./AgentStateMachine.js";
 import type { AgentStateChangeTrigger } from "../schemas/agent.js";
 import type { PtyPool } from "./PtyPool.js";
+import type { ProcessTreeCache } from "./ProcessTreeCache.js";
 
 import {
   TerminalRegistry,
@@ -42,12 +43,17 @@ export class PtyManager extends EventEmitter {
   private agentStateService: AgentStateService;
   private terminals: Map<string, TerminalProcess> = new Map();
   private ptyPool: PtyPool | null = null;
+  private processTreeCache: ProcessTreeCache | null = null;
   private activeProjectId: string | null = null;
 
   constructor() {
     super();
     this.registry = new TerminalRegistry();
     this.agentStateService = new AgentStateService();
+  }
+
+  setProcessTreeCache(cache: ProcessTreeCache): void {
+    this.processTreeCache = cache;
   }
 
   /**
@@ -164,6 +170,7 @@ export class PtyManager extends EventEmitter {
       {
         agentStateService: this.agentStateService,
         ptyPool: this.ptyPool,
+        processTreeCache: this.processTreeCache,
       }
     );
 
