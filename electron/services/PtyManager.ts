@@ -375,6 +375,16 @@ export class PtyManager extends EventEmitter {
   }
 
   /**
+   * Enable or disable semantic analysis for a terminal.
+   */
+  setAnalysisEnabled(id: string, enabled: boolean): void {
+    const terminal = this.terminals.get(id);
+    if (terminal) {
+      terminal.setAnalysisEnabled(enabled);
+    }
+  }
+
+  /**
    * Transition agent state from external observer.
    */
   transitionState(
