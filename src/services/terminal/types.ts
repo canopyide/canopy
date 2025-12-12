@@ -51,6 +51,7 @@ export interface ManagedTerminal {
   lastAttachAt: number;
   lastDetachAt: number;
   webglRecoveryAttempts: number;
+  webglRecoveryToken?: number;
   // Visibility-aware LRU tracking
   isVisible: boolean;
   lastActiveTime: number;
