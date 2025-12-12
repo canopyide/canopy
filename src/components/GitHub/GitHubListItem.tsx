@@ -27,8 +27,8 @@ function getStateIcon(state: string, type: "issue" | "pr") {
 }
 
 function getStateColor(state: string): string {
-  if (state === "OPEN") return "text-green-500";
-  if (state === "MERGED") return "text-purple-500";
+  if (state === "OPEN") return "text-[var(--color-status-info)]";
+  if (state === "MERGED") return "text-[var(--color-status-success)]";
   return "text-muted-foreground";
 }
 
@@ -95,8 +95,8 @@ export function GitHubListItem({ item, type, onCreateWorktree }: GitHubListItemP
   };
 
   const getButtonStatus = () => {
-    if (copied) return { text: "✓", color: "text-green-500" };
-    if (copyError) return { text: `#${item.number}`, color: "text-red-500" };
+    if (copied) return { text: "✓", color: "text-[var(--color-status-success)]" };
+    if (copyError) return { text: `#${item.number}`, color: "text-[var(--color-status-error)]" };
     return { text: `#${item.number}`, color: "" };
   };
 

@@ -55,6 +55,7 @@ export interface TerminalHeaderProps {
   isMaximized?: boolean;
   location?: "grid" | "dock";
   isPinged?: boolean;
+  wasJustSelected?: boolean;
 }
 
 function TerminalHeaderComponent({
@@ -88,8 +89,10 @@ function TerminalHeaderComponent({
   isMaximized,
   location = "grid",
   isPinged,
+  wasJustSelected = false,
 }: TerminalHeaderProps) {
   const showCommandPill = type === "terminal" && agentState === "running" && !!lastCommand;
+
   // Get background activity stats for Zen Mode header (optimized single-pass)
   // Only count grid terminals - docked terminals are visually separate
   // Treat undefined location as grid for compatibility with persisted data
@@ -128,7 +131,7 @@ function TerminalHeaderComponent({
             : location === "dock"
               ? "bg-[var(--color-surface)]"
               : "bg-transparent",
-          isPinged && !isMaximized && "animate-bg-flash"
+          isPinged && !isMaximized && "animate-terminal-header-ping"
         )}
         onDoubleClick={handleHeaderDoubleClick}
       >
@@ -171,7 +174,9 @@ function TerminalHeaderComponent({
                   "text-xs font-medium select-none transition-colors",
                   isFocused ? "text-canopy-text" : "text-canopy-text/70",
                   onTitleChange && "cursor-text hover:text-canopy-text",
-                  isPinged && !isMaximized && "animate-text-shimmer"
+                  isPinged &&
+                    !isMaximized &&
+                    (wasJustSelected ? "animate-eco-title-select" : "animate-eco-title")
                 )}
                 onDoubleClick={onTitleDoubleClick}
                 onKeyDown={onTitleKeyDown}

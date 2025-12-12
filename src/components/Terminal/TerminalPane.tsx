@@ -77,10 +77,20 @@ function TerminalPaneComponent({
   restartError,
 }: TerminalPaneProps) {
   const containerRef = useRef<HTMLDivElement>(null);
+  const prevFocusedRef = useRef(isFocused);
+  const justFocusedUntilRef = useRef<number>(0);
   const [isRestoring, setIsRestoring] = useState(true);
   const [dismissedRestartPrompt, setDismissedRestartPrompt] = useState(false);
   const [isSearchOpen, setIsSearchOpen] = useState(false);
   const [isUpdateCwdOpen, setIsUpdateCwdOpen] = useState(false);
+
+  if (isFocused && !prevFocusedRef.current) {
+    justFocusedUntilRef.current = performance.now() + 250;
+  }
+
+  useEffect(() => {
+    prevFocusedRef.current = isFocused;
+  }, [isFocused]);
 
   useEffect(() => {
     if (!isRestoring) return;
@@ -110,6 +120,7 @@ function TerminalPaneComponent({
     [id]
   );
   const isPinged = useTerminalStore(pingedIdSelector);
+  const wasJustSelected = isPinged && isFocused && performance.now() < justFocusedUntilRef.current;
 
   const terminalErrors = useErrorStore(
     useShallow((state) => state.errors.filter((e) => e.context?.terminalId === id && !e.dismissed))
@@ -278,7 +289,7 @@ function TerminalPaneComponent({
     <div
       ref={containerRef}
       className={cn(
-        "flex flex-col h-full overflow-hidden group",
+        "flex flex-col h-full overflow-hidden group terminal-pane",
 
         // Background color: surface tint for cards, canvas for maximized
         // When focused, .terminal-selected handles the background color
@@ -295,6 +306,10 @@ function TerminalPaneComponent({
         location === "grid" && isMaximized && "border-0 rounded-none z-50",
 
         isExited && "opacity-75 grayscale",
+
+        isPinged &&
+          !isMaximized &&
+          (wasJustSelected ? "animate-terminal-ping-select" : "animate-terminal-ping"),
 
         // Restore animation on mount (skip if trashing)
         isRestoring && !isTrashing && "terminal-restoring",
@@ -348,6 +363,7 @@ function TerminalPaneComponent({
         isMaximized={isMaximized}
         location={location}
         isPinged={isPinged}
+        wasJustSelected={wasJustSelected}
       />
 
       {terminalErrors.length > 0 && (

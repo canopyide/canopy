@@ -66,6 +66,7 @@ export function WaitingContainer() {
         side="top"
         align="end"
         sideOffset={8}
+        onOpenAutoFocus={(e) => e.preventDefault()}
         onCloseAutoFocus={(e) => e.preventDefault()}
       >
         <div className="flex flex-col">

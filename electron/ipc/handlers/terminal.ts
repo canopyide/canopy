@@ -77,7 +77,10 @@ export function registerTerminalHandlers(deps: HandlerDependencies): () => void 
     // Runtime clamping in getSafeTallCanvasRows() ensures we stay under canvas limits
     const MAX_ROWS_TALL_CANVAS = 1000;
     const cols = Math.max(1, Math.min(500, Math.floor(validatedOptions.cols) || 80));
-    const rows = Math.max(1, Math.min(MAX_ROWS_TALL_CANVAS, Math.floor(validatedOptions.rows) || 30));
+    const rows = Math.max(
+      1,
+      Math.min(MAX_ROWS_TALL_CANVAS, Math.floor(validatedOptions.rows) || 30)
+    );
 
     const type = validatedOptions.type || "terminal";
     const kind = validatedOptions.kind || (validatedOptions.agentId ? "agent" : "terminal");
