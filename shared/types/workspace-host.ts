@@ -14,6 +14,7 @@
 
 import type { Worktree, WorktreeChanges, FileChangeDetail, WorktreeMood } from "./domain.js";
 import type { CopyTreeOptions, CopyTreeProgress, CopyTreeResult, FileTreeNode } from "./ipc.js";
+import type { ProjectPulse, PulseRangeDays } from "./pulse.js";
 
 /** Options for creating a new worktree */
 export interface CreateWorktreeOptions {
@@ -147,6 +148,17 @@ export type WorkspaceHostRequest =
       requestId: string;
       worktreePath: string;
       dirPath?: string;
+    }
+  // Project Pulse operations
+  | {
+      type: "git:get-project-pulse";
+      requestId: string;
+      worktreePath: string;
+      worktreeId: string;
+      mainBranch: string;
+      rangeDays: PulseRangeDays;
+      includeDelta?: boolean;
+      includeRecentCommits?: boolean;
     };
 
 /** Result of DevServer URL detection */
@@ -217,7 +229,10 @@ export type WorkspaceHostEvent =
       requestId: string;
       nodes: FileTreeNode[];
       error?: string;
-    };
+    }
+  // Project Pulse events
+  | { type: "git:project-pulse"; requestId: string; data: ProjectPulse }
+  | { type: "git:project-pulse-error"; requestId: string; error: string };
 
 /** Configuration for WorkspaceClient */
 export interface WorkspaceClientConfig {

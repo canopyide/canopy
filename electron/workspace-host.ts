@@ -3,6 +3,7 @@ import { initializeLogger } from "./utils/logger.js";
 import { copyTreeService } from "./services/CopyTreeService.js";
 import { DevServerParser } from "./services/devserver/DevServerParser.js";
 import { fileTreeService } from "./services/FileTreeService.js";
+import { projectPulseService } from "./services/ProjectPulseService.js";
 import type { CopyTreeProgress } from "../shared/types/ipc.js";
 import type { WorkspaceHostRequest, WorkspaceHostEvent } from "../shared/types/workspace-host.js";
 import { WorkspaceService } from "./workspace-host/WorkspaceService.js";
@@ -241,6 +242,59 @@ port.on("message", async (rawMsg: any) => {
             type: "file-tree-result",
             requestId,
             nodes: [],
+            error: (error as Error).message,
+          });
+        }
+        break;
+      }
+
+      case "git:get-project-pulse": {
+        const {
+          requestId,
+          worktreePath,
+          worktreeId,
+          mainBranch,
+          rangeDays,
+          includeDelta,
+          includeRecentCommits,
+        } = request;
+        try {
+          if (typeof worktreePath !== "string" || !worktreePath.trim()) {
+            throw new Error("Invalid worktreePath");
+          }
+          if (typeof worktreeId !== "string" || !worktreeId.trim()) {
+            throw new Error("Invalid worktreeId");
+          }
+          if (typeof mainBranch !== "string" || !mainBranch.trim()) {
+            throw new Error("Invalid mainBranch");
+          }
+          if (![14, 30, 56, 90].includes(rangeDays)) {
+            throw new Error("Invalid rangeDays");
+          }
+          if (includeDelta !== undefined && typeof includeDelta !== "boolean") {
+            throw new Error("Invalid includeDelta");
+          }
+          if (includeRecentCommits !== undefined && typeof includeRecentCommits !== "boolean") {
+            throw new Error("Invalid includeRecentCommits");
+          }
+
+          const pulse = await projectPulseService.getPulse({
+            worktreePath,
+            worktreeId,
+            mainBranch,
+            rangeDays,
+            includeDelta,
+            includeRecentCommits,
+          });
+          sendEvent({
+            type: "git:project-pulse",
+            requestId,
+            data: pulse,
+          });
+        } catch (error) {
+          sendEvent({
+            type: "git:project-pulse-error",
+            requestId,
             error: (error as Error).message,
           });
         }
