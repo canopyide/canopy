@@ -23,6 +23,7 @@ export interface TerminalAddons {
 
 export class TerminalAddonManager {
   private webglLru: string[] = [];
+  private webglRecoverySeq = 0;
 
   constructor(
     private readonly hardwareProfile: HardwareProfile,
@@ -75,6 +76,8 @@ export class TerminalAddonManager {
 
     try {
       const webglAddon = new WebglAddon();
+      const token = ++this.webglRecoverySeq;
+      managed.webglRecoveryToken = token;
 
       webglAddon.onContextLoss(() => {
         console.warn(`[TerminalAddonManager] WebGL context lost for ${id}`);
@@ -88,7 +91,7 @@ export class TerminalAddonManager {
 
         setTimeout(() => {
           const currentManaged = this.getTerminal(id);
-          if (!currentManaged) return;
+          if (!currentManaged || currentManaged.webglRecoveryToken !== token) return;
 
           if (!currentManaged.isVisible) {
             console.log(`[TerminalAddonManager] Deferring WebGL recovery for ${id} (hidden)`);
@@ -99,7 +102,7 @@ export class TerminalAddonManager {
 
           requestAnimationFrame(() => {
             const retryManaged = this.getTerminal(id);
-            if (!retryManaged || !retryManaged.terminal.element) return;
+            if (!retryManaged || retryManaged.webglRecoveryToken !== token || !retryManaged.terminal.element) return;
 
             try {
               if (retryManaged.webglRecoveryAttempts < MAX_WEBGL_RECOVERY_ATTEMPTS) {
@@ -135,6 +138,7 @@ export class TerminalAddonManager {
   }
 
   public releaseWebgl(id: string, managed: ManagedTerminal): void {
+    managed.webglRecoveryToken = ++this.webglRecoverySeq;
     if (managed.webglAddon) {
       managed.webglAddon.dispose();
       managed.webglAddon = undefined;
