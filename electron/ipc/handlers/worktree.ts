@@ -3,6 +3,7 @@ import { CHANNELS } from "../channels.js";
 import { store } from "../../store.js";
 import type { HandlerDependencies } from "../types.js";
 import type { WorktreeSetActivePayload, WorktreeDeletePayload } from "../../types/index.js";
+import type { PulseRangeDays, ProjectPulse } from "../../../shared/types/pulse.js";
 import {
   generateWorktreePath,
   DEFAULT_WORKTREE_PATH_PATTERN,
@@ -169,6 +170,58 @@ export function registerWorktreeHandlers(deps: HandlerDependencies): () => void 
   };
   ipcMain.handle(CHANNELS.GIT_GET_FILE_DIFF, handleGitGetFileDiff);
   handlers.push(() => ipcMain.removeHandler(CHANNELS.GIT_GET_FILE_DIFF));
+
+  const handleGitGetProjectPulse = async (
+    _event: Electron.IpcMainInvokeEvent,
+    payload: {
+      worktreeId: string;
+      rangeDays: PulseRangeDays;
+      includeDelta?: boolean;
+      includeRecentCommits?: boolean;
+    }
+  ): Promise<ProjectPulse> => {
+    if (!payload || typeof payload !== "object") {
+      throw new Error("Invalid payload");
+    }
+
+    const { worktreeId, rangeDays, includeDelta, includeRecentCommits } = payload;
+
+    if (typeof worktreeId !== "string" || !worktreeId) {
+      throw new Error("Invalid worktree ID");
+    }
+
+    if (![14, 30, 56, 90].includes(rangeDays)) {
+      throw new Error("Invalid rangeDays: must be 14, 30, 56, or 90");
+    }
+
+    if (includeDelta !== undefined && typeof includeDelta !== "boolean") {
+      throw new Error("Invalid includeDelta: must be a boolean");
+    }
+
+    if (includeRecentCommits !== undefined && typeof includeRecentCommits !== "boolean") {
+      throw new Error("Invalid includeRecentCommits: must be a boolean");
+    }
+
+    if (!workspaceClient) {
+      throw new Error("WorkspaceClient not initialized");
+    }
+
+    const monitor = await workspaceClient.getMonitorAsync(worktreeId);
+    if (!monitor) {
+      throw new Error(`Worktree not found: ${worktreeId}`);
+    }
+
+    const states = await workspaceClient.getAllStatesAsync();
+    const mainWorktree = states.find((wt) => wt.isMainWorktree);
+    const mainBranch = mainWorktree?.branch ?? "main";
+
+    return workspaceClient.getProjectPulse(monitor.path, worktreeId, mainBranch, rangeDays, {
+      includeDelta,
+      includeRecentCommits,
+    });
+  };
+  ipcMain.handle(CHANNELS.GIT_GET_PROJECT_PULSE, handleGitGetProjectPulse);
+  handlers.push(() => ipcMain.removeHandler(CHANNELS.GIT_GET_PROJECT_PULSE));
 
   return () => handlers.forEach((cleanup) => cleanup());
 }
