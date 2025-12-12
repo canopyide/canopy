@@ -228,6 +228,7 @@ export class TerminalProcess {
       headlessTerminal,
       serializeAddon,
       restartCount: 0,
+      analysisEnabled: this.isAgentTerminal,
     };
 
     // Set up PTY event handlers
@@ -290,6 +291,22 @@ export class TerminalProcess {
    */
   getInfo(): TerminalInfo {
     return this.terminalInfo;
+  }
+
+  /**
+   * Check if semantic analysis is enabled for this terminal.
+   * Enabled by default for agent terminals, disabled for shells.
+   */
+  get analysisEnabled(): boolean {
+    return this.terminalInfo.analysisEnabled;
+  }
+
+  /**
+   * Enable or disable semantic analysis for this terminal.
+   * Use this for future manual control (e.g., shell script monitoring).
+   */
+  setAnalysisEnabled(enabled: boolean): void {
+    this.terminalInfo.analysisEnabled = enabled;
   }
 
   /**

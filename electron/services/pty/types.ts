@@ -31,6 +31,7 @@ export interface TerminalInfo {
   error?: string;
   outputBuffer: string;
   traceId?: string;
+  analysisEnabled: boolean;
 
   lastInputTime: number;
   lastOutputTime: number;
