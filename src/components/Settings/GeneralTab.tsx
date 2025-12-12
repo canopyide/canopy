@@ -214,14 +214,16 @@ export function GeneralTab({ appVersion, onNavigateToAgents }: GeneralTabProps) 
       </div>
 
       {configError ? (
-        <div className="p-4 rounded-lg border border-red-500/50 bg-red-500/10">
-          <p className="text-sm text-red-500">Failed to load hibernation settings: {configError}</p>
+        <div className="p-4 rounded-lg border border-[color-mix(in_oklab,var(--color-status-error)_50%,transparent)] bg-[color-mix(in_oklab,var(--color-status-error)_10%,transparent)]">
+          <p className="text-sm text-[var(--color-status-error)]">
+            Failed to load hibernation settings: {configError}
+          </p>
         </div>
       ) : hibernationConfig ? (
         <div className="space-y-4">
           <div>
             <h4 className="text-sm font-medium text-canopy-text mb-2 flex items-center gap-2">
-              <Moon className="w-4 h-4 text-purple-500" />
+              <Moon className="w-4 h-4 text-canopy-accent" />
               Auto-Hibernation
             </h4>
             <p className="text-xs text-canopy-text/50 mb-4">
@@ -236,7 +238,7 @@ export function GeneralTab({ appVersion, onNavigateToAgents }: GeneralTabProps) 
             className={cn(
               "w-full flex items-center justify-between p-4 rounded-lg border transition-all",
               hibernationConfig.enabled
-                ? "bg-purple-500/10 border-purple-500 text-purple-500"
+                ? "bg-canopy-accent/10 border-canopy-accent text-canopy-accent"
                 : "border-canopy-border hover:bg-white/5 text-canopy-text/70"
             )}
           >
@@ -244,7 +246,7 @@ export function GeneralTab({ appVersion, onNavigateToAgents }: GeneralTabProps) 
               <Moon
                 className={cn(
                   "w-5 h-5",
-                  hibernationConfig.enabled ? "text-purple-500" : "text-canopy-text/50"
+                  hibernationConfig.enabled ? "text-canopy-accent" : "text-canopy-text/50"
                 )}
               />
               <div className="text-left">
@@ -263,7 +265,7 @@ export function GeneralTab({ appVersion, onNavigateToAgents }: GeneralTabProps) 
             <div
               className={cn(
                 "w-11 h-6 rounded-full relative transition-colors",
-                hibernationConfig.enabled ? "bg-purple-500" : "bg-canopy-border"
+                hibernationConfig.enabled ? "bg-canopy-accent" : "bg-canopy-border"
               )}
             >
               <div
@@ -287,7 +289,7 @@ export function GeneralTab({ appVersion, onNavigateToAgents }: GeneralTabProps) 
                     className={cn(
                       "px-3 py-1.5 rounded-md text-xs font-medium transition-all",
                       hibernationConfig.inactiveThresholdHours === value
-                        ? "bg-purple-500/10 border border-purple-500 text-purple-500"
+                        ? "bg-canopy-accent/10 border border-canopy-accent text-canopy-accent"
                         : "border border-canopy-border hover:bg-white/5 text-canopy-text/70"
                     )}
                   >

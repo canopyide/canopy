@@ -199,7 +199,7 @@
   /* Sidebar - distinct from main background */
   --sidebar: oklch(0.14 0 0);
   --sidebar-foreground: oklch(0.985 0 0);
-  --sidebar-primary: oklch(0.488 0.243 264.376);
+  --sidebar-primary: oklch(0.696 0.17 162.48); /* Emerald-500 - matches brand accent */
   --sidebar-primary-foreground: oklch(0.985 0 0);
   --sidebar-accent: oklch(0.269 0 0);
   --sidebar-accent-foreground: oklch(0.985 0 0);
@@ -417,7 +417,7 @@ body,
 
 /* Terminal Selection State */
 .terminal-selected {
-  border-color: rgba(255, 255, 255, 0.15) !important;
+  border-color: rgba(255, 255, 255, 0.15);
   background-color: var(--color-surface-highlight);
   box-shadow: inset 0 0 0 1px rgba(255, 255, 255, 0.05);
 }
@@ -429,59 +429,176 @@ body,
 
 /* Backwards compatibility for older selection class */
 .terminal-focused {
-  border-color: rgba(255, 255, 255, 0.15) !important;
+  border-color: rgba(255, 255, 255, 0.15);
   background-color: var(--color-surface-highlight);
   box-shadow: inset 0 0 0 1px rgba(255, 255, 255, 0.05);
 }
 
-/* Terminal Header Ping Animation - Professional Focus Flash */
-@keyframes bg-flash-fade {
+/* Terminal Pane Ping Animation
+   Two distinct animation approaches:
+
+   1. Already selected (animate-terminal-ping):
+      - Uses overlay (::before) for brightness wave
+      - Uses ::after for border pulse
+      - Element stays at selected state throughout
+
+   2. Becoming selected (animate-terminal-ping-select):
+      - Animates ELEMENT properties directly (no overlay)
+      - Disables base CSS transition to prevent fighting
+      - Travels: unselected → overshoot → selected
+      - Same peak timing (35%) as already-selected variant
+*/
+
+.terminal-pane {
+  --terminal-ping-duration: 1600ms;
+  --terminal-select-duration: 200ms;
+  position: relative;
+  transition:
+    background-color var(--terminal-select-duration) cubic-bezier(0.4, 0, 0.2, 1),
+    border-color var(--terminal-select-duration) cubic-bezier(0.4, 0, 0.2, 1),
+    box-shadow var(--terminal-select-duration) cubic-bezier(0.4, 0, 0.2, 1);
+}
+
+/* ==========================================
+   ALREADY SELECTED: Overlay-based animation
+   ========================================== */
+
+@keyframes terminal-ping-overlay {
   0% {
-    background-color: rgba(255, 255, 255, 0.15);
+    opacity: 0;
+  }
+  35% {
+    opacity: 1;
   }
   100% {
-    background-color: transparent;
+    opacity: 0;
   }
 }
 
-.animate-bg-flash {
-  animation: bg-flash-fade 4000ms cubic-bezier(0.22, 1, 0.36, 1) forwards;
-}
-
-@keyframes text-shimmer-scroll {
+@keyframes terminal-ping-border {
   0% {
-    background-position: 150% center;
+    box-shadow: inset 0 0 0 1px rgb(255 255 255 / 0);
+  }
+  35% {
+    box-shadow: inset 0 0 0 1px rgb(255 255 255 / 0.25);
   }
   100% {
-    background-position: -50% center;
+    box-shadow: inset 0 0 0 1px rgb(255 255 255 / 0);
   }
 }
 
-.animate-text-shimmer {
-  background: linear-gradient(
-    120deg,
-    var(--color-canopy-text) 40%,
-    #ffffff 50%,
-    var(--color-canopy-text) 60%
-  );
-  background-size: 200% auto;
-  background-clip: text;
-  -webkit-background-clip: text;
-  -webkit-text-fill-color: transparent;
-  color: transparent;
-  animation: text-shimmer-scroll 1.5s ease-out forwards;
+.animate-terminal-ping::before {
+  content: "";
+  position: absolute;
+  inset: 0;
+  pointer-events: none;
+  border-radius: inherit;
+  background: rgb(255 255 255 / 0.12);
+  animation: terminal-ping-overlay var(--terminal-ping-duration) cubic-bezier(0.4, 0, 0.2, 1) both;
+  will-change: opacity;
 }
 
+.animate-terminal-ping::after {
+  content: "";
+  position: absolute;
+  inset: 0;
+  pointer-events: none;
+  border-radius: inherit;
+  animation: terminal-ping-border var(--terminal-ping-duration) cubic-bezier(0.4, 0, 0.2, 1) both;
+  will-change: box-shadow;
+}
+
+/* ==========================================
+   BECOMING SELECTED: Element-level animation
+   ========================================== */
+
+@keyframes terminal-ping-select-element {
+  0% {
+    /* Unselected appearance */
+    background-color: var(--color-surface);
+    border-color: var(--color-canopy-border);
+    box-shadow: none;
+  }
+  35% {
+    /* Overshoot: selected + extra brightness */
+    background-color: var(--color-surface-highlight);
+    border-color: rgba(255, 255, 255, 0.25);
+    box-shadow: inset 0 0 0 1px rgba(255, 255, 255, 0.25);
+  }
+  100% {
+    /* Settled: matches .terminal-selected exactly */
+    background-color: var(--color-surface-highlight);
+    border-color: rgba(255, 255, 255, 0.15);
+    box-shadow: inset 0 0 0 1px rgba(255, 255, 255, 0.05);
+  }
+}
+
+.animate-terminal-ping-select {
+  animation: terminal-ping-select-element var(--terminal-ping-duration) cubic-bezier(0.4, 0, 0.2, 1)
+    both !important;
+  transition: none !important;
+}
+
+@keyframes terminal-header-border {
+  0% {
+    border-bottom-color: rgb(255 255 255 / 0.05);
+  }
+  35% {
+    border-bottom-color: rgb(255 255 255 / 0.25);
+  }
+  100% {
+    border-bottom-color: rgb(255 255 255 / 0.05);
+  }
+}
+
+.animate-terminal-header-ping {
+  animation: terminal-header-border var(--terminal-ping-duration, 1600ms)
+    cubic-bezier(0.4, 0, 0.2, 1) both;
+  will-change: border-bottom-color;
+}
+
+/* Title glow - same animation for both variants */
+@keyframes title-glow {
+  0% {
+    text-shadow: 0 0 0 rgb(255 255 255 / 0);
+  }
+  35% {
+    text-shadow: 0 0 8px rgb(255 255 255 / 0.3);
+  }
+  100% {
+    text-shadow: 0 0 0 rgb(255 255 255 / 0);
+  }
+}
+
+.animate-eco-title,
+.animate-eco-title-select {
+  animation: title-glow var(--terminal-ping-duration, 1600ms) cubic-bezier(0.4, 0, 0.2, 1) both;
+  will-change: text-shadow;
+}
+
+/* Respect reduced motion */
 @media (prefers-reduced-motion: reduce) {
-  .animate-bg-flash {
+  .animate-terminal-ping::before,
+  .animate-terminal-ping::after,
+  .animate-terminal-header-ping {
     animation: none;
+    opacity: 0;
+    background: transparent;
+    box-shadow: none;
   }
 
-  .animate-text-shimmer {
+  .animate-terminal-ping-select {
+    animation: none !important;
+    transition:
+      background-color 0.2s,
+      border-color 0.2s,
+      box-shadow 0.2s !important;
+  }
+
+  .animate-eco-title,
+  .animate-eco-title-select {
     animation: none;
-    background: none;
-    -webkit-text-fill-color: var(--color-canopy-text);
-    color: var(--color-canopy-text);
+    text-shadow: none;
   }
 }
 

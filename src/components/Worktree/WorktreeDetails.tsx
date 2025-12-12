@@ -211,9 +211,9 @@ export function WorktreeDetails({
                 "py-1.5 px-3 rounded-lg font-medium text-xs transition-colors",
                 "focus-visible:outline focus-visible:outline-2 focus-visible:outline-canopy-accent",
                 serverState.status === "running"
-                  ? "bg-green-500/20 text-green-400 hover:bg-green-500/30"
+                  ? "bg-[color-mix(in_oklab,var(--color-server-running)_20%,transparent)] text-[var(--color-server-running)] hover:bg-[color-mix(in_oklab,var(--color-server-running)_30%,transparent)]"
                   : serverState.status === "error"
-                    ? "bg-red-500/10 text-red-400 hover:bg-red-500/20"
+                    ? "bg-[color-mix(in_oklab,var(--color-server-error)_10%,transparent)] text-[var(--color-server-error)] hover:bg-[color-mix(in_oklab,var(--color-server-error)_20%,transparent)]"
                     : "bg-white/5 text-canopy-text/60 hover:bg-white/10",
                 (serverLoading || serverState.status === "starting") &&
                   "opacity-50 cursor-not-allowed"
@@ -222,12 +222,12 @@ export function WorktreeDetails({
               <div className="flex items-center gap-1.5">
                 {serverState.status === "running" ? (
                   <>
-                    <div className="w-1.5 h-1.5 bg-green-400 rounded-full animate-pulse" />
+                    <div className="w-1.5 h-1.5 bg-[var(--color-server-running)] rounded-full animate-pulse" />
                     <span>Running</span>
                   </>
                 ) : serverState.status === "starting" ? (
                   <>
-                    <div className="w-1.5 h-1.5 bg-amber-400 rounded-full animate-pulse" />
+                    <div className="w-1.5 h-1.5 bg-[var(--color-server-starting)] rounded-full animate-pulse" />
                     <span>Starting...</span>
                   </>
                 ) : serverState.status === "error" ? (
@@ -253,7 +253,7 @@ export function WorktreeDetails({
                   e.preventDefault();
                   systemClient.openExternal(serverState.url!);
                 }}
-                className="flex items-center gap-1.5 text-xs text-blue-400 hover:text-blue-300 hover:underline"
+                className="flex items-center gap-1.5 text-xs text-[var(--color-status-info)] hover:brightness-110 hover:underline"
               >
                 <Globe className="w-3 h-3" />
                 {serverState.url.replace(/^https?:\/\//, "")}
@@ -294,7 +294,7 @@ export function WorktreeDetails({
                   href={segment.content}
                   target="_blank"
                   rel="noopener noreferrer"
-                  className="text-blue-400 underline hover:text-blue-300 rounded focus-visible:outline focus-visible:outline-2 focus-visible:outline-canopy-accent focus-visible:outline-offset-2"
+                  className="text-[var(--color-status-info)] underline hover:brightness-110 rounded focus-visible:outline focus-visible:outline-2 focus-visible:outline-canopy-accent focus-visible:outline-offset-2"
                   onClick={(e) => handleLinkClick(e, segment.content)}
                 >
                   {segment.content}

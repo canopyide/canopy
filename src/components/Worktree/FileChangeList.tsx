@@ -28,12 +28,12 @@ function getBasename(filePath: string): string {
 }
 
 const STATUS_CONFIG: Record<GitStatus, { label: string; color: string }> = {
-  modified: { label: "M", color: "text-amber-400" },
-  added: { label: "A", color: "text-green-400" },
-  deleted: { label: "D", color: "text-red-400" },
-  untracked: { label: "?", color: "text-green-400" },
-  renamed: { label: "R", color: "text-blue-400" },
-  copied: { label: "C", color: "text-blue-400" },
+  modified: { label: "M", color: "text-[var(--color-status-warning)]" },
+  added: { label: "A", color: "text-[var(--color-status-success)]" },
+  deleted: { label: "D", color: "text-[var(--color-status-error)]" },
+  untracked: { label: "?", color: "text-[var(--color-status-success)]" },
+  renamed: { label: "R", color: "text-[var(--color-status-info)]" },
+  copied: { label: "C", color: "text-[var(--color-status-info)]" },
   ignored: { label: "I", color: "text-canopy-text/40" },
 };
 

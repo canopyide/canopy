@@ -13,7 +13,7 @@ export const STATE_ICONS: Record<AgentState, React.ComponentType<{ className?: s
 export const STATE_COLORS: Record<AgentState, string> = {
   working: "text-[var(--color-state-working)]",
   running: "text-[var(--color-status-info)]",
-  waiting: "text-amber-400",
+  waiting: "text-[var(--color-state-waiting)]",
   idle: "text-canopy-text/40",
   completed: "text-[var(--color-status-success)]",
   failed: "text-[var(--color-status-error)]",

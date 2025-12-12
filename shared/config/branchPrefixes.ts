@@ -16,10 +16,7 @@ const COLORS = {
   teal: { bg: "bg-teal-500/10", border: "border-teal-500/30", text: "text-teal-400" },
   red: { bg: "bg-red-500/10", border: "border-red-500/30", text: "text-red-400" },
   gray: { bg: "bg-canopy-border/20", border: "border-canopy-border", text: "text-canopy-text/60" },
-  blue: { bg: "bg-blue-500/10", border: "border-blue-500/30", text: "text-blue-400" },
-  purple: { bg: "bg-purple-500/10", border: "border-purple-500/30", text: "text-purple-400" },
-  yellow: { bg: "bg-yellow-500/10", border: "border-yellow-500/30", text: "text-yellow-400" },
-  orange: { bg: "bg-orange-500/10", border: "border-orange-500/30", text: "text-orange-400" },
+  amber: { bg: "bg-amber-500/10", border: "border-amber-500/30", text: "text-amber-400" },
 } as const;
 
 export const DEFAULT_BRANCH_TYPE: BranchType = {
@@ -46,27 +43,27 @@ export const BRANCH_TYPES: BranchType[] = [
     colors: COLORS.red,
   },
   { id: "chore", displayName: "Chore", prefix: "chore", aliases: [], colors: COLORS.gray },
-  { id: "docs", displayName: "Docs", prefix: "docs", aliases: ["doc"], colors: COLORS.blue },
+  { id: "docs", displayName: "Docs", prefix: "docs", aliases: ["doc"], colors: COLORS.gray },
   {
     id: "refactor",
     displayName: "Refactor",
     prefix: "refactor",
     aliases: ["refact"],
-    colors: COLORS.purple,
+    colors: COLORS.amber,
   },
-  { id: "test", displayName: "Test", prefix: "test", aliases: ["tests"], colors: COLORS.yellow },
+  { id: "test", displayName: "Test", prefix: "test", aliases: ["tests"], colors: COLORS.amber },
   {
     id: "release",
     displayName: "Release",
     prefix: "release",
     aliases: ["rel"],
-    colors: COLORS.orange,
+    colors: COLORS.amber,
   },
-  { id: "ci", displayName: "CI", prefix: "ci", aliases: ["build"], colors: COLORS.blue },
+  { id: "ci", displayName: "CI", prefix: "ci", aliases: ["build"], colors: COLORS.gray },
   { id: "deps", displayName: "Deps", prefix: "deps", aliases: ["dependabot"], colors: COLORS.gray },
-  { id: "perf", displayName: "Perf", prefix: "perf", aliases: [], colors: COLORS.purple },
-  { id: "style", displayName: "Style", prefix: "style", aliases: [], colors: COLORS.blue },
-  { id: "wip", displayName: "WIP", prefix: "wip", aliases: [], colors: COLORS.yellow },
+  { id: "perf", displayName: "Perf", prefix: "perf", aliases: [], colors: COLORS.teal },
+  { id: "style", displayName: "Style", prefix: "style", aliases: [], colors: COLORS.gray },
+  { id: "wip", displayName: "WIP", prefix: "wip", aliases: [], colors: COLORS.amber },
 ];
 
 export const BRANCH_PREFIX_MAP: Record<string, BranchType> = {};

@@ -754,7 +754,7 @@ export function WorktreeCard({
                       e.stopPropagation();
                       onOpenIssue?.();
                     }}
-                    className="group/issue flex items-center gap-1 text-xs text-blue-400 hover:text-blue-300 hover:underline transition-colors focus-visible:outline focus-visible:outline-2 focus-visible:outline-canopy-accent"
+                    className="group/issue flex items-center gap-1 text-xs text-[var(--color-status-info)] hover:brightness-110 hover:underline transition-colors focus-visible:outline focus-visible:outline-2 focus-visible:outline-canopy-accent"
                     title="Open Issue on GitHub"
                   >
                     <CircleDot className="w-2.5 h-2.5" />
@@ -772,10 +772,10 @@ export function WorktreeCard({
                       "group/pr flex items-center gap-1 text-xs hover:underline transition-colors",
                       "focus-visible:outline focus-visible:outline-2 focus-visible:outline-canopy-accent",
                       worktree.prState === "merged"
-                        ? "text-purple-400 hover:text-purple-300"
+                        ? "text-[var(--color-status-success)] hover:brightness-110"
                         : worktree.prState === "closed"
-                          ? "text-red-400 hover:text-red-300"
-                          : "text-green-400 hover:text-green-300"
+                          ? "text-[var(--color-status-error)] hover:brightness-110"
+                          : "text-[var(--color-status-info)] hover:brightness-110"
                     )}
                     title={`PR #${worktree.prNumber} · ${worktree.prState ?? "open"}`}
                   >
@@ -949,7 +949,7 @@ export function WorktreeCard({
                   <DropdownMenuItem
                     key={term.id}
                     onSelect={() => handleTerminalSelect(term)}
-                    className="flex items-center justify-between gap-2.5 px-2.5 py-1.5 cursor-pointer group"
+                    className="flex items-center justify-between gap-2.5 px-2.5 py-1.5 cursor-pointer group focus:bg-white/5 focus:text-inherit data-[highlighted]:bg-white/5 data-[highlighted]:text-inherit"
                   >
                     {/* LEFT SIDE: Icon + Title */}
                     <div className="flex items-center gap-2 min-w-0 flex-1">
