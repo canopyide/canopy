@@ -648,6 +648,12 @@ export const createTerminalRegistrySlice =
         return;
       }
 
+      // Guard against concurrent restart attempts
+      if (terminal.isRestarting) {
+        console.warn(`[TerminalStore] Terminal ${id} is already restarting, ignoring`);
+        return;
+      }
+
       // Clear any previous restart error and mark as restarting
       set((state) => ({
         terminals: state.terminals.map((t) =>
@@ -757,22 +763,49 @@ export const createTerminalRegistrySlice =
       }
 
       try {
-        // Kill the old PTY backend (but don't remove from store)
+        // AGGRESSIVE TEARDOWN: Destroy frontend FIRST to prevent race condition
+        // The old frontend must stop listening before new PTY data starts flowing
+        terminalInstanceService.destroy(id);
+
+        // Kill the old PTY backend
         await terminalClient.kill(id);
 
+        // Calculate spawn dimensions
         let spawnCols = currentTerminal.cols || 80;
         let spawnRows = currentTerminal.rows || 24;
         if (targetLocation === "dock") {
-          const dims = terminalInstanceService.resize(id, DOCK_TERM_WIDTH, DOCK_TERM_HEIGHT);
-          if (dims) {
-            spawnCols = dims.cols;
-            spawnRows = dims.rows;
-          }
+          spawnCols = Math.floor(DOCK_TERM_WIDTH / 9);
+          spawnRows = Math.floor(DOCK_TERM_HEIGHT / 18);
         }
 
-        // Spawn a new PTY with the SAME ID - output goes to buffer
+        // Update terminal in store: increment restartKey, reset agent state, update location
+        // This triggers XtermAdapter remount with new xterm instance
+        // Keep isRestarting: true to prevent onExit race
+        set((state) => {
+          const newTerminals = state.terminals.map((t) =>
+            t.id === id
+              ? {
+                  ...t,
+                  location: targetLocation,
+                  restartKey: (t.restartKey ?? 0) + 1,
+                  agentState: isAgent ? ("idle" as const) : undefined,
+                  lastStateChange: isAgent ? Date.now() : undefined,
+                  command: commandToRun,
+                  isRestarting: true,
+                  restartError: undefined,
+                }
+              : t
+          );
+          terminalPersistence.save(newTerminals);
+          return { terminals: newTerminals };
+        });
+
+        // Allow React to process state update and begin remounting XtermAdapter
+        await new Promise((resolve) => setTimeout(resolve, 50));
+
+        // Spawn new PTY - output will buffer in OS pipe until new frontend attaches
         await terminalClient.spawn({
-          id, // Reuse the same ID
+          id,
           cwd: currentTerminal.cwd,
           cols: spawnCols,
           rows: spawnRows,
@@ -784,32 +817,8 @@ export const createTerminalRegistrySlice =
           command: commandToRun,
         });
 
-        // Now safe to destroy old xterm - spawn succeeded
-        terminalInstanceService.destroy(id);
-
-        // Update terminal in store: increment restartKey, reset agent state, update location
-        // This triggers XtermAdapter remount with new xterm instance
-        set((state) => {
-          const newTerminals = state.terminals.map((t) =>
-            t.id === id
-              ? {
-                  ...t,
-                  location: targetLocation,
-                  restartKey: (t.restartKey ?? 0) + 1,
-                  agentState: isAgent ? ("idle" as const) : undefined,
-                  lastStateChange: isAgent ? Date.now() : undefined,
-                  command: commandToRun,
-                  isRestarting: false,
-                  restartError: undefined,
-                }
-              : t
-          );
-          terminalPersistence.save(newTerminals);
-          return { terminals: newTerminals };
-        });
-
-        // Allow XtermAdapter to remount and set up data listeners
-        await new Promise((resolve) => setTimeout(resolve, 100));
+        // Allow XtermAdapter to finish mounting and set up data listeners
+        await new Promise((resolve) => setTimeout(resolve, 50));
 
         if (targetLocation === "dock") {
           optimizeForDock(id);
@@ -818,6 +827,13 @@ export const createTerminalRegistrySlice =
             console.error("Failed to flush terminal buffer:", error);
           });
         }
+
+        // Restart complete - clear isRestarting flag
+        set((state) => ({
+          terminals: state.terminals.map((t) =>
+            t.id === id ? { ...t, isRestarting: false } : t
+          ),
+        }));
       } catch (error) {
         // Set error state instead of trashing the terminal
         const errorMessage = error instanceof Error ? error.message : String(error);

@@ -57,6 +57,9 @@ class TerminalInstanceService {
     // Write data and apply flow control acknowledgement after xterm processes the buffer update
     const terminal = managed.terminal;
     terminal.write(data, () => {
+      // Guard against stale callback after destroy/restart
+      if (this.instances.get(id) !== managed) return;
+
       // Flow control acknowledgement
       const len = typeof data === "string" ? data.length : data.byteLength;
       terminalClient.acknowledgeData(id, len);
@@ -869,6 +872,19 @@ class TerminalInstanceService {
     const managed = this.instances.get(id);
     if (!managed) return;
 
+    // Prevent future lookups from treating this id as active
+    this.instances.delete(id);
+
+    // Synchronously stop all listeners (IPC + xterm input) before other cleanup
+    for (const unsub of managed.listeners) {
+      try {
+        unsub();
+      } catch (error) {
+        console.warn("[TerminalInstanceService] Error unsubscribing listener:", error);
+      }
+    }
+    managed.listeners.length = 0;
+
     this.clearResizeJobs(managed);
     this.addonManager.cancelWebglDispose(managed);
     this.dataBuffer.resetForTerminal(id);
@@ -883,14 +899,12 @@ class TerminalInstanceService {
 
     managed.throttledWriter.dispose();
 
-    managed.terminal.dispose();
     this.addonManager.releaseWebgl(id, managed);
+    managed.terminal.dispose();
 
     if (managed.hostElement.parentElement) {
       managed.hostElement.parentElement.removeChild(managed.hostElement);
     }
-
-    this.instances.delete(id);
   }
 
   dispose(): void {
