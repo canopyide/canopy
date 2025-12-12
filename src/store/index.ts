@@ -44,3 +44,5 @@ export { useUIStore } from "./uiStore";
 export { useGitHubConfigStore, cleanupGitHubConfigStore } from "./githubConfigStore";
 
 export { useAgentSettingsStore, cleanupAgentSettingsStore } from "./agentSettingsStore";
+
+export { usePulseStore } from "./pulseStore";

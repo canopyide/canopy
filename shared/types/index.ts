@@ -267,3 +267,14 @@ export type {
   CreateWorktreeOptions as WorkspaceCreateWorktreeOptions,
   BranchInfo as WorkspaceBranchInfo,
 } from "./workspace-host.js";
+
+// Project Pulse types - activity heatmap and commit history
+export type {
+  PulseRangeDays,
+  HeatLevel,
+  HeatCell,
+  CommitItem,
+  BranchDeltaToMain,
+  ProjectPulse,
+  GetProjectPulseOptions,
+} from "./pulse.js";
