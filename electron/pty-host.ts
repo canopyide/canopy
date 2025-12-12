@@ -248,7 +248,9 @@ ptyManager.on("data", (id: string, data: string | Uint8Array) => {
   // ---------------------------------------------------------------------------
 
   // Semantic Analysis (Worker) - best-effort, can drop frames
-  if (analysisBuffer) {
+  // Only write to analysis buffer if terminal has analysis enabled (agent terminals)
+  const terminalInfo = ptyManager.getTerminal(id);
+  if (analysisBuffer && terminalInfo?.analysisEnabled) {
     const analysisPacket = packetFramer.frame(id, data);
     if (analysisPacket) {
       const analysisWritten = analysisBuffer.write(analysisPacket);
@@ -520,6 +522,14 @@ port.on("message", (rawMsg: any) => {
 
       case "acknowledge-data":
         ptyManager.acknowledgeData(msg.id, msg.charCount);
+        break;
+
+      case "set-analysis-enabled":
+        if (typeof msg.id === "string" && typeof msg.enabled === "boolean") {
+          ptyManager.setAnalysisEnabled(msg.id, msg.enabled);
+        } else {
+          console.warn("[PtyHost] Invalid set-analysis-enabled message:", msg);
+        }
         break;
 
       case "get-snapshot":
