@@ -1,10 +1,11 @@
-import React, { useCallback, useLayoutEffect, useMemo, useRef, useEffect, useState } from "react";
+import React, { useCallback, useLayoutEffect, useMemo, useRef, useEffect } from "react";
 import "@xterm/xterm/css/xterm.css";
 import { cn } from "@/lib/utils";
 import { terminalClient } from "@/clients";
 import { TerminalRefreshTier } from "@/types";
 import type { TerminalType } from "@/types";
 import { terminalInstanceService } from "@/services/TerminalInstanceService";
+import { measureCellHeight } from "@/services/terminal/TerminalConfig";
 import { useScrollbackStore, usePerformanceModeStore, useTerminalFontStore } from "@/store";
 import { getScrollbackForType, PERFORMANCE_MODE_SCROLLBACK } from "@/utils/scrollbackConfig";
 import { DEFAULT_TERMINAL_FONT_FAMILY } from "@/config/terminalFont";
@@ -81,10 +82,10 @@ function XtermAdapterComponent({
   // Tall canvas mode refs (agent terminals only)
   const viewportRef = useRef<HTMLDivElement>(null);
   const innerHostRef = useRef<HTMLDivElement>(null);
-  const [followLog, setFollowLog] = useState(true);
-  const lastScrollTopRef = useRef(0);
+  // Note: followLog is persisted in TerminalInstanceService to survive component remounts
   const isSelectingRef = useRef(false);
-  const cellHeightRef = useRef(0);
+  // RAF ref for coalescing output-driven updates
+  const tallCanvasSyncRafRef = useRef<number | null>(null);
 
   // Determine if this terminal should use tall canvas mode
   const isTallCanvas = useMemo(() => {
@@ -137,24 +138,12 @@ function XtermAdapterComponent({
     [effectiveScrollback, performanceMode, fontSize, fontFamily]
   );
 
-  // Measure cell height from xterm's internal renderer
-  const measureCellHeight = useCallback(() => {
+  // Get cell height using centralized measurement from TerminalConfig
+  const getCellHeight = useCallback(() => {
     const managed = terminalInstanceService.get(terminalId);
-    if (!managed) return cellHeightRef.current || 21; // Fallback
-
-    // Access xterm internal dimensions
-    const terminal = managed.terminal;
-    // @ts-expect-error - accessing internal API
-    const renderDims = terminal._core?._renderService?.dimensions;
-    if (renderDims?.css?.cell?.height) {
-      cellHeightRef.current = renderDims.css.cell.height;
-      return renderDims.css.cell.height;
-    }
-    // Fallback based on font size
-    const fallback = fontSize * 1.1 + 2; // lineHeight + buffer
-    cellHeightRef.current = fallback;
-    return fallback;
-  }, [terminalId, fontSize]);
+    if (!managed) return 21; // Fallback
+    return measureCellHeight(managed.terminal);
+  }, [terminalId]);
 
   // Calculate target scroll position to keep cursor visible (tall canvas mode)
   // Returns the scroll position that places the cursor at the bottom of the viewport
@@ -165,7 +154,7 @@ function XtermAdapterComponent({
     const managed = terminalInstanceService.get(terminalId);
     if (!managed) return 0;
 
-    const cellHeight = measureCellHeight();
+    const cellHeight = getCellHeight();
     const cursorRow = managed.terminal.buffer.active.cursorY;
     const viewportHeight = viewportRef.current.clientHeight;
 
@@ -176,16 +165,17 @@ function XtermAdapterComponent({
     const target = Math.max(0, cursorPixelY - viewportHeight);
 
     return target;
-  }, [isTallCanvas, terminalId, measureCellHeight]);
+  }, [isTallCanvas, terminalId, getCellHeight]);
 
   // Sync scroll position for tall canvas mode (follow cursor)
   const syncTallCanvasScroll = useCallback(() => {
+    const followLog = terminalInstanceService.getTallCanvasFollowLog(terminalId);
     if (!isTallCanvas || !followLog || !viewportRef.current || isSelectingRef.current) return;
 
     const target = calculateScrollTarget();
     viewportRef.current.scrollTop = target;
-    lastScrollTopRef.current = target;
-  }, [isTallCanvas, followLog, calculateScrollTarget]);
+    terminalInstanceService.setTallCanvasLastScrollTop(terminalId, target);
+  }, [isTallCanvas, terminalId, calculateScrollTarget]);
 
   // Handle user scroll events in tall canvas mode
   const handleTallCanvasScroll = useCallback(
@@ -193,7 +183,8 @@ function XtermAdapterComponent({
       if (!isTallCanvas) return;
 
       const target = e.currentTarget;
-      const cellHeight = measureCellHeight();
+      const cellHeight = getCellHeight();
+      const lastScrollTop = terminalInstanceService.getTallCanvasLastScrollTop(terminalId);
 
       // Calculate maximum allowed scroll (content bottom + padding - viewport)
       const contentBottom = terminalInstanceService.getContentBottom(terminalId);
@@ -205,11 +196,11 @@ function XtermAdapterComponent({
       // Clamp scroll position to prevent scrolling past content
       if (target.scrollTop > maxScroll) {
         target.scrollTop = maxScroll;
-        lastScrollTopRef.current = maxScroll;
+        terminalInstanceService.setTallCanvasLastScrollTop(terminalId, maxScroll);
         return; // Skip further processing for clamped scroll
       }
 
-      const diff = Math.abs(target.scrollTop - lastScrollTopRef.current);
+      const diff = Math.abs(target.scrollTop - lastScrollTop);
 
       // Ignore tiny/programmatic scroll changes
       if (diff < 2) return;
@@ -217,34 +208,34 @@ function XtermAdapterComponent({
       const idealScrollTop = calculateScrollTarget();
       const threshold = cellHeight * FOLLOW_THRESHOLD_ROWS;
 
-      // If user scrolls away from target, disable follow
+      // If user scrolls away from target, disable follow; if near target, enable follow
       if (Math.abs(target.scrollTop - idealScrollTop) > threshold) {
-        setFollowLog(false);
+        terminalInstanceService.setTallCanvasFollowLog(terminalId, false);
       } else {
-        setFollowLog(true);
+        terminalInstanceService.setTallCanvasFollowLog(terminalId, true);
       }
 
-      lastScrollTopRef.current = target.scrollTop;
+      terminalInstanceService.setTallCanvasLastScrollTop(terminalId, target.scrollTop);
     },
-    [isTallCanvas, terminalId, measureCellHeight, calculateScrollTarget]
+    [isTallCanvas, terminalId, getCellHeight, calculateScrollTarget]
   );
 
   // Jump to bottom on input (tall canvas mode)
   const handleTallCanvasInput = useCallback(() => {
     if (!isTallCanvas || !viewportRef.current) return;
 
-    setFollowLog(true);
+    terminalInstanceService.setTallCanvasFollowLog(terminalId, true);
     const target = calculateScrollTarget();
     viewportRef.current.scrollTop = target;
-    lastScrollTopRef.current = target;
-  }, [isTallCanvas, calculateScrollTarget]);
+    terminalInstanceService.setTallCanvasLastScrollTop(terminalId, target);
+  }, [isTallCanvas, terminalId, calculateScrollTarget]);
 
   // Update inner host height based on actual content bottom (tall canvas mode)
   // Uses getContentBottom() to find real content extent - handles shrinking (autocomplete, clear, etc.)
   const updateInnerHostHeight = useCallback(() => {
     if (!isTallCanvas || !innerHostRef.current || !viewportRef.current) return;
 
-    const cellHeight = measureCellHeight();
+    const cellHeight = getCellHeight();
     const viewportHeight = viewportRef.current.clientHeight;
 
     // Get the actual content bottom (last non-blank row or cursor, whichever is greater)
@@ -258,7 +249,7 @@ function XtermAdapterComponent({
     const totalHeight = Math.max(viewportHeight, contentHeight);
 
     innerHostRef.current.style.height = `${totalHeight}px`;
-  }, [isTallCanvas, terminalId, measureCellHeight]);
+  }, [isTallCanvas, terminalId, getCellHeight]);
 
   // Track text selection to avoid fighting with scroll sync
   // Only freeze if selection is inside THIS terminal (not global page selection)
@@ -317,12 +308,12 @@ function XtermAdapterComponent({
       // This handles viewport height changes (maximize/restore) that don't change cols
       if (isTallCanvas) {
         updateInnerHostHeight();
-        if (followLog) {
+        if (terminalInstanceService.getTallCanvasFollowLog(terminalId)) {
           requestAnimationFrame(syncTallCanvasScroll);
         }
       }
     },
-    [terminalId, isTallCanvas, updateInnerHostHeight, followLog, syncTallCanvasScroll]
+    [terminalId, isTallCanvas, updateInnerHostHeight, syncTallCanvasScroll]
   );
 
   // Fallback fit for initial mount and visibility changes
@@ -421,20 +412,12 @@ function XtermAdapterComponent({
       managed.keyHandlerInstalled = true;
     }
 
-    // For tall canvas mode: set up key listener to snap to bottom on actual input
-    // Filter to keys that send data to PTY, not navigation/scroll keys
-    let tallCanvasKeyDisposable: { dispose: () => void } | null = null;
+    // For tall canvas mode: snap to bottom on actual PTY input
+    // Using onData instead of onKey because onData fires only when bytes are sent to PTY
+    // This correctly handles Ctrl/Alt keybinds (like Ctrl+F, Alt+←) which ARE real input
+    let tallCanvasDataDisposable: { dispose: () => void } | null = null;
     if (isTallCanvas) {
-      tallCanvasKeyDisposable = managed.terminal.onKey(({ domEvent }) => {
-        // Skip navigation keys that shouldn't snap to bottom
-        const navigationKeys = ["PageUp", "PageDown", "Home", "End"];
-        if (navigationKeys.includes(domEvent.key)) {
-          return;
-        }
-        // Skip if modifier keys are held (likely shortcuts, not input)
-        if (domEvent.ctrlKey || domEvent.metaKey || domEvent.altKey) {
-          return;
-        }
+      tallCanvasDataDisposable = managed.terminal.onData(() => {
         handleTallCanvasInput();
       });
     }
@@ -461,29 +444,37 @@ function XtermAdapterComponent({
     if (isTallCanvas) {
       updateInnerHostHeight();
 
-      // Ensure initial scroll position is at the bottom (follow mode)
+      // Restore scroll position from persisted state (survives remounts)
+      // If following, calculate current target; otherwise use saved position
       if (viewportRef.current) {
-        const cellHeight = measureCellHeight();
-        const contentBottom = terminalInstanceService.getContentBottom(terminalId);
-        const viewportHeight = viewportRef.current.clientHeight;
-        const contentHeight =
-          (contentBottom + 1) * cellHeight + TALL_PADDING_TOP + TALL_PADDING_BOTTOM;
-        // Start at bottom of content, or 0 if content fits in viewport
-        const initialScroll = Math.max(0, contentHeight - viewportHeight);
-        viewportRef.current.scrollTop = initialScroll;
-        lastScrollTopRef.current = initialScroll;
+        const followLog = terminalInstanceService.getTallCanvasFollowLog(terminalId);
+        if (followLog) {
+          // Calculate scroll position to show cursor at bottom
+          const cellHeight = getCellHeight();
+          const contentBottom = terminalInstanceService.getContentBottom(terminalId);
+          const viewportHeight = viewportRef.current.clientHeight;
+          const contentHeight =
+            (contentBottom + 1) * cellHeight + TALL_PADDING_TOP + TALL_PADDING_BOTTOM;
+          const initialScroll = Math.max(0, contentHeight - viewportHeight);
+          viewportRef.current.scrollTop = initialScroll;
+          terminalInstanceService.setTallCanvasLastScrollTop(terminalId, initialScroll);
+        } else {
+          // Restore previous scroll position (user was browsing history)
+          const savedScrollTop = terminalInstanceService.getTallCanvasLastScrollTop(terminalId);
+          viewportRef.current.scrollTop = savedScrollTop;
+        }
       }
 
       // Register scroll callback for search to scroll to matches
       terminalInstanceService.setTallCanvasScrollCallback(terminalId, (row: number) => {
         if (!viewportRef.current) return;
-        const cellHeight = measureCellHeight();
+        const cellHeight = getCellHeight();
         const viewportHeight = viewportRef.current.clientHeight;
         // Center the target row in the viewport
         // Account for top padding
         const targetScroll = Math.max(0, row * cellHeight + TALL_PADDING_TOP - viewportHeight / 2);
         viewportRef.current.scrollTop = targetScroll;
-        lastScrollTopRef.current = targetScroll;
+        terminalInstanceService.setTallCanvasLastScrollTop(terminalId, targetScroll);
       });
     }
 
@@ -497,9 +488,9 @@ function XtermAdapterComponent({
       // Flush pending resizes before unmount
       terminalInstanceService.flushResize(terminalId);
 
-      // Clean up tall canvas key listener
-      if (tallCanvasKeyDisposable) {
-        tallCanvasKeyDisposable.dispose();
+      // Clean up tall canvas data listener
+      if (tallCanvasDataDisposable) {
+        tallCanvasDataDisposable.dispose();
       }
 
       // Clean up tall canvas wheel handler
@@ -612,28 +603,33 @@ function XtermAdapterComponent({
     };
   }, [handleResizeEntry]);
 
-  // Subscribe to terminal render events for tall canvas height updates and scroll sync
-  // Using onRender instead of outputListener catches ALL visual changes:
-  // - PTY output (handled by outputListener too)
-  // - Frontend-only clear commands (terminal.clear())
-  // - Any plugin/addon modifications to the buffer
-  // This fixes the "clear lag" where clear commands didn't trigger height recalculation
+  // Subscribe to output events for tall canvas height updates and scroll sync
+  // Using outputListener (triggered after PTY data is written) is more efficient than onRender
+  // which fires for cursor blink, selections, decorations etc. causing unnecessary work.
+  // For frontend-only operations (like terminal.clear()), use requestTallCanvasSync explicitly.
   useEffect(() => {
     if (!isTallCanvas) return;
 
-    const managed = terminalInstanceService.get(terminalId);
-    if (!managed) return;
-
-    // onRender fires after each xterm render frame
-    const renderDisposable = managed.terminal.onRender(() => {
-      // Batch updates using requestAnimationFrame to avoid layout thrashing
-      requestAnimationFrame(() => {
+    // Register callback for when output is written to terminal
+    const unsubscribe = terminalInstanceService.addOutputListener(terminalId, () => {
+      // Coalesce rapid bursts with a single RAF
+      if (tallCanvasSyncRafRef.current !== null) {
+        cancelAnimationFrame(tallCanvasSyncRafRef.current);
+      }
+      tallCanvasSyncRafRef.current = requestAnimationFrame(() => {
+        tallCanvasSyncRafRef.current = null;
         updateInnerHostHeight();
         syncTallCanvasScroll();
       });
     });
 
-    return () => renderDisposable.dispose();
+    return () => {
+      unsubscribe();
+      if (tallCanvasSyncRafRef.current !== null) {
+        cancelAnimationFrame(tallCanvasSyncRafRef.current);
+        tallCanvasSyncRafRef.current = null;
+      }
+    };
   }, [terminalId, isTallCanvas, updateInnerHostHeight, syncTallCanvasScroll]);
 
   // Render tall canvas mode

@@ -215,6 +215,8 @@ class TerminalInstanceService {
       isFocused: false,
       isTallCanvas,
       effectiveTallRows: TALL_CANVAS_ROWS,
+      tallCanvasFollowLog: true,
+      tallCanvasLastScrollTop: 0,
     };
 
     const inputDisposable = terminal.onData((data) => {
@@ -443,6 +445,46 @@ class TerminalInstanceService {
   getEffectiveTallRows(id: string): number {
     const managed = this.instances.get(id);
     return managed?.effectiveTallRows ?? TALL_CANVAS_ROWS;
+  }
+
+  // Tall canvas follow state - persisted across component remounts
+  getTallCanvasFollowLog(id: string): boolean {
+    const managed = this.instances.get(id);
+    return managed?.tallCanvasFollowLog ?? true;
+  }
+
+  setTallCanvasFollowLog(id: string, follow: boolean): void {
+    const managed = this.instances.get(id);
+    if (managed) {
+      managed.tallCanvasFollowLog = follow;
+    }
+  }
+
+  getTallCanvasLastScrollTop(id: string): number {
+    const managed = this.instances.get(id);
+    return managed?.tallCanvasLastScrollTop ?? 0;
+  }
+
+  setTallCanvasLastScrollTop(id: string, scrollTop: number): void {
+    const managed = this.instances.get(id);
+    if (managed) {
+      managed.tallCanvasLastScrollTop = scrollTop;
+    }
+  }
+
+  /**
+   * Request a tall canvas sync (height update + scroll sync).
+   * Use this after frontend-only operations like terminal.clear() that don't trigger
+   * the output listener but do change the visual state.
+   */
+  requestTallCanvasSync(id: string): void {
+    const managed = this.instances.get(id);
+    if (!managed || !managed.isTallCanvas) return;
+
+    // Trigger output subscribers which will update height and scroll
+    if (managed.outputSubscribers.size > 0) {
+      managed.outputSubscribers.forEach((cb) => cb());
+    }
   }
 
   getContentBottom(id: string): number {
