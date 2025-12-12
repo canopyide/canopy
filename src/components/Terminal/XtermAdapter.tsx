@@ -190,7 +190,8 @@ function XtermAdapterComponent({
       // Calculate maximum allowed scroll (content bottom + padding - viewport)
       const contentBottom = terminalInstanceService.getContentBottom(terminalId);
       const viewportHeight = target.clientHeight;
-      const contentHeight = (contentBottom + 1) * cellHeight + TALL_PADDING_TOP + TALL_PADDING_BOTTOM;
+      const contentHeight =
+        (contentBottom + 1) * cellHeight + TALL_PADDING_TOP + TALL_PADDING_BOTTOM;
       const maxScroll = Math.max(0, contentHeight - viewportHeight);
 
       // Clamp scroll position to prevent scrolling past content
@@ -282,7 +283,9 @@ function XtermAdapterComponent({
       if (!isVisibleRef.current) return;
 
       // Get dimensions from observer (zero DOM reads)
-      let { width, height } = entry.contentRect;
+      const rect = entry.contentRect;
+      let width = rect.width;
+      const height = rect.height;
 
       // Filter collapsed/zero states
       if (width === 0 || height === 0) return;
@@ -455,7 +458,8 @@ function XtermAdapterComponent({
         const cellHeight = measureCellHeight();
         const contentBottom = terminalInstanceService.getContentBottom(terminalId);
         const viewportHeight = viewportRef.current.clientHeight;
-        const contentHeight = (contentBottom + 1) * cellHeight + TALL_PADDING_TOP + TALL_PADDING_BOTTOM;
+        const contentHeight =
+          (contentBottom + 1) * cellHeight + TALL_PADDING_TOP + TALL_PADDING_BOTTOM;
         // Start at bottom of content, or 0 if content fits in viewport
         const initialScroll = Math.max(0, contentHeight - viewportHeight);
         viewportRef.current.scrollTop = initialScroll;
