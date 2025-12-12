@@ -166,6 +166,8 @@ async function initializeDeferredServices(
   const results = await Promise.allSettled([
     cliService.checkAvailability().then((availability) => {
       console.log("[MAIN] CLI availability checked:", availability);
+      console.log("[MAIN] Rebuilding menu with agent availability...");
+      createApplicationMenu(window, cliService);
       return availability;
     }),
   ]);
@@ -279,8 +281,9 @@ async function createWindow(): Promise<void> {
     sendToRenderer(mainWindow!, CHANNELS.WINDOW_FULLSCREEN_CHANGE, false);
   });
 
-  console.log("[MAIN] Creating application menu...");
-  createApplicationMenu(mainWindow);
+  console.log("[MAIN] Creating application menu (initial, no agent availability yet)...");
+  cliAvailabilityService = new CliAvailabilityService();
+  createApplicationMenu(mainWindow, cliAvailabilityService);
 
   // Initialize Notification Service
   notificationService.initialize(mainWindow);
@@ -304,7 +307,6 @@ async function createWindow(): Promise<void> {
   // Initialize Placeholder Services
   devServerManager = new DevServerManager();
   devServerManager.setWorkspaceClient(workspaceClient);
-  cliAvailabilityService = new CliAvailabilityService();
   eventBuffer = new EventBuffer(1000);
   sidecarManager = new SidecarManager(mainWindow);
 
