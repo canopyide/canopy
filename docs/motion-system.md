@@ -119,12 +119,14 @@ Subtle scale bump for confirming discrete state changes (count updates, badge ch
 **Timing:** Uses `--terminal-select-duration` (200ms) to match selection feedback pacing.
 
 **When to use:**
+
 - ✅ Discrete count changes (queue count, notification count)
 - ✅ State badge appearance/change
 - ✅ Low-frequency updates (< 1 per second)
 - ❌ Continuous values or high-frequency updates
 
 **How to trigger (key prop pattern):**
+
 ```tsx
 <span key={queueCount} className="animate-badge-bump">
   {queueCount} queued
@@ -150,12 +152,14 @@ Attention-grabbing blip for new activity signals. Slightly larger scale than bad
 **Timing:** 260ms, slightly longer than badge-bump for more noticeable "new signal" acknowledgment. This is an intentional hardcoded duration (exception to the timing token guideline) to create distinct pacing from badge-bump.
 
 **When to use:**
+
 - ✅ New activity signal (lastActivityTimestamp changes)
 - ✅ "Attention required" state transitions
 - ✅ One-shot feedback for user actions
 - ❌ Continuous activity (use existing pulse animations instead)
 
 **How to trigger (state-based pattern):**
+
 ```tsx
 useEffect(() => {
   if (lastActivityTimestamp) {
@@ -165,7 +169,7 @@ useEffect(() => {
   }
 }, [lastActivityTimestamp]);
 
-<div className={triggerBlip ? "animate-activity-blip" : ""} />
+<div className={triggerBlip ? "animate-activity-blip" : ""} />;
 ```
 
 **Caution:** This animation uses `transform: scale()` and `opacity`. Don't apply to elements with existing transform styles. The animation sets `opacity: 0.9` at rest (0% and 100% keyframes), so if the class is left on, the element will remain slightly dim—ensure the class is removed after animation completes. The boolean toggle pattern can miss rapid back-to-back updates; for retriggerable behavior, use a counter/token key instead of a boolean.
@@ -282,16 +286,16 @@ The `.terminal-selected` class applies the selected appearance. There's also a b
 
 ### When to Use Animation
 
-| Scenario          | Animation                         | Why                           |
-| ----------------- | --------------------------------- | ----------------------------- |
-| Terminal selected | `.terminal-selected` (transition) | Confirms user action          |
-| "Locate" command  | `animate-terminal-ping`           | Draws attention to target     |
-| Terminal restored | `terminal-restoring`              | Shows element entering        |
-| Terminal trashed  | `terminal-trashing`               | Shows element leaving         |
-| Agent working     | `status-working`                  | Ambient activity indicator    |
-| Recent activity   | `animate-activity-pulse`          | Transient attention signal    |
-| Count changed     | `animate-badge-bump`              | Confirms value update         |
-| New activity      | `animate-activity-blip`           | Signals attention required    |
+| Scenario          | Animation                         | Why                        |
+| ----------------- | --------------------------------- | -------------------------- |
+| Terminal selected | `.terminal-selected` (transition) | Confirms user action       |
+| "Locate" command  | `animate-terminal-ping`           | Draws attention to target  |
+| Terminal restored | `terminal-restoring`              | Shows element entering     |
+| Terminal trashed  | `terminal-trashing`               | Shows element leaving      |
+| Agent working     | `status-working`                  | Ambient activity indicator |
+| Recent activity   | `animate-activity-pulse`          | Transient attention signal |
+| Count changed     | `animate-badge-bump`              | Confirms value update      |
+| New activity      | `animate-activity-blip`           | Signals attention required |
 
 ### When NOT to Use Animation
 
