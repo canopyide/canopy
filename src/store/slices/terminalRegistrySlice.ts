@@ -767,6 +767,10 @@ export const createTerminalRegistrySlice =
         // The old frontend must stop listening before new PTY data starts flowing
         terminalInstanceService.destroy(id);
 
+        // Suppress the expected exit event from killing the old PTY.
+        // The exit can arrive after the new xterm mounts, which would incorrectly show "[exit 0]".
+        terminalInstanceService.suppressNextExit(id);
+
         // Kill the old PTY backend
         await terminalClient.kill(id);
 

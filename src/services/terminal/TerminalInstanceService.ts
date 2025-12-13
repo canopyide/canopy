@@ -24,6 +24,7 @@ class TerminalInstanceService {
   private hardwareProfile: HardwareProfile;
   private addonManager: TerminalAddonManager;
   private dataBuffer: TerminalDataBuffer;
+  private suppressedExitUntil = new Map<string, number>();
 
   constructor() {
     this.hardwareProfile = detectHardware();
@@ -37,6 +38,27 @@ class TerminalInstanceService {
 
     this.dataBuffer = new TerminalDataBuffer((id, data) => this.writeToTerminal(id, data));
     this.dataBuffer.initialize();
+  }
+
+  /**
+   * Suppress the next exit event for a terminal ID.
+   *
+   * Used during terminal restarts: we intentionally kill the old PTY, but its exit event can race
+   * and arrive after the new xterm instance has attached, causing a stale "[exit 0]" UI state.
+   */
+  suppressNextExit(id: string, ttlMs: number = 2000): void {
+    this.suppressedExitUntil.set(id, Date.now() + ttlMs);
+  }
+
+  private shouldSuppressExit(id: string): boolean {
+    const until = this.suppressedExitUntil.get(id);
+    if (!until) return false;
+    if (Date.now() > until) {
+      this.suppressedExitUntil.delete(id);
+      return false;
+    }
+    this.suppressedExitUntil.delete(id);
+    return true;
   }
 
   stopPolling(): void {
@@ -203,6 +225,9 @@ class TerminalInstanceService {
 
     const unsubExit = terminalClient.onExit((termId, exitCode) => {
       if (termId !== id) return;
+      if (this.shouldSuppressExit(id)) {
+        return;
+      }
       throttledWriter.dispose();
       terminal.write(`\r\n\x1b[90m[Process exited with code ${exitCode}]\x1b[0m\r\n`);
       exitSubscribers.forEach((cb) => cb(exitCode));
