@@ -268,7 +268,7 @@ port.on("message", async (rawMsg: any) => {
           if (typeof mainBranch !== "string" || !mainBranch.trim()) {
             throw new Error("Invalid mainBranch");
           }
-          if (![14, 30, 56, 90].includes(rangeDays)) {
+          if (![60, 120, 180].includes(rangeDays)) {
             throw new Error("Invalid rangeDays");
           }
           if (includeDelta !== undefined && typeof includeDelta !== "boolean") {

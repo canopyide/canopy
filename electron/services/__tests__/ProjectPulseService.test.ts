@@ -48,7 +48,7 @@ describe("ProjectPulseService", () => {
       worktreePath: "/repo",
       worktreeId: "wt-1",
       mainBranch: "main",
-      rangeDays: 14 as const,
+      rangeDays: 60 as const,
       includeDelta: false,
       includeRecentCommits: false,
     };
@@ -84,7 +84,7 @@ describe("ProjectPulseService", () => {
       worktreePath: "/repo",
       worktreeId: "wt-1",
       mainBranch: "main",
-      rangeDays: 14 as const,
+      rangeDays: 60 as const,
       includeDelta: false,
       includeRecentCommits: false,
     });
@@ -93,7 +93,7 @@ describe("ProjectPulseService", () => {
       worktreePath: "/repo",
       worktreeId: "wt-1",
       mainBranch: "main",
-      rangeDays: 14 as const,
+      rangeDays: 60 as const,
       includeDelta: false,
       includeRecentCommits: true,
     });
@@ -125,12 +125,12 @@ describe("ProjectPulseService", () => {
       worktreePath: "/repo",
       worktreeId: "wt-1",
       mainBranch: "main",
-      rangeDays: 14 as const,
+      rangeDays: 60 as const,
       includeDelta: false,
       includeRecentCommits: false,
     });
 
-    expect(pulse.heatmap).toHaveLength(14);
+    expect(pulse.heatmap).toHaveLength(60);
     expect(pulse.commitsInRange).toBe(0);
     expect(pulse.branch).toBeUndefined();
   });

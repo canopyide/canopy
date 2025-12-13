@@ -190,8 +190,8 @@ export function registerWorktreeHandlers(deps: HandlerDependencies): () => void 
       throw new Error("Invalid worktree ID");
     }
 
-    if (![14, 30, 56, 90].includes(rangeDays)) {
-      throw new Error("Invalid rangeDays: must be 14, 30, 56, or 90");
+    if (![60, 120, 180].includes(rangeDays)) {
+      throw new Error("Invalid rangeDays: must be 60, 120, or 180");
     }
 
     if (includeDelta !== undefined && typeof includeDelta !== "boolean") {

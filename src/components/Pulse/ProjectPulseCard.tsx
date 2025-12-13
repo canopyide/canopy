@@ -6,7 +6,6 @@ import { cn } from "@/lib/utils";
 import { Loader2, AlertCircle, RefreshCw, Activity } from "lucide-react";
 import { PulseHeatmap } from "./PulseHeatmap";
 import { PulseSummary } from "./PulseSummary";
-import { RecentCommitsList } from "./RecentCommitsList";
 import {
   DropdownMenu,
   DropdownMenuContent,
@@ -20,10 +19,9 @@ interface ProjectPulseCardProps {
 }
 
 const RANGE_OPTIONS: { value: PulseRangeDays; label: string }[] = [
-  { value: 14, label: "2 weeks" },
-  { value: 30, label: "30 days" },
-  { value: 56, label: "8 weeks" },
-  { value: 90, label: "90 days" },
+  { value: 60, label: "60 days" },
+  { value: 120, label: "120 days" },
+  { value: 180, label: "180 days" },
 ];
 
 export function ProjectPulseCard({ worktreeId, className }: ProjectPulseCardProps) {
@@ -141,13 +139,6 @@ export function ProjectPulseCard({ worktreeId, className }: ProjectPulseCardProp
         <div className="border-t border-white/5 pt-3">
           <PulseSummary pulse={pulse} />
         </div>
-
-        {pulse.recentCommits.length > 0 && (
-          <div className="border-t border-white/5 pt-3">
-            <div className="text-xs font-medium text-canopy-text/50 mb-2">Recent Commits</div>
-            <RecentCommitsList commits={pulse.recentCommits} maxItems={5} />
-          </div>
-        )}
       </div>
     </div>
   );

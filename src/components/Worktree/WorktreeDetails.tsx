@@ -5,7 +5,6 @@ import { ErrorBanner } from "../Errors/ErrorBanner";
 import { FileChangeList } from "./FileChangeList";
 import { ActivityLight } from "./ActivityLight";
 import { LiveTimeAgo } from "./LiveTimeAgo";
-import { ProjectPulseCard } from "../Pulse";
 import { cn } from "../../lib/utils";
 import { systemClient } from "@/clients";
 import { Globe, Play, GitCommit, Square, Copy, Check, ExternalLink } from "lucide-react";
@@ -25,7 +24,6 @@ export interface WorktreeDetailsProps {
   showLastCommit?: boolean;
   lastActivityTimestamp?: number | null;
   showTime?: boolean;
-  showPulse?: boolean;
 
   onPathClick: () => void;
   onToggleServer: () => void;
@@ -66,7 +64,6 @@ export function WorktreeDetails({
   showLastCommit,
   lastActivityTimestamp,
   showTime = false,
-  showPulse = false,
 }: WorktreeDetailsProps) {
   const displayPath = formatPath(worktree.path, homeDir);
   const rawLastCommitMsg = worktree.worktreeChanges?.lastCommitMessage;
@@ -186,9 +183,6 @@ export function WorktreeDetails({
           </div>
         </div>
       )}
-
-      {/* Project Pulse Card */}
-      {showPulse && <ProjectPulseCard worktreeId={worktree.id} />}
 
       {/* Dev Server Controls */}
       {showDevServer && serverState && (

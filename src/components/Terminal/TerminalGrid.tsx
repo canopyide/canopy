@@ -21,6 +21,7 @@ import {
 } from "@/components/DragDrop";
 import { Terminal, AlertTriangle } from "lucide-react";
 import { CanopyIcon, CodexIcon, ClaudeIcon, GeminiIcon } from "@/components/icons";
+import { ProjectPulseCard } from "@/components/Pulse";
 import { Kbd } from "@/components/ui/Kbd";
 import { getBrandColorHex } from "@/lib/colorUtils";
 import { terminalInstanceService } from "@/services/TerminalInstanceService";
@@ -127,6 +128,7 @@ function EmptyState({
   isCheckingAvailability,
   onOpenSettings,
   activeWorktreeName,
+  activeWorktreeId,
 }: {
   onLaunchAgent: (type: "claude" | "gemini" | "codex" | "terminal") => void;
   hasActiveWorktree: boolean;
@@ -134,6 +136,7 @@ function EmptyState({
   isCheckingAvailability?: boolean;
   onOpenSettings?: () => void;
   activeWorktreeName?: string | null;
+  activeWorktreeId?: string | null;
 }) {
   const handleOpenHelp = () => {
     void systemClient
@@ -225,6 +228,12 @@ function EmptyState({
             isLoading={false}
           />
         </div>
+
+        {hasActiveWorktree && activeWorktreeId && (
+          <div className="w-full max-w-3xl mb-8">
+            <ProjectPulseCard worktreeId={activeWorktreeId} />
+          </div>
+        )}
 
         <div className="flex flex-col items-center gap-4 mt-4">
           <p className="text-xs text-canopy-text/60 text-center">
@@ -461,6 +470,7 @@ export function TerminalGrid({
                   isCheckingAvailability={isCheckingAvailability}
                   onOpenSettings={onOpenSettings}
                   activeWorktreeName={activeWorktreeName}
+                  activeWorktreeId={activeWorktreeId}
                 />
               </div>
             ) : (

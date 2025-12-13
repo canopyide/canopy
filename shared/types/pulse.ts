@@ -1,4 +1,4 @@
-export type PulseRangeDays = 14 | 30 | 56 | 90;
+export type PulseRangeDays = 60 | 120 | 180;
 export type HeatLevel = 0 | 1 | 2 | 3 | 4;
 
 export interface HeatCell {

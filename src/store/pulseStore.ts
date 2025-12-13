@@ -21,7 +21,7 @@ interface PulseActions {
 
 type PulseStore = PulseState & PulseActions;
 
-const DEFAULT_RANGE_DAYS: PulseRangeDays = 30;
+const DEFAULT_RANGE_DAYS: PulseRangeDays = 60;
 
 export const usePulseStore = create<PulseStore>()((set, get) => ({
   pulses: new Map(),
