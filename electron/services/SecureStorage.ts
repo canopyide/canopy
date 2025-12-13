@@ -1,7 +1,7 @@
 import * as electron from "electron";
 import { store, type StoreSchema } from "../store.js";
 
-export type SecureKey = "userConfig.openaiApiKey" | "userConfig.githubToken";
+export type SecureKey = "userConfig.githubToken";
 
 type UserConfigKey = keyof StoreSchema["userConfig"];
 type DotNotatedUserConfigKey = `userConfig.${UserConfigKey}`;

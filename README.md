@@ -13,7 +13,7 @@ Instead of juggling multiple terminal windows and manually copying context, Cano
 ### Worktree Dashboard
 
 - **Visual Monitoring**: View all git worktrees at a glance with real-time status updates
-- **Smart Summaries**: AI-powered summaries of file changes in every branch (requires OpenAI key)
+- **Smart Summaries**: AI-powered summaries of file changes in every branch
 - **GitHub Integration**: Auto-detects associated Pull Requests and Issues based on branch names
 - **Dev Server Control**: Auto-detects `package.json` scripts and manages dev server lifecycles per worktree
 
@@ -39,7 +39,7 @@ Instead of juggling multiple terminal windows and manually copying context, Cano
 # Claude Code
 npm install -g @anthropic-ai/claude-code
 
-# OpenAI Codex
+# Codex CLI
 npm install -g @openai/codex
 ```
 
@@ -82,9 +82,8 @@ npm run dev
 
 Canopy works out of the box for local terminal management, but AI features require configuration via the **Settings** icon (bottom left sidebar).
 
-1. **OpenAI API Key**: Required for generating worktree summaries and project identities
-2. **GitHub Token**: Required for fetching PR statuses and issue details without hitting rate limits
-3. **Agent Settings**: Configure default models and flags for Claude, Gemini, and Codex
+1. **GitHub Token**: Required for fetching PR statuses and issue details without hitting rate limits
+2. **Agent Settings**: Configure default models and flags for Claude, Gemini, and Codex
 
 ## Architecture
 
@@ -96,17 +95,17 @@ Canopy uses a modern Electron architecture ensuring security and performance:
 
 ### Key Technologies
 
-| Component          | Technology                        |
-| ------------------ | --------------------------------- |
-| Runtime            | Electron 33                       |
-| UI Framework       | React 19 + TypeScript             |
-| Build              | Vite 6                            |
-| State Management   | Zustand                           |
-| Terminal Emulation | xterm.js + @xterm/addon-fit/webgl |
-| PTY                | node-pty (native module)          |
-| Git                | simple-git                        |
-| Styling            | Tailwind CSS v4                   |
-| AI Integration     | OpenAI SDK                        |
+| Component          | Technology                         |
+| ------------------ | ---------------------------------- |
+| Runtime            | Electron 33                        |
+| UI Framework       | React 19 + TypeScript              |
+| Build              | Vite 6                             |
+| State Management   | Zustand                            |
+| Terminal Emulation | xterm.js + @xterm/addon-fit/webgl  |
+| PTY                | node-pty (native module)           |
+| Git                | simple-git                         |
+| Styling            | Tailwind CSS v4                    |
+| AI Integration     | Agent CLIs (Claude, Gemini, Codex) |
 
 ## Build & Distribute
 

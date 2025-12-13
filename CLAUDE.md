@@ -36,7 +36,6 @@ Access native features via namespaced API in Renderer. Returns Promises or Clean
 - `copyTree`: generate, injectToTerminal, isAvailable, cancel, onProgress
 - `system`: openExternal, openPath, getConfig, checkCommand
 - `project`: getAll, getCurrent, add, remove, update, switch, onSwitch
-- `ai`: getConfig, setKey, clearKey, setModel, validateKey, generateProjectIdentity
 - `logs`: getAll, getSources, clear, openFile, onEntry
 - `errors`: onError, retry, openLogs
 - `eventInspector`: getEvents, getFiltered, clear, subscribe, onEvent
@@ -64,8 +63,7 @@ electron/
 │   ├── WorktreeService.ts   # Worktree monitoring
 │   ├── DevServerManager.ts  # Dev server lifecycle
 │   ├── AgentStateMachine.ts # Agent state tracking
-│   ├── CopyTreeService.ts   # Context generation
-│   └── ai/                  # AI integration (OpenAI)
+│   └── CopyTreeService.ts   # Context generation
 └── utils/
     ├── logger.ts        # Logging
     └── git.ts           # Git operations
