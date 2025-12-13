@@ -127,31 +127,6 @@ export interface WorktreeState extends Worktree {
   lastActivityTimestamp: number | null;
 }
 
-// Dev Server Types
-
-/** Dev server status */
-export type DevServerStatus = "stopped" | "starting" | "running" | "error";
-
-/** State of a development server associated with a worktree */
-export interface DevServerState {
-  /** ID of the worktree this server belongs to */
-  worktreeId: string;
-  /** ID of the project this server belongs to (for multi-tenancy) */
-  projectId?: string;
-  /** Current server status */
-  status: DevServerStatus;
-  /** URL where the server is accessible */
-  url?: string;
-  /** Port number the server is listening on */
-  port?: number;
-  /** Process ID of the server */
-  pid?: number;
-  /** Error message if status is 'error' */
-  errorMessage?: string;
-  /** Recent log output from the server */
-  logs?: string[];
-}
-
 // Notification Types
 
 /** Notification type */
@@ -456,24 +431,12 @@ export interface RunCommand {
   description?: string;
 }
 
-/** Dev server configuration for a project */
-export interface ProjectDevServerSettings {
-  /** Enable/disable dev server feature */
-  enabled?: boolean;
-  /** Custom dev server command (overrides auto-detection) */
-  command?: string;
-  /** Auto-start server when project loads */
-  autoStart?: boolean;
-}
-
 /** Project-level settings that persist per repository */
 export interface ProjectSettings {
   /** List of custom run commands for this project */
   runCommands: RunCommand[];
-  /** Dev server configuration */
-  devServer?: ProjectDevServerSettings;
-  /** Environment variables to set (future feature) */
+  /** Environment variables to set */
   environmentVariables?: Record<string, string>;
-  /** Paths to exclude from monitoring (future feature) */
+  /** Paths to exclude from monitoring */
   excludedPaths?: string[];
 }

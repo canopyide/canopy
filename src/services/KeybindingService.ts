@@ -564,14 +564,6 @@ const DEFAULT_KEYBINDINGS: KeybindingConfig[] = [
     description: "Open in editor",
     category: "Worktrees",
   },
-  {
-    actionId: "worktree.toggleServer",
-    combo: "s",
-    scope: "worktreeList",
-    priority: 5,
-    description: "Toggle dev server",
-    category: "Worktrees",
-  },
 ];
 
 // Map physical key codes to standard characters

@@ -4,7 +4,6 @@ export { cliAvailabilityClient } from "./cliAvailabilityClient";
 export { appClient } from "./appClient";
 export { artifactClient } from "./artifactClient";
 export { copyTreeClient } from "./copyTreeClient";
-export { devServerClient } from "./devServerClient";
 export { errorsClient } from "./errorsClient";
 export { eventInspectorClient } from "./eventInspectorClient";
 export { githubClient } from "./githubClient";

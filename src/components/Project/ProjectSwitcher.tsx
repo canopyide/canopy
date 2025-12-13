@@ -123,7 +123,7 @@ export function ProjectSwitcher() {
     if (!stats) {
       const confirmed = window.confirm(
         `Close "${project?.name}"?\n\n` +
-          `Process stats unavailable. This will close any running terminals and dev servers for this project.`
+          `Process stats unavailable. This will close any running processes for this project.`
       );
 
       if (!confirmed) return;
@@ -143,8 +143,7 @@ export function ProjectSwitcher() {
       const confirmed = window.confirm(
         `Close "${project?.name}"?\n\n` +
           `This will close ${processCount} process(es):\n` +
-          `- ${stats.terminalCount} terminal(s)\n` +
-          `- ${stats.serverCount} dev server(s)`
+          `- ${stats.terminalCount} terminal(s)`
       );
 
       if (!confirmed) return;
@@ -231,9 +230,6 @@ export function ProjectSwitcher() {
     if (!stats || stats.processCount === 0) return "";
     const parts = [];
     parts.push(`${stats.terminalCount} terminal${stats.terminalCount !== 1 ? "s" : ""}`);
-    if (stats.serverCount > 0) {
-      parts.push(`${stats.serverCount} server${stats.serverCount !== 1 ? "s" : ""}`);
-    }
     parts.push(`~${stats.estimatedMemoryMB} MB`);
     return parts.join(", ");
   };

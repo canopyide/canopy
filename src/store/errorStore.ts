@@ -2,7 +2,7 @@ import { create, type StateCreator } from "zustand";
 
 export type ErrorType = "git" | "process" | "filesystem" | "network" | "config" | "unknown";
 
-export type RetryAction = "devserver" | "terminal" | "git" | "worktree";
+export type RetryAction = "terminal" | "git" | "worktree";
 
 export interface AppError {
   id: string;

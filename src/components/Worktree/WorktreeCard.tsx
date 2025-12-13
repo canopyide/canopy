@@ -1,11 +1,10 @@
 import { useCallback, useState, useEffect, useMemo, useRef } from "react";
 import { useShallow } from "zustand/react/shallow";
-import type { WorktreeState, ProjectDevServerSettings, AgentState } from "../../types";
+import type { WorktreeState, AgentState } from "../../types";
 import { ActivityLight } from "./ActivityLight";
 import { BranchLabel } from "./BranchLabel";
 import { LiveTimeAgo } from "./LiveTimeAgo";
 import { WorktreeDetails } from "./WorktreeDetails";
-import { useDevServer } from "../../hooks/useDevServer";
 import { useWorktreeTerminals } from "../../hooks/useWorktreeTerminals";
 import {
   useErrorStore,
@@ -103,14 +102,12 @@ export interface WorktreeCardProps {
   onOpenEditor: () => void;
   onOpenIssue?: () => void;
   onOpenPR?: () => void;
-  onToggleServer: () => void;
   onCreateRecipe?: () => void;
   onSaveLayout?: () => void;
   onLaunchAgent?: (agentId: string) => void;
   agentAvailability?: UseAgentLauncherReturn["availability"];
   agentSettings?: UseAgentLauncherReturn["agentSettings"];
   homeDir?: string;
-  devServerSettings?: ProjectDevServerSettings;
 }
 
 const MAIN_WORKTREE_NOTE_TTL_MS = 10 * 60 * 1000; // 10 minutes
@@ -124,14 +121,12 @@ export function WorktreeCard({
   onOpenEditor,
   onOpenIssue,
   onOpenPR,
-  onToggleServer,
   onCreateRecipe,
   onSaveLayout,
   onLaunchAgent,
   agentAvailability,
   agentSettings,
   homeDir,
-  devServerSettings,
 }: WorktreeCardProps) {
   const isExpanded = useWorktreeSelectionStore(
     useCallback((state) => state.expandedWorktrees.has(worktree.id), [worktree.id])
@@ -180,17 +175,6 @@ export function WorktreeCard({
   });
 
   const [showDeleteDialog, setShowDeleteDialog] = useState(false);
-
-  const {
-    state: serverState,
-    hasDevScript,
-    isEnabled: devServerEnabled,
-    isLoading: serverLoading,
-  } = useDevServer({
-    worktreeId: worktree.id,
-    worktreePath: worktree.path,
-    devServerSettings,
-  });
 
   const worktreeErrors = useErrorStore(
     useShallow((state) =>
@@ -412,12 +396,10 @@ export function WorktreeCard({
     [toggleWorktreeExpanded, worktree.id]
   );
 
-  const showDevServer = devServerEnabled && hasDevScript;
   const hasExpandableContent =
     hasChanges ||
     effectiveNote ||
     !!effectiveSummary ||
-    showDevServer ||
     worktreeErrors.length > 0 ||
     terminalCounts.total > 0 ||
     !!rawLastCommitMessage;
@@ -802,14 +784,10 @@ export function WorktreeCard({
                 homeDir={homeDir}
                 effectiveNote={effectiveNote}
                 effectiveSummary={effectiveSummary}
-                showDevServer={showDevServer}
-                serverState={serverState}
-                serverLoading={serverLoading}
                 worktreeErrors={worktreeErrors}
                 hasChanges={hasChanges}
                 isFocused={isFocused}
                 onPathClick={handlePathClick}
-                onToggleServer={onToggleServer}
                 onDismissError={dismissError}
                 onRetryError={handleErrorRetry}
                 showLastCommit={true}
@@ -894,16 +872,6 @@ export function WorktreeCard({
                       </div>
                     )}
 
-                    {/* Dev Server Indicator */}
-                    {serverState?.status === "running" && serverState.port && (
-                      <span
-                        className="flex items-center gap-1 text-xs text-[var(--color-server-running)]"
-                        title="Dev server running"
-                      >
-                        <div className="w-2 h-2 bg-[var(--color-server-running)] rounded-full animate-pulse" />
-                        <span className="font-mono">:{serverState.port}</span>
-                      </span>
-                    )}
                   </div>
                 </button>
               </div>
