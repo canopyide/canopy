@@ -26,6 +26,7 @@ interface SidecarState {
   createdTabs: Set<string>;
   links: SidecarLink[];
   discoveryComplete: boolean;
+  defaultNewTabUrl: string | null;
 }
 
 interface SidecarActions {
@@ -54,6 +55,7 @@ interface SidecarActions {
   setDiscoveredLinks: (cliAvailability: CliAvailability) => void;
   markDiscoveryComplete: () => void;
   initializeDefaultLinks: () => void;
+  setDefaultNewTabUrl: (url: string | null) => void;
 }
 
 function createDefaultLinks(): SidecarLink[] {
@@ -70,6 +72,7 @@ const initialState: SidecarState = {
   createdTabs: new Set<string>(),
   links: createDefaultLinks(),
   discoveryComplete: false,
+  defaultNewTabUrl: null,
 };
 
 const createSidecarStore: StateCreator<SidecarState & SidecarActions> = (set, get) => ({
@@ -320,6 +323,23 @@ const createSidecarStore: StateCreator<SidecarState & SidecarActions> = (set, ge
       }
       return s;
     }),
+
+  setDefaultNewTabUrl: (url) => {
+    if (url === null) {
+      set({ defaultNewTabUrl: null });
+      return;
+    }
+    try {
+      const parsed = new URL(url);
+      if (!["http:", "https:"].includes(parsed.protocol)) {
+        console.warn("Invalid protocol for default URL, ignoring:", url);
+        return;
+      }
+      set({ defaultNewTabUrl: url.trim() });
+    } catch {
+      console.warn("Invalid URL for default new tab, ignoring:", url);
+    }
+  },
 });
 
 const sidecarStoreCreator: StateCreator<
@@ -337,6 +357,7 @@ const sidecarStoreCreator: StateCreator<
     width: state.width,
     tabs: state.tabs,
     layoutModePreference: state.layoutModePreference,
+    defaultNewTabUrl: state.defaultNewTabUrl,
   }),
   merge: (persistedState: unknown, currentState) => {
     const persisted = persistedState as Partial<SidecarState>;
@@ -353,6 +374,10 @@ const sidecarStoreCreator: StateCreator<
         persisted.layoutModePreference === "overlay"
           ? persisted.layoutModePreference
           : currentState.layoutModePreference,
+      defaultNewTabUrl:
+        typeof persisted.defaultNewTabUrl === "string" && persisted.defaultNewTabUrl.trim()
+          ? persisted.defaultNewTabUrl.trim()
+          : null,
     };
   },
 });
