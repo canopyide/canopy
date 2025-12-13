@@ -38,14 +38,16 @@ export const createTerminalBulkActionsSlice = (
   getFocusedId: () => string | null,
   setFocusedId: (id: string | null) => void
 ): StateCreator<TerminalBulkActionsSlice, [], [], TerminalBulkActionsSlice> => {
+  const restartQueue = new PQueue({ concurrency: 4, timeout: 30_000 });
+
   const restartTerminals = async (terminalsToRestart: TerminalInstance[]) => {
-    const queue = new PQueue({ concurrency: 4 });
-    await queue.addAll(
-      terminalsToRestart.map((terminal) => async () => {
+    const ids = Array.from(new Set(terminalsToRestart.map((t) => t.id)));
+    await restartQueue.addAll(
+      ids.map((id) => async () => {
         try {
-          await restartTerminal(terminal.id);
+          await restartTerminal(id);
         } catch (error) {
-          console.error(`Failed to restart terminal ${terminal.id}:`, error);
+          console.error(`Failed to restart terminal ${id}:`, error);
         }
       })
     );
