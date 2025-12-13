@@ -13,7 +13,6 @@ app.commandLine.appendSwitch("js-flags", "--max-old-space-size=4096");
 import { registerIpcHandlers, sendToRenderer } from "./ipc/handlers.js";
 import { registerErrorHandlers } from "./ipc/errorHandlers.js";
 import { PtyClient, disposePtyClient } from "./services/PtyClient.js";
-import { DevServerManager } from "./services/DevServerManager.js";
 import {
   getWorkspaceClient,
   disposeWorkspaceClient,
@@ -55,7 +54,6 @@ process.on("unhandledRejection", (reason, promise) => {
 
 let mainWindow: BrowserWindow | null = null;
 let ptyClient: PtyClient | null = null;
-let devServerManager: DevServerManager | null = null;
 let workspaceClient: WorkspaceClient | null = null;
 let cliAvailabilityService: CliAvailabilityService | null = null;
 let sidecarManager: SidecarManager | null = null;
@@ -115,7 +113,6 @@ if (!gotTheLock) {
 
     Promise.all([
       workspaceClient ? workspaceClient.dispose() : Promise.resolve(),
-      devServerManager ? devServerManager.stopAll() : Promise.resolve(),
       new Promise<void>((resolve) => {
         if (ptyClient) {
           ptyClient.dispose();
@@ -147,20 +144,11 @@ if (!gotTheLock) {
 
 async function initializeDeferredServices(
   window: BrowserWindow,
-  devServer: DevServerManager,
   cliService: CliAvailabilityService,
   eventBuf: EventBuffer
 ): Promise<void> {
   console.log("[MAIN] Initializing deferred services in background...");
   const startTime = Date.now();
-
-  // Initialize DevServerManager
-  devServer.initialize(window, (channel: string, ...args: unknown[]) => {
-    if (window && !window.isDestroyed()) {
-      sendToRenderer(window, channel, ...args);
-    }
-  });
-  console.log("[MAIN] DevServerManager initialized");
 
   // Parallelize independent async services
   const results = await Promise.allSettled([
@@ -332,8 +320,6 @@ async function createWindow(): Promise<void> {
   });
 
   // Initialize Placeholder Services
-  devServerManager = new DevServerManager();
-  devServerManager.setWorkspaceClient(workspaceClient);
   eventBuffer = new EventBuffer(1000);
   sidecarManager = new SidecarManager(mainWindow);
 
@@ -342,7 +328,6 @@ async function createWindow(): Promise<void> {
   cleanupIpcHandlers = registerIpcHandlers(
     mainWindow,
     ptyClient,
-    devServerManager,
     workspaceClient,
     eventBuffer,
     cliAvailabilityService,
@@ -350,7 +335,6 @@ async function createWindow(): Promise<void> {
   );
   cleanupErrorHandlers = registerErrorHandlers(
     mainWindow,
-    devServerManager,
     workspaceClient,
     ptyClient
   );
@@ -461,8 +445,6 @@ async function createWindow(): Promise<void> {
           workspaceClient.resumeHealthCheck();
           await workspaceClient.refresh();
         }
-        if (devServerManager) await devServerManager.onSystemResume();
-
         const sleepDuration = suspendTime ? Date.now() - suspendTime : 0;
         BrowserWindow.getAllWindows().forEach((win) => {
           win.webContents.send(CHANNELS.SYSTEM_WAKE, {
@@ -478,12 +460,7 @@ async function createWindow(): Promise<void> {
   });
 
   // Initialize Deferred Services
-  initializeDeferredServices(
-    mainWindow,
-    devServerManager!,
-    cliAvailabilityService!,
-    eventBuffer!
-  ).catch((error) => {
+  initializeDeferredServices(mainWindow, cliAvailabilityService!, eventBuffer!).catch((error) => {
     console.error("[MAIN] Deferred services initialization failed:", error);
   });
 
@@ -496,8 +473,6 @@ async function createWindow(): Promise<void> {
 
     if (workspaceClient) workspaceClient.dispose();
     disposeWorkspaceClient();
-
-    if (devServerManager) await devServerManager.stopAll();
 
     if (sidecarManager) sidecarManager.destroy();
 

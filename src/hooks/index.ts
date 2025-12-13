@@ -1,8 +1,6 @@
 export { useWorktrees, useWorktree } from "./useWorktrees";
 export type { UseWorktreesReturn } from "./useWorktrees";
 
-export { useDevServer, useDevServerStates } from "./useDevServer";
-
 export { useElectron, isElectronAvailable } from "./useElectron";
 
 export { useAgentLauncher } from "./useAgentLauncher";

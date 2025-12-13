@@ -7,7 +7,6 @@ import { contextBridge, ipcRenderer } from "electron";
 
 import type {
   WorktreeState,
-  DevServerState,
   Project,
   ProjectSettings,
   TerminalSpawnOptions,
@@ -87,16 +86,6 @@ const CHANNELS = {
   WORKTREE_PR_REFRESH: "worktree:pr-refresh",
   WORKTREE_GET_DEFAULT_PATH: "worktree:get-default-path",
   WORKTREE_DELETE: "worktree:delete",
-
-  // Dev server channels
-  DEVSERVER_START: "devserver:start",
-  DEVSERVER_STOP: "devserver:stop",
-  DEVSERVER_TOGGLE: "devserver:toggle",
-  DEVSERVER_GET_STATE: "devserver:get-state",
-  DEVSERVER_GET_LOGS: "devserver:get-logs",
-  DEVSERVER_HAS_DEV_SCRIPT: "devserver:has-dev-script",
-  DEVSERVER_UPDATE: "devserver:update",
-  DEVSERVER_ERROR: "devserver:error",
 
   // Terminal channels
   TERMINAL_SPAWN: "terminal:spawn",
@@ -302,30 +291,6 @@ const api: ElectronAPI = {
 
     onRemove: (callback: (data: { worktreeId: string }) => void) =>
       _typedOn(CHANNELS.WORKTREE_REMOVE, callback),
-  },
-
-  // Dev Server API
-  devServer: {
-    start: (worktreeId: string, worktreePath: string, command?: string) =>
-      _typedInvoke(CHANNELS.DEVSERVER_START, { worktreeId, worktreePath, command }),
-
-    stop: (worktreeId: string) => _typedInvoke(CHANNELS.DEVSERVER_STOP, { worktreeId }),
-
-    toggle: (worktreeId: string, worktreePath: string, command?: string) =>
-      _typedInvoke(CHANNELS.DEVSERVER_TOGGLE, { worktreeId, worktreePath, command }),
-
-    getState: (worktreeId: string) => _typedInvoke(CHANNELS.DEVSERVER_GET_STATE, worktreeId),
-
-    getLogs: (worktreeId: string) => _typedInvoke(CHANNELS.DEVSERVER_GET_LOGS, worktreeId),
-
-    hasDevScript: (worktreePath: string) =>
-      _typedInvoke(CHANNELS.DEVSERVER_HAS_DEV_SCRIPT, worktreePath),
-
-    onUpdate: (callback: (state: DevServerState) => void) =>
-      _typedOn(CHANNELS.DEVSERVER_UPDATE, callback),
-
-    onError: (callback: (data: { worktreeId: string; error: string }) => void) =>
-      _typedOn(CHANNELS.DEVSERVER_ERROR, callback),
   },
 
   // Terminal API

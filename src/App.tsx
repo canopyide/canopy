@@ -51,7 +51,7 @@ import { systemClient, projectClient, errorsClient, worktreeClient } from "@/cli
 
 function SidebarContent() {
   const { worktrees, isLoading, error, refresh } = useWorktrees();
-  const { settings: projectSettings } = useProjectSettings();
+  useProjectSettings();
   const { launchAgent, availability, agentSettings } = useAgentLauncher();
   const {
     activeWorktreeId,
@@ -102,7 +102,6 @@ function SidebarContent() {
   );
 
   const worktreeActions = useWorktreeActions({
-    projectSettings: projectSettings ?? undefined,
     onOpenRecipeEditor: handleOpenRecipeEditor,
     launchAgent,
   });
@@ -196,7 +195,6 @@ function SidebarContent() {
               onSelect={() => selectWorktree(worktree.id)}
               onCopyTree={() => worktreeActions.handleCopyTree(worktree)}
               onOpenEditor={() => worktreeActions.handleOpenEditor(worktree)}
-              onToggleServer={() => worktreeActions.handleToggleServer(worktree)}
               onOpenIssue={
                 worktree.issueNumber ? () => worktreeActions.handleOpenIssue(worktree) : undefined
               }
@@ -207,7 +205,6 @@ function SidebarContent() {
               agentAvailability={availability}
               agentSettings={agentSettings}
               homeDir={homeDir}
-              devServerSettings={projectSettings?.devServer}
             />
           ))}
         </div>

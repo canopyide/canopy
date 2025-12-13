@@ -1,7 +1,6 @@
 import { MessagePort } from "node:worker_threads";
 import { initializeLogger } from "./utils/logger.js";
 import { copyTreeService } from "./services/CopyTreeService.js";
-import { DevServerParser } from "./services/devserver/DevServerParser.js";
 import { fileTreeService } from "./services/FileTreeService.js";
 import { projectPulseService } from "./services/ProjectPulseService.js";
 import type { CopyTreeProgress } from "../shared/types/ipc.js";
@@ -203,26 +202,6 @@ port.on("message", async (rawMsg: any) => {
       case "copytree:cancel":
         copyTreeService.cancel(request.operationId);
         break;
-
-      case "devserver:parse-output": {
-        const { requestId, worktreeId, output } = request;
-        try {
-          const detected = DevServerParser.detectUrl(output);
-          sendEvent({
-            type: "devserver:urls-detected",
-            requestId,
-            worktreeId,
-            detected,
-          });
-        } catch (error) {
-          sendEvent({
-            type: "error",
-            error: (error as Error).message,
-            requestId,
-          });
-        }
-        break;
-      }
 
       case "update-github-token":
         workspaceService.updateGitHubToken(request.token);

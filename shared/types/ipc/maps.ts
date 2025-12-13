@@ -10,13 +10,6 @@ import type {
   WorktreeConfig,
 } from "./worktree.js";
 import type {
-  DevServerStartPayload,
-  DevServerStopPayload,
-  DevServerTogglePayload,
-  DevServerErrorPayload,
-  DevServerState,
-} from "./devServer.js";
-import type {
   TerminalSpawnOptions,
   TerminalReconnectResult,
   BackendTerminalInfo,
@@ -102,32 +95,6 @@ export interface IpcInvokeMap {
   "worktree:delete": {
     args: [payload: WorktreeDeletePayload];
     result: void;
-  };
-
-  // Dev server channels
-  "devserver:start": {
-    args: [payload: DevServerStartPayload];
-    result: DevServerState;
-  };
-  "devserver:stop": {
-    args: [payload: DevServerStopPayload];
-    result: DevServerState;
-  };
-  "devserver:toggle": {
-    args: [payload: DevServerTogglePayload];
-    result: DevServerState;
-  };
-  "devserver:get-state": {
-    args: [worktreeId: string];
-    result: DevServerState;
-  };
-  "devserver:get-logs": {
-    args: [worktreeId: string];
-    result: string[];
-  };
-  "devserver:has-dev-script": {
-    args: [worktreePath: string];
-    result: boolean;
   };
 
   // Terminal channels
@@ -563,10 +530,6 @@ export interface IpcEventMap {
   // Worktree events
   "worktree:update": WorktreeState;
   "worktree:remove": { worktreeId: string };
-
-  // Dev server events
-  "devserver:update": DevServerState;
-  "devserver:error": DevServerErrorPayload;
 
   // Terminal events
   "terminal:data": [id: string, data: string];

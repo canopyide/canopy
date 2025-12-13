@@ -376,26 +376,21 @@ export function registerProjectHandlers(deps: HandlerDependencies): () => void {
     }
 
     try {
-      // Kill terminals and stop servers concurrently
-      const [terminalsKilled, serversStopped] = await Promise.all([
-        ptyManager.killByProject(projectId),
-        deps.devServerManager?.stopByProject(projectId) ?? Promise.resolve(0),
-      ]);
+      // Kill terminals
+      const terminalsKilled = await ptyManager.killByProject(projectId);
 
       // Clear persisted state
       await projectStore.clearProjectState(projectId);
 
-      const totalProcesses = terminalsKilled + serversStopped;
       console.log(
-        `[IPC] project:close: Closed ${totalProcesses} processes ` +
-          `(${terminalsKilled} terminals, ${serversStopped} servers)`
+        `[IPC] project:close: Closed ${terminalsKilled} process(es) ` +
+          `(${terminalsKilled} terminals)`
       );
 
       return {
         success: true,
-        processesKilled: totalProcesses,
+        processesKilled: terminalsKilled,
         terminalsKilled,
-        serversStopped,
       };
     } catch (error) {
       console.error(`[IPC] project:close: Failed to close project ${projectId}:`, error);
@@ -404,7 +399,6 @@ export function registerProjectHandlers(deps: HandlerDependencies): () => void {
         error: error instanceof Error ? error.message : String(error),
         processesKilled: 0,
         terminalsKilled: 0,
-        serversStopped: 0,
       };
     }
   };
@@ -420,19 +414,15 @@ export function registerProjectHandlers(deps: HandlerDependencies): () => void {
     const ptyManager = getPtyManager();
 
     const ptyStats = ptyManager.getProjectStats(projectId);
-    const serverCount = deps.devServerManager?.getProjectServerCount(projectId) ?? 0;
 
     // Estimate memory (rough approximation)
     const MEMORY_PER_TERMINAL_MB = 50;
-    const MEMORY_PER_SERVER_MB = 100;
 
-    const estimatedMemoryMB =
-      ptyStats.terminalCount * MEMORY_PER_TERMINAL_MB + serverCount * MEMORY_PER_SERVER_MB;
+    const estimatedMemoryMB = ptyStats.terminalCount * MEMORY_PER_TERMINAL_MB;
 
     return {
-      processCount: ptyStats.terminalCount + serverCount,
+      processCount: ptyStats.terminalCount,
       terminalCount: ptyStats.terminalCount,
-      serverCount,
       estimatedMemoryMB,
       terminalTypes: ptyStats.terminalTypes,
       processIds: ptyStats.processIds,

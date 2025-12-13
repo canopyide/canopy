@@ -56,7 +56,6 @@ export type KeyAction =
   | "worktree.selectSpace"
   | "worktree.copyTree"
   | "worktree.openEditor"
-  | "worktree.toggleServer"
   | "worktree.openPalette"
 
   // Terminal actions
