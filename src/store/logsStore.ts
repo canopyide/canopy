@@ -35,22 +35,34 @@ const createLogsStore: StateCreator<LogsState> = (set) => ({
     set((state) => {
       const newLogs = [...state.logs, entry];
       if (newLogs.length > MAX_LOGS) {
-        return { logs: newLogs.slice(-MAX_LOGS) };
+        const trimmedLogs = newLogs.slice(-MAX_LOGS);
+        const keepIds = new Set(trimmedLogs.map((l) => l.id));
+        const expandedIds = new Set([...state.expandedIds].filter((id) => keepIds.has(id)));
+        return { logs: trimmedLogs, expandedIds };
       }
       return { logs: newLogs };
     }),
 
   addLogs: (entries) =>
     set((state) => {
-      if (entries.length === 0) return state;
+      if (!Array.isArray(entries) || entries.length === 0) return {};
       const newLogs = [...state.logs, ...entries];
       if (newLogs.length > MAX_LOGS) {
-        return { logs: newLogs.slice(-MAX_LOGS) };
+        const trimmedLogs = newLogs.slice(-MAX_LOGS);
+        const keepIds = new Set(trimmedLogs.map((l) => l.id));
+        const expandedIds = new Set([...state.expandedIds].filter((id) => keepIds.has(id)));
+        return { logs: trimmedLogs, expandedIds };
       }
       return { logs: newLogs };
     }),
 
-  setLogs: (logs) => set({ logs }),
+  setLogs: (logs) =>
+    set((state) => {
+      const clamped = logs.length > MAX_LOGS ? logs.slice(-MAX_LOGS) : logs;
+      const keepIds = new Set(clamped.map((l) => l.id));
+      const expandedIds = new Set([...state.expandedIds].filter((id) => keepIds.has(id)));
+      return { logs: clamped, expandedIds };
+    }),
 
   clearLogs: () => set({ logs: [], expandedIds: new Set() }),
 

@@ -47,26 +47,17 @@ export function LogsContent({ className, onSourcesChange }: LogsContentProps) {
   const [atBottom, setAtBottom] = useState(true);
 
   useEffect(() => {
-    logsClient
-      .getAll()
-      .then((existingLogs) => {
-        setLogs(existingLogs);
-      })
-      .catch((error) => {
-        console.error("Failed to load logs:", error);
-      });
-
-    logsClient
-      .getSources()
-      .then((existingSources) => {
-        sourcesRef.current = existingSources;
-        onSourcesChange?.(existingSources);
-      })
-      .catch((error) => {
-        console.error("Failed to load log sources:", error);
-      });
+    const bufferedLogs: LogEntryType[] = [];
+    let hydrated = false;
 
     const unsubscribe = logsClient.onBatch((entries: LogEntryType[]) => {
+      if (!Array.isArray(entries) || entries.length === 0) return;
+
+      if (!hydrated) {
+        bufferedLogs.push(...entries);
+        return;
+      }
+
       addLogs(entries);
       const newSources = entries
         .map((entry) => entry.source)
@@ -75,6 +66,33 @@ export function LogsContent({ className, onSourcesChange }: LogsContentProps) {
         sourcesRef.current = [...sourcesRef.current, ...newSources].sort();
         onSourcesChange?.(sourcesRef.current);
       }
+    });
+
+    Promise.all([
+      logsClient.getAll().catch((error) => {
+        console.error("Failed to load logs:", error);
+        return [];
+      }),
+      logsClient.getSources().catch((error) => {
+        console.error("Failed to load log sources:", error);
+        return [];
+      }),
+    ]).then(([existingLogs, existingSources]) => {
+      const deduped = new Map<string, LogEntryType>();
+      for (const log of existingLogs) deduped.set(log.id, log);
+      for (const log of bufferedLogs) deduped.set(log.id, log);
+
+      const allLogs = Array.from(deduped.values()).sort((a, b) => a.timestamp - b.timestamp);
+      setLogs(allLogs);
+
+      const allSources = new Set([...existingSources]);
+      for (const log of bufferedLogs) {
+        if (log.source) allSources.add(log.source);
+      }
+      sourcesRef.current = Array.from(allSources).sort();
+      onSourcesChange?.(sourcesRef.current);
+
+      hydrated = true;
     });
 
     return () => {

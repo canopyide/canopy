@@ -512,7 +512,16 @@ const api: ElectronAPI = {
 
     getVerbose: () => _typedInvoke(CHANNELS.LOGS_GET_VERBOSE),
 
-    onEntry: (callback: (entry: LogEntry) => void) => _typedOn(CHANNELS.LOGS_ENTRY, callback),
+    onEntry: (callback: (entry: LogEntry) => void) => {
+      const offEntry = _typedOn(CHANNELS.LOGS_ENTRY, callback);
+      const offBatch = _typedOn(CHANNELS.LOGS_BATCH, (entries) => {
+        for (const entry of entries) callback(entry);
+      });
+      return () => {
+        offEntry();
+        offBatch();
+      };
+    },
 
     onBatch: (callback: (entries: LogEntry[]) => void) => _typedOn(CHANNELS.LOGS_BATCH, callback),
   },

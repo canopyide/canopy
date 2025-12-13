@@ -3,6 +3,7 @@ import { appendFileSync, mkdirSync, existsSync } from "fs";
 import { join } from "path";
 import type { BrowserWindow } from "electron";
 import { logBuffer, type LogEntry } from "../services/LogBuffer.js";
+import { CHANNELS } from "../ipc/channels.js";
 
 export type LogLevel = "debug" | "info" | "warn" | "error";
 
@@ -104,7 +105,18 @@ function flushLogs(): void {
   const MAX_LOGS_PER_FLUSH = 60;
   const logsToSend = pendingLogs.slice(0, MAX_LOGS_PER_FLUSH);
 
-  mainWindow.webContents.send("logs:batch", logsToSend);
+  const webContents = mainWindow.webContents;
+  if (webContents.isDestroyed()) {
+    pendingLogs = [];
+    return;
+  }
+
+  try {
+    webContents.send(CHANNELS.LOGS_BATCH, logsToSend);
+  } catch {
+    pendingLogs = [];
+    return;
+  }
 
   pendingLogs = pendingLogs.slice(MAX_LOGS_PER_FLUSH);
   lastLogTime = Date.now();
