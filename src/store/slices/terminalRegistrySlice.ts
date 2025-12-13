@@ -827,6 +827,10 @@ export const createTerminalRegistrySlice =
         if (targetLocation === "dock") {
           optimizeForDock(id);
         } else {
+          // Force resize sync to ensure PTY dimensions match the container
+          // performFit() in XtermAdapter may run before the container is laid out
+          terminalInstanceService.fit(id);
+
           terminalClient.flush(id).catch((error) => {
             console.error("Failed to flush terminal buffer:", error);
           });
