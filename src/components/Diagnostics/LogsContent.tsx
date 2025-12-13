@@ -21,7 +21,7 @@ export function LogsContent({ className, onSourcesChange }: LogsContentProps) {
     filters,
     autoScroll,
     expandedIds,
-    addLog,
+    addLogs,
     setLogs,
     setFilters,
     clearFilters,
@@ -33,7 +33,7 @@ export function LogsContent({ className, onSourcesChange }: LogsContentProps) {
       filters: state.filters,
       autoScroll: state.autoScroll,
       expandedIds: state.expandedIds,
-      addLog: state.addLog,
+      addLogs: state.addLogs,
       setLogs: state.setLogs,
       setFilters: state.setFilters,
       clearFilters: state.clearFilters,
@@ -66,10 +66,13 @@ export function LogsContent({ className, onSourcesChange }: LogsContentProps) {
         console.error("Failed to load log sources:", error);
       });
 
-    const unsubscribe = logsClient.onEntry((entry: LogEntryType) => {
-      addLog(entry);
-      if (entry.source && !sourcesRef.current.includes(entry.source)) {
-        sourcesRef.current = [...sourcesRef.current, entry.source].sort();
+    const unsubscribe = logsClient.onBatch((entries: LogEntryType[]) => {
+      addLogs(entries);
+      const newSources = entries
+        .map((entry) => entry.source)
+        .filter((source): source is string => !!source && !sourcesRef.current.includes(source));
+      if (newSources.length > 0) {
+        sourcesRef.current = [...sourcesRef.current, ...newSources].sort();
         onSourcesChange?.(sourcesRef.current);
       }
     });
@@ -77,7 +80,7 @@ export function LogsContent({ className, onSourcesChange }: LogsContentProps) {
     return () => {
       unsubscribe();
     };
-  }, [addLog, setLogs, onSourcesChange]);
+  }, [addLogs, setLogs, onSourcesChange]);
 
   const handleAtBottomChange = useCallback(
     (bottom: boolean) => {
