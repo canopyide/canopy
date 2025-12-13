@@ -14,7 +14,7 @@ export function getAutoGridCols(count: number, width: number | null): number {
   // Width-responsive decision for 3 terminals
   if (count === 3) {
     const w = width ?? 0;
-    return w >= 900 ? 3 : 2; // Favor columns: ~300px per terminal
+    return w >= 0 ? 3 : 2; // Favor columns: always 3
   }
 
   // Deterministic rectangular layouts

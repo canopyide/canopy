@@ -537,8 +537,7 @@ body,
   background-color: var(--color-surface-highlight);
   box-shadow:
     inset 0 0 0 1px rgba(255, 255, 255, 0.05),
-    0 0 0 1px var(--color-canopy-accent),
-    0 0 12px -2px rgba(16, 185, 129, 0.3);
+    0 0 0 1px rgba(255, 255, 255, 0.1);
 }
 
 /* Ensure header separator blends with selected state */
@@ -552,8 +551,7 @@ body,
   background-color: var(--color-surface-highlight);
   box-shadow:
     inset 0 0 0 1px rgba(255, 255, 255, 0.05),
-    0 0 0 1px var(--color-canopy-accent),
-    0 0 12px -2px rgba(16, 185, 129, 0.3);
+    0 0 0 1px rgba(255, 255, 255, 0.1);
 }
 
 /* Terminal Pane Ping Animation
@@ -653,8 +651,7 @@ body,
     border-color: rgba(255, 255, 255, 0.15);
     box-shadow:
       inset 0 0 0 1px rgba(255, 255, 255, 0.05),
-      0 0 0 1px var(--color-canopy-accent),
-      0 0 12px -2px rgba(16, 185, 129, 0.3);
+      0 0 0 1px rgba(255, 255, 255, 0.1);
   }
 }
 
