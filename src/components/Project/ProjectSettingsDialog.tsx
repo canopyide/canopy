@@ -1,5 +1,15 @@
 import { useState, useEffect } from "react";
-import { Terminal, Key, FolderX, Plus, Trash2, ChevronUp, ChevronDown } from "lucide-react";
+import {
+  Terminal,
+  Key,
+  FolderX,
+  Plus,
+  Trash2,
+  ChevronUp,
+  ChevronDown,
+  Eye,
+  EyeOff,
+} from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover";
 import { EmojiPicker } from "@/components/ui/emoji-picker";
@@ -8,6 +18,7 @@ import { useProjectSettings } from "@/hooks";
 import { useProjectStore } from "@/store/projectStore";
 import type { RunCommand } from "@/types";
 import { getProjectGradient } from "@/lib/colorUtils";
+import { cn } from "@/lib/utils";
 
 interface ProjectSettingsDialogProps {
   projectId: string;
@@ -20,6 +31,8 @@ interface EnvVar {
   key: string;
   value: string;
 }
+
+const SENSITIVE_ENV_KEY_RE = /\b(key|secret|token|password)\b/i;
 
 export function ProjectSettingsDialog({ projectId, isOpen, onClose }: ProjectSettingsDialogProps) {
   const { settings, saveSettings, isLoading, error } = useProjectSettings(projectId);
@@ -36,6 +49,19 @@ export function ProjectSettingsDialog({ projectId, isOpen, onClose }: ProjectSet
   const [environmentVariables, setEnvironmentVariables] = useState<EnvVar[]>([]);
   const [excludedPaths, setExcludedPaths] = useState<string[]>([]);
   const [isInitialized, setIsInitialized] = useState(false);
+  const [visibleEnvVars, setVisibleEnvVars] = useState<Set<string>>(new Set());
+
+  const toggleEnvVarVisibility = (id: string) => {
+    setVisibleEnvVars((prev) => {
+      const next = new Set(prev);
+      if (next.has(id)) {
+        next.delete(id);
+      } else {
+        next.add(id);
+      }
+      return next;
+    });
+  };
 
   useEffect(() => {
     if (isOpen && settings && !isInitialized) {
@@ -53,6 +79,8 @@ export function ProjectSettingsDialog({ projectId, isOpen, onClose }: ProjectSet
     }
     if (!isOpen) {
       setIsInitialized(false);
+      setVisibleEnvVars(new Set());
+      setEnvironmentVariables([]);
     }
   }, [settings, isOpen, isInitialized]);
 
@@ -352,7 +380,9 @@ export function ProjectSettingsDialog({ projectId, isOpen, onClose }: ProjectSet
                   </div>
                 ) : (
                   environmentVariables.map((envVar, index) => {
-                    const shouldMask = /key|secret|token|password/i.test(envVar.key);
+                    const isSensitive = SENSITIVE_ENV_KEY_RE.test(envVar.key);
+                    const isVisible = visibleEnvVars.has(envVar.id);
+                    const shouldMask = isSensitive && !isVisible;
                     return (
                       <div
                         key={envVar.id}
@@ -362,35 +392,75 @@ export function ProjectSettingsDialog({ projectId, isOpen, onClose }: ProjectSet
                           type="text"
                           value={envVar.key}
                           onChange={(e) => {
+                            const nextKey = e.target.value;
+                            const wasSensitive = SENSITIVE_ENV_KEY_RE.test(envVar.key);
+                            const nowSensitive = SENSITIVE_ENV_KEY_RE.test(nextKey);
                             setEnvironmentVariables((prev) => {
                               const updated = [...prev];
-                              updated[index] = { ...envVar, key: e.target.value };
+                              updated[index] = { ...envVar, key: nextKey };
                               return updated;
                             });
+                            if (!wasSensitive && nowSensitive) {
+                              setVisibleEnvVars((prev) => {
+                                const next = new Set(prev);
+                                next.delete(envVar.id);
+                                return next;
+                              });
+                            }
                           }}
+                          spellCheck={false}
+                          autoCapitalize="none"
                           className="flex-1 bg-transparent border border-canopy-border rounded px-2 py-1 text-sm text-canopy-text font-mono focus:outline-none focus:border-canopy-accent focus:ring-1 focus:ring-canopy-accent/30"
                           placeholder="VARIABLE_NAME"
                           aria-label="Environment variable name"
                         />
                         <span className="text-canopy-text/60">=</span>
-                        <input
-                          type={shouldMask ? "password" : "text"}
-                          value={envVar.value}
-                          onChange={(e) => {
-                            setEnvironmentVariables((prev) => {
-                              const updated = [...prev];
-                              updated[index] = { ...envVar, value: e.target.value };
-                              return updated;
-                            });
-                          }}
-                          className="flex-1 bg-canopy-sidebar border border-canopy-border rounded px-2 py-1 text-sm text-canopy-text font-mono focus:outline-none focus:border-canopy-accent focus:ring-1 focus:ring-canopy-accent/30"
-                          placeholder="value"
-                          aria-label="Environment variable value"
-                        />
+                        <div className="flex-1 relative">
+                          <input
+                            type={shouldMask ? "password" : "text"}
+                            value={envVar.value}
+                            onChange={(e) => {
+                              setEnvironmentVariables((prev) => {
+                                const updated = [...prev];
+                                updated[index] = { ...envVar, value: e.target.value };
+                                return updated;
+                              });
+                            }}
+                            spellCheck={false}
+                            autoCapitalize="none"
+                            autoComplete={isSensitive ? "new-password" : "off"}
+                            className={cn(
+                              "w-full bg-canopy-sidebar border border-canopy-border rounded px-2 py-1 text-sm text-canopy-text font-mono focus:outline-none focus:border-canopy-accent focus:ring-1 focus:ring-canopy-accent/30",
+                              isSensitive && "pr-8"
+                            )}
+                            placeholder="value"
+                            aria-label="Environment variable value"
+                          />
+                          {isSensitive && (
+                            <button
+                              type="button"
+                              onClick={() => toggleEnvVarVisibility(envVar.id)}
+                              className="absolute right-1.5 top-1/2 -translate-y-1/2 p-0.5 rounded hover:bg-canopy-border/50 transition-colors"
+                              aria-pressed={isVisible}
+                              aria-label={`${isVisible ? "Hide" : "Show"} value${envVar.key ? ` for ${envVar.key}` : ""}`}
+                            >
+                              {isVisible ? (
+                                <EyeOff className="h-4 w-4 text-canopy-text/60" />
+                              ) : (
+                                <Eye className="h-4 w-4 text-canopy-text/60" />
+                              )}
+                            </button>
+                          )}
+                        </div>
                         <button
                           type="button"
                           onClick={() => {
                             setEnvironmentVariables((prev) => prev.filter((_, i) => i !== index));
+                            setVisibleEnvVars((prev) => {
+                              const next = new Set(prev);
+                              next.delete(envVar.id);
+                              return next;
+                            });
                           }}
                           className="p-1 rounded hover:bg-red-900/30 transition-colors"
                           aria-label="Delete environment variable"
