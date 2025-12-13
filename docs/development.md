@@ -162,7 +162,7 @@ npm run dev
 | ---------- | -------------------------------- |
 | `NODE_ENV` | Set to `development` in dev mode |
 
-OpenAI API key and other secrets are stored via electron-store, not environment variables.
+Secrets like the GitHub token are stored via electron-store, not environment variables.
 
 ## Continuous Integration
 
