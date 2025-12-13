@@ -328,16 +328,17 @@ const sidecarStoreCreator: StateCreator<
   [["zustand/persist", Partial<SidecarState>]]
 > = persist(createSidecarStore, {
   name: "sidecar-storage",
-  storage: createJSONStorage(() =>
-    typeof window !== "undefined" ? localStorage : (undefined as any)
-  ),
+  storage: createJSONStorage(() => {
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    return typeof window !== "undefined" ? localStorage : (undefined as any);
+  }),
   partialize: (state) => ({
     links: state.links,
     width: state.width,
     tabs: state.tabs,
     layoutModePreference: state.layoutModePreference,
   }),
-  merge: (persistedState, currentState) => {
+  merge: (persistedState: unknown, currentState) => {
     const persisted = persistedState as Partial<SidecarState>;
     return {
       ...currentState,
