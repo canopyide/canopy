@@ -11,6 +11,7 @@ const FRAME_SETTLE_DELAY_MS = REDRAW_FLUSH_DELAY_MS;
 const FRAME_DEADLINE_MS = MAX_FLUSH_DELAY_MS;
 const TUI_BURST_THRESHOLD_MS = 50;
 const IDLE_POLL_INTERVALS = [8, 16, 33, 100] as const;
+const MAX_BUFFER_BYTES = 20 * 1024;
 
 type SabBufferEntry = {
   chunks: (string | Uint8Array)[];
@@ -25,6 +26,7 @@ type SabBufferEntry = {
   lastRedrawAt: number | null;
   flushOnRedrawOnly: boolean;
   isCursorHidden: boolean;
+  hasCriticalReset: boolean;
 };
 
 type FrameQueue = { frames: (string | Uint8Array)[][]; presenterTimeoutId: number | null };
@@ -107,6 +109,7 @@ export class TerminalDataBuffer {
     const scanWindow = prevRecent.slice(-32) + textThisChunk;
     const isRedraw = this.detectRedrawPatternInStream(scanWindow);
     const newCursorState = this.updateCursorState(scanWindow, entry?.isCursorHidden ?? false);
+    const isCriticalReset = this.detectCriticalReset(scanWindow);
 
     if (!entry) {
       entry = {
@@ -122,6 +125,7 @@ export class TerminalDataBuffer {
         lastRedrawAt: isRedraw ? now : null,
         flushOnRedrawOnly: false,
         isCursorHidden: newCursorState,
+        hasCriticalReset: isCriticalReset,
       };
       this.sabBuffers.set(id, entry);
       entry.chunks.push(data);
@@ -170,6 +174,7 @@ export class TerminalDataBuffer {
           entry.firstDataAt = now;
           entry.lastDataAt = now;
           entry.isCursorHidden = newCursorState;
+          entry.hasCriticalReset = isCriticalReset;
           if (isRedraw) {
             entry.lastRedrawAt = now;
           }
@@ -196,6 +201,14 @@ export class TerminalDataBuffer {
     entry.lastDataAt = now;
     entry.bytesSinceStart = bytesSinceStart;
     entry.recentChars = combinedRecent;
+    if (isCriticalReset) {
+      entry.hasCriticalReset = true;
+    }
+
+    if (bytesSinceStart >= MAX_BUFFER_BYTES) {
+      this.flushBuffer(id);
+      return;
+    }
 
     if (entry.isCursorHidden && !newCursorState) {
       entry.isCursorHidden = newCursorState;
@@ -309,7 +322,7 @@ export class TerminalDataBuffer {
 
     const now = Date.now();
     if (now - entry.lastDataAt >= FRAME_SETTLE_DELAY_MS - 1) {
-      if (entry.flushMode === "frame" && entry.flushOnRedrawOnly) {
+      if (entry.flushMode === "frame" && entry.flushOnRedrawOnly && !entry.hasCriticalReset) {
         return;
       }
       this.flushBuffer(id);
@@ -347,6 +360,14 @@ export class TerminalDataBuffer {
     if (/\x1b\[[0-9;]*H/.test(recent)) return true;
     // eslint-disable-next-line no-control-regex
     if (/\x1b\[[0-9;]*J/.test(recent)) return true;
+    return false;
+  }
+
+  private detectCriticalReset(text: string): boolean {
+    if (!text) return false;
+    if (text.includes("\x1b[2J")) return true;
+    if (text.includes("\x1b[3J")) return true;
+    if (text.includes("\x1bc")) return true;
     return false;
   }
 
