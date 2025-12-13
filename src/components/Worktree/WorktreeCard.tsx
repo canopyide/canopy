@@ -812,7 +812,6 @@ export function WorktreeCard({
                 showLastCommit={true}
                 lastActivityTimestamp={worktree.lastActivityTimestamp}
                 showTime={!showTimeInHeader}
-                showPulse={isMainWorktree}
               />
             ) : (
               /* Collapsed: Pulse line summary */

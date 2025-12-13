@@ -17,8 +17,10 @@ const HEAT_COLORS = [
   "bg-emerald-400/80",
 ] as const;
 
+const COLUMNS_PER_ROW = 60;
+
 export function PulseHeatmap({ cells, rangeDays, compact = false }: PulseHeatmapProps) {
-  const weeks = useMemo(() => {
+  const rows = useMemo(() => {
     const sortedCells = [...cells]
       .filter((cell) => {
         const date = new Date(cell.date);
@@ -30,20 +32,10 @@ export function PulseHeatmap({ cells, rangeDays, compact = false }: PulseHeatmap
         level: Math.max(0, Math.min(4, cell.level)) as HeatCell["level"],
       }));
 
+    // Split cells into rows of 30
     const result: HeatCell[][] = [];
-    let week: HeatCell[] = [];
-
-    for (const cell of sortedCells) {
-      week.push(cell);
-      const date = new Date(cell.date);
-      if (date.getDay() === 6) {
-        result.push(week);
-        week = [];
-      }
-    }
-
-    if (week.length > 0) {
-      result.push(week);
+    for (let i = 0; i < sortedCells.length; i += COLUMNS_PER_ROW) {
+      result.push(sortedCells.slice(i, i + COLUMNS_PER_ROW));
     }
 
     return result;
@@ -55,13 +47,13 @@ export function PulseHeatmap({ cells, rangeDays, compact = false }: PulseHeatmap
   return (
     <TooltipProvider>
       <div
-        className={cn("flex", gap)}
+        className={cn("flex flex-col", gap)}
         role="img"
         aria-label={`Activity over the last ${rangeDays} days`}
       >
-        {weeks.map((week, weekIndex) => (
-          <div key={weekIndex} className={cn("flex flex-col", gap)}>
-            {week.map((cell) => {
+        {rows.map((row, rowIndex) => (
+          <div key={rowIndex} className={cn("flex", gap)}>
+            {row.map((cell) => {
               const colorClass = HEAT_COLORS[cell.level];
               const date = new Date(cell.date);
               const formatted = date.toLocaleDateString("en-US", {

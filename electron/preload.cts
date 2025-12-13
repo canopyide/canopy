@@ -635,7 +635,7 @@ const api: ElectronAPI = {
 
     getProjectPulse: (options: {
       worktreeId: string;
-      rangeDays: 14 | 30 | 56 | 90;
+      rangeDays: 60 | 120 | 180;
       includeDelta?: boolean;
       includeRecentCommits?: boolean;
     }) => ipcRenderer.invoke(CHANNELS.GIT_GET_PROJECT_PULSE, options),
