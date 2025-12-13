@@ -1,12 +1,11 @@
 import { useCallback } from "react";
-import type { WorktreeState, ProjectDevServerSettings, RecipeTerminal } from "@/types";
-import { copyTreeClient, devServerClient, githubClient, systemClient } from "@/clients";
+import type { WorktreeState, RecipeTerminal } from "@/types";
+import { copyTreeClient, githubClient, systemClient } from "@/clients";
 import { useErrorStore, type AppError } from "@/store";
 import { useRecipeStore } from "@/store/recipeStore";
 import { formatBytes } from "@/lib/formatBytes";
 
 export interface UseWorktreeActionsOptions {
-  projectSettings?: { devServer?: ProjectDevServerSettings };
   onOpenRecipeEditor?: (worktreeId: string, initialTerminals?: RecipeTerminal[]) => void;
   launchAgent?: (agentId: string, options: { worktreeId: string; location: "grid" }) => void;
 }
@@ -14,7 +13,6 @@ export interface UseWorktreeActionsOptions {
 export interface WorktreeActions {
   handleCopyTree: (worktree: WorktreeState) => Promise<string | undefined>;
   handleOpenEditor: (worktree: WorktreeState) => void;
-  handleToggleServer: (worktree: WorktreeState) => void;
   handleOpenIssue: (worktree: WorktreeState) => void;
   handleOpenPR: (worktree: WorktreeState) => void;
   handleCreateRecipe: (worktreeId: string) => void;
@@ -23,7 +21,6 @@ export interface WorktreeActions {
 }
 
 export function useWorktreeActions({
-  projectSettings,
   onOpenRecipeEditor,
   launchAgent,
 }: UseWorktreeActionsOptions = {}): WorktreeActions {
@@ -87,14 +84,6 @@ export function useWorktreeActions({
     systemClient.openPath(worktree.path);
   }, []);
 
-  const handleToggleServer = useCallback(
-    (worktree: WorktreeState) => {
-      const command = projectSettings?.devServer?.command;
-      devServerClient.toggle(worktree.id, worktree.path, command);
-    },
-    [projectSettings]
-  );
-
   const handleOpenIssue = useCallback((worktree: WorktreeState) => {
     if (worktree.issueNumber) {
       githubClient.openIssue(worktree.path, worktree.issueNumber);
@@ -143,7 +132,6 @@ export function useWorktreeActions({
   return {
     handleCopyTree,
     handleOpenEditor,
-    handleToggleServer,
     handleOpenIssue,
     handleOpenPR,
     handleCreateRecipe,

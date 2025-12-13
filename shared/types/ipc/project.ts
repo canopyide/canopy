@@ -6,8 +6,6 @@ export interface ProjectCloseResult {
   processesKilled: number;
   /** Number of terminals killed */
   terminalsKilled: number;
-  /** Number of dev servers stopped */
-  serversStopped: number;
   /** Error message if operation failed */
   error?: string;
 }
@@ -18,8 +16,6 @@ export interface ProjectStats {
   processCount: number;
   /** Number of terminal processes */
   terminalCount: number;
-  /** Number of dev server processes */
-  serverCount: number;
   /** Estimated memory usage in MB */
   estimatedMemoryMB: number;
   /** Terminal types breakdown */
