@@ -11,13 +11,12 @@ import {
   getErrorDetails,
   isTransientError,
 } from "../utils/errorTypes.js";
-import type { DevServerManager } from "../services/DevServerManager.js";
 import type { PtyClient } from "../services/PtyClient.js";
 import type { WorkspaceClient } from "../services/WorkspaceClient.js";
 
 type ErrorType = "git" | "process" | "filesystem" | "network" | "config" | "unknown";
 
-type RetryAction = "devserver" | "terminal" | "git" | "worktree";
+type RetryAction = "terminal" | "git" | "worktree";
 
 interface AppError {
   id: string;
@@ -92,18 +91,15 @@ function createAppError(
 
 class ErrorService {
   private mainWindow: BrowserWindow | null = null;
-  private devServerManager: DevServerManager | null = null;
   private worktreeService: WorkspaceClient | null = null;
   private ptyClient: PtyClient | null = null;
 
   initialize(
     mainWindow: BrowserWindow,
-    devServerManager: DevServerManager | null,
     worktreeService: WorkspaceClient | null,
     ptyClient: PtyClient | null
   ) {
     this.mainWindow = mainWindow;
-    this.devServerManager = devServerManager;
     this.worktreeService = worktreeService;
     this.ptyClient = ptyClient;
   }
@@ -124,16 +120,6 @@ class ErrorService {
     const { action, args } = payload;
 
     switch (action) {
-      case "devserver":
-        if (this.devServerManager && args?.worktreeId && args?.worktreePath) {
-          await this.devServerManager.start(
-            args.worktreeId as string,
-            args.worktreePath as string,
-            args.command as string | undefined
-          );
-        }
-        break;
-
       case "terminal":
         if (this.ptyClient && args?.id && args?.cwd) {
           this.ptyClient.spawn(args.id as string, {
@@ -173,13 +159,12 @@ const errorService = new ErrorService();
 
 export function registerErrorHandlers(
   mainWindow: BrowserWindow,
-  devServerManager: DevServerManager | null,
   worktreeService: WorkspaceClient | null,
   ptyClient: PtyClient | null
 ): () => void {
   const handlers: Array<() => void> = [];
 
-  errorService.initialize(mainWindow, devServerManager, worktreeService, ptyClient);
+  errorService.initialize(mainWindow, worktreeService, ptyClient);
 
   const handleRetry = async (_event: Electron.IpcMainInvokeEvent, payload: RetryPayload) => {
     try {

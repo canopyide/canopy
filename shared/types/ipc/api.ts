@@ -7,7 +7,6 @@ import type {
   AgentId,
 } from "../domain.js";
 import type { AgentSettings, AgentSettingsEntry } from "../agentSettings.js";
-import type { DevServerState } from "../domain.js";
 
 import type { CreateWorktreeOptions, BranchInfo, WorktreeConfig } from "./worktree.js";
 import type {
@@ -68,16 +67,6 @@ export interface ElectronAPI {
     delete(worktreeId: string, force?: boolean): Promise<void>;
     onUpdate(callback: (state: WorktreeState) => void): () => void;
     onRemove(callback: (data: { worktreeId: string }) => void): () => void;
-  };
-  devServer: {
-    start(worktreeId: string, worktreePath: string, command?: string): Promise<DevServerState>;
-    stop(worktreeId: string): Promise<DevServerState>;
-    toggle(worktreeId: string, worktreePath: string, command?: string): Promise<DevServerState>;
-    getState(worktreeId: string): Promise<DevServerState>;
-    getLogs(worktreeId: string): Promise<string[]>;
-    hasDevScript(worktreePath: string): Promise<boolean>;
-    onUpdate(callback: (state: DevServerState) => void): () => void;
-    onError(callback: (data: { worktreeId: string; error: string }) => void): () => void;
   };
   terminal: {
     spawn(options: TerminalSpawnOptions): Promise<string>;

@@ -21,9 +21,6 @@ export type {
   WorktreeMood,
   Worktree,
   WorktreeState,
-  // Dev server types
-  DevServerStatus,
-  DevServerState,
   // Notification types
   NotificationType,
   Notification,
@@ -59,7 +56,6 @@ export type {
   TerminalRecipe,
   // Project settings types
   RunCommand,
-  ProjectDevServerSettings,
   ProjectSettings,
 } from "./domain.js";
 
@@ -88,11 +84,6 @@ export type {
   WorktreeRemovePayload,
   WorktreeSetActivePayload,
   WorktreeDeletePayload,
-  // Dev server IPC types
-  DevServerStartPayload,
-  DevServerStopPayload,
-  DevServerTogglePayload,
-  DevServerErrorPayload,
   // System IPC types
   SystemOpenExternalPayload,
   SystemOpenPathPayload,

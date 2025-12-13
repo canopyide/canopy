@@ -10,15 +10,6 @@ export const CHANNELS = {
   WORKTREE_GET_DEFAULT_PATH: "worktree:get-default-path",
   WORKTREE_DELETE: "worktree:delete",
 
-  DEVSERVER_START: "devserver:start",
-  DEVSERVER_STOP: "devserver:stop",
-  DEVSERVER_TOGGLE: "devserver:toggle",
-  DEVSERVER_GET_STATE: "devserver:get-state",
-  DEVSERVER_GET_LOGS: "devserver:get-logs",
-  DEVSERVER_HAS_DEV_SCRIPT: "devserver:has-dev-script",
-  DEVSERVER_UPDATE: "devserver:update",
-  DEVSERVER_ERROR: "devserver:error",
-
   TERMINAL_SPAWN: "terminal:spawn",
   TERMINAL_DATA: "terminal:data",
   TERMINAL_INPUT: "terminal:input",

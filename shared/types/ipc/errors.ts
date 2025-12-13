@@ -2,7 +2,7 @@
 export type ErrorType = "git" | "process" | "filesystem" | "network" | "config" | "unknown";
 
 /** Action that can be retried after an error */
-export type RetryAction = "devserver" | "terminal" | "git" | "worktree";
+export type RetryAction = "terminal" | "git" | "worktree";
 
 /** Application error for UI display */
 export interface AppError {
