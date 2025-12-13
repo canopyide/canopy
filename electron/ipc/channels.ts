@@ -97,6 +97,7 @@ export const CHANNELS = {
   LOGS_GET_SOURCES: "logs:get-sources",
   LOGS_CLEAR: "logs:clear",
   LOGS_ENTRY: "logs:entry",
+  LOGS_BATCH: "logs:batch",
   LOGS_OPEN_FILE: "logs:open-file",
   LOGS_SET_VERBOSE: "logs:set-verbose",
   LOGS_GET_VERBOSE: "logs:get-verbose",

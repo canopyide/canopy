@@ -38,4 +38,8 @@ export const logsClient = {
   onEntry: (callback: (entry: LogEntry) => void): (() => void) => {
     return window.electron.logs.onEntry(callback);
   },
+
+  onBatch: (callback: (entries: LogEntry[]) => void): (() => void) => {
+    return window.electron.logs.onBatch(callback);
+  },
 } as const;
