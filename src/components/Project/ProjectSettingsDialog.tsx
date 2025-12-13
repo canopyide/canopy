@@ -143,7 +143,9 @@ export function ProjectSettingsDialog({ projectId, isOpen, onClose }: ProjectSet
       const trimmedKey = envVar.key.trim();
       if (!trimmedKey) continue;
       if (!/^[A-Za-z_][A-Za-z0-9_]*$/.test(trimmedKey)) {
-        setSaveError(`Invalid environment variable key: "${trimmedKey}". Use only letters, numbers, and underscores.`);
+        setSaveError(
+          `Invalid environment variable key: "${trimmedKey}". Use only letters, numbers, and underscores.`
+        );
         return;
       }
       if (seenKeys.has(trimmedKey)) {
@@ -154,9 +156,7 @@ export function ProjectSettingsDialog({ projectId, isOpen, onClose }: ProjectSet
       envVarRecord[trimmedKey] = envVar.value;
     }
 
-    const sanitizedPaths = excludedPaths
-      .map((p) => p.trim())
-      .filter(Boolean);
+    const sanitizedPaths = excludedPaths.map((p) => p.trim()).filter(Boolean);
 
     setIsSaving(true);
     setSaveError(null);
@@ -178,8 +178,7 @@ export function ProjectSettingsDialog({ projectId, isOpen, onClose }: ProjectSet
         ...settings,
         devServer: devServerSettings,
         runCommands: sanitizedRunCommands,
-        environmentVariables:
-          Object.keys(envVarRecord).length > 0 ? envVarRecord : undefined,
+        environmentVariables: Object.keys(envVarRecord).length > 0 ? envVarRecord : undefined,
         excludedPaths: sanitizedPaths.length > 0 ? sanitizedPaths : undefined,
       });
       onClose();
@@ -497,8 +496,8 @@ export function ProjectSettingsDialog({ projectId, isOpen, onClose }: ProjectSet
                 Environment Variables
               </h3>
               <p className="text-xs text-canopy-text/60 mb-4">
-                Project-specific environment variables. Variable names containing KEY, SECRET, TOKEN,
-                or PASSWORD will have their values masked.
+                Project-specific environment variables. Variable names containing KEY, SECRET,
+                TOKEN, or PASSWORD will have their values masked.
               </p>
 
               <div className="space-y-2">
