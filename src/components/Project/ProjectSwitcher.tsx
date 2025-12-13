@@ -275,7 +275,7 @@ export function ProjectSwitcher() {
           >
             {project.name}
           </span>
-          <span className="truncate text-[10px] text-muted-foreground/70">
+          <span className="truncate text-[11px] font-mono text-muted-foreground/70">
             {project.path.split(/[/\\]/).pop()}
           </span>
         </div>
@@ -302,7 +302,7 @@ export function ProjectSwitcher() {
     if (groupedProjects.active.length > 0) {
       sections.push(
         <div key="active">
-          <DropdownMenuLabel className="text-[10px] font-semibold text-muted-foreground/50 uppercase tracking-widest px-2 py-1.5">
+          <DropdownMenuLabel className="text-[11px] font-semibold text-muted-foreground/50 uppercase tracking-widest px-2 py-1.5">
             Active
           </DropdownMenuLabel>
           {groupedProjects.active.map((project) => renderProjectItem(project, true))}
@@ -315,7 +315,7 @@ export function ProjectSwitcher() {
       sections.push(
         <div key="running">
           {sections.length > 0 && <DropdownMenuSeparator className="my-1 bg-border/40" />}
-          <DropdownMenuLabel className="text-[10px] font-semibold text-muted-foreground/50 uppercase tracking-widest px-2 py-1.5 flex items-center gap-2">
+          <DropdownMenuLabel className="text-[11px] font-semibold text-muted-foreground/50 uppercase tracking-widest px-2 py-1.5 flex items-center gap-2">
             <Circle className="h-2 w-2 fill-green-500 text-green-500" />
             Running ({groupedProjects.running.length})
           </DropdownMenuLabel>
@@ -329,7 +329,7 @@ export function ProjectSwitcher() {
       sections.push(
         <div key="recent">
           {sections.length > 0 && <DropdownMenuSeparator className="my-1 bg-border/40" />}
-          <DropdownMenuLabel className="text-[10px] font-semibold text-muted-foreground/50 uppercase tracking-widest px-2 py-1.5">
+          <DropdownMenuLabel className="text-[11px] font-semibold text-muted-foreground/50 uppercase tracking-widest px-2 py-1.5">
             Recent
           </DropdownMenuLabel>
           {groupedProjects.recent.map((project) => renderProjectItem(project, false))}
@@ -369,7 +369,7 @@ export function ProjectSwitcher() {
                   {renderIcon(project.emoji || "🌲", project.color, "h-8 w-8 text-base")}
                   <div className="flex flex-col min-w-0 flex-1">
                     <span className="font-medium truncate">{project.name}</span>
-                    <span className="text-[10px] text-muted-foreground truncate">
+                    <span className="text-[11px] font-mono text-muted-foreground truncate">
                       {project.path.split(/[/\\]/).pop()}
                     </span>
                   </div>
