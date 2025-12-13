@@ -333,11 +333,7 @@ async function createWindow(): Promise<void> {
     cliAvailabilityService,
     sidecarManager
   );
-  cleanupErrorHandlers = registerErrorHandlers(
-    mainWindow,
-    workspaceClient,
-    ptyClient
-  );
+  cleanupErrorHandlers = registerErrorHandlers(mainWindow, workspaceClient, ptyClient);
 
   // Define port distribution logic
   function createAndDistributePorts(): void {

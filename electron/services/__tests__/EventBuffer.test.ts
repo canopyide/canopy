@@ -592,11 +592,12 @@ describe("EventBuffer", () => {
     });
 
     it("assigns correct category to different event types", () => {
-      events.emit("server:update", {
+      events.emit("task:created", {
+        taskId: "task-1",
+        description: "Test task",
         worktreeId: "wt-1",
-        status: "running",
         timestamp: Date.now(),
-      } as any);
+      });
 
       events.emit("sys:worktree:update", {
         id: "wt-1",
@@ -611,10 +612,10 @@ describe("EventBuffer", () => {
       } as any);
 
       const all = buffer.getAll();
-      const serverEvent = all.find((e) => e.type === "server:update");
+      const taskEvent = all.find((e) => e.type === "task:created");
       const sysEvent = all.find((e) => e.type === "sys:worktree:update");
 
-      expect(serverEvent?.category).toBe("server");
+      expect(taskEvent?.category).toBe("task");
       expect(sysEvent?.category).toBe("system");
     });
 
@@ -633,19 +634,20 @@ describe("EventBuffer", () => {
         trigger: "output",
         confidence: 1.0,
       });
-      events.emit("server:update", {
+      events.emit("task:created", {
+        taskId: "task-1",
+        description: "Test task",
         worktreeId: "wt-1",
-        status: "running",
         timestamp: Date.now(),
-      } as any);
+      });
 
       const agentEvents = buffer.getFiltered({ category: "agent" });
       expect(agentEvents.length).toBe(2);
       expect(agentEvents.every((e) => e.category === "agent")).toBe(true);
 
-      const serverEvents = buffer.getFiltered({ category: "server" });
-      expect(serverEvents.length).toBe(1);
-      expect(serverEvents[0].category).toBe("server");
+      const taskEvents = buffer.getFiltered({ category: "task" });
+      expect(taskEvents.length).toBe(1);
+      expect(taskEvents[0].category).toBe("task");
     });
 
     it("combines category filter with other filters", () => {
@@ -661,11 +663,12 @@ describe("EventBuffer", () => {
         type: "gemini",
         timestamp: Date.now(),
       });
-      events.emit("server:update", {
+      events.emit("task:created", {
+        taskId: "task-1",
+        description: "Test task",
         worktreeId: "wt-1",
-        status: "running",
         timestamp: Date.now(),
-      } as any);
+      });
 
       const filtered = buffer.getFiltered({
         category: "agent",
@@ -682,19 +685,20 @@ describe("EventBuffer", () => {
         type: "claude",
         timestamp: Date.now(),
       });
-      events.emit("server:update", {
+      events.emit("task:created", {
+        taskId: "task-1",
+        description: "Test task",
         worktreeId: "wt-1",
-        status: "running",
         timestamp: Date.now(),
-      } as any);
+      });
 
       const agentEvents = buffer.getEventsByCategory("agent");
       expect(agentEvents.length).toBe(1);
       expect(agentEvents[0].type).toBe("agent:spawned");
 
-      const serverEvents = buffer.getEventsByCategory("server");
-      expect(serverEvents.length).toBe(1);
-      expect(serverEvents[0].type).toBe("server:update");
+      const taskEvents = buffer.getEventsByCategory("task");
+      expect(taskEvents.length).toBe(1);
+      expect(taskEvents[0].type).toBe("task:created");
     });
 
     it("getCategoryStats returns correct counts", () => {
@@ -712,36 +716,17 @@ describe("EventBuffer", () => {
         trigger: "output",
         confidence: 1.0,
       });
-      events.emit("server:update", {
+      events.emit("task:created", {
+        taskId: "task-1",
+        description: "Test task",
         worktreeId: "wt-1",
-        status: "running",
-        timestamp: Date.now(),
-      } as any);
-
-      const stats = buffer.getCategoryStats();
-      expect(stats.agent).toBe(2);
-      expect(stats.server).toBe(1);
-      expect(stats.system).toBe(0);
-    });
-
-    it("handles server:error category and context correctly", () => {
-      events.emit("server:error", {
-        worktreeId: "wt-1",
-        error: "Process exited with code 1",
         timestamp: Date.now(),
       });
 
-      const all = buffer.getAll();
-      const errorEvent = all.find((e) => e.type === "server:error");
-
-      expect(errorEvent?.category).toBe("server");
-      expect(errorEvent?.payload.worktreeId).toBe("wt-1");
-      expect(errorEvent?.payload.error).toBe("Process exited with code 1");
-
-      // Verify category filtering works for server:error
-      const serverEvents = buffer.getFiltered({ category: "server" });
-      expect(serverEvents.length).toBe(1);
-      expect(serverEvents[0].type).toBe("server:error");
+      const stats = buffer.getCategoryStats();
+      expect(stats.agent).toBe(2);
+      expect(stats.task).toBe(1);
+      expect(stats.system).toBe(0);
     });
 
     it("returns empty array for category with no events", () => {

@@ -223,7 +223,6 @@ export function registerProjectHandlers(deps: HandlerDependencies): () => void {
       // This ensures output is buffered before we filter it
       const cleanupResults = await Promise.allSettled([
         deps.worktreeService?.onProjectSwitch() ?? Promise.resolve(),
-        deps.devServerManager?.onProjectSwitch(projectId) ?? Promise.resolve(),
         Promise.resolve(ptyManager.onProjectSwitch(projectId)),
         Promise.resolve(logBuffer.onProjectSwitch()),
         Promise.resolve(deps.eventBuffer?.onProjectSwitch()),
@@ -231,13 +230,7 @@ export function registerProjectHandlers(deps: HandlerDependencies): () => void {
 
       cleanupResults.forEach((result, index) => {
         if (result.status === "rejected") {
-          const serviceNames = [
-            "WorktreeService",
-            "DevServerManager",
-            "PtyManager",
-            "LogBuffer",
-            "EventBuffer",
-          ];
+          const serviceNames = ["WorktreeService", "PtyManager", "LogBuffer", "EventBuffer"];
           console.error(`[ProjectSwitch] ${serviceNames[index]} cleanup failed:`, result.reason);
         }
       });
@@ -245,7 +238,6 @@ export function registerProjectHandlers(deps: HandlerDependencies): () => void {
       // Second: Set active project filter AFTER buffering is in place
       // This prevents event loss during transition - buffered output is preserved for replay
       ptyManager.setActiveProject(projectId);
-      deps.devServerManager?.setActiveProject(projectId);
 
       console.log("[ProjectSwitch] Previous project state cleaned up");
 
@@ -284,7 +276,6 @@ export function registerProjectHandlers(deps: HandlerDependencies): () => void {
       // Rollback active project filter on failure
       console.error("[ProjectSwitch] Project switch failed, rolling back:", error);
       ptyManager.setActiveProject(previousProjectId);
-      deps.devServerManager?.setActiveProject(previousProjectId);
       throw error;
     }
   };

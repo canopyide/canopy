@@ -871,7 +871,6 @@ export function WorktreeCard({
                         <LiveTimeAgo timestamp={worktree.lastActivityTimestamp} />
                       </div>
                     )}
-
                   </div>
                 </button>
               </div>
