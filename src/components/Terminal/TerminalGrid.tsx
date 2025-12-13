@@ -87,7 +87,7 @@ function LauncherCard({
       disabled={isLoading}
       title={tooltipText}
       className={cn(
-        "group relative flex items-center text-left p-4 rounded-xl border transition-all duration-200 min-h-[100px]",
+        "group relative flex items-center text-left p-4 rounded-[var(--radius-xl)] border transition-all duration-200 min-h-[100px]",
         "bg-canopy-bg hover:bg-surface",
         "border-canopy-border/20 hover:border-canopy-border/40",
         "shadow-[inset_0_1px_0_0_rgba(255,255,255,0.03),inset_0_-1px_0_0_rgba(0,0,0,0.2)]",
@@ -98,7 +98,7 @@ function LauncherCard({
       {!available && !isLoading && (
         <div className="absolute -top-1 -right-1 w-2.5 h-2.5 bg-amber-500 rounded-full" />
       )}
-      <div className="flex items-center justify-center p-2 rounded-lg mr-3 transition-colors">
+      <div className="flex items-center justify-center p-2 rounded-[var(--radius-lg)] mr-3 transition-colors">
         {icon}
       </div>
 
