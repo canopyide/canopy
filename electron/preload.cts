@@ -185,6 +185,7 @@ const CHANNELS = {
   LOGS_GET_SOURCES: "logs:get-sources",
   LOGS_CLEAR: "logs:clear",
   LOGS_ENTRY: "logs:entry",
+  LOGS_BATCH: "logs:batch",
   LOGS_OPEN_FILE: "logs:open-file",
   LOGS_SET_VERBOSE: "logs:set-verbose",
   LOGS_GET_VERBOSE: "logs:get-verbose",
@@ -511,7 +512,18 @@ const api: ElectronAPI = {
 
     getVerbose: () => _typedInvoke(CHANNELS.LOGS_GET_VERBOSE),
 
-    onEntry: (callback: (entry: LogEntry) => void) => _typedOn(CHANNELS.LOGS_ENTRY, callback),
+    onEntry: (callback: (entry: LogEntry) => void) => {
+      const offEntry = _typedOn(CHANNELS.LOGS_ENTRY, callback);
+      const offBatch = _typedOn(CHANNELS.LOGS_BATCH, (entries) => {
+        for (const entry of entries) callback(entry);
+      });
+      return () => {
+        offEntry();
+        offBatch();
+      };
+    },
+
+    onBatch: (callback: (entries: LogEntry[]) => void) => _typedOn(CHANNELS.LOGS_BATCH, callback),
   },
 
   // Error API

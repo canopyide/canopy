@@ -21,7 +21,7 @@ export function LogsContent({ className, onSourcesChange }: LogsContentProps) {
     filters,
     autoScroll,
     expandedIds,
-    addLog,
+    addLogs,
     setLogs,
     setFilters,
     clearFilters,
@@ -33,7 +33,7 @@ export function LogsContent({ className, onSourcesChange }: LogsContentProps) {
       filters: state.filters,
       autoScroll: state.autoScroll,
       expandedIds: state.expandedIds,
-      addLog: state.addLog,
+      addLogs: state.addLogs,
       setLogs: state.setLogs,
       setFilters: state.setFilters,
       clearFilters: state.clearFilters,
@@ -47,37 +47,58 @@ export function LogsContent({ className, onSourcesChange }: LogsContentProps) {
   const [atBottom, setAtBottom] = useState(true);
 
   useEffect(() => {
-    logsClient
-      .getAll()
-      .then((existingLogs) => {
-        setLogs(existingLogs);
-      })
-      .catch((error) => {
-        console.error("Failed to load logs:", error);
-      });
+    const bufferedLogs: LogEntryType[] = [];
+    let hydrated = false;
 
-    logsClient
-      .getSources()
-      .then((existingSources) => {
-        sourcesRef.current = existingSources;
-        onSourcesChange?.(existingSources);
-      })
-      .catch((error) => {
-        console.error("Failed to load log sources:", error);
-      });
+    const unsubscribe = logsClient.onBatch((entries: LogEntryType[]) => {
+      if (!Array.isArray(entries) || entries.length === 0) return;
 
-    const unsubscribe = logsClient.onEntry((entry: LogEntryType) => {
-      addLog(entry);
-      if (entry.source && !sourcesRef.current.includes(entry.source)) {
-        sourcesRef.current = [...sourcesRef.current, entry.source].sort();
+      if (!hydrated) {
+        bufferedLogs.push(...entries);
+        return;
+      }
+
+      addLogs(entries);
+      const newSources = entries
+        .map((entry) => entry.source)
+        .filter((source): source is string => !!source && !sourcesRef.current.includes(source));
+      if (newSources.length > 0) {
+        sourcesRef.current = [...sourcesRef.current, ...newSources].sort();
         onSourcesChange?.(sourcesRef.current);
       }
+    });
+
+    Promise.all([
+      logsClient.getAll().catch((error) => {
+        console.error("Failed to load logs:", error);
+        return [];
+      }),
+      logsClient.getSources().catch((error) => {
+        console.error("Failed to load log sources:", error);
+        return [];
+      }),
+    ]).then(([existingLogs, existingSources]) => {
+      const deduped = new Map<string, LogEntryType>();
+      for (const log of existingLogs) deduped.set(log.id, log);
+      for (const log of bufferedLogs) deduped.set(log.id, log);
+
+      const allLogs = Array.from(deduped.values()).sort((a, b) => a.timestamp - b.timestamp);
+      setLogs(allLogs);
+
+      const allSources = new Set([...existingSources]);
+      for (const log of bufferedLogs) {
+        if (log.source) allSources.add(log.source);
+      }
+      sourcesRef.current = Array.from(allSources).sort();
+      onSourcesChange?.(sourcesRef.current);
+
+      hydrated = true;
     });
 
     return () => {
       unsubscribe();
     };
-  }, [addLog, setLogs, onSourcesChange]);
+  }, [addLogs, setLogs, onSourcesChange]);
 
   const handleAtBottomChange = useCallback(
     (bottom: boolean) => {
