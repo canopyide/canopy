@@ -51,6 +51,7 @@ const THRESHOLD_PRESETS = [
 ] as const;
 
 interface ShortcutDisplay {
+  actionId: string;
   key: string;
   description: string;
 }
@@ -97,6 +98,8 @@ export function GeneralTab({ appVersion, onNavigateToAgents }: GeneralTabProps) 
   }, []);
 
   useEffect(() => {
+    let isMounted = true;
+
     const loadShortcuts = () => {
       const categories: ShortcutCategory[] = CURATED_SHORTCUTS.map((category) => {
         const shortcuts: ShortcutDisplay[] = category.actionIds
@@ -109,6 +112,7 @@ export function GeneralTab({ appVersion, onNavigateToAgents }: GeneralTabProps) 
             }
 
             return {
+              actionId,
               key: keybindingService.formatComboForDisplay(effectiveCombo),
               description: binding.description || actionId,
             };
@@ -121,14 +125,23 @@ export function GeneralTab({ appVersion, onNavigateToAgents }: GeneralTabProps) 
         };
       }).filter((c) => c.shortcuts.length > 0);
 
-      setShortcuts(categories);
+      if (isMounted) {
+        setShortcuts(categories);
+      }
     };
-
-    keybindingService.loadOverrides().then(loadShortcuts);
 
     const unsubscribe = keybindingService.subscribe(loadShortcuts);
 
-    return unsubscribe;
+    keybindingService.loadOverrides().then(() => {
+      if (isMounted) {
+        loadShortcuts();
+      }
+    });
+
+    return () => {
+      isMounted = false;
+      unsubscribe();
+    };
   }, []);
   const handleHibernationToggle = async () => {
     if (!hibernationConfig || isSaving) return;
@@ -408,7 +421,7 @@ export function GeneralTab({ appVersion, onNavigateToAgents }: GeneralTabProps) 
                 <dl className="space-y-1">
                   {category.shortcuts.map((shortcut) => (
                     <div
-                      key={shortcut.key}
+                      key={shortcut.actionId}
                       className="flex items-center justify-between text-sm py-1"
                     >
                       <dt className="text-canopy-text">{shortcut.description}</dt>
