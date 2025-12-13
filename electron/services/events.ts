@@ -1,7 +1,6 @@
 import { EventEmitter } from "events";
 import type {
   NotificationPayload,
-  DevServerState,
   AgentState,
   TaskState,
   TerminalType,
@@ -162,20 +161,6 @@ export const EVENT_META: Record<keyof CanopyEventMap, EventMetadata> = {
     description: "File system change detected",
   },
 
-  // Server events
-  "server:update": {
-    category: "server",
-    requiresContext: true,
-    requiresTimestamp: true,
-    description: "Dev server status changed",
-  },
-  "server:error": {
-    category: "server",
-    requiresContext: true,
-    requiresTimestamp: true,
-    description: "Dev server encountered error",
-  },
-
   // Agent events
   "agent:spawned": {
     category: "agent",
@@ -272,20 +257,6 @@ export const EVENT_META: Record<keyof CanopyEventMap, EventMetadata> = {
     description: "Terminal foregrounded during project switch (visible again)",
   },
 
-  // Server multi-tenancy events
-  "server:backgrounded": {
-    category: "server",
-    requiresContext: false,
-    requiresTimestamp: true,
-    description: "Dev server backgrounded during project switch (kept running but hidden)",
-  },
-  "server:foregrounded": {
-    category: "server",
-    requiresContext: false,
-    requiresTimestamp: true,
-    description: "Dev server foregrounded during project switch (visible again)",
-  },
-
   // Task events
   "task:created": {
     category: "task",
@@ -339,7 +310,6 @@ export type WithContext<T> = T & BaseEventPayload;
 
 export type SystemEventType = Extract<keyof CanopyEventMap, `sys:${string}`>;
 export type AgentEventType = Extract<keyof CanopyEventMap, `agent:${string}`>;
-export type ServerEventType = Extract<keyof CanopyEventMap, `server:${string}`>;
 export type TaskEventType = Extract<keyof CanopyEventMap, `task:${string}`>;
 export type FileEventType = Extract<keyof CanopyEventMap, `file:${string}`>;
 export type UIEventType = Extract<keyof CanopyEventMap, `ui:${string}`>;
@@ -449,9 +419,6 @@ export type CanopyEventMap = {
   "sys:worktree:remove": { worktreeId: string; timestamp: number };
 
   "watcher:change": WatcherChangePayload;
-
-  "server:update": WithContext<DevServerState>;
-  "server:error": WithContext<{ error: string; errorMessage?: string; projectId?: string }>;
 
   "sys:pr:detected": {
     worktreeId: string;
@@ -632,26 +599,6 @@ export type CanopyEventMap = {
     timestamp: number;
   };
 
-  /**
-   * Emitted when a dev server is backgrounded during project switch.
-   * The server stays running but is hidden from the UI.
-   */
-  "server:backgrounded": {
-    worktreeId: string;
-    projectId: string;
-    timestamp: number;
-  };
-
-  /**
-   * Emitted when a dev server is foregrounded during project switch.
-   * The server becomes visible again in the UI.
-   */
-  "server:foregrounded": {
-    worktreeId: string;
-    projectId: string;
-    timestamp: number;
-  };
-
   // Task Lifecycle Events (Future-proof for task management)
 
   /**
@@ -727,8 +674,6 @@ export const ALL_EVENT_TYPES: Array<keyof CanopyEventMap> = [
   "sys:worktree:update",
   "sys:worktree:remove",
   "watcher:change",
-  "server:update",
-  "server:error",
   "sys:pr:detected",
   "sys:pr:cleared",
   "agent:spawned",
@@ -746,8 +691,6 @@ export const ALL_EVENT_TYPES: Array<keyof CanopyEventMap> = [
   "terminal:status",
   "terminal:backgrounded",
   "terminal:foregrounded",
-  "server:backgrounded",
-  "server:foregrounded",
   "task:created",
   "task:assigned",
   "task:state-changed",
