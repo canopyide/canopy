@@ -24,7 +24,7 @@ interface WorktreeSelectionState {
   reset: () => void;
 }
 
-const createWorktreeSelectionStore: StateCreator<WorktreeSelectionState> = (set) => ({
+const createWorktreeSelectionStore: StateCreator<WorktreeSelectionState> = (set, get) => ({
   activeWorktreeId: null,
   focusedWorktreeId: null,
   expandedWorktrees: new Set<string>(),
@@ -41,15 +41,15 @@ const createWorktreeSelectionStore: StateCreator<WorktreeSelectionState> = (set)
   setFocusedWorktree: (id) => set({ focusedWorktreeId: id }),
 
   selectWorktree: (id) => {
-    set((state) => {
-      // Toggle: clicking the active worktree deselects it
-      const newId = state.activeWorktreeId === id ? null : id;
+    // Skip if already active to prevent terminal reload flicker
+    if (get().activeWorktreeId === id) {
+      return;
+    }
 
-      appClient.setState({ activeWorktreeId: newId ?? undefined }).catch((error) => {
-        console.error("Failed to persist active worktree:", error);
-      });
+    set({ activeWorktreeId: id, focusedWorktreeId: id });
 
-      return { activeWorktreeId: newId, focusedWorktreeId: newId };
+    appClient.setState({ activeWorktreeId: id }).catch((error) => {
+      console.error("Failed to persist active worktree:", error);
     });
   },
 
