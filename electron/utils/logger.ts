@@ -104,9 +104,7 @@ function flushLogs(): void {
   const MAX_LOGS_PER_FLUSH = 60;
   const logsToSend = pendingLogs.slice(0, MAX_LOGS_PER_FLUSH);
 
-  for (const log of logsToSend) {
-    mainWindow.webContents.send("logs:entry", log);
-  }
+  mainWindow.webContents.send("logs:batch", logsToSend);
 
   pendingLogs = pendingLogs.slice(MAX_LOGS_PER_FLUSH);
   lastLogTime = Date.now();

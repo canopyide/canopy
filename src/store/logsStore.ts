@@ -9,6 +9,7 @@ interface LogsState {
   expandedIds: Set<string>;
 
   addLog: (entry: LogEntry) => void;
+  addLogs: (entries: LogEntry[]) => void;
   setLogs: (logs: LogEntry[]) => void;
   clearLogs: () => void;
   togglePanel: () => void;
@@ -33,6 +34,16 @@ const createLogsStore: StateCreator<LogsState> = (set) => ({
   addLog: (entry) =>
     set((state) => {
       const newLogs = [...state.logs, entry];
+      if (newLogs.length > MAX_LOGS) {
+        return { logs: newLogs.slice(-MAX_LOGS) };
+      }
+      return { logs: newLogs };
+    }),
+
+  addLogs: (entries) =>
+    set((state) => {
+      if (entries.length === 0) return state;
+      const newLogs = [...state.logs, ...entries];
       if (newLogs.length > MAX_LOGS) {
         return { logs: newLogs.slice(-MAX_LOGS) };
       }

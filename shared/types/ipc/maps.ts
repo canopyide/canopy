@@ -605,6 +605,7 @@ export interface IpcEventMap {
 
   // Log events
   "logs:entry": LogEntry;
+  "logs:batch": LogEntry[];
 
   // Event inspector events
   "event-inspector:event": EventRecord;
