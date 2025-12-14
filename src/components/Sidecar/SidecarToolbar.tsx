@@ -26,7 +26,7 @@ import {
   horizontalListSortingStrategy,
 } from "@dnd-kit/sortable";
 import { CSS } from "@dnd-kit/utilities";
-import type { SidecarTab } from "@shared/types";
+import type { SidecarTab, SidecarLink } from "@shared/types";
 import { cn } from "@/lib/utils";
 import { useSidecarStore } from "@/store/sidecarStore";
 import { SidecarIcon } from "./SidecarIcon";
@@ -187,6 +187,8 @@ interface SidecarToolbarProps {
   onCopyTabUrl?: (tabId: string) => void;
   onOpenTabExternal?: (tabId: string) => void;
   onReloadTab?: (tabId: string) => void;
+  enabledLinks: SidecarLink[];
+  onOpenUrl: (url: string, title: string) => void;
 }
 
 export function SidecarToolbar({
@@ -208,6 +210,8 @@ export function SidecarToolbar({
   onCopyTabUrl,
   onOpenTabExternal,
   onReloadTab,
+  enabledLinks,
+  onOpenUrl,
 }: SidecarToolbarProps) {
   const reorderTabs = useSidecarStore((s) => s.reorderTabs);
 
@@ -338,14 +342,33 @@ export function SidecarToolbar({
                   tabIndex={index}
                 />
               ))}
-
-              <button
-                onClick={onNewTab}
-                className="flex items-center justify-center w-8 h-[26px] rounded-full bg-canopy-border hover:bg-canopy-border/80 text-canopy-text hover:text-foreground border border-canopy-border hover:border-canopy-border transition-all"
-                title="New Tab"
-              >
-                <Plus className="w-4 h-4" />
-              </button>
+              <ContextMenu>
+                <ContextMenuTrigger asChild>
+                  <button
+                    onClick={onNewTab}
+                    className="flex items-center justify-center w-8 h-[26px] rounded-full bg-canopy-border hover:bg-canopy-border/80 text-canopy-text hover:text-foreground border border-canopy-border hover:border-canopy-border transition-all"
+                    title="New Tab"
+                  >
+                    <Plus className="w-4 h-4" />
+                  </button>
+                </ContextMenuTrigger>
+                <ContextMenuContent>
+                  {enabledLinks.map((link) => (
+                    <ContextMenuItem
+                      key={link.url}
+                      onSelect={() => onOpenUrl(link.url, link.title)}
+                    >
+                      {link.icon && <SidecarIcon icon={link.icon} size="tab" />}
+                      {link.title}
+                    </ContextMenuItem>
+                  ))}
+                  <ContextMenuSeparator />
+                  <ContextMenuItem onSelect={onNewTab}>
+                    <Plus className="w-3.5 h-3.5 mr-2" />
+                    Blank Tab
+                  </ContextMenuItem>
+                </ContextMenuContent>
+              </ContextMenu>
             </div>
           </SortableContext>
         </DndContext>
