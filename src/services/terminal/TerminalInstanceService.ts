@@ -14,6 +14,11 @@ import { TerminalAddonManager } from "./TerminalAddonManager";
 import { TerminalDataBuffer } from "./TerminalDataBuffer";
 import { createThrottledWriter } from "./ThrottledWriter";
 import { TerminalParserHandler } from "./TerminalParserHandler";
+import {
+  TERMINAL_DISABLE_PARSER_FILTERS,
+  TERMINAL_DISABLE_WEBGL,
+  TERMINAL_MINIMAL_MODE,
+} from "./terminalMinimalMode";
 
 const START_DEBOUNCING_THRESHOLD = 200;
 const HORIZONTAL_DEBOUNCE_MS = 100;
@@ -242,6 +247,10 @@ class TerminalInstanceService {
     };
 
     managed.parserHandler = new TerminalParserHandler(managed);
+    if (TERMINAL_MINIMAL_MODE && TERMINAL_DISABLE_PARSER_FILTERS) {
+      managed.parserHandler.dispose();
+      managed.parserHandler = undefined;
+    }
 
     const inputDisposable = terminal.onData((data) => {
       throttledWriter.notifyInput();
@@ -787,6 +796,7 @@ class TerminalInstanceService {
     managed.lastAppliedTier = tier;
 
     const wantsWebgl =
+      !TERMINAL_DISABLE_WEBGL &&
       managed.isVisible &&
       (tier === TerminalRefreshTier.BURST ||
         tier === TerminalRefreshTier.FOCUSED ||

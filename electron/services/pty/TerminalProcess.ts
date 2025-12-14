@@ -33,6 +33,8 @@ import { logError } from "../../utils/logger.js";
 import { decideTerminalExitForensics } from "./terminalForensics.js";
 import { installHeadlessResponder } from "./headlessResponder.js";
 
+const TERMINAL_DISABLE_URL_STYLING: boolean = process.env.CANOPY_DISABLE_URL_STYLING === "1";
+
 // Flow Control Constants (VS Code values)
 const HIGH_WATERMARK_CHARS = 100000;
 const LOW_WATERMARK_CHARS = 5000;
@@ -1004,14 +1006,36 @@ export class TerminalProcess {
   }
 
   private emitData(data: string | Uint8Array): void {
+    if (TERMINAL_DISABLE_URL_STYLING) {
+      this.callbacks.emitData(this.id, data);
+      return;
+    }
+
     // Apply URL styling to string data
     if (typeof data === "string") {
       const styled = styleUrls(data);
+      if (
+        process.env.CANOPY_TRACE_URL_STYLING &&
+        styled !== data &&
+        // avoid logging huge blobs
+        data.length < 10_000
+      ) {
+        const preview = data.replace(/\s+/g, " ").slice(0, 240);
+        console.log(`[TerminalProcess] URL styling applied (${this.id}): ${preview}`);
+      }
       this.callbacks.emitData(this.id, styled);
     } else {
       // For Uint8Array, decode to string, style, and re-encode
       const text = new TextDecoder().decode(data);
       const styled = styleUrls(text);
+      if (
+        process.env.CANOPY_TRACE_URL_STYLING &&
+        styled !== text &&
+        text.length < 10_000
+      ) {
+        const preview = text.replace(/\s+/g, " ").slice(0, 240);
+        console.log(`[TerminalProcess] URL styling applied (${this.id}): ${preview}`);
+      }
       this.callbacks.emitData(this.id, styled);
     }
   }
