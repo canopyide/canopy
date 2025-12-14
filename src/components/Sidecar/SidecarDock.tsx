@@ -21,6 +21,9 @@ export function SidecarDock() {
     closeTab,
     closeActiveTab,
     closeAllTabs,
+    duplicateTab,
+    closeTabsExcept,
+    closeTabsAfter,
     markTabCreated,
     updateTabUrl,
     updateTabTitle,
@@ -144,9 +147,7 @@ export function SidecarDock() {
   );
 
   const handleTabClose = useCallback(
-    (tabId: string, e: React.MouseEvent) => {
-      e.stopPropagation();
-      // Store's closeTab handles state update and deferred webview switching
+    (tabId: string) => {
       closeTab(tabId);
     },
     [closeTab]
@@ -190,22 +191,37 @@ export function SidecarDock() {
   useKeybinding("sidecar.newTab", handleNewTabShortcut, { enabled: isFocused });
 
   const handleOpenUrl = useCallback(
-    async (url: string, title: string) => {
+    async (url: string, title: string, background?: boolean) => {
+      const agentInfo = getAIAgentInfo(url);
+      const finalTitle = agentInfo?.title ?? title;
+      const icon = agentInfo?.icon;
+
+      if (background) {
+        const newTabId = `tab-${Date.now()}-${Math.random().toString(36).slice(2, 7)}`;
+        const newTab = { id: newTabId, url, title: finalTitle, icon };
+        useSidecarStore.setState((s) => ({
+          tabs: [...s.tabs, newTab],
+        }));
+        try {
+          await window.electron.sidecar.create({ tabId: newTabId, url });
+          markTabCreated(newTabId);
+        } catch (error) {
+          console.error("Failed to create background tab:", error);
+          useSidecarStore.setState((s) => ({
+            tabs: s.tabs.filter((t) => t.id !== newTabId),
+          }));
+        }
+        return;
+      }
+
       setIsSwitching(true);
 
       try {
-        // Detect if this is a known AI agent
-        const agentInfo = getAIAgentInfo(url);
-        const finalTitle = agentInfo?.title ?? title;
-        const icon = agentInfo?.icon;
-
-        // Reuse blank tab if active, otherwise create new tab
         const currentTab = activeTabId ? tabs.find((t) => t.id === activeTabId) : null;
         const isCurrentBlank = currentTab && !currentTab.url;
 
         let tabId: string;
         if (isCurrentBlank && activeTabId) {
-          // Reuse the blank tab
           tabId = activeTabId;
           updateTabUrl(tabId, url);
           updateTabTitle(tabId, finalTitle);
@@ -213,19 +229,15 @@ export function SidecarDock() {
             useSidecarStore.getState().updateTabIcon(tabId, icon);
           }
         } else {
-          // Create new tab
           const newTabId = `tab-${Date.now()}-${Math.random().toString(36).slice(2, 7)}`;
           const newTab = { id: newTabId, url, title: finalTitle, icon };
           useSidecarStore.setState((s) => ({
             tabs: [...s.tabs, newTab],
           }));
           tabId = newTabId;
-          // Switch to it immediately so the placeholder renders
           setActiveTab(tabId);
         }
 
-        // Poll for placeholder to exist (wait for React render cycle)
-        // The placeholder needs a frame to appear after showLaunchpad becomes false
         let bounds = getPlaceholderBounds();
         let attempts = 0;
         while (!bounds && attempts < 20) {
@@ -238,15 +250,12 @@ export function SidecarDock() {
           throw new Error("Failed to get sidecar bounds after waiting for render");
         }
 
-        // Create in main process
         await window.electron.sidecar.create({ tabId, url });
         markTabCreated(tabId);
 
-        // Show webview
         await window.electron.sidecar.show({ tabId, bounds });
       } catch (error) {
         console.error("Failed to open URL in sidecar:", error);
-        // Rollback: hide any partial webview
         await window.electron.sidecar.hide().catch(() => {});
       } finally {
         setIsSwitching(false);
@@ -306,6 +315,127 @@ export function SidecarDock() {
       console.error("Failed to copy URL:", error);
     }
   }, [activeTabId, tabs]);
+
+  const handleDuplicateTab = useCallback(
+    async (tabId: string) => {
+      if (isSwitching) return;
+      const tab = tabs.find((t) => t.id === tabId);
+      if (!tab?.url) return;
+
+      const bounds = getPlaceholderBounds();
+      if (!bounds) return;
+
+      const newTabId = duplicateTab(tabId);
+      if (!newTabId) return;
+
+      setIsSwitching(true);
+      try {
+        await window.electron.sidecar.create({ tabId: newTabId, url: tab.url });
+        markTabCreated(newTabId);
+        await window.electron.sidecar.show({ tabId: newTabId, bounds });
+      } catch (error) {
+        console.error("Failed to duplicate tab:", error);
+        closeTab(newTabId);
+      } finally {
+        setIsSwitching(false);
+      }
+    },
+    [tabs, duplicateTab, getPlaceholderBounds, markTabCreated, isSwitching, closeTab]
+  );
+
+  const handleCloseOthers = useCallback(
+    async (tabId: string) => {
+      if (isSwitching) return;
+      closeTabsExcept(tabId);
+      const nextState = useSidecarStore.getState();
+      const nextActiveId = nextState.activeTabId;
+      const nextActiveTab = nextState.tabs.find((t) => t.id === nextActiveId);
+      if (!nextActiveId || !nextActiveTab?.url) {
+        await window.electron.sidecar.hide().catch(() => {});
+        return;
+      }
+      const bounds = getPlaceholderBounds();
+      if (!bounds) return;
+      setIsSwitching(true);
+      try {
+        if (!nextState.createdTabs.has(nextActiveId)) {
+          await window.electron.sidecar.create({ tabId: nextActiveId, url: nextActiveTab.url });
+          markTabCreated(nextActiveId);
+        }
+        await window.electron.sidecar.show({ tabId: nextActiveId, bounds });
+      } catch (error) {
+        console.error("Failed to activate tab after close-others:", error);
+      } finally {
+        setIsSwitching(false);
+      }
+    },
+    [closeTabsExcept, getPlaceholderBounds, isSwitching, markTabCreated]
+  );
+
+  const handleCloseToRight = useCallback(
+    async (tabId: string) => {
+      if (isSwitching) return;
+      closeTabsAfter(tabId);
+      const nextState = useSidecarStore.getState();
+      const nextActiveId = nextState.activeTabId;
+      const nextActiveTab = nextState.tabs.find((t) => t.id === nextActiveId);
+      if (!nextActiveId || !nextActiveTab?.url) {
+        await window.electron.sidecar.hide().catch(() => {});
+        return;
+      }
+      const bounds = getPlaceholderBounds();
+      if (!bounds) return;
+      setIsSwitching(true);
+      try {
+        if (!nextState.createdTabs.has(nextActiveId)) {
+          await window.electron.sidecar.create({ tabId: nextActiveId, url: nextActiveTab.url });
+          markTabCreated(nextActiveId);
+        }
+        await window.electron.sidecar.show({ tabId: nextActiveId, bounds });
+      } catch (error) {
+        console.error("Failed to activate tab after close-to-right:", error);
+      } finally {
+        setIsSwitching(false);
+      }
+    },
+    [closeTabsAfter, getPlaceholderBounds, isSwitching, markTabCreated]
+  );
+
+  const handleCopyTabUrl = useCallback(
+    async (tabId: string) => {
+      const tab = tabs.find((t) => t.id === tabId);
+      if (!tab?.url) return;
+      try {
+        await navigator.clipboard.writeText(tab.url);
+      } catch (error) {
+        console.error("Failed to copy URL:", error);
+      }
+    },
+    [tabs]
+  );
+
+  const handleOpenTabExternal = useCallback(
+    async (tabId: string) => {
+      const tab = tabs.find((t) => t.id === tabId);
+      if (!tab?.url) return;
+      try {
+        await systemClient.openExternal(tab.url);
+      } catch (error) {
+        console.error("Failed to open URL externally:", error);
+      }
+    },
+    [tabs]
+  );
+
+  const handleReloadTab = useCallback(async (tabId: string) => {
+    const state = useSidecarStore.getState();
+    if (!state.createdTabs.has(tabId)) return;
+    try {
+      await window.electron.sidecar.reload(tabId);
+    } catch (error) {
+      console.error("Failed to reload tab:", error);
+    }
+  }, []);
 
   const RESIZE_STEP = 10;
 
@@ -435,6 +565,12 @@ export function SidecarDock() {
         onOpenExternal={handleOpenExternal}
         onCopyUrl={handleCopyUrl}
         hasActiveUrl={hasActiveUrl}
+        onDuplicateTab={handleDuplicateTab}
+        onCloseOthers={handleCloseOthers}
+        onCloseToRight={handleCloseToRight}
+        onCopyTabUrl={handleCopyTabUrl}
+        onOpenTabExternal={handleOpenTabExternal}
+        onReloadTab={handleReloadTab}
       />
       <div ref={contentRef} className="flex-1 flex flex-col min-h-0 relative">
         {showLaunchpad ? (
