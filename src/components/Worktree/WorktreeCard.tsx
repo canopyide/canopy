@@ -21,7 +21,11 @@ import {
   DropdownMenu,
   DropdownMenuContent,
   DropdownMenuItem,
+  DropdownMenuShortcut,
   DropdownMenuSeparator,
+  DropdownMenuSub,
+  DropdownMenuSubContent,
+  DropdownMenuSubTrigger,
   DropdownMenuTrigger,
   DropdownMenuLabel,
 } from "../ui/dropdown-menu";
@@ -29,23 +33,25 @@ import {
   ContextMenu,
   ContextMenuContent,
   ContextMenuItem,
+  ContextMenuShortcut,
   ContextMenuSeparator,
+  ContextMenuSub,
+  ContextMenuSubContent,
+  ContextMenuSubTrigger,
   ContextMenuTrigger,
   ContextMenuLabel,
 } from "../ui/context-menu";
 import { Tooltip, TooltipContent, TooltipTrigger, TooltipProvider } from "../ui/tooltip";
 import { ConfirmDialog } from "../Terminal/ConfirmDialog";
 import { WorktreeDeleteDialog } from "./WorktreeDeleteDialog";
+import { WorktreeMenuItems } from "./WorktreeMenuItems";
 import {
   Check,
   Copy,
-  Code,
   CircleDot,
   GitPullRequest,
   Play,
-  Plus,
   MoreHorizontal,
-  Folder,
   ChevronRight,
   GitCommit,
   Shield,
@@ -53,14 +59,11 @@ import {
   LayoutGrid,
   PanelBottom,
   ExternalLink,
-  Trash2,
-  Save,
   Loader2,
   AlertCircle,
   CheckCircle2,
   XCircle,
 } from "lucide-react";
-import { ClaudeIcon, GeminiIcon, CodexIcon } from "@/components/icons";
 import { TerminalIcon } from "@/components/Terminal/TerminalIcon";
 import type { UseAgentLauncherReturn } from "@/hooks/useAgentLauncher";
 import { STATE_ICONS, STATE_COLORS, STATE_LABELS, STATE_PRIORITY } from "./terminalStateConfig";
@@ -164,9 +167,26 @@ export function WorktreeCard({
   const openDockTerminal = useTerminalStore((state) => state.openDockTerminal);
 
   const bulkCloseByWorktree = useTerminalStore((state) => state.bulkCloseByWorktree);
+  const bulkTrashByWorktree = useTerminalStore((state) => state.bulkTrashByWorktree);
+  const bulkRestartByWorktree = useTerminalStore((state) => state.bulkRestartByWorktree);
+  const bulkRestartPreflightCheckByWorktree = useTerminalStore(
+    (state) => state.bulkRestartPreflightCheckByWorktree
+  );
+  const bulkMoveToDockByWorktree = useTerminalStore((state) => state.bulkMoveToDockByWorktree);
+  const bulkMoveToGridByWorktree = useTerminalStore((state) => state.bulkMoveToGridByWorktree);
+  const getCountByWorktree = useTerminalStore((state) => state.getCountByWorktree);
   const completedCount = terminalCounts.byState.completed;
   const failedCount = terminalCounts.byState.failed;
   const totalTerminalCount = terminalCounts.total;
+  const allTerminalCount = getCountByWorktree(worktree.id);
+  const gridCount = useMemo(
+    () => worktreeTerminals.filter((t) => t.location === "grid" || t.location === undefined).length,
+    [worktreeTerminals]
+  );
+  const dockCount = useMemo(
+    () => worktreeTerminals.filter((t) => t.location === "dock").length,
+    [worktreeTerminals]
+  );
 
   const [confirmDialog, setConfirmDialog] = useState({
     isOpen: false,
@@ -273,6 +293,8 @@ export function WorktreeCard({
     setConfirmDialog((prev) => ({ ...prev, isOpen: false }));
   }, []);
 
+  const [isRestartValidating, setIsRestartValidating] = useState(false);
+
   const handleCloseCompleted = useCallback(() => {
     bulkCloseByWorktree(worktree.id, "completed");
   }, [bulkCloseByWorktree, worktree.id]);
@@ -281,17 +303,71 @@ export function WorktreeCard({
     bulkCloseByWorktree(worktree.id, "failed");
   }, [bulkCloseByWorktree, worktree.id]);
 
-  const handleCloseAllTerminals = useCallback(() => {
+  const handleMinimizeAll = useCallback(() => {
+    bulkMoveToDockByWorktree(worktree.id);
+  }, [bulkMoveToDockByWorktree, worktree.id]);
+
+  const handleMaximizeAll = useCallback(() => {
+    bulkMoveToGridByWorktree(worktree.id);
+  }, [bulkMoveToGridByWorktree, worktree.id]);
+
+  const handleCloseAll = useCallback(() => {
     setConfirmDialog({
       isOpen: true,
       title: "Close All Sessions",
-      description: `This will close ${totalTerminalCount} session${totalTerminalCount !== 1 ? "s" : ""} (including agents and shells) for this worktree. This action cannot be undone.`,
+      description: `This will move ${totalTerminalCount} session${totalTerminalCount !== 1 ? "s" : ""} to trash for this worktree. They can be restored from the trash.`,
+      onConfirm: () => {
+        bulkTrashByWorktree(worktree.id);
+        closeConfirmDialog();
+      },
+    });
+  }, [totalTerminalCount, bulkTrashByWorktree, worktree.id, closeConfirmDialog]);
+
+  const handleEndAll = useCallback(() => {
+    setConfirmDialog({
+      isOpen: true,
+      title: "End All Sessions",
+      description: `This will permanently end ${allTerminalCount} session${allTerminalCount !== 1 ? "s" : ""} and their processes for this worktree. This action cannot be undone.`,
       onConfirm: () => {
         bulkCloseByWorktree(worktree.id);
         closeConfirmDialog();
       },
     });
-  }, [totalTerminalCount, bulkCloseByWorktree, worktree.id, closeConfirmDialog]);
+  }, [allTerminalCount, bulkCloseByWorktree, worktree.id, closeConfirmDialog]);
+
+  const handleRestartAll = useCallback(async () => {
+    if (isRestartValidating) return;
+    setIsRestartValidating(true);
+    try {
+      const result = await bulkRestartPreflightCheckByWorktree(worktree.id);
+      const hasIssues = result.invalid.length > 0;
+      const validCount = result.valid.length;
+      const invalidCount = result.invalid.length;
+
+      let description = `This will restart ${validCount} session${validCount !== 1 ? "s" : ""} for this worktree.`;
+      if (hasIssues) {
+        description += `\n\n${invalidCount} session${invalidCount !== 1 ? "s" : ""} cannot be restarted due to invalid configuration (e.g., missing working directory).`;
+      }
+
+      setConfirmDialog({
+        isOpen: true,
+        title: hasIssues ? "Restart Sessions (Some Issues Found)" : "Restart All Sessions",
+        description,
+        onConfirm: () => {
+          void bulkRestartByWorktree(worktree.id);
+          closeConfirmDialog();
+        },
+      });
+    } finally {
+      setIsRestartValidating(false);
+    }
+  }, [
+    isRestartValidating,
+    bulkRestartPreflightCheckByWorktree,
+    worktree.id,
+    bulkRestartByWorktree,
+    closeConfirmDialog,
+  ]);
 
   const handleLaunchAgent = useCallback(
     (agentId: string, e?: React.MouseEvent) => {
@@ -476,6 +552,13 @@ export function WorktreeCard({
     return "idle";
   }, [worktreeErrors.length, worktree.mood, hasChanges, worktree.isCurrent]);
 
+  const isClaudeEnabled =
+    agentAvailability?.claude && (agentSettings?.agents?.claude?.enabled ?? true);
+  const isGeminiEnabled =
+    agentAvailability?.gemini && (agentSettings?.agents?.gemini?.enabled ?? true);
+  const isCodexEnabled =
+    agentAvailability?.codex && (agentSettings?.agents?.codex?.enabled ?? true);
+
   const isIdleCard = spineState === "idle";
   const isStaleCard = spineState === "stale";
 
@@ -487,6 +570,32 @@ export function WorktreeCard({
     },
     disabled: isActive,
   });
+
+  const dropdownComponents = useMemo(
+    () => ({
+      Item: DropdownMenuItem,
+      Label: DropdownMenuLabel,
+      Separator: DropdownMenuSeparator,
+      Shortcut: DropdownMenuShortcut,
+      Sub: DropdownMenuSub,
+      SubTrigger: DropdownMenuSubTrigger,
+      SubContent: DropdownMenuSubContent,
+    }),
+    []
+  );
+
+  const contextComponents = useMemo(
+    () => ({
+      Item: ContextMenuItem,
+      Label: ContextMenuLabel,
+      Separator: ContextMenuSeparator,
+      Shortcut: ContextMenuShortcut,
+      Sub: ContextMenuSub,
+      SubTrigger: ContextMenuSubTrigger,
+      SubContent: ContextMenuSubContent,
+    }),
+    []
+  );
 
   const cardContent = (
     <div
@@ -643,102 +752,53 @@ export function WorktreeCard({
                     align="end"
                     sideOffset={4}
                     onClick={(e) => e.stopPropagation()}
+                    className="w-64"
                   >
-                    <DropdownMenuItem onClick={() => handleCopyTree()} disabled={isCopyingTree}>
-                      <Copy className="w-3.5 h-3.5 mr-2" />
-                      Copy Context
-                    </DropdownMenuItem>
-                    <DropdownMenuItem onClick={() => onOpenEditor()}>
-                      <Code className="w-3.5 h-3.5 mr-2" />
-                      Open in Editor
-                    </DropdownMenuItem>
-                    <DropdownMenuItem onClick={() => handlePathClick()}>
-                      <Folder className="w-3.5 h-3.5 mr-2" />
-                      Reveal in Finder
-                    </DropdownMenuItem>
-
-                    {(worktree.issueNumber || worktree.prNumber) && <DropdownMenuSeparator />}
-
-                    {worktree.issueNumber && onOpenIssue && (
-                      <DropdownMenuItem onClick={() => handleOpenIssue()}>
-                        <CircleDot className="w-3.5 h-3.5 mr-2" />
-                        Open Issue #{worktree.issueNumber}
-                      </DropdownMenuItem>
-                    )}
-                    {worktree.prNumber && onOpenPR && (
-                      <DropdownMenuItem onClick={() => handleOpenPR()}>
-                        <GitPullRequest className="w-3.5 h-3.5 mr-2" />
-                        Open PR #{worktree.prNumber}
-                      </DropdownMenuItem>
-                    )}
-
-                    {(recipes.length > 0 || onCreateRecipe) && <DropdownMenuSeparator />}
-
-                    {recipes.length > 0 && (
-                      <>
-                        <DropdownMenuLabel>Recipes</DropdownMenuLabel>
-                        {recipes.map((recipe) => (
-                          <DropdownMenuItem
-                            key={recipe.id}
-                            onClick={() => handleRunRecipe(recipe.id)}
-                            disabled={runningRecipeId !== null}
-                          >
-                            <Play className="w-3.5 h-3.5 mr-2" />
-                            {recipe.name}
-                          </DropdownMenuItem>
-                        ))}
-                      </>
-                    )}
-                    {onCreateRecipe && (
-                      <DropdownMenuItem onClick={onCreateRecipe}>
-                        <Plus className="w-3.5 h-3.5 mr-2" />
-                        Create Recipe...
-                      </DropdownMenuItem>
-                    )}
-                    {onSaveLayout && totalTerminalCount > 0 && (
-                      <DropdownMenuItem onClick={onSaveLayout}>
-                        <Save className="w-3.5 h-3.5 mr-2" />
-                        Save Layout as Recipe
-                      </DropdownMenuItem>
-                    )}
-
-                    {totalTerminalCount > 0 && (
-                      <>
-                        <DropdownMenuSeparator />
-                        <DropdownMenuLabel>Sessions</DropdownMenuLabel>
-                        <DropdownMenuItem
-                          onClick={handleCloseCompleted}
-                          disabled={completedCount === 0}
-                        >
-                          Close Completed ({completedCount})
-                        </DropdownMenuItem>
-                        <DropdownMenuItem onClick={handleCloseFailed} disabled={failedCount === 0}>
-                          Close Failed ({failedCount})
-                        </DropdownMenuItem>
-                        <DropdownMenuItem
-                          onClick={handleCloseAllTerminals}
-                          className="text-[var(--color-status-error)] focus:text-[var(--color-status-error)]"
-                        >
-                          Close All...
-                        </DropdownMenuItem>
-                      </>
-                    )}
-
-                    {!isMainWorktree && (
-                      <>
-                        <DropdownMenuSeparator />
-                        <DropdownMenuItem
-                          onClick={(e) => {
-                            e.stopPropagation();
-                            setShowDeleteDialog(true);
-                          }}
-                          className="text-[var(--color-status-error)] focus:text-[var(--color-status-error)]"
-                        >
-                          <Trash2 className="w-3.5 h-3.5 mr-2" />
-                          Delete Worktree...
-                        </DropdownMenuItem>
-                      </>
-                    )}
+                    <WorktreeMenuItems
+                      worktree={worktree}
+                      components={dropdownComponents}
+                      isClaudeEnabled={Boolean(isClaudeEnabled)}
+                      isGeminiEnabled={Boolean(isGeminiEnabled)}
+                      isCodexEnabled={Boolean(isCodexEnabled)}
+                      recipes={recipes}
+                      runningRecipeId={runningRecipeId}
+                      isRestartValidating={isRestartValidating}
+                      counts={{
+                        grid: gridCount,
+                        dock: dockCount,
+                        active: totalTerminalCount,
+                        completed: completedCount,
+                        failed: failedCount,
+                        all: allTerminalCount,
+                      }}
+                      onLaunchAgent={
+                        onLaunchAgent ? (agentId) => handleLaunchAgent(agentId) : undefined
+                      }
+                      onCopyContext={() => void handleCopyTree()}
+                      onOpenEditor={onOpenEditor}
+                      onRevealInFinder={handlePathClick}
+                      onOpenIssue={
+                        worktree.issueNumber && onOpenIssue ? handleOpenIssue : undefined
+                      }
+                      onOpenPR={worktree.prNumber && onOpenPR ? handleOpenPR : undefined}
+                      onRunRecipe={(recipeId) => void handleRunRecipe(recipeId)}
+                      onCreateRecipe={onCreateRecipe}
+                      onSaveLayout={onSaveLayout}
+                      onMinimizeAll={handleMinimizeAll}
+                      onMaximizeAll={handleMaximizeAll}
+                      onRestartAll={() => void handleRestartAll()}
+                      onCloseCompleted={handleCloseCompleted}
+                      onCloseFailed={handleCloseFailed}
+                      onCloseAll={handleCloseAll}
+                      onEndAll={handleEndAll}
+                      onDeleteWorktree={
+                        !isMainWorktree
+                          ? () => {
+                              setShowDeleteDialog(true);
+                            }
+                          : undefined
+                      }
+                    />
                   </DropdownMenuContent>
                 </DropdownMenu>
               </div>
@@ -1036,54 +1096,51 @@ export function WorktreeCard({
     </div>
   );
 
-  if (!onLaunchAgent) {
-    return cardContent;
-  }
-
-  const isClaudeEnabled =
-    agentAvailability?.claude && (agentSettings?.agents?.claude?.enabled ?? true);
-  const isGeminiEnabled =
-    agentAvailability?.gemini && (agentSettings?.agents?.gemini?.enabled ?? true);
-  const isCodexEnabled =
-    agentAvailability?.codex && (agentSettings?.agents?.codex?.enabled ?? true);
-
   return (
     <ContextMenu>
       <ContextMenuTrigger asChild>{cardContent}</ContextMenuTrigger>
       <ContextMenuContent onClick={(e) => e.stopPropagation()}>
-        <ContextMenuLabel>Launch Agent</ContextMenuLabel>
-        <ContextMenuItem onClick={() => handleLaunchAgent("claude")} disabled={!isClaudeEnabled}>
-          <ClaudeIcon className="w-3.5 h-3.5 mr-2" />
-          Claude
-        </ContextMenuItem>
-        <ContextMenuItem onClick={() => handleLaunchAgent("gemini")} disabled={!isGeminiEnabled}>
-          <GeminiIcon className="w-3.5 h-3.5 mr-2" />
-          Gemini
-        </ContextMenuItem>
-        <ContextMenuItem onClick={() => handleLaunchAgent("codex")} disabled={!isCodexEnabled}>
-          <CodexIcon className="w-3.5 h-3.5 mr-2" />
-          Codex
-        </ContextMenuItem>
-        <ContextMenuSeparator />
-        <ContextMenuItem onClick={() => handleLaunchAgent("terminal")}>
-          <Terminal className="w-3.5 h-3.5 mr-2" />
-          Open Terminal
-        </ContextMenuItem>
-        {!isMainWorktree && (
-          <>
-            <ContextMenuSeparator />
-            <ContextMenuItem
-              onClick={(e) => {
-                e.stopPropagation();
-                setShowDeleteDialog(true);
-              }}
-              className="text-[var(--color-status-error)] focus:text-[var(--color-status-error)]"
-            >
-              <Trash2 className="w-3.5 h-3.5 mr-2" />
-              Delete Worktree
-            </ContextMenuItem>
-          </>
-        )}
+        <WorktreeMenuItems
+          worktree={worktree}
+          components={contextComponents}
+          isClaudeEnabled={Boolean(isClaudeEnabled)}
+          isGeminiEnabled={Boolean(isGeminiEnabled)}
+          isCodexEnabled={Boolean(isCodexEnabled)}
+          recipes={recipes}
+          runningRecipeId={runningRecipeId}
+          isRestartValidating={isRestartValidating}
+          counts={{
+            grid: gridCount,
+            dock: dockCount,
+            active: totalTerminalCount,
+            completed: completedCount,
+            failed: failedCount,
+            all: allTerminalCount,
+          }}
+          onLaunchAgent={onLaunchAgent ? (agentId) => handleLaunchAgent(agentId) : undefined}
+          onCopyContext={() => void handleCopyTree()}
+          onOpenEditor={onOpenEditor}
+          onRevealInFinder={handlePathClick}
+          onOpenIssue={worktree.issueNumber && onOpenIssue ? handleOpenIssue : undefined}
+          onOpenPR={worktree.prNumber && onOpenPR ? handleOpenPR : undefined}
+          onRunRecipe={(recipeId) => void handleRunRecipe(recipeId)}
+          onCreateRecipe={onCreateRecipe}
+          onSaveLayout={onSaveLayout}
+          onMinimizeAll={handleMinimizeAll}
+          onMaximizeAll={handleMaximizeAll}
+          onRestartAll={() => void handleRestartAll()}
+          onCloseCompleted={handleCloseCompleted}
+          onCloseFailed={handleCloseFailed}
+          onCloseAll={handleCloseAll}
+          onEndAll={handleEndAll}
+          onDeleteWorktree={
+            !isMainWorktree
+              ? () => {
+                  setShowDeleteDialog(true);
+                }
+              : undefined
+          }
+        />
       </ContextMenuContent>
     </ContextMenu>
   );

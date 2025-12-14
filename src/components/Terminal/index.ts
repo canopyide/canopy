@@ -4,8 +4,6 @@ export { TerminalPane } from "./TerminalPane";
 export type { TerminalPaneProps, TerminalType, ActivityState } from "./TerminalPane";
 export { TerminalGrid } from "./TerminalGrid";
 export type { TerminalGridProps } from "./TerminalGrid";
-export { BulkActionsMenu } from "./BulkActionsMenu";
-export type { BulkActionsMenuProps } from "./BulkActionsMenu";
 export { ConfirmDialog } from "./ConfirmDialog";
 export type { ConfirmDialogProps } from "./ConfirmDialog";
 export { StateBadge } from "./StateBadge";

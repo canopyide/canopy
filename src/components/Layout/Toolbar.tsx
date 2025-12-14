@@ -1,5 +1,4 @@
 import { useRef, useState, useEffect } from "react";
-import { useShallow } from "zustand/react/shallow";
 import { Button } from "@/components/ui/button";
 import { FixedDropdown } from "@/components/ui/fixed-dropdown";
 import {
@@ -16,11 +15,9 @@ import {
 } from "lucide-react";
 import { cn } from "@/lib/utils";
 import { getProjectGradient } from "@/lib/colorUtils";
-import { BulkActionsMenu } from "@/components/Terminal";
 import { GitHubResourceList } from "@/components/GitHub";
 import { AgentButton } from "./AgentButton";
 import { useProjectStore } from "@/store/projectStore";
-import { useTerminalStore } from "@/store/terminalStore";
 import { useSidecarStore } from "@/store";
 import { useWorktreeSelectionStore } from "@/store/worktreeStore";
 import { useWorktreeDataStore } from "@/store/worktreeDataStore";
@@ -51,7 +48,6 @@ export function Toolbar({
   agentSettings,
 }: ToolbarProps) {
   const currentProject = useProjectStore((state) => state.currentProject);
-  const terminals = useTerminalStore(useShallow((state) => state.terminals));
   const { stats, error: statsError, refresh: refreshStats } = useRepositoryStats();
   const activeWorktreeId = useWorktreeSelectionStore((state) => state.activeWorktreeId);
   const activeWorktree = useWorktreeDataStore((state) =>
@@ -72,7 +68,6 @@ export function Toolbar({
     return window.electron.window.onFullscreenChange(setIsFullscreen);
   }, []);
 
-  const showBulkActions = terminals.length > 0;
   const openAgentSettings = onOpenAgentSettings ?? onSettings;
 
   return (
@@ -128,7 +123,6 @@ export function Toolbar({
         >
           <Terminal className="h-4 w-4" />
         </Button>
-        {showBulkActions && <BulkActionsMenu />}
       </div>
 
       <div className="flex-1 flex justify-center items-center h-full opacity-70 hover:opacity-100 transition-opacity">

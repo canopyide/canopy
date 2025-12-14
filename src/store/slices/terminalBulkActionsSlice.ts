@@ -18,6 +18,11 @@ export interface TerminalBulkActionsSlice {
   bulkTrashAll: () => void;
   bulkRestartAll: () => Promise<void>;
   bulkRestartPreflightCheck: () => Promise<BulkRestartValidation>;
+  bulkMoveToDockByWorktree: (worktreeId: string) => void;
+  bulkMoveToGridByWorktree: (worktreeId: string) => void;
+  bulkTrashByWorktree: (worktreeId: string) => void;
+  bulkRestartByWorktree: (worktreeId: string) => Promise<void>;
+  bulkRestartPreflightCheckByWorktree: (worktreeId: string) => Promise<BulkRestartValidation>;
   bulkMoveToDock: () => void;
   bulkMoveToGrid: () => void;
   restartFailedAgents: () => Promise<void>;
@@ -105,6 +110,90 @@ export const createTerminalBulkActionsSlice = (
       }
 
       return { valid, invalid };
+    },
+
+    bulkMoveToDockByWorktree: (worktreeId) => {
+      const terminals = getTerminals();
+      const gridTerminals = terminals.filter(
+        (t) => t.worktreeId === worktreeId && t.location === "grid"
+      );
+      gridTerminals.forEach((t) => moveTerminalToDock(t.id));
+    },
+
+    bulkMoveToGridByWorktree: (worktreeId) => {
+      const terminals = getTerminals();
+      const dockedTerminals = terminals.filter(
+        (t) => t.worktreeId === worktreeId && t.location === "dock"
+      );
+      if (dockedTerminals.length === 0) return;
+
+      const gridCount = terminals.filter(
+        (t) => t.location === "grid" || t.location === undefined
+      ).length;
+      const availableSlots = MAX_GRID_TERMINALS - gridCount;
+      if (availableSlots <= 0) return;
+
+      const terminalsToMove = dockedTerminals.slice(0, availableSlots);
+
+      const currentFocusId = getFocusedId();
+      const currentFocusedTerminal = currentFocusId
+        ? terminals.find((t) => t.id === currentFocusId)
+        : null;
+      const hasGridFocus = currentFocusedTerminal?.location === "grid";
+
+      terminalsToMove.forEach((t) => moveTerminalToGrid(t.id));
+
+      if (hasGridFocus && currentFocusId) {
+        setFocusedId(currentFocusId);
+      }
+    },
+
+    bulkTrashByWorktree: (worktreeId) => {
+      const terminals = getTerminals();
+      const activeTerminals = terminals.filter(
+        (t) => t.worktreeId === worktreeId && t.location !== "trash"
+      );
+      activeTerminals.forEach((t) => trashTerminal(t.id));
+    },
+
+    bulkRestartPreflightCheckByWorktree: async (worktreeId) => {
+      const terminals = getTerminals();
+      const activeTerminals = terminals.filter(
+        (t) => t.worktreeId === worktreeId && t.location !== "trash"
+      );
+
+      const validationResults = await validateTerminals(activeTerminals);
+
+      const valid: TerminalInstance[] = [];
+      const invalid: Array<{ terminal: TerminalInstance; errors: ValidationResult }> = [];
+
+      for (const terminal of activeTerminals) {
+        const result = validationResults.get(terminal.id);
+        if (result) {
+          invalid.push({ terminal, errors: result });
+        } else {
+          valid.push(terminal);
+        }
+      }
+
+      return { valid, invalid };
+    },
+
+    bulkRestartByWorktree: async (worktreeId) => {
+      const terminals = getTerminals();
+      const activeTerminals = terminals.filter(
+        (t) => t.worktreeId === worktreeId && t.location !== "trash"
+      );
+      if (activeTerminals.length === 0) return;
+
+      try {
+        const validationResults = await validateTerminals(activeTerminals);
+        const valid = activeTerminals.filter((t) => !validationResults.get(t.id));
+        await restartTerminals(valid);
+      } catch (error) {
+        console.error("Failed to validate terminals for restart:", error);
+        await restartTerminals(activeTerminals);
+      }
     },
 
     bulkMoveToDock: () => {
