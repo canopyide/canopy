@@ -31,6 +31,7 @@ import type { PtyPool } from "../PtyPool.js";
 import { styleUrls } from "./UrlStyler.js";
 import { logError } from "../../utils/logger.js";
 import { decideTerminalExitForensics } from "./terminalForensics.js";
+import { installHeadlessResponder } from "./headlessResponder.js";
 
 // Flow Control Constants (VS Code values)
 const HIGH_WATERMARK_CHARS = 100000;
@@ -117,6 +118,7 @@ export class TerminalProcess {
   private _cols: number;
   private _rows: number;
   private _scrollback: number;
+  private headlessResponderDisposable: { dispose: () => void } | null = null;
 
   private readonly terminalInfo: TerminalInfo;
   private readonly isAgentTerminal: boolean;
@@ -251,6 +253,18 @@ export class TerminalProcess {
       analysisEnabled: this.isAgentTerminal,
     };
 
+    // For agent terminals, use the headless xterm to generate terminal responses
+    // (e.g. cursor position reports) even when no renderer xterm is attached.
+    if (this.isAgentTerminal && this.terminalInfo.headlessTerminal) {
+      this.headlessResponderDisposable = installHeadlessResponder(
+        this.terminalInfo.headlessTerminal,
+        (data) => {
+          if (this.terminalInfo.wasKilled) return;
+          this.terminalInfo.ptyProcess.write(data);
+        }
+      );
+    }
+
     // Set up PTY event handlers
     this.setupPtyHandlers(ptyProcess);
 
@@ -356,6 +370,14 @@ export class TerminalProcess {
     const terminal = this.terminalInfo;
     if (!terminal.headlessTerminal) {
       return;
+    }
+    if (this.headlessResponderDisposable) {
+      try {
+        this.headlessResponderDisposable.dispose();
+      } catch {
+        // Ignore disposal errors
+      }
+      this.headlessResponderDisposable = null;
     }
     try {
       terminal.headlessTerminal.dispose();
