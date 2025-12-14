@@ -348,18 +348,24 @@ function XtermAdapterComponent({
     const currentState = agentStateRef.current;
     const isWorking =
       currentState === "working" || currentState === "running" || currentState === "waiting";
+    const isFinished = currentState === "completed" || currentState === "failed";
 
     // If content shrinks significantly (>10 rows), reset stable bottom
     // This handles terminal.clear() and major TUI collapses
     // BUT: only allow shrink reset when agent is NOT working (height ratchet)
+    // AND: not finished (preserve crash state)
     const SHRINK_RESET_THRESHOLD = 10;
-    if (!isWorking && stableBottomRowRef.current - currentBottom > SHRINK_RESET_THRESHOLD) {
+    if (
+      !isWorking &&
+      !isFinished &&
+      stableBottomRowRef.current - currentBottom > SHRINK_RESET_THRESHOLD
+    ) {
       stableBottomRowRef.current = currentBottom;
     }
 
     // Use same stable bottom logic as calculateScrollTarget for consistency
     let stableBottom: number;
-    if (followLog) {
+    if (followLog || isFinished) {
       stableBottom = Math.max(stableBottomRowRef.current, currentBottom);
       stableBottomRowRef.current = stableBottom;
     } else {

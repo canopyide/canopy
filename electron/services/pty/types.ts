@@ -94,4 +94,6 @@ export const AGENT_SCROLLBACK = 10000;
 // Raw output buffer for non-headless terminals (100KB max)
 export const RAW_OUTPUT_BUFFER_MAX_SIZE = 100 * 1024;
 
+export const FORENSIC_BUFFER_SIZE = 4000;
+
 export const TRASH_TTL_MS = 120 * 1000;

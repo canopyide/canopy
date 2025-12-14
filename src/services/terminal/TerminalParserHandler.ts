@@ -18,10 +18,26 @@ export function setupParserHandlers(managed: ManagedTerminal): void {
   // Helper to check if we should block the sequence
   const shouldBlock = () => {
     // Block for configured agent terminals to prevent TUI mode hijacking and bouncing
+    // Default to TRUE for all agent terminals (defensive)
+    if (kind === "agent") return true;
     return shouldBlockSequences ?? false;
   };
 
-  // 1. Intercept DECSET (CSI ? ... h) - Enable Mode
+  // 1. Intercept RIS (ESC c) - Reset Initial State
+  // This is the "nuclear option" that fully resets the terminal and wipes the buffer.
+  // Critical for Tall Canvas mode where scrollback is 0, as a reset = blank screen.
+  managed.terminal.parser.registerEscHandler({ final: "c" }, () => {
+    if (!shouldBlock()) return false;
+    return true; // Block it
+  });
+
+  // 2. Intercept DECSTR (CSI ! p) - Soft Terminal Reset
+  managed.terminal.parser.registerCsiHandler({ prefix: "!", final: "p" }, () => {
+    if (!shouldBlock()) return false;
+    return true; // Block it
+  });
+
+  // 3. Intercept DECSET (CSI ? ... h) - Enable Mode
   managed.terminal.parser.registerCsiHandler({ prefix: "?", final: "h" }, (params) => {
     if (!shouldBlock()) return false;
 
@@ -37,7 +53,7 @@ export function setupParserHandlers(managed: ManagedTerminal): void {
     return hasBlockedParam; // true = handled (swallowed), false = pass to default
   });
 
-  // 2. Intercept DECRST (CSI ? ... l) - Disable Mode
+  // 4. Intercept DECRST (CSI ? ... l) - Disable Mode
   managed.terminal.parser.registerCsiHandler({ prefix: "?", final: "l" }, (params) => {
     if (!shouldBlock()) return false;
 
@@ -51,14 +67,14 @@ export function setupParserHandlers(managed: ManagedTerminal): void {
     return hasBlockedParam;
   });
 
-  // 3. Intercept DECSTBM (CSI ... r) - Set Scroll Region
+  // 5. Intercept DECSTBM (CSI ... r) - Set Scroll Region
   managed.terminal.parser.registerCsiHandler({ final: "r" }, () => {
     if (!shouldBlock()) return false;
     // Block ALL scroll region changes for Claude to keep the buffer linear
     return true;
   });
 
-  // 4. Intercept ED (CSI ... J) - Erase in Display
+  // 6. Intercept ED (CSI ... J) - Erase in Display
   managed.terminal.parser.registerCsiHandler({ final: "J" }, (params) => {
     if (!shouldBlock()) return false;
 
@@ -72,7 +88,7 @@ export function setupParserHandlers(managed: ManagedTerminal): void {
     return hasBlockedParam;
   });
 
-  // 5. Intercept CUP (CSI ... H) and HVP (CSI ... f) - Cursor Position
+  // 7. Intercept CUP (CSI ... H) and HVP (CSI ... f) - Cursor Position
   // Block attempts to move cursor to the top row (Row 1), which causes viewport jumping
   const handleCursorMove = (params: (number | number[])[]) => {
     if (!shouldBlock()) return false;

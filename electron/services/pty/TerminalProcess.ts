@@ -23,9 +23,11 @@ import {
   RAW_OUTPUT_BUFFER_MAX_SIZE,
   WRITE_MAX_CHUNK_SIZE,
   WRITE_INTERVAL_MS,
+  FORENSIC_BUFFER_SIZE,
 } from "./types.js";
 import { getTerminalSerializerService } from "./TerminalSerializerService.js";
 import { events } from "../events.js";
+import { logError } from "../../utils/logger.js";
 import { AgentSpawnedSchema, AgentStateChangedSchema } from "../../schemas/agent.js";
 import type { PtyPool } from "../PtyPool.js";
 import { styleUrls } from "./UrlStyler.js";
@@ -102,6 +104,9 @@ export class TerminalProcess {
   private _unacknowledgedCharCount = 0;
   private _isPtyPaused = false;
   private sabModeEnabled: boolean;
+
+  // Forensic buffer for crash analysis
+  private recentOutputBuffer = "";
 
   // Semantic buffer state
   private pendingSemanticData = "";
@@ -801,6 +806,12 @@ export class TerminalProcess {
 
       terminal.lastOutputTime = Date.now();
 
+      // Capture forensic data for crash analysis
+      this.recentOutputBuffer += data;
+      if (this.recentOutputBuffer.length > FORENSIC_BUFFER_SIZE) {
+        this.recentOutputBuffer = this.recentOutputBuffer.slice(-FORENSIC_BUFFER_SIZE);
+      }
+
       // Write to headless terminal (if created) or buffer raw output
       if (terminal.headlessTerminal) {
         terminal.headlessTerminal.write(data);
@@ -865,6 +876,22 @@ export class TerminalProcess {
         this.inputWriteTimeout = null;
       }
       this.inputWriteQueue = [];
+
+      // Log forensic data if exit was abnormal
+      if (exitCode !== 0) {
+        logError(
+          `Terminal ${this.id} exited with code ${exitCode}. Last output:\n` +
+            `--- BEGIN FORENSIC LOG ---\n` +
+            `${this.recentOutputBuffer}\n` +
+            `--- END FORENSIC LOG ---`,
+          {
+            terminalId: this.id,
+            exitCode,
+            agentType: terminal.type,
+            worktreeId: this.options.worktreeId,
+          }
+        );
+      }
 
       this.callbacks.onExit(this.id, exitCode ?? 0);
 
