@@ -56,7 +56,6 @@ export class TerminalAddonManager {
   }
 
   public acquireWebgl(id: string, managed: ManagedTerminal): void {
-    if (managed.isTallCanvas) return;
     if (managed.hasWebglError || managed.webglRecoveryAttempts >= MAX_WEBGL_RECOVERY_ATTEMPTS) {
       return;
     }
@@ -180,7 +179,6 @@ export class TerminalAddonManager {
     const managed = this.getTerminal(id);
     if (!managed) return;
 
-    if (managed.isTallCanvas) return;
     if (!managed.hostElement.isConnected) return;
     if (managed.hostElement.clientWidth < 50 || managed.hostElement.clientHeight < 50) return;
 
@@ -205,10 +203,8 @@ export class TerminalAddonManager {
   private getWebGLBudget(): number {
     let budget = this.hardwareProfile.baseWebGLBudget;
     let terminalCount = 0;
-    this.forEachTerminal((term) => {
-      if (!term.isTallCanvas) {
-        terminalCount++;
-      }
+    this.forEachTerminal(() => {
+      terminalCount++;
     });
 
     if (terminalCount > TERMINAL_COUNT_THRESHOLD) {

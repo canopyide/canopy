@@ -10,11 +10,9 @@ import {
   AgentStateCallback,
   TIER_DOWNGRADE_HYSTERESIS_MS,
 } from "./types";
-import { TALL_CANVAS_ROWS, getSafeTallCanvasRows, measureCellHeight } from "./TerminalConfig";
 import { TerminalAddonManager } from "./TerminalAddonManager";
 import { TerminalDataBuffer } from "./TerminalDataBuffer";
 import { createThrottledWriter } from "./ThrottledWriter";
-import { setupParserHandlers } from "./TerminalParserHandler";
 
 const START_DEBOUNCING_THRESHOLD = 200;
 const HORIZONTAL_DEBOUNCE_MS = 100;
@@ -100,10 +98,6 @@ class TerminalInstanceService {
         managed.outputSubscribers.forEach((cb) => cb());
       }
 
-      if (managed.isTallCanvas) {
-        return;
-      }
-
       // Focus-aware scroll behavior: only snap deselected terminals to bottom
       if (!managed.isFocused) {
         const buffer = terminal.buffer.active;
@@ -154,17 +148,13 @@ class TerminalInstanceService {
     type: TerminalType,
     options: ConstructorParameters<typeof Terminal>[0],
     getRefreshTier: RefreshTierProvider = () => TerminalRefreshTier.FOCUSED,
-    onInput?: (data: string) => void,
-    tallCanvasOptions?: { isTallCanvas?: boolean; agentId?: string }
+    onInput?: (data: string) => void
   ): ManagedTerminal {
     const existing = this.instances.get(id);
     if (existing) {
       existing.getRefreshTier = getRefreshTier;
       return existing;
     }
-
-    const isTallCanvas = tallCanvasOptions?.isTallCanvas ?? false;
-    const agentId = tallCanvasOptions?.agentId;
 
     const openLink = (url: string) => {
       const normalizedUrl = /^https?:\/\//i.test(url) ? url : `https://${url}`;
@@ -173,21 +163,12 @@ class TerminalInstanceService {
       });
     };
 
-    const terminalOptions = isTallCanvas
-      ? {
-          ...options,
-          rows: TALL_CANVAS_ROWS,
-          scrollback: 0,
-          linkHandler: {
-            activate: (_event: MouseEvent, text: string) => openLink(text),
-          },
-        }
-      : {
-          ...options,
-          linkHandler: {
-            activate: (_event: MouseEvent, text: string) => openLink(text),
-          },
-        };
+    const terminalOptions = {
+      ...options,
+      linkHandler: {
+        activate: (_event: MouseEvent, text: string) => openLink(text),
+      },
+    };
 
     const terminal = new Terminal(terminalOptions);
     const addons = this.addonManager.setupAddons(terminal, openLink);
@@ -201,19 +182,6 @@ class TerminalInstanceService {
     const throttledWriter = createThrottledWriter(id, terminal, getRefreshTier, () =>
       this.dataBuffer.isEnabled()
     );
-
-    // Create managed terminal placeholder for parser handler setup
-    const managedPlaceholder: Partial<ManagedTerminal> = {
-      terminal,
-      type,
-      kind: isTallCanvas ? "agent" : undefined,
-      agentId,
-    };
-
-    // Setup parser handlers BEFORE data subscriptions to prevent race conditions
-    if (isTallCanvas) {
-      setupParserHandlers(managedPlaceholder as ManagedTerminal);
-    }
 
     const listeners: Array<() => void> = [];
     const exitSubscribers = new Set<(exitCode: number) => void>();
@@ -240,8 +208,8 @@ class TerminalInstanceService {
     const managed: ManagedTerminal = {
       terminal,
       type,
-      kind: isTallCanvas ? "agent" : undefined,
-      agentId,
+      kind: undefined,
+      agentId: undefined,
       agentState: undefined,
       agentStateSubscribers,
       ...addons,
@@ -264,13 +232,9 @@ class TerminalInstanceService {
       lastHeight: 0,
       lastYResizeTime: 0,
       latestCols: 0,
-      latestRows: isTallCanvas ? TALL_CANVAS_ROWS : 0,
+      latestRows: 0,
       latestWasAtBottom: true,
       isFocused: false,
-      isTallCanvas,
-      effectiveTallRows: TALL_CANVAS_ROWS,
-      tallCanvasFollowLog: true,
-      tallCanvasLastScrollTop: 0,
     };
 
     const inputDisposable = terminal.onData((data) => {
@@ -304,16 +268,6 @@ class TerminalInstanceService {
     if (!managed.isOpened) {
       managed.terminal.open(managed.hostElement);
       managed.isOpened = true;
-
-      if (managed.isTallCanvas) {
-        const cellHeight = measureCellHeight(managed.terminal);
-        const safeRows = getSafeTallCanvasRows(cellHeight);
-        managed.effectiveTallRows = safeRows;
-        if (safeRows !== managed.terminal.rows) {
-          managed.terminal.resize(managed.terminal.cols, safeRows);
-          terminalClient.resize(id, managed.terminal.cols, safeRows);
-        }
-      }
     }
     managed.lastAttachAt = Date.now();
 
@@ -335,21 +289,6 @@ class TerminalInstanceService {
     if (!managed) return null;
 
     try {
-      if (managed.isTallCanvas) {
-        const container = managed.hostElement.parentElement;
-        if (!container) return null;
-        const width = container.clientWidth;
-        // @ts-expect-error - internal API
-        const proposed = managed.fitAddon.proposeDimensions?.({ width, height: 1 });
-        const cols = proposed?.cols ?? managed.terminal.cols;
-        const rows = managed.effectiveTallRows;
-        if (cols !== managed.terminal.cols) {
-          managed.terminal.resize(cols, rows);
-          terminalClient.resize(id, cols, rows);
-        }
-        return { cols, rows };
-      }
-
       managed.fitAddon.fit();
       const { cols, rows } = managed.terminal;
       terminalClient.resize(id, cols, rows);
@@ -374,42 +313,32 @@ class TerminalInstanceService {
     id: string,
     width: number,
     height: number,
-    options: { immediate?: boolean; isTallCanvas?: boolean } = {}
+    options: { immediate?: boolean } = {}
   ): { cols: number; rows: number } | null {
     const managed = this.instances.get(id);
     if (!managed) return null;
 
-    const isTallCanvas = options.isTallCanvas ?? managed.isTallCanvas;
-
-    if (isTallCanvas) {
-      if (Math.abs(managed.lastWidth - width) < 1) {
-        return null;
-      }
-    } else {
-      if (Math.abs(managed.lastWidth - width) < 1 && Math.abs(managed.lastHeight - height) < 1) {
-        return null;
-      }
+    if (Math.abs(managed.lastWidth - width) < 1 && Math.abs(managed.lastHeight - height) < 1) {
+      return null;
     }
 
     const buffer = managed.terminal.buffer.active;
-    const wasAtBottom = isTallCanvas ? true : buffer.baseY - buffer.viewportY < 1;
+    const wasAtBottom = buffer.baseY - buffer.viewportY < 1;
 
     try {
       // @ts-expect-error - internal API
       const proposed = managed.fitAddon.proposeDimensions?.({ width, height });
 
       if (!proposed) {
-        if (!isTallCanvas) {
-          managed.fitAddon.fit();
-        }
+        managed.fitAddon.fit();
         const cols = managed.terminal.cols;
-        const rows = isTallCanvas ? managed.effectiveTallRows : managed.terminal.rows;
+        const rows = managed.terminal.rows;
         managed.lastWidth = width;
         managed.lastHeight = height;
         managed.latestCols = cols;
         managed.latestRows = rows;
         managed.latestWasAtBottom = wasAtBottom;
-        if (!isTallCanvas && !managed.isFocused && !wasAtBottom) {
+        if (!managed.isFocused && !wasAtBottom) {
           this.scrollToBottom(id);
         }
         terminalClient.resize(id, cols, rows);
@@ -417,7 +346,7 @@ class TerminalInstanceService {
       }
 
       const cols = proposed.cols;
-      const rows = isTallCanvas ? managed.effectiveTallRows : proposed.rows;
+      const rows = proposed.rows;
 
       if (managed.terminal.cols === cols && managed.terminal.rows === rows) {
         return null;
@@ -430,12 +359,6 @@ class TerminalInstanceService {
       managed.latestWasAtBottom = wasAtBottom;
 
       const bufferLineCount = this.getBufferLineCount(id);
-
-      if (isTallCanvas) {
-        this.clearResizeJobs(managed);
-        this.applyResize(id, cols, rows);
-        return { cols, rows };
-      }
 
       if (options.immediate || bufferLineCount < START_DEBOUNCING_THRESHOLD) {
         this.clearResizeJobs(managed);
@@ -473,91 +396,6 @@ class TerminalInstanceService {
     if (!selection) return null;
 
     return selection.start.y;
-  }
-
-  isTallCanvasMode(id: string): boolean {
-    const managed = this.instances.get(id);
-    return managed?.isTallCanvas ?? false;
-  }
-
-  setTallCanvasScrollCallback(id: string, callback: ((row: number) => void) | null): void {
-    const managed = this.instances.get(id);
-    if (managed) {
-      managed.tallCanvasScrollToRow = callback ?? undefined;
-    }
-  }
-
-  scrollTallCanvasToRow(id: string, row: number): void {
-    const managed = this.instances.get(id);
-    if (managed && managed.tallCanvasScrollToRow) {
-      managed.tallCanvasScrollToRow(row);
-    }
-  }
-
-  getEffectiveTallRows(id: string): number {
-    const managed = this.instances.get(id);
-    return managed?.effectiveTallRows ?? TALL_CANVAS_ROWS;
-  }
-
-  // Tall canvas follow state - persisted across component remounts
-  getTallCanvasFollowLog(id: string): boolean {
-    const managed = this.instances.get(id);
-    return managed?.tallCanvasFollowLog ?? true;
-  }
-
-  setTallCanvasFollowLog(id: string, follow: boolean): void {
-    const managed = this.instances.get(id);
-    if (managed) {
-      managed.tallCanvasFollowLog = follow;
-    }
-  }
-
-  getTallCanvasLastScrollTop(id: string): number {
-    const managed = this.instances.get(id);
-    return managed?.tallCanvasLastScrollTop ?? 0;
-  }
-
-  setTallCanvasLastScrollTop(id: string, scrollTop: number): void {
-    const managed = this.instances.get(id);
-    if (managed) {
-      managed.tallCanvasLastScrollTop = scrollTop;
-    }
-  }
-
-  /**
-   * Request a tall canvas sync (height update + scroll sync).
-   * Use this after frontend-only operations like terminal.clear() that don't trigger
-   * the output listener but do change the visual state.
-   */
-  requestTallCanvasSync(id: string): void {
-    const managed = this.instances.get(id);
-    if (!managed || !managed.isTallCanvas) return;
-
-    // Trigger output subscribers which will update height and scroll
-    if (managed.outputSubscribers.size > 0) {
-      managed.outputSubscribers.forEach((cb) => cb());
-    }
-  }
-
-  getContentBottom(id: string): number {
-    const managed = this.instances.get(id);
-    if (!managed) return 0;
-
-    const buffer = managed.terminal.buffer.active;
-    const cursorY = buffer.cursorY;
-    const totalRows = managed.terminal.rows;
-
-    let lastContentRow = cursorY;
-
-    for (let row = totalRows - 1; row > cursorY; row--) {
-      const line = buffer.getLine(row);
-      if (line && line.translateToString(true).trim().length > 0) {
-        lastContentRow = Math.max(lastContentRow, row);
-        break;
-      }
-    }
-
-    return lastContentRow;
   }
 
   setAgentState(id: string, state: AgentState): void {
@@ -936,14 +774,6 @@ class TerminalInstanceService {
     tier: TerminalRefreshTier
   ): void {
     managed.lastAppliedTier = tier;
-
-    if (managed.isTallCanvas) {
-      if (managed.webglAddon) {
-        this.addonManager.releaseWebgl(id, managed);
-        managed.terminal.refresh(0, managed.terminal.rows - 1);
-      }
-      return;
-    }
 
     const wantsWebgl =
       managed.isVisible &&

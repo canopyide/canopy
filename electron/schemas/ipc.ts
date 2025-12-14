@@ -5,10 +5,6 @@
 import { z } from "zod";
 import { TerminalTypeSchema } from "./agent.js";
 
-// Row limits: 500 for standard terminals, up to 1000 for agent tall canvas mode
-// Runtime clamping in getSafeTallCanvasRows() ensures we stay under canvas limits
-const MAX_ROWS_TALL_CANVAS = 1000;
-
 export const TerminalSpawnOptionsSchema = z.object({
   id: z.string().optional(),
   kind: z.enum(["terminal", "agent"]).optional(),
@@ -16,7 +12,7 @@ export const TerminalSpawnOptionsSchema = z.object({
   cwd: z.string().optional(),
   shell: z.string().optional(),
   cols: z.number().int().positive().max(500),
-  rows: z.number().int().positive().max(MAX_ROWS_TALL_CANVAS),
+  rows: z.number().int().positive(),
   command: z.string().optional(),
   env: z.record(z.string(), z.string()).optional(),
   type: TerminalTypeSchema.optional(),
@@ -26,8 +22,8 @@ export const TerminalSpawnOptionsSchema = z.object({
 
 export const TerminalResizePayloadSchema = z.object({
   id: z.string().min(1),
-  cols: z.number().int().positive().max(500),
-  rows: z.number().int().positive().max(MAX_ROWS_TALL_CANVAS),
+  cols: z.number().int().positive(),
+  rows: z.number().int().positive(),
 });
 
 export const DevServerStatusSchema = z.enum(["stopped", "starting", "running", "error"]);

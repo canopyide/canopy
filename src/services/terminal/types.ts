@@ -76,17 +76,9 @@ export interface ManagedTerminal {
   latestCols: number;
   latestRows: number;
   latestWasAtBottom: boolean;
-  // Focus-aware scrolling state
+
+  // Focus state
   isFocused: boolean;
-  // Tall canvas mode (agent terminals)
-  isTallCanvas: boolean;
-  // Effective row count for tall canvas (may be less than TALL_CANVAS_ROWS due to DPI limits)
-  effectiveTallRows: number;
-  // Callback for tall canvas scroll sync
-  tallCanvasScrollToRow?: (row: number) => void;
-  // Persisted scroll state for tall canvas (survives component remounts)
-  tallCanvasFollowLog: boolean;
-  tallCanvasLastScrollTop: number;
 }
 
 export type SabFlushMode = "normal" | "frame";

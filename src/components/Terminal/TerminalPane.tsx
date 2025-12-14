@@ -206,9 +206,6 @@ function TerminalPaneComponent({
           if (managed?.terminal) {
             try {
               managed.terminal.clear();
-              // Trigger tall canvas sync for frontend-only clear operations
-              // (outputListener only fires for PTY data, not frontend clear)
-              terminalInstanceService.requestTallCanvasSync(id);
             } catch (error) {
               console.warn(`Failed to clear terminal ${id}:`, error);
             }
