@@ -1,4 +1,5 @@
 import { ManagedTerminal } from "./types";
+import { getAgentConfig } from "@/config/agents";
 
 export class TerminalParserHandler {
   private managed: ManagedTerminal;
@@ -14,12 +15,31 @@ export class TerminalParserHandler {
     this.allowResets = allow;
   }
 
+  private getAgentCapabilities(): {
+    blockAltScreen: boolean;
+    blockMouseReporting: boolean;
+  } {
+    if (this.managed.kind !== "agent") {
+      return { blockAltScreen: false, blockMouseReporting: false };
+    }
+
+    const effectiveAgentId = this.managed.agentId ?? this.managed.type;
+    const config = getAgentConfig(effectiveAgentId);
+
+    return {
+      blockAltScreen: config?.capabilities?.blockAltScreen ?? true,
+      blockMouseReporting: config?.capabilities?.blockMouseReporting ?? true,
+    };
+  }
+
   private attachHandlers(): void {
     const { terminal } = this.managed;
 
     if (!terminal.parser || !terminal.parser.registerEscHandler) {
       return; // Graceful degradation if proposed API missing
     }
+
+    const capabilities = this.getAgentCapabilities();
 
     // Block RIS (Reset Initial State) - ESC c
     const risHandler = terminal.parser.registerEscHandler({ final: "c" }, () => {
@@ -51,6 +71,63 @@ export class TerminalParserHandler {
       }
     );
     this.disposables.push(decstrHandler);
+
+    // Block DEC private mode toggles that cause full-screen "alternate screen" behavior.
+    // This is commonly used by TUIs; we block it for agent terminals to keep output stable and
+    // prevent sudden screen jumps (also keeps the header/banner visible in scrollback).
+    if (capabilities.blockAltScreen) {
+      const altScreenParams = new Set([47, 1047, 1049]);
+
+      const decsetPrivateHandler = terminal.parser.registerCsiHandler(
+        { prefix: "?", final: "h" },
+        (params?: number[]) => {
+          if (!this.shouldBlock()) return false;
+          const p = params ?? [];
+          if (!p.some((v) => altScreenParams.has(v))) return false;
+          return true;
+        }
+      );
+      this.disposables.push(decsetPrivateHandler);
+
+      const decrstPrivateHandler = terminal.parser.registerCsiHandler(
+        { prefix: "?", final: "l" },
+        (params?: number[]) => {
+          if (!this.shouldBlock()) return false;
+          const p = params ?? [];
+          if (!p.some((v) => altScreenParams.has(v))) return false;
+          return true;
+        }
+      );
+      this.disposables.push(decrstPrivateHandler);
+    }
+
+    // Block mouse reporting mode toggles (enables programs to capture mouse events).
+    // We block this for agent terminals to avoid surprising interactions inside the app.
+    if (capabilities.blockMouseReporting) {
+      const mouseModeParams = new Set([1000, 1002, 1003, 1005, 1006, 1015]);
+
+      const decsetMouseHandler = terminal.parser.registerCsiHandler(
+        { prefix: "?", final: "h" },
+        (params?: number[]) => {
+          if (!this.shouldBlock()) return false;
+          const p = params ?? [];
+          if (!p.some((v) => mouseModeParams.has(v))) return false;
+          return true;
+        }
+      );
+      this.disposables.push(decsetMouseHandler);
+
+      const decrstMouseHandler = terminal.parser.registerCsiHandler(
+        { prefix: "?", final: "l" },
+        (params?: number[]) => {
+          if (!this.shouldBlock()) return false;
+          const p = params ?? [];
+          if (!p.some((v) => mouseModeParams.has(v))) return false;
+          return true;
+        }
+      );
+      this.disposables.push(decrstMouseHandler);
+    }
   }
 
   private shouldBlock(): boolean {

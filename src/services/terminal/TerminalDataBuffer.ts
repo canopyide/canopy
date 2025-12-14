@@ -6,12 +6,13 @@ const REDRAW_LOOKBACK_CHARS = 128;
 const STANDARD_FLUSH_DELAY_MS = 4;
 const REDRAW_FLUSH_DELAY_MS = 16;
 const MAX_FLUSH_DELAY_MS = 32;
-const MIN_FRAME_INTERVAL_MS = 50;
+const MIN_FRAME_INTERVAL_MS = 16;
 const FRAME_SETTLE_DELAY_MS = REDRAW_FLUSH_DELAY_MS;
 const FRAME_DEADLINE_MS = MAX_FLUSH_DELAY_MS;
-const TUI_BURST_THRESHOLD_MS = 50;
 const IDLE_POLL_INTERVALS = [8, 16, 33, 100] as const;
 const MAX_BUFFER_BYTES = 20 * 1024;
+
+const BYPASS_FRAME_BUFFER: boolean = false;
 
 type SabBufferEntry = {
   chunks: (string | Uint8Array)[];
@@ -23,8 +24,6 @@ type SabBufferEntry = {
   bytesSinceStart: number;
   firstDataAt: number;
   lastDataAt: number;
-  lastRedrawAt: number | null;
-  flushOnRedrawOnly: boolean;
   isCursorHidden: boolean;
   hasCriticalReset: boolean;
 };
@@ -96,6 +95,11 @@ export class TerminalDataBuffer {
   }
 
   public bufferData(id: string, data: string | Uint8Array): void {
+    if (BYPASS_FRAME_BUFFER) {
+      this.writeToTerminal(id, data);
+      return;
+    }
+
     const now = Date.now();
     let entry = this.sabBuffers.get(id);
 
@@ -122,8 +126,6 @@ export class TerminalDataBuffer {
         bytesSinceStart,
         firstDataAt: now,
         lastDataAt: now,
-        lastRedrawAt: isRedraw ? now : null,
-        flushOnRedrawOnly: false,
         isCursorHidden: newCursorState,
         hasCriticalReset: isCriticalReset,
       };
@@ -148,53 +150,12 @@ export class TerminalDataBuffer {
       return;
     }
 
-    if (isRedraw) {
-      if (entry.lastRedrawAt !== null) {
-        const clearDelta = now - entry.lastRedrawAt;
-        if (clearDelta <= TUI_BURST_THRESHOLD_MS) {
-          entry.flushOnRedrawOnly = true;
-        }
+    if (isRedraw && entry.flushMode === "normal") {
+      if (entry.normalTimeoutId !== null) {
+        window.clearTimeout(entry.normalTimeoutId);
+        entry.normalTimeoutId = null;
       }
-      entry.lastRedrawAt = now;
-    }
-
-    if (isRedraw && entry.chunks.length > 0) {
-      const stats = this.sabFrameStats.get(id);
-      if (stats) {
-        const delta = now - stats.lastFlushAt;
-        if (delta < MIN_FRAME_INTERVAL_MS) {
-          this.cancelBufferTimers(entry);
-
-          this.enqueueFrame(id, entry.chunks);
-
-          entry.chunks = [data];
-          entry.flushMode = "frame";
-          entry.bytesSinceStart = dataLength;
-          entry.recentChars = combinedRecent;
-          entry.firstDataAt = now;
-          entry.lastDataAt = now;
-          entry.isCursorHidden = newCursorState;
-          entry.hasCriticalReset = isCriticalReset;
-          if (isRedraw) {
-            entry.lastRedrawAt = now;
-          }
-
-          const remaining = MIN_FRAME_INTERVAL_MS - delta;
-          const settleDelay = Math.max(FRAME_SETTLE_DELAY_MS, remaining);
-
-          entry.frameSettleTimeoutId = window.setTimeout(() => this.onFrameSettle(id), settleDelay);
-          entry.frameDeadlineTimeoutId = window.setTimeout(
-            () => this.flushBuffer(id),
-            Math.max(FRAME_DEADLINE_MS, settleDelay)
-          );
-
-          return;
-        }
-      }
-
-      this.flushBuffer(id);
-      this.bufferData(id, data);
-      return;
+      entry.flushMode = "frame";
     }
 
     entry.chunks.push(data);
@@ -322,9 +283,6 @@ export class TerminalDataBuffer {
 
     const now = Date.now();
     if (now - entry.lastDataAt >= FRAME_SETTLE_DELAY_MS - 1) {
-      if (entry.flushMode === "frame" && entry.flushOnRedrawOnly && !entry.hasCriticalReset) {
-        return;
-      }
       this.flushBuffer(id);
     }
   }
@@ -381,8 +339,6 @@ export class TerminalDataBuffer {
   }
 
   private isFrameIncomplete(entry: SabBufferEntry): boolean {
-    if (entry.isCursorHidden) return true;
-
     const lastClear = Math.max(
       entry.recentChars.lastIndexOf("\x1b[2J"),
       entry.recentChars.lastIndexOf("\x1b[H"),

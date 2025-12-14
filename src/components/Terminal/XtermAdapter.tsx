@@ -247,7 +247,11 @@ function XtermAdapterComponent({
           event.preventDefault();
           event.stopPropagation();
           if (event.type === "keydown") {
-            terminalClient.write(terminalId, "\x1b\r");
+            // "Soft" newline for agent CLIs.
+            // Codex CLI commonly expects LF (\n / Ctrl+J) for a newline without submit.
+            // Other agent CLIs use the legacy ESC+CR sequence.
+            const softNewline = terminalType === "codex" ? "\n" : "\x1b\r";
+            terminalClient.write(terminalId, softNewline);
           }
           return false;
         }
