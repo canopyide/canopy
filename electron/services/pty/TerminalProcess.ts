@@ -123,6 +123,31 @@ export class TerminalProcess {
   private readonly terminalInfo: TerminalInfo;
   private readonly isAgentTerminal: boolean;
 
+  private ensureHeadlessResponder(): void {
+    this.ensureHeadlessTerminal();
+    const terminal = this.terminalInfo;
+
+    if (terminal.wasKilled) {
+      return;
+    }
+
+    if (this.headlessResponderDisposable || !terminal.headlessTerminal) {
+      return;
+    }
+
+    this.headlessResponderDisposable = installHeadlessResponder(
+      terminal.headlessTerminal,
+      (data) => {
+        if (terminal.wasKilled) return;
+        try {
+          terminal.ptyProcess.write(data);
+        } catch {
+          // Ignore write errors - PTY may already be dead
+        }
+      }
+    );
+  }
+
   constructor(
     public readonly id: string,
     private options: PtySpawnOptions,
@@ -280,7 +305,7 @@ export class TerminalProcess {
           return;
         }
         deps.agentStateService.handleActivityState(this.terminalInfo, state);
-      });
+      }, this.getActivityMonitorOptions());
     }
 
     // Start process detection (only if cache is available)
@@ -732,9 +757,16 @@ export class TerminalProcess {
             return;
           }
           this.deps.agentStateService.handleActivityState(this.terminalInfo, state);
-        }
+        },
+        this.getActivityMonitorOptions()
       );
     }
+  }
+
+  private getActivityMonitorOptions(): { ignoredInputSequences: string[] } {
+    // Shift+Enter "soft newline" differs by agent CLI; codex commonly uses LF (\n / Ctrl+J).
+    const ignoredInputSequences = this.terminalInfo.type === "codex" ? ["\n", "\x1b\r"] : ["\x1b\r"];
+    return { ignoredInputSequences };
   }
 
   /**
@@ -869,6 +901,13 @@ export class TerminalProcess {
       }
 
       terminal.lastOutputTime = Date.now();
+
+      // Some TUIs (including Codex) request terminal responses (e.g. cursor position report via CSI 6 n).
+      // Agent terminals always have a headless responder installed, but shell terminals may not.
+      // If we see a request, ensure a headless terminal + responder so the TUI can proceed.
+      if (!this.isAgentTerminal && (data.includes("\x1b[6n") || data.includes("\x1b[5n"))) {
+        this.ensureHeadlessResponder();
+      }
 
       // Write to headless terminal (if created) or buffer raw output
       if (terminal.headlessTerminal) {

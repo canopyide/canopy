@@ -34,7 +34,8 @@ describe("TerminalParserHandler", () => {
     mockManaged = {
       terminal: mockTerminal,
       kind: "agent", // Default to agent for blocking tests
-      agentId: "claude-1",
+      agentId: "codex",
+      type: "codex",
     } as any;
   });
 
@@ -69,6 +70,17 @@ describe("TerminalParserHandler", () => {
     expect(result).toBe(true); // Should block
   });
 
+  it("should block alternate screen toggles for agent terminals", () => {
+    new TerminalParserHandler(mockManaged);
+    const decset = csiHandlers.find((h) => h.opts.prefix === "?" && h.opts.final === "h");
+    const decrst = csiHandlers.find((h) => h.opts.prefix === "?" && h.opts.final === "l");
+    expect(decset).toBeDefined();
+    expect(decrst).toBeDefined();
+
+    expect(decset.handler([1049])).toBe(true);
+    expect(decrst.handler([1049])).toBe(true);
+  });
+
   it("should NOT block for regular terminals", () => {
     mockManaged.kind = "terminal";
     mockManaged.agentId = undefined;
@@ -82,6 +94,11 @@ describe("TerminalParserHandler", () => {
       (h) => h.opts.intermediates === "!" && h.opts.final === "p"
     );
     expect(decstrHandler.handler()).toBe(false); // Should pass through
+
+    const decset = csiHandlers.find((h) => h.opts.prefix === "?" && h.opts.final === "h");
+    const decrst = csiHandlers.find((h) => h.opts.prefix === "?" && h.opts.final === "l");
+    if (decset) expect(decset.handler([1049])).toBe(false);
+    if (decrst) expect(decrst.handler([1049])).toBe(false);
   });
 
   it("should dispose handlers correctly", () => {

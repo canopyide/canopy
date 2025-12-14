@@ -7,20 +7,24 @@ export class ActivityMonitor {
   private partialEscape = "";
   private pasteStartTime = 0;
   private readonly PASTE_TIMEOUT_MS = 5000;
+  private readonly ignoredInputSequences: Set<string>;
 
   constructor(
     private terminalId: string,
     private spawnedAt: number,
-    private onStateChange: (id: string, spawnedAt: number, state: "busy" | "idle") => void
-  ) {}
+    private onStateChange: (id: string, spawnedAt: number, state: "busy" | "idle") => void,
+    options?: { ignoredInputSequences?: string[] }
+  ) {
+    this.ignoredInputSequences = new Set(options?.ignoredInputSequences ?? ["\x1b\r"]);
+  }
 
   /**
    * Called when user sends input to the terminal.
    * Proactively transitions to BUSY on Enter key, but ignores pastes.
    */
   onInput(data: string): void {
-    // Ignore Shift+Enter sequence (\x1b\r) sent by XtermAdapter for soft line breaks.
-    if (data === "\x1b\r") {
+    // Ignore synthetic "soft newline" sequences (e.g. Shift+Enter in the renderer).
+    if (this.ignoredInputSequences.has(data)) {
       return;
     }
 
