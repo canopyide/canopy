@@ -12,6 +12,8 @@
 import { MessagePort } from "node:worker_threads";
 import os from "node:os";
 import v8 from "node:v8";
+import fs from "node:fs";
+import path from "node:path";
 import { PtyManager } from "./services/PtyManager.js";
 import { PtyPool, getPtyPool } from "./services/PtyPool.js";
 import { ProcessTreeCache } from "./services/ProcessTreeCache.js";
@@ -31,14 +33,41 @@ if (!process.parentPort) {
 
 const port = process.parentPort as unknown as MessagePort;
 
+// Emergency Synchronous Logger for Fatal Crashes
+// Writes directly to file fd to ensure logs are captured even during process termination
+function writeFatalLog(message: string): void {
+  try {
+    const userDataPath = process.env.CANOPY_USER_DATA;
+    if (!userDataPath) return;
+
+    const logDir = path.join(userDataPath, "logs");
+    if (!fs.existsSync(logDir)) {
+      fs.mkdirSync(logDir, { recursive: true });
+    }
+
+    const logPath = path.join(logDir, "pty-host.log");
+    const timestamp = new Date().toISOString();
+    const logEntry = `[${timestamp}] [FATAL] ${message}\n`;
+
+    fs.appendFileSync(logPath, logEntry, "utf8");
+  } catch (err) {
+    // Last resort: try to print to stderr (might be lost if detached)
+    console.error("[PtyHost] Failed to write fatal log:", err);
+  }
+}
+
 // Global error handlers to prevent silent crashes
 process.on("uncaughtException", (err) => {
-  console.error("[PtyHost] Uncaught Exception:", err);
+  const msg = `Uncaught Exception: ${err instanceof Error ? err.stack : String(err)}`;
+  console.error("[PtyHost]", msg);
+  writeFatalLog(msg);
   sendEvent({ type: "error", id: "system", error: err.message });
 });
 
 process.on("unhandledRejection", (reason) => {
-  console.error("[PtyHost] Unhandled Rejection:", reason);
+  const msg = `Unhandled Rejection: ${String(reason instanceof Error ? reason.stack : reason)}`;
+  console.error("[PtyHost]", msg);
+  writeFatalLog(msg);
   sendEvent({
     type: "error",
     id: "system",

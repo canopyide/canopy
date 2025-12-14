@@ -27,6 +27,9 @@ Use the following template for the issue body, adapting sections as necessary fo
 ## Proposed Solution / Approach (Optional)
 [If a specific approach has been discussed or is evident, outline it here. Otherwise, state that the approach needs to be determined during implementation.]
 
+## Implementation Guidance (Optional)
+[A free-form comment that sums up more detailed implementation information and overall guidance provided during the request.]
+
 ## Deliverables
 - [ ] Code changes addressing the core issue/feature.
 - [ ] New or updated unit tests (`npm run test`).

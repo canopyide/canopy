@@ -218,13 +218,28 @@ export class PtyClient extends EventEmitter {
     try {
       this.child = utilityProcess.fork(hostPath, [], {
         serviceName: "canopy-pty-host",
-        stdio: "inherit", // Show logs in dev
+        stdio: ["ignore", "pipe", "pipe"], // Capture stdout/stderr for logging
         execArgv: [`--max-old-space-size=${this.config.memoryLimitMb}`],
         env: {
           ...(process.env as Record<string, string>),
           CANOPY_USER_DATA: app.getPath("userData"),
         },
       });
+
+      // Pipe child stdout/stderr to main logger
+      if (this.child.stdout) {
+        this.child.stdout.on("data", (data) => {
+          const msg = data.toString().trim();
+          if (msg) console.log(`[PtyHost] ${msg}`);
+        });
+      }
+      if (this.child.stderr) {
+        this.child.stderr.on("data", (data) => {
+          const msg = data.toString().trim();
+          if (msg) console.error(`[PtyHost] ${msg}`);
+        });
+      }
+
       console.log(`[PtyClient] Pty Host started with ${this.config.memoryLimitMb}MB memory limit`);
     } catch (error) {
       console.error("[PtyClient] Failed to fork Pty Host:", error);
@@ -880,8 +895,10 @@ export class PtyClient extends EventEmitter {
       // WATCHDOG CHECK: Force-kill if host is unresponsive
       if (this.missedHeartbeats >= this.MAX_MISSED_HEARTBEATS) {
         const missedMs = this.missedHeartbeats * this.config.healthCheckIntervalMs;
+        const lastCheck = new Date().toISOString();
         console.error(
-          `[PtyClient] Watchdog: Host unresponsive for ${this.missedHeartbeats} checks (${missedMs}ms). Force killing.`
+          `[PtyClient] Watchdog: Host unresponsive for ${this.missedHeartbeats} checks (${missedMs}ms). ` +
+            `Last check at ${lastCheck}. Force killing process to recover.`
         );
 
         // Emit crash details before force-killing

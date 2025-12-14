@@ -1121,8 +1121,11 @@ export class TerminalProcess {
     }
     try {
       terminal.ptyProcess.write(chunk);
-    } catch {
-      // Process may already be dead; swallow write errors
+    } catch (error) {
+      // Process may already be dead, but log it for diagnostics
+      if (process.env.CANOPY_VERBOSE) {
+        console.warn(`[TerminalProcess] Write failed for ${this.id}:`, error);
+      }
     }
   }
 
