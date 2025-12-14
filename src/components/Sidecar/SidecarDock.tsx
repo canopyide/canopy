@@ -612,6 +612,8 @@ export function SidecarDock() {
         onCopyTabUrl={handleCopyTabUrl}
         onOpenTabExternal={handleOpenTabExternal}
         onReloadTab={handleReloadTab}
+        enabledLinks={enabledLinks}
+        onOpenUrl={handleOpenUrl}
       />
       <div ref={contentRef} className="flex-1 flex flex-col min-h-0 relative">
         {showLaunchpad ? (

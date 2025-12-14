@@ -15,7 +15,7 @@ prompt = '''
 ### Step 1: Parse and Fetch Issue
 
 1. Extract issue number from `{{args}}`.
-2. Fetch issue details: `run_shell_command("gh issue view {number} --json title,body,number", description="Fetch GitHub issue details")`.
+2. Fetch issue details: `run_shell_command("gh issue view {number} --json title,body,comments,number", description="Fetch GitHub issue details including comments")`.
 3. Assign to self: `run_shell_command("gh issue edit {number} --add-assignee @me", description="Assign issue to self on GitHub")`.
 
 ### Step 2: Create Worktree
@@ -36,9 +36,9 @@ prompt = '''
 **CRITICAL:** This step runs AUTOMATICALLY.
 
 1. **Check for Existing Guidance**: Review issue comments for detailed instructions.
-2. **Consult Codex**: If no detailed instructions exist, ask Codex for an implementation plan.
-   - Command: `run_shell_command("claude -p \"Analyze issue #{number} and provide a structured implementation plan including technical analysis, code mapping, and testing strategy. Current directory: $(pwd)\"")`
-3. **Internalize Plan**: Use this plan as your roadmap. Do not pause for user approval.
+2. **Consult Codex**: If no detailed instructions exist, ask Codex for implementation ideas.
+   - Command: `run_shell_command("claude -p \"Analyze issue #{number} (including comments). If no strict guide exists, provide a list of implementation ideas, architectural considerations, and potential pitfalls to avoid. Current directory: $(pwd)\"")`
+3. **Formulate Plan**: Take Codex's ideas into account, but use your own judgment to decide on the final implementation plan. Do not pause for user approval.
 
 ### Step 5: Implement (Autonomous with Codex)
 
@@ -61,8 +61,8 @@ prompt = '''
 
 **Mandatory Review:**
 
-1. **Request Review**: Ask Codex to review the implementation.
-   - Command: `run_shell_command("claude -p \"Review the implementation for issue #{number} in the current directory. Check for logic errors, edge cases, missing tests, and adherence to project patterns. List specific fixes required.\"")`
+1. **Request Review**: Ask Codex to perform a comprehensive code review with specific focus areas.
+   - Command: `run_shell_command("claude -p \"Perform a rigorous and detailed code review of the implementation for issue #{number}. Check specifically for: 1. **Logic & Requirements**: Does the solution fully address the issue description and comments? 2. **Architecture & Patterns**: Are IPC channels defined in 'channels.ts' and typed correctly? Are Zustand stores used effectively without unnecessary re-renders? 3. **Resource Management**: Are event listeners cleaned up? Are timers/intervals cleared? 4. **Error Handling**: Are all async operations safe? Are errors propagated to the UI? 5. **Testing**: Are there sufficient unit tests covering the new logic? 6. **Style**: Does the code match the project's formatting and naming conventions? Provide a specific, numbered list of required fixes. If no fixes are needed, explicitly state 'Approved'.\"")`
 2. **Apply Fixes**: If issues are found, fix them immediately (repeat Step 5 logic) until the review is clean.
 
 ### Step 7: Create Pull Request
