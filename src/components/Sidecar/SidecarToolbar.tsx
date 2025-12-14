@@ -26,7 +26,7 @@ import {
   horizontalListSortingStrategy,
 } from "@dnd-kit/sortable";
 import { CSS } from "@dnd-kit/utilities";
-import type { SidecarTab } from "@shared/types";
+import type { SidecarTab, SidecarLink } from "@shared/types";
 import { cn } from "@/lib/utils";
 import { useSidecarStore } from "@/store/sidecarStore";
 import { SidecarIcon } from "./SidecarIcon";
@@ -39,6 +39,7 @@ import {
 } from "@/components/ui/context-menu";
 
 const noopTabAction = (_tabId: string) => {};
+const noopOpenAgent = (_url: string, _title: string) => {};
 
 const SortableTab = memo(function SortableTab({
   tab,
@@ -187,6 +188,8 @@ interface SidecarToolbarProps {
   onCopyTabUrl?: (tabId: string) => void;
   onOpenTabExternal?: (tabId: string) => void;
   onReloadTab?: (tabId: string) => void;
+  availableAgents?: SidecarLink[];
+  onOpenAgent?: (url: string, title: string) => void;
 }
 
 export function SidecarToolbar({
@@ -208,6 +211,8 @@ export function SidecarToolbar({
   onCopyTabUrl,
   onOpenTabExternal,
   onReloadTab,
+  availableAgents = [],
+  onOpenAgent,
 }: SidecarToolbarProps) {
   const reorderTabs = useSidecarStore((s) => s.reorderTabs);
 
@@ -217,6 +222,7 @@ export function SidecarToolbar({
   const copyTabUrl = onCopyTabUrl ?? noopTabAction;
   const openTabExternal = onOpenTabExternal ?? noopTabAction;
   const reloadTab = onReloadTab ?? noopTabAction;
+  const openAgent = onOpenAgent ?? noopOpenAgent;
 
   const sensors = useSensors(
     useSensor(PointerSensor, { activationConstraint: { distance: 5 } }),
@@ -338,14 +344,33 @@ export function SidecarToolbar({
                   tabIndex={index}
                 />
               ))}
-
-              <button
-                onClick={onNewTab}
-                className="flex items-center justify-center w-8 h-[26px] rounded-full bg-canopy-border hover:bg-canopy-border/80 text-canopy-text hover:text-foreground border border-canopy-border hover:border-canopy-border transition-all"
-                title="New Tab"
-              >
-                <Plus className="w-4 h-4" />
-              </button>
+              <ContextMenu>
+                <ContextMenuTrigger asChild>
+                  <button
+                    onClick={onNewTab}
+                    className="flex items-center justify-center w-8 h-[26px] rounded-full bg-canopy-border hover:bg-canopy-border/80 text-canopy-text hover:text-foreground border border-canopy-border hover:border-canopy-border transition-all"
+                    aria-label="New Tab"
+                    title="New Tab"
+                  >
+                    <Plus className="w-4 h-4" />
+                  </button>
+                </ContextMenuTrigger>
+                {availableAgents.length > 0 && (
+                  <ContextMenuContent>
+                    {availableAgents.map((agent) => (
+                      <ContextMenuItem
+                        key={agent.id}
+                        onSelect={() => openAgent(agent.url, agent.title)}
+                      >
+                        <div className="flex items-center gap-2">
+                          <SidecarIcon icon={agent.icon} size="tab" url={agent.url} />
+                          <span>{agent.title}</span>
+                        </div>
+                      </ContextMenuItem>
+                    ))}
+                  </ContextMenuContent>
+                )}
+              </ContextMenu>
             </div>
           </SortableContext>
         </DndContext>
