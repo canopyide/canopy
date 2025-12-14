@@ -47,9 +47,19 @@ Bias towards providing the most detailed 'how' possible given the available info
 
 ### Step 3: Create Issue
 
-Use the `gh issue create` command:
+Use the `gh issue create` command.
 
-`run_shell_command('gh issue create --title "[Imperative sentence describing the change]" --body "..."')`
+**Title Guidelines**:
+- Use natural language.
+- Do NOT use prefixes like "feat:", "fix:", "chore:", "[Bug]", etc.
+- Use the imperative mood for tasks (e.g., "Add support for...", "Fix crash when...").
+- For bugs, a short description of the problem is also acceptable (e.g., "Terminal self-erases during...").
+- Examples of good titles:
+    - "Add default new tab agent setting to bypass Launchpad"
+    - "Disable Command+R refresh to prevent accidental work loss"
+    - "Terminal self-erases during high-throughput TUI rendering"
+
+`run_shell_command('gh issue create --title "[Natural language title]" --body "..."')`
 
 **Important**: The act of creating a GitHub issue only serves to track the work. Do NOT proceed with implementing any changes based on the issue description once it has been created. Await further instructions.
 

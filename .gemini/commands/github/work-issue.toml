@@ -45,8 +45,10 @@ prompt = '''
 **Loop until done:**
 
 **Principles:**
-- **Pair Program with Codex**: If uncertain (edge cases, APIs, patterns), ask Codex.
-  - Command: `codex(prompt="<question>", model="gpt-5.2", cwd="<worktree-path>")`
+- **Heavy Codex Usage**: Treat Codex as your tireless, detail-oriented pair programmer. Do not hesitate to call `codex()` multiple times (2, 3, or more calls are encouraged).
+- **Ask for Advice**: Before complex changes, ask Codex for the best approach.
+- **Deep Implementation Checks**: After writing code, ask Codex to "review this specific implementation deeply" to catch bugs early.
+  - Command: `codex(prompt="<request>", model="gpt-5.2", cwd="<worktree-path>")`
 - **Fix, don't ask**: Fix lint/test errors immediately.
 
 1. **Implement Changes**: Use `write_file` and `replace` to apply code changes based on the plan.
