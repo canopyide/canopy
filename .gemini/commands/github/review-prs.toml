@@ -122,6 +122,7 @@ If you cannot resolve it safely, abort the merge (`git merge --abort`) and mark 
     *   If still failing after 3 attempts: **Abort.** `git reset --hard origin/{target-branch}`. Mark PR as FA
 ILED.
 6.  **Commit Fixes:** If changes were made, `git commit -am "chore: post-merge fixes"`.
+    **Push Fixes:** `git push origin {target_branch}`.
 
 #### 2.6: Finalize
 *   **Push:** `git push origin {target-branch}`

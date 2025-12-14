@@ -76,5 +76,5 @@ prompt = '''
 2. **Create PR**: `run_shell_command("gh pr create --title '<PR Title>' --body 'Closes #{number}'", description="Create a new GitHub pull request")`.
 3. **Report**: Display the URL of the created PR.
 
-**Worktree Cleanup**: Remind the user that the worktree is still available at `<worktree-path>` and should be removed with `git worktree remove <path>` when completely done.
+**Worktree Persistence**: The worktree will NOT be automatically cleaned up by the agent after the PR is created. It will remain available at `<worktree-path>` for potential further work during the review process. The user is responsible for removing it with `git worktree remove <path>` when the work is completely done and the worktree is no longer needed.
 '''
