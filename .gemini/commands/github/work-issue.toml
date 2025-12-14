@@ -1,5 +1,6 @@
 description = "Create worktree and start working on a GitHub issue (Canopy workflow)"
-prompt = "**FULLY AUTONOMOUS EXECUTION - Canopy Project**
+prompt = '''
+**FULLY AUTONOMOUS EXECUTION - Canopy Project**
 
 **Issue Reference:** {{args}}
 
@@ -46,15 +47,15 @@ prompt = "**FULLY AUTONOMOUS EXECUTION - Canopy Project**
    - **Fix Failures**: Immediately identify and fix any errors. Use `codebase_investigator` for complex architectural diagnostics or `google_web_search` for external API/library issues.
 3. **Commit Regularly**:
    - `run_shell_command("git add -A", description="Stage all changes for commit")`.
-   - `run_shell_command("git commit -m \"<conventional-commit-message>\"", description="Commit changes with a conventional message")`.
+   - `run_shell_command("git commit -m '<conventional-commit-message>'", description="Commit changes with a conventional message")`.
 
 ### Step 6: Create Pull Request
 
 **Mandatory Final Step:**
 
 1. **Push Branch**: `run_shell_command("git push -u origin HEAD", description="Push the feature branch to origin")`.
-2. **Create PR**: `run_shell_command("gh pr create --title \"<PR Title>\" --body \"Closes #{number}"", description="Create a new GitHub pull request")`.
+2. **Create PR**: `run_shell_command("gh pr create --title '<PR Title>' --body 'Closes #{number}'", description="Create a new GitHub pull request")`.
 3. **Report**: Display the URL of the created PR.
 
 **Worktree Cleanup**: Remind the user that the worktree is still available at `<worktree-path>` and should be removed with `git worktree remove <path>` when completely done.
-"
+'''

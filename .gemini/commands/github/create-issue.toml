@@ -39,13 +39,13 @@ Use the following template for the issue body, adapting sections as necessary fo
 
 ### Step 3: Create Issue
 
-Use the `gh issue create` command with a conventional commit-style title:
+Use the `gh issue create` command:
 
-`run_shell_command('gh issue create --title "[Type]: [Concise Title Summary]" --body "..."')`
+`run_shell_command('gh issue create --title "[Imperative sentence describing the change]" --body "..."')`
 
-**Title Format**:
-- **Type**: `feat`, `fix`, `refactor`, `chore`.
-- **Labels**: Apply appropriate labels like `bug`, `enhancement`, `refactor`, `chore`, `documentation` using `gh issue edit {number} --add-label "label1,label2"`.
+**Important**: The act of creating a GitHub issue only serves to track the work. Do NOT proceed with implementing any changes based on the issue description once it has been created. Await further instructions.
+
+**Labels**: Apply appropriate labels like `bug`, `enhancement`, `refactor`, `chore`, `documentation` using `gh issue edit {number} --add-label "label1,label2"`.
 
 ### Step 4: Report Success
 
