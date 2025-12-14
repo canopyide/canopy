@@ -74,3 +74,9 @@ src/
 2. Implement in `electron/ipc/handlers.ts`
 3. Expose in `electron/preload.ts`
 4. Type in `src/types/electron.d.ts`
+
+**Requesting a Code Review:**
+
+When asked to perform a code review, the Gemini CLI leverages its `codebase_investigator` tool. This tool provides comprehensive analysis, architectural mapping, and insights into the codebase.
+
+**Note:** While `CLAUDE.md` references a `mcp__codex__codex` tool, the Gemini CLI does not have direct access to this specific MCP. Instead, it uses `codebase_investigator` to conduct thorough, AI-assisted reviews. To request a review, simply ask the Gemini CLI, providing context such as the associated issue number or a summary of the changes. The CLI will then use `codebase_investigator` to analyze the relevant files and provide a detailed summary of its findings.
