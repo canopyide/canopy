@@ -7,7 +7,8 @@ Create a structured GitHub issue for the **Canopy** project.
 ### Step 1: Analyze Request
 
 1. **Understand Work**: Determine if the request is a Bug (`fix`), Feature (`feat`), Refactor (`refactor`), or Chore (`chore`).
-2. **Context**: Frame the issue within Canopy's architecture (Electron main/renderer, React UI, IPC).
+2. **Investigate**: If the implementation details are not fully clear from the context, use tools (like `codebase_investigator` or `search_file_content`) to research the relevant code and patterns.
+3. **Context**: Frame the issue within Canopy's architecture (Electron main/renderer, React UI, IPC).
 
 ### Step 2: Structure Issue Body
 
@@ -26,6 +27,13 @@ Use the following template for the issue body, adapting sections as necessary fo
 
 ## Proposed Solution / Approach (Optional)
 [If a specific approach has been discussed or is evident, outline it here. Otherwise, state that the approach needs to be determined during implementation.]
+
+## Detailed Implementation Guide (Recommended)
+[Highly recommended. If you have sufficient context (or gathered it via research), provide a detailed technical implementation plan.
+- **Specifics**: Cite exact file paths, functions, classes, and interfaces.
+- **Logic**: Explain the flow of changes and any pseudo-code.
+- **Scope**: If exact details are unknown, provide a solid architectural direction.
+Bias towards providing the most detailed 'how' possible given the available information.]
 
 ## Deliverables
 - [ ] Code changes addressing the core issue/feature.
