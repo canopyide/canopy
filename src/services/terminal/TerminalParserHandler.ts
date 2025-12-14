@@ -6,6 +6,19 @@ export class TerminalParserHandler {
   private disposables: Array<{ dispose: () => void }> = [];
   private allowResets = false;
 
+  private normalizeCsiParams(params: Array<number | number[]> | undefined): number[] {
+    if (!params) return [];
+    const flat: number[] = [];
+    for (const p of params) {
+      if (Array.isArray(p)) {
+        for (const v of p) flat.push(v);
+      } else {
+        flat.push(p);
+      }
+    }
+    return flat;
+  }
+
   constructor(managed: ManagedTerminal) {
     this.managed = managed;
     this.attachHandlers();
@@ -80,9 +93,9 @@ export class TerminalParserHandler {
 
       const decsetPrivateHandler = terminal.parser.registerCsiHandler(
         { prefix: "?", final: "h" },
-        (params?: number[]) => {
+        (params) => {
           if (!this.shouldBlock()) return false;
-          const p = params ?? [];
+          const p = this.normalizeCsiParams(params);
           if (!p.some((v) => altScreenParams.has(v))) return false;
           return true;
         }
@@ -91,9 +104,9 @@ export class TerminalParserHandler {
 
       const decrstPrivateHandler = terminal.parser.registerCsiHandler(
         { prefix: "?", final: "l" },
-        (params?: number[]) => {
+        (params) => {
           if (!this.shouldBlock()) return false;
-          const p = params ?? [];
+          const p = this.normalizeCsiParams(params);
           if (!p.some((v) => altScreenParams.has(v))) return false;
           return true;
         }
@@ -108,9 +121,9 @@ export class TerminalParserHandler {
 
       const decsetMouseHandler = terminal.parser.registerCsiHandler(
         { prefix: "?", final: "h" },
-        (params?: number[]) => {
+        (params) => {
           if (!this.shouldBlock()) return false;
-          const p = params ?? [];
+          const p = this.normalizeCsiParams(params);
           if (!p.some((v) => mouseModeParams.has(v))) return false;
           return true;
         }
@@ -119,9 +132,9 @@ export class TerminalParserHandler {
 
       const decrstMouseHandler = terminal.parser.registerCsiHandler(
         { prefix: "?", final: "l" },
-        (params?: number[]) => {
+        (params) => {
           if (!this.shouldBlock()) return false;
-          const p = params ?? [];
+          const p = this.normalizeCsiParams(params);
           if (!p.some((v) => mouseModeParams.has(v))) return false;
           return true;
         }

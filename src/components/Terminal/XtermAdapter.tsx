@@ -5,6 +5,7 @@ import { terminalClient } from "@/clients";
 import { TerminalRefreshTier } from "@/types";
 import type { TerminalType, AgentState } from "@/types";
 import { terminalInstanceService } from "@/services/TerminalInstanceService";
+import { TERMINAL_MINIMAL_MODE } from "@/services/terminal/terminalMinimalMode";
 import { useScrollbackStore, usePerformanceModeStore, useTerminalFontStore } from "@/store";
 import { getScrollbackForType, PERFORMANCE_MODE_SCROLLBACK } from "@/utils/scrollbackConfig";
 import { DEFAULT_TERMINAL_FONT_FAMILY } from "@/config/terminalFont";
@@ -221,7 +222,7 @@ function XtermAdapterComponent({
     // Attach to appropriate target
     terminalInstanceService.attach(terminalId, container);
 
-    if (!managed.keyHandlerInstalled) {
+    if (!TERMINAL_MINIMAL_MODE && !managed.keyHandlerInstalled) {
       managed.terminal.attachCustomKeyEventHandler((event: KeyboardEvent) => {
         // TUI reliability: keep common readline-style Ctrl+key bindings in the terminal
         const TUI_KEYBINDS = ["p", "n", "r", "f", "b", "a", "e", "k", "u", "w", "h", "d"];
