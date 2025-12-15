@@ -38,6 +38,8 @@ export { usePerformanceModeStore } from "./performanceModeStore";
 
 export { useTerminalFontStore } from "./terminalFontStore";
 
+export { useTerminalInputStore } from "./terminalInputStore";
+
 export { useSidecarStore } from "./sidecarStore";
 
 export { useUIStore } from "./uiStore";

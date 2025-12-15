@@ -15,6 +15,8 @@ export interface StoreSchema {
   terminalConfig: {
     scrollbackLines: number; // 100-10000 (user-configurable)
     performanceMode: boolean;
+    hybridInputEnabled?: boolean;
+    hybridInputAutoFocus?: boolean;
   };
   hibernation: {
     enabled: boolean;
@@ -92,6 +94,8 @@ const storeOptions = {
     terminalConfig: {
       scrollbackLines: 5000,
       performanceMode: false,
+      hybridInputEnabled: true,
+      hybridInputAutoFocus: true,
     },
     hibernation: {
       enabled: false,

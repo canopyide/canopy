@@ -3,6 +3,7 @@ import { CSS } from "@dnd-kit/utilities";
 import { cn } from "@/lib/utils";
 import type { TerminalInstance } from "@/store";
 import type { DragData } from "./DndProvider";
+import { DragHandleProvider } from "./DragHandleContext";
 
 interface SortableTerminalProps {
   terminal: TerminalInstance;
@@ -43,9 +44,8 @@ export function SortableTerminal({
       data-terminal-id={terminal.id}
       className={cn("h-full", isDragging && "opacity-40 ring-2 ring-canopy-accent/50 rounded")}
       {...attributes}
-      {...listeners}
     >
-      {children}
+      <DragHandleProvider value={{ listeners }}>{children}</DragHandleProvider>
     </div>
   );
 }

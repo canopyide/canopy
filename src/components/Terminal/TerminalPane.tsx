@@ -12,12 +12,20 @@ import { TerminalRestartBanner } from "./TerminalRestartBanner";
 import { TerminalErrorBanner } from "./TerminalErrorBanner";
 import { UpdateCwdDialog } from "./UpdateCwdDialog";
 import { ErrorBanner } from "../Errors/ErrorBanner";
-import { useErrorStore, useTerminalStore, getTerminalRefreshTier } from "@/store";
+import {
+  useErrorStore,
+  useTerminalStore,
+  getTerminalRefreshTier,
+  useTerminalInputStore,
+} from "@/store";
 import { useTerminalLogic } from "@/hooks/useTerminalLogic";
 import type { AgentState } from "@/types";
 import { terminalInstanceService } from "@/services/TerminalInstanceService";
 import { InputTracker } from "@/services/clearCommandDetection";
 import { getAgentConfig } from "@/config/agents";
+import { terminalClient } from "@/clients";
+import { HybridInputBar, type HybridInputBarHandle } from "./HybridInputBar";
+import { getTerminalFocusTarget } from "./terminalFocus";
 
 export type { TerminalType };
 
@@ -82,6 +90,7 @@ function TerminalPaneComponent({
   const containerRef = useRef<HTMLDivElement>(null);
   const prevFocusedRef = useRef(isFocused);
   const justFocusedUntilRef = useRef<number>(0);
+  const inputBarRef = useRef<HybridInputBarHandle>(null);
   const [isRestoring, setIsRestoring] = useState(true);
   const [dismissedRestartPrompt, setDismissedRestartPrompt] = useState(false);
   const [isSearchOpen, setIsSearchOpen] = useState(false);
@@ -118,6 +127,16 @@ function TerminalPaneComponent({
 
   const isBackendDisconnected = backendStatus === "disconnected";
   const isBackendRecovering = backendStatus === "recovering";
+  const hybridInputEnabled = useTerminalInputStore((state) => state.hybridInputEnabled);
+  const hybridInputAutoFocus = useTerminalInputStore((state) => state.hybridInputAutoFocus);
+  const effectiveAgentId =
+    agentId === "claude" || agentId === "gemini" || agentId === "codex"
+      ? agentId
+      : type === "claude" || type === "gemini" || type === "codex"
+        ? type
+        : undefined;
+  const isAgentTerminal = effectiveAgentId !== undefined;
+  const showHybridInputBar = isAgentTerminal && hybridInputEnabled;
 
   const queueCount = useTerminalStore(
     useShallow((state) => state.commandQueue.filter((c) => c.terminalId === id).length)
@@ -277,11 +296,29 @@ function TerminalPaneComponent({
     terminalInstanceService.setFocused(id, isFocused);
 
     if (isFocused) {
-      requestAnimationFrame(() => {
-        terminalInstanceService.focus(id);
+      const focusTarget = getTerminalFocusTarget({
+        isAgentTerminal,
+        isInputDisabled: isBackendDisconnected || isBackendRecovering,
+        hybridInputEnabled,
+        hybridInputAutoFocus,
       });
+
+      if (focusTarget === "hybridInput") {
+        inputBarRef.current?.focus();
+        return;
+      }
+
+      requestAnimationFrame(() => terminalInstanceService.focus(id));
     }
-  }, [isFocused, id]);
+  }, [
+    id,
+    isFocused,
+    isAgentTerminal,
+    hybridInputEnabled,
+    hybridInputAutoFocus,
+    isBackendDisconnected,
+    isBackendRecovering,
+  ]);
 
   // Sync agent state to terminal service for scroll management
   useEffect(() => {
@@ -327,8 +364,7 @@ function TerminalPaneComponent({
       tabIndex={0}
       role="group"
       aria-label={(() => {
-        const effectiveAgentId = agentId ?? type;
-        if (!effectiveAgentId || effectiveAgentId === "terminal") {
+        if (!effectiveAgentId) {
           return `Terminal: ${title}`;
         }
         const agentConfig = getAgentConfig(effectiveAgentId);
@@ -414,101 +450,120 @@ function TerminalPaneComponent({
           />
         )}
 
-      <div className="flex-1 relative min-h-0 bg-canopy-bg">
-        <div
-          className={cn(
-            "absolute inset-0",
-            (isBackendDisconnected || isBackendRecovering) && "pointer-events-none opacity-50"
-          )}
-        >
-          <XtermAdapter
-            key={`${id}-${restartKey}`}
-            terminalId={id}
-            terminalType={type}
-            agentId={agentId}
-            onReady={handleReady}
-            onExit={handleExit}
-            onInput={handleInput}
-            className="absolute inset-0"
-            getRefreshTier={getRefreshTierCallback}
-          />
-          <ArtifactOverlay terminalId={id} worktreeId={worktreeId} cwd={cwd} />
-          {isSearchOpen && (
-            <TerminalSearchBar
+      <div className="flex-1 min-h-0 bg-canopy-bg flex flex-col">
+        <div className="flex-1 relative min-h-0">
+          <div
+            className={cn(
+              "absolute inset-0",
+              (isBackendDisconnected || isBackendRecovering) && "pointer-events-none opacity-50"
+            )}
+          >
+            <XtermAdapter
+              key={`${id}-${restartKey}`}
               terminalId={id}
-              onClose={() => {
-                setIsSearchOpen(false);
-                requestAnimationFrame(() => terminalInstanceService.focus(id));
-              }}
+              terminalType={type}
+              agentId={agentId}
+              onReady={handleReady}
+              onExit={handleExit}
+              onInput={handleInput}
+              className="absolute inset-0"
+              getRefreshTier={getRefreshTierCallback}
             />
+            <ArtifactOverlay terminalId={id} worktreeId={worktreeId} cwd={cwd} />
+            {isSearchOpen && (
+              <TerminalSearchBar
+                terminalId={id}
+                onClose={() => {
+                  setIsSearchOpen(false);
+                  requestAnimationFrame(() => terminalInstanceService.focus(id));
+                }}
+              />
+            )}
+          </div>
+
+          {/* Backend Disconnect Overlay */}
+          {(isBackendDisconnected || isBackendRecovering) && (
+            <div
+              className="absolute inset-0 z-50 flex items-center justify-center bg-black/70 backdrop-blur-sm"
+              role={isBackendRecovering ? "status" : "alert"}
+              aria-live={isBackendRecovering ? "polite" : "assertive"}
+            >
+              {isBackendRecovering ? (
+                <div className="flex flex-col items-center gap-3">
+                  <Loader2 className="w-8 h-8 animate-spin text-amber-400" />
+                  <span className="text-white font-medium">Reconnecting...</span>
+                </div>
+              ) : (
+                <div className="flex flex-col items-center gap-4 p-6 bg-canopy-sidebar border border-canopy-border rounded-xl shadow-2xl max-w-md text-center">
+                  <div className="flex items-center gap-3 text-red-400">
+                    <AlertTriangle className="w-6 h-6" />
+                    <h3 className="font-semibold text-lg">
+                      {lastCrashType === "OUT_OF_MEMORY"
+                        ? "Memory Limit Exceeded"
+                        : lastCrashType === "SIGNAL_TERMINATED"
+                          ? "Terminal Service Terminated"
+                          : "Connection Lost"}
+                    </h3>
+                  </div>
+
+                  {lastCrashType === "OUT_OF_MEMORY" && (
+                    <div className="text-sm text-canopy-text/80">
+                      <p className="mb-3">
+                        The terminal backend ran out of memory processing high-throughput output.
+                      </p>
+                      <p className="font-medium text-canopy-text/90 mb-2">Suggestions:</p>
+                      <ul className="list-disc list-inside text-left space-y-1">
+                        <li>Reduce agent output volume</li>
+                        <li>Split long-running tasks into smaller sessions</li>
+                        <li>Close unused terminals</li>
+                      </ul>
+                    </div>
+                  )}
+
+                  {lastCrashType === "SIGNAL_TERMINATED" && (
+                    <p className="text-sm text-canopy-text/80">
+                      The terminal backend became unresponsive and was automatically restarted by
+                      the watchdog. Automatic recovery is in progress.
+                    </p>
+                  )}
+
+                  {(lastCrashType === "UNKNOWN_CRASH" ||
+                    lastCrashType === "ASSERTION_FAILURE" ||
+                    !lastCrashType ||
+                    (lastCrashType !== "OUT_OF_MEMORY" &&
+                      lastCrashType !== "SIGNAL_TERMINATED")) && (
+                    <p className="text-sm text-canopy-text/80">
+                      The terminal backend process terminated unexpectedly. Automatic recovery is in
+                      progress.
+                    </p>
+                  )}
+
+                  <button
+                    onClick={() => window.location.reload()}
+                    className="px-4 py-2 bg-red-500/20 hover:bg-red-500/30 text-red-300 rounded-lg border border-red-500/30 transition-colors"
+                  >
+                    Restart Application
+                  </button>
+                </div>
+              )}
+            </div>
           )}
         </div>
 
-        {/* Backend Disconnect Overlay */}
-        {(isBackendDisconnected || isBackendRecovering) && (
-          <div
-            className="absolute inset-0 z-50 flex items-center justify-center bg-black/70 backdrop-blur-sm"
-            role={isBackendRecovering ? "status" : "alert"}
-            aria-live={isBackendRecovering ? "polite" : "assertive"}
-          >
-            {isBackendRecovering ? (
-              <div className="flex flex-col items-center gap-3">
-                <Loader2 className="w-8 h-8 animate-spin text-amber-400" />
-                <span className="text-white font-medium">Reconnecting...</span>
-              </div>
-            ) : (
-              <div className="flex flex-col items-center gap-4 p-6 bg-canopy-sidebar border border-canopy-border rounded-xl shadow-2xl max-w-md text-center">
-                <div className="flex items-center gap-3 text-red-400">
-                  <AlertTriangle className="w-6 h-6" />
-                  <h3 className="font-semibold text-lg">
-                    {lastCrashType === "OUT_OF_MEMORY"
-                      ? "Memory Limit Exceeded"
-                      : lastCrashType === "SIGNAL_TERMINATED"
-                        ? "Terminal Service Terminated"
-                        : "Connection Lost"}
-                  </h3>
-                </div>
-
-                {lastCrashType === "OUT_OF_MEMORY" && (
-                  <div className="text-sm text-canopy-text/80">
-                    <p className="mb-3">
-                      The terminal backend ran out of memory processing high-throughput output.
-                    </p>
-                    <p className="font-medium text-canopy-text/90 mb-2">Suggestions:</p>
-                    <ul className="list-disc list-inside text-left space-y-1">
-                      <li>Reduce agent output volume</li>
-                      <li>Split long-running tasks into smaller sessions</li>
-                      <li>Close unused terminals</li>
-                    </ul>
-                  </div>
-                )}
-
-                {lastCrashType === "SIGNAL_TERMINATED" && (
-                  <p className="text-sm text-canopy-text/80">
-                    The terminal backend became unresponsive and was automatically restarted by the
-                    watchdog. Automatic recovery is in progress.
-                  </p>
-                )}
-
-                {(lastCrashType === "UNKNOWN_CRASH" ||
-                  lastCrashType === "ASSERTION_FAILURE" ||
-                  !lastCrashType ||
-                  (lastCrashType !== "OUT_OF_MEMORY" && lastCrashType !== "SIGNAL_TERMINATED")) && (
-                  <p className="text-sm text-canopy-text/80">
-                    The terminal backend process terminated unexpectedly. Automatic recovery is in
-                    progress.
-                  </p>
-                )}
-
-                <button
-                  onClick={() => window.location.reload()}
-                  className="px-4 py-2 bg-red-500/20 hover:bg-red-500/30 text-red-300 rounded-lg border border-red-500/30 transition-colors"
-                >
-                  Restart Application
-                </button>
-              </div>
-            )}
-          </div>
+        {showHybridInputBar && (
+          <HybridInputBar
+            ref={inputBarRef}
+            disabled={isBackendDisconnected || isBackendRecovering}
+            cwd={cwd}
+            agentId={effectiveAgentId}
+            onSend={({ trackerData, text }) => {
+              terminalInstanceService.notifyUserInput(id);
+              // Use backend submit() which handles Codex vs other agents automatically
+              terminalClient.submit(id, text);
+              // Feed tracker data for features like clear command detection
+              handleInput(trackerData);
+            }}
+          />
         )}
       </div>
 

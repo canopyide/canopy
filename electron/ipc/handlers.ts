@@ -19,6 +19,8 @@ import { registerKeybindingHandlers } from "./handlers/keybinding.js";
 import { registerWorktreeConfigHandlers } from "./handlers/worktreeConfig.js";
 import { registerNotificationHandlers } from "./handlers/notifications.js";
 import { registerMenuHandlers } from "./handlers/menu.js";
+import { registerFilesHandlers } from "./handlers/files.js";
+import { registerSlashCommandHandlers } from "./handlers/slashCommands.js";
 import { typedHandle, typedSend, sendToRenderer } from "./utils.js";
 
 export { typedHandle, typedSend, sendToRenderer };
@@ -43,8 +45,10 @@ export function registerIpcHandlers(
   const cleanupFunctions = [
     registerWorktreeHandlers(deps),
     registerTerminalHandlers(deps),
+    registerFilesHandlers(),
     registerCopyTreeHandlers(deps),
     registerAiHandlers(deps),
+    registerSlashCommandHandlers(),
     registerProjectHandlers(deps),
     registerGithubHandlers(deps),
     registerAppHandlers(deps),

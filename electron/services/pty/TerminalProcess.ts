@@ -59,14 +59,65 @@ const LOW_WATERMARK_CHARS = 5000;
 // Bracketed paste mode sequences
 const BRACKETED_PASTE_START = "\x1b[200~";
 const BRACKETED_PASTE_END = "\x1b[201~";
+const SUBMIT_BRACKETED_PASTE_THRESHOLD_CHARS = 200;
+const SUBMIT_ENTER_DELAY_MS = 10;
+
+function delay(ms: number): Promise<void> {
+  return new Promise((resolve) => setTimeout(resolve, ms));
+}
+
+function normalizeSubmitText(text: string): string {
+  return text.replace(/\r\n/g, "\n").replace(/\r/g, "\n");
+}
+
+function splitTrailingNewlines(text: string): { body: string; enterCount: number } {
+  let body = text;
+  let enterCount = 0;
+  while (body.endsWith("\n")) {
+    body = body.slice(0, -1);
+    enterCount++;
+  }
+  if (enterCount === 0) {
+    enterCount = 1;
+  }
+  return { body, enterCount };
+}
+
+function isGeminiTerminal(terminal: TerminalInfo): boolean {
+  return (
+    terminal.type === "gemini" ||
+    terminal.detectedAgentType === "gemini" ||
+    (terminal.kind === "agent" && terminal.agentId === "gemini")
+  );
+}
+
+function isCodexTerminal(terminal: TerminalInfo): boolean {
+  return (
+    terminal.type === "codex" ||
+    terminal.detectedAgentType === "codex" ||
+    (terminal.kind === "agent" && terminal.agentId === "codex")
+  );
+}
+
+function supportsBracketedPaste(terminal: TerminalInfo): boolean {
+  return !isGeminiTerminal(terminal);
+}
+
+function getSoftNewlineSequence(terminal: TerminalInfo): string {
+  // Shift+Enter "soft newline" differs by agent CLI; codex commonly uses LF (\n / Ctrl+J).
+  return isCodexTerminal(terminal) ? "\n" : "\x1b\r";
+}
 
 /**
- * Check if data is a bracketed paste (starts with ESC[200~ and ends with ESC[201~).
+ * Check if data contains a full bracketed paste (starts with ESC[200~ and contains ESC[201~).
  * Bracketed paste should be sent atomically to preserve paste detection in programs
  * like Claude Code that show "Pasted X characters" for bulk input.
  */
 function isBracketedPaste(data: string): boolean {
-  return data.startsWith(BRACKETED_PASTE_START) && data.endsWith(BRACKETED_PASTE_END);
+  if (!data.startsWith(BRACKETED_PASTE_START)) {
+    return false;
+  }
+  return data.indexOf(BRACKETED_PASTE_END, BRACKETED_PASTE_START.length) !== -1;
 }
 
 /**
@@ -118,6 +169,8 @@ export interface TerminalProcessDependencies {
 export class TerminalProcess {
   private activityMonitor: ActivityMonitor | null = null;
   private processDetector: ProcessDetector | null = null;
+  private submitQueue: string[] = [];
+  private submitInFlight = false;
   private headlineGenerator = new ActivityHeadlineGenerator();
 
   private lastWriteErrorLogTime = 0;
@@ -640,6 +693,75 @@ export class TerminalProcess {
     const chunks = chunkInput(data);
     this.inputWriteQueue.push(...chunks);
     this.startWrite();
+  }
+
+  /**
+   * Submit text as a command to the terminal.
+   * Handles bracketed paste for multiline/long inputs and ensures execution via CR.
+   * This is the robust way to send input from the HybridInputBar.
+   */
+  submit(text: string): void {
+    this.submitQueue.push(text);
+    if (this.submitInFlight) {
+      return;
+    }
+    this.submitInFlight = true;
+    void this.drainSubmitQueue();
+  }
+
+  private async drainSubmitQueue(): Promise<void> {
+    try {
+      while (this.submitQueue.length > 0) {
+        const next = this.submitQueue.shift();
+        if (next === undefined) {
+          continue;
+        }
+        await this.performSubmit(next);
+      }
+    } finally {
+      this.submitInFlight = false;
+    }
+  }
+
+  private async performSubmit(text: string): Promise<void> {
+    const terminal = this.terminalInfo;
+    terminal.lastInputTime = Date.now();
+
+    if (!terminal.ptyProcess) {
+      return;
+    }
+
+    const normalized = normalizeSubmitText(text);
+    const { body, enterCount } = splitTrailingNewlines(normalized);
+
+    if (body.length === 0) {
+      this.write("\r".repeat(enterCount));
+      return;
+    }
+
+    const useBracketedPaste =
+      body.includes("\n") || body.length > SUBMIT_BRACKETED_PASTE_THRESHOLD_CHARS;
+
+    if (useBracketedPaste && supportsBracketedPaste(terminal)) {
+      const pasteBody = body.replace(/\n/g, "\r");
+      const payload = `${BRACKETED_PASTE_START}${pasteBody}${BRACKETED_PASTE_END}`;
+      this.write(payload);
+    } else {
+      if (body.includes("\n") && !supportsBracketedPaste(terminal)) {
+        const softNewline = getSoftNewlineSequence(terminal);
+        this.write(body.replace(/\n/g, softNewline));
+      } else {
+        this.write(body);
+      }
+    }
+
+    await delay(SUBMIT_ENTER_DELAY_MS);
+
+    if (!this.terminalInfo.ptyProcess) {
+      return;
+    }
+
+    this.write("\r".repeat(enterCount));
   }
 
   /**

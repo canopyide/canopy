@@ -13,6 +13,7 @@ export const CHANNELS = {
   TERMINAL_SPAWN: "terminal:spawn",
   TERMINAL_DATA: "terminal:data",
   TERMINAL_INPUT: "terminal:input",
+  TERMINAL_SUBMIT: "terminal:submit",
   TERMINAL_RESIZE: "terminal:resize",
   TERMINAL_KILL: "terminal:kill",
   TERMINAL_EXIT: "terminal:exit",
@@ -37,6 +38,8 @@ export const CHANNELS = {
   TERMINAL_BACKEND_CRASHED: "terminal:backend-crashed",
   TERMINAL_BACKEND_READY: "terminal:backend-ready",
   TERMINAL_SEND_KEY: "terminal:send-key",
+
+  FILES_SEARCH: "files:search",
 
   AGENT_STATE_CHANGED: "agent:state-changed",
   AGENT_GET_STATE: "agent:get-state",
@@ -133,6 +136,8 @@ export const CHANNELS = {
   TERMINAL_CONFIG_SET_PERFORMANCE_MODE: "terminal-config:set-performance-mode",
   TERMINAL_CONFIG_SET_FONT_SIZE: "terminal-config:set-font-size",
   TERMINAL_CONFIG_SET_FONT_FAMILY: "terminal-config:set-font-family",
+  TERMINAL_CONFIG_SET_HYBRID_INPUT_ENABLED: "terminal-config:set-hybrid-input-enabled",
+  TERMINAL_CONFIG_SET_HYBRID_INPUT_AUTO_FOCUS: "terminal-config:set-hybrid-input-auto-focus",
 
   GIT_GET_FILE_DIFF: "git:get-file-diff",
   GIT_GET_PROJECT_PULSE: "git:get-project-pulse",
@@ -171,6 +176,8 @@ export const CHANNELS = {
   WINDOW_FULLSCREEN_CHANGE: "window:fullscreen-change",
 
   NOTIFICATION_UPDATE: "notification:update",
+
+  SLASH_COMMANDS_LIST: "slash-commands:list",
 } as const;
 
 export type ChannelName = (typeof CHANNELS)[keyof typeof CHANNELS];
