@@ -260,6 +260,26 @@ function XtermAdapterComponent({
       managed.keyHandlerInstalled = true;
     }
 
+    if (!managed.wheelHandlerInstalled) {
+      managed.terminal.attachCustomWheelEventHandler((event: WheelEvent) => {
+        const viewport = managed.terminal.element?.querySelector(".xterm-viewport") as
+          | HTMLElement
+          | undefined
+          | null;
+        if (!viewport) return true;
+
+        const scrollTop = viewport.scrollTop;
+        const scrollBottom = scrollTop + viewport.clientHeight;
+        const scrollHeight = viewport.scrollHeight;
+
+        if (scrollTop <= 0 && event.deltaY < 0) return false;
+        if (scrollBottom >= scrollHeight - 1 && event.deltaY > 0) return false;
+
+        return true;
+      });
+      managed.wheelHandlerInstalled = true;
+    }
+
     exitUnsubRef.current = terminalInstanceService.addExitListener(terminalId, (code) => {
       onExit?.(code);
     });

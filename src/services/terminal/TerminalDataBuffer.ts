@@ -222,6 +222,31 @@ export class TerminalDataBuffer {
     this.sabFrameStats.delete(id);
   }
 
+  public flushForTerminal(id: string): void {
+    const entry = this.sabBuffers.get(id);
+    if (entry && entry.chunks.length > 0) {
+      this.cancelBufferTimers(entry);
+      this.sabBuffers.delete(id);
+      this.writeFrameChunks(id, entry.chunks);
+      this.recordFrameFlush(id);
+    }
+
+    const queue = this.sabFrameQueues.get(id);
+    if (queue) {
+      if (queue.presenterTimeoutId !== null) {
+        window.clearTimeout(queue.presenterTimeoutId);
+        queue.presenterTimeoutId = null;
+      }
+      while (queue.frames.length > 0) {
+        const frame = queue.frames.shift();
+        if (!frame) break;
+        this.writeFrameChunks(id, frame);
+        this.recordFrameFlush(id);
+      }
+      this.sabFrameQueues.delete(id);
+    }
+  }
+
   private poll = (): void => {
     if (!this.pollingActive || !this.ringBuffer) return;
     this.pollTimeoutId = null;

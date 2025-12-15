@@ -80,15 +80,6 @@ class TerminalInstanceService {
         const len = typeof data === "string" ? data.length : data.byteLength;
         terminalClient.acknowledgeData(id, len);
       }
-
-      // Focus-aware scroll behavior: only snap deselected terminals to bottom
-      if (!managed.isFocused) {
-        const buffer = terminal.buffer.active;
-        const isAtBottom = buffer.baseY - buffer.viewportY < 1;
-        if (!isAtBottom) {
-          terminal.scrollToBottom();
-        }
-      }
     });
   }
 
@@ -189,6 +180,7 @@ class TerminalInstanceService {
       exitSubscribers,
       getRefreshTier,
       keyHandlerInstalled: false,
+      wheelHandlerInstalled: false,
       lastAttachAt: 0,
       lastDetachAt: 0,
       isVisible: false,
@@ -199,10 +191,19 @@ class TerminalInstanceService {
       latestCols: 0,
       latestRows: 0,
       latestWasAtBottom: true,
+      isUserScrolledBack: false,
       isFocused: false,
     };
 
     managed.parserHandler = new TerminalParserHandler(managed);
+
+    const scrollDisposable = terminal.onScroll(() => {
+      const buffer = terminal.buffer.active;
+      const isAtBottom = buffer.baseY - buffer.viewportY < 1;
+      managed.latestWasAtBottom = isAtBottom;
+      managed.isUserScrolledBack = !isAtBottom;
+    });
+    listeners.push(() => scrollDisposable.dispose());
 
     const inputDisposable = terminal.onData((data) => {
       terminalClient.write(id, data);
@@ -304,9 +305,7 @@ class TerminalInstanceService {
         managed.latestCols = cols;
         managed.latestRows = rows;
         managed.latestWasAtBottom = wasAtBottom;
-        if (!managed.isFocused && !wasAtBottom) {
-          this.scrollToBottom(id);
-        }
+        managed.isUserScrolledBack = !wasAtBottom;
         terminalClient.resize(id, cols, rows);
         return { cols, rows };
       }
@@ -323,10 +322,11 @@ class TerminalInstanceService {
       managed.latestCols = cols;
       managed.latestRows = rows;
       managed.latestWasAtBottom = wasAtBottom;
+      managed.isUserScrolledBack = !wasAtBottom;
 
       const bufferLineCount = this.getBufferLineCount(id);
 
-      if (options.immediate || bufferLineCount < START_DEBOUNCING_THRESHOLD) {
+      if (options.immediate || managed.isFocused || bufferLineCount < START_DEBOUNCING_THRESHOLD) {
         this.clearResizeJobs(managed);
         this.applyResize(id, cols, rows);
         return { cols, rows };
@@ -412,6 +412,7 @@ class TerminalInstanceService {
     const managed = this.instances.get(id);
     if (!managed) return;
 
+    this.dataBuffer.flushForTerminal(id);
     this.dataBuffer.resetForTerminal(id);
     managed.terminal.resize(cols, rows);
 
@@ -461,6 +462,7 @@ class TerminalInstanceService {
           () => {
             const current = this.instances.get(id);
             if (current) {
+              this.dataBuffer.flushForTerminal(id);
               this.dataBuffer.resetForTerminal(id);
               current.terminal.resize(current.latestCols, current.terminal.rows);
               terminalClient.resize(id, current.latestCols, current.terminal.rows);
@@ -474,6 +476,7 @@ class TerminalInstanceService {
         const timeoutId = window.setTimeout(() => {
           const current = this.instances.get(id);
           if (current) {
+            this.dataBuffer.flushForTerminal(id);
             this.dataBuffer.resetForTerminal(id);
             current.terminal.resize(current.latestCols, current.terminal.rows);
             terminalClient.resize(id, current.latestCols, current.terminal.rows);
@@ -490,6 +493,7 @@ class TerminalInstanceService {
           () => {
             const current = this.instances.get(id);
             if (current) {
+              this.dataBuffer.flushForTerminal(id);
               this.dataBuffer.resetForTerminal(id);
               current.terminal.resize(current.latestCols, current.latestRows);
               terminalClient.resize(id, current.latestCols, current.latestRows);
@@ -503,6 +507,7 @@ class TerminalInstanceService {
         const timeoutId = window.setTimeout(() => {
           const current = this.instances.get(id);
           if (current) {
+            this.dataBuffer.flushForTerminal(id);
             this.dataBuffer.resetForTerminal(id);
             current.terminal.resize(current.latestCols, current.latestRows);
             terminalClient.resize(id, current.latestCols, current.latestRows);
@@ -523,6 +528,7 @@ class TerminalInstanceService {
     const timeoutId = window.setTimeout(() => {
       const current = this.instances.get(id);
       if (current) {
+        this.dataBuffer.flushForTerminal(id);
         this.dataBuffer.resetForTerminal(id);
         current.terminal.resize(cols, current.terminal.rows);
         terminalClient.resize(id, cols, current.terminal.rows);
@@ -542,6 +548,7 @@ class TerminalInstanceService {
         this.clearJob(managed.resizeYJob);
         managed.resizeYJob = undefined;
       }
+      this.dataBuffer.flushForTerminal(id);
       this.dataBuffer.resetForTerminal(id);
       managed.terminal.resize(managed.latestCols, rows);
       terminalClient.resize(id, managed.latestCols, rows);
@@ -554,6 +561,7 @@ class TerminalInstanceService {
         const current = this.instances.get(id);
         if (current) {
           current.lastYResizeTime = Date.now();
+          this.dataBuffer.flushForTerminal(id);
           this.dataBuffer.resetForTerminal(id);
           current.terminal.resize(current.latestCols, current.latestRows);
           terminalClient.resize(id, current.latestCols, current.latestRows);
