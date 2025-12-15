@@ -134,6 +134,9 @@ export type {
   ApplyPatchResult,
   // Git types
   GitGetFileDiffPayload,
+  // File search types
+  FileSearchPayload,
+  FileSearchResult,
   // Electron API
   ElectronAPI,
   BranchInfo,

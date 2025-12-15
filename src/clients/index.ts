@@ -6,6 +6,7 @@ export { artifactClient } from "./artifactClient";
 export { copyTreeClient } from "./copyTreeClient";
 export { errorsClient } from "./errorsClient";
 export { eventInspectorClient } from "./eventInspectorClient";
+export { filesClient } from "./filesClient";
 export { githubClient } from "./githubClient";
 export { hibernationClient } from "./hibernationClient";
 export { logsClient } from "./logsClient";

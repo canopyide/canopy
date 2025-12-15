@@ -121,6 +121,9 @@ const CHANNELS = {
   TERMINAL_BACKEND_CRASHED: "terminal:backend-crashed",
   TERMINAL_BACKEND_READY: "terminal:backend-ready",
 
+  // Files channels
+  FILES_SEARCH: "files:search",
+
   // Agent state channels
   AGENT_STATE_CHANGED: "agent:state-changed",
   AGENT_GET_STATE: "agent:get-state",
@@ -434,6 +437,11 @@ const api: ElectronAPI = {
       ipcRenderer.on(CHANNELS.TERMINAL_BACKEND_READY, handler);
       return () => ipcRenderer.removeListener(CHANNELS.TERMINAL_BACKEND_READY, handler);
     },
+  },
+
+  // Files API
+  files: {
+    search: (payload) => _typedInvoke(CHANNELS.FILES_SEARCH, payload),
   },
 
   // Artifact API

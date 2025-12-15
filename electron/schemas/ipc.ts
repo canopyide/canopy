@@ -26,6 +26,12 @@ export const TerminalResizePayloadSchema = z.object({
   rows: z.number().int().positive(),
 });
 
+export const FileSearchPayloadSchema = z.object({
+  cwd: z.string().min(1),
+  query: z.string(),
+  limit: z.number().int().positive().max(100).optional(),
+});
+
 export const DevServerStatusSchema = z.enum(["stopped", "starting", "running", "error"]);
 
 export const DevServerStartPayloadSchema = z.object({
@@ -118,6 +124,7 @@ export const WorktreeCreatePayloadSchema = z.object({
 
 export type TerminalSpawnOptions = z.infer<typeof TerminalSpawnOptionsSchema>;
 export type TerminalResizePayload = z.infer<typeof TerminalResizePayloadSchema>;
+export type FileSearchPayload = z.infer<typeof FileSearchPayloadSchema>;
 export type DevServerStartPayload = z.infer<typeof DevServerStartPayloadSchema>;
 export type DevServerStopPayload = z.infer<typeof DevServerStopPayloadSchema>;
 export type DevServerTogglePayload = z.infer<typeof DevServerTogglePayloadSchema>;

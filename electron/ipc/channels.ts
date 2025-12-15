@@ -38,6 +38,8 @@ export const CHANNELS = {
   TERMINAL_BACKEND_CRASHED: "terminal:backend-crashed",
   TERMINAL_BACKEND_READY: "terminal:backend-ready",
 
+  FILES_SEARCH: "files:search",
+
   AGENT_STATE_CHANGED: "agent:state-changed",
   AGENT_GET_STATE: "agent:get-state",
   AGENT_DETECTED: "agent:detected",
