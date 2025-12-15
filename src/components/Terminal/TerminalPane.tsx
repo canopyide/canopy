@@ -551,6 +551,7 @@ function TerminalPaneComponent({
           <HybridInputBar
             ref={inputBarRef}
             disabled={isBackendDisconnected || isBackendRecovering}
+            cwd={cwd}
             onSend={({ trackerData, text }) => {
               terminalInstanceService.notifyUserInput(id);
               // Use backend submit() which handles Codex vs other agents automatically

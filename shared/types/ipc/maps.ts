@@ -59,6 +59,7 @@ import type { TerminalConfig } from "./config.js";
 import type { SystemSleepMetrics } from "./systemSleep.js";
 import type { TerminalFlowStatus } from "../pty-host.js";
 import type { ShowContextMenuPayload } from "../menu.js";
+import type { FileSearchPayload, FileSearchResult } from "./files.js";
 
 // IPC Contract Maps
 
@@ -158,6 +159,12 @@ export interface IpcInvokeMap {
   "terminal:force-resume": {
     args: [id: string];
     result: { success: boolean; error?: string };
+  };
+
+  // Files channels
+  "files:search": {
+    args: [payload: FileSearchPayload];
+    result: FileSearchResult;
   };
 
   // Agent channels
