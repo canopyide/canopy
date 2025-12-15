@@ -254,12 +254,11 @@ export const HybridInputBar = forwardRef<HybridInputBarHandle, HybridInputBarPro
     }, [canSend, onSend, value, resizeTextarea]);
 
     const focusTextarea = useCallback(() => {
-      if (disabled) return;
       const textarea = textareaRef.current;
       if (!textarea) return;
       textarea.focus();
       requestAnimationFrame(() => textarea.focus());
-    }, [disabled]);
+    }, []);
 
     useImperativeHandle(ref, () => ({ focus: focusTextarea }), [focusTextarea]);
 
@@ -379,7 +378,7 @@ export const HybridInputBar = forwardRef<HybridInputBarHandle, HybridInputBarPro
             className={cn(
               "relative",
               "flex w-full items-stretch gap-1.5 rounded-sm border border-canopy-border bg-white/[0.03] py-2 shadow-[0_8px_10px_rgba(0,0,0,0.25)] transition-colors",
-              "focus-within:border-canopy-accent/30 focus-within:bg-white/[0.05]",
+              "focus-within:border-white/15 focus-within:ring-1 focus-within:ring-white/10 focus-within:bg-white/[0.05]",
               disabled && "opacity-60"
             )}
             aria-disabled={disabled}
@@ -424,7 +423,7 @@ export const HybridInputBar = forwardRef<HybridInputBarHandle, HybridInputBarPro
               rows={1}
               spellCheck={false}
               className={cn(
-                "flex-1 resize-none bg-transparent pr-1 font-mono text-sm leading-5 text-canopy-text",
+                "flex-1 resize-none bg-transparent pr-1 font-mono text-xs leading-5 text-canopy-text",
                 "placeholder:text-canopy-text/25 focus:outline-none disabled:opacity-50",
                 "max-h-40 overflow-y-auto"
               )}
