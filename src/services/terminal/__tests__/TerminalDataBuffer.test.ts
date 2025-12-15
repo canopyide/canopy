@@ -28,4 +28,19 @@ describe("TerminalDataBuffer", () => {
     vi.runAllTimers();
     expect(writes).toHaveLength(1);
   });
+
+  it("markInteractive enables immediate flush for small payloads", () => {
+    const writes: Array<{ id: string; data: string | Uint8Array }> = [];
+    const buffer = new TerminalDataBuffer((id, data) => {
+      writes.push({ id, data });
+    });
+
+    buffer.markInteractive("t1", 1000);
+    buffer.bufferData("t1", "a");
+
+    expect(writes).toEqual([{ id: "t1", data: "a" }]);
+
+    vi.runAllTimers();
+    expect(writes).toHaveLength(1);
+  });
 });

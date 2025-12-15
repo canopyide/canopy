@@ -21,6 +21,7 @@ export interface HydrationOptions {
     agentState?: AgentState;
     lastStateChange?: number;
     existingId?: string; // Pass to reconnect to existing backend process
+    requestedId?: string; // Pass to spawn with a stable ID
     skipCommandExecution?: boolean; // Store command but don't execute on spawn
   }) => Promise<string>;
   setActiveWorktree: (id: string | null) => void;
@@ -249,5 +250,6 @@ async function spawnNewTerminal(
     worktreeId: terminal.worktreeId,
     location: terminal.location === "dock" ? "dock" : "grid",
     command: commandToRun,
+    requestedId: terminal.id,
   });
 }

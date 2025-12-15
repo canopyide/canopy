@@ -1,5 +1,6 @@
 import * as pty from "node-pty";
-import { existsSync } from "fs";
+import { existsSync, readFileSync, renameSync, writeFileSync, mkdirSync } from "fs";
+import path from "node:path";
 import headless, { type Terminal as HeadlessTerminalType } from "@xterm/headless";
 const { Terminal: HeadlessTerminal } = headless;
 import serialize, { type SerializeAddon as SerializeAddonType } from "@xterm/addon-serialize";
@@ -33,6 +34,22 @@ import { decideTerminalExitForensics } from "./terminalForensics.js";
 import { installHeadlessResponder } from "./headlessResponder.js";
 
 const TERMINAL_DISABLE_URL_STYLING: boolean = process.env.CANOPY_DISABLE_URL_STYLING === "1";
+const TERMINAL_SESSION_PERSISTENCE_ENABLED: boolean =
+  process.env.CANOPY_TERMINAL_SESSION_PERSISTENCE !== "0";
+const SESSION_SNAPSHOT_DEBOUNCE_MS = 5000;
+const SESSION_SNAPSHOT_MAX_BYTES = 5 * 1024 * 1024;
+
+function getSessionDir(): string | null {
+  const userData = process.env.CANOPY_USER_DATA;
+  if (!userData) return null;
+  return path.join(userData, "terminal-sessions");
+}
+
+function getSessionPath(id: string): string | null {
+  const dir = getSessionDir();
+  if (!dir) return null;
+  return path.join(dir, `${id}.restore`);
+}
 
 // Flow Control Constants (VS Code values)
 const HIGH_WATERMARK_CHARS = 100000;
@@ -121,9 +138,87 @@ export class TerminalProcess {
   // Lazy headless terminal state
   private _scrollback: number;
   private headlessResponderDisposable: { dispose: () => void } | null = null;
+  private sessionPersistTimer: NodeJS.Timeout | null = null;
+  private sessionPersistDirty = false;
+  private sessionPersistInFlight = false;
 
   private readonly terminalInfo: TerminalInfo;
   private readonly isAgentTerminal: boolean;
+
+  private restoreSessionIfPresent(headlessTerminal: HeadlessTerminalType): void {
+    if (!TERMINAL_SESSION_PERSISTENCE_ENABLED) return;
+
+    const sessionPath = getSessionPath(this.id);
+    if (!sessionPath) return;
+
+    try {
+      if (!existsSync(sessionPath)) return;
+      const content = readFileSync(sessionPath, "utf8");
+      if (Buffer.byteLength(content, "utf8") > SESSION_SNAPSHOT_MAX_BYTES) {
+        return;
+      }
+      headlessTerminal.write(content);
+    } catch (error) {
+      console.warn(`[TerminalProcess] Failed to restore session for ${this.id}:`, error);
+    }
+  }
+
+  private scheduleSessionPersist(): void {
+    if (!TERMINAL_SESSION_PERSISTENCE_ENABLED) return;
+    if (this.terminalInfo.wasKilled) return;
+
+    this.sessionPersistDirty = true;
+    if (this.sessionPersistTimer) return;
+
+    this.sessionPersistTimer = setTimeout(() => {
+      this.sessionPersistTimer = null;
+      void this.persistSessionSnapshot();
+    }, SESSION_SNAPSHOT_DEBOUNCE_MS);
+  }
+
+  private persistSessionSnapshotSync(state: string): void {
+    const sessionPath = getSessionPath(this.id);
+    const dir = getSessionDir();
+    if (!sessionPath || !dir) return;
+
+    mkdirSync(dir, { recursive: true });
+
+    const tmpPath = `${sessionPath}.tmp`;
+    writeFileSync(tmpPath, state, "utf8");
+    renameSync(tmpPath, sessionPath);
+  }
+
+  private async persistSessionSnapshot(): Promise<void> {
+    if (!TERMINAL_SESSION_PERSISTENCE_ENABLED) return;
+    if (this.terminalInfo.wasKilled) return;
+    if (!this.sessionPersistDirty) return;
+    if (this.sessionPersistInFlight) return;
+
+    this.sessionPersistInFlight = true;
+    try {
+      this.sessionPersistDirty = false;
+      const state = await this.getSerializedStateAsync();
+      if (!state) return;
+      if (Buffer.byteLength(state, "utf8") > SESSION_SNAPSHOT_MAX_BYTES) {
+        return;
+      }
+      this.persistSessionSnapshotSync(state);
+    } catch (error) {
+      console.warn(`[TerminalProcess] Failed to persist session for ${this.id}:`, error);
+    } finally {
+      this.sessionPersistInFlight = false;
+      if (this.sessionPersistDirty) {
+        this.scheduleSessionPersist();
+      }
+    }
+  }
+
+  private clearSessionPersistTimer(): void {
+    if (this.sessionPersistTimer) {
+      clearTimeout(this.sessionPersistTimer);
+      this.sessionPersistTimer = null;
+    }
+  }
 
   private logWriteError(error: unknown, context: { operation: string; traceId?: string }): void {
     const now = Date.now();
@@ -274,6 +369,7 @@ export class TerminalProcess {
     });
     const serializeAddon: SerializeAddonType = new SerializeAddon();
     headlessTerminal.loadAddon(serializeAddon);
+    this.restoreSessionIfPresent(headlessTerminal);
 
     // Create terminal info
     this.terminalInfo = {
@@ -516,6 +612,17 @@ export class TerminalProcess {
       return;
     }
 
+    // Typing fast-path: avoid queueing/timers for small interactive input.
+    // This reduces keystroke→echo RTT and prevents micro-stutters.
+    if (data.length <= 512) {
+      try {
+        terminal.ptyProcess.write(data);
+      } catch (error) {
+        this.logWriteError(error, { operation: "write(fast-path)", traceId });
+      }
+      return;
+    }
+
     // Regular input: chunk to prevent data corruption (VS Code pattern)
     const chunks = chunkInput(data);
     this.inputWriteQueue.push(...chunks);
@@ -587,6 +694,7 @@ export class TerminalProcess {
 
     // Mark as killed
     terminal.wasKilled = true;
+    this.clearSessionPersistTimer();
 
     // Update agent state
     if (terminal.agentId) {
@@ -819,6 +927,26 @@ export class TerminalProcess {
       this.semanticFlushTimer = null;
     }
 
+    // Best-effort: persist one last snapshot on shutdown to maximize recoverability.
+    // This is synchronous by design (we are shutting down), and bounded by size.
+    if (
+      TERMINAL_SESSION_PERSISTENCE_ENABLED &&
+      this.sessionPersistDirty &&
+      !this.terminalInfo.wasKilled
+    ) {
+      try {
+        const state = this.getSerializedState();
+        if (state && Buffer.byteLength(state, "utf8") <= SESSION_SNAPSHOT_MAX_BYTES) {
+          this.persistSessionSnapshotSync(state);
+          this.sessionPersistDirty = false;
+        }
+      } catch {
+        // best-effort only
+      }
+    }
+
+    this.clearSessionPersistTimer();
+
     if (this.inputWriteTimeout) {
       clearTimeout(this.inputWriteTimeout);
       this.inputWriteTimeout = null;
@@ -918,6 +1046,7 @@ export class TerminalProcess {
 
       // Write to headless terminal (canonical state).
       terminal.headlessTerminal?.write(data);
+      this.scheduleSessionPersist();
 
       // Emit data to host/renderer immediately. Flow control is handled
       // via char-count acknowledgements from the renderer.

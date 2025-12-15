@@ -1,10 +1,14 @@
 import { SharedRingBuffer, PacketParser } from "@shared/utils/SharedRingBuffer";
 import { terminalClient } from "@/clients";
 
-const FLUSH_DELAY_MS = 4;
+// Target ~20fps steady updates for terminal rendering.
+// We trade latency for reliability/throughput by batching writes.
+const FLUSH_DELAY_MS = 50;
+const INTERACTIVE_FLUSH_THRESHOLD_BYTES = 128;
 const IDLE_POLL_INTERVALS = [8, 16, 33, 100] as const;
 const MAX_BUFFER_BYTES = 20 * 1024;
 const MAX_READS_PER_TICK = 50;
+const BUSY_POLL_INTERVAL_MS = 8;
 
 const BYPASS_FRAME_BUFFER: boolean = false;
 
@@ -23,6 +27,7 @@ export class TerminalDataBuffer {
   private idlePollCount = 0;
 
   private buffers = new Map<string, BufferEntry>();
+  private interactiveUntil = new Map<string, number>();
 
   constructor(private readonly writeToTerminal: (id: string, data: string | Uint8Array) => void) {}
 
@@ -48,6 +53,21 @@ export class TerminalDataBuffer {
 
   public isPolling(): boolean {
     return this.pollingActive;
+  }
+
+  public boost(): void {
+    this.idlePollCount = 0;
+
+    if (!this.pollingActive || !this.ringBuffer) return;
+    if (this.pollTimeoutId === null) return;
+
+    window.clearTimeout(this.pollTimeoutId);
+    this.pollTimeoutId = null;
+    this.poll();
+  }
+
+  public markInteractive(id: string, ttlMs: number = 1000): void {
+    this.interactiveUntil.set(id, Date.now() + ttlMs);
   }
 
   private startPolling(): void {
@@ -86,6 +106,17 @@ export class TerminalDataBuffer {
     entry.chunks.push(data);
     entry.bytes += dataLength;
 
+    // Typing fast-lane: immediately flush tiny echoes right after user input.
+    const until = this.interactiveUntil.get(id);
+    if (
+      until !== undefined &&
+      Date.now() <= until &&
+      entry.bytes <= INTERACTIVE_FLUSH_THRESHOLD_BYTES
+    ) {
+      this.flushBuffer(id);
+      return;
+    }
+
     if (entry.bytes >= MAX_BUFFER_BYTES) {
       this.flushBuffer(id);
       return;
@@ -103,6 +134,7 @@ export class TerminalDataBuffer {
       window.clearTimeout(entry.timeoutId);
     }
     this.buffers.delete(id);
+    this.interactiveUntil.delete(id);
   }
 
   public flushForTerminal(id: string): void {
@@ -133,7 +165,7 @@ export class TerminalDataBuffer {
 
     if (hasData) {
       this.idlePollCount = 0;
-      this.pollTimeoutId = window.setTimeout(this.poll, 0);
+      this.pollTimeoutId = window.setTimeout(this.poll, BUSY_POLL_INTERVAL_MS);
     } else {
       const intervalIndex = Math.min(this.idlePollCount, IDLE_POLL_INTERVALS.length - 1);
       const interval = IDLE_POLL_INTERVALS[intervalIndex];
