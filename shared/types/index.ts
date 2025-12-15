@@ -282,4 +282,4 @@ export type { MenuItemOption, ShowContextMenuPayload } from "./menu.js";
 
 // Slash command discovery
 export type { SlashCommand, SlashCommandListRequest, SlashCommandScope } from "./slashCommands.js";
-export { CLAUDE_BUILTIN_SLASH_COMMANDS } from "./slashCommands.js";
+export { CLAUDE_BUILTIN_SLASH_COMMANDS, GEMINI_BUILTIN_SLASH_COMMANDS } from "./slashCommands.js";

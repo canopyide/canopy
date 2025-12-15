@@ -65,4 +65,55 @@ Do the thing.
 
     await fs.rm(root, { recursive: true, force: true });
   });
+
+  it("merges Gemini project commands over user commands and supports nested namespaces", async () => {
+    const homeRoot = await makeTempDir();
+    const projectRoot = await makeTempDir();
+    const service = new SlashCommandService();
+
+    const prevHome = process.env.HOME;
+    process.env.HOME = homeRoot;
+
+    try {
+      await fs.mkdir(path.join(projectRoot, ".git"));
+
+      await writeFile(
+        path.join(homeRoot, ".gemini", "commands", "git", "commit.toml"),
+        `description = "User commit description"
+prompt = "Write a commit message"
+`
+      );
+
+      await writeFile(
+        path.join(projectRoot, ".gemini", "commands", "git", "commit.toml"),
+        `description = "Project commit description"
+prompt = "Write a project commit message"
+`
+      );
+
+      await writeFile(
+        path.join(projectRoot, ".gemini", "commands", "testing", "integration", "run.toml"),
+        `description = """Run the integration test suite.
+Use project conventions."""
+prompt = "Run the tests"
+`
+      );
+
+      const commands = await service.list("gemini", path.join(projectRoot, "nested", "dir"));
+
+      const commit = commands.find((c) => c.label === "/git:commit");
+      expect(commit).toBeTruthy();
+      expect(commit?.scope).toBe("project");
+      expect(commit?.description).toBe("Project commit description");
+
+      const nested = commands.find((c) => c.label === "/testing:integration:run");
+      expect(nested).toBeTruthy();
+      expect(nested?.scope).toBe("project");
+      expect(nested?.description).toBe("Run the integration test suite.\nUse project conventions.");
+    } finally {
+      process.env.HOME = prevHome;
+      await fs.rm(homeRoot, { recursive: true, force: true });
+      await fs.rm(projectRoot, { recursive: true, force: true });
+    }
+  });
 });
