@@ -233,6 +233,8 @@ export interface ElectronAPI {
     setPerformanceMode(performanceMode: boolean): Promise<void>;
     setFontSize(fontSize: number): Promise<void>;
     setFontFamily(fontFamily: string): Promise<void>;
+    setHybridInputEnabled(enabled: boolean): Promise<void>;
+    setHybridInputAutoFocus(enabled: boolean): Promise<void>;
   };
   sidecar: {
     create(payload: import("../sidecar.js").SidecarCreatePayload): Promise<void>;

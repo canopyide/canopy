@@ -20,4 +20,12 @@ export const terminalConfigClient = {
   setFontFamily: (fontFamily: string): Promise<void> => {
     return window.electron.terminalConfig.setFontFamily(fontFamily);
   },
+
+  setHybridInputEnabled: (enabled: boolean): Promise<void> => {
+    return window.electron.terminalConfig.setHybridInputEnabled(enabled);
+  },
+
+  setHybridInputAutoFocus: (enabled: boolean): Promise<void> => {
+    return window.electron.terminalConfig.setHybridInputAutoFocus(enabled);
+  },
 } as const;
