@@ -566,6 +566,10 @@ function TerminalPaneComponent({
               // Feed tracker data for features like clear command detection
               handleInput(trackerData);
             }}
+            onSendKey={(key) => {
+              terminalInstanceService.notifyUserInput(id);
+              terminalClient.sendKey(id, key);
+            }}
           />
         )}
       </div>
