@@ -279,6 +279,42 @@ function TerminalPaneComponent({
     terminalInstanceService.boostRefreshRate(id);
   }, [id, setFocused]);
 
+  const handleXtermPointerDownCapture = useCallback(
+    (e: React.PointerEvent<HTMLDivElement>) => {
+      if (e.button !== 0) return;
+
+      const target = e.target as HTMLElement | null;
+      if (!target?.closest(".xterm")) return;
+
+      const focusTarget = getTerminalFocusTarget({
+        isAgentTerminal,
+        isInputDisabled: isBackendDisconnected || isBackendRecovering,
+        hybridInputEnabled,
+        hybridInputAutoFocus,
+      });
+
+      if (focusTarget !== "hybridInput") return;
+      if (isFocused) return;
+
+      e.preventDefault();
+      e.stopPropagation();
+
+      setFocused(id);
+      terminalInstanceService.boostRefreshRate(id);
+      requestAnimationFrame(() => inputBarRef.current?.focus());
+    },
+    [
+      id,
+      isAgentTerminal,
+      hybridInputEnabled,
+      hybridInputAutoFocus,
+      isBackendDisconnected,
+      isBackendRecovering,
+      isFocused,
+      setFocused,
+    ]
+  );
+
   const handleRestart = useCallback(() => {
     restartTerminal(id);
     inputTrackerRef.current?.reset();
@@ -460,6 +496,7 @@ function TerminalPaneComponent({
               "absolute inset-0",
               (isBackendDisconnected || isBackendRecovering) && "pointer-events-none opacity-50"
             )}
+            onPointerDownCapture={handleXtermPointerDownCapture}
           >
             <XtermAdapter
               key={`${id}-${restartKey}`}
