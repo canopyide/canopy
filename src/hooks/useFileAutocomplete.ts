@@ -84,4 +84,3 @@ export function useFileAutocomplete({
 
   return { files, isLoading };
 }
-

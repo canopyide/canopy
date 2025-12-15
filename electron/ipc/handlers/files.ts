@@ -32,4 +32,3 @@ export function registerFilesHandlers(): () => void {
 
   return () => handlers.forEach((cleanup) => cleanup());
 }
-
