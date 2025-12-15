@@ -90,6 +90,8 @@ export const HybridInputBar = forwardRef<HybridInputBarHandle, HybridInputBarPro
     const [value, setValue] = useState("");
     const allowNextLineBreakRef = useRef(false);
     const handledEnterRef = useRef(false);
+    const submitAfterCompositionRef = useRef(false);
+    const sendRafRef = useRef<number | null>(null);
     const textareaRef = useRef<HTMLTextAreaElement | null>(null);
     const inputShellRef = useRef<HTMLDivElement | null>(null);
     const menuRef = useRef<HTMLDivElement | null>(null);
@@ -101,8 +103,6 @@ export const HybridInputBar = forwardRef<HybridInputBarHandle, HybridInputBarPro
     const lastQueryRef = useRef<string>("");
     const [menuLeftPx, setMenuLeftPx] = useState<number>(0);
     const [collapsedHeightPx, setCollapsedHeightPx] = useState<number | null>(null);
-
-    const canSend = useMemo(() => value.trim().length > 0 && !disabled, [disabled, value]);
 
     const placeholder = useMemo(() => {
       const agentName = agentId ? getAgentConfig(agentId)?.name : null;
@@ -245,16 +245,26 @@ export const HybridInputBar = forwardRef<HybridInputBarHandle, HybridInputBarPro
       setSelectedIndex((prev) => Math.max(0, Math.min(prev, autocompleteItems.length - 1)));
     }, [autocompleteItems.length, isAutocompleteOpen]);
 
-    const send = useCallback(() => {
-      if (!canSend) return;
-      const payload = buildTerminalSendPayload(value);
-      // Pass raw 'value' as 'text' so the backend handles formatting/bracketing cleanly
-      onSend({ data: payload.data, trackerData: payload.trackerData, text: value });
+    const sendFromTextarea = useCallback(() => {
+      if (disabled) return;
+      const text = textareaRef.current?.value ?? value;
+      if (text.trim().length === 0) return;
+      const payload = buildTerminalSendPayload(text);
+      // Pass raw 'text' as 'text' so the backend handles formatting/bracketing cleanly
+      onSend({ data: payload.data, trackerData: payload.trackerData, text });
       setValue("");
       setAtContext(null);
       setSlashContext(null);
       requestAnimationFrame(() => resizeTextarea(textareaRef.current));
-    }, [canSend, onSend, value, resizeTextarea]);
+    }, [disabled, onSend, resizeTextarea, value]);
+
+    const queueSend = useCallback(() => {
+      if (sendRafRef.current !== null) return;
+      sendRafRef.current = requestAnimationFrame(() => {
+        sendRafRef.current = null;
+        sendFromTextarea();
+      });
+    }, [sendFromTextarea]);
 
     const focusTextarea = useCallback(() => {
       const textarea = textareaRef.current;
@@ -362,16 +372,17 @@ export const HybridInputBar = forwardRef<HybridInputBarHandle, HybridInputBarPro
         const textarea = textareaRef.current;
         if (!textarea) return;
 
-        const caret = textarea.selectionStart ?? value.length;
-        const slashCtx = getSlashCommandContext(value, caret) ?? slashContext;
+        const currentValue = textarea.value;
+        const caret = textarea.selectionStart ?? currentValue.length;
+        const slashCtx = getSlashCommandContext(currentValue, caret) ?? slashContext;
 
         if (activeMode === "file") {
-          const ctx = getAtFileContext(value, caret);
+          const ctx = getAtFileContext(currentValue, caret);
           if (!ctx) return;
 
           const token = `${formatAtFileToken(item.value)} `;
-          const before = value.slice(0, ctx.atStart);
-          const after = value.slice(ctx.tokenEnd);
+          const before = currentValue.slice(0, ctx.atStart);
+          const after = currentValue.slice(ctx.tokenEnd);
           const nextValue = `${before}${token}${after}`;
           const nextCaret = before.length + token.length;
 
@@ -400,8 +411,8 @@ export const HybridInputBar = forwardRef<HybridInputBarHandle, HybridInputBarPro
         }
 
         if (activeMode === "command" && slashCtx) {
-          const before = value.slice(0, slashCtx.start);
-          const after = value.slice(slashCtx.tokenEnd);
+          const before = currentValue.slice(0, slashCtx.start);
+          const after = currentValue.slice(slashCtx.tokenEnd);
 
           const shouldAppendSpace = action === "insert" && !after.startsWith(" ");
           const token = shouldAppendSpace ? `${item.value} ` : item.value;
@@ -431,7 +442,7 @@ export const HybridInputBar = forwardRef<HybridInputBarHandle, HybridInputBarPro
           });
         }
       },
-      [activeMode, onSend, resizeTextarea, slashContext, value]
+      [activeMode, onSend, resizeTextarea, slashContext]
     );
 
     const handleAutocompleteSelect = useCallback(
@@ -495,6 +506,14 @@ export const HybridInputBar = forwardRef<HybridInputBarHandle, HybridInputBarPro
                 setSlashContext(null);
                 setAtContext(getAtFileContext(text, caret));
               }}
+              onCompositionStart={() => {
+                submitAfterCompositionRef.current = false;
+              }}
+              onCompositionEnd={() => {
+                if (!submitAfterCompositionRef.current) return;
+                submitAfterCompositionRef.current = false;
+                queueSend();
+              }}
               placeholder={placeholder}
               rows={1}
               spellCheck={false}
@@ -512,12 +531,16 @@ export const HybridInputBar = forwardRef<HybridInputBarHandle, HybridInputBarPro
                 setSlashContext(null);
                 allowNextLineBreakRef.current = false;
                 handledEnterRef.current = false;
+                submitAfterCompositionRef.current = false;
+                if (sendRafRef.current !== null) {
+                  cancelAnimationFrame(sendRafRef.current);
+                  sendRafRef.current = null;
+                }
               }}
               onBeforeInput={(e) => {
                 if (disabled) return;
                 const nativeEvent = e.nativeEvent as InputEvent;
                 if (!isEnterLikeLineBreakInputEvent(nativeEvent)) return;
-                if (nativeEvent.isComposing) return;
 
                 if (handledEnterRef.current) {
                   handledEnterRef.current = false;
@@ -546,7 +569,11 @@ export const HybridInputBar = forwardRef<HybridInputBarHandle, HybridInputBarPro
 
                 e.preventDefault();
                 e.stopPropagation();
-                send();
+                if (nativeEvent.isComposing) {
+                  submitAfterCompositionRef.current = true;
+                  return;
+                }
+                queueSend();
               }}
               onKeyDownCapture={(e) => {
                 if (disabled) return;
@@ -559,7 +586,12 @@ export const HybridInputBar = forwardRef<HybridInputBarHandle, HybridInputBarPro
                   allowNextLineBreakRef.current = e.shiftKey;
                 }
 
-                if (e.nativeEvent.isComposing) return;
+                if (e.nativeEvent.isComposing) {
+                  if (isEnter && !e.shiftKey) {
+                    submitAfterCompositionRef.current = true;
+                  }
+                  return;
+                }
 
                 if (isAutocompleteOpen) {
                   const resultsCount = autocompleteItems.length;
@@ -615,7 +647,7 @@ export const HybridInputBar = forwardRef<HybridInputBarHandle, HybridInputBarPro
                   setTimeout(() => {
                     handledEnterRef.current = false;
                   }, 0);
-                  send();
+                  queueSend();
                 }
               }}
               onKeyUpCapture={() => {
