@@ -1,4 +1,5 @@
 import {
+  type KeyboardEvent,
   forwardRef,
   useCallback,
   useEffect,
@@ -31,6 +32,7 @@ export interface HybridInputBarHandle {
 
 export interface HybridInputBarProps {
   onSend: (payload: { data: string; trackerData: string; text: string }) => void;
+  onSendKey?: (key: string) => void;
   cwd: string;
   agentId?: LegacyAgentType;
   disabled?: boolean;
@@ -83,7 +85,7 @@ function getTextOffsetLeftPx(textarea: HTMLTextAreaElement, charIndex: number): 
 }
 
 export const HybridInputBar = forwardRef<HybridInputBarHandle, HybridInputBarProps>(
-  ({ onSend, cwd, agentId, disabled = false, className }, ref) => {
+  ({ onSend, onSendKey, cwd, agentId, disabled = false, className }, ref) => {
     const [value, setValue] = useState("");
     const [isComposing, setIsComposing] = useState(false);
     const allowNextLineBreakRef = useRef(false);
@@ -261,6 +263,45 @@ export const HybridInputBar = forwardRef<HybridInputBarHandle, HybridInputBarPro
     }, []);
 
     useImperativeHandle(ref, () => ({ focus: focusTextarea }), [focusTextarea]);
+
+    const handleKeyPassthrough = useCallback(
+      (event: KeyboardEvent<HTMLTextAreaElement>): boolean => {
+        if (!onSendKey) return false;
+        if (disabled) return false;
+        if (isComposing || event.nativeEvent.isComposing) return false;
+
+        if (event.key === "Escape" && !isAutocompleteOpen) {
+          event.preventDefault();
+          event.stopPropagation();
+          onSendKey("escape");
+          return true;
+        }
+
+        if (
+          (event.key === "c" || event.key === "C") &&
+          event.ctrlKey &&
+          !event.metaKey &&
+          !event.altKey
+        ) {
+          const textarea = textareaRef.current;
+          const hasSelection =
+            textarea && textarea.selectionStart !== null && textarea.selectionEnd !== null
+              ? textarea.selectionStart !== textarea.selectionEnd
+              : false;
+
+          // Preserve copy when user has selected text inside the textarea.
+          if (hasSelection) return false;
+
+          event.preventDefault();
+          event.stopPropagation();
+          onSendKey("ctrl+c");
+          return true;
+        }
+
+        return false;
+      },
+      [disabled, isAutocompleteOpen, isComposing, onSendKey]
+    );
 
     const refreshContextsFromTextarea = useCallback(() => {
       const textarea = textareaRef.current;
@@ -509,6 +550,10 @@ export const HybridInputBar = forwardRef<HybridInputBarHandle, HybridInputBarPro
                     applyAutocompleteItem(autocompleteItems[selectedIndex], action);
                     return;
                   }
+                }
+
+                if (handleKeyPassthrough(e)) {
+                  return;
                 }
 
                 const isEnter =

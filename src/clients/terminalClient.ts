@@ -57,6 +57,13 @@ export const terminalClient = {
     return window.electron.terminal.submit(id, text);
   },
 
+  /**
+   * Send a single key chord to the terminal (e.g. "escape", "ctrl+c").
+   */
+  sendKey: (id: string, key: string): void => {
+    window.electron.terminal.sendKey(id, key);
+  },
+
   resize: (id: string, cols: number, rows: number): void => {
     if (messagePort) {
       try {
