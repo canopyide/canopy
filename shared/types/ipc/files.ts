@@ -7,4 +7,3 @@ export interface FileSearchPayload {
 export interface FileSearchResult {
   files: string[];
 }
-

@@ -5,4 +5,3 @@ export const filesClient = {
     return window.electron.files.search(payload);
   },
 };
-
