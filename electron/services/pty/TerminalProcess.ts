@@ -1,5 +1,6 @@
 import * as pty from "node-pty";
 import { existsSync, readFileSync, renameSync, writeFileSync, mkdirSync } from "fs";
+import { mkdir, rename, writeFile } from "node:fs/promises";
 import path from "node:path";
 import headless, { type Terminal as HeadlessTerminalType } from "@xterm/headless";
 const { Terminal: HeadlessTerminal } = headless;
@@ -188,6 +189,18 @@ export class TerminalProcess {
     renameSync(tmpPath, sessionPath);
   }
 
+  private async persistSessionSnapshotAsync(state: string): Promise<void> {
+    const sessionPath = getSessionPath(this.id);
+    const dir = getSessionDir();
+    if (!sessionPath || !dir) return;
+
+    await mkdir(dir, { recursive: true });
+
+    const tmpPath = `${sessionPath}.tmp`;
+    await writeFile(tmpPath, state, "utf8");
+    await rename(tmpPath, sessionPath);
+  }
+
   private async persistSessionSnapshot(): Promise<void> {
     if (!TERMINAL_SESSION_PERSISTENCE_ENABLED) return;
     if (this.terminalInfo.wasKilled) return;
@@ -202,7 +215,7 @@ export class TerminalProcess {
       if (Buffer.byteLength(state, "utf8") > SESSION_SNAPSHOT_MAX_BYTES) {
         return;
       }
-      this.persistSessionSnapshotSync(state);
+      await this.persistSessionSnapshotAsync(state);
     } catch (error) {
       console.warn(`[TerminalProcess] Failed to persist session for ${this.id}:`, error);
     } finally {

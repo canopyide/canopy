@@ -185,6 +185,8 @@ function XtermAdapterComponent({
             // Other agent CLIs use the legacy ESC+CR sequence.
             const softNewline = terminalType === "codex" ? "\n" : "\x1b\r";
             terminalClient.write(terminalId, softNewline);
+            terminalInstanceService.notifyUserInput(terminalId);
+            onInput?.(softNewline);
           }
           return false;
         }

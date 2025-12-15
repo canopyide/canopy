@@ -32,6 +32,10 @@ class TerminalInstanceService {
     this.dataBuffer.initialize();
   }
 
+  notifyUserInput(id: string): void {
+    this.onUserInput(id);
+  }
+
   private onUserInput(id: string): void {
     const managed = this.instances.get(id);
     if (!managed) return;

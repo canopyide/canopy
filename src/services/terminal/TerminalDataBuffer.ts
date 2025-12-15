@@ -3,8 +3,9 @@ import { terminalClient } from "@/clients";
 
 // Target ~20fps steady updates for terminal rendering.
 // We trade latency for reliability/throughput by batching writes.
-const FLUSH_DELAY_MS = 50;
-const INTERACTIVE_FLUSH_THRESHOLD_BYTES = 128;
+const DEFAULT_FLUSH_DELAY_MS = 50;
+const INTERACTIVE_FLUSH_THRESHOLD_BYTES = 2048;
+const INTERACTIVE_FLUSH_DELAY_MS = 0;
 const IDLE_POLL_INTERVALS = [8, 16, 33, 100] as const;
 const MAX_BUFFER_BYTES = 20 * 1024;
 const MAX_READS_PER_TICK = 50;
@@ -106,14 +107,19 @@ export class TerminalDataBuffer {
     entry.chunks.push(data);
     entry.bytes += dataLength;
 
-    // Typing fast-lane: immediately flush tiny echoes right after user input.
+    // Typing fast-lane: flush aggressively right after user input.
     const until = this.interactiveUntil.get(id);
-    if (
-      until !== undefined &&
-      Date.now() <= until &&
-      entry.bytes <= INTERACTIVE_FLUSH_THRESHOLD_BYTES
-    ) {
-      this.flushBuffer(id);
+    if (until !== undefined && Date.now() <= until) {
+      if (entry.bytes <= INTERACTIVE_FLUSH_THRESHOLD_BYTES) {
+        this.flushBuffer(id);
+        return;
+      }
+
+      if (entry.timeoutId !== null) {
+        window.clearTimeout(entry.timeoutId);
+      }
+
+      entry.timeoutId = window.setTimeout(() => this.flushBuffer(id), INTERACTIVE_FLUSH_DELAY_MS);
       return;
     }
 
@@ -123,7 +129,7 @@ export class TerminalDataBuffer {
     }
 
     if (entry.timeoutId === null) {
-      entry.timeoutId = window.setTimeout(() => this.flushBuffer(id), FLUSH_DELAY_MS);
+      entry.timeoutId = window.setTimeout(() => this.flushBuffer(id), DEFAULT_FLUSH_DELAY_MS);
     }
   }
 
