@@ -31,6 +31,7 @@ export interface ManagedTerminal {
   parserHandler?: { dispose: () => void; setAllowResets: (allow: boolean) => void };
   getRefreshTier: RefreshTierProvider;
   keyHandlerInstalled: boolean;
+  wheelHandlerInstalled: boolean;
   lastAttachAt: number;
   lastDetachAt: number;
   // Visibility-aware LRU tracking
@@ -50,6 +51,7 @@ export interface ManagedTerminal {
   latestCols: number;
   latestRows: number;
   latestWasAtBottom: boolean;
+  isUserScrolledBack: boolean;
 
   // Focus state
   isFocused: boolean;
