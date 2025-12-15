@@ -19,6 +19,7 @@ import { TerminalIcon } from "./TerminalIcon";
 import type { ActivityState } from "./TerminalPane";
 import { useTerminalStore } from "@/store";
 import { useShallow } from "zustand/react/shallow";
+import { useDragHandle } from "@/components/DragDrop/DragHandleContext";
 
 export interface TerminalHeaderProps {
   id: string;
@@ -95,6 +96,11 @@ function TerminalHeaderComponent({
   wasJustSelected = false,
 }: TerminalHeaderProps) {
   const showCommandPill = type === "terminal" && agentState === "running" && !!lastCommand;
+  const dragHandle = useDragHandle();
+  const dragListeners =
+    (location === "grid" || location === "dock") && dragHandle?.listeners
+      ? dragHandle.listeners
+      : undefined;
 
   // Get background activity stats for Zen Mode header (optimized single-pass)
   // Only count grid terminals - docked terminals are visually separate
@@ -124,6 +130,7 @@ function TerminalHeaderComponent({
   return (
     <TerminalContextMenu terminalId={id} forceLocation={location}>
       <div
+        {...dragListeners}
         className={cn(
           "flex items-center justify-between px-3 shrink-0 text-xs transition-colors relative overflow-hidden",
           // Base height and separator border
@@ -134,6 +141,7 @@ function TerminalHeaderComponent({
             : location === "dock"
               ? "bg-[var(--color-surface)]"
               : "bg-transparent",
+          dragListeners && "cursor-grab active:cursor-grabbing",
           isPinged && !isMaximized && "animate-terminal-header-ping"
         )}
         onDoubleClick={handleHeaderDoubleClick}

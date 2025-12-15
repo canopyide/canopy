@@ -126,7 +126,6 @@ export const HybridInputBar = forwardRef<HybridInputBarHandle, HybridInputBarPro
       return [];
     }, [activeMode, autocompleteCommands, autocompleteFiles]);
 
-    const menuTitle = activeMode === "file" ? "Files" : activeMode === "command" ? "Commands" : "";
     const isLoading =
       activeMode === "file"
         ? isAutocompleteLoading
@@ -256,13 +255,15 @@ export const HybridInputBar = forwardRef<HybridInputBarHandle, HybridInputBarPro
       setAtContext(getAtFileContext(text, caret));
     }, []);
 
-    const insertSelectedItem = useCallback(
-      (item: AutocompleteItem) => {
+    const applyAutocompleteItem = useCallback(
+      (item: AutocompleteItem, action: "insert" | "execute") => {
         const textarea = textareaRef.current;
         if (!textarea) return;
 
+        const caret = textarea.selectionStart ?? value.length;
+        const slashCtx = getSlashCommandContext(value, caret) ?? slashContext;
+
         if (activeMode === "file") {
-          const caret = textarea.selectionStart ?? value.length;
           const ctx = getAtFileContext(value, caret);
           if (!ctx) return;
 
@@ -271,6 +272,17 @@ export const HybridInputBar = forwardRef<HybridInputBarHandle, HybridInputBarPro
           const after = value.slice(ctx.tokenEnd);
           const nextValue = `${before}${token}${after}`;
           const nextCaret = before.length + token.length;
+
+          if (action === "execute") {
+            const payload = buildTerminalSendPayload(nextValue);
+            onSend({ data: payload.data, trackerData: payload.trackerData, text: nextValue });
+            setValue("");
+            setAtContext(null);
+            setSlashContext(null);
+            setSelectedIndex(0);
+            requestAnimationFrame(() => resizeTextarea(textareaRef.current));
+            return;
+          }
 
           setValue(nextValue);
           setAtContext(null);
@@ -285,12 +297,25 @@ export const HybridInputBar = forwardRef<HybridInputBarHandle, HybridInputBarPro
           return;
         }
 
-        if (activeMode === "command" && slashContext) {
-          const token = `${item.value} `;
-          const before = value.slice(0, slashContext.start);
-          const after = value.slice(slashContext.tokenEnd);
+        if (activeMode === "command" && slashCtx) {
+          const before = value.slice(0, slashCtx.start);
+          const after = value.slice(slashCtx.tokenEnd);
+
+          const shouldAppendSpace = action === "insert" && !after.startsWith(" ");
+          const token = shouldAppendSpace ? `${item.value} ` : item.value;
           const nextValue = `${before}${token}${after}`;
           const nextCaret = before.length + token.length;
+
+          if (action === "execute") {
+            const payload = buildTerminalSendPayload(nextValue);
+            onSend({ data: payload.data, trackerData: payload.trackerData, text: nextValue });
+            setValue("");
+            setAtContext(null);
+            setSlashContext(null);
+            setSelectedIndex(0);
+            requestAnimationFrame(() => resizeTextarea(textareaRef.current));
+            return;
+          }
 
           setValue(nextValue);
           setAtContext(null);
@@ -304,7 +329,21 @@ export const HybridInputBar = forwardRef<HybridInputBarHandle, HybridInputBarPro
           });
         }
       },
-      [activeMode, resizeTextarea, slashContext, value]
+      [activeMode, onSend, resizeTextarea, slashContext, value]
+    );
+
+    const handleAutocompleteSelect = useCallback(
+      (item: AutocompleteItem) => {
+        if (activeMode === "command") {
+          const idx = autocompleteItems.findIndex((i) => i.key === item.key);
+          setSelectedIndex(idx >= 0 ? idx : 0);
+          focusTextarea();
+          return;
+        }
+
+        applyAutocompleteItem(item, "insert");
+      },
+      [activeMode, applyAutocompleteItem, autocompleteItems, focusTextarea]
     );
 
     return (
@@ -344,9 +383,8 @@ export const HybridInputBar = forwardRef<HybridInputBarHandle, HybridInputBarPro
               items={autocompleteItems}
               selectedIndex={selectedIndex}
               isLoading={isLoading}
-              onSelect={insertSelectedItem}
+              onSelect={handleAutocompleteSelect}
               style={{ left: `${menuLeftPx}px` }}
-              title={menuTitle}
               ariaLabel={activeMode === "command" ? "Command autocomplete" : "File autocomplete"}
             />
 
@@ -404,9 +442,15 @@ export const HybridInputBar = forwardRef<HybridInputBarHandle, HybridInputBarPro
                 }
 
                 if (isAutocompleteOpen && autocompleteItems[selectedIndex]) {
+                  if (allowNextLineBreakRef.current) {
+                    allowNextLineBreakRef.current = false;
+                    return;
+                  }
                   e.preventDefault();
                   e.stopPropagation();
-                  insertSelectedItem(autocompleteItems[selectedIndex]);
+                  const action =
+                    activeMode === "command" ? ("execute" as const) : ("insert" as const);
+                  applyAutocompleteItem(autocompleteItems[selectedIndex], action);
                   return;
                 }
 
@@ -444,10 +488,19 @@ export const HybridInputBar = forwardRef<HybridInputBarHandle, HybridInputBarPro
                     return;
                   }
 
-                  if (resultsCount > 0 && (e.key === "Enter" || e.key === "Tab")) {
+                  if (resultsCount > 0 && e.key === "Tab") {
                     e.preventDefault();
                     e.stopPropagation();
-                    insertSelectedItem(autocompleteItems[selectedIndex]);
+                    applyAutocompleteItem(autocompleteItems[selectedIndex], "insert");
+                    return;
+                  }
+
+                  if (resultsCount > 0 && e.key === "Enter" && !e.shiftKey) {
+                    e.preventDefault();
+                    e.stopPropagation();
+                    const action =
+                      activeMode === "command" ? ("execute" as const) : ("insert" as const);
+                    applyAutocompleteItem(autocompleteItems[selectedIndex], action);
                     return;
                   }
                 }
