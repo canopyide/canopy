@@ -5,11 +5,11 @@ import { TerminalProcess } from "../TerminalProcess.js";
 type SpawnFn = (file: string, args: string[], options: any) => IPty;
 
 let spawnMock: ReturnType<typeof vi.fn<SpawnFn>>;
-let ptyWriteMock: ReturnType<typeof vi.fn>;
+let ptyWriteMock: ReturnType<typeof vi.fn<(data: string) => void>>;
 
 vi.mock("node-pty", () => {
   return {
-    spawn: (...args: any[]) => spawnMock(...args),
+    spawn: (...args: Parameters<SpawnFn>) => spawnMock(...args),
   };
 });
 
@@ -38,7 +38,7 @@ function createTerminal(): TerminalProcess {
       cwd: process.cwd(),
       cols: 80,
       rows: 24,
-      kind: "shell",
+      kind: "terminal",
       type: "terminal",
     },
     { emitData: () => {}, onExit: () => {} },
@@ -52,34 +52,44 @@ function createTerminal(): TerminalProcess {
 
 describe("TerminalProcess.submit", () => {
   beforeEach(() => {
-    ptyWriteMock = vi.fn();
-    spawnMock = vi.fn(() => createMockPty());
+    ptyWriteMock = vi.fn<(data: string) => void>();
+    spawnMock = vi.fn<SpawnFn>(() => createMockPty());
   });
 
-  it("treats a trailing newline as Enter (not multiline paste)", () => {
+  it("treats a trailing newline as Enter (not multiline paste)", async () => {
+    vi.useFakeTimers();
     const terminal = createTerminal();
     terminal.submit("test\n");
-    expect(ptyWriteMock).toHaveBeenCalledWith("test\r");
+    expect(ptyWriteMock).toHaveBeenCalledTimes(1);
+    expect(ptyWriteMock).toHaveBeenLastCalledWith("test");
+    await vi.advanceTimersByTimeAsync(10);
+    expect(ptyWriteMock).toHaveBeenLastCalledWith("\r");
+    vi.useRealTimers();
   });
 
-  it("uses bracketed paste for multiline input and then sends CR", () => {
+  it("uses bracketed paste for multiline input and then sends CR", async () => {
     vi.useFakeTimers();
     const terminal = createTerminal();
 
     terminal.submit("line1\nline2");
 
     expect(ptyWriteMock).toHaveBeenCalledTimes(1);
-    expect(ptyWriteMock.mock.calls[0]?.[0]).toMatch(/^\x1b\[200~line1\rline2\x1b\[201~$/);
+    expect(ptyWriteMock.mock.calls[0]?.[0]).toBe("\x1b[200~line1\rline2\x1b[201~");
 
-    vi.advanceTimersByTime(10);
+    await vi.advanceTimersByTimeAsync(10);
     expect(ptyWriteMock).toHaveBeenLastCalledWith("\r");
     vi.useRealTimers();
   });
 
-  it("sends multiple CRs when input has multiple trailing newlines", () => {
+  it("sends multiple CRs when input has multiple trailing newlines", async () => {
+    vi.useFakeTimers();
     const terminal = createTerminal();
     terminal.submit("test\n\n");
-    expect(ptyWriteMock).toHaveBeenCalledWith("test\r\r");
+    expect(ptyWriteMock).toHaveBeenCalledTimes(1);
+    expect(ptyWriteMock).toHaveBeenLastCalledWith("test");
+    await vi.advanceTimersByTimeAsync(10);
+    expect(ptyWriteMock).toHaveBeenLastCalledWith("\r\r");
+    vi.useRealTimers();
   });
 
   it("submits empty input as a single CR", () => {
