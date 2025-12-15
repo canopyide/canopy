@@ -270,11 +270,47 @@ export const HybridInputBar = forwardRef<HybridInputBarHandle, HybridInputBarPro
         if (disabled) return false;
         if (isComposing || event.nativeEvent.isComposing) return false;
 
+        const isEmpty = value.trim().length === 0;
+
         if (event.key === "Escape" && !isAutocompleteOpen) {
           event.preventDefault();
           event.stopPropagation();
           onSendKey("escape");
           return true;
+        }
+
+        if (isEmpty) {
+          if (
+            event.key === "ArrowUp" ||
+            event.key === "ArrowDown" ||
+            event.key === "ArrowLeft" ||
+            event.key === "ArrowRight"
+          ) {
+            event.preventDefault();
+            event.stopPropagation();
+            onSendKey(
+              event.key === "ArrowUp"
+                ? "up"
+                : event.key === "ArrowDown"
+                  ? "down"
+                  : event.key === "ArrowLeft"
+                    ? "left"
+                    : "right"
+            );
+            return true;
+          }
+
+          const isEnter =
+            event.key === "Enter" ||
+            event.key === "Return" ||
+            event.code === "Enter" ||
+            event.code === "NumpadEnter";
+          if (isEnter && !event.shiftKey) {
+            event.preventDefault();
+            event.stopPropagation();
+            onSendKey("enter");
+            return true;
+          }
         }
 
         if (
@@ -300,7 +336,7 @@ export const HybridInputBar = forwardRef<HybridInputBarHandle, HybridInputBarPro
 
         return false;
       },
-      [disabled, isAutocompleteOpen, isComposing, onSendKey]
+      [disabled, isAutocompleteOpen, isComposing, onSendKey, value]
     );
 
     const refreshContextsFromTextarea = useCallback(() => {
