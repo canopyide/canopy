@@ -119,6 +119,7 @@ const CHANNELS = {
   TERMINAL_STATUS: "terminal:status",
   TERMINAL_BACKEND_CRASHED: "terminal:backend-crashed",
   TERMINAL_BACKEND_READY: "terminal:backend-ready",
+  TERMINAL_SEND_KEY: "terminal:send-key",
 
   // Agent state channels
   AGENT_STATE_CHANGED: "agent:state-changed",
@@ -429,6 +430,8 @@ const api: ElectronAPI = {
       ipcRenderer.on(CHANNELS.TERMINAL_BACKEND_READY, handler);
       return () => ipcRenderer.removeListener(CHANNELS.TERMINAL_BACKEND_READY, handler);
     },
+
+    sendKey: (id: string, key: string) => ipcRenderer.send(CHANNELS.TERMINAL_SEND_KEY, id, key),
   },
 
   // Artifact API

@@ -199,6 +199,20 @@ export function registerTerminalHandlers(deps: HandlerDependencies): () => void 
   ipcMain.on(CHANNELS.TERMINAL_INPUT, handleTerminalInput);
   handlers.push(() => ipcMain.removeListener(CHANNELS.TERMINAL_INPUT, handleTerminalInput));
 
+  const handleTerminalSendKey = (_event: Electron.IpcMainEvent, id: string, key: string) => {
+    try {
+      if (typeof id !== "string" || typeof key !== "string") {
+        console.error("Invalid terminal sendKey parameters");
+        return;
+      }
+      ptyClient.sendKey(id, key);
+    } catch (error) {
+      console.error("Error sending key to terminal:", error);
+    }
+  };
+  ipcMain.on(CHANNELS.TERMINAL_SEND_KEY, handleTerminalSendKey);
+  handlers.push(() => ipcMain.removeListener(CHANNELS.TERMINAL_SEND_KEY, handleTerminalSendKey));
+
   const handleTerminalResize = (_event: Electron.IpcMainEvent, payload: TerminalResizePayload) => {
     try {
       const parseResult = TerminalResizePayloadSchema.safeParse(payload);
