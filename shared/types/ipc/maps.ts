@@ -557,6 +557,7 @@ export interface IpcEventMap {
     pauseDuration?: number;
     timestamp: number;
   };
+  "terminal:send-key": [id: string, key: string];
 
   // Agent events
   "agent:state-changed": AgentStateChangePayload;

@@ -108,6 +108,7 @@ export interface ElectronAPI {
       }) => void
     ): () => void;
     onBackendReady(callback: () => void): () => void;
+    sendKey(id: string, key: string): void;
   };
   artifact: {
     onDetected(callback: (data: ArtifactDetectedPayload) => void): () => void;
