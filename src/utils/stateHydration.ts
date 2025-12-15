@@ -1,6 +1,11 @@
 import { appClient, terminalClient } from "@/clients";
 import { terminalConfigClient } from "@/clients/terminalConfigClient";
-import { useLayoutConfigStore, useScrollbackStore, usePerformanceModeStore } from "@/store";
+import {
+  useLayoutConfigStore,
+  useScrollbackStore,
+  usePerformanceModeStore,
+  useTerminalInputStore,
+} from "@/store";
 import type { TerminalType, TerminalState, AgentState, TerminalKind } from "@/types";
 import { generateAgentFlags, type AgentSettings } from "@shared/types";
 import { keybindingService } from "@/services/KeybindingService";
@@ -62,6 +67,14 @@ export async function hydrateAppState(options: HydrationOptions): Promise<void> 
       }
       if (terminalConfig?.performanceMode !== undefined) {
         usePerformanceModeStore.getState().setPerformanceMode(terminalConfig.performanceMode);
+      }
+      if (terminalConfig) {
+        useTerminalInputStore
+          .getState()
+          .setHybridInputEnabled(terminalConfig.hybridInputEnabled ?? true);
+        useTerminalInputStore
+          .getState()
+          .setHybridInputAutoFocus(terminalConfig.hybridInputAutoFocus ?? true);
       }
     } catch (error) {
       console.warn("Failed to hydrate terminal config:", error);

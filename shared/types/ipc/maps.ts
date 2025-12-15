@@ -448,6 +448,14 @@ export interface IpcInvokeMap {
     args: [fontFamily: string];
     result: void;
   };
+  "terminal-config:set-hybrid-input-enabled": {
+    args: [enabled: boolean];
+    result: void;
+  };
+  "terminal-config:set-hybrid-input-auto-focus": {
+    args: [enabled: boolean];
+    result: void;
+  };
 
   // Git channels
   "git:get-file-diff": {

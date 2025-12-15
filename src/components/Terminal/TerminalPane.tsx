@@ -12,7 +12,12 @@ import { TerminalRestartBanner } from "./TerminalRestartBanner";
 import { TerminalErrorBanner } from "./TerminalErrorBanner";
 import { UpdateCwdDialog } from "./UpdateCwdDialog";
 import { ErrorBanner } from "../Errors/ErrorBanner";
-import { useErrorStore, useTerminalStore, getTerminalRefreshTier } from "@/store";
+import {
+  useErrorStore,
+  useTerminalStore,
+  getTerminalRefreshTier,
+  useTerminalInputStore,
+} from "@/store";
 import { useTerminalLogic } from "@/hooks/useTerminalLogic";
 import type { AgentState } from "@/types";
 import { terminalInstanceService } from "@/services/TerminalInstanceService";
@@ -122,8 +127,11 @@ function TerminalPaneComponent({
 
   const isBackendDisconnected = backendStatus === "disconnected";
   const isBackendRecovering = backendStatus === "recovering";
+  const hybridInputEnabled = useTerminalInputStore((state) => state.hybridInputEnabled);
+  const hybridInputAutoFocus = useTerminalInputStore((state) => state.hybridInputAutoFocus);
   const effectiveAgentId = agentId ?? type;
-  const showHybridInputBar = effectiveAgentId !== undefined && effectiveAgentId !== "terminal";
+  const isAgentTerminal = effectiveAgentId !== undefined && effectiveAgentId !== "terminal";
+  const showHybridInputBar = isAgentTerminal && hybridInputEnabled;
 
   const queueCount = useTerminalStore(
     useShallow((state) => state.commandQueue.filter((c) => c.terminalId === id).length)
@@ -285,8 +293,10 @@ function TerminalPaneComponent({
     if (isFocused) {
       requestAnimationFrame(() => {
         const focusTarget = getTerminalFocusTarget({
-          isAgentTerminal: showHybridInputBar,
+          isAgentTerminal,
           isInputDisabled: isBackendDisconnected || isBackendRecovering,
+          hybridInputEnabled,
+          hybridInputAutoFocus,
         });
 
         if (focusTarget === "hybridInput") {
@@ -297,7 +307,15 @@ function TerminalPaneComponent({
         terminalInstanceService.focus(id);
       });
     }
-  }, [id, isFocused, showHybridInputBar, isBackendDisconnected, isBackendRecovering]);
+  }, [
+    id,
+    isFocused,
+    isAgentTerminal,
+    hybridInputEnabled,
+    hybridInputAutoFocus,
+    isBackendDisconnected,
+    isBackendRecovering,
+  ]);
 
   // Sync agent state to terminal service for scroll management
   useEffect(() => {

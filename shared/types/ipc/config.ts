@@ -12,4 +12,8 @@ export interface TerminalConfig {
   performanceMode: boolean;
   fontSize?: number;
   fontFamily?: string;
+  /** Master toggle for the hybrid input bar shown on agent terminals (default: true) */
+  hybridInputEnabled?: boolean;
+  /** When selecting a terminal pane, focus the hybrid input bar instead of xterm (default: true) */
+  hybridInputAutoFocus?: boolean;
 }

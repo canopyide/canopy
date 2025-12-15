@@ -328,5 +328,31 @@ export function registerAppHandlers(deps: HandlerDependencies): () => void {
   ipcMain.handle(CHANNELS.TERMINAL_CONFIG_SET_FONT_FAMILY, handleTerminalConfigSetFontFamily);
   handlers.push(() => ipcMain.removeHandler(CHANNELS.TERMINAL_CONFIG_SET_FONT_FAMILY));
 
+  const handleTerminalConfigSetHybridInputEnabled = async (
+    _event: Electron.IpcMainInvokeEvent,
+    enabled: boolean
+  ) => {
+    const currentConfig = store.get("terminalConfig");
+    store.set("terminalConfig", { ...currentConfig, hybridInputEnabled: Boolean(enabled) });
+  };
+  ipcMain.handle(
+    CHANNELS.TERMINAL_CONFIG_SET_HYBRID_INPUT_ENABLED,
+    handleTerminalConfigSetHybridInputEnabled
+  );
+  handlers.push(() => ipcMain.removeHandler(CHANNELS.TERMINAL_CONFIG_SET_HYBRID_INPUT_ENABLED));
+
+  const handleTerminalConfigSetHybridInputAutoFocus = async (
+    _event: Electron.IpcMainInvokeEvent,
+    enabled: boolean
+  ) => {
+    const currentConfig = store.get("terminalConfig");
+    store.set("terminalConfig", { ...currentConfig, hybridInputAutoFocus: Boolean(enabled) });
+  };
+  ipcMain.handle(
+    CHANNELS.TERMINAL_CONFIG_SET_HYBRID_INPUT_AUTO_FOCUS,
+    handleTerminalConfigSetHybridInputAutoFocus
+  );
+  handlers.push(() => ipcMain.removeHandler(CHANNELS.TERMINAL_CONFIG_SET_HYBRID_INPUT_AUTO_FOCUS));
+
   return () => handlers.forEach((cleanup) => cleanup());
 }
