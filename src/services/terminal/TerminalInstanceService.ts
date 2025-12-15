@@ -32,6 +32,28 @@ class TerminalInstanceService {
     this.dataBuffer.initialize();
   }
 
+  private onUserInput(id: string): void {
+    const managed = this.instances.get(id);
+    if (!managed) return;
+
+    // We expect an immediate echo. Wake the SAB poller and enable the interactive fast-lane
+    // for a short window so typing never feels "sleepy" after idle.
+    this.dataBuffer.markInteractive(id);
+    this.dataBuffer.boost();
+
+    this.applyRendererPolicy(id, TerminalRefreshTier.BURST);
+
+    if (managed.inputBurstTimer !== undefined) {
+      clearTimeout(managed.inputBurstTimer);
+    }
+    managed.inputBurstTimer = window.setTimeout(() => {
+      const current = this.instances.get(id);
+      if (!current) return;
+      current.inputBurstTimer = undefined;
+      this.applyRendererPolicy(id, current.getRefreshTier());
+    }, 1000);
+  }
+
   private ensureHiddenContainer(): HTMLDivElement | null {
     if (this.hiddenContainer) return this.hiddenContainer;
     if (typeof document === "undefined") return null;
@@ -154,14 +176,24 @@ class TerminalInstanceService {
     const managed = this.instances.get(id);
     if (!managed) return;
 
+    const currentTier =
+      managed.lastAppliedTier ?? managed.getRefreshTier?.() ?? TerminalRefreshTier.FOCUSED;
+    if (currentTier === TerminalRefreshTier.BACKGROUND) {
+      managed.needsWake = true;
+      return;
+    }
+
     // Capture SAB mode decision before write to avoid mode-flip ambiguity during callback
     const shouldAck = !this.dataBuffer.isEnabled();
 
     // Write data and apply flow control acknowledgement after xterm processes the buffer update
     const terminal = managed.terminal;
+    managed.pendingWrites = (managed.pendingWrites ?? 0) + 1;
     terminal.write(data, () => {
       // Guard against stale callback after destroy/restart
       if (this.instances.get(id) !== managed) return;
+
+      managed.pendingWrites = Math.max(0, (managed.pendingWrites ?? 1) - 1);
 
       // Flow control: Only send acknowledgements in IPC fallback mode.
       // In SAB mode, flow control is handled globally via SAB backpressure.
@@ -337,6 +369,7 @@ class TerminalInstanceService {
     listeners.push(() => scrollDisposable.dispose());
 
     const inputDisposable = terminal.onData((data) => {
+      this.onUserInput(id);
       terminalClient.write(id, data);
       if (onInput) {
         onInput(data);
@@ -428,6 +461,14 @@ class TerminalInstanceService {
     if (!managed) return null;
 
     if (this.isResizeLocked(id)) {
+      return null;
+    }
+
+    const currentTier =
+      managed.lastAppliedTier ?? managed.getRefreshTier?.() ?? TerminalRefreshTier.FOCUSED;
+    // Reliability: avoid resizing terminals in BACKGROUND tier (dock/trash) to prevent
+    // hard-wrap/reflow corruption and unnecessary churn while a terminal is not actively viewed.
+    if (currentTier === TerminalRefreshTier.BACKGROUND && !managed.isFocused) {
       return null;
     }
 
@@ -954,6 +995,10 @@ class TerminalInstanceService {
     if (managed.tierChangeTimer !== undefined) {
       clearTimeout(managed.tierChangeTimer);
       managed.tierChangeTimer = undefined;
+    }
+    if (managed.inputBurstTimer !== undefined) {
+      clearTimeout(managed.inputBurstTimer);
+      managed.inputBurstTimer = undefined;
     }
 
     managed.exitSubscribers.clear();

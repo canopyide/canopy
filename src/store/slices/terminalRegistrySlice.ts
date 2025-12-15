@@ -34,6 +34,11 @@ const PADDING_Y = 24;
 const DOCK_TERM_WIDTH = DOCK_WIDTH - PADDING_X;
 const DOCK_TERM_HEIGHT = DOCK_HEIGHT - HEADER_HEIGHT - PADDING_Y;
 
+// Reliability: keep PTY geometry optimistic even when docked to avoid hard-wrapping output.
+// Dock previews are clipped rather than driving PTY resizes.
+const DOCK_PREWARM_WIDTH_PX = 1200;
+const DOCK_PREWARM_HEIGHT_PX = 800;
+
 export type TerminalInstance = TerminalInstanceType;
 
 export interface AddTerminalOptions {
@@ -49,6 +54,8 @@ export interface AddTerminalOptions {
   location?: TerminalLocation;
   agentState?: AgentState;
   lastStateChange?: number;
+  /** If provided, request a stable ID when spawning a new backend process */
+  requestedId?: string;
   /** If provided, reconnect to existing backend process instead of spawning */
   existingId?: string;
   /** Store command on instance but don't execute it on spawn */
@@ -141,11 +148,6 @@ export type TerminalRegistryMiddleware = {
 
 const optimizeForDock = (id: string) => {
   terminalInstanceService.applyRendererPolicy(id, TerminalRefreshTier.BACKGROUND);
-
-  const dims = terminalInstanceService.resize(id, DOCK_TERM_WIDTH, DOCK_TERM_HEIGHT);
-  if (dims) {
-    terminalClient.resize(id, dims.cols, dims.rows);
-  }
 };
 
 export const createTerminalRegistrySlice =
@@ -185,6 +187,7 @@ export const createTerminalRegistrySlice =
           // Spawn new process - only execute command if not skipping
           const commandToExecute = options.skipCommandExecution ? undefined : options.command;
           id = await terminalClient.spawn({
+            id: options.requestedId,
             cwd: options.cwd,
             shell: options.shell,
             cols: 80,
@@ -233,8 +236,8 @@ export const createTerminalRegistrySlice =
 
           terminalInstanceService.prewarmTerminal(id, legacyType, terminalOptions, {
             offscreen: location === "dock",
-            widthPx: DOCK_TERM_WIDTH,
-            heightPx: DOCK_TERM_HEIGHT,
+            widthPx: location === "dock" ? DOCK_PREWARM_WIDTH_PX : DOCK_TERM_WIDTH,
+            heightPx: location === "dock" ? DOCK_PREWARM_HEIGHT_PX : DOCK_TERM_HEIGHT,
           });
         } catch (error) {
           console.warn(`[TerminalStore] Failed to prewarm terminal ${id}:`, error);
@@ -802,12 +805,9 @@ export const createTerminalRegistrySlice =
         await terminalClient.kill(id);
 
         // Calculate spawn dimensions
-        let spawnCols = currentTerminal.cols || 80;
-        let spawnRows = currentTerminal.rows || 24;
-        if (targetLocation === "dock") {
-          spawnCols = Math.floor(DOCK_TERM_WIDTH / 9);
-          spawnRows = Math.floor(DOCK_TERM_HEIGHT / 18);
-        }
+        const spawnCols = currentTerminal.cols || 80;
+        const spawnRows = currentTerminal.rows || 24;
+        // Do not shrink geometry for dock; dock previews are clipped instead.
 
         // Update terminal in store: increment restartKey, reset agent state, update location
         // This triggers XtermAdapter remount with new xterm instance

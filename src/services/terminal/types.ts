@@ -55,6 +55,13 @@ export interface ManagedTerminal {
 
   // Focus state
   isFocused: boolean;
+
+  // Render backpressure / synchronization hints
+  pendingWrites?: number;
+  needsWake?: boolean;
+
+  // Typing burst timer
+  inputBurstTimer?: number;
 }
 
 export const TIER_DOWNGRADE_HYSTERESIS_MS = 500;

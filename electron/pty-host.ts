@@ -236,6 +236,7 @@ const pauseStartTimes = new Map<string, number>();
 const terminalStatuses = new Map<string, TerminalFlowStatus>();
 const terminalActivityTiers = new Map<string, PtyHostActivityTier>();
 const suspendedDueToStall = new Set<string>();
+const pendingVisualPackets = new Map<string, Uint8Array>();
 
 const STREAM_STALL_SUSPEND_MS = 2000;
 
@@ -302,6 +303,10 @@ ptyManager.on("data", (id: string, data: string | Uint8Array) => {
       visualWritten = bytesWritten > 0;
 
       if (bytesWritten === 0) {
+        // Preserve the last packet that failed to write so we can deliver it once
+        // buffer utilization drops, avoiding silent output loss under backpressure.
+        pendingVisualPackets.set(id, packet);
+
         // Ring buffer is full - apply backpressure by pausing the PTY
         if (!pausedTerminals.has(id)) {
           const utilization = visualBuffer.getUtilization();
@@ -355,6 +360,7 @@ ptyManager.on("data", (id: string, data: string | Uint8Array) => {
               clearInterval(checkInterval);
               pausedTerminals.delete(id);
               pauseStartTimes.delete(id);
+              pendingVisualPackets.delete(id);
               return;
             }
 
@@ -374,6 +380,7 @@ ptyManager.on("data", (id: string, data: string | Uint8Array) => {
               }
 
               suspendedDueToStall.add(id);
+              pendingVisualPackets.delete(id);
               emitTerminalStatus(id, "suspended", currentUtilization, pauseDuration);
               console.warn(
                 `[PtyHost] Suspended streaming for ${id} after ${pauseDuration}ms stall (buffer ${currentUtilization.toFixed(1)}%).`
@@ -390,13 +397,24 @@ ptyManager.on("data", (id: string, data: string | Uint8Array) => {
               const terminal = ptyManager.getTerminal(id);
               if (terminal?.ptyProcess) {
                 try {
-                  terminal.ptyProcess.resume();
-                  console.warn(
-                    `[PtyHost] Force resumed PTY ${id} after ${pauseDuration}ms (buffer at ${currentUtilization.toFixed(1)}%). ` +
-                      `Consumer may be stalled.`
-                  );
-                  // Emit resume status with duration
-                  emitTerminalStatus(id, "running", currentUtilization, pauseDuration);
+                  // If we still can't flush the pending packet, stop streaming and rely on wake.
+                  if (pendingVisualPackets.has(id)) {
+                    terminal.ptyProcess.resume();
+                    suspendedDueToStall.add(id);
+                    pendingVisualPackets.delete(id);
+                    emitTerminalStatus(id, "suspended", currentUtilization, pauseDuration);
+                    console.warn(
+                      `[PtyHost] Suspended streaming for ${id} after ${pauseDuration}ms max pause (buffer ${currentUtilization.toFixed(1)}%).`
+                    );
+                  } else {
+                    terminal.ptyProcess.resume();
+                    console.warn(
+                      `[PtyHost] Force resumed PTY ${id} after ${pauseDuration}ms (buffer at ${currentUtilization.toFixed(1)}%). ` +
+                        `Consumer may be stalled.`
+                    );
+                    // Emit resume status with duration
+                    emitTerminalStatus(id, "running", currentUtilization, pauseDuration);
+                  }
                 } catch (error) {
                   console.error(`[PtyHost] Failed to force resume PTY ${id}:`, error);
                 }
@@ -409,6 +427,15 @@ ptyManager.on("data", (id: string, data: string | Uint8Array) => {
 
             // Resume when buffer drops below threshold (hysteresis to prevent rapid pause/resume)
             if (currentUtilization < BACKPRESSURE_RESUME_THRESHOLD) {
+              const pending = pendingVisualPackets.get(id);
+              if (pending) {
+                const pendingWritten = visualBuffer.write(pending);
+                if (pendingWritten === 0) {
+                  return;
+                }
+                pendingVisualPackets.delete(id);
+              }
+
               const terminal = ptyManager.getTerminal(id);
               if (terminal?.ptyProcess) {
                 try {
@@ -430,7 +457,7 @@ ptyManager.on("data", (id: string, data: string | Uint8Array) => {
 
           pausedTerminals.set(id, checkInterval);
         }
-        // Data is dropped during backpressure - acceptable, PTY is paused
+        // PTY is paused; pending packet will be flushed when utilization drops.
         return;
       }
     } else {
@@ -474,6 +501,7 @@ ptyManager.on("exit", (id: string, exitCode: number) => {
   terminalStatuses.delete(id);
   terminalActivityTiers.delete(id);
   suspendedDueToStall.delete(id);
+  pendingVisualPackets.delete(id);
 
   sendEvent({ type: "exit", id, exitCode });
 });
@@ -751,6 +779,7 @@ port.on("message", async (rawMsg: any) => {
 
         // If tier flips, clear any stall suspension and unblock the PTY.
         suspendedDueToStall.delete(msg.id);
+        pendingVisualPackets.delete(msg.id);
 
         const checkInterval = pausedTerminals.get(msg.id);
         if (checkInterval) {
@@ -776,6 +805,7 @@ port.on("message", async (rawMsg: any) => {
         // Wake implies we want a faithful snapshot + resume streaming.
         terminalActivityTiers.set(msg.id, "active");
         suspendedDueToStall.delete(msg.id);
+        pendingVisualPackets.delete(msg.id);
 
         // Best-effort warning: cwd missing
         const warnings: string[] = [];
