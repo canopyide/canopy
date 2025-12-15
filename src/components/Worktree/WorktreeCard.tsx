@@ -986,8 +986,8 @@ export function WorktreeCard({
             </DropdownMenuTrigger>
             <DropdownMenuContent
               align="start"
-              className="w-[var(--radix-dropdown-menu-trigger-width)]"
-              sideOffset={0}
+              className="w-[var(--radix-dropdown-menu-trigger-width)] active-sessions-menu !bg-canopy-bg !border-canopy-border !shadow-2xl"
+              sideOffset={6}
               onClick={(e) => e.stopPropagation()}
             >
               <DropdownMenuLabel className="text-xs text-muted-foreground font-normal normal-case">
