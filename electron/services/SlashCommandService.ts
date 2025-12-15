@@ -4,6 +4,7 @@ import * as os from "os";
 import * as path from "path";
 import {
   CLAUDE_BUILTIN_SLASH_COMMANDS,
+  CODEX_BUILTIN_SLASH_COMMANDS,
   GEMINI_BUILTIN_SLASH_COMMANDS,
   type SlashCommand,
 } from "../../shared/types/index.js";
@@ -297,6 +298,81 @@ function getGeminiCommandSearchPaths(projectPath?: string): Array<{
   });
 }
 
+function getCodexCommandSearchPaths(projectPath?: string): Array<{
+  dirPath: string;
+  scope: SlashCommand["scope"];
+}> {
+  const dirs: Array<{ dirPath: string; scope: SlashCommand["scope"] }> = [];
+
+  if (projectPath) {
+    dirs.push({ dirPath: path.join(projectPath, ".codex", "commands"), scope: "project" });
+    dirs.push({ dirPath: path.join(projectPath, ".codex", "prompts"), scope: "project" });
+  }
+
+  const home = os.homedir();
+  const codexHome = process.env.CODEX_HOME
+    ? path.resolve(process.env.CODEX_HOME)
+    : path.join(home, ".codex");
+
+  dirs.push({ dirPath: path.join(codexHome, "commands"), scope: "user" });
+  dirs.push({ dirPath: path.join(codexHome, "prompts"), scope: "user" });
+
+  const xdgConfigHome = process.env.XDG_CONFIG_HOME;
+  if (xdgConfigHome) {
+    dirs.push({ dirPath: path.join(xdgConfigHome, "codex", "commands"), scope: "user" });
+    dirs.push({ dirPath: path.join(xdgConfigHome, "codex", "prompts"), scope: "user" });
+  } else {
+    dirs.push({ dirPath: path.join(home, ".config", "codex", "commands"), scope: "user" });
+    dirs.push({ dirPath: path.join(home, ".config", "codex", "prompts"), scope: "user" });
+  }
+
+  if (process.platform === "darwin") {
+    dirs.push({
+      dirPath: path.join(home, "Library", "Application Support", "Codex", "commands"),
+      scope: "global",
+    });
+    dirs.push({
+      dirPath: path.join(home, "Library", "Application Support", "Codex", "prompts"),
+      scope: "global",
+    });
+    dirs.push({
+      dirPath: path.join("/", "Library", "Application Support", "Codex", "commands"),
+      scope: "global",
+    });
+    dirs.push({
+      dirPath: path.join("/", "Library", "Application Support", "Codex", "prompts"),
+      scope: "global",
+    });
+  }
+
+  if (process.platform === "win32") {
+    const programData = process.env.ProgramData ?? "C:\\ProgramData";
+    dirs.push({ dirPath: path.join(programData, "Codex", "commands"), scope: "global" });
+    dirs.push({ dirPath: path.join(programData, "Codex", "prompts"), scope: "global" });
+  }
+
+  if (process.platform === "linux") {
+    dirs.push({ dirPath: path.join("/", "etc", "codex", "commands"), scope: "global" });
+    dirs.push({ dirPath: path.join("/", "etc", "codex", "prompts"), scope: "global" });
+    dirs.push({
+      dirPath: path.join("/", "usr", "local", "share", "codex", "commands"),
+      scope: "global",
+    });
+    dirs.push({
+      dirPath: path.join("/", "usr", "local", "share", "codex", "prompts"),
+      scope: "global",
+    });
+  }
+
+  const seen = new Set<string>();
+  return dirs.filter(({ dirPath }) => {
+    const key = path.resolve(dirPath);
+    if (seen.has(key)) return false;
+    seen.add(key);
+    return true;
+  });
+}
+
 export class SlashCommandService {
   async list(agentId: SlashCommand["agentId"], projectPath?: string): Promise<SlashCommand[]> {
     const effectiveProjectPath = projectPath ? await resolveProjectRoot(projectPath) : undefined;
@@ -331,6 +407,26 @@ export class SlashCommandService {
       const searchPaths = getGeminiCommandSearchPaths(effectiveProjectPath);
       const scanned = await Promise.all(
         searchPaths.map(({ dirPath, scope }) => scanTomlCommandDirectory(dirPath, scope, "gemini"))
+      );
+
+      for (const scope of priority) {
+        for (const list of scanned) {
+          for (const cmd of list) {
+            if (cmd.scope !== scope) continue;
+            mergedByLabel.set(cmd.label, cmd);
+          }
+        }
+      }
+
+      return Array.from(mergedByLabel.values()).sort((a, b) => a.label.localeCompare(b.label));
+    }
+
+    if (agentId === "codex") {
+      for (const cmd of CODEX_BUILTIN_SLASH_COMMANDS) mergedByLabel.set(cmd.label, cmd);
+
+      const searchPaths = getCodexCommandSearchPaths(effectiveProjectPath);
+      const scanned = await Promise.all(
+        searchPaths.map(({ dirPath, scope }) => scanCommandDirectory(dirPath, scope, "codex"))
       );
 
       for (const scope of priority) {
