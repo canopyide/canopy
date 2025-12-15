@@ -96,6 +96,7 @@ const CHANNELS = {
   TERMINAL_SPAWN: "terminal:spawn",
   TERMINAL_DATA: "terminal:data",
   TERMINAL_INPUT: "terminal:input",
+  TERMINAL_SUBMIT: "terminal:submit",
   TERMINAL_RESIZE: "terminal:resize",
   TERMINAL_KILL: "terminal:kill",
   TERMINAL_EXIT: "terminal:exit",
@@ -120,6 +121,9 @@ const CHANNELS = {
   TERMINAL_BACKEND_CRASHED: "terminal:backend-crashed",
   TERMINAL_BACKEND_READY: "terminal:backend-ready",
   TERMINAL_SEND_KEY: "terminal:send-key",
+
+  // Files channels
+  FILES_SEARCH: "files:search",
 
   // Agent state channels
   AGENT_STATE_CHANGED: "agent:state-changed",
@@ -229,6 +233,8 @@ const CHANNELS = {
   TERMINAL_CONFIG_SET_PERFORMANCE_MODE: "terminal-config:set-performance-mode",
   TERMINAL_CONFIG_SET_FONT_SIZE: "terminal-config:set-font-size",
   TERMINAL_CONFIG_SET_FONT_FAMILY: "terminal-config:set-font-family",
+  TERMINAL_CONFIG_SET_HYBRID_INPUT_ENABLED: "terminal-config:set-hybrid-input-enabled",
+  TERMINAL_CONFIG_SET_HYBRID_INPUT_AUTO_FOCUS: "terminal-config:set-hybrid-input-auto-focus",
 
   // Git channels
   GIT_GET_FILE_DIFF: "git:get-file-diff",
@@ -275,6 +281,9 @@ const CHANNELS = {
 
   // Notification channels
   NOTIFICATION_UPDATE: "notification:update",
+
+  // Slash command channels
+  SLASH_COMMANDS_LIST: "slash-commands:list",
 } as const;
 
 const api: ElectronAPI = {
@@ -311,6 +320,8 @@ const api: ElectronAPI = {
     spawn: (options: TerminalSpawnOptions) => _typedInvoke(CHANNELS.TERMINAL_SPAWN, options),
 
     write: (id: string, data: string) => ipcRenderer.send(CHANNELS.TERMINAL_INPUT, id, data),
+
+    submit: (id: string, text: string) => _typedInvoke(CHANNELS.TERMINAL_SUBMIT, id, text),
 
     resize: (id: string, cols: number, rows: number) =>
       ipcRenderer.send(CHANNELS.TERMINAL_RESIZE, { id, cols, rows }),
@@ -432,6 +443,16 @@ const api: ElectronAPI = {
     },
 
     sendKey: (id: string, key: string) => ipcRenderer.send(CHANNELS.TERMINAL_SEND_KEY, id, key),
+  },
+
+  // Files API
+  files: {
+    search: (payload) => _typedInvoke(CHANNELS.FILES_SEARCH, payload),
+  },
+
+  // Slash Commands API
+  slashCommands: {
+    list: (payload) => _typedInvoke(CHANNELS.SLASH_COMMANDS_LIST, payload),
   },
 
   // Artifact API
@@ -684,6 +705,12 @@ const api: ElectronAPI = {
 
     setFontFamily: (fontFamily: string) =>
       _typedInvoke(CHANNELS.TERMINAL_CONFIG_SET_FONT_FAMILY, fontFamily),
+
+    setHybridInputEnabled: (enabled: boolean) =>
+      _typedInvoke(CHANNELS.TERMINAL_CONFIG_SET_HYBRID_INPUT_ENABLED, enabled),
+
+    setHybridInputAutoFocus: (enabled: boolean) =>
+      _typedInvoke(CHANNELS.TERMINAL_CONFIG_SET_HYBRID_INPUT_AUTO_FOCUS, enabled),
   },
 
   // Sidecar API

@@ -52,6 +52,8 @@ import type { SystemSleepMetrics } from "./systemSleep.js";
 import type { KeyAction } from "../keymap.js";
 import type { TerminalStatusPayload, PtyHostActivityTier } from "../pty-host.js";
 import type { ShowContextMenuPayload } from "../menu.js";
+import type { FileSearchPayload, FileSearchResult } from "./files.js";
+import type { SlashCommand, SlashCommandListRequest } from "../slashCommands.js";
 
 // ElectronAPI Type (exposed via preload)
 
@@ -72,6 +74,7 @@ export interface ElectronAPI {
   terminal: {
     spawn(options: TerminalSpawnOptions): Promise<string>;
     write(id: string, data: string): void;
+    submit(id: string, text: string): Promise<void>;
     resize(id: string, cols: number, rows: number): void;
     kill(id: string): Promise<void>;
     trash(id: string): Promise<void>;
@@ -109,6 +112,12 @@ export interface ElectronAPI {
     ): () => void;
     onBackendReady(callback: () => void): () => void;
     sendKey(id: string, key: string): void;
+  };
+  files: {
+    search(payload: FileSearchPayload): Promise<FileSearchResult>;
+  };
+  slashCommands: {
+    list(payload: SlashCommandListRequest): Promise<SlashCommand[]>;
   };
   artifact: {
     onDetected(callback: (data: ArtifactDetectedPayload) => void): () => void;
@@ -233,6 +242,8 @@ export interface ElectronAPI {
     setPerformanceMode(performanceMode: boolean): Promise<void>;
     setFontSize(fontSize: number): Promise<void>;
     setFontFamily(fontFamily: string): Promise<void>;
+    setHybridInputEnabled(enabled: boolean): Promise<void>;
+    setHybridInputAutoFocus(enabled: boolean): Promise<void>;
   };
   sidecar: {
     create(payload: import("../sidecar.js").SidecarCreatePayload): Promise<void>;

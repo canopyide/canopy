@@ -59,6 +59,8 @@ import type { TerminalConfig } from "./config.js";
 import type { SystemSleepMetrics } from "./systemSleep.js";
 import type { TerminalFlowStatus } from "../pty-host.js";
 import type { ShowContextMenuPayload } from "../menu.js";
+import type { FileSearchPayload, FileSearchResult } from "./files.js";
+import type { SlashCommand, SlashCommandListRequest } from "../slashCommands.js";
 
 // IPC Contract Maps
 
@@ -102,6 +104,10 @@ export interface IpcInvokeMap {
   "terminal:spawn": {
     args: [options: TerminalSpawnOptions];
     result: string;
+  };
+  "terminal:submit": {
+    args: [id: string, text: string];
+    result: void;
   };
   "terminal:kill": {
     args: [id: string];
@@ -154,6 +160,18 @@ export interface IpcInvokeMap {
   "terminal:force-resume": {
     args: [id: string];
     result: { success: boolean; error?: string };
+  };
+
+  // Files channels
+  "files:search": {
+    args: [payload: FileSearchPayload];
+    result: FileSearchResult;
+  };
+
+  // Slash command discovery
+  "slash-commands:list": {
+    args: [payload: SlashCommandListRequest];
+    result: SlashCommand[];
   };
 
   // Agent channels
@@ -442,6 +460,14 @@ export interface IpcInvokeMap {
   };
   "terminal-config:set-font-family": {
     args: [fontFamily: string];
+    result: void;
+  };
+  "terminal-config:set-hybrid-input-enabled": {
+    args: [enabled: boolean];
+    result: void;
+  };
+  "terminal-config:set-hybrid-input-auto-focus": {
+    args: [enabled: boolean];
     result: void;
   };
 

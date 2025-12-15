@@ -29,6 +29,7 @@ export type {
   AgentState,
   TaskState,
   RunRecord,
+  LegacyAgentType,
   // Terminal types
   TerminalKind,
   TerminalType,
@@ -134,6 +135,9 @@ export type {
   ApplyPatchResult,
   // Git types
   GitGetFileDiffPayload,
+  // File search types
+  FileSearchPayload,
+  FileSearchResult,
   // Electron API
   ElectronAPI,
   BranchInfo,
@@ -275,3 +279,11 @@ export type {
 
 // Native menu types - renderer → main menu templates
 export type { MenuItemOption, ShowContextMenuPayload } from "./menu.js";
+
+// Slash command discovery
+export type { SlashCommand, SlashCommandListRequest, SlashCommandScope } from "./slashCommands.js";
+export {
+  CLAUDE_BUILTIN_SLASH_COMMANDS,
+  GEMINI_BUILTIN_SLASH_COMMANDS,
+  CODEX_BUILTIN_SLASH_COMMANDS,
+} from "./slashCommands.js";

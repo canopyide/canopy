@@ -6,10 +6,17 @@ import {
   Zap,
   HardDrive,
   ChevronDown,
+  MessageSquare,
+  MousePointerClick,
 } from "lucide-react";
 import { useState, useMemo } from "react";
 import { cn } from "@/lib/utils";
-import { useLayoutConfigStore, usePerformanceModeStore, useScrollbackStore } from "@/store";
+import {
+  useLayoutConfigStore,
+  usePerformanceModeStore,
+  useScrollbackStore,
+  useTerminalInputStore,
+} from "@/store";
 import { appClient, terminalConfigClient } from "@/clients";
 import type { TerminalLayoutStrategy, TerminalGridConfig, TerminalType } from "@/types";
 import {
@@ -68,6 +75,11 @@ export function TerminalSettingsTab() {
   const scrollbackLines = useScrollbackStore((state) => state.scrollbackLines);
   const setScrollbackLines = useScrollbackStore((state) => state.setScrollbackLines);
 
+  const hybridInputEnabled = useTerminalInputStore((state) => state.hybridInputEnabled);
+  const setHybridInputEnabled = useTerminalInputStore((state) => state.setHybridInputEnabled);
+  const hybridInputAutoFocus = useTerminalInputStore((state) => state.hybridInputAutoFocus);
+  const setHybridInputAutoFocus = useTerminalInputStore((state) => state.setHybridInputAutoFocus);
+
   const [showMemoryDetails, setShowMemoryDetails] = useState(false);
 
   const memoryEstimate = useMemo(() => {
@@ -123,6 +135,30 @@ export function TerminalSettingsTab() {
       setPerformanceMode(newValue);
     } catch (error) {
       console.error("Failed to persist performance mode setting:", error);
+    }
+  };
+
+  const handleHybridInputEnabledToggle = async () => {
+    const previousValue = hybridInputEnabled;
+    const nextValue = !hybridInputEnabled;
+    setHybridInputEnabled(nextValue);
+    try {
+      await terminalConfigClient.setHybridInputEnabled(nextValue);
+    } catch (error) {
+      console.error("Failed to persist hybrid input setting:", error);
+      setHybridInputEnabled(previousValue);
+    }
+  };
+
+  const handleHybridInputAutoFocusToggle = async () => {
+    const previousValue = hybridInputAutoFocus;
+    const nextValue = !hybridInputAutoFocus;
+    setHybridInputAutoFocus(nextValue);
+    try {
+      await terminalConfigClient.setHybridInputAutoFocus(nextValue);
+    } catch (error) {
+      console.error("Failed to persist hybrid input focus setting:", error);
+      setHybridInputAutoFocus(previousValue);
     }
   };
 
@@ -189,6 +225,112 @@ export function TerminalSettingsTab() {
             New terminals will use reduced scrollback. Existing terminals are unchanged until
             respawned.
           </p>
+        )}
+      </div>
+
+      <div className="pt-4 border-t border-canopy-border space-y-4">
+        <div>
+          <h4 className="text-sm font-medium text-canopy-text mb-2 flex items-center gap-2">
+            <MessageSquare className="w-4 h-4 text-canopy-accent" />
+            Hybrid Input Bar
+          </h4>
+          <p className="text-xs text-canopy-text/50 mb-4">
+            Configure the bottom input bar used for agent terminals.
+          </p>
+        </div>
+
+        <button
+          onClick={handleHybridInputEnabledToggle}
+          role="switch"
+          aria-checked={hybridInputEnabled}
+          aria-label="Hybrid Input Bar Toggle"
+          className={cn(
+            "w-full flex items-center justify-between p-4 rounded-[var(--radius-lg)] border transition-all",
+            hybridInputEnabled
+              ? "bg-canopy-accent/10 border-canopy-accent text-canopy-accent"
+              : "border-canopy-border hover:bg-white/5 text-canopy-text/70"
+          )}
+        >
+          <div className="flex items-center gap-3">
+            <MessageSquare
+              className={cn(
+                "w-5 h-5",
+                hybridInputEnabled ? "text-canopy-accent" : "text-canopy-text/50"
+              )}
+            />
+            <div className="text-left">
+              <div className="text-sm font-medium">
+                {hybridInputEnabled ? "Hybrid Input Enabled" : "Enable Hybrid Input"}
+              </div>
+              <div className="text-xs opacity-70">
+                {hybridInputEnabled
+                  ? "Show the multi-line input bar on agent terminals"
+                  : "Hide the input bar and use the terminal directly"}
+              </div>
+            </div>
+          </div>
+          <div
+            className={cn(
+              "w-11 h-6 rounded-full relative transition-colors",
+              hybridInputEnabled ? "bg-canopy-accent" : "bg-canopy-border"
+            )}
+            aria-hidden="true"
+          >
+            <div
+              className={cn(
+                "absolute top-1 w-4 h-4 rounded-full bg-white transition-transform",
+                hybridInputEnabled ? "translate-x-6" : "translate-x-1"
+              )}
+            />
+          </div>
+        </button>
+
+        {hybridInputEnabled && (
+          <button
+            onClick={handleHybridInputAutoFocusToggle}
+            role="switch"
+            aria-checked={hybridInputAutoFocus}
+            aria-label="Hybrid Input Auto Focus Toggle"
+            className={cn(
+              "w-full flex items-center justify-between p-4 rounded-[var(--radius-lg)] border transition-all",
+              hybridInputAutoFocus
+                ? "bg-canopy-accent/10 border-canopy-accent text-canopy-accent"
+                : "border-canopy-border hover:bg-white/5 text-canopy-text/70"
+            )}
+          >
+            <div className="flex items-center gap-3">
+              <MousePointerClick
+                className={cn(
+                  "w-5 h-5",
+                  hybridInputAutoFocus ? "text-canopy-accent" : "text-canopy-text/50"
+                )}
+              />
+              <div className="text-left">
+                <div className="text-sm font-medium">
+                  {hybridInputAutoFocus ? "Auto-Focus Input" : "Auto-Focus Terminal"}
+                </div>
+                <div className="text-xs opacity-70">
+                  {hybridInputAutoFocus
+                    ? "Selecting a pane focuses the input bar"
+                    : "Selecting a pane focuses the terminal (xterm)"}
+                </div>
+              </div>
+            </div>
+            <div
+              className={cn(
+                "w-11 h-6 rounded-full relative transition-colors",
+                hybridInputAutoFocus ? "bg-canopy-accent" : "bg-canopy-border"
+              )}
+              aria-hidden="true"
+            >
+              <div
+                className={cn(
+                  "absolute top-1 w-4 h-4 rounded-full bg-white transition-transform",
+                  hybridInputAutoFocus ? "translate-x-6" : "translate-x-1"
+                )}
+              />
+            </div>
+          </button>
         )}
       </div>
 

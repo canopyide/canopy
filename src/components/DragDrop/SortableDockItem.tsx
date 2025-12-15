@@ -3,6 +3,7 @@ import { CSS } from "@dnd-kit/utilities";
 import { cn } from "@/lib/utils";
 import type { TerminalInstance } from "@/store";
 import type { DragData } from "./DndProvider";
+import { DragHandleProvider } from "./DragHandleContext";
 
 interface SortableDockItemProps {
   terminal: TerminalInstance;
@@ -36,7 +37,7 @@ export function SortableDockItem({ terminal, sourceIndex, children }: SortableDo
       {...listeners}
       role="listitem"
     >
-      {children}
+      <DragHandleProvider value={{ listeners }}>{children}</DragHandleProvider>
     </div>
   );
 }
