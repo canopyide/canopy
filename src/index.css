@@ -978,6 +978,10 @@ body[data-performance-mode="true"] .surface-overlay {
   background-color: var(--color-canopy-sidebar) !important;
 }
 
+body[data-performance-mode="true"] .surface-overlay.active-sessions-menu {
+  background-color: var(--color-canopy-bg) !important;
+}
+
 /* Disable terminal glow in performance mode */
 body[data-performance-mode="true"] .terminal-selected,
 body[data-performance-mode="true"] .terminal-focused {
