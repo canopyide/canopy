@@ -116,4 +116,48 @@ prompt = "Run the tests"
       await fs.rm(projectRoot, { recursive: true, force: true });
     }
   });
+
+  it("merges Codex project prompts over user prompts and supports nested namespaces", async () => {
+    const homeRoot = await makeTempDir();
+    const projectRoot = await makeTempDir();
+    const service = new SlashCommandService();
+
+    const prevHome = process.env.HOME;
+    process.env.HOME = homeRoot;
+
+    try {
+      await fs.mkdir(path.join(projectRoot, ".git"));
+
+      await writeFile(
+        path.join(homeRoot, ".codex", "prompts", "git", "work-issue.md"),
+        `---
+description: "User work issue prompt"
+---
+
+Do the user thing.
+`
+      );
+
+      await writeFile(
+        path.join(projectRoot, ".codex", "prompts", "git", "work-issue.md"),
+        `---
+description: "Project work issue prompt"
+---
+
+Do the project thing.
+`
+      );
+
+      const commands = await service.list("codex", path.join(projectRoot, "nested", "dir"));
+      const cmd = commands.find((c) => c.label === "/git:work-issue");
+
+      expect(cmd).toBeTruthy();
+      expect(cmd?.scope).toBe("project");
+      expect(cmd?.description).toBe("Project work issue prompt");
+    } finally {
+      process.env.HOME = prevHome;
+      await fs.rm(homeRoot, { recursive: true, force: true });
+      await fs.rm(projectRoot, { recursive: true, force: true });
+    }
+  });
 });

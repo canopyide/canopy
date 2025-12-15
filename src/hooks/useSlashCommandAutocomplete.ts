@@ -5,6 +5,7 @@ import { slashCommandsClient } from "@/clients";
 import { rankSlashCommands } from "@/lib/slashCommandMatch";
 import {
   CLAUDE_BUILTIN_SLASH_COMMANDS,
+  CODEX_BUILTIN_SLASH_COMMANDS,
   GEMINI_BUILTIN_SLASH_COMMANDS,
   type LegacyAgentType,
   type SlashCommand,
@@ -32,6 +33,7 @@ export function useSlashCommandAutocomplete({
   const initial = useMemo((): SlashCommand[] => {
     if (agentId === "claude") return CLAUDE_BUILTIN_SLASH_COMMANDS;
     if (agentId === "gemini") return GEMINI_BUILTIN_SLASH_COMMANDS;
+    if (agentId === "codex") return CODEX_BUILTIN_SLASH_COMMANDS;
     return MOCK_SLASH_COMMANDS.map((cmd) => ({
       id: cmd.id,
       label: cmd.label,
@@ -48,7 +50,7 @@ export function useSlashCommandAutocomplete({
   }, [initial]);
 
   useEffect(() => {
-    if (agentId !== "claude" && agentId !== "gemini") return;
+    if (agentId !== "claude" && agentId !== "gemini" && agentId !== "codex") return;
     if (!window.electron?.slashCommands?.list) return;
 
     const requestId = ++requestIdRef.current;
@@ -61,9 +63,9 @@ export function useSlashCommandAutocomplete({
       })
       .catch(() => {
         if (requestIdRef.current !== requestId) return;
-        setCommands(
-          agentId === "claude" ? CLAUDE_BUILTIN_SLASH_COMMANDS : GEMINI_BUILTIN_SLASH_COMMANDS
-        );
+        if (agentId === "claude") setCommands(CLAUDE_BUILTIN_SLASH_COMMANDS);
+        else if (agentId === "gemini") setCommands(GEMINI_BUILTIN_SLASH_COMMANDS);
+        else setCommands(CODEX_BUILTIN_SLASH_COMMANDS);
       })
       .finally(() => {
         if (requestIdRef.current !== requestId) return;
