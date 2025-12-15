@@ -157,10 +157,11 @@ export function Sidebar({ width, onResize, children, className }: SidebarProps) 
               </button>
             )}
           </div>
-          <ProjectResourceBadge />
         </div>
 
         <div className="flex-1 overflow-y-auto min-h-0">{children}</div>
+
+        <ProjectResourceBadge />
 
         {currentProject && <QuickRun projectId={currentProject.id} />}
 

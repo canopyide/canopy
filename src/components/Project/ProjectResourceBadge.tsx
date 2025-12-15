@@ -1,5 +1,4 @@
 import { useEffect, useState, useCallback } from "react";
-import { Circle } from "lucide-react";
 import { projectClient } from "@/clients";
 import type { ProjectStats } from "@shared/types";
 
@@ -41,7 +40,7 @@ export function ProjectResourceBadge() {
       return {
         runningProjects: running,
         totalProcesses: processes,
-        totalMemoryMB: memory,
+        totalMemoryMB: Math.round(memory),
       };
     } catch (error) {
       console.error("[ProjectResourceBadge] Failed to fetch stats:", error);
@@ -74,18 +73,15 @@ export function ProjectResourceBadge() {
   }
 
   return (
-    <div className="mx-2 mb-2 p-2 rounded-[var(--radius-md)] bg-green-500/10 border border-green-500/20">
-      <div className="flex items-center gap-2">
-        <Circle className="h-3 w-3 fill-green-500 text-green-500 animate-pulse shrink-0" />
-        <div className="flex-1 min-w-0">
-          <div className="text-sm font-medium text-foreground">
-            {stats.runningProjects} project{stats.runningProjects !== 1 ? "s" : ""} running
-          </div>
-          <div className="text-xs text-muted-foreground">
-            {stats.totalProcesses} process{stats.totalProcesses !== 1 ? "es" : ""} • ~
-            {stats.totalMemoryMB} MB
-          </div>
-        </div>
+    <div className="px-3 py-1.5 border-t border-canopy-border bg-canopy-sidebar flex items-center justify-between shrink-0">
+      <div className="flex items-center gap-2 min-w-0">
+        <span className="inline-flex h-2 w-2 rounded-full bg-green-500/60 shrink-0" />
+        <span className="text-[10px] text-canopy-text/40 font-medium truncate">
+          {stats.runningProjects} project{stats.runningProjects !== 1 ? "s" : ""} active
+        </span>
+      </div>
+      <div className="text-[10px] text-canopy-text/30 font-mono tracking-tight shrink-0">
+        {stats.totalProcesses} proc · {stats.totalMemoryMB}MB
       </div>
     </div>
   );
