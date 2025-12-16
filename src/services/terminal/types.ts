@@ -28,7 +28,7 @@ export interface ManagedTerminal {
   isOpened: boolean;
   listeners: Array<() => void>;
   exitSubscribers: Set<(exitCode: number) => void>;
-  parserHandler?: { dispose: () => void; setAllowResets: (allow: boolean) => void };
+  parserHandler?: { dispose: () => void; setAllowResets?: (allow: boolean) => void };
   getRefreshTier: RefreshTierProvider;
   keyHandlerInstalled: boolean;
   wheelHandlerInstalled: boolean;
