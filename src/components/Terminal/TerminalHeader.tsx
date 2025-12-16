@@ -97,8 +97,9 @@ function TerminalHeaderComponent({
   wasJustSelected = false,
 }: TerminalHeaderProps) {
   const showCommandPill = type === "terminal" && agentState === "running" && !!lastCommand;
-  const isInputLocked = useTerminalStore((state) => state.terminals.find((t) => t.id === id))
-    ?.isInputLocked;
+  const isInputLocked = useTerminalStore((state) =>
+    state.terminals.find((t) => t.id === id)
+  )?.isInputLocked;
   const dragHandle = useDragHandle();
   const dragListeners =
     (location === "grid" || location === "dock") && dragHandle?.listeners

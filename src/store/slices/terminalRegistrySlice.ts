@@ -996,7 +996,9 @@ export const createTerminalRegistrySlice =
         if (terminal.isInputLocked === locked) return state;
 
         const updated = {
-          terminals: state.terminals.map((t) => (t.id === id ? { ...t, isInputLocked: locked } : t)),
+          terminals: state.terminals.map((t) =>
+            t.id === id ? { ...t, isInputLocked: locked } : t
+          ),
         };
 
         terminalPersistence.save(updated.terminals);
@@ -1014,7 +1016,9 @@ export const createTerminalRegistrySlice =
         const locked = !terminal.isInputLocked;
 
         const updated = {
-          terminals: state.terminals.map((t) => (t.id === id ? { ...t, isInputLocked: locked } : t)),
+          terminals: state.terminals.map((t) =>
+            t.id === id ? { ...t, isInputLocked: locked } : t
+          ),
         };
 
         terminalPersistence.save(updated.terminals);
