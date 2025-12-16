@@ -63,6 +63,9 @@ export interface ManagedTerminal {
   // Typing burst timer
   inputBurstTimer?: number;
 
+  // Input lock state (read-only monitor mode)
+  isInputLocked?: boolean;
+
   // Incremental restore state
   writeChain: Promise<void>;
   restoreGeneration: number;

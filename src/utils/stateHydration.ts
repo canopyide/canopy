@@ -28,6 +28,7 @@ export interface HydrationOptions {
     existingId?: string; // Pass to reconnect to existing backend process
     requestedId?: string; // Pass to spawn with a stable ID
     skipCommandExecution?: boolean; // Store command but don't execute on spawn
+    isInputLocked?: boolean; // Restore input lock state
   }) => Promise<string>;
   setActiveWorktree: (id: string | null) => void;
   loadRecipes: () => Promise<void>;
@@ -140,6 +141,7 @@ export async function hydrateAppState(options: HydrationOptions): Promise<void> 
                 existingId: terminal.id, // Flag to skip spawning
                 agentState: currentAgentState,
                 lastStateChange: currentAgentState ? Date.now() : undefined,
+                isInputLocked: terminal.isInputLocked,
               });
 
               // Restore a faithful snapshot from backend headless state.
@@ -261,5 +263,6 @@ async function spawnNewTerminal(
     location: terminal.location === "dock" ? "dock" : "grid",
     command: commandToRun,
     requestedId: terminal.id,
+    isInputLocked: terminal.isInputLocked,
   });
 }
