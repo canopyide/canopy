@@ -524,7 +524,8 @@ ptyManager.on("data", (id: string, data: string | Uint8Array) => {
   }
 
   // Fallback: If ring buffer failed or isn't set up, use IPC
-  if (!skipVisualStream && !visualWritten) {
+  // Agent terminals now use DirectTerminalView which needs raw data via IPC
+  if (!visualWritten) {
     sendEvent({ type: "data", id, data: toStringForIpc(data) });
   }
 

@@ -11,7 +11,7 @@ import { TerminalSearchBar } from "./TerminalSearchBar";
 import { TerminalRestartBanner } from "./TerminalRestartBanner";
 import { TerminalErrorBanner } from "./TerminalErrorBanner";
 import { UpdateCwdDialog } from "./UpdateCwdDialog";
-import { SnapshotTerminalView } from "./SnapshotTerminalView";
+import { DirectTerminalView } from "./DirectTerminalView";
 import { ErrorBanner } from "../Errors/ErrorBanner";
 import {
   useErrorStore,
@@ -28,7 +28,6 @@ import { terminalClient } from "@/clients";
 import { HybridInputBar, type HybridInputBarHandle } from "./HybridInputBar";
 import { getTerminalFocusTarget } from "./terminalFocus";
 import { useTerminalUnseenOutput } from "@/hooks/useTerminalUnseenOutput";
-import { TerminalRefreshTier } from "@/types";
 
 export type { TerminalType };
 
@@ -98,7 +97,6 @@ function TerminalPaneComponent({
   const [dismissedRestartPrompt, setDismissedRestartPrompt] = useState(false);
   const [isSearchOpen, setIsSearchOpen] = useState(false);
   const [isUpdateCwdOpen, setIsUpdateCwdOpen] = useState(false);
-  const [forceLiveKey, setForceLiveKey] = useState(0);
 
   const unseenOutput = useTerminalUnseenOutput(id);
 
@@ -149,13 +147,6 @@ function TerminalPaneComponent({
 
   const terminal = getTerminal(id);
   const isSnapshotMode = isAgentTerminal;
-  const refreshTier = getTerminalRefreshTier(terminal, isFocused);
-  const snapshotRefreshMs =
-    refreshTier === TerminalRefreshTier.FOCUSED
-      ? 50
-      : refreshTier === TerminalRefreshTier.VISIBLE
-        ? 150
-        : 0;
   const isVisible = terminal?.isVisible ?? false;
 
   const queueCount = useTerminalStore(
@@ -522,13 +513,11 @@ function TerminalPaneComponent({
             onPointerDownCapture={handleXtermPointerDownCapture}
           >
             {isSnapshotMode ? (
-              <SnapshotTerminalView
+              <DirectTerminalView
                 terminalId={id}
                 isFocused={isFocused}
                 isVisible={isVisible}
-                refreshMs={snapshotRefreshMs}
                 isInputLocked={isInputLocked}
-                forceLiveKey={forceLiveKey}
               />
             ) : (
               <XtermAdapter
@@ -646,7 +635,6 @@ function TerminalPaneComponent({
             agentId={effectiveAgentId}
             onSend={({ trackerData, text }) => {
               if (!isInputLocked) {
-                setForceLiveKey((k) => k + 1);
                 terminalInstanceService.notifyUserInput(id);
                 // Use backend submit() which handles Codex vs other agents automatically
                 terminalClient.submit(id, text);
@@ -656,7 +644,6 @@ function TerminalPaneComponent({
             }}
             onSendKey={(key) => {
               if (!isInputLocked) {
-                setForceLiveKey((k) => k + 1);
                 terminalInstanceService.notifyUserInput(id);
                 terminalClient.sendKey(id, key);
               }
