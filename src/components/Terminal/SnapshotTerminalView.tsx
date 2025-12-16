@@ -55,7 +55,7 @@ export function SnapshotTerminalView({
     const terminalTheme = getTerminalThemeFromCSS();
     const term = new Terminal({
       allowProposedApi: true,
-      cursorBlink: true,
+      cursorBlink: false,
       cursorStyle: "block",
       cursorInactiveStyle: "block",
       fontSize,
