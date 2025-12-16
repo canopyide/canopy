@@ -11,7 +11,7 @@ import { TerminalSearchBar } from "./TerminalSearchBar";
 import { TerminalRestartBanner } from "./TerminalRestartBanner";
 import { TerminalErrorBanner } from "./TerminalErrorBanner";
 import { UpdateCwdDialog } from "./UpdateCwdDialog";
-import { DirectTerminalView } from "./DirectTerminalView";
+import { HistoryOverlayTerminalView } from "./HistoryOverlayTerminalView";
 import { ErrorBanner } from "../Errors/ErrorBanner";
 import {
   useErrorStore,
@@ -513,7 +513,7 @@ function TerminalPaneComponent({
             onPointerDownCapture={handleXtermPointerDownCapture}
           >
             {isSnapshotMode ? (
-              <DirectTerminalView
+              <HistoryOverlayTerminalView
                 terminalId={id}
                 isFocused={isFocused}
                 isVisible={isVisible}
