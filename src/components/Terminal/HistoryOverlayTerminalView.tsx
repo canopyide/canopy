@@ -772,8 +772,8 @@ export function HistoryOverlayTerminalView({
       aria-label="Terminal view"
     >
       {/* Live xterm layer - always mounted */}
+      {/* Outer wrapper provides padding - xterm container must have no padding for correct column calculation */}
       <div
-        ref={xtermContainerRef}
         className={cn(
           "absolute inset-0 pl-3 pt-3 pb-3 pr-4",
           viewMode === "history" && "pointer-events-none"
@@ -784,7 +784,9 @@ export function HistoryOverlayTerminalView({
             xtermRef.current?.focus();
           }
         }}
-      />
+      >
+        <div ref={xtermContainerRef} className="w-full h-full" />
+      </div>
 
       {/* History overlay layer - DOM-based, scrollable */}
       {/* Outer wrapper matches xterm container positioning so scrollbar aligns */}
