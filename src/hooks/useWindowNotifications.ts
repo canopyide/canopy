@@ -52,7 +52,6 @@ export function useWindowNotifications(): void {
     if (prevState.waitingCount !== waitingCount || prevState.failedCount !== failedCount) {
       prevStateRef.current = { waitingCount, failedCount };
 
-      // Clear existing debounce timer
       if (debounceTimerRef.current) {
         clearTimeout(debounceTimerRef.current);
         debounceTimerRef.current = null;
@@ -83,7 +82,6 @@ export function useWindowNotifications(): void {
   // Clear notifications on unmount
   useEffect(() => {
     return () => {
-      // Clear debounce timer
       if (debounceTimerRef.current) {
         clearTimeout(debounceTimerRef.current);
         debounceTimerRef.current = null;

@@ -243,7 +243,6 @@ function getRestartCommand(
   return terminal.command?.trim() || undefined;
 }
 
-// Helper function for spawning new terminals
 async function spawnNewTerminal(
   terminal: TerminalState,
   cwd: string,

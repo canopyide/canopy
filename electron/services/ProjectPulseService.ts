@@ -136,7 +136,6 @@ export class ProjectPulseService {
       headSha = undefined;
     }
 
-    // Get current branch
     let branch: string | undefined;
     try {
       const branchOutput = await git.raw(["rev-parse", "--abbrev-ref", "HEAD"]);

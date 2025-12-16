@@ -408,14 +408,12 @@ export class TerminalProcess {
     this.isAgentTerminal = options.kind === "agent" || !!options.agentId;
     const agentId = this.isAgentTerminal ? (options.agentId ?? id) : undefined;
 
-    // Merge environment
     const baseEnv = process.env as Record<string, string | undefined>;
     const mergedEnv = { ...baseEnv, ...options.env };
     const env = Object.fromEntries(
       Object.entries(mergedEnv).filter(([_, value]) => value !== undefined)
     ) as Record<string, string>;
 
-    // Try to acquire from pool for shell terminals
     const canUsePool =
       deps.ptyPool && !this.isAgentTerminal && !options.shell && !options.env && !options.args;
     let pooledPty = canUsePool ? deps.ptyPool!.acquire() : null;
@@ -433,7 +431,7 @@ export class TerminalProcess {
         try {
           pooledPty.kill();
         } catch {
-          // Ignore kill errors
+          // Process may already be dead
         }
         pooledPty = null;
       }
@@ -442,7 +440,6 @@ export class TerminalProcess {
     if (pooledPty) {
       ptyProcess = pooledPty;
 
-      // Change directory if needed
       if (process.platform === "win32") {
         const shellLower = shell.toLowerCase();
         try {
@@ -483,8 +480,7 @@ export class TerminalProcess {
 
     this._scrollback = this.isAgentTerminal ? AGENT_SCROLLBACK : DEFAULT_SCROLLBACK;
 
-    // Create headless terminal eagerly for ALL terminals.
-    // This is the reliability foundation: renderer can detach/unmount without losing state.
+    // Create headless terminal eagerly so renderers can detach/unmount without losing state
     const headlessTerminal: HeadlessTerminalType = new HeadlessTerminal({
       cols: options.cols,
       rows: options.rows,
@@ -495,7 +491,6 @@ export class TerminalProcess {
     headlessTerminal.loadAddon(serializeAddon);
     this.restoreSessionIfPresent(headlessTerminal);
 
-    // Create terminal info
     this.terminalInfo = {
       id,
       projectId: options.projectId,
@@ -526,8 +521,8 @@ export class TerminalProcess {
       analysisEnabled: this.isAgentTerminal,
     };
 
-    // For agent terminals, use the headless xterm to generate terminal responses
-    // (e.g. cursor position reports) even when no renderer xterm is attached.
+    // Agent terminals use headless xterm for terminal responses (e.g. cursor position reports)
+    // even when no renderer xterm is attached
     if (this.isAgentTerminal && this.terminalInfo.headlessTerminal) {
       this.headlessResponderDisposable = installHeadlessResponder(
         this.terminalInfo.headlessTerminal,
@@ -542,10 +537,8 @@ export class TerminalProcess {
       );
     }
 
-    // Set up PTY event handlers
     this.setupPtyHandlers(ptyProcess);
 
-    // Create activity monitor for agent terminals
     if (this.isAgentTerminal) {
       this.activityMonitor = new ActivityMonitor(
         id,
@@ -565,7 +558,6 @@ export class TerminalProcess {
       );
     }
 
-    // Start process detection (only if cache is available)
     const ptyPid = ptyProcess.pid;
     if (ptyPid !== undefined && deps.processTreeCache) {
       this.processDetector = new ProcessDetector(
@@ -581,7 +573,6 @@ export class TerminalProcess {
       this.processDetector.start();
     }
 
-    // Emit agent:spawned event
     if (this.isAgentTerminal && agentId) {
       const spawnedPayload = {
         agentId,
@@ -891,34 +882,28 @@ export class TerminalProcess {
   kill(reason?: string): void {
     const terminal = this.terminalInfo;
 
-    // Stop process detector
     if (this.processDetector) {
       this.processDetector.stop();
       this.processDetector = null;
       terminal.processDetector = undefined;
     }
 
-    // Dispose activity monitor
     if (this.activityMonitor) {
       this.activityMonitor.dispose();
       this.activityMonitor = null;
     }
 
-    // Flush pending data
     this.flushPendingSemanticData();
 
-    // Clear pending input writes
     if (this.inputWriteTimeout) {
       clearTimeout(this.inputWriteTimeout);
       this.inputWriteTimeout = null;
     }
     this.inputWriteQueue = [];
 
-    // Mark as killed
     terminal.wasKilled = true;
     this.clearSessionPersistTimer();
 
-    // Update agent state
     if (terminal.agentId) {
       this.deps.agentStateService.updateAgentState(terminal, {
         type: "error",
@@ -927,14 +912,12 @@ export class TerminalProcess {
       this.deps.agentStateService.emitAgentKilled(terminal, reason);
     }
 
-    // Dispose headless terminal (if created)
     this.disposeHeadless();
 
-    // Kill PTY process
     try {
       terminal.ptyProcess.kill();
     } catch {
-      // Ignore kill errors - process may already be dead
+      // Process may already be dead
     }
   }
 
@@ -1380,35 +1363,25 @@ export class TerminalProcess {
         this.ensureHeadlessResponder();
       }
 
-      // Write to headless terminal (canonical state).
       terminal.headlessTerminal?.write(data);
       this.screenSnapshotDirty = true;
       this.screenSnapshotDirtyKind = "output";
       this.scheduleSessionPersist();
 
-      // Emit data to host/renderer immediately. Flow control is handled
-      // via char-count acknowledgements from the renderer.
       this.emitData(data);
-
       this.captureForensics(data);
-
-      // Always keep a semantic buffer for activity headlines and history replay
       this.debouncedSemanticUpdate(data);
 
-      // For agent terminals, handle additional processing
       if (this.isAgentTerminal) {
-        // Update sliding window buffer
         terminal.outputBuffer += data;
         if (terminal.outputBuffer.length > OUTPUT_BUFFER_SIZE) {
           terminal.outputBuffer = terminal.outputBuffer.slice(-OUTPUT_BUFFER_SIZE);
         }
 
-        // Notify activity monitor
         if (this.activityMonitor) {
           this.activityMonitor.onData();
         }
 
-        // Emit agent:output event
         if (terminal.agentId) {
           events.emit("agent:output", {
             agentId: terminal.agentId,
@@ -1423,19 +1396,14 @@ export class TerminalProcess {
     });
 
     ptyProcess.onExit(({ exitCode, signal }) => {
-      // Verify this is still the active terminal
       if (terminal.ptyProcess !== ptyProcess) {
         return;
       }
 
-      // Stop detectors
       this.stopProcessDetector();
       this.stopActivityMonitor();
-
-      // Flush pending semantic data
       this.flushPendingSemanticData();
 
-      // Clear pending input writes
       if (this.inputWriteTimeout) {
         clearTimeout(this.inputWriteTimeout);
         this.inputWriteTimeout = null;
@@ -1443,10 +1411,8 @@ export class TerminalProcess {
       this.inputWriteQueue = [];
 
       this.callbacks.onExit(this.id, exitCode ?? 0);
-
       this.logForensics(exitCode ?? 0, signal);
 
-      // Update agent state on exit
       if (this.isAgentTerminal && !terminal.wasKilled) {
         this.deps.agentStateService.updateAgentState(terminal, {
           type: "exit",
@@ -1454,7 +1420,6 @@ export class TerminalProcess {
         });
       }
 
-      // Emit agent:completed event
       if (
         this.isAgentTerminal &&
         terminal.agentId &&
@@ -1464,7 +1429,6 @@ export class TerminalProcess {
         this.deps.agentStateService.emitAgentCompleted(terminal, exitCode ?? 0);
       }
 
-      // Dispose headless terminal (if created)
       this.disposeHeadless();
     });
   }
@@ -1475,7 +1439,6 @@ export class TerminalProcess {
       return;
     }
 
-    // Apply URL styling to string data
     if (typeof data === "string") {
       const styled = styleUrls(data);
       if (
@@ -1489,7 +1452,7 @@ export class TerminalProcess {
       }
       this.callbacks.emitData(this.id, styled);
     } else {
-      // For Uint8Array, decode to string, style, and re-encode
+      // Uint8Array: decode, style, re-encode
       const text = new TextDecoder().decode(data);
       const styled = styleUrls(text);
       if (process.env.CANOPY_TRACE_URL_STYLING && styled !== text && text.length < 10_000) {
@@ -1564,10 +1527,9 @@ export class TerminalProcess {
         terminalId: this.id,
         terminalType: terminal.type,
         activity: result.isBusy ? "busy" : "idle",
-        lastCommand, // Pass the detected command to the generator
+        lastCommand,
       });
 
-      // EMIT ACTIVITY EVENT
       events.emit("terminal:activity", {
         terminalId: this.id,
         headline,
@@ -1576,11 +1538,9 @@ export class TerminalProcess {
         confidence: 1.0,
         timestamp: Date.now(),
         worktreeId: this.options.worktreeId,
-        lastCommand, // Important: This populates the pill in the UI
+        lastCommand,
       });
 
-      // UPDATE STATE
-      // Map isBusy -> 'running' | 'idle'
       const newState = result.isBusy ? "running" : "idle";
 
       if (terminal.agentState !== newState) {
@@ -1588,7 +1548,6 @@ export class TerminalProcess {
         terminal.agentState = newState;
         terminal.lastStateChange = Date.now();
 
-        // Emit state change to update the icon spin state
         const stateChangePayload = {
           agentId: this.id,
           terminalId: this.id,
@@ -1600,7 +1559,6 @@ export class TerminalProcess {
           worktreeId: this.options.worktreeId,
         };
 
-        // Validated emit
         const validated = AgentStateChangedSchema.safeParse(stateChangePayload);
         if (validated.success) {
           events.emit("agent:state-changed", validated.data);
@@ -1616,20 +1574,16 @@ export class TerminalProcess {
     const buffer = this.terminalInfo.semanticBuffer;
     if (buffer.length === 0) return undefined;
 
-    // Look for command-like lines in the recent buffer
     for (let i = buffer.length - 1; i >= 0 && i >= buffer.length - 10; i--) {
       let line = buffer[i].trim();
 
-      // Skip empty lines
       if (line.length === 0) continue;
 
-      // Strip common prompt prefixes (user@host, paths, prompt symbols)
-      // Match patterns like "user@host:~/path $", "~/path %", etc.
+      // Strip common prompt prefixes: "user@host:~/path $", "~/path %", etc.
       line = line.replace(/^[^@]*@[^:]*:[^\s]*\s*[$>%#]\s*/, "");
       line = line.replace(/^~?[^\s]*[$>%#]\s*/, "");
       line = line.replace(/^[$>%#]\s*/, "");
 
-      // After stripping prompts, accept whatever is left as the command
       if (line.length > 0) {
         return line;
       }

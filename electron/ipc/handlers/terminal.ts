@@ -436,7 +436,6 @@ export function registerTerminalHandlers(deps: HandlerDependencies): () => void 
 
       const terminalIds = await ptyClient.getTerminalsForProjectAsync(projectId);
 
-      // Get terminal info for each ID
       const terminals = [];
       for (const id of terminalIds) {
         const terminal = await ptyClient.getTerminalAsync(id);

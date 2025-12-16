@@ -92,20 +92,6 @@ port.on("message", async (rawMsg: any) => {
         break;
 
       case "refresh-prs":
-        // This logic was in the switch but calls pullRequestService directly.
-        // It's cleaner to expose a method in WorkspaceService or import pullRequestService here.
-        // WorkspaceService imports pullRequestService internally.
-        // But `refresh-prs` wasn't on WorkspaceHost class in original file?
-        // Let's check original file.
-        /*
-          case "refresh-prs":
-            try {
-              await pullRequestService.refresh();
-              sendEvent({ type: "refresh-prs-result", requestId: request.requestId, success: true });
-            } ...
-        */
-        // I should probably import pullRequestService here too or wrap it.
-        // Importing it here is fine.
         {
           const { pullRequestService } = await import("./services/PullRequestService.js");
           try {

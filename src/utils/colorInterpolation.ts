@@ -18,6 +18,5 @@ export function getActivityColor(lastActivityTimestamp: number | null | undefine
   const factor = elapsed / DECAY_DURATION;
   const percentage = Math.max(0, Math.min(100, Math.round((1 - factor) * 100)));
 
-  // Use CSS color-mix for perceptually accurate interpolation
   return `color-mix(in oklab, #10b981 ${percentage}%, #52525b)`;
 }

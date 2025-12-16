@@ -155,7 +155,6 @@ function XtermAdapterComponent({
 
     terminalInstanceService.setInputLocked(terminalId, !!isInputLocked);
 
-    // Attach to appropriate target
     terminalInstanceService.attach(terminalId, container);
 
     if (!managed.keyHandlerInstalled) {
@@ -245,7 +244,6 @@ function XtermAdapterComponent({
     onReady?.();
 
     return () => {
-      // Mark terminal as invisible before unmount
       terminalInstanceService.setVisible(terminalId, false);
 
       // Flush pending resizes before unmount
@@ -359,7 +357,6 @@ function XtermAdapterComponent({
     };
   }, [handleResizeEntry]);
 
-  // Standard terminal mode (original behavior)
   return (
     <div
       ref={containerRef}

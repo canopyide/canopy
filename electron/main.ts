@@ -335,7 +335,6 @@ async function createWindow(): Promise<void> {
   );
   cleanupErrorHandlers = registerErrorHandlers(mainWindow, workspaceClient, ptyClient);
 
-  // Define port distribution logic
   function createAndDistributePorts(): void {
     const { port1, port2 } = new MessageChannelMain();
 

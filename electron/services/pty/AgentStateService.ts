@@ -17,9 +17,7 @@ import { ActivityHeadlineGenerator } from "../ActivityHeadlineGenerator.js";
  */
 export class AgentStateService {
   private headlineGenerator = new ActivityHeadlineGenerator();
-  /**
-   * Infer the trigger type from an agent event.
-   */
+
   inferTrigger(event: AgentEvent): AgentStateChangeTrigger {
     switch (event.type) {
       case "input":
@@ -106,7 +104,6 @@ export class AgentStateService {
       terminal.error = event.error;
     }
 
-    // Only update if state actually changed
     if (newState === previousState) {
       return false;
     }
@@ -176,9 +173,6 @@ export class AgentStateService {
     return this.updateAgentState(terminal, event, trigger, confidence);
   }
 
-  /**
-   * Emit agent:failed event.
-   */
   emitAgentFailed(terminal: TerminalInfo, error: string): void {
     if (!terminal.agentId || !terminal.lastStateChange) {
       return;
@@ -204,9 +198,6 @@ export class AgentStateService {
     }
   }
 
-  /**
-   * Emit agent:completed event.
-   */
   emitAgentCompleted(terminal: TerminalInfo, exitCode: number): void {
     if (!terminal.agentId) {
       return;
@@ -236,9 +227,6 @@ export class AgentStateService {
     }
   }
 
-  /**
-   * Emit agent:killed event.
-   */
   emitAgentKilled(terminal: TerminalInfo, reason?: string): void {
     if (!terminal.agentId) {
       return;
@@ -276,9 +264,6 @@ export class AgentStateService {
     this.updateAgentState(terminal, event, "activity", 1.0);
   }
 
-  /**
-   * Emit terminal:activity event with generated headline.
-   */
   emitTerminalActivity(terminal: TerminalInfo): void {
     const { headline, status, type } = this.headlineGenerator.generate({
       terminalId: terminal.id,

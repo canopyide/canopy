@@ -77,7 +77,6 @@ export interface TerminalSnapshot {
   spawnedAt: number;
 }
 
-// Constants
 export const OUTPUT_BUFFER_SIZE = 2000;
 export const SEMANTIC_BUFFER_MAX_LINES = 50;
 export const SEMANTIC_BUFFER_MAX_LINE_LENGTH = 1000;
