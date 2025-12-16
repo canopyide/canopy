@@ -26,10 +26,7 @@ import { useScrollbackStore } from "@/store/scrollbackStore";
 import { terminalInstanceService } from "@/services/TerminalInstanceService";
 import { getTerminalThemeFromCSS } from "./XtermAdapter";
 
-// ============================================================================
 // Configuration
-// ============================================================================
-
 const MAX_HISTORY_LINES = 5000;
 const RESYNC_INTERVAL_MS = 3000;
 const SETTLE_MS = 60; // Quiet period before accepting snapshot
@@ -37,10 +34,7 @@ const MIN_LINES_FOR_HISTORY = 3;
 const BOTTOM_EPSILON_PX = 5;
 const BOTTOM_BUFFER_LINES = 6; // Buffer zone for exit detection
 
-// ============================================================================
 // Types
-// ============================================================================
-
 export interface HistoryOverlayTerminalViewProps {
   terminalId: string;
   isFocused: boolean;
@@ -65,9 +59,7 @@ interface ScrollAnchor {
   wasAtBottom: boolean;
 }
 
-// ============================================================================
 // Utility Functions
-// ============================================================================
 
 /**
  * Escape HTML entities in a string.
@@ -271,10 +263,7 @@ function isAtBottom(el: HTMLElement, epsilon = BOTTOM_EPSILON_PX): boolean {
   return el.scrollHeight - el.scrollTop - el.clientHeight <= epsilon;
 }
 
-// ============================================================================
 // Component
-// ============================================================================
-
 export function HistoryOverlayTerminalView({
   terminalId,
   isFocused,
@@ -343,10 +332,7 @@ export function HistoryOverlayTerminalView({
     viewModeRef.current = viewMode;
   }, [viewMode]);
 
-  // ============================================================================
   // Style
-  // ============================================================================
-
   const containerStyle = useMemo<React.CSSProperties>(
     () => ({
       fontFamily: effectiveFontFamily,
@@ -365,10 +351,7 @@ export function HistoryOverlayTerminalView({
     [effectiveFontFamily, fontSize]
   );
 
-  // ============================================================================
   // Measure Line Height
-  // ============================================================================
-
   const measureLineHeight = useCallback(() => {
     const content = overlayContentRef.current;
     if (!content || !content.firstElementChild) return;
@@ -380,10 +363,7 @@ export function HistoryOverlayTerminalView({
     }
   }, []);
 
-  // ============================================================================
   // Enter History Mode
-  // ============================================================================
-
   const enterHistoryMode = useCallback(() => {
     if (viewModeRef.current === "history") return;
 
@@ -426,10 +406,7 @@ export function HistoryOverlayTerminalView({
     setViewMode("history");
   }, []);
 
-  // ============================================================================
   // Exit History Mode
-  // ============================================================================
-
   const exitHistoryMode = useCallback(() => {
     if (viewModeRef.current === "live") return;
 
@@ -445,10 +422,7 @@ export function HistoryOverlayTerminalView({
     }
   }, []);
 
-  // ============================================================================
   // Scroll to Bottom on History Entry
-  // ============================================================================
-
   // This useLayoutEffect runs AFTER React has rendered the overlay content,
   // ensuring scrollHeight is accurate when we scroll to bottom
   useLayoutEffect(() => {
@@ -468,10 +442,7 @@ export function HistoryOverlayTerminalView({
     shouldScrollToBottomRef.current = false;
   }, [viewMode, historyHtmlLines, measureLineHeight]);
 
-  // ============================================================================
   // Resync History
-  // ============================================================================
-
   const resyncHistory = useCallback(() => {
     if (viewModeRef.current !== "history") return;
     if (resyncInFlightRef.current) return;
@@ -550,10 +521,7 @@ export function HistoryOverlayTerminalView({
     }
   }, []);
 
-  // ============================================================================
   // Initialize xterm
-  // ============================================================================
-
   useLayoutEffect(() => {
     disposedRef.current = false;
     const container = containerRef.current;
@@ -642,10 +610,7 @@ export function HistoryOverlayTerminalView({
     };
   }, [terminalId, effectiveFontFamily, fontSize, scrollbackLines]);
 
-  // ============================================================================
   // Wheel Event Handler
-  // ============================================================================
-
   useEffect(() => {
     const container = containerRef.current;
     if (!container) return;
@@ -693,10 +658,7 @@ export function HistoryOverlayTerminalView({
     };
   }, [enterHistoryMode, exitHistoryMode]);
 
-  // ============================================================================
   // Periodic Resync Timer
-  // ============================================================================
-
   useEffect(() => {
     if (viewMode !== "history") return;
     if (!isVisible) return;
@@ -708,10 +670,7 @@ export function HistoryOverlayTerminalView({
     return () => clearInterval(timer);
   }, [viewMode, isVisible, resyncHistory]);
 
-  // ============================================================================
   // Resize Handler
-  // ============================================================================
-
   useLayoutEffect(() => {
     const xtermContainer = xtermContainerRef.current;
     if (!xtermContainer) return;
@@ -749,10 +708,7 @@ export function HistoryOverlayTerminalView({
     };
   }, [isFocused, isVisible, terminalId, resyncHistory]);
 
-  // ============================================================================
   // Focus Handler
-  // ============================================================================
-
   useEffect(() => {
     if (!isFocused) return;
     if (viewMode === "live") {
@@ -760,10 +716,7 @@ export function HistoryOverlayTerminalView({
     }
   }, [isFocused, viewMode]);
 
-  // ============================================================================
   // Exit History on Agent Activity
-  // ============================================================================
-
   useEffect(() => {
     const unsubscribe = terminalInstanceService.addAgentStateListener(terminalId, (state) => {
       // Exit history mode when agent starts working (user submitted a message)
@@ -774,10 +727,7 @@ export function HistoryOverlayTerminalView({
     return unsubscribe;
   }, [terminalId, exitHistoryMode]);
 
-  // ============================================================================
   // Render
-  // ============================================================================
-
   return (
     <div
       ref={containerRef}

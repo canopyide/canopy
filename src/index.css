@@ -582,10 +582,7 @@ body,
     box-shadow var(--terminal-select-duration) cubic-bezier(0.4, 0, 0.2, 1);
 }
 
-/* ==========================================
-   ALREADY SELECTED: Overlay-based animation
-   ========================================== */
-
+/* ALREADY SELECTED: Overlay-based animation */
 @keyframes terminal-ping-overlay {
   0% {
     opacity: 0;
@@ -631,10 +628,7 @@ body,
   will-change: box-shadow;
 }
 
-/* ==========================================
-   BECOMING SELECTED: Element-level animation
-   ========================================== */
-
+/* BECOMING SELECTED: Element-level animation */
 @keyframes terminal-ping-select-element {
   0% {
     /* Unselected appearance */
@@ -764,13 +758,7 @@ body,
   cursor: ns-resize; /* Show vertical resize cursor */
 }
 
-/* ============================================================================
- * React-Diff-View Tokyo Night Theme Overrides
- *
- * These styles override the default react-diff-view styling to match
- * the application's Tokyo Night color scheme.
- * ============================================================================ */
-
+/* React-Diff-View Tokyo Night Theme Overrides */
 .diff-viewer {
   font-family: Menlo, Monaco, Consolas, "Andale Mono", "Ubuntu Mono", "Courier New", monospace;
   font-size: 12px;
@@ -951,14 +939,7 @@ body,
   vertical-align: top;
 }
 
-/* ============================================================================
- * Performance Mode Overrides
- *
- * When data-performance-mode="true" is set on the body element, these styles
- * disable all animations and transitions for improved performance with many
- * concurrent terminals.
- * ============================================================================ */
-
+/* Performance Mode Overrides - disables animations when data-performance-mode="true" */
 body[data-performance-mode="true"] *,
 body[data-performance-mode="true"] *::before,
 body[data-performance-mode="true"] *::after {
