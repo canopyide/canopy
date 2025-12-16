@@ -275,14 +275,6 @@ function isAtBottom(el: HTMLElement, epsilon = BOTTOM_EPSILON_PX): boolean {
   return el.scrollHeight - el.scrollTop - el.clientHeight <= epsilon;
 }
 
-/**
- * Check if overlay is near bottom (within buffer zone).
- */
-function isNearBottom(el: HTMLElement, lineHeight: number, bufferLines: number): boolean {
-  const bufferPx = lineHeight * bufferLines;
-  return el.scrollHeight - el.scrollTop - el.clientHeight <= bufferPx;
-}
-
 // ============================================================================
 // Component
 // ============================================================================
@@ -682,44 +674,26 @@ export function HistoryOverlayTerminalView({
         return;
       }
 
-      // HISTORY MODE: let overlay scroll, but detect exit condition
+      // HISTORY MODE: manually scroll the overlay
+      // We must do this ourselves because stopPropagation in capture phase
+      // prevents the overlay from receiving the wheel event
       const overlay = overlayScrollRef.current;
       if (!overlay) return;
 
-      // Check if scrolling down while near bottom
+      e.preventDefault();
+      e.stopPropagation();
+
+      // Check if scrolling down while at/near bottom - exit to live mode
       if (e.deltaY > 0) {
-        const lineHeight = lineHeightRef.current;
-        const nearBottom = isNearBottom(overlay, lineHeight, BOTTOM_BUFFER_LINES);
-
-        if (nearBottom) {
-          // Check if we're actually at the very bottom (can't scroll further)
-          const atVeryBottom = isAtBottom(overlay, 2);
-
-          if (atVeryBottom) {
-            // Exit to live mode
-            e.preventDefault();
-            e.stopPropagation();
-            exitHistoryMode();
-            return;
-          }
-
-          // Let scroll happen, but check if it would go past bottom
-          const wouldBe = overlay.scrollTop + e.deltaY;
-          const maxScroll = overlay.scrollHeight - overlay.clientHeight;
-
-          if (wouldBe >= maxScroll) {
-            // Would hit bottom, exit
-            e.preventDefault();
-            e.stopPropagation();
-            exitHistoryMode();
-            return;
-          }
+        const atBottom = isAtBottom(overlay, 2);
+        if (atBottom) {
+          exitHistoryMode();
+          return;
         }
       }
 
-      // Let normal overlay scroll happen
-      // Stop propagation to prevent xterm from also handling
-      e.stopPropagation();
+      // Manually scroll the overlay
+      overlay.scrollTop += e.deltaY;
     };
 
     container.addEventListener("wheel", handleWheel, { capture: true, passive: false });
@@ -822,45 +796,49 @@ export function HistoryOverlayTerminalView({
       />
 
       {/* History overlay layer - DOM-based, scrollable */}
+      {/* Outer wrapper matches xterm container positioning so scrollbar aligns */}
       {viewMode === "history" && (
-        <div
-          ref={overlayScrollRef}
-          className="history-overlay absolute inset-0 py-2 px-3 overflow-y-auto overflow-x-hidden z-10 bg-canopy-bg/95"
-          style={{
-            ...overlayStyle,
-            overscrollBehavior: "contain",
-            scrollBehavior: "auto",
-          }}
-        >
-          {/* Link hover styles */}
-          <style>{`
-            .history-overlay a:hover {
-              color: #79c0ff !important;
-              text-decoration-color: #79c0ff;
-            }
-          `}</style>
+        <div className="absolute inset-0 py-2 px-3 z-10">
+          <div
+            ref={overlayScrollRef}
+            tabIndex={-1}
+            className="history-overlay h-full overflow-y-auto overflow-x-hidden bg-canopy-bg/95 outline-none"
+            style={{
+              ...overlayStyle,
+              overscrollBehavior: "contain",
+              scrollBehavior: "auto",
+            }}
+          >
+            {/* Link hover styles */}
+            <style>{`
+              .history-overlay a:hover {
+                color: #79c0ff !important;
+                text-decoration-color: #79c0ff;
+              }
+            `}</style>
 
-          {/* Truncation banner */}
-          {showTruncationBanner && (
-            <div className="sticky top-0 z-20 mb-2 px-3 py-2 bg-canopy-sidebar/90 backdrop-blur-sm border border-canopy-border/50 rounded text-xs text-canopy-text/70">
-              History limited to last {MAX_HISTORY_LINES.toLocaleString()} lines.
-              Older output was truncated.
+            {/* Truncation banner */}
+            {showTruncationBanner && (
+              <div className="sticky top-0 z-20 mb-2 px-3 py-2 bg-canopy-sidebar/90 backdrop-blur-sm border border-canopy-border/50 rounded text-xs text-canopy-text/70">
+                History limited to last {MAX_HISTORY_LINES.toLocaleString()} lines.
+                Older output was truncated.
+              </div>
+            )}
+
+            {/* History content with colors */}
+            <div ref={overlayContentRef} className="flex flex-col">
+              {historyHtmlLines.map((htmlLine, idx) => (
+                <div
+                  key={idx}
+                  data-idx={idx}
+                  className="whitespace-pre break-all min-h-[1.2em] select-text"
+                  style={{ lineHeight: "1.2" }}
+                  dangerouslySetInnerHTML={{ __html: htmlLine }}
+                />
+              ))}
+              {/* Bottom padding to allow scrolling past end */}
+              <div className="h-4" />
             </div>
-          )}
-
-          {/* History content with colors */}
-          <div ref={overlayContentRef} className="flex flex-col">
-            {historyHtmlLines.map((htmlLine, idx) => (
-              <div
-                key={idx}
-                data-idx={idx}
-                className="whitespace-pre break-all min-h-[1.2em] select-text"
-                style={{ lineHeight: "1.2" }}
-                dangerouslySetInnerHTML={{ __html: htmlLine }}
-              />
-            ))}
-            {/* Bottom padding to allow scrolling past end */}
-            <div className="h-4" />
           </div>
         </div>
       )}
