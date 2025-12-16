@@ -596,6 +596,16 @@ export function HistoryOverlayTerminalView({
       // Track output time for settle logic
       lastOutputAtRef.current = performance.now();
 
+      // Exit history mode when new output arrives (agent is responding)
+      if (viewModeRef.current === "history") {
+        viewModeRef.current = "live";
+        setViewMode("live");
+        term.scrollToBottom();
+        if (isFocusedRef.current) {
+          requestAnimationFrame(() => term.focus());
+        }
+      }
+
       term.write(str);
     });
 
@@ -715,17 +725,6 @@ export function HistoryOverlayTerminalView({
       requestAnimationFrame(() => xtermRef.current?.focus());
     }
   }, [isFocused, viewMode]);
-
-  // Exit History on Agent Activity
-  useEffect(() => {
-    const unsubscribe = terminalInstanceService.addAgentStateListener(terminalId, (state) => {
-      // Exit history mode when agent starts working (user submitted a message)
-      if (state === "working" && viewModeRef.current === "history") {
-        exitHistoryMode();
-      }
-    });
-    return unsubscribe;
-  }, [terminalId, exitHistoryMode]);
 
   // Render
   return (
