@@ -139,6 +139,15 @@ export function SnapshotTerminalView({
     if (disposedRef.current) return;
     if (viewModeRef.current !== "scrolled") return;
 
+    // Re-verify buffer type - agent may have switched to alt buffer during fetch
+    const postFetchSnapshot = snapshotRef.current;
+    if (postFetchSnapshot?.buffer === "alt") {
+      setHistoryLoading(false);
+      setScrollbackUnavailable(true);
+      resumeLive();
+      return;
+    }
+
     if (!state) {
       setHistoryLoading(false);
       resumeLive();
@@ -157,18 +166,35 @@ export function SnapshotTerminalView({
       // ignore
     }
 
-    await new Promise<void>((resolve) => {
-      try {
-        writeInFlightRef.current += 1;
-        term.write(state, () => {
+    // Write in chunks to prevent UI freeze on large buffers.
+    // ~100KB chunks with requestAnimationFrame yields between each.
+    const CHUNK_SIZE = 100_000;
+    let offset = 0;
+
+    while (offset < state.length) {
+      if (disposedRef.current || viewModeRef.current !== "scrolled") break;
+
+      const chunk = state.slice(offset, offset + CHUNK_SIZE);
+      offset += CHUNK_SIZE;
+
+      await new Promise<void>((resolve) => {
+        try {
+          writeInFlightRef.current += 1;
+          term.write(chunk, () => {
+            writeInFlightRef.current = Math.max(0, writeInFlightRef.current - 1);
+            // Yield to event loop between chunks for UI responsiveness
+            if (offset < state.length) {
+              requestAnimationFrame(() => resolve());
+            } else {
+              resolve();
+            }
+          });
+        } catch {
           writeInFlightRef.current = Math.max(0, writeInFlightRef.current - 1);
           resolve();
-        });
-      } catch {
-        writeInFlightRef.current = Math.max(0, writeInFlightRef.current - 1);
-        resolve();
-      }
-    });
+        }
+      });
+    }
 
     // Re-enable resumeLive now that terminal operations are complete
     suppressResumeRef.current = false;
