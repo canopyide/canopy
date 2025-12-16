@@ -13,6 +13,7 @@ import {
 import { setupTerminalAddons } from "./TerminalAddonManager";
 import { TerminalDataBuffer } from "./TerminalDataBuffer";
 import { TerminalParserHandler } from "./TerminalParserHandler";
+import { TerminalUnseenOutputTracker, UnseenOutputSnapshot } from "./TerminalUnseenOutputTracker";
 
 const START_DEBOUNCING_THRESHOLD = 200;
 const HORIZONTAL_DEBOUNCE_MS = 100;
@@ -27,6 +28,7 @@ class TerminalInstanceService {
   private offscreenSlots = new Map<string, HTMLDivElement>();
   private resizeLocks = new Map<string, boolean>();
   private lastBackendTier = new Map<string, "active" | "background">();
+  private unseenTracker = new TerminalUnseenOutputTracker();
 
   constructor() {
     this.dataBuffer = new TerminalDataBuffer((id, data) => this.writeToTerminal(id, data));
@@ -193,6 +195,7 @@ class TerminalInstanceService {
       return;
     }
 
+    this.unseenTracker.incrementUnseen(id, managed.isUserScrolledBack);
     const shouldStickToBottom = managed.kind === "agent" && !managed.isUserScrolledBack;
 
     // Capture SAB mode decision before write to avoid mode-flip ambiguity during callback
@@ -396,6 +399,12 @@ class TerminalInstanceService {
       const isAtBottom = buffer.baseY - buffer.viewportY < 1;
       managed.latestWasAtBottom = isAtBottom;
       managed.isUserScrolledBack = !isAtBottom;
+
+      if (isAtBottom) {
+        this.unseenTracker.clearUnseen(id, false);
+      } else {
+        this.unseenTracker.updateScrollState(id, true);
+      }
     });
     listeners.push(() => scrollDisposable.dispose());
 
@@ -570,6 +579,22 @@ class TerminalInstanceService {
     if (managed) {
       managed.terminal.scrollToBottom();
     }
+  }
+
+  subscribeUnseenOutput(id: string, listener: () => void): () => void {
+    return this.unseenTracker.subscribe(id, listener);
+  }
+
+  getUnseenOutputSnapshot(id: string): UnseenOutputSnapshot {
+    return this.unseenTracker.getSnapshot(id);
+  }
+
+  resumeAutoScroll(id: string): void {
+    const managed = this.instances.get(id);
+    if (!managed) return;
+
+    this.unseenTracker.clearUnseen(id, false);
+    this.scrollToBottom(id);
   }
 
   getSelectionRow(id: string): number | null {
@@ -1022,6 +1047,7 @@ class TerminalInstanceService {
 
     this.clearResizeJobs(managed);
     this.dataBuffer.resetForTerminal(id);
+    this.unseenTracker.destroy(id);
 
     if (managed.tierChangeTimer !== undefined) {
       clearTimeout(managed.tierChangeTimer);
