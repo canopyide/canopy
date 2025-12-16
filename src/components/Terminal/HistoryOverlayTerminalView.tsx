@@ -73,10 +73,7 @@ interface ScrollAnchor {
  * Escape HTML entities in a string.
  */
 function escapeHtml(text: string): string {
-  return text
-    .replace(/&/g, "&amp;")
-    .replace(/</g, "&lt;")
-    .replace(/>/g, "&gt;");
+  return text.replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;");
 }
 
 /**
@@ -93,25 +90,27 @@ function linkifyHtml(html: string): string {
   // Split by HTML tags to process text content separately
   const parts = html.split(/(<[^>]+>)/);
 
-  return parts.map((part) => {
-    // Skip HTML tags
-    if (part.startsWith("<")) return part;
+  return parts
+    .map((part) => {
+      // Skip HTML tags
+      if (part.startsWith("<")) return part;
 
-    // Replace URLs in text content
-    return part.replace(URL_REGEX, (url) => {
-      // Clean up any trailing punctuation that's likely not part of the URL
-      let cleanUrl = url;
-      const trailingPunct = /[.,;:!?)>\]]+$/;
-      const match = cleanUrl.match(trailingPunct);
-      let suffix = "";
-      if (match) {
-        suffix = match[0];
-        cleanUrl = cleanUrl.slice(0, -suffix.length);
-      }
+      // Replace URLs in text content
+      return part.replace(URL_REGEX, (url) => {
+        // Clean up any trailing punctuation that's likely not part of the URL
+        let cleanUrl = url;
+        const trailingPunct = /[.,;:!?)>\]]+$/;
+        const match = cleanUrl.match(trailingPunct);
+        let suffix = "";
+        if (match) {
+          suffix = match[0];
+          cleanUrl = cleanUrl.slice(0, -suffix.length);
+        }
 
-      return `<a href="${cleanUrl}" target="_blank" rel="noopener noreferrer" style="color:#58a6ff;text-decoration:underline;text-underline-offset:2px">${cleanUrl}</a>${suffix}`;
-    });
-  }).join("");
+        return `<a href="${cleanUrl}" target="_blank" rel="noopener noreferrer" style="color:#58a6ff;text-decoration:underline;text-underline-offset:2px">${cleanUrl}</a>${suffix}`;
+      });
+    })
+    .join("");
 }
 
 /**
@@ -192,10 +191,7 @@ function extractSnapshot(
  * Primary method: compare windowStart indices.
  * Fallback: overlap-based detection when windowStart is unreliable.
  */
-function computeTrimmedTopCount(
-  oldState: HistoryState | null,
-  newState: HistoryState
-): number {
+function computeTrimmedTopCount(oldState: HistoryState | null, newState: HistoryState): number {
   if (!oldState) return 0;
 
   // Primary: use window start difference
@@ -644,12 +640,7 @@ export function HistoryOverlayTerminalView({
       serializeAddonRef.current = null;
       term.dispose();
     };
-  }, [
-    terminalId,
-    effectiveFontFamily,
-    fontSize,
-    scrollbackLines,
-  ]);
+  }, [terminalId, effectiveFontFamily, fontSize, scrollbackLines]);
 
   // ============================================================================
   // Wheel Event Handler
@@ -820,8 +811,8 @@ export function HistoryOverlayTerminalView({
             {/* Truncation banner */}
             {showTruncationBanner && (
               <div className="sticky top-0 z-20 mb-2 px-3 py-2 bg-canopy-sidebar/90 backdrop-blur-sm border border-canopy-border/50 rounded text-xs text-canopy-text/70">
-                History limited to last {MAX_HISTORY_LINES.toLocaleString()} lines.
-                Older output was truncated.
+                History limited to last {MAX_HISTORY_LINES.toLocaleString()} lines. Older output was
+                truncated.
               </div>
             )}
 
@@ -857,11 +848,7 @@ export function HistoryOverlayTerminalView({
             stroke="currentColor"
             strokeWidth={2}
           >
-            <path
-              strokeLinecap="round"
-              strokeLinejoin="round"
-              d="M19 14l-7 7m0 0l-7-7m7 7V3"
-            />
+            <path strokeLinecap="round" strokeLinejoin="round" d="M19 14l-7 7m0 0l-7-7m7 7V3" />
           </svg>
           Back to live
         </button>
