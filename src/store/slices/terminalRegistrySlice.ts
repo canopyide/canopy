@@ -259,7 +259,6 @@ export const createTerminalRegistrySlice =
           console.warn(`[TerminalStore] Failed to prewarm terminal ${id}:`, error);
         }
 
-        // Determine if this is an agent terminal (by agentId or legacy type)
         const isAgent = kind === "agent";
 
         const agentState = options.agentState ?? (isAgent ? "idle" : undefined);
@@ -821,7 +820,6 @@ export const createTerminalRegistrySlice =
         // The exit can arrive after the new xterm mounts, which would incorrectly show "[exit 0]".
         terminalInstanceService.suppressNextExit(id);
 
-        // Kill the old PTY backend
         await terminalClient.kill(id);
 
         // Calculate spawn dimensions
@@ -879,7 +877,6 @@ export const createTerminalRegistrySlice =
           terminalInstanceService.fit(id);
         }
 
-        // Restart complete - clear isRestarting flag
         set((state) => ({
           terminals: state.terminals.map((t) => (t.id === id ? { ...t, isRestarting: false } : t)),
         }));

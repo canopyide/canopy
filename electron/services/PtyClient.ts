@@ -49,7 +49,6 @@ import type { AgentStateChangeTrigger } from "../types/index.js";
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
 
-/** Terminal info response from Pty Host */
 interface TerminalInfoResponse {
   id: string;
   projectId?: string;
@@ -61,7 +60,6 @@ interface TerminalInfoResponse {
   spawnedAt: number;
 }
 
-/** Configuration for PtyClient */
 export interface PtyClientConfig {
   /** Maximum restart attempts before giving up */
   maxRestartAttempts?: number;
@@ -111,9 +109,6 @@ function classifyCrash(code: number | null, signal: string | null): CrashType {
   return "CLEAN_EXIT";
 }
 
-/**
- * Generate user-friendly crash message based on crash type.
- */
 function getCrashMessage(crashType: CrashType, code: number | null): string {
   switch (crashType) {
     case "OUT_OF_MEMORY":
@@ -204,8 +199,6 @@ export class PtyClient extends EventEmitter {
       this.readyResolve = resolve;
     });
 
-    // Try to create SharedArrayBuffers for zero-copy terminal I/O
-    // Two separate buffers: one for visual rendering, one for semantic analysis
     try {
       this.sharedBuffer = SharedRingBuffer.create(DEFAULT_RING_BUFFER_SIZE);
       this.analysisBuffer = SharedRingBuffer.create(DEFAULT_RING_BUFFER_SIZE);
@@ -302,7 +295,6 @@ export class PtyClient extends EventEmitter {
       this.readyResolve = resolve;
     });
 
-    // Path to compiled pty-host.js (bundled in same directory)
     const hostPath = path.join(__dirname, "pty-host.js");
 
     console.log(`[PtyClient] Starting Pty Host from: ${hostPath}`);
@@ -452,7 +444,6 @@ export class PtyClient extends EventEmitter {
         break;
 
       case "agent-state":
-        // Forward to internal event bus for other services
         events.emit("agent:state-changed", {
           agentId: event.id,
           terminalId: event.id,
@@ -658,7 +649,6 @@ export class PtyClient extends EventEmitter {
           timestamp: event.timestamp,
         };
         this.emit("terminal-status", statusPayload);
-        // Also emit to internal event bus for other services
         events.emit("terminal:status", statusPayload);
         break;
       }
@@ -728,8 +718,6 @@ export class PtyClient extends EventEmitter {
       console.error("[PtyClient] Failed to forward MessagePort to Pty Host:", error);
     }
   }
-
-  // Public API - matches PtyManager interface
 
   private resolveKeySequence(key: string): string | null {
     const normalizedKey = key.trim().toLowerCase();
@@ -1314,7 +1302,6 @@ export class PtyClient extends EventEmitter {
   }
 }
 
-// Singleton management
 let ptyClientInstance: PtyClient | null = null;
 
 export function getPtyClient(config?: PtyClientConfig): PtyClient {

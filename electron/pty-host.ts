@@ -211,7 +211,6 @@ class ResourceGovernor {
   }
 }
 
-// Initialize services
 const ptyManager = new PtyManager();
 const processTreeCache = new ProcessTreeCache(1000);
 let ptyPool: PtyPool | null = null;
@@ -1258,7 +1257,6 @@ port.on("message", async (rawMsg: any) => {
 function cleanup(): void {
   console.log("[PtyHost] Disposing resources...");
 
-  // Stop resource governor
   resourceGovernor.dispose();
 
   // Stop push snapshot streaming (if enabled)
@@ -1275,7 +1273,6 @@ function cleanup(): void {
   pauseStartTimes.clear();
   terminalStatuses.clear();
 
-  // Stop process tree cache
   processTreeCache.stop();
 
   if (ptyPool) {
@@ -1305,11 +1302,10 @@ async function initialize(): Promise<void> {
     ptyManager.setProcessTreeCache(processTreeCache);
     console.log("[PtyHost] ProcessTreeCache started");
 
-    // Notify Main that we're ready after cache is initialized
+    // Notify Main that we're ready (after cache is initialized, before pool is warmed)
     sendEvent({ type: "ready" });
     console.log("[PtyHost] Initialized and ready (accepting IPC)");
 
-    // Initialize pool
     ptyPool = getPtyPool({ poolSize: 2 });
     const homedir = process.env.HOME || os.homedir();
 
@@ -1331,7 +1327,6 @@ async function initialize(): Promise<void> {
   }
 }
 
-// Start initialization
 initialize().catch((err) => {
   console.error("[PtyHost] Fatal initialization error:", err);
   emergencyLogFatal("FATAL_INIT_ERROR", err);

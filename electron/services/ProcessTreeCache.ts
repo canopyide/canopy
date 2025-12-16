@@ -117,7 +117,6 @@ export class ProcessTreeCache {
       if (parsed) {
         newCache.set(parsed.pid, parsed);
 
-        // Build children map
         const children = newChildrenMap.get(parsed.ppid) || [];
         children.push(parsed.pid);
         newChildrenMap.set(parsed.ppid, children);
@@ -212,7 +211,6 @@ export class ProcessTreeCache {
         command,
       });
 
-      // Build children map
       const children = newChildrenMap.get(ppid) || [];
       children.push(pid);
       newChildrenMap.set(ppid, children);

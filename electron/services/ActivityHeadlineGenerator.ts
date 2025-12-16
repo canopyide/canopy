@@ -113,7 +113,6 @@ export class ActivityHeadlineGenerator {
       };
     }
 
-    // Idle state
     return {
       headline: "Idle",
       status: "success",
@@ -134,7 +133,6 @@ export class ActivityHeadlineGenerator {
     const parts = trimmedCommand.split(/\s+/);
     const baseCommand = parts[0]?.replace(/^\.\//, "") || "command";
 
-    // Capitalize first letter
     const capitalizedCommand = baseCommand.charAt(0).toUpperCase() + baseCommand.slice(1);
 
     return `Running ${capitalizedCommand}`;

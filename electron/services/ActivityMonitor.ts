@@ -42,7 +42,6 @@ export class ActivityMonitor {
     const fullData = this.partialEscape + data;
     this.partialEscape = "";
 
-    // Iterate through the data character by character to track state
     for (let i = 0; i < fullData.length; i++) {
       // Check for potential escape sequence start near end of buffer
       if (i >= fullData.length - 5 && fullData[i] === "\x1b") {
@@ -55,7 +54,7 @@ export class ActivityMonitor {
       if (fullData[i] === "\x1b" && fullData.substring(i, i + 6) === "\x1b[200~") {
         this.inBracketedPaste = true;
         this.pasteStartTime = Date.now();
-        i += 5; // Skip the sequence
+        i += 5;
         continue;
       }
 
@@ -63,7 +62,7 @@ export class ActivityMonitor {
       if (fullData[i] === "\x1b" && fullData.substring(i, i + 6) === "\x1b[201~") {
         this.inBracketedPaste = false;
         this.pasteStartTime = 0;
-        i += 5; // Skip the sequence
+        i += 5;
         continue;
       }
 

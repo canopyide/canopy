@@ -66,7 +66,6 @@ class NotificationService {
     const { waitingCount, failedCount } = this.currentState;
     const totalAttention = waitingCount + failedCount;
 
-    // Update window title
     if (totalAttention > 0) {
       this.mainWindow.setTitle(`(${totalAttention}) ${DEFAULT_TITLE}`);
     } else {
@@ -103,7 +102,6 @@ class NotificationService {
       this.debounceTimer = null;
     }
 
-    // Remove event listeners
     if (this.mainWindow && this.focusHandler && this.blurHandler) {
       this.mainWindow.off("focus", this.focusHandler);
       this.mainWindow.off("blur", this.blurHandler);

@@ -12,58 +12,34 @@ export class TerminalRegistry {
 
   constructor(private readonly trashTtlMs: number = TRASH_TTL_MS) {}
 
-  /**
-   * Add a terminal to the registry.
-   */
   add(id: string, terminal: TerminalInfo): void {
     this.terminals.set(id, terminal);
   }
 
-  /**
-   * Get a terminal by ID.
-   */
   get(id: string): TerminalInfo | undefined {
     return this.terminals.get(id);
   }
 
-  /**
-   * Remove a terminal from the registry.
-   */
   delete(id: string): void {
     this.terminals.delete(id);
   }
 
-  /**
-   * Check if a terminal exists.
-   */
   has(id: string): boolean {
     return this.terminals.has(id);
   }
 
-  /**
-   * Get all terminals as an array.
-   */
   getAll(): TerminalInfo[] {
     return Array.from(this.terminals.values());
   }
 
-  /**
-   * Get all terminal IDs.
-   */
   getAllIds(): string[] {
     return Array.from(this.terminals.keys());
   }
 
-  /**
-   * Get the number of terminals.
-   */
   size(): number {
     return this.terminals.size;
   }
 
-  /**
-   * Iterate over all terminals.
-   */
   entries(): IterableIterator<[string, TerminalInfo]> {
     return this.terminals.entries();
   }
@@ -113,9 +89,6 @@ export class TerminalRegistry {
     return false;
   }
 
-  /**
-   * Check if a terminal is in the trash.
-   */
   isInTrash(id: string): boolean {
     return this.trashTimeouts.has(id);
   }
@@ -131,9 +104,6 @@ export class TerminalRegistry {
     }
   }
 
-  /**
-   * Get terminals for a specific project.
-   */
   getForProject(projectId: string): string[] {
     const result: string[] = [];
     for (const [id, terminal] of this.terminals) {
@@ -145,9 +115,6 @@ export class TerminalRegistry {
     return result;
   }
 
-  /**
-   * Get statistics about processes for a project.
-   */
   getProjectStats(projectId: string): {
     terminalCount: number;
     processIds: number[];
@@ -203,18 +170,12 @@ export class TerminalRegistry {
     };
   }
 
-  /**
-   * Get snapshots for all active terminals.
-   */
   getAllSnapshots(): TerminalSnapshot[] {
     return Array.from(this.terminals.keys())
       .map((id) => this.getSnapshot(id))
       .filter((snapshot): snapshot is TerminalSnapshot => snapshot !== null);
   }
 
-  /**
-   * Mark a terminal's check time.
-   */
   markChecked(id: string): void {
     const terminal = this.terminals.get(id);
     if (terminal) {
@@ -229,9 +190,6 @@ export class TerminalRegistry {
     this.lastKnownProjectId = projectId;
   }
 
-  /**
-   * Get the last known project ID.
-   */
   getLastKnownProjectId(): string | null {
     return this.lastKnownProjectId;
   }
@@ -244,9 +202,6 @@ export class TerminalRegistry {
     return terminalProjectId === projectId;
   }
 
-  /**
-   * Clean up all resources.
-   */
   dispose(): void {
     for (const timeout of this.trashTimeouts.values()) {
       clearTimeout(timeout);

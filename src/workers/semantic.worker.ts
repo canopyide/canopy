@@ -41,7 +41,6 @@ function postTypedMessage(message: WorkerOutboundMessage): void {
  * Process a single packet from the ring buffer.
  */
 async function processPacket(terminalId: string, data: string): Promise<void> {
-  // Get or create terminal state
   let state = terminalStates.get(terminalId);
   if (!state) {
     // Auto-register terminal if not explicitly registered
@@ -84,7 +83,6 @@ async function processPacket(terminalId: string, data: string): Promise<void> {
     const stateChange = calculateStateChange(state, event);
 
     if (stateChange) {
-      // Update local state
       state.agentState = stateChange.state;
 
       postTypedMessage({

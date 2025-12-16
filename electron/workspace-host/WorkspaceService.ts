@@ -246,7 +246,6 @@ export class WorkspaceService {
 
         this.monitors.set(wt.id, monitor);
 
-        // Start the monitor
         await this.startMonitor(monitor);
 
         // Extract issue number asynchronously if not found synchronously
@@ -947,22 +946,18 @@ ${lines.map((l) => "+" + l).join("\n")}`;
   async onProjectSwitch(requestId: string): Promise<void> {
     this.cleanupPRService();
 
-    // Stop all monitors
     for (const monitor of this.monitors.values()) {
       this.stopMonitor(monitor);
     }
     this.monitors.clear();
 
-    // Wait for pending polls
     await this.pollQueue.onIdle();
 
-    // Reset state
     this.activeWorktreeId = null;
     this.mainBranch = "main";
     this.git = null;
     this.projectRootPath = null;
 
-    // Clear caches
     clearGitDirCache();
 
     this.sendEvent({ type: "project-switch-result", requestId, success: true });
