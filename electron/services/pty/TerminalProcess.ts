@@ -70,6 +70,42 @@ function delay(ms: number): Promise<void> {
   return new Promise((resolve) => setTimeout(resolve, ms));
 }
 
+function estimateChangedChars(prev: string, next: string): number {
+  if (prev === next) return 0;
+  if (prev.length === 0) return next.length;
+  if (next.length === 0) return prev.length;
+
+  const maxLen = Math.max(prev.length, next.length);
+  let prefix = 0;
+  while (prefix < maxLen && prev[prefix] === next[prefix]) {
+    prefix++;
+  }
+
+  let suffix = 0;
+  while (
+    suffix < maxLen - prefix &&
+    prev[prev.length - 1 - suffix] === next[next.length - 1 - suffix]
+  ) {
+    suffix++;
+  }
+
+  return Math.max(1, maxLen - prefix - suffix);
+}
+
+function estimateViewportDelta(prev: string[], next: string[]): { changedLines: number; changedChars: number } {
+  const rowCount = Math.max(prev.length, next.length);
+  let changedLines = 0;
+  let changedChars = 0;
+  for (let i = 0; i < rowCount; i++) {
+    const a = prev[i] ?? "";
+    const b = next[i] ?? "";
+    if (a === b) continue;
+    changedLines++;
+    changedChars += estimateChangedChars(a, b);
+  }
+  return { changedLines, changedChars };
+}
+
 function normalizeSubmitText(text: string): string {
   return text.replace(/\r\n/g, "\n").replace(/\r/g, "\n");
 }
@@ -207,6 +243,8 @@ export class TerminalProcess {
   // Prevent capturing transient redraw frames by waiting for a short "quiet period" after output.
   // This is especially important for TUIs that redraw in multiple PTY chunks.
   private static readonly SNAPSHOT_SETTLE_MS = 40;
+  private static readonly SNAPSHOT_MAX_IN_SETTLE_CHANGED_LINES = 2;
+  private static readonly SNAPSHOT_MAX_IN_SETTLE_CHANGED_CHARS = 12;
 
   private readonly terminalInfo: TerminalInfo;
   private readonly isAgentTerminal: boolean;
@@ -997,14 +1035,6 @@ export class TerminalProcess {
     }
 
     const now = Date.now();
-    if (
-      this.screenSnapshotDirty &&
-      this.screenSnapshotDirtyKind === "output" &&
-      this.lastScreenSnapshot?.buffer === bufferName &&
-      now - terminal.lastOutputTime < TerminalProcess.SNAPSHOT_SETTLE_MS
-    ) {
-      return this.lastScreenSnapshot;
-    }
 
     const cols = headlessTerminal.cols;
     const rows = headlessTerminal.rows;
@@ -1017,6 +1047,23 @@ export class TerminalProcess {
       const line = buffer.getLine(start + row);
       // translateToString(trimRight, startCol, endCol)
       lines[row] = line ? line.translateToString(true, 0, cols) : "";
+    }
+
+    if (
+      this.screenSnapshotDirty &&
+      this.screenSnapshotDirtyKind === "output" &&
+      this.lastScreenSnapshot?.buffer === bufferName &&
+      now - terminal.lastOutputTime < TerminalProcess.SNAPSHOT_SETTLE_MS
+    ) {
+      const previousLines = this.lastScreenSnapshot?.lines ?? [];
+      const delta = estimateViewportDelta(previousLines, lines);
+      const isSmallUpdate =
+        delta.changedLines <= TerminalProcess.SNAPSHOT_MAX_IN_SETTLE_CHANGED_LINES &&
+        delta.changedChars <= TerminalProcess.SNAPSHOT_MAX_IN_SETTLE_CHANGED_CHARS;
+
+      if (!isSmallUpdate) {
+        return this.lastScreenSnapshot;
+      }
     }
 
     const cursorX = Math.max(0, Math.min(cols - 1, buffer.cursorX));
