@@ -1,4 +1,4 @@
-import { useState, useCallback } from "react";
+import { useState, useCallback, useEffect, useRef } from "react";
 import { cn } from "@/lib/utils";
 import { useArtifacts } from "@/hooks/useArtifacts";
 import type { Artifact } from "@shared/types";
@@ -48,37 +48,47 @@ function ArtifactItem({
   isProcessing,
 }: ArtifactItemProps) {
   const [isExpanded, setIsExpanded] = useState(false);
-  const [feedbackMessage, setFeedbackMessage] = useState<string | null>(null);
+  const [feedback, setFeedback] = useState<{ text: string; tone: "success" | "error" } | null>(
+    null
+  );
+  const feedbackTimerRef = useRef<number | null>(null);
 
-  const showFeedback = useCallback((message: string) => {
-    setFeedbackMessage(message);
-    setTimeout(() => setFeedbackMessage(null), 2000);
+  const showFeedback = useCallback((text: string, tone: "success" | "error") => {
+    setFeedback({ text, tone });
+    if (feedbackTimerRef.current) window.clearTimeout(feedbackTimerRef.current);
+    feedbackTimerRef.current = window.setTimeout(() => setFeedback(null), 2000);
+  }, []);
+
+  useEffect(() => {
+    return () => {
+      if (feedbackTimerRef.current) window.clearTimeout(feedbackTimerRef.current);
+    };
   }, []);
 
   const handleCopy = useCallback(async () => {
     const success = await onCopy(artifact);
     if (success) {
-      showFeedback("Copied!");
+      showFeedback("Copied!", "success");
     } else {
-      showFeedback("Copy failed");
+      showFeedback("Copy failed", "error");
     }
   }, [artifact, onCopy, showFeedback]);
 
   const handleSave = useCallback(async () => {
     const result = await onSave(artifact);
-    if (result) {
-      showFeedback("Saved!");
+    if (result?.success) {
+      showFeedback("Saved!", "success");
     } else {
-      showFeedback("Save failed");
+      showFeedback("Save failed", "error");
     }
   }, [artifact, onSave, showFeedback]);
 
   const handleApplyPatch = useCallback(async () => {
     const result = await onApplyPatch(artifact);
     if (result.success) {
-      showFeedback("Patch applied!");
+      showFeedback("Patch applied!", "success");
     } else {
-      showFeedback(result.error || "Patch failed");
+      showFeedback(result.error || "Patch failed", "error");
     }
   }, [artifact, onApplyPatch, showFeedback]);
 
@@ -162,9 +172,18 @@ function ArtifactItem({
                 Apply Patch
               </button>
             )}
-            {feedbackMessage && (
-              <span className="ml-auto text-xs text-[var(--color-status-success)] animate-pulse">
-                {feedbackMessage}
+            {feedback && (
+              <span
+                role="status"
+                aria-live="polite"
+                className={cn(
+                  "ml-auto text-xs animate-pulse",
+                  feedback.tone === "success"
+                    ? "text-[var(--color-status-success)]"
+                    : "text-[var(--color-status-error)]"
+                )}
+              >
+                {feedback.text}
               </span>
             )}
           </div>
@@ -176,15 +195,24 @@ function ArtifactItem({
 
 export function ArtifactOverlay({ terminalId, worktreeId, cwd, className }: ArtifactOverlayProps) {
   const [isExpanded, setIsExpanded] = useState(false);
+  const [includeAllTypes, setIncludeAllTypes] = useState(false);
+  const [bulkResult, setBulkResult] = useState<{ text: string; tone: "success" | "error" } | null>(
+    null
+  );
+  const bulkResultTimerRef = useRef<number | null>(null);
   const {
     artifacts,
     actionInProgress,
+    bulkProgress,
     hasArtifacts,
     copyToClipboard,
     saveToFile,
     applyPatch,
     clearArtifacts,
     canApplyPatch,
+    copyAll,
+    saveAll,
+    applyAllPatches,
   } = useArtifacts(terminalId, worktreeId, cwd);
 
   const handleCopy = useCallback(
@@ -207,6 +235,76 @@ export function ArtifactOverlay({ terminalId, worktreeId, cwd, className }: Arti
     },
     [applyPatch]
   );
+
+  useEffect(() => {
+    return () => {
+      if (bulkResultTimerRef.current) window.clearTimeout(bulkResultTimerRef.current);
+    };
+  }, []);
+
+  const showBulkResult = useCallback((text: string, tone: "success" | "error") => {
+    setBulkResult({ text, tone });
+    if (bulkResultTimerRef.current) window.clearTimeout(bulkResultTimerRef.current);
+    bulkResultTimerRef.current = window.setTimeout(() => setBulkResult(null), 3000);
+  }, []);
+
+  const handleCopyAll = useCallback(async () => {
+    const result = await copyAll(includeAllTypes);
+    if (result.succeeded > 0) {
+      showBulkResult(
+        `Copied ${result.succeeded} artifact${result.succeeded !== 1 ? "s" : ""}`,
+        "success"
+      );
+    } else if (result.failed > 0) {
+      showBulkResult(`Failed to copy artifacts`, "error");
+    } else {
+      showBulkResult(
+        includeAllTypes ? "No artifacts to copy" : "No code artifacts (switch to All)",
+        "error"
+      );
+    }
+  }, [copyAll, includeAllTypes, showBulkResult]);
+
+  const handleSaveAll = useCallback(async () => {
+    const result = await saveAll();
+    if (result.succeeded > 0 && result.failed === 0) {
+      showBulkResult(
+        `Saved ${result.succeeded} artifact${result.succeeded !== 1 ? "s" : ""}`,
+        "success"
+      );
+    } else if (result.succeeded > 0 && result.failed > 0) {
+      showBulkResult(`Saved ${result.succeeded}, failed ${result.failed}`, "error");
+    } else if (result.failed > 0) {
+      showBulkResult(`Failed to save artifacts`, "error");
+    }
+  }, [saveAll, showBulkResult]);
+
+  const handleApplyAllPatches = useCallback(async () => {
+    const result = await applyAllPatches();
+    if (result.succeeded > 0 && result.failed === 0) {
+      const filesMsg = result.modifiedFiles?.length
+        ? ` (${result.modifiedFiles.length} files)`
+        : "";
+      showBulkResult(
+        `Applied ${result.succeeded} patch${result.succeeded !== 1 ? "es" : ""}${filesMsg}`,
+        "success"
+      );
+    } else if (result.succeeded > 0 && result.failed > 0) {
+      showBulkResult(`Applied ${result.succeeded}, failed ${result.failed}`, "error");
+    } else if (result.failed > 0) {
+      showBulkResult(`Failed to apply patches`, "error");
+    }
+  }, [applyAllPatches, showBulkResult]);
+
+  const codeArtifactCount = artifacts.filter((a) => a.type === "code").length;
+  const patchCount = artifacts.filter((a) => a.type === "patch").length;
+  const copyTargetCount = includeAllTypes ? artifacts.length : codeArtifactCount;
+  const showCopyGroup = artifacts.length > 1;
+  const canCopyAll = copyTargetCount > 1;
+  const showSaveAll = artifacts.length > 1;
+  const showApplyAll = patchCount > 1;
+  const canApplyAll = showApplyAll && !!worktreeId && !!cwd;
+  const isBulkActionRunning = !!bulkProgress;
 
   if (!hasArtifacts) {
     return null;
@@ -236,27 +334,124 @@ export function ArtifactOverlay({ terminalId, worktreeId, cwd, className }: Arti
             "w-96 max-h-96 flex flex-col overflow-hidden"
           )}
         >
-          <div className="flex items-center justify-between px-4 py-3 bg-canopy-bg border-b border-canopy-border">
-            <div className="flex items-center gap-2">
-              <span className="font-mono text-[var(--color-status-info)]">{"{ }"}</span>
-              <span className="text-sm font-medium text-canopy-text">
-                {artifacts.length} Artifact{artifacts.length !== 1 ? "s" : ""}
-              </span>
+          <div className="bg-canopy-bg border-b border-canopy-border">
+            <div className="flex items-center justify-between px-4 py-3">
+              <div className="flex items-center gap-2">
+                <span className="font-mono text-[var(--color-status-info)]">{"{ }"}</span>
+                <span className="text-sm font-medium text-canopy-text">
+                  {artifacts.length} Artifact{artifacts.length !== 1 ? "s" : ""}
+                </span>
+              </div>
+              <div className="flex items-center gap-2">
+                <button
+                  type="button"
+                  onClick={clearArtifacts}
+                  disabled={isBulkActionRunning}
+                  className="text-xs text-canopy-text/40 hover:text-canopy-text transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
+                  aria-label="Clear all artifacts"
+                >
+                  Clear
+                </button>
+                <button
+                  type="button"
+                  onClick={() => setIsExpanded(false)}
+                  disabled={isBulkActionRunning}
+                  className="text-canopy-text/40 hover:text-canopy-text transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
+                  aria-label="Close artifact overlay"
+                >
+                  ×
+                </button>
+              </div>
             </div>
-            <div className="flex items-center gap-2">
-              <button
-                onClick={clearArtifacts}
-                className="text-xs text-canopy-text/40 hover:text-canopy-text transition-colors"
-              >
-                Clear
-              </button>
-              <button
-                onClick={() => setIsExpanded(false)}
-                className="text-canopy-text/40 hover:text-canopy-text transition-colors"
-              >
-                ×
-              </button>
-            </div>
+
+            {(showCopyGroup || showSaveAll || showApplyAll) && (
+              <div className="px-4 pb-3 flex items-center gap-2 flex-wrap">
+                {showCopyGroup && (
+                  <div className="flex items-center gap-1">
+                    <button
+                      type="button"
+                      onClick={handleCopyAll}
+                      disabled={isBulkActionRunning || !canCopyAll}
+                      className={cn(
+                        "px-3 py-1 text-xs rounded transition-colors",
+                        "bg-[var(--color-status-info)] hover:brightness-110 text-white",
+                        "disabled:opacity-50 disabled:cursor-not-allowed"
+                      )}
+                    >
+                      Copy All
+                    </button>
+                    <button
+                      type="button"
+                      onClick={() => setIncludeAllTypes((v) => !v)}
+                      disabled={isBulkActionRunning}
+                      className={cn(
+                        "px-2 py-1 text-xs rounded transition-colors",
+                        includeAllTypes
+                          ? "bg-canopy-border text-white"
+                          : "bg-canopy-sidebar text-canopy-text/60",
+                        "hover:brightness-110",
+                        "disabled:opacity-50 disabled:cursor-not-allowed"
+                      )}
+                      title={includeAllTypes ? "Copying all types" : "Copying code only"}
+                    >
+                      {includeAllTypes ? "All" : "Code"}
+                    </button>
+                  </div>
+                )}
+                {showSaveAll && (
+                  <button
+                    type="button"
+                    onClick={handleSaveAll}
+                    disabled={isBulkActionRunning}
+                    className={cn(
+                      "px-3 py-1 text-xs rounded transition-colors",
+                      "bg-canopy-border hover:bg-[color-mix(in_oklab,var(--color-canopy-border)_100%,white_20%)] text-white",
+                      "disabled:opacity-50 disabled:cursor-not-allowed"
+                    )}
+                  >
+                    Save All
+                  </button>
+                )}
+                {showApplyAll && (
+                  <button
+                    type="button"
+                    onClick={handleApplyAllPatches}
+                    disabled={isBulkActionRunning || !canApplyAll}
+                    className={cn(
+                      "px-3 py-1 text-xs rounded transition-colors",
+                      "bg-[var(--color-status-success)] hover:brightness-110 text-white",
+                      "disabled:opacity-50 disabled:cursor-not-allowed"
+                    )}
+                    title={!canApplyAll ? "No worktree context available" : "Apply all patches"}
+                  >
+                    Apply All Patches
+                  </button>
+                )}
+                {bulkProgress && (
+                  <span className="text-xs text-canopy-text/60 ml-auto">
+                    {bulkProgress.action === "copy" && "Copying…"}
+                    {bulkProgress.action === "save" &&
+                      `Saving ${bulkProgress.current}/${bulkProgress.total}…`}
+                    {bulkProgress.action === "apply" &&
+                      `Applying ${bulkProgress.current}/${bulkProgress.total}…`}
+                  </span>
+                )}
+                {bulkResult && !bulkProgress && (
+                  <span
+                    role="status"
+                    aria-live="polite"
+                    className={cn(
+                      "text-xs ml-auto animate-pulse",
+                      bulkResult.tone === "success"
+                        ? "text-[var(--color-status-success)]"
+                        : "text-[var(--color-status-error)]"
+                    )}
+                  >
+                    {bulkResult.text}
+                  </span>
+                )}
+              </div>
+            )}
           </div>
 
           <div className="flex-1 overflow-y-auto p-3 space-y-2">
@@ -268,7 +463,7 @@ export function ArtifactOverlay({ terminalId, worktreeId, cwd, className }: Arti
                 onSave={handleSave}
                 onApplyPatch={handleApplyPatch}
                 canApplyPatch={canApplyPatch(artifact)}
-                isProcessing={actionInProgress === artifact.id}
+                isProcessing={isBulkActionRunning || actionInProgress === artifact.id}
               />
             ))}
           </div>
