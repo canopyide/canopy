@@ -30,9 +30,9 @@ import { getTerminalThemeFromCSS } from "./XtermAdapter";
 const MAX_HISTORY_LINES = 5000;
 const RESYNC_INTERVAL_MS = 3000;
 const SETTLE_MS = 60; // Quiet period before accepting snapshot
-const MIN_LINES_FOR_HISTORY = 3;
 const BOTTOM_EPSILON_PX = 5;
 const BOTTOM_BUFFER_LINES = 6; // Buffer zone for exit detection
+const MIN_LINES_FOR_HISTORY = BOTTOM_BUFFER_LINES + 2;
 
 // Types
 export interface HistoryOverlayTerminalViewProps {
@@ -422,9 +422,9 @@ export function HistoryOverlayTerminalView({
     }
   }, []);
 
-  // Scroll to Bottom on History Entry
+  // Scroll to Near-Bottom on History Entry
   // This useLayoutEffect runs AFTER React has rendered the overlay content,
-  // ensuring scrollHeight is accurate when we scroll to bottom
+  // ensuring scrollHeight is accurate when we scroll
   useLayoutEffect(() => {
     if (viewMode !== "history") return;
     if (!shouldScrollToBottomRef.current) return;
@@ -435,8 +435,12 @@ export function HistoryOverlayTerminalView({
     // Measure line height for future calculations
     measureLineHeight();
 
-    // Scroll to the very bottom so a single scroll-down exits to live mode
-    overlay.scrollTop = overlay.scrollHeight;
+    // Scroll to one line above the bottom so user must scroll down
+    // that extra line before triggering exit to live mode.
+    // This prevents the "jump" when entering history mode and immediately
+    // scrolling down would exit back to live.
+    const lineHeight = lineHeightRef.current;
+    overlay.scrollTop = Math.max(0, overlay.scrollHeight - lineHeight);
 
     // Clear the flag
     shouldScrollToBottomRef.current = false;
