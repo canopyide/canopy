@@ -7,7 +7,6 @@
  * The Workspace Host consolidates all file-system and worktree-related operations:
  * - Phase 1: Git operations (WorktreeService, GitService)
  * - Phase 2: Context generation (CopyTreeService) - future
- * - Phase 3: DevServer parsing (DevServerManager) - future
  *
  * All types are serializable (no functions, no circular refs) for IPC transport.
  */
@@ -138,8 +137,6 @@ export type WorkspaceHostRequest =
       options?: CopyTreeOptions;
     }
   | { type: "copytree:cancel"; operationId: string }
-  // DevServer parsing operations
-  | { type: "devserver:parse-output"; requestId: string; worktreeId: string; output: string }
   // GitHub token propagation
   | { type: "update-github-token"; token: string | null }
   // File tree operations
@@ -161,12 +158,6 @@ export type WorkspaceHostRequest =
       includeRecentCommits?: boolean;
       forceRefresh?: boolean;
     };
-
-/** Result of DevServer URL detection */
-export interface DevServerDetectedUrls {
-  url?: string;
-  port?: number;
-}
 
 /**
  * Events sent from Workspace Host → Main.
@@ -217,13 +208,6 @@ export type WorkspaceHostEvent =
       result: CopyTreeResult;
     }
   | { type: "copytree:error"; requestId: string; operationId: string; error: string }
-  // DevServer events
-  | {
-      type: "devserver:urls-detected";
-      requestId: string;
-      worktreeId: string;
-      detected: DevServerDetectedUrls | null;
-    }
   // File tree events
   | {
       type: "file-tree-result";

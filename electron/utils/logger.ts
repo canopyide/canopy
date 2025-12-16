@@ -142,7 +142,6 @@ function getCallerSource(): string | undefined {
 
   if (fileName?.includes("WorktreeService")) return "WorktreeService";
   if (fileName?.includes("WorktreeMonitor")) return "WorktreeMonitor";
-  if (fileName?.includes("DevServerManager")) return "DevServerManager";
   if (fileName?.includes("PtyManager")) return "PtyManager";
   if (fileName?.includes("CopyTreeService")) return "CopyTreeService";
   if (fileName?.includes("main")) return "Main";

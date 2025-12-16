@@ -60,13 +60,6 @@ export class GitService {
     }
   }
 
-  suggestWorktreePath(branchName: string): string {
-    const repoName = this.rootPath.split("/").pop() || "repo";
-    const sanitizedBranch = branchName.replace(/[^a-zA-Z0-9-_]/g, "-");
-    const worktreesDir = resolve(this.rootPath, "..", `${repoName}-worktrees`);
-    return resolve(worktreesDir, sanitizedBranch);
-  }
-
   validatePath(path: string): { valid: boolean; error?: string } {
     if (existsSync(path)) {
       return {
@@ -304,17 +297,6 @@ ${lines.map((l) => "+" + l).join("\n")}`;
     }, "getRemoteUrl");
   }
 
-  async getUpstreamUrl(repoPath: string): Promise<string | null> {
-    return this.getRemoteUrl(repoPath);
-  }
-
-  async initializeRepository(path: string): Promise<void> {
-    return this.handleGitOperation(async () => {
-      const git = simpleGit(path);
-      await git.init();
-    }, "initializeRepository");
-  }
-
   async getWorktreeChangesWithStats(
     worktreePath: string,
     forceRefresh = false
@@ -323,41 +305,12 @@ ${lines.map((l) => "+" + l).join("\n")}`;
     return getChanges(worktreePath, forceRefresh);
   }
 
-  async getLastCommitMessage(repoPath: string): Promise<string | null> {
-    return this.handleGitOperation(async () => {
-      const git = simpleGit(repoPath);
-      const log = await git.log({ maxCount: 1 });
-      return log.latest?.message ?? null;
-    }, "getLastCommitMessage");
-  }
-
   async getRepositoryRoot(repoPath: string): Promise<string> {
     return this.handleGitOperation(async () => {
       const git = simpleGit(repoPath);
       const root = await git.revparse(["--show-toplevel"]);
       return root.trim();
     }, "getRepositoryRoot");
-  }
-
-  async getStatus(repoPath: string) {
-    return this.handleGitOperation(async () => {
-      const git = simpleGit(repoPath);
-      return await git.status();
-    }, "getStatus");
-  }
-
-  async getLog(repoPath: string, options?: { maxCount?: number }) {
-    return this.handleGitOperation(async () => {
-      const git = simpleGit(repoPath);
-      return await git.log(options);
-    }, "getLog");
-  }
-
-  async getDiff(repoPath: string, args: string[]): Promise<string> {
-    return this.handleGitOperation(async () => {
-      const git = simpleGit(repoPath);
-      return await git.diff(args);
-    }, "getDiff");
   }
 
   async removeWorktree(worktreePath: string, force: boolean = false): Promise<void> {

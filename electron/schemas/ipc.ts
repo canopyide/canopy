@@ -37,24 +37,6 @@ export const SlashCommandListRequestSchema = z.object({
   projectPath: z.string().optional(),
 });
 
-export const DevServerStatusSchema = z.enum(["stopped", "starting", "running", "error"]);
-
-export const DevServerStartPayloadSchema = z.object({
-  worktreeId: z.string().min(1),
-  worktreePath: z.string().min(1),
-  command: z.string().optional(),
-});
-
-export const DevServerStopPayloadSchema = z.object({
-  worktreeId: z.string().min(1),
-});
-
-export const DevServerTogglePayloadSchema = z.object({
-  worktreeId: z.string().min(1),
-  worktreePath: z.string().min(1),
-  command: z.string().optional(),
-});
-
 export const CopyTreeFormatSchema = z.enum(["xml", "json", "markdown", "tree", "ndjson"]);
 
 export const CopyTreeOptionsSchema = z
@@ -130,9 +112,6 @@ export const WorktreeCreatePayloadSchema = z.object({
 export type TerminalSpawnOptions = z.infer<typeof TerminalSpawnOptionsSchema>;
 export type TerminalResizePayload = z.infer<typeof TerminalResizePayloadSchema>;
 export type FileSearchPayload = z.infer<typeof FileSearchPayloadSchema>;
-export type DevServerStartPayload = z.infer<typeof DevServerStartPayloadSchema>;
-export type DevServerStopPayload = z.infer<typeof DevServerStopPayloadSchema>;
-export type DevServerTogglePayload = z.infer<typeof DevServerTogglePayloadSchema>;
 export type CopyTreeOptions = z.infer<typeof CopyTreeOptionsSchema>;
 export type CopyTreeGeneratePayload = z.infer<typeof CopyTreeGeneratePayloadSchema>;
 export type CopyTreeGenerateAndCopyFilePayload = z.infer<

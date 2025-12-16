@@ -1,5 +1,4 @@
 import { useEffect, useMemo, useRef, useState } from "react";
-import { MOCK_SLASH_COMMANDS } from "@/components/Terminal/slashCommands";
 import type { AutocompleteItem } from "@/components/Terminal/AutocompleteMenu";
 import { slashCommandsClient } from "@/clients";
 import { rankSlashCommands } from "@/lib/slashCommandMatch";
@@ -34,13 +33,7 @@ export function useSlashCommandAutocomplete({
     if (agentId === "claude") return CLAUDE_BUILTIN_SLASH_COMMANDS;
     if (agentId === "gemini") return GEMINI_BUILTIN_SLASH_COMMANDS;
     if (agentId === "codex") return CODEX_BUILTIN_SLASH_COMMANDS;
-    return MOCK_SLASH_COMMANDS.map((cmd) => ({
-      id: cmd.id,
-      label: cmd.label,
-      description: cmd.description,
-      scope: "built-in",
-      agentId: agentId ?? "gemini",
-    }));
+    return GEMINI_BUILTIN_SLASH_COMMANDS;
   }, [agentId]);
 
   const [commands, setCommands] = useState<SlashCommand[]>(initial);
