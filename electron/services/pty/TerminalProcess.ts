@@ -202,6 +202,11 @@ export class TerminalProcess {
   private screenSnapshotSequence = 0;
   private screenSnapshotDirty = true;
   private lastScreenSnapshot: TerminalScreenSnapshot | null = null;
+  private screenSnapshotDirtyKind: "output" | "resize" | "unknown" = "unknown";
+
+  // Prevent capturing transient redraw frames by waiting for a short "quiet period" after output.
+  // This is especially important for TUIs that redraw in multiple PTY chunks.
+  private static readonly SNAPSHOT_SETTLE_MS = 40;
 
   private readonly terminalInfo: TerminalInfo;
   private readonly isAgentTerminal: boolean;
@@ -829,6 +834,7 @@ export class TerminalProcess {
         terminal.headlessTerminal.resize(cols, rows);
       }
       this.screenSnapshotDirty = true;
+      this.screenSnapshotDirtyKind = "resize";
     } catch (error) {
       console.error(`Failed to resize terminal ${this.id}:`, error);
     }
@@ -990,6 +996,16 @@ export class TerminalProcess {
       return this.lastScreenSnapshot;
     }
 
+    const now = Date.now();
+    if (
+      this.screenSnapshotDirty &&
+      this.screenSnapshotDirtyKind === "output" &&
+      this.lastScreenSnapshot?.buffer === bufferName &&
+      now - terminal.lastOutputTime < TerminalProcess.SNAPSHOT_SETTLE_MS
+    ) {
+      return this.lastScreenSnapshot;
+    }
+
     const cols = headlessTerminal.cols;
     const rows = headlessTerminal.rows;
     // Always project the bottom viewport (stable monitoring). Headless terminals have no
@@ -1044,11 +1060,12 @@ export class TerminalProcess {
       cursor: { x: cursorX, y: cursorY, visible: true },
       lines,
       ansi,
-      timestamp: Date.now(),
+      timestamp: now,
       sequence: ++this.screenSnapshotSequence,
     };
 
     this.screenSnapshotDirty = false;
+    this.screenSnapshotDirtyKind = "unknown";
     this.lastScreenSnapshot = snapshot;
     return snapshot;
   }
@@ -1311,6 +1328,7 @@ export class TerminalProcess {
       // Write to headless terminal (canonical state).
       terminal.headlessTerminal?.write(data);
       this.screenSnapshotDirty = true;
+      this.screenSnapshotDirtyKind = "output";
       this.scheduleSessionPersist();
 
       // Emit data to host/renderer immediately. Flow control is handled
