@@ -129,17 +129,9 @@ function XtermAdapterComponent({
       return;
     }
 
-    // Subtract padding to match ResizeObserver's contentRect behavior.
-    // clientWidth/Height INCLUDE padding, but contentRect EXCLUDES it.
-    // This ensures consistent dimensions between performFit and handleResizeEntry.
-    const style = window.getComputedStyle(container);
-    const paddingLeft = parseFloat(style.paddingLeft) || 0;
-    const paddingRight = parseFloat(style.paddingRight) || 0;
-    const paddingTop = parseFloat(style.paddingTop) || 0;
-    const paddingBottom = parseFloat(style.paddingBottom) || 0;
-
-    const width = container.clientWidth - paddingLeft - paddingRight;
-    const height = container.clientHeight - paddingTop - paddingBottom;
+    // Container has no padding (padding is on wrapper), so use clientWidth/Height directly
+    const width = container.clientWidth;
+    const height = container.clientHeight;
 
     if (width < MIN_CONTAINER_SIZE || height < MIN_CONTAINER_SIZE) return;
 
@@ -369,18 +361,22 @@ function XtermAdapterComponent({
 
   return (
     <div
-      ref={containerRef}
       className={cn(
-        // pl-3 pt-3 pb-3 pr-4: Clean padding on all sides, extra right padding for scrollbar
+        // Outer wrapper provides padding - xterm container must have no padding for correct column calculation
         "w-full h-full bg-canopy-bg text-white overflow-hidden rounded-b-[var(--radius-lg)] pl-3 pt-3 pb-3 pr-4",
         className
       )}
-      style={{
-        // Promote its own compositor layer to reduce drag/resize jank.
-        willChange: "transform",
-        transform: "translateZ(0)",
-      }}
-    />
+    >
+      <div
+        ref={containerRef}
+        className="w-full h-full"
+        style={{
+          // Promote its own compositor layer to reduce drag/resize jank.
+          willChange: "transform",
+          transform: "translateZ(0)",
+        }}
+      />
+    </div>
   );
 }
 
