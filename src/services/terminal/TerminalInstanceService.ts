@@ -409,10 +409,12 @@ class TerminalInstanceService {
     listeners.push(() => scrollDisposable.dispose());
 
     const inputDisposable = terminal.onData((data) => {
-      this.onUserInput(id);
-      terminalClient.write(id, data);
-      if (onInput) {
-        onInput(data);
+      if (!managed.isInputLocked) {
+        this.onUserInput(id);
+        terminalClient.write(id, data);
+        if (onInput) {
+          onInput(data);
+        }
       }
     });
     listeners.push(() => inputDisposable.dispose());
@@ -1224,6 +1226,19 @@ class TerminalInstanceService {
     const managed = this.instances.get(id);
     if (!managed) return 0;
     return managed.terminal.buffer.active.length;
+  }
+
+  setInputLocked(id: string, locked: boolean): void {
+    const managed = this.instances.get(id);
+    if (!managed) return;
+
+    managed.isInputLocked = locked;
+    managed.terminal.options.disableStdin = locked;
+  }
+
+  getInputLocked(id: string): boolean {
+    const managed = this.instances.get(id);
+    return managed?.isInputLocked ?? false;
   }
 }
 

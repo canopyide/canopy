@@ -127,6 +127,9 @@ function TerminalPaneComponent({
   const updateLastCommand = useTerminalStore((state) => state.updateLastCommand);
   const backendStatus = useTerminalStore((state) => state.backendStatus);
   const lastCrashType = useTerminalStore((state) => state.lastCrashType);
+  const isInputLocked = useTerminalStore(
+    (state) => state.terminals.find((t) => t.id === id)?.isInputLocked ?? false
+  );
 
   const isBackendDisconnected = backendStatus === "disconnected";
   const isBackendRecovering = backendStatus === "recovering";
@@ -506,6 +509,7 @@ function TerminalPaneComponent({
               terminalId={id}
               terminalType={type}
               agentId={agentId}
+              isInputLocked={isInputLocked}
               onReady={handleReady}
               onExit={handleExit}
               onInput={handleInput}
@@ -609,19 +613,23 @@ function TerminalPaneComponent({
         {showHybridInputBar && (
           <HybridInputBar
             ref={inputBarRef}
-            disabled={isBackendDisconnected || isBackendRecovering}
+            disabled={isBackendDisconnected || isBackendRecovering || isInputLocked}
             cwd={cwd}
             agentId={effectiveAgentId}
             onSend={({ trackerData, text }) => {
-              terminalInstanceService.notifyUserInput(id);
-              // Use backend submit() which handles Codex vs other agents automatically
-              terminalClient.submit(id, text);
-              // Feed tracker data for features like clear command detection
-              handleInput(trackerData);
+              if (!isInputLocked) {
+                terminalInstanceService.notifyUserInput(id);
+                // Use backend submit() which handles Codex vs other agents automatically
+                terminalClient.submit(id, text);
+                // Feed tracker data for features like clear command detection
+                handleInput(trackerData);
+              }
             }}
             onSendKey={(key) => {
-              terminalInstanceService.notifyUserInput(id);
-              terminalClient.sendKey(id, key);
+              if (!isInputLocked) {
+                terminalInstanceService.notifyUserInput(id);
+                terminalClient.sendKey(id, key);
+              }
             }}
           />
         )}
