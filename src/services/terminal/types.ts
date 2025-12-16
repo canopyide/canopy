@@ -62,6 +62,9 @@ export interface ManagedTerminal {
 
   // Typing burst timer
   inputBurstTimer?: number;
+
+  // Input lock state (read-only monitor mode)
+  isInputLocked?: boolean;
 }
 
 export const TIER_DOWNGRADE_HYSTERESIS_MS = 500;
