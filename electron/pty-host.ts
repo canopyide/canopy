@@ -341,6 +341,10 @@ ptyManager.on("data", (id: string, data: string | Uint8Array) => {
   if (tier !== "active" || isSuspended) {
     return;
   }
+  const terminalInfo = ptyManager.getTerminal(id);
+  // Agent terminals use snapshot projection and do not consume the raw visual stream.
+  // Writing agent output into the visual ring buffer would immediately backpressure the PTY.
+  const skipVisualStream = terminalInfo?.kind === "agent";
   // ---------------------------------------------------------------------------
   // PRIORITY 1: VISUAL RENDERER (Zero-Latency Path)
   // Write to SharedArrayBuffer immediately before doing ANY processing.
@@ -348,7 +352,7 @@ ptyManager.on("data", (id: string, data: string | Uint8Array) => {
   // ---------------------------------------------------------------------------
   let visualWritten = false;
 
-  if (visualBuffer) {
+  if (!skipVisualStream && visualBuffer) {
     const packet = packetFramer.frame(id, data);
     if (packet) {
       const bytesWritten = visualBuffer.write(packet);
@@ -519,7 +523,7 @@ ptyManager.on("data", (id: string, data: string | Uint8Array) => {
   }
 
   // Fallback: If ring buffer failed or isn't set up, use IPC
-  if (!visualWritten) {
+  if (!skipVisualStream && !visualWritten) {
     sendEvent({ type: "data", id, data: toStringForIpc(data) });
   }
 
@@ -530,7 +534,6 @@ ptyManager.on("data", (id: string, data: string | Uint8Array) => {
 
   // Semantic Analysis (Worker) - best-effort, can drop frames
   // Only write to analysis buffer if terminal has analysis enabled (agent terminals)
-  const terminalInfo = ptyManager.getTerminal(id);
   if (analysisBuffer && terminalInfo?.analysisEnabled) {
     const analysisPacket = packetFramer.frame(id, data);
     if (analysisPacket) {
