@@ -180,6 +180,8 @@ export const CHANNELS = {
   NOTIFICATION_UPDATE: "notification:update",
 
   SLASH_COMMANDS_LIST: "slash-commands:list",
+
+  WINDOW_VISIBILITY_CHANGE: "window:visibility-change",
 } as const;
 
 export type ChannelName = (typeof CHANNELS)[keyof typeof CHANNELS];
