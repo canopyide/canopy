@@ -64,7 +64,7 @@ const LOW_WATERMARK_CHARS = 5000;
 const BRACKETED_PASTE_START = "\x1b[200~";
 const BRACKETED_PASTE_END = "\x1b[201~";
 const SUBMIT_BRACKETED_PASTE_THRESHOLD_CHARS = 200;
-const SUBMIT_ENTER_DELAY_MS = 10;
+const SUBMIT_ENTER_DELAY_MS = 200; // Delay between paste and enter for reliable execution
 
 function delay(ms: number): Promise<void> {
   return new Promise((resolve) => setTimeout(resolve, ms));
