@@ -122,6 +122,115 @@ export const CLAUDE_BUILTIN_SLASH_COMMANDS: SlashCommand[] = [
     scope: "built-in",
     agentId: "claude",
   },
+  // Priority 1: Essential Commands
+  {
+    id: "model",
+    label: "/model",
+    description: "Switch active AI model",
+    scope: "built-in",
+    agentId: "claude",
+  },
+  {
+    id: "help",
+    label: "/help",
+    description: "Show available commands",
+    scope: "built-in",
+    agentId: "claude",
+  },
+  {
+    id: "review",
+    label: "/review",
+    description: "Request code review of pending changes",
+    scope: "built-in",
+    agentId: "claude",
+  },
+  {
+    id: "stats",
+    label: "/stats",
+    description: "Show token usage and session statistics",
+    scope: "built-in",
+    agentId: "claude",
+  },
+  {
+    id: "cost",
+    label: "/cost",
+    description: "Show estimated costs (alias for /stats)",
+    scope: "built-in",
+    agentId: "claude",
+  },
+  // Priority 2: Session Management
+  {
+    id: "new",
+    label: "/new",
+    description: "Reset conversation context",
+    scope: "built-in",
+    agentId: "claude",
+  },
+  {
+    id: "undo",
+    label: "/undo",
+    description: "Revert the last conversation turn",
+    scope: "built-in",
+    agentId: "claude",
+  },
+  {
+    id: "diff",
+    label: "/diff",
+    description: "Show pending file changes",
+    scope: "built-in",
+    agentId: "claude",
+  },
+  // Priority 3: Configuration & Discovery
+  {
+    id: "permissions",
+    label: "/permissions",
+    description: "Manage tool execution permissions",
+    scope: "built-in",
+    agentId: "claude",
+  },
+  {
+    id: "settings",
+    label: "/settings",
+    description: "Open settings configuration",
+    scope: "built-in",
+    agentId: "claude",
+  },
+  {
+    id: "tools",
+    label: "/tools",
+    description: "List available tools and capabilities",
+    scope: "built-in",
+    agentId: "claude",
+  },
+  // Priority 4: Advanced Features
+  {
+    id: "copy",
+    label: "/copy",
+    description: "Copy last response to clipboard",
+    scope: "built-in",
+    agentId: "claude",
+  },
+  {
+    id: "bug",
+    label: "/bug",
+    description: "File an issue report",
+    scope: "built-in",
+    agentId: "claude",
+  },
+  {
+    id: "init",
+    label: "/init",
+    description: "Initialize project configuration",
+    scope: "built-in",
+    agentId: "claude",
+  },
+  {
+    id: "security-review",
+    label: "/security-review",
+    description: "Security-focused code review",
+    scope: "built-in",
+    agentId: "claude",
+  },
 ] as const;
 
 export const GEMINI_BUILTIN_SLASH_COMMANDS: SlashCommand[] = [
@@ -244,6 +353,80 @@ export const GEMINI_BUILTIN_SLASH_COMMANDS: SlashCommand[] = [
     scope: "built-in",
     agentId: "gemini",
   },
+  // Priority 1: Essential Commands
+  {
+    id: "model",
+    label: "/model",
+    description: "Switch active AI model",
+    scope: "built-in",
+    agentId: "gemini",
+  },
+  {
+    id: "review",
+    label: "/review",
+    description: "Request code review of pending changes",
+    scope: "built-in",
+    agentId: "gemini",
+  },
+  {
+    id: "cost",
+    label: "/cost",
+    description: "Show estimated costs (alias for /stats)",
+    scope: "built-in",
+    agentId: "gemini",
+  },
+  // Priority 2: Session Management
+  {
+    id: "new",
+    label: "/new",
+    description: "Reset conversation context",
+    scope: "built-in",
+    agentId: "gemini",
+  },
+  {
+    id: "undo",
+    label: "/undo",
+    description: "Revert the last conversation turn",
+    scope: "built-in",
+    agentId: "gemini",
+  },
+  {
+    id: "diff",
+    label: "/diff",
+    description: "Show pending file changes",
+    scope: "built-in",
+    agentId: "gemini",
+  },
+  // Priority 3: Configuration & Discovery
+  {
+    id: "permissions",
+    label: "/permissions",
+    description: "Manage tool execution permissions",
+    scope: "built-in",
+    agentId: "gemini",
+  },
+  // Priority 4: Advanced Features
+  {
+    id: "copy",
+    label: "/copy",
+    description: "Copy last response to clipboard",
+    scope: "built-in",
+    agentId: "gemini",
+  },
+  {
+    id: "init",
+    label: "/init",
+    description: "Initialize project configuration",
+    scope: "built-in",
+    agentId: "gemini",
+  },
+  {
+    id: "security-review",
+    label: "/security-review",
+    description: "Security-focused code review",
+    scope: "built-in",
+    agentId: "gemini",
+  },
 ] as const;
 
 export const CODEX_BUILTIN_SLASH_COMMANDS: SlashCommand[] = [
@@ -335,6 +518,72 @@ export const CODEX_BUILTIN_SLASH_COMMANDS: SlashCommand[] = [
     id: "undo",
     label: "/undo",
     description: "Revert the last conversation turn",
+    scope: "built-in",
+    agentId: "codex",
+  },
+  // Priority 1: Essential Commands
+  {
+    id: "help",
+    label: "/help",
+    description: "Show available commands",
+    scope: "built-in",
+    agentId: "codex",
+  },
+  {
+    id: "stats",
+    label: "/stats",
+    description: "Show token usage and session statistics",
+    scope: "built-in",
+    agentId: "codex",
+  },
+  {
+    id: "cost",
+    label: "/cost",
+    description: "Show estimated costs (alias for /stats)",
+    scope: "built-in",
+    agentId: "codex",
+  },
+  // Priority 3: Configuration & Discovery
+  {
+    id: "permissions",
+    label: "/permissions",
+    description: "Manage tool execution permissions",
+    scope: "built-in",
+    agentId: "codex",
+  },
+  {
+    id: "settings",
+    label: "/settings",
+    description: "Open settings configuration",
+    scope: "built-in",
+    agentId: "codex",
+  },
+  {
+    id: "tools",
+    label: "/tools",
+    description: "List available tools and capabilities",
+    scope: "built-in",
+    agentId: "codex",
+  },
+  // Priority 4: Advanced Features
+  {
+    id: "copy",
+    label: "/copy",
+    description: "Copy last response to clipboard",
+    scope: "built-in",
+    agentId: "codex",
+  },
+  {
+    id: "bug",
+    label: "/bug",
+    description: "File an issue report",
+    scope: "built-in",
+    agentId: "codex",
+  },
+  {
+    id: "security-review",
+    label: "/security-review",
+    description: "Security-focused code review",
     scope: "built-in",
     agentId: "codex",
   },
