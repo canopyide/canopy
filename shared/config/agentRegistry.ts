@@ -29,11 +29,11 @@ export const AGENT_REGISTRY: Record<string, AgentConfig> = {
     tooltip: "deep, focused work",
     capabilities: {
       scrollback: 10000,
-      blockAltScreen: true,
+      blockAltScreen: false,
       blockMouseReporting: true,
-      blockScrollRegion: true,
-      blockClearScreen: true,
-      blockCursorToTop: true,
+      blockScrollRegion: false,
+      blockClearScreen: false,
+      blockCursorToTop: false,
     },
   },
   gemini: {
@@ -47,11 +47,11 @@ export const AGENT_REGISTRY: Record<string, AgentConfig> = {
     tooltip: "quick exploration",
     capabilities: {
       scrollback: 10000,
-      blockAltScreen: true,
+      blockAltScreen: false,
       blockMouseReporting: true,
-      blockScrollRegion: true,
-      blockClearScreen: true,
-      blockCursorToTop: true,
+      blockScrollRegion: false,
+      blockClearScreen: false,
+      blockCursorToTop: false,
     },
   },
   codex: {
@@ -65,7 +65,7 @@ export const AGENT_REGISTRY: Record<string, AgentConfig> = {
     tooltip: "careful, methodical runs",
     capabilities: {
       scrollback: 10000,
-      blockAltScreen: true,
+      blockAltScreen: false,
       blockMouseReporting: true,
       blockScrollRegion: false,
       blockClearScreen: false,

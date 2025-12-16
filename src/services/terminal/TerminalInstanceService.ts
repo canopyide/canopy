@@ -869,15 +869,10 @@ class TerminalInstanceService {
   handleBackendRecovery(): void {
     this.instances.forEach((managed, id) => {
       try {
-        // Allow resets temporarily so DECSTR can clear state
-        managed.parserHandler?.setAllowResets(true);
-
         // 1. Send soft terminal reset to clear stuck ANSI state
         // \x1b[!p = DECSTR (Soft Terminal Reset)
         // Resets colors, cursor, scrolling regions but keeps text
-        managed.terminal.write("\x1b[!p", () => {
-          managed.parserHandler?.setAllowResets(false);
-        });
+        managed.terminal.write("\x1b[!p");
 
         // 2. Reset the renderer (canvas refresh)
         this.resetRenderer(id);
