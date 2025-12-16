@@ -345,11 +345,9 @@ ptyManager.on("data", (id: string, data: string | Uint8Array) => {
   // Agent terminals use snapshot projection and do not consume the raw visual stream.
   // Writing agent output into the visual ring buffer would immediately backpressure the PTY.
   const skipVisualStream = terminalInfo?.kind === "agent";
-  // ---------------------------------------------------------------------------
   // PRIORITY 1: VISUAL RENDERER (Zero-Latency Path)
   // Write to SharedArrayBuffer immediately before doing ANY processing.
   // This ensures terminal output reaches xterm.js with minimal latency.
-  // ---------------------------------------------------------------------------
   let visualWritten = false;
 
   if (!skipVisualStream && visualBuffer) {
@@ -528,10 +526,8 @@ ptyManager.on("data", (id: string, data: string | Uint8Array) => {
     sendEvent({ type: "data", id, data: toStringForIpc(data) });
   }
 
-  // ---------------------------------------------------------------------------
   // PRIORITY 2: BACKGROUND TASKS (Deferred Processing)
   // Now that pixels are on their way to the screen, we can do heavy work.
-  // ---------------------------------------------------------------------------
 
   // Semantic Analysis (Worker) - best-effort, can drop frames
   // Only write to analysis buffer if terminal has analysis enabled (agent terminals)
