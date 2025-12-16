@@ -761,6 +761,20 @@ export function HistoryOverlayTerminalView({
   }, [isFocused, viewMode]);
 
   // ============================================================================
+  // Exit History on Agent Activity
+  // ============================================================================
+
+  useEffect(() => {
+    const unsubscribe = terminalInstanceService.addAgentStateListener(terminalId, (state) => {
+      // Exit history mode when agent starts working (user submitted a message)
+      if (state === "working" && viewModeRef.current === "history") {
+        exitHistoryMode();
+      }
+    });
+    return unsubscribe;
+  }, [terminalId, exitHistoryMode]);
+
+  // ============================================================================
   // Render
   // ============================================================================
 
