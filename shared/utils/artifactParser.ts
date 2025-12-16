@@ -1,6 +1,6 @@
 /**
  * Shared utility for parsing text to extract code blocks and patches.
- * Used by both Main process (ArtifactExtractor) and Browser/Worker (WorkerArtifactExtractor).
+ * Used by browser/worker artifact extraction.
  */
 
 export interface CodeBlock {

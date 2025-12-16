@@ -10,11 +10,6 @@ export interface AgentSettingsEntry {
   [key: string]: unknown;
 }
 
-// Legacy aliases for compatibility
-export type ClaudeSettings = AgentSettingsEntry;
-export type GeminiSettings = AgentSettingsEntry;
-export type CodexSettings = AgentSettingsEntry;
-
 export interface AgentSettings {
   agents: Record<string, AgentSettingsEntry>;
 }
@@ -65,8 +60,3 @@ export function generateAgentFlags(entry: AgentSettingsEntry, agentId?: string):
   }
   return flags;
 }
-
-// Legacy helpers preserved for compatibility (all now use customFlags only)
-export const generateClaudeFlags = generateAgentFlags;
-export const generateGeminiFlags = generateAgentFlags;
-export const generateCodexFlags = generateAgentFlags;

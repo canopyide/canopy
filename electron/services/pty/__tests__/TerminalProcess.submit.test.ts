@@ -67,7 +67,7 @@ describe("TerminalProcess.submit", () => {
     terminal.submit("test\n");
     expect(ptyWriteMock).toHaveBeenCalledTimes(1);
     expect(ptyWriteMock).toHaveBeenLastCalledWith("test");
-    await vi.advanceTimersByTimeAsync(10);
+    await vi.advanceTimersByTimeAsync(250);
     expect(ptyWriteMock).toHaveBeenLastCalledWith("\r");
     vi.useRealTimers();
   });
@@ -80,7 +80,7 @@ describe("TerminalProcess.submit", () => {
 
     expect(ptyWriteMock).toHaveBeenCalledTimes(1);
     expect(ptyWriteMock.mock.calls[0]?.[0]).toBe("\x1b[200~line1\rline2\x1b[201~");
-    await vi.advanceTimersByTimeAsync(10);
+    await vi.advanceTimersByTimeAsync(250);
     expect(ptyWriteMock).toHaveBeenLastCalledWith("\r");
     vi.useRealTimers();
   });
@@ -91,7 +91,7 @@ describe("TerminalProcess.submit", () => {
     terminal.submit("test\n\n");
     expect(ptyWriteMock).toHaveBeenCalledTimes(1);
     expect(ptyWriteMock).toHaveBeenLastCalledWith("test");
-    await vi.advanceTimersByTimeAsync(10);
+    await vi.advanceTimersByTimeAsync(250);
     expect(ptyWriteMock).toHaveBeenLastCalledWith("\r\r");
     vi.useRealTimers();
   });
@@ -110,7 +110,7 @@ describe("TerminalProcess.submit", () => {
 
     expect(ptyWriteMock).toHaveBeenCalledTimes(1);
     expect(ptyWriteMock.mock.calls[0]?.[0]).toBe("line1\x1b\rline2");
-    await vi.advanceTimersByTimeAsync(10);
+    await vi.advanceTimersByTimeAsync(250);
     expect(ptyWriteMock).toHaveBeenLastCalledWith("\r");
     vi.useRealTimers();
   });
