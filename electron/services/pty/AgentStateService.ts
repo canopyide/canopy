@@ -255,13 +255,24 @@ export class AgentStateService {
   /**
    * Convert activity state to agent event and trigger state update.
    */
-  handleActivityState(terminal: TerminalInfo, activity: "busy" | "idle"): void {
+  handleActivityState(
+    terminal: TerminalInfo,
+    activity: "busy" | "idle",
+    metadata?: { trigger: "input" | "output-heuristic" }
+  ): void {
     if (!terminal.agentId) {
       return;
     }
 
     const event: AgentEvent = activity === "busy" ? { type: "busy" } : { type: "prompt" };
-    this.updateAgentState(terminal, event, "activity", 1.0);
+
+    if (metadata?.trigger === "output-heuristic") {
+      this.updateAgentState(terminal, event, "heuristic", 0.9);
+    } else if (metadata?.trigger === "input") {
+      this.updateAgentState(terminal, event, "input", 1.0);
+    } else {
+      this.updateAgentState(terminal, event, "activity", 1.0);
+    }
   }
 
   emitTerminalActivity(terminal: TerminalInfo): void {

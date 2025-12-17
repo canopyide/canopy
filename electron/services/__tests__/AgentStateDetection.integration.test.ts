@@ -269,4 +269,117 @@ describe.skipIf(shouldSkip)("Agent State Detection Integration", () => {
       expect(manager.getTerminal(id)).toBeUndefined();
     }, 10000);
   });
+
+  describe("Output-Based Activity Detection", () => {
+    it("should detect high-volume output and maintain working state", async () => {
+      const id = await spawnShellTerminal(manager, { type: "claude" });
+      await sleep(500);
+
+      const states: Array<{ state: string; trigger: string }> = [];
+      const handler = (data: { id: string; state: string; trigger: string }) => {
+        if (data.id === id) {
+          states.push({ state: data.state, trigger: data.trigger });
+        }
+      };
+
+      manager.on("agent:state-changed", handler);
+
+      manager.write(id, "echo start\n");
+      await sleep(200);
+
+      for (let i = 0; i < 20; i++) {
+        manager.write(id, `echo line ${i}\n`);
+        await sleep(50);
+      }
+
+      await sleep(1000);
+
+      const workingStates = states.filter((s) => s.state === "working");
+      expect(workingStates.length).toBeGreaterThan(0);
+
+      manager.off("agent:state-changed", handler);
+    }, 15000);
+
+    it("should recover from accidental idle state when output resumes", async () => {
+      const id = await spawnShellTerminal(manager, { type: "claude" });
+      await sleep(500);
+
+      const states: Array<{ state: string; trigger: string }> = [];
+      const handler = (data: { id: string; state: string; trigger: string }) => {
+        if (data.id === id) {
+          states.push({ state: data.state, trigger: data.trigger });
+        }
+      };
+
+      manager.on("agent:state-changed", handler);
+
+      manager.write(id, "echo first command\n");
+      await sleep(200);
+
+      await sleep(2000);
+
+      const beforeResumeStates = states.filter((s) => s.state === "waiting").length;
+
+      for (let i = 0; i < 10; i++) {
+        manager.write(id, `echo resume ${i}\n`);
+        await sleep(50);
+      }
+
+      await sleep(500);
+
+      const afterResumeStates = states.filter((s) => s.state === "working");
+      expect(afterResumeStates.length).toBeGreaterThan(beforeResumeStates);
+
+      manager.off("agent:state-changed", handler);
+    }, 20000);
+
+    it("should use heuristic trigger for output-driven state changes", async () => {
+      const id = await spawnShellTerminal(manager, { type: "claude" });
+      await sleep(500);
+
+      let heuristicTriggered = false;
+      const handler = (data: { id: string; state: string; trigger: string }) => {
+        if (data.id === id && data.trigger === "heuristic" && data.state === "working") {
+          heuristicTriggered = true;
+        }
+      };
+
+      manager.on("agent:state-changed", handler);
+
+      for (let i = 0; i < 15; i++) {
+        manager.write(id, `echo output ${i}\n`);
+        await sleep(50);
+      }
+
+      await sleep(1000);
+
+      expect(heuristicTriggered).toBe(true);
+
+      manager.off("agent:state-changed", handler);
+    }, 15000);
+
+    it("should not trigger on low-volume background output", async () => {
+      const id = await spawnShellTerminal(manager, { type: "claude" });
+      await sleep(500);
+
+      const states: Array<{ state: string; trigger: string }> = [];
+      const handler = (data: { id: string; state: string; trigger: string }) => {
+        if (data.id === id) {
+          states.push({ state: data.state, trigger: data.trigger });
+        }
+      };
+
+      manager.on("agent:state-changed", handler);
+
+      manager.write(id, "echo small\n");
+      await sleep(300);
+      manager.write(id, "echo output\n");
+      await sleep(300);
+
+      const heuristicStates = states.filter((s) => s.trigger === "heuristic");
+      expect(heuristicStates.length).toBe(0);
+
+      manager.off("agent:state-changed", handler);
+    }, 10000);
+  });
 });

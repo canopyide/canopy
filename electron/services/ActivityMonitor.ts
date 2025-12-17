@@ -1,7 +1,20 @@
+export interface ActivityMonitorOptions {
+  ignoredInputSequences?: string[];
+  outputActivityDetection?: {
+    enabled?: boolean;
+    windowMs?: number;
+    minFrames?: number;
+    minBytes?: number;
+  };
+}
+
+export interface ActivityStateMetadata {
+  trigger: "input" | "output-heuristic";
+}
+
 export class ActivityMonitor {
   private state: "busy" | "idle" = "idle";
   private debounceTimer: NodeJS.Timeout | null = null;
-  // 1.5 seconds silence required to consider the agent "waiting"
   private readonly DEBOUNCE_MS = 1500;
   private inBracketedPaste = false;
   private partialEscape = "";
@@ -9,13 +22,38 @@ export class ActivityMonitor {
   private readonly PASTE_TIMEOUT_MS = 5000;
   private readonly ignoredInputSequences: Set<string>;
 
+  private readonly outputDetectionEnabled: boolean;
+  private readonly outputWindowMs: number;
+  private readonly outputMinFrames: number;
+  private readonly outputMinBytes: number;
+  private outputWindowStart = 0;
+  private outputFramesInWindow = 0;
+  private outputBytesInWindow = 0;
+
   constructor(
     private terminalId: string,
     private spawnedAt: number,
-    private onStateChange: (id: string, spawnedAt: number, state: "busy" | "idle") => void,
-    options?: { ignoredInputSequences?: string[] }
+    private onStateChange: (
+      id: string,
+      spawnedAt: number,
+      state: "busy" | "idle",
+      metadata?: ActivityStateMetadata
+    ) => void,
+    options?: ActivityMonitorOptions
   ) {
     this.ignoredInputSequences = new Set(options?.ignoredInputSequences ?? ["\x1b\r"]);
+
+    const outputDefaults = {
+      enabled: true,
+      windowMs: 500,
+      minFrames: 3,
+      minBytes: 2048,
+    };
+    const outputConfig = { ...outputDefaults, ...options?.outputActivityDetection };
+    this.outputDetectionEnabled = outputConfig.enabled;
+    this.outputWindowMs = outputConfig.windowMs;
+    this.outputMinFrames = outputConfig.minFrames;
+    this.outputMinBytes = outputConfig.minBytes;
   }
 
   /**
@@ -78,24 +116,64 @@ export class ActivityMonitor {
 
   /**
    * Called on every data event from PTY (output received).
-   * Only extends the BUSY state; never triggers it.
+   * Extends the BUSY state if already active.
+   * Can also trigger BUSY from IDLE if output volume is high enough.
    */
-  onData(): void {
-    // If we are already busy, any output resets the "silence" timer.
-    // If we are idle, we ignore output (background noise).
+  onData(data?: string): void {
     if (this.state === "busy") {
       this.resetDebounceTimer();
+      return;
+    }
+
+    if (!this.outputDetectionEnabled || !data) {
+      return;
+    }
+
+    const now = Date.now();
+    const dataLength = Buffer.byteLength(data, "utf8");
+
+    if (this.outputWindowStart === 0 || now - this.outputWindowStart > this.outputWindowMs) {
+      this.outputWindowStart = now;
+      this.outputFramesInWindow = 1;
+      this.outputBytesInWindow = dataLength;
+    } else {
+      this.outputFramesInWindow++;
+      this.outputBytesInWindow += dataLength;
+    }
+
+    if (
+      (this.outputFramesInWindow >= this.outputMinFrames &&
+        this.outputBytesInWindow >= this.outputMinBytes) ||
+      this.outputBytesInWindow >= this.outputMinBytes
+    ) {
+      this.becomeBusyFromOutput();
+      this.resetOutputWindow();
     }
   }
 
+  private resetOutputWindow(): void {
+    this.outputWindowStart = 0;
+    this.outputFramesInWindow = 0;
+    this.outputBytesInWindow = 0;
+  }
+
   private becomeBusy(): void {
-    // Always reset the timer when activity happens
     this.resetDebounceTimer();
 
-    // Only fire state change if we weren't already busy
     if (this.state !== "busy") {
       this.state = "busy";
-      this.onStateChange(this.terminalId, this.spawnedAt, "busy");
+      this.onStateChange(this.terminalId, this.spawnedAt, "busy", { trigger: "input" });
+    }
+  }
+
+  private becomeBusyFromOutput(): void {
+    this.resetDebounceTimer();
+
+    if (this.state !== "busy") {
+      this.state = "busy";
+      this.onStateChange(this.terminalId, this.spawnedAt, "busy", {
+        trigger: "output-heuristic",
+      });
     }
   }
 
@@ -114,10 +192,12 @@ export class ActivityMonitor {
   dispose(): void {
     if (this.debounceTimer) {
       clearTimeout(this.debounceTimer);
+      this.debounceTimer = null;
     }
     this.inBracketedPaste = false;
     this.partialEscape = "";
     this.pasteStartTime = 0;
+    this.resetOutputWindow();
   }
 
   getState(): "busy" | "idle" {

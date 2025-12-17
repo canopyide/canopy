@@ -545,7 +545,7 @@ export class TerminalProcess {
       this.activityMonitor = new ActivityMonitor(
         id,
         spawnedAt,
-        (_termId, cbSpawnedAt, state) => {
+        (_termId, cbSpawnedAt, state, metadata) => {
           // Validate session token to prevent stale monitor callbacks
           if (this.terminalInfo.spawnedAt !== cbSpawnedAt) {
             console.warn(
@@ -554,7 +554,7 @@ export class TerminalProcess {
             );
             return;
           }
-          deps.agentStateService.handleActivityState(this.terminalInfo, state);
+          deps.agentStateService.handleActivityState(this.terminalInfo, state, metadata);
         },
         this.getActivityMonitorOptions()
       );
@@ -1181,7 +1181,7 @@ export class TerminalProcess {
       this.activityMonitor = new ActivityMonitor(
         this.id,
         this.terminalInfo.spawnedAt,
-        (_termId, cbSpawnedAt, state) => {
+        (_termId, cbSpawnedAt, state, metadata) => {
           // Validate session token to prevent stale monitor callbacks
           if (this.terminalInfo.spawnedAt !== cbSpawnedAt) {
             console.warn(
@@ -1190,15 +1190,14 @@ export class TerminalProcess {
             );
             return;
           }
-          this.deps.agentStateService.handleActivityState(this.terminalInfo, state);
+          this.deps.agentStateService.handleActivityState(this.terminalInfo, state, metadata);
         },
         this.getActivityMonitorOptions()
       );
     }
   }
 
-  private getActivityMonitorOptions(): { ignoredInputSequences: string[] } {
-    // Shift+Enter "soft newline" differs by agent CLI; codex commonly uses LF (\n / Ctrl+J).
+  private getActivityMonitorOptions(): import("../ActivityMonitor.js").ActivityMonitorOptions {
     const ignoredInputSequences =
       this.terminalInfo.type === "codex" ? ["\n", "\x1b\r"] : ["\x1b\r"];
     return { ignoredInputSequences };
@@ -1381,7 +1380,7 @@ export class TerminalProcess {
         }
 
         if (this.activityMonitor) {
-          this.activityMonitor.onData();
+          this.activityMonitor.onData(data);
         }
 
         if (terminal.agentId) {
