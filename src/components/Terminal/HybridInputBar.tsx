@@ -461,13 +461,14 @@ export const HybridInputBar = forwardRef<HybridInputBarHandle, HybridInputBarPro
     );
 
     const barContent = (
-      <div ref={barContentRef} className="cursor-text bg-canopy-bg px-4 pb-5 pt-4">
+      <div ref={barContentRef} className="group cursor-text bg-canopy-bg px-4 pb-5 pt-4">
         <div className="flex items-end gap-2">
           <div
             ref={inputShellRef}
             className={cn(
               "relative",
               "flex w-full items-stretch gap-1.5 rounded-sm border border-canopy-border bg-white/[0.03] py-2 shadow-[0_8px_10px_rgba(0,0,0,0.25)] transition-colors",
+              "group-hover:border-white/10 group-hover:bg-white/[0.04]",
               "focus-within:border-white/15 focus-within:ring-1 focus-within:ring-white/10 focus-within:bg-white/[0.05]",
               disabled && "opacity-60"
             )}
@@ -670,7 +671,7 @@ export const HybridInputBar = forwardRef<HybridInputBarHandle, HybridInputBarPro
     return (
       <div
         ref={rootRef}
-        className={cn("relative shrink-0", className)}
+        className={cn("relative w-full shrink-0", disabled && "pointer-events-none", className)}
         onPointerDownCapture={(e) => {
           if (disabled) return;
           if (e.button !== 0) return;
@@ -678,11 +679,13 @@ export const HybridInputBar = forwardRef<HybridInputBarHandle, HybridInputBarPro
           focusTextarea();
         }}
         onMouseDownCapture={(e) => {
+          if (disabled) return;
           if (e.button !== 0) return;
           onActivate?.();
           focusTextarea();
         }}
         onClick={() => {
+          if (disabled) return;
           onActivate?.();
           focusTextarea();
         }}
