@@ -676,6 +676,11 @@ export class PtyClient extends EventEmitter {
         });
         break;
 
+      case "terminal-reliability-metric":
+        // Forward reliability metrics for visibility in diagnostics
+        events.emit("terminal:reliability-metric", event.payload);
+        break;
+
       default:
         console.warn("[PtyClient] Unknown event type:", (event as { type: string }).type);
     }
