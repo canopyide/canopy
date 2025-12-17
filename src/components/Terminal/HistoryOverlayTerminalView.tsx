@@ -676,6 +676,7 @@ export const HistoryOverlayTerminalView = forwardRef<
       scrollback: effectiveScrollback,
       macOptionIsMeta: true,
       scrollOnUserInput: false,
+      scrollOnOutput: true,
       fastScrollModifier: "alt" as const,
       fastScrollSensitivity: 5,
       scrollSensitivity: 1.5,
@@ -747,6 +748,18 @@ export const HistoryOverlayTerminalView = forwardRef<
       terminalInstanceService.notifyUserInput(terminalId);
     });
 
+    // Enforce lock-to-bottom: if xterm scrolls away from bottom, snap back immediately.
+    // In this view, xterm must ALWAYS be at bottom - any deviation is a bug.
+    // History scrolling is handled entirely by the overlay, not xterm's native scrolling.
+    const scrollDisposable = term.onScroll(() => {
+      const buffer = term.buffer.active;
+      const isAtBottom = buffer.baseY - buffer.viewportY < 1;
+
+      if (!isAtBottom) {
+        term.scrollToBottom();
+      }
+    });
+
     // Subscribe to PTY data
     const dataUnsub = terminalClient.onData(terminalId, (data) => {
       const str = typeof data === "string" ? data : new TextDecoder().decode(data);
@@ -759,11 +772,19 @@ export const HistoryOverlayTerminalView = forwardRef<
       // The resync mechanism will update history content periodically,
       // and users can exit via: scroll to bottom, "Back to live" button, or pressing Enter.
 
-      term.write(str);
+      term.write(str, () => {
+        // Ensure viewport is at bottom after every write
+        const buffer = term.buffer.active;
+        const isAtBottom = buffer.baseY - buffer.viewportY < 1;
+        if (!isAtBottom) {
+          term.scrollToBottom();
+        }
+      });
     });
 
     return () => {
       disposedRef.current = true;
+      scrollDisposable.dispose();
       inputDisposable.dispose();
       dataUnsub();
       xtermRef.current = null;
@@ -783,11 +804,13 @@ export const HistoryOverlayTerminalView = forwardRef<
       if (e.deltaY === 0) return;
 
       if (viewModeRef.current === "live") {
-        // LIVE MODE: scroll up enters history with the wheel delta applied
-        if (e.deltaY < 0) {
-          e.preventDefault();
-          e.stopPropagation();
+        // LIVE MODE: xterm is hard-locked to bottom. All scrolling control comes from history mode.
+        // Intercept ALL wheel events so xterm never scrolls via wheel.
+        e.preventDefault();
+        e.stopPropagation();
 
+        // Scroll up enters history with the wheel delta applied
+        if (e.deltaY < 0) {
           // Convert wheel delta to pixels for seamless scroll entry
           const cellH = metricsRef.current?.cellH ?? 18;
           const pageH = containerRef.current?.clientHeight ?? 400;
@@ -795,7 +818,7 @@ export const HistoryOverlayTerminalView = forwardRef<
 
           enterHistoryMode(deltaPx);
         }
-        // Down scrolls in live mode are ignored (we're at bottom)
+        // Down scrolls in live mode are ignored (we're locked to bottom)
         return;
       }
 
