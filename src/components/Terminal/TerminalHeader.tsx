@@ -139,16 +139,6 @@ function TerminalHeaderComponent({
     const StateIcon = STATE_ICONS[agentState];
     if (!StateIcon) return null;
 
-    const showLabel = agentState === "waiting" || agentState === "failed";
-    const label =
-      agentState === "working"
-        ? "Working"
-        : agentState === "waiting"
-          ? "Waiting"
-          : agentState === "running"
-            ? "Running"
-            : "Failed";
-
     const chipStyle =
       agentState === "working"
         ? "bg-[color-mix(in_oklab,var(--color-state-working)_15%,transparent)] border-[var(--color-state-working)]/40"
@@ -164,24 +154,23 @@ function TerminalHeaderComponent({
     return (
       <div
         className={cn(
-          "inline-flex items-center gap-1.5 px-2 py-0.5 rounded border text-xs font-sans shrink-0",
+          "inline-flex items-center justify-center w-5 h-5 rounded-full border shrink-0",
           chipStyle,
           STATE_COLORS[agentState]
         )}
         title={tooltip}
         role="status"
-        aria-label={`Agent state: ${label}`}
+        aria-label={`Agent state: ${agentState}`}
       >
         <StateIcon
           className={cn(
-            "w-3.5 h-3.5",
+            "w-3 h-3",
             agentState === "working" && "animate-spin",
             agentState === "waiting" && "animate-breathe",
             "motion-reduce:animate-none"
           )}
           aria-hidden="true"
         />
-        {showLabel && <span className="whitespace-nowrap">{label}</span>}
       </div>
     );
   };
