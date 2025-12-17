@@ -812,6 +812,17 @@ export const createTerminalRegistrySlice =
       }
 
       try {
+        // CAPTURE LIVE DIMENSIONS before destroying the frontend
+        // The store's cols/rows may be stale (set on initial spawn).
+        // The managed xterm instance has the actual current dimensions.
+        const managedInstance = terminalInstanceService.get(id);
+        let spawnCols = currentTerminal.cols || 80;
+        let spawnRows = currentTerminal.rows || 24;
+        if (managedInstance?.terminal) {
+          spawnCols = managedInstance.terminal.cols || spawnCols;
+          spawnRows = managedInstance.terminal.rows || spawnRows;
+        }
+
         // AGGRESSIVE TEARDOWN: Destroy frontend FIRST to prevent race condition
         // The old frontend must stop listening before new PTY data starts flowing
         terminalInstanceService.destroy(id);
@@ -822,9 +833,6 @@ export const createTerminalRegistrySlice =
 
         await terminalClient.kill(id);
 
-        // Calculate spawn dimensions
-        const spawnCols = currentTerminal.cols || 80;
-        const spawnRows = currentTerminal.rows || 24;
         // Do not shrink geometry for dock; dock previews are clipped instead.
 
         // Update terminal in store: increment restartKey, reset agent state, update location
@@ -864,6 +872,7 @@ export const createTerminalRegistrySlice =
           title: currentTerminal.title,
           worktreeId: currentTerminal.worktreeId,
           command: commandToRun,
+          restore: false, // Disable session restoration on restart for clean slate
         });
 
         // Allow XtermAdapter to finish mounting and set up data listeners

@@ -28,6 +28,8 @@ export interface TerminalSpawnOptions {
   worktreeId?: string;
   /** Command to execute after shell starts (e.g., 'claude' for AI agents) */
   command?: string;
+  /** Whether to restore previous session content (default: true). Set to false on restart. */
+  restore?: boolean;
 }
 
 /** Terminal state for app state persistence */
