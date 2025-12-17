@@ -31,6 +31,7 @@ import { terminalClient } from "@/clients";
 import { HybridInputBar, type HybridInputBarHandle } from "./HybridInputBar";
 import { getTerminalFocusTarget } from "./terminalFocus";
 import { useTerminalUnseenOutput } from "@/hooks/useTerminalUnseenOutput";
+import { getCanopyCommand, isEscapedCommand, unescapeCommand } from "./canopySlashCommands";
 
 export type { TerminalType };
 
@@ -642,6 +643,29 @@ function TerminalPaneComponent({
             onActivate={handleClick}
             onSend={({ trackerData, text }) => {
               if (!isInputLocked) {
+                // Handle escaped commands: \/ prefix -> pass through to PTY without backslash
+                if (isEscapedCommand(text)) {
+                  const unescapedText = unescapeCommand(text);
+                  terminalInstanceService.notifyUserInput(id);
+                  terminalClient.submit(id, unescapedText);
+                  handleInput(trackerData);
+                  historyViewRef.current?.notifySubmit();
+                  return;
+                }
+
+                // Check for Canopy commands (e.g., /restart) and intercept
+                const canopyCommand = getCanopyCommand(text);
+                if (canopyCommand) {
+                  terminalInstanceService.notifyUserInput(id);
+                  void Promise.resolve(canopyCommand.execute({ terminalId: id, worktreeId })).catch(
+                    (error) => {
+                      console.error(`Canopy command '${canopyCommand.label}' failed:`, error);
+                    }
+                  );
+                  historyViewRef.current?.notifySubmit();
+                  return;
+                }
+
                 terminalInstanceService.notifyUserInput(id);
                 // Use backend submit() which handles Codex vs other agents automatically
                 terminalClient.submit(id, text);
