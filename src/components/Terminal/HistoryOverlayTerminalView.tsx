@@ -847,10 +847,10 @@ export const HistoryOverlayTerminalView = forwardRef<
         <button
           type="button"
           onClick={exitHistoryMode}
-          className="absolute bottom-4 right-4 z-30 flex items-center gap-1.5 px-2.5 py-1.5 bg-canopy-sidebar border border-canopy-border rounded-md text-xs font-medium text-canopy-text/80 hover:bg-canopy-bg hover:text-canopy-text hover:border-canopy-border/80 transition-colors shadow-md"
+          className="absolute bottom-4 right-4 z-30 flex items-center gap-2 px-4 py-2.5 bg-canopy-sidebar/70 backdrop-blur-md border border-canopy-border/50 rounded-lg text-sm font-medium text-canopy-text/90 hover:bg-canopy-sidebar/80 hover:text-canopy-text hover:border-canopy-border/70 transition-all shadow-lg"
         >
           <svg
-            className="w-3.5 h-3.5"
+            className="w-4 h-4"
             fill="none"
             viewBox="0 0 24 24"
             stroke="currentColor"
