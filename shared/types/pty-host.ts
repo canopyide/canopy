@@ -196,6 +196,10 @@ export type PtyHostEvent =
       reason?: string;
       duration?: number;
       timestamp: number;
+    }
+  | {
+      type: "terminal-reliability-metric";
+      payload: TerminalReliabilityMetricPayload;
     };
 
 /** Terminal info sent from Host → Main for getTerminal queries */
@@ -298,6 +302,18 @@ export interface HostThrottlePayload {
   reason?: string;
   duration?: number;
   timestamp: number;
+}
+
+/** Payload for terminal reliability metrics (backpressure/suspend/wake) */
+export interface TerminalReliabilityMetricPayload {
+  terminalId: string;
+  metricType: "pause-start" | "pause-end" | "suspend" | "wake-latency";
+  timestamp: number;
+  durationMs?: number;
+  bufferUtilization?: number;
+  shardIndex?: number;
+  serializedStateBytes?: number;
+  wakeLatencyMs?: number;
 }
 
 /**
