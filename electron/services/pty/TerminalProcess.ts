@@ -257,6 +257,8 @@ export class TerminalProcess {
     // Agent terminals are typically long-lived interactive sessions; restoring a prior screen
     // on spawn can look like duplicated startup output when the agent command runs again.
     if (this.isAgentTerminal) return;
+    // Explicitly check if restoration was disabled (e.g. during restart)
+    if (this.options.restore === false) return;
 
     const sessionPath = getSessionPath(this.id);
     if (!sessionPath) return;

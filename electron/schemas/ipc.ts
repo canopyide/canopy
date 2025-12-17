@@ -18,6 +18,7 @@ export const TerminalSpawnOptionsSchema = z.object({
   type: TerminalTypeSchema.optional(),
   title: z.string().optional(),
   worktreeId: z.string().optional(),
+  restore: z.boolean().optional(),
 });
 
 export const TerminalResizePayloadSchema = z.object({

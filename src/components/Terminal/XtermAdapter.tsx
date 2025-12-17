@@ -367,15 +367,7 @@ function XtermAdapterComponent({
         className
       )}
     >
-      <div
-        ref={containerRef}
-        className="w-full h-full"
-        style={{
-          // Promote its own compositor layer to reduce drag/resize jank.
-          willChange: "transform",
-          transform: "translateZ(0)",
-        }}
-      />
+      <div ref={containerRef} className="w-full h-full" />
     </div>
   );
 }

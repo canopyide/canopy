@@ -139,6 +139,7 @@ export function registerTerminalHandlers(deps: HandlerDependencies): () => void 
         title,
         worktreeId,
         projectId, // Pass project ID for multi-tenancy
+        restore: validatedOptions.restore, // Session restoration control
       });
 
       if (validatedOptions.command) {

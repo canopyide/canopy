@@ -28,6 +28,8 @@ export interface PtyHostSpawnOptions {
   title?: string;
   worktreeId?: string;
   projectId?: string;
+  /** Whether to restore previous session content (default: true). Set to false on restart. */
+  restore?: boolean;
 }
 
 /**

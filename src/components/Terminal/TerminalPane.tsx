@@ -499,7 +499,8 @@ function TerminalPaneComponent({
         exitCode !== 0 &&
         exitCode !== 130 &&
         !dismissedRestartPrompt &&
-        !restartError && (
+        !restartError &&
+        !terminal?.isRestarting && (
           <TerminalRestartBanner
             exitCode={exitCode}
             onRestart={handleRestart}
