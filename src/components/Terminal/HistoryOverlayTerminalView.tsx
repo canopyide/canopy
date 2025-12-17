@@ -13,16 +13,17 @@
  * - Broken-frame mitigation via settle-based gating
  */
 
-import React, {
-  forwardRef,
-  useCallback,
-  useEffect,
-  useImperativeHandle,
-  useLayoutEffect,
-  useMemo,
-  useRef,
-  useState,
-} from "react";
+import React,
+  {
+    forwardRef,
+    useCallback,
+    useEffect,
+    useImperativeHandle,
+    useLayoutEffect,
+    useMemo,
+    useRef,
+    useState,
+  } from "react";
 import "@xterm/xterm/css/xterm.css";
 import { Terminal } from "@xterm/xterm";
 import { FitAddon } from "@xterm/addon-fit";
@@ -36,6 +37,8 @@ import { terminalInstanceService } from "@/services/TerminalInstanceService";
 import { getTerminalThemeFromCSS } from "./XtermAdapter";
 import { DEFAULT_TERMINAL_FONT_FAMILY } from "@/config/terminalFont";
 import { useIsDragging } from "@/components/DragDrop";
+import type { TerminalType } from "@/types";
+import { TerminalRefreshTier } from "@/types";
 
 // Configuration
 const MAX_HISTORY_LINES = 5000;
@@ -102,6 +105,7 @@ function wheelDeltaToPx(e: WheelEvent, cellH: number, pageH: number): number {
 // Types
 export interface HistoryOverlayTerminalViewProps {
   terminalId: string;
+  type: TerminalType;
   isFocused: boolean;
   isVisible: boolean;
   isInputLocked?: boolean;
@@ -144,7 +148,7 @@ function escapeHtml(text: string): string {
  * URL regex pattern for detecting links in terminal output.
  * Matches http://, https://, and file:// URLs.
  */
-const URL_REGEX = /\b(https?:\/\/|file:\/\/)[^\s<>"'`)\]},;]+/gi;
+const URL_REGEX = /\b(https?|file):\/\/[^\s<>"')\]},;]+/gi;
 
 /**
  * Convert URLs in HTML to clickable anchor tags.
@@ -163,7 +167,7 @@ function linkifyHtml(html: string): string {
       return part.replace(URL_REGEX, (url) => {
         // Clean up any trailing punctuation that's likely not part of the URL
         let cleanUrl = url;
-        const trailingPunct = /[.,;:!?)>\]]+$/;
+        const trailingPunct = /[.,;:!?)>\\\]]+$/;
         const match = cleanUrl.match(trailingPunct);
         let suffix = "";
         if (match) {
@@ -404,7 +408,7 @@ export const HistoryOverlayTerminalView = forwardRef<
   HistoryOverlayTerminalViewHandle,
   HistoryOverlayTerminalViewProps
 >(function HistoryOverlayTerminalView(
-  { terminalId, isFocused, isVisible, isInputLocked, className },
+  { terminalId, type, isFocused, isVisible, isInputLocked, className },
   ref
 ) {
   // Refs
@@ -747,7 +751,7 @@ export const HistoryOverlayTerminalView = forwardRef<
     }
   }, []);
 
-  // Initialize xterm
+  // Initialize xterm via TerminalInstanceService
   useLayoutEffect(() => {
     disposedRef.current = false;
     const container = containerRef.current;
@@ -757,8 +761,6 @@ export const HistoryOverlayTerminalView = forwardRef<
     const terminalTheme = getTerminalThemeFromCSS();
     const effectiveScrollback = Math.max(1000, Math.min(50000, Math.floor(scrollbackLines)));
 
-    // Match XtermAdapter options exactly for pixel-perfect alignment
-    // Note: fontLigatures is a valid xterm option but may not be in @types
     const terminalOptions = {
       allowProposedApi: true,
       cursorBlink: true,
@@ -780,21 +782,30 @@ export const HistoryOverlayTerminalView = forwardRef<
       fastScrollSensitivity: 5,
       scrollSensitivity: 1.5,
     };
-    const term = new Terminal(terminalOptions);
 
-    const fit = new FitAddon();
-    const serialize = new SerializeAddon();
-    term.loadAddon(fit);
-    term.loadAddon(serialize);
-    term.open(xtermContainer);
+    // Use persistent instance from service
+    const managed = terminalInstanceService.getOrCreate(
+      terminalId,
+      type,
+      terminalOptions,
+      () => TerminalRefreshTier.FOCUSED // Always focused tier when mounted in this view? Or let service decide?
+    );
 
+    // Attach to DOM
+    terminalInstanceService.attach(terminalId, xtermContainer);
+
+    const term = managed.terminal;
+    const fit = managed.fitAddon;
+    const serialize = managed.serializeAddon;
+
+    // Initial fit
     try {
       const rect = xtermContainer.getBoundingClientRect();
       if (rect.width > 0 && rect.height > 0) {
-        fit.fit();
-        terminalClient.resize(terminalId, term.cols, term.rows);
+        // Force fit to container
+        terminalInstanceService.fit(terminalId);
 
-        // Capture initial metrics after fit
+        // Capture initial metrics
         const m = readXtermVisualMetrics(term);
         if (m) {
           metricsRef.current = m;
@@ -810,7 +821,8 @@ export const HistoryOverlayTerminalView = forwardRef<
     serializeAddonRef.current = serialize;
 
     // Custom key handler to detect Enter (submit) without Shift.
-    // This allows us to distinguish between Enter (exit history) and Shift+Enter (newline).
+    // We attach this to the persistent terminal instance.
+    // Note: This replaces any handler from XtermAdapter if we switched views.
     term.attachCustomKeyEventHandler((event) => {
       // Only handle keydown, not keyup
       if (event.type !== "keydown") return true;
@@ -834,22 +846,13 @@ export const HistoryOverlayTerminalView = forwardRef<
     });
 
     // Handle user input (use refs to avoid re-initialization on prop changes)
-    const inputDisposable = term.onData((data) => {
-      if (isInputLockedRef.current) return;
-
-      // Ignore focus report escape sequences
-      if (data === "\x1b[I" || data === "\x1b[O") return;
-
-      // Note: Enter detection for exiting history mode is handled by
-      // attachCustomKeyEventHandler above, which can distinguish Enter from Shift+Enter.
-
-      terminalClient.write(terminalId, data);
-      terminalInstanceService.notifyUserInput(terminalId);
-    });
+    // Note: We don't write to terminalClient here; TerminalInstanceService handles that.
+    // But we might need to intercept for focus report filtering?
+    // Service handles focus report filtering if it's generic?
+    // XtermAdapter ignored \x1b[I. Service doesn't seem to.
+    // But input lock check is done by service.
 
     // Enforce lock-to-bottom: if xterm scrolls away from bottom, snap back immediately.
-    // In this view, xterm must ALWAYS be at bottom - any deviation is a bug.
-    // History scrolling is handled entirely by the overlay, not xterm's native scrolling.
     const scrollDisposable = term.onScroll(() => {
       const buffer = term.buffer.active;
       const isAtBottom = buffer.baseY - buffer.viewportY < 1;
@@ -859,39 +862,28 @@ export const HistoryOverlayTerminalView = forwardRef<
       }
     });
 
-    // Subscribe to PTY data
-    const dataUnsub = terminalClient.onData(terminalId, (data) => {
-      const str = typeof data === "string" ? data : new TextDecoder().decode(data);
-
-      // Track output time for settle logic
+    // Track output time for settle logic (BUT DO NOT WRITE DATA - Service does it)
+    const dataUnsub = terminalClient.onData(terminalId, (_data) => {
       lastOutputAtRef.current = performance.now();
 
-      // Note: We intentionally do NOT exit history mode when PTY data arrives.
-      // This allows users to browse history while an agent is working.
-      // The resync mechanism will update history content periodically,
-      // and users can exit via: scroll to bottom, "Back to live" button, or pressing Enter.
-
-      term.write(str, () => {
-        // Ensure viewport is at bottom after every write
-        const buffer = term.buffer.active;
-        const isAtBottom = buffer.baseY - buffer.viewportY < 1;
-        if (!isAtBottom) {
-          term.scrollToBottom();
-        }
-      });
+      // Ensure viewport is at bottom after write (service writes async, so this might be early?)
+      // Service has a callback for write that scrolls to bottom if sticky.
+      // We rely on service's stick-to-bottom logic for agents.
     });
 
     return () => {
       disposedRef.current = true;
       scrollDisposable.dispose();
-      inputDisposable.dispose();
       dataUnsub();
+
       xtermRef.current = null;
       fitAddonRef.current = null;
       serializeAddonRef.current = null;
-      term.dispose();
+
+      // Detach from DOM (preserves instance in service)
+      terminalInstanceService.detach(terminalId, xtermContainer);
     };
-  }, [terminalId, effectiveFontFamily, fontSize, scrollbackLines]);
+  }, [terminalId, type, effectiveFontFamily, fontSize, scrollbackLines]);
 
   // Wheel Event Handler
   useEffect(() => {
@@ -1161,12 +1153,7 @@ export const HistoryOverlayTerminalView = forwardRef<
         </button>
       )}
 
-      {/* Debug indicator for history mode (development only) */}
-      {process.env.NODE_ENV === "development" && viewMode === "history" && (
-        <div className="absolute top-2 left-2 z-50 px-2 py-1 bg-amber-500 text-black text-xs font-bold rounded shadow-lg">
-          HISTORY MODE
-        </div>
-      )}
+
 
       {/* Scrollback unavailable notice (alt buffer) */}
       {scrollbackUnavailable && viewMode === "live" && (

@@ -8,6 +8,7 @@
 1. **Dependencies:** Use `npm install`, never `npm ci` (package-lock is ignored).
 2. **Native Modules:** Run `npm run rebuild` if node-pty errors occur.
 3. **Code Style:** Minimal comments, no decorative headers, high signal-to-noise.
+4. **Commits:** NEVER commit changes without explicit permission from the user.
 
 ## Commands
 
