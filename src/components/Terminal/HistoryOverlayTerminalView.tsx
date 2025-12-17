@@ -34,14 +34,64 @@ import { useTerminalFontStore } from "@/store/terminalFontStore";
 import { useScrollbackStore } from "@/store/scrollbackStore";
 import { terminalInstanceService } from "@/services/TerminalInstanceService";
 import { getTerminalThemeFromCSS } from "./XtermAdapter";
+import { DEFAULT_TERMINAL_FONT_FAMILY } from "@/config/terminalFont";
 
 // Configuration
 const MAX_HISTORY_LINES = 5000;
 const RESYNC_INTERVAL_MS = 3000;
 const SETTLE_MS = 60; // Quiet period before accepting snapshot
 const BOTTOM_EPSILON_PX = 5;
-const BOTTOM_BUFFER_LINES = 6; // Buffer zone for exit detection
-const MIN_LINES_FOR_HISTORY = BOTTOM_BUFFER_LINES + 2;
+const MIN_LINES_FOR_HISTORY = 8; // Minimum lines before allowing history mode
+
+// Xterm visual metrics for pixel-perfect alignment
+interface XtermVisualMetrics {
+  cellW: number;
+  cellH: number;
+  screenW: number;
+  screenH: number;
+  cols: number;
+  rows: number;
+}
+
+/**
+ * Read xterm's actual cell dimensions from its internal renderer.
+ * Falls back to measuring the screen element if internals unavailable.
+ */
+function readXtermVisualMetrics(term: Terminal): XtermVisualMetrics | null {
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  const core = (term as any)?._core;
+  const dims = core?._renderService?.dimensions;
+
+  // Try known internal dimension shapes (varies by xterm version)
+  const cssCellW = dims?.css?.cell?.width ?? dims?.actualCellWidth ?? dims?.cell?.width;
+  const cssCellH = dims?.css?.cell?.height ?? dims?.actualCellHeight ?? dims?.cell?.height;
+
+  // Fallback: measure screen element and divide by cols/rows
+  const screenEl = term.element?.querySelector(".xterm-screen") as HTMLElement | null;
+  if (!screenEl) return null;
+
+  const rect = screenEl.getBoundingClientRect();
+  const cols = term.cols || 0;
+  const rows = term.rows || 0;
+  if (rect.width <= 0 || rect.height <= 0 || cols <= 0 || rows <= 0) return null;
+
+  const screenW = rect.width;
+  const screenH = rect.height;
+
+  const cellW = typeof cssCellW === "number" && cssCellW > 0 ? cssCellW : screenW / cols;
+  const cellH = typeof cssCellH === "number" && cssCellH > 0 ? cssCellH : screenH / rows;
+
+  return { cellW, cellH, screenW, screenH, cols, rows };
+}
+
+/**
+ * Convert wheel deltaY to pixels, handling different deltaMode values.
+ */
+function wheelDeltaToPx(e: WheelEvent, cellH: number, pageH: number): number {
+  if (e.deltaMode === 1) return e.deltaY * cellH; // DOM_DELTA_LINE
+  if (e.deltaMode === 2) return e.deltaY * pageH; // DOM_DELTA_PAGE
+  return e.deltaY; // DOM_DELTA_PIXEL
+}
 
 // Types
 export interface HistoryOverlayTerminalViewProps {
@@ -316,11 +366,18 @@ export const HistoryOverlayTerminalView = forwardRef<
   // Scroll anchor for resync
   const anchorRef = useRef<ScrollAnchor | null>(null);
 
-  // Line height for scroll calculations (measured dynamically)
-  const lineHeightRef = useRef(18); // Default, will be measured
+  // Xterm visual metrics for pixel-perfect alignment
+  const [metrics, setMetrics] = useState<XtermVisualMetrics | null>(null);
+  const metricsRef = useRef<XtermVisualMetrics | null>(null);
 
   // Flag to scroll to bottom after entering history mode
   const shouldScrollToBottomRef = useRef(false);
+
+  // Pending wheel delta to apply when entering history mode (for seamless scroll)
+  const pendingEntryDeltaPxRef = useRef<number>(0);
+
+  // Exit-armed state: only allow exit after user has scrolled up at least once
+  const exitArmedRef = useRef(false);
 
   // Refs for values used in callbacks that shouldn't trigger re-initialization
   const isFocusedRef = useRef(isFocused);
@@ -340,87 +397,113 @@ export const HistoryOverlayTerminalView = forwardRef<
   const fontFamily = useTerminalFontStore((s) => s.fontFamily);
   const scrollbackLines = useScrollbackStore((s) => s.scrollbackLines);
 
-  const effectiveFontFamily =
-    fontFamily || "ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, monospace";
+  // Use the same font family as XtermAdapter for pixel-perfect alignment
+  const effectiveFontFamily = fontFamily || DEFAULT_TERMINAL_FONT_FAMILY;
 
   // Sync viewMode ref
   useEffect(() => {
     viewModeRef.current = viewMode;
   }, [viewMode]);
 
-  // Style
+  // Style - matches XtermAdapter settings exactly
+  // Do NOT set lineHeight here - it's controlled per-row using xterm's cellH
   const containerStyle = useMemo<React.CSSProperties>(
     () => ({
       fontFamily: effectiveFontFamily,
       fontSize,
-      lineHeight: 1.2,
     }),
     [effectiveFontFamily, fontSize]
   );
 
+  // Overlay style with ligature disabling to match xterm's fontLigatures: false
   const overlayStyle = useMemo<React.CSSProperties>(
     () => ({
       fontFamily: effectiveFontFamily,
       fontSize,
-      lineHeight: "1.2",
+      letterSpacing: "0px",
+      fontVariantLigatures: "none",
+      fontFeatureSettings: '"liga" 0, "calt" 0',
+      fontKerning: "none",
+      tabSize: 8,
     }),
     [effectiveFontFamily, fontSize]
   );
 
-  // Measure Line Height
-  const measureLineHeight = useCallback(() => {
-    const content = overlayContentRef.current;
-    if (!content || !content.firstElementChild) return;
+  // Get the row style for each history line based on xterm metrics
+  const rowStyle = useMemo<React.CSSProperties | undefined>(() => {
+    if (!metrics) return undefined;
+    return {
+      height: `${metrics.cellH}px`,
+      lineHeight: `${metrics.cellH}px`,
+    };
+  }, [metrics]);
 
-    const firstLine = content.firstElementChild as HTMLElement;
-    const height = firstLine.offsetHeight;
-    if (height > 0) {
-      lineHeightRef.current = height;
+  // Update metrics from xterm
+  const updateMetrics = useCallback(() => {
+    const term = xtermRef.current;
+    if (!term) return;
+    const m = readXtermVisualMetrics(term);
+    if (m) {
+      metricsRef.current = m;
+      setMetrics(m);
     }
   }, []);
 
   // Enter History Mode
-  const enterHistoryMode = useCallback(() => {
-    if (viewModeRef.current === "history") return;
+  // @param initialDeltaPx - Optional wheel delta to apply after render (for seamless scroll entry)
+  const enterHistoryMode = useCallback(
+    (initialDeltaPx: number = 0) => {
+      if (viewModeRef.current === "history") return;
 
-    const term = xtermRef.current;
-    if (!term) return;
+      const term = xtermRef.current;
+      if (!term) return;
 
-    // Check if alt buffer is active (alternate not in @types/xterm but exists at runtime)
-    // eslint-disable-next-line @typescript-eslint/no-explicit-any
-    const isAltBuffer = term.buffer.active === (term.buffer as any).alternate;
-    if (isAltBuffer) {
-      setScrollbackUnavailable(true);
-      setTimeout(() => setScrollbackUnavailable(false), 3000);
-      return;
-    }
+      // Check if alt buffer is active (alternate not in @types/xterm but exists at runtime)
+      // eslint-disable-next-line @typescript-eslint/no-explicit-any
+      const isAltBuffer = term.buffer.active === (term.buffer as any).alternate;
+      if (isAltBuffer) {
+        setScrollbackUnavailable(true);
+        setTimeout(() => setScrollbackUnavailable(false), 3000);
+        return;
+      }
 
-    // Check if there's enough content
-    const buffer = term.buffer.active;
-    if (buffer.baseY < MIN_LINES_FOR_HISTORY) return;
+      // Check if there's enough content
+      const buffer = term.buffer.active;
+      if (buffer.baseY < MIN_LINES_FOR_HISTORY) return;
 
-    // Take snapshot with ANSI colors, skipping bottom lines for seamless transition
-    // This ensures history starts where the live view ends - no visual jump
-    const snapshot = extractSnapshot(
-      term,
-      serializeAddonRef.current,
-      MAX_HISTORY_LINES,
-      BOTTOM_BUFFER_LINES
-    );
-    if (snapshot.lines.length === 0) return;
+      // Update metrics before taking snapshot
+      updateMetrics();
 
-    // Update state
-    historyStateRef.current = snapshot;
-    setHistoryHtmlLines(snapshot.htmlLines);
-    setShowTruncationBanner(snapshot.windowStart > 0);
+      // Take snapshot with ANSI colors - NO skip for pixel-perfect sync
+      // The exit-armed mechanism handles preventing immediate exit instead
+      const snapshot = extractSnapshot(
+        term,
+        serializeAddonRef.current,
+        MAX_HISTORY_LINES,
+        0 // No skip - pixel perfect sync requires showing exactly what xterm shows
+      );
+      if (snapshot.lines.length === 0) return;
 
-    // Flag to scroll to bottom after React renders the content
-    shouldScrollToBottomRef.current = true;
+      // Update state
+      historyStateRef.current = snapshot;
+      setHistoryHtmlLines(snapshot.htmlLines);
+      setShowTruncationBanner(snapshot.windowStart > 0);
 
-    // Set mode
-    viewModeRef.current = "history";
-    setViewMode("history");
-  }, []);
+      // Store the initial wheel delta to apply after render
+      pendingEntryDeltaPxRef.current = initialDeltaPx;
+
+      // Flag to scroll to bottom after React renders the content
+      shouldScrollToBottomRef.current = true;
+
+      // Reset exit-armed - user must scroll up before exit is allowed
+      exitArmedRef.current = false;
+
+      // Set mode
+      viewModeRef.current = "history";
+      setViewMode("history");
+    },
+    [updateMetrics]
+  );
 
   // Exit History Mode
   const exitHistoryMode = useCallback(() => {
@@ -449,7 +532,7 @@ export const HistoryOverlayTerminalView = forwardRef<
     [exitHistoryMode]
   );
 
-  // Scroll to Near-Bottom on History Entry
+  // Scroll to bottom on History Entry with initial wheel delta applied
   // This useLayoutEffect runs AFTER React has rendered the overlay content,
   // ensuring scrollHeight is accurate when we scroll
   useLayoutEffect(() => {
@@ -459,19 +542,17 @@ export const HistoryOverlayTerminalView = forwardRef<
     const overlay = overlayScrollRef.current;
     if (!overlay) return;
 
-    // Measure line height for future calculations
-    measureLineHeight();
+    // Scroll to bottom, then apply the initial wheel delta for seamless scroll entry
+    const bottom = Math.max(0, overlay.scrollHeight - overlay.clientHeight);
+    const deltaPx = pendingEntryDeltaPxRef.current;
 
-    // Scroll to one line above the bottom so user must scroll down
-    // that extra line before triggering exit to live mode.
-    // This prevents the "jump" when entering history mode and immediately
-    // scrolling down would exit back to live.
-    const lineHeight = lineHeightRef.current;
-    overlay.scrollTop = Math.max(0, overlay.scrollHeight - lineHeight);
+    // Apply delta (negative = scroll up from bottom)
+    overlay.scrollTop = Math.max(0, Math.min(bottom, bottom + deltaPx));
 
-    // Clear the flag
+    // Clear flags
     shouldScrollToBottomRef.current = false;
-  }, [viewMode, historyHtmlLines, measureLineHeight]);
+    pendingEntryDeltaPxRef.current = 0;
+  }, [viewMode, historyHtmlLines]);
 
   // Resync History
   const resyncHistory = useCallback(() => {
@@ -480,32 +561,38 @@ export const HistoryOverlayTerminalView = forwardRef<
 
     const term = xtermRef.current;
     const overlay = overlayScrollRef.current;
-    if (!term || !overlay) return;
+    const content = overlayContentRef.current;
+    if (!term || !overlay || !content) return;
 
     resyncInFlightRef.current = true;
 
     try {
       const now = performance.now();
 
+      // Get cell height from metrics (fallback to estimate)
+      const cellH = metricsRef.current?.cellH ?? 18;
+
       // 1) Capture anchor BEFORE any changes
+      // Use content container's offsetTop to account for banner/padding
       const wasAtBottom = isAtBottom(overlay);
       let topIndex = 0;
       let offsetPx = 0;
 
       if (!wasAtBottom) {
-        const lineHeight = lineHeightRef.current;
-        topIndex = Math.max(0, Math.floor(overlay.scrollTop / lineHeight));
-        offsetPx = overlay.scrollTop - topIndex * lineHeight;
+        const contentTop = content.offsetTop;
+        const y = overlay.scrollTop - contentTop;
+        topIndex = Math.max(0, Math.floor(y / cellH));
+        offsetPx = y - topIndex * cellH;
       }
 
       anchorRef.current = { topIndex, offsetPx, wasAtBottom };
 
-      // 2) Extract new snapshot with ANSI colors (skip bottom lines like on entry)
+      // 2) Extract new snapshot - NO skip for pixel-perfect sync
       const newSnapshot = extractSnapshot(
         term,
         serializeAddonRef.current,
         MAX_HISTORY_LINES,
-        BOTTOM_BUFFER_LINES
+        0 // No skip for pixel-perfect sync
       );
       const oldSnapshot = historyStateRef.current;
 
@@ -534,7 +621,7 @@ export const HistoryOverlayTerminalView = forwardRef<
 
       // 6) Restore scroll position after DOM update
       requestAnimationFrame(() => {
-        if (!overlay) return;
+        if (!overlay || !content) return;
 
         const anchor = anchorRef.current;
         if (!anchor) return;
@@ -542,9 +629,9 @@ export const HistoryOverlayTerminalView = forwardRef<
         if (anchor.wasAtBottom) {
           overlay.scrollTop = overlay.scrollHeight;
         } else {
+          const contentTop = content.offsetTop;
           const newTopIndex = Math.max(0, anchor.topIndex - trimmedTopCount);
-          const lineHeight = lineHeightRef.current;
-          overlay.scrollTop = newTopIndex * lineHeight + anchor.offsetPx;
+          overlay.scrollTop = contentTop + newTopIndex * cellH + anchor.offsetPx;
         }
       });
     } finally {
@@ -562,22 +649,29 @@ export const HistoryOverlayTerminalView = forwardRef<
     const terminalTheme = getTerminalThemeFromCSS();
     const effectiveScrollback = Math.max(1000, Math.min(50000, Math.floor(scrollbackLines)));
 
-    const term = new Terminal({
+    // Match XtermAdapter options exactly for pixel-perfect alignment
+    // Note: fontLigatures is a valid xterm option but may not be in @types
+    const terminalOptions = {
       allowProposedApi: true,
       cursorBlink: true,
-      cursorStyle: "block",
-      cursorInactiveStyle: "block",
+      cursorStyle: "block" as const,
+      cursorInactiveStyle: "block" as const,
       fontSize,
       lineHeight: 1.1,
       letterSpacing: 0,
       fontFamily: effectiveFontFamily,
-      fontWeight: "normal",
-      fontWeightBold: "700",
+      fontLigatures: false,
+      fontWeight: "normal" as const,
+      fontWeightBold: "700" as const,
       theme: terminalTheme,
       scrollback: effectiveScrollback,
       macOptionIsMeta: true,
-      scrollOnUserInput: true,
-    });
+      scrollOnUserInput: false,
+      fastScrollModifier: "alt" as const,
+      fastScrollSensitivity: 5,
+      scrollSensitivity: 1.5,
+    };
+    const term = new Terminal(terminalOptions);
 
     const fit = new FitAddon();
     const serialize = new SerializeAddon();
@@ -590,6 +684,13 @@ export const HistoryOverlayTerminalView = forwardRef<
       if (rect.width > 0 && rect.height > 0) {
         fit.fit();
         terminalClient.resize(terminalId, term.cols, term.rows);
+
+        // Capture initial metrics after fit
+        const m = readXtermVisualMetrics(term);
+        if (m) {
+          metricsRef.current = m;
+          setMetrics(m);
+        }
       }
     } catch {
       // ignore
@@ -673,11 +774,17 @@ export const HistoryOverlayTerminalView = forwardRef<
       if (e.deltaY === 0) return;
 
       if (viewModeRef.current === "live") {
-        // LIVE MODE: scroll up enters history
+        // LIVE MODE: scroll up enters history with the wheel delta applied
         if (e.deltaY < 0) {
           e.preventDefault();
           e.stopPropagation();
-          enterHistoryMode();
+
+          // Convert wheel delta to pixels for seamless scroll entry
+          const cellH = metricsRef.current?.cellH ?? 18;
+          const pageH = containerRef.current?.clientHeight ?? 400;
+          const deltaPx = wheelDeltaToPx(e, cellH, pageH);
+
+          enterHistoryMode(deltaPx);
         }
         // Down scrolls in live mode are ignored (we're at bottom)
         return;
@@ -692,8 +799,18 @@ export const HistoryOverlayTerminalView = forwardRef<
       e.preventDefault();
       e.stopPropagation();
 
-      // Check if scrolling down while at/near bottom - exit to live mode
-      if (e.deltaY > 0) {
+      // Convert wheel delta to pixels
+      const cellH = metricsRef.current?.cellH ?? 18;
+      const pageH = overlay.clientHeight;
+      const deltaPx = wheelDeltaToPx(e, cellH, pageH);
+
+      // Scrolling up arms the exit (user has scrolled away from bottom)
+      if (deltaPx < 0) {
+        exitArmedRef.current = true;
+      }
+
+      // Check if scrolling down while at/near bottom AND exit is armed - exit to live mode
+      if (deltaPx > 0 && exitArmedRef.current) {
         const atBottom = isAtBottom(overlay, 2);
         if (atBottom) {
           exitHistoryMode();
@@ -702,7 +819,7 @@ export const HistoryOverlayTerminalView = forwardRef<
       }
 
       // Manually scroll the overlay
-      overlay.scrollTop += e.deltaY;
+      overlay.scrollTop += deltaPx;
     };
 
     container.addEventListener("wheel", handleWheel, { capture: true, passive: false });
@@ -743,6 +860,13 @@ export const HistoryOverlayTerminalView = forwardRef<
           if (rect.width <= 0 || rect.height <= 0) return;
           fit.fit();
           terminalClient.resize(terminalId, term.cols, term.rows);
+
+          // Update metrics after resize for accurate cell dimensions
+          const m = readXtermVisualMetrics(term);
+          if (m) {
+            metricsRef.current = m;
+            setMetrics(m);
+          }
 
           // If in history mode, rebuild snapshot on resize
           if (viewModeRef.current === "history") {
@@ -824,19 +948,21 @@ export const HistoryOverlayTerminalView = forwardRef<
               </div>
             )}
 
-            {/* History content with colors */}
-            <div ref={overlayContentRef} className="flex flex-col">
+            {/* History content with colors - uses xterm cell metrics for pixel-perfect alignment */}
+            <div
+              ref={overlayContentRef}
+              className="flex flex-col"
+              style={metrics ? { width: `${metrics.screenW}px` } : undefined}
+            >
               {historyHtmlLines.map((htmlLine, idx) => (
                 <div
                   key={idx}
                   data-idx={idx}
-                  className="whitespace-pre break-all min-h-[1.2em] select-text"
-                  style={{ lineHeight: "1.2" }}
+                  className="whitespace-pre overflow-hidden select-text"
+                  style={rowStyle}
                   dangerouslySetInnerHTML={{ __html: htmlLine }}
                 />
               ))}
-              {/* Bottom padding to allow scrolling past end */}
-              <div className="h-4" />
             </div>
           </div>
         </div>
