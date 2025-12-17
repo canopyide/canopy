@@ -26,6 +26,7 @@ import type {
   PtyHostTerminalSnapshot,
   TerminalFlowStatus,
   PtyHostActivityTier,
+  TerminalReliabilityMetricPayload,
 } from "../shared/types/pty-host.js";
 
 function getEmergencyLogPath(): string {
@@ -299,6 +300,20 @@ const BACKPRESSURE_RESUME_THRESHOLD = 80; // Resume when buffer drops below 80%
 const BACKPRESSURE_CHECK_INTERVAL_MS = 100; // Check every 100ms during backpressure
 const BACKPRESSURE_MAX_PAUSE_MS = 5000; // Force resume after 5 seconds to prevent indefinite pause
 
+// Helper to check if reliability metrics are enabled
+function metricsEnabled(): boolean {
+  return process.env.CANOPY_TERMINAL_METRICS === "1";
+}
+
+// Helper to emit terminal reliability metrics (gated by CANOPY_TERMINAL_METRICS)
+function emitReliabilityMetric(payload: TerminalReliabilityMetricPayload): void {
+  if (!metricsEnabled()) return;
+  sendEvent({
+    type: "terminal-reliability-metric",
+    payload,
+  });
+}
+
 // Helper to emit terminal status change (only on actual transitions)
 function emitTerminalStatus(
   id: string,
@@ -400,6 +415,15 @@ ptyManager.on("data", (id: string, data: string | Uint8Array) => {
           // Emit status event for UI
           emitTerminalStatus(id, "paused-backpressure", utilization);
 
+          // Emit metrics for pause-start
+          emitReliabilityMetric({
+            terminalId: id,
+            metricType: "pause-start",
+            timestamp: pauseStartTime,
+            bufferUtilization: utilization,
+            shardIndex,
+          });
+
           // Start monitoring for buffer clearance
           const checkInterval = setInterval(() => {
             if (visualBuffers.length === 0) {
@@ -412,6 +436,14 @@ ptyManager.on("data", (id: string, data: string | Uint8Array) => {
                   // Emit resume status
                   const pauseDuration = Date.now() - (pauseStartTimes.get(id) ?? pauseStartTime);
                   emitTerminalStatus(id, "running", undefined, pauseDuration);
+
+                  // Emit metrics for pause-end
+                  emitReliabilityMetric({
+                    terminalId: id,
+                    metricType: "pause-end",
+                    timestamp: Date.now(),
+                    durationMs: pauseDuration,
+                  });
                 } catch (error) {
                   console.error(
                     `[PtyHost] Failed to resume PTY ${id} after buffer removal:`,
@@ -450,6 +482,16 @@ ptyManager.on("data", (id: string, data: string | Uint8Array) => {
                 `[PtyHost] Suspended streaming for ${id} after ${pauseDuration}ms stall (buffer ${currentUtilization.toFixed(1)}%).`
               );
 
+              // Emit metrics for suspend
+              emitReliabilityMetric({
+                terminalId: id,
+                metricType: "suspend",
+                timestamp: Date.now(),
+                durationMs: pauseDuration,
+                bufferUtilization: currentUtilization,
+                shardIndex,
+              });
+
               clearInterval(checkInterval);
               pausedTerminals.delete(id);
               pauseStartTimes.delete(id);
@@ -470,6 +512,16 @@ ptyManager.on("data", (id: string, data: string | Uint8Array) => {
                     console.warn(
                       `[PtyHost] Suspended streaming for ${id} after ${pauseDuration}ms max pause (buffer ${currentUtilization.toFixed(1)}%).`
                     );
+
+                    // Emit metrics for suspend (force resume path)
+                    emitReliabilityMetric({
+                      terminalId: id,
+                      metricType: "suspend",
+                      timestamp: Date.now(),
+                      durationMs: pauseDuration,
+                      bufferUtilization: currentUtilization,
+                      shardIndex,
+                    });
                   } else {
                     terminal.ptyProcess.resume();
                     console.warn(
@@ -478,6 +530,15 @@ ptyManager.on("data", (id: string, data: string | Uint8Array) => {
                     );
                     // Emit resume status with duration
                     emitTerminalStatus(id, "running", currentUtilization, pauseDuration);
+
+                    // Emit metrics for pause-end (force resume path)
+                    emitReliabilityMetric({
+                      terminalId: id,
+                      metricType: "pause-end",
+                      timestamp: Date.now(),
+                      durationMs: pauseDuration,
+                      bufferUtilization: currentUtilization,
+                    });
                   }
                 } catch (error) {
                   console.error(`[PtyHost] Failed to force resume PTY ${id}:`, error);
@@ -513,6 +574,15 @@ ptyManager.on("data", (id: string, data: string | Uint8Array) => {
                   );
                   // Emit resume status with duration
                   emitTerminalStatus(id, "running", currentUtilization, pauseDuration);
+
+                  // Emit metrics for pause-end (normal resume path)
+                  emitReliabilityMetric({
+                    terminalId: id,
+                    metricType: "pause-end",
+                    timestamp: Date.now(),
+                    durationMs: pauseDuration,
+                    bufferUtilization: currentUtilization,
+                  });
                 } catch (error) {
                   console.error(`[PtyHost] Failed to resume PTY ${id}:`, error);
                 }
@@ -909,10 +979,14 @@ port.on("message", async (rawMsg: any) => {
         pendingVisualPackets.delete(msg.id);
 
         const checkInterval = pausedTerminals.get(msg.id);
+        const wasPaused = checkInterval !== undefined;
         if (checkInterval) {
           clearInterval(checkInterval);
           pausedTerminals.delete(msg.id);
         }
+
+        const pauseStart = pauseStartTimes.get(msg.id);
+        const pauseDuration = pauseStart ? Date.now() - pauseStart : undefined;
         pauseStartTimes.delete(msg.id);
 
         const terminal = ptyManager.getTerminal(msg.id);
@@ -925,14 +999,34 @@ port.on("message", async (rawMsg: any) => {
         }
 
         emitTerminalStatus(msg.id, "running");
+
+        // Emit metrics for pause-end (set-activity-tier unpause path)
+        if (wasPaused && pauseDuration !== undefined) {
+          emitReliabilityMetric({
+            terminalId: msg.id,
+            metricType: "pause-end",
+            timestamp: Date.now(),
+            durationMs: pauseDuration,
+          });
+        }
         break;
       }
 
       case "wake-terminal": {
+        const wakeStartTime = Date.now();
+
         // Wake implies we want a faithful snapshot + resume streaming.
         terminalActivityTiers.set(msg.id, "active");
         suspendedDueToStall.delete(msg.id);
         pendingVisualPackets.delete(msg.id);
+
+        // Clear any active pause interval and timing
+        const checkInterval = pausedTerminals.get(msg.id);
+        if (checkInterval) {
+          clearInterval(checkInterval);
+          pausedTerminals.delete(msg.id);
+        }
+        pauseStartTimes.delete(msg.id);
 
         // Best-effort warning: cwd missing
         const warnings: string[] = [];
@@ -955,7 +1049,23 @@ port.on("message", async (rawMsg: any) => {
           state = ptyManager.getSerializedState(msg.id);
         }
 
+        const wakeLatencyMs = Date.now() - wakeStartTime;
+
         emitTerminalStatus(msg.id, "running");
+
+        // Emit wake latency metrics (only if enabled to avoid overhead)
+        if (metricsEnabled() && state) {
+          const { Buffer } = await import("node:buffer");
+          const serializedStateBytes = Buffer.byteLength(state, "utf8");
+          emitReliabilityMetric({
+            terminalId: msg.id,
+            metricType: "wake-latency",
+            timestamp: Date.now(),
+            wakeLatencyMs,
+            serializedStateBytes,
+          });
+        }
+
         sendEvent({
           type: "wake-result",
           requestId: msg.requestId,
@@ -1246,6 +1356,7 @@ port.on("message", async (rawMsg: any) => {
               clearInterval(checkInterval);
               pausedTerminals.delete(msg.id);
             }
+            pendingVisualPackets.delete(msg.id);
 
             // Calculate pause duration if we have a start time
             const pauseStart = pauseStartTimes.get(msg.id);
@@ -1258,6 +1369,17 @@ port.on("message", async (rawMsg: any) => {
                 ? visualBuffers[selectShard(msg.id, visualBuffers.length)].getUtilization()
                 : undefined;
             emitTerminalStatus(msg.id, "running", utilization, pauseDuration);
+
+            // Emit metrics for pause-end (user force-resume path)
+            if (pauseDuration !== undefined) {
+              emitReliabilityMetric({
+                terminalId: msg.id,
+                metricType: "pause-end",
+                timestamp: Date.now(),
+                durationMs: pauseDuration,
+                bufferUtilization: utilization,
+              });
+            }
           } catch (error) {
             console.error(`[PtyHost] Failed to force resume PTY ${msg.id}:`, error);
           }
