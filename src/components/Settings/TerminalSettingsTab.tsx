@@ -182,7 +182,7 @@ export function TerminalSettingsTab() {
           aria-checked={performanceMode}
           aria-label="Performance Mode Toggle"
           className={cn(
-            "w-full flex items-center justify-between p-4 rounded-[var(--radius-lg)] border transition-all",
+            "w-full flex items-center justify-between p-4 rounded-[var(--radius-lg)] border transition-all focus-visible:outline focus-visible:outline-2 focus-visible:outline-canopy-accent focus-visible:outline-offset-2",
             performanceMode
               ? "bg-amber-500/10 border-amber-500 text-amber-500"
               : "border-canopy-border hover:bg-white/5 text-canopy-text/70"
@@ -245,7 +245,7 @@ export function TerminalSettingsTab() {
           aria-checked={hybridInputEnabled}
           aria-label="Hybrid Input Bar Toggle"
           className={cn(
-            "w-full flex items-center justify-between p-4 rounded-[var(--radius-lg)] border transition-all",
+            "w-full flex items-center justify-between p-4 rounded-[var(--radius-lg)] border transition-all focus-visible:outline focus-visible:outline-2 focus-visible:outline-canopy-accent focus-visible:outline-offset-2",
             hybridInputEnabled
               ? "bg-canopy-accent/10 border-canopy-accent text-canopy-accent"
               : "border-canopy-border hover:bg-white/5 text-canopy-text/70"
@@ -292,7 +292,7 @@ export function TerminalSettingsTab() {
             aria-checked={hybridInputAutoFocus}
             aria-label="Hybrid Input Auto Focus Toggle"
             className={cn(
-              "w-full flex items-center justify-between p-4 rounded-[var(--radius-lg)] border transition-all",
+              "w-full flex items-center justify-between p-4 rounded-[var(--radius-lg)] border transition-all focus-visible:outline focus-visible:outline-2 focus-visible:outline-canopy-accent focus-visible:outline-offset-2",
               hybridInputAutoFocus
                 ? "bg-canopy-accent/10 border-canopy-accent text-canopy-accent"
                 : "border-canopy-border hover:bg-white/5 text-canopy-text/70"
