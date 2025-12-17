@@ -552,6 +552,7 @@ function TerminalPaneComponent({
               <HistoryOverlayTerminalView
                 ref={historyViewRef}
                 terminalId={id}
+                type={type || "terminal"}
                 isFocused={isFocused}
                 isVisible={isVisible}
                 isInputLocked={isInputLocked}
