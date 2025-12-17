@@ -47,6 +47,7 @@ const SETTLE_MS = 60; // Quiet period before accepting snapshot
 const BOTTOM_EPSILON_PX = 5;
 const MIN_LINES_FOR_HISTORY = 8; // Minimum lines before allowing history mode
 const HISTORY_ENTRY_THRESHOLD_PX = 30; // Accumulated scroll needed to enter history (~2 lines)
+const INITIAL_HISTORY_SKIP_LINES = 4; // Number of lines to skip from bottom when entering history mode
 
 // Jump-back persistence for history resync (defense-in-depth, mirrors backend)
 const HISTORY_JUMP_BACK_PERSIST_MS = 100;
@@ -568,7 +569,7 @@ export const HistoryOverlayTerminalView = forwardRef<
         term,
         serializeAddonRef.current,
         MAX_HISTORY_LINES,
-        0 // No skip - pixel perfect sync requires showing exactly what xterm shows
+        INITIAL_HISTORY_SKIP_LINES // Skip lines from bottom when entering history mode
       );
       if (snapshot.lines.length === 0) return;
 
@@ -1133,15 +1134,15 @@ export const HistoryOverlayTerminalView = forwardRef<
         </div>
       )}
 
-      {/* Back to live button */}
+      {/* Back to live bar */}
       {viewMode === "history" && (
         <button
           type="button"
           onClick={exitHistoryMode}
-          className="absolute bottom-4 right-4 z-30 flex items-center gap-2 px-4 py-2.5 bg-canopy-sidebar/70 backdrop-blur-md border border-canopy-border/50 rounded-lg text-sm font-medium text-canopy-text/90 hover:bg-canopy-sidebar/80 hover:text-canopy-text hover:border-canopy-border/70 transition-all shadow-lg"
+          className="absolute bottom-0 left-0 right-0 z-30 flex items-center justify-center gap-2 py-2 bg-canopy-sidebar/90 backdrop-blur-sm border-t border-canopy-border/50 text-xs font-medium text-canopy-text/70 hover:text-canopy-text hover:bg-canopy-sidebar transition-all cursor-pointer group"
         >
           <svg
-            className="w-4 h-4"
+            className="w-3.5 h-3.5 opacity-70 group-hover:opacity-100 group-hover:translate-y-0.5 transition-all"
             fill="none"
             viewBox="0 0 24 24"
             stroke="currentColor"
@@ -1149,7 +1150,7 @@ export const HistoryOverlayTerminalView = forwardRef<
           >
             <path strokeLinecap="round" strokeLinejoin="round" d="M19 14l-7 7m0 0l-7-7m7 7V3" />
           </svg>
-          Back to live
+          <span>Back to live</span>
         </button>
       )}
 
