@@ -220,7 +220,10 @@ self.onmessage = (event: MessageEvent<WorkerInboundMessage>) => {
     }
 
     default: {
-      console.warn("[TerminalOutputWorker] Unknown message type:", (message as { type: string }).type);
+      console.warn(
+        "[TerminalOutputWorker] Unknown message type:",
+        (message as { type: string }).type
+      );
       break;
     }
   }
