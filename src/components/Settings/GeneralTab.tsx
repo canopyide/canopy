@@ -278,8 +278,11 @@ export function GeneralTab({ appVersion, onNavigateToAgents }: GeneralTabProps) 
           <button
             onClick={handleHibernationToggle}
             disabled={isSaving}
+            role="switch"
+            aria-checked={hibernationConfig.enabled}
+            aria-label="Auto-Hibernation Toggle"
             className={cn(
-              "w-full flex items-center justify-between p-4 rounded-[var(--radius-lg)] border transition-all",
+              "w-full flex items-center justify-between p-4 rounded-[var(--radius-lg)] border transition-all focus-visible:outline focus-visible:outline-2 focus-visible:outline-canopy-accent focus-visible:outline-offset-2",
               hibernationConfig.enabled
                 ? "bg-canopy-accent/10 border-canopy-accent text-canopy-accent"
                 : "border-canopy-border hover:bg-white/5 text-canopy-text/70"
@@ -355,8 +358,11 @@ export function GeneralTab({ appVersion, onNavigateToAgents }: GeneralTabProps) 
         </h4>
         <button
           onClick={() => setShowProjectPulse(!showProjectPulse)}
+          role="switch"
+          aria-checked={showProjectPulse}
+          aria-label="Project Pulse Toggle"
           className={cn(
-            "w-full flex items-center justify-between p-4 rounded-[var(--radius-lg)] border transition-all",
+            "w-full flex items-center justify-between p-4 rounded-[var(--radius-lg)] border transition-all focus-visible:outline focus-visible:outline-2 focus-visible:outline-canopy-accent focus-visible:outline-offset-2",
             showProjectPulse
               ? "bg-canopy-accent/10 border-canopy-accent text-canopy-accent"
               : "border-canopy-border hover:bg-white/5 text-canopy-text/70"

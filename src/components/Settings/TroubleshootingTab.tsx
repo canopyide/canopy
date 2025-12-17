@@ -255,7 +255,7 @@ export function TroubleshootingTab({ openLogs, clearLogs }: TroubleshootingTabPr
                 aria-label="Enable verbose logging"
                 disabled={verboseLoggingPending}
                 className={cn(
-                  "relative w-11 h-6 rounded-full transition-colors shrink-0",
+                  "relative w-11 h-6 rounded-full transition-colors shrink-0 focus-visible:outline focus-visible:outline-2 focus-visible:outline-canopy-accent focus-visible:outline-offset-2",
                   verboseLogging ? "bg-amber-500" : "bg-canopy-border",
                   verboseLoggingPending && "opacity-50 cursor-wait"
                 )}
