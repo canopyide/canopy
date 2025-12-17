@@ -13,10 +13,17 @@ import type { ProcessDetector } from "../ProcessDetector.js";
 // Re-export PtyHostSpawnOptions as PtySpawnOptions for backward compatibility/internal usage
 export type PtySpawnOptions = PtyHostSpawnOptions;
 
-export interface TerminalInfo {
+/**
+ * TerminalPublicState - JSON-serializable state that can safely cross IPC boundaries.
+ * Contains all the "identity" and "observable state" of a terminal, but NO runtime resources.
+ * This type should be used for:
+ * - State persistence
+ * - IPC payloads
+ * - External APIs
+ */
+export interface TerminalPublicState {
   id: string;
   projectId?: string;
-  ptyProcess: pty.IPty;
   cwd: string;
   shell: string;
   kind?: TerminalKind;
@@ -29,30 +36,65 @@ export interface TerminalInfo {
   agentState?: AgentState;
   lastStateChange?: number;
   error?: string;
-  outputBuffer: string;
   traceId?: string;
   analysisEnabled: boolean;
-
   lastInputTime: number;
   lastOutputTime: number;
   lastCheckTime: number;
-
-  semanticBuffer: string[];
-
-  processDetector?: ProcessDetector;
   detectedAgentType?: TerminalType;
+  restartCount: number;
+}
 
-  pendingSemanticData: string;
-  semanticFlushTimer: NodeJS.Timeout | null;
-
-  inputWriteQueue: string[];
-  inputWriteTimeout: NodeJS.Timeout | null;
-
+/**
+ * TerminalRuntime - Internal runtime resources that should NEVER cross IPC boundaries.
+ * These are Node.js/native objects that cannot be serialized.
+ * This type is private to the PTY host layer.
+ */
+export interface TerminalRuntime {
+  ptyProcess: pty.IPty;
   headlessTerminal?: HeadlessTerminal;
   serializeAddon?: SerializeAddon;
+  processDetector?: ProcessDetector;
+  pendingSemanticData: string;
+  semanticFlushTimer: NodeJS.Timeout | null;
+  inputWriteQueue: string[];
+  inputWriteTimeout: NodeJS.Timeout | null;
+  outputBuffer: string;
+  semanticBuffer: string[];
   rawOutputBuffer?: string;
+}
 
-  restartCount: number;
+/**
+ * TerminalInfo - Combined interface for backward compatibility.
+ * New code should prefer using TerminalPublicState + TerminalRuntime separately.
+ *
+ * @deprecated Access public state via TerminalProcess.getPublicState() and
+ * runtime resources via TerminalProcess methods (getPid(), write(), etc.)
+ */
+export interface TerminalInfo extends TerminalPublicState {
+  // Runtime resources - access via TerminalProcess methods instead
+  /** @deprecated Use TerminalProcess.getPtyProcess() internally */
+  ptyProcess: pty.IPty;
+  /** @deprecated Use TerminalProcess.getHeadlessTerminal() */
+  headlessTerminal?: HeadlessTerminal;
+  /** @deprecated Use TerminalProcess.getSerializeAddon() */
+  serializeAddon?: SerializeAddon;
+  /** @deprecated Internal to TerminalProcess */
+  processDetector?: ProcessDetector;
+  /** @deprecated Internal buffer - use TerminalProcess.getSemanticBuffer() */
+  pendingSemanticData: string;
+  /** @deprecated Internal timer */
+  semanticFlushTimer: NodeJS.Timeout | null;
+  /** @deprecated Internal queue - use TerminalProcess.write() */
+  inputWriteQueue: string[];
+  /** @deprecated Internal timer */
+  inputWriteTimeout: NodeJS.Timeout | null;
+  /** @deprecated Use TerminalProcess.getOutputBuffer() */
+  outputBuffer: string;
+  /** @deprecated Use TerminalProcess.getSemanticBuffer() */
+  semanticBuffer: string[];
+  /** @deprecated Use serialization methods */
+  rawOutputBuffer?: string;
 }
 
 export interface PtyManagerEvents {

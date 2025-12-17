@@ -80,6 +80,49 @@ export default tseslint.config(
     },
   },
 
+  // Layering rules - prevent architecture violations
+  {
+    files: ["src/store/**/*.ts"],
+    rules: {
+      // Stores should not import IPC clients directly - use controllers
+      "no-restricted-imports": [
+        "warn",
+        {
+          paths: [
+            {
+              name: "@/clients/terminalClient",
+              message: "Store files should not import IPC clients directly. Use controllers to encapsulate IPC calls.",
+            },
+          ],
+          patterns: [
+            {
+              group: ["@/clients"],
+              message: "Store files should not import IPC clients directly. Use controllers to encapsulate IPC calls.",
+            },
+          ],
+        },
+      ],
+    },
+  },
+
+  // Prevent UI components from importing main-process types
+  {
+    files: ["src/components/**/*.{ts,tsx}"],
+    rules: {
+      "no-restricted-imports": [
+        "warn",
+        {
+          patterns: [
+            {
+              group: ["electron/**", "**/electron/**"],
+              message: "UI components should not import from electron main process modules.",
+            },
+          ],
+        },
+      ],
+    },
+  },
+
   // Prettier must be last to override conflicting rules
   prettier,
 
