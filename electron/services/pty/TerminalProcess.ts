@@ -15,6 +15,7 @@ import { ActivityHeadlineGenerator } from "../ActivityHeadlineGenerator.js";
 import {
   type PtySpawnOptions,
   type TerminalInfo,
+  type TerminalPublicState,
   type TerminalSnapshot,
   OUTPUT_BUFFER_SIZE,
   SEMANTIC_BUFFER_MAX_LINES,
@@ -659,9 +660,41 @@ export class TerminalProcess {
 
   /**
    * Get the terminal info object.
+   * @deprecated Use getPublicState() for IPC-safe data
    */
   getInfo(): TerminalInfo {
     return this.terminalInfo;
+  }
+
+  /**
+   * Get the public state of the terminal (JSON-serializable, IPC-safe).
+   * This excludes all runtime resources like ptyProcess, headlessTerminal, etc.
+   */
+  getPublicState(): TerminalPublicState {
+    const t = this.terminalInfo;
+    return {
+      id: t.id,
+      projectId: t.projectId,
+      cwd: t.cwd,
+      shell: t.shell,
+      kind: t.kind,
+      type: t.type,
+      agentId: t.agentId,
+      title: t.title,
+      worktreeId: t.worktreeId,
+      spawnedAt: t.spawnedAt,
+      wasKilled: t.wasKilled,
+      agentState: t.agentState,
+      lastStateChange: t.lastStateChange,
+      error: t.error,
+      traceId: t.traceId,
+      analysisEnabled: t.analysisEnabled,
+      lastInputTime: t.lastInputTime,
+      lastOutputTime: t.lastOutputTime,
+      lastCheckTime: t.lastCheckTime,
+      detectedAgentType: t.detectedAgentType,
+      restartCount: t.restartCount,
+    };
   }
 
   /**
