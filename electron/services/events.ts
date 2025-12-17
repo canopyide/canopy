@@ -8,6 +8,7 @@ import type {
 } from "../types/index.js";
 import type { EventContext } from "../../shared/types/events.js";
 import type { WorktreeSnapshot as WorktreeState } from "../../shared/types/workspace-host.js";
+import type { TerminalReliabilityMetricPayload } from "../../shared/types/pty-host.js";
 
 export type { EventCategory };
 
@@ -255,6 +256,12 @@ export const EVENT_META: Record<keyof CanopyEventMap, EventMetadata> = {
     requiresContext: false,
     requiresTimestamp: true,
     description: "Terminal foregrounded during project switch (visible again)",
+  },
+  "terminal:reliability-metric": {
+    category: "agent",
+    requiresContext: false,
+    requiresTimestamp: true,
+    description: "Terminal reliability metric (pause/suspend/wake timing)",
   },
 
   // Task events
@@ -599,6 +606,12 @@ export type CanopyEventMap = {
     timestamp: number;
   };
 
+  /**
+   * Emitted when a terminal reliability metric is recorded.
+   * Includes pause, suspend, and wake latency metrics.
+   */
+  "terminal:reliability-metric": TerminalReliabilityMetricPayload;
+
   // Task Lifecycle Events (Future-proof for task management)
 
   /**
@@ -691,6 +704,7 @@ export const ALL_EVENT_TYPES: Array<keyof CanopyEventMap> = [
   "terminal:status",
   "terminal:backgrounded",
   "terminal:foregrounded",
+  "terminal:reliability-metric",
   "task:created",
   "task:assigned",
   "task:state-changed",
