@@ -34,6 +34,7 @@ import { logError } from "../../utils/logger.js";
 import { decideTerminalExitForensics } from "./terminalForensics.js";
 import { installHeadlessResponder } from "./headlessResponder.js";
 import { TerminalSyncBuffer } from "./TerminalSyncBuffer.js";
+import { styleUrls } from "./UrlStyler.js";
 
 const TERMINAL_DISABLE_URL_STYLING: boolean = process.env.CANOPY_DISABLE_URL_STYLING === "1";
 const TERMINAL_SESSION_PERSISTENCE_ENABLED: boolean =
@@ -1391,9 +1392,16 @@ export class TerminalProcess {
   /**
    * Direct data emission bypassing the stabilizer.
    * Used by the stabilizer callback and for non-agent terminals.
+   * Applies URL styling via OSC 8 hyperlinks unless disabled.
    */
   private emitDataDirect(data: string): void {
-    this.callbacks.emitData(this.id, data);
+    if (TERMINAL_DISABLE_URL_STYLING) {
+      this.callbacks.emitData(this.id, data);
+      return;
+    }
+
+    const styled = styleUrls(data);
+    this.callbacks.emitData(this.id, styled);
   }
 
   private handleAgentDetection(result: DetectionResult, spawnedAt: number): void {
