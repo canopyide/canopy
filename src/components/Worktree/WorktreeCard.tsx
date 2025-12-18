@@ -846,7 +846,7 @@ export function WorktreeCard({
         )}
         aria-hidden="true"
       />
-      <div className="px-3 py-5">
+      <div className="px-4 py-5">
         {/* Header section with chevron gutter (grid layout) */}
         <div className="flex gap-2">
           {/* Chevron column */}

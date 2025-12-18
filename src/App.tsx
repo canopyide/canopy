@@ -116,41 +116,49 @@ function SidebarContent() {
 
   if (isLoading) {
     return (
-      <div className="p-4">
-        <h2 className="text-canopy-text font-semibold text-sm mb-4">Worktrees</h2>
-        <div className="text-canopy-text/60 text-sm">Loading worktrees...</div>
+      <div className="flex flex-col h-full">
+        <div className="flex items-center px-4 py-2 border-b border-divider shrink-0">
+          <h2 className="text-canopy-text font-semibold text-sm tracking-wide">Worktrees</h2>
+        </div>
+        <div className="px-4 py-4 text-canopy-text/60 text-sm">Loading worktrees...</div>
       </div>
     );
   }
 
   if (error) {
     return (
-      <div className="p-4">
-        <h2 className="text-canopy-text font-semibold text-sm mb-4">Worktrees</h2>
-        <div className="text-[var(--color-status-error)] text-sm mb-2">{error}</div>
-        <button
-          onClick={refresh}
-          className="text-xs px-2 py-1 border border-canopy-border rounded hover:bg-canopy-border text-canopy-text"
-        >
-          Retry
-        </button>
+      <div className="flex flex-col h-full">
+        <div className="flex items-center px-4 py-2 border-b border-divider shrink-0">
+          <h2 className="text-canopy-text font-semibold text-sm tracking-wide">Worktrees</h2>
+        </div>
+        <div className="px-4 py-4">
+          <div className="text-[var(--color-status-error)] text-sm mb-2">{error}</div>
+          <button
+            onClick={refresh}
+            className="text-xs px-2 py-1 border border-divider rounded hover:bg-white/[0.06] text-canopy-text"
+          >
+            Retry
+          </button>
+        </div>
       </div>
     );
   }
 
   if (worktrees.length === 0) {
     return (
-      <div className="p-4">
-        <h2 className="text-canopy-text font-semibold text-sm mb-4">Worktrees</h2>
+      <div className="flex flex-col h-full">
+        <div className="flex items-center px-4 py-2 border-b border-divider shrink-0">
+          <h2 className="text-canopy-text font-semibold text-sm tracking-wide">Worktrees</h2>
+        </div>
 
-        <div className="flex flex-col items-center justify-center py-12 px-4 text-center">
+        <div className="flex flex-col items-center justify-center py-12 px-4 text-center flex-1">
           <FolderOpen className="w-12 h-12 text-canopy-text/60 mb-3" aria-hidden="true" />
 
           <h3 className="text-canopy-text font-medium mb-2">No worktrees yet</h3>
 
           <p className="text-sm text-canopy-text/60 mb-4 max-w-xs">
             Open a Git repository with worktrees to get started. Use{" "}
-            <kbd className="px-1.5 py-0.5 bg-canopy-border rounded text-xs">
+            <kbd className="px-1.5 py-0.5 bg-white/[0.06] rounded text-xs">
               File → Open Directory
             </kbd>
           </p>
@@ -174,11 +182,11 @@ function SidebarContent() {
   return (
     <div className="flex flex-col h-full">
       {/* Header Section */}
-      <div className="flex items-center justify-between px-4 py-3 border-b border-canopy-border bg-canopy-sidebar shrink-0">
+      <div className="flex items-center justify-between px-4 py-2 border-b border-divider bg-transparent shrink-0">
         <h2 className="text-canopy-text font-semibold text-sm tracking-wide">Worktrees</h2>
         <button
           onClick={() => openCreateDialog()}
-          className="flex items-center gap-1.5 text-xs font-medium px-2.5 py-1 text-canopy-text/60 hover:text-canopy-text hover:bg-canopy-border/50 rounded transition-colors"
+          className="flex items-center gap-1.5 text-xs font-medium px-2.5 py-1 text-canopy-text/60 hover:text-canopy-text hover:bg-white/[0.06] rounded transition-colors"
           title="Create new worktree"
         >
           <span className="text-[11px]">+</span> New
