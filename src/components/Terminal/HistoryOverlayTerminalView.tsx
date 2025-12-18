@@ -13,17 +13,16 @@
  * - Broken-frame mitigation via settle-based gating
  */
 
-import React,
-  {
-    forwardRef,
-    useCallback,
-    useEffect,
-    useImperativeHandle,
-    useLayoutEffect,
-    useMemo,
-    useRef,
-    useState,
-  } from "react";
+import React, {
+  forwardRef,
+  useCallback,
+  useEffect,
+  useImperativeHandle,
+  useLayoutEffect,
+  useMemo,
+  useRef,
+  useState,
+} from "react";
 import "@xterm/xterm/css/xterm.css";
 import { Terminal } from "@xterm/xterm";
 import { FitAddon } from "@xterm/addon-fit";
@@ -1153,8 +1152,6 @@ export const HistoryOverlayTerminalView = forwardRef<
           <span>Back to live</span>
         </button>
       )}
-
-
 
       {/* Scrollback unavailable notice (alt buffer) */}
       {scrollbackUnavailable && viewMode === "live" && (

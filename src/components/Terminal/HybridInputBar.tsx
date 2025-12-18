@@ -112,6 +112,12 @@ export const HybridInputBar = forwardRef<HybridInputBarHandle, HybridInputBarPro
     const getDraftInput = useTerminalInputStore((s) => s.getDraftInput);
     const setDraftInput = useTerminalInputStore((s) => s.setDraftInput);
     const clearDraftInput = useTerminalInputStore((s) => s.clearDraftInput);
+    const addToHistory = useTerminalInputStore((s) => s.addToHistory);
+    const navigateHistory = useTerminalInputStore((s) => s.navigateHistory);
+    const resetHistoryIndex = useTerminalInputStore((s) => s.resetHistoryIndex);
+    const isInHistoryMode = useTerminalInputStore(
+      (s) => (s.historyIndex.get(terminalId) ?? -1) !== -1
+    );
     const [value, setValue] = useState(() => getDraftInput(terminalId));
     const allowNextLineBreakRef = useRef(false);
     const handledEnterRef = useRef(false);
@@ -314,18 +320,21 @@ export const HybridInputBar = forwardRef<HybridInputBarHandle, HybridInputBarPro
       const text = textareaRef.current?.value ?? value;
       if (text.trim().length === 0) return;
       const payload = buildTerminalSendPayload(text);
-      // Pass raw 'text' as 'text' so the backend handles formatting/bracketing cleanly
       onSend({ data: payload.data, trackerData: payload.trackerData, text });
+      addToHistory(terminalId, text);
+      resetHistoryIndex(terminalId);
       setValue("");
       clearDraftInput(terminalId);
       setAtContext(null);
       setSlashContext(null);
       requestAnimationFrame(() => resizeTextarea(textareaRef.current));
     }, [
+      addToHistory,
       disabled,
       isInitialAgentLoading,
       onSend,
       resizeTextarea,
+      resetHistoryIndex,
       value,
       clearDraftInput,
       terminalId,
@@ -346,6 +355,25 @@ export const HybridInputBar = forwardRef<HybridInputBarHandle, HybridInputBarPro
       requestAnimationFrame(() => textarea.focus());
     }, []);
 
+    const handleHistoryNavigation = useCallback(
+      (direction: "up" | "down"): boolean => {
+        const result = navigateHistory(terminalId, direction, value);
+        if (result !== null) {
+          setValue(result);
+          requestAnimationFrame(() => {
+            const textarea = textareaRef.current;
+            if (textarea) {
+              textarea.setSelectionRange(result.length, result.length);
+              resizeTextarea(textarea);
+            }
+          });
+          return true;
+        }
+        return false;
+      },
+      [navigateHistory, terminalId, value, resizeTextarea]
+    );
+
     useImperativeHandle(ref, () => ({ focus: focusTextarea }), [focusTextarea]);
 
     const handleKeyPassthrough = useCallback(
@@ -364,24 +392,41 @@ export const HybridInputBar = forwardRef<HybridInputBarHandle, HybridInputBarPro
           return true;
         }
 
-        if (isEmpty) {
-          if (
-            event.key === "ArrowUp" ||
-            event.key === "ArrowDown" ||
-            event.key === "ArrowLeft" ||
-            event.key === "ArrowRight"
-          ) {
+        const canNavigateHistory = isEmpty || isInHistoryMode;
+
+        if (canNavigateHistory && event.key === "ArrowUp") {
+          if (handleHistoryNavigation("up")) {
             event.preventDefault();
             event.stopPropagation();
-            onSendKey(
-              event.key === "ArrowUp"
-                ? "up"
-                : event.key === "ArrowDown"
-                  ? "down"
-                  : event.key === "ArrowLeft"
-                    ? "left"
-                    : "right"
-            );
+            return true;
+          }
+          if (isEmpty) {
+            event.preventDefault();
+            event.stopPropagation();
+            onSendKey("up");
+            return true;
+          }
+        }
+
+        if (canNavigateHistory && event.key === "ArrowDown") {
+          if (handleHistoryNavigation("down")) {
+            event.preventDefault();
+            event.stopPropagation();
+            return true;
+          }
+          if (isEmpty) {
+            event.preventDefault();
+            event.stopPropagation();
+            onSendKey("down");
+            return true;
+          }
+        }
+
+        if (isEmpty) {
+          if (event.key === "ArrowLeft" || event.key === "ArrowRight") {
+            event.preventDefault();
+            event.stopPropagation();
+            onSendKey(event.key === "ArrowLeft" ? "left" : "right");
             return true;
           }
 
@@ -421,7 +466,15 @@ export const HybridInputBar = forwardRef<HybridInputBarHandle, HybridInputBarPro
 
         return false;
       },
-      [disabled, isInitialAgentLoading, isAutocompleteOpen, onSendKey, value]
+      [
+        disabled,
+        handleHistoryNavigation,
+        isInHistoryMode,
+        isInitialAgentLoading,
+        isAutocompleteOpen,
+        onSendKey,
+        value,
+      ]
     );
 
     const refreshContextsFromTextarea = useCallback(() => {
@@ -463,6 +516,8 @@ export const HybridInputBar = forwardRef<HybridInputBarHandle, HybridInputBarPro
           if (action === "execute") {
             const payload = buildTerminalSendPayload(nextValue);
             onSend({ data: payload.data, trackerData: payload.trackerData, text: nextValue });
+            addToHistory(terminalId, nextValue);
+            resetHistoryIndex(terminalId);
             setValue("");
             setAtContext(null);
             setSlashContext(null);
@@ -496,6 +551,8 @@ export const HybridInputBar = forwardRef<HybridInputBarHandle, HybridInputBarPro
           if (action === "execute") {
             const payload = buildTerminalSendPayload(nextValue);
             onSend({ data: payload.data, trackerData: payload.trackerData, text: nextValue });
+            addToHistory(terminalId, nextValue);
+            resetHistoryIndex(terminalId);
             setValue("");
             setAtContext(null);
             setSlashContext(null);
@@ -516,7 +573,15 @@ export const HybridInputBar = forwardRef<HybridInputBarHandle, HybridInputBarPro
           });
         }
       },
-      [activeMode, onSend, resizeTextarea, slashContext]
+      [
+        activeMode,
+        addToHistory,
+        onSend,
+        resizeTextarea,
+        resetHistoryIndex,
+        slashContext,
+        terminalId,
+      ]
     );
 
     const handleAutocompleteSelect = useCallback(
@@ -569,6 +634,11 @@ export const HybridInputBar = forwardRef<HybridInputBarHandle, HybridInputBarPro
               onChange={(e) => {
                 setValue(e.target.value);
                 resizeTextarea(e.target);
+
+                if (isInHistoryMode) {
+                  resetHistoryIndex(terminalId);
+                }
+
                 const caret = e.target.selectionStart ?? e.target.value.length;
                 const text = e.target.value;
 
