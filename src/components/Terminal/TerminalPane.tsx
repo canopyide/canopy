@@ -11,10 +11,6 @@ import { TerminalSearchBar } from "./TerminalSearchBar";
 import { TerminalRestartBanner } from "./TerminalRestartBanner";
 import { TerminalErrorBanner } from "./TerminalErrorBanner";
 import { UpdateCwdDialog } from "./UpdateCwdDialog";
-import {
-  HistoryOverlayTerminalView,
-  type HistoryOverlayTerminalViewHandle,
-} from "./HistoryOverlayTerminalView";
 import { ErrorBanner } from "../Errors/ErrorBanner";
 import { useIsDragging } from "@/components/DragDrop";
 import {
@@ -98,7 +94,6 @@ function TerminalPaneComponent({
   const prevFocusedRef = useRef(isFocused);
   const justFocusedUntilRef = useRef<number>(0);
   const inputBarRef = useRef<HybridInputBarHandle>(null);
-  const historyViewRef = useRef<HistoryOverlayTerminalViewHandle>(null);
   const [isRestoring, setIsRestoring] = useState(true);
   const [dismissedRestartPrompt, setDismissedRestartPrompt] = useState(false);
   const [isSearchOpen, setIsSearchOpen] = useState(false);
@@ -152,12 +147,6 @@ function TerminalPaneComponent({
   const showHybridInputBar = isAgentTerminal && hybridInputEnabled;
 
   const terminal = getTerminal(id);
-  const isSnapshotMode = isAgentTerminal;
-  // Subscribe directly to isVisible to ensure re-renders when visibility changes.
-  // Using getTerminal() alone subscribes to the function, not the value!
-  const isVisible = useTerminalStore(
-    (s) => s.terminals.find((t) => t.id === id)?.isVisible ?? false
-  );
 
   const queueCount = useTerminalStore(
     useShallow((state) => state.commandQueue.filter((c) => c.terminalId === id).length)
@@ -280,9 +269,6 @@ function TerminalPaneComponent({
       const target = e.target as HTMLElement;
 
       if ((e.metaKey || e.ctrlKey) && e.key === "f") {
-        if (isSnapshotMode) {
-          return;
-        }
         e.preventDefault();
         e.stopPropagation();
         setIsSearchOpen(true);
@@ -305,7 +291,7 @@ function TerminalPaneComponent({
         setFocused(id);
       }
     },
-    [id, isSnapshotMode, setFocused]
+    [id, setFocused]
   );
 
   const getRefreshTierCallback = useCallback(() => {
@@ -548,33 +534,21 @@ function TerminalPaneComponent({
             )}
             onPointerDownCapture={handleXtermPointerDownCapture}
           >
-            {isSnapshotMode ? (
-              <HistoryOverlayTerminalView
-                key={`${id}-${restartKey}`}
-                ref={historyViewRef}
-                terminalId={id}
-                type={type || "terminal"}
-                isFocused={isFocused}
-                isVisible={isVisible}
-                isInputLocked={isInputLocked}
-              />
-            ) : (
-              <XtermAdapter
-                key={`${id}-${restartKey}`}
-                terminalId={id}
-                terminalType={type}
-                agentId={agentId}
-                isInputLocked={isInputLocked}
-                onReady={handleReady}
-                onExit={handleExit}
-                onInput={handleInput}
-                className="absolute inset-0"
-                getRefreshTier={getRefreshTierCallback}
-                cwd={cwd}
-              />
-            )}
+            <XtermAdapter
+              key={`${id}-${restartKey}`}
+              terminalId={id}
+              terminalType={type}
+              agentId={agentId}
+              isInputLocked={isInputLocked}
+              onReady={handleReady}
+              onExit={handleExit}
+              onInput={handleInput}
+              className="absolute inset-0"
+              getRefreshTier={getRefreshTierCallback}
+              cwd={cwd}
+            />
             <ArtifactOverlay terminalId={id} worktreeId={worktreeId} cwd={cwd} />
-            {!isSnapshotMode && unseenOutput.isUserScrolledBack && unseenOutput.unseen > 0 && (
+            {unseenOutput.isUserScrolledBack && unseenOutput.unseen > 0 && (
               <button
                 onClick={() => {
                   terminalInstanceService.resumeAutoScroll(id);
@@ -587,7 +561,7 @@ function TerminalPaneComponent({
                 <span className="text-sm font-medium">Resume</span>
               </button>
             )}
-            {!isSnapshotMode && isSearchOpen && (
+            {isSearchOpen && (
               <TerminalSearchBar
                 terminalId={id}
                 onClose={() => {
@@ -686,7 +660,6 @@ function TerminalPaneComponent({
                   terminalInstanceService.notifyUserInput(id);
                   terminalClient.submit(id, unescapedText);
                   handleInput(trackerData);
-                  historyViewRef.current?.notifySubmit();
                   return;
                 }
 
@@ -699,7 +672,6 @@ function TerminalPaneComponent({
                       console.error(`Canopy command '${canopyCommand.label}' failed:`, error);
                     }
                   );
-                  historyViewRef.current?.notifySubmit();
                   return;
                 }
 
@@ -708,18 +680,12 @@ function TerminalPaneComponent({
                 terminalClient.submit(id, text);
                 // Feed tracker data for features like clear command detection
                 handleInput(trackerData);
-                // Notify history view of submit to exit history mode
-                historyViewRef.current?.notifySubmit();
               }
             }}
             onSendKey={(key) => {
               if (!isInputLocked) {
                 terminalInstanceService.notifyUserInput(id);
                 terminalClient.sendKey(id, key);
-                // Exit history mode on Enter key (empty input bar passes Enter as sendKey)
-                if (key === "enter") {
-                  historyViewRef.current?.notifySubmit();
-                }
               }
             }}
           />

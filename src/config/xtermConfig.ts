@@ -4,7 +4,6 @@
  * This module provides a single source of truth for xterm terminal options,
  * ensuring consistency between:
  * - XtermAdapter (live terminal rendering)
- * - HistoryOverlayTerminalView (history snapshot display)
  * - terminalRegistrySlice (prewarm options)
  * - TerminalRegistryController (prewarm options)
  *
