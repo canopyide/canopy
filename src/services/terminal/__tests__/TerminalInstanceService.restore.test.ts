@@ -148,7 +148,7 @@ describe("TerminalInstanceService - Incremental Restore", () => {
     expect(result).toBe(true);
     expect(mockTerminal.reset).toHaveBeenCalledTimes(1);
     expect(mockTerminal.write).toHaveBeenCalledTimes(1);
-    expect(mockTerminal.write).toHaveBeenCalledWith(smallState);
+    expect(mockTerminal.write).toHaveBeenCalledWith(smallState, expect.any(Function));
 
     terminalInstanceService.destroy(id);
   });
