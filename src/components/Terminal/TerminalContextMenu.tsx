@@ -68,6 +68,10 @@ export function TerminalContextMenu({
     }
   }, [terminalId]);
 
+  const handleResetRenderer = useCallback(() => {
+    terminalInstanceService.resetRenderer(terminalId);
+  }, [terminalId]);
+
   const handleForceResume = useCallback(() => {
     terminalClient.forceResume(terminalId).catch((error) => {
       console.error("Failed to force resume terminal:", error);
@@ -162,6 +166,7 @@ export function TerminalContextMenu({
       { id: "duplicate", label: "Duplicate Terminal" },
       { id: "rename", label: "Rename Terminal" },
       { id: "clear-scrollback", label: "Clear Scrollback" },
+      { id: "reset-renderer", label: "Reset Renderer" },
       { id: "view-info", label: "View Terminal Info" },
       { type: "separator" },
       { id: "trash", label: "Trash Terminal" },
@@ -228,6 +233,9 @@ export function TerminalContextMenu({
         case "clear-scrollback":
           handleClearBuffer();
           break;
+        case "reset-renderer":
+          handleResetRenderer();
+          break;
         case "view-info":
           setIsInfoDialogOpen(true);
           break;
@@ -244,6 +252,7 @@ export function TerminalContextMenu({
       handleClearBuffer,
       handleDuplicate,
       handleForceResume,
+      handleResetRenderer,
       moveTerminalToDock,
       moveTerminalToGrid,
       moveTerminalToWorktree,

@@ -17,6 +17,7 @@ import {
 import { useRecipeStore } from "../../store/recipeStore";
 import { useWorktreeSelectionStore } from "../../store/worktreeStore";
 import { systemClient, errorsClient } from "@/clients";
+import { terminalInstanceService } from "@/services/TerminalInstanceService";
 import { cn } from "../../lib/utils";
 import {
   DropdownMenu,
@@ -308,6 +309,12 @@ export function WorktreeCard({
   const handleMaximizeAll = useCallback(() => {
     bulkMoveToGridByWorktree(worktree.id);
   }, [bulkMoveToGridByWorktree, worktree.id]);
+
+  const handleResetAllRenderers = useCallback(() => {
+    for (const terminal of worktreeTerminals) {
+      terminalInstanceService.resetRenderer(terminal.id);
+    }
+  }, [worktreeTerminals]);
 
   const handleCloseAll = useCallback(() => {
     setConfirmDialog({
@@ -607,6 +614,11 @@ export function WorktreeCard({
         label: `${isRestartValidating ? "Checking..." : "Restart All"} (${totalTerminalCount})`,
         enabled: totalTerminalCount > 0 && !isRestartValidating,
       },
+      {
+        id: "sessions:reset-renderers",
+        label: `Reset All Renderers (${totalTerminalCount})`,
+        enabled: totalTerminalCount > 0,
+      },
       { type: "separator" },
 
       {
@@ -742,6 +754,9 @@ export function WorktreeCard({
         case "sessions:restart-all":
           void handleRestartAll();
           break;
+        case "sessions:reset-renderers":
+          handleResetAllRenderers();
+          break;
         case "sessions:close-completed":
           handleCloseCompleted();
           break;
@@ -793,6 +808,7 @@ export function WorktreeCard({
       handleOpenIssue,
       handleOpenPR,
       handlePathClick,
+      handleResetAllRenderers,
       handleRestartAll,
       handleRunRecipe,
       onCreateRecipe,
