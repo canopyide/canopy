@@ -358,7 +358,7 @@ export function Toolbar({
       <div className="flex items-center gap-1 app-no-drag">
         {stats && currentProject && !statsError && (
           <>
-            <div className="flex items-center rounded-[var(--radius-md)] bg-white/[0.03] border border-divider divide-x divide-[var(--border-divider)]">
+            <div className="flex items-center rounded-[var(--radius-md)] bg-white/[0.03] border border-divider divide-x divide-[var(--border-divider)] mr-1">
               <Button
                 ref={issuesButtonRef}
                 variant="ghost"
@@ -468,7 +468,6 @@ export function Toolbar({
                 />
               </FixedDropdown>
             </div>
-            <div className="w-px h-5 bg-white/[0.08]" />
           </>
         )}
 
