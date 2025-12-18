@@ -253,7 +253,7 @@
 
   body {
     @apply bg-background text-foreground;
-    font-family: Inter, system-ui, Avenir, Helvetica, Arial, sans-serif;
+    font-family: system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Helvetica, Arial, sans-serif;
     font-synthesis: none;
     text-rendering: optimizeLegibility;
     -webkit-font-smoothing: antialiased;
@@ -312,13 +312,13 @@
     background: color-mix(in oklab, var(--color-state-idle) 85%, white);
   }
 
-  /* Consistent monospace font stack - VS Code defaults */
+  /* Consistent monospace font stack */
   code,
   kbd,
   samp,
   pre,
   .font-mono {
-    font-family: Menlo, Monaco, Consolas, "Andale Mono", "Ubuntu Mono", "Courier New", monospace;
+    font-family: "JetBrains Mono", Menlo, Monaco, Consolas, monospace;
   }
 
   /* Subtle noise texture for grid background */
@@ -794,7 +794,7 @@ body,
 
 /* React-Diff-View Tokyo Night Theme Overrides */
 .diff-viewer {
-  font-family: Menlo, Monaco, Consolas, "Andale Mono", "Ubuntu Mono", "Courier New", monospace;
+  font-family: "JetBrains Mono", Menlo, Monaco, Consolas, monospace;
   font-size: 12px;
   line-height: 1.5;
 }

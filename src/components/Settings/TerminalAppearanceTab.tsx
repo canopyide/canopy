@@ -7,19 +7,18 @@ import { DEFAULT_TERMINAL_FONT_FAMILY } from "@/config/terminalFont";
 const MIN_FONT_SIZE = 8;
 const MAX_FONT_SIZE = 24;
 
-const SYSTEM_STACK = DEFAULT_TERMINAL_FONT_FAMILY;
-const JETBRAINS_STACK = `"JetBrains Mono", ${DEFAULT_TERMINAL_FONT_FAMILY}`;
+const SYSTEM_STACK = 'Menlo, Monaco, Consolas, monospace';
 
 const FONT_FAMILY_OPTIONS: Array<{ id: string; label: string; value: string }> = [
+  {
+    id: "jetbrains",
+    label: "JetBrains Mono (Default)",
+    value: DEFAULT_TERMINAL_FONT_FAMILY,
+  },
   {
     id: "system",
     label: "System monospace (Menlo/Monaco/Consolas)",
     value: SYSTEM_STACK,
-  },
-  {
-    id: "jetbrains",
-    label: "JetBrains Mono",
-    value: JETBRAINS_STACK,
   },
 ];
 

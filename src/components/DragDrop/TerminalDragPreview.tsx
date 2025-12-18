@@ -52,7 +52,7 @@ export function TerminalDragPreview({ terminal }: TerminalDragPreviewProps) {
         {/* Title text */}
         <span
           style={{
-            fontFamily: "Menlo, Monaco, Consolas, monospace",
+            fontFamily: '"JetBrains Mono", Menlo, Monaco, Consolas, monospace',
             fontSize: 11,
             fontWeight: 500,
             color: "var(--color-canopy-text)",
