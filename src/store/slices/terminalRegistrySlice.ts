@@ -989,17 +989,24 @@ export const createTerminalRegistrySlice =
 
       if (!movedToLocation) return;
 
-      const activeWorktreeId = useWorktreeSelectionStore.getState().activeWorktreeId;
-      if ((activeWorktreeId ?? null) !== (worktreeId ?? null)) {
-        terminalClient.setActivityTier(id, "background");
-      }
-
       if (movedToLocation === "dock") {
         optimizeForDock(id);
         return;
       }
 
-      terminalInstanceService.applyRendererPolicy(id, TerminalRefreshTier.VISIBLE);
+      const activeWorktreeId = useWorktreeSelectionStore.getState().activeWorktreeId;
+      const isActiveWorktree = (activeWorktreeId ?? null) === (worktreeId ?? null);
+
+      // If moving to a background worktree, we must background the terminal to stop
+      // the renderer from trying to update while detached, which can cause WebGL crashes.
+      const targetTier = isActiveWorktree
+        ? TerminalRefreshTier.VISIBLE
+        : TerminalRefreshTier.BACKGROUND;
+
+      console.log(
+        `[TERM_DEBUG] Applying move policy: ${targetTier} (active=${activeWorktreeId}, target=${worktreeId})`
+      );
+      terminalInstanceService.applyRendererPolicy(id, targetTier);
     },
 
     updateFlowStatus: (id, status, timestamp) => {
