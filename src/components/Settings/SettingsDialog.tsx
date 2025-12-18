@@ -1,6 +1,5 @@
 import { useState, useEffect } from "react";
-import { createPortal } from "react-dom";
-import { useErrors, useOverlayState } from "@/hooks";
+import { useErrors } from "@/hooks";
 import { useLogsStore, useSidecarStore } from "@/store";
 import {
   X,
@@ -14,6 +13,7 @@ import {
 } from "lucide-react";
 import { cn } from "@/lib/utils";
 import { appClient } from "@/clients";
+import { AppDialog } from "@/components/ui/AppDialog";
 import { AgentSettings } from "./AgentSettings";
 import { GeneralTab } from "./GeneralTab";
 import { TerminalSettingsTab } from "./TerminalSettingsTab";
@@ -48,8 +48,6 @@ export function SettingsDialog({
   defaultTab,
   onSettingsChange,
 }: SettingsDialogProps) {
-  useOverlayState(isOpen);
-
   const [activeTab, setActiveTab] = useState<SettingsTab>(defaultTab ?? "general");
   const setSidecarOpen = useSidecarStore((state) => state.setOpen);
 
@@ -82,171 +80,92 @@ export function SettingsDialog({
     }
   }, [isOpen]);
 
-  useEffect(() => {
-    if (!isOpen) return;
-    const handleKeyDown = (e: KeyboardEvent) => {
-      if (e.key === "Escape") {
-        onClose();
-      }
-    };
-    window.addEventListener("keydown", handleKeyDown);
-    return () => window.removeEventListener("keydown", handleKeyDown);
-  }, [isOpen, onClose]);
+  const tabTitles: Record<SettingsTab, string> = {
+    general: "General",
+    keyboard: "Keyboard Shortcuts",
+    terminal: "Terminal Grid",
+    terminalAppearance: "Appearance",
+    worktree: "Worktree Paths",
+    agents: "Agent Settings",
+    github: "GitHub Integration",
+    sidecar: "Sidecar Links",
+    troubleshooting: "Troubleshooting",
+  };
 
-  if (!isOpen) return null;
-
-  return createPortal(
-    <div
-      className="fixed inset-0 z-[var(--z-modal)] flex items-center justify-center bg-black/40 backdrop-blur-sm backdrop-saturate-[1.25]"
-      onClick={onClose}
+  return (
+    <AppDialog
+      isOpen={isOpen}
+      onClose={onClose}
+      size="4xl"
+      maxHeight="h-[75vh]"
+      className="min-h-[500px] max-h-[800px]"
     >
-      <div
-        className="bg-canopy-sidebar border border-overlay rounded-[var(--radius-xl)] shadow-modal w-full max-w-4xl mx-4 h-[75vh] min-h-xl max-h-4xl flex overflow-hidden"
-        onClick={(e) => e.stopPropagation()}
-        role="dialog"
-        aria-modal="true"
-        aria-labelledby="settings-title"
-      >
-        <div className="w-48 border-r border-divider bg-canopy-bg/50 p-4 flex flex-col gap-2 shrink-0">
-          <h2 id="settings-title" className="text-sm font-semibold text-canopy-text mb-4 px-2">
-            Settings
-          </h2>
-          <button
-            onClick={() => setActiveTab("general")}
-            className={cn(
-              "relative text-left px-3 py-2 rounded-[var(--radius-md)] text-sm transition-colors",
-              "focus-visible:outline focus-visible:outline-2 focus-visible:outline-canopy-accent focus-visible:outline-offset-2",
-              activeTab === "general"
-                ? "bg-white/[0.03] text-canopy-text before:absolute before:left-0 before:top-2 before:bottom-2 before:w-[2px] before:rounded-r before:bg-canopy-accent before:content-['']"
-                : "text-canopy-text/60 hover:bg-white/[0.03] hover:text-canopy-text"
-            )}
-          >
+      <div className="flex h-full overflow-hidden">
+        <div className="w-48 border-r border-canopy-border bg-canopy-bg/50 p-4 flex flex-col gap-2 shrink-0">
+          <h2 className="text-sm font-semibold text-canopy-text mb-4 px-2">Settings</h2>
+          <NavButton active={activeTab === "general"} onClick={() => setActiveTab("general")}>
             General
-          </button>
-          <button
+          </NavButton>
+          <NavButton
+            active={activeTab === "keyboard"}
             onClick={() => setActiveTab("keyboard")}
-            className={cn(
-              "relative text-left px-3 py-2 rounded-[var(--radius-md)] text-sm transition-colors flex items-center gap-2",
-              "focus-visible:outline focus-visible:outline-2 focus-visible:outline-canopy-accent focus-visible:outline-offset-2",
-              activeTab === "keyboard"
-                ? "bg-white/[0.03] text-canopy-text before:absolute before:left-0 before:top-2 before:bottom-2 before:w-[2px] before:rounded-r before:bg-canopy-accent before:content-['']"
-                : "text-canopy-text/60 hover:bg-white/[0.03] hover:text-canopy-text"
-            )}
+            icon={<Keyboard className="w-4 h-4" />}
           >
-            <Keyboard className="w-4 h-4" />
             Keyboard
-          </button>
-          <button
+          </NavButton>
+          <NavButton
+            active={activeTab === "terminal"}
             onClick={() => setActiveTab("terminal")}
-            className={cn(
-              "relative text-left px-3 py-2 rounded-[var(--radius-md)] text-sm transition-colors flex items-center gap-2",
-              "focus-visible:outline focus-visible:outline-2 focus-visible:outline-canopy-accent focus-visible:outline-offset-2",
-              activeTab === "terminal"
-                ? "bg-white/[0.03] text-canopy-text before:absolute before:left-0 before:top-2 before:bottom-2 before:w-[2px] before:rounded-r before:bg-canopy-accent before:content-['']"
-                : "text-canopy-text/60 hover:bg-white/[0.03] hover:text-canopy-text"
-            )}
+            icon={<LayoutGrid className="w-4 h-4" />}
           >
-            <LayoutGrid className="w-4 h-4" />
             Terminal
-          </button>
-          <button
+          </NavButton>
+          <NavButton
+            active={activeTab === "terminalAppearance"}
             onClick={() => setActiveTab("terminalAppearance")}
-            className={cn(
-              "relative text-left px-3 py-2 rounded-[var(--radius-md)] text-sm transition-colors flex items-center gap-2",
-              "focus-visible:outline focus-visible:outline-2 focus-visible:outline-canopy-accent focus-visible:outline-offset-2",
-              activeTab === "terminalAppearance"
-                ? "bg-white/[0.03] text-canopy-text before:absolute before:left-0 before:top-2 before:bottom-2 before:w-[2px] before:rounded-r before:bg-canopy-accent before:content-['']"
-                : "text-canopy-text/60 hover:bg-white/[0.03] hover:text-canopy-text"
-            )}
+            icon={<Terminal className="w-4 h-4" />}
           >
-            <Terminal className="w-4 h-4" />
             Appearance
-          </button>
-          <button
+          </NavButton>
+          <NavButton
+            active={activeTab === "worktree"}
             onClick={() => setActiveTab("worktree")}
-            className={cn(
-              "relative text-left px-3 py-2 rounded-[var(--radius-md)] text-sm transition-colors flex items-center gap-2",
-              "focus-visible:outline focus-visible:outline-2 focus-visible:outline-canopy-accent focus-visible:outline-offset-2",
-              activeTab === "worktree"
-                ? "bg-white/[0.03] text-canopy-text before:absolute before:left-0 before:top-2 before:bottom-2 before:w-[2px] before:rounded-r before:bg-canopy-accent before:content-['']"
-                : "text-canopy-text/60 hover:bg-white/[0.03] hover:text-canopy-text"
-            )}
+            icon={<GitBranch className="w-4 h-4" />}
           >
-            <GitBranch className="w-4 h-4" />
             Worktree
-          </button>
-          <button
+          </NavButton>
+          <NavButton
+            active={activeTab === "agents"}
             onClick={() => setActiveTab("agents")}
-            className={cn(
-              "relative text-left px-3 py-2 rounded-[var(--radius-md)] text-sm transition-colors flex items-center gap-2",
-              "focus-visible:outline focus-visible:outline-2 focus-visible:outline-canopy-accent focus-visible:outline-offset-2",
-              activeTab === "agents"
-                ? "bg-white/[0.03] text-canopy-text before:absolute before:left-0 before:top-2 before:bottom-2 before:w-[2px] before:rounded-r before:bg-canopy-accent before:content-['']"
-                : "text-canopy-text/60 hover:bg-white/[0.03] hover:text-canopy-text"
-            )}
+            icon={<Bot className="w-4 h-4" />}
           >
-            <Bot className="w-4 h-4" />
             Agents
-          </button>
-          <button
+          </NavButton>
+          <NavButton
+            active={activeTab === "github"}
             onClick={() => setActiveTab("github")}
-            className={cn(
-              "relative text-left px-3 py-2 rounded-[var(--radius-md)] text-sm transition-colors flex items-center gap-2",
-              "focus-visible:outline focus-visible:outline-2 focus-visible:outline-canopy-accent focus-visible:outline-offset-2",
-              activeTab === "github"
-                ? "bg-white/[0.03] text-canopy-text before:absolute before:left-0 before:top-2 before:bottom-2 before:w-[2px] before:rounded-r before:bg-canopy-accent before:content-['']"
-                : "text-canopy-text/60 hover:bg-white/[0.03] hover:text-canopy-text"
-            )}
+            icon={<Github className="w-4 h-4" />}
           >
-            <Github className="w-4 h-4" />
             GitHub
-          </button>
-          <button
+          </NavButton>
+          <NavButton
+            active={activeTab === "sidecar"}
             onClick={() => setActiveTab("sidecar")}
-            className={cn(
-              "relative text-left px-3 py-2 rounded-[var(--radius-md)] text-sm transition-colors flex items-center gap-2",
-              "focus-visible:outline focus-visible:outline-2 focus-visible:outline-canopy-accent focus-visible:outline-offset-2",
-              activeTab === "sidecar"
-                ? "bg-white/[0.03] text-canopy-text before:absolute before:left-0 before:top-2 before:bottom-2 before:w-[2px] before:rounded-r before:bg-canopy-accent before:content-['']"
-                : "text-canopy-text/60 hover:bg-white/[0.03] hover:text-canopy-text"
-            )}
+            icon={<PanelRight className="w-4 h-4" />}
           >
-            <PanelRight className="w-4 h-4" />
             Sidecar
-          </button>
-          <button
+          </NavButton>
+          <NavButton
+            active={activeTab === "troubleshooting"}
             onClick={() => setActiveTab("troubleshooting")}
-            className={cn(
-              "relative text-left px-3 py-2 rounded-[var(--radius-md)] text-sm transition-colors",
-              "focus-visible:outline focus-visible:outline-2 focus-visible:outline-canopy-accent focus-visible:outline-offset-2",
-              activeTab === "troubleshooting"
-                ? "bg-white/[0.03] text-canopy-text before:absolute before:left-0 before:top-2 before:bottom-2 before:w-[2px] before:rounded-r before:bg-canopy-accent before:content-['']"
-                : "text-canopy-text/60 hover:bg-white/[0.03] hover:text-canopy-text"
-            )}
           >
             Troubleshooting
-          </button>
+          </NavButton>
         </div>
 
         <div className="flex-1 flex flex-col min-w-0">
-          <div className="flex items-center justify-between px-6 py-4 border-b border-divider bg-canopy-sidebar/50 shrink-0">
-            <h3 className="text-lg font-medium text-canopy-text capitalize">
-              {activeTab === "agents"
-                ? "Agent Settings"
-                : activeTab === "github"
-                  ? "GitHub Integration"
-                  : activeTab === "terminal"
-                    ? "Terminal Grid"
-                    : activeTab === "terminalAppearance"
-                      ? "Appearance"
-                      : activeTab === "worktree"
-                        ? "Worktree Paths"
-                        : activeTab === "sidecar"
-                          ? "Sidecar Links"
-                          : activeTab === "keyboard"
-                            ? "Keyboard Shortcuts"
-                            : activeTab}
-            </h3>
+          <div className="flex items-center justify-between px-6 py-4 border-b border-canopy-border bg-canopy-sidebar/50 shrink-0">
+            <h3 className="text-lg font-medium text-canopy-text">{tabTitles[activeTab]}</h3>
             <button
               onClick={onClose}
               className="text-canopy-text/60 hover:text-canopy-text transition-colors p-1 rounded focus-visible:outline focus-visible:outline-2 focus-visible:outline-canopy-accent focus-visible:outline-offset-2"
@@ -298,7 +217,31 @@ export function SettingsDialog({
           </div>
         </div>
       </div>
-    </div>,
-    document.body
+    </AppDialog>
+  );
+}
+
+interface NavButtonProps {
+  active: boolean;
+  onClick: () => void;
+  icon?: React.ReactNode;
+  children: React.ReactNode;
+}
+
+function NavButton({ active, onClick, icon, children }: NavButtonProps) {
+  return (
+    <button
+      onClick={onClick}
+      className={cn(
+        "relative text-left px-3 py-2 rounded-[var(--radius-md)] text-sm transition-colors flex items-center gap-2",
+        "focus-visible:outline focus-visible:outline-2 focus-visible:outline-canopy-accent focus-visible:outline-offset-2",
+        active
+          ? "bg-white/[0.03] text-canopy-text before:absolute before:left-0 before:top-2 before:bottom-2 before:w-[2px] before:rounded-r before:bg-canopy-accent before:content-['']"
+          : "text-canopy-text/60 hover:bg-white/[0.03] hover:text-canopy-text"
+      )}
+    >
+      {icon}
+      {children}
+    </button>
   );
 }

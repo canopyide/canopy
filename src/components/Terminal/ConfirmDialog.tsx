@@ -38,12 +38,7 @@ export function ConfirmDialog({
       </AppDialog.Body>
 
       <AppDialog.Footer>
-        <Button
-          variant="ghost"
-          onClick={onCancel}
-          className="text-canopy-text/70 hover:text-canopy-text"
-          ref={cancelButtonRef}
-        >
+        <Button variant="ghost" onClick={onCancel} ref={cancelButtonRef}>
           {cancelLabel}
         </Button>
         <Button onClick={onConfirm} variant={destructive ? "destructive" : "default"}>

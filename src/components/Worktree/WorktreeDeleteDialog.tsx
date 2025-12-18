@@ -1,4 +1,4 @@
-import { useState, useEffect, useRef } from "react";
+import { useState, useEffect } from "react";
 import { Button } from "@/components/ui/button";
 import { AppDialog } from "@/components/ui/AppDialog";
 import { AlertTriangle, Trash2 } from "lucide-react";
@@ -18,7 +18,6 @@ export function WorktreeDeleteDialog({ isOpen, onClose, worktree }: WorktreeDele
   const [force, setForce] = useState(false);
   const [closeTerminals, setCloseTerminals] = useState(true);
   const [error, setError] = useState<string | null>(null);
-  const dialogRef = useRef<HTMLDivElement>(null);
 
   const { counts: terminalCounts } = useWorktreeTerminals(worktree.id);
   const bulkCloseByWorktree = useTerminalStore((state) => state.bulkCloseByWorktree);
@@ -30,7 +29,6 @@ export function WorktreeDeleteDialog({ isOpen, onClose, worktree }: WorktreeDele
     if (isOpen) {
       setForce(false);
       setError(null);
-      setTimeout(() => dialogRef.current?.focus(), 0);
     }
   }, [isOpen, worktree.id]);
 
@@ -52,17 +50,16 @@ export function WorktreeDeleteDialog({ isOpen, onClose, worktree }: WorktreeDele
   };
 
   return (
-    <AppDialog isOpen={isOpen} onClose={onClose} size="sm" dismissible={!isDeleting}>
-      <div ref={dialogRef} tabIndex={-1} className="outline-none">
-        <AppDialog.Body>
-          <div className="flex items-center gap-3 mb-4 text-[var(--color-status-error)]">
-            <div className="p-2 bg-[var(--color-status-error)]/10 rounded-full">
-              <Trash2 className="w-6 h-6" />
-            </div>
-            <AppDialog.Title>Delete Worktree?</AppDialog.Title>
+    <AppDialog isOpen={isOpen} onClose={onClose} size="sm" variant="destructive" dismissible={!isDeleting}>
+      <AppDialog.Body>
+        <div className="flex items-center gap-3 mb-4 text-[var(--color-status-error)]">
+          <div className="p-2 bg-[var(--color-status-error)]/10 rounded-full">
+            <Trash2 className="w-6 h-6" />
           </div>
+          <AppDialog.Title>Delete Worktree?</AppDialog.Title>
+        </div>
 
-          <div className="space-y-4">
+        <div className="space-y-4">
             <p className="text-sm text-canopy-text/80">
               Are you sure you want to delete{" "}
               <span className="font-mono font-medium text-canopy-text">
@@ -118,23 +115,21 @@ export function WorktreeDeleteDialog({ isOpen, onClose, worktree }: WorktreeDele
                 Close all terminals{hasTerminals ? ` (${terminalCounts.total})` : ""}
               </span>
             </label>
-          </div>
-        </AppDialog.Body>
+        </div>
+      </AppDialog.Body>
 
-        <AppDialog.Footer>
-          <Button variant="ghost" onClick={onClose} disabled={isDeleting}>
-            Cancel
-          </Button>
-          <Button
-            variant="destructive"
-            onClick={handleDelete}
-            disabled={isDeleting}
-            className="bg-[var(--color-status-error)] hover:bg-[var(--color-status-error)]/90"
-          >
-            {isDeleting ? "Deleting..." : "Delete Worktree"}
-          </Button>
-        </AppDialog.Footer>
-      </div>
+      <AppDialog.Footer>
+        <Button variant="ghost" onClick={onClose} disabled={isDeleting}>
+          Cancel
+        </Button>
+        <Button
+          variant="destructive"
+          onClick={handleDelete}
+          disabled={isDeleting}
+        >
+          {isDeleting ? "Deleting..." : "Delete Worktree"}
+        </Button>
+      </AppDialog.Footer>
     </AppDialog>
   );
 }

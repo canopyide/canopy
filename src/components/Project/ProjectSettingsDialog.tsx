@@ -556,11 +556,7 @@ export function ProjectSettingsDialog({ projectId, isOpen, onClose }: ProjectSet
       </AppDialog.Body>
 
       <AppDialog.Footer>
-        <Button
-          onClick={onClose}
-          variant="ghost"
-          className="text-canopy-text/60 hover:text-canopy-text"
-        >
+        <Button variant="ghost" onClick={onClose}>
           Cancel
         </Button>
         <Button onClick={handleSave} disabled={isSaving || isLoading || !!error}>
