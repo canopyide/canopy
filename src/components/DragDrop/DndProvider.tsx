@@ -282,90 +282,94 @@ export function DndProvider({ children }: DndProviderProps) {
           }
         | undefined;
 
-      if (overData?.type === "worktree" && overData.worktreeId) {
+      // Track if this is a worktree drop (skip reorder logic, but still run stabilization)
+      const isWorktreeDrop = overData?.type === "worktree" && !!overData.worktreeId;
+      if (isWorktreeDrop) {
         const currentTerminal = terminals.find((t) => t.id === draggedId);
         if (currentTerminal && currentTerminal.worktreeId !== overData.worktreeId) {
-          moveTerminalToWorktree(draggedId, overData.worktreeId);
+          moveTerminalToWorktree(draggedId, overData.worktreeId!);
           setFocused(null);
         }
-        return;
+        // Don't return - fall through to stabilization
       }
 
-      // Determine target container
+      // Determine target container (only used for grid/dock moves, not worktree drops)
       let targetContainer: "grid" | "dock" = sourceLocation ?? "grid";
 
-      // Priority 1: Check if dropped on a container directly
-      if (overData?.container) {
-        targetContainer = overData.container;
-      }
-      // Priority 2: Check sortable containerId
-      else if (overData?.sortable?.containerId) {
-        const containerId = overData.sortable.containerId;
-        if (containerId === "grid-container") {
-          targetContainer = "grid";
-        } else if (containerId === "dock-container") {
-          targetContainer = "dock";
+      // Only process grid/dock reorder logic if this is NOT a worktree drop
+      if (!isWorktreeDrop) {
+        // Priority 1: Check if dropped on a container directly
+        if (overData?.container) {
+          targetContainer = overData.container;
         }
-      }
-      // Priority 3: Use tracked overContainer state
-      else if (dropContainer) {
-        targetContainer = dropContainer;
-      }
-      // Priority 4: Determine from terminal location
-      else {
-        const overTerminal = terminals.find((t) => t.id === overId);
-        if (overTerminal) {
-          targetContainer = overTerminal.location === "dock" ? "dock" : "grid";
-        }
-      }
-
-      // Get target index
-      let targetIndex = 0;
-      const containerTerminals = terminals.filter((t) =>
-        targetContainer === "dock"
-          ? t.location === "dock"
-          : t.location === "grid" || t.location === undefined
-      );
-
-      // Find index of item we're dropping on
-      const overTerminalIndex = containerTerminals.findIndex((t) => t.id === overId);
-      if (overTerminalIndex !== -1) {
-        targetIndex = overTerminalIndex;
-      } else if (overData?.sortable?.index !== undefined) {
-        targetIndex = overData.sortable.index;
-      } else {
-        // Dropping on empty container - append to end
-        targetIndex = containerTerminals.length;
-      }
-
-      // Block cross-container move from dock to grid if grid is full
-      const gridTerminals = terminals.filter(
-        (t) => t.location === "grid" || t.location === undefined
-      );
-      const isGridFull = gridTerminals.length >= MAX_GRID_TERMINALS;
-      if (sourceLocation === "dock" && targetContainer === "grid" && isGridFull) {
-        // Grid is full, cancel the drop - TerminalGrid's batched fitter handles any needed resizing
-        return;
-      }
-
-      // Same container reorder
-      if (sourceLocation === targetContainer) {
-        if (draggedId !== overId) {
-          const oldIndex = containerTerminals.findIndex((t) => t.id === draggedId);
-
-          if (oldIndex !== -1 && targetIndex !== -1 && oldIndex !== targetIndex) {
-            reorderTerminals(oldIndex, targetIndex, targetContainer);
+        // Priority 2: Check sortable containerId
+        else if (overData?.sortable?.containerId) {
+          const containerId = overData.sortable.containerId;
+          if (containerId === "grid-container") {
+            targetContainer = "grid";
+          } else if (containerId === "dock-container") {
+            targetContainer = "dock";
           }
         }
-      } else {
-        // Cross-container move
-        moveTerminalToPosition(draggedId, targetIndex, targetContainer);
+        // Priority 3: Use tracked overContainer state
+        else if (dropContainer) {
+          targetContainer = dropContainer;
+        }
+        // Priority 4: Determine from terminal location
+        else {
+          const overTerminal = terminals.find((t) => t.id === overId);
+          if (overTerminal) {
+            targetContainer = overTerminal.location === "dock" ? "dock" : "grid";
+          }
+        }
 
-        // Set focus when moving to grid, clear when moving to dock
-        if (targetContainer === "grid") {
-          setFocused(draggedId);
+        // Get target index
+        let targetIndex = 0;
+        const containerTerminals = terminals.filter((t) =>
+          targetContainer === "dock"
+            ? t.location === "dock"
+            : t.location === "grid" || t.location === undefined
+        );
+
+        // Find index of item we're dropping on
+        const overTerminalIndex = containerTerminals.findIndex((t) => t.id === overId);
+        if (overTerminalIndex !== -1) {
+          targetIndex = overTerminalIndex;
+        } else if (overData?.sortable?.index !== undefined) {
+          targetIndex = overData.sortable.index;
         } else {
-          setFocused(null);
+          // Dropping on empty container - append to end
+          targetIndex = containerTerminals.length;
+        }
+
+        // Block cross-container move from dock to grid if grid is full
+        const gridTerminals = terminals.filter(
+          (t) => t.location === "grid" || t.location === undefined
+        );
+        const isGridFull = gridTerminals.length >= MAX_GRID_TERMINALS;
+        if (sourceLocation === "dock" && targetContainer === "grid" && isGridFull) {
+          // Grid is full, cancel the drop - still run stabilization below
+        } else {
+          // Same container reorder
+          if (sourceLocation === targetContainer) {
+            if (draggedId !== overId) {
+              const oldIndex = containerTerminals.findIndex((t) => t.id === draggedId);
+
+              if (oldIndex !== -1 && targetIndex !== -1 && oldIndex !== targetIndex) {
+                reorderTerminals(oldIndex, targetIndex, targetContainer);
+              }
+            }
+          } else {
+            // Cross-container move
+            moveTerminalToPosition(draggedId, targetIndex, targetContainer);
+
+            // Set focus when moving to grid, clear when moving to dock
+            if (targetContainer === "grid") {
+              setFocused(draggedId);
+            } else {
+              setFocused(null);
+            }
+          }
         }
       }
 
