@@ -1,5 +1,6 @@
 import { useState, useEffect } from "react";
 import { AppDialog } from "@/components/ui/AppDialog";
+import { Button } from "@/components/ui/button";
 import { Info } from "lucide-react";
 import type { TerminalInfoPayload } from "@/types/electron";
 
@@ -229,20 +230,10 @@ Performance & Diagnostics:
 
       {info && !loading && (
         <AppDialog.Footer>
-          <button
-            type="button"
-            onClick={copyToClipboard}
-            className="px-4 py-2 bg-canopy-accent text-white rounded-[var(--radius-lg)] hover:bg-canopy-accent/90 transition-colors font-medium"
-          >
-            Copy to Clipboard
-          </button>
-          <button
-            type="button"
-            onClick={onClose}
-            className="px-4 py-2 bg-canopy-border/30 text-canopy-text rounded-[var(--radius-lg)] hover:bg-canopy-border/50 transition-colors font-medium"
-          >
+          <Button variant="ghost" onClick={onClose}>
             Close
-          </button>
+          </Button>
+          <Button onClick={copyToClipboard}>Copy to Clipboard</Button>
         </AppDialog.Footer>
       )}
     </AppDialog>

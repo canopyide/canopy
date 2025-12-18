@@ -5,14 +5,17 @@ import { cn } from "@/lib/utils";
 import { useOverlayState } from "@/hooks";
 import { useSidecarStore } from "@/store";
 import { getUiAnimationDuration } from "@/lib/animationUtils";
-import { X } from "lucide-react";
+import { X, Loader2 } from "lucide-react";
+import { Button } from "./button";
 
-type DialogSize = "sm" | "md" | "lg" | "xl";
+type DialogSize = "sm" | "md" | "lg" | "xl" | "2xl" | "4xl" | "6xl";
+type DialogVariant = "default" | "destructive" | "info";
 
 interface AppDialogContextValue {
   onClose: () => void;
   titleId: string;
   descriptionId: string;
+  variant: DialogVariant;
 }
 
 const AppDialogContext = createContext<AppDialogContextValue | null>(null);
@@ -21,25 +24,34 @@ export interface AppDialogProps {
   isOpen: boolean;
   onClose: () => void;
   size?: DialogSize;
+  variant?: DialogVariant;
   dismissible?: boolean;
   children: React.ReactNode;
   className?: string;
+  maxHeight?: string;
 }
+
+export type { DialogSize, DialogVariant };
 
 const sizeClasses: Record<DialogSize, string> = {
   sm: "max-w-md",
   md: "max-w-xl",
   lg: "max-w-2xl",
   xl: "max-w-5xl",
+  "2xl": "max-w-4xl",
+  "4xl": "max-w-4xl",
+  "6xl": "max-w-6xl",
 };
 
 export function AppDialog({
   isOpen,
   onClose,
   size = "md",
+  variant = "default",
   dismissible = true,
   children,
   className,
+  maxHeight = "max-h-[80vh]",
 }: AppDialogProps) {
   const previousActiveElement = useRef<HTMLElement | null>(null);
   const titleId = useId();
@@ -142,7 +154,7 @@ export function AppDialog({
   if (!shouldRender) return null;
 
   return createPortal(
-    <AppDialogContext.Provider value={{ onClose: handleClose, titleId, descriptionId }}>
+    <AppDialogContext.Provider value={{ onClose: handleClose, titleId, descriptionId, variant }}>
       <div
         className={cn(
           "fixed inset-0 z-[var(--z-modal)] flex items-center justify-center bg-black/50 backdrop-blur-md backdrop-saturate-[1.25]",
@@ -159,7 +171,8 @@ export function AppDialog({
       >
         <div
           className={cn(
-            "bg-canopy-sidebar border border-[var(--border-overlay)] border-t-white/[0.08] rounded-[var(--radius-xl)] shadow-modal mx-4 flex flex-col max-h-[80vh]",
+            "bg-canopy-sidebar border border-[var(--border-overlay)] border-t-white/[0.08] rounded-[var(--radius-xl)] shadow-modal mx-4 flex flex-col",
+            maxHeight,
             sizeClasses[size],
             "w-full",
             "transition-all duration-150",
@@ -247,12 +260,51 @@ AppDialog.Body = function AppDialogBody({ children, className }: AppDialogBodyPr
   return <div className={cn("flex-1 overflow-y-auto p-6", className)}>{children}</div>;
 };
 
-interface AppDialogFooterProps {
+interface AppDialogBodyScrollProps {
   children: React.ReactNode;
   className?: string;
 }
 
-AppDialog.Footer = function AppDialogFooter({ children, className }: AppDialogFooterProps) {
+AppDialog.BodyScroll = function AppDialogBodyScroll({
+  children,
+  className,
+}: AppDialogBodyScrollProps) {
+  return (
+    <div className={cn("flex-1 overflow-auto min-h-0 p-6", className)}>{children}</div>
+  );
+};
+
+export interface DialogAction {
+  label: string;
+  onClick: () => void;
+  disabled?: boolean;
+  loading?: boolean;
+  intent?: "default" | "destructive" | "primary";
+}
+
+interface AppDialogFooterProps {
+  children?: React.ReactNode;
+  className?: string;
+  primaryAction?: DialogAction;
+  secondaryAction?: DialogAction;
+}
+
+AppDialog.Footer = function AppDialogFooter({
+  children,
+  className,
+  primaryAction,
+  secondaryAction,
+}: AppDialogFooterProps) {
+  const context = useContext(AppDialogContext);
+  const dialogVariant = context?.variant ?? "default";
+
+  const getPrimaryVariant = () => {
+    if (primaryAction?.intent === "destructive" || dialogVariant === "destructive") {
+      return "destructive";
+    }
+    return "default";
+  };
+
   return (
     <div
       className={cn(
@@ -261,6 +313,27 @@ AppDialog.Footer = function AppDialogFooter({ children, className }: AppDialogFo
       )}
     >
       {children}
+      {!children && secondaryAction && (
+        <Button
+          variant="ghost"
+          onClick={secondaryAction.onClick}
+          disabled={secondaryAction.disabled || secondaryAction.loading}
+          className="text-canopy-text/70 hover:text-canopy-text"
+        >
+          {secondaryAction.loading && <Loader2 className="h-4 w-4 animate-spin" />}
+          {secondaryAction.label}
+        </Button>
+      )}
+      {!children && primaryAction && (
+        <Button
+          variant={getPrimaryVariant()}
+          onClick={primaryAction.onClick}
+          disabled={primaryAction.disabled || primaryAction.loading}
+        >
+          {primaryAction.loading && <Loader2 className="h-4 w-4 animate-spin" />}
+          {primaryAction.label}
+        </Button>
+      )}
     </div>
   );
 };

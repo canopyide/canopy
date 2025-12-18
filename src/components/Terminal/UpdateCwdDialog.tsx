@@ -133,7 +133,7 @@ export function UpdateCwdDialog({ isOpen, terminalId, currentCwd, onClose }: Upd
       </AppDialog.Body>
 
       <AppDialog.Footer>
-        <Button variant="subtle" onClick={onClose}>
+        <Button variant="ghost" onClick={onClose}>
           Cancel
         </Button>
         <Button onClick={handleUpdate} disabled={validating}>
