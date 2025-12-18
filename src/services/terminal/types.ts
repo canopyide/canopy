@@ -1,5 +1,4 @@
 import { Terminal, IDisposable } from "@xterm/xterm";
-import { CanvasAddon } from "@xterm/addon-canvas";
 import { FitAddon } from "@xterm/addon-fit";
 import { SerializeAddon } from "@xterm/addon-serialize";
 import { WebLinksAddon } from "@xterm/addon-web-links";
@@ -20,7 +19,6 @@ export interface ManagedTerminal {
   agentId?: string;
   agentState?: AgentState;
   agentStateSubscribers: Set<AgentStateCallback>;
-  canvasAddon: CanvasAddon;
   fitAddon: FitAddon;
   serializeAddon: SerializeAddon;
   webLinksAddon: WebLinksAddon;

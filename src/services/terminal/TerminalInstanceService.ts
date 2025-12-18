@@ -23,6 +23,9 @@ const IDLE_CALLBACK_TIMEOUT_MS = 1000;
 // Maximum time a resize lock can be held (safety net for stuck locks)
 const RESIZE_LOCK_TTL_MS = 5000;
 
+// Minimum interval between wake calls for the same terminal (rate limiting)
+const WAKE_RATE_LIMIT_MS = 1000;
+
 class TerminalInstanceService {
   private instances = new Map<string, ManagedTerminal>();
   private dataBuffer: TerminalOutputIngestService;
@@ -37,6 +40,7 @@ class TerminalInstanceService {
     string,
     Array<{ resolve: () => void; reject: (error: Error) => void; timeout: number }>
   >();
+  private lastWakeTime = new Map<string, number>(); // Rate limit wake calls
 
   constructor() {
     this.dataBuffer = new TerminalOutputIngestService((id, data) => this.writeToTerminal(id, data));
@@ -303,7 +307,20 @@ class TerminalInstanceService {
     }
   }
 
+  /**
+   * Wake a terminal and sync its state from the backend.
+   * Rate-limited to prevent excessive backend calls on rapid focus changes.
+   */
   wake(id: string): void {
+    const now = Date.now();
+    const lastWake = this.lastWakeTime.get(id) ?? 0;
+
+    // Rate limit: don't wake the same terminal more than once per second
+    if (now - lastWake < WAKE_RATE_LIMIT_MS) {
+      return;
+    }
+
+    this.lastWakeTime.set(id, now);
     void this.wakeAndRestore(id);
   }
 
