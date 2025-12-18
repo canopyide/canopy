@@ -24,7 +24,12 @@ import {
   type CollisionDetection,
   type Modifier,
 } from "@dnd-kit/core";
-import { useTerminalStore, type TerminalInstance, MAX_GRID_TERMINALS } from "@/store";
+import {
+  useTerminalStore,
+  useWorktreeSelectionStore,
+  type TerminalInstance,
+  MAX_GRID_TERMINALS,
+} from "@/store";
 import { TerminalDragPreview } from "./TerminalDragPreview";
 import { terminalInstanceService } from "@/services/TerminalInstanceService";
 
@@ -390,11 +395,25 @@ export function DndProvider({ children }: DndProviderProps) {
       stabilizationTimerRef.current = setTimeout(() => {
         stabilizationTimerRef.current = null;
 
+        // Skip stabilization for remaining grid terminals if this was a worktree drop.
+        // The remaining terminals just reflow and don't require a renderer reset,
+        // which can be expensive and cause crashes if WebGL context limits are hit.
+        if (isWorktreeDrop) {
+          return;
+        }
+
         // Get fresh terminal list from store to avoid stale closures
         const currentTerminals = useTerminalStore.getState().terminals;
+        const activeWorktreeId = useWorktreeSelectionStore.getState().activeWorktreeId;
+
+        // Only stabilize grid terminals in the ACTIVE worktree
+        // Use nullish coalescing to handle null/undefined mismatch (matches TerminalGrid filter)
         const gridTerminalsList = currentTerminals.filter(
-          (t) => t.location === "grid" || t.location === undefined
+          (t) =>
+            (t.location === "grid" || t.location === undefined) &&
+            (t.worktreeId ?? undefined) === (activeWorktreeId ?? undefined)
         );
+
         for (const terminal of gridTerminalsList) {
           // Flush any pending resize jobs that could have stale dimensions
           terminalInstanceService.flushResize(terminal.id);
@@ -406,6 +425,14 @@ export function DndProvider({ children }: DndProviderProps) {
           if (managed?.hostElement.isConnected) {
             // Force service visibility true since we know grid terminals should be visible
             managed.isVisible = true;
+
+            // CRITICAL: Re-apply renderer policy to update lastAppliedTier.
+            // Without this, terminals stuck in BACKGROUND tier continue dropping writes
+            // even after visibility is restored, because writeToTerminal checks lastAppliedTier.
+            // This also triggers wakeAndRestore() for terminals that had data dropped.
+            const tier = managed.getRefreshTier();
+            terminalInstanceService.applyRendererPolicy(terminal.id, tier);
+
             terminalInstanceService.resetRenderer(terminal.id);
           }
         }
