@@ -239,10 +239,10 @@ const pausedTerminals = new Map<string, ReturnType<typeof setInterval>>();
 //
 // Debug stats
 const backpressureStats = {
-    pauseCount: 0,
-    resumeCount: 0,
-    suspendCount: 0,
-    forceResumeCount: 0
+  pauseCount: 0,
+  resumeCount: 0,
+  suspendCount: 0,
+  forceResumeCount: 0,
 };
 
 // Track terminal pause start times for duration calculation
@@ -585,12 +585,12 @@ ptyManager.on("data", (id: string, data: string | Uint8Array) => {
                     }
                     pending.shift(); // Remove written packet
                   }
-                  
+
                   if (visualSignalView) {
                     Atomics.add(visualSignalView, 0, 1);
                     Atomics.notify(visualSignalView, 0, 1);
                   }
-                  
+
                   if (pending.length === 0) {
                     pendingVisualPackets.delete(id);
                   }

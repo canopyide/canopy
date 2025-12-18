@@ -66,7 +66,12 @@ export type PtyHostRequest =
   | { type: "get-terminal"; id: string; requestId: string }
   | { type: "replay-history"; id: string; maxLines: number; requestId: string }
   | { type: "get-serialized-state"; id: string; requestId: string }
-  | { type: "init-buffers"; visualBuffers: SharedArrayBuffer[]; analysisBuffer: SharedArrayBuffer; visualSignalBuffer: SharedArrayBuffer }
+  | {
+      type: "init-buffers";
+      visualBuffers: SharedArrayBuffer[];
+      analysisBuffer: SharedArrayBuffer;
+      visualSignalBuffer: SharedArrayBuffer;
+    }
   | { type: "connect-port" }
   | { type: "get-terminal-info"; id: string; requestId: string }
   | { type: "force-resume"; id: string }

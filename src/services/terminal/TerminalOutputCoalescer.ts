@@ -376,7 +376,7 @@ export class TerminalOutputCoalescer {
 
     const MAX_FRAMES = 3;
     if (queue.frames.length > MAX_FRAMES) {
-      this.stats.framesDropped += (queue.frames.length - MAX_FRAMES);
+      this.stats.framesDropped += queue.frames.length - MAX_FRAMES;
       queue.frames.splice(0, queue.frames.length - MAX_FRAMES);
     }
 

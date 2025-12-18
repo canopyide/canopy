@@ -2,6 +2,7 @@ import { Terminal, IDisposable } from "@xterm/xterm";
 import { FitAddon } from "@xterm/addon-fit";
 import { SerializeAddon } from "@xterm/addon-serialize";
 import { WebLinksAddon } from "@xterm/addon-web-links";
+import { WebglAddon } from "@xterm/addon-webgl";
 import { ImageAddon } from "@xterm/addon-image";
 import { SearchAddon } from "@xterm/addon-search";
 import { TerminalRefreshTier, TerminalType, TerminalKind, AgentState } from "@/types";
@@ -38,6 +39,12 @@ export interface ManagedTerminal {
   // Visibility-aware LRU tracking
   isVisible: boolean;
   lastActiveTime: number;
+  // WebGL state
+  webglAddon?: WebglAddon;
+  webglRecoveryAttempts: number;
+  webglRecoveryToken?: number;
+  hasWebglError: boolean;
+  webglDisposeTimer?: number;
   // Geometry caching for resize optimization
   lastWidth: number;
   lastHeight: number;
@@ -81,3 +88,8 @@ export const INCREMENTAL_RESTORE_CONFIG = {
   timeBudgetMs: 10,
   indicatorThresholdBytes: 262144,
 } as const;
+
+// WebGL context management constants
+export const MAX_WEBGL_CONTEXTS = 12;
+export const MAX_WEBGL_RECOVERY_ATTEMPTS = 4;
+export const WEBGL_DISPOSE_GRACE_MS = 10000;

@@ -14,6 +14,7 @@ import { setupTerminalAddons } from "./TerminalAddonManager";
 import { TerminalOutputIngestService } from "./TerminalOutputIngestService";
 import { TerminalParserHandler } from "./TerminalParserHandler";
 import { TerminalUnseenOutputTracker, UnseenOutputSnapshot } from "./TerminalUnseenOutputTracker";
+import { WebGLContextManager } from "./WebGLContextManager";
 
 const START_DEBOUNCING_THRESHOLD = 200;
 const HORIZONTAL_DEBOUNCE_MS = 100;
@@ -26,6 +27,7 @@ const RESIZE_LOCK_TTL_MS = 5000;
 class TerminalInstanceService {
   private instances = new Map<string, ManagedTerminal>();
   private dataBuffer: TerminalOutputIngestService;
+  private webglManager: WebGLContextManager;
   private suppressedExitUntil = new Map<string, number>();
   private hiddenContainer: HTMLDivElement | null = null;
   private offscreenSlots = new Map<string, HTMLDivElement>();
@@ -41,6 +43,10 @@ class TerminalInstanceService {
   constructor() {
     this.dataBuffer = new TerminalOutputIngestService((id, data) => this.writeToTerminal(id, data));
     this.dataBuffer.initialize();
+    this.webglManager = new WebGLContextManager(
+      (id) => this.instances.get(id),
+      (cb) => this.instances.forEach(cb)
+    );
   }
 
   notifyUserInput(id: string): void {
@@ -396,6 +402,11 @@ class TerminalInstanceService {
       lastDetachAt: 0,
       isVisible: false,
       lastActiveTime: Date.now(),
+      webglAddon: undefined,
+      webglRecoveryAttempts: 0,
+      webglRecoveryToken: undefined,
+      hasWebglError: false,
+      webglDisposeTimer: undefined,
       lastWidth: 0,
       lastHeight: 0,
       lastYResizeTime: 0,
@@ -932,12 +943,26 @@ class TerminalInstanceService {
       if (!managed.hostElement.isConnected) return;
       if (managed.hostElement.clientWidth < 50 || managed.hostElement.clientHeight < 50) return;
 
+      // Release WebGL if present (will be re-acquired based on policy)
+      const hadWebgl = !!managed.webglAddon;
+      if (managed.webglAddon) {
+        this.webglManager.release(id, managed);
+      }
+
       managed.terminal.clearTextureAtlas();
       managed.terminal.refresh(0, managed.terminal.rows - 1);
 
       const dims = this.fit(id);
       if (dims) {
         terminalClient.resize(id, dims.cols, dims.rows);
+      }
+
+      // Re-acquire WebGL if we had it and still qualify
+      if (hadWebgl) {
+        const tier = managed.getRefreshTier();
+        if (this.webglManager.wantsWebgl(managed, tier)) {
+          this.webglManager.acquire(id, managed);
+        }
       }
     } catch (error) {
       console.error(`[TerminalInstanceService] resetRenderer failed for ${id}:`, error);
@@ -1100,6 +1125,22 @@ class TerminalInstanceService {
         });
       }
     }
+
+    // WebGL renderer management based on tier and visibility
+    const wantsWebgl = this.webglManager.wantsWebgl(managed, tier);
+
+    if (wantsWebgl) {
+      if (!managed.webglAddon) {
+        this.webglManager.acquire(id, managed);
+      } else if (tier === TerminalRefreshTier.FOCUSED || tier === TerminalRefreshTier.BURST) {
+        // Promote focused/burst terminals to end of LRU to protect from eviction
+        this.webglManager.promoteInLru(id);
+      }
+    } else if (tier === TerminalRefreshTier.BACKGROUND && managed.webglAddon) {
+      // Release WebGL for BACKGROUND tier (hidden tabs)
+      this.webglManager.release(id, managed);
+      managed.terminal.refresh(0, managed.terminal.rows - 1);
+    }
   }
 
   updateRefreshTierProvider(id: string, provider: RefreshTierProvider): void {
@@ -1150,6 +1191,12 @@ class TerminalInstanceService {
     this.clearResizeJobs(managed);
     this.dataBuffer.resetForTerminal(id);
     this.unseenTracker.destroy(id);
+
+    // Clean up WebGL resources
+    this.webglManager.cancelGracePeriod(managed);
+    if (managed.webglAddon) {
+      this.webglManager.release(id, managed);
+    }
 
     if (managed.tierChangeTimer !== undefined) {
       clearTimeout(managed.tierChangeTimer);

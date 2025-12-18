@@ -305,9 +305,7 @@ export class TerminalSyncBuffer {
     if (!data || !this.emitCallback) return;
 
     if (this.verbose) {
-      console.log(
-        `[SyncBuffer] Emit #${this.framesEmitted + 1}: ${data.length} bytes (${reason})`
-      );
+      console.log(`[SyncBuffer] Emit #${this.framesEmitted + 1}: ${data.length} bytes (${reason})`);
     }
 
     this.emitCallback(data);
