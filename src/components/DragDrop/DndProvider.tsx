@@ -395,8 +395,7 @@ export function DndProvider({ children }: DndProviderProps) {
           // Flush any pending resize jobs that could have stale dimensions
           terminalInstanceService.flushResize(terminal.id);
 
-          // Force store visibility to true. This is critical for HistoryOverlayTerminalView
-          // which relies on store state (via TerminalPane props) rather than the service instance.
+          // Force store visibility to true to ensure terminals re-render after drag
           useTerminalStore.getState().updateVisibility(terminal.id, true);
 
           const managed = terminalInstanceService.get(terminal.id);
