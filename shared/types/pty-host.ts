@@ -8,11 +8,6 @@
  */
 
 import type { AgentState, AgentId, TerminalType, TerminalKind } from "./domain.js";
-import type {
-  TerminalCleanLogEntry,
-  TerminalGetScreenSnapshotOptions,
-  TerminalScreenSnapshot,
-} from "./ipc/terminal.js";
 
 /** Options for spawning a new PTY process (matches PtyManager interface) */
 export interface PtyHostSpawnOptions {
@@ -71,22 +66,12 @@ export type PtyHostRequest =
   | { type: "get-terminal"; id: string; requestId: string }
   | { type: "replay-history"; id: string; maxLines: number; requestId: string }
   | { type: "get-serialized-state"; id: string; requestId: string }
-  | {
-      type: "get-screen-snapshot";
-      id: string;
-      requestId: string;
-      options?: TerminalGetScreenSnapshotOptions;
-    }
-  | { type: "get-clean-log"; id: string; requestId: string; sinceSequence?: number; limit?: number }
-  | {
-      type: "init-buffers";
-      visualBuffers: SharedArrayBuffer[];
-      analysisBuffer: SharedArrayBuffer;
-      visualSignalBuffer: SharedArrayBuffer;
-    }
+  | { type: "init-buffers"; visualBuffers: SharedArrayBuffer[]; analysisBuffer: SharedArrayBuffer; visualSignalBuffer: SharedArrayBuffer }
   | { type: "connect-port" }
   | { type: "get-terminal-info"; id: string; requestId: string }
-  | { type: "force-resume"; id: string };
+  | { type: "force-resume"; id: string }
+  | { type: "acknowledge-data"; id: string; charCount: number }
+  | { type: "set-analysis-enabled"; id: string; enabled: boolean };
 
 /**
  * Terminal snapshot data sent from Host → Main for state queries.
@@ -168,19 +153,6 @@ export type PtyHostEvent =
   | { type: "terminal-info"; requestId: string; terminal: PtyHostTerminalInfo | null }
   | { type: "replay-history-result"; requestId: string; replayed: number }
   | { type: "serialized-state"; requestId: string; id: string; state: string | null }
-  | {
-      type: "screen-snapshot";
-      requestId: string;
-      id: string;
-      snapshot: TerminalScreenSnapshot | null;
-    }
-  | {
-      type: "clean-log";
-      requestId: string;
-      id: string;
-      latestSequence: number;
-      entries: TerminalCleanLogEntry[];
-    }
   | { type: "terminal-diagnostic-info"; requestId: string; info: any }
   | {
       type: "terminal-status";

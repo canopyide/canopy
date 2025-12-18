@@ -1,3 +1,13 @@
+/**
+ * TerminalOutputWorker - OFF-MAIN-THREAD SAB INGESTION
+ *
+ * PROTECTED INFRASTRUCTURE:
+ * This worker polls SharedArrayBuffers (SAB) to ingest terminal output off the
+ * main thread, preventing UI jank during high-throughput output.
+ *
+ * Do not remove the SAB polling loop or atomic wait logic.
+ */
+
 import { SharedRingBuffer, PacketParser } from "../../shared/utils/SharedRingBuffer.js";
 import {
   TerminalOutputCoalescer,

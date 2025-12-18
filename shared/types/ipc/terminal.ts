@@ -1,6 +1,5 @@
 import type { TerminalType, TerminalKind, AgentId, TerminalLocation } from "../domain.js";
 import type { AgentState } from "../domain.js";
-import type { TerminalViewMode } from "../domain.js";
 
 /** Terminal spawn options */
 export interface TerminalSpawnOptions {
@@ -56,65 +55,7 @@ export interface TerminalState {
   lastDetectedAgent?: TerminalType;
   /** Last detected agent title (for restoration hints) */
   lastDetectedAgentTitle?: string;
-  /** Whether user input is locked (read-only monitor mode) */
   isInputLocked?: boolean;
-  /** Rendering strategy for the terminal pane (experiment) */
-  viewMode?: TerminalViewMode;
-}
-
-export type TerminalScreenSnapshotBuffer = "active" | "alt";
-
-export interface TerminalScreenSnapshotCursor {
-  x: number;
-  y: number;
-  visible: boolean;
-}
-
-export interface TerminalScreenSnapshotMeta {
-  /** The viewport start line used for projection (typically buffer.baseY) */
-  viewportStart: number;
-  /** The buffer's baseY value */
-  baseY: number;
-  /** Total lines in the buffer */
-  bufferLength: number;
-}
-
-export interface TerminalScreenSnapshot {
-  cols: number;
-  rows: number;
-  buffer: TerminalScreenSnapshotBuffer;
-  cursor?: TerminalScreenSnapshotCursor;
-  lines: string[];
-  /** ANSI snapshot that can be written into xterm.js to reproduce colors/styles (v1 optional) */
-  ansi?: string;
-  timestamp: number;
-  sequence: number;
-  /** Scroll position metadata for stability filtering */
-  meta?: TerminalScreenSnapshotMeta;
-}
-
-export type TerminalScreenSnapshotBufferPreference = "auto" | "active" | "alt";
-
-export interface TerminalGetScreenSnapshotOptions {
-  buffer?: TerminalScreenSnapshotBufferPreference;
-}
-
-export interface TerminalCleanLogEntry {
-  sequence: number;
-  timestamp: number;
-  line: string;
-}
-
-export interface TerminalGetCleanLogRequest {
-  id: string;
-  sinceSequence?: number;
-  limit?: number;
-}
-
-export interface TerminalGetCleanLogResponse {
-  id: string;
-  latestSequence: number;
-  entries: TerminalCleanLogEntry[];
 }
 
 /** Terminal data payload for IPC */

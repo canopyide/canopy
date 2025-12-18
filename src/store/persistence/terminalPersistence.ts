@@ -23,7 +23,6 @@ const DEFAULT_OPTIONS: Required<TerminalPersistenceOptions> = {
     location: t.location,
     command: t.command?.trim() || undefined,
     ...(t.isInputLocked && { isInputLocked: true }),
-    ...(t.viewMode && { viewMode: t.viewMode }),
   }),
 };
 

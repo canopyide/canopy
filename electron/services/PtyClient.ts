@@ -43,8 +43,6 @@ import type {
   HostCrashPayload,
 } from "../../shared/types/pty-host.js";
 import type {
-  TerminalGetCleanLogRequest,
-  TerminalGetCleanLogResponse,
   TerminalGetScreenSnapshotOptions,
   TerminalScreenSnapshot,
 } from "../../shared/types/ipc/terminal.js";
@@ -718,28 +716,28 @@ export class PtyClient extends EventEmitter {
   }
 
   setActivityTier(id: string, tier: PtyHostActivityTier): void {
-    this.send({ type: "set-activity-tier", id, tier } as any);
+    this.send({ type: "set-activity-tier", id, tier });
   }
 
   async wakeTerminal(id: string): Promise<{ state: string | null; warnings?: string[] }> {
     const requestId = this.broker.generateId(`wake-${id}`);
     const promise = this.broker.register<{ state: string | null; warnings?: string[] }>(requestId);
-    this.send({ type: "wake-terminal", id, requestId } as any);
+    this.send({ type: "wake-terminal", id, requestId });
     return promise.catch(() => ({ state: null }));
   }
 
   setActiveProject(projectId: string | null): void {
-    this.send({ type: "set-active-project", projectId } as any);
+    this.send({ type: "set-active-project", projectId });
   }
 
   onProjectSwitch(projectId: string): void {
-    this.send({ type: "project-switch", projectId } as any);
+    this.send({ type: "project-switch", projectId });
   }
 
   async killByProject(projectId: string): Promise<number> {
     const requestId = this.broker.generateId(`kill-by-project-${projectId}`);
     const promise = this.broker.register<number>(requestId, 10000);
-    this.send({ type: "kill-by-project", projectId, requestId } as any);
+    this.send({ type: "kill-by-project", projectId, requestId });
     return promise.catch(() => 0);
   }
 
@@ -754,7 +752,7 @@ export class PtyClient extends EventEmitter {
       processIds: number[];
       terminalTypes: Record<string, number>;
     }>(requestId);
-    this.send({ type: "get-project-stats", projectId, requestId } as any);
+    this.send({ type: "get-project-stats", projectId, requestId });
     return promise.catch(() => ({ terminalCount: 0, processIds: [], terminalTypes: {} }));
   }
 
@@ -762,7 +760,7 @@ export class PtyClient extends EventEmitter {
    * Acknowledge data processing for flow control.
    */
   acknowledgeData(id: string, charCount: number): void {
-    this.send({ type: "acknowledge-data", id, charCount } as any);
+    this.send({ type: "acknowledge-data", id, charCount });
   }
 
   /**
@@ -778,7 +776,7 @@ export class PtyClient extends EventEmitter {
   async getTerminalsForProjectAsync(projectId: string): Promise<string[]> {
     const requestId = this.broker.generateId(`terminals-${projectId}`);
     const promise = this.broker.register<string[]>(requestId);
-    this.send({ type: "get-terminals-for-project", projectId, requestId } as any);
+    this.send({ type: "get-terminals-for-project", projectId, requestId });
     return promise.catch(() => []);
   }
 
@@ -786,7 +784,7 @@ export class PtyClient extends EventEmitter {
   async getTerminalAsync(id: string): Promise<TerminalInfoResponse | null> {
     const requestId = this.broker.generateId(`terminal-${id}`);
     const promise = this.broker.register<TerminalInfoResponse | null>(requestId);
-    this.send({ type: "get-terminal", id, requestId } as any);
+    this.send({ type: "get-terminal", id, requestId });
     return promise.catch(() => null);
   }
 
@@ -794,7 +792,7 @@ export class PtyClient extends EventEmitter {
   async replayHistoryAsync(id: string, maxLines: number = 100): Promise<number> {
     const requestId = this.broker.generateId(`replay-${id}`);
     const promise = this.broker.register<number>(requestId);
-    this.send({ type: "replay-history", id, maxLines, requestId } as any);
+    this.send({ type: "replay-history", id, maxLines, requestId });
     return promise.catch(() => 0);
   }
 
@@ -816,37 +814,6 @@ export class PtyClient extends EventEmitter {
   }
 
   /**
-   * Get composed screen snapshot from backend headless terminal.
-   */
-  async getScreenSnapshotAsync(
-    id: string,
-    options?: TerminalGetScreenSnapshotOptions
-  ): Promise<TerminalScreenSnapshot | null> {
-    const requestId = this.broker.generateId(`screen-snapshot-${id}`);
-    const promise = this.broker.register<TerminalScreenSnapshot | null>(requestId);
-    this.send({ type: "get-screen-snapshot", id, requestId, options } as PtyHostRequest);
-    return promise.catch(() => null);
-  }
-
-  /**
-   * Get bounded clean log derived from headless snapshots.
-   */
-  async getCleanLogAsync(
-    request: TerminalGetCleanLogRequest
-  ): Promise<TerminalGetCleanLogResponse> {
-    const requestId = this.broker.generateId(`clean-log-${request.id}`);
-    const promise = this.broker.register<TerminalGetCleanLogResponse>(requestId);
-    this.send({
-      type: "get-clean-log",
-      id: request.id,
-      requestId,
-      sinceSequence: request.sinceSequence,
-      limit: request.limit,
-    } as PtyHostRequest);
-    return promise.catch(() => ({ id: request.id, latestSequence: 0, entries: [] }));
-  }
-
-  /**
    * Get terminal information for diagnostic display.
    */
   async getTerminalInfo(
@@ -856,7 +823,7 @@ export class PtyClient extends EventEmitter {
     const promise = this.broker.register<
       import("../../shared/types/ipc.js").TerminalInfoPayload | null
     >(requestId);
-    this.send({ type: "get-terminal-info", id, requestId } as any);
+    this.send({ type: "get-terminal-info", id, requestId });
     return promise.catch(() => null);
   }
 
