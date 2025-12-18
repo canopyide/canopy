@@ -1,7 +1,7 @@
 import { describe, it, expect, vi, beforeEach, afterEach } from "vitest";
-import { TerminalFrameStabilizer } from "../TerminalFrameStabilizer.js";
+import { TerminalSyncBuffer } from "../TerminalSyncBuffer.js";
 
-describe("TerminalFrameStabilizer", () => {
+describe("TerminalSyncBuffer", () => {
   beforeEach(() => {
     vi.useFakeTimers();
   });
@@ -12,7 +12,7 @@ describe("TerminalFrameStabilizer", () => {
 
   describe("stability-based emission", () => {
     it("emits after stability timeout when no frame boundaries", () => {
-      const stabilizer = new TerminalFrameStabilizer();
+      const stabilizer = new TerminalSyncBuffer();
       const emits: string[] = [];
 
       stabilizer.attach({} as any, (data: string) => emits.push(data));
@@ -26,7 +26,7 @@ describe("TerminalFrameStabilizer", () => {
     });
 
     it("preserves all ANSI sequences", () => {
-      const stabilizer = new TerminalFrameStabilizer();
+      const stabilizer = new TerminalSyncBuffer();
       const emits: string[] = [];
 
       stabilizer.attach({} as any, (data: string) => emits.push(data));
@@ -39,7 +39,7 @@ describe("TerminalFrameStabilizer", () => {
     });
 
     it("resets stability timer on new data", () => {
-      const stabilizer = new TerminalFrameStabilizer();
+      const stabilizer = new TerminalSyncBuffer();
       const emits: string[] = [];
 
       stabilizer.attach({} as any, (data: string) => emits.push(data));
@@ -60,7 +60,7 @@ describe("TerminalFrameStabilizer", () => {
 
   describe("synchronized output mode", () => {
     it("buffers during sync mode and emits on sync end", () => {
-      const stabilizer = new TerminalFrameStabilizer();
+      const stabilizer = new TerminalSyncBuffer();
       const emits: string[] = [];
 
       stabilizer.attach({} as any, (data: string) => emits.push(data));
@@ -80,7 +80,7 @@ describe("TerminalFrameStabilizer", () => {
     });
 
     it("handles multiple sync frames in one chunk", () => {
-      const stabilizer = new TerminalFrameStabilizer();
+      const stabilizer = new TerminalSyncBuffer();
       const emits: string[] = [];
 
       stabilizer.attach({} as any, (data: string) => emits.push(data));
@@ -94,7 +94,7 @@ describe("TerminalFrameStabilizer", () => {
     });
 
     it("emits content before sync mode starts", () => {
-      const stabilizer = new TerminalFrameStabilizer();
+      const stabilizer = new TerminalSyncBuffer();
       const emits: string[] = [];
 
       stabilizer.attach({} as any, (data: string) => emits.push(data));
@@ -109,7 +109,7 @@ describe("TerminalFrameStabilizer", () => {
     });
 
     it("times out sync mode after 500ms and appends ESU", () => {
-      const stabilizer = new TerminalFrameStabilizer();
+      const stabilizer = new TerminalSyncBuffer();
       const emits: string[] = [];
 
       stabilizer.attach({} as any, (data: string) => emits.push(data));
@@ -127,7 +127,7 @@ describe("TerminalFrameStabilizer", () => {
 
   describe("traditional frame boundaries (non-sync TUIs)", () => {
     it("emits on clear screen boundary", () => {
-      const stabilizer = new TerminalFrameStabilizer();
+      const stabilizer = new TerminalSyncBuffer();
       const emits: string[] = [];
 
       stabilizer.attach({} as any, (data: string) => emits.push(data));
@@ -146,7 +146,7 @@ describe("TerminalFrameStabilizer", () => {
     });
 
     it("emits on alt buffer boundary", () => {
-      const stabilizer = new TerminalFrameStabilizer();
+      const stabilizer = new TerminalSyncBuffer();
       const emits: string[] = [];
 
       stabilizer.attach({} as any, (data: string) => emits.push(data));
@@ -163,7 +163,7 @@ describe("TerminalFrameStabilizer", () => {
     });
 
     it("handles multiple boundaries in one chunk", () => {
-      const stabilizer = new TerminalFrameStabilizer();
+      const stabilizer = new TerminalSyncBuffer();
       const emits: string[] = [];
 
       stabilizer.attach({} as any, (data: string) => emits.push(data));
@@ -184,7 +184,7 @@ describe("TerminalFrameStabilizer", () => {
 
   describe("interactive mode", () => {
     it("uses shorter stability timeout (32ms)", () => {
-      const stabilizer = new TerminalFrameStabilizer();
+      const stabilizer = new TerminalSyncBuffer();
       const emits: string[] = [];
 
       stabilizer.attach({} as any, (data: string) => emits.push(data));
@@ -199,7 +199,7 @@ describe("TerminalFrameStabilizer", () => {
 
   describe("max hold time", () => {
     it("emits after max hold even if data keeps arriving", () => {
-      const stabilizer = new TerminalFrameStabilizer();
+      const stabilizer = new TerminalSyncBuffer();
       const emits: string[] = [];
 
       stabilizer.attach({} as any, (data: string) => emits.push(data));
@@ -217,7 +217,7 @@ describe("TerminalFrameStabilizer", () => {
 
   describe("overflow protection", () => {
     it("force flushes on buffer overflow", () => {
-      const stabilizer = new TerminalFrameStabilizer();
+      const stabilizer = new TerminalSyncBuffer();
       const emits: string[] = [];
 
       stabilizer.attach({} as any, (data: string) => emits.push(data));
@@ -231,7 +231,7 @@ describe("TerminalFrameStabilizer", () => {
 
   describe("detach", () => {
     it("flushes pending data on detach", () => {
-      const stabilizer = new TerminalFrameStabilizer();
+      const stabilizer = new TerminalSyncBuffer();
       const emits: string[] = [];
 
       stabilizer.attach({} as any, (data: string) => emits.push(data));
@@ -248,7 +248,7 @@ describe("TerminalFrameStabilizer", () => {
 
   describe("debug state", () => {
     it("tracks state accurately", () => {
-      const stabilizer = new TerminalFrameStabilizer();
+      const stabilizer = new TerminalSyncBuffer();
 
       stabilizer.attach({} as any, () => {});
 

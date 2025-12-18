@@ -1,29 +1,36 @@
 /**
- * TerminalFrameStabilizer - SYNCHRONIZED OUTPUT MODE AWARE
+ * TerminalSyncBuffer - DEC 2026 Synchronized Output Implementation
  *
- * PROTECTED INFRASTRUCTURE:
- * This component handles backend frame stabilization for agent/IPC paths.
- * It is critical for preventing "torn frames" in TUI output (e.g., Vim, specialized agents).
- * Do not remove buffering logic or frame boundary detection.
+ * Implements the DEC private mode 2026 "Synchronized Output" protocol for
+ * modern AI terminal agents (Claude Code, Gemini CLI, Codex, etc.).
  *
- * Respects the synchronized output protocol (DEC private mode 2026):
- * - When we see \x1b[?2026h (start sync), buffer all output
- * - When we see \x1b[?2026l (end sync), emit the complete frame
- * - This prevents showing half-drawn frames during TUI redraws
+ * WHY THIS EXISTS:
+ * xterm.js doesn't support DEC 2026, so it renders output immediately as it
+ * arrives. When TUIs send rapid screen updates wrapped in sync sequences,
+ * users see flickering/tearing as partial frames are rendered. This buffer
+ * implements the missing protocol support.
  *
- * For data outside sync mode, uses stability detection:
- * - No new data for STABILITY_MS (100ms) = frame complete
- * - MAX_HOLD_MS (200ms) = safety valve for continuous streams
+ * HOW IT WORKS:
+ * - \x1b[?2026h (BSU) = "Begin Synchronized Update" - start buffering
+ * - \x1b[?2026l (ESU) = "End Synchronized Update" - emit complete frame
+ * - Between BSU and ESU, all output is buffered and emitted atomically
  *
- * Claude Code and similar TUIs use sync mode for atomic screen updates.
+ * FALLBACKS:
+ * - For TUIs without DEC 2026: detects traditional frame boundaries (\x1b[2J)
+ * - For unknown patterns: stability timeout (100ms quiet = frame complete)
+ * - Safety valve: 500ms max sync hold, 200ms max general hold
+ *
+ * SCOPE:
+ * Only enabled for agent terminals (isAgentTerminal). Normal shells bypass
+ * this entirely for zero-latency pass-through.
  */
 
 import type { Terminal as HeadlessTerminal } from "@xterm/headless";
 
 // Synchronized output mode (DEC private mode 2026)
-// When enabled, terminal should buffer all output until disabled
-const SYNC_OUTPUT_START = "\x1b[?2026h";
-const SYNC_OUTPUT_END = "\x1b[?2026l";
+// BSU = Begin Synchronized Update, ESU = End Synchronized Update
+const SYNC_OUTPUT_START = "\x1b[?2026h"; // BSU
+const SYNC_OUTPUT_END = "\x1b[?2026l"; // ESU
 
 // Traditional frame boundaries (for TUIs that don't use sync mode)
 const CLEAR_SCREEN = "\x1b[2J";
@@ -44,11 +51,11 @@ const MAX_HOLD_MS = 200;
 // Max buffer before force flush
 const MAX_BUFFER_SIZE = 512 * 1024;
 
-export interface FrameStabilizerOptions {
+export interface SyncBufferOptions {
   verbose?: boolean;
 }
 
-export class TerminalFrameStabilizer {
+export class TerminalSyncBuffer {
   private emitCallback: ((data: string) => void) | null = null;
 
   // Current frame being built
@@ -71,12 +78,11 @@ export class TerminalFrameStabilizer {
 
   // Stats
   private framesEmitted = 0;
-  private debugFlushReasons: Record<string, number> = {};
 
   // Debug
   private verbose: boolean;
 
-  constructor(options?: FrameStabilizerOptions) {
+  constructor(options?: SyncBufferOptions) {
     this.verbose = options?.verbose ?? process.env.CANOPY_VERBOSE === "1";
   }
 
@@ -298,11 +304,9 @@ export class TerminalFrameStabilizer {
   private emit(data: string, reason: string): void {
     if (!data || !this.emitCallback) return;
 
-    this.debugFlushReasons[reason] = (this.debugFlushReasons[reason] || 0) + 1;
-
     if (this.verbose) {
       console.log(
-        `[FrameStabilizer] Emit #${this.framesEmitted + 1}: ${data.length} bytes (${reason})`
+        `[SyncBuffer] Emit #${this.framesEmitted + 1}: ${data.length} bytes (${reason})`
       );
     }
 

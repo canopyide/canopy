@@ -33,7 +33,7 @@ import type { PtyPool } from "../PtyPool.js";
 import { logError } from "../../utils/logger.js";
 import { decideTerminalExitForensics } from "./terminalForensics.js";
 import { installHeadlessResponder } from "./headlessResponder.js";
-import { TerminalFrameStabilizer } from "./TerminalFrameStabilizer.js";
+import { TerminalSyncBuffer } from "./TerminalSyncBuffer.js";
 
 const TERMINAL_DISABLE_URL_STYLING: boolean = process.env.CANOPY_DISABLE_URL_STYLING === "1";
 const TERMINAL_SESSION_PERSISTENCE_ENABLED: boolean =
@@ -234,7 +234,7 @@ export class TerminalProcess {
   // Lazy headless terminal state
   private _scrollback: number;
   private headlessResponderDisposable: { dispose: () => void } | null = null;
-  private frameStabilizer: TerminalFrameStabilizer | null = null;
+  private syncBuffer: TerminalSyncBuffer | null = null;
   private sessionPersistTimer: NodeJS.Timeout | null = null;
   private sessionPersistDirty = false;
   private sessionPersistInFlight = false;
@@ -529,13 +529,13 @@ export class TerminalProcess {
       );
     }
 
-    // Initialize frame stabilizer for agent terminals to prevent TUI flicker
-    // The stabilizer gates output emission based on composed terminal state
+    // Initialize sync buffer for agent terminals to implement DEC 2026
+    // This gates output emission to prevent TUI flicker during synchronized updates
     if (TERMINAL_FRAME_STABILIZER_ENABLED && this.isAgentTerminal && headlessTerminal) {
-      this.frameStabilizer = new TerminalFrameStabilizer({
+      this.syncBuffer = new TerminalSyncBuffer({
         verbose: process.env.CANOPY_VERBOSE === "1",
       });
-      this.frameStabilizer.attach(headlessTerminal, (data) => {
+      this.syncBuffer.attach(headlessTerminal, (data) => {
         // Guard against post-kill flushes
         if (this.terminalInfo.wasKilled) return;
         this.emitDataDirect(data);
@@ -626,9 +626,9 @@ export class TerminalProcess {
       return;
     }
     // Detach frame stabilizer (flushes pending data)
-    if (this.frameStabilizer) {
-      this.frameStabilizer.detach();
-      this.frameStabilizer = null;
+    if (this.syncBuffer) {
+      this.syncBuffer.detach();
+      this.syncBuffer = null;
     }
     if (this.headlessResponderDisposable) {
       try {
@@ -748,7 +748,7 @@ export class TerminalProcess {
 
     // Mark stabilizer interactive only for typing-like input (not bulk paste)
     if (data.length <= 64 && !isBracketedPaste(data)) {
-      this.frameStabilizer?.markInteractive();
+      this.syncBuffer?.markInteractive();
     }
 
     // If the PTY has already exited or been disposed, ignore input
@@ -1342,9 +1342,9 @@ export class TerminalProcess {
       this.inputWriteQueue = [];
 
       // Flush any buffered frame output before exit event
-      if (this.frameStabilizer) {
-        this.frameStabilizer.detach();
-        this.frameStabilizer = null;
+      if (this.syncBuffer) {
+        this.syncBuffer.detach();
+        this.syncBuffer = null;
       }
 
       this.callbacks.onExit(this.id, exitCode ?? 0);
@@ -1379,8 +1379,8 @@ export class TerminalProcess {
     const text = typeof data === "string" ? data : new TextDecoder().decode(data);
 
     // Route through stabilizer if available
-    if (this.frameStabilizer) {
-      this.frameStabilizer.ingest(text);
+    if (this.syncBuffer) {
+      this.syncBuffer.ingest(text);
       return;
     }
 
