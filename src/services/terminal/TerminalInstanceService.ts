@@ -28,7 +28,7 @@ const WAKE_RATE_LIMIT_MS = 1000;
 
 class TerminalInstanceService {
   private instances = new Map<string, ManagedTerminal>();
-  private dataBuffer: TerminalOutputIngestService;
+  private dataBuffer = new TerminalOutputIngestService((id, data) => this.writeToTerminal(id, data));
   private suppressedExitUntil = new Map<string, number>();
   private hiddenContainer: HTMLDivElement | null = null;
   private offscreenSlots = new Map<string, HTMLDivElement>();
@@ -40,9 +40,9 @@ class TerminalInstanceService {
     Array<{ resolve: () => void; reject: (error: Error) => void; timeout: number }>
   >();
   private lastWakeTime = new Map<string, number>(); // Rate limit wake calls
+  private lastBackendTier = new Map<string, "active" | "background">();
 
   constructor() {
-    this.dataBuffer = new TerminalOutputIngestService((id, data) => this.writeToTerminal(id, data));
     this.dataBuffer.initialize();
   }
 
@@ -250,7 +250,9 @@ class TerminalInstanceService {
 
         // Re-evaluate tier when visibility changes to wake up backgrounded terminals.
         // This catches terminals that initialized in BACKGROUND before the observer fired.
-        const tier = managed.getRefreshTier ? managed.getRefreshTier() : TerminalRefreshTier.VISIBLE;
+        const tier = managed.getRefreshTier
+          ? managed.getRefreshTier()
+          : TerminalRefreshTier.VISIBLE;
         this.applyRendererPolicy(id, tier);
       }
     }
@@ -278,29 +280,27 @@ class TerminalInstanceService {
   }
 
   private setBackendTier(id: string, tier: "active" | "background"): void {
+    this.lastBackendTier.set(id, tier);
     terminalClient.setActivityTier(id, tier);
   }
 
-  private async wakeAndRestore(id: string): Promise<void> {
+  private async wakeAndRestore(id: string): Promise<boolean> {
     const managed = this.instances.get(id);
-    if (!managed) return;
+    if (!managed) return false;
 
-    try {
-      const { state } = await terminalClient.wake(id);
-      if (!state) return;
+    const { state } = await terminalClient.wake(id);
+    if (!state) return false;
 
-      if (state.length > INCREMENTAL_RESTORE_CONFIG.indicatorThresholdBytes) {
-        await this.restoreFromSerializedIncremental(id, state);
-      } else {
-        this.restoreFromSerialized(id, state);
-      }
-
-      if (this.instances.get(id) === managed) {
-        managed.terminal.refresh(0, managed.terminal.rows - 1);
-      }
-    } catch (error) {
-      console.warn(`[TerminalInstanceService] wakeAndRestore failed for ${id}:`, error);
+    if (state.length > INCREMENTAL_RESTORE_CONFIG.indicatorThresholdBytes) {
+      await this.restoreFromSerializedIncremental(id, state);
+    } else {
+      this.restoreFromSerialized(id, state);
     }
+
+    if (this.instances.get(id) === managed) {
+      managed.terminal.refresh(0, managed.terminal.rows - 1);
+    }
+    return true;
   }
 
   /**
@@ -342,7 +342,7 @@ class TerminalInstanceService {
     }
 
     const openLink = (url: string) => {
-      const normalizedUrl = /^https?:\/\//i.test(url) ? url : `https://${url}`;
+      const normalizedUrl = /^https?:\/\/i.test(url) ? url : `https://${url}`;
       systemClient.openExternal(normalizedUrl).catch((error) => {
         console.error("[TerminalInstanceService] Failed to open URL:", error);
       });
@@ -947,7 +947,9 @@ class TerminalInstanceService {
         return;
       }
       if (managed.hostElement.clientWidth < 50 || managed.hostElement.clientHeight < 50) {
-        console.log(`[TERM_DEBUG] resetRenderer skipped for ${id}: too small (${managed.hostElement.clientWidth}x${managed.hostElement.clientHeight})`);
+        console.log(
+          `[TERM_DEBUG] resetRenderer skipped for ${id}: too small (${managed.hostElement.clientWidth}x${managed.hostElement.clientHeight})`
+        );
         return;
       }
 
@@ -1100,9 +1102,36 @@ class TerminalInstanceService {
   ): void {
     managed.lastAppliedTier = tier;
 
-    // Always keep backend streaming active - never background terminals.
-    // Reliability is more important than resource optimization.
-    this.setBackendTier(id, "active");
+    // Backend streaming tier:
+    // - Focused/Visible/Burst => active stream
+    // - Background => stop streaming; rely on headless snapshot + wake for fidelity
+    const backendTier: "active" | "background" =
+      tier === TerminalRefreshTier.BACKGROUND ? "background" : "active";
+    const prevBackendTier = this.lastBackendTier.get(id) ?? "active";
+    this.setBackendTier(id, backendTier);
+
+    // When backend streaming stops, mark that we'll need a snapshot sync on next activation.
+    // This ensures we capture any output that happens while backgrounded.
+    if (backendTier === "background" && prevBackendTier === "active") {
+      managed.needsWake = true;
+    }
+
+    // On upgrade to active, wake if needsWake is set (or undefined for first wake).
+    // This syncs the renderer with the backend snapshot after any period of backgrounding.
+    if (backendTier === "active" && prevBackendTier !== "active") {
+      if (managed.needsWake !== false) {
+        void this.wakeAndRestore(id)
+          .then((ok) => {
+            const current = this.instances.get(id);
+            if (!current) return;
+            current.needsWake = ok ? false : true;
+          })
+          .catch(() => {
+            const current = this.instances.get(id);
+            if (current) current.needsWake = true;
+          });
+      }
+    }
   }
 
   updateRefreshTierProvider(id: string, provider: RefreshTierProvider): void {
@@ -1304,7 +1333,8 @@ class TerminalInstanceService {
               }
             }),
             new Promise<void>((_, reject) =>
-              setTimeout(() => reject(new Error("Write timeout")), 5000)
+              setTimeout(() => reject(new Error("Write timeout")),
+ 5000)
             ),
           ]);
 
