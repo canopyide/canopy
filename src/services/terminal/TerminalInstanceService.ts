@@ -204,7 +204,6 @@ class TerminalInstanceService {
     }
 
     this.unseenTracker.incrementUnseen(id, managed.isUserScrolledBack);
-    const shouldStickToBottom = managed.kind === "agent" && !managed.isUserScrolledBack;
 
     // Capture SAB mode decision before write to avoid mode-flip ambiguity during callback
     const shouldAck = !this.dataBuffer.isEnabled();
@@ -217,14 +216,6 @@ class TerminalInstanceService {
       if (this.instances.get(id) !== managed) return;
 
       managed.pendingWrites = Math.max(0, (managed.pendingWrites ?? 1) - 1);
-
-      if (shouldStickToBottom) {
-        const buffer = terminal.buffer.active;
-        const isAtBottom = buffer.baseY - buffer.viewportY < 1;
-        if (!isAtBottom) {
-          terminal.scrollToBottom();
-        }
-      }
 
       // Flow control: Only send acknowledgements in IPC fallback mode.
       // In SAB mode, flow control is handled globally via SAB backpressure.
