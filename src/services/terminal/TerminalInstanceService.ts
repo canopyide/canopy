@@ -245,10 +245,11 @@ class TerminalInstanceService {
             managed.lastHeight = 0;
           }
         }
-        // Note: Removed applyRendererPolicy call to prevent tier flapping.
-        // Tier changes should come from explicit tier provider updates in XtermAdapter,
-        // not from visibility changes. This prevents multiple observers from causing
-        // competing tier transitions during layout churn.
+
+        // Re-evaluate tier when visibility changes to wake up backgrounded terminals.
+        // This catches terminals that initialized in BACKGROUND before the observer fired.
+        const tier = managed.getRefreshTier ? managed.getRefreshTier() : TerminalRefreshTier.VISIBLE;
+        this.applyRendererPolicy(id, tier);
       }
     }
   }

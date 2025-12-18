@@ -1,5 +1,7 @@
 import { create, type StateCreator } from "zustand";
 import { appClient, terminalClient } from "@/clients";
+import { terminalInstanceService } from "@/services/TerminalInstanceService";
+import { TerminalRefreshTier } from "@shared/types/domain";
 import type { GitHubIssue } from "@shared/types/github";
 
 interface CreateDialogState {
@@ -50,6 +52,9 @@ const createWorktreeSelectionStore: StateCreator<WorktreeSelectionState> = (set,
           }
           const isInActiveWorktree = (terminal.worktreeId ?? null) === (id ?? null);
           terminalClient.setActivityTier(terminal.id, isInActiveWorktree ? "active" : "background");
+          if (isInActiveWorktree) {
+            terminalInstanceService.applyRendererPolicy(terminal.id, TerminalRefreshTier.VISIBLE);
+          }
         }
       })
       .catch((error) => {
@@ -81,6 +86,9 @@ const createWorktreeSelectionStore: StateCreator<WorktreeSelectionState> = (set,
           }
           const isInActiveWorktree = (terminal.worktreeId ?? null) === id;
           terminalClient.setActivityTier(terminal.id, isInActiveWorktree ? "active" : "background");
+          if (isInActiveWorktree) {
+            terminalInstanceService.applyRendererPolicy(terminal.id, TerminalRefreshTier.VISIBLE);
+          }
         }
       })
       .catch((error) => {
