@@ -39,6 +39,7 @@ const createWorktreeSelectionStore: StateCreator<WorktreeSelectionState> = (set,
 
     // Reliability: terminals from inactive worktrees should not stream output to the renderer.
     // They remain alive in the backend headless model and will be restored on wake.
+    // Terminals in the active worktree must be activated to resume streaming.
     void import("@/store/terminalStore")
       .then(({ useTerminalStore }) => {
         const terminals = useTerminalStore.getState().terminals;
@@ -47,9 +48,8 @@ const createWorktreeSelectionStore: StateCreator<WorktreeSelectionState> = (set,
           if (terminal.id === activeDockTerminalId) {
             continue;
           }
-          if ((terminal.worktreeId ?? null) !== (id ?? null)) {
-            terminalClient.setActivityTier(terminal.id, "background");
-          }
+          const isInActiveWorktree = (terminal.worktreeId ?? null) === (id ?? null);
+          terminalClient.setActivityTier(terminal.id, isInActiveWorktree ? "active" : "background");
         }
       })
       .catch((error) => {
@@ -79,9 +79,8 @@ const createWorktreeSelectionStore: StateCreator<WorktreeSelectionState> = (set,
           if (terminal.id === activeDockTerminalId) {
             continue;
           }
-          if ((terminal.worktreeId ?? null) !== id) {
-            terminalClient.setActivityTier(terminal.id, "background");
-          }
+          const isInActiveWorktree = (terminal.worktreeId ?? null) === id;
+          terminalClient.setActivityTier(terminal.id, isInActiveWorktree ? "active" : "background");
         }
       })
       .catch((error) => {
