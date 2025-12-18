@@ -206,15 +206,14 @@ export function ProjectSwitcher() {
     };
   }, [isOpen, projects, fetchProjectStats]);
 
-  const renderIcon = (emoji: string, color?: string, sizeClass = "h-8 w-8 text-lg") => (
+  const renderIcon = (emoji: string, color?: string, sizeClass = "h-9 w-9 text-lg") => (
     <div
       className={cn(
-        "flex items-center justify-center rounded-[var(--radius-xl)] shadow-inner shrink-0 transition-all duration-200",
-        "bg-white/5",
+        "flex items-center justify-center rounded-[var(--radius-xl)] shadow-[inset_0_1px_2px_rgba(0,0,0,0.3)] shrink-0 transition-all duration-200",
         sizeClass
       )}
       style={{
-        background: getProjectGradient(color),
+        background: `linear-gradient(to bottom, rgba(0,0,0,0.1), rgba(0,0,0,0.2)), ${getProjectGradient(color)}`,
       }}
     >
       <span className="leading-none select-none filter drop-shadow-sm">{emoji}</span>
@@ -339,113 +338,114 @@ export function ProjectSwitcher() {
   if (!currentProject) {
     if (projects.length > 0) {
       return (
-        <div className="p-2">
-          <DropdownMenu open={isOpen} onOpenChange={setIsOpen}>
-            <DropdownMenuTrigger asChild>
-              <Button
-                variant="outline"
-                className="w-full justify-between text-muted-foreground border-dashed active:scale-100"
-                disabled={isLoading}
-              >
-                <span>Select Project...</span>
-                <ChevronsUpDown className="h-4 w-4 opacity-50" />
-              </Button>
-            </DropdownMenuTrigger>
-            <DropdownMenuContent className="w-64 max-h-[300px] overflow-y-auto p-1" align="start">
-              <DropdownMenuLabel className="text-xs font-medium text-muted-foreground/70 uppercase tracking-wider px-2 py-1.5">
-                Projects
-              </DropdownMenuLabel>
+        <DropdownMenu open={isOpen} onOpenChange={setIsOpen}>
+          <DropdownMenuTrigger asChild>
+            <Button
+              variant="outline"
+              className="w-full justify-between text-muted-foreground border-dashed h-12 active:scale-100"
+              disabled={isLoading}
+            >
+              <span>Select Project...</span>
+              <ChevronsUpDown className="h-4 w-4 opacity-50" />
+            </Button>
+          </DropdownMenuTrigger>
+          <DropdownMenuContent className="w-64 max-h-[300px] overflow-y-auto p-1" align="start">
+            <DropdownMenuLabel className="text-xs font-medium text-muted-foreground/70 uppercase tracking-wider px-2 py-1.5">
+              Projects
+            </DropdownMenuLabel>
 
-              {projects.map((project) => (
-                <DropdownMenuItem
-                  key={project.id}
-                  onClick={() => handleProjectSwitch(project.id)}
-                  className="gap-3 p-2 group cursor-pointer"
-                >
-                  {renderIcon(project.emoji || "🌲", project.color, "h-8 w-8 text-base")}
-                  <div className="flex flex-col min-w-0 flex-1">
-                    <span className="font-medium truncate">{project.name}</span>
-                    <span className="text-[11px] font-mono text-muted-foreground truncate">
-                      {project.path.split(/[/\\]/).pop()}
-                    </span>
-                  </div>
-                </DropdownMenuItem>
-              ))}
-
-              <DropdownMenuSeparator />
-
+            {projects.map((project) => (
               <DropdownMenuItem
-                onClick={addProject}
-                className="gap-3 p-2 cursor-pointer text-muted-foreground focus:text-foreground"
+                key={project.id}
+                onClick={() => handleProjectSwitch(project.id)}
+                className="gap-3 p-2 group cursor-pointer"
               >
-                <div className="flex h-8 w-8 items-center justify-center rounded-[var(--radius-lg)] border border-dashed border-muted-foreground/30 bg-muted/20">
-                  <Plus className="h-4 w-4" />
+                {renderIcon(project.emoji || "🌲", project.color, "h-8 w-8 text-base")}
+                <div className="flex flex-col min-w-0 flex-1">
+                  <span className="font-medium truncate">{project.name}</span>
+                  <span className="text-[11px] font-mono text-muted-foreground truncate">
+                    {project.path.split(/[/\\]/).pop()}
+                  </span>
                 </div>
-                <span className="font-medium">Add Project...</span>
               </DropdownMenuItem>
-            </DropdownMenuContent>
-          </DropdownMenu>
-        </div>
+            ))}
+
+            <DropdownMenuSeparator />
+
+            <DropdownMenuItem
+              onClick={addProject}
+              className="gap-3 p-2 cursor-pointer text-muted-foreground focus:text-foreground"
+            >
+              <div className="flex h-8 w-8 items-center justify-center rounded-[var(--radius-lg)] border border-dashed border-muted-foreground/30 bg-muted/20">
+                <Plus className="h-4 w-4" />
+              </div>
+              <span className="font-medium">Add Project...</span>
+            </DropdownMenuItem>
+          </DropdownMenuContent>
+        </DropdownMenu>
       );
     }
 
     return (
-      <div className="p-2">
-        <Button
-          variant="outline"
-          className="w-full justify-start text-muted-foreground border-dashed h-10 active:scale-100"
-          onClick={addProject}
-          disabled={isLoading}
-        >
-          <Plus className="mr-2 h-4 w-4" />
-          Open Project...
-        </Button>
-      </div>
+      <Button
+        variant="outline"
+        className="w-full justify-start text-muted-foreground border-dashed h-12 active:scale-100"
+        onClick={addProject}
+        disabled={isLoading}
+      >
+        <Plus className="mr-2 h-4 w-4" />
+        Open Project...
+      </Button>
     );
   }
 
   return (
-    <div className="p-2">
-      <DropdownMenu open={isOpen} onOpenChange={setIsOpen}>
-        <DropdownMenuTrigger asChild>
-          <Button
-            variant="ghost"
-            className="w-full justify-between px-2 h-14 group transition-all duration-200 active:scale-100"
-            disabled={isLoading}
-          >
-            <div className="flex items-center gap-3 text-left min-w-0">
-              {renderIcon(currentProject.emoji || "🌲", currentProject.color, "h-10 w-10 text-2xl")}
-
-              <div className="flex flex-col min-w-0 gap-0.5">
-                <span className="truncate font-semibold text-canopy-text text-sm leading-none">
-                  {currentProject.name}
-                </span>
-                <span className="truncate text-xs text-muted-foreground/60 font-mono">
-                  {currentProject.path.split(/[/\\]/).pop()}
-                </span>
-              </div>
-            </div>
-            <ChevronsUpDown className="ml-2 h-4 w-4 shrink-0 text-muted-foreground/40 group-hover:text-muted-foreground/70 transition-colors" />
-          </Button>
-        </DropdownMenuTrigger>
-
-        <DropdownMenuContent
-          className="w-[260px] max-h-[60vh] overflow-y-auto p-1"
-          align="start"
-          sideOffset={8}
+    <DropdownMenu open={isOpen} onOpenChange={setIsOpen}>
+      <DropdownMenuTrigger asChild>
+        <Button
+          variant="ghost"
+          className={cn(
+            "w-full justify-between h-12 px-2.5",
+            "rounded-[var(--radius-lg)]",
+            "border border-white/[0.06]",
+            "bg-white/[0.02] shadow-[inset_0_1px_0_rgba(255,255,255,0.03)]",
+            "hover:bg-white/[0.04] transition-colors",
+            "active:scale-100"
+          )}
+          disabled={isLoading}
         >
-          {renderGroupedProjects()}
+          <div className="flex items-center gap-3 text-left min-w-0">
+            {renderIcon(currentProject.emoji || "🌲", currentProject.color, "h-9 w-9 text-xl")}
 
-          <DropdownMenuSeparator className="my-1 bg-border/40" />
-
-          <DropdownMenuItem onClick={addProject} className="gap-3 p-2 cursor-pointer">
-            <div className="flex h-8 w-8 items-center justify-center rounded-[var(--radius-lg)] border border-dashed border-muted-foreground/30 bg-muted/20 text-muted-foreground">
-              <Plus className="h-4 w-4" />
+            <div className="flex flex-col min-w-0 gap-0.5">
+              <span className="truncate font-semibold text-canopy-text text-sm leading-none">
+                {currentProject.name}
+              </span>
+              <span className="truncate text-xs text-muted-foreground/60 font-mono">
+                {currentProject.path.split(/[/\\]/).pop()}
+              </span>
             </div>
-            <span className="font-medium text-sm text-muted-foreground">Add Project...</span>
-          </DropdownMenuItem>
-        </DropdownMenuContent>
-      </DropdownMenu>
-    </div>
+          </div>
+          <ChevronsUpDown className="ml-2 h-4 w-4 shrink-0 text-muted-foreground/40 group-hover:text-muted-foreground/70 transition-colors" />
+        </Button>
+      </DropdownMenuTrigger>
+
+      <DropdownMenuContent
+        className="w-[260px] max-h-[60vh] overflow-y-auto p-1"
+        align="start"
+        sideOffset={8}
+      >
+        {renderGroupedProjects()}
+
+        <DropdownMenuSeparator className="my-1 bg-border/40" />
+
+        <DropdownMenuItem onClick={addProject} className="gap-3 p-2 cursor-pointer">
+          <div className="flex h-8 w-8 items-center justify-center rounded-[var(--radius-lg)] border border-dashed border-muted-foreground/30 bg-muted/20 text-muted-foreground">
+            <Plus className="h-4 w-4" />
+          </div>
+          <span className="font-medium text-sm text-muted-foreground">Add Project...</span>
+        </DropdownMenuItem>
+      </DropdownMenuContent>
+    </DropdownMenu>
   );
 }

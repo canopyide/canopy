@@ -136,21 +136,24 @@ export function Sidebar({ width, onResize, children, className }: SidebarProps) 
       <aside
         ref={sidebarRef}
         className={cn(
-          "relative border-r border-canopy-border bg-canopy-sidebar shrink-0 flex flex-col",
+          "relative shrink-0 flex flex-col",
+          "bg-canopy-sidebar/95 backdrop-blur-sm",
+          "border-r border-divider",
+          "shadow-[inset_0_1px_0_rgba(255,255,255,0.03)]",
           className
         )}
         style={{ width }}
         onContextMenu={handleContextMenu}
       >
-        <div className="shrink-0 border-b border-canopy-border">
-          <div className="flex items-center">
-            <div className="flex-1">
+        <div className="shrink-0 border-b border-divider bg-canopy-sidebar/95 backdrop-blur-sm">
+          <div className="flex items-center gap-2 px-3 py-3">
+            <div className="flex-1 min-w-0">
               <ProjectSwitcher />
             </div>
             {currentProject && (
               <button
                 onClick={() => setIsSettingsOpen(true)}
-                className="p-2 mr-1 text-canopy-text/60 hover:text-canopy-text hover:bg-canopy-border/50 rounded transition-colors focus-visible:outline focus-visible:outline-2 focus-visible:outline-canopy-accent"
+                className="p-2 text-canopy-text/60 hover:text-canopy-text hover:bg-white/[0.06] rounded-[var(--radius-md)] transition-colors focus-visible:outline focus-visible:outline-2 focus-visible:outline-canopy-accent"
                 title="Project Settings"
               >
                 <Settings className="h-4 w-4" />
@@ -159,11 +162,11 @@ export function Sidebar({ width, onResize, children, className }: SidebarProps) 
           </div>
         </div>
 
-        <div className="flex-1 overflow-y-auto min-h-0">{children}</div>
-
-        <ProjectResourceBadge />
+        <div className="flex-1 min-h-0 overflow-hidden">{children}</div>
 
         {currentProject && <QuickRun projectId={currentProject.id} />}
+
+        <ProjectResourceBadge />
 
         <div
           role="separator"

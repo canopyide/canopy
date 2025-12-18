@@ -287,13 +287,13 @@ export function QuickRun({ projectId }: QuickRunProps) {
   const isWorktreeValid = activeWorktree != null && activeWorktree.path != null;
 
   return (
-    <div className="border-t border-canopy-border bg-canopy-sidebar shrink-0 flex flex-col min-h-0 text-xs">
+    <div className="border-t border-divider bg-canopy-sidebar/95 shrink-0 flex flex-col min-h-0 text-xs">
       {/* Header */}
       <button
         onClick={() => setIsExpanded(!isExpanded)}
         className={cn(
-          "w-full flex items-center justify-between px-3 py-1.5",
-          "text-canopy-text/40 hover:text-canopy-text hover:bg-white/5 transition-colors focus:outline-none font-sans"
+          "w-full flex items-center justify-between px-4 py-2",
+          "text-canopy-text/40 hover:text-canopy-text hover:bg-white/[0.06] transition-colors focus:outline-none font-sans"
         )}
         aria-expanded={isExpanded}
         aria-controls="quick-run-panel"
@@ -315,7 +315,7 @@ export function QuickRun({ projectId }: QuickRunProps) {
       </button>
 
       {isExpanded && (
-        <div id="quick-run-panel" className="px-3 pb-3 pt-1">
+        <div id="quick-run-panel" className="px-4 pb-3 pt-1">
           {!isWorktreeValid ? (
             <div className="text-xs text-gray-500 text-center py-2">
               Select a worktree above to enable Quick Run
