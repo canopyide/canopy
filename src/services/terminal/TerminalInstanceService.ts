@@ -1048,6 +1048,8 @@ class TerminalInstanceService {
     const managed = this.instances.get(id);
     if (!managed) return;
 
+    // console.log(`[TERM_DEBUG] applyRendererPolicy ${id} -> ${tier}`);
+
     if (tier === TerminalRefreshTier.FOCUSED || tier === TerminalRefreshTier.BURST) {
       managed.lastActiveTime = Date.now();
     }
