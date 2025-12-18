@@ -41,45 +41,7 @@ const createWorktreeSelectionStore: StateCreator<WorktreeSelectionState> = (set,
       console.error("Failed to persist active worktree:", error);
     });
 
-    const generation = get()._policyGeneration + 1;
-    set({ _policyGeneration: generation });
-
-    // Reliability: terminals from inactive worktrees should not stream output to the renderer.
-    // They remain alive in the backend headless model and will be restored on wake.
-    // Terminals in the active worktree must be activated to resume streaming.
-    void import("@/store/terminalStore")
-      .then(({ useTerminalStore }) => {
-        if (get()._policyGeneration !== generation) return;
-        if ((get().activeWorktreeId ?? null) !== (id ?? null)) return;
-
-        const terminals = useTerminalStore.getState().terminals;
-        const activeDockTerminalId = useTerminalStore.getState().activeDockTerminalId;
-        for (const terminal of terminals) {
-          const isInActiveWorktree = (terminal.worktreeId ?? null) === (id ?? null);
-
-          const location = terminal.location ?? "grid";
-          const isDockOrTrash = location === "dock" || location === "trash";
-
-          // Let DockedTerminalItem manage open/closed dock policy, but if the active dock
-          // terminal is not in the active worktree, force it to BACKGROUND.
-          if (terminal.id === activeDockTerminalId && isDockOrTrash && isInActiveWorktree) {
-            continue;
-          }
-
-          // Apply appropriate renderer policy based on worktree membership.
-          // Avoid waking dock/trash terminals - they manage their own visibility.
-          // applyRendererPolicy handles backend tier transitions internally.
-          terminalInstanceService.applyRendererPolicy(
-            terminal.id,
-            isInActiveWorktree && !isDockOrTrash
-              ? TerminalRefreshTier.VISIBLE
-              : TerminalRefreshTier.BACKGROUND
-          );
-        }
-      })
-      .catch((error) => {
-        console.warn("[WorktreeStore] Failed to apply terminal streaming policy:", error);
-      });
+    applyWorktreeTerminalPolicy(get, set, id);
   },
 
   setFocusedWorktree: (id) => set({ focusedWorktreeId: id }),
@@ -96,42 +58,7 @@ const createWorktreeSelectionStore: StateCreator<WorktreeSelectionState> = (set,
       console.error("Failed to persist active worktree:", error);
     });
 
-    const generation = get()._policyGeneration + 1;
-    set({ _policyGeneration: generation });
-
-    void import("@/store/terminalStore")
-      .then(({ useTerminalStore }) => {
-        if (get()._policyGeneration !== generation) return;
-        if (get().activeWorktreeId !== id) return;
-
-        const terminals = useTerminalStore.getState().terminals;
-        const activeDockTerminalId = useTerminalStore.getState().activeDockTerminalId;
-        for (const terminal of terminals) {
-          const isInActiveWorktree = (terminal.worktreeId ?? null) === (id ?? null);
-
-          const location = terminal.location ?? "grid";
-          const isDockOrTrash = location === "dock" || location === "trash";
-
-          // Let DockedTerminalItem manage open/closed dock policy, but if the active dock
-          // terminal is not in the active worktree, force it to BACKGROUND.
-          if (terminal.id === activeDockTerminalId && isDockOrTrash && isInActiveWorktree) {
-            continue;
-          }
-
-          // Apply appropriate renderer policy based on worktree membership.
-          // Avoid waking dock/trash terminals - they manage their own visibility.
-          // applyRendererPolicy handles backend tier transitions internally.
-          terminalInstanceService.applyRendererPolicy(
-            terminal.id,
-            isInActiveWorktree && !isDockOrTrash
-              ? TerminalRefreshTier.VISIBLE
-              : TerminalRefreshTier.BACKGROUND
-          );
-        }
-      })
-      .catch((error) => {
-        console.warn("[WorktreeStore] Failed to apply terminal streaming policy:", error);
-      });
+    applyWorktreeTerminalPolicy(get, set, id);
   },
 
   toggleWorktreeExpanded: (id) =>
@@ -174,3 +101,52 @@ const createWorktreeSelectionStore: StateCreator<WorktreeSelectionState> = (set,
 export const useWorktreeSelectionStore = create<WorktreeSelectionState>()(
   createWorktreeSelectionStore
 );
+
+function applyWorktreeTerminalPolicy(
+  get: () => WorktreeSelectionState,
+  set: (partial: Partial<WorktreeSelectionState>) => void,
+  targetWorktreeId: string | null
+) {
+  const generation = get()._policyGeneration + 1;
+  set({ _policyGeneration: generation });
+
+  // Reliability: terminals from inactive worktrees should not stream output to the renderer.
+  // They remain alive in the backend headless model and will be restored on wake.
+  // Terminals in the active worktree must be activated to resume streaming.
+  void import("@/store/terminalStore")
+    .then(({ useTerminalStore }) => {
+      // Check generation to ensure we're not applying a stale policy from a previous switch
+      if (get()._policyGeneration !== generation) return;
+      // Double check that the active worktree hasn't changed underneath us
+      if ((get().activeWorktreeId ?? null) !== (targetWorktreeId ?? null)) return;
+
+      const terminals = useTerminalStore.getState().terminals;
+      const activeDockTerminalId = useTerminalStore.getState().activeDockTerminalId;
+
+      for (const terminal of terminals) {
+        const isInActiveWorktree = (terminal.worktreeId ?? null) === (targetWorktreeId ?? null);
+
+        const location = terminal.location ?? "grid";
+        const isDockOrTrash = location === "dock" || location === "trash";
+
+        // Let DockedTerminalItem manage open/closed dock policy, but if the active dock
+        // terminal is not in the active worktree, force it to BACKGROUND.
+        if (terminal.id === activeDockTerminalId && isDockOrTrash && isInActiveWorktree) {
+          continue;
+        }
+
+        // Apply appropriate renderer policy based on worktree membership.
+        // Avoid waking dock/trash terminals - they manage their own visibility.
+        // applyRendererPolicy handles backend tier transitions internally.
+        terminalInstanceService.applyRendererPolicy(
+          terminal.id,
+          isInActiveWorktree && !isDockOrTrash
+            ? TerminalRefreshTier.VISIBLE
+            : TerminalRefreshTier.BACKGROUND
+        );
+      }
+    })
+    .catch((error) => {
+      console.warn("[WorktreeStore] Failed to apply terminal streaming policy:", error);
+    });
+}
