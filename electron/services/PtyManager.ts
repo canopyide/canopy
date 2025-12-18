@@ -506,7 +506,10 @@ export class PtyManager extends EventEmitter {
 
     for (const [id, terminalProcess] of this.registry.entries()) {
       const terminalInfo = terminalProcess.getInfo();
-      const belongsToProject = this.registry.terminalBelongsToProject(terminalProcess, newProjectId);
+      const belongsToProject = this.registry.terminalBelongsToProject(
+        terminalProcess,
+        newProjectId
+      );
 
       if (!belongsToProject) {
         backgrounded++;
