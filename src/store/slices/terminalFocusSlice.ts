@@ -1,5 +1,6 @@
 import type { StateCreator } from "zustand";
 import type { TerminalInstance } from "./terminalRegistrySlice";
+import { terminalInstanceService } from "@/services/TerminalInstanceService";
 
 export type NavigationDirection = "up" | "down" | "left" | "right";
 
@@ -54,8 +55,13 @@ export const createTerminalFocusSlice =
 
       setFocused: (id, shouldPing = false) => {
         set({ focusedId: id });
-        if (id && shouldPing) {
-          get().pingTerminal(id);
+        if (id) {
+          // Wake-on-focus: sync terminal state from backend when focused.
+          // This is a safety net to recover from any missed data.
+          terminalInstanceService.wake(id);
+          if (shouldPing) {
+            get().pingTerminal(id);
+          }
         }
       },
 
@@ -134,7 +140,10 @@ export const createTerminalFocusSlice =
         });
       },
 
-      openDockTerminal: (id) => set({ activeDockTerminalId: id, focusedId: id }),
+      openDockTerminal: (id) => {
+        terminalInstanceService.wake(id);
+        set({ activeDockTerminalId: id, focusedId: id });
+      },
 
       closeDockTerminal: () => set({ activeDockTerminalId: null }),
 
@@ -142,6 +151,9 @@ export const createTerminalFocusSlice =
         const terminals = getTerminals();
         const terminal = terminals.find((t) => t.id === id);
         if (!terminal) return;
+
+        // Wake-on-focus: sync terminal state from backend when activated.
+        terminalInstanceService.wake(id);
 
         if (terminal.location === "dock") {
           set({ activeDockTerminalId: id, focusedId: id });

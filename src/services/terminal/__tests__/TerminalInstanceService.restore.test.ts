@@ -24,7 +24,6 @@ vi.mock("@/clients", () => ({
 
 vi.mock("../TerminalAddonManager", () => ({
   setupTerminalAddons: vi.fn(() => ({
-    canvasAddon: { dispose: vi.fn() },
     fitAddon: { fit: vi.fn() },
     serializeAddon: { serialize: vi.fn() },
     webLinksAddon: {},

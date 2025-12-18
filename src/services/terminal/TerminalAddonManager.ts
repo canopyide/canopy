@@ -1,5 +1,4 @@
 import { Terminal, IDisposable } from "@xterm/xterm";
-import { CanvasAddon } from "@xterm/addon-canvas";
 import { FitAddon } from "@xterm/addon-fit";
 import { SerializeAddon } from "@xterm/addon-serialize";
 import { WebLinksAddon } from "@xterm/addon-web-links";
@@ -8,7 +7,6 @@ import { SearchAddon } from "@xterm/addon-search";
 import { FileLinksAddon } from "./FileLinksAddon";
 
 export interface TerminalAddons {
-  canvasAddon: CanvasAddon;
   fitAddon: FitAddon;
   serializeAddon: SerializeAddon;
   webLinksAddon: WebLinksAddon;
@@ -22,10 +20,8 @@ export function setupTerminalAddons(
   openLink: (url: string) => void,
   getCwd: () => string
 ): TerminalAddons {
-  // Load canvas renderer first for GPU-accelerated rendering
-  // (default xterm.js renderer is DOM-based and slower)
-  const canvasAddon = new CanvasAddon();
-  terminal.loadAddon(canvasAddon);
+  // Using default xterm.js DOM renderer - simple and reliable
+  // (no Canvas/WebGL context limits to worry about)
 
   const fitAddon = new FitAddon();
   const serializeAddon = new SerializeAddon();
@@ -45,7 +41,6 @@ export function setupTerminalAddons(
   const fileLinksDisposable = terminal.registerLinkProvider(fileLinksAddon);
 
   return {
-    canvasAddon,
     fitAddon,
     serializeAddon,
     webLinksAddon,

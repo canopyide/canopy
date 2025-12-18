@@ -68,8 +68,9 @@ export function TerminalContextMenu({
     }
   }, [terminalId]);
 
-  const handleResetRenderer = useCallback(() => {
-    terminalInstanceService.resetRenderer(terminalId);
+  const handleRefreshTerminal = useCallback(() => {
+    // Sync terminal state from the backend PTY host
+    terminalInstanceService.wake(terminalId);
   }, [terminalId]);
 
   const handleForceResume = useCallback(() => {
@@ -166,7 +167,7 @@ export function TerminalContextMenu({
       { id: "duplicate", label: "Duplicate Terminal" },
       { id: "rename", label: "Rename Terminal" },
       { id: "clear-scrollback", label: "Clear Scrollback" },
-      { id: "reset-renderer", label: "Reset Renderer" },
+      { id: "refresh-terminal", label: "Refresh Terminal" },
       { id: "view-info", label: "View Terminal Info" },
       { type: "separator" },
       { id: "trash", label: "Trash Terminal" },
@@ -233,8 +234,8 @@ export function TerminalContextMenu({
         case "clear-scrollback":
           handleClearBuffer();
           break;
-        case "reset-renderer":
-          handleResetRenderer();
+        case "refresh-terminal":
+          handleRefreshTerminal();
           break;
         case "view-info":
           setIsInfoDialogOpen(true);
@@ -252,7 +253,7 @@ export function TerminalContextMenu({
       handleClearBuffer,
       handleDuplicate,
       handleForceResume,
-      handleResetRenderer,
+      handleRefreshTerminal,
       moveTerminalToDock,
       moveTerminalToGrid,
       moveTerminalToWorktree,
