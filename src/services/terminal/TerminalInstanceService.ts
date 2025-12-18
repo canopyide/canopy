@@ -189,10 +189,7 @@ class TerminalInstanceService {
    */
   private writeToTerminal(id: string, data: string | Uint8Array): void {
     const managed = this.instances.get(id);
-    if (!managed) {
-      console.warn(`[TERM_FLOW] writeToTerminal(${id}): NO MANAGED INSTANCE`);
-      return;
-    }
+    if (!managed) return;
 
     if (managed.isSerializedRestoreInProgress) {
       managed.deferredOutput.push(data);
@@ -203,11 +200,6 @@ class TerminalInstanceService {
       managed.lastAppliedTier ?? managed.getRefreshTier?.() ?? TerminalRefreshTier.FOCUSED;
     if (currentTier === TerminalRefreshTier.BACKGROUND) {
       managed.needsWake = true;
-      const dataLen = typeof data === "string" ? data.length : data.byteLength;
-      console.warn(
-        `[TERM_FLOW] writeToTerminal(${id}): DROPPED ${dataLen}b - tier=BACKGROUND, ` +
-          `isVisible=${managed.isVisible}, lastAppliedTier=${managed.lastAppliedTier}`
-      );
       return;
     }
 
@@ -239,10 +231,6 @@ class TerminalInstanceService {
     if (!managed) return;
 
     if (managed.isVisible !== isVisible) {
-      console.log(
-        `[TERM_FLOW] setVisible(${id}): ${managed.isVisible} -> ${isVisible}, ` +
-          `lastAppliedTier=${managed.lastAppliedTier !== undefined ? TerminalRefreshTier[managed.lastAppliedTier] : "undefined"}`
-      );
       managed.isVisible = isVisible;
       managed.lastActiveTime = Date.now();
 
@@ -371,13 +359,7 @@ class TerminalInstanceService {
     const agentStateSubscribers = new Set<AgentStateCallback>();
 
     const unsubData = terminalClient.onData(id, (data: string | Uint8Array) => {
-      const dataLen = typeof data === "string" ? data.length : data.byteLength;
-      if (this.dataBuffer.isPolling()) {
-        // SAB mode is active, IPC data should not arrive
-        console.warn(`[TERM_FLOW] onData(${id}): ${dataLen}b arrived via IPC but SAB polling is active`);
-        return;
-      }
-      console.log(`[TERM_FLOW] onData(${id}): ${dataLen}b via IPC`);
+      if (this.dataBuffer.isPolling()) return;
       this.dataBuffer.bufferData(id, data);
     });
     listeners.push(unsubData);
@@ -456,10 +438,6 @@ class TerminalInstanceService {
     listeners.push(() => inputDisposable.dispose());
 
     this.instances.set(id, managed);
-
-    console.log(
-      `[TERM_FLOW] getOrCreate(${id}): type=${type}, kind=${kind}, SAB=${this.dataBuffer.isPolling()}`
-    );
 
     const initialTier = getRefreshTier ? getRefreshTier() : TerminalRefreshTier.FOCUSED;
     this.applyRendererPolicy(id, initialTier);
@@ -1053,15 +1031,6 @@ class TerminalInstanceService {
     const managed = this.instances.get(id);
     if (!managed) return;
 
-    const tierName = TerminalRefreshTier[tier] || tier;
-    const currentTierName = managed.lastAppliedTier !== undefined
-      ? (TerminalRefreshTier[managed.lastAppliedTier] || managed.lastAppliedTier)
-      : "undefined";
-    console.log(
-      `[TERM_FLOW] applyRendererPolicy(${id}): ${currentTierName} -> ${tierName}, ` +
-        `isVisible=${managed.isVisible}`
-    );
-
     if (tier === TerminalRefreshTier.FOCUSED || tier === TerminalRefreshTier.BURST) {
       managed.lastActiveTime = Date.now();
     }
@@ -1406,39 +1375,6 @@ class TerminalInstanceService {
     const managed = this.instances.get(id);
     return managed?.isInputLocked ?? false;
   }
-
-  /**
-   * Diagnostic method to dump the current state of all terminals.
-   * Call from browser console: terminalInstanceService.dumpState()
-   */
-  dumpState(): void {
-    console.group("[TERM_DIAG] Terminal Instance State");
-    console.log(`SAB polling: ${this.dataBuffer.isPolling()}`);
-    console.log(`SAB enabled: ${this.dataBuffer.isEnabled()}`);
-    console.log(`Total instances: ${this.instances.size}`);
-
-    this.instances.forEach((managed, id) => {
-      const tierName = managed.lastAppliedTier !== undefined
-        ? (TerminalRefreshTier[managed.lastAppliedTier] || managed.lastAppliedTier)
-        : "undefined";
-      const currentTierName = managed.getRefreshTier
-        ? (TerminalRefreshTier[managed.getRefreshTier()] || managed.getRefreshTier())
-        : "no-provider";
-
-      console.log(
-        `  ${id}: type=${managed.type}, visible=${managed.isVisible}, ` +
-          `lastAppliedTier=${tierName}, currentTier=${currentTierName}, ` +
-          `isOpened=${managed.isOpened}, hostConnected=${managed.hostElement.isConnected}, ` +
-          `pendingWrites=${managed.pendingWrites ?? 0}, needsWake=${managed.needsWake ?? false}`
-      );
-    });
-    console.groupEnd();
-  }
 }
 
 export const terminalInstanceService = new TerminalInstanceService();
-
-// Expose for debugging in browser console
-if (typeof window !== "undefined") {
-  (window as unknown as Record<string, unknown>).terminalInstanceService = terminalInstanceService;
-}
