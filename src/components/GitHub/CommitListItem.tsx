@@ -61,10 +61,7 @@ export function CommitListItem({ commit }: CommitListItemProps) {
 
         <div className="flex-1 min-w-0">
           <div className="flex items-center gap-2">
-            <span
-              className="text-sm font-medium text-foreground truncate"
-              title={commit.message}
-            >
+            <span className="text-sm font-medium text-foreground truncate" title={commit.message}>
               {commit.message}
             </span>
           </div>
@@ -88,9 +85,7 @@ export function CommitListItem({ commit }: CommitListItemProps) {
             <span>&middot;</span>
             <span title={commit.author.email}>{commit.author.name}</span>
             <span>&middot;</span>
-            <span title={new Date(commit.date).toLocaleString()}>
-              {formatTimeAgo(commit.date)}
-            </span>
+            <span title={new Date(commit.date).toLocaleString()}>{formatTimeAgo(commit.date)}</span>
           </div>
         </div>
       </div>

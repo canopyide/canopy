@@ -278,7 +278,10 @@ export function Toolbar({
               )}
             </button>
           </DropdownMenuTrigger>
-          <DropdownMenuContent className="w-[260px] max-h-[60vh] overflow-y-auto p-1" align="center">
+          <DropdownMenuContent
+            className="w-[260px] max-h-[60vh] overflow-y-auto p-1"
+            align="center"
+          >
             {currentProject && (
               <>
                 <DropdownMenuLabel className="text-[11px] font-semibold text-muted-foreground/50 uppercase tracking-widest px-2 py-1.5">
