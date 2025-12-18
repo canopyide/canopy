@@ -34,6 +34,7 @@ import { styleUrls } from "./UrlStyler.js";
 import { logError } from "../../utils/logger.js";
 import { decideTerminalExitForensics } from "./terminalForensics.js";
 import { installHeadlessResponder } from "./headlessResponder.js";
+import { TerminalFrameStabilizer } from "./TerminalFrameStabilizer.js";
 import type {
   TerminalGetScreenSnapshotOptions,
   TerminalScreenSnapshot,
@@ -42,6 +43,8 @@ import type {
 const TERMINAL_DISABLE_URL_STYLING: boolean = process.env.CANOPY_DISABLE_URL_STYLING === "1";
 const TERMINAL_SESSION_PERSISTENCE_ENABLED: boolean =
   process.env.CANOPY_TERMINAL_SESSION_PERSISTENCE !== "0";
+const TERMINAL_FRAME_STABILIZER_ENABLED: boolean =
+  process.env.CANOPY_DISABLE_FRAME_STABILIZER !== "1";
 const SESSION_SNAPSHOT_DEBOUNCE_MS = 5000;
 const SESSION_SNAPSHOT_MAX_BYTES = 5 * 1024 * 1024;
 
@@ -236,6 +239,7 @@ export class TerminalProcess {
   // Lazy headless terminal state
   private _scrollback: number;
   private headlessResponderDisposable: { dispose: () => void } | null = null;
+  private frameStabilizer: TerminalFrameStabilizer | null = null;
   private sessionPersistTimer: NodeJS.Timeout | null = null;
   private sessionPersistDirty = false;
   private sessionPersistInFlight = false;
@@ -558,6 +562,19 @@ export class TerminalProcess {
       );
     }
 
+    // Initialize frame stabilizer for agent terminals to prevent TUI flicker
+    // The stabilizer gates output emission based on composed terminal state
+    if (TERMINAL_FRAME_STABILIZER_ENABLED && this.isAgentTerminal && headlessTerminal) {
+      this.frameStabilizer = new TerminalFrameStabilizer({
+        verbose: process.env.CANOPY_VERBOSE === "1",
+      });
+      this.frameStabilizer.attach(headlessTerminal, (data) => {
+        // Guard against post-kill flushes
+        if (this.terminalInfo.wasKilled) return;
+        this.emitDataDirect(data);
+      });
+    }
+
     this.setupPtyHandlers(ptyProcess);
 
     if (this.isAgentTerminal) {
@@ -640,6 +657,11 @@ export class TerminalProcess {
     const terminal = this.terminalInfo;
     if (!terminal.headlessTerminal) {
       return;
+    }
+    // Detach frame stabilizer (flushes pending data)
+    if (this.frameStabilizer) {
+      this.frameStabilizer.detach();
+      this.frameStabilizer = null;
     }
     if (this.headlessResponderDisposable) {
       try {
@@ -757,6 +779,11 @@ export class TerminalProcess {
     const terminal = this.terminalInfo;
     terminal.lastInputTime = Date.now();
 
+    // Mark stabilizer interactive only for typing-like input (not bulk paste)
+    if (data.length <= 64 && !isBracketedPaste(data)) {
+      this.frameStabilizer?.markInteractive();
+    }
+
     // If the PTY has already exited or been disposed, ignore input
     if (!terminal.ptyProcess) {
       return;
@@ -832,6 +859,8 @@ export class TerminalProcess {
   private async performSubmit(text: string): Promise<void> {
     const terminal = this.terminalInfo;
     terminal.lastInputTime = Date.now();
+
+    // Don't mark interactive for submits - let write() handle it
 
     if (!terminal.ptyProcess) {
       return;
@@ -1551,6 +1580,12 @@ export class TerminalProcess {
       }
       this.inputWriteQueue = [];
 
+      // Flush any buffered frame output before exit event
+      if (this.frameStabilizer) {
+        this.frameStabilizer.detach();
+        this.frameStabilizer = null;
+      }
+
       this.callbacks.onExit(this.id, exitCode ?? 0);
       this.logForensics(exitCode ?? 0, signal);
 
@@ -1574,34 +1609,45 @@ export class TerminalProcess {
     });
   }
 
+  /**
+   * Emit data through the frame stabilizer (if enabled) or directly.
+   * The stabilizer gates output to prevent TUI flicker during redraws.
+   */
   private emitData(data: string | Uint8Array): void {
+    // Convert to string for stabilizer processing
+    const text = typeof data === "string" ? data : new TextDecoder().decode(data);
+
+    // Route through stabilizer if available
+    if (this.frameStabilizer) {
+      this.frameStabilizer.ingest(text);
+      return;
+    }
+
+    // No stabilizer - emit directly
+    this.emitDataDirect(text);
+  }
+
+  /**
+   * Direct data emission bypassing the stabilizer.
+   * Used by the stabilizer callback and for non-agent terminals.
+   */
+  private emitDataDirect(data: string): void {
     if (TERMINAL_DISABLE_URL_STYLING) {
       this.callbacks.emitData(this.id, data);
       return;
     }
 
-    if (typeof data === "string") {
-      const styled = styleUrls(data);
-      if (
-        process.env.CANOPY_TRACE_URL_STYLING &&
-        styled !== data &&
-        // avoid logging huge blobs
-        data.length < 10_000
-      ) {
-        const preview = data.replace(/\s+/g, " ").slice(0, 240);
-        console.log(`[TerminalProcess] URL styling applied (${this.id}): ${preview}`);
-      }
-      this.callbacks.emitData(this.id, styled);
-    } else {
-      // Uint8Array: decode, style, re-encode
-      const text = new TextDecoder().decode(data);
-      const styled = styleUrls(text);
-      if (process.env.CANOPY_TRACE_URL_STYLING && styled !== text && text.length < 10_000) {
-        const preview = text.replace(/\s+/g, " ").slice(0, 240);
-        console.log(`[TerminalProcess] URL styling applied (${this.id}): ${preview}`);
-      }
-      this.callbacks.emitData(this.id, styled);
+    const styled = styleUrls(data);
+    if (
+      process.env.CANOPY_TRACE_URL_STYLING &&
+      styled !== data &&
+      // avoid logging huge blobs
+      data.length < 10_000
+    ) {
+      const preview = data.replace(/\s+/g, " ").slice(0, 240);
+      console.log(`[TerminalProcess] URL styling applied (${this.id}): ${preview}`);
     }
+    this.callbacks.emitData(this.id, styled);
   }
 
   private handleAgentDetection(result: DetectionResult, spawnedAt: number): void {
