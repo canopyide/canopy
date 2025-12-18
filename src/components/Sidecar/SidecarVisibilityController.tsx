@@ -19,6 +19,15 @@ export function SidecarVisibilityController(): null {
   const prevHasOverlaysRef = useRef(hasOverlays);
   const prevSidecarOpenRef = useRef(sidecarOpen);
 
+  // Auto-select first tab on startup when sidecar is open with tabs but no active tab
+  useEffect(() => {
+    if (!sidecarOpen) return;
+    if (activeTabId != null) return;
+    if (tabs.length === 0) return;
+
+    useSidecarStore.getState().setActiveTab(tabs[0].id);
+  }, [sidecarOpen, tabs, activeTabId]);
+
   // Handle overlay visibility changes
   useEffect(() => {
     const wasHiddenByOverlay = prevHasOverlaysRef.current;
