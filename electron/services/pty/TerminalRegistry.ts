@@ -1,22 +1,23 @@
 import { events } from "../events.js";
-import type { TerminalInfo, TerminalSnapshot } from "./types.js";
+import type { TerminalSnapshot } from "./types.js";
 import { TRASH_TTL_MS } from "./types.js";
+import type { TerminalProcess } from "./TerminalProcess.js";
 
 /**
  * Manages the Map of terminal instances, trash/restore functionality, and project filtering.
  */
 export class TerminalRegistry {
-  private terminals: Map<string, TerminalInfo> = new Map();
+  private terminals: Map<string, TerminalProcess> = new Map();
   private trashTimeouts: Map<string, NodeJS.Timeout> = new Map();
   private lastKnownProjectId: string | null = null;
 
   constructor(private readonly trashTtlMs: number = TRASH_TTL_MS) {}
 
-  add(id: string, terminal: TerminalInfo): void {
+  add(id: string, terminal: TerminalProcess): void {
     this.terminals.set(id, terminal);
   }
 
-  get(id: string): TerminalInfo | undefined {
+  get(id: string): TerminalProcess | undefined {
     return this.terminals.get(id);
   }
 
@@ -28,7 +29,7 @@ export class TerminalRegistry {
     return this.terminals.has(id);
   }
 
-  getAll(): TerminalInfo[] {
+  getAll(): TerminalProcess[] {
     return Array.from(this.terminals.values());
   }
 
@@ -40,7 +41,7 @@ export class TerminalRegistry {
     return this.terminals.size;
   }
 
-  entries(): IterableIterator<[string, TerminalInfo]> {
+  entries(): IterableIterator<[string, TerminalProcess]> {
     return this.terminals.entries();
   }
 
@@ -107,7 +108,8 @@ export class TerminalRegistry {
   getForProject(projectId: string): string[] {
     const result: string[] = [];
     for (const [id, terminal] of this.terminals) {
-      const terminalProjectId = terminal.projectId || this.lastKnownProjectId;
+      const info = terminal.getInfo();
+      const terminalProjectId = info.projectId || this.lastKnownProjectId;
       if (terminalProjectId === projectId) {
         result.push(id);
       }
@@ -121,17 +123,19 @@ export class TerminalRegistry {
     terminalTypes: Record<string, number>;
   } {
     const projectTerminals = Array.from(this.terminals.values()).filter((t) => {
-      const terminalProjectId = t.projectId || this.lastKnownProjectId;
+      const info = t.getInfo();
+      const terminalProjectId = info.projectId || this.lastKnownProjectId;
       return terminalProjectId === projectId;
     });
 
     const processIds = projectTerminals
-      .map((t) => t.ptyProcess.pid)
+      .map((t) => t.getPtyProcess().pid)
       .filter((pid): pid is number => pid !== undefined);
 
     const terminalTypes = projectTerminals.reduce(
       (acc, t) => {
-        const type = t.type || "terminal";
+        const info = t.getInfo();
+        const type = info.type || "terminal";
         acc[type] = (acc[type] || 0) + 1;
         return acc;
       },
@@ -153,21 +157,7 @@ export class TerminalRegistry {
     if (!terminal) {
       return null;
     }
-
-    return {
-      id: terminal.id,
-      lines: [...terminal.semanticBuffer],
-      lastInputTime: terminal.lastInputTime,
-      lastOutputTime: terminal.lastOutputTime,
-      lastCheckTime: terminal.lastCheckTime,
-      type: terminal.type,
-      worktreeId: terminal.worktreeId,
-      agentId: terminal.agentId,
-      agentState: terminal.agentState,
-      lastStateChange: terminal.lastStateChange,
-      error: terminal.error,
-      spawnedAt: terminal.spawnedAt,
-    };
+    return terminal.getSnapshot();
   }
 
   getAllSnapshots(): TerminalSnapshot[] {
@@ -179,7 +169,7 @@ export class TerminalRegistry {
   markChecked(id: string): void {
     const terminal = this.terminals.get(id);
     if (terminal) {
-      terminal.lastCheckTime = Date.now();
+      terminal.markChecked();
     }
   }
 
@@ -197,8 +187,9 @@ export class TerminalRegistry {
   /**
    * Check if terminal belongs to a project (using fallback logic).
    */
-  terminalBelongsToProject(terminal: TerminalInfo, projectId: string): boolean {
-    const terminalProjectId = terminal.projectId || this.lastKnownProjectId;
+  terminalBelongsToProject(terminal: TerminalProcess, projectId: string): boolean {
+    const info = terminal.getInfo();
+    const terminalProjectId = info.projectId || this.lastKnownProjectId;
     return terminalProjectId === projectId;
   }
 

@@ -30,15 +30,10 @@ import { getTerminalSerializerService } from "./TerminalSerializerService.js";
 import { events } from "../events.js";
 import { AgentSpawnedSchema, AgentStateChangedSchema } from "../../schemas/agent.js";
 import type { PtyPool } from "../PtyPool.js";
-import { styleUrls } from "./UrlStyler.js";
 import { logError } from "../../utils/logger.js";
 import { decideTerminalExitForensics } from "./terminalForensics.js";
 import { installHeadlessResponder } from "./headlessResponder.js";
 import { TerminalFrameStabilizer } from "./TerminalFrameStabilizer.js";
-import type {
-  TerminalGetScreenSnapshotOptions,
-  TerminalScreenSnapshot,
-} from "../../../shared/types/ipc/terminal.js";
 
 const TERMINAL_DISABLE_URL_STYLING: boolean = process.env.CANOPY_DISABLE_URL_STYLING === "1";
 const TERMINAL_SESSION_PERSISTENCE_ENABLED: boolean =
@@ -243,34 +238,6 @@ export class TerminalProcess {
   private sessionPersistTimer: NodeJS.Timeout | null = null;
   private sessionPersistDirty = false;
   private sessionPersistInFlight = false;
-  private screenSnapshotSequence = 0;
-  private screenSnapshotDirty = true;
-  private lastScreenSnapshot: TerminalScreenSnapshot | null = null;
-  private screenSnapshotDirtyKind: "output" | "resize" | "unknown" = "unknown";
-
-  // Prevent capturing transient redraw frames by waiting for a short "quiet period" after output.
-  // This is especially important for TUIs that redraw in multiple PTY chunks.
-  private static readonly SNAPSHOT_SETTLE_MS = 40;
-  private static readonly SNAPSHOT_MAX_IN_SETTLE_CHANGED_LINES = 2;
-  private static readonly SNAPSHOT_MAX_IN_SETTLE_CHANGED_CHARS = 12;
-
-  // Jump-back persistence: suppress backward scroll position changes unless they persist.
-  // This prevents single-frame "flash to top" artifacts during TUI redraws.
-  private static readonly JUMP_BACK_PERSIST_MS = 120;
-  private static readonly JUMP_BACK_PERSIST_FRAMES = 2;
-  private static readonly JUMP_BACK_MAX_SUPPRESS_MS = 1000;
-  private static readonly RESIZE_PERSIST_MS = 200;
-
-  // Jump-back persistence state
-  private lastAcceptedViewportStart: number | null = null;
-  private lastAcceptedBuffer: "active" | "alt" | null = null;
-  private pendingJumpBack: {
-    viewportStart: number;
-    buffer: "active" | "alt";
-    firstSeenAt: number;
-    stableFrames: number;
-    reason: "backward" | "buffer_switch" | "resize";
-  } | null = null;
 
   private readonly terminalInfo: TerminalInfo;
   private readonly isAgentTerminal: boolean;
@@ -951,8 +918,6 @@ export class TerminalProcess {
       if (terminal.headlessTerminal) {
         terminal.headlessTerminal.resize(cols, rows);
       }
-      this.screenSnapshotDirty = true;
-      this.screenSnapshotDirtyKind = "resize";
     } catch (error) {
       console.error(`Failed to resize terminal ${this.id}:`, error);
     }
@@ -1074,208 +1039,6 @@ export class TerminalProcess {
       console.error(`[TerminalProcess] Failed to serialize terminal ${this.id}:`, error);
       return null;
     }
-  }
-
-  /**
-   * Get a composed screen snapshot from the backend headless terminal.
-   * This returns a stable viewport projection (rows x cols) that has already applied
-   * all escape sequences (no transient redraw frames).
-   *
-   * Implements jump-back persistence: if scroll position moves backward or buffer switches,
-   * the change is suppressed until it persists (time or consecutive frames). This prevents
-   * single-frame "flash to top" artifacts during TUI redraws.
-   */
-  getScreenSnapshot(options?: TerminalGetScreenSnapshotOptions): TerminalScreenSnapshot | null {
-    const terminal = this.terminalInfo;
-    if (terminal.wasKilled) {
-      return null;
-    }
-
-    const headlessTerminal = terminal.headlessTerminal;
-    if (!headlessTerminal) {
-      return null;
-    }
-
-    const preference = options?.buffer ?? "auto";
-    const buffer =
-      preference === "active"
-        ? headlessTerminal.buffer.normal
-        : preference === "alt"
-          ? headlessTerminal.buffer.alternate
-          : headlessTerminal.buffer.active;
-
-    const bufferName: "active" | "alt" =
-      buffer === headlessTerminal.buffer.alternate ? "alt" : "active";
-
-    if (!this.screenSnapshotDirty && this.lastScreenSnapshot?.buffer === bufferName) {
-      return this.lastScreenSnapshot;
-    }
-
-    const now = Date.now();
-    const cols = headlessTerminal.cols;
-    const rows = headlessTerminal.rows;
-    // Always project the bottom viewport (stable monitoring). Headless terminals have no
-    // concept of user scroll, so relying on viewportY can "stick" to old content.
-    const start = buffer.baseY;
-    const bufferLength = buffer.length;
-
-    // Jump-back persistence gate: detect backward scroll or buffer switch
-    const isBufferSwitch =
-      this.lastAcceptedBuffer !== null && bufferName !== this.lastAcceptedBuffer;
-    const isBackward =
-      this.lastAcceptedViewportStart !== null &&
-      bufferName === this.lastAcceptedBuffer &&
-      start < this.lastAcceptedViewportStart;
-    const isResize = this.screenSnapshotDirtyKind === "resize";
-
-    // Determine the persistence window based on the type of change
-    const persistMs = isResize
-      ? TerminalProcess.RESIZE_PERSIST_MS
-      : TerminalProcess.JUMP_BACK_PERSIST_MS;
-
-    if (isBufferSwitch || isBackward) {
-      const reason: "backward" | "buffer_switch" | "resize" = isBufferSwitch
-        ? "buffer_switch"
-        : isResize
-          ? "resize"
-          : "backward";
-
-      // Check if this is the same candidate as before
-      const sameCandidate =
-        this.pendingJumpBack &&
-        this.pendingJumpBack.viewportStart === start &&
-        this.pendingJumpBack.buffer === bufferName;
-
-      if (sameCandidate) {
-        // Same candidate - increment stable frame count
-        this.pendingJumpBack!.stableFrames++;
-      } else {
-        // New or different candidate - reset pending state
-        this.pendingJumpBack = {
-          viewportStart: start,
-          buffer: bufferName,
-          firstSeenAt: now,
-          stableFrames: 1,
-          reason,
-        };
-      }
-
-      // Check persistence criteria
-      const elapsed = now - this.pendingJumpBack!.firstSeenAt;
-      const shouldAccept =
-        elapsed >= persistMs ||
-        this.pendingJumpBack!.stableFrames >= TerminalProcess.JUMP_BACK_PERSIST_FRAMES ||
-        elapsed >= TerminalProcess.JUMP_BACK_MAX_SUPPRESS_MS;
-
-      if (!shouldAccept) {
-        // Suppress this frame - return last stable snapshot
-        if (process.env.CANOPY_VERBOSE) {
-          console.log(
-            `[TerminalProcess] Suppressing ${reason} for ${this.id}: ` +
-              `start=${start} (was ${this.lastAcceptedViewportStart}), ` +
-              `buffer=${bufferName} (was ${this.lastAcceptedBuffer}), ` +
-              `elapsed=${elapsed}ms, frames=${this.pendingJumpBack!.stableFrames}`
-          );
-        }
-        return this.lastScreenSnapshot;
-      }
-
-      // Accept the candidate - clear pending state
-      if (process.env.CANOPY_VERBOSE) {
-        console.log(
-          `[TerminalProcess] Accepting ${reason} for ${this.id} after ` +
-            `${elapsed}ms / ${this.pendingJumpBack!.stableFrames} frames`
-        );
-      }
-      this.pendingJumpBack = null;
-    } else {
-      // Forward progress or same position - clear any pending state
-      this.pendingJumpBack = null;
-    }
-
-    // Build the candidate snapshot lines
-    const lines: string[] = new Array(rows);
-    for (let row = 0; row < rows; row++) {
-      const line = buffer.getLine(start + row);
-      // translateToString(trimRight, startCol, endCol)
-      lines[row] = line ? line.translateToString(true, 0, cols) : "";
-    }
-
-    // Existing settle-window diff gate: reject large diffs during active output
-    if (
-      this.screenSnapshotDirty &&
-      this.screenSnapshotDirtyKind === "output" &&
-      this.lastScreenSnapshot?.buffer === bufferName &&
-      now - terminal.lastOutputTime < TerminalProcess.SNAPSHOT_SETTLE_MS
-    ) {
-      const previousLines = this.lastScreenSnapshot?.lines ?? [];
-      const delta = estimateViewportDelta(previousLines, lines);
-      const isSmallUpdate =
-        delta.changedLines <= TerminalProcess.SNAPSHOT_MAX_IN_SETTLE_CHANGED_LINES &&
-        delta.changedChars <= TerminalProcess.SNAPSHOT_MAX_IN_SETTLE_CHANGED_CHARS;
-
-      if (!isSmallUpdate) {
-        return this.lastScreenSnapshot;
-      }
-    }
-
-    const cursorX = Math.max(0, Math.min(cols - 1, buffer.cursorX));
-    const cursorY = Math.max(0, Math.min(rows - 1, buffer.cursorY));
-
-    let ansi: string | undefined;
-    try {
-      const serializeAddon = terminal.serializeAddon;
-      if (serializeAddon) {
-        if (bufferName === "active") {
-          const rangeStart = Math.max(0, start);
-          const rangeEnd = Math.max(rangeStart, Math.min(buffer.length - 1, start + rows - 1));
-          ansi =
-            "\x1b[2J\x1b[H" +
-            serializeAddon.serialize({
-              range: { start: rangeStart, end: rangeEnd } as any,
-              excludeAltBuffer: true,
-              excludeModes: true,
-            } as any);
-        } else {
-          const serialized = serializeAddon.serialize({
-            scrollback: 0,
-            excludeModes: true,
-            excludeAltBuffer: false,
-          } as any);
-          const marker = "\x1b[?1049h\x1b[H";
-          const markerIndex = serialized.indexOf(marker);
-          ansi = "\x1b[2J\x1b[H" + (markerIndex >= 0 ? serialized.slice(markerIndex) : serialized);
-        }
-      }
-    } catch (error) {
-      if (process.env.CANOPY_VERBOSE) {
-        console.warn(`[TerminalProcess] Failed to produce ANSI snapshot for ${this.id}:`, error);
-      }
-    }
-
-    const snapshot: TerminalScreenSnapshot = {
-      cols,
-      rows,
-      buffer: bufferName,
-      cursor: { x: cursorX, y: cursorY, visible: true },
-      lines,
-      ansi,
-      timestamp: now,
-      sequence: ++this.screenSnapshotSequence,
-      meta: {
-        viewportStart: start,
-        baseY: buffer.baseY,
-        bufferLength,
-      },
-    };
-
-    // Commit as accepted
-    this.lastAcceptedViewportStart = start;
-    this.lastAcceptedBuffer = bufferName;
-    this.screenSnapshotDirty = false;
-    this.screenSnapshotDirtyKind = "unknown";
-    this.lastScreenSnapshot = snapshot;
-    return snapshot;
   }
 
   /**
@@ -1534,8 +1297,6 @@ export class TerminalProcess {
       }
 
       terminal.headlessTerminal?.write(data);
-      this.screenSnapshotDirty = true;
-      this.screenSnapshotDirtyKind = "output";
       this.scheduleSessionPersist();
 
       this.emitData(data);
@@ -1632,22 +1393,7 @@ export class TerminalProcess {
    * Used by the stabilizer callback and for non-agent terminals.
    */
   private emitDataDirect(data: string): void {
-    if (TERMINAL_DISABLE_URL_STYLING) {
-      this.callbacks.emitData(this.id, data);
-      return;
-    }
-
-    const styled = styleUrls(data);
-    if (
-      process.env.CANOPY_TRACE_URL_STYLING &&
-      styled !== data &&
-      // avoid logging huge blobs
-      data.length < 10_000
-    ) {
-      const preview = data.replace(/\s+/g, " ").slice(0, 240);
-      console.log(`[TerminalProcess] URL styling applied (${this.id}): ${preview}`);
-    }
-    this.callbacks.emitData(this.id, styled);
+    this.callbacks.emitData(this.id, data);
   }
 
   private handleAgentDetection(result: DetectionResult, spawnedAt: number): void {

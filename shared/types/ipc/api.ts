@@ -15,10 +15,6 @@ import type {
   BackendTerminalInfo,
   TerminalInfoPayload,
   TerminalActivityPayload,
-  TerminalScreenSnapshot,
-  TerminalGetScreenSnapshotOptions,
-  TerminalGetCleanLogRequest,
-  TerminalGetCleanLogResponse,
 } from "./terminal.js";
 import type {
   SaveArtifactOptions,
@@ -91,11 +87,6 @@ export interface ElectronAPI {
     reconnect(terminalId: string): Promise<TerminalReconnectResult>;
     replayHistory(terminalId: string, maxLines?: number): Promise<{ replayed: number }>;
     getSerializedState(terminalId: string): Promise<string | null>;
-    getSnapshot(
-      terminalId: string,
-      options?: TerminalGetScreenSnapshotOptions
-    ): Promise<TerminalScreenSnapshot | null>;
-    getCleanLog(request: TerminalGetCleanLogRequest): Promise<TerminalGetCleanLogResponse>;
     getSharedBuffers(): Promise<{
       visualBuffers: SharedArrayBuffer[];
       signalBuffer: SharedArrayBuffer | null;
@@ -124,7 +115,6 @@ export interface ElectronAPI {
     ): () => void;
     onBackendReady(callback: () => void): () => void;
     sendKey(id: string, key: string): void;
-    isSnapshotStreamingExperimentEnabled(): boolean;
   };
   files: {
     search(payload: FileSearchPayload): Promise<FileSearchResult>;

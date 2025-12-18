@@ -15,12 +15,7 @@ import {
   type PtyManagerEvents,
 } from "./pty/index.js";
 import { disposeTerminalSerializerService } from "./pty/TerminalSerializerService.js";
-import {
-  getTerminalProjectionService,
-  disposeTerminalProjectionService,
-} from "./pty/TerminalProjectionService.js";
 import type {
-  TerminalCleanLogEntry,
   TerminalGetScreenSnapshotOptions,
   TerminalScreenSnapshot,
 } from "../../shared/types/ipc/terminal.js";
@@ -50,7 +45,6 @@ import type {
 export class PtyManager extends EventEmitter {
   private registry: TerminalRegistry;
   private agentStateService: AgentStateService;
-  private terminals: Map<string, TerminalProcess> = new Map();
   private ptyPool: PtyPool | null = null;
   private processTreeCache: ProcessTreeCache | null = null;
   private activeProjectId: string | null = null;
@@ -75,7 +69,7 @@ export class PtyManager extends EventEmitter {
   setSabMode(enabled: boolean): void {
     this.sabModeEnabled = enabled;
     // Propagate to all existing terminals
-    for (const terminal of this.terminals.values()) {
+    for (const terminal of this.registry.getAll()) {
       terminal.setSabModeEnabled(enabled);
     }
     if (process.env.CANOPY_VERBOSE) {
@@ -116,8 +110,8 @@ export class PtyManager extends EventEmitter {
    * Accepts both string and Uint8Array data for binary optimization.
    */
   private emitData(id: string, data: string | Uint8Array): void {
-    const terminalInfo = this.registry.get(id);
-    if (!terminalInfo) {
+    const terminalProcess = this.registry.get(id);
+    if (!terminalProcess) {
       return;
     }
 
@@ -126,7 +120,7 @@ export class PtyManager extends EventEmitter {
       return;
     }
 
-    if (this.registry.terminalBelongsToProject(terminalInfo, this.activeProjectId)) {
+    if (this.registry.terminalBelongsToProject(terminalProcess, this.activeProjectId)) {
       this.emit("data", id, data);
     }
   }
@@ -135,7 +129,7 @@ export class PtyManager extends EventEmitter {
    * Replay recent terminal history.
    */
   replayHistory(terminalId: string, maxLines: number = 100): number {
-    const terminal = this.terminals.get(terminalId);
+    const terminal = this.registry.get(terminalId);
     if (!terminal) {
       return 0;
     }
@@ -181,7 +175,7 @@ export class PtyManager extends EventEmitter {
    * Spawn a new terminal.
    */
   spawn(id: string, options: PtySpawnOptions): void {
-    if (this.terminals.has(id)) {
+    if (this.registry.has(id)) {
       console.warn(`Terminal with id ${id} already exists, killing existing instance`);
       this.kill(id);
     }
@@ -193,13 +187,11 @@ export class PtyManager extends EventEmitter {
         emitData: (termId, data) => this.emitData(termId, data),
         onExit: (termId, exitCode) => {
           // Guard against stale exit events from previous terminal with same ID
-          if (this.terminals.get(termId) !== terminalProcess) {
+          if (this.registry.get(termId) !== terminalProcess) {
             return;
           }
           this.emit("exit", termId, exitCode);
           this.registry.delete(termId);
-          this.terminals.delete(termId);
-          getTerminalProjectionService().clear(termId);
         },
       },
       {
@@ -210,15 +202,14 @@ export class PtyManager extends EventEmitter {
       }
     );
 
-    this.terminals.set(id, terminalProcess);
-    this.registry.add(id, terminalProcess.getInfo());
+    this.registry.add(id, terminalProcess);
   }
 
   /**
    * Write data to terminal stdin.
    */
   write(id: string, data: string, traceId?: string): void {
-    const terminal = this.terminals.get(id);
+    const terminal = this.registry.get(id);
     if (!terminal) {
       console.warn(`Terminal ${id} not found, cannot write data`);
       return;
@@ -231,7 +222,7 @@ export class PtyManager extends EventEmitter {
    * Handles bracketed paste and CR timing on the backend for reliable execution.
    */
   submit(id: string, text: string): void {
-    const terminal = this.terminals.get(id);
+    const terminal = this.registry.get(id);
     if (!terminal) {
       console.warn(`Terminal ${id} not found, cannot submit`);
       return;
@@ -243,7 +234,7 @@ export class PtyManager extends EventEmitter {
    * Resize terminal.
    */
   resize(id: string, cols: number, rows: number): void {
-    const terminal = this.terminals.get(id);
+    const terminal = this.registry.get(id);
     if (terminal) {
       terminal.resize(cols, rows);
     } else {
@@ -255,7 +246,7 @@ export class PtyManager extends EventEmitter {
    * Acknowledge data processing for flow control.
    */
   acknowledgeData(id: string, charCount: number): void {
-    const terminal = this.terminals.get(id);
+    const terminal = this.registry.get(id);
     if (terminal) {
       terminal.acknowledgeData(charCount);
     }
@@ -265,7 +256,7 @@ export class PtyManager extends EventEmitter {
    * Set buffering mode for a terminal.
    */
   flushBuffer(id: string): void {
-    const terminal = this.terminals.get(id);
+    const terminal = this.registry.get(id);
     if (terminal) {
       terminal.flushBuffer();
     }
@@ -277,7 +268,7 @@ export class PtyManager extends EventEmitter {
   kill(id: string, reason?: string): void {
     this.registry.clearTrashTimeout(id);
 
-    const terminal = this.terminals.get(id);
+    const terminal = this.registry.get(id);
     if (terminal) {
       terminal.kill(reason);
       // Note: deletion handled in onExit callback
@@ -309,7 +300,7 @@ export class PtyManager extends EventEmitter {
    * Get terminal info.
    */
   getTerminal(id: string): TerminalInfo | undefined {
-    return this.registry.get(id);
+    return this.registry.get(id)?.getInfo();
   }
 
   /**
@@ -323,7 +314,7 @@ export class PtyManager extends EventEmitter {
    * Get all active terminals.
    */
   getAll(): TerminalInfo[] {
-    return this.registry.getAll();
+    return this.registry.getAll().map((t) => t.getInfo());
   }
 
   /**
@@ -355,32 +346,20 @@ export class PtyManager extends EventEmitter {
     id: string,
     options?: TerminalGetScreenSnapshotOptions
   ): Promise<TerminalScreenSnapshot | null> {
-    const terminal = this.terminals.get(id);
+    const terminal = this.registry.get(id);
     if (!terminal) {
       return null;
     }
 
-    return getTerminalProjectionService().getSnapshotAsync(id, () =>
-      terminal.getScreenSnapshot(options)
-    );
-  }
-
-  /**
-   * Get bounded clean log entries derived from headless snapshots.
-   */
-  getCleanLog(
-    id: string,
-    sinceSequence?: number,
-    limit?: number
-  ): { latestSequence: number; entries: TerminalCleanLogEntry[] } {
-    return getTerminalProjectionService().getCleanLog(id, sinceSequence, limit);
+    // Direct call since projection service is removed
+    return terminal.getScreenSnapshot(options);
   }
 
   /**
    * Get serialized terminal state (synchronous).
    */
   getSerializedState(id: string): string | null {
-    const terminal = this.terminals.get(id);
+    const terminal = this.registry.get(id);
     if (!terminal) {
       return null;
     }
@@ -391,7 +370,7 @@ export class PtyManager extends EventEmitter {
    * Get serialized terminal state (async, uses worker for large terminals).
    */
   async getSerializedStateAsync(id: string): Promise<string | null> {
-    const terminal = this.terminals.get(id);
+    const terminal = this.registry.get(id);
     if (!terminal) {
       return null;
     }
@@ -402,10 +381,11 @@ export class PtyManager extends EventEmitter {
    * Get terminal information for diagnostic display.
    */
   getTerminalInfo(id: string): import("../../shared/types/ipc.js").TerminalInfoPayload | null {
-    const terminalInfo = this.registry.get(id);
-    if (!terminalInfo) {
+    const terminal = this.registry.get(id);
+    if (!terminal) {
       return null;
     }
+    const terminalInfo = terminal.getInfo();
 
     return {
       id: terminalInfo.id,
@@ -437,7 +417,7 @@ export class PtyManager extends EventEmitter {
    * Enable or disable semantic analysis for a terminal.
    */
   setAnalysisEnabled(id: string, enabled: boolean): void {
-    const terminal = this.terminals.get(id);
+    const terminal = this.registry.get(id);
     if (terminal) {
       terminal.setAnalysisEnabled(enabled);
     }
@@ -453,13 +433,16 @@ export class PtyManager extends EventEmitter {
     confidence: number,
     spawnedAt?: number
   ): boolean {
-    const terminalInfo = this.registry.get(id);
-    if (!terminalInfo) {
+    const terminal = this.registry.get(id);
+    if (!terminal) {
       return false;
     }
-
+    // AgentStateService usually expects TerminalInfo.
+    // Let's check if agentStateService can take TerminalProcess or we need to pass info.
+    // Looking at the imports in PtyManager, AgentStateService is imported.
+    // I need to check AgentStateService definition, but likely it takes TerminalInfo.
     return this.agentStateService.transitionState(
-      terminalInfo,
+      terminal.getInfo(),
       event,
       trigger,
       confidence,
@@ -521,9 +504,9 @@ export class PtyManager extends EventEmitter {
     let backgrounded = 0;
     let foregrounded = 0;
 
-    for (const [id, terminalProcess] of this.terminals) {
+    for (const [id, terminalProcess] of this.registry.entries()) {
       const terminalInfo = terminalProcess.getInfo();
-      const belongsToProject = this.registry.terminalBelongsToProject(terminalInfo, newProjectId);
+      const belongsToProject = this.registry.terminalBelongsToProject(terminalProcess, newProjectId);
 
       if (!belongsToProject) {
         backgrounded++;
@@ -560,7 +543,7 @@ export class PtyManager extends EventEmitter {
    * Clean up all terminals.
    */
   dispose(): void {
-    for (const [_id, terminal] of this.terminals) {
+    for (const [_id, terminal] of this.registry.entries()) {
       const terminalInfo = terminal.getInfo();
       if (terminalInfo.agentId) {
         this.agentStateService.emitAgentKilled(terminalInfo, "cleanup");
@@ -568,12 +551,10 @@ export class PtyManager extends EventEmitter {
       terminal.dispose();
     }
 
-    this.terminals.clear();
     this.registry.dispose();
     this.removeAllListeners();
 
     disposeTerminalSerializerService();
-    disposeTerminalProjectionService();
   }
 }
 

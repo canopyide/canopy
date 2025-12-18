@@ -1,3 +1,14 @@
+/**
+ * TerminalOutputCoalescer - FRONTEND OUTPUT OPTIMIZATION
+ *
+ * PROTECTED INFRASTRUCTURE:
+ * This component coalesces high-frequency output chunks into larger frames
+ * to prevent xterm.js layout thrashing. It also handles frame dropping
+ * when the UI is overwhelmed (backpressure).
+ *
+ * Do not remove the frame queue, settlement timers, or flush logic.
+ */
+
 const STANDARD_FLUSH_DELAY_MS = 8;
 const REDRAW_FLUSH_DELAY_MS = 16;
 const MAX_FLUSH_DELAY_MS = 32;
@@ -42,6 +53,12 @@ export class TerminalOutputCoalescer {
   private buffers = new Map<string, BufferEntry>();
   private frameQueues = new Map<string, FrameQueue>();
   private interactiveUntil = new Map<string, number>();
+
+  // Debug stats
+  private stats = {
+    framesCoalesced: 0,
+    framesDropped: 0,
+  };
 
   constructor(
     private readonly scheduleTimeout: (callback: () => void, delayMs: number) => number,
@@ -359,6 +376,7 @@ export class TerminalOutputCoalescer {
 
     const MAX_FRAMES = 3;
     if (queue.frames.length > MAX_FRAMES) {
+      this.stats.framesDropped += (queue.frames.length - MAX_FRAMES);
       queue.frames.splice(0, queue.frames.length - MAX_FRAMES);
     }
 

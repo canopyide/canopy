@@ -1,6 +1,11 @@
 /**
  * TerminalFrameStabilizer - SYNCHRONIZED OUTPUT MODE AWARE
  *
+ * PROTECTED INFRASTRUCTURE:
+ * This component handles backend frame stabilization for agent/IPC paths.
+ * It is critical for preventing "torn frames" in TUI output (e.g., Vim, specialized agents).
+ * Do not remove buffering logic or frame boundary detection.
+ *
  * Respects the synchronized output protocol (DEC private mode 2026):
  * - When we see \x1b[?2026h (start sync), buffer all output
  * - When we see \x1b[?2026l (end sync), emit the complete frame
@@ -66,6 +71,7 @@ export class TerminalFrameStabilizer {
 
   // Stats
   private framesEmitted = 0;
+  private debugFlushReasons: Record<string, number> = {};
 
   // Debug
   private verbose: boolean;
@@ -291,6 +297,8 @@ export class TerminalFrameStabilizer {
 
   private emit(data: string, reason: string): void {
     if (!data || !this.emitCallback) return;
+
+    this.debugFlushReasons[reason] = (this.debugFlushReasons[reason] || 0) + 1;
 
     if (this.verbose) {
       console.log(
