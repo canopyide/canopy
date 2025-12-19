@@ -38,10 +38,11 @@ A feature belongs in Canopy **only if it satisfies at least two** of these crite
 
 | Criterion                         | Description                                                                           |
 | --------------------------------- | ------------------------------------------------------------------------------------- |
-| **Accelerates Context Injection** | Makes it faster to feed the "right" files/errors/diffs to an agent                    |
-| **Unblocks the Agent**            | Detects when an agent is stuck, waiting, or failed, and helps human intervene quickly |
-| **Manages Multiplicity**          | Helps manage _multiple_ concurrent workstreams that a human brain can't track alone   |
-| **Bridges the Gap**               | Fixes a friction point between the CLI and the GUI                                    |
+| **Accelerates Context Injection** | Makes it faster to feed the "right" files/errors/diffs to an agent                                        |
+| **Unblocks the Agent**            | Detects when an agent is stuck, waiting, or failed, and helps human intervene quickly                     |
+| **Manages Multiplicity**          | Helps manage _multiple_ concurrent workstreams that a human brain can't track alone                       |
+| **Bridges the Gap**               | Fixes a friction point between the CLI and the GUI                                                        |
+| **Provides Omniscience**          | Aggregates data from multiple isolated contexts (worktrees/agents) into a single view. (Pro Feature Candidate) |
 
 If a feature doesn't satisfy at least 2 of these, it doesn't belong in Canopy.
 
@@ -62,6 +63,33 @@ Canopy **explicitly rejects** features that:
 - One-off utilities without workflow integration
 - Anything easily done with a shell alias
 - Features better handled by external tools
+
+## Monetization Philosophy: "Execution is Free, Omniscience is Paid"
+
+Canopy does not charge for the ability to _do_ work. It charges for the ability to _manage_ work at scale.
+
+**The Core Distinction:**
+
+- **The Pilot (Free):** Focused on one task, one worktree, one agent. Needs clarity and speed.
+- **The Commander (Pro):** Juggling multiple feature branches, microservices, or agent swarms. Needs aggregation, history, and high-level visibility.
+
+**The Multiplicity Gate:**
+The primary feature gate is **Multi-Worktree Aggregation**.
+
+- **Free:** Can switch between worktrees manually. Features work in the _active_ context only.
+- **Pro:** Can view, control, and orchestrate across _all_ worktrees simultaneously (Unified Dashboards, Fleet Matrices, Bulk Actions).
+
+## The "Velvet Rope" UX Pattern
+
+When introducing premium features, we strictly adhere to the **Non-Interruption Rule**.
+
+> **Rule:** Never interrupt the "Initiation Phase" (when the user types a command or hits run) with a paywall or upsell.
+
+Instead, we use **Passive Discovery**:
+
+1. **Visible but Locked:** The premium UI (e.g., the "Unified Fleet" tab) exists in the Free tier but is disabled or shows a "ghost" state.
+2. **Contextual Value:** The upsell only appears when the user _reaches for the capability_ (e.g., clicking the locked tab), not when they are trying to do basic work.
+3. **The "Bridge" Teaser:** For high-value visualizations (like the Agent HUD), allow a limited preview (e.g., "Single Worktree HUD is Free") so users learn the value before paying for the "Unified HUD."
 
 ## Workshop vs Mission Control
 
@@ -129,6 +157,12 @@ Before implementing any feature, verify:
 - [ ] No new native dependencies
 - [ ] No deep configuration required
 - [ ] Can't be solved with a shell alias
+
+**Monetization & Tiers**
+
+- [ ] Is this a "Pilot" feature (execution) or "Commander" feature (management)?
+- [ ] If "Commander," does it aggregate data across worktrees?
+- [ ] Does the upsell respect the Non-Interruption Rule?
 
 ## Using the Slash Command
 
