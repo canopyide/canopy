@@ -2,6 +2,7 @@ import { app, BrowserWindow, ipcMain, dialog, powerMonitor, MessageChannelMain }
 import path from "path";
 import { fileURLToPath } from "url";
 import os from "os";
+import { randomBytes } from "crypto";
 import fixPath from "fix-path";
 
 fixPath();
@@ -337,6 +338,7 @@ async function createWindow(): Promise<void> {
 
   function createAndDistributePorts(): void {
     const { port1, port2 } = new MessageChannelMain();
+    const handshakeToken = randomBytes(32).toString("hex");
 
     if (ptyClient) {
       ptyClient.connectMessagePort(port2);
@@ -344,7 +346,8 @@ async function createWindow(): Promise<void> {
     }
 
     if (mainWindow && !mainWindow.isDestroyed()) {
-      mainWindow.webContents.postMessage("terminal-port", null, [port1]);
+      mainWindow.webContents.postMessage("terminal-port-token", { token: handshakeToken });
+      mainWindow.webContents.postMessage("terminal-port", { token: handshakeToken }, [port1]);
       // console.log("[MAIN] MessagePort sent to renderer");
     }
   }
