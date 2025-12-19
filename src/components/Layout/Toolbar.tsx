@@ -182,10 +182,11 @@ export function Toolbar({
   };
 
   return (
-    <header className="relative h-12 flex items-center justify-between px-4 shrink-0 app-drag-region bg-canopy-sidebar/95 backdrop-blur-sm border-b border-divider shadow-[inset_0_1px_0_rgba(255,255,255,0.03)]">
+    <header className="relative flex h-12 items-center justify-between px-4 pt-1 shrink-0 app-drag-region bg-canopy-sidebar/95 backdrop-blur-sm border-b border-divider shadow-[inset_0_1px_0_rgba(255,255,255,0.03)]">
       <div className="window-resize-strip" />
 
-      <div className="flex items-center gap-1.5 app-no-drag">
+      {/* LEFT GROUP */}
+      <div className="flex items-center gap-1.5 app-no-drag z-20">
         <div
           className={cn("shrink-0 transition-[width] duration-200", isFullscreen ? "w-0" : "w-16")}
         />
@@ -233,12 +234,13 @@ export function Toolbar({
         </Button>
       </div>
 
-      <div className="absolute inset-0 flex items-center justify-center pointer-events-none">
+      {/* CENTER GROUP - Absolutely positioned dead center */}
+      <div className="absolute left-1/2 top-1/2 -translate-x-1/2 -translate-y-1/2 flex items-center justify-center z-10 pointer-events-none">
         <DropdownMenu>
           <DropdownMenuTrigger asChild>
             <button
               className={cn(
-                "flex items-center justify-center gap-2 px-2.5 h-8 rounded-[var(--radius-md)] select-none border border-white/10 shadow-[inset_0_1px_0_rgba(255,255,255,0.06)] app-no-drag pointer-events-auto",
+                "flex items-center justify-center gap-2 px-3 h-9 rounded-[var(--radius-md)] select-none border border-white/10 shadow-[inset_0_1px_0_rgba(255,255,255,0.06)] app-no-drag pointer-events-auto",
                 "opacity-80 hover:opacity-100 transition-opacity cursor-pointer"
               )}
               style={{
@@ -355,129 +357,125 @@ export function Toolbar({
         </DropdownMenu>
       </div>
 
-      <div className="flex items-center gap-1 app-no-drag">
+      {/* RIGHT GROUP */}
+      <div className="flex items-center gap-2 app-no-drag z-20">
         {stats && currentProject && !statsError && (
-          <>
-            <div className="flex items-center rounded-[var(--radius-md)] bg-white/[0.03] border border-divider divide-x divide-[var(--border-divider)] mr-1">
-              <Button
-                ref={issuesButtonRef}
-                variant="ghost"
-                size="sm"
-                onClick={() => {
-                  setPrsOpen(false);
-                  setCommitsOpen(false);
-                  const willOpen = !issuesOpen;
-                  setIssuesOpen(willOpen);
-                  if (willOpen) {
-                    refreshStats({ force: true });
-                  }
-                }}
-                className={cn(
-                  "text-canopy-text hover:bg-white/[0.04] hover:text-canopy-accent h-7 px-2.5 gap-1.5 rounded-none rounded-l-[var(--radius-md)]",
-                  stats.issueCount === 0 && "opacity-50",
-                  issuesOpen && "bg-white/[0.04] ring-1 ring-canopy-accent/20 text-canopy-accent"
-                )}
-                title="Browse GitHub Issues"
-                aria-label={`${stats.issueCount ?? 0} open issues`}
-              >
-                <AlertTriangle className="h-3.5 w-3.5" />
-                <span className="text-xs font-medium tabular-nums">{stats.issueCount ?? "?"}</span>
-              </Button>
-              <FixedDropdown
-                open={issuesOpen}
-                onOpenChange={setIssuesOpen}
-                anchorRef={issuesButtonRef}
-                className="p-0 w-[450px]"
-              >
-                <GitHubResourceList
-                  type="issue"
-                  projectPath={currentProject.path}
-                  onClose={() => setIssuesOpen(false)}
-                  initialCount={stats.issueCount}
-                />
-              </FixedDropdown>
+          <div className="flex items-center h-9 rounded-[var(--radius-md)] bg-white/[0.03] border border-divider divide-x divide-[var(--border-divider)] mr-1">
+            <Button
+              ref={issuesButtonRef}
+              variant="ghost"
+              onClick={() => {
+                setPrsOpen(false);
+                setCommitsOpen(false);
+                const willOpen = !issuesOpen;
+                setIssuesOpen(willOpen);
+                if (willOpen) {
+                  refreshStats({ force: true });
+                }
+              }}
+              className={cn(
+                "text-canopy-text hover:bg-white/[0.04] hover:text-canopy-accent h-full px-3 gap-2 rounded-none rounded-l-[var(--radius-md)]",
+                stats.issueCount === 0 && "opacity-50",
+                issuesOpen && "bg-white/[0.04] ring-1 ring-canopy-accent/20 text-canopy-accent"
+              )}
+              title="Browse GitHub Issues"
+              aria-label={`${stats.issueCount ?? 0} open issues`}
+            >
+              <AlertTriangle className="h-4 w-4" />
+              <span className="text-xs font-medium tabular-nums">{stats.issueCount ?? "?"}</span>
+            </Button>
+            <FixedDropdown
+              open={issuesOpen}
+              onOpenChange={setIssuesOpen}
+              anchorRef={issuesButtonRef}
+              className="p-0 w-[450px]"
+            >
+              <GitHubResourceList
+                type="issue"
+                projectPath={currentProject.path}
+                onClose={() => setIssuesOpen(false)}
+                initialCount={stats.issueCount}
+              />
+            </FixedDropdown>
 
-              <Button
-                ref={prsButtonRef}
-                variant="ghost"
-                size="sm"
-                onClick={() => {
-                  setIssuesOpen(false);
-                  setCommitsOpen(false);
-                  const willOpen = !prsOpen;
-                  setPrsOpen(willOpen);
-                  if (willOpen) {
-                    refreshStats({ force: true });
-                  }
-                }}
-                className={cn(
-                  "text-canopy-text hover:bg-white/[0.04] hover:text-canopy-accent h-7 px-2.5 gap-1.5 rounded-none",
-                  stats.prCount === 0 && "opacity-50",
-                  prsOpen && "bg-white/[0.04] ring-1 ring-canopy-accent/20 text-canopy-accent"
-                )}
-                title="Browse GitHub Pull Requests"
-                aria-label={`${stats.prCount ?? 0} open pull requests`}
-              >
-                <GitPullRequest className="h-3.5 w-3.5" />
-                <span className="text-xs font-medium tabular-nums">{stats.prCount ?? "?"}</span>
-              </Button>
-              <FixedDropdown
-                open={prsOpen}
-                onOpenChange={setPrsOpen}
-                anchorRef={prsButtonRef}
-                className="p-0 w-[450px]"
-              >
-                <GitHubResourceList
-                  type="pr"
-                  projectPath={currentProject.path}
-                  onClose={() => setPrsOpen(false)}
-                  initialCount={stats.prCount}
-                />
-              </FixedDropdown>
+            <Button
+              ref={prsButtonRef}
+              variant="ghost"
+              onClick={() => {
+                setIssuesOpen(false);
+                setCommitsOpen(false);
+                const willOpen = !prsOpen;
+                setPrsOpen(willOpen);
+                if (willOpen) {
+                  refreshStats({ force: true });
+                }
+              }}
+              className={cn(
+                "text-canopy-text hover:bg-white/[0.04] hover:text-canopy-accent h-full px-3 gap-2 rounded-none",
+                stats.prCount === 0 && "opacity-50",
+                prsOpen && "bg-white/[0.04] ring-1 ring-canopy-accent/20 text-canopy-accent"
+              )}
+              title="Browse GitHub Pull Requests"
+              aria-label={`${stats.prCount ?? 0} open pull requests`}
+            >
+              <GitPullRequest className="h-4 w-4" />
+              <span className="text-xs font-medium tabular-nums">{stats.prCount ?? "?"}</span>
+            </Button>
+            <FixedDropdown
+              open={prsOpen}
+              onOpenChange={setPrsOpen}
+              anchorRef={prsButtonRef}
+              className="p-0 w-[450px]"
+            >
+              <GitHubResourceList
+                type="pr"
+                projectPath={currentProject.path}
+                onClose={() => setPrsOpen(false)}
+                initialCount={stats.prCount}
+              />
+            </FixedDropdown>
 
-              <Button
-                ref={commitsButtonRef}
-                variant="ghost"
-                size="sm"
-                onClick={() => {
-                  setIssuesOpen(false);
-                  setPrsOpen(false);
-                  setCommitsOpen(!commitsOpen);
-                }}
-                className={cn(
-                  "text-canopy-text hover:bg-white/[0.04] hover:text-canopy-accent h-7 px-2.5 gap-1.5 rounded-none rounded-r-[var(--radius-md)]",
-                  stats.commitCount === 0 && "opacity-50",
-                  commitsOpen && "bg-white/[0.04] ring-1 ring-canopy-accent/20 text-canopy-accent"
-                )}
-                title="Browse Git Commits"
-                aria-label={`${stats.commitCount} commits`}
-              >
-                <GitCommit className="h-3.5 w-3.5" />
-                <span className="text-xs font-medium tabular-nums">{stats.commitCount}</span>
-              </Button>
-              <FixedDropdown
-                open={commitsOpen}
-                onOpenChange={setCommitsOpen}
-                anchorRef={commitsButtonRef}
-                className="p-0 w-[450px]"
-              >
-                <CommitList
-                  projectPath={currentProject.path}
-                  onClose={() => setCommitsOpen(false)}
-                  initialCount={stats.commitCount}
-                />
-              </FixedDropdown>
-            </div>
-          </>
+            <Button
+              ref={commitsButtonRef}
+              variant="ghost"
+              onClick={() => {
+                setIssuesOpen(false);
+                setPrsOpen(false);
+                setCommitsOpen(!commitsOpen);
+              }}
+              className={cn(
+                "text-canopy-text hover:bg-white/[0.04] hover:text-canopy-accent h-full px-3 gap-2 rounded-none rounded-r-[var(--radius-md)]",
+                stats.commitCount === 0 && "opacity-50",
+                commitsOpen && "bg-white/[0.04] ring-1 ring-canopy-accent/20 text-canopy-accent"
+              )}
+              title="Browse Git Commits"
+              aria-label={`${stats.commitCount} commits`}
+            >
+              <GitCommit className="h-4 w-4" />
+              <span className="text-xs font-medium tabular-nums">{stats.commitCount}</span>
+            </Button>
+            <FixedDropdown
+              open={commitsOpen}
+              onOpenChange={setCommitsOpen}
+              anchorRef={commitsButtonRef}
+              className="p-0 w-[450px]"
+            >
+              <CommitList
+                projectPath={currentProject.path}
+                onClose={() => setCommitsOpen(false)}
+                initialCount={stats.commitCount}
+              />
+            </FixedDropdown>
+          </div>
         )}
 
         <div className="flex items-center gap-1">
           <Button
             variant="ghost"
-            size="icon-sm"
+            size="icon"
             onClick={onToggleProblems}
             className={cn(
-              "text-canopy-text hover:bg-white/[0.06] hover:text-canopy-accent relative",
+              "text-canopy-text hover:bg-white/[0.06] hover:text-canopy-accent relative transition-colors",
               errorCount > 0 && "text-[var(--color-status-error)]"
             )}
             title="Show Problems Panel (Ctrl+Shift+M)"
@@ -485,7 +483,7 @@ export function Toolbar({
           >
             <AlertCircle />
             {errorCount > 0 && (
-              <span className="absolute top-0.5 right-0.5 w-2 h-2 bg-[var(--color-status-error)] rounded-full" />
+              <span className="absolute top-1.5 right-1.5 w-2 h-2 bg-[var(--color-status-error)] rounded-full" />
             )}
           </Button>
         </div>
@@ -497,7 +495,7 @@ export function Toolbar({
             <TooltipTrigger asChild>
               <Button
                 variant="ghost"
-                size="icon-sm"
+                size="icon"
                 onClick={handleCopyTreeClick}
                 disabled={isCopyingTree || !activeWorktree}
                 className={cn(
@@ -533,10 +531,10 @@ export function Toolbar({
         <div className="flex items-center gap-1">
           <Button
             variant="ghost"
-            size="icon-sm"
+            size="icon"
             onClick={onSettings}
             onContextMenu={handleSettingsContextMenu}
-            className="text-canopy-text hover:bg-white/[0.06] hover:text-canopy-accent"
+            className="text-canopy-text hover:bg-white/[0.06] hover:text-canopy-accent transition-colors"
             title="Open Settings"
             aria-label="Open settings"
           >
@@ -544,7 +542,7 @@ export function Toolbar({
           </Button>
           <Button
             variant="ghost"
-            size="icon-sm"
+            size="icon"
             onClick={toggleSidecar}
             className={cn(
               "text-canopy-text hover:bg-white/[0.06] hover:text-canopy-accent transition-colors"
