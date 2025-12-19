@@ -22,7 +22,8 @@ if (typeof window !== "undefined") {
     const eventOrigin = event.origin;
     const windowOrigin = window.location.origin;
     const isFile = window.location.protocol === "file:";
-    const originOk = eventOrigin === windowOrigin || (isFile && eventOrigin === "null" && windowOrigin === "null");
+    const originOk =
+      eventOrigin === windowOrigin || (isFile && eventOrigin === "null" && windowOrigin === "null");
 
     if (!originOk) {
       return;

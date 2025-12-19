@@ -66,7 +66,8 @@ ipcRenderer.on("terminal-port-token", (_event, payload: { token: string }) => {
   if (window.top !== window) return;
   if (!isAllowedTerminalPortTarget()) return;
 
-  const targetOrigin = window.location.origin === "null" ? window.location.origin : window.location.origin;
+  const targetOrigin =
+    window.location.origin === "null" ? window.location.origin : window.location.origin;
   window.postMessage({ type: "terminal-port-token", token: payload.token }, targetOrigin);
 });
 
@@ -76,7 +77,10 @@ ipcRenderer.on("terminal-port", (event, payload: { token: string }) => {
   }
 
   if (!isAllowedTerminalPortTarget()) {
-    console.error("[Preload] Refusing to forward terminal MessagePort to untrusted origin:", window.location.href);
+    console.error(
+      "[Preload] Refusing to forward terminal MessagePort to untrusted origin:",
+      window.location.href
+    );
     return;
   }
 
