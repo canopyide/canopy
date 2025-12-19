@@ -8,17 +8,68 @@ import type {
 } from "@shared/types";
 
 let messagePort: MessagePort | null = null;
+let expectedToken: string | null = null;
+let pendingPort: MessagePort | null = null;
+let pendingToken: string | null = null;
 
-// Listen for MessagePort transferred from preload
 if (typeof window !== "undefined") {
   window.addEventListener("message", (event) => {
+    if (window.top !== window) return;
+    if (event.source !== window) {
+      return;
+    }
+
+    const eventOrigin = event.origin;
+    const windowOrigin = window.location.origin;
+    const isFile = window.location.protocol === "file:";
+    const originOk = eventOrigin === windowOrigin || (isFile && eventOrigin === "null" && windowOrigin === "null");
+
+    if (!originOk) {
+      return;
+    }
+
+    if (event.data?.type === "terminal-port-token" && typeof event.data?.token === "string") {
+      expectedToken = event.data.token;
+
+      if (pendingPort && pendingToken === expectedToken) {
+        if (messagePort) messagePort.close();
+        messagePort = pendingPort;
+        messagePort.start();
+        pendingPort = null;
+        pendingToken = null;
+        expectedToken = null;
+        console.log("[TerminalClient] MessagePort acquired via postMessage (out-of-order)");
+      }
+      return;
+    }
+
     if (event.data?.type === "terminal-port" && event.ports?.[0]) {
-      // Close old port to prevent memory leak on backend restart
+      const receivedToken = event.data?.token;
+
+      if (!receivedToken) {
+        if (event.ports[0]) event.ports[0].close();
+        return;
+      }
+
+      if (!expectedToken) {
+        if (pendingPort) pendingPort.close();
+        pendingPort = event.ports[0];
+        pendingToken = receivedToken;
+        return;
+      }
+
+      if (receivedToken !== expectedToken) {
+        if (event.ports[0]) event.ports[0].close();
+        return;
+      }
+
       if (messagePort) {
         messagePort.close();
       }
+
       messagePort = event.ports[0];
       messagePort.start();
+      expectedToken = null;
       console.log("[TerminalClient] MessagePort acquired via postMessage");
     }
   });
