@@ -2,7 +2,6 @@ import { useCallback, useMemo, useState } from "react";
 import type React from "react";
 import { type MenuItemOption, type TerminalLocation, type TerminalType } from "@/types";
 import { useTerminalStore } from "@/store";
-import { terminalInstanceService } from "@/services/TerminalInstanceService";
 import { terminalClient } from "@/clients";
 import { TerminalInfoDialog } from "./TerminalInfoDialog";
 import { useWorktrees } from "@/hooks/useWorktrees";
@@ -59,20 +58,6 @@ export function TerminalContextMenu({
     }
   }, [addTerminal, terminal]);
 
-  const handleClearBuffer = useCallback(() => {
-    const managed = terminalInstanceService.get(terminalId);
-    if (managed?.terminal) {
-      // VS Code-style clear: clear the frontend buffer only and let the
-      // shell decide how to handle `clear`/`reset` commands.
-      managed.terminal.clear();
-    }
-  }, [terminalId]);
-
-  const handleRefreshTerminal = useCallback(() => {
-    // Sync terminal state from the backend PTY host
-    terminalInstanceService.wake(terminalId);
-  }, [terminalId]);
-
   const handleForceResume = useCallback(() => {
     terminalClient.forceResume(terminalId).catch((error) => {
       console.error("Failed to force resume terminal:", error);
@@ -87,7 +72,7 @@ export function TerminalContextMenu({
     if (!terminal) return [];
     return worktrees.map((wt) => {
       const isCurrent = wt.id === terminal.worktreeId;
-      const label = (wt.branch || wt.name).trim();
+      const label = (wt.branch || wt.name).trim() || "Untitled worktree";
       return {
         id: `move-to-worktree:${wt.id}`,
         label,
@@ -128,11 +113,24 @@ export function TerminalContextMenu({
 
   const template = useMemo((): MenuItemOption[] => {
     if (!terminal) return [];
-    const layoutItems: MenuItemOption[] = [
+
+    // Layout section: worktree navigation first (most common workflow), then positioning
+    const layoutItems: MenuItemOption[] = [];
+
+    // Move to Worktree as top-level submenu (when multiple worktrees exist)
+    if (worktrees.length > 1 && worktreeSubmenu.length > 0) {
+      layoutItems.push({
+        id: "move-to-worktree",
+        label: "Move to Worktree",
+        submenu: worktreeSubmenu,
+      });
+    }
+
+    layoutItems.push(
       currentLocation === "grid"
         ? { id: "move-to-dock", label: "Move to Dock" }
-        : { id: "move-to-grid", label: "Move to Grid" },
-    ];
+        : { id: "move-to-grid", label: "Move to Grid" }
+    );
 
     if (currentLocation === "grid") {
       layoutItems.push({
@@ -142,39 +140,47 @@ export function TerminalContextMenu({
       });
     }
 
-    if (worktrees.length > 1 && worktreeSubmenu.length > 0) {
-      layoutItems.push({
-        id: "move-to-worktree",
-        label: "Move to Worktree",
-        submenu: worktreeSubmenu,
-      });
-    }
-
-    const actions: MenuItemOption[] = [
-      ...layoutItems,
-      { type: "separator" },
+    // Terminal actions section
+    const terminalActions: MenuItemOption[] = [
       { id: "restart", label: "Restart Terminal" },
       ...(isPaused ? [{ id: "force-resume", label: "Force Resume (Paused)" }] : []),
       {
         id: "toggle-input-lock",
         label: terminal.isInputLocked ? "Unlock Input" : "Lock Input",
       },
-      {
-        id: "convert-to",
-        label: "Convert to",
-        submenu: convertToSubmenu,
-      },
+      ...(convertToSubmenu.length > 0
+        ? [
+            {
+              id: "convert-to",
+              label: "Convert to",
+              submenu: convertToSubmenu,
+            },
+          ]
+        : []),
+    ];
+
+    // Management actions section
+    const managementItems: MenuItemOption[] = [
       { id: "duplicate", label: "Duplicate Terminal" },
       { id: "rename", label: "Rename Terminal" },
-      { id: "clear-scrollback", label: "Clear Scrollback" },
-      { id: "refresh-terminal", label: "Refresh Terminal" },
       { id: "view-info", label: "View Terminal Info" },
-      { type: "separator" },
+    ];
+
+    // Destructive actions section
+    const destructiveItems: MenuItemOption[] = [
       { id: "trash", label: "Trash Terminal" },
       { id: "kill", label: "Kill Terminal" },
     ];
 
-    return actions;
+    return [
+      ...layoutItems,
+      { type: "separator" },
+      ...terminalActions,
+      { type: "separator" },
+      ...managementItems,
+      { type: "separator" },
+      ...destructiveItems,
+    ];
   }, [
     currentLocation,
     isMaximized,
@@ -200,7 +206,13 @@ export function TerminalContextMenu({
 
       if (actionId.startsWith("convert-to:")) {
         const targetType = actionId.slice("convert-to:".length);
-        void convertTerminalType(terminalId, targetType as TerminalType);
+        void convertTerminalType(terminalId, targetType as TerminalType).catch((error) => {
+          console.error("Failed to convert terminal type:", error);
+        });
+        return;
+      }
+
+      if (actionId === "move-to-worktree" || actionId === "convert-to") {
         return;
       }
 
@@ -215,7 +227,7 @@ export function TerminalContextMenu({
           toggleMaximize(terminalId);
           break;
         case "restart":
-          restartTerminal(terminalId);
+          void restartTerminal(terminalId);
           break;
         case "force-resume":
           handleForceResume();
@@ -231,12 +243,6 @@ export function TerminalContextMenu({
             new CustomEvent("canopy:rename-terminal", { detail: { id: terminalId } })
           );
           break;
-        case "clear-scrollback":
-          handleClearBuffer();
-          break;
-        case "refresh-terminal":
-          handleRefreshTerminal();
-          break;
         case "view-info":
           setIsInfoDialogOpen(true);
           break;
@@ -250,10 +256,8 @@ export function TerminalContextMenu({
     },
     [
       convertTerminalType,
-      handleClearBuffer,
       handleDuplicate,
       handleForceResume,
-      handleRefreshTerminal,
       moveTerminalToDock,
       moveTerminalToGrid,
       moveTerminalToWorktree,
