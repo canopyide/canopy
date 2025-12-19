@@ -48,7 +48,6 @@ import {
   Terminal,
   LayoutGrid,
   PanelBottom,
-  ExternalLink,
   Loader2,
   AlertCircle,
   CheckCircle2,
@@ -1037,12 +1036,11 @@ export function WorktreeCard({
                       e.stopPropagation();
                       onOpenIssue?.();
                     }}
-                    className="group/issue flex items-center gap-1 text-xs text-[var(--color-status-info)] hover:brightness-110 hover:underline transition-colors focus-visible:outline focus-visible:outline-2 focus-visible:outline-canopy-accent"
+                    className="flex items-center gap-1 text-xs text-emerald-400/80 hover:text-emerald-400 hover:underline transition-colors focus-visible:outline focus-visible:outline-2 focus-visible:outline-canopy-accent"
                     title="Open Issue on GitHub"
                   >
                     <CircleDot className="w-2.5 h-2.5" />
                     <span className="font-mono">#{worktree.issueNumber}</span>
-                    <ExternalLink className="w-3 h-3 opacity-60 group-hover/issue:opacity-100 transition-opacity" />
                   </button>
                 )}
                 {worktree.prNumber && (
@@ -1052,19 +1050,18 @@ export function WorktreeCard({
                       onOpenPR?.();
                     }}
                     className={cn(
-                      "group/pr flex items-center gap-1 text-xs hover:underline transition-colors",
+                      "flex items-center gap-1 text-xs hover:underline transition-colors",
                       "focus-visible:outline focus-visible:outline-2 focus-visible:outline-canopy-accent",
                       worktree.prState === "merged"
-                        ? "text-[var(--color-status-success)] hover:brightness-110"
+                        ? "text-violet-400/80 hover:text-violet-400"
                         : worktree.prState === "closed"
-                          ? "text-[var(--color-status-error)] hover:brightness-110"
-                          : "text-[var(--color-status-info)] hover:brightness-110"
+                          ? "text-red-400/80 hover:text-red-400"
+                          : "text-sky-400/80 hover:text-sky-400"
                     )}
                     title={`PR #${worktree.prNumber} · ${worktree.prState ?? "open"}`}
                   >
                     <GitPullRequest className="w-2.5 h-2.5" />
                     <span className="font-mono">#{worktree.prNumber}</span>
-                    <ExternalLink className="w-3 h-3 opacity-60 group-hover/pr:opacity-100 transition-opacity" />
                   </button>
                 )}
               </div>
