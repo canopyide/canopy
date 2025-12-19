@@ -493,6 +493,7 @@ export class TerminalProcess {
     if (TERMINAL_FRAME_STABILIZER_ENABLED && this.isAgentTerminal && headlessTerminal) {
       this.syncBuffer = new TerminalSyncBuffer({
         verbose: process.env.CANOPY_VERBOSE === "1",
+        terminalId: id,
       });
       this.syncBuffer.attach(headlessTerminal, (data) => {
         // Guard against post-kill flushes

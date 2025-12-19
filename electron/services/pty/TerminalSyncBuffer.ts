@@ -26,6 +26,8 @@
  */
 
 import type { Terminal as HeadlessTerminal } from "@xterm/headless";
+import { appendFileSync, mkdirSync } from "fs";
+import { join } from "path";
 
 // Synchronized output mode (DEC private mode 2026)
 // BSU = Begin Synchronized Update, ESU = End Synchronized Update
@@ -35,6 +37,11 @@ const SYNC_OUTPUT_END = "\x1b[?2026l"; // ESU
 // Traditional frame boundaries (for TUIs that don't use sync mode)
 const CLEAR_SCREEN = "\x1b[2J";
 const ALT_BUFFER_ON = "\x1b[?1049h";
+
+// Gemini multi-line erase pattern: erase line + cursor up, repeated for TUI redraw
+// Pattern: \x1b[2K\x1b[1A (erase entire line + cursor up 1)
+// When detected at buffer start, indicates incomplete redraw - extend hold time
+const GEMINI_REDRAW_START = "\x1b[2K\x1b[1A";
 
 // How long to wait before assuming current frame is complete
 const STABILITY_MS = 100;
@@ -53,6 +60,7 @@ const MAX_BUFFER_SIZE = 512 * 1024;
 
 export interface SyncBufferOptions {
   verbose?: boolean;
+  terminalId?: string;
 }
 
 export class TerminalSyncBuffer {
@@ -81,9 +89,33 @@ export class TerminalSyncBuffer {
 
   // Debug
   private verbose: boolean;
+  private terminalId: string;
+  private debugFrames: boolean;
 
   constructor(options?: SyncBufferOptions) {
     this.verbose = options?.verbose ?? process.env.CANOPY_VERBOSE === "1";
+    this.terminalId = options?.terminalId ?? "unknown";
+    this.debugFrames = process.env.CANOPY_DEBUG_FRAMES === "1";
+  }
+
+  private debugLog(event: string, data: string): void {
+    if (!this.debugFrames) return;
+
+    const logDir = process.env.CANOPY_USER_DATA
+      ? join(process.env.CANOPY_USER_DATA, "debug")
+      : "/tmp/canopy-debug";
+
+    try {
+      mkdirSync(logDir, { recursive: true });
+      const logFile = join(logDir, "frame-sequences.log");
+      const timestamp = new Date().toISOString();
+      // eslint-disable-next-line no-control-regex
+      const escapeRe = /\x1b/g;
+      const escaped = data.replace(escapeRe, "\\x1b").replace(/\r/g, "\\r").replace(/\n/g, "\\n");
+      appendFileSync(logFile, `[${timestamp}] [${this.terminalId}] ${event}: ${escaped}\n`);
+    } catch {
+      // Ignore logging errors
+    }
   }
 
   attach(_headless: HeadlessTerminal, emit: (data: string) => void): void {
@@ -108,6 +140,8 @@ export class TerminalSyncBuffer {
   }
 
   ingest(data: string): void {
+    this.debugLog("INGEST", data.slice(0, 500));
+
     // Append all data to buffer first
     this.buffer += data;
 
@@ -229,6 +263,15 @@ export class TerminalSyncBuffer {
     this.processFrameBoundaries();
   }
 
+  /**
+   * Check if buffer appears to be mid-Gemini-redraw.
+   * Gemini redraws start with repeated \x1b[2K\x1b[1A sequences.
+   * If we're in this state, we should wait longer before emitting.
+   */
+  private isGeminiRedrawInProgress(): boolean {
+    return this.buffer.startsWith(GEMINI_REDRAW_START);
+  }
+
   private scheduleStabilityFlush(): void {
     this.cancelStabilityTimer();
 
@@ -236,8 +279,18 @@ export class TerminalSyncBuffer {
 
     this.stabilityTimer = setTimeout(() => {
       this.stabilityTimer = null;
-      this.cancelMaxHoldTimer();
+
       if (this.buffer.length > 0) {
+        // If we're mid-Gemini-redraw, don't emit on stability timeout.
+        // Wait for max hold timer or more data to complete the frame.
+        // This prevents emitting partial redraws that cause flicker.
+        if (this.isGeminiRedrawInProgress()) {
+          // Reschedule stability check - frame might complete soon
+          this.scheduleStabilityFlush();
+          return;
+        }
+
+        this.cancelMaxHoldTimer();
         this.emit(this.buffer, "stable");
         this.buffer = "";
       }
@@ -303,6 +356,8 @@ export class TerminalSyncBuffer {
 
   private emit(data: string, reason: string): void {
     if (!data || !this.emitCallback) return;
+
+    this.debugLog(`EMIT(${reason})`, data.slice(0, 200));
 
     if (this.verbose) {
       console.log(`[SyncBuffer] Emit #${this.framesEmitted + 1}: ${data.length} bytes (${reason})`);
