@@ -210,17 +210,20 @@ export class WorkspaceClient extends EventEmitter {
       case "ready": {
         this.isInitialized = true;
         this.restartAttempts = 0;
-        if (this.readyResolve) {
-          this.readyResolve();
-          this.readyResolve = null;
-        }
-        console.log("[WorkspaceClient] Workspace Host is ready");
 
+        // Send GitHub token BEFORE resolving ready promise
+        // This ensures the token is available before loadProject() runs
         const token = GitHubAuth.getToken();
         if (token) {
           this.send({ type: "update-github-token", token });
           console.log("[WorkspaceClient] Sent GitHub token to host");
         }
+
+        if (this.readyResolve) {
+          this.readyResolve();
+          this.readyResolve = null;
+        }
+        console.log("[WorkspaceClient] Workspace Host is ready");
         break;
       }
 

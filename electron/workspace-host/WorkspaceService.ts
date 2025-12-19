@@ -64,6 +64,7 @@ export class WorkspaceService {
   private pollingEnabled: boolean = true;
   private projectRootPath: string | null = null;
   private prEventUnsubscribers: (() => void)[] = [];
+  private prServiceInitializedForPath: string | null = null;
 
   constructor(private readonly sendEvent: (event: WorkspaceHostEvent) => void) {}
 
@@ -896,9 +897,28 @@ ${lines.map((l) => "+" + l).join("\n")}`;
       return;
     }
 
+    // Skip if already initialized for this project (prevents reset on duplicate loadProject calls)
+    if (this.prServiceInitializedForPath === this.projectRootPath) {
+      return;
+    }
+
     this.cleanupPRService();
 
     pullRequestService.initialize(this.projectRootPath);
+
+    // Seed PR service with existing monitors as candidates
+    // This is necessary because worktree:update events fire before PR service starts
+    for (const monitor of this.monitors.values()) {
+      if (monitor.branch && monitor.branch !== "main" && monitor.branch !== "master") {
+        events.emit("sys:worktree:update", {
+          worktreeId: monitor.worktreeId,
+          branch: monitor.branch,
+          issueNumber: monitor.issueNumber,
+        } as any);
+      }
+    }
+
+    this.prServiceInitializedForPath = this.projectRootPath;
 
     this.prEventUnsubscribers.push(
       events.on("sys:pr:detected", (data: any) => {
@@ -946,6 +966,7 @@ ${lines.map((l) => "+" + l).join("\n")}`;
       unsubscribe();
     }
     this.prEventUnsubscribers = [];
+    this.prServiceInitializedForPath = null;
   }
 
   async onProjectSwitch(requestId: string): Promise<void> {
