@@ -61,7 +61,7 @@
   --color-status-success: #34d399; /* Emerald-400: Brighter green */
   --color-status-warning: #fbbf24; /* Amber-400 */
   --color-status-error: #f87171; /* Red-400: Soft Coral */
-  --color-status-info: #38bdf8; /* Sky-400: Water/Sky elements */
+  --color-status-info: #a1a1aa; /* Zinc-400: Muted for developer tool aesthetic, WCAG AA compliant */
 
   /* Semantic state colors - for agent/terminal lifecycle states */
   --color-state-active: #10b981; /* Emerald-500: Active Worktree */
