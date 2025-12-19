@@ -27,7 +27,6 @@ export const AGENT_REGISTRY: Record<string, AgentConfig> = {
     iconId: "claude",
     supportsContextInjection: true,
     shortcut: "Cmd/Ctrl+Alt+C",
-    tooltip: "deep, focused work",
     usageUrl: "https://claude.ai/settings/usage",
     capabilities: {
       scrollback: 10000,
