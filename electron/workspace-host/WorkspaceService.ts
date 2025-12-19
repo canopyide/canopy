@@ -903,7 +903,6 @@ ${lines.map((l) => "+" + l).join("\n")}`;
     this.cleanupPRService();
 
     pullRequestService.initialize(this.projectRootPath);
-    pullRequestService.start();
 
     this.prEventUnsubscribers.push(
       events.on("sys:pr:detected", (data: any) => {
@@ -941,6 +940,8 @@ ${lines.map((l) => "+" + l).join("\n")}`;
         });
       })
     );
+
+    pullRequestService.start();
   }
 
   private cleanupPRService(): void {
