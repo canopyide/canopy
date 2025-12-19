@@ -51,13 +51,47 @@ export type { ElectronAPI };
 // Note: We cannot return MessagePort via contextBridge (it's not cloneable/transferable via that API).
 // Instead, we use window.postMessage to transfer it to the main world.
 
-// Listen for MessagePort from Main
-ipcRenderer.on("terminal-port", (event) => {
+let cachedToken: string | null = null;
+
+function isAllowedTerminalPortTarget(): boolean {
+  const { protocol, origin } = window.location;
+  if (protocol === "file:") return origin === "null";
+  if (protocol === "http:" || protocol === "https:") return origin === "http://localhost:5173";
+  return false;
+}
+
+ipcRenderer.on("terminal-port-token", (_event, payload: { token: string }) => {
+  cachedToken = payload.token;
+
+  if (window.top !== window) return;
+  if (!isAllowedTerminalPortTarget()) return;
+
+  const targetOrigin = window.location.origin === "null" ? window.location.origin : window.location.origin;
+  window.postMessage({ type: "terminal-port-token", token: payload.token }, targetOrigin);
+});
+
+ipcRenderer.on("terminal-port", (event, payload: { token: string }) => {
+  if (window.top !== window) {
+    return;
+  }
+
+  if (!isAllowedTerminalPortTarget()) {
+    console.error("[Preload] Refusing to forward terminal MessagePort to untrusted origin:", window.location.href);
+    return;
+  }
+
   if (event.ports && event.ports.length > 0) {
     const port = event.ports[0];
-    // We must NOT start the port here if we want to transfer it.
-    // Transfer it to the main world immediately.
-    window.postMessage({ type: "terminal-port" }, "*", [port]);
+    const token = payload?.token || cachedToken;
+
+    if (!token) {
+      console.error("[Preload] No handshake token available");
+      return;
+    }
+
+    const targetOrigin = window.location.origin;
+    window.postMessage({ type: "terminal-port", token }, targetOrigin, [port]);
+    cachedToken = null;
     console.log("[Preload] MessagePort transferred to main world");
   }
 });
