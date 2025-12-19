@@ -78,11 +78,7 @@ const createWorktreeSelectionStore: StateCreator<WorktreeSelectionState> = (set,
         const terminal = terminals.find((t) => t.id === lastFocusedTerminalId);
 
         // Validate terminal still exists, belongs to this worktree, and isn't in trash
-        if (
-          terminal &&
-          terminal.worktreeId === id &&
-          terminal.location !== "trash"
-        ) {
+        if (terminal && terminal.worktreeId === id && terminal.location !== "trash") {
           useTerminalStore.getState().setFocused(lastFocusedTerminalId);
         }
       });
