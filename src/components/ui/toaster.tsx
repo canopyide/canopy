@@ -8,25 +8,25 @@ const STATUS_CONFIG = {
   success: {
     icon: CheckCircle2,
     containerClass:
-      "bg-[color-mix(in_oklab,var(--color-status-success)_12%,transparent)] border-[var(--color-status-success)]/30",
+      "bg-[color-mix(in_oklab,var(--color-status-success)_8%,transparent)] border-[color:color-mix(in_oklab,var(--color-status-success)_20%,transparent)]",
     accentClass: "text-[var(--color-status-success)]",
   },
   error: {
     icon: XCircle,
     containerClass:
-      "bg-[color-mix(in_oklab,var(--color-status-error)_12%,transparent)] border-[var(--color-status-error)]/30",
+      "bg-[color-mix(in_oklab,var(--color-status-error)_8%,transparent)] border-[color:color-mix(in_oklab,var(--color-status-error)_20%,transparent)]",
     accentClass: "text-[var(--color-status-error)]",
   },
   info: {
     icon: Info,
     containerClass:
-      "bg-[color-mix(in_oklab,var(--color-status-info)_12%,transparent)] border-[var(--color-status-info)]/30",
+      "bg-[color-mix(in_oklab,var(--color-status-info)_6%,transparent)] border-[color:color-mix(in_oklab,var(--color-status-info)_15%,transparent)]",
     accentClass: "text-[var(--color-status-info)]",
   },
   warning: {
     icon: AlertTriangle,
     containerClass:
-      "bg-[color-mix(in_oklab,var(--color-status-warning)_12%,transparent)] border-[var(--color-status-warning)]/30",
+      "bg-[color-mix(in_oklab,var(--color-status-warning)_8%,transparent)] border-[color:color-mix(in_oklab,var(--color-status-warning)_20%,transparent)]",
     accentClass: "text-[var(--color-status-warning)]",
   },
 };
@@ -58,12 +58,12 @@ function Toast({ notification }: { notification: Notification }) {
   return (
     <div
       className={cn(
-        "pointer-events-auto relative flex w-full max-w-[400px] items-start gap-3",
-        "rounded-[var(--radius-lg)] border",
-        "p-4 pr-10",
+        "pointer-events-auto relative flex w-full max-w-[400px] items-start gap-2.5",
+        "rounded-[var(--radius-sm)] border",
+        "px-3 py-2.5 pr-10",
         "text-sm text-canopy-text",
-        "shadow-overlay",
-        "transition-all duration-300 ease-out",
+        "shadow-[0_4px_12px_rgba(0,0,0,0.2)]",
+        "transition-[transform,opacity] duration-300 ease-out",
         isVisible ? "translate-x-0 opacity-100" : "translate-x-8 opacity-0",
         config.containerClass
       )}
@@ -72,30 +72,38 @@ function Toast({ notification }: { notification: Notification }) {
       role="alert"
     >
       <div className={cn("mt-0.5 shrink-0", config.accentClass)}>
-        <Icon className="h-5 w-5" />
+        <Icon className="h-4 w-4" />
       </div>
 
-      <div className="flex-1 space-y-1 min-w-0">
+      <div className="flex-1 space-y-0.5 min-w-0">
         {notification.title && (
-          <h4 className={cn("font-medium leading-none tracking-tight text-sm", config.accentClass)}>
+          <h4
+            className={cn(
+              "font-medium leading-tight tracking-tight text-xs font-mono",
+              config.accentClass
+            )}
+          >
             {notification.title}
           </h4>
         )}
-        <div className="text-xs text-canopy-text/80 leading-relaxed break-words">
+        <div className="text-xs text-canopy-text/75 leading-snug break-words">
           {notification.message}
         </div>
       </div>
 
       <button
+        type="button"
         onClick={handleDismiss}
+        aria-label="Dismiss notification"
         className={cn(
-          "absolute right-2 top-2 rounded-[var(--radius-sm)] p-1",
-          "text-canopy-text/40 transition-colors",
-          "hover:text-canopy-text hover:bg-white/5",
+          "absolute right-1.5 top-1.5 rounded-[var(--radius-xs)]",
+          "h-6 w-6 flex items-center justify-center",
+          "text-canopy-text/30 transition-colors",
+          "hover:text-canopy-text/60 hover:bg-white/5",
           "focus-visible:outline focus-visible:outline-2 focus-visible:outline-canopy-accent focus-visible:outline-offset-2"
         )}
       >
-        <X className="h-4 w-4" />
+        <X className="h-3.5 w-3.5" />
       </button>
     </div>
   );
