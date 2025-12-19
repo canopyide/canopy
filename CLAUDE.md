@@ -53,7 +53,7 @@ Access native features via namespaced API in Renderer. Returns Promises or Clean
 ```text
 electron/
 ├── main.ts              # Entry point
-├── preload.ts           # IPC bridge (contextBridge)
+├── preload.cts          # IPC bridge (contextBridge)
 ├── ipc/
 │   ├── channels.ts      # Channel constants
 │   ├── handlers.ts      # IPC request handlers
@@ -82,7 +82,5 @@ src/
 
 ## Documentation
 
-See `docs/` for detailed guides:
-
-- `development.md` — Setup, commands, workflow
-- `motion-system.md` — Animation patterns, timing tokens, accessibility
+- `docs/development.md` — Architecture, IPC patterns, debugging
+- `docs/feature-curation.md` — Feature evaluation criteria
