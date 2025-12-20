@@ -20,6 +20,7 @@ import { invalidateGitStatusCache, getWorktreeChangesWithStats } from "../utils/
 import { WorktreeRemovedError } from "../utils/errorTypes.js";
 import { categorizeWorktree } from "../services/worktree/mood.js";
 import { AdaptivePollingStrategy, NoteFileReader } from "../services/worktree/index.js";
+import { ensureSerializable } from "../../shared/utils/serialization.js";
 
 export interface WorktreeMonitorConfig {
   basePollingInterval: number;
@@ -236,7 +237,7 @@ export class WorktreeMonitor {
    * Get the current snapshot of this worktree.
    */
   getSnapshot(): WorktreeSnapshot {
-    return {
+    const snapshot: WorktreeSnapshot = {
       id: this.id,
       path: this.path,
       name: this._name,
@@ -259,6 +260,8 @@ export class WorktreeMonitor {
       worktreeId: this.id,
       timestamp: Date.now(),
     };
+
+    return ensureSerializable(snapshot) as WorktreeSnapshot;
   }
 
   /**
