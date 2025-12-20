@@ -571,10 +571,7 @@ function TerminalPaneComponent({
         )}
 
       {showGeminiBanner && (
-        <GeminiAlternateBufferBanner
-          terminalId={id}
-          onDismiss={() => setShowGeminiBanner(false)}
-        />
+        <GeminiAlternateBufferBanner terminalId={id} onDismiss={() => setShowGeminiBanner(false)} />
       )}
 
       <div className="flex-1 min-h-0 bg-canopy-bg flex flex-col">
