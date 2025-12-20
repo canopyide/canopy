@@ -140,10 +140,14 @@ umber}"`.
 
 After all PRs are processed:
 1.  Restore original state (pop stash if created).
-2.  Display Summary:
-    *   ✅ Merged: [List]
-    *   ❌ Failed: [List with reasons]
-    *   ⏭️ Skipped: [Drafts]
+2.  Display a single list of all processed PRs with status emojis:
+    *   Format: `{emoji} PR #{number}: {title}`
+    *   ✅ = Successfully merged
+    *   ❌ = Failed (include brief reason in parentheses)
+    *   ⏭️ = Skipped (draft)
+
+    **Do NOT use separate headers like "Merged:", "Failed:", "Skipped:".** Just show one unified list.
+    Only show the emoji legend if there are mixed results.
 
 **Reminder:** You are an expert engineer. Trust your judgment. Bias for action. Speed is key.
 """
