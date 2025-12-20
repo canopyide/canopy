@@ -55,7 +55,8 @@ let cachedToken: string | null = null;
 
 function isAllowedTerminalPortTarget(): boolean {
   const { protocol, origin } = window.location;
-  if (protocol === "file:") return origin === "null";
+  // file:// protocol always has origin "null" as a string, but check protocol as fallback
+  if (protocol === "file:") return true;
   if (protocol === "http:" || protocol === "https:") return origin === "http://localhost:5173";
   return false;
 }
