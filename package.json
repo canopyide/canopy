@@ -71,6 +71,9 @@
     "zod": "^4.1.13",
     "zustand": "^5.0.8"
   },
+  "overrides": {
+    "node-gyp": "^10.3.1"
+  },
   "devDependencies": {
     "@electron/rebuild": "^3.7.1",
     "@eslint/js": "^9.39.1",
@@ -110,6 +113,7 @@
   "build": {
     "appId": "com.canopy.commandcenter",
     "productName": "Canopy",
+    "npmRebuild": false,
     "directories": {
       "buildResources": "build",
       "output": "release"

@@ -76,7 +76,7 @@ function XtermAdapterComponent({
     return getScrollbackForType(terminalType, scrollbackLines);
   }, [performanceMode, scrollbackLines, terminalType]);
 
-  const terminalTheme = useMemo(() => getTerminalThemeFromCSS(), []);
+  const terminalTheme = getTerminalThemeFromCSS();
 
   const terminalOptions = useMemo(
     () => ({

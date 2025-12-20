@@ -17,7 +17,7 @@ const DEV_CSP = [
 const PROD_CSP = [
   "default-src 'self'",
   "script-src 'self'",
-  "style-src 'self'",
+  "style-src 'self' 'unsafe-inline'",
   "style-src-attr 'unsafe-inline'",
   "font-src 'self' data:",
   "connect-src 'self'",

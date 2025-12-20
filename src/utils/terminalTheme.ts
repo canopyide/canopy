@@ -25,10 +25,7 @@ const CANOPY_TERMINAL_THEME_FALLBACK = {
 
 export const CANOPY_TERMINAL_THEME = CANOPY_TERMINAL_THEME_FALLBACK;
 
-let cachedTerminalTheme: typeof CANOPY_TERMINAL_THEME_FALLBACK | null = null;
-
 export function getTerminalThemeFromCSS(): typeof CANOPY_TERMINAL_THEME_FALLBACK {
-  if (cachedTerminalTheme) return cachedTerminalTheme;
   if (typeof document === "undefined") return CANOPY_TERMINAL_THEME_FALLBACK;
 
   const styles = getComputedStyle(document.documentElement);
@@ -37,7 +34,7 @@ export function getTerminalThemeFromCSS(): typeof CANOPY_TERMINAL_THEME_FALLBACK
     return value || fallback;
   };
 
-  cachedTerminalTheme = {
+  return {
     background: getVar("--color-canopy-bg", CANOPY_TERMINAL_THEME_FALLBACK.background),
     foreground: getVar("--color-canopy-text", CANOPY_TERMINAL_THEME_FALLBACK.foreground),
     cursor: getVar("--color-canopy-accent", CANOPY_TERMINAL_THEME_FALLBACK.cursor),
@@ -67,6 +64,4 @@ export function getTerminalThemeFromCSS(): typeof CANOPY_TERMINAL_THEME_FALLBACK
     brightCyan: "#67e8f9",
     brightWhite: "#fafafa",
   };
-
-  return cachedTerminalTheme;
 }
