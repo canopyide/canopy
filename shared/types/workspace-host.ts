@@ -40,7 +40,13 @@ export interface PRServiceStatus {
   circuitBreakerTripped?: boolean;
 }
 
-/** Worktree state snapshot for IPC transport */
+/**
+ * Worktree state snapshot for IPC transport.
+ *
+ * IMPORTANT: All fields must be serializable via structured clone algorithm.
+ * No functions, class instances, symbols, or circular references allowed.
+ * Snapshots are automatically sanitized via ensureSerializable() before sending.
+ */
 export interface WorktreeSnapshot {
   id: string;
   path: string;

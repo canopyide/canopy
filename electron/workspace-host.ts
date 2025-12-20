@@ -6,6 +6,7 @@ import { projectPulseService } from "./services/ProjectPulseService.js";
 import type { CopyTreeProgress } from "../shared/types/ipc.js";
 import type { WorkspaceHostRequest, WorkspaceHostEvent } from "../shared/types/workspace-host.js";
 import { WorkspaceService } from "./workspace-host/WorkspaceService.js";
+import { ensureSerializable } from "../shared/utils/serialization.js";
 
 // Validate we're running in UtilityProcess context
 if (!process.parentPort) {
@@ -34,7 +35,31 @@ process.on("unhandledRejection", (reason) => {
 
 // Helper to send events to Main process
 function sendEvent(event: WorkspaceHostEvent): void {
-  port.postMessage(event);
+  try {
+    port.postMessage(event);
+  } catch (error) {
+    console.error(
+      `[WorkspaceHost] Failed to send event type "${(event as any).type}":`,
+      error instanceof Error ? error.message : String(error)
+    );
+
+    try {
+      const sanitized = ensureSerializable(event);
+      console.warn(
+        `[WorkspaceHost] Sending sanitized event (non-serializable fields removed)`
+      );
+      port.postMessage(sanitized);
+    } catch (sanitizeError) {
+      console.error(
+        `[WorkspaceHost] Failed to sanitize event, sending error event instead:`,
+        sanitizeError instanceof Error ? sanitizeError.message : String(sanitizeError)
+      );
+      port.postMessage({
+        type: "error",
+        error: `Serialization failed for event type "${(event as any).type}"`,
+      });
+    }
+  }
 }
 
 // Create singleton instance
