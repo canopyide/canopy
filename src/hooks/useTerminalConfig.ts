@@ -1,4 +1,4 @@
-import { useEffect, useMemo } from "react";
+import { useEffect } from "react";
 import { terminalInstanceService } from "@/services/TerminalInstanceService";
 import { getTerminalThemeFromCSS } from "@/utils/terminalTheme";
 import { useTerminalFontStore } from "@/store";
@@ -9,7 +9,7 @@ import { terminalConfigClient } from "@/clients/terminalConfigClient";
  * Terminals live outside React, so they don't receive prop updates automatically.
  */
 export function useTerminalConfig() {
-  const theme = useMemo(() => getTerminalThemeFromCSS(), []);
+  const theme = getTerminalThemeFromCSS();
   const fontSize = useTerminalFontStore((state) => state.fontSize);
   const fontFamily = useTerminalFontStore((state) => state.fontFamily);
   const setFontSize = useTerminalFontStore((state) => state.setFontSize);

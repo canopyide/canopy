@@ -296,6 +296,11 @@
     background: transparent;
   }
 
+  /* Xterm font - required for correct font measurement in canvas renderer */
+  .xterm {
+    font-family: "JetBrains Mono", monospace;
+  }
+
   /* Terminal scrollbar styling - Digital Ecology theme */
   .xterm-viewport {
     scrollbar-width: thin;
