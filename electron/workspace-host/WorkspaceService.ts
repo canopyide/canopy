@@ -21,6 +21,7 @@ import { GitHubAuth } from "../services/github/GitHubAuth.js";
 import { pullRequestService } from "../services/PullRequestService.js";
 import { events } from "../services/events.js";
 import { MonitorState, NOTE_PATH } from "./types.js";
+import { ensureSerializable } from "../../shared/utils/serialization.js";
 
 // Configuration
 const DEFAULT_ACTIVE_WORKTREE_INTERVAL_MS = 2000;
@@ -516,7 +517,7 @@ export class WorkspaceService {
     }
   }
 
-  private emitUpdate(monitor: MonitorState): void {
+  private createSnapshot(monitor: MonitorState): WorktreeSnapshot {
     const snapshot: WorktreeSnapshot = {
       id: monitor.id,
       path: monitor.path,
@@ -541,36 +542,19 @@ export class WorkspaceService {
       timestamp: Date.now(),
     };
 
-    this.sendEvent({ type: "worktree-update", worktree: snapshot });
+    return ensureSerializable(snapshot) as WorktreeSnapshot;
+  }
 
+  private emitUpdate(monitor: MonitorState): void {
+    const snapshot = this.createSnapshot(monitor);
+    this.sendEvent({ type: "worktree-update", worktree: snapshot });
     events.emit("sys:worktree:update", snapshot as any);
   }
 
   getAllStates(requestId: string): void {
     const states: WorktreeSnapshot[] = [];
     for (const monitor of this.monitors.values()) {
-      states.push({
-        id: monitor.id,
-        path: monitor.path,
-        name: monitor.name,
-        branch: monitor.branch,
-        isCurrent: monitor.isCurrent,
-        isMainWorktree: monitor.isMainWorktree,
-        gitDir: monitor.gitDir,
-        summary: monitor.summary,
-        modifiedCount: monitor.modifiedCount,
-        changes: monitor.changes,
-        mood: monitor.mood,
-        lastActivityTimestamp: monitor.lastActivityTimestamp,
-        aiNote: monitor.aiNote,
-        aiNoteTimestamp: monitor.aiNoteTimestamp,
-        issueNumber: monitor.issueNumber,
-        prNumber: monitor.prNumber,
-        prUrl: monitor.prUrl,
-        prState: monitor.prState,
-        worktreeChanges: monitor.worktreeChanges,
-        worktreeId: monitor.worktreeId,
-      });
+      states.push(this.createSnapshot(monitor));
     }
     this.sendEvent({ type: "all-states", requestId, states });
   }
@@ -585,28 +569,7 @@ export class WorkspaceService {
     this.sendEvent({
       type: "monitor",
       requestId,
-      state: {
-        id: monitor.id,
-        path: monitor.path,
-        name: monitor.name,
-        branch: monitor.branch,
-        isCurrent: monitor.isCurrent,
-        isMainWorktree: monitor.isMainWorktree,
-        gitDir: monitor.gitDir,
-        summary: monitor.summary,
-        modifiedCount: monitor.modifiedCount,
-        changes: monitor.changes,
-        mood: monitor.mood,
-        lastActivityTimestamp: monitor.lastActivityTimestamp,
-        aiNote: monitor.aiNote,
-        aiNoteTimestamp: monitor.aiNoteTimestamp,
-        issueNumber: monitor.issueNumber,
-        prNumber: monitor.prNumber,
-        prUrl: monitor.prUrl,
-        prState: monitor.prState,
-        worktreeChanges: monitor.worktreeChanges,
-        worktreeId: monitor.worktreeId,
-      },
+      state: this.createSnapshot(monitor),
     });
   }
 
