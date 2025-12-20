@@ -45,9 +45,7 @@ function sendEvent(event: WorkspaceHostEvent): void {
 
     try {
       const sanitized = ensureSerializable(event);
-      console.warn(
-        `[WorkspaceHost] Sending sanitized event (non-serializable fields removed)`
-      );
+      console.warn(`[WorkspaceHost] Sending sanitized event (non-serializable fields removed)`);
       port.postMessage(sanitized);
     } catch (sanitizeError) {
       console.error(
