@@ -1207,7 +1207,7 @@ export function WorktreeCard({
           <DropdownMenu>
             <DropdownMenuTrigger asChild>
               <button
-                className="w-full flex items-center justify-between mt-5 py-1.5 px-2 text-xs text-canopy-text/60 hover:text-canopy-text/80 bg-white/[0.02] rounded transition-colors cursor-pointer focus-visible:outline focus-visible:outline-2 focus-visible:outline-canopy-accent"
+                className="w-full flex items-center justify-between mt-5 py-1.5 px-2 text-xs text-canopy-text/60 hover:text-canopy-text/80 bg-white/[0.02] rounded transition-colors cursor-pointer focus:outline-none"
                 onClick={(e) => e.stopPropagation()}
               >
                 {/* Left: Terminal icon + total count */}
