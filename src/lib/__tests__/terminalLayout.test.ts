@@ -145,12 +145,6 @@ describe("getAutoGridCols", () => {
 });
 
 describe("getMaxGridCapacity", () => {
-  // Account for gap (4px) and padding (8px) in calculations
-  const gap = 4;
-  const padding = 8;
-  const cellWidth = MIN_TERMINAL_WIDTH_PX + gap;
-  const cellHeight = MIN_TERMINAL_HEIGHT_PX + gap;
-
   describe("null dimensions", () => {
     it("returns absolute max when dimensions are null", () => {
       expect(getMaxGridCapacity(null, null)).toBe(ABSOLUTE_MAX_GRID_TERMINALS);
