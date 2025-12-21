@@ -340,11 +340,29 @@ async function createWindow(): Promise<void> {
 
   setLoggerWindow(mainWindow);
 
+  // Use simple-fullscreen events for pre-Lion fullscreen that extends into notch area
   mainWindow.on("enter-full-screen", () => {
     sendToRenderer(mainWindow!, CHANNELS.WINDOW_FULLSCREEN_CHANGE, true);
   });
   mainWindow.on("leave-full-screen", () => {
     sendToRenderer(mainWindow!, CHANNELS.WINDOW_FULLSCREEN_CHANGE, false);
+  });
+  // Simple fullscreen events (pre-Lion style, extends into notch)
+  mainWindow.on("enter-html-full-screen", () => {
+    sendToRenderer(mainWindow!, CHANNELS.WINDOW_FULLSCREEN_CHANGE, true);
+  });
+  mainWindow.on("leave-html-full-screen", () => {
+    sendToRenderer(mainWindow!, CHANNELS.WINDOW_FULLSCREEN_CHANGE, false);
+  });
+
+  // IPC handler for toggling simple fullscreen from renderer
+  ipcMain.handle(CHANNELS.WINDOW_TOGGLE_FULLSCREEN, () => {
+    if (mainWindow && !mainWindow.isDestroyed()) {
+      const isSimpleFullScreen = mainWindow.isSimpleFullScreen();
+      mainWindow.setSimpleFullScreen(!isSimpleFullScreen);
+      return !isSimpleFullScreen;
+    }
+    return false;
   });
 
   console.log("[MAIN] Creating application menu (initial, no agent availability yet)...");
@@ -545,6 +563,9 @@ async function createWindow(): Promise<void> {
     if (eventBuffer) eventBuffer.stop();
     if (cleanupIpcHandlers) cleanupIpcHandlers();
     if (cleanupErrorHandlers) cleanupErrorHandlers();
+
+    // Clean up window-specific IPC handlers
+    ipcMain.removeHandler(CHANNELS.WINDOW_TOGGLE_FULLSCREEN);
 
     if (workspaceClient) workspaceClient.dispose();
     disposeWorkspaceClient();

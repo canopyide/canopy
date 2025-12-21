@@ -146,7 +146,17 @@ export function createApplicationMenu(
         { role: "zoomIn" },
         { role: "zoomOut" },
         { type: "separator" },
-        { role: "togglefullscreen" },
+        {
+          label: "Toggle Full Screen",
+          accelerator: process.platform === "darwin" ? "Ctrl+Cmd+F" : "F11",
+          click: (_item, browserWindow) => {
+            const win = getTargetBrowserWindow(browserWindow);
+            if (!win) return;
+            // Use simpleFullScreen for pre-Lion behavior that extends into the notch area
+            const isSimpleFullScreen = win.isSimpleFullScreen();
+            win.setSimpleFullScreen(!isSimpleFullScreen);
+          },
+        },
       ],
     },
     {

@@ -314,6 +314,7 @@ const CHANNELS = {
 
   // Window channels
   WINDOW_FULLSCREEN_CHANGE: "window:fullscreen-change",
+  WINDOW_TOGGLE_FULLSCREEN: "window:toggle-fullscreen",
 
   // Notification channels
   NOTIFICATION_UPDATE: "notification:update",
@@ -848,6 +849,8 @@ const api: ElectronAPI = {
       ipcRenderer.on(CHANNELS.WINDOW_FULLSCREEN_CHANGE, handler);
       return () => ipcRenderer.removeListener(CHANNELS.WINDOW_FULLSCREEN_CHANGE, handler);
     },
+    toggleFullscreen: (): Promise<boolean> =>
+      ipcRenderer.invoke(CHANNELS.WINDOW_TOGGLE_FULLSCREEN),
   },
 
   // Notification API
