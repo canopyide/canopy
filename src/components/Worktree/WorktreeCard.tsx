@@ -72,7 +72,7 @@ function StateIcon({ state, count }: StateIconProps) {
     <Tooltip>
       <TooltipTrigger asChild>
         <span
-          className={cn("flex items-center gap-1", colorClass)}
+          className={cn("flex items-center gap-1 text-[11px]", colorClass)}
           role="img"
           aria-label={`${count} ${label}`}
         >
@@ -1249,10 +1249,10 @@ export function WorktreeCard({
                   onClick={handleToggleTerminals}
                   aria-expanded={true}
                   aria-controls={terminalsPanelId}
-                  className="w-full px-3 py-2.5 flex items-center justify-between text-left border-b border-white/5 transition-colors hover:bg-white/5 focus-visible:outline focus-visible:outline-2 focus-visible:outline-canopy-accent focus-visible:outline-offset-[-2px] rounded-t-[var(--radius-lg)]"
+                  className="w-full px-3 py-1.5 flex items-center justify-between text-left border-b border-white/5 transition-colors hover:bg-white/5 focus-visible:outline focus-visible:outline-2 focus-visible:outline-canopy-accent focus-visible:outline-offset-[-2px] rounded-t-[var(--radius-lg)]"
                   id={`${terminalsId}-button`}
                 >
-                  <span className="flex items-center gap-1.5 text-xs text-canopy-text/50 font-medium">
+                  <span className="flex items-center gap-1.5 text-[11px] text-canopy-text/50 font-medium">
                     <Terminal className="w-3 h-3" />
                     <span>Active Sessions ({terminalCounts.total})</span>
                   </span>
@@ -1358,11 +1358,11 @@ export function WorktreeCard({
                 onClick={handleToggleTerminals}
                 aria-expanded={false}
                 aria-controls={terminalsPanelId}
-                className="w-full px-3 py-2.5 flex items-center justify-between text-left rounded-[var(--radius-lg)] transition-colors hover:bg-white/5 focus-visible:outline focus-visible:outline-2 focus-visible:outline-canopy-accent focus-visible:outline-offset-[-2px]"
+                className="w-full px-3 py-1.5 flex items-center justify-between text-left rounded-[var(--radius-lg)] transition-colors hover:bg-white/5 focus-visible:outline focus-visible:outline-2 focus-visible:outline-canopy-accent focus-visible:outline-offset-[-2px]"
                 id={`${terminalsId}-button`}
               >
                 {/* Left: Terminal icon + total count */}
-                <div className="flex items-center gap-1.5 text-xs text-canopy-text/60">
+                <div className="flex items-center gap-1.5 text-[11px] text-canopy-text/60">
                   <Terminal className="w-3 h-3" />
                   <span className="inline-flex items-center gap-1">
                     <span className="font-mono tabular-nums">{terminalCounts.total}</span>
