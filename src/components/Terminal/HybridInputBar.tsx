@@ -553,6 +553,7 @@ export const HybridInputBar = forwardRef<HybridInputBarHandle, HybridInputBarPro
             setAtContext(null);
             setSlashContext(null);
             setSelectedIndex(0);
+            lastQueryRef.current = "";
             requestAnimationFrame(() => resizeTextarea(textareaRef.current));
             return;
           }
@@ -561,6 +562,7 @@ export const HybridInputBar = forwardRef<HybridInputBarHandle, HybridInputBarPro
           setAtContext(null);
           setSlashContext(null);
           setSelectedIndex(0);
+          lastQueryRef.current = "";
 
           requestAnimationFrame(() => {
             textarea.focus();
@@ -572,12 +574,14 @@ export const HybridInputBar = forwardRef<HybridInputBarHandle, HybridInputBarPro
 
         if (activeMode === "command" && slashCtx) {
           const before = currentValue.slice(0, slashCtx.start);
-          const after = currentValue.slice(slashCtx.tokenEnd);
+          const replaceEnd = Math.min(caret, slashCtx.tokenEnd);
+          const after = currentValue.slice(replaceEnd);
 
-          const shouldAppendSpace = action === "insert" && !after.startsWith(" ");
+          const hasLeadingSpace = after.startsWith(" ");
+          const shouldAppendSpace = action === "insert" && !hasLeadingSpace;
           const token = shouldAppendSpace ? `${item.value} ` : item.value;
           const nextValue = `${before}${token}${after}`;
-          const nextCaret = before.length + token.length;
+          const nextCaret = before.length + token.length + (action === "insert" && hasLeadingSpace ? 1 : 0);
 
           if (action === "execute") {
             const payload = buildTerminalSendPayload(nextValue);
@@ -588,6 +592,7 @@ export const HybridInputBar = forwardRef<HybridInputBarHandle, HybridInputBarPro
             setAtContext(null);
             setSlashContext(null);
             setSelectedIndex(0);
+            lastQueryRef.current = "";
             requestAnimationFrame(() => resizeTextarea(textareaRef.current));
             return;
           }
@@ -596,6 +601,7 @@ export const HybridInputBar = forwardRef<HybridInputBarHandle, HybridInputBarPro
           setAtContext(null);
           setSlashContext(null);
           setSelectedIndex(0);
+          lastQueryRef.current = "";
 
           requestAnimationFrame(() => {
             textarea.focus();
