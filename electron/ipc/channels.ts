@@ -176,6 +176,7 @@ export const CHANNELS = {
   WORKTREE_CONFIG_SET_PATTERN: "worktree-config:set-pattern",
 
   WINDOW_FULLSCREEN_CHANGE: "window:fullscreen-change",
+  WINDOW_TOGGLE_FULLSCREEN: "window:toggle-fullscreen",
 
   NOTIFICATION_UPDATE: "notification:update",
 

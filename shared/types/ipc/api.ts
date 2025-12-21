@@ -303,6 +303,8 @@ export interface ElectronAPI {
   window: {
     /** Subscribe to fullscreen state changes */
     onFullscreenChange(callback: (isFullscreen: boolean) => void): () => void;
+    /** Toggle simple fullscreen mode (extends into notch area on MacBook) */
+    toggleFullscreen(): Promise<boolean>;
   };
   notification: {
     /** Update window title and dock badge based on terminal attention state */
