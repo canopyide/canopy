@@ -170,7 +170,7 @@ function SidebarContent() {
     };
 
     // Filter worktrees
-    let filtered = worktrees.filter((worktree) => {
+    const filtered = worktrees.filter((worktree) => {
       const derived = derivedMetaMap.get(worktree.id) ?? {
         hasErrors: false,
         terminalCount: 0,
