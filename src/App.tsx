@@ -136,8 +136,14 @@ function SidebarContent() {
   }, []);
 
   useEffect(() => {
-    if (worktrees.length > 0 && !activeWorktreeId) {
-      setActiveWorktree(worktrees[0].id);
+    if (worktrees.length > 0) {
+      // Check if activeWorktreeId is missing or doesn't exist in worktrees
+      const worktreeExists = activeWorktreeId && worktrees.some((w) => w.id === activeWorktreeId);
+      if (!worktreeExists) {
+        // Fall back to main worktree or first available
+        const mainWorktree = worktrees.find((w) => w.isMainWorktree) ?? worktrees[0];
+        setActiveWorktree(mainWorktree.id);
+      }
     }
   }, [worktrees, activeWorktreeId, setActiveWorktree]);
 
