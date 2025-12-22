@@ -26,9 +26,9 @@ import {
 } from "@dnd-kit/core";
 import {
   useTerminalStore,
+  useLayoutConfigStore,
   useWorktreeSelectionStore,
   type TerminalInstance,
-  MAX_GRID_TERMINALS,
 } from "@/store";
 import { TerminalDragPreview } from "./TerminalDragPreview";
 import { terminalInstanceService } from "@/services/TerminalInstanceService";
@@ -171,6 +171,8 @@ export function DndProvider({ children }: DndProviderProps) {
   const moveTerminalToPosition = useTerminalStore((s) => s.moveTerminalToPosition);
   const moveTerminalToWorktree = useTerminalStore((s) => s.moveTerminalToWorktree);
   const setFocused = useTerminalStore((s) => s.setFocused);
+  const activeWorktreeId = useWorktreeSelectionStore((state) => state.activeWorktreeId);
+  const getMaxGridCapacity = useLayoutConfigStore((state) => state.getMaxGridCapacity);
 
   const activeTerminal = useMemo(() => {
     if (!activeId) return null;
@@ -338,11 +340,13 @@ export function DndProvider({ children }: DndProviderProps) {
 
         // Get target index
         let targetIndex = 0;
-        const containerTerminals = terminals.filter((t) =>
-          targetContainer === "dock"
-            ? t.location === "dock"
-            : t.location === "grid" || t.location === undefined
-        );
+        const containerTerminals = terminals.filter((t) => {
+          if ((t.worktreeId ?? undefined) !== (activeWorktreeId ?? undefined)) return false;
+          if (targetContainer === "dock") {
+            return t.location === "dock";
+          }
+          return t.location === "grid" || t.location === undefined;
+        });
 
         // Find index of item we're dropping on
         const overTerminalIndex = containerTerminals.findIndex((t) => t.id === overId);
@@ -357,9 +361,11 @@ export function DndProvider({ children }: DndProviderProps) {
 
         // Block cross-container move from dock to grid if grid is full
         const gridTerminals = terminals.filter(
-          (t) => t.location === "grid" || t.location === undefined
+          (t) =>
+            (t.location === "grid" || t.location === undefined) &&
+            (t.worktreeId ?? undefined) === (activeWorktreeId ?? undefined)
         );
-        const isGridFull = gridTerminals.length >= MAX_GRID_TERMINALS;
+        const isGridFull = gridTerminals.length >= getMaxGridCapacity();
         if (sourceLocation === "dock" && targetContainer === "grid" && isGridFull) {
           // Grid is full, cancel the drop - still run stabilization below
         } else {
@@ -369,12 +375,12 @@ export function DndProvider({ children }: DndProviderProps) {
               const oldIndex = containerTerminals.findIndex((t) => t.id === draggedId);
 
               if (oldIndex !== -1 && targetIndex !== -1 && oldIndex !== targetIndex) {
-                reorderTerminals(oldIndex, targetIndex, targetContainer);
+                reorderTerminals(oldIndex, targetIndex, targetContainer, activeWorktreeId);
               }
             }
           } else {
             // Cross-container move
-            moveTerminalToPosition(draggedId, targetIndex, targetContainer);
+            moveTerminalToPosition(draggedId, targetIndex, targetContainer, activeWorktreeId);
 
             // Set focus when moving to grid, clear when moving to dock
             if (targetContainer === "grid") {
@@ -509,6 +515,8 @@ export function DndProvider({ children }: DndProviderProps) {
       moveTerminalToPosition,
       moveTerminalToWorktree,
       setFocused,
+      activeWorktreeId,
+      getMaxGridCapacity,
     ]
   );
 

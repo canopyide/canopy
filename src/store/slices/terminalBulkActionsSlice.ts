@@ -1,7 +1,8 @@
 import PQueue from "p-queue";
 import type { StateCreator } from "zustand";
 import type { TerminalInstance } from "./terminalRegistrySlice";
-import { MAX_GRID_TERMINALS } from "./terminalRegistrySlice";
+import { useLayoutConfigStore } from "@/store/layoutConfigStore";
+import { useWorktreeSelectionStore } from "@/store/worktreeStore";
 import type { AgentState } from "@/types";
 import { isAgentTerminal } from "../../utils/terminalType";
 import { validateTerminals, type ValidationResult } from "@/utils/terminalValidation";
@@ -115,7 +116,9 @@ export const createTerminalBulkActionsSlice = (
     bulkMoveToDockByWorktree: (worktreeId) => {
       const terminals = getTerminals();
       const gridTerminals = terminals.filter(
-        (t) => t.worktreeId === worktreeId && t.location === "grid"
+        (t) =>
+          t.worktreeId === worktreeId &&
+          (t.location === "grid" || t.location === undefined)
       );
       gridTerminals.forEach((t) => moveTerminalToDock(t.id));
     },
@@ -127,10 +130,12 @@ export const createTerminalBulkActionsSlice = (
       );
       if (dockedTerminals.length === 0) return;
 
+      const maxCapacity = useLayoutConfigStore.getState().getMaxGridCapacity();
       const gridCount = terminals.filter(
-        (t) => t.location === "grid" || t.location === undefined
+        (t) =>
+          (t.location === "grid" || t.location === undefined) && t.worktreeId === worktreeId
       ).length;
-      const availableSlots = MAX_GRID_TERMINALS - gridCount;
+      const availableSlots = maxCapacity - gridCount;
       if (availableSlots <= 0) return;
 
       const terminalsToMove = dockedTerminals.slice(0, availableSlots);
@@ -198,20 +203,33 @@ export const createTerminalBulkActionsSlice = (
 
     bulkMoveToDock: () => {
       const terminals = getTerminals();
-      const gridTerminals = terminals.filter((t) => t.location === "grid");
+      const activeWorktreeId = useWorktreeSelectionStore.getState().activeWorktreeId;
+      const gridTerminals = terminals.filter(
+        (t) =>
+          (t.location === "grid" || t.location === undefined) &&
+          (t.worktreeId ?? undefined) === (activeWorktreeId ?? undefined)
+      );
       gridTerminals.forEach((t) => moveTerminalToDock(t.id));
     },
 
     bulkMoveToGrid: () => {
       const terminals = getTerminals();
-      const dockedTerminals = terminals.filter((t) => t.location === "dock");
+      const activeWorktreeId = useWorktreeSelectionStore.getState().activeWorktreeId;
+      const dockedTerminals = terminals.filter(
+        (t) =>
+          t.location === "dock" &&
+          (t.worktreeId ?? undefined) === (activeWorktreeId ?? undefined)
+      );
       if (dockedTerminals.length === 0) return;
 
       // Calculate available capacity (count both "grid" and undefined as grid)
+      const maxCapacity = useLayoutConfigStore.getState().getMaxGridCapacity();
       const gridCount = terminals.filter(
-        (t) => t.location === "grid" || t.location === undefined
+        (t) =>
+          (t.location === "grid" || t.location === undefined) &&
+          (t.worktreeId ?? undefined) === (activeWorktreeId ?? undefined)
       ).length;
-      const availableSlots = MAX_GRID_TERMINALS - gridCount;
+      const availableSlots = maxCapacity - gridCount;
       if (availableSlots <= 0) return;
 
       // Only move terminals that fit

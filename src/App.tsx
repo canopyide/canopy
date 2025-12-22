@@ -728,11 +728,13 @@ function App() {
     () => {
       if (!focusedId) return;
       const gridTerminals = terminals.filter(
-        (t) => t.location === "grid" || t.location === undefined
+        (t) =>
+          (t.location === "grid" || t.location === undefined) &&
+          (t.worktreeId ?? undefined) === (activeWorktreeId ?? undefined)
       );
       const currentIndex = gridTerminals.findIndex((t) => t.id === focusedId);
       if (currentIndex > 0) {
-        reorderTerminals(currentIndex, currentIndex - 1, "grid");
+        reorderTerminals(currentIndex, currentIndex - 1, "grid", activeWorktreeId);
       }
     },
     { enabled: electronAvailable && !!focusedId }
@@ -742,11 +744,13 @@ function App() {
     () => {
       if (!focusedId) return;
       const gridTerminals = terminals.filter(
-        (t) => t.location === "grid" || t.location === undefined
+        (t) =>
+          (t.location === "grid" || t.location === undefined) &&
+          (t.worktreeId ?? undefined) === (activeWorktreeId ?? undefined)
       );
       const currentIndex = gridTerminals.findIndex((t) => t.id === focusedId);
       if (currentIndex >= 0 && currentIndex < gridTerminals.length - 1) {
-        reorderTerminals(currentIndex, currentIndex + 1, "grid");
+        reorderTerminals(currentIndex, currentIndex + 1, "grid", activeWorktreeId);
       }
     },
     { enabled: electronAvailable && !!focusedId }

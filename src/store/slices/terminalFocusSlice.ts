@@ -1,6 +1,7 @@
 import type { StateCreator } from "zustand";
 import type { TerminalInstance } from "./terminalRegistrySlice";
 import { terminalInstanceService } from "@/services/TerminalInstanceService";
+import { useWorktreeSelectionStore } from "@/store/worktreeStore";
 
 export type NavigationDirection = "up" | "down" | "left" | "right";
 
@@ -88,7 +89,12 @@ export const createTerminalFocusSlice =
       focusNext: () => {
         const terminals = getTerminals();
         // Only navigate through grid terminals (not docked ones)
-        const gridTerminals = terminals.filter((t) => t.location === "grid" || !t.location);
+        const activeWorktreeId = useWorktreeSelectionStore.getState().activeWorktreeId;
+        const gridTerminals = terminals.filter(
+          (t) =>
+            (t.location === "grid" || !t.location) &&
+            (t.worktreeId ?? undefined) === (activeWorktreeId ?? undefined)
+        );
         if (gridTerminals.length === 0) return;
 
         set((state) => {
@@ -103,7 +109,12 @@ export const createTerminalFocusSlice =
       focusPrevious: () => {
         const terminals = getTerminals();
         // Only navigate through grid terminals (not docked ones)
-        const gridTerminals = terminals.filter((t) => t.location === "grid" || !t.location);
+        const activeWorktreeId = useWorktreeSelectionStore.getState().activeWorktreeId;
+        const gridTerminals = terminals.filter(
+          (t) =>
+            (t.location === "grid" || !t.location) &&
+            (t.worktreeId ?? undefined) === (activeWorktreeId ?? undefined)
+        );
         if (gridTerminals.length === 0) return;
 
         set((state) => {
@@ -191,6 +202,15 @@ export const createTerminalFocusSlice =
         const nextIndex = (currentIndex + 1) % waitingTerminals.length;
         const nextTerminal = waitingTerminals[nextIndex];
 
+        const worktreeStore = useWorktreeSelectionStore.getState();
+        if (
+          nextTerminal.worktreeId &&
+          nextTerminal.worktreeId !== worktreeStore.activeWorktreeId
+        ) {
+          worktreeStore.trackTerminalFocus(nextTerminal.worktreeId, nextTerminal.id);
+          worktreeStore.selectWorktree(nextTerminal.worktreeId);
+        }
+
         // Activate and ping the terminal for visual feedback
         activateTerminal(nextTerminal.id);
         pingTerminal(nextTerminal.id);
@@ -211,13 +231,23 @@ export const createTerminalFocusSlice =
           }
 
           if (state.focusedId === removedId) {
-            // Only focus grid terminals (not docked ones)
+            const activeWorktreeId = useWorktreeSelectionStore.getState().activeWorktreeId;
             const gridTerminals = remainingTerminals.filter(
-              (t) => t.location === "grid" || !t.location
+              (t) =>
+                (t.location === "grid" || !t.location) &&
+                (t.worktreeId ?? undefined) === (activeWorktreeId ?? undefined)
             );
 
             if (gridTerminals.length > 0) {
-              const nextIndex = Math.min(removedIndex, gridTerminals.length - 1);
+              const boundedIndex = Math.max(0, removedIndex);
+              const precedingCount = remainingTerminals
+                .slice(0, boundedIndex)
+                .filter(
+                  (t) =>
+                    (t.location === "grid" || !t.location) &&
+                    (t.worktreeId ?? undefined) === (activeWorktreeId ?? undefined)
+                ).length;
+              const nextIndex = Math.min(precedingCount, gridTerminals.length - 1);
               updates.focusedId = gridTerminals[nextIndex]?.id || null;
             } else {
               updates.focusedId = null;
