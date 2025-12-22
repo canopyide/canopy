@@ -121,8 +121,18 @@ export interface TerminalRegistrySlice {
   markAsRestored: (id: string) => void;
   isInTrash: (id: string) => boolean;
 
-  reorderTerminals: (fromIndex: number, toIndex: number, location?: "grid" | "dock") => void;
-  moveTerminalToPosition: (id: string, toIndex: number, location: "grid" | "dock") => void;
+  reorderTerminals: (
+    fromIndex: number,
+    toIndex: number,
+    location?: "grid" | "dock",
+    worktreeId?: string | null
+  ) => void;
+  moveTerminalToPosition: (
+    id: string,
+    toIndex: number,
+    location: "grid" | "dock",
+    worktreeId?: string | null
+  ) => void;
 
   restartTerminal: (id: string) => Promise<void>;
   clearTerminalError: (id: string) => void;
@@ -171,9 +181,12 @@ export const createTerminalRegistrySlice =
           `${requestedKind}-${Date.now()}-${Math.random().toString(36).slice(2, 9)}`;
         const title = options.title || getDefaultTitle(requestedKind);
 
+        const targetWorktreeId = options.worktreeId ?? null;
         const maxCapacity = useLayoutConfigStore.getState().getMaxGridCapacity();
         const currentGridCount = get().terminals.filter(
-          (t) => t.location === "grid" || t.location === undefined
+          (t) =>
+            (t.location === "grid" || t.location === undefined) &&
+            (t.worktreeId ?? null) === targetWorktreeId
         ).length;
         const requestedLocation = options.location || "grid";
         const location =
@@ -215,9 +228,12 @@ export const createTerminalRegistrySlice =
 
       // Auto-dock if grid is full and user requested grid location
       // Use dynamic capacity based on current viewport dimensions
+      const targetWorktreeId = options.worktreeId ?? null;
       const maxCapacity = useLayoutConfigStore.getState().getMaxGridCapacity();
       const currentGridCount = get().terminals.filter(
-        (t) => t.location === "grid" || t.location === undefined
+        (t) =>
+          (t.location === "grid" || t.location === undefined) &&
+          (t.worktreeId ?? null) === targetWorktreeId
       ).length;
       const requestedLocation = options.location || "grid";
       const location =
@@ -534,11 +550,15 @@ export const createTerminalRegistrySlice =
         const terminal = state.terminals.find((t) => t.id === id);
         if (!terminal || terminal.location === "grid") return state;
 
+        const targetWorktreeId = terminal.worktreeId ?? null;
+        const maxCapacity = useLayoutConfigStore.getState().getMaxGridCapacity();
         // Check grid capacity (count both "grid" and undefined as grid)
         const gridCount = state.terminals.filter(
-          (t) => t.location === "grid" || t.location === undefined
+          (t) =>
+            (t.location === "grid" || t.location === undefined) &&
+            (t.worktreeId ?? null) === targetWorktreeId
         ).length;
-        if (gridCount >= MAX_GRID_TERMINALS) {
+        if (gridCount >= maxCapacity) {
           return state;
         }
 
@@ -711,79 +731,103 @@ export const createTerminalRegistrySlice =
       return get().trashedTerminals.has(id);
     },
 
-    reorderTerminals: (fromIndex, toIndex, location = "grid") => {
+    reorderTerminals: (fromIndex, toIndex, location = "grid", worktreeId) => {
       if (fromIndex === toIndex) return;
 
       set((state) => {
-        const terminalsInLocation = state.terminals.filter(
-          (t) => t.location === location || (location === "grid" && t.location === undefined)
+        const hasWorktreeFilter = worktreeId !== undefined;
+        const targetWorktreeId = worktreeId ?? null;
+        const matchesWorktree = (t: TerminalInstance) =>
+          !hasWorktreeFilter || (t.worktreeId ?? null) === targetWorktreeId;
+
+        const gridTerminals = state.terminals.filter(
+          (t) => t.location === "grid" || t.location === undefined
         );
+        const dockTerminals = state.terminals.filter((t) => t.location === "dock");
+        const trashTerminals = state.terminals.filter((t) => t.location === "trash");
 
-        if (fromIndex < 0 || fromIndex >= terminalsInLocation.length) return state;
-        if (toIndex < 0 || toIndex > terminalsInLocation.length) return state;
+        const terminalsInLocation = location === "grid" ? gridTerminals : dockTerminals;
+        const scopedTerminals = terminalsInLocation.filter(matchesWorktree);
 
-        const terminalToMove = terminalsInLocation[fromIndex];
+        if (fromIndex < 0 || fromIndex >= scopedTerminals.length) return state;
+        if (toIndex < 0 || toIndex > scopedTerminals.length) return state;
+
+        const terminalToMove = scopedTerminals[fromIndex];
         if (!terminalToMove) return state;
 
-        const reorderedInLocation = [...terminalsInLocation];
-        reorderedInLocation.splice(fromIndex, 1);
-        reorderedInLocation.splice(toIndex, 0, terminalToMove);
+        const reorderedScoped = [...scopedTerminals];
+        reorderedScoped.splice(fromIndex, 1);
+        reorderedScoped.splice(toIndex, 0, terminalToMove);
 
-        const trashedTerminals = state.terminals.filter((t) => t.location === "trash");
-        let newTerminals: TerminalInstance[];
-        if (location === "grid") {
-          const dockTerminals = state.terminals.filter((t) => t.location === "dock");
-          newTerminals = [...reorderedInLocation, ...dockTerminals, ...trashedTerminals];
-        } else {
-          const gridTerminals = state.terminals.filter(
-            (t) => t.location === "grid" || t.location === undefined
-          );
-          newTerminals = [...gridTerminals, ...reorderedInLocation, ...trashedTerminals];
-        }
+        let scopedIndex = 0;
+        const updatedLocation = terminalsInLocation.map((terminal) => {
+          if (!matchesWorktree(terminal)) {
+            return terminal;
+          }
+          const next = reorderedScoped[scopedIndex];
+          scopedIndex += 1;
+          return next ?? terminal;
+        });
+
+        const newTerminals =
+          location === "grid"
+            ? [...updatedLocation, ...dockTerminals, ...trashTerminals]
+            : [...gridTerminals, ...updatedLocation, ...trashTerminals];
 
         terminalPersistence.save(newTerminals);
         return { terminals: newTerminals };
       });
     },
 
-    moveTerminalToPosition: (id, toIndex, location) => {
+    moveTerminalToPosition: (id, toIndex, location, worktreeId) => {
       set((state) => {
         const terminal = state.terminals.find((t) => t.id === id);
         if (!terminal) return state;
 
-        const terminalsInTargetLocation = state.terminals.filter(
-          (t) =>
-            t.id !== id &&
-            (t.location === location || (location === "grid" && t.location === undefined))
-        );
+        const targetWorktreeId =
+          worktreeId !== undefined ? worktreeId : (terminal.worktreeId ?? null);
+        const hasWorktreeFilter = worktreeId !== undefined;
+        const matchesWorktree = (t: TerminalInstance) =>
+          !hasWorktreeFilter || (t.worktreeId ?? null) === (targetWorktreeId ?? null);
 
-        const clampedIndex = Math.max(0, Math.min(toIndex, terminalsInTargetLocation.length));
-
-        const otherTerminals = state.terminals.filter(
-          (t) =>
-            t.id !== id &&
-            !(t.location === location || (location === "grid" && t.location === undefined))
+        const gridTerminals = state.terminals.filter(
+          (t) => t.id !== id && (t.location === "grid" || t.location === undefined)
         );
+        const dockTerminals = state.terminals.filter((t) => t.id !== id && t.location === "dock");
+        const trashTerminals = state.terminals.filter((t) => t.location === "trash");
+
+        const targetList = location === "grid" ? gridTerminals : dockTerminals;
+        const scopedIndices: number[] = [];
+        for (let idx = 0; idx < targetList.length; idx += 1) {
+          if (matchesWorktree(targetList[idx])) {
+            scopedIndices.push(idx);
+          }
+        }
+
+        const scopedCount = scopedIndices.length;
+        const clampedIndex = Math.max(0, Math.min(toIndex, scopedCount));
+
+        const insertAt =
+          scopedCount === 0
+            ? targetList.length
+            : clampedIndex <= 0
+              ? scopedIndices[0]
+              : clampedIndex >= scopedCount
+                ? scopedIndices[scopedCount - 1] + 1
+                : scopedIndices[clampedIndex];
 
         const updatedTerminal: TerminalInstance = {
           ...terminal,
           location,
         };
 
-        const reorderedTargetLocation = [...terminalsInTargetLocation];
-        reorderedTargetLocation.splice(clampedIndex, 0, updatedTerminal);
+        const updatedTargetList = [...targetList];
+        updatedTargetList.splice(insertAt, 0, updatedTerminal);
 
-        const trashedTerminals = otherTerminals.filter((t) => t.location === "trash");
-        let newTerminals: TerminalInstance[];
-        if (location === "grid") {
-          const dockTerminals = otherTerminals.filter((t) => t.location === "dock");
-          newTerminals = [...reorderedTargetLocation, ...dockTerminals, ...trashedTerminals];
-        } else {
-          const gridTerminals = otherTerminals.filter(
-            (t) => t.location === "grid" || t.location === undefined
-          );
-          newTerminals = [...gridTerminals, ...reorderedTargetLocation, ...trashedTerminals];
-        }
+        const newTerminals =
+          location === "grid"
+            ? [...updatedTargetList, ...dockTerminals, ...trashTerminals]
+            : [...gridTerminals, ...updatedTargetList, ...trashTerminals];
 
         terminalPersistence.save(newTerminals);
         return { terminals: newTerminals };
@@ -1084,15 +1128,16 @@ export const createTerminalRegistrySlice =
           return state;
         }
 
+        const maxCapacity = useLayoutConfigStore.getState().getMaxGridCapacity();
         const targetGridCount = state.terminals.filter(
           (t) =>
-            t.worktreeId === worktreeId &&
+            (t.worktreeId ?? null) === (worktreeId ?? null) &&
             t.location !== "trash" &&
             (t.location === "grid" || t.location === undefined)
         ).length;
 
         const newLocation: TerminalLocation =
-          targetGridCount >= MAX_GRID_TERMINALS ? "dock" : "grid";
+          targetGridCount >= maxCapacity ? "dock" : "grid";
         movedToLocation = newLocation;
 
         const newTerminals = state.terminals.map((t) =>

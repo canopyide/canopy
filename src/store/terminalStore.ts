@@ -200,9 +200,14 @@ export const useTerminalStore = create<TerminalGridState>()((set, get, api) => {
       get().restoreTerminal(lastId);
     },
 
-    moveTerminalToPosition: (id: string, toIndex: number, location: "grid" | "dock") => {
+    moveTerminalToPosition: (
+      id: string,
+      toIndex: number,
+      location: "grid" | "dock",
+      worktreeId?: string | null
+    ) => {
       const state = get();
-      registrySlice.moveTerminalToPosition(id, toIndex, location);
+      registrySlice.moveTerminalToPosition(id, toIndex, location, worktreeId);
 
       if (location === "grid") {
         set({ focusedId: id, activeDockTerminalId: null });

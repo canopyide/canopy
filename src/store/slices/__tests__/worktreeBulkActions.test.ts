@@ -104,10 +104,10 @@ describe("Worktree-scoped bulk actions", () => {
       (t) => t.worktreeId === "wt1" && t.location === "dock"
     ).length;
 
-    expect(gridCount).toBe(16);
     expect(moved0?.location).toBe("grid");
-    expect(moved1?.location).toBe("dock");
-    expect(dockCountWt1).toBe(1);
+    expect(moved1?.location).toBe("grid");
+    expect(dockCountWt1).toBe(0);
+    expect(gridCount).toBe(17);
   });
 
   it("bulkMoveToGridByWorktree preserves existing grid focus", () => {

@@ -140,6 +140,7 @@ export function WorktreeCard({
   const toggleTerminalsExpanded = useWorktreeSelectionStore(
     (state) => state.toggleTerminalsExpanded
   );
+  const trackTerminalFocus = useWorktreeSelectionStore((state) => state.trackTerminalFocus);
 
   const getRecipesForWorktree = useRecipeStore((state) => state.getRecipesForWorktree);
   const runRecipe = useRecipeStore((state) => state.runRecipe);
@@ -393,6 +394,9 @@ export function WorktreeCard({
     (terminal: TerminalInstance) => {
       // Switch to this worktree if it isn't already active
       if (!isActive) {
+        if (terminal.worktreeId) {
+          trackTerminalFocus(terminal.worktreeId, terminal.id);
+        }
         onSelect();
       }
 
@@ -406,7 +410,7 @@ export function WorktreeCard({
       // Trigger the ping animation
       pingTerminal(terminal.id);
     },
-    [isActive, onSelect, setFocused, pingTerminal, openDockTerminal]
+    [isActive, onSelect, setFocused, pingTerminal, openDockTerminal, trackTerminalFocus]
   );
 
   const handleCopyTree = useCallback(async () => {

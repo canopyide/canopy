@@ -5,6 +5,7 @@ import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover
 import { Button } from "@/components/ui/button";
 import { cn } from "@/lib/utils";
 import { useTerminalStore } from "@/store/terminalStore";
+import { useWorktreeSelectionStore } from "@/store/worktreeStore";
 import { useWaitingTerminals } from "@/hooks/useTerminalSelectors";
 import { useKeybindingDisplay } from "@/hooks/useKeybinding";
 import { TerminalIcon } from "@/components/Terminal/TerminalIcon";
@@ -22,6 +23,13 @@ export function WaitingContainer() {
     useShallow((state) => ({
       activateTerminal: state.activateTerminal,
       pingTerminal: state.pingTerminal,
+    }))
+  );
+  const { activeWorktreeId, selectWorktree, trackTerminalFocus } = useWorktreeSelectionStore(
+    useShallow((state) => ({
+      activeWorktreeId: state.activeWorktreeId,
+      selectWorktree: state.selectWorktree,
+      trackTerminalFocus: state.trackTerminalFocus,
     }))
   );
   const shortcut = useKeybindingDisplay("agent.focusNextWaiting");
@@ -73,6 +81,13 @@ export function WaitingContainer() {
               <button
                 key={terminal.id}
                 onClick={() => {
+                  if (
+                    terminal.worktreeId &&
+                    terminal.worktreeId !== activeWorktreeId
+                  ) {
+                    trackTerminalFocus(terminal.worktreeId, terminal.id);
+                    selectWorktree(terminal.worktreeId);
+                  }
                   activateTerminal(terminal.id);
                   pingTerminal(terminal.id);
                   setIsOpen(false);
