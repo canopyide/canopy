@@ -5,19 +5,19 @@ import { TerminalPane } from "./TerminalPane";
 import { BrowserPane } from "@/components/Browser";
 import { ErrorBoundary } from "@/components/ErrorBoundary";
 
-export interface GridTerminalPaneProps {
+export interface GridPanelProps {
   terminal: TerminalInstance;
   isFocused: boolean;
   isMaximized?: boolean;
-  gridTerminalCount?: number;
+  gridPanelCount?: number;
 }
 
-export function GridTerminalPane({
+export function GridPanel({
   terminal,
   isFocused,
   isMaximized = false,
-  gridTerminalCount,
-}: GridTerminalPaneProps) {
+  gridPanelCount,
+}: GridPanelProps) {
   const setFocused = useTerminalStore((state) => state.setFocused);
   const trashTerminal = useTerminalStore((state) => state.trashTerminal);
   const removeTerminal = useTerminalStore((state) => state.removeTerminal);
@@ -105,7 +105,7 @@ export function GridTerminalPane({
           onTitleChange={handleTitleChange}
           onMinimize={handleMinimize}
           isTrashing={isTrashing}
-          gridTerminalCount={gridTerminalCount}
+          gridPanelCount={gridPanelCount}
         />
       </ErrorBoundary>
     );
@@ -149,7 +149,7 @@ export function GridTerminalPane({
         onTitleChange={handleTitleChange}
         onMinimize={handleMinimize}
         isTrashing={isTrashing}
-        gridTerminalCount={gridTerminalCount}
+        gridPanelCount={gridPanelCount}
       />
     </ErrorBoundary>
   );

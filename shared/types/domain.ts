@@ -189,18 +189,50 @@ export interface RunRecord {
   error?: string;
 }
 
-// Terminal Types
+// Panel Types
+
 export type AgentId = string;
 export type LegacyAgentType = "claude" | "gemini" | "codex";
-/** Terminal kind: distinguishes between default terminals, agent-driven terminals, and browser panes */
-export type TerminalKind = "terminal" | "agent" | "browser";
+
+/** Built-in panel kinds */
+export type BuiltInPanelKind = "terminal" | "agent" | "browser";
+
 /**
- * @deprecated Use TerminalKind + agentId instead. This is kept for backward compatibility/migrations.
+ * Panel kind: distinguishes between default terminals, agent-driven terminals, browser panels,
+ * and extension-provided panel types.
+ *
+ * Built-in kinds: "terminal" | "agent" | "browser"
+ * Extensions can register additional kinds as strings.
+ */
+export type PanelKind = BuiltInPanelKind | (string & {});
+
+/**
+ * @deprecated Use PanelKind instead. Kept for backward compatibility.
+ */
+export type TerminalKind = PanelKind;
+
+/**
+ * @deprecated Use PanelKind + agentId instead. This is kept for backward compatibility/migrations.
  */
 export type TerminalType = "terminal" | LegacyAgentType;
 
-/** Location of a terminal instance in the UI */
-export type TerminalLocation = "grid" | "dock" | "trash";
+/** Location of a panel instance in the UI */
+export type PanelLocation = "grid" | "dock" | "trash";
+
+/**
+ * @deprecated Use PanelLocation instead. Kept for backward compatibility.
+ */
+export type TerminalLocation = PanelLocation;
+
+/** Type guard to check if a panel kind is a built-in kind */
+export function isBuiltInPanelKind(kind: PanelKind): kind is BuiltInPanelKind {
+  return kind === "terminal" || kind === "agent" || kind === "browser";
+}
+
+/** Type guard to check if a panel requires PTY (terminal or agent) */
+export function isPtyPanelKind(kind: PanelKind): boolean {
+  return kind === "terminal" || kind === "agent";
+}
 
 /** Valid triggers for agent state changes */
 export type AgentStateChangeTrigger =
@@ -240,7 +272,13 @@ export interface TerminalRestartError {
   };
 }
 
-/** Represents a terminal instance in the application */
+/**
+ * Represents a panel instance in the application.
+ * Panels include terminals, agent terminals, browser panels, and extension-provided panels.
+ *
+ * Note: This interface is named TerminalInstance for backward compatibility.
+ * Use the PanelInstance type alias for new code.
+ */
 export interface TerminalInstance {
   /** Unique identifier for this terminal */
   id: string;
@@ -308,6 +346,12 @@ export interface TerminalInstance {
   browserUrl?: string;
 }
 
+/**
+ * Type alias for TerminalInstance. Use this in new code.
+ * TerminalInstance is kept for backward compatibility.
+ */
+export type PanelInstance = TerminalInstance;
+
 /** Options for spawning a new PTY process */
 export interface PtySpawnOptions {
   /** Working directory for the new process */
@@ -350,7 +394,10 @@ export interface Project {
   color?: string;
 }
 
-/** Terminal snapshot for state preservation */
+/**
+ * Panel snapshot for state preservation.
+ * Note: Named TerminalSnapshot for backward compatibility.
+ */
 export interface TerminalSnapshot {
   /** Terminal ID */
   id: string;
@@ -373,6 +420,9 @@ export interface TerminalSnapshot {
   /** Current URL for browser panes (kind === 'browser') */
   browserUrl?: string;
 }
+
+/** Type alias for TerminalSnapshot. Use this in new code. */
+export type PanelSnapshot = TerminalSnapshot;
 
 /** Terminal layout metadata */
 export interface TerminalLayout {

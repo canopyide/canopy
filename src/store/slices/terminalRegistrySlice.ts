@@ -15,6 +15,8 @@ import { TerminalRefreshTier } from "@/types";
 import { terminalPersistence } from "../persistence/terminalPersistence";
 import { validateTerminalConfig } from "@/utils/terminalValidation";
 import { isRegisteredAgent, getAgentConfig } from "@/config/agents";
+import { getDefaultPanelTitle } from "@shared/config/panelKindRegistry";
+import type { PanelKind } from "@/types";
 import { getTerminalThemeFromCSS } from "@/utils/terminalTheme";
 import { DEFAULT_TERMINAL_FONT_FAMILY } from "@/config/terminalFont";
 import { useScrollbackStore } from "@/store/scrollbackStore";
@@ -70,22 +72,10 @@ export interface AddTerminalOptions {
   browserUrl?: string;
 }
 
-function getDefaultTitle(type?: TerminalType, agentId?: string): string {
-  // If agentId is provided, try to get the title from the registry
-  if (agentId) {
-    const config = getAgentConfig(agentId);
-    if (config) {
-      return config.name;
-    }
-  }
-  // Fall back to checking type as agent ID (backward compat)
-  if (type && type !== "terminal") {
-    const config = getAgentConfig(type);
-    if (config) {
-      return config.name;
-    }
-  }
-  return "Terminal";
+function getDefaultTitle(kind?: PanelKind, type?: TerminalType, agentId?: string): string {
+  // Use panel kind registry for proper title resolution
+  const effectiveKind = kind ?? (agentId ? "agent" : "terminal");
+  return getDefaultPanelTitle(effectiveKind, agentId ?? (type !== "terminal" ? type : undefined));
 }
 
 export interface TrashedTerminal {
@@ -175,7 +165,7 @@ export const createTerminalRegistrySlice =
       if (options.kind === "browser") {
         const id =
           options.requestedId || `browser-${Date.now()}-${Math.random().toString(36).slice(2, 9)}`;
-        const title = options.title || "Browser";
+        const title = options.title || getDefaultTitle("browser");
 
         const maxCapacity = useLayoutConfigStore.getState().getMaxGridCapacity();
         const currentGridCount = get().terminals.filter(
@@ -215,7 +205,7 @@ export const createTerminalRegistrySlice =
       // Derive agentId: explicit option, or from legacy type if it's a registered agent
       const agentId = options.agentId ?? (isRegisteredAgent(legacyType) ? legacyType : undefined);
       const kind: "terminal" | "agent" = agentId ? "agent" : requestedKind;
-      const title = options.title || getDefaultTitle(legacyType, agentId);
+      const title = options.title || getDefaultTitle(kind, legacyType, agentId);
 
       // Auto-dock if grid is full and user requested grid location
       // Use dynamic capacity based on current viewport dimensions
@@ -413,7 +403,8 @@ export const createTerminalRegistrySlice =
         const terminal = state.terminals.find((t) => t.id === id);
         if (!terminal) return state;
 
-        const effectiveTitle = newTitle.trim() || getDefaultTitle(terminal.type, terminal.agentId);
+        const effectiveTitle =
+          newTitle.trim() || getDefaultTitle(terminal.kind, terminal.type, terminal.agentId);
         const newTerminals = state.terminals.map((t) =>
           t.id === id ? { ...t, title: effectiveTitle } : t
         );
@@ -1187,7 +1178,7 @@ export const createTerminalRegistrySlice =
 
       const effectiveAgentId = newAgentId ?? (isRegisteredAgent(newType) ? newType : undefined);
       const newKind: "terminal" | "agent" = effectiveAgentId ? "agent" : "terminal";
-      const newTitle = getDefaultTitle(newType, effectiveAgentId);
+      const newTitle = getDefaultTitle(newKind, newType, effectiveAgentId);
 
       let commandToRun: string | undefined;
       if (effectiveAgentId) {

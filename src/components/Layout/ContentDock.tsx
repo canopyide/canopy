@@ -27,7 +27,7 @@ const AGENT_OPTIONS = [
   { type: "browser" as const, label: "Browser" },
 ];
 
-export function TerminalDock() {
+export function ContentDock() {
   const { showMenu } = useNativeContextMenu();
   const activeWorktreeId = useWorktreeSelectionStore((state) => state.activeWorktreeId);
 

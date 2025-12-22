@@ -3,13 +3,14 @@ import { useTerminalStore, type TerminalInstance } from "@/store";
 import { getTerminalAnimationDuration } from "@/lib/animationUtils";
 import { TerminalPane } from "./TerminalPane";
 import { BrowserPane } from "@/components/Browser";
+import { ErrorBoundary } from "@/components/ErrorBoundary";
 
-export interface DockedTerminalPaneProps {
+export interface DockedPanelProps {
   terminal: TerminalInstance;
   onPopoverClose?: () => void;
 }
 
-export function DockedTerminalPane({ terminal, onPopoverClose }: DockedTerminalPaneProps) {
+export function DockedPanel({ terminal, onPopoverClose }: DockedPanelProps) {
   const setFocused = useTerminalStore((state) => state.setFocused);
   const trashTerminal = useTerminalStore((state) => state.trashTerminal);
   const removeTerminal = useTerminalStore((state) => state.removeTerminal);
@@ -81,50 +82,70 @@ export function DockedTerminalPane({ terminal, onPopoverClose }: DockedTerminalP
   // Render BrowserPane for browser kind
   if (terminal.kind === "browser") {
     return (
-      <BrowserPane
-        id={terminal.id}
-        title={terminal.title}
-        initialUrl={terminal.browserUrl || "http://localhost:3000"}
-        worktreeId={terminal.worktreeId}
-        isFocused={isFocused}
-        location="dock"
-        onFocus={handleFocus}
-        onClose={handleClose}
-        onTitleChange={handleTitleChange}
-        isTrashing={isTrashing}
-      />
+      <ErrorBoundary
+        variant="component"
+        componentName="BrowserPane"
+        resetKeys={[terminal.id, terminal.worktreeId].filter(
+          (key): key is string => key !== undefined
+        )}
+        context={{ terminalId: terminal.id, worktreeId: terminal.worktreeId }}
+      >
+        <BrowserPane
+          id={terminal.id}
+          title={terminal.title}
+          initialUrl={terminal.browserUrl || "http://localhost:3000"}
+          worktreeId={terminal.worktreeId}
+          isFocused={isFocused}
+          location="dock"
+          onFocus={handleFocus}
+          onClose={handleClose}
+          onRestore={handleRestore}
+          onMinimize={handleMinimize}
+          onTitleChange={handleTitleChange}
+          isTrashing={isTrashing}
+        />
+      </ErrorBoundary>
     );
   }
 
   return (
-    <TerminalPane
-      id={terminal.id}
-      title={terminal.title}
-      type={terminal.type}
-      worktreeId={terminal.worktreeId}
-      cwd={terminal.cwd}
-      isFocused={isFocused}
-      agentState={terminal.agentState}
-      activity={
-        terminal.activityHeadline
-          ? {
-              headline: terminal.activityHeadline,
-              status: terminal.activityStatus ?? "working",
-              type: terminal.activityType ?? "interactive",
-            }
-          : null
-      }
-      lastCommand={terminal.lastCommand}
-      flowStatus={terminal.flowStatus}
-      location="dock"
-      restartKey={terminal.restartKey}
-      restartError={terminal.restartError}
-      onFocus={handleFocus}
-      onClose={handleClose}
-      onRestore={handleRestore}
-      onMinimize={handleMinimize}
-      onTitleChange={handleTitleChange}
-      isTrashing={isTrashing}
-    />
+    <ErrorBoundary
+      variant="component"
+      componentName="TerminalPane"
+      resetKeys={[terminal.id, terminal.worktreeId].filter(
+        (key): key is string => key !== undefined
+      )}
+      context={{ terminalId: terminal.id, worktreeId: terminal.worktreeId }}
+    >
+      <TerminalPane
+        id={terminal.id}
+        title={terminal.title}
+        type={terminal.type}
+        worktreeId={terminal.worktreeId}
+        cwd={terminal.cwd}
+        isFocused={isFocused}
+        agentState={terminal.agentState}
+        activity={
+          terminal.activityHeadline
+            ? {
+                headline: terminal.activityHeadline,
+                status: terminal.activityStatus ?? "working",
+                type: terminal.activityType ?? "interactive",
+              }
+            : null
+        }
+        lastCommand={terminal.lastCommand}
+        flowStatus={terminal.flowStatus}
+        location="dock"
+        restartKey={terminal.restartKey}
+        restartError={terminal.restartError}
+        onFocus={handleFocus}
+        onClose={handleClose}
+        onRestore={handleRestore}
+        onMinimize={handleMinimize}
+        onTitleChange={handleTitleChange}
+        isTrashing={isTrashing}
+      />
+    </ErrorBoundary>
   );
 }
