@@ -1,5 +1,7 @@
 export { ContentPanel, ContentPane } from "./ContentPanel";
 export type { ContentPanelProps, BasePanelProps, BasePaneProps } from "./ContentPanel";
+export { PanelHeader } from "./PanelHeader";
+export type { PanelHeaderProps } from "./PanelHeader";
 export {
   TitleEditingProvider,
   useTitleEditing,

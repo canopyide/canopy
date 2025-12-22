@@ -121,6 +121,24 @@ export function BrowserPane({
     }
   }, []);
 
+  // Listen for reload events from context menu
+  useEffect(() => {
+    const handleReloadEvent = (e: Event) => {
+      if (!(e instanceof CustomEvent)) return;
+      const detail = e.detail as unknown;
+      if (!detail || typeof (detail as { id?: unknown }).id !== "string") return;
+      if ((detail as { id: string }).id === id) {
+        handleReload();
+      }
+    };
+
+    const controller = new AbortController();
+    window.addEventListener("canopy:reload-browser", handleReloadEvent, {
+      signal: controller.signal,
+    });
+    return () => controller.abort();
+  }, [id, handleReload]);
+
   const handleOpenExternal = useCallback(() => {
     if (hasValidUrl) {
       window.electron.system.openExternal(currentUrl);
