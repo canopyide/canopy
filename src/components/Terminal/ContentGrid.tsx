@@ -10,7 +10,7 @@ import {
   usePreferencesStore,
   type TerminalInstance,
 } from "@/store";
-import { GridTerminalPane } from "./GridTerminalPane";
+import { GridPanel } from "./GridPanel";
 import { TerminalCountWarning } from "./TerminalCountWarning";
 import { GridFullOverlay } from "./GridFullOverlay";
 import {
@@ -33,7 +33,7 @@ import { useNativeContextMenu } from "@/hooks";
 import type { CliAvailability } from "@shared/types";
 import type { MenuItemOption } from "@/types";
 
-export interface TerminalGridProps {
+export interface ContentGridProps {
   className?: string;
   defaultCwd?: string;
   onLaunchAgent?: (
@@ -246,14 +246,14 @@ function EmptyState({
   );
 }
 
-export function TerminalGrid({
+export function ContentGrid({
   className,
   defaultCwd,
   onLaunchAgent,
   agentAvailability,
   isCheckingAvailability,
   onOpenSettings,
-}: TerminalGridProps) {
+}: ContentGridProps) {
   const { showMenu } = useNativeContextMenu();
   const { terminals, focusedId, maximizedId } = useTerminalStore(
     useShallow((state) => ({
@@ -519,11 +519,11 @@ export function TerminalGrid({
     if (terminal) {
       return (
         <div className={cn("h-full relative bg-canopy-bg", className)}>
-          <GridTerminalPane
+          <GridPanel
             terminal={terminal}
             isFocused={true}
             isMaximized={true}
-            gridTerminalCount={gridItemCount}
+            gridPanelCount={gridItemCount}
           />
         </div>
       );
@@ -595,10 +595,10 @@ export function TerminalGrid({
                       sourceIndex={index}
                       disabled={isTerminalInTrash}
                     >
-                      <GridTerminalPane
+                      <GridPanel
                         terminal={terminal}
                         isFocused={terminal.id === focusedId}
-                        gridTerminalCount={gridItemCount}
+                        gridPanelCount={gridItemCount}
                       />
                     </SortableTerminal>
                   );
@@ -621,4 +621,4 @@ export function TerminalGrid({
   );
 }
 
-export default TerminalGrid;
+export default ContentGrid;

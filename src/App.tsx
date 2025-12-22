@@ -27,7 +27,7 @@ import {
   type HydrationCallbacks,
 } from "./hooks/app";
 import { AppLayout } from "./components/Layout";
-import { TerminalGrid } from "./components/Terminal";
+import { ContentGrid } from "./components/Terminal";
 import { WorktreeCard, WorktreePalette, WorktreeFilterPopover } from "./components/Worktree";
 import { NewWorktreeDialog } from "./components/Worktree/NewWorktreeDialog";
 import { TerminalPalette, NewTerminalPalette } from "./components/TerminalPalette";
@@ -1001,7 +1001,7 @@ function App() {
           agentAvailability={availability}
           agentSettings={agentSettings}
         >
-          <TerminalGrid
+          <ContentGrid
             className="h-full w-full"
             onLaunchAgent={handleLaunchAgent}
             agentAvailability={availability}

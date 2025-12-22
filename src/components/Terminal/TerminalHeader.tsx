@@ -60,6 +60,9 @@ export interface TerminalHeaderProps {
   location?: "grid" | "dock";
   isPinged?: boolean;
   wasJustSelected?: boolean;
+
+  // Slot for custom header content (kind-specific status indicators)
+  headerContent?: React.ReactNode;
 }
 
 function TerminalHeaderComponent({
@@ -96,6 +99,7 @@ function TerminalHeaderComponent({
   location = "grid",
   isPinged,
   wasJustSelected = false,
+  headerContent,
 }: TerminalHeaderProps) {
   const isBrowser = kind === "browser";
   const showCommandPill =
@@ -443,6 +447,9 @@ function TerminalHeaderComponent({
           )}
 
           {!isBrowser && renderAgentStateChip()}
+
+          {/* Custom header content slot for kind-specific indicators */}
+          {headerContent}
         </div>
       </div>
     </TerminalContextMenu>

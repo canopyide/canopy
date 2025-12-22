@@ -63,8 +63,8 @@ export interface TerminalPaneProps {
   isTrashing?: boolean;
   /** Error from a failed restart attempt */
   restartError?: TerminalRestartError;
-  /** Number of terminals in the grid (used to reduce visual noise when only one terminal) */
-  gridTerminalCount?: number;
+  /** Number of panels in the grid (used to reduce visual noise when only one panel) */
+  gridPanelCount?: number;
 }
 
 function TerminalPaneComponent({
@@ -90,7 +90,7 @@ function TerminalPaneComponent({
   restartKey = 0,
   isTrashing = false,
   restartError,
-  gridTerminalCount,
+  gridPanelCount,
 }: TerminalPaneProps) {
   const containerRef = useRef<HTMLDivElement>(null);
   const prevFocusedRef = useRef(isFocused);
@@ -427,8 +427,8 @@ function TerminalPaneComponent({
   }, [id, agentState]);
 
   const isWorking = agentState === "working";
-  const showGridAttention = location === "grid" && !isMaximized && (gridTerminalCount ?? 2) > 1;
-  const allowPing = !isMaximized && (location !== "grid" || (gridTerminalCount ?? 2) > 1);
+  const showGridAttention = location === "grid" && !isMaximized && (gridPanelCount ?? 2) > 1;
+  const allowPing = !isMaximized && (location !== "grid" || (gridPanelCount ?? 2) > 1);
 
   return (
     <div

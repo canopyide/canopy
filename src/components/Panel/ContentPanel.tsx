@@ -1,11 +1,16 @@
-import React, { useState, useCallback, useRef, useEffect, forwardRef, type ReactNode } from "react";
+import React, { useCallback, useRef, forwardRef, type ReactNode } from "react";
 import { cn } from "@/lib/utils";
 import { TerminalHeader } from "@/components/Terminal/TerminalHeader";
 import { useIsDragging } from "@/components/DragDrop";
-import type { TerminalKind, TerminalType, AgentState } from "@/types";
+import { TitleEditingProvider, useTitleEditing } from "./TitleEditingContext";
+import type { PanelKind, TerminalType, AgentState } from "@/types";
 import type { ActivityState } from "@/components/Terminal/TerminalPane";
 
-export interface BasePaneProps {
+/**
+ * Base props for all panel types.
+ * Panels include terminals, agent terminals, browser panels, and extension-provided panels.
+ */
+export interface BasePanelProps {
   id: string;
   title: string;
   worktreeId?: string;
@@ -13,7 +18,7 @@ export interface BasePaneProps {
   isMaximized?: boolean;
   location?: "grid" | "dock";
   isTrashing?: boolean;
-  gridTerminalCount?: number;
+  gridPanelCount?: number;
   onFocus: () => void;
   onClose: (force?: boolean) => void;
   onToggleMaximize?: () => void;
@@ -22,9 +27,15 @@ export interface BasePaneProps {
   onRestore?: () => void;
 }
 
-export interface ContentPaneProps extends BasePaneProps {
-  kind: TerminalKind;
+/** @deprecated Use BasePanelProps instead */
+export type BasePaneProps = BasePanelProps;
+
+export interface ContentPanelProps extends BasePanelProps {
+  kind: PanelKind;
   children: ReactNode;
+
+  // Slots
+  headerContent?: ReactNode;
   toolbar?: ReactNode;
 
   // Container customization
@@ -35,7 +46,7 @@ export interface ContentPaneProps extends BasePaneProps {
   role?: string;
   "aria-label"?: string;
 
-  // Terminal-specific header props (optional, only used for terminal/agent panes)
+  // Terminal-specific header props (optional, only used for terminal/agent panels)
   type?: TerminalType;
   agentId?: string;
   isExited?: boolean;
@@ -51,7 +62,7 @@ export interface ContentPaneProps extends BasePaneProps {
   wasJustSelected?: boolean;
 }
 
-export const ContentPane = forwardRef<HTMLDivElement, ContentPaneProps>(function ContentPane(
+const ContentPanelInner = forwardRef<HTMLDivElement, ContentPanelProps>(function ContentPanelInner(
   {
     id,
     title,
@@ -60,7 +71,7 @@ export const ContentPane = forwardRef<HTMLDivElement, ContentPaneProps>(function
     isMaximized = false,
     location = "grid",
     isTrashing = false,
-    gridTerminalCount,
+    gridPanelCount,
     onFocus,
     onClose,
     onToggleMaximize,
@@ -68,15 +79,14 @@ export const ContentPane = forwardRef<HTMLDivElement, ContentPaneProps>(function
     onMinimize,
     onRestore,
     children,
+    headerContent,
     toolbar,
-    // Container customization
     className,
     onClick,
     onKeyDown,
     tabIndex,
     role,
     "aria-label": ariaLabel,
-    // Terminal-specific props
     type,
     agentId,
     isExited = false,
@@ -95,48 +105,37 @@ export const ContentPane = forwardRef<HTMLDivElement, ContentPaneProps>(function
 ) {
   const isDragging = useIsDragging();
   const titleInputRef = useRef<HTMLInputElement>(null);
+  const titleEditing = useTitleEditing();
 
-  const [isEditingTitle, setIsEditingTitle] = useState(false);
-  const [editingValue, setEditingValue] = useState(title);
-
-  // Sync editing value when title changes externally (only when not currently editing)
-  useEffect(() => {
-    if (!isEditingTitle) {
-      setEditingValue(title);
-    }
-  }, [title, isEditingTitle]);
-
-  const showGridAttention = location === "grid" && !isMaximized && (gridTerminalCount ?? 2) > 1;
+  const showGridAttention = location === "grid" && !isMaximized && (gridPanelCount ?? 2) > 1;
 
   const handleTitleDoubleClick = useCallback(
     (e: React.MouseEvent) => {
       e.stopPropagation();
       if (!onTitleChange) return;
-      setEditingValue(title);
-      setIsEditingTitle(true);
+      titleEditing.startEditing();
       requestAnimationFrame(() => titleInputRef.current?.select());
     },
-    [title, onTitleChange]
+    [onTitleChange, titleEditing]
   );
 
   const handleTitleSave = useCallback(() => {
-    setIsEditingTitle(false);
-    if (editingValue.trim() && editingValue !== title) {
-      onTitleChange?.(editingValue.trim());
+    titleEditing.stopEditing();
+    if (titleEditing.editingValue.trim() && titleEditing.editingValue !== title) {
+      onTitleChange?.(titleEditing.editingValue.trim());
     }
-  }, [editingValue, title, onTitleChange]);
+  }, [titleEditing, title, onTitleChange]);
 
   const handleTitleKeyDown = useCallback(
     (e: React.KeyboardEvent) => {
       if (!onTitleChange) return;
       if (e.key === "Enter" || e.key === "F2") {
         e.preventDefault();
-        setEditingValue(title);
-        setIsEditingTitle(true);
+        titleEditing.startEditing();
         requestAnimationFrame(() => titleInputRef.current?.select());
       }
     },
-    [title, onTitleChange]
+    [onTitleChange, titleEditing]
   );
 
   const handleTitleInputKeyDown = useCallback(
@@ -144,11 +143,11 @@ export const ContentPane = forwardRef<HTMLDivElement, ContentPaneProps>(function
       if (e.key === "Enter") {
         handleTitleSave();
       } else if (e.key === "Escape") {
-        setIsEditingTitle(false);
-        setEditingValue(title);
+        titleEditing.stopEditing();
+        titleEditing.setEditingValue(title);
       }
     },
-    [handleTitleSave, title]
+    [handleTitleSave, title, titleEditing]
   );
 
   const handleClick = useCallback(
@@ -200,10 +199,10 @@ export const ContentPane = forwardRef<HTMLDivElement, ContentPaneProps>(function
         lastCommand={lastCommand}
         queueCount={queueCount}
         flowStatus={flowStatus}
-        isEditingTitle={isEditingTitle}
-        editingValue={editingValue}
+        isEditingTitle={titleEditing.isEditingTitle}
+        editingValue={titleEditing.editingValue}
         titleInputRef={titleInputRef}
-        onEditingValueChange={setEditingValue}
+        onEditingValueChange={titleEditing.setEditingValue}
         onTitleDoubleClick={handleTitleDoubleClick}
         onTitleKeyDown={handleTitleKeyDown}
         onTitleInputKeyDown={handleTitleInputKeyDown}
@@ -219,6 +218,7 @@ export const ContentPane = forwardRef<HTMLDivElement, ContentPaneProps>(function
         location={location}
         isPinged={isPinged}
         wasJustSelected={wasJustSelected}
+        headerContent={headerContent}
       />
 
       {toolbar}
@@ -227,3 +227,20 @@ export const ContentPane = forwardRef<HTMLDivElement, ContentPaneProps>(function
     </div>
   );
 });
+
+/**
+ * Universal content panel component.
+ * Base container for all panel types: terminals, agents, browsers, and extensions.
+ */
+export const ContentPanel = forwardRef<HTMLDivElement, ContentPanelProps>(
+  function ContentPanel(props, ref) {
+    return (
+      <TitleEditingProvider title={props.title} onTitleChange={props.onTitleChange}>
+        <ContentPanelInner {...props} ref={ref} />
+      </TitleEditingProvider>
+    );
+  }
+);
+
+/** @deprecated Use ContentPanel instead */
+export const ContentPane = ContentPanel;

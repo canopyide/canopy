@@ -1,7 +1,7 @@
 import { useState, useCallback, useRef, useEffect, useMemo } from "react";
 import { AlertTriangle, ExternalLink, Home } from "lucide-react";
 import { useTerminalStore } from "@/store";
-import { ContentPane, type BasePaneProps } from "@/components/Pane";
+import { ContentPanel, type BasePanelProps } from "@/components/Panel";
 import { BrowserToolbar } from "./BrowserToolbar";
 import { normalizeBrowserUrl, extractHostPort, isValidBrowserUrl } from "./browserUtils";
 
@@ -11,7 +11,7 @@ interface BrowserHistory {
   future: string[];
 }
 
-export interface BrowserPaneProps extends BasePaneProps {
+export interface BrowserPaneProps extends BasePanelProps {
   initialUrl: string;
 }
 
@@ -29,7 +29,7 @@ export function BrowserPane({
   onMinimize,
   onRestore,
   isTrashing = false,
-  gridTerminalCount,
+  gridPanelCount,
 }: BrowserPaneProps) {
   const iframeRef = useRef<HTMLIFrameElement>(null);
   const setBrowserUrl = useTerminalStore((state) => state.setBrowserUrl);
@@ -166,7 +166,7 @@ export function BrowserPane({
   );
 
   return (
-    <ContentPane
+    <ContentPanel
       id={id}
       title={displayTitle}
       kind="browser"
@@ -174,7 +174,7 @@ export function BrowserPane({
       isMaximized={isMaximized}
       location={location}
       isTrashing={isTrashing}
-      gridTerminalCount={gridTerminalCount}
+      gridPanelCount={gridPanelCount}
       onFocus={onFocus}
       onClose={onClose}
       onToggleMaximize={onToggleMaximize}
@@ -243,6 +243,6 @@ export function BrowserPane({
           </>
         )}
       </div>
-    </ContentPane>
+    </ContentPanel>
   );
 }
