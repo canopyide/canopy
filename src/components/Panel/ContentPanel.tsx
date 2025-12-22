@@ -1,8 +1,9 @@
-import React, { useCallback, useRef, forwardRef, type ReactNode } from "react";
+import React, { useCallback, useRef, forwardRef, useMemo, type ReactNode } from "react";
 import { cn } from "@/lib/utils";
-import { TerminalHeader } from "@/components/Terminal/TerminalHeader";
+import { PanelHeader } from "./PanelHeader";
 import { useIsDragging } from "@/components/DragDrop";
 import { TitleEditingProvider, useTitleEditing } from "./TitleEditingContext";
+import { TerminalHeaderContent } from "@/components/Terminal/TerminalHeaderContent";
 import type { PanelKind, TerminalType, AgentState } from "@/types";
 import type { ActivityState } from "@/components/Terminal/TerminalPane";
 
@@ -91,7 +92,7 @@ const ContentPanelInner = forwardRef<HTMLDivElement, ContentPanelProps>(function
     agentId,
     isExited = false,
     exitCode = null,
-    isWorking = false,
+    isWorking: _isWorking = false,
     agentState,
     activity,
     lastCommand,
@@ -108,6 +109,39 @@ const ContentPanelInner = forwardRef<HTMLDivElement, ContentPanelProps>(function
   const titleEditing = useTitleEditing();
 
   const showGridAttention = location === "grid" && !isMaximized && (gridPanelCount ?? 2) > 1;
+
+  // Auto-construct TerminalHeaderContent for terminal/agent kinds if headerContent not provided
+  const resolvedHeaderContent = useMemo(() => {
+    if (headerContent !== undefined) return headerContent;
+    if (kind === "terminal" || kind === "agent") {
+      return (
+        <TerminalHeaderContent
+          id={id}
+          type={type}
+          agentState={agentState}
+          activity={activity}
+          lastCommand={lastCommand}
+          isExited={isExited}
+          exitCode={exitCode}
+          queueCount={queueCount}
+          flowStatus={flowStatus}
+        />
+      );
+    }
+    return null;
+  }, [
+    headerContent,
+    kind,
+    id,
+    type,
+    agentState,
+    activity,
+    lastCommand,
+    isExited,
+    exitCode,
+    queueCount,
+    flowStatus,
+  ]);
 
   const handleTitleDoubleClick = useCallback(
     (e: React.MouseEvent) => {
@@ -184,21 +218,15 @@ const ContentPanelInner = forwardRef<HTMLDivElement, ContentPanelProps>(function
       role={role}
       aria-label={ariaLabel}
     >
-      <TerminalHeader
+      <PanelHeader
         id={id}
         title={title}
         kind={kind}
         type={type}
         agentId={agentId}
         isFocused={isFocused}
-        isExited={isExited}
-        exitCode={exitCode}
-        isWorking={isWorking}
-        agentState={agentState}
-        activity={activity}
-        lastCommand={lastCommand}
-        queueCount={queueCount}
-        flowStatus={flowStatus}
+        isMaximized={isMaximized}
+        location={location}
         isEditingTitle={titleEditing.isEditingTitle}
         editingValue={titleEditing.editingValue}
         titleInputRef={titleInputRef}
@@ -214,11 +242,9 @@ const ContentPanelInner = forwardRef<HTMLDivElement, ContentPanelProps>(function
         onMinimize={onMinimize}
         onRestore={onRestore}
         onRestart={onRestart}
-        isMaximized={isMaximized}
-        location={location}
         isPinged={isPinged}
         wasJustSelected={wasJustSelected}
-        headerContent={headerContent}
+        headerContent={resolvedHeaderContent}
       />
 
       {toolbar}
@@ -235,7 +261,7 @@ const ContentPanelInner = forwardRef<HTMLDivElement, ContentPanelProps>(function
 export const ContentPanel = forwardRef<HTMLDivElement, ContentPanelProps>(
   function ContentPanel(props, ref) {
     return (
-      <TitleEditingProvider title={props.title} onTitleChange={props.onTitleChange}>
+      <TitleEditingProvider id={props.id} title={props.title} onTitleChange={props.onTitleChange}>
         <ContentPanelInner {...props} ref={ref} />
       </TitleEditingProvider>
     );

@@ -16,12 +16,14 @@ const TitleEditingContext = createContext<TitleEditingContextValue | null>(null)
 
 export interface TitleEditingProviderProps {
   children: ReactNode;
+  id?: string;
   title: string;
   onTitleChange?: (newTitle: string) => void;
 }
 
 export function TitleEditingProvider({
   children,
+  id,
   title,
   onTitleChange,
 }: TitleEditingProviderProps): ReactElement {
@@ -41,6 +43,27 @@ export function TitleEditingProvider({
       setIsEditingTitle(true);
     }
   }, [title, onTitleChange]);
+
+  // Listen for rename events from context menu
+  useEffect(() => {
+    if (!id || !onTitleChange) return;
+
+    const handleRenameEvent = (e: Event) => {
+      if (!(e instanceof CustomEvent)) return;
+      const detail = e.detail as unknown;
+      if (!detail || typeof (detail as { id?: unknown }).id !== "string") return;
+      if ((detail as { id: string }).id === id) {
+        setEditingValue(title);
+        setIsEditingTitle(true);
+      }
+    };
+
+    const controller = new AbortController();
+    window.addEventListener("canopy:rename-terminal", handleRenameEvent, {
+      signal: controller.signal,
+    });
+    return () => controller.abort();
+  }, [id, title, onTitleChange]);
 
   const stopEditing = useCallback(() => {
     setIsEditingTitle(false);

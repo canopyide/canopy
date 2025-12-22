@@ -568,6 +568,8 @@ export const createTerminalRegistrySlice =
       const terminal = get().terminals.find((t) => t.id === id);
       if (!terminal) return;
 
+      const expiresAt = Date.now() + 120000;
+
       // Only 'dock' or 'grid' are valid original locations - treat undefined as 'grid'
       const originalLocation: "dock" | "grid" = terminal.location === "dock" ? "dock" : "grid";
 
@@ -584,14 +586,32 @@ export const createTerminalRegistrySlice =
         );
         const newTrashed = new Map(state.trashedTerminals);
         // Use placeholder expiresAt - will be updated when IPC event arrives
-        newTrashed.set(id, { id, expiresAt: Date.now() + 120000, originalLocation });
+        newTrashed.set(id, { id, expiresAt, originalLocation });
         terminalPersistence.save(newTerminals);
         return { terminals: newTerminals, trashedTerminals: newTrashed };
       });
 
       if (terminal.kind !== "browser") {
         terminalInstanceService.applyRendererPolicy(id, TerminalRefreshTier.VISIBLE);
+        return;
       }
+
+      // Browser panes never receive backend exit/TTL events, so enforce TTL locally.
+      window.setTimeout(
+        () => {
+          const state = get();
+          const currentTerminal = state.terminals.find((t) => t.id === id);
+          const currentTrashedInfo = state.trashedTerminals.get(id);
+          if (
+            currentTerminal?.kind === "browser" &&
+            currentTerminal.location === "trash" &&
+            currentTrashedInfo?.expiresAt === expiresAt
+          ) {
+            state.removeTerminal(id);
+          }
+        },
+        Math.max(0, expiresAt - Date.now())
+      );
     },
 
     restoreTerminal: (id, targetWorktreeId) => {
