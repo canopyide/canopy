@@ -68,6 +68,7 @@ export const CHANNELS = {
   SYSTEM_GET_HOME_DIR: "system:get-home-dir",
   SYSTEM_GET_CLI_AVAILABILITY: "system:get-cli-availability",
   SYSTEM_REFRESH_CLI_AVAILABILITY: "system:refresh-cli-availability",
+  SYSTEM_GET_AGENT_HELP: "system:get-agent-help",
   SYSTEM_WAKE: "system:wake",
   SYSTEM_BACKEND_READY: "system:backend-ready",
 

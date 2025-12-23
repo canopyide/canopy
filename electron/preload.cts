@@ -28,6 +28,7 @@ import type {
   PRClearedPayload,
   GitStatus,
   KeyAction,
+  GetAgentHelpPayload,
 } from "../shared/types/index.js";
 import type {
   AgentStateChangePayload,
@@ -191,6 +192,7 @@ const CHANNELS = {
   SYSTEM_GET_HOME_DIR: "system:get-home-dir",
   SYSTEM_GET_CLI_AVAILABILITY: "system:get-cli-availability",
   SYSTEM_REFRESH_CLI_AVAILABILITY: "system:refresh-cli-availability",
+  SYSTEM_GET_AGENT_HELP: "system:get-agent-help",
   SYSTEM_WAKE: "system:wake",
 
   // PR detection channels
@@ -538,6 +540,9 @@ const api: ElectronAPI = {
     getCliAvailability: () => _typedInvoke(CHANNELS.SYSTEM_GET_CLI_AVAILABILITY),
 
     refreshCliAvailability: () => _typedInvoke(CHANNELS.SYSTEM_REFRESH_CLI_AVAILABILITY),
+
+    getAgentHelp: (payload: GetAgentHelpPayload) =>
+      _typedInvoke(CHANNELS.SYSTEM_GET_AGENT_HELP, payload),
 
     onWake: (callback: (data: { sleepDuration: number; timestamp: number }) => void) => {
       const handler = (

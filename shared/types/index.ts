@@ -98,6 +98,8 @@ export type {
   SystemOpenExternalPayload,
   SystemOpenPathPayload,
   CliAvailability,
+  GetAgentHelpPayload,
+  GetAgentHelpResponse,
   // PR detection IPC types
   PRDetectedPayload,
   PRClearedPayload,

@@ -40,6 +40,8 @@ import type {
   SystemOpenPathPayload,
   SystemWakePayload,
   CliAvailability,
+  GetAgentHelpPayload,
+  GetAgentHelpResponse,
 } from "./system.js";
 import type { AppState, HydrateResult } from "./app.js";
 import type { LogEntry, LogFilterOptions } from "./logs.js";
@@ -240,6 +242,10 @@ export interface IpcInvokeMap {
   "system:refresh-cli-availability": {
     args: [];
     result: CliAvailability;
+  };
+  "system:get-agent-help": {
+    args: [payload: GetAgentHelpPayload];
+    result: GetAgentHelpResponse;
   };
 
   // App state channels

@@ -41,6 +41,7 @@ import {
   WorkspaceClient,
 } from "./services/WorkspaceClient.js";
 import { CliAvailabilityService } from "./services/CliAvailabilityService.js";
+import { AgentHelpService } from "./services/AgentHelpService.js";
 import { SidecarManager } from "./services/SidecarManager.js";
 import { createWindowWithState } from "./windowState.js";
 import { setLoggerWindow, initializeLogger } from "./utils/logger.js";
@@ -79,6 +80,7 @@ let mainWindow: BrowserWindow | null = null;
 let ptyClient: PtyClient | null = null;
 let workspaceClient: WorkspaceClient | null = null;
 let cliAvailabilityService: CliAvailabilityService | null = null;
+let agentHelpService: AgentHelpService | null = null;
 let sidecarManager: SidecarManager | null = null;
 let cleanupIpcHandlers: (() => void) | null = null;
 let cleanupErrorHandlers: (() => void) | null = null;
@@ -367,6 +369,7 @@ async function createWindow(): Promise<void> {
 
   console.log("[MAIN] Creating application menu (initial, no agent availability yet)...");
   cliAvailabilityService = new CliAvailabilityService();
+  agentHelpService = new AgentHelpService();
   createApplicationMenu(mainWindow, cliAvailabilityService);
 
   // Initialize Notification Service
@@ -427,6 +430,7 @@ async function createWindow(): Promise<void> {
     workspaceClient,
     eventBuffer,
     cliAvailabilityService,
+    agentHelpService,
     sidecarManager
   );
   cleanupErrorHandlers = registerErrorHandlers(mainWindow, workspaceClient, ptyClient);

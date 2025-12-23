@@ -20,3 +20,17 @@ export interface SystemWakePayload {
 
 /** CLI availability status for AI agents */
 export type CliAvailability = Record<AgentId, boolean>;
+
+export interface GetAgentHelpPayload {
+  agentId: string;
+  refresh?: boolean;
+}
+
+export interface GetAgentHelpResponse {
+  stdout: string;
+  stderr: string;
+  exitCode: number | null;
+  timedOut: boolean;
+  truncated: boolean;
+  durationMs: number;
+}

@@ -2,13 +2,16 @@ import { useEffect, useMemo, useState } from "react";
 import { cn } from "@/lib/utils";
 import { getAgentIds, getAgentConfig } from "@/config/agents";
 import { useAgentSettingsStore } from "@/store";
+import { cliAvailabilityClient } from "@/clients";
 import { Button } from "@/components/ui/button";
 import {
   DEFAULT_AGENT_SETTINGS,
   getAgentSettingsEntry,
   DEFAULT_DANGEROUS_ARGS,
 } from "@shared/types";
-import { RotateCcw, ExternalLink } from "lucide-react";
+import type { CliAvailability, GetAgentHelpResponse } from "@shared/types";
+import { RotateCcw, ExternalLink, Copy, RefreshCw } from "lucide-react";
+import { stripAnsi } from "@/utils/stripAnsi";
 
 interface AgentSettingsProps {
   onSettingsChange?: () => void;
@@ -24,9 +27,18 @@ export function AgentSettings({ onSettingsChange }: AgentSettingsProps) {
     reset,
   } = useAgentSettingsStore();
   const [activeAgentId, setActiveAgentId] = useState<string | null>(null);
+  const [helpOutput, setHelpOutput] = useState<GetAgentHelpResponse | null>(null);
+  const [helpLoading, setHelpLoading] = useState(false);
+  const [helpError, setHelpError] = useState<string | null>(null);
+  const [cliAvailability, setCliAvailability] = useState<CliAvailability>({
+    claude: false,
+    gemini: false,
+    codex: false,
+  });
 
   useEffect(() => {
     initialize();
+    cliAvailabilityClient.get().then(setCliAvailability);
   }, [initialize]);
 
   const agentIds = getAgentIds();
@@ -68,6 +80,51 @@ export function AgentSettings({ onSettingsChange }: AgentSettingsProps) {
     : { customFlags: "", dangerousArgs: "", dangerousEnabled: false };
 
   const defaultDangerousArg = activeAgent ? (DEFAULT_DANGEROUS_ARGS[activeAgent.id] ?? "") : "";
+
+  const loadHelpOutput = async (refresh = false) => {
+    if (!activeAgent) return;
+
+    const requestAgentId = activeAgent.id;
+    setHelpLoading(true);
+    setHelpError(null);
+
+    try {
+      const response = await window.electron.system.getAgentHelp({
+        agentId: requestAgentId,
+        refresh,
+      });
+
+      if (requestAgentId === activeAgentId) {
+        setHelpOutput(response);
+      }
+    } catch (error) {
+      if (requestAgentId === activeAgentId) {
+        setHelpError(error instanceof Error ? error.message : "Failed to load help output");
+        setHelpOutput(null);
+      }
+    } finally {
+      if (requestAgentId === activeAgentId) {
+        setHelpLoading(false);
+      }
+    }
+  };
+
+  const copyHelpOutput = async () => {
+    if (!helpOutput) return;
+    const combined = helpOutput.stdout + (helpOutput.stderr ? "\n" + helpOutput.stderr : "");
+    const cleaned = stripAnsi(combined);
+    try {
+      await navigator.clipboard.writeText(cleaned);
+    } catch (error) {
+      console.error("Failed to copy help output:", error);
+    }
+  };
+
+  useEffect(() => {
+    setHelpOutput(null);
+    setHelpError(null);
+    setHelpLoading(false);
+  }, [activeAgentId]);
 
   if (agentOptions.length === 0) {
     return (
@@ -265,6 +322,88 @@ export function AgentSettings({ onSettingsChange }: AgentSettingsProps) {
               placeholder="--verbose --max-tokens=4096"
             />
             <p className="text-xs text-canopy-text/40">Extra CLI flags appended when launching</p>
+          </div>
+
+          {/* Help Output */}
+          <div className="space-y-2 pt-2 border-t border-canopy-border">
+            <div className="flex items-center justify-between">
+              <label className="text-sm font-medium text-canopy-text">Help Output</label>
+              <div className="flex items-center gap-2">
+                {helpOutput && (
+                  <Button
+                    size="sm"
+                    variant="ghost"
+                    onClick={copyHelpOutput}
+                    disabled={!cliAvailability[activeAgent.id]}
+                    className="text-canopy-text/50 hover:text-canopy-text h-7 px-2"
+                  >
+                    <Copy size={14} className="mr-1" />
+                    Copy
+                  </Button>
+                )}
+                <Button
+                  size="sm"
+                  variant="ghost"
+                  onClick={() => loadHelpOutput(true)}
+                  disabled={helpLoading || !cliAvailability[activeAgent.id]}
+                  className="text-canopy-text/50 hover:text-canopy-text h-7 px-2"
+                >
+                  <RefreshCw size={14} className={cn("mr-1", helpLoading && "animate-spin")} />
+                  {helpOutput ? "Refresh" : "Load"}
+                </Button>
+              </div>
+            </div>
+
+            {!cliAvailability[activeAgent.id] && (
+              <div className="px-3 py-2 rounded-[var(--radius-md)] bg-canopy-bg border border-canopy-border text-xs text-canopy-text/50">
+                CLI not found. Install {activeAgent.name} to see help output.
+              </div>
+            )}
+
+            {cliAvailability[activeAgent.id] && !helpOutput && !helpLoading && !helpError && (
+              <div className="px-3 py-2 rounded-[var(--radius-md)] bg-canopy-bg border border-canopy-border text-xs text-canopy-text/50">
+                Click "Load" to view available CLI flags
+              </div>
+            )}
+
+            {helpLoading && (
+              <div className="px-3 py-2 rounded-[var(--radius-md)] bg-canopy-bg border border-canopy-border text-xs text-canopy-text/50">
+                Loading help output...
+              </div>
+            )}
+
+            {helpError && (
+              <div className="px-3 py-2 rounded-[var(--radius-md)] bg-[var(--color-status-error)]/10 border border-[var(--color-status-error)]/20 text-xs text-[var(--color-status-error)]">
+                {helpError}
+              </div>
+            )}
+
+            {helpOutput && (
+              <div className="space-y-1.5">
+                {helpOutput.exitCode !== 0 && (
+                  <div className="px-2 py-1 rounded bg-[var(--color-status-warning)]/10 border border-[var(--color-status-warning)]/20 text-xs text-[var(--color-status-warning)]">
+                    Command exited with code {helpOutput.exitCode}
+                  </div>
+                )}
+                {helpOutput.timedOut && (
+                  <div className="px-2 py-1 rounded bg-[var(--color-status-warning)]/10 border border-[var(--color-status-warning)]/20 text-xs text-[var(--color-status-warning)]">
+                    Command timed out (partial output)
+                  </div>
+                )}
+                {helpOutput.truncated && (
+                  <div className="px-2 py-1 rounded bg-[var(--color-status-warning)]/10 border border-[var(--color-status-warning)]/20 text-xs text-[var(--color-status-warning)]">
+                    Output truncated (exceeded size limit)
+                  </div>
+                )}
+                <div className="max-h-96 overflow-auto rounded-[var(--radius-md)] bg-canopy-bg border border-canopy-border">
+                  <pre className="text-xs font-mono text-canopy-text/80 p-3 whitespace-pre-wrap break-words">
+                    {stripAnsi(
+                      helpOutput.stdout + (helpOutput.stderr ? "\n" + helpOutput.stderr : "")
+                    )}
+                  </pre>
+                </div>
+              </div>
+            )}
           </div>
         </div>
       )}

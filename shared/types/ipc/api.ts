@@ -32,7 +32,12 @@ import type {
   FileTreeNode,
   CopyTreeProgress,
 } from "./copyTree.js";
-import type { SystemWakePayload, CliAvailability } from "./system.js";
+import type {
+  SystemWakePayload,
+  CliAvailability,
+  GetAgentHelpPayload,
+  GetAgentHelpResponse,
+} from "./system.js";
 import type { AppState, HydrateResult } from "./app.js";
 import type { LogEntry, LogFilterOptions } from "./logs.js";
 import type { RetryAction, AppError } from "./errors.js";
@@ -145,6 +150,7 @@ export interface ElectronAPI {
     getHomeDir(): Promise<string>;
     getCliAvailability(): Promise<CliAvailability>;
     refreshCliAvailability(): Promise<CliAvailability>;
+    getAgentHelp(payload: GetAgentHelpPayload): Promise<GetAgentHelpResponse>;
     onWake(callback: (data: SystemWakePayload) => void): () => void;
   };
   app: {

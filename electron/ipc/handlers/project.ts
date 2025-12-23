@@ -10,12 +10,13 @@ import type { HandlerDependencies } from "../types.js";
 import type {
   SystemOpenExternalPayload,
   SystemOpenPathPayload,
+  GetAgentHelpPayload,
   Project,
   ProjectSettings,
 } from "../../types/index.js";
 
 export function registerProjectHandlers(deps: HandlerDependencies): () => void {
-  const { mainWindow, worktreeService, cliAvailabilityService } = deps;
+  const { mainWindow, worktreeService, cliAvailabilityService, agentHelpService } = deps;
   const handlers: Array<() => void> = [];
 
   const projectSwitchService = new ProjectSwitchService({
@@ -144,6 +145,25 @@ export function registerProjectHandlers(deps: HandlerDependencies): () => void {
   };
   ipcMain.handle(CHANNELS.SYSTEM_REFRESH_CLI_AVAILABILITY, handleSystemRefreshCliAvailability);
   handlers.push(() => ipcMain.removeHandler(CHANNELS.SYSTEM_REFRESH_CLI_AVAILABILITY));
+
+  const handleSystemGetAgentHelp = async (
+    _event: Electron.IpcMainInvokeEvent,
+    payload: GetAgentHelpPayload
+  ) => {
+    if (!agentHelpService) {
+      throw new Error("AgentHelpService not available");
+    }
+
+    if (!payload || typeof payload.agentId !== "string") {
+      throw new Error("Invalid payload: agentId must be a string");
+    }
+
+    const refresh = typeof payload.refresh === "boolean" ? payload.refresh : false;
+
+    return await agentHelpService.getAgentHelp(payload.agentId, refresh);
+  };
+  ipcMain.handle(CHANNELS.SYSTEM_GET_AGENT_HELP, handleSystemGetAgentHelp);
+  handlers.push(() => ipcMain.removeHandler(CHANNELS.SYSTEM_GET_AGENT_HELP));
 
   const handleProjectGetAll = async () => {
     return projectStore.getAllProjects();
