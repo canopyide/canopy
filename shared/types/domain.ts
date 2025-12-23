@@ -195,13 +195,13 @@ export type AgentId = string;
 export type LegacyAgentType = "claude" | "gemini" | "codex";
 
 /** Built-in panel kinds */
-export type BuiltInPanelKind = "terminal" | "agent" | "browser";
+export type BuiltInPanelKind = "terminal" | "agent" | "browser" | "notes" | "git-activity";
 
 /**
  * Panel kind: distinguishes between default terminals, agent-driven terminals, browser panels,
- * and extension-provided panel types.
+ * custom panels (notes, git-activity), and extension-provided panel types.
  *
- * Built-in kinds: "terminal" | "agent" | "browser"
+ * Built-in kinds: "terminal" | "agent" | "browser" | "notes" | "git-activity"
  * Extensions can register additional kinds as strings.
  */
 export type PanelKind = BuiltInPanelKind | (string & {});
@@ -226,7 +226,7 @@ export type TerminalLocation = PanelLocation;
 
 /** Type guard to check if a panel kind is a built-in kind */
 export function isBuiltInPanelKind(kind: PanelKind): kind is BuiltInPanelKind {
-  return kind === "terminal" || kind === "agent" || kind === "browser";
+  return kind === "terminal" || kind === "agent" || kind === "browser" || kind === "notes" || kind === "git-activity";
 }
 
 /**

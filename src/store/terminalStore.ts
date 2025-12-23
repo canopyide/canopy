@@ -99,6 +99,17 @@ export const useTerminalStore = create<TerminalGridState>()((set, get, api) => {
           }
         });
       }
+
+      // Clean up per-panel state stores for non-PTY panels
+      void import("@/store/browserStateStore").then(({ useBrowserStateStore }) => {
+        useBrowserStateStore.getState().clearState(id);
+      });
+      void import("@/store/notesStateStore").then(({ useNotesStateStore }) => {
+        useNotesStateStore.getState().clearState(id);
+      });
+      void import("@/store/gitActivityStateStore").then(({ useGitActivityStateStore }) => {
+        useGitActivityStateStore.getState().clearState(id);
+      });
     },
   })(set, get, api);
 

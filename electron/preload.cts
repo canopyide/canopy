@@ -325,6 +325,9 @@ const CHANNELS = {
   // Gemini channels
   GEMINI_GET_STATUS: "gemini:get-status",
   GEMINI_ENABLE_ALTERNATE_BUFFER: "gemini:enable-alternate-buffer",
+
+  NOTES_READ: "notes:read",
+  NOTES_WRITE: "notes:write",
 } as const;
 
 const api: ElectronAPI = {
@@ -863,6 +866,13 @@ const api: ElectronAPI = {
     getStatus: () => _typedInvoke(CHANNELS.GEMINI_GET_STATUS),
 
     enableAlternateBuffer: () => _typedInvoke(CHANNELS.GEMINI_ENABLE_ALTERNATE_BUFFER),
+  },
+
+  // Notes API
+  notes: {
+    read: (payload) => _typedInvoke(CHANNELS.NOTES_READ, payload),
+
+    write: (payload) => _typedInvoke(CHANNELS.NOTES_WRITE, payload),
   },
 };
 

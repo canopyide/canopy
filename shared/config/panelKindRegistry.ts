@@ -59,6 +59,24 @@ const PANEL_KIND_REGISTRY: Record<string, PanelKindConfig> = {
     canRestart: false,
     canConvert: false,
   },
+  notes: {
+    id: "notes",
+    name: "Notes",
+    iconId: "note",
+    color: "#f59e0b", // amber-500
+    hasPty: false,
+    canRestart: false,
+    canConvert: false,
+  },
+  "git-activity": {
+    id: "git-activity",
+    name: "Git Activity",
+    iconId: "git-branch",
+    color: "#10b981", // green-500
+    hasPty: false,
+    canRestart: false,
+    canConvert: false,
+  },
 };
 
 /**
@@ -162,5 +180,5 @@ export function panelKindHasPty(kind: PanelKind): boolean {
  * Get all built-in panel kinds.
  */
 export function getBuiltInPanelKinds(): BuiltInPanelKind[] {
-  return ["terminal", "agent", "browser"];
+  return ["terminal", "agent", "browser", "notes", "git-activity"];
 }

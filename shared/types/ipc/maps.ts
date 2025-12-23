@@ -61,6 +61,7 @@ import type { TerminalFlowStatus } from "../pty-host.js";
 import type { ShowContextMenuPayload } from "../menu.js";
 import type { FileSearchPayload, FileSearchResult } from "./files.js";
 import type { SlashCommand, SlashCommandListRequest } from "../slashCommands.js";
+import type { NotesReadPayload, NotesWritePayload } from "./notes.js";
 
 // IPC Contract Maps
 
@@ -565,6 +566,16 @@ export interface IpcInvokeMap {
   "gemini:enable-alternate-buffer": {
     args: [];
     result: { success: boolean };
+  };
+
+  // Notes channels
+  "notes:read": {
+    args: [payload: NotesReadPayload];
+    result: string;
+  };
+  "notes:write": {
+    args: [payload: NotesWritePayload];
+    result: void;
   };
 }
 

@@ -22,6 +22,7 @@ import { registerMenuHandlers } from "./handlers/menu.js";
 import { registerFilesHandlers } from "./handlers/files.js";
 import { registerSlashCommandHandlers } from "./handlers/slashCommands.js";
 import { registerGeminiHandlers } from "./handlers/gemini.js";
+import { registerNotesHandlers } from "./handlers/notes.js";
 import { typedHandle, typedSend, sendToRenderer } from "./utils.js";
 
 export { typedHandle, typedSend, sendToRenderer };
@@ -61,6 +62,7 @@ export function registerIpcHandlers(
     registerWorktreeConfigHandlers(deps),
     registerNotificationHandlers(deps),
     registerGeminiHandlers(),
+    registerNotesHandlers(deps),
   ];
 
   return () => {

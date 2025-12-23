@@ -54,6 +54,7 @@ import type { TerminalStatusPayload, PtyHostActivityTier } from "../pty-host.js"
 import type { ShowContextMenuPayload } from "../menu.js";
 import type { FileSearchPayload, FileSearchResult } from "./files.js";
 import type { SlashCommand, SlashCommandListRequest } from "../slashCommands.js";
+import type { NotesReadPayload, NotesWritePayload } from "./notes.js";
 
 // ElectronAPI Type (exposed via preload)
 
@@ -315,5 +316,9 @@ export interface ElectronAPI {
     getStatus(): Promise<{ exists: boolean; alternateBufferEnabled: boolean; error?: string }>;
     /** Enable alternate buffer in Gemini settings */
     enableAlternateBuffer(): Promise<{ success: boolean }>;
+  };
+  notes: {
+    read(payload: NotesReadPayload): Promise<string>;
+    write(payload: NotesWritePayload): Promise<void>;
   };
 }

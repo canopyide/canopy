@@ -5,6 +5,8 @@
 import { registerPanelComponent } from "./panelComponentRegistry";
 import { TerminalPane } from "@/components/Terminal/TerminalPane";
 import { BrowserPane } from "@/components/Browser/BrowserPane";
+import { NotesPanel } from "@/components/Notes/NotesPanel";
+import { GitActivityPanel } from "@/components/Git/GitActivityPanel";
 
 // Registration flag to prevent double registration
 let registered = false;
@@ -31,5 +33,15 @@ export function registerBuiltInPanelComponents(): void {
   // Browser panel - localhost iframe browser
   registerPanelComponent("browser", {
     component: BrowserPane,
+  });
+
+  // Notes panel - markdown scratchpad
+  registerPanelComponent("notes", {
+    component: NotesPanel,
+  });
+
+  // Git Activity panel - commit timeline and activity feed
+  registerPanelComponent("git-activity", {
+    component: GitActivityPanel,
   });
 }

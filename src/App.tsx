@@ -7,6 +7,7 @@ import {
   useWorktrees,
   useTerminalPalette,
   useNewTerminalPalette,
+  usePanelPalette,
   useTerminalConfig,
   useKeybinding,
   useContextInjection,
@@ -31,6 +32,7 @@ import { ContentGrid } from "./components/Terminal";
 import { WorktreeCard, WorktreePalette, WorktreeFilterPopover } from "./components/Worktree";
 import { NewWorktreeDialog } from "./components/Worktree/NewWorktreeDialog";
 import { TerminalPalette, NewTerminalPalette } from "./components/TerminalPalette";
+import { PanelPalette } from "./components/PanelPalette/PanelPalette";
 import { RecipeEditor } from "./components/TerminalRecipe/RecipeEditor";
 import { SettingsDialog, type SettingsTab } from "./components/Settings";
 import { ShortcutReferenceDialog } from "./components/KeyboardShortcuts";
@@ -471,6 +473,7 @@ function App() {
   const terminalPalette = useTerminalPalette();
   const { worktrees, worktreeMap } = useWorktrees();
   const newTerminalPalette = useNewTerminalPalette({ launchAgent, worktreeMap });
+  const panelPalette = usePanelPalette();
   const currentProject = useProjectStore((state) => state.currentProject);
   const { setActiveWorktree, selectWorktree, activeWorktreeId } = useWorktreeSelectionStore(
     useShallow((state) => ({
@@ -663,6 +666,7 @@ function App() {
     onOpenSettingsTab: handleOpenSettingsTab,
     onToggleSidebar: handleToggleSidebar,
     onOpenAgentPalette: terminalPalette.open,
+    onOpenPanelPalette: panelPalette.open,
     onLaunchAgent: handleLaunchAgent,
     defaultCwd: defaultTerminalCwd,
     activeWorktreeId: activeWorktree?.id,
@@ -670,6 +674,7 @@ function App() {
 
   useKeybinding("terminal.palette", () => terminalPalette.open(), { enabled: electronAvailable });
   useKeybinding("agent.palette", () => terminalPalette.open(), { enabled: electronAvailable });
+  useKeybinding("panel.palette", () => panelPalette.open(), { enabled: electronAvailable });
   useKeybinding(
     "terminal.new",
     () => {
@@ -1047,6 +1052,17 @@ function App() {
         onSelect={newTerminalPalette.handleSelect}
         onConfirm={newTerminalPalette.confirmSelection}
         onClose={newTerminalPalette.close}
+      />
+      <PanelPalette
+        isOpen={panelPalette.isOpen}
+        query={panelPalette.query}
+        results={panelPalette.results}
+        selectedIndex={panelPalette.selectedIndex}
+        onQueryChange={panelPalette.setQuery}
+        onSelectPrevious={panelPalette.selectPrevious}
+        onSelectNext={panelPalette.selectNext}
+        onSelect={panelPalette.launchPanel}
+        onClose={panelPalette.close}
       />
       <WorktreePalette
         isOpen={isWorktreePaletteOpen}

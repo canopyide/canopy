@@ -8,6 +8,7 @@ export interface UseMenuActionsOptions {
   onOpenSettingsTab?: (tab: string) => void;
   onToggleSidebar: () => void;
   onOpenAgentPalette: () => void;
+  onOpenPanelPalette: () => void;
   onLaunchAgent: (agentId: "claude" | "gemini" | "codex" | "terminal" | "browser") => void;
   defaultCwd: string;
   activeWorktreeId?: string;
@@ -18,6 +19,7 @@ export function useMenuActions({
   onOpenSettingsTab,
   onToggleSidebar,
   onOpenAgentPalette,
+  onOpenPanelPalette,
   onLaunchAgent,
   defaultCwd,
   activeWorktreeId,
@@ -82,6 +84,10 @@ export function useMenuActions({
           onOpenAgentPalette();
           break;
 
+        case "open-panel-palette":
+          onOpenPanelPalette();
+          break;
+
         default:
           console.warn("[Menu] Unhandled action:", action);
       }
@@ -95,6 +101,7 @@ export function useMenuActions({
     onOpenSettingsTab,
     onToggleSidebar,
     onOpenAgentPalette,
+    onOpenPanelPalette,
     onLaunchAgent,
     defaultCwd,
     activeWorktreeId,
