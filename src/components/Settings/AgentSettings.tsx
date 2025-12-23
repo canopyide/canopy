@@ -8,7 +8,10 @@ import {
   getAgentSettingsEntry,
   DEFAULT_DANGEROUS_ARGS,
 } from "@shared/types";
-import { RotateCcw, ExternalLink } from "lucide-react";
+import { RotateCcw, ExternalLink, Copy, Check, RefreshCw } from "lucide-react";
+import { cliAvailabilityClient } from "@/clients/cliAvailabilityClient";
+import { detectOS, getInstallBlocksForOS } from "@/lib/agentInstall";
+import type { CliAvailability } from "@shared/types";
 
 interface AgentSettingsProps {
   onSettingsChange?: () => void;
@@ -24,10 +27,34 @@ export function AgentSettings({ onSettingsChange }: AgentSettingsProps) {
     reset,
   } = useAgentSettingsStore();
   const [activeAgentId, setActiveAgentId] = useState<string | null>(null);
+  const [availability, setAvailability] = useState<CliAvailability | null>(null);
+  const [availabilityError, setAvailabilityError] = useState<string | null>(null);
+  const [isRefreshing, setIsRefreshing] = useState(false);
+  const [copiedCommand, setCopiedCommand] = useState<string | null>(null);
 
   useEffect(() => {
     initialize();
   }, [initialize]);
+
+  useEffect(() => {
+    cliAvailabilityClient
+      .get()
+      .then((result) => {
+        setAvailability(result);
+        setAvailabilityError(null);
+      })
+      .catch((error) => {
+        console.error("Failed to fetch CLI availability:", error);
+        setAvailabilityError("Failed to check CLI availability");
+      });
+  }, []);
+
+  useEffect(() => {
+    const timers: NodeJS.Timeout[] = [];
+    return () => {
+      timers.forEach(clearTimeout);
+    };
+  }, []);
 
   const agentIds = getAgentIds();
   const effectiveSettings = settings ?? DEFAULT_AGENT_SETTINGS;
@@ -68,6 +95,33 @@ export function AgentSettings({ onSettingsChange }: AgentSettingsProps) {
     : { customFlags: "", dangerousArgs: "", dangerousEnabled: false };
 
   const defaultDangerousArg = activeAgent ? (DEFAULT_DANGEROUS_ARGS[activeAgent.id] ?? "") : "";
+
+  const handleRefreshAvailability = async () => {
+    setIsRefreshing(true);
+    setAvailabilityError(null);
+    try {
+      const updated = await cliAvailabilityClient.refresh();
+      setAvailability(updated);
+    } catch (error) {
+      console.error("Failed to refresh CLI availability:", error);
+      setAvailabilityError("Failed to refresh CLI availability");
+    } finally {
+      setIsRefreshing(false);
+    }
+  };
+
+  const handleCopyCommand = async (command: string, blockIdx: number) => {
+    const key = `${blockIdx}-${command}`;
+    try {
+      await navigator.clipboard.writeText(command);
+      setCopiedCommand(key);
+      const timer = setTimeout(() => setCopiedCommand(null), 2000);
+      return () => clearTimeout(timer);
+    } catch (error) {
+      console.error("Failed to copy command:", error);
+      setAvailabilityError("Failed to copy command to clipboard");
+    }
+  };
 
   if (agentOptions.length === 0) {
     return (
@@ -113,6 +167,7 @@ export function AgentSettings({ onSettingsChange }: AgentSettingsProps) {
             <button
               key={agent.id}
               onClick={() => setActiveAgentId(agent.id)}
+              aria-pressed={isActive}
               className={cn(
                 "flex items-center justify-center gap-2 px-3 py-2 rounded-[var(--radius-md)] text-sm font-medium transition-all",
                 isActive
@@ -163,7 +218,10 @@ export function AgentSettings({ onSettingsChange }: AgentSettingsProps) {
                   className="text-canopy-text/50 hover:text-canopy-text"
                   onClick={async () => {
                     const url = activeAgent.usageUrl?.trim();
-                    if (!url) return;
+                    if (!url || !url.startsWith("https://")) {
+                      console.error("Invalid usage URL:", url);
+                      return;
+                    }
                     try {
                       await window.electron.system.openExternal(url);
                     } catch (error) {
@@ -190,6 +248,173 @@ export function AgentSettings({ onSettingsChange }: AgentSettingsProps) {
             </div>
           </div>
 
+          {/* CLI Availability Status */}
+          {availabilityError && (
+            <div className="flex items-center justify-between py-2 px-3 rounded-[var(--radius-md)] bg-[var(--color-status-error)]/10 border border-[var(--color-status-error)]/20">
+              <span className="text-sm text-[var(--color-status-error)]">{availabilityError}</span>
+              <Button
+                size="sm"
+                variant="ghost"
+                className="text-canopy-text/50 hover:text-canopy-text"
+                onClick={handleRefreshAvailability}
+                disabled={isRefreshing}
+              >
+                <RefreshCw size={14} className={cn("mr-1.5", isRefreshing && "animate-spin")} />
+                Retry
+              </Button>
+            </div>
+          )}
+          {!availabilityError && availability && (
+            <div className="flex items-center justify-between py-2 px-3 rounded-[var(--radius-md)] bg-canopy-bg border border-canopy-border">
+              <div className="flex items-center gap-2">
+                <div
+                  className={cn(
+                    "w-2 h-2 rounded-full",
+                    availability[activeAgent.id]
+                      ? "bg-[var(--color-status-success)]"
+                      : "bg-[var(--color-status-error)]"
+                  )}
+                />
+                <span className="text-sm text-canopy-text">
+                  {availability[activeAgent.id] ? "Ready" : "Not installed"}
+                </span>
+              </div>
+              <Button
+                size="sm"
+                variant="ghost"
+                className="text-canopy-text/50 hover:text-canopy-text"
+                onClick={handleRefreshAvailability}
+                disabled={isRefreshing}
+              >
+                <RefreshCw size={14} className={cn("mr-1.5", isRefreshing && "animate-spin")} />
+                Re-check
+              </Button>
+            </div>
+          )}
+
+          {/* Installation Section */}
+          {availability &&
+            !availability[activeAgent.id] &&
+            (() => {
+              const config = getAgentConfig(activeAgent.id);
+              const os = detectOS();
+              const installBlocks = config?.install
+                ? getInstallBlocksForOS(config.install, os)
+                : [];
+              const docsUrl = config?.install?.docsUrl;
+              const troubleshooting = config?.install?.troubleshooting;
+
+              if (!config?.install) return null;
+
+              return (
+                <div className="space-y-3 p-3 rounded-[var(--radius-md)] bg-canopy-bg border border-canopy-border">
+                  <div className="flex items-center justify-between">
+                    <h5 className="text-sm font-medium text-canopy-text">Installation</h5>
+                    {docsUrl && (
+                      <Button
+                        size="sm"
+                        variant="ghost"
+                        className="text-canopy-text/50 hover:text-canopy-text"
+                        onClick={async () => {
+                          try {
+                            if (!docsUrl.startsWith("https://")) {
+                              console.error("Invalid URL scheme:", docsUrl);
+                              return;
+                            }
+                            await window.electron.system.openExternal(docsUrl);
+                          } catch (error) {
+                            console.error("Failed to open docs URL:", error);
+                          }
+                        }}
+                      >
+                        <ExternalLink size={14} className="mr-1.5" />
+                        Open install docs
+                      </Button>
+                    )}
+                  </div>
+
+                  {installBlocks.length > 0 ? (
+                    <div className="space-y-3">
+                      {installBlocks.map((block, idx) => (
+                        <div key={idx} className="space-y-2">
+                          {block.label && (
+                            <div className="text-xs font-medium text-canopy-text/70">
+                              {block.label}
+                            </div>
+                          )}
+                          {block.steps && block.steps.length > 0 && (
+                            <div className="text-xs text-canopy-text/60 space-y-1">
+                              {block.steps.map((step, stepIdx) => (
+                                <p key={stepIdx}>{step}</p>
+                              ))}
+                            </div>
+                          )}
+                          {block.commands && block.commands.length > 0 && (
+                            <div className="space-y-1.5">
+                              {block.commands.map((cmd, cmdIdx) => {
+                                const copyKey = `${idx}-${cmd}`;
+                                return (
+                                  <div
+                                    key={cmdIdx}
+                                    className="flex items-center gap-2 px-3 py-2 rounded-[var(--radius-md)] bg-canopy-sidebar border border-canopy-border font-mono text-xs text-canopy-text"
+                                  >
+                                    <code className="flex-1">{cmd}</code>
+                                    <button
+                                      onClick={() => handleCopyCommand(cmd, idx)}
+                                      className="shrink-0 p-1 hover:bg-canopy-bg rounded transition-colors"
+                                      title="Copy to clipboard"
+                                      aria-label={`Copy command: ${cmd}`}
+                                    >
+                                      {copiedCommand === copyKey ? (
+                                        <Check
+                                          size={14}
+                                          className="text-[var(--color-status-success)]"
+                                        />
+                                      ) : (
+                                        <Copy size={14} className="text-canopy-text/50" />
+                                      )}
+                                    </button>
+                                  </div>
+                                );
+                              })}
+                            </div>
+                          )}
+                          {block.notes && block.notes.length > 0 && (
+                            <div className="text-xs text-canopy-text/50 space-y-1">
+                              {block.notes.map((note, noteIdx) => (
+                                <p key={noteIdx}>{note}</p>
+                              ))}
+                            </div>
+                          )}
+                        </div>
+                      ))}
+                    </div>
+                  ) : docsUrl ? (
+                    <p className="text-xs text-canopy-text/60">
+                      See the installation documentation for your platform.
+                    </p>
+                  ) : null}
+
+                  {troubleshooting && troubleshooting.length > 0 && (
+                    <div className="pt-2 border-t border-canopy-border space-y-1">
+                      <div className="text-xs font-medium text-canopy-text/70">Troubleshooting</div>
+                      {troubleshooting.map((tip, idx) => (
+                        <p key={idx} className="text-xs text-canopy-text/50">
+                          {tip}
+                        </p>
+                      ))}
+                    </div>
+                  )}
+
+                  <div className="pt-2 border-t border-canopy-border">
+                    <p className="text-xs text-canopy-text/40">
+                      ⚠️ Commands run in your system shell; review before running.
+                    </p>
+                  </div>
+                </div>
+              );
+            })()}
+
           {/* Enabled Toggle */}
           <div className="flex items-center justify-between">
             <div>
@@ -197,6 +422,9 @@ export function AgentSettings({ onSettingsChange }: AgentSettingsProps) {
               <div className="text-xs text-canopy-text/50">Show in agent launcher</div>
             </div>
             <button
+              role="switch"
+              aria-checked={activeEntry.enabled ?? true}
+              aria-label="Toggle agent enabled"
               onClick={async () => {
                 const current = activeEntry.enabled ?? true;
                 await updateAgent(activeAgent.id, { enabled: !current });
@@ -224,6 +452,9 @@ export function AgentSettings({ onSettingsChange }: AgentSettingsProps) {
                 <div className="text-xs text-canopy-text/50">Auto-approve all actions</div>
               </div>
               <button
+                role="switch"
+                aria-checked={activeEntry.dangerousEnabled ?? false}
+                aria-label="Toggle skip permissions"
                 onClick={async () => {
                   const current = activeEntry.dangerousEnabled ?? false;
                   await updateAgent(activeAgent.id, { dangerousEnabled: !current });
