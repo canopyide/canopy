@@ -77,6 +77,4 @@ export function registerRecipeActions(actions: ActionRegistry, _callbacks: Actio
       );
     },
   }));
-
-  // ============================================
 }

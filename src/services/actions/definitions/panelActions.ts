@@ -58,8 +58,6 @@ export function registerPanelActions(actions: ActionRegistry, _callbacks: Action
     }
   };
 
-  // ============================================
-
   actions.set("panel.toggleDock", () => ({
     id: "panel.toggleDock",
     title: "Toggle Terminal Dock",
@@ -794,6 +792,4 @@ export function registerPanelActions(actions: ActionRegistry, _callbacks: Action
       useSidecarStore.getState().setDefaultNewTabUrl(url);
     },
   }));
-
-  // ============================================
 }

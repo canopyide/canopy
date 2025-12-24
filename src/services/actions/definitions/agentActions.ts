@@ -111,6 +111,4 @@ export function registerAgentActions(actions: ActionRegistry, callbacks: ActionC
       state.focusNextWaiting(state.isInTrash);
     },
   }));
-
-  // ============================================
 }

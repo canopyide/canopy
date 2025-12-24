@@ -764,6 +764,4 @@ export function registerTerminalActions(actions: ActionRegistry, callbacks: Acti
       }
     },
   }));
-
-  // ============================================
 }

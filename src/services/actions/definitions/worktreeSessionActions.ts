@@ -146,6 +146,4 @@ export function registerWorktreeSessionActions(
       useTerminalStore.getState().bulkCloseByWorktree(targetWorktreeId);
     },
   }));
-
-  // ============================================
 }

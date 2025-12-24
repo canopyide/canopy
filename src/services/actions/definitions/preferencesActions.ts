@@ -563,6 +563,4 @@ export function registerPreferencesActions(
       await appClient.forceQuit();
     },
   }));
-
-  // ============================================
 }

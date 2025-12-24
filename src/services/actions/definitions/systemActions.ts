@@ -268,6 +268,4 @@ export function registerSystemActions(actions: ActionRegistry, _callbacks: Actio
       return await copyTreeClient.getFileTree(worktreeId, dirPath);
     },
   }));
-
-  // ============================================
 }

@@ -209,6 +209,4 @@ export function registerLogActions(actions: ActionRegistry, _callbacks: ActionCa
       window.dispatchEvent(new CustomEvent("canopy:reset-sidebar-width"));
     },
   }));
-
-  // ============================================
 }

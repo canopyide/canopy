@@ -29,6 +29,4 @@ export function registerNavigationActions(
       callbacks.onToggleFocusMode();
     },
   }));
-
-  // ============================================
 }

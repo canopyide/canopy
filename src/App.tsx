@@ -684,9 +684,15 @@ function App() {
 
   // All keybindings dispatch through ActionService
   const dispatch = (actionId: string, args?: unknown) => {
-    actionService.dispatch(actionId as Parameters<typeof actionService.dispatch>[0], args, {
-      source: "keybinding",
-    });
+    void actionService
+      .dispatch(actionId as Parameters<typeof actionService.dispatch>[0], args, {
+        source: "keybinding",
+      })
+      .then((result) => {
+        if (!result.ok) {
+          console.error(`[Keybinding] Action "${actionId}" failed:`, result.error);
+        }
+      });
   };
 
   // Terminal palette and spawn
