@@ -587,29 +587,32 @@ export function createActionDefinitions(callbacks: ActionCallbacks): ActionRegis
   actions.set("terminal.closeAll", () => ({
     id: "terminal.closeAll",
     title: "Close All Terminals",
-    description: "Close all terminals in the active worktree",
-    category: "terminal",
-    kind: "command",
-    danger: "confirm",
-    scope: "renderer",
-    run: async () => {
-      useTerminalStore.getState().bulkTrashAll();
-    },
-  }));
-
-  actions.set("terminal.killAll", () => ({
-    id: "terminal.killAll",
-    title: "Kill All Terminals",
-    description: "Kill all terminals",
+    description: "Move all terminals in the active worktree to trash",
     category: "terminal",
     kind: "command",
     danger: "confirm",
     scope: "renderer",
     run: async () => {
       const state = useTerminalStore.getState();
-      state.terminals.forEach((t) => {
-        if (t.location !== "trash") state.trashTerminal(t.id);
-      });
+      const activeWorktreeId = callbacks.getActiveWorktreeId();
+      const terminalsToClose = state.terminals.filter(
+        (t) =>
+          t.location !== "trash" && (t.worktreeId ?? undefined) === (activeWorktreeId ?? undefined)
+      );
+      terminalsToClose.forEach((t) => state.trashTerminal(t.id));
+    },
+  }));
+
+  actions.set("terminal.killAll", () => ({
+    id: "terminal.killAll",
+    title: "Kill All Terminals",
+    description: "Permanently remove all terminals (cannot be undone)",
+    category: "terminal",
+    kind: "command",
+    danger: "confirm",
+    scope: "renderer",
+    run: async () => {
+      useTerminalStore.getState().bulkCloseAll();
     },
   }));
 
