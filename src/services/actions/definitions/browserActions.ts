@@ -132,6 +132,4 @@ export function registerBrowserActions(actions: ActionRegistry, _callbacks: Acti
       await navigator.clipboard.writeText(derivedUrl);
     },
   }));
-
-  // ============================================
 }

@@ -185,6 +185,4 @@ export function registerGithubActions(actions: ActionRegistry, _callbacks: Actio
       return await githubClient.validateToken(token);
     },
   }));
-
-  // ============================================
 }

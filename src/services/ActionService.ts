@@ -142,6 +142,7 @@ export class ActionService {
 
     return {
       id: definition.id,
+      name: definition.id,
       title: definition.title,
       description: definition.description,
       category: definition.category,
@@ -178,7 +179,12 @@ export class ActionService {
     if (args === undefined || args === null) return args;
 
     // Check size first
-    const serialized = JSON.stringify(args);
+    let serialized: string;
+    try {
+      serialized = JSON.stringify(args);
+    } catch {
+      return { _redacted: "unserializable" };
+    }
     if (serialized.length > MAX_ARG_PAYLOAD_SIZE) {
       return { _redacted: "payload_too_large", size: serialized.length };
     }

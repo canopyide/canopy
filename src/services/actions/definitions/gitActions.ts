@@ -65,6 +65,4 @@ export function registerGitActions(actions: ActionRegistry, _callbacks: ActionCa
       return await window.electron.git.listCommits(args as any);
     },
   }));
-
-  // ============================================
 }

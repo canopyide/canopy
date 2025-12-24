@@ -489,6 +489,4 @@ export function registerWorktreeActions(actions: ActionRegistry, callbacks: Acti
       await githubClient.openPR(worktree.prUrl);
     },
   }));
-
-  // ============================================
 }

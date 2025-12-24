@@ -213,6 +213,11 @@ export interface ActionDefinition<Args = unknown, Result = unknown> {
 
 export interface ActionManifestEntry {
   id: ActionId;
+  /**
+   * MCP-friendly alias for `id`.
+   * Prefer `name` when presenting tools to LLMs.
+   */
+  name: string;
   title: string;
   description: string;
   category: string;

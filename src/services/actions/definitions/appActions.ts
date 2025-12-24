@@ -83,6 +83,4 @@ export function registerAppActions(actions: ActionRegistry, callbacks: ActionCal
       return next;
     },
   }));
-
-  // ============================================
 }

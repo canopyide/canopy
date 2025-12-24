@@ -215,6 +215,4 @@ export function registerProjectActions(actions: ActionRegistry, _callbacks: Acti
       window.dispatchEvent(new CustomEvent("canopy:open-project-settings"));
     },
   }));
-
-  // ============================================
 }
