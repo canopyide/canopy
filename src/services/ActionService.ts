@@ -9,6 +9,12 @@ import type {
   ActionSource,
   ActionError,
 } from "../../shared/types/actions.js";
+
+/** Fields that should be redacted from event payloads to prevent secret leakage */
+const SENSITIVE_ARG_FIELDS = new Set(["token", "password", "secret", "key", "auth", "credential"]);
+
+/** Max size for args in event payloads (prevents explosion) */
+const MAX_ARG_PAYLOAD_SIZE = 1024;
 import { isElectronAvailable } from "@/hooks/useElectron";
 import { useProjectStore } from "@/store/projectStore";
 import { useWorktreeSelectionStore } from "@/store/worktreeStore";
@@ -74,9 +80,19 @@ export class ActionService {
       return { ok: false, error };
     }
 
+    // Enforce confirmation for destructive actions from agent sources
+    // Agents must explicitly confirm before executing dangerous operations
+    if (definition.danger === "confirm" && source === "agent" && !options?.confirmed) {
+      const error: ActionError = {
+        code: "CONFIRMATION_REQUIRED",
+        message: `Action "${actionId}" requires explicit confirmation from agent sources. Set { confirmed: true } to proceed.`,
+      };
+      return { ok: false, error };
+    }
+
     await this.emitActionDispatchedEvent({
       actionId,
-      args,
+      args: this.redactSensitiveArgs(args),
       context,
       source,
       timestamp: Date.now(),
@@ -135,6 +151,43 @@ export class ActionService {
 
   private getActionContext(): ActionContext {
     return getActionContext();
+  }
+
+  /**
+   * Redact sensitive fields and truncate large payloads to prevent secret leakage
+   * and payload explosion in event logs.
+   */
+  private redactSensitiveArgs(args: unknown): unknown {
+    if (args === undefined || args === null) return args;
+
+    // Check size first
+    const serialized = JSON.stringify(args);
+    if (serialized.length > MAX_ARG_PAYLOAD_SIZE) {
+      return { _redacted: "payload_too_large", size: serialized.length };
+    }
+
+    if (typeof args !== "object") return args;
+
+    if (Array.isArray(args)) {
+      return args.map((item) => this.redactSensitiveArgs(item));
+    }
+
+    const result: Record<string, unknown> = {};
+    for (const [key, value] of Object.entries(args as Record<string, unknown>)) {
+      const lowerKey = key.toLowerCase();
+      const isSensitive = Array.from(SENSITIVE_ARG_FIELDS).some((field) =>
+        lowerKey.includes(field)
+      );
+
+      if (isSensitive) {
+        result[key] = "[REDACTED]";
+      } else if (typeof value === "object" && value !== null) {
+        result[key] = this.redactSensitiveArgs(value);
+      } else {
+        result[key] = value;
+      }
+    }
+    return result;
   }
 
   private async emitActionDispatchedEvent(payload: {

@@ -100,6 +100,7 @@ export type ActionErrorCode =
   | "VALIDATION_ERROR"
   | "DISABLED"
   | "RESTRICTED"
+  | "CONFIRMATION_REQUIRED"
   | "EXECUTION_ERROR";
 
 export interface ActionError {
@@ -110,6 +111,11 @@ export interface ActionError {
 
 export interface ActionDispatchOptions {
   source?: ActionSource;
+  /**
+   * For actions with danger: "confirm", this must be true to execute.
+   * Agent sources MUST explicitly set this flag to confirm destructive actions.
+   */
+  confirmed?: boolean;
 }
 
 export interface ActionDispatchPayload {

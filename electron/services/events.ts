@@ -553,12 +553,12 @@ export type CanopyEventMap = {
 
   /**
    * Emitted when an action is dispatched from the renderer.
-   * Tracks user actions, keybindings, menu actions, and agent-driven actions.
+   * Tracks user actions, keybindings, menu actions, context menus, and agent-driven actions.
    */
   "action:dispatched": {
     actionId: string;
     args?: unknown;
-    source: "user" | "keybinding" | "menu" | "agent";
+    source: "user" | "keybinding" | "menu" | "agent" | "context-menu";
     context: {
       projectId?: string;
       activeWorktreeId?: string;
