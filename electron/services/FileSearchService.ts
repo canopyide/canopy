@@ -28,22 +28,25 @@ function clampInt(value: unknown, min: number, max: number, fallback: number): n
 
 function normalizeQuery(rawQuery: string): string {
   const trimmed = rawQuery.trim().slice(0, MAX_QUERY_LENGTH);
-  if (trimmed.startsWith("./")) return trimmed.slice(2);
-  if (trimmed.startsWith("/")) return trimmed.slice(1);
-  return trimmed;
+  let normalized = trimmed;
+  if (normalized.startsWith("./")) normalized = normalized.slice(2);
+  if (normalized.startsWith("/")) normalized = normalized.slice(1);
+  return normalized.replace(/\/+/g, "/");
 }
 
 function scorePath(queryLower: string, file: string): number | null {
   if (queryLower.length === 0) return 0;
 
   const fileLower = file.toLowerCase();
-  const basename = fileLower.slice(fileLower.lastIndexOf("/") + 1);
+  const normalizedQuery = queryLower.replace(/\/$/, "");
+  const normalizedFile = fileLower.replace(/\/$/, "");
+  const basename = normalizedFile.slice(normalizedFile.lastIndexOf("/") + 1);
 
-  if (basename === queryLower) return 0;
-  if (fileLower === queryLower) return 1;
+  if (basename === normalizedQuery) return 0;
+  if (normalizedFile === normalizedQuery) return 1;
 
-  const basenameIdx = basename.indexOf(queryLower);
-  const fileIdx = fileLower.indexOf(queryLower);
+  const basenameIdx = basename.indexOf(normalizedQuery);
+  const fileIdx = normalizedFile.indexOf(normalizedQuery);
 
   if (basenameIdx === 0) return 10;
   if (fileIdx === 0) return 20;
@@ -119,7 +122,9 @@ async function loadFilesFromDisk(cwd: string): Promise<string[]> {
       const relativePosix = toPosixPath(relative);
 
       if (entry.isDirectory()) {
+        results.push(`${relativePosix}/`);
         queue.push(absolute);
+        if (results.length >= MAX_FALLBACK_FILES) break;
         continue;
       }
 
@@ -152,12 +157,27 @@ async function loadGitFiles(cwd: string): Promise<string[]> {
   const output = await simpleGit(gitRoot).raw(args);
   const prefix = pathspec ? `${pathspec.replace(/\/$/, "")}/` : "";
 
-  return output
+  const files = output
     .split("\n")
     .map((line) => line.trim())
     .filter(Boolean)
     .map((p) => (prefix && p.startsWith(prefix) ? p.slice(prefix.length) : p))
     .filter((p) => p.length > 0);
+
+  const dirs = new Set<string>();
+  for (const file of files) {
+    let dir = file;
+    while (true) {
+      const slashIdx = dir.lastIndexOf("/");
+      if (slashIdx === -1) break;
+      dir = dir.slice(0, slashIdx);
+      if (dirs.has(dir)) break;
+      dirs.add(dir);
+    }
+  }
+
+  const dirPaths = Array.from(dirs).map((d) => `${d}/`);
+  return [...files, ...dirPaths];
 }
 
 export class FileSearchService {
