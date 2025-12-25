@@ -15,6 +15,8 @@ import { setupTerminalAddons } from "./TerminalAddonManager";
 import { TerminalOutputIngestService } from "./TerminalOutputIngestService";
 import { TerminalParserHandler } from "./TerminalParserHandler";
 import { TerminalUnseenOutputTracker, UnseenOutputSnapshot } from "./TerminalUnseenOutputTracker";
+import { isLocalhostUrl, normalizeBrowserUrl } from "@/components/Browser/browserUtils";
+import { useTerminalStore } from "@/store/terminalStore";
 
 const START_DEBOUNCING_THRESHOLD = 200;
 const HORIZONTAL_DEBOUNCE_MS = 100;
@@ -47,6 +49,65 @@ class TerminalInstanceService {
 
   constructor() {
     this.dataBuffer.initialize();
+  }
+
+  private openTerminalLink(url: string, terminalId: string, event?: MouseEvent): void {
+    const isMac = navigator.platform.toLowerCase().includes("mac");
+    const isModifierPressed = event
+      ? isMac ? event.metaKey : event.ctrlKey
+      : false;
+
+    const normalized = normalizeBrowserUrl(url);
+
+    if (isModifierPressed && normalized.url && isLocalhostUrl(normalized.url)) {
+      const store = useTerminalStore.getState();
+      const currentTerminal = store.terminals.find((t) => t.id === terminalId);
+
+      if (!currentTerminal) {
+        const normalizedUrl = /^https?:\/\//i.test(url) ? url : `https://${url}`;
+        actionService
+          .dispatch("system.openExternal", { url: normalizedUrl }, { source: "user" })
+          .then((result) => {
+            if (result.ok) return;
+            return systemClient.openExternal(normalizedUrl);
+          })
+          .catch((error) => {
+            console.error("[TerminalInstanceService] Failed to open URL:", error);
+          });
+        return;
+      }
+
+      const targetWorktreeId = currentTerminal.worktreeId ?? null;
+
+      const existingBrowser = store.terminals.find(
+        (t) =>
+          t.kind === "browser" &&
+          (t.worktreeId ?? null) === targetWorktreeId
+      );
+
+      if (existingBrowser) {
+        store.setBrowserUrl(existingBrowser.id, normalized.url);
+        store.activateTerminal(existingBrowser.id);
+      } else {
+        void store.addTerminal({
+          kind: "browser",
+          browserUrl: normalized.url,
+          worktreeId: targetWorktreeId ?? undefined,
+          cwd: currentTerminal?.cwd ?? "",
+        });
+      }
+    } else {
+      const normalizedUrl = /^https?:\/\//i.test(url) ? url : `https://${url}`;
+      actionService
+        .dispatch("system.openExternal", { url: normalizedUrl }, { source: "user" })
+        .then((result) => {
+          if (result.ok) return;
+          return systemClient.openExternal(normalizedUrl);
+        })
+        .catch((error) => {
+          console.error("[TerminalInstanceService] Failed to open URL:", error);
+        });
+    }
   }
 
   notifyUserInput(id: string): void {
@@ -340,23 +401,14 @@ class TerminalInstanceService {
       return existing;
     }
 
-    const openLink = (url: string) => {
-      const normalizedUrl = /^https?:\/\//i.test(url) ? url : `https://${url}`;
-      actionService
-        .dispatch("system.openExternal", { url: normalizedUrl }, { source: "user" })
-        .then((result) => {
-          if (result.ok) return;
-          return systemClient.openExternal(normalizedUrl);
-        })
-        .catch((error) => {
-          console.error("[TerminalInstanceService] Failed to open URL:", error);
-        });
+    const openLink = (url: string, event?: MouseEvent) => {
+      this.openTerminalLink(url, id, event);
     };
 
     const terminalOptions = {
       ...options,
       linkHandler: {
-        activate: (_event: MouseEvent, text: string) => openLink(text),
+        activate: (event: MouseEvent, text: string) => openLink(text, event),
       },
     };
 
