@@ -17,7 +17,7 @@ export interface TerminalAddons {
 
 export function setupTerminalAddons(
   terminal: Terminal,
-  openLink: (url: string) => void,
+  openLink: (url: string, event?: MouseEvent) => void,
   getCwd: () => string
 ): TerminalAddons {
   // Using default xterm.js DOM renderer - simple and reliable
@@ -28,7 +28,7 @@ export function setupTerminalAddons(
   terminal.loadAddon(fitAddon);
   terminal.loadAddon(serializeAddon);
 
-  const webLinksAddon = new WebLinksAddon((_event, uri) => openLink(uri));
+  const webLinksAddon = new WebLinksAddon((event, uri) => openLink(uri, event));
   terminal.loadAddon(webLinksAddon);
 
   const imageAddon = new ImageAddon();
