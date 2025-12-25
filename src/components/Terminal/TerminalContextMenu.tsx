@@ -135,6 +135,9 @@ export function TerminalContextMenu({
       ];
     }
 
+    const isMac = navigator.platform.toLowerCase().includes("mac");
+    const modifierKey = isMac ? "⌘" : "Ctrl";
+
     // Terminal actions section
     const terminalActions: MenuItemOption[] = [
       { id: "restart", label: "Restart Terminal" },
@@ -152,6 +155,11 @@ export function TerminalContextMenu({
             },
           ]
         : []),
+      {
+        id: "link-hint",
+        label: `${modifierKey}+Click links to open in Browser`,
+        enabled: false,
+      },
     ];
 
     // Management actions section
