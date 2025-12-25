@@ -8,14 +8,15 @@ interface SortableWorktreeTerminalProps {
   terminal: TerminalInstance;
   worktreeId: string;
   sourceIndex: number;
-  children: React.ReactNode;
+  children: React.ReactNode | ((props: { listeners: ReturnType<typeof useSortable>["listeners"] }) => React.ReactNode);
 }
 
 export function getAccordionDragId(terminalId: string): string {
   return `accordion-${terminalId}`;
 }
 
-export function parseAccordionDragId(dragId: string): string | null {
+export function parseAccordionDragId(dragId: string | number): string | null {
+  if (typeof dragId !== "string") return null;
   if (dragId.startsWith("accordion-")) {
     return dragId.slice("accordion-".length);
   }
@@ -46,15 +47,18 @@ export function SortableWorktreeTerminal({
     transition,
   };
 
+  // Omit role from attributes since we set it explicitly
+  const { role: _, ...attributesWithoutRole } = attributes;
+
   return (
     <div
       ref={setNodeRef}
       style={style}
       className={cn(isDragging && "opacity-40")}
-      {...attributes}
-      {...listeners}
+      role="listitem"
+      {...attributesWithoutRole}
     >
-      {children}
+      {typeof children === "function" ? children({ listeners }) : <div {...listeners}>{children}</div>}
     </div>
   );
 }

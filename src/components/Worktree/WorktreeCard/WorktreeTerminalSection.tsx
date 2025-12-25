@@ -126,7 +126,7 @@ export function WorktreeTerminalSection({
           >
             <div
               id={terminalsPanelId}
-              role="region"
+              role="list"
               aria-labelledby={`${terminalsId}-button`}
               className="max-h-[300px] overflow-y-auto"
             >
@@ -137,13 +137,15 @@ export function WorktreeTerminalSection({
                   worktreeId={worktreeId}
                   sourceIndex={index}
                 >
-                  <button
-                    onClick={(e) => {
-                      e.stopPropagation();
-                      onTerminalSelect(term);
-                    }}
-                    className="w-full flex items-center justify-between gap-2.5 px-3 py-2 cursor-pointer group transition-colors hover:bg-white/5 focus-visible:outline focus-visible:outline-2 focus-visible:outline-canopy-accent focus-visible:outline-offset-[-2px]"
-                  >
+                  {({ listeners }) => (
+                    <button
+                      onClick={(e) => {
+                        e.stopPropagation();
+                        onTerminalSelect(term);
+                      }}
+                      className="w-full flex items-center justify-between gap-2.5 px-3 py-2 cursor-pointer group transition-colors hover:bg-white/5 focus-visible:outline focus-visible:outline-2 focus-visible:outline-canopy-accent focus-visible:outline-offset-[-2px]"
+                      {...listeners}
+                    >
                     <div className="flex items-center gap-2 min-w-0 flex-1">
                       <div className="shrink-0 opacity-60 group-hover:opacity-100 transition-opacity">
                         <TerminalIcon
@@ -217,7 +219,8 @@ export function WorktreeTerminalSection({
                         )}
                       </div>
                     </div>
-                  </button>
+                    </button>
+                  )}
                 </SortableWorktreeTerminal>
               ))}
             </div>

@@ -82,6 +82,10 @@ export interface WorktreeDragData extends DragData {
   origin: "accordion";
 }
 
+function isWorktreeDragData(data: DragData | WorktreeDragData | undefined): data is WorktreeDragData {
+  return data !== undefined && "origin" in data && data.origin === "accordion" && "worktreeId" in data;
+}
+
 // Helper to get coordinates from pointer or touch event
 function getEventCoordinates(event: Event): { x: number; y: number } {
   if ("touches" in event && (event as TouchEvent).touches.length) {
@@ -182,13 +186,27 @@ export function DndProvider({ children }: DndProviderProps) {
 
   const activeTerminal = useMemo(() => {
     if (!activeId) return null;
-    return terminals.find((t) => t.id === activeId) ?? null;
+    // Parse accordion IDs to get actual terminal ID
+    const terminalId = parseAccordionDragId(activeId) ?? activeId;
+    return terminals.find((t) => t.id === terminalId) ?? null;
   }, [activeId, terminals]);
 
   const handleDragStart = useCallback((event: DragStartEvent) => {
     const { active } = event;
-    setActiveId(active.id as string);
-    terminalInstanceService.lockResize(active.id as string, true);
+    const dragId = active.id as string;
+    setActiveId(dragId);
+
+    // Parse accordion IDs to get actual terminal ID for resize lock
+    const terminalId = parseAccordionDragId(dragId) ?? dragId;
+    terminalInstanceService.lockResize(terminalId, true);
+
+    // Clear any pending stabilization timers from previous drags
+    if (stabilizationTimerRef.current) {
+      clearTimeout(stabilizationTimerRef.current);
+      stabilizationTimerRef.current = null;
+    }
+    dockRetryTimersRef.current.forEach(clearTimeout);
+    dockRetryTimersRef.current.clear();
 
     const data = active.data.current as DragData | WorktreeDragData | undefined;
     if (data) {
@@ -241,7 +259,7 @@ export function DndProvider({ children }: DndProviderProps) {
       // Handle placeholder for cross-container drag (dock -> grid)
       // Skip placeholders for accordion drags - they stay within their container
       const sourceContainer = activeDataCurrent?.sourceLocation;
-      const isAccordionDrag = activeDataCurrent && "origin" in activeDataCurrent && activeDataCurrent.origin === "accordion";
+      const isAccordionDrag = isWorktreeDragData(activeDataCurrent);
 
       if (!isAccordionDrag && sourceContainer === "dock" && detectedContainer === "grid") {
         const activeWorktreeId = useWorktreeSelectionStore.getState().activeWorktreeId;
@@ -308,9 +326,9 @@ export function DndProvider({ children }: DndProviderProps) {
         | undefined;
 
       // Handle accordion reordering
-      const isAccordionDrag = activeData && "origin" in activeData && activeData.origin === "accordion";
+      const isAccordionDrag = isWorktreeDragData(activeData);
       if (isAccordionDrag) {
-        const accordionWorktreeId = (activeData as WorktreeDragData).worktreeId;
+        const accordionWorktreeId = activeData.worktreeId;
         // Parse accordion IDs to get actual terminal IDs
         const actualDraggedId = parseAccordionDragId(draggedId) ?? draggedId;
         const actualOverId = parseAccordionDragId(overId) ?? overId;
@@ -569,8 +587,19 @@ export function DndProvider({ children }: DndProviderProps) {
 
   const handleDragCancel = useCallback(() => {
     if (activeId) {
-      terminalInstanceService.lockResize(activeId, false);
+      // Parse accordion IDs to get actual terminal ID for resize unlock
+      const terminalId = parseAccordionDragId(activeId) ?? activeId;
+      terminalInstanceService.lockResize(terminalId, false);
     }
+
+    // Clear any pending stabilization timers
+    if (stabilizationTimerRef.current) {
+      clearTimeout(stabilizationTimerRef.current);
+      stabilizationTimerRef.current = null;
+    }
+    dockRetryTimersRef.current.forEach(clearTimeout);
+    dockRetryTimersRef.current.clear();
+
     setActiveId(null);
     setActiveData(null);
     setOverContainer(null);
