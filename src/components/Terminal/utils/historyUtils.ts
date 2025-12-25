@@ -39,7 +39,7 @@ export function extractSnapshot(
       const ansiLines: string[] = new Array(count);
       for (let i = 0; i < count; i++) {
         const lineIdx = start + i;
-        // eslint-disable-next-line @typescript-eslint/no-explicit-any
+         
         const serialized = serializeAddon.serialize({
           range: { start: lineIdx, end: lineIdx },
           excludeAltBuffer: true,
@@ -64,7 +64,10 @@ export function extractSnapshot(
   };
 }
 
-export function computeTrimmedTopCount(oldState: HistoryState | null, newState: HistoryState): number {
+export function computeTrimmedTopCount(
+  oldState: HistoryState | null,
+  newState: HistoryState
+): number {
   if (!oldState) return 0;
 
   const primaryTrimmed = Math.max(0, newState.windowStart - oldState.windowStart);
