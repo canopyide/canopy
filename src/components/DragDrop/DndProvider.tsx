@@ -185,19 +185,21 @@ export function DndProvider({ children }: DndProviderProps) {
   const getMaxGridCapacity = useLayoutConfigStore((state) => state.getMaxGridCapacity);
 
   const activeTerminal = useMemo(() => {
-    if (!activeId) return null;
+    if (!activeId && !activeData) return null;
+    if (activeData?.terminal) return activeData.terminal;
     // Parse accordion IDs to get actual terminal ID
-    const terminalId = parseAccordionDragId(activeId) ?? activeId;
+    const terminalId = parseAccordionDragId(activeId!) ?? activeId;
     return terminals.find((t) => t.id === terminalId) ?? null;
-  }, [activeId, terminals]);
+  }, [activeId, activeData, terminals]);
 
   const handleDragStart = useCallback((event: DragStartEvent) => {
     const { active } = event;
     const dragId = active.id as string;
+    
+    const data = active.data.current as DragData | WorktreeDragData | undefined;
+    const terminalId = data?.terminal?.id ?? (parseAccordionDragId(dragId) ?? dragId);
+    
     setActiveId(dragId);
-
-    // Parse accordion IDs to get actual terminal ID for resize lock
-    const terminalId = parseAccordionDragId(dragId) ?? dragId;
     terminalInstanceService.lockResize(terminalId, true);
 
     // Clear any pending stabilization timers from previous drags
@@ -208,7 +210,6 @@ export function DndProvider({ children }: DndProviderProps) {
     dockRetryTimersRef.current.forEach(clearTimeout);
     dockRetryTimersRef.current.clear();
 
-    const data = active.data.current as DragData | WorktreeDragData | undefined;
     if (data) {
       setActiveData(data);
       setOverContainer(data.sourceLocation);
@@ -291,8 +292,9 @@ export function DndProvider({ children }: DndProviderProps) {
     (event: DragEndEvent) => {
       const { active, over } = event;
 
-      // Capture dragged ID immediately for guaranteed unlock
-      const draggedId = active?.id ? String(active.id) : null;
+      // Capture dragged terminal ID from data (works for both sortable and worktree list)
+      const data = active.data.current as DragData | undefined;
+      const draggedId = data?.terminal?.id ?? (active?.id ? String(active.id) : null);
       console.log(`[DND_DEBUG] handleDragEnd id=${draggedId} over=${over?.id}`);
 
       // Capture source location before clearing
@@ -586,9 +588,8 @@ export function DndProvider({ children }: DndProviderProps) {
   );
 
   const handleDragCancel = useCallback(() => {
-    if (activeId) {
-      // Parse accordion IDs to get actual terminal ID for resize unlock
-      const terminalId = parseAccordionDragId(activeId) ?? activeId;
+    const terminalId = activeData?.terminal?.id ?? (activeId ? (parseAccordionDragId(activeId) ?? activeId) : null);
+    if (terminalId) {
       terminalInstanceService.lockResize(terminalId, false);
     }
 
@@ -605,7 +606,7 @@ export function DndProvider({ children }: DndProviderProps) {
     setOverContainer(null);
     setPlaceholderIndex(null);
     // No explicit refresh needed - terminals return to original state (no layout change)
-  }, [activeId]);
+  }, [activeId, activeData]);
 
   // Use rectIntersection as default (stable when cursor outside containers),
   // closestCenter only for dock (better for 1D horizontal reordering)
