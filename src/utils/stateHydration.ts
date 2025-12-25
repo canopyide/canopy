@@ -12,6 +12,7 @@ import { keybindingService } from "@/services/KeybindingService";
 import { isRegisteredAgent, getAgentConfig } from "@/config/agents";
 import { normalizeScrollbackLines } from "@shared/config/scrollback";
 import { terminalInstanceService } from "@/services/TerminalInstanceService";
+import { panelKindHasPty } from "@shared/config/panelKindRegistry";
 
 export interface HydrationOptions {
   addTerminal: (options: {
@@ -109,10 +110,10 @@ export async function hydrateAppState(options: HydrationOptions): Promise<void> 
 
           const cwd = terminal.cwd || projectRoot || "";
 
-          // Handle browser panes separately - they don't need backend PTY
-          if (terminal.kind === "browser") {
+          // Handle non-PTY panels separately - they don't need backend PTY
+          if (terminal.kind && !panelKindHasPty(terminal.kind)) {
             await addTerminal({
-              kind: "browser",
+              kind: terminal.kind,
               title: terminal.title,
               cwd,
               worktreeId: terminal.worktreeId,

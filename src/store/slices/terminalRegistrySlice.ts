@@ -397,8 +397,8 @@ export const createTerminalRegistrySlice =
       const removedIndex = currentTerminals.findIndex((t) => t.id === id);
       const terminal = currentTerminals.find((t) => t.id === id);
 
-      // Only call PTY operations for non-browser terminals
-      if (terminal?.kind !== "browser") {
+      // Only call PTY operations for PTY-backed terminals
+      if (terminal?.kind && panelKindHasPty(terminal.kind)) {
         terminalClient.kill(id).catch((error) => {
           console.error("Failed to kill terminal:", error);
         });
@@ -528,8 +528,9 @@ export const createTerminalRegistrySlice =
     },
 
     moveTerminalToDock: (id) => {
+      const terminal = get().terminals.find((t) => t.id === id);
+
       set((state) => {
-        const terminal = state.terminals.find((t) => t.id === id);
         if (!terminal || terminal.location === "dock") return state;
 
         const newTerminals = state.terminals.map((t) =>
@@ -540,14 +541,18 @@ export const createTerminalRegistrySlice =
         return { terminals: newTerminals };
       });
 
-      optimizeForDock(id);
+      // Only optimize PTY-backed panels
+      if (terminal?.kind && panelKindHasPty(terminal.kind)) {
+        optimizeForDock(id);
+      }
     },
 
     moveTerminalToGrid: (id) => {
       let moveSucceeded = false;
+      let terminal: TerminalInstance | undefined;
 
       set((state) => {
-        const terminal = state.terminals.find((t) => t.id === id);
+        terminal = state.terminals.find((t) => t.id === id);
         if (!terminal || terminal.location === "grid") return state;
 
         const targetWorktreeId = terminal.worktreeId ?? null;
@@ -571,8 +576,8 @@ export const createTerminalRegistrySlice =
         return { terminals: newTerminals };
       });
 
-      // Only apply side effects if the move succeeded
-      if (moveSucceeded) {
+      // Only apply renderer policy for PTY-backed panels if move succeeded
+      if (moveSucceeded && terminal?.kind && panelKindHasPty(terminal.kind)) {
         terminalInstanceService.applyRendererPolicy(id, TerminalRefreshTier.VISIBLE);
       }
 
@@ -599,8 +604,8 @@ export const createTerminalRegistrySlice =
       // Only 'dock' or 'grid' are valid original locations - treat undefined as 'grid'
       const originalLocation: "dock" | "grid" = terminal.location === "dock" ? "dock" : "grid";
 
-      // Only call PTY operations for non-browser terminals
-      if (terminal.kind !== "browser") {
+      // Only call PTY operations for PTY-backed terminals
+      if (panelKindHasPty(terminal.kind)) {
         terminalClient.trash(id).catch((error) => {
           console.error("Failed to trash terminal:", error);
         });
@@ -617,19 +622,20 @@ export const createTerminalRegistrySlice =
         return { terminals: newTerminals, trashedTerminals: newTrashed };
       });
 
-      if (terminal.kind !== "browser") {
+      if (panelKindHasPty(terminal.kind)) {
         terminalInstanceService.applyRendererPolicy(id, TerminalRefreshTier.VISIBLE);
         return;
       }
 
-      // Browser panes never receive backend exit/TTL events, so enforce TTL locally.
+      // Non-PTY panes never receive backend exit/TTL events, so enforce TTL locally.
       window.setTimeout(
         () => {
           const state = get();
           const currentTerminal = state.terminals.find((t) => t.id === id);
           const currentTrashedInfo = state.trashedTerminals.get(id);
           if (
-            currentTerminal?.kind === "browser" &&
+            currentTerminal?.kind &&
+            !panelKindHasPty(currentTerminal.kind) &&
             currentTerminal.location === "trash" &&
             currentTrashedInfo?.expiresAt === expiresAt
           ) {
@@ -645,8 +651,8 @@ export const createTerminalRegistrySlice =
       const restoreLocation = trashedInfo?.originalLocation ?? "grid";
       const terminal = get().terminals.find((t) => t.id === id);
 
-      // Only call PTY operations for non-browser terminals
-      if (terminal?.kind !== "browser") {
+      // Only call PTY operations for PTY-backed terminals
+      if (terminal?.kind && panelKindHasPty(terminal.kind)) {
         terminalClient.restore(id).catch((error) => {
           console.error("Failed to restore terminal:", error);
         });
@@ -668,8 +674,8 @@ export const createTerminalRegistrySlice =
         return { terminals: newTerminals, trashedTerminals: newTrashed };
       });
 
-      // Only apply renderer policies for non-browser terminals
-      if (terminal?.kind !== "browser") {
+      // Only apply renderer policies for PTY-backed terminals
+      if (terminal?.kind && panelKindHasPty(terminal.kind)) {
         if (restoreLocation === "dock") {
           optimizeForDock(id);
         } else {
@@ -679,9 +685,10 @@ export const createTerminalRegistrySlice =
     },
 
     markAsTrashed: (id, expiresAt, originalLocation) => {
+      const terminal = get().terminals.find((t) => t.id === id);
+
       set((state) => {
         // Ignore stale trashed events if terminal was already restored
-        const terminal = state.terminals.find((t) => t.id === id);
         if (terminal && terminal.location !== "trash") {
           return state;
         }
@@ -697,7 +704,11 @@ export const createTerminalRegistrySlice =
         terminalPersistence.save(newTerminals);
         return { trashedTerminals: newTrashed, terminals: newTerminals };
       });
-      terminalInstanceService.applyRendererPolicy(id, TerminalRefreshTier.VISIBLE);
+
+      // Only apply renderer policy for PTY-backed panels
+      if (terminal?.kind && panelKindHasPty(terminal.kind)) {
+        terminalInstanceService.applyRendererPolicy(id, TerminalRefreshTier.VISIBLE);
+      }
     },
 
     markAsRestored: (id) => {
@@ -720,10 +731,13 @@ export const createTerminalRegistrySlice =
         return { trashedTerminals: newTrashed, terminals: newTerminals };
       });
 
-      if (restoreLocation === "dock") {
-        optimizeForDock(id);
-      } else {
-        terminalInstanceService.applyRendererPolicy(id, TerminalRefreshTier.VISIBLE);
+      // Only apply renderer policies for PTY-backed panels
+      if (terminal?.kind && panelKindHasPty(terminal.kind)) {
+        if (restoreLocation === "dock") {
+          optimizeForDock(id);
+        } else {
+          terminalInstanceService.applyRendererPolicy(id, TerminalRefreshTier.VISIBLE);
+        }
       }
     },
 
@@ -849,9 +863,9 @@ export const createTerminalRegistrySlice =
         return;
       }
 
-      // Browser panes don't have PTY processes to restart
-      if (terminal.kind === "browser") {
-        console.warn(`[TerminalStore] Cannot restart browser pane ${id}`);
+      // Non-PTY panels don't have PTY processes to restart
+      if (!panelKindHasPty(terminal.kind)) {
+        console.warn(`[TerminalStore] Cannot restart non-PTY panel ${id}`);
         return;
       }
 
