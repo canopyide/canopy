@@ -8,6 +8,7 @@ export interface ProcessInfo {
   ppid: number;
   comm: string;
   command: string;
+  cpuPercent: number; // CPU usage percentage (0-100)
 }
 
 type RefreshCallback = () => void;
@@ -99,7 +100,8 @@ export class ProcessTreeCache {
   }
 
   private async refreshUnix(): Promise<void> {
-    const { stdout } = await execAsync("ps -eo pid,ppid,comm,command", {
+    // Include %cpu for activity detection
+    const { stdout } = await execAsync("ps -eo pid,ppid,%cpu,comm,command", {
       timeout: 5000,
       maxBuffer: 10 * 1024 * 1024, // 10MB to handle systems with many processes
     });
@@ -133,25 +135,26 @@ export class ProcessTreeCache {
   }
 
   private parseUnixLine(line: string): ProcessInfo | null {
-    // Format: PID PPID COMM COMMAND
-    // PID and PPID are right-aligned numbers, COMM is the basename, COMMAND is the full command line
-    // Example: "  123    1 bash /bin/bash --login"
+    // Format: PID PPID %CPU COMM COMMAND
+    // PID and PPID are right-aligned numbers, %CPU is a decimal, COMM is the basename, COMMAND is the full command line
+    // Example: "  123    1  0.5 bash /bin/bash --login"
     // Make command optional in case ps omits it
-    const match = line.match(/^\s*(\d+)\s+(\d+)\s+(\S+)(?:\s+(.*))?$/);
+    const match = line.match(/^\s*(\d+)\s+(\d+)\s+(\d+(?:\.\d+)?)\s+(\S+)(?:\s+(.*))?$/);
     if (!match) {
       return null;
     }
 
     const pid = parseInt(match[1], 10);
     const ppid = parseInt(match[2], 10);
-    const comm = match[3];
-    const command = match[4]?.trim() || comm;
+    const cpuPercent = parseFloat(match[3]) || 0;
+    const comm = match[4];
+    const command = match[5]?.trim() || comm;
 
     if (!Number.isInteger(pid) || !Number.isInteger(ppid) || pid <= 0) {
       return null;
     }
 
-    return { pid, ppid, comm, command };
+    return { pid, ppid, comm, command, cpuPercent };
   }
 
   private async refreshWindows(): Promise<void> {
@@ -209,6 +212,7 @@ export class ProcessTreeCache {
         ppid,
         comm: name,
         command,
+        cpuPercent: 0, // Windows CPU% requires performance counters; use 0 as fallback
       });
 
       const children = newChildrenMap.get(ppid) || [];
@@ -243,6 +247,59 @@ export class ProcessTreeCache {
   hasChildren(ppid: number): boolean {
     const children = this.childrenMap.get(ppid);
     return children !== undefined && children.length > 0;
+  }
+
+  /**
+   * Get the total CPU usage of all descendants of a process.
+   * Returns the sum of cpuPercent for all child processes recursively.
+   * Useful for detecting if a process tree is actually doing work.
+   */
+  getDescendantsCpuUsage(ppid: number): number {
+    let totalCpu = 0;
+    const visited = new Set<number>();
+    const queue = this.getChildPids(ppid);
+
+    while (queue.length > 0) {
+      const pid = queue.shift()!;
+      if (visited.has(pid)) continue;
+      visited.add(pid);
+
+      const process = this.cache.get(pid);
+      if (process) {
+        totalCpu += process.cpuPercent;
+        // Add grandchildren to queue
+        queue.push(...this.getChildPids(pid));
+      }
+    }
+
+    return totalCpu;
+  }
+
+  /**
+   * Check if any descendant of a process has significant CPU activity.
+   * @param ppid Parent process ID
+   * @param threshold Minimum CPU% to consider as "active" (default 0.5%)
+   */
+  hasActiveDescendants(ppid: number, threshold: number = 0.5): boolean {
+    const visited = new Set<number>();
+    const queue = this.getChildPids(ppid);
+
+    while (queue.length > 0) {
+      const pid = queue.shift()!;
+      if (visited.has(pid)) continue;
+      visited.add(pid);
+
+      const process = this.cache.get(pid);
+      if (process) {
+        if (process.cpuPercent >= threshold) {
+          return true;
+        }
+        // Add grandchildren to queue
+        queue.push(...this.getChildPids(pid));
+      }
+    }
+
+    return false;
   }
 
   getLastRefreshTime(): number {

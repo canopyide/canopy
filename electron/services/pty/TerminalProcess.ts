@@ -1116,8 +1116,81 @@ export class TerminalProcess {
       return undefined;
     }
 
+    // Use CPU-based activity detection to determine if the agent is actually working.
+    // This is more accurate than just checking if child processes exist, because:
+    // 1. Shell helper processes (gitstatus, zsh-async) exist but have near-zero CPU
+    // 2. An idle agent waiting at a prompt has near-zero CPU
+    // 3. A working agent (compiling, thinking, writing) has measurable CPU activity
+    //
+    // The threshold of 0.5% CPU catches active work while ignoring idle processes.
+    // On Windows, CPU% defaults to 0 (performance counters not implemented), so
+    // we fall back to checking if children exist but filter out known shell processes.
+    const CPU_ACTIVITY_THRESHOLD = 0.5;
+
+    // Known shell helper processes that should be ignored even with hasChildren check
+    const shellHelperProcesses = new Set([
+      "gitstatus",
+      "gitstatusd",
+      "async",
+      "zsh-async",
+    ]);
+
+    const shellProcesses = new Set([
+      "zsh",
+      "bash",
+      "sh",
+      "fish",
+      "powershell",
+      "pwsh",
+      "cmd",
+    ]);
+
     return {
-      hasActiveChildren: () => processTreeCache.hasChildren(ptyPid),
+      hasActiveChildren: () => {
+        // First, try CPU-based detection (works on macOS/Linux)
+        if (processTreeCache.hasActiveDescendants(ptyPid, CPU_ACTIVITY_THRESHOLD)) {
+          return true;
+        }
+
+        // If no CPU activity detected, check if there are any non-shell children.
+        // This handles the case where CPU% is 0 (Windows) or the process just started.
+        const children = processTreeCache.getChildren(ptyPid);
+        if (children.length === 0) {
+          return false;
+        }
+
+        // Filter out shell processes and known helpers
+        const significantChildren = children.filter((child) => {
+          const basename = child.comm.split("/").pop()?.toLowerCase() || child.comm.toLowerCase();
+          const name = basename.replace(/\.exe$/, "");
+          return !shellHelperProcesses.has(name) && !shellProcesses.has(name);
+        });
+
+        // If there are significant children but no CPU activity, they're likely idle
+        // (e.g., Claude Code waiting at a prompt). Return false to allow idle transition.
+        // This prevents terminals from being stuck in "busy" when agents are actually idle.
+        if (significantChildren.length > 0) {
+          // On Windows where we don't have CPU%, be conservative and check descendants too
+          if (process.platform === "win32") {
+            // Check grandchildren for actual commands
+            for (const child of children) {
+              const grandchildren = processTreeCache.getChildren(child.pid);
+              const significantGrandchildren = grandchildren.filter((gc) => {
+                const basename = gc.comm.split("/").pop()?.toLowerCase() || gc.comm.toLowerCase();
+                const name = basename.replace(/\.exe$/, "");
+                return !shellHelperProcesses.has(name) && !shellProcesses.has(name);
+              });
+              if (significantGrandchildren.length > 0) {
+                return true;
+              }
+            }
+          }
+          // On Unix with no CPU activity, these children are idle
+          return false;
+        }
+
+        return false;
+      },
     };
   }
 
