@@ -20,6 +20,9 @@ vi.mock("@/clients", () => ({
   systemClient: {
     openExternal: vi.fn(),
   },
+  appClient: {
+    getHydrationState: vi.fn(),
+  },
 }));
 
 vi.mock("../TerminalAddonManager", () => ({
