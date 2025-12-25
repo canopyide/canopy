@@ -1,18 +1,16 @@
 import { useMemo } from "react";
 import type React from "react";
-import { useDraggable } from "@dnd-kit/core";
+import { SortableContext, verticalListSortingStrategy } from "@dnd-kit/sortable";
 import type { AgentState } from "@/types";
 import type { TerminalInstance } from "@/store/terminalStore";
 import { TerminalIcon } from "@/components/Terminal/TerminalIcon";
 import { cn } from "@/lib/utils";
 import type { WorktreeTerminalCounts } from "@/hooks/useWorktreeTerminals";
-import type { DragData } from "@/components/DragDrop/DndProvider";
 import {
   STATE_COLORS,
   STATE_ICONS,
   STATE_LABELS,
   STATE_PRIORITY,
-  STATE_SORT_PRIORITY,
 } from "../terminalStateConfig";
 import { Tooltip, TooltipContent, TooltipTrigger, TooltipProvider } from "../../ui/tooltip";
 import {
@@ -27,6 +25,7 @@ import {
   Terminal,
   XCircle,
 } from "lucide-react";
+import { SortableWorktreeTerminal, getAccordionDragId } from "@/components/DragDrop/SortableWorktreeTerminal";
 
 interface StateIconProps {
   state: AgentState;
@@ -76,124 +75,6 @@ function computeSourceIndexMaps(terminals: TerminalInstance[]) {
   return { gridIndexMap, dockIndexMap };
 }
 
-interface DraggableTerminalRowProps {
-  terminal: TerminalInstance;
-  sourceIndex: number;
-  onTerminalSelect: (terminal: TerminalInstance) => void;
-}
-
-function DraggableTerminalRow({
-  terminal,
-  sourceIndex,
-  onTerminalSelect,
-}: DraggableTerminalRowProps) {
-  const sourceLocation: "grid" | "dock" = terminal.location === "dock" ? "dock" : "grid";
-
-  const dragData: DragData = {
-    terminal,
-    sourceLocation,
-    sourceIndex,
-  };
-
-  const { attributes, listeners, setNodeRef, setActivatorNodeRef, isDragging } = useDraggable({
-    id: `worktree-list:${terminal.id}`,
-    data: dragData,
-  });
-
-  return (
-    <div
-      ref={setNodeRef}
-      className={cn(
-        "flex items-center justify-between gap-2.5 px-3 py-2 group transition-colors hover:bg-white/5",
-        isDragging && "opacity-40"
-      )}
-    >
-      <button
-        type="button"
-        onClick={(e) => {
-          e.stopPropagation();
-          onTerminalSelect(terminal);
-        }}
-        className="flex items-center gap-2 min-w-0 flex-1 text-left focus-visible:outline focus-visible:outline-2 focus-visible:outline-canopy-accent focus-visible:outline-offset-[-2px] rounded"
-      >
-        <div className="shrink-0 opacity-60 group-hover:opacity-100 transition-opacity">
-          <TerminalIcon
-            type={terminal.type}
-            kind={terminal.kind}
-            agentId={terminal.agentId}
-            className="w-3 h-3"
-          />
-        </div>
-        <div className="flex flex-col min-w-0">
-          <span className="text-xs font-medium truncate text-canopy-text/70 group-hover:text-canopy-text transition-colors">
-            {terminal.title}
-          </span>
-          {terminal.type === "terminal" &&
-            terminal.agentState === "running" &&
-            terminal.lastCommand && (
-              <span
-                className="text-[11px] font-mono text-canopy-text/50 truncate"
-                title={terminal.lastCommand}
-              >
-                {terminal.lastCommand}
-              </span>
-            )}
-        </div>
-      </button>
-
-      <div className="flex items-center gap-2.5 shrink-0">
-        {terminal.agentState === "working" && (
-          <Loader2
-            className="w-3 h-3 animate-spin motion-reduce:animate-none text-[var(--color-state-working)]"
-            aria-label="Working"
-          />
-        )}
-
-        {terminal.agentState === "running" && (
-          <Play className="w-3 h-3 text-[var(--color-status-info)]" aria-label="Running" />
-        )}
-
-        {terminal.agentState === "waiting" && (
-          <AlertCircle className="w-3 h-3 text-amber-400" aria-label="Waiting for input" />
-        )}
-
-        {terminal.agentState === "failed" && (
-          <XCircle className="w-3 h-3 text-[var(--color-status-error)]" aria-label="Failed" />
-        )}
-
-        {terminal.agentState === "completed" && (
-          <CheckCircle2
-            className="w-3 h-3 text-[var(--color-status-success)]"
-            aria-label="Completed"
-          />
-        )}
-
-        <div
-          className="text-muted-foreground/40 group-hover:text-muted-foreground/60 transition-colors"
-          title={terminal.location === "dock" ? "Docked" : "On Grid"}
-        >
-          {terminal.location === "dock" ? (
-            <PanelBottom className="w-3 h-3" />
-          ) : (
-            <LayoutGrid className="w-3 h-3" />
-          )}
-        </div>
-
-        <button
-          ref={setActivatorNodeRef}
-          type="button"
-          className="cursor-grab active:cursor-grabbing text-canopy-text/30 hover:text-canopy-text/60 transition-colors focus-visible:outline focus-visible:outline-2 focus-visible:outline-canopy-accent focus-visible:outline-offset-1 rounded"
-          aria-label="Drag to move terminal"
-          {...attributes}
-          {...listeners}
-        >
-          <GripVertical className="w-3.5 h-3.5" />
-        </button>
-      </div>
-    </div>
-  );
-}
-
 export interface WorktreeTerminalSectionProps {
   worktreeId: string;
   isExpanded: boolean;
@@ -226,37 +107,7 @@ export function WorktreeTerminalSection({
     return null;
   }, [counts.byState]);
 
-  const orderedWorktreeTerminals = useMemo(() => {
-    if (terminals.length === 0) return terminals;
-
-    const isAgentTerminal = (terminal: TerminalInstance) =>
-      terminal.type === "claude" || terminal.type === "gemini" || terminal.type === "codex";
-
-    return [...terminals].sort((a, b) => {
-      const aIsAgent = isAgentTerminal(a);
-      const bIsAgent = isAgentTerminal(b);
-
-      if (aIsAgent !== bIsAgent) {
-        return aIsAgent ? -1 : 1;
-      }
-
-      const aState = a.agentState ?? "idle";
-      const bState = b.agentState ?? "idle";
-      const aPriority = STATE_SORT_PRIORITY[aState];
-      const bPriority = STATE_SORT_PRIORITY[bState];
-
-      if (aPriority !== bPriority) {
-        return aPriority - bPriority;
-      }
-
-      return (a.title || "").localeCompare(b.title || "");
-    });
-  }, [terminals]);
-
-  const { gridIndexMap, dockIndexMap } = useMemo(
-    () => computeSourceIndexMaps(terminals),
-    [terminals]
-  );
+  const orderedWorktreeTerminals = terminals;
 
   if (!showMetaFooter) {
     return null;
@@ -282,28 +133,121 @@ export function WorktreeTerminalSection({
             </span>
             <ChevronRight className="w-3 h-3 text-canopy-text/40 rotate-90" />
           </button>
-          <div
-            id={terminalsPanelId}
-            role="region"
-            aria-labelledby={`${terminalsId}-button`}
-            className="max-h-[300px] overflow-y-auto"
+          <SortableContext
+            id={`worktree-${worktreeId}-accordion`}
+            items={orderedWorktreeTerminals.map((t) => getAccordionDragId(t.id))}
+            strategy={verticalListSortingStrategy}
           >
-            {orderedWorktreeTerminals.map((term) => {
-              const sourceIndex =
-                term.location === "dock"
-                  ? (dockIndexMap.get(term.id) ?? 0)
-                  : (gridIndexMap.get(term.id) ?? 0);
-
-              return (
-                <DraggableTerminalRow
+            <div
+              id={terminalsPanelId}
+              role="list"
+              aria-labelledby={`${terminalsId}-button`}
+              className="max-h-[300px] overflow-y-auto"
+            >
+              {orderedWorktreeTerminals.map((term, index) => (
+                <SortableWorktreeTerminal
                   key={term.id}
                   terminal={term}
-                  sourceIndex={sourceIndex}
-                  onTerminalSelect={onTerminalSelect}
-                />
-              );
-            })}
-          </div>
+                  worktreeId={worktreeId}
+                  sourceIndex={index}
+                >
+                  {({ listeners }) => (
+                    <div className="flex items-center justify-between gap-2.5 px-3 py-2 group transition-colors hover:bg-white/5">
+                      <button
+                        type="button"
+                        onClick={(e) => {
+                          e.stopPropagation();
+                          onTerminalSelect(term);
+                        }}
+                        className="flex items-center gap-2 min-w-0 flex-1 text-left focus-visible:outline focus-visible:outline-2 focus-visible:outline-canopy-accent focus-visible:outline-offset-[-2px] rounded"
+                      >
+                        <div className="shrink-0 opacity-60 group-hover:opacity-100 transition-opacity">
+                          <TerminalIcon
+                            type={term.type}
+                            kind={term.kind}
+                            agentId={term.agentId}
+                            className="w-3 h-3"
+                          />
+                        </div>
+                        <div className="flex flex-col min-w-0">
+                          <span className="text-xs font-medium truncate text-canopy-text/70 group-hover:text-canopy-text transition-colors">
+                            {term.title}
+                          </span>
+                          {term.type === "terminal" &&
+                            term.agentState === "running" &&
+                            term.lastCommand && (
+                              <span
+                                className="text-[11px] font-mono text-canopy-text/50 truncate"
+                                title={term.lastCommand}
+                              >
+                                {term.lastCommand}
+                              </span>
+                            )}
+                        </div>
+                      </button>
+
+                      <div className="flex items-center gap-2.5 shrink-0">
+                        {term.agentState === "working" && (
+                          <Loader2
+                            className="w-3 h-3 animate-spin motion-reduce:animate-none text-[var(--color-state-working)]"
+                            aria-label="Working"
+                          />
+                        )}
+
+                        {term.agentState === "running" && (
+                          <Play
+                            className="w-3 h-3 text-[var(--color-status-info)]"
+                            aria-label="Running"
+                          />
+                        )}
+
+                        {term.agentState === "waiting" && (
+                          <AlertCircle
+                            className="w-3 h-3 text-amber-400"
+                            aria-label="Waiting for input"
+                          />
+                        )}
+
+                        {term.agentState === "failed" && (
+                          <XCircle
+                            className="w-3 h-3 text-[var(--color-status-error)]"
+                            aria-label="Failed"
+                          />
+                        )}
+
+                        {term.agentState === "completed" && (
+                          <CheckCircle2
+                            className="w-3 h-3 text-[var(--color-status-success)]"
+                            aria-label="Completed"
+                          />
+                        )}
+
+                        <div
+                          className="text-muted-foreground/40 group-hover:text-muted-foreground/60 transition-colors"
+                          title={term.location === "dock" ? "Docked" : "On Grid"}
+                        >
+                          {term.location === "dock" ? (
+                            <PanelBottom className="w-3 h-3" />
+                          ) : (
+                            <LayoutGrid className="w-3 h-3" />
+                          )}
+                        </div>
+
+                        <button
+                          type="button"
+                          className="cursor-grab active:cursor-grabbing text-canopy-text/30 hover:text-canopy-text/60 transition-colors focus-visible:outline focus-visible:outline-2 focus-visible:outline-canopy-accent focus-visible:outline-offset-1 rounded"
+                          aria-label="Drag to move terminal"
+                          {...listeners}
+                        >
+                          <GripVertical className="w-3.5 h-3.5" />
+                        </button>
+                      </div>
+                    </div>
+                  )}
+                </SortableWorktreeTerminal>
+              ))}
+            </div>
+          </SortableContext>
         </>
       ) : (
         <button
