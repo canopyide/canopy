@@ -38,7 +38,11 @@ import { getTerminalThemeFromCSS } from "@/utils/terminalTheme";
 import { DEFAULT_TERMINAL_FONT_FAMILY } from "@/config/terminalFont";
 import { useIsDragging } from "@/components/DragDrop";
 import type { TerminalType } from "@/types";
-import { readXtermVisualMetrics, wheelDeltaToPx, type XtermVisualMetrics } from "./utils/xtermUtils";
+import {
+  readXtermVisualMetrics,
+  wheelDeltaToPx,
+  type XtermVisualMetrics,
+} from "./utils/xtermUtils";
 import {
   extractSnapshot,
   computeTrimmedTopCount,
@@ -582,7 +586,14 @@ export const HistoryOverlayTerminalView = forwardRef<
       // Detach from DOM (preserves instance in service)
       terminalInstanceService.detach(terminalId, xtermContainer);
     };
-  }, [terminalId, type, effectiveFontFamily, fontSize, effectiveScrollback, getRefreshTierCallback]);
+  }, [
+    terminalId,
+    type,
+    effectiveFontFamily,
+    fontSize,
+    effectiveScrollback,
+    getRefreshTierCallback,
+  ]);
 
   // Wheel Event Handler
   useEffect(() => {
