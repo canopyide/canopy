@@ -277,30 +277,31 @@ export interface TerminalRestartError {
   };
 }
 
-/**
- * Represents a panel instance in the application.
- * Panels include terminals, agent terminals, browser panels, and extension-provided panels.
- *
- * Note: This interface is named TerminalInstance for backward compatibility.
- * Use the PanelInstance type alias for new code.
- */
-export interface TerminalInstance {
-  /** Unique identifier for this terminal */
+interface BasePanelData {
+  /** Unique identifier for this panel */
   id: string;
-  /** ID of the worktree this terminal is associated with */
+  /** Panel category */
+  kind: PanelKind;
+  /** Display title for the panel tab */
+  title: string;
+  /** Location in the UI - grid (main view) or dock (minimized) */
+  location: TerminalLocation;
+  /** ID of the worktree this panel is associated with */
   worktreeId?: string;
-  /** Terminal category */
-  kind?: TerminalKind;
+  /** Whether the panel pane is currently visible in the viewport */
+  isVisible?: boolean;
+}
+
+interface PtyPanelData extends BasePanelData {
+  kind: "terminal" | "agent";
   /**
    * Legacy field retained for persistence; new code should prefer `kind`.
    * - "terminal" for default terminals
    * - legacy agent ids ("claude", "gemini", "codex") when migrated from old state
    */
-  type?: TerminalType;
+  type: TerminalType;
   /** Agent ID when kind is 'agent' */
   agentId?: AgentId;
-  /** Display title for the terminal tab */
-  title: string;
   /** Current working directory of the terminal */
   cwd: string;
   /** Process ID of the underlying PTY process */
@@ -329,12 +330,8 @@ export interface TerminalInstance {
   activityTimestamp?: number;
   /** Last detected command for this terminal (e.g., 'npm run dev') */
   lastCommand?: string;
-  /** Location in the UI - grid (main view) or dock (minimized) */
-  location: TerminalLocation;
   /** Command to execute after shell starts (e.g., 'claude --model sonnet-4' for AI agents) */
   command?: string;
-  /** Whether the terminal pane is currently visible in the viewport */
-  isVisible?: boolean;
   /** Counter incremented on restart to trigger React re-render without unmounting parent */
   restartKey?: number;
   /** Guard flag to prevent auto-trash during restart flow (exit event race condition) */
@@ -347,15 +344,62 @@ export interface TerminalInstance {
   flowStatusTimestamp?: number;
   /** Whether user input is locked (read-only monitor mode) */
   isInputLocked?: boolean;
-  /** Current URL for browser panes (kind === 'browser') */
+}
+
+interface BrowserPanelData extends BasePanelData {
+  kind: "browser";
+  /** Current URL for browser panes */
   browserUrl?: string;
 }
 
+export type PanelInstance = PtyPanelData | BrowserPanelData;
+
+export function isPtyPanel(panel: PanelInstance | TerminalInstance): panel is PtyPanelData {
+  const kind = panel.kind ?? "terminal";
+  return kind === "terminal" || kind === "agent";
+}
+
+export function isBrowserPanel(panel: PanelInstance | TerminalInstance): panel is BrowserPanelData {
+  const kind = panel.kind ?? "terminal";
+  return kind === "browser";
+}
+
 /**
- * Type alias for TerminalInstance. Use this in new code.
- * TerminalInstance is kept for backward compatibility.
+ * Legacy interface for backward compatibility with persisted state.
+ * New code should use the PanelInstance discriminated union.
  */
-export type PanelInstance = TerminalInstance;
+export interface TerminalInstance {
+  id: string;
+  worktreeId?: string;
+  kind?: TerminalKind;
+  type?: TerminalType;
+  agentId?: AgentId;
+  title: string;
+  cwd: string;
+  pid?: number;
+  cols: number;
+  rows: number;
+  agentState?: AgentState;
+  lastStateChange?: number;
+  error?: string;
+  stateChangeTrigger?: AgentStateChangeTrigger;
+  stateChangeConfidence?: number;
+  activityHeadline?: string;
+  activityStatus?: "working" | "waiting" | "success" | "failure";
+  activityType?: "interactive" | "background" | "idle";
+  activityTimestamp?: number;
+  lastCommand?: string;
+  location: TerminalLocation;
+  command?: string;
+  isVisible?: boolean;
+  restartKey?: number;
+  isRestarting?: boolean;
+  restartError?: TerminalRestartError;
+  flowStatus?: "running" | "paused-backpressure" | "paused-user" | "suspended";
+  flowStatusTimestamp?: number;
+  isInputLocked?: boolean;
+  browserUrl?: string;
+}
 
 /** Options for spawning a new PTY process */
 export interface PtySpawnOptions {

@@ -1,6 +1,7 @@
 import type { TerminalInstance, TerminalState } from "@/types";
 import { appClient } from "@/clients";
 import { debounce } from "@/utils/debounce";
+import { panelKindHasPty } from "@shared/config/panelKindRegistry";
 
 type AppClientType = typeof appClient;
 
@@ -13,19 +14,31 @@ export interface TerminalPersistenceOptions {
 const DEFAULT_OPTIONS: Required<TerminalPersistenceOptions> = {
   debounceMs: 500,
   filter: (t) => t.location !== "trash",
-  transform: (t) => ({
-    id: t.id,
-    kind: t.kind,
-    type: t.type,
-    agentId: t.agentId,
-    title: t.title,
-    cwd: t.cwd,
-    worktreeId: t.worktreeId,
-    location: t.location,
-    command: t.command?.trim() || undefined,
-    ...(t.isInputLocked && { isInputLocked: true }),
-    ...(t.kind === "browser" && t.browserUrl && { browserUrl: t.browserUrl }),
-  }),
+  transform: (t) => {
+    const base = {
+      id: t.id,
+      kind: t.kind,
+      title: t.title,
+      worktreeId: t.worktreeId,
+      location: t.location,
+    };
+
+    if (panelKindHasPty(t.kind ?? "terminal")) {
+      return {
+        ...base,
+        type: t.type,
+        agentId: t.agentId,
+        cwd: t.cwd,
+        command: t.command?.trim() || undefined,
+        ...(t.isInputLocked && { isInputLocked: true }),
+      };
+    } else {
+      return {
+        ...base,
+        ...(t.browserUrl && { browserUrl: t.browserUrl }),
+      };
+    }
+  },
 };
 
 export class TerminalPersistence {
