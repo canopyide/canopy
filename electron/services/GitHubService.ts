@@ -323,11 +323,23 @@ function parseGitHubError(error: unknown): string {
     return "Repository not found or token lacks access.";
   }
 
-  if (message.includes("ENOTFOUND") || message.includes("ETIMEDOUT")) {
+  if (
+    message.includes("ENOTFOUND") ||
+    message.includes("ETIMEDOUT") ||
+    message.includes("ECONNREFUSED") ||
+    message.includes("ECONNRESET") ||
+    message.includes("EAI_AGAIN") ||
+    message.includes("network") ||
+    message.includes("fetch failed")
+  ) {
     return "Cannot reach GitHub. Check your internet connection.";
   }
 
-  return "GitHub API unavailable";
+  if (message.includes("SAML") || message.includes("SSO")) {
+    return "SSO authorization required. Re-authorize at github.com.";
+  }
+
+  return `GitHub API error: ${message}`;
 }
 
 export function clearGitHubCaches(): void {
