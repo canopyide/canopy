@@ -81,6 +81,9 @@
   /* Terminal surface background - lighter for contrast with grid */
   --color-surface: #1c1c20;
   --color-surface-highlight: #2a2a2f;
+
+  /* Subtle focus indicator - low opacity white for keyboard navigation */
+  --color-canopy-focus: rgba(255, 255, 255, 0.18);
 }
 
 :root {
@@ -218,8 +221,8 @@
   /* Input fields */
   --input: var(--color-canopy-border);
 
-  /* Focus rings - using brand accent */
-  --ring: var(--color-canopy-accent);
+  /* Focus rings - subtle white for keyboard navigation (not accent) */
+  --ring: var(--color-canopy-focus);
 
   /* Chart colors - unchanged (no Canopy equivalent) */
   --chart-1: oklch(0.488 0.243 264.376);
@@ -236,7 +239,7 @@
   --sidebar-accent: var(--color-canopy-border);
   --sidebar-accent-foreground: var(--color-canopy-text);
   --sidebar-border: var(--color-canopy-border);
-  --sidebar-ring: var(--color-canopy-accent);
+  --sidebar-ring: var(--color-canopy-focus);
 }
 
 @layer base {
