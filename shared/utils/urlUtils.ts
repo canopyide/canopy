@@ -1,3 +1,4 @@
+/* eslint-disable no-control-regex */
 const ALLOWED_HOSTS = ["localhost", "127.0.0.1", "::1"];
 const ALLOWED_PROTOCOLS = ["http:", "https:"];
 
