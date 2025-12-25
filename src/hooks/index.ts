@@ -47,3 +47,6 @@ export { useMenuActions } from "./useMenuActions";
 export type { UseMenuActionsOptions } from "./useMenuActions";
 
 export { useNativeContextMenu } from "./useNativeContextMenu";
+
+export { useHorizontalScrollControls } from "./useHorizontalScrollControls";
+export type { UseHorizontalScrollControlsReturn } from "./useHorizontalScrollControls";
