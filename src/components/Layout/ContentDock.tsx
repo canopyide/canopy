@@ -15,7 +15,7 @@ import {
   DOCK_PLACEHOLDER_ID,
 } from "@/components/DragDrop";
 import { useWorktrees } from "@/hooks/useWorktrees";
-import { useNativeContextMenu } from "@/hooks";
+import { useNativeContextMenu, useHorizontalScrollControls } from "@/hooks";
 import type { MenuItemOption } from "@/types";
 import { actionService } from "@/services/ActionService";
 
@@ -50,6 +50,8 @@ export function ContentDock() {
   const cwd = activeWorktree?.path ?? currentProject?.path ?? "";
 
   const scrollContainerRef = useRef<HTMLDivElement>(null);
+  const { canScrollLeft, canScrollRight, scrollLeft, scrollRight } =
+    useHorizontalScrollControls(scrollContainerRef);
 
   // Make the dock terminals area droppable
   const { setNodeRef: setDockDropRef, isOver } = useDroppable({
@@ -66,16 +68,6 @@ export function ContentDock() {
     },
     [setDockDropRef]
   );
-
-  const handleScroll = (direction: "left" | "right") => {
-    if (scrollContainerRef.current) {
-      const scrollAmount = 200;
-      scrollContainerRef.current.scrollBy({
-        left: direction === "left" ? -scrollAmount : scrollAmount,
-        behavior: "smooth",
-      });
-    }
-  };
 
   const handleAddTerminal = useCallback(
     (agentId: string) => {
@@ -142,17 +134,25 @@ export function ContentDock() {
       )}
       role="list"
     >
-      <div className="flex items-center gap-1.5 flex-1 min-w-0">
-        {/* Left Scroll Chevron */}
-        <button
-          onClick={() => handleScroll("left")}
-          disabled={activeDockTerminals.length === 0}
-          className="p-1.5 text-canopy-text/40 hover:text-canopy-text hover:bg-white/[0.06] rounded-[var(--radius-md)] transition-colors shrink-0 disabled:opacity-30 disabled:cursor-not-allowed disabled:hover:text-canopy-text/40 disabled:hover:bg-transparent"
-          aria-label="Scroll left"
-          title="Scroll left"
-        >
-          <ChevronLeft className="w-4 h-4" />
-        </button>
+      <div className="relative flex-1 min-w-0">
+        {/* Left Scroll Chevron - Overlay */}
+        {canScrollLeft && (
+          <div className="absolute left-0 top-1/2 -translate-y-1/2 z-10 pointer-events-none bg-gradient-to-r from-[var(--dock-bg)] via-[var(--dock-bg)]/90 to-transparent pr-4">
+            <button
+              type="button"
+              onClick={scrollLeft}
+              className={cn(
+                "pointer-events-auto p-1.5 text-canopy-text/60 hover:text-canopy-text",
+                "rounded-[var(--radius-md)] transition-colors",
+                "focus-visible:outline focus-visible:outline-2 focus-visible:outline-canopy-accent"
+              )}
+              aria-label="Scroll left"
+              title="Scroll left"
+            >
+              <ChevronLeft className="w-4 h-4" />
+            </button>
+          </div>
+        )}
 
         {/* Scrollable Container */}
         <div
@@ -182,16 +182,24 @@ export function ContentDock() {
           </SortableContext>
         </div>
 
-        {/* Right Scroll Chevron */}
-        <button
-          onClick={() => handleScroll("right")}
-          disabled={activeDockTerminals.length === 0}
-          className="p-1.5 text-canopy-text/40 hover:text-canopy-text hover:bg-white/[0.06] rounded-[var(--radius-md)] transition-colors shrink-0 disabled:opacity-30 disabled:cursor-not-allowed disabled:hover:text-canopy-text/40 disabled:hover:bg-transparent"
-          aria-label="Scroll right"
-          title="Scroll right"
-        >
-          <ChevronRight className="w-4 h-4" />
-        </button>
+        {/* Right Scroll Chevron - Overlay */}
+        {canScrollRight && (
+          <div className="absolute right-0 top-1/2 -translate-y-1/2 z-10 pointer-events-none bg-gradient-to-l from-[var(--dock-bg)] via-[var(--dock-bg)]/90 to-transparent pl-4">
+            <button
+              type="button"
+              onClick={scrollRight}
+              className={cn(
+                "pointer-events-auto p-1.5 text-canopy-text/60 hover:text-canopy-text",
+                "rounded-[var(--radius-md)] transition-colors",
+                "focus-visible:outline focus-visible:outline-2 focus-visible:outline-canopy-accent"
+              )}
+              aria-label="Scroll right"
+              title="Scroll right"
+            >
+              <ChevronRight className="w-4 h-4" />
+            </button>
+          </div>
+        )}
       </div>
 
       {/* Separator between terminals and action containers */}
