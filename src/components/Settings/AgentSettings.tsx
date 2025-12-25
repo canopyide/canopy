@@ -2,6 +2,7 @@ import { useEffect, useMemo, useState, useCallback, useRef } from "react";
 import { cn } from "@/lib/utils";
 import { getAgentIds, getAgentConfig } from "@/config/agents";
 import { useAgentSettingsStore } from "@/store";
+import { useUserAgentRegistryStore } from "@/store/userAgentRegistryStore";
 import { Button } from "@/components/ui/button";
 import {
   DEFAULT_AGENT_SETTINGS,
@@ -13,6 +14,7 @@ import { actionService } from "@/services/ActionService";
 import { AgentHelpOutput } from "./AgentHelpOutput";
 import { cliAvailabilityClient } from "@/clients";
 import { getInstallBlocksForCurrentOS } from "@/lib/agentInstall";
+import { AgentRegistrySettings } from "./AgentRegistrySettings";
 
 interface AgentSettingsProps {
   onSettingsChange?: () => void;
@@ -27,6 +29,7 @@ export function AgentSettings({ onSettingsChange }: AgentSettingsProps) {
     updateAgent,
     reset,
   } = useAgentSettingsStore();
+  const { registry: userRegistry } = useUserAgentRegistryStore();
   const [activeAgentId, setActiveAgentId] = useState<string | null>(null);
   const [cliAvailability, setCliAvailability] = useState<Record<string, boolean>>({});
   const [isRefreshingCli, setIsRefreshingCli] = useState(false);
@@ -103,11 +106,11 @@ export function AgentSettings({ onSettingsChange }: AgentSettingsProps) {
     }
   }, []);
 
-  const agentIds = getAgentIds();
+  const agentIds = useMemo(() => getAgentIds(), [userRegistry]);
   const effectiveSettings = settings ?? DEFAULT_AGENT_SETTINGS;
 
   useEffect(() => {
-    if (!activeAgentId && agentIds.length > 0) {
+    if ((!activeAgentId || !agentIds.includes(activeAgentId)) && agentIds.length > 0) {
       setActiveAgentId(agentIds[0]);
     }
   }, [activeAgentId, agentIds]);
@@ -176,9 +179,23 @@ export function AgentSettings({ onSettingsChange }: AgentSettingsProps) {
   }
 
   return (
-    <div className="space-y-4">
-      {/* Agent Selector - Grid of pills */}
-      <div className="grid grid-cols-3 gap-1.5 p-1.5 bg-canopy-bg rounded-[var(--radius-lg)] border border-canopy-border">
+    <div className="space-y-6">
+      {/* User Agent Registry Section */}
+      <div className="border-b border-canopy-border pb-6">
+        <AgentRegistrySettings />
+      </div>
+
+      {/* Agent Runtime Settings Section */}
+      <div className="space-y-4">
+        <div>
+          <h3 className="text-sm font-medium mb-1">Agent Runtime Settings</h3>
+          <p className="text-xs text-canopy-text/50">
+            Configure CLI flags and options for each agent
+          </p>
+        </div>
+
+        {/* Agent Selector - Grid of pills */}
+        <div className="grid grid-cols-3 gap-1.5 p-1.5 bg-canopy-bg rounded-[var(--radius-lg)] border border-canopy-border">
         {agentOptions.map((agent) => {
           if (!agent) return null;
           const Icon = agent.Icon;
@@ -517,6 +534,7 @@ export function AgentSettings({ onSettingsChange }: AgentSettingsProps) {
           })()}
         </div>
       )}
+      </div>
     </div>
   );
 }
