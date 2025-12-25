@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useState } from "react";
+import { useEffect, useMemo, useState, useCallback, useRef } from "react";
 import { cn } from "@/lib/utils";
 import { getAgentIds, getAgentConfig } from "@/config/agents";
 import { useAgentSettingsStore } from "@/store";
@@ -8,9 +8,11 @@ import {
   getAgentSettingsEntry,
   DEFAULT_DANGEROUS_ARGS,
 } from "@shared/types";
-import { RotateCcw, ExternalLink } from "lucide-react";
+import { RotateCcw, ExternalLink, RefreshCw, Copy, Check } from "lucide-react";
 import { actionService } from "@/services/ActionService";
 import { AgentHelpOutput } from "./AgentHelpOutput";
+import { cliAvailabilityClient } from "@/clients";
+import { getInstallBlocksForCurrentOS } from "@/lib/agentInstall";
 
 interface AgentSettingsProps {
   onSettingsChange?: () => void;
@@ -26,10 +28,80 @@ export function AgentSettings({ onSettingsChange }: AgentSettingsProps) {
     reset,
   } = useAgentSettingsStore();
   const [activeAgentId, setActiveAgentId] = useState<string | null>(null);
+  const [cliAvailability, setCliAvailability] = useState<Record<string, boolean>>({});
+  const [isRefreshingCli, setIsRefreshingCli] = useState(false);
+  const [copiedCommand, setCopiedCommand] = useState<string | null>(null);
+  const copyTimeoutRef = useRef<NodeJS.Timeout | null>(null);
+  const isMountedRef = useRef(true);
 
   useEffect(() => {
     initialize();
   }, [initialize]);
+
+  useEffect(() => {
+    const loadCliAvailability = async () => {
+      try {
+        const availability = await cliAvailabilityClient.get();
+        if (isMountedRef.current) {
+          setCliAvailability(availability);
+        }
+      } catch {
+        if (isMountedRef.current) {
+          setCliAvailability({});
+        }
+      }
+    };
+    void loadCliAvailability();
+  }, []);
+
+  useEffect(() => {
+    return () => {
+      isMountedRef.current = false;
+      if (copyTimeoutRef.current) {
+        clearTimeout(copyTimeoutRef.current);
+      }
+    };
+  }, []);
+
+  const handleRefreshCliAvailability = useCallback(async () => {
+    setIsRefreshingCli(true);
+    try {
+      const availability = await cliAvailabilityClient.refresh();
+      if (isMountedRef.current) {
+        setCliAvailability(availability);
+      }
+    } catch {
+      if (isMountedRef.current) {
+        setCliAvailability({});
+      }
+    } finally {
+      if (isMountedRef.current) {
+        setIsRefreshingCli(false);
+      }
+    }
+  }, []);
+
+  const handleCopyCommand = useCallback(async (command: string) => {
+    try {
+      await navigator.clipboard.writeText(command);
+      if (!isMountedRef.current) return;
+
+      setCopiedCommand(command);
+
+      if (copyTimeoutRef.current) {
+        clearTimeout(copyTimeoutRef.current);
+      }
+
+      copyTimeoutRef.current = setTimeout(() => {
+        if (isMountedRef.current) {
+          setCopiedCommand(null);
+        }
+        copyTimeoutRef.current = null;
+      }, 2000);
+    } catch (error) {
+      console.error("Failed to copy command:", error);
+    }
+  }, []);
 
   const agentIds = getAgentIds();
   const effectiveSettings = settings ?? DEFAULT_AGENT_SETTINGS;
@@ -282,6 +354,167 @@ export function AgentSettings({ onSettingsChange }: AgentSettingsProps) {
             agentName={activeAgent.name}
             usageUrl={activeAgent.usageUrl}
           />
+
+          {/* Installation Section */}
+          {(() => {
+            const agentConfig = getAgentConfig(activeAgent.id);
+            const isCliAvailable = cliAvailability[activeAgent.id];
+            const installBlocks = agentConfig ? getInstallBlocksForCurrentOS(agentConfig) : null;
+            const hasInstallConfig = agentConfig?.install;
+
+            if (isCliAvailable === true) {
+              return null;
+            }
+
+            return (
+              <div className="space-y-3 pt-4 border-t border-canopy-border">
+                <div className="flex items-center justify-between">
+                  <div>
+                    <h5 className="text-sm font-medium text-canopy-text">Installation</h5>
+                    <p className="text-xs text-canopy-text/50">{activeAgent.name} CLI not found</p>
+                  </div>
+                  <Button
+                    size="sm"
+                    variant="ghost"
+                    onClick={() => void handleRefreshCliAvailability()}
+                    disabled={isRefreshingCli}
+                    className="text-canopy-text/50 hover:text-canopy-text"
+                  >
+                    <RefreshCw
+                      size={14}
+                      className={cn("mr-1.5", isRefreshingCli && "animate-spin")}
+                    />
+                    Re-check
+                  </Button>
+                </div>
+
+                {installBlocks && installBlocks.length > 0 ? (
+                  <div className="space-y-3">
+                    {installBlocks.map((block, blockIndex) => (
+                      <div
+                        key={blockIndex}
+                        className="rounded-[var(--radius-md)] border border-canopy-border bg-surface p-3 space-y-2"
+                      >
+                        {block.label && (
+                          <div className="text-xs font-medium text-canopy-text/70">
+                            {block.label}
+                          </div>
+                        )}
+
+                        {block.steps && block.steps.length > 0 && (
+                          <ul className="space-y-1 text-xs text-canopy-text/60">
+                            {block.steps.map((step, stepIndex) => (
+                              <li key={stepIndex} className="flex gap-2">
+                                <span className="text-canopy-text/40">{stepIndex + 1}.</span>
+                                <span>{step}</span>
+                              </li>
+                            ))}
+                          </ul>
+                        )}
+
+                        {block.commands && block.commands.length > 0 && (
+                          <div className="space-y-1.5">
+                            {block.commands.map((command, cmdIndex) => (
+                              <div
+                                key={cmdIndex}
+                                className="flex items-center gap-2 px-3 py-2 rounded-[var(--radius-md)] bg-canopy-bg border border-canopy-border"
+                              >
+                                <code className="flex-1 text-xs font-mono text-canopy-text">
+                                  {command}
+                                </code>
+                                <button
+                                  onClick={() => void handleCopyCommand(command)}
+                                  className="shrink-0 p-1 hover:bg-white/5 rounded transition-colors"
+                                  title="Copy command"
+                                >
+                                  {copiedCommand === command ? (
+                                    <Check size={14} className="text-canopy-accent" />
+                                  ) : (
+                                    <Copy size={14} className="text-canopy-text/40" />
+                                  )}
+                                </button>
+                              </div>
+                            ))}
+                          </div>
+                        )}
+
+                        {block.notes && block.notes.length > 0 && (
+                          <div className="space-y-1 text-xs text-canopy-text/40">
+                            {block.notes.map((note, noteIndex) => (
+                              <p key={noteIndex}>{note}</p>
+                            ))}
+                          </div>
+                        )}
+                      </div>
+                    ))}
+
+                    {agentConfig?.install?.troubleshooting &&
+                      agentConfig.install.troubleshooting.length > 0 && (
+                        <div className="px-3 py-2 rounded-[var(--radius-md)] bg-[var(--color-status-warning)]/10 border border-[var(--color-status-warning)]/20">
+                          <div className="text-xs font-medium text-[var(--color-status-warning)] mb-1">
+                            Troubleshooting
+                          </div>
+                          <ul className="space-y-0.5 text-xs text-canopy-text/60">
+                            {agentConfig.install.troubleshooting.map((tip, tipIndex) => (
+                              <li key={tipIndex}>• {tip}</li>
+                            ))}
+                          </ul>
+                        </div>
+                      )}
+
+                    <div className="px-3 py-2 rounded-[var(--radius-md)] bg-canopy-bg/50 border border-canopy-border/50">
+                      <p className="text-xs text-canopy-text/40">
+                        ⚠️ Review commands before running them in your terminal
+                      </p>
+                    </div>
+                  </div>
+                ) : hasInstallConfig?.docsUrl ? (
+                  <div className="px-4 py-6 rounded-[var(--radius-md)] border border-canopy-border bg-surface text-center">
+                    <p className="text-xs text-canopy-text/60 mb-3">
+                      No OS-specific install instructions available
+                    </p>
+                    <Button
+                      size="sm"
+                      variant="ghost"
+                      onClick={() => {
+                        const url = agentConfig?.install?.docsUrl;
+                        if (url) {
+                          void window.electron.system.openExternal(url);
+                        }
+                      }}
+                      className="text-canopy-accent hover:text-canopy-accent/80"
+                    >
+                      <ExternalLink size={14} className="mr-1.5" />
+                      Open Install Docs
+                    </Button>
+                  </div>
+                ) : (
+                  <div className="px-4 py-6 rounded-[var(--radius-md)] border border-canopy-border bg-surface text-center">
+                    <p className="text-xs text-canopy-text/60">
+                      No installation instructions configured for this agent
+                    </p>
+                  </div>
+                )}
+
+                {hasInstallConfig?.docsUrl && installBlocks && installBlocks.length > 0 && (
+                  <Button
+                    size="sm"
+                    variant="ghost"
+                    onClick={() => {
+                      const url = agentConfig?.install?.docsUrl;
+                      if (url) {
+                        void window.electron.system.openExternal(url);
+                      }
+                    }}
+                    className="w-full text-canopy-text/50 hover:text-canopy-text"
+                  >
+                    <ExternalLink size={14} className="mr-1.5" />
+                    View Official Documentation
+                  </Button>
+                )}
+              </div>
+            );
+          })()}
         </div>
       )}
     </div>
