@@ -6,12 +6,7 @@ import type { TerminalInstance } from "@/store/terminalStore";
 import { TerminalIcon } from "@/components/Terminal/TerminalIcon";
 import { cn } from "@/lib/utils";
 import type { WorktreeTerminalCounts } from "@/hooks/useWorktreeTerminals";
-import {
-  STATE_COLORS,
-  STATE_ICONS,
-  STATE_LABELS,
-  STATE_PRIORITY,
-} from "../terminalStateConfig";
+import { STATE_COLORS, STATE_ICONS, STATE_LABELS, STATE_PRIORITY } from "../terminalStateConfig";
 import { Tooltip, TooltipContent, TooltipTrigger, TooltipProvider } from "../../ui/tooltip";
 import {
   AlertCircle,
@@ -25,7 +20,10 @@ import {
   Terminal,
   XCircle,
 } from "lucide-react";
-import { SortableWorktreeTerminal, getAccordionDragId } from "@/components/DragDrop/SortableWorktreeTerminal";
+import {
+  SortableWorktreeTerminal,
+  getAccordionDragId,
+} from "@/components/DragDrop/SortableWorktreeTerminal";
 
 interface StateIconProps {
   state: AgentState;
@@ -60,19 +58,6 @@ function StateIcon({ state, count }: StateIconProps) {
       </TooltipContent>
     </Tooltip>
   );
-}
-
-function computeSourceIndexMaps(terminals: TerminalInstance[]) {
-  const gridTerminals = terminals.filter((t) => t.location === "grid" || t.location === undefined);
-  const dockTerminals = terminals.filter((t) => t.location === "dock");
-
-  const gridIndexMap = new Map<string, number>();
-  gridTerminals.forEach((term, idx) => gridIndexMap.set(term.id, idx));
-
-  const dockIndexMap = new Map<string, number>();
-  dockTerminals.forEach((term, idx) => dockIndexMap.set(term.id, idx));
-
-  return { gridIndexMap, dockIndexMap };
 }
 
 export interface WorktreeTerminalSectionProps {

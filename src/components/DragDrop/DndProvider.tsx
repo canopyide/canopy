@@ -82,8 +82,12 @@ export interface WorktreeDragData extends DragData {
   origin: "accordion";
 }
 
-function isWorktreeDragData(data: DragData | WorktreeDragData | undefined): data is WorktreeDragData {
-  return data !== undefined && "origin" in data && data.origin === "accordion" && "worktreeId" in data;
+function isWorktreeDragData(
+  data: DragData | WorktreeDragData | undefined
+): data is WorktreeDragData {
+  return (
+    data !== undefined && "origin" in data && data.origin === "accordion" && "worktreeId" in data
+  );
 }
 
 // Helper to get coordinates from pointer or touch event
@@ -195,10 +199,10 @@ export function DndProvider({ children }: DndProviderProps) {
   const handleDragStart = useCallback((event: DragStartEvent) => {
     const { active } = event;
     const dragId = active.id as string;
-    
+
     const data = active.data.current as DragData | WorktreeDragData | undefined;
-    const terminalId = data?.terminal?.id ?? (parseAccordionDragId(dragId) ?? dragId);
-    
+    const terminalId = data?.terminal?.id ?? parseAccordionDragId(dragId) ?? dragId;
+
     setActiveId(dragId);
     terminalInstanceService.lockResize(terminalId, true);
 
@@ -416,7 +420,9 @@ export function DndProvider({ children }: DndProviderProps) {
 
         // Find index of item we're dropping on (skip accordion IDs)
         const isAccordionOver = parseAccordionDragId(overId) !== null;
-        const overTerminalIndex = isAccordionOver ? -1 : containerTerminals.findIndex((t) => t.id === overId);
+        const overTerminalIndex = isAccordionOver
+          ? -1
+          : containerTerminals.findIndex((t) => t.id === overId);
         if (overTerminalIndex !== -1) {
           targetIndex = overTerminalIndex;
         } else if (overData?.sortable?.index !== undefined) {
@@ -588,7 +594,8 @@ export function DndProvider({ children }: DndProviderProps) {
   );
 
   const handleDragCancel = useCallback(() => {
-    const terminalId = activeData?.terminal?.id ?? (activeId ? (parseAccordionDragId(activeId) ?? activeId) : null);
+    const terminalId =
+      activeData?.terminal?.id ?? (activeId ? (parseAccordionDragId(activeId) ?? activeId) : null);
     if (terminalId) {
       terminalInstanceService.lockResize(terminalId, false);
     }
