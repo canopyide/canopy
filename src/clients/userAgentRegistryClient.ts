@@ -9,10 +9,7 @@ export const userAgentRegistryClient = {
     return window.electron.userAgentRegistry.add(config);
   },
 
-  update: (
-    id: string,
-    config: UserAgentConfig
-  ): Promise<{ success: boolean; error?: string }> => {
+  update: (id: string, config: UserAgentConfig): Promise<{ success: boolean; error?: string }> => {
     return window.electron.userAgentRegistry.update(id, config);
   },
 
