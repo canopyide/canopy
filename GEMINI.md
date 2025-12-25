@@ -24,40 +24,71 @@ npm run rebuild      # Rebuild node-pty
 
 - **Main (`electron/`):** Node.js. Handles node-pty, git, services, IPC.
 - **Renderer (`src/`):** React 19. Communicates via `window.electron`.
+- **Shared (`shared/`):** Types and config shared between processes.
+
+### Actions System
+
+Central orchestration layer for all UI operations. Provides unified API for menus, keybindings, and future agent automation.
+
+- `ActionService` (`src/services/ActionService.ts`) - Registry and dispatcher
+- `dispatch(actionId, args?)` - Execute any action
+- `list()` / `get(id)` - Introspect actions (MCP-compatible manifest)
+- Action definitions in `src/services/actions/definitions/` (17 domain files)
+- Types in `shared/types/actions.ts`
+
+### Panel Architecture
+
+Panels are visual units in the grid/dock. Uses discriminated unions:
+- `PanelInstance = PtyPanelData | BrowserPanelData`
+- Kinds: `"terminal"` | `"agent"` | `"browser"`
+- `panelKindHasPty(kind)` - Check if panel needs PTY
+- Registry: `shared/config/panelKindRegistry.ts`
 
 ### IPC Bridge (`window.electron`)
 
-Namespaced API exposed via `electron/preload.ts`:
+Namespaced API exposed via `electron/preload.cts`:
 
-- `worktree`: getAll, refresh, setActive, onUpdate
-- `terminal`: spawn, write, resize, kill, onData, onExit
-- `devServer`: start, stop, toggle, getLogs
+- `worktree`: getAll, refresh, setActive, create, delete, onUpdate
+- `terminal`: spawn, write, resize, kill, trash, restore, onData, onExit
+- `app`: getState, setState, hydrate, onMenuAction
 - `copyTree`: generate, injectToTerminal, onProgress
+- `system`: openExternal, openPath, checkCommand
+- `project`: getAll, getCurrent, add, switch, onSwitch
+- `events`: emit (action tracking)
 
 ## Key Features
 
-- **Worktrees:** `WorktreeService` polls git status, tracks file changes.
-- **Terminals:** `PtyManager` (Main) + xterm.js (Renderer).
-- **Agent State:** `AgentStateMachine` detects idle/working/waiting from output.
+- **Panels:** `PtyManager` (Main) + xterm.js (Renderer). Supports terminal, agent, and browser panels.
+- **Worktrees:** `WorkspaceService` polls git status, tracks file changes.
+- **Agent State:** `AgentStateMachine` detects idle/working/waiting/completed from output.
 - **Context Injection:** `CopyTreeService` generates context, pastes into terminal.
-- **Dev Server:** `DevServerManager` auto-detects and manages package.json scripts.
+- **Actions:** `ActionService` dispatches all operations with validation and event emission.
 
 ## Directory Map
 
 ```text
 electron/
 ├── main.ts              # Entry point
-├── preload.ts           # IPC bridge
+├── preload.cts          # IPC bridge
+├── pty-host.ts          # PTY process host
 ├── ipc/
 │   ├── channels.ts      # Channel constants
-│   └── handlers.ts      # IPC implementations
-└── services/
-    ├── PtyManager.ts        # Terminal processes
-    ├── WorktreeService.ts   # Git monitoring
-    ├── AgentStateMachine.ts # Agent state tracking
-    └── DevServerManager.ts  # Dev server lifecycle
+│   └── handlers/        # IPC implementations
+└── services/            # Backend services
+
+shared/
+├── types/
+│   ├── actions.ts       # Action system types
+│   ├── domain.ts        # Panel, Worktree types
+│   └── keymap.ts        # Keybinding types
+└── config/
+    ├── panelKindRegistry.ts  # Panel configuration
+    └── agentRegistry.ts      # Agent configuration
 
 src/
+├── services/
+│   ├── ActionService.ts      # Action dispatcher
+│   └── actions/definitions/  # Action definitions
 ├── components/
 │   ├── Terminal/        # Xterm.js grid
 │   ├── Worktree/        # Dashboard cards
@@ -72,6 +103,11 @@ src/
 **Adding IPC channel:**
 
 1. Define in `electron/ipc/channels.ts`
-2. Implement in `electron/ipc/handlers.ts`
-3. Expose in `electron/preload.ts`
+2. Implement in `electron/ipc/handlers/`
+3. Expose in `electron/preload.cts`
 4. Type in `src/types/electron.d.ts`
+
+**Adding action:**
+
+1. Add ID to `shared/types/actions.ts`
+2. Create definition in `src/services/actions/definitions/`

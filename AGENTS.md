@@ -1,9 +1,14 @@
 # Repository Guidelines
 
+## Project Overview
+
+Electron-based IDE for orchestrating AI coding agents. Features terminal grid, worktree dashboard, and context injection.
+
 ## Project Structure
 
 - `src/`: React 19 UI (components, hooks, Zustand stores, entry `main.tsx`/`App.tsx`).
-- `electron/`: Main process (IPC handlers, preload, services).
+- `electron/`: Main process (IPC handlers, preload, services, PTY host).
+- `shared/`: Types and config shared between main and renderer.
 - `docs/`: Product/feature specs.
 - Tests: `__tests__` folders beside source files.
 
@@ -24,6 +29,28 @@ npm run fix              # Auto-fix lint/format
 3. **Commits:** Conventional Commits (`feat(scope):`, `fix(scope):`, `chore:`).
 4. **PRs:** Include brief summary, key changes, linked issues. Run `npm run check` first.
 5. **Security:** No secrets in commits. Validate IPC inputs. Type all main/renderer boundaries.
+
+## Key Architecture
+
+### Actions System
+
+Central dispatcher for all UI operations (`src/services/ActionService.ts`):
+- `dispatch(actionId, args?)` - Execute actions by ID
+- `list()` - Get MCP-compatible action manifest
+- Definitions in `src/services/actions/definitions/`
+- Types in `shared/types/actions.ts`
+
+### Panel Architecture
+
+Panels (terminal, agent, browser) use discriminated unions:
+- `PanelInstance = PtyPanelData | BrowserPanelData`
+- `panelKindHasPty(kind)` - Check if panel needs PTY
+- Registry: `shared/config/panelKindRegistry.ts`
+
+### IPC Bridge
+
+Renderer accesses main via `window.electron` namespaced API.
+Types in `src/types/electron.d.ts`, channels in `electron/ipc/channels.ts`.
 
 ## Coding Standards
 
