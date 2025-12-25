@@ -194,20 +194,17 @@ export const createTerminalRegistrySlice =
             ? "dock"
             : requestedLocation;
 
-        const terminal: TerminalInstance = {
+        const terminal = {
           id,
           kind: requestedKind,
-          type: "terminal",
           title,
           worktreeId: options.worktreeId,
-          cwd: options.cwd || "",
-          cols: 80,
-          rows: 24,
           location,
-          browserUrl:
-            requestedKind === "browser" ? options.browserUrl || "http://localhost:3000" : undefined,
           isVisible: location === "grid",
-        };
+          ...(requestedKind === "browser"
+            ? { browserUrl: options.browserUrl || "http://localhost:3000" }
+            : { type: "terminal" as const, cwd: "", cols: 80, rows: 24 }),
+        } as TerminalInstance;
 
         set((state) => {
           const newTerminals = [...state.terminals, terminal];
@@ -397,8 +394,8 @@ export const createTerminalRegistrySlice =
       const removedIndex = currentTerminals.findIndex((t) => t.id === id);
       const terminal = currentTerminals.find((t) => t.id === id);
 
-      // Only call PTY operations for non-browser terminals
-      if (terminal?.kind !== "browser") {
+      // Only call PTY operations for PTY terminals
+      if (terminal && panelKindHasPty(terminal.kind ?? "terminal")) {
         terminalClient.kill(id).catch((error) => {
           console.error("Failed to kill terminal:", error);
         });
@@ -599,8 +596,8 @@ export const createTerminalRegistrySlice =
       // Only 'dock' or 'grid' are valid original locations - treat undefined as 'grid'
       const originalLocation: "dock" | "grid" = terminal.location === "dock" ? "dock" : "grid";
 
-      // Only call PTY operations for non-browser terminals
-      if (terminal.kind !== "browser") {
+      // Only call PTY operations for PTY terminals
+      if (panelKindHasPty(terminal.kind ?? "terminal")) {
         terminalClient.trash(id).catch((error) => {
           console.error("Failed to trash terminal:", error);
         });
@@ -617,19 +614,20 @@ export const createTerminalRegistrySlice =
         return { terminals: newTerminals, trashedTerminals: newTrashed };
       });
 
-      if (terminal.kind !== "browser") {
+      if (panelKindHasPty(terminal.kind ?? "terminal")) {
         terminalInstanceService.applyRendererPolicy(id, TerminalRefreshTier.VISIBLE);
         return;
       }
 
-      // Browser panes never receive backend exit/TTL events, so enforce TTL locally.
+      // Non-PTY panels never receive backend exit/TTL events, so enforce TTL locally.
       window.setTimeout(
         () => {
           const state = get();
           const currentTerminal = state.terminals.find((t) => t.id === id);
           const currentTrashedInfo = state.trashedTerminals.get(id);
           if (
-            currentTerminal?.kind === "browser" &&
+            currentTerminal &&
+            !panelKindHasPty(currentTerminal.kind ?? "terminal") &&
             currentTerminal.location === "trash" &&
             currentTrashedInfo?.expiresAt === expiresAt
           ) {
@@ -645,8 +643,8 @@ export const createTerminalRegistrySlice =
       const restoreLocation = trashedInfo?.originalLocation ?? "grid";
       const terminal = get().terminals.find((t) => t.id === id);
 
-      // Only call PTY operations for non-browser terminals
-      if (terminal?.kind !== "browser") {
+      // Only call PTY operations for PTY terminals
+      if (terminal && panelKindHasPty(terminal.kind ?? "terminal")) {
         terminalClient.restore(id).catch((error) => {
           console.error("Failed to restore terminal:", error);
         });
@@ -668,8 +666,8 @@ export const createTerminalRegistrySlice =
         return { terminals: newTerminals, trashedTerminals: newTrashed };
       });
 
-      // Only apply renderer policies for non-browser terminals
-      if (terminal?.kind !== "browser") {
+      // Only apply renderer policies for PTY terminals
+      if (terminal && panelKindHasPty(terminal.kind ?? "terminal")) {
         if (restoreLocation === "dock") {
           optimizeForDock(id);
         } else {
@@ -849,9 +847,9 @@ export const createTerminalRegistrySlice =
         return;
       }
 
-      // Browser panes don't have PTY processes to restart
-      if (terminal.kind === "browser") {
-        console.warn(`[TerminalStore] Cannot restart browser pane ${id}`);
+      // Non-PTY panes don't have PTY processes to restart
+      if (!panelKindHasPty(terminal.kind ?? "terminal")) {
+        console.warn(`[TerminalStore] Cannot restart non-PTY panel ${id}`);
         return;
       }
 
@@ -1369,7 +1367,7 @@ export const createTerminalRegistrySlice =
     setBrowserUrl: (id, url) => {
       set((state) => {
         const terminal = state.terminals.find((t) => t.id === id);
-        if (!terminal || terminal.kind !== "browser") return state;
+        if (!terminal || panelKindHasPty(terminal.kind ?? "terminal")) return state;
 
         const newTerminals = state.terminals.map((t) =>
           t.id === id ? { ...t, browserUrl: url } : t

@@ -1128,22 +1128,9 @@ export class TerminalProcess {
     const CPU_ACTIVITY_THRESHOLD = 0.5;
 
     // Known shell helper processes that should be ignored even with hasChildren check
-    const shellHelperProcesses = new Set([
-      "gitstatus",
-      "gitstatusd",
-      "async",
-      "zsh-async",
-    ]);
+    const shellHelperProcesses = new Set(["gitstatus", "gitstatusd", "async", "zsh-async"]);
 
-    const shellProcesses = new Set([
-      "zsh",
-      "bash",
-      "sh",
-      "fish",
-      "powershell",
-      "pwsh",
-      "cmd",
-    ]);
+    const shellProcesses = new Set(["zsh", "bash", "sh", "fish", "powershell", "pwsh", "cmd"]);
 
     return {
       hasActiveChildren: () => {

@@ -43,8 +43,8 @@ export interface TerminalState {
   agentId?: AgentId;
   /** Display title */
   title: string;
-  /** Current working directory */
-  cwd: string;
+  /** Current working directory (required for PTY panels, optional for non-PTY) */
+  cwd?: string;
   /** Associated worktree ID */
   worktreeId?: string;
   /** Location in the UI - grid or dock */
