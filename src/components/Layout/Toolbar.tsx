@@ -118,11 +118,7 @@ export function Toolbar({
   const { handleCopyTree } = useWorktreeActions();
 
   const getTimeSinceUpdate = (timestamp: number | null): string => {
-    if (
-      timestamp == null ||
-      !Number.isFinite(timestamp) ||
-      timestamp <= 0
-    ) {
+    if (timestamp == null || !Number.isFinite(timestamp) || timestamp <= 0) {
       return "unknown";
     }
 
