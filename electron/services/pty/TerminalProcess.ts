@@ -64,6 +64,9 @@ function getSessionPath(id: string): string | null {
 }
 
 const SUBMIT_ENTER_DELAY_MS = 200; // Delay between paste and enter for reliable execution
+const OUTPUT_SETTLE_DEBOUNCE_MS = 200; // Wait for terminal output to settle before sending Enter
+const OUTPUT_SETTLE_MAX_WAIT_MS = 2000; // Don't wait forever for output to settle
+const OUTPUT_SETTLE_POLL_INTERVAL_MS = 50; // Polling interval for settle check
 
 function delay(ms: number): Promise<void> {
   return new Promise((resolve) => setTimeout(resolve, ms));
@@ -777,6 +780,8 @@ export class TerminalProcess {
 
     const useBracketedPaste = body.includes("\n") || body.length > PASTE_THRESHOLD_CHARS;
 
+    const useOutputSettle = !supportsBracketedPaste(terminal);
+
     if (useBracketedPaste && supportsBracketedPaste(terminal)) {
       const pasteBody = body.replace(/\n/g, "\r");
       const payload = `${BRACKETED_PASTE_START}${pasteBody}${BRACKETED_PASTE_END}`;
@@ -791,7 +796,15 @@ export class TerminalProcess {
     }
 
     await this.waitForInputWriteDrain();
-    await delay(SUBMIT_ENTER_DELAY_MS);
+
+    if (useOutputSettle) {
+      // For terminals that don't support bracketed paste (e.g., Gemini),
+      // wait for terminal output to settle before sending Enter.
+      // This handles slow echo, high system load, or large paste buffers.
+      await this.waitForOutputSettle();
+    } else {
+      await delay(SUBMIT_ENTER_DELAY_MS);
+    }
 
     if (!this.terminalInfo.ptyProcess) {
       return;
@@ -819,6 +832,35 @@ export class TerminalProcess {
       };
       check();
     });
+  }
+
+  /**
+   * Wait for terminal output to settle (stop producing output for a period).
+   * Used for non-bracketed paste terminals (e.g., Gemini) where we need to wait
+   * for the terminal to finish echoing input before sending the Enter key.
+   */
+  private async waitForOutputSettle(): Promise<void> {
+    const startWait = Date.now();
+    const terminal = this.terminalInfo;
+
+    while (true) {
+      if (!terminal.ptyProcess || terminal.wasKilled) {
+        return;
+      }
+
+      const settleFrom = Math.max(startWait, terminal.lastOutputTime);
+      const timeSinceOutput = Date.now() - settleFrom;
+
+      if (timeSinceOutput >= OUTPUT_SETTLE_DEBOUNCE_MS) {
+        return;
+      }
+
+      if (Date.now() - startWait > OUTPUT_SETTLE_MAX_WAIT_MS) {
+        return;
+      }
+
+      await delay(OUTPUT_SETTLE_POLL_INTERVAL_MS);
+    }
   }
 
   /**
