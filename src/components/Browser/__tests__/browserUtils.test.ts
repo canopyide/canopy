@@ -121,9 +121,7 @@ describe("getDisplayUrl", () => {
   it("should return clean display format", () => {
     expect(getDisplayUrl("http://localhost:3000/")).toBe("localhost:3000");
     expect(getDisplayUrl("http://localhost:3000/path")).toBe("localhost:3000/path");
-    expect(getDisplayUrl("http://localhost:3000/?query=value")).toBe(
-      "localhost:3000?query=value"
-    );
+    expect(getDisplayUrl("http://localhost:3000/?query=value")).toBe("localhost:3000?query=value");
   });
 
   it("should handle invalid URLs gracefully", () => {
