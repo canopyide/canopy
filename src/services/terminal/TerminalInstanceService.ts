@@ -53,9 +53,7 @@ class TerminalInstanceService {
 
   private openTerminalLink(url: string, terminalId: string, event?: MouseEvent): void {
     const isMac = navigator.platform.toLowerCase().includes("mac");
-    const isModifierPressed = event
-      ? isMac ? event.metaKey : event.ctrlKey
-      : false;
+    const isModifierPressed = event ? (isMac ? event.metaKey : event.ctrlKey) : false;
 
     const normalized = normalizeBrowserUrl(url);
 
@@ -80,9 +78,7 @@ class TerminalInstanceService {
       const targetWorktreeId = currentTerminal.worktreeId ?? null;
 
       const existingBrowser = store.terminals.find(
-        (t) =>
-          t.kind === "browser" &&
-          (t.worktreeId ?? null) === targetWorktreeId
+        (t) => t.kind === "browser" && (t.worktreeId ?? null) === targetWorktreeId
       );
 
       if (existingBrowser) {
