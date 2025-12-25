@@ -265,6 +265,8 @@ const CHANNELS = {
   AGENT_SETTINGS_SET: "agent-settings:set",
   AGENT_SETTINGS_RESET: "agent-settings:reset",
 
+  AGENT_HELP_GET: "agent-help:get",
+
   // Terminal config channels
   TERMINAL_CONFIG_GET: "terminal-config:get",
   TERMINAL_CONFIG_SET_SCROLLBACK: "terminal-config:set-scrollback",
