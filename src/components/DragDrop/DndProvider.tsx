@@ -32,6 +32,7 @@ import {
 } from "@/store";
 import { TerminalDragPreview } from "./TerminalDragPreview";
 import { terminalInstanceService } from "@/services/TerminalInstanceService";
+import { parseAccordionDragId } from "./SortableWorktreeTerminal";
 
 // Placeholder ID used when dragging from dock to grid
 export const GRID_PLACEHOLDER_ID = "__grid-placeholder__";
@@ -74,6 +75,15 @@ export interface DragData {
   terminal: TerminalInstance;
   sourceLocation: "grid" | "dock";
   sourceIndex: number;
+}
+
+export interface WorktreeDragData extends DragData {
+  worktreeId: string;
+  origin: "accordion";
+}
+
+function isWorktreeDragData(data: DragData | WorktreeDragData | undefined): data is WorktreeDragData {
+  return data !== undefined && "origin" in data && data.origin === "accordion" && "worktreeId" in data;
 }
 
 // Helper to get coordinates from pointer or touch event
@@ -142,7 +152,7 @@ function DragOverlayWithCursorTracking({
 
 export function DndProvider({ children }: DndProviderProps) {
   const [activeId, setActiveId] = useState<string | null>(null);
-  const [activeData, setActiveData] = useState<DragData | null>(null);
+  const [activeData, setActiveData] = useState<DragData | WorktreeDragData | null>(null);
   const [overContainer, setOverContainer] = useState<"grid" | "dock" | null>(null);
 
   // Ref to track overContainer for stable collision detection (avoids infinite loops)
@@ -177,16 +187,28 @@ export function DndProvider({ children }: DndProviderProps) {
   const activeTerminal = useMemo(() => {
     if (!activeId && !activeData) return null;
     if (activeData?.terminal) return activeData.terminal;
-    return terminals.find((t) => t.id === activeId) ?? null;
+    // Parse accordion IDs to get actual terminal ID
+    const terminalId = parseAccordionDragId(activeId!) ?? activeId;
+    return terminals.find((t) => t.id === terminalId) ?? null;
   }, [activeId, activeData, terminals]);
 
   const handleDragStart = useCallback((event: DragStartEvent) => {
     const { active } = event;
-    const data = active.data.current as DragData | undefined;
-    const terminalId = data?.terminal?.id ?? (active.id as string);
-
-    setActiveId(active.id as string);
+    const dragId = active.id as string;
+    
+    const data = active.data.current as DragData | WorktreeDragData | undefined;
+    const terminalId = data?.terminal?.id ?? (parseAccordionDragId(dragId) ?? dragId);
+    
+    setActiveId(dragId);
     terminalInstanceService.lockResize(terminalId, true);
+
+    // Clear any pending stabilization timers from previous drags
+    if (stabilizationTimerRef.current) {
+      clearTimeout(stabilizationTimerRef.current);
+      stabilizationTimerRef.current = null;
+    }
+    dockRetryTimersRef.current.forEach(clearTimeout);
+    dockRetryTimersRef.current.clear();
 
     if (data) {
       setActiveData(data);
@@ -203,7 +225,7 @@ export function DndProvider({ children }: DndProviderProps) {
         return;
       }
 
-      const activeDataCurrent = active.data.current as DragData | undefined;
+      const activeDataCurrent = active.data.current as DragData | WorktreeDragData | undefined;
       const overData = over.data.current as
         | { container?: "grid" | "dock"; sortable?: { containerId?: string; index?: number } }
         | undefined;
@@ -220,10 +242,15 @@ export function DndProvider({ children }: DndProviderProps) {
         } else if (containerId === "dock-container") {
           detectedContainer = "dock";
         }
+        // Accordion containers (worktree-*-accordion) are ignored for grid/dock detection
       } else {
         const overId = over.id as string;
-        const overTerminal = terminals.find((t) => t.id === overId);
-        if (overTerminal) {
+        // Skip accordion drop targets for non-accordion drags
+        const parsedId = parseAccordionDragId(overId);
+        const terminalId = parsedId ?? overId;
+        const overTerminal = terminals.find((t) => t.id === terminalId);
+        if (overTerminal && !parsedId) {
+          // Only set container for non-accordion terminals
           detectedContainer = overTerminal.location === "dock" ? "dock" : "grid";
         }
       }
@@ -231,8 +258,11 @@ export function DndProvider({ children }: DndProviderProps) {
       setOverContainer(detectedContainer);
 
       // Handle placeholder for cross-container drag (dock -> grid)
+      // Skip placeholders for accordion drags - they stay within their container
       const sourceContainer = activeDataCurrent?.sourceLocation;
-      if (sourceContainer === "dock" && detectedContainer === "grid") {
+      const isAccordionDrag = isWorktreeDragData(activeDataCurrent);
+
+      if (!isAccordionDrag && sourceContainer === "dock" && detectedContainer === "grid") {
         const activeWorktreeId = useWorktreeSelectionStore.getState().activeWorktreeId;
         // Find grid terminals to calculate insertion index (match TerminalGrid filter)
         const gridTerminals = terminals.filter(
@@ -297,6 +327,34 @@ export function DndProvider({ children }: DndProviderProps) {
           }
         | undefined;
 
+      // Handle accordion reordering
+      const isAccordionDrag = isWorktreeDragData(activeData);
+      if (isAccordionDrag) {
+        const accordionWorktreeId = activeData.worktreeId;
+        // Parse accordion IDs to get actual terminal IDs
+        const actualDraggedId = parseAccordionDragId(draggedId) ?? draggedId;
+        const actualOverId = parseAccordionDragId(overId) ?? overId;
+        const overTerminal = terminals.find((t) => t.id === actualOverId);
+
+        if (overTerminal && actualDraggedId !== actualOverId) {
+          const containerTerminals = terminals.filter((t) => {
+            if ((t.worktreeId ?? null) !== (accordionWorktreeId ?? null)) return false;
+            if (sourceLocation === "dock") {
+              return t.location === "dock";
+            }
+            return t.location === "grid" || t.location === undefined;
+          });
+
+          const oldIndex = containerTerminals.findIndex((t) => t.id === actualDraggedId);
+          const newIndex = containerTerminals.findIndex((t) => t.id === actualOverId);
+
+          if (oldIndex !== -1 && newIndex !== -1 && oldIndex !== newIndex) {
+            reorderTerminals(oldIndex, newIndex, sourceLocation ?? "grid", accordionWorktreeId);
+          }
+        }
+        return;
+      }
+
       // Track if this is a worktree drop (skip reorder logic, but still run stabilization)
       const isWorktreeDrop = overData?.type === "worktree" && !!overData.worktreeId;
       if (isWorktreeDrop) {
@@ -334,11 +392,15 @@ export function DndProvider({ children }: DndProviderProps) {
         else if (dropContainer) {
           targetContainer = dropContainer;
         }
-        // Priority 4: Determine from terminal location
+        // Priority 4: Determine from terminal location (skip accordion targets)
         else {
-          const overTerminal = terminals.find((t) => t.id === overId);
-          if (overTerminal) {
-            targetContainer = overTerminal.location === "dock" ? "dock" : "grid";
+          // Skip accordion drop targets for grid/dock drags
+          const isAccordionTarget = parseAccordionDragId(overId) !== null;
+          if (!isAccordionTarget) {
+            const overTerminal = terminals.find((t) => t.id === overId);
+            if (overTerminal) {
+              targetContainer = overTerminal.location === "dock" ? "dock" : "grid";
+            }
           }
         }
 
@@ -352,8 +414,9 @@ export function DndProvider({ children }: DndProviderProps) {
           return t.location === "grid" || t.location === undefined;
         });
 
-        // Find index of item we're dropping on
-        const overTerminalIndex = containerTerminals.findIndex((t) => t.id === overId);
+        // Find index of item we're dropping on (skip accordion IDs)
+        const isAccordionOver = parseAccordionDragId(overId) !== null;
+        const overTerminalIndex = isAccordionOver ? -1 : containerTerminals.findIndex((t) => t.id === overId);
         if (overTerminalIndex !== -1) {
           targetIndex = overTerminalIndex;
         } else if (overData?.sortable?.index !== undefined) {
@@ -525,10 +588,19 @@ export function DndProvider({ children }: DndProviderProps) {
   );
 
   const handleDragCancel = useCallback(() => {
-    const terminalId = activeData?.terminal?.id ?? activeId;
+    const terminalId = activeData?.terminal?.id ?? (activeId ? (parseAccordionDragId(activeId) ?? activeId) : null);
     if (terminalId) {
       terminalInstanceService.lockResize(terminalId, false);
     }
+
+    // Clear any pending stabilization timers
+    if (stabilizationTimerRef.current) {
+      clearTimeout(stabilizationTimerRef.current);
+      stabilizationTimerRef.current = null;
+    }
+    dockRetryTimersRef.current.forEach(clearTimeout);
+    dockRetryTimersRef.current.clear();
+
     setActiveId(null);
     setActiveData(null);
     setOverContainer(null);
