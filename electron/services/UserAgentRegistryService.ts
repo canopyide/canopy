@@ -1,6 +1,6 @@
 import { store } from "../store.js";
 import type { UserAgentRegistry, UserAgentConfig } from "../../shared/types/index.js";
-import { UserAgentConfigSchema } from "../../shared/types/index.js";
+import { UserAgentConfigSchema, UserAgentRegistrySchema } from "../../shared/types/index.js";
 import { setUserRegistry, isBuiltInAgent } from "../../shared/config/agentRegistry.js";
 
 export class UserAgentRegistryService {
@@ -25,7 +25,9 @@ export class UserAgentRegistryService {
       const sanitized: UserAgentRegistry = {};
       for (const [id, config] of Object.entries(validation.data)) {
         if (isBuiltInAgent(id)) {
-          console.warn(`[UserAgentRegistryService] Skipping built-in agent ID in user registry: ${id}`);
+          console.warn(
+            `[UserAgentRegistryService] Skipping built-in agent ID in user registry: ${id}`
+          );
           continue;
         }
         sanitized[id] = config;

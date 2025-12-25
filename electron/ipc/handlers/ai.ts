@@ -126,10 +126,7 @@ export function registerAiHandlers(_deps: HandlerDependencies): () => void {
   ipcMain.handle(CHANNELS.USER_AGENT_REGISTRY_UPDATE, handleUserAgentRegistryUpdate);
   handlers.push(() => ipcMain.removeHandler(CHANNELS.USER_AGENT_REGISTRY_UPDATE));
 
-  const handleUserAgentRegistryRemove = async (
-    _event: Electron.IpcMainInvokeEvent,
-    id: string
-  ) => {
+  const handleUserAgentRegistryRemove = async (_event: Electron.IpcMainInvokeEvent, id: string) => {
     if (!id || typeof id !== "string") {
       throw new Error("Invalid id");
     }

@@ -4,8 +4,7 @@ import { isBuiltInAgent } from "../../../shared/config/agentRegistry";
 import type { UserAgentConfig } from "@shared/types";
 
 export function AgentRegistrySettings() {
-  const { registry, isLoading, initialize, addAgent, removeAgent } =
-    useUserAgentRegistryStore();
+  const { registry, isLoading, initialize, addAgent, removeAgent } = useUserAgentRegistryStore();
   const [showAddDialog, setShowAddDialog] = useState(false);
   const [jsonInput, setJsonInput] = useState("");
   const [error, setError] = useState<string | null>(null);
@@ -46,9 +45,7 @@ export function AgentRegistrySettings() {
     return <div className="text-sm text-canopy-text/50">Loading...</div>;
   }
 
-  const userAgents = Object.entries(registry ?? {}).filter(
-    ([id]) => !isBuiltInAgent(id)
-  );
+  const userAgents = Object.entries(registry ?? {}).filter(([id]) => !isBuiltInAgent(id));
 
   return (
     <div className="space-y-4">
@@ -129,8 +126,8 @@ export function AgentRegistrySettings() {
       )}
 
       <div className="text-xs text-canopy-text/50 border-t border-canopy-border pt-4 mt-4">
-        <strong>Security notice:</strong> User agents run as local commands. Only add agents
-        from trusted sources.
+        <strong>Security notice:</strong> User agents run as local commands. Only add agents from
+        trusted sources.
       </div>
     </div>
   );
