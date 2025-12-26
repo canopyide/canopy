@@ -37,6 +37,7 @@ import { TerminalInfoDialogHost } from "./components/Terminal/TerminalInfoDialog
 import { TerminalPalette, NewTerminalPalette } from "./components/TerminalPalette";
 import { PanelPalette } from "./components/PanelPalette/PanelPalette";
 import { RecipeEditor } from "./components/TerminalRecipe/RecipeEditor";
+import { NotesPalette } from "./components/Notes";
 import { SettingsDialog, type SettingsTab } from "./components/Settings";
 import { ShortcutReferenceDialog } from "./components/KeyboardShortcuts";
 import { Toaster } from "./components/ui/toaster";
@@ -558,6 +559,7 @@ function App() {
   const [isSettingsOpen, setIsSettingsOpen] = useState(false);
   const [settingsTab, setSettingsTab] = useState<SettingsTab>("general");
   const [isShortcutsOpen, setIsShortcutsOpen] = useState(false);
+  const [isNotesPaletteOpen, setIsNotesPaletteOpen] = useState(false);
 
   // Hydration callbacks for state restoration
   const hydrationCallbacks: HydrationCallbacks = useMemo(
@@ -623,6 +625,23 @@ function App() {
     window.addEventListener("canopy:open-settings-tab", handleOpenSettingsTabEvent);
     return () => window.removeEventListener("canopy:open-settings-tab", handleOpenSettingsTabEvent);
   }, [handleOpenSettingsTab]);
+
+  const openNotesPalette = useCallback(() => {
+    setIsNotesPaletteOpen(true);
+  }, []);
+
+  const closeNotesPalette = useCallback(() => {
+    setIsNotesPaletteOpen(false);
+  }, []);
+
+  useEffect(() => {
+    const handleOpenNotesPalette = () => {
+      openNotesPalette();
+    };
+
+    window.addEventListener("canopy:open-notes-palette", handleOpenNotesPalette);
+    return () => window.removeEventListener("canopy:open-notes-palette", handleOpenNotesPalette);
+  }, [openNotesPalette]);
 
   const handleErrorRetry = useCallback(
     async (errorId: string, action: RetryAction, args?: Record<string, unknown>) => {
@@ -843,6 +862,11 @@ function App() {
     enabled: electronAvailable,
   });
 
+  // Notes
+  useKeybinding("notes.openPalette", () => dispatch("notes.openPalette"), {
+    enabled: electronAvailable,
+  });
+
   // Help and settings
   useKeybinding("help.shortcuts", () => dispatch("help.shortcuts"), { enabled: electronAvailable });
   useKeybinding("help.shortcutsAlt", () => dispatch("help.shortcutsAlt"), {
@@ -984,6 +1008,8 @@ function App() {
         }}
         onClose={panelPalette.close}
       />
+
+      <NotesPalette isOpen={isNotesPaletteOpen} onClose={closeNotesPalette} />
 
       <SettingsDialog
         isOpen={isSettingsOpen}
