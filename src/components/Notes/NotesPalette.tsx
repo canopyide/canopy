@@ -11,7 +11,8 @@ import { markdown, markdownLanguage } from "@codemirror/lang-markdown";
 import { languages } from "@codemirror/language-data";
 import { EditorView } from "@codemirror/view";
 import { canopyTheme } from "./editorTheme";
-import { FileText, Plus, Trash2, ExternalLink, X, AlertTriangle } from "lucide-react";
+import { Plus, Trash2, ExternalLink, X, AlertTriangle, StickyNote } from "lucide-react";
+import { ConfirmDialog } from "@/components/Terminal/ConfirmDialog";
 
 interface NotesPaletteProps {
   isOpen: boolean;
@@ -46,6 +47,7 @@ export function NotesPalette({ isOpen, onClose }: NotesPaletteProps) {
   const [editingTitle, setEditingTitle] = useState("");
   const [isEditingHeaderTitle, setIsEditingHeaderTitle] = useState(false);
   const [headerTitleEdit, setHeaderTitleEdit] = useState("");
+  const [deleteConfirmNote, setDeleteConfirmNote] = useState<NoteListItem | null>(null);
 
   const inputRef = useRef<HTMLInputElement>(null);
   const listRef = useRef<HTMLDivElement>(null);
@@ -57,6 +59,10 @@ export function NotesPalette({ isOpen, onClose }: NotesPaletteProps) {
   const { notes, isLoading, initialize, createNote, deleteNote, refresh } = useNotesStore();
   const { addTerminal } = useTerminalStore();
   const { activeWorktreeId } = useWorktreeSelectionStore();
+
+  // Shared styles for note title - both display and input must match exactly
+  const noteTitleBaseClass =
+    "block w-full h-[22px] m-0 px-1.5 py-0.5 text-xs font-medium leading-4 border border-solid rounded box-border";
 
   // Focus management
   useEffect(() => {
@@ -383,21 +389,30 @@ export function NotesPalette({ isOpen, onClose }: NotesPaletteProps) {
     [handleHeaderRename]
   );
 
-  const handleCreateNote = useCallback(async () => {
+  const handleCreateNote = useCallback(async (customTitle?: string) => {
     try {
-      // Generate a unique title by checking existing notes
-      const baseTitle = `Note ${new Date().toLocaleDateString()}`;
-      let noteTitle = baseTitle;
-      let suffix = 1;
+      let noteTitle: string;
 
-      // Check if title already exists and add suffix if needed
-      const existingTitles = new Set(notes.map((n) => n.title));
-      while (existingTitles.has(noteTitle)) {
-        suffix++;
-        noteTitle = `${baseTitle} (${suffix})`;
+      if (customTitle) {
+        // Use the custom title (from search query)
+        noteTitle = customTitle.trim();
+      } else {
+        // Generate a unique title by checking existing notes
+        const baseTitle = `Note ${new Date().toLocaleDateString()}`;
+        noteTitle = baseTitle;
+        let suffix = 1;
+
+        // Check if title already exists and add suffix if needed
+        const existingTitles = new Set(notes.map((n) => n.title));
+        while (existingTitles.has(noteTitle)) {
+          suffix++;
+          noteTitle = `${baseTitle} (${suffix})`;
+        }
       }
 
       const content = await createNote(noteTitle, "project");
+      // Clear search so the new note is visible
+      setQuery("");
       await refresh();
       // Select the new note
       setSelectedNote({
@@ -413,6 +428,12 @@ export function NotesPalette({ isOpen, onClose }: NotesPaletteProps) {
       setNoteContent(content.content);
       setNoteMetadata(content.metadata);
       setNoteLastModified(content.lastModified);
+      // Auto-start editing the title so user can immediately rename
+      setIsEditingHeaderTitle(true);
+      setHeaderTitleEdit(content.metadata.title);
+      requestAnimationFrame(() => {
+        headerTitleInputRef.current?.select();
+      });
     } catch (error) {
       console.error("Failed to create note:", error);
     }
@@ -439,24 +460,26 @@ export function NotesPalette({ isOpen, onClose }: NotesPaletteProps) {
   }, [selectedNote, addTerminal, activeWorktreeId, onClose]);
 
   const handleDeleteNote = useCallback(
-    async (note: NoteListItem, e: React.MouseEvent) => {
+    (note: NoteListItem, e: React.MouseEvent) => {
       e.stopPropagation();
-
-      if (!window.confirm(`Delete "${note.title}"?`)) {
-        return;
-      }
-
-      try {
-        await deleteNote(note.path);
-        if (selectedNote?.id === note.id) {
-          setSelectedNote(null);
-        }
-      } catch (error) {
-        console.error("Failed to delete note:", error);
-      }
+      setDeleteConfirmNote(note);
     },
-    [deleteNote, selectedNote]
+    []
   );
+
+  const handleConfirmDelete = useCallback(async () => {
+    if (!deleteConfirmNote) return;
+    try {
+      await deleteNote(deleteConfirmNote.path);
+      if (selectedNote?.id === deleteConfirmNote.id) {
+        setSelectedNote(null);
+      }
+    } catch (error) {
+      console.error("Failed to delete note:", error);
+    } finally {
+      setDeleteConfirmNote(null);
+    }
+  }, [deleteNote, selectedNote, deleteConfirmNote]);
 
   const handleKeyDown = useCallback(
     (e: React.KeyboardEvent) => {
@@ -557,7 +580,9 @@ export function NotesPalette({ isOpen, onClose }: NotesPaletteProps) {
 
   if (!isOpen) return null;
 
-  return createPortal(
+  return (
+    <>
+    {createPortal(
     <div
       className="fixed inset-0 z-[var(--z-modal)] flex items-start justify-center pt-[10vh] bg-black/40 backdrop-blur-sm backdrop-saturate-[1.25]"
       onClick={handleBackdropClick}
@@ -584,7 +609,7 @@ export function NotesPalette({ isOpen, onClose }: NotesPaletteProps) {
           <div className="flex items-center gap-2">
             <button
               type="button"
-              onClick={handleCreateNote}
+              onClick={() => handleCreateNote()}
               className="px-2.5 py-1 rounded-[var(--radius-md)] bg-canopy-accent hover:bg-canopy-accent/90 text-canopy-bg font-medium text-xs transition-colors flex items-center gap-1"
               title="Create new note (Cmd+N)"
             >
@@ -620,50 +645,77 @@ export function NotesPalette({ isOpen, onClose }: NotesPaletteProps) {
             </div>
 
             {/* List */}
-            <div ref={listRef} className="flex-1 overflow-y-auto p-1.5 space-y-0.5">
+            <div
+              ref={listRef}
+              className="flex-1 overflow-y-auto p-1.5 divide-y divide-canopy-border/50"
+            >
               {isLoading || isSearching ? (
                 <div className="px-2 py-6 text-center text-canopy-text/50 text-xs">Loading...</div>
               ) : searchResults.length === 0 ? (
                 <div className="px-2 py-6 text-center text-canopy-text/50 text-xs">
-                  {query.trim() ? `No notes match "${query}"` : "No notes yet"}
+                  {query.trim() ? (
+                    <div className="flex flex-col items-center gap-2">
+                      <span>No notes match "{query}"</span>
+                      <button
+                        type="button"
+                        onClick={() => handleCreateNote(query.trim())}
+                        className="px-2 py-1 rounded-[var(--radius-md)] bg-canopy-accent/20 hover:bg-canopy-accent/30 text-canopy-accent text-xs transition-colors"
+                      >
+                        Create "{query.trim().slice(0, 30)}{query.trim().length > 30 ? "..." : ""}"
+                      </button>
+                    </div>
+                  ) : (
+                    "No notes yet"
+                  )}
                 </div>
               ) : (
-                searchResults.map((note, index) => (
-                  <div
-                    key={note.id}
-                    className={cn(
-                      "relative flex items-start gap-2 px-2 py-1.5 rounded-[var(--radius-md)] cursor-pointer transition-colors group",
-                      selectedNote?.id === note.id
-                        ? "bg-canopy-accent/15 text-canopy-text"
-                        : index === selectedIndex
-                          ? "bg-white/[0.03] text-canopy-text"
-                          : "text-canopy-text/70 hover:bg-white/[0.02] hover:text-canopy-text"
-                    )}
-                    onClick={() => handleSelectNote(note, index)}
-                  >
-                    <FileText size={14} className="shrink-0 mt-0.5 text-canopy-text/40" />
-                    <div className="flex-1 min-w-0">
-                      {editingNoteId === note.id ? (
-                        <input
-                          ref={titleInputRef}
-                          type="text"
-                          value={editingTitle}
-                          onChange={(e) => setEditingTitle(e.target.value)}
-                          onKeyDown={(e) => handleTitleKeyDown(note, e)}
-                          onBlur={() => handleTitleBlur(note)}
-                          onClick={(e) => e.stopPropagation()}
-                          className="w-full text-xs font-medium bg-canopy-sidebar border border-canopy-accent rounded px-1 py-0.5 text-canopy-text focus:outline-none"
-                        />
-                      ) : (
-                        <div
-                          className="text-xs font-medium truncate py-0.5 px-1 -mx-1 rounded hover:bg-white/5 cursor-text"
-                          onDoubleClick={(e) => handleStartRename(note, e)}
-                          title="Double-click to rename"
-                        >
-                          {note.title}
-                        </div>
+                searchResults.map((note, index) => {
+                  const isEditing = editingNoteId === note.id;
+
+                  return (
+                    <div
+                      key={note.id}
+                      className={cn(
+                        "relative flex items-start px-2 py-2 cursor-pointer transition-colors group",
+                        selectedNote?.id === note.id
+                          ? "bg-canopy-accent/15 text-canopy-text"
+                          : index === selectedIndex
+                            ? "bg-white/[0.03] text-canopy-text"
+                            : "text-canopy-text/70 hover:bg-white/[0.02] hover:text-canopy-text"
                       )}
-                      <div className="text-[10px] text-canopy-text/40 truncate mt-0.5">
+                      onClick={() => handleSelectNote(note, index)}
+                      onDoubleClick={(e) => handleStartRename(note, e)}
+                    >
+                      <div className="flex-1 min-w-0">
+                        <input
+                          ref={isEditing ? titleInputRef : null}
+                          type="text"
+                          value={isEditing ? editingTitle : note.title}
+                          readOnly={!isEditing}
+                          onChange={(e) => {
+                            if (!isEditing) return;
+                            setEditingTitle(e.target.value);
+                          }}
+                          onKeyDown={(e) => {
+                            if (!isEditing) return;
+                            handleTitleKeyDown(note, e);
+                          }}
+                          onBlur={() => {
+                            if (!isEditing) return;
+                            handleTitleBlur(note);
+                          }}
+                          onClick={(e) => {
+                            if (isEditing) e.stopPropagation();
+                          }}
+                          className={cn(
+                            noteTitleBaseClass,
+                            "appearance-none focus:outline-none",
+                            isEditing
+                              ? "bg-canopy-sidebar border-canopy-accent text-canopy-text cursor-text"
+                              : "bg-transparent border-transparent text-inherit truncate cursor-default pointer-events-none"
+                          )}
+                        />
+                      <div className="text-[10px] text-canopy-text/40 truncate mt-0.5 px-1">
                         {note.preview || "Empty note"}
                       </div>
                     </div>
@@ -676,7 +728,8 @@ export function NotesPalette({ isOpen, onClose }: NotesPaletteProps) {
                       <Trash2 size={12} />
                     </button>
                   </div>
-                ))
+                );
+                })
               )}
             </div>
           </div>
@@ -687,25 +740,31 @@ export function NotesPalette({ isOpen, onClose }: NotesPaletteProps) {
               <>
                 {/* Note header */}
                 <div className="px-3 py-2 border-b border-canopy-border flex items-center justify-between shrink-0">
-                  {isEditingHeaderTitle ? (
-                    <input
-                      ref={headerTitleInputRef}
-                      type="text"
-                      value={headerTitleEdit}
-                      onChange={(e) => setHeaderTitleEdit(e.target.value)}
-                      onKeyDown={handleHeaderTitleKeyDown}
-                      onBlur={handleHeaderRename}
-                      className="flex-1 mr-2 text-sm font-medium bg-canopy-sidebar border border-canopy-accent rounded px-2 py-1 text-canopy-text focus:outline-none"
-                    />
-                  ) : (
-                    <span
-                      className="text-sm font-medium text-canopy-text truncate cursor-text hover:bg-white/5 px-1 -mx-1 rounded transition-colors"
-                      onDoubleClick={handleStartHeaderRename}
-                      title="Double-click to rename"
-                    >
-                      {selectedNote.title}
-                    </span>
-                  )}
+                  <input
+                    ref={isEditingHeaderTitle ? headerTitleInputRef : null}
+                    type="text"
+                    value={isEditingHeaderTitle ? headerTitleEdit : selectedNote.title}
+                    readOnly={!isEditingHeaderTitle}
+                    onChange={(e) => {
+                      if (isEditingHeaderTitle) setHeaderTitleEdit(e.target.value);
+                    }}
+                    onKeyDown={(e) => {
+                      if (isEditingHeaderTitle) handleHeaderTitleKeyDown(e);
+                    }}
+                    onBlur={() => {
+                      if (isEditingHeaderTitle) handleHeaderRename();
+                    }}
+                    onDoubleClick={() => {
+                      if (!isEditingHeaderTitle) handleStartHeaderRename();
+                    }}
+                    title={isEditingHeaderTitle ? undefined : "Double-click to rename"}
+                    className={cn(
+                      "flex-1 mr-2 text-sm font-medium px-2 py-1 border rounded appearance-none focus:outline-none box-border",
+                      isEditingHeaderTitle
+                        ? "bg-canopy-sidebar border-canopy-accent text-canopy-text cursor-text"
+                        : "bg-transparent border-transparent text-canopy-text truncate cursor-text"
+                    )}
+                  />
                   <button
                     type="button"
                     onClick={handleOpenAsPanel}
@@ -764,7 +823,7 @@ export function NotesPalette({ isOpen, onClose }: NotesPaletteProps) {
               </>
             ) : (
               <div className="flex-1 flex flex-col items-center justify-center text-canopy-text/40 text-sm">
-                <FileText size={32} className="mb-2 opacity-50" />
+                <StickyNote size={32} className="mb-2 opacity-50" />
                 <p>Select a note to view</p>
                 <p className="text-xs mt-1 text-canopy-text/30">
                   or press{" "}
@@ -798,5 +857,18 @@ export function NotesPalette({ isOpen, onClose }: NotesPaletteProps) {
       </div>
     </div>,
     document.body
+  )}
+
+    <ConfirmDialog
+      isOpen={!!deleteConfirmNote}
+      title="Delete Note"
+      description={`Are you sure you want to delete "${deleteConfirmNote?.title}"? This action cannot be undone.`}
+      confirmLabel="Delete"
+      cancelLabel="Cancel"
+      destructive
+      onConfirm={handleConfirmDelete}
+      onCancel={() => setDeleteConfirmNote(null)}
+    />
+    </>
   );
 }
