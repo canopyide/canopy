@@ -1,5 +1,5 @@
 import { useState, useCallback, useEffect, useRef, useMemo } from "react";
-import { Copy, Check, AlertCircle, Pencil, Eye, AlertTriangle, RefreshCw } from "lucide-react";
+import { Copy, Check, AlertCircle, AlertTriangle, RefreshCw } from "lucide-react";
 import CodeMirror from "@uiw/react-codemirror";
 import { markdown, markdownLanguage } from "@codemirror/lang-markdown";
 import { languages } from "@codemirror/language-data";
@@ -7,7 +7,6 @@ import { EditorView } from "@codemirror/view";
 import { ContentPanel, type BasePanelProps } from "@/components/Panel";
 import { notesClient, type NoteMetadata } from "@/clients/notesClient";
 import { canopyTheme } from "./editorTheme";
-import { cn } from "@/lib/utils";
 
 export interface NotesPaneProps extends BasePanelProps {
   notePath: string;
@@ -41,7 +40,6 @@ export function NotesPane({
   const [isLoading, setIsLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
   const [copied, setCopied] = useState(false);
-  const [isEditing, setIsEditing] = useState(false);
   const [hasConflict, setHasConflict] = useState(false);
 
   const saveTimeoutRef = useRef<NodeJS.Timeout | null>(null);
@@ -202,26 +200,9 @@ export function NotesPane({
     }
   }, [notePath]);
 
-  const toggleEditMode = useCallback(() => {
-    setIsEditing((prev) => !prev);
-  }, []);
-
   const headerActions = useMemo(
     () => (
       <div className="flex items-center">
-        <button
-          onClick={toggleEditMode}
-          className={cn(
-            "flex items-center gap-1.5 px-2 py-1 text-xs transition-colors",
-            isEditing
-              ? "text-canopy-accent"
-              : "text-canopy-text/60 hover:text-canopy-text hover:bg-canopy-text/10"
-          )}
-          title={isEditing ? "Switch to view mode" : "Switch to edit mode"}
-        >
-          {isEditing ? <Pencil className="w-3 h-3" /> : <Eye className="w-3 h-3" />}
-          <span>{isEditing ? "Editing" : "Viewing"}</span>
-        </button>
         <button
           onClick={handleCopyPath}
           className="flex items-center gap-1.5 px-2 py-1 text-xs hover:bg-canopy-text/10 text-canopy-text/60 hover:text-canopy-text transition-colors"
@@ -232,7 +213,7 @@ export function NotesPane({
         </button>
       </div>
     ),
-    [handleCopyPath, copied, isEditing, toggleEditMode]
+    [handleCopyPath, copied]
   );
 
   const extensions = useMemo(
@@ -294,14 +275,14 @@ export function NotesPane({
               theme={canopyTheme}
               extensions={extensions}
               onChange={handleContentChange}
-              readOnly={!isEditing || hasConflict}
+              readOnly={hasConflict}
               basicSetup={{
                 lineNumbers: false,
                 foldGutter: false,
-                highlightActiveLine: isEditing,
+                highlightActiveLine: false,
                 highlightActiveLineGutter: false,
               }}
-              className={cn("h-full", !isEditing && "[&_.cm-cursor]:hidden")}
+              className="h-full"
               placeholder="Start writing your notes..."
             />
           </div>
