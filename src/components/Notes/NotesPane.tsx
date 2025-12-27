@@ -44,6 +44,7 @@ export function NotesPane({
   const lastSavedContentRef = useRef<string>("");
   const isMountedRef = useRef(true);
   const saveVersionRef = useRef(0);
+  const contentRef = useRef<string>("");
 
   useEffect(() => {
     let cancelled = false;
@@ -63,6 +64,7 @@ export function NotesPane({
         setContent(noteContent.content);
         setMetadata(noteContent.metadata);
         lastSavedContentRef.current = noteContent.content;
+        contentRef.current = noteContent.content;
       } catch (e) {
         if (cancelled) return;
         setError(e instanceof Error ? e.message : "Failed to load note");
@@ -100,6 +102,7 @@ export function NotesPane({
   const handleContentChange = useCallback(
     (value: string) => {
       setContent(value);
+      contentRef.current = value;
 
       if (saveTimeoutRef.current) {
         clearTimeout(saveTimeoutRef.current);
@@ -113,6 +116,27 @@ export function NotesPane({
       }, 1000);
     },
     [saveNote]
+  );
+
+  // Handle title changes - update both the panel title and the note's front matter
+  const handleTitleChange = useCallback(
+    async (newTitle: string) => {
+      const trimmedTitle = newTitle.trim();
+      if (!trimmedTitle || !metadata || !notePath) return;
+
+      // Update the panel title
+      onTitleChange?.(trimmedTitle);
+
+      // Update the front matter
+      try {
+        const updatedMetadata = { ...metadata, title: trimmedTitle };
+        await notesClient.write(notePath, contentRef.current, updatedMetadata);
+        setMetadata(updatedMetadata);
+      } catch (e) {
+        console.error("Failed to update note title:", e);
+      }
+    },
+    [metadata, notePath, onTitleChange]
   );
 
   useEffect(() => {
@@ -170,7 +194,7 @@ export function NotesPane({
       onFocus={onFocus}
       onClose={onClose}
       onToggleMaximize={onToggleMaximize}
-      onTitleChange={onTitleChange}
+      onTitleChange={handleTitleChange}
       onMinimize={onMinimize}
       onRestore={onRestore}
       headerActions={headerActions}

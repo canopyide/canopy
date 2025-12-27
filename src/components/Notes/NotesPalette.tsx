@@ -30,9 +30,18 @@ export function NotesPalette({ isOpen, onClose }: NotesPaletteProps) {
   const [noteMetadata, setNoteMetadata] = useState<NoteMetadata | null>(null);
   const [isLoadingContent, setIsLoadingContent] = useState(false);
   const [contentPreviews, setContentPreviews] = useState<Map<string, string>>(new Map());
+
+  // Inline editing state
+  const [editingNoteId, setEditingNoteId] = useState<string | null>(null);
+  const [editingTitle, setEditingTitle] = useState("");
+  const [isEditingHeaderTitle, setIsEditingHeaderTitle] = useState(false);
+  const [headerTitleEdit, setHeaderTitleEdit] = useState("");
+
   const inputRef = useRef<HTMLInputElement>(null);
   const listRef = useRef<HTMLDivElement>(null);
   const saveTimeoutRef = useRef<NodeJS.Timeout | null>(null);
+  const titleInputRef = useRef<HTMLInputElement>(null);
+  const headerTitleInputRef = useRef<HTMLInputElement>(null);
 
   const { notes, isLoading, initialize, createNote, deleteNote, refresh } = useNotesStore();
   const { addTerminal } = useTerminalStore();
@@ -58,8 +67,26 @@ export function NotesPalette({ isOpen, onClose }: NotesPaletteProps) {
       setSelectedNote(null);
       setNoteContent("");
       setNoteMetadata(null);
+      setEditingNoteId(null);
+      setIsEditingHeaderTitle(false);
     }
   }, [isOpen, initialize]);
+
+  // Focus title input when editing starts
+  useEffect(() => {
+    if (editingNoteId && titleInputRef.current) {
+      titleInputRef.current.focus();
+      titleInputRef.current.select();
+    }
+  }, [editingNoteId]);
+
+  // Focus header title input when editing starts
+  useEffect(() => {
+    if (isEditingHeaderTitle && headerTitleInputRef.current) {
+      headerTitleInputRef.current.focus();
+      headerTitleInputRef.current.select();
+    }
+  }, [isEditingHeaderTitle]);
 
   // Fetch content previews for all notes
   useEffect(() => {
@@ -140,10 +167,33 @@ export function NotesPalette({ isOpen, onClose }: NotesPaletteProps) {
     };
   }, [selectedNote]);
 
-  const handleSelectNote = useCallback((note: NoteListItem, index: number) => {
-    setSelectedNote(note);
-    setSelectedIndex(index);
-  }, []);
+  // Check if current note is empty and delete it
+  const deleteIfEmpty = useCallback(
+    async (note: NoteListItem | null, content: string) => {
+      if (!note) return;
+      // Delete if content is empty or only whitespace
+      if (!content.trim()) {
+        try {
+          await deleteNote(note.path);
+        } catch (e) {
+          console.error("Failed to delete empty note:", e);
+        }
+      }
+    },
+    [deleteNote]
+  );
+
+  const handleSelectNote = useCallback(
+    async (note: NoteListItem, index: number) => {
+      // If switching from another note, check if it was empty
+      if (selectedNote && selectedNote.id !== note.id) {
+        await deleteIfEmpty(selectedNote, noteContent);
+      }
+      setSelectedNote(note);
+      setSelectedIndex(index);
+    },
+    [selectedNote, noteContent, deleteIfEmpty]
+  );
 
   const handleContentChange = useCallback(
     (value: string) => {
@@ -173,9 +223,123 @@ export function NotesPalette({ isOpen, onClose }: NotesPaletteProps) {
     [selectedNote, noteMetadata]
   );
 
+  // Handle renaming a note in the list
+  const handleStartRename = useCallback((note: NoteListItem, e: React.MouseEvent) => {
+    e.stopPropagation();
+    setEditingNoteId(note.id);
+    setEditingTitle(note.title);
+  }, []);
+
+  const handleRenameNote = useCallback(
+    async (note: NoteListItem, newTitle: string) => {
+      const trimmedTitle = newTitle.trim();
+      if (!trimmedTitle || trimmedTitle === note.title) {
+        setEditingNoteId(null);
+        return;
+      }
+
+      try {
+        // Read the current content
+        const content = await notesClient.read(note.path);
+        // Update with new title
+        const updatedMetadata = { ...content.metadata, title: trimmedTitle };
+        await notesClient.write(note.path, content.content, updatedMetadata);
+        await refresh();
+
+        // Update selected note if this is the one being renamed
+        if (selectedNote?.id === note.id) {
+          setSelectedNote({ ...selectedNote, title: trimmedTitle });
+          setNoteMetadata(updatedMetadata);
+        }
+      } catch (e) {
+        console.error("Failed to rename note:", e);
+      } finally {
+        setEditingNoteId(null);
+      }
+    },
+    [refresh, selectedNote]
+  );
+
+  const handleTitleKeyDown = useCallback(
+    (note: NoteListItem, e: React.KeyboardEvent<HTMLInputElement>) => {
+      if (e.key === "Enter") {
+        e.preventDefault();
+        handleRenameNote(note, editingTitle);
+      } else if (e.key === "Escape") {
+        e.preventDefault();
+        setEditingNoteId(null);
+      }
+    },
+    [editingTitle, handleRenameNote]
+  );
+
+  const handleTitleBlur = useCallback(
+    (note: NoteListItem) => {
+      handleRenameNote(note, editingTitle);
+    },
+    [editingTitle, handleRenameNote]
+  );
+
+  // Handle renaming in the header
+  const handleStartHeaderRename = useCallback(() => {
+    if (!selectedNote) return;
+    setIsEditingHeaderTitle(true);
+    setHeaderTitleEdit(selectedNote.title);
+  }, [selectedNote]);
+
+  const handleHeaderRename = useCallback(async () => {
+    if (!selectedNote || !noteMetadata) {
+      setIsEditingHeaderTitle(false);
+      return;
+    }
+
+    const trimmedTitle = headerTitleEdit.trim();
+    if (!trimmedTitle || trimmedTitle === selectedNote.title) {
+      setIsEditingHeaderTitle(false);
+      return;
+    }
+
+    try {
+      const updatedMetadata = { ...noteMetadata, title: trimmedTitle };
+      await notesClient.write(selectedNote.path, noteContent, updatedMetadata);
+      await refresh();
+
+      setSelectedNote({ ...selectedNote, title: trimmedTitle });
+      setNoteMetadata(updatedMetadata);
+    } catch (e) {
+      console.error("Failed to rename note:", e);
+    } finally {
+      setIsEditingHeaderTitle(false);
+    }
+  }, [selectedNote, noteMetadata, noteContent, headerTitleEdit, refresh]);
+
+  const handleHeaderTitleKeyDown = useCallback(
+    (e: React.KeyboardEvent<HTMLInputElement>) => {
+      if (e.key === "Enter") {
+        e.preventDefault();
+        handleHeaderRename();
+      } else if (e.key === "Escape") {
+        e.preventDefault();
+        setIsEditingHeaderTitle(false);
+      }
+    },
+    [handleHeaderRename]
+  );
+
   const handleCreateNote = useCallback(async () => {
     try {
-      const noteTitle = `Note ${new Date().toLocaleDateString()}`;
+      // Generate a unique title by checking existing notes
+      const baseTitle = `Note ${new Date().toLocaleDateString()}`;
+      let noteTitle = baseTitle;
+      let suffix = 1;
+
+      // Check if title already exists and add suffix if needed
+      const existingTitles = new Set(notes.map((n) => n.title));
+      while (existingTitles.has(noteTitle)) {
+        suffix++;
+        noteTitle = `${baseTitle} (${suffix})`;
+      }
+
       const content = await createNote(noteTitle, "project");
       await refresh();
       // Select the new note
@@ -193,7 +357,7 @@ export function NotesPalette({ isOpen, onClose }: NotesPaletteProps) {
     } catch (error) {
       console.error("Failed to create note:", error);
     }
-  }, [createNote, refresh]);
+  }, [notes, createNote, refresh]);
 
   const handleOpenAsPanel = useCallback(async () => {
     if (!selectedNote) return;
@@ -237,6 +401,9 @@ export function NotesPalette({ isOpen, onClose }: NotesPaletteProps) {
 
   const handleKeyDown = useCallback(
     (e: React.KeyboardEvent) => {
+      // Don't handle navigation keys when editing
+      if (editingNoteId || isEditingHeaderTitle) return;
+
       switch (e.key) {
         case "ArrowUp":
           e.preventDefault();
@@ -274,33 +441,54 @@ export function NotesPalette({ isOpen, onClose }: NotesPaletteProps) {
           if (selectedNote) {
             e.preventDefault();
             e.stopPropagation();
-            setSelectedNote(null);
+            // Delete empty note before deselecting
+            deleteIfEmpty(selectedNote, noteContent).then(() => {
+              setSelectedNote(null);
+            });
           }
           break;
       }
     },
-    [filteredNotes, selectedIndex, selectedNote, handleCreateNote, handleOpenAsPanel]
+    [
+      editingNoteId,
+      isEditingHeaderTitle,
+      filteredNotes,
+      selectedIndex,
+      selectedNote,
+      noteContent,
+      handleCreateNote,
+      handleOpenAsPanel,
+      deleteIfEmpty,
+    ]
   );
 
-  // Escape key to close
+  // Escape key to close (when no note is selected)
   useEffect(() => {
     if (!isOpen) return;
-    const handleEscape = (e: KeyboardEvent) => {
-      if (e.key === "Escape" && !selectedNote) {
+    const handleEscapeClose = (e: KeyboardEvent) => {
+      if (e.key === "Escape" && !selectedNote && !editingNoteId && !isEditingHeaderTitle) {
         onClose();
       }
     };
-    window.addEventListener("keydown", handleEscape);
-    return () => window.removeEventListener("keydown", handleEscape);
-  }, [isOpen, onClose, selectedNote]);
+    window.addEventListener("keydown", handleEscapeClose);
+    return () => window.removeEventListener("keydown", handleEscapeClose);
+  }, [isOpen, onClose, selectedNote, editingNoteId, isEditingHeaderTitle]);
+
+  const handleClose = useCallback(async () => {
+    // Delete empty note before closing
+    if (selectedNote) {
+      await deleteIfEmpty(selectedNote, noteContent);
+    }
+    onClose();
+  }, [selectedNote, noteContent, deleteIfEmpty, onClose]);
 
   const handleBackdropClick = useCallback(
     (e: React.MouseEvent) => {
       if (e.target === e.currentTarget) {
-        onClose();
+        handleClose();
       }
     },
-    [onClose]
+    [handleClose]
   );
 
   const extensions = useMemo(
@@ -346,7 +534,7 @@ export function NotesPalette({ isOpen, onClose }: NotesPaletteProps) {
             </button>
             <button
               type="button"
-              onClick={onClose}
+              onClick={handleClose}
               className="p-1 rounded-[var(--radius-sm)] text-canopy-text/50 hover:text-canopy-text hover:bg-white/5 transition-colors"
               title="Close (Esc)"
             >
@@ -396,7 +584,26 @@ export function NotesPalette({ isOpen, onClose }: NotesPaletteProps) {
                   >
                     <FileText size={14} className="shrink-0 mt-0.5 text-canopy-text/40" />
                     <div className="flex-1 min-w-0">
-                      <div className="text-xs font-medium truncate">{note.title}</div>
+                      {editingNoteId === note.id ? (
+                        <input
+                          ref={titleInputRef}
+                          type="text"
+                          value={editingTitle}
+                          onChange={(e) => setEditingTitle(e.target.value)}
+                          onKeyDown={(e) => handleTitleKeyDown(note, e)}
+                          onBlur={() => handleTitleBlur(note)}
+                          onClick={(e) => e.stopPropagation()}
+                          className="w-full text-xs font-medium bg-canopy-sidebar border border-canopy-accent rounded px-1 py-0.5 text-canopy-text focus:outline-none"
+                        />
+                      ) : (
+                        <div
+                          className="text-xs font-medium truncate py-0.5 px-1 -mx-1 rounded hover:bg-white/5 cursor-text"
+                          onDoubleClick={(e) => handleStartRename(note, e)}
+                          title="Double-click to rename"
+                        >
+                          {note.title}
+                        </div>
+                      )}
                       <div className="text-[10px] text-canopy-text/40 truncate mt-0.5">
                         {contentPreviews.get(note.id) || "Empty note"}
                       </div>
@@ -421,13 +628,29 @@ export function NotesPalette({ isOpen, onClose }: NotesPaletteProps) {
               <>
                 {/* Note header */}
                 <div className="px-3 py-2 border-b border-canopy-border flex items-center justify-between shrink-0">
-                  <span className="text-sm font-medium text-canopy-text truncate">
-                    {selectedNote.title}
-                  </span>
+                  {isEditingHeaderTitle ? (
+                    <input
+                      ref={headerTitleInputRef}
+                      type="text"
+                      value={headerTitleEdit}
+                      onChange={(e) => setHeaderTitleEdit(e.target.value)}
+                      onKeyDown={handleHeaderTitleKeyDown}
+                      onBlur={handleHeaderRename}
+                      className="flex-1 mr-2 text-sm font-medium bg-canopy-sidebar border border-canopy-accent rounded px-2 py-1 text-canopy-text focus:outline-none"
+                    />
+                  ) : (
+                    <span
+                      className="text-sm font-medium text-canopy-text truncate cursor-text hover:bg-white/5 px-1 -mx-1 rounded transition-colors"
+                      onDoubleClick={handleStartHeaderRename}
+                      title="Double-click to rename"
+                    >
+                      {selectedNote.title}
+                    </span>
+                  )}
                   <button
                     type="button"
                     onClick={handleOpenAsPanel}
-                    className="px-2 py-1 rounded-[var(--radius-sm)] text-xs text-canopy-text/60 hover:text-canopy-text hover:bg-white/5 transition-colors flex items-center gap-1"
+                    className="px-2 py-1 rounded-[var(--radius-sm)] text-xs text-canopy-text/60 hover:text-canopy-text hover:bg-white/5 transition-colors flex items-center gap-1 shrink-0"
                     title="Open as panel (Shift+Enter)"
                   >
                     <ExternalLink size={12} />
