@@ -4,12 +4,14 @@ export interface GitHubTokenConfig {
   hasToken: boolean;
   scopes?: string[];
   username?: string;
+  avatarUrl?: string;
 }
 
 export interface GitHubTokenValidation {
   valid: boolean;
   scopes: string[];
   username?: string;
+  avatarUrl?: string;
   error?: string;
 }
 
@@ -37,6 +39,9 @@ class MemoryTokenStorage implements TokenStorage {
 export class GitHubAuth {
   private static storage: TokenStorage = new MemoryTokenStorage();
   private static memoryToken: string | null = null;
+  private static cachedUsername: string | null = null;
+  private static cachedAvatarUrl: string | null = null;
+  private static cachedScopes: string[] = [];
 
   /**
    * Initialize with secure storage (call from main process only).
@@ -74,13 +79,25 @@ export class GitHubAuth {
 
   static clearToken(): void {
     this.memoryToken = null;
+    this.cachedUsername = null;
+    this.cachedAvatarUrl = null;
+    this.cachedScopes = [];
     this.storage.delete();
   }
 
   static getConfig(): GitHubTokenConfig {
     return {
       hasToken: GitHubAuth.hasToken(),
+      username: this.cachedUsername ?? undefined,
+      avatarUrl: this.cachedAvatarUrl ?? undefined,
+      scopes: this.cachedScopes.length > 0 ? this.cachedScopes : undefined,
     };
+  }
+
+  static setValidatedUserInfo(username: string, avatarUrl: string | undefined, scopes: string[]): void {
+    this.cachedUsername = username;
+    this.cachedAvatarUrl = avatarUrl ?? null;
+    this.cachedScopes = scopes;
   }
 
   static createClient(): typeof graphql | null {
@@ -127,7 +144,7 @@ export class GitHubAuth {
         return { valid: false, scopes: [], error: `GitHub API error: ${response.statusText}` };
       }
 
-      const userData = (await response.json()) as { login?: string };
+      const userData = (await response.json()) as { login?: string; avatar_url?: string };
       const scopesHeader = response.headers.get("x-oauth-scopes");
       const scopes = scopesHeader ? scopesHeader.split(",").map((s) => s.trim()) : [];
 
@@ -135,6 +152,7 @@ export class GitHubAuth {
         valid: true,
         scopes,
         username: userData.login,
+        avatarUrl: userData.avatar_url,
       };
     } catch (error) {
       const message = error instanceof Error ? error.message : String(error);

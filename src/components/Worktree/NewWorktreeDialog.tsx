@@ -60,10 +60,16 @@ export function NewWorktreeDialog({
   const assignWorktreeToSelf = usePreferencesStore((s) => s.assignWorktreeToSelf);
   const setAssignWorktreeToSelf = usePreferencesStore((s) => s.setAssignWorktreeToSelf);
   const githubConfig = useGitHubConfigStore((s) => s.config);
+  const initializeGitHubConfig = useGitHubConfigStore((s) => s.initialize);
   const addNotification = useNotificationStore((s) => s.addNotification);
 
   const currentUser = githubConfig?.username;
+  const currentUserAvatar = githubConfig?.avatarUrl;
   const canAssignIssue = Boolean(currentUser && selectedIssue);
+
+  useEffect(() => {
+    initializeGitHubConfig();
+  }, [initializeGitHubConfig]);
 
   const newBranchInputRef = useRef<HTMLInputElement>(null);
   const branchInputRef = useRef<HTMLInputElement>(null);
@@ -361,9 +367,17 @@ export function NewWorktreeDialog({
             {/* Assignment control - only show when issue is selected and GitHub auth available */}
             {canAssignIssue && (
               <div className="flex items-center gap-3 px-3 py-2.5 rounded-[var(--radius-md)] border bg-canopy-bg/50 border-canopy-border transition-colors">
-                <div className="flex items-center justify-center w-8 h-8 rounded-full shrink-0 bg-canopy-accent/10 text-canopy-accent">
-                  <UserPlus className="w-4 h-4" />
-                </div>
+                {currentUserAvatar ? (
+                  <img
+                    src={`${currentUserAvatar}${currentUserAvatar.includes("?") ? "&" : "?"}s=64`}
+                    alt={currentUser}
+                    className="w-8 h-8 rounded-full shrink-0"
+                  />
+                ) : (
+                  <div className="flex items-center justify-center w-8 h-8 rounded-full shrink-0 bg-canopy-accent/10 text-canopy-accent">
+                    <UserPlus className="w-4 h-4" />
+                  </div>
+                )}
                 <div className="flex-1 min-w-0">
                   <div className="flex items-center gap-2">
                     <span className="text-sm font-medium text-canopy-text">Assign to me</span>
