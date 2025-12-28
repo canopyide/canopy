@@ -60,6 +60,26 @@ class PullRequestService {
     const branchChanged = currentContext?.branchName !== newBranchName;
     const issueChanged = currentContext?.issueNumber !== newIssueNumber;
 
+    const shouldTrack = isCandidateBranch(newBranchName);
+
+    // Build the next context first
+    const nextContext: WorktreeContext = {
+      branchName: newBranchName,
+      issueNumber: newIssueNumber,
+    };
+
+    const wasCandidate = Boolean(currentContext);
+
+    // Update candidates BEFORE emitting any events to prevent synchronous event loops.
+    // The sys:pr:cleared event triggers emitUpdate which emits sys:worktree:update,
+    // causing handleWorktreeUpdate to be called again synchronously. If we don't
+    // update candidates first, we'll detect the same branch change repeatedly.
+    if (shouldTrack) {
+      this.candidates.set(state.worktreeId, nextContext);
+    } else if (currentContext) {
+      this.candidates.delete(state.worktreeId);
+    }
+
     if (branchChanged && currentContext) {
       logDebug("Worktree branch changed - clearing PR state", {
         worktreeId: state.worktreeId,
@@ -75,22 +95,9 @@ class PullRequestService {
       events.emit("sys:pr:cleared", { worktreeId: state.worktreeId, timestamp: Date.now() });
     }
 
-    const shouldTrack = isCandidateBranch(newBranchName);
-
     if (!shouldTrack) {
-      if (currentContext) {
-        this.candidates.delete(state.worktreeId);
-      }
       return;
     }
-
-    const nextContext: WorktreeContext = {
-      branchName: newBranchName,
-      issueNumber: newIssueNumber,
-    };
-
-    const wasCandidate = Boolean(currentContext);
-    this.candidates.set(state.worktreeId, nextContext);
 
     const shouldRecheck =
       this.isPolling &&
