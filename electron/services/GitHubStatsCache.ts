@@ -45,13 +45,14 @@ function getUserDataPath(): string {
         }
         return path.join(homedir, "AppData", "Roaming", appName);
       }
-      default:
+      default: {
         // Linux and other Unix-like systems follow XDG Base Directory spec
         const xdgConfig = process.env.XDG_CONFIG_HOME;
         if (xdgConfig && path.isAbsolute(xdgConfig)) {
           return path.join(xdgConfig, appName);
         }
         return path.join(homedir, ".config", appName);
+      }
     }
   }
 }
