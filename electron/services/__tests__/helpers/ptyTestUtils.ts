@@ -2,6 +2,7 @@ import { vi } from "vitest";
 import { randomUUID } from "crypto";
 import type { IPty } from "node-pty";
 import { PtyManager } from "../../PtyManager.js";
+import { events, type CanopyEventMap } from "../../events.js";
 
 export interface MockPtyOptions {
   cols?: number;
@@ -92,29 +93,38 @@ export async function waitForExit(
 }
 
 export async function waitForAgentStateChange(
-  manager: PtyManager,
+  _manager: PtyManager,
   terminalId: string,
-  timeout = 5000
+  timeout = 5000,
+  targetState?: string
 ): Promise<{ id: string; state: string; trigger: string; timestamp: number }> {
   return new Promise((resolve, reject) => {
     const timer = setTimeout(() => {
       cleanup();
-      reject(new Error(`Timeout waiting for agent state change on terminal ${terminalId}`));
+      const stateMsg = targetState ? ` to state '${targetState}'` : "";
+      reject(new Error(`Timeout waiting for agent state change${stateMsg} on terminal ${terminalId}`));
     }, timeout);
 
-    const handler = (data: { id: string; state: string; trigger: string; timestamp: number }) => {
-      if (data.id === terminalId) {
+    // Note: agent:state-changed events use terminalId, not id
+    const handler = (data: CanopyEventMap["agent:state-changed"]) => {
+      if (data.terminalId === terminalId) {
+        // If targetState is specified, only resolve when we reach that state
+        if (targetState && data.state !== targetState) {
+          return;
+        }
         cleanup();
-        resolve(data);
+        // Return with 'id' for backwards compatibility with existing tests
+        resolve({ id: data.terminalId ?? "", state: data.state, trigger: data.trigger, timestamp: data.timestamp });
       }
     };
 
     const cleanup = () => {
       clearTimeout(timer);
-      manager.off("agent:state-changed", handler);
+      events.off("agent:state-changed", handler);
     };
 
-    manager.on("agent:state-changed", handler);
+    // Use global events bus, not manager instance
+    events.on("agent:state-changed", handler);
   });
 }
 
