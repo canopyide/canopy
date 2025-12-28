@@ -1,10 +1,11 @@
 import Anser from "anser";
 
-export function escapeHtml(text: string): string {
-  return text.replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;");
-}
+// Re-export Anser's HTML escaping function for use in fallback paths
+export const escapeHtml = Anser.escapeForHtml;
 
-const URL_REGEX = /\b(https?|file):\/\/[^\s<>"')\]},;]+/gi;
+// URL regex that handles HTML-escaped ampersands (&amp;) as valid URL characters
+// The (?:...|&amp;)+ pattern matches either normal URL chars or the literal string "&amp;"
+const URL_REGEX = /\b(https?|file):\/\/(?:[^\s<>"')\]},;&]|&amp;)+/gi;
 
 export function linkifyHtml(html: string): string {
   const parts = html.split(/(<[^>]+>)/);
@@ -32,7 +33,11 @@ export function linkifyHtml(html: string): string {
 export function convertAnsiLinesToHtml(ansiLines: string[]): string[] {
   return ansiLines.map((line) => {
     if (!line) return " ";
-    let html = Anser.ansiToHtml(line, { use_classes: false });
+    // Escape HTML entities before ANSI conversion to prevent XSS and ensure
+    // HTML-like text in terminal output displays as literal text.
+    // Anser.escapeForHtml preserves ANSI escape sequences while escaping <, >, &
+    const escaped = Anser.escapeForHtml(line);
+    let html = Anser.ansiToHtml(escaped, { use_classes: false });
     html = linkifyHtml(html);
     return html || " ";
   });
