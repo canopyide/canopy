@@ -11,9 +11,7 @@ describe("escapeHtml", () => {
   });
 
   it("escapes script tags (XSS prevention)", () => {
-    expect(escapeHtml("<script>alert(1)</script>")).toBe(
-      "&lt;script&gt;alert(1)&lt;/script&gt;"
-    );
+    expect(escapeHtml("<script>alert(1)</script>")).toBe("&lt;script&gt;alert(1)&lt;/script&gt;");
   });
 
   it("preserves normal text", () => {
@@ -29,13 +27,11 @@ describe("linkifyHtml", () => {
   it("converts http URLs to anchor tags", () => {
     const result = linkifyHtml("Visit https://example.com for info");
     expect(result).toContain('<a href="https://example.com"');
-    expect(result).toContain("target=\"_blank\"");
+    expect(result).toContain('target="_blank"');
   });
 
   it("handles URLs with escaped ampersands", () => {
-    const result = linkifyHtml(
-      "Visit https://example.com/path?a=1&amp;b=2 for info"
-    );
+    const result = linkifyHtml("Visit https://example.com/path?a=1&amp;b=2 for info");
     // The full URL including &amp; should be captured in the link
     expect(result).toContain('<a href="https://example.com/path?a=1&amp;b=2"');
     // The URL text should not be broken at the ampersand
@@ -49,9 +45,7 @@ describe("linkifyHtml", () => {
   });
 
   it("linkifies URLs in HTML span content", () => {
-    const result = linkifyHtml(
-      '<span style="color:red">https://example.com</span>'
-    );
+    const result = linkifyHtml('<span style="color:red">https://example.com</span>');
     expect(result).toContain('<a href="https://example.com"');
     expect(result).toContain('rel="noopener noreferrer"');
   });
@@ -93,9 +87,7 @@ describe("convertAnsiLinesToHtml", () => {
   });
 
   it("handles URLs with query parameters containing &", () => {
-    const result = convertAnsiLinesToHtml([
-      "Visit https://example.com?a=1&b=2",
-    ]);
+    const result = convertAnsiLinesToHtml(["Visit https://example.com?a=1&b=2"]);
     // The & should be escaped to &amp; but URL should still be fully linkified
     expect(result[0]).toContain('<a href="https://example.com?a=1&amp;b=2"');
     expect(result[0]).toContain("https://example.com?a=1&amp;b=2</a>");
@@ -132,7 +124,7 @@ describe("convertAnsiLinesToHtml", () => {
   it("handles combined HTML + ANSI + URL in one line", () => {
     // Most fragile path: escape → ansi → linkify
     const result = convertAnsiLinesToHtml([
-      '\x1b[31m<div>See https://example.com?a=1&b=2</div>\x1b[0m'
+      "\x1b[31m<div>See https://example.com?a=1&b=2</div>\x1b[0m",
     ]);
     // HTML should be escaped
     expect(result[0]).toContain("&lt;div&gt;");
@@ -151,9 +143,7 @@ describe("convertAnsiLinesToHtml", () => {
 
   it("handles complex ANSI sequences (bold, multiple colors)", () => {
     // Bold + red + reset
-    const result = convertAnsiLinesToHtml([
-      '\x1b[1m\x1b[31mBold Red\x1b[0m Normal'
-    ]);
+    const result = convertAnsiLinesToHtml(["\x1b[1m\x1b[31mBold Red\x1b[0m Normal"]);
     expect(result[0]).toContain("Bold Red");
     expect(result[0]).toContain("Normal");
     // Should have some styling (exact output depends on Anser implementation)
