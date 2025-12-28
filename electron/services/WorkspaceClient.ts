@@ -356,6 +356,17 @@ export class WorkspaceClient extends EventEmitter {
         break;
       }
 
+      case "issue-detected": {
+        const issuePayload = {
+          worktreeId: event.worktreeId,
+          issueNumber: event.issueNumber,
+          issueTitle: event.issueTitle,
+        };
+        events.emit("sys:issue:detected", { ...issuePayload, timestamp: Date.now() });
+        this.sendToRenderer(CHANNELS.ISSUE_DETECTED, issuePayload);
+        break;
+      }
+
       // CopyTree events
       case "copytree:progress": {
         const callback = this.copyTreeProgressCallbacks.get(event.operationId);

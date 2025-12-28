@@ -56,6 +56,7 @@ import type {
   GitHubTokenValidation,
   PRDetectedPayload,
   PRClearedPayload,
+  IssueDetectedPayload,
 } from "./github.js";
 import type { GitGetFileDiffPayload } from "./git.js";
 import type { TerminalConfig } from "./config.js";
@@ -784,6 +785,9 @@ export interface IpcEventMap {
   // PR detection events
   "pr:detected": PRDetectedPayload;
   "pr:cleared": PRClearedPayload;
+
+  // Issue detection events
+  "issue:detected": IssueDetectedPayload;
 
   // Error events
   "error:notify": AppError;

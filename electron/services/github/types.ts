@@ -25,6 +25,7 @@ export interface LinkedPR {
 
 export interface PRCheckResult {
   issueNumber?: number;
+  issueTitle?: string;
   branchName?: string;
   pr: LinkedPR | null;
 }

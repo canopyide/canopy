@@ -73,6 +73,7 @@ export const CHANNELS = {
 
   PR_DETECTED: "pr:detected",
   PR_CLEARED: "pr:cleared",
+  ISSUE_DETECTED: "issue:detected",
 
   GITHUB_GET_REPO_STATS: "github:get-repo-stats",
   GITHUB_OPEN_ISSUES: "github:open-issues",
