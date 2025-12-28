@@ -66,6 +66,10 @@ export const githubClient = {
     return window.electron.github.listPullRequests(options);
   },
 
+  assignIssue: (cwd: string, issueNumber: number, username: string): Promise<void> => {
+    return window.electron.github.assignIssue(cwd, issueNumber, username);
+  },
+
   onPRDetected: (callback: (data: PRDetectedPayload) => void): (() => void) => {
     return window.electron.github.onPRDetected(callback);
   },
