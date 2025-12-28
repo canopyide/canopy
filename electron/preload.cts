@@ -26,6 +26,7 @@ import type {
   AgentSettingsEntry,
   PRDetectedPayload,
   PRClearedPayload,
+  IssueDetectedPayload,
   GitStatus,
   KeyAction,
 } from "../shared/types/index.js";
@@ -771,6 +772,9 @@ const api: ElectronAPI = {
 
     onPRCleared: (callback: (data: PRClearedPayload) => void) =>
       _typedOn(CHANNELS.PR_CLEARED, callback),
+
+    onIssueDetected: (callback: (data: IssueDetectedPayload) => void) =>
+      _typedOn(CHANNELS.ISSUE_DETECTED, callback),
   },
 
   // Notes API

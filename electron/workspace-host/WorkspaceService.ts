@@ -989,6 +989,7 @@ ${lines.map((l) => "+" + l).join("\n")}`;
           monitor.prUrl = data.prUrl;
           monitor.prState = data.prState;
           monitor.prTitle = data.prTitle;
+          monitor.issueTitle = data.issueTitle;
           this.emitUpdate(monitor);
         }
 
@@ -1000,6 +1001,24 @@ ${lines.map((l) => "+" + l).join("\n")}`;
           prState: data.prState,
           prTitle: data.prTitle,
           issueNumber: data.issueNumber,
+          issueTitle: data.issueTitle,
+        });
+      })
+    );
+
+    this.prEventUnsubscribers.push(
+      events.on("sys:issue:detected", (data: any) => {
+        const monitor = this.monitors.get(data.worktreeId);
+        if (monitor) {
+          monitor.issueTitle = data.issueTitle;
+          this.emitUpdate(monitor);
+        }
+
+        this.sendEvent({
+          type: "issue-detected",
+          worktreeId: data.worktreeId,
+          issueNumber: data.issueNumber,
+          issueTitle: data.issueTitle,
         });
       })
     );

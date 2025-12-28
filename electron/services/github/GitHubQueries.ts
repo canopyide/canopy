@@ -154,6 +154,7 @@ export function buildBatchPRQuery(
       issueQueries.push(`
         ${alias}_issue: repository(owner: "${owner}", name: "${repo}") {
           issue(number: ${candidate.issueNumber}) {
+            title
             timelineItems(itemTypes: [CROSS_REFERENCED_EVENT], last: 10) {
               nodes {
                 ... on CrossReferencedEvent {

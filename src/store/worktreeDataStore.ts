@@ -149,6 +149,7 @@ export const useWorktreeDataStore = create<WorktreeDataStore>()((set, get) => ({
                 prUrl: data.prUrl,
                 prState: data.prState,
                 prTitle: data.prTitle,
+                issueTitle: data.issueTitle,
               });
               return { worktrees: next };
             });
@@ -171,11 +172,26 @@ export const useWorktreeDataStore = create<WorktreeDataStore>()((set, get) => ({
             });
           });
 
+          const unsubIssueDetected = githubClient.onIssueDetected((data) => {
+            set((prev) => {
+              const worktree = prev.worktrees.get(data.worktreeId);
+              if (!worktree) return prev;
+
+              const next = new Map(prev.worktrees);
+              next.set(data.worktreeId, {
+                ...worktree,
+                issueTitle: data.issueTitle,
+              });
+              return { worktrees: next };
+            });
+          });
+
           cleanupListeners = () => {
             unsubUpdate();
             unsubRemove();
             unsubPRDetected();
             unsubPRCleared();
+            unsubIssueDetected();
           };
         }
       } catch (e) {

@@ -190,10 +190,13 @@ function parseBatchPRResponse(
     const candidate = candidates[i];
     const alias = `wt_${i}`;
     let foundPR: LinkedPR | null = null;
+    let issueTitle: string | undefined;
 
-    const issueData = (
-      data?.[`${alias}_issue`] as { issue?: { timelineItems?: { nodes?: unknown[] } } }
-    )?.issue?.timelineItems?.nodes;
+    const issueResponse = (
+      data?.[`${alias}_issue`] as { issue?: { title?: string; timelineItems?: { nodes?: unknown[] } } }
+    )?.issue;
+    issueTitle = issueResponse?.title;
+    const issueData = issueResponse?.timelineItems?.nodes;
     if (issueData && Array.isArray(issueData)) {
       const prs: LinkedPR[] = [];
       for (const node of issueData as Array<{
@@ -259,6 +262,7 @@ function parseBatchPRResponse(
 
     results.set(candidate.worktreeId, {
       issueNumber: candidate.issueNumber,
+      issueTitle,
       branchName: candidate.branchName,
       pr: foundPR,
     });

@@ -101,6 +101,8 @@ export type {
   // PR detection IPC types
   PRDetectedPayload,
   PRClearedPayload,
+  // Issue detection IPC types
+  IssueDetectedPayload,
   // Project close IPC types
   ProjectCloseResult,
   ProjectStats,

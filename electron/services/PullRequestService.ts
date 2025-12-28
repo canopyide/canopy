@@ -278,6 +278,18 @@ class PullRequestService {
       this.consecutiveErrors = 0;
 
       for (const [worktreeId, checkResult] of result.results) {
+        // Emit issue metadata if we have a title (regardless of PR)
+        const issueNumber =
+          checkResult.issueNumber ?? this.candidates.get(worktreeId)?.issueNumber;
+        if (issueNumber && checkResult.issueTitle) {
+          events.emit("sys:issue:detected", {
+            worktreeId,
+            issueNumber,
+            issueTitle: checkResult.issueTitle,
+            timestamp: Date.now(),
+          });
+        }
+
         if (checkResult.pr) {
           this.resolvedWorktrees.add(worktreeId);
           this.detectedPRs.set(worktreeId, checkResult.pr);
@@ -294,8 +306,8 @@ class PullRequestService {
             prUrl: checkResult.pr.url,
             prState: checkResult.pr.state,
             prTitle: checkResult.pr.title,
-            issueNumber:
-              checkResult.issueNumber ?? this.candidates.get(worktreeId)?.issueNumber ?? undefined,
+            issueNumber,
+            issueTitle: checkResult.issueTitle,
             timestamp: Date.now(),
           });
         }

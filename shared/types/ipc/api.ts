@@ -47,6 +47,7 @@ import type {
   GitHubTokenValidation,
   PRDetectedPayload,
   PRClearedPayload,
+  IssueDetectedPayload,
 } from "./github.js";
 import type { TerminalConfig } from "./config.js";
 import type { HibernationConfig } from "./hibernation.js";
@@ -247,6 +248,7 @@ export interface ElectronAPI {
     }): Promise<import("../github.js").GitHubListResponse<import("../github.js").GitHubPR>>;
     onPRDetected(callback: (data: PRDetectedPayload) => void): () => void;
     onPRCleared(callback: (data: PRClearedPayload) => void): () => void;
+    onIssueDetected(callback: (data: IssueDetectedPayload) => void): () => void;
   };
   notes: {
     create(

@@ -1,9 +1,10 @@
 import { describe, it, expect, beforeEach, vi } from "vitest";
 import type { WorktreeState } from "@shared/types";
-import type { PRDetectedPayload, PRClearedPayload } from "../../types";
+import type { PRDetectedPayload, PRClearedPayload, IssueDetectedPayload } from "../../types";
 
 let mockOnPRDetectedCallback: ((data: PRDetectedPayload) => void) | null = null;
 let mockOnPRClearedCallback: ((data: PRClearedPayload) => void) | null = null;
+let mockOnIssueDetectedCallback: ((data: IssueDetectedPayload) => void) | null = null;
 
 vi.mock("@/clients", () => ({
   worktreeClient: {
@@ -23,6 +24,12 @@ vi.mock("@/clients", () => ({
       mockOnPRClearedCallback = callback;
       return () => {
         mockOnPRClearedCallback = null;
+      };
+    }),
+    onIssueDetected: vi.fn((callback) => {
+      mockOnIssueDetectedCallback = callback;
+      return () => {
+        mockOnIssueDetectedCallback = null;
       };
     }),
   },
@@ -63,6 +70,7 @@ async function waitForInitialized() {
       expect(useWorktreeDataStore.getState().isInitialized).toBe(true);
       expect(mockOnPRDetectedCallback).toBeTypeOf("function");
       expect(mockOnPRClearedCallback).toBeTypeOf("function");
+      expect(mockOnIssueDetectedCallback).toBeTypeOf("function");
     },
     { timeout: 1000 }
   );
@@ -91,6 +99,7 @@ describe("worktreeDataStore PR events", () => {
     cleanupWorktreeDataStore();
     mockOnPRDetectedCallback = null;
     mockOnPRClearedCallback = null;
+    mockOnIssueDetectedCallback = null;
   });
 
   it("merges PR detected event into existing worktree", async () => {
@@ -109,6 +118,7 @@ describe("worktreeDataStore PR events", () => {
       prUrl: "https://github.com/test/repo/pull/123",
       prState: "open",
       prTitle: "Add new feature",
+      issueTitle: "Implement new feature",
     });
 
     const updated = store.getState().worktrees.get("wt-1");
@@ -116,6 +126,7 @@ describe("worktreeDataStore PR events", () => {
     expect(updated?.prUrl).toBe("https://github.com/test/repo/pull/123");
     expect(updated?.prState).toBe("open");
     expect(updated?.prTitle).toBe("Add new feature");
+    expect(updated?.issueTitle).toBe("Implement new feature");
     expect(updated?.name).toBe("worktree-wt-1");
   });
 
@@ -182,11 +193,13 @@ describe("worktreeDataStore PR events", () => {
 
     expect(mockOnPRDetectedCallback).toBeTruthy();
     expect(mockOnPRClearedCallback).toBeTruthy();
+    expect(mockOnIssueDetectedCallback).toBeTruthy();
 
     cleanupWorktreeDataStore();
 
     expect(mockOnPRDetectedCallback).toBeNull();
     expect(mockOnPRClearedCallback).toBeNull();
+    expect(mockOnIssueDetectedCallback).toBeNull();
   });
 
   it("handles merged PR state", async () => {

@@ -5,6 +5,7 @@ import type {
   GitHubTokenValidation,
   PRDetectedPayload,
   PRClearedPayload,
+  IssueDetectedPayload,
 } from "../types";
 import type {
   GitHubIssue,
@@ -72,5 +73,9 @@ export const githubClient = {
 
   onPRCleared: (callback: (data: PRClearedPayload) => void): (() => void) => {
     return window.electron.github.onPRCleared(callback);
+  },
+
+  onIssueDetected: (callback: (data: IssueDetectedPayload) => void): (() => void) => {
+    return window.electron.github.onIssueDetected(callback);
   },
 } as const;

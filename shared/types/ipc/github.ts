@@ -54,9 +54,17 @@ export interface PRDetectedPayload {
   prState: "open" | "merged" | "closed";
   prTitle?: string;
   issueNumber?: number;
+  issueTitle?: string;
 }
 
 /** Payload for PR cleared notification */
 export interface PRClearedPayload {
   worktreeId: string;
+}
+
+/** Issue detected payload */
+export interface IssueDetectedPayload {
+  worktreeId: string;
+  issueNumber: number;
+  issueTitle: string;
 }

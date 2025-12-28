@@ -214,8 +214,16 @@ export type WorkspaceHostEvent =
       prState: "open" | "merged" | "closed";
       prTitle?: string;
       issueNumber?: number;
+      issueTitle?: string;
     }
   | { type: "pr-cleared"; worktreeId: string }
+  // Issue events
+  | {
+      type: "issue-detected";
+      worktreeId: string;
+      issueNumber: number;
+      issueTitle: string;
+    }
   // CopyTree events
   | { type: "copytree:progress"; operationId: string; progress: CopyTreeProgress }
   | {
