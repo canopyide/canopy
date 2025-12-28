@@ -32,6 +32,8 @@ export interface GitHubTokenConfig {
   scopes?: string[];
   /** GitHub username (only available after validation) */
   username?: string;
+  /** GitHub avatar URL (only available after validation) */
+  avatarUrl?: string;
 }
 
 /** GitHub token validation result */
@@ -42,6 +44,8 @@ export interface GitHubTokenValidation {
   scopes: string[];
   /** GitHub username */
   username?: string;
+  /** GitHub avatar URL */
+  avatarUrl?: string;
   /** Error message if validation failed */
   error?: string;
 }

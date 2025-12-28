@@ -294,6 +294,23 @@ async function createWindow(): Promise<void> {
   });
   console.log("[MAIN] GitHubAuth initialized with SecureStorage");
 
+  // If there's a stored token, validate it to cache user info
+  if (GitHubAuth.hasToken()) {
+    const token = GitHubAuth.getToken();
+    if (token) {
+      GitHubAuth.validate(token)
+        .then((validation) => {
+          if (validation.valid && validation.username) {
+            GitHubAuth.setValidatedUserInfo(validation.username, validation.avatarUrl, validation.scopes);
+            console.log("[MAIN] GitHubAuth user info cached for:", validation.username);
+          }
+        })
+        .catch((err) => {
+          console.warn("[MAIN] Failed to validate stored GitHub token:", err);
+        });
+    }
+  }
+
   console.log("[MAIN] Creating window...");
   mainWindow = createWindowWithState({
     minWidth: 800,

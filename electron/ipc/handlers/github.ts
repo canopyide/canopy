@@ -160,11 +160,16 @@ export function registerGithubHandlers(_deps: HandlerDependencies): () => void {
     }
 
     const { validateGitHubToken, setGitHubToken } = await import("../../services/GitHubService.js");
+    const { GitHubAuth } = await import("../../services/github/index.js");
 
     const validation = await validateGitHubToken(token.trim());
 
     if (validation.valid) {
       setGitHubToken(token.trim());
+
+      if (validation.username) {
+        GitHubAuth.setValidatedUserInfo(validation.username, validation.avatarUrl, validation.scopes);
+      }
 
       try {
         const workspaceClient = getWorkspaceClient();
