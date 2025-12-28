@@ -389,55 +389,58 @@ export function NotesPalette({ isOpen, onClose }: NotesPaletteProps) {
     [handleHeaderRename]
   );
 
-  const handleCreateNote = useCallback(async (customTitle?: string) => {
-    try {
-      let noteTitle: string;
+  const handleCreateNote = useCallback(
+    async (customTitle?: string) => {
+      try {
+        let noteTitle: string;
 
-      if (customTitle) {
-        // Use the custom title (from search query)
-        noteTitle = customTitle.trim();
-      } else {
-        // Generate a unique title by checking existing notes
-        const baseTitle = `Note ${new Date().toLocaleDateString()}`;
-        noteTitle = baseTitle;
-        let suffix = 1;
+        if (customTitle) {
+          // Use the custom title (from search query)
+          noteTitle = customTitle.trim();
+        } else {
+          // Generate a unique title by checking existing notes
+          const baseTitle = `Note ${new Date().toLocaleDateString()}`;
+          noteTitle = baseTitle;
+          let suffix = 1;
 
-        // Check if title already exists and add suffix if needed
-        const existingTitles = new Set(notes.map((n) => n.title));
-        while (existingTitles.has(noteTitle)) {
-          suffix++;
-          noteTitle = `${baseTitle} (${suffix})`;
+          // Check if title already exists and add suffix if needed
+          const existingTitles = new Set(notes.map((n) => n.title));
+          while (existingTitles.has(noteTitle)) {
+            suffix++;
+            noteTitle = `${baseTitle} (${suffix})`;
+          }
         }
-      }
 
-      const content = await createNote(noteTitle, "project");
-      // Clear search so the new note is visible
-      setQuery("");
-      await refresh();
-      // Select the new note
-      setSelectedNote({
-        id: content.metadata.id,
-        title: content.metadata.title,
-        path: content.path,
-        scope: content.metadata.scope,
-        worktreeId: content.metadata.worktreeId,
-        createdAt: content.metadata.createdAt,
-        modifiedAt: Date.now(),
-        preview: "",
-      });
-      setNoteContent(content.content);
-      setNoteMetadata(content.metadata);
-      setNoteLastModified(content.lastModified);
-      // Auto-start editing the title so user can immediately rename
-      setIsEditingHeaderTitle(true);
-      setHeaderTitleEdit(content.metadata.title);
-      requestAnimationFrame(() => {
-        headerTitleInputRef.current?.select();
-      });
-    } catch (error) {
-      console.error("Failed to create note:", error);
-    }
-  }, [notes, createNote, refresh]);
+        const content = await createNote(noteTitle, "project");
+        // Clear search so the new note is visible
+        setQuery("");
+        await refresh();
+        // Select the new note
+        setSelectedNote({
+          id: content.metadata.id,
+          title: content.metadata.title,
+          path: content.path,
+          scope: content.metadata.scope,
+          worktreeId: content.metadata.worktreeId,
+          createdAt: content.metadata.createdAt,
+          modifiedAt: Date.now(),
+          preview: "",
+        });
+        setNoteContent(content.content);
+        setNoteMetadata(content.metadata);
+        setNoteLastModified(content.lastModified);
+        // Auto-start editing the title so user can immediately rename
+        setIsEditingHeaderTitle(true);
+        setHeaderTitleEdit(content.metadata.title);
+        requestAnimationFrame(() => {
+          headerTitleInputRef.current?.select();
+        });
+      } catch (error) {
+        console.error("Failed to create note:", error);
+      }
+    },
+    [notes, createNote, refresh]
+  );
 
   const handleOpenAsPanel = useCallback(async () => {
     if (!selectedNote) return;
@@ -459,13 +462,10 @@ export function NotesPalette({ isOpen, onClose }: NotesPaletteProps) {
     }
   }, [selectedNote, addTerminal, activeWorktreeId, onClose]);
 
-  const handleDeleteNote = useCallback(
-    (note: NoteListItem, e: React.MouseEvent) => {
-      e.stopPropagation();
-      setDeleteConfirmNote(note);
-    },
-    []
-  );
+  const handleDeleteNote = useCallback((note: NoteListItem, e: React.MouseEvent) => {
+    e.stopPropagation();
+    setDeleteConfirmNote(note);
+  }, []);
 
   const handleConfirmDelete = useCallback(async () => {
     if (!deleteConfirmNote) return;
@@ -582,293 +582,296 @@ export function NotesPalette({ isOpen, onClose }: NotesPaletteProps) {
 
   return (
     <>
-    {createPortal(
-    <div
-      className="fixed inset-0 z-[var(--z-modal)] flex items-start justify-center pt-[10vh] bg-black/40 backdrop-blur-sm backdrop-saturate-[1.25]"
-      onClick={handleBackdropClick}
-      role="dialog"
-      aria-modal="true"
-      aria-label="Notes"
-    >
-      <div
-        ref={dialogRef}
-        className={cn(
-          "w-full max-w-3xl mx-4 bg-canopy-bg border border-[var(--border-overlay)] rounded-[var(--radius-xl)] shadow-modal overflow-hidden",
-          "animate-in fade-in slide-in-from-top-4 duration-150",
-          "flex flex-col"
-        )}
-        style={{ height: "min(70vh, 600px)" }}
-        onClick={(e) => e.stopPropagation()}
-      >
-        {/* Header */}
-        <div className="px-3 py-2 border-b border-canopy-border flex items-center justify-between shrink-0">
-          <div className="flex items-center gap-3">
-            <span className="text-xs text-canopy-text/50">Notes</span>
-            <span className="text-[10px] text-canopy-text/30 font-mono">⌘⇧O</span>
-          </div>
-          <div className="flex items-center gap-2">
-            <button
-              type="button"
-              onClick={() => handleCreateNote()}
-              className="px-2.5 py-1 rounded-[var(--radius-md)] bg-canopy-accent hover:bg-canopy-accent/90 text-canopy-bg font-medium text-xs transition-colors flex items-center gap-1"
-              title="Create new note (Cmd+N)"
-            >
-              <Plus size={14} />
-              New
-            </button>
-            <button
-              type="button"
-              onClick={handleClose}
-              className="p-1 rounded-[var(--radius-sm)] text-canopy-text/50 hover:text-canopy-text hover:bg-white/5 transition-colors"
-              title="Close (Esc)"
-            >
-              <X size={16} />
-            </button>
-          </div>
-        </div>
-
-        {/* Split pane content */}
-        <div className="flex flex-1 min-h-0">
-          {/* Notes list */}
-          <div className="w-64 border-r border-canopy-border flex flex-col shrink-0">
-            {/* Search */}
-            <div className="p-2 border-b border-canopy-border">
-              <input
-                ref={inputRef}
-                type="text"
-                value={query}
-                onChange={(e) => setQuery(e.target.value)}
-                onKeyDown={handleKeyDown}
-                placeholder="Search notes..."
-                className="w-full px-2.5 py-1.5 text-sm bg-canopy-sidebar border border-canopy-border rounded-[var(--radius-md)] text-canopy-text placeholder:text-canopy-text/40 focus:outline-none focus:border-canopy-accent focus:ring-1 focus:ring-canopy-accent"
-              />
+      {createPortal(
+        <div
+          className="fixed inset-0 z-[var(--z-modal)] flex items-start justify-center pt-[10vh] bg-black/40 backdrop-blur-sm backdrop-saturate-[1.25]"
+          onClick={handleBackdropClick}
+          role="dialog"
+          aria-modal="true"
+          aria-label="Notes"
+        >
+          <div
+            ref={dialogRef}
+            className={cn(
+              "w-full max-w-3xl mx-4 bg-canopy-bg border border-[var(--border-overlay)] rounded-[var(--radius-xl)] shadow-modal overflow-hidden",
+              "animate-in fade-in slide-in-from-top-4 duration-150",
+              "flex flex-col"
+            )}
+            style={{ height: "min(70vh, 600px)" }}
+            onClick={(e) => e.stopPropagation()}
+          >
+            {/* Header */}
+            <div className="px-3 py-2 border-b border-canopy-border flex items-center justify-between shrink-0">
+              <div className="flex items-center gap-3">
+                <span className="text-xs text-canopy-text/50">Notes</span>
+                <span className="text-[10px] text-canopy-text/30 font-mono">⌘⇧O</span>
+              </div>
+              <div className="flex items-center gap-2">
+                <button
+                  type="button"
+                  onClick={() => handleCreateNote()}
+                  className="px-2.5 py-1 rounded-[var(--radius-md)] bg-canopy-accent hover:bg-canopy-accent/90 text-canopy-bg font-medium text-xs transition-colors flex items-center gap-1"
+                  title="Create new note (Cmd+N)"
+                >
+                  <Plus size={14} />
+                  New
+                </button>
+                <button
+                  type="button"
+                  onClick={handleClose}
+                  className="p-1 rounded-[var(--radius-sm)] text-canopy-text/50 hover:text-canopy-text hover:bg-white/5 transition-colors"
+                  title="Close (Esc)"
+                >
+                  <X size={16} />
+                </button>
+              </div>
             </div>
 
-            {/* List */}
-            <div
-              ref={listRef}
-              className="flex-1 overflow-y-auto p-1.5 divide-y divide-canopy-border/50"
-            >
-              {isLoading || isSearching ? (
-                <div className="px-2 py-6 text-center text-canopy-text/50 text-xs">Loading...</div>
-              ) : searchResults.length === 0 ? (
-                <div className="px-2 py-6 text-center text-canopy-text/50 text-xs">
-                  {query.trim() ? (
-                    <div className="flex flex-col items-center gap-2">
-                      <span>No notes match "{query}"</span>
-                      <button
-                        type="button"
-                        onClick={() => handleCreateNote(query.trim())}
-                        className="px-2 py-1 rounded-[var(--radius-md)] bg-canopy-accent/20 hover:bg-canopy-accent/30 text-canopy-accent text-xs transition-colors"
-                      >
-                        Create "{query.trim().slice(0, 30)}{query.trim().length > 30 ? "..." : ""}"
-                      </button>
-                    </div>
-                  ) : (
-                    "No notes yet"
-                  )}
-                </div>
-              ) : (
-                searchResults.map((note, index) => {
-                  const isEditing = editingNoteId === note.id;
-
-                  return (
-                    <div
-                      key={note.id}
-                      className={cn(
-                        "relative flex items-start px-2 py-2 cursor-pointer transition-colors group",
-                        selectedNote?.id === note.id
-                          ? "bg-canopy-accent/15 text-canopy-text"
-                          : index === selectedIndex
-                            ? "bg-white/[0.03] text-canopy-text"
-                            : "text-canopy-text/70 hover:bg-white/[0.02] hover:text-canopy-text"
-                      )}
-                      onClick={() => handleSelectNote(note, index)}
-                      onDoubleClick={(e) => handleStartRename(note, e)}
-                    >
-                      <div className="flex-1 min-w-0">
-                        <input
-                          ref={isEditing ? titleInputRef : null}
-                          type="text"
-                          value={isEditing ? editingTitle : note.title}
-                          readOnly={!isEditing}
-                          onChange={(e) => {
-                            if (!isEditing) return;
-                            setEditingTitle(e.target.value);
-                          }}
-                          onKeyDown={(e) => {
-                            if (!isEditing) return;
-                            handleTitleKeyDown(note, e);
-                          }}
-                          onBlur={() => {
-                            if (!isEditing) return;
-                            handleTitleBlur(note);
-                          }}
-                          onClick={(e) => {
-                            if (isEditing) e.stopPropagation();
-                          }}
-                          className={cn(
-                            noteTitleBaseClass,
-                            "appearance-none focus:outline-none",
-                            isEditing
-                              ? "bg-canopy-sidebar border-canopy-accent text-canopy-text cursor-text"
-                              : "bg-transparent border-transparent text-inherit truncate cursor-default pointer-events-none"
-                          )}
-                        />
-                      <div className="text-[10px] text-canopy-text/40 truncate mt-0.5 px-1">
-                        {note.preview || "Empty note"}
-                      </div>
-                    </div>
-                    <button
-                      type="button"
-                      onClick={(e) => handleDeleteNote(note, e)}
-                      className="shrink-0 opacity-0 group-hover:opacity-100 p-1 rounded-[var(--radius-sm)] hover:bg-[var(--color-status-error)]/10 text-canopy-text/40 hover:text-[var(--color-status-error)] transition-all"
-                      title="Delete note"
-                    >
-                      <Trash2 size={12} />
-                    </button>
-                  </div>
-                );
-                })
-              )}
-            </div>
-          </div>
-
-          {/* Content area */}
-          <div className="flex-1 flex flex-col min-w-0">
-            {selectedNote ? (
-              <>
-                {/* Note header */}
-                <div className="px-3 py-2 border-b border-canopy-border flex items-center justify-between shrink-0">
+            {/* Split pane content */}
+            <div className="flex flex-1 min-h-0">
+              {/* Notes list */}
+              <div className="w-64 border-r border-canopy-border flex flex-col shrink-0">
+                {/* Search */}
+                <div className="p-2 border-b border-canopy-border">
                   <input
-                    ref={isEditingHeaderTitle ? headerTitleInputRef : null}
+                    ref={inputRef}
                     type="text"
-                    value={isEditingHeaderTitle ? headerTitleEdit : selectedNote.title}
-                    readOnly={!isEditingHeaderTitle}
-                    onChange={(e) => {
-                      if (isEditingHeaderTitle) setHeaderTitleEdit(e.target.value);
-                    }}
-                    onKeyDown={(e) => {
-                      if (isEditingHeaderTitle) handleHeaderTitleKeyDown(e);
-                    }}
-                    onBlur={() => {
-                      if (isEditingHeaderTitle) handleHeaderRename();
-                    }}
-                    onDoubleClick={() => {
-                      if (!isEditingHeaderTitle) handleStartHeaderRename();
-                    }}
-                    title={isEditingHeaderTitle ? undefined : "Double-click to rename"}
-                    className={cn(
-                      "flex-1 mr-2 text-sm font-medium px-2 py-1 border rounded appearance-none focus:outline-none box-border",
-                      isEditingHeaderTitle
-                        ? "bg-canopy-sidebar border-canopy-accent text-canopy-text cursor-text"
-                        : "bg-transparent border-transparent text-canopy-text truncate cursor-text"
-                    )}
+                    value={query}
+                    onChange={(e) => setQuery(e.target.value)}
+                    onKeyDown={handleKeyDown}
+                    placeholder="Search notes..."
+                    className="w-full px-2.5 py-1.5 text-sm bg-canopy-sidebar border border-canopy-border rounded-[var(--radius-md)] text-canopy-text placeholder:text-canopy-text/40 focus:outline-none focus:border-canopy-accent focus:ring-1 focus:ring-canopy-accent"
                   />
-                  <button
-                    type="button"
-                    onClick={handleOpenAsPanel}
-                    className="px-2 py-1 rounded-[var(--radius-sm)] text-xs text-canopy-text/60 hover:text-canopy-text hover:bg-white/5 transition-colors flex items-center gap-1 shrink-0"
-                    title="Open as panel (Shift+Enter)"
-                  >
-                    <ExternalLink size={12} />
-                    Open Panel
-                  </button>
                 </div>
 
-                {/* Conflict warning */}
-                {hasConflict && (
-                  <div className="px-3 py-2 bg-amber-500/10 border-b border-amber-500/20 flex items-center justify-between">
-                    <div className="flex items-center gap-2 text-amber-500 text-xs">
-                      <AlertTriangle size={14} />
-                      <span>Note modified externally</span>
-                    </div>
-                    <button
-                      type="button"
-                      onClick={handleReloadNote}
-                      className="px-2 py-1 rounded text-xs bg-amber-500/20 hover:bg-amber-500/30 text-amber-500 transition-colors"
-                    >
-                      Reload
-                    </button>
-                  </div>
-                )}
-
-                {/* Editor */}
-                <div className="flex-1 overflow-hidden">
-                  {isLoadingContent ? (
-                    <div className="flex items-center justify-center h-full text-canopy-text/50 text-sm">
+                {/* List */}
+                <div
+                  ref={listRef}
+                  className="flex-1 overflow-y-auto p-1.5 divide-y divide-canopy-border/50"
+                >
+                  {isLoading || isSearching ? (
+                    <div className="px-2 py-6 text-center text-canopy-text/50 text-xs">
                       Loading...
                     </div>
-                  ) : (
-                    <div className="h-full bg-canopy-bg text-[13px] font-mono [&_.cm-editor]:h-full [&_.cm-scroller]:p-2 [&_.cm-placeholder]:text-zinc-600 [&_.cm-placeholder]:italic">
-                      <CodeMirror
-                        value={noteContent}
-                        height="100%"
-                        theme={canopyTheme}
-                        extensions={extensions}
-                        onChange={handleContentChange}
-                        readOnly={hasConflict}
-                        basicSetup={{
-                          lineNumbers: false,
-                          foldGutter: false,
-                          highlightActiveLine: false,
-                          highlightActiveLineGutter: false,
-                        }}
-                        className="h-full"
-                        placeholder="Start writing..."
-                      />
+                  ) : searchResults.length === 0 ? (
+                    <div className="px-2 py-6 text-center text-canopy-text/50 text-xs">
+                      {query.trim() ? (
+                        <div className="flex flex-col items-center gap-2">
+                          <span>No notes match "{query}"</span>
+                          <button
+                            type="button"
+                            onClick={() => handleCreateNote(query.trim())}
+                            className="px-2 py-1 rounded-[var(--radius-md)] bg-canopy-accent/20 hover:bg-canopy-accent/30 text-canopy-accent text-xs transition-colors"
+                          >
+                            Create "{query.trim().slice(0, 30)}
+                            {query.trim().length > 30 ? "..." : ""}"
+                          </button>
+                        </div>
+                      ) : (
+                        "No notes yet"
+                      )}
                     </div>
+                  ) : (
+                    searchResults.map((note, index) => {
+                      const isEditing = editingNoteId === note.id;
+
+                      return (
+                        <div
+                          key={note.id}
+                          className={cn(
+                            "relative flex items-start px-2 py-2 cursor-pointer transition-colors group",
+                            selectedNote?.id === note.id
+                              ? "bg-canopy-accent/15 text-canopy-text"
+                              : index === selectedIndex
+                                ? "bg-white/[0.03] text-canopy-text"
+                                : "text-canopy-text/70 hover:bg-white/[0.02] hover:text-canopy-text"
+                          )}
+                          onClick={() => handleSelectNote(note, index)}
+                          onDoubleClick={(e) => handleStartRename(note, e)}
+                        >
+                          <div className="flex-1 min-w-0">
+                            <input
+                              ref={isEditing ? titleInputRef : null}
+                              type="text"
+                              value={isEditing ? editingTitle : note.title}
+                              readOnly={!isEditing}
+                              onChange={(e) => {
+                                if (!isEditing) return;
+                                setEditingTitle(e.target.value);
+                              }}
+                              onKeyDown={(e) => {
+                                if (!isEditing) return;
+                                handleTitleKeyDown(note, e);
+                              }}
+                              onBlur={() => {
+                                if (!isEditing) return;
+                                handleTitleBlur(note);
+                              }}
+                              onClick={(e) => {
+                                if (isEditing) e.stopPropagation();
+                              }}
+                              className={cn(
+                                noteTitleBaseClass,
+                                "appearance-none focus:outline-none",
+                                isEditing
+                                  ? "bg-canopy-sidebar border-canopy-accent text-canopy-text cursor-text"
+                                  : "bg-transparent border-transparent text-inherit truncate cursor-default pointer-events-none"
+                              )}
+                            />
+                            <div className="text-[10px] text-canopy-text/40 truncate mt-0.5 px-1">
+                              {note.preview || "Empty note"}
+                            </div>
+                          </div>
+                          <button
+                            type="button"
+                            onClick={(e) => handleDeleteNote(note, e)}
+                            className="shrink-0 opacity-0 group-hover:opacity-100 p-1 rounded-[var(--radius-sm)] hover:bg-[var(--color-status-error)]/10 text-canopy-text/40 hover:text-[var(--color-status-error)] transition-all"
+                            title="Delete note"
+                          >
+                            <Trash2 size={12} />
+                          </button>
+                        </div>
+                      );
+                    })
                   )}
                 </div>
-              </>
-            ) : (
-              <div className="flex-1 flex flex-col items-center justify-center text-canopy-text/40 text-sm">
-                <StickyNote size={32} className="mb-2 opacity-50" />
-                <p>Select a note to view</p>
-                <p className="text-xs mt-1 text-canopy-text/30">
-                  or press{" "}
-                  <kbd className="px-1 py-0.5 rounded bg-canopy-border text-[10px]">⌘N</kbd> to
-                  create one
-                </p>
               </div>
-            )}
+
+              {/* Content area */}
+              <div className="flex-1 flex flex-col min-w-0">
+                {selectedNote ? (
+                  <>
+                    {/* Note header */}
+                    <div className="px-3 py-2 border-b border-canopy-border flex items-center justify-between shrink-0">
+                      <input
+                        ref={isEditingHeaderTitle ? headerTitleInputRef : null}
+                        type="text"
+                        value={isEditingHeaderTitle ? headerTitleEdit : selectedNote.title}
+                        readOnly={!isEditingHeaderTitle}
+                        onChange={(e) => {
+                          if (isEditingHeaderTitle) setHeaderTitleEdit(e.target.value);
+                        }}
+                        onKeyDown={(e) => {
+                          if (isEditingHeaderTitle) handleHeaderTitleKeyDown(e);
+                        }}
+                        onBlur={() => {
+                          if (isEditingHeaderTitle) handleHeaderRename();
+                        }}
+                        onDoubleClick={() => {
+                          if (!isEditingHeaderTitle) handleStartHeaderRename();
+                        }}
+                        title={isEditingHeaderTitle ? undefined : "Double-click to rename"}
+                        className={cn(
+                          "flex-1 mr-2 text-sm font-medium px-2 py-1 border rounded appearance-none focus:outline-none box-border",
+                          isEditingHeaderTitle
+                            ? "bg-canopy-sidebar border-canopy-accent text-canopy-text cursor-text"
+                            : "bg-transparent border-transparent text-canopy-text truncate cursor-text"
+                        )}
+                      />
+                      <button
+                        type="button"
+                        onClick={handleOpenAsPanel}
+                        className="px-2 py-1 rounded-[var(--radius-sm)] text-xs text-canopy-text/60 hover:text-canopy-text hover:bg-white/5 transition-colors flex items-center gap-1 shrink-0"
+                        title="Open as panel (Shift+Enter)"
+                      >
+                        <ExternalLink size={12} />
+                        Open Panel
+                      </button>
+                    </div>
+
+                    {/* Conflict warning */}
+                    {hasConflict && (
+                      <div className="px-3 py-2 bg-amber-500/10 border-b border-amber-500/20 flex items-center justify-between">
+                        <div className="flex items-center gap-2 text-amber-500 text-xs">
+                          <AlertTriangle size={14} />
+                          <span>Note modified externally</span>
+                        </div>
+                        <button
+                          type="button"
+                          onClick={handleReloadNote}
+                          className="px-2 py-1 rounded text-xs bg-amber-500/20 hover:bg-amber-500/30 text-amber-500 transition-colors"
+                        >
+                          Reload
+                        </button>
+                      </div>
+                    )}
+
+                    {/* Editor */}
+                    <div className="flex-1 overflow-hidden">
+                      {isLoadingContent ? (
+                        <div className="flex items-center justify-center h-full text-canopy-text/50 text-sm">
+                          Loading...
+                        </div>
+                      ) : (
+                        <div className="h-full bg-canopy-bg text-[13px] font-mono [&_.cm-editor]:h-full [&_.cm-scroller]:p-2 [&_.cm-placeholder]:text-zinc-600 [&_.cm-placeholder]:italic">
+                          <CodeMirror
+                            value={noteContent}
+                            height="100%"
+                            theme={canopyTheme}
+                            extensions={extensions}
+                            onChange={handleContentChange}
+                            readOnly={hasConflict}
+                            basicSetup={{
+                              lineNumbers: false,
+                              foldGutter: false,
+                              highlightActiveLine: false,
+                              highlightActiveLineGutter: false,
+                            }}
+                            className="h-full"
+                            placeholder="Start writing..."
+                          />
+                        </div>
+                      )}
+                    </div>
+                  </>
+                ) : (
+                  <div className="flex-1 flex flex-col items-center justify-center text-canopy-text/40 text-sm">
+                    <StickyNote size={32} className="mb-2 opacity-50" />
+                    <p>Select a note to view</p>
+                    <p className="text-xs mt-1 text-canopy-text/30">
+                      or press{" "}
+                      <kbd className="px-1 py-0.5 rounded bg-canopy-border text-[10px]">⌘N</kbd> to
+                      create one
+                    </p>
+                  </div>
+                )}
+              </div>
+            </div>
+
+            {/* Footer */}
+            <div className="px-3 py-1.5 border-t border-canopy-border bg-canopy-sidebar/50 text-[10px] text-canopy-text/40 flex items-center gap-4 shrink-0">
+              <span>
+                <kbd className="px-1 py-0.5 rounded bg-canopy-border">↑↓</kbd> navigate
+              </span>
+              <span>
+                <kbd className="px-1 py-0.5 rounded bg-canopy-border">Enter</kbd> select
+              </span>
+              <span>
+                <kbd className="px-1 py-0.5 rounded bg-canopy-border">⇧Enter</kbd> open panel
+              </span>
+              <span>
+                <kbd className="px-1 py-0.5 rounded bg-canopy-border">⌘N</kbd> new
+              </span>
+              <span>
+                <kbd className="px-1 py-0.5 rounded bg-canopy-border">Esc</kbd>{" "}
+                {selectedNote ? "deselect" : "close"}
+              </span>
+            </div>
           </div>
-        </div>
+        </div>,
+        document.body
+      )}
 
-        {/* Footer */}
-        <div className="px-3 py-1.5 border-t border-canopy-border bg-canopy-sidebar/50 text-[10px] text-canopy-text/40 flex items-center gap-4 shrink-0">
-          <span>
-            <kbd className="px-1 py-0.5 rounded bg-canopy-border">↑↓</kbd> navigate
-          </span>
-          <span>
-            <kbd className="px-1 py-0.5 rounded bg-canopy-border">Enter</kbd> select
-          </span>
-          <span>
-            <kbd className="px-1 py-0.5 rounded bg-canopy-border">⇧Enter</kbd> open panel
-          </span>
-          <span>
-            <kbd className="px-1 py-0.5 rounded bg-canopy-border">⌘N</kbd> new
-          </span>
-          <span>
-            <kbd className="px-1 py-0.5 rounded bg-canopy-border">Esc</kbd>{" "}
-            {selectedNote ? "deselect" : "close"}
-          </span>
-        </div>
-      </div>
-    </div>,
-    document.body
-  )}
-
-    <ConfirmDialog
-      isOpen={!!deleteConfirmNote}
-      title="Delete Note"
-      description={`Are you sure you want to delete "${deleteConfirmNote?.title}"? This action cannot be undone.`}
-      confirmLabel="Delete"
-      cancelLabel="Cancel"
-      destructive
-      onConfirm={handleConfirmDelete}
-      onCancel={() => setDeleteConfirmNote(null)}
-    />
+      <ConfirmDialog
+        isOpen={!!deleteConfirmNote}
+        title="Delete Note"
+        description={`Are you sure you want to delete "${deleteConfirmNote?.title}"? This action cannot be undone.`}
+        confirmLabel="Delete"
+        cancelLabel="Cancel"
+        destructive
+        onConfirm={handleConfirmDelete}
+        onCancel={() => setDeleteConfirmNote(null)}
+      />
     </>
   );
 }
