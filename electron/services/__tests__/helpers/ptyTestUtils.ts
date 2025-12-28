@@ -193,11 +193,16 @@ export async function spawnShellTerminal(
     worktreeId?: string;
     cols?: number;
     rows?: number;
+    kind?: "terminal" | "agent" | "browser";
   }
 ): Promise<string> {
   const isWindows = process.platform === "win32";
   const shell = isWindows ? "cmd.exe" : "/bin/sh";
   const id = randomUUID();
+
+  // If a type is provided (e.g., "claude", "gemini"), treat it as an agent terminal
+  // unless it's explicitly "terminal" which is a shell terminal
+  const isAgent = (!!options?.type && options.type !== "terminal") || options?.kind === "agent";
 
   manager.spawn(id, {
     cwd: options?.cwd || process.cwd(),
@@ -206,6 +211,8 @@ export async function spawnShellTerminal(
     rows: options?.rows || 24,
     type: options?.type as any,
     worktreeId: options?.worktreeId,
+    kind: isAgent ? "agent" : (options?.kind ?? "terminal"),
+    agentId: isAgent ? id : undefined,
   });
 
   return id;

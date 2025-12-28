@@ -270,8 +270,8 @@ describe.skipIf(shouldSkip)("Agent State Detection Integration", () => {
     }, 10000);
   });
 
-  describe("Output-Based Activity Detection", () => {
-    it("should detect high-volume output and maintain working state", async () => {
+  describe("Input-Based Activity Detection", () => {
+    it("should detect input (Enter key) and transition to working state", async () => {
       const id = await spawnShellTerminal(manager, { type: "claude" });
       await sleep(500);
 
@@ -300,7 +300,7 @@ describe.skipIf(shouldSkip)("Agent State Detection Integration", () => {
       manager.off("agent:state-changed", handler);
     }, 15000);
 
-    it("should recover from accidental idle state when output resumes", async () => {
+    it("should recover from waiting state when Enter is pressed again", async () => {
       const id = await spawnShellTerminal(manager, { type: "claude" });
       await sleep(500);
 
@@ -333,14 +333,14 @@ describe.skipIf(shouldSkip)("Agent State Detection Integration", () => {
       manager.off("agent:state-changed", handler);
     }, 20000);
 
-    it("should use heuristic trigger for output-driven state changes", async () => {
+    it("should use input trigger for Enter-key driven state changes", async () => {
       const id = await spawnShellTerminal(manager, { type: "claude" });
       await sleep(500);
 
-      let heuristicTriggered = false;
+      let inputTriggered = false;
       const handler = (data: { id: string; state: string; trigger: string }) => {
-        if (data.id === id && data.trigger === "heuristic" && data.state === "working") {
-          heuristicTriggered = true;
+        if (data.id === id && data.trigger === "input" && data.state === "working") {
+          inputTriggered = true;
         }
       };
 
@@ -353,33 +353,9 @@ describe.skipIf(shouldSkip)("Agent State Detection Integration", () => {
 
       await sleep(1000);
 
-      expect(heuristicTriggered).toBe(true);
+      expect(inputTriggered).toBe(true);
 
       manager.off("agent:state-changed", handler);
     }, 15000);
-
-    it("should not trigger on low-volume background output", async () => {
-      const id = await spawnShellTerminal(manager, { type: "claude" });
-      await sleep(500);
-
-      const states: Array<{ state: string; trigger: string }> = [];
-      const handler = (data: { id: string; state: string; trigger: string }) => {
-        if (data.id === id) {
-          states.push({ state: data.state, trigger: data.trigger });
-        }
-      };
-
-      manager.on("agent:state-changed", handler);
-
-      manager.write(id, "echo small\n");
-      await sleep(300);
-      manager.write(id, "echo output\n");
-      await sleep(300);
-
-      const heuristicStates = states.filter((s) => s.trigger === "heuristic");
-      expect(heuristicStates.length).toBe(0);
-
-      manager.off("agent:state-changed", handler);
-    }, 10000);
   });
 });
