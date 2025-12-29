@@ -16,6 +16,8 @@ import {
   Edit3,
   Download,
   FileDown,
+  Play,
+  AlertTriangle,
 } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover";
@@ -66,6 +68,9 @@ export function ProjectSettingsDialog({ projectId, isOpen, onClose }: ProjectSet
   const [projectIconSvg, setProjectIconSvg] = useState<string | undefined>(undefined);
   const [iconError, setIconError] = useState<string | null>(null);
   const [isDraggingIcon, setIsDraggingIcon] = useState(false);
+  const [defaultWorktreeRecipeId, setDefaultWorktreeRecipeId] = useState<string | undefined>(
+    undefined
+  );
   const fileInputRef = useRef<HTMLInputElement>(null);
 
   const {
@@ -166,6 +171,7 @@ export function ProjectSettingsDialog({ projectId, isOpen, onClose }: ProjectSet
       );
       setExcludedPaths(settings.excludedPaths || []);
       setProjectIconSvg(settings.projectIconSvg);
+      setDefaultWorktreeRecipeId(settings.defaultWorktreeRecipeId);
       setIsInitialized(true);
     }
     if (!isOpen) {
@@ -174,6 +180,7 @@ export function ProjectSettingsDialog({ projectId, isOpen, onClose }: ProjectSet
       setEnvironmentVariables([]);
       setProjectIconSvg(undefined);
       setIconError(null);
+      setDefaultWorktreeRecipeId(undefined);
     }
   }, [settings, isOpen, isInitialized]);
 
@@ -254,6 +261,7 @@ export function ProjectSettingsDialog({ projectId, isOpen, onClose }: ProjectSet
         environmentVariables: Object.keys(envVarRecord).length > 0 ? envVarRecord : undefined,
         excludedPaths: sanitizedPaths.length > 0 ? sanitizedPaths : undefined,
         projectIconSvg: projectIconSvg,
+        defaultWorktreeRecipeId: defaultWorktreeRecipeId,
       });
       onClose();
     } catch (error) {
@@ -283,6 +291,9 @@ export function ProjectSettingsDialog({ projectId, isOpen, onClose }: ProjectSet
     setDeleteError(null);
     try {
       await deleteRecipe(recipeId);
+      if (recipeId === defaultWorktreeRecipeId) {
+        setDefaultWorktreeRecipeId(undefined);
+      }
       setRecipeToDelete(null);
     } catch (err) {
       console.error("Failed to delete recipe:", err);
@@ -806,6 +817,89 @@ export function ProjectSettingsDialog({ projectId, isOpen, onClose }: ProjectSet
                     Add Path Pattern
                   </Button>
                 </div>
+              </div>
+
+              <div className="mb-6 pb-6 border-b border-canopy-border">
+                <h3 className="text-sm font-semibold text-canopy-text/80 mb-2 flex items-center gap-2">
+                  <Play className="h-4 w-4" />
+                  Default Worktree Recipe
+                </h3>
+                <p className="text-xs text-canopy-text/60 mb-4">
+                  Automatically run a recipe when creating new worktrees.
+                </p>
+
+                {(() => {
+                  const globalRecipes = recipes.filter((r) => !r.worktreeId);
+                  const selectedRecipe = globalRecipes.find(
+                    (r) => r.id === defaultWorktreeRecipeId
+                  );
+                  const recipeNotFound =
+                    defaultWorktreeRecipeId && !selectedRecipe && !recipesLoading;
+
+                  return (
+                    <div className="space-y-3">
+                      {recipesLoading ? (
+                        <div className="text-sm text-canopy-text/60 text-center py-4">
+                          Loading recipes...
+                        </div>
+                      ) : globalRecipes.length === 0 ? (
+                        <div className="text-sm text-canopy-text/60 text-center py-4 border border-dashed border-canopy-border rounded-[var(--radius-md)]">
+                          No global recipes available. Create a recipe first.
+                        </div>
+                      ) : (
+                        <>
+                          <select
+                            value={defaultWorktreeRecipeId || ""}
+                            onChange={(e) =>
+                              setDefaultWorktreeRecipeId(e.target.value || undefined)
+                            }
+                            className="w-full px-3 py-2 bg-canopy-bg border border-canopy-border rounded-[var(--radius-md)] text-sm text-canopy-text focus:outline-none focus:ring-2 focus:ring-canopy-accent"
+                          >
+                            <option value="">No default recipe</option>
+                            {globalRecipes.map((recipe) => (
+                              <option key={recipe.id} value={recipe.id}>
+                                {recipe.name} ({recipe.terminals.length} terminal
+                                {recipe.terminals.length !== 1 ? "s" : ""})
+                              </option>
+                            ))}
+                          </select>
+
+                          {selectedRecipe && (
+                            <div className="p-3 rounded-[var(--radius-md)] bg-canopy-bg/50 border border-canopy-border">
+                              <div className="flex items-center gap-2 mb-1">
+                                <span className="text-sm font-medium text-canopy-text">
+                                  {selectedRecipe.name}
+                                </span>
+                                <span className="text-xs text-canopy-text/60 bg-canopy-sidebar px-2 py-0.5 rounded">
+                                  {selectedRecipe.terminals.length} terminal
+                                  {selectedRecipe.terminals.length !== 1 ? "s" : ""}
+                                </span>
+                              </div>
+                              <p className="text-xs text-canopy-text/60">
+                                Will run automatically when creating new worktrees
+                              </p>
+                            </div>
+                          )}
+
+                          {recipeNotFound && (
+                            <div className="flex items-start gap-2 p-3 rounded-[var(--radius-md)] bg-yellow-500/10 border border-yellow-500/20">
+                              <AlertTriangle className="h-4 w-4 text-yellow-500 mt-0.5 shrink-0" />
+                              <div>
+                                <p className="text-sm text-yellow-500">
+                                  Selected recipe no longer exists
+                                </p>
+                                <p className="text-xs text-canopy-text/60 mt-1">
+                                  The previously selected recipe was deleted. Please select a new
+                                  default or clear the selection.
+                                </p>
+                              </div>
+                            </div>
+                          )}
+                        </>
+                      )}
+                    </div>
+                  );
+                })()}
               </div>
 
               <div className="mb-6">
