@@ -412,7 +412,8 @@ export class ActivityMonitor {
     if (!this.getVisibleLines || this.pollingInterval) return;
 
     this.pollingInterval = setInterval(() => {
-      const lines = this.getVisibleLines!(3);
+      // Scan bottom 15 lines - status/spinner can appear anywhere in visible area
+      const lines = this.getVisibleLines!(15);
       const text = lines.join(" ").toLowerCase();
       const isWorking = text.includes("esc to interrupt") || text.includes("esc to cancel");
 
