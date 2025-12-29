@@ -106,6 +106,16 @@ export class Cache<K, V> {
     return this.get(key) !== undefined;
   }
 
+  forEach(callback: (value: V, key: K) => void): void {
+    const now = Date.now();
+    const snapshot = Array.from(this.cache.entries());
+    for (const [key, entry] of snapshot) {
+      if (now <= entry.expiresAt) {
+        callback(entry.value, key);
+      }
+    }
+  }
+
   // Call this periodically to prevent memory leaks
   cleanup(): void {
     const now = Date.now();
