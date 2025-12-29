@@ -5,6 +5,7 @@ import { GitHubStatsCache } from "./GitHubStatsCache.js";
 import type {
   GitHubIssue,
   GitHubPR,
+  GitHubUser,
   GitHubListOptions,
   GitHubListResponse,
 } from "../../shared/types/github.js";
@@ -316,11 +317,16 @@ export async function getIssueUrl(cwd: string, issueNumber: number): Promise<str
   return `${repoUrl}/issues/${issueNumber}`;
 }
 
+export interface AssignIssueResult {
+  username: string;
+  avatarUrl: string;
+}
+
 export async function assignIssue(
   cwd: string,
   issueNumber: number,
   username: string
-): Promise<void> {
+): Promise<AssignIssueResult> {
   const token = getGitHubToken();
   if (!token) {
     throw new Error("GitHub token not configured");
@@ -360,8 +366,95 @@ export async function assignIssue(
       }
       throw new Error(`GitHub API error: ${response.statusText}`);
     }
+
+    // Parse the response to get the updated assignee info
+    const data = (await response.json()) as {
+      assignees?: Array<{ login?: string; avatar_url?: string }>;
+    };
+
+    // Validate response structure
+    if (!Array.isArray(data.assignees)) {
+      throw new Error("Invalid GitHub API response: assignees field missing or malformed");
+    }
+
+    // Find the assignee we just added
+    const assignee = data.assignees.find((a) => a.login?.toLowerCase() === username.toLowerCase());
+    if (!assignee?.login) {
+      throw new Error(`Assignment succeeded but user "${username}" not found in response`);
+    }
+
+    const assigneeData = {
+      login: assignee.login,
+      avatarUrl: assignee.avatar_url ?? "",
+    };
+
+    // Optimistically update the issue cache
+    updateIssueAssigneeInCache(context.owner, context.repo, issueNumber, assigneeData);
+
+    return { username: assigneeData.login, avatarUrl: assigneeData.avatarUrl };
   } catch (error) {
     throw new Error(parseGitHubError(error));
+  }
+}
+
+function updateIssueAssigneeInCache(
+  owner: string,
+  repo: string,
+  issueNumber: number,
+  assignee: { login: string; avatarUrl: string }
+): void {
+  // The cache key format is: type:owner/repo:state:search:cursor
+  // We need to iterate through all cache entries and update any that contain this issue
+  const cachePrefix = `issue:${owner}/${repo}:`;
+
+  // Collect all updates first to avoid modifying cache during iteration
+  const updates: Array<{ key: string; value: GitHubListResponse<GitHubIssue> }> = [];
+
+  issueListCache.forEach((value, key) => {
+    if (!key.startsWith(cachePrefix)) return;
+
+    const issueIndex = value.items.findIndex((issue) => issue.number === issueNumber);
+    if (issueIndex === -1) return;
+
+    // Check if assignee already exists
+    const existingAssignees = value.items[issueIndex].assignees;
+    const existingIndex = existingAssignees.findIndex(
+      (a) => a.login.toLowerCase() === assignee.login.toLowerCase()
+    );
+
+    let updatedAssignees: GitHubUser[];
+    if (existingIndex !== -1) {
+      // Update existing assignee if avatarUrl changed
+      if (existingAssignees[existingIndex].avatarUrl !== assignee.avatarUrl) {
+        updatedAssignees = [...existingAssignees];
+        updatedAssignees[existingIndex] = assignee;
+      } else {
+        return;
+      }
+    } else {
+      // Add new assignee
+      updatedAssignees = [...existingAssignees, assignee];
+    }
+
+    // Create updated items array
+    const updatedItems = [...value.items];
+    updatedItems[issueIndex] = {
+      ...updatedItems[issueIndex],
+      assignees: updatedAssignees,
+    };
+
+    updates.push({
+      key,
+      value: {
+        ...value,
+        items: updatedItems,
+      },
+    });
+  });
+
+  // Apply all updates after iteration completes
+  for (const update of updates) {
+    issueListCache.set(update.key, update.value);
   }
 }
 
