@@ -608,4 +608,6 @@ export interface ProjectSettings {
   excludedPaths?: string[];
   /** Raw SVG text for project icon (max 250KB, validated/sanitized) */
   projectIconSvg?: string;
+  /** ID of the default recipe to run when creating new worktrees */
+  defaultWorktreeRecipeId?: string;
 }
