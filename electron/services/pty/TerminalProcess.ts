@@ -972,16 +972,23 @@ export class TerminalProcess {
   }
 
   /**
-   * Get the last N lines from the xterm buffer.
-   * xterm already handles ANSI codes and carriage returns.
+   * Get the last N lines from the current viewport.
+   * Agent status lines appear in the visible terminal area.
    */
   getLastNLines(n: number): string[] {
-    const buffer = this.terminalInfo.headlessTerminal?.buffer.active;
+    const terminal = this.terminalInfo.headlessTerminal;
+    if (!terminal) return [];
+
+    const buffer = terminal.buffer.active;
     if (!buffer) return [];
 
+    // Read from the bottom of the current viewport
+    // baseY + rows = bottom of visible area
+    const viewportBottom = buffer.baseY + terminal.rows;
+    const start = Math.max(buffer.baseY, viewportBottom - n);
+
     const lines: string[] = [];
-    const start = Math.max(0, buffer.length - n);
-    for (let i = start; i < buffer.length; i++) {
+    for (let i = start; i < viewportBottom; i++) {
       const line = buffer.getLine(i);
       if (line) lines.push(line.translateToString(true));
     }

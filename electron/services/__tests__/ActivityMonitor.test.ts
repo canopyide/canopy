@@ -137,7 +137,8 @@ describe("ActivityMonitor", () => {
       monitor.onInput("\r");
       expect(onStateChange).toHaveBeenCalledTimes(1);
 
-      vi.advanceTimersByTime(1500);
+      // Debounce is 2500ms
+      vi.advanceTimersByTime(2500);
 
       expect(onStateChange).toHaveBeenCalledTimes(2);
       expect(onStateChange).toHaveBeenNthCalledWith(2, "test-1", 1000, "idle");
@@ -152,13 +153,15 @@ describe("ActivityMonitor", () => {
       monitor.onInput("\r");
       expect(onStateChange).toHaveBeenCalledTimes(1);
 
-      vi.advanceTimersByTime(1000);
+      vi.advanceTimersByTime(2000);
       monitor.onData("some output");
 
-      vi.advanceTimersByTime(1000);
+      vi.advanceTimersByTime(2000);
 
+      // Still busy - output reset the timer
       expect(onStateChange).toHaveBeenCalledTimes(1);
 
+      // Complete remaining 500ms to reach 2500ms debounce
       vi.advanceTimersByTime(500);
 
       expect(onStateChange).toHaveBeenCalledTimes(2);
@@ -215,7 +218,8 @@ describe("ActivityMonitor", () => {
 
       expect(onStateChange).toHaveBeenCalledTimes(1);
 
-      vi.advanceTimersByTime(1500);
+      // Debounce is 2500ms
+      vi.advanceTimersByTime(2500);
 
       expect(onStateChange).toHaveBeenCalledTimes(2);
       expect(onStateChange).toHaveBeenNthCalledWith(2, "test-1", 1000, "idle");
@@ -232,7 +236,8 @@ describe("ActivityMonitor", () => {
       monitor.onInput("\r");
       expect(onStateChange).toHaveBeenCalledWith("test-1", 1000, "busy", { trigger: "input" });
 
-      vi.advanceTimersByTime(1500);
+      // Debounce is 2500ms
+      vi.advanceTimersByTime(2500);
       expect(onStateChange).toHaveBeenNthCalledWith(2, "test-1", 1000, "idle");
 
       monitor.onData("agent output");
@@ -288,13 +293,14 @@ describe("ActivityMonitor", () => {
       monitor.onInput("\r");
       expect(onStateChange).toHaveBeenCalledWith("test-1", 1000, "busy", { trigger: "input" });
 
-      vi.advanceTimersByTime(1500);
+      // Debounce is 2500ms
+      vi.advanceTimersByTime(2500);
 
       expect(processStateValidator.hasActiveChildren).toHaveBeenCalled();
       expect(monitor.getState()).toBe("busy");
 
       processStateValidator.hasActiveChildren.mockReturnValue(false);
-      vi.advanceTimersByTime(1500);
+      vi.advanceTimersByTime(2500);
 
       expect(onStateChange).toHaveBeenNthCalledWith(2, "test-1", 1000, "idle");
 
@@ -313,7 +319,8 @@ describe("ActivityMonitor", () => {
       monitor.onInput("\r");
       expect(onStateChange).toHaveBeenCalledWith("test-1", 1000, "busy", { trigger: "input" });
 
-      vi.advanceTimersByTime(1500);
+      // Debounce is 2500ms
+      vi.advanceTimersByTime(2500);
 
       expect(processStateValidator.hasActiveChildren).toHaveBeenCalled();
       expect(onStateChange).toHaveBeenNthCalledWith(2, "test-1", 1000, "idle");
@@ -326,7 +333,8 @@ describe("ActivityMonitor", () => {
       const monitor = new ActivityMonitor("test-1", 1000, onStateChange);
 
       monitor.onInput("\r");
-      vi.advanceTimersByTime(1500);
+      // Debounce is 2500ms
+      vi.advanceTimersByTime(2500);
 
       expect(onStateChange).toHaveBeenCalledTimes(2);
       expect(onStateChange).toHaveBeenNthCalledWith(2, "test-1", 1000, "idle");
