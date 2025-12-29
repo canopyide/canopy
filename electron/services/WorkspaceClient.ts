@@ -421,15 +421,15 @@ export class WorkspaceClient extends EventEmitter {
   /**
    * Convert an event to a result format expected by handleRequestResult.
    * This helper avoids repetitive type casting throughout processHostEvent.
+   * Spreads all event properties to preserve data (worktrees, branches, etc.).
    */
-  private toResult(
-    event: { requestId: string; error?: string },
+  private toResult<T extends { requestId: string; error?: string }>(
+    event: T,
     success?: boolean
-  ): { requestId: string; success: boolean; error?: string } {
+  ): T & { success: boolean } {
     return {
-      requestId: event.requestId,
+      ...event,
       success: success ?? !event.error,
-      error: event.error,
     };
   }
 
