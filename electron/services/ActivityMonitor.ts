@@ -86,6 +86,12 @@ export class ActivityMonitor {
   private readonly getVisibleLines?: (n: number) => string[];
   private pollingInterval?: ReturnType<typeof setInterval>;
 
+  // Polling debounce state
+  private pollingStartTime = 0;
+  private readonly POLLING_BOOT_DELAY_MS = 4000; // Wait 4s before allowing idle during boot
+  private readonly POLLING_IDLE_DEBOUNCE_MS = 1000; // Wait 1s before transitioning to idle
+  private patternLostTime = 0; // When the pattern was last lost
+
   constructor(
     private terminalId: string,
     private spawnedAt: number,
@@ -391,6 +397,8 @@ export class ActivityMonitor {
     this.resetOutputWindow();
     this.patternBuffer = "";
     this.lastPatternResult = undefined;
+    this.pollingStartTime = 0;
+    this.patternLostTime = 0;
   }
 
   /**
@@ -406,23 +414,51 @@ export class ActivityMonitor {
 
   /**
    * Start polling for patterns in xterm visible lines.
-   * Dead simple: pattern found → working, pattern not found → waiting.
+   * - Pattern found → immediately transition to busy
+   * - Pattern lost → debounce 1s before transitioning to idle
+   * - Boot period → wait 4s before allowing any idle transition
    */
   startPolling(): void {
     if (!this.getVisibleLines || this.pollingInterval) return;
 
+    this.pollingStartTime = Date.now();
+    this.patternLostTime = 0;
+
     this.pollingInterval = setInterval(() => {
+      const now = Date.now();
+
       // Scan bottom 15 lines - status/spinner can appear anywhere in visible area
       const lines = this.getVisibleLines!(15);
       const text = lines.join(" ").toLowerCase();
       const isWorking = text.includes("esc to interrupt") || text.includes("esc to cancel");
 
-      if (isWorking && this.state !== "busy") {
-        this.state = "busy";
-        this.onStateChange(this.terminalId, this.spawnedAt, "busy", { trigger: "pattern" });
-      } else if (!isWorking && this.state === "busy") {
-        this.state = "idle";
-        this.onStateChange(this.terminalId, this.spawnedAt, "idle");
+      if (isWorking) {
+        // Pattern found - reset lost timer and transition to busy immediately
+        this.patternLostTime = 0;
+
+        if (this.state !== "busy") {
+          this.state = "busy";
+          this.onStateChange(this.terminalId, this.spawnedAt, "busy", { trigger: "pattern" });
+        }
+      } else if (this.state === "busy") {
+        // Pattern lost - start or continue debounce
+        if (this.patternLostTime === 0) {
+          this.patternLostTime = now;
+        }
+
+        // Check boot period - don't transition to idle during boot
+        const timeSinceBoot = now - this.pollingStartTime;
+        if (timeSinceBoot < this.POLLING_BOOT_DELAY_MS) {
+          return; // Still booting, stay busy
+        }
+
+        // Check idle debounce - wait before transitioning
+        const timeSinceLost = now - this.patternLostTime;
+        if (timeSinceLost >= this.POLLING_IDLE_DEBOUNCE_MS) {
+          this.state = "idle";
+          this.onStateChange(this.terminalId, this.spawnedAt, "idle");
+          this.patternLostTime = 0;
+        }
       }
     }, 100);
   }
