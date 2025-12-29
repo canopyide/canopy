@@ -251,7 +251,8 @@ export class ProjectStore {
         runCommands: Array.isArray(parsed.runCommands) ? parsed.runCommands : [],
         environmentVariables: parsed.environmentVariables,
         excludedPaths: parsed.excludedPaths,
-        projectIconSvg: typeof parsed.projectIconSvg === "string" ? parsed.projectIconSvg : undefined,
+        projectIconSvg:
+          typeof parsed.projectIconSvg === "string" ? parsed.projectIconSvg : undefined,
         defaultWorktreeRecipeId:
           typeof parsed.defaultWorktreeRecipeId === "string"
             ? parsed.defaultWorktreeRecipeId
