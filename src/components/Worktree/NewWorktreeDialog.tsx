@@ -11,10 +11,11 @@ import {
   ChevronsUpDown,
   Search,
   UserPlus,
+  Play,
 } from "lucide-react";
 import type { BranchInfo, CreateWorktreeOptions } from "@/types/electron";
 import type { GitHubIssue } from "@shared/types/github";
-import { worktreeClient, githubClient } from "@/clients";
+import { worktreeClient, githubClient, projectClient } from "@/clients";
 import { actionService } from "@/services/ActionService";
 import { IssueSelector } from "@/components/GitHub/IssueSelector";
 import { generateBranchSlug } from "@/utils/textParsing";
@@ -25,6 +26,9 @@ import { toBranchOption, filterBranches, type BranchOption } from "./branchPicke
 import { usePreferencesStore } from "@/store/preferencesStore";
 import { useGitHubConfigStore } from "@/store/githubConfigStore";
 import { useNotificationStore } from "@/store/notificationStore";
+import { useRecipeStore } from "@/store/recipeStore";
+import { useProjectStore } from "@/store/projectStore";
+import type { ProjectSettings } from "@/types";
 
 interface NewWorktreeDialogProps {
   isOpen: boolean;
@@ -58,19 +62,48 @@ export function NewWorktreeDialog({
   const [branchQuery, setBranchQuery] = useState("");
   const [selectedIndex, setSelectedIndex] = useState(0);
 
+  const [projectSettings, setProjectSettings] = useState<ProjectSettings | null>(null);
+  const [runDefaultRecipe, setRunDefaultRecipe] = useState(true);
+
   const assignWorktreeToSelf = usePreferencesStore((s) => s.assignWorktreeToSelf);
   const setAssignWorktreeToSelf = usePreferencesStore((s) => s.setAssignWorktreeToSelf);
   const githubConfig = useGitHubConfigStore((s) => s.config);
   const initializeGitHubConfig = useGitHubConfigStore((s) => s.initialize);
   const addNotification = useNotificationStore((s) => s.addNotification);
+  const { recipes, runRecipe, loadRecipes } = useRecipeStore();
+  const currentProject = useProjectStore((s) => s.currentProject);
 
   const currentUser = githubConfig?.username;
   const currentUserAvatar = githubConfig?.avatarUrl;
   const canAssignIssue = Boolean(currentUser && selectedIssue);
 
+  const defaultRecipeId = projectSettings?.defaultWorktreeRecipeId;
+  const defaultRecipe = defaultRecipeId
+    ? recipes.find((r) => !r.worktreeId && r.id === defaultRecipeId)
+    : undefined;
+  const hasDefaultRecipe = Boolean(defaultRecipe);
+
   useEffect(() => {
     initializeGitHubConfig();
   }, [initializeGitHubConfig]);
+
+  useEffect(() => {
+    if (isOpen && currentProject) {
+      const requestedProjectId = currentProject.id;
+      projectClient
+        .getSettings(requestedProjectId)
+        .then((settings) => {
+          if (currentProject?.id === requestedProjectId) {
+            setProjectSettings(settings);
+          }
+        })
+        .catch((err) => console.error("Failed to load project settings:", err));
+
+      if (recipes.length === 0) {
+        loadRecipes().catch((err) => console.error("Failed to load recipes:", err));
+      }
+    }
+  }, [isOpen, currentProject, recipes.length, loadRecipes]);
 
   const newBranchInputRef = useRef<HTMLInputElement>(null);
   const branchInputRef = useRef<HTMLInputElement>(null);
@@ -162,6 +195,8 @@ export function NewWorktreeDialog({
     setNewBranch("");
     setWorktreePath("");
     setSelectedPrefix(BRANCH_TYPES[0].prefix);
+    setProjectSettings(null);
+    setRunDefaultRecipe(true);
 
     let isCurrent = true;
 
@@ -317,6 +352,21 @@ export function NewWorktreeDialog({
             type: "warning",
             title: "Could not assign issue",
             message: `${message} — you can assign it manually on GitHub`,
+          });
+        }
+      }
+
+      // Run default recipe if enabled and configured
+      if (runDefaultRecipe && defaultRecipe) {
+        try {
+          const worktreeId = result.result as string | undefined;
+          await runRecipe(defaultRecipe.id, worktreePath.trim(), worktreeId);
+        } catch (recipeErr) {
+          const message = recipeErr instanceof Error ? recipeErr.message : "Failed to run recipe";
+          addNotification({
+            type: "warning",
+            title: "Could not run default recipe",
+            message: `${message} — worktree was created successfully`,
           });
         }
       }
@@ -602,6 +652,47 @@ export function NewWorktreeDialog({
                 Create from remote branch
               </label>
             </div>
+
+            {hasDefaultRecipe && (
+              <div className="flex items-center gap-3 px-3 py-2.5 rounded-[var(--radius-md)] border bg-canopy-bg/50 border-canopy-border">
+                <div className="flex items-center justify-center w-8 h-8 rounded-full shrink-0 bg-canopy-accent/10 text-canopy-accent">
+                  <Play className="w-4 h-4" />
+                </div>
+                <div className="flex-1 min-w-0">
+                  <div className="flex items-center gap-2">
+                    <span className="text-sm font-medium text-canopy-text">Run default recipe</span>
+                    <span className="text-xs text-canopy-text/50">{defaultRecipe?.name}</span>
+                  </div>
+                  <span className="text-xs text-canopy-text/60">
+                    {defaultRecipe?.terminals.length} terminal
+                    {defaultRecipe?.terminals.length !== 1 ? "s" : ""} will start automatically
+                  </span>
+                </div>
+                <label className="relative inline-flex items-center cursor-pointer">
+                  <input
+                    type="checkbox"
+                    checked={runDefaultRecipe}
+                    onChange={(e) => setRunDefaultRecipe(e.target.checked)}
+                    disabled={creating}
+                    className="sr-only peer"
+                    aria-label="Run default recipe when creating worktree"
+                  />
+                  <div
+                    className={cn(
+                      "w-9 h-5 rounded-full transition-colors",
+                      "peer-focus-visible:ring-2 peer-focus-visible:ring-canopy-accent",
+                      "after:content-[''] after:absolute after:top-0.5 after:left-0.5",
+                      "after:bg-white after:rounded-full after:h-4 after:w-4",
+                      "after:transition-transform after:duration-200",
+                      runDefaultRecipe
+                        ? "bg-canopy-accent after:translate-x-4"
+                        : "bg-canopy-border after:translate-x-0",
+                      creating && "opacity-50 cursor-not-allowed"
+                    )}
+                  />
+                </label>
+              </div>
+            )}
 
             {error && (
               <div className="flex items-start gap-2 p-3 bg-red-500/10 border border-red-500/20 rounded-[var(--radius-md)]">
