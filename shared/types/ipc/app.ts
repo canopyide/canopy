@@ -12,6 +12,8 @@ export interface SavedRecipeTerminal {
   command?: string;
   /** Optional environment variables */
   env?: Record<string, string>;
+  /** Optional initial prompt for agent terminals */
+  initialPrompt?: string;
 }
 
 /** Saved terminal recipe */
