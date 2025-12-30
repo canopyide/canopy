@@ -61,7 +61,7 @@ export function linkifyHtml(html: string): string {
         const escapedUrl = escapeHtmlAttribute(decodedUrl);
         const escapedDisplay = escapeHtml(decodedUrl);
 
-        return `<a href="${escapedUrl}" target="_blank" rel="noopener noreferrer" style="color:#58a6ff;text-decoration:underline;text-underline-offset:2px">${escapedDisplay}</a>${suffix}`;
+        return `<a href="${escapedUrl}" target="_blank" rel="noopener noreferrer" style="color:#38bdf8;text-decoration:underline;text-underline-offset:2px">${escapedDisplay}</a>${suffix}`;
       });
     })
     .join("");
