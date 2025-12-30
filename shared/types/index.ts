@@ -196,7 +196,11 @@ export type {
 export type { KeyAction, KeymapPreset, KeyMapConfig } from "./keymap.js";
 
 // Agent settings types - AI agent CLI configuration
-export type { AgentSettingsEntry, AgentSettings } from "./agentSettings.js";
+export type {
+  AgentSettingsEntry,
+  AgentSettings,
+  GenerateAgentCommandOptions,
+} from "./agentSettings.js";
 
 // Agent settings helpers
 export {
@@ -204,6 +208,7 @@ export {
   DEFAULT_DANGEROUS_ARGS,
   getAgentSettingsEntry,
   generateAgentFlags,
+  generateAgentCommand,
 } from "./agentSettings.js";
 
 // User agent registry types - user-defined agent configuration
