@@ -19,6 +19,7 @@ import {
   Play,
   AlertTriangle,
   Rocket,
+  Check,
 } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover";
@@ -941,78 +942,101 @@ export function ProjectSettingsDialog({ projectId, isOpen, onClose }: ProjectSet
                   predefined commands and settings.
                 </p>
 
-                <div className="space-y-3">
+                <div className="border border-canopy-border rounded-[var(--radius-md)] divide-y divide-canopy-border">
                   {recipes.length === 0 ? (
-                    <div className="text-sm text-canopy-text/60 text-center py-8 border border-dashed border-canopy-border rounded-[var(--radius-md)]">
+                    <div className="text-sm text-canopy-text/60 text-center py-8">
                       No recipes configured yet
                     </div>
                   ) : (
-                    recipes.map((recipe) => (
-                      <div
-                        key={recipe.id}
-                        className="p-3 rounded-[var(--radius-md)] bg-canopy-bg border border-canopy-border"
-                      >
-                        <div className="flex items-start justify-between gap-3 mb-2">
-                          <div className="flex-1 min-w-0">
-                            <div className="flex items-center gap-2 mb-1">
-                              <h4 className="text-sm font-medium text-canopy-text truncate">
-                                {recipe.name}
-                              </h4>
-                              <span className="text-xs text-canopy-text/60 bg-canopy-sidebar px-2 py-0.5 rounded shrink-0">
-                                {getRecipeScope(recipe)}
-                              </span>
-                              {recipe.showInEmptyState && (
-                                <span className="text-xs text-canopy-accent bg-canopy-accent/10 px-2 py-0.5 rounded shrink-0">
-                                  Empty State
+                    recipes.map((recipe) => {
+                      const exported = exportFeedback === recipe.id;
+                      return (
+                        <div
+                          key={recipe.id}
+                          className="p-3 hover:bg-muted/50 transition-colors group cursor-default"
+                        >
+                          <div className="flex items-start gap-3">
+                            <div className="flex-1 min-w-0">
+                              <div className="flex items-center gap-2">
+                                <span
+                                  className="text-sm font-medium text-foreground truncate"
+                                  title={recipe.name}
+                                >
+                                  {recipe.name}
                                 </span>
-                              )}
-                            </div>
-                            <div className="flex items-center gap-3 text-xs text-canopy-text/60">
-                              <span>
-                                {recipe.terminals.length} terminal
-                                {recipe.terminals.length !== 1 ? "s" : ""}
-                              </span>
-                              {recipe.lastUsedAt && (
-                                <>
-                                  <span>•</span>
+                                <span className="text-[11px] text-muted-foreground bg-muted px-1.5 py-0.5 rounded font-medium shrink-0">
+                                  {getRecipeScope(recipe)}
+                                </span>
+                                <span className="text-[11px] text-muted-foreground bg-muted px-1.5 py-0.5 rounded font-medium shrink-0">
+                                  {recipe.terminals.length} terminal
+                                  {recipe.terminals.length !== 1 ? "s" : ""}
+                                </span>
+                                {recipe.showInEmptyState && (
+                                  <span className="text-[11px] text-[var(--color-status-info)] bg-[var(--color-status-info)]/10 px-1.5 py-0.5 rounded font-medium shrink-0">
+                                    Empty State
+                                  </span>
+                                )}
+                              </div>
+                              <div className="text-xs text-muted-foreground mt-1">
+                                {recipe.lastUsedAt ? (
                                   <span>
                                     Last used <LiveTimeAgo timestamp={recipe.lastUsedAt} />
                                   </span>
-                                </>
-                              )}
+                                ) : (
+                                  <span>Never used</span>
+                                )}
+                              </div>
+                            </div>
+                            <div className="flex items-center gap-1 shrink-0 opacity-0 group-hover:opacity-100 group-focus-within:opacity-100 transition-opacity">
+                              <Button
+                                variant="ghost"
+                                size="sm"
+                                onClick={() => handleEditRecipe(recipe)}
+                                className="h-7 px-2"
+                                title="Edit recipe"
+                                aria-label={`Edit recipe ${recipe.name}`}
+                              >
+                                <Edit3 className="h-3.5 w-3.5" />
+                              </Button>
+                              <Button
+                                variant="ghost"
+                                size="sm"
+                                onClick={() => handleExportRecipe(recipe.id)}
+                                className="h-7 px-2"
+                                title={exported ? "Exported" : "Export recipe to clipboard"}
+                                aria-label={
+                                  exported
+                                    ? `Recipe ${recipe.name} exported to clipboard`
+                                    : `Export recipe ${recipe.name} to clipboard`
+                                }
+                              >
+                                {exported ? (
+                                  <Check className="h-3.5 w-3.5 text-[var(--color-status-success)]" />
+                                ) : (
+                                  <Download className="h-3.5 w-3.5" />
+                                )}
+                              </Button>
+                              <Button
+                                variant="ghost"
+                                size="sm"
+                                onClick={() => setRecipeToDelete(recipe.id)}
+                                className="h-7 px-2"
+                                title="Delete recipe"
+                                aria-label={`Delete recipe ${recipe.name}`}
+                              >
+                                <Trash2 className="h-3.5 w-3.5 text-[var(--color-status-error)]" />
+                              </Button>
                             </div>
                           </div>
                         </div>
-                        <div className="flex gap-2">
-                          <Button
-                            variant="outline"
-                            size="sm"
-                            onClick={() => handleEditRecipe(recipe)}
-                          >
-                            <Edit3 className="h-3 w-3 mr-1" />
-                            Edit
-                          </Button>
-                          <Button
-                            variant="outline"
-                            size="sm"
-                            onClick={() => handleExportRecipe(recipe.id)}
-                          >
-                            <Download className="h-3 w-3 mr-1" />
-                            {exportFeedback === recipe.id ? "Copied!" : "Export"}
-                          </Button>
-                          <Button
-                            variant="ghost"
-                            size="sm"
-                            onClick={() => setRecipeToDelete(recipe.id)}
-                          >
-                            <Trash2 className="h-3 w-3 text-[var(--color-status-error)]" />
-                          </Button>
-                        </div>
-                      </div>
-                    ))
+                      );
+                    })
                   )}
                   {exportError && (
-                    <div className="text-sm text-[var(--color-status-error)] bg-red-900/20 border border-red-900/30 rounded p-3">
+                    <div
+                      className="text-sm text-[var(--color-status-error)] bg-red-900/20 border border-red-900/30 rounded p-3"
+                      role="alert"
+                    >
                       {exportError}
                     </div>
                   )}
