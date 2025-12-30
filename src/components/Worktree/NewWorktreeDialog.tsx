@@ -12,6 +12,7 @@ import {
   Search,
   UserPlus,
   Play,
+  Info,
 } from "lucide-react";
 import type { BranchInfo, CreateWorktreeOptions } from "@/types/electron";
 import type { GitHubIssue } from "@shared/types/github";
@@ -57,6 +58,7 @@ export function NewWorktreeDialog({
   const [selectedIssue, setSelectedIssue] = useState<GitHubIssue | null>(null);
   const [selectedPrefix, setSelectedPrefix] = useState(BRANCH_TYPES[0].prefix);
   const [branchExistsError, setBranchExistsError] = useState(false);
+  const [branchExists, setBranchExists] = useState(false);
 
   const [branchPickerOpen, setBranchPickerOpen] = useState(false);
   const [branchQuery, setBranchQuery] = useState("");
@@ -206,6 +208,7 @@ export function NewWorktreeDialog({
     setLoading(true);
     setError(null);
     setBranchExistsError(false);
+    setBranchExists(false);
     setBranches([]);
     setBaseBranch("");
     setFromRemote(false);
@@ -305,6 +308,23 @@ export function NewWorktreeDialog({
     return () => abortController.abort();
   }, [newBranch, selectedPrefix, rootPath]);
 
+  // Check if the branch already exists locally (debounced)
+  useEffect(() => {
+    if (!newBranch.trim() || branches.length === 0) {
+      setBranchExists(false);
+      return;
+    }
+
+    const fullBranchName = `${selectedPrefix}/${newBranch.trim()}`;
+    const timeoutId = setTimeout(() => {
+      // Only check for local branches - remote branches need fromRemote to be checked
+      const exists = branches.some((b) => b.name === fullBranchName && !b.remote);
+      setBranchExists(exists);
+    }, 150);
+
+    return () => clearTimeout(timeoutId);
+  }, [newBranch, selectedPrefix, branches]);
+
   const handleCreate = async (useExistingBranch = false) => {
     if (!useExistingBranch && !baseBranch) {
       setError("Please select a base branch");
@@ -339,12 +359,15 @@ export function NewWorktreeDialog({
     setBranchExistsError(false);
 
     try {
+      // Automatically use existing branch if we detected it exists
+      const shouldUseExisting = useExistingBranch || branchExists;
+
       const options: CreateWorktreeOptions = {
         baseBranch,
         newBranch: fullBranchName,
         path: worktreePath.trim(),
         fromRemote,
-        useExistingBranch,
+        useExistingBranch: shouldUseExisting,
       };
 
       const result = await actionService.dispatch(
@@ -606,6 +629,7 @@ export function NewWorktreeDialog({
                   placeholder="my-awesome-feature"
                   className="flex-1 px-3 py-2 bg-canopy-bg border border-canopy-border rounded-[var(--radius-md)] text-canopy-text focus:outline-none focus:ring-2 focus:ring-canopy-accent"
                   disabled={creating}
+                  aria-describedby={branchExists ? "branch-exists-hint" : undefined}
                 />
               </div>
               <p className="text-xs text-canopy-text/60">
@@ -614,6 +638,17 @@ export function NewWorktreeDialog({
                   {selectedPrefix}/{newBranch || "..."}
                 </span>
               </p>
+              {branchExists && (
+                <p
+                  id="branch-exists-hint"
+                  className="text-xs text-canopy-accent flex items-center gap-1.5 mt-1"
+                  role="status"
+                  aria-live="polite"
+                >
+                  <Info className="w-3.5 h-3.5" aria-hidden="true" />
+                  This branch already exists and will be reused
+                </p>
+              )}
             </div>
 
             <div className="space-y-2">
