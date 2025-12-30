@@ -106,7 +106,8 @@ export function NotesPalette({ isOpen, onClose }: NotesPaletteProps) {
 
   // Restore last selected note after notes are loaded and search results are ready
   useEffect(() => {
-    if (!isOpen || !lastSelectedNoteId || isLoading || isSearching || hasRestoredRef.current) return;
+    if (!isOpen || !lastSelectedNoteId || isLoading || isSearching || hasRestoredRef.current)
+      return;
 
     // Find the note in search results (not just notes list) for correct index
     const noteToRestore = searchResults.find((n) => n.id === lastSelectedNoteId);
