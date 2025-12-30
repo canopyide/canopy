@@ -111,89 +111,89 @@ export function WorktreeDetails({
         <>
           {/* Time Display for Expanded View */}
           {showTime && lastActivityTimestamp && (
-        <div className="flex items-center gap-2 pb-2 border-b border-white/5">
-          <div className="flex items-center gap-1.5 text-xs text-canopy-text/50">
-            <span className="text-xs font-medium">Last active:</span>
-            <ActivityLight lastActivityTimestamp={lastActivityTimestamp} />
-            <LiveTimeAgo timestamp={lastActivityTimestamp} />
-          </div>
-        </div>
-      )}
-
-      {/* Errors (if any) */}
-      {worktreeErrors.length > 0 && (
-        <div className="space-y-1">
-          {worktreeErrors.slice(0, 3).map((error) => (
-            <ErrorBanner
-              key={error.id}
-              error={error}
-              onDismiss={onDismissError}
-              onRetry={onRetryError}
-              compact
-            />
-          ))}
-          {worktreeErrors.length > 3 && (
-            <div className="text-[0.65rem] text-canopy-text/60 text-center">
-              +{worktreeErrors.length - 3} more errors
+            <div className="flex items-center gap-2 pb-2 border-b border-white/5">
+              <div className="flex items-center gap-1.5 text-xs text-canopy-text/50">
+                <span className="text-xs font-medium">Last active:</span>
+                <ActivityLight lastActivityTimestamp={lastActivityTimestamp} />
+                <LiveTimeAgo timestamp={lastActivityTimestamp} />
+              </div>
             </div>
           )}
-        </div>
-      )}
 
-      {/* Block 2: Narrative (AI note, summary, or commit message) */}
-      {effectiveNote && (
-        <div className="p-3 rounded-[var(--radius-lg)] bg-yellow-500/5 border border-yellow-500/20">
-          <div className="text-xs text-yellow-200/90 whitespace-pre-wrap font-mono">
-            {parsedNoteSegments.map((segment, index) =>
-              segment.type === "link" ? (
-                <a
-                  key={index}
-                  href={segment.content}
-                  target="_blank"
-                  rel="noopener noreferrer"
-                  className="text-[var(--color-status-info)] underline hover:brightness-110 rounded focus-visible:outline focus-visible:outline-2 focus-visible:outline-canopy-accent focus-visible:outline-offset-2"
-                  onClick={(e) => handleLinkClick(e, segment.content)}
-                >
-                  {segment.content}
-                </a>
-              ) : (
-                <span key={index}>{segment.content}</span>
-              )
-            )}
-          </div>
-        </div>
-      )}
-      {!effectiveNote && effectiveSummary && (
-        <div className="text-xs text-canopy-text/70 whitespace-pre-wrap leading-relaxed p-2 bg-white/[0.02] rounded">
-          {effectiveSummary}
-        </div>
-      )}
-      {!effectiveNote && !effectiveSummary && showLastCommit && rawLastCommitMsg && (
-        <div className="text-xs text-canopy-text/60 italic flex gap-2 p-2 bg-white/[0.02] rounded">
-          <GitCommit className="w-3.5 h-3.5 mt-0.5 shrink-0 opacity-60" />
-          <div className="whitespace-pre-wrap leading-relaxed min-w-0">{rawLastCommitMsg}</div>
-        </div>
-      )}
+          {/* Errors (if any) */}
+          {worktreeErrors.length > 0 && (
+            <div className="space-y-1">
+              {worktreeErrors.slice(0, 3).map((error) => (
+                <ErrorBanner
+                  key={error.id}
+                  error={error}
+                  onDismiss={onDismissError}
+                  onRetry={onRetryError}
+                  compact
+                />
+              ))}
+              {worktreeErrors.length > 3 && (
+                <div className="text-[0.65rem] text-canopy-text/60 text-center">
+                  +{worktreeErrors.length - 3} more errors
+                </div>
+              )}
+            </div>
+          )}
 
-      {/* Placeholder when no AI summary or note exists */}
-      {!effectiveNote && !effectiveSummary && !rawLastCommitMsg && (
-        <div className="text-xs text-canopy-text/40 italic">
-          No AI summary yet. Run an agent task or use Copy Context to generate one.
-        </div>
-      )}
+          {/* Block 2: Narrative (AI note, summary, or commit message) */}
+          {effectiveNote && (
+            <div className="p-3 rounded-[var(--radius-lg)] bg-yellow-500/5 border border-yellow-500/20">
+              <div className="text-xs text-yellow-200/90 whitespace-pre-wrap font-mono">
+                {parsedNoteSegments.map((segment, index) =>
+                  segment.type === "link" ? (
+                    <a
+                      key={index}
+                      href={segment.content}
+                      target="_blank"
+                      rel="noopener noreferrer"
+                      className="text-[var(--color-status-info)] underline hover:brightness-110 rounded focus-visible:outline focus-visible:outline-2 focus-visible:outline-canopy-accent focus-visible:outline-offset-2"
+                      onClick={(e) => handleLinkClick(e, segment.content)}
+                    >
+                      {segment.content}
+                    </a>
+                  ) : (
+                    <span key={index}>{segment.content}</span>
+                  )
+                )}
+              </div>
+            </div>
+          )}
+          {!effectiveNote && effectiveSummary && (
+            <div className="text-xs text-canopy-text/70 whitespace-pre-wrap leading-relaxed p-2 bg-white/[0.02] rounded">
+              {effectiveSummary}
+            </div>
+          )}
+          {!effectiveNote && !effectiveSummary && showLastCommit && rawLastCommitMsg && (
+            <div className="text-xs text-canopy-text/60 italic flex gap-2 p-2 bg-white/[0.02] rounded">
+              <GitCommit className="w-3.5 h-3.5 mt-0.5 shrink-0 opacity-60" />
+              <div className="whitespace-pre-wrap leading-relaxed min-w-0">{rawLastCommitMsg}</div>
+            </div>
+          )}
 
-      {/* Block 3: Artifacts (grouped file changes + system path) */}
-      {hasChanges && worktree.worktreeChanges && (
-        <div className="space-y-2">
-          <div className="text-xs text-canopy-text/60 font-medium">Changed Files</div>
-          <FileChangeList
-            changes={worktree.worktreeChanges.changes}
-            rootPath={worktree.worktreeChanges.rootPath}
-            maxVisible={worktree.worktreeChanges.changes.length}
-            groupByFolder={worktree.worktreeChanges.changedFileCount > 5}
-          />
-        </div>
-      )}
+          {/* Placeholder when no AI summary or note exists */}
+          {!effectiveNote && !effectiveSummary && !rawLastCommitMsg && (
+            <div className="text-xs text-canopy-text/40 italic">
+              No AI summary yet. Run an agent task or use Copy Context to generate one.
+            </div>
+          )}
+
+          {/* Block 3: Artifacts (grouped file changes + system path) */}
+          {hasChanges && worktree.worktreeChanges && (
+            <div className="space-y-2">
+              <div className="text-xs text-canopy-text/60 font-medium">Changed Files</div>
+              <FileChangeList
+                changes={worktree.worktreeChanges.changes}
+                rootPath={worktree.worktreeChanges.rootPath}
+                maxVisible={worktree.worktreeChanges.changes.length}
+                groupByFolder={worktree.worktreeChanges.changedFileCount > 5}
+              />
+            </div>
+          )}
         </>
       )}
 
