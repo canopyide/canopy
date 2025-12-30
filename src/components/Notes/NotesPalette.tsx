@@ -62,7 +62,7 @@ export function NotesPalette({ isOpen, onClose }: NotesPaletteProps) {
 
   // Shared styles for note title - both display and input must match exactly
   const noteTitleBaseClass =
-    "block w-full h-[22px] m-0 px-1.5 py-0.5 text-xs font-medium leading-4 border border-solid rounded box-border";
+    "block w-full h-[24px] m-0 px-2 py-0.5 text-sm font-medium leading-5 border border-solid rounded box-border";
 
   // Focus management
   useEffect(() => {
@@ -584,7 +584,7 @@ export function NotesPalette({ isOpen, onClose }: NotesPaletteProps) {
     <>
       {createPortal(
         <div
-          className="fixed inset-0 z-[var(--z-modal)] flex items-start justify-center pt-[10vh] bg-black/40 backdrop-blur-sm backdrop-saturate-[1.25]"
+          className="fixed inset-0 z-[var(--z-modal)] flex items-center justify-center bg-black/50 backdrop-blur-md backdrop-saturate-[1.25]"
           onClick={handleBackdropClick}
           role="dialog"
           aria-modal="true"
@@ -593,18 +593,17 @@ export function NotesPalette({ isOpen, onClose }: NotesPaletteProps) {
           <div
             ref={dialogRef}
             className={cn(
-              "w-full max-w-3xl mx-4 bg-canopy-bg border border-[var(--border-overlay)] rounded-[var(--radius-xl)] shadow-modal overflow-hidden",
+              "w-full max-w-3xl mx-4 bg-canopy-sidebar border border-[var(--border-overlay)] border-t-white/[0.08] rounded-[var(--radius-xl)] shadow-modal overflow-hidden",
               "animate-in fade-in slide-in-from-top-4 duration-150",
-              "flex flex-col"
+              "flex flex-col h-[80vh] max-h-[900px]"
             )}
-            style={{ height: "min(70vh, 600px)" }}
             onClick={(e) => e.stopPropagation()}
           >
             {/* Header */}
-            <div className="px-3 py-2 border-b border-canopy-border flex items-center justify-between shrink-0">
+            <div className="px-4 py-3 border-b border-canopy-border bg-canopy-sidebar/50 flex items-center justify-between shrink-0">
               <div className="flex items-center gap-3">
-                <span className="text-xs text-canopy-text/50">Notes</span>
-                <span className="text-[10px] text-canopy-text/30 font-mono">⌘⇧O</span>
+                <span className="text-sm font-medium text-canopy-text">Notes</span>
+                <span className="text-[11px] text-canopy-text/50 font-mono">⌘⇧O</span>
               </div>
               <div className="flex items-center gap-2">
                 <button
@@ -629,10 +628,10 @@ export function NotesPalette({ isOpen, onClose }: NotesPaletteProps) {
 
             {/* Split pane content */}
             <div className="flex flex-1 min-h-0">
-              {/* Notes list */}
-              <div className="w-64 border-r border-canopy-border flex flex-col shrink-0">
+              {/* Notes list sidebar */}
+              <div className="w-64 border-r border-canopy-border bg-canopy-bg flex flex-col shrink-0">
                 {/* Search */}
-                <div className="p-2 border-b border-canopy-border">
+                <div className="p-3 border-b border-canopy-border">
                   <input
                     ref={inputRef}
                     type="text"
@@ -640,28 +639,25 @@ export function NotesPalette({ isOpen, onClose }: NotesPaletteProps) {
                     onChange={(e) => setQuery(e.target.value)}
                     onKeyDown={handleKeyDown}
                     placeholder="Search notes..."
-                    className="w-full px-2.5 py-1.5 text-sm bg-canopy-sidebar border border-canopy-border rounded-[var(--radius-md)] text-canopy-text placeholder:text-canopy-text/40 focus:outline-none focus:border-canopy-accent focus:ring-1 focus:ring-canopy-accent"
+                    className="w-full px-3 py-2 text-sm bg-canopy-sidebar border border-canopy-border rounded-[var(--radius-md)] text-canopy-text placeholder:text-canopy-text/40 focus:outline-none focus:border-canopy-accent focus:ring-1 focus:ring-canopy-accent"
                   />
                 </div>
 
                 {/* List */}
-                <div
-                  ref={listRef}
-                  className="flex-1 overflow-y-auto p-1.5 divide-y divide-canopy-border/50"
-                >
+                <div ref={listRef} role="listbox" className="flex-1 overflow-y-auto p-2">
                   {isLoading || isSearching ? (
-                    <div className="px-2 py-6 text-center text-canopy-text/50 text-xs">
+                    <div className="px-3 py-8 text-center text-canopy-text/50 text-sm">
                       Loading...
                     </div>
                   ) : searchResults.length === 0 ? (
-                    <div className="px-2 py-6 text-center text-canopy-text/50 text-xs">
+                    <div className="px-3 py-8 text-center text-canopy-text/50 text-sm">
                       {query.trim() ? (
-                        <div className="flex flex-col items-center gap-2">
+                        <div className="flex flex-col items-center gap-3">
                           <span>No notes match "{query}"</span>
                           <button
                             type="button"
                             onClick={() => handleCreateNote(query.trim())}
-                            className="px-2 py-1 rounded-[var(--radius-md)] bg-canopy-accent/20 hover:bg-canopy-accent/30 text-canopy-accent text-xs transition-colors"
+                            className="px-3 py-1.5 rounded-[var(--radius-md)] bg-canopy-accent/20 hover:bg-canopy-accent/30 text-canopy-accent text-sm transition-colors"
                           >
                             Create "{query.trim().slice(0, 30)}
                             {query.trim().length > 30 ? "..." : ""}"
@@ -678,13 +674,16 @@ export function NotesPalette({ isOpen, onClose }: NotesPaletteProps) {
                       return (
                         <div
                           key={note.id}
+                          role="option"
+                          aria-selected={selectedNote?.id === note.id}
                           className={cn(
-                            "relative flex items-start px-2 py-2 cursor-pointer transition-colors group",
+                            "relative flex items-start px-2 py-2.5 cursor-pointer transition-colors group rounded-[var(--radius-md)] mb-1",
+                            "focus-visible:outline focus-visible:outline-2 focus-visible:outline-canopy-accent focus-visible:outline-offset-1",
                             selectedNote?.id === note.id
                               ? "bg-canopy-accent/15 text-canopy-text"
                               : index === selectedIndex
-                                ? "bg-white/[0.03] text-canopy-text"
-                                : "text-canopy-text/70 hover:bg-white/[0.02] hover:text-canopy-text"
+                                ? "bg-white/[0.04] text-canopy-text"
+                                : "text-canopy-text/70 hover:bg-white/[0.03] hover:text-canopy-text"
                           )}
                           onClick={() => handleSelectNote(note, index)}
                           onDoubleClick={(e) => handleStartRename(note, e)}
@@ -710,6 +709,7 @@ export function NotesPalette({ isOpen, onClose }: NotesPaletteProps) {
                               onClick={(e) => {
                                 if (isEditing) e.stopPropagation();
                               }}
+                              tabIndex={isEditing ? 0 : -1}
                               className={cn(
                                 noteTitleBaseClass,
                                 "appearance-none focus:outline-none",
@@ -718,7 +718,7 @@ export function NotesPalette({ isOpen, onClose }: NotesPaletteProps) {
                                   : "bg-transparent border-transparent text-inherit truncate cursor-default pointer-events-none"
                               )}
                             />
-                            <div className="text-[10px] text-canopy-text/40 truncate mt-0.5 px-1">
+                            <div className="text-[11px] text-canopy-text/50 truncate mt-1 px-2">
                               {note.preview || "Empty note"}
                             </div>
                           </div>
@@ -738,11 +738,11 @@ export function NotesPalette({ isOpen, onClose }: NotesPaletteProps) {
               </div>
 
               {/* Content area */}
-              <div className="flex-1 flex flex-col min-w-0">
+              <div className="flex-1 flex flex-col min-w-0 bg-canopy-sidebar">
                 {selectedNote ? (
                   <>
                     {/* Note header */}
-                    <div className="px-3 py-2 border-b border-canopy-border flex items-center justify-between shrink-0">
+                    <div className="px-4 py-3 border-b border-canopy-border flex items-center justify-between shrink-0">
                       <input
                         ref={isEditingHeaderTitle ? headerTitleInputRef : null}
                         type="text"
@@ -762,34 +762,34 @@ export function NotesPalette({ isOpen, onClose }: NotesPaletteProps) {
                         }}
                         title={isEditingHeaderTitle ? undefined : "Double-click to rename"}
                         className={cn(
-                          "flex-1 mr-2 text-sm font-medium px-2 py-1 border rounded appearance-none focus:outline-none box-border",
+                          "flex-1 mr-3 text-base font-medium px-2 py-1.5 border rounded appearance-none focus:outline-none box-border",
                           isEditingHeaderTitle
-                            ? "bg-canopy-sidebar border-canopy-accent text-canopy-text cursor-text"
+                            ? "bg-canopy-bg border-canopy-accent text-canopy-text cursor-text"
                             : "bg-transparent border-transparent text-canopy-text truncate cursor-text"
                         )}
                       />
                       <button
                         type="button"
                         onClick={handleOpenAsPanel}
-                        className="px-2 py-1 rounded-[var(--radius-sm)] text-xs text-canopy-text/60 hover:text-canopy-text hover:bg-white/5 transition-colors flex items-center gap-1 shrink-0"
+                        className="px-2.5 py-1.5 rounded-[var(--radius-md)] text-xs text-canopy-text/60 hover:text-canopy-text hover:bg-white/5 transition-colors flex items-center gap-1.5 shrink-0"
                         title="Open as panel (Shift+Enter)"
                       >
-                        <ExternalLink size={12} />
+                        <ExternalLink size={14} />
                         Open Panel
                       </button>
                     </div>
 
                     {/* Conflict warning */}
                     {hasConflict && (
-                      <div className="px-3 py-2 bg-amber-500/10 border-b border-amber-500/20 flex items-center justify-between">
-                        <div className="flex items-center gap-2 text-amber-500 text-xs">
-                          <AlertTriangle size={14} />
+                      <div className="px-4 py-2.5 bg-amber-500/10 border-b border-amber-500/20 flex items-center justify-between">
+                        <div className="flex items-center gap-2 text-amber-500 text-sm">
+                          <AlertTriangle size={16} />
                           <span>Note modified externally</span>
                         </div>
                         <button
                           type="button"
                           onClick={handleReloadNote}
-                          className="px-2 py-1 rounded text-xs bg-amber-500/20 hover:bg-amber-500/30 text-amber-500 transition-colors"
+                          className="px-3 py-1 rounded-[var(--radius-md)] text-sm bg-amber-500/20 hover:bg-amber-500/30 text-amber-500 transition-colors"
                         >
                           Reload
                         </button>
@@ -803,7 +803,7 @@ export function NotesPalette({ isOpen, onClose }: NotesPaletteProps) {
                           Loading...
                         </div>
                       ) : (
-                        <div className="h-full bg-canopy-bg text-[13px] font-mono [&_.cm-editor]:h-full [&_.cm-scroller]:p-2 [&_.cm-placeholder]:text-zinc-600 [&_.cm-placeholder]:italic">
+                        <div className="h-full bg-canopy-bg text-sm font-mono [&_.cm-editor]:h-full [&_.cm-scroller]:p-4 [&_.cm-placeholder]:text-canopy-text/40 [&_.cm-placeholder]:italic">
                           <CodeMirror
                             value={noteContent}
                             height="100%"
@@ -825,13 +825,15 @@ export function NotesPalette({ isOpen, onClose }: NotesPaletteProps) {
                     </div>
                   </>
                 ) : (
-                  <div className="flex-1 flex flex-col items-center justify-center text-canopy-text/40 text-sm">
-                    <StickyNote size={32} className="mb-2 opacity-50" />
+                  <div className="flex-1 flex flex-col items-center justify-center text-canopy-text/50 text-sm">
+                    <StickyNote size={40} className="mb-3 opacity-50" />
                     <p>Select a note to view</p>
-                    <p className="text-xs mt-1 text-canopy-text/30">
+                    <p className="text-xs mt-2 text-canopy-text/50">
                       or press{" "}
-                      <kbd className="px-1 py-0.5 rounded bg-canopy-border text-[10px]">⌘N</kbd> to
-                      create one
+                      <kbd className="px-1.5 py-0.5 rounded-[var(--radius-sm)] bg-canopy-border text-xs">
+                        ⌘N
+                      </kbd>{" "}
+                      to create one
                     </p>
                   </div>
                 )}
@@ -839,22 +841,39 @@ export function NotesPalette({ isOpen, onClose }: NotesPaletteProps) {
             </div>
 
             {/* Footer */}
-            <div className="px-3 py-1.5 border-t border-canopy-border bg-canopy-sidebar/50 text-[10px] text-canopy-text/40 flex items-center gap-4 shrink-0">
+            <div className="px-4 py-2.5 border-t border-canopy-border bg-canopy-sidebar/50 text-xs text-canopy-text/50 flex items-center gap-5 shrink-0">
               <span>
-                <kbd className="px-1 py-0.5 rounded bg-canopy-border">↑↓</kbd> navigate
+                <kbd className="px-1.5 py-0.5 rounded-[var(--radius-sm)] bg-canopy-border text-canopy-text/60">
+                  ↑
+                </kbd>
+                <kbd className="px-1.5 py-0.5 rounded-[var(--radius-sm)] bg-canopy-border text-canopy-text/60 ml-1">
+                  ↓
+                </kbd>
+                <span className="ml-1.5">to navigate</span>
               </span>
               <span>
-                <kbd className="px-1 py-0.5 rounded bg-canopy-border">Enter</kbd> select
+                <kbd className="px-1.5 py-0.5 rounded-[var(--radius-sm)] bg-canopy-border text-canopy-text/60">
+                  Enter
+                </kbd>
+                <span className="ml-1.5">to select</span>
               </span>
               <span>
-                <kbd className="px-1 py-0.5 rounded bg-canopy-border">⇧Enter</kbd> open panel
+                <kbd className="px-1.5 py-0.5 rounded-[var(--radius-sm)] bg-canopy-border text-canopy-text/60">
+                  ⇧Enter
+                </kbd>
+                <span className="ml-1.5">open panel</span>
               </span>
               <span>
-                <kbd className="px-1 py-0.5 rounded bg-canopy-border">⌘N</kbd> new
+                <kbd className="px-1.5 py-0.5 rounded-[var(--radius-sm)] bg-canopy-border text-canopy-text/60">
+                  ⌘N
+                </kbd>
+                <span className="ml-1.5">new</span>
               </span>
               <span>
-                <kbd className="px-1 py-0.5 rounded bg-canopy-border">Esc</kbd>{" "}
-                {selectedNote ? "deselect" : "close"}
+                <kbd className="px-1.5 py-0.5 rounded-[var(--radius-sm)] bg-canopy-border text-canopy-text/60">
+                  Esc
+                </kbd>
+                <span className="ml-1.5">{selectedNote ? "deselect" : "close"}</span>
               </span>
             </div>
           </div>
