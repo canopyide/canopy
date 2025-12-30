@@ -1,7 +1,9 @@
 import { create, type StateCreator } from "zustand";
 import type { TerminalRecipe, RecipeTerminal } from "@/types";
 import { useTerminalStore, type TerminalInstance } from "./terminalStore";
-import { appClient } from "@/clients";
+import { appClient, agentSettingsClient } from "@/clients";
+import { getAgentConfig } from "@/config/agents";
+import { generateAgentFlags } from "@shared/types";
 
 function terminalToRecipeTerminal(terminal: TerminalInstance): RecipeTerminal {
   return {
@@ -180,17 +182,52 @@ const createRecipeStore: StateCreator<RecipeState> = (set, get) => ({
 
     const terminalStore = useTerminalStore.getState();
 
+    // Pre-fetch agent settings once for all agent terminals
+    let agentSettings: Awaited<ReturnType<typeof agentSettingsClient.get>> | null = null;
+    const hasAgent = recipe.terminals.some((t) => t.type !== "terminal");
+    if (hasAgent) {
+      try {
+        agentSettings = await agentSettingsClient.get();
+      } catch (error) {
+        console.warn("Failed to fetch agent settings for recipe:", error);
+      }
+    }
+
     for (const terminal of recipe.terminals) {
       try {
         const isAgent = terminal.type !== "terminal";
-        await terminalStore.addTerminal({
+        let command = terminal.command;
+
+        // For agent terminals, always build command with settings/flags
+        // Initial prompts will be sent via terminal.write after boot
+        if (isAgent) {
+          const agentConfig = getAgentConfig(terminal.type);
+          if (agentConfig && !command) {
+            const baseCommand = agentConfig.command;
+            const entry = agentSettings?.agents?.[terminal.type] ?? {};
+            const flags = generateAgentFlags(entry, terminal.type);
+            command = flags.length > 0 ? `${baseCommand} ${flags.join(" ")}` : baseCommand;
+          }
+        }
+
+        const terminalId = await terminalStore.addTerminal({
           kind: isAgent ? "agent" : "terminal",
           agentId: isAgent ? terminal.type : undefined,
           title: terminal.title,
           cwd: worktreePath,
-          command: terminal.command,
+          command,
           worktreeId: worktreeId,
         });
+
+        // Queue initial prompt to be sent after agent boots
+        if (isAgent && terminal.initialPrompt) {
+          terminalStore.queueCommand(
+            terminalId,
+            terminal.initialPrompt,
+            "Recipe initial prompt",
+            "automation"
+          );
+        }
       } catch (error) {
         console.error(`Failed to spawn terminal for recipe ${recipeId}:`, error);
       }
@@ -233,6 +270,12 @@ const createRecipeStore: StateCreator<RecipeState> = (set, get) => ({
           // eslint-disable-next-line no-control-regex
           if (/[\r\n\x00-\x1F]/.test(terminal.command)) return false;
         }
+        if (terminal.initialPrompt !== undefined) {
+          if (typeof terminal.initialPrompt !== "string") return false;
+          // Allow newlines (\r\n) but reject other control chars
+          // eslint-disable-next-line no-control-regex
+          if (/[\x00-\x08\x0B\x0C\x0E-\x1F\x7F]/.test(terminal.initialPrompt)) return false;
+        }
         if (terminal.env !== undefined) {
           if (
             typeof terminal.env !== "object" ||
@@ -251,6 +294,10 @@ const createRecipeStore: StateCreator<RecipeState> = (set, get) => ({
         title: typeof terminal.title === "string" ? terminal.title : undefined,
         command: typeof terminal.command === "string" ? terminal.command.trim() : undefined,
         env: terminal.env,
+        initialPrompt:
+          typeof terminal.initialPrompt === "string"
+            ? terminal.initialPrompt.replace(/\r\n/g, "\n").trimEnd()
+            : undefined,
       }));
 
     if (sanitizedTerminals.length === 0) {
