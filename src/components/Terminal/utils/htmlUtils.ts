@@ -27,7 +27,7 @@ export function linkifyHtml(html: string): string {
           cleanUrl = cleanUrl.slice(0, -suffix.length);
         }
 
-        return `<a href="${cleanUrl}" target="_blank" rel="noopener noreferrer" style="color:#58a6ff;text-decoration:underline;text-underline-offset:2px">${cleanUrl}</a>${suffix}`;
+        return `<a href="${cleanUrl}" target="_blank" rel="noopener noreferrer" style="color:#38bdf8;text-decoration:underline;text-underline-offset:2px">${cleanUrl}</a>${suffix}`;
       });
     })
     .join("");

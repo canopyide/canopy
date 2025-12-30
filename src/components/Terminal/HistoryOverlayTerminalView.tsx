@@ -843,8 +843,8 @@ export const HistoryOverlayTerminalView = forwardRef<
                 - Span styling preserves inline flow for proper text rendering */}
             <style>{`
               .history-overlay a:hover {
-                color: #79c0ff !important;
-                text-decoration-color: #79c0ff;
+                color: #7dd3fc !important;
+                text-decoration-color: #7dd3fc;
               }
               .history-overlay .history-row {
                 display: block;
