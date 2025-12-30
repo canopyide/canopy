@@ -3,7 +3,7 @@ import type { TerminalRecipe, RecipeTerminal } from "@/types";
 import { useTerminalStore, type TerminalInstance } from "./terminalStore";
 import { appClient, agentSettingsClient } from "@/clients";
 import { getAgentConfig } from "@/config/agents";
-import { generateAgentFlags } from "@shared/types";
+import { generateAgentCommand } from "@shared/types";
 
 function terminalToRecipeTerminal(terminal: TerminalInstance): RecipeTerminal {
   return {
@@ -198,19 +198,28 @@ const createRecipeStore: StateCreator<RecipeState> = (set, get) => ({
         const isAgent = terminal.type !== "terminal";
         let command = terminal.command;
 
-        // For agent terminals, always build command with settings/flags
-        // Initial prompts will be sent via terminal.write after boot
+        // For agent terminals, build command with settings/flags and optional initial prompt
         if (isAgent) {
           const agentConfig = getAgentConfig(terminal.type);
-          if (agentConfig && !command) {
-            const baseCommand = agentConfig.command;
-            const entry = agentSettings?.agents?.[terminal.type] ?? {};
-            const flags = generateAgentFlags(entry, terminal.type);
-            command = flags.length > 0 ? `${baseCommand} ${flags.join(" ")}` : baseCommand;
+          if (agentConfig) {
+            if (!command) {
+              // No custom command - build from agent config
+              const baseCommand = agentConfig.command;
+              const entry = agentSettings?.agents?.[terminal.type] ?? {};
+              command = generateAgentCommand(baseCommand, entry, terminal.type, {
+                initialPrompt: terminal.initialPrompt,
+              });
+            } else if (terminal.initialPrompt) {
+              // Custom command with initial prompt - append the prompt
+              const entry = agentSettings?.agents?.[terminal.type] ?? {};
+              command = generateAgentCommand(command, entry, terminal.type, {
+                initialPrompt: terminal.initialPrompt,
+              });
+            }
           }
         }
 
-        const terminalId = await terminalStore.addTerminal({
+        await terminalStore.addTerminal({
           kind: isAgent ? "agent" : "terminal",
           agentId: isAgent ? terminal.type : undefined,
           title: terminal.title,
@@ -218,16 +227,6 @@ const createRecipeStore: StateCreator<RecipeState> = (set, get) => ({
           command,
           worktreeId: worktreeId,
         });
-
-        // Queue initial prompt to be sent after agent boots
-        if (isAgent && terminal.initialPrompt) {
-          terminalStore.queueCommand(
-            terminalId,
-            terminal.initialPrompt,
-            "Recipe initial prompt",
-            "automation"
-          );
-        }
       } catch (error) {
         console.error(`Failed to spawn terminal for recipe ${recipeId}:`, error);
       }
