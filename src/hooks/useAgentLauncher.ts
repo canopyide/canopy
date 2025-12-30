@@ -6,74 +6,9 @@ import { useWorktrees } from "./useWorktrees";
 import { isElectronAvailable } from "./useElectron";
 import { cliAvailabilityClient, agentSettingsClient } from "@/clients";
 import type { AgentSettings, CliAvailability } from "@shared/types";
-import { generateAgentFlags } from "@shared/types";
+import { generateAgentCommand } from "@shared/types";
 import { getAgentConfig, isRegisteredAgent } from "@/config/agents";
 import { getAgentIds } from "@/config/agents";
-
-function isWindows(): boolean {
-  return /\bWindows\b|\bWin(32|64)\b/.test(navigator.userAgent);
-}
-
-function escapeShellArg(arg: string): string {
-  if (isWindows()) {
-    return `"${arg.replace(/"/g, '""')}"`;
-  }
-  return `'${arg.replace(/'/g, "'\\''")}'`;
-}
-
-function buildAgentCommand(
-  baseCommand: string,
-  agentId: string,
-  prompt?: string,
-  interactive: boolean = true,
-  flags: string[] = []
-): string {
-  const parts: string[] = [baseCommand];
-
-  if (flags.length > 0) {
-    for (let i = 0; i < flags.length; i++) {
-      const flag = flags[i];
-      if (flag.startsWith("-")) {
-        parts.push(flag);
-      } else {
-        parts.push(escapeShellArg(flag));
-      }
-    }
-  }
-
-  if (prompt && prompt.trim()) {
-    const escapedPrompt = escapeShellArg(prompt);
-
-    switch (agentId) {
-      case "claude":
-        if (!interactive) {
-          parts.push("-p");
-        }
-        parts.push(escapedPrompt);
-        break;
-
-      case "gemini":
-        if (interactive) {
-          parts.push("-i", escapedPrompt);
-        } else {
-          parts.push(escapedPrompt);
-        }
-        break;
-
-      case "codex":
-        if (!interactive) {
-          parts.push("exec");
-        }
-        parts.push(escapedPrompt);
-        break;
-
-      default:
-        parts.push(escapedPrompt);
-    }
-  }
-
-  return parts.join(" ");
-}
 
 export interface LaunchAgentOptions {
   location?: AddTerminalOptions["location"];
@@ -183,14 +118,10 @@ export function useAgentLauncher(): UseAgentLauncherReturn {
       let command: string | undefined;
       if (agentConfig) {
         const entry = agentSettings?.agents?.[agentId] ?? {};
-        const flags = generateAgentFlags(entry, agentId);
-        command = buildAgentCommand(
-          agentConfig.command,
-          agentId,
-          launchOptions?.prompt,
-          launchOptions?.interactive ?? true,
-          flags
-        );
+        command = generateAgentCommand(agentConfig.command, entry, agentId, {
+          initialPrompt: launchOptions?.prompt,
+          interactive: launchOptions?.interactive ?? true,
+        });
       }
 
       const options: AddTerminalOptions = {
