@@ -195,12 +195,23 @@ export function RecipeEditor({
               >
                 <div className="flex items-start gap-3">
                   <div className="flex-1">
-                    <label className="block text-xs font-medium text-canopy-text mb-1">Type</label>
+                    <label
+                      htmlFor={`terminal-type-${index}`}
+                      className="block text-xs font-medium text-canopy-text mb-1"
+                    >
+                      Type
+                    </label>
                     <select
+                      id={`terminal-type-${index}`}
                       value={terminal.type}
-                      onChange={(e) =>
-                        handleTerminalChange(index, "type", e.target.value as RecipeTerminalType)
-                      }
+                      onChange={(e) => {
+                        const newType = e.target.value as RecipeTerminalType;
+                        handleTerminalChange(index, "type", newType);
+                        // Clear initialPrompt when switching to terminal type
+                        if (newType === "terminal" && terminal.initialPrompt) {
+                          handleTerminalChange(index, "initialPrompt", "");
+                        }
+                      }}
                       className="w-full px-2 py-1.5 bg-canopy-sidebar border border-canopy-border rounded text-sm text-canopy-text"
                     >
                       {TERMINAL_TYPES.map((type) => (
@@ -212,10 +223,14 @@ export function RecipeEditor({
                   </div>
 
                   <div className="flex-1">
-                    <label className="block text-xs font-medium text-canopy-text mb-1">
+                    <label
+                      htmlFor={`terminal-title-${index}`}
+                      className="block text-xs font-medium text-canopy-text mb-1"
+                    >
                       Title (optional)
                     </label>
                     <input
+                      id={`terminal-title-${index}`}
                       type="text"
                       value={terminal.title || ""}
                       onChange={(e) => handleTerminalChange(index, "title", e.target.value)}
@@ -238,16 +253,46 @@ export function RecipeEditor({
 
                 {terminal.type === "terminal" && (
                   <div className="mt-2">
-                    <label className="block text-xs font-medium text-canopy-text mb-1">
+                    <label
+                      htmlFor={`terminal-command-${index}`}
+                      className="block text-xs font-medium text-canopy-text mb-1"
+                    >
                       Command (optional)
                     </label>
                     <input
+                      id={`terminal-command-${index}`}
                       type="text"
                       value={terminal.command || ""}
                       onChange={(e) => handleTerminalChange(index, "command", e.target.value)}
                       placeholder="e.g., npm run dev"
                       className="w-full px-2 py-1.5 bg-canopy-sidebar border border-canopy-border rounded text-sm text-canopy-text"
                     />
+                  </div>
+                )}
+
+                {terminal.type !== "terminal" && (
+                  <div className="mt-2">
+                    <label
+                      htmlFor={`terminal-initial-prompt-${index}`}
+                      className="block text-xs font-medium text-canopy-text mb-1"
+                    >
+                      Initial Prompt (optional)
+                    </label>
+                    <textarea
+                      id={`terminal-initial-prompt-${index}`}
+                      value={terminal.initialPrompt || ""}
+                      onChange={(e) => handleTerminalChange(index, "initialPrompt", e.target.value)}
+                      placeholder="e.g., Review the latest changes and suggest improvements"
+                      rows={2}
+                      aria-describedby={`terminal-initial-prompt-help-${index}`}
+                      className="w-full px-2 py-1.5 bg-canopy-sidebar border border-canopy-border rounded text-sm text-canopy-text resize-y min-h-[60px]"
+                    />
+                    <p
+                      id={`terminal-initial-prompt-help-${index}`}
+                      className="text-xs text-canopy-muted mt-1"
+                    >
+                      This prompt will be sent to the agent when it starts
+                    </p>
                   </div>
                 )}
               </div>

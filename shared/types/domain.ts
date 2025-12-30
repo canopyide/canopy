@@ -562,6 +562,8 @@ export interface RecipeTerminal {
   command?: string;
   /** Environment variables to set (optional) */
   env?: Record<string, string>;
+  /** Initial prompt to send to agent terminals after boot (optional) */
+  initialPrompt?: string;
 }
 
 /** A saved terminal recipe */
