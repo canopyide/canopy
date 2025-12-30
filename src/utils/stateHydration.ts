@@ -292,6 +292,18 @@ async function spawnNewTerminal(
   const agentId = getEffectiveAgentId(terminal);
   const kind: TerminalKind = agentId ? "agent" : "terminal";
 
+  // Skip orphaned agent terminals without a worktreeId.
+  // These are likely leftover from a bug where recipe-created terminals
+  // weren't properly associated with their worktree (fixed in PR #1392).
+  // Without a running backend process to reconnect to, these orphans
+  // would just create unwanted agent terminals in the main project.
+  if (agentId && !terminal.worktreeId) {
+    console.log(
+      `[Hydration] Skipping orphaned agent terminal ${terminal.id} (no worktreeId, no backend process)`
+    );
+    return;
+  }
+
   await addTerminal({
     kind,
     type: terminal.type,
