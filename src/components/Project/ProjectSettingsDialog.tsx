@@ -942,95 +942,97 @@ export function ProjectSettingsDialog({ projectId, isOpen, onClose }: ProjectSet
                   predefined commands and settings.
                 </p>
 
-                <div className="border border-canopy-border rounded-[var(--radius-md)] divide-y divide-canopy-border">
+                <div className="space-y-2">
                   {recipes.length === 0 ? (
-                    <div className="text-sm text-canopy-text/60 text-center py-8">
+                    <div className="text-sm text-canopy-text/60 text-center py-8 border border-dashed border-canopy-border rounded-[var(--radius-md)]">
                       No recipes configured yet
                     </div>
                   ) : (
-                    recipes.map((recipe) => {
-                      const exported = exportFeedback === recipe.id;
-                      return (
-                        <div
-                          key={recipe.id}
-                          className="p-3 hover:bg-muted/50 transition-colors group cursor-default"
-                        >
-                          <div className="flex items-start gap-3">
-                            <div className="flex-1 min-w-0">
-                              <div className="flex items-center gap-2">
-                                <span
-                                  className="text-sm font-medium text-foreground truncate"
-                                  title={recipe.name}
+                    <div className="border border-canopy-border rounded-[var(--radius-md)] divide-y divide-canopy-border">
+                      {recipes.map((recipe) => {
+                        const exported = exportFeedback === recipe.id;
+                        return (
+                          <div
+                            key={recipe.id}
+                            className="p-3 hover:bg-muted/50 transition-colors group cursor-default"
+                          >
+                            <div className="flex items-start gap-3">
+                              <div className="flex-1 min-w-0">
+                                <div className="flex items-center gap-2">
+                                  <span
+                                    className="text-sm font-medium text-foreground truncate"
+                                    title={recipe.name}
+                                  >
+                                    {recipe.name}
+                                  </span>
+                                  <span className="text-[11px] text-muted-foreground bg-muted px-1.5 py-0.5 rounded font-medium shrink-0">
+                                    {getRecipeScope(recipe)}
+                                  </span>
+                                  <span className="text-[11px] text-muted-foreground bg-muted px-1.5 py-0.5 rounded font-medium shrink-0">
+                                    {recipe.terminals.length} terminal
+                                    {recipe.terminals.length !== 1 ? "s" : ""}
+                                  </span>
+                                  {recipe.showInEmptyState && (
+                                    <span className="text-[11px] text-[var(--color-status-info)] bg-[var(--color-status-info)]/10 px-1.5 py-0.5 rounded font-medium shrink-0">
+                                      Empty State
+                                    </span>
+                                  )}
+                                </div>
+                                <div className="text-xs text-muted-foreground mt-1">
+                                  {recipe.lastUsedAt ? (
+                                    <span>
+                                      Last used <LiveTimeAgo timestamp={recipe.lastUsedAt} />
+                                    </span>
+                                  ) : (
+                                    <span>Never used</span>
+                                  )}
+                                </div>
+                              </div>
+                              <div className="flex items-center gap-1 shrink-0 opacity-0 group-hover:opacity-100 group-focus-within:opacity-100 transition-opacity">
+                                <Button
+                                  variant="ghost"
+                                  size="sm"
+                                  onClick={() => handleEditRecipe(recipe)}
+                                  className="h-7 px-2"
+                                  title="Edit recipe"
+                                  aria-label={`Edit recipe ${recipe.name}`}
                                 >
-                                  {recipe.name}
-                                </span>
-                                <span className="text-[11px] text-muted-foreground bg-muted px-1.5 py-0.5 rounded font-medium shrink-0">
-                                  {getRecipeScope(recipe)}
-                                </span>
-                                <span className="text-[11px] text-muted-foreground bg-muted px-1.5 py-0.5 rounded font-medium shrink-0">
-                                  {recipe.terminals.length} terminal
-                                  {recipe.terminals.length !== 1 ? "s" : ""}
-                                </span>
-                                {recipe.showInEmptyState && (
-                                  <span className="text-[11px] text-[var(--color-status-info)] bg-[var(--color-status-info)]/10 px-1.5 py-0.5 rounded font-medium shrink-0">
-                                    Empty State
-                                  </span>
-                                )}
+                                  <Edit3 className="h-3.5 w-3.5" />
+                                </Button>
+                                <Button
+                                  variant="ghost"
+                                  size="sm"
+                                  onClick={() => handleExportRecipe(recipe.id)}
+                                  className="h-7 px-2"
+                                  title={exported ? "Exported" : "Export recipe to clipboard"}
+                                  aria-label={
+                                    exported
+                                      ? `Recipe ${recipe.name} exported to clipboard`
+                                      : `Export recipe ${recipe.name} to clipboard`
+                                  }
+                                >
+                                  {exported ? (
+                                    <Check className="h-3.5 w-3.5 text-[var(--color-status-success)]" />
+                                  ) : (
+                                    <Download className="h-3.5 w-3.5" />
+                                  )}
+                                </Button>
+                                <Button
+                                  variant="ghost"
+                                  size="sm"
+                                  onClick={() => setRecipeToDelete(recipe.id)}
+                                  className="h-7 px-2"
+                                  title="Delete recipe"
+                                  aria-label={`Delete recipe ${recipe.name}`}
+                                >
+                                  <Trash2 className="h-3.5 w-3.5 text-[var(--color-status-error)]" />
+                                </Button>
                               </div>
-                              <div className="text-xs text-muted-foreground mt-1">
-                                {recipe.lastUsedAt ? (
-                                  <span>
-                                    Last used <LiveTimeAgo timestamp={recipe.lastUsedAt} />
-                                  </span>
-                                ) : (
-                                  <span>Never used</span>
-                                )}
-                              </div>
-                            </div>
-                            <div className="flex items-center gap-1 shrink-0 opacity-0 group-hover:opacity-100 group-focus-within:opacity-100 transition-opacity">
-                              <Button
-                                variant="ghost"
-                                size="sm"
-                                onClick={() => handleEditRecipe(recipe)}
-                                className="h-7 px-2"
-                                title="Edit recipe"
-                                aria-label={`Edit recipe ${recipe.name}`}
-                              >
-                                <Edit3 className="h-3.5 w-3.5" />
-                              </Button>
-                              <Button
-                                variant="ghost"
-                                size="sm"
-                                onClick={() => handleExportRecipe(recipe.id)}
-                                className="h-7 px-2"
-                                title={exported ? "Exported" : "Export recipe to clipboard"}
-                                aria-label={
-                                  exported
-                                    ? `Recipe ${recipe.name} exported to clipboard`
-                                    : `Export recipe ${recipe.name} to clipboard`
-                                }
-                              >
-                                {exported ? (
-                                  <Check className="h-3.5 w-3.5 text-[var(--color-status-success)]" />
-                                ) : (
-                                  <Download className="h-3.5 w-3.5" />
-                                )}
-                              </Button>
-                              <Button
-                                variant="ghost"
-                                size="sm"
-                                onClick={() => setRecipeToDelete(recipe.id)}
-                                className="h-7 px-2"
-                                title="Delete recipe"
-                                aria-label={`Delete recipe ${recipe.name}`}
-                              >
-                                <Trash2 className="h-3.5 w-3.5 text-[var(--color-status-error)]" />
-                              </Button>
                             </div>
                           </div>
-                        </div>
-                      );
-                    })
+                        );
+                      })}
+                    </div>
                   )}
                   {exportError && (
                     <div
