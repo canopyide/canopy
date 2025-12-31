@@ -1,5 +1,7 @@
 import { describe, it, expect } from "vitest";
 import { escapeHtml, linkifyHtml } from "../htmlUtils";
+import { lineToHtml } from "../historyUtils";
+import type { IBufferLine, IBufferCell } from "@xterm/xterm";
 
 /**
  * Tests for the history view HTML generation.
@@ -139,5 +141,97 @@ describe("historyUtils - ANSI color palette", () => {
     // We can't directly access ANSI_COLORS but we verify the implementation works
     // by ensuring the module loads without errors
     expect(true).toBe(true);
+  });
+});
+
+// Helper for mocking xterm cells
+function createMockCell(char: string, fg: number | null = null, bg: number | null = null): IBufferCell {
+  return {
+    getChars: () => char,
+    getWidth: () => 1,
+    isFgRGB: () => false,
+    isBgRGB: () => false,
+    isFgPalette: () => fg !== null,
+    isBgPalette: () => bg !== null,
+    getFgColor: () => fg ?? 0,
+    getBgColor: () => bg ?? 0,
+    isBold: () => 0,
+    isItalic: () => 0,
+    isUnderline: () => 0,
+    isStrikethrough: () => 0,
+    isDim: () => 0,
+  } as unknown as IBufferCell;
+}
+
+// Helper for mocking xterm lines
+function createMockLine(cells: IBufferCell[]): IBufferLine {
+  return {
+    getCell: (x: number) => cells[x],
+    length: cells.length,
+  } as unknown as IBufferLine;
+}
+
+// Helper null cell
+const nullCell = createMockCell("");
+
+describe("lineToHtml - background extraction", () => {
+  it("extracts dominant background color from row", () => {
+    // 2 chars default, 10 chars green (palette index 2 = #00cd00), 2 chars default
+    const cells = [
+      createMockCell(" ", null, null),
+      createMockCell(" ", null, null),
+      ...Array(10).fill(createMockCell("x", null, 2)),
+      createMockCell(" ", null, null),
+      createMockCell(" ", null, null),
+    ];
+    const line = createMockLine(cells);
+    
+    const result = lineToHtml(line, cells.length, nullCell);
+    expect(result.background).toBe("#00cd00");
+  });
+
+  it("returns null for rows without background colors", () => {
+    const cells = Array(10).fill(createMockCell("x", null, null));
+    const line = createMockLine(cells);
+    
+    const result = lineToHtml(line, cells.length, nullCell);
+    expect(result.background).toBeNull();
+  });
+
+  it("returns background with most text coverage", () => {
+    // 5 chars red (palette 1), 10 chars green (palette 2)
+    const cells = [
+      ...Array(5).fill(createMockCell("x", null, 1)),
+      ...Array(10).fill(createMockCell("y", null, 2)),
+    ];
+    const line = createMockLine(cells);
+    
+    const result = lineToHtml(line, cells.length, nullCell);
+    expect(result.background).toBe("#00cd00");
+  });
+
+  it("requires 20% coverage to apply row background", () => {
+    // 2 chars red (palette 1), 20 chars default
+    const cells = [
+      ...Array(2).fill(createMockCell("x", null, 1)),
+      ...Array(20).fill(createMockCell(" ", null, null)),
+    ];
+    const line = createMockLine(cells);
+    
+    const result = lineToHtml(line, cells.length, nullCell);
+    expect(result.background).toBeNull(); // 2/22 < 20%
+  });
+
+  it("applies background when coverage exceeds 20%", () => {
+     // 5 chars red (palette 1), 15 chars default
+     const cells = [
+      ...Array(5).fill(createMockCell("x", null, 1)),
+      ...Array(15).fill(createMockCell(" ", null, null)),
+    ];
+    const line = createMockLine(cells);
+    
+    const result = lineToHtml(line, cells.length, nullCell);
+    // 5/20 = 25% > 20%
+    expect(result.background).toBe("#cd0000"); 
   });
 });

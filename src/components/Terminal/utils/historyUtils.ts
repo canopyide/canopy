@@ -8,6 +8,7 @@ export const HISTORY_JUMP_BACK_PERSIST_FRAMES = 2;
 export interface HistoryState {
   lines: string[];
   htmlLines: string[];
+  rowBackgrounds: (string | null)[];
   windowStart: number;
   windowEnd: number;
   takenAt: number;
@@ -154,12 +155,18 @@ function isEmptyStyle(style: CellStyle): boolean {
 
 /**
  * Convert a buffer line to safe HTML by iterating through cells.
+ * Also extracts the dominant background color for the line.
+ * 
  * This approach is fundamentally safer than parsing serializeAsHTML because:
  * 1. We never parse HTML - we only generate it from known-safe primitives
  * 2. All text content is escaped before being put into HTML
  * 3. We only generate the tags we want (spans with inline styles)
  */
-function lineToHtml(line: IBufferLine, cols: number, nullCell: IBufferCell): string {
+export function lineToHtml(
+  line: IBufferLine,
+  cols: number,
+  nullCell: IBufferCell
+): { html: string; background: string | null } {
   const result: string[] = [];
   let currentText = "";
   let currentStyle: CellStyle = {
@@ -171,6 +178,10 @@ function lineToHtml(line: IBufferLine, cols: number, nullCell: IBufferCell): str
     strikethrough: false,
     dim: false,
   };
+
+  // Background statistics
+  const bgCounts = new Map<string, number>();
+  let totalTextLength = 0;
 
   const flushSpan = () => {
     if (currentText.length === 0) return;
@@ -192,45 +203,77 @@ function lineToHtml(line: IBufferLine, cols: number, nullCell: IBufferCell): str
     const width = cell.getWidth();
     if (width === 0) continue; // Skip continuation cells for wide characters
 
-    const chars = cell.getChars();
+    const chars = cell.getChars() || " ";
     const cellStyle = getCellStyle(cell);
+
+    // Update background stats
+    const charLen = chars.length;
+    totalTextLength += charLen;
+    if (cellStyle.bg) {
+      bgCounts.set(cellStyle.bg, (bgCounts.get(cellStyle.bg) ?? 0) + charLen);
+    }
 
     if (!stylesEqual(cellStyle, currentStyle)) {
       flushSpan();
       currentStyle = cellStyle;
     }
 
-    currentText += chars || " ";
+    currentText += chars;
   }
 
   flushSpan();
 
+  // Calculate dominant background
+  let dominantBg: string | null = null;
+  let maxCount = 0;
+  for (const [bg, count] of bgCounts) {
+    if (count > maxCount) {
+      maxCount = count;
+      dominantBg = bg;
+    }
+  }
+
+  // Only return a background if it covers at least 20% of the row's text
+  if (dominantBg && maxCount < totalTextLength * 0.2) {
+    dominantBg = null;
+  }
+
   // Trim trailing whitespace from the result
   const html = result.join("");
-  return html.trimEnd() || " ";
+  return {
+    html: html.trimEnd() || " ",
+    background: dominantBg,
+  };
 }
 
 /**
- * Extract HTML lines directly from xterm buffer by iterating cells.
+ * Extract HTML lines and background colors directly from xterm buffer by iterating cells.
  * This is safer than serializeAsHTML because we control exactly what HTML is generated.
  */
-function extractHtmlLinesFromBuffer(term: Terminal, start: number, count: number): string[] {
+function extractHtmlLinesFromBuffer(
+  term: Terminal,
+  start: number,
+  count: number
+): { htmlLines: string[]; rowBackgrounds: (string | null)[] } {
   const buffer = term.buffer.active;
   const cols = term.cols;
   const nullCell = buffer.getNullCell();
   const htmlLines: string[] = new Array(count);
+  const rowBackgrounds: (string | null)[] = new Array(count);
 
   for (let i = 0; i < count; i++) {
     const line = buffer.getLine(start + i);
     if (line) {
-      const html = lineToHtml(line, cols, nullCell);
+      const { html, background } = lineToHtml(line, cols, nullCell);
       htmlLines[i] = linkifyHtml(html);
+      rowBackgrounds[i] = background;
     } else {
       htmlLines[i] = " ";
+      rowBackgrounds[i] = null;
     }
   }
 
-  return htmlLines;
+  return { htmlLines, rowBackgrounds };
 }
 
 export function extractSnapshot(
@@ -255,21 +298,23 @@ export function extractSnapshot(
   }
 
   // Extract HTML lines directly from buffer cells
-  // This is safer than serializeAsHTML because we control exactly what HTML is generated:
-  // 1. We never parse HTML - we only generate it from known-safe primitives
-  // 2. All text content is escaped before being put into HTML
-  // 3. No complex state machine needed for pre-escaping
   let htmlLines: string[];
+  let rowBackgrounds: (string | null)[];
+
   try {
-    htmlLines = extractHtmlLinesFromBuffer(term, start, count);
+    const result = extractHtmlLinesFromBuffer(term, start, count);
+    htmlLines = result.htmlLines;
+    rowBackgrounds = result.rowBackgrounds;
   } catch {
     // Fallback to plain text with escaping
     htmlLines = lines.map((l) => escapeHtml(l) || " ");
+    rowBackgrounds = lines.map(() => null);
   }
 
   return {
     lines,
     htmlLines,
+    rowBackgrounds,
     windowStart: start,
     windowEnd: effectiveEnd,
     takenAt: performance.now(),
