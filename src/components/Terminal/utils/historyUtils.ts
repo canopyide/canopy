@@ -156,7 +156,7 @@ function isEmptyStyle(style: CellStyle): boolean {
 /**
  * Convert a buffer line to safe HTML by iterating through cells.
  * Also extracts the dominant background color for the line.
- * 
+ *
  * This approach is fundamentally safer than parsing serializeAsHTML because:
  * 1. We never parse HTML - we only generate it from known-safe primitives
  * 2. All text content is escaped before being put into HTML
