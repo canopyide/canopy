@@ -46,6 +46,8 @@ export interface HybridInputBarProps {
   restartKey?: number;
   disabled?: boolean;
   className?: string;
+  /** Disable overlay mode (for history view where bar needs to stay in flow) */
+  disableOverlayMode?: boolean;
 }
 
 function getTextOffsetLeftPx(textarea: HTMLTextAreaElement, charIndex: number): number {
@@ -107,6 +109,7 @@ export const HybridInputBar = forwardRef<HybridInputBarHandle, HybridInputBarPro
       restartKey = 0,
       disabled = false,
       className,
+      disableOverlayMode = false,
     },
     ref
   ) => {
@@ -861,7 +864,7 @@ export const HybridInputBar = forwardRef<HybridInputBarHandle, HybridInputBarPro
       </div>
     );
 
-    const isOverlayMode = collapsedHeightPx !== null;
+    const isOverlayMode = !disableOverlayMode && collapsedHeightPx !== null;
 
     return (
       <div
