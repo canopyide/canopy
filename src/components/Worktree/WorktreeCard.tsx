@@ -268,7 +268,7 @@ export function WorktreeCard({
       className={cn(
         "group relative border-b border-divider transition-all duration-200",
         isActive
-          ? "bg-white/[0.03] shadow-[inset_0_1px_0_0_rgba(255,255,255,0.05)]"
+          ? "bg-white/[0.03] shadow-[inset_0_1px_0_0_rgba(255,255,255,0.05)] before:absolute before:left-0 before:top-2 before:bottom-2 before:w-[2px] before:rounded-r before:bg-canopy-accent before:content-[''] before:z-10 motion-safe:before:animate-in motion-safe:before:fade-in motion-safe:before:duration-200"
           : "hover:bg-white/[0.02] bg-transparent",
         isFocused && !isActive && "bg-white/[0.02]",
         (isIdleCard || isStaleCard) && !isActive && !isFocused && "opacity-70 hover:opacity-100",
