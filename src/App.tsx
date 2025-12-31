@@ -359,6 +359,7 @@ function SidebarContent() {
       worktree={worktree}
       isActive={worktree.id === activeWorktreeId}
       isFocused={worktree.id === focusedWorktreeId}
+      isSingleWorktree={worktrees.length === 1}
       onSelect={() => selectWorktree(worktree.id)}
       onCopyTree={() => worktreeActions.handleCopyTree(worktree)}
       onOpenEditor={() => worktreeActions.handleOpenEditor(worktree)}
@@ -963,7 +964,11 @@ function App() {
           agentAvailability={availability}
           agentSettings={agentSettings}
         >
-          <ContentGrid className="h-full w-full" agentAvailability={availability} defaultCwd={defaultTerminalCwd} />
+          <ContentGrid
+            className="h-full w-full"
+            agentAvailability={availability}
+            defaultCwd={defaultTerminalCwd}
+          />
         </AppLayout>
       </DndProvider>
 

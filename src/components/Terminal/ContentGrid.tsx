@@ -203,7 +203,10 @@ function EmptyState({
                       {isPinned && (
                         <>
                           <span className="sr-only">Pinned</span>
-                          <Pin className="h-3.5 w-3.5 text-canopy-accent/60 shrink-0" aria-hidden="true" />
+                          <Pin
+                            className="h-3.5 w-3.5 text-canopy-accent/60 shrink-0"
+                            aria-hidden="true"
+                          />
                         </>
                       )}
                     </div>
