@@ -31,6 +31,7 @@ export interface WorktreeCardProps {
   worktree: WorktreeState;
   isActive: boolean;
   isFocused: boolean;
+  isSingleWorktree?: boolean;
   onSelect: () => void;
   onCopyTree: () => Promise<string | undefined> | void;
   onOpenEditor: () => void;
@@ -47,6 +48,7 @@ export function WorktreeCard({
   worktree,
   isActive,
   isFocused,
+  isSingleWorktree,
   onSelect,
   onCopyTree,
   onOpenEditor,
@@ -289,8 +291,11 @@ export function WorktreeCard({
       className={cn(
         "group relative border-b border-divider transition-all duration-200",
         isActive
-          ? "bg-white/[0.03] shadow-[inset_0_1px_0_0_rgba(255,255,255,0.05)] before:absolute before:left-0 before:top-2 before:bottom-2 before:w-[2px] before:rounded-r before:bg-canopy-accent before:content-[''] before:z-10 motion-safe:before:animate-in motion-safe:before:fade-in motion-safe:before:duration-200"
+          ? "bg-white/[0.03] shadow-[inset_0_1px_0_0_rgba(255,255,255,0.05)]"
           : "hover:bg-white/[0.02] bg-transparent",
+        isActive &&
+          !isSingleWorktree &&
+          "before:absolute before:right-0 before:top-2 before:bottom-2 before:w-[2px] before:rounded-l before:bg-canopy-accent before:content-[''] before:z-10 motion-safe:before:animate-in motion-safe:before:fade-in motion-safe:before:duration-200",
         isFocused && !isActive && "bg-white/[0.02]",
         (isIdleCard || isStaleCard) && !isActive && !isFocused && "opacity-70 hover:opacity-100",
         isOver &&
@@ -315,7 +320,7 @@ export function WorktreeCard({
       )}
       {isComplete && (
         <div
-          className="absolute top-0 left-0 w-3 h-3 bg-[var(--color-status-success)]/60 pointer-events-none z-10"
+          className="absolute top-0 left-[1px] w-3 h-3 bg-[var(--color-status-success)]/60 pointer-events-none z-10"
           style={{ clipPath: "polygon(0 0, 100% 0, 0 100%)" }}
           role="img"
           aria-label="Completed: Issue linked, PR opened, all changes committed"
