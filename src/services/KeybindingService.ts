@@ -76,7 +76,7 @@ const DEFAULT_KEYBINDINGS: KeybindingConfig[] = [
   },
   {
     actionId: "terminal.minimize",
-    combo: "Cmd+M",
+    combo: "Cmd+Alt+M",
     scope: "global",
     priority: 0,
     description: "Minimize focused terminal to dock",
@@ -84,10 +84,26 @@ const DEFAULT_KEYBINDINGS: KeybindingConfig[] = [
   },
   {
     actionId: "terminal.minimizeAll",
-    combo: "Cmd+Shift+M",
+    combo: "Cmd+Alt+Shift+M",
     scope: "global",
     priority: 0,
     description: "Minimize all terminals to dock",
+    category: "Terminal",
+  },
+  {
+    actionId: "terminal.restore",
+    combo: "Cmd+Alt+U",
+    scope: "global",
+    priority: 0,
+    description: "Restore focused terminal from dock",
+    category: "Terminal",
+  },
+  {
+    actionId: "terminal.restoreAll",
+    combo: "Cmd+Alt+Shift+U",
+    scope: "global",
+    priority: 0,
+    description: "Restore all terminals from dock",
     category: "Terminal",
   },
   {
@@ -470,7 +486,7 @@ const DEFAULT_KEYBINDINGS: KeybindingConfig[] = [
   },
   {
     actionId: "worktree.next",
-    combo: "Cmd+Alt+PageDown",
+    combo: "Cmd+Alt+]",
     scope: "global",
     priority: 0,
     description: "Switch to next worktree",
@@ -478,7 +494,7 @@ const DEFAULT_KEYBINDINGS: KeybindingConfig[] = [
   },
   {
     actionId: "worktree.previous",
-    combo: "Cmd+Alt+PageUp",
+    combo: "Cmd+Alt+[",
     scope: "global",
     priority: 0,
     description: "Switch to previous worktree",
