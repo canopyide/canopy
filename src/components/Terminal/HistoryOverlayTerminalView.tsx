@@ -888,9 +888,7 @@ export const HistoryOverlayTerminalView = forwardRef<
             >
               {historyHtmlLines.map((htmlLine, idx) => {
                 const bg = historyRowBackgrounds[idx];
-                const mergedStyle = bg
-                  ? { ...rowStyle, backgroundColor: bg }
-                  : rowStyle;
+                const mergedStyle = bg ? { ...rowStyle, backgroundColor: bg } : rowStyle;
                 return (
                   <div
                     key={idx}

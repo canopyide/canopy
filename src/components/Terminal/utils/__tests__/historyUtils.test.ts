@@ -145,7 +145,11 @@ describe("historyUtils - ANSI color palette", () => {
 });
 
 // Helper for mocking xterm cells
-function createMockCell(char: string, fg: number | null = null, bg: number | null = null): IBufferCell {
+function createMockCell(
+  char: string,
+  fg: number | null = null,
+  bg: number | null = null
+): IBufferCell {
   return {
     getChars: () => char,
     getWidth: () => 1,
@@ -185,7 +189,7 @@ describe("lineToHtml - background extraction", () => {
       createMockCell(" ", null, null),
     ];
     const line = createMockLine(cells);
-    
+
     const result = lineToHtml(line, cells.length, nullCell);
     expect(result.background).toBe("#00cd00");
   });
@@ -193,7 +197,7 @@ describe("lineToHtml - background extraction", () => {
   it("returns null for rows without background colors", () => {
     const cells = Array(10).fill(createMockCell("x", null, null));
     const line = createMockLine(cells);
-    
+
     const result = lineToHtml(line, cells.length, nullCell);
     expect(result.background).toBeNull();
   });
@@ -205,7 +209,7 @@ describe("lineToHtml - background extraction", () => {
       ...Array(10).fill(createMockCell("y", null, 2)),
     ];
     const line = createMockLine(cells);
-    
+
     const result = lineToHtml(line, cells.length, nullCell);
     expect(result.background).toBe("#00cd00");
   });
@@ -217,21 +221,21 @@ describe("lineToHtml - background extraction", () => {
       ...Array(20).fill(createMockCell(" ", null, null)),
     ];
     const line = createMockLine(cells);
-    
+
     const result = lineToHtml(line, cells.length, nullCell);
     expect(result.background).toBeNull(); // 2/22 < 20%
   });
 
   it("applies background when coverage exceeds 20%", () => {
-     // 5 chars red (palette 1), 15 chars default
-     const cells = [
+    // 5 chars red (palette 1), 15 chars default
+    const cells = [
       ...Array(5).fill(createMockCell("x", null, 1)),
       ...Array(15).fill(createMockCell(" ", null, null)),
     ];
     const line = createMockLine(cells);
-    
+
     const result = lineToHtml(line, cells.length, nullCell);
     // 5/20 = 25% > 20%
-    expect(result.background).toBe("#cd0000"); 
+    expect(result.background).toBe("#cd0000");
   });
 });
