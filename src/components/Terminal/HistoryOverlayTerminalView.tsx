@@ -71,11 +71,15 @@ export interface HistoryOverlayTerminalViewProps {
   className?: string;
   /** Called when a submit occurs (Enter pressed via HybridInputBar) */
   onSubmit?: () => void;
+  /** Called when view mode changes between "live" and "history" */
+  onViewModeChange?: (mode: "live" | "history") => void;
 }
 
 export interface HistoryOverlayTerminalViewHandle {
   /** Notify the view that a submit occurred (exits history mode) */
   notifySubmit: () => void;
+  /** Exit history mode and return to live view */
+  exitHistoryMode: () => void;
 }
 
 type ViewMode = "live" | "history";
@@ -98,7 +102,7 @@ export const HistoryOverlayTerminalView = forwardRef<
   HistoryOverlayTerminalViewHandle,
   HistoryOverlayTerminalViewProps
 >(function HistoryOverlayTerminalView(
-  { terminalId, type, isFocused, isVisible, isInputLocked, className },
+  { terminalId, type, isFocused, isVisible, isInputLocked, className, onViewModeChange },
   ref
 ) {
   // Refs
@@ -193,10 +197,11 @@ export const HistoryOverlayTerminalView = forwardRef<
     return getTerminalRefreshTier(terminal, isFocusedRef.current);
   }, [getTerminal, terminalId]);
 
-  // Sync viewMode ref
+  // Sync viewMode ref and notify parent
   useEffect(() => {
     viewModeRef.current = viewMode;
-  }, [viewMode]);
+    onViewModeChange?.(viewMode);
+  }, [viewMode, onViewModeChange]);
 
   // Style - matches XtermAdapter settings exactly
   // Do NOT set lineHeight here - it's controlled per-row using xterm's cellH
@@ -333,13 +338,14 @@ export const HistoryOverlayTerminalView = forwardRef<
     }
   }, []);
 
-  // Expose notifySubmit to parent for HybridInputBar submits
+  // Expose methods to parent for HybridInputBar submits and history mode control
   useImperativeHandle(
     ref,
     () => ({
       notifySubmit: () => {
         exitHistoryMode();
       },
+      exitHistoryMode,
     }),
     [exitHistoryMode]
   );
@@ -825,9 +831,8 @@ export const HistoryOverlayTerminalView = forwardRef<
 
       {/* History overlay layer - DOM-based, scrollable */}
       {/* Outer wrapper matches xterm container positioning so scrollbar aligns */}
-      {/* pb-12 (48px) ensures "Back to live" bar (~32px) doesn't overlap scroll content */}
       {viewMode === "history" && (
-        <div className="absolute inset-0 pl-3 pt-3 pb-12 pr-4 z-10">
+        <div className="absolute inset-0 pl-3 pt-3 pb-3 pr-4 z-10">
           <div
             ref={overlayScrollRef}
             tabIndex={-1}
@@ -889,26 +894,6 @@ export const HistoryOverlayTerminalView = forwardRef<
             </div>
           </div>
         </div>
-      )}
-
-      {/* Back to live bar */}
-      {viewMode === "history" && (
-        <button
-          type="button"
-          onClick={exitHistoryMode}
-          className="absolute bottom-0 left-0 right-0 z-30 flex items-center justify-center gap-2 py-2 bg-canopy-sidebar/90 backdrop-blur-sm border-t border-canopy-border/50 text-xs font-medium text-canopy-text/70 hover:text-canopy-text hover:bg-canopy-sidebar transition-all cursor-pointer group"
-        >
-          <svg
-            className="w-3.5 h-3.5 opacity-70 group-hover:opacity-100 group-hover:translate-y-0.5 transition-all"
-            fill="none"
-            viewBox="0 0 24 24"
-            stroke="currentColor"
-            strokeWidth={2}
-          >
-            <path strokeLinecap="round" strokeLinejoin="round" d="M19 14l-7 7m0 0l-7-7m7 7V3" />
-          </svg>
-          <span>Back to live</span>
-        </button>
       )}
 
       {/* Scrollback unavailable notice (alt buffer) */}

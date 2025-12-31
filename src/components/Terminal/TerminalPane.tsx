@@ -4,7 +4,10 @@ import { AlertTriangle, Loader2 } from "lucide-react";
 import type { TerminalType, TerminalRestartError } from "@/types";
 import { cn } from "@/lib/utils";
 import { XtermAdapter } from "./XtermAdapter";
-import { HistoryOverlayTerminalView } from "./HistoryOverlayTerminalView";
+import {
+  HistoryOverlayTerminalView,
+  type HistoryOverlayTerminalViewHandle,
+} from "./HistoryOverlayTerminalView";
 import { ArtifactOverlay } from "./ArtifactOverlay";
 import { TerminalSearchBar } from "./TerminalSearchBar";
 import { TerminalRestartBanner } from "./TerminalRestartBanner";
@@ -94,10 +97,12 @@ function TerminalPaneComponent({
   const prevFocusedRef = useRef(isFocused);
   const justFocusedUntilRef = useRef<number>(0);
   const inputBarRef = useRef<HybridInputBarHandle>(null);
+  const historyOverlayRef = useRef<HistoryOverlayTerminalViewHandle>(null);
   const [dismissedRestartPrompt, setDismissedRestartPrompt] = useState(false);
   const [isSearchOpen, setIsSearchOpen] = useState(false);
   const [isUpdateCwdOpen, setIsUpdateCwdOpen] = useState(false);
   const [showGeminiBanner, setShowGeminiBanner] = useState(false);
+  const [historyViewMode, setHistoryViewMode] = useState<"live" | "history">("live");
 
   if (isFocused && !prevFocusedRef.current) {
     justFocusedUntilRef.current = performance.now() + 250;
@@ -170,6 +175,13 @@ function TerminalPaneComponent({
         : undefined;
   const isAgentTerminal = effectiveAgentId !== undefined;
   const showHybridInputBar = isAgentTerminal && hybridInputEnabled;
+
+  // Reset history view mode when terminal restarts
+  useEffect(() => {
+    if (isAgentTerminal) {
+      setHistoryViewMode("live");
+    }
+  }, [restartKey, isAgentTerminal]);
 
   const terminal = getTerminal(id);
 
@@ -363,6 +375,14 @@ function TerminalPaneComponent({
     trashTerminal(id);
   }, [trashTerminal, id]);
 
+  const handleViewModeChange = useCallback((mode: "live" | "history") => {
+    setHistoryViewMode(mode);
+  }, []);
+
+  const handleExitHistoryMode = useCallback(() => {
+    historyOverlayRef.current?.exitHistoryMode();
+  }, []);
+
   useEffect(() => {
     terminalInstanceService.setFocused(id, isFocused);
 
@@ -519,6 +539,7 @@ function TerminalPaneComponent({
           >
             {isAgentTerminal ? (
               <HistoryOverlayTerminalView
+                ref={historyOverlayRef}
                 key={`${id}-${restartKey}`}
                 terminalId={id}
                 type={type ?? "terminal"}
@@ -526,6 +547,7 @@ function TerminalPaneComponent({
                 isVisible={terminal?.isVisible ?? true}
                 isInputLocked={isInputLocked}
                 className="absolute inset-0"
+                onViewModeChange={handleViewModeChange}
               />
             ) : (
               <XtermAdapter
@@ -625,6 +647,26 @@ function TerminalPaneComponent({
           )}
         </div>
 
+        {/* Back to live bar - positioned between terminal and input */}
+        {isAgentTerminal && historyViewMode === "history" && (
+          <button
+            type="button"
+            onClick={handleExitHistoryMode}
+            className="flex items-center justify-center gap-2 py-2 bg-canopy-sidebar/90 backdrop-blur-sm border-t border-canopy-border/50 text-xs font-medium text-canopy-text/70 hover:text-canopy-text hover:bg-canopy-sidebar transition-all cursor-pointer group shrink-0"
+          >
+            <svg
+              className="w-3.5 h-3.5 opacity-70 group-hover:opacity-100 group-hover:translate-y-0.5 transition-all"
+              fill="none"
+              viewBox="0 0 24 24"
+              stroke="currentColor"
+              strokeWidth={2}
+            >
+              <path strokeLinecap="round" strokeLinejoin="round" d="M19 14l-7 7m0 0l-7-7m7 7V3" />
+            </svg>
+            <span>Back to live</span>
+          </button>
+        )}
+
         {showHybridInputBar && (
           <HybridInputBar
             ref={inputBarRef}
@@ -635,9 +677,13 @@ function TerminalPaneComponent({
             agentState={agentState}
             agentHasLifecycleEvent={terminal?.stateChangeTrigger !== undefined}
             restartKey={restartKey}
+            disableOverlayMode={historyViewMode === "history"}
             onActivate={handleClick}
             onSend={({ trackerData, text }) => {
               if (!isInputLocked) {
+                // Exit history mode on submit (Enter to exit behavior)
+                historyOverlayRef.current?.notifySubmit();
+
                 if (isEscapedCommand(text)) {
                   const unescapedText = unescapeCommand(text);
                   terminalInstanceService.notifyUserInput(id);
