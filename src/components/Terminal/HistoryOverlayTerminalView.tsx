@@ -122,6 +122,8 @@ export const HistoryOverlayTerminalView = forwardRef<
 
   // HTML-rendered lines for display (with colors)
   const [historyHtmlLines, setHistoryHtmlLines] = useState<string[]>([]);
+  // Background colors for each row (for continuous diff backgrounds)
+  const [historyRowBackgrounds, setHistoryRowBackgrounds] = useState<(string | null)[]>([]);
   const historyStateRef = useRef<HistoryState | null>(null);
 
   const [scrollbackUnavailable, setScrollbackUnavailable] = useState(false);
@@ -296,6 +298,7 @@ export const HistoryOverlayTerminalView = forwardRef<
       // Update state
       historyStateRef.current = snapshot;
       setHistoryHtmlLines(snapshot.htmlLines);
+      setHistoryRowBackgrounds(snapshot.rowBackgrounds);
       setShowTruncationBanner(snapshot.windowStart > 0);
 
       // Initialize jump-back persistence state
@@ -451,6 +454,7 @@ export const HistoryOverlayTerminalView = forwardRef<
       historyStateRef.current = newSnapshot;
       lastAcceptedWindowStartRef.current = newSnapshot.windowStart;
       setHistoryHtmlLines(newSnapshot.htmlLines);
+      setHistoryRowBackgrounds(newSnapshot.rowBackgrounds);
       setShowTruncationBanner(newSnapshot.windowStart > 0);
 
       // 6) Restore scroll position after DOM update
@@ -882,15 +886,21 @@ export const HistoryOverlayTerminalView = forwardRef<
               className="flex flex-col"
               style={metrics ? { width: `${metrics.screenW}px`, gap: 0 } : { gap: 0 }}
             >
-              {historyHtmlLines.map((htmlLine, idx) => (
-                <div
-                  key={idx}
-                  data-idx={idx}
-                  className="history-row whitespace-pre overflow-hidden select-text"
-                  style={rowStyle}
-                  dangerouslySetInnerHTML={{ __html: htmlLine }}
-                />
-              ))}
+              {historyHtmlLines.map((htmlLine, idx) => {
+                const bg = historyRowBackgrounds[idx];
+                const mergedStyle = bg
+                  ? { ...rowStyle, backgroundColor: bg }
+                  : rowStyle;
+                return (
+                  <div
+                    key={idx}
+                    data-idx={idx}
+                    className="history-row whitespace-pre overflow-hidden select-text"
+                    style={mergedStyle}
+                    dangerouslySetInnerHTML={{ __html: htmlLine }}
+                  />
+                );
+              })}
             </div>
           </div>
         </div>

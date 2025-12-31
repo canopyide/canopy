@@ -16,7 +16,8 @@ describe("parseXtermHtmlRows", () => {
     const rows = parseXtermHtmlRows(xtermHtml);
 
     expect(rows).toHaveLength(1);
-    expect(rows[0]).toBe("<span>&lt;div&gt;test&lt;/div&gt;</span>");
+    expect(rows[0].html).toBe("<span>&lt;div&gt;test&lt;/div&gt;</span>");
+    expect(rows[0].background).toBeNull();
   });
 
   it("handles multiple rows with HTML entities", () => {
@@ -28,9 +29,9 @@ describe("parseXtermHtmlRows", () => {
     const rows = parseXtermHtmlRows(xtermHtml);
 
     expect(rows).toHaveLength(3);
-    expect(rows[0]).toContain("&lt;div&gt;");
-    expect(rows[1]).toContain("&amp;");
-    expect(rows[2]).toContain("&quot;");
+    expect(rows[0].html).toContain("&lt;div&gt;");
+    expect(rows[1].html).toContain("&amp;");
+    expect(rows[2].html).toContain("&quot;");
   });
 
   it("preserves multiple spans with different styles", () => {
@@ -40,8 +41,8 @@ describe("parseXtermHtmlRows", () => {
     const rows = parseXtermHtmlRows(xtermHtml);
 
     expect(rows).toHaveLength(1);
-    expect(rows[0]).toContain('<span style="color:#fff;">Hello </span>');
-    expect(rows[0]).toContain('<span style="color:#0f0;">World</span>');
+    expect(rows[0].html).toContain('<span style="color:#fff;">Hello </span>');
+    expect(rows[0].html).toContain('<span style="color:#0f0;">World</span>');
   });
 
   it("handles empty rows", () => {
@@ -52,8 +53,8 @@ describe("parseXtermHtmlRows", () => {
     const rows = parseXtermHtmlRows(xtermHtml);
 
     expect(rows).toHaveLength(2);
-    expect(rows[0]).toBe("<span> </span>");
-    expect(rows[1]).toBe(" ");
+    expect(rows[0].html).toBe("<span> </span>");
+    expect(rows[1].html).toBe(" ");
   });
 
   it("handles rows with URLs and HTML entities", () => {
@@ -64,7 +65,7 @@ describe("parseXtermHtmlRows", () => {
 
     expect(rows).toHaveLength(1);
     // URL's &amp; gets decoded then re-escaped to &amp; (normalized)
-    expect(rows[0]).toContain("https://example.com/page?a=1&amp;b=2");
+    expect(rows[0].html).toContain("https://example.com/page?a=1&amp;b=2");
   });
 
   it("handles complex nested HTML with entities", () => {
@@ -74,9 +75,9 @@ describe("parseXtermHtmlRows", () => {
     const rows = parseXtermHtmlRows(xtermHtml);
 
     expect(rows).toHaveLength(1);
-    expect(rows[0]).toContain("&lt;script&gt;");
-    expect(rows[0]).toContain("&lt;/script&gt;");
-    expect(rows[0]).toContain("alert(1);");
+    expect(rows[0].html).toContain("&lt;script&gt;");
+    expect(rows[0].html).toContain("&lt;/script&gt;");
+    expect(rows[0].html).toContain("alert(1);");
   });
 
   it("handles numeric HTML entities", () => {
@@ -87,8 +88,8 @@ describe("parseXtermHtmlRows", () => {
 
     expect(rows).toHaveLength(1);
     // Numeric entities get decoded by DOMParser, then re-escaped by serializeXtermNode
-    expect(rows[0]).toContain("&lt;test&gt;");
-    expect(rows[0]).toContain("&lt;hex&gt;");
+    expect(rows[0].html).toContain("&lt;test&gt;");
+    expect(rows[0].html).toContain("&lt;hex&gt;");
   });
 
   it("strips unknown tags for XSS prevention", () => {
@@ -99,9 +100,9 @@ describe("parseXtermHtmlRows", () => {
 
     expect(rows).toHaveLength(1);
     // Unknown tags should be stripped, leaving only escaped text content
-    expect(rows[0]).not.toContain("<script");
-    expect(rows[0]).toContain("alert(1)"); // Text content preserved
-    expect(rows[0]).toContain("<span>safe</span>");
+    expect(rows[0].html).not.toContain("<script");
+    expect(rows[0].html).toContain("alert(1)"); // Text content preserved
+    expect(rows[0].html).toContain("<span>safe</span>");
   });
 
   it("linkifies URLs in parsed output", () => {
@@ -112,8 +113,8 @@ describe("parseXtermHtmlRows", () => {
 
     expect(rows).toHaveLength(1);
     // Verify linkification actually created an anchor tag
-    expect(rows[0]).toContain('<a href="https://example.com"');
-    expect(rows[0]).toContain('target="_blank"');
+    expect(rows[0].html).toContain('<a href="https://example.com"');
+    expect(rows[0].html).toContain('target="_blank"');
   });
 
   it("handles non-breaking spaces", () => {
@@ -125,8 +126,8 @@ describe("parseXtermHtmlRows", () => {
     expect(rows).toHaveLength(1);
     // &nbsp; gets decoded by DOMParser to a non-breaking space character (U+00A0)
     // Our serializer treats it as text content - this is expected behavior
-    expect(rows[0]).toContain("hello");
-    expect(rows[0]).toContain("world");
+    expect(rows[0].html).toContain("hello");
+    expect(rows[0].html).toContain("world");
   });
 
   // Critical: Tests for raw HTML content that xterm outputs WITHOUT escaping
@@ -144,11 +145,11 @@ describe("parseXtermHtmlRows", () => {
 
       expect(rows).toHaveLength(1);
       // The angle brackets should be preserved as escaped entities
-      expect(rows[0]).toContain("&lt;Foo&gt;");
-      expect(rows[0]).toContain("&lt;Bar&gt;");
+      expect(rows[0].html).toContain("&lt;Foo&gt;");
+      expect(rows[0].html).toContain("&lt;Bar&gt;");
       // No actual HTML tags should exist
-      expect(rows[0]).not.toMatch(/<Foo>/i);
-      expect(rows[0]).not.toMatch(/<Bar>/i);
+      expect(rows[0].html).not.toMatch(/<Foo>/i);
+      expect(rows[0].html).not.toMatch(/<Bar>/i);
     });
 
     it("preserves self-closing tags from terminal output", () => {
@@ -159,7 +160,7 @@ describe("parseXtermHtmlRows", () => {
       const rows = parseXtermHtmlRows(xtermHtml);
 
       expect(rows).toHaveLength(1);
-      expect(rows[0]).toContain("&lt;Button /&gt;");
+      expect(rows[0].html).toContain("&lt;Button /&gt;");
     });
 
     it("preserves HTML tags with attributes from terminal output", () => {
@@ -173,8 +174,8 @@ describe("parseXtermHtmlRows", () => {
 
       expect(rows).toHaveLength(1);
       // The tag should remain escaped
-      expect(rows[0]).toContain("&lt;div class=");
-      expect(rows[0]).toContain("&gt;");
+      expect(rows[0].html).toContain("&lt;div class=");
+      expect(rows[0].html).toContain("&gt;");
     });
 
     it("preserves multiple unknown tags on same line without row corruption", () => {
@@ -187,9 +188,9 @@ describe("parseXtermHtmlRows", () => {
 
       expect(rows).toHaveLength(1);
       // All tags should be escaped, no DOM corruption
-      expect(rows[0]).toContain("&lt;header&gt;");
-      expect(rows[0]).toContain("&lt;nav&gt;");
-      expect(rows[0]).toContain("&lt;title&gt;");
+      expect(rows[0].html).toContain("&lt;header&gt;");
+      expect(rows[0].html).toContain("&lt;nav&gt;");
+      expect(rows[0].html).toContain("&lt;title&gt;");
     });
 
     it("preserves row count when output contains raw HTML tags", () => {
@@ -204,10 +205,10 @@ describe("parseXtermHtmlRows", () => {
 
       // CRITICAL: All 3 rows must be preserved
       expect(rows).toHaveLength(3);
-      expect(rows[0]).toContain("Line 1");
-      expect(rows[1]).toContain("Line 2");
-      expect(rows[1]).toContain("&lt;tag&gt;");
-      expect(rows[2]).toContain("Line 3");
+      expect(rows[0].html).toContain("Line 1");
+      expect(rows[1].html).toContain("Line 2");
+      expect(rows[1].html).toContain("&lt;tag&gt;");
+      expect(rows[2].html).toContain("Line 3");
     });
 
     it("handles closing tags without opening tags", () => {
@@ -218,8 +219,8 @@ describe("parseXtermHtmlRows", () => {
       const rows = parseXtermHtmlRows(xtermHtml);
 
       expect(rows).toHaveLength(1);
-      expect(rows[0]).toContain("&lt;/footer&gt;");
-      expect(rows[0]).toContain("&lt;/nav&gt;");
+      expect(rows[0].html).toContain("&lt;/footer&gt;");
+      expect(rows[0].html).toContain("&lt;/nav&gt;");
     });
 
     it("handles angle brackets in error messages", () => {
@@ -230,7 +231,7 @@ describe("parseXtermHtmlRows", () => {
       const rows = parseXtermHtmlRows(xtermHtml);
 
       expect(rows).toHaveLength(1);
-      expect(rows[0]).toContain("&lt;T extends object&gt;");
+      expect(rows[0].html).toContain("&lt;T extends object&gt;");
     });
 
     it("escapes raw structural closing tags in content", () => {
@@ -243,8 +244,8 @@ describe("parseXtermHtmlRows", () => {
 
       // MUST preserve both rows despite raw </div>
       expect(rows).toHaveLength(2);
-      expect(rows[0]).toContain("&lt;/div&gt;");
-      expect(rows[1]).toContain("Next row");
+      expect(rows[0].html).toContain("&lt;/div&gt;");
+      expect(rows[1].html).toContain("Next row");
     });
 
     it("escapes raw span tags in content to prevent CSS injection", () => {
@@ -255,10 +256,10 @@ describe("parseXtermHtmlRows", () => {
       const rows = parseXtermHtmlRows(xtermHtml);
 
       expect(rows).toHaveLength(1);
-      expect(rows[0]).toContain("&lt;span");
-      expect(rows[0]).toContain("&lt;/span&gt;");
+      expect(rows[0].html).toContain("&lt;span");
+      expect(rows[0].html).toContain("&lt;/span&gt;");
       // Should NOT contain actual nested span with style
-      expect(rows[0]).not.toMatch(/<span[^>]*style=/);
+      expect(rows[0].html).not.toMatch(/<span[^>]*style=/);
     });
   });
 
@@ -273,8 +274,8 @@ describe("parseXtermHtmlRows", () => {
 
       expect(rows).toHaveLength(1);
       // The div should NOT be rendered as a div - only its text content should appear
-      expect(rows[0]).not.toContain("<div");
-      expect(rows[0]).toContain("unescaped content");
+      expect(rows[0].html).not.toContain("<div");
+      expect(rows[0].html).toContain("unescaped content");
     });
 
     it("escapes anchor tags that appear in content (not from linkifyHtml)", () => {
@@ -286,8 +287,8 @@ describe("parseXtermHtmlRows", () => {
 
       expect(rows).toHaveLength(1);
       // The malicious anchor should NOT be rendered
-      expect(rows[0]).not.toContain('href="javascript:');
-      expect(rows[0]).toContain("click me");
+      expect(rows[0].html).not.toContain('href="javascript:');
+      expect(rows[0].html).toContain("click me");
     });
 
     it("handles diff output with + and - lines containing HTML", () => {
@@ -300,10 +301,10 @@ describe("parseXtermHtmlRows", () => {
 
       expect(rows).toHaveLength(2);
       // Both lines should have escaped HTML entities
-      expect(rows[0]).toContain("&lt;div class=");
-      expect(rows[1]).toContain("&lt;div class=");
-      expect(rows[0]).not.toContain("<div class=");
-      expect(rows[1]).not.toContain("<div class=");
+      expect(rows[0].html).toContain("&lt;div class=");
+      expect(rows[1].html).toContain("&lt;div class=");
+      expect(rows[0].html).not.toContain("<div class=");
+      expect(rows[1].html).not.toContain("<div class=");
     });
 
     it("handles diff output where HTML was NOT properly escaped by xterm", () => {
@@ -316,9 +317,9 @@ describe("parseXtermHtmlRows", () => {
 
       expect(rows).toHaveLength(1);
       // The img tag should NOT be in the output as an actual tag
-      expect(rows[0]).not.toContain("<img");
+      expect(rows[0].html).not.toContain("<img");
       // The text content "+" and the escaped version should be present
-      expect(rows[0]).toContain("+");
+      expect(rows[0].html).toContain("+");
     });
 
     it("only allows style attribute on spans, strips all others", () => {
@@ -330,9 +331,9 @@ describe("parseXtermHtmlRows", () => {
 
       expect(rows).toHaveLength(1);
       // Only style attribute should be present
-      expect(rows[0]).toContain('style="color:red"');
-      expect(rows[0]).not.toContain("onclick");
-      expect(rows[0]).not.toContain("data-foo");
+      expect(rows[0].html).toContain('style="color:red"');
+      expect(rows[0].html).not.toContain("onclick");
+      expect(rows[0].html).not.toContain("data-foo");
     });
 
     it("escapes HTML entities in style attribute values", () => {
@@ -346,9 +347,9 @@ describe("parseXtermHtmlRows", () => {
       // The quotes should be escaped, keeping onclick= inside the style value (not as separate attribute)
       // The output should be: style="color:red&quot; onclick=&quot;alert(1)"
       // This is safe because onclick= is part of the style VALUE, not a separate attribute
-      expect(rows[0]).toContain('style="color:red&quot;');
+      expect(rows[0].html).toContain('style="color:red&quot;');
       // Verify it's a single style attribute containing the escaped content
-      expect(rows[0]).toMatch(/<span style="[^"]*&quot;[^"]*">/);
+      expect(rows[0].html).toMatch(/<span style="[^"]*&quot;[^"]*">/);
     });
 
     it("handles deeply nested malicious HTML", () => {
@@ -359,10 +360,10 @@ describe("parseXtermHtmlRows", () => {
 
       expect(rows).toHaveLength(1);
       // All malicious content should be stripped/escaped
-      expect(rows[0]).not.toContain("<script");
-      expect(rows[0]).not.toContain("<div");
-      expect(rows[0]).toContain("evil()");
-      expect(rows[0]).toContain("nested");
+      expect(rows[0].html).not.toContain("<script");
+      expect(rows[0].html).not.toContain("<div");
+      expect(rows[0].html).toContain("evil()");
+      expect(rows[0].html).toContain("nested");
     });
 
     it("handles React component-like syntax in terminal output", () => {
@@ -373,8 +374,8 @@ describe("parseXtermHtmlRows", () => {
       const rows = parseXtermHtmlRows(xtermHtml);
 
       expect(rows).toHaveLength(1);
-      expect(rows[0]).toContain("&lt;Component");
-      expect(rows[0]).toContain("/&gt;");
+      expect(rows[0].html).toContain("&lt;Component");
+      expect(rows[0].html).toContain("/&gt;");
     });
 
     it("handles SVG injection attempts", () => {
@@ -386,8 +387,8 @@ describe("parseXtermHtmlRows", () => {
 
       expect(rows).toHaveLength(1);
       // SVG is escaped to visible text, not executable
-      expect(rows[0]).not.toContain("<svg");
-      expect(rows[0]).toContain("&lt;svg");
+      expect(rows[0].html).not.toContain("<svg");
+      expect(rows[0].html).toContain("&lt;svg");
     });
 
     it("handles iframe injection attempts", () => {
@@ -399,8 +400,120 @@ describe("parseXtermHtmlRows", () => {
 
       expect(rows).toHaveLength(1);
       // iframe is escaped to visible text, not executable
-      expect(rows[0]).not.toContain("<iframe");
-      expect(rows[0]).toContain("&lt;iframe");
+      expect(rows[0].html).not.toContain("<iframe");
+      expect(rows[0].html).toContain("&lt;iframe");
+    });
+  });
+
+  describe("background extraction", () => {
+    it("extracts dominant background color from rows with colored spans", () => {
+      const xtermHtml = `<html><body><pre><div>
+<div><span>  </span><span style="color:#fff; background-color:#225c2b;">+ added line</span><span>  </span></div>
+</div></pre></body></html>`;
+      const rows = parseXtermHtmlRows(xtermHtml);
+
+      expect(rows).toHaveLength(1);
+      expect(rows[0].background).toBe("#225c2b");
+    });
+
+    it("returns null for rows without background colors", () => {
+      const xtermHtml = `<html><body><pre><div>
+<div><span style="color:#fff;">normal text</span></div>
+</div></pre></body></html>`;
+      const rows = parseXtermHtmlRows(xtermHtml);
+
+      expect(rows).toHaveLength(1);
+      expect(rows[0].background).toBeNull();
+    });
+
+    it("returns background with most text coverage", () => {
+      // Green spans have more text than red spans
+      const xtermHtml = `<html><body><pre><div>
+<div><span style="background-color:#ff0000;">ab</span><span style="background-color:#00ff00;">longer content here</span></div>
+</div></pre></body></html>`;
+      const rows = parseXtermHtmlRows(xtermHtml);
+
+      expect(rows).toHaveLength(1);
+      expect(rows[0].background).toBe("#00ff00");
+    });
+
+    it("ignores transparent backgrounds", () => {
+      const xtermHtml = `<html><body><pre><div>
+<div><span style="background-color:transparent;">text with transparent bg</span></div>
+</div></pre></body></html>`;
+      const rows = parseXtermHtmlRows(xtermHtml);
+
+      expect(rows).toHaveLength(1);
+      expect(rows[0].background).toBeNull();
+    });
+
+    it("requires 20% coverage to apply row background", () => {
+      // Small highlight (2 chars) should not color entire row (20+ chars total)
+      const xtermHtml = `<html><body><pre><div>
+<div><span>Normal text here </span><span style="background-color:#ff0000;">hi</span><span>light only</span></div>
+</div></pre></body></html>`;
+      const rows = parseXtermHtmlRows(xtermHtml);
+
+      expect(rows).toHaveLength(1);
+      // 2 chars out of ~30+ is less than 20%, should return null
+      expect(rows[0].background).toBeNull();
+    });
+
+    it("applies background when coverage exceeds 20%", () => {
+      // Most of the row is colored
+      const xtermHtml = `<html><body><pre><div>
+<div><span>  </span><span style="background-color:#225c2b;">This is the majority of the content</span><span> </span></div>
+</div></pre></body></html>`;
+      const rows = parseXtermHtmlRows(xtermHtml);
+
+      expect(rows).toHaveLength(1);
+      expect(rows[0].background).toBe("#225c2b");
+    });
+  });
+
+  describe("security: span injection prevention", () => {
+    it("escapes literal </span> in terminal content within a span to prevent breakout", () => {
+      // If terminal output WITHIN A SPAN contains literal </span>, it should be escaped
+      // This tests the case: <span>text</span>more</span> where the second </span> is in content
+      const xtermHtml = `<html><body><pre><div>
+<div><span>Safe text &lt;/span&gt; injected</span></div>
+</div></pre></body></html>`;
+      const rows = parseXtermHtmlRows(xtermHtml);
+
+      expect(rows).toHaveLength(1);
+      // The literal </span> should remain escaped
+      expect(rows[0].html).toContain("&lt;/span&gt;");
+      // Should have proper span structure
+      expect(rows[0].html).toContain("<span>");
+    });
+
+    it("allows multiple sibling spans in row (normal xterm structure)", () => {
+      // xterm normally outputs multiple spans as siblings: <div><span>...</span><span>...</span></div>
+      // This is the expected structure and should be preserved
+      const xtermHtml = `<html><body><pre><div>
+<div><span>first</span><span style="color:red">second</span></div>
+</div></pre></body></html>`;
+      const rows = parseXtermHtmlRows(xtermHtml);
+
+      expect(rows).toHaveLength(1);
+      // Both spans should be preserved (this is normal xterm output)
+      expect(rows[0].html).toContain("<span>first</span>");
+      expect(rows[0].html).toContain('<span style="color:red">second</span>');
+    });
+
+    it("prevents nested span injection within span content", () => {
+      // Terminal content WITH  IN SPAN TEXT: text with nested <span style="malicious">
+      const xtermHtml = `<html><body><pre><div>
+<div><span>text with &lt;span style="position:fixed"&gt;injected&lt;/span&gt;</span></div>
+</div></pre></body></html>`;
+      const rows = parseXtermHtmlRows(xtermHtml);
+
+      expect(rows).toHaveLength(1);
+      // The injected span tags should remain escaped
+      expect(rows[0].html).toContain("&lt;span");
+      expect(rows[0].html).toContain("&lt;/span&gt;");
+      // Should NOT contain an actual nested span with malicious style
+      expect(rows[0].html).not.toMatch(/<span[^>]*><span/);
     });
   });
 });
