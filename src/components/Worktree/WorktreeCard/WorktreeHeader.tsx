@@ -24,7 +24,6 @@ import { Tooltip, TooltipContent, TooltipTrigger, TooltipProvider } from "../../
 import {
   AlertCircle,
   Check,
-  CheckCircle2,
   CircleDot,
   Copy,
   CornerDownRight,
@@ -121,12 +120,6 @@ export function WorktreeHeader({
     <div className="space-y-1">
       <div className="flex items-center gap-2 min-h-[22px]">
         <div className="flex items-center gap-2 min-w-0 flex-1">
-          {isActive && (
-            <CheckCircle2
-              className="w-3.5 h-3.5 text-canopy-accent shrink-0 motion-safe:animate-in motion-safe:fade-in motion-safe:zoom-in motion-safe:duration-200"
-              aria-hidden="true"
-            />
-          )}
           {isMainWorktree && <Shield className="w-3.5 h-3.5 text-canopy-text/30 shrink-0" />}
           <BranchLabel label={branchLabel} isActive={isActive} isMainWorktree={isMainWorktree} />
           {worktree.isDetached && (
