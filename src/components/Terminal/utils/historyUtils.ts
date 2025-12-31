@@ -101,7 +101,7 @@ function preEscapeXtermHtml(html: string): string {
 
       // Check for expected structural tags based on depth
       // This is strict: tags are only allowed in specific contexts
-      const tagMatch = remaining.match(/^<(\/?)(\w+)(\s[^>]*)?>/) ;
+      const tagMatch = remaining.match(/^<(\/?)(\w+)(\s[^>]*)?>/);
       if (tagMatch) {
         const [fullMatch, isClosing, tagName] = tagMatch;
         const isAllowed =
