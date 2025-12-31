@@ -10,6 +10,7 @@ export interface MonitorState extends WorktreeSnapshot {
   isRunning: boolean;
   isUpdating: boolean;
   pollingEnabled: boolean;
+  hasInitialStatus: boolean;
   previousStateHash: string;
   pollingStrategy: AdaptivePollingStrategy;
   noteReader: NoteFileReader;

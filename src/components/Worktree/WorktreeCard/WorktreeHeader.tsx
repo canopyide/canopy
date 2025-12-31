@@ -246,7 +246,7 @@ export function WorktreeHeader({
                 e.stopPropagation();
                 badges.onOpenIssue?.();
               }}
-              className="flex items-center gap-1.5 text-xs text-left hover:underline transition-colors focus-visible:outline focus-visible:outline-2 focus-visible:outline-canopy-accent min-w-0"
+              className="flex items-center gap-1.5 text-xs text-left cursor-pointer transition-colors focus-visible:outline focus-visible:outline-2 focus-visible:outline-canopy-accent min-w-0"
               aria-label={
                 worktree.issueTitle
                   ? `Open issue #${worktree.issueNumber}: ${worktree.issueTitle}`
@@ -284,7 +284,7 @@ export function WorktreeHeader({
                     e.stopPropagation();
                     badges.onOpenPR?.();
                   }}
-                  className="flex items-center gap-1 text-xs text-left hover:underline transition-colors focus-visible:outline focus-visible:outline-2 focus-visible:outline-canopy-accent"
+                  className="flex items-center gap-1 text-xs text-left cursor-pointer transition-colors focus-visible:outline focus-visible:outline-2 focus-visible:outline-canopy-accent"
                   aria-label={`Open ${prStateLabel} pull request #${worktree.prNumber} on GitHub`}
                 >
                   {isSubordinate && (

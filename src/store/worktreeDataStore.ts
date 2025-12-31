@@ -39,38 +39,9 @@ export const useWorktreeDataStore = create<WorktreeDataStore>()((set, get) => ({
       try {
         set({ isLoading: true, error: null });
 
-        const states = await worktreeClient.getAll();
-        const map = new Map(states.map((s) => [s.id, s]));
-        set({ worktrees: map, isLoading: false, isInitialized: true });
-
-        // Startup cleanup: trash orphaned terminals from deleted worktrees
-        const getWorktreeIds = (wtMap: Map<string, WorktreeState>) => {
-          const ids = new Set<string>();
-          for (const [id, wt] of wtMap) {
-            ids.add(id);
-            if (wt.worktreeId) ids.add(wt.worktreeId);
-          }
-          return ids;
-        };
-
-        const runOrphanCleanup = () => {
-          const worktreeIds = getWorktreeIds(map);
-          const terminalStore = useTerminalStore.getState();
-          const orphanedTerminals = terminalStore.terminals.filter((t) => {
-            const worktreeId = typeof t.worktreeId === "string" ? t.worktreeId.trim() : "";
-            return worktreeId && !worktreeIds.has(worktreeId) && t.location !== "trash";
-          });
-
-          if (orphanedTerminals.length > 0) {
-            console.log(
-              `[WorktreeDataStore] Trashing ${orphanedTerminals.length} orphaned terminal(s) from deleted worktrees`
-            );
-            orphanedTerminals.forEach((terminal) => terminalStore.trashTerminal(terminal.id));
-          }
-        };
-
-        runOrphanCleanup();
-
+        // Set up listeners BEFORE calling getAll() to avoid missing events
+        // that the backend might emit during or after the getAll() response.
+        // This prevents race conditions where issue titles or PR data are lost.
         if (!cleanupListeners) {
           const unsubUpdate = worktreeClient.onUpdate((state) => {
             set((prev) => {
@@ -79,10 +50,12 @@ export const useWorktreeDataStore = create<WorktreeDataStore>()((set, get) => ({
               if (existing) {
                 next.set(state.id, {
                   ...state,
+                  // Preserve PR/issue metadata if not present in update
                   prNumber: state.prNumber ?? existing.prNumber,
                   prUrl: state.prUrl ?? existing.prUrl,
                   prState: state.prState ?? existing.prState,
                   prTitle: state.prTitle ?? existing.prTitle,
+                  issueTitle: state.issueTitle ?? existing.issueTitle,
                 });
               } else {
                 next.set(state.id, state);
@@ -148,8 +121,9 @@ export const useWorktreeDataStore = create<WorktreeDataStore>()((set, get) => ({
                 prNumber: data.prNumber,
                 prUrl: data.prUrl,
                 prState: data.prState,
-                prTitle: data.prTitle,
-                issueTitle: data.issueTitle,
+                // Preserve existing values if payload fields are undefined
+                prTitle: data.prTitle ?? worktree.prTitle,
+                issueTitle: data.issueTitle ?? worktree.issueTitle,
               });
               return { worktrees: next };
             });
@@ -194,6 +168,63 @@ export const useWorktreeDataStore = create<WorktreeDataStore>()((set, get) => ({
             unsubIssueDetected();
           };
         }
+
+        // Now fetch the initial state - any events emitted during this call
+        // will be captured by the listeners we set up above
+        const states = await worktreeClient.getAll();
+
+        // Merge getAll results with any events that arrived during the fetch
+        // This preserves PR/issue metadata from events that fired while we were waiting
+        set((prev) => {
+          const map = new Map(states.map((s) => [s.id, s]));
+
+          // Merge in any PR/issue metadata from events that arrived during fetch
+          for (const [id, existing] of prev.worktrees) {
+            const fetched = map.get(id);
+            if (fetched && existing) {
+              map.set(id, {
+                ...fetched,
+                // Preserve event-driven metadata if present
+                prNumber: fetched.prNumber ?? existing.prNumber,
+                prUrl: fetched.prUrl ?? existing.prUrl,
+                prState: fetched.prState ?? existing.prState,
+                prTitle: fetched.prTitle ?? existing.prTitle,
+                issueTitle: fetched.issueTitle ?? existing.issueTitle,
+              });
+            }
+          }
+
+          return { worktrees: map, isLoading: false, isInitialized: true };
+        });
+
+        // Startup cleanup: trash orphaned terminals from deleted worktrees
+        const getWorktreeIds = (wtMap: Map<string, WorktreeState>) => {
+          const ids = new Set<string>();
+          for (const [id, wt] of wtMap) {
+            ids.add(id);
+            if (wt.worktreeId) ids.add(wt.worktreeId);
+          }
+          return ids;
+        };
+
+        const runOrphanCleanup = () => {
+          const currentWorktrees = get().worktrees;
+          const worktreeIds = getWorktreeIds(currentWorktrees);
+          const terminalStore = useTerminalStore.getState();
+          const orphanedTerminals = terminalStore.terminals.filter((t) => {
+            const worktreeId = typeof t.worktreeId === "string" ? t.worktreeId.trim() : "";
+            return worktreeId && !worktreeIds.has(worktreeId) && t.location !== "trash";
+          });
+
+          if (orphanedTerminals.length > 0) {
+            console.log(
+              `[WorktreeDataStore] Trashing ${orphanedTerminals.length} orphaned terminal(s) from deleted worktrees`
+            );
+            orphanedTerminals.forEach((terminal) => terminalStore.trashTerminal(terminal.id));
+          }
+        };
+
+        runOrphanCleanup();
       } catch (e) {
         set({
           error: e instanceof Error ? e.message : "Failed to load worktrees",
