@@ -376,7 +376,11 @@ export function registerWorktreeActions(actions: ActionRegistry, callbacks: Acti
       modified: z.boolean().optional(),
     }),
     run: async (args: unknown, ctx: ActionContext) => {
-      const { worktreeId, format: explicitFormat, modified } = args as {
+      const {
+        worktreeId,
+        format: explicitFormat,
+        modified,
+      } = args as {
         worktreeId?: string;
         format?: "xml" | "json" | "markdown" | "tree" | "ndjson";
         modified?: boolean;
