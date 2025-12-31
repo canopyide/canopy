@@ -8,6 +8,7 @@ export const HISTORY_JUMP_BACK_PERSIST_FRAMES = 2;
 export interface HistoryState {
   lines: string[];
   htmlLines: string[];
+  rowBackgrounds: (string | null)[];
   windowStart: number;
   windowEnd: number;
   takenAt: number;
@@ -104,6 +105,10 @@ function preEscapeXtermHtml(html: string): string {
       const tagMatch = remaining.match(/^<(\/?)(\w+)(\s[^>]*)?>/);
       if (tagMatch) {
         const [fullMatch, isClosing, tagName] = tagMatch;
+
+        // CRITICAL: Only allow span tags when in the proper structural context (depth 5)
+        // If we see </span> at depth 6 (inside a span), it's the expected close tag
+        // If we see <span> or </span> anywhere else, it's terminal content and must be escaped
         const isAllowed =
           (depth === 0 && tagName === "html" && !isClosing) ||
           (depth === 1 && tagName === "html" && isClosing) ||
@@ -115,8 +120,8 @@ function preEscapeXtermHtml(html: string): string {
           (depth === 4 && tagName === "div" && !isClosing) || // Row
           (depth === 4 && tagName === "div" && isClosing) || // Row container close
           (depth === 5 && tagName === "div" && isClosing) || // Row close
-          (depth === 5 && tagName === "span" && !isClosing) ||
-          (depth === 6 && tagName === "span" && isClosing);
+          (depth === 5 && tagName === "span" && !isClosing) || // Opening span at depth 5
+          (depth === 6 && tagName === "span" && isClosing); // Closing span at depth 6
 
         if (isAllowed) {
           result.push(fullMatch);
@@ -178,7 +183,65 @@ function serializeXtermNode(node: ChildNode): string {
   return `<span${attrs}>${children}</span>`;
 }
 
-export function parseXtermHtmlRows(html: string): string[] {
+export interface ParsedRow {
+  html: string;
+  background: string | null;
+}
+
+/**
+ * Extract the dominant background color from a row's spans.
+ * In git diffs and similar colored output, one span typically has the background color
+ * (e.g., green for additions, red for deletions) while others are whitespace.
+ * We identify the background that covers the most text content.
+ */
+function extractDominantBackground(div: Element): string | null {
+  const spans = div.querySelectorAll("span");
+  if (spans.length === 0) return null;
+
+  const bgCounts = new Map<string, number>();
+  let totalTextLength = 0;
+
+  for (const span of spans) {
+    const textLength = (span.textContent ?? "").length;
+    totalTextLength += textLength;
+
+    const style = span.getAttribute("style");
+    if (!style) continue;
+
+    const bgMatch = style.match(/background-color:\s*([^;]+)/i);
+    if (bgMatch) {
+      const bg = bgMatch[1].trim().toLowerCase();
+
+      // Skip transparent/default backgrounds
+      if (bg === "transparent" || bg === "inherit" || bg === "initial") continue;
+
+      // Weight by text content length to prioritize the background of actual content
+      bgCounts.set(bg, (bgCounts.get(bg) ?? 0) + textLength);
+    }
+  }
+
+  if (bgCounts.size === 0) return null;
+
+  // Find the background with the most text coverage
+  let dominantBg: string | null = null;
+  let maxCount = 0;
+  for (const [bg, count] of bgCounts) {
+    if (count > maxCount) {
+      maxCount = count;
+      dominantBg = bg;
+    }
+  }
+
+  // Only return a background if it covers at least 20% of the row's text
+  // This prevents small highlights from coloring the entire row
+  if (dominantBg && maxCount >= totalTextLength * 0.2) {
+    return dominantBg;
+  }
+
+  return null;
+}
+
+export function parseXtermHtmlRows(html: string): ParsedRow[] {
   // Pre-escape text content to prevent DOMParser from interpreting raw < and > as HTML tags
   // This is critical: xterm's serializeAsHTML outputs raw cell content without escaping
   const safeHtml = preEscapeXtermHtml(html);
@@ -187,7 +250,11 @@ export function parseXtermHtmlRows(html: string): string[] {
   const rowDivs = doc.querySelectorAll("pre > div > div");
   return Array.from(rowDivs, (div) => {
     const rowHtml = Array.from(div.childNodes, serializeXtermNode).join("");
-    return linkifyHtml(rowHtml) || " ";
+    const background = extractDominantBackground(div);
+    return {
+      html: linkifyHtml(rowHtml) || " ",
+      background,
+    };
   });
 }
 
@@ -213,6 +280,8 @@ export function extractSnapshot(
   }
 
   let htmlLines: string[];
+  let rowBackgrounds: (string | null)[];
+
   if (serializeAddon) {
     try {
       // Use serializeAsHTML for pixel-perfect xterm rendering
@@ -223,32 +292,39 @@ export function extractSnapshot(
         includeGlobalBackground: false,
       });
 
-      htmlLines = parseXtermHtmlRows(fullHtml);
+      const parsedRows = parseXtermHtmlRows(fullHtml);
 
       // Handle skipBottomLines by removing rows from the end
-      if (skipBottomLines > 0 && htmlLines.length > skipBottomLines) {
-        htmlLines = htmlLines.slice(0, -skipBottomLines);
+      let processedRows = parsedRows;
+      if (skipBottomLines > 0 && parsedRows.length > skipBottomLines) {
+        processedRows = parsedRows.slice(0, -skipBottomLines);
       }
 
       // Ensure we have the right number of rows, pad with empty if needed
-      while (htmlLines.length < count) {
-        htmlLines.push(" ");
+      while (processedRows.length < count) {
+        processedRows.push({ html: " ", background: null });
       }
 
       // Trim to maxLines if we got more
-      if (htmlLines.length > count) {
-        htmlLines = htmlLines.slice(htmlLines.length - count);
+      if (processedRows.length > count) {
+        processedRows = processedRows.slice(processedRows.length - count);
       }
+
+      htmlLines = processedRows.map((row) => row.html);
+      rowBackgrounds = processedRows.map((row) => row.background);
     } catch {
       htmlLines = lines.map((l) => escapeHtml(l) || " ");
+      rowBackgrounds = lines.map(() => null);
     }
   } else {
     htmlLines = lines.map((l) => escapeHtml(l) || " ");
+    rowBackgrounds = lines.map(() => null);
   }
 
   return {
     lines,
     htmlLines,
+    rowBackgrounds,
     windowStart: start,
     windowEnd: effectiveEnd,
     takenAt: performance.now(),
