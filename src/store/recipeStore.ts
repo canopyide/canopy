@@ -1,5 +1,5 @@
 import { create, type StateCreator } from "zustand";
-import type { TerminalRecipe, RecipeTerminal } from "@/types";
+import type { TerminalRecipe, RecipeTerminal, RecipeTerminalType } from "@/types";
 import { useTerminalStore, type TerminalInstance } from "./terminalStore";
 import { appClient, agentSettingsClient } from "@/clients";
 import { getAgentConfig } from "@/config/agents";
