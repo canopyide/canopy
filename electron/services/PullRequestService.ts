@@ -146,15 +146,15 @@ class PullRequestService {
     logInfo("PullRequestService initialized", { cwd });
   }
 
-  public start(intervalMs?: number): void {
+  public start(intervalMs?: number): Promise<void> {
     if (this.isPolling) {
       logWarn("PullRequestService already polling");
-      return;
+      return Promise.resolve();
     }
 
     if (!this.cwd) {
       logWarn("PullRequestService not initialized - call initialize() first");
-      return;
+      return Promise.resolve();
     }
 
     if (intervalMs) {
@@ -175,7 +175,7 @@ class PullRequestService {
 
     logInfo("PullRequestService started", { intervalMs: this.pollIntervalMs });
 
-    void this.checkForPRs().finally(() => {
+    return this.checkForPRs().finally(() => {
       this.scheduleNextPoll();
     });
   }

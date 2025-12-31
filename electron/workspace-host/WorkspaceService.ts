@@ -100,12 +100,15 @@ export class WorkspaceService {
         };
       });
 
-      await this.syncMonitors(worktrees, this.activeWorktreeId, this.mainBranch);
+      // Create monitors first (without waiting for git status)
+      await this.syncMonitors(worktrees, this.activeWorktreeId, this.mainBranch, undefined, true);
 
-      // Start PR service early so GitHub API call runs in parallel with git status refresh
-      this.initializePRService();
+      // Start PR service immediately - GitHub API call begins now
+      // The monitors already have branch info from listWorktreesFromGit
+      const prServicePromise = this.initializePRService();
 
-      await this.refreshAll();
+      // Now do git status refresh for all monitors in parallel with PR service
+      await Promise.all([prServicePromise, this.refreshAll()]);
 
       this.sendEvent({ type: "load-project-result", requestId, success: true });
     } catch (error) {
@@ -188,7 +191,8 @@ export class WorkspaceService {
     worktrees: Worktree[],
     activeWorktreeId: string | null,
     mainBranch: string,
-    monitorConfig?: MonitorConfig
+    monitorConfig?: MonitorConfig,
+    skipInitialGitStatus: boolean = false
   ): Promise<void> {
     this.mainBranch = mainBranch;
     this.activeWorktreeId = activeWorktreeId;
@@ -277,6 +281,7 @@ export class WorkspaceService {
           isRunning: false,
           isUpdating: false,
           pollingEnabled: true,
+          hasInitialStatus: false,
           previousStateHash: "",
           pollingStrategy: new AdaptivePollingStrategy({ baseInterval: interval }),
           noteReader: new NoteFileReader(wt.path),
@@ -290,7 +295,13 @@ export class WorkspaceService {
 
         this.monitors.set(wt.id, monitor);
 
-        await this.startMonitor(monitor);
+        if (skipInitialGitStatus) {
+          // Just mark as running - refreshAll() will do git status later
+          monitor.isRunning = true;
+          monitor.pollingEnabled = true;
+        } else {
+          await this.startMonitor(monitor);
+        }
 
         // Extract issue number asynchronously if not found synchronously
         if (wt.branch && !issueNumber) {
@@ -309,7 +320,10 @@ export class WorkspaceService {
       const issueNumber = await extractIssueNumber(branchName, folderName);
       if (issueNumber && monitor.isRunning) {
         monitor.issueNumber = issueNumber;
-        this.emitUpdate(monitor);
+        // Only emit if initial git status has completed to avoid partial snapshots
+        if (monitor.hasInitialStatus) {
+          this.emitUpdate(monitor);
+        }
       }
     } catch {
       // Silently ignore extraction errors
@@ -476,6 +490,7 @@ export class WorkspaceService {
       monitor.mood = nextMood;
       monitor.aiNote = noteData?.content;
       monitor.aiNoteTimestamp = noteData?.timestamp;
+      monitor.hasInitialStatus = true;
 
       this.emitUpdate(monitor);
     } catch (error) {
@@ -659,9 +674,22 @@ export class WorkspaceService {
   }
 
   private async refreshAll(): Promise<void> {
-    const promises = Array.from(this.monitors.values()).map((monitor) =>
-      this.updateGitStatus(monitor, true)
-    );
+    const promises = Array.from(this.monitors.values()).map(async (monitor) => {
+      try {
+        await this.updateGitStatus(monitor, true);
+      } finally {
+        // Schedule polling if not already scheduled and not currently updating
+        // This ensures monitors created with skipInitialGitStatus start polling even if updateGitStatus fails
+        if (
+          monitor.isRunning &&
+          this.pollingEnabled &&
+          !monitor.pollingTimer &&
+          !monitor.isUpdating
+        ) {
+          this.scheduleNextPoll(monitor);
+        }
+      }
+    });
     await Promise.all(promises);
   }
 
@@ -963,34 +991,23 @@ ${lines.map((l) => "+" + l).join("\n")}`;
     }
   }
 
-  private initializePRService(): void {
+  private initializePRService(): Promise<void> {
     if (!this.projectRootPath) {
-      return;
+      return Promise.resolve();
     }
 
     // Skip if already initialized for this project (prevents reset on duplicate loadProject calls)
     if (this.prServiceInitializedForPath === this.projectRootPath) {
-      return;
+      return Promise.resolve();
     }
 
     this.cleanupPRService();
 
     pullRequestService.initialize(this.projectRootPath);
 
-    // Seed PR service with existing monitors as candidates
-    // This is necessary because worktree:update events fire before PR service starts
-    for (const monitor of this.monitors.values()) {
-      if (monitor.branch && monitor.branch !== "main" && monitor.branch !== "master") {
-        events.emit("sys:worktree:update", {
-          worktreeId: monitor.worktreeId,
-          branch: monitor.branch,
-          issueNumber: monitor.issueNumber,
-        } as any);
-      }
-    }
-
     this.prServiceInitializedForPath = this.projectRootPath;
 
+    // Register event handlers BEFORE seeding to avoid race conditions
     this.prEventUnsubscribers.push(
       events.on("sys:pr:detected", (data: any) => {
         const monitor = this.monitors.get(data.worktreeId);
@@ -1000,7 +1017,10 @@ ${lines.map((l) => "+" + l).join("\n")}`;
           monitor.prState = data.prState;
           monitor.prTitle = data.prTitle;
           monitor.issueTitle = data.issueTitle;
-          this.emitUpdate(monitor);
+          // Only emit if initial git status has completed to avoid partial snapshots
+          if (monitor.hasInitialStatus) {
+            this.emitUpdate(monitor);
+          }
         }
 
         this.sendEvent({
@@ -1021,7 +1041,10 @@ ${lines.map((l) => "+" + l).join("\n")}`;
         const monitor = this.monitors.get(data.worktreeId);
         if (monitor) {
           monitor.issueTitle = data.issueTitle;
-          this.emitUpdate(monitor);
+          // Only emit if initial git status has completed to avoid partial snapshots
+          if (monitor.hasInitialStatus) {
+            this.emitUpdate(monitor);
+          }
         }
 
         this.sendEvent({
@@ -1041,7 +1064,10 @@ ${lines.map((l) => "+" + l).join("\n")}`;
           monitor.prUrl = undefined;
           monitor.prState = undefined;
           monitor.prTitle = undefined;
-          this.emitUpdate(monitor);
+          // Only emit if initial git status has completed to avoid partial snapshots
+          if (monitor.hasInitialStatus) {
+            this.emitUpdate(monitor);
+          }
         }
 
         this.sendEvent({
@@ -1051,7 +1077,20 @@ ${lines.map((l) => "+" + l).join("\n")}`;
       })
     );
 
-    pullRequestService.start();
+    // Seed PR service with existing monitors as candidates
+    // This is necessary because worktree:update events fire before PR service starts
+    // Now safe to emit since handlers are registered above
+    for (const monitor of this.monitors.values()) {
+      if (monitor.branch && monitor.branch !== "main" && monitor.branch !== "master") {
+        events.emit("sys:worktree:update", {
+          worktreeId: monitor.worktreeId,
+          branch: monitor.branch,
+          issueNumber: monitor.issueNumber,
+        } as any);
+      }
+    }
+
+    return pullRequestService.start();
   }
 
   private cleanupPRService(): void {
