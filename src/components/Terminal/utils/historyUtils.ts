@@ -1,6 +1,6 @@
-import { Terminal } from "@xterm/xterm";
-import { SerializeAddon } from "@xterm/addon-serialize";
-import { escapeHtml, escapeHtmlAttribute, linkifyHtml } from "./htmlUtils";
+import type { Terminal, IBufferLine, IBufferCell } from "@xterm/xterm";
+import type { SerializeAddon } from "@xterm/addon-serialize";
+import { escapeHtml, linkifyHtml } from "./htmlUtils";
 
 export const HISTORY_JUMP_BACK_PERSIST_MS = 100;
 export const HISTORY_JUMP_BACK_PERSIST_FRAMES = 2;
@@ -13,187 +13,229 @@ export interface HistoryState {
   takenAt: number;
 }
 
-/**
- * Parse xterm's serializeAsHTML output to extract individual row HTML.
- * The output format is:
- * <html><body><!--StartFragment--><pre>
- * <div style='...'>
- *   <div><span>row content</span><span>more content</span>...</div>
- *   ...
- * </div>
- * </pre><!--EndFragment--></body></html>
- *
- * Uses DOMParser for robust HTML parsing - the previous regex approach
- * only captured the first <span> per row, truncating multi-styled rows.
- */
-const HTML_ENTITY_MAP = {
-  "&": "&amp;",
-  "<": "&lt;",
-  ">": "&gt;",
-  '"': "&quot;",
-  "'": "&#39;",
-} as const;
+// Standard ANSI 256-color palette (colors 0-255)
+// Colors 0-15 are the standard colors, 16-231 are the 6x6x6 color cube, 232-255 are grayscale
+const ANSI_COLORS: string[] = [
+  // Standard colors (0-7)
+  "#000000",
+  "#cd0000",
+  "#00cd00",
+  "#cdcd00",
+  "#0000ee",
+  "#cd00cd",
+  "#00cdcd",
+  "#e5e5e5",
+  // Bright colors (8-15)
+  "#7f7f7f",
+  "#ff0000",
+  "#00ff00",
+  "#ffff00",
+  "#5c5cff",
+  "#ff00ff",
+  "#00ffff",
+  "#ffffff",
+];
 
-const HTML_ENTITY_REGEX = /[&<>"']/g;
+// Generate 6x6x6 color cube (colors 16-231)
+for (let r = 0; r < 6; r++) {
+  for (let g = 0; g < 6; g++) {
+    for (let b = 0; b < 6; b++) {
+      const ri = r ? r * 40 + 55 : 0;
+      const gi = g ? g * 40 + 55 : 0;
+      const bi = b ? b * 40 + 55 : 0;
+      ANSI_COLORS.push(
+        `#${ri.toString(16).padStart(2, "0")}${gi.toString(16).padStart(2, "0")}${bi.toString(16).padStart(2, "0")}`
+      );
+    }
+  }
+}
 
-function escapeHtmlText(value: string): string {
-  return value.replace(
-    HTML_ENTITY_REGEX,
-    (char) => HTML_ENTITY_MAP[char as keyof typeof HTML_ENTITY_MAP]
+// Generate grayscale (colors 232-255)
+for (let i = 0; i < 24; i++) {
+  const v = i * 10 + 8;
+  ANSI_COLORS.push(`#${v.toString(16).padStart(2, "0").repeat(3)}`);
+}
+
+interface CellStyle {
+  fg: string | null;
+  bg: string | null;
+  bold: boolean;
+  italic: boolean;
+  underline: boolean;
+  strikethrough: boolean;
+  dim: boolean;
+}
+
+function getCellStyle(cell: IBufferCell): CellStyle {
+  let fg: string | null = null;
+  let bg: string | null = null;
+
+  // Get foreground color
+  if (cell.isFgRGB()) {
+    const color = cell.getFgColor();
+    fg = `#${color.toString(16).padStart(6, "0")}`;
+  } else if (cell.isFgPalette()) {
+    const idx = cell.getFgColor();
+    fg = ANSI_COLORS[idx] ?? null;
+  }
+
+  // Get background color
+  if (cell.isBgRGB()) {
+    const color = cell.getBgColor();
+    bg = `#${color.toString(16).padStart(6, "0")}`;
+  } else if (cell.isBgPalette()) {
+    const idx = cell.getBgColor();
+    bg = ANSI_COLORS[idx] ?? null;
+  }
+
+  return {
+    fg,
+    bg,
+    bold: cell.isBold() !== 0,
+    italic: cell.isItalic() !== 0,
+    underline: cell.isUnderline() !== 0,
+    strikethrough: cell.isStrikethrough() !== 0,
+    dim: cell.isDim() !== 0,
+  };
+}
+
+function stylesEqual(a: CellStyle, b: CellStyle): boolean {
+  return (
+    a.fg === b.fg &&
+    a.bg === b.bg &&
+    a.bold === b.bold &&
+    a.italic === b.italic &&
+    a.underline === b.underline &&
+    a.strikethrough === b.strikethrough &&
+    a.dim === b.dim
+  );
+}
+
+function styleToInlineCss(style: CellStyle): string {
+  const parts: string[] = [];
+
+  if (style.fg) {
+    parts.push(`color:${style.fg}`);
+  }
+  if (style.bg) {
+    parts.push(`background-color:${style.bg}`);
+  }
+  if (style.bold) {
+    parts.push("font-weight:bold");
+  }
+  if (style.italic) {
+    parts.push("font-style:italic");
+  }
+  if (style.dim) {
+    parts.push("opacity:0.5");
+  }
+
+  const decorations: string[] = [];
+  if (style.underline) decorations.push("underline");
+  if (style.strikethrough) decorations.push("line-through");
+  if (decorations.length > 0) {
+    parts.push(`text-decoration:${decorations.join(" ")}`);
+  }
+
+  return parts.join(";");
+}
+
+function isEmptyStyle(style: CellStyle): boolean {
+  return (
+    style.fg === null &&
+    style.bg === null &&
+    !style.bold &&
+    !style.italic &&
+    !style.underline &&
+    !style.strikethrough &&
+    !style.dim
   );
 }
 
 /**
- * Pre-escapes text content inside xterm's HTML output before DOMParser processes it.
- *
- * xterm's serializeAsHTML() outputs raw cell content without escaping, so if terminal
- * output contains `<tag>`, xterm produces `<span><tag></span>`. When DOMParser parses
- * this, it interprets `<tag>` as a real HTML element, corrupting the DOM structure
- * and causing rows to disappear.
- *
- * This function escapes ALL angle brackets in text content while preserving only
- * the specific xterm HTML structure patterns we expect.
- *
- * SECURITY: We must be extremely strict about what tags are allowed. Any tag in
- * terminal output (even <div> or <span>) should be escaped to prevent DOM corruption
- * and CSS injection attacks.
+ * Convert a buffer line to safe HTML by iterating through cells.
+ * This approach is fundamentally safer than parsing serializeAsHTML because:
+ * 1. We never parse HTML - we only generate it from known-safe primitives
+ * 2. All text content is escaped before being put into HTML
+ * 3. We only generate the tags we want (spans with inline styles)
  */
-function preEscapeXtermHtml(html: string): string {
-  // Fast path: if no angle brackets, return unchanged
-  if (!html.includes("<") && !html.includes(">")) {
-    return html;
+function lineToHtml(line: IBufferLine, cols: number, nullCell: IBufferCell): string {
+  const result: string[] = [];
+  let currentText = "";
+  let currentStyle: CellStyle = {
+    fg: null,
+    bg: null,
+    bold: false,
+    italic: false,
+    underline: false,
+    strikethrough: false,
+    dim: false,
+  };
+
+  const flushSpan = () => {
+    if (currentText.length === 0) return;
+
+    const escapedText = escapeHtml(currentText);
+    if (isEmptyStyle(currentStyle)) {
+      result.push(escapedText);
+    } else {
+      const css = styleToInlineCss(currentStyle);
+      result.push(`<span style="${css}">${escapedText}</span>`);
+    }
+    currentText = "";
+  };
+
+  for (let x = 0; x < cols; x++) {
+    const cell = line.getCell(x, nullCell);
+    if (!cell) continue;
+
+    const width = cell.getWidth();
+    if (width === 0) continue; // Skip continuation cells for wide characters
+
+    const chars = cell.getChars();
+    const cellStyle = getCellStyle(cell);
+
+    if (!stylesEqual(cellStyle, currentStyle)) {
+      flushSpan();
+      currentStyle = cellStyle;
+    }
+
+    currentText += chars || " ";
   }
 
-  // xterm produces a very specific structure:
-  // <html><body><!--StartFragment--><pre><div style="..."><div><span ...>text</span>...</div></div></pre><!--EndFragment--></body></html>
-  //
-  // Strategy: We need to be CONTEXT-AWARE, not just tag-name aware.
-  // Tags are only valid in specific positions:
-  // 1. Root structure: <html>, <body>, <pre> at the start
-  // 2. Row container: <div style="..."> after <pre>
-  // 3. Row elements: <div> as children of row container
-  // 4. Content: <span ...> inside row divs
-  // 5. HTML comments: <!--StartFragment-->, <!--EndFragment-->
-  //
-  // ANYTHING ELSE should be escaped, including:
-  // - <div>, </div>, <span>, </span> appearing in text content
-  // - Any other tags anywhere
-  //
-  // We use a state machine approach to track context
+  flushSpan();
 
-  const result: string[] = [];
-  let i = 0;
-  let depth = 0; // Track nesting depth: 0=html, 1=body, 2=pre, 3=container, 4=row, 5=span
+  // Trim trailing whitespace from the result
+  const html = result.join("");
+  return html.trimEnd() || " ";
+}
 
-  while (i < html.length) {
-    if (html[i] === "<") {
-      const remaining = html.slice(i);
+/**
+ * Extract HTML lines directly from xterm buffer by iterating cells.
+ * This is safer than serializeAsHTML because we control exactly what HTML is generated.
+ */
+function extractHtmlLinesFromBuffer(term: Terminal, start: number, count: number): string[] {
+  const buffer = term.buffer.active;
+  const cols = term.cols;
+  const nullCell = buffer.getNullCell();
+  const htmlLines: string[] = new Array(count);
 
-      // Check for HTML comments (allowed anywhere)
-      if (remaining.startsWith("<!--")) {
-        const endIdx = remaining.indexOf("-->", 4);
-        if (endIdx !== -1) {
-          result.push(remaining.slice(0, endIdx + 3));
-          i += endIdx + 3;
-          continue;
-        }
-      }
-
-      // Check for expected structural tags based on depth
-      // This is strict: tags are only allowed in specific contexts
-      const tagMatch = remaining.match(/^<(\/?)(\w+)(\s[^>]*)?>/);
-      if (tagMatch) {
-        const [fullMatch, isClosing, tagName] = tagMatch;
-        const isAllowed =
-          (depth === 0 && tagName === "html" && !isClosing) ||
-          (depth === 1 && tagName === "html" && isClosing) ||
-          (depth === 1 && tagName === "body" && !isClosing) ||
-          (depth === 2 && tagName === "body" && isClosing) ||
-          (depth === 2 && tagName === "pre" && !isClosing) ||
-          (depth === 3 && tagName === "pre" && isClosing) ||
-          (depth === 3 && tagName === "div" && !isClosing) || // Row container
-          (depth === 4 && tagName === "div" && !isClosing) || // Row
-          (depth === 4 && tagName === "div" && isClosing) || // Row container close
-          (depth === 5 && tagName === "div" && isClosing) || // Row close
-          (depth === 5 && tagName === "span" && !isClosing) ||
-          (depth === 6 && tagName === "span" && isClosing);
-
-        if (isAllowed) {
-          result.push(fullMatch);
-          i += fullMatch.length;
-          // Update depth
-          if (!isClosing) {
-            depth++;
-          } else {
-            depth--;
-          }
-          continue;
-        }
-      }
-
-      // Not an allowed tag - escape it
-      result.push("&lt;");
-      i++;
-    } else if (html[i] === ">") {
-      // Standalone > - escape it
-      result.push("&gt;");
-      i++;
+  for (let i = 0; i < count; i++) {
+    const line = buffer.getLine(start + i);
+    if (line) {
+      const html = lineToHtml(line, cols, nullCell);
+      htmlLines[i] = linkifyHtml(html);
     } else {
-      result.push(html[i]);
-      i++;
+      htmlLines[i] = " ";
     }
   }
 
-  return result.join("");
-}
-
-function serializeXtermNode(node: ChildNode): string {
-  if (node.nodeType === 3) {
-    return escapeHtmlText(node.textContent ?? "");
-  }
-
-  if (node.nodeType !== 1) return "";
-
-  const element = node as Element;
-  const tagName = element.tagName.toLowerCase();
-
-  // STRICT whitelist: only span tags are allowed from xterm's serializeAsHTML
-  // xterm produces: <pre><div><div><span style="...">content</span></div></div></pre>
-  // The outer divs are row containers (processed by querySelectorAll), content is in spans.
-  // We don't allow div/a here because:
-  // - div: should never appear as content inside a row; if present, it's likely unescaped HTML
-  // - a: links are created by linkifyHtml later, not by xterm
-  // Any other tags (script, img, etc.) are escaped to prevent XSS
-  if (tagName !== "span") {
-    return escapeHtmlText(element.textContent ?? "");
-  }
-
-  // STRICT attribute whitelist: only style attribute is allowed
-  // xterm's serializeAsHTML only produces style attributes for coloring
-  // Use escapeHtmlAttribute for attribute values to prevent attribute injection
-  const styleAttr = element.getAttribute("style");
-  const attrs = styleAttr ? ` style="${escapeHtmlAttribute(styleAttr)}"` : "";
-
-  const children = Array.from(element.childNodes, serializeXtermNode).join("");
-  return `<span${attrs}>${children}</span>`;
-}
-
-export function parseXtermHtmlRows(html: string): string[] {
-  // Pre-escape text content to prevent DOMParser from interpreting raw < and > as HTML tags
-  // This is critical: xterm's serializeAsHTML outputs raw cell content without escaping
-  const safeHtml = preEscapeXtermHtml(html);
-  const doc = new DOMParser().parseFromString(safeHtml, "text/html");
-  // Rows are nested: pre > div (container) > div (each row)
-  const rowDivs = doc.querySelectorAll("pre > div > div");
-  return Array.from(rowDivs, (div) => {
-    const rowHtml = Array.from(div.childNodes, serializeXtermNode).join("");
-    return linkifyHtml(rowHtml) || " ";
-  });
+  return htmlLines;
 }
 
 export function extractSnapshot(
   term: Terminal,
-  serializeAddon: SerializeAddon | null,
+  _serializeAddon: SerializeAddon | null,
   maxLines: number,
   skipBottomLines: number = 0
 ): HistoryState {
@@ -212,37 +254,16 @@ export function extractSnapshot(
     lines[i] = line ? line.translateToString(true, 0, cols) : "";
   }
 
+  // Extract HTML lines directly from buffer cells
+  // This is safer than serializeAsHTML because we control exactly what HTML is generated:
+  // 1. We never parse HTML - we only generate it from known-safe primitives
+  // 2. All text content is escaped before being put into HTML
+  // 3. No complex state machine needed for pre-escaping
   let htmlLines: string[];
-  if (serializeAddon) {
-    try {
-      // Use serializeAsHTML for pixel-perfect xterm rendering
-      // This uses xterm's internal theme colors and cell-by-cell rendering
-      const fullHtml = serializeAddon.serializeAsHTML({
-        scrollback: count,
-        onlySelection: false,
-        includeGlobalBackground: false,
-      });
-
-      htmlLines = parseXtermHtmlRows(fullHtml);
-
-      // Handle skipBottomLines by removing rows from the end
-      if (skipBottomLines > 0 && htmlLines.length > skipBottomLines) {
-        htmlLines = htmlLines.slice(0, -skipBottomLines);
-      }
-
-      // Ensure we have the right number of rows, pad with empty if needed
-      while (htmlLines.length < count) {
-        htmlLines.push(" ");
-      }
-
-      // Trim to maxLines if we got more
-      if (htmlLines.length > count) {
-        htmlLines = htmlLines.slice(htmlLines.length - count);
-      }
-    } catch {
-      htmlLines = lines.map((l) => escapeHtml(l) || " ");
-    }
-  } else {
+  try {
+    htmlLines = extractHtmlLinesFromBuffer(term, start, count);
+  } catch {
+    // Fallback to plain text with escaping
     htmlLines = lines.map((l) => escapeHtml(l) || " ");
   }
 
