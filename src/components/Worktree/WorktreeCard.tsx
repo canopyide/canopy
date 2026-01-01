@@ -167,7 +167,7 @@ export function WorktreeCard({
 
   const handleOpenIssue = useCallback(() => {
     void actionService.dispatch(
-      "worktree.openIssueInSidecar",
+      "worktree.openIssue",
       { worktreeId: worktree.id },
       { source: "user" }
     );
@@ -175,7 +175,7 @@ export function WorktreeCard({
 
   const handleOpenPR = useCallback(() => {
     void actionService.dispatch(
-      "worktree.openPRInSidecar",
+      "worktree.openPR",
       { worktreeId: worktree.id },
       { source: "user" }
     );
