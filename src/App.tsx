@@ -589,7 +589,7 @@ function App() {
   useFirstRunToasts(isStateLoaded);
 
   const handleLaunchAgent = useCallback(
-    async (type: "claude" | "gemini" | "codex" | "terminal" | "browser") => {
+    async (type: "claude" | "gemini" | "codex" | "opencode" | "terminal" | "browser") => {
       await launchAgent(type);
     },
     [launchAgent]
