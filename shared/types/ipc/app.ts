@@ -72,6 +72,8 @@ export interface AppState {
   dockCollapsed?: boolean;
   /** Dock display mode: expanded (full), slim (compact icons), or hidden */
   dockMode?: import("../domain.js").DockMode;
+  /** Dock behavior: auto (expands when docked terminals) or manual (user controlled) */
+  dockBehavior?: import("../domain.js").DockBehavior;
   /** Whether to auto-hide dock when empty */
   dockAutoHideWhenEmpty?: boolean;
 }

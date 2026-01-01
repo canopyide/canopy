@@ -94,15 +94,20 @@ export function AppLayout({
         }
         // Hydrate dock state with legacy migration and validation
         const validModes: Array<"expanded" | "slim" | "hidden"> = ["expanded", "slim", "hidden"];
+        const validBehaviors: Array<"auto" | "manual"> = ["auto", "manual"];
         const rawMode = appState.dockMode;
+        const rawBehavior = appState.dockBehavior;
         const isValidMode = rawMode && validModes.includes(rawMode as any);
+        const isValidBehavior = rawBehavior && validBehaviors.includes(rawBehavior as any);
         const dockMode = isValidMode
           ? rawMode
           : appState.dockCollapsed === true
             ? "hidden"
-            : "expanded";
+            : "slim";
+        const dockBehavior = isValidBehavior ? rawBehavior : "auto";
         useDockStore.getState().hydrate({
           mode: dockMode,
+          behavior: dockBehavior,
           autoHideWhenEmpty: Boolean(appState.dockAutoHideWhenEmpty),
         });
       } catch (error) {

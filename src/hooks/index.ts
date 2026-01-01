@@ -54,3 +54,5 @@ export { useNativeContextMenu } from "./useNativeContextMenu";
 
 export { useHorizontalScrollControls } from "./useHorizontalScrollControls";
 export type { UseHorizontalScrollControlsReturn } from "./useHorizontalScrollControls";
+
+export { useDockRenderState } from "./useDockRenderState";
