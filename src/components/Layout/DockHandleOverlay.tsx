@@ -5,10 +5,9 @@ import { useDockStore } from "@/store";
 import { useKeybindingDisplay } from "@/hooks/useKeybinding";
 
 export function DockHandleOverlay() {
-  const { mode, toggleExpanded, setMode } = useDockStore(
+  const { mode, setMode } = useDockStore(
     useShallow((state) => ({
       mode: state.mode,
-      toggleExpanded: state.toggleExpanded,
       setMode: state.setMode,
     }))
   );

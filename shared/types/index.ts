@@ -46,6 +46,7 @@ export type {
   TerminalInstance,
   PtySpawnOptions,
   TerminalDimensions,
+  DockMode,
 } from "./domain.js";
 
 // Panel type guards
