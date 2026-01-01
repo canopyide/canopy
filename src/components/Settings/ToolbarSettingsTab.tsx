@@ -360,6 +360,7 @@ export function ToolbarSettingsTab() {
                 <option value="claude">Claude</option>
                 <option value="gemini">Gemini</option>
                 <option value="codex">Codex</option>
+                <option value="opencode">OpenCode</option>
                 <option value="browser">Browser</option>
                 <option value="dev-server">Dev Server</option>
               </select>
