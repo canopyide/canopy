@@ -58,6 +58,11 @@ const BUTTON_METADATA: Record<
     icon: <Bot className="h-4 w-4" />,
     description: "Launch Codex AI agent",
   },
+  opencode: {
+    label: "OpenCode Agent",
+    icon: <Bot className="h-4 w-4" />,
+    description: "Launch OpenCode AI agent",
+  },
   terminal: {
     label: "Terminal",
     icon: <Terminal className="h-4 w-4" />,
