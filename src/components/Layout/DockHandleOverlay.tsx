@@ -1,30 +1,25 @@
 import { ChevronUp, ChevronDown } from "lucide-react";
-import { useShallow } from "zustand/react/shallow";
 import { cn } from "@/lib/utils";
 import { useDockStore } from "@/store";
 import { useKeybindingDisplay } from "@/hooks/useKeybinding";
+import { useDockRenderState } from "@/hooks/useDockRenderState";
 
 export function DockHandleOverlay() {
-  const { mode, setMode } = useDockStore(
-    useShallow((state) => ({
-      mode: state.mode,
-      setMode: state.setMode,
-    }))
-  );
+  const setMode = useDockStore((state) => state.setMode);
+  const { effectiveMode, isHandleVisible, shouldShowInLayout } = useDockRenderState();
 
   const toggleShortcut = useKeybindingDisplay("panel.toggleDock");
 
-  const isVisible = mode === "expanded" || mode === "slim";
-  const Icon = isVisible ? ChevronDown : ChevronUp;
+  const Icon = isHandleVisible ? ChevronDown : ChevronUp;
 
   const tooltipParts = [
-    isVisible ? "Hide dock" : "Show dock",
+    isHandleVisible ? "Hide dock" : "Show dock",
     toggleShortcut && `(${toggleShortcut})`,
   ].filter(Boolean);
   const tooltip = tooltipParts.join(" ");
 
   const handleClick = () => {
-    if (mode === "expanded" || mode === "slim") {
+    if (effectiveMode === "expanded" || effectiveMode === "slim") {
       setMode("hidden");
     } else {
       setMode("expanded");
@@ -48,7 +43,7 @@ export function DockHandleOverlay() {
         )}
         title={tooltip}
         aria-label={tooltip}
-        aria-expanded={isVisible}
+        aria-expanded={shouldShowInLayout}
       >
         <Icon className="w-3.5 h-3.5" aria-hidden="true" />
       </button>

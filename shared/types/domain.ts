@@ -233,6 +233,32 @@ export type TerminalLocation = PanelLocation;
 /** Dock display mode */
 export type DockMode = "expanded" | "slim" | "hidden";
 
+/**
+ * Dock behavior controls how the dock mode is determined:
+ * - "auto": Slim by default, expands when there are docked terminals
+ * - "manual": User controls the mode directly
+ */
+export type DockBehavior = "auto" | "manual";
+
+/**
+ * Centralized dock render state - computed once and consumed by all dock components.
+ * Prevents desync between components computing derived visibility independently.
+ */
+export interface DockRenderState {
+  /** The effective dock mode after applying behavior rules */
+  effectiveMode: DockMode;
+  /** Whether the dock content should render in the layout (takes up space) */
+  shouldShowInLayout: boolean;
+  /** Whether to show the floating status overlay (hidden/slim mode with status) */
+  showStatusOverlay: boolean;
+  /** Density for ContentDock components */
+  density: "normal" | "compact";
+  /** Whether the dock handle should show as "visible" (expanded/slim) or "hidden" */
+  isHandleVisible: boolean;
+  /** Whether hydration is complete */
+  isHydrated: boolean;
+}
+
 /** Type guard to check if a panel kind is a built-in kind */
 export function isBuiltInPanelKind(kind: PanelKind): kind is BuiltInPanelKind {
   return (
