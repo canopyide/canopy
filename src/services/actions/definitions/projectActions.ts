@@ -25,9 +25,7 @@ export function registerProjectActions(actions: ActionRegistry, _callbacks: Acti
         await useProjectStore.getState().addProject();
         return;
       }
-
-      const project = await projectClient.add(trimmedPath);
-      await useProjectStore.getState().switchProject(project.id);
+      await useProjectStore.getState().addProjectByPath(trimmedPath);
     },
   }));
 

@@ -6,6 +6,7 @@ import fs from "fs/promises";
 import { existsSync } from "fs";
 import { app } from "electron";
 import { GitService } from "./GitService.js";
+import { isCanopyError } from "../utils/errorTypes.js";
 
 const SETTINGS_FILENAME = "settings.json";
 
@@ -42,21 +43,41 @@ export class ProjectStore {
     return normalized;
   }
 
-  private async getGitRoot(projectPath: string): Promise<string | null> {
-    try {
-      const gitService = new GitService(projectPath);
-      const root = await gitService.getRepositoryRoot(projectPath);
-      const canonical = await fs.realpath(root);
-      return canonical;
-    } catch {
-      return null;
-    }
+  private async getGitRoot(projectPath: string): Promise<string> {
+    const gitService = new GitService(projectPath);
+    const root = await gitService.getRepositoryRoot(projectPath);
+    const canonical = await fs.realpath(root);
+    return canonical;
   }
 
   async addProject(projectPath: string): Promise<Project> {
-    const gitRoot = await this.getGitRoot(projectPath);
-    if (!gitRoot) {
-      throw new Error(`Not a git repository: ${projectPath}`);
+    let gitRoot: string;
+    try {
+      gitRoot = await this.getGitRoot(projectPath);
+    } catch (error) {
+      const message = error instanceof Error ? error.message : String(error);
+      const causeMessage =
+        isCanopyError(error) && error.cause instanceof Error ? error.cause.message : undefined;
+      const combined = [message, causeMessage].filter(Boolean).join("\n");
+      const lower = combined.toLowerCase();
+
+      if (lower.includes("spawn git enoent") || lower.includes("git: not found")) {
+        throw new Error(
+          "Git executable not found. Install Git and ensure it is available on your PATH."
+        );
+      }
+
+      if (lower.includes("dubious ownership") || lower.includes("safe.directory")) {
+        throw new Error(
+          "Git refused to open this repository due to 'dubious ownership'. Mark it as safe.directory and try again."
+        );
+      }
+
+      if (lower.includes("not a git repository")) {
+        throw new Error(`Not a git repository: ${projectPath}`);
+      }
+
+      throw new Error(combined || "Failed to open project");
     }
 
     const normalizedPath = path.normalize(gitRoot);

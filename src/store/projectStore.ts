@@ -3,6 +3,7 @@ import type { Project, ProjectCloseResult } from "@shared/types";
 import { projectClient, appClient } from "@/clients";
 import { resetAllStoresForProjectSwitch } from "./resetStores";
 import { flushTerminalPersistence } from "./slices";
+import { useNotificationStore } from "./notificationStore";
 
 interface ProjectState {
   projects: Project[];
@@ -13,10 +14,45 @@ interface ProjectState {
   loadProjects: () => Promise<void>;
   getCurrentProject: () => Promise<void>;
   addProject: () => Promise<void>;
+  addProjectByPath: (path: string) => Promise<void>;
   switchProject: (projectId: string) => Promise<void>;
   updateProject: (id: string, updates: Partial<Project>) => Promise<void>;
   removeProject: (id: string) => Promise<void>;
   closeProject: (projectId: string) => Promise<ProjectCloseResult>;
+}
+
+function getProjectOpenErrorMessage(error: unknown): string {
+  const message = error instanceof Error ? error.message : String(error);
+  const lower = message.toLowerCase();
+
+  if (lower.includes("spawn git enoent") || lower.includes("git: not found")) {
+    return "Git executable not found. Install Git and ensure it is available on your PATH.";
+  }
+
+  if (lower.includes("dubious ownership") || lower.includes("safe.directory")) {
+    return (
+      "Git refused to open this repository due to 'dubious ownership'. " +
+      "Mark it as safe.directory in Git settings and try again."
+    );
+  }
+
+  if (message.includes("Not a git repository")) {
+    return "The selected directory is not a Git repository.";
+  }
+
+  if (message.includes("Project path must be absolute")) {
+    return "Project path must be an absolute path.";
+  }
+
+  if (message.includes("ENOENT")) {
+    return "The selected directory does not exist.";
+  }
+
+  if (message.includes("EACCES") || message.includes("EPERM")) {
+    return "Permission denied. You don't have access to this directory.";
+  }
+
+  return message || "Failed to open project.";
 }
 
 const createProjectStore: StateCreator<ProjectState> = (set, get) => ({
@@ -24,6 +60,32 @@ const createProjectStore: StateCreator<ProjectState> = (set, get) => ({
   currentProject: null,
   isLoading: false,
   error: null,
+
+  addProjectByPath: async (path) => {
+    set({ isLoading: true, error: null });
+    try {
+      const resolvedPath = path.trim() || (await projectClient.openDialog());
+      if (!resolvedPath) {
+        set({ isLoading: false });
+        return;
+      }
+
+      const newProject = await projectClient.add(resolvedPath);
+
+      await get().loadProjects();
+      await get().switchProject(newProject.id);
+    } catch (error) {
+      console.error("Failed to add project:", error);
+      const message = getProjectOpenErrorMessage(error);
+      useNotificationStore.getState().addNotification({
+        type: "error",
+        title: "Failed to add project",
+        message,
+        duration: 6000,
+      });
+      set({ error: message, isLoading: false });
+    }
+  },
 
   loadProjects: async () => {
     set({ isLoading: true, error: null });
@@ -52,22 +114,7 @@ const createProjectStore: StateCreator<ProjectState> = (set, get) => ({
   },
 
   addProject: async () => {
-    set({ isLoading: true, error: null });
-    try {
-      const path = await projectClient.openDialog();
-      if (!path) {
-        set({ isLoading: false });
-        return;
-      }
-
-      const newProject = await projectClient.add(path);
-
-      await get().loadProjects();
-      await get().switchProject(newProject.id);
-    } catch (error) {
-      console.error("Failed to add project:", error);
-      set({ error: (error as Error).message, isLoading: false });
-    }
+    await get().addProjectByPath("");
   },
 
   switchProject: async (projectId) => {
@@ -110,7 +157,14 @@ const createProjectStore: StateCreator<ProjectState> = (set, get) => ({
       window.dispatchEvent(new CustomEvent("project-switched"));
     } catch (error) {
       console.error("Failed to switch project:", error);
-      set({ error: "Failed to switch project", isLoading: false });
+      const message = getProjectOpenErrorMessage(error);
+      useNotificationStore.getState().addNotification({
+        type: "error",
+        title: "Failed to switch project",
+        message,
+        duration: 6000,
+      });
+      set({ error: message, isLoading: false });
     }
   },
 
