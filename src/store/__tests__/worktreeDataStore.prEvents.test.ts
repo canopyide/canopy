@@ -97,6 +97,7 @@ function createMockWorktree(id: string, prNumber?: number): WorktreeState {
 describe("worktreeDataStore PR events", () => {
   beforeEach(() => {
     cleanupWorktreeDataStore();
+    useWorktreeDataStore.setState({ isInitialized: false });
     mockOnPRDetectedCallback = null;
     mockOnPRClearedCallback = null;
     mockOnIssueDetectedCallback = null;
