@@ -1,3 +1,4 @@
+// @vitest-environment jsdom
 import { describe, it, expect, beforeEach, vi } from "vitest";
 
 const projectClientMock = {
@@ -40,8 +41,13 @@ vi.mock("../resetStores", () => ({
   resetAllStoresForProjectSwitch: vi.fn().mockResolvedValue(undefined),
 }));
 
+vi.mock("../worktreeDataStore", () => ({
+  forceReinitializeWorktreeDataStore: vi.fn(),
+}));
+
 vi.mock("../slices", () => ({
   flushTerminalPersistence: vi.fn(),
+  createTerminalRegistrySlice: vi.fn(() => () => ({})),
 }));
 
 const { useProjectStore } = await import("../projectStore");
@@ -52,7 +58,7 @@ describe("projectStore addProject", () => {
     useProjectStore.setState({ projects: [], currentProject: null, isLoading: false, error: null });
   });
 
-  it("shows a notification when add fails for non-git directories", async () => {
+  it("shows a warning with action when add fails for non-git directories", async () => {
     projectClientMock.openDialog.mockResolvedValueOnce("/tmp/not-a-repo");
     projectClientMock.add.mockRejectedValueOnce(new Error("Not a git repository: /tmp/not-a-repo"));
 
@@ -60,16 +66,17 @@ describe("projectStore addProject", () => {
 
     expect(addNotificationMock).toHaveBeenCalledWith(
       expect.objectContaining({
-        type: "error",
-        title: "Failed to add project",
-        message: "The selected directory is not a Git repository.",
+        type: "warning",
+        title: "Not a Git repository",
+        message: "Would you like to initialize a Git repository in this directory?",
+        action: expect.objectContaining({
+          label: "Initialize Git",
+        }),
       })
     );
 
     expect(useProjectStore.getState().isLoading).toBe(false);
-    expect(useProjectStore.getState().error).toBe(
-      "The selected directory is not a Git repository."
-    );
+    expect(useProjectStore.getState().error).toBeNull();
   });
 
   it("does not notify when the dialog is cancelled", async () => {
