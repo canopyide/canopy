@@ -400,6 +400,7 @@ export function ContentGrid({ className, defaultCwd, agentAvailability }: Conten
         { id: "new:claude", label: "New Claude", enabled: canLaunch("claude") },
         { id: "new:gemini", label: "New Gemini", enabled: canLaunch("gemini") },
         { id: "new:codex", label: "New Codex", enabled: canLaunch("codex") },
+        { id: "new:opencode", label: "New OpenCode", enabled: canLaunch("opencode") },
         { type: "separator" },
         {
           id: "layout",
@@ -437,6 +438,7 @@ export function ContentGrid({ className, defaultCwd, agentAvailability }: Conten
           | "claude"
           | "gemini"
           | "codex"
+          | "opencode"
           | "terminal"
           | "browser";
         void actionService.dispatch(
