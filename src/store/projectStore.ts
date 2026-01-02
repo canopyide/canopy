@@ -1,8 +1,9 @@
 import { create, type StateCreator } from "zustand";
 import type { Project, ProjectCloseResult } from "@shared/types";
-import { projectClient } from "@/clients";
+import { projectClient, appClient } from "@/clients";
 import { resetAllStoresForProjectSwitch } from "./resetStores";
 import { forceReinitializeWorktreeDataStore } from "./worktreeDataStore";
+import { flushTerminalPersistence } from "./slices";
 import { useNotificationStore } from "./notificationStore";
 
 interface ProjectState {
