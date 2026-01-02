@@ -135,6 +135,7 @@ export const CHANNELS = {
   PROJECT_SAVE_SETTINGS: "project:save-settings",
   PROJECT_DETECT_RUNNERS: "project:detect-runners",
   PROJECT_CLOSE: "project:close",
+  PROJECT_REOPEN: "project:reopen",
   PROJECT_GET_STATS: "project:get-stats",
   PROJECT_INIT_GIT: "project:init-git",
 
