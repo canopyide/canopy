@@ -41,6 +41,11 @@ function groupProjects(
       const hasProcesses = stats && stats.processCount > 0;
       const isBackground = project.status === "background";
 
+      // Debug: log project grouping decisions
+      console.log(
+        `[ProjectSwitcher] Grouping "${project.name}": status=${project.status}, hasProcesses=${hasProcesses}, isBackground=${isBackground}`
+      );
+
       // Projects with running processes or explicitly backgrounded
       if (hasProcesses || isBackground) {
         groups.background.push(project);
@@ -323,8 +328,8 @@ export function ProjectSwitcher() {
 
         {isActive && <Check className="h-4 w-4 text-canopy-accent ml-2 shrink-0" />}
 
-        {/* Actions for non-active projects */}
-        {!isActive && isRunning && (
+        {/* Actions for non-active projects with background status or running processes */}
+        {!isActive && (isRunning || isBackground) && (
           <div className="flex items-center gap-0.5 shrink-0">
             {isBackground && (
               <button
@@ -337,15 +342,17 @@ export function ProjectSwitcher() {
                 <PlayCircle className="h-4 w-4" />
               </button>
             )}
-            <button
-              type="button"
-              onClick={(e) => handleCloseProject(project.id, e, true)}
-              className="p-1 rounded hover:bg-destructive/20 text-muted-foreground hover:text-destructive transition-colors"
-              title="Stop all terminals and close project"
-              aria-label="Stop all terminals and close project"
-            >
-              <StopCircle className="h-4 w-4" />
-            </button>
+            {isRunning && (
+              <button
+                type="button"
+                onClick={(e) => handleCloseProject(project.id, e, true)}
+                className="p-1 rounded hover:bg-destructive/20 text-muted-foreground hover:text-destructive transition-colors"
+                title="Stop all terminals and close project"
+                aria-label="Stop all terminals and close project"
+              >
+                <StopCircle className="h-4 w-4" />
+              </button>
+            )}
           </div>
         )}
       </DropdownMenuItem>

@@ -193,6 +193,7 @@ export function registerTerminalSnapshotHandlers(deps: HandlerDependencies): () 
         type: terminal.type,
         cwd: terminal.cwd,
         agentState: terminal.agentState,
+        lastStateChange: terminal.lastStateChange,
       };
     } catch (error) {
       const errorMessage = error instanceof Error ? error.message : String(error);

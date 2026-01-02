@@ -109,8 +109,10 @@ export class TerminalRegistry {
     const result: string[] = [];
     for (const [id, terminal] of this.terminals) {
       const info = terminal.getInfo();
-      const terminalProjectId = info.projectId || this.lastKnownProjectId;
-      if (terminalProjectId === projectId) {
+      // Only match terminals that explicitly belong to this project.
+      // Don't use lastKnownProjectId fallback - terminals without projectId
+      // should not be counted for any project in stats queries.
+      if (info.projectId === projectId) {
         result.push(id);
       }
     }
@@ -124,8 +126,10 @@ export class TerminalRegistry {
   } {
     const projectTerminals = Array.from(this.terminals.values()).filter((t) => {
       const info = t.getInfo();
-      const terminalProjectId = info.projectId || this.lastKnownProjectId;
-      return terminalProjectId === projectId;
+      // Only count terminals that explicitly belong to this project.
+      // Don't use lastKnownProjectId fallback for stats - this prevents
+      // background project terminals from being misattributed to the active project.
+      return info.projectId === projectId;
     });
 
     const processIds = projectTerminals
