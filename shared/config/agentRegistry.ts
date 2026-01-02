@@ -359,7 +359,7 @@ export const AGENT_REGISTRY: Record<string, AgentConfig> = {
         "Press again to interrupt",
       ],
       fallbackPatterns: ["[⠋⠙⠹⠸⠼⠴⠦⠧⠇⠏]\\s+\\w", "working[…\\.]+", "generating"],
-      bootCompletePatterns: ["^\\s*opencode\\s+v?\\d"],
+      bootCompletePatterns: ["Ask anything", "Build\\s+OpenCode"],
       scanLineCount: 10,
       primaryConfidence: 0.95,
       fallbackConfidence: 0.7,
