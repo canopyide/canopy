@@ -478,11 +478,16 @@ export const createTerminalRegistrySlice =
           }
 
           const isAgent = kind === "agent";
+          const isReconnect = !!options.existingId;
 
-          // Start with "working" in UI to show spinner immediately during boot
-          const agentState = options.agentState ?? (isAgent ? "working" : undefined);
-          const lastStateChange =
-            options.lastStateChange ?? (agentState !== undefined ? Date.now() : undefined);
+          // For reconnects, use the backend's state directly - don't default to "working".
+          // For new spawns, start with "working" in UI to show spinner immediately during boot.
+          const agentState = isReconnect
+            ? options.agentState
+            : (options.agentState ?? (isAgent ? "working" : undefined));
+          const lastStateChange = isReconnect
+            ? options.lastStateChange
+            : (options.lastStateChange ?? (agentState !== undefined ? Date.now() : undefined));
 
           const terminal: TerminalInstance = {
             id,

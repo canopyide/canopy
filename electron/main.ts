@@ -556,10 +556,12 @@ async function createWindow(): Promise<void> {
   // Spawn Default Terminal
   console.log("[MAIN] Spawning default terminal...");
   try {
+    const currentProjectId = projectStore.getCurrentProjectId();
     ptyClient.spawn(DEFAULT_TERMINAL_ID, {
       cwd: process.env.HOME || os.homedir(),
       cols: 80,
       rows: 30,
+      projectId: currentProjectId ?? undefined,
     });
   } catch (error) {
     console.error("[MAIN] Failed to spawn default terminal:", error);

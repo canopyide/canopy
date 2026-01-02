@@ -123,6 +123,9 @@ export async function hydrateAppState(options: HydrationOptions): Promise<void> 
 
             const cwd = terminal.cwd || projectRoot || "";
             const currentAgentState = reconnectResult.agentState as AgentState | undefined;
+            // Use the backend's lastStateChange timestamp to preserve agent state timing.
+            // This prevents the stale event check from rejecting valid state updates.
+            const backendLastStateChange = reconnectResult.lastStateChange as number | undefined;
             // Derive agentId from type if it's a registered agent
             const agentId =
               terminal.type && isRegisteredAgent(terminal.type) ? terminal.type : undefined;
@@ -137,7 +140,7 @@ export async function hydrateAppState(options: HydrationOptions): Promise<void> 
               location: "grid", // Default to grid - dock location isn't persisted in backend
               existingId: terminal.id, // Reconnect to existing process
               agentState: currentAgentState,
-              lastStateChange: currentAgentState ? Date.now() : undefined,
+              lastStateChange: backendLastStateChange,
             });
 
             // Restore terminal content from backend headless state

@@ -159,6 +159,12 @@ export class ProjectStore {
 
   getAllProjects(): Project[] {
     const projects = store.get("projects.list", []);
+    if (process.env.CANOPY_VERBOSE) {
+      console.log(
+        "[ProjectStore] getAllProjects statuses:",
+        projects.map((p) => ({ name: p.name, status: p.status }))
+      );
+    }
     return projects.sort((a, b) => b.lastOpened - a.lastOpened);
   }
 
@@ -189,14 +195,14 @@ export class ProjectStore {
       throw new Error(`Project not found: ${projectId}`);
     }
 
-    // Mark the previous active project as background (if any and not already closed)
+    // Mark the previous active project as background (if any)
+    // Always set to background when switching away - the status will be used
+    // by the UI to show the project in the Background section
     const previousProjectId = this.getCurrentProjectId();
     if (previousProjectId && previousProjectId !== projectId) {
-      const previousProject = this.getProjectById(previousProjectId);
-      if (previousProject && previousProject.status !== "closed") {
-        // Mark as background - terminals keep running but UI state is cleared
-        this.updateProjectStatus(previousProjectId, "background");
-      }
+      // Mark as background - terminals keep running but UI state is cleared
+      console.log(`[ProjectStore] Marking previous project ${previousProjectId} as background`);
+      this.updateProjectStatus(previousProjectId, "background");
     }
 
     store.set("projects.currentProjectId", projectId);

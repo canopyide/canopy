@@ -56,6 +56,7 @@ interface TerminalInfoResponse {
   cwd: string;
   worktreeId?: string;
   agentState?: string;
+  lastStateChange?: number;
   spawnedAt: number;
 }
 

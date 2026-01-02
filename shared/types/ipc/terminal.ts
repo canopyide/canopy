@@ -121,6 +121,7 @@ export interface TerminalReconnectResult {
   type?: TerminalType;
   cwd?: string;
   agentState?: string;
+  lastStateChange?: number;
   error?: string;
 }
 
