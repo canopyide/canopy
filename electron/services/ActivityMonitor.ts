@@ -94,7 +94,7 @@ export class ActivityMonitor {
 
   // Polling debounce state
   private readonly POLLING_MAX_BOOT_MS = 15000; // Max 15s boot time before forcing boot complete
-  private readonly POLLING_IDLE_DEBOUNCE_MS = 1000; // Wait 1s before transitioning to idle
+  private readonly POLLING_IDLE_DEBOUNCE_MS = 5000; // Wait 5s before transitioning to idle
   private readonly POLLING_BOOT_IDLE_DEBOUNCE_MS = 250; // Quick idle after boot completes
   private patternLostTime = 0; // When the pattern was last lost
   private pollingStartTime = 0; // When polling started
@@ -406,10 +406,8 @@ export class ActivityMonitor {
     }
 
     this.debounceTimer = setTimeout(() => {
-      // Polling terminals: just transition to idle - polling is sole source of truth
+      // Polling terminals: let polling be sole source of truth for state transitions
       if (this.getVisibleLines) {
-        this.state = "idle";
-        this.onStateChange(this.terminalId, this.spawnedAt, "idle");
         this.debounceTimer = null;
         return;
       }
