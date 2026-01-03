@@ -11,6 +11,11 @@ export function groupProjects(
   currentProjectId: string | null,
   projectStats: Map<string, ProjectStats>
 ): GroupedProjects {
+  const isVerbose =
+    typeof process !== "undefined" &&
+    typeof process.env !== "undefined" &&
+    Boolean(process.env.CANOPY_VERBOSE);
+
   const groups: GroupedProjects = {
     active: [],
     background: [],
@@ -18,7 +23,7 @@ export function groupProjects(
   };
 
   // Debug logging (gated for performance)
-  if (process.env.CANOPY_VERBOSE) {
+  if (isVerbose) {
     console.log("[ProjectSwitcher] groupProjects called:", {
       projectCount: projects.length,
       currentProjectId: currentProjectId?.slice(0, 8),
@@ -46,7 +51,7 @@ export function groupProjects(
       const isBackground = project.status === "background";
 
       // Debug: log decision for each non-active project
-      if (process.env.CANOPY_VERBOSE) {
+      if (isVerbose) {
         console.log(`[ProjectSwitcher] Grouping "${project.name}":`, {
           status: project.status,
           isBackground,
@@ -74,7 +79,7 @@ export function groupProjects(
   // Sort recent projects by lastOpened (most recent first)
   groups.recent.sort((a, b) => b.lastOpened - a.lastOpened);
 
-  if (process.env.CANOPY_VERBOSE) {
+  if (isVerbose) {
     console.log("[ProjectSwitcher] Grouping result:", {
       active: groups.active.map((p) => p.name),
       background: groups.background.map((p) => p.name),
