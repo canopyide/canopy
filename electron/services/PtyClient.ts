@@ -750,8 +750,18 @@ export class PtyClient extends EventEmitter {
   }
 
   spawn(id: string, options: PtyHostSpawnOptions): void {
-    this.pendingSpawns.set(id, options);
-    this.send({ type: "spawn", id, options });
+    const activeProjectId = this.activeProjectId ?? undefined;
+    const normalizedProjectId =
+      typeof options.projectId === "string" && options.projectId.trim()
+        ? options.projectId
+        : undefined;
+
+    const resolvedProjectId = normalizedProjectId ?? activeProjectId;
+    const resolvedOptions =
+      resolvedProjectId !== undefined ? { ...options, projectId: resolvedProjectId } : options;
+
+    this.pendingSpawns.set(id, resolvedOptions);
+    this.send({ type: "spawn", id, options: resolvedOptions });
   }
 
   write(id: string, data: string, traceId?: string): void {
