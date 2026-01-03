@@ -257,10 +257,27 @@ export class ProjectStore {
       // Mark as background - terminals keep running but UI state is cleared
       console.log(`[ProjectStore] Marking previous project ${previousProjectId} as background`);
       this.updateProjectStatus(previousProjectId, "background");
+
+      // Verify the update was applied
+      if (process.env.CANOPY_VERBOSE) {
+        const updatedPrevious = this.getProjectById(previousProjectId);
+        console.log(
+          `[ProjectStore] Previous project status after update: ${updatedPrevious?.status}`
+        );
+      }
     }
 
     store.set("projects.currentProjectId", projectId);
     this.updateProject(projectId, { lastOpened: Date.now(), status: "active" });
+
+    // Log final state for debugging
+    if (process.env.CANOPY_VERBOSE) {
+      console.log(`[ProjectStore] setCurrentProject complete:`, {
+        newCurrentId: projectId,
+        previousId: previousProjectId,
+        allStatuses: this.getAllProjects().map((p) => ({ name: p.name, status: p.status })),
+      });
+    }
   }
 
   /**

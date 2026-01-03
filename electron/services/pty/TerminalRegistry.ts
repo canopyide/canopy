@@ -124,7 +124,23 @@ export class TerminalRegistry {
     processIds: number[];
     terminalTypes: Record<string, number>;
   } {
-    const projectTerminals = Array.from(this.terminals.values()).filter((t) => {
+    // Debug: log all terminals and their projectIds
+    const allTerminals = Array.from(this.terminals.values());
+    if (process.env.CANOPY_VERBOSE) {
+      console.log(`[TerminalRegistry] getProjectStats for ${projectId.slice(0, 8)}:`, {
+        totalTerminals: allTerminals.length,
+        terminalProjectIds: allTerminals.map((t) => {
+          const info = t.getInfo();
+          return {
+            id: info.id.slice(0, 8),
+            projectId: info.projectId?.slice(0, 8) ?? "undefined",
+            type: info.type,
+          };
+        }),
+      });
+    }
+
+    const projectTerminals = allTerminals.filter((t) => {
       const info = t.getInfo();
       // Only count terminals that explicitly belong to this project.
       // Don't use lastKnownProjectId fallback for stats - this prevents
@@ -145,6 +161,13 @@ export class TerminalRegistry {
       },
       {} as Record<string, number>
     );
+
+    if (process.env.CANOPY_VERBOSE) {
+      console.log(`[TerminalRegistry] Stats result for ${projectId.slice(0, 8)}:`, {
+        matchingTerminals: projectTerminals.length,
+        terminalTypes,
+      });
+    }
 
     return {
       terminalCount: projectTerminals.length,
