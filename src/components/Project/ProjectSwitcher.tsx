@@ -1,9 +1,11 @@
 import { useEffect, useState, useRef, useCallback, useMemo } from "react";
-import { ChevronsUpDown, Plus, Check, Circle, PlayCircle, StopCircle } from "lucide-react";
+import { ChevronsUpDown, Plus, Check, Circle } from "lucide-react";
+import { useShallow } from "zustand/react/shallow";
 import { cn } from "@/lib/utils";
 import { getProjectGradient } from "@/lib/colorUtils";
 import { useProjectStore } from "@/store/projectStore";
 import { useNotificationStore } from "@/store/notificationStore";
+import { useTerminalStore } from "@/store/terminalStore";
 import {
   DropdownMenu,
   DropdownMenuContent,
@@ -13,9 +15,17 @@ import {
   DropdownMenuTrigger,
 } from "@/components/ui/dropdown-menu";
 import { Button } from "@/components/ui/button";
-import { projectClient } from "@/clients";
+import { projectClient, terminalClient } from "@/clients";
+import { panelKindHasPty } from "@shared/config/panelKindRegistry";
 import type { Project, ProjectStats } from "@shared/types";
 import { groupProjects } from "./projectGrouping";
+import { ProjectActionRow } from "./ProjectActionRow";
+
+interface ProjectTerminalCounts {
+  activeCount: number;
+  waitingCount: number;
+  knownCount: number;
+}
 
 export function ProjectSwitcher() {
   const {
@@ -30,10 +40,33 @@ export function ProjectSwitcher() {
     reopenProject,
   } = useProjectStore();
 
+  const activeProjectTerminalCounts = useTerminalStore(
+    useShallow((state) => {
+      let activeCount = 0;
+      let waitingCount = 0;
+
+      for (const terminal of state.terminals) {
+        if (!panelKindHasPty(terminal.kind ?? "terminal")) continue;
+        const agentState = terminal.agentState;
+        if (agentState === "waiting") {
+          waitingCount += 1;
+        } else if (agentState === "working" || agentState === "running" || agentState == null) {
+          activeCount += 1;
+        }
+      }
+
+      return { activeCount, waitingCount };
+    })
+  );
+
   const { addNotification } = useNotificationStore();
   const [isOpen, setIsOpen] = useState(false);
   const [projectStats, setProjectStats] = useState<Map<string, ProjectStats>>(new Map());
+  const [terminalCounts, setTerminalCounts] = useState<Map<string, ProjectTerminalCounts>>(
+    new Map()
+  );
   const [isLoadingStats, setIsLoadingStats] = useState(false);
+  const [isLoadingTerminalCounts, setIsLoadingTerminalCounts] = useState(false);
   const switchTimeoutRef = useRef<NodeJS.Timeout | null>(null);
 
   const handleProjectSwitch = (projectId: string) => {
@@ -88,12 +121,56 @@ export function ProjectSwitcher() {
     }
   }, []);
 
+  const fetchProjectTerminalCounts = useCallback(async (projectsToFetch: Project[]) => {
+    setIsLoadingTerminalCounts(true);
+    const nextCounts = new Map<string, ProjectTerminalCounts>();
+
+    try {
+      const results = await Promise.allSettled(
+        projectsToFetch.map((project) => terminalClient.getForProject(project.id))
+      );
+
+      results.forEach((result, index) => {
+        if (result.status !== "fulfilled") {
+          console.warn(
+            `Failed to fetch terminals for ${projectsToFetch[index].id}:`,
+            result.reason
+          );
+          return;
+        }
+
+        let activeCount = 0;
+        let waitingCount = 0;
+
+        for (const terminal of result.value) {
+          const agentState = terminal.agentState;
+          if (agentState === "waiting") {
+            waitingCount += 1;
+          } else if (agentState === "working" || agentState === "running" || agentState == null) {
+            activeCount += 1;
+          }
+        }
+
+        nextCounts.set(projectsToFetch[index].id, {
+          activeCount,
+          waitingCount,
+          knownCount: result.value.length,
+        });
+      });
+
+      setTerminalCounts(nextCounts);
+    } finally {
+      setIsLoadingTerminalCounts(false);
+    }
+  }, []);
+
   const handleCloseProject = async (
     projectId: string,
     e: React.MouseEvent,
     killTerminals: boolean = false
   ) => {
-    e.stopPropagation(); // Prevent dropdown from closing
+    e.stopPropagation();
+    e.preventDefault();
 
     const stats = projectStats.get(projectId);
     const project = projects.find((p) => p.id === projectId);
@@ -133,6 +210,23 @@ export function ProjectSwitcher() {
       const result = await closeProject(projectId, { killTerminals });
 
       if (killTerminals) {
+        setProjectStats((prev) => {
+          const next = new Map(prev);
+          next.set(projectId, {
+            processCount: 0,
+            terminalCount: 0,
+            estimatedMemoryMB: 0,
+            terminalTypes: {},
+            processIds: [],
+          });
+          return next;
+        });
+        setTerminalCounts((prev) => {
+          const next = new Map(prev);
+          next.set(projectId, { activeCount: 0, waitingCount: 0, knownCount: 0 });
+          return next;
+        });
+
         addNotification({
           type: "success",
           title: "Project stopped",
@@ -150,7 +244,10 @@ export function ProjectSwitcher() {
 
       // Refresh stats after close
       const updatedProjects = await projectClient.getAll();
-      await fetchProjectStats(updatedProjects);
+      await Promise.all([
+        fetchProjectStats(updatedProjects),
+        fetchProjectTerminalCounts(updatedProjects),
+      ]);
     } catch (error) {
       addNotification({
         type: "error",
@@ -216,7 +313,10 @@ export function ProjectSwitcher() {
         await loadProjects();
         const freshProjects = await projectClient.getAll();
         if (!cancelled && freshProjects.length > 0) {
-          await fetchProjectStats(freshProjects);
+          await Promise.all([
+            fetchProjectStats(freshProjects),
+            fetchProjectTerminalCounts(freshProjects),
+          ]);
         }
       } finally {
         inFlight = false;
@@ -230,7 +330,7 @@ export function ProjectSwitcher() {
       cancelled = true;
       clearInterval(interval);
     };
-  }, [isOpen, fetchProjectStats, loadProjects]);
+  }, [isOpen, fetchProjectStats, fetchProjectTerminalCounts, loadProjects]);
 
   const renderIcon = (emoji: string, color?: string, sizeClass = "h-9 w-9 text-lg") => (
     <div
@@ -251,99 +351,90 @@ export function ProjectSwitcher() {
     [projects, currentProject?.id, projectStats]
   );
 
-  const getStatsTooltip = (stats: ProjectStats | undefined) => {
-    if (!stats || stats.processCount === 0) return "";
-    const parts = [];
-    parts.push(`${stats.terminalCount} terminal${stats.terminalCount !== 1 ? "s" : ""}`);
-    parts.push(`~${stats.estimatedMemoryMB} MB`);
-    return parts.join(", ");
-  };
-
   const renderProjectItem = (project: Project, isActive: boolean) => {
     const stats = projectStats.get(project.id);
-    const isRunning = stats && stats.processCount > 0;
     const isBackground = project.status === "background";
+    const isCurrentProject = currentProject?.id === project.id;
+    const counts = terminalCounts.get(project.id);
+    const devPreviewCount = Math.max(0, (stats?.terminalCount ?? 0) - (counts?.knownCount ?? 0));
+    const activeTerminalCount = isCurrentProject
+      ? activeProjectTerminalCounts.activeCount
+      : counts
+        ? counts.activeCount + devPreviewCount
+        : null;
+    const waitingTerminalCount = isCurrentProject
+      ? activeProjectTerminalCounts.waitingCount
+      : counts
+        ? counts.waitingCount
+        : null;
+    const hasProcesses = Boolean(stats && stats.processCount > 0);
+    const showTerminate =
+      project.status === "active" || project.status === "background" || isActive || hasProcesses;
+    const isCountsLoading = !isCurrentProject && !counts && isLoadingTerminalCounts;
+    const showRunningBadge = !isBackground && hasProcesses && !isActive;
 
     return (
       <DropdownMenuItem
         key={project.id}
         onClick={(e) => {
-          if (!isActive && !isLoading) {
-            // Use reopen for background projects, switch for others
-            if (isBackground) {
-              handleReopenProject(project.id, e);
-            } else {
-              handleProjectSwitch(project.id);
-            }
+          if (isLoading) return;
+          if (isActive && currentProject) return;
+
+          if (isBackground) {
+            handleReopenProject(project.id, e);
+          } else {
+            handleProjectSwitch(project.id);
           }
         }}
         disabled={isLoading}
         className={cn(
-          "gap-2 p-2 cursor-pointer mb-0.5 rounded-[var(--radius-md)] transition-colors",
-          isActive && "bg-white/[0.03]"
+          "p-2.5 cursor-pointer mb-1 rounded-[var(--radius-lg)]",
+          "flex flex-col items-stretch gap-2",
+          "transition-colors",
+          isActive ? "bg-white/[0.04]" : "hover:bg-white/[0.03]"
         )}
       >
-        <div className="w-3 flex items-center justify-center shrink-0">
-          {isRunning && (
-            <span title={getStatsTooltip(stats)} aria-label={`Running: ${getStatsTooltip(stats)}`}>
-              <Circle className="h-2 w-2 fill-green-500 text-green-500" />
-            </span>
-          )}
-        </div>
+        <div className="flex items-center gap-3 min-w-0">
+          {renderIcon(project.emoji || "🌲", project.color, "h-8 w-8 text-base")}
 
-        {renderIcon(project.emoji || "🌲", project.color, "h-8 w-8 text-base")}
-
-        <div className="flex flex-col min-w-0 flex-1">
-          <div className="flex items-center gap-1.5">
-            <span
-              className={cn(
-                "truncate text-sm font-medium",
-                isActive ? "text-foreground" : "text-foreground/80"
-              )}
-            >
-              {project.name}
-            </span>
-            {isBackground && (
-              <span className="text-[9px] px-1 py-0.5 rounded bg-muted/50 text-muted-foreground uppercase tracking-wider shrink-0">
-                BG
+          <div className="flex flex-col min-w-0 flex-1 gap-0.5">
+            <div className="flex items-center gap-2 min-w-0">
+              <span
+                className={cn(
+                  "truncate text-sm font-semibold",
+                  isActive ? "text-foreground" : "text-foreground/85"
+                )}
+              >
+                {project.name}
               </span>
-            )}
+              {isBackground && (
+                <span className="text-[10px] px-2 py-0.5 rounded-full bg-white/[0.03] border border-white/[0.06] text-muted-foreground uppercase tracking-wider shrink-0">
+                  Background
+                </span>
+              )}
+              {showRunningBadge && (
+                <span className="text-[10px] px-2 py-0.5 rounded-full bg-emerald-500/10 border border-emerald-500/20 text-emerald-300/90 uppercase tracking-wider shrink-0">
+                  Running
+                </span>
+              )}
+            </div>
+            <span className="truncate text-[11px] font-mono text-muted-foreground/65">
+              {project.path.split(/[/\\]/).pop()}
+            </span>
           </div>
-          <span className="truncate text-[11px] font-mono text-muted-foreground/70">
-            {project.path.split(/[/\\]/).pop()}
-          </span>
+
+          {isActive && <Check className="h-4 w-4 text-canopy-accent shrink-0" />}
         </div>
 
-        {/* Actions for projects with background status or running processes */}
-        {(isRunning || isBackground) && (
-          <div className="flex items-center gap-0.5 shrink-0">
-            {isBackground && !isActive && (
-              <button
-                type="button"
-                onClick={(e) => handleReopenProject(project.id, e)}
-                className="p-1 rounded hover:bg-canopy-accent/20 text-muted-foreground hover:text-canopy-accent transition-colors"
-                title="Reopen project"
-                aria-label="Reopen project"
-              >
-                <PlayCircle className="h-4 w-4" />
-              </button>
-            )}
-            {/* Show stop button for background projects (have terminals by definition) or running stats */}
-            {(isBackground || isRunning) && (
-              <button
-                type="button"
-                onClick={(e) => handleCloseProject(project.id, e, true)}
-                className="p-1 rounded hover:bg-destructive/20 text-muted-foreground hover:text-destructive transition-colors"
-                title="Stop all terminals for this project"
-                aria-label="Stop all terminals for this project"
-              >
-                <StopCircle className="h-4 w-4" />
-              </button>
-            )}
-          </div>
-        )}
-
-        {isActive && <Check className="h-4 w-4 text-canopy-accent ml-2 shrink-0" />}
+        <ProjectActionRow
+          activeCount={activeTerminalCount}
+          waitingCount={waitingTerminalCount}
+          isLoading={isCountsLoading}
+          showTerminate={showTerminate}
+          terminateDisabled={isLoading}
+          onTerminate={(e) => void handleCloseProject(project.id, e, true)}
+          className="pl-11"
+        />
       </DropdownMenuItem>
     );
   };
@@ -372,7 +463,7 @@ export function ProjectSwitcher() {
             <Circle
               className={cn(
                 "h-2 w-2 fill-green-500 text-green-500",
-                isLoadingStats && "animate-pulse"
+                (isLoadingStats || isLoadingTerminalCounts) && "animate-pulse"
               )}
             />
             Background ({groupedProjects.background.length})
@@ -412,37 +503,19 @@ export function ProjectSwitcher() {
               <ChevronsUpDown className="h-4 w-4 opacity-50" />
             </Button>
           </DropdownMenuTrigger>
-          <DropdownMenuContent className="w-64 max-h-[300px] overflow-y-auto p-1" align="start">
-            <DropdownMenuLabel className="text-xs font-medium text-muted-foreground/70 uppercase tracking-wider px-2 py-1.5">
-              Projects
-            </DropdownMenuLabel>
+          <DropdownMenuContent
+            className="w-[440px] max-w-[calc(100vw-2rem)] max-h-[60vh] overflow-y-auto p-2"
+            align="start"
+          >
+            {renderGroupedProjects()}
 
-            {projects.map((project) => (
-              <DropdownMenuItem
-                key={project.id}
-                onClick={() => handleProjectSwitch(project.id)}
-                className="gap-3 p-2 group cursor-pointer"
-              >
-                {renderIcon(project.emoji || "🌲", project.color, "h-8 w-8 text-base")}
-                <div className="flex flex-col min-w-0 flex-1">
-                  <span className="font-medium truncate">{project.name}</span>
-                  <span className="text-[11px] font-mono text-muted-foreground truncate">
-                    {project.path.split(/[/\\]/).pop()}
-                  </span>
-                </div>
-              </DropdownMenuItem>
-            ))}
+            <DropdownMenuSeparator className="my-1 bg-border/40" />
 
-            <DropdownMenuSeparator />
-
-            <DropdownMenuItem
-              onClick={addProject}
-              className="gap-3 p-2 cursor-pointer text-muted-foreground focus:text-foreground"
-            >
+            <DropdownMenuItem onClick={addProject} className="gap-3 p-2 cursor-pointer">
               <div className="flex h-8 w-8 items-center justify-center rounded-[var(--radius-lg)] border border-dashed border-muted-foreground/30 bg-muted/20">
                 <Plus className="h-4 w-4" />
               </div>
-              <span className="font-medium">Add Project...</span>
+              <span className="font-medium text-sm text-muted-foreground">Add Project...</span>
             </DropdownMenuItem>
           </DropdownMenuContent>
         </DropdownMenu>
@@ -494,7 +567,7 @@ export function ProjectSwitcher() {
       </DropdownMenuTrigger>
 
       <DropdownMenuContent
-        className="w-[260px] max-h-[60vh] overflow-y-auto p-1"
+        className="w-[440px] max-w-[calc(100vw-2rem)] max-h-[60vh] overflow-y-auto p-2"
         align="start"
         sideOffset={8}
       >

@@ -1,5 +1,6 @@
 import { useRef, useState, useEffect, useMemo, useCallback } from "react";
 import type React from "react";
+import { useShallow } from "zustand/react/shallow";
 import { Button } from "@/components/ui/button";
 import { FixedDropdown } from "@/components/ui/fixed-dropdown";
 import {
@@ -24,8 +25,6 @@ import {
   StickyNote,
   Rocket,
   Circle,
-  PlayCircle,
-  StopCircle,
 } from "lucide-react";
 import { cn } from "@/lib/utils";
 import { getProjectGradient } from "@/lib/colorUtils";
@@ -36,7 +35,12 @@ import { useWorktreeActions } from "@/hooks/useWorktreeActions";
 import { useProjectSettings } from "@/hooks";
 import { useProjectStore } from "@/store/projectStore";
 import { useNotificationStore } from "@/store/notificationStore";
-import { useSidecarStore, usePreferencesStore, useToolbarPreferencesStore } from "@/store";
+import {
+  useSidecarStore,
+  usePreferencesStore,
+  useToolbarPreferencesStore,
+  useTerminalStore,
+} from "@/store";
 import type { ToolbarButtonId } from "@/../../shared/types/domain";
 import { useWorktreeSelectionStore } from "@/store/worktreeStore";
 import { useWorktreeDataStore } from "@/store/worktreeDataStore";
@@ -52,9 +56,17 @@ import {
 } from "@/components/ui/dropdown-menu";
 import type { CliAvailability, AgentSettings, Project, ProjectStats } from "@shared/types";
 import type { MenuItemOption } from "@/types";
-import { projectClient } from "@/clients";
+import { projectClient, terminalClient } from "@/clients";
 import { actionService } from "@/services/ActionService";
 import { groupProjects } from "@/components/Project/projectGrouping";
+import { ProjectActionRow } from "@/components/Project/ProjectActionRow";
+import { panelKindHasPty } from "@shared/config/panelKindRegistry";
+
+interface ProjectTerminalCounts {
+  activeCount: number;
+  waitingCount: number;
+  knownCount: number;
+}
 
 interface ToolbarProps {
   onLaunchAgent: (
@@ -96,6 +108,24 @@ export function Toolbar({
     activeWorktreeId ? state.worktrees.get(activeWorktreeId) : null
   );
   const branchName = activeWorktree?.branch;
+  const activeProjectTerminalCounts = useTerminalStore(
+    useShallow((state) => {
+      let activeCount = 0;
+      let waitingCount = 0;
+
+      for (const terminal of state.terminals) {
+        if (!panelKindHasPty(terminal.kind ?? "terminal")) continue;
+        const agentState = terminal.agentState;
+        if (agentState === "waiting") {
+          waitingCount += 1;
+        } else if (agentState === "working" || agentState === "running" || agentState == null) {
+          activeCount += 1;
+        }
+      }
+
+      return { activeCount, waitingCount };
+    })
+  );
   const handleProjectSwitch = (projectId: string) => {
     void actionService.dispatch("project.switch", { projectId }, { source: "user" });
   };
@@ -124,6 +154,10 @@ export function Toolbar({
   const [isFullscreen, setIsFullscreen] = useState(false);
   const [projectStats, setProjectStats] = useState<Map<string, ProjectStats>>(new Map());
   const [isLoadingProjectStats, setIsLoadingProjectStats] = useState(false);
+  const [terminalCounts, setTerminalCounts] = useState<Map<string, ProjectTerminalCounts>>(
+    new Map()
+  );
+  const [isLoadingTerminalCounts, setIsLoadingTerminalCounts] = useState(false);
   const [treeCopied, setTreeCopied] = useState(false);
   const [isCopyingTree, setIsCopyingTree] = useState(false);
   const [copyFeedback, setCopyFeedback] = useState<string>("");
@@ -158,6 +192,49 @@ export function Toolbar({
     }
   }, []);
 
+  const fetchProjectTerminalCounts = useCallback(async (projectsToFetch: Project[]) => {
+    setIsLoadingTerminalCounts(true);
+    const nextCounts = new Map<string, ProjectTerminalCounts>();
+
+    try {
+      const results = await Promise.allSettled(
+        projectsToFetch.map((project) => terminalClient.getForProject(project.id))
+      );
+
+      results.forEach((result, index) => {
+        if (result.status !== "fulfilled") {
+          console.warn(
+            `Failed to fetch terminals for ${projectsToFetch[index].id}:`,
+            result.reason
+          );
+          return;
+        }
+
+        let activeCount = 0;
+        let waitingCount = 0;
+
+        for (const terminal of result.value) {
+          const agentState = terminal.agentState;
+          if (agentState === "waiting") {
+            waitingCount += 1;
+          } else if (agentState === "working" || agentState === "running" || agentState == null) {
+            activeCount += 1;
+          }
+        }
+
+        nextCounts.set(projectsToFetch[index].id, {
+          activeCount,
+          waitingCount,
+          knownCount: result.value.length,
+        });
+      });
+
+      setTerminalCounts(nextCounts);
+    } finally {
+      setIsLoadingTerminalCounts(false);
+    }
+  }, []);
+
   useEffect(() => {
     if (!projectSelectorOpen) return;
 
@@ -172,7 +249,10 @@ export function Toolbar({
         await loadProjects();
         const freshProjects = await projectClient.getAll();
         if (!cancelled && freshProjects.length > 0) {
-          await fetchProjectStats(freshProjects);
+          await Promise.all([
+            fetchProjectStats(freshProjects),
+            fetchProjectTerminalCounts(freshProjects),
+          ]);
         }
       } finally {
         inFlight = false;
@@ -186,22 +266,12 @@ export function Toolbar({
       cancelled = true;
       clearInterval(interval);
     };
-  }, [projectSelectorOpen, fetchProjectStats, loadProjects]);
+  }, [projectSelectorOpen, fetchProjectStats, fetchProjectTerminalCounts, loadProjects]);
 
   const groupedProjects = useMemo(
     () => groupProjects(projects, currentProject?.id ?? null, projectStats),
     [projects, currentProject?.id, projectStats]
   );
-
-  const getStatsTooltip = (projectStat: ProjectStats | undefined) => {
-    if (!projectStat || projectStat.processCount === 0) return "";
-    const parts = [];
-    parts.push(
-      `${projectStat.terminalCount} terminal${projectStat.terminalCount !== 1 ? "s" : ""}`
-    );
-    parts.push(`~${projectStat.estimatedMemoryMB} MB`);
-    return parts.join(", ");
-  };
 
   const handleStopProject = async (projectId: string, e: React.MouseEvent) => {
     e.stopPropagation();
@@ -227,6 +297,24 @@ export function Toolbar({
 
     try {
       const result = await closeProject(projectId, { killTerminals: true });
+
+      setProjectStats((prev) => {
+        const next = new Map(prev);
+        next.set(projectId, {
+          processCount: 0,
+          terminalCount: 0,
+          estimatedMemoryMB: 0,
+          terminalTypes: {},
+          processIds: [],
+        });
+        return next;
+      });
+      setTerminalCounts((prev) => {
+        const next = new Map(prev);
+        next.set(projectId, { activeCount: 0, waitingCount: 0, knownCount: 0 });
+        return next;
+      });
+
       addNotification({
         type: "success",
         title: "Project stopped",
@@ -235,7 +323,10 @@ export function Toolbar({
       });
 
       const updatedProjects = await projectClient.getAll();
-      await fetchProjectStats(updatedProjects);
+      await Promise.all([
+        fetchProjectStats(updatedProjects),
+        fetchProjectTerminalCounts(updatedProjects),
+      ]);
     } catch (error) {
       addNotification({
         type: "error",
@@ -248,8 +339,28 @@ export function Toolbar({
 
   const renderProjectItem = (project: Project, isActive: boolean) => {
     const projectStat = projectStats.get(project.id);
-    const isRunning = projectStat && projectStat.processCount > 0;
     const isBackground = project.status === "background";
+    const isCurrentProject = currentProject?.id === project.id;
+    const counts = terminalCounts.get(project.id);
+    const devPreviewCount = Math.max(
+      0,
+      (projectStat?.terminalCount ?? 0) - (counts?.knownCount ?? 0)
+    );
+    const activeTerminalCount = isCurrentProject
+      ? activeProjectTerminalCounts.activeCount
+      : counts
+        ? counts.activeCount + devPreviewCount
+        : null;
+    const waitingTerminalCount = isCurrentProject
+      ? activeProjectTerminalCounts.waitingCount
+      : counts
+        ? counts.waitingCount
+        : null;
+    const hasProcesses = Boolean(projectStat && projectStat.processCount > 0);
+    const showTerminate =
+      project.status === "active" || project.status === "background" || isActive || hasProcesses;
+    const isCountsLoading = !isCurrentProject && !counts && isLoadingTerminalCounts;
+    const showRunningBadge = !isBackground && hasProcesses && !isActive;
 
     return (
       <DropdownMenuItem
@@ -260,79 +371,57 @@ export function Toolbar({
           }
         }}
         className={cn(
-          "gap-2 p-2 cursor-pointer mb-0.5 rounded-[var(--radius-md)] transition-colors",
-          isActive && "bg-white/[0.03]"
+          "p-2.5 cursor-pointer mb-1 rounded-[var(--radius-lg)]",
+          "flex flex-col items-stretch gap-2",
+          "transition-colors",
+          isActive ? "bg-white/[0.04]" : "hover:bg-white/[0.03]"
         )}
       >
-        <div className="w-3 flex items-center justify-center shrink-0">
-          {isRunning && (
-            <span
-              title={getStatsTooltip(projectStat)}
-              aria-label={`Running: ${getStatsTooltip(projectStat)}`}
-            >
-              <Circle
+        <div className="flex items-center gap-3 min-w-0">
+          <div
+            className="flex h-8 w-8 items-center justify-center rounded-[var(--radius-lg)] text-base shrink-0 shadow-[inset_0_1px_0_rgba(255,255,255,0.06)]"
+            style={{ background: getProjectGradient(project.color) }}
+          >
+            {project.emoji}
+          </div>
+
+          <div className="flex flex-col min-w-0 flex-1 gap-0.5">
+            <div className="flex items-center gap-2 min-w-0">
+              <span
                 className={cn(
-                  "h-2 w-2 fill-green-500 text-green-500",
-                  isLoadingProjectStats && "animate-pulse"
+                  "truncate text-sm font-semibold",
+                  isActive ? "text-foreground" : "text-foreground/85"
                 )}
-              />
-            </span>
-          )}
-        </div>
-
-        <div
-          className="flex h-7 w-7 items-center justify-center rounded-[var(--radius-md)] text-sm shrink-0"
-          style={{ background: getProjectGradient(project.color) }}
-        >
-          {project.emoji}
-        </div>
-
-        <div className="flex flex-col min-w-0 flex-1">
-          <div className="flex items-center gap-1.5">
-            <span className={cn("truncate text-sm font-medium", isActive && "text-foreground")}>
-              {project.name}
-            </span>
-            {isBackground && (
-              <span className="text-[9px] px-1 py-0.5 rounded bg-muted/50 text-muted-foreground uppercase tracking-wider shrink-0">
-                BG
-              </span>
-            )}
-          </div>
-          <span className="truncate text-[11px] font-mono text-muted-foreground/70">
-            {project.path.split(/[/\\]/).pop()}
-          </span>
-        </div>
-
-        {(isRunning || isBackground) && (
-          <div className="flex items-center gap-0.5 shrink-0">
-            {!isActive && (
-              <button
-                type="button"
-                onClick={(e) => {
-                  e.stopPropagation();
-                  e.preventDefault();
-                  handleProjectSwitch(project.id);
-                }}
-                className="p-1 rounded hover:bg-canopy-accent/20 text-muted-foreground hover:text-canopy-accent transition-colors"
-                title="Open project"
-                aria-label="Open project"
               >
-                <PlayCircle className="h-4 w-4" />
-              </button>
-            )}
-            <button
-              type="button"
-              onClick={(e) => void handleStopProject(project.id, e)}
-              className="p-1 rounded hover:bg-destructive/20 text-muted-foreground hover:text-destructive transition-colors"
-              title="Stop all terminals for this project"
-              aria-label="Stop all terminals for this project"
-            >
-              <StopCircle className="h-4 w-4" />
-            </button>
+                {project.name}
+              </span>
+              {isBackground && (
+                <span className="text-[10px] px-2 py-0.5 rounded-full bg-white/[0.03] border border-white/[0.06] text-muted-foreground uppercase tracking-wider shrink-0">
+                  Background
+                </span>
+              )}
+              {showRunningBadge && (
+                <span className="text-[10px] px-2 py-0.5 rounded-full bg-emerald-500/10 border border-emerald-500/20 text-emerald-300/90 uppercase tracking-wider shrink-0">
+                  Running
+                </span>
+              )}
+            </div>
+            <span className="truncate text-[11px] font-mono text-muted-foreground/65">
+              {project.path.split(/[/\\]/).pop()}
+            </span>
           </div>
-        )}
 
-        {isActive && <Check className="h-4 w-4 text-canopy-accent shrink-0" />}
+          {isActive && <Check className="h-4 w-4 text-canopy-accent shrink-0" />}
+        </div>
+
+        <ProjectActionRow
+          activeCount={activeTerminalCount}
+          waitingCount={waitingTerminalCount}
+          isLoading={isCountsLoading}
+          showTerminate={showTerminate}
+          onTerminate={(e) => void handleStopProject(project.id, e)}
+          className="pl-11"
+        />
       </DropdownMenuItem>
     );
   };
@@ -886,7 +975,7 @@ export function Toolbar({
             </button>
           </DropdownMenuTrigger>
           <DropdownMenuContent
-            className="w-[260px] max-h-[60vh] overflow-y-auto p-1"
+            className="w-[440px] max-w-[calc(100vw-2rem)] max-h-[60vh] overflow-y-auto p-2"
             align="center"
             onInteractOutside={(event) => {
               const target = event.target as HTMLElement;
@@ -916,7 +1005,7 @@ export function Toolbar({
                   <Circle
                     className={cn(
                       "h-2 w-2 fill-green-500 text-green-500",
-                      isLoadingProjectStats && "animate-pulse"
+                      (isLoadingProjectStats || isLoadingTerminalCounts) && "animate-pulse"
                     )}
                   />
                   Background ({groupedProjects.background.length})
