@@ -294,7 +294,7 @@ export function registerProjectHandlers(deps: HandlerDependencies): () => void {
 
     const storeActiveProjectId = projectStore.getCurrentProjectId();
 
-    if (projectId === storeActiveProjectId) {
+    if (projectId === storeActiveProjectId && !killTerminals) {
       throw new Error("Cannot close the active project. Switch to another project first.");
     }
 
@@ -318,8 +318,10 @@ export function registerProjectHandlers(deps: HandlerDependencies): () => void {
         // Clear persisted state
         await projectStore.clearProjectState(projectId);
 
-        // Set status to 'closed' (no running processes)
-        projectStore.updateProjectStatus(projectId, "closed");
+        // Set status to 'closed' (no running processes) unless this is the active project
+        if (projectId !== storeActiveProjectId) {
+          projectStore.updateProjectStatus(projectId, "closed");
+        }
 
         console.log(
           `[IPC] project:close: Killed ${terminalsKilled} process(es) ` +
