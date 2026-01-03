@@ -61,6 +61,8 @@ interface TerminalInfoResponse {
   agentState?: AgentState;
   lastStateChange?: number;
   spawnedAt: number;
+  isTrashed?: boolean;
+  trashExpiresAt?: number;
 }
 
 export interface PtyClientConfig {

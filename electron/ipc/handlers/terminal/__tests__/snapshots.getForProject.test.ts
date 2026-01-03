@@ -110,7 +110,7 @@ describe("terminal:get-for-project handler", () => {
       projectId: string
     ) => Promise<unknown[]>;
 
-    const result = await handler({}, "project-1");
+    const result = (await handler({}, "project-1")) as any[];
 
     expect(Array.isArray(result)).toBe(true);
     expect(result).toHaveLength(2);
