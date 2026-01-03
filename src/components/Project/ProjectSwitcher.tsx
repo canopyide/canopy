@@ -1,5 +1,5 @@
 import { useEffect, useState, useRef, useCallback, useMemo } from "react";
-import { ChevronsUpDown, Plus, Check, Circle } from "lucide-react";
+import { ChevronsUpDown, Plus, Circle, StopCircle } from "lucide-react";
 import { useShallow } from "zustand/react/shallow";
 import { cn } from "@/lib/utils";
 import { getProjectGradient } from "@/lib/colorUtils";
@@ -18,13 +18,14 @@ import { Button } from "@/components/ui/button";
 import { projectClient, terminalClient } from "@/clients";
 import { panelKindHasPty } from "@shared/config/panelKindRegistry";
 import type { Project, ProjectStats } from "@shared/types";
+import { isAgentTerminal } from "@/utils/terminalType";
 import { groupProjects } from "./projectGrouping";
 import { ProjectActionRow } from "./ProjectActionRow";
 
 interface ProjectTerminalCounts {
-  activeCount: number;
-  waitingCount: number;
-  knownCount: number;
+  activeAgentCount: number;
+  waitingAgentCount: number;
+  terminalCount: number;
 }
 
 export function ProjectSwitcher() {
@@ -42,20 +43,29 @@ export function ProjectSwitcher() {
 
   const activeProjectTerminalCounts = useTerminalStore(
     useShallow((state) => {
-      let activeCount = 0;
-      let waitingCount = 0;
+      let activeAgentCount = 0;
+      let waitingAgentCount = 0;
+      let terminalCount = 0;
 
       for (const terminal of state.terminals) {
         if (!panelKindHasPty(terminal.kind ?? "terminal")) continue;
+        if (terminal.kind === "dev-preview") continue;
+
         const agentState = terminal.agentState;
-        if (agentState === "waiting") {
-          waitingCount += 1;
-        } else if (agentState === "working" || agentState === "running" || agentState == null) {
-          activeCount += 1;
+        const isAgent = isAgentTerminal(terminal.kind ?? terminal.type, terminal.agentId);
+
+        if (isAgent) {
+          if (agentState === "waiting") {
+            waitingAgentCount += 1;
+          } else if (agentState === "working" || agentState === "running" || agentState == null) {
+            activeAgentCount += 1;
+          }
+        } else {
+          terminalCount += 1;
         }
       }
 
-      return { activeCount, waitingCount };
+      return { activeAgentCount, waitingAgentCount, terminalCount };
     })
   );
 
@@ -139,22 +149,32 @@ export function ProjectSwitcher() {
           return;
         }
 
-        let activeCount = 0;
-        let waitingCount = 0;
+        let activeAgentCount = 0;
+        let waitingAgentCount = 0;
+        let terminalCount = 0;
 
         for (const terminal of result.value) {
+          if (!panelKindHasPty(terminal.kind ?? "terminal")) continue;
+          if (terminal.kind === "dev-preview") continue;
+
           const agentState = terminal.agentState;
-          if (agentState === "waiting") {
-            waitingCount += 1;
-          } else if (agentState === "working" || agentState === "running" || agentState == null) {
-            activeCount += 1;
+          const isAgent = isAgentTerminal(terminal.kind ?? terminal.type, terminal.agentId);
+
+          if (isAgent) {
+            if (agentState === "waiting") {
+              waitingAgentCount += 1;
+            } else if (agentState === "working" || agentState === "running" || agentState == null) {
+              activeAgentCount += 1;
+            }
+          } else {
+            terminalCount += 1;
           }
         }
 
         nextCounts.set(projectsToFetch[index].id, {
-          activeCount,
-          waitingCount,
-          knownCount: result.value.length,
+          activeAgentCount,
+          waitingAgentCount,
+          terminalCount,
         });
       });
 
@@ -177,18 +197,7 @@ export function ProjectSwitcher() {
 
     if (killTerminals) {
       // Kill mode: confirm before killing processes
-      const isBackground = project?.status === "background";
       const processCount = stats?.processCount;
-
-      if (!isBackground && (!processCount || processCount === 0)) {
-        addNotification({
-          type: "info",
-          title: "No processes running",
-          message: "This project has no active processes to close",
-          duration: 3000,
-        });
-        return;
-      }
 
       const name = project?.name ?? "this project";
       const confirmMessage =
@@ -223,7 +232,7 @@ export function ProjectSwitcher() {
         });
         setTerminalCounts((prev) => {
           const next = new Map(prev);
-          next.set(projectId, { activeCount: 0, waitingCount: 0, knownCount: 0 });
+          next.set(projectId, { activeAgentCount: 0, waitingAgentCount: 0, terminalCount: 0 });
           return next;
         });
 
@@ -356,22 +365,24 @@ export function ProjectSwitcher() {
     const isBackground = project.status === "background";
     const isCurrentProject = currentProject?.id === project.id;
     const counts = terminalCounts.get(project.id);
-    const devPreviewCount = Math.max(0, (stats?.terminalCount ?? 0) - (counts?.knownCount ?? 0));
-    const activeTerminalCount = isCurrentProject
-      ? activeProjectTerminalCounts.activeCount
+    const activeAgentCount = isCurrentProject
+      ? activeProjectTerminalCounts.activeAgentCount
       : counts
-        ? counts.activeCount + devPreviewCount
+        ? counts.activeAgentCount
         : null;
-    const waitingTerminalCount = isCurrentProject
-      ? activeProjectTerminalCounts.waitingCount
+    const waitingAgentCount = isCurrentProject
+      ? activeProjectTerminalCounts.waitingAgentCount
       : counts
-        ? counts.waitingCount
+        ? counts.waitingAgentCount
+        : null;
+    const terminalCount = isCurrentProject
+      ? activeProjectTerminalCounts.terminalCount
+      : counts
+        ? counts.terminalCount
         : null;
     const hasProcesses = Boolean(stats && stats.processCount > 0);
-    const showTerminate =
+    const showStop =
       project.status === "active" || project.status === "background" || isActive || hasProcesses;
-    const isCountsLoading = !isCurrentProject && !counts && isLoadingTerminalCounts;
-    const showRunningBadge = !isBackground && hasProcesses && !isActive;
 
     return (
       <DropdownMenuItem
@@ -388,16 +399,31 @@ export function ProjectSwitcher() {
         }}
         disabled={isLoading}
         className={cn(
-          "p-2.5 cursor-pointer mb-1 rounded-[var(--radius-lg)]",
-          "flex flex-col items-stretch gap-2",
-          "transition-colors",
+          "p-2 cursor-pointer mb-1 rounded-[var(--radius-lg)] items-start transition-colors",
+          showStop && "pr-9",
           isActive ? "bg-white/[0.04]" : "hover:bg-white/[0.03]"
         )}
       >
-        <div className="flex items-center gap-3 min-w-0">
+        {showStop && (
+          <button
+            type="button"
+            onClick={(e) => void handleCloseProject(project.id, e, true)}
+            className={cn(
+              "absolute top-2 right-2 p-1 rounded transition-colors",
+              "text-muted-foreground/60 hover:text-red-500 hover:bg-red-500/10",
+              "focus-visible:outline focus-visible:outline-2 focus-visible:outline-canopy-accent"
+            )}
+            title="Stop project"
+            aria-label="Stop project"
+          >
+            <StopCircle className="w-4 h-4" aria-hidden="true" />
+          </button>
+        )}
+
+        <div className="flex items-start gap-3 w-full min-w-0">
           {renderIcon(project.emoji || "🌲", project.color, "h-8 w-8 text-base")}
 
-          <div className="flex flex-col min-w-0 flex-1 gap-0.5">
+          <div className="min-w-0 flex-1">
             <div className="flex items-center gap-2 min-w-0">
               <span
                 className={cn(
@@ -407,34 +433,21 @@ export function ProjectSwitcher() {
               >
                 {project.name}
               </span>
-              {isBackground && (
-                <span className="text-[10px] px-2 py-0.5 rounded-full bg-white/[0.03] border border-white/[0.06] text-muted-foreground uppercase tracking-wider shrink-0">
-                  Background
-                </span>
-              )}
-              {showRunningBadge && (
-                <span className="text-[10px] px-2 py-0.5 rounded-full bg-emerald-500/10 border border-emerald-500/20 text-emerald-300/90 uppercase tracking-wider shrink-0">
-                  Running
-                </span>
-              )}
             </div>
-            <span className="truncate text-[11px] font-mono text-muted-foreground/65">
-              {project.path.split(/[/\\]/).pop()}
-            </span>
+
+            <div className="flex items-center gap-2 min-w-0">
+              <span className="truncate flex-1 text-[11px] font-mono text-muted-foreground/65">
+                {project.path.split(/[/\\]/).pop()}
+              </span>
+
+              <ProjectActionRow
+                activeAgentCount={activeAgentCount}
+                waitingAgentCount={waitingAgentCount}
+                terminalCount={terminalCount}
+              />
+            </div>
           </div>
-
-          {isActive && <Check className="h-4 w-4 text-canopy-accent shrink-0" />}
         </div>
-
-        <ProjectActionRow
-          activeCount={activeTerminalCount}
-          waitingCount={waitingTerminalCount}
-          isLoading={isCountsLoading}
-          showTerminate={showTerminate}
-          terminateDisabled={isLoading}
-          onTerminate={(e) => void handleCloseProject(project.id, e, true)}
-          className="pl-11"
-        />
       </DropdownMenuItem>
     );
   };
