@@ -38,7 +38,10 @@ export function registerTerminalLifecycleHandlers(deps: HandlerDependencies): ()
 
     const id = validatedOptions.id || crypto.randomUUID();
 
-    const projectPath = projectStore.getCurrentProject()?.path;
+    // Snapshot current project ONCE to avoid race conditions during async filesystem checks
+    const currentProject = projectStore.getCurrentProject();
+    const projectId = currentProject?.id;
+    const projectPath = currentProject?.path;
 
     let cwd = validatedOptions.cwd || projectPath || process.env.HOME || os.homedir();
 
@@ -69,8 +72,23 @@ export function registerTerminalLifecycleHandlers(deps: HandlerDependencies): ()
       cwd = await getValidatedFallback();
     }
 
-    const currentProject = projectStore.getCurrentProject();
-    const projectId = currentProject?.id;
+    // Debug: log projectId assignment
+    if (process.env.CANOPY_VERBOSE) {
+      console.log(`[TerminalSpawn] Spawning terminal ${id.slice(0, 8)}:`, {
+        projectId: projectId?.slice(0, 8) ?? "undefined",
+        projectName: currentProject?.name ?? "none",
+        kind,
+        type,
+      });
+    }
+
+    // Warn if spawning without projectId - this will cause stats issues
+    if (!projectId) {
+      console.warn(
+        `[TerminalSpawn] Terminal ${id.slice(0, 8)} spawned without projectId - ` +
+          "stats will not track this terminal for any project"
+      );
+    }
 
     try {
       ptyClient.spawn(id, {

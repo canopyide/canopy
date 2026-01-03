@@ -33,6 +33,20 @@ function groupProjects(
     recent: [],
   };
 
+  // Debug logging (gated for performance)
+  if (process.env.CANOPY_VERBOSE) {
+    console.log("[ProjectSwitcher] groupProjects called:", {
+      projectCount: projects.length,
+      currentProjectId: currentProjectId?.slice(0, 8),
+      statsCount: projectStats.size,
+      projects: projects.map((p) => ({
+        name: p.name,
+        status: p.status,
+        id: p.id.slice(0, 8),
+      })),
+    });
+  }
+
   for (const project of projects) {
     // Treat project as active if it matches currentProjectId OR has status "active"
     // This handles race conditions where currentProject state is stale
@@ -42,6 +56,16 @@ function groupProjects(
       const stats = projectStats.get(project.id);
       const hasProcesses = stats && stats.processCount > 0;
       const isBackground = project.status === "background";
+
+      // Debug: log decision for each non-active project
+      if (process.env.CANOPY_VERBOSE) {
+        console.log(`[ProjectSwitcher] Grouping "${project.name}":`, {
+          status: project.status,
+          isBackground,
+          hasProcesses,
+          processCount: stats?.processCount ?? "no stats",
+        });
+      }
 
       // Projects with running processes or explicitly backgrounded
       if (hasProcesses || isBackground) {
@@ -62,6 +86,14 @@ function groupProjects(
   // Sort recent projects by lastOpened (most recent first)
   groups.recent.sort((a, b) => b.lastOpened - a.lastOpened);
 
+  if (process.env.CANOPY_VERBOSE) {
+    console.log("[ProjectSwitcher] Grouping result:", {
+      active: groups.active.map((p) => p.name),
+      background: groups.background.map((p) => p.name),
+      recent: groups.recent.map((p) => p.name),
+    });
+  }
+
   return groups;
 }
 
@@ -81,6 +113,7 @@ export function ProjectSwitcher() {
   const { addNotification } = useNotificationStore();
   const [isOpen, setIsOpen] = useState(false);
   const [projectStats, setProjectStats] = useState<Map<string, ProjectStats>>(new Map());
+  const [isLoadingStats, setIsLoadingStats] = useState(false);
   const switchTimeoutRef = useRef<NodeJS.Timeout | null>(null);
 
   const handleProjectSwitch = (projectId: string) => {
@@ -100,22 +133,41 @@ export function ProjectSwitcher() {
     }, 1500);
   };
 
-  const fetchProjectStats = useCallback(async () => {
-    const stats = new Map<string, ProjectStats>();
-    const results = await Promise.allSettled(
-      projects.map((project) => projectClient.getStats(project.id))
-    );
+  const fetchProjectStats = useCallback(
+    async (projectsToFetch: Project[]) => {
+      setIsLoadingStats(true);
+      const stats = new Map<string, ProjectStats>();
 
-    results.forEach((result, index) => {
-      if (result.status === "fulfilled") {
-        stats.set(projects[index].id, result.value);
-      } else {
-        console.warn(`Failed to fetch stats for ${projects[index].id}:`, result.reason);
+      try {
+        const results = await Promise.allSettled(
+          projectsToFetch.map((project) => projectClient.getStats(project.id))
+        );
+
+        results.forEach((result, index) => {
+          if (result.status === "fulfilled") {
+            stats.set(projectsToFetch[index].id, result.value);
+            // Debug: log stats for each project
+            if (process.env.CANOPY_VERBOSE) {
+              console.log(
+                `[ProjectSwitcher] Stats for "${projectsToFetch[index].name}":`,
+                result.value
+              );
+            }
+          } else {
+            console.warn(
+              `Failed to fetch stats for ${projectsToFetch[index].id}:`,
+              result.reason
+            );
+          }
+        });
+
+        setProjectStats(stats);
+      } finally {
+        setIsLoadingStats(false);
       }
-    });
-
-    setProjectStats(stats);
-  }, [projects]);
+    },
+    []
+  );
 
   const handleCloseProject = async (
     projectId: string,
@@ -171,7 +223,8 @@ export function ProjectSwitcher() {
       }
 
       // Refresh stats after close
-      await fetchProjectStats();
+      const updatedProjects = await projectClient.getAll();
+      await fetchProjectStats(updatedProjects);
     } catch (error) {
       addNotification({
         type: "error",
@@ -221,25 +274,37 @@ export function ProjectSwitcher() {
     };
   }, [loadProjects, getCurrentProject]);
 
-  // Poll for project stats when dropdown is open
+  // Refresh projects and fetch stats when dropdown opens
   useEffect(() => {
     if (!isOpen || projects.length === 0) return;
 
     let cancelled = false;
+    let inFlight = false;
 
     const runFetch = async () => {
-      if (cancelled) return;
-      await fetchProjectStats();
+      if (cancelled || inFlight) return;
+      inFlight = true;
+
+      try {
+        // Refresh project list to get latest statuses, then fetch stats
+        await loadProjects();
+        const freshProjects = await projectClient.getAll();
+        if (!cancelled) {
+          await fetchProjectStats(freshProjects);
+        }
+      } finally {
+        inFlight = false;
+      }
     };
 
     void runFetch(); // Initial fetch
-    const interval = setInterval(() => void runFetch(), 5000); // Poll every 5s
+    const interval = setInterval(() => void runFetch(), 10000); // Poll every 10s (reduced from 5s)
 
     return () => {
       cancelled = true;
       clearInterval(interval);
     };
-  }, [isOpen, projects, fetchProjectStats]);
+  }, [isOpen, fetchProjectStats, loadProjects]);
 
   const renderIcon = (emoji: string, color?: string, sizeClass = "h-9 w-9 text-lg") => (
     <div
@@ -377,7 +442,12 @@ export function ProjectSwitcher() {
         <div key="background">
           {sections.length > 0 && <DropdownMenuSeparator className="my-1 bg-border/40" />}
           <DropdownMenuLabel className="text-[11px] font-semibold text-muted-foreground/50 uppercase tracking-widest px-2 py-1.5 flex items-center gap-2">
-            <Circle className="h-2 w-2 fill-green-500 text-green-500" />
+            <Circle
+              className={cn(
+                "h-2 w-2 fill-green-500 text-green-500",
+                isLoadingStats && "animate-pulse"
+              )}
+            />
             Background ({groupedProjects.background.length})
           </DropdownMenuLabel>
           {groupedProjects.background.map((project) => renderProjectItem(project, false))}
