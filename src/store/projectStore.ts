@@ -224,8 +224,8 @@ const createProjectStore: StateCreator<ProjectState> = (set, get) => ({
   closeProject: async (projectId, options) => {
     const currentProjectId = get().currentProject?.id;
 
-    // Prevent closing active project
-    if (projectId === currentProjectId) {
+    // Prevent closing active project unless explicitly killing terminals (stop mode).
+    if (projectId === currentProjectId && !options?.killTerminals) {
       throw new Error("Cannot close the active project. Switch to another project first.");
     }
 

@@ -539,6 +539,11 @@ async function createWindow(): Promise<void> {
   // Now fully ready
   createAndDistributePorts();
 
+  // Ensure PTY host has an active project context even on cold start (no explicit switch yet).
+  // This is important for project-aware PTY spawns that don't explicitly set projectId.
+  const currentProjectId = projectStore.getCurrentProjectId();
+  ptyClient.setActiveProject(currentProjectId);
+
   // Load the current project's worktrees if there is one
   const currentProject = projectStore.getCurrentProject();
   if (currentProject && workspaceClient) {
@@ -556,7 +561,6 @@ async function createWindow(): Promise<void> {
   // Spawn Default Terminal
   console.log("[MAIN] Spawning default terminal...");
   try {
-    const currentProjectId = projectStore.getCurrentProjectId();
     ptyClient.spawn(DEFAULT_TERMINAL_ID, {
       cwd: process.env.HOME || os.homedir(),
       cols: 80,
