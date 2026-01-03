@@ -102,6 +102,7 @@ export class DevPreviewService extends EventEmitter {
       cwd,
       cols,
       rows,
+      kind: "dev-preview",
     });
     setTimeout(() => {
       if (this.ptyClient.hasTerminal(ptyId)) {

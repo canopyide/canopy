@@ -48,9 +48,13 @@ function groupProjects(
   }
 
   for (const project of projects) {
-    // Treat project as active if it matches currentProjectId OR has status "active"
-    // This handles race conditions where currentProject state is stale
-    if (project.id === currentProjectId || project.status === "active") {
+    // Active project is the currentProjectId. As a fallback (e.g. initial load), treat a project
+    // marked "active" as active only when currentProjectId is unknown to avoid hiding actions
+    // for background projects due to stale status.
+    const isActive =
+      project.id === currentProjectId || (currentProjectId == null && project.status === "active");
+
+    if (isActive) {
       groups.active.push(project);
     } else {
       const stats = projectStats.get(project.id);
