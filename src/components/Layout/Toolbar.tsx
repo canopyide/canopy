@@ -390,7 +390,7 @@ export function Toolbar({
           }
         }}
         className={cn(
-          "p-2 cursor-pointer mb-1 rounded-[var(--radius-lg)] items-start transition-colors",
+          "p-2 cursor-pointer mb-1 rounded-[var(--radius-lg)] transition-colors",
           showStop && "pr-9",
           isActive ? "bg-white/[0.04]" : "hover:bg-white/[0.03]"
         )}
@@ -411,7 +411,7 @@ export function Toolbar({
           </button>
         )}
 
-        <div className="flex items-start gap-3 w-full min-w-0">
+        <div className="flex items-center gap-3 w-full min-w-0">
           <div
             className="flex h-8 w-8 items-center justify-center rounded-[var(--radius-lg)] text-base shrink-0 shadow-[inset_0_1px_0_rgba(255,255,255,0.06)]"
             style={{ background: getProjectGradient(project.color) }}
@@ -423,24 +423,25 @@ export function Toolbar({
             <div className="flex items-center gap-2 min-w-0">
               <span
                 className={cn(
-                  "truncate text-sm font-semibold",
+                  "truncate text-sm font-semibold leading-tight",
                   isActive ? "text-foreground" : "text-foreground/85"
                 )}
               >
                 {project.name}
-              </span>
-            </div>
-
-            <div className="flex items-center gap-2 min-w-0">
-              <span className="truncate flex-1 text-[11px] font-mono text-muted-foreground/65">
-                {project.path.split(/[/\\]/).pop()}
               </span>
 
               <ProjectActionRow
                 activeAgentCount={activeAgentCount}
                 waitingAgentCount={waitingAgentCount}
                 terminalCount={terminalCount}
+                className="ml-auto"
               />
+            </div>
+
+            <div className="flex items-center min-w-0 mt-0.5">
+              <span className="truncate text-[11px] leading-none font-mono text-muted-foreground/65">
+                {project.path.split(/[/\\]/).pop()}
+              </span>
             </div>
           </div>
         </div>
