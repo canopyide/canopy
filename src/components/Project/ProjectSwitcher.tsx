@@ -57,6 +57,11 @@ export function ProjectSwitcher() {
     setIsLoadingStats(true);
     const stats = new Map<string, ProjectStats>();
 
+    const isVerbose =
+      typeof process !== "undefined" &&
+      typeof process.env !== "undefined" &&
+      Boolean(process.env.CANOPY_VERBOSE);
+
     try {
       const results = await Promise.allSettled(
         projectsToFetch.map((project) => projectClient.getStats(project.id))
@@ -66,7 +71,7 @@ export function ProjectSwitcher() {
         if (result.status === "fulfilled") {
           stats.set(projectsToFetch[index].id, result.value);
           // Debug: log stats for each project
-          if (process.env.CANOPY_VERBOSE) {
+          if (isVerbose) {
             console.log(
               `[ProjectSwitcher] Stats for "${projectsToFetch[index].name}":`,
               result.value
