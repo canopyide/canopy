@@ -33,6 +33,8 @@ export function AgentSettings({ onSettingsChange }: AgentSettingsProps) {
   const [copiedCommand, setCopiedCommand] = useState<string | null>(null);
   const copyTimeoutRef = useRef<NodeJS.Timeout | null>(null);
   const isMountedRef = useRef(true);
+  const scrollContainerRef = useRef<HTMLDivElement | null>(null);
+  const activePillRef = useRef<HTMLButtonElement | null>(null);
 
   useEffect(() => {
     initialize();
@@ -112,6 +114,16 @@ export function AgentSettings({ onSettingsChange }: AgentSettingsProps) {
     }
   }, [activeAgentId, agentIds]);
 
+  useEffect(() => {
+    if (activePillRef.current && scrollContainerRef.current) {
+      activePillRef.current.scrollIntoView({
+        behavior: "smooth",
+        block: "nearest",
+        inline: "center",
+      });
+    }
+  }, [activeAgentId]);
+
   const agentOptions = useMemo(
     () =>
       agentIds
@@ -186,8 +198,12 @@ export function AgentSettings({ onSettingsChange }: AgentSettingsProps) {
           </p>
         </div>
 
-        {/* Agent Selector - Grid of pills */}
-        <div className="grid grid-cols-3 gap-1.5 p-1.5 bg-canopy-bg rounded-[var(--radius-lg)] border border-canopy-border">
+        {/* Agent Selector - Horizontal scrolling pills */}
+        <div
+          ref={scrollContainerRef}
+          tabIndex={0}
+          className="flex gap-1.5 p-1.5 bg-canopy-bg rounded-[var(--radius-lg)] border border-canopy-border overflow-x-auto scrollbar-thin focus:outline-none focus:ring-2 focus:ring-canopy-accent/50"
+        >
           {agentOptions.map((agent) => {
             if (!agent) return null;
             const Icon = agent.Icon;
@@ -195,9 +211,10 @@ export function AgentSettings({ onSettingsChange }: AgentSettingsProps) {
             return (
               <button
                 key={agent.id}
+                ref={isActive ? activePillRef : null}
                 onClick={() => setActiveAgentId(agent.id)}
                 className={cn(
-                  "flex items-center justify-center gap-2 px-3 py-2 rounded-[var(--radius-md)] text-sm font-medium transition-all",
+                  "flex items-center justify-center gap-2 px-3 py-2 rounded-[var(--radius-md)] text-sm font-medium transition-all flex-shrink-0",
                   isActive
                     ? "bg-canopy-sidebar text-canopy-text shadow-sm"
                     : "text-canopy-text/60 hover:text-canopy-text hover:bg-white/5"
