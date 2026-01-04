@@ -5,7 +5,7 @@ import { TerminalDockRegion } from "./TerminalDockRegion";
 import { DiagnosticsDock } from "../Diagnostics";
 import { ErrorBoundary } from "../ErrorBoundary";
 import { SidecarDock, SidecarVisibilityController } from "../Sidecar";
-import { ProjectSettingsDialog } from "@/components/Project";
+import { ProjectSettingsDialog, ProjectSwitchOverlay } from "@/components/Project";
 import { useDiagnosticsStore, useDockStore, type PanelState } from "@/store";
 import { useProjectStore } from "@/store/projectStore";
 import type { RetryAction } from "@/store";
@@ -44,6 +44,7 @@ export function AppLayout({
   const [isProjectSettingsOpen, setIsProjectSettingsOpen] = useState(false);
 
   const currentProject = useProjectStore((state) => state.currentProject);
+  const isProjectSwitching = useProjectStore((state) => state.isLoading);
   const layout = useLayoutState();
 
   useEffect(() => {
@@ -337,6 +338,8 @@ export function AppLayout({
           onClose={() => setIsProjectSettingsOpen(false)}
         />
       )}
+
+      <ProjectSwitchOverlay isLoading={isProjectSwitching} projectName={currentProject?.name} />
     </div>
   );
 }
