@@ -1170,17 +1170,21 @@ export class TerminalProcess {
   }
 
   private getActivityMonitorOptions(): import("../ActivityMonitor.js").ActivityMonitorOptions {
+    const effectiveAgentId =
+      this.terminalInfo.agentId ??
+      (this.terminalInfo.type !== "terminal" ? this.terminalInfo.type : undefined);
     const ignoredInputSequences =
-      this.terminalInfo.type === "codex" ? ["\n", "\x1b\r"] : ["\x1b\r"];
+      effectiveAgentId === "codex" ? ["\n", "\x1b\r"] : ["\x1b\r"];
 
-    // Enable pattern-based detection for agent terminals
-    // The agentId here refers to the agent type (claude, gemini, codex)
-    const agentId = this.terminalInfo.type !== "terminal" ? this.terminalInfo.type : undefined;
-    const detection = agentId ? getEffectiveAgentConfig(agentId)?.detection : undefined;
-    const patternConfig = this.buildPatternConfig(detection, agentId);
-    const bootCompletePatterns = this.buildBootCompletePatterns(detection, agentId);
-    const promptPatterns = this.buildPromptPatterns(detection, agentId);
-    const promptHintPatterns = this.buildPromptHintPatterns(detection, agentId);
+    // Enable pattern-based detection for agent terminals.
+    // Prefer agentId when available to support custom/legacy terminals.
+    const detection = effectiveAgentId
+      ? getEffectiveAgentConfig(effectiveAgentId)?.detection
+      : undefined;
+    const patternConfig = this.buildPatternConfig(detection, effectiveAgentId);
+    const bootCompletePatterns = this.buildBootCompletePatterns(detection, effectiveAgentId);
+    const promptPatterns = this.buildPromptPatterns(detection, effectiveAgentId);
+    const promptHintPatterns = this.buildPromptHintPatterns(detection, effectiveAgentId);
 
     // Enable output-based activity detection for agent terminals.
     // AI agents often have low CPU while waiting for API responses (network I/O),
@@ -1195,12 +1199,12 @@ export class TerminalProcess {
     };
 
     // Provide callback to get visible lines from xterm for pattern detection
-    const getVisibleLines = agentId ? (n: number) => this.getLastNLines(n) : undefined;
-    const getCursorLine = agentId ? () => this.getCursorLine() : undefined;
+    const getVisibleLines = effectiveAgentId ? (n: number) => this.getLastNLines(n) : undefined;
+    const getCursorLine = effectiveAgentId ? () => this.getCursorLine() : undefined;
 
     return {
       ignoredInputSequences,
-      agentId,
+      agentId: effectiveAgentId,
       outputActivityDetection,
       getVisibleLines,
       getCursorLine,
@@ -1210,7 +1214,7 @@ export class TerminalProcess {
       promptHintPatterns,
       promptScanLineCount: detection?.promptScanLineCount,
       promptConfidence: detection?.promptConfidence,
-      idleDebounceMs: detection?.debounceMs,
+      idleDebounceMs: effectiveAgentId ? (detection?.debounceMs ?? 2000) : undefined,
     };
   }
 
