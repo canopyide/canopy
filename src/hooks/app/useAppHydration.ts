@@ -16,7 +16,7 @@ type DiagnosticsTab = "problems" | "logs" | "events";
 export interface HydrationCallbacks {
   addTerminal: (options: any) => Promise<string>;
   setActiveWorktree: (id: string | null) => void;
-  loadRecipes: () => Promise<void>;
+  loadRecipes: (projectId: string) => Promise<void>;
   openDiagnosticsDock: (tab?: DiagnosticsTab) => void;
 }
 

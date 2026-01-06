@@ -626,7 +626,9 @@ export interface TerminalRecipe {
   id: string;
   /** Human-readable name for the recipe */
   name: string;
-  /** Associated worktree ID (undefined for global recipes) */
+  /** Project ID this recipe belongs to (required for project-scoped storage) */
+  projectId: string;
+  /** Associated worktree ID (optional for worktree-specific recipes) */
   worktreeId?: string;
   /** List of terminals to spawn when recipe is executed */
   terminals: RecipeTerminal[];

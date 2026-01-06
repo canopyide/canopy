@@ -29,6 +29,7 @@ import type {
   IssueDetectedPayload,
   GitStatus,
   KeyAction,
+  TerminalRecipe,
 } from "../shared/types/index.js";
 import type {
   AgentStateChangePayload,
@@ -286,6 +287,11 @@ const CHANNELS = {
   PROJECT_REOPEN: "project:reopen",
   PROJECT_GET_STATS: "project:get-stats",
   PROJECT_INIT_GIT: "project:init-git",
+  PROJECT_GET_RECIPES: "project:get-recipes",
+  PROJECT_SAVE_RECIPES: "project:save-recipes",
+  PROJECT_ADD_RECIPE: "project:add-recipe",
+  PROJECT_UPDATE_RECIPE: "project:update-recipe",
+  PROJECT_DELETE_RECIPE: "project:delete-recipe",
 
   // Agent settings channels
   AGENT_SETTINGS_GET: "agent-settings:get",
@@ -713,6 +719,25 @@ const api: ElectronAPI = {
 
     initGit: (directoryPath: string) =>
       ipcRenderer.invoke(CHANNELS.PROJECT_INIT_GIT, directoryPath),
+
+    getRecipes: (projectId: string): Promise<TerminalRecipe[]> =>
+      _typedInvoke(CHANNELS.PROJECT_GET_RECIPES, projectId),
+
+    saveRecipes: (projectId: string, recipes: TerminalRecipe[]): Promise<void> =>
+      _typedInvoke(CHANNELS.PROJECT_SAVE_RECIPES, { projectId, recipes }),
+
+    addRecipe: (projectId: string, recipe: TerminalRecipe): Promise<void> =>
+      _typedInvoke(CHANNELS.PROJECT_ADD_RECIPE, { projectId, recipe }),
+
+    updateRecipe: (
+      projectId: string,
+      recipeId: string,
+      updates: Partial<Omit<TerminalRecipe, "id" | "projectId" | "createdAt">>
+    ): Promise<void> =>
+      _typedInvoke(CHANNELS.PROJECT_UPDATE_RECIPE, { projectId, recipeId, updates }),
+
+    deleteRecipe: (projectId: string, recipeId: string): Promise<void> =>
+      _typedInvoke(CHANNELS.PROJECT_DELETE_RECIPE, { projectId, recipeId }),
   },
 
   // Agent Settings API
