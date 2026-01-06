@@ -22,6 +22,12 @@ export interface DevPreviewSession {
   installCommand: string | null;
   error?: string;
   timestamp: number;
+  /** Cleanup functions for event listeners to prevent memory leaks */
+  unsubscribers: (() => void)[];
+  /** Generation token to prevent race conditions from concurrent start/stop */
+  generation: number;
+  /** Timeout handle for delayed command submission */
+  submitTimeout?: NodeJS.Timeout;
 }
 
 export interface DevPreviewStartOptions {
@@ -35,6 +41,7 @@ export interface DevPreviewStartOptions {
 
 export class DevPreviewService extends EventEmitter {
   private sessions = new Map<string, DevPreviewSession>();
+  private generationCounter = 0;
 
   constructor(private ptyClient: PtyClient) {
     super();
@@ -42,6 +49,11 @@ export class DevPreviewService extends EventEmitter {
 
   async start(options: DevPreviewStartOptions): Promise<void> {
     const { panelId, cwd, cols, rows, devCommand: providedCommand } = options;
+
+    // Stop any existing session for this panel to prevent orphaned PTY processes and listener leaks
+    if (this.sessions.has(panelId)) {
+      await this.stop(panelId);
+    }
 
     // Fallback chain: provided command → auto-detect → browser-only mode
     let finalCommand = providedCommand?.trim() || undefined;
@@ -82,6 +94,8 @@ export class DevPreviewService extends EventEmitter {
         devCommand: null,
         installCommand: null,
         timestamp: Date.now(),
+        unsubscribers: [], // No listeners in browser-only mode
+        generation: ++this.generationCounter,
       };
       this.sessions.set(panelId, session);
       this.emitStatus(panelId, "running", "Browser-only mode (no dev command)", null);
@@ -98,17 +112,47 @@ export class DevPreviewService extends EventEmitter {
     }
 
     const ptyId = crypto.randomUUID();
+    const generation = ++this.generationCounter;
+
     this.ptyClient.spawn(ptyId, {
       cwd,
       cols,
       rows,
       kind: "dev-preview",
     });
-    setTimeout(() => {
-      if (this.ptyClient.hasTerminal(ptyId)) {
+
+    // Delay command submission to allow PTY to fully initialize
+    const submitTimeout = setTimeout(() => {
+      // Check generation to ensure this session wasn't stopped/replaced during delay
+      const currentSession = this.sessions.get(panelId);
+      if (currentSession && currentSession.generation === generation && this.ptyClient.hasTerminal(ptyId)) {
         this.ptyClient.submit(ptyId, fullCommand);
       }
     }, 100);
+
+    // Create named listener functions so they can be removed later
+    const dataListener = (id: string, data: string) => {
+      if (id === ptyId) {
+        this.handlePtyData(panelId, data);
+      }
+    };
+
+    const exitListener = (id: string, exitCode: number) => {
+      if (id === ptyId) {
+        this.handlePtyExit(panelId, exitCode);
+      }
+    };
+
+    // Register listeners - use on() not once() because PtyClient is shared across all terminals
+    // Using once() would remove ALL exit listeners when the first terminal exits
+    this.ptyClient.on("data", dataListener);
+    this.ptyClient.on("exit", exitListener);
+
+    // Create unsubscribe functions for cleanup
+    const unsubscribers: (() => void)[] = [
+      () => this.ptyClient.removeListener("data", dataListener),
+      () => this.ptyClient.removeListener("exit", exitListener),
+    ];
 
     const session: DevPreviewSession = {
       panelId,
@@ -123,30 +167,40 @@ export class DevPreviewService extends EventEmitter {
       devCommand: finalCommand,
       installCommand,
       timestamp: Date.now(),
+      unsubscribers,
+      generation,
+      submitTimeout,
     };
 
     this.sessions.set(panelId, session);
-
-    this.ptyClient.on("data", (data) => {
-      if (data.id === ptyId) {
-        this.handlePtyData(panelId, data.data);
-      }
-    });
-
-    this.ptyClient.on("exit", (data) => {
-      if (data.id === ptyId) {
-        this.handlePtyExit(panelId, data.code);
-      }
-    });
   }
 
   async stop(panelId: string): Promise<void> {
     const session = this.sessions.get(panelId);
     if (!session) return;
 
-    await this.ptyClient.kill(session.ptyId);
-    this.sessions.delete(panelId);
-    this.emitStatus(panelId, "stopped", "Dev server stopped", null);
+    try {
+      // Clear any pending command submission timeout
+      if (session.submitTimeout) {
+        clearTimeout(session.submitTimeout);
+        session.submitTimeout = undefined;
+      }
+
+      // Remove all event listeners before killing PTY to prevent stale callbacks
+      for (const unsubscribe of session.unsubscribers) {
+        unsubscribe();
+      }
+      session.unsubscribers = [];
+
+      // Only kill PTY if there is one (browser-only sessions have empty ptyId)
+      if (session.ptyId) {
+        await this.ptyClient.kill(session.ptyId);
+      }
+    } finally {
+      // Always clean up session and emit status, even if kill fails
+      this.sessions.delete(panelId);
+      this.emitStatus(panelId, "stopped", "Dev server stopped", null);
+    }
   }
 
   async restart(panelId: string): Promise<void> {
@@ -205,6 +259,18 @@ export class DevPreviewService extends EventEmitter {
   private handlePtyExit(panelId: string, code: number): void {
     const session = this.sessions.get(panelId);
     if (!session) return;
+
+    // Clear any pending command submission timeout
+    if (session.submitTimeout) {
+      clearTimeout(session.submitTimeout);
+      session.submitTimeout = undefined;
+    }
+
+    // Clean up all listeners
+    for (const unsubscribe of session.unsubscribers) {
+      unsubscribe();
+    }
+    session.unsubscribers = [];
 
     if (code !== 0) {
       this.emitStatus(panelId, "error", `Process exited with code ${code}`, null);
