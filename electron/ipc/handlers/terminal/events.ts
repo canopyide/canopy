@@ -30,6 +30,16 @@ export function registerTerminalEventHandlers(deps: HandlerDependencies): () => 
   ptyClient.on("error", handlePtyError);
   handlers.push(() => ptyClient.off("error", handlePtyError));
 
+  // Spawn result events (success or failure)
+  const handleSpawnResult = (
+    id: string,
+    result: { success: boolean; id: string; error?: unknown }
+  ) => {
+    sendToRenderer(mainWindow, CHANNELS.TERMINAL_SPAWN_RESULT, id, result);
+  };
+  ptyClient.on("spawn-result", handleSpawnResult);
+  handlers.push(() => ptyClient.off("spawn-result", handleSpawnResult));
+
   // Terminal status for flow control visibility
   const handleTerminalStatus = (payload: {
     id: string;
