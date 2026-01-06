@@ -1120,10 +1120,22 @@ export class ActivityMonitor {
     }
 
     if (this.pendingInputUntil > 0) {
-      if (isWorkingSignal || (isPrompt && !this.pendingInputWasNonEmpty)) {
+      if (isWorkingSignal && this.pendingInputWasNonEmpty) {
+        // Working signal detected after Enter with non-empty input - agent is processing
+        // Immediately transition to busy state (Issue #1506)
+        this.pendingInputUntil = 0;
+        this.pendingInputWasNonEmpty = false;
+        const metadata = isWorkingPattern
+          ? { trigger: "pattern" as const, patternConfidence: patternResult?.confidence ?? 0.9 }
+          : { trigger: "output" as const };
+        this.becomeBusy(metadata, now);
+        return;
+      } else if (isPrompt && !this.pendingInputWasNonEmpty) {
+        // Prompt appeared with empty input - nothing happened
         this.pendingInputUntil = 0;
         this.pendingInputWasNonEmpty = false;
       } else if (now >= this.pendingInputUntil) {
+        // Timeout reached - assume working
         this.pendingInputUntil = 0;
         this.pendingInputWasNonEmpty = false;
         this.becomeBusy({ trigger: "input" }, now);
