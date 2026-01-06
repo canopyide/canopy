@@ -41,6 +41,7 @@ import type {
   PtyHostActivityTier,
   CrashType,
   HostCrashPayload,
+  SpawnResult,
 } from "../../shared/types/pty-host.js";
 import type { TerminalSnapshot } from "./PtyManager.js";
 import type { AgentStateChangeTrigger } from "../types/index.js";
@@ -582,6 +583,16 @@ export class PtyClient extends EventEmitter {
       case "terminal-pid":
         this.terminalPids.set(event.id, event.pid);
         break;
+
+      case "spawn-result": {
+        const spawnResultEvent = event as { type: "spawn-result"; id: string; result: SpawnResult };
+        if (!spawnResultEvent.result.success) {
+          // Remove from pending spawns since spawn failed
+          this.pendingSpawns.delete(spawnResultEvent.id);
+        }
+        this.emit("spawn-result", spawnResultEvent.id, spawnResultEvent.result);
+        break;
+      }
 
       default:
         console.warn("[PtyClient] Unknown event type:", (event as { type: string }).type);

@@ -253,6 +253,9 @@ export type {
   AgentKilledPayload,
   TerminalFlowStatus,
   TerminalStatusPayload,
+  SpawnResult,
+  SpawnError,
+  SpawnErrorCode,
 } from "./pty-host.js";
 
 // Sidecar types - browser dock

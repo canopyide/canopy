@@ -296,6 +296,7 @@ let exitUnsubscribe: (() => void) | null = null;
 let flowStatusUnsubscribe: (() => void) | null = null;
 let backendCrashedUnsubscribe: (() => void) | null = null;
 let backendReadyUnsubscribe: (() => void) | null = null;
+let spawnResultUnsubscribe: (() => void) | null = null;
 let recoveryTimer: NodeJS.Timeout | null = null;
 let beforeUnloadHandler: (() => void) | null = null;
 
@@ -338,6 +339,10 @@ export function cleanupTerminalStoreListeners() {
   if (backendReadyUnsubscribe) {
     backendReadyUnsubscribe();
     backendReadyUnsubscribe = null;
+  }
+  if (spawnResultUnsubscribe) {
+    spawnResultUnsubscribe();
+    spawnResultUnsubscribe = null;
   }
   if (recoveryTimer) {
     clearTimeout(recoveryTimer);
@@ -507,6 +512,28 @@ export function setupTerminalStoreListeners() {
       recoveryTimer = null;
       useTerminalStore.setState({ backendStatus: "connected", lastCrashType: null });
     }, 500);
+  });
+
+  spawnResultUnsubscribe = terminalClient.onSpawnResult((id, result) => {
+    if (!result.success) {
+      if (result.error) {
+        console.error(`[TerminalStore] Spawn failed for terminal ${id}:`, result.error);
+        useTerminalStore.getState().setSpawnError(id, result.error);
+      } else {
+        // Spawn failed but no error details provided - set generic error
+        console.error(`[TerminalStore] Spawn failed for terminal ${id} with no error details`);
+        useTerminalStore.getState().setSpawnError(id, {
+          code: "UNKNOWN",
+          message: "Failed to start terminal process",
+        });
+      }
+    } else {
+      // Spawn succeeded - clear any previous spawn error
+      const terminal = useTerminalStore.getState().terminals.find((t) => t.id === id);
+      if (terminal?.spawnError) {
+        useTerminalStore.getState().clearSpawnError(id);
+      }
+    }
   });
 
   // Flush pending terminal persistence on window close to prevent data loss

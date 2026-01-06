@@ -469,6 +469,8 @@ export interface TerminalInstance {
   restartKey?: number;
   isRestarting?: boolean;
   restartError?: TerminalRestartError;
+  /** Error that occurred when spawning the PTY process */
+  spawnError?: import("./pty-host.js").SpawnError;
   flowStatus?: TerminalFlowStatus;
   runtimeStatus?: TerminalRuntimeStatus;
   flowStatusTimestamp?: number;

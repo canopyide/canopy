@@ -5,6 +5,7 @@ import type {
   BackendTerminalInfo,
   TerminalReconnectResult,
   TerminalStatusPayload,
+  SpawnResult,
 } from "@shared/types";
 
 let messagePort: MessagePort | null = null;
@@ -254,5 +255,13 @@ export const terminalClient = {
    */
   onBackendReady: (callback: () => void): (() => void) => {
     return window.electron.terminal.onBackendReady(callback);
+  },
+
+  /**
+   * Listen for spawn result events (success or failure).
+   * This is emitted for every spawn attempt with the result.
+   */
+  onSpawnResult: (callback: (id: string, result: SpawnResult) => void): (() => void) => {
+    return window.electron.terminal.onSpawnResult(callback);
   },
 } as const;

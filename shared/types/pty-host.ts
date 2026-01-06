@@ -112,6 +112,7 @@ export type PtyHostEvent =
   | { type: "data"; id: string; data: string }
   | { type: "exit"; id: string; exitCode: number }
   | { type: "error"; id: string; error: string }
+  | { type: "spawn-result"; id: string; result: SpawnResult }
   | {
       type: "wake-result";
       requestId: string;
@@ -256,6 +257,30 @@ export interface AgentKilledPayload {
 
 /** Terminal activity tier (streaming policy) */
 export type PtyHostActivityTier = "active" | "background";
+
+/** Error codes for spawn failures */
+export type SpawnErrorCode =
+  | "ENOENT" // Shell or command not found
+  | "EACCES" // Permission denied
+  | "ENOTDIR" // Working directory does not exist (or path component is not a directory)
+  | "EIO" // I/O error (e.g., PTY allocation failure)
+  | "UNKNOWN"; // Unknown error
+
+/** Result of a spawn operation */
+export interface SpawnResult {
+  success: boolean;
+  id: string;
+  error?: SpawnError;
+}
+
+/** Details of a spawn error */
+export interface SpawnError {
+  code: SpawnErrorCode;
+  message: string;
+  errno?: number;
+  syscall?: string;
+  path?: string;
+}
 
 /** Crash type classification based on exit codes */
 export type CrashType =
