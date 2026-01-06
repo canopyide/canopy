@@ -213,13 +213,13 @@ export function ProjectSettingsDialog({ projectId, isOpen, onClose }: ProjectSet
   }, [isOpen]);
 
   useEffect(() => {
-    if (isOpen && !hasLoadedRecipes.current && !recipesLoading) {
+    if (isOpen && !hasLoadedRecipes.current && !recipesLoading && projectId) {
       hasLoadedRecipes.current = true;
-      loadRecipes().catch((err) => {
+      loadRecipes(projectId).catch((err) => {
         console.error("Failed to load recipes:", err);
       });
     }
-  }, [isOpen, recipesLoading, loadRecipes]);
+  }, [isOpen, recipesLoading, loadRecipes, projectId]);
 
   useEffect(() => {
     return () => {
@@ -344,8 +344,12 @@ export function ProjectSettingsDialog({ projectId, isOpen, onClose }: ProjectSet
 
   const handleImportRecipe = async () => {
     setImportError(null);
+    if (!projectId) {
+      setImportError("No project selected");
+      return;
+    }
     try {
-      await importRecipe(importJson);
+      await importRecipe(projectId, importJson);
       setShowImportDialog(false);
       setImportJson("");
     } catch (err) {
@@ -354,7 +358,7 @@ export function ProjectSettingsDialog({ projectId, isOpen, onClose }: ProjectSet
   };
 
   const getRecipeScope = (recipe: TerminalRecipe): string => {
-    if (!recipe.worktreeId) return "Global";
+    if (!recipe.worktreeId) return "Project-wide";
     const worktree = worktreeMap.get(recipe.worktreeId);
     if (worktree) {
       return `Worktree: ${worktree.branch || worktree.name}`;

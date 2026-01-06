@@ -5,7 +5,7 @@ import fs from "fs";
 export interface Migration {
   version: number;
   description: string;
-  up: (store: Store<StoreSchema>) => void;
+  up: (store: Store<StoreSchema>) => void | Promise<void>;
 }
 
 export class MigrationRunner {
@@ -39,7 +39,7 @@ export class MigrationRunner {
     return version;
   }
 
-  runMigrations(migrations: Migration[]): void {
+  async runMigrations(migrations: Migration[]): Promise<void> {
     const current = this.getCurrentVersion();
     const maxKnownVersion = Math.max(...migrations.map((m) => m.version), 0);
 
@@ -66,7 +66,7 @@ export class MigrationRunner {
     for (const migration of pending.sort((a, b) => a.version - b.version)) {
       try {
         console.log(`[Migrations] Applying v${migration.version}: ${migration.description}`);
-        migration.up(this.store);
+        await migration.up(this.store);
         this.store.set("_schemaVersion", migration.version);
         console.log(`[Migrations] Applied v${migration.version} successfully`);
       } catch (error) {

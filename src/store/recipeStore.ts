@@ -1,7 +1,7 @@
 import { create, type StateCreator } from "zustand";
 import type { TerminalRecipe, RecipeTerminal, RecipeTerminalType } from "@/types";
 import { useTerminalStore, type TerminalInstance } from "./terminalStore";
-import { appClient, agentSettingsClient } from "@/clients";
+import { projectClient, agentSettingsClient } from "@/clients";
 import { getAgentConfig } from "@/config/agents";
 import { generateAgentCommand } from "@shared/types";
 
@@ -24,9 +24,11 @@ function terminalToRecipeTerminal(terminal: TerminalInstance): RecipeTerminal {
 interface RecipeState {
   recipes: TerminalRecipe[];
   isLoading: boolean;
+  currentProjectId: string | null;
 
-  loadRecipes: () => Promise<void>;
+  loadRecipes: (projectId: string) => Promise<void>;
   createRecipe: (
+    projectId: string,
     name: string,
     worktreeId: string | undefined,
     terminals: RecipeTerminal[],
@@ -34,7 +36,7 @@ interface RecipeState {
   ) => Promise<void>;
   updateRecipe: (
     id: string,
-    updates: Partial<Omit<TerminalRecipe, "id" | "createdAt">>
+    updates: Partial<Omit<TerminalRecipe, "id" | "projectId" | "createdAt">>
   ) => Promise<void>;
   deleteRecipe: (id: string) => Promise<void>;
 
@@ -44,7 +46,7 @@ interface RecipeState {
   runRecipe: (recipeId: string, worktreePath: string, worktreeId?: string) => Promise<void>;
 
   exportRecipe: (id: string) => string | null;
-  importRecipe: (json: string) => Promise<void>;
+  importRecipe: (projectId: string, json: string) => Promise<void>;
 
   generateRecipeFromActiveTerminals: (worktreeId: string) => RecipeTerminal[];
 
@@ -53,22 +55,37 @@ interface RecipeState {
 
 const MAX_TERMINALS_PER_RECIPE = 10;
 
+let loadRecipesRequestId = 0;
+
 const createRecipeStore: StateCreator<RecipeState> = (set, get) => ({
   recipes: [],
   isLoading: false,
+  currentProjectId: null,
 
-  loadRecipes: async () => {
-    set({ isLoading: true });
+  loadRecipes: async (projectId: string) => {
+    const requestId = ++loadRecipesRequestId;
+    const previousProjectId = get().currentProjectId;
+    set({
+      isLoading: true,
+      currentProjectId: projectId,
+      recipes: previousProjectId && previousProjectId !== projectId ? [] : get().recipes,
+    });
     try {
-      const appState = await appClient.getState();
-      set({ recipes: appState.recipes || [], isLoading: false });
+      const recipes = await projectClient.getRecipes(projectId);
+      if (requestId !== loadRecipesRequestId || get().currentProjectId !== projectId) {
+        return;
+      }
+      set({ recipes, isLoading: false });
     } catch (error) {
+      if (requestId !== loadRecipesRequestId || get().currentProjectId !== projectId) {
+        return;
+      }
       console.error("Failed to load recipes:", error);
-      set({ isLoading: false });
+      set({ recipes: [], isLoading: false });
     }
   },
 
-  createRecipe: async (name, worktreeId, terminals, showInEmptyState = false) => {
+  createRecipe: async (projectId, name, worktreeId, terminals, showInEmptyState = false) => {
     if (terminals.length === 0) {
       throw new Error("Recipe must contain at least one terminal");
     }
@@ -79,6 +96,7 @@ const createRecipeStore: StateCreator<RecipeState> = (set, get) => ({
     const newRecipe: TerminalRecipe = {
       id: `recipe-${Date.now()}-${Math.random().toString(36).slice(2, 9)}`,
       name,
+      projectId,
       worktreeId,
       terminals,
       createdAt: Date.now(),
@@ -89,19 +107,11 @@ const createRecipeStore: StateCreator<RecipeState> = (set, get) => ({
     set({ recipes: newRecipes });
 
     try {
-      await appClient.setState({
-        recipes: newRecipes.map((r) => ({
-          id: r.id,
-          name: r.name,
-          worktreeId: r.worktreeId,
-          terminals: r.terminals,
-          createdAt: r.createdAt,
-          showInEmptyState: r.showInEmptyState,
-          lastUsedAt: r.lastUsedAt,
-        })),
-      });
+      await projectClient.addRecipe(projectId, newRecipe);
     } catch (error) {
       console.error("Failed to persist recipe:", error);
+      // Rollback on failure
+      set({ recipes: get().recipes.filter((r) => r.id !== newRecipe.id) });
       throw error;
     }
   },
@@ -122,54 +132,47 @@ const createRecipeStore: StateCreator<RecipeState> = (set, get) => ({
       }
     }
 
-    const updatedRecipe = { ...recipes[index], ...updates };
+    const recipe = recipes[index];
+    const updatedRecipe = { ...recipe, ...updates };
     const newRecipes = [...recipes];
     newRecipes[index] = updatedRecipe;
 
     set({ recipes: newRecipes });
 
     try {
-      await appClient.setState({
-        recipes: newRecipes.map((r) => ({
-          id: r.id,
-          name: r.name,
-          worktreeId: r.worktreeId,
-          terminals: r.terminals,
-          createdAt: r.createdAt,
-          showInEmptyState: r.showInEmptyState,
-          lastUsedAt: r.lastUsedAt,
-        })),
-      });
+      await projectClient.updateRecipe(recipe.projectId, id, updates);
     } catch (error) {
       console.error("Failed to persist recipe update:", error);
+      // Rollback on failure
+      set({ recipes });
       throw error;
     }
   },
 
   deleteRecipe: async (id) => {
-    const newRecipes = get().recipes.filter((r) => r.id !== id);
+    const recipes = get().recipes;
+    const recipe = recipes.find((r) => r.id === id);
+    if (!recipe) {
+      throw new Error(`Recipe ${id} not found`);
+    }
+
+    const newRecipes = recipes.filter((r) => r.id !== id);
     set({ recipes: newRecipes });
 
     try {
-      await appClient.setState({
-        recipes: newRecipes.map((r) => ({
-          id: r.id,
-          name: r.name,
-          worktreeId: r.worktreeId,
-          terminals: r.terminals,
-          createdAt: r.createdAt,
-          showInEmptyState: r.showInEmptyState,
-          lastUsedAt: r.lastUsedAt,
-        })),
-      });
+      await projectClient.deleteRecipe(recipe.projectId, id);
     } catch (error) {
       console.error("Failed to persist recipe deletion:", error);
+      // Rollback on failure
+      set({ recipes });
       throw error;
     }
   },
 
   getRecipesForWorktree: (worktreeId) => {
     const recipes = get().recipes;
+    // Only return recipes for the specific worktree or project-wide recipes (undefined worktreeId)
+    // No longer falling back to global recipes - all recipes now belong to a project
     return recipes.filter((r) => r.worktreeId === worktreeId || r.worktreeId === undefined);
   },
 
@@ -261,11 +264,13 @@ const createRecipeStore: StateCreator<RecipeState> = (set, get) => ({
     if (!recipe) {
       return null;
     }
-    return JSON.stringify(recipe, null, 2);
+    // Export without projectId - it will be assigned on import
+    const { projectId: _projectId, ...exportableRecipe } = recipe;
+    return JSON.stringify(exportableRecipe, null, 2);
   },
 
-  importRecipe: async (json) => {
-    let recipe: TerminalRecipe;
+  importRecipe: async (projectId, json) => {
+    let recipe: Partial<TerminalRecipe>;
     try {
       recipe = JSON.parse(json);
     } catch (_error) {
@@ -336,6 +341,7 @@ const createRecipeStore: StateCreator<RecipeState> = (set, get) => ({
     const importedRecipe: TerminalRecipe = {
       id: `recipe-${Date.now()}-${Math.random().toString(36).slice(2, 9)}`,
       name: String(recipe.name),
+      projectId,
       worktreeId: typeof recipe.worktreeId === "string" ? recipe.worktreeId : undefined,
       terminals: sanitizedTerminals,
       createdAt: Date.now(),
@@ -347,19 +353,11 @@ const createRecipeStore: StateCreator<RecipeState> = (set, get) => ({
     set({ recipes: newRecipes });
 
     try {
-      await appClient.setState({
-        recipes: newRecipes.map((r) => ({
-          id: r.id,
-          name: r.name,
-          worktreeId: r.worktreeId,
-          terminals: r.terminals,
-          createdAt: r.createdAt,
-          showInEmptyState: r.showInEmptyState,
-          lastUsedAt: r.lastUsedAt,
-        })),
-      });
+      await projectClient.addRecipe(projectId, importedRecipe);
     } catch (_error) {
       console.error("Failed to persist imported recipe:", _error);
+      // Rollback on failure
+      set({ recipes: get().recipes.filter((r) => r.id !== importedRecipe.id) });
       throw _error;
     }
   },
@@ -376,7 +374,7 @@ const createRecipeStore: StateCreator<RecipeState> = (set, get) => ({
     return terminalsToCapture.map(terminalToRecipeTerminal);
   },
 
-  reset: () => set({ recipes: [], isLoading: false }),
+  reset: () => set({ recipes: [], isLoading: false, currentProjectId: null }),
 });
 
 export const useRecipeStore = create<RecipeState>()(createRecipeStore);
