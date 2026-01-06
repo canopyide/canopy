@@ -85,6 +85,182 @@ describe("ActivityMonitor", () => {
 
       expect(onStateChange).not.toHaveBeenCalled();
     });
+
+    it("should NOT trigger busy on typing without Enter", () => {
+      const onStateChange = vi.fn();
+      const monitor = new ActivityMonitor("test-1", 1000, onStateChange);
+
+      // Type several characters without pressing Enter
+      monitor.onInput("h");
+      monitor.onInput("e");
+      monitor.onInput("l");
+      monitor.onInput("l");
+      monitor.onInput("o");
+
+      expect(onStateChange).not.toHaveBeenCalled();
+      expect(monitor.getState()).toBe("idle");
+
+      monitor.dispose();
+    });
+
+    it("should NOT trigger busy on typing a full word without Enter", () => {
+      const onStateChange = vi.fn();
+      const monitor = new ActivityMonitor("test-1", 1000, onStateChange);
+
+      // Type a full command string without pressing Enter
+      monitor.onInput("npm run test");
+
+      expect(onStateChange).not.toHaveBeenCalled();
+      expect(monitor.getState()).toBe("idle");
+
+      monitor.dispose();
+    });
+
+    it("should trigger busy only when Enter is pressed after typing", () => {
+      const onStateChange = vi.fn();
+      const monitor = new ActivityMonitor("test-1", 1000, onStateChange);
+
+      // Type without Enter - should not trigger
+      monitor.onInput("hello world");
+      expect(onStateChange).not.toHaveBeenCalled();
+
+      // Press Enter - should trigger
+      monitor.onInput("\r");
+      expect(onStateChange).toHaveBeenCalledWith("test-1", 1000, "busy", { trigger: "input" });
+
+      monitor.dispose();
+    });
+
+    it("should NOT trigger busy on empty Enter submission (polling mode)", () => {
+      const onStateChange = vi.fn();
+      const showPrompt = true;
+      const monitor = new ActivityMonitor("test-1", 1000, onStateChange, {
+        getVisibleLines: () => (showPrompt ? ["> "] : [""]),
+        getCursorLine: () => (showPrompt ? "> " : ""),
+        initialState: "idle",
+        skipInitialStateEmit: true,
+      });
+
+      monitor.startPolling();
+
+      // Press Enter with no prior text input (empty submission)
+      monitor.onInput("\r");
+
+      // Prompt is still visible, empty submission should NOT trigger busy
+      vi.advanceTimersByTime(1200);
+
+      expect(onStateChange).not.toHaveBeenCalledWith("test-1", 1000, "busy", {
+        trigger: "input",
+      });
+
+      monitor.dispose();
+    });
+
+    it("should NOT trigger busy on Shift+Enter (soft newline ESC+CR)", () => {
+      const onStateChange = vi.fn();
+      // Configure with ESC+CR as ignored (Claude/Gemini style)
+      const monitor = new ActivityMonitor("test-1", 1000, onStateChange, {
+        ignoredInputSequences: ["\x1b\r"],
+      });
+
+      // Type some text
+      monitor.onInput("line 1");
+      // Press Shift+Enter (ESC+CR) - should NOT trigger busy
+      monitor.onInput("\x1b\r");
+      // Type more text
+      monitor.onInput("line 2");
+
+      expect(onStateChange).not.toHaveBeenCalled();
+      expect(monitor.getState()).toBe("idle");
+
+      monitor.dispose();
+    });
+
+    it("should NOT trigger busy on Shift+Enter (soft newline LF for Codex)", () => {
+      const onStateChange = vi.fn();
+      // Configure with LF and ESC+CR as ignored (Codex style)
+      const monitor = new ActivityMonitor("test-1", 1000, onStateChange, {
+        ignoredInputSequences: ["\n", "\x1b\r"],
+      });
+
+      // Type some text
+      monitor.onInput("line 1");
+      // Press Shift+Enter (LF) - should NOT trigger busy for Codex
+      monitor.onInput("\n");
+      // Type more text
+      monitor.onInput("line 2");
+
+      expect(onStateChange).not.toHaveBeenCalled();
+      expect(monitor.getState()).toBe("idle");
+
+      monitor.dispose();
+    });
+
+    it("should trigger busy on CR Enter but not on LF soft newline (Codex style)", () => {
+      const onStateChange = vi.fn();
+      // Configure with LF and ESC+CR as ignored (Codex style)
+      const monitor = new ActivityMonitor("test-1", 1000, onStateChange, {
+        ignoredInputSequences: ["\n", "\x1b\r"],
+      });
+
+      // Type some text
+      monitor.onInput("command");
+      // Use soft newline (LF) - should NOT trigger busy
+      monitor.onInput("\n");
+      expect(onStateChange).not.toHaveBeenCalled();
+
+      // Type more text
+      monitor.onInput("more text");
+      // Press Enter (CR) - SHOULD trigger busy
+      monitor.onInput("\r");
+      expect(onStateChange).toHaveBeenCalledWith("test-1", 1000, "busy", { trigger: "input" });
+
+      monitor.dispose();
+    });
+
+    it("should ignore Shift+Enter with default configuration (ESC+CR)", () => {
+      const onStateChange = vi.fn();
+      // Use default configuration which includes ESC+CR in ignored sequences
+      const monitor = new ActivityMonitor("test-1", 1000, onStateChange);
+
+      // Type some text
+      monitor.onInput("first line");
+      // Press Shift+Enter with default config - should NOT trigger busy
+      monitor.onInput("\x1b\r");
+      // Type more text
+      monitor.onInput("second line");
+
+      expect(onStateChange).not.toHaveBeenCalled();
+      expect(monitor.getState()).toBe("idle");
+
+      monitor.dispose();
+    });
+
+    it("should NOT trigger busy on typing in polling mode", () => {
+      const onStateChange = vi.fn();
+      const monitor = new ActivityMonitor("test-1", 1000, onStateChange, {
+        getVisibleLines: () => ["> "],
+        getCursorLine: () => "> ",
+        initialState: "idle",
+        skipInitialStateEmit: true,
+      });
+
+      monitor.startPolling();
+
+      // Type characters without Enter - should NOT trigger busy even with polling
+      monitor.onInput("h");
+      monitor.onInput("e");
+      monitor.onInput("l");
+      monitor.onInput("l");
+      monitor.onInput("o");
+
+      vi.advanceTimersByTime(100);
+
+      expect(onStateChange).not.toHaveBeenCalled();
+      expect(monitor.getState()).toBe("idle");
+
+      monitor.dispose();
+    });
   });
 
   describe("Output-driven activity", () => {
