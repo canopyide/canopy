@@ -123,7 +123,6 @@ export class ActivityMonitor {
   private debounceTimer: NodeJS.Timeout | null = null;
   private readonly IDLE_DEBOUNCE_MS: number;
   private readonly INPUT_CONFIRM_MS: number;
-  private readonly MAX_NO_PROMPT_IDLE_MS: number;
   private readonly PROMPT_DEBOUNCE_MS = 200;
   private readonly PROMPT_QUIET_MS = 200;
   private readonly PROMPT_HISTORY_FALLBACK_MS = 3000;
@@ -151,7 +150,6 @@ export class ActivityMonitor {
 
   private readonly processStateValidator?: ProcessStateValidator;
   private lastActivityTimestamp = Date.now();
-  private lastWorkingSignalAt = 0;
   private lastOutputActivityAt = 0;
   private lastSpinnerDetectedAt = 0;
   private promptStableSince = 0;
@@ -214,7 +212,6 @@ export class ActivityMonitor {
     this.PATTERN_BUFFER_SIZE = options?.patternBufferSize ?? 2000;
     this.IDLE_DEBOUNCE_MS = options?.idleDebounceMs ?? 2500;
     this.INPUT_CONFIRM_MS = options?.inputConfirmMs ?? 1000;
-    this.MAX_NO_PROMPT_IDLE_MS = options?.maxNoPromptIdleMs ?? 120000;
 
     // Volume-based output detection config
     const outputDefaults = {
@@ -559,7 +556,6 @@ export class ActivityMonitor {
   }
 
   private recordWorkingSignal(now: number): void {
-    this.lastWorkingSignalAt = now;
     this.workingHoldUntil = Math.max(this.workingHoldUntil, now + this.WORKING_HOLD_MS);
   }
 
@@ -652,11 +648,7 @@ export class ActivityMonitor {
       }
     }
 
-    if (
-      cleanCursor &&
-      cleanCursor.trim().length > 0 &&
-      !options?.allowHistoryScan
-    ) {
+    if (cleanCursor && cleanCursor.trim().length > 0 && !options?.allowHistoryScan) {
       return { isPrompt: false, confidence: 0 };
     }
 
@@ -679,8 +671,7 @@ export class ActivityMonitor {
 
   private isSpinnerActive(now: number): boolean {
     return (
-      this.lastSpinnerDetectedAt > 0 &&
-      now - this.lastSpinnerDetectedAt <= this.SPINNER_ACTIVE_MS
+      this.lastSpinnerDetectedAt > 0 && now - this.lastSpinnerDetectedAt <= this.SPINNER_ACTIVE_MS
     );
   }
 
@@ -806,7 +797,6 @@ export class ActivityMonitor {
     this.pendingInputWasNonEmpty = false;
     this.pendingInputChars = 0;
     this.workingHoldUntil = 0;
-    this.lastWorkingSignalAt = 0;
     this.lastOutputActivityAt = 0;
     this.lastSpinnerDetectedAt = 0;
     this.promptStableSince = 0;
@@ -918,8 +908,7 @@ export class ActivityMonitor {
         this.lastOutputActivityAt > 0 && now - this.lastOutputActivityAt <= this.outputWindowMs;
       const isSpinnerActive = this.isSpinnerActive(now);
       const isOutputQuiet = quietForMs >= this.PROMPT_QUIET_MS;
-      const promptStableForMs =
-        this.promptStableSince === 0 ? 0 : now - this.promptStableSince;
+      const promptStableForMs = this.promptStableSince === 0 ? 0 : now - this.promptStableSince;
       const shouldAllowPromptStability =
         isPrompt && isOutputQuiet && !isSpinnerActive && !hasRecentOutputActivity;
       const shouldPreferPrompt =
@@ -932,10 +921,7 @@ export class ActivityMonitor {
       const isWorkingSignal =
         isSpinnerActive ||
         hasRecentOutputActivity ||
-        (isWorkingPattern &&
-          !shouldPreferPrompt &&
-          !shouldAllowPromptStability &&
-          !isQuietForIdle);
+        (isWorkingPattern && !shouldPreferPrompt && !shouldAllowPromptStability && !isQuietForIdle);
       if (isWorkingSignal) {
         this.promptStableSince = 0;
       }
