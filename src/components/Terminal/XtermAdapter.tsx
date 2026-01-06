@@ -1,4 +1,4 @@
-import React, { useCallback, useLayoutEffect, useMemo, useRef, useEffect } from "react";
+import React, { useCallback, useLayoutEffect, useMemo, useRef, useEffect, useState } from "react";
 import "@xterm/xterm/css/xterm.css";
 import { cn } from "@/lib/utils";
 import { terminalClient } from "@/clients";
@@ -9,13 +9,11 @@ import { useScrollbackStore, usePerformanceModeStore, useTerminalFontStore } fro
 import { getScrollbackForType, PERFORMANCE_MODE_SCROLLBACK } from "@/utils/scrollbackConfig";
 import { DEFAULT_TERMINAL_FONT_FAMILY } from "@/config/terminalFont";
 import { CANOPY_TERMINAL_THEME, getTerminalThemeFromCSS } from "@/utils/terminalTheme";
-import { getEffectiveAgentConfig } from "../../../shared/config/agentRegistry.js";
 import { getSoftNewlineSequence } from "../../../shared/utils/terminalInputProtocol.js";
 
 export interface XtermAdapterProps {
   terminalId: string;
   terminalType?: TerminalType;
-  agentId?: string;
   isInputLocked?: boolean;
   onReady?: () => void;
   onExit?: (exitCode: number) => void;
@@ -32,7 +30,6 @@ const MIN_CONTAINER_SIZE = 50;
 function XtermAdapterComponent({
   terminalId,
   terminalType = "terminal",
-  agentId,
   isInputLocked,
   onReady,
   onExit,
@@ -77,11 +74,14 @@ function XtermAdapterComponent({
     return getScrollbackForType(terminalType, scrollbackLines);
   }, [performanceMode, scrollbackLines, terminalType]);
 
-  // Get agent-specific background color if available
-  const agentConfig = agentId ? getEffectiveAgentConfig(agentId) : undefined;
-  const agentBackgroundColor = agentConfig?.backgroundColor;
+  // Alt buffer state for TUI applications (OpenCode, vim, htop, etc.)
+  // When in alt buffer, we remove padding and let the TUI fill the entire space
+  // Initialize from service to avoid flash of wrong padding on mount
+  const [isAltBuffer, setIsAltBuffer] = useState(() =>
+    terminalInstanceService.getAltBufferState(terminalId)
+  );
 
-  const terminalTheme = getTerminalThemeFromCSS({ backgroundColor: agentBackgroundColor });
+  const terminalTheme = useMemo(() => getTerminalThemeFromCSS(), []);
 
   const terminalOptions = useMemo(
     () => ({
@@ -264,7 +264,6 @@ function XtermAdapterComponent({
   }, [
     terminalId,
     terminalType,
-    agentId,
     isInputLocked,
     terminalOptions,
     onExit,
@@ -298,6 +297,16 @@ function XtermAdapterComponent({
   useEffect(() => {
     const unsubscribe = terminalInstanceService.addAgentStateListener(terminalId, (state) => {
       agentStateRef.current = state;
+    });
+    return unsubscribe;
+  }, [terminalId]);
+
+  // Subscribe to alt buffer state changes for TUI applications (OpenCode, vim, htop, etc.)
+  // When in alt buffer, we need to sync the container styling
+  // Use useLayoutEffect to avoid flash before first paint
+  useLayoutEffect(() => {
+    const unsubscribe = terminalInstanceService.addAltBufferListener(terminalId, (altBuffer) => {
+      setIsAltBuffer(altBuffer);
     });
     return unsubscribe;
   }, [terminalId]);
@@ -338,12 +347,13 @@ function XtermAdapterComponent({
   return (
     <div
       className={cn(
-        // Outer wrapper provides padding - xterm container must have no padding for correct column calculation
-        "w-full h-full text-white overflow-hidden rounded-b-[var(--radius-lg)] pl-3 pt-3 pb-3 pr-4",
-        !agentBackgroundColor && "bg-canopy-bg",
+        // Base container styling
+        "w-full h-full text-white overflow-hidden bg-canopy-bg",
+        // In normal buffer mode: apply padding and rounded corners
+        // In alt buffer mode (TUI apps like OpenCode, vim, htop): remove padding for tight full-screen fit
+        !isAltBuffer && "pl-3 pt-3 pb-3 pr-4 rounded-b-[var(--radius-lg)]",
         className
       )}
-      style={agentBackgroundColor ? { backgroundColor: agentBackgroundColor } : undefined}
     >
       <div ref={containerRef} className="w-full h-full" />
     </div>
