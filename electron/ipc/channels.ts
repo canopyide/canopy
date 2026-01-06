@@ -11,6 +11,7 @@ export const CHANNELS = {
   WORKTREE_DELETE: "worktree:delete",
 
   TERMINAL_SPAWN: "terminal:spawn",
+  TERMINAL_SPAWN_RESULT: "terminal:spawn-result",
   TERMINAL_DATA: "terminal:data",
   TERMINAL_INPUT: "terminal:input",
   TERMINAL_SUBMIT: "terminal:submit",

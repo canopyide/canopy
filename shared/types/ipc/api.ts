@@ -54,7 +54,7 @@ import type { TerminalConfig } from "./config.js";
 import type { HibernationConfig } from "./hibernation.js";
 import type { SystemSleepMetrics } from "./systemSleep.js";
 import type { KeyAction } from "../keymap.js";
-import type { TerminalStatusPayload, PtyHostActivityTier } from "../pty-host.js";
+import type { TerminalStatusPayload, PtyHostActivityTier, SpawnResult } from "../pty-host.js";
 import type { ShowContextMenuPayload } from "../menu.js";
 import type { FileSearchPayload, FileSearchResult } from "./files.js";
 import type { SlashCommand, SlashCommandListRequest } from "../slashCommands.js";
@@ -117,6 +117,7 @@ export interface ElectronAPI {
     ): () => void;
     onBackendReady(callback: () => void): () => void;
     sendKey(id: string, key: string): void;
+    onSpawnResult(callback: (id: string, result: SpawnResult) => void): () => void;
   };
   files: {
     search(payload: FileSearchPayload): Promise<FileSearchResult>;

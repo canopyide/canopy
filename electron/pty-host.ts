@@ -27,6 +27,9 @@ import type {
   TerminalFlowStatus,
   PtyHostActivityTier,
   TerminalReliabilityMetricPayload,
+  SpawnResult,
+  SpawnError,
+  SpawnErrorCode,
 } from "../shared/types/pty-host.js";
 import {
   IPC_MAX_QUEUE_BYTES,
@@ -454,6 +457,38 @@ let rendererPortMessageHandler: ((event: any) => void) | null = null;
 // Helper to send events to Main process
 function sendEvent(event: PtyHostEvent): void {
   port.postMessage(event);
+}
+
+// Helper to parse spawn errors into structured SpawnError
+function parseSpawnError(error: unknown): SpawnError {
+  if (error instanceof Error) {
+    const nodeErr = error as NodeJS.ErrnoException;
+
+    // Map common errno codes to SpawnErrorCode
+    let code: SpawnErrorCode = "UNKNOWN";
+    if (nodeErr.code === "ENOENT") {
+      code = "ENOENT";
+    } else if (nodeErr.code === "EACCES") {
+      code = "EACCES";
+    } else if (nodeErr.code === "ENOTDIR") {
+      code = "ENOTDIR";
+    } else if (nodeErr.code === "EIO") {
+      code = "EIO";
+    }
+
+    return {
+      code,
+      message: nodeErr.message,
+      errno: nodeErr.errno,
+      syscall: nodeErr.syscall,
+      path: nodeErr.path,
+    };
+  }
+
+  return {
+    code: "UNKNOWN",
+    message: String(error),
+  };
 }
 
 // Helper to convert data to string for IPC fallback (IPC events expect string)
@@ -1172,16 +1207,29 @@ port.on("message", async (rawMsg: any) => {
         break;
       }
 
-      case "spawn":
-        ptyManager.spawn(msg.id, msg.options);
-        {
+      case "spawn": {
+        let spawnResult: SpawnResult;
+        try {
+          ptyManager.spawn(msg.id, msg.options);
+          spawnResult = { success: true, id: msg.id };
+
           const terminalInfo = ptyManager.getTerminal(msg.id);
           const pid = terminalInfo?.ptyProcess?.pid;
           if (pid !== undefined) {
             sendEvent({ type: "terminal-pid", id: msg.id, pid });
           }
+        } catch (error) {
+          console.error(`[PtyHost] Spawn failed for terminal ${msg.id}:`, error);
+          spawnResult = {
+            success: false,
+            id: msg.id,
+            error: parseSpawnError(error),
+          };
         }
+
+        sendEvent({ type: "spawn-result", id: msg.id, result: spawnResult });
         break;
+      }
 
       case "write":
         ptyManager.write(msg.id, msg.data, msg.traceId);

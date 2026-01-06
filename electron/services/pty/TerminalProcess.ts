@@ -445,9 +445,9 @@ export class TerminalProcess {
           env,
         });
       } catch (error) {
-        const errorMessage = error instanceof Error ? error.message : String(error);
-        console.error(`Failed to spawn terminal ${id}:`, errorMessage);
-        throw new Error(`Failed to spawn terminal: ${errorMessage}`);
+        console.error(`Failed to spawn terminal ${id}:`, error);
+        // Re-throw original error to preserve code, errno, syscall, path metadata
+        throw error;
       }
     }
 

@@ -8,6 +8,7 @@ import type {
   AgentStateChangeTrigger,
   TerminalFlowStatus,
   TerminalRuntimeStatus,
+  SpawnError,
 } from "@/types";
 import { terminalClient, agentSettingsClient } from "@/clients";
 import { generateAgentFlags } from "@shared/types";
@@ -172,6 +173,8 @@ export interface TerminalRegistrySlice {
   toggleInputLocked: (id: string) => void;
   convertTerminalType: (id: string, newType: TerminalType, newAgentId?: string) => Promise<void>;
   setBrowserUrl: (id: string, url: string) => void;
+  setSpawnError: (id: string, error: SpawnError) => void;
+  clearSpawnError: (id: string) => void;
 }
 
 // Flush pending persistence - call on app quit to prevent data loss
@@ -1056,7 +1059,9 @@ export const createTerminalRegistrySlice =
         // Also set the store flag for UI and other consumers
         set((state) => ({
           terminals: state.terminals.map((t) =>
-            t.id === id ? { ...t, restartError: undefined, isRestarting: true } : t
+            t.id === id
+              ? { ...t, restartError: undefined, spawnError: undefined, isRestarting: true }
+              : t
           ),
         }));
 
@@ -1306,7 +1311,7 @@ export const createTerminalRegistrySlice =
       updateTerminalCwd: (id, cwd) => {
         set((state) => {
           const newTerminals = state.terminals.map((t) =>
-            t.id === id ? { ...t, cwd, restartError: undefined } : t
+            t.id === id ? { ...t, cwd, restartError: undefined, spawnError: undefined } : t
           );
           terminalPersistence.save(newTerminals);
           return { terminals: newTerminals };
@@ -1612,6 +1617,34 @@ export const createTerminalRegistrySlice =
           );
 
           terminalPersistence.save(newTerminals);
+          return { terminals: newTerminals };
+        });
+      },
+
+      setSpawnError: (id, error) => {
+        set((state) => {
+          const terminal = state.terminals.find((t) => t.id === id);
+          if (!terminal) return state;
+
+          const newTerminals = state.terminals.map((t) =>
+            t.id === id ? { ...t, spawnError: error, runtimeStatus: "error" as const } : t
+          );
+
+          return { terminals: newTerminals };
+        });
+      },
+
+      clearSpawnError: (id) => {
+        set((state) => {
+          const terminal = state.terminals.find((t) => t.id === id);
+          if (!terminal) return state;
+
+          const newTerminals = state.terminals.map((t) =>
+            t.id === id
+              ? { ...t, spawnError: undefined, runtimeStatus: undefined }
+              : t
+          );
+
           return { terminals: newTerminals };
         });
       },
