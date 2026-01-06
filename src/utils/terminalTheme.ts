@@ -25,13 +25,15 @@ const CANOPY_TERMINAL_THEME_FALLBACK = {
 
 export const CANOPY_TERMINAL_THEME = CANOPY_TERMINAL_THEME_FALLBACK;
 
-export interface TerminalThemeOptions {
-  backgroundColor?: string;
-}
-
-export function getTerminalThemeFromCSS(
-  options?: TerminalThemeOptions
-): typeof CANOPY_TERMINAL_THEME_FALLBACK {
+/**
+ * Get terminal theme from CSS custom properties.
+ *
+ * Note: Background colors for TUI applications (OpenCode, vim, htop) are now
+ * handled dynamically via xterm.js's alt buffer detection and OSC 11 handlers.
+ * This function provides the base Canopy theme; actual background colors are
+ * determined by the terminal application at runtime.
+ */
+export function getTerminalThemeFromCSS(): typeof CANOPY_TERMINAL_THEME_FALLBACK {
   if (typeof document === "undefined") return CANOPY_TERMINAL_THEME_FALLBACK;
 
   const styles = getComputedStyle(document.documentElement);
@@ -40,9 +42,7 @@ export function getTerminalThemeFromCSS(
     return value || fallback;
   };
 
-  const background =
-    options?.backgroundColor ??
-    getVar("--color-canopy-bg", CANOPY_TERMINAL_THEME_FALLBACK.background);
+  const background = getVar("--color-canopy-bg", CANOPY_TERMINAL_THEME_FALLBACK.background);
 
   return {
     background,

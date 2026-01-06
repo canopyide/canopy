@@ -75,6 +75,10 @@ export interface ManagedTerminal {
   restoreGeneration: number;
   isSerializedRestoreInProgress: boolean;
   deferredOutput: Array<string | Uint8Array>;
+
+  // Alt buffer state (for TUI applications like OpenCode, vim, htop)
+  isAltBuffer?: boolean;
+  altBufferListeners: Set<(isAltBuffer: boolean) => void>;
 }
 
 export const TIER_DOWNGRADE_HYSTERESIS_MS = 500;
