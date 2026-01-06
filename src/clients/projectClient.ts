@@ -4,6 +4,7 @@ import type {
   RunCommand,
   ProjectCloseResult,
   ProjectStats,
+  TerminalRecipe,
 } from "@shared/types";
 
 /**
@@ -77,5 +78,29 @@ export const projectClient = {
 
   initGit: (directoryPath: string): Promise<void> => {
     return window.electron.project.initGit(directoryPath);
+  },
+
+  getRecipes: (projectId: string): Promise<TerminalRecipe[]> => {
+    return window.electron.project.getRecipes(projectId);
+  },
+
+  saveRecipes: (projectId: string, recipes: TerminalRecipe[]): Promise<void> => {
+    return window.electron.project.saveRecipes(projectId, recipes);
+  },
+
+  addRecipe: (projectId: string, recipe: TerminalRecipe): Promise<void> => {
+    return window.electron.project.addRecipe(projectId, recipe);
+  },
+
+  updateRecipe: (
+    projectId: string,
+    recipeId: string,
+    updates: Partial<Omit<TerminalRecipe, "id" | "projectId" | "createdAt">>
+  ): Promise<void> => {
+    return window.electron.project.updateRecipe(projectId, recipeId, updates);
+  },
+
+  deleteRecipe: (projectId: string, recipeId: string): Promise<void> => {
+    return window.electron.project.deleteRecipe(projectId, recipeId);
   },
 } as const;

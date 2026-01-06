@@ -3,6 +3,7 @@ import type { TerminalRecipe, RecipeTerminal, RecipeTerminalType } from "@/types
 import { Button } from "@/components/ui/button";
 import { AppDialog } from "@/components/ui/AppDialog";
 import { useRecipeStore } from "@/store/recipeStore";
+import { useProjectStore } from "@/store/projectStore";
 
 interface RecipeEditorProps {
   recipe?: TerminalRecipe;
@@ -41,6 +42,7 @@ export function RecipeEditor({
 }: RecipeEditorProps) {
   const createRecipe = useRecipeStore((state) => state.createRecipe);
   const updateRecipe = useRecipeStore((state) => state.updateRecipe);
+  const currentProject = useProjectStore((state) => state.currentProject);
 
   const [recipeName, setRecipeName] = useState("");
   const [terminals, setTerminals] = useState<RecipeTerminal[]>([
@@ -123,7 +125,10 @@ export function RecipeEditor({
           showInEmptyState,
         });
       } else {
-        await createRecipe(recipeName, worktreeId, terminals, showInEmptyState);
+        if (!currentProject?.id) {
+          throw new Error("No project selected");
+        }
+        await createRecipe(currentProject.id, recipeName, worktreeId, terminals, showInEmptyState);
       }
 
       if (onSave) {
@@ -132,6 +137,7 @@ export function RecipeEditor({
           : {
               id: `recipe-${Date.now()}`,
               name: recipeName,
+              projectId: currentProject!.id,
               worktreeId,
               terminals,
               createdAt: Date.now(),

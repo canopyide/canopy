@@ -273,7 +273,7 @@ async function createWindow(): Promise<void> {
   console.log("[MAIN] Running store migrations...");
   try {
     const migrationRunner = new MigrationRunner(store);
-    migrationRunner.runMigrations(migrations);
+    await migrationRunner.runMigrations(migrations);
     console.log("[MAIN] Store migrations completed");
   } catch (error) {
     console.error("[MAIN] Store migration failed:", error);

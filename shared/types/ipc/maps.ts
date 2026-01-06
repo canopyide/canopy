@@ -1,4 +1,11 @@
-import type { WorktreeState, Project, ProjectSettings, RunCommand, AgentId } from "../domain.js";
+import type {
+  WorktreeState,
+  Project,
+  ProjectSettings,
+  RunCommand,
+  AgentId,
+  TerminalRecipe,
+} from "../domain.js";
 import type { AgentSettings } from "../agentSettings.js";
 import type { UserAgentRegistry, UserAgentConfig } from "../userAgentRegistry.js";
 import type { KeyAction } from "../keymap.js";
@@ -418,6 +425,32 @@ export interface IpcInvokeMap {
   "project:get-stats": {
     args: [projectId: string];
     result: ProjectStats;
+  };
+  "project:get-recipes": {
+    args: [projectId: string];
+    result: TerminalRecipe[];
+  };
+  "project:save-recipes": {
+    args: [payload: { projectId: string; recipes: TerminalRecipe[] }];
+    result: void;
+  };
+  "project:add-recipe": {
+    args: [payload: { projectId: string; recipe: TerminalRecipe }];
+    result: void;
+  };
+  "project:update-recipe": {
+    args: [
+      payload: {
+        projectId: string;
+        recipeId: string;
+        updates: Partial<Omit<TerminalRecipe, "id" | "projectId" | "createdAt">>;
+      },
+    ];
+    result: void;
+  };
+  "project:delete-recipe": {
+    args: [payload: { projectId: string; recipeId: string }];
+    result: void;
   };
 
   // GitHub channels

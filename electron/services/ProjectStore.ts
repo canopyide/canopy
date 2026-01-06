@@ -1,5 +1,11 @@
 import { store } from "../store.js";
-import type { Project, ProjectState, ProjectSettings, ProjectStatus } from "../types/index.js";
+import type {
+  Project,
+  ProjectState,
+  ProjectSettings,
+  ProjectStatus,
+  TerminalRecipe,
+} from "../types/index.js";
 import { createHash } from "crypto";
 import path from "path";
 import fs from "fs/promises";
@@ -9,6 +15,7 @@ import { GitService } from "./GitService.js";
 import { isCanopyError } from "../utils/errorTypes.js";
 
 const SETTINGS_FILENAME = "settings.json";
+const RECIPES_FILENAME = "recipes.json";
 
 export class ProjectStore {
   private projectsConfigDir: string;
@@ -429,6 +436,104 @@ export class ProjectStore {
       }
       throw error;
     }
+  }
+
+  private getRecipesFilePath(projectId: string): string | null {
+    const stateDir = this.getProjectStateDir(projectId);
+    if (!stateDir) return null;
+    return path.join(stateDir, RECIPES_FILENAME);
+  }
+
+  async getRecipes(projectId: string): Promise<TerminalRecipe[]> {
+    const filePath = this.getRecipesFilePath(projectId);
+    if (!filePath || !existsSync(filePath)) {
+      return [];
+    }
+
+    try {
+      const content = await fs.readFile(filePath, "utf-8");
+      const parsed = JSON.parse(content);
+
+      if (!Array.isArray(parsed)) {
+        console.warn(`[ProjectStore] Invalid recipes format for ${projectId}, expected array`);
+        return [];
+      }
+
+      return parsed.filter(
+        (recipe: unknown): recipe is TerminalRecipe =>
+          recipe !== null &&
+          typeof recipe === "object" &&
+          typeof (recipe as TerminalRecipe).id === "string" &&
+          typeof (recipe as TerminalRecipe).name === "string" &&
+          Array.isArray((recipe as TerminalRecipe).terminals)
+      );
+    } catch (error) {
+      console.error(`[ProjectStore] Failed to load recipes for ${projectId}:`, error);
+      try {
+        const quarantinePath = `${filePath}.corrupted`;
+        await fs.rename(filePath, quarantinePath);
+        console.warn(`[ProjectStore] Corrupted recipes file moved to ${quarantinePath}`);
+      } catch {
+        // Ignore
+      }
+      return [];
+    }
+  }
+
+  async saveRecipes(projectId: string, recipes: TerminalRecipe[]): Promise<void> {
+    const stateDir = this.getProjectStateDir(projectId);
+    if (!stateDir) {
+      throw new Error(`Invalid project ID: ${projectId}`);
+    }
+
+    if (!existsSync(stateDir)) {
+      await fs.mkdir(stateDir, { recursive: true });
+    }
+
+    const filePath = this.getRecipesFilePath(projectId);
+    if (!filePath) {
+      throw new Error(`Invalid project ID: ${projectId}`);
+    }
+
+    const tempFilePath = `${filePath}.tmp`;
+    try {
+      await fs.writeFile(tempFilePath, JSON.stringify(recipes, null, 2), "utf-8");
+      await fs.rename(tempFilePath, filePath);
+    } catch (error) {
+      console.error(`[ProjectStore] Failed to save recipes for ${projectId}:`, error);
+      try {
+        await fs.unlink(tempFilePath);
+      } catch {
+        // Ignore
+      }
+      throw error;
+    }
+  }
+
+  async addRecipe(projectId: string, recipe: TerminalRecipe): Promise<void> {
+    const recipes = await this.getRecipes(projectId);
+    recipes.push(recipe);
+    await this.saveRecipes(projectId, recipes);
+  }
+
+  async updateRecipe(
+    projectId: string,
+    recipeId: string,
+    updates: Partial<Omit<TerminalRecipe, "id" | "projectId" | "createdAt">>
+  ): Promise<void> {
+    const recipes = await this.getRecipes(projectId);
+    const index = recipes.findIndex((r) => r.id === recipeId);
+    if (index === -1) {
+      throw new Error(`Recipe ${recipeId} not found in project ${projectId}`);
+    }
+    recipes[index] = { ...recipes[index], ...updates };
+    await this.saveRecipes(projectId, recipes);
+  }
+
+  async deleteRecipe(projectId: string, recipeId: string): Promise<void> {
+    const recipes = await this.getRecipes(projectId);
+    const filtered = recipes.filter((r) => r.id !== recipeId);
+    await this.saveRecipes(projectId, filtered);
   }
 
   /**
