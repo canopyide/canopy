@@ -138,6 +138,7 @@ export type ActionId =
   | "terminal.moveToGrid"
   | "terminal.toggleMaximize"
   | "terminal.restart"
+  | "terminal.redraw"
   | "terminal.forceResume"
   | "terminal.toggleInputLock"
   | "terminal.duplicate"
