@@ -28,18 +28,19 @@ export interface ActivityMonitorOptions {
   };
   /**
    * High output activity threshold configuration.
-   * Used to prevent premature waiting transitions and to recover from incorrect waiting state.
+   * Enabled by default. Used to prevent premature waiting transitions and to recover from incorrect waiting state.
    * When output exceeds these thresholds over the specified window:
    * - Debounce timer will NOT transition to idle
-   * - Recovery from waiting/idle to working can occur (when highOutputRecovery enabled)
+   * - Recovery from waiting/idle to working will occur
    */
   highOutputThreshold?: {
+    /** Enable high output detection (default: true) */
     enabled?: boolean;
     /** Time window in milliseconds to measure output rate (default: 500ms) */
     windowMs?: number;
     /** Minimum bytes per second to consider "high output" (default: 2048 bytes/sec) */
     bytesPerSecond?: number;
-    /** Enable recovery from waiting state on sustained high output (default: false for backwards compat) */
+    /** Enable recovery from waiting state on sustained high output (default: true) */
     recoveryEnabled?: boolean;
     /** Minimum sustained high output duration before recovery in ms (default: 500ms) */
     recoveryDelayMs?: number;
@@ -264,10 +265,10 @@ export class ActivityMonitor {
 
     // High output activity threshold config (prevents premature idle, enables recovery)
     const highOutputDefaults = {
-      enabled: false,
+      enabled: true,
       windowMs: 500,
       bytesPerSecond: 2048,
-      recoveryEnabled: false,
+      recoveryEnabled: true,
       recoveryDelayMs: 500,
     };
     const highOutputConfig = { ...highOutputDefaults, ...options?.highOutputThreshold };
