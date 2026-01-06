@@ -43,13 +43,13 @@ describe("TerminalParserHandler", () => {
     process.env = originalEnv;
   });
 
-  it("should NOT register mouse blocking handlers by default", () => {
+  it("should register alternate screen buffer handlers by default", () => {
     new TerminalParserHandler(mockManaged);
-    // With blockMouseReporting: false (default), no mouse handlers should be registered
+    // Alternate screen buffer handlers should be registered (benign observers)
     const decset = csiHandlers.find((h) => h.opts.prefix === "?" && h.opts.final === "h");
     const decrst = csiHandlers.find((h) => h.opts.prefix === "?" && h.opts.final === "l");
-    expect(decset).toBeUndefined();
-    expect(decrst).toBeUndefined();
+    expect(decset).toBeDefined();
+    expect(decrst).toBeDefined();
   });
 
   it("should NOT block TUI sequences for Claude agent terminals", () => {
@@ -93,7 +93,8 @@ describe("TerminalParserHandler", () => {
 
     new TerminalParserHandler(mockManaged);
     expect(escHandlers).toHaveLength(0);
-    expect(csiHandlers).toHaveLength(0);
+    // Should have 2 handlers for alternate screen buffer detection (?h and ?l)
+    expect(csiHandlers).toHaveLength(2);
   });
 
   it("should dispose handlers correctly", () => {
