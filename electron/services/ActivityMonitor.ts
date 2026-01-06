@@ -869,106 +869,110 @@ export class ActivityMonitor {
       this.recordWorkingSignal(this.pollingStartTime);
     }
 
-    this.pollingInterval = setInterval(() => {
-      const now = Date.now();
+    this.pollingInterval = setInterval(() => this.runPollingCycle(), this.POLLING_INTERVAL_MS);
+  }
 
-      const scanCount = Math.max(this.promptScanLineCount, 15);
-      const lines = this.getVisibleLines!(scanCount);
-      const cursorLine = this.getCursorLine?.() ?? null;
-      const text = stripAnsi(lines.join(" ")).toLowerCase();
-      const quietForMs = now - this.lastActivityTimestamp;
-      const isQuietForIdle = quietForMs >= this.IDLE_DEBOUNCE_MS;
+  private runPollingCycle(): void {
+    if (!this.getVisibleLines) return;
 
-      const patternResult = this.patternDetector
-        ? this.patternDetector.detectFromLines(lines)
-        : undefined;
-      if (patternResult) {
-        this.lastPatternResult = patternResult;
+    const now = Date.now();
+
+    const scanCount = Math.max(this.promptScanLineCount, 15);
+    const lines = this.getVisibleLines!(scanCount);
+    const cursorLine = this.getCursorLine?.() ?? null;
+    const text = stripAnsi(lines.join(" ")).toLowerCase();
+    const quietForMs = now - this.lastActivityTimestamp;
+    const isQuietForIdle = quietForMs >= this.IDLE_DEBOUNCE_MS;
+
+    const patternResult = this.patternDetector
+      ? this.patternDetector.detectFromLines(lines)
+      : undefined;
+    if (patternResult) {
+      this.lastPatternResult = patternResult;
+    }
+
+    // When resuming (skipInitialStateEmit), only trust explicit pattern detector
+    // to avoid matching stale "esc to interrupt" text from previous runs
+    const isWorkingPattern = patternResult
+      ? patternResult.isWorking
+      : this.skipInitialStateEmit
+        ? false
+        : text.includes("esc to interrupt") || text.includes("esc to cancel");
+
+    const allowHistoryScan = quietForMs >= this.PROMPT_HISTORY_FALLBACK_MS;
+    const promptResult = this.detectPrompt(lines, cursorLine, { allowHistoryScan });
+    const isPrompt = promptResult.isPrompt;
+    if (isPrompt) {
+      if (this.promptStableSince === 0) {
+        this.promptStableSince = now;
       }
+    } else {
+      this.promptStableSince = 0;
+    }
 
-      // When resuming (skipInitialStateEmit), only trust explicit pattern detector
-      // to avoid matching stale "esc to interrupt" text from previous runs
-      const isWorkingPattern = patternResult
-        ? patternResult.isWorking
-        : this.skipInitialStateEmit
-          ? false
-          : text.includes("esc to interrupt") || text.includes("esc to cancel");
-
-      const allowHistoryScan = quietForMs >= this.PROMPT_HISTORY_FALLBACK_MS;
-      const promptResult = this.detectPrompt(lines, cursorLine, { allowHistoryScan });
-      const isPrompt = promptResult.isPrompt;
-      if (isPrompt) {
-        if (this.promptStableSince === 0) {
-          this.promptStableSince = now;
-        }
+    // Check for boot completion (agent-specific ready patterns)
+    if (!this.hasExitedBootState) {
+      const timeSinceBoot = now - this.pollingStartTime;
+      if (isPrompt || this.isBootComplete(text) || timeSinceBoot >= this.POLLING_MAX_BOOT_MS) {
+        this.hasExitedBootState = true;
       } else {
-        this.promptStableSince = 0;
+        return; // Still booting, stay busy
       }
+    }
 
-      // Check for boot completion (agent-specific ready patterns)
-      if (!this.hasExitedBootState) {
-        const timeSinceBoot = now - this.pollingStartTime;
-        if (isPrompt || this.isBootComplete(text) || timeSinceBoot >= this.POLLING_MAX_BOOT_MS) {
-          this.hasExitedBootState = true;
-        } else {
-          return; // Still booting, stay busy
-        }
-      }
+    const hasRecentOutputActivity =
+      this.lastOutputActivityAt > 0 && now - this.lastOutputActivityAt <= this.outputWindowMs;
+    const isSpinnerActive = this.isSpinnerActive(now);
+    const isOutputQuiet = quietForMs >= this.PROMPT_QUIET_MS;
+    const promptStableForMs = this.promptStableSince === 0 ? 0 : now - this.promptStableSince;
+    const shouldAllowPromptStability =
+      isPrompt && isOutputQuiet && !isSpinnerActive && !hasRecentOutputActivity;
+    const shouldPreferPrompt =
+      shouldAllowPromptStability && promptStableForMs >= this.PROMPT_DEBOUNCE_MS;
 
-      const hasRecentOutputActivity =
-        this.lastOutputActivityAt > 0 && now - this.lastOutputActivityAt <= this.outputWindowMs;
-      const isSpinnerActive = this.isSpinnerActive(now);
-      const isOutputQuiet = quietForMs >= this.PROMPT_QUIET_MS;
-      const promptStableForMs = this.promptStableSince === 0 ? 0 : now - this.promptStableSince;
-      const shouldAllowPromptStability =
-        isPrompt && isOutputQuiet && !isSpinnerActive && !hasRecentOutputActivity;
-      const shouldPreferPrompt =
-        shouldAllowPromptStability && promptStableForMs >= this.PROMPT_DEBOUNCE_MS;
+    if (isWorkingPattern && !shouldAllowPromptStability && !isQuietForIdle) {
+      this.recordWorkingSignal(now);
+    }
 
-      if (isWorkingPattern && !shouldAllowPromptStability && !isQuietForIdle) {
-        this.recordWorkingSignal(now);
-      }
+    const isWorkingSignal =
+      isSpinnerActive ||
+      hasRecentOutputActivity ||
+      (isWorkingPattern && !shouldPreferPrompt && !shouldAllowPromptStability && !isQuietForIdle);
+    if (isWorkingSignal) {
+      this.promptStableSince = 0;
+    }
 
-      const isWorkingSignal =
-        isSpinnerActive ||
-        hasRecentOutputActivity ||
-        (isWorkingPattern && !shouldPreferPrompt && !shouldAllowPromptStability && !isQuietForIdle);
-      if (isWorkingSignal) {
-        this.promptStableSince = 0;
-      }
-
-      if (this.pendingInputUntil > 0) {
-        if (isWorkingSignal || (isPrompt && !this.pendingInputWasNonEmpty)) {
-          this.pendingInputUntil = 0;
-          this.pendingInputWasNonEmpty = false;
-        } else if (now >= this.pendingInputUntil) {
-          this.pendingInputUntil = 0;
-          this.pendingInputWasNonEmpty = false;
-          this.becomeBusy({ trigger: "input" }, now);
-          return;
-        }
-      }
-
-      if (isWorkingSignal) {
-        if (this.state !== "busy") {
-          const metadata = isWorkingPattern
-            ? { trigger: "pattern" as const, patternConfidence: patternResult?.confidence ?? 0.9 }
-            : { trigger: "output" as const };
-          this.becomeBusy(metadata, now);
-        }
+    if (this.pendingInputUntil > 0) {
+      if (isWorkingSignal || (isPrompt && !this.pendingInputWasNonEmpty)) {
+        this.pendingInputUntil = 0;
+        this.pendingInputWasNonEmpty = false;
+      } else if (now >= this.pendingInputUntil) {
+        this.pendingInputUntil = 0;
+        this.pendingInputWasNonEmpty = false;
+        this.becomeBusy({ trigger: "input" }, now);
         return;
       }
+    }
 
-      if (
-        this.state === "busy" &&
-        isQuietForIdle &&
-        now >= this.workingHoldUntil &&
-        !(this.pendingInputUntil > 0 && now < this.pendingInputUntil)
-      ) {
-        this.state = "idle";
-        this.onStateChange(this.terminalId, this.spawnedAt, "idle");
+    if (isWorkingSignal) {
+      if (this.state !== "busy") {
+        const metadata = isWorkingPattern
+          ? { trigger: "pattern" as const, patternConfidence: patternResult?.confidence ?? 0.9 }
+          : { trigger: "output" as const };
+        this.becomeBusy(metadata, now);
       }
-    }, this.POLLING_INTERVAL_MS);
+      return;
+    }
+
+    if (
+      this.state === "busy" &&
+      isQuietForIdle &&
+      now >= this.workingHoldUntil &&
+      !(this.pendingInputUntil > 0 && now < this.pendingInputUntil)
+    ) {
+      this.state = "idle";
+      this.onStateChange(this.terminalId, this.spawnedAt, "idle");
+    }
   }
 
   stopPolling(): void {
@@ -994,83 +998,7 @@ export class ActivityMonitor {
     // If currently polling, reschedule without state reset
     if (wasPolling && this.pollingInterval) {
       clearInterval(this.pollingInterval);
-      this.pollingInterval = undefined;
-
-      // Restart polling without boot/state reset (reuse existing interval setup)
-      this.pollingInterval = setInterval(() => {
-        const now = Date.now();
-
-        const scanCount = Math.max(this.promptScanLineCount, 15);
-        const lines = this.getVisibleLines!(scanCount);
-        const cursorLine = this.getCursorLine?.() ?? null;
-        const text = stripAnsi(lines.join(" ")).toLowerCase();
-        const quietForMs = now - this.lastActivityTimestamp;
-        const isQuietForIdle = quietForMs >= this.IDLE_DEBOUNCE_MS;
-
-        const patternResult = this.patternDetector
-          ? this.patternDetector.detectFromLines(lines)
-          : undefined;
-        if (patternResult) {
-          this.lastPatternResult = patternResult;
-        }
-
-        const bootCompleteDetected = this.detectBootComplete(text);
-        if (bootCompleteDetected || now - this.pollingStartTime > this.POLLING_MAX_BOOT_MS) {
-          this.hasExitedBootState = true;
-        }
-
-        const promptDetection = this.detectPrompt(lines, cursorLine);
-        const isPromptStable = this.trackPromptStability(promptDetection.isPrompt, now);
-
-        if (
-          isPromptStable &&
-          promptDetection.confidence >= this.promptConfidence &&
-          this.state === "busy" &&
-          now >= this.workingHoldUntil
-        ) {
-          this.state = "idle";
-          this.onStateChange(this.terminalId, this.spawnedAt, "idle", {
-            trigger: "pattern",
-            patternConfidence: promptDetection.confidence,
-          });
-          return;
-        }
-
-        const hasSpinnerActivity = now - this.lastSpinnerDetectedAt < this.SPINNER_ACTIVE_MS;
-        const hasRecentInput =
-          this.pendingInputUntil > 0 && now < this.pendingInputUntil + this.INPUT_CONFIRM_ACTIVE_MS;
-        const hasProcessChildren = this.processStateValidator?.hasActiveChildren() ?? false;
-
-        const isWorkingPattern =
-          patternResult?.state === "working" ||
-          patternResult?.state === "busy" ||
-          patternResult?.state === "booting";
-        const isWorkingSignal =
-          isWorkingPattern ||
-          hasSpinnerActivity ||
-          hasRecentInput ||
-          (hasProcessChildren && !this.hasExitedBootState);
-
-        if (isWorkingSignal) {
-          if (this.state !== "busy") {
-            const metadata = isWorkingPattern
-              ? { trigger: "pattern" as const, patternConfidence: patternResult?.confidence ?? 0.9 }
-              : { trigger: "output" as const };
-            this.becomeBusy(metadata, now);
-          }
-          return;
-        }
-
-        if (
-          this.state === "busy" &&
-          isQuietForIdle &&
-          now >= this.workingHoldUntil &&
-          !(this.pendingInputUntil > 0 && now < this.pendingInputUntil)
-        ) {
-          this.state = "idle";
-          this.onStateChange(this.terminalId, this.spawnedAt, "idle");
-        }
-      }, this.POLLING_INTERVAL_MS);
+      this.pollingInterval = setInterval(() => this.runPollingCycle(), this.POLLING_INTERVAL_MS);
     }
   }
 }

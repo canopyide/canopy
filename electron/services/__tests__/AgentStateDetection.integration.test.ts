@@ -511,7 +511,7 @@ describe.skipIf(shouldSkip)("Agent State Detection Integration", () => {
       const handler: AgentStateChangedHandler = (data) => {
         if (data.terminalId === terminalA || data.terminalId === terminalB) {
           stateChanges.push({
-            terminalId: data.terminalId,
+            terminalId: data.terminalId!,
             state: data.state,
             timestamp: data.timestamp,
           });
@@ -587,7 +587,7 @@ describe.skipIf(shouldSkip)("Agent State Detection Integration", () => {
       const projectA = "project-A";
       const projectB = "project-B";
 
-      const terminalA = await spawnShellTerminal(manager, {
+      await spawnShellTerminal(manager, {
         type: "claude",
         projectId: projectA,
       });
