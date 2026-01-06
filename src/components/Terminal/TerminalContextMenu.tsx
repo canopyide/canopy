@@ -7,6 +7,7 @@ import { useNativeContextMenu } from "@/hooks";
 import { AGENT_IDS, getAgentConfig } from "@/config/agents";
 import { isValidBrowserUrl } from "@/components/Browser/browserUtils";
 import { actionService } from "@/services/ActionService";
+import { panelKindHasPty } from "@shared/config/panelKindRegistry";
 
 interface TerminalContextMenuProps {
   terminalId: string;
@@ -161,10 +162,12 @@ export function TerminalContextMenu({
 
     const isMac = navigator.platform.toLowerCase().includes("mac");
     const modifierKey = isMac ? "⌘" : "Ctrl";
+    const hasPty = terminal.kind ? panelKindHasPty(terminal.kind) : true;
 
     // Terminal actions section
     const terminalActions: MenuItemOption[] = [
-      { id: "restart", label: "Restart Terminal" },
+      ...(hasPty ? [{ id: "restart", label: "Restart Terminal" }] : []),
+      ...(hasPty ? [{ id: "redraw", label: "Redraw Terminal" }] : []),
       ...(isPaused ? [{ id: "force-resume", label: "Force Resume (Paused)" }] : []),
       {
         id: "toggle-input-lock",
@@ -281,6 +284,13 @@ export function TerminalContextMenu({
         case "restart":
           void actionService.dispatch(
             "terminal.restart",
+            { terminalId },
+            { source: "context-menu" }
+          );
+          break;
+        case "redraw":
+          void actionService.dispatch(
+            "terminal.redraw",
             { terminalId },
             { source: "context-menu" }
           );
