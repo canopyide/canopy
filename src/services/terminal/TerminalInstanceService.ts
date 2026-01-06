@@ -477,11 +477,57 @@ class TerminalInstanceService {
       restoreGeneration: 0,
       isSerializedRestoreInProgress: false,
       deferredOutput: [],
+      isAltBuffer: false,
+      altBufferListeners: new Set(),
     };
 
     managed.parserHandler = new TerminalParserHandler(managed, () => {
       this.applyDeferredResize(id);
     });
+
+    // Initialize alt buffer state from current terminal state
+    // This prevents a flash of wrong padding if terminal is already in alt buffer
+    const initialIsAltBuffer = terminal.buffer.active.type === "alternate";
+    managed.isAltBuffer = initialIsAltBuffer;
+
+    // Subscribe to buffer changes for alt-buffer detection (vim, OpenCode, htop, etc.)
+    const bufferDisposable = terminal.buffer.onBufferChange(() => {
+      const newIsAltBuffer = terminal.buffer.active.type === "alternate";
+      if (newIsAltBuffer !== managed.isAltBuffer) {
+        managed.isAltBuffer = newIsAltBuffer;
+        this.handleBufferModeChange(id, newIsAltBuffer);
+      }
+    });
+    listeners.push(() => bufferDisposable.dispose());
+
+    // Notify listeners of initial state if in alt buffer
+    if (initialIsAltBuffer) {
+      this.handleBufferModeChange(id, true);
+    }
+
+    // Register OSC 11 handler for dynamic background color changes.
+    // This catches theme changes in TUI applications (OpenCode, vim colorschemes, etc.)
+    // OSC 11 = Set Background Color. Format: OSC 11 ; <color-spec> ST
+    const oscDisposable = terminal.parser.registerOscHandler(11, () => {
+      // Only react to background color changes when in alt buffer
+      // (TUI applications in full-screen mode)
+      if (managed.isAltBuffer) {
+        // Notify listeners with the new background color.
+        // The XtermAdapter uses this to sync the container background.
+        for (const callback of managed.altBufferListeners) {
+          try {
+            // Fire callback to allow external components to react to theme changes.
+            // We pass the current alt buffer state; the color is handled by xterm internally.
+            callback(true);
+          } catch (err) {
+            console.error("[TerminalInstanceService] Alt buffer callback error:", err);
+          }
+        }
+      }
+      // Return false so xterm.js still processes the color change internally
+      return false;
+    });
+    listeners.push(() => oscDisposable.dispose());
 
     const scrollDisposable = terminal.onScroll(() => {
       const buffer = terminal.buffer.active;
@@ -774,6 +820,72 @@ class TerminalInstanceService {
         console.error("[TerminalInstanceService] Agent state callback error:", err);
       }
     }
+  }
+
+  /**
+   * Handle buffer mode changes (normal <-> alternate buffer).
+   * TUI applications like OpenCode, vim, htop use the alternate screen buffer.
+   * When in alt buffer, notify listeners so UI components can adjust styling
+   * (e.g., remove padding for a tight, full-screen appearance).
+   */
+  private handleBufferModeChange(id: string, isAltBuffer: boolean): void {
+    const managed = this.instances.get(id);
+    if (!managed) return;
+
+    // Notify listeners so UI components can update their styling (padding, borders, etc.)
+    for (const callback of managed.altBufferListeners) {
+      try {
+        callback(isAltBuffer);
+      } catch (err) {
+        console.error("[TerminalInstanceService] Alt buffer callback error:", err);
+      }
+    }
+
+    // Force resize to recalculate grid with new available space after UI updates
+    // Use requestAnimationFrame to ensure UI has reacted to state change first
+    requestAnimationFrame(() => {
+      if (this.instances.get(id) !== managed) return;
+
+      // Clear any pending resize jobs to avoid conflicts
+      this.clearResizeJobs(managed);
+
+      // Skip resize if locked (e.g., during drag operations)
+      if (!this.isResizeLocked(id)) {
+        this.fit(id);
+      }
+    });
+  }
+
+  /**
+   * Subscribe to alt buffer state changes for a terminal.
+   * Callback is fired immediately with current state if terminal exists.
+   */
+  addAltBufferListener(id: string, callback: (isAltBuffer: boolean) => void): () => void {
+    const managed = this.instances.get(id);
+    if (!managed) return () => {};
+
+    managed.altBufferListeners.add(callback);
+
+    // Fire immediately with current state
+    if (managed.isAltBuffer !== undefined) {
+      try {
+        callback(managed.isAltBuffer);
+      } catch (err) {
+        console.error("[TerminalInstanceService] Alt buffer callback error:", err);
+      }
+    }
+
+    return () => {
+      managed.altBufferListeners.delete(callback);
+    };
+  }
+
+  /**
+   * Get the current alt buffer state for a terminal.
+   */
+  getAltBufferState(id: string): boolean {
+    const managed = this.instances.get(id);
+    return managed?.isAltBuffer ?? false;
   }
 
   getAgentState(id: string): AgentState | undefined {
@@ -1265,6 +1377,7 @@ class TerminalInstanceService {
 
     managed.exitSubscribers.clear();
     managed.agentStateSubscribers.clear();
+    managed.altBufferListeners.clear();
 
     managed.parserHandler?.dispose();
 

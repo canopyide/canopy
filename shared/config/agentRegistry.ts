@@ -98,11 +98,6 @@ export interface AgentConfig {
   usageUrl?: string;
   help?: AgentHelpConfig;
   install?: AgentInstallHelp;
-  /**
-   * Custom background color for the terminal (hex format).
-   * If not specified, uses the default canopy-bg color.
-   */
-  backgroundColor?: string;
   capabilities?: {
     scrollback?: number;
     blockAltScreen?: boolean;
@@ -319,7 +314,6 @@ export const AGENT_REGISTRY: Record<string, AgentConfig> = {
     shortcut: "Cmd/Ctrl+Alt+O",
     tooltip: "provider-agnostic, open source",
     usageUrl: "https://opencode.ai/",
-    backgroundColor: "#0a0a0a", // rgb(10, 10, 10) - OpenCode's native background
     install: {
       docsUrl: "https://opencode.ai/docs/",
       byOs: {

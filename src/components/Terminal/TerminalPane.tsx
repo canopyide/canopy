@@ -520,7 +520,6 @@ function TerminalPaneComponent({
               key={`${id}-${restartKey}`}
               terminalId={id}
               terminalType={type}
-              agentId={agentId}
               isInputLocked={isInputLocked}
               onReady={handleReady}
               onExit={handleExit}
