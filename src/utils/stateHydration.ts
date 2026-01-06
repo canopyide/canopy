@@ -37,7 +37,7 @@ export interface HydrationOptions {
     devCommand?: string; // Dev command override for dev-preview panels
   }) => Promise<string>;
   setActiveWorktree: (id: string | null) => void;
-  loadRecipes: () => Promise<void>;
+  loadRecipes: (projectId: string) => Promise<void>;
   openDiagnosticsDock: (tab?: "problems" | "logs" | "events") => void;
 }
 
@@ -191,7 +191,10 @@ export async function hydrateAppState(options: HydrationOptions): Promise<void> 
       setActiveWorktree(appState.activeWorktreeId);
     }
 
-    await loadRecipes();
+    // Load recipes for the current project
+    if (currentProjectId) {
+      await loadRecipes(currentProjectId);
+    }
 
     if (appState.developerMode?.enabled && appState.developerMode.autoOpenDiagnostics) {
       const tab = appState.developerMode.focusEventsTab ? "events" : undefined;

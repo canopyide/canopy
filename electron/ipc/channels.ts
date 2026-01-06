@@ -138,6 +138,11 @@ export const CHANNELS = {
   PROJECT_REOPEN: "project:reopen",
   PROJECT_GET_STATS: "project:get-stats",
   PROJECT_INIT_GIT: "project:init-git",
+  PROJECT_GET_RECIPES: "project:get-recipes",
+  PROJECT_SAVE_RECIPES: "project:save-recipes",
+  PROJECT_ADD_RECIPE: "project:add-recipe",
+  PROJECT_UPDATE_RECIPE: "project:update-recipe",
+  PROJECT_DELETE_RECIPE: "project:delete-recipe",
 
   AGENT_SETTINGS_GET: "agent-settings:get",
   AGENT_SETTINGS_SET: "agent-settings:set",

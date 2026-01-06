@@ -5,6 +5,7 @@ import type {
   RunCommand,
   GitStatus,
   AgentId,
+  TerminalRecipe,
 } from "../domain.js";
 import type { AgentSettings, AgentSettingsEntry } from "../agentSettings.js";
 
@@ -214,6 +215,15 @@ export interface ElectronAPI {
     reopen(projectId: string): Promise<Project>;
     getStats(projectId: string): Promise<ProjectStats>;
     initGit(directoryPath: string): Promise<void>;
+    getRecipes(projectId: string): Promise<TerminalRecipe[]>;
+    saveRecipes(projectId: string, recipes: TerminalRecipe[]): Promise<void>;
+    addRecipe(projectId: string, recipe: TerminalRecipe): Promise<void>;
+    updateRecipe(
+      projectId: string,
+      recipeId: string,
+      updates: Partial<Omit<TerminalRecipe, "id" | "projectId" | "createdAt">>
+    ): Promise<void>;
+    deleteRecipe(projectId: string, recipeId: string): Promise<void>;
   };
   agentSettings: {
     get(): Promise<AgentSettings>;

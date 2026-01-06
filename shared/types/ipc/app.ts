@@ -51,7 +51,7 @@ export interface AppState {
   };
   /** Height of the diagnostics dock in pixels */
   diagnosticsHeight?: number;
-  /** Saved terminal recipes */
+  /** @deprecated Recipes are now stored per-project via project:get-recipes IPC. This field is kept for migration only. */
   recipes?: SavedRecipe[];
   /** Whether the user has seen the welcome screen */
   hasSeenWelcome?: boolean;

@@ -109,8 +109,10 @@ export function NewWorktreeDialog({
         })
         .catch((err) => console.error("Failed to load project settings:", err));
 
-      if (recipes.length === 0) {
-        loadRecipes().catch((err) => console.error("Failed to load recipes:", err));
+      if (recipes.length === 0 && currentProject?.id) {
+        loadRecipes(currentProject.id).catch((err) =>
+          console.error("Failed to load recipes:", err)
+        );
       }
     }
   }, [isOpen, currentProject, recipes.length, loadRecipes]);

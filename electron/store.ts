@@ -55,6 +55,7 @@ export interface StoreSchema {
       };
       isInputLocked?: boolean;
     }>;
+    /** @deprecated Recipes are now stored per-project. This field is kept for migration only. */
     recipes?: Array<{
       id: string;
       name: string;
