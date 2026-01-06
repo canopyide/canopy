@@ -42,7 +42,9 @@ import type {
   DevPreviewUrlPayload,
 } from "../shared/types/ipc.js";
 import type { TerminalActivityPayload } from "../shared/types/terminal.js";
-import type { TerminalStatusPayload } from "../shared/types/pty-host.js";
+import type { TerminalStatusPayload, SpawnResult } from "../shared/types/pty-host.js";
+
+type SpawnResultPayload = SpawnResult;
 import type {
   SidecarNewTabMenuAction,
   SidecarShowNewTabMenuPayload,
@@ -134,6 +136,7 @@ const CHANNELS = {
 
   // Terminal channels
   TERMINAL_SPAWN: "terminal:spawn",
+  TERMINAL_SPAWN_RESULT: "terminal:spawn-result",
   TERMINAL_DATA: "terminal:data",
   TERMINAL_INPUT: "terminal:input",
   TERMINAL_SUBMIT: "terminal:submit",
@@ -528,6 +531,16 @@ const api: ElectronAPI = {
     },
 
     sendKey: (id: string, key: string) => ipcRenderer.send(CHANNELS.TERMINAL_SEND_KEY, id, key),
+
+    onSpawnResult: (callback: (id: string, result: SpawnResultPayload) => void): (() => void) => {
+      const handler = (_event: Electron.IpcRendererEvent, id: unknown, result: unknown) => {
+        if (typeof id === "string" && typeof result === "object" && result !== null) {
+          callback(id, result as SpawnResultPayload);
+        }
+      };
+      ipcRenderer.on(CHANNELS.TERMINAL_SPAWN_RESULT, handler);
+      return () => ipcRenderer.removeListener(CHANNELS.TERMINAL_SPAWN_RESULT, handler);
+    },
   },
 
   // Files API

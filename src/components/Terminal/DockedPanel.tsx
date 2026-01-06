@@ -119,6 +119,7 @@ export function DockedPanel({ terminal, onPopoverClose }: DockedPanelProps) {
       flowStatus: terminal.flowStatus,
       restartKey: terminal.restartKey,
       restartError: terminal.restartError,
+      spawnError: terminal.spawnError,
 
       // Browser-specific
       initialUrl: terminal.browserUrl || "http://localhost:3000",

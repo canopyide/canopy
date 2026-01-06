@@ -1,13 +1,14 @@
 import React, { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { useShallow } from "zustand/react/shallow";
 import { AlertTriangle, Loader2 } from "lucide-react";
-import type { TerminalType, TerminalRestartError } from "@/types";
+import type { TerminalType, TerminalRestartError, SpawnError } from "@/types";
 import { cn } from "@/lib/utils";
 import { XtermAdapter } from "./XtermAdapter";
 import { ArtifactOverlay } from "./ArtifactOverlay";
 import { TerminalSearchBar } from "./TerminalSearchBar";
 import { TerminalRestartBanner } from "./TerminalRestartBanner";
 import { TerminalErrorBanner } from "./TerminalErrorBanner";
+import { SpawnErrorBanner } from "./SpawnErrorBanner";
 import { GeminiAlternateBufferBanner } from "./GeminiAlternateBufferBanner";
 import { UpdateCwdDialog } from "./UpdateCwdDialog";
 import { ErrorBanner } from "../Errors/ErrorBanner";
@@ -61,6 +62,7 @@ export interface TerminalPaneProps {
   restartKey?: number;
   isTrashing?: boolean;
   restartError?: TerminalRestartError;
+  spawnError?: SpawnError;
   gridPanelCount?: number;
 }
 
@@ -87,6 +89,7 @@ function TerminalPaneComponent({
   restartKey = 0,
   isTrashing = false,
   restartError,
+  spawnError,
   gridPanelCount,
 }: TerminalPaneProps) {
   const containerRef = useRef<HTMLDivElement>(null);
@@ -483,6 +486,17 @@ function TerminalPaneComponent({
         <TerminalErrorBanner
           terminalId={id}
           error={restartError}
+          onUpdateCwd={handleUpdateCwd}
+          onRetry={handleRestart}
+          onTrash={handleTrash}
+        />
+      )}
+
+      {spawnError && !restartError && (
+        <SpawnErrorBanner
+          terminalId={id}
+          error={spawnError}
+          cwd={cwd}
           onUpdateCwd={handleUpdateCwd}
           onRetry={handleRestart}
           onTrash={handleTrash}
