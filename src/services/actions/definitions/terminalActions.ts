@@ -109,6 +109,27 @@ export function registerTerminalActions(actions: ActionRegistry, callbacks: Acti
     },
   }));
 
+  actions.set("terminal.redraw", () => ({
+    id: "terminal.redraw",
+    title: "Redraw Terminal",
+    description: "Redraw terminal display to fix visual corruption",
+    category: "terminal",
+    kind: "command",
+    danger: "safe",
+    scope: "renderer",
+    argsSchema: z.object({ terminalId: z.string().optional() }).optional(),
+    run: async (args: unknown) => {
+      const { terminalId } = (args as { terminalId?: string } | undefined) ?? {};
+      const state = useTerminalStore.getState();
+      const targetId = terminalId ?? state.focusedId;
+      if (targetId) {
+        const { terminalInstanceService } =
+          await import("@/services/terminal/TerminalInstanceService");
+        terminalInstanceService.resetRenderer(targetId);
+      }
+    },
+  }));
+
   actions.set("terminal.duplicate", () => ({
     id: "terminal.duplicate",
     title: "Duplicate Terminal",
