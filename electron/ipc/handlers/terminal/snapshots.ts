@@ -5,6 +5,7 @@
 import { ipcMain } from "electron";
 import { CHANNELS } from "../../channels.js";
 import type { HandlerDependencies } from "../../types.js";
+import { TerminalReplayHistoryPayloadSchema } from "../../../schemas/index.js";
 
 export function registerTerminalSnapshotHandlers(deps: HandlerDependencies): () => void {
   const { ptyClient } = deps;
@@ -103,23 +104,20 @@ export function registerTerminalSnapshotHandlers(deps: HandlerDependencies): () 
 
   const handleTerminalReplayHistory = async (
     _event: Electron.IpcMainInvokeEvent,
-    payload: { terminalId: string; maxLines?: number }
+    payload: unknown
   ) => {
+    const parseResult = TerminalReplayHistoryPayloadSchema.safeParse(payload);
+    if (!parseResult.success) {
+      console.error("[IPC] terminal:replayHistory validation failed:", parseResult.error.format());
+      throw new Error(`Invalid payload: ${parseResult.error.message}`);
+    }
+
+    const { terminalId, maxLines } = parseResult.data;
+
     try {
-      if (!payload || typeof payload !== "object") {
-        throw new Error("Invalid payload");
-      }
-      if (typeof payload.terminalId !== "string" || !payload.terminalId) {
-        throw new Error("Invalid terminal ID: must be a non-empty string");
-      }
+      const replayed = await ptyClient.replayHistoryAsync(terminalId, maxLines);
 
-      const maxLines = payload.maxLines ?? 100;
-
-      const replayed = await ptyClient.replayHistoryAsync(payload.terminalId, maxLines);
-
-      console.log(
-        `[IPC] terminal:replayHistory(${payload.terminalId}): replayed ${replayed} lines`
-      );
+      console.log(`[IPC] terminal:replayHistory(${terminalId}): replayed ${replayed} lines`);
       return { replayed };
     } catch (error) {
       const errorMessage = error instanceof Error ? error.message : String(error);

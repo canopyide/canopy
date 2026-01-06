@@ -27,6 +27,8 @@ export {
   CopyTreeProgressSchema,
   SystemOpenExternalPayloadSchema,
   SystemOpenPathPayloadSchema,
+  TerminalReplayHistoryPayloadSchema,
+  DevPreviewStartPayloadSchema,
   WorktreeSetActivePayloadSchema,
   WorktreeCreatePayloadSchema,
   type TerminalSpawnOptions as ValidatedTerminalSpawnOptions,
@@ -37,6 +39,8 @@ export {
   type CopyTreeProgress as ValidatedCopyTreeProgress,
   type SystemOpenExternalPayload as ValidatedSystemOpenExternalPayload,
   type SystemOpenPathPayload as ValidatedSystemOpenPathPayload,
+  type TerminalReplayHistoryPayload as ValidatedTerminalReplayHistoryPayload,
+  type DevPreviewStartPayload as ValidatedDevPreviewStartPayload,
   type WorktreeSetActivePayload as ValidatedWorktreeSetActivePayload,
   type WorktreeCreatePayload as ValidatedWorktreeCreatePayload,
 } from "./ipc.js";
