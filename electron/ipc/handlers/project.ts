@@ -7,13 +7,7 @@ import { projectStore } from "../../services/ProjectStore.js";
 import { runCommandDetector } from "../../services/RunCommandDetector.js";
 import { ProjectSwitchService } from "../../services/ProjectSwitchService.js";
 import type { HandlerDependencies } from "../types.js";
-import type {
-  SystemOpenExternalPayload,
-  SystemOpenPathPayload,
-  Project,
-  ProjectSettings,
-  TerminalRecipe,
-} from "../../types/index.js";
+import type { Project, ProjectSettings, TerminalRecipe } from "../../types/index.js";
 import {
   SystemOpenExternalPayloadSchema,
   SystemOpenPathPayloadSchema,
