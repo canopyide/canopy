@@ -1,7 +1,10 @@
 import { ipcMain } from "electron";
+import { promises as fs } from "fs";
+import path from "path";
 import { CHANNELS } from "../channels.js";
 import type { HandlerDependencies } from "../types.js";
 import { DevPreviewService } from "../../services/DevPreviewService.js";
+import { DevPreviewStartPayloadSchema } from "../../schemas/index.js";
 
 let devPreviewService: DevPreviewService | null = null;
 
@@ -29,10 +32,45 @@ export function registerDevPreviewHandlers(deps: HandlerDependencies): () => voi
     devCommand?: string
   ) => {
     if (!devPreviewService) throw new Error("DevPreviewService not initialized");
-    // Validate devCommand if provided
-    const validatedDevCommand =
-      devCommand !== undefined && typeof devCommand === "string" ? devCommand : undefined;
-    await devPreviewService.start({ panelId, cwd, cols, rows, devCommand: validatedDevCommand });
+
+    const parseResult = DevPreviewStartPayloadSchema.safeParse({
+      panelId,
+      cwd,
+      cols,
+      rows,
+      devCommand,
+    });
+
+    if (!parseResult.success) {
+      console.error("[IPC] dev-preview:start validation failed:", parseResult.error.format());
+      throw new Error(`Invalid payload: ${parseResult.error.message}`);
+    }
+
+    const validated = parseResult.data;
+
+    if (!path.isAbsolute(validated.cwd)) {
+      throw new Error("cwd must be an absolute path");
+    }
+
+    try {
+      const stats = await fs.stat(validated.cwd);
+      if (!stats.isDirectory()) {
+        throw new Error(`cwd is not a directory: ${validated.cwd}`);
+      }
+    } catch (error) {
+      if (error instanceof Error && error.message.startsWith("cwd")) {
+        throw error;
+      }
+      throw new Error(`Cannot access cwd: ${validated.cwd}`);
+    }
+
+    await devPreviewService.start({
+      panelId: validated.panelId,
+      cwd: validated.cwd,
+      cols: validated.cols,
+      rows: validated.rows,
+      devCommand: validated.devCommand,
+    });
   };
   ipcMain.handle(CHANNELS.DEV_PREVIEW_START, handleStart);
   handlers.push(() => ipcMain.removeHandler(CHANNELS.DEV_PREVIEW_START));
