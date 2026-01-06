@@ -40,7 +40,11 @@ function getXtermCellDimensions(terminal: Terminal): { width: number; height: nu
     // eslint-disable-next-line @typescript-eslint/no-explicit-any
     const core = (terminal as any)._core;
     const dimensions = core?._renderService?.dimensions?.css?.cell;
-    if (dimensions && typeof dimensions.width === "number" && typeof dimensions.height === "number") {
+    if (
+      dimensions &&
+      typeof dimensions.width === "number" &&
+      typeof dimensions.height === "number"
+    ) {
       return { width: dimensions.width, height: dimensions.height };
     }
   } catch {
