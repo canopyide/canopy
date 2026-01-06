@@ -51,9 +51,7 @@ import {
 type CursorBuffer = {
   cursorY?: number;
   baseY: number;
-  getLine: (
-    index: number
-  ) => { translateToString: (trimRight?: boolean) => string } | undefined;
+  getLine: (index: number) => { translateToString: (trimRight?: boolean) => string } | undefined;
 };
 
 const TERMINAL_DISABLE_URL_STYLING: boolean = process.env.CANOPY_DISABLE_URL_STYLING === "1";
@@ -1173,8 +1171,7 @@ export class TerminalProcess {
     const effectiveAgentId =
       this.terminalInfo.agentId ??
       (this.terminalInfo.type !== "terminal" ? this.terminalInfo.type : undefined);
-    const ignoredInputSequences =
-      effectiveAgentId === "codex" ? ["\n", "\x1b\r"] : ["\x1b\r"];
+    const ignoredInputSequences = effectiveAgentId === "codex" ? ["\n", "\x1b\r"] : ["\x1b\r"];
 
     // Enable pattern-based detection for agent terminals.
     // Prefer agentId when available to support custom/legacy terminals.
