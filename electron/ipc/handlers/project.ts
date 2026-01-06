@@ -7,12 +7,11 @@ import { projectStore } from "../../services/ProjectStore.js";
 import { runCommandDetector } from "../../services/RunCommandDetector.js";
 import { ProjectSwitchService } from "../../services/ProjectSwitchService.js";
 import type { HandlerDependencies } from "../types.js";
-import type {
-  SystemOpenExternalPayload,
-  SystemOpenPathPayload,
-  Project,
-  ProjectSettings,
-} from "../../types/index.js";
+import type { Project, ProjectSettings } from "../../types/index.js";
+import {
+  SystemOpenExternalPayloadSchema,
+  SystemOpenPathPayloadSchema,
+} from "../../schemas/index.js";
 
 export function registerProjectHandlers(deps: HandlerDependencies): () => void {
   const { mainWindow, worktreeService, cliAvailabilityService } = deps;
@@ -27,11 +26,18 @@ export function registerProjectHandlers(deps: HandlerDependencies): () => void {
 
   const handleSystemOpenExternal = async (
     _event: Electron.IpcMainInvokeEvent,
-    payload: SystemOpenExternalPayload
+    payload: unknown
   ) => {
-    console.log("[IPC] system:open-external called with:", payload.url);
+    const parseResult = SystemOpenExternalPayloadSchema.safeParse(payload);
+    if (!parseResult.success) {
+      console.error("[IPC] system:open-external validation failed:", parseResult.error.format());
+      throw new Error(`Invalid payload: ${parseResult.error.message}`);
+    }
+
+    const { url } = parseResult.data;
+    console.log("[IPC] system:open-external called with:", url);
     try {
-      await openExternalUrl(payload.url);
+      await openExternalUrl(url);
       console.log("[IPC] system:open-external completed successfully");
     } catch (error) {
       console.error("[IPC] Failed to open external URL:", error);
@@ -41,19 +47,26 @@ export function registerProjectHandlers(deps: HandlerDependencies): () => void {
   ipcMain.handle(CHANNELS.SYSTEM_OPEN_EXTERNAL, handleSystemOpenExternal);
   handlers.push(() => ipcMain.removeHandler(CHANNELS.SYSTEM_OPEN_EXTERNAL));
 
-  const handleSystemOpenPath = async (
-    _event: Electron.IpcMainInvokeEvent,
-    payload: SystemOpenPathPayload
-  ) => {
+  const handleSystemOpenPath = async (_event: Electron.IpcMainInvokeEvent, payload: unknown) => {
+    const parseResult = SystemOpenPathPayloadSchema.safeParse(payload);
+    if (!parseResult.success) {
+      console.error("[IPC] system:open-path validation failed:", parseResult.error.format());
+      throw new Error(`Invalid payload: ${parseResult.error.message}`);
+    }
+
+    const { path: targetPath } = parseResult.data;
     const fs = await import("fs");
-    const path = await import("path");
+    const pathModule = await import("path");
 
     try {
-      if (!path.isAbsolute(payload.path)) {
+      if (!pathModule.isAbsolute(targetPath)) {
         throw new Error("Only absolute paths are allowed");
       }
-      await fs.promises.access(payload.path);
-      await shell.openPath(payload.path);
+      await fs.promises.access(targetPath);
+      const errorString = await shell.openPath(targetPath);
+      if (errorString) {
+        throw new Error(`Failed to open path: ${errorString}`);
+      }
     } catch (error) {
       console.error("Failed to open path:", error);
       throw error;

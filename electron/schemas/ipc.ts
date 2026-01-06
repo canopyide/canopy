@@ -93,7 +93,48 @@ export const SystemOpenExternalPayloadSchema = z.object({
 });
 
 export const SystemOpenPathPayloadSchema = z.object({
-  path: z.string().min(1),
+  path: z.string().min(1).max(4096),
+});
+
+const MAX_REPLAY_LINES = 100000;
+const MIN_REPLAY_LINES = 1;
+
+export const TerminalReplayHistoryPayloadSchema = z.object({
+  terminalId: z.string().min(1, "Terminal ID is required").max(100),
+  maxLines: z
+    .number()
+    .int("maxLines must be an integer")
+    .transform((val) => Math.max(MIN_REPLAY_LINES, Math.min(val, MAX_REPLAY_LINES)))
+    .optional()
+    .default(100),
+});
+
+const MIN_TERMINAL_DIMENSION = 10;
+const MAX_TERMINAL_DIMENSION = 500;
+
+export const DevPreviewStartPayloadSchema = z.object({
+  panelId: z.string().min(1, "Panel ID is required").max(100),
+  cwd: z.string().min(1, "Working directory is required").max(4096),
+  cols: z
+    .number()
+    .int("cols must be an integer")
+    .transform((val) => Math.max(MIN_TERMINAL_DIMENSION, Math.min(val, MAX_TERMINAL_DIMENSION))),
+  rows: z
+    .number()
+    .int("rows must be an integer")
+    .transform((val) => Math.max(MIN_TERMINAL_DIMENSION, Math.min(val, MAX_TERMINAL_DIMENSION))),
+  devCommand: z
+    .string()
+    .max(1000)
+    .refine(
+      (cmd) =>
+        // eslint-disable-next-line no-control-regex
+        !/[\x00-\x1F\x7F]/.test(cmd),
+      {
+        message: "devCommand must not contain control characters",
+      }
+    )
+    .optional(),
 });
 
 export const WorktreeSetActivePayloadSchema = z.object({
@@ -123,5 +164,7 @@ export type CopyTreeProgress = z.infer<typeof CopyTreeProgressSchema>;
 export type CopyTreeGetFileTreePayload = z.infer<typeof CopyTreeGetFileTreePayloadSchema>;
 export type SystemOpenExternalPayload = z.infer<typeof SystemOpenExternalPayloadSchema>;
 export type SystemOpenPathPayload = z.infer<typeof SystemOpenPathPayloadSchema>;
+export type TerminalReplayHistoryPayload = z.infer<typeof TerminalReplayHistoryPayloadSchema>;
+export type DevPreviewStartPayload = z.infer<typeof DevPreviewStartPayloadSchema>;
 export type WorktreeSetActivePayload = z.infer<typeof WorktreeSetActivePayloadSchema>;
 export type WorktreeCreatePayload = z.infer<typeof WorktreeCreatePayloadSchema>;
