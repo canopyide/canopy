@@ -10,7 +10,7 @@ import type {
   TerminalRuntimeStatus,
   SpawnError,
 } from "@/types";
-import { terminalClient, agentSettingsClient } from "@/clients";
+import { terminalClient, agentSettingsClient, projectClient } from "@/clients";
 import { generateAgentFlags } from "@shared/types";
 import { terminalInstanceService } from "@/services/TerminalInstanceService";
 import { TerminalRefreshTier } from "@/types";
@@ -387,6 +387,26 @@ export const createTerminalRegistrySlice =
           location === "dock" || (location === "grid" && !isInActiveWorktree);
         const runtimeStatus: TerminalRuntimeStatus = shouldBackground ? "background" : "running";
 
+        // Fetch project environment variables and merge with spawn options
+        // Precedence: spawn-time env > project env (spawn-time overrides project)
+        let mergedEnv: Record<string, string> | undefined = options.env;
+        try {
+          const currentProject = await projectClient.getCurrent();
+          if (currentProject?.id) {
+            const projectSettings = await projectClient.getSettings(currentProject.id);
+            if (
+              projectSettings?.environmentVariables &&
+              Object.keys(projectSettings.environmentVariables).length > 0
+            ) {
+              // Merge: project env as base, spawn-time env overrides
+              mergedEnv = { ...projectSettings.environmentVariables, ...options.env };
+            }
+          }
+        } catch (error) {
+          // Failed to fetch project env - continue with spawn-time env only
+          console.warn("[TerminalStore] Failed to fetch project environment variables:", error);
+        }
+
         try {
           let id: string;
 
@@ -409,7 +429,7 @@ export const createTerminalRegistrySlice =
               agentId,
               title,
               worktreeId: options.worktreeId,
-              env: options.env,
+              env: mergedEnv,
             });
           }
 
@@ -1226,6 +1246,23 @@ export const createTerminalRegistrySlice =
 
           await terminalInstanceService.waitForInstance(id, { timeoutMs: 5000 });
 
+          // Fetch project environment variables for restart
+          let restartEnv: Record<string, string> | undefined;
+          try {
+            const currentProject = await projectClient.getCurrent();
+            if (currentProject?.id) {
+              const projectSettings = await projectClient.getSettings(currentProject.id);
+              if (
+                projectSettings?.environmentVariables &&
+                Object.keys(projectSettings.environmentVariables).length > 0
+              ) {
+                restartEnv = projectSettings.environmentVariables;
+              }
+            }
+          } catch (error) {
+            console.warn("[TerminalStore] Failed to fetch project env for restart:", error);
+          }
+
           await terminalClient.spawn({
             id,
             cwd: currentTerminal.cwd,
@@ -1238,6 +1275,7 @@ export const createTerminalRegistrySlice =
             worktreeId: currentTerminal.worktreeId,
             command: commandToRun,
             restore: false,
+            env: restartEnv,
           });
 
           if (targetLocation === "dock") {
@@ -1556,6 +1594,23 @@ export const createTerminalRegistrySlice =
 
           await new Promise((resolve) => setTimeout(resolve, 50));
 
+          // Fetch project environment variables for conversion
+          let convertEnv: Record<string, string> | undefined;
+          try {
+            const currentProject = await projectClient.getCurrent();
+            if (currentProject?.id) {
+              const projectSettings = await projectClient.getSettings(currentProject.id);
+              if (
+                projectSettings?.environmentVariables &&
+                Object.keys(projectSettings.environmentVariables).length > 0
+              ) {
+                convertEnv = projectSettings.environmentVariables;
+              }
+            }
+          } catch (error) {
+            console.warn("[TerminalStore] Failed to fetch project env for conversion:", error);
+          }
+
           await terminalClient.spawn({
             id,
             cwd: terminal.cwd,
@@ -1568,6 +1623,7 @@ export const createTerminalRegistrySlice =
             worktreeId: terminal.worktreeId,
             command: commandToRun,
             restore: false,
+            env: convertEnv,
           });
 
           await new Promise((resolve) => setTimeout(resolve, 50));
