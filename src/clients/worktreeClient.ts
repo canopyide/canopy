@@ -43,8 +43,8 @@ export const worktreeClient = {
     return window.electron.worktree.getDefaultPath(rootPath, branchName);
   },
 
-  delete: (worktreeId: string, force?: boolean): Promise<void> => {
-    return window.electron.worktree.delete(worktreeId, force);
+  delete: (worktreeId: string, force?: boolean, deleteBranch?: boolean): Promise<void> => {
+    return window.electron.worktree.delete(worktreeId, force, deleteBranch);
   },
 
   onUpdate: (callback: (state: WorktreeState) => void): (() => void) => {
