@@ -68,11 +68,19 @@ import type {
 import type { GitGetFileDiffPayload } from "./git.js";
 import type { TerminalConfig } from "./config.js";
 import type { SystemSleepMetrics } from "./systemSleep.js";
-import type { TerminalFlowStatus } from "../pty-host.js";
 import type { ShowContextMenuPayload } from "../menu.js";
 import type { FileSearchPayload, FileSearchResult } from "./files.js";
 import type { SlashCommand, SlashCommandListRequest } from "../slashCommands.js";
 import type { DevPreviewStatusPayload, DevPreviewUrlPayload } from "./devPreview.js";
+import type { ProjectPulse, PulseRangeDays } from "../pulse.js";
+import type {
+  GitCommitListOptions,
+  GitCommitListResponse,
+  IssueTooltipData,
+  PRTooltipData,
+} from "../github.js";
+import type { SpawnResult, TerminalStatusPayload } from "../pty-host.js";
+import type { HibernationConfig } from "./hibernation.js";
 
 // IPC Contract Maps
 
@@ -425,9 +433,17 @@ export interface IpcInvokeMap {
     args: [projectId: string];
     result: ProjectCloseResult;
   };
+  "project:reopen": {
+    args: [projectId: string];
+    result: void;
+  };
   "project:get-stats": {
     args: [projectId: string];
     result: ProjectStats;
+  };
+  "project:init-git": {
+    args: [directoryPath: string];
+    result: { success: boolean; error?: string };
   };
   "project:get-recipes": {
     args: [projectId: string];
@@ -522,6 +538,14 @@ export interface IpcInvokeMap {
     args: [payload: { cwd: string; issueNumber: number }];
     result: string | null;
   };
+  "github:get-issue-tooltip": {
+    args: [payload: { cwd: string; issueNumber: number }];
+    result: IssueTooltipData | null;
+  };
+  "github:get-pr-tooltip": {
+    args: [payload: { cwd: string; prNumber: number }];
+    result: PRTooltipData | null;
+  };
 
   // Agent settings channels
   "agent-settings:get": {
@@ -590,6 +614,22 @@ export interface IpcInvokeMap {
     args: [payload: GitGetFileDiffPayload];
     result: string;
   };
+  "git:get-project-pulse": {
+    args: [
+      options: {
+        worktreeId: string;
+        rangeDays: PulseRangeDays;
+        includeDelta?: boolean;
+        includeRecentCommits?: boolean;
+        forceRefresh?: boolean;
+      },
+    ];
+    result: ProjectPulse;
+  };
+  "git:list-commits": {
+    args: [options: GitCommitListOptions];
+    result: GitCommitListResponse;
+  };
 
   // Sidecar channels
   "sidecar:create": {
@@ -645,6 +685,16 @@ export interface IpcInvokeMap {
   "system-sleep:reset": {
     args: [];
     result: void;
+  };
+
+  // Hibernation channels
+  "hibernation:get-config": {
+    args: [];
+    result: HibernationConfig;
+  };
+  "hibernation:update-config": {
+    args: [config: Partial<HibernationConfig>];
+    result: HibernationConfig;
   };
 
   // Keybinding channels
@@ -798,19 +848,21 @@ export interface IpcEventMap {
   "worktree:remove": { worktreeId: string };
 
   // Terminal events
-  "terminal:data": [id: string, data: string];
+  "terminal:data": [id: string, data: string | Uint8Array];
   "terminal:exit": [id: string, exitCode: number];
   "terminal:error": [id: string, error: string];
   "terminal:trashed": { id: string; expiresAt: number };
   "terminal:restored": { id: string };
-  "terminal:status": {
-    id: string;
-    status: TerminalFlowStatus;
-    bufferUtilization?: number;
-    pauseDuration?: number;
+  "terminal:status": TerminalStatusPayload;
+  "terminal:send-key": [id: string, key: string];
+  "terminal:spawn-result": [id: string, result: SpawnResult];
+  "terminal:backend-crashed": {
+    crashType: string;
+    code: number | null;
+    signal: string | null;
     timestamp: number;
   };
-  "terminal:send-key": [id: string, key: string];
+  "terminal:backend-ready": void;
 
   // Agent events
   "agent:state-changed": AgentStateChangePayload;
@@ -860,6 +912,12 @@ export interface IpcEventMap {
 
   // Menu events
   "menu:action": string;
+
+  // Window events
+  "window:fullscreen-change": boolean;
+
+  // Notification events
+  "notification:update": { waitingCount: number; failedCount: number };
 
   // Dev Preview events
   "dev-preview:status": DevPreviewStatusPayload;
