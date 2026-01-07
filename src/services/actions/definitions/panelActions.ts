@@ -393,11 +393,11 @@ export function registerPanelActions(actions: ActionRegistry, callbacks: ActionC
     kind: "command",
     danger: "safe",
     scope: "renderer",
-    argsSchema: z.object({ tabId: z.string().optional() }),
+    argsSchema: z.object({ tabId: z.string().min(1).optional() }).optional(),
     run: async (args: unknown) => {
-      const { tabId } = args as { tabId?: string };
+      const { tabId } = (args ?? {}) as { tabId?: string };
       const state = useSidecarStore.getState();
-      const targetId = tabId ?? state.activeTabId;
+      const targetId = tabId || state.activeTabId;
       if (targetId) {
         state.closeTab(targetId);
       }
@@ -582,11 +582,11 @@ export function registerPanelActions(actions: ActionRegistry, callbacks: ActionC
     kind: "command",
     danger: "safe",
     scope: "renderer",
-    argsSchema: z.object({ tabId: z.string().optional() }),
+    argsSchema: z.object({ tabId: z.string().min(1).optional() }).optional(),
     run: async (args: unknown) => {
-      const { tabId } = args as { tabId?: string };
+      const { tabId } = (args ?? {}) as { tabId?: string };
       const state = useSidecarStore.getState();
-      const targetId = tabId ?? state.activeTabId;
+      const targetId = tabId || state.activeTabId;
       if (!targetId) return false;
       if (!state.createdTabs.has(targetId)) return false;
       return await window.electron.sidecar.goBack(targetId);
@@ -601,11 +601,11 @@ export function registerPanelActions(actions: ActionRegistry, callbacks: ActionC
     kind: "command",
     danger: "safe",
     scope: "renderer",
-    argsSchema: z.object({ tabId: z.string().optional() }),
+    argsSchema: z.object({ tabId: z.string().min(1).optional() }).optional(),
     run: async (args: unknown) => {
-      const { tabId } = args as { tabId?: string };
+      const { tabId } = (args ?? {}) as { tabId?: string };
       const state = useSidecarStore.getState();
-      const targetId = tabId ?? state.activeTabId;
+      const targetId = tabId || state.activeTabId;
       if (!targetId) return false;
       if (!state.createdTabs.has(targetId)) return false;
       return await window.electron.sidecar.goForward(targetId);
@@ -620,11 +620,11 @@ export function registerPanelActions(actions: ActionRegistry, callbacks: ActionC
     kind: "command",
     danger: "safe",
     scope: "renderer",
-    argsSchema: z.object({ tabId: z.string().optional() }),
+    argsSchema: z.object({ tabId: z.string().min(1).optional() }).optional(),
     run: async (args: unknown) => {
-      const { tabId } = args as { tabId?: string };
+      const { tabId } = (args ?? {}) as { tabId?: string };
       const state = useSidecarStore.getState();
-      const targetId = tabId ?? state.activeTabId;
+      const targetId = tabId || state.activeTabId;
       if (!targetId) return;
       if (!state.createdTabs.has(targetId)) return;
       await window.electron.sidecar.reload(targetId);
@@ -639,11 +639,11 @@ export function registerPanelActions(actions: ActionRegistry, callbacks: ActionC
     kind: "command",
     danger: "safe",
     scope: "renderer",
-    argsSchema: z.object({ tabId: z.string().optional() }),
+    argsSchema: z.object({ tabId: z.string().min(1).optional() }).optional(),
     run: async (args: unknown) => {
-      const { tabId } = args as { tabId?: string };
+      const { tabId } = (args ?? {}) as { tabId?: string };
       const state = useSidecarStore.getState();
-      const targetId = tabId ?? state.activeTabId;
+      const targetId = tabId || state.activeTabId;
       if (!targetId) return;
       const tab = state.tabs.find((t) => t.id === targetId);
       if (!tab?.url) return;
@@ -659,11 +659,11 @@ export function registerPanelActions(actions: ActionRegistry, callbacks: ActionC
     kind: "command",
     danger: "safe",
     scope: "renderer",
-    argsSchema: z.object({ tabId: z.string().optional() }),
+    argsSchema: z.object({ tabId: z.string().min(1).optional() }).optional(),
     run: async (args: unknown) => {
-      const { tabId } = args as { tabId?: string };
+      const { tabId } = (args ?? {}) as { tabId?: string };
       const state = useSidecarStore.getState();
-      const targetId = tabId ?? state.activeTabId;
+      const targetId = tabId || state.activeTabId;
       if (!targetId) return;
       const tab = state.tabs.find((t) => t.id === targetId);
       if (!tab?.url) return;

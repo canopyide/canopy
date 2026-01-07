@@ -302,15 +302,26 @@ export function SidecarDock() {
   }, [setOpen]);
 
   const handleGoBack = useCallback(async () => {
-    await actionService.dispatch("sidecar.goBack", undefined, { source: "user" });
+    const result = await actionService.dispatch("sidecar.goBack", undefined, { source: "user" });
+    if (!result.ok) {
+      console.error("Failed to go back:", result.error);
+    }
   }, [activeTabId]);
 
   const handleGoForward = useCallback(async () => {
-    await actionService.dispatch("sidecar.goForward", undefined, { source: "user" });
+    const result = await actionService.dispatch("sidecar.goForward", undefined, {
+      source: "user",
+    });
+    if (!result.ok) {
+      console.error("Failed to go forward:", result.error);
+    }
   }, [activeTabId]);
 
   const handleReload = useCallback(async () => {
-    await actionService.dispatch("sidecar.reload", undefined, { source: "user" });
+    const result = await actionService.dispatch("sidecar.reload", undefined, { source: "user" });
+    if (!result.ok) {
+      console.error("Failed to reload:", result.error);
+    }
   }, [activeTabId]);
 
   const handleOpenExternal = useCallback(async () => {
