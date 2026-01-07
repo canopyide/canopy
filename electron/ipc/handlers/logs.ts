@@ -1,7 +1,12 @@
 import { ipcMain, shell } from "electron";
 import { CHANNELS } from "../channels.js";
 import { logBuffer } from "../../services/LogBuffer.js";
-import { setVerboseLogging, isVerboseLogging, logInfo, getLogFilePath } from "../../utils/logger.js";
+import {
+  setVerboseLogging,
+  isVerboseLogging,
+  logInfo,
+  getLogFilePath,
+} from "../../utils/logger.js";
 import type { FilterOptions as LogFilterOptions } from "../../services/LogBuffer.js";
 
 export function registerLogsHandlers(): () => void {
