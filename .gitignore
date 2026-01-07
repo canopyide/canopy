@@ -67,6 +67,7 @@ tmp/
 temp/
 *.tmp
 *.temp
+reports/
 
 # Electron specific
 *.dmg
