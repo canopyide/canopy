@@ -402,8 +402,8 @@ const api: ElectronAPI = {
     getDefaultPath: (rootPath: string, branchName: string): Promise<string> =>
       _typedInvoke(CHANNELS.WORKTREE_GET_DEFAULT_PATH, { rootPath, branchName }),
 
-    delete: (worktreeId: string, force?: boolean) =>
-      _typedInvoke(CHANNELS.WORKTREE_DELETE, { worktreeId, force }),
+    delete: (worktreeId: string, force?: boolean, deleteBranch?: boolean) =>
+      _typedInvoke(CHANNELS.WORKTREE_DELETE, { worktreeId, force, deleteBranch }),
 
     onUpdate: (callback: (state: WorktreeState) => void) =>
       _typedOn(CHANNELS.WORKTREE_UPDATE, callback),
