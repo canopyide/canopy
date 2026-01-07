@@ -133,12 +133,29 @@ export class WorkspaceClient extends EventEmitter {
       });
     } catch (error) {
       console.error("[WorkspaceClient] Failed to fork Workspace Host:", error);
+      // Reject ready promise so waitForReady() doesn't hang indefinitely
+      if (this.readyReject) {
+        const errorMessage = error instanceof Error ? error.message : String(error);
+        this.readyReject(
+          new Error(`Workspace host failed to fork (${hostPath}): ${errorMessage}`)
+        );
+        this.readyReject = null;
+      }
       this.emit("host-crash", -1);
       return;
     }
 
     this.child.on("message", (msg: WorkspaceHostEvent) => {
       this.handleHostEvent(msg);
+    });
+
+    this.child.on("error", (error) => {
+      console.error("[WorkspaceClient] Workspace Host error event:", error);
+      if (this.readyReject) {
+        this.readyReject(new Error(`Workspace host error: ${String(error)}`));
+        this.readyReject = null;
+      }
+      this.emit("host-crash", -1);
     });
 
     this.child.on("exit", (code) => {
@@ -161,7 +178,7 @@ export class WorkspaceClient extends EventEmitter {
 
       // Reject ready promise for any waiters
       if (this.readyReject) {
-        this.readyReject(new Error("Workspace Host crashed"));
+        this.readyReject(new Error(`Workspace Host crashed (exit code ${code})`));
         this.readyReject = null;
       }
 
@@ -240,6 +257,12 @@ export class WorkspaceClient extends EventEmitter {
   private processHostEvent(event: WorkspaceHostEvent): void {
     switch (event.type) {
       case "ready": {
+        // Guard against accepting ready after child has exited
+        if (!this.child) {
+          console.warn("[WorkspaceClient] Ignoring ready event - child already exited");
+          return;
+        }
+
         this.isInitialized = true;
         this.restartAttempts = 0;
 
