@@ -42,6 +42,7 @@ export class GitHubAuth {
   private static cachedUsername: string | null = null;
   private static cachedAvatarUrl: string | null = null;
   private static cachedScopes: string[] = [];
+  private static tokenVersion = 0;
 
   /**
    * Initialize with secure storage (call from main process only).
@@ -66,15 +67,31 @@ export class GitHubAuth {
 
   static setMemoryToken(token: string | null): void {
     this.memoryToken = token;
+    this.tokenVersion++;
+    this.pendingValidation = null;
+    if (!token) {
+      this.cachedUsername = null;
+      this.cachedAvatarUrl = null;
+      this.cachedScopes = [];
+    }
   }
 
   static hasToken(): boolean {
     return !!GitHubAuth.getToken();
   }
 
+  static getTokenVersion(): number {
+    return this.tokenVersion;
+  }
+
   static setToken(token: string): void {
     this.memoryToken = token.trim();
     this.storage.set(token.trim());
+    this.tokenVersion++;
+    this.pendingValidation = null;
+    this.cachedUsername = null;
+    this.cachedAvatarUrl = null;
+    this.cachedScopes = [];
   }
 
   static clearToken(): void {
@@ -82,17 +99,20 @@ export class GitHubAuth {
     this.cachedUsername = null;
     this.cachedAvatarUrl = null;
     this.cachedScopes = [];
+    this.tokenVersion++;
+    this.pendingValidation = null;
     this.storage.delete();
   }
 
   private static pendingValidation: Promise<void> | null = null;
 
   static getConfig(): GitHubTokenConfig {
+    const hasToken = GitHubAuth.hasToken();
     return {
-      hasToken: GitHubAuth.hasToken(),
-      username: this.cachedUsername ?? undefined,
-      avatarUrl: this.cachedAvatarUrl ?? undefined,
-      scopes: this.cachedScopes.length > 0 ? this.cachedScopes : undefined,
+      hasToken,
+      username: hasToken ? (this.cachedUsername ?? undefined) : undefined,
+      avatarUrl: hasToken ? (this.cachedAvatarUrl ?? undefined) : undefined,
+      scopes: hasToken && this.cachedScopes.length > 0 ? this.cachedScopes : undefined,
     };
   }
 
@@ -107,13 +127,15 @@ export class GitHubAuth {
       if (!this.pendingValidation) {
         const token = this.getToken();
         if (token) {
+          const versionAtStart = this.tokenVersion;
           this.pendingValidation = this.validate(token)
             .then((validation) => {
               if (validation.valid && validation.username) {
                 this.setValidatedUserInfo(
                   validation.username,
                   validation.avatarUrl,
-                  validation.scopes
+                  validation.scopes,
+                  versionAtStart
                 );
               }
             })
@@ -135,8 +157,12 @@ export class GitHubAuth {
   static setValidatedUserInfo(
     username: string,
     avatarUrl: string | undefined,
-    scopes: string[]
+    scopes: string[],
+    expectedVersion?: number
   ): void {
+    if (expectedVersion !== undefined && this.tokenVersion !== expectedVersion) {
+      return;
+    }
     this.cachedUsername = username;
     this.cachedAvatarUrl = avatarUrl ?? null;
     this.cachedScopes = scopes;

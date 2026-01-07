@@ -298,13 +298,15 @@ async function createWindow(): Promise<void> {
   if (GitHubAuth.hasToken()) {
     const token = GitHubAuth.getToken();
     if (token) {
+      const versionAtStart = GitHubAuth.getTokenVersion();
       GitHubAuth.validate(token)
         .then((validation) => {
           if (validation.valid && validation.username) {
             GitHubAuth.setValidatedUserInfo(
               validation.username,
               validation.avatarUrl,
-              validation.scopes
+              validation.scopes,
+              versionAtStart
             );
             console.log("[MAIN] GitHubAuth user info cached for:", validation.username);
           }

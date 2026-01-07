@@ -166,12 +166,14 @@ export function registerGithubHandlers(_deps: HandlerDependencies): () => void {
 
     if (validation.valid) {
       setGitHubToken(token.trim());
+      const versionAfterSet = GitHubAuth.getTokenVersion();
 
       if (validation.username) {
         GitHubAuth.setValidatedUserInfo(
           validation.username,
           validation.avatarUrl,
-          validation.scopes
+          validation.scopes,
+          versionAfterSet
         );
       }
 
