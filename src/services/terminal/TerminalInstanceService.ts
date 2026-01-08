@@ -1,57 +1,22 @@
 import { Terminal } from "@xterm/xterm";
-import { terminalClient, systemClient } from "@/clients";
-import { actionService } from "@/services/ActionService";
+import { terminalClient } from "@/clients";
 import { TerminalRefreshTier, TerminalType } from "@/types";
 import type { AgentState } from "@/types";
 import {
   ManagedTerminal,
   RefreshTierProvider,
-  ResizeJobId,
   AgentStateCallback,
-  TIER_DOWNGRADE_HYSTERESIS_MS,
   INCREMENTAL_RESTORE_CONFIG,
 } from "./types";
 import { setupTerminalAddons } from "./TerminalAddonManager";
 import { TerminalOutputIngestService } from "./TerminalOutputIngestService";
 import { TerminalParserHandler } from "./TerminalParserHandler";
 import { TerminalUnseenOutputTracker, UnseenOutputSnapshot } from "./TerminalUnseenOutputTracker";
-import { isLocalhostUrl, normalizeBrowserUrl } from "@/components/Browser/browserUtils";
-import { useTerminalStore } from "@/store/terminalStore";
-
-const START_DEBOUNCING_THRESHOLD = 200;
-const HORIZONTAL_DEBOUNCE_MS = 100;
-const VERTICAL_THROTTLE_MS = 150;
-const IDLE_CALLBACK_TIMEOUT_MS = 1000;
-
-// Maximum time a resize lock can be held (safety net for stuck locks)
-const RESIZE_LOCK_TTL_MS = 5000;
-
-// Minimum interval between wake calls for the same terminal (rate limiting)
-const WAKE_RATE_LIMIT_MS = 1000;
-
-/**
- * Get actual cell dimensions from xterm's internal renderer.
- * This is needed to set exact pixel width on the host element to eliminate
- * the gap between the terminal canvas and container edge.
- */
-function getXtermCellDimensions(terminal: Terminal): { width: number; height: number } | null {
-  try {
-    // Access xterm's internal renderer dimensions
-    // eslint-disable-next-line @typescript-eslint/no-explicit-any
-    const core = (terminal as any)._core;
-    const dimensions = core?._renderService?.dimensions?.css?.cell;
-    if (
-      dimensions &&
-      typeof dimensions.width === "number" &&
-      typeof dimensions.height === "number"
-    ) {
-      return { width: dimensions.width, height: dimensions.height };
-    }
-  } catch {
-    // Fall through to null
-  }
-  return null;
-}
+import { TerminalOffscreenManager } from "./TerminalOffscreenManager";
+import { TerminalLinkHandler } from "./TerminalLinkHandler";
+import { TerminalResizeController } from "./TerminalResizeController";
+import { TerminalRendererPolicy } from "./TerminalRendererPolicy";
+import { TerminalWakeManager } from "./TerminalWakeManager";
 
 class TerminalInstanceService {
   private instances = new Map<string, ManagedTerminal>();
@@ -59,75 +24,39 @@ class TerminalInstanceService {
     this.writeToTerminal(id, data)
   );
   private suppressedExitUntil = new Map<string, number>();
-  private hiddenContainer: HTMLDivElement | null = null;
-  private offscreenSlots = new Map<string, HTMLDivElement>();
-  private resizeLocks = new Map<string, number>(); // Stores expiry timestamp, not boolean
   private unseenTracker = new TerminalUnseenOutputTracker();
   private cwdProviders = new Map<string, () => string>();
   private readinessWaiters = new Map<
     string,
     Array<{ resolve: () => void; reject: (error: Error) => void; timeout: number }>
   >();
-  private lastWakeTime = new Map<string, number>(); // Rate limit wake calls
-  private lastBackendTier = new Map<string, "active" | "background">();
+
+  private offscreenManager = new TerminalOffscreenManager();
+  private linkHandler = new TerminalLinkHandler();
+  private resizeController: TerminalResizeController;
+  private rendererPolicy: TerminalRendererPolicy;
+  private wakeManager: TerminalWakeManager;
 
   constructor() {
     this.dataBuffer.initialize();
-  }
 
-  private openTerminalLink(url: string, terminalId: string, event?: MouseEvent): void {
-    const isMac = navigator.platform.toLowerCase().includes("mac");
-    const isModifierPressed = event ? (isMac ? event.metaKey : event.ctrlKey) : false;
+    this.resizeController = new TerminalResizeController({
+      getInstance: (id) => this.instances.get(id),
+      dataBuffer: this.dataBuffer,
+    });
 
-    const normalized = normalizeBrowserUrl(url);
+    this.wakeManager = new TerminalWakeManager({
+      getInstance: (id) => this.instances.get(id),
+      hasInstance: (id) => this.instances.has(id),
+      restoreFromSerialized: (id, state) => this.restoreFromSerialized(id, state),
+      restoreFromSerializedIncremental: (id, state) =>
+        this.restoreFromSerializedIncremental(id, state),
+    });
 
-    if (isModifierPressed && normalized.url && isLocalhostUrl(normalized.url)) {
-      const store = useTerminalStore.getState();
-      const currentTerminal = store.terminals.find((t) => t.id === terminalId);
-
-      if (!currentTerminal) {
-        const normalizedUrl = /^https?:\/\//i.test(url) ? url : `https://${url}`;
-        actionService
-          .dispatch("system.openExternal", { url: normalizedUrl }, { source: "user" })
-          .then((result) => {
-            if (result.ok) return;
-            return systemClient.openExternal(normalizedUrl);
-          })
-          .catch((error) => {
-            console.error("[TerminalInstanceService] Failed to open URL:", error);
-          });
-        return;
-      }
-
-      const targetWorktreeId = currentTerminal.worktreeId ?? null;
-
-      const existingBrowser = store.terminals.find(
-        (t) => t.kind === "browser" && (t.worktreeId ?? null) === targetWorktreeId
-      );
-
-      if (existingBrowser) {
-        store.setBrowserUrl(existingBrowser.id, normalized.url);
-        store.activateTerminal(existingBrowser.id);
-      } else {
-        void store.addTerminal({
-          kind: "browser",
-          browserUrl: normalized.url,
-          worktreeId: targetWorktreeId ?? undefined,
-          cwd: currentTerminal?.cwd ?? "",
-        });
-      }
-    } else {
-      const normalizedUrl = /^https?:\/\//i.test(url) ? url : `https://${url}`;
-      actionService
-        .dispatch("system.openExternal", { url: normalizedUrl }, { source: "user" })
-        .then((result) => {
-          if (result.ok) return;
-          return systemClient.openExternal(normalizedUrl);
-        })
-        .catch((error) => {
-          console.error("[TerminalInstanceService] Failed to open URL:", error);
-        });
-    }
+    this.rendererPolicy = new TerminalRendererPolicy({
+      getInstance: (id) => this.instances.get(id),
+      wakeAndRestore: (id) => this.wakeManager.wakeAndRestore(id),
+    });
   }
 
   notifyUserInput(id: string): void {
@@ -138,12 +67,10 @@ class TerminalInstanceService {
     const managed = this.instances.get(id);
     if (!managed) return;
 
-    // We expect an immediate echo. Wake the SAB poller and enable the interactive fast-lane
-    // for a short window so typing never feels "sleepy" after idle.
     this.dataBuffer.markInteractive(id);
     this.dataBuffer.boost();
 
-    this.applyRendererPolicy(id, TerminalRefreshTier.BURST);
+    this.rendererPolicy.applyRendererPolicy(id, TerminalRefreshTier.BURST);
 
     if (managed.inputBurstTimer !== undefined) {
       clearTimeout(managed.inputBurstTimer);
@@ -152,67 +79,10 @@ class TerminalInstanceService {
       const current = this.instances.get(id);
       if (!current) return;
       current.inputBurstTimer = undefined;
-      this.applyRendererPolicy(id, current.getRefreshTier());
+      this.rendererPolicy.applyRendererPolicy(id, current.getRefreshTier());
     }, 1000);
   }
 
-  private ensureHiddenContainer(): HTMLDivElement | null {
-    if (this.hiddenContainer) return this.hiddenContainer;
-    if (typeof document === "undefined") return null;
-
-    const container = document.createElement("div");
-    container.className = "terminal-offscreen-container";
-    container.style.cssText = [
-      "position: fixed",
-      "left: -20000px",
-      "top: 0",
-      "width: 2000px",
-      "height: 2000px",
-      "overflow: hidden",
-      "opacity: 0",
-      "pointer-events: none",
-    ].join(";");
-    document.body.appendChild(container);
-
-    this.hiddenContainer = container;
-    return this.hiddenContainer;
-  }
-
-  private getOrCreateOffscreenSlot(id: string, widthPx: number, heightPx: number): HTMLDivElement {
-    if (typeof document === "undefined") {
-      throw new Error("Offscreen slot requires DOM");
-    }
-
-    const existing = this.offscreenSlots.get(id);
-    if (existing) {
-      existing.style.width = `${widthPx}px`;
-      existing.style.height = `${heightPx}px`;
-      return existing;
-    }
-
-    const hiddenContainer = this.ensureHiddenContainer();
-    if (!hiddenContainer) {
-      throw new Error("Offscreen container unavailable");
-    }
-
-    const slot = document.createElement("div");
-    slot.dataset.terminalId = id;
-    slot.style.width = `${widthPx}px`;
-    slot.style.height = `${heightPx}px`;
-    slot.style.position = "absolute";
-    slot.style.left = "0";
-    slot.style.top = "0";
-    hiddenContainer.appendChild(slot);
-
-    this.offscreenSlots.set(id, slot);
-    return slot;
-  }
-
-  /**
-   * Ensure a renderer-side xterm instance exists and is subscribed to output immediately.
-   * If `offscreen` is enabled, the terminal is opened into a hidden DOM slot and fit/resized
-   * so the PTY starts with correct dimensions even before any UI mounts.
-   */
   prewarmTerminal(
     id: string,
     type: TerminalType,
@@ -233,20 +103,13 @@ class TerminalInstanceService {
 
     const widthPx = params.widthPx ?? 800;
     const heightPx = params.heightPx ?? 600;
-    const slot = this.getOrCreateOffscreenSlot(id, widthPx, heightPx);
+    const slot = this.offscreenManager.getOrCreateOffscreenSlot(id, widthPx, heightPx);
     this.attach(id, slot);
 
-    // Establish correct geometry early so TUIs don't render using the 80x24 spawn default.
-    this.fit(id);
+    this.resizeController.fit(id);
     return managed;
   }
 
-  /**
-   * Suppress the next exit event for a terminal ID.
-   *
-   * Used during terminal restarts: we intentionally kill the old PTY, but its exit event can race
-   * and arrive after the new xterm instance has attached, causing a stale "[exit 0]" UI state.
-   */
   suppressNextExit(id: string, ttlMs: number = 2000): void {
     this.suppressedExitUntil.set(id, Date.now() + ttlMs);
   }
@@ -266,14 +129,6 @@ class TerminalInstanceService {
     this.dataBuffer.stopPolling();
   }
 
-  /**
-   * Centralized method to write data to a terminal.
-   * Used by both the SharedArrayBuffer poller and the IPC fallback listener.
-   *
-   * IMPORTANT: We always write data to xterm.js regardless of tier.
-   * Xterm is optimized - writing to a hidden terminal is cheap (parsing only).
-   * Dropping data based on stale tier state caused terminal freezes.
-   */
   private writeToTerminal(id: string, data: string | Uint8Array): void {
     const managed = this.instances.get(id);
     if (!managed) return;
@@ -283,30 +138,20 @@ class TerminalInstanceService {
       return;
     }
 
-    // Always write - never drop data. Stale tier state caused freezes.
-    // Xterm.js is optimized for hidden terminals (parsing is cheap, rendering is skipped).
     this.unseenTracker.incrementUnseen(id, managed.isUserScrolledBack);
 
-    // Only acknowledge IPC data when not actively polling SAB
-    // When SAB polling is active, all terminals (including agents) use SAB transport
     const shouldAck = !this.dataBuffer.isPolling();
 
-    // Calculate exact byte length for accurate flow control
     const dataBytes =
       typeof data === "string" ? new TextEncoder().encode(data).length : data.byteLength;
 
-    // Write data and apply flow control acknowledgement after xterm processes the buffer update
     const terminal = managed.terminal;
     managed.pendingWrites = (managed.pendingWrites ?? 0) + 1;
     terminal.write(data, () => {
-      // Guard against stale callback after destroy/restart
       if (this.instances.get(id) !== managed) return;
 
       managed.pendingWrites = Math.max(0, (managed.pendingWrites ?? 1) - 1);
 
-      // Flow control: Send acknowledgements for IPC data when SAB is not polling.
-      // When SAB polling is active, flow control is handled via SAB backpressure.
-      // Send exact byte count (not character count) for accurate queue accounting.
       if (shouldAck) {
         terminalClient.acknowledgeData(id, dataBytes);
       }
@@ -333,81 +178,20 @@ class TerminalInstanceService {
           }
         }
 
-        // Re-evaluate tier when visibility changes to wake up backgrounded terminals.
-        // This catches terminals that initialized in BACKGROUND before the observer fired.
         const tier = managed.getRefreshTier
           ? managed.getRefreshTier()
           : TerminalRefreshTier.VISIBLE;
-        this.applyRendererPolicy(id, tier);
+        this.rendererPolicy.applyRendererPolicy(id, tier);
       }
     }
   }
 
   lockResize(id: string, locked: boolean): void {
-    if (locked) {
-      // Store expiry timestamp instead of boolean - TTL prevents stuck locks
-      this.resizeLocks.set(id, Date.now() + RESIZE_LOCK_TTL_MS);
-    } else {
-      this.resizeLocks.delete(id);
-    }
+    this.resizeController.lockResize(id, locked);
   }
 
-  private isResizeLocked(id: string): boolean {
-    const expiry = this.resizeLocks.get(id);
-    if (!expiry) return false;
-
-    // Check if lock has expired (safety net for forgotten unlocks)
-    if (Date.now() > expiry) {
-      this.resizeLocks.delete(id);
-      return false;
-    }
-    return true;
-  }
-
-  private setBackendTier(id: string, tier: "active" | "background"): void {
-    this.lastBackendTier.set(id, tier);
-    terminalClient.setActivityTier(id, tier);
-  }
-
-  private async wakeAndRestore(id: string): Promise<boolean> {
-    const managed = this.instances.get(id);
-    if (!managed) return false;
-
-    const { state } = await terminalClient.wake(id);
-    if (!state) return false;
-
-    if (state.length > INCREMENTAL_RESTORE_CONFIG.indicatorThresholdBytes) {
-      await this.restoreFromSerializedIncremental(id, state);
-    } else {
-      this.restoreFromSerialized(id, state);
-    }
-
-    if (this.instances.get(id) === managed) {
-      managed.terminal.refresh(0, managed.terminal.rows - 1);
-    }
-    return true;
-  }
-
-  /**
-   * Wake a terminal and sync its state from the backend.
-   * Rate-limited to prevent excessive backend calls on rapid focus changes.
-   */
   wake(id: string): void {
-    // Guard: Don't wake destroyed terminals to prevent repopulating stale state
-    if (!this.instances.has(id)) {
-      return;
-    }
-
-    const now = Date.now();
-    const lastWake = this.lastWakeTime.get(id) ?? 0;
-
-    // Rate limit: don't wake the same terminal more than once per second
-    if (now - lastWake < WAKE_RATE_LIMIT_MS) {
-      return;
-    }
-
-    this.lastWakeTime.set(id, now);
-    void this.wakeAndRestore(id);
+    this.wakeManager.wake(id);
   }
 
   getOrCreate(
@@ -424,7 +208,6 @@ class TerminalInstanceService {
       if (getCwd) {
         this.cwdProviders.set(id, getCwd);
       }
-      // Keep existing terminal instance but sync its options to match the latest UI/config.
       if (options) {
         this.updateOptions(id, options);
       }
@@ -432,7 +215,7 @@ class TerminalInstanceService {
     }
 
     const openLink = (url: string, event?: MouseEvent) => {
-      this.openTerminalLink(url, id, event);
+      this.linkHandler.openLink(url, id, event);
     };
 
     const terminalOptions = {
@@ -516,15 +299,12 @@ class TerminalInstanceService {
     };
 
     managed.parserHandler = new TerminalParserHandler(managed, () => {
-      this.applyDeferredResize(id);
+      this.resizeController.applyDeferredResize(id);
     });
 
-    // Initialize alt buffer state from current terminal state
-    // This prevents a flash of wrong padding if terminal is already in alt buffer
     const initialIsAltBuffer = terminal.buffer.active.type === "alternate";
     managed.isAltBuffer = initialIsAltBuffer;
 
-    // Subscribe to buffer changes for alt-buffer detection (vim, OpenCode, htop, etc.)
     const bufferDisposable = terminal.buffer.onBufferChange(() => {
       const newIsAltBuffer = terminal.buffer.active.type === "alternate";
       if (newIsAltBuffer !== managed.isAltBuffer) {
@@ -534,31 +314,20 @@ class TerminalInstanceService {
     });
     listeners.push(() => bufferDisposable.dispose());
 
-    // Notify listeners of initial state if in alt buffer
     if (initialIsAltBuffer) {
       this.handleBufferModeChange(id, true);
     }
 
-    // Register OSC 11 handler for dynamic background color changes.
-    // This catches theme changes in TUI applications (OpenCode, vim colorschemes, etc.)
-    // OSC 11 = Set Background Color. Format: OSC 11 ; <color-spec> ST
     const oscDisposable = terminal.parser.registerOscHandler(11, () => {
-      // Only react to background color changes when in alt buffer
-      // (TUI applications in full-screen mode)
       if (managed.isAltBuffer) {
-        // Notify listeners with the new background color.
-        // The XtermAdapter uses this to sync the container background.
         for (const callback of managed.altBufferListeners) {
           try {
-            // Fire callback to allow external components to react to theme changes.
-            // We pass the current alt buffer state; the color is handled by xterm internally.
             callback(true);
           } catch (err) {
             console.error("[TerminalInstanceService] Alt buffer callback error:", err);
           }
         }
       }
-      // Return false so xterm.js still processes the color change internally
       return false;
     });
     listeners.push(() => oscDisposable.dispose());
@@ -591,7 +360,7 @@ class TerminalInstanceService {
     this.instances.set(id, managed);
 
     const initialTier = getRefreshTier ? getRefreshTier() : TerminalRefreshTier.FOCUSED;
-    this.applyRendererPolicy(id, initialTier);
+    this.rendererPolicy.applyRendererPolicy(id, initialTier);
 
     this.notifyReadinessWaiters(id);
 
@@ -663,14 +432,12 @@ class TerminalInstanceService {
     }
     managed.lastAttachAt = Date.now();
 
-    // Force refresh and fit after reparenting to prevent blank terminals.
-    // xterm.js can lose its render context when moved between DOM containers.
     if (wasReparented && managed.isOpened) {
       requestAnimationFrame(() => {
         if (this.instances.get(id) !== managed) return;
         if (!managed.terminal.element) return;
         managed.terminal.refresh(0, managed.terminal.rows - 1);
-        this.fit(id);
+        this.resizeController.fit(id);
       });
     }
 
@@ -682,12 +449,11 @@ class TerminalInstanceService {
     if (!managed || !container) return;
 
     if (managed.hostElement.parentElement === container) {
-      // Preserve renderer state by reparenting into the offscreen container rather than removing.
-      const slot = this.offscreenSlots.get(id);
+      const slot = this.offscreenManager.getOffscreenSlot(id);
       if (slot) {
         slot.appendChild(managed.hostElement);
       } else {
-        const hiddenContainer = this.ensureHiddenContainer();
+        const hiddenContainer = this.offscreenManager.ensureHiddenContainer();
         if (hiddenContainer) {
           hiddenContainer.appendChild(managed.hostElement);
         } else {
@@ -698,65 +464,12 @@ class TerminalInstanceService {
     managed.lastDetachAt = Date.now();
   }
 
-  /**
-   * Update the host element width to exactly match the terminal's rendered columns.
-   * This eliminates the gap between the terminal canvas and container edge that
-   * occurs when the container width isn't an exact multiple of cell width.
-   */
-  private updateExactWidth(managed: ManagedTerminal): void {
-    const cellDims = getXtermCellDimensions(managed.terminal);
-    if (!cellDims) return;
-
-    const cols = managed.terminal.cols;
-    const exactWidth = Math.ceil(cols * cellDims.width);
-
-    // Set exact width on host element to eliminate the gap
-    managed.hostElement.style.width = `${exactWidth}px`;
-  }
-
-  /**
-   * Reset host element width to 100% before fitting.
-   * This ensures xterm calculates dimensions based on the full available space.
-   */
-  private resetWidthForFit(managed: ManagedTerminal): void {
-    managed.hostElement.style.width = "100%";
-  }
-
   fit(id: string): { cols: number; rows: number } | null {
-    const managed = this.instances.get(id);
-    if (!managed) return null;
-
-    // Guard: Skip fitting if terminal is in the offscreen container.
-    // The offscreen container is positioned at left: -20000px and has fixed dimensions (2000x2000).
-    // Fitting in this state would calculate wrong dimensions and corrupt the PTY layout.
-    const rect = managed.hostElement.getBoundingClientRect();
-    if (rect.left < -10000 || rect.width < 50 || rect.height < 50) {
-      return null;
-    }
-
-    try {
-      // Reset width to 100% before fitting so xterm can calculate dimensions
-      // based on full available space, then set exact width after fitting
-      this.resetWidthForFit(managed);
-      managed.fitAddon.fit();
-      const { cols, rows } = managed.terminal;
-      terminalClient.resize(id, cols, rows);
-      this.updateExactWidth(managed);
-      return { cols, rows };
-    } catch (error) {
-      console.warn("Terminal fit failed:", error);
-      return null;
-    }
+    return this.resizeController.fit(id);
   }
 
   flushResize(id: string): void {
-    const managed = this.instances.get(id);
-    if (!managed) return;
-
-    if (managed.resizeXJob || managed.resizeYJob) {
-      this.clearResizeJobs(managed);
-      this.applyResize(id, managed.latestCols, managed.latestRows);
-    }
+    this.resizeController.flushResize(id);
   }
 
   resize(
@@ -765,82 +478,7 @@ class TerminalInstanceService {
     height: number,
     options: { immediate?: boolean } = {}
   ): { cols: number; rows: number } | null {
-    const managed = this.instances.get(id);
-    if (!managed) return null;
-
-    if (this.isResizeLocked(id)) {
-      return null;
-    }
-
-    const currentTier =
-      managed.lastAppliedTier ?? managed.getRefreshTier?.() ?? TerminalRefreshTier.FOCUSED;
-    // Reliability: avoid resizing terminals in BACKGROUND tier (dock/trash) to prevent
-    // hard-wrap/reflow corruption and unnecessary churn while a terminal is not actively viewed.
-    if (currentTier === TerminalRefreshTier.BACKGROUND && !managed.isFocused) {
-      return null;
-    }
-
-    if (Math.abs(managed.lastWidth - width) < 1 && Math.abs(managed.lastHeight - height) < 1) {
-      return null;
-    }
-
-    const buffer = managed.terminal.buffer.active;
-    const wasAtBottom = buffer.baseY - buffer.viewportY < 1;
-
-    try {
-      // @ts-expect-error - internal API
-      const proposed = managed.fitAddon.proposeDimensions?.({ width, height });
-
-      if (!proposed) {
-        managed.fitAddon.fit();
-        const cols = managed.terminal.cols;
-        const rows = managed.terminal.rows;
-        managed.lastWidth = width;
-        managed.lastHeight = height;
-        managed.latestCols = cols;
-        managed.latestRows = rows;
-        managed.latestWasAtBottom = wasAtBottom;
-        managed.isUserScrolledBack = !wasAtBottom;
-        terminalClient.resize(id, cols, rows);
-        this.updateExactWidth(managed);
-        return { cols, rows };
-      }
-
-      const cols = proposed.cols;
-      const rows = proposed.rows;
-
-      if (managed.terminal.cols === cols && managed.terminal.rows === rows) {
-        return null;
-      }
-
-      managed.lastWidth = width;
-      managed.lastHeight = height;
-      managed.latestCols = cols;
-      managed.latestRows = rows;
-      managed.latestWasAtBottom = wasAtBottom;
-      managed.isUserScrolledBack = !wasAtBottom;
-
-      const bufferLineCount = this.getBufferLineCount(id);
-
-      if (options.immediate || managed.isFocused || bufferLineCount < START_DEBOUNCING_THRESHOLD) {
-        this.clearResizeJobs(managed);
-        this.applyResize(id, cols, rows);
-        return { cols, rows };
-      }
-
-      if (!managed.isVisible) {
-        this.scheduleIdleResize(id, managed);
-        return { cols, rows };
-      }
-
-      this.throttleResizeY(id, managed, rows);
-      this.debounceResizeX(id, managed, cols);
-
-      return { cols, rows };
-    } catch (error) {
-      console.warn(`[TerminalInstanceService] Resize failed for ${id}:`, error);
-      return null;
-    }
+    return this.resizeController.resize(id, width, height, options);
   }
 
   scrollToBottom(id: string): void {
@@ -875,7 +513,6 @@ class TerminalInstanceService {
 
     managed.agentState = state;
 
-    // Notify subscribers synchronously
     for (const callback of managed.agentStateSubscribers) {
       try {
         callback(state);
@@ -885,17 +522,10 @@ class TerminalInstanceService {
     }
   }
 
-  /**
-   * Handle buffer mode changes (normal <-> alternate buffer).
-   * TUI applications like OpenCode, vim, htop use the alternate screen buffer.
-   * When in alt buffer, notify listeners so UI components can adjust styling
-   * (e.g., remove padding for a tight, full-screen appearance).
-   */
   private handleBufferModeChange(id: string, isAltBuffer: boolean): void {
     const managed = this.instances.get(id);
     if (!managed) return;
 
-    // Notify listeners so UI components can update their styling (padding, borders, etc.)
     for (const callback of managed.altBufferListeners) {
       try {
         callback(isAltBuffer);
@@ -904,32 +534,23 @@ class TerminalInstanceService {
       }
     }
 
-    // Force resize to recalculate grid with new available space after UI updates
-    // Use requestAnimationFrame to ensure UI has reacted to state change first
     requestAnimationFrame(() => {
       if (this.instances.get(id) !== managed) return;
 
-      // Clear any pending resize jobs to avoid conflicts
-      this.clearResizeJobs(managed);
+      this.resizeController.clearResizeJobs(managed);
 
-      // Skip resize if locked (e.g., during drag operations)
-      if (!this.isResizeLocked(id)) {
-        this.fit(id);
+      if (!this.resizeController.isResizeLocked(id)) {
+        this.resizeController.fit(id);
       }
     });
   }
 
-  /**
-   * Subscribe to alt buffer state changes for a terminal.
-   * Callback is fired immediately with current state if terminal exists.
-   */
   addAltBufferListener(id: string, callback: (isAltBuffer: boolean) => void): () => void {
     const managed = this.instances.get(id);
     if (!managed) return () => {};
 
     managed.altBufferListeners.add(callback);
 
-    // Fire immediately with current state
     if (managed.isAltBuffer !== undefined) {
       try {
         callback(managed.isAltBuffer);
@@ -943,9 +564,6 @@ class TerminalInstanceService {
     };
   }
 
-  /**
-   * Get the current alt buffer state for a terminal.
-   */
   getAltBufferState(id: string): boolean {
     const managed = this.instances.get(id);
     return managed?.isAltBuffer ?? false;
@@ -962,7 +580,6 @@ class TerminalInstanceService {
 
     managed.agentStateSubscribers.add(callback);
 
-    // Fire immediately with current state if available
     if (managed.agentState !== undefined) {
       try {
         callback(managed.agentState);
@@ -976,220 +593,12 @@ class TerminalInstanceService {
     };
   }
 
-  /**
-   * Safely resize xterm.js terminal, respecting alternate screen buffer state.
-   * When in alternate buffer, we clear the screen before resizing to avoid reflow artifacts.
-   * The TUI app owns the screen content and will redraw after receiving SIGWINCH.
-   * xterm.js must always be resized to match the PTY dimensions, otherwise TUI output
-   * (rendered for new dimensions) will display incorrectly on old-dimension xterm canvas.
-   */
-  private resizeTerminal(managed: ManagedTerminal, cols: number, rows: number): void {
-    if (managed.isInAlternateBuffer) {
-      // Clear the alternate screen buffer before resize to prevent reflow artifacts.
-      // The TUI application will redraw the entire screen after receiving SIGWINCH.
-      // ESC[2J = Clear entire screen (ED - Erase in Display)
-      // ESC[H = Move cursor to home position (top-left)
-      managed.terminal.write("\x1b[2J\x1b[H");
-    }
-    managed.terminal.resize(cols, rows);
-    // Note: PTY resize is handled separately by caller
-  }
-
-  /**
-   * Apply deferred resize when exiting alternate screen buffer.
-   * This ensures the normal buffer catches up to window size changes that occurred
-   * while the TUI app was in control of the alternate buffer.
-   */
-  private applyDeferredResize(id: string): void {
-    const managed = this.instances.get(id);
-    if (!managed) return;
-
-    // If dimensions differ from current xterm state, apply the deferred resize
-    const currentCols = managed.terminal.cols;
-    const currentRows = managed.terminal.rows;
-    const targetCols = managed.latestCols;
-    const targetRows = managed.latestRows;
-
-    if (currentCols !== targetCols || currentRows !== targetRows) {
-      managed.terminal.resize(targetCols, targetRows);
-      terminalClient.resize(id, targetCols, targetRows);
-    }
-    this.updateExactWidth(managed);
-  }
-
-  private applyResize(id: string, cols: number, rows: number): void {
-    const managed = this.instances.get(id);
-    if (!managed) return;
-
-    if (this.isResizeLocked(id)) {
-      return;
-    }
-
-    this.dataBuffer.flushForTerminal(id);
-    this.dataBuffer.resetForTerminal(id);
-    this.resizeTerminal(managed, cols, rows);
-    terminalClient.resize(id, cols, rows);
-    this.updateExactWidth(managed);
-  }
-
   setFocused(id: string, isFocused: boolean): void {
     const managed = this.instances.get(id);
     if (!managed) return;
 
     managed.isFocused = isFocused;
     managed.lastActiveTime = Date.now();
-  }
-
-  private clearResizeJobs(managed: ManagedTerminal): void {
-    if (managed.resizeXJob) {
-      this.clearJob(managed.resizeXJob);
-      managed.resizeXJob = undefined;
-    }
-    if (managed.resizeYJob) {
-      this.clearJob(managed.resizeYJob);
-      managed.resizeYJob = undefined;
-    }
-  }
-
-  private clearJob(job: ResizeJobId): void {
-    if (job.type === "idle") {
-      const win = window as typeof window & {
-        cancelIdleCallback?: (handle: number) => void;
-      };
-      win.cancelIdleCallback?.(job.id);
-    } else {
-      clearTimeout(job.id);
-    }
-  }
-
-  private scheduleIdleResize(id: string, managed: ManagedTerminal): void {
-    const win = window as typeof window & {
-      requestIdleCallback?: (callback: () => void, options?: { timeout?: number }) => number;
-      cancelIdleCallback?: (handle: number) => void;
-    };
-    const hasIdleCallback = typeof win.requestIdleCallback === "function";
-
-    if (!managed.resizeXJob) {
-      if (hasIdleCallback && win.requestIdleCallback) {
-        const idleId = win.requestIdleCallback(
-          () => {
-            const current = this.instances.get(id);
-            if (current) {
-              this.dataBuffer.flushForTerminal(id);
-              this.dataBuffer.resetForTerminal(id);
-              this.resizeTerminal(current, current.latestCols, current.terminal.rows);
-              terminalClient.resize(id, current.latestCols, current.terminal.rows);
-              this.updateExactWidth(current);
-              current.resizeXJob = undefined;
-            }
-          },
-          { timeout: IDLE_CALLBACK_TIMEOUT_MS }
-        );
-        managed.resizeXJob = { type: "idle", id: idleId };
-      } else {
-        const timeoutId = window.setTimeout(() => {
-          const current = this.instances.get(id);
-          if (current) {
-            this.dataBuffer.flushForTerminal(id);
-            this.dataBuffer.resetForTerminal(id);
-            this.resizeTerminal(current, current.latestCols, current.terminal.rows);
-            terminalClient.resize(id, current.latestCols, current.terminal.rows);
-            this.updateExactWidth(current);
-            current.resizeXJob = undefined;
-          }
-        }, IDLE_CALLBACK_TIMEOUT_MS);
-        managed.resizeXJob = { type: "timeout", id: timeoutId };
-      }
-    }
-
-    if (!managed.resizeYJob) {
-      if (hasIdleCallback && win.requestIdleCallback) {
-        const idleId = win.requestIdleCallback(
-          () => {
-            const current = this.instances.get(id);
-            if (current) {
-              this.dataBuffer.flushForTerminal(id);
-              this.dataBuffer.resetForTerminal(id);
-              this.resizeTerminal(current, current.latestCols, current.latestRows);
-              terminalClient.resize(id, current.latestCols, current.latestRows);
-              this.updateExactWidth(current);
-              current.resizeYJob = undefined;
-            }
-          },
-          { timeout: IDLE_CALLBACK_TIMEOUT_MS }
-        );
-        managed.resizeYJob = { type: "idle", id: idleId };
-      } else {
-        const timeoutId = window.setTimeout(() => {
-          const current = this.instances.get(id);
-          if (current) {
-            this.dataBuffer.flushForTerminal(id);
-            this.dataBuffer.resetForTerminal(id);
-            this.resizeTerminal(current, current.latestCols, current.latestRows);
-            terminalClient.resize(id, current.latestCols, current.latestRows);
-            this.updateExactWidth(current);
-            current.resizeYJob = undefined;
-          }
-        }, IDLE_CALLBACK_TIMEOUT_MS);
-        managed.resizeYJob = { type: "timeout", id: timeoutId };
-      }
-    }
-  }
-
-  private debounceResizeX(id: string, managed: ManagedTerminal, cols: number): void {
-    if (managed.resizeXJob) {
-      this.clearJob(managed.resizeXJob);
-      managed.resizeXJob = undefined;
-    }
-
-    const timeoutId = window.setTimeout(() => {
-      const current = this.instances.get(id);
-      if (current) {
-        this.dataBuffer.flushForTerminal(id);
-        this.dataBuffer.resetForTerminal(id);
-        this.resizeTerminal(current, cols, current.terminal.rows);
-        terminalClient.resize(id, cols, current.terminal.rows);
-        this.updateExactWidth(current);
-        current.resizeXJob = undefined;
-      }
-    }, HORIZONTAL_DEBOUNCE_MS);
-    managed.resizeXJob = { type: "timeout", id: timeoutId };
-  }
-
-  private throttleResizeY(id: string, managed: ManagedTerminal, rows: number): void {
-    const now = Date.now();
-    const timeSinceLastY = now - managed.lastYResizeTime;
-
-    if (timeSinceLastY >= VERTICAL_THROTTLE_MS) {
-      managed.lastYResizeTime = now;
-      if (managed.resizeYJob) {
-        this.clearJob(managed.resizeYJob);
-        managed.resizeYJob = undefined;
-      }
-      this.dataBuffer.flushForTerminal(id);
-      this.dataBuffer.resetForTerminal(id);
-      this.resizeTerminal(managed, managed.latestCols, rows);
-      terminalClient.resize(id, managed.latestCols, rows);
-      this.updateExactWidth(managed);
-      return;
-    }
-
-    if (!managed.resizeYJob) {
-      const remainingTime = VERTICAL_THROTTLE_MS - timeSinceLastY;
-      const timeoutId = window.setTimeout(() => {
-        const current = this.instances.get(id);
-        if (current) {
-          current.lastYResizeTime = Date.now();
-          this.dataBuffer.flushForTerminal(id);
-          this.dataBuffer.resetForTerminal(id);
-          this.resizeTerminal(current, current.latestCols, current.latestRows);
-          terminalClient.resize(id, current.latestCols, current.latestRows);
-          this.updateExactWidth(current);
-          current.resizeYJob = undefined;
-        }
-      }, remainingTime);
-      managed.resizeYJob = { type: "timeout", id: timeoutId };
-    }
   }
 
   focus(id: string): void {
@@ -1218,7 +627,7 @@ class TerminalInstanceService {
       managed.terminal.clearTextureAtlas();
       managed.terminal.refresh(0, managed.terminal.rows - 1);
 
-      const dims = this.fit(id);
+      const dims = this.resizeController.fit(id);
       if (dims) {
         terminalClient.resize(id, dims.cols, dims.rows);
       }
@@ -1227,29 +636,17 @@ class TerminalInstanceService {
     }
   }
 
-  /**
-   * Called when the PTY backend restarts after a crash.
-   * Resets all xterm renderers to fix the "white text" glitch
-   * caused by incomplete ANSI sequences or renderer state desync.
-   */
   handleBackendRecovery(): void {
     this.instances.forEach((managed, id) => {
       try {
-        // Reset alternate buffer tracking - backend restart clears PTY state
         managed.isInAlternateBuffer = false;
 
-        // 1. Send soft terminal reset to clear stuck ANSI state
-        // \x1b[!p = DECSTR (Soft Terminal Reset)
-        // Resets colors, cursor, scrolling regions but keeps text
         managed.terminal.write("\x1b[!p");
 
-        // 2. Reset the renderer (canvas refresh)
         this.resetRenderer(id);
 
-        // 3. Force fit to recalculate dimensions
         managed.fitAddon?.fit();
 
-        // 4. Inject recovery message for visibility
         const timestamp = new Date().toLocaleTimeString();
         managed.terminal.write(
           `\r\n\x1b[33m[${timestamp}] Terminal backend reconnected\x1b[0m\r\n`
@@ -1296,95 +693,7 @@ class TerminalInstanceService {
   }
 
   applyRendererPolicy(id: string, tier: TerminalRefreshTier): void {
-    const managed = this.instances.get(id);
-    if (!managed) return;
-
-    if (tier === TerminalRefreshTier.FOCUSED || tier === TerminalRefreshTier.BURST) {
-      managed.lastActiveTime = Date.now();
-    }
-
-    const currentAppliedTier =
-      managed.lastAppliedTier ?? managed.getRefreshTier() ?? TerminalRefreshTier.FOCUSED;
-
-    if (tier === currentAppliedTier) {
-      if (managed.tierChangeTimer !== undefined) {
-        clearTimeout(managed.tierChangeTimer);
-        managed.tierChangeTimer = undefined;
-        managed.pendingTier = undefined;
-      }
-      return;
-    }
-
-    const isUpgrade = tier < currentAppliedTier;
-
-    if (isUpgrade) {
-      if (managed.tierChangeTimer !== undefined) {
-        clearTimeout(managed.tierChangeTimer);
-        managed.tierChangeTimer = undefined;
-      }
-      managed.pendingTier = undefined;
-      this.applyRendererPolicyImmediate(id, managed, tier);
-      return;
-    }
-
-    if (managed.pendingTier === tier && managed.tierChangeTimer !== undefined) {
-      return;
-    }
-
-    if (managed.tierChangeTimer !== undefined) {
-      clearTimeout(managed.tierChangeTimer);
-    }
-
-    managed.pendingTier = tier;
-    managed.tierChangeTimer = window.setTimeout(() => {
-      const current = this.instances.get(id);
-      if (current && current.pendingTier === tier) {
-        this.applyRendererPolicyImmediate(id, current, tier);
-        current.pendingTier = undefined;
-      }
-      if (current) {
-        current.tierChangeTimer = undefined;
-      }
-    }, TIER_DOWNGRADE_HYSTERESIS_MS);
-  }
-
-  private applyRendererPolicyImmediate(
-    id: string,
-    managed: ManagedTerminal,
-    tier: TerminalRefreshTier
-  ): void {
-    managed.lastAppliedTier = tier;
-
-    // Backend streaming tier:
-    // - Focused/Visible/Burst => active stream
-    // - Background => stop streaming; rely on headless snapshot + wake for fidelity
-    const backendTier: "active" | "background" =
-      tier === TerminalRefreshTier.BACKGROUND ? "background" : "active";
-    const prevBackendTier = this.lastBackendTier.get(id) ?? "active";
-    this.setBackendTier(id, backendTier);
-
-    // When backend streaming stops, mark that we'll need a snapshot sync on next activation.
-    // This ensures we capture any output that happens while backgrounded.
-    if (backendTier === "background" && prevBackendTier === "active") {
-      managed.needsWake = true;
-    }
-
-    // On upgrade to active, wake if needsWake is set (or undefined for first wake).
-    // This syncs the renderer with the backend snapshot after any period of backgrounding.
-    if (backendTier === "active" && prevBackendTier !== "active") {
-      if (managed.needsWake !== false) {
-        void this.wakeAndRestore(id)
-          .then((ok) => {
-            const current = this.instances.get(id);
-            if (!current) return;
-            current.needsWake = ok ? false : true;
-          })
-          .catch(() => {
-            const current = this.instances.get(id);
-            if (current) current.needsWake = true;
-          });
-      }
-    }
+    this.rendererPolicy.applyRendererPolicy(id, tier);
   }
 
   updateRefreshTierProvider(id: string, provider: RefreshTierProvider): void {
@@ -1396,7 +705,7 @@ class TerminalInstanceService {
   boostRefreshRate(id: string): void {
     const managed = this.instances.get(id);
     if (!managed) return;
-    this.applyRendererPolicy(id, TerminalRefreshTier.BURST);
+    this.rendererPolicy.applyRendererPolicy(id, TerminalRefreshTier.BURST);
   }
 
   addExitListener(id: string, cb: (exitCode: number) => void): () => void {
@@ -1419,10 +728,8 @@ class TerminalInstanceService {
       this.readinessWaiters.delete(id);
     }
 
-    // Prevent future lookups from treating this id as active
     this.instances.delete(id);
 
-    // Synchronously stop all listeners (IPC + xterm input) before other cleanup
     for (const unsub of managed.listeners) {
       try {
         unsub();
@@ -1432,7 +739,8 @@ class TerminalInstanceService {
     }
     managed.listeners.length = 0;
 
-    this.clearResizeJobs(managed);
+    this.resizeController.clearResizeJobs(managed);
+    this.resizeController.clearResizeLock(id);
     this.dataBuffer.resetForTerminal(id);
     this.unseenTracker.destroy(id);
 
@@ -1467,21 +775,19 @@ class TerminalInstanceService {
       managed.hostElement.parentElement.removeChild(managed.hostElement);
     }
 
-    const slot = this.offscreenSlots.get(id);
-    if (slot && slot.parentElement) {
-      slot.parentElement.removeChild(slot);
-    }
-    this.offscreenSlots.delete(id);
-    this.resizeLocks.delete(id);
+    this.offscreenManager.removeOffscreenSlot(id);
     this.suppressedExitUntil.delete(id);
     this.cwdProviders.delete(id);
-    this.lastWakeTime.delete(id);
-    this.lastBackendTier.delete(id);
+    this.wakeManager.clearWakeState(id);
+    this.rendererPolicy.clearTierState(id);
   }
 
   dispose(): void {
     this.stopPolling();
     this.instances.forEach((_, id) => this.destroy(id));
+    this.offscreenManager.dispose();
+    this.wakeManager.dispose();
+    this.rendererPolicy.dispose();
   }
 
   async fetchAndRestore(id: string): Promise<boolean> {
@@ -1516,22 +822,17 @@ class TerminalInstanceService {
         return true;
       }
 
-      // Set restore flag to defer incoming output during reset+write.
-      // This makes the restore atomic - no blank terminal between reset and write completion.
       managed.isSerializedRestoreInProgress = true;
 
-      // Reset alternate buffer tracking - terminal.reset() clears all state
       managed.isInAlternateBuffer = false;
 
       managed.terminal.reset();
       managed.terminal.write(serializedState, () => {
-        // Guard against stale callback after destroy/restart
         const current = this.instances.get(id);
         if (current !== managed) return;
 
         current.isSerializedRestoreInProgress = false;
 
-        // Flush any output that arrived during restore
         const deferred = current.deferredOutput;
         current.deferredOutput = [];
         for (const data of deferred) {
@@ -1540,7 +841,6 @@ class TerminalInstanceService {
       });
       return true;
     } catch (error) {
-      // Ensure flag is cleared on error
       managed.isSerializedRestoreInProgress = false;
       console.error(`[TerminalInstanceService] Failed to restore terminal ${id}:`, error);
       return false;
@@ -1566,7 +866,6 @@ class TerminalInstanceService {
           return false;
         }
 
-        // Reset alternate buffer tracking - terminal.reset() clears all state
         managed.isInAlternateBuffer = false;
 
         managed.terminal.reset();
@@ -1640,12 +939,6 @@ class TerminalInstanceService {
         setTimeout(resolve, 0);
       }
     });
-  }
-
-  private getBufferLineCount(id: string): number {
-    const managed = this.instances.get(id);
-    if (!managed) return 0;
-    return managed.terminal.buffer.active.length;
   }
 
   setInputLocked(id: string, locked: boolean): void {
