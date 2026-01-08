@@ -18,10 +18,7 @@ import { events } from "./services/events.js";
 import { SharedRingBuffer, PacketFramer } from "../shared/utils/SharedRingBuffer.js";
 import { selectShard } from "../shared/utils/shardSelection.js";
 import type { AgentEvent } from "./services/AgentStateMachine.js";
-import type {
-  PtyHostEvent,
-  SpawnResult,
-} from "../shared/types/pty-host.js";
+import type { PtyHostEvent, SpawnResult } from "../shared/types/pty-host.js";
 import {
   appendEmergencyLog,
   emergencyLogFatal,
@@ -225,12 +222,7 @@ ptyManager.on("data", (id: string, data: string | Uint8Array) => {
                   // Emit resume status
                   const pauseDuration =
                     Date.now() - (backpressureManager.getPauseStartTime(id) ?? pauseStartTime);
-                  backpressureManager.emitTerminalStatus(
-                    id,
-                    "running",
-                    undefined,
-                    pauseDuration
-                  );
+                  backpressureManager.emitTerminalStatus(id, "running", undefined, pauseDuration);
 
                   // Emit metrics for pause-end
                   backpressureManager.emitReliabilityMetric({
