@@ -26,7 +26,9 @@ export interface BackpressureStats {
 }
 
 export interface BackpressureDeps {
-  getTerminal: (id: string) => { ptyProcess?: { pause: () => void; resume: () => void } } | undefined;
+  getTerminal: (
+    id: string
+  ) => { ptyProcess?: { pause: () => void; resume: () => void } } | undefined;
   sendEvent: (event: PtyHostEvent) => void;
   metricsEnabled: () => boolean;
 }
