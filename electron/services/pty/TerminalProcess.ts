@@ -1,19 +1,14 @@
 import * as pty from "node-pty";
-import { existsSync, readFileSync, renameSync, writeFileSync, mkdirSync } from "fs";
-import { mkdir, rename, writeFile } from "node:fs/promises";
-import path from "node:path";
-import headless, { type Terminal as HeadlessTerminalType } from "@xterm/headless";
+import type { Terminal as HeadlessTerminalType } from "@xterm/headless";
+import headless from "@xterm/headless";
 const { Terminal: HeadlessTerminal } = headless;
 import serialize, { type SerializeAddon as SerializeAddonType } from "@xterm/addon-serialize";
 const { SerializeAddon } = serialize;
 import type { TerminalType } from "../../../shared/types/domain.js";
-import {
-  getEffectiveAgentConfig,
-  type AgentDetectionConfig,
-} from "../../../shared/config/agentRegistry.js";
+import { getEffectiveAgentConfig } from "../../../shared/config/agentRegistry.js";
 import { ProcessDetector, type DetectionResult } from "../ProcessDetector.js";
 import type { ProcessTreeCache } from "../ProcessTreeCache.js";
-import { ActivityMonitor, type ProcessStateValidator } from "../ActivityMonitor.js";
+import { ActivityMonitor } from "../ActivityMonitor.js";
 import { AgentStateService } from "./AgentStateService.js";
 import { ActivityHeadlineGenerator } from "../ActivityHeadlineGenerator.js";
 import {
@@ -27,26 +22,50 @@ import {
   SEMANTIC_FLUSH_INTERVAL_MS,
   DEFAULT_SCROLLBACK,
   AGENT_SCROLLBACK,
-  WRITE_MAX_CHUNK_SIZE,
   WRITE_INTERVAL_MS,
 } from "./types.js";
 import { getTerminalSerializerService } from "./TerminalSerializerService.js";
 import { events } from "../events.js";
 import { AgentSpawnedSchema, AgentStateChangedSchema } from "../../schemas/agent.js";
 import type { PtyPool } from "../PtyPool.js";
-import { logError } from "../../utils/logger.js";
-import { decideTerminalExitForensics } from "./terminalForensics.js";
 import { installHeadlessResponder } from "./headlessResponder.js";
 import { TerminalSyncBuffer } from "./TerminalSyncBuffer.js";
 import { styleUrls } from "./UrlStyler.js";
-import type { PatternDetectionConfig } from "./AgentPatternDetector.js";
+
+// Extracted modules
 import {
+  normalizeSubmitText,
+  splitTrailingNewlines,
+  supportsBracketedPaste,
+  getSoftNewlineSequence,
+  isBracketedPaste,
+  chunkInput,
+  delay,
   BRACKETED_PASTE_START,
   BRACKETED_PASTE_END,
   PASTE_THRESHOLD_CHARS,
-  getSoftNewlineSequence as getSoftNewlineSequenceShared,
-  containsFullBracketedPaste,
-} from "../../../shared/utils/terminalInputProtocol.js";
+  SUBMIT_ENTER_DELAY_MS,
+  OUTPUT_SETTLE_DEBOUNCE_MS,
+  OUTPUT_SETTLE_MAX_WAIT_MS,
+  OUTPUT_SETTLE_POLL_INTERVAL_MS,
+} from "./terminalInput.js";
+import {
+  TERMINAL_SESSION_PERSISTENCE_ENABLED,
+  SESSION_SNAPSHOT_MAX_BYTES,
+  SESSION_SNAPSHOT_DEBOUNCE_MS,
+  restoreSessionFromFile,
+  persistSessionSnapshotSync,
+  persistSessionSnapshotAsync,
+} from "./terminalSessionPersistence.js";
+import {
+  buildPatternConfig,
+  buildBootCompletePatterns,
+  buildPromptPatterns,
+  buildPromptHintPatterns,
+  createProcessStateValidator,
+} from "./terminalActivityPatterns.js";
+import { TerminalForensicsBuffer } from "./TerminalForensicsBuffer.js";
+import { getDefaultShell, getDefaultShellArgs } from "./terminalShell.js";
 
 type CursorBuffer = {
   cursorY?: number;
@@ -55,114 +74,8 @@ type CursorBuffer = {
 };
 
 const TERMINAL_DISABLE_URL_STYLING: boolean = process.env.CANOPY_DISABLE_URL_STYLING === "1";
-const TERMINAL_SESSION_PERSISTENCE_ENABLED: boolean =
-  process.env.CANOPY_TERMINAL_SESSION_PERSISTENCE !== "0";
 const TERMINAL_FRAME_STABILIZER_ENABLED: boolean =
   process.env.CANOPY_DISABLE_FRAME_STABILIZER !== "1";
-const SESSION_SNAPSHOT_DEBOUNCE_MS = 5000;
-const SESSION_SNAPSHOT_MAX_BYTES = 5 * 1024 * 1024;
-
-function getSessionDir(): string | null {
-  const userData = process.env.CANOPY_USER_DATA;
-  if (!userData) return null;
-  return path.join(userData, "terminal-sessions");
-}
-
-function getSessionPath(id: string): string | null {
-  const dir = getSessionDir();
-  if (!dir) return null;
-  return path.join(dir, `${id}.restore`);
-}
-
-const SUBMIT_ENTER_DELAY_MS = 200; // Delay between paste and enter for reliable execution
-const OUTPUT_SETTLE_DEBOUNCE_MS = 200; // Wait for terminal output to settle before sending Enter
-const OUTPUT_SETTLE_MAX_WAIT_MS = 2000; // Don't wait forever for output to settle
-const OUTPUT_SETTLE_POLL_INTERVAL_MS = 50; // Polling interval for settle check
-
-function delay(ms: number): Promise<void> {
-  return new Promise((resolve) => setTimeout(resolve, ms));
-}
-
-function normalizeSubmitText(text: string): string {
-  return text.replace(/\r\n/g, "\n").replace(/\r/g, "\n");
-}
-
-function splitTrailingNewlines(text: string): { body: string; enterCount: number } {
-  let body = text;
-  let enterCount = 0;
-  while (body.endsWith("\n")) {
-    body = body.slice(0, -1);
-    enterCount++;
-  }
-  if (enterCount === 0) {
-    enterCount = 1;
-  }
-  return { body, enterCount };
-}
-
-function isGeminiTerminal(terminal: TerminalInfo): boolean {
-  return (
-    terminal.type === "gemini" ||
-    terminal.detectedAgentType === "gemini" ||
-    (terminal.kind === "agent" && terminal.agentId === "gemini")
-  );
-}
-
-function isCodexTerminal(terminal: TerminalInfo): boolean {
-  return (
-    terminal.type === "codex" ||
-    terminal.detectedAgentType === "codex" ||
-    (terminal.kind === "agent" && terminal.agentId === "codex")
-  );
-}
-
-function supportsBracketedPaste(terminal: TerminalInfo): boolean {
-  return !isGeminiTerminal(terminal);
-}
-
-function getSoftNewlineSequence(terminal: TerminalInfo): string {
-  // Shift+Enter "soft newline" differs by agent CLI; codex commonly uses LF (\n / Ctrl+J).
-  const agentType = isCodexTerminal(terminal) ? "codex" : terminal.type;
-  return getSoftNewlineSequenceShared(agentType);
-}
-
-/**
- * Check if data contains a full bracketed paste (starts with ESC[200~ and contains ESC[201~).
- * Bracketed paste should be sent atomically to preserve paste detection in programs
- * like Claude Code that show "Pasted X characters" for bulk input.
- */
-function isBracketedPaste(data: string): boolean {
-  return containsFullBracketedPaste(data);
-}
-
-/**
- * Split input into chunks for safe PTY writing.
- * Chunks at max size OR before escape sequences to prevent mid-sequence splits.
- */
-function chunkInput(data: string): string[] {
-  if (data.length === 0) {
-    return [];
-  }
-  if (data.length <= WRITE_MAX_CHUNK_SIZE) {
-    return [data];
-  }
-
-  const chunks: string[] = [];
-  let start = 0;
-
-  for (let i = 0; i < data.length - 1; i++) {
-    if (i - start + 1 >= WRITE_MAX_CHUNK_SIZE || data[i + 1] === "\x1b") {
-      chunks.push(data.substring(start, i + 1));
-      start = i + 1;
-    }
-  }
-
-  if (start < data.length) {
-    chunks.push(data.substring(start));
-  }
-
-  return chunks;
-}
 
 export interface TerminalProcessCallbacks {
   emitData: (id: string, data: string | Uint8Array) => void;
@@ -172,18 +85,10 @@ export interface TerminalProcessCallbacks {
 export interface TerminalProcessDependencies {
   agentStateService: AgentStateService;
   ptyPool: PtyPool | null;
-  /**
-   * When true, uses SAB-based backpressure in pty-host for flow control.
-   * This is the default and recommended mode. Always true in production.
-   */
   sabModeEnabled?: boolean;
   processTreeCache: ProcessTreeCache | null;
 }
 
-/**
- * Encapsulates a single terminal session with all associated state and helpers.
- * Handles PTY spawning, output throttling, agent detection, and activity monitoring.
- */
 export class TerminalProcess {
   private activityMonitor: ActivityMonitor | null = null;
   private processDetector: ProcessDetector | null = null;
@@ -197,15 +102,12 @@ export class TerminalProcess {
   private lastWriteErrorLogTime = 0;
   private suppressedWriteErrorCount = 0;
 
-  // Semantic buffer state
   private pendingSemanticData = "";
   private semanticFlushTimer: NodeJS.Timeout | null = null;
 
-  // Input write queue for chunked writes
   private inputWriteQueue: string[] = [];
   private inputWriteTimeout: NodeJS.Timeout | null = null;
 
-  // Lazy headless terminal state
   private _scrollback: number;
   private headlessResponderDisposable: { dispose: () => void } | null = null;
   private syncBuffer: TerminalSyncBuffer | null = null;
@@ -215,28 +117,14 @@ export class TerminalProcess {
 
   private readonly terminalInfo: TerminalInfo;
   private readonly isAgentTerminal: boolean;
+  private forensicsBuffer = new TerminalForensicsBuffer();
 
   private restoreSessionIfPresent(headlessTerminal: HeadlessTerminalType): void {
     if (!TERMINAL_SESSION_PERSISTENCE_ENABLED) return;
-    // Agent terminals are typically long-lived interactive sessions; restoring a prior screen
-    // on spawn can look like duplicated startup output when the agent command runs again.
     if (this.isAgentTerminal) return;
-    // Explicitly check if restoration was disabled (e.g. during restart)
     if (this.options.restore === false) return;
 
-    const sessionPath = getSessionPath(this.id);
-    if (!sessionPath) return;
-
-    try {
-      if (!existsSync(sessionPath)) return;
-      const content = readFileSync(sessionPath, "utf8");
-      if (Buffer.byteLength(content, "utf8") > SESSION_SNAPSHOT_MAX_BYTES) {
-        return;
-      }
-      headlessTerminal.write(content);
-    } catch (error) {
-      console.warn(`[TerminalProcess] Failed to restore session for ${this.id}:`, error);
-    }
+    restoreSessionFromFile(headlessTerminal, this.id);
   }
 
   private scheduleSessionPersist(): void {
@@ -251,30 +139,6 @@ export class TerminalProcess {
       this.sessionPersistTimer = null;
       void this.persistSessionSnapshot();
     }, SESSION_SNAPSHOT_DEBOUNCE_MS);
-  }
-
-  private persistSessionSnapshotSync(state: string): void {
-    const sessionPath = getSessionPath(this.id);
-    const dir = getSessionDir();
-    if (!sessionPath || !dir) return;
-
-    mkdirSync(dir, { recursive: true });
-
-    const tmpPath = `${sessionPath}.tmp`;
-    writeFileSync(tmpPath, state, "utf8");
-    renameSync(tmpPath, sessionPath);
-  }
-
-  private async persistSessionSnapshotAsync(state: string): Promise<void> {
-    const sessionPath = getSessionPath(this.id);
-    const dir = getSessionDir();
-    if (!sessionPath || !dir) return;
-
-    await mkdir(dir, { recursive: true });
-
-    const tmpPath = `${sessionPath}.tmp`;
-    await writeFile(tmpPath, state, "utf8");
-    await rename(tmpPath, sessionPath);
   }
 
   private async persistSessionSnapshot(): Promise<void> {
@@ -292,7 +156,7 @@ export class TerminalProcess {
       if (Buffer.byteLength(state, "utf8") > SESSION_SNAPSHOT_MAX_BYTES) {
         return;
       }
-      await this.persistSessionSnapshotAsync(state);
+      await persistSessionSnapshotAsync(this.id, state);
     } catch (error) {
       console.warn(`[TerminalProcess] Failed to persist session for ${this.id}:`, error);
     } finally {
@@ -366,17 +230,14 @@ export class TerminalProcess {
     private callbacks: TerminalProcessCallbacks,
     private deps: TerminalProcessDependencies
   ) {
-    const shell = options.shell || this.getDefaultShell();
-    const args = options.args || this.getDefaultShellArgs(shell);
+    const shell = options.shell || getDefaultShell();
+    const args = options.args || getDefaultShellArgs(shell);
     const spawnedAt = Date.now();
 
-    // Agent detection: check kind, agentId, or type (registered agent)
-    // This ensures terminals with type="claude" but kind="terminal" are still treated as agents
     const isAgentByKind = options.kind === "agent";
     const isAgentByAgentId = !!options.agentId;
     const isAgentByType = !!(options.type && options.type !== "terminal");
     this.isAgentTerminal = isAgentByKind || isAgentByAgentId || isAgentByType;
-    // Preserve type as agentId when type is an agent (for detection config lookups)
     const agentId = this.isAgentTerminal
       ? (options.agentId ?? (options.type !== "terminal" ? options.type : id))
       : undefined;
@@ -446,14 +307,12 @@ export class TerminalProcess {
         });
       } catch (error) {
         console.error(`Failed to spawn terminal ${id}:`, error);
-        // Re-throw original error to preserve code, errno, syscall, path metadata
         throw error;
       }
     }
 
     this._scrollback = this.isAgentTerminal ? AGENT_SCROLLBACK : DEFAULT_SCROLLBACK;
 
-    // Create headless terminal eagerly so renderers can detach/unmount without losing state
     const headlessTerminal: HeadlessTerminalType = new HeadlessTerminal({
       cols: options.cols,
       rows: options.rows,
@@ -494,8 +353,6 @@ export class TerminalProcess {
       analysisEnabled: this.isAgentTerminal,
     };
 
-    // Agent terminals use headless xterm for terminal responses (e.g. cursor position reports)
-    // even when no renderer xterm is attached
     if (this.isAgentTerminal && this.terminalInfo.headlessTerminal) {
       this.headlessResponderDisposable = installHeadlessResponder(
         this.terminalInfo.headlessTerminal,
@@ -510,14 +367,12 @@ export class TerminalProcess {
       );
     }
 
-    // DEC 2026 synchronized output for flicker-free agent terminal rendering
     if (TERMINAL_FRAME_STABILIZER_ENABLED && this.isAgentTerminal && headlessTerminal) {
       this.syncBuffer = new TerminalSyncBuffer({
         verbose: process.env.CANOPY_VERBOSE === "1",
         terminalId: id,
       });
       this.syncBuffer.attach(headlessTerminal, (data) => {
-        // Guard against post-kill flushes
         if (this.terminalInfo.wasKilled) return;
         this.emitDataDirect(data);
       });
@@ -541,7 +396,7 @@ export class TerminalProcess {
     }
 
     if (this.isAgentTerminal) {
-      const processStateValidator = this.createProcessStateValidator(ptyPid, deps.processTreeCache);
+      const processStateValidator = createProcessStateValidator(ptyPid, deps.processTreeCache);
       this.activityMonitor = new ActivityMonitor(
         id,
         spawnedAt,
@@ -581,10 +436,6 @@ export class TerminalProcess {
     }
   }
 
-  /**
-   * Lazily create headless terminal for serialization.
-   * Called on-demand when serialization is requested for non-agent terminals.
-   */
   private ensureHeadlessTerminal(): void {
     const terminal = this.terminalInfo;
 
@@ -599,15 +450,11 @@ export class TerminalProcess {
     throw new Error("Headless terminal unavailable (unexpected)");
   }
 
-  /**
-   * Dispose headless terminal and clear references.
-   */
   private disposeHeadless(): void {
     const terminal = this.terminalInfo;
     if (!terminal.headlessTerminal) {
       return;
     }
-    // Detach frame stabilizer (flushes pending data)
     if (this.syncBuffer) {
       this.syncBuffer.detach();
       this.syncBuffer = null;
@@ -629,18 +476,11 @@ export class TerminalProcess {
     terminal.serializeAddon = undefined;
   }
 
-  /**
-   * Get the terminal info object.
-   * @deprecated Use getPublicState() for IPC-safe data
-   */
+  /** @deprecated Use getPublicState() for IPC-safe data */
   getInfo(): TerminalInfo {
     return this.terminalInfo;
   }
 
-  /**
-   * Get the public state of the terminal (JSON-serializable, IPC-safe).
-   * This excludes all runtime resources like ptyProcess, headlessTerminal, etc.
-   */
   getPublicState(): TerminalPublicState {
     const t = this.terminalInfo;
     return {
@@ -668,46 +508,26 @@ export class TerminalProcess {
     };
   }
 
-  /**
-   * Check if semantic analysis is enabled for this terminal.
-   * Enabled by default for agent terminals, disabled for shells.
-   */
   get analysisEnabled(): boolean {
     return this.terminalInfo.analysisEnabled;
   }
 
-  /**
-   * Enable or disable semantic analysis for this terminal.
-   * Use this for future manual control (e.g., shell script monitoring).
-   */
   setAnalysisEnabled(enabled: boolean): void {
     this.terminalInfo.analysisEnabled = enabled;
   }
 
-  /**
-   * Acknowledge data processing from frontend (Flow Control).
-   * This is a no-op since SAB mode handles flow control globally via backpressure.
-   * Kept for backwards compatibility with IPC fallback mode.
-   */
   acknowledgeData(_charCount: number): void {
     // No-op: SAB-based backpressure in pty-host.ts handles all flow control
   }
 
-  /**
-   * Write data to terminal stdin with chunking.
-   * Bracketed paste content is sent atomically to preserve paste detection
-   * in programs like Claude Code.
-   */
   write(data: string, traceId?: string): void {
     const terminal = this.terminalInfo;
     terminal.lastInputTime = Date.now();
 
-    // Mark stabilizer interactive only for typing-like input (not bulk paste)
     if (data.length <= 64 && !isBracketedPaste(data)) {
       this.syncBuffer?.markInteractive();
     }
 
-    // If the PTY has already exited or been disposed, ignore input
     if (!terminal.ptyProcess) {
       return;
     }
@@ -716,15 +536,10 @@ export class TerminalProcess {
       terminal.traceId = traceId || undefined;
     }
 
-    // Notify activity monitor of input
     if (this.activityMonitor) {
       this.activityMonitor.onInput(data);
     }
 
-    // Bracketed paste: send atomically to preserve paste detection in CLI tools.
-    // Programs like Claude Code use bracketed paste mode to detect bulk input
-    // and show "Pasted X characters" instead of processing each character.
-    // Chunking would break this by making the paste appear as slow typing.
     if (isBracketedPaste(data)) {
       try {
         terminal.ptyProcess.write(data);
@@ -734,8 +549,6 @@ export class TerminalProcess {
       return;
     }
 
-    // Typing fast-path: avoid queueing/timers for small interactive input.
-    // This reduces keystroke→echo RTT and prevents micro-stutters.
     if (data.length <= 512) {
       try {
         terminal.ptyProcess.write(data);
@@ -745,17 +558,11 @@ export class TerminalProcess {
       return;
     }
 
-    // Regular input: chunk to prevent data corruption (VS Code pattern)
     const chunks = chunkInput(data);
     this.inputWriteQueue.push(...chunks);
     this.startWrite();
   }
 
-  /**
-   * Submit text as a command to the terminal.
-   * Handles bracketed paste for multiline/long inputs and ensures execution via CR.
-   * This is the robust way to send input from the HybridInputBar.
-   */
   submit(text: string): void {
     this.submitQueue.push(text);
     if (this.submitInFlight) {
@@ -783,8 +590,6 @@ export class TerminalProcess {
     const terminal = this.terminalInfo;
     terminal.lastInputTime = Date.now();
 
-    // Don't mark interactive for submits - let write() handle it
-
     if (!terminal.ptyProcess) {
       return;
     }
@@ -799,7 +604,6 @@ export class TerminalProcess {
     }
 
     const useBracketedPaste = body.includes("\n") || body.length > PASTE_THRESHOLD_CHARS;
-
     const useOutputSettle = !supportsBracketedPaste(terminal);
 
     if (useBracketedPaste && supportsBracketedPaste(terminal)) {
@@ -818,9 +622,6 @@ export class TerminalProcess {
     await this.waitForInputWriteDrain();
 
     if (useOutputSettle) {
-      // For terminals that don't support bracketed paste (e.g., Gemini),
-      // wait for terminal output to settle before sending Enter.
-      // This handles slow echo, high system load, or large paste buffers.
       await this.waitForOutputSettle();
     } else {
       await delay(SUBMIT_ENTER_DELAY_MS);
@@ -854,11 +655,6 @@ export class TerminalProcess {
     });
   }
 
-  /**
-   * Wait for terminal output to settle (stop producing output for a period).
-   * Used for non-bracketed paste terminals (e.g., Gemini) where we need to wait
-   * for the terminal to finish echoing input before sending the Enter key.
-   */
   private async waitForOutputSettle(): Promise<void> {
     const startWait = Date.now();
     const terminal = this.terminalInfo;
@@ -883,9 +679,6 @@ export class TerminalProcess {
     }
   }
 
-  /**
-   * Resize terminal.
-   */
   resize(cols: number, rows: number): void {
     if (
       !Number.isFinite(cols) ||
@@ -919,9 +712,6 @@ export class TerminalProcess {
     }
   }
 
-  /**
-   * Kill the terminal process.
-   */
   kill(reason?: string): void {
     const terminal = this.terminalInfo;
 
@@ -964,14 +754,10 @@ export class TerminalProcess {
     }
   }
 
-  // Flood protection is handled via higher-level flow control; always no-op here.
   checkFlooding(): { flooded: boolean; resumed: boolean } {
     return { flooded: false, resumed: false };
   }
 
-  /**
-   * Get terminal snapshot for external analysis.
-   */
   getSnapshot(): TerminalSnapshot {
     const terminal = this.terminalInfo;
     return {
@@ -990,10 +776,6 @@ export class TerminalProcess {
     };
   }
 
-  /**
-   * Get the last N lines from the current viewport.
-   * Agent status lines appear in the visible terminal area.
-   */
   getLastNLines(n: number): string[] {
     const terminal = this.terminalInfo.headlessTerminal;
     if (!terminal) return [];
@@ -1001,8 +783,6 @@ export class TerminalProcess {
     const buffer = terminal.buffer.active;
     if (!buffer) return [];
 
-    // Read from the bottom of the current viewport
-    // baseY + rows = bottom of visible area
     const viewportBottom = buffer.baseY + terminal.rows;
     const start = Math.max(buffer.baseY, viewportBottom - n);
 
@@ -1014,9 +794,6 @@ export class TerminalProcess {
     return lines;
   }
 
-  /**
-   * Get the current cursor line from the visible buffer.
-   */
   getCursorLine(): string | null {
     const terminal = this.terminalInfo.headlessTerminal;
     if (!terminal) return null;
@@ -1028,11 +805,6 @@ export class TerminalProcess {
     return line ? line.translateToString(true) : null;
   }
 
-  /**
-   * Get serialized terminal state for fast restoration (synchronous).
-   * Use getSerializedStateAsync() for large terminals to avoid blocking.
-   * Creates headless terminal on-demand for non-agent terminals.
-   */
   getSerializedState(): string | null {
     try {
       return this.terminalInfo.serializeAddon!.serialize();
@@ -1042,12 +814,6 @@ export class TerminalProcess {
     }
   }
 
-  /**
-   * Get serialized terminal state asynchronously.
-   * Yields to event loop for large terminals (>1000 lines) to prevent blocking.
-   * Implements single-flight per terminal to prevent request pileup.
-   * Creates headless terminal on-demand for non-agent terminals.
-   */
   async getSerializedStateAsync(): Promise<string | null> {
     const terminal = this.terminalInfo;
 
@@ -1068,16 +834,10 @@ export class TerminalProcess {
     }
   }
 
-  /**
-   * Mark terminal's check time.
-   */
   markChecked(): void {
     this.terminalInfo.lastCheckTime = Date.now();
   }
 
-  /**
-   * Replay history from semantic buffer.
-   */
   replayHistory(maxLines: number = 100): number {
     const terminal = this.terminalInfo;
     const bufferSize = terminal.semanticBuffer.length;
@@ -1094,16 +854,10 @@ export class TerminalProcess {
     return linesToReplay;
   }
 
-  /**
-   * Get PTY process reference (for external use).
-   */
   getPtyProcess(): pty.IPty {
     return this.terminalInfo.ptyProcess;
   }
 
-  /**
-   * Start/restart process detector.
-   */
   startProcessDetector(): void {
     const ptyPid = this.terminalInfo.ptyProcess.pid;
     if (ptyPid !== undefined && !this.processDetector && this.deps.processTreeCache) {
@@ -1121,9 +875,6 @@ export class TerminalProcess {
     }
   }
 
-  /**
-   * Stop process detector.
-   */
   stopProcessDetector(): void {
     if (this.processDetector) {
       this.processDetector.stop();
@@ -1132,21 +883,11 @@ export class TerminalProcess {
     }
   }
 
-  /**
-   * Start activity monitor for agent terminals.
-   * @param options.preserveState - If true, prevents the monitor from emitting state changes
-   *   on startup. Used during project switch to preserve existing agent state.
-   */
   startActivityMonitor(options?: { preserveState?: boolean }): void {
     if (this.isAgentTerminal && !this.activityMonitor) {
       const ptyPid = this.terminalInfo.ptyProcess.pid;
-      const processStateValidator = this.createProcessStateValidator(
-        ptyPid,
-        this.deps.processTreeCache
-      );
+      const processStateValidator = createProcessStateValidator(ptyPid, this.deps.processTreeCache);
 
-      // When preserving state, pass the current agent state to the monitor
-      // so it doesn't trigger spurious transitions on startup
       const preserveState = options?.preserveState ?? false;
       const currentAgentState = this.terminalInfo.agentState;
       const initialState = preserveState && currentAgentState === "working" ? "busy" : "idle";
@@ -1181,29 +922,21 @@ export class TerminalProcess {
       (this.terminalInfo.type !== "terminal" ? this.terminalInfo.type : undefined);
     const ignoredInputSequences = effectiveAgentId === "codex" ? ["\n", "\x1b\r"] : ["\x1b\r"];
 
-    // Enable pattern-based detection for agent terminals.
-    // Prefer agentId when available to support custom/legacy terminals.
     const detection = effectiveAgentId
       ? getEffectiveAgentConfig(effectiveAgentId)?.detection
       : undefined;
-    const patternConfig = this.buildPatternConfig(detection, effectiveAgentId);
-    const bootCompletePatterns = this.buildBootCompletePatterns(detection, effectiveAgentId);
-    const promptPatterns = this.buildPromptPatterns(detection, effectiveAgentId);
-    const promptHintPatterns = this.buildPromptHintPatterns(detection, effectiveAgentId);
+    const patternConfig = buildPatternConfig(detection, effectiveAgentId);
+    const bootCompletePatterns = buildBootCompletePatterns(detection, effectiveAgentId);
+    const promptPatterns = buildPromptPatterns(detection, effectiveAgentId);
+    const promptHintPatterns = buildPromptHintPatterns(detection, effectiveAgentId);
 
-    // Enable output-based activity detection for agent terminals.
-    // AI agents often have low CPU while waiting for API responses (network I/O),
-    // causing CPU-based detection to incorrectly mark them as idle. Output detection
-    // allows the terminal to transition back to busy when the agent produces output
-    // (spinner updates, code changes, etc.) even after an idle transition.
     const outputActivityDetection = {
       enabled: true,
       windowMs: 1000,
       minFrames: 2,
-      minBytes: 32, // Low threshold to catch spinner animations
+      minBytes: 32,
     };
 
-    // Provide callback to get visible lines from xterm for pattern detection
     const getVisibleLines = effectiveAgentId ? (n: number) => this.getLastNLines(n) : undefined;
     const getCursorLine = effectiveAgentId ? () => this.getCursorLine() : undefined;
 
@@ -1223,170 +956,6 @@ export class TerminalProcess {
     };
   }
 
-  private buildPatternConfig(
-    detection: AgentDetectionConfig | undefined,
-    agentId: string | undefined
-  ): PatternDetectionConfig | undefined {
-    if (!detection) {
-      return undefined;
-    }
-
-    const primaryPatterns = this.compilePatterns(detection.primaryPatterns, agentId, "primary");
-    if (primaryPatterns.length === 0) {
-      return undefined;
-    }
-
-    const fallbackPatterns = detection.fallbackPatterns
-      ? this.compilePatterns(detection.fallbackPatterns, agentId, "fallback")
-      : undefined;
-
-    return {
-      primaryPatterns,
-      fallbackPatterns: fallbackPatterns?.length ? fallbackPatterns : undefined,
-      scanLineCount: detection.scanLineCount,
-      primaryConfidence: detection.primaryConfidence,
-      fallbackConfidence: detection.fallbackConfidence,
-    };
-  }
-
-  private buildBootCompletePatterns(
-    detection: AgentDetectionConfig | undefined,
-    agentId: string | undefined
-  ): RegExp[] | undefined {
-    if (!detection?.bootCompletePatterns || detection.bootCompletePatterns.length === 0) {
-      return undefined;
-    }
-
-    const bootPatterns = this.compilePatterns(detection.bootCompletePatterns, agentId, "boot");
-
-    return bootPatterns.length ? bootPatterns : undefined;
-  }
-
-  private buildPromptPatterns(
-    detection: AgentDetectionConfig | undefined,
-    agentId: string | undefined
-  ): RegExp[] | undefined {
-    if (!detection?.promptPatterns || detection.promptPatterns.length === 0) {
-      return undefined;
-    }
-
-    const promptPatterns = this.compilePatterns(detection.promptPatterns, agentId, "prompt");
-
-    return promptPatterns.length ? promptPatterns : undefined;
-  }
-
-  private buildPromptHintPatterns(
-    detection: AgentDetectionConfig | undefined,
-    agentId: string | undefined
-  ): RegExp[] | undefined {
-    if (!detection?.promptHintPatterns || detection.promptHintPatterns.length === 0) {
-      return undefined;
-    }
-
-    const promptHintPatterns = this.compilePatterns(
-      detection.promptHintPatterns,
-      agentId,
-      "prompt hint"
-    );
-
-    return promptHintPatterns.length ? promptHintPatterns : undefined;
-  }
-
-  private compilePatterns(
-    patterns: string[],
-    agentId: string | undefined,
-    label: string
-  ): RegExp[] {
-    const compiled: RegExp[] = [];
-    for (const pattern of patterns) {
-      try {
-        compiled.push(new RegExp(pattern, "im"));
-      } catch (error) {
-        if (process.env.CANOPY_VERBOSE) {
-          const prefix = agentId ? `${agentId} ${label}` : label;
-          console.warn(`[TerminalProcess] Invalid ${prefix} pattern: ${pattern}`, error);
-        }
-      }
-    }
-    return compiled;
-  }
-
-  private createProcessStateValidator(
-    ptyPid: number | undefined,
-    processTreeCache: ProcessTreeCache | null
-  ): ProcessStateValidator | undefined {
-    if (ptyPid === undefined || !processTreeCache) {
-      return undefined;
-    }
-
-    // Use CPU-based activity detection to determine if the agent is actually working.
-    // This is more accurate than just checking if child processes exist, because:
-    // 1. Shell helper processes (gitstatus, zsh-async) exist but have near-zero CPU
-    // 2. An idle agent waiting at a prompt has near-zero CPU
-    // 3. A working agent (compiling, thinking, writing) has measurable CPU activity
-    //
-    // The threshold of 0.5% CPU catches active work while ignoring idle processes.
-    // On Windows, CPU% defaults to 0 (performance counters not implemented), so
-    // we fall back to checking if children exist but filter out known shell processes.
-    const CPU_ACTIVITY_THRESHOLD = 0.5;
-
-    // Known shell helper processes that should be ignored even with hasChildren check
-    const shellHelperProcesses = new Set(["gitstatus", "gitstatusd", "async", "zsh-async"]);
-
-    const shellProcesses = new Set(["zsh", "bash", "sh", "fish", "powershell", "pwsh", "cmd"]);
-
-    return {
-      hasActiveChildren: () => {
-        // First, try CPU-based detection (works on macOS/Linux)
-        if (processTreeCache.hasActiveDescendants(ptyPid, CPU_ACTIVITY_THRESHOLD)) {
-          return true;
-        }
-
-        // If no CPU activity detected, check if there are any non-shell children.
-        // This handles the case where CPU% is 0 (Windows) or the process just started.
-        const children = processTreeCache.getChildren(ptyPid);
-        if (children.length === 0) {
-          return false;
-        }
-
-        // Filter out shell processes and known helpers
-        const significantChildren = children.filter((child) => {
-          const basename = child.comm.split("/").pop()?.toLowerCase() || child.comm.toLowerCase();
-          const name = basename.replace(/\.exe$/, "");
-          return !shellHelperProcesses.has(name) && !shellProcesses.has(name);
-        });
-
-        // If there are significant children but no CPU activity, they're likely idle
-        // (e.g., Claude Code waiting at a prompt). Return false to allow idle transition.
-        // This prevents terminals from being stuck in "busy" when agents are actually idle.
-        if (significantChildren.length > 0) {
-          // On Windows where we don't have CPU%, be conservative and check descendants too
-          if (process.platform === "win32") {
-            // Check grandchildren for actual commands
-            for (const child of children) {
-              const grandchildren = processTreeCache.getChildren(child.pid);
-              const significantGrandchildren = grandchildren.filter((gc) => {
-                const basename = gc.comm.split("/").pop()?.toLowerCase() || gc.comm.toLowerCase();
-                const name = basename.replace(/\.exe$/, "");
-                return !shellHelperProcesses.has(name) && !shellProcesses.has(name);
-              });
-              if (significantGrandchildren.length > 0) {
-                return true;
-              }
-            }
-          }
-          // On Unix with no CPU activity, these children are idle
-          return false;
-        }
-
-        return false;
-      },
-    };
-  }
-
-  /**
-   * Stop activity monitor.
-   */
   stopActivityMonitor(): void {
     if (this.activityMonitor) {
       this.activityMonitor.dispose();
@@ -1394,29 +963,16 @@ export class TerminalProcess {
     }
   }
 
-  /**
-   * Set activity monitoring tier (active vs background).
-   * Changes polling frequency without stopping the monitor.
-   * @param pollingIntervalMs - Polling interval in ms (50ms for active, 500ms for background)
-   */
   setActivityMonitorTier(pollingIntervalMs: number): void {
     if (this.activityMonitor) {
       this.activityMonitor.setPollingInterval(pollingIntervalMs);
     }
   }
 
-  /**
-   * Update SAB mode setting dynamically.
-   * This is a no-op - SAB-based backpressure in pty-host.ts handles all flow control.
-   * Kept for API compatibility with PtyManager.setSabMode().
-   */
   setSabModeEnabled(_enabled: boolean): void {
     // No-op: SAB mode is always used, flow control handled by pty-host.ts
   }
 
-  /**
-   * Clean up resources.
-   */
   dispose(): void {
     this.stopProcessDetector();
     this.stopActivityMonitor();
@@ -1426,8 +982,6 @@ export class TerminalProcess {
       this.semanticFlushTimer = null;
     }
 
-    // Best-effort: persist one last snapshot on shutdown to maximize recoverability.
-    // This is synchronous by design (we are shutting down), and bounded by size.
     if (
       TERMINAL_SESSION_PERSISTENCE_ENABLED &&
       this.sessionPersistDirty &&
@@ -1436,7 +990,7 @@ export class TerminalProcess {
       try {
         const state = this.getSerializedState();
         if (state && Buffer.byteLength(state, "utf8") <= SESSION_SNAPSHOT_MAX_BYTES) {
-          this.persistSessionSnapshotSync(state);
+          persistSessionSnapshotSync(this.id, state);
           this.sessionPersistDirty = false;
         }
       } catch {
@@ -1460,64 +1014,16 @@ export class TerminalProcess {
     }
   }
 
-  // Forensic logging
-  private recentOutputBuffer = "";
-  private readonly FORENSIC_BUFFER_SIZE = 4000;
-  private textDecoder = new TextDecoder();
-
-  private captureForensics(data: string | Uint8Array): void {
-    const text = typeof data === "string" ? data : this.textDecoder.decode(data);
-    this.recentOutputBuffer += text;
-    if (this.recentOutputBuffer.length > this.FORENSIC_BUFFER_SIZE) {
-      this.recentOutputBuffer = this.recentOutputBuffer.slice(-this.FORENSIC_BUFFER_SIZE);
-    }
-  }
-
-  private logForensics(exitCode: number, signal?: number): void {
-    if (!this.isAgentTerminal) return;
-
-    const terminal = this.terminalInfo;
-    const decision = decideTerminalExitForensics({
-      exitCode,
-      signal,
-      wasKilled: terminal.wasKilled,
-      recentOutput: this.recentOutputBuffer,
-    });
-
-    if (!decision.shouldLog || decision.strippedOutput.trim().length === 0) {
-      return;
-    }
-
-    logError(`Terminal ${this.id} exited abnormally (code ${exitCode})`, undefined, {
-      terminalId: this.id,
-      exitCode,
-      signal: decision.normalizedSignal,
-      agentType: terminal.type,
-      agentId: terminal.agentId,
-      cwd: terminal.cwd,
-      lastOutput: decision.strippedOutput.slice(-1000),
-    });
-
-    if (process.env.CANOPY_VERBOSE || exitCode !== 0) {
-      console.error(
-        `\n━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━\nTERMINAL CRASH FORENSICS\n━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━\nTerminal ID: ${this.id}\nAgent Type:  ${terminal.type || "unknown"}\nAgent ID:    ${terminal.agentId || "N/A"}\nExit Code:   ${exitCode}\nSignal:      ${decision.normalizedSignal ?? "none"}\nCWD:         ${terminal.cwd}\nTimestamp:   ${new Date().toISOString()}\n━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━\nLAST OUTPUT (${decision.strippedOutput.length} chars):\n━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━\n${decision.strippedOutput}\n━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━\n`
-      );
-    }
-  }
-
   private setupPtyHandlers(ptyProcess: pty.IPty): void {
     const terminal = this.terminalInfo;
 
     ptyProcess.onData((data) => {
-      // Verify this is still the active terminal
       if (terminal.ptyProcess !== ptyProcess) {
         return;
       }
 
       terminal.lastOutputTime = Date.now();
 
-      // CRITICAL: Pattern detection runs FIRST for instant state updates
-      // This must happen before expensive operations like headlessTerminal.write()
       if (this.isAgentTerminal && this.activityMonitor) {
         const inResizeCooldown =
           this.resizeTimestamp > 0 &&
@@ -1530,9 +1036,6 @@ export class TerminalProcess {
         }
       }
 
-      // Some TUIs (including Codex) request terminal responses (e.g. cursor position report via CSI 6 n).
-      // Agent terminals always have a headless responder installed, but shell terminals may not.
-      // If we see a request, ensure a headless terminal + responder so the TUI can proceed.
       if (!this.isAgentTerminal && (data.includes("\x1b[6n") || data.includes("\x1b[5n"))) {
         this.ensureHeadlessResponder();
       }
@@ -1541,7 +1044,7 @@ export class TerminalProcess {
       this.scheduleSessionPersist();
 
       this.emitData(data);
-      this.captureForensics(data);
+      this.forensicsBuffer.capture(data);
       this.debouncedSemanticUpdate(data);
 
       if (this.isAgentTerminal) {
@@ -1578,14 +1081,19 @@ export class TerminalProcess {
       }
       this.inputWriteQueue = [];
 
-      // Flush any buffered frame output before exit event
       if (this.syncBuffer) {
         this.syncBuffer.detach();
         this.syncBuffer = null;
       }
 
       this.callbacks.onExit(this.id, exitCode ?? 0);
-      this.logForensics(exitCode ?? 0, signal);
+      this.forensicsBuffer.logForensics(
+        this.id,
+        exitCode ?? 0,
+        terminal,
+        this.isAgentTerminal,
+        signal
+      );
 
       if (this.isAgentTerminal && !terminal.wasKilled) {
         this.deps.agentStateService.updateAgentState(terminal, {
@@ -1607,7 +1115,6 @@ export class TerminalProcess {
     });
   }
 
-  /** Emit data through the frame stabilizer (if enabled) or directly. */
   private emitData(data: string | Uint8Array): void {
     const text = typeof data === "string" ? data : new TextDecoder().decode(data);
 
@@ -1619,11 +1126,6 @@ export class TerminalProcess {
     this.emitDataDirect(text);
   }
 
-  /**
-   * Direct data emission bypassing the stabilizer.
-   * Used by the stabilizer callback and for non-agent terminals.
-   * Applies URL styling via OSC 8 hyperlinks unless disabled.
-   */
   private emitDataDirect(data: string): void {
     if (TERMINAL_DISABLE_URL_STYLING) {
       this.callbacks.emitData(this.id, data);
@@ -1635,7 +1137,6 @@ export class TerminalProcess {
   }
 
   private handleAgentDetection(result: DetectionResult, spawnedAt: number): void {
-    // Validate session token to prevent stale detector callbacks
     if (this.terminalInfo.spawnedAt !== spawnedAt) {
       console.warn(
         `[TerminalProcess] Rejected stale detection from old ProcessDetector ${this.id} ` +
@@ -1646,7 +1147,6 @@ export class TerminalProcess {
 
     const terminal = this.terminalInfo;
 
-    // Reject callbacks for killed terminals to prevent race conditions
     if (terminal.wasKilled) {
       return;
     }
@@ -1689,10 +1189,7 @@ export class TerminalProcess {
       });
     }
 
-    // Handle busy/idle for shell terminals
     if (!terminal.agentId) {
-      // 1. Trust the process detector's command first.
-      // 2. Fallback to semantic buffer heuristic if process detection found activity but no name.
       const lastCommand = result.currentCommand || this.getLastCommand();
 
       const { headline, status, type } = this.headlineGenerator.generate({
@@ -1739,9 +1236,6 @@ export class TerminalProcess {
     }
   }
 
-  /**
-   * Get the last command executed in this terminal (for headline generation).
-   */
   private getLastCommand(): string | undefined {
     const buffer = this.terminalInfo.semanticBuffer;
     if (buffer.length === 0) return undefined;
@@ -1751,7 +1245,6 @@ export class TerminalProcess {
 
       if (line.length === 0) continue;
 
-      // Strip common prompt prefixes: "user@host:~/path $", "~/path %", etc.
       line = line.replace(/^[^@]*@[^:]*:[^\s]*\s*[$>%#]\s*/, "");
       line = line.replace(/^~?[^\s]*[$>%#]\s*/, "");
       line = line.replace(/^[$>%#]\s*/, "");
@@ -1846,40 +1339,5 @@ export class TerminalProcess {
     } catch (error) {
       this.logWriteError(error, { operation: "write(chunk)" });
     }
-  }
-
-  private getDefaultShell(): string {
-    if (process.platform === "win32") {
-      return process.env.COMSPEC || "powershell.exe";
-    }
-
-    if (process.env.SHELL) {
-      return process.env.SHELL;
-    }
-
-    const commonShells = ["/bin/zsh", "/bin/bash", "/bin/sh"];
-    for (const shell of commonShells) {
-      try {
-        if (existsSync(shell)) {
-          return shell;
-        }
-      } catch {
-        // Continue to next shell
-      }
-    }
-
-    return "/bin/sh";
-  }
-
-  private getDefaultShellArgs(shell: string): string[] {
-    const shellName = shell.toLowerCase();
-
-    if (process.platform !== "win32") {
-      if (shellName.includes("zsh") || shellName.includes("bash")) {
-        return ["-l"];
-      }
-    }
-
-    return [];
   }
 }
