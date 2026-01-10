@@ -1,3 +1,5 @@
+/// <reference types="electron" />
+
 declare module "react-diff-view" {
   import { ComponentType, ReactNode } from "react";
 
@@ -48,4 +50,32 @@ declare module "react-diff-view" {
 
 declare module "refractor" {
   export const refractor: any;
+}
+
+// Electron webview types for renderer
+declare global {
+  namespace Electron {
+    export type WebviewTag = import("electron").WebviewTag;
+    export type DidFailLoadEvent = import("electron").DidFailLoadEvent;
+    export type DidNavigateEvent = import("electron").DidNavigateEvent;
+    export type DidNavigateInPageEvent = import("electron").DidNavigateInPageEvent;
+  }
+
+  namespace JSX {
+    interface IntrinsicElements {
+      webview: React.DetailedHTMLProps<
+        React.HTMLAttributes<Electron.WebviewTag>,
+        Electron.WebviewTag
+      > & {
+        src?: string;
+        partition?: string;
+        webpreferences?: string;
+        allowpopups?: boolean;
+      };
+    }
+  }
+
+  interface HTMLElementTagNameMap {
+    webview: Electron.WebviewTag;
+  }
 }

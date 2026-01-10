@@ -5,6 +5,7 @@ import { useTerminalStore } from "@/store";
 import type { DevPreviewStatus } from "@shared/types/ipc/devPreview";
 import { DevPreviewToolbar } from "./DevPreviewToolbar";
 import { Button } from "@/components/ui/button";
+import { useIsDragging } from "@/components/DragDrop";
 
 const STATUS_STYLES: Record<DevPreviewStatus, { label: string; dot: string; text: string }> = {
   installing: {
@@ -62,6 +63,9 @@ export function DevPreviewPane({
   const restartTimeoutRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const [isBrowserOnly, setIsBrowserOnly] = useState(false);
   const [manualUrl, setManualUrl] = useState("");
+  const webviewRef = useRef<Electron.WebviewTag>(null);
+  const isDragging = useIsDragging();
+  const [webviewLoadError, setWebviewLoadError] = useState<string | null>(null);
 
   useEffect(() => {
     const offStatus = window.electron.devPreview.onStatus((payload) => {
@@ -88,6 +92,7 @@ export function DevPreviewPane({
     const offUrl = window.electron.devPreview.onUrl((payload) => {
       if (payload.panelId !== id) return;
       setUrl(payload.url);
+      setWebviewLoadError(null);
     });
 
     return () => {
@@ -98,6 +103,32 @@ export function DevPreviewPane({
       }
     };
   }, [id]);
+
+  // Set up webview event listeners for loading/error feedback
+  useEffect(() => {
+    const webview = webviewRef.current;
+    if (!webview || !url) return;
+
+    const handleDidFailLoad = (event: Electron.DidFailLoadEvent) => {
+      // Ignore aborted loads and cancellations
+      if (event.errorCode === -3 || event.errorCode === -6) return;
+      setWebviewLoadError(
+        event.errorDescription || "Failed to load dev server. Check if the server is running."
+      );
+    };
+
+    const handleDidStartLoading = () => {
+      setWebviewLoadError(null);
+    };
+
+    webview.addEventListener("did-fail-load", handleDidFailLoad);
+    webview.addEventListener("did-start-loading", handleDidStartLoading);
+
+    return () => {
+      webview.removeEventListener("did-fail-load", handleDidFailLoad);
+      webview.removeEventListener("did-start-loading", handleDidStartLoading);
+    };
+  }, [url]);
 
   useEffect(() => {
     setUrl(null);
@@ -192,12 +223,25 @@ export function DevPreviewPane({
       <div className="flex flex-1 min-h-0 flex-col">
         <div className="relative flex-1 min-h-0 bg-white">
           {url ? (
-            <iframe
-              src={url}
-              title={title}
-              className="w-full h-full border-0"
-              sandbox="allow-scripts allow-forms allow-same-origin allow-popups allow-popups-to-escape-sandbox"
-            />
+            <>
+              {isDragging && <div className="absolute inset-0 z-10 bg-transparent" />}
+              {webviewLoadError && (
+                <div className="absolute inset-0 flex items-center justify-center bg-canopy-bg z-10">
+                  <div className="text-center max-w-md space-y-2 px-4">
+                    <div className="text-sm font-medium text-[var(--color-status-error)]">
+                      Webview Load Error
+                    </div>
+                    <div className="text-xs text-canopy-text/60">{webviewLoadError}</div>
+                  </div>
+                </div>
+              )}
+              <webview
+                ref={webviewRef}
+                src={url}
+                partition="persist:dev-preview"
+                className={cn("w-full h-full border-0", isDragging && "invisible pointer-events-none")}
+              />
+            </>
           ) : isBrowserOnly ? (
             <div className="absolute inset-0 flex items-center justify-center bg-canopy-bg">
               <div className="text-center max-w-md space-y-4 px-4">
