@@ -56,7 +56,7 @@ export interface TerminalState {
   /** Last detected agent title (for restoration hints) */
   lastDetectedAgentTitle?: string;
   isInputLocked?: boolean;
-  /** Current URL for browser panes (kind === 'browser') */
+  /** Current URL for browser/dev-preview panes */
   browserUrl?: string;
   /** Path to note file (kind === 'notes') */
   notePath?: string;

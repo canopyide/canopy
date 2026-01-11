@@ -197,6 +197,7 @@ const createProjectStore: StateCreator<ProjectState> = (set, get) => ({
                 type: t.type,
                 cwd: t.cwd,
                 command: t.devCommand?.trim() || undefined,
+                ...(t.browserUrl && { browserUrl: t.browserUrl }),
               };
             } else if (panelKindHasPty(t.kind ?? "terminal")) {
               return {
@@ -354,6 +355,7 @@ const createProjectStore: StateCreator<ProjectState> = (set, get) => ({
                 type: t.type,
                 cwd: t.cwd,
                 command: t.devCommand?.trim() || undefined,
+                ...(t.browserUrl && { browserUrl: t.browserUrl }),
               };
             } else if (panelKindHasPty(t.kind ?? "terminal")) {
               return {

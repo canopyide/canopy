@@ -187,7 +187,9 @@ export class PtyManager extends EventEmitter {
             return;
           }
           this.emit("exit", termId, exitCode);
-          this.registry.delete(termId);
+          if (!terminalProcess.shouldPreserveOnExit(exitCode)) {
+            this.registry.delete(termId);
+          }
         },
       },
       {
@@ -258,8 +260,12 @@ export class PtyManager extends EventEmitter {
 
     const terminal = this.registry.get(id);
     if (terminal) {
+      const wasExited = terminal.getInfo().isExited;
       terminal.kill(reason);
       // Note: deletion handled in onExit callback
+      if (wasExited) {
+        this.registry.delete(id);
+      }
     }
   }
 

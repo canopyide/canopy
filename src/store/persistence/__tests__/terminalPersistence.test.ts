@@ -339,4 +339,31 @@ describe("TerminalPersistence", () => {
       ]);
     });
   });
+
+  describe("dev-preview panels", () => {
+    it("preserves browserUrl for dev-preview panels", async () => {
+      const client = createMockProjectClient();
+      const persistence = new TerminalPersistence(client, { debounceMs: 100 });
+
+      const devPreviewPanel = createMockTerminal({
+        id: "dev-preview-1",
+        kind: "dev-preview",
+        title: "Dev Preview",
+        browserUrl: "http://localhost:5173",
+        devCommand: "npm run dev",
+        location: "grid",
+      });
+
+      persistence.save([devPreviewPanel], projectId);
+      await vi.advanceTimersByTimeAsync(100);
+
+      expect(client.setTerminals).toHaveBeenCalledWith(projectId, [
+        expect.objectContaining({
+          id: "dev-preview-1",
+          kind: "dev-preview",
+          browserUrl: "http://localhost:5173",
+        }),
+      ]);
+    });
+  });
 });

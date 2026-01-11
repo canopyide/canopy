@@ -20,6 +20,10 @@ export interface PanelKindConfig {
   canRestart: boolean;
   /** Whether this panel kind can convert to/from other types */
   canConvert: boolean;
+  /** Whether this panel kind uses the standard terminal UI */
+  usesTerminalUi?: boolean;
+  /** Whether this panel kind should keep its runtime alive across project switches */
+  keepAliveOnProjectSwitch?: boolean;
   /** Whether this panel kind should appear in the panel palette (⌘⇧P). Set to false for panels with dedicated spawn actions (terminal, agent). Defaults to true for extension panels if not specified. */
   showInPalette?: boolean;
   /** Extension ID if this is an extension-provided panel kind */
@@ -42,6 +46,7 @@ const PANEL_KIND_REGISTRY: Record<string, PanelKindConfig> = {
     hasPty: true,
     canRestart: true,
     canConvert: true,
+    keepAliveOnProjectSwitch: true,
     showInPalette: false, // Has dedicated spawn action
   },
   agent: {
@@ -52,6 +57,7 @@ const PANEL_KIND_REGISTRY: Record<string, PanelKindConfig> = {
     hasPty: true,
     canRestart: true,
     canConvert: true,
+    keepAliveOnProjectSwitch: true,
     showInPalette: false, // Has dedicated spawn action
   },
   browser: {
@@ -62,6 +68,7 @@ const PANEL_KIND_REGISTRY: Record<string, PanelKindConfig> = {
     hasPty: false,
     canRestart: false,
     canConvert: false,
+    keepAliveOnProjectSwitch: true,
     showInPalette: true,
   },
   notes: {
@@ -72,6 +79,7 @@ const PANEL_KIND_REGISTRY: Record<string, PanelKindConfig> = {
     hasPty: false,
     canRestart: false,
     canConvert: false,
+    keepAliveOnProjectSwitch: true,
     showInPalette: true,
   },
   "dev-preview": {
@@ -82,6 +90,8 @@ const PANEL_KIND_REGISTRY: Record<string, PanelKindConfig> = {
     hasPty: true,
     canRestart: true,
     canConvert: false,
+    usesTerminalUi: false,
+    keepAliveOnProjectSwitch: true,
     showInPalette: true,
   },
 };
@@ -181,6 +191,24 @@ export function getPanelKindColor(kind: PanelKind, agentId?: string): string {
 export function panelKindHasPty(kind: PanelKind): boolean {
   const config = getPanelKindConfig(kind);
   return config?.hasPty ?? false;
+}
+
+/**
+ * Check if a panel kind uses the standard terminal UI.
+ */
+export function panelKindUsesTerminalUi(kind: PanelKind): boolean {
+  const config = getPanelKindConfig(kind);
+  if (!config) return false;
+  return config.usesTerminalUi ?? config.hasPty;
+}
+
+/**
+ * Check if a panel kind should keep its runtime alive across project switches.
+ */
+export function panelKindKeepsAliveOnProjectSwitch(kind: PanelKind): boolean {
+  const config = getPanelKindConfig(kind);
+  if (!config) return false;
+  return config.keepAliveOnProjectSwitch ?? config.hasPty;
 }
 
 /**

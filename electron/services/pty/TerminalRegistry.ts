@@ -159,6 +159,9 @@ export class TerminalRegistry {
 
     const projectTerminals = allTerminals.filter((t) => {
       const info = t.getInfo();
+      if (info.isExited) {
+        return false;
+      }
       return this.terminalMatchesProject(t, projectId) && !this.isInTrash(info.id);
     });
 

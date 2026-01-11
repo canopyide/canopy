@@ -50,13 +50,39 @@ export class DevPreviewService extends EventEmitter {
   async start(options: DevPreviewStartOptions): Promise<void> {
     const { panelId, cwd, cols, rows, devCommand: providedCommand } = options;
 
-    // Stop any existing session for this panel to prevent orphaned PTY processes and listener leaks
-    if (this.sessions.has(panelId)) {
+    const normalizedCommand = providedCommand?.trim() || undefined;
+    const existingSession = this.sessions.get(panelId);
+
+    if (existingSession) {
+      const ptyActive = existingSession.ptyId
+        ? this.ptyClient.hasTerminal(existingSession.ptyId)
+        : true;
+      const cwdMatches = existingSession.projectRoot === cwd;
+      const commandMatches =
+        normalizedCommand === undefined || existingSession.devCommand === normalizedCommand;
+
+      if (ptyActive && cwdMatches && commandMatches) {
+        existingSession.cols = cols;
+        existingSession.rows = rows;
+        existingSession.timestamp = Date.now();
+        this.emitStatus(
+          panelId,
+          existingSession.status,
+          existingSession.statusMessage,
+          existingSession.url
+        );
+        if (existingSession.url) {
+          this.emit("url", { panelId, url: existingSession.url });
+        }
+        return;
+      }
+
+      // Stop any existing session for this panel to prevent orphaned PTY processes and listener leaks
       await this.stop(panelId);
     }
 
     // Fallback chain: provided command → auto-detect → browser-only mode
-    let finalCommand = providedCommand?.trim() || undefined;
+    let finalCommand = normalizedCommand;
     let packageManager: string | null = null;
     let installCommand: string | null = null;
     let needsInstall = false;

@@ -475,9 +475,8 @@ export function setupTerminalStoreListeners() {
     const { id, status, timestamp } = data;
     useTerminalStore.getState().updateFlowStatus(id, status, timestamp);
 
-    // If backend suspended streaming due to a stall, immediately request a wake snapshot
-    // so the visible renderer can recover fidelity without manual intervention.
-    if (status === "suspended") {
+    // Recover from stalled streaming states without requiring a focus change.
+    if (status === "suspended" || status === "paused-backpressure") {
       terminalInstanceService.wake(id);
     }
   });

@@ -495,6 +495,7 @@ export class TerminalProcess {
       worktreeId: t.worktreeId,
       spawnedAt: t.spawnedAt,
       wasKilled: t.wasKilled,
+      isExited: t.isExited,
       agentState: t.agentState,
       lastStateChange: t.lastStateChange,
       error: t.error,
@@ -526,6 +527,10 @@ export class TerminalProcess {
 
     if (data.length <= 64 && !isBracketedPaste(data)) {
       this.syncBuffer?.markInteractive();
+    }
+
+    if (terminal.isExited) {
+      return;
     }
 
     if (!terminal.ptyProcess) {
@@ -564,6 +569,9 @@ export class TerminalProcess {
   }
 
   submit(text: string): void {
+    if (this.terminalInfo.isExited) {
+      return;
+    }
     this.submitQueue.push(text);
     if (this.submitInFlight) {
       return;
@@ -589,6 +597,10 @@ export class TerminalProcess {
   private async performSubmit(text: string): Promise<void> {
     const terminal = this.terminalInfo;
     terminal.lastInputTime = Date.now();
+
+    if (terminal.isExited) {
+      return;
+    }
 
     if (!terminal.ptyProcess) {
       return;
@@ -641,7 +653,7 @@ export class TerminalProcess {
 
     await new Promise<void>((resolve) => {
       const check = () => {
-        if (!this.terminalInfo.ptyProcess) {
+        if (this.terminalInfo.isExited || !this.terminalInfo.ptyProcess) {
           resolve();
           return;
         }
@@ -660,7 +672,7 @@ export class TerminalProcess {
     const terminal = this.terminalInfo;
 
     while (true) {
-      if (!terminal.ptyProcess || terminal.wasKilled) {
+      if (terminal.isExited || !terminal.ptyProcess || terminal.wasKilled) {
         return;
       }
 
@@ -693,6 +705,14 @@ export class TerminalProcess {
     }
 
     const terminal = this.terminalInfo;
+    if (terminal.isExited) {
+      try {
+        terminal.headlessTerminal?.resize(cols, rows);
+      } catch (error) {
+        console.error(`Failed to resize terminal ${this.id}:`, error);
+      }
+      return;
+    }
     try {
       const currentCols = terminal.ptyProcess.cols;
       const currentRows = terminal.ptyProcess.rows;
@@ -852,6 +872,16 @@ export class TerminalProcess {
     this.callbacks.emitData(this.id, historyChunk);
 
     return linesToReplay;
+  }
+
+  shouldPreserveOnExit(exitCode: number): boolean {
+    if (!this.isAgentTerminal) {
+      return false;
+    }
+    if (this.terminalInfo.wasKilled) {
+      return false;
+    }
+    return exitCode === 0;
   }
 
   getPtyProcess(): pty.IPty {
@@ -1111,6 +1141,11 @@ export class TerminalProcess {
         this.deps.agentStateService.emitAgentCompleted(terminal, exitCode ?? 0);
       }
 
+      if (this.shouldPreserveOnExit(exitCode ?? 0)) {
+        terminal.isExited = true;
+        return;
+      }
+
       this.disposeHeadless();
     });
   }
@@ -1331,6 +1366,9 @@ export class TerminalProcess {
 
     const chunk = this.inputWriteQueue.shift()!;
     const terminal = this.terminalInfo;
+    if (terminal.isExited) {
+      return;
+    }
     if (!terminal.ptyProcess) {
       return;
     }

@@ -32,6 +32,7 @@ const DEFAULT_OPTIONS: Required<Omit<TerminalPersistenceOptions, "getProjectId">
         type: t.type,
         cwd: t.cwd,
         command: t.devCommand?.trim() || undefined,
+        ...(t.browserUrl && { browserUrl: t.browserUrl }),
       };
     }
 
