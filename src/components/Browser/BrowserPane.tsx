@@ -5,6 +5,8 @@ import { ContentPanel, type BasePanelProps } from "@/components/Panel";
 import { BrowserToolbar } from "./BrowserToolbar";
 import { normalizeBrowserUrl, extractHostPort, isValidBrowserUrl } from "./browserUtils";
 import { actionService } from "@/services/ActionService";
+import { useIsDragging } from "@/components/DragDrop";
+import { cn } from "@/lib/utils";
 
 interface BrowserHistory {
   past: string[];
@@ -32,9 +34,10 @@ export function BrowserPane({
   isTrashing = false,
   gridPanelCount,
 }: BrowserPaneProps) {
-  const iframeRef = useRef<HTMLIFrameElement>(null);
+  const webviewRef = useRef<Electron.WebviewTag>(null);
   const setBrowserUrl = useTerminalStore((state) => state.setBrowserUrl);
   const browserStateStore = useBrowserStateStore();
+  const isDragging = useIsDragging();
 
   // Initialize history from persisted state or initialUrl
   const [history, setHistory] = useState<BrowserHistory>(() => {
@@ -56,10 +59,10 @@ export function BrowserPane({
 
   const [isLoading, setIsLoading] = useState(true);
   const [loadError, setLoadError] = useState<string | null>(null);
-  // Track if user has navigated inside the iframe (URL might be stale)
-  const [urlMightBeStale, setUrlMightBeStale] = useState(false);
-  // Track the last URL we set on the iframe to detect in-iframe navigation
+  // Track the last URL we set on the webview to detect in-webview navigation
   const lastSetUrlRef = useRef<string>(history.present);
+  // Track if webview has been mounted and is ready
+  const [isWebviewReady, setIsWebviewReady] = useState(false);
 
   const currentUrl = history.present;
   const canGoBack = history.past.length > 0;
@@ -82,6 +85,81 @@ export function BrowserPane({
     return () => clearTimeout(timeoutId);
   }, [id, currentUrl, history.past, history.future, browserStateStore]);
 
+  // Set up webview event listeners - reattach whenever webview element changes
+  useEffect(() => {
+    const webview = webviewRef.current;
+    if (!webview) {
+      setIsWebviewReady(false);
+      return;
+    }
+
+    const handleDomReady = () => {
+      setIsWebviewReady(true);
+    };
+
+    const handleDidStartLoading = () => {
+      setIsLoading(true);
+      setLoadError(null);
+    };
+
+    const handleDidStopLoading = () => {
+      setIsLoading(false);
+    };
+
+    const handleDidFailLoad = (event: Electron.DidFailLoadEvent) => {
+      // Ignore aborted loads (e.g., navigation interrupted by another navigation)
+      if (event.errorCode === -3) return;
+      // Ignore cancellations
+      if (event.errorCode === -6) return;
+      setIsLoading(false);
+      setLoadError(
+        event.errorDescription || "Failed to load page. The site may be unavailable."
+      );
+    };
+
+    const handleDidNavigate = (event: Electron.DidNavigateEvent) => {
+      const newUrl = event.url;
+      // Only update history if this is a new URL (not our programmatic navigation)
+      if (newUrl !== lastSetUrlRef.current) {
+        setHistory((prev) => ({
+          past: [...prev.past, prev.present],
+          present: newUrl,
+          future: [],
+        }));
+        lastSetUrlRef.current = newUrl;
+      }
+    };
+
+    const handleDidNavigateInPage = (event: Electron.DidNavigateInPageEvent) => {
+      if (!event.isMainFrame) return;
+      const newUrl = event.url;
+      if (newUrl !== lastSetUrlRef.current) {
+        setHistory((prev) => ({
+          past: [...prev.past, prev.present],
+          present: newUrl,
+          future: [],
+        }));
+        lastSetUrlRef.current = newUrl;
+      }
+    };
+
+    webview.addEventListener("dom-ready", handleDomReady);
+    webview.addEventListener("did-start-loading", handleDidStartLoading);
+    webview.addEventListener("did-stop-loading", handleDidStopLoading);
+    webview.addEventListener("did-fail-load", handleDidFailLoad);
+    webview.addEventListener("did-navigate", handleDidNavigate);
+    webview.addEventListener("did-navigate-in-page", handleDidNavigateInPage);
+
+    return () => {
+      webview.removeEventListener("dom-ready", handleDomReady);
+      webview.removeEventListener("did-start-loading", handleDidStartLoading);
+      webview.removeEventListener("did-stop-loading", handleDidStopLoading);
+      webview.removeEventListener("did-fail-load", handleDidFailLoad);
+      webview.removeEventListener("did-navigate", handleDidNavigate);
+      webview.removeEventListener("did-navigate-in-page", handleDidNavigateInPage);
+    };
+  }, [hasValidUrl, loadError]);
+
   const handleNavigate = useCallback((url: string) => {
     const result = normalizeBrowserUrl(url);
     if (result.error || !result.url) return;
@@ -93,26 +171,27 @@ export function BrowserPane({
     }));
     setIsLoading(true);
     setLoadError(null);
-    setUrlMightBeStale(false);
     lastSetUrlRef.current = result.url!;
 
-    // Update iframe src directly instead of remounting
-    if (iframeRef.current) {
-      iframeRef.current.src = result.url!;
+    // Navigate webview to new URL
+    const webview = webviewRef.current;
+    if (webview && isWebviewReady) {
+      webview.loadURL(result.url!);
     }
-  }, []);
+  }, [isWebviewReady]);
 
   const handleBack = useCallback(() => {
     setHistory((prev) => {
       if (prev.past.length === 0) return prev;
       const newPast = [...prev.past];
       const previousUrl = newPast.pop()!;
-
-      // Update iframe directly
-      if (iframeRef.current) {
-        iframeRef.current.src = previousUrl;
-      }
       lastSetUrlRef.current = previousUrl;
+
+      // Navigate webview back
+      const webview = webviewRef.current;
+      if (webview && isWebviewReady) {
+        webview.loadURL(previousUrl);
+      }
 
       return {
         past: newPast,
@@ -122,19 +201,19 @@ export function BrowserPane({
     });
     setIsLoading(true);
     setLoadError(null);
-    setUrlMightBeStale(false);
-  }, []);
+  }, [isWebviewReady]);
 
   const handleForward = useCallback(() => {
     setHistory((prev) => {
       if (prev.future.length === 0) return prev;
       const [nextUrl, ...restFuture] = prev.future;
-
-      // Update iframe directly
-      if (iframeRef.current) {
-        iframeRef.current.src = nextUrl;
-      }
       lastSetUrlRef.current = nextUrl;
+
+      // Navigate webview forward
+      const webview = webviewRef.current;
+      if (webview && isWebviewReady) {
+        webview.loadURL(nextUrl);
+      }
 
       return {
         past: [...prev.past, prev.present],
@@ -144,28 +223,16 @@ export function BrowserPane({
     });
     setIsLoading(true);
     setLoadError(null);
-    setUrlMightBeStale(false);
-  }, []);
+  }, [isWebviewReady]);
 
   const handleReload = useCallback(() => {
     setIsLoading(true);
     setLoadError(null);
-    if (iframeRef.current) {
-      // Try to reload via contentWindow first (works if same-origin)
-      try {
-        iframeRef.current.contentWindow?.location.reload();
-      } catch {
-        // Cross-origin: toggle src to force reload
-        const currentSrc = iframeRef.current.src;
-        iframeRef.current.src = "";
-        requestAnimationFrame(() => {
-          if (iframeRef.current) {
-            iframeRef.current.src = currentSrc;
-          }
-        });
-      }
+    const webview = webviewRef.current;
+    if (webview && isWebviewReady) {
+      webview.reload();
     }
-  }, []);
+  }, [isWebviewReady]);
 
   // Listen for action-driven browser events
   useEffect(() => {
@@ -225,21 +292,6 @@ export function BrowserPane({
     void actionService.dispatch("browser.openExternal", { terminalId: id }, { source: "user" });
   }, [hasValidUrl, id]);
 
-  const handleIframeLoad = useCallback(() => {
-    setIsLoading(false);
-    // After load, mark URL as potentially stale since user may navigate inside iframe
-    // We set a small delay to avoid marking it stale immediately on initial load
-    const timeoutId = setTimeout(() => {
-      setUrlMightBeStale(true);
-    }, 1000);
-    return () => clearTimeout(timeoutId);
-  }, []);
-
-  const handleIframeError = useCallback(() => {
-    setIsLoading(false);
-    setLoadError("Failed to load page. The site may refuse embedding or be unavailable.");
-  }, []);
-
   const displayTitle = useMemo(() => {
     if (title && title !== "Browser") return title;
     return extractHostPort(currentUrl);
@@ -252,7 +304,7 @@ export function BrowserPane({
       canGoBack={canGoBack}
       canGoForward={canGoForward}
       isLoading={isLoading}
-      urlMightBeStale={urlMightBeStale}
+      urlMightBeStale={false}
       onNavigate={(url) =>
         void actionService.dispatch("browser.navigate", { terminalId: id, url }, { source: "user" })
       }
@@ -287,7 +339,7 @@ export function BrowserPane({
       onRestore={onRestore}
       toolbar={browserToolbar}
     >
-      <div className="flex-1 min-h-0 bg-white">
+      <div className="relative flex-1 min-h-0 bg-white">
         {!hasValidUrl ? (
           <div className="absolute inset-0 flex flex-col items-center justify-center bg-canopy-bg text-canopy-text p-6">
             <div className="flex flex-col items-center text-center max-w-md">
@@ -329,19 +381,17 @@ export function BrowserPane({
           </div>
         ) : (
           <>
+            {isDragging && <div className="absolute inset-0 z-10 bg-transparent" />}
             {isLoading && (
               <div className="absolute inset-0 flex items-center justify-center bg-canopy-bg z-10">
                 <div className="w-8 h-8 border-2 border-blue-400 border-t-transparent rounded-full animate-spin" />
               </div>
             )}
-            <iframe
-              ref={iframeRef}
+            <webview
+              ref={webviewRef}
               src={currentUrl}
-              title={displayTitle}
-              className="w-full h-full border-0"
-              sandbox="allow-scripts allow-forms allow-same-origin allow-popups allow-popups-to-escape-sandbox"
-              onLoad={handleIframeLoad}
-              onError={handleIframeError}
+              partition="persist:browser"
+              className={cn("w-full h-full border-0", isDragging && "invisible pointer-events-none")}
             />
           </>
         )}
