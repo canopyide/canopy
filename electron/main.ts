@@ -326,6 +326,7 @@ async function createWindow(): Promise<void> {
       contextIsolation: true,
       nodeIntegration: false,
       sandbox: true,
+      webviewTag: true,
     },
     titleBarStyle: "hiddenInset",
     trafficLightPosition: { x: 12, y: 18 },
@@ -356,6 +357,28 @@ async function createWindow(): Promise<void> {
       console.warn(`[MAIN] Blocked window.open for unsupported/empty URL: ${url}`);
     }
     return { action: "deny" };
+  });
+
+  // Harden webview security - prevent XSS from injecting malicious webviews
+  mainWindow.webContents.on("will-attach-webview", (event, webPreferences, params) => {
+    // Only allow localhost URLs (for dev servers) and the specific partitions we use
+    const allowedPartitions = ["persist:browser", "persist:dev-preview"];
+    const isLocalhostUrl = params.src.startsWith("http://localhost") || params.src.startsWith("http://127.0.0.1");
+    const isValidPartition = allowedPartitions.includes(params.partition || "");
+
+    if (!isLocalhostUrl || !isValidPartition) {
+      console.warn(`[MAIN] Blocked webview attachment: url=${params.src}, partition=${params.partition}`);
+      event.preventDefault();
+      return;
+    }
+
+    // Strip any preload script to prevent privilege escalation
+    delete webPreferences.preload;
+
+    // Force secure settings
+    webPreferences.nodeIntegration = false;
+    webPreferences.contextIsolation = true;
+    webPreferences.sandbox = true;
   });
 
   // Intercept Cmd+W (macOS) / Ctrl+W (Windows/Linux) to prevent window close.
