@@ -162,7 +162,8 @@ class TerminalInstanceService {
     const managed = this.instances.get(id);
     if (!managed) return;
 
-    if (managed.isVisible !== isVisible) {
+    const wasVisible = managed.isVisible;
+    if (wasVisible !== isVisible) {
       managed.isVisible = isVisible;
       managed.lastActiveTime = Date.now();
 
@@ -182,6 +183,16 @@ class TerminalInstanceService {
           ? managed.getRefreshTier()
           : TerminalRefreshTier.VISIBLE;
         this.rendererPolicy.applyRendererPolicy(id, tier);
+
+        // Force a terminal refresh when becoming visible to recover from stuck rendering state.
+        // This addresses the issue where terminals can freeze intermittently and only resume
+        // when clicked away and back - the refresh ensures xterm.js repaints immediately.
+        requestAnimationFrame(() => {
+          const current = this.instances.get(id);
+          if (current && current.isVisible) {
+            current.terminal.refresh(0, current.terminal.rows - 1);
+          }
+        });
       }
     }
   }
