@@ -239,7 +239,10 @@ export function DevPreviewPane({
                 ref={webviewRef}
                 src={url}
                 partition="persist:dev-preview"
-                className={cn("w-full h-full border-0", isDragging && "invisible pointer-events-none")}
+                className={cn(
+                  "w-full h-full border-0",
+                  isDragging && "invisible pointer-events-none"
+                )}
               />
             </>
           ) : isBrowserOnly ? (

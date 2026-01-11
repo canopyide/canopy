@@ -112,9 +112,7 @@ export function BrowserPane({
       // Ignore cancellations
       if (event.errorCode === -6) return;
       setIsLoading(false);
-      setLoadError(
-        event.errorDescription || "Failed to load page. The site may be unavailable."
-      );
+      setLoadError(event.errorDescription || "Failed to load page. The site may be unavailable.");
     };
 
     const handleDidNavigate = (event: Electron.DidNavigateEvent) => {
@@ -160,25 +158,28 @@ export function BrowserPane({
     };
   }, [hasValidUrl, loadError]);
 
-  const handleNavigate = useCallback((url: string) => {
-    const result = normalizeBrowserUrl(url);
-    if (result.error || !result.url) return;
+  const handleNavigate = useCallback(
+    (url: string) => {
+      const result = normalizeBrowserUrl(url);
+      if (result.error || !result.url) return;
 
-    setHistory((prev) => ({
-      past: [...prev.past, prev.present],
-      present: result.url!,
-      future: [],
-    }));
-    setIsLoading(true);
-    setLoadError(null);
-    lastSetUrlRef.current = result.url!;
+      setHistory((prev) => ({
+        past: [...prev.past, prev.present],
+        present: result.url!,
+        future: [],
+      }));
+      setIsLoading(true);
+      setLoadError(null);
+      lastSetUrlRef.current = result.url!;
 
-    // Navigate webview to new URL
-    const webview = webviewRef.current;
-    if (webview && isWebviewReady) {
-      webview.loadURL(result.url!);
-    }
-  }, [isWebviewReady]);
+      // Navigate webview to new URL
+      const webview = webviewRef.current;
+      if (webview && isWebviewReady) {
+        webview.loadURL(result.url!);
+      }
+    },
+    [isWebviewReady]
+  );
 
   const handleBack = useCallback(() => {
     setHistory((prev) => {
@@ -391,7 +392,10 @@ export function BrowserPane({
               ref={webviewRef}
               src={currentUrl}
               partition="persist:browser"
-              className={cn("w-full h-full border-0", isDragging && "invisible pointer-events-none")}
+              className={cn(
+                "w-full h-full border-0",
+                isDragging && "invisible pointer-events-none"
+              )}
             />
           </>
         )}
