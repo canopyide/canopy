@@ -102,11 +102,26 @@ export class TerminalRendererPolicy {
             const current = this.deps.getInstance(id);
             if (!current) return;
             current.needsWake = ok ? false : true;
+
+            // Force a refresh even on success to ensure xterm.js renderer is in sync.
+            // This addresses intermittent freeze issues where the terminal stops displaying
+            // output despite receiving data from the backend.
+            current.terminal.refresh(0, current.terminal.rows - 1);
           })
           .catch(() => {
             const current = this.deps.getInstance(id);
-            if (current) current.needsWake = true;
+            if (!current) return;
+            current.needsWake = true;
+
+            // Force a refresh on failure as a recovery mechanism.
+            // Even if wakeAndRestore fails, this ensures the terminal attempts to render
+            // whatever content it has, preventing stuck display states.
+            current.terminal.refresh(0, current.terminal.rows - 1);
           });
+      } else {
+        // needsWake is false, but we're transitioning to active tier.
+        // Force a refresh to ensure the terminal renderer is in sync.
+        managed.terminal.refresh(0, managed.terminal.rows - 1);
       }
     }
   }
