@@ -142,6 +142,8 @@ export const CHANNELS = {
   PROJECT_ADD_RECIPE: "project:add-recipe",
   PROJECT_UPDATE_RECIPE: "project:update-recipe",
   PROJECT_DELETE_RECIPE: "project:delete-recipe",
+  PROJECT_GET_TERMINALS: "project:get-terminals",
+  PROJECT_SET_TERMINALS: "project:set-terminals",
 
   AGENT_SETTINGS_GET: "agent-settings:get",
   AGENT_SETTINGS_SET: "agent-settings:set",

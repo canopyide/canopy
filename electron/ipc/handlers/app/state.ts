@@ -2,7 +2,11 @@ import { ipcMain, app } from "electron";
 import { CHANNELS } from "../../channels.js";
 import { store, type StoreSchema } from "../../../store.js";
 import { projectStore } from "../../../services/ProjectStore.js";
-import { AppStateTerminalEntrySchema, filterValidTerminalEntries } from "../../../schemas/ipc.js";
+import {
+  AppStateTerminalEntrySchema,
+  TerminalSnapshotSchema,
+  filterValidTerminalEntries,
+} from "../../../schemas/ipc.js";
 
 export function registerAppStateHandlers(): () => void {
   const handlers: Array<() => void> = [];
@@ -10,13 +14,93 @@ export function registerAppStateHandlers(): () => void {
   const handleAppHydrate = async () => {
     const currentProject = projectStore.getCurrentProject();
     const globalAppState = store.get("appState");
+    const projectId = currentProject?.id;
 
-    // Validate terminals array on hydration to prevent corrupted data from reaching renderer
-    const validatedTerminals = filterValidTerminalEntries(
-      globalAppState.terminals,
-      AppStateTerminalEntrySchema,
-      "app:hydrate"
-    );
+    // First, try to get terminals from per-project state (new model)
+    // Fall back to global appState.terminals for migration
+    let terminalsToUse: StoreSchema["appState"]["terminals"] = [];
+    let terminalsSource = "none";
+
+    if (projectId) {
+      const projectState = await projectStore.getProjectState(projectId);
+      // Per-project state exists (even if empty) - use it as authoritative
+      if (projectState?.terminals !== undefined) {
+        // Use per-project terminals, excluding trashed and normalizing location
+        const validatedTerminals = filterValidTerminalEntries(
+          projectState.terminals,
+          TerminalSnapshotSchema,
+          `app:hydrate(project:${projectId})`
+        );
+        // Filter out trashed terminals and normalize location type for StoreSchema
+        terminalsToUse = validatedTerminals
+          .filter((t) => t.location !== "trash")
+          .map((t) => ({
+            ...t,
+            location: t.location as "grid" | "dock",
+          }));
+        terminalsSource = "per-project";
+      } else if (globalAppState.terminals && globalAppState.terminals.length > 0) {
+        // Migration: use global terminals and migrate them to per-project
+        terminalsToUse = filterValidTerminalEntries(
+          globalAppState.terminals,
+          AppStateTerminalEntrySchema,
+          "app:hydrate(migration)"
+        );
+        terminalsSource = "migration";
+
+        // Migrate terminals to per-project state with kind inference
+        if (terminalsToUse.length > 0) {
+          const migratedTerminals = terminalsToUse.map((t) => {
+            // Infer kind if missing (for backward compatibility)
+            let kind = t.kind;
+            if (!kind) {
+              if (t.browserUrl !== undefined) {
+                kind = "browser";
+              } else if (t.notePath !== undefined || t.noteId !== undefined) {
+                kind = "notes";
+              } else if (t.devCommand !== undefined) {
+                kind = "dev-preview";
+              } else {
+                kind = "terminal";
+              }
+            }
+
+            return {
+              ...t,
+              kind,
+              cwd: t.cwd || currentProject?.path || "",
+            };
+          });
+
+          await projectStore.saveProjectState(projectId, {
+            projectId,
+            activeWorktreeId: globalAppState.activeWorktreeId,
+            sidebarWidth: globalAppState.sidebarWidth ?? 350,
+            terminals: migratedTerminals,
+          });
+
+          console.log(
+            `[AppHydrate] Migrated ${migratedTerminals.length} terminals to per-project state`
+          );
+        } else {
+          // No terminals to migrate but still save empty state to mark migration complete
+          await projectStore.saveProjectState(projectId, {
+            projectId,
+            activeWorktreeId: globalAppState.activeWorktreeId,
+            sidebarWidth: globalAppState.sidebarWidth ?? 350,
+            terminals: [],
+          });
+        }
+      }
+    } else {
+      // No project - use global terminals (legacy/fallback)
+      terminalsToUse = filterValidTerminalEntries(
+        globalAppState.terminals,
+        AppStateTerminalEntrySchema,
+        "app:hydrate(no-project)"
+      );
+      terminalsSource = "global-fallback";
+    }
 
     // Terminal processes are discovered from backend via terminalClient.getForProject(),
     // but we preserve saved terminals array for ordering metadata (IDs and locations).
@@ -24,11 +108,11 @@ export function registerAppStateHandlers(): () => void {
     // activeWorktreeId is preserved so the frontend can validate it exists after worktrees load.
     const appState: StoreSchema["appState"] = {
       ...globalAppState,
-      terminals: validatedTerminals,
+      terminals: terminalsToUse,
     };
 
     console.log(
-      `[AppHydrate] Project: ${currentProject?.name ?? "none"} - terminals will be discovered from running processes (${validatedTerminals.length} valid of ${globalAppState.terminals?.length ?? 0} saved for ordering)`
+      `[AppHydrate] Project: ${currentProject?.name ?? "none"} - terminals from ${terminalsSource} (${terminalsToUse.length} valid)`
     );
 
     return {
