@@ -5,6 +5,7 @@ import type {
   ProjectCloseResult,
   ProjectStats,
   TerminalRecipe,
+  TerminalSnapshot,
 } from "@shared/types";
 
 /**
@@ -102,5 +103,13 @@ export const projectClient = {
 
   deleteRecipe: (projectId: string, recipeId: string): Promise<void> => {
     return window.electron.project.deleteRecipe(projectId, recipeId);
+  },
+
+  getTerminals: (projectId: string): Promise<TerminalSnapshot[]> => {
+    return window.electron.project.getTerminals(projectId);
+  },
+
+  setTerminals: (projectId: string, terminals: TerminalSnapshot[]): Promise<void> => {
+    return window.electron.project.setTerminals(projectId, terminals);
   },
 } as const;

@@ -11,7 +11,10 @@ import type { Project, ProjectSettings, TerminalRecipe } from "../../types/index
 import {
   SystemOpenExternalPayloadSchema,
   SystemOpenPathPayloadSchema,
+  TerminalSnapshotSchema,
+  filterValidTerminalEntries,
 } from "../../schemas/index.js";
+import type { TerminalSnapshot } from "../../types/index.js";
 
 export function registerProjectHandlers(deps: HandlerDependencies): () => void {
   const { mainWindow, worktreeService, cliAvailabilityService } = deps;
@@ -550,6 +553,56 @@ export function registerProjectHandlers(deps: HandlerDependencies): () => void {
   };
   ipcMain.handle(CHANNELS.PROJECT_DELETE_RECIPE, handleProjectDeleteRecipe);
   handlers.push(() => ipcMain.removeHandler(CHANNELS.PROJECT_DELETE_RECIPE));
+
+  const handleProjectGetTerminals = async (
+    _event: Electron.IpcMainInvokeEvent,
+    projectId: string
+  ): Promise<TerminalSnapshot[]> => {
+    if (typeof projectId !== "string" || !projectId) {
+      throw new Error("Invalid project ID");
+    }
+    const state = await projectStore.getProjectState(projectId);
+    return state?.terminals ?? [];
+  };
+  ipcMain.handle(CHANNELS.PROJECT_GET_TERMINALS, handleProjectGetTerminals);
+  handlers.push(() => ipcMain.removeHandler(CHANNELS.PROJECT_GET_TERMINALS));
+
+  const handleProjectSetTerminals = async (
+    _event: Electron.IpcMainInvokeEvent,
+    payload: { projectId: string; terminals: TerminalSnapshot[] }
+  ): Promise<void> => {
+    if (!payload || typeof payload !== "object") {
+      throw new Error("Invalid payload");
+    }
+    const { projectId, terminals } = payload;
+    if (typeof projectId !== "string" || !projectId) {
+      throw new Error("Invalid project ID");
+    }
+    if (!Array.isArray(terminals)) {
+      throw new Error("Invalid terminals array");
+    }
+
+    // Validate and filter terminal entries
+    const validTerminals = filterValidTerminalEntries(
+      terminals,
+      TerminalSnapshotSchema,
+      `project:set-terminals(${projectId})`
+    );
+
+    // Get existing state or create a default one
+    const existingState = await projectStore.getProjectState(projectId);
+    const newState = {
+      projectId,
+      activeWorktreeId: existingState?.activeWorktreeId,
+      sidebarWidth: existingState?.sidebarWidth ?? 350,
+      terminals: validTerminals,
+      terminalLayout: existingState?.terminalLayout,
+    };
+
+    await projectStore.saveProjectState(projectId, newState);
+  };
+  ipcMain.handle(CHANNELS.PROJECT_SET_TERMINALS, handleProjectSetTerminals);
+  handlers.push(() => ipcMain.removeHandler(CHANNELS.PROJECT_SET_TERMINALS));
 
   return () => handlers.forEach((cleanup) => cleanup());
 }

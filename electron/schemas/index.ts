@@ -31,6 +31,8 @@ export {
   DevPreviewStartPayloadSchema,
   WorktreeSetActivePayloadSchema,
   WorktreeCreatePayloadSchema,
+  TerminalSnapshotSchema,
+  filterValidTerminalEntries,
   type TerminalSpawnOptions as ValidatedTerminalSpawnOptions,
   type TerminalResizePayload as ValidatedTerminalResizePayload,
   type CopyTreeOptions as ValidatedCopyTreeOptions,
@@ -43,6 +45,7 @@ export {
   type DevPreviewStartPayload as ValidatedDevPreviewStartPayload,
   type WorktreeSetActivePayload as ValidatedWorktreeSetActivePayload,
   type WorktreeCreatePayload as ValidatedWorktreeCreatePayload,
+  type TerminalSnapshotEntry,
 } from "./ipc.js";
 
 export {

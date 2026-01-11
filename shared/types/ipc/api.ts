@@ -6,6 +6,7 @@ import type {
   GitStatus,
   AgentId,
   TerminalRecipe,
+  TerminalSnapshot,
 } from "../domain.js";
 import type { AgentSettings, AgentSettingsEntry } from "../agentSettings.js";
 
@@ -228,6 +229,16 @@ export interface ElectronAPI {
       updates: Partial<Omit<TerminalRecipe, "id" | "projectId" | "createdAt">>
     ): Promise<void>;
     deleteRecipe(projectId: string, recipeId: string): Promise<void>;
+    /**
+     * Get saved terminal snapshots for a project (per-project panel state).
+     * Used for restoring panel layout when switching projects.
+     */
+    getTerminals(projectId: string): Promise<TerminalSnapshot[]>;
+    /**
+     * Save terminal snapshots for a project (per-project panel state).
+     * Used for preserving panel layout when switching away from a project.
+     */
+    setTerminals(projectId: string, terminals: TerminalSnapshot[]): Promise<void>;
   };
   agentSettings: {
     get(): Promise<AgentSettings>;
