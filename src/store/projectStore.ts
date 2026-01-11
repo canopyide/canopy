@@ -1,10 +1,13 @@
 import { create, type StateCreator } from "zustand";
-import type { Project, ProjectCloseResult } from "@shared/types";
-import { projectClient, appClient } from "@/clients";
+import type { Project, ProjectCloseResult, TerminalSnapshot } from "@shared/types";
+import { projectClient } from "@/clients";
 import { resetAllStoresForProjectSwitch } from "./resetStores";
 import { forceReinitializeWorktreeDataStore } from "./worktreeDataStore";
 import { flushTerminalPersistence } from "./slices";
+import { terminalPersistence } from "./persistence/terminalPersistence";
 import { useNotificationStore } from "./notificationStore";
+import { useTerminalStore } from "./terminalStore";
+import { panelKindHasPty } from "@shared/config/panelKindRegistry";
 
 interface ProjectState {
   projects: Project[];
@@ -162,8 +165,69 @@ const createProjectStore: StateCreator<ProjectState> = (set, get) => ({
   switchProject: async (projectId) => {
     set({ isLoading: true, isSwitching: true, error: null });
     try {
-      // Terminals stay running in the backend - no need to save state
-      // They will be discovered via getForProject() when switching back
+      const currentProject = get().currentProject;
+      const oldProjectId = currentProject?.id;
+
+      // Save current project's panel state BEFORE switching
+      if (oldProjectId) {
+        // Flush any pending persistence and wait for completion
+        flushTerminalPersistence();
+        await terminalPersistence.whenIdle();
+
+        // Get current terminals from store and save to per-project state
+        const currentTerminals = useTerminalStore.getState().terminals;
+        const terminalsToSave: TerminalSnapshot[] = currentTerminals
+          .filter((t) => t.location !== "trash")
+          .map((t) => {
+            const base: TerminalSnapshot = {
+              id: t.id,
+              kind: t.kind,
+              title: t.title,
+              worktreeId: t.worktreeId,
+              location: t.location === "trash" ? "grid" : t.location,
+              cwd: t.cwd,
+            };
+
+            if (t.kind === "dev-preview") {
+              // Special case for dev-preview: use devCommand, not command
+              return {
+                ...base,
+                type: t.type,
+                cwd: t.cwd,
+                command: t.devCommand?.trim() || undefined,
+              };
+            } else if (panelKindHasPty(t.kind ?? "terminal")) {
+              return {
+                ...base,
+                type: t.type,
+                agentId: t.agentId,
+                command: t.command?.trim() || undefined,
+              };
+            } else if (t.kind === "notes") {
+              return {
+                ...base,
+                notePath: t.notePath,
+                noteId: t.noteId,
+                scope: t.scope,
+                createdAt: t.createdAt,
+              };
+            } else {
+              return {
+                ...base,
+                ...(t.browserUrl && { browserUrl: t.browserUrl }),
+              };
+            }
+          });
+
+        console.log(
+          `[ProjectSwitch] Saving ${terminalsToSave.length} panel(s) to per-project state`
+        );
+        try {
+          await projectClient.setTerminals(oldProjectId, terminalsToSave);
+        } catch (saveError) {
+          console.warn("[ProjectSwitch] Failed to save per-project panel state:", saveError);
+        }
+      }
 
       console.log("[ProjectSwitch] Resetting renderer stores...");
       await resetAllStoresForProjectSwitch();
@@ -258,21 +322,60 @@ const createProjectStore: StateCreator<ProjectState> = (set, get) => ({
       const currentProject = get().currentProject;
       const oldProjectId = currentProject?.id;
 
-      // Save current project state BEFORE switching (same as switchProject)
+      // Save current project's panel state BEFORE switching (same as switchProject)
       if (oldProjectId) {
         flushTerminalPersistence();
-        console.log("[ProjectStore] Saving state before reopen:", oldProjectId);
+
+        // Get current terminals from store and save to per-project state
+        const currentTerminals = useTerminalStore.getState().terminals;
+        const terminalsToSave: TerminalSnapshot[] = currentTerminals
+          .filter((t) => t.location !== "trash")
+          .map((t) => {
+            const base: TerminalSnapshot = {
+              id: t.id,
+              kind: t.kind,
+              title: t.title,
+              worktreeId: t.worktreeId,
+              location: t.location === "trash" ? "grid" : t.location,
+              cwd: t.cwd,
+            };
+
+            if (t.kind === "dev-preview") {
+              // Special case for dev-preview: use devCommand, not command
+              return {
+                ...base,
+                type: t.type,
+                cwd: t.cwd,
+                command: t.devCommand?.trim() || undefined,
+              };
+            } else if (panelKindHasPty(t.kind ?? "terminal")) {
+              return {
+                ...base,
+                type: t.type,
+                agentId: t.agentId,
+                command: t.command?.trim() || undefined,
+              };
+            } else if (t.kind === "notes") {
+              return {
+                ...base,
+                notePath: t.notePath,
+                noteId: t.noteId,
+                scope: t.scope,
+                createdAt: t.createdAt,
+              };
+            } else {
+              return {
+                ...base,
+                ...(t.browserUrl && { browserUrl: t.browserUrl }),
+              };
+            }
+          });
+
+        console.log(`[ProjectStore] Saving ${terminalsToSave.length} panel(s) before reopen`);
         try {
-          const currentState = await appClient.getState();
-          if (currentState) {
-            await appClient.setState({
-              terminals: currentState.terminals || [],
-              activeWorktreeId: currentState.activeWorktreeId,
-              terminalGridConfig: currentState.terminalGridConfig,
-            });
-          }
+          await projectClient.setTerminals(oldProjectId, terminalsToSave);
         } catch (saveError) {
-          console.warn("[ProjectStore] Failed to save state:", saveError);
+          console.warn("[ProjectStore] Failed to save per-project panel state:", saveError);
         }
       }
 

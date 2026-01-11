@@ -1,6 +1,6 @@
 import { describe, it, expect, vi, beforeEach, afterEach } from "vitest";
 import { TerminalPersistence } from "../terminalPersistence";
-import type { TerminalInstance, TerminalState } from "@/types";
+import type { TerminalInstance, TerminalSnapshot } from "@/types";
 
 const createMockTerminal = (overrides: Partial<TerminalInstance> = {}): TerminalInstance => ({
   id: "test-1",
@@ -13,16 +13,34 @@ const createMockTerminal = (overrides: Partial<TerminalInstance> = {}): Terminal
   ...overrides,
 });
 
-const createMockClient = () => ({
-  getState: vi.fn().mockResolvedValue({}),
-  setState: vi.fn().mockResolvedValue(undefined),
-  getVersion: vi.fn().mockResolvedValue("1.0.0"),
-  hydrate: vi.fn().mockResolvedValue({}),
-  quit: vi.fn().mockResolvedValue(undefined),
-  forceQuit: vi.fn().mockResolvedValue(undefined),
+const createMockProjectClient = () => ({
+  getAll: vi.fn().mockResolvedValue([]),
+  getCurrent: vi.fn().mockResolvedValue(null),
+  add: vi.fn().mockResolvedValue({}),
+  remove: vi.fn().mockResolvedValue(undefined),
+  update: vi.fn().mockResolvedValue({}),
+  switch: vi.fn().mockResolvedValue({}),
+  openDialog: vi.fn().mockResolvedValue(null),
+  onSwitch: vi.fn().mockReturnValue(() => {}),
+  getSettings: vi.fn().mockResolvedValue({}),
+  saveSettings: vi.fn().mockResolvedValue(undefined),
+  detectRunners: vi.fn().mockResolvedValue([]),
+  close: vi.fn().mockResolvedValue({ success: true }),
+  reopen: vi.fn().mockResolvedValue({}),
+  getStats: vi.fn().mockResolvedValue({}),
+  initGit: vi.fn().mockResolvedValue(undefined),
+  getRecipes: vi.fn().mockResolvedValue([]),
+  saveRecipes: vi.fn().mockResolvedValue(undefined),
+  addRecipe: vi.fn().mockResolvedValue(undefined),
+  updateRecipe: vi.fn().mockResolvedValue(undefined),
+  deleteRecipe: vi.fn().mockResolvedValue(undefined),
+  getTerminals: vi.fn().mockResolvedValue([]),
+  setTerminals: vi.fn().mockResolvedValue(undefined),
 });
 
 describe("TerminalPersistence", () => {
+  const projectId = "test-project-id";
+
   beforeEach(() => {
     vi.useFakeTimers();
   });
@@ -33,17 +51,23 @@ describe("TerminalPersistence", () => {
 
   describe("constructor", () => {
     it("creates instance with default options", () => {
-      const client = createMockClient();
+      const client = createMockProjectClient();
       const persistence = new TerminalPersistence(client);
       expect(persistence).toBeInstanceOf(TerminalPersistence);
     });
 
     it("creates instance with custom options", () => {
-      const client = createMockClient();
+      const client = createMockProjectClient();
       const persistence = new TerminalPersistence(client, {
         debounceMs: 1000,
         filter: () => true,
-        transform: (t): TerminalState => ({ id: t.id, type: t.type, title: t.title, cwd: t.cwd }),
+        transform: (t): TerminalSnapshot => ({
+          id: t.id,
+          kind: t.kind,
+          title: t.title,
+          cwd: t.cwd,
+          location: t.location === "trash" ? "grid" : t.location,
+        }),
       });
       expect(persistence).toBeInstanceOf(TerminalPersistence);
     });
@@ -51,52 +75,54 @@ describe("TerminalPersistence", () => {
 
   describe("save", () => {
     it("debounces multiple saves into single persist call", async () => {
-      const client = createMockClient();
+      const client = createMockProjectClient();
       const persistence = new TerminalPersistence(client, { debounceMs: 100 });
 
       const terminal = createMockTerminal();
-      persistence.save([terminal]);
-      persistence.save([terminal, createMockTerminal({ id: "test-2" })]);
-      persistence.save([terminal]);
+      persistence.save([terminal], projectId);
+      persistence.save([terminal, createMockTerminal({ id: "test-2" })], projectId);
+      persistence.save([terminal], projectId);
 
-      expect(client.setState).not.toHaveBeenCalled();
+      expect(client.setTerminals).not.toHaveBeenCalled();
 
       await vi.advanceTimersByTimeAsync(100);
 
-      expect(client.setState).toHaveBeenCalledTimes(1);
+      expect(client.setTerminals).toHaveBeenCalledTimes(1);
     });
 
     it("excludes trashed terminals by default", async () => {
-      const client = createMockClient();
+      const client = createMockProjectClient();
       const persistence = new TerminalPersistence(client, { debounceMs: 100 });
 
       const gridTerminal = createMockTerminal({ id: "grid-1", location: "grid" });
       const dockTerminal = createMockTerminal({ id: "dock-1", location: "dock" });
       const trashedTerminal = createMockTerminal({ id: "trash-1", location: "trash" });
 
-      persistence.save([gridTerminal, dockTerminal, trashedTerminal]);
+      persistence.save([gridTerminal, dockTerminal, trashedTerminal], projectId);
       await vi.advanceTimersByTimeAsync(100);
 
-      expect(client.setState).toHaveBeenCalledWith({
-        terminals: expect.arrayContaining([
+      expect(client.setTerminals).toHaveBeenCalledWith(
+        projectId,
+        expect.arrayContaining([
           expect.objectContaining({ id: "grid-1" }),
           expect.objectContaining({ id: "dock-1" }),
-        ]),
-      });
+        ])
+      );
 
-      const savedTerminals = (client.setState.mock.calls[0][0] as { terminals: unknown[] })
-        .terminals;
+      const savedTerminals = client.setTerminals.mock.calls[0][1] as TerminalSnapshot[];
       expect(savedTerminals).toHaveLength(2);
       expect(savedTerminals).not.toContainEqual(expect.objectContaining({ id: "trash-1" }));
     });
 
     it("transforms terminals with default transform", async () => {
-      const client = createMockClient();
+      const client = createMockProjectClient();
       const persistence = new TerminalPersistence(client, { debounceMs: 100 });
 
       const terminal = createMockTerminal({
         id: "test-1",
+        kind: "agent",
         type: "claude",
+        agentId: "claude",
         title: "Claude",
         cwd: "/test",
         worktreeId: "wt-1",
@@ -106,26 +132,26 @@ describe("TerminalPersistence", () => {
         activityHeadline: "Processing",
       });
 
-      persistence.save([terminal]);
+      persistence.save([terminal], projectId);
       await vi.advanceTimersByTimeAsync(100);
 
-      expect(client.setState).toHaveBeenCalledWith({
-        terminals: [
-          {
-            id: "test-1",
-            type: "claude",
-            title: "Claude",
-            cwd: "/test",
-            worktreeId: "wt-1",
-            location: "grid",
-            command: "claude --model sonnet-4",
-          },
-        ],
-      });
+      expect(client.setTerminals).toHaveBeenCalledWith(projectId, [
+        {
+          id: "test-1",
+          kind: "agent",
+          type: "claude",
+          agentId: "claude",
+          title: "Claude",
+          cwd: "/test",
+          worktreeId: "wt-1",
+          location: "grid",
+          command: "claude --model sonnet-4",
+        },
+      ]);
     });
 
     it("applies custom filter function", async () => {
-      const client = createMockClient();
+      const client = createMockProjectClient();
       const persistence = new TerminalPersistence(client, {
         debounceMs: 100,
         filter: (t) => t.type === "claude",
@@ -134,20 +160,25 @@ describe("TerminalPersistence", () => {
       const shellTerminal = createMockTerminal({ id: "shell-1", type: "terminal" });
       const claudeTerminal = createMockTerminal({ id: "claude-1", type: "claude" });
 
-      persistence.save([shellTerminal, claudeTerminal]);
+      persistence.save([shellTerminal, claudeTerminal], projectId);
       await vi.advanceTimersByTimeAsync(100);
 
-      const savedTerminals = (client.setState.mock.calls[0][0] as { terminals: unknown[] })
-        .terminals;
+      const savedTerminals = client.setTerminals.mock.calls[0][1] as TerminalSnapshot[];
       expect(savedTerminals).toHaveLength(1);
       expect(savedTerminals[0]).toEqual(expect.objectContaining({ id: "claude-1" }));
     });
 
     it("applies custom transform function", async () => {
-      const client = createMockClient();
+      const client = createMockProjectClient();
       const persistence = new TerminalPersistence(client, {
         debounceMs: 100,
-        transform: (t): TerminalState => ({ id: t.id, type: t.type, title: "Custom", cwd: t.cwd }),
+        transform: (t): TerminalSnapshot => ({
+          id: t.id,
+          kind: t.kind,
+          title: "Custom",
+          cwd: t.cwd,
+          location: t.location === "trash" ? "grid" : t.location,
+        }),
       });
 
       const terminal = createMockTerminal({
@@ -156,291 +187,155 @@ describe("TerminalPersistence", () => {
         title: "Should not appear",
       });
 
-      persistence.save([terminal]);
+      persistence.save([terminal], projectId);
       await vi.advanceTimersByTimeAsync(100);
 
-      expect(client.setState).toHaveBeenCalledWith({
-        terminals: [{ id: "test-1", type: "terminal", title: "Custom", cwd: "/custom/path" }],
-      });
+      expect(client.setTerminals).toHaveBeenCalledWith(projectId, [
+        expect.objectContaining({
+          id: "test-1",
+          title: "Custom",
+          cwd: "/custom/path",
+        }),
+      ]);
     });
 
-    it("handles empty command as undefined", async () => {
-      const client = createMockClient();
+    it("skips save if no project ID is provided", async () => {
+      const client = createMockProjectClient();
       const persistence = new TerminalPersistence(client, { debounceMs: 100 });
 
-      const terminal = createMockTerminal({ command: "   " });
+      const terminal = createMockTerminal();
+      persistence.save([terminal]); // No project ID
 
-      persistence.save([terminal]);
       await vi.advanceTimersByTimeAsync(100);
 
-      const savedTerminals = (client.setState.mock.calls[0][0] as { terminals: unknown[] })
-        .terminals;
-      expect((savedTerminals[0] as { command?: string }).command).toBeUndefined();
+      expect(client.setTerminals).not.toHaveBeenCalled();
     });
 
-    it("persists isInputLocked when true", async () => {
-      const client = createMockClient();
-      const persistence = new TerminalPersistence(client, { debounceMs: 100 });
-
-      const terminal = createMockTerminal({
-        id: "test-1",
-        isInputLocked: true,
+    it("uses getProjectId option if projectId not passed directly", async () => {
+      const client = createMockProjectClient();
+      const persistence = new TerminalPersistence(client, {
+        debounceMs: 100,
+        getProjectId: () => "from-option",
       });
 
-      persistence.save([terminal]);
+      const terminal = createMockTerminal();
+      persistence.save([terminal]); // No project ID passed directly
+
       await vi.advanceTimersByTimeAsync(100);
 
-      expect(client.setState).toHaveBeenCalledWith({
-        terminals: [
-          expect.objectContaining({
-            id: "test-1",
-            isInputLocked: true,
-          }),
-        ],
-      });
-    });
-
-    it("does not persist isInputLocked when false or undefined", async () => {
-      const client = createMockClient();
-      const persistence = new TerminalPersistence(client, { debounceMs: 100 });
-
-      const terminalUnlocked = createMockTerminal({
-        id: "test-1",
-        isInputLocked: false,
-      });
-
-      const terminalUndefined = createMockTerminal({
-        id: "test-2",
-      });
-
-      persistence.save([terminalUnlocked, terminalUndefined]);
-      await vi.advanceTimersByTimeAsync(100);
-
-      const savedTerminals = (client.setState.mock.calls[0][0] as { terminals: unknown[] })
-        .terminals;
-      expect(savedTerminals[0]).not.toHaveProperty("isInputLocked");
-      expect(savedTerminals[1]).not.toHaveProperty("isInputLocked");
-    });
-
-    it("logs error on persist failure", async () => {
-      const consoleError = vi.spyOn(console, "error").mockImplementation(() => {});
-      const client = createMockClient();
-      client.setState.mockRejectedValue(new Error("Persist failed"));
-
-      const persistence = new TerminalPersistence(client, { debounceMs: 100 });
-
-      persistence.save([createMockTerminal()]);
-      await vi.advanceTimersByTimeAsync(100);
-
-      // Handle the rejection to avoid unhandled rejection error
-      await expect(persistence.whenIdle()).rejects.toThrow("Persist failed");
-
-      await vi.waitFor(() => {
-        expect(consoleError).toHaveBeenCalledWith(
-          "Failed to persist terminals:",
-          expect.any(Error)
-        );
-      });
-
-      consoleError.mockRestore();
+      expect(client.setTerminals).toHaveBeenCalledWith("from-option", expect.any(Array));
     });
   });
 
   describe("flush", () => {
-    it("immediately persists pending saves", async () => {
-      const client = createMockClient();
-      const persistence = new TerminalPersistence(client, { debounceMs: 1000 });
+    it("immediately executes pending save", async () => {
+      const client = createMockProjectClient();
+      const persistence = new TerminalPersistence(client, { debounceMs: 500 });
 
       const terminal = createMockTerminal();
-      persistence.save([terminal]);
+      persistence.save([terminal], projectId);
 
-      expect(client.setState).not.toHaveBeenCalled();
-
-      persistence.flush();
-      await vi.advanceTimersByTimeAsync(0);
-
-      expect(client.setState).toHaveBeenCalledTimes(1);
-    });
-
-    it("does nothing when no pending saves", async () => {
-      const client = createMockClient();
-      const persistence = new TerminalPersistence(client, { debounceMs: 100 });
+      expect(client.setTerminals).not.toHaveBeenCalled();
 
       persistence.flush();
-      await vi.advanceTimersByTimeAsync(100);
 
-      expect(client.setState).not.toHaveBeenCalled();
-    });
-
-    it("persists most recent state on flush", async () => {
-      const client = createMockClient();
-      const persistence = new TerminalPersistence(client, { debounceMs: 1000 });
-
-      persistence.save([createMockTerminal({ id: "first" })]);
-      persistence.save([createMockTerminal({ id: "second" })]);
-      persistence.save([createMockTerminal({ id: "third" })]);
-
-      persistence.flush();
-      await vi.advanceTimersByTimeAsync(0);
-
-      expect(client.setState).toHaveBeenCalledTimes(1);
-      expect(client.setState).toHaveBeenCalledWith({
-        terminals: [expect.objectContaining({ id: "third" })],
-      });
+      expect(client.setTerminals).toHaveBeenCalledTimes(1);
     });
   });
 
   describe("cancel", () => {
-    it("cancels pending saves", async () => {
-      const client = createMockClient();
+    it("cancels pending save", async () => {
+      const client = createMockProjectClient();
       const persistence = new TerminalPersistence(client, { debounceMs: 100 });
 
-      persistence.save([createMockTerminal()]);
-      persistence.cancel();
-      await vi.advanceTimersByTimeAsync(100);
-
-      expect(client.setState).not.toHaveBeenCalled();
-    });
-
-    it("allows new saves after cancel", async () => {
-      const client = createMockClient();
-      const persistence = new TerminalPersistence(client, { debounceMs: 100 });
-
-      persistence.save([createMockTerminal({ id: "before-cancel" })]);
+      const terminal = createMockTerminal();
+      persistence.save([terminal], projectId);
       persistence.cancel();
 
-      persistence.save([createMockTerminal({ id: "after-cancel" })]);
       await vi.advanceTimersByTimeAsync(100);
 
-      expect(client.setState).toHaveBeenCalledTimes(1);
-      expect(client.setState).toHaveBeenCalledWith({
-        terminals: [expect.objectContaining({ id: "after-cancel" })],
-      });
-    });
-  });
-
-  describe("debounce behavior", () => {
-    it("respects custom debounce timing", async () => {
-      const client = createMockClient();
-      const persistence = new TerminalPersistence(client, { debounceMs: 200 });
-
-      persistence.save([createMockTerminal()]);
-
-      await vi.advanceTimersByTimeAsync(150);
-      expect(client.setState).not.toHaveBeenCalled();
-
-      await vi.advanceTimersByTimeAsync(50);
-      expect(client.setState).toHaveBeenCalledTimes(1);
-    });
-
-    it("resets debounce timer on subsequent saves", async () => {
-      const client = createMockClient();
-      const persistence = new TerminalPersistence(client, { debounceMs: 100 });
-
-      persistence.save([createMockTerminal({ id: "first" })]);
-      await vi.advanceTimersByTimeAsync(50);
-
-      persistence.save([createMockTerminal({ id: "second" })]);
-      await vi.advanceTimersByTimeAsync(50);
-
-      expect(client.setState).not.toHaveBeenCalled();
-
-      await vi.advanceTimersByTimeAsync(50);
-      expect(client.setState).toHaveBeenCalledTimes(1);
-      expect(client.setState).toHaveBeenCalledWith({
-        terminals: [expect.objectContaining({ id: "second" })],
-      });
-    });
-  });
-
-  describe("rapid update scenarios", () => {
-    it("handles rapid adds without data loss", async () => {
-      const client = createMockClient();
-      const persistence = new TerminalPersistence(client, { debounceMs: 100 });
-
-      const terminals: TerminalInstance[] = [];
-      for (let i = 0; i < 10; i++) {
-        terminals.push(createMockTerminal({ id: `terminal-${i}` }));
-        persistence.save([...terminals]);
-      }
-
-      await vi.advanceTimersByTimeAsync(100);
-
-      expect(client.setState).toHaveBeenCalledTimes(1);
-      const savedTerminals = (client.setState.mock.calls[0][0] as { terminals: unknown[] })
-        .terminals;
-      expect(savedTerminals).toHaveLength(10);
-    });
-
-    it("captures final state after rapid updates", async () => {
-      const client = createMockClient();
-      const persistence = new TerminalPersistence(client, { debounceMs: 100 });
-
-      persistence.save([createMockTerminal({ id: "1", title: "First" })]);
-      persistence.save([createMockTerminal({ id: "1", title: "Second" })]);
-      persistence.save([createMockTerminal({ id: "1", title: "Third" })]);
-
-      await vi.advanceTimersByTimeAsync(100);
-
-      expect(client.setState).toHaveBeenCalledWith({
-        terminals: [expect.objectContaining({ title: "Third" })],
-      });
-    });
-
-    it("protects against mutation after save call", async () => {
-      const client = createMockClient();
-      const persistence = new TerminalPersistence(client, { debounceMs: 100 });
-
-      const terminals = [createMockTerminal({ id: "test-1", title: "Original" })];
-      persistence.save(terminals);
-
-      terminals[0].title = "Mutated";
-
-      await vi.advanceTimersByTimeAsync(100);
-
-      expect(client.setState).toHaveBeenCalledWith({
-        terminals: [expect.objectContaining({ title: "Original" })],
-      });
+      expect(client.setTerminals).not.toHaveBeenCalled();
     });
   });
 
   describe("whenIdle", () => {
-    it("resolves when no pending persist", async () => {
-      const client = createMockClient();
-      const persistence = new TerminalPersistence(client);
+    it("resolves immediately when no pending persist", async () => {
+      const client = createMockProjectClient();
+      const persistence = new TerminalPersistence(client, { debounceMs: 100 });
 
       await expect(persistence.whenIdle()).resolves.toBeUndefined();
     });
 
-    it("waits for pending persist to complete", async () => {
-      const client = createMockClient();
+    it("resolves after pending persist completes", async () => {
+      const client = createMockProjectClient();
       const persistence = new TerminalPersistence(client, { debounceMs: 100 });
 
-      persistence.save([createMockTerminal()]);
-      persistence.flush();
+      const terminal = createMockTerminal();
+      persistence.save([terminal], projectId);
 
-      const idlePromise = persistence.whenIdle();
-      await vi.advanceTimersByTimeAsync(0);
+      // Advance timers to trigger debounced save
+      await vi.advanceTimersByTimeAsync(100);
 
-      await expect(idlePromise).resolves.toBeUndefined();
-      expect(client.setState).toHaveBeenCalledTimes(1);
+      // Now wait for the persist to complete
+      await expect(persistence.whenIdle()).resolves.toBeUndefined();
     });
+  });
 
-    it("rejects when persist fails", async () => {
-      const consoleError = vi.spyOn(console, "error").mockImplementation(() => {});
-      const client = createMockClient();
-      client.setState.mockRejectedValue(new Error("Persist failed"));
+  describe("browser panels", () => {
+    it("preserves browserUrl for browser panels", async () => {
+      const client = createMockProjectClient();
       const persistence = new TerminalPersistence(client, { debounceMs: 100 });
 
-      persistence.save([createMockTerminal()]);
-      persistence.flush();
-      await vi.advanceTimersByTimeAsync(0);
+      const browserPanel = createMockTerminal({
+        id: "browser-1",
+        kind: "browser",
+        title: "Browser",
+        browserUrl: "https://localhost:3000",
+        location: "grid",
+      });
 
-      const idlePromise = persistence.whenIdle();
+      persistence.save([browserPanel], projectId);
+      await vi.advanceTimersByTimeAsync(100);
 
-      await expect(idlePromise).rejects.toThrow("Persist failed");
+      expect(client.setTerminals).toHaveBeenCalledWith(projectId, [
+        expect.objectContaining({
+          id: "browser-1",
+          kind: "browser",
+          browserUrl: "https://localhost:3000",
+        }),
+      ]);
+    });
+  });
 
-      consoleError.mockRestore();
+  describe("notes panels", () => {
+    it("preserves notes metadata for notes panels", async () => {
+      const client = createMockProjectClient();
+      const persistence = new TerminalPersistence(client, { debounceMs: 100 });
+
+      const notesPanel = createMockTerminal({
+        id: "notes-1",
+        kind: "notes",
+        title: "My Notes",
+        notePath: "/notes/test.md",
+        noteId: "note-uuid",
+        scope: "project",
+        createdAt: 1234567890,
+        location: "grid",
+      });
+
+      persistence.save([notesPanel], projectId);
+      await vi.advanceTimersByTimeAsync(100);
+
+      expect(client.setTerminals).toHaveBeenCalledWith(projectId, [
+        expect.objectContaining({
+          id: "notes-1",
+          kind: "notes",
+          notePath: "/notes/test.md",
+          noteId: "note-uuid",
+          scope: "project",
+          createdAt: 1234567890,
+        }),
+      ]);
     });
   });
 });

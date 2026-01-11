@@ -5,6 +5,7 @@ import type {
   RunCommand,
   AgentId,
   TerminalRecipe,
+  TerminalSnapshot,
 } from "../domain.js";
 import type { AgentSettings } from "../agentSettings.js";
 import type { UserAgentRegistry, UserAgentConfig } from "../userAgentRegistry.js";
@@ -474,6 +475,14 @@ export interface IpcInvokeMap {
   };
   "project:delete-recipe": {
     args: [payload: { projectId: string; recipeId: string }];
+    result: void;
+  };
+  "project:get-terminals": {
+    args: [projectId: string];
+    result: TerminalSnapshot[];
+  };
+  "project:set-terminals": {
+    args: [payload: { projectId: string; terminals: TerminalSnapshot[] }];
     result: void;
   };
 
