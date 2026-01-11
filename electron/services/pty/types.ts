@@ -33,6 +33,7 @@ export interface TerminalPublicState {
   worktreeId?: string;
   spawnedAt: number;
   wasKilled?: boolean;
+  isExited?: boolean;
   agentState?: AgentState;
   lastStateChange?: number;
   error?: string;

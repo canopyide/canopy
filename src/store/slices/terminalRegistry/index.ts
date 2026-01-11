@@ -6,7 +6,7 @@ import { terminalInstanceService } from "@/services/TerminalInstanceService";
 import { TerminalRefreshTier } from "@/types";
 import { validateTerminalConfig } from "@/utils/terminalValidation";
 import { isRegisteredAgent, getAgentConfig } from "@/config/agents";
-import { panelKindHasPty } from "@shared/config/panelKindRegistry";
+import { panelKindHasPty, panelKindUsesTerminalUi } from "@shared/config/panelKindRegistry";
 import { getTerminalThemeFromCSS } from "@/utils/terminalTheme";
 import { DEFAULT_TERMINAL_FONT_FAMILY } from "@/config/terminalFont";
 import { useScrollbackStore } from "@/store/scrollbackStore";
@@ -55,9 +55,8 @@ export const createTerminalRegistrySlice =
         const requestedKind = options.kind ?? (options.agentId ? "agent" : "terminal");
         const legacyType = options.type || "terminal";
 
-        // Handle non-terminal panels (browser, notes, dev-preview, extensions) separately
-        // dev-preview has hasPty=true but needs its own UI component, not terminal UI
-        if (!panelKindHasPty(requestedKind) || requestedKind === "dev-preview") {
+        // Handle panels that use custom UI (browser, notes, dev-preview, extensions) separately
+        if (!panelKindUsesTerminalUi(requestedKind)) {
           const id =
             options.requestedId ||
             `${requestedKind}-${Date.now()}-${Math.random().toString(36).slice(2, 9)}`;
@@ -129,6 +128,7 @@ export const createTerminalRegistrySlice =
               cols: 80,
               rows: 24,
               devCommand: options.devCommand,
+              browserUrl: options.browserUrl,
             };
           } else {
             terminal = {
@@ -1473,7 +1473,7 @@ export const createTerminalRegistrySlice =
       setBrowserUrl: (id, url) => {
         set((state) => {
           const terminal = state.terminals.find((t) => t.id === id);
-          if (!terminal || panelKindHasPty(terminal.kind ?? "terminal")) return state;
+          if (!terminal || panelKindUsesTerminalUi(terminal.kind ?? "terminal")) return state;
 
           const newTerminals = state.terminals.map((t) =>
             t.id === id ? { ...t, browserUrl: url } : t

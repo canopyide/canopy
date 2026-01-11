@@ -8,7 +8,10 @@ import { useEffect } from "react";
 import { hydrateAppState } from "../../utils/stateHydration";
 import { isElectronAvailable } from "../useElectron";
 import { projectClient } from "@/clients";
-import { useProjectStore } from "@/store";
+import { useProjectStore, useTerminalStore } from "@/store";
+import { terminalInstanceService } from "@/services/TerminalInstanceService";
+import { useWorktreeSelectionStore } from "@/store/worktreeStore";
+import { panelKindHasPty } from "@shared/config/panelKindRegistry";
 import type { HydrationCallbacks } from "./useAppHydration";
 
 export function useProjectSwitchRehydration(callbacks: HydrationCallbacks) {
@@ -23,6 +26,21 @@ export function useProjectSwitchRehydration(callbacks: HydrationCallbacks) {
       );
       try {
         await hydrateAppState(callbacks);
+        const { terminals, activeDockTerminalId } = useTerminalStore.getState();
+        const activeWorktreeId = useWorktreeSelectionStore.getState().activeWorktreeId ?? null;
+
+        for (const terminal of terminals) {
+          if (!panelKindHasPty(terminal.kind ?? "terminal")) {
+            continue;
+          }
+
+          const isActiveDockTerminal = terminal.id === activeDockTerminalId;
+          const isInActiveWorktree = (terminal.worktreeId ?? null) === activeWorktreeId;
+
+          if (isActiveDockTerminal || isInActiveWorktree) {
+            terminalInstanceService.wake(terminal.id);
+          }
+        }
         console.log("[useProjectSwitchRehydration] State re-hydration complete");
       } catch (error) {
         console.error(

@@ -1,7 +1,8 @@
 import { useCallback, useEffect, useState, useRef } from "react";
 import { ContentPanel, type BasePanelProps } from "@/components/Panel";
 import { cn } from "@/lib/utils";
-import { useTerminalStore } from "@/store";
+import { useProjectStore, useTerminalStore } from "@/store";
+import { panelKindKeepsAliveOnProjectSwitch } from "@shared/config/panelKindRegistry";
 import type { DevPreviewStatus } from "@shared/types/ipc/devPreview";
 import { DevPreviewToolbar } from "./DevPreviewToolbar";
 import { Button } from "@/components/ui/button";
@@ -35,6 +36,12 @@ const STATUS_STYLES: Record<DevPreviewStatus, { label: string; dot: string; text
   },
 };
 
+const AUTO_RELOAD_MAX_ATTEMPTS = 3;
+const AUTO_RELOAD_INITIAL_DELAY_MS = 1500;
+const AUTO_RELOAD_RETRY_DELAY_MS = 800;
+const AUTO_RELOAD_WINDOW_MS = 15000;
+const AUTO_RELOAD_ERROR_CODES = new Set([-102, -105, -106, -118]);
+
 export interface DevPreviewPaneProps extends BasePanelProps {
   cwd: string;
 }
@@ -59,13 +66,48 @@ export function DevPreviewPane({
   const [message, setMessage] = useState("Starting dev server...");
   const [error, setError] = useState<string | undefined>(undefined);
   const [url, setUrl] = useState<string | null>(null);
+  const [hasLoaded, setHasLoaded] = useState(false);
   const [isRestarting, setIsRestarting] = useState(false);
   const restartTimeoutRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const [isBrowserOnly, setIsBrowserOnly] = useState(false);
   const [manualUrl, setManualUrl] = useState("");
   const webviewRef = useRef<Electron.WebviewTag>(null);
+  const pendingUrlRef = useRef<string | null>(null);
+  const autoReloadAttemptsRef = useRef(0);
+  const autoReloadTimeoutRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const lastUrlSetAtRef = useRef(0);
+  const hasLoadedRef = useRef(false);
   const isDragging = useIsDragging();
   const [webviewLoadError, setWebviewLoadError] = useState<string | null>(null);
+  const setBrowserUrl = useTerminalStore((state) => state.setBrowserUrl);
+
+  const clearAutoReload = useCallback(() => {
+    if (autoReloadTimeoutRef.current) {
+      clearTimeout(autoReloadTimeoutRef.current);
+      autoReloadTimeoutRef.current = null;
+    }
+  }, []);
+
+  const scheduleAutoReload = useCallback(
+    (delayMs: number) => {
+      if (!url) return;
+      if (autoReloadTimeoutRef.current) return;
+      if (autoReloadAttemptsRef.current >= AUTO_RELOAD_MAX_ATTEMPTS) return;
+      const lastUrlSetAt = lastUrlSetAtRef.current || Date.now();
+      if (Date.now() - lastUrlSetAt > AUTO_RELOAD_WINDOW_MS) return;
+      if (hasLoadedRef.current) return;
+
+      autoReloadTimeoutRef.current = setTimeout(() => {
+        autoReloadTimeoutRef.current = null;
+        if (!url || hasLoadedRef.current) return;
+        const webview = webviewRef.current;
+        if (!webview) return;
+        autoReloadAttemptsRef.current += 1;
+        webview.loadURL(url);
+      }, delayMs);
+    },
+    [url]
+  );
 
   useEffect(() => {
     const offStatus = window.electron.devPreview.onStatus((payload) => {
@@ -87,6 +129,9 @@ export function DevPreviewPane({
           restartTimeoutRef.current = null;
         }
       }
+      if (payload.status === "error" || payload.status === "stopped") {
+        clearAutoReload();
+      }
     });
 
     const offUrl = window.electron.devPreview.onUrl((payload) => {
@@ -101,8 +146,9 @@ export function DevPreviewPane({
       if (restartTimeoutRef.current) {
         clearTimeout(restartTimeoutRef.current);
       }
+      clearAutoReload();
     };
-  }, [id]);
+  }, [id, clearAutoReload]);
 
   // Set up webview event listeners for loading/error feedback
   useEffect(() => {
@@ -112,6 +158,14 @@ export function DevPreviewPane({
     const handleDidFailLoad = (event: Electron.DidFailLoadEvent) => {
       // Ignore aborted loads and cancellations
       if (event.errorCode === -3 || event.errorCode === -6) return;
+      hasLoadedRef.current = false;
+      setHasLoaded(false);
+      const isRetryable = AUTO_RELOAD_ERROR_CODES.has(event.errorCode);
+      if (isRetryable && autoReloadAttemptsRef.current < AUTO_RELOAD_MAX_ATTEMPTS) {
+        const delay = AUTO_RELOAD_RETRY_DELAY_MS * (autoReloadAttemptsRef.current + 1);
+        scheduleAutoReload(delay);
+        return;
+      }
       setWebviewLoadError(
         event.errorDescription || "Failed to load dev server. Check if the server is running."
       );
@@ -119,16 +173,48 @@ export function DevPreviewPane({
 
     const handleDidStartLoading = () => {
       setWebviewLoadError(null);
+      hasLoadedRef.current = false;
+      setHasLoaded(false);
+    };
+
+    const handleDidStopLoading = () => {
+      hasLoadedRef.current = true;
+      autoReloadAttemptsRef.current = 0;
+      clearAutoReload();
+      setHasLoaded(true);
     };
 
     webview.addEventListener("did-fail-load", handleDidFailLoad);
     webview.addEventListener("did-start-loading", handleDidStartLoading);
+    webview.addEventListener("did-stop-loading", handleDidStopLoading);
 
     return () => {
       webview.removeEventListener("did-fail-load", handleDidFailLoad);
       webview.removeEventListener("did-start-loading", handleDidStartLoading);
+      webview.removeEventListener("did-stop-loading", handleDidStopLoading);
     };
-  }, [url]);
+  }, [url, scheduleAutoReload, clearAutoReload]);
+
+  // Sync URL changes to store for restoration across project switches
+  useEffect(() => {
+    if (!url) return;
+    setBrowserUrl(id, url);
+  }, [id, url, setBrowserUrl]);
+
+  useEffect(() => {
+    if (!url) return;
+    hasLoadedRef.current = false;
+    setHasLoaded(false);
+    autoReloadAttemptsRef.current = 0;
+    lastUrlSetAtRef.current = Date.now();
+    clearAutoReload();
+    scheduleAutoReload(AUTO_RELOAD_INITIAL_DELAY_MS);
+  }, [url, clearAutoReload, scheduleAutoReload]);
+
+  useEffect(() => {
+    if (!isBrowserOnly || url || !pendingUrlRef.current) return;
+    setUrl(pendingUrlRef.current);
+  }, [isBrowserOnly, url]);
 
   useEffect(() => {
     setUrl(null);
@@ -138,6 +224,12 @@ export function DevPreviewPane({
     setIsRestarting(false);
     setIsBrowserOnly(false);
     setManualUrl("");
+    hasLoadedRef.current = false;
+    setHasLoaded(false);
+    autoReloadAttemptsRef.current = 0;
+    clearAutoReload();
+    pendingUrlRef.current = null;
+    setWebviewLoadError(null);
     if (restartTimeoutRef.current) {
       clearTimeout(restartTimeoutRef.current);
       restartTimeoutRef.current = null;
@@ -147,13 +239,25 @@ export function DevPreviewPane({
     const cols = terminal?.cols ?? 80;
     const rows = terminal?.rows ?? 24;
     const devCommand = terminal?.devCommand;
+    const savedUrl = terminal?.browserUrl ?? null;
+
+    if (savedUrl) {
+      pendingUrlRef.current = savedUrl;
+      setManualUrl(savedUrl);
+    }
 
     void window.electron.devPreview.start(id, cwd, cols, rows, devCommand);
 
     return () => {
+      if (
+        useProjectStore.getState().isSwitching &&
+        panelKindKeepsAliveOnProjectSwitch("dev-preview")
+      ) {
+        return;
+      }
       void window.electron.devPreview.stop(id);
     };
-  }, [id, cwd]);
+  }, [id, cwd, clearAutoReload]);
 
   const handleRestart = useCallback(() => {
     setUrl(null);
@@ -161,6 +265,11 @@ export function DevPreviewPane({
     setStatus("starting");
     setMessage("Restarting dev server...");
     setIsRestarting(true);
+    hasLoadedRef.current = false;
+    setHasLoaded(false);
+    autoReloadAttemptsRef.current = 0;
+    clearAutoReload();
+    setWebviewLoadError(null);
     // Clear restarting after 10 seconds as a fallback
     if (restartTimeoutRef.current) {
       clearTimeout(restartTimeoutRef.current);
@@ -169,7 +278,7 @@ export function DevPreviewPane({
       setIsRestarting(false);
     }, 10000);
     void window.electron.devPreview.restart(id);
-  }, [id]);
+  }, [id, clearAutoReload]);
 
   const handleManualUrlSubmit = useCallback(() => {
     const trimmedUrl = manualUrl.trim();
@@ -186,11 +295,16 @@ export function DevPreviewPane({
       return; // Invalid URL, silently reject
     }
     setUrl(normalizedUrl);
+    setHasLoaded(false);
+    setWebviewLoadError(null);
     // Also notify the backend in case it needs to track the URL
     void window.electron.devPreview.setUrl(id, normalizedUrl);
   }, [id, manualUrl]);
 
   const statusStyle = STATUS_STYLES[status];
+  const showLoadingOverlay = Boolean(url) && !hasLoaded && !webviewLoadError;
+  const loadingMessage =
+    status === "starting" || status === "installing" ? message : "Loading preview...";
 
   const devPreviewToolbar = (
     <DevPreviewToolbar
@@ -225,6 +339,14 @@ export function DevPreviewPane({
           {url ? (
             <>
               {isDragging && <div className="absolute inset-0 z-10 bg-transparent" />}
+              {showLoadingOverlay && (
+                <div className="absolute inset-0 flex items-center justify-center bg-canopy-bg z-10">
+                  <div className="text-center max-w-md space-y-1 px-4">
+                    <div className="text-sm font-medium text-canopy-text">Dev Preview</div>
+                    <div className="text-xs text-canopy-text/60">{loadingMessage}</div>
+                  </div>
+                </div>
+              )}
               {webviewLoadError && (
                 <div className="absolute inset-0 flex items-center justify-center bg-canopy-bg z-10">
                   <div className="text-center max-w-md space-y-2 px-4">

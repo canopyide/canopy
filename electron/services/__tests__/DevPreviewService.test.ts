@@ -296,7 +296,34 @@ describe("DevPreviewService", () => {
       expect(statusEvents[0].message).toBe("Installing dependencies...");
     });
 
-    it("stops existing session before starting new one on same panel", async () => {
+    it("reuses existing session when restarting with same panel config", async () => {
+      const service = new DevPreviewServiceClass(mockPtyClient as unknown as PtyClient);
+
+      await service.start({
+        panelId: "panel-1",
+        cwd: "/tmp/test",
+        cols: 80,
+        rows: 24,
+        devCommand: "npm run dev",
+      });
+
+      const firstSession = service.getSession("panel-1");
+      const firstPtyId = firstSession!.ptyId;
+
+      await service.start({
+        panelId: "panel-1",
+        cwd: "/tmp/test",
+        cols: 80,
+        rows: 24,
+        devCommand: "npm run dev",
+      });
+
+      const secondSession = service.getSession("panel-1");
+      expect(secondSession!.ptyId).toBe(firstPtyId);
+      expect(mockPtyClient.kill).not.toHaveBeenCalled();
+    });
+
+    it("restarts existing session when cwd changes for the same panel", async () => {
       const service = new DevPreviewServiceClass(mockPtyClient as unknown as PtyClient);
 
       await service.start({
@@ -315,7 +342,7 @@ describe("DevPreviewService", () => {
         cwd: "/tmp/test2",
         cols: 80,
         rows: 24,
-        devCommand: "npm start",
+        devCommand: "npm run dev",
       });
 
       expect(mockPtyClient.kill).toHaveBeenCalledWith(firstPtyId);

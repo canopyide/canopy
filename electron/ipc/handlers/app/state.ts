@@ -31,13 +31,27 @@ export function registerAppStateHandlers(): () => void {
           TerminalSnapshotSchema,
           `app:hydrate(project:${projectId})`
         );
-        // Filter out trashed terminals and normalize location type for StoreSchema
+        // Filter out trashed terminals, infer missing kind, and normalize location
         terminalsToUse = validatedTerminals
           .filter((t) => t.location !== "trash")
-          .map((t) => ({
-            ...t,
-            location: t.location as "grid" | "dock",
-          }));
+          .map((t) => {
+            // Infer kind if missing (defense-in-depth for legacy per-project data)
+            let kind = t.kind;
+            if (!kind) {
+              if (t.browserUrl !== undefined) {
+                kind = "browser";
+              } else if (t.notePath !== undefined || t.noteId !== undefined) {
+                kind = "notes";
+              } else {
+                kind = "terminal";
+              }
+            }
+            return {
+              ...t,
+              kind,
+              location: t.location as "grid" | "dock",
+            };
+          });
         terminalsSource = "per-project";
       } else if (globalAppState.terminals && globalAppState.terminals.length > 0) {
         // Migration: use global terminals and migrate them to per-project

@@ -12,7 +12,7 @@ import { keybindingService } from "@/services/KeybindingService";
 import { isRegisteredAgent } from "@/config/agents";
 import { normalizeScrollbackLines } from "@shared/config/scrollback";
 import { terminalInstanceService } from "@/services/TerminalInstanceService";
-import { panelKindHasPty } from "@shared/config/panelKindRegistry";
+import { panelKindUsesTerminalUi } from "@shared/config/panelKindRegistry";
 
 export interface HydrationOptions {
   addTerminal: (options: {
@@ -157,13 +157,28 @@ export async function hydrateAppState(options: HydrationOptions): Promise<void> 
                 backendTerminalMap.delete(saved.id);
               } else {
                 // Non-PTY panel or PTY panel that no longer exists in backend - try to recreate
-                const kind = (saved.kind ?? "terminal") as TerminalKind;
+                // Infer kind from panel properties if missing (defense-in-depth for legacy data)
+                let kind: TerminalKind = saved.kind ?? "terminal";
+                if (!saved.kind) {
+                  if (saved.browserUrl !== undefined) {
+                    kind = "browser";
+                  } else if (saved.notePath !== undefined || saved.noteId !== undefined) {
+                    kind = "notes";
+                  } else if (saved.devCommand !== undefined) {
+                    kind = "dev-preview";
+                  }
+                }
 
-                if (!panelKindHasPty(kind)) {
-                  // Non-PTY panel (browser, notes) - recreate from saved state
+                if (!panelKindUsesTerminalUi(kind)) {
                   console.log(`[Hydration] Recreating ${kind} panel: ${saved.id}`);
 
                   const location = (saved.location === "dock" ? "dock" : "grid") as "grid" | "dock";
+                  const devCommandCandidate =
+                    kind === "dev-preview" ? saved.devCommand?.trim() : undefined;
+                  const devCommand =
+                    kind === "dev-preview"
+                      ? devCommandCandidate || saved.command?.trim() || undefined
+                      : undefined;
 
                   await addTerminal({
                     kind,
@@ -177,6 +192,7 @@ export async function hydrateAppState(options: HydrationOptions): Promise<void> 
                     noteId: saved.noteId,
                     scope: saved.scope as "worktree" | "project" | undefined,
                     createdAt: saved.createdAt,
+                    devCommand,
                   });
                 } else {
                   console.log(

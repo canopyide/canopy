@@ -401,7 +401,7 @@ interface PtyPanelData extends BasePanelData {
   flowStatusTimestamp?: number;
   /** Whether user input is locked (read-only monitor mode) */
   isInputLocked?: boolean;
-  /** Current URL for dev-preview panels */
+  /** Current URL for browser/dev-preview panels */
   browserUrl?: string;
   /** Dev command override for dev-preview panels */
   devCommand?: string;
@@ -567,7 +567,7 @@ export interface TerminalSnapshot {
   location: TerminalLocation;
   /** Command to execute after shell starts (e.g., 'claude --model sonnet-4' for AI agents) */
   command?: string;
-  /** Current URL for browser panes (kind === 'browser') */
+  /** Current URL for browser/dev-preview panes */
   browserUrl?: string;
   /** Path to note file (kind === 'notes') */
   notePath?: string;
