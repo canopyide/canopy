@@ -1,26 +1,29 @@
-import type { TerminalInstance, TerminalState } from "@/types";
-import { appClient } from "@/clients";
+import type { TerminalInstance, TerminalSnapshot } from "@/types";
+import { projectClient } from "@/clients";
 import { debounce } from "@/utils/debounce";
 import { panelKindHasPty } from "@shared/config/panelKindRegistry";
 
-type AppClientType = typeof appClient;
+type ProjectClientType = typeof projectClient;
 
 export interface TerminalPersistenceOptions {
   debounceMs?: number;
   filter?: (terminal: TerminalInstance) => boolean;
-  transform?: (terminal: TerminalInstance) => TerminalState;
+  transform?: (terminal: TerminalInstance) => TerminalSnapshot;
+  getProjectId?: () => string | null;
 }
 
-const DEFAULT_OPTIONS: Required<TerminalPersistenceOptions> = {
+const DEFAULT_OPTIONS: Required<Omit<TerminalPersistenceOptions, "getProjectId">> &
+  Pick<TerminalPersistenceOptions, "getProjectId"> = {
   debounceMs: 500,
   filter: (t) => t.location !== "trash",
   transform: (t) => {
-    const base = {
+    const base: TerminalSnapshot = {
       id: t.id,
       kind: t.kind,
       title: t.title,
       worktreeId: t.worktreeId,
-      location: t.location,
+      location: t.location === "trash" ? "grid" : t.location,
+      cwd: t.cwd,
     };
 
     if (t.kind === "dev-preview") {
@@ -28,7 +31,7 @@ const DEFAULT_OPTIONS: Required<TerminalPersistenceOptions> = {
         ...base,
         type: t.type,
         cwd: t.cwd,
-        devCommand: t.devCommand?.trim() || undefined,
+        command: t.devCommand?.trim() || undefined,
       };
     }
 
@@ -39,7 +42,6 @@ const DEFAULT_OPTIONS: Required<TerminalPersistenceOptions> = {
         agentId: t.agentId,
         cwd: t.cwd,
         command: t.command?.trim() || undefined,
-        ...(t.isInputLocked && { isInputLocked: true }),
       };
     } else if (t.kind === "notes") {
       return {
@@ -56,20 +58,22 @@ const DEFAULT_OPTIONS: Required<TerminalPersistenceOptions> = {
       };
     }
   },
+  getProjectId: undefined,
 };
 
 export class TerminalPersistence {
-  private readonly client: AppClientType;
-  private readonly options: Required<TerminalPersistenceOptions>;
-  private readonly debouncedSave: ReturnType<typeof debounce<[TerminalState[]]>>;
+  private readonly client: ProjectClientType;
+  private readonly options: Required<Omit<TerminalPersistenceOptions, "getProjectId">> &
+    Pick<TerminalPersistenceOptions, "getProjectId">;
+  private readonly debouncedSave: ReturnType<typeof debounce<[string, TerminalSnapshot[]]>>;
   private pendingPersist: Promise<void> | null = null;
 
-  constructor(client: AppClientType, options: TerminalPersistenceOptions = {}) {
+  constructor(client: ProjectClientType, options: TerminalPersistenceOptions = {}) {
     this.client = client;
     this.options = { ...DEFAULT_OPTIONS, ...options };
 
-    this.debouncedSave = debounce((transformed: TerminalState[]) => {
-      this.pendingPersist = this.client.setState({ terminals: transformed }).catch((error) => {
+    this.debouncedSave = debounce((projectId: string, transformed: TerminalSnapshot[]) => {
+      this.pendingPersist = this.client.setTerminals(projectId, transformed).catch((error) => {
         console.error("Failed to persist terminals:", error);
         throw error;
       });
@@ -78,10 +82,16 @@ export class TerminalPersistence {
     }, this.options.debounceMs);
   }
 
-  save(terminals: TerminalInstance[]): void {
+  save(terminals: TerminalInstance[], projectId?: string): void {
+    const resolvedProjectId = projectId ?? this.options.getProjectId?.();
+    if (!resolvedProjectId) {
+      // No project ID available - skip persistence
+      return;
+    }
+
     const filtered = terminals.filter(this.options.filter);
     const transformed = filtered.map(this.options.transform);
-    this.debouncedSave(transformed);
+    this.debouncedSave(resolvedProjectId, transformed);
   }
 
   flush(): void {
@@ -99,4 +109,5 @@ export class TerminalPersistence {
   }
 }
 
-export const terminalPersistence = new TerminalPersistence(appClient);
+// Singleton instance - project ID will be passed at call site
+export const terminalPersistence = new TerminalPersistence(projectClient);
