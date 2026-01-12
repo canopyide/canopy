@@ -30,6 +30,7 @@ import { cn } from "@/lib/utils";
 import { getProjectGradient } from "@/lib/colorUtils";
 import { GitHubResourceList, CommitList } from "@/components/GitHub";
 import { AgentButton } from "./AgentButton";
+import { GitHubStatusIndicator, type GitHubStatusIndicatorStatus } from "./GitHubStatusIndicator";
 import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from "@/components/ui/tooltip";
 import { useWorktreeActions } from "@/hooks/useWorktreeActions";
 import { useProjectSettings } from "@/hooks";
@@ -97,7 +98,14 @@ export function Toolbar({
   const addNotification = useNotificationStore((state) => state.addNotification);
   const { settings: projectSettings } = useProjectSettings();
   const devServerCommand = projectSettings?.devServerCommand?.trim();
-  const { stats, refresh: refreshStats, isStale, lastUpdated } = useRepositoryStats();
+  const {
+    stats,
+    loading: statsLoading,
+    error: statsError,
+    refresh: refreshStats,
+    isStale,
+    lastUpdated,
+  } = useRepositoryStats();
   const activeWorktreeId = useWorktreeSelectionStore((state) => state.activeWorktreeId);
   const activeWorktree = useWorktreeDataStore((state) =>
     activeWorktreeId ? state.worktrees.get(activeWorktreeId) : null
@@ -145,6 +153,8 @@ export function Toolbar({
   const commitsButtonRef = useRef<HTMLButtonElement>(null);
   const treeCopyTimeoutRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const projectSelectorTriggerRef = useRef<HTMLButtonElement>(null);
+  const [statsJustUpdated, setStatsJustUpdated] = useState(false);
+  const prevLastUpdatedRef = useRef<number | null>(null);
 
   const { handleCopyTree } = useWorktreeActions();
 
@@ -467,6 +477,30 @@ export function Toolbar({
     };
   }, []);
 
+  useEffect(() => {
+    if (statsLoading || statsError) {
+      setStatsJustUpdated(false);
+    } else if (
+      lastUpdated != null &&
+      prevLastUpdatedRef.current != null &&
+      lastUpdated > prevLastUpdatedRef.current
+    ) {
+      setStatsJustUpdated(true);
+    }
+    prevLastUpdatedRef.current = lastUpdated;
+  }, [lastUpdated, statsLoading, statsError]);
+
+  const getGitHubIndicatorStatus = useCallback((): GitHubStatusIndicatorStatus => {
+    if (statsLoading) return "loading";
+    if (statsError) return "error";
+    if (statsJustUpdated) return "success";
+    return "idle";
+  }, [statsLoading, statsError, statsJustUpdated]);
+
+  const handleGitHubStatusTransitionEnd = useCallback(() => {
+    setStatsJustUpdated(false);
+  }, []);
+
   const handleCopyTreeClick = async () => {
     if (isCopyingTree || !activeWorktree) return;
 
@@ -640,7 +674,7 @@ export function Toolbar({
           stats && currentProject ? (
             <div
               key="github-stats"
-              className="flex items-center h-8 rounded-[var(--radius-md)] bg-white/[0.03] border border-divider divide-x divide-[var(--border-divider)] mr-2"
+              className="relative flex items-center h-8 rounded-[var(--radius-md)] bg-white/[0.03] border border-divider divide-x divide-[var(--border-divider)] mr-2"
             >
               <Button
                 ref={issuesButtonRef}
@@ -757,6 +791,11 @@ export function Toolbar({
                   initialCount={stats.commitCount}
                 />
               </FixedDropdown>
+              <GitHubStatusIndicator
+                status={getGitHubIndicatorStatus()}
+                error={statsError ?? undefined}
+                onTransitionEnd={handleGitHubStatusTransitionEnd}
+              />
             </div>
           ) : null,
         isAvailable: !!(stats && currentProject),
@@ -896,6 +935,9 @@ export function Toolbar({
       isStale,
       lastUpdated,
       refreshStats,
+      getGitHubIndicatorStatus,
+      handleGitHubStatusTransitionEnd,
+      statsError,
       handleCopyTreeClick,
       isCopyingTree,
       activeWorktree,
