@@ -782,6 +782,117 @@ body,
   }
 }
 
+/* GitHub Status Indicator Animations
+ * Refined loading strip for toolbar git status icons.
+ * Uses GPU-accelerated transforms for smooth 60fps animation.
+ */
+
+/* Loading shimmer - left to right sweep */
+@keyframes github-status-shimmer {
+  0% {
+    transform: translateX(-100%);
+  }
+  100% {
+    transform: translateX(400%);
+  }
+}
+
+.github-status-loading {
+  background: rgba(59, 130, 246, 0.2); /* Blue-500 at 20% */
+}
+
+.github-status-loading::after {
+  content: "";
+  position: absolute;
+  top: 0;
+  left: 0;
+  width: 25%;
+  height: 100%;
+  background: linear-gradient(90deg, transparent, rgba(59, 130, 246, 0.8), transparent);
+  animation: github-status-shimmer 1.5s ease-in-out infinite;
+  will-change: transform;
+}
+
+/* Success fade - scale in then fade out */
+@keyframes github-status-success-fade {
+  0% {
+    opacity: 0;
+    transform: scaleX(0);
+  }
+  30% {
+    opacity: 1;
+    transform: scaleX(1);
+  }
+  100% {
+    opacity: 0;
+    transform: scaleX(1);
+  }
+}
+
+.github-status-success {
+  background: rgb(74 222 128); /* Green-400 */
+  transform-origin: left;
+  animation: github-status-success-fade 500ms ease-out forwards;
+  will-change: opacity, transform;
+}
+
+/* Error pulse - subtle breathing animation */
+@keyframes github-status-error-pulse {
+  0%,
+  100% {
+    opacity: 0.8;
+  }
+  50% {
+    opacity: 1;
+  }
+}
+
+.github-status-error {
+  background: rgb(251 146 60); /* Orange-400 - less alarming than red */
+  animation: github-status-error-pulse 2s ease-in-out infinite;
+  will-change: opacity;
+}
+
+/* Respect user's motion preferences */
+@media (prefers-reduced-motion: reduce) {
+  .github-status-loading::after {
+    display: none;
+  }
+
+  .github-status-loading {
+    background: rgba(59, 130, 246, 0.6); /* Solid bar when motion disabled */
+  }
+
+  .github-status-success {
+    animation: none;
+    opacity: 1;
+    transform: scaleX(1);
+  }
+
+  .github-status-error {
+    animation: none;
+    opacity: 1;
+  }
+}
+
+/* Disable in performance mode */
+body[data-performance-mode="true"] .github-status-loading::after {
+  display: none !important;
+}
+
+body[data-performance-mode="true"] .github-status-loading {
+  background: rgba(59, 130, 246, 0.6) !important;
+}
+
+body[data-performance-mode="true"] .github-status-success {
+  opacity: 1 !important;
+  transform: scaleX(1) !important;
+}
+
+body[data-performance-mode="true"] .github-status-error {
+  opacity: 1 !important;
+}
+
 /* Section header pattern - for organizing content hierarchically */
 .section-header {
   @apply text-xs font-bold tracking-widest text-muted-foreground uppercase;
