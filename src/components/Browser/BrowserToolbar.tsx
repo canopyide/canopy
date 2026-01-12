@@ -7,8 +7,8 @@ import {
   Copy,
   Check,
   Globe,
-  ChevronDown,
   ZoomIn,
+  ZoomOut,
 } from "lucide-react";
 import { cn } from "@/lib/utils";
 import { normalizeBrowserUrl, getDisplayUrl } from "./browserUtils";
@@ -23,6 +23,7 @@ const ZOOM_PRESETS = [
   { value: 1.5, label: "150%" },
   { value: 2.0, label: "200%" },
 ];
+const ZOOM_VALUES = ZOOM_PRESETS.map((preset) => preset.value);
 
 interface BrowserToolbarProps {
   terminalId?: string;
@@ -59,11 +60,7 @@ export function BrowserToolbar({
   const [isEditing, setIsEditing] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [copied, setCopied] = useState(false);
-  const [isZoomDropdownOpen, setIsZoomDropdownOpen] = useState(false);
   const inputRef = useRef<HTMLInputElement>(null);
-  const zoomDropdownRef = useRef<HTMLDivElement>(null);
-  const zoomButtonRef = useRef<HTMLButtonElement>(null);
-  const zoomMenuRef = useRef<HTMLDivElement>(null);
 
   useEffect(() => {
     if (!isEditing) {
@@ -125,47 +122,49 @@ export function BrowserToolbar({
     }
   }, [terminalId, url]);
 
-  const handleZoomSelect = useCallback(
-    (factor: number) => {
-      onZoomChange?.(factor);
-      setIsZoomDropdownOpen(false);
-      zoomButtonRef.current?.focus();
+  const handleZoomStep = useCallback(
+    (direction: "in" | "out") => {
+      if (!onZoomChange) return;
+      const minZoom = ZOOM_VALUES[0];
+      const maxZoom = ZOOM_VALUES[ZOOM_VALUES.length - 1];
+      const clampedZoom = Math.max(minZoom, Math.min(maxZoom, zoomFactor));
+      const exactIndex = ZOOM_VALUES.findIndex((value) => Math.abs(value - clampedZoom) < 0.01);
+      let nextZoom = clampedZoom;
+
+      if (exactIndex !== -1) {
+        const nextIndex =
+          direction === "in"
+            ? Math.min(exactIndex + 1, ZOOM_VALUES.length - 1)
+            : Math.max(exactIndex - 1, 0);
+        nextZoom = ZOOM_VALUES[nextIndex];
+      } else if (direction === "in") {
+        nextZoom = ZOOM_VALUES.find((value) => value > clampedZoom) ?? maxZoom;
+      } else {
+        const lowerValues = ZOOM_VALUES.filter((value) => value < clampedZoom);
+        nextZoom = lowerValues.length > 0 ? lowerValues[lowerValues.length - 1] : minZoom;
+      }
+
+      if (Math.abs(nextZoom - zoomFactor) >= 0.001) {
+        onZoomChange(nextZoom);
+      }
     },
-    [onZoomChange]
+    [onZoomChange, zoomFactor]
   );
 
-  const handleZoomKeyDown = useCallback((e: React.KeyboardEvent) => {
-    if (e.key === "Escape") {
-      setIsZoomDropdownOpen(false);
-      zoomButtonRef.current?.focus();
-    }
-  }, []);
-
-  // Close zoom dropdown when clicking or tabbing outside
-  useEffect(() => {
-    if (!isZoomDropdownOpen) return;
-    const handleClickOutside = (e: MouseEvent) => {
-      if (zoomDropdownRef.current && !zoomDropdownRef.current.contains(e.target as Node)) {
-        setIsZoomDropdownOpen(false);
-      }
-    };
-    const handleFocusOut = (e: FocusEvent) => {
-      if (zoomDropdownRef.current && !zoomDropdownRef.current.contains(e.target as Node)) {
-        setIsZoomDropdownOpen(false);
-      }
-    };
-    document.addEventListener("mousedown", handleClickOutside);
-    document.addEventListener("focusin", handleFocusOut);
-    return () => {
-      document.removeEventListener("mousedown", handleClickOutside);
-      document.removeEventListener("focusin", handleFocusOut);
-    };
-  }, [isZoomDropdownOpen]);
+  const handleZoomReset = useCallback(() => {
+    if (!onZoomChange) return;
+    if (Math.abs(zoomFactor - 1.0) < 0.01) return;
+    onZoomChange(1.0);
+  }, [onZoomChange, zoomFactor]);
 
   const isNonDefaultZoom = Math.abs(zoomFactor - 1.0) >= 0.01;
   const currentZoomLabel =
     ZOOM_PRESETS.find((p) => Math.abs(p.value - zoomFactor) < 0.01)?.label ??
     `${Math.round(zoomFactor * 100)}%`;
+  const minZoom = ZOOM_VALUES[0];
+  const maxZoom = ZOOM_VALUES[ZOOM_VALUES.length - 1];
+  const canZoomOut = zoomFactor > minZoom + 0.001;
+  const canZoomIn = zoomFactor < maxZoom - 0.001;
 
   const buttonClass =
     "p-1.5 rounded hover:bg-white/10 disabled:opacity-30 disabled:cursor-not-allowed transition-colors";
@@ -200,54 +199,43 @@ export function BrowserToolbar({
         <RotateCw className="w-4 h-4" />
       </button>
 
-      {/* Zoom dropdown */}
+      {/* Zoom controls */}
       {onZoomChange && (
-        <div ref={zoomDropdownRef} className="relative">
+        <div className="flex items-center gap-0.5">
           <button
-            ref={zoomButtonRef}
             type="button"
-            onClick={() => setIsZoomDropdownOpen(!isZoomDropdownOpen)}
-            onKeyDown={handleZoomKeyDown}
-            aria-expanded={isZoomDropdownOpen}
-            aria-haspopup="menu"
-            aria-controls="zoom-menu"
+            onClick={() => handleZoomStep("out")}
+            disabled={!canZoomOut}
+            className={buttonClass}
+            title="Zoom out"
+            aria-label="Zoom out"
+          >
+            <ZoomOut className="w-3.5 h-3.5" />
+          </button>
+          <button
+            type="button"
+            onClick={handleZoomReset}
+            disabled={!isNonDefaultZoom}
             className={cn(
-              "flex items-center gap-0.5 px-1.5 py-1 rounded text-xs",
-              "hover:bg-white/10 transition-colors",
-              isNonDefaultZoom && "text-blue-400 font-medium"
+              "px-1.5 py-1 rounded text-xs font-medium transition-colors",
+              "hover:bg-white/10 disabled:opacity-40 disabled:cursor-not-allowed",
+              isNonDefaultZoom ? "text-blue-400" : "text-canopy-text/60"
             )}
-            title={`Zoom level: ${currentZoomLabel}`}
+            title="Reset zoom to 100%"
+            aria-label="Reset zoom"
+          >
+            {currentZoomLabel}
+          </button>
+          <button
+            type="button"
+            onClick={() => handleZoomStep("in")}
+            disabled={!canZoomIn}
+            className={buttonClass}
+            title="Zoom in"
+            aria-label="Zoom in"
           >
             <ZoomIn className="w-3.5 h-3.5" />
-            <span className="min-w-[2.5rem] text-center">{currentZoomLabel}</span>
-            <ChevronDown className="w-3 h-3" />
           </button>
-          {isZoomDropdownOpen && (
-            <div
-              ref={zoomMenuRef}
-              id="zoom-menu"
-              role="menu"
-              aria-label="Zoom level"
-              onKeyDown={handleZoomKeyDown}
-              className="absolute top-full left-0 mt-1 py-1 bg-canopy-surface border border-overlay rounded shadow-lg z-20 min-w-[5rem]"
-            >
-              {ZOOM_PRESETS.map((preset) => (
-                <button
-                  key={preset.value}
-                  type="button"
-                  role="menuitemradio"
-                  aria-checked={Math.abs(preset.value - zoomFactor) < 0.01}
-                  onClick={() => handleZoomSelect(preset.value)}
-                  className={cn(
-                    "w-full px-3 py-1.5 text-xs text-left hover:bg-white/10 transition-colors",
-                    Math.abs(preset.value - zoomFactor) < 0.01 && "text-blue-400 bg-white/5"
-                  )}
-                >
-                  {preset.label}
-                </button>
-              ))}
-            </div>
-          )}
         </div>
       )}
 
