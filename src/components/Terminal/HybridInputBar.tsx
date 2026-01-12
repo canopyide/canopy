@@ -616,16 +616,9 @@ export const HybridInputBar = forwardRef<HybridInputBarHandle, HybridInputBarPro
 
     const handleAutocompleteSelect = useCallback(
       (item: AutocompleteItem) => {
-        if (activeMode === "command") {
-          const idx = autocompleteItems.findIndex((i) => i.key === item.key);
-          setSelectedIndex(idx >= 0 ? idx : 0);
-          focusTextarea();
-          return;
-        }
-
         applyAutocompleteItem(item, "insert");
       },
-      [activeMode, applyAutocompleteItem, autocompleteItems, focusTextarea]
+      [applyAutocompleteItem]
     );
 
     const barContent = (
