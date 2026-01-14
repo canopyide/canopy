@@ -22,7 +22,7 @@ import {
   Settings2,
   Globe,
   StickyNote,
-  Rocket,
+  Monitor,
   Circle,
 } from "lucide-react";
 import { cn } from "@/lib/utils";
@@ -659,11 +659,11 @@ export function Toolbar({
             onClick={() => {
               void actionService.dispatch("devServer.start", undefined, { source: "user" });
             }}
-            className="text-canopy-text hover:bg-white/[0.06] transition-colors hover:text-purple-400 focus-visible:text-purple-400"
+            className="text-canopy-text hover:bg-white/[0.06] transition-colors hover:text-canopy-accent focus-visible:text-canopy-accent"
             title="Start Dev Server"
             aria-label="Start Dev Server"
           >
-            <Rocket />
+            <Monitor />
           </Button>
         ),
         isAvailable: !!devServerCommand,
