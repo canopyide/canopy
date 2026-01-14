@@ -20,7 +20,7 @@ import {
   PanelLeft,
   Terminal,
   Globe,
-  Rocket,
+  Monitor,
   AlertTriangle,
   StickyNote,
   Copy,
@@ -75,7 +75,7 @@ const BUTTON_METADATA: Record<
   },
   "dev-server": {
     label: "Dev Server",
-    icon: <Rocket className="h-4 w-4" />,
+    icon: <Monitor className="h-4 w-4" />,
     description: "Start development server",
   },
   "github-stats": {
