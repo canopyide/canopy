@@ -217,10 +217,14 @@ export function Toolbar({
           }
         }
 
-        nextCounts.set(projectsToFetch[index].id, {
-          activeAgentCount,
-          waitingAgentCount,
-        });
+        // Only set counts when there are actual agents; otherwise remove entry
+        // This prevents phantom counts when project has no agent terminals
+        if (activeAgentCount > 0 || waitingAgentCount > 0) {
+          nextCounts.set(projectsToFetch[index].id, {
+            activeAgentCount,
+            waitingAgentCount,
+          });
+        }
       });
 
       setTerminalCounts(nextCounts);
@@ -262,54 +266,95 @@ export function Toolbar({
     };
   }, [projectSelectorOpen, fetchProjectStats, fetchProjectTerminalCounts, loadProjects]);
 
+  // Reactive subscription to agent state changes - update counts globally
+  // This ensures counts update immediately when agent states change, not just on polling
+  useEffect(() => {
+    // Debounce to avoid excessive updates when multiple state changes occur rapidly
+    let debounceTimer: ReturnType<typeof setTimeout> | null = null;
+
+    const handleStateChange = () => {
+      // Clear any pending debounce
+      if (debounceTimer) {
+        clearTimeout(debounceTimer);
+      }
+
+      // Debounce updates by 100ms to batch rapid state changes
+      debounceTimer = setTimeout(async () => {
+        try {
+          const freshProjects = await projectClient.getAll();
+          if (freshProjects.length > 0) {
+            await fetchProjectTerminalCounts(freshProjects);
+          }
+        } catch (error) {
+          console.warn("[Toolbar] Failed to refresh terminal counts on agent state change:", error);
+        }
+      }, 100);
+    };
+
+    const cleanupStateChanged = terminalClient.onAgentStateChanged(handleStateChange);
+    const cleanupExit = terminalClient.onExit(() => {
+      handleStateChange();
+    });
+
+    return () => {
+      cleanupStateChanged();
+      cleanupExit();
+      if (debounceTimer) {
+        clearTimeout(debounceTimer);
+      }
+    };
+  }, [fetchProjectTerminalCounts]);
+
   const groupedProjects = useMemo(
     () => groupProjects(projects, currentProject?.id ?? null, projectStats),
     [projects, currentProject?.id, projectStats]
   );
 
-  const refreshStopCandidateCounts = useCallback(
-    async (projectId: string) => {
-      const [statsResult, terminalsResult] = await Promise.allSettled([
-        projectClient.getStats(projectId),
-        terminalClient.getForProject(projectId),
-      ]);
+  const refreshStopCandidateCounts = useCallback(async (projectId: string) => {
+    const [statsResult, terminalsResult] = await Promise.allSettled([
+      projectClient.getStats(projectId),
+      terminalClient.getForProject(projectId),
+    ]);
 
-      if (statsResult.status === "fulfilled") {
-        setProjectStats((prev) => {
-          const next = new Map(prev);
-          next.set(projectId, statsResult.value);
-          return next;
-        });
-      }
+    if (statsResult.status === "fulfilled") {
+      setProjectStats((prev) => {
+        const next = new Map(prev);
+        next.set(projectId, statsResult.value);
+        return next;
+      });
+    }
 
-      if (terminalsResult.status === "fulfilled") {
-        let activeAgentCount = 0;
-        let waitingAgentCount = 0;
+    if (terminalsResult.status === "fulfilled") {
+      let activeAgentCount = 0;
+      let waitingAgentCount = 0;
 
-        for (const terminal of terminalsResult.value) {
-          if (!panelKindHasPty(terminal.kind ?? "terminal")) continue;
-          if (terminal.kind === "dev-preview") continue;
+      for (const terminal of terminalsResult.value) {
+        if (!panelKindHasPty(terminal.kind ?? "terminal")) continue;
+        if (terminal.kind === "dev-preview") continue;
 
-          const agentState = terminal.agentState;
-          const isAgent = isAgentTerminal(terminal.kind ?? terminal.type, terminal.agentId);
-          if (!isAgent) continue;
+        const agentState = terminal.agentState;
+        const isAgent = isAgentTerminal(terminal.kind ?? terminal.type, terminal.agentId);
+        if (!isAgent) continue;
 
-          if (agentState === "waiting") {
-            waitingAgentCount += 1;
-          } else if (agentState === "working" || agentState === "running") {
-            activeAgentCount += 1;
-          }
+        if (agentState === "waiting") {
+          waitingAgentCount += 1;
+        } else if (agentState === "working" || agentState === "running") {
+          activeAgentCount += 1;
         }
-
-        setTerminalCounts((prev) => {
-          const next = new Map(prev);
-          next.set(projectId, { activeAgentCount, waitingAgentCount });
-          return next;
-        });
       }
-    },
-    [setProjectStats, setTerminalCounts]
-  );
+
+      setTerminalCounts((prev) => {
+        const next = new Map(prev);
+        // Only set counts when there are actual agents; otherwise remove entry
+        if (activeAgentCount > 0 || waitingAgentCount > 0) {
+          next.set(projectId, { activeAgentCount, waitingAgentCount });
+        } else {
+          next.delete(projectId);
+        }
+        return next;
+      });
+    }
+  }, []);
 
   const handleStopProject = (projectId: string, e: React.MouseEvent) => {
     e.stopPropagation();
@@ -339,7 +384,8 @@ export function Toolbar({
       });
       setTerminalCounts((prev) => {
         const next = new Map(prev);
-        next.set(stopConfirmProjectId, { activeAgentCount: 0, waitingAgentCount: 0 });
+        // Delete entry when counts are zero to maintain consistent semantics
+        next.delete(stopConfirmProjectId);
         return next;
       });
 
