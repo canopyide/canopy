@@ -386,7 +386,7 @@ export class PtyManager extends EventEmitter {
       lastInputTime: terminalInfo.lastInputTime,
       lastOutputTime: terminalInfo.lastOutputTime,
       lastStateChange: terminalInfo.lastStateChange,
-      activityTier: "focused",
+      activityTier: terminal.getActivityTier() as "focused" | "visible" | "background",
       outputBufferSize: terminalInfo.outputBuffer.length,
       semanticBufferLines: terminalInfo.semanticBuffer.length,
       restartCount: terminalInfo.restartCount,
@@ -544,6 +544,14 @@ export class PtyManager extends EventEmitter {
     if (terminal) {
       terminal.setActivityMonitorTier(interval);
     }
+  }
+
+  /**
+   * Get the current activity tier for a terminal.
+   */
+  getActivityTier(id: string): "active" | "background" | undefined {
+    const terminal = this.registry.get(id);
+    return terminal?.getActivityTier();
   }
 
   /**

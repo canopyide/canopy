@@ -115,6 +115,8 @@ export interface BackendTerminalInfo {
   spawnedAt: number;
   isTrashed?: boolean;
   trashExpiresAt?: number;
+  /** Current activity tier: "active" (foreground) or "background" (project switched away) */
+  activityTier?: "active" | "background";
 }
 
 /** Result from terminal reconnect operation */
@@ -126,6 +128,7 @@ export interface TerminalReconnectResult {
   cwd?: string;
   agentState?: AgentState;
   lastStateChange?: number;
+  activityTier?: "active" | "background";
   error?: string;
 }
 

@@ -716,6 +716,15 @@ class TerminalInstanceService {
     this.rendererPolicy.applyRendererPolicy(id, TerminalRefreshTier.BURST);
   }
 
+  /**
+   * Initialize the backend tier state for a reconnected terminal.
+   * This ensures proper wake behavior after project switch by setting
+   * the frontend's lastBackendTier to match the actual backend state.
+   */
+  initializeBackendTier(id: string, tier: "active" | "background"): void {
+    this.rendererPolicy.initializeBackendTier(id, tier);
+  }
+
   addExitListener(id: string, cb: (exitCode: number) => void): () => void {
     const managed = this.instances.get(id);
     if (!managed) return () => {};
