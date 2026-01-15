@@ -18,6 +18,7 @@ function terminalToRecipeTerminal(terminal: TerminalInstance): RecipeTerminal {
     command: terminal.command || undefined,
     devCommand: terminal.kind === "dev-preview" ? terminal.devCommand : undefined,
     env: {},
+    exitBehavior: terminal.exitBehavior,
   };
 }
 
@@ -218,6 +219,7 @@ const createRecipeStore: StateCreator<RecipeState> = (set, get) => ({
             worktreeId: worktreeId,
             devCommand: terminal.devCommand?.trim() || undefined,
             env: terminal.env,
+            exitBehavior: terminal.exitBehavior,
           });
           continue;
         }
@@ -254,6 +256,7 @@ const createRecipeStore: StateCreator<RecipeState> = (set, get) => ({
           command,
           worktreeId: worktreeId,
           env: terminal.env,
+          exitBehavior: terminal.exitBehavior,
         });
       } catch (error) {
         console.error(`Failed to spawn terminal for recipe ${recipeId}:`, error);
@@ -291,6 +294,7 @@ const createRecipeStore: StateCreator<RecipeState> = (set, get) => ({
     }
 
     const ALLOWED_TYPES = ["terminal", "claude", "gemini", "codex", "opencode", "dev-preview"];
+    const ALLOWED_EXIT_BEHAVIORS = ["keep", "trash", "remove"];
     const sanitizedTerminals = recipe.terminals
       .filter((terminal) => {
         if (!ALLOWED_TYPES.includes(terminal.type)) return false;
@@ -321,6 +325,14 @@ const createRecipeStore: StateCreator<RecipeState> = (set, get) => ({
             if (typeof value !== "string") return false;
           }
         }
+        // Validate exitBehavior if present (allow undefined/empty string from UI)
+        if (terminal.exitBehavior !== undefined && typeof terminal.exitBehavior === "string") {
+          const behavior = terminal.exitBehavior as string;
+          // Empty string from UI means "use default" - allow it
+          if (behavior !== "" && !ALLOWED_EXIT_BEHAVIORS.includes(behavior)) {
+            return false;
+          }
+        }
         return true;
       })
       .map((terminal) => ({
@@ -334,6 +346,10 @@ const createRecipeStore: StateCreator<RecipeState> = (set, get) => ({
             : undefined,
         devCommand:
           typeof terminal.devCommand === "string" ? terminal.devCommand.trim() : undefined,
+        exitBehavior:
+          terminal.exitBehavior && ALLOWED_EXIT_BEHAVIORS.includes(terminal.exitBehavior as string)
+            ? (terminal.exitBehavior as "keep" | "trash" | "remove")
+            : undefined,
       }));
 
     if (sanitizedTerminals.length === 0) {

@@ -8,6 +8,7 @@ import type {
   TerminalFlowStatus,
   TerminalRuntimeStatus,
   SpawnError,
+  PanelExitBehavior,
 } from "@/types";
 import type { PanelKind } from "@/types";
 
@@ -48,6 +49,8 @@ export interface AddTerminalOptions {
   devCommand?: string;
   /** Environment variables to set for this terminal */
   env?: Record<string, string>;
+  /** Behavior when terminal exits: "keep" preserves for review, "trash" sends to trash, "remove" deletes completely */
+  exitBehavior?: PanelExitBehavior;
 }
 
 export interface TrashedTerminal {

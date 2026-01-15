@@ -129,6 +129,7 @@ export const createTerminalRegistrySlice =
               rows: 24,
               devCommand: options.devCommand,
               browserUrl: options.browserUrl,
+              exitBehavior: options.exitBehavior,
             };
           } else {
             terminal = {
@@ -338,6 +339,7 @@ export const createTerminalRegistrySlice =
             isVisible: location === "grid" ? true : false,
             runtimeStatus,
             isInputLocked: options.isInputLocked,
+            exitBehavior: options.exitBehavior,
           };
 
           set((state) => {
@@ -350,12 +352,13 @@ export const createTerminalRegistrySlice =
                 `[TerminalStore] Terminal ${id} already exists, updating instead of adding`
               );
               const existing = state.terminals[existingIndex];
-              // Preserve existing agentState/lastStateChange if new values are undefined
+              // Preserve existing agentState/lastStateChange/exitBehavior if new values are undefined
               const preservedTerminal = isReconnect
                 ? {
                     ...terminal,
                     agentState: terminal.agentState ?? existing.agentState,
                     lastStateChange: terminal.lastStateChange ?? existing.lastStateChange,
+                    exitBehavior: terminal.exitBehavior ?? existing.exitBehavior,
                   }
                 : terminal;
               newTerminals = state.terminals.map((t, i) =>
