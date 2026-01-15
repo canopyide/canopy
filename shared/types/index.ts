@@ -72,6 +72,8 @@ export type {
   // Project settings types
   RunCommand,
   ProjectSettings,
+  // Panel exit behavior
+  PanelExitBehavior,
 } from "./domain.js";
 
 // IPC types - communication payloads

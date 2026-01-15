@@ -405,6 +405,8 @@ interface PtyPanelData extends BasePanelData {
   browserUrl?: string;
   /** Dev command override for dev-preview panels */
   devCommand?: string;
+  /** Behavior when terminal exits: "keep" preserves for review, "trash" sends to trash, "remove" deletes completely */
+  exitBehavior?: PanelExitBehavior;
 }
 
 interface BrowserPanelData extends BasePanelData {
@@ -490,6 +492,8 @@ export interface TerminalInstance {
   createdAt?: number;
   /** Dev command override for dev-preview panels */
   devCommand?: string;
+  /** Behavior when terminal exits: "keep" preserves for review, "trash" sends to trash, "remove" deletes completely */
+  exitBehavior?: PanelExitBehavior;
 }
 
 /** Options for spawning a new PTY process */
@@ -626,6 +630,9 @@ export interface ProjectState {
 /** Recipe terminal type */
 export type RecipeTerminalType = AgentId | "terminal" | "dev-preview";
 
+/** Exit behavior for panels/terminals after process exits */
+export type PanelExitBehavior = "keep" | "trash" | "remove";
+
 /** A single terminal definition within a recipe */
 export interface RecipeTerminal {
   /** Type of terminal to spawn */
@@ -640,6 +647,8 @@ export interface RecipeTerminal {
   initialPrompt?: string;
   /** Dev server command for dev-preview terminals (optional). Falls back to project devServerCommand if not set. */
   devCommand?: string;
+  /** Behavior when terminal exits: "keep" preserves for review, "trash" sends to trash, "remove" deletes completely (optional, defaults to "keep") */
+  exitBehavior?: PanelExitBehavior;
 }
 
 /** A saved terminal recipe */

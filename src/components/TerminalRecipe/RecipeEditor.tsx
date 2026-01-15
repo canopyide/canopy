@@ -278,74 +278,175 @@ export function RecipeEditor({
                 </div>
 
                 {terminal.type === "terminal" && (
-                  <div className="mt-2">
-                    <label
-                      htmlFor={`terminal-command-${index}`}
-                      className="block text-xs font-medium text-canopy-text mb-1"
-                    >
-                      Command (optional)
-                    </label>
-                    <input
-                      id={`terminal-command-${index}`}
-                      type="text"
-                      value={terminal.command || ""}
-                      onChange={(e) => handleTerminalChange(index, "command", e.target.value)}
-                      placeholder="e.g., npm run dev"
-                      className="w-full px-2 py-1.5 bg-canopy-sidebar border border-canopy-border rounded text-sm text-canopy-text"
-                    />
-                  </div>
+                  <>
+                    <div className="mt-2">
+                      <label
+                        htmlFor={`terminal-command-${index}`}
+                        className="block text-xs font-medium text-canopy-text mb-1"
+                      >
+                        Command (optional)
+                      </label>
+                      <input
+                        id={`terminal-command-${index}`}
+                        type="text"
+                        value={terminal.command || ""}
+                        onChange={(e) => handleTerminalChange(index, "command", e.target.value)}
+                        placeholder="e.g., npm run dev"
+                        className="w-full px-2 py-1.5 bg-canopy-sidebar border border-canopy-border rounded text-sm text-canopy-text"
+                      />
+                    </div>
+                    <div className="mt-2">
+                      <label
+                        htmlFor={`terminal-exit-behavior-${index}`}
+                        className="block text-xs font-medium text-canopy-text mb-1"
+                      >
+                        After Exit
+                      </label>
+                      <select
+                        id={`terminal-exit-behavior-${index}`}
+                        value={terminal.exitBehavior || "trash"}
+                        onChange={(e) =>
+                          handleTerminalChange(
+                            index,
+                            "exitBehavior",
+                            e.target.value === "trash" ? "" : e.target.value
+                          )
+                        }
+                        aria-describedby={`terminal-exit-behavior-help-${index}`}
+                        className="w-full px-2 py-1.5 bg-canopy-sidebar border border-canopy-border rounded text-sm text-canopy-text"
+                      >
+                        <option value="trash">Send to Trash (default)</option>
+                        <option value="keep">Keep for Review</option>
+                        <option value="remove">Remove Completely</option>
+                      </select>
+                      <p
+                        id={`terminal-exit-behavior-help-${index}`}
+                        className="text-xs text-canopy-muted mt-1"
+                      >
+                        Failures always preserve terminal for debugging
+                      </p>
+                    </div>
+                  </>
                 )}
 
                 {terminal.type !== "terminal" && terminal.type !== "dev-preview" && (
-                  <div className="mt-2">
-                    <label
-                      htmlFor={`terminal-initial-prompt-${index}`}
-                      className="block text-xs font-medium text-canopy-text mb-1"
-                    >
-                      Initial Prompt (optional)
-                    </label>
-                    <textarea
-                      id={`terminal-initial-prompt-${index}`}
-                      value={terminal.initialPrompt || ""}
-                      onChange={(e) => handleTerminalChange(index, "initialPrompt", e.target.value)}
-                      placeholder="e.g., Review the latest changes and suggest improvements"
-                      rows={2}
-                      aria-describedby={`terminal-initial-prompt-help-${index}`}
-                      className="w-full px-2 py-1.5 bg-canopy-sidebar border border-canopy-border rounded text-sm text-canopy-text resize-y min-h-[60px]"
-                    />
-                    <p
-                      id={`terminal-initial-prompt-help-${index}`}
-                      className="text-xs text-canopy-muted mt-1"
-                    >
-                      This prompt will be sent to the agent when it starts
-                    </p>
-                  </div>
+                  <>
+                    <div className="mt-2">
+                      <label
+                        htmlFor={`terminal-initial-prompt-${index}`}
+                        className="block text-xs font-medium text-canopy-text mb-1"
+                      >
+                        Initial Prompt (optional)
+                      </label>
+                      <textarea
+                        id={`terminal-initial-prompt-${index}`}
+                        value={terminal.initialPrompt || ""}
+                        onChange={(e) =>
+                          handleTerminalChange(index, "initialPrompt", e.target.value)
+                        }
+                        placeholder="e.g., Review the latest changes and suggest improvements"
+                        rows={2}
+                        aria-describedby={`terminal-initial-prompt-help-${index}`}
+                        className="w-full px-2 py-1.5 bg-canopy-sidebar border border-canopy-border rounded text-sm text-canopy-text resize-y min-h-[60px]"
+                      />
+                      <p
+                        id={`terminal-initial-prompt-help-${index}`}
+                        className="text-xs text-canopy-muted mt-1"
+                      >
+                        This prompt will be sent to the agent when it starts
+                      </p>
+                    </div>
+                    <div className="mt-2">
+                      <label
+                        htmlFor={`terminal-agent-exit-behavior-${index}`}
+                        className="block text-xs font-medium text-canopy-text mb-1"
+                      >
+                        After Exit
+                      </label>
+                      <select
+                        id={`terminal-agent-exit-behavior-${index}`}
+                        value={terminal.exitBehavior || "keep"}
+                        onChange={(e) =>
+                          handleTerminalChange(
+                            index,
+                            "exitBehavior",
+                            e.target.value === "keep" ? "" : e.target.value
+                          )
+                        }
+                        aria-describedby={`terminal-agent-exit-behavior-help-${index}`}
+                        className="w-full px-2 py-1.5 bg-canopy-sidebar border border-canopy-border rounded text-sm text-canopy-text"
+                      >
+                        <option value="keep">Keep for Review (default)</option>
+                        <option value="trash">Send to Trash</option>
+                        <option value="remove">Remove Completely</option>
+                      </select>
+                      <p
+                        id={`terminal-agent-exit-behavior-help-${index}`}
+                        className="text-xs text-canopy-muted mt-1"
+                      >
+                        Failures always preserve terminal for debugging
+                      </p>
+                    </div>
+                  </>
                 )}
 
                 {terminal.type === "dev-preview" && (
-                  <div className="mt-2">
-                    <label
-                      htmlFor={`terminal-dev-command-${index}`}
-                      className="block text-xs font-medium text-canopy-text mb-1"
-                    >
-                      Dev Command (optional)
-                    </label>
-                    <input
-                      id={`terminal-dev-command-${index}`}
-                      type="text"
-                      value={terminal.devCommand || ""}
-                      onChange={(e) => handleTerminalChange(index, "devCommand", e.target.value)}
-                      placeholder="e.g., npm run dev"
-                      aria-describedby={`terminal-dev-command-help-${index}`}
-                      className="w-full px-2 py-1.5 bg-canopy-sidebar border border-canopy-border rounded text-sm text-canopy-text"
-                    />
-                    <p
-                      id={`terminal-dev-command-help-${index}`}
-                      className="text-xs text-canopy-muted mt-1"
-                    >
-                      Leave empty to use project default or auto-detect from package.json
-                    </p>
-                  </div>
+                  <>
+                    <div className="mt-2">
+                      <label
+                        htmlFor={`terminal-dev-command-${index}`}
+                        className="block text-xs font-medium text-canopy-text mb-1"
+                      >
+                        Dev Command (optional)
+                      </label>
+                      <input
+                        id={`terminal-dev-command-${index}`}
+                        type="text"
+                        value={terminal.devCommand || ""}
+                        onChange={(e) => handleTerminalChange(index, "devCommand", e.target.value)}
+                        placeholder="e.g., npm run dev"
+                        aria-describedby={`terminal-dev-command-help-${index}`}
+                        className="w-full px-2 py-1.5 bg-canopy-sidebar border border-canopy-border rounded text-sm text-canopy-text"
+                      />
+                      <p
+                        id={`terminal-dev-command-help-${index}`}
+                        className="text-xs text-canopy-muted mt-1"
+                      >
+                        Leave empty to use project default or auto-detect from package.json
+                      </p>
+                    </div>
+                    <div className="mt-2">
+                      <label
+                        htmlFor={`terminal-dev-exit-behavior-${index}`}
+                        className="block text-xs font-medium text-canopy-text mb-1"
+                      >
+                        After Exit
+                      </label>
+                      <select
+                        id={`terminal-dev-exit-behavior-${index}`}
+                        value={terminal.exitBehavior || "trash"}
+                        onChange={(e) =>
+                          handleTerminalChange(
+                            index,
+                            "exitBehavior",
+                            e.target.value === "trash" ? "" : e.target.value
+                          )
+                        }
+                        aria-describedby={`terminal-dev-exit-behavior-help-${index}`}
+                        className="w-full px-2 py-1.5 bg-canopy-sidebar border border-canopy-border rounded text-sm text-canopy-text"
+                      >
+                        <option value="trash">Send to Trash (default)</option>
+                        <option value="keep">Keep for Review</option>
+                        <option value="remove">Remove Completely</option>
+                      </select>
+                      <p
+                        id={`terminal-dev-exit-behavior-help-${index}`}
+                        className="text-xs text-canopy-muted mt-1"
+                      >
+                        Failures always preserve terminal for debugging
+                      </p>
+                    </div>
+                  </>
                 )}
               </div>
             ))}
