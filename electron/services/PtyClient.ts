@@ -64,6 +64,7 @@ interface TerminalInfoResponse {
   spawnedAt: number;
   isTrashed?: boolean;
   trashExpiresAt?: number;
+  activityTier?: "active" | "background";
 }
 
 export interface PtyClientConfig {
