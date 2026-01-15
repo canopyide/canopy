@@ -12,7 +12,7 @@ import {
   AlertTriangle,
   PanelRightOpen,
   PanelRightClose,
-  PanelLeft,
+  PanelLeftOpen,
   PanelLeftClose,
   Copy,
   Check,
@@ -565,7 +565,7 @@ export function Toolbar({
             aria-label="Toggle Sidebar"
             aria-pressed={!isFocusMode}
           >
-            {isFocusMode ? <PanelLeft /> : <PanelLeftClose />}
+            {isFocusMode ? <PanelLeftOpen /> : <PanelLeftClose />}
           </Button>
         ),
         isAvailable: true,
