@@ -460,14 +460,35 @@ export function setupTerminalStoreListeners() {
       return;
     }
 
-    // Preserve successfully completed agent terminals to enable reboot and output review
-    // Note: exitCode 0 includes signal-terminated processes (exitCode ?? 0), but these are
-    // rare for agents and the benefit of preserving output outweighs the edge case
-    if (isAgentTerminal(terminal.kind ?? terminal.type, terminal.agentId) && exitCode === 0) {
+    // Non-zero exit codes always preserve terminal for debugging, regardless of exitBehavior
+    // This ensures failures are visible for review
+    if (exitCode !== 0) {
       return;
     }
 
-    // Auto-trash on exit preserves history for review (consistent with manual close)
+    // Respect explicit exitBehavior if set (only honored on successful exit)
+    if (terminal.exitBehavior === "remove") {
+      state.removeTerminal(id);
+      return;
+    }
+
+    if (terminal.exitBehavior === "trash") {
+      state.trashTerminal(id);
+      return;
+    }
+
+    if (terminal.exitBehavior === "keep") {
+      // Explicit keep - preserve terminal regardless of type
+      return;
+    }
+
+    // exitBehavior undefined - use default behavior based on terminal type
+    // Preserve successfully completed agent terminals to enable reboot and output review
+    if (isAgentTerminal(terminal.kind ?? terminal.type, terminal.agentId)) {
+      return;
+    }
+
+    // Auto-trash non-agent terminals on exit (preserves history for review, consistent with manual close)
     state.trashTerminal(id);
   });
 
