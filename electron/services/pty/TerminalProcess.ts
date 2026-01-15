@@ -118,6 +118,7 @@ export class TerminalProcess {
   private readonly terminalInfo: TerminalInfo;
   private readonly isAgentTerminal: boolean;
   private forensicsBuffer = new TerminalForensicsBuffer();
+  private _activityTier: "active" | "background" = "active";
 
   private restoreSessionIfPresent(headlessTerminal: HeadlessTerminalType): void {
     if (!TERMINAL_SESSION_PERSISTENCE_ENABLED) return;
@@ -506,6 +507,7 @@ export class TerminalProcess {
       lastCheckTime: t.lastCheckTime,
       detectedAgentType: t.detectedAgentType,
       restartCount: t.restartCount,
+      activityTier: this._activityTier,
     };
   }
 
@@ -994,9 +996,17 @@ export class TerminalProcess {
   }
 
   setActivityMonitorTier(pollingIntervalMs: number): void {
+    // Track activity tier based on polling interval:
+    // 50ms = active (foreground), 500ms = background (project switched away)
+    this._activityTier = pollingIntervalMs <= 50 ? "active" : "background";
+
     if (this.activityMonitor) {
       this.activityMonitor.setPollingInterval(pollingIntervalMs);
     }
+  }
+
+  getActivityTier(): "active" | "background" {
+    return this._activityTier;
   }
 
   setSabModeEnabled(_enabled: boolean): void {

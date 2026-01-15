@@ -153,6 +153,16 @@ export async function hydrateAppState(options: HydrationOptions): Promise<void> 
                   lastStateChange: backendLastStateChange,
                 });
 
+                // Initialize frontend tier state from backend to ensure proper wake behavior
+                // after project switch. Without this, frontend defaults to "active" which prevents
+                // proper wake when transitioning from background to active tier.
+                if (backendTerminal.activityTier) {
+                  terminalInstanceService.initializeBackendTier(
+                    backendTerminal.id,
+                    backendTerminal.activityTier
+                  );
+                }
+
                 // Restore terminal content from backend headless state
                 try {
                   await terminalInstanceService.fetchAndRestore(backendTerminal.id);
@@ -275,6 +285,11 @@ export async function hydrateAppState(options: HydrationOptions): Promise<void> 
                 agentState: currentAgentState,
                 lastStateChange: backendLastStateChange,
               });
+
+              // Initialize frontend tier state from backend to ensure proper wake behavior
+              if (terminal.activityTier) {
+                terminalInstanceService.initializeBackendTier(terminal.id, terminal.activityTier);
+              }
 
               // Restore terminal content from backend headless state
               try {

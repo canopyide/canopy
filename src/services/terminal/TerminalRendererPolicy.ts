@@ -130,6 +130,23 @@ export class TerminalRendererPolicy {
     this.lastBackendTier.delete(id);
   }
 
+  /**
+   * Initialize the backend tier state for a terminal that was reconnected.
+   * This ensures the frontend knows the actual backend tier state after project switch,
+   * allowing proper wake behavior when transitioning back to active.
+   */
+  initializeBackendTier(id: string, tier: "active" | "background"): void {
+    this.lastBackendTier.set(id, tier);
+
+    // If initializing to background, set needsWake to ensure wake happens on next activation
+    if (tier === "background") {
+      const managed = this.deps.getInstance(id);
+      if (managed) {
+        managed.needsWake = true;
+      }
+    }
+  }
+
   dispose(): void {
     this.lastBackendTier.clear();
   }

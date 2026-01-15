@@ -204,6 +204,8 @@ export interface PtyHostTerminalInfo {
   spawnedAt: number;
   isTrashed?: boolean;
   trashExpiresAt?: number;
+  /** Current activity tier: "active" (foreground) or "background" (project switched away) */
+  activityTier?: "active" | "background";
 }
 
 /** Payload for agent:spawned event */
