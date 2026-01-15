@@ -9,6 +9,7 @@ import { useErrorStore } from "./errorStore";
 import { useNotificationStore } from "./notificationStore";
 import { cleanupNotesStore } from "./notesStore";
 import { useRecipeStore } from "./recipeStore";
+import { useBrowserStateStore } from "./browserStateStore";
 
 export async function resetAllStoresForProjectSwitch(): Promise<void> {
   // Use resetWithoutKilling instead of reset
@@ -28,4 +29,7 @@ export async function resetAllStoresForProjectSwitch(): Promise<void> {
   useErrorStore.getState().reset();
   useNotificationStore.getState().reset();
   cleanupNotesStore();
+  // Reset browser state to ensure per-project URLs are restored from project persistence
+  // rather than using stale localStorage state from a different project
+  useBrowserStateStore.getState().reset();
 }

@@ -13,6 +13,7 @@ import { terminalInstanceService } from "@/services/TerminalInstanceService";
 import { useWorktreeSelectionStore } from "@/store/worktreeStore";
 import { panelKindHasPty } from "@shared/config/panelKindRegistry";
 import type { HydrationCallbacks } from "./useAppHydration";
+import { useBrowserStateStore } from "@/store/browserStateStore";
 
 export function useProjectSwitchRehydration(callbacks: HydrationCallbacks) {
   useEffect(() => {
@@ -58,6 +59,9 @@ export function useProjectSwitchRehydration(callbacks: HydrationCallbacks) {
       console.log(
         "[useProjectSwitchRehydration] Received PROJECT_ON_SWITCH from main process, re-hydrating..."
       );
+      // Clear browser state before hydration for menu-driven switches
+      // (renderer-driven switches already reset via resetAllStoresForProjectSwitch)
+      useBrowserStateStore.getState().reset();
       window.dispatchEvent(new CustomEvent("project-switched"));
     });
 
