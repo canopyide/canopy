@@ -1,5 +1,5 @@
 import { useEffect, useState, useRef, useCallback, useMemo } from "react";
-import { ChevronsUpDown, Plus, Circle } from "lucide-react";
+import { ChevronsUpDown, Plus, Circle, X } from "lucide-react";
 import { cn } from "@/lib/utils";
 import { getProjectGradient } from "@/lib/colorUtils";
 import { useProjectStore } from "@/store/projectStore";
@@ -461,16 +461,13 @@ export function ProjectSwitcher() {
                     onClick={(e) => void handleCloseProject(project.id, e, true)}
                     className={cn(
                       "p-0.5 rounded transition-colors cursor-pointer",
-                      "text-muted-foreground/60 hover:text-red-500 hover:bg-red-500/10",
+                      "text-[var(--color-status-error)] hover:bg-red-500/10",
                       "focus-visible:outline focus-visible:outline-2 focus-visible:outline-canopy-accent"
                     )}
-                    title="Stop project"
-                    aria-label="Stop project"
+                    title={`Stop project (${stats?.terminalCount ?? 0} session${(stats?.terminalCount ?? 0) === 1 ? "" : "s"})`}
+                    aria-label={`Stop project (${stats?.terminalCount ?? 0} session${(stats?.terminalCount ?? 0) === 1 ? "" : "s"})`}
                   >
-                    <span
-                      className="block w-3 h-3 box-border rounded-[2px] border-2 border-current"
-                      aria-hidden="true"
-                    />
+                    <X className="w-3.5 h-3.5" aria-hidden="true" />
                   </button>
                 )}
               </div>
