@@ -42,7 +42,7 @@ import type { CopyTreeCancelPayload, CopyTreeSettings } from "../../types/index.
  * Merge project-level CopyTree settings with runtime options.
  * Runtime options take precedence over project settings.
  */
-function mergeCopyTreeOptions(
+export function mergeCopyTreeOptions(
   projectSettings: CopyTreeSettings | undefined,
   runtimeOptions: CopyTreeOptions | undefined
 ): CopyTreeOptions {
@@ -75,7 +75,11 @@ function mergeCopyTreeOptions(
   }
 
   if (projectSettings.alwaysExclude) {
-    const existing = merged.exclude ? (Array.isArray(merged.exclude) ? merged.exclude : [merged.exclude]) : [];
+    const existing = merged.exclude
+      ? Array.isArray(merged.exclude)
+        ? merged.exclude
+        : [merged.exclude]
+      : [];
     const additional = projectSettings.alwaysExclude;
     merged.exclude = [...existing, ...additional];
   }
@@ -452,7 +456,10 @@ export function registerCopyTreeHandlers(deps: HandlerDependencies): () => void 
     const { CopyTreeTestConfigPayloadSchema } = await import("../../schemas/ipc.js");
     const parseResult = CopyTreeTestConfigPayloadSchema.safeParse(payload);
     if (!parseResult.success) {
-      console.error(`[${traceId}] Invalid CopyTree test-config payload:`, parseResult.error.format());
+      console.error(
+        `[${traceId}] Invalid CopyTree test-config payload:`,
+        parseResult.error.format()
+      );
       return {
         includedFiles: 0,
         includedSize: 0,
