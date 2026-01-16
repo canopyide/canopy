@@ -102,18 +102,20 @@ export function DockPanelOffscreenContainer({ children }: DockPanelOffscreenCont
 
           // Always use portal to avoid remounting when switching between offscreen and popover
           // If no target is set, portal to a stable slot in the offscreen container
-          const portalContainer = target || (() => {
-            // Create or get stable offscreen slot for this terminal
-            let slot = document.querySelector(`[data-offscreen-slot="${terminal.id}"]`);
-            if (!slot) {
-              slot = document.createElement("div");
-              slot.setAttribute("data-offscreen-slot", terminal.id);
-              slot.className = "offscreen-panel-slot";
-              const hiddenContainer = document.querySelector(".dock-panel-offscreen-container");
-              hiddenContainer?.appendChild(slot);
-            }
-            return slot;
-          })();
+          const portalContainer =
+            target ||
+            (() => {
+              // Create or get stable offscreen slot for this terminal
+              let slot = document.querySelector(`[data-offscreen-slot="${terminal.id}"]`);
+              if (!slot) {
+                slot = document.createElement("div");
+                slot.setAttribute("data-offscreen-slot", terminal.id);
+                slot.className = "offscreen-panel-slot";
+                const hiddenContainer = document.querySelector(".dock-panel-offscreen-container");
+                hiddenContainer?.appendChild(slot);
+              }
+              return slot;
+            })();
 
           const content = (
             <div
