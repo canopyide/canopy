@@ -1,5 +1,9 @@
 import { describe, expect, it } from "vitest";
-import { getAtFileContext, getSlashCommandContext, getLeadingSlashCommand } from "../hybridInputParsing";
+import {
+  getAtFileContext,
+  getSlashCommandContext,
+  getLeadingSlashCommand,
+} from "../hybridInputParsing";
 
 describe("getAtFileContext", () => {
   it("detects an @ token at the caret", () => {

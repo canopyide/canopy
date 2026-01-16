@@ -662,161 +662,91 @@ export const HybridInputBar = forwardRef<HybridInputBarHandle, HybridInputBarPro
               <SlashCommandOverlay
                 value={value}
                 commandMap={commandMap}
-                textareaRef={textareaRef}
+                textareaRef={textareaRef as React.RefObject<HTMLTextAreaElement>}
                 disabled={disabled || isInitializing}
               />
 
               <textarea
                 ref={textareaRef}
                 value={value}
-              onChange={(e) => {
-                setValue(e.target.value);
-                resizeTextarea(e.target);
+                onChange={(e) => {
+                  setValue(e.target.value);
+                  resizeTextarea(e.target);
 
-                if (isInHistoryMode) {
-                  resetHistoryIndex(terminalId);
-                }
-
-                const caret = e.target.selectionStart ?? e.target.value.length;
-                const text = e.target.value;
-
-                const slash = getSlashCommandContext(text, caret);
-                if (slash) {
-                  setSlashContext(slash);
-                  setAtContext(null);
-                  return;
-                }
-
-                setSlashContext(null);
-                setAtContext(getAtFileContext(text, caret));
-              }}
-              onCompositionStart={() => {
-                submitAfterCompositionRef.current = false;
-              }}
-              onCompositionEnd={() => {
-                if (!submitAfterCompositionRef.current) return;
-                submitAfterCompositionRef.current = false;
-                queueSend();
-              }}
-              placeholder={placeholder}
-              rows={1}
-              spellCheck={false}
-              className={cn(
-                "w-full resize-none bg-transparent pr-1 font-mono text-xs leading-5 text-canopy-text",
-                "placeholder:text-canopy-text/25 focus:outline-none disabled:opacity-50",
-                "max-h-40 overflow-y-auto"
-              )}
-              disabled={disabled}
-              onBlurCapture={(e) => {
-                const nextTarget = e.relatedTarget as HTMLElement | null;
-                const root = rootRef.current;
-                if (root && nextTarget && root.contains(nextTarget)) return;
-                setAtContext(null);
-                setSlashContext(null);
-                allowNextLineBreakRef.current = false;
-                handledEnterRef.current = false;
-                submitAfterCompositionRef.current = false;
-                if (sendRafRef.current !== null) {
-                  cancelAnimationFrame(sendRafRef.current);
-                  sendRafRef.current = null;
-                }
-              }}
-              onBeforeInput={(e) => {
-                if (disabled) return;
-                const nativeEvent = e.nativeEvent as InputEvent;
-                if (!isEnterLikeLineBreakInputEvent(nativeEvent)) return;
-
-                if (handledEnterRef.current) {
-                  handledEnterRef.current = false;
-                  e.preventDefault();
-                  e.stopPropagation();
-                  return;
-                }
-
-                if (allowNextLineBreakRef.current) {
-                  allowNextLineBreakRef.current = false;
-                  return;
-                }
-
-                if (isInitializing) {
-                  e.preventDefault();
-                  e.stopPropagation();
-                  return;
-                }
-
-                if (isAutocompleteOpen && autocompleteItems[selectedIndex]) {
-                  e.preventDefault();
-                  e.stopPropagation();
-                  const action =
-                    activeMode === "command" ? ("execute" as const) : ("insert" as const);
-                  if (action === "execute" && isInitializing) {
-                    return;
+                  if (isInHistoryMode) {
+                    resetHistoryIndex(terminalId);
                   }
-                  applyAutocompleteItem(autocompleteItems[selectedIndex], action);
-                  return;
-                }
 
-                e.preventDefault();
-                e.stopPropagation();
-                if (nativeEvent.isComposing) {
-                  submitAfterCompositionRef.current = true;
-                  return;
-                }
-                queueSend();
-              }}
-              onKeyDownCapture={(e) => {
-                if (disabled) return;
-                const isEnter =
-                  e.key === "Enter" ||
-                  e.key === "Return" ||
-                  e.code === "Enter" ||
-                  e.code === "NumpadEnter";
-                if (isEnter) {
-                  allowNextLineBreakRef.current = e.shiftKey;
-                }
+                  const caret = e.target.selectionStart ?? e.target.value.length;
+                  const text = e.target.value;
 
-                if (e.nativeEvent.isComposing) {
-                  if (isEnter && !e.shiftKey) {
-                    submitAfterCompositionRef.current = true;
-                  }
-                  return;
-                }
-
-                if (isAutocompleteOpen) {
-                  const resultsCount = autocompleteItems.length;
-                  if (e.key === "Escape") {
-                    e.preventDefault();
-                    e.stopPropagation();
+                  const slash = getSlashCommandContext(text, caret);
+                  if (slash) {
+                    setSlashContext(slash);
                     setAtContext(null);
-                    setSlashContext(null);
                     return;
                   }
 
-                  if (resultsCount > 0 && (e.key === "ArrowDown" || e.key === "ArrowUp")) {
+                  setSlashContext(null);
+                  setAtContext(getAtFileContext(text, caret));
+                }}
+                onCompositionStart={() => {
+                  submitAfterCompositionRef.current = false;
+                }}
+                onCompositionEnd={() => {
+                  if (!submitAfterCompositionRef.current) return;
+                  submitAfterCompositionRef.current = false;
+                  queueSend();
+                }}
+                placeholder={placeholder}
+                rows={1}
+                spellCheck={false}
+                className={cn(
+                  "w-full resize-none bg-transparent pr-1 font-mono text-xs leading-5 text-canopy-text",
+                  "placeholder:text-canopy-text/25 focus:outline-none disabled:opacity-50",
+                  "max-h-40 overflow-y-auto"
+                )}
+                disabled={disabled}
+                onBlurCapture={(e) => {
+                  const nextTarget = e.relatedTarget as HTMLElement | null;
+                  const root = rootRef.current;
+                  if (root && nextTarget && root.contains(nextTarget)) return;
+                  setAtContext(null);
+                  setSlashContext(null);
+                  allowNextLineBreakRef.current = false;
+                  handledEnterRef.current = false;
+                  submitAfterCompositionRef.current = false;
+                  if (sendRafRef.current !== null) {
+                    cancelAnimationFrame(sendRafRef.current);
+                    sendRafRef.current = null;
+                  }
+                }}
+                onBeforeInput={(e) => {
+                  if (disabled) return;
+                  const nativeEvent = e.nativeEvent as InputEvent;
+                  if (!isEnterLikeLineBreakInputEvent(nativeEvent)) return;
+
+                  if (handledEnterRef.current) {
+                    handledEnterRef.current = false;
                     e.preventDefault();
                     e.stopPropagation();
-                    setSelectedIndex((prev) => {
-                      if (resultsCount === 0) return 0;
-                      if (e.key === "ArrowDown") return (prev + 1) % resultsCount;
-                      return (prev - 1 + resultsCount) % resultsCount;
-                    });
                     return;
                   }
 
-                  if (resultsCount > 0 && e.key === "Tab") {
-                    e.preventDefault();
-                    e.stopPropagation();
-                    applyAutocompleteItem(autocompleteItems[selectedIndex], "insert");
+                  if (allowNextLineBreakRef.current) {
+                    allowNextLineBreakRef.current = false;
                     return;
                   }
 
-                  if (resultsCount > 0 && e.key === "Enter" && !e.shiftKey) {
+                  if (isInitializing) {
                     e.preventDefault();
                     e.stopPropagation();
-                    handledEnterRef.current = true;
-                    setTimeout(() => {
-                      handledEnterRef.current = false;
-                    }, 0);
+                    return;
+                  }
+
+                  if (isAutocompleteOpen && autocompleteItems[selectedIndex]) {
+                    e.preventDefault();
+                    e.stopPropagation();
                     const action =
                       activeMode === "command" ? ("execute" as const) : ("insert" as const);
                     if (action === "execute" && isInitializing) {
@@ -825,37 +755,107 @@ export const HybridInputBar = forwardRef<HybridInputBarHandle, HybridInputBarPro
                     applyAutocompleteItem(autocompleteItems[selectedIndex], action);
                     return;
                   }
-                }
 
-                if (handleKeyPassthrough(e)) {
-                  return;
-                }
-
-                if (isEnter) {
-                  if (e.shiftKey) return;
-                  if (isInitializing) {
-                    e.preventDefault();
-                    e.stopPropagation();
-                    return;
-                  }
                   e.preventDefault();
                   e.stopPropagation();
-                  handledEnterRef.current = true;
-                  setTimeout(() => {
-                    handledEnterRef.current = false;
-                  }, 0);
+                  if (nativeEvent.isComposing) {
+                    submitAfterCompositionRef.current = true;
+                    return;
+                  }
                   queueSend();
-                }
-              }}
-              onKeyUpCapture={() => {
-                if (disabled) return;
-                refreshContextsFromTextarea();
-              }}
-              onClick={() => {
-                if (disabled) return;
-                refreshContextsFromTextarea();
-              }}
-            />
+                }}
+                onKeyDownCapture={(e) => {
+                  if (disabled) return;
+                  const isEnter =
+                    e.key === "Enter" ||
+                    e.key === "Return" ||
+                    e.code === "Enter" ||
+                    e.code === "NumpadEnter";
+                  if (isEnter) {
+                    allowNextLineBreakRef.current = e.shiftKey;
+                  }
+
+                  if (e.nativeEvent.isComposing) {
+                    if (isEnter && !e.shiftKey) {
+                      submitAfterCompositionRef.current = true;
+                    }
+                    return;
+                  }
+
+                  if (isAutocompleteOpen) {
+                    const resultsCount = autocompleteItems.length;
+                    if (e.key === "Escape") {
+                      e.preventDefault();
+                      e.stopPropagation();
+                      setAtContext(null);
+                      setSlashContext(null);
+                      return;
+                    }
+
+                    if (resultsCount > 0 && (e.key === "ArrowDown" || e.key === "ArrowUp")) {
+                      e.preventDefault();
+                      e.stopPropagation();
+                      setSelectedIndex((prev) => {
+                        if (resultsCount === 0) return 0;
+                        if (e.key === "ArrowDown") return (prev + 1) % resultsCount;
+                        return (prev - 1 + resultsCount) % resultsCount;
+                      });
+                      return;
+                    }
+
+                    if (resultsCount > 0 && e.key === "Tab") {
+                      e.preventDefault();
+                      e.stopPropagation();
+                      applyAutocompleteItem(autocompleteItems[selectedIndex], "insert");
+                      return;
+                    }
+
+                    if (resultsCount > 0 && e.key === "Enter" && !e.shiftKey) {
+                      e.preventDefault();
+                      e.stopPropagation();
+                      handledEnterRef.current = true;
+                      setTimeout(() => {
+                        handledEnterRef.current = false;
+                      }, 0);
+                      const action =
+                        activeMode === "command" ? ("execute" as const) : ("insert" as const);
+                      if (action === "execute" && isInitializing) {
+                        return;
+                      }
+                      applyAutocompleteItem(autocompleteItems[selectedIndex], action);
+                      return;
+                    }
+                  }
+
+                  if (handleKeyPassthrough(e)) {
+                    return;
+                  }
+
+                  if (isEnter) {
+                    if (e.shiftKey) return;
+                    if (isInitializing) {
+                      e.preventDefault();
+                      e.stopPropagation();
+                      return;
+                    }
+                    e.preventDefault();
+                    e.stopPropagation();
+                    handledEnterRef.current = true;
+                    setTimeout(() => {
+                      handledEnterRef.current = false;
+                    }, 0);
+                    queueSend();
+                  }
+                }}
+                onKeyUpCapture={() => {
+                  if (disabled) return;
+                  refreshContextsFromTextarea();
+                }}
+                onClick={() => {
+                  if (disabled) return;
+                  refreshContextsFromTextarea();
+                }}
+              />
             </div>
           </div>
         </div>

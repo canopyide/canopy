@@ -1,5 +1,5 @@
-import { EditorView, Decoration, ViewPlugin, hoverTooltip, keymap, placeholder } from "@codemirror/view";
-import { StateField, EditorSelection, Prec, Extension } from "@codemirror/state";
+import { EditorView, Decoration, hoverTooltip, keymap, placeholder } from "@codemirror/view";
+import { StateField, Prec, Extension } from "@codemirror/state";
 import { insertNewline } from "@codemirror/commands";
 import { createRoot, Root } from "react-dom/client";
 import type { SlashCommand } from "@shared/types";
@@ -51,7 +51,9 @@ export const inputTheme = EditorView.theme({
 });
 
 const slashChipMark = Decoration.mark({ class: "cm-slash-command-chip" });
-const invalidChipMark = Decoration.mark({ class: "cm-slash-command-chip cm-slash-command-chip-invalid" });
+const invalidChipMark = Decoration.mark({
+  class: "cm-slash-command-chip cm-slash-command-chip-invalid",
+});
 
 interface SlashChipFieldConfig {
   commandMap: Map<string, SlashCommand>;
@@ -99,7 +101,8 @@ export function createSlashTooltip(commandMap: Map<string, SlashCommand>) {
       above: true,
       create() {
         const dom = document.createElement("div");
-        dom.className = "overflow-hidden rounded-[var(--radius-md)] surface-overlay shadow-overlay px-3 py-1.5 text-xs text-canopy-text";
+        dom.className =
+          "overflow-hidden rounded-[var(--radius-md)] surface-overlay shadow-overlay px-3 py-1.5 text-xs text-canopy-text";
 
         currentRoot = createRoot(dom);
         currentRoot.render(<SlashCommandTooltipContent command={command} />);
