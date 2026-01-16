@@ -15,6 +15,7 @@ import { cn } from "@/lib/utils";
 import { buildTerminalSendPayload } from "@/lib/terminalInput";
 import { useFileAutocomplete } from "@/hooks/useFileAutocomplete";
 import { useSlashCommandAutocomplete } from "@/hooks/useSlashCommandAutocomplete";
+import { useSlashCommandList } from "@/hooks/useSlashCommandList";
 import { useTerminalInputStore } from "@/store/terminalInputStore";
 import { AutocompleteMenu, type AutocompleteItem } from "./AutocompleteMenu";
 import { isEnterLikeLineBreakInputEvent } from "./hybridInputEvents";
@@ -25,6 +26,7 @@ import {
   type AtFileContext,
   type SlashCommandContext,
 } from "./hybridInputParsing";
+import { SlashCommandOverlay } from "./SlashCommandOverlay";
 
 const MAX_TEXTAREA_HEIGHT_PX = 160;
 
@@ -196,6 +198,11 @@ export const HybridInputBar = forwardRef<HybridInputBarHandle, HybridInputBarPro
         agentId,
         projectPath: cwd,
       });
+
+    const { commandMap } = useSlashCommandList({
+      agentId,
+      projectPath: cwd,
+    });
 
     const autocompleteItems = useMemo((): AutocompleteItem[] => {
       if (activeMode === "file") {
@@ -651,9 +658,17 @@ export const HybridInputBar = forwardRef<HybridInputBarHandle, HybridInputBarPro
               ❯
             </div>
 
-            <textarea
-              ref={textareaRef}
-              value={value}
+            <div className="relative flex-1">
+              <SlashCommandOverlay
+                value={value}
+                commandMap={commandMap}
+                textareaRef={textareaRef}
+                disabled={disabled || isInitializing}
+              />
+
+              <textarea
+                ref={textareaRef}
+                value={value}
               onChange={(e) => {
                 setValue(e.target.value);
                 resizeTextarea(e.target);
@@ -687,7 +702,7 @@ export const HybridInputBar = forwardRef<HybridInputBarHandle, HybridInputBarPro
               rows={1}
               spellCheck={false}
               className={cn(
-                "flex-1 resize-none bg-transparent pr-1 font-mono text-xs leading-5 text-canopy-text",
+                "w-full resize-none bg-transparent pr-1 font-mono text-xs leading-5 text-canopy-text",
                 "placeholder:text-canopy-text/25 focus:outline-none disabled:opacity-50",
                 "max-h-40 overflow-y-auto"
               )}
@@ -841,6 +856,7 @@ export const HybridInputBar = forwardRef<HybridInputBarHandle, HybridInputBarPro
                 refreshContextsFromTextarea();
               }}
             />
+            </div>
           </div>
         </div>
       </div>
