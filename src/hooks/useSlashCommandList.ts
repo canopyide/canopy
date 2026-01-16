@@ -14,10 +14,7 @@ export interface UseSlashCommandListArgs {
   projectPath?: string;
 }
 
-export function useSlashCommandList({
-  agentId,
-  projectPath,
-}: UseSlashCommandListArgs): {
+export function useSlashCommandList({ agentId, projectPath }: UseSlashCommandListArgs): {
   commands: SlashCommand[];
   commandMap: Map<string, SlashCommand>;
   isLoading: boolean;

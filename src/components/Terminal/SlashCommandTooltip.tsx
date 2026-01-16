@@ -9,9 +9,9 @@ interface SlashCommandTooltipContentProps {
 export const SlashCommandTooltipContent = memo(function SlashCommandTooltipContent({
   command,
 }: SlashCommandTooltipContentProps) {
-  const scopeLabel = command.scope === "canopy" ? "Canopy" : command.agentId;
+  const scopeLabel = (command.scope as string) === "canopy" ? "Canopy" : command.agentId;
   const scopeColor =
-    command.scope === "canopy"
+    (command.scope as string) === "canopy"
       ? "text-canopy-accent"
       : command.agentId === "claude"
         ? "text-sky-400"
