@@ -282,19 +282,16 @@ export function NotesPane({
     [terminals, focusedId, worktreeId, queueCommand, addNotification]
   );
 
-  const buildSendMenu = useCallback(
-    (useSelection: boolean): MenuItemOption[] => {
-      const agentIds = getAgentIds();
-      return agentIds.map((agentId) => {
-        const config = getAgentConfig(agentId);
-        return {
-          id: `send-to:${agentId}:${useSelection ? "selection" : "note"}`,
-          label: config?.name || agentId,
-        };
-      });
-    },
-    []
-  );
+  const buildSendMenu = useCallback((useSelection: boolean): MenuItemOption[] => {
+    const agentIds = getAgentIds();
+    return agentIds.map((agentId) => {
+      const config = getAgentConfig(agentId);
+      return {
+        id: `send-to:${agentId}:${useSelection ? "selection" : "note"}`,
+        label: config?.name || agentId,
+      };
+    });
+  }, []);
 
   const handleSendMenuClick = useCallback(
     async (event: React.MouseEvent) => {

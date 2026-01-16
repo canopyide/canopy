@@ -1,5 +1,4 @@
 import type { TerminalInstance } from "@/store";
-import { isAgentReady } from "@/store/slices/terminalCommandQueueSlice";
 import { isAgentTerminal } from "@/utils/terminalType";
 
 export interface SendToAgentResult {
