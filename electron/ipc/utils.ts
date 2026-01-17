@@ -6,8 +6,12 @@ export function sendToRenderer(
   channel: string,
   ...args: unknown[]
 ): void {
-  if (mainWindow && !mainWindow.isDestroyed()) {
-    mainWindow.webContents.send(channel, ...args);
+  if (mainWindow && !mainWindow.isDestroyed() && !mainWindow.webContents.isDestroyed()) {
+    try {
+      mainWindow.webContents.send(channel, ...args);
+    } catch {
+      // Silently ignore send failures during window initialization/disposal.
+    }
   }
 }
 
@@ -28,7 +32,11 @@ export function typedSend<K extends keyof IpcEventMap>(
   channel: K,
   payload: IpcEventMap[K]
 ): void {
-  if (window && !window.isDestroyed()) {
-    window.webContents.send(channel as string, payload);
+  if (window && !window.isDestroyed() && !window.webContents.isDestroyed()) {
+    try {
+      window.webContents.send(channel as string, payload);
+    } catch {
+      // Silently ignore send failures during window initialization/disposal.
+    }
   }
 }

@@ -15,11 +15,31 @@ export function registerDevPreviewHandlers(deps: HandlerDependencies): () => voi
     devPreviewService = new DevPreviewService(deps.ptyClient);
 
     devPreviewService.on("status", (data) => {
-      deps.mainWindow.webContents.send(CHANNELS.DEV_PREVIEW_STATUS, data);
+      if (
+        deps.mainWindow &&
+        !deps.mainWindow.isDestroyed() &&
+        !deps.mainWindow.webContents.isDestroyed()
+      ) {
+        try {
+          deps.mainWindow.webContents.send(CHANNELS.DEV_PREVIEW_STATUS, data);
+        } catch {
+          // Silently ignore send failures during window disposal.
+        }
+      }
     });
 
     devPreviewService.on("url", (data) => {
-      deps.mainWindow.webContents.send(CHANNELS.DEV_PREVIEW_URL, data);
+      if (
+        deps.mainWindow &&
+        !deps.mainWindow.isDestroyed() &&
+        !deps.mainWindow.webContents.isDestroyed()
+      ) {
+        try {
+          deps.mainWindow.webContents.send(CHANNELS.DEV_PREVIEW_URL, data);
+        } catch {
+          // Silently ignore send failures during window disposal.
+        }
+      }
     });
   }
 
