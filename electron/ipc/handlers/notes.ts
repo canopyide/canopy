@@ -61,7 +61,17 @@ export function registerNotesHandlers(deps: HandlerDependencies): () => void {
   const handlers: Array<() => void> = [];
 
   const broadcastUpdate = (payload: NoteUpdatedPayload) => {
-    deps.mainWindow.webContents.send(CHANNELS.NOTES_UPDATED, payload);
+    if (
+      deps.mainWindow &&
+      !deps.mainWindow.isDestroyed() &&
+      !deps.mainWindow.webContents.isDestroyed()
+    ) {
+      try {
+        deps.mainWindow.webContents.send(CHANNELS.NOTES_UPDATED, payload);
+      } catch {
+        // Silently ignore send failures during window disposal.
+      }
+    }
   };
 
   const handleNotesCreate = async (

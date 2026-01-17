@@ -36,8 +36,12 @@ export function createApplicationMenu(
   };
 
   const sendAction = (action: string) => {
-    if (mainWindow && !mainWindow.isDestroyed()) {
-      mainWindow.webContents.send(CHANNELS.MENU_ACTION, action);
+    if (mainWindow && !mainWindow.isDestroyed() && !mainWindow.webContents.isDestroyed()) {
+      try {
+        mainWindow.webContents.send(CHANNELS.MENU_ACTION, action);
+      } catch {
+        // Silently ignore send failures during window disposal.
+      }
     }
   };
 
@@ -271,8 +275,12 @@ async function handleDirectoryOpen(
 
     await getWorkspaceClient().refresh();
 
-    if (!mainWindow.isDestroyed()) {
-      mainWindow.webContents.send(CHANNELS.PROJECT_ON_SWITCH, updatedProject);
+    if (!mainWindow.isDestroyed() && !mainWindow.webContents.isDestroyed()) {
+      try {
+        mainWindow.webContents.send(CHANNELS.PROJECT_ON_SWITCH, updatedProject);
+      } catch {
+        // Silently ignore send failures during window disposal.
+      }
     }
 
     createApplicationMenu(mainWindow, cliAvailabilityService);

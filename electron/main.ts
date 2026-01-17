@@ -479,13 +479,17 @@ async function createWindow(): Promise<void> {
     console.error(`[MAIN] Pty Host crashed:`, details);
 
     // Forward to renderer with crash metadata
-    if (mainWindow && !mainWindow.isDestroyed()) {
-      mainWindow.webContents.send(CHANNELS.TERMINAL_BACKEND_CRASHED, {
-        crashType: details.crashType,
-        code: details.code,
-        signal: details.signal,
-        timestamp: details.timestamp,
-      });
+    if (mainWindow && !mainWindow.isDestroyed() && !mainWindow.webContents.isDestroyed()) {
+      try {
+        mainWindow.webContents.send(CHANNELS.TERMINAL_BACKEND_CRASHED, {
+          crashType: details.crashType,
+          code: details.code,
+          signal: details.signal,
+          timestamp: details.timestamp,
+        });
+      } catch {
+        // Silently ignore send failures during window disposal.
+      }
     }
   });
   ptyClient.on("host-crash", (code) => {
@@ -496,8 +500,12 @@ async function createWindow(): Promise<void> {
     createAndDistributePorts();
 
     // Notify renderer that backend is back
-    if (mainWindow && !mainWindow.isDestroyed()) {
-      mainWindow.webContents.send(CHANNELS.TERMINAL_BACKEND_READY);
+    if (mainWindow && !mainWindow.isDestroyed() && !mainWindow.webContents.isDestroyed()) {
+      try {
+        mainWindow.webContents.send(CHANNELS.TERMINAL_BACKEND_READY);
+      } catch {
+        // Silently ignore send failures during window disposal.
+      }
     }
   });
 
@@ -690,10 +698,16 @@ async function createWindow(): Promise<void> {
         }
         const sleepDuration = suspendTime ? Date.now() - suspendTime : 0;
         BrowserWindow.getAllWindows().forEach((win) => {
-          win.webContents.send(CHANNELS.SYSTEM_WAKE, {
-            sleepDuration,
-            timestamp: Date.now(),
-          });
+          if (win && !win.isDestroyed() && !win.webContents.isDestroyed()) {
+            try {
+              win.webContents.send(CHANNELS.SYSTEM_WAKE, {
+                sleepDuration,
+                timestamp: Date.now(),
+              });
+            } catch {
+              // Silently ignore send failures during window disposal.
+            }
+          }
         });
         suspendTime = null;
       } catch (error) {
