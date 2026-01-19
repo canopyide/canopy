@@ -59,6 +59,8 @@ export function buildSearchableText(worktree: Worktree | WorktreeState): string 
     worktree.issueNumber ? `#${worktree.issueNumber}` : "",
     worktree.prNumber ? `#${worktree.prNumber}` : "",
     worktree.summary ?? "",
+    worktree.issueTitle ?? "",
+    worktree.prTitle ?? "",
     worktree.aiNote ?? "",
   ];
 

@@ -533,10 +533,14 @@ function App() {
     const filtered = sorted.filter((worktree) => {
       if (!search) return true;
       const branch = worktree.branch ?? "";
+      const issueTitle = worktree.issueTitle ?? "";
+      const prTitle = worktree.prTitle ?? "";
       return (
         worktree.name.toLowerCase().includes(search) ||
         branch.toLowerCase().includes(search) ||
-        worktree.path.toLowerCase().includes(search)
+        worktree.path.toLowerCase().includes(search) ||
+        issueTitle.toLowerCase().includes(search) ||
+        prTitle.toLowerCase().includes(search)
       );
     });
 
