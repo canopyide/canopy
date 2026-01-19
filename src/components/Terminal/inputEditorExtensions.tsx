@@ -84,7 +84,7 @@ export function createSlashChipField(config: SlashChipFieldConfig) {
 }
 
 function getScopeLabel(command: SlashCommand): string {
-  return (command.scope as string) === "canopy" ? "Canopy" : command.agentId ?? "";
+  return (command.scope as string) === "canopy" ? "Canopy" : (command.agentId ?? "");
 }
 
 function getScopeColorClass(command: SlashCommand): string {

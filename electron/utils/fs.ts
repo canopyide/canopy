@@ -86,8 +86,8 @@ export async function waitForPathExists(
         resolve();
       }, ms);
       // Unref timer to avoid keeping process alive during shutdown
-      if (timerId) {
-        timerId.unref();
+      if (timerId && typeof timerId === "object" && "unref" in timerId) {
+        (timerId as any).unref();
       }
     });
   };
