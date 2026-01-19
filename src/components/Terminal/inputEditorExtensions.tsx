@@ -1,10 +1,8 @@
 import { EditorView, Decoration, hoverTooltip, keymap, placeholder } from "@codemirror/view";
 import { StateField, Prec, Extension, Compartment } from "@codemirror/state";
 import { insertNewline } from "@codemirror/commands";
-import { createRoot } from "react-dom/client";
 import type { SlashCommand } from "@shared/types";
 import { getLeadingSlashCommand } from "./hybridInputParsing";
-import { SlashCommandTooltipContent } from "./SlashCommandTooltip";
 
 const MAX_TEXTAREA_HEIGHT_PX = 160;
 
@@ -85,6 +83,51 @@ export function createSlashChipField(config: SlashChipFieldConfig) {
   });
 }
 
+function getScopeLabel(command: SlashCommand): string {
+  return (command.scope as string) === "canopy" ? "Canopy" : command.agentId ?? "";
+}
+
+function getScopeColorClass(command: SlashCommand): string {
+  if ((command.scope as string) === "canopy") return "text-canopy-accent";
+  if (command.agentId === "claude") return "text-sky-400";
+  if (command.agentId === "gemini") return "text-violet-400";
+  return "text-emerald-400";
+}
+
+function createTooltipContent(command: SlashCommand): HTMLElement {
+  const container = document.createElement("div");
+  container.className = "space-y-1.5 max-w-[280px]";
+
+  const header = document.createElement("div");
+  header.className = "flex items-center gap-2";
+
+  const label = document.createElement("span");
+  label.className = "font-mono text-xs font-semibold text-canopy-text";
+  label.textContent = command.label ?? "";
+
+  const scope = document.createElement("span");
+  scope.className = `text-[10px] font-medium uppercase tracking-wide ${getScopeColorClass(command)}`;
+  scope.textContent = getScopeLabel(command);
+
+  header.appendChild(label);
+  header.appendChild(scope);
+  container.appendChild(header);
+
+  const description = document.createElement("p");
+  description.className = "text-[11px] text-canopy-text/70 leading-relaxed";
+  description.textContent = command.description ?? "";
+  container.appendChild(description);
+
+  if (command.sourcePath) {
+    const sourcePath = document.createElement("p");
+    sourcePath.className = "text-[10px] text-canopy-text/40 font-mono truncate pt-0.5";
+    sourcePath.textContent = command.sourcePath;
+    container.appendChild(sourcePath);
+  }
+
+  return container;
+}
+
 export function createSlashTooltip(commandMap: Map<string, SlashCommand>) {
   return hoverTooltip((view, pos) => {
     const token = getLeadingSlashCommand(view.state.doc.toString());
@@ -102,15 +145,9 @@ export function createSlashTooltip(commandMap: Map<string, SlashCommand>) {
         dom.className =
           "overflow-hidden rounded-[var(--radius-md)] surface-overlay shadow-overlay px-3 py-1.5 text-xs text-canopy-text";
 
-        const root = createRoot(dom);
-        root.render(<SlashCommandTooltipContent command={command} />);
+        dom.appendChild(createTooltipContent(command));
 
-        return {
-          dom,
-          destroy() {
-            root.unmount();
-          },
-        };
+        return { dom };
       },
     };
   });
