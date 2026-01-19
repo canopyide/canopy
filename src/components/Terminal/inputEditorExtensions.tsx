@@ -5,6 +5,7 @@ import type { SlashCommand } from "@shared/types";
 import { getLeadingSlashCommand } from "./hybridInputParsing";
 
 const MAX_TEXTAREA_HEIGHT_PX = 160;
+const LINE_HEIGHT_PX = 20;
 
 export const inputTheme = EditorView.theme({
   "&": {
@@ -28,20 +29,19 @@ export const inputTheme = EditorView.theme({
     padding: "0",
   },
   ".cm-slash-command-chip": {
-    display: "inline-flex",
-    alignItems: "center",
-    gap: "4px",
+    display: "inline-block",
+    boxSizing: "border-box",
+    height: "20px",
+    lineHeight: "18px",
     borderRadius: "2px",
-    padding: "1px 6px",
+    padding: "0 6px",
     fontFamily: "var(--font-mono, monospace)",
     fontSize: "12px",
     fontWeight: 500,
-    lineHeight: "18px",
-    verticalAlign: "middle",
+    verticalAlign: "baseline",
     backgroundColor: "rgba(var(--color-canopy-accent-rgb), 0.2)",
     color: "var(--color-canopy-accent)",
     border: "1px solid rgba(var(--color-canopy-accent-rgb), 0.3)",
-    transition: "colors 150ms",
   },
   ".cm-slash-command-chip-invalid": {
     backgroundColor: "rgba(239, 68, 68, 0.2)",
@@ -156,15 +156,24 @@ export function createSlashTooltip(commandMap: Map<string, SlashCommand>) {
 }
 
 export function createAutoSize() {
+  let lastHeight = 0;
+
   return EditorView.updateListener.of((update) => {
     if (!update.docChanged && !update.viewportChanged) return;
 
     const view = update.view;
-    const max = MAX_TEXTAREA_HEIGHT_PX;
-    const next = Math.min(view.contentHeight, max);
+    // Snap to line-height increments to prevent subpixel jitter
+    const lines = Math.max(1, Math.ceil(view.contentHeight / LINE_HEIGHT_PX));
+    const snapped = lines * LINE_HEIGHT_PX;
+    const next = Math.min(snapped, MAX_TEXTAREA_HEIGHT_PX);
 
-    view.dom.style.height = `${next}px`;
-    view.scrollDOM.style.overflowY = view.contentHeight > max ? "auto" : "hidden";
+    // Only update if the computed height actually changed
+    if (next !== lastHeight) {
+      lastHeight = next;
+      view.dom.style.height = `${next}px`;
+    }
+
+    view.scrollDOM.style.overflowY = view.contentHeight > MAX_TEXTAREA_HEIGHT_PX ? "auto" : "hidden";
   });
 }
 
