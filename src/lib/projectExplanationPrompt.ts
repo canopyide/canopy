@@ -26,10 +26,19 @@ If commands aren't clearly defined in the project files, say so rather than gues
 Keep the summary concise but informative - aim for someone to understand the project and get it running in 5 minutes.`;
 
 export function getDefaultAgentId(
+  defaultAgent: string | undefined,
   defaultSelection: string | undefined,
   availability: CliAvailability
 ): "claude" | "gemini" | "codex" | "opencode" | null {
   const agentIds = ["claude", "gemini", "codex", "opencode"] as const;
+
+  if (
+    defaultAgent &&
+    agentIds.includes(defaultAgent as (typeof agentIds)[number]) &&
+    availability[defaultAgent as keyof CliAvailability]
+  ) {
+    return defaultAgent as "claude" | "gemini" | "codex" | "opencode";
+  }
 
   if (
     defaultSelection &&

@@ -69,6 +69,7 @@ interface ToolbarPreferencesState extends ToolbarPreferences {
   toggleButtonVisibility: (buttonId: ToolbarButtonId, side: "left" | "right") => void;
   setAlwaysShowDevServer: (value: boolean) => void;
   setDefaultSelection: (selection: ToolbarPreferences["launcher"]["defaultSelection"]) => void;
+  setDefaultAgent: (agent: ToolbarPreferences["launcher"]["defaultAgent"]) => void;
   reset: () => void;
 }
 
@@ -130,6 +131,10 @@ export const useToolbarPreferencesStore = create<ToolbarPreferencesState>()(
       setDefaultSelection: (selection) =>
         set((state) => ({
           launcher: { ...state.launcher, defaultSelection: selection },
+        })),
+      setDefaultAgent: (agent) =>
+        set((state) => ({
+          launcher: { ...state.launcher, defaultAgent: agent },
         })),
       reset: () => set(DEFAULT_PREFERENCES),
     }),

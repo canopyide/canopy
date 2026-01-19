@@ -763,6 +763,8 @@ export interface LauncherDefaults {
     | "opencode"
     | "browser"
     | "dev-server";
+  /** Default agent for automated workflows like "What's Next?" */
+  defaultAgent?: "claude" | "gemini" | "codex" | "opencode";
 }
 
 /** Complete toolbar preferences configuration */
