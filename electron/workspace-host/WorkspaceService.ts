@@ -1,6 +1,6 @@
 import PQueue from "p-queue";
 import { mkdir, writeFile, stat } from "fs/promises";
-import { join as pathJoin, dirname } from "path";
+import { join as pathJoin, dirname, resolve as pathResolve, isAbsolute } from "path";
 import { simpleGit, SimpleGit, BranchSummary } from "simple-git";
 import type { Worktree, WorktreeChanges } from "../../shared/types/domain.js";
 import type {
@@ -22,6 +22,7 @@ import { pullRequestService } from "../services/PullRequestService.js";
 import { events } from "../services/events.js";
 import { MonitorState, NOTE_PATH } from "./types.js";
 import { ensureSerializable } from "../../shared/utils/serialization.js";
+import { waitForPathExists } from "../utils/fs.js";
 
 // Configuration
 const DEFAULT_ACTIVE_WORKTREE_INTERVAL_MS = 2000;
@@ -841,6 +842,18 @@ export class WorkspaceService {
       } else {
         await git.raw(["worktree", "add", "-b", newBranch, path, baseBranch]);
       }
+
+      // Wait for the worktree directory to be accessible before proceeding.
+      // This prevents race conditions where git completes but the filesystem
+      // hasn't flushed the directory creation to disk yet, which can cause
+      // ENOENT errors when spawning terminals with the worktree as cwd.
+      // Normalize to absolute path to avoid cwd mismatch between git and fs.access
+      const absolutePath = isAbsolute(path) ? path : pathResolve(rootPath, path);
+      await waitForPathExists(absolutePath, {
+        timeoutMs: 5000,
+        initialRetryDelayMs: 50,
+        maxRetryDelayMs: 800,
+      });
 
       await ensureNoteFile(path);
 
