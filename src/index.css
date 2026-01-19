@@ -52,6 +52,7 @@
   --color-canopy-border: #27272a; /* Zinc-800: Subtle separation */
   --color-canopy-text: #e4e4e7; /* Zinc-200: Soft white, not harsh */
   --color-canopy-accent: #10b981; /* Emerald-500: The Brand Color (Growth) */
+  --color-canopy-accent-rgb: 16, 185, 129; /* RGB values for accent color */
   --color-canopy-success: #34d399; /* Emerald-400: Brighter green */
   --color-canopy-warning: #fbbf24; /* Amber-400 */
   --color-canopy-error: #f87171; /* Red-400: Soft Coral */
