@@ -169,6 +169,16 @@ describe("buildSearchableText", () => {
     expect(buildSearchableText(worktree)).toContain("working on feature x");
   });
 
+  it("includes issue title", () => {
+    const worktree = createMockWorktree({ issueTitle: "Add dark mode toggle" });
+    expect(buildSearchableText(worktree)).toContain("add dark mode toggle");
+  });
+
+  it("includes PR title", () => {
+    const worktree = createMockWorktree({ prTitle: "Fix authentication bug" });
+    expect(buildSearchableText(worktree)).toContain("fix authentication bug");
+  });
+
   it("includes aiNote", () => {
     const worktree = createMockWorktree({ aiNote: "Agent is implementing tests" });
     expect(buildSearchableText(worktree)).toContain("agent is implementing tests");
