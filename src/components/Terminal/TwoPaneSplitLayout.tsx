@@ -1,4 +1,5 @@
 import { useCallback, useRef, useEffect, useState, useMemo } from "react";
+import { createPortal } from "react-dom";
 import { SortableContext, horizontalListSortingStrategy } from "@dnd-kit/sortable";
 import { cn } from "@/lib/utils";
 import { useTwoPaneSplitStore } from "@/store";
@@ -25,6 +26,7 @@ export function TwoPaneSplitLayout({
   const containerRef = useRef<HTMLDivElement>(null);
   const [containerWidth, setContainerWidth] = useState<number>(0);
   const [localRatio, setLocalRatio] = useState<number | null>(null);
+  const [isDraggingDivider, setIsDraggingDivider] = useState(false);
 
   const ratioByWorktreeId = useTwoPaneSplitStore((state) => state.ratioByWorktreeId);
   const defaultRatio = useTwoPaneSplitStore((state) => state.config.defaultRatio);
@@ -99,6 +101,29 @@ export function TwoPaneSplitLayout({
     }
   }, [activeWorktreeId, resetWorktreeRatio]);
 
+  const handleDragStateChange = useCallback(
+    (dragging: boolean) => {
+      setIsDraggingDivider(dragging);
+
+      // Lock/unlock terminal resizing to prevent xterm from reacting to size changes during drag
+      for (const terminal of terminals) {
+        terminalInstanceService.lockResize(terminal.id, dragging);
+      }
+    },
+    [terminals]
+  );
+
+  // Cleanup: unlock resize if component unmounts while dragging
+  useEffect(() => {
+    return () => {
+      if (isDraggingDivider) {
+        for (const terminal of terminals) {
+          terminalInstanceService.lockResize(terminal.id, false);
+        }
+      }
+    };
+  }, [isDraggingDivider, terminals]);
+
   const minRatio = useMemo(() => {
     if (containerWidth <= 0) return 0.2;
     const calculated = MIN_TERMINAL_WIDTH_PX / containerWidth;
@@ -118,7 +143,20 @@ export function TwoPaneSplitLayout({
 
   const terminalIds = useMemo(() => terminals.map((t) => t.id), [terminals]);
 
+  // Track previous drag state to detect drag end
+  const wasDraggingRef = useRef(false);
+
+  // Fit terminals after resize, but skip during drag to avoid feedback loops
   useEffect(() => {
+    const wasDragging = wasDraggingRef.current;
+    wasDraggingRef.current = isDraggingDivider;
+
+    // Don't fit during drag - wait for drag to end
+    if (isDraggingDivider) return;
+
+    // Use longer delay after drag ends to let layout fully stabilize
+    const delay = wasDragging ? 100 : 50;
+
     const timeoutId = window.setTimeout(() => {
       for (const terminal of terminals) {
         const managed = terminalInstanceService.get(terminal.id);
@@ -126,68 +164,104 @@ export function TwoPaneSplitLayout({
           terminalInstanceService.fit(terminal.id);
         }
       }
-    }, 50);
+    }, delay);
 
     return () => clearTimeout(timeoutId);
-  }, [leftWidth, rightWidth, terminals]);
+  }, [leftWidth, rightWidth, terminals, isDraggingDivider]);
 
   return (
-    <SortableContext id="grid-container" items={terminalIds} strategy={horizontalListSortingStrategy}>
-      <div
-        ref={containerRef}
-        className={cn("h-full flex bg-noise p-1")}
-        style={{
-          gap: 0,
-          backgroundColor: "var(--color-grid-bg)",
-        }}
-        role="grid"
-        id="terminal-grid"
-        aria-label="Panel grid - two pane split"
-        data-grid-container="true"
-        data-split-mode="true"
-      >
-        <div style={{ width: leftWidth, minWidth: MIN_TERMINAL_WIDTH_PX, flexShrink: 0 }}>
-          <SortableTerminal
-            terminal={terminals[0]}
-            sourceLocation="grid"
-            sourceIndex={0}
-            disabled={isInTrash(terminals[0].id)}
-          >
-            <GridPanel
+    <>
+      <SortableContext id="grid-container" items={terminalIds} strategy={horizontalListSortingStrategy}>
+        <div
+          ref={containerRef}
+          className={cn("h-full flex bg-noise p-1")}
+          style={{
+            gap: 0,
+            backgroundColor: "var(--color-grid-bg)",
+          }}
+          role="grid"
+          id="terminal-grid"
+          aria-label="Panel grid - two pane split"
+          data-grid-container="true"
+          data-split-mode="true"
+        >
+          <div style={{ width: leftWidth, minWidth: MIN_TERMINAL_WIDTH_PX, flexShrink: 0 }} className="relative">
+            <SortableTerminal
               terminal={terminals[0]}
-              isFocused={terminals[0].id === focusedId}
-              gridPanelCount={2}
-              gridCols={2}
-            />
-          </SortableTerminal>
-        </div>
+              sourceLocation="grid"
+              sourceIndex={0}
+              disabled={isInTrash(terminals[0].id)}
+            >
+              <GridPanel
+                terminal={terminals[0]}
+                isFocused={terminals[0].id === focusedId}
+                gridPanelCount={2}
+                gridCols={2}
+              />
+            </SortableTerminal>
+            {/* Overlay to hide terminal content during resize drag */}
+            {isDraggingDivider && (
+              <div
+                className="absolute inset-0 z-10 bg-canopy-panel-bg flex items-center justify-center"
+                aria-hidden="true"
+              >
+                <div className="text-canopy-text/30 text-sm">Resizing...</div>
+              </div>
+            )}
+          </div>
 
-        <TwoPaneSplitDivider
-          containerRef={containerRef}
-          ratio={clampedRatio}
-          onRatioChange={handleRatioChange}
-          onRatioCommit={handleRatioCommit}
-          onDoubleClick={handleDoubleClick}
-          minRatio={minRatio}
-          maxRatio={maxRatio}
-        />
+          <TwoPaneSplitDivider
+            containerRef={containerRef}
+            ratio={clampedRatio}
+            onRatioChange={handleRatioChange}
+            onRatioCommit={handleRatioCommit}
+            onDoubleClick={handleDoubleClick}
+            onDragStateChange={handleDragStateChange}
+            minRatio={minRatio}
+            maxRatio={maxRatio}
+          />
 
-        <div style={{ width: rightWidth, minWidth: MIN_TERMINAL_WIDTH_PX, flexShrink: 0 }}>
-          <SortableTerminal
-            terminal={terminals[1]}
-            sourceLocation="grid"
-            sourceIndex={1}
-            disabled={isInTrash(terminals[1].id)}
-          >
-            <GridPanel
+          <div style={{ width: rightWidth, minWidth: MIN_TERMINAL_WIDTH_PX, flexShrink: 0 }} className="relative">
+            <SortableTerminal
               terminal={terminals[1]}
-              isFocused={terminals[1].id === focusedId}
-              gridPanelCount={2}
-              gridCols={2}
-            />
-          </SortableTerminal>
+              sourceLocation="grid"
+              sourceIndex={1}
+              disabled={isInTrash(terminals[1].id)}
+            >
+              <GridPanel
+                terminal={terminals[1]}
+                isFocused={terminals[1].id === focusedId}
+                gridPanelCount={2}
+                gridCols={2}
+              />
+            </SortableTerminal>
+            {/* Overlay to hide terminal content during resize drag */}
+            {isDraggingDivider && (
+              <div
+                className="absolute inset-0 z-10 bg-canopy-panel-bg flex items-center justify-center"
+                aria-hidden="true"
+              >
+                <div className="text-canopy-text/30 text-sm">Resizing...</div>
+              </div>
+            )}
+          </div>
         </div>
-      </div>
-    </SortableContext>
+      </SortableContext>
+
+      {/* Drag overlay to prevent iframes from capturing mouse events */}
+      {isDraggingDivider &&
+        createPortal(
+          <div
+            style={{
+              position: "fixed",
+              inset: 0,
+              zIndex: 9999,
+              cursor: "col-resize",
+            }}
+            aria-hidden="true"
+          />,
+          document.body
+        )}
+    </>
   );
 }

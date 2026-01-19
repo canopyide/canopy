@@ -48,7 +48,7 @@ interface TwoPaneSplitState {
 const DEFAULT_CONFIG: TwoPaneSplitConfig = {
   enabled: true,
   defaultRatio: 0.5,
-  preferPreview: true,
+  preferPreview: false,
 };
 
 export const useTwoPaneSplitStore = create<TwoPaneSplitState>()(
