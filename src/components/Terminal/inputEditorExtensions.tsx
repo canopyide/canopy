@@ -48,6 +48,16 @@ export const inputTheme = EditorView.theme({
     color: "rgb(248, 113, 113)",
     border: "1px solid rgba(239, 68, 68, 0.3)",
   },
+  ".cm-tooltip": {
+    background: "transparent",
+    border: "none",
+    boxShadow: "none",
+  },
+  ".cm-tooltip-hover": {
+    background: "transparent",
+    border: "none",
+    boxShadow: "none",
+  },
 });
 
 const slashChipMark = Decoration.mark({ class: "cm-slash-command-chip" });
@@ -85,47 +95,15 @@ export function createSlashChipField(config: SlashChipFieldConfig) {
   });
 }
 
-function getScopeLabel(command: SlashCommand): string {
-  return (command.scope as string) === "canopy" ? "Canopy" : (command.agentId ?? "");
-}
-
-function getScopeColorClass(command: SlashCommand): string {
-  if ((command.scope as string) === "canopy") return "text-canopy-accent";
-  if (command.agentId === "claude") return "text-sky-400";
-  if (command.agentId === "gemini") return "text-violet-400";
-  return "text-emerald-400";
-}
-
 function createTooltipContent(command: SlashCommand): HTMLElement {
   const container = document.createElement("div");
-  container.className = "space-y-1.5 max-w-[280px]";
+  container.className = "max-w-[260px]";
 
-  const header = document.createElement("div");
-  header.className = "flex items-center gap-2";
-
-  const label = document.createElement("span");
-  label.className = "font-mono text-xs font-semibold text-canopy-text";
-  label.textContent = command.label ?? "";
-
-  const scope = document.createElement("span");
-  scope.className = `text-[10px] font-medium uppercase tracking-wide ${getScopeColorClass(command)}`;
-  scope.textContent = getScopeLabel(command);
-
-  header.appendChild(label);
-  header.appendChild(scope);
-  container.appendChild(header);
-
+  // Simple one-line description
   const description = document.createElement("p");
-  description.className = "text-[11px] text-canopy-text/70 leading-relaxed";
-  description.textContent = command.description ?? "";
+  description.className = "text-[11px] text-canopy-text/80 leading-snug";
+  description.textContent = command.description ?? command.label ?? "";
   container.appendChild(description);
-
-  if (command.sourcePath) {
-    const sourcePath = document.createElement("p");
-    sourcePath.className = "text-[10px] text-canopy-text/40 font-mono truncate pt-0.5";
-    sourcePath.textContent = command.sourcePath;
-    container.appendChild(sourcePath);
-  }
 
   return container;
 }
@@ -144,8 +122,12 @@ export function createSlashTooltip(commandMap: Map<string, SlashCommand>) {
       above: true,
       create() {
         const dom = document.createElement("div");
-        dom.className =
-          "overflow-hidden rounded-[var(--radius-md)] surface-overlay shadow-overlay px-3 py-1.5 text-xs text-canopy-text";
+        dom.className = "px-2 py-1 text-xs";
+        dom.style.cssText = `
+          background: rgba(24, 24, 27, 0.95);
+          border-radius: 4px;
+          box-shadow: 0 2px 8px rgba(0, 0, 0, 0.3);
+        `;
 
         dom.appendChild(createTooltipContent(command));
 
