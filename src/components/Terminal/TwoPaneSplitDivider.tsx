@@ -7,6 +7,7 @@ interface TwoPaneSplitDividerProps {
   onRatioChange: (ratio: number) => void;
   onRatioCommit: () => void;
   onDoubleClick: () => void;
+  onDragStateChange?: (isDragging: boolean) => void;
   minRatio?: number;
   maxRatio?: number;
 }
@@ -20,60 +21,106 @@ export function TwoPaneSplitDivider({
   onRatioChange,
   onRatioCommit,
   onDoubleClick,
+  onDragStateChange,
   minRatio = 0.2,
   maxRatio = 0.8,
 }: TwoPaneSplitDividerProps) {
   const [isDragging, setIsDragging] = useState(false);
   const dividerRef = useRef<HTMLDivElement>(null);
 
-  const handleMouseDown = useCallback((e: React.MouseEvent) => {
-    if (e.button !== 0) return;
-    e.preventDefault();
-    setIsDragging(true);
-  }, []);
-
-  const handleMouseMove = useCallback(
-    (e: MouseEvent) => {
-      if (!isDragging || !containerRef.current) return;
-
-      const rect = containerRef.current.getBoundingClientRect();
-      const containerWidth = rect.width;
-      const offsetX = e.clientX - rect.left;
-      const newRatio = Math.max(minRatio, Math.min(maxRatio, offsetX / containerWidth));
-      onRatioChange(newRatio);
-    },
-    [isDragging, containerRef, minRatio, maxRatio, onRatioChange]
-  );
-
-  const handleMouseUp = useCallback(() => {
-    setIsDragging(false);
-    onRatioCommit();
-  }, [onRatioCommit]);
-
-  const handleBlur = useCallback(() => {
-    setIsDragging(false);
-  }, []);
-
+  // Notify parent of drag state changes
   useEffect(() => {
-    if (!isDragging) return;
+    onDragStateChange?.(isDragging);
+  }, [isDragging, onDragStateChange]);
 
-    const prevCursor = document.body.style.cursor;
-    const prevUserSelect = document.body.style.userSelect;
+  // Cache drag state in refs to avoid callback recreation during drag
+  const dragStateRef = useRef({
+    containerRect: null as DOMRect | null,
+    minRatio,
+    maxRatio,
+    onRatioChange,
+    onRatioCommit,
+  });
 
-    document.addEventListener("mousemove", handleMouseMove);
-    document.addEventListener("mouseup", handleMouseUp);
-    window.addEventListener("blur", handleBlur);
-    document.body.style.cursor = "col-resize";
-    document.body.style.userSelect = "none";
+  // Update refs when props change (but not during drag)
+  useEffect(() => {
+    if (!isDragging) {
+      dragStateRef.current.minRatio = minRatio;
+      dragStateRef.current.maxRatio = maxRatio;
+    }
+    dragStateRef.current.onRatioChange = onRatioChange;
+    dragStateRef.current.onRatioCommit = onRatioCommit;
+  }, [isDragging, minRatio, maxRatio, onRatioChange, onRatioCommit]);
 
-    return () => {
-      document.removeEventListener("mousemove", handleMouseMove);
-      document.removeEventListener("mouseup", handleMouseUp);
-      window.removeEventListener("blur", handleBlur);
-      document.body.style.cursor = prevCursor;
-      document.body.style.userSelect = prevUserSelect;
-    };
-  }, [isDragging, handleMouseMove, handleMouseUp, handleBlur]);
+  const handleMouseDown = useCallback(
+    (e: React.MouseEvent) => {
+      if (e.button !== 0) return;
+      e.preventDefault();
+      // Don't stopPropagation - allow double-click to work
+
+      // Cache container rect at drag start to avoid layout thrashing
+      if (containerRef.current) {
+        dragStateRef.current.containerRect = containerRef.current.getBoundingClientRect();
+      }
+
+      // Track if we've actually started dragging (mouse moved)
+      let hasMoved = false;
+      const startX = e.clientX;
+
+      const handleMouseMove = (moveEvent: MouseEvent) => {
+        // Only consider it a drag if mouse moved more than 3px
+        if (!hasMoved && Math.abs(moveEvent.clientX - startX) > 3) {
+          hasMoved = true;
+          setIsDragging(true);
+          document.body.style.cursor = "col-resize";
+          document.body.style.userSelect = "none";
+        }
+
+        if (!hasMoved) return;
+
+        const { containerRect, minRatio: min, maxRatio: max, onRatioChange: onChange } = dragStateRef.current;
+        if (!containerRect) return;
+
+        const offsetX = moveEvent.clientX - containerRect.left;
+        const newRatio = Math.max(min, Math.min(max, offsetX / containerRect.width));
+        onChange(newRatio);
+      };
+
+      const handleMouseUp = () => {
+        cleanup();
+        if (hasMoved) {
+          setIsDragging(false);
+          dragStateRef.current.onRatioCommit();
+        }
+        dragStateRef.current.containerRect = null;
+      };
+
+      const handleBlur = () => {
+        cleanup();
+        if (hasMoved) {
+          setIsDragging(false);
+        }
+        dragStateRef.current.containerRect = null;
+      };
+
+      const prevCursor = document.body.style.cursor;
+      const prevUserSelect = document.body.style.userSelect;
+
+      const cleanup = () => {
+        document.removeEventListener("mousemove", handleMouseMove);
+        document.removeEventListener("mouseup", handleMouseUp);
+        window.removeEventListener("blur", handleBlur);
+        document.body.style.cursor = prevCursor;
+        document.body.style.userSelect = prevUserSelect;
+      };
+
+      // Attach listeners synchronously to catch immediate mouseup
+      document.addEventListener("mousemove", handleMouseMove);
+      document.addEventListener("mouseup", handleMouseUp);
+      window.addEventListener("blur", handleBlur);
+    },
+    [containerRef]
+  );
 
   const handleKeyDown = useCallback(
     (e: React.KeyboardEvent) => {
