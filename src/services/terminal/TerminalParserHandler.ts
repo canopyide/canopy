@@ -90,6 +90,20 @@ export class TerminalParserHandler {
     );
     this.disposables.push(altScreenResetHandler);
 
+    // Block alternate screen buffer activation if configured
+    // Only block the set (h) sequence, not reset (l), to allow exit from alternate buffer
+    if (capabilities.blockAltScreen) {
+      const altScreenSetHandler = terminal.parser.registerCsiHandler(
+        { prefix: "?", final: "h" },
+        (params) => {
+          if (!this.shouldBlock()) return false;
+          const p = this.normalizeCsiParams(params);
+          return p.some((v) => ALT_SCREEN_MODES.has(v));
+        }
+      );
+      this.disposables.push(altScreenSetHandler);
+    }
+
     // Block mouse reporting mode toggles (enables programs to capture mouse events).
     // We block this for agent terminals to avoid surprising interactions inside the app.
     if (capabilities.blockMouseReporting) {
