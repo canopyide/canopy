@@ -706,10 +706,7 @@ export function ContentGrid({ className, defaultCwd, agentAvailability }: Conten
 
   // Two-pane split mode detection - only disable during dock-to-grid placeholder drags
   const useTwoPaneSplitMode =
-    twoPaneSplitEnabled &&
-    gridTerminals.length === 2 &&
-    !maximizedId &&
-    !showPlaceholder;
+    twoPaneSplitEnabled && gridTerminals.length === 2 && !maximizedId && !showPlaceholder;
 
   // Render two-pane split layout when eligible
   if (useTwoPaneSplitMode) {

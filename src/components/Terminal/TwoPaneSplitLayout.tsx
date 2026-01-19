@@ -99,12 +99,9 @@ export function TwoPaneSplitLayout({
     };
   }, []);
 
-  const handleRatioChange = useCallback(
-    (newRatio: number) => {
-      setLocalRatio(newRatio);
-    },
-    []
-  );
+  const handleRatioChange = useCallback((newRatio: number) => {
+    setLocalRatio(newRatio);
+  }, []);
 
   const handleRatioCommit = useCallback(() => {
     if (localRatio !== null && activeWorktreeId) {
@@ -155,7 +152,8 @@ export function TwoPaneSplitLayout({
   }, [containerWidth]);
 
   const clampedRatio = Math.max(minRatio, Math.min(maxRatio, ratio));
-  const leftWidth = containerWidth > 0 ? containerWidth * clampedRatio - DIVIDER_WIDTH_PX / 2 : "50%";
+  const leftWidth =
+    containerWidth > 0 ? containerWidth * clampedRatio - DIVIDER_WIDTH_PX / 2 : "50%";
   const rightWidth =
     containerWidth > 0 ? containerWidth * (1 - clampedRatio) - DIVIDER_WIDTH_PX / 2 : "50%";
 
@@ -189,7 +187,11 @@ export function TwoPaneSplitLayout({
 
   return (
     <>
-      <SortableContext id="grid-container" items={terminalIds} strategy={horizontalListSortingStrategy}>
+      <SortableContext
+        id="grid-container"
+        items={terminalIds}
+        strategy={horizontalListSortingStrategy}
+      >
         <div
           ref={containerRef}
           className={cn("h-full flex bg-noise p-1")}
@@ -203,7 +205,10 @@ export function TwoPaneSplitLayout({
           data-grid-container="true"
           data-split-mode="true"
         >
-          <div style={{ width: leftWidth, minWidth: MIN_TERMINAL_WIDTH_PX, flexShrink: 0 }} className="relative">
+          <div
+            style={{ width: leftWidth, minWidth: MIN_TERMINAL_WIDTH_PX, flexShrink: 0 }}
+            className="relative"
+          >
             <SortableTerminal
               terminal={terminals[0]}
               sourceLocation="grid"
@@ -239,7 +244,10 @@ export function TwoPaneSplitLayout({
             maxRatio={maxRatio}
           />
 
-          <div style={{ width: rightWidth, minWidth: MIN_TERMINAL_WIDTH_PX, flexShrink: 0 }} className="relative">
+          <div
+            style={{ width: rightWidth, minWidth: MIN_TERMINAL_WIDTH_PX, flexShrink: 0 }}
+            className="relative"
+          >
             <SortableTerminal
               terminal={terminals[1]}
               sourceLocation="grid"
