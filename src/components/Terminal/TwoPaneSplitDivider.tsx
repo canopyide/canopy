@@ -78,7 +78,12 @@ export function TwoPaneSplitDivider({
 
         if (!hasMoved) return;
 
-        const { containerRect, minRatio: min, maxRatio: max, onRatioChange: onChange } = dragStateRef.current;
+        const {
+          containerRect,
+          minRatio: min,
+          maxRatio: max,
+          onRatioChange: onChange,
+        } = dragStateRef.current;
         if (!containerRect) return;
 
         const offsetX = moveEvent.clientX - containerRect.left;

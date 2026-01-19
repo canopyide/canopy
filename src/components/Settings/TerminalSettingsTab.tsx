@@ -394,9 +394,7 @@ export function TerminalSettingsTab() {
             />
             <div className="text-left">
               <div className="text-sm font-medium">
-                {twoPaneSplitConfig.enabled
-                  ? "Two-Pane Split Enabled"
-                  : "Enable Two-Pane Split"}
+                {twoPaneSplitConfig.enabled ? "Two-Pane Split Enabled" : "Enable Two-Pane Split"}
               </div>
               <div className="text-xs opacity-70">
                 {twoPaneSplitConfig.enabled
@@ -486,7 +484,10 @@ export function TerminalSettingsTab() {
                   aria-valuetext={`${Math.round(twoPaneSplitConfig.defaultRatio * 100)} percent left, ${Math.round((1 - twoPaneSplitConfig.defaultRatio) * 100)} percent right`}
                   className="flex-1 accent-canopy-accent"
                 />
-                <span className="text-xs text-canopy-text/70 font-mono w-16 text-right" aria-hidden="true">
+                <span
+                  className="text-xs text-canopy-text/70 font-mono w-16 text-right"
+                  aria-hidden="true"
+                >
                   {Math.round(twoPaneSplitConfig.defaultRatio * 100)}/
                   {Math.round((1 - twoPaneSplitConfig.defaultRatio) * 100)}
                 </span>
