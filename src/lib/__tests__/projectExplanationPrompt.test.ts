@@ -18,34 +18,54 @@ describe("PROJECT_EXPLANATION_PROMPT", () => {
 });
 
 describe("getDefaultAgentId", () => {
-  it("should return default selection when it matches an available agent", () => {
+  it("should return default agent when it matches an available agent", () => {
     const availability: CliAvailability = {
       claude: true,
       gemini: false,
       codex: false,
       opencode: false,
     };
-    expect(getDefaultAgentId("claude", availability)).toBe("claude");
+    expect(getDefaultAgentId("claude", undefined, availability)).toBe("claude");
   });
 
-  it("should fall back to first available agent when default selection is not available", () => {
+  it("should prioritize default agent over default selection", () => {
+    const availability: CliAvailability = {
+      claude: true,
+      gemini: true,
+      codex: false,
+      opencode: false,
+    };
+    expect(getDefaultAgentId("gemini", "claude", availability)).toBe("gemini");
+  });
+
+  it("should fall back to default selection when default agent is not available", () => {
     const availability: CliAvailability = {
       claude: true,
       gemini: false,
       codex: false,
       opencode: false,
     };
-    expect(getDefaultAgentId("gemini", availability)).toBe("claude");
+    expect(getDefaultAgentId("gemini", "claude", availability)).toBe("claude");
   });
 
-  it("should fall back to first available agent when no default selection", () => {
+  it("should fall back to first available agent when neither default is available", () => {
+    const availability: CliAvailability = {
+      claude: true,
+      gemini: false,
+      codex: false,
+      opencode: false,
+    };
+    expect(getDefaultAgentId("gemini", "codex", availability)).toBe("claude");
+  });
+
+  it("should fall back to first available agent when no defaults", () => {
     const availability: CliAvailability = {
       claude: false,
       gemini: true,
       codex: false,
       opencode: false,
     };
-    expect(getDefaultAgentId(undefined, availability)).toBe("gemini");
+    expect(getDefaultAgentId(undefined, undefined, availability)).toBe("gemini");
   });
 
   it("should return null when no agents are available", () => {
@@ -55,7 +75,7 @@ describe("getDefaultAgentId", () => {
       codex: false,
       opencode: false,
     };
-    expect(getDefaultAgentId(undefined, availability)).toBeNull();
+    expect(getDefaultAgentId(undefined, undefined, availability)).toBeNull();
   });
 
   it("should prioritize agents in order: claude, gemini, codex, opencode", () => {
@@ -65,7 +85,7 @@ describe("getDefaultAgentId", () => {
       codex: true,
       opencode: true,
     };
-    expect(getDefaultAgentId(undefined, availability1)).toBe("claude");
+    expect(getDefaultAgentId(undefined, undefined, availability1)).toBe("claude");
 
     const availability2: CliAvailability = {
       claude: false,
@@ -73,7 +93,7 @@ describe("getDefaultAgentId", () => {
       codex: true,
       opencode: true,
     };
-    expect(getDefaultAgentId(undefined, availability2)).toBe("gemini");
+    expect(getDefaultAgentId(undefined, undefined, availability2)).toBe("gemini");
 
     const availability3: CliAvailability = {
       claude: false,
@@ -81,7 +101,7 @@ describe("getDefaultAgentId", () => {
       codex: true,
       opencode: true,
     };
-    expect(getDefaultAgentId(undefined, availability3)).toBe("codex");
+    expect(getDefaultAgentId(undefined, undefined, availability3)).toBe("codex");
 
     const availability4: CliAvailability = {
       claude: false,
@@ -89,17 +109,17 @@ describe("getDefaultAgentId", () => {
       codex: false,
       opencode: true,
     };
-    expect(getDefaultAgentId(undefined, availability4)).toBe("opencode");
+    expect(getDefaultAgentId(undefined, undefined, availability4)).toBe("opencode");
   });
 
-  it("should ignore default selection if it's not a valid agent", () => {
+  it("should ignore default agent if it's not a valid agent", () => {
     const availability: CliAvailability = {
       claude: true,
       gemini: false,
       codex: false,
       opencode: false,
     };
-    expect(getDefaultAgentId("invalid-agent", availability)).toBe("claude");
+    expect(getDefaultAgentId("invalid-agent" as any, undefined, availability)).toBe("claude");
   });
 
   it("should handle terminal and browser in default selection gracefully", () => {
@@ -109,7 +129,7 @@ describe("getDefaultAgentId", () => {
       codex: false,
       opencode: false,
     };
-    expect(getDefaultAgentId("terminal", availability)).toBe("gemini");
-    expect(getDefaultAgentId("browser", availability)).toBe("gemini");
+    expect(getDefaultAgentId(undefined, "terminal", availability)).toBe("gemini");
+    expect(getDefaultAgentId(undefined, "browser", availability)).toBe("gemini");
   });
 });
