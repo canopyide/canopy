@@ -197,6 +197,63 @@ describe("getMaxGridCapacity", () => {
 });
 
 describe("computeGridColumns", () => {
+  describe("2→3 panel transitions (regression test for issue #1754)", () => {
+    const wideWidth = MIN_TERMINAL_WIDTH_PX * 5;
+
+    it("should return 2 columns for 3 panels after being at 2 panels", () => {
+      // Simulate the transition: first 2 panels, then 3
+      const colsFor2 = computeGridColumns(2, wideWidth, "automatic");
+      const colsFor3 = computeGridColumns(3, wideWidth, "automatic");
+
+      expect(colsFor2).toBe(2);
+      expect(colsFor3).toBe(2); // 3 panels should still be 2 columns (automatic mode)
+    });
+
+    it("should handle rapid transitions between 2 and 3+ panels", () => {
+      // Simulate quick transitions that could trigger race conditions
+      const results = [
+        computeGridColumns(2, wideWidth, "automatic"),
+        computeGridColumns(3, wideWidth, "automatic"),
+        computeGridColumns(2, wideWidth, "automatic"),
+        computeGridColumns(4, wideWidth, "automatic"),
+        computeGridColumns(3, wideWidth, "automatic"),
+      ];
+
+      expect(results).toEqual([2, 2, 2, 2, 2]);
+    });
+
+    it("should return correct columns for 3 panels with different strategies", () => {
+      // Issue #1754: grid layout was breaking when transitioning from 2-pane split
+      // to standard grid. This tests that all strategies work correctly for 3 panels.
+      expect(computeGridColumns(3, wideWidth, "automatic")).toBe(2);
+      expect(computeGridColumns(3, wideWidth, "fixed-columns", 2)).toBe(2);
+      expect(computeGridColumns(3, wideWidth, "fixed-columns", 3)).toBe(3);
+      expect(computeGridColumns(3, wideWidth, "fixed-rows", 1)).toBe(3);
+      expect(computeGridColumns(3, wideWidth, "fixed-rows", 2)).toBe(2);
+    });
+
+    it("should handle transition with varying widths", () => {
+      // The bug could manifest when gridWidth changes during transition
+      const narrowWidth = MIN_TERMINAL_WIDTH_PX * 1.5;
+      const mediumWidth = MIN_TERMINAL_WIDTH_PX * 2.5;
+
+      // Narrow width: only 1 column fits, but 2 panels get special 2-column treatment
+      expect(computeGridColumns(2, narrowWidth, "automatic")).toBe(2);
+      // 3 panels with narrow width: constrained to 1 column
+      expect(computeGridColumns(3, narrowWidth, "automatic")).toBe(1);
+
+      // Medium width: 2 columns fit
+      expect(computeGridColumns(2, mediumWidth, "automatic")).toBe(2);
+      expect(computeGridColumns(3, mediumWidth, "automatic")).toBe(2);
+    });
+
+    it("should not be affected by null width during transition", () => {
+      // Width might be null briefly during layout transitions
+      expect(computeGridColumns(2, null, "automatic")).toBe(2);
+      expect(computeGridColumns(3, null, "automatic")).toBe(2); // Fallback width (800px) fits 2 cols
+    });
+  });
+
   describe("2-pane invariant", () => {
     const narrowWidth = MIN_TERMINAL_WIDTH_PX * 1.5;
     const mediumWidth = MIN_TERMINAL_WIDTH_PX * 2.5;

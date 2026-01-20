@@ -472,30 +472,6 @@ export function ContentGrid({ className, defaultCwd, agentAvailability }: Conten
   const gridContainerRef = useRef<HTMLDivElement>(null);
   const [gridWidth, setGridWidth] = useState<number | null>(null);
 
-  useEffect(() => {
-    const container = gridContainerRef.current;
-    if (!container) return;
-
-    const observer = new ResizeObserver((entries) => {
-      const entry = entries[0];
-      if (entry) {
-        const { width, height } = entry.contentRect;
-        setGridWidth((prev) => (prev === width ? prev : width));
-        // Report dimensions to store for capacity calculation
-        setGridDimensions({ width, height });
-      }
-    });
-
-    observer.observe(container);
-    setGridWidth(container.clientWidth);
-    setGridDimensions({ width: container.clientWidth, height: container.clientHeight });
-
-    return () => {
-      observer.disconnect();
-      setGridDimensions(null);
-    };
-  }, [setGridDimensions]);
-
   // Get placeholder state from DnD context
   const { placeholderIndex, sourceContainer } = useDndPlaceholder();
   const isDragging = useIsDragging();
@@ -510,6 +486,35 @@ export function ContentGrid({ className, defaultCwd, agentAvailability }: Conten
   // Show placeholder when dragging from dock to grid (only if grid not full)
   const showPlaceholder = placeholderInGrid && sourceContainer === "dock" && !isGridFull;
   const gridItemCount = gridTerminals.length + (showPlaceholder ? 1 : 0);
+
+  // Attach ResizeObserver to track container dimensions
+  // CRITICAL: This effect must re-run when the layout mode changes because gridContainerRef
+  // points to different DOM elements in different render branches:
+  // - Two-pane split mode: wrapper div (line 723)
+  // - Standard grid mode: actual grid element (line 751)
+  // If the observer doesn't reconnect, gridWidth becomes stale and column calculations break.
+  useEffect(() => {
+    const container = gridContainerRef.current;
+    if (!container) return;
+
+    const observer = new ResizeObserver((entries) => {
+      const entry = entries[0];
+      if (entry) {
+        const { width, height } = entry.contentRect;
+        setGridWidth((prev) => (prev === width ? prev : width));
+        setGridDimensions({ width, height });
+      }
+    });
+
+    observer.observe(container);
+    setGridWidth(container.clientWidth);
+    setGridDimensions({ width: container.clientWidth, height: container.clientHeight });
+
+    return () => {
+      observer.disconnect();
+      setGridDimensions(null);
+    };
+  }, [setGridDimensions, gridTerminals.length, maximizedId, twoPaneSplitEnabled, showPlaceholder]);
 
   useEffect(() => {
     if (preMaximizeLayout && preMaximizeLayout.worktreeId !== activeWorktreeId) {
