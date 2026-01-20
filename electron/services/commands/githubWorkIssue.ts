@@ -14,11 +14,7 @@ import type {
   CommandContext,
   CommandResult,
 } from "../../../shared/types/commands.js";
-import {
-  hasGitHubToken,
-  getRepoContext,
-  getIssueUrl,
-} from "../GitHubService.js";
+import { hasGitHubToken, getRepoContext, getIssueUrl } from "../GitHubService.js";
 import { GitHubAuth, GET_ISSUE_QUERY } from "../github/index.js";
 import { getWorkspaceClient } from "../WorkspaceClient.js";
 import { GitService } from "../GitService.js";
@@ -94,10 +90,7 @@ function generateBranchName(issueNumber: number, issueTitle: string): string {
 /**
  * Fetch issue details from GitHub API.
  */
-async function fetchIssueDetails(
-  cwd: string,
-  issueNumber: number
-): Promise<IssueDetails> {
+async function fetchIssueDetails(cwd: string, issueNumber: number): Promise<IssueDetails> {
   const client = GitHubAuth.createClient();
   if (!client) {
     throw new Error("GitHub token not configured");
@@ -164,10 +157,7 @@ async function detectBaseBranch(
   return { branch: "main", fromRemote: false };
 }
 
-export const githubWorkIssueCommand: CanopyCommand<
-  GitHubWorkIssueArgs,
-  GitHubWorkIssueResult
-> = {
+export const githubWorkIssueCommand: CanopyCommand<GitHubWorkIssueArgs, GitHubWorkIssueResult> = {
   id: "github:work-issue",
   label: "/github:work-issue",
   description: "Create a worktree for a GitHub issue",
