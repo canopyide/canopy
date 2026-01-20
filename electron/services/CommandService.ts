@@ -95,10 +95,7 @@ class CommandServiceImpl {
   /**
    * List commands filtered by category.
    */
-  listByCategory(
-    category: string,
-    context?: CommandContext
-  ): CommandManifestEntry[] {
+  listByCategory(category: string, context?: CommandContext): CommandManifestEntry[] {
     return this.list(context).filter((cmd) => cmd.category === category);
   }
 
@@ -147,7 +144,7 @@ class CommandServiceImpl {
           success: false,
           error: {
             code: "COMMAND_DISABLED",
-            message: reason,
+            message: reason ?? "Command is currently disabled",
           },
         };
       }
