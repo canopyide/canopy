@@ -1032,13 +1032,13 @@ export const HybridInputBar = forwardRef<HybridInputBarHandle, HybridInputBarPro
     }, [value]);
 
     const barContent = (
-      <div ref={barContentRef} className="group cursor-text bg-canopy-bg px-4 pb-5 pt-4">
+      <div ref={barContentRef} className="group cursor-text bg-canopy-bg px-4 pb-3 pt-3">
         <div className="flex items-end gap-2">
           <div
             ref={inputShellRef}
             className={cn(
               "relative",
-              "flex w-full items-stretch gap-1.5 rounded-sm border border-white/[0.06] bg-white/[0.03] py-2 shadow-[0_6px_12px_rgba(0,0,0,0.18)] transition-colors",
+              "flex w-full items-center gap-1.5 rounded-sm border border-white/[0.06] bg-white/[0.03] py-1 shadow-[0_6px_12px_rgba(0,0,0,0.18)] transition-colors",
               "group-hover:border-white/[0.08] group-hover:bg-white/[0.04]",
               "focus-within:border-white/[0.12] focus-within:ring-1 focus-within:ring-white/[0.06] focus-within:bg-white/[0.05]",
               disabled && "opacity-60",
@@ -1057,7 +1057,7 @@ export const HybridInputBar = forwardRef<HybridInputBarHandle, HybridInputBarPro
               ariaLabel={activeMode === "command" ? "Command autocomplete" : "File autocomplete"}
             />
 
-            <div className="select-none self-start pl-2 pr-1 font-mono text-xs font-semibold leading-5 text-canopy-accent/85">
+            <div className="select-none pl-2 pr-1 font-mono text-xs font-semibold leading-5 text-canopy-accent/85">
               ❯
             </div>
 
@@ -1068,7 +1068,7 @@ export const HybridInputBar = forwardRef<HybridInputBarHandle, HybridInputBarPro
               />
             </div>
 
-            <div className="self-center pr-2">
+            <div className="pr-1.5">
               <CommandPickerButton onClick={openPicker} disabled={disabled || isInitializing} />
             </div>
           </div>
