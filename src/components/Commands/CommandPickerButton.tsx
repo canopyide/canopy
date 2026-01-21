@@ -18,7 +18,7 @@ export const CommandPickerButton = forwardRef<HTMLButtonElement, CommandPickerBu
         disabled={disabled}
         className={cn(
           "flex items-center justify-center",
-          "h-7 w-7 rounded-[var(--radius-sm)]",
+          "h-6 w-6 rounded-[var(--radius-sm)]",
           "text-canopy-text/50 hover:text-canopy-text/80 hover:bg-white/[0.06]",
           "transition-colors",
           "focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-canopy-accent",
@@ -28,7 +28,7 @@ export const CommandPickerButton = forwardRef<HTMLButtonElement, CommandPickerBu
         title="Open command picker (⌘K)"
         aria-label="Open command picker"
       >
-        <Terminal className="h-4 w-4" />
+        <Terminal className="h-3.5 w-3.5" />
       </button>
     );
   }
