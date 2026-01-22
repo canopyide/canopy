@@ -6,6 +6,7 @@ interface DockState {
   mode: DockMode;
   behavior: DockBehavior;
   autoHideWhenEmpty: boolean;
+  compactMinimal: boolean;
   peek: boolean;
   isHydrated: boolean;
   popoverHeight: number;
@@ -15,10 +16,16 @@ interface DockState {
   cycleMode: () => void;
   toggleExpanded: () => void;
   setAutoHideWhenEmpty: (enabled: boolean) => void;
+  setCompactMinimal: (enabled: boolean) => void;
   setPeek: (peek: boolean) => void;
   setPopoverHeight: (height: number) => void;
   hydrate: (
-    state: Partial<Pick<DockState, "mode" | "behavior" | "autoHideWhenEmpty" | "popoverHeight">>
+    state: Partial<
+      Pick<
+        DockState,
+        "mode" | "behavior" | "autoHideWhenEmpty" | "compactMinimal" | "popoverHeight"
+      >
+    >
   ) => void;
 }
 
@@ -32,6 +39,7 @@ export const useDockStore = create<DockState>()((set, get) => ({
   mode: "hidden",
   behavior: "auto",
   autoHideWhenEmpty: false,
+  compactMinimal: false,
   peek: false,
   isHydrated: false,
   popoverHeight: POPOVER_DEFAULT_HEIGHT,
@@ -45,6 +53,7 @@ export const useDockStore = create<DockState>()((set, get) => ({
       mode: normalizedMode,
       behavior: state.behavior,
       autoHideWhenEmpty: state.autoHideWhenEmpty,
+      compactMinimal: state.compactMinimal,
     });
   },
 
@@ -55,6 +64,7 @@ export const useDockStore = create<DockState>()((set, get) => ({
       mode: state.mode,
       behavior: state.behavior,
       autoHideWhenEmpty: state.autoHideWhenEmpty,
+      compactMinimal: state.compactMinimal,
     });
   },
 
@@ -74,6 +84,7 @@ export const useDockStore = create<DockState>()((set, get) => ({
       mode: state.mode,
       behavior: state.behavior,
       autoHideWhenEmpty: state.autoHideWhenEmpty,
+      compactMinimal: state.compactMinimal,
     });
   },
 
@@ -91,6 +102,7 @@ export const useDockStore = create<DockState>()((set, get) => ({
       mode: state.mode,
       behavior: state.behavior,
       autoHideWhenEmpty: state.autoHideWhenEmpty,
+      compactMinimal: state.compactMinimal,
     });
   },
 
@@ -101,6 +113,18 @@ export const useDockStore = create<DockState>()((set, get) => ({
       mode: state.mode,
       behavior: state.behavior,
       autoHideWhenEmpty: state.autoHideWhenEmpty,
+      compactMinimal: state.compactMinimal,
+    });
+  },
+
+  setCompactMinimal: (enabled) => {
+    set({ compactMinimal: enabled });
+    const state = get();
+    void persistDockState({
+      mode: state.mode,
+      behavior: state.behavior,
+      autoHideWhenEmpty: state.autoHideWhenEmpty,
+      compactMinimal: enabled,
     });
   },
 
@@ -132,12 +156,14 @@ async function persistDockState(state: {
   mode: DockMode;
   behavior: DockBehavior;
   autoHideWhenEmpty: boolean;
+  compactMinimal: boolean;
 }): Promise<void> {
   try {
     await appClient.setState({
       dockMode: state.mode,
       dockBehavior: state.behavior,
       dockAutoHideWhenEmpty: state.autoHideWhenEmpty,
+      compactDockMinimal: state.compactMinimal,
     });
   } catch (error) {
     console.error("Failed to persist dock state:", error);

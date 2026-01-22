@@ -103,6 +103,7 @@ export function AppLayout({
           mode: dockMode,
           behavior: dockBehavior,
           autoHideWhenEmpty: Boolean(appState.dockAutoHideWhenEmpty),
+          compactMinimal: Boolean(appState.compactDockMinimal),
           popoverHeight: appState.dockedPopoverHeight,
         });
       } catch (error) {
