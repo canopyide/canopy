@@ -721,6 +721,8 @@ export interface ProjectSettings {
   devServerCommand?: string;
   /** CopyTree context generation configuration */
   copyTreeSettings?: CopyTreeSettings;
+  /** Command overrides for project-specific customization */
+  commandOverrides?: import("./commands.js").CommandOverride[];
 }
 
 // Toolbar Customization Types

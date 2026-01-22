@@ -429,6 +429,29 @@ export class ProjectStore {
         }
       }
 
+      // Sanitize commandOverrides
+      let sanitizedCommandOverrides: typeof parsed.commandOverrides = undefined;
+      if (Array.isArray(parsed.commandOverrides)) {
+        sanitizedCommandOverrides = parsed.commandOverrides
+          .filter((override: unknown) => {
+            if (!override || typeof override !== "object") return false;
+            const o = override as Record<string, unknown>;
+            if (typeof o.commandId !== "string") return false;
+            // Reject null defaults explicitly (typeof null === "object")
+            if (o.defaults !== undefined && (o.defaults === null || typeof o.defaults !== "object" || Array.isArray(o.defaults))) return false;
+            if (o.disabled !== undefined && typeof o.disabled !== "boolean") return false;
+            return true;
+          })
+          .map((override: unknown) => {
+            const o = override as Record<string, unknown>;
+            return {
+              commandId: o.commandId as string,
+              defaults: o.defaults as Record<string, unknown> | undefined,
+              disabled: o.disabled as boolean | undefined,
+            };
+          });
+      }
+
       const settings: ProjectSettings = {
         runCommands: Array.isArray(parsed.runCommands) ? parsed.runCommands : [],
         environmentVariables: parsed.environmentVariables,
@@ -444,6 +467,7 @@ export class ProjectStore {
           parsed.copyTreeSettings && typeof parsed.copyTreeSettings === "object"
             ? parsed.copyTreeSettings
             : undefined,
+        commandOverrides: sanitizedCommandOverrides && sanitizedCommandOverrides.length > 0 ? sanitizedCommandOverrides : undefined,
       };
 
       return settings;
@@ -475,8 +499,10 @@ export class ProjectStore {
       throw new Error(`Invalid project ID: ${projectId}`);
     }
 
-    // Sanitize projectIconSvg before saving
+    // Sanitize projectIconSvg and commandOverrides before saving
     let sanitizedSettings = settings;
+
+    // Sanitize SVG
     if (settings.projectIconSvg) {
       const sanitizeResult = sanitizeSvg(settings.projectIconSvg);
       if (sanitizeResult.ok) {
@@ -487,12 +513,29 @@ export class ProjectStore {
           );
         }
       } else {
-        // Don't save invalid SVG - strip it from settings
         console.warn(
           `[ProjectStore] Rejecting invalid SVG for project ${projectId}: ${sanitizeResult.error}`
         );
         sanitizedSettings = { ...settings, projectIconSvg: undefined };
       }
+    }
+
+    // Sanitize commandOverrides
+    if (settings.commandOverrides && Array.isArray(settings.commandOverrides)) {
+      const validOverrides = settings.commandOverrides.filter((override) => {
+        if (!override || typeof override !== "object") return false;
+        if (typeof override.commandId !== "string") return false;
+        // Reject null defaults explicitly
+        if (override.defaults !== undefined && (override.defaults === null || typeof override.defaults !== "object" || Array.isArray(override.defaults))) {
+          console.warn(
+            `[ProjectStore] Dropping invalid commandOverride for ${override.commandId} in project ${projectId}`
+          );
+          return false;
+        }
+        if (override.disabled !== undefined && typeof override.disabled !== "boolean") return false;
+        return true;
+      });
+      sanitizedSettings = { ...sanitizedSettings, commandOverrides: validOverrides.length > 0 ? validOverrides : undefined };
     }
 
     const tempFilePath = `${filePath}.tmp`;
