@@ -213,11 +213,7 @@ export interface AutoSizeConfig {
   maxHeightPx?: number;
 }
 
-export function computeAutoSize(
-  contentHeight: number,
-  lineHeightPx: number,
-  maxHeightPx: number
-) {
+export function computeAutoSize(contentHeight: number, lineHeightPx: number, maxHeightPx: number) {
   // Guard against invalid configuration
   if (lineHeightPx <= 0) {
     return { next: maxHeightPx, shouldScroll: false };
