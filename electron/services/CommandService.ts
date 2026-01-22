@@ -8,10 +8,32 @@ import type {
   CommandContext,
   CommandManifestEntry,
   CommandResult,
+  CommandOverride,
 } from "../../shared/types/commands.js";
+import { projectStore } from "./ProjectStore.js";
 
 class CommandServiceImpl {
   private commands = new Map<string, CanopyCommand>();
+
+  /**
+   * Load command overrides for a project.
+   * @param projectId Project ID to load overrides for
+   * @returns Map of command ID to override
+   */
+  private async loadProjectOverrides(projectId: string): Promise<Map<string, CommandOverride>> {
+    const overrideMap = new Map<string, CommandOverride>();
+    try {
+      const settings = await projectStore.getProjectSettings(projectId);
+      if (settings.commandOverrides) {
+        for (const override of settings.commandOverrides) {
+          overrideMap.set(override.commandId, override);
+        }
+      }
+    } catch (error) {
+      console.error(`[CommandService] Failed to load overrides for project ${projectId}:`, error);
+    }
+    return overrideMap;
+  }
 
   /**
    * Register a command with the service.
@@ -53,12 +75,24 @@ class CommandServiceImpl {
    * List all registered commands as manifest entries.
    * @param context Optional context for checking enabled state
    */
-  list(context?: CommandContext): CommandManifestEntry[] {
+  async list(context?: CommandContext): Promise<CommandManifestEntry[]> {
     const entries: CommandManifestEntry[] = [];
     const safeContext = context ?? {};
 
+    // Load project overrides if projectId is provided
+    let overrideMap: Map<string, CommandOverride> | null = null;
+    if (safeContext.projectId) {
+      overrideMap = await this.loadProjectOverrides(safeContext.projectId);
+    }
+
     for (const command of Array.from(this.commands.values())) {
       try {
+        // Check if command is disabled by project override
+        const override = overrideMap?.get(command.id);
+        if (override?.disabled) {
+          continue; // Skip disabled commands
+        }
+
         const enabled = command.isEnabled ? command.isEnabled(safeContext) : true;
         const disabledReason =
           !enabled && command.disabledReason ? command.disabledReason(safeContext) : undefined;
@@ -95,8 +129,9 @@ class CommandServiceImpl {
   /**
    * List commands filtered by category.
    */
-  listByCategory(category: string, context?: CommandContext): CommandManifestEntry[] {
-    return this.list(context).filter((cmd) => cmd.category === category);
+  async listByCategory(category: string, context?: CommandContext): Promise<CommandManifestEntry[]> {
+    const commands = await this.list(context);
+    return commands.filter((cmd) => cmd.category === category);
   }
 
   /**
@@ -123,8 +158,29 @@ class CommandServiceImpl {
       };
     }
 
-    // Validate args is a plain object
-    if (args !== null && (typeof args !== "object" || Array.isArray(args))) {
+    // Load project overrides if projectId is provided
+    let override: CommandOverride | undefined;
+    if (context.projectId) {
+      const overrideMap = await this.loadProjectOverrides(context.projectId);
+      override = overrideMap.get(id);
+    }
+
+    // Check if command is disabled by project override
+    if (override?.disabled) {
+      return {
+        success: false,
+        error: {
+          code: "COMMAND_DISABLED",
+          message: `Command "${id}" is disabled for this project`,
+        },
+      };
+    }
+
+    // Validate args is a plain object (treat null as empty object)
+    if (args === null) {
+      args = {};
+    }
+    if (typeof args !== "object" || Array.isArray(args)) {
       return {
         success: false,
         error: {
@@ -158,8 +214,36 @@ class CommandServiceImpl {
       };
     }
 
-    // Build effective arguments with defaults (without mutating input)
+    // Build effective arguments with defaults (command defaults < override defaults < provided args)
     const effectiveArgs: Record<string, unknown> = { ...args };
+
+    // First, apply command-level defaults
+    if (command.args) {
+      for (const argDef of command.args) {
+        const hasArg =
+          Object.prototype.hasOwnProperty.call(effectiveArgs, argDef.name) &&
+          effectiveArgs[argDef.name] != null;
+
+        if (!hasArg && argDef.default !== undefined) {
+          effectiveArgs[argDef.name] = argDef.default;
+        }
+      }
+    }
+
+    // Second, apply override defaults (if they exist)
+    if (override?.defaults) {
+      for (const [key, value] of Object.entries(override.defaults)) {
+        // Only apply override default if not provided by caller
+        const hasArg =
+          Object.prototype.hasOwnProperty.call(args, key) &&
+          args[key] != null;
+        if (!hasArg) {
+          effectiveArgs[key] = value;
+        }
+      }
+    }
+
+    // Finally, check for missing required arguments
     if (command.args) {
       for (const argDef of command.args) {
         const hasArg =
@@ -167,18 +251,14 @@ class CommandServiceImpl {
           effectiveArgs[argDef.name] != null;
 
         if (argDef.required && !hasArg) {
-          if (argDef.default !== undefined) {
-            effectiveArgs[argDef.name] = argDef.default;
-          } else {
-            return {
-              success: false,
-              error: {
-                code: "MISSING_ARGUMENT",
-                message: `Required argument "${argDef.name}" is missing`,
-                details: { argument: argDef.name },
-              },
-            };
-          }
+          return {
+            success: false,
+            error: {
+              code: "MISSING_ARGUMENT",
+              message: `Required argument "${argDef.name}" is missing`,
+              details: { argument: argDef.name },
+            },
+          };
         }
       }
     }
@@ -202,11 +282,34 @@ class CommandServiceImpl {
   /**
    * Get manifest entry for a single command.
    */
-  getManifest(id: string, context?: CommandContext): CommandManifestEntry | undefined {
+  async getManifest(id: string, context?: CommandContext): Promise<CommandManifestEntry | undefined> {
     const command = this.commands.get(id);
     if (!command) return undefined;
 
     const safeContext = context ?? {};
+
+    // Load project overrides if projectId is provided
+    let override: CommandOverride | undefined;
+    if (safeContext.projectId) {
+      const overrideMap = await this.loadProjectOverrides(safeContext.projectId);
+      override = overrideMap.get(id);
+    }
+
+    // If disabled by project override, return null or disabled entry
+    if (override?.disabled) {
+      return {
+        id: command.id,
+        label: command.label,
+        description: command.description,
+        category: command.category,
+        args: command.args,
+        keywords: command.keywords,
+        hasBuilder: !!command.builder,
+        enabled: false,
+        disabledReason: "Disabled for this project",
+      };
+    }
+
     try {
       const enabled = command.isEnabled ? command.isEnabled(safeContext) : true;
       const disabledReason =

@@ -23,6 +23,7 @@ import {
   Settings,
   FileCode,
   Zap,
+  Command,
 } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover";
@@ -39,6 +40,8 @@ import { validateProjectSvg, sanitizeSvg, svgToDataUrl } from "@/lib/svg";
 import { RecipeEditor } from "@/components/TerminalRecipe/RecipeEditor";
 import { ConfirmDialog } from "@/components/Terminal/ConfirmDialog";
 import { LiveTimeAgo } from "@/components/Worktree/LiveTimeAgo";
+import { CommandOverridesTab } from "@/components/Settings/CommandOverridesTab";
+import type { CommandOverride } from "@shared/types/commands";
 
 interface ProjectSettingsDialogProps {
   projectId: string;
@@ -52,7 +55,7 @@ interface EnvVar {
   value: string;
 }
 
-type ProjectSettingsTab = "general" | "context" | "automation";
+type ProjectSettingsTab = "general" | "context" | "automation" | "commands";
 
 const SENSITIVE_ENV_KEY_RE = /(key|secret|token|password)/i;
 
@@ -80,6 +83,7 @@ export function ProjectSettingsDialog({ projectId, isOpen, onClose }: ProjectSet
     undefined
   );
   const [devServerCommand, setDevServerCommand] = useState<string>("");
+  const [commandOverrides, setCommandOverrides] = useState<CommandOverride[]>([]);
   const fileInputRef = useRef<HTMLInputElement>(null);
 
   const {
@@ -183,6 +187,7 @@ export function ProjectSettingsDialog({ projectId, isOpen, onClose }: ProjectSet
       setProjectIconSvg(settings.projectIconSvg);
       setDefaultWorktreeRecipeId(settings.defaultWorktreeRecipeId);
       setDevServerCommand(settings.devServerCommand || "");
+      setCommandOverrides(settings.commandOverrides || []);
       setIsInitialized(true);
     }
     if (!isOpen) {
@@ -193,11 +198,19 @@ export function ProjectSettingsDialog({ projectId, isOpen, onClose }: ProjectSet
       setIconError(null);
       setDefaultWorktreeRecipeId(undefined);
       setDevServerCommand("");
+      setCommandOverrides([]);
       setSaveError(null);
       hasLoadedRecipes.current = false;
       setActiveTab("general");
     }
   }, [settings, isOpen, isInitialized]);
+
+  // Reset initialization when projectId changes while dialog is open
+  useEffect(() => {
+    if (isOpen) {
+      setIsInitialized(false);
+    }
+  }, [projectId, isOpen]);
 
   useEffect(() => {
     if (isOpen && currentProject) {
@@ -281,6 +294,7 @@ export function ProjectSettingsDialog({ projectId, isOpen, onClose }: ProjectSet
         projectIconSvg: projectIconSvg,
         defaultWorktreeRecipeId: defaultWorktreeRecipeId,
         devServerCommand: devServerCommand.trim() || undefined,
+        commandOverrides: commandOverrides.length > 0 ? commandOverrides : undefined,
       });
       onClose();
     } catch (error) {
@@ -370,6 +384,7 @@ export function ProjectSettingsDialog({ projectId, isOpen, onClose }: ProjectSet
     general: "General",
     context: "Context",
     automation: "Automation",
+    commands: "Commands",
   };
 
   return (
@@ -404,6 +419,13 @@ export function ProjectSettingsDialog({ projectId, isOpen, onClose }: ProjectSet
               icon={<Zap className="w-4 h-4" />}
             >
               Automation
+            </NavButton>
+            <NavButton
+              active={activeTab === "commands"}
+              onClick={() => setActiveTab("commands")}
+              icon={<Command className="w-4 h-4" />}
+            >
+              Commands
             </NavButton>
           </div>
 
@@ -1145,6 +1167,15 @@ export function ProjectSettingsDialog({ projectId, isOpen, onClose }: ProjectSet
                         </div>
                       </div>
                     </div>
+                  </div>
+
+                  {/* Commands Tab */}
+                  <div className={activeTab === "commands" ? "" : "hidden"}>
+                    <CommandOverridesTab
+                      projectId={projectId}
+                      overrides={commandOverrides}
+                      onChange={setCommandOverrides}
+                    />
                   </div>
                 </>
               )}
