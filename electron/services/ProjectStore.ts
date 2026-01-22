@@ -444,6 +444,9 @@ export class ProjectStore {
             )
               return false;
             if (o.disabled !== undefined && typeof o.disabled !== "boolean") return false;
+            // Validate prompt field if present - reject empty/whitespace-only strings
+            if (o.prompt !== undefined && (typeof o.prompt !== "string" || o.prompt.trim() === ""))
+              return false;
             return true;
           })
           .map((override: unknown) => {
@@ -452,6 +455,7 @@ export class ProjectStore {
               commandId: o.commandId as string,
               defaults: o.defaults as Record<string, unknown> | undefined,
               disabled: o.disabled as boolean | undefined,
+              prompt: o.prompt as string | undefined,
             };
           });
       }
@@ -528,29 +532,48 @@ export class ProjectStore {
     }
 
     // Sanitize commandOverrides
-    if (settings.commandOverrides && Array.isArray(settings.commandOverrides)) {
-      const validOverrides = settings.commandOverrides.filter((override) => {
-        if (!override || typeof override !== "object") return false;
-        if (typeof override.commandId !== "string") return false;
-        // Reject null defaults explicitly
-        if (
-          override.defaults !== undefined &&
-          (override.defaults === null ||
-            typeof override.defaults !== "object" ||
-            Array.isArray(override.defaults))
-        ) {
-          console.warn(
-            `[ProjectStore] Dropping invalid commandOverride for ${override.commandId} in project ${projectId}`
-          );
-          return false;
-        }
-        if (override.disabled !== undefined && typeof override.disabled !== "boolean") return false;
-        return true;
-      });
-      sanitizedSettings = {
-        ...sanitizedSettings,
-        commandOverrides: validOverrides.length > 0 ? validOverrides : undefined,
-      };
+    if (settings.commandOverrides !== undefined) {
+      if (!Array.isArray(settings.commandOverrides)) {
+        console.warn(`[ProjectStore] Coercing non-array commandOverrides to undefined in project ${projectId}`);
+        sanitizedSettings = {
+          ...sanitizedSettings,
+          commandOverrides: undefined,
+        };
+      } else {
+        const validOverrides = settings.commandOverrides.filter((override) => {
+          if (!override || typeof override !== "object") return false;
+          if (typeof override.commandId !== "string") return false;
+          // Reject null defaults explicitly
+          if (
+            override.defaults !== undefined &&
+            (override.defaults === null ||
+              typeof override.defaults !== "object" ||
+              Array.isArray(override.defaults))
+          ) {
+            console.warn(
+              `[ProjectStore] Dropping invalid commandOverride for ${override.commandId} in project ${projectId}`
+            );
+            return false;
+          }
+          if (override.disabled !== undefined && typeof override.disabled !== "boolean")
+            return false;
+          // Validate prompt field if present - reject empty/whitespace-only strings
+          if (
+            override.prompt !== undefined &&
+            (typeof override.prompt !== "string" || override.prompt.trim() === "")
+          ) {
+            console.warn(
+              `[ProjectStore] Dropping invalid/empty prompt in commandOverride for ${override.commandId} in project ${projectId}`
+            );
+            return false;
+          }
+          return true;
+        });
+        sanitizedSettings = {
+          ...sanitizedSettings,
+          commandOverrides: validOverrides.length > 0 ? validOverrides : undefined,
+        };
+      }
     }
 
     const tempFilePath = `${filePath}.tmp`;
