@@ -169,3 +169,19 @@ export interface CommandGetPayload {
   /** Context for checking enabled state */
   context?: CommandContext;
 }
+
+/** Command override for project-level customization */
+export interface CommandOverride {
+  /** Command ID this override applies to */
+  commandId: string;
+  /** Default argument values to apply when command is executed */
+  defaults?: Record<string, unknown>;
+  /** Whether this command is disabled for this project */
+  disabled?: boolean;
+}
+
+/** Project-level command settings */
+export interface ProjectCommandSettings {
+  /** List of command overrides for this project */
+  overrides: CommandOverride[];
+}

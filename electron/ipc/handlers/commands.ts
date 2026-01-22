@@ -27,7 +27,7 @@ export function registerCommandHandlers(): () => void {
     _event: Electron.IpcMainInvokeEvent,
     context?: CommandContext
   ): Promise<CommandManifestEntry[]> => {
-    return commandService.list(context);
+    return await commandService.list(context);
   };
   ipcMain.handle(CHANNELS.COMMANDS_LIST, handleCommandsList);
   handlers.push(() => ipcMain.removeHandler(CHANNELS.COMMANDS_LIST));

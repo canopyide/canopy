@@ -28,6 +28,7 @@ import {
 } from "./hybridInputParsing";
 import { CommandPickerButton, CommandPickerHost } from "@/components/Commands";
 import { useCommandStore } from "@/store/commandStore";
+import { useProjectStore } from "@/store/projectStore";
 import type { CommandContext } from "@shared/types/commands";
 import { isEnterLikeLineBreakInputEvent } from "./hybridInputEvents";
 import {
@@ -141,13 +142,15 @@ export const HybridInputBar = forwardRef<HybridInputBarHandle, HybridInputBarPro
     const latestRef = useRef<LatestState | null>(null);
 
     const openPicker = useCommandStore((s) => s.openPicker);
+    const currentProject = useProjectStore((s) => s.currentProject);
 
     const commandContext = useMemo(
       (): CommandContext => ({
         terminalId,
         cwd,
+        projectId: currentProject?.id,
       }),
-      [terminalId, cwd]
+      [terminalId, cwd, currentProject?.id]
     );
 
     const isAgentTerminal = agentId !== undefined;
