@@ -365,9 +365,11 @@ export function registerAppStateHandlers(): () => void {
 
       if ("dockMode" in partialState) {
         const mode = partialState.dockMode;
-        if (mode === "expanded" || mode === "hidden" || mode === "slim") {
-          // Normalize legacy "slim" to "hidden"
-          updates.dockMode = mode === "slim" ? "hidden" : mode;
+        if (typeof mode === "string") {
+          if (mode === "expanded" || mode === "compact" || mode === "hidden" || mode === "slim") {
+            // Normalize legacy "slim" to "hidden"
+            updates.dockMode = mode === "slim" ? "hidden" : mode;
+          }
         }
       }
 
@@ -381,6 +383,12 @@ export function registerAppStateHandlers(): () => void {
       if ("dockAutoHideWhenEmpty" in partialState) {
         if (typeof partialState.dockAutoHideWhenEmpty === "boolean") {
           updates.dockAutoHideWhenEmpty = partialState.dockAutoHideWhenEmpty;
+        }
+      }
+
+      if ("compactDockMinimal" in partialState) {
+        if (typeof partialState.compactDockMinimal === "boolean") {
+          updates.compactDockMinimal = partialState.compactDockMinimal;
         }
       }
 

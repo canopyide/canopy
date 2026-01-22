@@ -21,20 +21,23 @@ export function useDockRenderState(): DockRenderState & {
   failedCount: number;
   trashedCount: number;
   shouldFadeForInput: boolean;
+  compactMinimal: boolean;
 } {
   const activeWorktreeId = useWorktreeSelectionStore((state) => state.activeWorktreeId);
   const isDragging = useIsDragging();
 
-  const { mode, behavior, autoHideWhenEmpty, peek, isHydrated, setPeek } = useDockStore(
-    useShallow((state) => ({
-      mode: state.mode,
-      behavior: state.behavior,
-      autoHideWhenEmpty: state.autoHideWhenEmpty,
-      peek: state.peek,
-      isHydrated: state.isHydrated,
-      setPeek: state.setPeek,
-    }))
-  );
+  const { mode, behavior, autoHideWhenEmpty, compactMinimal, peek, isHydrated, setPeek } =
+    useDockStore(
+      useShallow((state) => ({
+        mode: state.mode,
+        behavior: state.behavior,
+        autoHideWhenEmpty: state.autoHideWhenEmpty,
+        compactMinimal: state.compactMinimal,
+        peek: state.peek,
+        isHydrated: state.isHydrated,
+        setPeek: state.setPeek,
+      }))
+    );
 
   const dockTerminals = useTerminalStore(
     useShallow((state) =>
@@ -132,6 +135,7 @@ export function useDockRenderState(): DockRenderState & {
     density,
     isHandleVisible,
     isHydrated,
+    compactMinimal,
     setPeek,
     hasDocked,
     dockedCount,

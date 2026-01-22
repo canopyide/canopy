@@ -76,9 +76,10 @@ export interface StoreSchema {
     }>;
     panelGridConfig?: PanelGridConfig;
     dockCollapsed?: boolean;
-    dockMode?: "expanded" | "slim" | "hidden";
+    dockMode?: "expanded" | "compact" | "slim" | "hidden";
     dockBehavior?: "auto" | "manual";
     dockAutoHideWhenEmpty?: boolean;
+    compactDockMinimal?: boolean;
   };
   projects: {
     list: Project[];
