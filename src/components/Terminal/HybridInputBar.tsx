@@ -29,7 +29,7 @@ import {
 import { CommandPickerButton, CommandPickerHost } from "@/components/Commands";
 import { useCommandStore } from "@/store/commandStore";
 import { useProjectStore } from "@/store/projectStore";
-import type { CommandContext } from "@shared/types/commands";
+import type { CommandContext, CommandResult } from "@shared/types/commands";
 import { isEnterLikeLineBreakInputEvent } from "./hybridInputEvents";
 import {
   inputTheme,
@@ -580,6 +580,18 @@ export const HybridInputBar = forwardRef<HybridInputBarHandle, HybridInputBarPro
       [applyAutocompleteItem]
     );
 
+    const handleCommandExecuted = useCallback(
+      (_commandId: string, result: CommandResult) => {
+        if (result.success && result.prompt) {
+          sendText(result.prompt);
+        } else if (!result.success && result.error) {
+          // Log execution errors for debugging custom prompt issues
+          console.error("[HybridInputBar] Command execution failed:", result.error);
+        }
+      },
+      [sendText]
+    );
+
     useImperativeHandle(
       ref,
       () => ({ focus: focusEditor, focusWithCursorAtEnd: focusEditorWithCursorAtEnd }),
@@ -1109,7 +1121,7 @@ export const HybridInputBar = forwardRef<HybridInputBarHandle, HybridInputBarPro
             {barContent}
           </div>
         </div>
-        <CommandPickerHost context={commandContext} />
+        <CommandPickerHost context={commandContext} onCommandExecuted={handleCommandExecuted} />
       </>
     );
   }
