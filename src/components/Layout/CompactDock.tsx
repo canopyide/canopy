@@ -214,8 +214,7 @@ export function CompactDock({ dockedCount, shouldFadeForInput = false }: Compact
           ref={combinedRef}
           className={cn(
             "flex items-center gap-0.5 overflow-x-auto flex-1 min-h-5 no-scrollbar scroll-smooth px-0.5",
-            isOver &&
-              "bg-white/[0.03] ring-1 ring-canopy-accent/30 ring-inset rounded"
+            isOver && "bg-white/[0.03] ring-1 ring-canopy-accent/30 ring-inset rounded"
           )}
         >
           <SortableContext
