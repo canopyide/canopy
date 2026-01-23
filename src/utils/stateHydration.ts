@@ -225,27 +225,18 @@ export async function hydrateAppState(options: HydrationOptions): Promise<void> 
                   > | null = null;
 
                   try {
-                    if (
-                      typeof process !== "undefined" &&
-                      typeof process.env !== "undefined" &&
-                      process.env.CANOPY_VERBOSE === "1"
-                    ) {
-                      console.log(
-                        `[Hydration] Attempting reconnect fallback for ${saved.id.slice(0, 8)} (kind: ${kind})`
-                      );
-                    }
+                    // Always log reconnect attempts to help diagnose project switch issues
+                    console.log(
+                      `[Hydration] Trying reconnect fallback for ${saved.id} (kind: ${kind})`
+                    );
                     reconnectedTerminal = await terminalClient.reconnect(saved.id);
                     if (reconnectedTerminal?.exists && reconnectedTerminal.hasPty) {
                       console.log(
                         `[Hydration] Reconnect fallback succeeded for ${saved.id} - terminal exists in backend but was missed by getForProject`
                       );
-                    } else if (
-                      typeof process !== "undefined" &&
-                      typeof process.env !== "undefined" &&
-                      process.env.CANOPY_VERBOSE === "1"
-                    ) {
+                    } else {
                       console.log(
-                        `[Hydration] Reconnect fallback returned: exists=${reconnectedTerminal?.exists}, hasPty=${reconnectedTerminal?.hasPty}`
+                        `[Hydration] Reconnect fallback: terminal ${saved.id} not found (exists=${reconnectedTerminal?.exists}, hasPty=${reconnectedTerminal?.hasPty})`
                       );
                     }
                   } catch (reconnectError) {
