@@ -11,6 +11,7 @@ import type {
   CommandOverride,
 } from "../../shared/types/commands.js";
 import { projectStore } from "./ProjectStore.js";
+import { substituteTemplateVariables } from "../../shared/utils/promptTemplate.js";
 
 class CommandServiceImpl {
   private commands = new Map<string, CanopyCommand>();
@@ -244,7 +245,30 @@ class CommandServiceImpl {
       }
     }
 
-    // Finally, check for missing required arguments
+    // Check for custom prompt override - if present, return the prompt instead of executing
+    // Treat empty/whitespace-only prompts as if no override exists
+    if (override?.prompt && override.prompt.trim() !== "") {
+      const substitutionResult = substituteTemplateVariables(override.prompt, effectiveArgs);
+
+      if (!substitutionResult.success) {
+        return {
+          success: false,
+          error: {
+            code: "PROMPT_SUBSTITUTION_ERROR",
+            message: substitutionResult.error || "Failed to substitute template variables",
+            details: { missingVariables: substitutionResult.missingVariables },
+          },
+        };
+      }
+
+      return {
+        success: true,
+        message: `Custom prompt for "${id}"`,
+        prompt: substitutionResult.prompt,
+      };
+    }
+
+    // Finally, check for missing required arguments (only for normal execution)
     if (command.args) {
       for (const argDef of command.args) {
         const hasArg =
