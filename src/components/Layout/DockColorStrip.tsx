@@ -1,21 +1,45 @@
-import { useMemo } from "react";
+import { useCallback, useState } from "react";
+import type React from "react";
 import { useShallow } from "zustand/react/shallow";
-import { cn } from "@/lib/utils";
+import { AlertCircle, XCircle, Trash2 } from "lucide-react";
+import { cn, getBaseTitle } from "@/lib/utils";
 import { getBrandColorHex } from "@/lib/colorUtils";
-import { useTerminalStore, useWorktreeSelectionStore } from "@/store";
+import { useTerminalStore, useWorktreeSelectionStore, type TerminalInstance } from "@/store";
 import { useWaitingTerminals, useFailedTerminals } from "@/hooks/useTerminalSelectors";
+import { Tooltip, TooltipContent, TooltipTrigger, TooltipProvider } from "@/components/ui/tooltip";
+import { TerminalIcon } from "@/components/Terminal/TerminalIcon";
+import { STATE_LABELS } from "@/components/Worktree/terminalStateConfig";
+import type { AgentState } from "@shared/types";
 
 interface DockColorStripProps {
   onExpandDock: () => void;
 }
 
+const STATE_COLORS_HEX: Partial<Record<AgentState, string>> = {
+  working: "var(--color-state-working)",
+  waiting: "var(--color-state-waiting)",
+  failed: "var(--color-status-error)",
+};
+
 /**
- * DockColorStrip renders the exact same structure as ContentDock but at 6px height.
- * Each element becomes a colored segment. The widths match exactly because we render
- * the same buttons with their natural text widths, just with content hidden.
+ * DockColorStrip renders a minimal 6px color strip at the bottom of the screen
+ * when the dock is hidden. Each segment represents a docked terminal or status indicator.
+ *
+ * Features:
+ * - Hover tooltips showing terminal details
+ * - Per-segment click to open specific terminal
+ * - Keyboard navigation (Tab between segments)
+ * - Visual state indicators for active/waiting/failed terminals
+ * - Smooth hover effects and transitions
  */
 export function DockColorStrip({ onExpandDock }: DockColorStripProps) {
   const activeWorktreeId = useWorktreeSelectionStore((state) => state.activeWorktreeId);
+  const { selectWorktree, trackTerminalFocus } = useWorktreeSelectionStore(
+    useShallow((state) => ({
+      selectWorktree: state.selectWorktree,
+      trackTerminalFocus: state.trackTerminalFocus,
+    }))
+  );
 
   const dockTerminals = useTerminalStore(
     useShallow((state) =>
@@ -26,109 +50,293 @@ export function DockColorStrip({ onExpandDock }: DockColorStripProps) {
     )
   );
 
-  const terminals = useTerminalStore((state) => state.terminals);
   const trashedTerminals = useTerminalStore(useShallow((state) => state.trashedTerminals));
+  const { openDockTerminal, activateTerminal, pingTerminal } = useTerminalStore(
+    useShallow((state) => ({
+      openDockTerminal: state.openDockTerminal,
+      activateTerminal: state.activateTerminal,
+      pingTerminal: state.pingTerminal,
+    }))
+  );
+
   const waitingTerminals = useWaitingTerminals();
   const failedTerminals = useFailedTerminals();
 
   const waitingCount = waitingTerminals.length;
   const failedCount = failedTerminals.length;
 
-  const trashedItems = useMemo(() => {
-    return Array.from(trashedTerminals.values())
-      .map((trashed) => ({
-        terminal: terminals.find((t) => t.id === trashed.id),
-        trashedInfo: trashed,
-      }))
-      .filter((item) => item.terminal !== undefined);
-  }, [trashedTerminals, terminals]);
-
-  const trashedCount = trashedItems.length;
+  const trashedCount = trashedTerminals.size;
   const hasTerminals = dockTerminals.length > 0;
+  const hasStatus = waitingCount > 0 || failedCount > 0 || trashedCount > 0;
+
+  const handleTerminalClick = useCallback(
+    (terminalId: string, e: React.MouseEvent) => {
+      e.stopPropagation();
+      onExpandDock();
+      openDockTerminal(terminalId);
+    },
+    [onExpandDock, openDockTerminal]
+  );
+
+  const handleTerminalDoubleClick = useCallback(
+    (terminalId: string, e: React.MouseEvent) => {
+      e.stopPropagation();
+      activateTerminal(terminalId);
+    },
+    [activateTerminal]
+  );
+
+  const handleStatusClick = useCallback(
+    (type: "waiting" | "failed", e: React.MouseEvent) => {
+      e.stopPropagation();
+      onExpandDock();
+      // Focus first terminal of that type if available
+      const terminals = type === "waiting" ? waitingTerminals : failedTerminals;
+      if (terminals.length > 0) {
+        const first = terminals[0];
+        // Switch worktree if needed
+        if (first.worktreeId && first.worktreeId !== activeWorktreeId) {
+          trackTerminalFocus(first.worktreeId, first.id);
+          selectWorktree(first.worktreeId);
+        }
+        // Focus and ping the terminal
+        if (first.location === "dock") {
+          openDockTerminal(first.id);
+        } else {
+          activateTerminal(first.id);
+        }
+        pingTerminal(first.id);
+      }
+    },
+    [
+      onExpandDock,
+      waitingTerminals,
+      failedTerminals,
+      activeWorktreeId,
+      trackTerminalFocus,
+      selectWorktree,
+      openDockTerminal,
+      activateTerminal,
+      pingTerminal,
+    ]
+  );
 
   return (
-    <button
-      type="button"
-      onClick={onExpandDock}
-      // Same container structure as ContentDock but height=6px, overflow hidden
-      className={cn(
-        "flex items-stretch w-full h-1.5 overflow-hidden",
-        "px-[var(--dock-padding-x)] gap-[var(--dock-gap)]",
-        "cursor-pointer",
-        "focus-visible:outline focus-visible:outline-2 focus-visible:outline-canopy-accent"
-      )}
-      style={{ minHeight: "6px" }}
-      aria-label="Expand dock"
-      data-dock-variant="strip"
-    >
-      {/* Left: Terminals area - same flex-1 min-w-0 structure */}
-      <div className="relative flex-1 min-w-0">
-        {/* Inner container with same padding/gap as ContentDock scroll container */}
-        <div className="flex items-stretch gap-[var(--dock-gap)] h-full px-1">
-          {dockTerminals.map((terminal) => {
-            const brandColor = getBrandColorHex(terminal.type) ?? getBrandColorHex(terminal.agentId);
-            // Render a segment that matches DockedTerminalItem button structure
-            // Same classes for width calculation, but content hidden
-            return (
-              <div
+    <TooltipProvider delayDuration={300}>
+      <div
+        role="group"
+        aria-label="Dock color strip - click segments to expand dock"
+        className={cn(
+          "flex items-stretch w-full h-1.5",
+          "px-[var(--dock-padding-x)] gap-[var(--dock-gap)]",
+          "bg-[var(--dock-bg)]/30 backdrop-blur-sm",
+          "border-t border-[var(--dock-border)]/30",
+          "transition-all duration-200",
+          "hover:h-2 hover:bg-[var(--dock-bg)]/50"
+        )}
+        style={{ minHeight: "6px" }}
+        data-dock-variant="strip"
+      >
+        {/* Left: Terminals area */}
+        <div className="relative flex-1 min-w-0">
+          <div className="flex items-stretch gap-[2px] h-full px-1">
+            {dockTerminals.map((terminal) => (
+              <TerminalSegment
                 key={terminal.id}
-                className="flex items-center gap-1.5 px-3 max-w-[280px]"
-                style={{ backgroundColor: brandColor ?? "#9ca3af" }}
-              >
-                {/* Hidden content that determines width - same structure as DockedTerminalItem */}
-                <span className="invisible shrink-0 w-3.5" /> {/* icon */}
-                <span className="invisible truncate min-w-[48px] max-w-[140px] font-sans font-medium text-xs">
-                  {terminal.title.split(" - ")[0]}
-                </span>
-              </div>
-            );
-          })}
+                terminal={terminal}
+                onClick={(e) => handleTerminalClick(terminal.id, e)}
+                onDoubleClick={(e) => handleTerminalDoubleClick(terminal.id, e)}
+              />
+            ))}
+          </div>
         </div>
-      </div>
 
-      {/* Separator - same as ContentDock: w-px h-5 mx-1 (only if terminals exist) */}
-      {hasTerminals && (
-        <div
-          className="w-px mx-1 shrink-0"
-          style={{ backgroundColor: "var(--dock-border)" }}
+        {/* Separator */}
+        {hasTerminals && hasStatus && (
+          <div
+            className="w-px shrink-0 self-stretch opacity-30"
+            style={{ backgroundColor: "var(--dock-border)" }}
+          />
+        )}
+
+        {/* Right: Status segments */}
+        <div className="shrink-0 flex items-stretch gap-[2px]">
+          {waitingCount > 0 && (
+            <StatusSegment
+              type="waiting"
+              count={waitingCount}
+              onClick={(e) => handleStatusClick("waiting", e)}
+            />
+          )}
+          {failedCount > 0 && (
+            <StatusSegment
+              type="failed"
+              count={failedCount}
+              onClick={(e) => handleStatusClick("failed", e)}
+            />
+          )}
+          {trashedCount > 0 && (
+            <StatusSegment type="trash" count={trashedCount} onClick={onExpandDock} />
+          )}
+        </div>
+
+        {/* Expand button (fallback for empty strip or general expand) */}
+        {!hasTerminals && !hasStatus && (
+          <button
+            type="button"
+            onClick={onExpandDock}
+            className="flex-1 cursor-pointer focus-visible:outline focus-visible:outline-2 focus-visible:outline-canopy-accent"
+            aria-label="Expand dock"
+          />
+        )}
+      </div>
+    </TooltipProvider>
+  );
+}
+
+interface TerminalSegmentProps {
+  terminal: TerminalInstance;
+  onClick: (e: React.MouseEvent) => void;
+  onDoubleClick: (e: React.MouseEvent) => void;
+}
+
+function TerminalSegment({ terminal, onClick, onDoubleClick }: TerminalSegmentProps) {
+  const brandColor = getBrandColorHex(terminal.type) ?? getBrandColorHex(terminal.agentId);
+  const displayTitle = getBaseTitle(terminal.title);
+  const isWorking = terminal.agentState === "working";
+  const isRunning = terminal.agentState === "running";
+  const isWaiting = terminal.agentState === "waiting";
+  const isFailed = terminal.agentState === "failed";
+  const isActive = isWorking || isRunning;
+
+  // Determine segment appearance based on state
+  const stateColor = terminal.agentState ? STATE_COLORS_HEX[terminal.agentState] : undefined;
+  const segmentColor = brandColor ?? "#9ca3af";
+  const stateLabel = terminal.agentState ? STATE_LABELS[terminal.agentState] : undefined;
+
+  return (
+    <Tooltip>
+      <TooltipTrigger asChild>
+        <button
+          type="button"
+          onClick={onClick}
+          onDoubleClick={onDoubleClick}
+          className={cn(
+            "relative flex-1 min-w-[8px] max-w-[80px] h-full",
+            "transition-all duration-150 ease-out",
+            "hover:brightness-110",
+            "focus-visible:ring-2 focus-visible:ring-inset focus-visible:ring-canopy-accent",
+            "cursor-pointer",
+            isActive && "animate-pulse motion-reduce:animate-none",
+            isWaiting && "animate-breathe motion-reduce:animate-none"
+          )}
+          style={{
+            backgroundColor: segmentColor,
+            opacity: isActive ? 1 : isWaiting ? 0.85 : isFailed ? 0.7 : 0.6,
+          }}
+          aria-label={`${displayTitle || "Terminal"}${stateLabel ? ` - ${stateLabel}` : ""}`}
+        >
+          {/* State indicator dot for waiting/failed */}
+          {(isWaiting || isFailed) && stateColor && (
+            <span
+              className="absolute top-0 right-0 w-1 h-1 rounded-full"
+              style={{ backgroundColor: stateColor }}
+              aria-hidden="true"
+            />
+          )}
+        </button>
+      </TooltipTrigger>
+      <TooltipContent side="top" sideOffset={8} className="max-w-[200px]">
+        <div className="flex items-center gap-2">
+          <TerminalIcon
+            type={terminal.type}
+            kind={terminal.kind}
+            agentId={terminal.agentId}
+            className="w-3.5 h-3.5 shrink-0"
+            brandColor={brandColor}
+          />
+          <div className="flex flex-col min-w-0">
+            <span className="text-xs font-medium truncate">{displayTitle}</span>
+            {stateLabel && (
+              <span className="text-[10px] opacity-70" style={{ color: stateColor }}>
+                {stateLabel}
+              </span>
+            )}
+          </div>
+        </div>
+      </TooltipContent>
+    </Tooltip>
+  );
+}
+
+interface StatusSegmentProps {
+  type: "waiting" | "failed" | "trash";
+  count: number;
+  onClick: (e: React.MouseEvent) => void;
+}
+
+const STATUS_CONFIG = {
+  waiting: {
+    color: "#fbbf24", // amber-400
+    hoverColor: "#f59e0b", // amber-500
+    icon: AlertCircle,
+    label: "waiting for input",
+  },
+  failed: {
+    color: "#f87171", // red-400
+    hoverColor: "#ef4444", // red-500
+    icon: XCircle,
+    label: "failed",
+  },
+  trash: {
+    color: "#6b7280", // gray-500
+    hoverColor: "#4b5563", // gray-600
+    icon: Trash2,
+    label: "in trash",
+  },
+} as const;
+
+function StatusSegment({ type, count, onClick }: StatusSegmentProps) {
+  const [isHovered, setIsHovered] = useState(false);
+  const config = STATUS_CONFIG[type];
+  const Icon = config.icon;
+
+  // Width scales with count, capped at a reasonable max
+  const baseWidth = Math.max(16, Math.min(count * 8, 40));
+
+  return (
+    <Tooltip>
+      <TooltipTrigger asChild>
+        <button
+          type="button"
+          onClick={onClick}
+          onMouseEnter={() => setIsHovered(true)}
+          onMouseLeave={() => setIsHovered(false)}
+          className={cn(
+            "relative h-full",
+            "transition-all duration-150 ease-out",
+            "hover:brightness-110",
+            "focus-visible:ring-2 focus-visible:ring-inset focus-visible:ring-canopy-accent",
+            "cursor-pointer",
+            type === "waiting" && "animate-breathe motion-reduce:animate-none"
+          )}
+          style={{
+            backgroundColor: isHovered ? config.hoverColor : config.color,
+            width: `${baseWidth}px`,
+            minWidth: `${baseWidth}px`,
+            opacity: 0.85,
+          }}
+          aria-label={`${count} ${config.label}`}
         />
-      )}
-
-      {/* Right: Status containers - same shrink-0 pl-1 gap-2 structure */}
-      <div className="shrink-0 pl-1 flex items-stretch gap-2">
-        {/* WaitingContainer segment - same button structure */}
-        {waitingCount > 0 && (
-          <div
-            className="flex items-center gap-1.5 px-3 h-8"
-            style={{ backgroundColor: "#fbbf24" }}
-          >
-            <span className="invisible w-3.5 h-3.5" />
-            <span className="invisible font-medium text-xs">Waiting ({waitingCount})</span>
-          </div>
-        )}
-
-        {/* FailedContainer segment */}
-        {failedCount > 0 && (
-          <div
-            className="flex items-center gap-1.5 px-3 h-8"
-            style={{ backgroundColor: "#f87171" }}
-          >
-            <span className="invisible w-3.5 h-3.5" />
-            <span className="invisible font-medium text-xs">Failed ({failedCount})</span>
-          </div>
-        )}
-
-        {/* TrashContainer segment */}
-        {trashedCount > 0 && (
-          <div
-            className="flex items-center gap-1.5 px-3 h-8"
-            style={{ backgroundColor: "#6b7280" }}
-          >
-            <span className="invisible w-3.5 h-3.5" />
-            <span className="invisible font-medium text-xs">Trash ({trashedCount})</span>
-          </div>
-        )}
-      </div>
-    </button>
+      </TooltipTrigger>
+      <TooltipContent side="top" sideOffset={8}>
+        <div className="flex items-center gap-1.5">
+          <Icon className="w-3.5 h-3.5" style={{ color: config.color }} />
+          <span className="text-xs">
+            {count} {config.label}
+          </span>
+        </div>
+      </TooltipContent>
+    </Tooltip>
   );
 }
