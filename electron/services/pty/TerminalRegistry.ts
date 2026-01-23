@@ -128,8 +128,24 @@ export class TerminalRegistry {
 
   getForProject(projectId: string): string[] {
     const result: string[] = [];
-    for (const [id, terminal] of this.terminals) {
-      if (this.terminalMatchesProject(terminal, projectId) && !this.isInTrash(id)) {
+    const allTerminals = Array.from(this.terminals.entries());
+
+    console.log(
+      `[TerminalRegistry] getForProject(${projectId.slice(0, 8)}): checking ${allTerminals.length} total terminals`
+    );
+
+    for (const [id, terminal] of allTerminals) {
+      const info = terminal.getInfo();
+      const matches = this.terminalMatchesProject(terminal, projectId);
+      const inTrash = this.isInTrash(id);
+
+      if (!matches || inTrash) {
+        console.log(
+          `[TerminalRegistry] Terminal ${id.slice(0, 12)} NOT included: matches=${matches}, inTrash=${inTrash}, terminalProjectId=${info.projectId?.slice(0, 8)}`
+        );
+      }
+
+      if (matches && !inTrash) {
         result.push(id);
       }
     }

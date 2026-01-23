@@ -313,8 +313,10 @@ export async function hydrateAppState(options: HydrationOptions): Promise<void> 
 
                     console.log(`[Hydration] Respawning PTY panel: ${saved.id}`);
 
+                    // Preserve the original kind (dev-preview, terminal, etc.) unless it's an agent
+                    const respawnKind = isAgentPanel ? "agent" : kind;
                     await addTerminal({
-                      kind: isAgentPanel ? "agent" : "terminal",
+                      kind: respawnKind,
                       type: saved.type,
                       agentId,
                       title: saved.title,
