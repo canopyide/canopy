@@ -90,6 +90,12 @@ export function buildNonInteractiveEnv(
     env.CI = "1";
   }
 
+  // Force color output: Many CLI tools (chalk, supports-color, etc.) disable
+  // colors when they detect CI=1. Override this since our xterm.js terminal
+  // fully supports ANSI colors. FORCE_COLOR=3 enables 256-color support.
+  env.FORCE_COLOR = "3";
+  env.COLORTERM = "truecolor";
+
   // Git credential prompts
   env.GIT_TERMINAL_PROMPT = "0";
 
