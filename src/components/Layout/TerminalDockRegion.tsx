@@ -52,9 +52,7 @@ export function TerminalDockRegion() {
       <DockHandleOverlay />
 
       {/* Color strip when dock is hidden but has status counts or docked panels */}
-      {showColorStrip && (
-        <DockColorStrip onExpandDock={() => setMode("expanded")} />
-      )}
+      {showColorStrip && <DockColorStrip onExpandDock={() => setMode("expanded")} />}
     </DockPanelOffscreenContainer>
   );
 }
