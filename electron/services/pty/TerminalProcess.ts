@@ -65,7 +65,7 @@ import {
   createProcessStateValidator,
 } from "./terminalActivityPatterns.js";
 import { TerminalForensicsBuffer } from "./TerminalForensicsBuffer.js";
-import { getDefaultShell, getDefaultShellArgs } from "./terminalShell.js";
+import { getDefaultShell, getDefaultShellArgs, buildNonInteractiveEnv } from "./terminalShell.js";
 
 type CursorBuffer = {
   cursorY?: number;
@@ -245,9 +245,14 @@ export class TerminalProcess {
 
     const baseEnv = process.env as Record<string, string | undefined>;
     const mergedEnv = { ...baseEnv, ...options.env };
-    const env = Object.fromEntries(
-      Object.entries(mergedEnv).filter(([_, value]) => value !== undefined)
-    ) as Record<string, string>;
+
+    // For agent terminals, use non-interactive environment to suppress prompts
+    // (oh-my-zsh updates, Homebrew notifications, etc.)
+    const env = this.isAgentTerminal
+      ? buildNonInteractiveEnv(mergedEnv, shell)
+      : (Object.fromEntries(
+          Object.entries(mergedEnv).filter(([_, value]) => value !== undefined)
+        ) as Record<string, string>);
 
     const canUsePool =
       deps.ptyPool && !this.isAgentTerminal && !options.shell && !options.env && !options.args;
