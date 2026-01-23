@@ -128,8 +128,24 @@ export class TerminalRegistry {
 
   getForProject(projectId: string): string[] {
     const result: string[] = [];
-    for (const [id, terminal] of this.terminals) {
-      if (this.terminalMatchesProject(terminal, projectId) && !this.isInTrash(id)) {
+    const allTerminals = Array.from(this.terminals.entries());
+
+    console.log(
+      `[TerminalRegistry] getForProject(${projectId.slice(0, 8)}): checking ${allTerminals.length} total terminals`
+    );
+
+    for (const [id, terminal] of allTerminals) {
+      const info = terminal.getInfo();
+      const matches = this.terminalMatchesProject(terminal, projectId);
+      const inTrash = this.isInTrash(id);
+
+      if (!matches || inTrash) {
+        console.log(
+          `[TerminalRegistry] Terminal ${id.slice(0, 12)} NOT included: matches=${matches}, inTrash=${inTrash}, terminalProjectId=${info.projectId?.slice(0, 8)}`
+        );
+      }
+
+      if (matches && !inTrash) {
         result.push(id);
       }
     }
@@ -399,6 +415,40 @@ export class TerminalRegistry {
     if (matches) {
       info.projectId = projectId;
       return true;
+    }
+
+    // Fallback to lastKnownProjectId if we couldn't infer anything from the filesystem.
+    // This ensures getForProject() finds terminals even when inference fails (e.g., dev-preview
+    // terminals that may have changed cwd), aligning with terminalBelongsToProject behavior.
+    if (!candidates.mainProjectId && !candidates.worktreeProjectId) {
+      const fallbackMatches = this.lastKnownProjectId === projectId;
+      if (process.env.CANOPY_VERBOSE && fallbackMatches) {
+        console.log(
+          `[TerminalRegistry] Matching ${info.id.slice(0, 8)} to project ${projectId.slice(0, 8)}:`,
+          {
+            directMatch: false,
+            infoProjectId: info.projectId?.slice(0, 8),
+            candidates,
+            lastKnownProjectId: this.lastKnownProjectId?.slice(0, 8),
+            fallbackMatches,
+          }
+        );
+      }
+      if (fallbackMatches) {
+        // Persist the fallback match to prevent terminal from following future project switches
+        info.projectId = projectId;
+      }
+      return fallbackMatches;
+    }
+
+    if (process.env.CANOPY_VERBOSE && !matches) {
+      console.log(
+        `[TerminalRegistry] Terminal ${info.id.slice(0, 8)} does not match project ${projectId.slice(0, 8)}:`,
+        {
+          candidates,
+          lastKnownProjectId: this.lastKnownProjectId?.slice(0, 8),
+        }
+      );
     }
 
     return false;

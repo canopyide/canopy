@@ -258,8 +258,9 @@ const createProjectStore: StateCreator<ProjectState> = (set, get) => ({
 
       await get().loadProjects();
 
-      console.log("[ProjectSwitch] Triggering state re-hydration...");
-      window.dispatchEvent(new CustomEvent("project-switched"));
+      // Note: State re-hydration is triggered by PROJECT_ON_SWITCH IPC event
+      // which is handled in useProjectSwitchRehydration. We don't dispatch
+      // project-switched here to avoid duplicate hydration.
     } catch (error) {
       console.error("Failed to switch project:", error);
       const message = getProjectOpenErrorMessage(error);
@@ -418,8 +419,9 @@ const createProjectStore: StateCreator<ProjectState> = (set, get) => ({
 
       await get().loadProjects();
 
-      console.log("[ProjectStore] Triggering state re-hydration...");
-      window.dispatchEvent(new CustomEvent("project-switched"));
+      // Note: State re-hydration is triggered by PROJECT_ON_SWITCH IPC event
+      // which is handled in useProjectSwitchRehydration. We don't dispatch
+      // project-switched here to avoid duplicate hydration.
     } catch (error) {
       console.error("Failed to reopen project:", error);
       const message = getProjectOpenErrorMessage(error);

@@ -13,7 +13,7 @@ import { getAgentConfig, isRegisteredAgent } from "@/config/agents";
 import { generateAgentFlags } from "@shared/types";
 import { normalizeScrollbackLines } from "@shared/config/scrollback";
 import { terminalInstanceService } from "@/services/TerminalInstanceService";
-import { panelKindUsesTerminalUi } from "@shared/config/panelKindRegistry";
+import { panelKindHasPty } from "@shared/config/panelKindRegistry";
 
 export interface HydrationOptions {
   addTerminal: (options: {
@@ -114,6 +114,27 @@ export async function hydrateAppState(options: HydrationOptions): Promise<void> 
           `[Hydration] Found ${backendTerminals.length} running terminals for project ${currentProjectId}`
         );
 
+        if (
+          typeof process !== "undefined" &&
+          typeof process.env !== "undefined" &&
+          process.env.CANOPY_VERBOSE === "1"
+        ) {
+          console.log("[Hydration] Project:", currentProjectId.slice(0, 8));
+          console.log(
+            "[Hydration] Backend terminals:",
+            JSON.stringify(
+              backendTerminals.map((t) => ({
+                id: t.id.slice(0, 8),
+                kind: t.kind,
+                agentId: t.agentId,
+                projectId: t.projectId?.slice(0, 8),
+              })),
+              null,
+              2
+            )
+          );
+        }
+
         // Build a map of backend terminals by ID for quick lookup
         const backendTerminalMap = new Map(backendTerminals.map((t) => [t.id, t]));
 
@@ -178,33 +199,44 @@ export async function hydrateAppState(options: HydrationOptions): Promise<void> 
               } else {
                 // Non-PTY panel or PTY panel that no longer exists in backend - try to recreate
                 // Infer kind from panel properties if missing (defense-in-depth for legacy data)
+                // Note: TerminalSnapshot uses 'command' field for both regular terminals and dev-preview.
+                // Without 'kind', we can't distinguish them, so we default to 'terminal'.
                 let kind: TerminalKind = saved.kind ?? "terminal";
                 if (!saved.kind) {
                   if (saved.browserUrl !== undefined) {
                     kind = "browser";
                   } else if (saved.notePath !== undefined || saved.noteId !== undefined) {
                     kind = "notes";
-                  } else if (saved.devCommand !== undefined) {
-                    kind = "dev-preview";
                   }
+                  // Note: dev-preview detection removed since 'devCommand' isn't in TerminalSnapshot.
+                  // Dev-preview panels should always have 'kind' set during persistence.
                 }
 
                 const location = (saved.location === "dock" ? "dock" : "grid") as "grid" | "dock";
 
-                if (panelKindUsesTerminalUi(kind)) {
+                if (panelKindHasPty(kind)) {
                   // RECONNECT FALLBACK: Before respawning, try to reconnect directly by ID.
                   // This handles cases where getForProject missed the terminal due to project
                   // ID mismatch or stale project association. The terminal may still be running
                   // in the backend but wasn't returned by getForProject.
+                  // Uses panelKindHasPty to include dev-preview panels which have PTY processes.
                   let reconnectedTerminal: Awaited<
                     ReturnType<typeof terminalClient.reconnect>
                   > | null = null;
 
                   try {
+                    // Always log reconnect attempts to help diagnose project switch issues
+                    console.log(
+                      `[Hydration] Trying reconnect fallback for ${saved.id} (kind: ${kind})`
+                    );
                     reconnectedTerminal = await terminalClient.reconnect(saved.id);
                     if (reconnectedTerminal?.exists && reconnectedTerminal.hasPty) {
                       console.log(
                         `[Hydration] Reconnect fallback succeeded for ${saved.id} - terminal exists in backend but was missed by getForProject`
+                      );
+                    } else {
+                      console.log(
+                        `[Hydration] Reconnect fallback: terminal ${saved.id} not found (exists=${reconnectedTerminal?.exists}, hasPty=${reconnectedTerminal?.hasPty})`
                       );
                     }
                   } catch (reconnectError) {
@@ -281,8 +313,10 @@ export async function hydrateAppState(options: HydrationOptions): Promise<void> 
 
                     console.log(`[Hydration] Respawning PTY panel: ${saved.id}`);
 
+                    // Preserve the original kind (dev-preview, terminal, etc.) unless it's an agent
+                    const respawnKind = isAgentPanel ? "agent" : kind;
                     await addTerminal({
-                      kind: isAgentPanel ? "agent" : "terminal",
+                      kind: respawnKind,
                       type: saved.type,
                       agentId,
                       title: saved.title,
