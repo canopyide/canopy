@@ -87,16 +87,24 @@ function BuilderTextField({
   onChange: (value: string) => void;
 }) {
   const inputRef = useRef<HTMLInputElement>(null);
+  const inputId = `field-${field.name}`;
+  const errorId = `${inputId}-error`;
+  const helpId = `${inputId}-help`;
 
   return (
     <div className="space-y-1.5">
-      <label className="block text-sm font-medium text-canopy-text">{field.label}</label>
+      <label htmlFor={inputId} className="block text-sm font-medium text-canopy-text">
+        {field.label}
+      </label>
       <input
         ref={inputRef}
+        id={inputId}
         type={field.type === "number" ? "number" : "text"}
         value={value}
         onChange={(e) => onChange(e.target.value)}
         placeholder={field.placeholder}
+        aria-describedby={error ? errorId : field.helpText ? helpId : undefined}
+        aria-invalid={error ? "true" : undefined}
         className={cn(
           "w-full px-3 py-2 text-sm rounded-[var(--radius-md)]",
           "bg-canopy-bg border text-canopy-text placeholder:text-canopy-text/40",
@@ -106,9 +114,17 @@ function BuilderTextField({
             : "border-canopy-border focus:border-canopy-accent focus:ring-canopy-accent"
         )}
       />
-      {field.helpText && !error && <p className="text-xs text-canopy-text/50">{field.helpText}</p>}
+      {field.helpText && !error && (
+        <p id={helpId} className="text-xs text-canopy-text/50">
+          {field.helpText}
+        </p>
+      )}
       {error && (
-        <p className="text-xs text-[var(--color-status-error)] flex items-center gap-1">
+        <p
+          id={errorId}
+          className="text-xs text-[var(--color-status-error)] flex items-center gap-1"
+          role="alert"
+        >
           <AlertCircle className="h-3 w-3" />
           {error}
         </p>
@@ -128,14 +144,23 @@ function BuilderTextareaField({
   error?: string;
   onChange: (value: string) => void;
 }) {
+  const inputId = `field-${field.name}`;
+  const errorId = `${inputId}-error`;
+  const helpId = `${inputId}-help`;
+
   return (
     <div className="space-y-1.5">
-      <label className="block text-sm font-medium text-canopy-text">{field.label}</label>
+      <label htmlFor={inputId} className="block text-sm font-medium text-canopy-text">
+        {field.label}
+      </label>
       <textarea
+        id={inputId}
         value={value}
         onChange={(e) => onChange(e.target.value)}
         placeholder={field.placeholder}
         rows={4}
+        aria-describedby={error ? errorId : field.helpText ? helpId : undefined}
+        aria-invalid={error ? "true" : undefined}
         className={cn(
           "w-full px-3 py-2 text-sm rounded-[var(--radius-md)] resize-y min-h-[100px]",
           "bg-canopy-bg border text-canopy-text placeholder:text-canopy-text/40",
@@ -145,9 +170,17 @@ function BuilderTextareaField({
             : "border-canopy-border focus:border-canopy-accent focus:ring-canopy-accent"
         )}
       />
-      {field.helpText && !error && <p className="text-xs text-canopy-text/50">{field.helpText}</p>}
+      {field.helpText && !error && (
+        <p id={helpId} className="text-xs text-canopy-text/50">
+          {field.helpText}
+        </p>
+      )}
       {error && (
-        <p className="text-xs text-[var(--color-status-error)] flex items-center gap-1">
+        <p
+          id={errorId}
+          className="text-xs text-[var(--color-status-error)] flex items-center gap-1"
+          role="alert"
+        >
           <AlertCircle className="h-3 w-3" />
           {error}
         </p>
@@ -167,12 +200,21 @@ function BuilderSelectField({
   error?: string;
   onChange: (value: string) => void;
 }) {
+  const inputId = `field-${field.name}`;
+  const errorId = `${inputId}-error`;
+  const helpId = `${inputId}-help`;
+
   return (
     <div className="space-y-1.5">
-      <label className="block text-sm font-medium text-canopy-text">{field.label}</label>
+      <label htmlFor={inputId} className="block text-sm font-medium text-canopy-text">
+        {field.label}
+      </label>
       <select
+        id={inputId}
         value={value}
         onChange={(e) => onChange(e.target.value)}
+        aria-describedby={error ? errorId : field.helpText ? helpId : undefined}
+        aria-invalid={error ? "true" : undefined}
         className={cn(
           "w-full px-3 py-2 text-sm rounded-[var(--radius-md)]",
           "bg-canopy-bg border text-canopy-text",
@@ -189,9 +231,17 @@ function BuilderSelectField({
           </option>
         ))}
       </select>
-      {field.helpText && !error && <p className="text-xs text-canopy-text/50">{field.helpText}</p>}
+      {field.helpText && !error && (
+        <p id={helpId} className="text-xs text-canopy-text/50">
+          {field.helpText}
+        </p>
+      )}
       {error && (
-        <p className="text-xs text-[var(--color-status-error)] flex items-center gap-1">
+        <p
+          id={errorId}
+          className="text-xs text-[var(--color-status-error)] flex items-center gap-1"
+          role="alert"
+        >
           <AlertCircle className="h-3 w-3" />
           {error}
         </p>
@@ -432,6 +482,9 @@ export function CommandBuilder({
           <div className="space-y-6">
             {currentStep && (
               <>
+                {currentStep.title && (
+                  <h3 className="text-base font-semibold text-canopy-text">{currentStep.title}</h3>
+                )}
                 {currentStep.description && (
                   <p className="text-sm text-canopy-text/70">{currentStep.description}</p>
                 )}
@@ -462,6 +515,8 @@ export function CommandBuilder({
 
       <AppDialog.Footer>
         {showSuccessState ? (
+          <Button onClick={onCancel}>Close</Button>
+        ) : hasEmptySteps ? (
           <Button onClick={onCancel}>Close</Button>
         ) : (
           <>

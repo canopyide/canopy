@@ -18,6 +18,8 @@ interface CommandStore {
   activeCommandId: string | null;
   builderSteps: BuilderStep[] | null;
   builderContext: CommandContext | null;
+  isLoadingBuilder: boolean;
+  builderLoadError: string | null;
   openBuilder: (command: CommandManifestEntry, context: CommandContext) => Promise<void>;
   closeBuilder: () => void;
 
@@ -47,6 +49,8 @@ export const useCommandStore = create<CommandStore>()((set, get) => ({
   activeCommandId: null,
   builderSteps: null,
   builderContext: null,
+  isLoadingBuilder: false,
+  builderLoadError: null,
   openBuilder: async (command, context) => {
     set({
       activeCommand: command,
@@ -54,6 +58,8 @@ export const useCommandStore = create<CommandStore>()((set, get) => ({
       builderContext: context,
       builderSteps: null,
       executionError: null,
+      isLoadingBuilder: true,
+      builderLoadError: null,
     });
 
     if (command.hasBuilder) {
@@ -61,12 +67,26 @@ export const useCommandStore = create<CommandStore>()((set, get) => ({
       try {
         const builder = await commandsClient.getBuilder(commandId);
         const currentCommandId = get().activeCommandId;
-        if (builder && currentCommandId === commandId) {
-          set({ builderSteps: builder.steps });
+        if (currentCommandId === commandId) {
+          if (builder) {
+            set({ builderSteps: builder.steps, isLoadingBuilder: false });
+          } else {
+            set({
+              builderLoadError: "Failed to load command configuration",
+              isLoadingBuilder: false,
+            });
+          }
         }
       } catch (error) {
+        const message = error instanceof Error ? error.message : "Failed to load builder";
         console.error("Failed to fetch builder steps:", error);
+        const currentCommandId = get().activeCommandId;
+        if (currentCommandId === commandId) {
+          set({ builderLoadError: message, isLoadingBuilder: false });
+        }
       }
+    } else {
+      set({ isLoadingBuilder: false });
     }
   },
   closeBuilder: () =>
@@ -76,6 +96,8 @@ export const useCommandStore = create<CommandStore>()((set, get) => ({
       builderSteps: null,
       builderContext: null,
       executionError: null,
+      isLoadingBuilder: false,
+      builderLoadError: null,
     }),
 
   // Execution state

@@ -9,9 +9,12 @@ import type {
   CommandManifestEntry,
   CommandResult,
   CommandOverride,
+  CommandArgument,
 } from "../../shared/types/commands.js";
 import { projectStore } from "./ProjectStore.js";
 import { substituteTemplateVariables } from "../../shared/utils/promptTemplate.js";
+
+const DANGEROUS_KEYS = new Set(["__proto__", "constructor", "prototype"]);
 
 class CommandServiceImpl {
   private commands = new Map<string, CanopyCommand>();
@@ -91,7 +94,19 @@ class CommandServiceImpl {
         // Check if command is disabled by project override
         const override = overrideMap?.get(command.id);
         if (override?.disabled) {
-          continue; // Skip disabled commands
+          // Include disabled commands with enabled: false for discoverability
+          entries.push({
+            id: command.id,
+            label: command.label,
+            description: command.description,
+            category: command.category,
+            args: command.args,
+            keywords: command.keywords,
+            hasBuilder: !!command.builder,
+            enabled: false,
+            disabledReason: "Disabled for this project",
+          });
+          continue;
         }
 
         const enabled = command.isEnabled ? command.isEnabled(safeContext) : true;
@@ -218,6 +233,41 @@ class CommandServiceImpl {
       };
     }
 
+    // Validate provided arguments against command definition
+    if (command.args) {
+      const validArgNames = new Set(command.args.map((a) => a.name));
+      const providedKeys = Object.keys(args);
+      const unknownKeys = providedKeys.filter((k) => !validArgNames.has(k));
+      if (unknownKeys.length > 0) {
+        return {
+          success: false,
+          error: {
+            code: "UNKNOWN_ARGUMENTS",
+            message: `Unknown argument(s): ${unknownKeys.join(", ")}`,
+            details: { unknownArguments: unknownKeys },
+          },
+        };
+      }
+
+      // Validate argument types
+      for (const argDef of command.args) {
+        const value = args[argDef.name];
+        if (value != null) {
+          const typeError = this.validateArgumentType(argDef, value);
+          if (typeError) {
+            return {
+              success: false,
+              error: {
+                code: "INVALID_ARGUMENT_TYPE",
+                message: typeError,
+                details: { argument: argDef.name },
+              },
+            };
+          }
+        }
+      }
+    }
+
     // Build effective arguments with defaults (command defaults < override defaults < provided args)
     const effectiveArgs: Record<string, unknown> = { ...args };
 
@@ -234,13 +284,22 @@ class CommandServiceImpl {
       }
     }
 
-    // Second, apply override defaults (if they exist)
+    // Second, apply override defaults (if they exist), filtering dangerous keys
     if (override?.defaults) {
       for (const [key, value] of Object.entries(override.defaults)) {
+        // Skip dangerous prototype pollution keys
+        if (DANGEROUS_KEYS.has(key)) continue;
+
         // Only apply override default if not provided by caller
         const hasArg = Object.prototype.hasOwnProperty.call(args, key) && args[key] != null;
         if (!hasArg) {
-          effectiveArgs[key] = value;
+          // Coerce string values to appropriate types based on arg definition
+          const argDef = command.args?.find((a) => a.name === key);
+          if (argDef && typeof value === "string") {
+            effectiveArgs[key] = this.coerceValue(value, argDef.type);
+          } else {
+            effectiveArgs[key] = value;
+          }
         }
       }
     }
@@ -293,14 +352,64 @@ class CommandServiceImpl {
       return result as CommandResult<TResult>;
     } catch (err) {
       const message = err instanceof Error ? err.message : String(err);
+      // Only include stack traces in development mode
+      const isDev = process.env.NODE_ENV === "development";
       return {
         success: false,
         error: {
           code: "EXECUTION_ERROR",
           message,
-          details: err instanceof Error ? { stack: err.stack } : undefined,
+          details: isDev && err instanceof Error ? { stack: err.stack } : undefined,
         },
       };
+    }
+  }
+
+  /**
+   * Validate argument value against its type definition.
+   */
+  private validateArgumentType(argDef: CommandArgument, value: unknown): string | null {
+    switch (argDef.type) {
+      case "string":
+        if (typeof value !== "string") {
+          return `Argument "${argDef.name}" must be a string`;
+        }
+        break;
+      case "number":
+        if (typeof value !== "number" || isNaN(value)) {
+          return `Argument "${argDef.name}" must be a number`;
+        }
+        break;
+      case "boolean":
+        if (typeof value !== "boolean") {
+          return `Argument "${argDef.name}" must be a boolean`;
+        }
+        break;
+      case "select":
+        if (typeof value !== "string") {
+          return `Argument "${argDef.name}" must be a string`;
+        }
+        if (argDef.choices && !argDef.choices.some((c) => c.value === value)) {
+          return `Argument "${argDef.name}" must be one of: ${argDef.choices.map((c) => c.value).join(", ")}`;
+        }
+        break;
+    }
+    return null;
+  }
+
+  /**
+   * Coerce a string value to the appropriate type.
+   */
+  private coerceValue(value: string, type: CommandArgument["type"]): string | number | boolean {
+    switch (type) {
+      case "number": {
+        const num = Number(value);
+        return isNaN(num) ? value : num;
+      }
+      case "boolean":
+        return value === "true" || value === "1";
+      default:
+        return value;
     }
   }
 
