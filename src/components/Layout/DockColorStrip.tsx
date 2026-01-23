@@ -1,3 +1,4 @@
+import { useMemo } from "react";
 import { useShallow } from "zustand/react/shallow";
 import { cn } from "@/lib/utils";
 import { getBrandColorHex } from "@/lib/colorUtils";
@@ -6,13 +7,14 @@ import { useWaitingTerminals, useFailedTerminals } from "@/hooks/useTerminalSele
 
 interface DockColorStripProps {
   onExpandDock: () => void;
-  shouldFadeForInput?: boolean;
 }
 
-export function DockColorStrip({
-  onExpandDock,
-  shouldFadeForInput = false,
-}: DockColorStripProps) {
+/**
+ * DockColorStrip renders the exact same structure as ContentDock but at 6px height.
+ * Each element becomes a colored segment. The widths match exactly because we render
+ * the same buttons with their natural text widths, just with content hidden.
+ */
+export function DockColorStrip({ onExpandDock }: DockColorStripProps) {
   const activeWorktreeId = useWorktreeSelectionStore((state) => state.activeWorktreeId);
 
   const dockTerminals = useTerminalStore(
@@ -24,92 +26,109 @@ export function DockColorStrip({
     )
   );
 
-  const trashedCount = useTerminalStore(useShallow((state) => state.trashedTerminals.size));
+  const terminals = useTerminalStore((state) => state.terminals);
+  const trashedTerminals = useTerminalStore(useShallow((state) => state.trashedTerminals));
   const waitingTerminals = useWaitingTerminals();
   const failedTerminals = useFailedTerminals();
 
   const waitingCount = waitingTerminals.length;
   const failedCount = failedTerminals.length;
 
+  const trashedItems = useMemo(() => {
+    return Array.from(trashedTerminals.values())
+      .map((trashed) => ({
+        terminal: terminals.find((t) => t.id === trashed.id),
+        trashedInfo: trashed,
+      }))
+      .filter((item) => item.terminal !== undefined);
+  }, [trashedTerminals, terminals]);
+
+  const trashedCount = trashedItems.length;
+  const hasTerminals = dockTerminals.length > 0;
+
   return (
     <button
       type="button"
       onClick={onExpandDock}
+      // Same container structure as ContentDock but height=6px, overflow hidden
       className={cn(
-        "w-full h-1.5 flex items-stretch",
-        "transition-opacity duration-200",
+        "flex items-stretch w-full h-1.5 overflow-hidden",
+        "px-[var(--dock-padding-x)] gap-[var(--dock-gap)]",
         "cursor-pointer",
-        "focus-visible:outline focus-visible:outline-2 focus-visible:outline-canopy-accent",
-        shouldFadeForInput ? "opacity-20 hover:opacity-80" : "opacity-100 hover:opacity-90"
+        "focus-visible:outline focus-visible:outline-2 focus-visible:outline-canopy-accent"
       )}
       style={{ minHeight: "6px" }}
       aria-label="Expand dock"
+      data-dock-variant="strip"
     >
-      {/* Docked terminal segments - each terminal gets a colored strip */}
-      {dockTerminals.map((terminal) => {
-        const brandColor = getBrandColorHex(terminal.type) ?? getBrandColorHex(terminal.agentId);
-        const isActive = terminal.agentState === "working" || terminal.agentState === "running";
-        const isWaiting = terminal.agentState === "waiting";
+      {/* Left: Terminals area - same flex-1 min-w-0 structure */}
+      <div className="relative flex-1 min-w-0">
+        {/* Inner container with same padding/gap as ContentDock scroll container */}
+        <div className="flex items-stretch gap-[var(--dock-gap)] h-full px-1">
+          {dockTerminals.map((terminal) => {
+            const brandColor = getBrandColorHex(terminal.type) ?? getBrandColorHex(terminal.agentId);
+            // Render a segment that matches DockedTerminalItem button structure
+            // Same classes for width calculation, but content hidden
+            return (
+              <div
+                key={terminal.id}
+                className="flex items-center gap-1.5 px-3 max-w-[280px]"
+                style={{ backgroundColor: brandColor ?? "#9ca3af" }}
+              >
+                {/* Hidden content that determines width - same structure as DockedTerminalItem */}
+                <span className="invisible shrink-0 w-3.5" /> {/* icon */}
+                <span className="invisible truncate min-w-[48px] max-w-[140px] font-sans font-medium text-xs">
+                  {terminal.title.split(" - ")[0]}
+                </span>
+              </div>
+            );
+          })}
+        </div>
+      </div>
 
-        return (
+      {/* Separator - same as ContentDock: w-px h-5 mx-1 (only if terminals exist) */}
+      {hasTerminals && (
+        <div
+          className="w-px mx-1 shrink-0"
+          style={{ backgroundColor: "var(--dock-border)" }}
+        />
+      )}
+
+      {/* Right: Status containers - same shrink-0 pl-1 gap-2 structure */}
+      <div className="shrink-0 pl-1 flex items-stretch gap-2">
+        {/* WaitingContainer segment - same button structure */}
+        {waitingCount > 0 && (
           <div
-            key={terminal.id}
-            className={cn(
-              "flex-1 min-w-[8px]",
-              isActive && "animate-pulse motion-reduce:animate-none"
-            )}
-            style={{
-              backgroundColor: brandColor ?? "rgb(156, 163, 175)",
-              opacity: isActive ? 1 : isWaiting ? 0.7 : 0.5,
-            }}
-          />
-        );
-      })}
+            className="flex items-center gap-1.5 px-3 h-8"
+            style={{ backgroundColor: "#fbbf24" }}
+          >
+            <span className="invisible w-3.5 h-3.5" />
+            <span className="invisible font-medium text-xs">Waiting ({waitingCount})</span>
+          </div>
+        )}
 
-      {/* Status segments on the right side */}
-      {waitingCount > 0 && (
-        <div
-          className="shrink-0"
-          style={{
-            backgroundColor: "rgb(251, 191, 36)", // amber-400
-            width: `${Math.min(waitingCount * 8, 32)}px`,
-            opacity: 0.9,
-          }}
-        />
-      )}
+        {/* FailedContainer segment */}
+        {failedCount > 0 && (
+          <div
+            className="flex items-center gap-1.5 px-3 h-8"
+            style={{ backgroundColor: "#f87171" }}
+          >
+            <span className="invisible w-3.5 h-3.5" />
+            <span className="invisible font-medium text-xs">Failed ({failedCount})</span>
+          </div>
+        )}
 
-      {failedCount > 0 && (
-        <div
-          className="shrink-0"
-          style={{
-            backgroundColor: "rgb(248, 113, 113)", // red-400
-            width: `${Math.min(failedCount * 8, 32)}px`,
-            opacity: 0.9,
-          }}
-        />
-      )}
-
-      {trashedCount > 0 && (
-        <div
-          className="shrink-0"
-          style={{
-            backgroundColor: "rgb(156, 163, 175)", // gray-400
-            width: `${Math.min(trashedCount * 8, 32)}px`,
-            opacity: 0.6,
-          }}
-        />
-      )}
-
-      {/* Fallback: if nothing to show, show a subtle accent strip */}
-      {dockTerminals.length === 0 && waitingCount === 0 && failedCount === 0 && trashedCount === 0 && (
-        <div
-          className="flex-1"
-          style={{
-            backgroundColor: "var(--canopy-accent)",
-            opacity: 0.3,
-          }}
-        />
-      )}
+        {/* TrashContainer segment */}
+        {trashedCount > 0 && (
+          <div
+            className="flex items-center gap-1.5 px-3 h-8"
+            style={{ backgroundColor: "#6b7280" }}
+          >
+            <span className="invisible w-3.5 h-3.5" />
+            <span className="invisible font-medium text-xs">Trash ({trashedCount})</span>
+          </div>
+        )}
+      </div>
     </button>
   );
 }

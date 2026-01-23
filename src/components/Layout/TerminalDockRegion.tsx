@@ -53,10 +53,7 @@ export function TerminalDockRegion() {
 
       {/* Color strip when dock is hidden but has status counts or docked panels */}
       {showColorStrip && (
-        <DockColorStrip
-          onExpandDock={() => setMode("expanded")}
-          shouldFadeForInput={shouldFadeForInput}
-        />
+        <DockColorStrip onExpandDock={() => setMode("expanded")} />
       )}
     </DockPanelOffscreenContainer>
   );
