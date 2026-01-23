@@ -19,6 +19,7 @@ export function TerminalDockRegion() {
     failedCount,
     trashedCount,
     shouldFadeForInput,
+    compactMinimal,
   } = useDockRenderState();
 
   const setMode = useDockStore((state) => state.setMode);
@@ -35,7 +36,11 @@ export function TerminalDockRegion() {
       {/* CompactDock for compact mode - minimal bar with inline status */}
       {isCompactMode && shouldShowInLayout && (
         <ErrorBoundary variant="section" componentName="CompactDock">
-          <CompactDock dockedCount={dockedCount} shouldFadeForInput={shouldFadeForInput} />
+          <CompactDock
+            dockedCount={dockedCount}
+            shouldFadeForInput={shouldFadeForInput}
+            ultraMinimal={compactMinimal}
+          />
         </ErrorBoundary>
       )}
 

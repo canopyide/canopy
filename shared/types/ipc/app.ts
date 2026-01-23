@@ -84,6 +84,8 @@ export interface AppState {
   dockBehavior?: import("../domain.js").DockBehavior;
   /** Whether to auto-hide dock when empty */
   dockAutoHideWhenEmpty?: boolean;
+  /** Whether compact dock should use ultra-minimal 6px strip mode */
+  compactDockMinimal?: boolean;
 }
 
 /** Result from app hydration */

@@ -1,8 +1,16 @@
-import { useCallback, useMemo, useRef } from "react";
+import { useCallback, useMemo, useRef, useState } from "react";
 import { useShallow } from "zustand/react/shallow";
 import { SortableContext, horizontalListSortingStrategy } from "@dnd-kit/sortable";
 import { useDroppable } from "@dnd-kit/core";
-import { ChevronUp, ChevronLeft, ChevronRight, Layers } from "lucide-react";
+import {
+  ChevronUp,
+  ChevronLeft,
+  ChevronRight,
+  Layers,
+  AlertCircle,
+  XCircle,
+  Trash2,
+} from "lucide-react";
 import { cn, getBaseTitle } from "@/lib/utils";
 import { getBrandColorHex } from "@/lib/colorUtils";
 import {
@@ -22,6 +30,8 @@ import {
 } from "@/components/DragDrop";
 import { useKeybindingDisplay, useHorizontalScrollControls, useNativeContextMenu } from "@/hooks";
 import { useWorktrees } from "@/hooks/useWorktrees";
+import { useWaitingTerminals, useFailedTerminals } from "@/hooks/useTerminalSelectors";
+import { Tooltip, TooltipContent, TooltipTrigger, TooltipProvider } from "@/components/ui/tooltip";
 import type { MenuItemOption } from "@/types";
 import type { TerminalType, TerminalKind, AgentState } from "@shared/types";
 import { actionService } from "@/services/ActionService";
@@ -38,9 +48,14 @@ const AGENT_OPTIONS = [
 interface CompactDockProps {
   dockedCount: number;
   shouldFadeForInput?: boolean;
+  ultraMinimal?: boolean;
 }
 
-export function CompactDock({ dockedCount, shouldFadeForInput = false }: CompactDockProps) {
+export function CompactDock({
+  dockedCount,
+  shouldFadeForInput = false,
+  ultraMinimal = false,
+}: CompactDockProps) {
   const { showMenu } = useNativeContextMenu();
   const setMode = useDockStore((state) => state.setMode);
   const activeWorktreeId = useWorktreeSelectionStore((state) => state.activeWorktreeId);
@@ -140,6 +155,32 @@ export function CompactDock({ dockedCount, shouldFadeForInput = false }: Compact
   const expandTooltip = ["Expand dock", toggleShortcut && `(${toggleShortcut})`]
     .filter(Boolean)
     .join(" ");
+
+  const waitingTerminals = useWaitingTerminals();
+  const failedTerminals = useFailedTerminals();
+  const waitingCount = waitingTerminals.length;
+  const failedCount = failedTerminals.length;
+  const trashedCount = trashedItems.length;
+
+  if (ultraMinimal) {
+    return (
+      <UltraMinimalDock
+        dockTerminals={dockTerminals}
+        waitingCount={waitingCount}
+        failedCount={failedCount}
+        trashedCount={trashedCount}
+        shouldFadeForInput={shouldFadeForInput}
+        onExpandClick={handleExpandClick}
+        onTerminalClick={(terminal) => {
+          setMode("expanded");
+          openDockTerminal(terminal.id);
+        }}
+        onTerminalDoubleClick={(terminal) => activateTerminal(terminal.id)}
+        onContextMenu={handleContextMenu}
+        expandTooltip={expandTooltip}
+      />
+    );
+  }
 
   return (
     <div
@@ -340,5 +381,316 @@ function CompactTerminalIcon({ terminal, onClick, onDoubleClick }: CompactTermin
         brandColor={brandColor}
       />
     </button>
+  );
+}
+
+interface UltraMinimalDockProps {
+  dockTerminals: Array<{
+    id: string;
+    type?: TerminalType;
+    kind?: TerminalKind;
+    agentId?: string;
+    title: string;
+    agentState?: AgentState;
+  }>;
+  waitingCount: number;
+  failedCount: number;
+  trashedCount: number;
+  shouldFadeForInput: boolean;
+  onExpandClick: () => void;
+  onTerminalClick: (terminal: { id: string }) => void;
+  onTerminalDoubleClick: (terminal: { id: string }) => void;
+  onContextMenu: (e: React.MouseEvent) => void;
+  expandTooltip: string;
+}
+
+function UltraMinimalDock({
+  dockTerminals,
+  waitingCount,
+  failedCount,
+  trashedCount,
+  shouldFadeForInput,
+  onExpandClick,
+  onTerminalClick,
+  onTerminalDoubleClick,
+  onContextMenu,
+  expandTooltip,
+}: UltraMinimalDockProps) {
+  const [isHovered, setIsHovered] = useState(false);
+  const [isFocused, setIsFocused] = useState(false);
+
+  const isExpanded = isHovered || isFocused;
+
+  return (
+    <TooltipProvider delayDuration={200}>
+      <div
+        onContextMenu={onContextMenu}
+        onMouseEnter={() => setIsHovered(true)}
+        onMouseLeave={() => setIsHovered(false)}
+        onFocus={() => setIsFocused(true)}
+        onBlur={(e) => {
+          if (!e.currentTarget.contains(e.relatedTarget as Node)) {
+            setIsFocused(false);
+          }
+        }}
+        className={cn(
+          "bg-[var(--dock-bg)]/80 backdrop-blur-sm",
+          "border-t border-[var(--dock-border)]/30",
+          "flex items-stretch h-1.5",
+          "z-40 shrink-0",
+          "transition-all duration-200",
+          shouldFadeForInput
+            ? "opacity-20 hover:opacity-90 focus-within:opacity-90"
+            : "opacity-100",
+          isExpanded && "h-5 bg-[var(--dock-bg)]/95"
+        )}
+        data-dock-mode="ultra-minimal"
+        data-dock-density="ultra-minimal"
+        style={{ minHeight: isExpanded ? "20px" : "6px" }}
+      >
+        {/* Left: Expand strip - clickable area to expand dock */}
+        <Tooltip>
+          <TooltipTrigger asChild>
+            <button
+              type="button"
+              onClick={onExpandClick}
+              className={cn(
+                "w-8 shrink-0",
+                "bg-canopy-accent/20 hover:bg-canopy-accent/40",
+                "transition-colors duration-150",
+                "focus-visible:outline focus-visible:outline-2 focus-visible:outline-canopy-accent",
+                isExpanded && "flex items-center justify-center"
+              )}
+              aria-label={expandTooltip}
+            >
+              {isExpanded && <ChevronUp className="w-3 h-3 text-canopy-text/60" />}
+            </button>
+          </TooltipTrigger>
+          <TooltipContent side="top" sideOffset={4}>
+            <span>{expandTooltip}</span>
+          </TooltipContent>
+        </Tooltip>
+
+        {/* Center: Docked terminal strips */}
+        <div className="flex-1 flex items-stretch gap-px overflow-hidden">
+          {dockTerminals.map((terminal) => (
+            <TerminalStrip
+              key={terminal.id}
+              terminal={terminal}
+              isExpanded={isExpanded}
+              onClick={() => onTerminalClick(terminal)}
+              onDoubleClick={() => onTerminalDoubleClick(terminal)}
+            />
+          ))}
+        </div>
+
+        {/* Right: Status strips */}
+        <div className="flex items-stretch gap-px shrink-0">
+          {waitingCount > 0 && (
+            <StatusStrip type="waiting" count={waitingCount} isExpanded={isExpanded} />
+          )}
+          {failedCount > 0 && (
+            <StatusStrip type="failed" count={failedCount} isExpanded={isExpanded} />
+          )}
+          {trashedCount > 0 && (
+            <StatusStrip type="trashed" count={trashedCount} isExpanded={isExpanded} />
+          )}
+        </div>
+      </div>
+    </TooltipProvider>
+  );
+}
+
+interface TerminalStripProps {
+  terminal: {
+    id: string;
+    type?: TerminalType;
+    kind?: TerminalKind;
+    agentId?: string;
+    title: string;
+    agentState?: AgentState;
+  };
+  isExpanded: boolean;
+  onClick: () => void;
+  onDoubleClick: () => void;
+}
+
+function TerminalStrip({ terminal, isExpanded, onClick, onDoubleClick }: TerminalStripProps) {
+  const brandColor = getBrandColorHex(terminal.type) ?? getBrandColorHex(terminal.agentId);
+  const displayTitle = getBaseTitle(terminal.title);
+  const isActive = terminal.agentState === "working" || terminal.agentState === "running";
+  const isWaiting = terminal.agentState === "waiting";
+
+  const stripColor = brandColor ?? "rgb(156, 163, 175)";
+  const opacity = isActive ? 1 : isWaiting ? 0.7 : 0.5;
+
+  const handleKeyDown = (e: React.KeyboardEvent) => {
+    if (e.key === "Enter" || e.key === " ") {
+      e.preventDefault();
+      e.stopPropagation();
+      if (e.shiftKey) {
+        onDoubleClick();
+      } else {
+        onClick();
+      }
+    }
+  };
+
+  return (
+    <Tooltip>
+      <TooltipTrigger asChild>
+        <button
+          type="button"
+          onClick={(e) => {
+            e.stopPropagation();
+            onClick();
+          }}
+          onDoubleClick={(e) => {
+            e.stopPropagation();
+            onDoubleClick();
+          }}
+          onKeyDown={handleKeyDown}
+          className={cn(
+            "w-1 min-w-[4px] transition-all duration-150",
+            !isExpanded && "hover:w-2 hover:min-w-[8px]",
+            "focus-visible:outline focus-visible:outline-2 focus-visible:outline-canopy-accent",
+            isActive && "animate-pulse motion-reduce:animate-none",
+            isExpanded && "flex items-center justify-center w-4 min-w-[16px]"
+          )}
+          style={{
+            backgroundColor: stripColor,
+            opacity: opacity,
+          }}
+          aria-label={`${displayTitle} - Press Enter to preview, Shift+Enter to restore`}
+        >
+          {isExpanded && (
+            <TerminalIcon
+              type={terminal.type}
+              kind={terminal.kind}
+              agentId={terminal.agentId}
+              className="w-2.5 h-2.5"
+              brandColor={brandColor}
+            />
+          )}
+        </button>
+      </TooltipTrigger>
+      <TooltipContent side="top" sideOffset={4}>
+        <div className="flex items-center gap-1.5">
+          <TerminalIcon
+            type={terminal.type}
+            kind={terminal.kind}
+            agentId={terminal.agentId}
+            className="w-3 h-3"
+            brandColor={brandColor}
+          />
+          <span>{displayTitle}</span>
+          {isActive && <span className="text-canopy-accent text-[10px]">working</span>}
+          {isWaiting && <span className="text-amber-400 text-[10px]">waiting</span>}
+        </div>
+      </TooltipContent>
+    </Tooltip>
+  );
+}
+
+interface StatusStripProps {
+  type: "waiting" | "failed" | "trashed";
+  count: number;
+  isExpanded: boolean;
+}
+
+function StatusStrip({ type, count, isExpanded }: StatusStripProps) {
+  const { activateTerminal, pingTerminal } = useTerminalStore(
+    useShallow((state) => ({
+      activateTerminal: state.activateTerminal,
+      pingTerminal: state.pingTerminal,
+    }))
+  );
+  const { activeWorktreeId, selectWorktree, trackTerminalFocus } = useWorktreeSelectionStore(
+    useShallow((state) => ({
+      activeWorktreeId: state.activeWorktreeId,
+      selectWorktree: state.selectWorktree,
+      trackTerminalFocus: state.trackTerminalFocus,
+    }))
+  );
+
+  const waitingTerminals = useWaitingTerminals();
+  const failedTerminals = useFailedTerminals();
+
+  const config = {
+    waiting: {
+      color: "rgb(251, 191, 36)", // amber-400
+      hoverColor: "rgb(245, 158, 11)", // amber-500
+      icon: AlertCircle,
+      label: "waiting for input",
+      terminals: waitingTerminals,
+    },
+    failed: {
+      color: "rgb(248, 113, 113)", // red-400
+      hoverColor: "rgb(239, 68, 68)", // red-500
+      icon: XCircle,
+      label: "failed",
+      terminals: failedTerminals,
+    },
+    trashed: {
+      color: "var(--muted-foreground)",
+      hoverColor: "var(--canopy-text)",
+      icon: Trash2,
+      label: "in trash",
+      terminals: [],
+    },
+  }[type];
+
+  const Icon = config.icon;
+  const baseWidth = Math.min(count * 6, 24);
+
+  const handleClick = () => {
+    if (type !== "trashed" && config.terminals.length > 0) {
+      const firstTerminal = config.terminals[0];
+      if (firstTerminal.worktreeId && firstTerminal.worktreeId !== activeWorktreeId) {
+        trackTerminalFocus(firstTerminal.worktreeId, firstTerminal.id);
+        selectWorktree(firstTerminal.worktreeId);
+      }
+      activateTerminal(firstTerminal.id);
+      pingTerminal(firstTerminal.id);
+    }
+  };
+
+  return (
+    <Tooltip>
+      <TooltipTrigger asChild>
+        <button
+          type="button"
+          onClick={handleClick}
+          className={cn(
+            "transition-all duration-150",
+            "hover:opacity-100",
+            "focus-visible:outline focus-visible:outline-2 focus-visible:outline-canopy-accent",
+            isExpanded && "flex items-center justify-center gap-0.5 px-1"
+          )}
+          style={{
+            backgroundColor: config.color,
+            width: isExpanded ? "auto" : `${baseWidth}px`,
+            minWidth: isExpanded ? "24px" : `${baseWidth}px`,
+            opacity: 0.8,
+          }}
+          aria-label={`${count} ${type}`}
+        >
+          {isExpanded && (
+            <>
+              <Icon className="w-2.5 h-2.5 text-white/90" />
+              <span className="text-[10px] font-medium text-white/90">{count}</span>
+            </>
+          )}
+        </button>
+      </TooltipTrigger>
+      <TooltipContent side="top" sideOffset={4}>
+        <div className="flex items-center gap-1.5">
+          <Icon className="w-3 h-3" style={{ color: config.color }} />
+          <span>
+            {count} {config.label}
+          </span>
+        </div>
+      </TooltipContent>
+    </Tooltip>
   );
 }
