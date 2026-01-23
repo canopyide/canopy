@@ -199,15 +199,17 @@ export async function hydrateAppState(options: HydrationOptions): Promise<void> 
               } else {
                 // Non-PTY panel or PTY panel that no longer exists in backend - try to recreate
                 // Infer kind from panel properties if missing (defense-in-depth for legacy data)
+                // Note: TerminalSnapshot uses 'command' field for both regular terminals and dev-preview.
+                // Without 'kind', we can't distinguish them, so we default to 'terminal'.
                 let kind: TerminalKind = saved.kind ?? "terminal";
                 if (!saved.kind) {
                   if (saved.browserUrl !== undefined) {
                     kind = "browser";
                   } else if (saved.notePath !== undefined || saved.noteId !== undefined) {
                     kind = "notes";
-                  } else if (saved.devCommand !== undefined) {
-                    kind = "dev-preview";
                   }
+                  // Note: dev-preview detection removed since 'devCommand' isn't in TerminalSnapshot.
+                  // Dev-preview panels should always have 'kind' set during persistence.
                 }
 
                 const location = (saved.location === "dock" ? "dock" : "grid") as "grid" | "dock";
