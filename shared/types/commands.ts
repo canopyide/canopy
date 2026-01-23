@@ -54,6 +54,12 @@ export interface CommandResult<T = unknown> {
     message: string;
     details?: unknown;
   };
+  /**
+   * Custom prompt to inject into the terminal.
+   * When present, the terminal should send this prompt to the agent instead of
+   * the normal command behavior. Used by prompt overrides.
+   */
+  prompt?: string;
 }
 
 /** Field types for command builder UI */
@@ -178,6 +184,12 @@ export interface CommandOverride {
   defaults?: Record<string, unknown>;
   /** Whether this command is disabled for this project */
   disabled?: boolean;
+  /**
+   * Custom prompt template that replaces the default command execution.
+   * Supports template variables using {variableName} syntax.
+   * When set, executing the command returns this prompt instead of running the command logic.
+   */
+  prompt?: string;
 }
 
 /** Project-level command settings */
