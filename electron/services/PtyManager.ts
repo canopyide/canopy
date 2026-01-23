@@ -172,9 +172,14 @@ export class PtyManager extends EventEmitter {
    */
   spawn(id: string, options: PtySpawnOptions): void {
     if (this.registry.has(id)) {
-      console.warn(`Terminal with id ${id} already exists, killing existing instance`);
+      const existing = this.registry.get(id);
+      const existingInfo = existing?.getInfo();
+      console.warn(
+        `[PtyManager] Terminal ${id} already exists (projectId: ${existingInfo?.projectId?.slice(0, 8)}), killing to respawn with new projectId`
+      );
       this.kill(id);
     }
+    console.log(`[PtyManager] Spawning terminal ${id} (kind: ${options.kind}, type: ${options.type})`);
 
     const terminalProcess = new TerminalProcess(
       id,

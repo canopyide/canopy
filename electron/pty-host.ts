@@ -1047,6 +1047,9 @@ port.on("message", async (rawMsg: any) => {
 
       case "get-terminal": {
         const terminal = ptyManager.getTerminal(msg.id);
+        // Compute hasPty dynamically since it's not stored on TerminalInfo.
+        // A terminal has an active PTY when it hasn't been killed and hasn't exited.
+        const hasPty = terminal ? !terminal.wasKilled && !terminal.isExited : false;
         sendEvent({
           type: "terminal-info",
           requestId: msg.requestId,
@@ -1066,7 +1069,7 @@ port.on("message", async (rawMsg: any) => {
                 isTrashed: terminal.isTrashed,
                 trashExpiresAt: terminal.trashExpiresAt,
                 activityTier: ptyManager.getActivityTier(msg.id),
-                hasPty: terminal.hasPty,
+                hasPty,
               }
             : null,
         });

@@ -165,7 +165,8 @@ export function registerTerminalSnapshotHandlers(deps: HandlerDependencies): () 
       }
 
       console.log(
-        `[IPC] terminal:getForProject(${projectId}): found ${terminals.length} terminals`
+        `[IPC] terminal:getForProject(${projectId.slice(0, 8)}): found ${terminals.length} terminals`,
+        terminals.map((t) => ({ id: t.id.slice(0, 12), kind: t.kind, projectId: t.projectId?.slice(0, 8) }))
       );
       return terminals;
     } catch (error) {
