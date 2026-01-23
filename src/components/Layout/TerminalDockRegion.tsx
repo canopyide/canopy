@@ -4,20 +4,17 @@ import { useDockStore } from "@/store";
 import { ContentDock } from "./ContentDock";
 import { CompactDock } from "./CompactDock";
 import { DockHandleOverlay } from "./DockHandleOverlay";
-import { DockStatusOverlay } from "./DockStatusOverlay";
+import { DockColorStrip } from "./DockColorStrip";
 import { DockPanelOffscreenContainer } from "./DockPanelOffscreenContainer";
 
 export function TerminalDockRegion() {
   const {
     effectiveMode,
     shouldShowInLayout,
-    showStatusOverlay,
+    showColorStrip,
     dockedCount,
     density,
     isHydrated,
-    waitingCount,
-    failedCount,
-    trashedCount,
     shouldFadeForInput,
     compactMinimal,
   } = useDockRenderState();
@@ -54,13 +51,9 @@ export function TerminalDockRegion() {
       {/* Handle overlay is visible in expanded and hidden modes (compact has its own expand button) */}
       <DockHandleOverlay />
 
-      {/* Status overlay when dock is hidden but has status counts or docked panels */}
-      {showStatusOverlay && (
-        <DockStatusOverlay
-          waitingCount={waitingCount}
-          failedCount={failedCount}
-          trashedCount={trashedCount}
-          dockedCount={dockedCount}
+      {/* Color strip when dock is hidden but has status counts or docked panels */}
+      {showColorStrip && (
+        <DockColorStrip
           onExpandDock={() => setMode("expanded")}
           shouldFadeForInput={shouldFadeForInput}
         />
