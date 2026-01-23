@@ -2,11 +2,12 @@ import { useState, useMemo, useCallback, useEffect, useRef } from "react";
 import { cn } from "@/lib/utils";
 import { AppPaletteDialog } from "@/components/ui/AppPaletteDialog";
 import type { CommandManifestEntry, CommandCategory } from "@shared/types/commands";
-import { Search } from "lucide-react";
+import { Search, Loader2 } from "lucide-react";
 
 interface CommandPickerProps {
   isOpen: boolean;
   commands: CommandManifestEntry[];
+  isLoading?: boolean;
   onSelect: (command: CommandManifestEntry) => void;
   onDismiss: () => void;
   filter?: CommandCategory[];
@@ -40,6 +41,7 @@ function fuzzyMatch(text: string, query: string): boolean {
 export function CommandPicker({
   isOpen,
   commands,
+  isLoading = false,
   onSelect,
   onDismiss,
   filter,
@@ -173,6 +175,7 @@ export function CommandPicker({
           <input
             ref={inputRef}
             type="text"
+            role="combobox"
             value={query}
             onChange={(e) => setQuery(e.target.value)}
             onKeyDown={handleKeyDown}
@@ -185,6 +188,9 @@ export function CommandPicker({
             placeholder="Search commands..."
             aria-label="Search commands"
             aria-controls="command-list"
+            aria-expanded="true"
+            aria-haspopup="listbox"
+            aria-autocomplete="list"
             aria-activedescendant={
               flatCommands[selectedIndex] ? `command-${flatCommands[selectedIndex].id}` : undefined
             }
@@ -194,7 +200,12 @@ export function CommandPicker({
 
       <AppPaletteDialog.Body>
         <div ref={listRef} id="command-list" role="listbox" aria-label="Commands">
-          {groupedCommands.length === 0 ? (
+          {isLoading ? (
+            <div className="flex flex-col items-center justify-center py-8 space-y-2">
+              <Loader2 className="h-6 w-6 animate-spin text-canopy-text/40" />
+              <p className="text-sm text-canopy-text/50">Loading commands...</p>
+            </div>
+          ) : groupedCommands.length === 0 ? (
             <AppPaletteDialog.Empty
               query={query}
               emptyMessage="No commands available"

@@ -9,6 +9,9 @@
  */
 
 import type { GraphQlQueryResponseData } from "@octokit/graphql";
+import { existsSync } from "node:fs";
+import { mkdir } from "node:fs/promises";
+import { dirname } from "node:path";
 import type {
   CanopyCommand,
   CommandContext,
@@ -101,11 +104,27 @@ async function fetchIssueDetails(cwd: string, issueNumber: number): Promise<Issu
     throw new Error("Not a GitHub repository");
   }
 
-  const response = (await client(GET_ISSUE_QUERY, {
-    owner: context.owner,
-    repo: context.repo,
-    number: issueNumber,
-  })) as GraphQlQueryResponseData;
+  let response: GraphQlQueryResponseData;
+  try {
+    response = (await client(GET_ISSUE_QUERY, {
+      owner: context.owner,
+      repo: context.repo,
+      number: issueNumber,
+    })) as GraphQlQueryResponseData;
+  } catch (error) {
+    // Handle GraphQL errors (auth, rate limit, network)
+    const message = error instanceof Error ? error.message : String(error);
+    if (message.includes("401") || message.includes("Unauthorized")) {
+      throw new Error("GitHub authentication failed. Check your token.");
+    }
+    if (message.includes("403") || message.includes("rate limit")) {
+      throw new Error("GitHub API rate limit exceeded. Try again later.");
+    }
+    if (message.includes("ENOTFOUND") || message.includes("network")) {
+      throw new Error("Network error connecting to GitHub.");
+    }
+    throw new Error(`GitHub API error: ${message}`);
+  }
 
   const issue = response?.repository?.issue;
   if (!issue) {
@@ -355,7 +374,17 @@ export const githubWorkIssueCommand: CanopyCommand<GitHubWorkIssueArgs, GitHubWo
     let fromRemote: boolean;
     try {
       if (customBaseBranch) {
-        baseBranch = customBaseBranch;
+        const trimmedBaseBranch = customBaseBranch.trim();
+        if (!trimmedBaseBranch) {
+          return {
+            success: false,
+            error: {
+              code: "INVALID_ARGS",
+              message: "Base branch cannot be empty or whitespace",
+            },
+          };
+        }
+        baseBranch = trimmedBaseBranch;
         fromRemote = false;
       } else {
         const detected = await detectBaseBranch(rootPath);
@@ -411,6 +440,23 @@ export const githubWorkIssueCommand: CanopyCommand<GitHubWorkIssueArgs, GitHubWo
 
     const initialPath = generateWorktreePath(rootPath, finalBranchName, pattern);
     const worktreePath = gitService.findAvailablePath(initialPath);
+
+    // Ensure the parent directory exists for the worktree path
+    const parentDir = dirname(worktreePath);
+    if (!existsSync(parentDir)) {
+      try {
+        await mkdir(parentDir, { recursive: true });
+      } catch (error) {
+        const message = error instanceof Error ? error.message : String(error);
+        return {
+          success: false,
+          error: {
+            code: "DIRECTORY_CREATE_FAILED",
+            message: `Failed to create worktree directory: ${message}`,
+          },
+        };
+      }
+    }
 
     // Get workspace client
     const workspaceClient = getWorkspaceClient();
