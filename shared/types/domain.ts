@@ -249,8 +249,8 @@ export interface DockRenderState {
   effectiveMode: DockMode;
   /** Whether the dock content should render in the layout (takes up space) */
   shouldShowInLayout: boolean;
-  /** Whether to show the floating status overlay (hidden mode with status) */
-  showStatusOverlay: boolean;
+  /** Whether to show the color strip (hidden mode with content) */
+  showColorStrip: boolean;
   /** Density for ContentDock components */
   density: "normal" | "compact";
   /** Whether the dock handle should show as "visible" (expanded) or "hidden" */

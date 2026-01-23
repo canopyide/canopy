@@ -119,9 +119,9 @@ export function useDockRenderState(): DockRenderState & {
   // Compute density for ContentDock - compact mode uses compact density
   const density: DockRenderState["density"] = effectiveMode === "compact" ? "compact" : "normal";
 
-  // Show status overlay when dock is hidden and there are status indicators or docked panels
-  // CRITICAL: Must be mutually exclusive with shouldShowInLayout
-  const showStatusOverlay =
+  // Show color strip when dock is hidden and there are status indicators or docked panels
+  // This replaces the old floating status overlay with a minimal 6px color bar
+  const showColorStrip =
     isHydrated && effectiveMode === "hidden" && (hasStatus || hasDocked) && !shouldShowInLayout;
 
   // Whether the dock handle should indicate visible/hidden state
@@ -131,7 +131,7 @@ export function useDockRenderState(): DockRenderState & {
   return {
     effectiveMode,
     shouldShowInLayout,
-    showStatusOverlay,
+    showColorStrip,
     density,
     isHandleVisible,
     isHydrated,
