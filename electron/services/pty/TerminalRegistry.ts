@@ -401,6 +401,40 @@ export class TerminalRegistry {
       return true;
     }
 
+    // Fallback to lastKnownProjectId if we couldn't infer anything from the filesystem.
+    // This ensures getForProject() finds terminals even when inference fails (e.g., dev-preview
+    // terminals that may have changed cwd), aligning with terminalBelongsToProject behavior.
+    if (!candidates.mainProjectId && !candidates.worktreeProjectId) {
+      const fallbackMatches = this.lastKnownProjectId === projectId;
+      if (process.env.CANOPY_VERBOSE && fallbackMatches) {
+        console.log(
+          `[TerminalRegistry] Matching ${info.id.slice(0, 8)} to project ${projectId.slice(0, 8)}:`,
+          {
+            directMatch: false,
+            infoProjectId: info.projectId?.slice(0, 8),
+            candidates,
+            lastKnownProjectId: this.lastKnownProjectId?.slice(0, 8),
+            fallbackMatches,
+          }
+        );
+      }
+      if (fallbackMatches) {
+        // Persist the fallback match to prevent terminal from following future project switches
+        info.projectId = projectId;
+      }
+      return fallbackMatches;
+    }
+
+    if (process.env.CANOPY_VERBOSE && !matches) {
+      console.log(
+        `[TerminalRegistry] Terminal ${info.id.slice(0, 8)} does not match project ${projectId.slice(0, 8)}:`,
+        {
+          candidates,
+          lastKnownProjectId: this.lastKnownProjectId?.slice(0, 8),
+        }
+      );
+    }
+
     return false;
   }
 }
