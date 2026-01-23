@@ -316,7 +316,7 @@ export async function hydrateAppState(options: HydrationOptions): Promise<void> 
                     // Preserve the original kind (dev-preview, terminal, etc.) unless it's an agent
                     const respawnKind = isAgentPanel ? "agent" : kind;
                     const isDevPreview = kind === "dev-preview";
-                    
+
                     await addTerminal({
                       kind: respawnKind,
                       type: saved.type,
