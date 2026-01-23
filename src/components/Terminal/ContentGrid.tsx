@@ -331,7 +331,6 @@ function EmptyState({
                   <span className="text-xs text-canopy-text/50 group-hover:text-canopy-text/70 transition-colors">
                     What's Next?
                   </span>
-                  </span>
                 </button>
 
                 <span className="text-canopy-text/20" aria-hidden="true">
