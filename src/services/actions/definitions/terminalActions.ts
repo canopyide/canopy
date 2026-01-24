@@ -802,6 +802,34 @@ export function registerTerminalActions(actions: ActionRegistry, callbacks: Acti
     },
   }));
 
+  // Tab switching for dock groups
+  actions.set("terminal.switchTab", () => ({
+    id: "terminal.switchTab",
+    title: "Switch Tab in Group",
+    description: "Switch to a specific tab within a dock tab group",
+    category: "terminal",
+    kind: "command",
+    danger: "safe",
+    scope: "renderer",
+    argsSchema: z.object({
+      groupId: z.string(),
+      panelId: z.string(),
+    }),
+    run: async (args: unknown) => {
+      const { groupId, panelId } = args as { groupId: string; panelId: string };
+      const state = useTerminalStore.getState();
+
+      // Validate panel membership in group
+      const panels = state.getTabGroupPanels(groupId);
+      if (!panels.some((p) => p.id === panelId)) {
+        throw new Error(`Panel ${panelId} is not in group ${groupId}`);
+      }
+
+      state.setActiveTab(groupId, panelId);
+      state.setFocused(panelId);
+    },
+  }));
+
   // Helper to get terminal and its worktree for the open worktree actions
   const getTerminalWorktree = (ctx: ActionContext) => {
     const { focusedTerminalId } = ctx;
