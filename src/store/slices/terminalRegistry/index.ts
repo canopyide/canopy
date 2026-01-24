@@ -1559,7 +1559,12 @@ export const createTerminalRegistrySlice =
         const hasWorktreeFilter = worktreeId !== undefined;
         const targetWorktreeId = worktreeId ?? null;
         const panels = get().terminals.filter((t) => {
-          if (t.location !== location) return false;
+          // Match location: grid matches both "grid" and undefined (backward compat)
+          const locationMatches =
+            location === "grid"
+              ? t.location === "grid" || t.location === undefined
+              : t.location === location;
+          if (!locationMatches) return false;
           return !hasWorktreeFilter || (t.worktreeId ?? null) === targetWorktreeId;
         });
 
