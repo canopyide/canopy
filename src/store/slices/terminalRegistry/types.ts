@@ -54,6 +54,10 @@ export interface AddTerminalOptions {
   env?: Record<string, string>;
   /** Behavior when terminal exits: "keep" preserves for review, "trash" sends to trash, "remove" deletes completely */
   exitBehavior?: PanelExitBehavior;
+  /** Tab group identifier - panels with same tabGroupId are grouped together */
+  tabGroupId?: string;
+  /** Tab order within the group (0-based) */
+  orderInGroup?: number;
 }
 
 export interface TrashedTerminal {

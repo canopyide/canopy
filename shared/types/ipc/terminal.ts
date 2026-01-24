@@ -68,6 +68,10 @@ export interface TerminalState {
   createdAt?: number;
   /** Dev command override for dev-preview panels */
   devCommand?: string;
+  /** Tab group identifier - panels with same tabGroupId are grouped together */
+  tabGroupId?: string;
+  /** Tab order within the group (0-based) */
+  orderInGroup?: number;
 }
 
 /** Terminal data payload for IPC */

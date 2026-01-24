@@ -24,6 +24,8 @@ const DEFAULT_OPTIONS: Required<Omit<TerminalPersistenceOptions, "getProjectId">
       worktreeId: t.worktreeId,
       location: t.location === "trash" ? "grid" : t.location,
       cwd: t.cwd,
+      tabGroupId: t.tabGroupId,
+      orderInGroup: t.orderInGroup,
     };
 
     if (t.kind === "dev-preview") {

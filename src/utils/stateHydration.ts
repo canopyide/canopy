@@ -47,6 +47,8 @@ export interface HydrationOptions {
     scope?: "worktree" | "project"; // Note scope (kind === 'notes')
     createdAt?: number; // Note creation timestamp (kind === 'notes')
     devCommand?: string; // Dev command override for dev-preview panels
+    tabGroupId?: string; // Tab group identifier
+    orderInGroup?: number; // Tab order within group
   }) => Promise<string>;
   setActiveWorktree: (id: string | null) => void;
   loadRecipes: (projectId: string) => Promise<void>;
@@ -353,9 +355,33 @@ export async function hydrateAppState(
                     const isDevPreview = kind === "dev-preview";
 
                     if (isAgentPanel) {
-                      // For agent terminals, don't auto-respawn as it could re-execute commands.
-                      // Instead, create a placeholder terminal with DISCONNECTED error state.
-                      // User can manually retry to start a fresh session.
+                      // For agent terminals, behavior depends on context:
+                      // - Fresh app launch: respawn fresh (start new agent session)
+                      // - Project switch: show DISCONNECTED error (user needs to know mid-work)
+                      const isProjectSwitch = !!_switchId;
+
+                      if (!isProjectSwitch) {
+                        // Fresh app launch - respawn agent terminal with fresh session
+                        logInfo(`Respawning agent terminal ${saved.id} with fresh session`);
+
+                        await addTerminal({
+                          kind: respawnKind,
+                          type: saved.type,
+                          agentId,
+                          title: saved.title,
+                          cwd: saved.cwd || projectRoot || "",
+                          worktreeId: saved.worktreeId,
+                          location,
+                          requestedId: saved.id,
+                          command,
+                          isInputLocked: saved.isInputLocked,
+                          tabGroupId: saved.tabGroupId,
+                          orderInGroup: saved.orderInGroup,
+                        });
+                        continue;
+                      }
+
+                      // Project switch - show error state so user can manually retry
                       logWarn(`Agent terminal ${saved.id} disconnected - showing error state`);
 
                       // Add terminal with existingId to create entry without spawning
@@ -370,6 +396,8 @@ export async function hydrateAppState(
                         existingId: saved.id,
                         command,
                         isInputLocked: saved.isInputLocked,
+                        tabGroupId: saved.tabGroupId,
+                        orderInGroup: saved.orderInGroup,
                       });
 
                       // Set the DISCONNECTED error to show error UI
@@ -397,6 +425,8 @@ export async function hydrateAppState(
                         isInputLocked: saved.isInputLocked,
                         devCommand: isDevPreview ? command : undefined,
                         browserUrl: isDevPreview ? saved.browserUrl : undefined,
+                        tabGroupId: saved.tabGroupId,
+                        orderInGroup: saved.orderInGroup,
                       });
 
                       // Set error state on the respawned terminal based on what happened

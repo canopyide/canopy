@@ -340,6 +340,8 @@ export const createTerminalRegistrySlice =
             runtimeStatus,
             isInputLocked: options.isInputLocked,
             exitBehavior: options.exitBehavior,
+            tabGroupId: options.tabGroupId,
+            orderInGroup: options.orderInGroup,
           };
 
           set((state) => {
