@@ -93,32 +93,35 @@ export function useArtifacts(terminalId: string, worktreeId?: string, cwd?: stri
       listeners.delete(listener);
     };
   }, [terminalId]);
-  const copyToClipboard = useCallback(async (artifact: Artifact) => {
-    if (typeof navigator === "undefined" || !navigator.clipboard) {
-      logErrorWithContext(new Error("Clipboard API not available"), {
-        operation: "copy_to_clipboard",
-        component: "useArtifacts",
-        errorType: "validation",
-        details: { artifactId: artifact.id, terminalId },
-      });
-      return false;
-    }
+  const copyToClipboard = useCallback(
+    async (artifact: Artifact) => {
+      if (typeof navigator === "undefined" || !navigator.clipboard) {
+        logErrorWithContext(new Error("Clipboard API not available"), {
+          operation: "copy_to_clipboard",
+          component: "useArtifacts",
+          errorType: "validation",
+          details: { artifactId: artifact.id, terminalId },
+        });
+        return false;
+      }
 
-    try {
-      setActionInProgress(artifact.id);
-      await navigator.clipboard.writeText(artifact.content);
-      return true;
-    } catch (error) {
-      logErrorWithContext(error, {
-        operation: "copy_to_clipboard",
-        component: "useArtifacts",
-        details: { artifactId: artifact.id, artifactType: artifact.type, terminalId },
-      });
-      return false;
-    } finally {
-      setActionInProgress(null);
-    }
-  }, [terminalId]);
+      try {
+        setActionInProgress(artifact.id);
+        await navigator.clipboard.writeText(artifact.content);
+        return true;
+      } catch (error) {
+        logErrorWithContext(error, {
+          operation: "copy_to_clipboard",
+          component: "useArtifacts",
+          details: { artifactId: artifact.id, artifactType: artifact.type, terminalId },
+        });
+        return false;
+      } finally {
+        setActionInProgress(null);
+      }
+    },
+    [terminalId]
+  );
 
   const saveToFile = useCallback(
     async (artifact: Artifact) => {
@@ -378,14 +381,11 @@ export function useArtifacts(terminalId: string, worktreeId?: string, cwd?: stri
               applyResult.modifiedFiles.forEach((f) => modifiedFilesSet.add(f));
             }
           } else {
-            logErrorWithContext(
-              new Error(applyResult.error || "Patch application failed"),
-              {
-                operation: "bulk_apply_patch",
-                component: "useArtifacts",
-                details: { artifactId: artifact.id, worktreeId, cwd, terminalId },
-              }
-            );
+            logErrorWithContext(new Error(applyResult.error || "Patch application failed"), {
+              operation: "bulk_apply_patch",
+              component: "useArtifacts",
+              details: { artifactId: artifact.id, worktreeId, cwd, terminalId },
+            });
             result.failed++;
             result.failures.push({
               artifact,
