@@ -85,11 +85,16 @@ export function DevPreviewPane({
   const [isBrowserOnly, setIsBrowserOnly] = useState(false);
   const [ptyId, setPtyId] = useState<string>("");
   const [showTerminal, setShowTerminal] = useState(false);
-  const [history, setHistory] = useState<BrowserHistory>(() => ({
-    past: [],
-    present: "",
-    future: [],
-  }));
+  const [history, setHistory] = useState<BrowserHistory>(() => {
+    const savedState = useBrowserStateStore.getState().getState(id, worktreeId);
+    return (
+      savedState?.history ?? {
+        past: [],
+        present: "",
+        future: [],
+      }
+    );
+  });
   const [zoomFactor, setZoomFactor] = useState<number>(() => {
     const savedState = useBrowserStateStore.getState().getState(id, worktreeId);
     const savedZoom = savedState?.zoomFactor ?? 1.0;
@@ -112,12 +117,39 @@ export function DevPreviewPane({
   const isDragging = useIsDragging();
   const setBrowserUrl = useTerminalStore((state) => state.setBrowserUrl);
   const updateBrowserZoomFactor = useBrowserStateStore((state) => state.updateZoomFactor);
+  const updateBrowserUrl = useBrowserStateStore((state) => state.updateUrl);
   const activeWorktreeId = useWorktreeSelectionStore((state) => state.activeWorktreeId);
 
   const currentUrl = history.present;
   const canGoBack = history.past.length > 0;
   const canGoForward = history.future.length > 0;
   const hasValidUrl = isValidBrowserUrl(currentUrl);
+
+  // Sync history to browser state store
+  useEffect(() => {
+    updateBrowserUrl(id, currentUrl, history, worktreeId);
+  }, [currentUrl, history, id, updateBrowserUrl, worktreeId]);
+
+  // Reload state when worktreeId changes (for shared component instances)
+  useEffect(() => {
+    const savedState = useBrowserStateStore.getState().getState(id, worktreeId);
+    if (savedState) {
+      if (savedState.history) {
+        setHistory(savedState.history);
+        lastSetUrlRef.current = savedState.history.present;
+      }
+      if (savedState.zoomFactor !== undefined) {
+        const savedZoom = savedState.zoomFactor;
+        setZoomFactor(
+          Number.isFinite(savedZoom) ? Math.max(0.25, Math.min(2.0, savedZoom)) : 1.0
+        );
+      }
+    } else {
+      // Reset to defaults if no state saved for this worktree
+      setHistory({ past: [], present: "", future: [] });
+      setZoomFactor(1.0);
+    }
+  }, [id, worktreeId]);
 
   const clearAutoReload = useCallback(() => {
     if (autoReloadTimeoutRef.current) {
