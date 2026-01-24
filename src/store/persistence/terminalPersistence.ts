@@ -24,6 +24,12 @@ const DEFAULT_OPTIONS: Required<Omit<TerminalPersistenceOptions, "getProjectId">
       worktreeId: t.worktreeId,
       location: t.location === "trash" ? "grid" : t.location,
       cwd: t.cwd,
+      // Tab grouping fields (persist both or neither to maintain consistency)
+      ...(t.tabGroupId !== undefined &&
+        t.tabGroupId !== "" && {
+          tabGroupId: t.tabGroupId,
+          ...(t.orderInGroup !== undefined && { orderInGroup: t.orderInGroup }),
+        }),
     };
 
     if (t.kind === "dev-preview") {

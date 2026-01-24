@@ -95,6 +95,8 @@ export const createTerminalRegistrySlice =
               cwd: "",
               cols: 80,
               rows: 24,
+              tabGroupId: options.tabGroupId,
+              orderInGroup: options.orderInGroup,
             };
           } else if (requestedKind === "notes") {
             terminal = {
@@ -113,6 +115,8 @@ export const createTerminalRegistrySlice =
               cwd: "",
               cols: 80,
               rows: 24,
+              tabGroupId: options.tabGroupId,
+              orderInGroup: options.orderInGroup,
             };
           } else if (requestedKind === "dev-preview") {
             terminal = {
@@ -130,6 +134,8 @@ export const createTerminalRegistrySlice =
               devCommand: options.devCommand,
               browserUrl: options.browserUrl,
               exitBehavior: options.exitBehavior,
+              tabGroupId: options.tabGroupId,
+              orderInGroup: options.orderInGroup,
             };
           } else {
             terminal = {
@@ -144,6 +150,8 @@ export const createTerminalRegistrySlice =
               cwd: "",
               cols: 80,
               rows: 24,
+              tabGroupId: options.tabGroupId,
+              orderInGroup: options.orderInGroup,
             };
           }
 
@@ -340,6 +348,8 @@ export const createTerminalRegistrySlice =
             runtimeStatus,
             isInputLocked: options.isInputLocked,
             exitBehavior: options.exitBehavior,
+            tabGroupId: options.tabGroupId,
+            orderInGroup: options.orderInGroup,
           };
 
           set((state) => {
@@ -1543,5 +1553,80 @@ export const createTerminalRegistrySlice =
 
           return { terminals: newTerminals };
         });
+      },
+
+      getTabGroupPanels: (groupId) => {
+        const terminals = get().terminals;
+        const trashedTerminals = get().trashedTerminals;
+
+        // Find all non-trashed panels that belong to this group
+        const groupPanels = terminals.filter((t) => {
+          // Exclude trashed panels
+          if (t.location === "trash" || trashedTerminals.has(t.id)) {
+            return false;
+          }
+          // For panels with explicit tabGroupId, check if it matches
+          if (t.tabGroupId) {
+            return t.tabGroupId === groupId;
+          }
+          // For ungrouped panels, treat the panel's own ID as its group ID
+          return t.id === groupId;
+        });
+
+        // Sort by orderInGroup (panels without orderInGroup come first with order 0)
+        return groupPanels.sort((a, b) => (a.orderInGroup ?? 0) - (b.orderInGroup ?? 0));
+      },
+
+      getTabGroups: (location, worktreeId) => {
+        const terminals = get().terminals;
+        const trashedTerminals = get().trashedTerminals;
+
+        // Filter to non-trashed panels in the specified location and worktree
+        const relevantPanels = terminals.filter((t) => {
+          // Exclude trashed panels
+          if (t.location === "trash" || trashedTerminals.has(t.id)) {
+            return false;
+          }
+          // Match location (undefined is treated as "grid" for backward compatibility)
+          const effectiveLocation = t.location ?? "grid";
+          if (effectiveLocation !== location) {
+            return false;
+          }
+          // Match worktree (undefined matches undefined)
+          return (t.worktreeId ?? undefined) === worktreeId;
+        });
+
+        // Group panels by their effective group ID
+        // Panels without tabGroupId are treated as single-panel groups (groupId = panelId)
+        const groupMap = new Map<string, TerminalInstance[]>();
+
+        for (const panel of relevantPanels) {
+          const effectiveGroupId = panel.tabGroupId ?? panel.id;
+          const existing = groupMap.get(effectiveGroupId) ?? [];
+          existing.push(panel);
+          groupMap.set(effectiveGroupId, existing);
+        }
+
+        // Convert to TabGroup array
+        const groups: import("@/types").TabGroup[] = [];
+
+        for (const [groupId, panels] of groupMap) {
+          // Sort panels by orderInGroup
+          const sortedPanels = panels.sort((a, b) => (a.orderInGroup ?? 0) - (b.orderInGroup ?? 0));
+
+          // Active tab is the first panel in the sorted list
+          // (In a full implementation, this would be tracked separately per group)
+          const activeTabId = sortedPanels[0]?.id ?? "";
+
+          groups.push({
+            id: groupId,
+            location,
+            worktreeId,
+            activeTabId,
+            panelIds: sortedPanels.map((p) => p.id),
+          });
+        }
+
+        return groups;
       },
     }))(createTrashExpiryHelpers(get, set));
