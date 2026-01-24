@@ -197,7 +197,6 @@ export type ActionId =
   | "terminal.openWorktreeEditor"
   | "terminal.openWorktreeIssue"
   | "terminal.openWorktreePR"
-  | "terminal.switchTab"
   | "notes.openPalette"
   | "notes.create"
   | "notes.delete"

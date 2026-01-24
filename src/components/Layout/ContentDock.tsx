@@ -5,14 +5,8 @@ import { SortableContext, horizontalListSortingStrategy } from "@dnd-kit/sortabl
 import { useDroppable } from "@dnd-kit/core";
 import { ChevronLeft, ChevronRight } from "lucide-react";
 import { cn } from "@/lib/utils";
-import {
-  useTerminalStore,
-  useProjectStore,
-  useWorktreeSelectionStore,
-  type TerminalInstance,
-} from "@/store";
+import { useTerminalStore, useProjectStore, useWorktreeSelectionStore } from "@/store";
 import { DockedTerminalItem } from "./DockedTerminalItem";
-import { DockedTabGroup } from "@/components/Terminal/DockedTabGroup";
 import { TrashContainer } from "./TrashContainer";
 import { WaitingContainer } from "./WaitingContainer";
 import { FailedContainer } from "./FailedContainer";
@@ -45,18 +39,17 @@ export function ContentDock({ density = "normal" }: ContentDockProps) {
   const { showMenu } = useNativeContextMenu();
   const activeWorktreeId = useWorktreeSelectionStore((state) => state.activeWorktreeId);
 
-  // Get tab groups for the dock (includes both grouped and ungrouped panels)
-  const tabGroups = useTerminalStore(
-    useShallow((state) => state.getTabGroups("dock", activeWorktreeId ?? null))
+  const dockTerminals = useTerminalStore(
+    useShallow((state) =>
+      state.terminals.filter(
+        (t) =>
+          t.location === "dock" && (t.worktreeId ?? undefined) === (activeWorktreeId ?? undefined)
+      )
+    )
   );
 
   const trashedTerminals = useTerminalStore(useShallow((state) => state.trashedTerminals));
   const terminals = useTerminalStore((state) => state.terminals);
-
-  // Build panel lookup map for efficient access
-  const terminalById = useMemo(() => {
-    return new Map(terminals.map((t) => [t.id, t]));
-  }, [terminals]);
   const currentProject = useProjectStore((s) => s.currentProject);
 
   const { worktrees } = useWorktrees();
@@ -127,15 +120,15 @@ export function ContentDock({ density = "normal" }: ContentDockProps) {
     trashedInfo: typeof trashedTerminals extends Map<string, infer V> ? V : never;
   }[];
 
-  // For SortableContext, we use the first panel ID of each group (or the group ID for ungrouped)
-  // This maintains drag-and-drop compatibility
-  const sortableIds = useMemo(() => {
-    if (tabGroups.length === 0) {
+  const activeDockTerminals = dockTerminals;
+
+  // Terminal IDs for SortableContext
+  const terminalIds = useMemo(() => {
+    if (activeDockTerminals.length === 0) {
       return [DOCK_PLACEHOLDER_ID];
     }
-    // Use the first panel ID in each group for sortable IDs
-    return tabGroups.map((group) => group.panelIds[0]);
-  }, [tabGroups]);
+    return activeDockTerminals.map((t) => t.id);
+  }, [activeDockTerminals]);
 
   const isCompact = density === "compact";
 
@@ -182,42 +175,18 @@ export function ContentDock({ density = "normal" }: ContentDockProps) {
         >
           <SortableContext
             id="dock-container"
-            items={sortableIds}
+            items={terminalIds}
             strategy={horizontalListSortingStrategy}
           >
             <div className="flex items-center gap-[var(--dock-gap)] min-w-[100px] min-h-[calc(var(--dock-item-height)-4px)]">
-              {tabGroups.length === 0 ? (
+              {activeDockTerminals.length === 0 ? (
                 <SortableDockPlaceholder />
               ) : (
-                tabGroups.map((group, index) => {
-                  // Use group.panelIds for correct scoping (avoids cross-location leaks)
-                  const panels = group.panelIds
-                    .map((id) => terminalById.get(id))
-                    .filter(Boolean) as TerminalInstance[];
-
-                  const firstPanel = panels[0];
-                  if (!firstPanel) return null;
-
-                  // Single-panel groups render as regular dock items (backward compat)
-                  if (panels.length === 1) {
-                    return (
-                      <SortableDockItem
-                        key={firstPanel.id}
-                        terminal={firstPanel}
-                        sourceIndex={index}
-                      >
-                        <DockedTerminalItem terminal={firstPanel} />
-                      </SortableDockItem>
-                    );
-                  }
-
-                  // Multi-panel groups render with tab bar
-                  return (
-                    <SortableDockItem key={firstPanel.id} terminal={firstPanel} sourceIndex={index}>
-                      <DockedTabGroup group={group} panels={panels} />
-                    </SortableDockItem>
-                  );
-                })
+                activeDockTerminals.map((terminal, index) => (
+                  <SortableDockItem key={terminal.id} terminal={terminal} sourceIndex={index}>
+                    <DockedTerminalItem terminal={terminal} />
+                  </SortableDockItem>
+                ))
               )}
             </div>
           </SortableContext>
@@ -244,7 +213,9 @@ export function ContentDock({ density = "normal" }: ContentDockProps) {
       </div>
 
       {/* Separator between terminals and action containers */}
-      {tabGroups.length > 0 && <div className="w-px h-5 bg-[var(--dock-border)] mx-1 shrink-0" />}
+      {activeDockTerminals.length > 0 && (
+        <div className="w-px h-5 bg-[var(--dock-border)] mx-1 shrink-0" />
+      )}
 
       {/* Action containers: Waiting + Failed + Trash */}
       <div className="shrink-0 pl-1 flex items-center gap-2">

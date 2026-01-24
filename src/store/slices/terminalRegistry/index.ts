@@ -340,8 +340,6 @@ export const createTerminalRegistrySlice =
             runtimeStatus,
             isInputLocked: options.isInputLocked,
             exitBehavior: options.exitBehavior,
-            tabGroupId: options.tabGroupId,
-            orderInGroup: options.orderInGroup,
           };
 
           set((state) => {
@@ -1544,50 +1542,6 @@ export const createTerminalRegistrySlice =
           );
 
           return { terminals: newTerminals };
-        });
-      },
-
-      getTabGroupPanels: (groupId) => {
-        return get()
-          .terminals.filter(
-            (t) =>
-              t.location !== "trash" &&
-              (t.tabGroupId === groupId || (!t.tabGroupId && t.id === groupId))
-          )
-          .sort((a, b) => (a.orderInGroup ?? 0) - (b.orderInGroup ?? 0));
-      },
-
-      getTabGroups: (location, worktreeId) => {
-        const hasWorktreeFilter = worktreeId !== undefined;
-        const targetWorktreeId = worktreeId ?? null;
-        const panels = get().terminals.filter((t) => {
-          // Match location: grid matches both "grid" and undefined (backward compat)
-          const locationMatches =
-            location === "grid"
-              ? t.location === "grid" || t.location === undefined
-              : t.location === location;
-          if (!locationMatches) return false;
-          return !hasWorktreeFilter || (t.worktreeId ?? null) === targetWorktreeId;
-        });
-
-        const grouped = new Map<string, TerminalInstance[]>();
-        for (const panel of panels) {
-          const groupId = panel.tabGroupId ?? panel.id;
-          if (!grouped.has(groupId)) grouped.set(groupId, []);
-          grouped.get(groupId)!.push(panel);
-        }
-
-        return Array.from(grouped.entries()).map(([id, groupPanels]) => {
-          const sortedPanels = groupPanels.sort(
-            (a, b) => (a.orderInGroup ?? 0) - (b.orderInGroup ?? 0)
-          );
-          return {
-            id,
-            location,
-            worktreeId: worktreeId === null ? undefined : worktreeId,
-            activeTabId: sortedPanels[0].id,
-            panelIds: sortedPanels.map((p) => p.id),
-          };
         });
       },
     }))(createTrashExpiryHelpers(get, set));
