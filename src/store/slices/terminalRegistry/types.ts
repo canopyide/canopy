@@ -10,6 +10,8 @@ import type {
   SpawnError,
   PanelExitBehavior,
   TerminalReconnectError,
+  TabGroup,
+  TabGroupLocation,
 } from "@/types";
 import type { PanelKind } from "@/types";
 
@@ -124,6 +126,10 @@ export interface TerminalRegistrySlice {
   clearSpawnError: (id: string) => void;
   setReconnectError: (id: string, error: TerminalReconnectError) => void;
   clearReconnectError: (id: string) => void;
+
+  // Tab grouping helpers
+  getTabGroupPanels: (groupId: string) => TerminalInstance[];
+  getTabGroups: (location: TabGroupLocation, worktreeId?: string | null) => TabGroup[];
 }
 
 export type TerminalRegistryMiddleware = {

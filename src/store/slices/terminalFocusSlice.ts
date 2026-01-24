@@ -36,6 +36,9 @@ export interface TerminalFocusSlice {
   pingedId: string | null;
   preMaximizeLayout: PreMaximizeLayoutSnapshot | null;
 
+  /** Track active tab per tab group (groupId -> panelId) */
+  activeTabByGroup: Map<string, string>;
+
   setFocused: (id: string | null, shouldPing?: boolean) => void;
   pingTerminal: (id: string) => void;
   toggleMaximize: (id: string, currentGridCols?: number, currentGridItemCount?: number) => void;
@@ -68,6 +71,10 @@ export interface TerminalFocusSlice {
     terminals: TerminalInstance[],
     removedIndex: number
   ) => void;
+
+  // Tab group management
+  getActiveTabId: (groupId: string) => string | null;
+  setActiveTab: (groupId: string, panelId: string) => void;
 }
 
 export const createTerminalFocusSlice =
@@ -83,6 +90,7 @@ export const createTerminalFocusSlice =
       activeDockTerminalId: null,
       pingedId: null,
       preMaximizeLayout: null,
+      activeTabByGroup: new Map<string, string>(),
 
       setFocused: (id, shouldPing = false) => {
         set({ focusedId: id });
@@ -347,7 +355,33 @@ export const createTerminalFocusSlice =
             updates.activeDockTerminalId = null;
           }
 
+          // Clean up activeTabByGroup entries pointing to removed panel
+          const hasStaleActiveTab = Array.from(state.activeTabByGroup.values()).includes(
+            removedId
+          );
+          if (hasStaleActiveTab) {
+            const newActiveTabByGroup = new Map(state.activeTabByGroup);
+            for (const [groupId, activeTabId] of newActiveTabByGroup.entries()) {
+              if (activeTabId === removedId) {
+                newActiveTabByGroup.delete(groupId);
+              }
+            }
+            updates.activeTabByGroup = newActiveTabByGroup;
+          }
+
           return Object.keys(updates).length > 0 ? updates : state;
+        });
+      },
+
+      getActiveTabId: (groupId) => {
+        return get().activeTabByGroup.get(groupId) ?? null;
+      },
+
+      setActiveTab: (groupId, panelId) => {
+        set((state) => {
+          const newMap = new Map(state.activeTabByGroup);
+          newMap.set(groupId, panelId);
+          return { activeTabByGroup: newMap };
         });
       },
     };
