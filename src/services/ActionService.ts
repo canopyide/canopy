@@ -33,7 +33,7 @@ function zodSchemaToJsonSchema(schema: z.ZodType): Record<string, unknown> | und
   try {
     return zodToJsonSchema(schema as unknown as ZodSchema) as Record<string, unknown>;
   } catch (err) {
-    console.warn("[ActionService] Failed to convert zod schema to JSON Schema:", err);
+    logWarn("Failed to convert zod schema to JSON Schema", { error: err });
     return undefined;
   }
 }
