@@ -364,6 +364,10 @@ interface BasePanelData {
   worktreeId?: string;
   /** Whether the panel pane is currently visible in the viewport */
   isVisible?: boolean;
+  /** Optional tab group identifier - panels with same tabGroupId are grouped together */
+  tabGroupId?: string;
+  /** Tab order within the group (0-based). Used for sorting tabs within a group */
+  orderInGroup?: number;
 }
 
 interface PtyPanelData extends BasePanelData {
@@ -450,6 +454,26 @@ interface NotesPanelData extends BasePanelData {
 
 export type PanelInstance = PtyPanelData | BrowserPanelData | NotesPanelData;
 
+/** Tab group location - excludes trash since groups cannot be in trash */
+export type TabGroupLocation = Exclude<PanelLocation, "trash">;
+
+/**
+ * Tab group - a logical grouping of panels that share a single grid cell or dock slot.
+ * Ungrouped panels are treated as single-tab groups for consistency.
+ */
+export interface TabGroup {
+  /** Unique group identifier */
+  id: string;
+  /** Location in the UI - grid or dock (tab groups cannot be in trash) */
+  location: TabGroupLocation;
+  /** Associated worktree ID */
+  worktreeId?: string;
+  /** ID of the currently visible/active panel in this group */
+  activeTabId: string;
+  /** Ordered list of panel IDs in this group */
+  panelIds: string[];
+}
+
 export function isPtyPanel(panel: PanelInstance | TerminalInstance): panel is PtyPanelData {
   const kind = panel.kind ?? "terminal";
   return kind === "terminal" || kind === "agent" || kind === "dev-preview";
@@ -519,6 +543,10 @@ export interface TerminalInstance {
   exitBehavior?: PanelExitBehavior;
   /** Whether this terminal has an active PTY process (false for orphaned terminals that exited) */
   hasPty?: boolean;
+  /** Optional tab group identifier - panels with same tabGroupId are grouped together */
+  tabGroupId?: string;
+  /** Tab order within the group (0-based). Used for sorting tabs within a group */
+  orderInGroup?: number;
 }
 
 /** Options for spawning a new PTY process */
@@ -606,6 +634,10 @@ export interface TerminalSnapshot {
   scope?: "worktree" | "project";
   /** Note creation timestamp (kind === 'notes') */
   createdAt?: number;
+  /** Optional tab group identifier - panels with same tabGroupId are grouped together */
+  tabGroupId?: string;
+  /** Tab order within the group (0-based). Used for sorting tabs within a group */
+  orderInGroup?: number;
 }
 
 /** Type alias for TerminalSnapshot. Use this in new code. */
