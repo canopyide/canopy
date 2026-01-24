@@ -1,3 +1,5 @@
+import { logError } from "@/utils/logger";
+
 export type ErrorCategory = "network" | "filesystem" | "validation" | "git" | "process" | "unknown";
 
 export interface ErrorContext {
@@ -14,14 +16,6 @@ function getErrorMessage(error: unknown): string {
     return String(error.message);
   }
   return String(error);
-}
-
-function getErrorStack(error: unknown): string | undefined {
-  if (error instanceof Error) return error.stack;
-  if (typeof error === "object" && error !== null && "stack" in error) {
-    return String(error.stack);
-  }
-  return undefined;
 }
 
 function classifyError(error: unknown): ErrorCategory {
@@ -74,21 +68,13 @@ function classifyError(error: unknown): ErrorCategory {
 
 export function logErrorWithContext(error: unknown, context: ErrorContext): void {
   const errorType = context.errorType ?? classifyError(error);
-  const message = getErrorMessage(error);
-  const stack = getErrorStack(error);
 
-  const structuredLog = {
-    timestamp: new Date().toISOString(),
-    level: "error",
+  logError(`${context.component}: ${context.operation} failed`, error, {
     operation: context.operation,
     component: context.component,
     errorType,
-    message,
-    ...(context.details && { details: context.details }),
-    ...(stack && { stack }),
-  };
-
-  console.error(`[${context.component}] ${context.operation} failed:`, structuredLog);
+    details: context.details,
+  });
 }
 
 export function isTransientError(error: unknown): boolean {
