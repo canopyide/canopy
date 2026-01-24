@@ -87,13 +87,18 @@ export function DevPreviewPane({
   const [showTerminal, setShowTerminal] = useState(false);
   const [history, setHistory] = useState<BrowserHistory>(() => {
     const savedState = useBrowserStateStore.getState().getState(id, worktreeId);
-    return (
-      savedState?.history ?? {
-        past: [],
-        present: "",
-        future: [],
-      }
-    );
+    if (savedState?.history && savedState.url) {
+      return {
+        past: savedState.history.past,
+        present: savedState.url,
+        future: savedState.history.future,
+      };
+    }
+    return {
+      past: [],
+      present: "",
+      future: [],
+    };
   });
   const [zoomFactor, setZoomFactor] = useState<number>(() => {
     const savedState = useBrowserStateStore.getState().getState(id, worktreeId);
@@ -127,7 +132,7 @@ export function DevPreviewPane({
 
   // Sync history to browser state store
   useEffect(() => {
-    updateBrowserUrl(id, currentUrl, history, worktreeId);
+    updateBrowserUrl(id, currentUrl, { past: history.past, future: history.future }, worktreeId);
   }, [currentUrl, history, id, updateBrowserUrl, worktreeId]);
 
   // Reload state when worktreeId changes (for shared component instances)
@@ -135,14 +140,16 @@ export function DevPreviewPane({
     const savedState = useBrowserStateStore.getState().getState(id, worktreeId);
     if (savedState) {
       if (savedState.history) {
-        setHistory(savedState.history);
-        lastSetUrlRef.current = savedState.history.present;
+        setHistory({
+          past: savedState.history.past,
+          present: savedState.url,
+          future: savedState.history.future,
+        });
+        lastSetUrlRef.current = savedState.url;
       }
       if (savedState.zoomFactor !== undefined) {
         const savedZoom = savedState.zoomFactor;
-        setZoomFactor(
-          Number.isFinite(savedZoom) ? Math.max(0.25, Math.min(2.0, savedZoom)) : 1.0
-        );
+        setZoomFactor(Number.isFinite(savedZoom) ? Math.max(0.25, Math.min(2.0, savedZoom)) : 1.0);
       }
     } else {
       // Reset to defaults if no state saved for this worktree
