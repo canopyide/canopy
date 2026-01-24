@@ -356,9 +356,7 @@ export const createTerminalFocusSlice =
           }
 
           // Clean up activeTabByGroup entries pointing to removed panel
-          const hasStaleActiveTab = Array.from(state.activeTabByGroup.values()).includes(
-            removedId
-          );
+          const hasStaleActiveTab = Array.from(state.activeTabByGroup.values()).includes(removedId);
           if (hasStaleActiveTab) {
             const newActiveTabByGroup = new Map(state.activeTabByGroup);
             for (const [groupId, activeTabId] of newActiveTabByGroup.entries()) {

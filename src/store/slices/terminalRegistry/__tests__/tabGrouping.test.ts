@@ -150,9 +150,7 @@ const getTabGroups = (
   }
 
   return Array.from(grouped.entries()).map(([id, groupPanels]) => {
-    const sortedPanels = groupPanels.sort(
-      (a, b) => (a.orderInGroup ?? 0) - (b.orderInGroup ?? 0)
-    );
+    const sortedPanels = groupPanels.sort((a, b) => (a.orderInGroup ?? 0) - (b.orderInGroup ?? 0));
     return {
       id,
       location,
