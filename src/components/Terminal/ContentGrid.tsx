@@ -15,6 +15,7 @@ import {
 import { useProjectStore } from "@/store/projectStore";
 import { useRecipeStore } from "@/store/recipeStore";
 import { GridPanel } from "./GridPanel";
+import { GridTabGroup } from "./GridTabGroup";
 import { TerminalCountWarning } from "./TerminalCountWarning";
 import { GridFullOverlay } from "./GridFullOverlay";
 import { TwoPaneSplitLayout } from "./TwoPaneSplitLayout";
@@ -413,13 +414,24 @@ export function ContentGrid({ className, defaultCwd, agentAvailability }: Conten
     [terminals, activeWorktreeId]
   );
 
+  // Get tab groups for grid rendering
+  const getTabGroups = useTerminalStore((state) => state.getTabGroups);
+  const getTabGroupPanels = useTerminalStore((state) => state.getTabGroupPanels);
+  const getActiveTabId = useTerminalStore((state) => state.getActiveTabId);
+
+  const tabGroups = useMemo(
+    () => getTabGroups("grid", activeWorktreeId),
+    [getTabGroups, activeWorktreeId, terminals] // Include terminals to recompute when panels change
+  );
+
   const layoutConfig = useLayoutConfigStore((state) => state.layoutConfig);
   const setGridDimensions = useLayoutConfigStore((state) => state.setGridDimensions);
   const getMaxGridCapacity = useLayoutConfigStore((state) => state.getMaxGridCapacity);
 
   // Dynamic grid capacity based on current dimensions
+  // Use group count (not terminal count) since each group occupies one grid cell
   const maxGridCapacity = getMaxGridCapacity();
-  const isGridFull = gridTerminals.length >= maxGridCapacity;
+  const isGridFull = tabGroups.length >= maxGridCapacity;
 
   // Make the grid a droppable area
   const { setNodeRef, isOver } = useDroppable({
@@ -439,12 +451,15 @@ export function ContentGrid({ className, defaultCwd, agentAvailability }: Conten
     isDraggingRef.current = isDragging;
   }, [isDragging]);
 
+  // Use tab groups count for placeholder and grid item calculations
+  // This ensures the grid layout accounts for grouped panels correctly
   const placeholderInGrid =
-    placeholderIndex !== null && placeholderIndex >= 0 && placeholderIndex <= gridTerminals.length;
+    placeholderIndex !== null && placeholderIndex >= 0 && placeholderIndex <= tabGroups.length;
 
   // Show placeholder when dragging from dock to grid (only if grid not full)
   const showPlaceholder = placeholderInGrid && sourceContainer === "dock" && !isGridFull;
-  const gridItemCount = gridTerminals.length + (showPlaceholder ? 1 : 0);
+  // Grid item count is the number of tab groups (each group = one grid cell) plus placeholder
+  const gridItemCount = tabGroups.length + (showPlaceholder ? 1 : 0);
 
   // Attach ResizeObserver to track container dimensions
   // CRITICAL: This effect must re-run when the layout mode changes because gridContainerRef
@@ -601,15 +616,19 @@ export function ContentGrid({ className, defaultCwd, agentAvailability }: Conten
     [agentAvailability, defaultCwd, layoutConfig, showMenu]
   );
 
-  // Terminal IDs for SortableContext - Include placeholder if visible
-  const terminalIds = useMemo(() => {
-    const ids = gridTerminals.map((t) => t.id);
+  // Use tab group IDs for SortableContext instead of flat terminal IDs
+  // This ensures dragging moves entire tab groups, not individual panels
+  const sortableIds = useMemo(() => {
+    const ids = tabGroups.map((g) => g.id);
     if (showPlaceholder && placeholderInGrid) {
       const insertIndex = Math.min(Math.max(0, placeholderIndex), ids.length);
       ids.splice(insertIndex, 0, GRID_PLACEHOLDER_ID);
     }
     return ids;
-  }, [gridTerminals, showPlaceholder, placeholderIndex, placeholderInGrid]);
+  }, [tabGroups, showPlaceholder, placeholderIndex, placeholderInGrid]);
+
+  // Keep gridTerminals IDs for batch-fit effect (needs all terminal IDs, not group IDs)
+  const terminalIds = useMemo(() => gridTerminals.map((t) => t.id), [gridTerminals]);
 
   // Batch-fit grid terminals when layout (gridCols/count) changes
   // Skip during drag to avoid tier churn from CSS transforms
@@ -669,8 +688,9 @@ export function ContentGrid({ className, defaultCwd, agentAvailability }: Conten
   const isEmpty = gridTerminals.length === 0;
 
   // Two-pane split mode detection - only disable during dock-to-grid placeholder drags
+  // Use group count to determine if we have exactly 2 items in the grid
   const useTwoPaneSplitMode =
-    twoPaneSplitEnabled && gridTerminals.length === 2 && !maximizedId && !showPlaceholder;
+    twoPaneSplitEnabled && tabGroups.length === 2 && !maximizedId && !showPlaceholder;
 
   // Render two-pane split layout when eligible
   if (useTwoPaneSplitMode) {
@@ -704,7 +724,7 @@ export function ContentGrid({ className, defaultCwd, agentAvailability }: Conten
     <div className={cn("h-full flex flex-col", className)}>
       <TerminalCountWarning className="mx-1 mt-1 shrink-0" />
       <div className="relative flex-1 min-h-0">
-        <SortableContext id="grid-container" items={terminalIds} strategy={rectSortingStrategy}>
+        <SortableContext id="grid-container" items={sortableIds} strategy={rectSortingStrategy}>
           <div
             ref={(node) => {
               setNodeRef(node);
@@ -747,38 +767,59 @@ export function ContentGrid({ className, defaultCwd, agentAvailability }: Conten
               </div>
             ) : (
               <>
-                {gridTerminals.map((terminal, index) => {
-                  const isTerminalInTrash = isInTrash(terminal.id);
+                {tabGroups.map((group, index) => {
+                  const panels = getTabGroupPanels(group.id);
+                  if (panels.length === 0) return null;
+
                   const elements: React.ReactNode[] = [];
 
                   if (showPlaceholder && placeholderInGrid && placeholderIndex === index) {
                     elements.push(<SortableGridPlaceholder key={GRID_PLACEHOLDER_ID} />);
                   }
 
-                  elements.push(
-                    <SortableTerminal
-                      key={terminal.id}
-                      terminal={terminal}
-                      sourceLocation="grid"
-                      sourceIndex={index}
-                      disabled={isTerminalInTrash}
-                    >
-                      <GridPanel
-                        terminal={terminal}
-                        isFocused={terminal.id === focusedId}
+                  // Get the active tab for this group
+                  const activeTabId = getActiveTabId(group.id) ?? panels[0]?.id;
+                  const firstPanel = panels[0];
+                  const isAnyPanelInTrash = panels.some((p) => isInTrash(p.id));
+
+                  // Single-panel group: render as before (backward compat, no tab bar)
+                  if (panels.length === 1) {
+                    elements.push(
+                      <SortableTerminal
+                        key={firstPanel.id}
+                        terminal={firstPanel}
+                        sourceLocation="grid"
+                        sourceIndex={index}
+                        disabled={isAnyPanelInTrash}
+                      >
+                        <GridPanel
+                          terminal={firstPanel}
+                          isFocused={firstPanel.id === focusedId}
+                          gridPanelCount={gridItemCount}
+                          gridCols={gridCols}
+                        />
+                      </SortableTerminal>
+                    );
+                  } else {
+                    // Multi-panel group: render with tab bar
+                    elements.push(
+                      <GridTabGroup
+                        key={group.id}
+                        group={group}
+                        panels={panels}
+                        activeTabId={activeTabId}
+                        focusedId={focusedId}
                         gridPanelCount={gridItemCount}
                         gridCols={gridCols}
                       />
-                    </SortableTerminal>
-                  );
+                    );
+                  }
 
                   return elements;
                 })}
-                {showPlaceholder &&
-                  placeholderInGrid &&
-                  placeholderIndex === gridTerminals.length && (
-                    <SortableGridPlaceholder key={GRID_PLACEHOLDER_ID} />
-                  )}
+                {showPlaceholder && placeholderInGrid && placeholderIndex === tabGroups.length && (
+                  <SortableGridPlaceholder key={GRID_PLACEHOLDER_ID} />
+                )}
               </>
             )}
           </div>

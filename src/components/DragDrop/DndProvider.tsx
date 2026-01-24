@@ -75,6 +75,12 @@ export interface DragData {
   terminal: TerminalInstance;
   sourceLocation: "grid" | "dock";
   sourceIndex: number;
+  /** Whether this drag represents a tab group */
+  isTabGroup?: boolean;
+  /** Tab group ID when dragging a group */
+  tabGroupId?: string;
+  /** Panel IDs in the tab group */
+  panelIds?: string[];
 }
 
 export interface WorktreeDragData extends DragData {
