@@ -281,7 +281,10 @@ export function DockedTabGroup({ group, panels }: DockedTabGroupProps) {
 
         // Background the previous tab, make new tab visible
         if (prevActiveTabId) {
-          terminalInstanceService.applyRendererPolicy(prevActiveTabId, TerminalRefreshTier.BACKGROUND);
+          terminalInstanceService.applyRendererPolicy(
+            prevActiveTabId,
+            TerminalRefreshTier.BACKGROUND
+          );
         }
 
         // Fit and update the new terminal
