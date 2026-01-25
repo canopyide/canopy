@@ -225,6 +225,23 @@ export type TerminalType = "terminal" | LegacyAgentType;
 /** Location of a panel instance in the UI */
 export type PanelLocation = "grid" | "dock" | "trash";
 
+/** Tab group location (subset of PanelLocation, excludes trash) */
+export type TabGroupLocation = "grid" | "dock";
+
+/** Tab group - a collection of panels displayed as tabs */
+export interface TabGroup {
+  /** Unique identifier for this tab group */
+  id: string;
+  /** Location of the tab group in the UI */
+  location: TabGroupLocation;
+  /** Worktree this tab group is associated with (undefined for global) */
+  worktreeId?: string;
+  /** ID of the currently active/visible panel in this group */
+  activeTabId: string;
+  /** Ordered list of panel IDs in this group (sorted by orderInGroup) */
+  panelIds: string[];
+}
+
 /**
  * @deprecated Use PanelLocation instead. Kept for backward compatibility.
  */
@@ -364,6 +381,10 @@ interface BasePanelData {
   worktreeId?: string;
   /** Whether the panel pane is currently visible in the viewport */
   isVisible?: boolean;
+  /** Tab group identifier - panels with the same tabGroupId are grouped together */
+  tabGroupId?: string;
+  /** Order within the tab group (0-based) */
+  orderInGroup?: number;
 }
 
 interface PtyPanelData extends BasePanelData {
@@ -519,6 +540,10 @@ export interface TerminalInstance {
   exitBehavior?: PanelExitBehavior;
   /** Whether this terminal has an active PTY process (false for orphaned terminals that exited) */
   hasPty?: boolean;
+  /** Tab group identifier - panels with the same tabGroupId are grouped together */
+  tabGroupId?: string;
+  /** Order within the tab group (0-based) */
+  orderInGroup?: number;
 }
 
 /** Options for spawning a new PTY process */
@@ -606,6 +631,10 @@ export interface TerminalSnapshot {
   scope?: "worktree" | "project";
   /** Note creation timestamp (kind === 'notes') */
   createdAt?: number;
+  /** Tab group identifier - panels with the same tabGroupId are grouped together */
+  tabGroupId?: string;
+  /** Order within the tab group (0-based) */
+  orderInGroup?: number;
 }
 
 /** Type alias for TerminalSnapshot. Use this in new code. */

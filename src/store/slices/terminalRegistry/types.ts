@@ -10,6 +10,8 @@ import type {
   SpawnError,
   PanelExitBehavior,
   TerminalReconnectError,
+  TabGroup,
+  TabGroupLocation,
 } from "@/types";
 import type { PanelKind } from "@/types";
 
@@ -52,6 +54,10 @@ export interface AddTerminalOptions {
   env?: Record<string, string>;
   /** Behavior when terminal exits: "keep" preserves for review, "trash" sends to trash, "remove" deletes completely */
   exitBehavior?: PanelExitBehavior;
+  /** Tab group identifier - panels with the same tabGroupId are grouped together */
+  tabGroupId?: string;
+  /** Order within the tab group (0-based) */
+  orderInGroup?: number;
 }
 
 export interface TrashedTerminal {
@@ -124,6 +130,12 @@ export interface TerminalRegistrySlice {
   clearSpawnError: (id: string) => void;
   setReconnectError: (id: string, error: TerminalReconnectError) => void;
   clearReconnectError: (id: string) => void;
+
+  // Tab grouping methods
+  /** Get all panels in a group, sorted by orderInGroup */
+  getTabGroupPanels: (groupId: string) => TerminalInstance[];
+  /** Get all tab groups for a location/worktree */
+  getTabGroups: (location: TabGroupLocation, worktreeId?: string) => TabGroup[];
 }
 
 export type TerminalRegistryMiddleware = {

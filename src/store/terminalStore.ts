@@ -90,6 +90,10 @@ export const useTerminalStore = create<PanelGridState>()((set, get, api) => {
       get().handleTerminalRemoved(id, remainingTerminals, removedIndex);
       useTerminalInputStore.getState().clearDraftInput(id);
 
+      // Clean up activeTabByGroup tracking for removed panels
+      const validPanelIds = new Set(remainingTerminals.map((t) => t.id));
+      get().cleanupStaleTabs(validPanelIds);
+
       // Clean up worktree focus tracking if this was the last focused terminal
       const terminal = get().terminals.find((t) => t.id === id);
       if (terminal?.worktreeId) {
