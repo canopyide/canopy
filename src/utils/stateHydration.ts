@@ -353,9 +353,31 @@ export async function hydrateAppState(
                     const isDevPreview = kind === "dev-preview";
 
                     if (isAgentPanel) {
-                      // For agent terminals, don't auto-respawn as it could re-execute commands.
-                      // Instead, create a placeholder terminal with DISCONNECTED error state.
-                      // User can manually retry to start a fresh session.
+                      // For agent terminals, behavior depends on context:
+                      // - Fresh app launch: respawn fresh (start new agent session)
+                      // - Project switch: show DISCONNECTED error (user needs to know mid-work)
+                      const isProjectSwitch = !!_switchId;
+
+                      if (!isProjectSwitch) {
+                        // Fresh app launch - respawn agent terminal with fresh session
+                        logInfo(`Respawning agent terminal ${saved.id} with fresh session`);
+
+                        await addTerminal({
+                          kind: respawnKind,
+                          type: saved.type,
+                          agentId,
+                          title: saved.title,
+                          cwd: saved.cwd || projectRoot || "",
+                          worktreeId: saved.worktreeId,
+                          location,
+                          requestedId: saved.id,
+                          command,
+                          isInputLocked: saved.isInputLocked,
+                        });
+                        continue;
+                      }
+
+                      // Project switch - show error state so user can manually retry
                       logWarn(`Agent terminal ${saved.id} disconnected - showing error state`);
 
                       // Add terminal with existingId to create entry without spawning

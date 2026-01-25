@@ -262,10 +262,9 @@ describe("hydrateAppState", () => {
     );
   });
 
-  it("rehydrates agent panels with disconnected error when not found in backend", async () => {
-    // When an agent terminal can't be reconnected (not found in backend),
-    // we don't auto-respawn to avoid re-executing commands.
-    // Instead, we create a placeholder with DISCONNECTED error state.
+  it("respawns agent panels fresh on app launch when not found in backend", async () => {
+    // On fresh app launch (no switchId), agent terminals should respawn fresh
+    // rather than showing DISCONNECTED error.
     appClientMock.hydrate.mockResolvedValue({
       appState: {
         terminals: [
@@ -298,6 +297,7 @@ describe("hydrateAppState", () => {
     const loadRecipes = vi.fn().mockResolvedValue(undefined);
     const openDiagnosticsDock = vi.fn();
 
+    // No switchId = fresh app launch
     await hydrateAppState({
       addTerminal,
       setActiveWorktree,
@@ -305,19 +305,74 @@ describe("hydrateAppState", () => {
       openDiagnosticsDock,
     });
 
-    // Agent terminals use existingId (no spawn) and get DISCONNECTED error
     expect(addTerminal).toHaveBeenCalledTimes(1);
     const callArgs = addTerminal.mock.calls[0][0];
 
-    // Assert existingId is used (placeholder mode)
-    expect(callArgs).toHaveProperty("existingId", "agent-1");
-    // Assert requestedId is NOT used (no respawn)
-    expect(callArgs).not.toHaveProperty("requestedId");
+    // Fresh launch uses requestedId (respawn mode)
+    expect(callArgs).toHaveProperty("requestedId", "agent-1");
+    // Should NOT use existingId (that's placeholder mode for project switch)
+    expect(callArgs).not.toHaveProperty("existingId");
 
     // Verify command is regenerated (doesn't include old prompt)
     expect(callArgs.command).toBe("claude --model sonnet-4");
-    expect(callArgs.command).not.toContain("-p");
-    expect(callArgs.command).not.toContain("Old prompt");
+
+    // No DISCONNECTED error on fresh launch
+    expect(setSpawnErrorMock).not.toHaveBeenCalled();
+  });
+
+  it("shows disconnected error for agent panels on project switch", async () => {
+    // On project switch (with switchId), agent terminals should show DISCONNECTED
+    // error because user was mid-work and needs to know session was lost.
+    appClientMock.hydrate.mockResolvedValue({
+      appState: {
+        terminals: [
+          {
+            id: "agent-1",
+            kind: "agent",
+            type: "claude",
+            agentId: "claude",
+            title: "Claude",
+            cwd: "/project",
+            location: "grid",
+            command: "claude -p 'Old prompt'",
+          },
+        ],
+        sidebarWidth: 350,
+      },
+      terminalConfig,
+      project,
+      agentSettings: {
+        agents: {
+          claude: {
+            customFlags: "--model sonnet-4",
+          },
+        },
+      },
+    });
+
+    const addTerminal = vi.fn().mockResolvedValue("agent-1");
+    const setActiveWorktree = vi.fn();
+    const loadRecipes = vi.fn().mockResolvedValue(undefined);
+    const openDiagnosticsDock = vi.fn();
+
+    // With switchId = project switch
+    await hydrateAppState(
+      {
+        addTerminal,
+        setActiveWorktree,
+        loadRecipes,
+        openDiagnosticsDock,
+      },
+      "switch-123" // switchId indicates project switch
+    );
+
+    expect(addTerminal).toHaveBeenCalledTimes(1);
+    const callArgs = addTerminal.mock.calls[0][0];
+
+    // Project switch uses existingId (placeholder mode)
+    expect(callArgs).toHaveProperty("existingId", "agent-1");
+    // Should NOT use requestedId (that's respawn mode for fresh launch)
+    expect(callArgs).not.toHaveProperty("requestedId");
 
     // Verify DISCONNECTED error was set
     expect(setSpawnErrorMock).toHaveBeenCalledWith("agent-1", {
