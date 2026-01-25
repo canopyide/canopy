@@ -57,6 +57,13 @@ export { useUIStore } from "./uiStore";
 
 export { useGitHubConfigStore, cleanupGitHubConfigStore } from "./githubConfigStore";
 
+export {
+  useGitHubDataStore,
+  cleanupGitHubDataStore,
+  initializeGitHubDataStore,
+} from "./githubDataStore";
+export type { PRData } from "./githubDataStore";
+
 export { useAgentSettingsStore, cleanupAgentSettingsStore } from "./agentSettingsStore";
 
 export { usePulseStore } from "./pulseStore";

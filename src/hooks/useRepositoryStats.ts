@@ -53,6 +53,7 @@ export function useRepositoryStats(): UseRepositoryStatsReturn {
   const mountedRef = useRef(true);
   const lastErrorRef = useRef<string | null>(null);
   const inFlightRef = useRef(false);
+  const pendingRefreshRef = useRef(false);
 
   const fetchStats = useCallback(async (force = false) => {
     if (inFlightRef.current) {
@@ -152,6 +153,16 @@ export function useRepositoryStats(): UseRepositoryStatsReturn {
         setLoading(false);
       }
       inFlightRef.current = false;
+
+      // If a refresh was requested while fetch was in flight, trigger it now
+      if (pendingRefreshRef.current && mountedRef.current) {
+        pendingRefreshRef.current = false;
+        fetchStats(true).then(() => {
+          if (mountedRef.current) {
+            scheduleNextPoll();
+          }
+        });
+      }
     }
   }, []);
 
@@ -253,6 +264,32 @@ export function useRepositoryStats(): UseRepositoryStatsReturn {
     });
 
     return cleanup;
+  }, [fetchStats, scheduleNextPoll]);
+
+  // Subscribe to PR events to trigger refresh when PRs are detected/cleared
+  // This keeps toolbar stats in sync with worktree sidebar PR badges
+  useEffect(() => {
+    const handlePRChange = () => {
+      if (!inFlightRef.current && mountedRef.current) {
+        // Fetch is idle, trigger refresh immediately
+        fetchStats(true).then(() => {
+          if (mountedRef.current) {
+            scheduleNextPoll();
+          }
+        });
+      } else if (mountedRef.current) {
+        // Fetch is in flight, queue a refresh for after it completes
+        pendingRefreshRef.current = true;
+      }
+    };
+
+    const cleanupPRDetected = githubClient.onPRDetected(handlePRChange);
+    const cleanupPRCleared = githubClient.onPRCleared(handlePRChange);
+
+    return () => {
+      cleanupPRDetected();
+      cleanupPRCleared();
+    };
   }, [fetchStats, scheduleNextPoll]);
 
   return {
