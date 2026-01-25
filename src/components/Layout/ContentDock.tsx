@@ -7,6 +7,7 @@ import { ChevronLeft, ChevronRight } from "lucide-react";
 import { cn } from "@/lib/utils";
 import { useTerminalStore, useProjectStore, useWorktreeSelectionStore } from "@/store";
 import { DockedTerminalItem } from "./DockedTerminalItem";
+import { DockedTabGroup } from "@/components/Terminal/DockedTabGroup";
 import { TrashContainer } from "./TrashContainer";
 import { WaitingContainer } from "./WaitingContainer";
 import { FailedContainer } from "./FailedContainer";
@@ -122,13 +123,30 @@ export function ContentDock({ density = "normal" }: ContentDockProps) {
 
   const activeDockTerminals = dockTerminals;
 
-  // Terminal IDs for SortableContext
+  // Get tab groups for the dock - include dockTerminals as dependency to ensure refresh
+  const getTabGroups = useTerminalStore((state) => state.getTabGroups);
+  const tabGroups = useMemo(
+    () => getTabGroups("dock", activeWorktreeId ?? undefined),
+    [getTabGroups, activeWorktreeId, dockTerminals]
+  );
+
+  // Build a map from terminal ID to TerminalInstance for quick lookup
+  const terminalById = useMemo(() => {
+    const map = new Map<string, (typeof activeDockTerminals)[0]>();
+    for (const t of activeDockTerminals) {
+      map.set(t.id, t);
+    }
+    return map;
+  }, [activeDockTerminals]);
+
+  // Terminal IDs for SortableContext - use first panel ID from each group
   const terminalIds = useMemo(() => {
-    if (activeDockTerminals.length === 0) {
+    if (tabGroups.length === 0) {
       return [DOCK_PLACEHOLDER_ID];
     }
-    return activeDockTerminals.map((t) => t.id);
-  }, [activeDockTerminals]);
+    // Use the first panel ID of each group for sortable context
+    return tabGroups.map((group) => group.panelIds[0]).filter((id): id is string => id != null);
+  }, [tabGroups]);
 
   const isCompact = density === "compact";
 
@@ -179,14 +197,38 @@ export function ContentDock({ density = "normal" }: ContentDockProps) {
             strategy={horizontalListSortingStrategy}
           >
             <div className="flex items-center gap-[var(--dock-gap)] min-w-[100px] min-h-[calc(var(--dock-item-height)-4px)]">
-              {activeDockTerminals.length === 0 ? (
+              {tabGroups.length === 0 ? (
                 <SortableDockPlaceholder />
               ) : (
-                activeDockTerminals.map((terminal, index) => (
-                  <SortableDockItem key={terminal.id} terminal={terminal} sourceIndex={index}>
-                    <DockedTerminalItem terminal={terminal} />
-                  </SortableDockItem>
-                ))
+                tabGroups.map((group, index) => {
+                  const panels = group.panelIds
+                    .map((id) => terminalById.get(id))
+                    .filter((p): p is (typeof activeDockTerminals)[0] => p != null);
+
+                  if (panels.length === 0) return null;
+
+                  const firstPanel = panels[0];
+
+                  // Single-panel groups render as DockedTerminalItem
+                  if (panels.length === 1) {
+                    return (
+                      <SortableDockItem
+                        key={firstPanel.id}
+                        terminal={firstPanel}
+                        sourceIndex={index}
+                      >
+                        <DockedTerminalItem terminal={firstPanel} />
+                      </SortableDockItem>
+                    );
+                  }
+
+                  // Multi-panel groups render as DockedTabGroup
+                  return (
+                    <SortableDockItem key={firstPanel.id} terminal={firstPanel} sourceIndex={index}>
+                      <DockedTabGroup group={group} panels={panels} />
+                    </SortableDockItem>
+                  );
+                })
               )}
             </div>
           </SortableContext>
@@ -213,9 +255,7 @@ export function ContentDock({ density = "normal" }: ContentDockProps) {
       </div>
 
       {/* Separator between terminals and action containers */}
-      {activeDockTerminals.length > 0 && (
-        <div className="w-px h-5 bg-[var(--dock-border)] mx-1 shrink-0" />
-      )}
+      {tabGroups.length > 0 && <div className="w-px h-5 bg-[var(--dock-border)] mx-1 shrink-0" />}
 
       {/* Action containers: Waiting + Failed + Trash */}
       <div className="shrink-0 pl-1 flex items-center gap-2">
