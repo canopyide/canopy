@@ -20,6 +20,7 @@ import { terminalClient } from "@/clients";
 import { terminalInstanceService } from "@/services/TerminalInstanceService";
 import { POPOVER_MIN_HEIGHT, POPOVER_MAX_HEIGHT_RATIO } from "@/store/dockStore";
 import { useDockPanelPortal } from "../Layout/DockPanelOffscreenContainer";
+import { Plus } from "lucide-react";
 
 export interface DockedTabGroupProps {
   group: TabGroup;
@@ -31,6 +32,8 @@ export function DockedTabGroup({ group, panels }: DockedTabGroupProps) {
   const openDockTerminal = useTerminalStore((s) => s.openDockTerminal);
   const closeDockTerminal = useTerminalStore((s) => s.closeDockTerminal);
   const backendStatus = useTerminalStore((s) => s.backendStatus);
+  const addTerminal = useTerminalStore((s) => s.addTerminal);
+  const setTabGroupInfo = useTerminalStore((s) => s.setTabGroupInfo);
   const hybridInputEnabled = useTerminalInputStore((s) => s.hybridInputEnabled);
   const hybridInputAutoFocus = useTerminalInputStore((s) => s.hybridInputAutoFocus);
 
@@ -300,6 +303,76 @@ export function DockedTabGroup({ group, panels }: DockedTabGroupProps) {
     [isOpen, activeTabId, openDockTerminal, portalTarget]
   );
 
+  // Handle add tab - duplicate the current panel as a new tab in the dock
+  const handleAddTab = useCallback(async () => {
+    const panelToClone = panels.find((p) => p.id === activeTabId) || panels[0];
+    if (!panelToClone) return;
+
+    const kind = panelToClone.kind ?? "terminal";
+    const effectiveGroupId = panelToClone.tabGroupId ?? panelToClone.id;
+    const isSinglePanel = !panelToClone.tabGroupId;
+
+    try {
+      // If this is a single panel (no tabGroupId), assign it to a new group first
+      if (isSinglePanel) {
+        setTabGroupInfo(panelToClone.id, effectiveGroupId, 0);
+      }
+
+      // Use timestamp to ensure unique orderInGroup even with concurrent additions
+      const newOrderInGroup = Date.now();
+
+      // Build options based on panel kind to copy all relevant properties
+      const baseOptions = {
+        kind,
+        type: panelToClone.type,
+        agentId: panelToClone.agentId,
+        cwd: panelToClone.cwd || "",
+        worktreeId: panelToClone.worktreeId,
+        location: "dock" as const,
+        tabGroupId: effectiveGroupId,
+        orderInGroup: newOrderInGroup,
+        exitBehavior: panelToClone.exitBehavior,
+        isInputLocked: panelToClone.isInputLocked,
+      };
+
+      // Add kind-specific properties
+      let kindSpecificOptions = {};
+      if (kind === "browser") {
+        kindSpecificOptions = { browserUrl: panelToClone.browserUrl };
+      } else if (kind === "notes") {
+        kindSpecificOptions = {
+          notePath: (panelToClone as any).notePath,
+          noteId: (panelToClone as any).noteId,
+          scope: (panelToClone as any).scope,
+          createdAt: Date.now(),
+        };
+      } else if (kind === "dev-preview") {
+        kindSpecificOptions = {
+          devCommand: (panelToClone as any).devCommand,
+          browserUrl: panelToClone.browserUrl,
+        };
+      }
+
+      // Create the new panel with all inherited properties
+      const newPanelId = await addTerminal({
+        ...baseOptions,
+        ...kindSpecificOptions,
+      });
+
+      // Activate the new tab
+      setActiveTabId(newPanelId);
+      if (isOpen) {
+        openDockTerminal(newPanelId);
+      }
+    } catch (error) {
+      console.error("Failed to add tab:", error);
+      // Rollback tabGroupId if we modified a single panel but failed to create the duplicate
+      if (isSinglePanel) {
+        setTabGroupInfo(panelToClone.id, undefined, undefined);
+      }
+    }
+  }, [panels, activeTabId, addTerminal, setTabGroupInfo, isOpen, openDockTerminal]);
+
   // Get the first panel for trigger display
   const firstPanel = panels[0];
   if (!firstPanel) return null;
@@ -462,59 +535,75 @@ export function DockedTabGroup({ group, panels }: DockedTabGroupProps) {
 
         {/* Tab bar - only show if more than 1 panel */}
         {panels.length > 1 && (
-          <div
-            className="flex items-center border-b border-divider bg-[var(--color-surface)] pt-2"
-            role="tablist"
-            aria-label="Tab group tabs"
-          >
-            {panels.map((panel) => {
-              const tabBrandColor = getBrandColorHex(panel.type);
-              const tabIsActive = panel.id === activeTabId;
-              const tabAgentState = panel.agentState;
-              const showTabStateIcon =
-                tabAgentState && tabAgentState !== "idle" && tabAgentState !== "completed";
-              const TabStateIcon = showTabStateIcon ? STATE_ICONS[tabAgentState] : null;
+          <div className="flex items-center border-b border-divider bg-[var(--color-surface)] pt-2">
+            <div
+              className="flex items-center"
+              role="tablist"
+              aria-label="Tab group tabs"
+            >
+              {panels.map((panel) => {
+                const tabBrandColor = getBrandColorHex(panel.type);
+                const tabIsActive = panel.id === activeTabId;
+                const tabAgentState = panel.agentState;
+                const showTabStateIcon =
+                  tabAgentState && tabAgentState !== "idle" && tabAgentState !== "completed";
+                const TabStateIcon = showTabStateIcon ? STATE_ICONS[tabAgentState] : null;
 
-              return (
-                <button
-                  key={panel.id}
-                  role="tab"
-                  aria-selected={tabIsActive}
-                  tabIndex={tabIsActive ? 0 : -1}
-                  onClick={(e) => {
-                    e.stopPropagation();
-                    handleTabClick(panel.id);
-                  }}
-                  className={cn(
-                    "flex items-center gap-1.5 px-3 py-1.5 text-xs font-medium transition-colors",
-                    "border-b-2 -mb-px",
-                    tabIsActive
-                      ? "border-canopy-accent text-canopy-text bg-white/[0.02]"
-                      : "border-transparent text-canopy-text/60 hover:text-canopy-text hover:bg-white/[0.02]"
-                  )}
-                >
-                  <TerminalIcon
-                    type={panel.type}
-                    kind={panel.kind}
-                    className="w-3.5 h-3.5 shrink-0"
-                    brandColor={tabBrandColor}
-                  />
-                  <span className="truncate max-w-[100px]">{getBaseTitle(panel.title)}</span>
-                  {showTabStateIcon && TabStateIcon && (
-                    <TabStateIcon
-                      className={cn(
-                        "w-3 h-3 shrink-0",
-                        STATE_COLORS[tabAgentState],
-                        tabAgentState === "working" && "animate-spin",
-                        tabAgentState === "waiting" && "animate-breathe",
-                        "motion-reduce:animate-none"
-                      )}
-                      aria-hidden="true"
+                return (
+                  <button
+                    key={panel.id}
+                    role="tab"
+                    aria-selected={tabIsActive}
+                    tabIndex={tabIsActive ? 0 : -1}
+                    onClick={(e) => {
+                      e.stopPropagation();
+                      handleTabClick(panel.id);
+                    }}
+                    className={cn(
+                      "flex items-center gap-1.5 px-3 py-1.5 text-xs font-medium transition-colors",
+                      "border-b-2 -mb-px",
+                      tabIsActive
+                        ? "border-canopy-accent text-canopy-text bg-white/[0.02]"
+                        : "border-transparent text-canopy-text/60 hover:text-canopy-text hover:bg-white/[0.02]"
+                    )}
+                  >
+                    <TerminalIcon
+                      type={panel.type}
+                      kind={panel.kind}
+                      className="w-3.5 h-3.5 shrink-0"
+                      brandColor={tabBrandColor}
                     />
-                  )}
-                </button>
-              );
-            })}
+                    <span className="truncate max-w-[100px]">{getBaseTitle(panel.title)}</span>
+                    {showTabStateIcon && TabStateIcon && (
+                      <TabStateIcon
+                        className={cn(
+                          "w-3 h-3 shrink-0",
+                          STATE_COLORS[tabAgentState],
+                          tabAgentState === "working" && "animate-spin",
+                          tabAgentState === "waiting" && "animate-breathe",
+                          "motion-reduce:animate-none"
+                        )}
+                        aria-hidden="true"
+                      />
+                    )}
+                  </button>
+                );
+              })}
+            </div>
+            {/* Add tab button */}
+            <button
+              onClick={(e) => {
+                e.stopPropagation();
+                handleAddTab();
+              }}
+              onPointerDown={(e) => e.stopPropagation()}
+              className="shrink-0 p-1.5 hover:bg-canopy-text/10 text-canopy-text/40 hover:text-canopy-text transition-colors focus-visible:outline focus-visible:outline-2 focus-visible:outline-canopy-accent focus-visible:outline-offset-1 -mb-px"
+              title="Duplicate panel as new tab"
+              aria-label="Duplicate panel as new tab"
+              type="button"
+            >
+              <Plus className="w-3.5 h-3.5" aria-hidden="true" />
+            </button>
           </div>
         )}
 

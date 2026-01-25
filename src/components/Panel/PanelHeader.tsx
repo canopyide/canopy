@@ -167,34 +167,37 @@ function PanelHeaderComponent({
       >
         {/* Tab bar mode: show tabs when there are 2+ tabs */}
         {tabs && tabs.length > 1 ? (
-          <div
-            className="flex items-center min-w-0 overflow-x-auto scrollbar-none -ml-3"
-            role="tablist"
-            aria-label="Panel tabs"
-          >
-            {tabs.map((tab) => (
-              <TabButton
-                key={tab.id}
-                id={tab.id}
-                title={tab.title}
-                type={tab.type}
-                agentId={tab.agentId}
-                kind={tab.kind}
-                agentState={tab.agentState}
-                isActive={tab.isActive}
-                onClick={() => onTabClick?.(tab.id)}
-                onClose={() => onTabClose?.(tab.id)}
-              />
-            ))}
+          <div className="flex items-center min-w-0 -ml-3">
+            <div
+              className="flex items-center min-w-0 overflow-x-auto scrollbar-none"
+              role="tablist"
+              aria-label="Panel tabs"
+            >
+              {tabs.map((tab) => (
+                <TabButton
+                  key={tab.id}
+                  id={tab.id}
+                  title={tab.title}
+                  type={tab.type}
+                  agentId={tab.agentId}
+                  kind={tab.kind}
+                  agentState={tab.agentState}
+                  isActive={tab.isActive}
+                  onClick={() => onTabClick?.(tab.id)}
+                  onClose={() => onTabClose?.(tab.id)}
+                />
+              ))}
+            </div>
             {onAddTab && (
               <button
                 onClick={(e) => {
                   e.stopPropagation();
                   onAddTab();
                 }}
+                onPointerDown={(e) => e.stopPropagation()}
                 className="shrink-0 p-1.5 hover:bg-canopy-text/10 text-canopy-text/40 hover:text-canopy-text transition-colors focus-visible:outline focus-visible:outline-2 focus-visible:outline-canopy-accent focus-visible:outline-offset-1"
-                title="Add tab"
-                aria-label="Add new tab"
+                title="Duplicate panel as new tab"
+                aria-label="Duplicate panel as new tab"
                 type="button"
               >
                 <Plus className="w-3.5 h-3.5" aria-hidden="true" />
@@ -202,7 +205,7 @@ function PanelHeaderComponent({
             )}
           </div>
         ) : (
-          /* Single-tab mode: show icon + title (unchanged) */
+          /* Single-tab mode: show icon + title + add button */
           <div className="flex items-center gap-2 min-w-0">
             <span className="shrink-0 flex items-center justify-center w-3.5 h-3.5 text-canopy-text">
               <TerminalIcon
@@ -246,6 +249,23 @@ function PanelHeaderComponent({
                   {displayTitle}
                 </span>
               </div>
+            )}
+
+            {/* Add tab button for single panels */}
+            {onAddTab && (
+              <button
+                onClick={(e) => {
+                  e.stopPropagation();
+                  onAddTab();
+                }}
+                onPointerDown={(e) => e.stopPropagation()}
+                className="shrink-0 p-1.5 opacity-0 group-hover:opacity-100 hover:bg-canopy-text/10 text-canopy-text/40 hover:text-canopy-text transition-all focus-visible:opacity-100 focus-visible:outline focus-visible:outline-2 focus-visible:outline-canopy-accent focus-visible:outline-offset-1"
+                title="Duplicate panel as new tab"
+                aria-label="Duplicate panel as new tab"
+                type="button"
+              >
+                <Plus className="w-3.5 h-3.5" aria-hidden="true" />
+              </button>
             )}
           </div>
         )}

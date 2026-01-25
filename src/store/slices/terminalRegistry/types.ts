@@ -136,6 +136,8 @@ export interface TerminalRegistrySlice {
   getTabGroupPanels: (groupId: string) => TerminalInstance[];
   /** Get all tab groups for a location/worktree */
   getTabGroups: (location: TabGroupLocation, worktreeId?: string) => TabGroup[];
+  /** Set a panel's tab group info */
+  setTabGroupInfo: (id: string, tabGroupId: string | undefined, orderInGroup: number | undefined) => void;
 }
 
 export type TerminalRegistryMiddleware = {

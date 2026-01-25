@@ -27,6 +27,8 @@ export function GridTabGroup({
   const setFocused = useTerminalStore((state) => state.setFocused);
   const setActiveTab = useTerminalStore((state) => state.setActiveTab);
   const trashTerminal = useTerminalStore((state) => state.trashTerminal);
+  const addTerminal = useTerminalStore((state) => state.addTerminal);
+  const setTabGroupInfo = useTerminalStore((state) => state.setTabGroupInfo);
 
   // CRITICAL: Subscribe to activeTabByGroup to get reactive updates
   const storedActiveTabId = useTerminalStore(
@@ -100,6 +102,73 @@ export function GridTabGroup({
     [activeTabId, panels, group.id, setActiveTab, setFocused, trashTerminal]
   );
 
+  // Handle add tab - duplicate the current panel as a new tab
+  const handleAddTab = useCallback(async () => {
+    if (!activePanel) return;
+
+    const kind = activePanel.kind ?? "terminal";
+    const effectiveGroupId = activePanel.tabGroupId ?? activePanel.id;
+    const isSinglePanel = !activePanel.tabGroupId;
+
+    try {
+      // If this is a single panel (no tabGroupId), assign it to a new group first
+      if (isSinglePanel) {
+        setTabGroupInfo(activePanel.id, effectiveGroupId, 0);
+      }
+
+      // Use timestamp to ensure unique orderInGroup even with concurrent additions
+      const newOrderInGroup = Date.now();
+
+      // Build options based on panel kind to copy all relevant properties
+      const baseOptions = {
+        kind,
+        type: activePanel.type,
+        agentId: activePanel.agentId,
+        cwd: activePanel.cwd || "",
+        worktreeId: activePanel.worktreeId,
+        location: activePanel.location ?? "grid",
+        tabGroupId: effectiveGroupId,
+        orderInGroup: newOrderInGroup,
+        exitBehavior: activePanel.exitBehavior,
+        isInputLocked: activePanel.isInputLocked,
+      };
+
+      // Add kind-specific properties
+      let kindSpecificOptions = {};
+      if (kind === "browser") {
+        kindSpecificOptions = { browserUrl: activePanel.browserUrl };
+      } else if (kind === "notes") {
+        kindSpecificOptions = {
+          notePath: (activePanel as any).notePath,
+          noteId: (activePanel as any).noteId,
+          scope: (activePanel as any).scope,
+          createdAt: Date.now(),
+        };
+      } else if (kind === "dev-preview") {
+        kindSpecificOptions = {
+          devCommand: (activePanel as any).devCommand,
+          browserUrl: activePanel.browserUrl,
+        };
+      }
+
+      // Create the new panel with all inherited properties
+      const newPanelId = await addTerminal({
+        ...baseOptions,
+        ...kindSpecificOptions,
+      });
+
+      // Focus and activate the new tab
+      setActiveTab(effectiveGroupId, newPanelId);
+      setFocused(newPanelId);
+    } catch (error) {
+      console.error("Failed to add tab:", error);
+      // Rollback tabGroupId if we modified a single panel but failed to create the duplicate
+      if (isSinglePanel) {
+        setTabGroupInfo(activePanel.id, undefined, undefined);
+      }
+    }
+  }, [activePanel, addTerminal, setTabGroupInfo, setActiveTab, setFocused]);
+
   // Set up sortable for dragging the entire group as a unit
   const { attributes, listeners, setNodeRef, transform, transition, isDragging } = useSortable({
     id: group.id,
@@ -142,6 +211,7 @@ export function GridTabGroup({
         tabs={tabs}
         onTabClick={handleTabClick}
         onTabClose={handleTabClose}
+        onAddTab={handleAddTab}
       />
     </div>
   );

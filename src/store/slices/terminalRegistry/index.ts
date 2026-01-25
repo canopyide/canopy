@@ -1555,6 +1555,19 @@ export const createTerminalRegistrySlice =
         });
       },
 
+      setTabGroupInfo: (id, tabGroupId, orderInGroup) => {
+        set((state) => {
+          const terminal = state.terminals.find((t) => t.id === id);
+          if (!terminal) return state;
+
+          const newTerminals = state.terminals.map((t) =>
+            t.id === id ? { ...t, tabGroupId, orderInGroup } : t
+          );
+          saveTerminals(newTerminals);
+          return { terminals: newTerminals };
+        });
+      },
+
       getTabGroupPanels: (groupId) => {
         const terminals = get().terminals;
         const trashedTerminals = get().trashedTerminals;
