@@ -10,6 +10,7 @@ import { useNotificationStore } from "./notificationStore";
 import { cleanupNotesStore } from "./notesStore";
 import { useRecipeStore } from "./recipeStore";
 import { useBrowserStateStore } from "./browserStateStore";
+import { cleanupGitHubDataStore } from "./githubDataStore";
 
 export async function resetAllStoresForProjectSwitch(): Promise<void> {
   // Use resetWithoutKilling instead of reset
@@ -32,4 +33,6 @@ export async function resetAllStoresForProjectSwitch(): Promise<void> {
   // Reset browser state to ensure per-project URLs are restored from project persistence
   // rather than using stale localStorage state from a different project
   useBrowserStateStore.getState().reset();
+  // Reset GitHub data store to clear PR/issue mappings from previous project
+  cleanupGitHubDataStore();
 }

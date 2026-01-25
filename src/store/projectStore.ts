@@ -4,6 +4,7 @@ import type { Project, ProjectCloseResult, TerminalSnapshot } from "@shared/type
 import { projectClient } from "@/clients";
 import { resetAllStoresForProjectSwitch } from "./resetStores";
 import { forceReinitializeWorktreeDataStore } from "./worktreeDataStore";
+import { initializeGitHubDataStore } from "./githubDataStore";
 import { flushTerminalPersistence } from "./slices";
 import { terminalPersistence } from "./persistence/terminalPersistence";
 import { useNotificationStore } from "./notificationStore";
@@ -278,6 +279,7 @@ const createProjectStore: StateCreator<ProjectState> = (set, get) => ({
       // Now that backend has switched, reinitialize worktree data for the new project
       console.log("[ProjectSwitch] Reinitializing worktree data store...");
       forceReinitializeWorktreeDataStore();
+      initializeGitHubDataStore();
 
       await get().loadProjects();
 
@@ -460,6 +462,11 @@ const createProjectStore: StateCreator<ProjectState> = (set, get) => ({
       console.log("[ProjectStore] Pre-loading project settings...");
       useProjectSettingsStore.getState().reset();
       void useProjectSettingsStore.getState().loadSettings(projectId);
+
+      // Now that backend has reopened, reinitialize worktree data for the new project
+      console.log("[ProjectStore] Reinitializing worktree data store...");
+      forceReinitializeWorktreeDataStore();
+      initializeGitHubDataStore();
 
       await get().loadProjects();
 

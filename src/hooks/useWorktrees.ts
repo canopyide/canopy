@@ -1,6 +1,7 @@
 import { useEffect, useCallback, useMemo } from "react";
 import type { WorktreeState } from "../types";
 import { useWorktreeDataStore } from "@/store/worktreeDataStore";
+import { useGitHubDataStore } from "@/store/githubDataStore";
 import { worktreeClient } from "@/clients";
 
 export interface UseWorktreesReturn {
@@ -24,6 +25,7 @@ export function useWorktrees(): UseWorktreesReturn {
   useEffect(() => {
     if (!isInitialized) {
       initialize();
+      useGitHubDataStore.getState().initialize();
     }
   }, [isInitialized, initialize]);
 
