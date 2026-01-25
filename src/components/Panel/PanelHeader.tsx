@@ -7,14 +7,26 @@ import {
   RotateCcw,
   Grid2X2,
   Activity,
+  Plus,
 } from "lucide-react";
-import type { PanelKind, TerminalType } from "@/types";
+import type { PanelKind, TerminalType, AgentState } from "@/types";
 import { cn, getBaseTitle } from "@/lib/utils";
 import { getBrandColorHex } from "@/lib/colorUtils";
 import { TerminalContextMenu } from "@/components/Terminal/TerminalContextMenu";
 import { TerminalIcon } from "@/components/Terminal/TerminalIcon";
 import { useDragHandle } from "@/components/DragDrop/DragHandleContext";
 import { useBackgroundPanelStats } from "@/hooks";
+import { TabButton } from "./TabButton";
+
+export interface TabInfo {
+  id: string;
+  title: string;
+  type?: TerminalType;
+  agentId?: string;
+  kind: PanelKind;
+  agentState?: AgentState;
+  isActive: boolean;
+}
 
 export interface PanelHeaderProps {
   id: string;
@@ -25,6 +37,12 @@ export interface PanelHeaderProps {
   isFocused: boolean;
   isMaximized?: boolean;
   location?: "grid" | "dock";
+
+  // Tab support (new)
+  tabs?: TabInfo[];
+  onTabClick?: (tabId: string) => void;
+  onTabClose?: (tabId: string) => void;
+  onAddTab?: () => void;
 
   // Title editing (provided by TitleEditingContext consumer)
   isEditingTitle: boolean;
@@ -63,6 +81,10 @@ function PanelHeaderComponent({
   isFocused,
   isMaximized = false,
   location = "grid",
+  tabs,
+  onTabClick,
+  onTabClose,
+  onAddTab,
   isEditingTitle,
   editingValue,
   titleInputRef,
@@ -99,6 +121,10 @@ function PanelHeaderComponent({
   const handleHeaderDoubleClick = (e: React.MouseEvent<HTMLDivElement>) => {
     const target = e.target as HTMLElement;
     if (target.tagName === "INPUT" || target.tagName === "BUTTON") {
+      return;
+    }
+    // Don't maximize when double-clicking tabs or within the tab bar
+    if (target.closest('[role="tablist"]') || target.closest('[role="tab"]')) {
       return;
     }
     onToggleMaximize?.();
@@ -139,51 +165,90 @@ function PanelHeaderComponent({
         )}
         onDoubleClick={handleHeaderDoubleClick}
       >
-        <div className="flex items-center gap-2 min-w-0">
-          <span className="shrink-0 flex items-center justify-center w-3.5 h-3.5 text-canopy-text">
-            <TerminalIcon
-              type={type}
-              kind={kind}
-              agentId={agentId}
-              className="w-3.5 h-3.5"
-              brandColor={getBrandColorHex(agentId ?? type)}
-            />
-          </span>
-
-          {isEditingTitle ? (
-            <input
-              ref={titleInputRef}
-              type="text"
-              value={editingValue}
-              onChange={(e) => onEditingValueChange(e.target.value)}
-              onKeyDown={onTitleInputKeyDown}
-              onBlur={onTitleSave}
-              className="text-sm font-medium bg-canopy-bg/60 border border-canopy-accent/50 px-1 h-5 min-w-32 text-canopy-text select-text focus-visible:outline focus-visible:outline-2 focus-visible:outline-canopy-accent focus-visible:outline-offset-1"
-              aria-label={getAriaLabel()}
-            />
-          ) : (
-            <div className="flex items-center gap-2 min-w-0">
-              <span
-                className={cn(
-                  "text-xs font-medium font-sans select-none transition-colors",
-                  isFocused ? "text-canopy-text" : "text-canopy-text/70",
-                  onTitleChange && "cursor-text hover:text-canopy-text",
-                  isPinged &&
-                    !isMaximized &&
-                    (wasJustSelected ? "animate-eco-title-select" : "animate-eco-title")
-                )}
-                onDoubleClick={onTitleDoubleClick}
-                onKeyDown={onTitleKeyDown}
-                tabIndex={onTitleChange ? 0 : undefined}
-                role={onTitleChange ? "button" : undefined}
-                title={onTitleChange ? `${title} — Double-click to edit` : title}
-                aria-label={onTitleChange ? getTitleAriaLabel() : undefined}
+        {/* Tab bar mode: show tabs when there are 2+ tabs */}
+        {tabs && tabs.length > 1 ? (
+          <div
+            className="flex items-center min-w-0 overflow-x-auto scrollbar-none -ml-3"
+            role="tablist"
+            aria-label="Panel tabs"
+          >
+            {tabs.map((tab) => (
+              <TabButton
+                key={tab.id}
+                id={tab.id}
+                title={tab.title}
+                type={tab.type}
+                agentId={tab.agentId}
+                kind={tab.kind}
+                agentState={tab.agentState}
+                isActive={tab.isActive}
+                onClick={() => onTabClick?.(tab.id)}
+                onClose={() => onTabClose?.(tab.id)}
+              />
+            ))}
+            {onAddTab && (
+              <button
+                onClick={(e) => {
+                  e.stopPropagation();
+                  onAddTab();
+                }}
+                className="shrink-0 p-1.5 hover:bg-canopy-text/10 text-canopy-text/40 hover:text-canopy-text transition-colors focus-visible:outline focus-visible:outline-2 focus-visible:outline-canopy-accent focus-visible:outline-offset-1"
+                title="Add tab"
+                aria-label="Add new tab"
+                type="button"
               >
-                {displayTitle}
-              </span>
-            </div>
-          )}
-        </div>
+                <Plus className="w-3.5 h-3.5" aria-hidden="true" />
+              </button>
+            )}
+          </div>
+        ) : (
+          /* Single-tab mode: show icon + title (unchanged) */
+          <div className="flex items-center gap-2 min-w-0">
+            <span className="shrink-0 flex items-center justify-center w-3.5 h-3.5 text-canopy-text">
+              <TerminalIcon
+                type={type}
+                kind={kind}
+                agentId={agentId}
+                className="w-3.5 h-3.5"
+                brandColor={getBrandColorHex(agentId ?? type)}
+              />
+            </span>
+
+            {isEditingTitle ? (
+              <input
+                ref={titleInputRef}
+                type="text"
+                value={editingValue}
+                onChange={(e) => onEditingValueChange(e.target.value)}
+                onKeyDown={onTitleInputKeyDown}
+                onBlur={onTitleSave}
+                className="text-sm font-medium bg-canopy-bg/60 border border-canopy-accent/50 px-1 h-5 min-w-32 text-canopy-text select-text focus-visible:outline focus-visible:outline-2 focus-visible:outline-canopy-accent focus-visible:outline-offset-1"
+                aria-label={getAriaLabel()}
+              />
+            ) : (
+              <div className="flex items-center gap-2 min-w-0">
+                <span
+                  className={cn(
+                    "text-xs font-medium font-sans select-none transition-colors",
+                    isFocused ? "text-canopy-text" : "text-canopy-text/70",
+                    onTitleChange && "cursor-text hover:text-canopy-text",
+                    isPinged &&
+                      !isMaximized &&
+                      (wasJustSelected ? "animate-eco-title-select" : "animate-eco-title")
+                  )}
+                  onDoubleClick={onTitleDoubleClick}
+                  onKeyDown={onTitleKeyDown}
+                  tabIndex={onTitleChange ? 0 : undefined}
+                  role={onTitleChange ? "button" : undefined}
+                  title={onTitleChange ? `${title} — Double-click to edit` : title}
+                  aria-label={onTitleChange ? getTitleAriaLabel() : undefined}
+                >
+                  {displayTitle}
+                </span>
+              </div>
+            )}
+          </div>
+        )}
 
         {/* Centered Zen Mode indicator (only visible when maximized) */}
         {isMaximized && activeCount > 0 && (
