@@ -21,3 +21,5 @@ export { GridPanel } from "./GridPanel";
 export type { GridPanelProps } from "./GridPanel";
 export { DockedPanel } from "./DockedPanel";
 export type { DockedPanelProps } from "./DockedPanel";
+export { DockedTabGroup } from "./DockedTabGroup";
+export type { DockedTabGroupProps } from "./DockedTabGroup";
