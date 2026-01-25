@@ -4,6 +4,7 @@ import { getTerminalAnimationDuration } from "@/lib/animationUtils";
 import { ErrorBoundary } from "@/components/ErrorBoundary";
 import { getPanelComponent, type PanelComponentProps } from "@/registry";
 import { ContentPanel, triggerPanelTransition } from "@/components/Panel";
+import type { TabInfo } from "@/components/Panel/PanelHeader";
 
 export interface GridPanelProps {
   terminal: TerminalInstance;
@@ -11,6 +12,14 @@ export interface GridPanelProps {
   isMaximized?: boolean;
   gridPanelCount?: number;
   gridCols?: number;
+  /** Tab data for multi-panel groups */
+  tabs?: TabInfo[];
+  /** Callback when a tab is clicked */
+  onTabClick?: (tabId: string) => void;
+  /** Callback when a tab close button is clicked */
+  onTabClose?: (tabId: string) => void;
+  /** Callback when the add tab button is clicked */
+  onAddTab?: () => void;
 }
 
 export function GridPanel({
@@ -19,6 +28,10 @@ export function GridPanel({
   isMaximized = false,
   gridPanelCount,
   gridCols,
+  tabs,
+  onTabClick,
+  onTabClose,
+  onAddTab,
 }: GridPanelProps) {
   const setFocused = useTerminalStore((state) => state.setFocused);
   const trashTerminal = useTerminalStore((state) => state.trashTerminal);
@@ -143,6 +156,12 @@ export function GridPanel({
       onTitleChange: handleTitleChange,
       onMinimize: handleMinimize,
 
+      // Tab support (for multi-panel groups)
+      tabs,
+      onTabClick,
+      onTabClose,
+      onAddTab,
+
       // Terminal-specific
       type: terminal.type,
       agentId: terminal.agentId,
@@ -182,6 +201,10 @@ export function GridPanel({
       handleToggleMaximize,
       handleTitleChange,
       handleMinimize,
+      tabs,
+      onTabClick,
+      onTabClose,
+      onAddTab,
     ]
   );
 

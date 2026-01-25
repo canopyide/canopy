@@ -1,6 +1,6 @@
 import React, { useCallback, useRef, forwardRef, useMemo, useEffect, type ReactNode } from "react";
 import { cn } from "@/lib/utils";
-import { PanelHeader } from "./PanelHeader";
+import { PanelHeader, type TabInfo } from "./PanelHeader";
 import { useIsDragging } from "@/components/DragDrop";
 import { TitleEditingProvider, useTitleEditing } from "./TitleEditingContext";
 import { TerminalHeaderContent } from "@/components/Terminal/TerminalHeaderContent";
@@ -44,6 +44,12 @@ export interface ContentPanelProps extends BasePanelProps {
   tabIndex?: number;
   role?: string;
   "aria-label"?: string;
+
+  // Tab support (for multi-panel groups)
+  tabs?: TabInfo[];
+  onTabClick?: (tabId: string) => void;
+  onTabClose?: (tabId: string) => void;
+  onAddTab?: () => void;
 
   // Terminal-specific header props (optional, only used for terminal/agent panels)
   type?: TerminalType;
@@ -89,6 +95,10 @@ const ContentPanelInner = forwardRef<HTMLDivElement, ContentPanelProps>(function
     tabIndex,
     role,
     "aria-label": ariaLabel,
+    tabs,
+    onTabClick,
+    onTabClose,
+    onAddTab,
     type,
     agentId,
     isExited = false,
@@ -262,6 +272,10 @@ const ContentPanelInner = forwardRef<HTMLDivElement, ContentPanelProps>(function
         wasJustSelected={wasJustSelected}
         headerContent={resolvedHeaderContent}
         headerActions={headerActions}
+        tabs={tabs}
+        onTabClick={onTabClick}
+        onTabClose={onTabClose}
+        onAddTab={onAddTab}
       />
 
       {toolbar}

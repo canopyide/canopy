@@ -15,6 +15,7 @@ import {
 import { useProjectStore } from "@/store/projectStore";
 import { useRecipeStore } from "@/store/recipeStore";
 import { GridPanel } from "./GridPanel";
+import { GridTabGroup } from "./GridTabGroup";
 import { TerminalCountWarning } from "./TerminalCountWarning";
 import { GridFullOverlay } from "./GridFullOverlay";
 import { TwoPaneSplitLayout } from "./TwoPaneSplitLayout";
@@ -372,16 +373,23 @@ function EmptyState({
 
 export function ContentGrid({ className, defaultCwd, agentAvailability }: ContentGridProps) {
   const { showMenu } = useNativeContextMenu();
-  const { terminals, focusedId, maximizedId, preMaximizeLayout, clearPreMaximizeLayout } =
-    useTerminalStore(
-      useShallow((state) => ({
-        terminals: state.terminals,
-        focusedId: state.focusedId,
-        maximizedId: state.maximizedId,
-        preMaximizeLayout: state.preMaximizeLayout,
-        clearPreMaximizeLayout: state.clearPreMaximizeLayout,
-      }))
-    );
+  const {
+    terminals,
+    focusedId,
+    maximizedId,
+    preMaximizeLayout,
+    clearPreMaximizeLayout,
+    getTabGroups,
+  } = useTerminalStore(
+    useShallow((state) => ({
+      terminals: state.terminals,
+      focusedId: state.focusedId,
+      maximizedId: state.maximizedId,
+      preMaximizeLayout: state.preMaximizeLayout,
+      clearPreMaximizeLayout: state.clearPreMaximizeLayout,
+      getTabGroups: state.getTabGroups,
+    }))
+  );
 
   const activeWorktreeId = useWorktreeSelectionStore((state) => state.activeWorktreeId);
   const showProjectPulse = usePreferencesStore((state) => state.showProjectPulse);
@@ -403,6 +411,23 @@ export function ContentGrid({ className, defaultCwd, agentAvailability }: Conten
   const sidecarOpen = useSidecarStore((state) => state.isOpen);
   const sidecarLayoutMode = useSidecarStore((state) => state.layoutMode);
 
+  // Get tab groups for the grid - each group occupies one grid cell
+  // CRITICAL: Must depend on terminals to recompute when panels change
+  const tabGroups = useMemo(
+    () => getTabGroups("grid", activeWorktreeId ?? undefined),
+    [getTabGroups, activeWorktreeId, terminals]
+  );
+
+  // Build a map of terminal ID to terminal instance for quick lookup
+  const terminalById = useMemo(() => {
+    const map = new Map<string, TerminalInstance>();
+    for (const t of terminals) {
+      map.set(t.id, t);
+    }
+    return map;
+  }, [terminals]);
+
+  // Flat list of grid terminals for backward compatibility (e.g., TwoPaneSplitLayout)
   const gridTerminals = useMemo(
     () =>
       terminals.filter(
@@ -418,8 +443,10 @@ export function ContentGrid({ className, defaultCwd, agentAvailability }: Conten
   const getMaxGridCapacity = useLayoutConfigStore((state) => state.getMaxGridCapacity);
 
   // Dynamic grid capacity based on current dimensions
+  // Grid capacity is based on GROUP count, not panel count (a group with 5 tabs uses 1 cell)
   const maxGridCapacity = getMaxGridCapacity();
-  const isGridFull = gridTerminals.length >= maxGridCapacity;
+  const groupCount = tabGroups.length;
+  const isGridFull = groupCount >= maxGridCapacity;
 
   // Make the grid a droppable area
   const { setNodeRef, isOver } = useDroppable({
@@ -440,11 +467,11 @@ export function ContentGrid({ className, defaultCwd, agentAvailability }: Conten
   }, [isDragging]);
 
   const placeholderInGrid =
-    placeholderIndex !== null && placeholderIndex >= 0 && placeholderIndex <= gridTerminals.length;
+    placeholderIndex !== null && placeholderIndex >= 0 && placeholderIndex <= groupCount;
 
   // Show placeholder when dragging from dock to grid (only if grid not full)
   const showPlaceholder = placeholderInGrid && sourceContainer === "dock" && !isGridFull;
-  const gridItemCount = gridTerminals.length + (showPlaceholder ? 1 : 0);
+  const gridItemCount = groupCount + (showPlaceholder ? 1 : 0);
 
   // Attach ResizeObserver to track container dimensions
   // CRITICAL: This effect must re-run when the layout mode changes because gridContainerRef
@@ -601,18 +628,20 @@ export function ContentGrid({ className, defaultCwd, agentAvailability }: Conten
     [agentAvailability, defaultCwd, layoutConfig, showMenu]
   );
 
-  // Terminal IDs for SortableContext - Include placeholder if visible
-  const terminalIds = useMemo(() => {
-    const ids = gridTerminals.map((t) => t.id);
+  // Group IDs for SortableContext - each group is one sortable item
+  // Include placeholder if visible
+  const sortableIds = useMemo(() => {
+    const ids = tabGroups.map((g) => g.id);
     if (showPlaceholder && placeholderInGrid) {
       const insertIndex = Math.min(Math.max(0, placeholderIndex), ids.length);
       ids.splice(insertIndex, 0, GRID_PLACEHOLDER_ID);
     }
     return ids;
-  }, [gridTerminals, showPlaceholder, placeholderIndex, placeholderInGrid]);
+  }, [tabGroups, showPlaceholder, placeholderIndex, placeholderInGrid]);
 
   // Batch-fit grid terminals when layout (gridCols/count) changes
   // Skip during drag to avoid tier churn from CSS transforms
+  // Note: We iterate over all gridTerminals (all panels), not just sortableIds (groups)
   useEffect(() => {
     const ids = gridTerminals.map((t) => t.id);
     let cancelled = false;
@@ -644,7 +673,7 @@ export function ContentGrid({ className, defaultCwd, agentAvailability }: Conten
       cancelled = true;
       clearTimeout(timeoutId);
     };
-  }, [gridCols, terminalIds, gridTerminals, sidecarOpen, sidecarLayoutMode]);
+  }, [gridCols, sortableIds, gridTerminals, sidecarOpen, sidecarLayoutMode]);
 
   // Show "grid full" overlay when trying to drag from dock to a full grid
   const showGridFullOverlay = sourceContainer === "dock" && isGridFull;
@@ -704,7 +733,7 @@ export function ContentGrid({ className, defaultCwd, agentAvailability }: Conten
     <div className={cn("h-full flex flex-col", className)}>
       <TerminalCountWarning className="mx-1 mt-1 shrink-0" />
       <div className="relative flex-1 min-h-0">
-        <SortableContext id="grid-container" items={terminalIds} strategy={rectSortingStrategy}>
+        <SortableContext id="grid-container" items={sortableIds} strategy={rectSortingStrategy}>
           <div
             ref={(node) => {
               setNodeRef(node);
@@ -747,38 +776,65 @@ export function ContentGrid({ className, defaultCwd, agentAvailability }: Conten
               </div>
             ) : (
               <>
-                {gridTerminals.map((terminal, index) => {
-                  const isTerminalInTrash = isInTrash(terminal.id);
+                {tabGroups.map((group, index) => {
                   const elements: React.ReactNode[] = [];
 
+                  // Add placeholder before this group if it's at this index
                   if (showPlaceholder && placeholderInGrid && placeholderIndex === index) {
                     elements.push(<SortableGridPlaceholder key={GRID_PLACEHOLDER_ID} />);
                   }
 
-                  elements.push(
-                    <SortableTerminal
-                      key={terminal.id}
-                      terminal={terminal}
-                      sourceLocation="grid"
-                      sourceIndex={index}
-                      disabled={isTerminalInTrash}
-                    >
-                      <GridPanel
+                  // Get all panels in this group
+                  const groupPanels = group.panelIds
+                    .map((id) => terminalById.get(id))
+                    .filter((t): t is TerminalInstance => t != null);
+
+                  if (groupPanels.length === 0) {
+                    return elements.length > 0 ? elements : null;
+                  }
+
+                  // Check if any panel in the group is in trash
+                  const isGroupInTrash = groupPanels.some((p) => isInTrash(p.id));
+
+                  // Single panel group - render normally for backward compatibility
+                  if (groupPanels.length === 1) {
+                    const terminal = groupPanels[0];
+                    elements.push(
+                      <SortableTerminal
+                        key={terminal.id}
                         terminal={terminal}
-                        isFocused={terminal.id === focusedId}
+                        sourceLocation="grid"
+                        sourceIndex={index}
+                        disabled={isGroupInTrash}
+                      >
+                        <GridPanel
+                          terminal={terminal}
+                          isFocused={terminal.id === focusedId}
+                          gridPanelCount={gridItemCount}
+                          gridCols={gridCols}
+                        />
+                      </SortableTerminal>
+                    );
+                  } else {
+                    // Multi-panel group - render with tabs
+                    elements.push(
+                      <GridTabGroup
+                        key={group.id}
+                        group={group}
+                        panels={groupPanels}
+                        focusedId={focusedId}
                         gridPanelCount={gridItemCount}
                         gridCols={gridCols}
+                        disabled={isGroupInTrash}
                       />
-                    </SortableTerminal>
-                  );
+                    );
+                  }
 
                   return elements;
                 })}
-                {showPlaceholder &&
-                  placeholderInGrid &&
-                  placeholderIndex === gridTerminals.length && (
-                    <SortableGridPlaceholder key={GRID_PLACEHOLDER_ID} />
-                  )}
+                {showPlaceholder && placeholderInGrid && placeholderIndex === tabGroups.length && (
+                  <SortableGridPlaceholder key={GRID_PLACEHOLDER_ID} />
+                )}
               </>
             )}
           </div>

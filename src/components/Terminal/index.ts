@@ -19,5 +19,7 @@ export { ReconnectErrorBanner } from "./ReconnectErrorBanner";
 export type { ReconnectErrorBannerProps } from "./ReconnectErrorBanner";
 export { GridPanel } from "./GridPanel";
 export type { GridPanelProps } from "./GridPanel";
+export { GridTabGroup } from "./GridTabGroup";
+export type { GridTabGroupProps } from "./GridTabGroup";
 export { DockedPanel } from "./DockedPanel";
 export type { DockedPanelProps } from "./DockedPanel";
