@@ -433,12 +433,33 @@ export function DndProvider({ children }: DndProviderProps) {
         }
 
         // Block cross-container move from dock to grid if grid is full
+        // Count unique groups (each tab group = 1 slot)
         const gridTerminals = terminals.filter(
           (t) =>
             (t.location === "grid" || t.location === undefined) &&
             (t.worktreeId ?? undefined) === (activeWorktreeId ?? undefined)
         );
-        const isGridFull = gridTerminals.length >= getMaxGridCapacity();
+        // Count groups using TabGroup data from store
+        const tabGroups = useTerminalStore.getState().tabGroups;
+        const panelsInGroups = new Set<string>();
+        let explicitGroupCount = 0;
+        for (const group of tabGroups.values()) {
+          if (
+            group.location === "grid" &&
+            (group.worktreeId ?? undefined) === (activeWorktreeId ?? undefined)
+          ) {
+            explicitGroupCount++;
+            group.panelIds.forEach((pid) => panelsInGroups.add(pid));
+          }
+        }
+        // Count ungrouped panels (each is its own virtual group)
+        let ungroupedCount = 0;
+        for (const t of gridTerminals) {
+          if (!panelsInGroups.has(t.id)) {
+            ungroupedCount++;
+          }
+        }
+        const isGridFull = explicitGroupCount + ungroupedCount >= getMaxGridCapacity();
         if (sourceLocation === "dock" && targetContainer === "grid" && isGridFull) {
           // Grid is full, cancel the drop - still run stabilization below
         } else {

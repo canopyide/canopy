@@ -1,4 +1,4 @@
-import React, { type ReactNode } from "react";
+import React, { useCallback, useRef, type ReactNode } from "react";
 import {
   X,
   Maximize2,
@@ -7,6 +7,7 @@ import {
   RotateCcw,
   Grid2X2,
   Activity,
+  Plus,
 } from "lucide-react";
 import type { PanelKind, TerminalType } from "@/types";
 import { cn, getBaseTitle } from "@/lib/utils";
@@ -15,6 +16,7 @@ import { TerminalContextMenu } from "@/components/Terminal/TerminalContextMenu";
 import { TerminalIcon } from "@/components/Terminal/TerminalIcon";
 import { useDragHandle } from "@/components/DragDrop/DragHandleContext";
 import { useBackgroundPanelStats } from "@/hooks";
+import { TabButton, type TabInfo } from "./TabButton";
 
 export interface PanelHeaderProps {
   id: string;
@@ -52,6 +54,12 @@ export interface PanelHeaderProps {
   // Slots for kind-specific content
   headerContent?: ReactNode;
   headerActions?: ReactNode;
+
+  // Tab support
+  tabs?: TabInfo[];
+  onTabClick?: (tabId: string) => void;
+  onTabClose?: (tabId: string) => void;
+  onAddTab?: () => void;
 }
 
 function PanelHeaderComponent({
@@ -82,6 +90,10 @@ function PanelHeaderComponent({
   wasJustSelected = false,
   headerContent,
   headerActions,
+  tabs,
+  onTabClick,
+  onTabClose,
+  onAddTab,
 }: PanelHeaderProps) {
   const isBrowser = kind === "browser";
   const dragHandle = useDragHandle();
@@ -120,6 +132,48 @@ function PanelHeaderComponent({
     return `${prefix}: ${title}. Press Enter or F2 to edit`;
   };
 
+  const hasTabs = tabs && tabs.length > 1;
+  const tabListRef = useRef<HTMLDivElement>(null);
+
+  // Arrow key navigation for tabs (standard tablist behavior)
+  const handleTabListKeyDown = useCallback(
+    (e: React.KeyboardEvent) => {
+      if (!tabs || tabs.length < 2 || !onTabClick) return;
+
+      const currentIndex = tabs.findIndex((t) => t.isActive);
+      let nextIndex: number | undefined;
+
+      switch (e.key) {
+        case "ArrowLeft":
+          nextIndex = currentIndex > 0 ? currentIndex - 1 : tabs.length - 1;
+          break;
+        case "ArrowRight":
+          nextIndex = currentIndex < tabs.length - 1 ? currentIndex + 1 : 0;
+          break;
+        case "Home":
+          nextIndex = 0;
+          break;
+        case "End":
+          nextIndex = tabs.length - 1;
+          break;
+        default:
+          return;
+      }
+
+      e.preventDefault();
+      const nextTab = tabs[nextIndex];
+      if (nextTab) {
+        onTabClick(nextTab.id);
+        // Focus the new tab button
+        const tabButton = tabListRef.current?.querySelector(
+          `[data-tab-id="${nextTab.id}"]`
+        ) as HTMLElement | null;
+        tabButton?.focus();
+      }
+    },
+    [tabs, onTabClick]
+  );
+
   return (
     <TerminalContextMenu terminalId={id} forceLocation={location}>
       <div
@@ -139,51 +193,109 @@ function PanelHeaderComponent({
         )}
         onDoubleClick={handleHeaderDoubleClick}
       >
-        <div className="flex items-center gap-2 min-w-0">
-          <span className="shrink-0 flex items-center justify-center w-3.5 h-3.5 text-canopy-text">
-            <TerminalIcon
-              type={type}
-              kind={kind}
-              agentId={agentId}
-              className="w-3.5 h-3.5"
-              brandColor={getBrandColorHex(agentId ?? type)}
-            />
-          </span>
-
-          {isEditingTitle ? (
-            <input
-              ref={titleInputRef}
-              type="text"
-              value={editingValue}
-              onChange={(e) => onEditingValueChange(e.target.value)}
-              onKeyDown={onTitleInputKeyDown}
-              onBlur={onTitleSave}
-              className="text-sm font-medium bg-canopy-bg/60 border border-canopy-accent/50 px-1 h-5 min-w-32 text-canopy-text select-text focus-visible:outline focus-visible:outline-2 focus-visible:outline-canopy-accent focus-visible:outline-offset-1"
-              aria-label={getAriaLabel()}
-            />
-          ) : (
-            <div className="flex items-center gap-2 min-w-0">
-              <span
-                className={cn(
-                  "text-xs font-medium font-sans select-none transition-colors",
-                  isFocused ? "text-canopy-text" : "text-canopy-text/70",
-                  onTitleChange && "cursor-text hover:text-canopy-text",
-                  isPinged &&
-                    !isMaximized &&
-                    (wasJustSelected ? "animate-eco-title-select" : "animate-eco-title")
-                )}
-                onDoubleClick={onTitleDoubleClick}
-                onKeyDown={onTitleKeyDown}
-                tabIndex={onTitleChange ? 0 : undefined}
-                role={onTitleChange ? "button" : undefined}
-                title={onTitleChange ? `${title} — Double-click to edit` : title}
-                aria-label={onTitleChange ? getTitleAriaLabel() : undefined}
+        {/* Tab bar - shown when there are multiple tabs */}
+        {hasTabs ? (
+          <div
+            ref={tabListRef}
+            className="flex items-center min-w-0 flex-1 overflow-x-auto scrollbar-none"
+            role="tablist"
+            aria-label="Panel tabs"
+            onKeyDown={handleTabListKeyDown}
+          >
+            {tabs.map((tab) => (
+              <TabButton
+                key={tab.id}
+                id={tab.id}
+                title={getBaseTitle(tab.title)}
+                type={tab.type}
+                agentId={tab.agentId}
+                kind={tab.kind}
+                agentState={tab.agentState}
+                isActive={tab.isActive}
+                onClick={() => onTabClick?.(tab.id)}
+                onClose={() => onTabClose?.(tab.id)}
+              />
+            ))}
+            {onAddTab && (
+              <button
+                onClick={(e) => {
+                  e.stopPropagation();
+                  onAddTab();
+                }}
+                onPointerDown={(e) => e.stopPropagation()}
+                className="shrink-0 p-1.5 hover:bg-canopy-text/10 text-canopy-text/40 hover:text-canopy-text transition-colors focus-visible:outline focus-visible:outline-2 focus-visible:outline-canopy-accent focus-visible:outline-offset-1"
+                title="Duplicate panel as new tab"
+                aria-label="Duplicate panel as new tab"
+                type="button"
               >
-                {displayTitle}
-              </span>
-            </div>
-          )}
-        </div>
+                <Plus className="w-3 h-3" aria-hidden="true" />
+              </button>
+            )}
+          </div>
+        ) : (
+          <div className="flex items-center gap-2 min-w-0">
+            <span className="shrink-0 flex items-center justify-center w-3.5 h-3.5 text-canopy-text">
+              <TerminalIcon
+                type={type}
+                kind={kind}
+                agentId={agentId}
+                className="w-3.5 h-3.5"
+                brandColor={getBrandColorHex(agentId ?? type)}
+              />
+            </span>
+
+            {isEditingTitle ? (
+              <input
+                ref={titleInputRef}
+                type="text"
+                value={editingValue}
+                onChange={(e) => onEditingValueChange(e.target.value)}
+                onKeyDown={onTitleInputKeyDown}
+                onBlur={onTitleSave}
+                className="text-sm font-medium bg-canopy-bg/60 border border-canopy-accent/50 px-1 h-5 min-w-32 text-canopy-text select-text focus-visible:outline focus-visible:outline-2 focus-visible:outline-canopy-accent focus-visible:outline-offset-1"
+                aria-label={getAriaLabel()}
+              />
+            ) : (
+              <div className="flex items-center gap-2 min-w-0">
+                <span
+                  className={cn(
+                    "text-xs font-medium font-sans select-none transition-colors",
+                    isFocused ? "text-canopy-text" : "text-canopy-text/70",
+                    onTitleChange && "cursor-text hover:text-canopy-text",
+                    isPinged &&
+                      !isMaximized &&
+                      (wasJustSelected ? "animate-eco-title-select" : "animate-eco-title")
+                  )}
+                  onDoubleClick={onTitleDoubleClick}
+                  onKeyDown={onTitleKeyDown}
+                  tabIndex={onTitleChange ? 0 : undefined}
+                  role={onTitleChange ? "button" : undefined}
+                  title={onTitleChange ? `${title} — Double-click to edit` : title}
+                  aria-label={onTitleChange ? getTitleAriaLabel() : undefined}
+                >
+                  {displayTitle}
+                </span>
+              </div>
+            )}
+
+            {/* Add tab button for single panels */}
+            {onAddTab && (
+              <button
+                onClick={(e) => {
+                  e.stopPropagation();
+                  onAddTab();
+                }}
+                onPointerDown={(e) => e.stopPropagation()}
+                className="shrink-0 p-1.5 opacity-0 group-hover:opacity-100 hover:bg-canopy-text/10 text-canopy-text/40 hover:text-canopy-text transition-all focus-visible:opacity-100 focus-visible:outline focus-visible:outline-2 focus-visible:outline-canopy-accent focus-visible:outline-offset-1"
+                title="Duplicate panel as new tab"
+                aria-label="Duplicate panel as new tab"
+                type="button"
+              >
+                <Plus className="w-3.5 h-3.5" aria-hidden="true" />
+              </button>
+            )}
+          </div>
+        )}
 
         {/* Centered Zen Mode indicator (only visible when maximized) */}
         {isMaximized && activeCount > 0 && (

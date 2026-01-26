@@ -6,6 +6,7 @@ import { TitleEditingProvider, useTitleEditing } from "./TitleEditingContext";
 import { TerminalHeaderContent } from "@/components/Terminal/TerminalHeaderContent";
 import type { PanelKind, TerminalType, AgentState, AgentStateChangeTrigger } from "@/types";
 import type { ActivityState } from "@/components/Terminal/TerminalPane";
+import type { TabInfo } from "./TabButton";
 
 /**
  * Base props for all panel types.
@@ -61,6 +62,12 @@ export interface ContentPanelProps extends BasePanelProps {
   onRestart?: () => void;
   isPinged?: boolean;
   wasJustSelected?: boolean;
+
+  // Tab support
+  tabs?: TabInfo[];
+  onTabClick?: (tabId: string) => void;
+  onTabClose?: (tabId: string) => void;
+  onAddTab?: () => void;
 }
 
 const ContentPanelInner = forwardRef<HTMLDivElement, ContentPanelProps>(function ContentPanelInner(
@@ -104,6 +111,10 @@ const ContentPanelInner = forwardRef<HTMLDivElement, ContentPanelProps>(function
     onRestart,
     isPinged,
     wasJustSelected,
+    tabs,
+    onTabClick,
+    onTabClose,
+    onAddTab,
   },
   ref
 ) {
@@ -262,6 +273,10 @@ const ContentPanelInner = forwardRef<HTMLDivElement, ContentPanelProps>(function
         wasJustSelected={wasJustSelected}
         headerContent={resolvedHeaderContent}
         headerActions={headerActions}
+        tabs={tabs}
+        onTabClick={onTabClick}
+        onTabClose={onTabClose}
+        onAddTab={onAddTab}
       />
 
       {toolbar}

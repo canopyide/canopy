@@ -36,6 +36,9 @@ export type {
   PanelLocation,
   PanelInstance,
   PanelSnapshot,
+  // Tab group types
+  TabGroupLocation,
+  TabGroup,
   // Terminal types (deprecated aliases for backward compat)
   TerminalKind,
   TerminalType,

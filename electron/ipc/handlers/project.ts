@@ -7,7 +7,7 @@ import { projectStore } from "../../services/ProjectStore.js";
 import { runCommandDetector } from "../../services/RunCommandDetector.js";
 import { ProjectSwitchService } from "../../services/ProjectSwitchService.js";
 import type { HandlerDependencies } from "../types.js";
-import type { Project, ProjectSettings, TerminalRecipe } from "../../types/index.js";
+import type { Project, ProjectSettings, TerminalRecipe, TabGroup } from "../../types/index.js";
 import {
   SystemOpenExternalPayloadSchema,
   SystemOpenPathPayloadSchema,
@@ -689,6 +689,62 @@ export function registerProjectHandlers(deps: HandlerDependencies): () => void {
   };
   ipcMain.handle(CHANNELS.PROJECT_SET_TERMINALS, handleProjectSetTerminals);
   handlers.push(() => ipcMain.removeHandler(CHANNELS.PROJECT_SET_TERMINALS));
+
+  // Tab Groups handlers
+  const handleProjectGetTabGroups = async (
+    _event: Electron.IpcMainInvokeEvent,
+    projectId: string
+  ): Promise<TabGroup[]> => {
+    if (typeof projectId !== "string" || !projectId) {
+      throw new Error("Invalid project ID");
+    }
+    const state = await projectStore.getProjectState(projectId);
+    return state?.tabGroups ?? [];
+  };
+  ipcMain.handle(CHANNELS.PROJECT_GET_TAB_GROUPS, handleProjectGetTabGroups);
+  handlers.push(() => ipcMain.removeHandler(CHANNELS.PROJECT_GET_TAB_GROUPS));
+
+  const handleProjectSetTabGroups = async (
+    _event: Electron.IpcMainInvokeEvent,
+    payload: { projectId: string; tabGroups: TabGroup[] }
+  ): Promise<void> => {
+    if (!payload || typeof payload !== "object") {
+      throw new Error("Invalid payload");
+    }
+    const { projectId, tabGroups } = payload;
+    if (typeof projectId !== "string" || !projectId) {
+      throw new Error("Invalid project ID");
+    }
+    if (!Array.isArray(tabGroups)) {
+      throw new Error("Invalid tabGroups array");
+    }
+
+    // Basic validation of tab groups
+    const validTabGroups = tabGroups.filter(
+      (g) =>
+        g &&
+        typeof g === "object" &&
+        typeof g.id === "string" &&
+        typeof g.location === "string" &&
+        Array.isArray(g.panelIds)
+    );
+
+    const existingState = await projectStore.getProjectState(projectId);
+    const newState = {
+      projectId,
+      activeWorktreeId: existingState?.activeWorktreeId,
+      sidebarWidth: existingState?.sidebarWidth ?? 350,
+      terminals: existingState?.terminals ?? [],
+      tabGroups: validTabGroups,
+      terminalLayout: existingState?.terminalLayout,
+      focusMode: existingState?.focusMode,
+      focusPanelState: existingState?.focusPanelState,
+    };
+
+    await projectStore.saveProjectState(projectId, newState);
+  };
+  ipcMain.handle(CHANNELS.PROJECT_SET_TAB_GROUPS, handleProjectSetTabGroups);
+  handlers.push(() => ipcMain.removeHandler(CHANNELS.PROJECT_SET_TAB_GROUPS));
 
   const handleProjectGetFocusMode = async (
     _event: Electron.IpcMainInvokeEvent,

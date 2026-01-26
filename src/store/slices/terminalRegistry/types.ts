@@ -10,6 +10,8 @@ import type {
   SpawnError,
   PanelExitBehavior,
   TerminalReconnectError,
+  TabGroup,
+  TabGroupLocation,
 } from "@/types";
 import type { PanelKind } from "@/types";
 
@@ -52,6 +54,7 @@ export interface AddTerminalOptions {
   env?: Record<string, string>;
   /** Behavior when terminal exits: "keep" preserves for review, "trash" sends to trash, "remove" deletes completely */
   exitBehavior?: PanelExitBehavior;
+  // Note: Tab membership is now managed via createTabGroup/addPanelToGroup, not on terminals
 }
 
 export interface TrashedTerminal {
@@ -63,6 +66,8 @@ export interface TrashedTerminal {
 export interface TerminalRegistrySlice {
   terminals: TerminalInstance[];
   trashedTerminals: Map<string, TrashedTerminal>;
+  /** Explicit tab group storage - single source of truth for tab membership and order */
+  tabGroups: Map<string, TabGroup>;
 
   addTerminal: (options: AddTerminalOptions) => Promise<string>;
   removeTerminal: (id: string) => void;
@@ -124,6 +129,35 @@ export interface TerminalRegistrySlice {
   clearSpawnError: (id: string) => void;
   setReconnectError: (id: string, error: TerminalReconnectError) => void;
   clearReconnectError: (id: string) => void;
+
+  // Tab grouping methods - TabGroup is the single source of truth
+  /** Get all panels in a group, ordered by group's panelIds array. Location param is deprecated. */
+  getTabGroupPanels: (groupId: string, location?: TabGroupLocation) => TerminalInstance[];
+  /** Get all tab groups for a location/worktree */
+  getTabGroups: (location: TabGroupLocation, worktreeId?: string) => TabGroup[];
+  /** Get the group a panel belongs to, if any */
+  getPanelGroup: (panelId: string) => TabGroup | undefined;
+  /** Create a new tab group with initial panels */
+  createTabGroup: (
+    location: TabGroupLocation,
+    worktreeId: string | undefined,
+    panelIds: string[],
+    activeTabId?: string
+  ) => string;
+  /** Add a panel to an existing group at optional index */
+  addPanelToGroup: (groupId: string, panelId: string, index?: number) => void;
+  /** Remove a panel from its group (group deleted if only 1 panel remains) */
+  removePanelFromGroup: (panelId: string) => void;
+  /** Reorder panels within a group */
+  reorderPanelsInGroup: (groupId: string, panelIds: string[]) => void;
+  /** Delete a tab group (panels become ungrouped) */
+  deleteTabGroup: (groupId: string) => void;
+  /** @deprecated Use createTabGroup/addPanelToGroup instead */
+  setTabGroupInfo: (
+    id: string,
+    tabGroupId: string | undefined,
+    orderInGroup: number | undefined
+  ) => void;
 }
 
 export type TerminalRegistryMiddleware = {

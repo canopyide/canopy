@@ -6,6 +6,7 @@ import type {
   ProjectStats,
   TerminalRecipe,
   TerminalSnapshot,
+  TabGroup,
 } from "@shared/types";
 
 /**
@@ -111,5 +112,13 @@ export const projectClient = {
 
   setTerminals: (projectId: string, terminals: TerminalSnapshot[]): Promise<void> => {
     return window.electron.project.setTerminals(projectId, terminals);
+  },
+
+  getTabGroups: (projectId: string): Promise<TabGroup[]> => {
+    return window.electron.project.getTabGroups(projectId);
+  },
+
+  setTabGroups: (projectId: string, tabGroups: TabGroup[]): Promise<void> => {
+    return window.electron.project.setTabGroups(projectId, tabGroups);
   },
 } as const;

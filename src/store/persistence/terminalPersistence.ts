@@ -1,4 +1,4 @@
-import type { TerminalInstance, TerminalSnapshot } from "@/types";
+import type { TerminalInstance, TerminalSnapshot, TabGroup } from "@/types";
 import { projectClient } from "@/clients";
 import { debounce } from "@/utils/debounce";
 import { panelKindHasPty } from "@shared/config/panelKindRegistry";
@@ -17,6 +17,8 @@ const DEFAULT_OPTIONS: Required<Omit<TerminalPersistenceOptions, "getProjectId">
   debounceMs: 500,
   filter: (t) => t.location !== "trash",
   transform: (t) => {
+    // Note: tabGroupId and orderInGroup are NOT saved on terminals anymore
+    // Tab groups are stored separately in ProjectState.tabGroups
     const base: TerminalSnapshot = {
       id: t.id,
       kind: t.kind,
@@ -67,7 +69,9 @@ export class TerminalPersistence {
   private readonly options: Required<Omit<TerminalPersistenceOptions, "getProjectId">> &
     Pick<TerminalPersistenceOptions, "getProjectId">;
   private readonly debouncedSave: ReturnType<typeof debounce<[string, TerminalSnapshot[]]>>;
+  private readonly debouncedSaveTabGroups: ReturnType<typeof debounce<[string, TabGroup[]]>>;
   private pendingPersist: Promise<void> | null = null;
+  private pendingTabGroupPersist: Promise<void> | null = null;
 
   constructor(client: ProjectClientType, options: TerminalPersistenceOptions = {}) {
     this.client = client;
@@ -80,6 +84,16 @@ export class TerminalPersistence {
       });
       // Prevent unhandled rejection warning since this runs in background
       this.pendingPersist.catch(() => {});
+    }, this.options.debounceMs);
+
+    this.debouncedSaveTabGroups = debounce((projectId: string, tabGroups: TabGroup[]) => {
+      this.pendingTabGroupPersist = this.client
+        .setTabGroups(projectId, tabGroups)
+        .catch((error) => {
+          console.error("Failed to persist tab groups:", error);
+          throw error;
+        });
+      this.pendingTabGroupPersist.catch(() => {});
     }, this.options.debounceMs);
   }
 
@@ -95,17 +109,32 @@ export class TerminalPersistence {
     this.debouncedSave(resolvedProjectId, transformed);
   }
 
+  saveTabGroups(tabGroups: Map<string, TabGroup>, projectId?: string): void {
+    const resolvedProjectId = projectId ?? this.options.getProjectId?.();
+    if (!resolvedProjectId) {
+      return;
+    }
+
+    // Convert Map to array and filter to only explicit groups (panelIds.length > 1)
+    // Single-panel groups are virtual and don't need persistence
+    const groupArray = Array.from(tabGroups.values()).filter((g) => g.panelIds.length > 1);
+    this.debouncedSaveTabGroups(resolvedProjectId, groupArray);
+  }
+
   cancel(): void {
     this.debouncedSave.cancel();
+    this.debouncedSaveTabGroups.cancel();
     this.pendingPersist = null;
+    this.pendingTabGroupPersist = null;
   }
 
   async whenIdle(): Promise<void> {
-    await this.pendingPersist;
+    await Promise.all([this.pendingPersist, this.pendingTabGroupPersist]);
   }
 
   flush(): void {
     this.debouncedSave.flush();
+    this.debouncedSaveTabGroups.flush();
   }
 
   setProjectIdGetter(getter: () => string | null | undefined): void {

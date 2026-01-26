@@ -6,6 +6,7 @@ import type {
   AgentId,
   TerminalRecipe,
   TerminalSnapshot,
+  TabGroup,
 } from "../domain.js";
 import type { AgentSettings } from "../agentSettings.js";
 import type { UserAgentRegistry, UserAgentConfig } from "../userAgentRegistry.js";
@@ -523,6 +524,14 @@ export interface IpcInvokeMap {
   };
   "project:set-terminals": {
     args: [payload: { projectId: string; terminals: TerminalSnapshot[] }];
+    result: void;
+  };
+  "project:get-tab-groups": {
+    args: [projectId: string];
+    result: TabGroup[];
+  };
+  "project:set-tab-groups": {
+    args: [payload: { projectId: string; tabGroups: TabGroup[] }];
     result: void;
   };
   "project:get-focus-mode": {
