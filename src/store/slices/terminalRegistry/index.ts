@@ -1685,7 +1685,7 @@ export const createTerminalRegistrySlice =
           }
 
           // CRITICAL: Enforce unique membership - remove from any existing group first
-          let newTabGroups = new Map(state.tabGroups);
+          const newTabGroups = new Map(state.tabGroups);
           for (const [existingGroupId, existingGroup] of newTabGroups) {
             if (existingGroup.panelIds.includes(panelId)) {
               const filteredPanelIds = existingGroup.panelIds.filter((id) => id !== panelId);
