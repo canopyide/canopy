@@ -313,12 +313,9 @@ export const createTerminalRegistrySlice =
 
           // For reconnects, use the backend's state directly - don't default to "working".
           // For new spawns, start with "working" in UI to show spinner immediately during boot.
-          // EXCEPTION: When skipCommandExecution=true (docked agents), don't set "working"
-          // because the command hasn't run yet. Leave as undefined so the dock popover
-          // execution gate can fire when opened.
           const agentState = isReconnect
             ? options.agentState
-            : (options.agentState ?? (isAgent && !options.skipCommandExecution ? "working" : undefined));
+            : (options.agentState ?? (isAgent ? "working" : undefined));
           const lastStateChange = isReconnect
             ? options.lastStateChange
             : (options.lastStateChange ?? (agentState !== undefined ? Date.now() : undefined));
