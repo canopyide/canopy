@@ -448,7 +448,7 @@ export const createTerminalRegistrySlice =
               } else {
                 // Update group without this panel
                 const newActiveTabId =
-                  group.activeTabId === id ? filteredPanelIds[0] ?? "" : group.activeTabId;
+                  group.activeTabId === id ? (filteredPanelIds[0] ?? "") : group.activeTabId;
                 newTabGroups.set(groupId, {
                   ...group,
                   panelIds: filteredPanelIds,
@@ -1696,7 +1696,7 @@ export const createTerminalRegistrySlice =
                 // Update group without this panel
                 const newActiveTabId =
                   existingGroup.activeTabId === panelId
-                    ? filteredPanelIds[0] ?? ""
+                    ? (filteredPanelIds[0] ?? "")
                     : existingGroup.activeTabId;
                 newTabGroups.set(existingGroupId, {
                   ...existingGroup,
