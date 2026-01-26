@@ -1,4 +1,4 @@
-import { appClient, terminalClient, worktreeClient } from "@/clients";
+import { appClient, terminalClient, worktreeClient, projectClient } from "@/clients";
 import { terminalConfigClient } from "@/clients/terminalConfigClient";
 import {
   useLayoutConfigStore,
@@ -7,7 +7,7 @@ import {
   useTerminalInputStore,
 } from "@/store";
 import { useUserAgentRegistryStore } from "@/store/userAgentRegistryStore";
-import type { TerminalType, AgentState, TerminalKind, TerminalReconnectError } from "@/types";
+import type { TerminalType, AgentState, TerminalKind, TerminalReconnectError, TabGroup } from "@/types";
 import { keybindingService } from "@/services/KeybindingService";
 import { getAgentConfig, isRegisteredAgent } from "@/config/agents";
 import { generateAgentFlags } from "@shared/types";
@@ -49,6 +49,7 @@ export interface HydrationOptions {
     focusPanelState?: { sidebarWidth: number; diagnosticsOpen: boolean }
   ) => void;
   setReconnectError?: (id: string, error: TerminalReconnectError) => void;
+  hydrateTabGroups?: (tabGroups: TabGroup[]) => void;
 }
 
 export async function hydrateAppState(
@@ -557,6 +558,26 @@ export async function hydrateAppState(
         }
       } catch (error) {
         logWarn("Failed to query backend terminals", { error });
+      }
+
+      // Restore tab groups after terminals are restored
+      if (options.hydrateTabGroups) {
+        try {
+          const tabGroups = await projectClient.getTabGroups(currentProjectId);
+          if (!checkCurrent()) return;
+
+          // Always call hydrateTabGroups, even with empty array, to clear stale groups
+          if (tabGroups && tabGroups.length > 0) {
+            logInfo(`Restoring ${tabGroups.length} tab group(s)`);
+          } else {
+            logInfo("Clearing stale tab groups (no groups for project)");
+          }
+          options.hydrateTabGroups(tabGroups ?? []);
+        } catch (error) {
+          logWarn("Failed to restore tab groups", { error });
+          // Clear tab groups on error to prevent stale state
+          options.hydrateTabGroups([]);
+        }
       }
     }
 

@@ -33,6 +33,14 @@ export function useProjectSwitchRehydration(callbacks: HydrationCallbacks) {
       const customEvent = event as CustomEvent<ProjectSwitchedEventDetail>;
       const switchId = customEvent.detail?.switchId;
 
+      // Enforce non-empty switchId for staleness checks
+      if (!switchId) {
+        console.error(
+          "[useProjectSwitchRehydration] Missing switchId in project-switched event, skipping hydration"
+        );
+        return;
+      }
+
       // Update the current switchId - any previous hydration is now stale
       currentSwitchIdRef.current = switchId;
 
@@ -117,5 +125,6 @@ export function useProjectSwitchRehydration(callbacks: HydrationCallbacks) {
     callbacks.openDiagnosticsDock,
     callbacks.setFocusMode,
     callbacks.setReconnectError,
+    callbacks.hydrateTabGroups,
   ]);
 }
