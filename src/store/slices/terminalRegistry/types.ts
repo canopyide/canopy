@@ -152,6 +152,10 @@ export interface TerminalRegistrySlice {
   reorderPanelsInGroup: (groupId: string, panelIds: string[]) => void;
   /** Delete a tab group (panels become ungrouped) */
   deleteTabGroup: (groupId: string) => void;
+  /** Move an entire tab group to a new location (grid/dock), updating all member panels */
+  moveTabGroupToLocation: (groupId: string, location: TabGroupLocation) => boolean;
+  /** Hydrate tab groups from persisted state, sanitizing invalid data */
+  hydrateTabGroups: (tabGroups: TabGroup[]) => void;
   /** @deprecated Use createTabGroup/addPanelToGroup instead */
   setTabGroupInfo: (
     id: string,
