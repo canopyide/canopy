@@ -583,6 +583,14 @@ export const createTerminalRegistrySlice =
       },
 
       moveTerminalToDock: (id) => {
+        // Check if panel is in a group - if so, move the entire group
+        const group = get().getPanelGroup(id);
+        if (group) {
+          get().moveTabGroupToLocation(group.id, "dock");
+          return;
+        }
+
+        // Single ungrouped panel - move just this panel
         const terminal = get().terminals.find((t) => t.id === id);
 
         set((state) => {
@@ -603,6 +611,13 @@ export const createTerminalRegistrySlice =
       },
 
       moveTerminalToGrid: (id) => {
+        // Check if panel is in a group - if so, move the entire group
+        const group = get().getPanelGroup(id);
+        if (group) {
+          return get().moveTabGroupToLocation(group.id, "grid");
+        }
+
+        // Single ungrouped panel - move just this panel
         let moveSucceeded = false;
         let terminal: TerminalInstance | undefined;
 
@@ -1886,6 +1901,188 @@ export const createTerminalRegistrySlice =
 
         // Return explicit groups first, then virtual groups
         return [...explicitGroups, ...virtualGroups];
+      },
+
+      moveTabGroupToLocation: (groupId, location) => {
+        const group = get().tabGroups.get(groupId);
+        if (!group) {
+          console.warn(`[TabGroup] Cannot move: group ${groupId} not found`);
+          return false;
+        }
+
+        // Already at target location
+        if (group.location === location) {
+          return true;
+        }
+
+        // Check capacity if moving to grid
+        if (location === "grid") {
+          const targetWorktreeId = group.worktreeId ?? null;
+          const maxCapacity = useLayoutConfigStore.getState().getMaxGridCapacity();
+
+          // Count current grid groups (each group = 1 slot)
+          const gridTerminals = get().terminals.filter(
+            (t) =>
+              (t.location === "grid" || t.location === undefined) &&
+              (t.worktreeId ?? null) === targetWorktreeId
+          );
+
+          const panelsInGroups = new Set<string>();
+          let explicitGroupCount = 0;
+          for (const g of get().tabGroups.values()) {
+            if (
+              g.id !== groupId &&
+              g.location === "grid" &&
+              (g.worktreeId ?? null) === targetWorktreeId
+            ) {
+              explicitGroupCount++;
+              g.panelIds.forEach((pid) => panelsInGroups.add(pid));
+            }
+          }
+
+          // Count ungrouped panels (excluding panels in the moving group)
+          let ungroupedCount = 0;
+          const movingPanelIds = new Set(group.panelIds);
+          for (const t of gridTerminals) {
+            if (!panelsInGroups.has(t.id) && !movingPanelIds.has(t.id)) {
+              ungroupedCount++;
+            }
+          }
+
+          // The moving group will occupy 1 slot
+          if (explicitGroupCount + ungroupedCount + 1 > maxCapacity) {
+            console.warn(
+              `[TabGroup] Cannot move group ${groupId} to grid: capacity exceeded (${explicitGroupCount + ungroupedCount + 1} > ${maxCapacity})`
+            );
+            return false;
+          }
+        }
+
+        // Update group location and all member panel locations (skip trashed)
+        set((state) => {
+          const newTabGroups = new Map(state.tabGroups);
+          const updatedGroup: TabGroup = { ...group, location };
+          newTabGroups.set(groupId, updatedGroup);
+
+          // Update all non-trashed panels in the group to the new location
+          const panelIdSet = new Set(group.panelIds);
+          const newTerminals = state.terminals.map((t) => {
+            if (!panelIdSet.has(t.id)) return t;
+            // Skip trashed panels - they should remain trashed
+            if (t.location === "trash" || state.trashedTerminals.has(t.id)) return t;
+            return { ...t, location };
+          });
+
+          saveTerminals(newTerminals);
+          saveTabGroups(newTabGroups);
+          return { terminals: newTerminals, tabGroups: newTabGroups };
+        });
+
+        // Apply appropriate renderer policies for PTY-backed panels
+        for (const panelId of group.panelIds) {
+          const terminal = get().terminals.find((t) => t.id === panelId);
+          if (terminal && panelKindHasPty(terminal.kind ?? "terminal")) {
+            if (location === "dock") {
+              optimizeForDock(panelId);
+            } else {
+              terminalInstanceService.applyRendererPolicy(panelId, TerminalRefreshTier.VISIBLE);
+            }
+          }
+        }
+
+        return true;
+      },
+
+      hydrateTabGroups: (tabGroups) => {
+        const terminals = get().terminals;
+        const terminalIdSet = new Set(terminals.map((t) => t.id));
+        const trashedTerminals = get().trashedTerminals;
+
+        // Sanitize tab groups during hydration:
+        // 1. Drop panelIds that no longer exist or are trashed (check both trashedTerminals AND location)
+        // 2. Deduplicate panelIds within each group
+        // 3. Delete groups with <= 1 unique panel
+        // 4. Validate group location is "grid" or "dock"
+        // 5. Normalize member locations to match group location
+        const sanitizedGroups = new Map<string, TabGroup>();
+        const panelsAlreadyInGroups = new Set<string>();
+
+        for (const group of tabGroups) {
+          // Validate group location
+          const groupLocation = group.location === "dock" ? "dock" : "grid";
+
+          // Filter to only valid, non-trashed panels (check both trashedTerminals map AND location field)
+          const validPanelIds = group.panelIds.filter((id) => {
+            if (!terminalIdSet.has(id)) return false;
+            if (trashedTerminals.has(id)) return false;
+            const terminal = terminals.find((t) => t.id === id);
+            if (terminal?.location === "trash") return false;
+            return true;
+          });
+
+          // Deduplicate panel IDs (preserve first occurrence)
+          const uniquePanelIds = Array.from(new Set(validPanelIds));
+
+          // Enforce unique membership: skip panels already assigned to another group
+          const finalPanelIds = uniquePanelIds.filter((id) => !panelsAlreadyInGroups.has(id));
+
+          if (finalPanelIds.length <= 1) {
+            console.log(
+              `[TabGroup] Hydration: Dropping group ${group.id} with ${finalPanelIds.length} valid unique panels`
+            );
+            continue;
+          }
+
+          // Mark these panels as assigned
+          finalPanelIds.forEach((id) => panelsAlreadyInGroups.add(id));
+
+          // Ensure activeTabId is valid
+          const activeTabId = finalPanelIds.includes(group.activeTabId)
+            ? group.activeTabId
+            : finalPanelIds[0];
+
+          sanitizedGroups.set(group.id, {
+            ...group,
+            location: groupLocation,
+            panelIds: finalPanelIds,
+            activeTabId,
+          });
+        }
+
+        // Normalize panel locations to match their group's location (skip trashed panels)
+        set((state) => {
+          let terminalsUpdated = false;
+          const newTerminals = state.terminals.map((t) => {
+            // Skip trashed panels - they should not be normalized
+            if (t.location === "trash" || state.trashedTerminals.has(t.id)) {
+              return t;
+            }
+
+            // Find which group this panel belongs to
+            for (const group of sanitizedGroups.values()) {
+              if (group.panelIds.includes(t.id)) {
+                // Panel is in a group - ensure location matches
+                if (t.location !== group.location) {
+                  terminalsUpdated = true;
+                  console.log(
+                    `[TabGroup] Hydration: Normalizing panel ${t.id} location from ${t.location} to ${group.location}`
+                  );
+                  return { ...t, location: group.location };
+                }
+                break;
+              }
+            }
+            return t;
+          });
+
+          if (terminalsUpdated) {
+            saveTerminals(newTerminals);
+          }
+          saveTabGroups(sanitizedGroups);
+          return { terminals: newTerminals, tabGroups: sanitizedGroups };
+        });
+
+        console.log(`[TabGroup] Hydration complete: ${sanitizedGroups.size} groups restored`);
       },
 
       // @deprecated - kept for backward compatibility during migration
