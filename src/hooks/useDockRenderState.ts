@@ -43,7 +43,9 @@ export function useDockRenderState(): DockRenderState & {
     useShallow((state) =>
       state.terminals.filter(
         (t) =>
-          t.location === "dock" && (t.worktreeId ?? undefined) === (activeWorktreeId ?? undefined)
+          t.location === "dock" &&
+          // Show terminals that match active worktree OR have no worktree (global terminals)
+          (t.worktreeId == null || t.worktreeId === activeWorktreeId)
       )
     )
   );
