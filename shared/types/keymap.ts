@@ -54,6 +54,10 @@ export type KeyAction =
   | "worktree.openPalette"
   | "worktree.overview"
 
+  // Tab navigation actions
+  | "tab.next"
+  | "tab.previous"
+
   // Terminal actions
   | "terminal.close"
   | "terminal.closeAll"

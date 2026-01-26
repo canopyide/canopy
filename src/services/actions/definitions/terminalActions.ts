@@ -933,4 +933,70 @@ export function registerTerminalActions(actions: ActionRegistry, callbacks: Acti
       }
     },
   }));
+
+  // Tab navigation within tabbed panels
+  const navigateTab = (direction: "next" | "previous") => {
+    const state = useTerminalStore.getState();
+    const focusedId = state.focusedId;
+    if (!focusedId) return;
+
+    // Get the group that contains the focused panel
+    const group = state.getPanelGroup(focusedId);
+    if (!group) return;
+
+    // Get valid, non-trashed panels in the group using the store method
+    const validPanels = state.getTabGroupPanels(group.id);
+    if (validPanels.length < 2) return;
+
+    // Find current position among valid panels
+    const currentIndex = validPanels.findIndex((p) => p.id === focusedId);
+    if (currentIndex === -1) return;
+
+    // Calculate next index with wrap-around
+    let nextIndex: number;
+    if (direction === "next") {
+      nextIndex = currentIndex < validPanels.length - 1 ? currentIndex + 1 : 0;
+    } else {
+      nextIndex = currentIndex > 0 ? currentIndex - 1 : validPanels.length - 1;
+    }
+
+    const nextPanel = validPanels[nextIndex];
+    if (!nextPanel) return;
+
+    // Update active tab in the group
+    state.setActiveTab(group.id, nextPanel.id);
+
+    // Handle dock vs grid differently
+    if (nextPanel.location === "dock") {
+      state.openDockTerminal(nextPanel.id);
+    } else {
+      state.setFocused(nextPanel.id);
+    }
+  };
+
+  actions.set("tab.next", () => ({
+    id: "tab.next",
+    title: "Next Tab",
+    description: "Switch to the next tab in the focused panel group",
+    category: "terminal",
+    kind: "command",
+    danger: "safe",
+    scope: "renderer",
+    run: async () => {
+      navigateTab("next");
+    },
+  }));
+
+  actions.set("tab.previous", () => ({
+    id: "tab.previous",
+    title: "Previous Tab",
+    description: "Switch to the previous tab in the focused panel group",
+    category: "terminal",
+    kind: "command",
+    danger: "safe",
+    scope: "renderer",
+    run: async () => {
+      navigateTab("previous");
+    },
+  }));
 }
