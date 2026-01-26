@@ -461,11 +461,12 @@ function SidebarContent({ onOpenOverview }: SidebarContentProps) {
 }
 
 function App() {
-  const { focusedId, addTerminal, setReconnectError } = useTerminalStore(
+  const { focusedId, addTerminal, setReconnectError, hydrateTabGroups } = useTerminalStore(
     useShallow((state) => ({
       focusedId: state.focusedId,
       addTerminal: state.addTerminal,
       setReconnectError: state.setReconnectError,
+      hydrateTabGroups: state.hydrateTabGroups,
     }))
   );
 
@@ -619,6 +620,7 @@ function App() {
       openDiagnosticsDock,
       setFocusMode,
       setReconnectError,
+      hydrateTabGroups,
     }),
     [
       addTerminal,
@@ -627,6 +629,7 @@ function App() {
       openDiagnosticsDock,
       setFocusMode,
       setReconnectError,
+      hydrateTabGroups,
     ]
   );
 

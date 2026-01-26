@@ -10,7 +10,7 @@
 import { useEffect, useRef, useState } from "react";
 import { hydrateAppState } from "../../utils/stateHydration";
 import { isElectronAvailable } from "../useElectron";
-import type { TerminalReconnectError } from "@/types";
+import type { TerminalReconnectError, TabGroup } from "@/types";
 
 type DiagnosticsTab = "problems" | "logs" | "events";
 
@@ -24,6 +24,7 @@ export interface HydrationCallbacks {
     focusPanelState?: { sidebarWidth: number; diagnosticsOpen: boolean }
   ) => void;
   setReconnectError?: (id: string, error: TerminalReconnectError) => void;
+  hydrateTabGroups?: (tabGroups: TabGroup[]) => void;
 }
 
 export function useAppHydration(callbacks: HydrationCallbacks) {
@@ -55,6 +56,7 @@ export function useAppHydration(callbacks: HydrationCallbacks) {
     callbacks.openDiagnosticsDock,
     callbacks.setFocusMode,
     callbacks.setReconnectError,
+    callbacks.hydrateTabGroups,
   ]);
 
   return { isStateLoaded };
