@@ -431,9 +431,19 @@ class TerminalInstanceService {
 
   attach(id: string, container: HTMLElement): ManagedTerminal | null {
     const managed = this.instances.get(id);
-    if (!managed) return null;
+    if (!managed) {
+      logDebug(`[TIS.attach] No managed instance for ${id}`);
+      return null;
+    }
 
     const wasReparented = managed.hostElement.parentElement !== container;
+    logDebug(`[TIS.attach] ${id}`, {
+      wasReparented,
+      isOpened: managed.isOpened,
+      bufferRows: managed.terminal.buffer?.active?.length ?? 0,
+      containerRect: container.getBoundingClientRect(),
+    });
+
     if (wasReparented) {
       container.appendChild(managed.hostElement);
     }
@@ -441,6 +451,7 @@ class TerminalInstanceService {
     if (!managed.isOpened) {
       managed.terminal.open(managed.hostElement);
       managed.isOpened = true;
+      logDebug(`[TIS.attach] Opened terminal ${id}`);
     }
     managed.lastAttachAt = Date.now();
 
@@ -448,6 +459,7 @@ class TerminalInstanceService {
       requestAnimationFrame(() => {
         if (this.instances.get(id) !== managed) return;
         if (!managed.terminal.element) return;
+        logDebug(`[TIS.attach] Refreshing and fitting ${id} after reparent`);
         managed.terminal.refresh(0, managed.terminal.rows - 1);
         this.resizeController.fit(id);
       });
@@ -458,17 +470,29 @@ class TerminalInstanceService {
 
   detach(id: string, container: HTMLElement | null): void {
     const managed = this.instances.get(id);
-    if (!managed || !container) return;
+    if (!managed || !container) {
+      logDebug(`[TIS.detach] Skipping ${id} - no managed:${!managed}, no container:${!container}`);
+      return;
+    }
 
-    if (managed.hostElement.parentElement === container) {
+    const isDirectChild = managed.hostElement.parentElement === container;
+    logDebug(`[TIS.detach] ${id}`, {
+      isDirectChild,
+      bufferRows: managed.terminal.buffer?.active?.length ?? 0,
+    });
+
+    if (isDirectChild) {
       const slot = this.offscreenManager.getOffscreenSlot(id);
       if (slot) {
+        logDebug(`[TIS.detach] Moving ${id} to offscreen slot`);
         slot.appendChild(managed.hostElement);
       } else {
         const hiddenContainer = this.offscreenManager.ensureHiddenContainer();
         if (hiddenContainer) {
+          logDebug(`[TIS.detach] Moving ${id} to hidden container`);
           hiddenContainer.appendChild(managed.hostElement);
         } else {
+          logDebug(`[TIS.detach] Removing ${id} from DOM (no fallback container)`);
           container.removeChild(managed.hostElement);
         }
       }
