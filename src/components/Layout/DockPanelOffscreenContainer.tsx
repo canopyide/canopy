@@ -172,6 +172,8 @@ export function DockPanelOffscreenContainer({ children }: DockPanelOffscreenCont
       {children}
 
       {/* Hidden container for dock panels - keeps them mounted */}
+      {/* IMPORTANT: Size must be large enough for xterm to initialize (MIN_CONTAINER_SIZE = 50px) */}
+      {/* Do NOT use visibility:hidden - it can cause xterm rendering issues */}
       <div
         ref={offscreenContainerRef}
         className="dock-panel-offscreen-container"
@@ -179,12 +181,11 @@ export function DockPanelOffscreenContainer({ children }: DockPanelOffscreenCont
           position: "fixed",
           left: "-20000px",
           top: 0,
-          width: "1px",
-          height: "1px",
+          width: "800px",
+          height: "600px",
           overflow: "hidden",
           opacity: 0,
           pointerEvents: "none",
-          visibility: "hidden",
         }}
         aria-hidden="true"
       />
