@@ -123,6 +123,22 @@ const DEFAULT_KEYBINDINGS: KeybindingConfig[] = [
     category: "Terminal",
   },
   {
+    actionId: "tab.next",
+    combo: "Cmd+Shift+]",
+    scope: "global",
+    priority: 0,
+    description: "Switch to next tab in focused panel",
+    category: "Terminal",
+  },
+  {
+    actionId: "tab.previous",
+    combo: "Cmd+Shift+[",
+    scope: "global",
+    priority: 0,
+    description: "Switch to previous tab in focused panel",
+    category: "Terminal",
+  },
+  {
     actionId: "terminal.maximize",
     combo: "Ctrl+Shift+F",
     scope: "global",
