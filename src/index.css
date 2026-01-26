@@ -1178,4 +1178,13 @@ body[data-performance-mode="true"] [class*="backdrop-blur"] {
   .border-overlay {
     border-color: var(--border-overlay);
   }
+
+  .scrollbar-none {
+    scrollbar-width: none;
+    -ms-overflow-style: none;
+  }
+
+  .scrollbar-none::-webkit-scrollbar {
+    display: none;
+  }
 }

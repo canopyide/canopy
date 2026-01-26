@@ -8,9 +8,10 @@ import { ContentPanel, triggerPanelTransition } from "@/components/Panel";
 export interface DockedPanelProps {
   terminal: TerminalInstance;
   onPopoverClose?: () => void;
+  onAddTab?: () => void;
 }
 
-export function DockedPanel({ terminal, onPopoverClose }: DockedPanelProps) {
+export function DockedPanel({ terminal, onPopoverClose, onAddTab }: DockedPanelProps) {
   const setFocused = useTerminalStore((state) => state.setFocused);
   const trashTerminal = useTerminalStore((state) => state.trashTerminal);
   const removeTerminal = useTerminalStore((state) => state.removeTerminal);
@@ -167,6 +168,9 @@ export function DockedPanel({ terminal, onPopoverClose }: DockedPanelProps) {
       noteId: (terminal as any).noteId,
       scope: (terminal as any).scope,
       createdAt: (terminal as any).createdAt,
+
+      // Tab support - only for single panels (no tabGroupId)
+      onAddTab,
     }),
     [
       terminal,
@@ -177,6 +181,7 @@ export function DockedPanel({ terminal, onPopoverClose }: DockedPanelProps) {
       handleRestore,
       handleMinimize,
       handleTitleChange,
+      onAddTab,
     ]
   );
 

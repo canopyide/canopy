@@ -9,8 +9,11 @@ import {
 } from "react";
 import { createPortal } from "react-dom";
 import { useShallow } from "zustand/react/shallow";
-import { useTerminalStore, useWorktreeSelectionStore } from "@/store";
+import { useTerminalStore, useWorktreeSelectionStore, type TerminalInstance } from "@/store";
 import { DockedPanel } from "@/components/Terminal/DockedPanel";
+import { generateAgentCommand } from "@shared/types";
+import { getAgentConfig, isRegisteredAgent } from "@/config/agents";
+import { agentSettingsClient } from "@/clients";
 
 interface DockPanelContextValue {
   portalTarget: (terminalId: string, target: HTMLElement | null) => void;
@@ -51,10 +54,116 @@ export function DockPanelOffscreenContainer({ children }: DockPanelOffscreenCont
   );
 
   const closeDockTerminal = useTerminalStore((s) => s.closeDockTerminal);
+  const addTerminal = useTerminalStore((s) => s.addTerminal);
+  const getPanelGroup = useTerminalStore((s) => s.getPanelGroup);
+  const createTabGroup = useTerminalStore((s) => s.createTabGroup);
+  const addPanelToGroup = useTerminalStore((s) => s.addPanelToGroup);
+  const deleteTabGroup = useTerminalStore((s) => s.deleteTabGroup);
+  const setActiveTab = useTerminalStore((s) => s.setActiveTab);
+  const openDockTerminal = useTerminalStore((s) => s.openDockTerminal);
 
   const handlePopoverClose = useCallback(() => {
     closeDockTerminal();
   }, [closeDockTerminal]);
+
+  // Handler for adding a new tab to a single panel (creates a tab group)
+  const handleAddTabForPanel = useCallback(
+    async (panel: TerminalInstance) => {
+      const kind = panel.kind ?? "terminal";
+      let groupId: string;
+      let createdNewGroup = false;
+
+      try {
+        // Check if panel is already in a group
+        const existingGroup = getPanelGroup(panel.id);
+        if (existingGroup) {
+          groupId = existingGroup.id;
+        } else {
+          // Create a new group with just this panel
+          groupId = createTabGroup("dock", panel.worktreeId, [panel.id], panel.id);
+          createdNewGroup = true;
+        }
+
+        // For agents, generate the command
+        let command: string | undefined;
+        if (panel.agentId && isRegisteredAgent(panel.agentId)) {
+          const agentConfig = getAgentConfig(panel.agentId);
+          if (agentConfig) {
+            try {
+              const agentSettings = await agentSettingsClient.get();
+              const entry = agentSettings?.agents?.[panel.agentId] ?? {};
+              command = generateAgentCommand(agentConfig.command, entry, panel.agentId, {
+                interactive: true,
+              });
+            } catch (error) {
+              console.warn("Failed to get agent settings, using existing command:", error);
+              command = panel.command;
+            }
+          } else {
+            command = panel.command;
+          }
+        } else {
+          command = panel.command;
+        }
+
+        // Create new panel without tab group info (will be added to group separately)
+        const baseOptions = {
+          kind,
+          type: panel.type,
+          agentId: panel.agentId,
+          cwd: panel.cwd || "",
+          worktreeId: panel.worktreeId,
+          location: "dock" as const,
+          exitBehavior: panel.exitBehavior,
+          isInputLocked: panel.isInputLocked,
+          command,
+        };
+
+        let kindSpecificOptions = {};
+        if (kind === "browser") {
+          kindSpecificOptions = { browserUrl: panel.browserUrl };
+        } else if (kind === "notes") {
+          kindSpecificOptions = {
+            notePath: (panel as any).notePath,
+            noteId: (panel as any).noteId,
+            scope: (panel as any).scope,
+            createdAt: Date.now(),
+          };
+        } else if (kind === "dev-preview") {
+          kindSpecificOptions = {
+            devCommand: (panel as any).devCommand,
+            browserUrl: panel.browserUrl,
+          };
+        }
+
+        const newPanelId = await addTerminal({
+          ...baseOptions,
+          ...kindSpecificOptions,
+        });
+
+        // Add the new panel to the group
+        addPanelToGroup(groupId, newPanelId);
+
+        setActiveTab(groupId, newPanelId);
+        openDockTerminal(newPanelId);
+      } catch (error) {
+        console.error("Failed to add tab:", error);
+        // Rollback: delete the group if we created it but failed
+        if (createdNewGroup && groupId!) {
+          deleteTabGroup(groupId);
+        }
+      }
+    },
+    [
+      getPanelGroup,
+      createTabGroup,
+      addPanelToGroup,
+      deleteTabGroup,
+      addTerminal,
+      setActiveTab,
+      openDockTerminal,
+    ]
+  );
 
   // Create offscreen slots eagerly after container mounts
   // This ensures slots exist before terminals try to portal to them
@@ -159,6 +268,11 @@ export function DockPanelOffscreenContainer({ children }: DockPanelOffscreenCont
           return null;
         }
 
+        // Only provide onAddTab for single panels (not in an explicit group)
+        // Multi-panel groups handle tabs via DockedTabGroup
+        const existingGroup = getPanelGroup(terminal.id);
+        const isSinglePanel = !existingGroup || existingGroup.panelIds.length <= 1;
+
         const content = (
           <div
             data-dock-panel-id={terminal.id}
@@ -170,7 +284,11 @@ export function DockPanelOffscreenContainer({ children }: DockPanelOffscreenCont
               flexDirection: "column",
             }}
           >
-            <DockedPanel terminal={terminal} onPopoverClose={handlePopoverClose} />
+            <DockedPanel
+              terminal={terminal}
+              onPopoverClose={handlePopoverClose}
+              onAddTab={isSinglePanel ? () => handleAddTabForPanel(terminal) : undefined}
+            />
           </div>
         );
 

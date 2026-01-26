@@ -4,6 +4,7 @@ import { getTerminalAnimationDuration } from "@/lib/animationUtils";
 import { ErrorBoundary } from "@/components/ErrorBoundary";
 import { getPanelComponent, type PanelComponentProps } from "@/registry";
 import { ContentPanel, triggerPanelTransition } from "@/components/Panel";
+import type { TabInfo } from "@/components/Panel/TabButton";
 
 export interface GridPanelProps {
   terminal: TerminalInstance;
@@ -11,6 +12,11 @@ export interface GridPanelProps {
   isMaximized?: boolean;
   gridPanelCount?: number;
   gridCols?: number;
+  // Tab support
+  tabs?: TabInfo[];
+  onTabClick?: (tabId: string) => void;
+  onTabClose?: (tabId: string) => void;
+  onAddTab?: () => void;
 }
 
 export function GridPanel({
@@ -19,6 +25,10 @@ export function GridPanel({
   isMaximized = false,
   gridPanelCount,
   gridCols,
+  tabs,
+  onTabClick,
+  onTabClose,
+  onAddTab,
 }: GridPanelProps) {
   const setFocused = useTerminalStore((state) => state.setFocused);
   const trashTerminal = useTerminalStore((state) => state.trashTerminal);
@@ -170,6 +180,12 @@ export function GridPanel({
       noteId: (terminal as any).noteId,
       scope: (terminal as any).scope,
       createdAt: (terminal as any).createdAt,
+
+      // Tab support
+      tabs,
+      onTabClick,
+      onTabClose,
+      onAddTab,
     }),
     [
       terminal,
@@ -182,6 +198,10 @@ export function GridPanel({
       handleToggleMaximize,
       handleTitleChange,
       handleMinimize,
+      tabs,
+      onTabClick,
+      onTabClose,
+      onAddTab,
     ]
   );
 
@@ -200,6 +220,10 @@ export function GridPanel({
         onToggleMaximize={handleToggleMaximize}
         onTitleChange={handleTitleChange}
         onMinimize={handleMinimize}
+        tabs={tabs}
+        onTabClick={onTabClick}
+        onTabClose={onTabClose}
+        onAddTab={onAddTab}
       >
         <div className="flex flex-1 items-center justify-center bg-canopy-bg-secondary text-canopy-text-muted">
           <div className="text-center">

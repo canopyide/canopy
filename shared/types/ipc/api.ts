@@ -7,6 +7,7 @@ import type {
   AgentId,
   TerminalRecipe,
   TerminalSnapshot,
+  TabGroup,
 } from "../domain.js";
 import type { AgentSettings, AgentSettingsEntry } from "../agentSettings.js";
 
@@ -268,6 +269,16 @@ export interface ElectronAPI {
      * Used for preserving panel layout when switching away from a project.
      */
     setTerminals(projectId: string, terminals: TerminalSnapshot[]): Promise<void>;
+    /**
+     * Get tab groups for a project.
+     * Used for restoring tab groups when switching to a project.
+     */
+    getTabGroups(projectId: string): Promise<TabGroup[]>;
+    /**
+     * Save tab groups for a project.
+     * Used for persisting tab group state per-project.
+     */
+    setTabGroups(projectId: string, tabGroups: TabGroup[]): Promise<void>;
     /**
      * Get focus mode state for a project.
      * Used for restoring focus mode when switching projects.

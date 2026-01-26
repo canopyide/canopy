@@ -151,6 +151,8 @@ export const CHANNELS = {
   PROJECT_DELETE_RECIPE: "project:delete-recipe",
   PROJECT_GET_TERMINALS: "project:get-terminals",
   PROJECT_SET_TERMINALS: "project:set-terminals",
+  PROJECT_GET_TAB_GROUPS: "project:get-tab-groups",
+  PROJECT_SET_TAB_GROUPS: "project:set-tab-groups",
   PROJECT_GET_FOCUS_MODE: "project:get-focus-mode",
   PROJECT_SET_FOCUS_MODE: "project:set-focus-mode",
 

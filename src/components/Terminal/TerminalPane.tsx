@@ -71,6 +71,11 @@ export interface TerminalPaneProps {
   reconnectError?: TerminalReconnectError;
   spawnError?: SpawnError;
   gridPanelCount?: number;
+  // Tab support
+  tabs?: import("@/components/Panel/TabButton").TabInfo[];
+  onTabClick?: (tabId: string) => void;
+  onTabClose?: (tabId: string) => void;
+  onAddTab?: () => void;
 }
 
 function TerminalPaneComponent({
@@ -99,6 +104,10 @@ function TerminalPaneComponent({
   reconnectError,
   spawnError,
   gridPanelCount,
+  tabs,
+  onTabClick,
+  onTabClose,
+  onAddTab,
 }: TerminalPaneProps) {
   const containerRef = useRef<HTMLDivElement>(null);
   const prevFocusedRef = useRef(isFocused);
@@ -465,6 +474,10 @@ function TerminalPaneComponent({
       stateChangeConfidence={stateChangeConfidence}
       isPinged={isPinged}
       wasJustSelected={wasJustSelected}
+      tabs={tabs}
+      onTabClick={onTabClick}
+      onTabClose={onTabClose}
+      onAddTab={onAddTab}
       className={cn(
         "terminal-pane",
         isExited && "opacity-75 grayscale",

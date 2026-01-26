@@ -36,6 +36,8 @@ const createMockProjectClient = () => ({
   deleteRecipe: vi.fn().mockResolvedValue(undefined),
   getTerminals: vi.fn().mockResolvedValue([]),
   setTerminals: vi.fn().mockResolvedValue(undefined),
+  getTabGroups: vi.fn().mockResolvedValue([]),
+  setTabGroups: vi.fn().mockResolvedValue(undefined),
 });
 
 describe("TerminalPersistence", () => {

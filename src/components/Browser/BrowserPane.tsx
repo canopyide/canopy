@@ -10,6 +10,11 @@ import { cn } from "@/lib/utils";
 
 export interface BrowserPaneProps extends BasePanelProps {
   initialUrl: string;
+  // Tab support
+  tabs?: import("@/components/Panel/TabButton").TabInfo[];
+  onTabClick?: (tabId: string) => void;
+  onTabClose?: (tabId: string) => void;
+  onAddTab?: () => void;
 }
 
 export function BrowserPane({
@@ -27,6 +32,10 @@ export function BrowserPane({
   onRestore,
   isTrashing = false,
   gridPanelCount,
+  tabs,
+  onTabClick,
+  onTabClose,
+  onAddTab,
 }: BrowserPaneProps) {
   const webviewRef = useRef<Electron.WebviewTag>(null);
   const setBrowserUrl = useTerminalStore((state) => state.setBrowserUrl);
@@ -378,6 +387,10 @@ export function BrowserPane({
       onMinimize={onMinimize}
       onRestore={onRestore}
       toolbar={browserToolbar}
+      tabs={tabs}
+      onTabClick={onTabClick}
+      onTabClose={onTabClose}
+      onAddTab={onAddTab}
     >
       <div className="relative flex-1 min-h-0 bg-white">
         {!hasValidUrl ? (
