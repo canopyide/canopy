@@ -136,22 +136,35 @@ export function DockedTerminalItem({ terminal }: DockedTerminalItemProps) {
 
             // Execute pending command for agent terminals that haven't started yet
             // This handles the case where docked agents skip command execution during hydration
-            if (
+            const shouldExecuteCommand =
               !commandExecutedRef.current &&
               terminal.kind === "agent" &&
               terminal.command &&
-              (!terminal.agentState || terminal.agentState === "idle")
-            ) {
+              // Allow undefined, idle, or waiting states (waiting is also considered ready)
+              (!terminal.agentState || terminal.agentState === "idle" || terminal.agentState === "waiting");
+
+            dockItemLog("Command execution check:", {
+              terminalId: terminal.id,
+              kind: terminal.kind,
+              command: terminal.command,
+              agentState: terminal.agentState,
+              alreadyExecuted: commandExecutedRef.current,
+              shouldExecute: shouldExecuteCommand,
+            });
+
+            if (shouldExecuteCommand) {
               dockItemLog("Executing pending command for:", terminal.id, terminal.command);
-              commandExecutedRef.current = true;
               // Small delay to ensure terminal is ready to receive input
               await new Promise((resolve) => setTimeout(resolve, 100));
               if (cancelled) return;
               try {
                 await terminalClient.write(terminal.id, `${terminal.command}\r`);
+                // Only mark as executed AFTER successful write
+                commandExecutedRef.current = true;
                 dockItemLog("Command executed successfully for:", terminal.id);
               } catch (writeError) {
                 console.warn(`Failed to execute command for terminal ${terminal.id}:`, writeError);
+                // Don't set commandExecutedRef - allow retry on next open
               }
             }
           }
