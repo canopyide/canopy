@@ -72,6 +72,7 @@ export interface PanelHeaderProps {
   groupId?: string;
   onTabClick?: (tabId: string) => void;
   onTabClose?: (tabId: string) => void;
+  onTabRename?: (tabId: string, newTitle: string) => void;
   onAddTab?: () => void;
   onTabReorder?: (newOrder: string[]) => void;
 }
@@ -108,6 +109,7 @@ function PanelHeaderComponent({
   groupId,
   onTabClick,
   onTabClose,
+  onTabRename,
   onAddTab,
   onTabReorder,
 }: PanelHeaderProps) {
@@ -271,6 +273,9 @@ function PanelHeaderComponent({
                       isActive={tab.isActive}
                       onClick={() => onTabClick?.(tab.id)}
                       onClose={() => onTabClose?.(tab.id)}
+                      onRename={
+                        onTabRename ? (newTitle) => onTabRename(tab.id, newTitle) : undefined
+                      }
                     />
                   ))}
                   {onAddTab && (
@@ -311,6 +316,7 @@ function PanelHeaderComponent({
                   isActive={tab.isActive}
                   onClick={() => onTabClick?.(tab.id)}
                   onClose={() => onTabClose?.(tab.id)}
+                  onRename={onTabRename ? (newTitle) => onTabRename(tab.id, newTitle) : undefined}
                 />
               ))}
               {onAddTab && (

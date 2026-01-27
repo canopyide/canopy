@@ -1,4 +1,4 @@
-import React, { useCallback, forwardRef } from "react";
+import React, { useCallback, useState, useRef, useEffect, forwardRef } from "react";
 import type { DraggableAttributes, DraggableSyntheticListeners } from "@dnd-kit/core";
 import { X } from "lucide-react";
 import type { PanelKind, TerminalType, AgentState } from "@/types";
@@ -29,6 +29,7 @@ export interface TabButtonProps {
   onClose: () => void;
   sortableListeners?: DraggableSyntheticListeners;
   sortableAttributes?: DraggableAttributes;
+  onRename?: (newTitle: string) => void;
 }
 
 const TabButtonComponent = forwardRef<HTMLDivElement, TabButtonProps>(function TabButtonComponent(
@@ -44,25 +45,57 @@ const TabButtonComponent = forwardRef<HTMLDivElement, TabButtonProps>(function T
     onClose,
     sortableListeners,
     sortableAttributes,
+    onRename,
   },
   ref
 ) {
+  const [isEditing, setIsEditing] = useState(false);
+  const [editValue, setEditValue] = useState(title);
+  const inputRef = useRef<HTMLInputElement>(null);
+  const didCommitOrCancelRef = useRef(false);
+
+  // Focus input when entering edit mode
+  useEffect(() => {
+    if (isEditing && inputRef.current) {
+      inputRef.current.focus();
+      inputRef.current.select();
+    }
+  }, [isEditing]);
+
+  // Sync edit value when title changes externally
+  useEffect(() => {
+    if (!isEditing) {
+      setEditValue(title);
+    }
+  }, [title, isEditing]);
+
+  // Listen for rename events from context menu
+  useEffect(() => {
+    if (!onRename) return;
+
+    const handleRenameEvent = (e: Event) => {
+      if (!(e instanceof CustomEvent)) return;
+      const detail = e.detail as unknown;
+      if (!detail || typeof (detail as { id?: unknown }).id !== "string") return;
+      if ((detail as { id: string }).id === id) {
+        setEditValue(title);
+        setIsEditing(true);
+      }
+    };
+
+    const controller = new AbortController();
+    window.addEventListener("canopy:rename-terminal", handleRenameEvent, {
+      signal: controller.signal,
+    });
+    return () => controller.abort();
+  }, [id, title, onRename]);
+
   const handleClose = useCallback(
     (e: React.MouseEvent) => {
       e.stopPropagation();
       onClose();
     },
     [onClose]
-  );
-
-  const handleKeyDown = useCallback(
-    (e: React.KeyboardEvent) => {
-      if (e.key === "Enter" || e.key === " ") {
-        e.preventDefault();
-        onClick();
-      }
-    },
-    [onClick]
   );
 
   const handlePointerDown = useCallback((e: React.PointerEvent) => {
@@ -89,6 +122,81 @@ const TabButtonComponent = forwardRef<HTMLDivElement, TabButtonProps>(function T
     [onClose]
   );
 
+  const handleDoubleClick = useCallback(
+    (e: React.MouseEvent) => {
+      e.stopPropagation();
+      if (onRename) {
+        setEditValue(title);
+        setIsEditing(true);
+        didCommitOrCancelRef.current = false;
+      }
+    },
+    [onRename, title]
+  );
+
+  const handleInputKeyDown = useCallback(
+    (e: React.KeyboardEvent<HTMLInputElement>) => {
+      e.stopPropagation();
+      if (e.key === "Enter") {
+        e.preventDefault();
+        const trimmed = editValue.trim();
+        if (trimmed && trimmed !== title) {
+          onRename?.(trimmed);
+        }
+        didCommitOrCancelRef.current = true;
+        setIsEditing(false);
+      } else if (e.key === "Escape") {
+        e.preventDefault();
+        setEditValue(title);
+        didCommitOrCancelRef.current = true;
+        setIsEditing(false);
+      }
+    },
+    [editValue, title, onRename]
+  );
+
+  const handleInputBlur = useCallback(() => {
+    // Only commit on blur if Enter/Escape didn't already handle it
+    if (!didCommitOrCancelRef.current) {
+      const trimmed = editValue.trim();
+      if (trimmed && trimmed !== title) {
+        onRename?.(trimmed);
+      }
+    }
+    setIsEditing(false);
+  }, [editValue, title, onRename]);
+
+  const handleInputClick = useCallback((e: React.MouseEvent) => {
+    // Prevent click from bubbling to tab click handler
+    e.stopPropagation();
+  }, []);
+
+  const handleInputDoubleClick = useCallback((e: React.MouseEvent) => {
+    // Prevent double-click from bubbling to header and triggering maximize
+    e.stopPropagation();
+  }, []);
+
+  const handleInputPointerDown = useCallback((e: React.PointerEvent) => {
+    // Prevent drag handle from capturing input interactions
+    e.stopPropagation();
+  }, []);
+
+  // Handle main click - enter edit mode if not already editing, or trigger standard click
+  const handleClick = useCallback(() => {
+    if (isEditing) return;
+    onClick();
+  }, [isEditing, onClick]);
+
+  const handleKeyDown = useCallback(
+    (e: React.KeyboardEvent) => {
+      if (e.key === "Enter" || e.key === " ") {
+        e.preventDefault();
+        onClick();
+      }
+    },
+    [onClick]
+  );
+
   const showStateIcon = agentState && agentState !== "idle" && agentState !== "completed";
   const StateIcon = showStateIcon ? STATE_ICONS[agentState] : null;
 
@@ -98,7 +206,7 @@ const TabButtonComponent = forwardRef<HTMLDivElement, TabButtonProps>(function T
       role="tab"
       aria-selected={isActive}
       tabIndex={isActive ? 0 : -1}
-      onClick={onClick}
+      onClick={handleClick}
       onKeyDown={handleKeyDown}
       onPointerDown={handlePointerDown}
       className={cn(
@@ -124,7 +232,32 @@ const TabButtonComponent = forwardRef<HTMLDivElement, TabButtonProps>(function T
         />
       </span>
 
-      <span className="truncate max-w-[100px]">{title}</span>
+      {isEditing ? (
+        <input
+          ref={inputRef}
+          type="text"
+          value={editValue}
+          onChange={(e) => setEditValue(e.target.value)}
+          onKeyDown={handleInputKeyDown}
+          onBlur={handleInputBlur}
+          onClick={handleInputClick}
+          onDoubleClick={handleInputDoubleClick}
+          onPointerDown={handleInputPointerDown}
+          className="text-xs bg-canopy-bg/80 border border-canopy-accent/50 px-1 h-4 min-w-[60px] max-w-[100px] text-canopy-text select-text focus-visible:outline focus-visible:outline-1 focus-visible:outline-canopy-accent"
+          aria-label={`Rename tab ${title}`}
+        />
+      ) : (
+        <span
+          className={cn(
+            "truncate max-w-[100px]",
+            onRename && "cursor-text"
+          )}
+          onDoubleClick={handleDoubleClick}
+          title={onRename ? `${title} — Double-click to rename` : title}
+        >
+          {title}
+        </span>
+      )}
 
       {showStateIcon && StateIcon && (
         <StateIcon
