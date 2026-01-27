@@ -360,9 +360,10 @@ export const useTerminalStore = create<PanelGridState>()((set, get, api) => {
 
     // Override hydrateTabGroups to also seed activeTabByGroup from persisted TabGroup.activeTabId
     // This ensures the active tab state is restored after restart
-    hydrateTabGroups: (tabGroups) => {
+    hydrateTabGroups: (tabGroups, options) => {
       // First, call the registry's hydrateTabGroups to sanitize and store the groups
-      registrySlice.hydrateTabGroups(tabGroups);
+      // Forward options to respect skipPersist flag during error recovery
+      registrySlice.hydrateTabGroups(tabGroups, options);
 
       // Then seed activeTabByGroup from the hydrated TabGroup.activeTabId values
       const hydratedGroups = get().tabGroups;
