@@ -4,6 +4,7 @@ import type {
   TerminalLocation,
   TabGroup,
   TabGroupLocation,
+  PanelLocation,
 } from "@/types";
 import { terminalClient, agentSettingsClient, projectClient } from "@/clients";
 import { generateAgentFlags } from "@shared/types";
@@ -925,7 +926,7 @@ export const createTerminalRegistrySlice =
             (t) => t.id !== id && (t.location === "grid" || t.location === undefined)
           );
           const dockTerminals = state.terminals.filter((t) => t.id !== id && t.location === "dock");
-          const trashTerminals = state.terminals.filter((t) => t.location === "trash");
+          const trashTerminals = state.terminals.filter((t) => t.id !== id && t.location === "trash");
 
           const targetList = location === "grid" ? gridTerminals : dockTerminals;
           const scopedIndices: number[] = [];
@@ -2246,9 +2247,9 @@ export const createTerminalRegistrySlice =
         // 2. Drop panelIds that no longer exist or are trashed (check both trashedTerminals AND location)
         // 3. Deduplicate panelIds within each group
         // 4. Delete groups with <= 1 unique panel
-        // 4. Validate group location is "grid" or "dock"
-        // 5. Normalize member locations to match group location
-        // 6. Repair worktree mismatches (enforce worktree invariant)
+        // 5. Validate group location is "grid" or "dock"
+        // 6. Normalize member locations to match group location
+        // 7. Repair worktree mismatches (enforce worktree invariant)
         const sanitizedGroups = new Map<string, TabGroup>();
         const panelsAlreadyInGroups = new Set<string>();
         const seenGroupIds = new Set<string>();
