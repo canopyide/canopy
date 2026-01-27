@@ -1890,7 +1890,19 @@ export const createTerminalRegistrySlice =
           return !panelsInExplicitGroups.has(t.id);
         });
 
-        // Create virtual single-panel groups for ungrouped panels
+        // Sort explicit groups by their earliest terminal index in the terminals array
+        // This makes group order follow terminal array order (which reorderTabGroups manipulates)
+        explicitGroups.sort((a, b) => {
+          const aFirstIndex = Math.min(
+            ...a.panelIds.map((id) => terminals.findIndex((t) => t.id === id)).filter((i) => i !== -1)
+          );
+          const bFirstIndex = Math.min(
+            ...b.panelIds.map((id) => terminals.findIndex((t) => t.id === id)).filter((i) => i !== -1)
+          );
+          return aFirstIndex - bFirstIndex;
+        });
+
+        // Create virtual single-panel groups for ungrouped panels (preserves terminal array order)
         const virtualGroups: TabGroup[] = ungroupedPanels.map((panel) => ({
           id: panel.id, // Use panel ID as group ID for virtual groups
           location,
@@ -1899,7 +1911,7 @@ export const createTerminalRegistrySlice =
           panelIds: [panel.id],
         }));
 
-        // Return explicit groups first, then virtual groups
+        // Return explicit groups first (sorted by terminal order), then virtual groups
         return [...explicitGroups, ...virtualGroups];
       },
 
@@ -1991,6 +2003,87 @@ export const createTerminalRegistrySlice =
         }
 
         return true;
+      },
+
+      reorderTabGroups: (fromGroupIndex, toGroupIndex, location, worktreeId) => {
+        if (fromGroupIndex === toGroupIndex) return;
+
+        set((state) => {
+          const targetWorktreeId = worktreeId ?? null;
+
+          // Get current tab groups for this location/worktree
+          // Use getTabGroups which returns both explicit and virtual (single-panel) groups
+          const allGroups = get().getTabGroups(location, worktreeId ?? undefined);
+
+          if (fromGroupIndex < 0 || fromGroupIndex >= allGroups.length) return state;
+          if (toGroupIndex < 0 || toGroupIndex > allGroups.length) return state;
+
+          // Reorder the groups
+          const reorderedGroups = [...allGroups];
+          const [movedGroup] = reorderedGroups.splice(fromGroupIndex, 1);
+          reorderedGroups.splice(toGroupIndex, 0, movedGroup);
+
+          // Now we need to reorder the terminals array to match the new group order
+          // The terminals array order determines display order
+          // Each group's panels should be contiguous and in the same order as the group's panelIds
+
+          // Separate terminals by location
+          const gridTerminals = state.terminals.filter(
+            (t) => t.location === "grid" || t.location === undefined
+          );
+          const dockTerminals = state.terminals.filter((t) => t.location === "dock");
+          const trashTerminals = state.terminals.filter((t) => t.location === "trash");
+
+          // Get terminals in the target location/worktree
+          const terminalsInLocation = location === "grid" ? gridTerminals : dockTerminals;
+
+          // Build new terminal list for this location by walking the reordered groups
+          // and preserving order of terminals within each group
+          const newLocationTerminals: TerminalInstance[] = [];
+          const processedIds = new Set<string>();
+
+          // Process terminals in the new group order
+          for (const group of reorderedGroups) {
+            // Get panels for this group in their proper order, filtering by location
+            const groupPanels = state.terminals.filter((t) => {
+              if (!group.panelIds.includes(t.id)) return false;
+              if ((t.worktreeId ?? null) !== targetWorktreeId) return false;
+              if (t.location === "trash") return false;
+              // Ensure panel is in the target location
+              const effectiveLocation = t.location ?? "grid";
+              return effectiveLocation === location;
+            });
+
+            // Sort by the order in group.panelIds
+            groupPanels.sort(
+              (a, b) => group.panelIds.indexOf(a.id) - group.panelIds.indexOf(b.id)
+            );
+
+            for (const panel of groupPanels) {
+              if (!processedIds.has(panel.id)) {
+                newLocationTerminals.push(panel);
+                processedIds.add(panel.id);
+              }
+            }
+          }
+
+          // Add any terminals in other worktrees (preserve their relative order)
+          for (const terminal of terminalsInLocation) {
+            if (!processedIds.has(terminal.id) && (terminal.worktreeId ?? null) !== targetWorktreeId) {
+              newLocationTerminals.push(terminal);
+              processedIds.add(terminal.id);
+            }
+          }
+
+          // Reconstruct the full terminals array
+          const newTerminals =
+            location === "grid"
+              ? [...newLocationTerminals, ...dockTerminals, ...trashTerminals]
+              : [...gridTerminals, ...newLocationTerminals, ...trashTerminals];
+
+          saveTerminals(newTerminals);
+          return { terminals: newTerminals };
+        });
       },
 
       hydrateTabGroups: (tabGroups) => {

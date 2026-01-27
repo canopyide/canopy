@@ -899,7 +899,7 @@ export function ContentGrid({ className, defaultCwd, agentAvailability }: Conten
                   // Check if any panel in the group is trashed
                   const isGroupDisabled = groupPanels.some((p) => isInTrash(p.id));
 
-                  // Single-panel group: render GridPanel directly
+                  // Single-panel group: render GridPanel directly (no group context for single panel)
                   if (groupPanels.length === 1) {
                     const terminal = groupPanels[0];
                     elements.push(
@@ -920,7 +920,7 @@ export function ContentGrid({ className, defaultCwd, agentAvailability }: Conten
                       </SortableTerminal>
                     );
                   } else {
-                    // Multi-panel group: wrap in SortableTerminal using first panel for DnD
+                    // Multi-panel group: pass group context for group-aware DnD
                     const firstPanel = groupPanels[0];
                     elements.push(
                       <SortableTerminal
@@ -929,6 +929,8 @@ export function ContentGrid({ className, defaultCwd, agentAvailability }: Conten
                         sourceLocation="grid"
                         sourceIndex={index}
                         disabled={isGroupDisabled}
+                        groupId={group.id}
+                        groupPanelIds={group.panelIds}
                       >
                         <GridTabGroup
                           group={group}

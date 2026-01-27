@@ -185,7 +185,7 @@ export function ContentDock({ density = "normal" }: ContentDockProps) {
                   const groupPanels = getTabGroupPanels(group.id, "dock");
                   if (groupPanels.length === 0) return null;
 
-                  // Single-panel group: render DockedTerminalItem directly
+                  // Single-panel group: render DockedTerminalItem directly (no group context)
                   if (groupPanels.length === 1) {
                     const terminal = groupPanels[0];
                     return (
@@ -195,10 +195,16 @@ export function ContentDock({ density = "normal" }: ContentDockProps) {
                     );
                   }
 
-                  // Multi-panel group: wrap in SortableDockItem using first panel
+                  // Multi-panel group: pass group context for group-aware DnD
                   const firstPanel = groupPanels[0];
                   return (
-                    <SortableDockItem key={group.id} terminal={firstPanel} sourceIndex={index}>
+                    <SortableDockItem
+                      key={group.id}
+                      terminal={firstPanel}
+                      sourceIndex={index}
+                      groupId={group.id}
+                      groupPanelIds={group.panelIds}
+                    >
                       <DockedTabGroup group={group} panels={groupPanels} />
                     </SortableDockItem>
                   );

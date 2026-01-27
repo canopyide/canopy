@@ -1,15 +1,18 @@
-import { Loader2 } from "lucide-react";
+import { Loader2, Layers } from "lucide-react";
 import type { TerminalInstance } from "@/store";
 import { PlaceholderContent } from "./PlaceholderContent";
 import { getPanelKindColor } from "@shared/config/panelKindRegistry";
 
 interface TerminalDragPreviewProps {
   terminal: TerminalInstance;
+  /** Number of tabs if dragging a multi-tab group */
+  groupTabCount?: number;
 }
 
-export function TerminalDragPreview({ terminal }: TerminalDragPreviewProps) {
+export function TerminalDragPreview({ terminal, groupTabCount }: TerminalDragPreviewProps) {
   const brandColor = getPanelKindColor(terminal.kind ?? "terminal", terminal.agentId);
   const isWorking = terminal.agentState === "working";
+  const isGroupDrag = (groupTabCount ?? 0) > 1;
 
   return (
     <div
@@ -21,11 +24,36 @@ export function TerminalDragPreview({ terminal }: TerminalDragPreviewProps) {
         border: "1px solid var(--color-canopy-border)",
         borderRadius: "var(--radius-lg)",
         boxShadow: "0 8px 24px rgba(0, 0, 0, 0.6)",
-        overflow: "hidden",
+        overflow: "visible",
         display: "flex",
         flexDirection: "column",
+        position: "relative",
       }}
     >
+      {/* Group tab count badge */}
+      {isGroupDrag && (
+        <div
+          style={{
+            position: "absolute",
+            top: -8,
+            right: -8,
+            backgroundColor: "var(--color-canopy-accent)",
+            color: "var(--color-canopy-bg)",
+            borderRadius: "9999px",
+            padding: "2px 6px",
+            fontSize: 10,
+            fontWeight: 600,
+            display: "flex",
+            alignItems: "center",
+            gap: 3,
+            boxShadow: "0 2px 8px rgba(0, 0, 0, 0.4)",
+            zIndex: 10,
+          }}
+        >
+          <Layers style={{ width: 10, height: 10 }} aria-hidden="true" />
+          <span>{groupTabCount}</span>
+        </div>
+      )}
       {/* Title bar */}
       <div
         style={{
