@@ -1,5 +1,10 @@
 import type { StateCreator } from "zustand";
-import type { TerminalRuntimeStatus, TerminalLocation, TabGroup } from "@/types";
+import type {
+  TerminalRuntimeStatus,
+  TerminalLocation,
+  TabGroup,
+  TabGroupLocation,
+} from "@/types";
 import { terminalClient, agentSettingsClient, projectClient } from "@/clients";
 import { generateAgentFlags } from "@shared/types";
 import { terminalInstanceService } from "@/services/TerminalInstanceService";
@@ -1281,20 +1286,38 @@ export const createTerminalRegistrySlice =
       },
 
       moveTerminalToWorktree: (id, worktreeId) => {
-        let movedToLocation: TerminalLocation | null = null;
         console.log(`[TERM_DEBUG] moveTerminalToWorktree id=${id} worktree=${worktreeId}`);
 
+        const terminal = get().terminals.find((t) => t.id === id);
+        if (!terminal) {
+          console.warn(`Cannot move terminal ${id}: terminal not found`);
+          return;
+        }
+
+        if (terminal.worktreeId === worktreeId) {
+          return;
+        }
+
+        // Check if terminal belongs to a group
+        const group = get().getPanelGroup(id);
+        if (group) {
+          // Move entire group to maintain worktree invariant
+          console.log(
+            `[TabGroup] Panel ${id} is in group ${group.id}, moving entire group to worktree ${worktreeId}`
+          );
+          const success = get().moveTabGroupToWorktree(group.id, worktreeId);
+          if (!success) {
+            console.warn(
+              `[TabGroup] Failed to move group ${group.id} to worktree ${worktreeId} (likely capacity exceeded)`
+            );
+          }
+          return;
+        }
+
+        // Terminal is not in a group - move it individually
+        let movedToLocation: TerminalLocation | null = null;
+
         set((state) => {
-          const terminal = state.terminals.find((t) => t.id === id);
-          if (!terminal) {
-            console.warn(`Cannot move terminal ${id}: terminal not found`);
-            return state;
-          }
-
-          if (terminal.worktreeId === worktreeId) {
-            return state;
-          }
-
           const maxCapacity = useLayoutConfigStore.getState().getMaxGridCapacity();
           const targetGridCount = state.terminals.filter(
             (t) =>
@@ -1699,6 +1722,20 @@ export const createTerminalRegistrySlice =
             return state;
           }
 
+          // Enforce worktree invariant - panel must match group's worktree
+          const panel = state.terminals.find((t) => t.id === panelId);
+          if (!panel) {
+            console.warn(`[TabGroup] Cannot add panel ${panelId}: panel not found`);
+            return state;
+          }
+
+          if ((panel.worktreeId ?? undefined) !== (group.worktreeId ?? undefined)) {
+            console.warn(
+              `[TabGroup] Cannot add panel ${panelId} to group ${groupId}: worktree mismatch (panel: ${panel.worktreeId}, group: ${group.worktreeId})`
+            );
+            return state;
+          }
+
           // CRITICAL: Enforce unique membership - remove from any existing group first
           const newTabGroups = new Map(state.tabGroups);
           for (const [existingGroupId, existingGroup] of newTabGroups) {
@@ -1899,7 +1936,23 @@ export const createTerminalRegistrySlice =
           panelIds: [panel.id],
         }));
 
-        // Return explicit groups first, then virtual groups
+        // Sort explicit groups by their earliest terminal index in the terminals array
+        // This makes group order follow terminal array order (which reorderTabGroups manipulates)
+        explicitGroups.sort((a, b) => {
+          const aFirstIndex = Math.min(
+            ...a.panelIds
+              .map((id) => terminals.findIndex((t) => t.id === id))
+              .filter((i) => i !== -1)
+          );
+          const bFirstIndex = Math.min(
+            ...b.panelIds
+              .map((id) => terminals.findIndex((t) => t.id === id))
+              .filter((i) => i !== -1)
+          );
+          return aFirstIndex - bFirstIndex;
+        });
+
+        // Return explicit groups first (sorted by terminal order), then virtual groups
         return [...explicitGroups, ...virtualGroups];
       },
 
@@ -1993,6 +2046,196 @@ export const createTerminalRegistrySlice =
         return true;
       },
 
+      moveTabGroupToWorktree: (groupId, worktreeId) => {
+        const group = get().tabGroups.get(groupId);
+        if (!group) {
+          console.warn(`[TabGroup] Cannot move: group ${groupId} not found`);
+          return false;
+        }
+
+        // Already at target worktree
+        if (group.worktreeId === worktreeId) {
+          return true;
+        }
+
+        // Check capacity if moving to grid location
+        if (group.location === "grid") {
+          const targetWorktreeId = worktreeId ?? null;
+          const maxCapacity = useLayoutConfigStore.getState().getMaxGridCapacity();
+
+          // Count current grid groups (each group = 1 slot)
+          const gridTerminals = get().terminals.filter(
+            (t) =>
+              (t.location === "grid" || t.location === undefined) &&
+              (t.worktreeId ?? null) === targetWorktreeId
+          );
+
+          const panelsInGroups = new Set<string>();
+          let explicitGroupCount = 0;
+          for (const g of get().tabGroups.values()) {
+            if (
+              g.id !== groupId &&
+              g.location === "grid" &&
+              (g.worktreeId ?? null) === targetWorktreeId
+            ) {
+              explicitGroupCount++;
+              g.panelIds.forEach((pid) => panelsInGroups.add(pid));
+            }
+          }
+
+          // Count ungrouped panels (excluding panels in the moving group)
+          let ungroupedCount = 0;
+          const movingPanelIds = new Set(group.panelIds);
+          for (const t of gridTerminals) {
+            if (!panelsInGroups.has(t.id) && !movingPanelIds.has(t.id)) {
+              ungroupedCount++;
+            }
+          }
+
+          // The moving group will occupy 1 slot
+          if (explicitGroupCount + ungroupedCount + 1 > maxCapacity) {
+            console.warn(
+              `[TabGroup] Cannot move group ${groupId} to worktree ${worktreeId}: capacity exceeded (${explicitGroupCount + ungroupedCount + 1} > ${maxCapacity})`
+            );
+            return false;
+          }
+        }
+
+        // Determine location for panels after the move
+        const targetLocation: TabGroupLocation = group.location === "grid" ? "grid" : "dock";
+
+        // Update group worktreeId and all member panel worktreeIds (skip trashed)
+        set((state) => {
+          const newTabGroups = new Map(state.tabGroups);
+          const updatedGroup: TabGroup = { ...group, worktreeId };
+          newTabGroups.set(groupId, updatedGroup);
+
+          // Update all non-trashed panels in the group to the new worktree
+          const panelIdSet = new Set(group.panelIds);
+          const newTerminals = state.terminals.map((t) => {
+            if (!panelIdSet.has(t.id)) return t;
+            // Skip trashed panels - they should remain trashed
+            if (t.location === "trash" || state.trashedTerminals.has(t.id)) return t;
+            return {
+              ...t,
+              worktreeId,
+              location: targetLocation,
+              isVisible: targetLocation === "grid",
+              runtimeStatus: deriveRuntimeStatus(
+                targetLocation === "grid",
+                t.flowStatus,
+                t.runtimeStatus
+              ),
+            };
+          });
+
+          saveTerminals(newTerminals);
+          saveTabGroups(newTabGroups);
+          return { terminals: newTerminals, tabGroups: newTabGroups };
+        });
+
+        // Apply appropriate renderer policies for PTY-backed panels (skip trashed)
+        for (const panelId of group.panelIds) {
+          const terminal = get().terminals.find((t) => t.id === panelId);
+          if (
+            terminal &&
+            terminal.location !== "trash" &&
+            !get().trashedTerminals.has(panelId) &&
+            panelKindHasPty(terminal.kind ?? "terminal")
+          ) {
+            if (targetLocation === "dock") {
+              optimizeForDock(panelId);
+            } else {
+              terminalInstanceService.applyRendererPolicy(panelId, TerminalRefreshTier.VISIBLE);
+            }
+          }
+        }
+
+        return true;
+      },
+
+      reorderTabGroups: (fromGroupIndex, toGroupIndex, location, worktreeId) => {
+        if (fromGroupIndex === toGroupIndex) return;
+
+        set((state) => {
+          const targetWorktreeId = worktreeId ?? null;
+
+          // Get current tab groups for this location/worktree
+          // Use getTabGroups which returns both explicit and virtual (single-panel) groups
+          const allGroups = get().getTabGroups(location, worktreeId ?? undefined);
+
+          if (fromGroupIndex < 0 || fromGroupIndex >= allGroups.length) return state;
+          if (toGroupIndex < 0 || toGroupIndex > allGroups.length) return state;
+
+          // Reorder the groups
+          const reorderedGroups = [...allGroups];
+          const [movedGroup] = reorderedGroups.splice(fromGroupIndex, 1);
+          reorderedGroups.splice(toGroupIndex, 0, movedGroup);
+
+          // Now we need to reorder the terminals array to match the new group order
+          // The terminals array order determines display order
+          // Each group's panels should be contiguous and in the same order as the group's panelIds
+
+          // Separate terminals by location
+          const gridTerminals = state.terminals.filter(
+            (t) => t.location === "grid" || t.location === undefined
+          );
+          const dockTerminals = state.terminals.filter((t) => t.location === "dock");
+          const trashTerminals = state.terminals.filter((t) => t.location === "trash");
+
+          // Get terminals in the target location/worktree
+          const terminalsInLocation = location === "grid" ? gridTerminals : dockTerminals;
+
+          // Build new terminal list for this location by walking the reordered groups
+          // and preserving order of terminals within each group
+          const newLocationTerminals: TerminalInstance[] = [];
+          const processedIds = new Set<string>();
+
+          // Process terminals in the new group order
+          for (const group of reorderedGroups) {
+            // Get panels for this group in their proper order, filtering by location
+            const groupPanels = state.terminals.filter((t) => {
+              if (!group.panelIds.includes(t.id)) return false;
+              if ((t.worktreeId ?? null) !== targetWorktreeId) return false;
+              if (t.location === "trash") return false;
+              // Ensure panel is in the target location
+              const effectiveLocation = t.location ?? "grid";
+              return effectiveLocation === location;
+            });
+
+            // Sort by the order in group.panelIds
+            groupPanels.sort((a, b) => group.panelIds.indexOf(a.id) - group.panelIds.indexOf(b.id));
+
+            for (const panel of groupPanels) {
+              if (!processedIds.has(panel.id)) {
+                newLocationTerminals.push(panel);
+                processedIds.add(panel.id);
+              }
+            }
+          }
+
+          // Add any terminals in other worktrees (preserve their relative order)
+          for (const terminal of terminalsInLocation) {
+            if (
+              !processedIds.has(terminal.id) &&
+              (terminal.worktreeId ?? null) !== targetWorktreeId
+            ) {
+              newLocationTerminals.push(terminal);
+              processedIds.add(terminal.id);
+            }
+          }
+
+          // Reconstruct the full terminals array
+          const newTerminals =
+            location === "grid"
+              ? [...newLocationTerminals, ...dockTerminals, ...trashTerminals]
+              : [...gridTerminals, ...newLocationTerminals, ...trashTerminals];
+
+          saveTerminals(newTerminals);
+          return { terminals: newTerminals };
+        });
+      },
+
       hydrateTabGroups: (tabGroups, options) => {
         const terminals = get().terminals;
         const terminalIdSet = new Set(terminals.map((t) => t.id));
@@ -2003,8 +2246,9 @@ export const createTerminalRegistrySlice =
         // 2. Drop panelIds that no longer exist or are trashed (check both trashedTerminals AND location)
         // 3. Deduplicate panelIds within each group
         // 4. Delete groups with <= 1 unique panel
-        // 5. Validate group location is "grid" or "dock"
-        // 6. Normalize member locations to match group location
+        // 4. Validate group location is "grid" or "dock"
+        // 5. Normalize member locations to match group location
+        // 6. Repair worktree mismatches (enforce worktree invariant)
         const sanitizedGroups = new Map<string, TabGroup>();
         const panelsAlreadyInGroups = new Set<string>();
         const seenGroupIds = new Set<string>();
@@ -2048,6 +2292,32 @@ export const createTerminalRegistrySlice =
             continue;
           }
 
+          // Check worktree consistency - all panels must have the same worktreeId as the group
+          const panelWorktrees = new Map<string | undefined, number>();
+          for (const panelId of finalPanelIds) {
+            const terminal = terminals.find((t) => t.id === panelId);
+            if (terminal) {
+              const count = panelWorktrees.get(terminal.worktreeId) || 0;
+              panelWorktrees.set(terminal.worktreeId, count + 1);
+            }
+          }
+
+          // If there's a worktree mismatch, repair it
+          let repairedWorktreeId = group.worktreeId;
+          if (panelWorktrees.size > 1 || !panelWorktrees.has(group.worktreeId)) {
+            // Find the most common worktreeId among panels (majority wins)
+            let maxCount = 0;
+            for (const [worktreeId, count] of panelWorktrees.entries()) {
+              if (count > maxCount) {
+                maxCount = count;
+                repairedWorktreeId = worktreeId;
+              }
+            }
+            console.warn(
+              `[TabGroup] Hydration: Repairing worktree mismatch in group ${group.id} (group: ${group.worktreeId}, repaired to: ${repairedWorktreeId})`
+            );
+          }
+
           // Mark these panels as assigned
           finalPanelIds.forEach((id) => panelsAlreadyInGroups.add(id));
 
@@ -2059,12 +2329,13 @@ export const createTerminalRegistrySlice =
           sanitizedGroups.set(group.id, {
             ...group,
             location: groupLocation,
+            worktreeId: repairedWorktreeId,
             panelIds: finalPanelIds,
             activeTabId,
           });
         }
 
-        // Normalize panel locations to match their group's location (skip trashed panels)
+        // Normalize panel locations and worktreeIds to match their group (skip trashed panels)
         set((state) => {
           let terminalsUpdated = false;
           const newTerminals = state.terminals.map((t) => {
@@ -2076,13 +2347,34 @@ export const createTerminalRegistrySlice =
             // Find which group this panel belongs to
             for (const group of sanitizedGroups.values()) {
               if (group.panelIds.includes(t.id)) {
-                // Panel is in a group - ensure location matches
-                if (t.location !== group.location) {
+                // Panel is in a group - ensure location and worktreeId match
+                const needsLocationUpdate = t.location !== group.location;
+                const needsWorktreeUpdate =
+                  (t.worktreeId ?? undefined) !== (group.worktreeId ?? undefined);
+
+                if (needsLocationUpdate || needsWorktreeUpdate) {
                   terminalsUpdated = true;
-                  console.log(
-                    `[TabGroup] Hydration: Normalizing panel ${t.id} location from ${t.location} to ${group.location}`
-                  );
-                  return { ...t, location: group.location };
+                  if (needsLocationUpdate) {
+                    console.log(
+                      `[TabGroup] Hydration: Normalizing panel ${t.id} location from ${t.location} to ${group.location}`
+                    );
+                  }
+                  if (needsWorktreeUpdate) {
+                    console.log(
+                      `[TabGroup] Hydration: Normalizing panel ${t.id} worktreeId from ${t.worktreeId} to ${group.worktreeId}`
+                    );
+                  }
+                  return {
+                    ...t,
+                    location: group.location,
+                    worktreeId: group.worktreeId,
+                    isVisible: group.location === "grid",
+                    runtimeStatus: deriveRuntimeStatus(
+                      group.location === "grid",
+                      t.flowStatus,
+                      t.runtimeStatus
+                    ),
+                  };
                 }
                 break;
               }

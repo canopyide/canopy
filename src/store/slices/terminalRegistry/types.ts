@@ -154,6 +154,15 @@ export interface TerminalRegistrySlice {
   deleteTabGroup: (groupId: string) => void;
   /** Move an entire tab group to a new location (grid/dock), updating all member panels */
   moveTabGroupToLocation: (groupId: string, location: TabGroupLocation) => boolean;
+  /** Move an entire tab group to a new worktree, updating all member panels */
+  moveTabGroupToWorktree: (groupId: string, worktreeId: string) => boolean;
+  /** Reorder tab groups within a location. Moves all panels in each group together. */
+  reorderTabGroups: (
+    fromGroupIndex: number,
+    toGroupIndex: number,
+    location: TabGroupLocation,
+    worktreeId?: string | null
+  ) => void;
   /** Hydrate tab groups from persisted state, sanitizing invalid data */
   hydrateTabGroups: (tabGroups: TabGroup[], options?: { skipPersist?: boolean }) => void;
   /** @deprecated Use createTabGroup/addPanelToGroup instead */

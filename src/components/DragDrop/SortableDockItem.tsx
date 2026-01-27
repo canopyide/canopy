@@ -9,13 +9,25 @@ interface SortableDockItemProps {
   terminal: TerminalInstance;
   sourceIndex: number;
   children: React.ReactNode;
+  /** If this panel is part of a tab group, the group ID */
+  groupId?: string;
+  /** If this panel is part of a tab group, all panel IDs in the group */
+  groupPanelIds?: string[];
 }
 
-export function SortableDockItem({ terminal, sourceIndex, children }: SortableDockItemProps) {
+export function SortableDockItem({
+  terminal,
+  sourceIndex,
+  children,
+  groupId,
+  groupPanelIds,
+}: SortableDockItemProps) {
   const dragData: DragData = {
     terminal,
     sourceLocation: "dock",
     sourceIndex,
+    groupId,
+    groupPanelIds,
   };
 
   const { attributes, listeners, setNodeRef, transform, transition, isDragging } = useSortable({
