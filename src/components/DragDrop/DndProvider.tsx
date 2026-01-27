@@ -283,24 +283,43 @@ export function DndProvider({ children }: DndProviderProps) {
       const isAccordionDrag = isWorktreeDragData(activeDataCurrent);
 
       if (!isAccordionDrag && sourceContainer === "dock" && detectedContainer === "grid") {
+        // Get tab groups to compute group-based placeholder index
+        // ContentGrid uses tab groups for SortableContext, so placeholderIndex must be a group index
         const activeWorktreeId = useWorktreeSelectionStore.getState().activeWorktreeId;
-        // Find grid terminals to calculate insertion index (match ContentGrid filter)
-        const gridTerminals = terminals.filter(
-          (t) =>
-            (t.location === "grid" || t.location === undefined) &&
-            (t.worktreeId ?? undefined) === (activeWorktreeId ?? undefined)
-        );
-        const overId = over.id as string;
-        const overIndex = gridTerminals.findIndex((t) => t.id === overId);
+        const tabGroups = useTerminalStore
+          .getState()
+          .getTabGroups("grid", activeWorktreeId ?? undefined);
 
-        if (overIndex !== -1) {
-          setPlaceholderIndex(overIndex);
-        } else if (overData?.sortable?.index !== undefined) {
-          setPlaceholderIndex(overData.sortable.index);
+        const overId = over.id as string;
+
+        // Determine group index based on what we're hovering over
+        let groupIndex = -1;
+
+        if (overId === GRID_PLACEHOLDER_ID) {
+          // Hovering over the placeholder itself - use sortable.index if available
+          // (this can happen during drag oscillation)
+          if (overData?.sortable?.index !== undefined) {
+            groupIndex = Math.min(Math.max(0, overData.sortable.index), tabGroups.length);
+          } else {
+            // Fallback to end
+            groupIndex = tabGroups.length;
+          }
         } else {
-          // Dropping on empty grid or container itself - append to end
-          setPlaceholderIndex(gridTerminals.length);
+          // Hovering over a real group or terminal - find which group it belongs to
+          groupIndex = tabGroups.findIndex((g) => g.id === overId || g.panelIds.includes(overId));
+
+          if (groupIndex === -1) {
+            // Not found in any group - could be hovering over container or using sortable.index
+            if (overData?.sortable?.index !== undefined) {
+              groupIndex = Math.min(Math.max(0, overData.sortable.index), tabGroups.length);
+            } else {
+              // Dropping on empty grid or container itself - append to end
+              groupIndex = tabGroups.length;
+            }
+          }
         }
+
+        setPlaceholderIndex(groupIndex);
       } else {
         setPlaceholderIndex(null);
       }
