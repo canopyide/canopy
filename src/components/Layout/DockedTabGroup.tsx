@@ -45,6 +45,8 @@ export function DockedTabGroup({ group, panels }: DockedTabGroupProps) {
   const setActiveTab = useTerminalStore((s) => s.setActiveTab);
   const setFocused = useTerminalStore((s) => s.setFocused);
   const trashTerminal = useTerminalStore((s) => s.trashTerminal);
+  const removePanelFromGroup = useTerminalStore((s) => s.removePanelFromGroup);
+  const updateTitle = useTerminalStore((s) => s.updateTitle);
   const hybridInputEnabled = useTerminalInputStore((s) => s.hybridInputEnabled);
   const hybridInputAutoFocus = useTerminalInputStore((s) => s.hybridInputAutoFocus);
   const reorderPanelsInGroup = useTerminalStore((s) => s.reorderPanelsInGroup);
@@ -265,6 +267,13 @@ export function DockedTabGroup({ group, panels }: DockedTabGroupProps) {
     [panels, group.id, reorderPanelsInGroup]
   );
 
+  const handleTabRename = useCallback(
+    (tabId: string, newTitle: string) => {
+      updateTitle(tabId, newTitle);
+    },
+    [updateTitle]
+  );
+
   if (!activePanel || panels.length === 0) {
     return null;
   }
@@ -406,6 +415,7 @@ export function DockedTabGroup({ group, panels }: DockedTabGroupProps) {
                   isActive={panel.id === activeTabId}
                   onClick={() => handleTabClick(panel.id)}
                   onClose={() => handleTabClose(panel.id)}
+                  onRename={(newTitle) => handleTabRename(panel.id, newTitle)}
                 />
               ))}
             </div>

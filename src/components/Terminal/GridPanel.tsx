@@ -17,6 +17,7 @@ export interface GridPanelProps {
   groupId?: string;
   onTabClick?: (tabId: string) => void;
   onTabClose?: (tabId: string) => void;
+  onTabRename?: (tabId: string, newTitle: string) => void;
   onAddTab?: () => void;
   onTabReorder?: (newOrder: string[]) => void;
 }
@@ -31,6 +32,7 @@ export function GridPanel({
   groupId,
   onTabClick,
   onTabClose,
+  onTabRename,
   onAddTab,
   onTabReorder,
 }: GridPanelProps) {
@@ -190,6 +192,7 @@ export function GridPanel({
       groupId,
       onTabClick,
       onTabClose,
+      onTabRename,
       onAddTab,
       onTabReorder,
     }),
@@ -208,6 +211,7 @@ export function GridPanel({
       groupId,
       onTabClick,
       onTabClose,
+      onTabRename,
       onAddTab,
       onTabReorder,
     ]
@@ -232,6 +236,7 @@ export function GridPanel({
         groupId={groupId}
         onTabClick={onTabClick}
         onTabClose={onTabClose}
+        onTabRename={onTabRename}
         onAddTab={onAddTab}
         onTabReorder={onTabReorder}
       >
