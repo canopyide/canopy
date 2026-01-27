@@ -572,8 +572,9 @@ export function ContentGrid({ className, defaultCwd, agentAvailability }: Conten
     isDraggingRef.current = isDragging;
   }, [isDragging]);
 
+  // placeholderIndex is now group-based (from DndProvider), so bound by tabGroups.length
   const placeholderInGrid =
-    placeholderIndex !== null && placeholderIndex >= 0 && placeholderIndex <= gridTerminals.length;
+    placeholderIndex !== null && placeholderIndex >= 0 && placeholderIndex <= tabGroups.length;
 
   // Show placeholder when dragging from dock to grid (only if grid not full)
   const showPlaceholder = placeholderInGrid && sourceContainer === "dock" && !isGridFull;
