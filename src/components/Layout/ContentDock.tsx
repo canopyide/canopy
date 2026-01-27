@@ -195,10 +195,16 @@ export function ContentDock({ density = "normal" }: ContentDockProps) {
                     );
                   }
 
-                  // Multi-panel group: wrap in SortableDockItem using first panel
+                  // Multi-panel group: pass group context for group-aware DnD
                   const firstPanel = groupPanels[0];
                   return (
-                    <SortableDockItem key={group.id} terminal={firstPanel} sourceIndex={index}>
+                    <SortableDockItem
+                      key={group.id}
+                      terminal={firstPanel}
+                      sourceIndex={index}
+                      groupId={group.id}
+                      groupPanelIds={group.panelIds}
+                    >
                       <DockedTabGroup group={group} panels={groupPanels} />
                     </SortableDockItem>
                   );

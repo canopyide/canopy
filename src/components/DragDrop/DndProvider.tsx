@@ -43,6 +43,10 @@ interface DndPlaceholderContextValue {
   sourceContainer: "grid" | "dock" | null;
   activeTerminal: TerminalInstance | null;
   isDragging: boolean;
+  /** If dragging a tab group, the group ID */
+  activeGroupId: string | null;
+  /** If dragging a tab group, the panel IDs in the group */
+  activeGroupPanelIds: string[] | null;
 }
 
 const DndPlaceholderContext = createContext<DndPlaceholderContextValue>({
@@ -50,6 +54,8 @@ const DndPlaceholderContext = createContext<DndPlaceholderContextValue>({
   sourceContainer: null,
   activeTerminal: null,
   isDragging: false,
+  activeGroupId: null,
+  activeGroupPanelIds: null,
 });
 
 export function useDndPlaceholder() {
@@ -75,6 +81,10 @@ export interface DragData {
   terminal: TerminalInstance;
   sourceLocation: "grid" | "dock";
   sourceIndex: number;
+  /** If panel is part of a tab group, the group ID */
+  groupId?: string;
+  /** If panel is part of a tab group, all panel IDs in the group */
+  groupPanelIds?: string[];
 }
 
 export interface WorktreeDragData extends DragData {
@@ -103,8 +113,10 @@ function getEventCoordinates(event: Event): { x: number; y: number } {
 // Inner component that uses useDndMonitor to track cursor position (must be inside DndContext)
 function DragOverlayWithCursorTracking({
   activeTerminal,
+  groupTabCount,
 }: {
   activeTerminal: TerminalInstance | null;
+  groupTabCount?: number;
 }) {
   const pointerStartRef = useRef<{ x: number; y: number } | null>(null);
   const pointerPositionRef = useRef<{ x: number; y: number } | null>(null);
@@ -149,7 +161,9 @@ function DragOverlayWithCursorTracking({
 
   return (
     <DragOverlay dropAnimation={null} modifiers={[cursorOverlayModifier]}>
-      {activeTerminal ? <TerminalDragPreview terminal={activeTerminal} /> : null}
+      {activeTerminal ? (
+        <TerminalDragPreview terminal={activeTerminal} groupTabCount={groupTabCount} />
+      ) : null}
     </DragOverlay>
   );
 }
@@ -182,7 +196,9 @@ export function DndProvider({ children }: DndProviderProps) {
 
   const terminals = useTerminalStore((state) => state.terminals);
   const reorderTerminals = useTerminalStore((s) => s.reorderTerminals);
+  const reorderTabGroups = useTerminalStore((s) => s.reorderTabGroups);
   const moveTerminalToPosition = useTerminalStore((s) => s.moveTerminalToPosition);
+  const moveTabGroupToLocation = useTerminalStore((s) => s.moveTabGroupToLocation);
   const moveTerminalToWorktree = useTerminalStore((s) => s.moveTerminalToWorktree);
   const setFocused = useTerminalStore((s) => s.setFocused);
   const activeWorktreeId = useWorktreeSelectionStore((state) => state.activeWorktreeId);
@@ -359,17 +375,30 @@ export function DndProvider({ children }: DndProviderProps) {
         return;
       }
 
+      // Check if this is a group drag
+      const isGroupDrag =
+        activeData.groupId && activeData.groupPanelIds && activeData.groupPanelIds.length > 1;
+
       // Track if this is a worktree drop (skip reorder logic, but still run stabilization)
       const isWorktreeDrop = overData?.type === "worktree" && !!overData.worktreeId;
       if (isWorktreeDrop) {
         console.log(`[DND_DEBUG] Worktree drop detected: ${overData.worktreeId}`);
-        const currentTerminal = terminals.find((t) => t.id === draggedId);
-        if (currentTerminal && currentTerminal.worktreeId !== overData.worktreeId) {
+
+        // Block worktree drops for multi-panel groups (would split the group)
+        if (isGroupDrag) {
           console.log(
-            `[DND_DEBUG] Moving terminal ${draggedId} to worktree ${overData.worktreeId}`
+            `[DND_DEBUG] Blocking worktree drop for multi-panel group ${activeData.groupId}`
           );
-          moveTerminalToWorktree(draggedId, overData.worktreeId!);
-          setFocused(null);
+          // Cancel the drop - fall through to stabilization only
+        } else {
+          const currentTerminal = terminals.find((t) => t.id === draggedId);
+          if (currentTerminal && currentTerminal.worktreeId !== overData.worktreeId) {
+            console.log(
+              `[DND_DEBUG] Moving terminal ${draggedId} to worktree ${overData.worktreeId}`
+            );
+            moveTerminalToWorktree(draggedId, overData.worktreeId!);
+            setFocused(null);
+          }
         }
         // Don't return - fall through to stabilization
       }
@@ -460,9 +489,81 @@ export function DndProvider({ children }: DndProviderProps) {
           }
         }
         const isGridFull = explicitGroupCount + ungroupedCount >= getMaxGridCapacity();
+
         if (sourceLocation === "dock" && targetContainer === "grid" && isGridFull) {
           // Grid is full, cancel the drop - still run stabilization below
+        } else if (isGroupDrag) {
+          // Group-aware drag: move the entire tab group
+          if (sourceLocation === targetContainer) {
+            // Same container: reorder groups
+            // The sourceIndex from DragData is the group index (set by ContentGrid/ContentDock)
+            // targetIndex needs to be computed as the group index at drop location
+            const fromGroupIndex = activeData.sourceIndex;
+
+            // Find which group we're dropping over
+            const tabGroupsAtLocation = useTerminalStore
+              .getState()
+              .getTabGroups(targetContainer, activeWorktreeId ?? undefined);
+
+            // Find target group index by looking at which group contains the overId terminal
+            let toGroupIndex = tabGroupsAtLocation.length - 1;
+            for (let i = 0; i < tabGroupsAtLocation.length; i++) {
+              if (tabGroupsAtLocation[i].panelIds.includes(overId)) {
+                toGroupIndex = i;
+                break;
+              }
+            }
+
+            if (fromGroupIndex !== toGroupIndex) {
+              reorderTabGroups(fromGroupIndex, toGroupIndex, targetContainer, activeWorktreeId);
+            }
+          } else {
+            // Cross-container: move entire group to new location
+            const moveSuccess = moveTabGroupToLocation(activeData.groupId!, targetContainer);
+
+            if (moveSuccess) {
+              // After moving, reorder to the drop position
+              // The group is now at the end, move it to targetIndex
+              const tabGroupsAtLocation = useTerminalStore
+                .getState()
+                .getTabGroups(targetContainer, activeWorktreeId ?? undefined);
+
+              // Find the moved group's current index (should be last)
+              const movedGroupIndex = tabGroupsAtLocation.findIndex(
+                (g) => g.id === activeData.groupId
+              );
+
+              if (movedGroupIndex !== -1) {
+                // Find target group index by looking at which group contains the overId terminal
+                let toGroupIndex = tabGroupsAtLocation.length - 1;
+                for (let i = 0; i < tabGroupsAtLocation.length; i++) {
+                  if (tabGroupsAtLocation[i].panelIds.includes(overId)) {
+                    toGroupIndex = i;
+                    break;
+                  }
+                }
+
+                // If we're not already at the target position, reorder
+                if (movedGroupIndex !== toGroupIndex) {
+                  reorderTabGroups(
+                    movedGroupIndex,
+                    toGroupIndex,
+                    targetContainer,
+                    activeWorktreeId
+                  );
+                }
+              }
+
+              // Set focus to first panel in group when moving to grid
+              if (targetContainer === "grid") {
+                setFocused(activeData.groupPanelIds![0] ?? draggedId);
+              } else {
+                setFocused(null);
+              }
+            }
+          }
         } else {
+          // Single panel drag (not part of a multi-panel group)
           // Same container reorder
           if (sourceLocation === targetContainer) {
             if (draggedId !== overId) {
@@ -606,7 +707,9 @@ export function DndProvider({ children }: DndProviderProps) {
       overContainer,
       terminals,
       reorderTerminals,
+      reorderTabGroups,
       moveTerminalToPosition,
+      moveTabGroupToLocation,
       moveTerminalToWorktree,
       setFocused,
       activeWorktreeId,
@@ -663,8 +766,17 @@ export function DndProvider({ children }: DndProviderProps) {
       sourceContainer: activeData?.sourceLocation ?? null,
       activeTerminal,
       isDragging: activeId !== null,
+      activeGroupId: activeData?.groupId ?? null,
+      activeGroupPanelIds: activeData?.groupPanelIds ?? null,
     }),
-    [placeholderIndex, activeData?.sourceLocation, activeTerminal, activeId]
+    [
+      placeholderIndex,
+      activeData?.sourceLocation,
+      activeData?.groupId,
+      activeData?.groupPanelIds,
+      activeTerminal,
+      activeId,
+    ]
   );
 
   useEffect(() => {
@@ -689,7 +801,10 @@ export function DndProvider({ children }: DndProviderProps) {
       <DndPlaceholderContext.Provider value={placeholderContextValue}>
         {children}
       </DndPlaceholderContext.Provider>
-      <DragOverlayWithCursorTracking activeTerminal={activeTerminal} />
+      <DragOverlayWithCursorTracking
+        activeTerminal={activeTerminal}
+        groupTabCount={activeData?.groupPanelIds?.length}
+      />
     </DndContext>
   );
 }

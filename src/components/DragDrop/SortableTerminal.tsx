@@ -11,6 +11,10 @@ interface SortableTerminalProps {
   sourceIndex: number;
   children: React.ReactNode;
   disabled?: boolean;
+  /** If this panel is part of a tab group, the group ID */
+  groupId?: string;
+  /** If this panel is part of a tab group, all panel IDs in the group */
+  groupPanelIds?: string[];
 }
 
 export function SortableTerminal({
@@ -19,11 +23,15 @@ export function SortableTerminal({
   sourceIndex,
   children,
   disabled = false,
+  groupId,
+  groupPanelIds,
 }: SortableTerminalProps) {
   const dragData: DragData = {
     terminal,
     sourceLocation,
     sourceIndex,
+    groupId,
+    groupPanelIds,
   };
 
   const { attributes, listeners, setNodeRef, transform, transition, isDragging } = useSortable({

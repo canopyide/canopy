@@ -959,6 +959,8 @@ export function ContentGrid({ className, defaultCwd, agentAvailability }: Conten
                         sourceLocation="grid"
                         sourceIndex={index}
                         disabled={isGroupDisabled}
+                        groupId={group.id}
+                        groupPanelIds={group.panelIds}
                       >
                         <GridTabGroup
                           group={group}
