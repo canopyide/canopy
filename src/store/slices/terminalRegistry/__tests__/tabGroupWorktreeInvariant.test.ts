@@ -515,4 +515,67 @@ describe("Tab Group Worktree Invariant", () => {
       expect(repairedT2?.location).toBe("trash");
     });
   });
+
+  describe("hydrateTabGroups - skipPersist option", () => {
+    it("respects skipPersist option with empty groups (error recovery path)", async () => {
+      const { terminalPersistence } = await import("../../../persistence/terminalPersistence");
+
+      const t1 = createMockTerminal("t1", "wt-a", "grid");
+      const t2 = createMockTerminal("t2", "wt-a", "grid");
+
+      useTerminalStore.setState({
+        terminals: [t1, t2],
+        tabGroups: new Map(),
+      });
+
+      // Error recovery path: clear in-memory groups without wiping persistence
+      useTerminalStore.getState().hydrateTabGroups([], { skipPersist: true });
+
+      expect(terminalPersistence.saveTabGroups).not.toHaveBeenCalled();
+      // Verify in-memory state was still cleared
+      expect(useTerminalStore.getState().tabGroups.size).toBe(0);
+    });
+
+    it("respects skipPersist option with non-empty groups", async () => {
+      const { terminalPersistence } = await import("../../../persistence/terminalPersistence");
+
+      const t1 = createMockTerminal("t1", "wt-a", "grid");
+      const t2 = createMockTerminal("t2", "wt-a", "grid");
+      const group = createMockTabGroup("g1", "wt-a", ["t1", "t2"]);
+
+      useTerminalStore.setState({
+        terminals: [t1, t2],
+        tabGroups: new Map(),
+      });
+
+      // Hydrate groups but skip persistence
+      useTerminalStore.getState().hydrateTabGroups([group], { skipPersist: true });
+
+      expect(terminalPersistence.saveTabGroups).not.toHaveBeenCalled();
+      // Verify in-memory state was updated despite skipPersist
+      expect(useTerminalStore.getState().tabGroups.size).toBe(1);
+      expect(useTerminalStore.getState().tabGroups.has("g1")).toBe(true);
+    });
+
+    it("persists tab groups when skipPersist is not set", async () => {
+      const { terminalPersistence } = await import("../../../persistence/terminalPersistence");
+
+      const t1 = createMockTerminal("t1", "wt-a", "grid");
+      const t2 = createMockTerminal("t2", "wt-a", "grid");
+      const group = createMockTabGroup("g1", "wt-a", ["t1", "t2"]);
+
+      useTerminalStore.setState({
+        terminals: [t1, t2],
+        tabGroups: new Map(),
+      });
+
+      // Normal hydration should persist
+      useTerminalStore.getState().hydrateTabGroups([group]);
+
+      expect(terminalPersistence.saveTabGroups).toHaveBeenCalledTimes(1);
+      // Verify the persisted data contains the expected group
+      const persistedGroups = vi.mocked(terminalPersistence.saveTabGroups).mock.calls[0][0];
+      expect(persistedGroups.has("g1")).toBe(true);
+    });
+  });
 });
