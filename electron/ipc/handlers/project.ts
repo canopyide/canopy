@@ -722,7 +722,7 @@ export function registerProjectHandlers(deps: HandlerDependencies): () => void {
     }
 
     // Schema-validate and sanitize tab groups
-    const sanitizedTabGroups = sanitizeTabGroups(tabGroups, projectId);
+    const sanitizedTabGroups = sanitizeTabGroups(tabGroups, projectId) as TabGroup[];
 
     const existingState = await projectStore.getProjectState(projectId);
     const newState = {
@@ -735,7 +735,6 @@ export function registerProjectHandlers(deps: HandlerDependencies): () => void {
       focusMode: existingState?.focusMode,
       focusPanelState: existingState?.focusPanelState,
     };
-
     await projectStore.saveProjectState(projectId, newState);
   };
   ipcMain.handle(CHANNELS.PROJECT_SET_TAB_GROUPS, handleProjectSetTabGroups);
