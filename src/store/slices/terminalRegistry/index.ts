@@ -1,11 +1,5 @@
 import type { StateCreator } from "zustand";
-import type {
-  TerminalRuntimeStatus,
-  TerminalLocation,
-  TabGroup,
-  TabGroupLocation,
-  PanelLocation,
-} from "@/types";
+import type { TerminalRuntimeStatus, TerminalLocation, TabGroup, TabGroupLocation } from "@/types";
 import { terminalClient, agentSettingsClient, projectClient } from "@/clients";
 import { generateAgentFlags } from "@shared/types";
 import { terminalInstanceService } from "@/services/TerminalInstanceService";
@@ -926,7 +920,9 @@ export const createTerminalRegistrySlice =
             (t) => t.id !== id && (t.location === "grid" || t.location === undefined)
           );
           const dockTerminals = state.terminals.filter((t) => t.id !== id && t.location === "dock");
-          const trashTerminals = state.terminals.filter((t) => t.id !== id && t.location === "trash");
+          const trashTerminals = state.terminals.filter(
+            (t) => t.id !== id && t.location === "trash"
+          );
 
           const targetList = location === "grid" ? gridTerminals : dockTerminals;
           const scopedIndices: number[] = [];

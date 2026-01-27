@@ -23,6 +23,7 @@ vi.mock("@/services/TerminalInstanceService", () => ({
 vi.mock("../../../persistence/terminalPersistence", () => ({
   terminalPersistence: {
     save: vi.fn(),
+    saveTabGroups: vi.fn(),
     load: vi.fn().mockReturnValue([]),
   },
 }));
@@ -31,6 +32,14 @@ vi.mock("../../../persistence/tabGroupPersistence", () => ({
   tabGroupPersistence: {
     save: vi.fn(),
     load: vi.fn().mockReturnValue([]),
+  },
+}));
+
+vi.mock("@/store/layoutConfigStore", () => ({
+  useLayoutConfigStore: {
+    getState: vi.fn().mockReturnValue({
+      getMaxGridCapacity: () => 6,
+    }),
   },
 }));
 
@@ -91,7 +100,7 @@ describe("Tab Group Worktree Invariant", () => {
       const t2 = createMockTerminal("t2", "wt-a", "grid");
       const group = createMockTabGroup("g1", "wt-a", ["t1", "t2"], "grid");
 
-      const targetGridTerminals = Array.from({ length: 6 }, (_, i) =>
+      const targetGridTerminals = Array.from({ length: 10 }, (_, i) =>
         createMockTerminal(`target-${i}`, "wt-b", "grid")
       );
 
@@ -197,7 +206,8 @@ describe("Tab Group Worktree Invariant", () => {
       const t2 = createMockTerminal("t2", "wt-a", "grid");
       const group = createMockTabGroup("g1", "wt-a", ["t1", "t2"], "grid");
 
-      const targetGridTerminals = Array.from({ length: 6 }, (_, i) =>
+      // Fill up target worktree grid (default capacity is 6)
+      const targetGridTerminals = Array.from({ length: 10 }, (_, i) =>
         createMockTerminal(`target-${i}`, "wt-b", "grid")
       );
 
@@ -497,7 +507,8 @@ describe("Tab Group Worktree Invariant", () => {
       const state = useTerminalStore.getState();
       const repairedGroup = state.tabGroups.get("g1");
 
-      expect(repairedGroup?.panelIds).toEqual(["t1"]);
+      // Group should be dropped because it only has 1 non-trashed panel remaining
+      expect(repairedGroup).toBeUndefined();
 
       const repairedT2 = state.terminals.find((t) => t.id === "t2");
       expect(repairedT2?.worktreeId).toBe("wt-b");
