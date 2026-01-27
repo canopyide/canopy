@@ -12,6 +12,7 @@ import {
 } from "@dnd-kit/core";
 import { SortableContext, horizontalListSortingStrategy, arrayMove } from "@dnd-kit/sortable";
 import { restrictToHorizontalAxis, restrictToParentElement } from "@dnd-kit/modifiers";
+import { Plus } from "lucide-react";
 import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover";
 import { cn, getBaseTitle } from "@/lib/utils";
 import { getBrandColorHex } from "@/lib/colorUtils";
@@ -26,11 +27,13 @@ import { TerminalIcon } from "@/components/Terminal/TerminalIcon";
 import { getTerminalFocusTarget } from "@/components/Terminal/terminalFocus";
 import { STATE_ICONS, STATE_COLORS } from "@/components/Worktree/terminalStateConfig";
 import { TerminalRefreshTier } from "@/types";
-import { terminalClient } from "@/clients";
+import { terminalClient, agentSettingsClient } from "@/clients";
 import { terminalInstanceService } from "@/services/TerminalInstanceService";
 import { useDockPanelPortal } from "./DockPanelOffscreenContainer";
 import { SortableTabButton } from "@/components/Panel/SortableTabButton";
 import type { TabGroup } from "@/types";
+import { generateAgentCommand } from "@shared/types";
+import { getAgentConfig, isRegisteredAgent } from "@/config/agents";
 
 interface DockedTabGroupProps {
   group: TabGroup;
@@ -49,6 +52,8 @@ export function DockedTabGroup({ group, panels }: DockedTabGroupProps) {
   const hybridInputEnabled = useTerminalInputStore((s) => s.hybridInputEnabled);
   const hybridInputAutoFocus = useTerminalInputStore((s) => s.hybridInputAutoFocus);
   const reorderPanelsInGroup = useTerminalStore((s) => s.reorderPanelsInGroup);
+  const addTerminal = useTerminalStore((s) => s.addTerminal);
+  const addPanelToGroup = useTerminalStore((s) => s.addPanelToGroup);
 
   // Subscribe to stored active tab for this group
   const storedActiveTabId = useTerminalStore(
@@ -74,6 +79,7 @@ export function DockedTabGroup({ group, panels }: DockedTabGroupProps) {
   // Track when popover was just programmatically opened
   const wasJustOpenedRef = useRef(false);
   const prevIsOpenRef = useRef(isOpen);
+  const tabListRef = useRef<HTMLDivElement>(null);
 
   useEffect(() => {
     prevIsOpenRef.current = isOpen;
@@ -273,6 +279,128 @@ export function DockedTabGroup({ group, panels }: DockedTabGroupProps) {
     [updateTitle]
   );
 
+  // Arrow key navigation for tabs (standard tablist behavior)
+  const handleTabListKeyDown = useCallback(
+    (e: React.KeyboardEvent) => {
+      if (panels.length < 2) return;
+
+      const currentIndex = panels.findIndex((p) => p.id === activeTabId);
+      let nextIndex: number | undefined;
+
+      switch (e.key) {
+        case "ArrowLeft":
+          nextIndex = currentIndex > 0 ? currentIndex - 1 : panels.length - 1;
+          break;
+        case "ArrowRight":
+          nextIndex = currentIndex < panels.length - 1 ? currentIndex + 1 : 0;
+          break;
+        case "Home":
+          nextIndex = 0;
+          break;
+        case "End":
+          nextIndex = panels.length - 1;
+          break;
+        default:
+          return;
+      }
+
+      e.preventDefault();
+      const nextPanel = panels[nextIndex];
+      if (nextPanel) {
+        handleTabClick(nextPanel.id);
+        // Focus the new tab button
+        const tabButton = tabListRef.current?.querySelector(
+          `[data-tab-id="${nextPanel.id}"]`
+        ) as HTMLElement | null;
+        tabButton?.focus();
+      }
+    },
+    [panels, activeTabId, handleTabClick]
+  );
+
+  // Handle add tab - duplicate the current panel as a new tab
+  const handleAddTab = useCallback(async () => {
+    if (!activePanel) return;
+
+    const kind = activePanel.kind ?? "terminal";
+
+    try {
+      // For agents, generate the command
+      let command: string | undefined;
+      if (activePanel.agentId && isRegisteredAgent(activePanel.agentId)) {
+        const agentConfig = getAgentConfig(activePanel.agentId);
+        if (agentConfig) {
+          try {
+            const agentSettings = await agentSettingsClient.get();
+            const entry = agentSettings?.agents?.[activePanel.agentId] ?? {};
+            command = generateAgentCommand(agentConfig.command, entry, activePanel.agentId, {
+              interactive: true,
+            });
+          } catch (error) {
+            console.warn("Failed to get agent settings, using existing command:", error);
+            command = activePanel.command;
+          }
+        } else {
+          command = activePanel.command;
+        }
+      } else {
+        command = activePanel.command;
+      }
+
+      // Create new panel without tab group info (will be added to group separately)
+      const baseOptions = {
+        kind,
+        type: activePanel.type,
+        agentId: activePanel.agentId,
+        cwd: activePanel.cwd || "",
+        worktreeId: activePanel.worktreeId,
+        location: activePanel.location ?? "dock",
+        exitBehavior: activePanel.exitBehavior,
+        isInputLocked: activePanel.isInputLocked,
+        command,
+      };
+
+      let kindSpecificOptions = {};
+      if (kind === "browser") {
+        kindSpecificOptions = { browserUrl: activePanel.browserUrl };
+      } else if (kind === "notes") {
+        kindSpecificOptions = {
+          notePath: (activePanel as any).notePath,
+          noteId: (activePanel as any).noteId,
+          scope: (activePanel as any).scope,
+          createdAt: Date.now(),
+        };
+      } else if (kind === "dev-preview") {
+        kindSpecificOptions = {
+          devCommand: (activePanel as any).devCommand,
+          browserUrl: activePanel.browserUrl,
+        };
+      }
+
+      const newPanelId = await addTerminal({
+        ...baseOptions,
+        ...kindSpecificOptions,
+      });
+
+      // Add the new panel to this group
+      addPanelToGroup(group.id, newPanelId);
+
+      setActiveTab(group.id, newPanelId);
+      setFocused(newPanelId);
+      openDockTerminal(newPanelId);
+    } catch (error) {
+      console.error("Failed to add tab:", error);
+    }
+  }, [
+    activePanel,
+    group.id,
+    addTerminal,
+    addPanelToGroup,
+    setActiveTab,
+    setFocused,
+    openDockTerminal,
+  ]);
+
   if (!activePanel || panels.length === 0) {
     return null;
   }
@@ -398,9 +526,11 @@ export function DockedTabGroup({ group, panels }: DockedTabGroupProps) {
         >
           <SortableContext items={tabIds} strategy={horizontalListSortingStrategy}>
             <div
+              ref={tabListRef}
               className="flex items-center border-b border-divider bg-canopy-sidebar shrink-0"
               role="tablist"
               aria-label="Dock panel tabs"
+              onKeyDown={handleTabListKeyDown}
             >
               {panels.map((panel) => (
                 <SortableTabButton
@@ -417,6 +547,19 @@ export function DockedTabGroup({ group, panels }: DockedTabGroupProps) {
                   onRename={(newTitle) => handleTabRename(panel.id, newTitle)}
                 />
               ))}
+              <button
+                onClick={(e) => {
+                  e.stopPropagation();
+                  handleAddTab();
+                }}
+                onPointerDown={(e) => e.stopPropagation()}
+                className="shrink-0 p-1.5 hover:bg-canopy-text/10 text-canopy-text/40 hover:text-canopy-text transition-colors focus-visible:outline focus-visible:outline-2 focus-visible:outline-canopy-accent focus-visible:outline-offset-1"
+                title="Duplicate panel as new tab"
+                aria-label="Duplicate panel as new tab"
+                type="button"
+              >
+                <Plus className="w-3 h-3" aria-hidden="true" />
+              </button>
             </div>
           </SortableContext>
         </DndContext>
