@@ -7,6 +7,72 @@ import { useWorktreeSelectionStore } from "@/store/worktreeStore";
 import { DEFAULT_COPYTREE_FORMAT } from "@/lib/copyTreeFormat";
 
 export function registerWorktreeActions(actions: ActionRegistry, callbacks: ActionCallbacks): void {
+  // Query action: list all worktrees with metadata
+  actions.set("worktree.list", () => ({
+    id: "worktree.list",
+    title: "List Worktrees",
+    description: "Get list of all worktrees with status information",
+    category: "worktree",
+    kind: "query",
+    danger: "safe",
+    scope: "renderer",
+    run: async () => {
+      const worktrees = callbacks.getWorktrees();
+      const activeWorktreeId = callbacks.getActiveWorktreeId();
+
+      return worktrees.map((w) => ({
+        id: w.id,
+        path: w.path,
+        branch: w.branch,
+        isActive: w.id === activeWorktreeId,
+        isMain: w.isMain ?? false,
+        issueNumber: w.issueNumber ?? null,
+        issueTitle: w.issueTitle ?? null,
+        prNumber: w.prNumber ?? null,
+        prTitle: w.prTitle ?? null,
+        prUrl: w.prUrl ?? null,
+        status: w.status ?? null,
+        lastCommit: w.lastCommit ?? null,
+      }));
+    },
+  }));
+
+  // Query action: get current/active worktree details
+  actions.set("worktree.getCurrent", () => ({
+    id: "worktree.getCurrent",
+    title: "Get Current Worktree",
+    description: "Get the currently active worktree details",
+    category: "worktree",
+    kind: "query",
+    danger: "safe",
+    scope: "renderer",
+    run: async () => {
+      const activeWorktreeId = callbacks.getActiveWorktreeId();
+      if (!activeWorktreeId) {
+        return null;
+      }
+
+      const worktree = useWorktreeDataStore.getState().worktrees.get(activeWorktreeId);
+      if (!worktree) {
+        return null;
+      }
+
+      return {
+        id: worktree.id,
+        path: worktree.path,
+        branch: worktree.branch,
+        isMain: worktree.isMain ?? false,
+        issueNumber: worktree.issueNumber ?? null,
+        issueTitle: worktree.issueTitle ?? null,
+        prNumber: worktree.prNumber ?? null,
+        prTitle: worktree.prTitle ?? null,
+        prUrl: worktree.prUrl ?? null,
+        status: worktree.status ?? null,
+        lastCommit: worktree.lastCommit ?? null,
+      };
+    },
+  }));
+
   actions.set("worktree.refresh", () => ({
     id: "worktree.refresh",
     title: "Refresh Worktrees",
