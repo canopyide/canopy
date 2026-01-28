@@ -441,7 +441,11 @@ export class AppAgentService {
           if (argsString && argsString !== "{}") {
             try {
               const parsedArgs = JSON.parse(argsString);
-              if (parsedArgs && typeof parsedArgs === "object" && Object.keys(parsedArgs).length > 0) {
+              if (
+                parsedArgs &&
+                typeof parsedArgs === "object" &&
+                Object.keys(parsedArgs).length > 0
+              ) {
                 args = parsedArgs;
               }
             } catch {
@@ -455,7 +459,10 @@ export class AppAgentService {
             }
           }
 
-          console.log(`[AppAgent] Executing: ${action.id}`, args ? JSON.stringify(args) : "(no args)");
+          console.log(
+            `[AppAgent] Executing: ${action.id}`,
+            args ? JSON.stringify(args) : "(no args)"
+          );
 
           // Execute the action via IPC to renderer
           const result = await this.dispatchAction(action.id, args, context);

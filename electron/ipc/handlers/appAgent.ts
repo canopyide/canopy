@@ -33,7 +33,7 @@ const ActionContextSchema = z.object({
   focusedTerminalId: z.string().optional(),
 });
 
-export function registerAppAgentHandlers(_deps: HandlerDependencies): () => void {
+export function registerAppAgentHandlers(deps: HandlerDependencies): () => void {
   console.log("[AppAgent] Registering IPC handlers...");
   const handlers: Array<() => void> = [];
 
@@ -138,7 +138,15 @@ export function registerAppAgentHandlers(_deps: HandlerDependencies): () => void
   // Uses a request-response pattern with unique response channels
   const pendingDispatches = new Map<
     string,
-    { resolve: (value: unknown) => void; reject: (reason: unknown) => void; timeout: NodeJS.Timeout }
+    {
+      resolve: (value: {
+        ok: boolean;
+        result?: unknown;
+        error?: { code: string; message: string };
+      }) => void;
+      reject: (reason: unknown) => void;
+      timeout: NodeJS.Timeout;
+    }
   >();
 
   const handleDispatchAction = async (
@@ -199,7 +207,9 @@ export function registerAppAgentHandlers(_deps: HandlerDependencies): () => void
     }
   };
   ipcMain.on("app-agent:dispatch-action-response", handleDispatchResponse);
-  handlers.push(() => ipcMain.removeListener("app-agent:dispatch-action-response", handleDispatchResponse));
+  handlers.push(() =>
+    ipcMain.removeListener("app-agent:dispatch-action-response", handleDispatchResponse)
+  );
 
   return () => handlers.forEach((cleanup) => cleanup());
 }

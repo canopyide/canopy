@@ -1,4 +1,5 @@
 import type { ActionDefinition, ActionId } from "@shared/types/actions";
+import type { Worktree } from "@shared/types/domain";
 
 export type ActionRegistry = Map<ActionId, () => ActionDefinition<unknown, unknown>>;
 
@@ -31,7 +32,7 @@ export interface ActionCallbacks {
   onInject: (worktreeId: string) => void;
   getDefaultCwd: () => string;
   getActiveWorktreeId: () => string | undefined;
-  getWorktrees: () => Array<{ id: string; path: string }>;
+  getWorktrees: () => Worktree[];
   getFocusedId: () => string | null;
   getGridNavigation: () => {
     findNearest: (currentId: string, direction: NavigationDirection) => string | null;
