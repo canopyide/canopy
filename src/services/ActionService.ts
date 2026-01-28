@@ -1,6 +1,4 @@
-import { zodToJsonSchema } from "zod-to-json-schema";
-import type { ZodSchema } from "zod/v3";
-import type { z } from "zod";
+import { z } from "zod";
 import type {
   ActionId,
   ActionDefinition,
@@ -24,14 +22,16 @@ function isElectronApiAvailable(): boolean {
 }
 
 /**
- * Converts a zod schema to JSON Schema format.
- * Uses `unknown` intermediate cast because zod v4 (used by this project) and
- * zod-to-json-schema (which uses zod/v3 types) have incompatible type definitions
- * despite runtime compatibility.
+ * Converts a zod schema to JSON Schema format using Zod v4's native toJSONSchema.
  */
 function zodSchemaToJsonSchema(schema: z.ZodType): Record<string, unknown> | undefined {
   try {
-    return zodToJsonSchema(schema as unknown as ZodSchema) as Record<string, unknown>;
+    return z.toJSONSchema(schema, {
+      io: "input",
+      unrepresentable: "any",
+      reused: "inline",
+      cycles: "ref",
+    }) as Record<string, unknown>;
   } catch (err) {
     logWarn("Failed to convert zod schema to JSON Schema", { error: err });
     return undefined;
