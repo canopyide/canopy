@@ -58,6 +58,7 @@ export type AgentDecisionReply = z.infer<typeof AgentDecisionReplySchema>;
 export interface OneShotRunRequest {
   prompt: string;
   clarificationChoice?: string;
+  maxTurns?: number; // Default 10
 }
 
 export interface OneShotRunResult {
@@ -66,14 +67,27 @@ export interface OneShotRunResult {
   error?: string;
   traceId?: string;
   rawModelOutput?: string;
+  turnsUsed?: number; // Track iteration count
+  totalToolCalls?: number; // Track function call count
 }
 
 export const AGENT_ACCESSIBLE_ACTIONS = [
+  // Query actions - return system state
+  "terminal.list",
+  "panel.list",
+  "worktree.list",
+  "worktree.getCurrent",
+  "project.getCurrent",
+  // Command actions - perform operations
   "app.settings",
   "app.settings.openTab",
   "terminal.new",
+  "terminal.kill",
+  "terminal.close",
+  "terminal.trash",
   "terminal.palette",
   "worktree.createDialog.open",
+  "worktree.setActive",
   "agent.launch",
   "nav.toggleSidebar",
   "panel.toggleDock",

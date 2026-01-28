@@ -16,6 +16,57 @@ export function registerTerminalActions(actions: ActionRegistry, callbacks: Acti
     }
   };
 
+  // Query action: list all terminals with metadata
+  actions.set("terminal.list", () => ({
+    id: "terminal.list",
+    title: "List Terminals",
+    description: "Get list of all terminals with metadata (id, kind, worktreeId, title, location, status)",
+    category: "terminal",
+    kind: "query",
+    danger: "safe",
+    scope: "renderer",
+    argsSchema: z
+      .object({
+        worktreeId: z.string().optional(),
+        location: z.enum(["grid", "dock", "trash"]).optional(),
+      })
+      .optional(),
+    run: async (args: unknown) => {
+      const { worktreeId, location } = (args ?? {}) as {
+        worktreeId?: string;
+        location?: "grid" | "dock" | "trash";
+      };
+      const state = useTerminalStore.getState();
+      let terminals = state.terminals;
+
+      // Filter by worktree if specified
+      if (worktreeId) {
+        terminals = terminals.filter((t) => t.worktreeId === worktreeId);
+      }
+
+      // Filter by location if specified
+      if (location) {
+        terminals = terminals.filter((t) => t.location === location);
+      } else {
+        // By default, exclude trashed terminals
+        terminals = terminals.filter((t) => t.location !== "trash");
+      }
+
+      // Return essential metadata only (avoid returning full PTY buffers)
+      return terminals.map((t) => ({
+        id: t.id,
+        kind: t.kind,
+        type: t.type,
+        worktreeId: t.worktreeId ?? null,
+        title: t.title ?? null,
+        location: t.location ?? "grid",
+        agentId: t.agentId ?? null,
+        agentState: t.agentState ?? null,
+        isInputLocked: t.isInputLocked ?? false,
+      }));
+    },
+  }));
+
   actions.set("terminal.new", () => ({
     id: "terminal.new",
     title: "New Terminal",

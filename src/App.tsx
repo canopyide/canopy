@@ -18,6 +18,7 @@ import {
   useWindowNotifications,
   useWorktreeActions,
   useMenuActions,
+  useAppAgentDispatcher,
 } from "./hooks";
 import { useActionRegistry } from "./hooks/useActionRegistry";
 import { actionService } from "./services/ActionService";
@@ -487,6 +488,7 @@ function App() {
   const loadRecipes = useRecipeStore((state) => state.loadRecipes);
   useTerminalConfig();
   useWindowNotifications();
+  useAppAgentDispatcher(); // Listen for action dispatch requests from main process
 
   const [homeDir, setHomeDir] = useState<string | undefined>(undefined);
   useEffect(() => {
