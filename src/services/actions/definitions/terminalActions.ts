@@ -20,7 +20,8 @@ export function registerTerminalActions(actions: ActionRegistry, callbacks: Acti
   actions.set("terminal.list", () => ({
     id: "terminal.list",
     title: "List Terminals",
-    description: "Get list of all terminals with metadata (id, kind, worktreeId, title, location, status)",
+    description:
+      "Get list of all terminals with metadata (id, kind, worktreeId, title, location, status)",
     category: "terminal",
     kind: "query",
     danger: "safe",

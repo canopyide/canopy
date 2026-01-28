@@ -1,6 +1,6 @@
 import { useEffect } from "react";
 import { actionService } from "@/services/ActionService";
-import type { ActionContext, ActionId } from "@shared/types/actions";
+import type { ActionId } from "@shared/types/actions";
 
 /**
  * Hook that listens for action dispatch requests from the main process
@@ -16,18 +16,14 @@ export function useAppAgentDispatcher(): void {
     }
 
     const cleanup = window.electron.appAgent.onDispatchActionRequest(async (payload) => {
-      const { requestId, actionId, args, context } = payload;
+      const { requestId, actionId, args } = payload;
 
       try {
         // Dispatch the action through ActionService with agent source
-        const result = await actionService.dispatch(
-          actionId as ActionId,
-          args,
-          {
-            source: "agent",
-            confirmed: true, // Agent-dispatched actions are pre-confirmed
-          }
-        );
+        const result = await actionService.dispatch(actionId as ActionId, args, {
+          source: "agent",
+          confirmed: true, // Agent-dispatched actions are pre-confirmed
+        });
 
         // Send the result back to main process
         window.electron.appAgent.sendDispatchActionResponse({

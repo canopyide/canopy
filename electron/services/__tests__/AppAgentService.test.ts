@@ -164,10 +164,7 @@ describe("Schema sanitization", () => {
 
   it("unwraps anyOf with object type", () => {
     const result = sanitizeSchema({
-      anyOf: [
-        { type: "object", properties: { id: { type: "string" } } },
-        { type: "null" },
-      ],
+      anyOf: [{ type: "object", properties: { id: { type: "string" } } }, { type: "null" }],
     });
     expect(result).not.toHaveProperty("anyOf");
     expect(result.type).toBe("object");

@@ -773,7 +773,7 @@ function App() {
     onInject: inject,
     getDefaultCwd: () => defaultTerminalCwd,
     getActiveWorktreeId: () => activeWorktree?.id,
-    getWorktrees: () => worktrees.map((w) => ({ id: w.id, path: w.path })),
+    getWorktrees: () => worktrees,
     getFocusedId: () => focusedId,
     getGridNavigation: () => ({ findNearest, findByIndex, findDockByIndex, getCurrentLocation }),
   });
