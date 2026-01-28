@@ -1,4 +1,5 @@
 import { randomUUID } from "crypto";
+import { BrowserWindow, ipcMain } from "electron";
 import { store } from "../store.js";
 import { events } from "./events.js";
 import {
@@ -12,18 +13,24 @@ import type { ActionManifestEntry, ActionContext } from "../../shared/types/acti
 
 const FIREWORKS_BASE_URL = "https://api.fireworks.ai/inference/v1";
 
+const DEFAULT_MAX_TURNS = 10;
+
 const SYSTEM_PROMPT = `You are Canopy's app-wide assistant. You help users control the Canopy IDE by selecting and executing actions.
 
-You have access to tools that represent available actions in the application. When a user asks you to do something, analyze their request and either:
-1. Call the appropriate tool with the correct arguments
-2. Ask a clarifying question if you need more information
-3. Reply with a helpful message if you cannot fulfill the request
+You have access to tools that represent available actions in the application. When a user asks you to do something:
+1. First use query tools (like terminal.list, worktree.list) to understand the current state if needed
+2. Then call the appropriate action tool with the correct arguments
+3. Ask a clarifying question if you need more information from the user
+4. Reply with a helpful message when you've completed the task or cannot fulfill the request
 
 Guidelines:
-- Only use the tools that are provided to you
+- You can call multiple tools in sequence to gather information before acting
+- Query tools (kind: "query") return current state - use them to make informed decisions
+- Action tools (kind: "command") perform operations - use them to change state
 - If the user's request is ambiguous, ask a clarifying question with specific choices
-- Be concise in your responses
-- If an action cannot be performed, explain why briefly`;
+- Be concise in your final responses
+- If an action cannot be performed, explain why briefly
+- After completing all necessary tool calls, provide a brief confirmation message`;
 
 interface OpenAIMessage {
   role: "system" | "user" | "assistant" | "tool";
@@ -239,6 +246,7 @@ export class AppAgentService {
     context: ActionContext
   ): Promise<OneShotRunResult> {
     const config = store.get("appAgentConfig");
+    const maxTurns = request.maxTurns ?? DEFAULT_MAX_TURNS;
 
     if (!config.apiKey) {
       return {
@@ -263,11 +271,15 @@ export class AppAgentService {
       timestamp: Date.now(),
     });
 
+    let turnsUsed = 0;
+    let totalToolCalls = 0;
+
     try {
       console.log("\n========================================");
       console.log("[AppAgent] runOneShot called");
       console.log("[AppAgent] Request prompt:", request.prompt);
       console.log("[AppAgent] Total actions passed:", actions.length);
+      console.log("[AppAgent] Max turns:", maxTurns);
       console.log("========================================\n");
 
       const agentActions = actions.filter(
@@ -287,7 +299,6 @@ export class AppAgentService {
       const messages = this.buildMessages(request, context);
 
       console.log("[AppAgent] Built tools count:", tools.length);
-      console.log("[AppAgent] Tools:", JSON.stringify(tools, null, 2));
 
       const baseUrl = config.baseUrl || FIREWORKS_BASE_URL;
       let url: URL;
@@ -301,71 +312,176 @@ export class AppAgentService {
         };
       }
 
-      const requestBody = {
-        model: config.model,
-        messages,
-        tools,
-        tool_choice: "auto",
-        temperature: 0.1,
-      };
-
-      console.log("[AppAgent] Full request body:", JSON.stringify(requestBody, null, 2));
-
-      const timeoutId = setTimeout(() => abortController.abort(), 60000);
-
-      const response = await fetch(url.toString(), {
-        method: "POST",
-        headers: {
-          "Content-Type": "application/json",
-          Authorization: `Bearer ${config.apiKey}`,
-        },
-        body: JSON.stringify(requestBody),
-        signal: abortController.signal,
-      });
-
-      clearTimeout(timeoutId);
-
-      console.log("[AppAgent] Response status:", response.status);
-
-      if (!response.ok) {
-        const errorText = await response.text();
-        console.log("[AppAgent] Error response:", errorText);
-        let errorMessage = `API request failed: ${response.status}`;
-
-        if (response.status === 401) {
-          errorMessage = "Invalid API key. Please check your Fireworks API key in Settings.";
-        } else if (response.status === 429) {
-          errorMessage = "Rate limit exceeded. Please try again in a moment.";
-        } else if (response.status >= 500) {
-          errorMessage = "Service temporarily unavailable. Please try again later.";
+      // Multi-step execution loop
+      while (turnsUsed < maxTurns) {
+        if (abortController.signal.aborted) {
+          return {
+            success: false,
+            error: "Request cancelled",
+            traceId,
+            turnsUsed,
+            totalToolCalls,
+          };
         }
 
-        return {
-          success: false,
-          error: errorMessage,
-          traceId,
-          rawModelOutput: errorText,
+        turnsUsed++;
+        console.log(`[AppAgent] Turn ${turnsUsed}/${maxTurns}`);
+
+        const requestBody = {
+          model: config.model,
+          messages,
+          tools: tools.length > 0 ? tools : undefined,
+          tool_choice: tools.length > 0 ? "auto" : undefined,
+          temperature: 0.1,
         };
+
+        const timeoutId = setTimeout(() => abortController.abort(), 60000);
+
+        const response = await fetch(url.toString(), {
+          method: "POST",
+          headers: {
+            "Content-Type": "application/json",
+            Authorization: `Bearer ${config.apiKey}`,
+          },
+          body: JSON.stringify(requestBody),
+          signal: abortController.signal,
+        });
+
+        clearTimeout(timeoutId);
+
+        console.log("[AppAgent] Response status:", response.status);
+
+        if (!response.ok) {
+          const errorText = await response.text();
+          console.log("[AppAgent] Error response:", errorText);
+          let errorMessage = `API request failed: ${response.status}`;
+
+          if (response.status === 401) {
+            errorMessage = "Invalid API key. Please check your Fireworks API key in Settings.";
+          } else if (response.status === 429) {
+            errorMessage = "Rate limit exceeded. Please try again in a moment.";
+          } else if (response.status >= 500) {
+            errorMessage = "Service temporarily unavailable. Please try again later.";
+          }
+
+          return {
+            success: false,
+            error: errorMessage,
+            traceId,
+            rawModelOutput: errorText,
+            turnsUsed,
+            totalToolCalls,
+          };
+        }
+
+        const data = (await response.json()) as OpenAIResponse;
+        const choice = data.choices[0];
+
+        if (!choice) {
+          return {
+            success: false,
+            error: "No response from model",
+            traceId,
+            turnsUsed,
+            totalToolCalls,
+          };
+        }
+
+        const assistantMessage = choice.message;
+
+        // If no tool calls, this is a final response
+        if (!assistantMessage.tool_calls || assistantMessage.tool_calls.length === 0) {
+          console.log("[AppAgent] Final response (no tool calls)");
+
+          const decision = this.parseDecision(assistantMessage, agentActions);
+
+          return {
+            success: true,
+            decision,
+            traceId,
+            rawModelOutput: JSON.stringify(assistantMessage, null, 2),
+            turnsUsed,
+            totalToolCalls,
+          };
+        }
+
+        // Process tool calls
+        console.log(`[AppAgent] Processing ${assistantMessage.tool_calls.length} tool call(s)`);
+
+        // Add assistant message with tool calls to history
+        messages.push({
+          role: "assistant",
+          content: assistantMessage.content,
+          tool_calls: assistantMessage.tool_calls,
+        });
+
+        // Execute each tool call and collect results
+        for (const toolCall of assistantMessage.tool_calls) {
+          totalToolCalls++;
+          const toolName = toolCall.function.name;
+
+          // Find the action (convert sanitized name back)
+          const action = agentActions.find(
+            (a) =>
+              this.sanitizeToolName(a.name) === toolName || a.name === toolName || a.id === toolName
+          );
+
+          if (!action) {
+            console.log(`[AppAgent] Tool not found: ${toolName}`);
+            messages.push({
+              role: "tool",
+              tool_call_id: toolCall.id,
+              content: JSON.stringify({ error: `Unknown action: ${toolName}` }),
+            });
+            continue;
+          }
+
+          let args: Record<string, unknown> | undefined;
+          const argsString = toolCall.function.arguments.trim();
+          if (argsString && argsString !== "{}") {
+            try {
+              const parsedArgs = JSON.parse(argsString);
+              if (parsedArgs && typeof parsedArgs === "object" && Object.keys(parsedArgs).length > 0) {
+                args = parsedArgs;
+              }
+            } catch {
+              console.log(`[AppAgent] Failed to parse args for ${toolName}:`, argsString);
+              messages.push({
+                role: "tool",
+                tool_call_id: toolCall.id,
+                content: JSON.stringify({ error: "Invalid arguments format" }),
+              });
+              continue;
+            }
+          }
+
+          console.log(`[AppAgent] Executing: ${action.id}`, args ? JSON.stringify(args) : "(no args)");
+
+          // Execute the action via IPC to renderer
+          const result = await this.dispatchAction(action.id, args, context);
+
+          console.log(`[AppAgent] Result for ${action.id}:`, JSON.stringify(result).slice(0, 200));
+
+          // Add tool result to messages
+          messages.push({
+            role: "tool",
+            tool_call_id: toolCall.id,
+            content: JSON.stringify(result),
+          });
+        }
       }
 
-      const data = (await response.json()) as OpenAIResponse;
-      const choice = data.choices[0];
-
-      if (!choice) {
-        return {
-          success: false,
-          error: "No response from model",
-          traceId,
-        };
-      }
-
-      const decision = this.parseDecision(choice.message, agentActions);
-
+      // Max turns reached
+      console.log(`[AppAgent] Max turns (${maxTurns}) reached`);
       return {
         success: true,
-        decision,
+        decision: {
+          type: "reply",
+          text: "I completed the available operations. Let me know if you need anything else.",
+        },
         traceId,
-        rawModelOutput: JSON.stringify(choice.message, null, 2),
+        turnsUsed,
+        totalToolCalls,
       };
     } catch (error) {
       if (error instanceof Error && error.name === "AbortError") {
@@ -373,6 +489,8 @@ export class AppAgentService {
           success: false,
           error: "Request cancelled",
           traceId,
+          turnsUsed,
+          totalToolCalls,
         };
       }
 
@@ -389,10 +507,58 @@ export class AppAgentService {
         success: false,
         error: errorMessage,
         traceId,
+        turnsUsed,
+        totalToolCalls,
       };
     } finally {
       this.inFlightRequest = null;
     }
+  }
+
+  /**
+   * Dispatch an action to the renderer via IPC and wait for the result.
+   */
+  private async dispatchAction(
+    actionId: string,
+    args: Record<string, unknown> | undefined,
+    context: ActionContext
+  ): Promise<{ ok: boolean; result?: unknown; error?: { code: string; message: string } }> {
+    const mainWindow = BrowserWindow.getAllWindows()[0];
+    if (!mainWindow || mainWindow.isDestroyed()) {
+      return { ok: false, error: { code: "NO_WINDOW", message: "Main window not available" } };
+    }
+
+    const requestId = `${Date.now()}-${Math.random().toString(36).slice(2)}`;
+
+    return new Promise((resolve) => {
+      const timeout = setTimeout(() => {
+        ipcMain.removeListener("app-agent:dispatch-action-response", handler);
+        resolve({ ok: false, error: { code: "TIMEOUT", message: "Action dispatch timed out" } });
+      }, 30000);
+
+      const handler = (
+        _event: Electron.IpcMainEvent,
+        payload: {
+          requestId: string;
+          result: { ok: boolean; result?: unknown; error?: { code: string; message: string } };
+        }
+      ) => {
+        if (payload.requestId === requestId) {
+          clearTimeout(timeout);
+          ipcMain.removeListener("app-agent:dispatch-action-response", handler);
+          resolve(payload.result);
+        }
+      };
+
+      ipcMain.on("app-agent:dispatch-action-response", handler);
+
+      mainWindow.webContents.send("app-agent:dispatch-action-request", {
+        requestId,
+        actionId,
+        args,
+        context,
+      });
+    });
   }
 
   cancel(): void {

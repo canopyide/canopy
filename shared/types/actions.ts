@@ -11,6 +11,11 @@ export type ActionScope = "renderer";
 
 export type ActionId =
   | KeyAction
+  // Query actions for App Agent
+  | "terminal.list"
+  | "panel.list"
+  | "worktree.list"
+  | "worktree.getCurrent"
   // Parameterized actions (not in KeyAction)
   | "system.openExternal"
   | "system.openPath"

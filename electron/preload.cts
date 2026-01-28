@@ -406,6 +406,7 @@ const CHANNELS = {
   APP_AGENT_TEST_API_KEY: "app-agent:test-api-key",
   APP_AGENT_TEST_MODEL: "app-agent:test-model",
   APP_AGENT_CANCEL: "app-agent:cancel",
+  APP_AGENT_DISPATCH_ACTION: "app-agent:dispatch-action",
 } as const;
 
 const api: ElectronAPI = {
@@ -1221,6 +1222,55 @@ const api: ElectronAPI = {
     testModel: (model: string) => ipcRenderer.invoke(CHANNELS.APP_AGENT_TEST_MODEL, model),
 
     cancel: () => ipcRenderer.invoke(CHANNELS.APP_AGENT_CANCEL),
+
+    dispatchAction: (payload: {
+      actionId: string;
+      args?: Record<string, unknown>;
+      context: {
+        projectId?: string;
+        activeWorktreeId?: string;
+        focusedWorktreeId?: string;
+        focusedTerminalId?: string;
+      };
+    }) => ipcRenderer.invoke(CHANNELS.APP_AGENT_DISPATCH_ACTION, payload),
+
+    // Listen for action dispatch requests from main process (for multi-step execution)
+    onDispatchActionRequest: (
+      callback: (payload: {
+        requestId: string;
+        actionId: string;
+        args?: Record<string, unknown>;
+        context: {
+          projectId?: string;
+          activeWorktreeId?: string;
+          focusedWorktreeId?: string;
+          focusedTerminalId?: string;
+        };
+      }) => void
+    ) => {
+      const handler = (
+        _event: Electron.IpcRendererEvent,
+        payload: {
+          requestId: string;
+          actionId: string;
+          args?: Record<string, unknown>;
+          context: {
+            projectId?: string;
+            activeWorktreeId?: string;
+            focusedWorktreeId?: string;
+            focusedTerminalId?: string;
+          };
+        }
+      ) => callback(payload);
+      ipcRenderer.on("app-agent:dispatch-action-request", handler);
+      return () => ipcRenderer.removeListener("app-agent:dispatch-action-request", handler);
+    },
+
+    // Send action dispatch response back to main process
+    sendDispatchActionResponse: (payload: {
+      requestId: string;
+      result: { ok: boolean; result?: unknown; error?: { code: string; message: string } };
+    }) => ipcRenderer.send("app-agent:dispatch-action-response", payload),
   },
 };
 
