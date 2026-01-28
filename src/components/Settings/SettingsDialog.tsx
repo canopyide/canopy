@@ -14,7 +14,9 @@ import {
 import { cn } from "@/lib/utils";
 import { appClient } from "@/clients";
 import { AppDialog } from "@/components/ui/AppDialog";
+import { CanopyIcon } from "@/components/icons";
 import { AgentSettings } from "./AgentSettings";
+import { AssistantSettingsTab } from "./AssistantSettingsTab";
 import { GeneralTab } from "./GeneralTab";
 import { TerminalSettingsTab } from "./TerminalSettingsTab";
 import { TerminalAppearanceTab } from "./TerminalAppearanceTab";
@@ -38,6 +40,7 @@ export type SettingsTab =
   | "terminal"
   | "terminalAppearance"
   | "worktree"
+  | "assistant"
   | "agents"
   | "github"
   | "sidecar"
@@ -86,7 +89,8 @@ export function SettingsDialog({
     terminal: "Panel Grid",
     terminalAppearance: "Appearance",
     worktree: "Worktree Paths",
-    agents: "Agent Settings",
+    assistant: "Canopy Assistant",
+    agents: "CLI Agents",
     github: "GitHub Integration",
     sidecar: "Sidecar Links",
     toolbar: "Toolbar Customization",
@@ -136,11 +140,18 @@ export function SettingsDialog({
             Worktree
           </NavButton>
           <NavButton
+            active={activeTab === "assistant"}
+            onClick={() => setActiveTab("assistant")}
+            icon={<CanopyIcon className="w-4 h-4" />}
+          >
+            Assistant
+          </NavButton>
+          <NavButton
             active={activeTab === "agents"}
             onClick={() => setActiveTab("agents")}
             icon={<Bot className="w-4 h-4" />}
           >
-            Agents
+            CLI Agents
           </NavButton>
           <NavButton
             active={activeTab === "github"}
@@ -205,6 +216,10 @@ export function SettingsDialog({
 
             <div className={activeTab === "worktree" ? "" : "hidden"}>
               <WorktreeSettingsTab />
+            </div>
+
+            <div className={activeTab === "assistant" ? "" : "hidden"}>
+              <AssistantSettingsTab />
             </div>
 
             <div className={activeTab === "agents" ? "" : "hidden"}>

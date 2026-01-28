@@ -34,6 +34,7 @@ const ActionContextSchema = z.object({
 });
 
 export function registerAppAgentHandlers(_deps: HandlerDependencies): () => void {
+  console.log("[AppAgent] Registering IPC handlers...");
   const handlers: Array<() => void> = [];
 
   const handleRunOneShot = async (
@@ -106,6 +107,25 @@ export function registerAppAgentHandlers(_deps: HandlerDependencies): () => void
   };
   ipcMain.handle(CHANNELS.APP_AGENT_HAS_API_KEY, handleHasApiKey);
   handlers.push(() => ipcMain.removeHandler(CHANNELS.APP_AGENT_HAS_API_KEY));
+
+  const handleTestApiKey = async (_event: Electron.IpcMainInvokeEvent, apiKey: string) => {
+    if (!apiKey || typeof apiKey !== "string") {
+      throw new Error("Invalid API key");
+    }
+    return appAgentService.testApiKey(apiKey.trim());
+  };
+  ipcMain.handle(CHANNELS.APP_AGENT_TEST_API_KEY, handleTestApiKey);
+  handlers.push(() => ipcMain.removeHandler(CHANNELS.APP_AGENT_TEST_API_KEY));
+
+  const handleTestModel = async (_event: Electron.IpcMainInvokeEvent, model: string) => {
+    console.log("[AppAgent] handleTestModel IPC called with:", model);
+    if (!model || typeof model !== "string") {
+      throw new Error("Invalid model");
+    }
+    return appAgentService.testModel(model.trim());
+  };
+  ipcMain.handle(CHANNELS.APP_AGENT_TEST_MODEL, handleTestModel);
+  handlers.push(() => ipcMain.removeHandler(CHANNELS.APP_AGENT_TEST_MODEL));
 
   const handleCancel = async () => {
     appAgentService.cancel();
