@@ -71,9 +71,7 @@ export function createProjectSettingsSnapshot(
     }))
     .filter((cmd) => cmd.name || cmd.command);
 
-  const sanitizedPaths = excludedPaths
-    .map((p) => p.trim())
-    .filter(Boolean);
+  const sanitizedPaths = excludedPaths.map((p) => p.trim()).filter(Boolean);
 
   const sortedCommandOverrides = [...commandOverrides];
 
@@ -90,10 +88,7 @@ export function createProjectSettingsSnapshot(
   };
 }
 
-export function areSnapshotsEqual(
-  a: ProjectSettingsSnapshot,
-  b: ProjectSettingsSnapshot
-): boolean {
+export function areSnapshotsEqual(a: ProjectSettingsSnapshot, b: ProjectSettingsSnapshot): boolean {
   if (a.name !== b.name) return false;
   if (a.emoji !== b.emoji) return false;
   if (a.devServerCommand !== b.devServerCommand) return false;
