@@ -61,3 +61,5 @@ export { useHorizontalScrollControls } from "./useHorizontalScrollControls";
 export type { UseHorizontalScrollControlsReturn } from "./useHorizontalScrollControls";
 
 export { useDockRenderState } from "./useDockRenderState";
+
+export { useAppAgentDispatcher } from "./useAppAgentDispatcher";

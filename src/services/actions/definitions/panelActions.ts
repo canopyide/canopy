@@ -6,8 +6,72 @@ import { getAIAgentInfo } from "@/lib/aiAgentDetection";
 import { useDiagnosticsStore } from "@/store/diagnosticsStore";
 import { useSidecarStore } from "@/store/sidecarStore";
 import { useDockStore } from "@/store/dockStore";
+import { useTerminalStore } from "@/store/terminalStore";
 
 export function registerPanelActions(actions: ActionRegistry, callbacks: ActionCallbacks): void {
+  // Query action: list all panels with metadata
+  actions.set("panel.list", () => ({
+    id: "panel.list",
+    title: "List Panels",
+    description: "Get list of all panels with layout information",
+    category: "panel",
+    kind: "query",
+    danger: "safe",
+    scope: "renderer",
+    argsSchema: z
+      .object({
+        worktreeId: z.string().optional(),
+        location: z.enum(["grid", "dock", "trash"]).optional(),
+      })
+      .optional(),
+    run: async (args: unknown) => {
+      const { worktreeId, location } = (args ?? {}) as {
+        worktreeId?: string;
+        location?: "grid" | "dock" | "trash";
+      };
+      const state = useTerminalStore.getState();
+      let panels = state.terminals;
+
+      if (worktreeId) {
+        panels = panels.filter((p) => p.worktreeId === worktreeId);
+      }
+
+      if (location) {
+        panels = panels.filter((p) => p.location === location);
+      } else {
+        panels = panels.filter((p) => p.location !== "trash");
+      }
+
+      const dockState = useDockStore.getState();
+      const sidecarState = useSidecarStore.getState();
+
+      return {
+        panels: panels.map((p) => ({
+          id: p.id,
+          kind: p.kind,
+          type: p.type,
+          worktreeId: p.worktreeId ?? null,
+          title: p.title ?? null,
+          location: p.location ?? "grid",
+          agentId: p.agentId ?? null,
+          agentState: p.agentState ?? null,
+        })),
+        dock: {
+          mode: dockState.mode,
+          behavior: dockState.behavior,
+          panelCount: panels.filter((p) => p.location === "dock").length,
+        },
+        sidecar: {
+          isOpen: sidecarState.isOpen,
+          tabCount: sidecarState.tabs.length,
+          activeTabId: sidecarState.activeTabId,
+        },
+        focusedPanelId: state.focusedId ?? null,
+        maximizedPanelId: state.maximizedId ?? null,
+      };
+    },
+  }));
+
   actions.set("panel.palette", () => ({
     id: "panel.palette",
     title: "Panel Palette",

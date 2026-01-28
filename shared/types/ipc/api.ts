@@ -582,5 +582,25 @@ export interface ElectronAPI {
     testModel(model: string): Promise<{ valid: boolean; error?: string }>;
     /** Cancel any in-flight request */
     cancel(): Promise<void>;
+    /** Dispatch an action during multi-step execution (internal) */
+    dispatchAction(payload: {
+      actionId: string;
+      args?: Record<string, unknown>;
+      context: ActionContext;
+    }): Promise<{ ok: boolean; result?: unknown; error?: { code: string; message: string } }>;
+    /** Listen for action dispatch requests from main process */
+    onDispatchActionRequest(
+      callback: (payload: {
+        requestId: string;
+        actionId: string;
+        args?: Record<string, unknown>;
+        context: ActionContext;
+      }) => void
+    ): () => void;
+    /** Send action dispatch response back to main process */
+    sendDispatchActionResponse(payload: {
+      requestId: string;
+      result: { ok: boolean; result?: unknown; error?: { code: string; message: string } };
+    }): void;
   };
 }

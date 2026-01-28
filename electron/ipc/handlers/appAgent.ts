@@ -133,5 +133,73 @@ export function registerAppAgentHandlers(_deps: HandlerDependencies): () => void
   ipcMain.handle(CHANNELS.APP_AGENT_CANCEL, handleCancel);
   handlers.push(() => ipcMain.removeHandler(CHANNELS.APP_AGENT_CANCEL));
 
+  // Handler for dispatching actions from the agent during multi-step execution
+  // This sends actions to the renderer to be executed by ActionService
+  // Uses a request-response pattern with unique response channels
+  const pendingDispatches = new Map<
+    string,
+    { resolve: (value: unknown) => void; reject: (reason: unknown) => void; timeout: NodeJS.Timeout }
+  >();
+
+  const handleDispatchAction = async (
+    _event: Electron.IpcMainInvokeEvent,
+    payload: {
+      actionId: string;
+      args?: Record<string, unknown>;
+      context: ActionContext;
+    }
+  ): Promise<{ ok: boolean; result?: unknown; error?: { code: string; message: string } }> => {
+    if (!payload || typeof payload !== "object") {
+      return { ok: false, error: { code: "INVALID_PAYLOAD", message: "Invalid payload" } };
+    }
+    const { actionId, args, context } = payload;
+    if (!actionId || typeof actionId !== "string") {
+      return { ok: false, error: { code: "INVALID_ACTION_ID", message: "Invalid actionId" } };
+    }
+
+    const mainWindow = deps.mainWindow;
+    if (!mainWindow || mainWindow.isDestroyed()) {
+      return { ok: false, error: { code: "NO_WINDOW", message: "Main window not available" } };
+    }
+
+    const requestId = `${Date.now()}-${Math.random().toString(36).slice(2)}`;
+
+    return new Promise((resolve) => {
+      const timeout = setTimeout(() => {
+        pendingDispatches.delete(requestId);
+        resolve({ ok: false, error: { code: "TIMEOUT", message: "Action dispatch timed out" } });
+      }, 30000); // 30 second timeout
+
+      pendingDispatches.set(requestId, { resolve, reject: () => {}, timeout });
+
+      mainWindow.webContents.send("app-agent:dispatch-action-request", {
+        requestId,
+        actionId,
+        args,
+        context,
+      });
+    });
+  };
+  ipcMain.handle(CHANNELS.APP_AGENT_DISPATCH_ACTION, handleDispatchAction);
+  handlers.push(() => ipcMain.removeHandler(CHANNELS.APP_AGENT_DISPATCH_ACTION));
+
+  // Handle response from renderer
+  const handleDispatchResponse = (
+    _event: Electron.IpcMainEvent,
+    payload: {
+      requestId: string;
+      result: { ok: boolean; result?: unknown; error?: { code: string; message: string } };
+    }
+  ) => {
+    const pending = pendingDispatches.get(payload.requestId);
+    if (pending) {
+      clearTimeout(pending.timeout);
+      pendingDispatches.delete(payload.requestId);
+      pending.resolve(payload.result);
+    }
+  };
+  ipcMain.on("app-agent:dispatch-action-response", handleDispatchResponse);
+  handlers.push(() => ipcMain.removeListener("app-agent:dispatch-action-response", handleDispatchResponse));
+
   return () => handlers.forEach((cleanup) => cleanup());
 }
