@@ -44,6 +44,7 @@ interface AppAgentActions {
   ) => Promise<void>;
   initialize: () => Promise<void>;
   setApiKey: (apiKey: string) => Promise<void>;
+  setModel: (model: string) => Promise<void>;
   clearError: () => void;
 }
 
@@ -311,6 +312,16 @@ export const useAppAgentStore = create<AppAgentStore>()((set, get) => ({
       set({ config, hasApiKey, error: null });
     } catch (e) {
       set({ error: e instanceof Error ? e.message : "Failed to set API key" });
+      throw e;
+    }
+  },
+
+  setModel: async (model: string) => {
+    try {
+      const config = await window.electron.appAgent.setConfig({ model });
+      set({ config, error: null });
+    } catch (e) {
+      set({ error: e instanceof Error ? e.message : "Failed to set model" });
       throw e;
     }
   },

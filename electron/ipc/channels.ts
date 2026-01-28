@@ -251,6 +251,8 @@ export const CHANNELS = {
   APP_AGENT_GET_CONFIG: "app-agent:get-config",
   APP_AGENT_SET_CONFIG: "app-agent:set-config",
   APP_AGENT_HAS_API_KEY: "app-agent:has-api-key",
+  APP_AGENT_TEST_API_KEY: "app-agent:test-api-key",
+  APP_AGENT_TEST_MODEL: "app-agent:test-model",
   APP_AGENT_CANCEL: "app-agent:cancel",
 } as const;
 

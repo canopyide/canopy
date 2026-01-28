@@ -204,7 +204,7 @@ export function OneShotCommandBar() {
 
 function ApiKeyPrompt() {
   const handleOpenSettings = useCallback(async () => {
-    await actionService.dispatch("app.settings.openTab", { tab: "agent" });
+    await actionService.dispatch("app.settings.openTab", { tab: "assistant" });
     useAppAgentStore.getState().close();
   }, []);
 

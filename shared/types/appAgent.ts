@@ -19,7 +19,7 @@ export type AppAgentConfig = z.infer<typeof AppAgentConfigSchema>;
 
 export const DEFAULT_APP_AGENT_CONFIG: AppAgentConfig = {
   provider: "fireworks",
-  model: "accounts/fireworks/models/kimi-k2.5",
+  model: "accounts/fireworks/models/kimi-k2p5",
 };
 
 export const AgentDecisionDispatchSchema = z.object({
@@ -69,7 +69,7 @@ export interface OneShotRunResult {
 }
 
 export const AGENT_ACCESSIBLE_ACTIONS = [
-  "app.settings.open",
+  "app.settings",
   "app.settings.openTab",
   "terminal.new",
   "terminal.palette",

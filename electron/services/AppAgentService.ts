@@ -83,6 +83,156 @@ export class AppAgentService {
     return !!config.apiKey;
   }
 
+  async testApiKey(apiKey: string): Promise<{ valid: boolean; error?: string }> {
+    const config = store.get("appAgentConfig");
+    const baseUrl = config.baseUrl || FIREWORKS_BASE_URL;
+
+    let url: URL;
+    try {
+      url = new URL(`${baseUrl}/chat/completions`);
+    } catch {
+      return { valid: false, error: "Invalid base URL configured" };
+    }
+
+    const abortController = new AbortController();
+    const timeoutId = setTimeout(() => abortController.abort(), 15000);
+
+    try {
+      const response = await fetch(url.toString(), {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json",
+          Authorization: `Bearer ${apiKey}`,
+        },
+        body: JSON.stringify({
+          model: config.model,
+          messages: [{ role: "user", content: "Hi" }],
+          max_tokens: 1,
+        }),
+        signal: abortController.signal,
+      });
+
+      clearTimeout(timeoutId);
+
+      if (response.ok) {
+        return { valid: true };
+      }
+
+      if (response.status === 401) {
+        return { valid: false, error: "Invalid API key" };
+      }
+
+      if (response.status === 403) {
+        return { valid: false, error: "API key does not have access to this model" };
+      }
+
+      if (response.status === 429) {
+        // Rate limited but key is valid
+        return { valid: true };
+      }
+
+      const errorText = await response.text().catch(() => "");
+      return { valid: false, error: `API error: ${response.status} ${errorText}`.trim() };
+    } catch (error) {
+      clearTimeout(timeoutId);
+
+      if (error instanceof Error && error.name === "AbortError") {
+        return { valid: false, error: "Request timed out" };
+      }
+
+      return {
+        valid: false,
+        error: error instanceof Error ? error.message : "Failed to connect to API",
+      };
+    }
+  }
+
+  async testModel(model: string): Promise<{ valid: boolean; error?: string }> {
+    console.log("\n========================================");
+    console.log("[AppAgent] testModel called with:", model);
+    console.log("========================================\n");
+
+    const config = store.get("appAgentConfig");
+
+    if (!config.apiKey) {
+      console.log("[AppAgent] testModel: No API key configured");
+      return { valid: false, error: "API key not configured" };
+    }
+
+    const baseUrl = config.baseUrl || FIREWORKS_BASE_URL;
+
+    let url: URL;
+    try {
+      url = new URL(`${baseUrl}/chat/completions`);
+    } catch {
+      return { valid: false, error: "Invalid base URL configured" };
+    }
+
+    const requestBody = {
+      model,
+      messages: [{ role: "user", content: "Hi" }],
+      max_tokens: 1,
+    };
+
+    console.log("[AppAgent] testModel request:", {
+      url: url.toString(),
+      model,
+      body: requestBody,
+    });
+
+    const abortController = new AbortController();
+    const timeoutId = setTimeout(() => abortController.abort(), 15000);
+
+    try {
+      const response = await fetch(url.toString(), {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json",
+          Authorization: `Bearer ${config.apiKey}`,
+        },
+        body: JSON.stringify(requestBody),
+        signal: abortController.signal,
+      });
+
+      clearTimeout(timeoutId);
+
+      console.log("[AppAgent] testModel response status:", response.status);
+
+      if (response.ok) {
+        console.log("[AppAgent] testModel: Success");
+        return { valid: true };
+      }
+
+      if (response.status === 401) {
+        return { valid: false, error: "API key is invalid" };
+      }
+
+      if (response.status === 404) {
+        return { valid: false, error: "Model not found" };
+      }
+
+      if (response.status === 429) {
+        // Rate limited but model is valid
+        return { valid: true };
+      }
+
+      const errorText = await response.text().catch(() => "");
+      console.log("[AppAgent] testModel error response:", errorText);
+      return { valid: false, error: `API error: ${response.status} ${errorText}`.trim() };
+    } catch (error) {
+      clearTimeout(timeoutId);
+
+      if (error instanceof Error && error.name === "AbortError") {
+        return { valid: false, error: "Request timed out" };
+      }
+
+      return {
+        valid: false,
+        error: error instanceof Error ? error.message : "Failed to connect to API",
+      };
+    }
+  }
+
   async runOneShot(
     request: OneShotRunRequest,
     actions: ActionManifestEntry[],
@@ -114,6 +264,12 @@ export class AppAgentService {
     });
 
     try {
+      console.log("\n========================================");
+      console.log("[AppAgent] runOneShot called");
+      console.log("[AppAgent] Request prompt:", request.prompt);
+      console.log("[AppAgent] Total actions passed:", actions.length);
+      console.log("========================================\n");
+
       const agentActions = actions.filter(
         (action) =>
           AGENT_ACCESSIBLE_ACTIONS.includes(
@@ -121,8 +277,17 @@ export class AppAgentService {
           ) && action.enabled
       );
 
+      console.log("[AppAgent] Filtered agentActions:", agentActions.length);
+      console.log(
+        "[AppAgent] Agent action IDs:",
+        agentActions.map((a) => a.id)
+      );
+
       const tools = this.buildTools(agentActions);
       const messages = this.buildMessages(request, context);
+
+      console.log("[AppAgent] Built tools count:", tools.length);
+      console.log("[AppAgent] Tools:", JSON.stringify(tools, null, 2));
 
       const baseUrl = config.baseUrl || FIREWORKS_BASE_URL;
       let url: URL;
@@ -136,6 +301,16 @@ export class AppAgentService {
         };
       }
 
+      const requestBody = {
+        model: config.model,
+        messages,
+        tools,
+        tool_choice: "auto",
+        temperature: 0.1,
+      };
+
+      console.log("[AppAgent] Full request body:", JSON.stringify(requestBody, null, 2));
+
       const timeoutId = setTimeout(() => abortController.abort(), 60000);
 
       const response = await fetch(url.toString(), {
@@ -144,20 +319,17 @@ export class AppAgentService {
           "Content-Type": "application/json",
           Authorization: `Bearer ${config.apiKey}`,
         },
-        body: JSON.stringify({
-          model: config.model,
-          messages,
-          tools,
-          tool_choice: "auto",
-          temperature: 0.1,
-        }),
+        body: JSON.stringify(requestBody),
         signal: abortController.signal,
       });
 
       clearTimeout(timeoutId);
 
+      console.log("[AppAgent] Response status:", response.status);
+
       if (!response.ok) {
         const errorText = await response.text();
+        console.log("[AppAgent] Error response:", errorText);
         let errorMessage = `API request failed: ${response.status}`;
 
         if (response.status === 401) {
@@ -234,11 +406,52 @@ export class AppAgentService {
     return actions.map((action) => ({
       type: "function" as const,
       function: {
-        name: action.name,
+        name: this.sanitizeToolName(action.name),
         description: action.description,
-        parameters: action.inputSchema || { type: "object", properties: {} },
+        parameters: this.sanitizeSchema(action.inputSchema),
       },
     }));
+  }
+
+  private sanitizeToolName(name: string): string {
+    // OpenAI/Fireworks strips dots from tool names, so replace with underscores
+    return name.replace(/\./g, "_");
+  }
+
+  private sanitizeSchema(schema: Record<string, unknown> | undefined): Record<string, unknown> {
+    const defaultSchema = { type: "object", properties: {} };
+
+    if (!schema) {
+      return defaultSchema;
+    }
+
+    // Clone to avoid mutating original
+    const sanitized = { ...schema };
+
+    // Remove $schema - Fireworks/OpenAI doesn't support it
+    delete sanitized["$schema"];
+
+    // Handle anyOf from .optional() - unwrap if it contains an object type
+    if (sanitized["anyOf"] && Array.isArray(sanitized["anyOf"])) {
+      const objectSchema = (sanitized["anyOf"] as Array<Record<string, unknown>>).find(
+        (s) => s.type === "object"
+      );
+      if (objectSchema) {
+        // Merge the object schema properties into sanitized
+        Object.assign(sanitized, objectSchema);
+        delete sanitized["anyOf"];
+      }
+    }
+
+    // Only add defaults if we don't have real structure
+    if (!sanitized["type"]) {
+      sanitized["type"] = "object";
+    }
+    if (sanitized["type"] === "object" && !sanitized["properties"]) {
+      sanitized["properties"] = {};
+    }
+
+    return sanitized;
   }
 
   private buildMessages(request: OneShotRunRequest, context: ActionContext): OpenAIMessage[] {
@@ -282,7 +495,11 @@ export class AppAgentService {
       const toolCall = message.tool_calls[0];
       const toolName = toolCall.function.name;
 
-      const action = actions.find((a) => a.name === toolName);
+      // Match by sanitized tool name, then fall back to exact name/id
+      const action = actions.find(
+        (a) =>
+          this.sanitizeToolName(a.name) === toolName || a.name === toolName || a.id === toolName
+      );
       if (!action) {
         return {
           type: "reply",

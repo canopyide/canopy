@@ -576,6 +576,10 @@ export interface ElectronAPI {
     setConfig(config: Partial<AppAgentConfig>): Promise<Omit<AppAgentConfig, "apiKey">>;
     /** Check if API key is configured */
     hasApiKey(): Promise<boolean>;
+    /** Test an API key without saving it */
+    testApiKey(apiKey: string): Promise<{ valid: boolean; error?: string }>;
+    /** Test a model name using the stored API key */
+    testModel(model: string): Promise<{ valid: boolean; error?: string }>;
     /** Cancel any in-flight request */
     cancel(): Promise<void>;
   };

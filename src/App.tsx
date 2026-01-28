@@ -663,6 +663,7 @@ function App() {
       "terminal",
       "terminalAppearance",
       "worktree",
+      "assistant",
       "agents",
       "github",
       "sidecar",
