@@ -5,8 +5,9 @@ import type {
   PanelGridConfig,
   UserAgentRegistry,
   AgentUpdateSettings,
+  AppAgentConfig,
 } from "../shared/types/index.js";
-import { DEFAULT_AGENT_SETTINGS } from "../shared/types/index.js";
+import { DEFAULT_AGENT_SETTINGS, DEFAULT_APP_AGENT_CONFIG } from "../shared/types/index.js";
 
 export interface StoreSchema {
   _schemaVersion: number;
@@ -102,6 +103,7 @@ export interface StoreSchema {
   keybindingOverrides: {
     overrides: Record<string, string[]>;
   };
+  appAgentConfig: AppAgentConfig;
 }
 
 const storeOptions = {
@@ -154,6 +156,7 @@ const storeOptions = {
     keybindingOverrides: {
       overrides: {},
     },
+    appAgentConfig: DEFAULT_APP_AGENT_CONFIG,
   },
   cwd: process.env.CANOPY_USER_DATA,
 };
