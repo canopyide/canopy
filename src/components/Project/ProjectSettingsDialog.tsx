@@ -1,4 +1,4 @@
-import { useState, useEffect, useRef } from "react";
+import { useState, useEffect, useRef, useMemo } from "react";
 import {
   Terminal,
   Key,
@@ -43,6 +43,11 @@ import { ConfirmDialog } from "@/components/Terminal/ConfirmDialog";
 import { LiveTimeAgo } from "@/components/Worktree/LiveTimeAgo";
 import { CommandOverridesTab } from "@/components/Settings/CommandOverridesTab";
 import type { CommandOverride } from "@shared/types/commands";
+import {
+  createProjectSettingsSnapshot,
+  areSnapshotsEqual,
+  type ProjectSettingsSnapshot,
+} from "./projectSettingsDirty";
 
 interface ProjectSettingsDialogProps {
   projectId: string;
@@ -86,6 +91,8 @@ export function ProjectSettingsDialog({ projectId, isOpen, onClose }: ProjectSet
   const [devServerCommand, setDevServerCommand] = useState<string>("");
   const [commandOverrides, setCommandOverrides] = useState<CommandOverride[]>([]);
   const fileInputRef = useRef<HTMLInputElement>(null);
+  const initialSnapshotRef = useRef<ProjectSettingsSnapshot | null>(null);
+  const [showUnsavedChangesDialog, setShowUnsavedChangesDialog] = useState(false);
 
   const {
     recipes,
@@ -107,6 +114,37 @@ export function ProjectSettingsDialog({ projectId, isOpen, onClose }: ProjectSet
   const [exportFeedback, setExportFeedback] = useState<string | null>(null);
   const exportTimeoutRef = useRef<NodeJS.Timeout | null>(null);
   const hasLoadedRecipes = useRef(false);
+
+  const currentSnapshot = useMemo(() => {
+    if (!currentProject) return null;
+    return createProjectSettingsSnapshot(
+      name,
+      emoji,
+      devServerCommand,
+      projectIconSvg,
+      excludedPaths,
+      environmentVariables,
+      runCommands,
+      defaultWorktreeRecipeId,
+      commandOverrides
+    );
+  }, [
+    name,
+    emoji,
+    devServerCommand,
+    projectIconSvg,
+    excludedPaths,
+    environmentVariables,
+    runCommands,
+    defaultWorktreeRecipeId,
+    commandOverrides,
+    currentProject,
+  ]);
+
+  const isDirty = useMemo(() => {
+    if (!initialSnapshotRef.current || !currentSnapshot) return false;
+    return !areSnapshotsEqual(initialSnapshotRef.current, currentSnapshot);
+  }, [currentSnapshot]);
 
   const toggleEnvVarVisibility = (id: string) => {
     setVisibleEnvVars((prev) => {
@@ -174,21 +212,40 @@ export function ProjectSettingsDialog({ projectId, isOpen, onClose }: ProjectSet
   };
 
   useEffect(() => {
-    if (isOpen && settings && !isInitialized) {
-      setRunCommands(settings.runCommands || []);
+    if (isOpen && !isLoading && settings && currentProject && !isInitialized) {
+      const initialRunCommands = settings.runCommands || [];
       const envVars = settings.environmentVariables || {};
-      setEnvironmentVariables(
-        Object.entries(envVars).map(([key, value]) => ({
-          id: `env-${Date.now()}-${Math.random()}`,
-          key,
-          value,
-        }))
+      const initialEnvVars = Object.entries(envVars).map(([key, value]) => ({
+        id: `env-${Date.now()}-${Math.random()}`,
+        key,
+        value,
+      }));
+      const initialExcludedPaths = settings.excludedPaths || [];
+      const initialProjectIconSvg = settings.projectIconSvg;
+      const initialDefaultWorktreeRecipeId = settings.defaultWorktreeRecipeId;
+      const initialDevServerCommand = settings.devServerCommand || "";
+      const initialCommandOverrides = settings.commandOverrides || [];
+
+      setRunCommands(initialRunCommands);
+      setEnvironmentVariables(initialEnvVars);
+      setExcludedPaths(initialExcludedPaths);
+      setProjectIconSvg(initialProjectIconSvg);
+      setDefaultWorktreeRecipeId(initialDefaultWorktreeRecipeId);
+      setDevServerCommand(initialDevServerCommand);
+      setCommandOverrides(initialCommandOverrides);
+
+      initialSnapshotRef.current = createProjectSettingsSnapshot(
+        currentProject.name,
+        currentProject.emoji || "🌲",
+        initialDevServerCommand,
+        initialProjectIconSvg,
+        initialExcludedPaths,
+        initialEnvVars,
+        initialRunCommands,
+        initialDefaultWorktreeRecipeId,
+        initialCommandOverrides
       );
-      setExcludedPaths(settings.excludedPaths || []);
-      setProjectIconSvg(settings.projectIconSvg);
-      setDefaultWorktreeRecipeId(settings.defaultWorktreeRecipeId);
-      setDevServerCommand(settings.devServerCommand || "");
-      setCommandOverrides(settings.commandOverrides || []);
+
       setIsInitialized(true);
     }
     if (!isOpen) {
@@ -203,8 +260,10 @@ export function ProjectSettingsDialog({ projectId, isOpen, onClose }: ProjectSet
       setSaveError(null);
       hasLoadedRecipes.current = false;
       setActiveTab("general");
+      initialSnapshotRef.current = null;
+      setShowUnsavedChangesDialog(false);
     }
-  }, [settings, isOpen, isInitialized]);
+  }, [settings, isOpen, isInitialized, currentProject, isLoading]);
 
   // Reset initialization when projectId changes while dialog is open
   useEffect(() => {
@@ -215,11 +274,11 @@ export function ProjectSettingsDialog({ projectId, isOpen, onClose }: ProjectSet
   }, [projectId, isOpen]);
 
   useEffect(() => {
-    if (isOpen && currentProject) {
-      setName(currentProject.name);
-      setEmoji(currentProject.emoji || "🌲");
-    }
-  }, [isOpen, currentProject]);
+    if (!isOpen || !currentProject) return;
+    if (isInitialized && isDirty) return;
+    setName(currentProject.name);
+    setEmoji(currentProject.emoji || "🌲");
+  }, [isOpen, currentProject, isInitialized, isDirty]);
 
   useEffect(() => {
     if (!isOpen) {
@@ -256,6 +315,14 @@ export function ProjectSettingsDialog({ projectId, isOpen, onClose }: ProjectSet
       }
     };
   }, []);
+
+  const requestClose = (options?: { bypassDirty?: boolean }) => {
+    if (options?.bypassDirty || !isDirty) {
+      onClose();
+      return;
+    }
+    setShowUnsavedChangesDialog(true);
+  };
 
   const handleSave = async () => {
     if (!settings) return;
@@ -311,7 +378,7 @@ export function ProjectSettingsDialog({ projectId, isOpen, onClose }: ProjectSet
         devServerCommand: devServerCommand.trim() || undefined,
         commandOverrides: commandOverrides.length > 0 ? commandOverrides : undefined,
       });
-      onClose();
+      requestClose({ bypassDirty: true });
     } catch (error) {
       console.error("Failed to save settings:", error);
       setSaveError(error instanceof Error ? error.message : "Failed to save settings");
@@ -407,7 +474,8 @@ export function ProjectSettingsDialog({ projectId, isOpen, onClose }: ProjectSet
     <>
       <AppDialog
         isOpen={isOpen}
-        onClose={onClose}
+        onClose={requestClose}
+        dismissible={!showUnsavedChangesDialog}
         size="4xl"
         maxHeight="h-[75vh]"
         className="max-h-[800px]"
@@ -456,7 +524,7 @@ export function ProjectSettingsDialog({ projectId, isOpen, onClose }: ProjectSet
             <div className="flex items-center justify-between px-6 py-4 border-b border-canopy-border bg-canopy-sidebar/50 shrink-0">
               <h3 className="text-lg font-medium text-canopy-text">{tabTitles[activeTab]}</h3>
               <button
-                onClick={onClose}
+                onClick={() => requestClose()}
                 className="text-canopy-text/60 hover:text-canopy-text transition-colors p-1 rounded focus-visible:outline focus-visible:outline-2 focus-visible:outline-canopy-accent focus-visible:outline-offset-2"
                 aria-label="Close settings"
               >
@@ -1222,7 +1290,7 @@ export function ProjectSettingsDialog({ projectId, isOpen, onClose }: ProjectSet
             </div>
 
             <div className="flex items-center justify-end gap-2 px-6 py-4 border-t border-canopy-border bg-canopy-sidebar/50 shrink-0">
-              <Button variant="ghost" onClick={onClose}>
+              <Button variant="ghost" onClick={() => requestClose()}>
                 Cancel
               </Button>
               <Button onClick={handleSave} disabled={isSaving || isLoading || !!error}>
@@ -1308,6 +1376,22 @@ export function ProjectSettingsDialog({ projectId, isOpen, onClose }: ProjectSet
           </Button>
         </AppDialog.Footer>
       </AppDialog>
+
+      <ConfirmDialog
+        isOpen={showUnsavedChangesDialog}
+        title="Unsaved Changes"
+        description="You have unsaved changes. Are you sure you want to discard them?"
+        confirmLabel="Discard Changes"
+        cancelLabel="Keep Editing"
+        destructive={true}
+        onConfirm={() => {
+          setShowUnsavedChangesDialog(false);
+          onClose();
+        }}
+        onCancel={() => {
+          setShowUnsavedChangesDialog(false);
+        }}
+      />
     </>
   );
 }
