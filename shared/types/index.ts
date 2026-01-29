@@ -388,3 +388,7 @@ export type {
 } from "./assistant.js";
 
 export { AssistantMessageSchema, StreamChunkSchema, ASSISTANT_MODELS } from "./assistant.js";
+
+// Listener types - assistant event subscription management
+export type { Listener, ListenerFilter, RegisterListenerOptions } from "./listener.js";
+export { ListenerSchema, ListenerFilterSchema, RegisterListenerOptionsSchema } from "./listener.js";

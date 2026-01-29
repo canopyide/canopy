@@ -5,6 +5,7 @@ import type { StreamChunk, AssistantMessage } from "../../shared/types/assistant
 import type { ActionManifestEntry, ActionContext } from "../../shared/types/actions.js";
 import { createActionTools, sanitizeToolName } from "./assistant/actionTools.js";
 import { SYSTEM_PROMPT, buildContextBlock } from "./assistant/index.js";
+import { listenerManager } from "./assistant/ListenerManager.js";
 
 const FIREWORKS_BASE_URL = "https://api.fireworks.ai/inference/v1";
 const MAX_STEPS = 10;
@@ -222,10 +223,16 @@ export class AssistantService {
     }
   }
 
+  clearSession(sessionId: string): void {
+    this.cancel(sessionId);
+    listenerManager.clearSession(sessionId);
+  }
+
   cancelAll(): void {
     for (const [sessionId, controller] of this.activeStreams) {
       controller.abort();
       this.activeStreams.delete(sessionId);
+      listenerManager.clearSession(sessionId);
     }
   }
 }
