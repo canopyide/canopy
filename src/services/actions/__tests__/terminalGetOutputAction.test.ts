@@ -7,6 +7,14 @@ const mockAddEventListener = vi.fn();
 const mockRemoveEventListener = vi.fn();
 const mockDispatchEvent = vi.fn();
 
+type TerminalOutputResult = {
+  terminalId: string;
+  content: string | null;
+  lineCount: number;
+  truncated: boolean;
+  error?: string;
+};
+
 beforeAll(() => {
   // Provide a complete window mock before module imports
   vi.stubGlobal("window", {
@@ -26,11 +34,13 @@ beforeAll(() => {
     top: null, // Will be set to self
   });
   // Make window.top reference itself
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
   (window as any).top = window;
 });
 
 // Helper to create the action registry
 async function createRegistry() {
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
   (globalThis as any).self = globalThis;
 
   // Reset module cache to ensure fresh imports with mocks
@@ -100,7 +110,10 @@ describe("terminal.getOutput action", () => {
     const actionFn = actions.get("terminal.getOutput");
     const action = actionFn!();
 
-    const result = await action.run({ terminalId: "test-terminal", maxLines: 3 }, {});
+    const result = (await action.run(
+      { terminalId: "test-terminal", maxLines: 3 },
+      {}
+    )) as TerminalOutputResult;
 
     expect(result.terminalId).toBe("test-terminal");
     expect(result.content).toBe("line3\nline4\nline5");
@@ -116,7 +129,10 @@ describe("terminal.getOutput action", () => {
     const actionFn = actions.get("terminal.getOutput");
     const action = actionFn!();
 
-    const result = await action.run({ terminalId: "test-terminal", maxLines: 100 }, {});
+    const result = (await action.run(
+      { terminalId: "test-terminal", maxLines: 100 },
+      {}
+    )) as TerminalOutputResult;
 
     expect(result.content).toBe("line1\nline2\nline3");
     expect(result.lineCount).toBe(3);
@@ -133,7 +149,7 @@ describe("terminal.getOutput action", () => {
     const actionFn = actions.get("terminal.getOutput");
     const action = actionFn!();
 
-    const result = await action.run({ terminalId: "test-terminal" }, {});
+    const result = (await action.run({ terminalId: "test-terminal" }, {})) as TerminalOutputResult;
 
     expect(result.lineCount).toBe(100);
     expect(result.truncated).toBe(true);
@@ -150,7 +166,7 @@ describe("terminal.getOutput action", () => {
     const actionFn = actions.get("terminal.getOutput");
     const action = actionFn!();
 
-    const result = await action.run({ terminalId: "test-terminal" }, {});
+    const result = (await action.run({ terminalId: "test-terminal" }, {})) as TerminalOutputResult;
 
     expect(result.content).toBe("green text\nred text");
     expect(result.content).not.toContain("\x1b");
@@ -164,7 +180,10 @@ describe("terminal.getOutput action", () => {
     const actionFn = actions.get("terminal.getOutput");
     const action = actionFn!();
 
-    const result = await action.run({ terminalId: "test-terminal", stripAnsi: false }, {});
+    const result = (await action.run(
+      { terminalId: "test-terminal", stripAnsi: false },
+      {}
+    )) as TerminalOutputResult;
 
     expect(result.content).toBe("\x1b[32mgreen text\x1b[0m");
     expect(result.content).toContain("\x1b");
@@ -177,7 +196,7 @@ describe("terminal.getOutput action", () => {
     const actionFn = actions.get("terminal.getOutput");
     const action = actionFn!();
 
-    const result = await action.run({ terminalId: "non-existent" }, {});
+    const result = (await action.run({ terminalId: "non-existent" }, {})) as TerminalOutputResult;
 
     expect(result.terminalId).toBe("non-existent");
     expect(result.content).toBeNull();
@@ -193,7 +212,7 @@ describe("terminal.getOutput action", () => {
     const actionFn = actions.get("terminal.getOutput");
     const action = actionFn!();
 
-    const result = await action.run({ terminalId: "empty-terminal" }, {});
+    const result = (await action.run({ terminalId: "empty-terminal" }, {})) as TerminalOutputResult;
 
     expect(result.content).toBe("");
     expect(result.lineCount).toBe(1); // Empty string splits into one empty line
@@ -210,7 +229,10 @@ describe("terminal.getOutput action", () => {
     const actionFn = actions.get("terminal.getOutput");
     const action = actionFn!();
 
-    const result = await action.run({ terminalId: "test-terminal", maxLines: 5000 }, {});
+    const result = (await action.run(
+      { terminalId: "test-terminal", maxLines: 5000 },
+      {}
+    )) as TerminalOutputResult;
 
     // Should cap at 1000 lines
     expect(result.lineCount).toBe(1000);
@@ -225,7 +247,10 @@ describe("terminal.getOutput action", () => {
     const actionFn = actions.get("terminal.getOutput");
     const action = actionFn!();
 
-    const result = await action.run({ terminalId: "test-terminal", maxLines: 0 }, {});
+    const result = (await action.run(
+      { terminalId: "test-terminal", maxLines: 0 },
+      {}
+    )) as TerminalOutputResult;
 
     // Should get at least 1 line
     expect(result.lineCount).toBe(1);
