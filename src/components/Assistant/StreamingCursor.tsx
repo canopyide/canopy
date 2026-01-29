@@ -8,10 +8,11 @@ export function StreamingCursor({ className }: StreamingCursorProps) {
   return (
     <span
       className={cn(
-        "inline-block w-2 h-4 bg-canopy-accent/80 ml-0.5 align-middle animate-pulse",
+        "inline-block w-1.5 h-4 bg-canopy-accent/70 ml-1 align-middle rounded-sm animate-pulse",
         className
       )}
       aria-hidden="true"
+      aria-label="Assistant is typing"
     />
   );
 }
