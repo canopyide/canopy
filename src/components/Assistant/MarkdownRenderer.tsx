@@ -353,6 +353,20 @@ function CodeBlock({ content, language }: { content: string; language: string })
 export function MarkdownRenderer({ content, className }: MarkdownRendererProps) {
   const blocks = useMemo(() => parseMarkdown(content), [content]);
 
+  // Handle empty or whitespace-only content
+  const hasRenderable = blocks.some(
+    (block) => block.type === "code" || block.content.trim().length > 0
+  );
+
+  if (!hasRenderable) {
+    return (
+      <div
+        className={cn("text-sm text-canopy-text min-h-[1.5em]", className)}
+        aria-hidden="true"
+      />
+    );
+  }
+
   return (
     <div className={cn("text-sm text-canopy-text", className)}>
       {blocks.map((block, index) =>
