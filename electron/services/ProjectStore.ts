@@ -320,10 +320,6 @@ export class ProjectStore {
       throw new Error(`Invalid project ID: ${projectId}`);
     }
 
-    if (!existsSync(stateDir)) {
-      await fs.mkdir(stateDir, { recursive: true });
-    }
-
     const stateFilePath = this.getStateFilePath(projectId);
     if (!stateFilePath) {
       throw new Error(`Invalid project ID: ${projectId}`);
@@ -339,19 +335,45 @@ export class ProjectStore {
       ),
     };
 
-    const tempFilePath = `${stateFilePath}.tmp`;
-    try {
+    // Use unique temp file to avoid races between concurrent saves
+    const uniqueSuffix = `${Date.now()}-${Math.random().toString(36).slice(2, 8)}`;
+    const tempFilePath = `${stateFilePath}.${uniqueSuffix}.tmp`;
+
+    const attemptSave = async (ensureDir: boolean): Promise<void> => {
+      if (ensureDir) {
+        await fs.mkdir(stateDir, { recursive: true });
+      }
       await fs.writeFile(tempFilePath, JSON.stringify(validatedState, null, 2), "utf-8");
       await fs.rename(tempFilePath, stateFilePath);
+    };
+
+    try {
+      // First attempt: assume directory exists
+      await attemptSave(false);
     } catch (error) {
-      console.error(`[ProjectStore] Failed to save state for project ${projectId}:`, error);
-      try {
-        await fs.unlink(tempFilePath);
-      } catch {
-        // Ignore
+      const isEnoent = error instanceof Error && "code" in error && error.code === "ENOENT";
+      if (!isEnoent) {
+        // Not a missing directory error, rethrow
+        console.error(`[ProjectStore] Failed to save state for project ${projectId}:`, error);
+        this.cleanupTempFile(tempFilePath);
+        throw error;
       }
-      throw error;
+
+      // Directory might not exist or was deleted, retry with mkdir
+      try {
+        await attemptSave(true);
+      } catch (retryError) {
+        console.error(`[ProjectStore] Failed to save state for project ${projectId}:`, retryError);
+        this.cleanupTempFile(tempFilePath);
+        throw retryError;
+      }
     }
+  }
+
+  private cleanupTempFile(tempFilePath: string): void {
+    fs.unlink(tempFilePath).catch(() => {
+      // Ignore cleanup errors
+    });
   }
 
   async getProjectState(projectId: string): Promise<ProjectState | null> {
@@ -551,10 +573,6 @@ export class ProjectStore {
       throw new Error(`Invalid project ID: ${projectId}`);
     }
 
-    if (!existsSync(stateDir)) {
-      await fs.mkdir(stateDir, { recursive: true });
-    }
-
     const filePath = this.getSettingsFilePath(projectId);
     if (!filePath) {
       throw new Error(`Invalid project ID: ${projectId}`);
@@ -681,18 +699,35 @@ export class ProjectStore {
       }
     }
 
-    const tempFilePath = `${filePath}.tmp`;
-    try {
+    // Use unique temp file to avoid races between concurrent saves
+    const uniqueSuffix = `${Date.now()}-${Math.random().toString(36).slice(2, 8)}`;
+    const tempFilePath = `${filePath}.${uniqueSuffix}.tmp`;
+
+    const attemptSave = async (ensureDir: boolean): Promise<void> => {
+      if (ensureDir) {
+        await fs.mkdir(stateDir, { recursive: true });
+      }
       await fs.writeFile(tempFilePath, JSON.stringify(sanitizedSettings, null, 2), "utf-8");
       await fs.rename(tempFilePath, filePath);
+    };
+
+    try {
+      await attemptSave(false);
     } catch (error) {
-      console.error(`[ProjectStore] Failed to save settings for ${projectId}:`, error);
-      try {
-        await fs.unlink(tempFilePath);
-      } catch {
-        // Ignore
+      const isEnoent = error instanceof Error && "code" in error && error.code === "ENOENT";
+      if (!isEnoent) {
+        console.error(`[ProjectStore] Failed to save settings for ${projectId}:`, error);
+        this.cleanupTempFile(tempFilePath);
+        throw error;
       }
-      throw error;
+
+      try {
+        await attemptSave(true);
+      } catch (retryError) {
+        console.error(`[ProjectStore] Failed to save settings for ${projectId}:`, retryError);
+        this.cleanupTempFile(tempFilePath);
+        throw retryError;
+      }
     }
   }
 
@@ -744,27 +779,40 @@ export class ProjectStore {
       throw new Error(`Invalid project ID: ${projectId}`);
     }
 
-    if (!existsSync(stateDir)) {
-      await fs.mkdir(stateDir, { recursive: true });
-    }
-
     const filePath = this.getRecipesFilePath(projectId);
     if (!filePath) {
       throw new Error(`Invalid project ID: ${projectId}`);
     }
 
-    const tempFilePath = `${filePath}.tmp`;
-    try {
+    // Use unique temp file to avoid races between concurrent saves
+    const uniqueSuffix = `${Date.now()}-${Math.random().toString(36).slice(2, 8)}`;
+    const tempFilePath = `${filePath}.${uniqueSuffix}.tmp`;
+
+    const attemptSave = async (ensureDir: boolean): Promise<void> => {
+      if (ensureDir) {
+        await fs.mkdir(stateDir, { recursive: true });
+      }
       await fs.writeFile(tempFilePath, JSON.stringify(recipes, null, 2), "utf-8");
       await fs.rename(tempFilePath, filePath);
+    };
+
+    try {
+      await attemptSave(false);
     } catch (error) {
-      console.error(`[ProjectStore] Failed to save recipes for ${projectId}:`, error);
-      try {
-        await fs.unlink(tempFilePath);
-      } catch {
-        // Ignore
+      const isEnoent = error instanceof Error && "code" in error && error.code === "ENOENT";
+      if (!isEnoent) {
+        console.error(`[ProjectStore] Failed to save recipes for ${projectId}:`, error);
+        this.cleanupTempFile(tempFilePath);
+        throw error;
       }
-      throw error;
+
+      try {
+        await attemptSave(true);
+      } catch (retryError) {
+        console.error(`[ProjectStore] Failed to save recipes for ${projectId}:`, retryError);
+        this.cleanupTempFile(tempFilePath);
+        throw retryError;
+      }
     }
   }
 
