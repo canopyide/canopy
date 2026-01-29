@@ -1,5 +1,4 @@
 import { create, type StateCreator } from "zustand";
-import { persist, createJSONStorage } from "zustand/middleware";
 import type { AssistantMessage } from "@/components/Assistant/types";
 
 export interface ConversationState {
@@ -176,31 +175,6 @@ const createAssistantChatStore: StateCreator<AssistantChatState & AssistantChatA
   reset: () => set(initialState),
 });
 
-const assistantChatStoreCreator: StateCreator<
-  AssistantChatState & AssistantChatActions,
-  [],
-  [["zustand/persist", Partial<AssistantChatState>]]
-> = persist(createAssistantChatStore, {
-  name: "assistant-chat-storage",
-  storage: createJSONStorage(() => {
-    return typeof window !== "undefined" ? localStorage : (undefined as never);
-  }),
-  partialize: (state) => ({
-    conversations: Object.fromEntries(
-      Object.entries(state.conversations).map(([id, conv]) => [
-        id,
-        {
-          messages: conv.messages,
-          sessionId: conv.sessionId,
-          // Don't persist transient state
-          isLoading: false,
-          error: null,
-        },
-      ])
-    ),
-  }),
-});
-
 export const useAssistantChatStore = create<AssistantChatState & AssistantChatActions>()(
-  assistantChatStoreCreator
+  createAssistantChatStore
 );
