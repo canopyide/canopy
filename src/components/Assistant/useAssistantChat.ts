@@ -4,12 +4,20 @@ import { actionService } from "@/services/ActionService";
 import { useTerminalStore } from "@/store/terminalStore";
 import { useWorktreeSelectionStore } from "@/store/worktreeStore";
 import { useProjectStore } from "@/store/projectStore";
-import { useAssistantChatStore } from "@/store/assistantChatStore";
+import { useAssistantChatStore, type ConversationState } from "@/store/assistantChatStore";
 import type { AssistantMessage as IPCAssistantMessage } from "@shared/types/assistant";
 
 function generateId(): string {
   return `${Date.now()}-${Math.random().toString(36).slice(2, 9)}`;
 }
+
+// Stable default to avoid infinite loops - must be module-level constant
+const EMPTY_CONVERSATION: ConversationState = Object.freeze({
+  messages: [],
+  sessionId: "",
+  isLoading: false,
+  error: null,
+});
 
 interface UseAssistantChatOptions {
   panelId: string;
@@ -19,14 +27,15 @@ interface UseAssistantChatOptions {
 export function useAssistantChat(options: UseAssistantChatOptions) {
   const { panelId, onError } = options;
 
-  // Ensure conversation exists on mount
+  // Ensure conversation exists on mount - this creates it in the store
   const ensureConversation = useAssistantChatStore((s) => s.ensureConversation);
   useEffect(() => {
     ensureConversation(panelId);
   }, [panelId, ensureConversation]);
 
-  // Get conversation state from global store
-  const conversation = useAssistantChatStore((s) => s.getConversation(panelId));
+  // Get conversation state from global store - access directly to avoid infinite loop
+  // The selector must return a stable reference when conversation doesn't exist
+  const conversation = useAssistantChatStore((s) => s.conversations[panelId]) ?? EMPTY_CONVERSATION;
   const storeAddMessage = useAssistantChatStore((s) => s.addMessage);
   const storeUpdateLastMessage = useAssistantChatStore((s) => s.updateLastMessage);
   const storeSetLoading = useAssistantChatStore((s) => s.setLoading);
@@ -156,18 +165,20 @@ export function useAssistantChat(options: UseAssistantChatOptions) {
     sessionIdRef.current = useAssistantChatStore.getState().getConversation(panelId).sessionId;
   }, [panelId, storeClearConversation]);
 
-  // Cleanup on unmount - cancel streaming and clear loading state, but don't clear conversation
+  // Cleanup on unmount only - cancel streaming and clear loading state
   useEffect(() => {
     return () => {
       cleanupRef.current?.();
       cleanupRef.current = null;
-      // Cancel if there's an active stream and clear loading state
-      if (streamingStateRef.current || conversation.isLoading) {
+      // Cancel if there's an active stream
+      if (streamingStateRef.current) {
         window.electron.assistant.cancel(sessionIdRef.current);
-        storeSetLoading(panelId, false);
       }
+      // Always clear loading state on unmount to prevent stuck state
+      storeSetLoading(panelId, false);
     };
-  }, [panelId, conversation.isLoading, storeSetLoading]);
+    // eslint-disable-next-line react-hooks/exhaustive-deps -- only run on unmount
+  }, [panelId]);
 
   const sendMessage = useCallback(
     async (content: string) => {
