@@ -1,6 +1,7 @@
-import { useMemo, type ReactElement } from "react";
+import { useMemo, useState, useCallback, useEffect, type ReactElement } from "react";
 import { refractor } from "refractor";
 import type { Element, Text, RootContent } from "hast";
+import { Check, Copy } from "lucide-react";
 import { cn } from "@/lib/utils";
 
 interface MarkdownRendererProps {
@@ -146,7 +147,7 @@ function renderInlineMarkdown(text: string): string {
   // Inline code: `code`
   result = result.replace(
     /`([^`]+)`/g,
-    '<code class="bg-canopy-sidebar px-1.5 py-0.5 rounded text-sm font-mono">$1</code>'
+    '<code class="bg-canopy-sidebar/60 px-1.5 py-0.5 rounded text-[13px] font-mono text-canopy-text/90 border border-canopy-border/50">$1</code>'
   );
 
   // Links: [text](url) - with XSS protection
@@ -156,7 +157,13 @@ function renderInlineMarkdown(text: string): string {
     if (!isAllowedScheme && !/^[./]/.test(trimmedUrl)) {
       return `<span class="text-canopy-text/50">${text}</span>`;
     }
-    return `<a href="${trimmedUrl}" class="text-canopy-accent hover:underline" target="_blank" rel="noopener noreferrer">${text}</a>`;
+    const escapedUrl = trimmedUrl
+      .replace(/&/g, "&amp;")
+      .replace(/</g, "&lt;")
+      .replace(/>/g, "&gt;")
+      .replace(/"/g, "&quot;")
+      .replace(/'/g, "&#39;");
+    return `<a href="${escapedUrl}" class="text-canopy-accent hover:underline" target="_blank" rel="noopener noreferrer">${text}</a>`;
   });
 
   return result;
@@ -275,17 +282,67 @@ function TextBlock({ content }: { content: string }) {
 
 function CodeBlock({ content, language }: { content: string; language: string }) {
   const highlightedHtml = useMemo(() => highlightCode(content, language), [content, language]);
+  const [copied, setCopied] = useState(false);
+
+  const handleCopy = useCallback(() => {
+    if (!navigator.clipboard?.writeText) {
+      console.warn("Clipboard API not available");
+      return;
+    }
+
+    navigator.clipboard
+      .writeText(content)
+      .then(() => {
+        setCopied(true);
+        setTimeout(() => setCopied(false), 2000);
+      })
+      .catch((err) => {
+        console.error("Failed to copy to clipboard:", err);
+      });
+  }, [content]);
+
+  useEffect(() => {
+    return () => {
+      setCopied(false);
+    };
+  }, []);
 
   return (
-    <div className="my-2 rounded-md overflow-hidden border border-canopy-border">
+    <div className="my-3 rounded-lg overflow-hidden border border-canopy-border bg-canopy-sidebar/30">
       {language && language !== "text" && (
-        <div className="px-3 py-1 bg-canopy-sidebar/50 text-[10px] font-mono text-canopy-text/50 uppercase tracking-wider border-b border-canopy-border">
-          {language}
+        <div className="flex items-center justify-between px-3 py-1.5 bg-canopy-sidebar/70 border-b border-canopy-border">
+          <span className="text-[10px] font-mono text-canopy-text/50 uppercase tracking-wider">
+            {language}
+          </span>
+          <button
+            type="button"
+            onClick={handleCopy}
+            className={cn(
+              "flex items-center gap-1 px-2 py-0.5 rounded text-[10px] font-medium",
+              "transition-colors",
+              copied
+                ? "text-green-400 bg-green-400/10"
+                : "text-canopy-text/50 hover:text-canopy-text/80 hover:bg-canopy-bg/50"
+            )}
+            aria-label="Copy code"
+          >
+            {copied ? (
+              <>
+                <Check className="w-3 h-3" />
+                Copied
+              </>
+            ) : (
+              <>
+                <Copy className="w-3 h-3" />
+                Copy
+              </>
+            )}
+          </button>
         </div>
       )}
-      <pre className="p-3 bg-canopy-sidebar/30 overflow-x-auto">
+      <pre className="p-3 overflow-x-auto">
         <code
-          className="text-sm font-mono leading-relaxed"
+          className="text-[13px] font-mono leading-relaxed"
           dangerouslySetInnerHTML={{ __html: highlightedHtml }}
         />
       </pre>

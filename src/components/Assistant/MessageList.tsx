@@ -1,6 +1,6 @@
 import { useRef, useCallback, useState, useEffect } from "react";
 import { Virtuoso, VirtuosoHandle } from "react-virtuoso";
-import { ArrowDown } from "lucide-react";
+import { ArrowDown, Sparkles } from "lucide-react";
 import { cn } from "@/lib/utils";
 import { MessageBubble } from "./MessageBubble";
 import type { AssistantMessage, StreamingState } from "./types";
@@ -64,23 +64,31 @@ export function MessageList({ messages, streamingState, className }: MessageList
       ]
     : messages;
 
-  const renderMessage = (index: number) => {
-    const msg = allItems[index];
+  const renderMessage = (index: number, msg: AssistantMessage) => {
     const isStreaming = msg.id === "__streaming__";
 
     return (
-      <div className="px-4 py-2">
+      <div className="px-6 py-3">
         <MessageBubble message={msg} isStreaming={isStreaming} />
       </div>
     );
   };
 
+  const computeItemKey = useCallback((_index: number, item: AssistantMessage) => item.id, []);
+
   if (allItems.length === 0) {
     return (
       <div className={cn("flex-1 flex items-center justify-center", className)}>
-        <div className="text-center text-canopy-text/40 px-4">
-          <p className="text-sm">Start a conversation with Canopy Assistant</p>
-          <p className="text-xs mt-1">Ask questions, get help with your code, or explore ideas.</p>
+        <div className="text-center px-6 max-w-md">
+          <div className="inline-flex items-center justify-center w-12 h-12 rounded-xl bg-gradient-to-br from-canopy-accent/10 to-blue-500/10 mb-4">
+            <Sparkles className="w-6 h-6 text-canopy-accent/70" />
+          </div>
+          <p className="text-sm text-canopy-text/60 leading-relaxed">
+            Start a conversation with Canopy Assistant
+          </p>
+          <p className="text-xs text-canopy-text/40 mt-2 leading-relaxed">
+            Ask questions, get help with your code, explore ideas, or request code reviews
+          </p>
         </div>
       </div>
     );
@@ -94,6 +102,7 @@ export function MessageList({ messages, streamingState, className }: MessageList
         followOutput={autoScroll ? "smooth" : false}
         atBottomStateChange={handleAtBottomChange}
         itemContent={renderMessage}
+        computeItemKey={computeItemKey}
         className="h-full"
         initialTopMostItemIndex={allItems.length - 1}
         role="log"

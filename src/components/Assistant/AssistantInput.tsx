@@ -44,7 +44,12 @@ export const AssistantInput = forwardRef<AssistantInputHandle, AssistantInputPro
 
     const handleKeyDown = useCallback(
       (e: React.KeyboardEvent<HTMLTextAreaElement>) => {
-        if (e.key === "Enter" && !e.shiftKey && !isComposing) {
+        if (
+          e.key === "Enter" &&
+          !e.shiftKey &&
+          !isComposing &&
+          !e.nativeEvent.isComposing
+        ) {
           e.preventDefault();
           handleSubmit();
         }
@@ -79,14 +84,13 @@ export const AssistantInput = forwardRef<AssistantInputHandle, AssistantInputPro
       <div className={cn("border-t border-canopy-border bg-canopy-bg px-4 py-3", className)}>
         <div
           className={cn(
-            "flex items-end gap-2 rounded-md border bg-canopy-sidebar/30 px-3 py-2",
-            "border-canopy-border/50",
-            "transition-colors",
-            "focus-within:border-canopy-accent/50 focus-within:ring-1 focus-within:ring-canopy-accent/20",
+            "flex items-end gap-2.5 rounded-lg border bg-canopy-sidebar/20 px-3.5 py-2.5",
+            "border-canopy-border/60",
+            "transition-all duration-150",
+            "focus-within:border-canopy-accent/60 focus-within:bg-canopy-sidebar/30 focus-within:ring-1 focus-within:ring-canopy-accent/20",
             disabled && "opacity-50"
           )}
         >
-          <span className="text-canopy-accent/80 font-mono text-sm font-semibold pb-0.5">›</span>
           <textarea
             ref={textareaRef}
             value={value}
@@ -98,9 +102,9 @@ export const AssistantInput = forwardRef<AssistantInputHandle, AssistantInputPro
             disabled={disabled}
             rows={1}
             className={cn(
-              "flex-1 bg-transparent text-canopy-text text-sm",
+              "flex-1 bg-transparent text-canopy-text text-sm leading-relaxed",
               "resize-none outline-none",
-              "placeholder:text-canopy-text/30",
+              "placeholder:text-canopy-text/40",
               "disabled:cursor-not-allowed"
             )}
             aria-label="Message input"
@@ -110,26 +114,37 @@ export const AssistantInput = forwardRef<AssistantInputHandle, AssistantInputPro
             onClick={handleSubmit}
             disabled={!canSubmit}
             className={cn(
-              "p-1.5 rounded",
-              "text-canopy-accent hover:bg-canopy-accent/10",
-              "disabled:opacity-30 disabled:cursor-not-allowed disabled:hover:bg-transparent",
-              "transition-colors",
-              "focus:outline-none focus:ring-1 focus:ring-canopy-accent/50"
+              "p-2 rounded-md shrink-0",
+              canSubmit
+                ? "bg-canopy-accent text-white hover:bg-canopy-accent/90"
+                : "bg-canopy-sidebar/50 text-canopy-text/30",
+              "disabled:cursor-not-allowed",
+              "transition-all duration-150",
+              "focus:outline-none focus:ring-2 focus:ring-canopy-accent/50"
             )}
             aria-label="Send message"
           >
             <Send className="w-4 h-4" />
           </button>
         </div>
-        <div className="flex items-center justify-between mt-1.5 px-1 text-[10px] text-canopy-text/30">
-          <span>
-            <kbd className="px-1 py-0.5 rounded bg-canopy-sidebar/50 font-mono">Enter</kbd>
-            <span className="ml-1">to send</span>
-            <span className="mx-2">•</span>
-            <kbd className="px-1 py-0.5 rounded bg-canopy-sidebar/50 font-mono">Shift+Enter</kbd>
-            <span className="ml-1">for new line</span>
+        <div className="flex items-center justify-between mt-2 px-1 text-[10px] text-canopy-text/40">
+          <span className="flex items-center gap-1">
+            <kbd className="px-1.5 py-0.5 rounded bg-canopy-sidebar/60 font-mono border border-canopy-border/40">
+              ⏎
+            </kbd>
+            <span>to send</span>
+            <span className="mx-1.5 text-canopy-text/20">•</span>
+            <kbd className="px-1.5 py-0.5 rounded bg-canopy-sidebar/60 font-mono border border-canopy-border/40">
+              ⇧⏎
+            </kbd>
+            <span>new line</span>
           </span>
-          <span>Cmd+Shift+K to focus</span>
+          <span className="text-canopy-text/30">
+            <kbd className="px-1.5 py-0.5 rounded bg-canopy-sidebar/60 font-mono border border-canopy-border/40">
+              ⌘⇧K
+            </kbd>
+            <span className="ml-1">focus</span>
+          </span>
         </div>
       </div>
     );
