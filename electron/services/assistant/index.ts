@@ -23,3 +23,5 @@ export {
   unsanitizeToolName,
   sanitizeSchema,
 } from "./actionTools.js";
+
+export { ListenerManager, listenerManager } from "./ListenerManager.js";
