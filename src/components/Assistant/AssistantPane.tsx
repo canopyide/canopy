@@ -81,7 +81,7 @@ export function AssistantPane({
           </div>
         )}
 
-        {showEmptyState && <EmptyState />}
+        {showEmptyState && <EmptyState onSendMessage={sendMessage} />}
 
         {showChat && (
           <>
@@ -114,13 +114,13 @@ export function AssistantPane({
             )}
 
             {isLoading && streamingState && (
-              <div className="px-4 pb-2">
+              <div className="px-6 pb-2">
                 <button
                   type="button"
                   onClick={cancelStreaming}
                   className={cn(
-                    "text-xs text-canopy-text/50 hover:text-canopy-text/70",
-                    "transition-colors"
+                    "text-xs text-red-400/70 hover:text-red-400",
+                    "hover:underline transition-colors"
                   )}
                 >
                   Cancel response
