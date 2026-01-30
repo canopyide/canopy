@@ -1,4 +1,5 @@
-import { Terminal } from "lucide-react";
+import { useState, useCallback, useEffect } from "react";
+import { Terminal, Copy, Check } from "lucide-react";
 import { cn } from "@/lib/utils";
 import { CanopyIcon } from "@/components/icons/CanopyIcon";
 import { MarkdownRenderer } from "./MarkdownRenderer";
@@ -12,44 +13,76 @@ interface InteractionBlockProps {
   className?: string;
 }
 
-export function InteractionBlock({
-  message,
-  isStreaming = false,
-  className,
-}: InteractionBlockProps) {
-  if (message.role === "user") {
-    return (
-      <div
-        className={cn(
-          "group relative flex w-full gap-3 bg-canopy-sidebar/30 px-4 py-3 border-b border-divider/40",
-          className
-        )}
-        role="log"
-        aria-label="User input"
-      >
-        <div className="shrink-0 text-canopy-accent pt-[2px]" aria-hidden="true">
-          <Terminal className="w-3.5 h-3.5" />
-        </div>
-        <div className="prose-sm font-mono text-sm leading-relaxed text-canopy-text/90 w-full break-words whitespace-pre-wrap">
-          {message.content}
-        </div>
-        <div
-          className="absolute right-2 top-2 opacity-0 group-hover:opacity-100 text-[10px] text-canopy-text/30 transition-opacity"
-          aria-hidden="true"
-        >
-          INPUT
-        </div>
+function UserInputBlock({ content, className }: { content: string; className?: string }) {
+  return (
+    <div
+      className={cn(
+        "group relative flex w-full gap-3 bg-canopy-sidebar/30 px-4 py-3 border-b border-divider/40",
+        className
+      )}
+      role="log"
+      aria-label="User input"
+    >
+      <div className="shrink-0 text-canopy-accent pt-[2px]" aria-hidden="true">
+        <Terminal className="w-3.5 h-3.5" />
       </div>
-    );
-  }
+      <div className="prose-sm font-mono text-sm leading-relaxed text-canopy-text/90 w-full break-words whitespace-pre-wrap select-text">
+        {content}
+      </div>
+      <div
+        className="absolute right-2 top-2 opacity-0 group-hover:opacity-100 text-[10px] text-canopy-text/30 transition-opacity"
+        aria-hidden="true"
+      >
+        INPUT
+      </div>
+    </div>
+  );
+}
+
+function AssistantResponseBlock({
+  message,
+  isStreaming,
+  className,
+}: {
+  message: Pick<AssistantMessage, "content" | "toolCalls">;
+  isStreaming: boolean;
+  className?: string;
+}) {
+  const [copied, setCopied] = useState(false);
 
   const hasContent = message.content && message.content.trim().length > 0;
   const hasToolCalls = message.toolCalls && message.toolCalls.length > 0;
 
+  const handleCopy = useCallback(() => {
+    if (!navigator.clipboard?.writeText) {
+      console.warn("Clipboard API not available");
+      return;
+    }
+
+    const textToCopy = message.content || "";
+    if (!textToCopy.trim()) return;
+
+    navigator.clipboard
+      .writeText(textToCopy)
+      .then(() => {
+        setCopied(true);
+      })
+      .catch((err) => {
+        console.error("Failed to copy to clipboard:", err);
+      });
+  }, [message.content]);
+
+  // Clean up copied state timeout on unmount
+  useEffect(() => {
+    if (!copied) return;
+    const timeoutId = setTimeout(() => setCopied(false), 2000);
+    return () => clearTimeout(timeoutId);
+  }, [copied]);
+
   return (
     <div
       className={cn(
-        "flex w-full gap-3 px-4 py-4 border-b border-divider/20 hover:bg-white/[0.01] transition-colors",
+        "group relative flex w-full gap-3 px-4 py-4 border-b border-divider/20 hover:bg-white/[0.01] transition-colors",
         className
       )}
       role="log"
@@ -58,7 +91,7 @@ export function InteractionBlock({
       <div className="shrink-0 pt-[3px]" aria-hidden="true">
         <CanopyIcon size={14} className="text-canopy-text/40" />
       </div>
-      <div className="flex-1 min-w-0 space-y-3">
+      <div className="flex-1 min-w-0 space-y-3 select-text">
         {hasToolCalls && (
           <div className="flex flex-col gap-1">
             {message.toolCalls!.map((tc) => (
@@ -83,6 +116,50 @@ export function InteractionBlock({
           <div className="text-canopy-text/40 text-sm italic">No response content</div>
         )}
       </div>
+
+      {/* Copy button for assistant messages */}
+      {hasContent && !isStreaming && (
+        <button
+          type="button"
+          onClick={handleCopy}
+          className={cn(
+            "absolute right-3 top-3 flex items-center gap-1 px-2 py-1 rounded text-[10px] font-medium",
+            "opacity-0 group-hover:opacity-100 transition-opacity pointer-events-none group-hover:pointer-events-auto",
+            "focus-visible:opacity-100 focus-visible:pointer-events-auto focus-visible:outline focus-visible:outline-2 focus-visible:outline-canopy-accent",
+            copied
+              ? "text-green-400 bg-green-400/10"
+              : "text-canopy-text/50 hover:text-canopy-text/80 hover:bg-canopy-bg/50"
+          )}
+          aria-label="Copy response"
+          title="Copy response to clipboard"
+        >
+          {copied ? (
+            <>
+              <Check className="w-3 h-3" />
+              Copied
+            </>
+          ) : (
+            <>
+              <Copy className="w-3 h-3" />
+              Copy
+            </>
+          )}
+        </button>
+      )}
     </div>
+  );
+}
+
+export function InteractionBlock({
+  message,
+  isStreaming = false,
+  className,
+}: InteractionBlockProps) {
+  if (message.role === "user") {
+    return <UserInputBlock content={message.content} className={className} />;
+  }
+
+  return (
+    <AssistantResponseBlock message={message} isStreaming={isStreaming} className={className} />
   );
 }
