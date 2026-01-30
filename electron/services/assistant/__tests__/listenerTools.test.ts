@@ -3,9 +3,8 @@ import { createListenerTools, type ListenerToolContext } from "../listenerTools.
 
 // Mock the listenerManager module
 vi.mock("../ListenerManager.js", async () => {
-  const { ListenerManager } = await vi.importActual<typeof import("../ListenerManager.js")>(
-    "../ListenerManager.js"
-  );
+  const { ListenerManager } =
+    await vi.importActual<typeof import("../ListenerManager.js")>("../ListenerManager.js");
   const instance = new ListenerManager();
   return {
     ListenerManager,
@@ -15,9 +14,10 @@ vi.mock("../ListenerManager.js", async () => {
 
 // Import mocked instance after mock setup
 import { listenerManager } from "../ListenerManager.js";
+import type { ToolSet } from "ai";
 
 describe("listenerTools", () => {
-  let tools: any; // Use any to bypass strict AI SDK Tool typing in tests
+  let tools: ToolSet;
   let context: ListenerToolContext;
 
   beforeEach(() => {
@@ -261,25 +261,25 @@ describe("listenerTools", () => {
     it("tools from different sessions operate independently", async () => {
       const context1: ListenerToolContext = { sessionId: "session-1" };
       const context2: ListenerToolContext = { sessionId: "session-2" };
-      const tools1 = createListenerTools(context1) as any;
-      const tools2 = createListenerTools(context2) as any;
+      const tools1 = createListenerTools(context1);
+      const tools2 = createListenerTools(context2);
 
       // Register listeners in both sessions
-      await tools1.register_listener.execute(
+      await tools1.register_listener.execute!(
         { eventType: "agent:state-changed", filter: undefined },
         { toolCallId: "tc-1", messages: [], abortSignal: new AbortController().signal }
       );
-      await tools2.register_listener.execute(
+      await tools2.register_listener.execute!(
         { eventType: "terminal:activity", filter: undefined },
         { toolCallId: "tc-2", messages: [], abortSignal: new AbortController().signal }
       );
 
       // Verify each session sees only its own listeners
-      const list1 = await tools1.list_listeners.execute(
+      const list1 = await tools1.list_listeners.execute!(
         {},
         { toolCallId: "tc-3", messages: [], abortSignal: new AbortController().signal }
       );
-      const list2 = await tools2.list_listeners.execute(
+      const list2 = await tools2.list_listeners.execute!(
         {},
         { toolCallId: "tc-4", messages: [], abortSignal: new AbortController().signal }
       );
@@ -291,4 +291,3 @@ describe("listenerTools", () => {
     });
   });
 });
-

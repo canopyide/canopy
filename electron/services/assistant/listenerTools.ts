@@ -9,7 +9,7 @@
 import { tool, jsonSchema } from "ai";
 import type { ToolSet } from "ai";
 import { listenerManager } from "./ListenerManager.js";
-import { ALL_EVENT_TYPES } from "../events.js";
+import { ALL_EVENT_TYPES, type CanopyEventMap } from "../events.js";
 
 /**
  * Context provided to listener tools containing the session ID.
@@ -32,12 +32,14 @@ export function createListenerTools(context: ListenerToolContext): ToolSet {
         properties: {
           eventType: {
             type: "string",
-            description: "The event type to subscribe to (e.g., 'agent:state-changed', 'terminal:activity')",
+            description:
+              "The event type to subscribe to (e.g., 'agent:state-changed', 'terminal:activity')",
             enum: ALL_EVENT_TYPES,
           },
           filter: {
             type: "object",
-            description: "Optional filter to narrow events by field values (e.g., { terminalId: 'abc' })",
+            description:
+              "Optional filter to narrow events by field values (e.g., { terminalId: 'abc' })",
             additionalProperties: {
               type: ["string", "number", "boolean", "null"],
             },
@@ -45,9 +47,19 @@ export function createListenerTools(context: ListenerToolContext): ToolSet {
         },
         required: ["eventType"],
       }),
-      execute: async ({ eventType, filter }: { eventType: string; filter?: Record<string, any> }) => {
+      execute: async ({
+        eventType,
+        filter,
+      }: {
+        eventType: string;
+        filter?: Record<string, string | number | boolean | null>;
+      }) => {
         try {
-          const listenerId = listenerManager.register(context.sessionId, eventType as any, filter);
+          const listenerId = listenerManager.register(
+            context.sessionId,
+            eventType as keyof CanopyEventMap,
+            filter
+          );
           return {
             success: true,
             listenerId,
