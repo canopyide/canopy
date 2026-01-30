@@ -181,7 +181,7 @@ function TextBlock({ content }: { content: string }) {
       elements.push(
         <ListTag
           key={`list-${elements.length}`}
-          className={cn("my-2 pl-5", listType === "ul" ? "list-disc" : "list-decimal")}
+          className={cn("my-2 first:mt-0 pl-5", listType === "ul" ? "list-disc" : "list-decimal")}
         >
           {listItems.map((item, i) => (
             <li
@@ -201,13 +201,13 @@ function TextBlock({ content }: { content: string }) {
     const line = lines[i];
     const trimmed = line.trim();
 
-    // Headings
+    // Headings - use first:mt-0 pattern for stable top spacing
     if (trimmed.startsWith("### ")) {
       flushList();
       elements.push(
         <h3
           key={i}
-          className="text-sm font-semibold text-canopy-text mt-3 mb-1"
+          className="text-sm font-semibold text-canopy-text mt-3 first:mt-0 mb-1"
           dangerouslySetInnerHTML={{ __html: renderInlineMarkdown(trimmed.slice(4)) }}
         />
       );
@@ -218,7 +218,7 @@ function TextBlock({ content }: { content: string }) {
       elements.push(
         <h2
           key={i}
-          className="text-base font-semibold text-canopy-text mt-3 mb-1"
+          className="text-base font-semibold text-canopy-text mt-3 first:mt-0 mb-1"
           dangerouslySetInnerHTML={{ __html: renderInlineMarkdown(trimmed.slice(3)) }}
         />
       );
@@ -229,7 +229,7 @@ function TextBlock({ content }: { content: string }) {
       elements.push(
         <h1
           key={i}
-          className="text-lg font-semibold text-canopy-text mt-3 mb-1"
+          className="text-lg font-semibold text-canopy-text mt-3 first:mt-0 mb-1"
           dangerouslySetInnerHTML={{ __html: renderInlineMarkdown(trimmed.slice(2)) }}
         />
       );
@@ -269,7 +269,7 @@ function TextBlock({ content }: { content: string }) {
     elements.push(
       <p
         key={i}
-        className="my-1.5 leading-relaxed"
+        className="my-1.5 first:mt-0 leading-relaxed"
         dangerouslySetInnerHTML={{ __html: renderInlineMarkdown(trimmed) }}
       />
     );
@@ -308,7 +308,7 @@ function CodeBlock({ content, language }: { content: string; language: string })
   }, []);
 
   return (
-    <div className="my-3 rounded-lg overflow-hidden border border-canopy-border bg-canopy-sidebar/30">
+    <div className="my-3 first:mt-0 rounded-lg overflow-hidden border border-canopy-border bg-canopy-sidebar/30">
       {language && language !== "text" && (
         <div className="flex items-center justify-between px-3 py-1.5 bg-canopy-sidebar/70 border-b border-canopy-border">
           <span className="text-[10px] font-mono text-canopy-text/50 uppercase tracking-wider">

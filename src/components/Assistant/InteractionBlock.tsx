@@ -17,13 +17,15 @@ function UserInputBlock({ content, className }: { content: string; className?: s
   return (
     <div
       className={cn(
-        "group relative flex w-full gap-3 px-4 py-2 border-l-2 border-canopy-accent/30",
+        "group relative flex items-start w-full gap-3 px-4 py-2",
+        "border-l-2 border-canopy-accent/50 border-b border-divider/40",
+        "bg-canopy-sidebar/10",
         className
       )}
       role="article"
       aria-label="User input"
     >
-      <div className="shrink-0 text-canopy-accent/60 pt-[2px]" aria-hidden="true">
+      <div className="shrink-0 text-canopy-accent/60 translate-y-[1px]" aria-hidden="true">
         <Terminal className="w-3.5 h-3.5" />
       </div>
       <div className="prose-sm font-mono text-sm leading-relaxed text-canopy-text/90 w-full break-words whitespace-pre-wrap select-text">
@@ -76,13 +78,13 @@ function AssistantResponseBlock({
   return (
     <div
       className={cn(
-        "group flex w-full gap-3 px-4 py-4 border-b border-divider/20 hover:bg-white/[0.01] transition-colors",
+        "group flex items-start w-full gap-3 px-4 py-4 border-b border-divider/40 hover:bg-white/[0.01] transition-colors",
         className
       )}
       role="article"
       aria-label="Assistant response"
     >
-      <div className="shrink-0 pt-[3px]" aria-hidden="true">
+      <div className="shrink-0 translate-y-[1px]" aria-hidden="true">
         <CanopyIcon size={14} className="text-canopy-text/40" />
       </div>
       <div className="flex-1 min-w-0 space-y-3 select-text">
