@@ -39,6 +39,7 @@ export interface PanelHeaderProps {
   isFocused: boolean;
   isMaximized?: boolean;
   location?: "grid" | "dock";
+  isDragging?: boolean;
 
   // Title editing (provided by TitleEditingContext consumer)
   isEditingTitle: boolean;
@@ -86,6 +87,7 @@ function PanelHeaderComponent({
   isFocused,
   isMaximized = false,
   location = "grid",
+  isDragging = false,
   isEditingTitle,
   editingValue,
   titleInputRef,
@@ -240,7 +242,8 @@ function PanelHeaderComponent({
                 ? "bg-white/[0.02]"
                 : "bg-transparent",
           dragListeners && "cursor-grab active:cursor-grabbing",
-          isPinged && !isMaximized && "animate-terminal-header-ping"
+          isPinged && !isMaximized && "animate-terminal-header-ping",
+          isDragging && "pointer-events-none"
         )}
         onDoubleClick={handleHeaderDoubleClick}
       >
