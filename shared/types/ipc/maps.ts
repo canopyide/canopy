@@ -90,6 +90,7 @@ import type {
 } from "../github.js";
 import type { SpawnResult, TerminalStatusPayload } from "../pty-host.js";
 import type { HibernationConfig } from "./hibernation.js";
+import type { AgentRegistry, AgentMetadata } from "./agentCapabilities.js";
 
 // IPC Contract Maps
 
@@ -916,6 +917,24 @@ export interface IpcInvokeMap {
   "dev-preview:set-url": {
     args: [panelId: string, url: string];
     result: void;
+  };
+
+  // Agent Capabilities channels
+  "agent-capabilities:get-registry": {
+    args: [];
+    result: AgentRegistry;
+  };
+  "agent-capabilities:get-agent-ids": {
+    args: [];
+    result: string[];
+  };
+  "agent-capabilities:get-agent-metadata": {
+    args: [agentId: string];
+    result: AgentMetadata | null;
+  };
+  "agent-capabilities:is-agent-enabled": {
+    args: [agentId: string];
+    result: boolean;
   };
 }
 

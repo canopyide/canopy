@@ -413,6 +413,12 @@ const CHANNELS = {
   ASSISTANT_CHUNK: "assistant:chunk",
   ASSISTANT_HAS_API_KEY: "assistant:has-api-key",
   ASSISTANT_CLEAR_SESSION: "assistant:clear-session",
+
+  // Agent Capabilities channels
+  AGENT_CAPABILITIES_GET_REGISTRY: "agent-capabilities:get-registry",
+  AGENT_CAPABILITIES_GET_AGENT_IDS: "agent-capabilities:get-agent-ids",
+  AGENT_CAPABILITIES_GET_AGENT_METADATA: "agent-capabilities:get-agent-metadata",
+  AGENT_CAPABILITIES_IS_AGENT_ENABLED: "agent-capabilities:is-agent-enabled",
 } as const;
 
 const api: ElectronAPI = {
@@ -1331,6 +1337,19 @@ const api: ElectronAPI = {
       ipcRenderer.on(CHANNELS.ASSISTANT_CHUNK, handler);
       return () => ipcRenderer.removeListener(CHANNELS.ASSISTANT_CHUNK, handler);
     },
+  },
+
+  // Agent Capabilities API
+  agentCapabilities: {
+    getRegistry: () => _typedInvoke(CHANNELS.AGENT_CAPABILITIES_GET_REGISTRY),
+
+    getAgentIds: () => _typedInvoke(CHANNELS.AGENT_CAPABILITIES_GET_AGENT_IDS),
+
+    getAgentMetadata: (agentId: string) =>
+      _typedInvoke(CHANNELS.AGENT_CAPABILITIES_GET_AGENT_METADATA, agentId),
+
+    isAgentEnabled: (agentId: string) =>
+      _typedInvoke(CHANNELS.AGENT_CAPABILITIES_IS_AGENT_ENABLED, agentId),
   },
 };
 
