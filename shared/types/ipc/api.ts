@@ -85,6 +85,7 @@ import type {
 import type { AppAgentConfig } from "../appAgent.js";
 import type { ActionManifestEntry, ActionContext } from "../actions.js";
 import type { AssistantMessage, AssistantChunkPayload } from "../assistant.js";
+import type { AgentRegistry, AgentMetadata } from "./agentCapabilities.js";
 
 // ElectronAPI Type (exposed via preload)
 
@@ -638,5 +639,15 @@ export interface ElectronAPI {
     hasApiKey(): Promise<boolean>;
     /** Subscribe to streaming chunks from the assistant */
     onChunk(callback: (data: AssistantChunkPayload) => void): () => void;
+  };
+  agentCapabilities: {
+    /** Get effective registry (built-in + user overrides) */
+    getRegistry(): Promise<AgentRegistry>;
+    /** Get list of effective agent IDs */
+    getAgentIds(): Promise<string[]>;
+    /** Get metadata for specific agent */
+    getAgentMetadata(agentId: string): Promise<AgentMetadata | null>;
+    /** Check if agent is enabled/available */
+    isAgentEnabled(agentId: string): Promise<boolean>;
   };
 }

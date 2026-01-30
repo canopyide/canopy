@@ -11,6 +11,7 @@ export * from "./logs.js";
 export * from "./events.js";
 export * from "./errors.js";
 export * from "./agent.js";
+export * from "./agentCapabilities.js";
 export * from "./git.js";
 export * from "./files.js";
 export * from "./config.js";

@@ -392,3 +392,6 @@ export { AssistantMessageSchema, StreamChunkSchema, ASSISTANT_MODELS } from "./a
 // Listener types - assistant event subscription management
 export type { Listener, ListenerFilter, RegisterListenerOptions } from "./listener.js";
 export { ListenerSchema, ListenerFilterSchema, RegisterListenerOptionsSchema } from "./listener.js";
+
+// Agent Capabilities types - query agent registry and metadata
+export type { AgentRegistry, AgentMetadata } from "./ipc/agentCapabilities.js";
