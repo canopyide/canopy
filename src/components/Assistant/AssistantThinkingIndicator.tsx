@@ -9,13 +9,13 @@ export function AssistantThinkingIndicator({ className }: AssistantThinkingIndic
   return (
     <div
       className={cn(
-        "group relative flex w-full gap-3 px-4 py-4 border-b border-divider/20",
+        "group relative flex items-start w-full gap-3 px-4 py-4 border-b border-divider/40",
         className
       )}
       role="article"
       aria-label="Assistant is thinking"
     >
-      <div className="shrink-0 pt-[3px]" aria-hidden="true">
+      <div className="shrink-0 translate-y-[1px]" aria-hidden="true">
         <CanopyIcon size={14} className="text-canopy-text/40" />
       </div>
       <div className="flex items-center gap-2">

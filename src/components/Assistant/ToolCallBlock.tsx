@@ -67,13 +67,13 @@ export function ToolCallBlock({ toolCall, className }: ToolCallBlockProps) {
   const getBackgroundColor = () => {
     switch (toolCall.status) {
       case "pending":
-        return "bg-blue-500/5";
+        return "bg-blue-500/[0.03]";
       case "success":
-        return "bg-green-500/5";
+        return "bg-green-500/[0.03]";
       case "error":
-        return "bg-red-500/5";
+        return "bg-red-500/[0.03]";
       default:
-        return "bg-canopy-sidebar/20";
+        return "bg-canopy-sidebar/15";
     }
   };
 
