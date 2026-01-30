@@ -1,12 +1,4 @@
-import {
-  forwardRef,
-  useCallback,
-  useEffect,
-  useId,
-  useImperativeHandle,
-  useRef,
-  useState,
-} from "react";
+import { forwardRef, useCallback, useEffect, useImperativeHandle, useRef, useState } from "react";
 import { cn } from "@/lib/utils";
 
 export interface AssistantInputHandle {
@@ -34,7 +26,6 @@ export const AssistantInput = forwardRef<AssistantInputHandle, AssistantInputPro
     const [value, setValue] = useState("");
     const [isComposing, setIsComposing] = useState(false);
     const textareaRef = useRef<HTMLTextAreaElement>(null);
-    const hintId = useId();
 
     const adjustHeight = useCallback(() => {
       const textarea = textareaRef.current;
@@ -89,18 +80,26 @@ export const AssistantInput = forwardRef<AssistantInputHandle, AssistantInputPro
       []
     );
 
-    const canSubmit = value.trim().length > 0 && !disabled;
+    const handleContainerClick = useCallback(() => {
+      textareaRef.current?.focus();
+    }, []);
 
     return (
-      <div className={cn("shrink-0 border-t border-divider bg-canopy-bg", className)}>
+      <div className={cn("group shrink-0 cursor-text bg-canopy-bg px-4 pb-3 pt-3", className)}>
         <div
           className={cn(
-            "relative flex items-start gap-2 px-3 py-3",
+            "relative flex w-full items-center gap-1.5 rounded-sm border border-white/[0.06] bg-white/[0.03] py-1 shadow-[0_6px_12px_rgba(0,0,0,0.18)] transition-colors",
+            "group-hover:border-white/[0.08] group-hover:bg-white/[0.04]",
+            "focus-within:border-white/[0.12] focus-within:ring-1 focus-within:ring-white/[0.06] focus-within:bg-white/[0.05]",
             disabled && "opacity-60 pointer-events-none"
           )}
+          onClick={handleContainerClick}
         >
-          <div className="shrink-0 pt-1.5 text-canopy-accent" aria-hidden="true">
-            <span className="font-mono text-lg leading-none">›</span>
+          <div
+            className="select-none pl-2 pr-1 font-mono text-xs font-semibold leading-5 text-canopy-accent/85"
+            aria-hidden="true"
+          >
+            ❯
           </div>
 
           <textarea
@@ -114,30 +113,12 @@ export const AssistantInput = forwardRef<AssistantInputHandle, AssistantInputPro
             disabled={disabled}
             rows={1}
             className={cn(
-              "flex-1 max-h-[200px] min-h-[24px] resize-none bg-transparent py-1 text-sm text-canopy-text",
+              "flex-1 max-h-[200px] min-h-[24px] resize-none bg-transparent text-sm text-canopy-text",
               "placeholder:text-canopy-text/30 focus:outline-none scrollbar-none font-mono"
             )}
             aria-label="Command input"
-            aria-describedby={hintId}
+            aria-keyshortcuts="Enter Shift+Enter"
           />
-
-          <div className="shrink-0 pt-1" aria-hidden="true">
-            <span
-              className={cn(
-                "text-[10px] border rounded px-1.5 py-0.5 transition-colors",
-                canSubmit
-                  ? "text-canopy-accent/70 border-canopy-accent/30"
-                  : "text-canopy-text/30 border-divider"
-              )}
-            >
-              ⏎ Run
-            </span>
-          </div>
-        </div>
-
-        <div id={hintId} className="px-3 pb-2 text-[10px] text-canopy-text/30">
-          <kbd className="px-1 py-0.5 bg-canopy-sidebar/40 rounded font-mono">⇧⏎</kbd>
-          <span className="ml-1">new line</span>
         </div>
       </div>
     );
