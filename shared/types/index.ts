@@ -429,3 +429,11 @@ export {
   WorkflowNodeSchema,
   WorkflowDefinitionSchema,
 } from "./workflow.js";
+
+// Workflow Run types - runtime execution state
+export type {
+  WorkflowRunStatus,
+  NodeState,
+  EvaluatedCondition,
+  WorkflowRun,
+} from "./workflowRun.js";
