@@ -30,6 +30,7 @@ interface AssistantChatActions {
   ensureConversation: (panelId: string) => void;
   updateConversation: (panelId: string, updates: Partial<ConversationState>) => void;
   addMessage: (panelId: string, message: AssistantMessage) => void;
+  updateMessage: (panelId: string, messageId: string, updates: Partial<AssistantMessage>) => void;
   updateLastMessage: (panelId: string, updates: Partial<AssistantMessage>) => void;
   setMessages: (panelId: string, messages: AssistantMessage[]) => void;
   setLoading: (panelId: string, isLoading: boolean) => void;
@@ -67,7 +68,8 @@ const createAssistantChatStore: StateCreator<AssistantChatState & AssistantChatA
 
   updateConversation: (panelId, updates) => {
     set((s) => {
-      const existing = s.conversations[panelId] ?? createInitialConversation();
+      const existing = s.conversations[panelId];
+      if (!existing) return s;
       return {
         conversations: {
           ...s.conversations,
@@ -87,6 +89,24 @@ const createAssistantChatStore: StateCreator<AssistantChatState & AssistantChatA
             ...existing,
             messages: [...existing.messages, message],
           },
+        },
+      };
+    });
+  },
+
+  updateMessage: (panelId, messageId, updates) => {
+    set((s) => {
+      const existing = s.conversations[panelId];
+      if (!existing || existing.messages.length === 0) return s;
+
+      const messages = existing.messages.map((msg) =>
+        msg.id === messageId ? { ...msg, ...updates } : msg
+      );
+
+      return {
+        conversations: {
+          ...s.conversations,
+          [panelId]: { ...existing, messages },
         },
       };
     });
@@ -124,7 +144,8 @@ const createAssistantChatStore: StateCreator<AssistantChatState & AssistantChatA
 
   setLoading: (panelId, isLoading) => {
     set((s) => {
-      const existing = s.conversations[panelId] ?? createInitialConversation();
+      const existing = s.conversations[panelId];
+      if (!existing) return s;
       return {
         conversations: {
           ...s.conversations,
@@ -136,7 +157,8 @@ const createAssistantChatStore: StateCreator<AssistantChatState & AssistantChatA
 
   setError: (panelId, error) => {
     set((s) => {
-      const existing = s.conversations[panelId] ?? createInitialConversation();
+      const existing = s.conversations[panelId];
+      if (!existing) return s;
       return {
         conversations: {
           ...s.conversations,

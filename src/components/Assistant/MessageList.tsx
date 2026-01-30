@@ -8,10 +8,16 @@ import type { AssistantMessage, StreamingState } from "./types";
 interface MessageListProps {
   messages: AssistantMessage[];
   streamingState: StreamingState | null;
+  streamingMessageId?: string | null;
   className?: string;
 }
 
-export function MessageList({ messages, streamingState, className }: MessageListProps) {
+export function MessageList({
+  messages,
+  streamingState,
+  streamingMessageId,
+  className,
+}: MessageListProps) {
   const virtuosoRef = useRef<VirtuosoHandle>(null);
   const [atBottom, setAtBottom] = useState(true);
   const [autoScroll, setAutoScroll] = useState(true);
@@ -73,9 +79,14 @@ export function MessageList({ messages, streamingState, className }: MessageList
     ? `__streaming__:${streamingState.toolCalls.length}:${streamingState.toolCalls.map((tc) => tc.status).join(",")}`
     : null;
 
+  const visibleMessages =
+    streamingMessageId && streamingState
+      ? messages.filter((msg) => msg.id !== streamingMessageId)
+      : messages;
+
   const allItems = streamingState
     ? [
-        ...messages,
+        ...visibleMessages,
         {
           id: streamingKey!,
           role: "assistant" as const,

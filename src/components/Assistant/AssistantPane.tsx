@@ -30,6 +30,7 @@ export function AssistantPane({
   const {
     messages,
     streamingState,
+    streamingMessageId,
     isLoading,
     error,
     sendMessage,
@@ -107,6 +108,7 @@ export function AssistantPane({
               <MessageList
                 messages={messages}
                 streamingState={streamingState}
+                streamingMessageId={streamingMessageId}
                 className="flex-1 min-h-0"
               />
             ) : (

@@ -60,6 +60,7 @@ export function useAssistantChat(options: UseAssistantChatOptions) {
   // The selector must return a stable reference when conversation doesn't exist
   const conversation = useAssistantChatStore((s) => s.conversations[panelId]) ?? EMPTY_CONVERSATION;
   const storeAddMessage = useAssistantChatStore((s) => s.addMessage);
+  const storeUpdateMessage = useAssistantChatStore((s) => s.updateMessage);
   const storeUpdateLastMessage = useAssistantChatStore((s) => s.updateLastMessage);
   const storeSetLoading = useAssistantChatStore((s) => s.setLoading);
   const storeSetError = useAssistantChatStore((s) => s.setError);
@@ -67,6 +68,9 @@ export function useAssistantChat(options: UseAssistantChatOptions) {
 
   // Streaming state remains local since it's transient and shouldn't survive unmount
   const [streamingState, setStreamingState] = useState<StreamingState | null>(null);
+  const streamingStateRef = useRef<StreamingState | null>(null);
+  const streamingMessageIdRef = useRef<string | null>(null);
+  const [streamingMessageId, setStreamingMessageId] = useState<string | null>(null);
 
   // Use ref for session ID to maintain stability across the component lifetime
   const sessionIdRef = useRef<string>(conversation.sessionId);
@@ -121,45 +125,89 @@ export function useAssistantChat(options: UseAssistantChatOptions) {
     [panelId, storeUpdateLastMessage]
   );
 
+  const setStreamingStateSync = useCallback(
+    (next: StreamingState | null) => {
+      streamingStateRef.current = next;
+      setStreamingState(next);
+    },
+    [setStreamingState]
+  );
+
+  const ensureStreamingMessage = useCallback(
+    (state: StreamingState) => {
+      if (streamingMessageIdRef.current) return;
+      const id = generateId();
+      streamingMessageIdRef.current = id;
+      setStreamingMessageId(id);
+      storeAddMessage(panelId, {
+        id,
+        role: "assistant",
+        content: state.content,
+        timestamp: Date.now(),
+        toolCalls: state.toolCalls.length > 0 ? state.toolCalls : undefined,
+      });
+    },
+    [panelId, storeAddMessage]
+  );
+
+  const syncStreamingMessage = useCallback(
+    (state: StreamingState) => {
+      if (!state.content && state.toolCalls.length === 0) return;
+      ensureStreamingMessage(state);
+      const messageId = streamingMessageIdRef.current;
+      if (!messageId) return;
+      storeUpdateMessage(panelId, messageId, {
+        content: state.content,
+        toolCalls: state.toolCalls.length > 0 ? state.toolCalls : undefined,
+      });
+    },
+    [ensureStreamingMessage, panelId, storeUpdateMessage]
+  );
+
   const startStreaming = useCallback(() => {
     const newState = { content: "", toolCalls: [] };
-    setStreamingState(newState);
-    streamingStateRef.current = newState;
-  }, []);
+    setStreamingStateSync(newState);
+    streamingMessageIdRef.current = null;
+    setStreamingMessageId(null);
+  }, [setStreamingStateSync]);
 
-  const appendStreamingContent = useCallback((chunk: string) => {
-    setStreamingState((prev) => {
+  const appendStreamingContent = useCallback(
+    (chunk: string) => {
+      const prev = streamingStateRef.current;
       const newState = prev
         ? { ...prev, content: prev.content + chunk }
         : { content: chunk, toolCalls: [] };
-      streamingStateRef.current = newState;
-      return newState;
-    });
-  }, []);
+      setStreamingStateSync(newState);
+      syncStreamingMessage(newState);
+    },
+    [setStreamingStateSync, syncStreamingMessage]
+  );
 
-  const addStreamingToolCall = useCallback((toolCall: ToolCall) => {
-    setStreamingState((prev) => {
+  const addStreamingToolCall = useCallback(
+    (toolCall: ToolCall) => {
+      const prev = streamingStateRef.current;
       const newState = prev
         ? { ...prev, toolCalls: [...prev.toolCalls, toolCall] }
         : { content: "", toolCalls: [toolCall] };
-      streamingStateRef.current = newState;
-      return newState;
-    });
-  }, []);
+      setStreamingStateSync(newState);
+      syncStreamingMessage(newState);
+    },
+    [setStreamingStateSync, syncStreamingMessage]
+  );
 
-  const updateStreamingToolCall = useCallback((toolCallId: string, updates: Partial<ToolCall>) => {
-    setStreamingState((prev) => {
-      if (!prev) return null;
+  const updateStreamingToolCall = useCallback(
+    (toolCallId: string, updates: Partial<ToolCall>) => {
+      const prev = streamingStateRef.current;
+      if (!prev) return;
       const newState = {
         ...prev,
         toolCalls: prev.toolCalls.map((tc) => (tc.id === toolCallId ? { ...tc, ...updates } : tc)),
       };
-      streamingStateRef.current = newState;
-      return newState;
-    });
-  }, []);
-
-  const streamingStateRef = useRef<StreamingState | null>(null);
+      setStreamingStateSync(newState);
+      syncStreamingMessage(newState);
+    },
+    [setStreamingStateSync, syncStreamingMessage]
+  );
 
   // Keep ref in sync with state for use in finalizeStreaming
   useEffect(() => {
@@ -167,35 +215,58 @@ export function useAssistantChat(options: UseAssistantChatOptions) {
   }, [streamingState]);
 
   const finalizeStreaming = useCallback(() => {
-    // Use functional setState to capture the most recent streaming state,
-    // avoiding race conditions where streamingStateRef is stale
-    setStreamingState((prev) => {
-      if (!prev) return null;
+    // Capture streaming state from ref (kept in sync by all update functions)
+    const currentStreaming = streamingStateRef.current;
+    if (!currentStreaming) return;
 
-      if (prev.content || prev.toolCalls.length > 0) {
-        const message: AssistantMessage = {
+    // Clear ref first to prevent double-finalization
+    streamingStateRef.current = null;
+
+    // Add the finalized message to the store
+    if (currentStreaming.content || currentStreaming.toolCalls.length > 0) {
+      const messageId = streamingMessageIdRef.current;
+      if (messageId) {
+        storeUpdateMessage(panelId, messageId, {
+          content: currentStreaming.content,
+          toolCalls: currentStreaming.toolCalls.length > 0 ? currentStreaming.toolCalls : undefined,
+        });
+      } else {
+        storeAddMessage(panelId, {
           id: generateId(),
           role: "assistant",
-          content: prev.content,
+          content: currentStreaming.content,
           timestamp: Date.now(),
-          toolCalls: prev.toolCalls.length > 0 ? prev.toolCalls : undefined,
-        };
-        storeAddMessage(panelId, message);
+          toolCalls: currentStreaming.toolCalls.length > 0 ? currentStreaming.toolCalls : undefined,
+        });
       }
-
-      // Clear ref after successfully adding message
-      streamingStateRef.current = null;
-      return null;
-    });
-  }, [panelId, storeAddMessage]);
+    }
+    // Defer clearing the streaming state to ensure the store update is processed first.
+    // This prevents a race condition where the streaming item is removed before
+    // the finalized message appears in the messages array.
+    setTimeout(() => {
+      setStreamingStateSync(null);
+      streamingMessageIdRef.current = null;
+      setStreamingMessageId(null);
+    }, 0);
+  }, [panelId, storeAddMessage, storeUpdateMessage, setStreamingStateSync]);
 
   const cancelStreaming = useCallback(() => {
     window.electron.assistant.cancel(sessionIdRef.current);
     cleanupRef.current?.();
     cleanupRef.current = null;
-    setStreamingState(null);
+    if (
+      streamingStateRef.current &&
+      (streamingStateRef.current.content || streamingStateRef.current.toolCalls.length > 0)
+    ) {
+      syncStreamingMessage(streamingStateRef.current);
+    }
+    setStreamingStateSync(null);
+    setTimeout(() => {
+      streamingMessageIdRef.current = null;
+      setStreamingMessageId(null);
+    }, 0);
     storeSetLoading(panelId, false);
-  }, [panelId, storeSetLoading]);
+  }, [panelId, storeSetLoading, setStreamingStateSync, syncStreamingMessage]);
 
   const clearError = useCallback(() => {
     storeSetError(panelId, null);
@@ -208,10 +279,12 @@ export function useAssistantChat(options: UseAssistantChatOptions) {
     // Invalidate any in-flight requests to prevent race conditions
     currentRequestIdRef.current++;
     storeClearConversation(panelId);
-    setStreamingState(null);
+    streamingMessageIdRef.current = null;
+    setStreamingMessageId(null);
+    setStreamingStateSync(null);
     // Session ID is already regenerated by clearConversation, sync the ref
     sessionIdRef.current = useAssistantChatStore.getState().getConversation(panelId).sessionId;
-  }, [panelId, storeClearConversation]);
+  }, [panelId, storeClearConversation, setStreamingStateSync]);
 
   // Cleanup on unmount only - cancel streaming and clear loading state
   useEffect(() => {
@@ -377,7 +450,7 @@ export function useAssistantChat(options: UseAssistantChatOptions) {
           const errorMessage = err instanceof Error ? err.message : "An error occurred";
           storeSetError(panelId, errorMessage);
           onError?.(errorMessage);
-          setStreamingState(null);
+          setStreamingStateSync(null);
           storeSetLoading(panelId, false);
           // Clean up listener on error
           cleanupRef.current?.();
@@ -398,12 +471,14 @@ export function useAssistantChat(options: UseAssistantChatOptions) {
       storeSetError,
       storeSetLoading,
       onError,
+      setStreamingStateSync,
     ]
   );
 
   return {
     messages: conversation.messages,
     streamingState,
+    streamingMessageId,
     isLoading: conversation.isLoading,
     error: conversation.error,
     sendMessage,
