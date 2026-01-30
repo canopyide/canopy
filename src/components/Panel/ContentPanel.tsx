@@ -242,7 +242,6 @@ const ContentPanelInner = forwardRef<HTMLDivElement, ContentPanelProps>(function
             : "border-overlay hover:border-white/[0.08]"),
         location === "grid" && isMaximized && "border-0 rounded-none z-[var(--z-maximized)]",
         isTrashing && "terminal-trashing",
-        isDragging && "pointer-events-none",
         className
       )}
       onClick={handleClick}
@@ -252,6 +251,7 @@ const ContentPanelInner = forwardRef<HTMLDivElement, ContentPanelProps>(function
       aria-label={ariaLabel}
     >
       <PanelHeader
+        isDragging={isDragging}
         id={id}
         title={title}
         kind={kind}
