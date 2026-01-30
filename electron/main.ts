@@ -110,6 +110,10 @@ import {
 } from "./services/SystemSleepService.js";
 import { notificationService } from "./services/NotificationService.js";
 import { registerCommands } from "./services/commands/index.js";
+import {
+  initializeTaskOrchestrator,
+  disposeTaskOrchestrator,
+} from "./services/TaskOrchestrator.js";
 
 // Initialize logger early with userData path
 initializeLogger(app.getPath("userData"));
@@ -195,6 +199,9 @@ if (!gotTheLock) {
     Promise.all([
       workspaceClient ? workspaceClient.dispose() : Promise.resolve(),
       new Promise<void>((resolve) => {
+        // Dispose orchestrator before ptyClient to prevent event handlers from firing
+        disposeTaskOrchestrator();
+
         if (ptyClient) {
           ptyClient.dispose();
           ptyClient = null;
@@ -705,6 +712,10 @@ async function createWindow(): Promise<void> {
     const currentProjectId = projectStore.getCurrentProjectId();
     ptyClient.setActiveProject(currentProjectId);
 
+    // Initialize TaskOrchestrator for task queue coordination
+    initializeTaskOrchestrator(ptyClient);
+    console.log("[MAIN] TaskOrchestrator initialized");
+
     // Spawn Default Terminal
     console.log("[MAIN] Spawning default terminal...");
     try {
@@ -831,6 +842,8 @@ async function createWindow(): Promise<void> {
     disposeWorkspaceClient();
 
     if (sidecarManager) sidecarManager.destroy();
+
+    disposeTaskOrchestrator();
 
     if (ptyClient) ptyClient.dispose();
     disposePtyClient();
