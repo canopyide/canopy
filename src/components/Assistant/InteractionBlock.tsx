@@ -1,5 +1,6 @@
-import { Terminal, Sparkles } from "lucide-react";
+import { Terminal } from "lucide-react";
 import { cn } from "@/lib/utils";
+import { CanopyIcon } from "@/components/icons/CanopyIcon";
 import { MarkdownRenderer } from "./MarkdownRenderer";
 import { ToolCallBlock } from "./ToolCallBlock";
 import { StreamingCursor } from "./StreamingCursor";
@@ -55,7 +56,7 @@ export function InteractionBlock({
       aria-label="Assistant response"
     >
       <div className="shrink-0 pt-[3px]" aria-hidden="true">
-        <Sparkles className="w-3.5 h-3.5 text-canopy-text/40" />
+        <CanopyIcon size={14} className="text-canopy-text/40" />
       </div>
       <div className="flex-1 min-w-0 space-y-3">
         {hasToolCalls && (
