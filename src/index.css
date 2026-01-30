@@ -1,4 +1,5 @@
 @import "tailwindcss";
+@plugin "@tailwindcss/typography";
 
 @theme inline {
   --color-background: var(--background);
@@ -351,6 +352,64 @@
   pre,
   .font-mono {
     font-family: "JetBrains Mono", monospace;
+  }
+
+  /* Canopy prose theme - customized typography for dark theme */
+  .prose-canopy {
+    --tw-prose-body: var(--color-canopy-text);
+    --tw-prose-headings: var(--color-canopy-text);
+    --tw-prose-lead: color-mix(in oklab, var(--color-canopy-text) 80%, transparent);
+    --tw-prose-links: var(--color-canopy-accent);
+    --tw-prose-bold: var(--color-canopy-text);
+    --tw-prose-counters: color-mix(in oklab, var(--color-canopy-text) 60%, transparent);
+    --tw-prose-bullets: color-mix(in oklab, var(--color-canopy-text) 40%, transparent);
+    --tw-prose-hr: var(--color-canopy-border);
+    --tw-prose-quotes: var(--color-canopy-text);
+    --tw-prose-quote-borders: var(--color-canopy-accent);
+    --tw-prose-captions: color-mix(in oklab, var(--color-canopy-text) 60%, transparent);
+    --tw-prose-code: var(--color-canopy-text);
+    --tw-prose-pre-code: var(--color-canopy-text);
+    --tw-prose-pre-bg: var(--color-canopy-sidebar);
+    --tw-prose-th-borders: var(--color-canopy-border);
+    --tw-prose-td-borders: color-mix(in oklab, var(--color-canopy-border) 60%, transparent);
+  }
+
+  /* Prose code inline styling - matches existing MarkdownRenderer */
+  .prose-canopy :where(code):not(:where(pre *)) {
+    background: color-mix(in oklab, var(--color-canopy-sidebar) 60%, transparent);
+    padding: 0.125rem 0.375rem;
+    border-radius: var(--radius-xs);
+    font-size: 0.8125rem;
+    font-family: "JetBrains Mono", monospace;
+    border: 1px solid color-mix(in oklab, var(--color-canopy-border) 50%, transparent);
+  }
+
+  .prose-canopy :where(code):not(:where(pre *))::before,
+  .prose-canopy :where(code):not(:where(pre *))::after {
+    content: none;
+  }
+
+  /* Prose pre/code block styling */
+  .prose-canopy :where(pre) {
+    background: color-mix(in oklab, var(--color-canopy-sidebar) 30%, transparent);
+    border: 1px solid var(--color-canopy-border);
+    border-radius: var(--radius-lg);
+    font-family: "JetBrains Mono", monospace;
+  }
+
+  /* Prose link hover */
+  .prose-canopy :where(a):hover {
+    text-decoration: underline;
+  }
+
+  /* Prose headings - stable top spacing for alignment */
+  .prose-canopy :where(h1, h2, h3, h4, h5, h6):first-child {
+    margin-top: 0;
+  }
+
+  /* Prose list spacing */
+  .prose-canopy :where(ul, ol):first-child {
+    margin-top: 0;
   }
 
   /* Subtle noise texture for grid background */
