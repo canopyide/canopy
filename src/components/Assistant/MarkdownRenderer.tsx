@@ -137,25 +137,22 @@ function renderInlineMarkdown(text: string): string {
   let result = escapeHtml(text);
 
   // Bold: **text** or __text__
-  result = result.replace(/\*\*(.+?)\*\*/g, '<strong class="font-semibold">$1</strong>');
-  result = result.replace(/__(.+?)__/g, '<strong class="font-semibold">$1</strong>');
+  result = result.replace(/\*\*(.+?)\*\*/g, "<strong>$1</strong>");
+  result = result.replace(/__(.+?)__/g, "<strong>$1</strong>");
 
   // Italic: *text* or _text_
-  result = result.replace(/\*([^*]+)\*/g, '<em class="italic">$1</em>');
-  result = result.replace(/_([^_]+)_/g, '<em class="italic">$1</em>');
+  result = result.replace(/\*([^*]+)\*/g, "<em>$1</em>");
+  result = result.replace(/_([^_]+)_/g, "<em>$1</em>");
 
-  // Inline code: `code`
-  result = result.replace(
-    /`([^`]+)`/g,
-    '<code class="bg-canopy-sidebar/60 px-1.5 py-0.5 rounded text-[13px] font-mono text-canopy-text/90 border border-canopy-border/50">$1</code>'
-  );
+  // Inline code: `code` - prose-canopy handles styling
+  result = result.replace(/`([^`]+)`/g, "<code>$1</code>");
 
-  // Links: [text](url) - with XSS protection
-  result = result.replace(/\[([^\]]+)\]\(([^)]+)\)/g, (_, text, url) => {
+  // Links: [text](url) - with XSS protection, prose-canopy handles styling
+  result = result.replace(/\[([^\]]+)\]\(([^)]+)\)/g, (_, linkText, url) => {
     const trimmedUrl = url.trim();
     const isAllowedScheme = /^(https?|mailto):/i.test(trimmedUrl);
     if (!isAllowedScheme && !/^[./]/.test(trimmedUrl)) {
-      return `<span class="text-canopy-text/50">${text}</span>`;
+      return `<span class="text-canopy-text/50">${linkText}</span>`;
     }
     const escapedUrl = trimmedUrl
       .replace(/&/g, "&amp;")
@@ -163,7 +160,7 @@ function renderInlineMarkdown(text: string): string {
       .replace(/>/g, "&gt;")
       .replace(/"/g, "&quot;")
       .replace(/'/g, "&#39;");
-    return `<a href="${escapedUrl}" class="text-canopy-accent hover:underline" target="_blank" rel="noopener noreferrer">${text}</a>`;
+    return `<a href="${escapedUrl}" target="_blank" rel="noopener noreferrer">${linkText}</a>`;
   });
 
   return result;
@@ -179,16 +176,9 @@ function TextBlock({ content }: { content: string }) {
     if (listItems.length > 0 && listType) {
       const ListTag = listType;
       elements.push(
-        <ListTag
-          key={`list-${elements.length}`}
-          className={cn("my-2 first:mt-0 pl-5", listType === "ul" ? "list-disc" : "list-decimal")}
-        >
+        <ListTag key={`list-${elements.length}`}>
           {listItems.map((item, i) => (
-            <li
-              key={i}
-              className="my-0.5"
-              dangerouslySetInnerHTML={{ __html: renderInlineMarkdown(item) }}
-            />
+            <li key={i} dangerouslySetInnerHTML={{ __html: renderInlineMarkdown(item) }} />
           ))}
         </ListTag>
       );
@@ -201,37 +191,25 @@ function TextBlock({ content }: { content: string }) {
     const line = lines[i];
     const trimmed = line.trim();
 
-    // Headings - use first:mt-0 pattern for stable top spacing
+    // Headings
     if (trimmed.startsWith("### ")) {
       flushList();
       elements.push(
-        <h3
-          key={i}
-          className="text-sm font-semibold text-canopy-text mt-3 first:mt-0 mb-1"
-          dangerouslySetInnerHTML={{ __html: renderInlineMarkdown(trimmed.slice(4)) }}
-        />
+        <h3 key={i} dangerouslySetInnerHTML={{ __html: renderInlineMarkdown(trimmed.slice(4)) }} />
       );
       continue;
     }
     if (trimmed.startsWith("## ")) {
       flushList();
       elements.push(
-        <h2
-          key={i}
-          className="text-base font-semibold text-canopy-text mt-3 first:mt-0 mb-1"
-          dangerouslySetInnerHTML={{ __html: renderInlineMarkdown(trimmed.slice(3)) }}
-        />
+        <h2 key={i} dangerouslySetInnerHTML={{ __html: renderInlineMarkdown(trimmed.slice(3)) }} />
       );
       continue;
     }
     if (trimmed.startsWith("# ")) {
       flushList();
       elements.push(
-        <h1
-          key={i}
-          className="text-lg font-semibold text-canopy-text mt-3 first:mt-0 mb-1"
-          dangerouslySetInnerHTML={{ __html: renderInlineMarkdown(trimmed.slice(2)) }}
-        />
+        <h1 key={i} dangerouslySetInnerHTML={{ __html: renderInlineMarkdown(trimmed.slice(2)) }} />
       );
       continue;
     }
@@ -267,17 +245,13 @@ function TextBlock({ content }: { content: string }) {
     // Regular paragraph
     flushList();
     elements.push(
-      <p
-        key={i}
-        className="my-1.5 first:mt-0 leading-relaxed"
-        dangerouslySetInnerHTML={{ __html: renderInlineMarkdown(trimmed) }}
-      />
+      <p key={i} dangerouslySetInnerHTML={{ __html: renderInlineMarkdown(trimmed) }} />
     );
   }
 
   flushList();
 
-  return <div className="space-y-0.5">{elements}</div>;
+  return <>{elements}</>;
 }
 
 function CodeBlock({ content, language }: { content: string; language: string }) {
@@ -308,7 +282,7 @@ function CodeBlock({ content, language }: { content: string; language: string })
   }, []);
 
   return (
-    <div className="my-3 first:mt-0 rounded-lg overflow-hidden border border-canopy-border bg-canopy-sidebar/30">
+    <div className="not-prose my-3 first:mt-0 rounded-lg overflow-hidden border border-canopy-border bg-canopy-sidebar/30">
       {language && language !== "text" && (
         <div className="flex items-center justify-between px-3 py-1.5 bg-canopy-sidebar/70 border-b border-canopy-border">
           <span className="text-[10px] font-mono text-canopy-text/50 uppercase tracking-wider">
@@ -360,12 +334,15 @@ export function MarkdownRenderer({ content, className }: MarkdownRendererProps) 
 
   if (!hasRenderable) {
     return (
-      <div className={cn("text-sm text-canopy-text min-h-[1.5em]", className)} aria-hidden="true" />
+      <div
+        className={cn("prose prose-sm prose-canopy min-h-[1.5em]", className)}
+        aria-hidden="true"
+      />
     );
   }
 
   return (
-    <div className={cn("text-sm text-canopy-text", className)}>
+    <div className={cn("prose prose-sm prose-canopy max-w-none", className)}>
       {blocks.map((block, index) =>
         block.type === "code" ? (
           <CodeBlock key={index} content={block.content} language={block.language || "text"} />
