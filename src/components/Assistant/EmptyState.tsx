@@ -29,10 +29,7 @@ export function EmptyState({ className }: EmptyStateProps) {
 
   return (
     <div
-      className={cn(
-        "flex h-full flex-col items-center justify-center p-8 select-none",
-        className
-      )}
+      className={cn("flex h-full flex-col items-center justify-center p-8 select-none", className)}
     >
       {/* Watermark - Ultra-low contrast branding */}
       <div className="mb-8 flex flex-col items-center gap-4 opacity-5" aria-hidden="true">
