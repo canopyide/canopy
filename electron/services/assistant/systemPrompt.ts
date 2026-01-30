@@ -16,7 +16,9 @@ function loadSystemPrompt(): string {
   let promptPath: string;
   if (isDev) {
     // Development: load from dist-electron copy (created by build script)
-    promptPath = path.join(__dirname, "systemPrompt.txt");
+    // Note: __dirname points to the bundled main.js location (dist-electron/electron/),
+    // not the original source directory, so we need the relative path from there.
+    promptPath = path.join(__dirname, "services", "assistant", "systemPrompt.txt");
   } else {
     // Production: load from resources (via electron-builder extraResources)
     promptPath = path.join(process.resourcesPath, "systemPrompt.txt");
