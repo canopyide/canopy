@@ -7,7 +7,10 @@
  * 3. Select: Top-scored or weighted lottery selection
  */
 
-import { getEffectiveRegistry, getEffectiveAgentConfig } from "../../shared/config/agentRegistry.js";
+import {
+  getEffectiveRegistry,
+  getEffectiveAgentConfig,
+} from "../../shared/config/agentRegistry.js";
 import { AgentAvailabilityStore, getAgentAvailabilityStore } from "./AgentAvailabilityStore.js";
 import type { AgentRoutingConfig, AgentDomainWeights } from "../../shared/types/agentSettings.js";
 import { DEFAULT_ROUTING_CONFIG } from "../../shared/types/agentSettings.js";
@@ -239,9 +242,7 @@ export function getAgentRouter(): AgentRouter {
  * Initialize a new AgentRouter instance.
  * Disposes any existing instance.
  */
-export function initializeAgentRouter(
-  availabilityStore: AgentAvailabilityStore
-): AgentRouter {
+export function initializeAgentRouter(availabilityStore: AgentAvailabilityStore): AgentRouter {
   routerInstance = new AgentRouter(availabilityStore);
   return routerInstance;
 }

@@ -112,7 +112,7 @@ export class TaskPersistence {
       console.log(
         `[TaskPersistence] Loaded ${validated.tasks.length} tasks for project ${projectId}`
       );
-      return validated.tasks;
+      return validated.tasks as TaskRecord[];
     } catch (error) {
       console.error(`[TaskPersistence] Failed to load tasks for ${projectId}:`, error);
 
