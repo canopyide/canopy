@@ -115,6 +115,11 @@ import {
   initializeTaskOrchestrator,
   disposeTaskOrchestrator,
 } from "./services/TaskOrchestrator.js";
+import {
+  initializeWorkflowEngine,
+  disposeWorkflowEngine,
+} from "./services/WorkflowEngine.js";
+import { workflowLoader } from "./services/WorkflowLoader.js";
 
 // Initialize logger early with userData path
 initializeLogger(app.getPath("userData"));
@@ -200,8 +205,9 @@ if (!gotTheLock) {
     Promise.all([
       workspaceClient ? workspaceClient.dispose() : Promise.resolve(),
       new Promise<void>((resolve) => {
-        // Dispose orchestrator before ptyClient to prevent event handlers from firing
+        // Dispose orchestrators before ptyClient to prevent event handlers from firing
         disposeTaskOrchestrator();
+        disposeWorkflowEngine();
 
         if (ptyClient) {
           ptyClient.dispose();
@@ -756,6 +762,15 @@ async function createWindow(): Promise<void> {
     } catch (error) {
       console.error("[MAIN] Failed to initialize task queue:", error);
     }
+
+    // Initialize WorkflowEngine after task queue is ready
+    try {
+      await workflowLoader.initialize();
+      initializeWorkflowEngine();
+      console.log("[MAIN] WorkflowEngine initialized");
+    } catch (error) {
+      console.error("[MAIN] Failed to initialize workflow engine:", error);
+    }
   }
 
   let eventInspectorActive = false;
@@ -856,6 +871,7 @@ async function createWindow(): Promise<void> {
     if (sidecarManager) sidecarManager.destroy();
 
     disposeTaskOrchestrator();
+    disposeWorkflowEngine();
 
     if (ptyClient) ptyClient.dispose();
     disposePtyClient();
