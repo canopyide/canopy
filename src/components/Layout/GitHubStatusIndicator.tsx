@@ -29,12 +29,11 @@ export function GitHubStatusIndicator({
     return undefined;
   }, [status, onTransitionEnd]);
 
-  if (internalStatus === "idle") return null;
-
   return (
     <div
       className={cn(
         "absolute bottom-0 left-0 right-0 h-[1px] rounded-b-[var(--radius-md)]",
+        internalStatus === "idle" && "opacity-0 pointer-events-none",
         internalStatus === "loading" && "overflow-hidden github-status-loading",
         internalStatus === "success" && "github-status-success",
         internalStatus === "error" && "github-status-error"
