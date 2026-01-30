@@ -315,6 +315,26 @@ export const EVENT_META: Record<keyof CanopyEventMap, EventMetadata> = {
     requiresTimestamp: true,
     description: "Task failed",
   },
+
+  // Workflow events
+  "workflow:started": {
+    category: "task",
+    requiresContext: false,
+    requiresTimestamp: true,
+    description: "Workflow execution started",
+  },
+  "workflow:completed": {
+    category: "task",
+    requiresContext: false,
+    requiresTimestamp: true,
+    description: "Workflow execution completed successfully",
+  },
+  "workflow:failed": {
+    category: "task",
+    requiresContext: false,
+    requiresTimestamp: true,
+    description: "Workflow execution failed",
+  },
 };
 
 export function getEventCategory(eventType: keyof CanopyEventMap): EventCategory {
@@ -725,6 +745,40 @@ export type CanopyEventMap = {
     worktreeId?: string;
     error: string;
   }>;
+
+  // Workflow Lifecycle Events
+
+  /**
+   * Emitted when a workflow execution starts.
+   */
+  "workflow:started": {
+    runId: string;
+    workflowId: string;
+    workflowVersion: string;
+    timestamp: number;
+  };
+
+  /**
+   * Emitted when a workflow execution completes successfully.
+   */
+  "workflow:completed": {
+    runId: string;
+    workflowId: string;
+    workflowVersion: string;
+    duration: number;
+    timestamp: number;
+  };
+
+  /**
+   * Emitted when a workflow execution fails.
+   */
+  "workflow:failed": {
+    runId: string;
+    workflowId: string;
+    workflowVersion: string;
+    error: string;
+    timestamp: number;
+  };
 };
 
 export const ALL_EVENT_TYPES: Array<keyof CanopyEventMap> = [
@@ -773,6 +827,9 @@ export const ALL_EVENT_TYPES: Array<keyof CanopyEventMap> = [
   "task:state-changed",
   "task:completed",
   "task:failed",
+  "workflow:started",
+  "workflow:completed",
+  "workflow:failed",
 ];
 
 export class TypedEventBus {
