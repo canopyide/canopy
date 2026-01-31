@@ -7,15 +7,15 @@ interface AssistantThinkingIndicatorProps {
 export function AssistantThinkingIndicator({ className }: AssistantThinkingIndicatorProps) {
   return (
     <div
-      className={cn("pl-14 pr-5 py-3 relative", className)}
+      className={cn("relative pt-5 pb-6 px-0", className)}
       role="status"
       aria-label="Assistant is processing"
     >
-      {/* Thread line - centered on chevron with equal spacing */}
-      <div className="absolute left-7 top-0 bottom-0 w-px bg-canopy-border" />
+      {/* Thread line - positioned to align with response layout */}
+      <div className="absolute left-[29px] top-0 bottom-0 w-px bg-white/[0.06]" />
 
       {/* Animated processing indicator */}
-      <div className="flex items-center gap-3">
+      <div className="pl-[60px] flex items-center gap-3">
         <div className="relative w-4 h-4" aria-hidden="true">
           <div className="absolute inset-0 rounded-full border-2 border-canopy-text/10" />
           <div className="absolute inset-0 rounded-full border-2 border-transparent border-t-canopy-accent animate-spin" />

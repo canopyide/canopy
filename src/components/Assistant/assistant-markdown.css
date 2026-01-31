@@ -105,12 +105,12 @@
   /* Inline code */
   & code:not(pre code) {
     font-family: "JetBrains Mono", monospace;
-    font-size: 0.93em;
+    font-size: 0.857em;
     padding: 0.125em 0.375em;
     border-radius: 4px;
-    background: color-mix(in oklab, var(--color-canopy-sidebar) 70%, transparent);
-    border: 1px solid color-mix(in oklab, var(--color-canopy-border) 60%, transparent);
-    color: color-mix(in oklab, var(--color-canopy-text) 95%, var(--color-canopy-accent));
+    background: rgba(255, 255, 255, 0.1);
+    border: 1px solid rgba(255, 255, 255, 0.05);
+    color: var(--color-canopy-text);
   }
 
   /* Lists */
