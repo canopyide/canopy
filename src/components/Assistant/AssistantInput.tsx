@@ -121,7 +121,7 @@ export const AssistantInput = forwardRef<AssistantInputHandle, AssistantInputPro
 
     return (
       <div
-        className={cn("group shrink-0 cursor-text bg-canopy-bg px-4 pb-3 pt-3", className)}
+        className={cn("group shrink-0 cursor-text bg-canopy-bg px-4 pb-3 pt-3 border-t border-divider", className)}
         onClick={handleContainerClick}
       >
         <div className="flex items-end gap-2">
