@@ -764,7 +764,7 @@ function App() {
     onOpenProjectSwitcherPalette: projectSwitcherPalette.open,
     onOpenShortcuts: () => setIsShortcutsOpen(true),
     onLaunchAgent: async (agentId, options) => {
-      await launchAgent(agentId, options);
+      return launchAgent(agentId, options);
     },
     onInject: inject,
     getDefaultCwd: () => defaultTerminalCwd,

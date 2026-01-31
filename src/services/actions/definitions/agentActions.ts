@@ -29,7 +29,14 @@ export function registerAgentActions(actions: ActionRegistry, callbacks: ActionC
         prompt?: string;
         interactive?: boolean;
       };
-      await callbacks.onLaunchAgent(agentId, { location, cwd, worktreeId, prompt, interactive });
+      const terminalId = await callbacks.onLaunchAgent(agentId, {
+        location,
+        cwd,
+        worktreeId,
+        prompt,
+        interactive,
+      });
+      return { terminalId };
     },
   }));
 
@@ -55,7 +62,8 @@ export function registerAgentActions(actions: ActionRegistry, callbacks: ActionC
     danger: "safe",
     scope: "renderer",
     run: async () => {
-      await callbacks.onLaunchAgent("claude");
+      const terminalId = await callbacks.onLaunchAgent("claude");
+      return { terminalId };
     },
   }));
 
@@ -68,7 +76,8 @@ export function registerAgentActions(actions: ActionRegistry, callbacks: ActionC
     danger: "safe",
     scope: "renderer",
     run: async () => {
-      await callbacks.onLaunchAgent("gemini");
+      const terminalId = await callbacks.onLaunchAgent("gemini");
+      return { terminalId };
     },
   }));
 
@@ -81,7 +90,8 @@ export function registerAgentActions(actions: ActionRegistry, callbacks: ActionC
     danger: "safe",
     scope: "renderer",
     run: async () => {
-      await callbacks.onLaunchAgent("codex");
+      const terminalId = await callbacks.onLaunchAgent("codex");
+      return { terminalId };
     },
   }));
 
@@ -94,7 +104,8 @@ export function registerAgentActions(actions: ActionRegistry, callbacks: ActionC
     danger: "safe",
     scope: "renderer",
     run: async () => {
-      await callbacks.onLaunchAgent("opencode");
+      const terminalId = await callbacks.onLaunchAgent("opencode");
+      return { terminalId };
     },
   }));
 
@@ -107,7 +118,8 @@ export function registerAgentActions(actions: ActionRegistry, callbacks: ActionC
     danger: "safe",
     scope: "renderer",
     run: async () => {
-      await callbacks.onLaunchAgent("terminal");
+      const terminalId = await callbacks.onLaunchAgent("terminal");
+      return { terminalId };
     },
   }));
 

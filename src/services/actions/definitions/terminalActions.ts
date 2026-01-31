@@ -197,12 +197,13 @@ export function registerTerminalActions(actions: ActionRegistry, callbacks: Acti
     scope: "renderer",
     run: async () => {
       const addTerminal = useTerminalStore.getState().addTerminal;
-      await addTerminal({
+      const terminalId = await addTerminal({
         type: "terminal",
         cwd: callbacks.getDefaultCwd(),
         location: "grid",
         worktreeId: callbacks.getActiveWorktreeId(),
       });
+      return { terminalId };
     },
   }));
 

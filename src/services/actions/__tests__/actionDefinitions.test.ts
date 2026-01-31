@@ -17,7 +17,7 @@ async function createRegistry() {
     onOpenPanelPalette: () => {},
     onOpenProjectSwitcherPalette: () => {},
     onOpenShortcuts: () => {},
-    onLaunchAgent: async () => {},
+    onLaunchAgent: async () => null,
     onInject: () => {},
     getDefaultCwd: () => "/",
     getActiveWorktreeId: () => undefined,

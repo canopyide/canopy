@@ -28,7 +28,7 @@ export interface ActionCallbacks {
       prompt?: string;
       interactive?: boolean;
     }
-  ) => Promise<void>;
+  ) => Promise<string | null>;
   onInject: (worktreeId: string) => void;
   getDefaultCwd: () => string;
   getActiveWorktreeId: () => string | undefined;
