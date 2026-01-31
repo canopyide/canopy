@@ -1,30 +1,15 @@
 import { useEffect, useRef, useCallback } from "react";
 import { Loader2, XCircle, X } from "lucide-react";
-import { ContentPanel, type BasePanelProps } from "@/components/Panel";
 import { useAppAgentStore } from "@/store";
 import { MessageList } from "./MessageList";
 import { AssistantInput, type AssistantInputHandle } from "./AssistantInput";
 import { EmptyState } from "./EmptyState";
 import { useAssistantChat } from "./useAssistantChat";
+import { useAssistantUiStore } from "@/store/assistantUiStore";
 
-export type AssistantPaneProps = BasePanelProps;
-
-export function AssistantPane({
-  id,
-  title,
-  isFocused,
-  isMaximized = false,
-  location = "grid",
-  onFocus,
-  onClose,
-  onToggleMaximize,
-  onTitleChange,
-  onMinimize,
-  onRestore,
-  isTrashing = false,
-  gridPanelCount,
-}: AssistantPaneProps) {
+export function AssistantPane() {
   const { hasApiKey, isInitialized, initialize } = useAppAgentStore();
+  const { close } = useAssistantUiStore();
   const inputRef = useRef<AssistantInputHandle>(null);
 
   const {
@@ -37,17 +22,11 @@ export function AssistantPane({
     cancelStreaming,
     clearError,
     clearMessages,
-  } = useAssistantChat({ panelId: id });
+  } = useAssistantChat();
 
   useEffect(() => {
     initialize();
   }, [initialize]);
-
-  useEffect(() => {
-    if (isFocused) {
-      inputRef.current?.focus();
-    }
-  }, [isFocused]);
 
   const handleSubmit = useCallback(
     (value: string) => {
@@ -56,11 +35,6 @@ export function AssistantPane({
     },
     [sendMessage]
   );
-
-  const handleFocus = useCallback(() => {
-    onFocus?.();
-    inputRef.current?.focus();
-  }, [onFocus]);
 
   const handleClearConversation = useCallback(() => {
     if (messages.length > 1 || isLoading) {
@@ -76,77 +50,82 @@ export function AssistantPane({
   const hasMessages = messages.length > 0;
 
   return (
-    <ContentPanel
-      id={id}
-      title={title}
-      kind="assistant"
-      isFocused={isFocused}
-      isMaximized={isMaximized}
-      location={location}
-      isTrashing={isTrashing}
-      gridPanelCount={gridPanelCount}
-      onFocus={handleFocus}
-      onClose={onClose}
-      onToggleMaximize={onToggleMaximize}
-      onTitleChange={onTitleChange}
-      onMinimize={onMinimize}
-      onRestore={onRestore}
-      onRestart={showChat && hasMessages ? handleClearConversation : undefined}
-    >
-      <div className="flex flex-col h-full bg-canopy-bg">
-        {showLoading && (
-          <div className="flex-1 flex items-center justify-center">
-            <Loader2 className="w-6 h-6 text-canopy-text/40 animate-spin" />
-          </div>
-        )}
+    <div className="flex flex-col h-full bg-canopy-bg">
+      {showLoading && (
+        <div className="flex-1 flex items-center justify-center">
+          <Loader2 className="w-6 h-6 text-canopy-text/40 animate-spin" />
+        </div>
+      )}
 
-        {showNoApiKey && <EmptyState />}
+      {showNoApiKey && <EmptyState />}
 
-        {showChat && (
-          <>
-            {hasMessages ? (
-              <MessageList
-                messages={messages}
-                streamingState={streamingState}
-                streamingMessageId={streamingMessageId}
-                isLoading={isLoading}
-                className="flex-1 min-h-0"
-              />
-            ) : (
-              <EmptyState onSubmit={handleSubmit} />
-            )}
-
-            {error && (
-              <div
-                className="flex items-start gap-3 px-3 py-2 border-l-2 border-red-500 bg-red-500/5"
-                role="alert"
-              >
-                <XCircle className="w-3.5 h-3.5 text-red-400 shrink-0 mt-0.5" />
-                <span className="flex-1 font-mono text-xs text-red-400 whitespace-pre-wrap break-words">
-                  {error}
-                </span>
+      {showChat && (
+        <>
+          <div className="flex items-center justify-between px-3 py-2 border-b border-canopy-border">
+            <h2 className="text-sm font-medium text-canopy-text">Assistant</h2>
+            <div className="flex items-center gap-2">
+              {hasMessages && (
                 <button
                   type="button"
-                  onClick={clearError}
-                  className="text-red-400/70 hover:text-red-400 transition-colors"
-                  aria-label="Dismiss error"
+                  onClick={handleClearConversation}
+                  className="text-xs text-canopy-text/60 hover:text-canopy-text transition-colors"
                 >
-                  <X className="w-3 h-3" />
+                  Clear
                 </button>
-              </div>
-            )}
+              )}
+              <button
+                type="button"
+                onClick={close}
+                className="text-canopy-text/60 hover:text-canopy-text transition-colors"
+                aria-label="Close assistant"
+              >
+                <X className="w-4 h-4" />
+              </button>
+            </div>
+          </div>
 
-            <AssistantInput
-              ref={inputRef}
-              onSubmit={handleSubmit}
-              onCancel={cancelStreaming}
-              isStreaming={isLoading}
-              disabled={isLoading}
-              placeholder="Execute a command or ask a question..."
+          {hasMessages ? (
+            <MessageList
+              messages={messages}
+              streamingState={streamingState}
+              streamingMessageId={streamingMessageId}
+              isLoading={isLoading}
+              className="flex-1 min-h-0"
             />
-          </>
-        )}
-      </div>
-    </ContentPanel>
+          ) : (
+            <EmptyState onSubmit={handleSubmit} />
+          )}
+
+          {error && (
+            <div
+              className="flex items-start gap-3 px-3 py-2 border-l-2 border-red-500 bg-red-500/5"
+              role="alert"
+            >
+              <XCircle className="w-3.5 h-3.5 text-red-400 shrink-0 mt-0.5" />
+              <span className="flex-1 font-mono text-xs text-red-400 whitespace-pre-wrap break-words">
+                {error}
+              </span>
+              <button
+                type="button"
+                onClick={clearError}
+                className="text-red-400/70 hover:text-red-400 transition-colors"
+                aria-label="Dismiss error"
+              >
+                <X className="w-3 h-3" />
+              </button>
+            </div>
+          )}
+
+          <AssistantInput
+            ref={inputRef}
+            onSubmit={handleSubmit}
+            onCancel={cancelStreaming}
+            isStreaming={isLoading}
+            disabled={isLoading}
+            placeholder="Execute a command or ask a question..."
+          />
+        </>
+      )}
+    </div>
   );
 }

@@ -204,13 +204,7 @@ export type AgentId = string;
 export type LegacyAgentType = "claude" | "gemini" | "codex" | "opencode";
 
 /** Built-in panel kinds */
-export type BuiltInPanelKind =
-  | "terminal"
-  | "agent"
-  | "browser"
-  | "notes"
-  | "dev-preview"
-  | "assistant";
+export type BuiltInPanelKind = "terminal" | "agent" | "browser" | "notes" | "dev-preview";
 
 /**
  * Panel kind: distinguishes between default terminals, agent-driven terminals, browser panels,
@@ -297,8 +291,7 @@ export function isBuiltInPanelKind(kind: PanelKind): kind is BuiltInPanelKind {
     kind === "agent" ||
     kind === "browser" ||
     kind === "notes" ||
-    kind === "dev-preview" ||
-    kind === "assistant"
+    kind === "dev-preview"
   );
 }
 
@@ -481,11 +474,7 @@ interface NotesPanelData extends BasePanelData {
   createdAt: number;
 }
 
-interface AssistantPanelData extends BasePanelData {
-  kind: "assistant";
-}
-
-export type PanelInstance = PtyPanelData | BrowserPanelData | NotesPanelData | AssistantPanelData;
+export type PanelInstance = PtyPanelData | BrowserPanelData | NotesPanelData;
 
 export function isPtyPanel(panel: PanelInstance | TerminalInstance): panel is PtyPanelData {
   const kind = panel.kind ?? "terminal";
@@ -501,10 +490,6 @@ export function isNotesPanel(panel: PanelInstance): panel is NotesPanelData {
   return panel.kind === "notes";
 }
 
-export function isAssistantPanel(panel: PanelInstance): panel is AssistantPanelData {
-  return panel.kind === "assistant";
-}
-
 export function isDevPreviewPanel(panel: PanelInstance | TerminalInstance): panel is PtyPanelData {
   const kind = panel.kind ?? "terminal";
   return kind === "dev-preview";
@@ -515,7 +500,7 @@ export function isDevPreviewPanel(panel: PanelInstance | TerminalInstance): pane
  * New code should use the PanelInstance discriminated union.
  *
  * Note: PTY-specific fields (cwd, cols, rows) are optional to support
- * non-PTY panels like assistant, browser, and notes.
+ * non-PTY panels like browser and notes.
  */
 export interface TerminalInstance {
   id: string;

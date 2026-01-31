@@ -133,16 +133,6 @@ export const createTerminalRegistrySlice =
               browserUrl: options.browserUrl,
               exitBehavior: options.exitBehavior,
             };
-          } else if (requestedKind === "assistant") {
-            terminal = {
-              id,
-              kind: "assistant",
-              title,
-              worktreeId: options.worktreeId,
-              location,
-              isVisible: location === "grid",
-              runtimeStatus,
-            };
           } else {
             // Generic non-PTY panel fallback for extensions
             terminal = {
