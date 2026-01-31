@@ -27,7 +27,8 @@ function safeStringify(value: unknown): string {
   }
 }
 
-function getToolIcon(toolName: string) {
+function getToolIcon(toolName: string | undefined) {
+  if (!toolName) return Zap;
   const name = toolName.toLowerCase();
 
   // Terminal actions: terminal.list, terminal.getOutput, terminal.new, terminal.sendCommand, etc.
