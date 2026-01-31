@@ -1,5 +1,4 @@
 export { AssistantPane } from "./AssistantPane";
-export type { AssistantPaneProps } from "./AssistantPane";
 
 export { MessageList } from "./MessageList";
 export { InteractionBlock } from "./InteractionBlock";
