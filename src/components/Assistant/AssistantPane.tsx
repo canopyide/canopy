@@ -61,36 +61,43 @@ export function AssistantPane() {
 
       {showChat && (
         <>
-          <div className="flex items-center justify-between px-4 py-2.5 border-b border-divider bg-canopy-sidebar select-none">
-            <div className="flex items-center gap-2.5">
-              <CanopyIcon size={16} className="text-canopy-accent" />
-              <span className="font-semibold text-sm text-canopy-text">Canopy Assistant</span>
+          <div className="flex items-center justify-between px-3 shrink-0 text-xs transition-colors relative overflow-hidden group h-8 border-b border-divider bg-white/[0.02] select-none">
+            <div className="flex items-center gap-2 min-w-0">
+              <span className="shrink-0 flex items-center justify-center w-3.5 h-3.5">
+                <CanopyIcon className="w-3.5 h-3.5 text-canopy-accent" />
+              </span>
+              <span className="text-xs font-medium font-sans text-canopy-text truncate">
+                Canopy Assistant
+              </span>
             </div>
-            <div className="flex items-center gap-4 text-canopy-text/50">
+            <div className="flex items-center gap-1.5 opacity-0 pointer-events-none group-hover:opacity-100 group-hover:pointer-events-auto group-focus-within:opacity-100 group-focus-within:pointer-events-auto transition-opacity">
               {hasMessages && (
                 <button
                   type="button"
                   onClick={handleClearConversation}
-                  className="hover:text-canopy-text transition-colors"
+                  className="p-1.5 hover:bg-canopy-text/10 focus-visible:bg-canopy-text/10 focus-visible:outline focus-visible:outline-2 focus-visible:outline-canopy-accent focus-visible:outline-offset-2 text-canopy-text/60 hover:text-canopy-text transition-colors"
                   title="Clear conversation"
+                  aria-label="Clear conversation"
                 >
-                  <RefreshCw size={14} />
+                  <RefreshCw className="w-3 h-3" aria-hidden="true" />
                 </button>
               )}
               <button
                 type="button"
-                className="hover:text-canopy-text transition-colors"
+                className="p-1.5 hover:bg-canopy-text/10 focus-visible:bg-canopy-text/10 focus-visible:outline focus-visible:outline-2 focus-visible:outline-canopy-accent focus-visible:outline-offset-2 text-canopy-text/60 hover:text-canopy-text transition-colors"
                 title="Maximize"
+                aria-label="Maximize"
               >
-                <Maximize2 size={14} />
+                <Maximize2 className="w-3 h-3" aria-hidden="true" />
               </button>
               <button
                 type="button"
                 onClick={close}
-                className="hover:text-canopy-text hover:text-red-400 transition-colors"
+                className="p-1.5 hover:bg-[color-mix(in_oklab,var(--color-status-error)_15%,transparent)] focus-visible:bg-[color-mix(in_oklab,var(--color-status-error)_15%,transparent)] focus-visible:outline focus-visible:outline-2 focus-visible:outline-[var(--color-status-error)] focus-visible:outline-offset-2 text-canopy-text/60 hover:text-[var(--color-status-error)] transition-colors"
+                title="Close assistant"
                 aria-label="Close assistant"
               >
-                <X size={14} />
+                <X className="w-3 h-3" aria-hidden="true" />
               </button>
             </div>
           </div>
