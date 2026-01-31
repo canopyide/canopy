@@ -7,52 +7,234 @@
 
 import { tool, jsonSchema, type ToolSet } from "ai";
 import { BrowserWindow, ipcMain } from "electron";
-import type { ActionManifestEntry, ActionContext } from "../../../shared/types/actions.js";
+import type {
+  ActionManifestEntry,
+  ActionContext,
+  ActionId,
+} from "../../../shared/types/actions.js";
 
 /**
  * Allowlist of actions that the AI assistant can invoke.
  * These are carefully curated to be safe and useful for natural language commands.
+ *
+ * Phase 1: Safe actions (danger: "safe") - no destructive operations
+ * Phase 2: Confirm actions will require user opt-in setting (separate issue)
  */
 export const AGENT_ACCESSIBLE_ACTIONS = [
-  // Query actions - return system state
+  // ===== QUERY ACTIONS =====
+  // Return system state without side effects
   "terminal.list",
   "terminal.getOutput",
+  "terminal.info.get",
   "panel.list",
   "worktree.list",
   "worktree.getCurrent",
-  "project.getCurrent",
-
-  // Worktree queries - for building worktree creation workflows
   "worktree.listBranches",
   "worktree.getDefaultPath",
   "worktree.getAvailableBranch",
-
-  // Recipe queries
+  "project.getCurrent",
+  "project.getAll",
+  "project.getSettings",
+  "project.getStats",
+  "project.detectRunners",
   "recipe.list",
 
-  // Command actions - perform operations
-  "app.settings",
-  "app.settings.openTab",
+  // ===== INTROSPECTION =====
+  // Self-awareness and capability discovery
+  "actions.list",
+  "actions.getContext",
+  "cliAvailability.get",
+
+  // ===== GIT/GITHUB READ OPERATIONS =====
+  // Version control information (read-only)
+  "git.getFileDiff",
+  "git.getProjectPulse",
+  "git.listCommits",
+  "github.listIssues",
+  "github.listPullRequests",
+  "github.getRepoStats",
+  "github.getConfig",
+  "github.checkCli",
+  "github.validateToken",
+  "github.openIssue",
+  "github.openPR",
+  "github.openIssues",
+  "github.openPRs",
+
+  // ===== SYSTEM UTILITIES =====
+  // File system and environment checks
+  "system.checkCommand",
+  "system.checkDirectory",
+  "system.getHomeDir",
+  "files.search",
+
+  // ===== CONTEXT GENERATION =====
+  // Building context for agents
+  "copyTree.getFileTree",
+
+  // ===== AGENT LAUNCHING =====
+  // Spawn and manage AI agents
+  "agent.launch",
+  "agent.claude",
+  "agent.codex",
+  "agent.gemini",
+  "agent.opencode",
+  "agent.terminal",
+  "agent.focusNextFailed",
+  "agent.focusNextWaiting",
+  "agent.palette",
+
+  // ===== TERMINAL OPERATIONS =====
+  // Terminal management and interaction
   "terminal.new",
-  "terminal.kill",
   "terminal.close",
   "terminal.trash",
-  "terminal.sendCommand",
   "terminal.palette",
+  "terminal.rename",
+  "terminal.duplicate",
+  "terminal.restart",
+  "terminal.reopenLast",
+  "terminal.inject",
+  "terminal.redraw",
+
+  // Terminal layout and movement
+  "terminal.moveToWorktree",
+  "terminal.moveToDock",
+  "terminal.moveToGrid",
+  "terminal.moveLeft",
+  "terminal.moveRight",
+  "terminal.gridLayout.setStrategy",
+  "terminal.gridLayout.setValue",
+
+  // Terminal focus navigation
+  "terminal.focusNext",
+  "terminal.focusPrevious",
+  "terminal.focusUp",
+  "terminal.focusDown",
+  "terminal.focusLeft",
+  "terminal.focusRight",
+  "tab.next",
+  "tab.previous",
+
+  // Terminal state
+  "terminal.minimize",
+  "terminal.restore",
+  "terminal.maximize",
+  "terminal.toggleMaximize",
+  "terminal.minimizeAll",
+  "terminal.restoreAll",
+
+  // Terminal-to-worktree actions
+  "terminal.openWorktreeEditor",
+  "terminal.openWorktreePR",
+  "terminal.openWorktreeIssue",
+
+  // ===== WORKTREE OPERATIONS =====
+  // Git worktree management
+  "worktree.createWithRecipe",
   "worktree.createDialog.open",
   "worktree.setActive",
-  "agent.launch",
+  "worktree.refresh",
+  "worktree.overview",
+  "worktree.overview.open",
+  "worktree.overview.close",
+  "worktree.reveal",
+  "worktree.select",
+  "worktree.panel",
+  "worktree.openPalette",
+
+  // Worktree navigation
+  "worktree.next",
+  "worktree.previous",
+  "worktree.switchIndex",
+  "worktree.openEditor",
+  "worktree.openIssue",
+  "worktree.openPR",
+  "worktree.openPRInSidecar",
+  "worktree.openIssueInSidecar",
+
+  // Worktree context
+  "worktree.inject",
+
+  // Worktree sessions (safe bulk operations)
+  "worktree.sessions.minimizeAll",
+  "worktree.sessions.maximizeAll",
+  "worktree.sessions.resetRenderers",
+
+  // ===== NOTES =====
+  // Persistent context and documentation
+  "notes.create",
+  "notes.reveal",
+  "notes.openPalette",
+
+  // ===== SIDECAR/BROWSER NAVIGATION =====
+  // In-app web browsing and documentation
+  "sidecar.toggle",
+  "sidecar.openUrl",
+  "sidecar.newTab",
+  "sidecar.nextTab",
+  "sidecar.prevTab",
+  "sidecar.activateTab",
+  "sidecar.closeTab",
+  "sidecar.duplicateTab",
+  "sidecar.goBack",
+  "sidecar.goForward",
+  "sidecar.reload",
+  "sidecar.copyUrl",
+  "sidecar.copyTabUrl",
+  "sidecar.openLaunchpad",
+
+  // Sidecar layout
+  "sidecar.width.set",
+  "sidecar.resetWidth",
+  "sidecar.setLayoutMode",
+  "sidecar.setDefaultNewTab",
+  "sidecar.tabs.reorder",
+
+  // Sidecar links management
+  "sidecar.links.add",
+  "sidecar.links.update",
+  "sidecar.links.reorder",
+  "sidecar.links.toggle",
+  "sidecar.links.rescan",
+
+  // Browser (panel variant)
+  "browser.back",
+  "browser.forward",
+  "browser.reload",
+  "browser.navigate",
+  "browser.copyUrl",
+
+  // ===== PROJECT OPERATIONS =====
+  // Project management
+  "project.add",
+  "project.switcherPalette",
+  "project.openDialog",
+  "project.settings.open",
+
+  // ===== UI OPERATIONS =====
+  // Application interface controls
+  "app.settings",
+  "app.settings.openTab",
   "nav.toggleSidebar",
   "panel.toggleDock",
-  "sidecar.toggle",
+  "panel.dockSetExpanded",
+  "panel.dockSetCompact",
+  "panel.dockCycleMode",
+  "modal.close",
 
-  // Worktree creation - requires confirmation
-  "worktree.create",
-  "worktree.createWithRecipe",
+  // ===== CONFIG READ-ONLY =====
+  // Read configuration state
+  "terminalConfig.get",
+  "worktreeConfig.get",
+  "agentSettings.get",
+  "hibernation.getConfig",
+  "keybinding.getOverrides",
 
-  // Recipe execution
+  // ===== RECIPE EXECUTION =====
+  // Template-based workflows
   "recipe.run",
-] as const;
+] as const satisfies readonly ActionId[];
 
 export type AgentAccessibleAction = (typeof AGENT_ACCESSIBLE_ACTIONS)[number];
 
