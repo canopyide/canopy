@@ -9,7 +9,7 @@ import { AssistantPane } from "@/components/Assistant/AssistantPane";
 
 export function AssistantDockButton() {
   const isOpen = useAssistantChatStore((s) => s.isOpen);
-  const setIsOpen = useAssistantChatStore((s) => s.toggle);
+  const toggle = useAssistantChatStore((s) => s.toggle);
   const close = useAssistantChatStore((s) => s.close);
 
   const { isOpen: sidecarOpen, width: sidecarWidth } = useSidecarStore(
@@ -40,7 +40,7 @@ export function AssistantDockButton() {
       <PopoverTrigger asChild>
         <button
           type="button"
-          onClick={setIsOpen}
+          onClick={toggle}
           className={cn(
             "flex items-center justify-center h-[var(--dock-item-height)] w-[var(--dock-item-height)] rounded-[var(--radius-md)] transition-all duration-150",
             "bg-white/[0.02] border border-divider text-canopy-text/70",
