@@ -7,7 +7,7 @@ interface AssistantThinkingIndicatorProps {
 export function AssistantThinkingIndicator({ className }: AssistantThinkingIndicatorProps) {
   return (
     <div
-      className={cn("relative pt-5 pb-12 px-0 group", className)}
+      className={cn("relative pt-5 pb-12 group", className)}
       role="status"
       aria-label="Assistant is processing"
     >
