@@ -177,7 +177,15 @@ export function sanitizeSchema(
  */
 function truncateResult(result: unknown): unknown {
   try {
+    if (result === undefined) {
+      return null;
+    }
+
     const str = JSON.stringify(result);
+    if (typeof str !== "string") {
+      return null;
+    }
+
     if (str.length <= MAX_RESULT_SIZE) {
       return result;
     }
