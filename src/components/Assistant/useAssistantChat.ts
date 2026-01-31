@@ -4,7 +4,7 @@ import { actionService } from "@/services/ActionService";
 import { useTerminalStore } from "@/store/terminalStore";
 import { useWorktreeSelectionStore } from "@/store/worktreeStore";
 import { useProjectStore } from "@/store/projectStore";
-import { useAssistantChatStore, type ConversationState } from "@/store/assistantChatStore";
+import { useAssistantChatStore } from "@/store/assistantChatStore";
 import type { AssistantMessage as IPCAssistantMessage } from "@shared/types/assistant";
 
 function generateId(): string {
@@ -34,31 +34,15 @@ function formatListenerNotification(eventType: string, data: Record<string, unkn
   return `🔔 Event triggered: ${eventType}`;
 }
 
-// Stable default to avoid infinite loops - must be module-level constant
-const EMPTY_CONVERSATION: ConversationState = Object.freeze({
-  messages: [],
-  sessionId: "",
-  isLoading: false,
-  error: null,
-});
-
 interface UseAssistantChatOptions {
-  panelId: string;
   onError?: (error: string) => void;
 }
 
-export function useAssistantChat(options: UseAssistantChatOptions) {
-  const { panelId, onError } = options;
+export function useAssistantChat(options?: UseAssistantChatOptions) {
+  const { onError } = options ?? {};
 
-  // Ensure conversation exists on mount - this creates it in the store
-  const ensureConversation = useAssistantChatStore((s) => s.ensureConversation);
-  useEffect(() => {
-    ensureConversation(panelId);
-  }, [panelId, ensureConversation]);
-
-  // Get conversation state from global store - access directly to avoid infinite loop
-  // The selector must return a stable reference when conversation doesn't exist
-  const conversation = useAssistantChatStore((s) => s.conversations[panelId]) ?? EMPTY_CONVERSATION;
+  // Get conversation state from global store
+  const conversation = useAssistantChatStore((s) => s.conversation);
   const storeAddMessage = useAssistantChatStore((s) => s.addMessage);
   const storeUpdateMessage = useAssistantChatStore((s) => s.updateMessage);
   const storeUpdateLastMessage = useAssistantChatStore((s) => s.updateLastMessage);
@@ -92,7 +76,7 @@ export function useAssistantChat(options: UseAssistantChatOptions) {
       if (chunk.type === "listener_triggered" && chunk.listenerData) {
         const { eventType, data: eventData } = chunk.listenerData;
         const notificationText = formatListenerNotification(eventType, eventData);
-        storeAddMessage(panelId, {
+        storeAddMessage({
           id: `listener-${Date.now()}-${Math.random()}`,
           role: "assistant",
           content: notificationText,
@@ -102,7 +86,7 @@ export function useAssistantChat(options: UseAssistantChatOptions) {
     });
 
     return cleanup;
-  }, [panelId, storeAddMessage]);
+  }, [storeAddMessage]);
 
   const addMessage = useCallback(
     (role: AssistantMessage["role"], content: string) => {
@@ -112,17 +96,17 @@ export function useAssistantChat(options: UseAssistantChatOptions) {
         content,
         timestamp: Date.now(),
       };
-      storeAddMessage(panelId, message);
+      storeAddMessage(message);
       return message;
     },
-    [panelId, storeAddMessage]
+    [storeAddMessage]
   );
 
   const updateLastMessage = useCallback(
     (updates: Partial<AssistantMessage>) => {
-      storeUpdateLastMessage(panelId, updates);
+      storeUpdateLastMessage(updates);
     },
-    [panelId, storeUpdateLastMessage]
+    [storeUpdateLastMessage]
   );
 
   const setStreamingStateSync = useCallback(
@@ -139,7 +123,7 @@ export function useAssistantChat(options: UseAssistantChatOptions) {
       const id = generateId();
       streamingMessageIdRef.current = id;
       setStreamingMessageId(id);
-      storeAddMessage(panelId, {
+      storeAddMessage({
         id,
         role: "assistant",
         content: state.content,
@@ -147,7 +131,7 @@ export function useAssistantChat(options: UseAssistantChatOptions) {
         toolCalls: state.toolCalls.length > 0 ? state.toolCalls : undefined,
       });
     },
-    [panelId, storeAddMessage]
+    [storeAddMessage]
   );
 
   const syncStreamingMessage = useCallback(
@@ -156,12 +140,12 @@ export function useAssistantChat(options: UseAssistantChatOptions) {
       ensureStreamingMessage(state);
       const messageId = streamingMessageIdRef.current;
       if (!messageId) return;
-      storeUpdateMessage(panelId, messageId, {
+      storeUpdateMessage(messageId, {
         content: state.content,
         toolCalls: state.toolCalls.length > 0 ? state.toolCalls : undefined,
       });
     },
-    [ensureStreamingMessage, panelId, storeUpdateMessage]
+    [ensureStreamingMessage, storeUpdateMessage]
   );
 
   const startStreaming = useCallback(() => {
@@ -223,23 +207,20 @@ export function useAssistantChat(options: UseAssistantChatOptions) {
   }, [streamingState]);
 
   const finalizeStreaming = useCallback(() => {
-    // Capture streaming state from ref (kept in sync by all update functions)
     const currentStreaming = streamingStateRef.current;
     if (!currentStreaming) return;
 
-    // Clear ref first to prevent double-finalization
     streamingStateRef.current = null;
 
-    // Add the finalized message to the store
     if (currentStreaming.content || currentStreaming.toolCalls.length > 0) {
       const messageId = streamingMessageIdRef.current;
       if (messageId) {
-        storeUpdateMessage(panelId, messageId, {
+        storeUpdateMessage(messageId, {
           content: currentStreaming.content,
           toolCalls: currentStreaming.toolCalls.length > 0 ? currentStreaming.toolCalls : undefined,
         });
       } else {
-        storeAddMessage(panelId, {
+        storeAddMessage({
           id: generateId(),
           role: "assistant",
           content: currentStreaming.content,
@@ -248,15 +229,12 @@ export function useAssistantChat(options: UseAssistantChatOptions) {
         });
       }
     }
-    // Defer clearing the streaming state to ensure the store update is processed first.
-    // This prevents a race condition where the streaming item is removed before
-    // the finalized message appears in the messages array.
     setTimeout(() => {
       setStreamingStateSync(null);
       streamingMessageIdRef.current = null;
       setStreamingMessageId(null);
     }, 0);
-  }, [panelId, storeAddMessage, storeUpdateMessage, setStreamingStateSync]);
+  }, [storeAddMessage, storeUpdateMessage, setStreamingStateSync]);
 
   const cancelStreaming = useCallback(() => {
     window.electron.assistant.cancel(sessionIdRef.current);
@@ -273,85 +251,70 @@ export function useAssistantChat(options: UseAssistantChatOptions) {
       streamingMessageIdRef.current = null;
       setStreamingMessageId(null);
     }, 0);
-    storeSetLoading(panelId, false);
-  }, [panelId, storeSetLoading, setStreamingStateSync, syncStreamingMessage]);
+    storeSetLoading(false);
+  }, [storeSetLoading, setStreamingStateSync, syncStreamingMessage]);
 
   const clearError = useCallback(() => {
-    storeSetError(panelId, null);
-  }, [panelId, storeSetError]);
+    storeSetError(null);
+  }, [storeSetError]);
 
   const clearMessages = useCallback(() => {
     window.electron.assistant.cancel(sessionIdRef.current);
     cleanupRef.current?.();
     cleanupRef.current = null;
-    // Invalidate any in-flight requests to prevent race conditions
     currentRequestIdRef.current++;
-    storeClearConversation(panelId);
+    storeClearConversation();
     streamingMessageIdRef.current = null;
     setStreamingMessageId(null);
     setStreamingStateSync(null);
-    // Session ID is already regenerated by clearConversation, sync the ref
-    sessionIdRef.current = useAssistantChatStore.getState().getConversation(panelId).sessionId;
-  }, [panelId, storeClearConversation, setStreamingStateSync]);
+    sessionIdRef.current = useAssistantChatStore.getState().conversation.sessionId;
+  }, [storeClearConversation, setStreamingStateSync]);
 
   // Cleanup on unmount only - cancel streaming and clear loading state
   useEffect(() => {
     return () => {
       cleanupRef.current?.();
       cleanupRef.current = null;
-      // Cancel if there's an active stream
       if (streamingStateRef.current) {
         window.electron.assistant.cancel(sessionIdRef.current);
       }
-      // Always clear loading state on unmount to prevent stuck state
-      storeSetLoading(panelId, false);
+      storeSetLoading(false);
     };
-    // eslint-disable-next-line react-hooks/exhaustive-deps -- only run on unmount
-  }, [panelId]);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
 
   const sendMessage = useCallback(
     async (content: string) => {
       if (!content.trim()) return;
 
-      storeSetError(panelId, null);
+      storeSetError(null);
       addMessage("user", content);
-      storeSetLoading(panelId, true);
+      storeSetLoading(true);
 
       const requestId = ++currentRequestIdRef.current;
       const sessionId = sessionIdRef.current;
 
-      // Clean up previous listener
       cleanupRef.current?.();
 
-      // Reset streaming state to ensure clean slate for new message
       streamingStateRef.current = null;
       setStreamingStateSync(null);
       streamingMessageIdRef.current = null;
       setStreamingMessageId(null);
 
       try {
-        // Don't call startStreaming() here - let it be created when first chunk arrives
-        // Get current context
         const projectId = useProjectStore.getState().currentProject?.id;
         const worktreeSelection = useWorktreeSelectionStore.getState();
         const activeWorktreeId = worktreeSelection.activeWorktreeId ?? undefined;
         const focusedWorktreeId = worktreeSelection.focusedWorktreeId ?? undefined;
         const focusedTerminalId = useTerminalStore.getState().focusedId ?? undefined;
 
-        // Get available actions
         const actions = actionService.list();
 
-        // Get current messages from store for the IPC call (includes the message we just added)
-        const currentMessages = useAssistantChatStore.getState().getConversation(panelId).messages;
+        const currentMessages = useAssistantChatStore.getState().conversation.messages;
 
-        // Convert messages to IPC format including tool results
-        // Tool results are derived from tool calls that have completed (status is success/error)
         const ipcMessages: IPCAssistantMessage[] = currentMessages.map((msg) => {
-          // For messages with tool calls, extract completed results
           const completedToolResults = msg.toolCalls
             ?.filter((tc) => {
-              // Include tool call if it has a terminal status (not pending) and has a result or error
-              // This handles both successful results and errors, including void/undefined results
               const hasTerminalStatus = tc.status !== "pending";
               const hasResultOrError = tc.result !== undefined || tc.error !== undefined;
               return hasTerminalStatus && hasResultOrError;
@@ -359,7 +322,6 @@ export function useAssistantChat(options: UseAssistantChatOptions) {
             .map((tc) => ({
               toolCallId: tc.id,
               toolName: tc.name,
-              // Normalize undefined to null for IPC transport
               result: tc.result ?? null,
               error: tc.error,
             }));
@@ -373,8 +335,6 @@ export function useAssistantChat(options: UseAssistantChatOptions) {
               name: tc.name,
               args: tc.args,
             })),
-            // Only include toolResults if there are completed results
-            // This ensures the backend receives properly paired tool calls and results
             toolResults:
               completedToolResults && completedToolResults.length > 0
                 ? completedToolResults
@@ -383,11 +343,8 @@ export function useAssistantChat(options: UseAssistantChatOptions) {
           };
         });
 
-        // Subscribe to chunks
         const cleanup = window.electron.assistant.onChunk((data) => {
-          // Only process chunks for this session
           if (data.sessionId !== sessionId) return;
-          // Ignore if request was superseded
           if (currentRequestIdRef.current !== requestId) return;
 
           const { chunk } = data;
@@ -401,19 +358,16 @@ export function useAssistantChat(options: UseAssistantChatOptions) {
 
             case "tool_call":
               if (chunk.toolCall) {
-                // Check if tool call already exists (can happen if tool_result arrived first)
                 const existingToolCall = streamingStateRef.current?.toolCalls.find(
                   (tc) => tc.id === chunk.toolCall!.id
                 );
 
                 if (existingToolCall) {
-                  // Update existing tool call with proper name and args
                   updateStreamingToolCall(chunk.toolCall.id, {
                     name: chunk.toolCall.name,
                     args: chunk.toolCall.args,
                   });
                 } else {
-                  // Add new tool call
                   addStreamingToolCall({
                     id: chunk.toolCall.id,
                     name: chunk.toolCall.name,
@@ -427,7 +381,6 @@ export function useAssistantChat(options: UseAssistantChatOptions) {
             case "tool_result":
               if (chunk.toolResult) {
                 const toolResult = chunk.toolResult;
-                // Check if tool call exists before updating
                 const toolCallExists = streamingStateRef.current?.toolCalls.some(
                   (tc) => tc.id === toolResult.toolCallId
                 );
@@ -439,7 +392,6 @@ export function useAssistantChat(options: UseAssistantChatOptions) {
                     error: toolResult.error,
                   });
                 } else {
-                  // Tool result arrived before tool call - create placeholder
                   addStreamingToolCall({
                     id: toolResult.toolCallId,
                     name: toolResult.toolName,
@@ -454,12 +406,11 @@ export function useAssistantChat(options: UseAssistantChatOptions) {
 
             case "error":
               if (chunk.error) {
-                storeSetError(panelId, chunk.error);
+                storeSetError(chunk.error);
                 onError?.(chunk.error);
               }
-              // Finalize and cleanup on error to prevent stuck loading state
               finalizeStreaming();
-              storeSetLoading(panelId, false);
+              storeSetLoading(false);
               cleanupRef.current?.();
               cleanupRef.current = null;
               break;
@@ -469,7 +420,7 @@ export function useAssistantChat(options: UseAssistantChatOptions) {
 
             case "done":
               finalizeStreaming();
-              storeSetLoading(panelId, false);
+              storeSetLoading(false);
               cleanupRef.current?.();
               cleanupRef.current = null;
               break;
@@ -478,7 +429,6 @@ export function useAssistantChat(options: UseAssistantChatOptions) {
 
         cleanupRef.current = cleanup;
 
-        // Send the message
         await window.electron.assistant.sendMessage({
           sessionId,
           messages: ipcMessages,
@@ -493,20 +443,17 @@ export function useAssistantChat(options: UseAssistantChatOptions) {
       } catch (err) {
         if (currentRequestIdRef.current === requestId) {
           const errorMessage = err instanceof Error ? err.message : "An error occurred";
-          storeSetError(panelId, errorMessage);
+          storeSetError(errorMessage);
           onError?.(errorMessage);
           setStreamingStateSync(null);
-          storeSetLoading(panelId, false);
-          // Clean up listener on error
+          storeSetLoading(false);
           cleanupRef.current?.();
           cleanupRef.current = null;
-          // Cancel the session to avoid dangling stream
           window.electron.assistant.cancel(sessionId);
         }
       }
     },
     [
-      panelId,
       addMessage,
       startStreaming,
       appendStreamingContent,

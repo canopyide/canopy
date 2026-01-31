@@ -1,6 +1,5 @@
 import { Terminal, Globe, StickyNote, Monitor } from "lucide-react";
 import { cn } from "@/lib/utils";
-import { CanopyIcon } from "@/components/icons";
 import type { TerminalType, TerminalKind } from "@/types";
 import { getAgentConfig, isRegisteredAgent } from "@/config/agents";
 
@@ -31,13 +30,6 @@ export function TerminalIcon({ type, kind, agentId, className, brandColor }: Ter
   // Dev preview panes get a monitor icon
   if (kind === "dev-preview") {
     return <Monitor {...finalProps} className={cn(finalProps.className, "text-violet-400")} />;
-  }
-
-  // Assistant panes get the Canopy icon
-  if (kind === "assistant") {
-    return (
-      <CanopyIcon {...finalProps} className={cn(finalProps.className, "text-canopy-accent")} />
-    );
   }
 
   // Get effective agent ID - either from explicit agentId prop or from type (backward compat)

@@ -254,12 +254,22 @@ export async function hydrateAppState(
                     kind = "browser";
                   } else if (saved.notePath !== undefined || saved.noteId !== undefined) {
                     kind = "notes";
-                  } else if (saved.title === "Assistant") {
-                    // Legacy assistant panels from before kind was always set
+                  } else if (saved.title === "Assistant" || saved.title?.startsWith("Assistant")) {
+                    // Legacy assistant panels from before kind was always set - skip these
+                    // Match "Assistant", "Assistant (renamed)", etc.
+                    kind = "assistant";
+                  } else if (!saved.cwd && !saved.command) {
+                    // Non-PTY panel with no PTY markers and not browser/notes - likely legacy assistant
                     kind = "assistant";
                   }
                   // Note: dev-preview detection removed since 'devCommand' isn't in TerminalSnapshot.
                   // Dev-preview panels should always have 'kind' set during persistence.
+                }
+
+                // Skip assistant panels (they're now global, not panel-based)
+                if (kind === "assistant") {
+                  console.log(`[StateHydration] Skipping legacy assistant panel: ${saved.id}`);
+                  continue;
                 }
 
                 const location = (saved.location === "dock" ? "dock" : "grid") as "grid" | "dock";
