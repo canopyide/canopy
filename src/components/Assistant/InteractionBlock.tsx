@@ -16,8 +16,8 @@ function UserInputBlock({ content, className }: { content: string; className?: s
   return (
     <div
       className={cn(
-        "group flex gap-5 px-5 py-3",
-        "bg-canopy-sidebar/25 border-y border-divider/60",
+        "group relative flex gap-4 px-6 py-5",
+        "bg-white/[0.02] border-b border-white/[0.05]",
         className
       )}
       role="article"
@@ -26,7 +26,7 @@ function UserInputBlock({ content, className }: { content: string; className?: s
       <div className="mt-0.5 text-canopy-text/40 shrink-0 select-none" aria-hidden="true">
         <ChevronRight size={16} />
       </div>
-      <div className="text-canopy-text font-medium font-mono text-[14px] leading-[1.6] break-words whitespace-pre-wrap select-text">
+      <div className="text-[14px] leading-relaxed text-canopy-text font-medium tracking-normal break-words whitespace-pre-wrap select-text">
         {content}
       </div>
     </div>
@@ -74,15 +74,15 @@ function AssistantResponseBlock({
 
   return (
     <div
-      className={cn("group pl-14 pr-5 py-3 space-y-3 relative", className)}
+      className={cn("relative pt-5 pb-6 px-0 group", className)}
       role="article"
       aria-label="Assistant response"
     >
-      {/* Thread line - extends through full padding box */}
-      <div className="absolute left-7 top-0 bottom-0 w-px bg-canopy-border" />
+      {/* Thread line - extends full height with hover state */}
+      <div className="absolute left-[29px] top-0 bottom-0 w-px bg-white/[0.06] group-hover:bg-white/[0.1] transition-colors" />
 
       {hasToolCalls && (
-        <div className="space-y-2">
+        <div className="pl-[60px] pr-6 space-y-2 mb-4">
           {message.toolCalls!.map((tc) => (
             <ToolCallBlock key={tc.id} toolCall={tc} />
           ))}
@@ -90,16 +90,20 @@ function AssistantResponseBlock({
       )}
 
       {(hasContent || (isStreaming && !hasToolCalls)) && (
-        <div>
+        <div className="pl-[60px] pr-8">
           <MarkdownRenderer content={message.content} />
           {isStreaming && <StreamingCursor />}
         </div>
       )}
 
-      {isStreaming && hasToolCalls && !hasContent && <StreamingCursor className="ml-0" />}
+      {isStreaming && hasToolCalls && !hasContent && (
+        <div className="pl-[60px]">
+          <StreamingCursor className="ml-0" />
+        </div>
+      )}
 
       {!hasContent && !hasToolCalls && !isStreaming && (
-        <div className="text-canopy-text/40 text-sm italic">No response content</div>
+        <div className="pl-[60px] text-canopy-text/40 text-sm italic">No response content</div>
       )}
 
       {/* Copy button - bottom right */}
@@ -108,13 +112,13 @@ function AssistantResponseBlock({
           type="button"
           onClick={handleCopy}
           className={cn(
-            "absolute bottom-3 right-5 p-1.5 rounded transition-all",
+            "absolute bottom-6 right-6 p-1.5 rounded transition-all",
             "opacity-0 group-hover:opacity-100 focus:opacity-100",
             "focus-visible:outline focus-visible:outline-2 focus-visible:outline-canopy-accent",
             "[@media(hover:none)]:opacity-100",
             copied
               ? "text-canopy-accent bg-canopy-accent/10"
-              : "text-canopy-text/30 hover:text-canopy-text/60 hover:bg-canopy-sidebar/40"
+              : "text-canopy-text/30 hover:text-canopy-text/60 hover:bg-white/[0.05]"
           )}
           aria-label={copied ? "Copied response" : "Copy response"}
           title="Copy response to clipboard"
