@@ -76,10 +76,9 @@ export function useAssistantStreamProcessor() {
       });
 
       // Also update the streaming state in the store so the UI can reflect live streaming
-      useAssistantChatStore.getState().setStreamingState(
-        { content: state.content, toolCalls: state.toolCalls },
-        messageId
-      );
+      useAssistantChatStore
+        .getState()
+        .setStreamingState({ content: state.content, toolCalls: state.toolCalls }, messageId);
     }
 
     function resetStreamingState() {
@@ -186,7 +185,10 @@ export function useAssistantStreamProcessor() {
               if (!prev) {
                 streamingStateRef.current = { content: "", toolCalls: [newToolCall] };
               } else {
-                streamingStateRef.current = { ...prev, toolCalls: [...prev.toolCalls, newToolCall] };
+                streamingStateRef.current = {
+                  ...prev,
+                  toolCalls: [...prev.toolCalls, newToolCall],
+                };
               }
             }
             syncStreamingMessage();
