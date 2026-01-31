@@ -104,13 +104,6 @@ export const useTerminalStore = create<PanelGridState>()((set, get, api) => {
           }
         });
       }
-
-      // Clean up assistant chat conversation when assistant panel is permanently removed
-      if (removedTerminal?.kind === "assistant") {
-        void import("@/store/assistantChatStore").then(({ useAssistantChatStore }) => {
-          useAssistantChatStore.getState().removeConversation(id);
-        });
-      }
     },
   })(set, get, api);
 

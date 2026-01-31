@@ -15,7 +15,7 @@ export interface TerminalPersistenceOptions {
 const DEFAULT_OPTIONS: Required<Omit<TerminalPersistenceOptions, "getProjectId">> &
   Pick<TerminalPersistenceOptions, "getProjectId"> = {
   debounceMs: 500,
-  filter: (t) => t.location !== "trash",
+  filter: (t) => t.location !== "trash" && t.kind !== "assistant",
   transform: (t) => {
     // Note: tabGroupId and orderInGroup are NOT saved on terminals anymore
     // Tab groups are stored separately in ProjectState.tabGroups
