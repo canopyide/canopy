@@ -74,7 +74,7 @@ function AssistantResponseBlock({
 
   return (
     <div
-      className={cn("relative pt-5 pb-6 px-0 group", className)}
+      className={cn("relative pt-5 pb-6 group", className)}
       role="article"
       aria-label="Assistant response"
     >
@@ -90,7 +90,7 @@ function AssistantResponseBlock({
       )}
 
       {(hasContent || (isStreaming && !hasToolCalls)) && (
-        <div className="pl-[60px] pr-8">
+        <div className="pl-[60px] pr-6">
           <MarkdownRenderer content={message.content} />
           {isStreaming && <StreamingCursor />}
         </div>
