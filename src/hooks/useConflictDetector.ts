@@ -1,4 +1,5 @@
-import { useMemo } from "react";
+import { useMemo, useRef } from "react";
+import { useShallow } from "zustand/react/shallow";
 import { useWorktreeDataStore } from "@/store/worktreeDataStore";
 import {
   detectConflicts,
@@ -7,10 +8,17 @@ import {
   type WorktreeConflictSummary,
 } from "@/utils/conflictDetector";
 
-const selectAllConflicts = (state: { worktrees: Map<string, unknown> }): ConflictInfo[] => {
-  const worktreeArray = Array.from(state.worktrees.values());
-  return detectConflicts(worktreeArray as Parameters<typeof detectConflicts>[0]);
-};
+function areConflictsEqual(a: ConflictInfo[], b: ConflictInfo[]): boolean {
+  if (a.length !== b.length) return false;
+  for (let i = 0; i < a.length; i++) {
+    if (a[i].filePath !== b[i].filePath) return false;
+    if (a[i].worktreeIds.length !== b[i].worktreeIds.length) return false;
+    for (let j = 0; j < a[i].worktreeIds.length; j++) {
+      if (a[i].worktreeIds[j] !== b[i].worktreeIds[j]) return false;
+    }
+  }
+  return true;
+}
 
 /**
  * Hook to detect file conflicts across all worktrees.
@@ -19,7 +27,20 @@ const selectAllConflicts = (state: { worktrees: Map<string, unknown> }): Conflic
  * @returns All detected conflicts (files modified in 2+ worktrees)
  */
 export function useAllConflicts(): ConflictInfo[] {
-  return useWorktreeDataStore(selectAllConflicts);
+  const prevRef = useRef<ConflictInfo[]>([]);
+
+  const worktreeArray = useWorktreeDataStore(
+    useShallow((state) => Array.from(state.worktrees.values()))
+  );
+
+  return useMemo(() => {
+    const conflicts = detectConflicts(worktreeArray);
+    if (areConflictsEqual(conflicts, prevRef.current)) {
+      return prevRef.current;
+    }
+    prevRef.current = conflicts;
+    return conflicts;
+  }, [worktreeArray]);
 }
 
 /**
