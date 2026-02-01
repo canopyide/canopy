@@ -53,6 +53,7 @@ export interface ContentPanelProps extends BasePanelProps {
   exitCode?: number | null;
   isWorking?: boolean;
   agentState?: AgentState;
+  lastStateChange?: number;
   activity?: ActivityState | null;
   lastCommand?: string;
   queueCount?: number;
@@ -103,6 +104,7 @@ const ContentPanelInner = forwardRef<HTMLDivElement, ContentPanelProps>(function
     exitCode = null,
     isWorking: _isWorking = false,
     agentState,
+    lastStateChange,
     activity,
     lastCommand,
     queueCount = 0,
@@ -143,6 +145,7 @@ const ContentPanelInner = forwardRef<HTMLDivElement, ContentPanelProps>(function
           kind={kind}
           type={type}
           agentState={agentState}
+          lastStateChange={lastStateChange}
           activity={activity}
           lastCommand={lastCommand}
           isExited={isExited}
@@ -159,6 +162,7 @@ const ContentPanelInner = forwardRef<HTMLDivElement, ContentPanelProps>(function
     id,
     type,
     agentState,
+    lastStateChange,
     activity,
     lastCommand,
     isExited,
