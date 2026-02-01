@@ -71,12 +71,12 @@ The source of truth for agent state. Responsibilities:
 
 Key methods:
 
-| Method | Purpose |
-|--------|---------|
-| `updateAgentState()` | Process events and emit state changes |
-| `transitionState()` | External observer state updates with session validation |
-| `inferTrigger()` | Determine cause of state change |
-| `inferConfidence()` | Calculate confidence level |
+| Method               | Purpose                                                 |
+| -------------------- | ------------------------------------------------------- |
+| `updateAgentState()` | Process events and emit state changes                   |
+| `transitionState()`  | External observer state updates with session validation |
+| `inferTrigger()`     | Determine cause of state change                         |
+| `inferConfidence()`  | Calculate confidence level                              |
 
 ### TerminalStateListenerBridge (`electron/services/assistant/TerminalStateListenerBridge.ts`)
 
@@ -155,13 +155,13 @@ Note: Shell terminals also have a 'running' state. This diagram shows agent-only
 
 ### State Definitions
 
-| State | Description | Triggers |
-|-------|-------------|----------|
-| `idle` | Agent spawned, not yet active | Initial state |
-| `working` | Agent actively processing | Start event, busy event, input from waiting state |
-| `waiting` | Agent paused, awaiting input | Silence timeout, prompt detection |
-| `completed` | Agent finished successfully | Process exit with code 0 |
-| `failed` | Agent encountered error | Error event, non-zero exit |
+| State       | Description                   | Triggers                                          |
+| ----------- | ----------------------------- | ------------------------------------------------- |
+| `idle`      | Agent spawned, not yet active | Initial state                                     |
+| `working`   | Agent actively processing     | Start event, busy event, input from waiting state |
+| `waiting`   | Agent paused, awaiting input  | Silence timeout, prompt detection                 |
+| `completed` | Agent finished successfully   | Process exit with code 0                          |
+| `failed`    | Agent encountered error       | Error event, non-zero exit                        |
 
 ## State Detection Heuristics
 
@@ -170,17 +170,21 @@ Note: Shell terminals also have a 'running' state. This diagram shows agent-only
 The `AgentPatternDetector` scans terminal output for CLI-specific status indicators:
 
 **Claude patterns:**
+
 - `✽ Deliberating… (esc to interrupt · 15s)`
 - `esc to interrupt` at end of line
 
 **Gemini patterns:**
+
 - `⠼ Unpacking Project Details (esc to cancel, 14s)`
 - Braille spinner characters (`⠋⠙⠹⠸⠼⠴⠦⠧⠇⠏`)
 
 **Codex patterns:**
+
 - `• Working (1s • esc to interrupt)`
 
 Confidence levels (per-agent):
+
 - Primary pattern match: 0.95
 - Fallback pattern match: 0.75 (Claude/Codex), 0.7 (Gemini), 0.65 (universal)
 
@@ -193,6 +197,7 @@ The `ActivityMonitor` tracks terminal activity:
 3. **Silence Detection**: Debounce period without output triggers waiting
 
 Configuration defaults for agent terminals:
+
 - Idle debounce: 2000ms
 - Activity window: 1000ms
 - Minimum frames: 2
@@ -221,11 +226,12 @@ register_listener({
   filter: {
     toState: "waiting",
     // Optional: terminalId: "abc-123"
-  }
-})
+  },
+});
 ```
 
 Returns:
+
 ```javascript
 {
   success: true,
@@ -241,10 +247,11 @@ Returns:
 Query active listeners:
 
 ```javascript
-list_listeners()
+list_listeners();
 ```
 
 Returns:
+
 ```javascript
 {
   success: true,
@@ -260,22 +267,22 @@ Returns:
 Unsubscribe by ID:
 
 ```javascript
-remove_listener({ listenerId: "uuid-here" })
+remove_listener({ listenerId: "uuid-here" });
 ```
 
 ## Filter Criteria
 
 Filters use exact-match semantics on event data fields:
 
-| Filter Key | Type | Description |
-|------------|------|-------------|
-| `terminalId` | string | Match specific terminal |
-| `toState` | string | Match target state (`waiting`, `completed`, etc.) |
-| `oldState` | string | Match previous state |
-| `newState` | string | Match new state (same as toState) |
-| `worktreeId` | string | Match associated worktree |
-| `agentId` | string | Match agent identifier |
-| `timestamp` | number | Match specific timestamp (rarely used) |
+| Filter Key   | Type   | Description                                       |
+| ------------ | ------ | ------------------------------------------------- |
+| `terminalId` | string | Match specific terminal                           |
+| `toState`    | string | Match target state (`waiting`, `completed`, etc.) |
+| `oldState`   | string | Match previous state                              |
+| `newState`   | string | Match new state (same as toState)                 |
+| `worktreeId` | string | Match associated worktree                         |
+| `agentId`    | string | Match agent identifier                            |
+| `timestamp`  | number | Match specific timestamp (rarely used)            |
 
 Filter values can be: `string | number | boolean | null`
 
@@ -290,6 +297,7 @@ Listeners are scoped to assistant conversation sessions:
 3. **Cleanup**: Session end clears all associated listeners
 
 The bridge is destroyed on:
+
 - WebContents destruction
 - Handler cleanup (app shutdown)
 
@@ -307,6 +315,7 @@ if (spawnedAt !== undefined && terminal.spawnedAt !== spawnedAt) {
 ```
 
 This prevents race conditions when:
+
 - Terminal restarts during observation
 - Multiple sessions observe same terminal
 - Delayed events arrive after restart
@@ -330,11 +339,13 @@ This prevents race conditions when:
 ### State Detection Issues
 
 If waiting state isn't detected:
+
 - Agent may not have recognizable prompt patterns
 - Activity timeout may not have elapsed (default 2000ms for agents)
 - High output rate may be preventing transition
 
 If working state persists:
+
 - Pattern detection may be matching stale output
 - Line rewrite detection firing on non-spinner output
 
@@ -355,7 +366,7 @@ const result = agent_launch({ agentId: "claude", prompt: "Run tests" });
 // Register listener for this terminal
 register_listener({
   eventType: "terminal:state-changed",
-  filter: { terminalId: result.terminalId, toState: "waiting" }
+  filter: { terminalId: result.terminalId, toState: "waiting" },
 });
 ```
 
@@ -364,7 +375,7 @@ register_listener({
 ```javascript
 register_listener({
   eventType: "terminal:state-changed",
-  filter: { toState: "waiting" }
+  filter: { toState: "waiting" },
 });
 ```
 
@@ -373,12 +384,16 @@ register_listener({
 ```javascript
 // Step 1: Create worktree and launch agent
 const wt = worktree_createWithRecipe({ branchName: "feature-x", recipeId: "dev" });
-const agent = agent_launch({ agentId: "claude", worktreeId: wt.worktreeId, prompt: "Implement feature" });
+const agent = agent_launch({
+  agentId: "claude",
+  worktreeId: wt.worktreeId,
+  prompt: "Implement feature",
+});
 
 // Step 2: Register completion listener
 register_listener({
   eventType: "terminal:state-changed",
-  filter: { terminalId: agent.terminalId, toState: "completed" }
+  filter: { terminalId: agent.terminalId, toState: "completed" },
 });
 
 // Step 3: Handle notification when received
