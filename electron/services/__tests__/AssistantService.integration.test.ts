@@ -28,7 +28,7 @@
  * Keep test scenarios minimal to reduce API usage.
  */
 
-import { describe, it, expect, beforeAll, afterAll, vi, beforeEach, afterEach } from "vitest";
+import { describe, it, expect, beforeAll } from "vitest";
 import * as fs from "node:fs";
 import * as path from "node:path";
 import { fileURLToPath } from "node:url";
@@ -459,7 +459,7 @@ describe.skipIf(!hasApiKey)("AssistantService Integration", () => {
       expect(message?.tool_calls).toBeDefined();
       expect(message?.tool_calls?.length).toBeGreaterThan(0);
 
-      const toolCall = message.tool_calls![0];
+      const toolCall = message!.tool_calls![0];
       expect(toolCall.function.name).toBe("terminal_getOutput");
 
       const args = JSON.parse(toolCall.function.arguments);
@@ -498,7 +498,7 @@ describe.skipIf(!hasApiKey)("AssistantService Integration", () => {
           {
             role: "assistant",
             content: assistantMessage.content || "",
-            tool_calls: assistantMessage.tool_calls,
+            tool_calls: assistantMessage.tool_calls as ChatMessage["tool_calls"],
           },
           {
             role: "tool",
@@ -649,7 +649,7 @@ describe.skipIf(!hasApiKey)("AssistantService Integration", () => {
               function: { name: "terminal_list", arguments: "{}" },
             },
           ],
-        },
+        } as ChatMessage,
         {
           role: "tool",
           content: JSON.stringify({
