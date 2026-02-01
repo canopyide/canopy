@@ -10,11 +10,18 @@ import type { AssistantMessage, StreamingState } from "./types";
 const LOADING_INDICATOR_DELAY_MS = 150;
 const AT_BOTTOM_THRESHOLD_PX = 100;
 
+interface RetryState {
+  attempt: number;
+  maxAttempts: number;
+  isRetrying: boolean;
+}
+
 interface MessageListProps {
   messages: AssistantMessage[];
   streamingState: StreamingState | null;
   streamingMessageId?: string | null;
   isLoading?: boolean;
+  retryState?: RetryState | null;
   className?: string;
 }
 
@@ -23,6 +30,7 @@ export function MessageList({
   streamingState,
   streamingMessageId,
   isLoading = false,
+  retryState,
   className,
 }: MessageListProps) {
   const virtuosoRef = useRef<VirtuosoHandle>(null);
@@ -119,7 +127,7 @@ export function MessageList({
 
   const renderMessage = (_index: number, msg: AssistantMessage) => {
     if (msg.id === "__loading__") {
-      return <AssistantThinkingIndicator />;
+      return <AssistantThinkingIndicator retryState={retryState} />;
     }
 
     const isStreaming = msg.id.startsWith("__streaming__");

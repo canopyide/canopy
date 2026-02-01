@@ -38,6 +38,7 @@ export function useAssistantStreamProcessor() {
   const streamingStateRef = useRef<{ content: string; toolCalls: ToolCall[] } | null>(null);
   const streamingMessageIdRef = useRef<string | null>(null);
   const streamingSessionIdRef = useRef<string | null>(null);
+  const hadErrorRef = useRef<boolean>(false);
 
   useEffect(() => {
     if (!window.electron?.assistant?.onChunk) {
@@ -85,6 +86,7 @@ export function useAssistantStreamProcessor() {
       streamingStateRef.current = null;
       streamingMessageIdRef.current = null;
       streamingSessionIdRef.current = null;
+      hadErrorRef.current = false;
       useAssistantChatStore.getState().setStreamingState(null, null);
     }
 
@@ -257,6 +259,7 @@ export function useAssistantStreamProcessor() {
 
         case "error":
           if (chunk.error) {
+            hadErrorRef.current = true;
             useAssistantChatStore.getState().setError(chunk.error);
           }
           finalizeStreaming();
@@ -276,7 +279,23 @@ export function useAssistantStreamProcessor() {
           }
           break;
 
+        case "retrying": {
+          // Server is automatically retrying - show status to user
+          if (chunk.retryInfo) {
+            const { attempt, maxAttempts } = chunk.retryInfo;
+            useAssistantChatStore
+              .getState()
+              .setRetryState({ attempt, maxAttempts, isRetrying: true });
+          }
+          // Clear any existing streaming state for clean retry
+          resetStreamingState();
+          break;
+        }
+
         case "done": {
+          // Clear retry state when done
+          useAssistantChatStore.getState().setRetryState(null);
+
           const hadContent = streamingStateRef.current
             ? streamingStateRef.current.content.length > 0 ||
               streamingStateRef.current.toolCalls.length > 0
@@ -285,7 +304,9 @@ export function useAssistantStreamProcessor() {
           finalizeStreaming();
 
           // If we completed without any content and it wasn't cancelled, show an error
-          if (!hadContent && chunk.finishReason !== "cancelled") {
+          // Note: This now only happens after all automatic retries are exhausted
+          // Don't overwrite an existing error message
+          if (!hadContent && chunk.finishReason !== "cancelled" && !hadErrorRef.current) {
             useAssistantChatStore
               .getState()
               .setError("The model did not respond. Please try again.");

@@ -14,6 +14,7 @@ import {
   logAssistantError,
   logAssistantCancelled,
   logAssistantStreamPart,
+  logAssistantRetry,
 } from "../utils/assistantLogger.js";
 
 /**
@@ -351,6 +352,79 @@ const TERMINAL_FOCUS_REQUIRED_ACTIONS = new Set([
 const FIREWORKS_BASE_URL = "https://api.fireworks.ai/inference/v1";
 const MAX_STEPS = 10;
 
+// Retry configuration
+const MAX_AUTO_RETRIES = 2;
+const RETRY_DELAYS_MS = [1000, 2000]; // Exponential backoff: 1s, 2s
+
+/**
+ * Determines if an error or response condition is retryable.
+ * Empty responses, rate limits, and server errors are retryable.
+ * Auth errors and client errors are not retryable.
+ */
+function isRetryableCondition(
+  error: unknown,
+  finishReason?: string,
+  hasContent?: boolean
+): boolean {
+  // Empty responses (finishReason: "other" with no content) are retryable
+  if (finishReason === "other" && !hasContent) {
+    return true;
+  }
+
+  if (!error) {
+    return false;
+  }
+
+  // Handle APICallError from Vercel AI SDK
+  if (APICallError.isInstance(error)) {
+    const statusCode = error.statusCode;
+
+    // Rate limits are retryable
+    if (statusCode === 429) {
+      return true;
+    }
+
+    // Server errors (5xx) are retryable
+    if (statusCode && statusCode >= 500) {
+      return true;
+    }
+
+    // Auth errors (401, 403) are NOT retryable
+    if (statusCode === 401 || statusCode === 403) {
+      return false;
+    }
+
+    // Check the SDK's own retryable flag
+    if (error.isRetryable) {
+      return true;
+    }
+  }
+
+  // Handle generic errors with status codes
+  if (error instanceof Error) {
+    const errorAny = error as unknown as Record<string, unknown>;
+    const statusCode = errorAny["statusCode"];
+
+    if (typeof statusCode === "number") {
+      if (statusCode === 429 || statusCode >= 500) {
+        return true;
+      }
+      if (statusCode === 401 || statusCode === 403) {
+        return false;
+      }
+    }
+  }
+
+  return false;
+}
+
+/**
+ * Delays execution for the specified number of milliseconds.
+ */
+function delay(ms: number): Promise<void> {
+  return new Promise((resolve) => setTimeout(resolve, ms));
+}
+
 export class AssistantService {
   private fireworks: ReturnType<typeof createOpenAI> | null = null;
   private activeStreams = new Map<string, AbortController>();
@@ -428,233 +502,359 @@ export class AssistantService {
     this.activeStreams.set(sessionId, controller);
     this.chunkCallbacks.set(sessionId, onChunk);
 
-    const startTime = Date.now();
+    const overallStartTime = Date.now();
 
-    try {
-      // Build context block for the system prompt
-      const activeListenerCount = listenerManager.countForSession(sessionId);
-      const contextBlock = context
-        ? buildContextBlock({ ...context, activeListenerCount })
-        : activeListenerCount > 0
-          ? buildContextBlock({ activeListenerCount })
-          : "";
-      const systemPromptWithContext = contextBlock
-        ? `${SYSTEM_PROMPT}\n\n${contextBlock}`
-        : SYSTEM_PROMPT;
+    // Retry loop
+    for (let attempt = 1; attempt <= MAX_AUTO_RETRIES + 1; attempt++) {
+      let hasContent = false;
+      let finishReason: string | undefined;
+      let wasCancelled = false;
 
-      // Convert messages to ModelMessage format with proper tool call/result interleaving
-      // AI SDK requires that every tool call has a corresponding tool result.
-      // If tool results are missing for any tool call, we exclude those tool calls
-      // from the history to prevent AI_MissingToolResultsError.
-      const modelMessages: ModelMessage[] = [];
+      try {
+        // Build context block for the system prompt
+        const activeListenerCount = listenerManager.countForSession(sessionId);
+        const contextBlock = context
+          ? buildContextBlock({ ...context, activeListenerCount })
+          : activeListenerCount > 0
+            ? buildContextBlock({ activeListenerCount })
+            : "";
+        const systemPromptWithContext = contextBlock
+          ? `${SYSTEM_PROMPT}\n\n${contextBlock}`
+          : SYSTEM_PROMPT;
 
-      for (const msg of messages) {
-        if (msg.role === "user") {
-          modelMessages.push({ role: "user", content: msg.content });
-        } else {
-          // Assistant message - may have tool calls
-          const hasToolCalls = msg.toolCalls && msg.toolCalls.length > 0;
-          const hasToolResults = msg.toolResults && msg.toolResults.length > 0;
+        // Convert messages to ModelMessage format with proper tool call/result interleaving
+        // AI SDK requires that every tool call has a corresponding tool result.
+        // If tool results are missing for any tool call, we exclude those tool calls
+        // from the history to prevent AI_MissingToolResultsError.
+        const modelMessages: ModelMessage[] = [];
 
-          if (hasToolCalls && hasToolResults) {
-            // TypeScript needs explicit narrowing - these are guaranteed non-null by the boolean checks
-            const toolCalls = msg.toolCalls!;
-            const toolResults = msg.toolResults!;
-
-            // Build a set of tool call IDs that have results
-            const resultIds = new Set(toolResults.map((tr) => tr.toolCallId));
-
-            // Only include tool calls that have corresponding results
-            const pairedToolCalls = toolCalls.filter((tc) => resultIds.has(tc.id));
-
-            if (pairedToolCalls.length > 0) {
-              // Build a set of paired call IDs for efficient filtering
-              const pairedCallIds = new Set(pairedToolCalls.map((tc) => tc.id));
-
-              // Add assistant message with only the paired tool calls
-              modelMessages.push({
-                role: "assistant",
-                content: [
-                  ...(msg.content ? [{ type: "text" as const, text: msg.content }] : []),
-                  ...pairedToolCalls.map((tc) => ({
-                    type: "tool-call" as const,
-                    toolCallId: tc.id,
-                    toolName: sanitizeToolName(tc.name),
-                    input: tc.args,
-                  })),
-                ],
-              });
-
-              // Add tool results for the paired tool calls (filter efficiently using Set)
-              const pairedResults = toolResults.filter((tr) => pairedCallIds.has(tr.toolCallId));
-              modelMessages.push({
-                role: "tool",
-                content: pairedResults.map((tr) => ({
-                  type: "tool-result" as const,
-                  toolCallId: tr.toolCallId,
-                  toolName: sanitizeToolName(tr.toolName),
-                  // Normalize result to JSON-safe value (null if undefined)
-                  output: {
-                    type: "json" as const,
-                    value: (tr.result ?? null) as JSONValue,
-                  },
-                })),
-              });
-            } else if (msg.content) {
-              // No paired tool calls, but have content - add as text-only message
-              modelMessages.push({ role: "assistant", content: msg.content });
-            }
-          } else if (hasToolCalls && !hasToolResults) {
-            // Tool calls without results - this indicates incomplete tool execution
-            // Include only the text content to avoid AI_MissingToolResultsError
-            if (msg.content) {
-              modelMessages.push({ role: "assistant", content: msg.content });
-            }
-            // Note: Tool calls are intentionally omitted to prevent validation errors
+        for (const msg of messages) {
+          if (msg.role === "user") {
+            modelMessages.push({ role: "user", content: msg.content });
           } else {
-            // No tool calls - just add the text content
-            modelMessages.push({ role: "assistant", content: msg.content });
+            // Assistant message - may have tool calls
+            const hasToolCalls = msg.toolCalls && msg.toolCalls.length > 0;
+            const hasToolResults = msg.toolResults && msg.toolResults.length > 0;
+
+            if (hasToolCalls && hasToolResults) {
+              // TypeScript needs explicit narrowing - these are guaranteed non-null by the boolean checks
+              const toolCalls = msg.toolCalls!;
+              const toolResults = msg.toolResults!;
+
+              // Build a set of tool call IDs that have results
+              const resultIds = new Set(toolResults.map((tr) => tr.toolCallId));
+
+              // Only include tool calls that have corresponding results
+              const pairedToolCalls = toolCalls.filter((tc) => resultIds.has(tc.id));
+
+              if (pairedToolCalls.length > 0) {
+                // Build a set of paired call IDs for efficient filtering
+                const pairedCallIds = new Set(pairedToolCalls.map((tc) => tc.id));
+
+                // Add assistant message with only the paired tool calls
+                modelMessages.push({
+                  role: "assistant",
+                  content: [
+                    ...(msg.content ? [{ type: "text" as const, text: msg.content }] : []),
+                    ...pairedToolCalls.map((tc) => ({
+                      type: "tool-call" as const,
+                      toolCallId: tc.id,
+                      toolName: sanitizeToolName(tc.name),
+                      input: tc.args,
+                    })),
+                  ],
+                });
+
+                // Add tool results for the paired tool calls (filter efficiently using Set)
+                const pairedResults = toolResults.filter((tr) => pairedCallIds.has(tr.toolCallId));
+                modelMessages.push({
+                  role: "tool",
+                  content: pairedResults.map((tr) => ({
+                    type: "tool-result" as const,
+                    toolCallId: tr.toolCallId,
+                    toolName: sanitizeToolName(tr.toolName),
+                    // Normalize result to JSON-safe value (null if undefined)
+                    output: {
+                      type: "json" as const,
+                      value: (tr.result ?? null) as JSONValue,
+                    },
+                  })),
+                });
+              } else if (msg.content) {
+                // No paired tool calls, but have content - add as text-only message
+                modelMessages.push({ role: "assistant", content: msg.content });
+              }
+            } else if (hasToolCalls && !hasToolResults) {
+              // Tool calls without results - this indicates incomplete tool execution
+              // Include only the text content to avoid AI_MissingToolResultsError
+              if (msg.content) {
+                modelMessages.push({ role: "assistant", content: msg.content });
+              }
+              // Note: Tool calls are intentionally omitted to prevent validation errors
+            } else {
+              // No tool calls - just add the text content
+              modelMessages.push({ role: "assistant", content: msg.content });
+            }
           }
         }
-      }
 
-      // Filter actions based on context
-      let filteredActions = actions;
-      if (actions && context) {
-        // Remove terminal-focus-required actions when no terminal is focused
-        if (!context.focusedTerminalId) {
-          filteredActions = actions.filter(
-            (action) => !TERMINAL_FOCUS_REQUIRED_ACTIONS.has(action.id)
-          );
+        // Filter actions based on context
+        let filteredActions = actions;
+        if (actions && context) {
+          // Remove terminal-focus-required actions when no terminal is focused
+          if (!context.focusedTerminalId) {
+            filteredActions = actions.filter(
+              (action) => !TERMINAL_FOCUS_REQUIRED_ACTIONS.has(action.id)
+            );
+          }
         }
-      }
 
-      // Build tools from filtered actions and listener management
-      const actionTools =
-        filteredActions && context ? createActionTools(filteredActions, context) : {};
-      const listenerTools = createListenerTools({ sessionId });
-      const tools = { ...actionTools, ...listenerTools };
-      const hasTools = Object.keys(tools).length > 0;
+        // Build tools from filtered actions and listener management
+        const actionTools =
+          filteredActions && context ? createActionTools(filteredActions, context) : {};
+        const listenerTools = createListenerTools({ sessionId });
+        const tools = { ...actionTools, ...listenerTools };
+        const hasTools = Object.keys(tools).length > 0;
 
-      logAssistantRequest(
-        sessionId,
-        messages,
-        filteredActions,
-        Object.keys(listenerTools).length,
-        context,
-        config.model,
-        systemPromptWithContext.length
-      );
+        // Log request (include attempt number for retries)
+        logAssistantRequest(
+          sessionId,
+          messages,
+          filteredActions,
+          Object.keys(listenerTools).length,
+          context,
+          config.model,
+          systemPromptWithContext.length
+        );
 
-      const result = streamText({
-        model: this.fireworks(config.model),
-        system: systemPromptWithContext,
-        messages: modelMessages,
-        tools: hasTools ? tools : undefined,
-        stopWhen: hasTools ? stepCountIs(MAX_STEPS) : undefined,
-        abortSignal: controller.signal,
-      });
+        const result = streamText({
+          model: this.fireworks(config.model),
+          system: systemPromptWithContext,
+          messages: modelMessages,
+          tools: hasTools ? tools : undefined,
+          stopWhen: hasTools ? stepCountIs(MAX_STEPS) : undefined,
+          abortSignal: controller.signal,
+        });
 
-      // Use fullStream to get tool call and result events
-      for await (const part of result.fullStream) {
-        if (controller.signal.aborted) {
-          logAssistantCancelled(sessionId, Date.now() - startTime);
+        // Use fullStream to get tool call and result events
+        for await (const part of result.fullStream) {
+          if (controller.signal.aborted) {
+            wasCancelled = true;
+            break;
+          }
+
+          switch (part.type) {
+            case "text-delta": {
+              hasContent = true;
+              const chunk: StreamChunk = { type: "text", content: part.text };
+              logAssistantStreamEvent(sessionId, chunk);
+              onChunk(chunk);
+              break;
+            }
+
+            case "tool-call": {
+              hasContent = true;
+              const chunk: StreamChunk = {
+                type: "tool_call",
+                toolCall: {
+                  id: part.toolCallId,
+                  name: part.toolName,
+                  args: part.input as Record<string, unknown>,
+                },
+              };
+              logAssistantStreamEvent(sessionId, chunk);
+              onChunk(chunk);
+              break;
+            }
+
+            case "tool-result": {
+              hasContent = true;
+              const chunk: StreamChunk = {
+                type: "tool_result",
+                toolResult: {
+                  toolCallId: part.toolCallId,
+                  toolName: part.toolName,
+                  result: part.output,
+                },
+              };
+              logAssistantStreamEvent(sessionId, chunk);
+              onChunk(chunk);
+              break;
+            }
+
+            case "error": {
+              console.error("[AssistantService] Stream part error:", part.error);
+              const chunk: StreamChunk = {
+                type: "error",
+                error: extractStreamPartError(part.error),
+              };
+              logAssistantStreamEvent(sessionId, chunk);
+              onChunk(chunk);
+              break;
+            }
+
+            default: {
+              logAssistantStreamPart(sessionId, part.type, part);
+              break;
+            }
+          }
+        }
+
+        // Handle cancellation
+        if (wasCancelled) {
+          logAssistantCancelled(sessionId, Date.now() - overallStartTime);
           onChunk({ type: "done", finishReason: "cancelled" });
           return;
         }
 
-        switch (part.type) {
-          case "text-delta": {
-            const chunk: StreamChunk = { type: "text", content: part.text };
-            logAssistantStreamEvent(sessionId, chunk);
-            onChunk(chunk);
-            break;
-          }
+        // Get finish reason
+        const finalResult = await result;
+        finishReason = (await finalResult.finishReason) ?? undefined;
 
-          case "tool-call": {
-            const chunk: StreamChunk = {
-              type: "tool_call",
-              toolCall: {
-                id: part.toolCallId,
-                name: part.toolName,
-                args: part.input as Record<string, unknown>,
+        // Check if we should retry (empty response)
+        if (!hasContent && isRetryableCondition(null, finishReason, hasContent)) {
+          const isLastAttempt = attempt > MAX_AUTO_RETRIES;
+
+          if (!isLastAttempt) {
+            // Check if cancelled before retry
+            if (controller.signal.aborted) {
+              logAssistantCancelled(sessionId, Date.now() - overallStartTime);
+              onChunk({ type: "done", finishReason: "cancelled" });
+              return;
+            }
+
+            // More retries available - notify client and wait
+            const delayMs =
+              RETRY_DELAYS_MS[attempt - 1] ?? RETRY_DELAYS_MS[RETRY_DELAYS_MS.length - 1];
+            const reason = "Empty response from model";
+
+            logAssistantRetry(sessionId, attempt, MAX_AUTO_RETRIES + 1, reason, delayMs);
+
+            onChunk({
+              type: "retrying",
+              retryInfo: {
+                attempt,
+                maxAttempts: MAX_AUTO_RETRIES + 1,
+                reason,
               },
-            };
-            logAssistantStreamEvent(sessionId, chunk);
-            onChunk(chunk);
-            break;
-          }
+            });
 
-          case "tool-result": {
-            const chunk: StreamChunk = {
-              type: "tool_result",
-              toolResult: {
-                toolCallId: part.toolCallId,
-                toolName: part.toolName,
-                result: part.output,
-              },
-            };
-            logAssistantStreamEvent(sessionId, chunk);
-            onChunk(chunk);
-            break;
-          }
+            await delay(delayMs);
 
-          case "error": {
-            console.error("[AssistantService] Stream part error:", part.error);
-            const chunk: StreamChunk = {
-              type: "error",
-              error: extractStreamPartError(part.error),
-            };
-            logAssistantStreamEvent(sessionId, chunk);
-            onChunk(chunk);
-            break;
-          }
+            // Check if cancelled during delay
+            if (controller.signal.aborted) {
+              logAssistantCancelled(sessionId, Date.now() - overallStartTime);
+              onChunk({ type: "done", finishReason: "cancelled" });
+              return;
+            }
 
-          default: {
-            logAssistantStreamPart(sessionId, part.type, part);
+            continue; // Retry the request
+          } else {
+            // Last attempt failed with empty response - break to error path
             break;
           }
         }
-      }
 
-      // Only get finish reason if not aborted
-      if (!controller.signal.aborted) {
-        const finalResult = await result;
-        const finishReason = await finalResult.finishReason;
-        logAssistantComplete(sessionId, finishReason ?? undefined, Date.now() - startTime);
+        // Success or non-retryable completion
+        logAssistantComplete(sessionId, finishReason, Date.now() - overallStartTime);
         onChunk({
           type: "done",
-          finishReason: finishReason ?? undefined,
+          finishReason,
         });
-      }
-    } catch (error) {
-      if (error instanceof Error && error.name === "AbortError") {
-        logAssistantCancelled(sessionId, Date.now() - startTime);
-        onChunk({ type: "done", finishReason: "cancelled" });
+
+        // Cleanup
+        if (this.activeStreams.get(sessionId) === controller) {
+          this.activeStreams.delete(sessionId);
+          this.chunkCallbacks.delete(sessionId);
+        }
+        return;
+      } catch (error) {
+        if (error instanceof Error && error.name === "AbortError") {
+          logAssistantCancelled(sessionId, Date.now() - overallStartTime);
+          onChunk({ type: "done", finishReason: "cancelled" });
+          return;
+        }
+
+        // Check if this error is retryable
+        const isRetryable = isRetryableCondition(error, undefined, hasContent);
+        const isLastAttempt = attempt > MAX_AUTO_RETRIES;
+
+        if (isRetryable && !isLastAttempt) {
+          // Check if cancelled before retry
+          if (controller.signal.aborted) {
+            logAssistantCancelled(sessionId, Date.now() - overallStartTime);
+            onChunk({ type: "done", finishReason: "cancelled" });
+            return;
+          }
+
+          // More retries available - notify client and wait
+          const delayMs =
+            RETRY_DELAYS_MS[attempt - 1] ?? RETRY_DELAYS_MS[RETRY_DELAYS_MS.length - 1];
+          const reason = extractDetailedError(error);
+
+          logAssistantRetry(sessionId, attempt, MAX_AUTO_RETRIES + 1, reason, delayMs);
+
+          onChunk({
+            type: "retrying",
+            retryInfo: {
+              attempt,
+              maxAttempts: MAX_AUTO_RETRIES + 1,
+              reason,
+            },
+          });
+
+          await delay(delayMs);
+
+          // Check if cancelled during delay
+          if (controller.signal.aborted) {
+            logAssistantCancelled(sessionId, Date.now() - overallStartTime);
+            onChunk({ type: "done", finishReason: "cancelled" });
+            return;
+          }
+
+          continue; // Retry the request
+        }
+
+        // Non-retryable error or max retries exceeded
+        const errorMessage = extractDetailedError(error);
+
+        console.error("[AssistantService] Stream error:", error);
+        if (error instanceof Error && error.stack) {
+          console.error("[AssistantService] Stack trace:", error.stack);
+        }
+
+        logAssistantError(sessionId, errorMessage, Date.now() - overallStartTime);
+        onChunk({
+          type: "error",
+          error: errorMessage,
+        });
+        onChunk({ type: "done" });
+
+        // Cleanup
+        if (this.activeStreams.get(sessionId) === controller) {
+          this.activeStreams.delete(sessionId);
+          this.chunkCallbacks.delete(sessionId);
+        }
         return;
       }
+    }
 
-      // Extract detailed error information for user display
-      const errorMessage = extractDetailedError(error);
+    // Max retries exceeded with empty response - show user-friendly message
+    logAssistantError(
+      sessionId,
+      "The model did not respond after multiple retries",
+      Date.now() - overallStartTime
+    );
+    onChunk({
+      type: "error",
+      error: "The model did not respond after multiple retries. Please try again.",
+    });
+    onChunk({ type: "done" });
 
-      // Log full error details for debugging (including stack trace)
-      console.error("[AssistantService] Stream error:", error);
-      if (error instanceof Error && error.stack) {
-        console.error("[AssistantService] Stack trace:", error.stack);
-      }
-
-      logAssistantError(sessionId, errorMessage, Date.now() - startTime);
-      onChunk({
-        type: "error",
-        error: errorMessage,
-      });
-      onChunk({ type: "done" });
-    } finally {
-      // Only delete if this controller is still the active one
-      if (this.activeStreams.get(sessionId) === controller) {
-        this.activeStreams.delete(sessionId);
-        this.chunkCallbacks.delete(sessionId);
-      }
+    // Cleanup
+    if (this.activeStreams.get(sessionId) === controller) {
+      this.activeStreams.delete(sessionId);
+      this.chunkCallbacks.delete(sessionId);
     }
   }
 
