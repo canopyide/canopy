@@ -20,6 +20,7 @@ export function AssistantPane() {
     streamingMessageId,
     isLoading,
     error,
+    retryState,
     sendMessage,
     retryLastMessage,
     cancelStreaming,
@@ -145,6 +146,7 @@ export function AssistantPane() {
               streamingState={streamingState}
               streamingMessageId={streamingMessageId}
               isLoading={isLoading}
+              retryState={retryState}
               className="flex-1 min-h-0"
             />
           ) : (
