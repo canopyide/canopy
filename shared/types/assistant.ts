@@ -35,6 +35,7 @@ export const StreamChunkTypeSchema = z.enum([
   "error",
   "done",
   "listener_triggered",
+  "retrying",
 ]);
 export type StreamChunkType = z.infer<typeof StreamChunkTypeSchema>;
 
@@ -45,6 +46,13 @@ export const ListenerTriggeredDataSchema = z.object({
 });
 export type ListenerTriggeredData = z.infer<typeof ListenerTriggeredDataSchema>;
 
+export const RetryInfoSchema = z.object({
+  attempt: z.number(),
+  maxAttempts: z.number(),
+  reason: z.string(),
+});
+export type RetryInfo = z.infer<typeof RetryInfoSchema>;
+
 export const StreamChunkSchema = z.object({
   type: StreamChunkTypeSchema,
   content: z.string().optional(),
@@ -53,6 +61,7 @@ export const StreamChunkSchema = z.object({
   error: z.string().optional(),
   finishReason: z.string().optional(),
   listenerData: ListenerTriggeredDataSchema.optional(),
+  retryInfo: RetryInfoSchema.optional(),
 });
 export type StreamChunk = z.infer<typeof StreamChunkSchema>;
 

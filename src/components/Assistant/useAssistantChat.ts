@@ -20,6 +20,7 @@ export function useAssistantChat(options?: UseAssistantChatOptions) {
   const conversation = useAssistantChatStore((s) => s.conversation);
   const streamingState = useAssistantChatStore((s) => s.streamingState);
   const streamingMessageId = useAssistantChatStore((s) => s.streamingMessageId);
+  const retryState = useAssistantChatStore((s) => s.retryState);
   const storeAddMessage = useAssistantChatStore((s) => s.addMessage);
   const storeUpdateLastMessage = useAssistantChatStore((s) => s.updateLastMessage);
   const storeSetLoading = useAssistantChatStore((s) => s.setLoading);
@@ -60,6 +61,7 @@ export function useAssistantChat(options?: UseAssistantChatOptions) {
   const cancelStreaming = useCallback(() => {
     window.electron.assistant.cancel(sessionIdRef.current);
     storeSetStreamingState(null, null);
+    useAssistantChatStore.getState().setRetryState(null);
     storeSetLoading(false);
   }, [storeSetLoading, storeSetStreamingState]);
 
@@ -106,6 +108,7 @@ export function useAssistantChat(options?: UseAssistantChatOptions) {
     const sessionId = sessionIdRef.current;
 
     storeSetStreamingState(null, null);
+    useAssistantChatStore.getState().setRetryState(null);
 
     (async () => {
       try {
@@ -178,6 +181,7 @@ export function useAssistantChat(options?: UseAssistantChatOptions) {
 
       // Reset streaming state for new message
       storeSetStreamingState(null, null);
+      useAssistantChatStore.getState().setRetryState(null);
 
       try {
         const context = getAssistantContext();
@@ -243,6 +247,7 @@ export function useAssistantChat(options?: UseAssistantChatOptions) {
     streamingMessageId,
     isLoading: conversation.isLoading,
     error: conversation.error,
+    retryState,
     sendMessage,
     retryLastMessage,
     cancelStreaming,

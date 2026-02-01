@@ -34,6 +34,12 @@ interface StreamingState {
   }>;
 }
 
+interface RetryState {
+  attempt: number;
+  maxAttempts: number;
+  isRetrying: boolean;
+}
+
 interface AssistantChatState {
   conversation: ConversationState;
   isOpen: boolean;
@@ -41,6 +47,7 @@ interface AssistantChatState {
   currentContext: ActionContext | null;
   streamingState: StreamingState | null;
   streamingMessageId: string | null;
+  retryState: RetryState | null;
 }
 
 interface AssistantChatActions {
@@ -58,6 +65,7 @@ interface AssistantChatActions {
   setDisplayMode: (mode: "popup" | "docked") => void;
   setCurrentContext: (context: ActionContext | null) => void;
   setStreamingState: (state: StreamingState | null, messageId: string | null) => void;
+  setRetryState: (state: RetryState | null) => void;
 }
 
 const initialState: AssistantChatState = {
@@ -67,6 +75,7 @@ const initialState: AssistantChatState = {
   currentContext: null,
   streamingState: null,
   streamingMessageId: null,
+  retryState: null,
 };
 
 const createAssistantChatStore: StateCreator<AssistantChatState & AssistantChatActions> = (
@@ -140,6 +149,7 @@ const createAssistantChatStore: StateCreator<AssistantChatState & AssistantChatA
       conversation: createInitialConversation(),
       streamingState: null,
       streamingMessageId: null,
+      retryState: null,
     });
   },
 
@@ -148,6 +158,7 @@ const createAssistantChatStore: StateCreator<AssistantChatState & AssistantChatA
       conversation: createInitialConversation(),
       streamingState: null,
       streamingMessageId: null,
+      retryState: null,
     }),
 
   open: () => set({ isOpen: true }),
@@ -162,6 +173,8 @@ const createAssistantChatStore: StateCreator<AssistantChatState & AssistantChatA
 
   setStreamingState: (state, messageId) =>
     set({ streamingState: state, streamingMessageId: messageId }),
+
+  setRetryState: (state) => set({ retryState: state }),
 });
 
 export const useAssistantChatStore = create<AssistantChatState & AssistantChatActions>()(

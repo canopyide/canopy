@@ -6,7 +6,7 @@ import type { ActionManifestEntry, ActionContext } from "../../shared/types/acti
 
 const IS_TEST = process.env.NODE_ENV === "test";
 
-type AssistantLogType = "request" | "stream" | "complete" | "error" | "cancelled";
+type AssistantLogType = "request" | "stream" | "complete" | "error" | "cancelled" | "retry";
 
 interface BaseLogEntry {
   ts: string;
@@ -54,12 +54,22 @@ interface CancelledLogEntry extends BaseLogEntry {
   durationMs: number;
 }
 
+interface RetryLogEntry extends BaseLogEntry {
+  type: "retry";
+  attempt: number;
+  maxAttempts: number;
+  reason: string;
+  delayMs: number;
+  isAutomatic: boolean;
+}
+
 type AssistantLogEntry =
   | RequestLogEntry
   | StreamLogEntry
   | CompleteLogEntry
   | ErrorLogEntry
-  | CancelledLogEntry;
+  | CancelledLogEntry
+  | RetryLogEntry;
 
 let logFilePath: string | null = null;
 let isInitialized = false;
@@ -288,6 +298,27 @@ export function logAssistantStreamPart(
     event: "other",
     partType,
     data: partData,
+  };
+  writeLogEntry(entry);
+}
+
+export function logAssistantRetry(
+  sessionId: string,
+  attempt: number,
+  maxAttempts: number,
+  reason: string,
+  delayMs: number,
+  isAutomatic: boolean = true
+): void {
+  const entry: RetryLogEntry = {
+    ts: new Date().toISOString(),
+    type: "retry",
+    sessionId,
+    attempt,
+    maxAttempts,
+    reason,
+    delayMs,
+    isAutomatic,
   };
   writeLogEntry(entry);
 }
