@@ -86,6 +86,7 @@ export const AGENT_ACCESSIBLE_ACTIONS = [
 
   // ===== TERMINAL OPERATIONS =====
   // Terminal management and interaction
+  "terminal.sendCommand",
   "terminal.new",
   "terminal.close",
   "terminal.trash",
@@ -123,6 +124,7 @@ export const AGENT_ACCESSIBLE_ACTIONS = [
   "terminal.toggleMaximize",
   "terminal.minimizeAll",
   "terminal.restoreAll",
+  "terminal.restartAll",
 
   // Terminal-to-worktree actions
   "terminal.openWorktreeEditor",
@@ -147,6 +149,8 @@ export const AGENT_ACCESSIBLE_ACTIONS = [
   "worktree.next",
   "worktree.previous",
   "worktree.switchIndex",
+  "worktree.home",
+  "worktree.end",
   "worktree.openEditor",
   "worktree.openIssue",
   "worktree.openPR",
@@ -208,6 +212,8 @@ export const AGENT_ACCESSIBLE_ACTIONS = [
   // ===== PROJECT OPERATIONS =====
   // Project management
   "project.add",
+  "project.close",
+  "project.saveSettings",
   "project.switcherPalette",
   "project.openDialog",
   "project.settings.open",
@@ -234,6 +240,11 @@ export const AGENT_ACCESSIBLE_ACTIONS = [
   // ===== RECIPE EXECUTION =====
   // Template-based workflows
   "recipe.run",
+
+  // ===== ARTIFACT OPERATIONS =====
+  // Agent output persistence and code modifications
+  "artifact.saveToFile",
+  "artifact.applyPatch",
 ] as const satisfies readonly ActionId[];
 
 export type AgentAccessibleAction = (typeof AGENT_ACCESSIBLE_ACTIONS)[number];
