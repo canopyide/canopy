@@ -7,6 +7,14 @@ import { createActionTools, sanitizeToolName } from "./assistant/actionTools.js"
 import { SYSTEM_PROMPT, buildContextBlock } from "./assistant/index.js";
 import { listenerManager } from "./assistant/ListenerManager.js";
 import { createListenerTools } from "./assistant/listenerTools.js";
+import {
+  logAssistantRequest,
+  logAssistantStreamEvent,
+  logAssistantComplete,
+  logAssistantError,
+  logAssistantCancelled,
+  logAssistantStreamPart,
+} from "../utils/assistantLogger.js";
 
 /**
  * Sanitizes error messages to remove sensitive information.
@@ -384,9 +392,11 @@ export class AssistantService {
     const config = store.get("appAgentConfig");
 
     if (!config.apiKey) {
+      const errorMsg = "API key not configured. Please add your Fireworks API key in Settings.";
+      logAssistantError(sessionId, errorMsg);
       onChunk({
         type: "error",
-        error: "API key not configured. Please add your Fireworks API key in Settings.",
+        error: errorMsg,
       });
       onChunk({ type: "done" });
       return;
@@ -397,9 +407,11 @@ export class AssistantService {
     }
 
     if (!this.fireworks) {
+      const errorMsg = "Failed to initialize AI provider.";
+      logAssistantError(sessionId, errorMsg);
       onChunk({
         type: "error",
-        error: "Failed to initialize AI provider.",
+        error: errorMsg,
       });
       onChunk({ type: "done" });
       return;
@@ -415,6 +427,8 @@ export class AssistantService {
     const controller = new AbortController();
     this.activeStreams.set(sessionId, controller);
     this.chunkCallbacks.set(sessionId, onChunk);
+
+    const startTime = Date.now();
 
     try {
       // Build context block for the system prompt
@@ -522,6 +536,16 @@ export class AssistantService {
       const tools = { ...actionTools, ...listenerTools };
       const hasTools = Object.keys(tools).length > 0;
 
+      logAssistantRequest(
+        sessionId,
+        messages,
+        filteredActions,
+        Object.keys(listenerTools).length,
+        context,
+        config.model,
+        systemPromptWithContext.length
+      );
+
       const result = streamText({
         model: this.fireworks(config.model),
         system: systemPromptWithContext,
@@ -534,44 +558,62 @@ export class AssistantService {
       // Use fullStream to get tool call and result events
       for await (const part of result.fullStream) {
         if (controller.signal.aborted) {
+          logAssistantCancelled(sessionId, Date.now() - startTime);
           onChunk({ type: "done", finishReason: "cancelled" });
           return;
         }
 
         switch (part.type) {
-          case "text-delta":
-            onChunk({ type: "text", content: part.text });
+          case "text-delta": {
+            const chunk: StreamChunk = { type: "text", content: part.text };
+            logAssistantStreamEvent(sessionId, chunk);
+            onChunk(chunk);
             break;
+          }
 
-          case "tool-call":
-            onChunk({
+          case "tool-call": {
+            const chunk: StreamChunk = {
               type: "tool_call",
               toolCall: {
                 id: part.toolCallId,
                 name: part.toolName,
                 args: part.input as Record<string, unknown>,
               },
-            });
+            };
+            logAssistantStreamEvent(sessionId, chunk);
+            onChunk(chunk);
             break;
+          }
 
-          case "tool-result":
-            onChunk({
+          case "tool-result": {
+            const chunk: StreamChunk = {
               type: "tool_result",
               toolResult: {
                 toolCallId: part.toolCallId,
                 toolName: part.toolName,
                 result: part.output,
               },
-            });
+            };
+            logAssistantStreamEvent(sessionId, chunk);
+            onChunk(chunk);
             break;
+          }
 
-          case "error":
+          case "error": {
             console.error("[AssistantService] Stream part error:", part.error);
-            onChunk({
+            const chunk: StreamChunk = {
               type: "error",
               error: extractStreamPartError(part.error),
-            });
+            };
+            logAssistantStreamEvent(sessionId, chunk);
+            onChunk(chunk);
             break;
+          }
+
+          default: {
+            logAssistantStreamPart(sessionId, part.type, part);
+            break;
+          }
         }
       }
 
@@ -579,6 +621,7 @@ export class AssistantService {
       if (!controller.signal.aborted) {
         const finalResult = await result;
         const finishReason = await finalResult.finishReason;
+        logAssistantComplete(sessionId, finishReason ?? undefined, Date.now() - startTime);
         onChunk({
           type: "done",
           finishReason: finishReason ?? undefined,
@@ -586,6 +629,7 @@ export class AssistantService {
       }
     } catch (error) {
       if (error instanceof Error && error.name === "AbortError") {
+        logAssistantCancelled(sessionId, Date.now() - startTime);
         onChunk({ type: "done", finishReason: "cancelled" });
         return;
       }
@@ -599,6 +643,7 @@ export class AssistantService {
         console.error("[AssistantService] Stack trace:", error.stack);
       }
 
+      logAssistantError(sessionId, errorMessage, Date.now() - startTime);
       onChunk({
         type: "error",
         error: errorMessage,
