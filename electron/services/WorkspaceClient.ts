@@ -253,6 +253,11 @@ export class WorkspaceClient extends EventEmitter {
   }
 
   private processHostEvent(event: WorkspaceHostEvent): void {
+    // Skip processing if disposed to avoid sending to destroyed renderer frames
+    if (this.isDisposed) {
+      return;
+    }
+
     switch (event.type) {
       case "ready": {
         // Guard against accepting ready after child has exited
