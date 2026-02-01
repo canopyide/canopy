@@ -38,7 +38,7 @@ function WorkingTimerComponent({ startedAt }: WorkingTimerProps) {
       return elapsedMs < 60000 ? 1000 : 10000;
     };
 
-    let intervalId: NodeJS.Timeout;
+    let intervalId: ReturnType<typeof setTimeout>;
 
     const scheduleUpdate = () => {
       intervalId = setTimeout(() => {
@@ -54,22 +54,24 @@ function WorkingTimerComponent({ startedAt }: WorkingTimerProps) {
     };
   }, [startedAt]);
 
-  const minutes = Math.floor(elapsed / 60000);
+  const elapsedMinutes = elapsed / 60000;
 
   // Color thresholds: normal < 10m, yellow 10-30m, red > 30m
   const colorClass =
-    minutes > 30
+    elapsedMinutes > 30
       ? "text-[var(--color-status-error)]"
-      : minutes >= 10
+      : elapsedMinutes >= 10
         ? "text-[var(--color-status-warning)]"
         : "text-canopy-text/50";
 
   const bgClass =
-    minutes > 30
+    elapsedMinutes > 30
       ? "bg-[color-mix(in_oklab,var(--color-status-error)_10%,transparent)]"
-      : minutes >= 10
+      : elapsedMinutes >= 10
         ? "bg-[color-mix(in_oklab,var(--color-status-warning)_10%,transparent)]"
         : "bg-transparent";
+
+  const display = formatElapsed(elapsed);
 
   return (
     <div
@@ -80,11 +82,12 @@ function WorkingTimerComponent({ startedAt }: WorkingTimerProps) {
       )}
       role="timer"
       aria-live="off"
-      aria-label={`Working for ${formatElapsed(elapsed)}`}
-      title={`Agent has been working for ${formatElapsed(elapsed)}`}
+      aria-label={`Working for ${display}`}
+      title={`Agent has been working for ${display}`}
     >
       <Clock className="w-3 h-3 shrink-0" aria-hidden="true" />
-      <span className="tabular-nums">{formatElapsed(elapsed)}</span>
+      <span className="text-canopy-text/50">Working for</span>
+      <span className="tabular-nums">{display}</span>
     </div>
   );
 }
