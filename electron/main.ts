@@ -92,6 +92,7 @@ import { AgentUpdateHandler } from "./services/AgentUpdateHandler.js";
 import { SidecarManager } from "./services/SidecarManager.js";
 import { createWindowWithState } from "./windowState.js";
 import { setLoggerWindow, initializeLogger } from "./utils/logger.js";
+import { initializeAssistantLogger } from "./utils/assistantLogger.js";
 import { openExternalUrl } from "./utils/openExternal.js";
 import { EventBuffer } from "./services/EventBuffer.js";
 import { CHANNELS } from "./ipc/channels.js";
@@ -125,6 +126,7 @@ import { workflowLoader } from "./services/WorkflowLoader.js";
 
 // Initialize logger early with userData path
 initializeLogger(app.getPath("userData"));
+initializeAssistantLogger();
 
 // Register commands early so they're available when IPC handlers start
 registerCommands();
