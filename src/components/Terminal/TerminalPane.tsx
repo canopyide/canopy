@@ -55,6 +55,7 @@ export interface TerminalPaneProps {
   isFocused: boolean;
   isMaximized?: boolean;
   agentState?: AgentState;
+  lastStateChange?: number;
   activity?: ActivityState | null;
   lastCommand?: string;
   flowStatus?: "running" | "paused-backpressure" | "paused-user" | "suspended";
@@ -89,6 +90,7 @@ function TerminalPaneComponent({
   isFocused,
   isMaximized,
   agentState,
+  lastStateChange,
   activity,
   lastCommand,
   flowStatus,
@@ -467,6 +469,7 @@ function TerminalPaneComponent({
       exitCode={exitCode}
       isWorking={isWorking}
       agentState={agentState}
+      lastStateChange={lastStateChange}
       activity={activity}
       lastCommand={lastCommand}
       queueCount={queueCount}
