@@ -152,7 +152,9 @@ export function AssistantPane() {
                     aria-label={isLoading ? "Retrying last message..." : "Retry last message"}
                     title={isLoading ? "Retrying..." : "Retry last message"}
                   >
-                    <RotateCw className={`w-3 h-3 ${isLoading ? "animate-spin motion-reduce:animate-none" : ""}`} />
+                    <RotateCw
+                      className={`w-3 h-3 ${isLoading ? "animate-spin motion-reduce:animate-none" : ""}`}
+                    />
                     <span>{isLoading ? "Retrying..." : "Retry"}</span>
                   </button>
                 )}
