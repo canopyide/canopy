@@ -77,6 +77,3 @@ export { useAppAgentStore, cleanupAppAgentStore } from "./appAgentStore";
 
 export { useAssistantChatStore } from "./assistantChatStore";
 export type { ConversationState } from "./assistantChatStore";
-
-export { useFleetFilterStore } from "./fleetFilterStore";
-export type { FleetStateFilter } from "./fleetFilterStore";
