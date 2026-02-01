@@ -8,6 +8,7 @@ import { AssistantThinkingIndicator } from "./AssistantThinkingIndicator";
 import type { AssistantMessage, StreamingState } from "./types";
 
 const LOADING_INDICATOR_DELAY_MS = 150;
+const AT_BOTTOM_THRESHOLD_PX = 100;
 
 interface MessageListProps {
   messages: AssistantMessage[];
@@ -137,7 +138,8 @@ export function MessageList({
       <Virtuoso
         ref={virtuosoRef}
         data={allItems}
-        followOutput="smooth"
+        followOutput={(isAtBottom) => (isAtBottom ? "smooth" : false)}
+        atBottomThreshold={AT_BOTTOM_THRESHOLD_PX}
         atBottomStateChange={setAtBottom}
         itemContent={renderMessage}
         computeItemKey={computeItemKey}
