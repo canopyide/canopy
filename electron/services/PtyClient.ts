@@ -468,6 +468,11 @@ export class PtyClient extends EventEmitter {
   }
 
   private handleHostEvent(event: PtyHostEvent): void {
+    // Skip processing if disposed to avoid sending to destroyed renderer frames
+    if (this.isDisposed) {
+      return;
+    }
+
     // First, try to handle as a domain event via the bridge
     const bridged = bridgePtyEvent(event, {
       onTerminalStatus: (payload) => {
