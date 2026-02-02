@@ -29,3 +29,10 @@ export { ListenerManager, listenerManager } from "./ListenerManager.js";
 export { createListenerTools, type ListenerToolContext } from "./listenerTools.js";
 
 export { PendingEventQueue, pendingEventQueue, type PendingEvent } from "./PendingEventQueue.js";
+
+export {
+  ContinuationManager,
+  continuationManager,
+  type Continuation,
+  type ContinuationContext,
+} from "./ContinuationManager.js";

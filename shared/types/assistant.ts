@@ -36,6 +36,7 @@ export const StreamChunkTypeSchema = z.enum([
   "done",
   "listener_triggered",
   "retrying",
+  "auto_resume",
 ]);
 export type StreamChunkType = z.infer<typeof StreamChunkTypeSchema>;
 
@@ -53,6 +54,22 @@ export const RetryInfoSchema = z.object({
 });
 export type RetryInfo = z.infer<typeof RetryInfoSchema>;
 
+export const AutoResumeContextSchema = z.object({
+  plan: z.string().optional(),
+  lastToolCalls: z.array(z.unknown()).optional(),
+  metadata: z.record(z.string(), z.unknown()).optional(),
+});
+export type AutoResumeContext = z.infer<typeof AutoResumeContextSchema>;
+
+export const AutoResumeDataSchema = z.object({
+  listenerId: z.string(),
+  eventType: z.string(),
+  eventData: z.record(z.string(), z.unknown()),
+  resumePrompt: z.string(),
+  context: AutoResumeContextSchema.optional().default({}),
+});
+export type AutoResumeData = z.infer<typeof AutoResumeDataSchema>;
+
 export const StreamChunkSchema = z.object({
   type: StreamChunkTypeSchema,
   content: z.string().optional(),
@@ -62,6 +79,7 @@ export const StreamChunkSchema = z.object({
   finishReason: z.string().optional(),
   listenerData: ListenerTriggeredDataSchema.optional(),
   retryInfo: RetryInfoSchema.optional(),
+  autoResumeData: AutoResumeDataSchema.optional(),
 });
 export type StreamChunk = z.infer<typeof StreamChunkSchema>;
 

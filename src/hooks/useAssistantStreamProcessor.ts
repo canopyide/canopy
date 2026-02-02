@@ -5,6 +5,9 @@ import type {
   EventMetadata,
   AgentStateChangeTrigger,
 } from "@/components/Assistant/types";
+import { actionService } from "@/services/ActionService";
+import { getAssistantContext } from "@/components/Assistant/assistantContext";
+import type { AssistantMessage as IPCAssistantMessage } from "@shared/types/assistant";
 
 function generateId(): string {
   return `${Date.now()}-${Math.random().toString(36).slice(2, 9)}`;
@@ -93,11 +96,23 @@ function extractEventMetadata(
  * Mount this once at the app root level to ensure messages continue processing
  * even when the AssistantPane is closed.
  */
+interface PendingAutoResume {
+  eventType: string;
+  eventData: Record<string, unknown>;
+  resumePrompt: string;
+  context: {
+    plan?: string;
+    lastToolCalls?: unknown[];
+    metadata?: Record<string, unknown>;
+  };
+}
+
 export function useAssistantStreamProcessor() {
   const streamingStateRef = useRef<{ content: string; toolCalls: ToolCall[] } | null>(null);
   const streamingMessageIdRef = useRef<string | null>(null);
   const streamingSessionIdRef = useRef<string | null>(null);
   const hadErrorRef = useRef<boolean>(false);
+  const pendingAutoResumeRef = useRef<PendingAutoResume | null>(null);
 
   useEffect(() => {
     if (!window.electron?.assistant?.onChunk) {
@@ -147,6 +162,104 @@ export function useAssistantStreamProcessor() {
       streamingSessionIdRef.current = null;
       hadErrorRef.current = false;
       useAssistantChatStore.getState().setStreamingState(null, null);
+    }
+
+    async function processAutoResume(resumeData: PendingAutoResume) {
+      const { eventType, eventData, resumePrompt, context: resumeContext } = resumeData;
+
+      // Reset streaming and retry state before starting
+      resetStreamingState();
+      useAssistantChatStore.getState().setRetryState(null);
+
+      // Add system message indicating auto-resume
+      const eventSummary = formatListenerNotification(eventType, eventData);
+      useAssistantChatStore.getState().addMessage({
+        id: `system-${Date.now()}-${Math.random()}`,
+        role: "system",
+        content: `🔄 Auto-resuming: ${eventSummary}`,
+        timestamp: Date.now(),
+      });
+
+      // Add context as a system note if provided
+      if (resumeContext.plan) {
+        useAssistantChatStore.getState().addMessage({
+          id: `system-${Date.now()}-${Math.random()}`,
+          role: "system",
+          content: `📋 Continuation context:\n${resumeContext.plan}`,
+          timestamp: Date.now(),
+        });
+      }
+
+      // Add the resume prompt as a synthetic user message
+      useAssistantChatStore.getState().addMessage({
+        id: `user-${Date.now()}-${Math.random()}`,
+        role: "user",
+        content: resumePrompt,
+        timestamp: Date.now(),
+      });
+
+      // Trigger the assistant to continue
+      useAssistantChatStore.getState().setLoading(true);
+      useAssistantChatStore.getState().setError(null);
+
+      try {
+        const context = getAssistantContext();
+        const actions = actionService.list();
+        const currentMessages = useAssistantChatStore.getState().conversation.messages;
+
+        // Filter out event and system messages - they are UI-only
+        const apiMessages = currentMessages.filter(
+          (msg) => msg.role === "user" || msg.role === "assistant"
+        );
+
+        const ipcMessages: IPCAssistantMessage[] = apiMessages.map((msg) => {
+          const completedToolResults = msg.toolCalls
+            ?.filter((tc) => {
+              const hasTerminalStatus = tc.status !== "pending";
+              const hasResultOrError = tc.result !== undefined || tc.error !== undefined;
+              return hasTerminalStatus && hasResultOrError;
+            })
+            .map((tc) => ({
+              toolCallId: tc.id,
+              toolName: tc.name,
+              result: tc.result ?? null,
+              error: tc.error,
+            }));
+
+          return {
+            id: msg.id,
+            role: msg.role as "user" | "assistant",
+            content: msg.content,
+            toolCalls: msg.toolCalls?.map((tc) => ({
+              id: tc.id,
+              name: tc.name,
+              args: tc.args,
+            })),
+            toolResults:
+              completedToolResults && completedToolResults.length > 0
+                ? completedToolResults
+                : undefined,
+            createdAt: new Date(msg.timestamp).toISOString(),
+          };
+        });
+
+        await window.electron.assistant.sendMessage({
+          sessionId: useAssistantChatStore.getState().conversation.sessionId,
+          messages: ipcMessages,
+          actions,
+          context,
+        });
+      } catch (err) {
+        console.error("[AssistantStreamProcessor] Auto-resume error:", err);
+        useAssistantChatStore
+          .getState()
+          .setError(err instanceof Error ? err.message : "Auto-resume failed");
+        resetStreamingState();
+        useAssistantChatStore.getState().setRetryState(null);
+        useAssistantChatStore.getState().setLoading(false);
+        // Cancel the session on error
+        window.electron.assistant.cancel(useAssistantChatStore.getState().conversation.sessionId);
+      }
     }
 
     function finalizeStreaming() {
@@ -323,6 +436,8 @@ export function useAssistantStreamProcessor() {
           }
           finalizeStreaming();
           useAssistantChatStore.getState().setLoading(false);
+          // Clear any pending auto-resume on error
+          pendingAutoResumeRef.current = null;
           break;
 
         case "listener_triggered":
@@ -336,6 +451,47 @@ export function useAssistantStreamProcessor() {
               content: notificationText,
               timestamp: Date.now(),
               eventMetadata,
+            });
+          }
+          break;
+
+        case "auto_resume":
+          if (chunk.autoResumeData) {
+            const {
+              eventType,
+              eventData,
+              resumePrompt,
+              context: resumeContext,
+            } = chunk.autoResumeData;
+
+            // Check if currently streaming or loading - if so, queue the auto-resume
+            const state = useAssistantChatStore.getState();
+            if (state.conversation.isLoading) {
+              console.log("[AssistantStreamProcessor] Auto-resume queued - conversation is busy");
+              // Queue for processing when current stream completes
+              pendingAutoResumeRef.current = {
+                eventType,
+                eventData,
+                resumePrompt,
+                context: resumeContext || {},
+              };
+              // Add event notification
+              const notificationText = formatListenerNotification(eventType, eventData);
+              useAssistantChatStore.getState().addMessage({
+                id: `listener-${Date.now()}-${Math.random()}`,
+                role: "event",
+                content: `${notificationText} (auto-resume queued)`,
+                timestamp: Date.now(),
+              });
+              break;
+            }
+
+            // Process auto-resume immediately
+            processAutoResume({
+              eventType,
+              eventData,
+              resumePrompt,
+              context: resumeContext || {},
             });
           }
           break;
@@ -374,6 +530,14 @@ export function useAssistantStreamProcessor() {
           }
 
           useAssistantChatStore.getState().setLoading(false);
+
+          // Process any pending auto-resume now that the conversation is idle
+          if (pendingAutoResumeRef.current) {
+            const pending = pendingAutoResumeRef.current;
+            pendingAutoResumeRef.current = null;
+            console.log("[AssistantStreamProcessor] Processing queued auto-resume");
+            processAutoResume(pending);
+          }
           break;
         }
       }
