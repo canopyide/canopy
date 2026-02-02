@@ -31,7 +31,8 @@ export function createListenerTools(context: ListenerToolContext): ToolSet {
         "Subscribe to Canopy events. Returns a listener ID for later removal. " +
         `Currently supported events: ${BRIDGED_EVENT_TYPES.join(", ")}. ` +
         "terminal:state-changed fires when a terminal's agent state changes " +
-        "(e.g., idle → working → completed). Filter by terminalId and/or toState (e.g., 'completed', 'waiting').",
+        "(e.g., idle → working → completed). Filter by terminalId and/or toState (e.g., 'completed', 'waiting'). " +
+        "Set once: true to automatically remove the listener after the first event (one-shot listener).",
       inputSchema: jsonSchema({
         type: "object",
         properties: {
@@ -47,15 +48,22 @@ export function createListenerTools(context: ListenerToolContext): ToolSet {
               "Optional filter to narrow events by field values (e.g., { terminalId: 'abc', toState: 'completed' })",
             additionalProperties: true,
           },
+          once: {
+            type: "boolean",
+            description:
+              "If true, automatically remove the listener after the first matching event (one-shot listener). Default is false.",
+          },
         },
         required: ["eventType"],
       }),
       execute: async ({
         eventType,
         filter,
+        once,
       }: {
         eventType: BridgedEventType;
         filter?: Record<string, string | number | boolean | null>;
+        once?: boolean;
       }) => {
         try {
           // Runtime validation: ensure eventType is actually bridged
@@ -67,13 +75,21 @@ export function createListenerTools(context: ListenerToolContext): ToolSet {
             };
           }
 
-          const listenerId = listenerManager.register(context.sessionId, eventType, filter);
+          const listenerId = listenerManager.register(
+            context.sessionId,
+            eventType,
+            filter,
+            once
+          );
           return {
             success: true,
             listenerId,
             eventType,
             ...(filter ? { filter } : {}),
-            message: `Successfully subscribed to ${eventType} events`,
+            ...(once ? { once } : {}),
+            message: once
+              ? `Successfully subscribed to ${eventType} events (one-shot, will auto-remove after first event)`
+              : `Successfully subscribed to ${eventType} events`,
           };
         } catch (error) {
           return {
@@ -87,7 +103,7 @@ export function createListenerTools(context: ListenerToolContext): ToolSet {
     list_listeners: tool({
       description:
         "List all active event listeners for this conversation. " +
-        "Shows what events you are currently subscribed to.",
+        "Shows what events you are currently subscribed to, including one-shot listeners.",
       inputSchema: jsonSchema({
         type: "object",
         properties: {},
@@ -101,6 +117,7 @@ export function createListenerTools(context: ListenerToolContext): ToolSet {
             listenerId: l.id,
             eventType: l.eventType,
             ...(l.filter ? { filter: l.filter } : {}),
+            ...(l.once ? { once: l.once } : {}),
             createdAt: l.createdAt,
           })),
         };
