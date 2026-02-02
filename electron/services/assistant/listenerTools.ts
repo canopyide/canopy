@@ -11,6 +11,7 @@ import type { ToolSet } from "ai";
 import { listenerManager, listenerWaiter } from "./ListenerManager.js";
 import { pendingEventQueue } from "./PendingEventQueue.js";
 import { BRIDGED_EVENT_TYPES, type BridgedEventType } from "../events.js";
+import type { AutoResumeOptions, AutoResumeContext } from "../../../shared/types/listener.js";
 
 const DEFAULT_TIMEOUT_MS = 30000;
 const MAX_TIMEOUT_MS = 300000;
@@ -39,7 +40,11 @@ export function createListenerTools(context: ListenerToolContext): ToolSet {
         "agent:failed fires when an agent encounters an error (includes error message). " +
         "agent:killed fires when an agent is terminated. " +
         "Filter by terminalId, agentId, and/or worktreeId. " +
-        "Set once: true to automatically remove the listener after the first event (one-shot listener).",
+        "Set once: true to automatically remove the listener after the first event (one-shot listener). " +
+        "Use autoResume to automatically continue the conversation when the event triggers - " +
+        "provide a prompt that will be injected as a synthetic user message to resume the assistant. " +
+        "IMPORTANT: autoResume is one-shot - it will trigger only once per registration, even for persistent listeners. " +
+        "After the first trigger, subsequent events will show as regular listener notifications.",
       inputSchema: jsonSchema({
         type: "object",
         properties: {
@@ -60,6 +65,40 @@ export function createListenerTools(context: ListenerToolContext): ToolSet {
             description:
               "If true, automatically remove the listener after the first matching event (one-shot listener). Default is false.",
           },
+          autoResume: {
+            type: "object",
+            description:
+              "Optional auto-resume configuration. When the listener triggers, automatically continue the conversation " +
+              "by injecting the specified prompt as a synthetic user message. This enables non-blocking autonomous workflows " +
+              "where you can register a listener and respond later without user intervention.",
+            properties: {
+              prompt: {
+                type: "string",
+                description:
+                  "The message to inject when resuming (e.g., 'The agent has completed. Continue with the next step.')",
+              },
+              context: {
+                type: "object",
+                description: "Optional context to preserve for the resumed conversation",
+                properties: {
+                  plan: {
+                    type: "string",
+                    description: "A plan or checklist of steps to continue from",
+                  },
+                  lastToolCalls: {
+                    type: "array",
+                    description: "Tool calls that were pending before the wait",
+                  },
+                  metadata: {
+                    type: "object",
+                    description: "Any additional metadata to preserve",
+                    additionalProperties: true,
+                  },
+                },
+              },
+            },
+            required: ["prompt"],
+          },
         },
         required: ["eventType"],
       }),
@@ -67,10 +106,12 @@ export function createListenerTools(context: ListenerToolContext): ToolSet {
         eventType,
         filter,
         once,
+        autoResume,
       }: {
         eventType: BridgedEventType;
         filter?: Record<string, string | number | boolean | null>;
         once?: boolean;
+        autoResume?: { prompt: string; context?: AutoResumeContext };
       }) => {
         try {
           // Runtime validation: ensure eventType is actually bridged
@@ -82,16 +123,47 @@ export function createListenerTools(context: ListenerToolContext): ToolSet {
             };
           }
 
-          const listenerId = listenerManager.register(context.sessionId, eventType, filter, once);
+          // Validate autoResume if provided
+          let autoResumeOptions: AutoResumeOptions | undefined;
+          if (autoResume) {
+            if (!autoResume.prompt || typeof autoResume.prompt !== "string") {
+              return {
+                success: false,
+                error: "autoResume.prompt is required and must be a non-empty string",
+              };
+            }
+            autoResumeOptions = {
+              prompt: autoResume.prompt,
+              context: autoResume.context,
+            };
+          }
+
+          const listenerId = listenerManager.register(
+            context.sessionId,
+            eventType,
+            filter,
+            once,
+            autoResumeOptions
+          );
+
+          const messages: string[] = [];
+          if (once) {
+            messages.push("one-shot, will auto-remove after first event");
+          }
+          if (autoResumeOptions) {
+            messages.push("auto-resume enabled");
+          }
+
+          const suffix = messages.length > 0 ? ` (${messages.join(", ")})` : "";
+
           return {
             success: true,
             listenerId,
             eventType,
             ...(filter ? { filter } : {}),
             ...(once ? { once } : {}),
-            message: once
-              ? `Successfully subscribed to ${eventType} events (one-shot, will auto-remove after first event)`
-              : `Successfully subscribed to ${eventType} events`,
+            ...(autoResumeOptions ? { autoResume: true } : {}),
+            message: `Successfully subscribed to ${eventType} events${suffix}`,
           };
         } catch (error) {
           return {
@@ -248,6 +320,7 @@ export function createListenerTools(context: ListenerToolContext): ToolSet {
         "Block and wait for a registered listener to trigger. Returns the event data when triggered or an error on timeout. " +
         "Use this to pause execution until an agent completes, a terminal state changes, or another subscribed event fires. " +
         "The listener must be registered first using register_listener. " +
+        "Cannot be used with listeners that have autoResume enabled - use autoResume instead for non-blocking waits. " +
         "Default timeout is 30 seconds, maximum is 5 minutes (300000ms).",
       inputSchema: jsonSchema({
         type: "object",
@@ -283,6 +356,16 @@ export function createListenerTools(context: ListenerToolContext): ToolSet {
             success: false,
             error: "not_found",
             message: "Listener not found or already triggered",
+          };
+        }
+
+        // Prevent await_listener on autoResume listeners to avoid race conditions
+        if (listener.autoResume) {
+          return {
+            success: false,
+            error: "invalid_listener",
+            message:
+              "Cannot await a listener with autoResume enabled. Use autoResume for non-blocking waits.",
           };
         }
 
