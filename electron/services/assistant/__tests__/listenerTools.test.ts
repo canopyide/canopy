@@ -92,6 +92,86 @@ describe("listenerTools", () => {
         error: expect.stringContaining("Invalid listener registration"),
       });
     });
+
+    it("registers a one-shot listener with once: true", async () => {
+      const result = await tools.register_listener.execute!(
+        { eventType: "agent:state-changed", filter: undefined, once: true },
+        { toolCallId: "tc-1", messages: [], abortSignal: new AbortController().signal }
+      );
+
+      expect(result).toEqual({
+        success: true,
+        listenerId: expect.any(String),
+        eventType: "agent:state-changed",
+        once: true,
+        message: expect.stringContaining("one-shot"),
+      });
+
+      const listeners = listenerManager.listForSession("test-session-1");
+      expect(listeners.length).toBe(1);
+      expect(listeners[0].once).toBe(true);
+    });
+
+    it("registers a regular listener without once flag", async () => {
+      const result = await tools.register_listener.execute!(
+        { eventType: "agent:state-changed", filter: undefined },
+        { toolCallId: "tc-1", messages: [], abortSignal: new AbortController().signal }
+      );
+
+      expect(result).toEqual({
+        success: true,
+        listenerId: expect.any(String),
+        eventType: "agent:state-changed",
+        message: "Successfully subscribed to agent:state-changed events",
+      });
+
+      const listeners = listenerManager.listForSession("test-session-1");
+      expect(listeners.length).toBe(1);
+      expect(listeners[0].once).toBeUndefined();
+    });
+
+    it("registers a listener with once: false explicitly", async () => {
+      const result = await tools.register_listener.execute!(
+        { eventType: "agent:state-changed", filter: undefined, once: false },
+        { toolCallId: "tc-1", messages: [], abortSignal: new AbortController().signal }
+      );
+
+      expect(result).toEqual({
+        success: true,
+        listenerId: expect.any(String),
+        eventType: "agent:state-changed",
+        message: "Successfully subscribed to agent:state-changed events",
+      });
+
+      const listeners = listenerManager.listForSession("test-session-1");
+      expect(listeners.length).toBe(1);
+      expect(listeners[0].once).toBe(false);
+    });
+
+    it("registers a one-shot listener with filter", async () => {
+      const result = await tools.register_listener.execute!(
+        {
+          eventType: "terminal:activity",
+          filter: { terminalId: "term-123" },
+          once: true,
+        },
+        { toolCallId: "tc-1", messages: [], abortSignal: new AbortController().signal }
+      );
+
+      expect(result).toEqual({
+        success: true,
+        listenerId: expect.any(String),
+        eventType: "terminal:activity",
+        filter: { terminalId: "term-123" },
+        once: true,
+        message: expect.stringContaining("one-shot"),
+      });
+
+      const listeners = listenerManager.listForSession("test-session-1");
+      expect(listeners.length).toBe(1);
+      expect(listeners[0].once).toBe(true);
+      expect(listeners[0].filter).toEqual({ terminalId: "term-123" });
+    });
   });
 
   describe("list_listeners", () => {
@@ -160,6 +240,35 @@ describe("listenerTools", () => {
 
       expect(result.count).toBe(1);
       expect(result.listeners[0].eventType).toBe("agent:state-changed");
+    });
+
+    it("shows once status for one-shot listeners", async () => {
+      // Register a one-shot listener
+      await tools.register_listener.execute!(
+        { eventType: "agent:state-changed", filter: undefined, once: true },
+        { toolCallId: "tc-1", messages: [], abortSignal: new AbortController().signal }
+      );
+      // Register a regular listener
+      await tools.register_listener.execute!(
+        { eventType: "terminal:activity", filter: undefined },
+        { toolCallId: "tc-2", messages: [], abortSignal: new AbortController().signal }
+      );
+
+      const result = await tools.list_listeners.execute!(
+        {},
+        { toolCallId: "tc-3", messages: [], abortSignal: new AbortController().signal }
+      );
+
+      expect(result.count).toBe(2);
+      const oneShotListener = result.listeners.find(
+        (l: { eventType: string }) => l.eventType === "agent:state-changed"
+      );
+      const regularListener = result.listeners.find(
+        (l: { eventType: string }) => l.eventType === "terminal:activity"
+      );
+
+      expect(oneShotListener.once).toBe(true);
+      expect(regularListener.once).toBeUndefined();
     });
   });
 
