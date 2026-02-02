@@ -1,6 +1,11 @@
 import { randomUUID } from "node:crypto";
-import type { Listener, ListenerFilter } from "../../../shared/types/listener.js";
+import type {
+  Listener,
+  ListenerFilter,
+  AutoResumeOptions,
+} from "../../../shared/types/listener.js";
 import { RegisterListenerOptionsSchema } from "../../../shared/types/listener.js";
+import { continuationManager } from "./ContinuationManager.js";
 
 export interface ListenerEvent {
   listenerId: string;
@@ -93,12 +98,19 @@ export class ListenerWaiter {
 export class ListenerManager {
   private listeners = new Map<string, Listener>();
 
-  register(sessionId: string, eventType: string, filter?: ListenerFilter, once?: boolean): string {
+  register(
+    sessionId: string,
+    eventType: string,
+    filter?: ListenerFilter,
+    once?: boolean,
+    autoResume?: AutoResumeOptions
+  ): string {
     const validation = RegisterListenerOptionsSchema.safeParse({
       sessionId,
       eventType,
       filter,
       once,
+      autoResume,
     });
 
     if (!validation.success) {
@@ -112,9 +124,16 @@ export class ListenerManager {
       eventType,
       filter,
       once,
+      autoResume,
       createdAt: Date.now(),
     };
     this.listeners.set(id, listener);
+
+    // Create continuation if autoResume is specified
+    if (autoResume) {
+      continuationManager.create(sessionId, id, autoResume.prompt, autoResume.context || {});
+    }
+
     return id;
   }
 
@@ -122,6 +141,7 @@ export class ListenerManager {
     const deleted = this.listeners.delete(listenerId);
     if (deleted) {
       listenerWaiter.cancel(listenerId, "listener_removed");
+      continuationManager.removeByListenerId(listenerId);
     }
     return deleted;
   }
@@ -161,6 +181,7 @@ export class ListenerManager {
       this.listeners.delete(id);
     }
     listenerWaiter.cancelForSession(sessionId, "session_cleared");
+    continuationManager.clearSession(sessionId);
     if (toRemove.length > 0) {
       console.log(
         `[ListenerManager] Cleared ${toRemove.length} listener(s) for session ${sessionId}`
@@ -173,6 +194,7 @@ export class ListenerManager {
     const count = this.listeners.size;
     this.listeners.clear();
     listenerWaiter.cancelAll("all_sessions_cleared");
+    continuationManager.clearAll();
     if (count > 0) {
       console.log(`[ListenerManager] Cleared all ${count} listener(s) across all sessions`);
     }
