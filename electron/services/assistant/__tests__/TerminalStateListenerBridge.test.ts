@@ -3,6 +3,8 @@ import {
   initTerminalStateListenerBridge,
   destroyTerminalStateListenerBridge,
   type ChunkEmitter,
+  type ListenerTriggeredChunk,
+  type AutoResumeChunk,
 } from "../TerminalStateListenerBridge.js";
 import { events } from "../../events.js";
 
@@ -19,24 +21,32 @@ vi.mock("../ListenerManager.js", async () => {
   };
 });
 
+vi.mock("../ContinuationManager.js", async () => {
+  const { ContinuationManager } = await vi.importActual<typeof import("../ContinuationManager.js")>(
+    "../ContinuationManager.js"
+  );
+  const instance = new ContinuationManager();
+  return {
+    ContinuationManager,
+    continuationManager: instance,
+  };
+});
+
 import { listenerManager, listenerWaiter } from "../ListenerManager.js";
+import { continuationManager } from "../ContinuationManager.js";
+
+type EmittedChunk = {
+  sessionId: string;
+  chunk: ListenerTriggeredChunk | AutoResumeChunk;
+};
 
 describe("TerminalStateListenerBridge", () => {
-  let emittedChunks: Array<{
-    sessionId: string;
-    chunk: {
-      type: "listener_triggered";
-      listenerData: {
-        listenerId: string;
-        eventType: string;
-        data: Record<string, unknown>;
-      };
-    };
-  }>;
+  let emittedChunks: EmittedChunk[];
   let mockEmitter: ChunkEmitter;
 
   beforeEach(() => {
     listenerManager.clear();
+    continuationManager.clearAll();
     emittedChunks = [];
     mockEmitter = (sessionId, chunk) => {
       emittedChunks.push({ sessionId, chunk });
@@ -46,6 +56,7 @@ describe("TerminalStateListenerBridge", () => {
   afterEach(() => {
     destroyTerminalStateListenerBridge();
     listenerManager.clear();
+    continuationManager.clearAll();
   });
 
   const createAgentStateChangedPayload = () => ({
@@ -194,20 +205,24 @@ describe("TerminalStateListenerBridge", () => {
 
       events.emit("agent:state-changed", payload);
 
-      expect(emittedChunks[0].chunk.listenerData).toEqual({
-        listenerId,
-        eventType: "terminal:state-changed",
-        data: expect.objectContaining({
-          terminalId: payload.terminalId,
-          oldState: payload.previousState,
-          newState: payload.state,
-          toState: payload.state,
-          worktreeId: payload.worktreeId,
-          timestamp: payload.timestamp,
-          trigger: payload.trigger,
-          confidence: payload.confidence,
-        }),
-      });
+      const chunk = emittedChunks[0].chunk;
+      expect(chunk.type).toBe("listener_triggered");
+      if (chunk.type === "listener_triggered") {
+        expect(chunk.listenerData).toEqual({
+          listenerId,
+          eventType: "terminal:state-changed",
+          data: expect.objectContaining({
+            terminalId: payload.terminalId,
+            oldState: payload.previousState,
+            newState: payload.state,
+            toState: payload.state,
+            worktreeId: payload.worktreeId,
+            timestamp: payload.timestamp,
+            trigger: payload.trigger,
+            confidence: payload.confidence,
+          }),
+        });
+      }
     });
 
     it("preserves traceId in terminal:state-changed payload", () => {
@@ -221,11 +236,15 @@ describe("TerminalStateListenerBridge", () => {
 
       events.emit("agent:state-changed", payload);
 
-      expect(emittedChunks[0].chunk.listenerData.data).toEqual(
-        expect.objectContaining({
-          traceId: "trace-123",
-        })
-      );
+      const chunk = emittedChunks[0].chunk;
+      expect(chunk.type).toBe("listener_triggered");
+      if (chunk.type === "listener_triggered") {
+        expect(chunk.listenerData.data).toEqual(
+          expect.objectContaining({
+            traceId: "trace-123",
+          })
+        );
+      }
     });
 
     it("only removes matching one-shot listeners when multiple filters exist", () => {
@@ -291,19 +310,23 @@ describe("TerminalStateListenerBridge", () => {
       events.emit("agent:completed", payload);
 
       expect(emittedChunks.length).toBe(1);
-      expect(emittedChunks[0].chunk.listenerData).toEqual({
-        listenerId,
-        eventType: "agent:completed",
-        data: expect.objectContaining({
-          agentId: payload.agentId,
-          terminalId: payload.terminalId,
-          worktreeId: payload.worktreeId,
-          exitCode: payload.exitCode,
-          duration: payload.duration,
-          timestamp: payload.timestamp,
-          traceId: payload.traceId,
-        }),
-      });
+      const chunk = emittedChunks[0].chunk;
+      expect(chunk.type).toBe("listener_triggered");
+      if (chunk.type === "listener_triggered") {
+        expect(chunk.listenerData).toEqual({
+          listenerId,
+          eventType: "agent:completed",
+          data: expect.objectContaining({
+            agentId: payload.agentId,
+            terminalId: payload.terminalId,
+            worktreeId: payload.worktreeId,
+            exitCode: payload.exitCode,
+            duration: payload.duration,
+            timestamp: payload.timestamp,
+            traceId: payload.traceId,
+          }),
+        });
+      }
     });
 
     it("filters agent:completed by terminalId", () => {
@@ -362,18 +385,22 @@ describe("TerminalStateListenerBridge", () => {
       events.emit("agent:failed", payload);
 
       expect(emittedChunks.length).toBe(1);
-      expect(emittedChunks[0].chunk.listenerData).toEqual({
-        listenerId,
-        eventType: "agent:failed",
-        data: expect.objectContaining({
-          agentId: payload.agentId,
-          terminalId: payload.terminalId,
-          worktreeId: payload.worktreeId,
-          error: payload.error,
-          timestamp: payload.timestamp,
-          traceId: payload.traceId,
-        }),
-      });
+      const chunk = emittedChunks[0].chunk;
+      expect(chunk.type).toBe("listener_triggered");
+      if (chunk.type === "listener_triggered") {
+        expect(chunk.listenerData).toEqual({
+          listenerId,
+          eventType: "agent:failed",
+          data: expect.objectContaining({
+            agentId: payload.agentId,
+            terminalId: payload.terminalId,
+            worktreeId: payload.worktreeId,
+            error: payload.error,
+            timestamp: payload.timestamp,
+            traceId: payload.traceId,
+          }),
+        });
+      }
     });
 
     it("filters agent:failed by terminalId", () => {
@@ -396,7 +423,11 @@ describe("TerminalStateListenerBridge", () => {
 
       events.emit("agent:failed", payload);
 
-      expect(emittedChunks[0].chunk.listenerData.data.error).toBe("Something went wrong");
+      const chunk = emittedChunks[0].chunk;
+      expect(chunk.type).toBe("listener_triggered");
+      if (chunk.type === "listener_triggered") {
+        expect(chunk.listenerData.data.error).toBe("Something went wrong");
+      }
     });
 
     it("removes one-shot agent:failed listener after first event", () => {
@@ -431,18 +462,22 @@ describe("TerminalStateListenerBridge", () => {
       events.emit("agent:killed", payload);
 
       expect(emittedChunks.length).toBe(1);
-      expect(emittedChunks[0].chunk.listenerData).toEqual({
-        listenerId,
-        eventType: "agent:killed",
-        data: expect.objectContaining({
-          agentId: payload.agentId,
-          terminalId: payload.terminalId,
-          worktreeId: payload.worktreeId,
-          reason: payload.reason,
-          timestamp: payload.timestamp,
-          traceId: payload.traceId,
-        }),
-      });
+      const chunk = emittedChunks[0].chunk;
+      expect(chunk.type).toBe("listener_triggered");
+      if (chunk.type === "listener_triggered") {
+        expect(chunk.listenerData).toEqual({
+          listenerId,
+          eventType: "agent:killed",
+          data: expect.objectContaining({
+            agentId: payload.agentId,
+            terminalId: payload.terminalId,
+            worktreeId: payload.worktreeId,
+            reason: payload.reason,
+            timestamp: payload.timestamp,
+            traceId: payload.traceId,
+          }),
+        });
+      }
     });
 
     it("filters agent:killed by terminalId", () => {
@@ -471,7 +506,11 @@ describe("TerminalStateListenerBridge", () => {
       });
 
       expect(emittedChunks.length).toBe(1);
-      expect(emittedChunks[0].chunk.listenerData.data.reason).toBeUndefined();
+      const chunk = emittedChunks[0].chunk;
+      expect(chunk.type).toBe("listener_triggered");
+      if (chunk.type === "listener_triggered") {
+        expect(chunk.listenerData.data.reason).toBeUndefined();
+      }
     });
 
     it("removes one-shot agent:killed listener after first event", () => {
@@ -500,7 +539,11 @@ describe("TerminalStateListenerBridge", () => {
 
       expect(emittedChunks.length).toBe(1);
       expect(emittedChunks[0].sessionId).toBe("session-1");
-      expect(emittedChunks[0].chunk.listenerData.eventType).toBe("terminal:state-changed");
+      const chunk = emittedChunks[0].chunk;
+      expect(chunk.type).toBe("listener_triggered");
+      if (chunk.type === "listener_triggered") {
+        expect(chunk.listenerData.eventType).toBe("terminal:state-changed");
+      }
     });
 
     it("session can listen to multiple event types", () => {
@@ -522,8 +565,16 @@ describe("TerminalStateListenerBridge", () => {
       });
 
       expect(emittedChunks.length).toBe(2);
-      expect(emittedChunks[0].chunk.listenerData.eventType).toBe("terminal:state-changed");
-      expect(emittedChunks[1].chunk.listenerData.eventType).toBe("agent:completed");
+      const chunk0 = emittedChunks[0].chunk;
+      const chunk1 = emittedChunks[1].chunk;
+      expect(chunk0.type).toBe("listener_triggered");
+      expect(chunk1.type).toBe("listener_triggered");
+      if (chunk0.type === "listener_triggered") {
+        expect(chunk0.listenerData.eventType).toBe("terminal:state-changed");
+      }
+      if (chunk1.type === "listener_triggered") {
+        expect(chunk1.listenerData.eventType).toBe("agent:completed");
+      }
     });
   });
 
@@ -566,7 +617,11 @@ describe("TerminalStateListenerBridge", () => {
 
       // Chunk should still be emitted for UI notification
       expect(emittedChunks.length).toBe(1);
-      expect(emittedChunks[0].chunk.listenerData.listenerId).toBe(listenerId);
+      const chunk = emittedChunks[0].chunk;
+      expect(chunk.type).toBe("listener_triggered");
+      if (chunk.type === "listener_triggered") {
+        expect(chunk.listenerData.listenerId).toBe(listenerId);
+      }
     });
 
     it("notifies waiter for agent:completed event", async () => {
@@ -621,6 +676,112 @@ describe("TerminalStateListenerBridge", () => {
       await waitPromise;
 
       // One-shot listener should be removed
+      expect(listenerManager.get(listenerId)).toBeUndefined();
+    });
+  });
+
+  describe("auto-resume functionality", () => {
+    it("emits auto_resume chunk when listener has autoResume option", () => {
+      initTerminalStateListenerBridge(mockEmitter);
+
+      const listenerId = listenerManager.register(
+        "session-1",
+        "terminal:state-changed",
+        undefined,
+        true,
+        { prompt: "Continue with the next step", context: { plan: "Step 1 done" } }
+      );
+
+      events.emit("agent:state-changed", createAgentStateChangedPayload());
+
+      expect(emittedChunks.length).toBe(1);
+      const chunk = emittedChunks[0].chunk;
+      expect(chunk.type).toBe("auto_resume");
+      if (chunk.type === "auto_resume") {
+        expect(chunk.autoResumeData.listenerId).toBe(listenerId);
+        expect(chunk.autoResumeData.eventType).toBe("terminal:state-changed");
+        expect(chunk.autoResumeData.resumePrompt).toBe("Continue with the next step");
+        expect(chunk.autoResumeData.context.plan).toBe("Step 1 done");
+      }
+    });
+
+    it("removes continuation after auto-resume triggers", () => {
+      initTerminalStateListenerBridge(mockEmitter);
+
+      const listenerId = listenerManager.register(
+        "session-1",
+        "terminal:state-changed",
+        undefined,
+        false,
+        { prompt: "Continue" }
+      );
+
+      // Verify continuation exists
+      expect(continuationManager.getByListenerId(listenerId)).toBeDefined();
+
+      events.emit("agent:state-changed", createAgentStateChangedPayload());
+
+      // Continuation should be removed after auto-resume
+      expect(continuationManager.getByListenerId(listenerId)).toBeUndefined();
+    });
+
+    it("emits listener_triggered when no autoResume option", () => {
+      initTerminalStateListenerBridge(mockEmitter);
+
+      listenerManager.register("session-1", "terminal:state-changed", undefined, false);
+
+      events.emit("agent:state-changed", createAgentStateChangedPayload());
+
+      expect(emittedChunks.length).toBe(1);
+      expect(emittedChunks[0].chunk.type).toBe("listener_triggered");
+    });
+
+    it("includes event data in auto_resume payload", () => {
+      initTerminalStateListenerBridge(mockEmitter);
+
+      listenerManager.register("session-1", "agent:completed", undefined, true, {
+        prompt: "Agent finished, proceed",
+      });
+
+      events.emit("agent:completed", {
+        agentId: "agent-1",
+        terminalId: "term-1",
+        worktreeId: "wt-1",
+        exitCode: 0,
+        duration: 5000,
+        timestamp: Date.now(),
+        traceId: "trace-1",
+      });
+
+      const chunk = emittedChunks[0].chunk;
+      expect(chunk.type).toBe("auto_resume");
+      if (chunk.type === "auto_resume") {
+        expect(chunk.autoResumeData.eventData).toEqual(
+          expect.objectContaining({
+            exitCode: 0,
+            duration: 5000,
+          })
+        );
+      }
+    });
+
+    it("handles one-shot listener with autoResume", () => {
+      initTerminalStateListenerBridge(mockEmitter);
+
+      const listenerId = listenerManager.register(
+        "session-1",
+        "terminal:state-changed",
+        undefined,
+        true, // one-shot
+        { prompt: "Continue after completion" }
+      );
+
+      expect(listenerManager.get(listenerId)).toBeDefined();
+
+      events.emit("agent:state-changed", createAgentStateChangedPayload());
+
+      // Both auto-resume emitted and listener removed
+      expect(emittedChunks[0].chunk.type).toBe("auto_resume");
       expect(listenerManager.get(listenerId)).toBeUndefined();
     });
   });

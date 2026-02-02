@@ -1,17 +1,35 @@
 import { events } from "../events.js";
 import { listenerManager, listenerWaiter } from "./ListenerManager.js";
 import { pendingEventQueue } from "./PendingEventQueue.js";
+import { continuationManager } from "./ContinuationManager.js";
+
+export type ListenerTriggeredChunk = {
+  type: "listener_triggered";
+  listenerData: {
+    listenerId: string;
+    eventType: string;
+    data: Record<string, unknown>;
+  };
+};
+
+export type AutoResumeChunk = {
+  type: "auto_resume";
+  autoResumeData: {
+    listenerId: string;
+    eventType: string;
+    eventData: Record<string, unknown>;
+    resumePrompt: string;
+    context: {
+      plan?: string;
+      lastToolCalls?: unknown[];
+      metadata?: Record<string, unknown>;
+    };
+  };
+};
 
 export type ChunkEmitter = (
   sessionId: string,
-  chunk: {
-    type: "listener_triggered";
-    listenerData: {
-      listenerId: string;
-      eventType: string;
-      data: Record<string, unknown>;
-    };
-  }
+  chunk: ListenerTriggeredChunk | AutoResumeChunk
 ) => void;
 
 let chunkEmitter: ChunkEmitter | null = null;
@@ -39,16 +57,36 @@ function emitToListeners(eventType: string, eventData: Record<string, unknown>):
       // Also check if there's an active waiter for this listener
       listenerWaiter.notify(listener.id, listenerEvent);
 
-      // Also emit real-time chunk for immediate UI feedback if emitter is available
+      // Check for auto-resume continuation
+      const continuation = continuationManager.getByListenerId(listener.id);
+
       if (chunkEmitter) {
-        chunkEmitter(listener.sessionId, {
-          type: "listener_triggered",
-          listenerData: {
-            listenerId: listener.id,
-            eventType,
-            data: eventData,
-          },
-        });
+        if (continuation) {
+          // Emit auto-resume event instead of regular listener triggered
+          chunkEmitter(listener.sessionId, {
+            type: "auto_resume",
+            autoResumeData: {
+              listenerId: listener.id,
+              eventType,
+              eventData,
+              resumePrompt: continuation.resumePrompt,
+              context: continuation.context,
+            },
+          });
+
+          // Clean up the continuation after triggering
+          continuationManager.remove(continuation.id);
+        } else {
+          // Regular listener triggered event
+          chunkEmitter(listener.sessionId, {
+            type: "listener_triggered",
+            listenerData: {
+              listenerId: listener.id,
+              eventType,
+              data: eventData,
+            },
+          });
+        }
       }
       emitSucceeded = true;
     } catch (error) {

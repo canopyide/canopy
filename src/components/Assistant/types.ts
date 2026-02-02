@@ -1,4 +1,4 @@
-export type MessageRole = "user" | "assistant" | "event";
+export type MessageRole = "user" | "assistant" | "event" | "system";
 
 export type AgentStateChangeTrigger =
   | "input"
