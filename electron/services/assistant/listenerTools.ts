@@ -14,7 +14,7 @@ import { BRIDGED_EVENT_TYPES, type BridgedEventType } from "../events.js";
 import type { AutoResumeOptions, AutoResumeContext } from "../../../shared/types/listener.js";
 
 const DEFAULT_TIMEOUT_MS = 30000;
-const MAX_TIMEOUT_MS = 300000;
+const MAX_TIMEOUT_MS = 60000; // 60 seconds - longer waits should use autoResume
 
 // Mutable copy for JSON schema compatibility
 const BRIDGED_EVENT_TYPES_MUTABLE: string[] = [...BRIDGED_EVENT_TYPES];
@@ -318,10 +318,10 @@ export function createListenerTools(context: ListenerToolContext): ToolSet {
     await_listener: tool({
       description:
         "Block and wait for a registered listener to trigger. Returns the event data when triggered or an error on timeout. " +
-        "Use this to pause execution until an agent completes, a terminal state changes, or another subscribed event fires. " +
+        "Use this ONLY for short, bounded waits (up to 60 seconds). " +
+        "For longer or unknown duration waits, use register_listener with autoResume instead. " +
         "The listener must be registered first using register_listener. " +
-        "Cannot be used with listeners that have autoResume enabled - use autoResume instead for non-blocking waits. " +
-        "Default timeout is 30 seconds, maximum is 5 minutes (300000ms).",
+        "Cannot be used with listeners that have autoResume enabled.",
       inputSchema: jsonSchema({
         type: "object",
         properties: {
@@ -332,7 +332,10 @@ export function createListenerTools(context: ListenerToolContext): ToolSet {
           timeoutMs: {
             type: "number",
             description:
-              "Maximum time to wait in milliseconds (default: 30000, max: 300000). Set to longer values for long-running agent operations.",
+              "Maximum time to wait in milliseconds (default: 30000, max: 60000). " +
+              "For waits longer than 60s, use autoResume instead.",
+            minimum: 1,
+            maximum: 60000,
           },
         },
         required: ["listenerId"],
@@ -378,10 +381,22 @@ export function createListenerTools(context: ListenerToolContext): ToolSet {
           };
         }
 
-        // Validate and clamp timeout to valid range
+        // Validate timeout - reject if too long (force use of autoResume for long waits)
         const rawTimeout = timeoutMs ?? DEFAULT_TIMEOUT_MS;
+
+        // Reject explicitly if timeout exceeds maximum (with helpful error)
+        if (Number.isFinite(rawTimeout) && rawTimeout > MAX_TIMEOUT_MS) {
+          return {
+            success: false,
+            error: "timeout_too_long",
+            message: `Timeout ${rawTimeout}ms exceeds maximum ${MAX_TIMEOUT_MS}ms. For longer waits, use register_listener with autoResume instead of await_listener.`,
+            maxAllowed: MAX_TIMEOUT_MS,
+          };
+        }
+
+        // Normalize to valid range (defensive fallback for invalid inputs)
         const effectiveTimeout = Number.isFinite(rawTimeout)
-          ? Math.min(Math.max(rawTimeout, 1), MAX_TIMEOUT_MS)
+          ? Math.max(rawTimeout, 1)
           : DEFAULT_TIMEOUT_MS;
 
         const startTime = Date.now();

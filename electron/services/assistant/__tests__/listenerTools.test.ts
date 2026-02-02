@@ -687,7 +687,7 @@ describe("listenerTools", () => {
       await firstAwaitPromise;
     });
 
-    it("clamps timeout to maximum of 300000ms", async () => {
+    it("rejects timeout exceeding 60000ms with timeout_too_long error", async () => {
       // Register a listener
       const registerResult = await tools.register_listener.execute!(
         { eventType: "terminal:state-changed", filter: undefined },
@@ -696,9 +696,63 @@ describe("listenerTools", () => {
       expect(registerResult.success).toBe(true);
       const listenerId = (registerResult as { success: true; listenerId: string }).listenerId;
 
-      // Start awaiting with excessive timeout (should be clamped)
+      // Try awaiting with timeout > 60s - should be rejected
+      const result = await tools.await_listener.execute!(
+        { listenerId, timeoutMs: 120000 },
+        { toolCallId: "tc-2", messages: [], abortSignal: new AbortController().signal }
+      );
+
+      expect(result).toEqual({
+        success: false,
+        error: "timeout_too_long",
+        message: expect.stringContaining("exceeds maximum"),
+        maxAllowed: 60000,
+      });
+      expect((result as { message: string }).message).toContain("autoResume");
+    });
+
+    it("accepts timeout at exactly 60000ms", async () => {
+      // Register a listener
+      const registerResult = await tools.register_listener.execute!(
+        { eventType: "terminal:state-changed", filter: undefined },
+        { toolCallId: "tc-1", messages: [], abortSignal: new AbortController().signal }
+      );
+      expect(registerResult.success).toBe(true);
+      const listenerId = (registerResult as { success: true; listenerId: string }).listenerId;
+
+      // Start awaiting with exactly max timeout (should work)
       const awaitPromise = tools.await_listener.execute!(
-        { listenerId, timeoutMs: 999999999 },
+        { listenerId, timeoutMs: 60000 },
+        { toolCallId: "tc-2", messages: [], abortSignal: new AbortController().signal }
+      );
+
+      // Give the await a moment to register
+      await new Promise((resolve) => setTimeout(resolve, 10));
+
+      // Trigger event immediately
+      listenerWaiter.notify(listenerId, {
+        listenerId,
+        eventType: "terminal:state-changed",
+        data: {},
+        timestamp: Date.now(),
+      });
+
+      const result = await awaitPromise;
+      expect(result.success).toBe(true);
+    });
+
+    it("accepts timeout below 60000ms", async () => {
+      // Register a listener
+      const registerResult = await tools.register_listener.execute!(
+        { eventType: "terminal:state-changed", filter: undefined },
+        { toolCallId: "tc-1", messages: [], abortSignal: new AbortController().signal }
+      );
+      expect(registerResult.success).toBe(true);
+      const listenerId = (registerResult as { success: true; listenerId: string }).listenerId;
+
+      // Start awaiting with timeout below max (should work)
+      const awaitPromise = tools.await_listener.execute!(
+        { listenerId, timeoutMs: 30000 },
         { toolCallId: "tc-2", messages: [], abortSignal: new AbortController().signal }
       );
 
@@ -745,6 +799,96 @@ describe("listenerTools", () => {
 
       const result = await awaitPromise;
       expect(result.success).toBe(true);
+    });
+
+    it("normalizes negative timeout to 1ms (defensive fallback)", async () => {
+      // Register a listener
+      const registerResult = await tools.register_listener.execute!(
+        { eventType: "terminal:state-changed", filter: undefined },
+        { toolCallId: "tc-1", messages: [], abortSignal: new AbortController().signal }
+      );
+      expect(registerResult.success).toBe(true);
+      const listenerId = (registerResult as { success: true; listenerId: string }).listenerId;
+
+      // Start awaiting with negative timeout (should normalize to 1ms)
+      // Note: Schema enforces minimum: 1, but this tests the runtime defensive fallback
+      const awaitPromise = tools.await_listener.execute!(
+        { listenerId, timeoutMs: -100 },
+        { toolCallId: "tc-2", messages: [], abortSignal: new AbortController().signal }
+      );
+
+      // Immediately trigger event (1ms timeout is too short to await)
+      listenerWaiter.notify(listenerId, {
+        listenerId,
+        eventType: "terminal:state-changed",
+        data: {},
+        timestamp: Date.now(),
+      });
+
+      const result = await awaitPromise;
+      // Should either succeed (if triggered fast enough) or timeout
+      // The important part is it doesn't crash or reject with validation error
+      expect(result).toHaveProperty("success");
+    });
+
+    it("normalizes NaN timeout to default 30000ms", async () => {
+      // Register a listener
+      const registerResult = await tools.register_listener.execute!(
+        { eventType: "terminal:state-changed", filter: undefined },
+        { toolCallId: "tc-1", messages: [], abortSignal: new AbortController().signal }
+      );
+      expect(registerResult.success).toBe(true);
+      const listenerId = (registerResult as { success: true; listenerId: string }).listenerId;
+
+      // Start awaiting with NaN timeout (should use default)
+      const awaitPromise = tools.await_listener.execute!(
+        { listenerId, timeoutMs: NaN },
+        { toolCallId: "tc-2", messages: [], abortSignal: new AbortController().signal }
+      );
+
+      // Give the await a moment to register
+      await new Promise((resolve) => setTimeout(resolve, 10));
+
+      // Trigger event immediately
+      listenerWaiter.notify(listenerId, {
+        listenerId,
+        eventType: "terminal:state-changed",
+        data: {},
+        timestamp: Date.now(),
+      });
+
+      const result = await awaitPromise;
+      expect(result.success).toBe(true);
+    });
+
+    it("normalizes zero timeout to 1ms (defensive fallback)", async () => {
+      // Register a listener
+      const registerResult = await tools.register_listener.execute!(
+        { eventType: "terminal:state-changed", filter: undefined },
+        { toolCallId: "tc-1", messages: [], abortSignal: new AbortController().signal }
+      );
+      expect(registerResult.success).toBe(true);
+      const listenerId = (registerResult as { success: true; listenerId: string }).listenerId;
+
+      // Start awaiting with zero timeout (should normalize to 1ms)
+      // Note: Schema enforces minimum: 1, but this tests the runtime defensive fallback
+      const awaitPromise = tools.await_listener.execute!(
+        { listenerId, timeoutMs: 0 },
+        { toolCallId: "tc-2", messages: [], abortSignal: new AbortController().signal }
+      );
+
+      // Immediately trigger event (1ms timeout is too short to await)
+      listenerWaiter.notify(listenerId, {
+        listenerId,
+        eventType: "terminal:state-changed",
+        data: {},
+        timestamp: Date.now(),
+      });
+
+      const result = await awaitPromise;
+      // Should either succeed (if triggered fast enough) or timeout
+      // The important part is it doesn't crash or reject with validation error
+      expect(result).toHaveProperty("success");
     });
 
     it("works independently for multiple concurrent awaits on different listeners", async () => {
@@ -798,10 +942,11 @@ describe("listenerTools", () => {
       expect((result2 as { data: { terminalId: string } }).data.terminalId).toBe("term-2");
     });
 
-    it("has correct description mentioning blocking behavior", () => {
+    it("has correct description mentioning short waits and autoResume", () => {
       expect(tools.await_listener.description).toContain("Block and wait");
-      expect(tools.await_listener.description).toContain("timeout");
-      expect(tools.await_listener.description).toContain("300000");
+      expect(tools.await_listener.description).toContain("short, bounded waits");
+      expect(tools.await_listener.description).toContain("60 seconds");
+      expect(tools.await_listener.description).toContain("autoResume");
     });
   });
 });
