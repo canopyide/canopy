@@ -542,7 +542,7 @@ register_listener({
 - **Session-scoped** - Listeners are cleared on navigation or conversation reset
 - **No cross-session** - Cannot monitor terminals from other conversation sessions
 - **Filter limitations** - Exact match only; no regex, ranges, or complex conditions
-- **await_listener timeout** - Maximum 5 minutes (300000ms); use polling for longer waits
+- **await_listener timeout** - Maximum 60 seconds (60000ms); use autoResume for longer waits
 - **Pending queue cap** - Maximum 100 events per session; oldest acknowledged events evicted first when cap reached
 
 ## Tool Call Discipline
