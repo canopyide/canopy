@@ -101,6 +101,7 @@ const STALE_CHECK_INTERVAL_MS = 60 * 1000; // Check every 1 minute
 export class ListenerManager {
   private listeners = new Map<string, Listener>();
   private staleCheckInterval: NodeJS.Timeout | null = null;
+  private lastStaleWarnings = new WeakMap<Listener, number>();
 
   constructor() {
     this.startStaleListenerCheck();
@@ -230,7 +231,7 @@ export class ListenerManager {
         const dataRecord = isObject ? (data as Record<string, unknown>) : null;
 
         // Build diagnostic payload with filter key comparisons
-        const diagnosticPayload: any = {
+        const diagnosticPayload: Record<string, unknown> = {
           dataType: typeof data,
           isObject,
         };
@@ -245,12 +246,13 @@ export class ListenerManager {
           });
 
           // Show event data for the filter keys that exist
-          diagnosticPayload.eventData = {};
+          const eventData: Record<string, unknown> = {};
           filterKeys.forEach((key) => {
             if (key in dataRecord) {
-              diagnosticPayload.eventData[key] = dataRecord[key];
+              eventData[key] = dataRecord[key];
             }
           });
+          diagnosticPayload.eventData = eventData;
 
           diagnosticPayload.activeListeners = listenersForEventType.map((l) => ({
             id: l.id.substring(0, 8),
@@ -317,7 +319,7 @@ export class ListenerManager {
       const age = now - listener.createdAt;
       if (age > STALE_LISTENER_THRESHOLD_MS && listener.autoResume) {
         // Check if we've warned about this listener recently (within last 5 minutes)
-        const lastWarned = (listener as any).lastStaleWarning || 0;
+        const lastWarned = this.lastStaleWarnings.get(listener) || 0;
         const timeSinceLastWarning = now - lastWarned;
 
         // Only warn if this is the first time crossing threshold or it's been 5+ minutes since last warning
@@ -330,7 +332,7 @@ export class ListenerManager {
             sessionId: listener.sessionId.substring(0, 8),
           });
           // Mark that we've warned about this listener
-          (listener as any).lastStaleWarning = now;
+          this.lastStaleWarnings.set(listener, now);
         }
       }
     }
