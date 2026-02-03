@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useRef, useState } from "react";
+import { useCallback, useEffect, useRef, useState, useMemo } from "react";
 import { Globe, Server, Power, Terminal, RotateCw } from "lucide-react";
 import { BrowserToolbar } from "@/components/Browser/BrowserToolbar";
 import { XtermAdapter } from "@/components/Terminal/XtermAdapter";
@@ -12,11 +12,27 @@ import {
   useBrowserStateStore,
   useProjectStore,
   useTerminalStore,
-  useWorktreeSelectionStore,
   type BrowserHistory,
 } from "@/store";
 import { panelKindKeepsAliveOnProjectSwitch } from "@shared/config/panelKindRegistry";
 import type { DevPreviewStatus } from "@shared/types/ipc/devPreview";
+
+interface WebviewInstance {
+  element: Electron.WebviewTag;
+  lastActiveTime: number;
+  worktreeId: string | null;
+  isReady: boolean;
+  hasLoaded: boolean;
+  isLoading: boolean;
+  loadError: string | null;
+  lastKnownUrl: string;
+}
+
+const MAX_WEBVIEWS_PER_PANEL = 5;
+
+function makeWebviewKey(panelId: string, worktreeId: string | null | undefined): string {
+  return `${panelId}-${worktreeId ?? "default"}`;
+}
 
 const STATUS_STYLES: Record<DevPreviewStatus, { label: string; dot: string; text: string }> = {
   installing: {
@@ -100,9 +116,9 @@ export function DevPreviewPane({
   const [isLoading, setIsLoading] = useState(false);
   const [webviewLoadError, setWebviewLoadError] = useState<string | null>(null);
   const [isWebviewReady, setIsWebviewReady] = useState(false);
-  const [wasInactive, setWasInactive] = useState(false);
   const restartTimeoutRef = useRef<ReturnType<typeof setTimeout> | null>(null);
-  const webviewRef = useRef<Electron.WebviewTag>(null);
+  const webviewContainerRef = useRef<HTMLDivElement>(null);
+  const webviewMapRef = useRef<Map<string, WebviewInstance>>(new Map());
   const pendingUrlRef = useRef<string | null>(null);
   const autoReloadAttemptsRef = useRef(0);
   const autoReloadTimeoutRef = useRef<ReturnType<typeof setTimeout> | null>(null);
@@ -115,7 +131,12 @@ export function DevPreviewPane({
   const setBrowserUrl = useTerminalStore((state) => state.setBrowserUrl);
   const updateBrowserZoomFactor = useBrowserStateStore((state) => state.updateZoomFactor);
   const updateBrowserUrl = useBrowserStateStore((state) => state.updateUrl);
-  const activeWorktreeId = useWorktreeSelectionStore((state) => state.activeWorktreeId);
+  const currentWebviewKey = useMemo(
+    () => makeWebviewKey(id, worktreeId),
+    [id, worktreeId]
+  );
+  const currentWebviewKeyRef = useRef(currentWebviewKey);
+  currentWebviewKeyRef.current = currentWebviewKey;
 
   const currentUrl = history.present;
   const canGoBack = history.past.length > 0;
@@ -156,6 +177,115 @@ export function DevPreviewPane({
     }
   }, []);
 
+  const getActiveWebview = useCallback((): Electron.WebviewTag | null => {
+    const instance = webviewMapRef.current.get(currentWebviewKey);
+    return instance?.element ?? null;
+  }, [currentWebviewKey]);
+
+  const evictLRUWebview = useCallback((excludeKey: string) => {
+    const map = webviewMapRef.current;
+
+    // Evict until we're under the cap
+    while (map.size >= MAX_WEBVIEWS_PER_PANEL) {
+      let oldestKey: string | null = null;
+      let oldestTime = Infinity;
+
+      map.forEach((ref, key) => {
+        if (key !== excludeKey && ref.lastActiveTime < oldestTime) {
+          oldestTime = ref.lastActiveTime;
+          oldestKey = key;
+        }
+      });
+
+      if (!oldestKey) break;
+
+      const ref = map.get(oldestKey);
+      if (ref) {
+        // Clean up event listeners
+        const cleanup = webviewCleanupRefs.current.get(oldestKey);
+        if (cleanup) {
+          cleanup();
+          webviewCleanupRefs.current.delete(oldestKey);
+        }
+
+        // Remove webview element
+        ref.element.remove();
+        map.delete(oldestKey);
+      } else {
+        break;
+      }
+    }
+  }, []);
+
+  const updateWebviewVisibility = useCallback(() => {
+    const map = webviewMapRef.current;
+    map.forEach((instance, key) => {
+      const isActive = key === currentWebviewKey;
+      instance.element.style.display = isActive ? "flex" : "none";
+      if (isActive) {
+        instance.lastActiveTime = Date.now();
+      }
+    });
+  }, [currentWebviewKey]);
+
+  const webviewCleanupRefs = useRef<Map<string, () => void>>(new Map());
+
+  const createWebviewForWorktree = useCallback(
+    (url: string): Electron.WebviewTag => {
+      const container = webviewContainerRef.current;
+      if (!container) {
+        throw new Error("Webview container not available");
+      }
+
+      const map = webviewMapRef.current;
+
+      // Check if webview already exists for this key
+      const existingInstance = map.get(currentWebviewKey);
+      if (existingInstance) {
+        existingInstance.lastActiveTime = Date.now();
+        return existingInstance.element;
+      }
+
+      // Evict LRU if needed before creating new webview
+      evictLRUWebview(currentWebviewKey);
+
+      // Create new webview element
+      const webview = document.createElement("webview") as Electron.WebviewTag;
+      webview.setAttribute("partition", `persist:dev-preview-${currentWebviewKey}`);
+      webview.style.cssText = "width: 100%; height: 100%; border: 0; display: flex;";
+
+      // Add to container first
+      container.appendChild(webview);
+
+      // Store in map with initial state
+      const instance: WebviewInstance = {
+        element: webview,
+        lastActiveTime: Date.now(),
+        worktreeId: worktreeId ?? null,
+        isReady: false,
+        hasLoaded: false,
+        isLoading: false,
+        loadError: null,
+        lastKnownUrl: url || "",
+      };
+      map.set(currentWebviewKey, instance);
+
+      // Setup event listeners BEFORE setting src to avoid missing early events
+      const cleanup = setupWebviewListeners(webview, currentWebviewKey);
+      webviewCleanupRefs.current.set(currentWebviewKey, cleanup);
+
+      // Now set src to trigger loading
+      webview.setAttribute("src", url || "about:blank");
+
+      // Update visibility for all webviews
+      updateWebviewVisibility();
+
+      return webview;
+    },
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+    [currentWebviewKey, evictLRUWebview, updateWebviewVisibility, worktreeId]
+  );
+
   const scheduleAutoReload = useCallback(
     (delayMs: number) => {
       if (!currentUrl) return;
@@ -168,13 +298,13 @@ export function DevPreviewPane({
       autoReloadTimeoutRef.current = setTimeout(() => {
         autoReloadTimeoutRef.current = null;
         if (!currentUrl || hasLoadedRef.current) return;
-        const webview = webviewRef.current;
+        const webview = getActiveWebview();
         if (!webview) return;
         autoReloadAttemptsRef.current += 1;
         webview.loadURL(currentUrl);
       }, delayMs);
     },
-    [currentUrl]
+    [currentUrl, getActiveWebview]
   );
 
   const handleNavigate = useCallback(
@@ -199,7 +329,7 @@ export function DevPreviewPane({
       clearAutoReload();
       lastSetUrlRef.current = result.url!;
 
-      const webview = webviewRef.current;
+      const webview = getActiveWebview();
       if (webview && isWebviewReady) {
         webview.loadURL(result.url!);
       }
@@ -208,7 +338,7 @@ export function DevPreviewPane({
         void window.electron.devPreview.setUrl(id, result.url!);
       }
     },
-    [clearAutoReload, id, isBrowserOnly, isWebviewReady]
+    [clearAutoReload, getActiveWebview, id, isBrowserOnly, isWebviewReady]
   );
 
   const handleBack = useCallback(() => {
@@ -226,7 +356,7 @@ export function DevPreviewPane({
       autoReloadAttemptsRef.current = 0;
       clearAutoReload();
 
-      const webview = webviewRef.current;
+      const webview = getActiveWebview();
       if (webview && isWebviewReady) {
         webview.loadURL(previousUrl);
       }
@@ -239,7 +369,7 @@ export function DevPreviewPane({
         future,
       };
     });
-  }, [clearAutoReload, isWebviewReady]);
+  }, [clearAutoReload, getActiveWebview, isWebviewReady]);
 
   const handleForward = useCallback(() => {
     shouldAutoReloadRef.current = false;
@@ -255,7 +385,7 @@ export function DevPreviewPane({
       autoReloadAttemptsRef.current = 0;
       clearAutoReload();
 
-      const webview = webviewRef.current;
+      const webview = getActiveWebview();
       if (webview && isWebviewReady) {
         webview.loadURL(nextUrl);
       }
@@ -268,7 +398,7 @@ export function DevPreviewPane({
         future: restFuture,
       };
     });
-  }, [clearAutoReload, isWebviewReady]);
+  }, [clearAutoReload, getActiveWebview, isWebviewReady]);
 
   const handleReload = useCallback(() => {
     shouldAutoReloadRef.current = false;
@@ -279,11 +409,11 @@ export function DevPreviewPane({
     autoReloadAttemptsRef.current = 0;
     clearAutoReload();
     lastUrlSetAtRef.current = Date.now();
-    const webview = webviewRef.current;
+    const webview = getActiveWebview();
     if (webview && isWebviewReady) {
       webview.reload();
     }
-  }, [clearAutoReload, isWebviewReady]);
+  }, [clearAutoReload, getActiveWebview, isWebviewReady]);
 
   const handleServerUrl = useCallback(
     (nextUrl: string) => {
@@ -301,7 +431,7 @@ export function DevPreviewPane({
         clearAutoReload();
         lastUrlSetAtRef.current = Date.now();
         scheduleAutoReload(AUTO_RELOAD_INITIAL_DELAY_MS);
-        const webview = webviewRef.current;
+        const webview = getActiveWebview();
         if (webview && isWebviewReady) {
           webview.loadURL(resolvedUrl);
         }
@@ -316,7 +446,7 @@ export function DevPreviewPane({
         lastSetUrlRef.current = resolvedUrl;
       }
     },
-    [clearAutoReload, currentUrl, isBrowserOnly, isWebviewReady, scheduleAutoReload]
+    [clearAutoReload, currentUrl, getActiveWebview, isBrowserOnly, isWebviewReady, scheduleAutoReload]
   );
 
   const handleOpenExternal = useCallback(() => {
@@ -367,91 +497,149 @@ export function DevPreviewPane({
     };
   }, [clearAutoReload, handleServerUrl, id]);
 
-  useEffect(() => {
-    const webview = webviewRef.current;
-    if (!webview) {
-      setIsWebviewReady(false);
-      return;
-    }
+  const setupWebviewListeners = useCallback(
+    (webview: Electron.WebviewTag, webviewKey: string) => {
+      const handleDomReady = () => {
+        // Update instance state
+        const instance = webviewMapRef.current.get(webviewKey);
+        if (instance) {
+          instance.isReady = true;
+          instance.lastKnownUrl = webview.getURL();
+        }
 
-    const handleDomReady = () => {
-      setIsWebviewReady(true);
-    };
+        // Only update UI state if this is the currently active webview
+        if (webviewKey === currentWebviewKeyRef.current) {
+          setIsWebviewReady(true);
+        }
+      };
 
-    const handleDidFailLoad = (event: Electron.DidFailLoadEvent) => {
-      if (event.errorCode === -3 || event.errorCode === -6) return;
-      hasLoadedRef.current = false;
-      setHasLoaded(false);
-      setIsLoading(false);
-      const isRetryable = AUTO_RELOAD_ERROR_CODES.has(event.errorCode);
-      if (isRetryable && autoReloadAttemptsRef.current < AUTO_RELOAD_MAX_ATTEMPTS) {
-        const delay = AUTO_RELOAD_RETRY_DELAY_MS * (autoReloadAttemptsRef.current + 1);
-        scheduleAutoReload(delay);
-        return;
-      }
-      setWebviewLoadError(
-        event.errorDescription || "Failed to load dev server. Check if the server is running."
-      );
-    };
+      const handleDidFailLoad = (event: Electron.DidFailLoadEvent) => {
+        if (event.errorCode === -3 || event.errorCode === -6) return;
 
-    const handleDidStartLoading = () => {
-      setWebviewLoadError(null);
-      hasLoadedRef.current = false;
-      setHasLoaded(false);
-      setIsLoading(true);
-    };
+        // Update instance state
+        const instance = webviewMapRef.current.get(webviewKey);
+        if (instance) {
+          instance.hasLoaded = false;
+          instance.isLoading = false;
+          instance.loadError = event.errorDescription || "Failed to load dev server. Check if the server is running.";
+        }
 
-    const handleDidStopLoading = () => {
-      hasLoadedRef.current = true;
-      autoReloadAttemptsRef.current = 0;
-      clearAutoReload();
-      setHasLoaded(true);
-      setIsLoading(false);
-    };
+        // Only update UI state if this is the currently active webview
+        if (webviewKey !== currentWebviewKeyRef.current) return;
 
-    const handleDidNavigate = (event: Electron.DidNavigateEvent) => {
-      const newUrl = event.url;
-      if (newUrl !== lastSetUrlRef.current) {
-        shouldAutoReloadRef.current = false;
-        setHistory((prev) => ({
-          past: [...prev.past, prev.present],
-          present: newUrl,
-          future: [],
-        }));
-        lastSetUrlRef.current = newUrl;
-      }
-    };
+        hasLoadedRef.current = false;
+        setHasLoaded(false);
+        setIsLoading(false);
+        const isRetryable = AUTO_RELOAD_ERROR_CODES.has(event.errorCode);
+        if (isRetryable && autoReloadAttemptsRef.current < AUTO_RELOAD_MAX_ATTEMPTS) {
+          const delay = AUTO_RELOAD_RETRY_DELAY_MS * (autoReloadAttemptsRef.current + 1);
+          scheduleAutoReload(delay);
+          return;
+        }
+        setWebviewLoadError(instance?.loadError || "Failed to load");
+      };
 
-    const handleDidNavigateInPage = (event: Electron.DidNavigateInPageEvent) => {
-      if (!event.isMainFrame) return;
-      const newUrl = event.url;
-      if (newUrl !== lastSetUrlRef.current) {
-        shouldAutoReloadRef.current = false;
-        setHistory((prev) => ({
-          past: [...prev.past, prev.present],
-          present: newUrl,
-          future: [],
-        }));
-        lastSetUrlRef.current = newUrl;
-      }
-    };
+      const handleDidStartLoading = () => {
+        // Update instance state
+        const instance = webviewMapRef.current.get(webviewKey);
+        if (instance) {
+          instance.isLoading = true;
+          instance.hasLoaded = false;
+          instance.loadError = null;
+        }
 
-    webview.addEventListener("dom-ready", handleDomReady);
-    webview.addEventListener("did-fail-load", handleDidFailLoad);
-    webview.addEventListener("did-start-loading", handleDidStartLoading);
-    webview.addEventListener("did-stop-loading", handleDidStopLoading);
-    webview.addEventListener("did-navigate", handleDidNavigate);
-    webview.addEventListener("did-navigate-in-page", handleDidNavigateInPage);
+        // Only update UI state if this is the currently active webview
+        if (webviewKey !== currentWebviewKeyRef.current) return;
+        setWebviewLoadError(null);
+        hasLoadedRef.current = false;
+        setHasLoaded(false);
+        setIsLoading(true);
+      };
 
-    return () => {
-      webview.removeEventListener("dom-ready", handleDomReady);
-      webview.removeEventListener("did-fail-load", handleDidFailLoad);
-      webview.removeEventListener("did-start-loading", handleDidStartLoading);
-      webview.removeEventListener("did-stop-loading", handleDidStopLoading);
-      webview.removeEventListener("did-navigate", handleDidNavigate);
-      webview.removeEventListener("did-navigate-in-page", handleDidNavigateInPage);
-    };
-  }, [clearAutoReload, scheduleAutoReload]);
+      const handleDidStopLoading = () => {
+        // Update instance state
+        const instance = webviewMapRef.current.get(webviewKey);
+        if (instance) {
+          instance.isLoading = false;
+          instance.hasLoaded = true;
+          instance.loadError = null;
+          instance.lastKnownUrl = webview.getURL();
+        }
+
+        // Only update UI state if this is the currently active webview
+        if (webviewKey !== currentWebviewKeyRef.current) return;
+        hasLoadedRef.current = true;
+        autoReloadAttemptsRef.current = 0;
+        clearAutoReload();
+        setHasLoaded(true);
+        setIsLoading(false);
+      };
+
+      const handleDidNavigate = (event: Electron.DidNavigateEvent) => {
+        const newUrl = event.url;
+
+        // Update instance last known URL
+        const instance = webviewMapRef.current.get(webviewKey);
+        if (instance) {
+          instance.lastKnownUrl = newUrl;
+        }
+
+        // Only update history if this is the currently active webview
+        if (webviewKey !== currentWebviewKeyRef.current) return;
+
+        if (newUrl !== lastSetUrlRef.current) {
+          shouldAutoReloadRef.current = false;
+          setHistory((prev) => ({
+            past: [...prev.past, prev.present],
+            present: newUrl,
+            future: [],
+          }));
+          lastSetUrlRef.current = newUrl;
+        }
+      };
+
+      const handleDidNavigateInPage = (event: Electron.DidNavigateInPageEvent) => {
+        if (!event.isMainFrame) return;
+        const newUrl = event.url;
+
+        // Update instance last known URL
+        const instance = webviewMapRef.current.get(webviewKey);
+        if (instance) {
+          instance.lastKnownUrl = newUrl;
+        }
+
+        // Only update history if this is the currently active webview
+        if (webviewKey !== currentWebviewKeyRef.current) return;
+
+        if (newUrl !== lastSetUrlRef.current) {
+          shouldAutoReloadRef.current = false;
+          setHistory((prev) => ({
+            past: [...prev.past, prev.present],
+            present: newUrl,
+            future: [],
+          }));
+          lastSetUrlRef.current = newUrl;
+        }
+      };
+
+      webview.addEventListener("dom-ready", handleDomReady);
+      webview.addEventListener("did-fail-load", handleDidFailLoad);
+      webview.addEventListener("did-start-loading", handleDidStartLoading);
+      webview.addEventListener("did-stop-loading", handleDidStopLoading);
+      webview.addEventListener("did-navigate", handleDidNavigate);
+      webview.addEventListener("did-navigate-in-page", handleDidNavigateInPage);
+
+      return () => {
+        webview.removeEventListener("dom-ready", handleDomReady);
+        webview.removeEventListener("did-fail-load", handleDidFailLoad);
+        webview.removeEventListener("did-start-loading", handleDidStartLoading);
+        webview.removeEventListener("did-stop-loading", handleDidStopLoading);
+        webview.removeEventListener("did-navigate", handleDidNavigate);
+        webview.removeEventListener("did-navigate-in-page", handleDidNavigateInPage);
+      };
+    },
+    [clearAutoReload, scheduleAutoReload]
+  );
 
   useEffect(() => {
     if (!hasValidUrl) return;
@@ -462,41 +650,75 @@ export function DevPreviewPane({
     updateBrowserZoomFactor(id, zoomFactor, worktreeId);
   }, [id, updateBrowserZoomFactor, zoomFactor, worktreeId]);
 
-  // Track when this panel becomes inactive (different worktree selected)
+  // Update webview visibility when worktree changes (show/hide instead of reload)
   useEffect(() => {
-    const isCurrentlyActive = (worktreeId ?? undefined) === (activeWorktreeId ?? undefined);
-    if (!isCurrentlyActive) {
-      setWasInactive(true);
-    }
-  }, [worktreeId, activeWorktreeId]);
-
-  // Reload when panel becomes active after being backgrounded
-  useEffect(() => {
-    const isInActiveWorktree = (worktreeId ?? undefined) === (activeWorktreeId ?? undefined);
-
-    if (wasInactive && isInActiveWorktree && isWebviewReady && currentUrl) {
-      setWasInactive(false);
-      setIsLoading(true);
-      setWebviewLoadError(null);
-      hasLoadedRef.current = false;
-      setHasLoaded(false);
-      autoReloadAttemptsRef.current = 0;
-      clearAutoReload();
-      lastUrlSetAtRef.current = Date.now();
-
-      const webview = webviewRef.current;
-      if (webview) {
-        webview.loadURL(currentUrl);
-      }
-    }
-  }, [wasInactive, worktreeId, activeWorktreeId, isWebviewReady, currentUrl, clearAutoReload]);
+    updateWebviewVisibility();
+  }, [updateWebviewVisibility, currentWebviewKey]);
 
   useEffect(() => {
-    const webview = webviewRef.current;
+    const webview = getActiveWebview();
     if (webview && isWebviewReady) {
       webview.setZoomFactor(zoomFactor);
     }
-  }, [isWebviewReady, zoomFactor]);
+  }, [getActiveWebview, isWebviewReady, zoomFactor]);
+
+  // Create webview when URL becomes available and container is ready
+  useEffect(() => {
+    if (!currentUrl || !webviewContainerRef.current) return;
+
+    const map = webviewMapRef.current;
+    const existingInstance = map.get(currentWebviewKey);
+
+    // If webview already exists, restore state from the instance
+    if (existingInstance) {
+      updateWebviewVisibility();
+      existingInstance.lastActiveTime = Date.now();
+
+      // Restore UI state from the instance's tracked state
+      setIsWebviewReady(existingInstance.isReady);
+      setHasLoaded(existingInstance.hasLoaded);
+      setIsLoading(existingInstance.isLoading);
+      setWebviewLoadError(existingInstance.loadError);
+      hasLoadedRef.current = existingInstance.hasLoaded;
+
+      // Check if URL changed using lastKnownUrl (more reliable than getAttribute)
+      if (existingInstance.lastKnownUrl !== currentUrl && currentUrl) {
+        // URL changed - trigger reload
+        try {
+          existingInstance.element.loadURL(currentUrl);
+          existingInstance.isLoading = true;
+          existingInstance.hasLoaded = false;
+          existingInstance.loadError = null;
+          setIsLoading(true);
+          setHasLoaded(false);
+          setWebviewLoadError(null);
+          hasLoadedRef.current = false;
+        } catch (error) {
+          const errorMsg = error instanceof Error ? error.message : "Failed to load URL";
+          existingInstance.loadError = errorMsg;
+          setWebviewLoadError(errorMsg);
+        }
+      }
+      return;
+    }
+
+    // Create new webview for this worktree (listeners are attached in createWebviewForWorktree)
+    try {
+      createWebviewForWorktree(currentUrl);
+      setIsWebviewReady(false);
+      setHasLoaded(false);
+      setIsLoading(true);
+      setWebviewLoadError(null);
+    } catch (error) {
+      const errorMsg = error instanceof Error ? error.message : "Failed to create webview";
+      setWebviewLoadError(errorMsg);
+    }
+  }, [
+    currentUrl,
+    currentWebviewKey,
+    createWebviewForWorktree,
+    updateWebviewVisibility,
+  ]);
 
   useEffect(() => {
     if (!currentUrl) return;
@@ -569,15 +791,45 @@ export function DevPreviewPane({
     void window.electron.devPreview.start(id, cwd, cols, rows, devCommand);
 
     return () => {
-      if (
+      // Only skip cleanup if it's a project switch AND panel kind keeps alive
+      const shouldKeepAlive =
         useProjectStore.getState().isSwitching &&
-        panelKindKeepsAliveOnProjectSwitch("dev-preview")
-      ) {
+        panelKindKeepsAliveOnProjectSwitch("dev-preview");
+
+      if (shouldKeepAlive) {
         return;
       }
+
+      // Clean up all webviews and their event listeners
+      webviewCleanupRefs.current.forEach((cleanup) => cleanup());
+      webviewCleanupRefs.current.clear();
+
+      webviewMapRef.current.forEach((instance) => {
+        instance.element.remove();
+      });
+      webviewMapRef.current.clear();
+
       void window.electron.devPreview.stop(id);
     };
   }, [clearAutoReload, cwd, id, worktreeId]);
+
+  // Separate unmount effect to ensure cleanup even during project switch
+  useEffect(() => {
+    return () => {
+      // Force cleanup on actual component unmount (panel close)
+      // This runs even if the cwd/id effect's cleanup was skipped
+      const hasWebviews = webviewMapRef.current.size > 0;
+      if (hasWebviews) {
+        webviewCleanupRefs.current.forEach((cleanup) => cleanup());
+        webviewCleanupRefs.current.clear();
+
+        webviewMapRef.current.forEach((instance) => {
+          instance.element.remove();
+        });
+        webviewMapRef.current.clear();
+      }
+    };
+  }, []);
 
   useEffect(() => {
     const handleReloadEvent = (e: Event) => {
@@ -805,12 +1057,11 @@ export function DevPreviewPane({
                     </div>
                   </div>
                 )}
-                <webview
-                  ref={webviewRef}
-                  src={currentUrl}
-                  partition="persist:dev-preview"
+                {/* Container for dynamically created webviews - multiple instances preserved */}
+                <div
+                  ref={webviewContainerRef}
                   className={cn(
-                    "w-full h-full border-0",
+                    "w-full h-full",
                     isDragging && "invisible pointer-events-none"
                   )}
                 />
