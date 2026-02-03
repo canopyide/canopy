@@ -115,10 +115,11 @@ export function CompactDock({
       );
 
       if (result.ok && result.result?.terminalId) {
+        setMode("expanded");
         openDockTerminal(result.result.terminalId);
       }
     },
-    [activeWorktreeId, cwd, openDockTerminal]
+    [activeWorktreeId, cwd, openDockTerminal, setMode]
   );
 
   const handleContextMenu = useCallback(
