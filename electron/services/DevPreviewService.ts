@@ -118,6 +118,11 @@ export class DevPreviewService extends EventEmitter {
 
     // Browser-only mode: no command available
     if (!finalCommand) {
+      if (process.env.CANOPY_VERBOSE) {
+        console.log(
+          `[DevPreview] Panel ${panelId} entering browser-only mode (no dev command found, cwd: ${cwd})`
+        );
+      }
       const session: DevPreviewSession = {
         panelId,
         ptyId: "", // No PTY in browser-only mode
@@ -154,12 +159,25 @@ export class DevPreviewService extends EventEmitter {
     const ptyId = crypto.randomUUID();
     const generation = ++this.generationCounter;
 
-    this.ptyClient.spawn(ptyId, {
+    if (process.env.CANOPY_VERBOSE) {
+      console.log(
+        `[DevPreview] Starting panel ${panelId} with cwd: ${cwd}, ptyId: ${ptyId}`
+      );
+    }
+
+    const spawnOptions = {
       cwd,
       cols,
       rows,
-      kind: "dev-preview",
-    });
+      kind: "dev-preview" as const,
+    };
+
+    // Runtime assertion: dev-preview must always set kind to bypass PTY pool
+    if (spawnOptions.kind !== "dev-preview") {
+      throw new Error("[DevPreview] Internal error: spawn options missing kind");
+    }
+
+    this.ptyClient.spawn(ptyId, spawnOptions);
 
     // Delay command submission to allow PTY to fully initialize
     const submitTimeout = setTimeout(() => {
@@ -295,6 +313,13 @@ export class DevPreviewService extends EventEmitter {
     if (urls.length > 0) {
       const preferredUrl = this.selectPreferredUrl(urls);
       if (preferredUrl && preferredUrl !== session.url) {
+        if (process.env.CANOPY_VERBOSE) {
+          console.log(
+            `[DevPreview] Panel ${panelId} (ptyId: ${session.ptyId}, gen: ${session.generation}) detected URLs:`,
+            urls,
+            `- setting URL to: ${preferredUrl} (cwd: ${session.projectRoot})`
+          );
+        }
         this.setUrl(panelId, preferredUrl);
       }
     }
@@ -378,12 +403,25 @@ export class DevPreviewService extends EventEmitter {
     const fullCommand = `${installCmd} && ${devCommand}`;
     const newPtyId = crypto.randomUUID();
 
-    this.ptyClient.spawn(newPtyId, {
+    if (process.env.CANOPY_VERBOSE) {
+      console.log(
+        `[DevPreview] Panel ${panelId} recovery: spawning new PTY ${newPtyId} (attempt ${sessionAfterKill.recoveryAttempts}/${2})`
+      );
+    }
+
+    const spawnOptions = {
       cwd: projectRoot,
       cols,
       rows,
-      kind: "dev-preview",
-    });
+      kind: "dev-preview" as const,
+    };
+
+    // Runtime assertion: dev-preview must always set kind to bypass PTY pool
+    if (spawnOptions.kind !== "dev-preview") {
+      throw new Error("[DevPreview] Internal error: recovery spawn options missing kind");
+    }
+
+    this.ptyClient.spawn(newPtyId, spawnOptions);
 
     // Create new listeners for the recovery PTY
     const dataListener = (id: string, data: string) => {
@@ -448,6 +486,12 @@ export class DevPreviewService extends EventEmitter {
   private handlePtyExit(panelId: string, code: number): void {
     const session = this.sessions.get(panelId);
     if (!session) return;
+
+    if (process.env.CANOPY_VERBOSE) {
+      console.log(
+        `[DevPreview] Panel ${panelId} (ptyId: ${session.ptyId}) exited with code ${code}`
+      );
+    }
 
     // Clear any pending command submission timeout
     if (session.submitTimeout) {
