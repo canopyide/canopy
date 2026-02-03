@@ -50,7 +50,12 @@ export function BrowserPane({
   const [history, setHistory] = useState<BrowserHistory>(() => {
     const terminal = useTerminalStore.getState().getTerminal(id);
     const saved = terminal?.browserHistory;
-    if (saved && Array.isArray(saved.past) && Array.isArray(saved.future) && typeof saved.present === "string") {
+    if (
+      saved &&
+      Array.isArray(saved.past) &&
+      Array.isArray(saved.future) &&
+      typeof saved.present === "string"
+    ) {
       const present = saved.present || terminal?.browserUrl || initialUrl;
       return {
         past: saved.past,

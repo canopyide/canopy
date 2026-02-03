@@ -97,7 +97,12 @@ export function DevPreviewPane({
   const [history, setHistory] = useState<BrowserHistory>(() => {
     const terminal = useTerminalStore.getState().getTerminal(id);
     const saved = terminal?.browserHistory;
-    if (saved && Array.isArray(saved.past) && Array.isArray(saved.future) && typeof saved.present === "string") {
+    if (
+      saved &&
+      Array.isArray(saved.past) &&
+      Array.isArray(saved.future) &&
+      typeof saved.present === "string"
+    ) {
       return saved;
     }
     return {
@@ -152,7 +157,12 @@ export function DevPreviewPane({
     isRestoringStateRef.current = true;
     const terminal = useTerminalStore.getState().getTerminal(id);
     const saved = terminal?.browserHistory;
-    if (saved && Array.isArray(saved.past) && Array.isArray(saved.future) && typeof saved.present === "string") {
+    if (
+      saved &&
+      Array.isArray(saved.past) &&
+      Array.isArray(saved.future) &&
+      typeof saved.present === "string"
+    ) {
       setHistory(saved);
       lastSetUrlRef.current = saved.present;
     } else {
