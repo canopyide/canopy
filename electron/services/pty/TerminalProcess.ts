@@ -256,7 +256,12 @@ export class TerminalProcess {
         ) as Record<string, string>);
 
     const canUsePool =
-      deps.ptyPool && !this.isAgentTerminal && !options.shell && !options.env && !options.args;
+      deps.ptyPool &&
+      !this.isAgentTerminal &&
+      !options.shell &&
+      !options.env &&
+      !options.args &&
+      options.kind !== "dev-preview";
     let pooledPty = canUsePool ? deps.ptyPool!.acquire() : null;
 
     let ptyProcess: pty.IPty;
