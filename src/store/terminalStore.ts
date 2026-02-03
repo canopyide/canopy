@@ -429,8 +429,6 @@ export const useTerminalStore = create<PanelGridState>()((set, get, api) => {
       // DO NOT send kill commands to backend - processes stay alive from Phase 1
       logInfo(`Reset UI state for ${state.terminals.length} terminals (processes preserved)`);
 
-      useTerminalInputStore.getState().clearAllDraftInputs();
-
       set({
         terminals: [],
         trashedTerminals: new Map(),
