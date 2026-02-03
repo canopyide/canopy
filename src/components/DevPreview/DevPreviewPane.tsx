@@ -131,10 +131,7 @@ export function DevPreviewPane({
   const setBrowserUrl = useTerminalStore((state) => state.setBrowserUrl);
   const updateBrowserZoomFactor = useBrowserStateStore((state) => state.updateZoomFactor);
   const updateBrowserUrl = useBrowserStateStore((state) => state.updateUrl);
-  const currentWebviewKey = useMemo(
-    () => makeWebviewKey(id, worktreeId),
-    [id, worktreeId]
-  );
+  const currentWebviewKey = useMemo(() => makeWebviewKey(id, worktreeId), [id, worktreeId]);
   const currentWebviewKeyRef = useRef(currentWebviewKey);
   currentWebviewKeyRef.current = currentWebviewKey;
 
@@ -446,7 +443,14 @@ export function DevPreviewPane({
         lastSetUrlRef.current = resolvedUrl;
       }
     },
-    [clearAutoReload, currentUrl, getActiveWebview, isBrowserOnly, isWebviewReady, scheduleAutoReload]
+    [
+      clearAutoReload,
+      currentUrl,
+      getActiveWebview,
+      isBrowserOnly,
+      isWebviewReady,
+      scheduleAutoReload,
+    ]
   );
 
   const handleOpenExternal = useCallback(() => {
@@ -521,7 +525,8 @@ export function DevPreviewPane({
         if (instance) {
           instance.hasLoaded = false;
           instance.isLoading = false;
-          instance.loadError = event.errorDescription || "Failed to load dev server. Check if the server is running.";
+          instance.loadError =
+            event.errorDescription || "Failed to load dev server. Check if the server is running.";
         }
 
         // Only update UI state if this is the currently active webview
@@ -713,12 +718,7 @@ export function DevPreviewPane({
       const errorMsg = error instanceof Error ? error.message : "Failed to create webview";
       setWebviewLoadError(errorMsg);
     }
-  }, [
-    currentUrl,
-    currentWebviewKey,
-    createWebviewForWorktree,
-    updateWebviewVisibility,
-  ]);
+  }, [currentUrl, currentWebviewKey, createWebviewForWorktree, updateWebviewVisibility]);
 
   useEffect(() => {
     if (!currentUrl) return;
@@ -788,26 +788,28 @@ export function DevPreviewPane({
     }
     isRestoringStateRef.current = false;
 
+    const cleanups = webviewCleanupRefs.current;
+    const map = webviewMapRef.current;
+
     void window.electron.devPreview.start(id, cwd, cols, rows, devCommand);
 
     return () => {
       // Only skip cleanup if it's a project switch AND panel kind keeps alive
       const shouldKeepAlive =
-        useProjectStore.getState().isSwitching &&
-        panelKindKeepsAliveOnProjectSwitch("dev-preview");
+        useProjectStore.getState().isSwitching && panelKindKeepsAliveOnProjectSwitch("dev-preview");
 
       if (shouldKeepAlive) {
         return;
       }
 
       // Clean up all webviews and their event listeners
-      webviewCleanupRefs.current.forEach((cleanup) => cleanup());
-      webviewCleanupRefs.current.clear();
+      cleanups.forEach((cleanup) => cleanup());
+      cleanups.clear();
 
-      webviewMapRef.current.forEach((instance) => {
+      map.forEach((instance) => {
         instance.element.remove();
       });
-      webviewMapRef.current.clear();
+      map.clear();
 
       void window.electron.devPreview.stop(id);
     };
@@ -815,18 +817,21 @@ export function DevPreviewPane({
 
   // Separate unmount effect to ensure cleanup even during project switch
   useEffect(() => {
+    const cleanups = webviewCleanupRefs.current;
+    const map = webviewMapRef.current;
+
     return () => {
       // Force cleanup on actual component unmount (panel close)
       // This runs even if the cwd/id effect's cleanup was skipped
-      const hasWebviews = webviewMapRef.current.size > 0;
+      const hasWebviews = map.size > 0;
       if (hasWebviews) {
-        webviewCleanupRefs.current.forEach((cleanup) => cleanup());
-        webviewCleanupRefs.current.clear();
+        cleanups.forEach((cleanup) => cleanup());
+        cleanups.clear();
 
-        webviewMapRef.current.forEach((instance) => {
+        map.forEach((instance) => {
           instance.element.remove();
         });
-        webviewMapRef.current.clear();
+        map.clear();
       }
     };
   }, []);
@@ -1060,10 +1065,7 @@ export function DevPreviewPane({
                 {/* Container for dynamically created webviews - multiple instances preserved */}
                 <div
                   ref={webviewContainerRef}
-                  className={cn(
-                    "w-full h-full",
-                    isDragging && "invisible pointer-events-none"
-                  )}
+                  className={cn("w-full h-full", isDragging && "invisible pointer-events-none")}
                 />
               </>
             ) : isBrowserOnly ? (
