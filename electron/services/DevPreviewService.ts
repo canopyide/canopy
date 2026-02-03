@@ -1,4 +1,3 @@
-import crypto from "crypto";
 import { EventEmitter } from "events";
 import path from "path";
 import { existsSync } from "fs";
@@ -17,8 +16,6 @@ export interface DevPreviewSession {
   panelId: string;
   ptyId: string;
   projectRoot: string;
-  cols: number;
-  rows: number;
   status: DevPreviewStatus;
   statusMessage: string;
   url: string | null;
@@ -27,26 +24,18 @@ export interface DevPreviewSession {
   installCommand: string | null;
   error?: string;
   timestamp: number;
-  /** Cleanup functions for event listeners to prevent memory leaks */
   unsubscribers: (() => void)[];
-  /** Generation token to prevent race conditions from concurrent start/stop */
   generation: number;
-  /** Timeout handle for delayed command submission */
   submitTimeout?: NodeJS.Timeout;
-  /** Buffer for accumulating PTY output for error detection */
   outputBuffer: string;
-  /** Whether auto-recovery is currently in progress */
   recoveryInProgress: boolean;
-  /** Count of recovery attempts for this session */
   recoveryAttempts: number;
 }
 
-export interface DevPreviewStartOptions {
+export interface DevPreviewAttachOptions {
   panelId: string;
+  ptyId: string;
   cwd: string;
-  cols: number;
-  rows: number;
-  /** Optional command override. Falls back to auto-detection if not provided. */
   devCommand?: string;
 }
 
@@ -58,23 +47,24 @@ export class DevPreviewService extends EventEmitter {
     super();
   }
 
-  async start(options: DevPreviewStartOptions): Promise<void> {
-    const { panelId, cwd, cols, rows, devCommand: providedCommand } = options;
+  /**
+   * Attach to an existing PTY (spawned by the standard terminal pipeline).
+   * Subscribes to data/exit events and auto-detects dev command + submits it.
+   * Does NOT spawn or kill PTY processes.
+   */
+  async attach(options: DevPreviewAttachOptions): Promise<void> {
+    const { panelId, ptyId, cwd, devCommand: providedCommand } = options;
 
     const normalizedCommand = providedCommand?.trim() || undefined;
     const existingSession = this.sessions.get(panelId);
 
     if (existingSession) {
-      const ptyActive = existingSession.ptyId
-        ? this.ptyClient.hasTerminal(existingSession.ptyId)
-        : true;
+      const ptyMatches = existingSession.ptyId === ptyId;
       const cwdMatches = existingSession.projectRoot === cwd;
       const commandMatches =
         normalizedCommand === undefined || existingSession.devCommand === normalizedCommand;
 
-      if (ptyActive && cwdMatches && commandMatches) {
-        existingSession.cols = cols;
-        existingSession.rows = rows;
+      if (ptyMatches && cwdMatches && commandMatches) {
         existingSession.timestamp = Date.now();
         this.emitStatus(
           panelId,
@@ -88,8 +78,7 @@ export class DevPreviewService extends EventEmitter {
         return;
       }
 
-      // Stop any existing session for this panel to prevent orphaned PTY processes and listener leaks
-      await this.stop(panelId);
+      this.detach(panelId);
     }
 
     // Fallback chain: provided command → auto-detect → browser-only mode
@@ -99,15 +88,12 @@ export class DevPreviewService extends EventEmitter {
     let needsInstall = false;
 
     if (!finalCommand) {
-      // Try auto-detection from package.json
       packageManager = await this.detectPackageManager(cwd);
       if (packageManager) {
         finalCommand = (await this.detectDevCommand(cwd, packageManager)) ?? undefined;
       }
     }
 
-    // If we have a command, check if we need to install dependencies
-    // Check for missing dependencies whether command was auto-detected or user-provided
     if (finalCommand) {
       packageManager = packageManager ?? (await this.detectPackageManager(cwd));
       if (packageManager) {
@@ -125,10 +111,8 @@ export class DevPreviewService extends EventEmitter {
       }
       const session: DevPreviewSession = {
         panelId,
-        ptyId: "", // No PTY in browser-only mode
+        ptyId,
         projectRoot: cwd,
-        cols,
-        rows,
         status: "running",
         statusMessage: "Browser-only mode (no dev command)",
         url: null,
@@ -136,7 +120,7 @@ export class DevPreviewService extends EventEmitter {
         devCommand: null,
         installCommand: null,
         timestamp: Date.now(),
-        unsubscribers: [], // No listeners in browser-only mode
+        unsubscribers: [],
         generation: ++this.generationCounter,
         outputBuffer: "",
         recoveryInProgress: false,
@@ -156,41 +140,13 @@ export class DevPreviewService extends EventEmitter {
       this.emitStatus(panelId, "starting", "Starting dev server...", null);
     }
 
-    const ptyId = crypto.randomUUID();
     const generation = ++this.generationCounter;
 
     if (process.env.CANOPY_VERBOSE) {
-      console.log(`[DevPreview] Starting panel ${panelId} with cwd: ${cwd}, ptyId: ${ptyId}`);
+      console.log(`[DevPreview] Attaching to panel ${panelId} with ptyId: ${ptyId}, cwd: ${cwd}`);
     }
 
-    const spawnOptions = {
-      cwd,
-      cols,
-      rows,
-      kind: "dev-preview" as const,
-    };
-
-    // Runtime assertion: dev-preview must always set kind to bypass PTY pool
-    if (spawnOptions.kind !== "dev-preview") {
-      throw new Error("[DevPreview] Internal error: spawn options missing kind");
-    }
-
-    this.ptyClient.spawn(ptyId, spawnOptions);
-
-    // Delay command submission to allow PTY to fully initialize
-    const submitTimeout = setTimeout(() => {
-      // Check generation to ensure this session wasn't stopped/replaced during delay
-      const currentSession = this.sessions.get(panelId);
-      if (
-        currentSession &&
-        currentSession.generation === generation &&
-        this.ptyClient.hasTerminal(ptyId)
-      ) {
-        this.ptyClient.submit(ptyId, fullCommand);
-      }
-    }, 100);
-
-    // Create named listener functions so they can be removed later
+    // Subscribe to the existing PTY's data and exit events
     const dataListener = (id: string, data: string) => {
       if (id === ptyId) {
         this.handlePtyData(panelId, data);
@@ -203,23 +159,30 @@ export class DevPreviewService extends EventEmitter {
       }
     };
 
-    // Register listeners - use on() not once() because PtyClient is shared across all terminals
-    // Using once() would remove ALL exit listeners when the first terminal exits
     this.ptyClient.on("data", dataListener);
     this.ptyClient.on("exit", exitListener);
 
-    // Create unsubscribe functions for cleanup
     const unsubscribers: (() => void)[] = [
       () => this.ptyClient.removeListener("data", dataListener),
       () => this.ptyClient.removeListener("exit", exitListener),
     ];
 
+    // Delay command submission to allow PTY shell to initialize
+    const submitTimeout = setTimeout(() => {
+      const currentSession = this.sessions.get(panelId);
+      if (
+        currentSession &&
+        currentSession.generation === generation &&
+        this.ptyClient.hasTerminal(ptyId)
+      ) {
+        this.ptyClient.submit(ptyId, fullCommand);
+      }
+    }, 100);
+
     const session: DevPreviewSession = {
       panelId,
       ptyId,
       projectRoot: cwd,
-      cols,
-      rows,
       status: needsInstall ? "installing" : "starting",
       statusMessage: needsInstall ? "Installing dependencies..." : "Starting dev server...",
       url: null,
@@ -238,49 +201,26 @@ export class DevPreviewService extends EventEmitter {
     this.sessions.set(panelId, session);
   }
 
-  async stop(panelId: string): Promise<void> {
+  /**
+   * Detach from a PTY without killing it.
+   * Removes listeners and cleans up session state.
+   * The PTY lifecycle is managed by the standard terminal pipeline.
+   */
+  detach(panelId: string): void {
     const session = this.sessions.get(panelId);
     if (!session) return;
 
-    try {
-      // Clear any pending command submission timeout
-      if (session.submitTimeout) {
-        clearTimeout(session.submitTimeout);
-        session.submitTimeout = undefined;
-      }
-
-      // Remove all event listeners before killing PTY to prevent stale callbacks
-      for (const unsubscribe of session.unsubscribers) {
-        unsubscribe();
-      }
-      session.unsubscribers = [];
-
-      // Only kill PTY if there is one (browser-only sessions have empty ptyId)
-      if (session.ptyId) {
-        await this.ptyClient.kill(session.ptyId);
-      }
-    } finally {
-      // Always clean up session and emit status, even if kill fails
-      this.sessions.delete(panelId);
-      this.emitStatus(panelId, "stopped", "Dev server stopped", null);
+    if (session.submitTimeout) {
+      clearTimeout(session.submitTimeout);
+      session.submitTimeout = undefined;
     }
-  }
 
-  async restart(panelId: string): Promise<void> {
-    const session = this.sessions.get(panelId);
-    if (!session) return;
+    for (const unsubscribe of session.unsubscribers) {
+      unsubscribe();
+    }
+    session.unsubscribers = [];
 
-    const { projectRoot, cols, rows, devCommand } = session;
-
-    await this.stop(panelId);
-
-    await this.start({
-      panelId,
-      cwd: projectRoot,
-      cols: cols || 80,
-      rows: rows || 24,
-      devCommand: devCommand ?? undefined,
-    });
+    this.sessions.delete(panelId);
   }
 
   setUrl(panelId: string, url: string): void {
@@ -304,7 +244,6 @@ export class DevPreviewService extends EventEmitter {
     const session = this.sessions.get(panelId);
     if (!session) return;
 
-    // Accumulate output for error detection (keep last 4KB to limit memory)
     session.outputBuffer = (session.outputBuffer + data).slice(-4096);
 
     const urls = extractLocalhostUrls(data);
@@ -323,14 +262,13 @@ export class DevPreviewService extends EventEmitter {
     }
 
     if (session.status === "installing") {
-      // Detect installation completion across different package managers
       const installCompletePatterns = [
-        "added", // npm
-        "packages in", // npm
-        "dependencies installed", // pnpm
-        "Done in", // yarn
-        "packages installed", // bun
-        "+ ", // pnpm/yarn adding packages
+        "added",
+        "packages in",
+        "dependencies installed",
+        "Done in",
+        "packages installed",
+        "+ ",
       ];
 
       if (installCompletePatterns.some((pattern) => data.includes(pattern))) {
@@ -339,7 +277,6 @@ export class DevPreviewService extends EventEmitter {
       }
     }
 
-    // Only check for errors if we're starting (not already running, in error state, or recovering)
     if (session.status === "starting" && !session.recoveryInProgress) {
       const error = detectDevServerError(session.outputBuffer);
       if (error) {
@@ -352,7 +289,6 @@ export class DevPreviewService extends EventEmitter {
     const session = this.sessions.get(panelId);
     if (!session) return;
 
-    // Limit recovery attempts to prevent infinite loops
     const MAX_RECOVERY_ATTEMPTS = 2;
 
     if (
@@ -361,122 +297,57 @@ export class DevPreviewService extends EventEmitter {
       session.devCommand &&
       session.recoveryAttempts < MAX_RECOVERY_ATTEMPTS
     ) {
-      // Attempt automatic recovery for missing dependencies
       session.recoveryInProgress = true;
       session.recoveryAttempts += 1;
       this.attemptDependencyRecovery(panelId);
     } else {
-      // Non-recoverable error or max attempts reached - emit error status with actionable message
       this.emitStatus(panelId, "error", error.message, null);
     }
   }
 
+  /**
+   * Attempt auto-recovery by killing the current PTY process and requesting
+   * a restart from the renderer via the "recovery" event. The renderer will
+   * use the standard terminal restart flow.
+   */
   private attemptDependencyRecovery(panelId: string): void {
     const session = this.sessions.get(panelId);
     if (!session || !session.packageManager || !session.devCommand) return;
 
-    const { projectRoot, cols, rows, packageManager, devCommand } = session;
-    const newGeneration = ++this.generationCounter;
-
-    // Kill the failing process
-    if (session.ptyId) {
-      // Clean up listeners before killing
-      for (const unsubscribe of session.unsubscribers) {
-        unsubscribe();
-      }
-      session.unsubscribers = [];
-
-      this.ptyClient.kill(session.ptyId);
-    }
-
-    // Re-check session still exists after kill (stop/restart could have removed it)
-    const sessionAfterKill = this.sessions.get(panelId);
-    if (!sessionAfterKill) {
-      // Session was removed during kill - abort recovery
-      return;
-    }
-
-    // Start install process with chained dev command
+    const { packageManager, devCommand, ptyId } = session;
     const installCmd = this.getInstallCommand(packageManager);
     const fullCommand = `${installCmd} && ${devCommand}`;
-    const newPtyId = crypto.randomUUID();
 
     if (process.env.CANOPY_VERBOSE) {
       console.log(
-        `[DevPreview] Panel ${panelId} recovery: spawning new PTY ${newPtyId} (attempt ${sessionAfterKill.recoveryAttempts}/${2})`
+        `[DevPreview] Panel ${panelId} recovery: requesting restart (attempt ${session.recoveryAttempts}/${2})`
       );
     }
 
-    const spawnOptions = {
-      cwd: projectRoot,
-      cols,
-      rows,
-      kind: "dev-preview" as const,
-    };
+    // Clean up current listeners
+    for (const unsubscribe of session.unsubscribers) {
+      unsubscribe();
+    }
+    session.unsubscribers = [];
 
-    // Runtime assertion: dev-preview must always set kind to bypass PTY pool
-    if (spawnOptions.kind !== "dev-preview") {
-      throw new Error("[DevPreview] Internal error: recovery spawn options missing kind");
+    // Kill the failing process - the standard terminal pipeline owns the PTY,
+    // but we need to kill this specific process for recovery
+    if (ptyId) {
+      this.ptyClient.kill(ptyId);
     }
 
-    this.ptyClient.spawn(newPtyId, spawnOptions);
+    // Emit recovery event so the renderer can restart via terminal store
+    this.emit("recovery", {
+      panelId,
+      command: fullCommand,
+      attempt: session.recoveryAttempts,
+    });
 
-    // Create new listeners for the recovery PTY
-    const dataListener = (id: string, data: string) => {
-      if (id === newPtyId) {
-        this.handlePtyData(panelId, data);
-      }
-    };
-
-    const exitListener = (id: string, exitCode: number) => {
-      if (id === newPtyId) {
-        this.handlePtyExit(panelId, exitCode);
-      }
-    };
-
-    this.ptyClient.on("data", dataListener);
-    this.ptyClient.on("exit", exitListener);
-
-    const unsubscribers: (() => void)[] = [
-      () => this.ptyClient.removeListener("data", dataListener),
-      () => this.ptyClient.removeListener("exit", exitListener),
-    ];
-
-    // Delay command submission to allow PTY to fully initialize
-    const submitTimeout = setTimeout(() => {
-      const currentSession = this.sessions.get(panelId);
-      if (
-        currentSession &&
-        currentSession.generation === newGeneration &&
-        this.ptyClient.hasTerminal(newPtyId)
-      ) {
-        this.ptyClient.submit(newPtyId, fullCommand);
-      } else if (!currentSession) {
-        // Session was removed - clean up orphaned PTY
-        this.ptyClient.kill(newPtyId);
-        unsubscribers.forEach((unsub) => unsub());
-      }
-    }, 100);
-
-    // Final check - session still exists before updating
-    const sessionBeforeUpdate = this.sessions.get(panelId);
-    if (!sessionBeforeUpdate) {
-      // Session was removed - clean up
-      clearTimeout(submitTimeout);
-      this.ptyClient.kill(newPtyId);
-      unsubscribers.forEach((unsub) => unsub());
-      return;
-    }
-
-    // Update session with new PTY and generation
-    sessionBeforeUpdate.ptyId = newPtyId;
-    sessionBeforeUpdate.generation = newGeneration;
-    sessionBeforeUpdate.status = "installing";
-    sessionBeforeUpdate.statusMessage = "Installing missing dependencies...";
-    sessionBeforeUpdate.unsubscribers = unsubscribers;
-    sessionBeforeUpdate.submitTimeout = submitTimeout;
-    sessionBeforeUpdate.outputBuffer = "";
-    sessionBeforeUpdate.recoveryInProgress = false; // Reset flag to allow error detection to continue
+    // Update session status
+    session.status = "installing";
+    session.statusMessage = "Installing missing dependencies...";
+    session.outputBuffer = "";
+    session.recoveryInProgress = false;
 
     this.emitStatus(panelId, "installing", "Installing missing dependencies...", null);
   }
@@ -491,20 +362,17 @@ export class DevPreviewService extends EventEmitter {
       );
     }
 
-    // Clear any pending command submission timeout
     if (session.submitTimeout) {
       clearTimeout(session.submitTimeout);
       session.submitTimeout = undefined;
     }
 
-    // Clean up all listeners
     for (const unsubscribe of session.unsubscribers) {
       unsubscribe();
     }
     session.unsubscribers = [];
 
     if (code !== 0) {
-      // Preserve existing error message if one was detected, otherwise show generic exit code
       const errorMessage =
         session.status === "error" && session.error
           ? session.error
@@ -553,7 +421,7 @@ export class DevPreviewService extends EventEmitter {
     });
   }
 
-  private async detectPackageManager(cwd: string): Promise<string | null> {
+  async detectPackageManager(cwd: string): Promise<string | null> {
     const pkgPath = path.join(cwd, "package.json");
     if (!existsSync(pkgPath)) return null;
 
@@ -563,7 +431,7 @@ export class DevPreviewService extends EventEmitter {
     return "npm";
   }
 
-  private async detectDevCommand(cwd: string, packageManager: string): Promise<string | null> {
+  async detectDevCommand(cwd: string, packageManager: string): Promise<string | null> {
     const pkgPath = path.join(cwd, "package.json");
     try {
       const content = await readFile(pkgPath, "utf-8");

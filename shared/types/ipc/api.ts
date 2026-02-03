@@ -470,18 +470,14 @@ export interface ElectronAPI {
     ): () => void;
   };
   devPreview: {
-    start(
-      panelId: string,
-      cwd: string,
-      cols: number,
-      rows: number,
-      devCommand?: string
-    ): Promise<void>;
-    stop(panelId: string): Promise<void>;
-    restart(panelId: string): Promise<void>;
+    attach(panelId: string, ptyId: string, cwd: string, devCommand?: string): Promise<void>;
+    detach(panelId: string): Promise<void>;
     setUrl(panelId: string, url: string): Promise<void>;
     onStatus(callback: (data: DevPreviewStatusPayload) => void): () => void;
     onUrl(callback: (data: DevPreviewUrlPayload) => void): () => void;
+    onRecovery(
+      callback: (data: { panelId: string; command: string; attempt: number }) => void
+    ): () => void;
   };
   git: {
     getFileDiff(cwd: string, filePath: string, status: GitStatus): Promise<string>;
