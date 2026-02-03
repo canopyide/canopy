@@ -160,9 +160,7 @@ export class DevPreviewService extends EventEmitter {
     const generation = ++this.generationCounter;
 
     if (process.env.CANOPY_VERBOSE) {
-      console.log(
-        `[DevPreview] Starting panel ${panelId} with cwd: ${cwd}, ptyId: ${ptyId}`
-      );
+      console.log(`[DevPreview] Starting panel ${panelId} with cwd: ${cwd}, ptyId: ${ptyId}`);
     }
 
     const spawnOptions = {
