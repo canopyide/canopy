@@ -4,7 +4,6 @@ import path from "path";
 import { CHANNELS } from "../channels.js";
 import type { HandlerDependencies } from "../types.js";
 import { DevPreviewService } from "../../services/DevPreviewService.js";
-import { DevPreviewStartPayloadSchema } from "../../schemas/index.js";
 
 let devPreviewService: DevPreviewService | null = null;
 
@@ -41,73 +40,69 @@ export function registerDevPreviewHandlers(deps: HandlerDependencies): () => voi
         }
       }
     });
+
+    devPreviewService.on("recovery", (data) => {
+      if (
+        deps.mainWindow &&
+        !deps.mainWindow.isDestroyed() &&
+        !deps.mainWindow.webContents.isDestroyed()
+      ) {
+        try {
+          deps.mainWindow.webContents.send(CHANNELS.DEV_PREVIEW_RECOVERY, data);
+        } catch {
+          // Silently ignore send failures during window disposal.
+        }
+      }
+    });
   }
 
-  const handleStart = async (
+  const handleAttach = async (
     _event: Electron.IpcMainInvokeEvent,
     panelId: string,
+    ptyId: string,
     cwd: string,
-    cols: number,
-    rows: number,
     devCommand?: string
   ) => {
     if (!devPreviewService) throw new Error("DevPreviewService not initialized");
 
-    const parseResult = DevPreviewStartPayloadSchema.safeParse({
-      panelId,
-      cwd,
-      cols,
-      rows,
-      devCommand,
-    });
-
-    if (!parseResult.success) {
-      console.error("[IPC] dev-preview:start validation failed:", parseResult.error.format());
-      throw new Error(`Invalid payload: ${parseResult.error.message}`);
+    if (!panelId || typeof panelId !== "string") {
+      throw new Error("panelId is required");
     }
-
-    const validated = parseResult.data;
-
-    if (!path.isAbsolute(validated.cwd)) {
+    if (!ptyId || typeof ptyId !== "string") {
+      throw new Error("ptyId is required");
+    }
+    if (!cwd || typeof cwd !== "string" || !path.isAbsolute(cwd)) {
       throw new Error("cwd must be an absolute path");
     }
 
     try {
-      const stats = await fs.stat(validated.cwd);
+      const stats = await fs.stat(cwd);
       if (!stats.isDirectory()) {
-        throw new Error(`cwd is not a directory: ${validated.cwd}`);
+        throw new Error(`cwd is not a directory: ${cwd}`);
       }
     } catch (error) {
       if (error instanceof Error && error.message.startsWith("cwd")) {
         throw error;
       }
-      throw new Error(`Cannot access cwd: ${validated.cwd}`);
+      throw new Error(`Cannot access cwd: ${cwd}`);
     }
 
-    await devPreviewService.start({
-      panelId: validated.panelId,
-      cwd: validated.cwd,
-      cols: validated.cols,
-      rows: validated.rows,
-      devCommand: validated.devCommand,
+    await devPreviewService.attach({
+      panelId,
+      ptyId,
+      cwd,
+      devCommand,
     });
   };
-  ipcMain.handle(CHANNELS.DEV_PREVIEW_START, handleStart);
-  handlers.push(() => ipcMain.removeHandler(CHANNELS.DEV_PREVIEW_START));
+  ipcMain.handle(CHANNELS.DEV_PREVIEW_ATTACH, handleAttach);
+  handlers.push(() => ipcMain.removeHandler(CHANNELS.DEV_PREVIEW_ATTACH));
 
-  const handleStop = async (_event: Electron.IpcMainInvokeEvent, panelId: string) => {
+  const handleDetach = async (_event: Electron.IpcMainInvokeEvent, panelId: string) => {
     if (!devPreviewService) throw new Error("DevPreviewService not initialized");
-    await devPreviewService.stop(panelId);
+    devPreviewService.detach(panelId);
   };
-  ipcMain.handle(CHANNELS.DEV_PREVIEW_STOP, handleStop);
-  handlers.push(() => ipcMain.removeHandler(CHANNELS.DEV_PREVIEW_STOP));
-
-  const handleRestart = async (_event: Electron.IpcMainInvokeEvent, panelId: string) => {
-    if (!devPreviewService) throw new Error("DevPreviewService not initialized");
-    await devPreviewService.restart(panelId);
-  };
-  ipcMain.handle(CHANNELS.DEV_PREVIEW_RESTART, handleRestart);
-  handlers.push(() => ipcMain.removeHandler(CHANNELS.DEV_PREVIEW_RESTART));
+  ipcMain.handle(CHANNELS.DEV_PREVIEW_DETACH, handleDetach);
+  handlers.push(() => ipcMain.removeHandler(CHANNELS.DEV_PREVIEW_DETACH));
 
   const handleSetUrl = async (
     _event: Electron.IpcMainInvokeEvent,

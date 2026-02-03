@@ -916,15 +916,11 @@ export interface IpcInvokeMap {
   };
 
   // Dev Preview channels
-  "dev-preview:start": {
-    args: [panelId: string, cwd: string, cols: number, rows: number, devCommand?: string];
+  "dev-preview:attach": {
+    args: [panelId: string, ptyId: string, cwd: string, devCommand?: string];
     result: void;
   };
-  "dev-preview:stop": {
-    args: [panelId: string];
-    result: void;
-  };
-  "dev-preview:restart": {
+  "dev-preview:detach": {
     args: [panelId: string];
     result: void;
   };
@@ -1035,6 +1031,7 @@ export interface IpcEventMap {
   // Dev Preview events
   "dev-preview:status": DevPreviewStatusPayload;
   "dev-preview:url": DevPreviewUrlPayload;
+  "dev-preview:recovery": { panelId: string; command: string; attempt: number };
 
   // Notes events
   "notes:updated": {
