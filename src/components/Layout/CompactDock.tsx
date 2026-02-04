@@ -103,6 +103,9 @@ export function CompactDock({
 
   const handleAddTerminal = useCallback(
     async (agentId: string) => {
+      // Expand dock immediately for instant visual feedback
+      setMode("expanded");
+
       const result = await actionService.dispatch<{ terminalId: string | null }>(
         "agent.launch",
         {
@@ -115,7 +118,6 @@ export function CompactDock({
       );
 
       if (result.ok && result.result?.terminalId) {
-        setMode("expanded");
         openDockTerminal(result.result.terminalId);
       }
     },

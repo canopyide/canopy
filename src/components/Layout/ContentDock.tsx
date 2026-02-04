@@ -45,6 +45,7 @@ export function ContentDock({ density = "normal" }: ContentDockProps) {
   const terminals = useTerminalStore((state) => state.terminals);
   const getTabGroups = useTerminalStore((state) => state.getTabGroups);
   const getTabGroupPanels = useTerminalStore((state) => state.getTabGroupPanels);
+  const openDockTerminal = useTerminalStore((state) => state.openDockTerminal);
   const currentProject = useProjectStore((s) => s.currentProject);
 
   // Get tab groups for the dock
@@ -79,8 +80,8 @@ export function ContentDock({ density = "normal" }: ContentDockProps) {
   );
 
   const handleAddTerminal = useCallback(
-    (agentId: string) => {
-      void actionService.dispatch(
+    async (agentId: string) => {
+      const result = await actionService.dispatch<{ terminalId: string | null }>(
         "agent.launch",
         {
           agentId: agentId as any,
@@ -90,8 +91,12 @@ export function ContentDock({ density = "normal" }: ContentDockProps) {
         },
         { source: "context-menu" }
       );
+
+      if (result.ok && result.result?.terminalId) {
+        openDockTerminal(result.result.terminalId);
+      }
     },
-    [activeWorktreeId, cwd]
+    [activeWorktreeId, cwd, openDockTerminal]
   );
 
   const handleContextMenu = useCallback(
@@ -105,7 +110,7 @@ export function ContentDock({ density = "normal" }: ContentDockProps) {
       if (!actionId) return;
 
       if (actionId.startsWith("new:")) {
-        handleAddTerminal(actionId.slice("new:".length));
+        void handleAddTerminal(actionId.slice("new:".length));
       }
     },
     [handleAddTerminal, showMenu]
