@@ -90,7 +90,7 @@ const PANEL_KIND_REGISTRY: Record<string, PanelKindConfig> = {
     hasPty: true,
     canRestart: true,
     canConvert: false,
-    usesTerminalUi: false,
+    usesTerminalUi: true,
     keepAliveOnProjectSwitch: true,
     showInPalette: true,
   },

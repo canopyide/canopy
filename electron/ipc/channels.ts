@@ -243,12 +243,12 @@ export const CHANNELS = {
   NOTES_SEARCH: "notes:search",
   NOTES_UPDATED: "notes:updated",
 
-  DEV_PREVIEW_START: "dev-preview:start",
-  DEV_PREVIEW_STOP: "dev-preview:stop",
-  DEV_PREVIEW_RESTART: "dev-preview:restart",
+  DEV_PREVIEW_ATTACH: "dev-preview:attach",
+  DEV_PREVIEW_DETACH: "dev-preview:detach",
   DEV_PREVIEW_SET_URL: "dev-preview:set-url",
   DEV_PREVIEW_STATUS: "dev-preview:status",
   DEV_PREVIEW_URL: "dev-preview:url",
+  DEV_PREVIEW_RECOVERY: "dev-preview:recovery",
 
   COMMANDS_LIST: "commands:list",
   COMMANDS_GET: "commands:get",

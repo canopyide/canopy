@@ -92,8 +92,8 @@ export function DevPreviewPane({
   const [error, setError] = useState<string | undefined>(undefined);
   const [isRestarting, setIsRestarting] = useState(false);
   const [isBrowserOnly, setIsBrowserOnly] = useState(false);
-  const [ptyId, setPtyId] = useState<string>("");
   const [showTerminal, setShowTerminal] = useState(false);
+  const restartTerminal = useTerminalStore((state) => state.restartTerminal);
   const [history, setHistory] = useState<BrowserHistory>(() => {
     const terminal = useTerminalStore.getState().getTerminal(id);
     const saved = terminal?.browserHistory;
@@ -505,7 +505,6 @@ export function DevPreviewPane({
           : undefined
       );
       setIsBrowserOnly((prev) => prev || payload.message.includes("Browser-only mode"));
-      setPtyId(payload.ptyId);
       if (
         payload.status === "running" ||
         payload.status === "error" ||
@@ -528,16 +527,26 @@ export function DevPreviewPane({
       handleServerUrl(payload.url);
     });
 
+    const offRecovery = window.electron.devPreview.onRecovery(async (payload) => {
+      if (payload.panelId !== id) return;
+      // DevPreviewService killed the PTY for recovery. Restart via standard pipeline
+      // and re-attach so the overlay can monitor the new process.
+      // Use the recovery command (includes install) instead of terminal's devCommand.
+      await restartTerminal(id);
+      void window.electron.devPreview.attach(id, cwd, payload.command);
+    });
+
     return () => {
       offStatus();
       offUrl();
+      offRecovery();
       if (restartTimeoutRef.current) {
         clearTimeout(restartTimeoutRef.current);
       }
       clearAutoReload();
       clearLoadingTimeout();
     };
-  }, [clearAutoReload, clearLoadingTimeout, handleServerUrl, id]);
+  }, [clearAutoReload, clearLoadingTimeout, cwd, handleServerUrl, id, restartTerminal]);
 
   const setupWebviewListeners = useCallback(
     (webview: Electron.WebviewTag, webviewKey: string) => {
@@ -785,7 +794,6 @@ export function DevPreviewPane({
     setMessage("Starting dev server...");
     setIsRestarting(false);
     setIsBrowserOnly(false);
-    setPtyId("");
     setShowTerminal(false);
     setHasLoaded(false);
     setIsLoading(false);
@@ -805,8 +813,6 @@ export function DevPreviewPane({
     }
 
     const terminal = useTerminalStore.getState().getTerminal(id);
-    const cols = terminal?.cols ?? 80;
-    const rows = terminal?.rows ?? 24;
     const devCommand = terminal?.devCommand;
     const savedUrl = terminal?.browserUrl ?? null;
 
@@ -829,7 +835,9 @@ export function DevPreviewPane({
     const cleanups = webviewCleanupRefs.current;
     const map = webviewMapRef.current;
 
-    void window.electron.devPreview.start(id, cwd, cols, rows, devCommand);
+    // Attach DevPreviewService overlay to the PTY spawned by the standard terminal pipeline.
+    // Panel ID = PTY ID in the terminal-first architecture.
+    void window.electron.devPreview.attach(id, cwd, devCommand);
 
     return () => {
       // Only skip cleanup if it's a project switch AND panel kind keeps alive
@@ -849,7 +857,8 @@ export function DevPreviewPane({
       });
       map.clear();
 
-      void window.electron.devPreview.stop(id);
+      // Detach overlay (PTY lifecycle managed by terminal store)
+      void window.electron.devPreview.detach(id);
     };
   }, [clearAutoReload, clearLoadingTimeout, cwd, id, worktreeId]);
 
@@ -941,14 +950,13 @@ export function DevPreviewPane({
     return () => controller.abort();
   }, [handleBack, handleForward, handleNavigate, handleReload, id]);
 
-  const handleRestartServer = useCallback(() => {
+  const handleRestartServer = useCallback(async () => {
     setHistory({ past: [], present: "", future: [] });
     setError(undefined);
     setStatus("starting");
     setMessage("Restarting dev server...");
     setIsRestarting(true);
     setIsBrowserOnly(false);
-    setPtyId("");
     setShowTerminal(false);
     setHasLoaded(false);
     setIsLoading(false);
@@ -967,8 +975,14 @@ export function DevPreviewPane({
     restartTimeoutRef.current = setTimeout(() => {
       setIsRestarting(false);
     }, 10000);
-    void window.electron.devPreview.restart(id);
-  }, [clearAutoReload, clearLoadingTimeout, id]);
+
+    // Detach overlay, restart PTY through standard pipeline, then re-attach
+    // Await detach to prevent race where late detach severs the new attachment
+    await window.electron.devPreview.detach(id);
+    await restartTerminal(id);
+    const terminal = useTerminalStore.getState().getTerminal(id);
+    void window.electron.devPreview.attach(id, cwd, terminal?.devCommand);
+  }, [clearAutoReload, clearLoadingTimeout, cwd, id, restartTerminal]);
 
   const handleReloadBrowser = useCallback(() => {
     if (!hasValidUrl || !isWebviewReady) return;
@@ -1004,20 +1018,16 @@ export function DevPreviewPane({
   const loadingMessage =
     status === "starting" || status === "installing" ? message : "Loading preview...";
   const showRestartSpinner = isRestarting || status === "starting" || status === "installing";
-  const hasTerminal = ptyId.length > 0;
-  const canToggleTerminal = hasTerminal && !isBrowserOnly;
+  const canToggleTerminal = !isBrowserOnly;
 
   const handleToggleView = useCallback(() => {
     if (!canToggleTerminal) return;
     setShowTerminal((prev) => {
       const nextShowTerminal = !prev;
-      // Update terminal visibility state to prevent focus capture and reduce rendering
-      if (ptyId) {
-        terminalInstanceService.setVisible(ptyId, nextShowTerminal);
-      }
+      terminalInstanceService.setVisible(id, nextShowTerminal);
       return nextShowTerminal;
     });
-  }, [canToggleTerminal, ptyId]);
+  }, [canToggleTerminal, id]);
 
   const devPreviewToolbar = (
     <BrowserToolbar
@@ -1075,34 +1085,25 @@ export function DevPreviewPane({
     >
       <div className="flex flex-1 min-h-0 flex-col">
         <div className="relative flex-1 min-h-0 bg-white">
-          {/* Terminal View - always mounted when PTY exists to preserve output history */}
-          {hasTerminal && (
-            <div
-              className={cn(
-                "absolute inset-0 bg-canopy-bg",
-                // Use visibility:hidden instead of display:none to preserve xterm state/dimensions
-                // z-index ensures proper layering with browser view
-                showTerminal ? "z-10 visible" : "z-0 invisible"
-              )}
-              aria-hidden={!showTerminal}
-              {...(!showTerminal && { inert: true })}
-            >
-              <XtermAdapter
-                terminalId={ptyId}
-                terminalType="terminal"
-                isInputLocked={true}
-                className="w-full h-full"
-              />
-            </div>
-          )}
+          {/* Terminal View - always mounted to preserve output history */}
+          <div
+            className={cn(
+              "absolute inset-0 bg-canopy-bg",
+              showTerminal ? "z-10 visible" : "z-0 invisible"
+            )}
+            aria-hidden={!showTerminal}
+            {...(!showTerminal && { inert: true })}
+          >
+            <XtermAdapter terminalId={id} terminalType="terminal" className="w-full h-full" />
+          </div>
           {/* Browser View - layered on top when terminal is hidden */}
           <div
             className={cn(
               "absolute inset-0",
               // When terminal is shown, hide browser completely to pause webview
-              showTerminal && hasTerminal ? "hidden" : "z-10 visible"
+              showTerminal ? "hidden" : "z-10 visible"
             )}
-            aria-hidden={showTerminal && hasTerminal}
+            aria-hidden={showTerminal}
           >
             {hasValidUrl ? (
               <>

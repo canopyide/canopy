@@ -56,24 +56,23 @@ describe("DevPreviewService", () => {
     vi.clearAllMocks();
   });
 
-  describe("start()", () => {
+  describe("attach()", () => {
     it("creates a browser-only session when no dev command is available", async () => {
       const service = new DevPreviewServiceClass(mockPtyClient as unknown as PtyClient);
       const statusEvents: { status: DevPreviewStatus; message: string }[] = [];
       service.on("status", (e) => statusEvents.push(e));
 
-      await service.start({
+      await service.attach({
         panelId: "panel-1",
+        ptyId: "pty-1",
         cwd: "/test/project",
-        cols: 80,
-        rows: 24,
       });
 
       const session = service.getSession("panel-1");
       expect(session).toBeDefined();
       expect(session?.status).toBe("running");
       expect(session?.statusMessage).toBe("Browser-only mode (no dev command)");
-      expect(session?.ptyId).toBe("");
+      expect(session?.ptyId).toBe("pty-1");
       expect(mockPtyClient.spawn).not.toHaveBeenCalled();
 
       expect(statusEvents.length).toBe(1);
@@ -98,27 +97,20 @@ describe("DevPreviewService", () => {
       const statusEvents: { status: DevPreviewStatus; message: string }[] = [];
       service.on("status", (e) => statusEvents.push(e));
 
-      await service.start({
+      await service.attach({
         panelId: "panel-2",
+        ptyId: "pty-2",
         cwd: "/test/npm-project",
-        cols: 80,
-        rows: 24,
       });
 
-      expect(mockPtyClient.spawn).toHaveBeenCalledWith(
-        expect.any(String),
-        expect.objectContaining({
-          cwd: "/test/npm-project",
-          cols: 80,
-          rows: 24,
-          kind: "dev-preview",
-        })
-      );
+      // Should NOT spawn - attach subscribes to existing PTY
+      expect(mockPtyClient.spawn).not.toHaveBeenCalled();
 
       const session = service.getSession("panel-2");
       expect(session?.status).toBe("starting");
       expect(session?.devCommand).toBe("npm run dev");
       expect(session?.packageManager).toBe("npm");
+      expect(session?.ptyId).toBe("pty-2");
     });
 
     it("creates session with pnpm when pnpm-lock.yaml exists", async () => {
@@ -138,11 +130,10 @@ describe("DevPreviewService", () => {
 
       const service = new DevPreviewServiceClass(mockPtyClient as unknown as PtyClient);
 
-      await service.start({
+      await service.attach({
         panelId: "panel-3",
+        ptyId: "pty-3",
         cwd: "/test/pnpm-project",
-        cols: 80,
-        rows: 24,
       });
 
       const session = service.getSession("panel-3");
@@ -167,11 +158,10 @@ describe("DevPreviewService", () => {
 
       const service = new DevPreviewServiceClass(mockPtyClient as unknown as PtyClient);
 
-      await service.start({
+      await service.attach({
         panelId: "panel-4",
+        ptyId: "pty-4",
         cwd: "/test/yarn-project",
-        cols: 80,
-        rows: 24,
       });
 
       const session = service.getSession("panel-4");
@@ -196,11 +186,10 @@ describe("DevPreviewService", () => {
 
       const service = new DevPreviewServiceClass(mockPtyClient as unknown as PtyClient);
 
-      await service.start({
+      await service.attach({
         panelId: "panel-5",
+        ptyId: "pty-5",
         cwd: "/test/bun-project",
-        cols: 80,
-        rows: 24,
       });
 
       const session = service.getSession("panel-5");
@@ -224,11 +213,10 @@ describe("DevPreviewService", () => {
 
       const service = new DevPreviewServiceClass(mockPtyClient as unknown as PtyClient);
 
-      await service.start({
+      await service.attach({
         panelId: "panel-6",
+        ptyId: "pty-6",
         cwd: "/test/start-only",
-        cols: 80,
-        rows: 24,
       });
 
       const session = service.getSession("panel-6");
@@ -251,11 +239,10 @@ describe("DevPreviewService", () => {
 
       const service = new DevPreviewServiceClass(mockPtyClient as unknown as PtyClient);
 
-      await service.start({
+      await service.attach({
         panelId: "panel-7",
+        ptyId: "pty-7",
         cwd: "/test/custom-cmd",
-        cols: 80,
-        rows: 24,
         devCommand: "custom-server --watch",
       });
 
@@ -281,11 +268,10 @@ describe("DevPreviewService", () => {
       const statusEvents: { status: DevPreviewStatus; message: string }[] = [];
       service.on("status", (e) => statusEvents.push(e));
 
-      await service.start({
+      await service.attach({
         panelId: "panel-8",
+        ptyId: "pty-8",
         cwd: "/test/needs-install",
-        cols: 80,
-        rows: 24,
       });
 
       const session = service.getSession("panel-8");
@@ -296,88 +282,83 @@ describe("DevPreviewService", () => {
       expect(statusEvents[0].message).toBe("Installing dependencies...");
     });
 
-    it("reuses existing session when restarting with same panel config", async () => {
+    it("reuses existing session when reattaching with same config", async () => {
       const service = new DevPreviewServiceClass(mockPtyClient as unknown as PtyClient);
 
-      await service.start({
+      await service.attach({
         panelId: "panel-1",
+        ptyId: "pty-1",
         cwd: "/tmp/test",
-        cols: 80,
-        rows: 24,
         devCommand: "npm run dev",
       });
 
       const firstSession = service.getSession("panel-1");
       const firstPtyId = firstSession!.ptyId;
 
-      await service.start({
+      await service.attach({
         panelId: "panel-1",
+        ptyId: "pty-1",
         cwd: "/tmp/test",
-        cols: 80,
-        rows: 24,
         devCommand: "npm run dev",
       });
 
       const secondSession = service.getSession("panel-1");
       expect(secondSession!.ptyId).toBe(firstPtyId);
-      expect(mockPtyClient.kill).not.toHaveBeenCalled();
     });
 
-    it("restarts existing session when cwd changes for the same panel", async () => {
+    it("detaches and reattaches when cwd changes for the same panel", async () => {
       const service = new DevPreviewServiceClass(mockPtyClient as unknown as PtyClient);
 
-      await service.start({
+      await service.attach({
         panelId: "panel-1",
+        ptyId: "pty-1",
         cwd: "/tmp/test",
-        cols: 80,
-        rows: 24,
         devCommand: "npm run dev",
       });
 
       const firstSession = service.getSession("panel-1");
-      const firstPtyId = firstSession!.ptyId;
+      expect(firstSession).toBeDefined();
 
-      await service.start({
+      await service.attach({
         panelId: "panel-1",
+        ptyId: "pty-2",
         cwd: "/tmp/test2",
-        cols: 80,
-        rows: 24,
         devCommand: "npm run dev",
       });
 
-      expect(mockPtyClient.kill).toHaveBeenCalledWith(firstPtyId);
+      // PTY kill is NOT called - detach just removes listeners
+      expect(mockPtyClient.kill).not.toHaveBeenCalled();
       const secondSession = service.getSession("panel-1");
-      expect(secondSession!.ptyId).not.toBe(firstPtyId);
+      expect(secondSession!.ptyId).toBe("pty-2");
     });
   });
 
-  describe("stop()", () => {
-    it("stops an existing session and removes it", async () => {
+  describe("detach()", () => {
+    it("detaches an existing session and removes it", async () => {
       const service = new DevPreviewServiceClass(mockPtyClient as unknown as PtyClient);
 
-      await service.start({
-        panelId: "panel-stop-test",
+      await service.attach({
+        panelId: "panel-detach-test",
+        ptyId: "pty-detach",
         cwd: "/test",
-        cols: 80,
-        rows: 24,
       });
 
-      expect(service.getSession("panel-stop-test")).toBeDefined();
+      expect(service.getSession("panel-detach-test")).toBeDefined();
 
-      await service.stop("panel-stop-test");
+      service.detach("panel-detach-test");
 
-      expect(service.getSession("panel-stop-test")).toBeUndefined();
+      expect(service.getSession("panel-detach-test")).toBeUndefined();
     });
 
-    it("is a no-op for non-existent session", async () => {
+    it("is a no-op for non-existent session", () => {
       const service = new DevPreviewServiceClass(mockPtyClient as unknown as PtyClient);
 
       // Should not throw
-      await expect(service.stop("non-existent")).resolves.toBeUndefined();
+      service.detach("non-existent");
       expect(mockPtyClient.kill).not.toHaveBeenCalled();
     });
 
-    it("kills the PTY process when stopping", async () => {
+    it("does NOT kill the PTY process when detaching", async () => {
       vi.mocked(existsSync).mockImplementation((p: unknown) => {
         const pathStr = String(p);
         if (pathStr.includes("package.json")) return true;
@@ -393,113 +374,16 @@ describe("DevPreviewService", () => {
 
       const service = new DevPreviewServiceClass(mockPtyClient as unknown as PtyClient);
 
-      await service.start({
+      await service.attach({
         panelId: "panel-kill-test",
+        ptyId: "pty-kill",
         cwd: "/test",
-        cols: 80,
-        rows: 24,
       });
 
-      const session = service.getSession("panel-kill-test");
-      const ptyId = session?.ptyId;
+      service.detach("panel-kill-test");
 
-      await service.stop("panel-kill-test");
-
-      expect(mockPtyClient.kill).toHaveBeenCalledWith(ptyId);
-    });
-
-    it("emits stopped status when stopping", async () => {
-      const service = new DevPreviewServiceClass(mockPtyClient as unknown as PtyClient);
-      const statusEvents: { status: DevPreviewStatus; panelId: string }[] = [];
-      service.on("status", (e) => statusEvents.push(e));
-
-      await service.start({
-        panelId: "panel-stop-status",
-        cwd: "/test",
-        cols: 80,
-        rows: 24,
-      });
-
-      await service.stop("panel-stop-status");
-
-      const stoppedEvent = statusEvents.find((e) => e.status === "stopped");
-      expect(stoppedEvent).toBeDefined();
-      expect(stoppedEvent?.panelId).toBe("panel-stop-status");
-    });
-  });
-
-  describe("restart()", () => {
-    it("stops existing session and starts a new one", async () => {
-      vi.mocked(existsSync).mockImplementation((p: unknown) => {
-        const pathStr = String(p);
-        if (pathStr.includes("package.json")) return true;
-        if (pathStr.includes("node_modules")) return true;
-        return false;
-      });
-
-      vi.mocked(readFile).mockResolvedValue(
-        JSON.stringify({
-          scripts: { dev: "vite" },
-        })
-      );
-
-      const service = new DevPreviewServiceClass(mockPtyClient as unknown as PtyClient);
-
-      await service.start({
-        panelId: "panel-restart",
-        cwd: "/test/project",
-        cols: 80,
-        rows: 24,
-      });
-
-      const originalSession = service.getSession("panel-restart");
-      const originalPtyId = originalSession?.ptyId;
-
-      await service.restart("panel-restart");
-
-      expect(mockPtyClient.kill).toHaveBeenCalledWith(originalPtyId);
-
-      const newSession = service.getSession("panel-restart");
-      expect(newSession).toBeDefined();
-      expect(newSession?.ptyId).not.toBe(originalPtyId);
-    });
-
-    it("is a no-op for non-existent session", async () => {
-      const service = new DevPreviewServiceClass(mockPtyClient as unknown as PtyClient);
-
-      await expect(service.restart("non-existent")).resolves.toBeUndefined();
-      expect(mockPtyClient.spawn).not.toHaveBeenCalled();
-    });
-
-    it("preserves the original devCommand on restart", async () => {
-      vi.mocked(existsSync).mockImplementation((p: unknown) => {
-        const pathStr = String(p);
-        if (pathStr.includes("package.json")) return true;
-        if (pathStr.includes("node_modules")) return true;
-        return false;
-      });
-
-      vi.mocked(readFile).mockResolvedValue(
-        JSON.stringify({
-          scripts: { dev: "vite" },
-        })
-      );
-
-      const service = new DevPreviewServiceClass(mockPtyClient as unknown as PtyClient);
-
-      await service.start({
-        panelId: "panel-preserve-cmd",
-        cwd: "/test",
-        cols: 80,
-        rows: 24,
-        devCommand: "custom-server",
-      });
-
-      expect(service.getSession("panel-preserve-cmd")?.devCommand).toBe("custom-server");
-
-      await service.restart("panel-preserve-cmd");
-
-      expect(service.getSession("panel-preserve-cmd")?.devCommand).toBe("custom-server");
+      // Detach should NOT kill the PTY - the standard terminal pipeline owns it
+      expect(mockPtyClient.kill).not.toHaveBeenCalled();
     });
   });
 
@@ -509,11 +393,10 @@ describe("DevPreviewService", () => {
       const urlEvents: { panelId: string; url: string }[] = [];
       service.on("url", (e) => urlEvents.push(e));
 
-      await service.start({
+      await service.attach({
         panelId: "panel-url",
+        ptyId: "pty-url",
         cwd: "/test",
-        cols: 80,
-        rows: 24,
       });
 
       service.setUrl("panel-url", "http://localhost:3000");
@@ -546,18 +429,14 @@ describe("DevPreviewService", () => {
       const urlEvents: { panelId: string; url: string }[] = [];
       service.on("url", (e) => urlEvents.push(e));
 
-      await service.start({
+      await service.attach({
         panelId: "panel-url-extract",
+        ptyId: "pty-url-extract",
         cwd: "/test",
-        cols: 80,
-        rows: 24,
       });
 
-      const session = service.getSession("panel-url-extract");
-      const ptyId = session?.ptyId;
-
       // Simulate PTY data with URL
-      mockPtyClient.emit("data", ptyId, "Server started at http://localhost:5173/\n");
+      mockPtyClient.emit("data", "pty-url-extract", "Server started at http://localhost:5173/\n");
 
       expect(urlEvents.length).toBe(1);
       expect(urlEvents[0].url).toBe("http://localhost:5173/");
@@ -568,19 +447,17 @@ describe("DevPreviewService", () => {
     it("maintains separate sessions for different panels", async () => {
       const service = new DevPreviewServiceClass(mockPtyClient as unknown as PtyClient);
 
-      await service.start({
+      await service.attach({
         panelId: "panel-1",
+        ptyId: "pty-1",
         cwd: "/tmp/project1",
-        cols: 80,
-        rows: 24,
         devCommand: "npm run dev",
       });
 
-      await service.start({
+      await service.attach({
         panelId: "panel-2",
+        ptyId: "pty-2",
         cwd: "/tmp/project2",
-        cols: 80,
-        rows: 24,
         devCommand: "yarn start",
       });
 
@@ -614,20 +491,16 @@ describe("DevPreviewService", () => {
       const statusEvents: { status: DevPreviewStatus; message: string }[] = [];
       service.on("status", (e) => statusEvents.push(e));
 
-      await service.start({
+      await service.attach({
         panelId: "panel-port-conflict",
+        ptyId: "pty-port",
         cwd: "/test/project",
-        cols: 80,
-        rows: 24,
       });
-
-      const session = service.getSession("panel-port-conflict");
-      const ptyId = session?.ptyId;
 
       // Simulate PTY data with port conflict error
       mockPtyClient.emit(
         "data",
-        ptyId,
+        "pty-port",
         "Error: listen EADDRINUSE: address already in use :::3000\n"
       );
 
@@ -636,32 +509,35 @@ describe("DevPreviewService", () => {
       expect(errorEvent?.message).toContain("Port 3000 is already in use");
     });
 
-    it("detects missing module error and triggers automatic install", async () => {
+    it("detects missing module error and emits recovery event", async () => {
       const service = new DevPreviewServiceClass(mockPtyClient as unknown as PtyClient);
       const statusEvents: { status: DevPreviewStatus; message: string }[] = [];
+      const recoveryEvents: { panelId: string; command: string; attempt: number }[] = [];
       service.on("status", (e) => statusEvents.push(e));
+      service.on("recovery", (e) => recoveryEvents.push(e));
 
-      await service.start({
+      await service.attach({
         panelId: "panel-missing-deps",
+        ptyId: "pty-missing",
         cwd: "/test/project",
-        cols: 80,
-        rows: 24,
       });
 
-      const session = service.getSession("panel-missing-deps");
-      const originalPtyId = session?.ptyId;
-
       // Simulate PTY data with missing module error
-      mockPtyClient.emit("data", originalPtyId, "Error: Cannot find module 'vite'\n");
+      mockPtyClient.emit("data", "pty-missing", "Error: Cannot find module 'vite'\n");
 
       // Wait for async recovery
       await new Promise((resolve) => setTimeout(resolve, 50));
 
-      // Should have killed the original PTY
-      expect(mockPtyClient.kill).toHaveBeenCalledWith(originalPtyId);
+      // Should have killed the PTY for recovery
+      expect(mockPtyClient.kill).toHaveBeenCalledWith("pty-missing");
 
-      // Should have spawned a new PTY for recovery
-      expect(mockPtyClient.spawn).toHaveBeenCalledTimes(2);
+      // Should emit recovery event instead of spawning
+      expect(recoveryEvents.length).toBe(1);
+      expect(recoveryEvents[0].panelId).toBe("panel-missing-deps");
+      expect(recoveryEvents[0].command).toContain("npm install");
+
+      // Should NOT spawn a new PTY - that's the renderer's job
+      expect(mockPtyClient.spawn).not.toHaveBeenCalled();
 
       // Should emit installing status
       const installingEvent = statusEvents.find((e) => e.status === "installing");
@@ -669,54 +545,19 @@ describe("DevPreviewService", () => {
       expect(installingEvent?.message).toContain("Installing missing dependencies");
     });
 
-    it("only attempts recovery once per session", async () => {
-      const service = new DevPreviewServiceClass(mockPtyClient as unknown as PtyClient);
-
-      await service.start({
-        panelId: "panel-single-recovery",
-        cwd: "/test/project",
-        cols: 80,
-        rows: 24,
-      });
-
-      const session = service.getSession("panel-single-recovery");
-      const ptyId = session?.ptyId;
-
-      // First error - should trigger recovery
-      mockPtyClient.emit("data", ptyId, "Error: Cannot find module 'vite'\n");
-      await new Promise((resolve) => setTimeout(resolve, 50));
-
-      const initialKillCount = mockPtyClient.kill.mock.calls.length;
-
-      // Get new PTY ID after recovery
-      const updatedSession = service.getSession("panel-single-recovery");
-      const newPtyId = updatedSession?.ptyId;
-
-      // Second error - should NOT trigger another recovery
-      mockPtyClient.emit("data", newPtyId, "Error: Cannot find module 'react'\n");
-      await new Promise((resolve) => setTimeout(resolve, 50));
-
-      // Kill count should not have increased
-      expect(mockPtyClient.kill.mock.calls.length).toBe(initialKillCount);
-    });
-
     it("does not detect errors when session is already running", async () => {
       const service = new DevPreviewServiceClass(mockPtyClient as unknown as PtyClient);
       const statusEvents: { status: DevPreviewStatus; message: string }[] = [];
       service.on("status", (e) => statusEvents.push(e));
 
-      await service.start({
+      await service.attach({
         panelId: "panel-running",
+        ptyId: "pty-running",
         cwd: "/test/project",
-        cols: 80,
-        rows: 24,
       });
 
-      const session = service.getSession("panel-running");
-      const ptyId = session?.ptyId;
-
       // First, set session to running by detecting a URL
-      mockPtyClient.emit("data", ptyId, "Server started at http://localhost:3000\n");
+      mockPtyClient.emit("data", "pty-running", "Server started at http://localhost:3000\n");
 
       // Clear events for clarity
       statusEvents.length = 0;
@@ -724,7 +565,7 @@ describe("DevPreviewService", () => {
       // Now emit an error - should be ignored since already running
       mockPtyClient.emit(
         "data",
-        ptyId,
+        "pty-running",
         "Error: listen EADDRINUSE: address already in use :::3001\n"
       );
 
@@ -738,19 +579,15 @@ describe("DevPreviewService", () => {
       const statusEvents: { status: DevPreviewStatus; message: string }[] = [];
       service.on("status", (e) => statusEvents.push(e));
 
-      await service.start({
+      await service.attach({
         panelId: "panel-buffer",
+        ptyId: "pty-buffer",
         cwd: "/test/project",
-        cols: 80,
-        rows: 24,
       });
 
-      const session = service.getSession("panel-buffer");
-      const ptyId = session?.ptyId;
-
       // Send error in chunks
-      mockPtyClient.emit("data", ptyId, "Error: listen EADDRINUSE: ");
-      mockPtyClient.emit("data", ptyId, "address already in use :::4000\n");
+      mockPtyClient.emit("data", "pty-buffer", "Error: listen EADDRINUSE: ");
+      mockPtyClient.emit("data", "pty-buffer", "address already in use :::4000\n");
 
       const errorEvent = statusEvents.find((e) => e.status === "error");
       expect(errorEvent).toBeDefined();
@@ -767,28 +604,25 @@ describe("DevPreviewService", () => {
       });
 
       const service = new DevPreviewServiceClass(mockPtyClient as unknown as PtyClient);
+      const recoveryEvents: { panelId: string; command: string; attempt: number }[] = [];
+      service.on("recovery", (e) => recoveryEvents.push(e));
 
-      await service.start({
+      await service.attach({
         panelId: "panel-pnpm-recovery",
+        ptyId: "pty-pnpm",
         cwd: "/test/project",
-        cols: 80,
-        rows: 24,
       });
 
       const session = service.getSession("panel-pnpm-recovery");
       expect(session?.packageManager).toBe("pnpm");
 
-      const ptyId = session?.ptyId;
-
       // Trigger recovery
-      mockPtyClient.emit("data", ptyId, "Error: Cannot find module 'vite'\n");
+      mockPtyClient.emit("data", "pty-pnpm", "Error: Cannot find module 'vite'\n");
       await new Promise((resolve) => setTimeout(resolve, 150));
 
-      // Verify pnpm install command was submitted
-      expect(mockPtyClient.submit).toHaveBeenCalledWith(
-        expect.any(String),
-        expect.stringContaining("pnpm install")
-      );
+      // Verify pnpm install command was in the recovery event
+      expect(recoveryEvents.length).toBe(1);
+      expect(recoveryEvents[0].command).toContain("pnpm install");
     });
 
     it("installs dependencies for user-provided commands when node_modules is missing", async () => {
@@ -810,12 +644,11 @@ describe("DevPreviewService", () => {
       service.on("status", (e) => statusEvents.push(e));
 
       // Start with a user-provided command (not auto-detected)
-      await service.start({
+      await service.attach({
         panelId: "panel-user-cmd-install",
+        ptyId: "pty-user-cmd",
         cwd: "/test/project",
-        cols: 80,
-        rows: 24,
-        devCommand: "npm run start:dev", // User-provided command
+        devCommand: "npm run start:dev",
       });
 
       const session = service.getSession("panel-user-cmd-install");
