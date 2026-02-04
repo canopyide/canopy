@@ -1366,6 +1366,13 @@ export const createTerminalRegistrySlice =
           }
         }
 
+        if (currentTerminal.kind === "dev-preview") {
+          const devCommand = currentTerminal.devCommand?.trim();
+          if (devCommand) {
+            commandToRun = devCommand;
+          }
+        }
+
         try {
           // CAPTURE LIVE DIMENSIONS before destroying the frontend
           // The store's cols/rows may be stale (set on initial spawn).

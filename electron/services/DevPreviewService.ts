@@ -284,6 +284,7 @@ export class DevPreviewService extends EventEmitter {
     }
     session.unsubscribers = [];
 
+    this.lastSubmitByPty.delete(session.ptyId);
     this.sessions.delete(panelId);
   }
 
