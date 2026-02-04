@@ -1171,11 +1171,6 @@ export function DevPreviewPane({
     void window.electron.devPreview.attach(id, cwd, terminal?.devCommand);
   }, [clearAutoReload, clearLoadingTimeout, cwd, id, restartTerminal]);
 
-  const handleReloadBrowser = useCallback(() => {
-    if (!hasPreviewUrl || !isWebviewReady) return;
-    handleReload();
-  }, [handleReload, hasPreviewUrl, isWebviewReady]);
-
   const handleForceReload = useCallback(() => {
     if (!hasPreviewUrl) return;
     setIsLoading(true);
@@ -1316,10 +1311,7 @@ export function DevPreviewPane({
             aria-hidden={showTerminal}
           >
             <div
-              className={cn(
-                "absolute inset-0",
-                !hasPreviewUrl && "invisible pointer-events-none"
-              )}
+              className={cn("absolute inset-0", !hasPreviewUrl && "invisible pointer-events-none")}
               aria-hidden={!hasPreviewUrl}
             >
               {isDragging && <div className="absolute inset-0 z-10 bg-transparent" />}
