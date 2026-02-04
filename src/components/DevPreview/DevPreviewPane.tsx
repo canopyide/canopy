@@ -139,6 +139,9 @@ export function DevPreviewPane({
   const setBrowserUrl = useTerminalStore((state) => state.setBrowserUrl);
   const setBrowserHistory = useTerminalStore((state) => state.setBrowserHistory);
   const setBrowserZoom = useTerminalStore((state) => state.setBrowserZoom);
+  const restartKey = useTerminalStore(
+    (state) => state.terminals.find((t) => t.id === id)?.restartKey ?? 0
+  );
   const currentWebviewKey = useMemo(() => makeWebviewKey(id, worktreeId), [id, worktreeId]);
   const currentWebviewKeyRef = useRef(currentWebviewKey);
   currentWebviewKeyRef.current = currentWebviewKey;
@@ -216,6 +219,35 @@ export function DevPreviewPane({
     const instance = webviewMapRef.current.get(currentWebviewKey);
     return instance?.element ?? null;
   }, [currentWebviewKey]);
+
+  const safeLoadUrl = useCallback(
+    (url: string) => {
+      const webview = getActiveWebview();
+      if (!webview) return;
+      const instance = webviewMapRef.current.get(currentWebviewKeyRef.current);
+      if (!instance) return;
+      if (!instance.isReady || !webview.isConnected) {
+        instance.lastKnownUrl = url;
+        try {
+          webview.setAttribute("src", url);
+        } catch (error) {
+          console.warn("[DevPreview] Failed to set webview src:", error);
+        }
+        return;
+      }
+      try {
+        webview.loadURL(url);
+      } catch (error) {
+        console.warn("[DevPreview] webview.loadURL failed, falling back to src:", error);
+        try {
+          webview.setAttribute("src", url);
+        } catch (fallbackError) {
+          console.warn("[DevPreview] Failed to set webview src:", fallbackError);
+        }
+      }
+    },
+    [getActiveWebview]
+  );
 
   const evictLRUWebview = useCallback((excludeKey: string) => {
     const map = webviewMapRef.current;
@@ -333,15 +365,13 @@ export function DevPreviewPane({
       autoReloadTimeoutRef.current = setTimeout(() => {
         autoReloadTimeoutRef.current = null;
         if (!currentUrl || hasLoadedRef.current) return;
-        const webview = getActiveWebview();
-        if (!webview) return;
         const instance = webviewMapRef.current.get(currentWebviewKeyRef.current);
         if (!instance?.isReady) return;
         autoReloadAttemptsRef.current += 1;
-        webview.loadURL(currentUrl);
+        safeLoadUrl(currentUrl);
       }, delayMs);
     },
-    [currentUrl, getActiveWebview]
+    [currentUrl, safeLoadUrl]
   );
 
   const handleNavigate = useCallback(
@@ -366,16 +396,15 @@ export function DevPreviewPane({
       clearAutoReload();
       lastSetUrlRef.current = result.url!;
 
-      const webview = getActiveWebview();
-      if (webview && isWebviewReady) {
-        webview.loadURL(result.url!);
+      if (isWebviewReady) {
+        safeLoadUrl(result.url!);
       }
 
       if (isBrowserOnly) {
         void window.electron.devPreview.setUrl(id, result.url!);
       }
     },
-    [clearAutoReload, getActiveWebview, id, isBrowserOnly, isWebviewReady]
+    [clearAutoReload, id, isBrowserOnly, isWebviewReady, safeLoadUrl]
   );
 
   const handleBack = useCallback(() => {
@@ -393,9 +422,8 @@ export function DevPreviewPane({
       autoReloadAttemptsRef.current = 0;
       clearAutoReload();
 
-      const webview = getActiveWebview();
-      if (webview && isWebviewReady) {
-        webview.loadURL(previousUrl);
+      if (isWebviewReady) {
+        safeLoadUrl(previousUrl);
       }
 
       const future = prev.present ? [prev.present, ...prev.future] : prev.future;
@@ -406,7 +434,7 @@ export function DevPreviewPane({
         future,
       };
     });
-  }, [clearAutoReload, getActiveWebview, isWebviewReady]);
+  }, [clearAutoReload, isWebviewReady, safeLoadUrl]);
 
   const handleForward = useCallback(() => {
     shouldAutoReloadRef.current = false;
@@ -422,9 +450,8 @@ export function DevPreviewPane({
       autoReloadAttemptsRef.current = 0;
       clearAutoReload();
 
-      const webview = getActiveWebview();
-      if (webview && isWebviewReady) {
-        webview.loadURL(nextUrl);
+      if (isWebviewReady) {
+        safeLoadUrl(nextUrl);
       }
 
       const past = prev.present ? [...prev.past, prev.present] : prev.past;
@@ -435,7 +462,7 @@ export function DevPreviewPane({
         future: restFuture,
       };
     });
-  }, [clearAutoReload, getActiveWebview, isWebviewReady]);
+  }, [clearAutoReload, isWebviewReady, safeLoadUrl]);
 
   const handleReload = useCallback(() => {
     shouldAutoReloadRef.current = false;
@@ -448,8 +475,12 @@ export function DevPreviewPane({
     clearLoadingTimeout();
     lastUrlSetAtRef.current = Date.now();
     const webview = getActiveWebview();
-    if (webview && isWebviewReady) {
-      webview.reload();
+    if (webview && isWebviewReady && webview.isConnected) {
+      try {
+        webview.reload();
+      } catch (error) {
+        console.warn("[DevPreview] webview.reload failed:", error);
+      }
     }
   }, [clearAutoReload, clearLoadingTimeout, getActiveWebview, isWebviewReady]);
 
@@ -476,7 +507,7 @@ export function DevPreviewPane({
         clearAutoReload();
         lastUrlSetAtRef.current = Date.now();
         scheduleAutoReload(AUTO_RELOAD_INITIAL_DELAY_MS);
-        instance.element.loadURL(resolvedUrl);
+        safeLoadUrl(resolvedUrl);
         return;
       }
 
@@ -487,14 +518,7 @@ export function DevPreviewPane({
         lastSetUrlRef.current = resolvedUrl;
       }
     },
-    [
-      clearAutoReload,
-      currentUrl,
-      getActiveWebview,
-      isBrowserOnly,
-      isWebviewReady,
-      scheduleAutoReload,
-    ]
+    [clearAutoReload, currentUrl, isBrowserOnly, scheduleAutoReload, safeLoadUrl]
   );
 
   const handleOpenExternal = useCallback(() => {
@@ -724,8 +748,12 @@ export function DevPreviewPane({
 
   useEffect(() => {
     const webview = getActiveWebview();
-    if (webview && isWebviewReady) {
-      webview.setZoomFactor(zoomFactor);
+    if (webview && isWebviewReady && webview.isConnected) {
+      try {
+        webview.setZoomFactor(zoomFactor);
+      } catch (error) {
+        console.warn("[DevPreview] Failed to set webview zoom:", error);
+      }
     }
   }, [getActiveWebview, isWebviewReady, zoomFactor]);
 
@@ -752,7 +780,7 @@ export function DevPreviewPane({
       if (existingInstance.lastKnownUrl !== currentUrl && currentUrl && existingInstance.isReady) {
         // URL changed - trigger reload
         try {
-          existingInstance.element.loadURL(currentUrl);
+          safeLoadUrl(currentUrl);
           existingInstance.isLoading = true;
           existingInstance.hasLoaded = false;
           existingInstance.loadError = null;
@@ -780,7 +808,7 @@ export function DevPreviewPane({
       const errorMsg = error instanceof Error ? error.message : "Failed to create webview";
       setWebviewLoadError(errorMsg);
     }
-  }, [currentUrl, currentWebviewKey, createWebviewForWorktree, updateWebviewVisibility]);
+  }, [currentUrl, currentWebviewKey, createWebviewForWorktree, safeLoadUrl, updateWebviewVisibility]);
 
   useEffect(() => {
     if (!currentUrl) return;
@@ -998,6 +1026,14 @@ export function DevPreviewPane({
     lastSetUrlRef.current = "";
     lastUrlSetAtRef.current = 0;
     shouldAutoReloadRef.current = false;
+    suppressInitialLoadOverlayRef.current = false;
+    const instance = webviewMapRef.current.get(currentWebviewKeyRef.current);
+    if (instance) {
+      instance.lastKnownUrl = "";
+      instance.hasLoaded = false;
+      instance.isLoading = false;
+      instance.loadError = null;
+    }
     if (restartTimeoutRef.current) {
       clearTimeout(restartTimeoutRef.current);
     }
@@ -1028,18 +1064,17 @@ export function DevPreviewPane({
     clearAutoReload();
     clearLoadingTimeout();
     lastUrlSetAtRef.current = Date.now();
-    const webview = getActiveWebview();
-    if (webview && isWebviewReady) {
-      webview.loadURL(currentUrl);
+    if (isWebviewReady) {
+      safeLoadUrl(currentUrl);
       startLoadingTimeout();
     }
   }, [
     clearAutoReload,
     clearLoadingTimeout,
     currentUrl,
-    getActiveWebview,
     hasValidUrl,
     isWebviewReady,
+    safeLoadUrl,
     startLoadingTimeout,
   ]);
 
@@ -1128,7 +1163,7 @@ export function DevPreviewPane({
       onTitleChange={onTitleChange}
       onMinimize={onMinimize}
       onRestore={onRestore}
-      onRestart={handleReloadBrowser}
+      onRestart={handleRestartServer}
       toolbar={devPreviewToolbar}
     >
       <div className="flex flex-1 min-h-0 flex-col">
@@ -1142,7 +1177,12 @@ export function DevPreviewPane({
             aria-hidden={!showTerminal}
             {...(!showTerminal && { inert: true })}
           >
-            <XtermAdapter terminalId={id} terminalType="terminal" className="w-full h-full" />
+            <XtermAdapter
+              key={`${id}-${restartKey}`}
+              terminalId={id}
+              terminalType="terminal"
+              className="w-full h-full"
+            />
           </div>
           {/* Browser View - layered on top when terminal is hidden */}
           <div
@@ -1153,60 +1193,70 @@ export function DevPreviewPane({
             )}
             aria-hidden={showTerminal}
           >
-            {hasValidUrl ? (
-              <>
-                {isDragging && <div className="absolute inset-0 z-10 bg-transparent" />}
-                {isLoadingOverlayVisible && (
-                  <div className="absolute inset-0 flex items-center justify-center bg-canopy-bg z-10">
-                    <div className="text-center max-w-md space-y-1 px-4">
-                      <div className="text-sm font-medium text-canopy-text">Dev Preview</div>
-                      <div className="text-xs text-canopy-text/60">{loadingMessage}</div>
-                    </div>
+            <div
+              className={cn(
+                "absolute inset-0",
+                !hasValidUrl && "invisible pointer-events-none"
+              )}
+              aria-hidden={!hasValidUrl}
+            >
+              {isDragging && <div className="absolute inset-0 z-10 bg-transparent" />}
+              {isLoadingOverlayVisible && (
+                <div className="absolute inset-0 flex items-center justify-center bg-canopy-bg z-10">
+                  <div className="text-center max-w-md space-y-1 px-4">
+                    <div className="text-sm font-medium text-canopy-text">Dev Preview</div>
+                    <div className="text-xs text-canopy-text/60">{loadingMessage}</div>
                   </div>
-                )}
-                {webviewLoadError && (
-                  <div className="absolute inset-0 flex items-center justify-center bg-canopy-bg z-10">
-                    <div className="text-center max-w-md space-y-2 px-4">
-                      <div className="text-sm font-medium text-[var(--color-status-error)]">
-                        Webview Load Error
-                      </div>
-                      <div className="text-xs text-canopy-text/60">{webviewLoadError}</div>
-                      <button
-                        type="button"
-                        onClick={handleForceReload}
-                        className="mt-2 inline-flex items-center gap-1.5 px-3 py-1.5 text-xs font-medium rounded bg-white/10 hover:bg-white/15 text-canopy-text transition-colors"
-                      >
-                        <RotateCw className="w-3 h-3" />
-                        Retry
-                      </button>
-                    </div>
-                  </div>
-                )}
-                {/* Container for dynamically created webviews - multiple instances preserved */}
-                <div
-                  ref={webviewContainerRef}
-                  className={cn("w-full h-full", isDragging && "pointer-events-none")}
-                />
-              </>
-            ) : isBrowserOnly ? (
-              <div className="absolute inset-0 flex items-center justify-center bg-canopy-bg">
-                <div className="text-center max-w-md space-y-2 px-4">
-                  <div className="text-sm font-medium text-canopy-text">Browser-Only Mode</div>
-                  <div className="text-xs text-canopy-text/60">
-                    No dev command configured. Enter a localhost URL in the address bar above.
-                  </div>
-                  {error && <div className="text-xs text-[var(--color-status-error)]">{error}</div>}
                 </div>
-              </div>
-            ) : (
-              <div className="absolute inset-0 flex items-center justify-center bg-canopy-bg">
-                <div className="text-center max-w-md space-y-1 px-4">
-                  <div className="text-sm font-medium text-canopy-text">Dev Preview</div>
-                  <div className="text-xs text-canopy-text/60">{message}</div>
-                  {error && <div className="text-xs text-[var(--color-status-error)]">{error}</div>}
+              )}
+              {webviewLoadError && (
+                <div className="absolute inset-0 flex items-center justify-center bg-canopy-bg z-10">
+                  <div className="text-center max-w-md space-y-2 px-4">
+                    <div className="text-sm font-medium text-[var(--color-status-error)]">
+                      Webview Load Error
+                    </div>
+                    <div className="text-xs text-canopy-text/60">{webviewLoadError}</div>
+                    <button
+                      type="button"
+                      onClick={handleForceReload}
+                      className="mt-2 inline-flex items-center gap-1.5 px-3 py-1.5 text-xs font-medium rounded bg-white/10 hover:bg-white/15 text-canopy-text transition-colors"
+                    >
+                      <RotateCw className="w-3 h-3" />
+                      Retry
+                    </button>
+                  </div>
                 </div>
-              </div>
-            )}
+              )}
+              {/* Container for dynamically created webviews - multiple instances preserved */}
+              <div
+                ref={webviewContainerRef}
+                className={cn("w-full h-full", isDragging && "pointer-events-none")}
+              />
+            </div>
+            {!hasValidUrl &&
+              (isBrowserOnly ? (
+                <div className="absolute inset-0 flex items-center justify-center bg-canopy-bg">
+                  <div className="text-center max-w-md space-y-2 px-4">
+                    <div className="text-sm font-medium text-canopy-text">Browser-Only Mode</div>
+                    <div className="text-xs text-canopy-text/60">
+                      No dev command configured. Enter a localhost URL in the address bar above.
+                    </div>
+                    {error && (
+                      <div className="text-xs text-[var(--color-status-error)]">{error}</div>
+                    )}
+                  </div>
+                </div>
+              ) : (
+                <div className="absolute inset-0 flex items-center justify-center bg-canopy-bg">
+                  <div className="text-center max-w-md space-y-1 px-4">
+                    <div className="text-sm font-medium text-canopy-text">Dev Preview</div>
+                    <div className="text-xs text-canopy-text/60">{message}</div>
+                    {error && (
+                      <div className="text-xs text-[var(--color-status-error)]">{error}</div>
+                    )}
+                  </div>
+                </div>
+              ))}
           </div>
         </div>
         <div className="flex items-center justify-between gap-3 px-3 py-1.5 border-t border-canopy-border bg-[color-mix(in_oklab,var(--color-surface)_92%,transparent)] text-xs text-canopy-text/70">
