@@ -239,6 +239,7 @@ export const createTerminalRegistrySlice =
           } else {
             // Spawn new process - only execute command if not skipping
             const commandToExecute = options.skipCommandExecution ? undefined : options.command;
+            const restoreSession = kind === "dev-preview" ? false : undefined;
             id = await terminalClient.spawn({
               id: options.requestedId,
               cwd: options.cwd,
@@ -252,6 +253,7 @@ export const createTerminalRegistrySlice =
               title,
               worktreeId: options.worktreeId,
               env: mergedEnv,
+              restore: restoreSession,
             });
           }
 
