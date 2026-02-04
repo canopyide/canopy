@@ -120,6 +120,7 @@ export function DevPreviewPane({
   const [isLoading, setIsLoading] = useState(false);
   const [webviewLoadError, setWebviewLoadError] = useState<string | null>(null);
   const [isWebviewReady, setIsWebviewReady] = useState(false);
+  const [isLoadingOverlayVisible, setIsLoadingOverlayVisible] = useState(false);
   const restartTimeoutRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const webviewContainerRef = useRef<HTMLDivElement>(null);
   const webviewMapRef = useRef<Map<string, WebviewInstance>>(new Map());
@@ -133,6 +134,7 @@ export function DevPreviewPane({
   const loadingTimeoutRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const isRestoringStateRef = useRef(false);
   const suppressInitialLoadOverlayRef = useRef(false);
+  const loadingOverlayTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const isDragging = useIsDragging();
   const setBrowserUrl = useTerminalStore((state) => state.setBrowserUrl);
   const setBrowserHistory = useTerminalStore((state) => state.setBrowserHistory);
@@ -1043,6 +1045,24 @@ export function DevPreviewPane({
 
   const statusStyle = STATUS_STYLES[status];
   const showLoadingOverlay = hasValidUrl && !hasLoaded && !webviewLoadError;
+  useEffect(() => {
+    if (showLoadingOverlay) {
+      if (loadingOverlayTimerRef.current) return;
+      loadingOverlayTimerRef.current = setTimeout(() => {
+        loadingOverlayTimerRef.current = null;
+        setIsLoadingOverlayVisible(true);
+      }, 200);
+      return;
+    }
+
+    if (loadingOverlayTimerRef.current) {
+      clearTimeout(loadingOverlayTimerRef.current);
+      loadingOverlayTimerRef.current = null;
+    }
+    if (isLoadingOverlayVisible) {
+      setIsLoadingOverlayVisible(false);
+    }
+  }, [isLoadingOverlayVisible, showLoadingOverlay]);
   const loadingMessage =
     status === "starting" || status === "installing" ? message : "Loading preview...";
   const showRestartSpinner = isRestarting || status === "starting" || status === "installing";
@@ -1136,7 +1156,7 @@ export function DevPreviewPane({
             {hasValidUrl ? (
               <>
                 {isDragging && <div className="absolute inset-0 z-10 bg-transparent" />}
-                {showLoadingOverlay && (
+                {isLoadingOverlayVisible && (
                   <div className="absolute inset-0 flex items-center justify-center bg-canopy-bg z-10">
                     <div className="text-center max-w-md space-y-1 px-4">
                       <div className="text-sm font-medium text-canopy-text">Dev Preview</div>
