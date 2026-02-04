@@ -174,6 +174,7 @@ export function DevPreviewPane({
   const [webviewLoadError, setWebviewLoadError] = useState<string | null>(null);
   const [isWebviewReady, setIsWebviewReady] = useState(false);
   const [isLoadingOverlayVisible, setIsLoadingOverlayVisible] = useState(false);
+  const [isUrlStale, setIsUrlStale] = useState(false);
   const restartTimeoutRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const webviewStore = useMemo(() => getDevPreviewWebviewStore(id), [id]);
   const webviewContainerRef = useRef<HTMLDivElement>(null);
@@ -210,14 +211,15 @@ export function DevPreviewPane({
   const canGoBack = history.past.length > 0;
   const canGoForward = history.future.length > 0;
   const hasValidUrl = isValidBrowserUrl(currentUrl);
+  const hasPreviewUrl = hasValidUrl && !isUrlStale;
   const baseUrl = useMemo(() => {
-    if (!hasValidUrl) return "";
+    if (!hasPreviewUrl) return "";
     try {
       return new URL(currentUrl).origin;
     } catch {
       return currentUrl;
     }
-  }, [currentUrl, hasValidUrl]);
+  }, [currentUrl, hasPreviewUrl]);
 
   // Sync history to terminal store (skip during restoration)
   useEffect(() => {
@@ -462,6 +464,7 @@ export function DevPreviewPane({
       const result = normalizeBrowserUrl(url);
       if (result.error || !result.url) return;
 
+      setIsUrlStale(false);
       setHistory((prev) => {
         const past = prev.present ? [...prev.past, prev.present] : prev.past;
         return {
@@ -571,6 +574,7 @@ export function DevPreviewPane({
       const normalized = normalizeBrowserUrl(nextUrl);
       const resolvedUrl = normalized.url ?? nextUrl;
       setWebviewLoadError(null);
+      setIsUrlStale(false);
 
       if (resolvedUrl === currentUrl) {
         lastSetUrlRef.current = resolvedUrl;
@@ -604,9 +608,9 @@ export function DevPreviewPane({
   );
 
   const handleOpenExternal = useCallback(() => {
-    if (!hasValidUrl) return;
+    if (!hasPreviewUrl) return;
     void actionService.dispatch("browser.openExternal", { terminalId: id }, { source: "user" });
-  }, [hasValidUrl, id]);
+  }, [hasPreviewUrl, id]);
 
   useEffect(() => {
     const offStatus = window.electron.devPreview.onStatus((payload) => {
@@ -618,7 +622,11 @@ export function DevPreviewPane({
           ? payload.error?.trim() || payload.message || undefined
           : undefined
       );
-      setIsBrowserOnly((prev) => prev || payload.message.includes("Browser-only mode"));
+      const isBrowserOnlyMessage = payload.message.includes("Browser-only mode");
+      setIsBrowserOnly((prev) => prev || isBrowserOnlyMessage);
+      if (isBrowserOnlyMessage) {
+        setIsUrlStale(false);
+      }
       if (
         payload.status === "running" ||
         payload.status === "error" ||
@@ -896,7 +904,7 @@ export function DevPreviewPane({
 
   // Create webview when URL becomes available and container is ready
   useEffect(() => {
-    if (!currentUrl || !webviewContainerRef.current) return;
+    if (!currentUrl || !webviewContainerRef.current || isUrlStale) return;
 
     const map = webviewMapRef.current;
     const existingInstance = map.get(currentWebviewKey);
@@ -945,7 +953,14 @@ export function DevPreviewPane({
       const errorMsg = error instanceof Error ? error.message : "Failed to create webview";
       setWebviewLoadError(errorMsg);
     }
-  }, [currentUrl, currentWebviewKey, createWebviewForWorktree, safeLoadUrl, updateWebviewVisibility]);
+  }, [
+    currentUrl,
+    currentWebviewKey,
+    createWebviewForWorktree,
+    safeLoadUrl,
+    updateWebviewVisibility,
+    isUrlStale,
+  ]);
 
   useEffect(() => {
     if (!currentUrl) return;
@@ -970,6 +985,7 @@ export function DevPreviewPane({
     const savedHistoryPresent = savedHistory?.present?.trim() || "";
     const savedUrl = currentTerminal?.browserUrl ?? null;
     const hasSavedUrl = Boolean(savedHistoryPresent || savedUrl);
+    const shouldTreatSavedUrlAsStale = hasSavedUrl && webviewStore.instances.size === 0;
 
     const nextHistory =
       savedHistory && savedHistoryPresent
@@ -981,17 +997,24 @@ export function DevPreviewPane({
           };
     setHistory(nextHistory);
     setError(undefined);
-    setStatus(hasSavedUrl ? "running" : "starting");
-    setMessage(hasSavedUrl ? "Running" : "Starting dev server...");
+    setStatus(shouldTreatSavedUrlAsStale ? "starting" : hasSavedUrl ? "running" : "starting");
+    setMessage(
+      shouldTreatSavedUrlAsStale
+        ? "Starting dev server..."
+        : hasSavedUrl
+          ? "Running"
+          : "Starting dev server..."
+    );
     setIsRestarting(false);
     setIsBrowserOnly(false);
     setShowTerminal(false);
-    setHasLoaded(hasSavedUrl);
+    setHasLoaded(hasSavedUrl && !shouldTreatSavedUrlAsStale);
     setIsLoading(false);
     setWebviewLoadError(null);
     setIsWebviewReady(false);
-    hasLoadedRef.current = hasSavedUrl;
-    suppressInitialLoadOverlayRef.current = hasSavedUrl;
+    setIsUrlStale(shouldTreatSavedUrlAsStale);
+    hasLoadedRef.current = hasSavedUrl && !shouldTreatSavedUrlAsStale;
+    suppressInitialLoadOverlayRef.current = hasSavedUrl && !shouldTreatSavedUrlAsStale;
     autoReloadAttemptsRef.current = 0;
     clearAutoReload();
     clearLoadingTimeout();
@@ -1034,7 +1057,7 @@ export function DevPreviewPane({
         void window.electron.devPreview.detach(id);
       }
     };
-  }, [clearAutoReload, clearLoadingTimeout, cwd, id, worktreeId]);
+  }, [clearAutoReload, clearLoadingTimeout, cwd, id, worktreeId, webviewStore]);
 
   // (Webview cleanup handled in layout effect.)
 
@@ -1117,6 +1140,7 @@ export function DevPreviewPane({
     setIsLoading(false);
     setWebviewLoadError(null);
     setIsWebviewReady(false);
+    setIsUrlStale(false);
     hasLoadedRef.current = false;
     autoReloadAttemptsRef.current = 0;
     clearAutoReload();
@@ -1148,12 +1172,12 @@ export function DevPreviewPane({
   }, [clearAutoReload, clearLoadingTimeout, cwd, id, restartTerminal]);
 
   const handleReloadBrowser = useCallback(() => {
-    if (!hasValidUrl || !isWebviewReady) return;
+    if (!hasPreviewUrl || !isWebviewReady) return;
     handleReload();
-  }, [handleReload, hasValidUrl, isWebviewReady]);
+  }, [handleReload, hasPreviewUrl, isWebviewReady]);
 
   const handleForceReload = useCallback(() => {
-    if (!hasValidUrl) return;
+    if (!hasPreviewUrl) return;
     setIsLoading(true);
     setWebviewLoadError(null);
     hasLoadedRef.current = false;
@@ -1170,14 +1194,14 @@ export function DevPreviewPane({
     clearAutoReload,
     clearLoadingTimeout,
     currentUrl,
-    hasValidUrl,
+    hasPreviewUrl,
     isWebviewReady,
     safeLoadUrl,
     startLoadingTimeout,
   ]);
 
   const statusStyle = STATUS_STYLES[status];
-  const showLoadingOverlay = hasValidUrl && !hasLoaded && !webviewLoadError;
+  const showLoadingOverlay = hasPreviewUrl && !hasLoaded && !webviewLoadError;
   useEffect(() => {
     if (showLoadingOverlay) {
       if (loadingOverlayTimerRef.current) return;
@@ -1294,9 +1318,9 @@ export function DevPreviewPane({
             <div
               className={cn(
                 "absolute inset-0",
-                !hasValidUrl && "invisible pointer-events-none"
+                !hasPreviewUrl && "invisible pointer-events-none"
               )}
-              aria-hidden={!hasValidUrl}
+              aria-hidden={!hasPreviewUrl}
             >
               {isDragging && <div className="absolute inset-0 z-10 bg-transparent" />}
               {isLoadingOverlayVisible && (
@@ -1331,7 +1355,7 @@ export function DevPreviewPane({
                 className={cn("w-full h-full", isDragging && "pointer-events-none")}
               />
             </div>
-            {!hasValidUrl &&
+            {!hasPreviewUrl &&
               (isBrowserOnly ? (
                 <div className="absolute inset-0 flex items-center justify-center bg-canopy-bg">
                   <div className="text-center max-w-md space-y-2 px-4">
