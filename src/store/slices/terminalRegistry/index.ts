@@ -118,25 +118,6 @@ export const createTerminalRegistrySlice =
               cols: 80,
               rows: 24,
             };
-          } else if (requestedKind === "dev-preview") {
-            terminal = {
-              id,
-              kind: "dev-preview",
-              title,
-              worktreeId: options.worktreeId,
-              location,
-              isVisible: location === "grid",
-              runtimeStatus,
-              type: "terminal" as const,
-              cwd: options.cwd || "",
-              cols: 80,
-              rows: 24,
-              devCommand: options.devCommand,
-              browserUrl: options.browserUrl,
-              browserHistory: options.browserHistory,
-              browserZoom: options.browserZoom,
-              exitBehavior: options.exitBehavior,
-            };
           } else {
             // Generic non-PTY panel fallback for extensions
             terminal = {
@@ -171,12 +152,16 @@ export const createTerminalRegistrySlice =
           return id;
         }
 
-        // PTY panels: terminal/agent
+        // PTY panels: terminal/agent/dev-preview
         // Derive agentId: explicit option, or from legacy type if it's a registered agent
         const agentId = options.agentId ?? (isRegisteredAgent(legacyType) ? legacyType : undefined);
-        // Narrow kind to terminal|agent for PTY handling
-        const kind: "terminal" | "agent" =
-          agentId || requestedKind === "agent" ? "agent" : "terminal";
+        // Determine kind for PTY handling (dev-preview keeps its own kind)
+        const kind: "terminal" | "agent" | "dev-preview" =
+          requestedKind === "dev-preview"
+            ? "dev-preview"
+            : agentId || requestedKind === "agent"
+              ? "agent"
+              : "terminal";
         const title = options.title || getDefaultTitle(kind, legacyType, agentId);
 
         // Auto-dock if grid is full and user requested grid location
@@ -372,6 +357,13 @@ export const createTerminalRegistrySlice =
             runtimeStatus,
             isInputLocked: options.isInputLocked,
             exitBehavior: options.exitBehavior,
+            // Dev-preview specific fields
+            ...(kind === "dev-preview" && {
+              devCommand: options.devCommand,
+              browserUrl: options.browserUrl,
+              browserHistory: options.browserHistory,
+              browserZoom: options.browserZoom,
+            }),
           };
 
           set((state) => {
