@@ -1,14 +1,12 @@
 import { useEffect, useRef, useCallback } from "react";
-import { Circle, Plus, X } from "lucide-react";
+import { Circle, Plus, Settings2, X } from "lucide-react";
 import { cn } from "@/lib/utils";
 import { getProjectGradient } from "@/lib/colorUtils";
 import { AppPaletteDialog } from "@/components/ui/AppPaletteDialog";
 import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover";
 import { ProjectActionRow } from "./ProjectActionRow";
 import { useKeybindingDisplay } from "@/hooks/useKeybinding";
-import type { SearchableProject } from "@/hooks/useProjectSwitcherPalette";
-
-export type ProjectSwitcherMode = "modal" | "dropdown";
+import type { ProjectSwitcherMode, SearchableProject } from "@/hooks/useProjectSwitcherPalette";
 
 export interface ProjectSwitcherPaletteProps {
   isOpen: boolean;
@@ -23,6 +21,8 @@ export interface ProjectSwitcherPaletteProps {
   mode?: ProjectSwitcherMode;
   onAddProject?: () => void;
   onStopProject?: (projectId: string, e: React.MouseEvent) => void;
+  onOpenProjectSettings?: () => void;
+  dropdownAlign?: "start" | "center" | "end";
   children?: React.ReactNode;
 }
 
@@ -141,8 +141,10 @@ interface ProjectListContentProps {
   onSelect: (project: SearchableProject) => void;
   listRef: React.RefObject<HTMLDivElement | null>;
   onAddProject?: () => void;
+  onOpenProjectSettings?: () => void;
   onStopProject?: (projectId: string, e: React.MouseEvent) => void;
   showAddProject?: boolean;
+  showProjectSettings?: boolean;
 }
 
 function ProjectListContent({
@@ -152,9 +154,15 @@ function ProjectListContent({
   onSelect,
   listRef,
   onAddProject,
+  onOpenProjectSettings,
   onStopProject,
   showAddProject = false,
+  showProjectSettings = false,
 }: ProjectListContentProps) {
+  const showSettings = showProjectSettings && onOpenProjectSettings;
+  const showAdd = showAddProject && onAddProject;
+  const showActions = showSettings || showAdd;
+
   return (
     <>
       <div ref={listRef} id="project-list" role="listbox" aria-label="Projects">
@@ -175,19 +183,35 @@ function ProjectListContent({
           ))
         )}
       </div>
-      {showAddProject && onAddProject && (
+      {showActions && (
         <>
           <div className="my-1 h-px bg-white/[0.06]" />
-          <button
-            type="button"
-            onClick={onAddProject}
-            className="w-full flex items-center gap-3 px-3 py-2 rounded-[var(--radius-md)] text-left transition-colors hover:bg-white/[0.02]"
-          >
-            <div className="flex h-8 w-8 items-center justify-center rounded-[var(--radius-lg)] border border-dashed border-muted-foreground/30 bg-muted/20 text-muted-foreground">
-              <Plus className="h-4 w-4" />
-            </div>
-            <span className="font-medium text-sm text-muted-foreground">Add Project...</span>
-          </button>
+          {showSettings && (
+            <button
+              type="button"
+              onClick={() => onOpenProjectSettings?.()}
+              className="w-full flex items-center gap-3 px-3 py-2 rounded-[var(--radius-md)] text-left transition-colors hover:bg-white/[0.02]"
+            >
+              <div className="flex h-8 w-8 items-center justify-center rounded-[var(--radius-lg)] bg-white/[0.04] text-muted-foreground">
+                <Settings2 className="h-4 w-4" />
+              </div>
+              <span className="font-medium text-sm text-muted-foreground">
+                Project Settings...
+              </span>
+            </button>
+          )}
+          {showAdd && (
+            <button
+              type="button"
+              onClick={() => onAddProject?.()}
+              className="w-full flex items-center gap-3 px-3 py-2 rounded-[var(--radius-md)] text-left transition-colors hover:bg-white/[0.02]"
+            >
+              <div className="flex h-8 w-8 items-center justify-center rounded-[var(--radius-lg)] border border-dashed border-muted-foreground/30 bg-muted/20 text-muted-foreground">
+                <Plus className="h-4 w-4" />
+              </div>
+              <span className="font-medium text-sm text-muted-foreground">Add Project...</span>
+            </button>
+          )}
         </>
       )}
     </>
@@ -204,7 +228,9 @@ function ModalContent({
   onSelectNext,
   onSelect,
   onClose,
-}: Omit<ProjectSwitcherPaletteProps, "mode" | "children" | "onAddProject">) {
+  onAddProject,
+  onStopProject,
+}: Omit<ProjectSwitcherPaletteProps, "mode" | "children">) {
   const inputRef = useRef<HTMLInputElement>(null);
   const listRef = useRef<HTMLDivElement>(null);
   const projectSwitcherShortcut = useKeybindingDisplay("project.switcherPalette");
@@ -231,24 +257,29 @@ function ModalContent({
       switch (e.key) {
         case "ArrowUp":
           e.preventDefault();
+          e.stopPropagation();
           onSelectPrevious();
           break;
         case "ArrowDown":
           e.preventDefault();
+          e.stopPropagation();
           onSelectNext();
           break;
         case "Enter":
           e.preventDefault();
+          e.stopPropagation();
           if (results.length > 0 && selectedIndex >= 0 && selectedIndex < results.length) {
             onSelect(results[selectedIndex]);
           }
           break;
         case "Escape":
           e.preventDefault();
+          e.stopPropagation();
           onClose();
           break;
         case "Tab":
           e.preventDefault();
+          e.stopPropagation();
           if (e.shiftKey) {
             onSelectPrevious();
           } else {
@@ -289,6 +320,9 @@ function ModalContent({
           query={query}
           onSelect={onSelect}
           listRef={listRef}
+          onAddProject={onAddProject}
+          onStopProject={onStopProject}
+          showAddProject={true}
         />
       </AppPaletteDialog.Body>
 
@@ -331,10 +365,13 @@ function DropdownContent({
   onClose,
   onAddProject,
   onStopProject,
+  onOpenProjectSettings,
+  dropdownAlign = "start",
   children,
 }: Omit<ProjectSwitcherPaletteProps, "mode">) {
   const inputRef = useRef<HTMLInputElement>(null);
   const listRef = useRef<HTMLDivElement>(null);
+  const projectSwitcherShortcut = useKeybindingDisplay("project.switcherPalette");
 
   useEffect(() => {
     if (isOpen && inputRef.current) {
@@ -358,70 +395,73 @@ function DropdownContent({
       switch (e.key) {
         case "ArrowUp":
           e.preventDefault();
+          e.stopPropagation();
           onSelectPrevious();
           break;
         case "ArrowDown":
           e.preventDefault();
+          e.stopPropagation();
           onSelectNext();
           break;
         case "Enter":
           e.preventDefault();
+          e.stopPropagation();
           if (results.length > 0 && selectedIndex >= 0 && selectedIndex < results.length) {
             onSelect(results[selectedIndex]);
           }
           break;
         case "Escape":
           e.preventDefault();
+          e.stopPropagation();
           onClose();
+          break;
+        case "Tab":
+          e.preventDefault();
+          e.stopPropagation();
+          if (e.shiftKey) {
+            onSelectPrevious();
+          } else {
+            onSelectNext();
+          }
           break;
       }
     },
     [results, selectedIndex, onSelectPrevious, onSelectNext, onSelect, onClose]
   );
 
+  const activeResult = results[selectedIndex];
+
   return (
     <Popover open={isOpen} onOpenChange={(open) => !open && onClose()}>
       <PopoverTrigger asChild>{children}</PopoverTrigger>
       <PopoverContent
         className="w-[484px] max-w-[calc(100vw-2rem)] p-0"
-        align="start"
+        align={dropdownAlign}
         sideOffset={8}
         onOpenAutoFocus={(e) => {
           e.preventDefault();
           inputRef.current?.focus();
         }}
       >
-        <div className="px-3 pt-2 pb-1 border-b border-canopy-border">
-          <div className="flex justify-between items-center mb-1.5 text-[11px] text-canopy-text/50">
-            <span>Switch Project</span>
-          </div>
-          <input
-            ref={inputRef}
-            type="text"
+        <AppPaletteDialog.Header label="Switch Project" keyHint={projectSwitcherShortcut}>
+          <AppPaletteDialog.Input
+            inputRef={inputRef}
             value={query}
             onChange={(e) => onQueryChange(e.target.value)}
             onKeyDown={handleKeyDown}
             placeholder="Search projects..."
-            className={cn(
-              "w-full px-3 py-2 text-sm",
-              "bg-canopy-sidebar border border-canopy-border rounded-[var(--radius-md)]",
-              "text-canopy-text placeholder:text-canopy-text/40",
-              "focus:outline-none focus:border-canopy-accent focus:ring-1 focus:ring-canopy-accent"
-            )}
             role="combobox"
             aria-expanded={isOpen}
             aria-haspopup="listbox"
             aria-label="Search projects"
             aria-controls="project-list"
             aria-activedescendant={
-              results.length > 0 && selectedIndex >= 0
-                ? `project-option-${results[selectedIndex].id}`
-                : undefined
+              activeResult ? `project-option-${activeResult.id}` : undefined
             }
           />
-        </div>
+        </AppPaletteDialog.Header>
 
-        <div className="overflow-y-auto p-2 space-y-1 max-h-[60vh]">
+        <AppPaletteDialog.Body maxHeight="max-h-[60vh]">
           <ProjectListContent
             results={results}
             selectedIndex={selectedIndex}
@@ -429,10 +469,36 @@ function DropdownContent({
             onSelect={onSelect}
             listRef={listRef}
             onAddProject={onAddProject}
+            onOpenProjectSettings={onOpenProjectSettings}
             onStopProject={onStopProject}
             showAddProject={true}
+            showProjectSettings={!!onOpenProjectSettings}
           />
-        </div>
+        </AppPaletteDialog.Body>
+
+        <AppPaletteDialog.Footer>
+          <span>
+            <kbd className="px-1.5 py-0.5 rounded-[var(--radius-sm)] bg-canopy-border text-canopy-text/60">
+              ↑
+            </kbd>
+            <kbd className="px-1.5 py-0.5 rounded-[var(--radius-sm)] bg-canopy-border text-canopy-text/60 ml-1">
+              ↓
+            </kbd>
+            <span className="ml-1.5">to navigate</span>
+          </span>
+          <span>
+            <kbd className="px-1.5 py-0.5 rounded-[var(--radius-sm)] bg-canopy-border text-canopy-text/60">
+              Enter
+            </kbd>
+            <span className="ml-1.5">to switch</span>
+          </span>
+          <span>
+            <kbd className="px-1.5 py-0.5 rounded-[var(--radius-sm)] bg-canopy-border text-canopy-text/60">
+              Esc
+            </kbd>
+            <span className="ml-1.5">to close</span>
+          </span>
+        </AppPaletteDialog.Footer>
       </PopoverContent>
     </Popover>
   );
@@ -451,6 +517,8 @@ export function ProjectSwitcherPalette({
   mode = "modal",
   onAddProject,
   onStopProject,
+  onOpenProjectSettings,
+  dropdownAlign,
   children,
 }: ProjectSwitcherPaletteProps) {
   if (mode === "dropdown") {
@@ -467,6 +535,8 @@ export function ProjectSwitcherPalette({
         onClose={onClose}
         onAddProject={onAddProject}
         onStopProject={onStopProject}
+        onOpenProjectSettings={onOpenProjectSettings}
+        dropdownAlign={dropdownAlign}
       >
         {children}
       </DropdownContent>
@@ -484,6 +554,8 @@ export function ProjectSwitcherPalette({
       onSelectNext={onSelectNext}
       onSelect={onSelect}
       onClose={onClose}
+      onAddProject={onAddProject}
+      onStopProject={onStopProject}
     />
   );
 }

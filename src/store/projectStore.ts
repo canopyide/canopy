@@ -471,6 +471,10 @@ const createProjectStore: StateCreator<ProjectState> = (set, get) => ({
       useProjectSettingsStore.getState().reset();
       void useProjectSettingsStore.getState().loadSettings(projectId);
 
+      // Reinitialize worktree data for the reopened project
+      console.log("[ProjectStore] Reinitializing worktree data store...");
+      forceReinitializeWorktreeDataStore();
+
       await get().loadProjects();
 
       // Note: State re-hydration is triggered by PROJECT_ON_SWITCH IPC event

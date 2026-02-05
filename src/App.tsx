@@ -48,6 +48,7 @@ import { TerminalInfoDialogHost } from "./components/Terminal/TerminalInfoDialog
 import { TerminalPalette, NewTerminalPalette } from "./components/TerminalPalette";
 import { PanelPalette } from "./components/PanelPalette/PanelPalette";
 import { ProjectSwitcherPalette } from "./components/Project/ProjectSwitcherPalette";
+import { ConfirmDialog } from "./components/ui/ConfirmDialog";
 import { RecipeEditor } from "./components/TerminalRecipe/RecipeEditor";
 import { NotesPalette } from "./components/Notes";
 import { SettingsDialog, type SettingsTab } from "./components/Settings";
@@ -160,18 +161,6 @@ function SidebarContent({ onOpenOverview }: SidebarContentProps) {
   useEffect(() => {
     systemClient.getHomeDir().then(setHomeDir).catch(console.error);
   }, []);
-
-  useEffect(() => {
-    if (worktrees.length > 0) {
-      // Check if activeWorktreeId is missing or doesn't exist in worktrees
-      const worktreeExists = activeWorktreeId && worktrees.some((w) => w.id === activeWorktreeId);
-      if (!worktreeExists) {
-        // Fall back to main worktree or first available
-        const mainWorktree = worktrees.find((w) => w.isMainWorktree) ?? worktrees[0];
-        setActiveWorktree(mainWorktree.id);
-      }
-    }
-  }, [worktrees, activeWorktreeId, setActiveWorktree]);
 
   // Clean up stale pinned worktrees
   useEffect(() => {
@@ -520,6 +509,15 @@ function App() {
     () => worktrees.find((w) => w.id === activeWorktreeId) ?? null,
     [worktrees, activeWorktreeId]
   );
+  useEffect(() => {
+    if (worktrees.length === 0) return;
+
+    const worktreeExists = activeWorktreeId && worktrees.some((w) => w.id === activeWorktreeId);
+    if (!worktreeExists) {
+      const mainWorktree = worktrees.find((w) => w.isMainWorktree) ?? worktrees[0];
+      selectWorktree(mainWorktree.id);
+    }
+  }, [worktrees, activeWorktreeId, selectWorktree]);
   const defaultTerminalCwd = useMemo(
     () => activeWorktree?.path ?? currentProject?.path ?? "",
     [activeWorktree, currentProject]
@@ -830,6 +828,7 @@ function App() {
           agentAvailability={availability}
           agentSettings={agentSettings}
           isHydrated={isStateLoaded}
+          projectSwitcherPalette={projectSwitcherPalette}
         >
           <ContentGrid
             key={currentProject?.id ?? "no-project"}
@@ -897,7 +896,7 @@ function App() {
         onClose={panelPalette.close}
       />
       <ProjectSwitcherPalette
-        isOpen={projectSwitcherPalette.isOpen}
+        isOpen={projectSwitcherPalette.isOpen && projectSwitcherPalette.mode === "modal"}
         query={projectSwitcherPalette.query}
         results={projectSwitcherPalette.results}
         selectedIndex={projectSwitcherPalette.selectedIndex}
@@ -906,6 +905,22 @@ function App() {
         onSelectNext={projectSwitcherPalette.selectNext}
         onSelect={projectSwitcherPalette.selectProject}
         onClose={projectSwitcherPalette.close}
+        onAddProject={projectSwitcherPalette.addProject}
+        onStopProject={(projectId) => projectSwitcherPalette.stopProject(projectId)}
+      />
+      <ConfirmDialog
+        isOpen={projectSwitcherPalette.stopConfirmProjectId != null}
+        onClose={() => {
+          if (projectSwitcherPalette.isStoppingProject) return;
+          projectSwitcherPalette.setStopConfirmProjectId(null);
+        }}
+        title={`Stop project?`}
+        description="This will terminate all running sessions in this project. This can't be undone."
+        confirmLabel="Stop project"
+        cancelLabel="Cancel"
+        onConfirm={projectSwitcherPalette.confirmStopProject}
+        isConfirmLoading={projectSwitcherPalette.isStoppingProject}
+        variant="destructive"
       />
 
       <NotesPalette isOpen={isNotesPaletteOpen} onClose={closeNotesPalette} />

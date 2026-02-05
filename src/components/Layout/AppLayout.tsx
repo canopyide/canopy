@@ -12,6 +12,7 @@ import type { RetryAction } from "@/store";
 import { appClient } from "@/clients";
 import type { CliAvailability, AgentSettings } from "@shared/types";
 import { useLayoutState } from "@/hooks";
+import type { UseProjectSwitcherPaletteReturn } from "@/hooks";
 
 interface AppLayoutProps {
   children?: ReactNode;
@@ -25,6 +26,7 @@ interface AppLayoutProps {
   agentAvailability?: CliAvailability;
   agentSettings?: AgentSettings | null;
   isHydrated?: boolean;
+  projectSwitcherPalette: UseProjectSwitcherPaletteReturn;
 }
 
 export const MIN_SIDEBAR_WIDTH = 200;
@@ -41,6 +43,7 @@ export function AppLayout({
   agentAvailability,
   agentSettings,
   isHydrated = true,
+  projectSwitcherPalette,
 }: AppLayoutProps) {
   const [sidebarWidth, setSidebarWidth] = useState(DEFAULT_SIDEBAR_WIDTH);
   const [isProjectSettingsOpen, setIsProjectSettingsOpen] = useState(false);
@@ -298,6 +301,7 @@ export function AppLayout({
         onToggleFocusMode={handleToggleFocusMode}
         agentAvailability={agentAvailability}
         agentSettings={agentSettings}
+        projectSwitcherPalette={projectSwitcherPalette}
       />
       <div
         className="flex-1 flex flex-col overflow-hidden"
