@@ -366,6 +366,7 @@ export async function hydrateAppState(
                     }
 
                     const isDevPreview = reconnectedKind === "dev-preview";
+                    const devCommand = isDevPreview ? saved.command?.trim() : undefined;
                     await addTerminal({
                       kind: reconnectedKind ?? (agentId ? "agent" : "terminal"),
                       type: reconnectedTerminal.type ?? saved.type,
@@ -377,6 +378,8 @@ export async function hydrateAppState(
                       existingId: reconnectedTerminal.id,
                       agentState: currentAgentState,
                       lastStateChange: backendLastStateChange,
+                      devCommand,
+                      browserUrl: isDevPreview ? saved.browserUrl : undefined,
                       browserHistory: isDevPreview ? saved.browserHistory : undefined,
                       browserZoom: isDevPreview ? saved.browserZoom : undefined,
                     });
