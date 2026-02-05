@@ -1866,7 +1866,11 @@ export const createTerminalRegistrySlice =
       setBrowserUrl: (id, url) => {
         set((state) => {
           const terminal = state.terminals.find((t) => t.id === id);
-          if (!terminal || panelKindUsesTerminalUi(terminal.kind ?? "terminal")) return state;
+          if (!terminal) return state;
+
+          const kind = terminal.kind ?? "terminal";
+          const isDevPreview = kind === "dev-preview";
+          if (panelKindUsesTerminalUi(kind) && !isDevPreview) return state;
 
           const newTerminals = state.terminals.map((t) =>
             t.id === id ? { ...t, browserUrl: url } : t
@@ -1880,7 +1884,11 @@ export const createTerminalRegistrySlice =
       setBrowserHistory: (id, history) => {
         set((state) => {
           const terminal = state.terminals.find((t) => t.id === id);
-          if (!terminal || panelKindUsesTerminalUi(terminal.kind ?? "terminal")) return state;
+          if (!terminal) return state;
+
+          const kind = terminal.kind ?? "terminal";
+          const isDevPreview = kind === "dev-preview";
+          if (panelKindUsesTerminalUi(kind) && !isDevPreview) return state;
 
           const newTerminals = state.terminals.map((t) =>
             t.id === id ? { ...t, browserHistory: history } : t
@@ -1894,7 +1902,11 @@ export const createTerminalRegistrySlice =
       setBrowserZoom: (id, zoom) => {
         set((state) => {
           const terminal = state.terminals.find((t) => t.id === id);
-          if (!terminal || panelKindUsesTerminalUi(terminal.kind ?? "terminal")) return state;
+          if (!terminal) return state;
+
+          const kind = terminal.kind ?? "terminal";
+          const isDevPreview = kind === "dev-preview";
+          if (panelKindUsesTerminalUi(kind) && !isDevPreview) return state;
 
           const newTerminals = state.terminals.map((t) =>
             t.id === id ? { ...t, browserZoom: zoom } : t

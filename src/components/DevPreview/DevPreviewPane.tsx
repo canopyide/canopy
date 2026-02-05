@@ -8,7 +8,7 @@ import { ContentPanel, type BasePanelProps } from "@/components/Panel";
 import { cn } from "@/lib/utils";
 import { actionService } from "@/services/ActionService";
 import { terminalInstanceService } from "@/services/TerminalInstanceService";
-import { useTerminalStore } from "@/store";
+import { useProjectStore, useTerminalStore } from "@/store";
 import type { BrowserHistory } from "@shared/types/domain";
 import type { DevPreviewStatus } from "@shared/types/ipc/devPreview";
 
@@ -176,6 +176,7 @@ export function DevPreviewPane({
   const [isLoadingOverlayVisible, setIsLoadingOverlayVisible] = useState(false);
   const [isUrlStale, setIsUrlStale] = useState(false);
   const restartTimeoutRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const restoredFromSwitchRef = useRef(false);
   const webviewStore = useMemo(() => getDevPreviewWebviewStore(id), [id]);
   const webviewContainerRef = useRef<HTMLDivElement>(null);
   const webviewMapRef = useRef<Map<string, WebviewInstance>>(webviewStore.instances);
@@ -194,6 +195,7 @@ export function DevPreviewPane({
   const setBrowserUrl = useTerminalStore((state) => state.setBrowserUrl);
   const setBrowserHistory = useTerminalStore((state) => state.setBrowserHistory);
   const setBrowserZoom = useTerminalStore((state) => state.setBrowserZoom);
+  const isProjectSwitching = useProjectStore((state) => state.isSwitching);
   const webviewCleanupRefs = useRef<Map<string, () => void>>(webviewStore.cleanups);
   const restartKey = useTerminalStore(
     (state) => state.terminals.find((t) => t.id === id)?.restartKey ?? 0
@@ -983,18 +985,29 @@ export function DevPreviewPane({
     const currentTerminal = useTerminalStore.getState().getTerminal(id);
     const savedHistory = currentTerminal?.browserHistory;
     const savedHistoryPresent = savedHistory?.present?.trim() || "";
-    const savedUrl = currentTerminal?.browserUrl ?? null;
-    const hasSavedUrl = Boolean(savedHistoryPresent || savedUrl);
-    const shouldTreatSavedUrlAsStale = hasSavedUrl && webviewStore.instances.size === 0;
+    const savedUrl = currentTerminal?.browserUrl?.trim() || "";
+    const savedUrlPresent = savedHistoryPresent || savedUrl;
+    const hasSavedUrl = Boolean(savedUrlPresent);
+    if (isProjectSwitching && hasSavedUrl) {
+      restoredFromSwitchRef.current = true;
+    }
+    const shouldTreatSavedUrlAsStale =
+      !hasSavedUrl && webviewStore.instances.size === 0 && !restoredFromSwitchRef.current;
 
     const nextHistory =
       savedHistory && savedHistoryPresent
         ? savedHistory
-        : {
-            past: [],
-            present: "",
-            future: [],
-          };
+        : savedUrlPresent
+          ? {
+              past: [],
+              present: savedUrlPresent,
+              future: [],
+            }
+          : {
+              past: [],
+              present: "",
+              future: [],
+            };
     setHistory(nextHistory);
     setError(undefined);
     setStatus(shouldTreatSavedUrlAsStale ? "starting" : hasSavedUrl ? "running" : "starting");
@@ -1034,8 +1047,8 @@ export function DevPreviewPane({
     if (currentTerminal?.browserHistory) {
       lastSetUrlRef.current = currentTerminal.browserHistory.present;
       pendingUrlRef.current = currentTerminal.browserHistory.present;
-    } else if (savedUrl) {
-      pendingUrlRef.current = savedUrl;
+    } else if (savedUrlPresent) {
+      pendingUrlRef.current = savedUrlPresent;
     }
     if (currentTerminal?.browserZoom !== undefined) {
       const savedZoom = currentTerminal.browserZoom;
@@ -1057,7 +1070,7 @@ export function DevPreviewPane({
         void window.electron.devPreview.detach(id);
       }
     };
-  }, [clearAutoReload, clearLoadingTimeout, cwd, id, worktreeId, webviewStore]);
+  }, [clearAutoReload, clearLoadingTimeout, cwd, id, isProjectSwitching, worktreeId, webviewStore]);
 
   // (Webview cleanup handled in layout effect.)
 
