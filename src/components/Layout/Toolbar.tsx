@@ -130,18 +130,14 @@ export function Toolbar({
   }, [projectSwitcher]);
 
   const handleStopProject = useCallback(
-    (projectId: string, e: React.MouseEvent) => {
-      e.stopPropagation();
-      e.preventDefault();
+    (projectId: string) => {
       void projectSwitcher.stopProject(projectId);
     },
     [projectSwitcher]
   );
 
   const handleCloseProject = useCallback(
-    (projectId: string, e: React.MouseEvent) => {
-      e.stopPropagation();
-      e.preventDefault();
+    (projectId: string) => {
       void projectSwitcher.removeProject(projectId);
     },
     [projectSwitcher]
