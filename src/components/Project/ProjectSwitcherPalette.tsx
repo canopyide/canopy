@@ -49,16 +49,18 @@ function ProjectListItem({
 
   return (
     <div
-      key={project.id}
       id={`project-option-${project.id}`}
       role="option"
       aria-selected={index === selectedIndex}
       className={cn(
-        "relative w-full flex items-center gap-3 px-3 py-2 rounded-[var(--radius-md)] text-left transition-colors border cursor-pointer",
-        index === selectedIndex
-          ? "bg-white/[0.03] border-overlay text-canopy-text before:absolute before:left-0 before:top-2 before:bottom-2 before:w-[2px] before:rounded-r before:bg-canopy-accent before:content-['']"
-          : "border-transparent text-canopy-text/70 hover:bg-white/[0.02] hover:text-canopy-text",
-        project.isActive && "opacity-60"
+        "relative w-full flex items-center gap-3 px-3 py-2 rounded-[var(--radius-md)] text-left transition-colors border",
+        project.isActive
+          ? index === selectedIndex
+            ? "border-white/[0.06] text-canopy-text"
+            : "border-transparent text-canopy-text"
+          : index === selectedIndex
+            ? "bg-white/[0.05] border-white/[0.06] text-canopy-text cursor-pointer"
+            : "border-transparent text-canopy-text/70 hover:bg-white/[0.03] hover:text-canopy-text cursor-pointer"
       )}
       onClick={() => !project.isActive && onSelect(project)}
       aria-disabled={project.isActive}
@@ -82,17 +84,11 @@ function ProjectListItem({
           <span
             className={cn(
               "truncate text-sm font-semibold leading-tight",
-              index === selectedIndex ? "text-canopy-text" : "text-canopy-text/85"
+              project.isActive || index === selectedIndex ? "text-canopy-text" : "text-canopy-text/85"
             )}
           >
             {project.name}
           </span>
-
-          {project.isActive && (
-            <span className="text-[10px] font-medium uppercase tracking-wider text-canopy-accent shrink-0">
-              Active
-            </span>
-          )}
 
           {project.isBackground && !project.isActive && (
             <Circle
@@ -134,9 +130,9 @@ function ProjectListItem({
                   onCloseProject(project.id, e);
                 }}
                 className={cn(
-                  "p-0.5 rounded transition-colors cursor-pointer",
+                  "p-0.5 rounded transition-colors",
                   canClose
-                    ? "text-canopy-text/50 hover:bg-white/[0.06] hover:text-canopy-text/80"
+                    ? "text-canopy-text/50 hover:bg-white/[0.06] hover:text-canopy-text/80 cursor-pointer focus-visible:outline focus-visible:outline-2 focus-visible:outline-canopy-accent"
                     : "text-canopy-text/20 cursor-not-allowed"
                 )}
                 title={canClose ? "Close project" : "Can't close active project"}
@@ -189,6 +185,7 @@ function ProjectListContent({
   const showSettings = showProjectSettings && onOpenProjectSettings;
   const showAdd = showAddProject && onAddProject;
   const showActions = showSettings || showAdd;
+  const activeIndex = results.findIndex((project) => project.isActive);
 
   return (
     <>
@@ -199,21 +196,42 @@ function ProjectListContent({
           </div>
         ) : (
           results.map((project, index) => (
-            <ProjectListItem
-              key={project.id}
-              project={project}
-              index={index}
-              selectedIndex={selectedIndex}
-              onSelect={onSelect}
-              onStopProject={onStopProject}
-              onCloseProject={onCloseProject}
-            />
+            <div key={project.id} role="presentation">
+              {project.isActive ? (
+                <div className="-mx-2 px-2 bg-white/[0.03]">
+                  <ProjectListItem
+                    project={project}
+                    index={index}
+                    selectedIndex={selectedIndex}
+                    onSelect={onSelect}
+                    onStopProject={onStopProject}
+                    onCloseProject={onCloseProject}
+                  />
+                </div>
+              ) : (
+                <ProjectListItem
+                  project={project}
+                  index={index}
+                  selectedIndex={selectedIndex}
+                  onSelect={onSelect}
+                  onStopProject={onStopProject}
+                  onCloseProject={onCloseProject}
+                />
+              )}
+              {activeIndex >= 0 && index === activeIndex && index < results.length - 1 && (
+                <div className="-mx-2 mt-1 mb-1.5" role="presentation">
+                  <div className="h-px bg-white/[0.08]" />
+                  <div className="h-px" />
+                  <div className="h-px bg-white/[0.08]" />
+                </div>
+              )}
+            </div>
           ))
         )}
       </div>
       {showActions && (
         <>
-          <div className="my-1 h-px bg-white/[0.06]" />
+          <div className="-mx-2 my-1.5 h-px bg-white/[0.08]" />
           {showSettings && (
             <button
               type="button"
