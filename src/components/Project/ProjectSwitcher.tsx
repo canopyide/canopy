@@ -1,5 +1,4 @@
 import { useCallback } from "react";
-import type { MouseEvent } from "react";
 import { ChevronsUpDown, Plus } from "lucide-react";
 import { cn } from "@/lib/utils";
 import { getProjectGradient } from "@/lib/colorUtils";
@@ -46,18 +45,14 @@ export function ProjectSwitcher() {
   }, [projectSwitcher]);
 
   const handleStopProject = useCallback(
-    (projectId: string, e: MouseEvent) => {
-      e.stopPropagation();
-      e.preventDefault();
+    (projectId: string) => {
       void projectSwitcher.stopProject(projectId);
     },
     [projectSwitcher]
   );
 
   const handleCloseProject = useCallback(
-    (projectId: string, e: MouseEvent) => {
-      e.stopPropagation();
-      e.preventDefault();
+    (projectId: string) => {
       void projectSwitcher.removeProject(projectId);
     },
     [projectSwitcher]
