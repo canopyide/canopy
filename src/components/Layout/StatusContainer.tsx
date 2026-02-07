@@ -65,6 +65,7 @@ export function StatusContainer({ config, compact = false }: StatusContainerProp
     <Popover open={isOpen} onOpenChange={setIsOpen}>
       <PopoverTrigger asChild>
         <Button
+          type="button"
           variant="pill"
           size="sm"
           className={cn(
@@ -119,10 +120,12 @@ export function StatusContainer({ config, compact = false }: StatusContainerProp
             {terminals.map((terminal) => (
               <button
                 key={terminal.id}
+                type="button"
                 onClick={() => {
-                  if (terminal.worktreeId && terminal.worktreeId !== activeWorktreeId) {
-                    trackTerminalFocus(terminal.worktreeId, terminal.id);
-                    selectWorktree(terminal.worktreeId);
+                  const worktreeId = terminal.worktreeId?.trim();
+                  if (worktreeId && worktreeId !== activeWorktreeId) {
+                    trackTerminalFocus(worktreeId, terminal.id);
+                    selectWorktree(worktreeId);
                   }
                   activateTerminal(terminal.id);
                   pingTerminal(terminal.id);
