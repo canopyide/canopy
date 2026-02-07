@@ -13,6 +13,8 @@ export { TerminalIcon } from "./TerminalIcon";
 export type { TerminalIconProps } from "./TerminalIcon";
 export { TerminalHeaderContent } from "./TerminalHeaderContent";
 export type { TerminalHeaderContentProps } from "./TerminalHeaderContent";
+export { InlineStatusBanner } from "./InlineStatusBanner";
+export type { InlineStatusBannerProps, BannerAction } from "./InlineStatusBanner";
 export { TerminalRestartBanner } from "./TerminalRestartBanner";
 export type { TerminalRestartBannerProps } from "./TerminalRestartBanner";
 export { ReconnectErrorBanner } from "./ReconnectErrorBanner";
