@@ -1,7 +1,7 @@
 import React, { useState, useEffect, useRef, type CSSProperties } from "react";
 import { cn } from "@/lib/utils";
 
-type ButtonVariant = "primary" | "accent" | "dismiss" | "danger";
+type ButtonVariant = "primary" | "accent" | "dismiss" | "danger" | "dangerFilled";
 
 export interface BannerAction {
   id: string;
@@ -32,7 +32,7 @@ const SEVERITY_VAR: Record<"error" | "warning", string> = {
   warning: "--color-status-warning",
 };
 
-function getButtonClasses(variant: ButtonVariant, colorVar: string): string {
+function getButtonClasses(variant: ButtonVariant): string {
   switch (variant) {
     case "primary":
       return "bg-canopy-border text-canopy-text hover:bg-canopy-border/80";
@@ -41,8 +41,27 @@ function getButtonClasses(variant: ButtonVariant, colorVar: string): string {
     case "dismiss":
       return "text-canopy-text/60 hover:text-canopy-text hover:bg-canopy-border/50";
     case "danger":
-      return `text-[var(${colorVar})]/70 hover:text-[var(${colorVar})] hover:bg-[var(${colorVar})]/10`;
+    case "dangerFilled":
+      return "rounded transition-colors";
   }
+}
+
+function getButtonStyle(variant: ButtonVariant, colorVar: string): React.CSSProperties | undefined {
+  if (variant === "danger") {
+    return {
+      color: `color-mix(in oklab, var(${colorVar}) 70%, transparent)`,
+      ["--hover-color" as string]: `var(${colorVar})`,
+      ["--hover-bg" as string]: `color-mix(in oklab, var(${colorVar}) 10%, transparent)`,
+    };
+  }
+  if (variant === "dangerFilled") {
+    return {
+      backgroundColor: `color-mix(in oklab, var(${colorVar}) 10%, transparent)`,
+      color: `var(${colorVar})`,
+      ["--hover-bg" as string]: `color-mix(in oklab, var(${colorVar}) 20%, transparent)`,
+    };
+  }
+  return undefined;
 }
 
 function InlineStatusBannerComponent({
@@ -57,12 +76,16 @@ function InlineStatusBannerComponent({
   role = "alert",
   ariaLive = "polite",
 }: InlineStatusBannerProps) {
-  const [isVisible, setIsVisible] = useState(!animated);
+  const prefersReducedMotion =
+    typeof window !== "undefined" && window.matchMedia("(prefers-reduced-motion: reduce)").matches;
+  const shouldAnimate = animated && !prefersReducedMotion;
+
+  const [isVisible, setIsVisible] = useState(!shouldAnimate);
   const rafRef = useRef<number | null>(null);
   const colorVar = SEVERITY_VAR[severity];
 
   useEffect(() => {
-    if (!animated) return;
+    if (!shouldAnimate) return;
 
     rafRef.current = requestAnimationFrame(() => {
       rafRef.current = null;
@@ -75,7 +98,7 @@ function InlineStatusBannerComponent({
         rafRef.current = null;
       }
     };
-  }, [animated]);
+  }, [shouldAnimate]);
 
   const hasDescription = description || contextLine;
 
@@ -85,10 +108,8 @@ function InlineStatusBannerComponent({
         hasDescription
           ? "flex flex-col gap-2 px-3 py-2 shrink-0"
           : "flex items-center justify-between gap-3 px-3 py-2 shrink-0",
-        animated && "transition-all duration-150",
-        animated &&
-          "motion-reduce:transition-none motion-reduce:duration-0 motion-reduce:transform-none",
-        animated && (isVisible ? "opacity-100 translate-y-0" : "opacity-0 -translate-y-2"),
+        shouldAnimate && "transition-all duration-150",
+        shouldAnimate && (isVisible ? "opacity-100 translate-y-0" : "opacity-0 -translate-y-2"),
         className
       )}
       style={{
@@ -135,7 +156,9 @@ function InlineStatusBannerComponent({
 
       <div className={cn("flex items-center shrink-0", hasDescription ? "gap-2 ml-6" : "gap-1")}>
         {actions.map((action) => {
-          const variantClasses = getButtonClasses(action.variant ?? "primary", colorVar);
+          const variant = action.variant ?? "primary";
+          const variantClasses = getButtonClasses(variant);
+          const variantStyle = getButtonStyle(variant, colorVar);
           return (
             <button
               key={action.id}
@@ -145,11 +168,12 @@ function InlineStatusBannerComponent({
                 action.onClick();
               }}
               className={cn(
-                action.iconOnly
-                  ? "p-1 rounded transition-colors"
-                  : "flex items-center gap-1.5 px-2 py-1 text-xs font-medium rounded transition-colors",
-                variantClasses
+                action.iconOnly ? "p-1" : "flex items-center gap-1.5 px-2 py-1 text-xs font-medium",
+                variantClasses,
+                (variant === "danger" || variant === "dangerFilled") &&
+                  "hover:[color:var(--hover-color)] hover:[background:var(--hover-bg)]"
               )}
+              style={variantStyle}
               title={action.title}
               aria-label={action.ariaLabel}
             >
