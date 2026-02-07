@@ -9,6 +9,7 @@ async function createRegistry() {
     onToggleSidebar: () => {},
     onToggleFocusMode: () => {},
     onOpenAgentPalette: () => {},
+    onOpenActionPalette: () => {},
     onOpenWorktreePalette: () => {},
     onToggleWorktreeOverview: () => {},
     onOpenWorktreeOverview: () => {},
