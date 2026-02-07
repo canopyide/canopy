@@ -6,11 +6,13 @@ const COLOR_SCHEMES = {
     enabled: "bg-canopy-accent/10 border-canopy-accent text-canopy-accent",
     icon: "text-canopy-accent",
     toggle: "bg-canopy-accent",
+    focus: "focus-visible:outline-canopy-accent",
   },
   amber: {
     enabled: "bg-amber-500/10 border-amber-500 text-amber-500",
     icon: "text-amber-500",
     toggle: "bg-amber-500",
+    focus: "focus-visible:outline-amber-500",
   },
 } as const;
 
@@ -39,19 +41,24 @@ export function SettingsSwitchCard({
 
   return (
     <button
+      type="button"
       onClick={onChange}
       disabled={disabled}
       role="switch"
       aria-checked={isEnabled}
       aria-label={ariaLabel}
       className={cn(
-        "w-full flex items-center justify-between p-4 rounded-[var(--radius-lg)] border transition-all focus-visible:outline focus-visible:outline-2 focus-visible:outline-canopy-accent focus-visible:outline-offset-2",
+        "w-full flex items-center justify-between p-4 rounded-[var(--radius-lg)] border transition-all focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2",
         isEnabled ? scheme.enabled : "border-canopy-border hover:bg-white/5 text-canopy-text/70",
+        scheme.focus,
         disabled && "opacity-50 cursor-not-allowed"
       )}
     >
       <div className="flex items-center gap-3">
-        <Icon className={cn("w-5 h-5", isEnabled ? scheme.icon : "text-canopy-text/50")} />
+        <Icon
+          className={cn("w-5 h-5", isEnabled ? scheme.icon : "text-canopy-text/50")}
+          aria-hidden="true"
+        />
         <div className="text-left">
           <div className="text-sm font-medium">{title}</div>
           <div className="text-xs opacity-70">{subtitle}</div>
