@@ -26,7 +26,7 @@ function TerminalRestartBannerComponent({
           id: "restart",
           label: "Restart Session",
           icon: RotateCcw,
-          variant: "danger",
+          variant: "dangerFilled",
           onClick: onRestart,
           title: "Restart Session",
           ariaLabel: "Restart session",
