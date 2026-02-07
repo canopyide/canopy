@@ -69,9 +69,18 @@ export function useWorktreePalette({
 
   closeFnRef.current = palette.close;
 
+  const confirmSelection = useCallback(() => {
+    if (palette.results.length === 0) {
+      palette.close();
+      return;
+    }
+    palette.confirmSelection();
+  }, [palette]);
+
   return {
     ...palette,
     activeWorktreeId,
     selectWorktree: handleSelect,
+    confirmSelection,
   };
 }

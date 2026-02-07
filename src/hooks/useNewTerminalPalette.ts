@@ -74,6 +74,7 @@ export function useNewTerminalPalette({
   const palette = useSearchablePalette<LaunchOption>({
     items: options,
     filterFn: filterLaunchOptions,
+    maxResults: 999,
     onSelect: handleSelect,
   });
 
