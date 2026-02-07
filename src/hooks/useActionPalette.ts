@@ -1,9 +1,9 @@
-import { useCallback, useMemo, useRef } from "react";
+import { useState, useCallback, useMemo } from "react";
 import type { IFuseOptions } from "fuse.js";
 import { actionService } from "@/services/ActionService";
 import { keybindingService } from "@/services/KeybindingService";
 import type { ActionManifestEntry } from "@shared/types/actions";
-import { useSearchablePalette, type UseSearchablePaletteReturn } from "./useSearchablePalette";
+import { useSearchablePalette } from "./useSearchablePalette";
 
 export interface ActionPaletteItem {
   id: string;
@@ -16,9 +16,20 @@ export interface ActionPaletteItem {
   kind: string;
 }
 
-export type UseActionPaletteReturn = UseSearchablePaletteReturn<ActionPaletteItem> & {
+export interface UseActionPaletteReturn {
+  isOpen: boolean;
+  query: string;
+  results: ActionPaletteItem[];
+  selectedIndex: number;
+  open: () => void;
+  close: () => void;
+  toggle: () => void;
+  setQuery: (query: string) => void;
+  selectPrevious: () => void;
+  selectNext: () => void;
   executeAction: (item: ActionPaletteItem) => void;
-};
+  confirmSelection: () => void;
+}
 
 const FUSE_OPTIONS: IFuseOptions<ActionPaletteItem> = {
   keys: [
@@ -29,6 +40,9 @@ const FUSE_OPTIONS: IFuseOptions<ActionPaletteItem> = {
   threshold: 0.4,
   includeScore: true,
 };
+
+const MAX_RESULTS = 20;
+const DEBOUNCE_MS = 200;
 
 function toActionPaletteItem(entry: ActionManifestEntry): ActionPaletteItem {
   return {
@@ -44,19 +58,10 @@ function toActionPaletteItem(entry: ActionManifestEntry): ActionPaletteItem {
 }
 
 export function useActionPalette(): UseActionPaletteReturn {
-  const closeFnRef = useRef<() => void>(() => {});
-
-  const executeAction = useCallback((item: ActionPaletteItem) => {
-    if (!item.enabled) return;
-    closeFnRef.current();
-    void actionService.dispatch(
-      item.id as Parameters<typeof actionService.dispatch>[0],
-      undefined,
-      { source: "user" }
-    );
-  }, []);
+  const [isOpen, setIsOpen] = useState(false);
 
   const allActions = useMemo<ActionPaletteItem[]>(() => {
+    if (!isOpen) return [];
     const entries = actionService.list();
     return entries
       .filter((e) => e.kind === "command")
@@ -65,19 +70,74 @@ export function useActionPalette(): UseActionPaletteReturn {
         if (a.enabled !== b.enabled) return a.enabled ? -1 : 1;
         return a.title.localeCompare(b.title);
       });
-  }, []);
+  }, [isOpen]);
 
-  const palette = useSearchablePalette<ActionPaletteItem>({
+  const {
+    isOpen: paletteIsOpen,
+    query,
+    results,
+    selectedIndex,
+    open: paletteOpen,
+    close: paletteClose,
+    setQuery,
+    selectPrevious,
+    selectNext,
+  } = useSearchablePalette<ActionPaletteItem>({
     items: allActions,
     fuseOptions: FUSE_OPTIONS,
-    maxResults: 20,
-    onSelect: executeAction,
+    maxResults: MAX_RESULTS,
+    debounceMs: DEBOUNCE_MS,
   });
 
-  closeFnRef.current = palette.close;
+  const open = useCallback(() => {
+    setIsOpen(true);
+    paletteOpen();
+  }, [paletteOpen]);
+
+  const close = useCallback(() => {
+    setIsOpen(false);
+    paletteClose();
+  }, [paletteClose]);
+
+  const toggle = useCallback(() => {
+    if (paletteIsOpen) {
+      close();
+    } else {
+      open();
+    }
+  }, [paletteIsOpen, open, close]);
+
+  const executeAction = useCallback(
+    (item: ActionPaletteItem) => {
+      if (!item.enabled) return;
+      close();
+      void actionService.dispatch(
+        item.id as Parameters<typeof actionService.dispatch>[0],
+        undefined,
+        { source: "user" }
+      );
+    },
+    [close]
+  );
+
+  const confirmSelection = useCallback(() => {
+    if (results.length > 0 && selectedIndex >= 0 && selectedIndex < results.length) {
+      executeAction(results[selectedIndex]);
+    }
+  }, [results, selectedIndex, executeAction]);
 
   return {
-    ...palette,
+    isOpen: paletteIsOpen,
+    query,
+    results,
+    selectedIndex,
+    open,
+    close,
+    toggle,
+    setQuery,
+    selectPrevious,
+    selectNext,
     executeAction,
+    confirmSelection,
   };
 }

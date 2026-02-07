@@ -1,10 +1,10 @@
-import { useCallback, useMemo, useRef } from "react";
+import { useCallback, useMemo } from "react";
 import type { IFuseOptions } from "fuse.js";
 import { useShallow } from "zustand/react/shallow";
 import { useTerminalStore, type TerminalInstance } from "@/store";
 import { useWorktrees } from "./useWorktrees";
-import { useSearchablePalette, type UseSearchablePaletteReturn } from "./useSearchablePalette";
 import { isPtyPanel } from "@shared/types/domain";
+import { useSearchablePalette } from "./useSearchablePalette";
 
 export interface SearchableTerminal {
   id: string;
@@ -18,9 +18,20 @@ export interface SearchableTerminal {
   cwd: string;
 }
 
-export type UseTerminalPaletteReturn = UseSearchablePaletteReturn<SearchableTerminal> & {
+export interface UseTerminalPaletteReturn {
+  isOpen: boolean;
+  query: string;
+  results: SearchableTerminal[];
+  selectedIndex: number;
+  open: () => void;
+  close: () => void;
+  toggle: () => void;
+  setQuery: (query: string) => void;
+  selectPrevious: () => void;
+  selectNext: () => void;
   selectTerminal: (terminal: SearchableTerminal) => void;
-};
+  confirmSelection: () => void;
+}
 
 const FUSE_OPTIONS: IFuseOptions<SearchableTerminal> = {
   keys: [
@@ -33,9 +44,13 @@ const FUSE_OPTIONS: IFuseOptions<SearchableTerminal> = {
   includeScore: true,
 };
 
+const MAX_RESULTS = 10;
+const DEBOUNCE_MS = 200;
+
 export function useTerminalPalette(): UseTerminalPaletteReturn {
   const terminals = useTerminalStore(useShallow((state) => state.terminals));
   const setFocused = useTerminalStore((state) => state.setFocused);
+
   const { worktreeMap } = useWorktrees();
 
   const searchableTerminals = useMemo<SearchableTerminal[]>(() => {
@@ -55,27 +70,50 @@ export function useTerminalPalette(): UseTerminalPaletteReturn {
       }));
   }, [terminals, worktreeMap]);
 
-  const closeFnRef = useRef<() => void>(() => {});
-
-  const handleSelect = useCallback(
-    (terminal: SearchableTerminal) => {
-      setFocused(terminal.id);
-      closeFnRef.current();
-    },
-    [setFocused]
-  );
-
-  const palette = useSearchablePalette<SearchableTerminal>({
+  const {
+    isOpen,
+    query,
+    results,
+    selectedIndex,
+    open,
+    close,
+    toggle,
+    setQuery,
+    selectPrevious,
+    selectNext,
+  } = useSearchablePalette<SearchableTerminal>({
     items: searchableTerminals,
     fuseOptions: FUSE_OPTIONS,
-    maxResults: 10,
-    onSelect: handleSelect,
+    maxResults: MAX_RESULTS,
+    debounceMs: DEBOUNCE_MS,
   });
 
-  closeFnRef.current = palette.close;
+  const selectTerminal = useCallback(
+    (terminal: SearchableTerminal) => {
+      setFocused(terminal.id);
+      close();
+    },
+    [setFocused, close]
+  );
+
+  const confirmSelection = useCallback(() => {
+    if (results.length > 0 && selectedIndex >= 0 && selectedIndex < results.length) {
+      selectTerminal(results[selectedIndex]);
+    }
+  }, [results, selectedIndex, selectTerminal]);
 
   return {
-    ...palette,
-    selectTerminal: handleSelect,
+    isOpen,
+    query,
+    results,
+    selectedIndex,
+    open,
+    close,
+    toggle,
+    setQuery,
+    selectPrevious,
+    selectNext,
+    selectTerminal,
+    confirmSelection,
   };
 }
