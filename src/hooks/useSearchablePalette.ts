@@ -93,11 +93,12 @@ export function useSearchablePalette<T>(
     }
 
     if (filterFn) {
-      return filterFn(items, debouncedQuery).slice(0, maxResults);
+      const effectiveQuery = debounceMs > 0 ? debouncedQuery : query;
+      return filterFn(items, effectiveQuery).slice(0, maxResults);
     }
 
     return items.slice(0, maxResults);
-  }, [debouncedQuery, items, fuse, filterFn, maxResults]);
+  }, [debouncedQuery, query, items, fuse, filterFn, maxResults, debounceMs]);
 
   useEffect(() => {
     setSelectedIndex(0);
@@ -126,10 +127,12 @@ export function useSearchablePalette<T>(
   }, [isOpen, open, close]);
 
   const selectPrevious = useCallback(() => {
+    if (results.length === 0) return;
     setSelectedIndex((prev) => (prev <= 0 ? results.length - 1 : prev - 1));
   }, [results.length]);
 
   const selectNext = useCallback(() => {
+    if (results.length === 0) return;
     setSelectedIndex((prev) => (prev >= results.length - 1 ? 0 : prev + 1));
   }, [results.length]);
 
