@@ -1,68 +1,56 @@
 import { useState, useCallback, useMemo, useEffect, useRef } from "react";
 import Fuse, { type IFuseOptions } from "fuse.js";
 
-interface BaseOptions<T> {
+export interface UseSearchablePaletteOptions<T> {
   items: T[];
+  fuseOptions?: IFuseOptions<T>;
+  filterFn?: (items: T[], query: string) => T[];
   maxResults?: number;
-  onSelect: (item: T) => void;
-}
-
-interface FuseSearchOptions<T> extends BaseOptions<T> {
-  fuseOptions: IFuseOptions<T>;
   debounceMs?: number;
-  filterFn?: never;
+  /** Return false to skip item during keyboard navigation (e.g. disabled items) */
+  canNavigate?: (item: T) => boolean;
+  /** Reset selected index when results change. Default: true */
+  resetOnResultsChange?: boolean;
 }
-
-interface CustomFilterOptions<T> extends BaseOptions<T> {
-  filterFn: (items: T[], query: string) => T[];
-  fuseOptions?: never;
-  debounceMs?: never;
-}
-
-export type UseSearchablePaletteOptions<T> = FuseSearchOptions<T> | CustomFilterOptions<T>;
 
 export interface UseSearchablePaletteReturn<T> {
   isOpen: boolean;
+  query: string;
+  results: T[];
+  selectedIndex: number;
   open: () => void;
   close: () => void;
   toggle: () => void;
-  query: string;
-  setQuery: (q: string) => void;
-  results: T[];
-  selectedIndex: number;
+  setQuery: (query: string) => void;
+  setSelectedIndex: (index: number) => void;
   selectPrevious: () => void;
   selectNext: () => void;
-  confirmSelection: () => void;
 }
 
+const DEFAULT_MAX_RESULTS = 20;
 const DEFAULT_DEBOUNCE_MS = 200;
-const DEFAULT_MAX_RESULTS = 10;
 
 export function useSearchablePalette<T>(
   options: UseSearchablePaletteOptions<T>
 ): UseSearchablePaletteReturn<T> {
-  const { items, maxResults = DEFAULT_MAX_RESULTS, onSelect } = options;
+  const {
+    items,
+    fuseOptions,
+    filterFn,
+    maxResults = DEFAULT_MAX_RESULTS,
+    debounceMs = DEFAULT_DEBOUNCE_MS,
+    canNavigate,
+    resetOnResultsChange = true,
+  } = options;
 
   const [isOpen, setIsOpen] = useState(false);
   const [query, setQuery] = useState("");
   const [selectedIndex, setSelectedIndex] = useState(0);
-
-  const useFuseSearch = "fuseOptions" in options && options.fuseOptions != null;
-  const fuseOptions = useFuseSearch ? (options as FuseSearchOptions<T>).fuseOptions : null;
-  const filterFn = !useFuseSearch ? (options as CustomFilterOptions<T>).filterFn : null;
-  const debounceMs = useFuseSearch
-    ? ((options as FuseSearchOptions<T>).debounceMs ?? DEFAULT_DEBOUNCE_MS)
-    : 0;
-
   const [debouncedQuery, setDebouncedQuery] = useState("");
+
   const debounceRef = useRef<ReturnType<typeof setTimeout> | null>(null);
 
   useEffect(() => {
-    if (debounceMs <= 0) {
-      setDebouncedQuery(query);
-      return;
-    }
-
     if (debounceRef.current) {
       clearTimeout(debounceRef.current);
     }
@@ -84,31 +72,60 @@ export function useSearchablePalette<T>(
   }, [items, fuseOptions]);
 
   const results = useMemo<T[]>(() => {
-    if (fuse) {
-      if (!debouncedQuery.trim()) {
-        return items.slice(0, maxResults);
-      }
-      const fuseResults = fuse.search(debouncedQuery);
-      return fuseResults.slice(0, maxResults).map((r) => r.item);
-    }
+    let filtered: T[];
 
     if (filterFn) {
-      const effectiveQuery = debounceMs > 0 ? debouncedQuery : query;
-      return filterFn(items, effectiveQuery).slice(0, maxResults);
+      filtered = filterFn(items, debouncedQuery);
+    } else if (!debouncedQuery.trim()) {
+      filtered = items;
+    } else if (fuse) {
+      const fuseResults = fuse.search(debouncedQuery);
+      filtered = fuseResults.map((r) => r.item);
+    } else {
+      filtered = items;
     }
 
-    return items.slice(0, maxResults);
-  }, [debouncedQuery, query, items, fuse, filterFn, maxResults, debounceMs]);
+    return filtered.slice(0, maxResults);
+  }, [debouncedQuery, items, fuse, filterFn, maxResults]);
+
+  const findNavigable = useCallback(
+    (startIndex: number, direction: 1 | -1): number => {
+      if (results.length === 0) return 0;
+      if (!canNavigate) return startIndex;
+
+      let index = startIndex;
+      const visited = new Set<number>();
+      while (!canNavigate(results[index]) && !visited.has(index)) {
+        visited.add(index);
+        index = (index + direction + results.length) % results.length;
+      }
+
+      // If we visited all items and none are navigable, return -1
+      if (visited.size === results.length && !canNavigate(results[index])) {
+        return -1;
+      }
+
+      return index;
+    },
+    [results, canNavigate]
+  );
 
   useEffect(() => {
-    setSelectedIndex(0);
-  }, [results]);
+    if (resetOnResultsChange) {
+      if (canNavigate && results.length > 0) {
+        const firstNavigable = findNavigable(0, 1);
+        setSelectedIndex(firstNavigable);
+      } else {
+        setSelectedIndex(0);
+      }
+    }
+  }, [results, resetOnResultsChange, canNavigate, findNavigable]);
 
   const open = useCallback(() => {
     setIsOpen(true);
     setQuery("");
-    setSelectedIndex(0);
     setDebouncedQuery("");
+    setSelectedIndex(0);
   }, []);
 
   const close = useCallback(() => {
@@ -128,31 +145,31 @@ export function useSearchablePalette<T>(
 
   const selectPrevious = useCallback(() => {
     if (results.length === 0) return;
-    setSelectedIndex((prev) => (prev <= 0 ? results.length - 1 : prev - 1));
-  }, [results.length]);
+    setSelectedIndex((prev) => {
+      const next = prev <= 0 ? results.length - 1 : prev - 1;
+      return canNavigate ? findNavigable(next, -1) : next;
+    });
+  }, [results.length, canNavigate, findNavigable]);
 
   const selectNext = useCallback(() => {
     if (results.length === 0) return;
-    setSelectedIndex((prev) => (prev >= results.length - 1 ? 0 : prev + 1));
-  }, [results.length]);
-
-  const confirmSelection = useCallback(() => {
-    if (results.length > 0 && selectedIndex >= 0 && selectedIndex < results.length) {
-      onSelect(results[selectedIndex]);
-    }
-  }, [results, selectedIndex, onSelect]);
+    setSelectedIndex((prev) => {
+      const next = prev >= results.length - 1 ? 0 : prev + 1;
+      return canNavigate ? findNavigable(next, 1) : next;
+    });
+  }, [results.length, canNavigate, findNavigable]);
 
   return {
     isOpen,
+    query,
+    results,
+    selectedIndex,
     open,
     close,
     toggle,
-    query,
     setQuery,
-    results,
-    selectedIndex,
+    setSelectedIndex,
     selectPrevious,
     selectNext,
-    confirmSelection,
   };
 }
