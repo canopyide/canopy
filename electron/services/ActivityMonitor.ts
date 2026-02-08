@@ -152,6 +152,8 @@ export class ActivityMonitor {
   private readonly PROMPT_HISTORY_FALLBACK_MS = 3000;
   private readonly WORKING_HOLD_MS = 200;
   private readonly SPINNER_ACTIVE_MS = 1500;
+  private readonly INPUT_ECHO_WINDOW_MS = 1000;
+  private lastUserInputAt = 0;
   private inBracketedPaste = false;
   private partialEscape = "";
   private pasteStartTime = 0;
@@ -318,6 +320,10 @@ export class ActivityMonitor {
     if (this.ignoredInputSequences.has(data)) {
       return;
     }
+
+    // Track when user last sent input (used to distinguish character echoes
+    // from autonomous agent output for idle→busy recovery). Issue #2185.
+    this.lastUserInputAt = Date.now();
 
     // Fail-safe: exit paste mode if it has been open too long
     if (
@@ -546,11 +552,16 @@ export class ActivityMonitor {
       const isWorking = patternResult
         ? patternResult.isWorking
         : lowerBuffer.includes("esc to interrupt") || lowerBuffer.includes("esc to cancel");
-      // Only allow pattern-based busy transitions if:
+      // Allow pattern-based busy transitions if:
       // 1. We're already busy (to keep the state), OR
-      // 2. There's pending input confirmation (Enter was pressed)
-      // This prevents stale patterns from triggering busy during typing. Issue #1476.
-      if (isWorking && (this.state === "busy" || this.pendingInputUntil > 0)) {
+      // 2. There's pending input confirmation (Enter was pressed), OR
+      // 3. No recent user input (output is autonomous, not a character echo). Issue #2185.
+      // Guard (3) prevents stale patterns during typing (Issue #1476) while allowing
+      // recovery when agents resume work autonomously.
+      if (
+        isWorking &&
+        (this.state === "busy" || this.pendingInputUntil > 0 || !this.isRecentUserInput(now))
+      ) {
         this.becomeBusy({
           trigger: "pattern",
           patternConfidence: patternResult?.confidence ?? 0.9,
@@ -742,8 +753,9 @@ export class ActivityMonitor {
 
     if (this.rewriteCount >= this.rewriteMinCount) {
       this.lastSpinnerDetectedAt = now;
-      // Only trigger busy if already busy OR pending input (Enter was pressed). Issue #1476.
-      if (this.state === "busy" || this.pendingInputUntil > 0) {
+      // Trigger busy if already busy, pending input, or no recent user input
+      // (autonomous output). Issue #1476 guard relaxed for recovery. Issue #2185.
+      if (this.state === "busy" || this.pendingInputUntil > 0 || !this.isRecentUserInput(now)) {
         this.becomeBusy({ trigger: "output" }, now);
       }
     }
@@ -843,6 +855,16 @@ export class ActivityMonitor {
   }
 
   /**
+   * Whether the user sent input recently (within the echo window).
+   * Used to distinguish character echoes from autonomous agent output.
+   * When true, output is likely an echo and should not trigger idle→busy recovery.
+   * When false, output is autonomous and can safely trigger recovery.
+   */
+  private isRecentUserInput(now: number): boolean {
+    return this.lastUserInputAt > 0 && now - this.lastUserInputAt < this.INPUT_ECHO_WINDOW_MS;
+  }
+
+  /**
    * Transition to busy state based on pattern detection.
    */
   private becomeBusyFromPattern(confidence: number, now: number): void {
@@ -868,6 +890,7 @@ export class ActivityMonitor {
         this.debounceTimer = null;
       }
       this.state = "idle";
+      this.patternBuffer = "";
       this.onStateChange(this.terminalId, this.spawnedAt, "idle");
     }
   }
@@ -888,14 +911,14 @@ export class ActivityMonitor {
   }
 
   private becomeBusyFromOutput(now: number): void {
-    // Only allow output-based busy transitions if:
+    // Allow output-based busy transitions if:
     // 1. We're already busy (to keep the state via output activity), OR
-    // 2. There's pending input confirmation (Enter was pressed, waiting for agent to start)
+    // 2. There's pending input confirmation (Enter was pressed), OR
+    // 3. No recent user input (output is autonomous, not echo). Issue #2185.
     //
-    // This prevents character echoes during typing from triggering working state.
-    // The key insight: output alone should CONFIRM working state after Enter,
-    // not independently trigger it. Issue #1476.
-    if (this.state !== "busy" && this.pendingInputUntil === 0) {
+    // Guard (3) prevents character echoes during typing (Issue #1476) while allowing
+    // recovery when agents resume work autonomously — a truly idle agent has no output.
+    if (this.state !== "busy" && this.pendingInputUntil === 0 && this.isRecentUserInput(now)) {
       return;
     }
 
@@ -945,6 +968,7 @@ export class ActivityMonitor {
       }
 
       this.state = "idle";
+      this.patternBuffer = "";
       this.onStateChange(this.terminalId, this.spawnedAt, "idle");
       this.debounceTimer = null;
     }, this.IDLE_DEBOUNCE_MS);
@@ -983,6 +1007,7 @@ export class ActivityMonitor {
     this.pendingInputWasNonEmpty = false;
     this.pendingInputChars = 0;
     this.workingHoldUntil = 0;
+    this.lastUserInputAt = 0;
     this.lastOutputActivityAt = 0;
     this.lastSpinnerDetectedAt = 0;
     this.promptStableSince = 0;
@@ -995,6 +1020,16 @@ export class ActivityMonitor {
    */
   getLastPatternResult(): PatternDetectionResult | undefined {
     return this.lastPatternResult;
+  }
+
+  /**
+   * Called when a command is submitted via the hybrid input bar.
+   * Immediately transitions to busy state without relying on character-by-character
+   * Enter key detection, which fails when performSubmit() splits body and Enter
+   * across separate async write() calls.
+   */
+  notifySubmission(): void {
+    this.becomeBusy({ trigger: "input" });
   }
 
   getState(): "busy" | "idle" {
@@ -1158,12 +1193,14 @@ export class ActivityMonitor {
     }
 
     if (isWorkingSignal) {
-      // Only allow working signal to trigger busy if:
+      // Allow working signal to trigger busy if:
       // 1. We're already busy (to stay busy), OR
-      // 2. There's pending input (Enter was pressed, waiting for confirmation)
-      // This prevents output/patterns during typing from triggering working state. Issue #1476.
-      if (this.state !== "busy" && this.pendingInputUntil === 0) {
-        // Not busy and no pending input - don't transition to busy
+      // 2. There's pending input (Enter was pressed), OR
+      // 3. No recent user input (output is autonomous). Issue #2185.
+      // Guard prevents character echoes during typing from triggering working state (Issue #1476)
+      // while allowing recovery when agents resume work autonomously.
+      if (this.state !== "busy" && this.pendingInputUntil === 0 && this.isRecentUserInput(now)) {
+        // Recent user input with no pending Enter - likely typing echoes, don't transition
         return;
       }
       if (this.state !== "busy") {
@@ -1183,6 +1220,7 @@ export class ActivityMonitor {
       !(this.pendingInputUntil > 0 && now < this.pendingInputUntil)
     ) {
       this.state = "idle";
+      this.patternBuffer = "";
       this.onStateChange(this.terminalId, this.spawnedAt, "idle");
     }
   }
