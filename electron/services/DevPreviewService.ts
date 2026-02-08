@@ -87,6 +87,18 @@ export class DevPreviewService extends EventEmitter {
       error: session.error,
       worktreeId: session.worktreeId,
     });
+    const buildCancelledSnapshot = (): DevPreviewAttachSnapshot => {
+      const current = this.sessions.get(panelId);
+      if (current) return buildSnapshot(current);
+      return {
+        sessionId,
+        status: "stopped",
+        message: "Attach cancelled",
+        url: null,
+        ptyId,
+        timestamp: Date.now(),
+      };
+    };
 
     const normalizedCommand = providedCommand?.trim() || undefined;
     const existingSession = this.sessions.get(panelId);
@@ -121,177 +133,184 @@ export class DevPreviewService extends EventEmitter {
       this.detach(panelId);
     }
 
-    // Fallback chain: provided command → auto-detect → browser-only mode
-    let finalCommand = normalizedCommand;
-    let packageManager: string | null = null;
-    let installCommand: string | null = null;
-    let needsInstall = false;
+    // Abort any previous in-flight attach for this panel and register ours
+    const prevPending = this.pendingAttaches.get(panelId);
+    if (prevPending) prevPending.aborted = true;
+    this.pendingAttaches.set(panelId, { sessionId, aborted: false });
+    const isStillCurrent = () => {
+      const p = this.pendingAttaches.get(panelId);
+      return !!p && p.sessionId === sessionId && !p.aborted;
+    };
 
-    if (!finalCommand) {
-      packageManager = await this.detectPackageManager(cwd);
-      if (packageManager) {
-        finalCommand = (await this.detectDevCommand(cwd, packageManager)) ?? undefined;
-      }
-    }
+    try {
+      // Fallback chain: provided command → auto-detect → browser-only mode
+      let finalCommand = normalizedCommand;
+      let packageManager: string | null = null;
+      let installCommand: string | null = null;
+      let needsInstall = false;
 
-    if (finalCommand) {
-      packageManager = packageManager ?? (await this.detectPackageManager(cwd));
-      if (packageManager) {
-        needsInstall = await this.needsDependencyInstall(cwd);
-        installCommand = needsInstall ? this.getInstallCommand(packageManager) : null;
+      if (!finalCommand) {
+        packageManager = await this.detectPackageManager(cwd);
+        if (!isStillCurrent()) return buildCancelledSnapshot();
+        if (packageManager) {
+          finalCommand = (await this.detectDevCommand(cwd, packageManager)) ?? undefined;
+          if (!isStillCurrent()) return buildCancelledSnapshot();
+        }
       }
-    }
 
-    // Browser-only mode: no command available
-    if (!finalCommand) {
-      if (process.env.CANOPY_VERBOSE) {
-        console.log(
-          `[DevPreview] Panel ${panelId} entering browser-only mode (no dev command found, cwd: ${cwd})`
-        );
+      if (finalCommand) {
+        packageManager = packageManager ?? (await this.detectPackageManager(cwd));
+        if (!isStillCurrent()) return buildCancelledSnapshot();
+        if (packageManager) {
+          needsInstall = await this.needsDependencyInstall(cwd);
+          if (!isStillCurrent()) return buildCancelledSnapshot();
+          installCommand = needsInstall ? this.getInstallCommand(packageManager) : null;
+        }
       }
+
+      // Browser-only mode: no command available
+      if (!finalCommand) {
+        if (!isStillCurrent()) return buildCancelledSnapshot();
+        if (process.env.CANOPY_VERBOSE) {
+          console.log(
+            `[DevPreview] Panel ${panelId} entering browser-only mode (no dev command found, cwd: ${cwd})`
+          );
+        }
+        const session: DevPreviewSession = {
+          sessionId,
+          panelId,
+          ptyId,
+          projectRoot: cwd,
+          status: "running",
+          statusMessage: "Browser-only mode (no dev command)",
+          url: null,
+          packageManager: null,
+          devCommand: null,
+          installCommand: null,
+          timestamp: Date.now(),
+          unsubscribers: [],
+          generation: ++this.generationCounter,
+          outputBuffer: "",
+          recoveryInProgress: false,
+          recoveryAttempts: 0,
+        };
+        this.sessions.set(panelId, session);
+        this.emitStatus(panelId, "running", "Browser-only mode (no dev command)", null);
+        return buildSnapshot(session);
+      }
+
+      if (!isStillCurrent()) return buildCancelledSnapshot();
+
+      let fullCommand: string;
+      if (installCommand) {
+        fullCommand = `${installCommand} && ${finalCommand}`;
+      } else {
+        fullCommand = finalCommand;
+      }
+
+      const generation = ++this.generationCounter;
+
+      // Create session before first status emit so sessionId is available
       const session: DevPreviewSession = {
         sessionId,
         panelId,
         ptyId,
         projectRoot: cwd,
-        status: "running",
-        statusMessage: "Browser-only mode (no dev command)",
-        url: null,
-        packageManager: null,
-        devCommand: null,
-        installCommand: null,
-        timestamp: Date.now(),
-        unsubscribers: [],
-        generation: ++this.generationCounter,
-        outputBuffer: "",
-        recoveryInProgress: false,
-        recoveryAttempts: 0,
-      };
-      this.sessions.set(panelId, session);
-      this.emitStatus(panelId, "running", "Browser-only mode (no dev command)", null);
-      return buildSnapshot(session);
-    }
-
-    let fullCommand: string;
-    if (installCommand) {
-      fullCommand = `${installCommand} && ${finalCommand}`;
-      this.emitStatus(panelId, "installing", "Installing dependencies...", null);
-    } else {
-      fullCommand = finalCommand;
-      this.emitStatus(panelId, "starting", "Starting dev server...", null);
-    }
-
-    const generation = ++this.generationCounter;
-
-    if (process.env.CANOPY_VERBOSE) {
-      console.log(`[DevPreview] Attaching to panel ${panelId} with ptyId: ${ptyId}, cwd: ${cwd}`);
-    }
-
-    // Check if PTY exists before attaching to avoid stuck sessions
-    if (!this.ptyClient.hasTerminal(ptyId)) {
-      if (process.env.CANOPY_VERBOSE) {
-        console.log(`[DevPreview] PTY ${ptyId} does not exist, creating stopped session`);
-      }
-      const session: DevPreviewSession = {
-        sessionId,
-        panelId,
-        ptyId,
-        projectRoot: cwd,
-        status: "stopped",
-        statusMessage: "Terminal not found",
+        status: needsInstall ? "installing" : "starting",
+        statusMessage: needsInstall ? "Installing dependencies..." : "Starting dev server...",
         url: null,
         packageManager,
         devCommand: finalCommand,
         installCommand,
         timestamp: Date.now(),
         unsubscribers: [],
-        generation: ++this.generationCounter,
+        generation,
         outputBuffer: "",
         recoveryInProgress: false,
         recoveryAttempts: 0,
       };
       this.sessions.set(panelId, session);
-      this.emitStatus(panelId, "stopped", "Terminal not found", null);
-      return buildSnapshot(session);
-    }
 
-    // Subscribe to the existing PTY's data and exit events
-    // Capture generation to prevent stale listeners from corrupting new sessions
-    const dataListener = (id: string, data: string) => {
-      const currentSession = this.sessions.get(panelId);
-      if (id === ptyId && currentSession && currentSession.generation === generation) {
-        this.handlePtyData(panelId, data);
-      }
-    };
+      // Emit initial status after session is stored so sessionId is populated
+      this.emitStatus(panelId, session.status, session.statusMessage, null);
 
-    const exitListener = (id: string, exitCode: number) => {
-      const currentSession = this.sessions.get(panelId);
-      if (id === ptyId && currentSession && currentSession.generation === generation) {
-        this.handlePtyExit(panelId, exitCode);
-      }
-    };
-
-    this.ptyClient.on("data", dataListener);
-    this.ptyClient.on("exit", exitListener);
-
-    // Enable IPC data mirroring so PTY data events reach this service
-    // even when SharedArrayBuffer is active (primary data path bypasses IPC)
-    this.ptyClient.setIpcDataMirror(ptyId, true);
-
-    const unsubscribers: (() => void)[] = [
-      () => this.ptyClient.removeListener("data", dataListener),
-      () => this.ptyClient.removeListener("exit", exitListener),
-      () => this.ptyClient.setIpcDataMirror(ptyId, false),
-    ];
-
-    // Delay command submission to allow PTY shell to initialize
-    const shouldSkipSubmit = this.shouldDedupSubmit(ptyId, fullCommand);
-    let submitTimeout: NodeJS.Timeout | undefined;
-
-    if (shouldSkipSubmit) {
       if (process.env.CANOPY_VERBOSE) {
-        console.log(
-          `[DevPreview] Skipping duplicate dev command submit for ${ptyId}: ${fullCommand}`
-        );
+        console.log(`[DevPreview] Attaching to panel ${panelId} with ptyId: ${ptyId}, cwd: ${cwd}`);
       }
-    } else {
-      // Mark early to prevent duplicate submits during rapid attach/detach cycles.
-      this.markSubmit(ptyId, fullCommand);
-      submitTimeout = setTimeout(() => {
-        const currentSession = this.sessions.get(panelId);
-        if (
-          currentSession &&
-          currentSession.generation === generation &&
-          this.ptyClient.hasTerminal(ptyId)
-        ) {
-          this.markSubmit(ptyId, fullCommand);
-          this.ptyClient.submit(ptyId, fullCommand);
+
+      // Check if PTY exists before attaching to avoid stuck sessions
+      if (!this.ptyClient.hasTerminal(ptyId)) {
+        if (process.env.CANOPY_VERBOSE) {
+          console.log(`[DevPreview] PTY ${ptyId} does not exist, creating stopped session`);
         }
-      }, 100);
+        session.status = "stopped";
+        session.statusMessage = "Terminal not found";
+        session.generation = ++this.generationCounter;
+        this.emitStatus(panelId, "stopped", "Terminal not found", null);
+        return buildSnapshot(session);
+      }
+
+      // Subscribe to the existing PTY's data and exit events
+      // Capture generation to prevent stale listeners from corrupting new sessions
+      const dataListener = (id: string, data: string) => {
+        const currentSession = this.sessions.get(panelId);
+        if (id === ptyId && currentSession && currentSession.generation === generation) {
+          this.handlePtyData(panelId, data);
+        }
+      };
+
+      const exitListener = (id: string, exitCode: number) => {
+        const currentSession = this.sessions.get(panelId);
+        if (id === ptyId && currentSession && currentSession.generation === generation) {
+          this.handlePtyExit(panelId, exitCode);
+        }
+      };
+
+      this.ptyClient.on("data", dataListener);
+      this.ptyClient.on("exit", exitListener);
+
+      // Enable IPC data mirroring so PTY data events reach this service
+      // even when SharedArrayBuffer is active (primary data path bypasses IPC)
+      this.ptyClient.setIpcDataMirror(ptyId, true);
+
+      session.unsubscribers = [
+        () => this.ptyClient.removeListener("data", dataListener),
+        () => this.ptyClient.removeListener("exit", exitListener),
+        () => this.ptyClient.setIpcDataMirror(ptyId, false),
+      ];
+
+      // Delay command submission to allow PTY shell to initialize
+      const shouldSkipSubmit = this.shouldDedupSubmit(ptyId, fullCommand);
+
+      if (shouldSkipSubmit) {
+        if (process.env.CANOPY_VERBOSE) {
+          console.log(
+            `[DevPreview] Skipping duplicate dev command submit for ${ptyId}: ${fullCommand}`
+          );
+        }
+      } else {
+        // Mark early to prevent duplicate submits during rapid attach/detach cycles.
+        this.markSubmit(ptyId, fullCommand);
+        session.submitTimeout = setTimeout(() => {
+          const currentSession = this.sessions.get(panelId);
+          if (
+            currentSession &&
+            currentSession.generation === generation &&
+            this.ptyClient.hasTerminal(ptyId)
+          ) {
+            this.markSubmit(ptyId, fullCommand);
+            this.ptyClient.submit(ptyId, fullCommand);
+          }
+        }, 100);
+      }
+
+      return buildSnapshot(session);
+    } finally {
+      const p = this.pendingAttaches.get(panelId);
+      if (p?.sessionId === sessionId) {
+        this.pendingAttaches.delete(panelId);
+      }
     }
-
-    const session: DevPreviewSession = {
-      sessionId,
-      panelId,
-      ptyId,
-      projectRoot: cwd,
-      status: needsInstall ? "installing" : "starting",
-      statusMessage: needsInstall ? "Installing dependencies..." : "Starting dev server...",
-      url: null,
-      packageManager,
-      devCommand: finalCommand,
-      installCommand,
-      timestamp: Date.now(),
-      unsubscribers,
-      generation,
-      submitTimeout,
-      outputBuffer: "",
-      recoveryInProgress: false,
-      recoveryAttempts: 0,
-    };
-
-    this.sessions.set(panelId, session);
-    return buildSnapshot(session);
   }
 
   /**
@@ -300,6 +319,10 @@ export class DevPreviewService extends EventEmitter {
    * The PTY lifecycle is managed by the standard terminal pipeline.
    */
   detach(panelId: string): void {
+    // Abort any in-flight attach for this panel
+    const pending = this.pendingAttaches.get(panelId);
+    if (pending) pending.aborted = true;
+
     const session = this.sessions.get(panelId);
     if (!session) return;
 
