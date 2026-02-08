@@ -357,7 +357,7 @@ export function ProjectSettingsDialog({ projectId, isOpen, onClose }: ProjectSet
   };
 
   const handleSave = async () => {
-    if (!settings) return;
+    if (!settings || isSaving) return;
 
     const sanitizedRunCommands = runCommands
       .map((cmd) => ({
@@ -445,6 +445,32 @@ export function ProjectSettingsDialog({ projectId, isOpen, onClose }: ProjectSet
         insecureEnvironmentVariables: undefined,
         unresolvedSecureEnvironmentVariables: undefined,
       });
+
+      const sanitizedEnvVars = Object.entries(envVarRecord).map(([key, value]) => ({
+        id: environmentVariables.find((ev) => ev.key.trim() === key)?.id || key,
+        key,
+        value,
+      }));
+
+      const sanitizedRunCommandsWithIds = sanitizedRunCommands.map((cmd) => ({
+        id: cmd.id || "",
+        name: cmd.name,
+        command: cmd.command,
+      }));
+
+      initialSnapshotRef.current = createProjectSettingsSnapshot(
+        name.trim() || (currentProject?.name ?? ""),
+        emoji,
+        devServerCommand.trim() || "",
+        projectIconSvg,
+        sanitizedPaths,
+        sanitizedEnvVars,
+        sanitizedRunCommandsWithIds,
+        defaultWorktreeRecipeId,
+        commandOverrides.length > 0 ? commandOverrides : [],
+        hasCopyTreeSettings ? sanitizedCopyTreeSettings : {}
+      );
+
       requestClose({ bypassDirty: true });
     } catch (error) {
       console.error("Failed to save settings:", error);
