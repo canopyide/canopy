@@ -2,8 +2,10 @@ import { EventEmitter } from "events";
 import path from "path";
 import { existsSync } from "fs";
 import { readFile } from "fs/promises";
+import { randomBytes } from "crypto";
 import type { PtyClient } from "./PtyClient.js";
 import { extractLocalhostUrls } from "../../shared/utils/urlUtils.js";
+import type { DevPreviewAttachSnapshot } from "../../shared/types/ipc/devPreview.js";
 import {
   detectDevServerError,
   isRecoverableError,
@@ -13,6 +15,7 @@ import {
 export type DevPreviewStatus = "installing" | "starting" | "running" | "error" | "stopped";
 
 export interface DevPreviewSession {
+  sessionId: string;
   panelId: string;
   ptyId: string;
   projectRoot: string;
@@ -30,6 +33,7 @@ export interface DevPreviewSession {
   outputBuffer: string;
   recoveryInProgress: boolean;
   recoveryAttempts: number;
+  worktreeId?: string;
 }
 
 export interface DevPreviewAttachOptions {
@@ -43,10 +47,15 @@ export class DevPreviewService extends EventEmitter {
   private sessions = new Map<string, DevPreviewSession>();
   private generationCounter = 0;
   private lastSubmitByPty = new Map<string, { command: string; timestamp: number }>();
+  private pendingAttaches = new Map<string, { sessionId: string; aborted: boolean }>();
   private static readonly SUBMIT_DEDUP_WINDOW_MS = 2000;
 
   constructor(private ptyClient: PtyClient) {
     super();
+  }
+
+  private generateSessionId(): string {
+    return randomBytes(8).toString("hex");
   }
 
   private shouldDedupSubmit(ptyId: string, command: string): boolean {
@@ -65,8 +74,19 @@ export class DevPreviewService extends EventEmitter {
    * Subscribes to data/exit events and auto-detects dev command + submits it.
    * Does NOT spawn or kill PTY processes.
    */
-  async attach(options: DevPreviewAttachOptions): Promise<void> {
+  async attach(options: DevPreviewAttachOptions): Promise<DevPreviewAttachSnapshot> {
     const { panelId, ptyId, cwd, devCommand: providedCommand } = options;
+    const sessionId = this.generateSessionId();
+    const buildSnapshot = (session: DevPreviewSession): DevPreviewAttachSnapshot => ({
+      sessionId: session.sessionId,
+      status: session.status,
+      message: session.statusMessage,
+      url: session.url,
+      ptyId: session.ptyId,
+      timestamp: session.timestamp,
+      error: session.error,
+      worktreeId: session.worktreeId,
+    });
 
     const normalizedCommand = providedCommand?.trim() || undefined;
     const existingSession = this.sessions.get(panelId);
@@ -88,9 +108,14 @@ export class DevPreviewService extends EventEmitter {
           existingSession.url
         );
         if (existingSession.url) {
-          this.emit("url", { panelId, url: existingSession.url });
+          this.emit("url", {
+            panelId,
+            sessionId: existingSession.sessionId,
+            url: existingSession.url,
+            worktreeId: existingSession.worktreeId,
+          });
         }
-        return;
+        return buildSnapshot(existingSession);
       }
 
       this.detach(panelId);
@@ -125,6 +150,7 @@ export class DevPreviewService extends EventEmitter {
         );
       }
       const session: DevPreviewSession = {
+        sessionId,
         panelId,
         ptyId,
         projectRoot: cwd,
@@ -143,7 +169,7 @@ export class DevPreviewService extends EventEmitter {
       };
       this.sessions.set(panelId, session);
       this.emitStatus(panelId, "running", "Browser-only mode (no dev command)", null);
-      return;
+      return buildSnapshot(session);
     }
 
     let fullCommand: string;
@@ -167,6 +193,7 @@ export class DevPreviewService extends EventEmitter {
         console.log(`[DevPreview] PTY ${ptyId} does not exist, creating stopped session`);
       }
       const session: DevPreviewSession = {
+        sessionId,
         panelId,
         ptyId,
         projectRoot: cwd,
@@ -185,7 +212,7 @@ export class DevPreviewService extends EventEmitter {
       };
       this.sessions.set(panelId, session);
       this.emitStatus(panelId, "stopped", "Terminal not found", null);
-      return;
+      return buildSnapshot(session);
     }
 
     // Subscribe to the existing PTY's data and exit events
@@ -244,6 +271,7 @@ export class DevPreviewService extends EventEmitter {
     }
 
     const session: DevPreviewSession = {
+      sessionId,
       panelId,
       ptyId,
       projectRoot: cwd,
@@ -263,6 +291,7 @@ export class DevPreviewService extends EventEmitter {
     };
 
     this.sessions.set(panelId, session);
+    return buildSnapshot(session);
   }
 
   /**
@@ -297,7 +326,12 @@ export class DevPreviewService extends EventEmitter {
     session.statusMessage = "Running";
     session.timestamp = Date.now();
 
-    this.emit("url", { panelId, url });
+    this.emit("url", {
+      panelId,
+      sessionId: session.sessionId,
+      url,
+      worktreeId: session.worktreeId,
+    });
     this.emitStatus(panelId, "running", "Running", url);
   }
 
@@ -489,11 +523,13 @@ export class DevPreviewService extends EventEmitter {
 
     this.emit("status", {
       panelId,
+      sessionId: session?.sessionId ?? "",
       status,
       message,
       timestamp: Date.now(),
       error: status === "error" ? message : undefined,
       ptyId: session?.ptyId ?? "",
+      worktreeId: session?.worktreeId,
     });
   }
 
