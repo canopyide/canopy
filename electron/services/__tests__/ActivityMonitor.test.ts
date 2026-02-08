@@ -375,7 +375,7 @@ describe("ActivityMonitor", () => {
   });
 
   describe("Output-driven activity", () => {
-    it("should NOT trigger busy from output alone (requires Enter first) - Issue #1476", () => {
+    it("should NOT trigger busy from output during typing echo window - Issue #1476", () => {
       const onStateChange = vi.fn();
       const processStateValidator = {
         hasActiveChildren: vi.fn().mockReturnValue(true),
@@ -385,8 +385,11 @@ describe("ActivityMonitor", () => {
         outputActivityDetection: { enabled: true, minFrames: 1, minBytes: 1 },
       });
 
-      // Output alone should NOT trigger busy - only Enter should
-      monitor.onData("some output");
+      // User types (sets recent input timestamp)
+      monitor.onInput("h");
+
+      // Output during echo window should NOT trigger busy
+      monitor.onData("h");
 
       expect(onStateChange).not.toHaveBeenCalled();
       expect(monitor.getState()).toBe("idle");
@@ -439,14 +442,17 @@ describe("ActivityMonitor", () => {
       monitor.dispose();
     });
 
-    it("should NOT trigger busy from output alone even without validator - Issue #1476", () => {
+    it("should NOT trigger busy from output during echo window even without validator - Issue #1476", () => {
       const onStateChange = vi.fn();
       const monitor = new ActivityMonitor("test-1", 1000, onStateChange, {
         outputActivityDetection: { enabled: true, minFrames: 1, minBytes: 1 },
       });
 
-      // Output alone should NOT trigger busy - need Enter first
-      monitor.onData("output");
+      // User types (sets recent input timestamp)
+      monitor.onInput("x");
+
+      // Output during echo window should NOT trigger busy
+      monitor.onData("x");
 
       expect(onStateChange).not.toHaveBeenCalled();
       expect(monitor.getState()).toBe("idle");
@@ -737,7 +743,7 @@ describe("ActivityMonitor", () => {
       monitor.dispose();
     });
 
-    it("should NOT re-enter busy from idle via output alone - Issue #1476", () => {
+    it("should NOT re-enter busy from idle via output during echo window - Issue #1476", () => {
       const onStateChange = vi.fn();
       const monitor = new ActivityMonitor("test-1", 1000, onStateChange, {
         outputActivityDetection: { enabled: true, minFrames: 1, minBytes: 1 },
@@ -750,9 +756,11 @@ describe("ActivityMonitor", () => {
       vi.advanceTimersByTime(2500);
       expect(onStateChange).toHaveBeenNthCalledWith(2, "test-1", 1000, "idle");
 
-      // After going idle, output alone should NOT re-trigger busy
-      // User must press Enter again to start a new work cycle
-      monitor.onData("agent output");
+      // User types while idle (sets recent input timestamp)
+      monitor.onInput("h");
+
+      // Output during echo window should NOT re-trigger busy
+      monitor.onData("h");
 
       expect(onStateChange).toHaveBeenCalledTimes(2); // Only initial busy and idle
       expect(monitor.getState()).toBe("idle");
@@ -1299,6 +1307,144 @@ describe("ActivityMonitor", () => {
       }
 
       // Should have recovered to busy state
+      expect(monitor.getState()).toBe("busy");
+      expect(onStateChange).toHaveBeenCalledWith("test-1", 1000, "busy", { trigger: "output" });
+
+      monitor.dispose();
+    });
+  });
+
+  describe("Idle→busy recovery from autonomous output (Issue #2185)", () => {
+    it("should recover from idle when output occurs without recent user input", () => {
+      const onStateChange = vi.fn();
+      const monitor = new ActivityMonitor("test-1", 1000, onStateChange, {
+        outputActivityDetection: { enabled: true, minFrames: 1, minBytes: 1 },
+      });
+
+      // Enter busy, then go idle
+      monitor.onInput("\r");
+      vi.advanceTimersByTime(2600);
+      expect(monitor.getState()).toBe("idle");
+      onStateChange.mockClear();
+
+      // Wait past the echo window (1000ms) so output is not considered an echo
+      vi.advanceTimersByTime(1100);
+
+      // Agent produces autonomous output - should recover to busy
+      monitor.onData("agent output starts flowing");
+
+      expect(monitor.getState()).toBe("busy");
+      expect(onStateChange).toHaveBeenCalledWith("test-1", 1000, "busy", { trigger: "output" });
+
+      monitor.dispose();
+    });
+
+    it("should NOT recover from idle when output is likely a character echo", () => {
+      const onStateChange = vi.fn();
+      const monitor = new ActivityMonitor("test-1", 1000, onStateChange, {
+        outputActivityDetection: { enabled: true, minFrames: 1, minBytes: 1 },
+      });
+
+      // Enter busy, then go idle
+      monitor.onInput("\r");
+      vi.advanceTimersByTime(2600);
+      expect(monitor.getState()).toBe("idle");
+      onStateChange.mockClear();
+
+      // User types a character (sets lastUserInputAt)
+      monitor.onInput("h");
+
+      // Echo comes back within echo window - should NOT trigger busy
+      monitor.onData("h");
+
+      expect(monitor.getState()).toBe("idle");
+      expect(onStateChange).not.toHaveBeenCalled();
+
+      monitor.dispose();
+    });
+
+    it("should recover via pattern detection in polling mode without recent input", () => {
+      const onStateChange = vi.fn();
+      let visibleLines = ["> "];
+      const monitor = new ActivityMonitor("test-1", 1000, onStateChange, {
+        getVisibleLines: () => visibleLines,
+        getCursorLine: () => visibleLines[visibleLines.length - 1],
+        idleDebounceMs: 2000,
+      });
+
+      monitor.startPolling();
+      // Boot completes once prompt is detected
+      vi.advanceTimersByTime(100);
+
+      // Go idle by advancing past debounce with prompt visible
+      vi.advanceTimersByTime(2200);
+      expect(monitor.getState()).toBe("idle");
+      onStateChange.mockClear();
+
+      // No recent user input - wait past echo window
+      vi.advanceTimersByTime(1100);
+
+      // Agent resumes working - pattern appears and output activity begins
+      visibleLines = ["✽ Deliberating (esc to interrupt)"];
+      monitor.onData("agent output chunk 1");
+      vi.advanceTimersByTime(50);
+      monitor.onData("agent output chunk 2");
+      vi.advanceTimersByTime(50);
+
+      // Polling cycle should detect the pattern and transition to busy
+      expect(monitor.getState()).toBe("busy");
+
+      monitor.dispose();
+    });
+
+    it("should NOT recover via pattern when user is actively typing (echo window)", () => {
+      const onStateChange = vi.fn();
+      let visibleLines = ["✽ Deliberating (esc to interrupt)", "> "];
+      const monitor = new ActivityMonitor("test-1", 1000, onStateChange, {
+        getVisibleLines: () => visibleLines,
+        getCursorLine: () => visibleLines[visibleLines.length - 1],
+        initialState: "idle",
+        skipInitialStateEmit: true,
+        idleDebounceMs: 2000,
+      });
+
+      monitor.startPolling();
+      expect(monitor.getState()).toBe("idle");
+      onStateChange.mockClear();
+
+      // User is typing (sets lastUserInputAt)
+      monitor.onInput("h");
+      monitor.onData("h"); // Echo
+
+      // Stale working pattern visible + recent input = should NOT trigger busy
+      vi.advanceTimersByTime(100);
+
+      expect(monitor.getState()).toBe("idle");
+
+      monitor.dispose();
+    });
+
+    it("should recover after echo window expires even if user typed recently", () => {
+      const onStateChange = vi.fn();
+      const monitor = new ActivityMonitor("test-1", 1000, onStateChange, {
+        outputActivityDetection: { enabled: true, minFrames: 1, minBytes: 1 },
+      });
+
+      // Enter busy, then go idle
+      monitor.onInput("\r");
+      vi.advanceTimersByTime(2600);
+      expect(monitor.getState()).toBe("idle");
+      onStateChange.mockClear();
+
+      // User types
+      monitor.onInput("h");
+
+      // Wait past echo window
+      vi.advanceTimersByTime(1100);
+
+      // Now agent output should trigger recovery
+      monitor.onData("autonomous agent output");
+
       expect(monitor.getState()).toBe("busy");
       expect(onStateChange).toHaveBeenCalledWith("test-1", 1000, "busy", { trigger: "output" });
 
