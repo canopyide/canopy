@@ -11,7 +11,7 @@ import { actionService } from "@/services/ActionService";
 import { terminalInstanceService } from "@/services/TerminalInstanceService";
 import { useProjectStore, useTerminalStore } from "@/store";
 import type { BrowserHistory } from "@shared/types/domain";
-import type { DevPreviewAttachSnapshot, DevPreviewStatus } from "@shared/types/ipc/devPreview";
+import type { DevPreviewStatus } from "@shared/types/ipc/devPreview";
 
 interface WebviewInstance {
   element: Electron.WebviewTag;
@@ -663,24 +663,33 @@ export function DevPreviewPane({
     [clearAutoReload, clearLoadingTimeout]
   );
 
-  const applyAttachSnapshot = useCallback(
-    (snapshot: DevPreviewAttachSnapshot) => {
-      currentSessionIdRef.current = snapshot.sessionId;
-      applyStatusPayload(snapshot);
-      if (snapshot.url) {
-        handleServerUrl(snapshot.url);
-      }
-    },
-    [applyStatusPayload, handleServerUrl]
-  );
+  const attachCounterRef = useRef(0);
 
   const attachAndSync = useCallback(
     async (devCommand?: string) => {
+      const thisAttach = ++attachCounterRef.current;
       currentSessionIdRef.current = null;
-      const snapshot = await window.electron.devPreview.attach(id, cwd, devCommand);
-      applyAttachSnapshot(snapshot);
+      try {
+        const snapshot = await window.electron.devPreview.attach(id, cwd, devCommand);
+        // Drop result if a newer attach was initiated while we were awaiting
+        if (attachCounterRef.current !== thisAttach) return;
+        currentSessionIdRef.current = snapshot.sessionId;
+        applyStatusPayload(snapshot);
+        if (snapshot.url) {
+          handleServerUrl(snapshot.url);
+        }
+      } catch {
+        // Attach failed — allow events through for any existing session
+        if (attachCounterRef.current !== thisAttach) return;
+        const existing = currentSessionIdRef.current;
+        if (!existing) {
+          setStatus("error");
+          setMessage("Failed to attach to dev server");
+          setError("Failed to attach to dev server");
+        }
+      }
     },
-    [applyAttachSnapshot, cwd, id]
+    [applyStatusPayload, cwd, handleServerUrl, id]
   );
 
   useEffect(() => {

@@ -70,6 +70,9 @@ export function registerDevPreviewHandlers(deps: HandlerDependencies): () => voi
     if (!cwd || typeof cwd !== "string" || !path.isAbsolute(cwd)) {
       throw new Error("cwd must be an absolute path");
     }
+    if (devCommand !== undefined && typeof devCommand !== "string") {
+      throw new Error("devCommand must be a string if provided");
+    }
 
     try {
       const stats = await fs.stat(cwd);
