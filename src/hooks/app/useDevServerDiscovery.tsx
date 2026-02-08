@@ -8,8 +8,7 @@ const DEV_SCRIPT_PRIORITY = ["dev", "start", "serve"];
 
 export function useDevServerDiscovery() {
   const currentProject = useProjectStore((state) => state.currentProject);
-  const { settings, allDetectedRunners, projectId: settingsProjectId } =
-    useProjectSettingsStore();
+  const { settings, allDetectedRunners, projectId: settingsProjectId } = useProjectSettingsStore();
   const { saveSettings } = useProjectSettings();
   const { addNotification, removeNotification } = useNotificationStore();
   const lastNotifiedProjectRef = useRef<string | null>(null);
