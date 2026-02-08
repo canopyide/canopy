@@ -83,7 +83,7 @@ export function registerDevPreviewHandlers(deps: HandlerDependencies): () => voi
       throw new Error(`Cannot access cwd: ${cwd}`);
     }
 
-    await devPreviewService.attach({
+    return await devPreviewService.attach({
       panelId: terminalId,
       ptyId: terminalId,
       cwd,
