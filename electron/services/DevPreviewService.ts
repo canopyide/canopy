@@ -41,6 +41,11 @@ export interface DevPreviewAttachOptions {
   ptyId: string;
   cwd: string;
   devCommand?: string;
+  /**
+   * Treat provided devCommand as the final command to submit.
+   * Skips install-command prefix inference.
+   */
+  treatCommandAsFinal?: boolean;
 }
 
 export class DevPreviewService extends EventEmitter {
@@ -75,7 +80,13 @@ export class DevPreviewService extends EventEmitter {
    * Does NOT spawn or kill PTY processes.
    */
   async attach(options: DevPreviewAttachOptions): Promise<DevPreviewAttachSnapshot> {
-    const { panelId, ptyId, cwd, devCommand: providedCommand } = options;
+    const {
+      panelId,
+      ptyId,
+      cwd,
+      devCommand: providedCommand,
+      treatCommandAsFinal = false,
+    } = options;
     const sessionId = this.generateSessionId();
     const buildSnapshot = (session: DevPreviewSession): DevPreviewAttachSnapshot => ({
       sessionId: session.sessionId,
@@ -158,7 +169,7 @@ export class DevPreviewService extends EventEmitter {
         }
       }
 
-      if (finalCommand) {
+      if (finalCommand && !treatCommandAsFinal) {
         packageManager = packageManager ?? (await this.detectPackageManager(cwd));
         if (!isStillCurrent()) return buildCancelledSnapshot();
         if (packageManager) {
@@ -201,12 +212,7 @@ export class DevPreviewService extends EventEmitter {
 
       if (!isStillCurrent()) return buildCancelledSnapshot();
 
-      let fullCommand: string;
-      if (installCommand) {
-        fullCommand = `${installCommand} && ${finalCommand}`;
-      } else {
-        fullCommand = finalCommand;
-      }
+      const fullCommand = installCommand ? `${installCommand} && ${finalCommand}` : finalCommand;
 
       const generation = ++this.generationCounter;
 
@@ -498,8 +504,10 @@ export class DevPreviewService extends EventEmitter {
     // Emit recovery event so the renderer can restart via terminal store
     this.emit("recovery", {
       panelId,
+      sessionId: session.sessionId,
       command: fullCommand,
       attempt: session.recoveryAttempts,
+      treatCommandAsFinal: true,
     });
   }
 

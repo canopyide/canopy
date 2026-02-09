@@ -685,26 +685,49 @@ export function DevPreviewPane({
   const attachCounterRef = useRef(0);
 
   const attachAndSync = useCallback(
-    async (devCommand?: string) => {
+    async (
+      devCommand?: string,
+      options?: {
+        treatCommandAsFinal?: boolean;
+      }
+    ) => {
       const thisAttach = ++attachCounterRef.current;
       currentSessionIdRef.current = null;
-      try {
-        const snapshot = await window.electron.devPreview.attach(id, cwd, devCommand);
-        // Drop result if a newer attach was initiated while we were awaiting
+      const MAX_RETRIES = 3;
+      const RETRY_DELAY_MS = 150;
+
+      for (let attempt = 0; attempt <= MAX_RETRIES; attempt++) {
         if (attachCounterRef.current !== thisAttach) return;
-        currentSessionIdRef.current = snapshot.sessionId;
-        applyStatusPayload(snapshot);
-        if (snapshot.url) {
-          handleServerUrl(snapshot.url);
-        }
-      } catch {
-        // Attach failed — allow events through for any existing session
-        if (attachCounterRef.current !== thisAttach) return;
-        const existing = currentSessionIdRef.current;
-        if (!existing) {
-          setStatus("error");
-          setMessage("Failed to attach to dev server");
-          setError("Failed to attach to dev server");
+        try {
+          const snapshot = await window.electron.devPreview.attach(id, cwd, devCommand, options);
+          if (attachCounterRef.current !== thisAttach) return;
+          // Retry if PTY isn't ready yet (race between spawn and attach)
+          if (
+            snapshot.status === "stopped" &&
+            snapshot.message === "Terminal not found" &&
+            attempt < MAX_RETRIES
+          ) {
+            await new Promise((r) => setTimeout(r, RETRY_DELAY_MS * (attempt + 1)));
+            continue;
+          }
+          currentSessionIdRef.current = snapshot.sessionId;
+          applyStatusPayload(snapshot);
+          if (snapshot.url) {
+            handleServerUrl(snapshot.url);
+          }
+          return;
+        } catch {
+          if (attachCounterRef.current !== thisAttach) return;
+          if (attempt < MAX_RETRIES) {
+            await new Promise((r) => setTimeout(r, RETRY_DELAY_MS * (attempt + 1)));
+            continue;
+          }
+          const existing = currentSessionIdRef.current;
+          if (!existing) {
+            setStatus("error");
+            setMessage("Failed to attach to dev server");
+            setError("Failed to attach to dev server");
+          }
         }
       }
     },
@@ -726,11 +749,13 @@ export function DevPreviewPane({
 
     const offRecovery = window.electron.devPreview.onRecovery(async (payload) => {
       if (payload.panelId !== id) return;
+      if (payload.sessionId !== currentSessionIdRef.current) return;
       // DevPreviewService killed the PTY for recovery. Restart via standard pipeline
       // and re-attach so the overlay can monitor the new process.
-      // Use the recovery command (includes install) instead of terminal's devCommand.
       await restartTerminal(id);
-      await attachAndSync(payload.command);
+      await attachAndSync(payload.command, {
+        treatCommandAsFinal: payload.treatCommandAsFinal,
+      });
     });
 
     return () => {
@@ -962,8 +987,7 @@ export function DevPreviewPane({
   useLayoutEffect(() => {
     return () => {
       const stillExists = Boolean(useTerminalStore.getState().getTerminal(id));
-      const switching = useProjectStore.getState().isSwitching;
-      if (stillExists || switching) {
+      if (stillExists) {
         if (webviewStore.instances.size > 0) {
           webviewStore.cleanups.forEach((cleanup) => cleanup());
           webviewStore.cleanups.clear();
@@ -1143,14 +1167,11 @@ export function DevPreviewPane({
     void attachAndSync(devCommand);
 
     return () => {
-      // Detach overlay only when the panel is actually removed.
-      // Layout changes (split mode, drag reparenting, dock moves) can unmount/remount
-      // the panel without destroying the terminal. During project switches the store is
-      // cleared before panels unmount — skip detach so the backend session (with its
-      // detected URL and status) survives for re-attach on switch-back.
+      // Detach overlay only when the panel is actually removed. Layout changes
+      // can unmount/remount without destroying the terminal, so keep sessions for
+      // those transitions by checking for terminal existence.
       const stillExists = Boolean(useTerminalStore.getState().getTerminal(id));
-      const switching = useProjectStore.getState().isSwitching;
-      if (!stillExists && !switching) {
+      if (!stillExists) {
         void window.electron.devPreview.detach(id);
       }
     };

@@ -89,6 +89,8 @@ import type {
   DevPreviewStatusPayload,
   DevPreviewUrlPayload,
   DevPreviewAttachSnapshot,
+  DevPreviewAttachOptionsPayload,
+  DevPreviewRecoveryPayload,
 } from "./devPreview.js";
 import type { ProjectPulse, PulseRangeDays } from "../pulse.js";
 import type {
@@ -936,7 +938,12 @@ export interface IpcInvokeMap {
 
   // Dev Preview channels
   "dev-preview:attach": {
-    args: [terminalId: string, cwd: string, devCommand?: string];
+    args: [
+      terminalId: string,
+      cwd: string,
+      devCommand?: string,
+      options?: DevPreviewAttachOptionsPayload,
+    ];
     result: DevPreviewAttachSnapshot;
   };
   "dev-preview:detach": {
@@ -1054,7 +1061,7 @@ export interface IpcEventMap {
   // Dev Preview events
   "dev-preview:status": DevPreviewStatusPayload;
   "dev-preview:url": DevPreviewUrlPayload;
-  "dev-preview:recovery": { panelId: string; command: string; attempt: number };
+  "dev-preview:recovery": DevPreviewRecoveryPayload;
 
   // Notes events
   "notes:updated": {

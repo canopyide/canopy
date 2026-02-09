@@ -1333,6 +1333,7 @@ export const createTerminalRegistrySlice =
         }
 
         const targetLocation = currentTerminal.location;
+        const isDevPreview = currentTerminal.kind === "dev-preview";
 
         // For agent terminals, regenerate command from current settings
         // For other terminals, use the saved command
@@ -1366,12 +1367,13 @@ export const createTerminalRegistrySlice =
           }
         }
 
-        if (currentTerminal.kind === "dev-preview") {
+        if (isDevPreview) {
           const devCommand = currentTerminal.devCommand?.trim();
           if (devCommand) {
             commandToRun = devCommand;
           }
         }
+        const spawnCommand = isDevPreview ? undefined : commandToRun;
 
         try {
           // CAPTURE LIVE DIMENSIONS before destroying the frontend
@@ -1413,7 +1415,7 @@ export const createTerminalRegistrySlice =
                     lastStateChange: isAgent ? Date.now() : undefined,
                     stateChangeTrigger: undefined,
                     stateChangeConfidence: undefined,
-                    command: commandToRun,
+                    command: spawnCommand,
                     isRestarting: true,
                     restartError: undefined,
                   }
@@ -1452,7 +1454,7 @@ export const createTerminalRegistrySlice =
             agentId: currentTerminal.agentId,
             title: currentTerminal.title,
             worktreeId: currentTerminal.worktreeId,
-            command: commandToRun,
+            command: spawnCommand,
             restore: false,
             env: restartEnv,
           });

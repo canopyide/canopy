@@ -79,6 +79,8 @@ import type {
   DevPreviewStatusPayload,
   DevPreviewUrlPayload,
   DevPreviewAttachSnapshot,
+  DevPreviewAttachOptionsPayload,
+  DevPreviewRecoveryPayload,
 } from "./devPreview.js";
 import type {
   CommandContext,
@@ -479,14 +481,17 @@ export interface ElectronAPI {
     ): () => void;
   };
   devPreview: {
-    attach(terminalId: string, cwd: string, devCommand?: string): Promise<DevPreviewAttachSnapshot>;
+    attach(
+      terminalId: string,
+      cwd: string,
+      devCommand?: string,
+      options?: DevPreviewAttachOptionsPayload
+    ): Promise<DevPreviewAttachSnapshot>;
     detach(panelId: string): Promise<void>;
     setUrl(panelId: string, url: string): Promise<void>;
     onStatus(callback: (data: DevPreviewStatusPayload) => void): () => void;
     onUrl(callback: (data: DevPreviewUrlPayload) => void): () => void;
-    onRecovery(
-      callback: (data: { panelId: string; command: string; attempt: number }) => void
-    ): () => void;
+    onRecovery(callback: (data: DevPreviewRecoveryPayload) => void): () => void;
     pruneSessions(activePanelIds: string[]): Promise<number>;
   };
   git: {
