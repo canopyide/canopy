@@ -356,7 +356,11 @@ describe("DevPreviewPane", () => {
     });
 
     it("returns empty history for malformed saved state", () => {
-      const h = initHistory({ past: "not-array", present: 123, future: null } as any);
+      const h = initHistory({
+        past: "not-array",
+        present: 123,
+        future: null,
+      } as unknown as BrowserHistory);
       expect(h).toEqual({ past: [], present: "", future: [] });
     });
 
