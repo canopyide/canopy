@@ -44,6 +44,8 @@ import type {
   DevPreviewStatusPayload,
   DevPreviewUrlPayload,
   DevPreviewAttachSnapshot,
+  DevPreviewAttachOptionsPayload,
+  DevPreviewRecoveryPayload,
 } from "../shared/types/ipc.js";
 import type { TerminalActivityPayload } from "../shared/types/terminal.js";
 import type { TerminalStatusPayload, SpawnResult } from "../shared/types/pty-host.js";
@@ -1029,13 +1031,15 @@ const api: ElectronAPI = {
     attach: (
       terminalId: string,
       cwd: string,
-      devCommand?: string
+      devCommand?: string,
+      options?: DevPreviewAttachOptionsPayload
     ): Promise<DevPreviewAttachSnapshot> =>
       _typedInvoke(
         CHANNELS.DEV_PREVIEW_ATTACH,
         terminalId,
         cwd,
-        devCommand
+        devCommand,
+        options
       ) as Promise<DevPreviewAttachSnapshot>,
 
     detach: (panelId: string) => _typedInvoke(CHANNELS.DEV_PREVIEW_DETACH, panelId),
@@ -1049,9 +1053,8 @@ const api: ElectronAPI = {
     onUrl: (callback: (payload: DevPreviewUrlPayload) => void) =>
       _typedOn(CHANNELS.DEV_PREVIEW_URL, callback),
 
-    onRecovery: (
-      callback: (payload: { panelId: string; command: string; attempt: number }) => void
-    ) => _typedOn(CHANNELS.DEV_PREVIEW_RECOVERY, callback),
+    onRecovery: (callback: (payload: DevPreviewRecoveryPayload) => void) =>
+      _typedOn(CHANNELS.DEV_PREVIEW_RECOVERY, callback),
 
     pruneSessions: (activePanelIds: string[]): Promise<number> =>
       _typedInvoke(CHANNELS.DEV_PREVIEW_PRUNE_SESSIONS, activePanelIds) as Promise<number>,

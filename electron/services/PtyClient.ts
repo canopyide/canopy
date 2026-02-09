@@ -153,6 +153,7 @@ export class PtyClient extends EventEmitter {
   private isWaitingForHandshake = false;
   private handshakeTimeout: NodeJS.Timeout | null = null;
   private pendingSpawns: Map<string, PtyHostSpawnOptions> = new Map();
+  private pendingKillCount: Map<string, number> = new Map();
   private needsRespawn = false;
   private activeProjectId: string | null = null;
   private projectContextMode: "active" | "switch" = "active";
@@ -525,11 +526,25 @@ export class PtyClient extends EventEmitter {
         this.emit("data", event.id, event.data);
         break;
 
-      case "exit":
-        this.pendingSpawns.delete(event.id);
+      case "exit": {
+        const killCount = this.pendingKillCount.get(event.id) ?? 0;
+        if (killCount > 0) {
+          // Exit from a kill() call — a new spawn() may have already
+          // re-registered this id; don't clear pendingSpawns.
+          const remaining = killCount - 1;
+          if (remaining > 0) {
+            this.pendingKillCount.set(event.id, remaining);
+          } else {
+            this.pendingKillCount.delete(event.id);
+          }
+        } else {
+          // Normal exit (process ended on its own)
+          this.pendingSpawns.delete(event.id);
+        }
         this.terminalPids.delete(event.id);
         this.emit("exit", event.id, event.exitCode);
         break;
+      }
 
       case "error":
         this.emit("error", event.id, event.error);
@@ -878,6 +893,7 @@ export class PtyClient extends EventEmitter {
   }
 
   kill(id: string, reason?: string): void {
+    this.pendingKillCount.set(id, (this.pendingKillCount.get(id) ?? 0) + 1);
     this.pendingSpawns.delete(id);
     this.send({ type: "kill", id, reason });
   }
@@ -1329,6 +1345,7 @@ export class PtyClient extends EventEmitter {
     for (const timeout of this.transitionTimeouts.values()) clearTimeout(timeout);
 
     this.pendingSpawns.clear();
+    this.pendingKillCount.clear();
     this.terminalPids.clear();
     this.snapshotCallbacks.clear();
     this.snapshotTimeouts.clear();

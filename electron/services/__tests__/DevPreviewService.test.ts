@@ -514,7 +514,13 @@ describe("DevPreviewService", () => {
     it("detects missing module error and emits recovery event", async () => {
       const service = new DevPreviewServiceClass(mockPtyClient as unknown as PtyClient);
       const statusEvents: { status: DevPreviewStatus; message: string }[] = [];
-      const recoveryEvents: { panelId: string; command: string; attempt: number }[] = [];
+      const recoveryEvents: {
+        panelId: string;
+        sessionId: string;
+        command: string;
+        attempt: number;
+        treatCommandAsFinal?: boolean;
+      }[] = [];
       service.on("status", (e) => statusEvents.push(e));
       service.on("recovery", (e) => recoveryEvents.push(e));
 
@@ -536,7 +542,9 @@ describe("DevPreviewService", () => {
       // Should emit recovery event instead of spawning
       expect(recoveryEvents.length).toBe(1);
       expect(recoveryEvents[0].panelId).toBe("panel-missing-deps");
+      expect(recoveryEvents[0].sessionId).toBeTruthy();
       expect(recoveryEvents[0].command).toContain("npm install");
+      expect(recoveryEvents[0].treatCommandAsFinal).toBe(true);
 
       // Should NOT spawn a new PTY - that's the renderer's job
       expect(mockPtyClient.spawn).not.toHaveBeenCalled();
@@ -606,7 +614,13 @@ describe("DevPreviewService", () => {
       });
 
       const service = new DevPreviewServiceClass(mockPtyClient as unknown as PtyClient);
-      const recoveryEvents: { panelId: string; command: string; attempt: number }[] = [];
+      const recoveryEvents: {
+        panelId: string;
+        sessionId: string;
+        command: string;
+        attempt: number;
+        treatCommandAsFinal?: boolean;
+      }[] = [];
       service.on("recovery", (e) => recoveryEvents.push(e));
 
       await service.attach({
@@ -625,6 +639,8 @@ describe("DevPreviewService", () => {
       // Verify pnpm install command was in the recovery event
       expect(recoveryEvents.length).toBe(1);
       expect(recoveryEvents[0].command).toContain("pnpm install");
+      expect(recoveryEvents[0].sessionId).toBeTruthy();
+      expect(recoveryEvents[0].treatCommandAsFinal).toBe(true);
     });
 
     it("installs dependencies for user-provided commands when node_modules is missing", async () => {
@@ -662,6 +678,41 @@ describe("DevPreviewService", () => {
       // First status event should be "installing"
       expect(statusEvents[0].status).toBe("installing");
       expect(statusEvents[0].message).toBe("Installing dependencies...");
+    });
+
+    it("uses provided command as-is when treatCommandAsFinal is enabled", async () => {
+      vi.mocked(existsSync).mockImplementation((p: unknown) => {
+        const pathStr = String(p);
+        if (pathStr.includes("package.json")) return true;
+        if (pathStr.includes("node_modules")) return false; // Would normally trigger install
+        return false;
+      });
+
+      vi.mocked(readFile).mockResolvedValue(
+        JSON.stringify({
+          scripts: { dev: "vite" },
+        })
+      );
+
+      const service = new DevPreviewServiceClass(mockPtyClient as unknown as PtyClient);
+
+      await service.attach({
+        panelId: "panel-final-cmd",
+        ptyId: "pty-final-cmd",
+        cwd: "/test/project",
+        devCommand: "npm install && npm run dev",
+        treatCommandAsFinal: true,
+      });
+
+      const session = service.getSession("panel-final-cmd");
+      expect(session?.status).toBe("starting");
+      expect(session?.installCommand).toBeNull();
+
+      await new Promise((resolve) => setTimeout(resolve, 150));
+      expect(mockPtyClient.submit).toHaveBeenCalledWith(
+        "pty-final-cmd",
+        "npm install && npm run dev"
+      );
     });
   });
 });

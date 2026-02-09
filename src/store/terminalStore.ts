@@ -642,6 +642,11 @@ export function setupTerminalStoreListeners() {
     }
 
     // exitBehavior undefined - use default behavior based on terminal type
+    // Preserve dev-preview panels so users can inspect stopped/error states and restart.
+    if (terminal.kind === "dev-preview") {
+      return;
+    }
+
     // Preserve successfully completed agent terminals to enable reboot and output review
     if (isAgentTerminal(terminal.kind ?? terminal.type, terminal.agentId)) {
       return;

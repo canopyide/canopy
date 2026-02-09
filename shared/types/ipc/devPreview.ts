@@ -19,6 +19,14 @@ export interface DevPreviewUrlPayload {
   worktreeId?: string;
 }
 
+export interface DevPreviewAttachOptionsPayload {
+  /**
+   * When true, the provided devCommand is treated as the full executable command and
+   * no install-command prefixing will be applied by DevPreviewService.
+   */
+  treatCommandAsFinal?: boolean;
+}
+
 export interface DevPreviewAttachSnapshot {
   sessionId: string;
   status: DevPreviewStatus;
@@ -28,4 +36,12 @@ export interface DevPreviewAttachSnapshot {
   timestamp: number;
   error?: string;
   worktreeId?: string;
+}
+
+export interface DevPreviewRecoveryPayload {
+  panelId: string;
+  sessionId: string;
+  command: string;
+  attempt: number;
+  treatCommandAsFinal?: boolean;
 }
