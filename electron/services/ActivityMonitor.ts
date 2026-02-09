@@ -132,6 +132,10 @@ export interface ActivityMonitorOptions {
    * Only applies to pattern-based and working signal recovery; high output recovery uses its own recoveryDelayMs.
    */
   workingRecoveryDelayMs?: number;
+  /**
+   * Maximum boot time before forcing boot complete (default: 15000ms).
+   */
+  pollingMaxBootMs?: number;
 }
 
 export interface ActivityStateMetadata {
@@ -211,7 +215,7 @@ export class ActivityMonitor {
   private pollingInterval?: ReturnType<typeof setInterval>;
 
   // Polling debounce state
-  private readonly POLLING_MAX_BOOT_MS = 15000; // Max 15s boot time before forcing boot complete
+  private readonly POLLING_MAX_BOOT_MS: number;
   private pollingStartTime = 0; // When polling started
   private hasExitedBootState = false; // Whether we've completed initial boot
 
@@ -259,6 +263,7 @@ export class ActivityMonitor {
     this.processStateValidator = options?.processStateValidator;
     this.PATTERN_BUFFER_SIZE = options?.patternBufferSize ?? 2000;
     this.IDLE_DEBOUNCE_MS = options?.idleDebounceMs ?? 2500;
+    this.POLLING_MAX_BOOT_MS = options?.pollingMaxBootMs ?? 15000;
     this.INPUT_CONFIRM_MS = options?.inputConfirmMs ?? 1000;
 
     // Volume-based output detection config
@@ -1191,7 +1196,11 @@ export class ActivityMonitor {
     // Check for boot completion (agent-specific ready patterns)
     if (!this.hasExitedBootState) {
       const timeSinceBoot = now - this.pollingStartTime;
-      if (isPrompt || this.isBootComplete(strippedText) || timeSinceBoot >= this.POLLING_MAX_BOOT_MS) {
+      if (
+        isPrompt ||
+        this.isBootComplete(strippedText) ||
+        timeSinceBoot >= this.POLLING_MAX_BOOT_MS
+      ) {
         this.hasExitedBootState = true;
       } else {
         return; // Still booting, stay busy
