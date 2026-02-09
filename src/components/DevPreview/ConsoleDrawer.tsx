@@ -1,5 +1,7 @@
 import { useState, useCallback, useEffect } from "react";
 import { motion, AnimatePresence } from "framer-motion";
+import { ChevronDown } from "lucide-react";
+import { cn } from "@/lib/utils";
 import { XtermAdapter } from "../Terminal/XtermAdapter";
 import { terminalInstanceService } from "../../services/TerminalInstanceService";
 
@@ -30,22 +32,16 @@ export function ConsoleDrawer({ terminalId, defaultOpen = false }: ConsoleDrawer
   }, [terminalId, isOpen]);
 
   return (
-    <div className="flex flex-col border-t border-gray-700">
+    <div className="flex flex-col border-t border-overlay">
       <button
+        type="button"
         onClick={toggleDrawer}
-        className="flex items-center justify-between px-4 py-2 text-sm font-medium text-gray-300 hover:bg-gray-800 transition-colors"
+        className="flex items-center justify-between px-3 py-1.5 text-xs font-medium text-canopy-text/70 hover:bg-white/10 transition-colors"
         aria-expanded={isOpen}
         aria-controls={`console-drawer-${terminalId}`}
       >
         <span>{isOpen ? "Hide Logs" : "Show Logs"}</span>
-        <svg
-          className={`w-4 h-4 transition-transform ${isOpen ? "rotate-180" : ""}`}
-          fill="none"
-          stroke="currentColor"
-          viewBox="0 0 24 24"
-        >
-          <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 9l-7 7-7-7" />
-        </svg>
+        <ChevronDown className={cn("w-3.5 h-3.5 transition-transform", isOpen && "rotate-180")} />
       </button>
 
       <AnimatePresence initial={false}>
