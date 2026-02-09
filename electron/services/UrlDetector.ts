@@ -1,25 +1,14 @@
-import { EventEmitter } from "node:events";
 import { extractLocalhostUrls } from "../../shared/utils/urlUtils.js";
 import { detectDevServerError, type DevServerError } from "../../shared/utils/devServerErrors.js";
 
-export interface UrlDetectorEvents {
-  "url-detected": (url: string) => void;
-  "error-detected": (error: DevServerError) => void;
+export interface ScanResult {
+  url: string | null;
+  error: DevServerError | null;
+  buffer: string;
 }
 
-// eslint-disable-next-line @typescript-eslint/no-unsafe-declaration-merging
-export declare interface UrlDetector {
-  on<K extends keyof UrlDetectorEvents>(event: K, listener: UrlDetectorEvents[K]): this;
-  off<K extends keyof UrlDetectorEvents>(event: K, listener: UrlDetectorEvents[K]): this;
-  emit<K extends keyof UrlDetectorEvents>(
-    event: K,
-    ...args: Parameters<UrlDetectorEvents[K]>
-  ): boolean;
-}
-
-// eslint-disable-next-line @typescript-eslint/no-unsafe-declaration-merging
-export class UrlDetector extends EventEmitter {
-  scanOutput(data: string, buffer: string): { buffer: string } {
+export class UrlDetector {
+  scanOutput(data: string, buffer: string): ScanResult {
     const newBuffer = (buffer + data).slice(-4096);
 
     let urls = extractLocalhostUrls(data);
@@ -30,19 +19,14 @@ export class UrlDetector extends EventEmitter {
       }
     }
 
-    if (urls.length > 0) {
-      const preferredUrl = this.selectPreferredUrl(urls);
-      if (preferredUrl) {
-        this.emit("url-detected", preferredUrl);
-      }
-    }
-
+    const preferredUrl = urls.length > 0 ? this.selectPreferredUrl(urls) : null;
     const error = detectDevServerError(newBuffer);
-    if (error) {
-      this.emit("error-detected", error);
-    }
 
-    return { buffer: newBuffer };
+    return {
+      url: preferredUrl,
+      error,
+      buffer: newBuffer,
+    };
   }
 
   private selectPreferredUrl(urls: string[]): string | null {
