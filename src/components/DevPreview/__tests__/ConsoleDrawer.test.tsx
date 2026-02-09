@@ -60,21 +60,27 @@ describe("ConsoleDrawer", () => {
 
   describe("drawer visibility", () => {
     it("renders with h-0 class when closed by default", () => {
-      const { container } = render(<ConsoleDrawer terminalId={mockTerminalId} defaultOpen={false} />);
+      const { container } = render(
+        <ConsoleDrawer terminalId={mockTerminalId} defaultOpen={false} />
+      );
       const drawer = container.querySelector('[id^="console-drawer-"]');
       expect(drawer?.className).toContain("h-0");
       expect(drawer?.className).not.toContain("h-[300px]");
     });
 
     it("renders with h-[300px] class when open by default", () => {
-      const { container } = render(<ConsoleDrawer terminalId={mockTerminalId} defaultOpen={true} />);
+      const { container } = render(
+        <ConsoleDrawer terminalId={mockTerminalId} defaultOpen={true} />
+      );
       const drawer = container.querySelector('[id^="console-drawer-"]');
       expect(drawer?.className).toContain("h-[300px]");
       expect(drawer?.className).not.toContain("h-0");
     });
 
     it("toggles height class when button is clicked", () => {
-      const { container } = render(<ConsoleDrawer terminalId={mockTerminalId} defaultOpen={false} />);
+      const { container } = render(
+        <ConsoleDrawer terminalId={mockTerminalId} defaultOpen={false} />
+      );
       const drawer = container.querySelector('[id^="console-drawer-"]');
 
       expect(drawer?.className).toContain("h-0");
@@ -87,7 +93,9 @@ describe("ConsoleDrawer", () => {
     });
 
     it("inner container always has h-[300px] class", () => {
-      const { container } = render(<ConsoleDrawer terminalId={mockTerminalId} defaultOpen={false} />);
+      const { container } = render(
+        <ConsoleDrawer terminalId={mockTerminalId} defaultOpen={false} />
+      );
       const innerContainer = container.querySelector(".h-\\[300px\\].bg-black");
       expect(innerContainer).toBeTruthy();
       expect(innerContainer?.className).toContain("h-[300px]");
@@ -225,13 +233,17 @@ describe("ConsoleDrawer", () => {
 
   describe("drawer container", () => {
     it("has overflow-hidden class to prevent content leak", () => {
-      const { container } = render(<ConsoleDrawer terminalId={mockTerminalId} defaultOpen={false} />);
+      const { container } = render(
+        <ConsoleDrawer terminalId={mockTerminalId} defaultOpen={false} />
+      );
       const drawer = container.querySelector('[id^="console-drawer-"]');
       expect(drawer?.className).toContain("overflow-hidden");
     });
 
     it("has transition-[height] for smooth animation", () => {
-      const { container } = render(<ConsoleDrawer terminalId={mockTerminalId} defaultOpen={false} />);
+      const { container } = render(
+        <ConsoleDrawer terminalId={mockTerminalId} defaultOpen={false} />
+      );
       const drawer = container.querySelector('[id^="console-drawer-"]');
       expect(drawer?.className).toContain("transition-[height]");
     });
@@ -243,19 +255,25 @@ describe("ConsoleDrawer", () => {
     });
 
     it("sets aria-hidden to true when drawer is closed", () => {
-      const { container } = render(<ConsoleDrawer terminalId={mockTerminalId} defaultOpen={false} />);
+      const { container } = render(
+        <ConsoleDrawer terminalId={mockTerminalId} defaultOpen={false} />
+      );
       const drawer = container.querySelector('[id^="console-drawer-"]');
       expect(drawer?.getAttribute("aria-hidden")).toBe("true");
     });
 
     it("sets aria-hidden to false when drawer is open", () => {
-      const { container } = render(<ConsoleDrawer terminalId={mockTerminalId} defaultOpen={true} />);
+      const { container } = render(
+        <ConsoleDrawer terminalId={mockTerminalId} defaultOpen={true} />
+      );
       const drawer = container.querySelector('[id^="console-drawer-"]');
       expect(drawer?.getAttribute("aria-hidden")).toBe("false");
     });
 
     it("toggles aria-hidden when drawer state changes", () => {
-      const { container } = render(<ConsoleDrawer terminalId={mockTerminalId} defaultOpen={false} />);
+      const { container } = render(
+        <ConsoleDrawer terminalId={mockTerminalId} defaultOpen={false} />
+      );
       const drawer = container.querySelector('[id^="console-drawer-"]');
 
       expect(drawer?.getAttribute("aria-hidden")).toBe("true");
