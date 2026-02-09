@@ -1051,9 +1051,9 @@ export function DevPreviewPane({
     const savedUrl = currentTerminal?.browserUrl?.trim() || "";
     const savedUrlPresent = savedHistoryPresent || savedUrl;
     const hasSavedUrl = Boolean(savedUrlPresent);
-    if (isProjectSwitching && hasSavedUrl) {
-      restoredFromSwitchRef.current = true;
-    }
+
+    restoredFromSwitchRef.current = isProjectSwitching && hasSavedUrl;
+
     const shouldTreatSavedUrlAsStale =
       !hasSavedUrl && webviewStore.instances.size === 0 && !restoredFromSwitchRef.current;
 
@@ -1073,14 +1073,8 @@ export function DevPreviewPane({
             };
     setHistory(nextHistory);
     setError(undefined);
-    setStatus(shouldTreatSavedUrlAsStale ? "starting" : hasSavedUrl ? "running" : "starting");
-    setMessage(
-      shouldTreatSavedUrlAsStale
-        ? "Starting dev server..."
-        : hasSavedUrl
-          ? "Running"
-          : "Starting dev server..."
-    );
+    setStatus("starting");
+    setMessage(hasSavedUrl ? "Restoring preview..." : "Starting dev server...");
     setIsRestarting(false);
     setIsBrowserOnly(false);
     setShowTerminal(false);
@@ -1459,28 +1453,26 @@ export function DevPreviewPane({
         </div>
         <div className="flex items-center justify-between gap-3 px-3 py-1.5 border-t border-canopy-border bg-[color-mix(in_oklab,var(--color-surface)_92%,transparent)] text-xs text-canopy-text/70">
           <div className="flex items-center gap-2 min-w-0" role="status" aria-live="polite">
-            <Server className="w-3.5 h-3.5 text-canopy-text/40 shrink-0" />
-            <span className={cn("h-2 w-2 rounded-full shrink-0", statusStyle.dot)} />
-            {status === "running" && !isBrowserOnly ? (
-              <span className="flex items-center gap-2 min-w-0">
-                <span className={cn("font-medium shrink-0", statusStyle.text)}>
-                  {statusStyle.label}
+            <Server className="w-3.5 h-3.5 text-canopy-text/40 shrink-0" aria-hidden="true" />
+            <span className={cn("h-2 w-2 rounded-full shrink-0", statusStyle.dot)} aria-hidden="true" />
+            <span className="flex items-center gap-2 flex-1 min-w-0">
+              <span className={cn("font-medium shrink-0", statusStyle.text)}>
+                {statusStyle.label}
+              </span>
+              {status === "running" && !isBrowserOnly && baseUrl ? (
+                <span className="truncate text-canopy-accent" title={baseUrl}>
+                  {baseUrl}
                 </span>
-                {baseUrl && (
-                  <span className="truncate text-canopy-accent" title={baseUrl}>
-                    {baseUrl}
-                  </span>
-                )}
-              </span>
-            ) : status === "error" && error ? (
-              <span className={cn("truncate", statusStyle.text)} title={error}>
-                {error}
-              </span>
-            ) : (
-              <span className="truncate text-canopy-text/60" title={message}>
-                {message}
-              </span>
-            )}
+              ) : status === "error" && error ? (
+                <span className={cn("truncate", statusStyle.text)} title={error}>
+                  {error}
+                </span>
+              ) : message && message !== statusStyle.label ? (
+                <span className="truncate text-canopy-text/60" title={message}>
+                  {message}
+                </span>
+              ) : null}
+            </span>
           </div>
           <div className="flex items-center gap-2 min-w-0">
             {canToggleTerminal && (
