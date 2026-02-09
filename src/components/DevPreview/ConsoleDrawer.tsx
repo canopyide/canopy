@@ -1,5 +1,4 @@
 import { useState, useCallback, useEffect } from "react";
-import { motion, AnimatePresence } from "framer-motion";
 import { ChevronDown } from "lucide-react";
 import { cn } from "@/lib/utils";
 import { XtermAdapter } from "../Terminal/XtermAdapter";
@@ -19,16 +18,6 @@ export function ConsoleDrawer({ terminalId, defaultOpen = false }: ConsoleDrawer
 
   useEffect(() => {
     terminalInstanceService.setVisible(terminalId, isOpen);
-
-    if (isOpen) {
-      const timer = setTimeout(() => {
-        terminalInstanceService.fit(terminalId);
-      }, 300);
-
-      return () => clearTimeout(timer);
-    }
-
-    return undefined;
   }, [terminalId, isOpen]);
 
   return (
@@ -44,22 +33,13 @@ export function ConsoleDrawer({ terminalId, defaultOpen = false }: ConsoleDrawer
         <ChevronDown className={cn("w-3.5 h-3.5 transition-transform", isOpen && "rotate-180")} />
       </button>
 
-      <AnimatePresence initial={false}>
-        {isOpen && (
-          <motion.div
-            id={`console-drawer-${terminalId}`}
-            initial={{ height: 0 }}
-            animate={{ height: "300px" }}
-            exit={{ height: 0 }}
-            transition={{ duration: 0.3, ease: "easeInOut" }}
-            className="overflow-hidden"
-          >
-            <div className="h-full bg-black">
-              <XtermAdapter terminalId={terminalId} />
-            </div>
-          </motion.div>
-        )}
-      </AnimatePresence>
+      {isOpen && (
+        <div id={`console-drawer-${terminalId}`} className="h-[300px]">
+          <div className="h-full bg-black">
+            <XtermAdapter terminalId={terminalId} />
+          </div>
+        </div>
+      )}
     </div>
   );
 }
