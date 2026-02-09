@@ -17,10 +17,6 @@ export function registerDevPreviewHandlers(deps: HandlerDependencies): () => voi
       lastUrl: string | null;
       lastError: string | null;
       listener: (id: string, data: string | Uint8Array) => void;
-      urlListener: (url: string) => void;
-      errorListener: (
-        error: import("../../../shared/utils/devServerErrors.js").DevServerError
-      ) => void;
     }
   >();
 
@@ -78,29 +74,20 @@ export function registerDevPreviewHandlers(deps: HandlerDependencies): () => voi
       const dataString = typeof data === "string" ? data : new TextDecoder().decode(data);
       const result = detector.scanOutput(dataString, sub.buffer);
       sub.buffer = result.buffer;
-    };
 
-    const urlListener = (url: string) => {
-      const sub = subscriptions.get(terminalId);
-      if (!sub) return;
-      if (sub.lastUrl === url) return;
-      sub.lastUrl = url;
-      handleUrlDetected(url, terminalId, undefined);
-    };
+      if (result.url && result.url !== sub.lastUrl) {
+        sub.lastUrl = result.url;
+        handleUrlDetected(result.url, terminalId, undefined);
+      }
 
-    const errorListener = (
-      error: import("../../../shared/utils/devServerErrors.js").DevServerError
-    ) => {
-      const sub = subscriptions.get(terminalId);
-      if (!sub) return;
-      const errorKey = `${error.type}:${error.message}`;
-      if (sub.lastError === errorKey) return;
-      sub.lastError = errorKey;
-      handleErrorDetected(error, terminalId, undefined);
+      if (result.error) {
+        const errorKey = `${result.error.type}:${result.error.message}`;
+        if (errorKey !== sub.lastError) {
+          sub.lastError = errorKey;
+          handleErrorDetected(result.error, terminalId, undefined);
+        }
+      }
     };
-
-    detector.on("url-detected", urlListener);
-    detector.on("error-detected", errorListener);
 
     deps.ptyClient.on("data", listener);
     deps.ptyClient.setIpcDataMirror(terminalId, true);
@@ -110,8 +97,6 @@ export function registerDevPreviewHandlers(deps: HandlerDependencies): () => voi
       lastUrl: null,
       lastError: null,
       listener,
-      urlListener,
-      errorListener,
     });
   };
 
@@ -127,8 +112,6 @@ export function registerDevPreviewHandlers(deps: HandlerDependencies): () => voi
     if (!sub) return;
 
     deps.ptyClient.off("data", sub.listener);
-    detector.off("url-detected", sub.urlListener);
-    detector.off("error-detected", sub.errorListener);
     deps.ptyClient.setIpcDataMirror(terminalId, false);
     subscriptions.delete(terminalId);
   };
