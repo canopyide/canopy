@@ -1740,7 +1740,7 @@ describe("ActivityMonitor", () => {
         "  ▘▘ ▝▝    Opus 4.6 is here · $50 free extra usage",
         "",
         "─────────────────────────────────────────────────────────────────",
-        "❯ Try \"how does TerminalInstanceService.ts work?\"",
+        '❯ Try "how does TerminalInstanceService.ts work?"',
         "─────────────────────────────────────────────────────────────────",
         "  ⏵⏵ bypass permissions on (shift+tab to cycle)",
       ];
