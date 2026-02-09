@@ -1,5 +1,14 @@
 import { useState, useCallback, useRef, useEffect } from "react";
-import { AlertTriangle, RotateCw, ExternalLink } from "lucide-react";
+import {
+  AlertTriangle,
+  RotateCw,
+  ExternalLink,
+  Loader2,
+  CheckCircle2,
+  XCircle,
+  Circle,
+  type LucideIcon,
+} from "lucide-react";
 import { useTerminalStore } from "@/store";
 import type { BrowserHistory } from "@shared/types/domain";
 import { ContentPanel, type BasePanelProps } from "@/components/Panel";
@@ -7,6 +16,7 @@ import { BrowserToolbar } from "../Browser/BrowserToolbar";
 import { normalizeBrowserUrl } from "../Browser/browserUtils";
 import { useDevServer } from "@/hooks/useDevServer";
 import { DevPreviewToolbar } from "./DevPreviewToolbar";
+import type { DevPreviewStatus } from "./devPreviewTypes";
 import { ConsoleDrawer } from "./ConsoleDrawer";
 import { useIsDragging } from "@/components/DragDrop";
 import { cn } from "@/lib/utils";
@@ -252,6 +262,39 @@ export function DevPreviewPane({
     }
   }, [currentUrl, isWebviewReady]);
 
+  const statusConfig: Record<
+    DevPreviewStatus,
+    { icon: LucideIcon; iconClass: string; ariaLabel: string }
+  > = {
+    starting: {
+      icon: Loader2,
+      iconClass: "text-[var(--color-status-info)] animate-spin",
+      ariaLabel: "Starting dev server",
+    },
+    installing: {
+      icon: Loader2,
+      iconClass: "text-[var(--color-status-warning)] animate-spin",
+      ariaLabel: "Installing dependencies",
+    },
+    running: {
+      icon: CheckCircle2,
+      iconClass: "text-[var(--color-status-success)]",
+      ariaLabel: "Dev server running",
+    },
+    error: {
+      icon: XCircle,
+      iconClass: "text-[var(--color-status-error)]",
+      ariaLabel: "Dev server error",
+    },
+    stopped: {
+      icon: Circle,
+      iconClass: "text-canopy-text/40",
+      ariaLabel: "Dev server stopped",
+    },
+  };
+
+  const currentStatus = statusConfig[status] || statusConfig.stopped;
+
   return (
     <ContentPanel
       id={id}
@@ -268,6 +311,18 @@ export function DevPreviewPane({
       isTrashing={isTrashing}
       gridPanelCount={gridPanelCount}
       kind="dev-preview"
+      headerContent={
+        <div
+          className="flex items-center gap-2 px-2"
+          role="status"
+          aria-label={currentStatus.ariaLabel}
+        >
+          <currentStatus.icon
+            className={cn("w-3.5 h-3.5", currentStatus.iconClass)}
+            aria-hidden="true"
+          />
+        </div>
+      }
     >
       <div className="flex flex-col h-full">
         <DevPreviewToolbar
@@ -325,7 +380,12 @@ export function DevPreviewPane({
             <div className="absolute inset-0 flex flex-col items-center justify-center bg-canopy-bg">
               <div className="w-12 h-12 border-2 border-blue-400 border-t-transparent rounded-full animate-spin mb-4" />
               <p className="text-sm text-canopy-text/60">
-                {isRestarting ? "Restarting" : status === "installing" ? "Installing" : "Starting"}...
+                {isRestarting
+                  ? "Restarting"
+                  : status === "installing"
+                    ? "Installing"
+                    : "Starting"}
+                ...
               </p>
             </div>
           ) : !currentUrl ? (
