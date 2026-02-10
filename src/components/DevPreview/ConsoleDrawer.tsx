@@ -14,12 +14,35 @@ interface ConsoleDrawerProps {
   onHardRestart?: () => void;
 }
 
-const STATUS_LABEL: Record<DevPreviewStatus, { label: string; className: string }> = {
-  stopped: { label: "Stopped", className: "text-canopy-text/40" },
-  starting: { label: "Starting", className: "text-blue-400" },
-  installing: { label: "Installing", className: "text-yellow-400" },
-  running: { label: "Running", className: "text-green-400" },
-  error: { label: "Error", className: "text-red-400" },
+const STATUS_LABEL: Record<
+  DevPreviewStatus,
+  { label: string; textClass: string; dotClass: string }
+> = {
+  stopped: {
+    label: "Stopped",
+    textClass: "text-canopy-text/50",
+    dotClass: "bg-canopy-text/40",
+  },
+  starting: {
+    label: "Starting",
+    textClass: "text-blue-400",
+    dotClass: "bg-blue-400",
+  },
+  installing: {
+    label: "Installing",
+    textClass: "text-yellow-400",
+    dotClass: "bg-yellow-400",
+  },
+  running: {
+    label: "Running",
+    textClass: "text-green-400",
+    dotClass: "bg-green-400",
+  },
+  error: {
+    label: "Error",
+    textClass: "text-red-400",
+    dotClass: "bg-red-400",
+  },
 };
 
 export function ConsoleDrawer({
@@ -44,19 +67,24 @@ export function ConsoleDrawer({
   }, [isOpen]);
 
   const statusLabel = isRestarting
-    ? { label: "Restarting", className: "text-blue-400" }
+    ? { label: "Restarting", textClass: "text-blue-400", dotClass: "bg-blue-400" }
     : (STATUS_LABEL[status] ?? STATUS_LABEL.stopped);
   const toggleLabel = isOpen ? "Hide Terminal" : "Show Terminal";
   const hardRestartDisabled =
     !onHardRestart || isRestarting || status === "starting" || status === "installing";
+  const statusClass = cn(
+    "inline-flex min-h-8 items-center px-3 text-[10px] font-semibold uppercase tracking-wide",
+    onHardRestart && "border-r border-overlay/70",
+    statusLabel.textClass
+  );
 
   return (
     <div className="flex flex-col border-t border-overlay bg-[var(--color-surface)]">
-      <div className="grid grid-cols-[minmax(0,1fr)_auto] items-center gap-2 px-2 py-2">
+      <div className="flex items-stretch bg-black/20">
         <button
           type="button"
           onClick={toggleDrawer}
-          className="flex min-h-10 min-w-0 items-center gap-2 rounded-md border border-overlay/70 bg-black/20 px-3 py-2 text-xs font-semibold text-canopy-text/80 transition-colors hover:bg-black/30 focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-blue-400"
+          className="flex min-h-8 min-w-0 flex-1 items-center gap-2 border-r border-overlay/70 px-3 py-1.5 text-xs font-semibold text-canopy-text/80 transition-colors hover:bg-black/30 focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-blue-400"
           aria-expanded={isOpen}
           aria-controls={`console-drawer-${terminalId}`}
           aria-label={toggleLabel}
@@ -68,37 +96,29 @@ export function ConsoleDrawer({
           <span className="truncate">{toggleLabel}</span>
         </button>
 
-        <div className="flex items-center gap-2">
-          <div
-            className={cn(
-              "inline-flex min-h-10 items-center rounded-md border border-overlay/70 bg-black/20 px-3 text-[10px] font-semibold uppercase tracking-wide",
-              statusLabel.className
-            )}
-            role="status"
-            aria-live="polite"
-          >
-            {statusLabel.label}
-          </div>
-
-          {onHardRestart && (
-            <button
-              type="button"
-              onClick={onHardRestart}
-              disabled={hardRestartDisabled}
-              className={cn(
-                "flex min-h-10 shrink-0 items-center gap-2 rounded-md border border-overlay/70 bg-black/20 px-3 py-2 text-[10px] font-semibold uppercase tracking-wide text-canopy-text/80 transition-colors",
-                "hover:bg-black/30 disabled:cursor-not-allowed disabled:opacity-40",
-                isRestarting && "text-blue-400"
-              )}
-              title="Hard restart dev preview"
-              aria-label="Hard restart dev preview"
-              aria-busy={isRestarting}
-            >
-              <RotateCw className={cn("h-3.5 w-3.5", isRestarting && "animate-spin")} />
-              <span>Restart</span>
-            </button>
-          )}
+        <div className={statusClass} role="status" aria-live="polite">
+          <span className={cn("mr-2 h-1.5 w-1.5 shrink-0 rounded-full", statusLabel.dotClass)} />
+          {statusLabel.label}
         </div>
+
+        {onHardRestart && (
+          <button
+            type="button"
+            onClick={onHardRestart}
+            disabled={hardRestartDisabled}
+            className={cn(
+              "flex min-h-8 shrink-0 items-center gap-2 px-3 py-1.5 text-[10px] font-semibold uppercase tracking-wide text-canopy-text/80 transition-colors",
+              "hover:bg-black/30 focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-blue-400 disabled:cursor-not-allowed disabled:opacity-40",
+              isRestarting && "text-blue-400"
+            )}
+            title="Hard restart dev preview"
+            aria-label="Hard restart dev preview"
+            aria-busy={isRestarting}
+          >
+            <RotateCw className={cn("h-3.5 w-3.5", isRestarting && "animate-spin")} />
+            <span>Restart</span>
+          </button>
+        )}
       </div>
 
       <div
