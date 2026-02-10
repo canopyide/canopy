@@ -77,6 +77,16 @@ async function run() {
       );
     }
     console.log("[Build] Copied assistant prompt files");
+
+    const workflowsSrcDir = path.join(root, "electron/workflows");
+    const workflowsDestDir = path.join(root, "dist-electron/workflows");
+    if (fs.existsSync(workflowsSrcDir)) {
+      fs.mkdirSync(workflowsDestDir, { recursive: true });
+      fs.cpSync(workflowsSrcDir, workflowsDestDir, { recursive: true });
+      console.log("[Build] Copied built-in workflows");
+    } else {
+      console.warn(`[Build] Built-in workflows directory not found: ${workflowsSrcDir}`);
+    }
   } catch (error) {
     console.error("[Build] Failed:", error);
     process.exit(1);

@@ -60,6 +60,12 @@ export class WorkflowLoader {
 
       console.log(`[WorkflowLoader] Loaded ${this.builtInWorkflows.size} built-in workflow(s)`);
     } catch (error) {
+      if ((error as NodeJS.ErrnoException).code === "ENOENT") {
+        console.warn(
+          `[WorkflowLoader] Built-in workflows directory not found: ${BUILT_IN_WORKFLOWS_DIR}. Continuing without built-in workflows.`
+        );
+        return;
+      }
       console.error("[WorkflowLoader] Failed to read built-in workflows directory:", error);
     }
   }
