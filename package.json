@@ -143,13 +143,11 @@
     "appId": "com.canopy.commandcenter",
     "publish": [
       {
-        "provider": "github",
-        "owner": "gregpriday",
-        "repo": "canopy-electron",
-        "releaseType": "release"
+        "provider": "generic",
+        "url": "https://updates.canopy.dev/releases/"
       }
     ],
-    "forceCodeSigning": true,
+    "forceCodeSigning": false,
     "electronUpdaterCompatibility": ">=2.16",
     "productName": "Canopy",
     "npmRebuild": false,
