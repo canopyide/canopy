@@ -1,0 +1,177 @@
+name: Release
+
+on:
+  push:
+    tags:
+      - 'v*'
+
+permissions:
+  contents: read
+
+concurrency:
+  group: release-${{ github.ref }}
+  cancel-in-progress: false
+
+env:
+  NODE_VERSION: '20'
+
+jobs:
+  build:
+    runs-on: ${{ matrix.os }}
+    timeout-minutes: 45
+    strategy:
+      fail-fast: false
+      matrix:
+        os: [macos-14, ubuntu-22.04, windows-latest]
+
+    steps:
+      - name: Checkout Code
+        uses: actions/checkout@v4
+
+      - name: Verify Version Matches Tag
+        shell: bash
+        run: |
+          TAG_VERSION="${GITHUB_REF_NAME#v}"
+          PKG_VERSION=$(node -p "require('./package.json').version")
+          if [ "$TAG_VERSION" != "$PKG_VERSION" ]; then
+            echo "::error::Tag version ($TAG_VERSION) does not match package.json version ($PKG_VERSION)"
+            exit 1
+          fi
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: ${{ env.NODE_VERSION }}
+          cache: 'npm'
+
+      - name: Install Dependencies
+        run: npm ci
+
+      - name: Install Linux Dependencies
+        if: matrix.os == 'ubuntu-22.04'
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y libarchive-tools
+
+      # macOS code signing (configure secrets when certificates are available)
+      # - name: Import macOS Certificates
+      #   if: startsWith(matrix.os, 'macos')
+      #   uses: apple-actions/import-codesign-certs@v3
+      #   with:
+      #     p12-file-base64: ${{ secrets.MAC_CERTS }}
+      #     p12-password: ${{ secrets.MAC_CERTS_PASSWORD }}
+
+      - name: Build
+        env:
+          # macOS notarization (configure when Apple Developer account is set up)
+          # APPLE_ID: ${{ secrets.APPLE_ID }}
+          # APPLE_APP_SPECIFIC_PASSWORD: ${{ secrets.APPLE_APP_SPECIFIC_PASSWORD }}
+          # APPLE_TEAM_ID: ${{ secrets.APPLE_TEAM_ID }}
+          CSC_IDENTITY_AUTO_DISCOVERY: 'false'
+        run: npm run build && npx electron-builder --publish never
+
+      - name: Validate Update Metadata (Windows)
+        if: matrix.os == 'windows-latest'
+        shell: bash
+        run: |
+          if [ ! -f "release/latest.yml" ]; then
+            echo "::error::Missing release/latest.yml - Windows auto-update will not work"
+            exit 1
+          fi
+
+      - name: Validate Update Metadata (macOS)
+        if: startsWith(matrix.os, 'macos')
+        shell: bash
+        run: |
+          if [ ! -f "release/latest-mac.yml" ]; then
+            echo "::error::Missing release/latest-mac.yml - macOS auto-update will not work"
+            exit 1
+          fi
+
+      - name: Validate Update Metadata (Linux)
+        if: matrix.os == 'ubuntu-22.04'
+        shell: bash
+        run: |
+          if [ ! -f "release/latest-linux.yml" ]; then
+            echo "::error::Missing release/latest-linux.yml - Linux auto-update will not work"
+            exit 1
+          fi
+
+      - name: Upload Build Artifacts
+        uses: actions/upload-artifact@v4
+        with:
+          name: release-${{ matrix.os }}
+          path: |
+            release/*.dmg
+            release/*.zip
+            release/*.exe
+            release/*.AppImage
+            release/*.deb
+            release/*.blockmap
+            release/latest*.yml
+          retention-days: 7
+          if-no-files-found: error
+
+  publish:
+    needs: build
+    runs-on: ubuntu-22.04
+    timeout-minutes: 15
+
+    steps:
+      - name: Download macOS Artifacts
+        uses: actions/download-artifact@v4
+        with:
+          name: release-macos-14
+          path: release/
+
+      - name: Download Linux Artifacts
+        uses: actions/download-artifact@v4
+        with:
+          name: release-ubuntu-22.04
+          path: release/
+
+      - name: Download Windows Artifacts
+        uses: actions/download-artifact@v4
+        with:
+          name: release-windows-latest
+          path: release/
+
+      - name: List Release Files
+        run: ls -lah release/
+
+      - name: Upload Binaries to R2
+        shell: bash
+        env:
+          AWS_ACCESS_KEY_ID: ${{ secrets.R2_ACCESS_KEY_ID }}
+          AWS_SECRET_ACCESS_KEY: ${{ secrets.R2_SECRET_ACCESS_KEY }}
+          AWS_DEFAULT_REGION: auto
+          R2_ENDPOINT: ${{ secrets.R2_ENDPOINT }}
+          R2_BUCKET: ${{ secrets.R2_BUCKET }}
+        run: |
+          aws s3 sync release/ "s3://${R2_BUCKET}/releases/" \
+            --endpoint-url "${R2_ENDPOINT}" \
+            --no-progress \
+            --exclude "*" \
+            --include "*.dmg" \
+            --include "*.zip" \
+            --include "*.exe" \
+            --include "*.AppImage" \
+            --include "*.deb" \
+            --include "*.blockmap" \
+            --cache-control "public, max-age=31536000, immutable"
+
+      - name: Upload Metadata to R2
+        shell: bash
+        env:
+          AWS_ACCESS_KEY_ID: ${{ secrets.R2_ACCESS_KEY_ID }}
+          AWS_SECRET_ACCESS_KEY: ${{ secrets.R2_SECRET_ACCESS_KEY }}
+          AWS_DEFAULT_REGION: auto
+          R2_ENDPOINT: ${{ secrets.R2_ENDPOINT }}
+          R2_BUCKET: ${{ secrets.R2_BUCKET }}
+        run: |
+          aws s3 sync release/ "s3://${R2_BUCKET}/releases/" \
+            --endpoint-url "${R2_ENDPOINT}" \
+            --no-progress \
+            --exclude "*" \
+            --include "latest*.yml" \
+            --cache-control "no-cache, no-store, must-revalidate"
