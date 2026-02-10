@@ -178,27 +178,12 @@ export function useDevServer({
     if (!currentProjectId) return;
     if (!devCommand.trim()) return;
 
-    const configKey = [
-      currentProjectId,
-      panelId,
-      cwd,
-      worktreeId ?? "",
-      devCommand.trim(),
-      envSignature,
-    ].join("|");
+    const configKey = [panelId, cwd, worktreeId ?? "", devCommand.trim(), envSignature].join("|");
 
     if (lastEnsureConfigRef.current === configKey) return;
     lastEnsureConfigRef.current = configKey;
     void start();
   }, [panelId, currentProjectId, cwd, worktreeId, devCommand, envSignature, start]);
-
-  useEffect(() => {
-    if (!currentProjectId) return;
-    if (!devCommand.trim()) return;
-    if (isRestarting) return;
-    if (status !== "stopped") return;
-    void start();
-  }, [currentProjectId, devCommand, status, isRestarting, start]);
 
   return {
     status,
