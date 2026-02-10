@@ -419,40 +419,6 @@ describe("DevPreviewPane", () => {
     });
   });
 
-  describe("auto-start behavior", () => {
-    function shouldAutoStart(
-      devCommand: string,
-      status: DevPreviewStatus,
-      isRestarting = false
-    ): boolean {
-      return !!(devCommand && status === "stopped" && !isRestarting);
-    }
-
-    it("should auto-start when devCommand exists and status is stopped", () => {
-      expect(shouldAutoStart("npm run dev", "stopped")).toBe(true);
-    });
-
-    it("should not auto-start when devCommand is empty", () => {
-      expect(shouldAutoStart("", "stopped")).toBe(false);
-    });
-
-    it("should not auto-start when status is running", () => {
-      expect(shouldAutoStart("npm run dev", "running")).toBe(false);
-    });
-
-    it("should not auto-start when status is starting", () => {
-      expect(shouldAutoStart("npm run dev", "starting")).toBe(false);
-    });
-
-    it("should not auto-start when status is error", () => {
-      expect(shouldAutoStart("npm run dev", "error")).toBe(false);
-    });
-
-    it("should not auto-start when isRestarting is true", () => {
-      expect(shouldAutoStart("npm run dev", "stopped", true)).toBe(false);
-    });
-  });
-
   describe("canGoBack and canGoForward", () => {
     it("canGoBack is false with empty past", () => {
       const state: HistoryState = { past: [], present: "http://localhost:3000/", future: [] };
