@@ -2,6 +2,7 @@ import { describe, it, expect, beforeEach } from "vitest";
 import type { BrowserHistory } from "@shared/types/domain";
 import type { DevPreviewStatus } from "@/hooks/useDevServer";
 import { normalizeBrowserUrl } from "../../Browser/browserUtils";
+import { shouldAdoptDetectedDevServerUrl } from "../urlSync";
 
 // ─── Browser History Logic ──────────────────────────────────────────
 // Extracted from DevPreviewPane to enable pure-function testing
@@ -416,6 +417,30 @@ describe("DevPreviewPane", () => {
     it("drawer should not be shown when terminalId is null", () => {
       const terminalId: string | null = null;
       expect(!!terminalId).toBe(false);
+    });
+  });
+
+  describe("detected URL adoption", () => {
+    it("adopts detected URL when there is no current URL", () => {
+      expect(shouldAdoptDetectedDevServerUrl("http://localhost:5173/", "")).toBe(true);
+    });
+
+    it("does not override in-app navigation on same origin", () => {
+      expect(
+        shouldAdoptDetectedDevServerUrl(
+          "http://localhost:5173/",
+          "http://localhost:5173/products/42"
+        )
+      ).toBe(false);
+    });
+
+    it("adopts detected URL when origin changes", () => {
+      expect(
+        shouldAdoptDetectedDevServerUrl(
+          "http://localhost:5174/",
+          "http://localhost:5173/products/42"
+        )
+      ).toBe(true);
     });
   });
 

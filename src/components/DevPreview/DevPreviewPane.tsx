@@ -9,6 +9,7 @@ import { useDevServer } from "@/hooks/useDevServer";
 import { ConsoleDrawer } from "./ConsoleDrawer";
 import { useIsDragging } from "@/components/DragDrop";
 import { cn } from "@/lib/utils";
+import { shouldAdoptDetectedDevServerUrl } from "./urlSync";
 
 export interface DevPreviewPaneProps extends BasePanelProps {
   cwd: string;
@@ -90,7 +91,7 @@ export function DevPreviewPane({
   }, [terminalId]);
 
   useEffect(() => {
-    if (url && url !== currentUrl) {
+    if (url && shouldAdoptDetectedDevServerUrl(url, currentUrl)) {
       setHistory((prev) => ({
         past: prev.present ? [...prev.past, prev.present] : prev.past,
         present: url,
