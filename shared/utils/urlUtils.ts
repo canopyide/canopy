@@ -1,6 +1,9 @@
 /* eslint-disable no-control-regex */
 const ALLOWED_HOSTS = ["localhost", "127.0.0.1", "::1"];
 const ALLOWED_PROTOCOLS = ["http:", "https:"];
+const LOCALHOST_HINTS = ["localhost", "127.0.0.1", "0.0.0.0", "::1"] as const;
+const LOCALHOST_URL_REGEX =
+  /https?:\/\/(localhost|127\.0\.0\.1|0\.0\.0\.0|::1)(:\d+)?([^\s"'<>)]*)?/gi;
 
 export interface NormalizeResult {
   url?: string;
@@ -60,12 +63,28 @@ export function stripAnsiAndOscCodes(text: string): string {
     .replace(/\x1b\]8;;[^\x07]*\x07([^\x1b]*)\x1b\]8;;\x07/g, "$1");
 }
 
-export function extractLocalhostUrls(text: string): string[] {
-  const urlRegex = /https?:\/\/(localhost|127\.0\.0\.1|0\.0\.0\.0|::1)(:\d+)?([^\s"'<>)]*)?/gi;
-  const matches = text.match(urlRegex) || [];
-  const cleaned = stripAnsiAndOscCodes(text);
-  const cleanMatches = cleaned.match(urlRegex) || [];
+function hasLocalhostHint(text: string): boolean {
+  const lower = text.toLowerCase();
+  for (const hint of LOCALHOST_HINTS) {
+    if (lower.includes(hint)) {
+      return true;
+    }
+  }
+  return false;
+}
 
+function matchLocalhostUrls(text: string): string[] {
+  LOCALHOST_URL_REGEX.lastIndex = 0;
+  return Array.from(text.matchAll(LOCALHOST_URL_REGEX), (match) => match[0]);
+}
+
+export function extractLocalhostUrls(text: string): string[] {
+  if (!text || !hasLocalhostHint(text)) {
+    return [];
+  }
+
+  const matches = matchLocalhostUrls(text);
+  const cleanMatches = text.includes("\x1b") ? matchLocalhostUrls(stripAnsiAndOscCodes(text)) : [];
   const allMatches = [...new Set([...matches, ...cleanMatches])];
 
   const normalized: string[] = [];
