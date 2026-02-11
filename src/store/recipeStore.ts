@@ -5,6 +5,18 @@ import { projectClient, agentSettingsClient } from "@/clients";
 import { getAgentConfig } from "@/config/agents";
 import { generateAgentCommand } from "@shared/types";
 
+function sanitizeRecipeTerminal(terminal: RecipeTerminal): RecipeTerminal {
+  return {
+    ...terminal,
+    command: terminal.command?.trim() || undefined,
+    initialPrompt:
+      typeof terminal.initialPrompt === "string"
+        ? terminal.initialPrompt.replace(/\r\n/g, "\n").trimEnd() || undefined
+        : undefined,
+    devCommand: terminal.devCommand?.trim() || undefined,
+  };
+}
+
 function terminalToRecipeTerminal(terminal: TerminalInstance): RecipeTerminal {
   // Map kind to RecipeTerminalType
   const type: RecipeTerminalType =
@@ -99,7 +111,7 @@ const createRecipeStore: StateCreator<RecipeState> = (set, get) => ({
       name,
       projectId,
       worktreeId,
-      terminals,
+      terminals: terminals.map(sanitizeRecipeTerminal),
       createdAt: Date.now(),
       showInEmptyState,
     };
@@ -134,7 +146,11 @@ const createRecipeStore: StateCreator<RecipeState> = (set, get) => ({
     }
 
     const recipe = recipes[index];
-    const updatedRecipe = { ...recipe, ...updates };
+    const updatedRecipe = {
+      ...recipe,
+      ...updates,
+      terminals: updates.terminals ? updates.terminals.map(sanitizeRecipeTerminal) : recipe.terminals,
+    };
     const newRecipes = [...recipes];
     newRecipes[index] = updatedRecipe;
 
@@ -225,24 +241,25 @@ const createRecipeStore: StateCreator<RecipeState> = (set, get) => ({
         }
 
         const isAgent = terminal.type !== "terminal";
-        let command = terminal.command;
+        let command = terminal.command?.trim() || "";
 
         // For agent terminals, build command with settings/flags and optional initial prompt
         if (isAgent) {
           const agentConfig = getAgentConfig(terminal.type);
           if (agentConfig) {
+            const initialPrompt = terminal.initialPrompt?.trim();
             if (!command) {
               // No custom command - build from agent config
               const baseCommand = agentConfig.command;
               const entry = agentSettings?.agents?.[terminal.type] ?? {};
               command = generateAgentCommand(baseCommand, entry, terminal.type, {
-                initialPrompt: terminal.initialPrompt,
+                initialPrompt,
               });
-            } else if (terminal.initialPrompt) {
+            } else if (initialPrompt) {
               // Custom command with initial prompt - append the prompt
               const entry = agentSettings?.agents?.[terminal.type] ?? {};
               command = generateAgentCommand(command, entry, terminal.type, {
-                initialPrompt: terminal.initialPrompt,
+                initialPrompt,
               });
             }
           }
