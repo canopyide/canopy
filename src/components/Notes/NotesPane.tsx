@@ -375,7 +375,7 @@ export function NotesPane({
       <div className="flex items-center gap-1">
         <button
           onClick={handleSendMenuClick}
-          className="flex items-center gap-1.5 px-2 py-1 text-xs hover:bg-canopy-text/10 text-canopy-text/60 hover:text-canopy-text transition-colors"
+          className="flex items-center gap-1.5 px-2 py-1 text-xs rounded-[var(--radius-sm)] hover:bg-canopy-text/10 text-canopy-text/60 hover:text-canopy-text transition-colors"
           title="Send to agent"
         >
           {sent ? <Check className="w-3 h-3 text-green-500" /> : <Send className="w-3 h-3" />}
@@ -383,7 +383,7 @@ export function NotesPane({
         </button>
         <button
           onClick={handleCopyPath}
-          className="flex items-center gap-1.5 px-2 py-1 text-xs hover:bg-canopy-text/10 text-canopy-text/60 hover:text-canopy-text transition-colors"
+          className="flex items-center gap-1.5 px-2 py-1 text-xs rounded-[var(--radius-sm)] hover:bg-canopy-text/10 text-canopy-text/60 hover:text-canopy-text transition-colors"
           title="Copy addressable path"
         >
           {copied ? <Check className="w-3 h-3 text-green-500" /> : <Copy className="w-3 h-3" />}
@@ -430,7 +430,7 @@ export function NotesPane({
         <div className="h-full flex flex-col">
           {/* Conflict warning */}
           {hasConflict && (
-            <div className="px-3 py-2 bg-amber-500/10 border-b border-amber-500/20 flex items-center justify-between shrink-0">
+            <div className="px-3 py-2 bg-amber-500/[0.03] border-l-2 border-amber-500 flex items-center justify-between shrink-0">
               <div className="flex items-center gap-2 text-amber-500 text-xs">
                 <AlertTriangle size={14} />
                 <span>Note modified externally</span>
@@ -438,7 +438,7 @@ export function NotesPane({
               <button
                 type="button"
                 onClick={handleReload}
-                className="px-2 py-1 rounded text-xs bg-amber-500/20 hover:bg-amber-500/30 text-amber-500 transition-colors flex items-center gap-1"
+                className="px-2 py-1 rounded-[var(--radius-sm)] text-xs bg-amber-500/20 hover:bg-amber-500/30 text-amber-500 transition-colors flex items-center gap-1"
               >
                 <RefreshCw size={12} />
                 Reload
@@ -447,7 +447,7 @@ export function NotesPane({
           )}
 
           <div
-            className="flex-1 overflow-hidden bg-canopy-bg text-[13px] font-mono [&_.cm-editor]:h-full [&_.cm-scroller]:p-2 [&_.cm-placeholder]:text-zinc-600 [&_.cm-placeholder]:italic"
+            className="flex-1 overflow-hidden bg-canopy-bg text-[13px] font-mono [&_.cm-editor]:h-full [&_.cm-scroller]:p-2 [&_.cm-placeholder]:text-canopy-text/30 [&_.cm-placeholder]:italic"
             onContextMenu={handleEditorContextMenu}
           >
             <CodeMirror
