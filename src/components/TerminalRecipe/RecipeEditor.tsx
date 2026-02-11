@@ -1,9 +1,41 @@
-import { useState, useEffect, useRef } from "react";
+import { useState, useEffect, useRef, useMemo, useCallback } from "react";
 import type { TerminalRecipe, RecipeTerminal, RecipeTerminalType } from "@/types";
 import { Button } from "@/components/ui/button";
 import { AppDialog } from "@/components/ui/AppDialog";
 import { useRecipeStore } from "@/store/recipeStore";
 import { useProjectStore } from "@/store/projectStore";
+import { useUnsavedChanges } from "@/hooks/useUnsavedChanges";
+
+function cloneTerminal(t: RecipeTerminal): RecipeTerminal {
+  return { ...t, env: t.env ? { ...t.env } : {} };
+}
+
+function normalizeExitBehavior(t: RecipeTerminal): "" | "keep" | "trash" | "remove" {
+  const value = t.exitBehavior ?? "";
+  if (!value) return "";
+  const defaultBehavior = t.type === "terminal" || t.type === "dev-preview" ? "trash" : "keep";
+  return value === defaultBehavior ? "" : value;
+}
+
+function serializeEditorState(
+  name: string,
+  terminals: RecipeTerminal[],
+  showInEmptyState: boolean
+): string {
+  return JSON.stringify({
+    name,
+    showInEmptyState,
+    terminals: terminals.map((t) => ({
+      type: t.type,
+      title: t.title ?? "",
+      command: t.command ?? "",
+      initialPrompt: t.initialPrompt ?? "",
+      devCommand: t.devCommand ?? "",
+      exitBehavior: normalizeExitBehavior(t),
+      env: Object.fromEntries(Object.entries(t.env ?? {}).sort(([a], [b]) => a.localeCompare(b))),
+    })),
+  });
+}
 
 interface RecipeEditorProps {
   recipe?: TerminalRecipe;
@@ -52,23 +84,50 @@ export function RecipeEditor({
   const [isSaving, setIsSaving] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const recipeNameInputRef = useRef<HTMLInputElement>(null);
+  const initialStateRef = useRef<string>("");
 
   useEffect(() => {
+    if (!isOpen) return;
     if (recipe) {
+      const nextTerminals = recipe.terminals.map(cloneTerminal);
+      const nextShowInEmptyState = recipe.showInEmptyState ?? false;
       setRecipeName(recipe.name);
-      setTerminals(recipe.terminals.map((t) => ({ ...t })));
-      setShowInEmptyState(recipe.showInEmptyState ?? false);
+      setTerminals(nextTerminals);
+      setShowInEmptyState(nextShowInEmptyState);
+      initialStateRef.current = serializeEditorState(
+        recipe.name,
+        nextTerminals,
+        nextShowInEmptyState
+      );
     } else if (initialTerminals && initialTerminals.length > 0) {
+      const nextTerminals = initialTerminals.map(cloneTerminal);
       setRecipeName("");
-      setTerminals(initialTerminals.map((t) => ({ ...t })));
+      setTerminals(nextTerminals);
       setShowInEmptyState(false);
+      initialStateRef.current = serializeEditorState("", nextTerminals, false);
     } else {
+      const nextTerminals: RecipeTerminal[] = [
+        { type: "terminal", title: "", command: "", env: {} },
+      ];
       setRecipeName("");
-      setTerminals([{ type: "terminal", title: "", command: "", env: {} }]);
+      setTerminals(nextTerminals);
       setShowInEmptyState(false);
+      initialStateRef.current = serializeEditorState("", nextTerminals, false);
     }
     setError(null);
   }, [recipe, initialTerminals, isOpen]);
+
+  const isDirty = useMemo(
+    () => serializeEditorState(recipeName, terminals, showInEmptyState) !== initialStateRef.current,
+    [recipeName, terminals, showInEmptyState]
+  );
+
+  const { onBeforeClose } = useUnsavedChanges({ isDirty });
+
+  const handleCancel = useCallback(async () => {
+    const canClose = await onBeforeClose();
+    if (canClose) onClose();
+  }, [onBeforeClose, onClose]);
 
   useEffect(() => {
     if (isOpen) {
@@ -154,7 +213,13 @@ export function RecipeEditor({
   };
 
   return (
-    <AppDialog isOpen={isOpen} onClose={onClose} size="lg" dismissible={!isSaving}>
+    <AppDialog
+      isOpen={isOpen}
+      onClose={onClose}
+      onBeforeClose={onBeforeClose}
+      size="lg"
+      dismissible={!isSaving}
+    >
       <AppDialog.Header>
         <AppDialog.Title>{recipe ? "Edit Recipe" : "Create Recipe"}</AppDialog.Title>
       </AppDialog.Header>
@@ -461,7 +526,7 @@ export function RecipeEditor({
       </AppDialog.Body>
 
       <AppDialog.Footer>
-        <Button variant="outline" onClick={onClose} disabled={isSaving}>
+        <Button variant="outline" onClick={() => void handleCancel()} disabled={isSaving}>
           Cancel
         </Button>
         <Button onClick={handleSave} disabled={isSaving}>

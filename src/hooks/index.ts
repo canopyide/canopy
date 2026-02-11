@@ -83,3 +83,6 @@ export type { PanelLifecycle } from "./usePanelLifecycle";
 
 export { usePanelHandlers } from "./usePanelHandlers";
 export type { UsePanelHandlersConfig, PanelHandlers } from "./usePanelHandlers";
+
+export { useUnsavedChanges } from "./useUnsavedChanges";
+export type { UseUnsavedChangesOptions } from "./useUnsavedChanges";
