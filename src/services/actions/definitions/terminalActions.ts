@@ -267,7 +267,7 @@ export function registerTerminalActions(actions: ActionRegistry, callbacks: Acti
     description: "Restart the terminal process",
     category: "terminal",
     kind: "command",
-    danger: "safe",
+    danger: "confirm",
     scope: "renderer",
     argsSchema: z.object({ terminalId: z.string().optional() }),
     run: async (args: unknown) => {
