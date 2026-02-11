@@ -36,6 +36,11 @@
     "typecheck": "tsc --noEmit && tsc -b electron/tsconfig.preload.json electron/tsconfig.json",
     "check": "npm run typecheck && npm run lint:ratchet && npm run format:check",
     "fix": "npm run format && npm run lint:fix",
+    "perf:smoke": "tsx scripts/perf/run.ts --mode smoke",
+    "perf:ci": "tsx scripts/perf/run.ts --mode ci",
+    "perf:nightly": "tsx scripts/perf/run.ts --mode nightly",
+    "perf:soak": "tsx scripts/perf/run.ts --mode soak",
+    "perf:trend": "tsx scripts/perf/report/trend.ts --mode ci",
     "stress-test": "tsx scripts/tui-stress-test.tsx",
     "assistant:dump-tools": "tsx scripts/dump-assistant-tools.ts",
     "assistant:test-api": "tsx scripts/test-assistant-api.ts"

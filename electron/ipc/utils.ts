@@ -1,5 +1,8 @@
 import { BrowserWindow, ipcMain } from "electron";
 import type { IpcInvokeMap, IpcEventMap } from "../types/index.js";
+import { performance } from "node:perf_hooks";
+import { PERF_MARKS } from "../../shared/perf/marks.js";
+import { markPerformance, sampleIpcTiming } from "../utils/performance.js";
 
 export function sendToRenderer(
   mainWindow: BrowserWindow,
@@ -33,7 +36,19 @@ export function typedHandle<K extends keyof IpcInvokeMap>(
   ) => Promise<IpcInvokeMap[K]["result"]> | IpcInvokeMap[K]["result"]
 ): () => void {
   ipcMain.handle(channel as string, async (_event, ...args) => {
-    return handler(...(args as IpcInvokeMap[K]["args"]));
+    const startedAt = performance.now();
+    markPerformance(PERF_MARKS.IPC_REQUEST_START, { channel: channel as string });
+
+    try {
+      return await handler(...(args as IpcInvokeMap[K]["args"]));
+    } finally {
+      const durationMs = performance.now() - startedAt;
+      markPerformance(PERF_MARKS.IPC_REQUEST_END, {
+        channel: channel as string,
+        durationMs,
+      });
+      sampleIpcTiming(channel as string, durationMs);
+    }
   });
   return () => ipcMain.removeHandler(channel as string);
 }

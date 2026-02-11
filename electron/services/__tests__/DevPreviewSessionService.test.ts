@@ -63,7 +63,7 @@ function createPtyClientMock(options?: { spawnError?: Error }) {
         callback(id, exitCode);
       }
     },
-    emitData(id: string, data: string) {
+    emitData(id: string, data: string | Uint8Array) {
       for (const callback of dataListeners) {
         callback(id, data);
       }
@@ -201,6 +201,22 @@ describe("DevPreviewSessionService", () => {
     expect(afterExit.status).toBe("error");
     expect(afterExit.error?.message).toContain("Dev server exited with code 9");
     expect(afterExit.terminalId).toBeNull();
+  });
+
+  it("detects URLs from Uint8Array data payloads", async () => {
+    const started = await service.ensure(baseRequest);
+    expect(started.terminalId).toBeTruthy();
+
+    const encoder = new TextEncoder();
+    ptyClient.emitData(started.terminalId!, encoder.encode("ready at http://localhost:4173\n"));
+
+    const updated = service.getState({
+      panelId: baseRequest.panelId,
+      projectId: baseRequest.projectId,
+    });
+
+    expect(updated.status).toBe("running");
+    expect(updated.url).toMatch(/^http:\/\/localhost:4173\/?$/);
   });
 
   it("stops and removes all sessions for a panel", async () => {

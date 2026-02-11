@@ -21,6 +21,8 @@ import { normalizeScrollbackLines } from "@shared/config/scrollback";
 import { terminalInstanceService } from "@/services/TerminalInstanceService";
 import { panelKindHasPty } from "@shared/config/panelKindRegistry";
 import { logDebug, logInfo, logWarn, logError } from "@/utils/logger";
+import { PERF_MARKS } from "@shared/perf/marks";
+import { markRendererPerformance } from "@/utils/performance";
 
 const RECONNECT_TIMEOUT_MS = 10000;
 
@@ -71,6 +73,14 @@ export async function hydrateAppState(
   isCurrent?: () => boolean
 ): Promise<void> {
   const { addTerminal, setActiveWorktree, loadRecipes, openDiagnosticsDock } = options;
+  const hydrationStartedAt = Date.now();
+  let panelRestoreStartedAt: number | null = null;
+  let panelRestoreCount = 0;
+  let tabGroupRestoreCount = 0;
+
+  markRendererPerformance(PERF_MARKS.HYDRATE_START, {
+    switchId: _switchId ?? null,
+  });
 
   // Helper to check if this hydration is still current (not superseded by newer switch)
   const checkCurrent = (): boolean => {
@@ -166,6 +176,11 @@ export async function hydrateAppState(
 
         // Restore all panels in saved order (mix of PTY reconnects and non-PTY recreations)
         if (appState.terminals && appState.terminals.length > 0) {
+          panelRestoreStartedAt = Date.now();
+          panelRestoreCount = appState.terminals.length;
+          markRendererPerformance(PERF_MARKS.HYDRATE_RESTORE_PANELS_START, {
+            panelCount: panelRestoreCount,
+          });
           logInfo(`Restoring ${appState.terminals.length} saved panel(s)`);
 
           for (const saved of appState.terminals) {
@@ -603,6 +618,13 @@ export async function hydrateAppState(
             }
           }
         }
+
+        if (panelRestoreStartedAt !== null) {
+          markRendererPerformance(PERF_MARKS.HYDRATE_RESTORE_PANELS_END, {
+            panelCount: panelRestoreCount,
+            durationMs: Date.now() - panelRestoreStartedAt,
+          });
+        }
       } catch (error) {
         logWarn("Failed to query backend terminals", { error });
       }
@@ -619,13 +641,22 @@ export async function hydrateAppState(
           } else {
             logInfo("Clearing stale tab groups (no groups for project)");
           }
+          tabGroupRestoreCount = tabGroups?.length ?? 0;
           options.hydrateTabGroups(tabGroups ?? []);
+          markRendererPerformance(PERF_MARKS.HYDRATE_RESTORE_TAB_GROUPS_END, {
+            tabGroupCount: tabGroupRestoreCount,
+          });
         } catch (error) {
           logWarn("Failed to restore tab groups", { error });
           // Check staleness before clearing to prevent race condition
           if (!checkCurrent()) return;
           // Clear tab groups on error to prevent stale state, but skip persist to avoid wiping storage
           options.hydrateTabGroups([], { skipPersist: true });
+          tabGroupRestoreCount = 0;
+          markRendererPerformance(PERF_MARKS.HYDRATE_RESTORE_TAB_GROUPS_END, {
+            tabGroupCount: tabGroupRestoreCount,
+            fallback: "error-clear",
+          });
         }
       }
     }
@@ -701,5 +732,12 @@ export async function hydrateAppState(
   } catch (error) {
     logError("Failed to hydrate app state", error);
     throw error;
+  } finally {
+    markRendererPerformance(PERF_MARKS.HYDRATE_COMPLETE, {
+      switchId: _switchId ?? null,
+      durationMs: Date.now() - hydrationStartedAt,
+      panelCount: panelRestoreCount,
+      tabGroupCount: tabGroupRestoreCount,
+    });
   }
 }

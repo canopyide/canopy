@@ -1,10 +1,11 @@
 import { create, type StateCreator } from "zustand";
-import { appClient } from "@/clients";
 import { terminalInstanceService } from "@/services/TerminalInstanceService";
 import { TerminalRefreshTier } from "@shared/types/domain";
 import type { GitHubIssue } from "@shared/types/github";
 import { useFocusStore } from "@/store/focusStore";
 import { logErrorWithContext } from "@/utils/errorContext";
+import { PERF_MARKS } from "@shared/perf/marks";
+import { markRendererPerformance } from "@/utils/performance";
 
 interface CreateDialogState {
   isOpen: boolean;
@@ -35,6 +36,22 @@ interface WorktreeSelectionState {
   reset: () => void;
 }
 
+function persistActiveWorktree(id: string | null): void {
+  void import("@/clients")
+    .then(({ appClient }) => {
+      const payload = { activeWorktreeId: id ?? undefined };
+      return appClient.setState(payload);
+    })
+    .catch((error) => {
+      logErrorWithContext(error, {
+        operation: "persist_active_worktree",
+        component: "worktreeStore",
+        errorType: "filesystem",
+        details: { worktreeId: id },
+      });
+    });
+}
+
 const createWorktreeSelectionStore: StateCreator<WorktreeSelectionState> = (set, get) => ({
   activeWorktreeId: null,
   focusedWorktreeId: null,
@@ -47,6 +64,11 @@ const createWorktreeSelectionStore: StateCreator<WorktreeSelectionState> = (set,
   setActiveWorktree: (id) => {
     const previousId = get().activeWorktreeId;
     const generation = get()._policyGeneration + 1;
+    const switchStartedAt = Date.now();
+    markRendererPerformance(PERF_MARKS.WORKTREE_SWITCH_START, {
+      fromWorktreeId: previousId ?? null,
+      toWorktreeId: id ?? null,
+    });
 
     // Auto-collapse terminals accordion when switching worktrees
     const updates: Partial<WorktreeSelectionState> = {
@@ -60,16 +82,15 @@ const createWorktreeSelectionStore: StateCreator<WorktreeSelectionState> = (set,
 
     set(updates);
 
-    appClient.setState({ activeWorktreeId: id ?? undefined }).catch((error) => {
-      logErrorWithContext(error, {
-        operation: "persist_active_worktree",
-        component: "worktreeStore",
-        errorType: "filesystem",
-        details: { worktreeId: id },
+    persistActiveWorktree(id);
+
+    applyWorktreeTerminalPolicy(get, set, id, generation, () => {
+      markRendererPerformance(PERF_MARKS.WORKTREE_SWITCH_END, {
+        fromWorktreeId: previousId ?? null,
+        toWorktreeId: id ?? null,
+        durationMs: Date.now() - switchStartedAt,
       });
     });
-
-    applyWorktreeTerminalPolicy(get, set, id, generation);
   },
 
   setFocusedWorktree: (id) => set({ focusedWorktreeId: id }),
@@ -80,7 +101,13 @@ const createWorktreeSelectionStore: StateCreator<WorktreeSelectionState> = (set,
       return;
     }
 
+    const previousId = get().activeWorktreeId;
     const generation = get()._policyGeneration + 1;
+    const switchStartedAt = Date.now();
+    markRendererPerformance(PERF_MARKS.WORKTREE_SWITCH_START, {
+      fromWorktreeId: previousId ?? null,
+      toWorktreeId: id,
+    });
     // Auto-collapse terminals accordion when switching worktrees
     set({
       activeWorktreeId: id,
@@ -89,16 +116,15 @@ const createWorktreeSelectionStore: StateCreator<WorktreeSelectionState> = (set,
       expandedTerminals: new Set<string>(),
     });
 
-    appClient.setState({ activeWorktreeId: id }).catch((error) => {
-      logErrorWithContext(error, {
-        operation: "persist_active_worktree",
-        component: "worktreeStore",
-        errorType: "filesystem",
-        details: { worktreeId: id },
+    persistActiveWorktree(id);
+
+    applyWorktreeTerminalPolicy(get, set, id, generation, () => {
+      markRendererPerformance(PERF_MARKS.WORKTREE_SWITCH_END, {
+        fromWorktreeId: previousId ?? null,
+        toWorktreeId: id,
+        durationMs: Date.now() - switchStartedAt,
       });
     });
-
-    applyWorktreeTerminalPolicy(get, set, id, generation);
 
     // Restore the last focused terminal for this worktree
     const lastFocusedTerminalId = get().lastFocusedTerminalByWorktree.get(id);
@@ -265,7 +291,8 @@ function applyWorktreeTerminalPolicy(
   get: () => WorktreeSelectionState,
   _set: (partial: Partial<WorktreeSelectionState>) => void,
   targetWorktreeId: string | null,
-  generation: number
+  generation: number,
+  onComplete?: () => void
 ) {
   // Reliability: terminals from inactive worktrees should not stream output to the renderer.
   // They remain alive in the backend headless model and will be restored on wake.
@@ -302,6 +329,8 @@ function applyWorktreeTerminalPolicy(
             : TerminalRefreshTier.BACKGROUND
         );
       }
+
+      onComplete?.();
     })
     .catch((error) => {
       logErrorWithContext(error, {
@@ -310,5 +339,6 @@ function applyWorktreeTerminalPolicy(
         errorType: "process",
         details: { targetWorktreeId, generation },
       });
+      onComplete?.();
     });
 }

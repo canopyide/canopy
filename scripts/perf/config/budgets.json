@@ -1,0 +1,55 @@
+{
+  "criticalScenarios": ["PERF-001", "PERF-011", "PERF-020"],
+  "defaultBudget": {
+    "p95Ms": 5000,
+    "maxRegressionPct": 15
+  },
+  "scenarios": {
+    "PERF-001": { "p95Ms": 3500, "maxRegressionPct": 15 },
+    "PERF-002": { "p95Ms": 4500, "maxRegressionPct": 15 },
+    "PERF-003": { "p95Ms": 1800, "maxRegressionPct": 15 },
+
+    "PERF-010": { "p95Ms": 1800, "maxRegressionPct": 15 },
+    "PERF-011": { "p95Ms": 1500, "maxRegressionPct": 15 },
+    "PERF-012": { "p95Ms": 2600, "maxRegressionPct": 20 },
+    "PERF-013": { "p95Ms": 1200, "maxRegressionPct": 15 },
+
+    "PERF-020": { "p95Ms": 2500, "maxRegressionPct": 15 },
+    "PERF-021": { "p95Ms": 3000, "maxRegressionPct": 15 },
+    "PERF-022": { "p95Ms": 3200, "maxRegressionPct": 20 },
+    "PERF-023": { "p95Ms": 3000, "maxRegressionPct": 15 },
+    "PERF-024": { "p95Ms": 2200, "maxRegressionPct": 15 },
+
+    "PERF-030": { "p95Ms": 2200, "maxRegressionPct": 15 },
+    "PERF-031": { "p95Ms": 2400, "maxRegressionPct": 15 },
+    "PERF-032": { "p95Ms": 2600, "maxRegressionPct": 15 },
+
+    "PERF-040": { "p95Ms": 1400, "maxRegressionPct": 15 },
+    "PERF-041": { "p95Ms": 2200, "maxRegressionPct": 15 },
+    "PERF-042": {
+      "p95Ms": 1500,
+      "maxRegressionPct": 20,
+      "maxMetricValues": { "eventLoopLagMs": 100 }
+    },
+
+    "PERF-050": { "p95Ms": 1800, "maxRegressionPct": 15 },
+    "PERF-051": { "p95Ms": 1800, "maxRegressionPct": 15 },
+    "PERF-052": { "p95Ms": 2400, "maxRegressionPct": 15 },
+
+    "PERF-060": {
+      "p95Ms": 5000,
+      "maxRegressionPct": 20,
+      "maxMetricValues": { "memoryGrowthPct": 10 }
+    },
+    "PERF-061": {
+      "p95Ms": 7000,
+      "maxRegressionPct": 20,
+      "maxMetricValues": { "memoryGrowthMb": 64 }
+    },
+    "PERF-062": {
+      "p95Ms": 6500,
+      "maxRegressionPct": 20,
+      "maxMetricValues": { "memoryGrowthPct": 10 }
+    }
+  }
+}

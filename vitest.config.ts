@@ -15,6 +15,7 @@ export default defineConfig({
       "electron/**/*.{test,spec}.{js,ts}",
       "src/**/*.{test,spec}.{js,ts,jsx,tsx}",
       "shared/**/*.{test,spec}.{js,ts}",
+      "scripts/**/*.{test,spec}.{js,ts}",
     ],
     exclude: [
       "node_modules",
