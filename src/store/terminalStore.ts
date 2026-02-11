@@ -75,7 +75,7 @@ export interface PanelGridState
   setBackendStatus: (status: BackendStatus) => void;
   setLastCrashType: (crashType: CrashType | null) => void;
   reset: () => Promise<void>;
-  resetWithoutKilling: () => Promise<void>;
+  resetWithoutKilling: (options?: { preserveTerminalIds?: Set<string> }) => Promise<void>;
   restoreLastTrashed: () => void;
 }
 
@@ -411,14 +411,20 @@ export const useTerminalStore = create<PanelGridState>()((set, get, api) => {
       });
     },
 
-    resetWithoutKilling: async () => {
+    resetWithoutKilling: async (options) => {
       const state = get();
+      const preserveTerminalIds = options?.preserveTerminalIds ?? new Set<string>();
 
       flushTerminalPersistence();
 
       // Destroy xterm.js instances (renderer-side cleanup only)
       const { terminalInstanceService } = await import("@/services/TerminalInstanceService");
       for (const terminal of state.terminals) {
+        if (preserveTerminalIds.has(terminal.id)) {
+          terminalInstanceService.setVisible(terminal.id, false);
+          continue;
+        }
+
         try {
           terminalInstanceService.destroy(terminal.id);
         } catch (error) {

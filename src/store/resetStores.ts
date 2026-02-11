@@ -11,10 +11,18 @@ import { cleanupNotesStore } from "./notesStore";
 import { useRecipeStore } from "./recipeStore";
 import { useAssistantChatStore } from "./assistantChatStore";
 
-export async function resetAllStoresForProjectSwitch(): Promise<void> {
+interface ProjectSwitchResetOptions {
+  preserveTerminalIds?: Set<string>;
+}
+
+export async function resetAllStoresForProjectSwitch(
+  options: ProjectSwitchResetOptions = {}
+): Promise<void> {
   // Use resetWithoutKilling instead of reset
   // This preserves backend processes while clearing UI state
-  await useTerminalStore.getState().resetWithoutKilling();
+  await useTerminalStore.getState().resetWithoutKilling({
+    preserveTerminalIds: options.preserveTerminalIds,
+  });
 
   useWorktreeSelectionStore.getState().reset();
   cleanupWorktreeDataStore();

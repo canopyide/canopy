@@ -19,6 +19,7 @@ import { getAgentConfig, isRegisteredAgent } from "@/config/agents";
 import { generateAgentFlags } from "@shared/types";
 import { normalizeScrollbackLines } from "@shared/config/scrollback";
 import { terminalInstanceService } from "@/services/TerminalInstanceService";
+import { isTerminalWarmInProjectSwitchCache } from "@/services/projectSwitchRendererCache";
 import { panelKindHasPty } from "@shared/config/panelKindRegistry";
 import { logDebug, logInfo, logWarn, logError } from "@/utils/logger";
 import { PERF_MARKS } from "@shared/perf/marks";
@@ -423,12 +424,20 @@ export async function hydrateAppState(
                   );
                 }
 
-                restoreTasks.push({
-                  terminalId: restoredTerminalId,
-                  label: saved.id,
-                  worktreeId: backendTerminal.worktreeId,
-                  location,
-                });
+                const shouldSkipSnapshotRestore =
+                  Boolean(_switchId) &&
+                  Boolean(currentProjectId) &&
+                  isTerminalWarmInProjectSwitchCache(currentProjectId, backendTerminal.id) &&
+                  Boolean(terminalInstanceService.get(backendTerminal.id));
+
+                if (!shouldSkipSnapshotRestore) {
+                  restoreTasks.push({
+                    terminalId: restoredTerminalId,
+                    label: saved.id,
+                    worktreeId: backendTerminal.worktreeId,
+                    location,
+                  });
+                }
 
                 // Mark as restored
                 backendTerminalMap.delete(saved.id);
@@ -580,12 +589,20 @@ export async function hydrateAppState(
                       );
                     }
 
-                    restoreTasks.push({
-                      terminalId: restoredTerminalId,
-                      label: saved.id,
-                      worktreeId: reconnectedTerminal.worktreeId ?? saved.worktreeId,
-                      location,
-                    });
+                    const shouldSkipSnapshotRestore =
+                      Boolean(_switchId) &&
+                      Boolean(currentProjectId) &&
+                      isTerminalWarmInProjectSwitchCache(currentProjectId, restoredTerminalId) &&
+                      Boolean(terminalInstanceService.get(restoredTerminalId));
+
+                    if (!shouldSkipSnapshotRestore) {
+                      restoreTasks.push({
+                        terminalId: restoredTerminalId,
+                        label: saved.id,
+                        worktreeId: reconnectedTerminal.worktreeId ?? saved.worktreeId,
+                        location,
+                      });
+                    }
                   } else {
                     // Terminal doesn't exist in backend or timed out - respawn
                     let effectiveAgentId =
@@ -766,12 +783,20 @@ export async function hydrateAppState(
                 );
               }
 
-              restoreTasks.push({
-                terminalId: restoredTerminalId,
-                label: terminal.id,
-                worktreeId: terminal.worktreeId,
-                location: "grid",
-              });
+              const shouldSkipSnapshotRestore =
+                Boolean(_switchId) &&
+                Boolean(currentProjectId) &&
+                isTerminalWarmInProjectSwitchCache(currentProjectId, terminal.id) &&
+                Boolean(terminalInstanceService.get(terminal.id));
+
+              if (!shouldSkipSnapshotRestore) {
+                restoreTasks.push({
+                  terminalId: restoredTerminalId,
+                  label: terminal.id,
+                  worktreeId: terminal.worktreeId,
+                  location: "grid",
+                });
+              }
             } catch (error) {
               logWarn(`Failed to reconnect to orphaned terminal ${terminal.id}`, { error });
             }

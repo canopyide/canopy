@@ -8,8 +8,13 @@ import { flushTerminalPersistence } from "./slices";
 import { terminalPersistence, terminalToSnapshot } from "./persistence/terminalPersistence";
 import { useNotificationStore } from "./notificationStore";
 import { useTerminalStore } from "./terminalStore";
+import { useWorktreeSelectionStore } from "./worktreeStore";
 import { useProjectSettingsStore } from "./projectSettingsStore";
 import { logErrorWithContext } from "@/utils/errorContext";
+import {
+  prepareProjectSwitchRendererCache,
+  cancelPreparedProjectSwitchRendererCache,
+} from "@/services/projectSwitchRendererCache";
 
 interface ProjectState {
   projects: Project[];
@@ -66,6 +71,27 @@ function getProjectOpenErrorMessage(error: unknown): string {
   }
 
   return message || "Failed to open project.";
+}
+
+function evictRendererTerminalInstances(terminalIds: string[]): void {
+  if (terminalIds.length === 0) {
+    return;
+  }
+
+  void import("@/services/TerminalInstanceService")
+    .then(({ terminalInstanceService }) => {
+      for (const terminalId of terminalIds) {
+        terminalInstanceService.destroy(terminalId);
+      }
+    })
+    .catch((error) => {
+      logErrorWithContext(error, {
+        operation: "evict_project_switch_terminal_instances",
+        component: "projectStore",
+        errorType: "process",
+        details: { terminalCount: terminalIds.length },
+      });
+    });
 }
 
 const createProjectStore: StateCreator<ProjectState> = (set, get) => ({
@@ -190,6 +216,10 @@ const createProjectStore: StateCreator<ProjectState> = (set, get) => ({
     }
 
     const targetProject = get().projects.find((p) => p.id === projectId);
+    const currentProject = get().currentProject;
+    const oldProjectId = currentProject?.id ?? null;
+    let preserveTerminalIds = new Set<string>();
+
     set({
       isLoading: true,
       isSwitching: true,
@@ -197,9 +227,6 @@ const createProjectStore: StateCreator<ProjectState> = (set, get) => ({
       error: null,
     });
     try {
-      const currentProject = get().currentProject;
-      const oldProjectId = currentProject?.id;
-
       // Save current project's panel state BEFORE switching
       if (oldProjectId) {
         // Flush persistence in the background, but don't block switch latency.
@@ -233,10 +260,25 @@ const createProjectStore: StateCreator<ProjectState> = (set, get) => ({
             details: { oldProjectId, terminalCount: terminalsToSave.length },
           });
         }
+
+        const preparedCache = prepareProjectSwitchRendererCache({
+          outgoingProjectId: oldProjectId,
+          targetProjectId: projectId,
+          outgoingActiveWorktreeId: useWorktreeSelectionStore.getState().activeWorktreeId ?? null,
+          outgoingTerminals: terminalsToSave.map((terminal) => ({
+            id: terminal.id,
+            worktreeId: terminal.worktreeId,
+          })),
+        });
+
+        preserveTerminalIds = preparedCache.preserveTerminalIds;
+        evictRendererTerminalInstances(preparedCache.evictTerminalIds);
       }
 
       console.log("[ProjectSwitch] Resetting renderer stores...");
-      await resetAllStoresForProjectSwitch();
+      await resetAllStoresForProjectSwitch({
+        preserveTerminalIds,
+      });
 
       console.log("[ProjectSwitch] Switching project in main process...");
       const project = await projectClient.switch(projectId);
@@ -258,6 +300,7 @@ const createProjectStore: StateCreator<ProjectState> = (set, get) => ({
       // which is handled in useProjectSwitchRehydration. We don't dispatch
       // project-switched here to avoid duplicate hydration.
     } catch (error) {
+      cancelPreparedProjectSwitchRendererCache(oldProjectId);
       logErrorWithContext(error, {
         operation: "switch_project",
         component: "projectStore",
@@ -347,6 +390,10 @@ const createProjectStore: StateCreator<ProjectState> = (set, get) => ({
 
   reopenProject: async (projectId) => {
     const targetProject = get().projects.find((p) => p.id === projectId);
+    const currentProject = get().currentProject;
+    const oldProjectId = currentProject?.id ?? null;
+    let preserveTerminalIds = new Set<string>();
+
     set({
       isLoading: true,
       isSwitching: true,
@@ -354,9 +401,6 @@ const createProjectStore: StateCreator<ProjectState> = (set, get) => ({
       error: null,
     });
     try {
-      const currentProject = get().currentProject;
-      const oldProjectId = currentProject?.id;
-
       // Save current project's panel state BEFORE switching (same as switchProject)
       if (oldProjectId) {
         // Flush persistence in the background, but don't block switch latency.
@@ -388,10 +432,25 @@ const createProjectStore: StateCreator<ProjectState> = (set, get) => ({
             details: { oldProjectId, terminalCount: terminalsToSave.length },
           });
         }
+
+        const preparedCache = prepareProjectSwitchRendererCache({
+          outgoingProjectId: oldProjectId,
+          targetProjectId: projectId,
+          outgoingActiveWorktreeId: useWorktreeSelectionStore.getState().activeWorktreeId ?? null,
+          outgoingTerminals: terminalsToSave.map((terminal) => ({
+            id: terminal.id,
+            worktreeId: terminal.worktreeId,
+          })),
+        });
+
+        preserveTerminalIds = preparedCache.preserveTerminalIds;
+        evictRendererTerminalInstances(preparedCache.evictTerminalIds);
       }
 
       console.log("[ProjectStore] Resetting renderer stores...");
-      await resetAllStoresForProjectSwitch();
+      await resetAllStoresForProjectSwitch({
+        preserveTerminalIds,
+      });
 
       console.log("[ProjectStore] Reopening project...");
       const project = await projectClient.reopen(projectId);
@@ -413,6 +472,7 @@ const createProjectStore: StateCreator<ProjectState> = (set, get) => ({
       // which is handled in useProjectSwitchRehydration. We don't dispatch
       // project-switched here to avoid duplicate hydration.
     } catch (error) {
+      cancelPreparedProjectSwitchRendererCache(oldProjectId);
       logErrorWithContext(error, {
         operation: "reopen_project",
         component: "projectStore",
