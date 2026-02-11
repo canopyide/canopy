@@ -685,12 +685,88 @@ export function registerProjectHandlers(deps: HandlerDependencies): () => void {
       terminalLayout: existingState?.terminalLayout,
       focusMode: existingState?.focusMode,
       focusPanelState: existingState?.focusPanelState,
+      terminalSizes: existingState?.terminalSizes,
     };
 
     await projectStore.saveProjectState(projectId, newState);
   };
   ipcMain.handle(CHANNELS.PROJECT_SET_TERMINALS, handleProjectSetTerminals);
   handlers.push(() => ipcMain.removeHandler(CHANNELS.PROJECT_SET_TERMINALS));
+
+  // Terminal Sizes handlers
+  const handleProjectGetTerminalSizes = async (
+    _event: Electron.IpcMainInvokeEvent,
+    projectId: string
+  ): Promise<Record<string, { cols: number; rows: number }>> => {
+    if (typeof projectId !== "string" || !projectId) {
+      throw new Error("Invalid project ID");
+    }
+    const state = await projectStore.getProjectState(projectId);
+    return state?.terminalSizes ?? {};
+  };
+  ipcMain.handle(CHANNELS.PROJECT_GET_TERMINAL_SIZES, handleProjectGetTerminalSizes);
+  handlers.push(() => ipcMain.removeHandler(CHANNELS.PROJECT_GET_TERMINAL_SIZES));
+
+  const handleProjectSetTerminalSizes = async (
+    _event: Electron.IpcMainInvokeEvent,
+    payload: unknown
+  ): Promise<void> => {
+    if (!payload || typeof payload !== "object") {
+      throw new Error("Invalid payload");
+    }
+    const { projectId, terminalSizes } = payload as {
+      projectId: string;
+      terminalSizes: Record<string, { cols: number; rows: number }>;
+    };
+    if (typeof projectId !== "string" || !projectId) {
+      throw new Error("Invalid project ID");
+    }
+    if (
+      !terminalSizes ||
+      typeof terminalSizes !== "object" ||
+      Array.isArray(terminalSizes) ||
+      terminalSizes === null
+    ) {
+      throw new Error("Invalid terminal sizes");
+    }
+
+    const sanitizedSizes: Record<string, { cols: number; rows: number }> = {};
+    for (const [terminalId, size] of Object.entries(terminalSizes)) {
+      if (
+        size &&
+        typeof size === "object" &&
+        typeof size.cols === "number" &&
+        typeof size.rows === "number" &&
+        Number.isFinite(size.cols) &&
+        Number.isFinite(size.rows) &&
+        Number.isInteger(size.cols) &&
+        Number.isInteger(size.rows) &&
+        size.cols > 0 &&
+        size.cols <= 500 &&
+        size.rows > 0 &&
+        size.rows <= 500
+      ) {
+        sanitizedSizes[terminalId] = { cols: size.cols, rows: size.rows };
+      }
+    }
+
+    const existingState = await projectStore.getProjectState(projectId);
+    const newState = {
+      projectId,
+      activeWorktreeId: existingState?.activeWorktreeId,
+      sidebarWidth: existingState?.sidebarWidth ?? 350,
+      terminals: existingState?.terminals ?? [],
+      tabGroups: existingState?.tabGroups ?? [],
+      terminalLayout: existingState?.terminalLayout,
+      focusMode: existingState?.focusMode,
+      focusPanelState: existingState?.focusPanelState,
+      terminalSizes: sanitizedSizes,
+    };
+
+    await projectStore.saveProjectState(projectId, newState);
+  };
+  ipcMain.handle(CHANNELS.PROJECT_SET_TERMINAL_SIZES, handleProjectSetTerminalSizes);
+  handlers.push(() => ipcMain.removeHandler(CHANNELS.PROJECT_SET_TERMINAL_SIZES));
 
   // Tab Groups handlers
   const handleProjectGetTabGroups = async (
@@ -734,6 +810,7 @@ export function registerProjectHandlers(deps: HandlerDependencies): () => void {
       terminalLayout: existingState?.terminalLayout,
       focusMode: existingState?.focusMode,
       focusPanelState: existingState?.focusPanelState,
+      terminalSizes: existingState?.terminalSizes,
     };
     await projectStore.saveProjectState(projectId, newState);
   };
@@ -809,9 +886,11 @@ export function registerProjectHandlers(deps: HandlerDependencies): () => void {
       activeWorktreeId: existingState?.activeWorktreeId,
       sidebarWidth: existingState?.sidebarWidth ?? 350,
       terminals: existingState?.terminals ?? [],
+      tabGroups: existingState?.tabGroups ?? [],
       terminalLayout: existingState?.terminalLayout,
       focusMode,
       focusPanelState: validFocusPanelState,
+      terminalSizes: existingState?.terminalSizes,
     };
 
     await projectStore.saveProjectState(projectId, newState);

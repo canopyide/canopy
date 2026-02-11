@@ -320,6 +320,8 @@ const CHANNELS = {
   PROJECT_DELETE_RECIPE: "project:delete-recipe",
   PROJECT_GET_TERMINALS: "project:get-terminals",
   PROJECT_SET_TERMINALS: "project:set-terminals",
+  PROJECT_GET_TERMINAL_SIZES: "project:get-terminal-sizes",
+  PROJECT_SET_TERMINAL_SIZES: "project:set-terminal-sizes",
   PROJECT_GET_TAB_GROUPS: "project:get-tab-groups",
   PROJECT_SET_TAB_GROUPS: "project:set-tab-groups",
   PROJECT_GET_FOCUS_MODE: "project:get-focus-mode",
@@ -884,6 +886,14 @@ const api: ElectronAPI = {
       projectId: string,
       terminals: import("../shared/types/index.js").TerminalSnapshot[]
     ): Promise<void> => _typedInvoke(CHANNELS.PROJECT_SET_TERMINALS, { projectId, terminals }),
+
+    getTerminalSizes: (projectId: string): Promise<Record<string, { cols: number; rows: number }>> =>
+      _typedInvoke(CHANNELS.PROJECT_GET_TERMINAL_SIZES, projectId),
+
+    setTerminalSizes: (
+      projectId: string,
+      terminalSizes: Record<string, { cols: number; rows: number }>
+    ): Promise<void> => _typedInvoke(CHANNELS.PROJECT_SET_TERMINAL_SIZES, { projectId, terminalSizes }),
 
     getTabGroups: (projectId: string): Promise<import("../shared/types/index.js").TabGroup[]> =>
       _typedInvoke(CHANNELS.PROJECT_GET_TAB_GROUPS, projectId),

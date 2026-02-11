@@ -247,11 +247,24 @@ const createProjectStore: StateCreator<ProjectState> = (set, get) => ({
           .filter((t) => t.location !== "trash")
           .map(terminalToSnapshot);
 
+        const terminalSizes: Record<string, { cols: number; rows: number }> = {};
+        const { terminalInstanceService } = await import("@/services/TerminalInstanceService");
+        for (const terminal of currentTerminals) {
+          const instance = terminalInstanceService.get(terminal.id);
+          if (instance) {
+            terminalSizes[terminal.id] = {
+              cols: instance.latestCols,
+              rows: instance.latestRows,
+            };
+          }
+        }
+
         console.log(
           `[ProjectSwitch] Saving ${terminalsToSave.length} panel(s) to per-project state`
         );
         try {
           await projectClient.setTerminals(oldProjectId, terminalsToSave);
+          await projectClient.setTerminalSizes(oldProjectId, terminalSizes);
         } catch (saveError) {
           logErrorWithContext(saveError, {
             operation: "save_panel_state_before_switch",
@@ -421,9 +434,22 @@ const createProjectStore: StateCreator<ProjectState> = (set, get) => ({
           .filter((t) => t.location !== "trash")
           .map(terminalToSnapshot);
 
+        const terminalSizes: Record<string, { cols: number; rows: number }> = {};
+        const { terminalInstanceService } = await import("@/services/TerminalInstanceService");
+        for (const terminal of currentTerminals) {
+          const instance = terminalInstanceService.get(terminal.id);
+          if (instance) {
+            terminalSizes[terminal.id] = {
+              cols: instance.latestCols,
+              rows: instance.latestRows,
+            };
+          }
+        }
+
         console.log(`[ProjectStore] Saving ${terminalsToSave.length} panel(s) before reopen`);
         try {
           await projectClient.setTerminals(oldProjectId, terminalsToSave);
+          await projectClient.setTerminalSizes(oldProjectId, terminalSizes);
         } catch (saveError) {
           logErrorWithContext(saveError, {
             operation: "save_panel_state_before_reopen",

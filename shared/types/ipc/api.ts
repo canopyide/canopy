@@ -313,6 +313,19 @@ export interface ElectronAPI {
      */
     setTerminals(projectId: string, terminals: TerminalSnapshot[]): Promise<void>;
     /**
+     * Get terminal dimensions for a project.
+     * Used for restoring terminal sizes when switching to a project.
+     */
+    getTerminalSizes(projectId: string): Promise<Record<string, { cols: number; rows: number }>>;
+    /**
+     * Save terminal dimensions for a project.
+     * Used for preserving terminal sizes when switching away from a project.
+     */
+    setTerminalSizes(
+      projectId: string,
+      terminalSizes: Record<string, { cols: number; rows: number }>
+    ): Promise<void>;
+    /**
      * Get tab groups for a project.
      * Used for restoring tab groups when switching to a project.
      */

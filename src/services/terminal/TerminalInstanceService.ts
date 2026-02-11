@@ -244,6 +244,61 @@ class TerminalInstanceService {
     this.resizeController.lockResize(id, locked);
   }
 
+  suppressResizesDuringProjectSwitch(
+    terminalIds: string[],
+    durationMs: number
+  ): void {
+    terminalIds.forEach((id) => {
+      const instance = this.instances.get(id);
+      if (!instance) return;
+
+      if (instance.resizeSuppressionTimer) {
+        clearTimeout(instance.resizeSuppressionTimer);
+      }
+
+      instance.isResizeSuppressed = true;
+      this.resizeController.lockResize(id, true);
+
+      instance.resizeSuppressionTimer = window.setTimeout(() => {
+        instance.isResizeSuppressed = false;
+        instance.resizeSuppressionTimer = undefined;
+        this.resizeController.lockResize(id, false);
+      }, durationMs);
+    });
+  }
+
+  setTargetSize(id: string, cols: number, rows: number): void {
+    const instance = this.instances.get(id);
+    if (!instance) return;
+
+    if (
+      Number.isFinite(cols) &&
+      Number.isFinite(rows) &&
+      Number.isInteger(cols) &&
+      Number.isInteger(rows) &&
+      cols > 0 &&
+      cols <= 500 &&
+      rows > 0 &&
+      rows <= 500
+    ) {
+      instance.targetCols = cols;
+      instance.targetRows = rows;
+    }
+  }
+
+  clearResizeSuppression(id: string): void {
+    const instance = this.instances.get(id);
+    if (!instance) return;
+
+    if (instance.resizeSuppressionTimer) {
+      clearTimeout(instance.resizeSuppressionTimer);
+      instance.resizeSuppressionTimer = undefined;
+    }
+
+    instance.isResizeSuppressed = false;
+    this.resizeController.lockResize(id, false);
+  }
+
   wake(id: string): void {
     this.wakeManager.wake(id);
   }
@@ -502,8 +557,22 @@ class TerminalInstanceService {
         if (!managed.terminal.element) return;
         logDebug(`[TIS.attach] Refreshing and fitting ${id} after reparent`);
         managed.terminal.refresh(0, managed.terminal.rows - 1);
-        this.resizeController.fit(id);
+        managed.isAttaching = false;
+
+        if (managed.isResizeSuppressed) {
+          this.clearResizeSuppression(id);
+        }
+
+        if (managed.targetCols && managed.targetRows) {
+          this.resizeController.applyResize(id, managed.targetCols, managed.targetRows);
+          managed.targetCols = undefined;
+          managed.targetRows = undefined;
+        } else {
+          this.resizeController.fit(id);
+        }
       });
+    } else {
+      managed.isAttaching = false;
     }
 
     return managed;
@@ -835,6 +904,10 @@ class TerminalInstanceService {
     if (managed.inputBurstTimer !== undefined) {
       clearTimeout(managed.inputBurstTimer);
       managed.inputBurstTimer = undefined;
+    }
+    if (managed.resizeSuppressionTimer !== undefined) {
+      clearTimeout(managed.resizeSuppressionTimer);
+      managed.resizeSuppressionTimer = undefined;
     }
 
     managed.restoreGeneration++;

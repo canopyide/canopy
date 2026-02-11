@@ -114,6 +114,19 @@ export const projectClient = {
     return window.electron.project.setTerminals(projectId, terminals);
   },
 
+  getTerminalSizes: (
+    projectId: string
+  ): Promise<Record<string, { cols: number; rows: number }>> => {
+    return window.electron.project.getTerminalSizes(projectId);
+  },
+
+  setTerminalSizes: (
+    projectId: string,
+    terminalSizes: Record<string, { cols: number; rows: number }>
+  ): Promise<void> => {
+    return window.electron.project.setTerminalSizes(projectId, terminalSizes);
+  },
+
   getTabGroups: (projectId: string): Promise<TabGroup[]> => {
     return window.electron.project.getTabGroups(projectId);
   },
