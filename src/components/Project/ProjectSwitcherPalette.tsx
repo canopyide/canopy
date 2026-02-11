@@ -9,6 +9,7 @@ import { ConfirmDialog } from "@/components/ui/ConfirmDialog";
 import { ProjectActionRow } from "./ProjectActionRow";
 import { useKeybindingDisplay } from "@/hooks/useKeybinding";
 import type { ProjectSwitcherMode, SearchableProject } from "@/hooks/useProjectSwitcherPalette";
+import { useUIStore } from "@/store/uiStore";
 
 export interface ProjectSwitcherPaletteProps {
   isOpen: boolean;
@@ -470,14 +471,30 @@ function DropdownContent({
   const inputRef = useRef<HTMLInputElement>(null);
   const listRef = useRef<HTMLDivElement>(null);
   const projectSwitcherShortcut = useKeybindingDisplay("project.switcherPalette");
+  const overlayCount = useUIStore((state) => state.overlayCount);
+  const prevOverlayCountRef = useRef<number>(overlayCount);
+  const focusRafRef = useRef<number | null>(null);
 
   useEffect(() => {
-    if (isOpen && inputRef.current) {
-      requestAnimationFrame(() => {
-        inputRef.current?.focus();
-      });
-    }
+    if (!isOpen) return;
+    focusRafRef.current = requestAnimationFrame(() => {
+      inputRef.current?.focus();
+      focusRafRef.current = null;
+    });
+    return () => {
+      if (focusRafRef.current !== null) {
+        cancelAnimationFrame(focusRafRef.current);
+        focusRafRef.current = null;
+      }
+    };
   }, [isOpen]);
+
+  useEffect(() => {
+    if (isOpen && overlayCount > prevOverlayCountRef.current && overlayCount > 0) {
+      onClose();
+    }
+    prevOverlayCountRef.current = overlayCount;
+  }, [isOpen, overlayCount, onClose]);
 
   useEffect(() => {
     if (listRef.current && selectedIndex >= 0 && selectedIndex < results.length) {
