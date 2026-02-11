@@ -17,7 +17,11 @@ import { isTrustedRendererUrl } from "../shared/utils/trustedRenderer.js";
 import { isLocalhostUrl } from "../shared/utils/urlUtils.js";
 import { PERF_MARKS } from "../shared/perf/marks.js";
 import type { IpcMainInvokeEvent } from "electron";
-import { markPerformance, startEventLoopLagMonitor } from "./utils/performance.js";
+import {
+  markPerformance,
+  startEventLoopLagMonitor,
+  startProcessMemoryMonitor,
+} from "./utils/performance.js";
 
 fixPath();
 
@@ -159,6 +163,7 @@ let cleanupErrorHandlers: (() => void) | null = null;
 let eventBuffer: EventBuffer | null = null;
 let eventBufferUnsubscribe: (() => void) | null = null;
 let stopEventLoopLagMonitor: (() => void) | null = null;
+let stopProcessMemoryMonitor: (() => void) | null = null;
 
 const DEFAULT_TERMINAL_ID = "default";
 
@@ -242,6 +247,10 @@ if (!gotTheLock) {
         if (stopEventLoopLagMonitor) {
           stopEventLoopLagMonitor();
           stopEventLoopLagMonitor = null;
+        }
+        if (stopProcessMemoryMonitor) {
+          stopProcessMemoryMonitor();
+          stopProcessMemoryMonitor = null;
         }
         console.log("[MAIN] Graceful shutdown complete");
         app.exit(0);
@@ -878,6 +887,9 @@ async function createWindow(): Promise<void> {
   if (process.env.CANOPY_PERF_CAPTURE === "1" && !stopEventLoopLagMonitor) {
     stopEventLoopLagMonitor = startEventLoopLagMonitor();
   }
+  if (process.env.CANOPY_PERF_CAPTURE === "1" && !stopProcessMemoryMonitor) {
+    stopProcessMemoryMonitor = startProcessMemoryMonitor();
+  }
 
   // Cleanup handler
   mainWindow.on("closed", async () => {
@@ -888,6 +900,10 @@ async function createWindow(): Promise<void> {
     if (stopEventLoopLagMonitor) {
       stopEventLoopLagMonitor();
       stopEventLoopLagMonitor = null;
+    }
+    if (stopProcessMemoryMonitor) {
+      stopProcessMemoryMonitor();
+      stopProcessMemoryMonitor = null;
     }
 
     // Clean up window-specific IPC handlers

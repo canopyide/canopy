@@ -169,6 +169,11 @@ class TerminalInstanceService {
 
     const terminal = managed.terminal;
     managed.pendingWrites = (managed.pendingWrites ?? 0) + 1;
+    const writeQueuedAt = shouldSample
+      ? typeof performance !== "undefined"
+        ? performance.now()
+        : Date.now()
+      : 0;
     terminal.write(data, () => {
       if (this.instances.get(id) !== managed) return;
 
@@ -179,6 +184,14 @@ class TerminalInstanceService {
       }
 
       if (shouldSample) {
+        const writeDurationMs =
+          (typeof performance !== "undefined" ? performance.now() : Date.now()) - writeQueuedAt;
+        markRendererPerformance("terminal_write_duration_sample", {
+          terminalId: id,
+          bytes: sampledBytes,
+          durationMs: Number(writeDurationMs.toFixed(3)),
+          pendingWrites: managed.pendingWrites ?? 0,
+        });
         markRendererPerformance(PERF_MARKS.TERMINAL_DATA_RENDERED, {
           terminalId: id,
           bytes: sampledBytes,

@@ -15,7 +15,7 @@ declare global {
 
 const RENDERER_T0 = typeof performance !== "undefined" ? performance.now() : Date.now();
 
-function isRendererPerfCaptureEnabled(): boolean {
+export function isRendererPerfCaptureEnabled(): boolean {
   return (
     typeof process !== "undefined" &&
     typeof process.env !== "undefined" &&
@@ -69,5 +69,33 @@ export function startRendererSpan(
       ...(meta ?? {}),
       durationMs: now - startedAt,
     });
+  };
+}
+
+export function startRendererMemoryMonitor(intervalMs = 15000): () => void {
+  if (typeof window === "undefined" || !isRendererPerfCaptureEnabled()) {
+    return () => {};
+  }
+
+  const timer = window.setInterval(() => {
+    const perfWithMemory = performance as Performance & {
+      memory?: {
+        usedJSHeapSize: number;
+        totalJSHeapSize: number;
+        jsHeapSizeLimit: number;
+      };
+    };
+    const memory = perfWithMemory.memory;
+    if (!memory) return;
+
+    markRendererPerformance("renderer_memory_sample", {
+      usedJsHeapBytes: memory.usedJSHeapSize,
+      totalJsHeapBytes: memory.totalJSHeapSize,
+      jsHeapLimitBytes: memory.jsHeapSizeLimit,
+    });
+  }, intervalMs);
+
+  return () => {
+    window.clearInterval(timer);
   };
 }

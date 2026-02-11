@@ -1,6 +1,7 @@
 import type { TerminalInstance, TerminalSnapshot, TabGroup } from "@/types";
 import { projectClient } from "@/clients";
 import { debounce } from "@/utils/debounce";
+import { isRendererPerfCaptureEnabled, markRendererPerformance } from "@/utils/performance";
 import { panelKindHasPty } from "@shared/config/panelKindRegistry";
 
 type ProjectClientType = typeof projectClient;
@@ -125,6 +126,21 @@ function snapshotsEqual<T>(left: T[] | undefined, right: T[]): boolean {
   return true;
 }
 
+function shouldCollectPersistencePerf(): boolean {
+  if (typeof window === "undefined") return false;
+  return isRendererPerfCaptureEnabled() || Array.isArray(window.__CANOPY_PERF_MARKS__);
+}
+
+const PERF_TEXT_ENCODER = new TextEncoder();
+
+function estimatePayloadBytes(payload: unknown): number | null {
+  try {
+    return PERF_TEXT_ENCODER.encode(JSON.stringify(payload)).length;
+  } catch {
+    return null;
+  }
+}
+
 export class TerminalPersistence {
   private readonly client: ProjectClientType;
   private readonly options: Required<Omit<TerminalPersistenceOptions, "getProjectId">> &
@@ -150,14 +166,42 @@ export class TerminalPersistence {
         return;
       }
 
+      const collectPerf = shouldCollectPersistencePerf();
+      const startedAt = collectPerf
+        ? typeof performance !== "undefined"
+          ? performance.now()
+          : Date.now()
+        : 0;
+      const payloadBytes = collectPerf ? estimatePayloadBytes(transformed) : null;
+
       this.pendingPersist = this.client.setTerminals(projectId, transformed).catch((error) => {
         console.error("Failed to persist terminals:", error);
+        if (collectPerf) {
+          const now = typeof performance !== "undefined" ? performance.now() : Date.now();
+          markRendererPerformance("persistence_terminals_save", {
+            projectId,
+            terminalCount: transformed.length,
+            payloadBytes,
+            durationMs: Number((now - startedAt).toFixed(3)),
+            ok: false,
+          });
+        }
         if (snapshotsEqual(this.queuedTerminalsByProject.get(projectId), transformed)) {
           this.queuedTerminalsByProject.delete(projectId);
         }
         throw error;
       });
       this.pendingPersist = this.pendingPersist.then(() => {
+        if (collectPerf) {
+          const now = typeof performance !== "undefined" ? performance.now() : Date.now();
+          markRendererPerformance("persistence_terminals_save", {
+            projectId,
+            terminalCount: transformed.length,
+            payloadBytes,
+            durationMs: Number((now - startedAt).toFixed(3)),
+            ok: true,
+          });
+        }
         this.persistedTerminalsByProject.set(projectId, transformed);
         if (snapshotsEqual(this.queuedTerminalsByProject.get(projectId), transformed)) {
           this.queuedTerminalsByProject.delete(projectId);
@@ -175,16 +219,44 @@ export class TerminalPersistence {
         return;
       }
 
+      const collectPerf = shouldCollectPersistencePerf();
+      const startedAt = collectPerf
+        ? typeof performance !== "undefined"
+          ? performance.now()
+          : Date.now()
+        : 0;
+      const payloadBytes = collectPerf ? estimatePayloadBytes(tabGroups) : null;
+
       this.pendingTabGroupPersist = this.client
         .setTabGroups(projectId, tabGroups)
         .catch((error) => {
           console.error("Failed to persist tab groups:", error);
+          if (collectPerf) {
+            const now = typeof performance !== "undefined" ? performance.now() : Date.now();
+            markRendererPerformance("persistence_tab_groups_save", {
+              projectId,
+              tabGroupCount: tabGroups.length,
+              payloadBytes,
+              durationMs: Number((now - startedAt).toFixed(3)),
+              ok: false,
+            });
+          }
           if (snapshotsEqual(this.queuedTabGroupsByProject.get(projectId), tabGroups)) {
             this.queuedTabGroupsByProject.delete(projectId);
           }
           throw error;
         });
       this.pendingTabGroupPersist = this.pendingTabGroupPersist.then(() => {
+        if (collectPerf) {
+          const now = typeof performance !== "undefined" ? performance.now() : Date.now();
+          markRendererPerformance("persistence_tab_groups_save", {
+            projectId,
+            tabGroupCount: tabGroups.length,
+            payloadBytes,
+            durationMs: Number((now - startedAt).toFixed(3)),
+            ok: true,
+          });
+        }
         this.persistedTabGroupsByProject.set(projectId, tabGroups);
         if (snapshotsEqual(this.queuedTabGroupsByProject.get(projectId), tabGroups)) {
           this.queuedTabGroupsByProject.delete(projectId);

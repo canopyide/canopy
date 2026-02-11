@@ -40,24 +40,44 @@ export function typedHandle<K extends keyof IpcInvokeMap>(
   ) => Promise<IpcInvokeMap[K]["result"]> | IpcInvokeMap[K]["result"]
 ): () => void {
   const captureEnabled = isPerformanceCaptureEnabled();
+  let requestCounter = 0;
 
   ipcMain.handle(channel as string, async (_event, ...args) => {
     if (!captureEnabled) {
       return await handler(...(args as IpcInvokeMap[K]["args"]));
     }
 
+    const traceId = `${String(channel)}-${Date.now().toString(36)}-${(++requestCounter).toString(36)}`;
     const startedAt = performance.now();
-    markPerformance(PERF_MARKS.IPC_REQUEST_START, { channel: channel as string });
+    markPerformance(PERF_MARKS.IPC_REQUEST_START, {
+      channel: channel as string,
+      traceId,
+      argCount: args.length,
+    });
+
+    let responsePayload: IpcInvokeMap[K]["result"] | undefined;
+    let errored = false;
 
     try {
-      return await handler(...(args as IpcInvokeMap[K]["args"]));
+      responsePayload = await handler(...(args as IpcInvokeMap[K]["args"]));
+      return responsePayload;
+    } catch (error) {
+      errored = true;
+      throw error;
     } finally {
       const durationMs = performance.now() - startedAt;
       markPerformance(PERF_MARKS.IPC_REQUEST_END, {
         channel: channel as string,
+        traceId,
         durationMs,
+        ok: !errored,
       });
-      sampleIpcTiming(channel as string, durationMs);
+      sampleIpcTiming(channel as string, durationMs, {
+        traceId,
+        requestPayload: args,
+        responsePayload,
+        errored,
+      });
     }
   });
   return () => ipcMain.removeHandler(channel as string);

@@ -1,6 +1,10 @@
 // @vitest-environment jsdom
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
-import { markRendererPerformance } from "../performance";
+import {
+  isRendererPerfCaptureEnabled,
+  markRendererPerformance,
+  startRendererMemoryMonitor,
+} from "../performance";
 
 describe("markRendererPerformance", () => {
   const originalCapture = process.env.CANOPY_PERF_CAPTURE;
@@ -50,5 +54,18 @@ describe("markRendererPerformance", () => {
 
     expect(window.__CANOPY_PERF_MARKS__).toHaveLength(1);
     expect(debugSpy).toHaveBeenCalledWith("[perf]", "captured-mark", { value: 2 });
+  });
+
+  it("reports whether renderer perf capture is enabled", () => {
+    process.env.CANOPY_PERF_CAPTURE = "1";
+    expect(isRendererPerfCaptureEnabled()).toBe(true);
+    process.env.CANOPY_PERF_CAPTURE = "0";
+    expect(isRendererPerfCaptureEnabled()).toBe(false);
+  });
+
+  it("starts renderer memory monitor without throwing when memory API is unavailable", () => {
+    const stop = startRendererMemoryMonitor(10);
+    expect(typeof stop).toBe("function");
+    stop();
   });
 });

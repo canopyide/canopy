@@ -10,6 +10,13 @@ interface MarkPayload {
   meta?: Record<string, unknown>;
 }
 
+interface IpcSampleMeta {
+  traceId?: string;
+  requestPayload?: unknown;
+  responsePayload?: unknown;
+  errored?: boolean;
+}
+
 const APP_BOOT_T0 = performance.now();
 const SHOULD_CAPTURE = process.env.CANOPY_PERF_CAPTURE === "1";
 const METRICS_FILE = process.env.CANOPY_PERF_METRICS_FILE
@@ -76,7 +83,16 @@ export async function withPerformanceSpan<T>(
   }
 }
 
-export function sampleIpcTiming(channel: string, durationMs: number): void {
+function estimatePayloadBytes(payload: unknown): number | null {
+  if (payload === undefined) return 0;
+  try {
+    return Buffer.byteLength(JSON.stringify(payload), "utf8");
+  } catch {
+    return null;
+  }
+}
+
+export function sampleIpcTiming(channel: string, durationMs: number, meta?: IpcSampleMeta): void {
   if (!CAPTURE_ENABLED) return;
 
   const sampleRateRaw = Number(process.env.CANOPY_PERF_IPC_SAMPLE_RATE ?? "0.1");
@@ -85,9 +101,16 @@ export function sampleIpcTiming(channel: string, durationMs: number): void {
   if (sampleRate <= 0) return;
   if (Math.random() > sampleRate) return;
 
+  const requestBytes = estimatePayloadBytes(meta?.requestPayload);
+  const responseBytes = estimatePayloadBytes(meta?.responsePayload);
+
   markPerformance("ipc_request_sample", {
     channel,
     durationMs,
+    traceId: meta?.traceId ?? null,
+    requestBytes,
+    responseBytes,
+    errored: Boolean(meta?.errored),
   });
 }
 
@@ -109,6 +132,29 @@ export function startEventLoopLagMonitor(intervalMs = 1000, thresholdMs = 100): 
         intervalMs,
       });
     }
+  }, intervalMs);
+
+  timer.unref?.();
+
+  return () => {
+    clearInterval(timer);
+  };
+}
+
+export function startProcessMemoryMonitor(intervalMs = 15000): () => void {
+  if (!CAPTURE_ENABLED) {
+    return () => {};
+  }
+
+  const timer = setInterval(() => {
+    const usage = process.memoryUsage();
+    markPerformance("process_memory_sample", {
+      rssBytes: usage.rss,
+      heapTotalBytes: usage.heapTotal,
+      heapUsedBytes: usage.heapUsed,
+      externalBytes: usage.external,
+      arrayBuffersBytes: usage.arrayBuffers,
+    });
   }, intervalMs);
 
   timer.unref?.();
