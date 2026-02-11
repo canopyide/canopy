@@ -186,8 +186,12 @@ export function DevPreviewPane({
         clearTimeout(loadTimeoutRef.current);
       }
       loadTimeoutRef.current = setTimeout(() => {
-        if (webview.isLoading()) {
-          webview.reload();
+        try {
+          if (webview.isLoading()) {
+            webview.reload();
+          }
+        } catch {
+          // Webview detached before timeout fired
         }
       }, 30000);
     };
@@ -260,10 +264,14 @@ export function DevPreviewPane({
       }
     };
 
-    const existingUrl = webview.getURL();
-    if (existingUrl && existingUrl !== "about:blank" && !webview.isLoading()) {
-      setIsWebviewReady(true);
-      webview.setZoomFactor(zoomFactor);
+    try {
+      const existingUrl = webview.getURL();
+      if (existingUrl && existingUrl !== "about:blank" && !webview.isLoading()) {
+        setIsWebviewReady(true);
+        webview.setZoomFactor(zoomFactor);
+      }
+    } catch {
+      // Webview not yet attached to DOM - dom-ready handler will take over
     }
 
     webview.addEventListener("dom-ready", handleDomReady);
