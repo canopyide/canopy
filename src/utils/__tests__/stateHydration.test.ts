@@ -49,6 +49,8 @@ const initializeMock = vi.fn().mockResolvedValue(undefined);
 const loadOverridesMock = vi.fn().mockResolvedValue(undefined);
 const fetchAndRestoreMock = vi.fn().mockResolvedValue(undefined);
 const restoreFetchedStateMock = vi.fn().mockResolvedValue(undefined);
+const getManagedTerminalMock = vi.fn().mockReturnValue(null);
+const isTerminalWarmInProjectSwitchCacheMock = vi.fn().mockReturnValue(false);
 
 vi.mock("@/clients", () => ({
   appClient: appClientMock,
@@ -100,7 +102,12 @@ vi.mock("@/services/TerminalInstanceService", () => ({
     fetchAndRestore: fetchAndRestoreMock,
     restoreFetchedState: restoreFetchedStateMock,
     initializeBackendTier: initializeBackendTierMock,
+    get: getManagedTerminalMock,
   },
+}));
+
+vi.mock("@/services/projectSwitchRendererCache", () => ({
+  isTerminalWarmInProjectSwitchCache: isTerminalWarmInProjectSwitchCacheMock,
 }));
 
 const { hydrateAppState } = await import("../stateHydration");
@@ -112,6 +119,8 @@ describe("hydrateAppState", () => {
 
   beforeEach(() => {
     vi.clearAllMocks();
+    getManagedTerminalMock.mockReturnValue(null);
+    isTerminalWarmInProjectSwitchCacheMock.mockReturnValue(false);
     terminalClientMock.getForProject.mockResolvedValue([]);
     terminalClientMock.reconnect.mockResolvedValue({ exists: false });
     terminalClientMock.getSerializedStates.mockRejectedValue(
@@ -838,6 +847,62 @@ describe("hydrateAppState", () => {
     } finally {
       vi.useRealTimers();
     }
+  });
+
+  it("skips snapshot fetch for warm cached terminal instances during switch-back hydration", async () => {
+    appClientMock.hydrate.mockResolvedValue({
+      appState: {
+        terminals: [
+          {
+            id: "terminal-cached",
+            kind: "terminal",
+            title: "Cached Terminal",
+            cwd: "/project",
+            location: "grid",
+          },
+        ],
+        sidebarWidth: 350,
+      },
+      terminalConfig,
+      project,
+      agentSettings,
+    });
+
+    terminalClientMock.getForProject.mockResolvedValue([
+      {
+        id: "terminal-cached",
+        hasPty: true,
+        cwd: "/project",
+        kind: "terminal",
+        title: "Cached Terminal",
+      },
+    ]);
+
+    isTerminalWarmInProjectSwitchCacheMock.mockReturnValue(true);
+    getManagedTerminalMock.mockReturnValue({ id: "terminal-cached" });
+
+    const addTerminal = vi.fn(async (options: { existingId?: string; requestedId?: string }) => {
+      return options.existingId ?? options.requestedId ?? "terminal-id";
+    });
+
+    await hydrateAppState(
+      {
+        addTerminal,
+        setActiveWorktree: vi.fn(),
+        loadRecipes: vi.fn().mockResolvedValue(undefined),
+        openDiagnosticsDock: vi.fn(),
+      },
+      "switch-cached",
+      () => true
+    );
+
+    expect(addTerminal).toHaveBeenCalledWith(
+      expect.objectContaining({
+        existingId: "terminal-cached",
+      })
+    );
+    expect(fetchAndRestoreMock).not.toHaveBeenCalled();
+    expect(terminalClientMock.getSerializedStates).not.toHaveBeenCalled();
   });
 
   it("does not block project-switch hydration on recipe loading", async () => {

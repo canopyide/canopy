@@ -27,6 +27,7 @@ const terminalState = {
     title?: string;
     cwd?: string;
     location?: "grid" | "dock" | "trash";
+    worktreeId?: string;
   }>,
 };
 
@@ -34,12 +35,14 @@ const terminalPersistenceMock = {
   whenIdle: vi.fn(),
   setProjectIdGetter: vi.fn(),
 };
+const resetAllStoresForProjectSwitchMock = vi.fn().mockResolvedValue(undefined);
 
 const terminalToSnapshotMock = vi.fn(
-  (terminal: { id: string; cwd?: string; location?: string }) => ({
+  (terminal: { id: string; cwd?: string; location?: string; worktreeId?: string }) => ({
     id: terminal.id,
     cwd: terminal.cwd ?? "",
     location: terminal.location ?? "grid",
+    worktreeId: terminal.worktreeId,
   })
 );
 
@@ -48,11 +51,19 @@ vi.mock("@/clients", () => ({
 }));
 
 vi.mock("../resetStores", () => ({
-  resetAllStoresForProjectSwitch: vi.fn().mockResolvedValue(undefined),
+  resetAllStoresForProjectSwitch: resetAllStoresForProjectSwitchMock,
 }));
 
 vi.mock("../worktreeDataStore", () => ({
   forceReinitializeWorktreeDataStore: vi.fn(),
+}));
+
+vi.mock("../worktreeStore", () => ({
+  useWorktreeSelectionStore: {
+    getState: () => ({
+      activeWorktreeId: "wt-a",
+    }),
+  },
 }));
 
 vi.mock("../terminalStore", () => ({
@@ -127,6 +138,20 @@ describe("projectStore switch performance", () => {
         kind: "terminal",
         cwd: "/project-a",
         location: "grid",
+        worktreeId: "wt-a",
+      },
+      {
+        id: "terminal-2",
+        kind: "terminal",
+        cwd: "/project-a/other",
+        location: "grid",
+        worktreeId: "wt-other",
+      },
+      {
+        id: "terminal-global",
+        kind: "terminal",
+        cwd: "/project-a",
+        location: "dock",
       },
     ];
 
@@ -151,9 +176,16 @@ describe("projectStore switch performance", () => {
 
     expect(projectClientMock.setTerminals).toHaveBeenCalledWith(
       "project-a",
-      expect.arrayContaining([expect.objectContaining({ id: "terminal-1" })])
+      expect.arrayContaining([
+        expect.objectContaining({ id: "terminal-1" }),
+        expect.objectContaining({ id: "terminal-2" }),
+        expect.objectContaining({ id: "terminal-global" }),
+      ])
     );
     expect(projectClientMock.switch).toHaveBeenCalledWith("project-b");
+    expect(resetAllStoresForProjectSwitchMock).toHaveBeenCalledWith({
+      preserveTerminalIds: new Set(["terminal-1", "terminal-global"]),
+    });
     expect(switchResolved).toBe(true);
 
     await switchPromise;

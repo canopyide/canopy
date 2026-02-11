@@ -13,10 +13,12 @@ import { useProjectStore, useTerminalStore } from "@/store";
 import { terminalInstanceService } from "@/services/TerminalInstanceService";
 import { useWorktreeSelectionStore } from "@/store/worktreeStore";
 import { panelKindUsesTerminalUi } from "@shared/config/panelKindRegistry";
+import { finalizeProjectSwitchRendererCache } from "@/services/projectSwitchRendererCache";
 import type { HydrationCallbacks } from "./useAppHydration";
 
 interface ProjectSwitchedEventDetail {
   switchId: string;
+  projectId: string;
 }
 
 export function useProjectSwitchRehydration(callbacks: HydrationCallbacks) {
@@ -31,11 +33,12 @@ export function useProjectSwitchRehydration(callbacks: HydrationCallbacks) {
     const handleProjectSwitch = async (event: Event) => {
       const customEvent = event as CustomEvent<ProjectSwitchedEventDetail>;
       const switchId = customEvent.detail?.switchId;
+      const projectId = customEvent.detail?.projectId;
 
       // Enforce non-empty switchId for staleness checks
-      if (!switchId) {
+      if (!switchId || !projectId) {
         console.error(
-          "[useProjectSwitchRehydration] Missing switchId in project-switched event, skipping hydration"
+          "[useProjectSwitchRehydration] Missing switch metadata in project-switched event, skipping hydration"
         );
         return;
       }
@@ -89,8 +92,9 @@ export function useProjectSwitchRehydration(callbacks: HydrationCallbacks) {
           error
         );
       } finally {
-        // Only finish if this is still the current switch
+        // Only finalize if this is still the current switch
         if (currentSwitchIdRef.current === switchId) {
+          finalizeProjectSwitchRendererCache(projectId);
           useProjectStore.getState().finishProjectSwitch();
         }
       }
@@ -108,7 +112,7 @@ export function useProjectSwitchRehydration(callbacks: HydrationCallbacks) {
       // conflict. This preserves zoom factors across project switches.
       window.dispatchEvent(
         new CustomEvent<ProjectSwitchedEventDetail>("project-switched", {
-          detail: { switchId },
+          detail: { switchId, projectId: project.id },
         })
       );
     });

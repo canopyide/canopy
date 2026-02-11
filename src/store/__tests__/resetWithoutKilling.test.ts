@@ -36,6 +36,7 @@ vi.mock("@/services/TerminalInstanceService", () => ({
     cleanup: vi.fn(),
     applyRendererPolicy: vi.fn(),
     destroy: vi.fn(),
+    setVisible: vi.fn(),
   },
 }));
 
@@ -274,6 +275,40 @@ describe("resetWithoutKilling", () => {
     // Should destroy xterm.js instances for cleanup
     expect(terminalInstanceService.destroy).toHaveBeenCalledWith("term-1");
     expect(terminalInstanceService.destroy).toHaveBeenCalledWith("term-2");
+  });
+
+  it("preserves warmed terminal instances when explicitly requested", async () => {
+    useTerminalStore.setState({
+      terminals: [
+        {
+          id: "term-keep",
+          type: "terminal",
+          title: "Keep",
+          cwd: "/test",
+          cols: 80,
+          rows: 24,
+          location: "grid",
+        },
+        {
+          id: "term-drop",
+          type: "terminal",
+          title: "Drop",
+          cwd: "/test",
+          cols: 80,
+          rows: 24,
+          location: "grid",
+        },
+      ],
+      tabGroups: new Map(),
+    });
+
+    await useTerminalStore.getState().resetWithoutKilling({
+      preserveTerminalIds: new Set(["term-keep"]),
+    });
+
+    expect(terminalInstanceService.setVisible).toHaveBeenCalledWith("term-keep", false);
+    expect(terminalInstanceService.destroy).not.toHaveBeenCalledWith("term-keep");
+    expect(terminalInstanceService.destroy).toHaveBeenCalledWith("term-drop");
   });
 
   it("should clear trashedTerminals", async () => {

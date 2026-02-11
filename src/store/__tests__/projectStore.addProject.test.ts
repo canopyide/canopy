@@ -45,6 +45,14 @@ vi.mock("../worktreeDataStore", () => ({
   forceReinitializeWorktreeDataStore: vi.fn(),
 }));
 
+vi.mock("../worktreeStore", () => ({
+  useWorktreeSelectionStore: {
+    getState: () => ({
+      activeWorktreeId: null,
+    }),
+  },
+}));
+
 vi.mock("../slices", () => ({
   flushTerminalPersistence: vi.fn(),
   createTerminalRegistrySlice: vi.fn(() => () => ({})),
