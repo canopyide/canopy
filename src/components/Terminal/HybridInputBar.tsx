@@ -126,7 +126,7 @@ export const HybridInputBar = forwardRef<HybridInputBarHandle, HybridInputBarPro
     const tooltipCompartmentRef = useRef(new Compartment());
     const fileChipTooltipCompartmentRef = useRef(new Compartment());
     const isApplyingExternalValueRef = useRef(false);
-    const allowNextLineBreakRef = useRef(false);
+    const lastEnterKeydownShiftRef = useRef(false);
     const handledEnterRef = useRef(false);
     const inputShellRef = useRef<HTMLDivElement | null>(null);
     const menuRef = useRef<HTMLDivElement | null>(null);
@@ -185,6 +185,9 @@ export const HybridInputBar = forwardRef<HybridInputBarHandle, HybridInputBarPro
       setSlashContext(null);
       setSelectedIndex(0);
       lastQueryRef.current = "";
+      lastEnterKeydownShiftRef.current = false;
+      handledEnterRef.current = false;
+      submitAfterCompositionRef.current = false;
 
       const view = editorViewRef.current;
       if (view && view.state.doc.toString() !== draft) {
@@ -197,10 +200,6 @@ export const HybridInputBar = forwardRef<HybridInputBarHandle, HybridInputBarPro
     useEffect(() => {
       setDraftInput(terminalId, value, projectId);
     }, [terminalId, value, projectId, setDraftInput]);
-
-    useEffect(() => {
-      lastEmittedValueRef.current = value;
-    }, [value]);
 
     const placeholder = useMemo(() => {
       const agentName = agentId ? getAgentConfig(agentId)?.name : null;
@@ -691,8 +690,7 @@ export const HybridInputBar = forwardRef<HybridInputBarHandle, HybridInputBarPro
               return true;
             }
 
-            if (allowNextLineBreakRef.current) {
-              allowNextLineBreakRef.current = false;
+            if (lastEnterKeydownShiftRef.current) {
               return false;
             }
 
@@ -716,6 +714,7 @@ export const HybridInputBar = forwardRef<HybridInputBarHandle, HybridInputBarPro
           compositionstart: () => {
             isComposingRef.current = true;
             submitAfterCompositionRef.current = false;
+            lastEnterKeydownShiftRef.current = false;
             return false;
           },
           compositionend: () => {
@@ -733,7 +732,7 @@ export const HybridInputBar = forwardRef<HybridInputBarHandle, HybridInputBarPro
               event.code === "NumpadEnter";
 
             if (isEnter) {
-              allowNextLineBreakRef.current = event.shiftKey;
+              lastEnterKeydownShiftRef.current = event.shiftKey;
             }
 
             if (event.isComposing) {
@@ -752,7 +751,7 @@ export const HybridInputBar = forwardRef<HybridInputBarHandle, HybridInputBarPro
 
             setAtContext(null);
             setSlashContext(null);
-            allowNextLineBreakRef.current = false;
+            lastEnterKeydownShiftRef.current = false;
             handledEnterRef.current = false;
             submitAfterCompositionRef.current = false;
 
