@@ -7,6 +7,12 @@ import type { BrowserHistory } from "@shared/types/domain";
 import { ContentPanel, type BasePanelProps } from "@/components/Panel";
 import { BrowserToolbar } from "../Browser/BrowserToolbar";
 import { normalizeBrowserUrl } from "../Browser/browserUtils";
+import {
+  goBackBrowserHistory,
+  goForwardBrowserHistory,
+  initializeBrowserHistory,
+  pushBrowserHistory,
+} from "../Browser/historyUtils";
 import { useDevServer } from "@/hooks/useDevServer";
 import { ConsoleDrawer } from "./ConsoleDrawer";
 import { useIsDragging } from "@/components/DragDrop";
@@ -72,23 +78,7 @@ export function DevPreviewPane({
 
   const [history, setHistory] = useState<BrowserHistory>(() => {
     const saved = terminal?.browserHistory;
-    if (
-      saved &&
-      Array.isArray(saved.past) &&
-      Array.isArray(saved.future) &&
-      typeof saved.present === "string"
-    ) {
-      return {
-        past: saved.past,
-        present: saved.present || "",
-        future: saved.future,
-      };
-    }
-    return {
-      past: [],
-      present: "",
-      future: [],
-    };
+    return initializeBrowserHistory(saved, "");
   });
 
   const [zoomFactor, setZoomFactor] = useState<number>(() => {
@@ -112,11 +102,7 @@ export function DevPreviewPane({
 
   useEffect(() => {
     if (url && shouldAdoptDetectedDevServerUrl(url, currentUrl)) {
-      setHistory((prev) => ({
-        past: prev.present ? [...prev.past, prev.present] : prev.past,
-        present: url,
-        future: [],
-      }));
+      setHistory((prev) => pushBrowserHistory(prev, url));
       lastSetUrlRef.current = url;
     }
   }, [url, currentUrl]);
@@ -138,40 +124,20 @@ export function DevPreviewPane({
   const handleNavigate = useCallback((rawUrl: string) => {
     const normalized = normalizeBrowserUrl(rawUrl);
     if (normalized.url) {
-      setHistory((prev) => ({
-        past: prev.present ? [...prev.past, prev.present] : prev.past,
-        present: normalized.url!,
-        future: [],
-      }));
+      setHistory((prev) => pushBrowserHistory(prev, normalized.url!));
       lastSetUrlRef.current = normalized.url;
     }
   }, []);
 
   const handleBack = useCallback(() => {
     if (canGoBack) {
-      setHistory((prev) => {
-        const newPast = [...prev.past];
-        const newPresent = newPast.pop()!;
-        return {
-          past: newPast,
-          present: newPresent,
-          future: [prev.present, ...prev.future],
-        };
-      });
+      setHistory((prev) => goBackBrowserHistory(prev));
     }
   }, [canGoBack]);
 
   const handleForward = useCallback(() => {
     if (canGoForward) {
-      setHistory((prev) => {
-        const newFuture = [...prev.future];
-        const newPresent = newFuture.shift()!;
-        return {
-          past: [...prev.past, prev.present],
-          present: newPresent,
-          future: newFuture,
-        };
-      });
+      setHistory((prev) => goForwardBrowserHistory(prev));
     }
   }, [canGoForward]);
 
@@ -197,7 +163,7 @@ export function DevPreviewPane({
   }, [start]);
 
   const handleHardRestart = useCallback(() => {
-    setHistory({ past: [], present: "", future: [] });
+    setHistory(initializeBrowserHistory(undefined, ""));
     setBrowserUrl(id, "");
     lastSetUrlRef.current = "";
     setIsLoading(false);
@@ -216,22 +182,14 @@ export function DevPreviewPane({
     const handleDidNavigate = (e: Electron.DidNavigateEvent) => {
       const navigatedUrl = e.url;
       if (navigatedUrl !== lastSetUrlRef.current) {
-        setHistory((prev) => ({
-          past: prev.present ? [...prev.past, prev.present] : prev.past,
-          present: navigatedUrl,
-          future: [],
-        }));
+        setHistory((prev) => pushBrowserHistory(prev, navigatedUrl));
       }
     };
 
     const handleDidNavigateInPage = (e: Electron.DidNavigateInPageEvent) => {
       const navigatedUrl = e.url;
       if (navigatedUrl !== lastSetUrlRef.current) {
-        setHistory((prev) => ({
-          past: prev.present ? [...prev.past, prev.present] : prev.past,
-          present: navigatedUrl,
-          future: [],
-        }));
+        setHistory((prev) => pushBrowserHistory(prev, navigatedUrl));
       }
     };
 

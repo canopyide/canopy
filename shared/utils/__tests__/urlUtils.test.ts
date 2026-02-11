@@ -72,6 +72,11 @@ describe("urlUtils", () => {
       expect(urls).toEqual([]);
     });
 
+    it("returns empty array for non-localhost http URLs", () => {
+      const urls = extractLocalhostUrls("Proxy available at https://example.com:8443");
+      expect(urls).toEqual([]);
+    });
+
     it("deduplicates URLs", () => {
       const output = `http://localhost:5173/ http://localhost:5173/`;
       const urls = extractLocalhostUrls(output);
@@ -82,6 +87,12 @@ describe("urlUtils", () => {
       const output = `Local: http://localhost:5173/  Network: http://localhost:5174/`;
       const urls = extractLocalhostUrls(output);
       expect(urls.length).toBe(2);
+    });
+
+    it("handles uppercase localhost hostnames", () => {
+      const output = `Server ready at http://LOCALHOST:5173/`;
+      const urls = extractLocalhostUrls(output);
+      expect(urls).toContain("http://localhost:5173/");
     });
   });
 

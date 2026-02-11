@@ -5,6 +5,12 @@ import type { BrowserHistory } from "@shared/types/domain";
 import { ContentPanel, type BasePanelProps } from "@/components/Panel";
 import { BrowserToolbar } from "./BrowserToolbar";
 import { normalizeBrowserUrl, extractHostPort, isValidBrowserUrl } from "./browserUtils";
+import {
+  goBackBrowserHistory,
+  goForwardBrowserHistory,
+  initializeBrowserHistory,
+  pushBrowserHistory,
+} from "./historyUtils";
 import { actionService } from "@/services/ActionService";
 import { useIsDragging } from "@/components/DragDrop";
 import { cn } from "@/lib/utils";
@@ -50,25 +56,9 @@ export function BrowserPane({
   const [history, setHistory] = useState<BrowserHistory>(() => {
     const terminal = useTerminalStore.getState().getTerminal(id);
     const saved = terminal?.browserHistory;
-    if (
-      saved &&
-      Array.isArray(saved.past) &&
-      Array.isArray(saved.future) &&
-      typeof saved.present === "string"
-    ) {
-      const present = saved.present || terminal?.browserUrl || initialUrl;
-      return {
-        past: saved.past,
-        present,
-        future: saved.future,
-      };
-    }
     const normalized = normalizeBrowserUrl(initialUrl);
-    return {
-      past: [],
-      present: normalized.url || initialUrl,
-      future: [],
-    };
+    const fallbackPresent = terminal?.browserUrl || normalized.url || initialUrl;
+    return initializeBrowserHistory(saved, fallbackPresent);
   });
 
   // Initialize zoom factor from persisted state (default 1.0 = 100%)
@@ -152,11 +142,7 @@ export function BrowserPane({
       const newUrl = event.url;
       // Only update history if this is a new URL (not our programmatic navigation)
       if (newUrl !== lastSetUrlRef.current) {
-        setHistory((prev) => ({
-          past: [...prev.past, prev.present],
-          present: newUrl,
-          future: [],
-        }));
+        setHistory((prev) => pushBrowserHistory(prev, newUrl));
         lastSetUrlRef.current = newUrl;
       }
     };
@@ -165,11 +151,7 @@ export function BrowserPane({
       if (!event.isMainFrame) return;
       const newUrl = event.url;
       if (newUrl !== lastSetUrlRef.current) {
-        setHistory((prev) => ({
-          past: [...prev.past, prev.present],
-          present: newUrl,
-          future: [],
-        }));
+        setHistory((prev) => pushBrowserHistory(prev, newUrl));
         lastSetUrlRef.current = newUrl;
       }
     };
@@ -196,11 +178,7 @@ export function BrowserPane({
       const result = normalizeBrowserUrl(url);
       if (result.error || !result.url) return;
 
-      setHistory((prev) => ({
-        past: [...prev.past, prev.present],
-        present: result.url!,
-        future: [],
-      }));
+      setHistory((prev) => pushBrowserHistory(prev, result.url!));
       setIsLoading(true);
       setLoadError(null);
       lastSetUrlRef.current = result.url!;
@@ -216,9 +194,9 @@ export function BrowserPane({
 
   const handleBack = useCallback(() => {
     setHistory((prev) => {
-      if (prev.past.length === 0) return prev;
-      const newPast = [...prev.past];
-      const previousUrl = newPast.pop()!;
+      const next = goBackBrowserHistory(prev);
+      if (next === prev) return prev;
+      const previousUrl = next.present;
       lastSetUrlRef.current = previousUrl;
 
       // Navigate webview back
@@ -227,11 +205,7 @@ export function BrowserPane({
         webview.loadURL(previousUrl);
       }
 
-      return {
-        past: newPast,
-        present: previousUrl,
-        future: [prev.present, ...prev.future],
-      };
+      return next;
     });
     setIsLoading(true);
     setLoadError(null);
@@ -239,8 +213,9 @@ export function BrowserPane({
 
   const handleForward = useCallback(() => {
     setHistory((prev) => {
-      if (prev.future.length === 0) return prev;
-      const [nextUrl, ...restFuture] = prev.future;
+      const next = goForwardBrowserHistory(prev);
+      if (next === prev) return prev;
+      const nextUrl = next.present;
       lastSetUrlRef.current = nextUrl;
 
       // Navigate webview forward
@@ -249,11 +224,7 @@ export function BrowserPane({
         webview.loadURL(nextUrl);
       }
 
-      return {
-        past: [...prev.past, prev.present],
-        present: nextUrl,
-        future: restFuture,
-      };
+      return next;
     });
     setIsLoading(true);
     setLoadError(null);

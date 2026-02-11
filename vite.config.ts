@@ -51,6 +51,39 @@ function cspTransformPlugin(): Plugin {
   };
 }
 
+function getVendorChunk(id: string): string | undefined {
+  if (!id.includes("node_modules")) return undefined;
+
+  if (id.includes("/node_modules/@xterm/")) {
+    return "vendor-xterm";
+  }
+  if (
+    id.includes("/node_modules/@codemirror/") ||
+    id.includes("/node_modules/@uiw/") ||
+    id.includes("/node_modules/refractor/")
+  ) {
+    return "vendor-editor";
+  }
+  if (id.includes("/node_modules/framer-motion/")) {
+    return "vendor-motion";
+  }
+  if (id.includes("/node_modules/lucide-react/")) {
+    return "vendor-icons";
+  }
+  if (
+    id.includes("/node_modules/@octokit/") ||
+    id.includes("/node_modules/@ai-sdk/") ||
+    id.includes("/node_modules/ai/")
+  ) {
+    return "vendor-ai-github";
+  }
+  if (id.includes("/node_modules/zod/") || id.includes("/node_modules/zod-to-json-schema/")) {
+    return "vendor-zod";
+  }
+
+  return "vendor";
+}
+
 export default defineConfig({
   plugins: [react(), tailwindcss(), cspTransformPlugin()],
   base: "./",
@@ -58,6 +91,13 @@ export default defineConfig({
     outDir: "dist",
     emptyOutDir: true,
     sourcemap: true,
+    rollupOptions: {
+      output: {
+        manualChunks(id) {
+          return getVendorChunk(id);
+        },
+      },
+    },
   },
   resolve: {
     alias: {
