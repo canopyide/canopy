@@ -2,6 +2,7 @@ import React, { useState, useLayoutEffect, useEffect, useCallback, useRef } from
 import { createPortal } from "react-dom";
 import { cn } from "@/lib/utils";
 import { useAnimatedPresence } from "@/hooks/useAnimatedPresence";
+import { useUIStore } from "@/store/uiStore";
 
 interface FixedDropdownProps {
   open: boolean;
@@ -24,6 +25,8 @@ export function FixedDropdown({
   const [position, setPosition] = useState<{ top: number; right: string } | null>(null);
   const contentRef = useRef<HTMLDivElement>(null);
   const { isVisible, shouldRender } = useAnimatedPresence({ isOpen: open });
+  const overlayCount = useUIStore((state) => state.overlayCount);
+  const prevOverlayCountRef = useRef<number>(overlayCount);
 
   useEffect(() => setMounted(true), []);
 
@@ -69,6 +72,13 @@ export function FixedDropdown({
       document.removeEventListener("keydown", handleKeyDown);
     };
   }, [open, onOpenChange, anchorRef]);
+
+  useEffect(() => {
+    if (open && overlayCount > prevOverlayCountRef.current && overlayCount > 0) {
+      onOpenChange(false);
+    }
+    prevOverlayCountRef.current = overlayCount;
+  }, [open, overlayCount, onOpenChange]);
 
   if (!shouldRender || !mounted || !position) return null;
 
