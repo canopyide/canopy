@@ -24,6 +24,7 @@ const AppDialogContext = createContext<AppDialogContextValue | null>(null);
 export interface AppDialogProps {
   isOpen: boolean;
   onClose: () => void;
+  onBeforeClose?: () => boolean | Promise<boolean>;
   size?: DialogSize;
   variant?: DialogVariant;
   dismissible?: boolean;
@@ -48,6 +49,7 @@ const sizeClasses: Record<DialogSize, string> = {
 export function AppDialog({
   isOpen,
   onClose,
+  onBeforeClose,
   size = "md",
   variant = "default",
   dismissible = true,
@@ -57,6 +59,8 @@ export function AppDialog({
   zIndex = "modal",
 }: AppDialogProps) {
   const previousActiveElement = useRef<HTMLElement | null>(null);
+  const backdropPointerRef = useRef<number | null>(null);
+  const closeInFlightRef = useRef(false);
   const titleId = useId();
   const descriptionId = useId();
 
@@ -93,11 +97,23 @@ export function AppDialog({
     };
   }, [restoreFocus]);
 
-  const handleClose = useCallback(() => {
-    if (dismissible) {
+  const handleClose = useCallback(async () => {
+    if (!dismissible || closeInFlightRef.current) return;
+    if (!onBeforeClose) {
       onClose();
+      return;
     }
-  }, [dismissible, onClose]);
+
+    closeInFlightRef.current = true;
+    try {
+      const canClose = await onBeforeClose();
+      if (canClose) onClose();
+    } catch (error) {
+      console.error("AppDialog onBeforeClose failed", error);
+    } finally {
+      closeInFlightRef.current = false;
+    }
+  }, [dismissible, onBeforeClose, onClose]);
 
   const handleKeyDown = useCallback(
     (e: KeyboardEvent) => {
@@ -114,13 +130,26 @@ export function AppDialog({
     return () => window.removeEventListener("keydown", handleKeyDown);
   }, [isOpen, handleKeyDown]);
 
-  const handleBackdropClick = useCallback(
-    (e: React.MouseEvent) => {
-      if (e.target === e.currentTarget) {
-        handleClose();
+  const resetBackdropPointer = useCallback(() => {
+    backdropPointerRef.current = null;
+  }, []);
+
+  const handleBackdropPointerDown = useCallback((e: React.PointerEvent<HTMLDivElement>) => {
+    if (e.target === e.currentTarget && e.button === 0) {
+      backdropPointerRef.current = e.pointerId;
+      return;
+    }
+    backdropPointerRef.current = null;
+  }, []);
+
+  const handleBackdropPointerUp = useCallback(
+    (e: React.PointerEvent<HTMLDivElement>) => {
+      if (e.target === e.currentTarget && backdropPointerRef.current === e.pointerId) {
+        void handleClose();
       }
+      resetBackdropPointer();
     },
-    [handleClose]
+    [handleClose, resetBackdropPointer]
   );
 
   if (!shouldRender) return null;
@@ -136,7 +165,9 @@ export function AppDialog({
           isVisible ? "opacity-100" : "opacity-0"
         )}
         style={{ right: sidecarOffset }}
-        onClick={handleBackdropClick}
+        onPointerDown={handleBackdropPointerDown}
+        onPointerUp={handleBackdropPointerUp}
+        onPointerCancel={resetBackdropPointer}
         role="dialog"
         aria-modal="true"
         aria-labelledby={titleId}
