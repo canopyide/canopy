@@ -221,12 +221,14 @@ export function RecipeEditor({
                       value={terminal.type}
                       onChange={(e) => {
                         const newType = e.target.value as RecipeTerminalType;
-                        // Consolidate all state updates to avoid race conditions
                         setTerminals((prev) => {
                           const updated = [...prev];
+                          const prevType = updated[index].type;
                           updated[index] = {
                             ...updated[index],
                             type: newType,
+                            // Clear command when switching between types so the new type uses its default
+                            command: newType === prevType ? updated[index].command : "",
                             // Clear initialPrompt when switching to terminal or dev-preview
                             initialPrompt:
                               newType === "terminal" || newType === "dev-preview"
