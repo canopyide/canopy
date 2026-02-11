@@ -1,4 +1,4 @@
-import React, { useCallback, useRef, type ReactNode } from "react";
+import React, { useCallback, useEffect, useRef, useState, type ReactNode } from "react";
 import {
   X,
   Maximize2,
@@ -117,6 +117,63 @@ function PanelHeaderComponent({
 }: PanelHeaderProps) {
   const isBrowser = kind === "browser";
   const dragHandle = useDragHandle();
+
+  // Armed restart confirmation state
+  const [armedRestartId, setArmedRestartId] = useState<string | null>(null);
+  const armedTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const lastClickTimeRef = useRef<number>(0);
+  const ARMED_TIMEOUT_MS = 3000;
+  const MIN_CLICK_INTERVAL_MS = 300;
+
+  useEffect(() => {
+    return () => {
+      if (armedTimerRef.current) {
+        clearTimeout(armedTimerRef.current);
+      }
+    };
+  }, []);
+
+  useEffect(() => {
+    if (armedRestartId !== null && armedRestartId !== id) {
+      setArmedRestartId(null);
+      if (armedTimerRef.current) {
+        clearTimeout(armedTimerRef.current);
+        armedTimerRef.current = null;
+      }
+      lastClickTimeRef.current = 0;
+    }
+  }, [id, armedRestartId]);
+
+  const handleRestartClick = useCallback(
+    (e: React.MouseEvent) => {
+      e.stopPropagation();
+
+      const now = Date.now();
+      if (now - lastClickTimeRef.current < MIN_CLICK_INTERVAL_MS) {
+        return;
+      }
+      lastClickTimeRef.current = now;
+
+      if (armedRestartId === id) {
+        setArmedRestartId(null);
+        if (armedTimerRef.current) {
+          clearTimeout(armedTimerRef.current);
+          armedTimerRef.current = null;
+        }
+        onRestart?.();
+      } else {
+        setArmedRestartId(id);
+        if (armedTimerRef.current) {
+          clearTimeout(armedTimerRef.current);
+        }
+        armedTimerRef.current = setTimeout(() => {
+          setArmedRestartId(null);
+          armedTimerRef.current = null;
+        }, ARMED_TIMEOUT_MS);
+      }
+    },
+    [id, armedRestartId, onRestart]
+  );
   const dragListeners =
     (location === "grid" || location === "dock") && dragHandle?.listeners
       ? dragHandle.listeners
@@ -433,15 +490,27 @@ function PanelHeaderComponent({
             {headerActions}
             {!isBrowser && onRestart && (
               <button
-                onClick={(e) => {
-                  e.stopPropagation();
-                  onRestart();
-                }}
-                className="p-1.5 hover:bg-canopy-text/10 focus-visible:bg-canopy-text/10 focus-visible:outline focus-visible:outline-2 focus-visible:outline-canopy-accent focus-visible:outline-offset-2 text-canopy-text/60 hover:text-canopy-text transition-colors"
-                title="Restart Session"
-                aria-label="Restart Session"
+                type="button"
+                onClick={handleRestartClick}
+                className={cn(
+                  "p-1.5 focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 transition-colors",
+                  armedRestartId === id
+                    ? "bg-amber-500/20 text-amber-500 animate-pulse motion-reduce:animate-none ring-2 ring-amber-500/50 focus-visible:outline-amber-500"
+                    : "hover:bg-canopy-text/10 focus-visible:bg-canopy-text/10 focus-visible:outline-canopy-accent text-canopy-text/60 hover:text-canopy-text"
+                )}
+                title={armedRestartId === id ? "Click again to confirm restart" : "Restart Session"}
+                aria-label={armedRestartId === id ? "Armed — click again to confirm restart" : "Restart Session"}
+                aria-pressed={armedRestartId === id ? "true" : "false"}
               >
-                <RotateCcw className="w-3 h-3" aria-hidden="true" />
+                <RotateCcw
+                  className={cn("w-3 h-3", armedRestartId === id && "animate-spin-slow")}
+                  aria-hidden="true"
+                />
+                {armedRestartId === id && (
+                  <span className="sr-only" role="status" aria-live="polite">
+                    Restart armed. Click again to confirm.
+                  </span>
+                )}
               </button>
             )}
             {onMinimize && !isMaximized && (
