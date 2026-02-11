@@ -8,6 +8,8 @@ import type {
   DevPreviewSessionStatus,
 } from "../../shared/types/ipc/devPreview.js";
 import type { DevServerError } from "../../shared/utils/devServerErrors.js";
+import { PERF_MARKS } from "../../shared/perf/marks.js";
+import { markPerformance } from "../utils/performance.js";
 
 interface DevPreviewSession extends DevPreviewSessionState {
   cwd: string;
@@ -67,6 +69,7 @@ function getInvalidCommandMessage(command: string): string | null {
 
 export class DevPreviewSessionService {
   private readonly detector = new UrlDetector();
+  private readonly textDecoder = new TextDecoder();
   private readonly sessions = new Map<string, DevPreviewSession>();
   private readonly terminalToSession = new Map<string, string>();
   private readonly locks = new Map<string, Promise<void>>();
@@ -104,6 +107,11 @@ export class DevPreviewSessionService {
 
   async ensure(request: DevPreviewEnsureRequest): Promise<DevPreviewSessionState> {
     this.validateEnsureRequest(request);
+    markPerformance(PERF_MARKS.DEVPREVIEW_ENSURE_START, {
+      panelId: request.panelId,
+      projectId: request.projectId,
+      worktreeId: request.worktreeId ?? null,
+    });
     const key = createSessionKey(request.projectId, request.panelId);
     await this.runLocked(key, async () => {
       const session = this.getOrCreateSession(request.projectId, request.panelId);
@@ -144,36 +152,49 @@ export class DevPreviewSessionService {
 
   async restart(request: DevPreviewSessionRequest): Promise<DevPreviewSessionState> {
     this.validateSessionRequest(request);
-    const key = createSessionKey(request.projectId, request.panelId);
-    await this.runLocked(key, async () => {
-      const session = this.sessions.get(key);
-      if (!session) return;
-
-      const commandError = getInvalidCommandMessage(session.devCommand);
-      if (commandError) {
-        if (session.terminalId) {
-          await this.stopSessionTerminal(session, "invalid-command");
-        }
-        this.updateSession(session, {
-          status: "error",
-          error: { type: "unknown", message: commandError },
-          url: null,
-          terminalId: null,
-          isRestarting: false,
-        });
-        return;
-      }
-
-      this.updateSession(session, {
-        status: "starting",
-        url: null,
-        error: null,
-        isRestarting: true,
-      });
-
-      await this.stopSessionTerminal(session, "restart");
-      await this.spawnSessionTerminal(session);
+    const restartStartedAt = Date.now();
+    markPerformance(PERF_MARKS.DEVPREVIEW_RESTART_START, {
+      panelId: request.panelId,
+      projectId: request.projectId,
     });
+    const key = createSessionKey(request.projectId, request.panelId);
+    try {
+      await this.runLocked(key, async () => {
+        const session = this.sessions.get(key);
+        if (!session) return;
+
+        const commandError = getInvalidCommandMessage(session.devCommand);
+        if (commandError) {
+          if (session.terminalId) {
+            await this.stopSessionTerminal(session, "invalid-command");
+          }
+          this.updateSession(session, {
+            status: "error",
+            error: { type: "unknown", message: commandError },
+            url: null,
+            terminalId: null,
+            isRestarting: false,
+          });
+          return;
+        }
+
+        this.updateSession(session, {
+          status: "starting",
+          url: null,
+          error: null,
+          isRestarting: true,
+        });
+
+        await this.stopSessionTerminal(session, "restart");
+        await this.spawnSessionTerminal(session);
+      });
+    } finally {
+      markPerformance(PERF_MARKS.DEVPREVIEW_RESTART_END, {
+        panelId: request.panelId,
+        projectId: request.projectId,
+        durationMs: Date.now() - restartStartedAt,
+      });
+    }
     return this.getSessionState(request.projectId, request.panelId);
   }
 
@@ -438,6 +459,11 @@ export class DevPreviewSessionService {
         env: session.env,
         isEphemeral: true,
       });
+      markPerformance(PERF_MARKS.DEVPREVIEW_TERMINAL_SPAWNED, {
+        panelId: session.panelId,
+        projectId: session.projectId,
+        terminalId,
+      });
     } catch (error) {
       const message = error instanceof Error ? error.message : String(error);
       this.detachTerminal(session);
@@ -554,16 +580,28 @@ export class DevPreviewSessionService {
     const session = this.sessions.get(sessionKey);
     if (!session || session.terminalId !== id) return;
 
-    const dataString = typeof data === "string" ? data : new TextDecoder().decode(data);
+    const dataString = typeof data === "string" ? data : this.textDecoder.decode(data);
     const result = this.detector.scanOutput(dataString, session.buffer);
     session.buffer = result.buffer;
 
     if (result.url && result.url !== session.url) {
+      markPerformance(PERF_MARKS.DEVPREVIEW_URL_DETECTED, {
+        panelId: session.panelId,
+        projectId: session.projectId,
+        terminalId: id,
+        url: result.url,
+      });
       this.updateSession(session, {
         status: "running",
         url: result.url,
         error: null,
         isRestarting: false,
+      });
+      markPerformance(PERF_MARKS.DEVPREVIEW_RUNNING, {
+        panelId: session.panelId,
+        projectId: session.projectId,
+        terminalId: id,
+        url: result.url,
       });
     }
 

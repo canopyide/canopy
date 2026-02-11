@@ -11,6 +11,8 @@ import { CHANNELS } from "../ipc/channels.js";
 import { sendToRenderer } from "../ipc/utils.js";
 import { randomUUID } from "crypto";
 import { store } from "../store.js";
+import { PERF_MARKS } from "../../shared/perf/marks.js";
+import { markPerformance } from "../utils/performance.js";
 
 export interface ProjectSwitchDependencies {
   mainWindow: BrowserWindow;
@@ -37,6 +39,9 @@ export class ProjectSwitchService {
   }
 
   private async performSwitch(projectId: string): Promise<Project> {
+    const startedAt = Date.now();
+    markPerformance(PERF_MARKS.PROJECT_SWITCH_START, { projectId });
+
     const project = projectStore.getProjectById(projectId);
     if (!project) {
       throw new Error(`Project not found: ${projectId}`);
@@ -86,6 +91,11 @@ export class ProjectSwitchService {
         console.error("[ProjectSwitch] Rollback failed:", rollbackError);
       }
       throw error;
+    } finally {
+      markPerformance(PERF_MARKS.PROJECT_SWITCH_END, {
+        projectId,
+        durationMs: Date.now() - startedAt,
+      });
     }
   }
 

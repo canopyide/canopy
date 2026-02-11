@@ -4,6 +4,8 @@ import type {
   WorkerInboundMessage,
   WorkerOutboundMessage,
 } from "@shared/types/terminal-output-worker-messages";
+import { PERF_MARKS } from "@shared/perf/marks";
+import { markRendererPerformance } from "@/utils/performance";
 
 export class TerminalOutputIngestService {
   private worker: Worker | null = null;
@@ -11,6 +13,7 @@ export class TerminalOutputIngestService {
   private pollingActive = false;
   private initializePromise: Promise<void> | null = null;
   private ipcCoalescer: TerminalOutputCoalescer;
+  private perfSampleCounter = 0;
 
   constructor(private readonly writeToTerminal: (id: string, data: string | Uint8Array) => void) {
     this.ipcCoalescer = new TerminalOutputCoalescer(
@@ -41,6 +44,7 @@ export class TerminalOutputIngestService {
           const message = event.data;
           if (message.type === "OUTPUT_BATCH") {
             for (const batch of message.batches) {
+              this.markTerminalDataReceived(batch.id, batch.data);
               this.writeToTerminal(batch.id, batch.data);
             }
           }
@@ -96,6 +100,7 @@ export class TerminalOutputIngestService {
 
   public bufferData(id: string, data: string | Uint8Array): void {
     if (this.pollingActive) return;
+    this.markTerminalDataReceived(id, data);
     this.ipcCoalescer.bufferData(id, data);
   }
 
@@ -149,5 +154,15 @@ export class TerminalOutputIngestService {
       this.worker = null;
       this.initializePromise = null;
     }, 50);
+  }
+
+  private markTerminalDataReceived(id: string, data: string | Uint8Array): void {
+    this.perfSampleCounter += 1;
+    if (this.perfSampleCounter % 64 !== 0) return;
+
+    markRendererPerformance(PERF_MARKS.TERMINAL_DATA_RECEIVED, {
+      terminalId: id,
+      bytes: typeof data === "string" ? data.length : data.byteLength,
+    });
   }
 }

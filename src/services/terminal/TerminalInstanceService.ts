@@ -18,12 +18,16 @@ import { TerminalResizeController } from "./TerminalResizeController";
 import { TerminalRendererPolicy } from "./TerminalRendererPolicy";
 import { TerminalWakeManager } from "./TerminalWakeManager";
 import { logDebug, logWarn, logError } from "@/utils/logger";
+import { PERF_MARKS } from "@shared/perf/marks";
+import { markRendererPerformance } from "@/utils/performance";
 
 class TerminalInstanceService {
   private instances = new Map<string, ManagedTerminal>();
   private dataBuffer = new TerminalOutputIngestService((id, data) =>
     this.writeToTerminal(id, data)
   );
+  private readonly textEncoder = new TextEncoder();
+  private perfWriteSampleCounter = 0;
   private suppressedExitUntil = new Map<string, number>();
   private unseenTracker = new TerminalUnseenOutputTracker();
   private cwdProviders = new Map<string, () => string>();
@@ -144,7 +148,16 @@ class TerminalInstanceService {
     const shouldAck = !this.dataBuffer.isPolling();
 
     const dataBytes =
-      typeof data === "string" ? new TextEncoder().encode(data).length : data.byteLength;
+      typeof data === "string" ? this.textEncoder.encode(data).length : data.byteLength;
+    this.perfWriteSampleCounter += 1;
+    const shouldSample = this.perfWriteSampleCounter % 64 === 0;
+
+    if (shouldSample) {
+      markRendererPerformance(PERF_MARKS.TERMINAL_DATA_PARSED, {
+        terminalId: id,
+        bytes: dataBytes,
+      });
+    }
 
     const terminal = managed.terminal;
     managed.pendingWrites = (managed.pendingWrites ?? 0) + 1;
@@ -155,6 +168,13 @@ class TerminalInstanceService {
 
       if (shouldAck) {
         terminalClient.acknowledgeData(id, dataBytes);
+      }
+
+      if (shouldSample) {
+        markRendererPerformance(PERF_MARKS.TERMINAL_DATA_RENDERED, {
+          terminalId: id,
+          bytes: dataBytes,
+        });
       }
     });
   }

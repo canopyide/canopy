@@ -15,7 +15,9 @@ import { randomBytes } from "crypto";
 import fixPath from "fix-path";
 import { isTrustedRendererUrl } from "../shared/utils/trustedRenderer.js";
 import { isLocalhostUrl } from "../shared/utils/urlUtils.js";
+import { PERF_MARKS } from "../shared/perf/marks.js";
 import type { IpcMainInvokeEvent } from "electron";
+import { markPerformance, startEventLoopLagMonitor } from "./utils/performance.js";
 
 fixPath();
 
@@ -27,7 +29,7 @@ function enforceIpcSenderValidation() {
 
   ipcMain.handle = function (
     channel: string,
-    listener: (event: IpcMainInvokeEvent, ...args: any[]) => Promise<any> | any
+    listener: (event: IpcMainInvokeEvent, ...args: unknown[]) => Promise<unknown> | unknown
   ) {
     return originalHandle(channel, async (event, ...args) => {
       const senderUrl = event.senderFrame?.url;
@@ -43,7 +45,7 @@ function enforceIpcSenderValidation() {
   if (originalHandleOnce) {
     ipcMain.handleOnce = function (
       channel: string,
-      listener: (event: IpcMainInvokeEvent, ...args: any[]) => Promise<any> | any
+      listener: (event: IpcMainInvokeEvent, ...args: unknown[]) => Promise<unknown> | unknown
     ) {
       return originalHandleOnce(channel, async (event, ...args) => {
         const senderUrl = event.senderFrame?.url;
@@ -62,6 +64,7 @@ function enforceIpcSenderValidation() {
 
 // CRITICAL: Run this before any IPC handlers are registered
 enforceIpcSenderValidation();
+markPerformance(PERF_MARKS.APP_BOOT_START);
 
 protocol.registerSchemesAsPrivileged([
   {
@@ -155,6 +158,7 @@ let cleanupIpcHandlers: (() => void) | null = null;
 let cleanupErrorHandlers: (() => void) | null = null;
 let eventBuffer: EventBuffer | null = null;
 let eventBufferUnsubscribe: (() => void) | null = null;
+let stopEventLoopLagMonitor: (() => void) | null = null;
 
 const DEFAULT_TERMINAL_ID = "default";
 
@@ -234,6 +238,10 @@ if (!gotTheLock) {
         if (cleanupErrorHandlers) {
           cleanupErrorHandlers();
           cleanupErrorHandlers = null;
+        }
+        if (stopEventLoopLagMonitor) {
+          stopEventLoopLagMonitor();
+          stopEventLoopLagMonitor = null;
         }
         console.log("[MAIN] Graceful shutdown complete");
         app.exit(0);
@@ -407,6 +415,7 @@ async function createWindow(): Promise<void> {
     trafficLightPosition: { x: 12, y: 18 },
     backgroundColor: "#18181b",
   });
+  markPerformance(PERF_MARKS.MAIN_WINDOW_CREATED);
 
   console.log("[MAIN] Window created, loading content immediately (Paint First)...");
 
@@ -662,6 +671,7 @@ async function createWindow(): Promise<void> {
   // Handle reloads
   mainWindow.webContents.on("did-finish-load", () => {
     console.log("[MAIN] Renderer loaded, ensuring MessagePort connection...");
+    markPerformance(PERF_MARKS.RENDERER_READY);
     createAndDistributePorts();
   });
 
@@ -865,12 +875,20 @@ async function createWindow(): Promise<void> {
     console.error("[MAIN] Deferred services initialization failed:", error);
   });
 
+  if (process.env.CANOPY_PERF_CAPTURE === "1" && !stopEventLoopLagMonitor) {
+    stopEventLoopLagMonitor = startEventLoopLagMonitor();
+  }
+
   // Cleanup handler
   mainWindow.on("closed", async () => {
     if (eventBufferUnsubscribe) eventBufferUnsubscribe();
     if (eventBuffer) eventBuffer.stop();
     if (cleanupIpcHandlers) cleanupIpcHandlers();
     if (cleanupErrorHandlers) cleanupErrorHandlers();
+    if (stopEventLoopLagMonitor) {
+      stopEventLoopLagMonitor();
+      stopEventLoopLagMonitor = null;
+    }
 
     // Clean up window-specific IPC handlers
     ipcMain.removeHandler(CHANNELS.WINDOW_TOGGLE_FULLSCREEN);
