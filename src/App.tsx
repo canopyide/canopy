@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useMemo, useState } from "react";
+import { Profiler, useCallback, useEffect, useMemo, useState } from "react";
 import "@xterm/xterm/css/xterm.css";
 import { FolderOpen, FilterX, Maximize2 } from "lucide-react";
 import {
@@ -90,6 +90,9 @@ import {
   type FilterState,
 } from "./lib/worktreeFilters";
 import type { WorktreeState, PanelKind } from "./types";
+import { startRendererMemoryMonitor } from "./utils/performance";
+import { startLongTaskMonitor } from "./utils/longTaskMonitor";
+import { useRenderProfiler } from "./utils/renderProfiler";
 
 interface SidebarContentProps {
   onOpenOverview: () => void;
@@ -542,6 +545,17 @@ function App() {
   const [isShortcutsOpen, setIsShortcutsOpen] = useState(false);
   const [isNotesPaletteOpen, setIsNotesPaletteOpen] = useState(false);
   const [isWorktreeOverviewOpen, setIsWorktreeOverviewOpen] = useState(false);
+  const onLayoutRender = useRenderProfiler("app-layout", { sampleRate: 0.15 });
+  const onContentGridRender = useRenderProfiler("content-grid", { sampleRate: 0.15 });
+
+  useEffect(() => {
+    const stopMonitor = startRendererMemoryMonitor();
+    const stopLongTaskMonitor = startLongTaskMonitor();
+    return () => {
+      stopMonitor();
+      stopLongTaskMonitor();
+    };
+  }, []);
 
   // Hydration callbacks for state restoration
   const hydrationCallbacks: HydrationCallbacks = useMemo(
@@ -744,29 +758,33 @@ function App() {
   return (
     <ErrorBoundary variant="fullscreen" componentName="App">
       <DndProvider>
-        <AppLayout
-          sidebarContent={
-            <SidebarContent
-              key={currentProject?.id ?? "no-project"}
-              onOpenOverview={openWorktreeOverview}
-            />
-          }
-          onLaunchAgent={handleLaunchAgent}
-          onSettings={handleSettings}
-          onOpenAgentSettings={handleOpenAgentSettings}
-          onRetry={handleErrorRetry}
-          agentAvailability={availability}
-          agentSettings={agentSettings}
-          isHydrated={isStateLoaded}
-          projectSwitcherPalette={projectSwitcherPalette}
-        >
-          <ContentGrid
-            key={currentProject?.id ?? "no-project"}
-            className="h-full w-full"
+        <Profiler id="app-layout" onRender={onLayoutRender}>
+          <AppLayout
+            sidebarContent={
+              <SidebarContent
+                key={currentProject?.id ?? "no-project"}
+                onOpenOverview={openWorktreeOverview}
+              />
+            }
+            onLaunchAgent={handleLaunchAgent}
+            onSettings={handleSettings}
+            onOpenAgentSettings={handleOpenAgentSettings}
+            onRetry={handleErrorRetry}
             agentAvailability={availability}
-            defaultCwd={defaultTerminalCwd}
-          />
-        </AppLayout>
+            agentSettings={agentSettings}
+            isHydrated={isStateLoaded}
+            projectSwitcherPalette={projectSwitcherPalette}
+          >
+            <Profiler id="content-grid" onRender={onContentGridRender}>
+              <ContentGrid
+                key={currentProject?.id ?? "no-project"}
+                className="h-full w-full"
+                agentAvailability={availability}
+                defaultCwd={defaultTerminalCwd}
+              />
+            </Profiler>
+          </AppLayout>
+        </Profiler>
       </DndProvider>
 
       <TerminalPalette

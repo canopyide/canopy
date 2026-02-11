@@ -46,12 +46,58 @@ let pendingPersistActiveWorktreeId: string | null | undefined;
 let persistRequestVersion = 0;
 
 function loadClientsModule(): Promise<ClientsModule> {
-  clientsModulePromise ??= import("@/clients");
+  if (!clientsModulePromise) {
+    const startedAt = typeof performance !== "undefined" ? performance.now() : Date.now();
+    markRendererPerformance("dynamic_import_start", { module: "@/clients" });
+    clientsModulePromise = import("@/clients")
+      .then((module) => {
+        const now = typeof performance !== "undefined" ? performance.now() : Date.now();
+        markRendererPerformance("dynamic_import_end", {
+          module: "@/clients",
+          durationMs: Number((now - startedAt).toFixed(3)),
+          ok: true,
+        });
+        return module;
+      })
+      .catch((error) => {
+        const now = typeof performance !== "undefined" ? performance.now() : Date.now();
+        markRendererPerformance("dynamic_import_end", {
+          module: "@/clients",
+          durationMs: Number((now - startedAt).toFixed(3)),
+          ok: false,
+          error: error instanceof Error ? error.message : String(error),
+        });
+        throw error;
+      });
+  }
   return clientsModulePromise;
 }
 
 function loadTerminalStoreModule(): Promise<TerminalStoreModule> {
-  terminalStoreModulePromise ??= import("@/store/terminalStore");
+  if (!terminalStoreModulePromise) {
+    const startedAt = typeof performance !== "undefined" ? performance.now() : Date.now();
+    markRendererPerformance("dynamic_import_start", { module: "@/store/terminalStore" });
+    terminalStoreModulePromise = import("@/store/terminalStore")
+      .then((module) => {
+        const now = typeof performance !== "undefined" ? performance.now() : Date.now();
+        markRendererPerformance("dynamic_import_end", {
+          module: "@/store/terminalStore",
+          durationMs: Number((now - startedAt).toFixed(3)),
+          ok: true,
+        });
+        return module;
+      })
+      .catch((error) => {
+        const now = typeof performance !== "undefined" ? performance.now() : Date.now();
+        markRendererPerformance("dynamic_import_end", {
+          module: "@/store/terminalStore",
+          durationMs: Number((now - startedAt).toFixed(3)),
+          ok: false,
+          error: error instanceof Error ? error.message : String(error),
+        });
+        throw error;
+      });
+  }
   return terminalStoreModulePromise;
 }
 
