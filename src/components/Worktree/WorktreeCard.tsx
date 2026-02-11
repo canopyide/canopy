@@ -103,7 +103,9 @@ export function WorktreeCard({
   const failedCount = terminalCounts.byState.failed;
   const totalTerminalCount = terminalCounts.total;
   const allTerminalCount = getCountByWorktree(worktree.id);
-  const gridCount = worktreeTerminals.filter((t) => t.location === "grid" || t.location === undefined).length;
+  const gridCount = worktreeTerminals.filter(
+    (t) => t.location === "grid" || t.location === undefined
+  ).length;
   const dockCount = worktreeTerminals.filter((t) => t.location === "dock").length;
 
   const worktreeErrors = useErrorStore(
