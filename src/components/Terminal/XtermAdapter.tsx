@@ -10,6 +10,8 @@ import { getScrollbackForType, PERFORMANCE_MODE_SCROLLBACK } from "@/utils/scrol
 import { DEFAULT_TERMINAL_FONT_FAMILY } from "@/config/terminalFont";
 import { CANOPY_TERMINAL_THEME, getTerminalThemeFromCSS } from "@/utils/terminalTheme";
 import { getSoftNewlineSequence } from "../../../shared/utils/terminalInputProtocol.js";
+import { keybindingService } from "@/services/KeybindingService";
+import { actionService } from "@/services/ActionService";
 
 export interface XtermAdapterProps {
   terminalId: string;
@@ -202,8 +204,62 @@ function XtermAdapterComponent({
 
     if (!managed.keyHandlerInstalled) {
       managed.terminal.attachCustomKeyEventHandler((event: KeyboardEvent) => {
+        // Only process keydown events to avoid double-firing
+        if (event.type !== "keydown") {
+          return true;
+        }
+
+        // Skip repeat events
+        if (event.repeat) {
+          return true;
+        }
+
+        // Get normalized key for modifier-only detection
+        const normalizedKey = keybindingService.normalizeKeyForBinding(event);
+        const isModifierOnly = ["Meta", "Control", "Alt", "Shift"].includes(normalizedKey);
+
+        // Don't process modifier-only keypresses
+        if (isModifierOnly) {
+          return true;
+        }
+
         // TUI reliability: keep common readline-style Ctrl+key bindings in the terminal
         const TUI_KEYBINDS = ["p", "n", "r", "f", "b", "a", "e", "k", "u", "w", "h", "d"];
+
+        // Allow critical Ctrl+<key> bindings to reach the TUI before checking global shortcuts
+        if (event.ctrlKey && !event.shiftKey && TUI_KEYBINDS.includes(event.key)) {
+          return true;
+        }
+
+        // Intercept global keybindings before terminal processing
+        // Check when: (1) modifier is pressed, OR (2) chord is pending
+        const hasModifier = event.metaKey || event.ctrlKey;
+        const pendingChord = keybindingService.getPendingChord();
+        if (hasModifier || pendingChord) {
+          const result = keybindingService.resolveKeybinding(event);
+          if (result.shouldConsume) {
+            event.preventDefault();
+            event.stopPropagation();
+
+            if (result.match) {
+              // Dispatch the matched action
+              void actionService
+                .dispatch(result.match.actionId as Parameters<typeof actionService.dispatch>[0], undefined, {
+                  source: "keybinding",
+                })
+                .then((dispatchResult) => {
+                  if (!dispatchResult.ok) {
+                    console.error(`[XtermKeybinding] Action "${result.match!.actionId}" failed:`, dispatchResult.error);
+                  }
+                })
+                .catch((error) => {
+                  console.error(`[XtermKeybinding] Unexpected error:`, error);
+                });
+            }
+            // Chord prefix consumed to prevent terminal leakage
+            return false;
+          }
+        }
 
         // Let the OS handle meta combinations (e.g., Cmd+C/V).
         // Keep Alt/Option available for word navigation/editing inside the TUI.

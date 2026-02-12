@@ -35,33 +35,39 @@ export function useGlobalKeybindings(enabled: boolean = true): void {
       if (isModifierOnly) return;
 
       // For editable contexts without modifiers, let native behavior happen
+      // Exception: allow chord completion even without modifiers
       const hasModifier = e.metaKey || e.ctrlKey;
-      if (isEditable && !hasModifier) {
+      const pendingChord = keybindingService.getPendingChord();
+
+      if (isEditable && !hasModifier && !pendingChord) {
         return;
       }
 
-      // Let xterm handle its own keys except for global shortcuts with modifiers
-      if (isInTerminal && !hasModifier) {
+      // Let xterm handle its own keys except for global shortcuts with modifiers or chord completion
+      if (isInTerminal && !hasModifier && !pendingChord) {
         return;
       }
 
-      // Use findMatchingAction for proper chord and priority resolution
-      const match = keybindingService.findMatchingAction(e);
+      // Use resolveKeybinding for proper chord and priority resolution
+      const result = keybindingService.resolveKeybinding(e);
 
-      if (match) {
+      if (result.shouldConsume) {
         e.preventDefault();
         e.stopPropagation();
 
-        // Dispatch through ActionService
-        void actionService
-          .dispatch(match.actionId as Parameters<typeof actionService.dispatch>[0], undefined, {
-            source: "keybinding",
-          })
-          .then((result) => {
-            if (!result.ok) {
-              console.error(`[GlobalKeybinding] Action "${match.actionId}" failed:`, result.error);
-            }
-          });
+        if (result.match) {
+          // Dispatch through ActionService
+          void actionService
+            .dispatch(result.match.actionId as Parameters<typeof actionService.dispatch>[0], undefined, {
+              source: "keybinding",
+            })
+            .then((dispatchResult) => {
+              if (!dispatchResult.ok) {
+                console.error(`[GlobalKeybinding] Action "${result.match!.actionId}" failed:`, dispatchResult.error);
+              }
+            });
+        }
+        // If chordPrefix but no match, event is consumed to prevent terminal leakage
       }
     };
 
