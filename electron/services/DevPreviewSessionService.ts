@@ -1,3 +1,5 @@
+import http from "node:http";
+import https from "node:https";
 import type { PtyClient } from "./PtyClient.js";
 import { UrlDetector } from "./UrlDetector.js";
 import type {
@@ -17,6 +19,8 @@ interface DevPreviewSession extends DevPreviewSessionState {
   env?: Record<string, string>;
   buffer: string;
   lastErrorKey: string | null;
+  pendingUrl: string | null;
+  readinessAbort: AbortController | null;
 }
 
 const RUNNING_STATES: ReadonlySet<DevPreviewSessionStatus> = new Set([
@@ -28,6 +32,9 @@ const RUNNING_STATES: ReadonlySet<DevPreviewSessionStatus> = new Set([
 const DEFAULT_TIMEOUT_MS = 8000;
 const STALE_START_RECOVERY_MS = 10000;
 const REPLAY_HISTORY_MAX_LINES = 300;
+const READINESS_TIMEOUT_MS = 30000;
+const READINESS_POLL_INTERVAL_MS = 500;
+const READINESS_REQUEST_TIMEOUT_MS = 5000;
 
 function createSessionKey(projectId: string, panelId: string): string {
   return `${projectId}\u0000${panelId}`;
@@ -91,6 +98,9 @@ export class DevPreviewSessionService {
   dispose(): void {
     this.ptyClient.off("data", this.onDataListener);
     this.ptyClient.off("exit", this.onExitListener);
+    for (const session of this.sessions.values()) {
+      session.readinessAbort?.abort();
+    }
     for (const terminalId of this.terminalToSession.keys()) {
       this.ptyClient.setIpcDataMirror(terminalId, false);
       try {
@@ -346,6 +356,8 @@ export class DevPreviewSessionService {
       env: undefined,
       buffer: "",
       lastErrorKey: null,
+      pendingUrl: null,
+      readinessAbort: null,
     };
     this.sessions.set(key, session);
     return session;
@@ -437,6 +449,7 @@ export class DevPreviewSessionService {
         if (
           session.status === "starting" &&
           !session.url &&
+          !session.pendingUrl &&
           Date.now() - session.updatedAt >= STALE_START_RECOVERY_MS
         ) {
           await this.stopSessionTerminal(session, "stale-start-recovery");
@@ -445,6 +458,9 @@ export class DevPreviewSessionService {
         return;
       }
       this.detachTerminal(session);
+      session.readinessAbort?.abort();
+      session.readinessAbort = null;
+      session.pendingUrl = null;
       this.updateSession(session, { terminalId: null, url: null });
     }
 
@@ -544,6 +560,10 @@ export class DevPreviewSessionService {
   }
 
   private async stopSessionTerminal(session: DevPreviewSession, context: string): Promise<void> {
+    session.readinessAbort?.abort();
+    session.readinessAbort = null;
+    session.pendingUrl = null;
+
     const terminalId = session.terminalId;
     if (!terminalId) return;
 
@@ -611,25 +631,20 @@ export class DevPreviewSessionService {
     const result = this.detector.scanOutput(dataString, session.buffer);
     session.buffer = result.buffer;
 
-    if (result.url && result.url !== session.url) {
+    if (result.url && result.url !== session.url && result.url !== session.pendingUrl) {
       markPerformance(PERF_MARKS.DEVPREVIEW_URL_DETECTED, {
         panelId: session.panelId,
         projectId: session.projectId,
         terminalId: id,
         url: result.url,
       });
-      this.updateSession(session, {
-        status: "running",
-        url: result.url,
-        error: null,
-        isRestarting: false,
-      });
-      markPerformance(PERF_MARKS.DEVPREVIEW_RUNNING, {
-        panelId: session.panelId,
-        projectId: session.projectId,
-        terminalId: id,
-        url: result.url,
-      });
+
+      session.readinessAbort?.abort();
+      const abort = new AbortController();
+      session.readinessAbort = abort;
+      session.pendingUrl = result.url;
+
+      this.pollServerReadiness(session, result.url, abort.signal, session.generation);
     }
 
     if (!result.error) return;
@@ -652,6 +667,10 @@ export class DevPreviewSessionService {
     if (!sessionKey) return;
     const session = this.sessions.get(sessionKey);
     if (!session || session.terminalId !== id) return;
+
+    session.readinessAbort?.abort();
+    session.readinessAbort = null;
+    session.pendingUrl = null;
 
     this.detachTerminal(session);
     session.buffer = "";
@@ -679,5 +698,164 @@ export class DevPreviewSessionService {
       terminalId: null,
       isRestarting: false,
     });
+  }
+
+  private pollServerReadiness(
+    session: DevPreviewSession,
+    url: string,
+    signal: AbortSignal,
+    generation: number
+  ): void {
+    void this.waitForServerReady(url, signal)
+      .then((ready) => {
+        if (signal.aborted || session.generation !== generation) return;
+        if (session.readinessAbort?.signal !== signal) return;
+
+        session.pendingUrl = null;
+        session.readinessAbort = null;
+
+        if (ready) {
+          this.updateSession(session, {
+            status: "running",
+            url,
+            error: null,
+            isRestarting: false,
+          });
+          markPerformance(PERF_MARKS.DEVPREVIEW_RUNNING, {
+            panelId: session.panelId,
+            projectId: session.projectId,
+            terminalId: session.terminalId,
+            url,
+          });
+        } else {
+          this.updateSession(session, {
+            status: "error",
+            url: null,
+            error: {
+              type: "unknown",
+              message: `Dev server at ${url} did not respond within ${READINESS_TIMEOUT_MS / 1000} seconds`,
+            },
+            isRestarting: false,
+          });
+        }
+      })
+      .catch((err) => {
+        if (signal.aborted || session.generation !== generation) return;
+        if (session.readinessAbort?.signal !== signal) return;
+
+        session.pendingUrl = null;
+        session.readinessAbort = null;
+
+        const message = err instanceof Error ? err.message : String(err);
+        console.warn("[DevPreviewSessionService] Readiness poll error:", {
+          url,
+          panelId: session.panelId,
+          error: message,
+        });
+        this.updateSession(session, {
+          status: "error",
+          url: null,
+          error: {
+            type: "unknown",
+            message: `Dev server readiness check failed: ${message}`,
+          },
+          isRestarting: false,
+        });
+      });
+  }
+
+  private async waitForServerReady(
+    url: string,
+    signal: AbortSignal,
+    timeoutMs = READINESS_TIMEOUT_MS
+  ): Promise<boolean> {
+    const deadline = Date.now() + timeoutMs;
+    let useHttps: boolean;
+    try {
+      useHttps = new URL(url).protocol === "https:";
+    } catch {
+      return false;
+    }
+    const requestModule = useHttps ? https : http;
+
+    while (Date.now() < deadline) {
+      if (signal.aborted) return false;
+
+      const ready = await new Promise<boolean>((resolve) => {
+        let settled = false;
+        const onAbort = () => {
+          req?.destroy();
+          settle(false);
+        };
+        const settle = (value: boolean) => {
+          if (settled) return;
+          settled = true;
+          signal.removeEventListener("abort", onAbort);
+          resolve(value);
+        };
+
+        let req: ReturnType<typeof requestModule.request> | undefined;
+        try {
+          req = requestModule.request(
+            url,
+            {
+              method: "HEAD",
+              timeout: READINESS_REQUEST_TIMEOUT_MS,
+              ...(useHttps ? { rejectUnauthorized: false } : {}),
+            },
+            (res) => {
+              res.resume();
+              const status = res.statusCode ?? 0;
+              // Any HTTP response means the server is listening and can process requests.
+              // We only keep polling on transport-level failures (connection refused, timeout, etc.).
+              if (status >= 100 && status < 600) {
+                settle(true);
+              } else {
+                settle(false);
+              }
+            }
+          );
+          req.on("error", () => settle(false));
+          req.on("timeout", () => {
+            req!.destroy();
+            settle(false);
+          });
+          if (signal.aborted) {
+            req.destroy();
+            settle(false);
+          } else {
+            signal.addEventListener("abort", onAbort, { once: true });
+            req.end();
+          }
+        } catch {
+          settle(false);
+        }
+      });
+
+      if (ready) return true;
+      if (signal.aborted) return false;
+
+      try {
+        await new Promise<void>((resolve, reject) => {
+          if (signal.aborted) {
+            reject(signal.reason);
+            return;
+          }
+          const onAbort = () => {
+            clearTimeout(timer);
+            reject(signal.reason);
+          };
+          const timer = setTimeout(() => {
+            signal.removeEventListener("abort", onAbort);
+            resolve();
+          }, READINESS_POLL_INTERVAL_MS);
+          signal.addEventListener("abort", onAbort, { once: true });
+        });
+      } catch {
+        return false;
+      }
+    }
+
+    return false;
   }
 }

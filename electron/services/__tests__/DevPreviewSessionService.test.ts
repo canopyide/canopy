@@ -1,10 +1,58 @@
+import http from "node:http";
+import https from "node:https";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { DevPreviewSessionService } from "../DevPreviewSessionService.js";
 import type { PtyClient } from "../PtyClient.js";
 import type { DevPreviewSessionState } from "../../../shared/types/ipc/devPreview.js";
 
+vi.mock("node:http", () => ({ default: { request: vi.fn() }, request: vi.fn() }));
+vi.mock("node:https", () => ({ default: { request: vi.fn() }, request: vi.fn() }));
+
 type DataListener = (id: string, data: string | Uint8Array) => void;
 type ExitListener = (id: string, exitCode: number) => void;
+type MockIncomingMessage = {
+  statusCode?: number;
+  resume: () => void;
+};
+type MockRequest = {
+  on: (event: "error" | "timeout", handler: (...args: unknown[]) => void) => MockRequest;
+  end: () => void;
+  destroy: () => void;
+};
+
+function mockHttpResponse(statusCode: number) {
+  const impl = ((_: unknown, __: unknown, cb: (res: MockIncomingMessage) => void) => {
+    const req: MockRequest = {
+      on: () => {
+        return req;
+      },
+      end: () => cb({ statusCode, resume: () => {} }),
+      destroy: () => {},
+    };
+    return req;
+  }) as unknown as typeof http.request;
+  vi.mocked(http.request).mockImplementation(impl);
+  vi.mocked(https.request).mockImplementation(impl);
+}
+
+function mockHttpError() {
+  const impl = ((_: unknown, __: unknown, ___: unknown) => {
+    let errorHandler: ((error: Error) => void) | undefined;
+    const req: MockRequest = {
+      on: (event, handler) => {
+        if (event === "error") errorHandler = handler as (error: Error) => void;
+        return req;
+      },
+      end: () => {
+        errorHandler?.(new Error("ECONNREFUSED"));
+      },
+      destroy: () => {},
+    };
+    return req;
+  }) as unknown as typeof http.request;
+  vi.mocked(http.request).mockImplementation(impl);
+  vi.mocked(https.request).mockImplementation(impl);
+}
 
 function createPtyClientMock(options?: { spawnError?: Error }) {
   const dataListeners = new Set<DataListener>();
@@ -88,11 +136,13 @@ describe("DevPreviewSessionService", () => {
     onStateChanged = vi.fn();
     ptyClient = createPtyClientMock();
     service = new DevPreviewSessionService(ptyClient as unknown as PtyClient, onStateChanged);
+    mockHttpResponse(200);
   });
 
   afterEach(() => {
     service.dispose();
     vi.restoreAllMocks();
+    vi.useRealTimers();
   });
 
   it("returns an error state when spawn fails instead of throwing", async () => {
@@ -128,10 +178,17 @@ describe("DevPreviewSessionService", () => {
       return 1;
     });
 
-    const second = await service.ensure(baseRequest);
-    expect(second.status).toBe("running");
-    expect(second.url).toMatch(/^http:\/\/localhost:4173\/?$/);
-    expect(second.terminalId).toBe(first.terminalId);
+    await service.ensure(baseRequest);
+
+    await vi.waitFor(() => {
+      const state = service.getState({
+        panelId: baseRequest.panelId,
+        projectId: baseRequest.projectId,
+      });
+      expect(state.status).toBe("running");
+      expect(state.url).toMatch(/^http:\/\/localhost:4173\/?$/);
+    });
+
     expect(ptyClient.spawn).toHaveBeenCalledTimes(1);
   });
 
@@ -243,20 +300,226 @@ describe("DevPreviewSessionService", () => {
     expect(afterExit.terminalId).toBeNull();
   });
 
-  it("detects URLs from Uint8Array data payloads", async () => {
+  it("detects URLs and transitions to running after readiness poll succeeds", async () => {
     const started = await service.ensure(baseRequest);
     expect(started.terminalId).toBeTruthy();
 
     const encoder = new TextEncoder();
     ptyClient.emitData(started.terminalId!, encoder.encode("ready at http://localhost:4173\n"));
 
-    const updated = service.getState({
+    await vi.waitFor(() => {
+      const updated = service.getState({
+        panelId: baseRequest.panelId,
+        projectId: baseRequest.projectId,
+      });
+      expect(updated.status).toBe("running");
+      expect(updated.url).toMatch(/^http:\/\/localhost:4173\/?$/);
+    });
+  });
+
+  it("treats HTTP 5xx responses as ready once the server is reachable", async () => {
+    mockHttpResponse(500);
+
+    const started = await service.ensure(baseRequest);
+    expect(started.terminalId).toBeTruthy();
+
+    ptyClient.emitData(started.terminalId!, "ready at http://localhost:4173\n");
+
+    await vi.waitFor(() => {
+      const updated = service.getState({
+        panelId: baseRequest.panelId,
+        projectId: baseRequest.projectId,
+      });
+      expect(updated.status).toBe("running");
+      expect(updated.url).toMatch(/^http:\/\/localhost:4173\/?$/);
+    });
+  });
+
+  it("stays in starting status while readiness poll is in progress", async () => {
+    mockHttpError();
+
+    const started = await service.ensure(baseRequest);
+    expect(started.terminalId).toBeTruthy();
+
+    ptyClient.emitData(started.terminalId!, "ready at http://localhost:4173\n");
+
+    const during = service.getState({
+      panelId: baseRequest.panelId,
+      projectId: baseRequest.projectId,
+    });
+    expect(during.status).toBe("starting");
+    expect(during.url).toBeNull();
+  });
+
+  it("transitions to error when server never becomes ready", async () => {
+    vi.useFakeTimers();
+    mockHttpError();
+
+    const started = await service.ensure(baseRequest);
+    expect(started.terminalId).toBeTruthy();
+
+    ptyClient.emitData(started.terminalId!, "ready at http://localhost:4173\n");
+
+    const during = service.getState({
+      panelId: baseRequest.panelId,
+      projectId: baseRequest.projectId,
+    });
+    expect(during.status).toBe("starting");
+
+    await vi.advanceTimersByTimeAsync(31_000);
+
+    const after = service.getState({
+      panelId: baseRequest.panelId,
+      projectId: baseRequest.projectId,
+    });
+    expect(after.status).toBe("error");
+    expect(after.error?.message).toContain("did not respond within 30 seconds");
+  });
+
+  it("cancels readiness poll when session is stopped", async () => {
+    vi.useFakeTimers();
+    mockHttpError();
+
+    const started = await service.ensure(baseRequest);
+    expect(started.terminalId).toBeTruthy();
+
+    ptyClient.emitData(started.terminalId!, "ready at http://localhost:4173\n");
+
+    await service.stop({
       panelId: baseRequest.panelId,
       projectId: baseRequest.projectId,
     });
 
-    expect(updated.status).toBe("running");
-    expect(updated.url).toMatch(/^http:\/\/localhost:4173\/?$/);
+    const after = service.getState({
+      panelId: baseRequest.panelId,
+      projectId: baseRequest.projectId,
+    });
+    expect(after.status).toBe("stopped");
+    expect(after.url).toBeNull();
+
+    await vi.advanceTimersByTimeAsync(31_000);
+
+    const afterTimeout = service.getState({
+      panelId: baseRequest.panelId,
+      projectId: baseRequest.projectId,
+    });
+    expect(afterTimeout.status).toBe("stopped");
+    expect(afterTimeout.error).toBeNull();
+  });
+
+  it("cancels readiness poll when terminal exits during polling", async () => {
+    vi.useFakeTimers();
+    mockHttpError();
+
+    const started = await service.ensure(baseRequest);
+    expect(started.terminalId).toBeTruthy();
+
+    ptyClient.emitData(started.terminalId!, "ready at http://localhost:4173\n");
+
+    ptyClient.emitExit(started.terminalId!, 1);
+
+    const after = service.getState({
+      panelId: baseRequest.panelId,
+      projectId: baseRequest.projectId,
+    });
+    expect(after.status).toBe("error");
+    expect(after.error?.message).toContain("Dev server exited with code 1");
+
+    await vi.advanceTimersByTimeAsync(31_000);
+
+    const afterTimeout = service.getState({
+      panelId: baseRequest.panelId,
+      projectId: baseRequest.projectId,
+    });
+    expect(afterTimeout.status).toBe("error");
+    expect(afterTimeout.error?.message).toContain("Dev server exited with code 1");
+  });
+
+  it("cancels the previous readiness poll when restart spawns a new generation", async () => {
+    vi.useFakeTimers();
+    mockHttpError();
+
+    const started = await service.ensure(baseRequest);
+    expect(started.terminalId).toBeTruthy();
+
+    ptyClient.emitData(started.terminalId!, "ready at http://localhost:4173\n");
+
+    const restarted = await service.restart({
+      panelId: baseRequest.panelId,
+      projectId: baseRequest.projectId,
+    });
+    expect(restarted.status).toBe("starting");
+    expect(restarted.terminalId).toBeTruthy();
+    expect(restarted.terminalId).not.toBe(started.terminalId);
+
+    mockHttpResponse(200);
+    ptyClient.emitData(restarted.terminalId!, "ready at http://localhost:4174\n");
+    await vi.advanceTimersByTimeAsync(10);
+
+    const running = service.getState({
+      panelId: baseRequest.panelId,
+      projectId: baseRequest.projectId,
+    });
+    expect(running.status).toBe("running");
+    expect(running.url).toMatch(/^http:\/\/localhost:4174\/?$/);
+
+    await vi.advanceTimersByTimeAsync(31_000);
+
+    const afterOldTimeout = service.getState({
+      panelId: baseRequest.panelId,
+      projectId: baseRequest.projectId,
+    });
+    expect(afterOldTimeout.status).toBe("running");
+    expect(afterOldTimeout.url).toMatch(/^http:\/\/localhost:4174\/?$/);
+    expect(afterOldTimeout.error).toBeNull();
+  });
+
+  it("cancels stale readiness poll when a new URL is detected", async () => {
+    vi.useFakeTimers();
+    mockHttpError();
+
+    const started = await service.ensure(baseRequest);
+    expect(started.terminalId).toBeTruthy();
+
+    ptyClient.emitData(started.terminalId!, "ready at http://localhost:4173\n");
+
+    mockHttpResponse(200);
+    ptyClient.emitData(started.terminalId!, "ready at http://localhost:4174\n");
+    await vi.advanceTimersByTimeAsync(10);
+
+    const running = service.getState({
+      panelId: baseRequest.panelId,
+      projectId: baseRequest.projectId,
+    });
+    expect(running.status).toBe("running");
+    expect(running.url).toMatch(/^http:\/\/localhost:4174\/?$/);
+
+    await vi.advanceTimersByTimeAsync(31_000);
+
+    const afterOldTimeout = service.getState({
+      panelId: baseRequest.panelId,
+      projectId: baseRequest.projectId,
+    });
+    expect(afterOldTimeout.status).toBe("running");
+    expect(afterOldTimeout.url).toMatch(/^http:\/\/localhost:4174\/?$/);
+    expect(afterOldTimeout.error).toBeNull();
+  });
+
+  it("does not trigger stale-start recovery while readiness poll is active", async () => {
+    mockHttpError();
+
+    const nowSpy = vi.spyOn(Date, "now");
+    nowSpy.mockReturnValue(1_000);
+    const first = await service.ensure(baseRequest);
+    expect(first.status).toBe("starting");
+
+    ptyClient.emitData(first.terminalId!, "ready at http://localhost:4173\n");
+
+    nowSpy.mockReturnValue(12_500);
+    const second = await service.ensure(baseRequest);
+
+    expect(second.terminalId).toBe(first.terminalId);
+    expect(ptyClient.spawn).toHaveBeenCalledTimes(1);
   });
 
   it("stops and removes all sessions for a panel", async () => {
@@ -284,6 +547,91 @@ describe("DevPreviewSessionService", () => {
     expect(secondState.status).toBe("stopped");
     expect(firstState.terminalId).toBeNull();
     expect(secondState.terminalId).toBeNull();
+  });
+
+  it("clears stale readiness state on dead terminal respawn", async () => {
+    mockHttpError();
+
+    const started = await service.ensure(baseRequest);
+    expect(started.terminalId).toBeTruthy();
+
+    ptyClient.emitData(started.terminalId!, "ready at http://localhost:4173\n");
+
+    const firstTerminalId = started.terminalId!;
+    ptyClient.getTerminalAsync.mockImplementation(async (id: string) => {
+      if (id === firstTerminalId) return null;
+      return {
+        id,
+        projectId: baseRequest.projectId,
+        hasPty: true,
+        cwd: "/repo",
+        spawnedAt: Date.now(),
+      };
+    });
+
+    const respawned = await service.ensure(baseRequest);
+    expect(respawned.terminalId).toBeTruthy();
+    expect(respawned.terminalId).not.toBe(firstTerminalId);
+
+    ptyClient.emitData(respawned.terminalId!, "ready at http://localhost:4173\n");
+
+    mockHttpResponse(200);
+    ptyClient.emitData(respawned.terminalId!, "ready at http://localhost:4173\n");
+
+    await vi.waitFor(() => {
+      const after = service.getState({
+        panelId: baseRequest.panelId,
+        projectId: baseRequest.projectId,
+      });
+      expect(after.status).toBe("running");
+      expect(after.url).toMatch(/^http:\/\/localhost:4173\/?$/);
+    });
+  });
+
+  it("retries transient errors before succeeding", async () => {
+    let callCount = 0;
+    const impl = ((_: unknown, __: unknown, cb: (res: MockIncomingMessage) => void) => {
+      callCount++;
+      let errorHandler: ((error: Error) => void) | undefined;
+      const req: MockRequest = {
+        on: (event, handler) => {
+          if (event === "error") errorHandler = handler as (error: Error) => void;
+          return req;
+        },
+        end: () => {
+          setTimeout(() => {
+            if (callCount < 3) {
+              errorHandler?.(new Error("ECONNREFUSED"));
+            } else {
+              cb({ statusCode: 200, resume: () => {} });
+            }
+          }, 0);
+        },
+        destroy: () => {},
+      };
+      return req;
+    }) as unknown as typeof http.request;
+    vi.mocked(http.request).mockImplementation(impl);
+    vi.mocked(https.request).mockImplementation(impl);
+
+    const started = await service.ensure(baseRequest);
+    expect(started.terminalId).toBeTruthy();
+
+    ptyClient.emitData(started.terminalId!, "ready at http://localhost:4173\n");
+
+    await vi.waitFor(
+      () => {
+        const updated = service.getState({
+          panelId: baseRequest.panelId,
+          projectId: baseRequest.projectId,
+        });
+        expect(updated.status).toBe("running");
+        expect(updated.url).toMatch(/^http:\/\/localhost:4173\/?$/);
+      },
+      { timeout: 5000 }
+    );
+
+    expect(callCount).toBeGreaterThanOrEqual(3);
   });
 
   it("continues stop-by-panel cleanup when one session stop fails", async () => {
