@@ -6,6 +6,7 @@ import { useTerminalStore } from "./terminalStore";
 import { useNotificationStore } from "./notificationStore";
 import { usePulseStore } from "./pulseStore";
 
+
 interface WorktreeDataState {
   worktrees: Map<string, WorktreeState>;
   isLoading: boolean;
@@ -72,6 +73,135 @@ export const useWorktreeDataStore = create<WorktreeDataStore>()((set, get) => ({
   isInitialized: false,
 
   initialize: () => {
+    // Always re-attach IPC listeners if they were torn down (e.g. by
+    // React StrictMode's unmount/remount cycle calling cleanup).
+    // This must run before the isInitialized guard so that push events
+    // are never silently dropped after a cleanup+remount.
+    if (!cleanupListeners) {
+      const unsubUpdate = worktreeClient.onUpdate((state) => {
+        set((prev) => {
+          const next = new Map(prev.worktrees);
+          const existing = prev.worktrees.get(state.id);
+          if (existing) {
+            next.set(state.id, {
+              ...state,
+              prNumber: state.prNumber ?? existing.prNumber,
+              prUrl: state.prUrl ?? existing.prUrl,
+              prState: state.prState ?? existing.prState,
+              prTitle: state.prTitle ?? existing.prTitle,
+              issueNumber: state.issueNumber ?? existing.issueNumber,
+              issueTitle: state.issueTitle ?? existing.issueTitle,
+            });
+          } else {
+            next.set(state.id, state);
+          }
+          return { worktrees: next };
+        });
+      });
+
+      const unsubRemove = worktreeClient.onRemove(({ worktreeId }) => {
+        set((prev) => {
+          const worktree = prev.worktrees.get(worktreeId);
+
+          if (worktree?.isMainWorktree) {
+            console.warn("[WorktreeStore] Attempted to remove main worktree - blocked", {
+              worktreeId,
+              branch: worktree.branch,
+            });
+            return prev;
+          }
+
+          usePulseStore.getState().invalidate(worktreeId);
+
+          const next = new Map(prev.worktrees);
+          next.delete(worktreeId);
+
+          const selectionStore = useWorktreeSelectionStore.getState();
+          if (selectionStore.activeWorktreeId === worktreeId) {
+            selectionStore.setActiveWorktree(null);
+          }
+
+          const terminalStore = useTerminalStore.getState();
+          const notificationStore = useNotificationStore.getState();
+          const terminalsToKill = terminalStore.terminals.filter(
+            (t) => (t.worktreeId ?? undefined) === worktreeId
+          );
+
+          if (terminalsToKill.length > 0) {
+            terminalsToKill.forEach((terminal) => {
+              terminalStore.removeTerminal(terminal.id);
+            });
+
+            notificationStore.addNotification({
+              type: "info",
+              title: "Worktree Deleted",
+              message: `${terminalsToKill.length} terminal(s) removed with worktree.`,
+              duration: 5000,
+            });
+          }
+
+          return { worktrees: next };
+        });
+      });
+
+      const unsubPRDetected = githubClient.onPRDetected((data) => {
+        set((prev) => {
+          const worktree = prev.worktrees.get(data.worktreeId);
+          if (!worktree) return prev;
+
+          const next = new Map(prev.worktrees);
+          next.set(data.worktreeId, {
+            ...worktree,
+            prNumber: data.prNumber,
+            prUrl: data.prUrl,
+            prState: data.prState,
+            prTitle: data.prTitle ?? worktree.prTitle,
+            issueTitle: data.issueTitle ?? worktree.issueTitle,
+          });
+          return { worktrees: next };
+        });
+      });
+
+      const unsubPRCleared = githubClient.onPRCleared((data) => {
+        set((prev) => {
+          const worktree = prev.worktrees.get(data.worktreeId);
+          if (!worktree) return prev;
+
+          const next = new Map(prev.worktrees);
+          next.set(data.worktreeId, {
+            ...worktree,
+            prNumber: undefined,
+            prUrl: undefined,
+            prState: undefined,
+            prTitle: undefined,
+          });
+          return { worktrees: next };
+        });
+      });
+
+      const unsubIssueDetected = githubClient.onIssueDetected((data) => {
+        set((prev) => {
+          const worktree = prev.worktrees.get(data.worktreeId);
+          if (!worktree) return prev;
+
+          const next = new Map(prev.worktrees);
+          next.set(data.worktreeId, {
+            ...worktree,
+            issueTitle: data.issueTitle,
+          });
+          return { worktrees: next };
+        });
+      });
+
+      cleanupListeners = () => {
+        unsubUpdate();
+        unsubRemove();
+        unsubPRDetected();
+        unsubPRCleared();
+        unsubIssueDetected();
+      };
+    }
+
     if (get().isInitialized) return;
 
     if (initPromise) return;
@@ -80,141 +210,7 @@ export const useWorktreeDataStore = create<WorktreeDataStore>()((set, get) => ({
       try {
         set({ isLoading: true, error: null });
 
-        // Set up listeners BEFORE calling getAll() to avoid missing events
-        // that the backend might emit during or after the getAll() response.
-        // This prevents race conditions where issue titles or PR data are lost.
-        if (!cleanupListeners) {
-          const unsubUpdate = worktreeClient.onUpdate((state) => {
-            set((prev) => {
-              const next = new Map(prev.worktrees);
-              const existing = prev.worktrees.get(state.id);
-              if (existing) {
-                next.set(state.id, {
-                  ...state,
-                  // Preserve PR/issue metadata if not present in update
-                  prNumber: state.prNumber ?? existing.prNumber,
-                  prUrl: state.prUrl ?? existing.prUrl,
-                  prState: state.prState ?? existing.prState,
-                  prTitle: state.prTitle ?? existing.prTitle,
-                  issueNumber: state.issueNumber ?? existing.issueNumber,
-                  issueTitle: state.issueTitle ?? existing.issueTitle,
-                });
-              } else {
-                next.set(state.id, state);
-              }
-              return { worktrees: next };
-            });
-          });
-
-          const unsubRemove = worktreeClient.onRemove(({ worktreeId }) => {
-            set((prev) => {
-              const worktree = prev.worktrees.get(worktreeId);
-
-              // Safeguard: Never remove main worktree from the store
-              if (worktree?.isMainWorktree) {
-                console.warn("[WorktreeStore] Attempted to remove main worktree - blocked", {
-                  worktreeId,
-                  branch: worktree.branch,
-                });
-                return prev;
-              }
-
-              // Cancel pulse store retries after confirming worktree will be removed
-              usePulseStore.getState().invalidate(worktreeId);
-
-              const next = new Map(prev.worktrees);
-              next.delete(worktreeId);
-
-              // Clear active selection if this worktree was selected
-              const selectionStore = useWorktreeSelectionStore.getState();
-              if (selectionStore.activeWorktreeId === worktreeId) {
-                selectionStore.setActiveWorktree(null);
-              }
-
-              // Permanently kill terminals associated with deleted worktree
-              const terminalStore = useTerminalStore.getState();
-              const notificationStore = useNotificationStore.getState();
-              const terminalsToKill = terminalStore.terminals.filter(
-                (t) => (t.worktreeId ?? undefined) === worktreeId
-              );
-
-              if (terminalsToKill.length > 0) {
-                terminalsToKill.forEach((terminal) => {
-                  terminalStore.removeTerminal(terminal.id);
-                });
-
-                notificationStore.addNotification({
-                  type: "info",
-                  title: "Worktree Deleted",
-                  message: `${terminalsToKill.length} terminal(s) removed with worktree.`,
-                  duration: 5000,
-                });
-              }
-
-              return { worktrees: next };
-            });
-          });
-
-          const unsubPRDetected = githubClient.onPRDetected((data) => {
-            set((prev) => {
-              const worktree = prev.worktrees.get(data.worktreeId);
-              if (!worktree) return prev;
-
-              const next = new Map(prev.worktrees);
-              next.set(data.worktreeId, {
-                ...worktree,
-                prNumber: data.prNumber,
-                prUrl: data.prUrl,
-                prState: data.prState,
-                // Preserve existing values if payload fields are undefined
-                prTitle: data.prTitle ?? worktree.prTitle,
-                issueTitle: data.issueTitle ?? worktree.issueTitle,
-              });
-              return { worktrees: next };
-            });
-          });
-
-          const unsubPRCleared = githubClient.onPRCleared((data) => {
-            set((prev) => {
-              const worktree = prev.worktrees.get(data.worktreeId);
-              if (!worktree) return prev;
-
-              const next = new Map(prev.worktrees);
-              next.set(data.worktreeId, {
-                ...worktree,
-                prNumber: undefined,
-                prUrl: undefined,
-                prState: undefined,
-                prTitle: undefined,
-              });
-              return { worktrees: next };
-            });
-          });
-
-          const unsubIssueDetected = githubClient.onIssueDetected((data) => {
-            set((prev) => {
-              const worktree = prev.worktrees.get(data.worktreeId);
-              if (!worktree) return prev;
-
-              const next = new Map(prev.worktrees);
-              next.set(data.worktreeId, {
-                ...worktree,
-                issueTitle: data.issueTitle,
-              });
-              return { worktrees: next };
-            });
-          });
-
-          cleanupListeners = () => {
-            unsubUpdate();
-            unsubRemove();
-            unsubPRDetected();
-            unsubPRCleared();
-            unsubIssueDetected();
-          };
-        }
-
-        // Now fetch the initial state - any events emitted during this call
+        // Fetch the initial state - any events emitted during this call
         // will be captured by the listeners we set up above
         const states = await worktreeClient.getAll();
 

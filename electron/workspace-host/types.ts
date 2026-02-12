@@ -18,4 +18,5 @@ export interface MonitorState extends WorktreeSnapshot {
   gitWatchDebounceTimer: NodeJS.Timeout | null;
   gitWatchRefreshPending: boolean;
   gitWatchEnabled: boolean;
+  lastGitStatusCompletedAt: number;
 }
