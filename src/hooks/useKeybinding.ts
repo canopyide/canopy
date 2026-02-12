@@ -113,6 +113,7 @@ export function useKeybindingDisplay(actionId: string): string {
       setDisplayCombo(keybindingService.getDisplayCombo(actionId));
     };
 
+    updateDisplay();
     return keybindingService.subscribe(updateDisplay);
   }, [actionId]);
 
