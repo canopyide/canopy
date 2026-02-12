@@ -257,10 +257,10 @@ function EmptyState({
                     onClick={() => handleRunRecipe(recipe.id)}
                     disabled={!defaultCwd}
                     className={cn(
-                      "p-4 bg-canopy-sidebar hover:bg-canopy-bg border rounded-[var(--radius-md)] transition-all text-left group focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-canopy-accent disabled:opacity-50 disabled:cursor-not-allowed",
+                      "p-4 border rounded-[var(--radius-md)] transition-all text-left group focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-canopy-accent disabled:opacity-50 disabled:cursor-not-allowed",
                       isPinned
-                        ? "border-canopy-accent/30 hover:border-canopy-accent/50 bg-canopy-accent/5"
-                        : "border-canopy-border hover:border-canopy-accent/50"
+                        ? "bg-canopy-accent/5 border-canopy-accent/30 hover:bg-canopy-accent/10 hover:border-canopy-accent/60"
+                        : "bg-canopy-sidebar border-canopy-border hover:bg-canopy-bg hover:border-canopy-accent/50"
                     )}
                   >
                     <div className="flex items-center gap-2 mb-2 min-w-0">
