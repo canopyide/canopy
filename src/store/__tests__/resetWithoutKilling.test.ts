@@ -278,6 +278,39 @@ describe("resetWithoutKilling", () => {
     expect(terminalInstanceService.destroy).toHaveBeenCalledWith("term-2");
   });
 
+  it("suppresses terminal resizes for the full project-switch window", async () => {
+    useTerminalStore.setState({
+      terminals: [
+        {
+          id: "term-1",
+          type: "terminal",
+          title: "Shell 1",
+          cwd: "/test",
+          cols: 80,
+          rows: 24,
+          location: "grid",
+        },
+        {
+          id: "term-2",
+          type: "terminal",
+          title: "Shell 2",
+          cwd: "/test",
+          cols: 80,
+          rows: 24,
+          location: "grid",
+        },
+      ],
+      tabGroups: new Map(),
+    });
+
+    await useTerminalStore.getState().resetWithoutKilling();
+
+    expect(terminalInstanceService.suppressResizesDuringProjectSwitch).toHaveBeenCalledWith(
+      ["term-1", "term-2"],
+      10_000
+    );
+  });
+
   it("preserves warmed terminal instances when explicitly requested", async () => {
     useTerminalStore.setState({
       terminals: [

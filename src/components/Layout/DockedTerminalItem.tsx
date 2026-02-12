@@ -15,7 +15,6 @@ import { TerminalIcon } from "@/components/Terminal/TerminalIcon";
 import { getTerminalFocusTarget } from "@/components/Terminal/terminalFocus";
 import { STATE_ICONS, STATE_COLORS } from "@/components/Worktree/terminalStateConfig";
 import { TerminalRefreshTier } from "@/types";
-import { terminalClient } from "@/clients";
 import { terminalInstanceService } from "@/services/TerminalInstanceService";
 import { useDockPanelPortal } from "./DockPanelOffscreenContainer";
 
@@ -102,16 +101,6 @@ export function DockedTerminalItem({ terminal }: DockedTerminalItemProps) {
               // Terminal never became visible - this can happen if popover closed quickly
               return;
             }
-
-            // Synchronize PTY to match the exact frontend dimensions
-            try {
-              await terminalClient.resize(terminal.id, dims.cols, dims.rows);
-            } catch (resizeError) {
-              console.warn(`Failed to resize PTY for terminal ${terminal.id}:`, resizeError);
-              return;
-            }
-
-            if (cancelled) return;
 
             terminalInstanceService.applyRendererPolicy(terminal.id, TerminalRefreshTier.VISIBLE);
           }
