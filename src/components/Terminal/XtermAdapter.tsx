@@ -126,6 +126,11 @@ function XtermAdapterComponent({
   // Push-based resize handler using ResizeObserver dimensions directly
   const handleResizeEntry = useCallback(
     (entry: ResizeObserverEntry) => {
+      const instance = terminalInstanceService.get(terminalId);
+      if (instance?.isAttaching) {
+        return;
+      }
+
       // Get dimensions from observer (zero DOM reads)
       const rect = entry.contentRect;
       const width = rect.width;
@@ -193,6 +198,7 @@ function XtermAdapterComponent({
 
     console.log(`[XtermAdapter] Got managed instance for ${terminalId}, attaching...`);
 
+    managed.isAttaching = true;
     terminalInstanceService.setInputLocked(terminalId, !!isInputLocked);
 
     terminalInstanceService.attach(terminalId, container);
