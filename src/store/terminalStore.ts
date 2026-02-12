@@ -30,6 +30,8 @@ import { logInfo, logWarn, logError } from "@/utils/logger";
 export type { TerminalInstance, AddTerminalOptions, QueuedCommand, CrashType };
 export { isAgentReady };
 
+const PROJECT_SWITCH_RESIZE_SUPPRESSION_MS = 10_000;
+
 function normalizeCrashType(value: unknown): CrashType | null {
   const validTypes: CrashType[] = [
     "OUT_OF_MEMORY",
@@ -421,7 +423,10 @@ export const useTerminalStore = create<PanelGridState>()((set, get, api) => {
       const { terminalInstanceService } = await import("@/services/TerminalInstanceService");
 
       const allTerminalIds = state.terminals.map((t) => t.id);
-      terminalInstanceService.suppressResizesDuringProjectSwitch(allTerminalIds, 1000);
+      terminalInstanceService.suppressResizesDuringProjectSwitch(
+        allTerminalIds,
+        PROJECT_SWITCH_RESIZE_SUPPRESSION_MS
+      );
 
       for (const terminal of state.terminals) {
         if (preserveTerminalIds.has(terminal.id)) {

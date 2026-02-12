@@ -27,7 +27,6 @@ import { TerminalIcon } from "@/components/Terminal/TerminalIcon";
 import { getTerminalFocusTarget } from "@/components/Terminal/terminalFocus";
 import { STATE_ICONS, STATE_COLORS } from "@/components/Worktree/terminalStateConfig";
 import { TerminalRefreshTier } from "@/types";
-import { terminalClient } from "@/clients";
 import { terminalInstanceService } from "@/services/TerminalInstanceService";
 import { useDockPanelPortal } from "./DockPanelOffscreenContainer";
 import { SortableTabButton } from "@/components/Panel/SortableTabButton";
@@ -131,15 +130,6 @@ export function DockedTabGroup({ group, panels }: DockedTabGroupProps) {
             }
 
             if (cancelled || !dims) return;
-
-            try {
-              await terminalClient.resize(activePanel.id, dims.cols, dims.rows);
-            } catch (resizeError) {
-              console.warn(`Failed to resize PTY for terminal ${activePanel.id}:`, resizeError);
-              return;
-            }
-
-            if (cancelled) return;
 
             terminalInstanceService.applyRendererPolicy(
               activePanel.id,
