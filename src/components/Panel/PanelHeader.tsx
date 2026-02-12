@@ -29,7 +29,7 @@ import { useDragHandle } from "@/components/DragDrop/DragHandleContext";
 import { useBackgroundPanelStats } from "@/hooks";
 import { TabButton, type TabInfo } from "./TabButton";
 import { SortableTabButton } from "./SortableTabButton";
-import { panelKindCanRestart } from "@shared/config/panelKindRegistry.js";
+import { panelKindCanRestart } from "@shared/config/panelKindRegistry";
 
 export interface PanelHeaderProps {
   id: string;
