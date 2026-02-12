@@ -401,8 +401,8 @@ export function KeyboardShortcutsTab() {
             isResetting
               ? "opacity-50 cursor-not-allowed text-canopy-text/40"
               : hasOverrides
-              ? "text-canopy-text/60 hover:text-canopy-text hover:border-canopy-accent"
-              : "text-canopy-text/40 hover:text-canopy-text/60 hover:border-canopy-border"
+                ? "text-canopy-text/60 hover:text-canopy-text hover:border-canopy-accent"
+                : "text-canopy-text/40 hover:text-canopy-text/60 hover:border-canopy-border"
           )}
         >
           <RotateCcw className="w-3.5 h-3.5" />

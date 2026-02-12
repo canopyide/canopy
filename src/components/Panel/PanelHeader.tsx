@@ -551,17 +551,16 @@ function PanelHeaderComponent({
                 }
                 aria-pressed={armedRestartId === id ? "true" : "false"}
               >
-                <RotateCcw
-                  className="w-3 h-3"
-                  aria-hidden="true"
-                />
+                <RotateCcw className="w-3 h-3" aria-hidden="true" />
                 {armedRestartId === id && (
                   <>
                     <span className="text-[10px] font-semibold uppercase tracking-wide">
                       Click to Confirm
                     </span>
                     {countdown !== null && (
-                      <span className="text-[10px] font-bold min-w-[1ch]" aria-hidden="true">{countdown}</span>
+                      <span className="text-[10px] font-bold min-w-[1ch]" aria-hidden="true">
+                        {countdown}
+                      </span>
                     )}
                   </>
                 )}
