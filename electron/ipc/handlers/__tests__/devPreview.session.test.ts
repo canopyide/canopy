@@ -1,4 +1,9 @@
+import http from "node:http";
+import https from "node:https";
 import { describe, it, expect, vi, beforeEach, afterEach, type Mock } from "vitest";
+
+vi.mock("node:http", () => ({ default: { request: vi.fn() }, request: vi.fn() }));
+vi.mock("node:https", () => ({ default: { request: vi.fn() }, request: vi.fn() }));
 
 vi.mock("electron", () => ({
   ipcMain: {
@@ -19,6 +24,19 @@ import { ipcMain } from "electron";
 import { CHANNELS } from "../../channels.js";
 import { registerDevPreviewHandlers } from "../devPreview.js";
 import type { HandlerDependencies } from "../../types.js";
+
+function mockHttpResponse(statusCode: number) {
+  const impl = (_url: any, _opts: any, cb: any) => {
+    const req: any = {
+      on: (_event: string, _handler: Function) => req,
+      end: () => cb({ statusCode, resume: () => {} }),
+      destroy: () => {},
+    };
+    return req;
+  };
+  vi.mocked(http.request).mockImplementation(impl);
+  vi.mocked(https.request).mockImplementation(impl);
+}
 
 type DataListener = (id: string, data: string | Uint8Array) => void;
 type ExitListener = (id: string, exitCode: number) => void;
@@ -99,6 +117,7 @@ describe("dev preview session handlers", () => {
     scanOutputMock.mockReset();
     scanOutputMock.mockReturnValue({ buffer: "", url: null, error: null });
 
+    mockHttpResponse(200);
     ptyClient = createMockPtyClient();
     send = vi.fn();
 
@@ -158,15 +177,17 @@ describe("dev preview session handlers", () => {
     scanOutputMock.mockReturnValue({ buffer: "", url: "http://localhost:5173/", error: null });
     ptyClient.emitData(ensureResult.terminalId!, "ready");
 
-    const lastCall = send.mock.calls.at(-1);
-    expect(lastCall?.[0]).toBe(CHANNELS.DEV_PREVIEW_STATE_CHANGED);
-    expect(lastCall?.[1]).toEqual({
-      state: expect.objectContaining({
-        panelId: "panel-1",
-        projectId: "project-1",
-        status: "running",
-        url: "http://localhost:5173/",
-      }),
+    await vi.waitFor(() => {
+      const lastCall = send.mock.calls.at(-1);
+      expect(lastCall?.[0]).toBe(CHANNELS.DEV_PREVIEW_STATE_CHANGED);
+      expect(lastCall?.[1]).toEqual({
+        state: expect.objectContaining({
+          panelId: "panel-1",
+          projectId: "project-1",
+          status: "running",
+          url: "http://localhost:5173/",
+        }),
+      });
     });
   });
 
@@ -207,26 +228,28 @@ describe("dev preview session handlers", () => {
     scanOutputMock.mockReturnValue({ buffer: "", url: "http://localhost:4102/", error: null });
     ptyClient.emitData(second.terminalId!, "ready");
 
-    const stateEvents = send.mock.calls
-      .filter(([channel]) => channel === CHANNELS.DEV_PREVIEW_STATE_CHANGED)
-      .map(([, payload]) => (payload as { state: Record<string, unknown> }).state);
+    await vi.waitFor(() => {
+      const stateEvents = send.mock.calls
+        .filter(([channel]) => channel === CHANNELS.DEV_PREVIEW_STATE_CHANGED)
+        .map(([, payload]) => (payload as { state: Record<string, unknown> }).state);
 
-    expect(stateEvents).toContainEqual(
-      expect.objectContaining({
-        panelId: "panel-a",
-        projectId: "project-1",
-        status: "running",
-        url: "http://localhost:4101/",
-      })
-    );
-    expect(stateEvents).toContainEqual(
-      expect.objectContaining({
-        panelId: "panel-b",
-        projectId: "project-1",
-        status: "running",
-        url: "http://localhost:4102/",
-      })
-    );
+      expect(stateEvents).toContainEqual(
+        expect.objectContaining({
+          panelId: "panel-a",
+          projectId: "project-1",
+          status: "running",
+          url: "http://localhost:4101/",
+        })
+      );
+      expect(stateEvents).toContainEqual(
+        expect.objectContaining({
+          panelId: "panel-b",
+          projectId: "project-1",
+          status: "running",
+          url: "http://localhost:4102/",
+        })
+      );
+    });
   });
 
   it("restart kills previous terminal and spawns a fresh generation", async () => {
