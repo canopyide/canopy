@@ -419,6 +419,10 @@ export const useTerminalStore = create<PanelGridState>()((set, get, api) => {
 
       // Destroy xterm.js instances (renderer-side cleanup only)
       const { terminalInstanceService } = await import("@/services/TerminalInstanceService");
+
+      const allTerminalIds = state.terminals.map((t) => t.id);
+      terminalInstanceService.suppressResizesDuringProjectSwitch(allTerminalIds, 1000);
+
       for (const terminal of state.terminals) {
         if (preserveTerminalIds.has(terminal.id)) {
           terminalInstanceService.setVisible(terminal.id, false);

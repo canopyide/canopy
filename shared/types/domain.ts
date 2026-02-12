@@ -750,6 +750,8 @@ export interface ProjectState {
   focusMode?: boolean;
   /** Saved panel state before entering focus mode (for restoration) */
   focusPanelState?: FocusPanelState;
+  /** Terminal dimensions per terminal ID (preserved across project switches) */
+  terminalSizes?: Record<string, { cols: number; rows: number }>;
 }
 
 // Terminal Recipe Types

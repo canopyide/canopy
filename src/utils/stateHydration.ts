@@ -303,6 +303,16 @@ export async function hydrateAppState(
             })
         : null;
 
+    const terminalSizesPromise = currentProjectId
+      ? projectClient
+          .getTerminalSizes(currentProjectId)
+          .then((sizes) => sizes ?? {})
+          .catch((error) => {
+            logWarn("Failed to prefetch terminal sizes", { error });
+            return {};
+          })
+      : Promise.resolve({});
+
     const recipeLoadPromise = currentProjectId
       ? loadRecipes(currentProjectId).catch((error) => {
           logWarn("Failed to load recipes", { error });
@@ -336,6 +346,10 @@ export async function hydrateAppState(
 
         // Build a map of backend terminals by ID for quick lookup
         const backendTerminalMap = new Map(backendTerminals.map((t) => [t.id, t]));
+
+        // Fetch terminal sizes for restoration
+        const terminalSizes = await terminalSizesPromise;
+        if (!checkCurrent()) return;
 
         // Restore all panels in saved order (mix of PTY reconnects and non-PTY recreations)
         if (appState.terminals && appState.terminals.length > 0) {
@@ -422,6 +436,24 @@ export async function hydrateAppState(
                     restoredTerminalId,
                     backendTerminal.activityTier
                   );
+                }
+
+                // Restore terminal dimensions if available
+                if (terminalSizes && typeof terminalSizes === "object") {
+                  const savedSize = terminalSizes[restoredTerminalId];
+                  if (
+                    savedSize &&
+                    Number.isFinite(savedSize.cols) &&
+                    Number.isFinite(savedSize.rows) &&
+                    savedSize.cols > 0 &&
+                    savedSize.rows > 0
+                  ) {
+                    terminalInstanceService.setTargetSize(
+                      restoredTerminalId,
+                      savedSize.cols,
+                      savedSize.rows
+                    );
+                  }
                 }
 
                 const shouldSkipSnapshotRestore =
@@ -589,6 +621,24 @@ export async function hydrateAppState(
                       );
                     }
 
+                    // Restore terminal dimensions if available
+                    if (terminalSizes && typeof terminalSizes === "object") {
+                      const savedSize = terminalSizes[restoredTerminalId];
+                      if (
+                        savedSize &&
+                        Number.isFinite(savedSize.cols) &&
+                        Number.isFinite(savedSize.rows) &&
+                        savedSize.cols > 0 &&
+                        savedSize.rows > 0
+                      ) {
+                        terminalInstanceService.setTargetSize(
+                          restoredTerminalId,
+                          savedSize.cols,
+                          savedSize.rows
+                        );
+                      }
+                    }
+
                     const shouldSkipSnapshotRestore =
                       Boolean(_switchId) &&
                       Boolean(currentProjectId) &&
@@ -667,7 +717,7 @@ export async function hydrateAppState(
                       title: saved.title,
                     });
 
-                    await addTerminal({
+                    const restoredTerminalId = await addTerminal({
                       kind: respawnKind,
                       type: saved.type,
                       agentId,
@@ -687,6 +737,25 @@ export async function hydrateAppState(
                       browserZoom: isDevPreview ? saved.browserZoom : undefined,
                       devPreviewConsoleOpen: isDevPreview ? saved.devPreviewConsoleOpen : undefined,
                     });
+
+                    // Restore terminal dimensions if available
+                    if (terminalSizes && typeof terminalSizes === "object") {
+                      const savedSize =
+                        terminalSizes[saved.id] || terminalSizes[restoredTerminalId];
+                      if (
+                        savedSize &&
+                        Number.isFinite(savedSize.cols) &&
+                        Number.isFinite(savedSize.rows) &&
+                        savedSize.cols > 0 &&
+                        savedSize.rows > 0
+                      ) {
+                        terminalInstanceService.setTargetSize(
+                          restoredTerminalId,
+                          savedSize.cols,
+                          savedSize.rows
+                        );
+                      }
+                    }
                   }
                 } else {
                   logInfo(`Recreating ${kind} panel: ${saved.id}`);
@@ -781,6 +850,24 @@ export async function hydrateAppState(
                   restoredTerminalId,
                   terminal.activityTier
                 );
+              }
+
+              // Restore terminal dimensions if available
+              if (terminalSizes && typeof terminalSizes === "object") {
+                const savedSize = terminalSizes[restoredTerminalId];
+                if (
+                  savedSize &&
+                  Number.isFinite(savedSize.cols) &&
+                  Number.isFinite(savedSize.rows) &&
+                  savedSize.cols > 0 &&
+                  savedSize.rows > 0
+                ) {
+                  terminalInstanceService.setTargetSize(
+                    restoredTerminalId,
+                    savedSize.cols,
+                    savedSize.rows
+                  );
+                }
               }
 
               const shouldSkipSnapshotRestore =

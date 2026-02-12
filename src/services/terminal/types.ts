@@ -53,6 +53,13 @@ export interface ManagedTerminal {
   latestWasAtBottom: boolean;
   isUserScrolledBack: boolean;
 
+  // Project-switch resize suppression
+  resizeSuppressionTimer?: number;
+  isResizeSuppressed?: boolean;
+  targetCols?: number;
+  targetRows?: number;
+  isAttaching?: boolean;
+
   // Focus state
   isFocused: boolean;
 
