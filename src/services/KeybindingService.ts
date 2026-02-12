@@ -9,6 +9,12 @@ export interface KeybindingConfig {
   category?: string; // Category for organization in UI (e.g., "Terminal", "Panels")
 }
 
+export interface KeybindingResolutionResult {
+  match: KeybindingConfig | undefined;
+  chordPrefix: boolean;
+  shouldConsume: boolean;
+}
+
 const DEFAULT_KEYBINDINGS: KeybindingConfig[] = [
   {
     actionId: "terminal.close",
@@ -1080,6 +1086,10 @@ class KeybindingService {
     this.pendingChord = null;
   }
 
+  normalizeKeyForBinding(event: KeyboardEvent): string {
+    return normalizeKeyForBinding(event);
+  }
+
   private eventToCombo(event: KeyboardEvent): string {
     const parts: string[] = [];
     const isMac =
@@ -1097,13 +1107,17 @@ class KeybindingService {
     return parts.join("+");
   }
 
-  findMatchingAction(event: KeyboardEvent): KeybindingConfig | undefined {
+  resolveKeybinding(event: KeyboardEvent): KeybindingResolutionResult {
     let bestMatch: KeybindingConfig | undefined;
     let bestPriority = -Infinity;
     let foundChordPrefix = false;
 
     const currentCombo = this.eventToCombo(event);
     const normalizedCurrentCombo = currentCombo.trim().toLowerCase();
+
+    // When a chord is pending, prioritize chord completion over standalone shortcuts
+    let chordCompletionMatch: KeybindingConfig | undefined;
+    let chordCompletionPriority = -Infinity;
 
     for (const binding of this.bindings.values()) {
       if (!this.canExecute(binding.actionId)) continue;
@@ -1122,9 +1136,9 @@ class KeybindingService {
           const normalizedPending = this.pendingChord.trim().toLowerCase();
           const fullChord = `${normalizedPending} ${normalizedCurrentCombo}`;
           if (fullChord === normalizedEffectiveCombo) {
-            if (binding.priority > bestPriority) {
-              bestMatch = binding;
-              bestPriority = binding.priority;
+            if (binding.priority > chordCompletionPriority) {
+              chordCompletionMatch = binding;
+              chordCompletionPriority = binding.priority;
             }
           }
         } else {
@@ -1134,8 +1148,8 @@ class KeybindingService {
           }
         }
       } else {
-        // Regular non-chord binding
-        if (this.matchesEvent(event, effectiveCombo)) {
+        // Regular non-chord binding - only consider if no chord is pending
+        if (!this.pendingChord && this.matchesEvent(event, effectiveCombo)) {
           if (binding.priority > bestPriority) {
             bestMatch = binding;
             bestPriority = binding.priority;
@@ -1144,10 +1158,19 @@ class KeybindingService {
       }
     }
 
+    // If chord completion was found, it takes precedence
+    if (chordCompletionMatch) {
+      bestMatch = chordCompletionMatch;
+    }
+
     // If we found a chord prefix but no complete match, set pending chord
     if (foundChordPrefix && !bestMatch && !this.pendingChord) {
       this.setPendingChord(currentCombo);
-      return undefined;
+      return {
+        match: undefined,
+        chordPrefix: true,
+        shouldConsume: true,
+      };
     }
 
     // Clear pending chord if we found a match or no chord prefix
@@ -1155,7 +1178,16 @@ class KeybindingService {
       this.clearPendingChord();
     }
 
-    return bestMatch;
+    return {
+      match: bestMatch,
+      chordPrefix: foundChordPrefix,
+      shouldConsume: !!bestMatch || foundChordPrefix,
+    };
+  }
+
+  findMatchingAction(event: KeyboardEvent): KeybindingConfig | undefined {
+    const result = this.resolveKeybinding(event);
+    return result.match;
   }
 
   registerBinding(config: KeybindingConfig): void {
