@@ -36,6 +36,8 @@ import { GitFileWatcher } from "../utils/gitFileWatcher.js";
 const DEFAULT_ACTIVE_WORKTREE_INTERVAL_MS = 2000;
 const DEFAULT_BACKGROUND_WORKTREE_INTERVAL_MS = 10000;
 const WORKTREE_LIST_CACHE_TTL_MS = 15_000; // 15 seconds (reduced from 60s for faster worktree visibility)
+const GIT_WATCH_SELF_TRIGGER_COOLDOWN_MS = 1000;
+const WATCHER_FALLBACK_POLL_INTERVAL_MS = 30_000; // When watcher active, poll rarely as safety net
 
 interface RawWorktreeRecord {
   path: string;
@@ -468,6 +470,7 @@ export class WorkspaceService {
           gitWatchDebounceTimer: null,
           gitWatchRefreshPending: false,
           gitWatchEnabled: this.gitWatchEnabled,
+          lastGitStatusCompletedAt: 0,
         };
 
         monitor.pollingStrategy.updateConfig(
@@ -560,6 +563,8 @@ export class WorkspaceService {
       branch: monitor.branch,
       debounceMs: this.gitWatchDebounceMs,
       onChange: () => this.handleGitFileChange(monitor),
+      watchWorktree: true,
+      worktreeDebounceMs: 1000,
     });
 
     const started = watcher.start();
@@ -594,11 +599,20 @@ export class WorkspaceService {
       return;
     }
 
+    // Suppress self-triggered watcher events.  git status touches .git/index
+    // (and index.lock), which fires the watcher and creates an infinite loop
+    // if we don't ignore events shortly after our own operations complete.
+    if (!monitor.isUpdating) {
+      const msSinceLastStatus = Date.now() - monitor.lastGitStatusCompletedAt;
+      if (msSinceLastStatus < GIT_WATCH_SELF_TRIGGER_COOLDOWN_MS) {
+        return;
+      }
+    }
+
     monitor.gitWatchRefreshPending = true;
     invalidateGitStatusCache(monitor.path);
 
     if (monitor.isUpdating) {
-      // Keep a trailing refresh queued; it will run after update completion.
       if (monitor.gitWatchDebounceTimer) {
         clearTimeout(monitor.gitWatchDebounceTimer);
       }
@@ -663,10 +677,13 @@ export class WorkspaceService {
       return;
     }
 
-    const nextInterval = monitor.pollingStrategy.calculateNextInterval();
-    const jitterRange = Math.min(2000, Math.floor(nextInterval * 0.2));
+    // When a watcher is active, polling is just a rare safety net.
+    const baseInterval = monitor.gitWatcher
+      ? WATCHER_FALLBACK_POLL_INTERVAL_MS
+      : monitor.pollingStrategy.calculateNextInterval();
+    const jitterRange = Math.min(2000, Math.floor(baseInterval * 0.2));
     const jitter = jitterRange > 0 ? Math.floor(Math.random() * jitterRange) : 0;
-    const delayMs = nextInterval + jitter;
+    const delayMs = baseInterval + jitter;
 
     monitor.pollingTimer = setTimeout(() => {
       monitor.pollingTimer = null;
@@ -687,7 +704,10 @@ export class WorkspaceService {
       const queueDelayMs = Math.max(0, startTime - queuedAt);
 
       try {
-        await this.updateGitStatus(monitor, monitor.isCurrent);
+        // When a watcher is active, polling is a rare fallback — don't force refresh.
+        // The watcher's onChange handler calls updateGitStatus with forceRefresh=true.
+        const forceRefresh = monitor.isCurrent && !monitor.gitWatcher;
+        await this.updateGitStatus(monitor, forceRefresh);
         monitor.pollingStrategy.recordSuccess(Date.now() - startTime, queueDelayMs);
       } catch (error) {
         tripped = monitor.pollingStrategy.recordFailure(Date.now() - startTime, queueDelayMs);
@@ -833,6 +853,7 @@ export class WorkspaceService {
       throw error;
     } finally {
       monitor.isUpdating = false;
+      monitor.lastGitStatusCompletedAt = Date.now();
       if (monitor.gitWatchRefreshPending && !monitor.gitWatchDebounceTimer) {
         this.flushPendingGitWatchRefresh(monitor);
       }
