@@ -9,7 +9,7 @@ const RETRY_MAX_DELAY = 30000;
 interface PulseState {
   pulses: Map<string, ProjectPulse>;
   loading: Map<string, boolean>;
-  errors: Map<string, string>;
+  errors: Map<string, string | null>;
   rangeDays: PulseRangeDays;
   requestIds: Map<string, number>;
   retryCount: Map<string, number>;
@@ -28,7 +28,7 @@ interface PulseActions {
   invalidateAll: () => void;
   getPulse: (worktreeId: string) => ProjectPulse | undefined;
   isLoading: (worktreeId: string) => boolean;
-  getError: (worktreeId: string) => string | undefined;
+  getError: (worktreeId: string) => string | null | undefined;
   getRetryCount: (worktreeId: string) => number;
   clearRetryTimer: (worktreeId: string) => void;
 }
@@ -89,7 +89,7 @@ export const usePulseStore = create<PulseStore>()((set, get) => ({
 
     set((prev) => ({
       loading: new Map(prev.loading).set(worktreeId, true),
-      errors: new Map(prev.errors).set(worktreeId, ""),
+      errors: new Map(prev.errors).set(worktreeId, null),
       requestIds: new Map(prev.requestIds).set(worktreeId, requestId),
     }));
 
@@ -133,14 +133,14 @@ export const usePulseStore = create<PulseStore>()((set, get) => ({
       const currentState = get();
 
       if (currentState.requestIds.get(worktreeId) === requestId) {
-        const shouldRetry = currentRetries < MAX_RETRIES && !forceRefresh;
+        const shouldRetry = currentRetries < MAX_RETRIES && !forceRefresh && userMessage !== null;
 
         set((prev) => ({
-          loading: new Map(prev.loading).set(worktreeId, false),
           errors: new Map(prev.errors).set(worktreeId, userMessage),
+          loading: new Map(prev.loading).set(worktreeId, false),
           retryCount: shouldRetry
             ? new Map(prev.retryCount).set(worktreeId, currentRetries + 1)
-            : prev.retryCount,
+            : new Map(prev.retryCount).set(worktreeId, 0),
           lastRetryTimestamp: shouldRetry
             ? new Map(prev.lastRetryTimestamp).set(worktreeId, Date.now())
             : prev.lastRetryTimestamp,
@@ -161,6 +161,8 @@ export const usePulseStore = create<PulseStore>()((set, get) => ({
           set((prev) => ({
             retryTimers: new Map(prev.retryTimers).set(worktreeId, timer),
           }));
+        } else {
+          get().clearRetryTimer(worktreeId);
         }
       }
       return null;

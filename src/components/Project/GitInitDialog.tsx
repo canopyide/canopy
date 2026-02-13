@@ -1,4 +1,4 @@
-import { useState, useEffect, useRef } from "react";
+import { useState, useEffect, useRef, useCallback } from "react";
 import { Button } from "@/components/ui/button";
 import { AppDialog } from "@/components/ui/AppDialog";
 import { Check, AlertCircle, Loader2, GitBranch } from "lucide-react";
@@ -12,12 +12,23 @@ interface GitInitDialogProps {
   onCancel: () => void;
 }
 
+const AUTO_CLOSE_DELAY_MS = 800;
+
 export function GitInitDialog({ isOpen, directoryPath, onSuccess, onCancel }: GitInitDialogProps) {
   const [progressEvents, setProgressEvents] = useState<GitInitProgressEvent[]>([]);
   const [isInitializing, setIsInitializing] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [isComplete, setIsComplete] = useState(false);
   const logEndRef = useRef<HTMLDivElement>(null);
+  const hasFinalizedSuccessRef = useRef(false);
+
+  const finalizeSuccess = useCallback(() => {
+    if (hasFinalizedSuccessRef.current) {
+      return;
+    }
+    hasFinalizedSuccessRef.current = true;
+    onSuccess();
+  }, [onSuccess]);
 
   useEffect(() => {
     if (!isOpen) {
@@ -25,6 +36,7 @@ export function GitInitDialog({ isOpen, directoryPath, onSuccess, onCancel }: Gi
       setIsInitializing(false);
       setError(null);
       setIsComplete(false);
+      hasFinalizedSuccessRef.current = false;
       return;
     }
 
@@ -33,6 +45,7 @@ export function GitInitDialog({ isOpen, directoryPath, onSuccess, onCancel }: Gi
 
       if (event.status === "error") {
         setError(event.error || "Unknown error");
+        setIsComplete(false);
         setIsInitializing(false);
       } else if (event.step === "complete" && event.status === "success") {
         setIsComplete(true);
@@ -47,10 +60,12 @@ export function GitInitDialog({ isOpen, directoryPath, onSuccess, onCancel }: Gi
     logEndRef.current?.scrollIntoView({ behavior: "smooth" });
   }, [progressEvents]);
 
-  const startInitialization = async () => {
+  const startInitialization = useCallback(async () => {
     setIsInitializing(true);
     setError(null);
+    setIsComplete(false);
     setProgressEvents([]);
+    hasFinalizedSuccessRef.current = false;
 
     try {
       const result = await projectClient.initGitGuided({
@@ -70,17 +85,35 @@ export function GitInitDialog({ isOpen, directoryPath, onSuccess, onCancel }: Gi
     } finally {
       setIsInitializing(false);
     }
-  };
+  }, [directoryPath]);
 
   useEffect(() => {
-    if (isOpen && !isInitializing && !isComplete && progressEvents.length === 0) {
-      startInitialization();
+    if (!isOpen) {
+      return;
     }
-  }, [isOpen]);
+
+    void startInitialization();
+  }, [isOpen, startInitialization]);
+
+  useEffect(() => {
+    if (!isOpen || !isComplete) {
+      return;
+    }
+
+    const timeoutId = window.setTimeout(() => {
+      finalizeSuccess();
+    }, AUTO_CLOSE_DELAY_MS);
+
+    return () => window.clearTimeout(timeoutId);
+  }, [isOpen, isComplete, finalizeSuccess]);
 
   const handleClose = () => {
+    if (isInitializing) {
+      return;
+    }
+
     if (isComplete) {
-      onSuccess();
+      finalizeSuccess();
     } else {
       onCancel();
     }
@@ -98,16 +131,16 @@ export function GitInitDialog({ isOpen, directoryPath, onSuccess, onCancel }: Gi
   };
 
   return (
-    <AppDialog
-      isOpen={isOpen}
-      onClose={handleClose}
-      title="Initialize Git Repository"
-      size="md"
-      className="font-mono"
-    >
-      <div className="flex flex-col gap-4">
+    <AppDialog isOpen={isOpen} onClose={handleClose} size="md" dismissible={!isInitializing}>
+      <AppDialog.Header>
+        <AppDialog.Title icon={<GitBranch className="h-5 w-5 text-canopy-accent" />}>
+          Initialize Git Repository
+        </AppDialog.Title>
+        {!isInitializing && <AppDialog.CloseButton />}
+      </AppDialog.Header>
+
+      <AppDialog.Body className="space-y-4">
         <div className="flex items-center gap-2 text-sm text-muted-foreground">
-          <GitBranch className="h-4 w-4" />
           <span className="truncate">{directoryPath}</span>
         </div>
 
@@ -173,7 +206,7 @@ export function GitInitDialog({ isOpen, directoryPath, onSuccess, onCancel }: Gi
             </Button>
           )}
         </div>
-      </div>
+      </AppDialog.Body>
     </AppDialog>
   );
 }

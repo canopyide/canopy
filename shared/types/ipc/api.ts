@@ -58,11 +58,7 @@ import type { LogEntry, LogFilterOptions } from "./logs.js";
 import type { RetryAction, AppError } from "./errors.js";
 import type { EventRecord, EventFilterOptions } from "./events.js";
 import type { ProjectCloseResult, ProjectStats } from "./project.js";
-import type {
-  GitInitOptions,
-  GitInitProgressEvent,
-  GitInitResult,
-} from "./gitInit.js";
+import type { GitInitOptions, GitInitProgressEvent, GitInitResult } from "./gitInit.js";
 import type {
   RepositoryStats,
   GitHubCliStatus,
