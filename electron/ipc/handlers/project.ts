@@ -8,7 +8,11 @@ import { runCommandDetector } from "../../services/RunCommandDetector.js";
 import { ProjectSwitchService } from "../../services/ProjectSwitchService.js";
 import type { HandlerDependencies } from "../types.js";
 import type { Project, ProjectSettings, TerminalRecipe, TabGroup } from "../../types/index.js";
-import type { GitInitOptions, GitInitResult, GitInitProgressEvent } from "../../../shared/types/ipc/gitInit.js";
+import type {
+  GitInitOptions,
+  GitInitResult,
+  GitInitProgressEvent,
+} from "../../../shared/types/ipc/gitInit.js";
 import {
   SystemOpenExternalPayloadSchema,
   SystemOpenPathPayloadSchema,
@@ -559,7 +563,12 @@ export function registerProjectHandlers(deps: HandlerDependencies): () => void {
 
     const completedSteps: GitInitProgressEvent["step"][] = [];
 
-    const emitProgress = (step: GitInitProgressEvent["step"], status: GitInitProgressEvent["status"], message: string, error?: string) => {
+    const emitProgress = (
+      step: GitInitProgressEvent["step"],
+      status: GitInitProgressEvent["status"],
+      message: string,
+      error?: string
+    ) => {
       if (mainWindow.isDestroyed()) {
         return;
       }
@@ -592,13 +601,22 @@ export function registerProjectHandlers(deps: HandlerDependencies): () => void {
         emitProgress("gitignore", "start", "Creating .gitignore file...");
         const gitignoreContent = getGitignoreTemplate(gitignoreTemplate);
         if (!gitignoreContent) {
-          emitProgress("gitignore", "error", "Invalid gitignore template", `Unknown template: ${gitignoreTemplate}`);
+          emitProgress(
+            "gitignore",
+            "error",
+            "Invalid gitignore template",
+            `Unknown template: ${gitignoreTemplate}`
+          );
           throw new Error(`Invalid gitignore template: ${gitignoreTemplate}`);
         }
         const gitignorePath = path.join(directoryPath, ".gitignore");
-        const gitignoreExists = await fs.promises.access(gitignorePath).then(() => true).catch(() => false);
+        const gitignoreExists = await fs.promises
+          .access(gitignorePath)
+          .then(() => true)
+          .catch(() => false);
         if (gitignoreExists) {
-          emitProgress("gitignore", "start", "Skipping .gitignore (already exists)");
+          completedSteps.push("gitignore");
+          emitProgress("gitignore", "success", "Skipping .gitignore (already exists)");
         } else {
           await fs.promises.writeFile(gitignorePath, gitignoreContent, "utf-8");
           completedSteps.push("gitignore");
@@ -620,8 +638,12 @@ export function registerProjectHandlers(deps: HandlerDependencies): () => void {
         } catch (commitError) {
           const errorMsg = commitError instanceof Error ? commitError.message : String(commitError);
           if (errorMsg.includes("user.email") || errorMsg.includes("user.name")) {
-            emitProgress("commit", "error", "Git user identity not configured",
-              "Please configure git user.name and user.email before creating commits");
+            emitProgress(
+              "commit",
+              "error",
+              "Git user identity not configured",
+              "Please configure git user.name and user.email before creating commits"
+            );
             emitProgress("complete", "success", "Git initialization complete (no initial commit)");
             return {
               success: true,
@@ -634,7 +656,6 @@ export function registerProjectHandlers(deps: HandlerDependencies): () => void {
 
       emitProgress("complete", "success", "Git initialization complete");
       return { success: true, completedSteps };
-
     } catch (error) {
       const errorMessage = error instanceof Error ? error.message : String(error);
       emitProgress("error", "error", "Git initialization failed", errorMessage);

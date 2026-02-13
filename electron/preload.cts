@@ -866,8 +866,10 @@ const api: ElectronAPI = {
     onInitGitProgress: (
       callback: (event: import("../shared/types/ipc/gitInit.js").GitInitProgressEvent) => void
     ) => {
-      const listener = (_event: unknown, data: import("../shared/types/ipc/gitInit.js").GitInitProgressEvent) =>
-        callback(data);
+      const listener = (
+        _event: unknown,
+        data: import("../shared/types/ipc/gitInit.js").GitInitProgressEvent
+      ) => callback(data);
       ipcRenderer.on(CHANNELS.PROJECT_INIT_GIT_PROGRESS, listener);
       return () => ipcRenderer.removeListener(CHANNELS.PROJECT_INIT_GIT_PROGRESS, listener);
     },

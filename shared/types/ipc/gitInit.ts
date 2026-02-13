@@ -15,13 +15,7 @@ export interface GitInitOptions {
   gitignoreTemplate?: "node" | "python" | "minimal" | "none";
 }
 
-export type GitInitStepType =
-  | "init"
-  | "gitignore"
-  | "add"
-  | "commit"
-  | "complete"
-  | "error";
+export type GitInitStepType = "init" | "gitignore" | "add" | "commit" | "complete" | "error";
 
 export interface GitInitProgressEvent {
   step: GitInitStepType;

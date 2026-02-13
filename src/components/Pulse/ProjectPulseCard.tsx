@@ -115,14 +115,15 @@ export function ProjectPulseCard({ worktreeId, className }: ProjectPulseCardProp
       >
         <div className="flex items-center gap-2 text-canopy-text/50">
           <GitBranch className="w-4 h-4 text-blue-400/70" aria-hidden="true" />
-          <span className="text-xs">New repository — make your first commit to start tracking activity</span>
+          <span className="text-xs">
+            New repository — make your first commit to start tracking activity
+          </span>
         </div>
       </div>
     );
   }
 
   if (error && !pulse) {
-
     const isRetrying = retryCount > 0 && retryCount < MAX_RETRIES;
 
     return (

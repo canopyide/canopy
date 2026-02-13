@@ -8,11 +8,7 @@ import type {
   TerminalSnapshot,
   TabGroup,
 } from "../domain.js";
-import type {
-  GitInitOptions,
-  GitInitProgressEvent,
-  GitInitResult,
-} from "./gitInit.js";
+import type { GitInitOptions, GitInitProgressEvent, GitInitResult } from "./gitInit.js";
 import type { AgentSettings } from "../agentSettings.js";
 import type { UserAgentRegistry, UserAgentConfig } from "../userAgentRegistry.js";
 import type { KeyAction } from "../keymap.js";
