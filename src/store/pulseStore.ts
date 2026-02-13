@@ -33,18 +33,15 @@ interface PulseActions {
   clearRetryTimer: (worktreeId: string) => void;
 }
 
-function getUserFriendlyError(technicalError: string): string {
+function getUserFriendlyError(technicalError: string): string | null {
   if (technicalError.includes("Not a git repository")) {
     return "This directory is not a git repository";
   }
   if (technicalError.includes("does not exist")) {
     return "The worktree path no longer exists";
   }
-  if (technicalError.includes("HEAD")) {
-    return "Unable to read git history - repository may be empty or corrupted";
-  }
-  if (technicalError.includes("Repository has no commits")) {
-    return "This repository has no commits yet";
+  if (technicalError.includes("HEAD") || technicalError.includes("Repository has no commits")) {
+    return null;
   }
   return "Unable to load activity data";
 }
