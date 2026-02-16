@@ -714,6 +714,47 @@ export function ContentGrid({ className, defaultCwd, agentAvailability }: Conten
   // Show "grid full" overlay when trying to drag from dock to a full grid
   const showGridFullOverlay = sourceContainer === "dock" && isGridFull;
 
+  // Two-pane split mode detection (must be before conditional returns)
+  const allGroupsAreSinglePanel = tabGroups.every((g) => g.panelIds.length === 1);
+  const useTwoPaneSplitMode =
+    twoPaneSplitEnabled &&
+    tabGroups.length === 2 &&
+    allGroupsAreSinglePanel &&
+    !maximizedId &&
+    !showPlaceholder;
+
+  // Track mode transitions and stabilize terminals after switch
+  const prevModeRef = useRef<boolean>(useTwoPaneSplitMode);
+  const gridTerminalsRef = useRef(gridTerminals);
+  gridTerminalsRef.current = gridTerminals;
+
+  useEffect(() => {
+    const prevMode = prevModeRef.current;
+    const currentMode = useTwoPaneSplitMode;
+
+    // Mode transition detected
+    if (prevMode !== currentMode) {
+      prevModeRef.current = currentMode;
+
+      // Immediate stabilization fit after mode switch
+      const timeoutId = window.setTimeout(() => {
+        if (isDraggingRef.current) return;
+
+        // Read latest terminal IDs from ref to avoid cancellation issues
+        const ids = gridTerminalsRef.current.map((t) => t.id);
+        for (const id of ids) {
+          const managed = terminalInstanceService.get(id);
+          if (managed?.hostElement.isConnected) {
+            terminalInstanceService.fit(id);
+          }
+        }
+      }, 50);
+
+      return () => clearTimeout(timeoutId);
+    }
+    return undefined;
+  }, [useTwoPaneSplitMode]);
+
   // Validate maximize target before rendering
   useEffect(() => {
     if (maximizedId && maximizeTarget) {
@@ -779,15 +820,6 @@ export function ContentGrid({ className, defaultCwd, agentAvailability }: Conten
   }
 
   const isEmpty = gridTerminals.length === 0;
-
-  // Two-pane split mode detection
-  const allGroupsAreSinglePanel = tabGroups.every((g) => g.panelIds.length === 1);
-  const useTwoPaneSplitMode =
-    twoPaneSplitEnabled &&
-    tabGroups.length === 2 &&
-    allGroupsAreSinglePanel &&
-    !maximizedId &&
-    !showPlaceholder;
 
   if (useTwoPaneSplitMode) {
     const twoPaneTerminals = tabGroups

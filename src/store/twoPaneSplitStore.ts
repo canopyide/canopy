@@ -40,6 +40,7 @@ interface TwoPaneSplitState {
   setDefaultRatio: (ratio: number) => void;
   setPreferPreview: (prefer: boolean) => void;
   setWorktreeRatio: (worktreeId: string, ratio: number) => void;
+  commitRatioIfChanged: (worktreeId: string, pendingRatio: number | null) => void;
   getWorktreeRatio: (worktreeId: string | null) => number;
   resetWorktreeRatio: (worktreeId: string) => void;
   resetAllWorktreeRatios: () => void;
@@ -79,6 +80,21 @@ export const useTwoPaneSplitStore = create<TwoPaneSplitState>()(
             [worktreeId]: Math.max(0.2, Math.min(0.8, ratio)),
           },
         })),
+
+      commitRatioIfChanged: (worktreeId, pendingRatio) => {
+        if (pendingRatio === null || !Number.isFinite(pendingRatio)) return;
+        const state = get();
+        const currentRatio = state.ratioByWorktreeId[worktreeId];
+        const clampedRatio = Math.max(0.2, Math.min(0.8, pendingRatio));
+        if (currentRatio !== clampedRatio) {
+          set((state) => ({
+            ratioByWorktreeId: {
+              ...state.ratioByWorktreeId,
+              [worktreeId]: clampedRatio,
+            },
+          }));
+        }
+      },
 
       getWorktreeRatio: (worktreeId) => {
         const state = get();
