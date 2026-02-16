@@ -816,6 +816,8 @@ export function ContentGrid({ className, defaultCwd, agentAvailability }: Conten
               focusedId={focusedId}
               activeWorktreeId={activeWorktreeId}
               isInTrash={isInTrash}
+              onAddTabLeft={() => handleAddTabForPanel(twoPaneTerminals[0])}
+              onAddTabRight={() => handleAddTabForPanel(twoPaneTerminals[1])}
             />
             <GridFullOverlay maxTerminals={maxGridCapacity} show={showGridFullOverlay} />
           </div>
