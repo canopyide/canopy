@@ -74,7 +74,8 @@ export function getAutoGridCols(count: number, width: number | null): number {
   if (count <= 1) return 1;
 
   // Calculate max feasible columns based on minimum terminal width
-  const containerWidth = width ?? 800; // Fallback for SSR/initial render
+  // Handle non-positive transient widths during layout transitions
+  const containerWidth = width && width > 0 ? width : 800; // Fallback for SSR/initial render and transition frames
   const maxFeasibleCols = Math.max(1, Math.floor(containerWidth / MIN_TERMINAL_WIDTH_PX));
 
   // Progressive column caps based on terminal count
