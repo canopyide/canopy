@@ -27,6 +27,7 @@ export function TwoPaneSplitDivider({
 }: TwoPaneSplitDividerProps) {
   const [isDragging, setIsDragging] = useState(false);
   const dividerRef = useRef<HTMLDivElement>(null);
+  const cleanupFnRef = useRef<(() => void) | null>(null);
 
   // Notify parent of drag state changes
   useEffect(() => {
@@ -84,11 +85,13 @@ export function TwoPaneSplitDivider({
           maxRatio: max,
           onRatioChange: onChange,
         } = dragStateRef.current;
-        if (!containerRect) return;
+        if (!containerRect || containerRect.width <= 0) return;
 
         const offsetX = moveEvent.clientX - containerRect.left;
         const newRatio = Math.max(min, Math.min(max, offsetX / containerRect.width));
-        onChange(newRatio);
+        if (Number.isFinite(newRatio)) {
+          onChange(newRatio);
+        }
       };
 
       const handleMouseUp = () => {
@@ -104,6 +107,7 @@ export function TwoPaneSplitDivider({
         cleanup();
         if (hasMoved) {
           setIsDragging(false);
+          dragStateRef.current.onRatioCommit();
         }
         dragStateRef.current.containerRect = null;
       };
@@ -117,7 +121,11 @@ export function TwoPaneSplitDivider({
         window.removeEventListener("blur", handleBlur);
         document.body.style.cursor = prevCursor;
         document.body.style.userSelect = prevUserSelect;
+        cleanupFnRef.current = null;
       };
+
+      // Store cleanup function for unmount safety
+      cleanupFnRef.current = cleanup;
 
       // Attach listeners synchronously to catch immediate mouseup
       document.addEventListener("mousemove", handleMouseMove);
@@ -126,6 +134,15 @@ export function TwoPaneSplitDivider({
     },
     [containerRef]
   );
+
+  // Cleanup on unmount
+  useEffect(() => {
+    return () => {
+      if (cleanupFnRef.current) {
+        cleanupFnRef.current();
+      }
+    };
+  }, []);
 
   const handleKeyDown = useCallback(
     (e: React.KeyboardEvent) => {
