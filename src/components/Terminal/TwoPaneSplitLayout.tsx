@@ -15,6 +15,8 @@ interface TwoPaneSplitLayoutProps {
   focusedId: string | null;
   activeWorktreeId: string | null;
   isInTrash: (id: string) => boolean;
+  onAddTabLeft?: () => void;
+  onAddTabRight?: () => void;
 }
 
 export function TwoPaneSplitLayout({
@@ -22,6 +24,8 @@ export function TwoPaneSplitLayout({
   focusedId,
   activeWorktreeId,
   isInTrash,
+  onAddTabLeft,
+  onAddTabRight,
 }: TwoPaneSplitLayoutProps) {
   const containerRef = useRef<HTMLDivElement>(null);
   const [containerWidth, setContainerWidth] = useState<number>(0);
@@ -220,6 +224,7 @@ export function TwoPaneSplitLayout({
                 isFocused={terminals[0].id === focusedId}
                 gridPanelCount={2}
                 gridCols={2}
+                onAddTab={onAddTabLeft}
               />
             </SortableTerminal>
             {/* Overlay to hide terminal content during resize drag */}
@@ -259,6 +264,7 @@ export function TwoPaneSplitLayout({
                 isFocused={terminals[1].id === focusedId}
                 gridPanelCount={2}
                 gridCols={2}
+                onAddTab={onAddTabRight}
               />
             </SortableTerminal>
             {/* Overlay to hide terminal content during resize drag */}
