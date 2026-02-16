@@ -32,10 +32,18 @@ export function TwoPaneSplitLayout({
   const [localRatio, setLocalRatio] = useState<number | null>(null);
   const [isDraggingDivider, setIsDraggingDivider] = useState(false);
 
+  // Refs for unmount cleanup (avoid closure/dependency issues)
+  const localRatioRef = useRef<number | null>(null);
+  const activeWorktreeIdRef = useRef<string | null>(null);
+
+  localRatioRef.current = localRatio;
+  activeWorktreeIdRef.current = activeWorktreeId;
+
   const ratioByWorktreeId = useTwoPaneSplitStore((state) => state.ratioByWorktreeId);
   const defaultRatio = useTwoPaneSplitStore((state) => state.config.defaultRatio);
   const preferPreview = useTwoPaneSplitStore((state) => state.config.preferPreview);
   const setWorktreeRatio = useTwoPaneSplitStore((state) => state.setWorktreeRatio);
+  const commitRatioIfChanged = useTwoPaneSplitStore((state) => state.commitRatioIfChanged);
   const resetWorktreeRatio = useTwoPaneSplitStore((state) => state.resetWorktreeRatio);
 
   const worktreeRatio = activeWorktreeId ? ratioByWorktreeId[activeWorktreeId] : undefined;
@@ -107,12 +115,16 @@ export function TwoPaneSplitLayout({
     setLocalRatio(newRatio);
   }, []);
 
-  const handleRatioCommit = useCallback(() => {
+  const flushPendingRatio = useCallback(() => {
     if (localRatio !== null && activeWorktreeId) {
-      setWorktreeRatio(activeWorktreeId, localRatio);
+      commitRatioIfChanged(activeWorktreeId, localRatio);
       setLocalRatio(null);
     }
-  }, [localRatio, activeWorktreeId, setWorktreeRatio]);
+  }, [localRatio, activeWorktreeId, commitRatioIfChanged]);
+
+  const handleRatioCommit = useCallback(() => {
+    flushPendingRatio();
+  }, [flushPendingRatio]);
 
   const handleDoubleClick = useCallback(() => {
     if (activeWorktreeId) {
@@ -132,16 +144,25 @@ export function TwoPaneSplitLayout({
     [terminals]
   );
 
-  // Cleanup: unlock resize if component unmounts while dragging
+  // Cleanup: unlock resize and flush pending ratio on unmount only
   useEffect(() => {
     return () => {
-      if (isDraggingDivider) {
-        for (const terminal of terminals) {
-          terminalInstanceService.lockResize(terminal.id, false);
-        }
+      // Read latest values from refs to avoid stale closures
+      const pendingRatio = localRatioRef.current;
+      const worktreeId = activeWorktreeIdRef.current;
+
+      // Unlock resize for all terminals
+      for (const terminal of terminals) {
+        terminalInstanceService.lockResize(terminal.id, false);
+      }
+
+      // Flush pending ratio if present
+      if (pendingRatio !== null && worktreeId) {
+        commitRatioIfChanged(worktreeId, pendingRatio);
       }
     };
-  }, [isDraggingDivider, terminals]);
+    // Empty deps - only run on mount/unmount
+  }, [terminals, commitRatioIfChanged]);
 
   const minRatio = useMemo(() => {
     if (containerWidth <= 0) return 0.2;
