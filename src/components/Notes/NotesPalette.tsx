@@ -11,8 +11,22 @@ import { markdown, markdownLanguage } from "@codemirror/lang-markdown";
 import { languages } from "@codemirror/language-data";
 import { EditorView } from "@codemirror/view";
 import { canopyTheme } from "./editorTheme";
-import { Plus, Trash2, ExternalLink, X, AlertTriangle, StickyNote } from "lucide-react";
+import {
+  Plus,
+  Trash2,
+  ExternalLink,
+  X,
+  AlertTriangle,
+  StickyNote,
+  ChevronDown,
+} from "lucide-react";
 import { ConfirmDialog } from "@/components/ui/ConfirmDialog";
+import {
+  DropdownMenu,
+  DropdownMenuContent,
+  DropdownMenuItem,
+  DropdownMenuTrigger,
+} from "@/components/ui/dropdown-menu";
 
 interface NotesPaletteProps {
   isOpen: boolean;
@@ -48,6 +62,7 @@ export function NotesPalette({ isOpen, onClose }: NotesPaletteProps) {
   const [isEditingHeaderTitle, setIsEditingHeaderTitle] = useState(false);
   const [headerTitleEdit, setHeaderTitleEdit] = useState("");
   const [deleteConfirmNote, setDeleteConfirmNote] = useState<NoteListItem | null>(null);
+  const [isOpeningPanel, setIsOpeningPanel] = useState(false);
 
   const inputRef = useRef<HTMLInputElement>(null);
   const listRef = useRef<HTMLDivElement>(null);
@@ -501,25 +516,31 @@ export function NotesPalette({ isOpen, onClose }: NotesPaletteProps) {
     [notes, createNote, refresh, setLastSelectedNoteId]
   );
 
-  const handleOpenAsPanel = useCallback(async () => {
-    if (!selectedNote) return;
+  const handleOpenAsPanel = useCallback(
+    async (location: "grid" | "dock" = "grid") => {
+      if (!selectedNote || isOpeningPanel) return;
 
-    try {
-      await addTerminal({
-        kind: "notes",
-        title: selectedNote.title,
-        cwd: "",
-        worktreeId: activeWorktreeId ?? undefined,
-        notePath: selectedNote.path,
-        noteId: selectedNote.id,
-        scope: selectedNote.scope,
-        createdAt: selectedNote.createdAt,
-      });
-      onClose();
-    } catch (error) {
-      console.error("Failed to open note as panel:", error);
-    }
-  }, [selectedNote, addTerminal, activeWorktreeId, onClose]);
+      setIsOpeningPanel(true);
+      try {
+        await addTerminal({
+          kind: "notes",
+          title: selectedNote.title,
+          cwd: "",
+          worktreeId: activeWorktreeId ?? undefined,
+          notePath: selectedNote.path,
+          noteId: selectedNote.id,
+          scope: selectedNote.scope,
+          createdAt: selectedNote.createdAt,
+          location,
+        });
+        onClose();
+      } catch (error) {
+        console.error("Failed to open note as panel:", error);
+        setIsOpeningPanel(false);
+      }
+    },
+    [selectedNote, isOpeningPanel, addTerminal, activeWorktreeId, onClose]
+  );
 
   const handleDeleteNote = useCallback((note: NoteListItem, e: React.MouseEvent) => {
     e.stopPropagation();
@@ -568,10 +589,12 @@ export function NotesPalette({ isOpen, onClose }: NotesPaletteProps) {
           break;
         case "Enter":
           e.preventDefault();
-          if (e.metaKey || e.ctrlKey) {
+          if (e.shiftKey && (e.metaKey || e.ctrlKey) && selectedNote) {
+            handleOpenAsPanel("dock");
+          } else if (e.metaKey || e.ctrlKey) {
             handleCreateNote();
           } else if (e.shiftKey && selectedNote) {
-            handleOpenAsPanel();
+            handleOpenAsPanel("grid");
           } else if (searchResults.length > 0 && !selectedNote) {
             setSelectedNote(searchResults[selectedIndex]);
           }
@@ -831,15 +854,43 @@ export function NotesPalette({ isOpen, onClose }: NotesPaletteProps) {
                             : "bg-transparent border-transparent text-canopy-text truncate cursor-text hover:text-canopy-text"
                         )}
                       />
-                      <button
-                        type="button"
-                        onClick={handleOpenAsPanel}
-                        tabIndex={-1}
-                        className="p-1.5 rounded-[var(--radius-sm)] text-canopy-text/60 hover:text-canopy-text hover:bg-canopy-text/10 transition-colors flex items-center gap-1.5 shrink-0"
-                        title="Open as panel (Shift+Enter)"
-                      >
-                        <ExternalLink size={14} />
-                      </button>
+                      <DropdownMenu>
+                        <div className="flex items-center shrink-0">
+                          <button
+                            type="button"
+                            onClick={() => handleOpenAsPanel("grid")}
+                            disabled={isOpeningPanel}
+                            className="p-1.5 rounded-l-[var(--radius-sm)] text-canopy-text/60 hover:text-canopy-text hover:bg-canopy-text/10 transition-colors flex items-center gap-1.5 focus-visible:outline focus-visible:outline-2 focus-visible:outline-canopy-accent focus-visible:outline-offset-1 disabled:opacity-50 disabled:cursor-not-allowed"
+                            aria-label="Open in grid (Shift+Enter)"
+                          >
+                            <ExternalLink size={14} />
+                          </button>
+                          <DropdownMenuTrigger asChild>
+                            <button
+                              type="button"
+                              disabled={isOpeningPanel}
+                              className="p-1.5 pl-1 pr-1.5 rounded-r-[var(--radius-sm)] text-canopy-text/60 hover:text-canopy-text hover:bg-canopy-text/10 transition-colors border-l border-canopy-border/30 focus-visible:outline focus-visible:outline-2 focus-visible:outline-canopy-accent focus-visible:outline-offset-1 disabled:opacity-50 disabled:cursor-not-allowed"
+                              aria-label="More options"
+                            >
+                              <ChevronDown size={12} />
+                            </button>
+                          </DropdownMenuTrigger>
+                        </div>
+                        <DropdownMenuContent align="end" className="min-w-[140px]">
+                          <DropdownMenuItem onSelect={() => handleOpenAsPanel("grid")}>
+                            Open in Grid
+                            <span className="ml-auto text-[10px] font-mono text-canopy-text/40">
+                              ⇧⏎
+                            </span>
+                          </DropdownMenuItem>
+                          <DropdownMenuItem onSelect={() => handleOpenAsPanel("dock")}>
+                            Open in Dock
+                            <span className="ml-auto text-[10px] font-mono text-canopy-text/40">
+                              ⇧⌘⏎
+                            </span>
+                          </DropdownMenuItem>
+                        </DropdownMenuContent>
+                      </DropdownMenu>
                     </div>
 
                     {/* Conflict warning */}
@@ -924,7 +975,13 @@ export function NotesPalette({ isOpen, onClose }: NotesPaletteProps) {
                 <kbd className="px-1.5 py-0.5 rounded-[var(--radius-sm)] bg-canopy-border text-canopy-text/60">
                   ⇧Enter
                 </kbd>
-                <span className="ml-1.5">open panel</span>
+                <span className="ml-1.5">grid</span>
+              </span>
+              <span>
+                <kbd className="px-1.5 py-0.5 rounded-[var(--radius-sm)] bg-canopy-border text-canopy-text/60">
+                  ⇧⌘Enter
+                </kbd>
+                <span className="ml-1.5">dock</span>
               </span>
               <span>
                 <kbd className="px-1.5 py-0.5 rounded-[var(--radius-sm)] bg-canopy-border text-canopy-text/60">
