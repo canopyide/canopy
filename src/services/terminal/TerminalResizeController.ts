@@ -279,6 +279,20 @@ export class TerminalResizeController {
     }
   }
 
+  forceImmediateResize(id: string): void {
+    const managed = this.deps.getInstance(id);
+    if (!managed) return;
+
+    const cols = managed.latestCols;
+    const rows = managed.latestRows;
+    if (!Number.isInteger(cols) || !Number.isInteger(rows) || cols <= 0 || rows <= 0) {
+      return;
+    }
+
+    this.clearSettledTimer(id);
+    terminalClient.resize(id, cols, rows);
+  }
+
   clearSettledTimer(id: string): void {
     const timer = this.settledResizeTimers.get(id);
     if (timer !== undefined) {

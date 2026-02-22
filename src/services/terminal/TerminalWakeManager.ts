@@ -35,6 +35,12 @@ export class TerminalWakeManager {
         if (!managed) return false;
 
         const { state } = await terminalClient.wake(id);
+
+        // Alternate-screen TUIs repaint from live PTY data; serialized snapshots are optional.
+        if (managed.isAltBuffer) {
+          return true;
+        }
+
         if (!state) return false;
 
         if (state.length > INCREMENTAL_RESTORE_CONFIG.indicatorThresholdBytes) {

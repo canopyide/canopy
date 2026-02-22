@@ -27,6 +27,7 @@ describe("TerminalRendererPolicy", () => {
       terminal: {
         refresh: vi.fn(),
         rows: 24,
+        scrollToBottom: vi.fn(),
       } as unknown as ManagedTerminal["terminal"],
     };
 
@@ -135,6 +136,93 @@ describe("TerminalRendererPolicy", () => {
       policy.applyRendererPolicy("test-id", TerminalRefreshTier.BURST);
 
       expect(terminalClient.setActivityTier).not.toHaveBeenCalled();
+    });
+  });
+
+  describe("onPostWake callback", () => {
+    it("calls onPostWake for alt-screen terminals after successful wake", async () => {
+      const onPostWake = vi.fn();
+      mockDeps.onPostWake = onPostWake;
+      mockManagedTerminal.isAltBuffer = true;
+      mockManagedTerminal.needsWake = true;
+      mockManagedTerminal.lastAppliedTier = TerminalRefreshTier.BACKGROUND;
+      mockManagedTerminal.isVisible = true;
+      mockManagedTerminal.latestWasAtBottom = true;
+
+      const { TerminalRendererPolicy } = await import("../TerminalRendererPolicy");
+      policy = new TerminalRendererPolicy(mockDeps);
+
+      policy.initializeBackendTier("test-id", "background");
+      policy.applyRendererPolicy("test-id", TerminalRefreshTier.FOCUSED);
+
+      await vi.waitFor(() => {
+        expect(onPostWake).toHaveBeenCalledWith("test-id");
+      });
+    });
+
+    it("does not call onPostWake for non-alt-screen terminals", async () => {
+      const onPostWake = vi.fn();
+      mockDeps.onPostWake = onPostWake;
+      mockManagedTerminal.isAltBuffer = false;
+      mockManagedTerminal.needsWake = true;
+      mockManagedTerminal.lastAppliedTier = TerminalRefreshTier.BACKGROUND;
+      mockManagedTerminal.isVisible = true;
+      mockManagedTerminal.latestWasAtBottom = true;
+
+      const { TerminalRendererPolicy } = await import("../TerminalRendererPolicy");
+      policy = new TerminalRendererPolicy(mockDeps);
+
+      policy.initializeBackendTier("test-id", "background");
+      policy.applyRendererPolicy("test-id", TerminalRefreshTier.FOCUSED);
+
+      await vi.waitFor(() => {
+        expect(mockDeps.wakeAndRestore).toHaveBeenCalled();
+      });
+
+      expect(onPostWake).not.toHaveBeenCalled();
+    });
+
+    it("does not call onPostWake when wake fails", async () => {
+      const onPostWake = vi.fn();
+      mockDeps.onPostWake = onPostWake;
+      mockDeps.wakeAndRestore = vi.fn(() => Promise.resolve(false));
+      mockManagedTerminal.isAltBuffer = true;
+      mockManagedTerminal.needsWake = true;
+      mockManagedTerminal.lastAppliedTier = TerminalRefreshTier.BACKGROUND;
+
+      const { TerminalRendererPolicy } = await import("../TerminalRendererPolicy");
+      policy = new TerminalRendererPolicy(mockDeps);
+
+      policy.initializeBackendTier("test-id", "background");
+      policy.applyRendererPolicy("test-id", TerminalRefreshTier.FOCUSED);
+
+      await vi.waitFor(() => {
+        expect(mockDeps.wakeAndRestore).toHaveBeenCalled();
+      });
+
+      expect(onPostWake).not.toHaveBeenCalled();
+    });
+
+    it("preserves scroll-to-bottom behavior for non-alt terminals", async () => {
+      mockManagedTerminal.isAltBuffer = false;
+      mockManagedTerminal.needsWake = true;
+      mockManagedTerminal.lastAppliedTier = TerminalRefreshTier.BACKGROUND;
+      mockManagedTerminal.isVisible = true;
+      mockManagedTerminal.latestWasAtBottom = true;
+
+      const terminal = mockManagedTerminal.terminal as unknown as {
+        scrollToBottom: ReturnType<typeof vi.fn>;
+      };
+
+      const { TerminalRendererPolicy } = await import("../TerminalRendererPolicy");
+      policy = new TerminalRendererPolicy(mockDeps);
+
+      policy.initializeBackendTier("test-id", "background");
+      policy.applyRendererPolicy("test-id", TerminalRefreshTier.FOCUSED);
+
+      await vi.waitFor(() => {
+        expect(terminal.scrollToBottom).toHaveBeenCalledTimes(1);
+      });
     });
   });
 
