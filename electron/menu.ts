@@ -145,7 +145,7 @@ export function createApplicationMenu(
             win.webContents.reloadIgnoringCache();
           },
         },
-        { role: "toggleDevTools" },
+        ...(app.isPackaged ? [] : [{ role: "toggleDevTools" as const }]),
         { type: "separator" },
         { role: "resetZoom" },
         { role: "zoomIn" },

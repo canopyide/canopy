@@ -34,6 +34,8 @@ export class SidecarManager {
           contextIsolation: true,
           sandbox: true,
           partition: "persist:sidecar",
+          navigateOnDragDrop: false,
+          disableBlinkFeatures: "Auxclick",
         },
       });
 
