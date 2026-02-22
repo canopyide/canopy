@@ -397,7 +397,7 @@ async function createWindow(): Promise<void> {
 
   // Catch all dynamically created sessions (e.g., persist:dev-preview-*)
   app.on("session-created", (ses) => {
-    const partition = ses.partition ?? "";
+    const partition = (ses as any).partition ?? "";
     // Dev-preview and any other dynamic partitions are untrusted
     if (partition.startsWith("persist:dev-preview") || partition.startsWith("persist:browser")) {
       lockdownUntrustedPermissions(ses);
