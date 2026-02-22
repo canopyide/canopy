@@ -285,6 +285,44 @@ class TerminalRegistryController {
   async forceResume(id: string) {
     return terminalClient.forceResume(id);
   }
+
+  // --- Subscriptions ---
+
+  onAgentStateChanged(handler: (data: { terminalId: string; state: AgentState }) => void) {
+    return terminalClient.onAgentStateChanged(handler);
+  }
+
+  onActivity(handler: (data: { terminalId: string; timestamp: number }) => void) {
+    return terminalClient.onActivity(handler);
+  }
+
+  onTrashed(handler: (data: { terminalId: string }) => void) {
+    return terminalClient.onTrashed(handler);
+  }
+
+  onRestored(handler: (data: { terminalId: string }) => void) {
+    return terminalClient.onRestored(handler);
+  }
+
+  onExit(handler: (id: string, exitCode: number) => void) {
+    return terminalClient.onExit(handler);
+  }
+
+  onStatus(handler: (data: { terminalId: string; status: string }) => void) {
+    return terminalClient.onStatus(handler);
+  }
+
+  onBackendCrashed(handler: (details: { code: number; signal: string }) => void) {
+    return terminalClient.onBackendCrashed(handler);
+  }
+
+  onBackendReady(handler: () => void) {
+    return terminalClient.onBackendReady(handler);
+  }
+
+  onSpawnResult(handler: (id: string, result: { success: boolean; error?: string }) => void) {
+    return terminalClient.onSpawnResult(handler);
+  }
 }
 
 // Singleton instance

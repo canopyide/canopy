@@ -20,7 +20,7 @@ import {
   type QueuedCommand,
   isAgentReady,
 } from "./slices";
-import { terminalClient } from "@/clients";
+import { terminalRegistryController } from "@/controllers";
 import { terminalInstanceService } from "@/services/TerminalInstanceService";
 import { useTerminalInputStore } from "./terminalInputStore";
 import type { CrashType } from "@shared/types/pty-host";
@@ -388,7 +388,7 @@ export const useTerminalStore = create<PanelGridState>()((set, get, api) => {
       }
 
       const killPromises = state.terminals.map((terminal) =>
-        terminalClient.kill(terminal.id).catch((error) => {
+        terminalRegistryController.kill(terminal.id).catch((error) => {
           logError(`Failed to kill terminal ${terminal.id}`, error);
         })
       );
@@ -528,7 +528,7 @@ export function setupTerminalStoreListeners() {
     return cleanupTerminalStoreListeners;
   }
 
-  agentStateUnsubscribe = terminalClient.onAgentStateChanged((data) => {
+  agentStateUnsubscribe = terminalRegistryController.onAgentStateChanged((data) => {
     const { terminalId, state, timestamp, trigger, confidence } = data;
 
     if (typeof timestamp !== "number" || !Number.isFinite(timestamp)) {
@@ -568,14 +568,14 @@ export function setupTerminalStoreListeners() {
     }
   });
 
-  activityUnsubscribe = terminalClient.onActivity((data) => {
+  activityUnsubscribe = terminalRegistryController.onActivity((data) => {
     const { terminalId, headline, status, type, timestamp, lastCommand } = data;
     useTerminalStore
       .getState()
       .updateActivity(terminalId, headline, status, type, timestamp, lastCommand);
   });
 
-  trashedUnsubscribe = terminalClient.onTrashed((data) => {
+  trashedUnsubscribe = terminalRegistryController.onTrashed((data) => {
     const { id, expiresAt } = data;
     const state = useTerminalStore.getState();
     const terminal = state.terminals.find((t) => t.id === id);
@@ -595,13 +595,13 @@ export function setupTerminalStoreListeners() {
     }
   });
 
-  restoredUnsubscribe = terminalClient.onRestored((data) => {
+  restoredUnsubscribe = terminalRegistryController.onRestored((data) => {
     const { id } = data;
     useTerminalStore.getState().markAsRestored(id);
     useTerminalStore.setState({ focusedId: id });
   });
 
-  exitUnsubscribe = terminalClient.onExit((id, exitCode) => {
+  exitUnsubscribe = terminalRegistryController.onExit((id, exitCode) => {
     // Check synchronous restart guard FIRST - this handles the race condition where
     // the store's isRestarting flag hasn't propagated yet during bulk restarts
     if (isTerminalRestarting(id)) {
@@ -663,7 +663,7 @@ export function setupTerminalStoreListeners() {
     state.trashTerminal(id);
   });
 
-  flowStatusUnsubscribe = terminalClient.onStatus((data) => {
+  flowStatusUnsubscribe = terminalRegistryController.onStatus((data) => {
     const { id, status, timestamp } = data;
     useTerminalStore.getState().updateFlowStatus(id, status, timestamp);
 
@@ -673,7 +673,7 @@ export function setupTerminalStoreListeners() {
     }
   });
 
-  backendCrashedUnsubscribe = terminalClient.onBackendCrashed((details) => {
+  backendCrashedUnsubscribe = terminalRegistryController.onBackendCrashed((details) => {
     logError("Backend crashed", undefined, { details });
 
     // Cancel any pending recovery timer
@@ -688,7 +688,7 @@ export function setupTerminalStoreListeners() {
     });
   });
 
-  backendReadyUnsubscribe = terminalClient.onBackendReady(() => {
+  backendReadyUnsubscribe = terminalRegistryController.onBackendReady(() => {
     logInfo("Backend recovered, resetting renderers...");
 
     // Cancel any pending recovery timer from previous crash
@@ -709,7 +709,7 @@ export function setupTerminalStoreListeners() {
     }, 500);
   });
 
-  spawnResultUnsubscribe = terminalClient.onSpawnResult((id, result) => {
+  spawnResultUnsubscribe = terminalRegistryController.onSpawnResult((id, result) => {
     if (!result.success) {
       if (result.error) {
         logError(`Spawn failed for terminal ${id}`, undefined, { error: result.error });

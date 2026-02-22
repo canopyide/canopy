@@ -52,8 +52,8 @@ function enforceIpcSenderValidation() {
           console.error(`[IPC] Error on channel ${channel}:`, error);
           const msg = (error instanceof Error ? error.message : String(error))
             .replace(/\/(?:Users|home|tmp|private|var)\/[^\s:]+/gi, "<path>")
-            .replace(/[A-Z]:[\/\\](?:Users|Program Files|Windows|ProgramData)[^\s:]*/gi, "<path>")
-            .replace(/\\\\[^\s\\]+\\[^\s:]+/g, "<path>");
+            .replace(/[A-Z]:[/\\](?:Users|Program Files|Windows|ProgramData)[^\s:]*/gi, "<path>")
+            .replace(/\\\\(?:[^\s\\]+)\\(?:[^\s:]+)/g, "<path>");
           const safe = new Error(msg);
           safe.stack = undefined;
           throw safe;
@@ -82,8 +82,8 @@ function enforceIpcSenderValidation() {
             console.error(`[IPC] Error on channel ${channel}:`, error);
             const msg = (error instanceof Error ? error.message : String(error))
               .replace(/\/(?:Users|home|tmp|private|var)\/[^\s:]+/gi, "<path>")
-              .replace(/[A-Z]:[\/\\](?:Users|Program Files|Windows|ProgramData)[^\s:]*/gi, "<path>")
-              .replace(/\\\\[^\s\\]+\\[^\s:]+/g, "<path>");
+              .replace(/[A-Z]:[/\\](?:Users|Program Files|Windows|ProgramData)[^\s:]*/gi, "<path>")
+              .replace(/\\\\(?:[^\s\\]+)\\(?:[^\s:]+)/g, "<path>");
             const safe = new Error(msg);
             safe.stack = undefined;
             throw safe;
