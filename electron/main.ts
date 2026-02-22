@@ -7,6 +7,7 @@ import {
   MessageChannelMain,
   protocol,
   net,
+  session,
 } from "electron";
 import path from "path";
 import { fileURLToPath, pathToFileURL } from "url";
@@ -24,6 +25,8 @@ import {
 } from "./utils/performance.js";
 
 fixPath();
+
+app.enableSandbox();
 
 // Wrap ipcMain.handle globally to enforce sender validation on ALL IPC handlers
 // This must run before any handlers are registered
@@ -362,6 +365,45 @@ async function createWindow(): Promise<void> {
     return;
   }
 
+  // Lock down permissions on untrusted sessions to prevent OS permission prompts
+  // Deny all for untrusted content (browser, dev-preview, sidecar)
+  // Allow minimal permissions for trusted app renderer (clipboard only)
+  function lockdownUntrustedPermissions(ses: Electron.Session): void {
+    ses.setPermissionRequestHandler((_wc, _perm, callback) => callback(false));
+    ses.setPermissionCheckHandler(() => false);
+  }
+
+  function lockdownTrustedPermissions(ses: Electron.Session): void {
+    ses.setPermissionRequestHandler((_wc, permission, callback) => {
+      // Allow only clipboard-write for trusted app renderer
+      if (permission === "clipboard-sanitized-write") {
+        callback(true);
+      } else {
+        callback(false);
+      }
+    });
+    ses.setPermissionCheckHandler((_wc, permission) => {
+      return permission === "clipboard-sanitized-write";
+    });
+  }
+
+  // Lock down default session (trusted app renderer) with clipboard allowlist
+  lockdownTrustedPermissions(session.defaultSession);
+
+  // Lock down known untrusted sessions
+  for (const partition of ["persist:browser", "persist:sidecar"]) {
+    lockdownUntrustedPermissions(session.fromPartition(partition));
+  }
+
+  // Catch all dynamically created sessions (e.g., persist:dev-preview-*)
+  app.on("session-created", (ses) => {
+    const partition = ses.partition ?? "";
+    // Dev-preview and any other dynamic partitions are untrusted
+    if (partition.startsWith("persist:dev-preview") || partition.startsWith("persist:browser")) {
+      lockdownUntrustedPermissions(ses);
+    }
+  });
+
   console.log("[MAIN] Running store migrations...");
   try {
     const migrationRunner = new MigrationRunner(store);
@@ -419,6 +461,7 @@ async function createWindow(): Promise<void> {
       nodeIntegration: false,
       sandbox: true,
       webviewTag: true,
+      navigateOnDragDrop: false,
     },
     titleBarStyle: "hiddenInset",
     trafficLightPosition: { x: 12, y: 18 },
@@ -502,6 +545,8 @@ async function createWindow(): Promise<void> {
     webPreferences.nodeIntegration = false;
     webPreferences.contextIsolation = true;
     webPreferences.sandbox = true;
+    webPreferences.navigateOnDragDrop = false;
+    webPreferences.disableBlinkFeatures = "Auxclick";
   });
 
   // Intercept Cmd+W (macOS) / Ctrl+W (Windows/Linux) to prevent window close.
@@ -553,7 +598,9 @@ async function createWindow(): Promise<void> {
   });
 
   ipcMain.handle(CHANNELS.WINDOW_TOGGLE_DEVTOOLS, (event) => {
-    event.sender.toggleDevTools();
+    if (!app.isPackaged) {
+      event.sender.toggleDevTools();
+    }
   });
 
   const getZoomStep = () => 0.5;
