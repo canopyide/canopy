@@ -1,5 +1,4 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
-import { createPortal } from "react-dom";
 import { useShallow } from "zustand/react/shallow";
 import { useDndMonitor } from "@dnd-kit/core";
 import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover";
@@ -9,6 +8,7 @@ import {
   useTerminalInputStore,
   useTerminalStore,
   useSidecarStore,
+  useFocusStore,
   type TerminalInstance,
 } from "@/store";
 import { TerminalContextMenu } from "@/components/Terminal/TerminalContextMenu";
@@ -18,6 +18,7 @@ import { STATE_ICONS, STATE_COLORS } from "@/components/Worktree/terminalStateCo
 import { TerminalRefreshTier } from "@/types";
 import { terminalInstanceService } from "@/services/TerminalInstanceService";
 import { useDockPanelPortal } from "./DockPanelOffscreenContainer";
+import { DockPopupScrim } from "./DockPopupScrim";
 
 interface DockedTerminalItemProps {
   terminal: TerminalInstance;
@@ -56,15 +57,17 @@ export function DockedTerminalItem({ terminal }: DockedTerminalItemProps) {
     useShallow((s) => ({ isOpen: s.isOpen, width: s.width }))
   );
 
+  const isFocusMode = useFocusStore((s) => s.isFocusMode);
+
   const collisionPadding = useMemo(() => {
     const basePadding = 32;
     return {
       top: basePadding,
-      left: basePadding,
+      left: isFocusMode ? 8 : basePadding,
       bottom: basePadding,
       right: sidecarOpen ? sidecarWidth + basePadding : basePadding,
     };
-  }, [sidecarOpen, sidecarWidth]);
+  }, [isFocusMode, sidecarOpen, sidecarWidth]);
 
   // Toggle buffering based on popover open state
   useEffect(() => {
@@ -262,17 +265,7 @@ export function DockedTerminalItem({ terminal }: DockedTerminalItemProps) {
         </PopoverTrigger>
       </TerminalContextMenu>
 
-      {createPortal(
-        <div
-          className={cn(
-            "fixed inset-0 pointer-events-none transition-opacity duration-150",
-            isOpen ? "opacity-100" : "opacity-0"
-          )}
-          style={{ zIndex: "var(--z-dock-scrim)", background: "rgba(0, 0, 0, 0.45)" }}
-          aria-hidden="true"
-        />,
-        document.body
-      )}
+      <DockPopupScrim isOpen={isOpen} />
 
       <PopoverContent
         className="w-[700px] max-w-[90vw] h-[500px] max-h-[80vh] p-0 bg-canopy-bg/95 backdrop-blur-sm border border-[var(--border-dock-popup)] shadow-[var(--shadow-dock-popover)] rounded-[var(--radius-lg)] overflow-hidden"
