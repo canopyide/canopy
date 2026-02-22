@@ -6,6 +6,7 @@ import { TIER_DOWNGRADE_HYSTERESIS_MS } from "./types";
 export interface RendererPolicyDeps {
   getInstance: (id: string) => ManagedTerminal | undefined;
   wakeAndRestore: (id: string) => Promise<boolean>;
+  onPostWake?: (id: string) => void;
 }
 
 export class TerminalRendererPolicy {
@@ -108,7 +109,9 @@ export class TerminalRendererPolicy {
 
             current.terminal.refresh(0, current.terminal.rows - 1);
 
-            if (ok && !current.isAltBuffer && current.latestWasAtBottom && current.isVisible) {
+            if (ok && current.isAltBuffer) {
+              this.deps.onPostWake?.(id);
+            } else if (ok && current.latestWasAtBottom && current.isVisible) {
               current.terminal.scrollToBottom();
             }
           })

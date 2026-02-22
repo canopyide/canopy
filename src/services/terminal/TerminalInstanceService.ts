@@ -21,6 +21,8 @@ import { logDebug, logWarn, logError } from "@/utils/logger";
 import { PERF_MARKS } from "@shared/perf/marks";
 import { markRendererPerformance } from "@/utils/performance";
 
+const POST_WAKE_RESIZE_BOUNCE_DELAY_MS = 50;
+
 class TerminalInstanceService {
   private instances = new Map<string, ManagedTerminal>();
   private dataBuffer = new TerminalOutputIngestService((id, data) =>
@@ -35,6 +37,7 @@ class TerminalInstanceService {
     string,
     Array<{ resolve: () => void; reject: (error: Error) => void; timeout: number }>
   >();
+  private postWakeTimers = new Map<string, Set<ReturnType<typeof setTimeout>>>();
 
   private offscreenManager = new TerminalOffscreenManager();
   private linkHandler = new TerminalLinkHandler();
@@ -61,6 +64,7 @@ class TerminalInstanceService {
     this.rendererPolicy = new TerminalRendererPolicy({
       getInstance: (id) => this.instances.get(id),
       wakeAndRestore: (id) => this.wakeManager.wakeAndRestore(id),
+      onPostWake: (id) => this.handlePostWake(id),
     });
   }
 
@@ -675,6 +679,81 @@ class TerminalInstanceService {
     }
   }
 
+  private handlePostWake(id: string): void {
+    const managed = this.instances.get(id);
+    if (!managed) return;
+
+    this.clearPostWakeTimers(id);
+    this.resizeController.forceImmediateResize(id);
+
+    const firstTimer = setTimeout(() => {
+      this.untrackPostWakeTimer(id, firstTimer);
+
+      const current = this.instances.get(id);
+      if (current !== managed) return;
+
+      const cols = current.latestCols;
+      const rows = current.latestRows;
+      if (!Number.isInteger(cols) || !Number.isInteger(rows) || cols <= 0 || rows <= 1) {
+        return;
+      }
+
+      // Bounce rows instead of columns to avoid transient line-wrap artifacts in TUIs.
+      terminalClient.resize(id, cols, rows - 1);
+
+      const secondTimer = setTimeout(() => {
+        this.untrackPostWakeTimer(id, secondTimer);
+
+        const latest = this.instances.get(id);
+        if (latest !== managed) return;
+
+        const latestCols = latest.latestCols;
+        const latestRows = latest.latestRows;
+        if (
+          !Number.isInteger(latestCols) ||
+          !Number.isInteger(latestRows) ||
+          latestCols <= 0 ||
+          latestRows <= 0
+        ) {
+          return;
+        }
+
+        terminalClient.resize(id, latestCols, latestRows);
+      }, POST_WAKE_RESIZE_BOUNCE_DELAY_MS);
+      this.trackPostWakeTimer(id, secondTimer);
+    }, POST_WAKE_RESIZE_BOUNCE_DELAY_MS);
+    this.trackPostWakeTimer(id, firstTimer);
+  }
+
+  private trackPostWakeTimer(id: string, timer: ReturnType<typeof setTimeout>): void {
+    let timers = this.postWakeTimers.get(id);
+    if (!timers) {
+      timers = new Set();
+      this.postWakeTimers.set(id, timers);
+    }
+    timers.add(timer);
+  }
+
+  private untrackPostWakeTimer(id: string, timer: ReturnType<typeof setTimeout>): void {
+    const timers = this.postWakeTimers.get(id);
+    if (!timers) return;
+
+    timers.delete(timer);
+    if (timers.size === 0) {
+      this.postWakeTimers.delete(id);
+    }
+  }
+
+  private clearPostWakeTimers(id: string): void {
+    const timers = this.postWakeTimers.get(id);
+    if (!timers) return;
+
+    for (const timer of timers) {
+      clearTimeout(timer);
+    }
+    this.postWakeTimers.delete(id);
+  }
+
   private handleBufferModeChange(id: string, isAltBuffer: boolean): void {
     const managed = this.instances.get(id);
     if (!managed) return;
@@ -899,6 +978,7 @@ class TerminalInstanceService {
     this.resizeController.clearResizeJobs(managed);
     this.resizeController.clearResizeLock(id);
     this.resizeController.clearSettledTimer(id);
+    this.clearPostWakeTimers(id);
     this.dataBuffer.resetForTerminal(id);
     this.unseenTracker.destroy(id);
 

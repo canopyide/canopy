@@ -20,7 +20,7 @@ vi.mock("@shared/config/agentRegistry", async (importOriginal) => {
   };
 });
 
-import { TerminalResizeController } from "../TerminalResizeController";
+import { TerminalResizeController, type ResizeControllerDeps } from "../TerminalResizeController";
 
 function createManagedTerminal() {
   const terminal = {
@@ -231,6 +231,55 @@ describe("TerminalResizeController", () => {
 
     controller.clearSettledTimer("term-1");
     vi.advanceTimersByTime(500);
+
+    expect(resizeMock).not.toHaveBeenCalled();
+  });
+
+  it("forceImmediateResize sends an immediate resize and cancels pending settled timer", () => {
+    const managed = createManagedTerminal();
+    managed.agentId = "codex";
+    managed.latestCols = 132;
+    managed.latestRows = 41;
+    const dataBuffer = {
+      flushForTerminal: vi.fn(),
+      resetForTerminal: vi.fn(),
+    } as unknown as ResizeControllerDeps["dataBuffer"];
+
+    getEffectiveAgentConfigMock.mockReturnValue({
+      capabilities: { resizeStrategy: "settled" },
+    });
+
+    const controller = new TerminalResizeController({
+      getInstance: vi.fn(() => managed),
+      dataBuffer,
+    });
+
+    controller.sendPtyResize("term-1", 100, 30);
+    expect(resizeMock).not.toHaveBeenCalled();
+
+    controller.forceImmediateResize("term-1");
+    expect(resizeMock).toHaveBeenCalledTimes(1);
+    expect(resizeMock).toHaveBeenCalledWith("term-1", 132, 41);
+
+    vi.advanceTimersByTime(500);
+    expect(resizeMock).toHaveBeenCalledTimes(1);
+  });
+
+  it("forceImmediateResize skips invalid terminal dimensions", () => {
+    const managed = createManagedTerminal();
+    managed.latestCols = 0;
+    managed.latestRows = 24;
+    const dataBuffer = {
+      flushForTerminal: vi.fn(),
+      resetForTerminal: vi.fn(),
+    } as unknown as ResizeControllerDeps["dataBuffer"];
+
+    const controller = new TerminalResizeController({
+      getInstance: vi.fn(() => managed),
+      dataBuffer,
+    });
+
+    controller.forceImmediateResize("term-1");
 
     expect(resizeMock).not.toHaveBeenCalled();
   });
