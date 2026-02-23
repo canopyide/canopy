@@ -17,9 +17,6 @@ export interface AgentMetadata {
     scrollback?: number;
     blockAltScreen?: boolean;
     blockMouseReporting?: boolean;
-    blockScrollRegion?: boolean;
-    blockClearScreen?: boolean;
-    blockCursorToTop?: boolean;
   };
   /** Routing configuration for intelligent agent dispatch */
   routing?: AgentRoutingConfig;
