@@ -110,6 +110,9 @@ export function DevPreviewPane({
 
   const setWebviewNode = useCallback((node: Electron.WebviewTag | null) => {
     webviewRef.current = node;
+    if (node) {
+      lastSetUrlRef.current = "";
+    }
     setWebviewElement(node);
   }, []);
 
@@ -285,13 +288,16 @@ export function DevPreviewPane({
       const navigatedUrl = e.url;
       if (navigatedUrl !== lastSetUrlRef.current) {
         setHistory((prev) => pushBrowserHistory(prev, navigatedUrl));
+        lastSetUrlRef.current = navigatedUrl;
       }
     };
 
     const handleDidNavigateInPage = (e: Electron.DidNavigateInPageEvent) => {
+      if (!e.isMainFrame) return;
       const navigatedUrl = e.url;
       if (navigatedUrl !== lastSetUrlRef.current) {
         setHistory((prev) => pushBrowserHistory(prev, navigatedUrl));
+        lastSetUrlRef.current = navigatedUrl;
       }
     };
 
@@ -353,8 +359,19 @@ export function DevPreviewPane({
   useEffect(() => {
     if (isWebviewReady && currentUrl && currentUrl !== lastSetUrlRef.current) {
       lastSetUrlRef.current = currentUrl;
-      if (webviewElement && webviewElement.src !== currentUrl) {
-        webviewElement.src = currentUrl;
+      if (webviewElement) {
+        try {
+          const loadedUrl = webviewElement.getURL();
+          if (loadedUrl !== currentUrl) {
+            webviewElement
+              .loadURL(currentUrl)
+              .catch(() => {
+                webviewElement.src = currentUrl;
+              });
+          }
+        } catch {
+          webviewElement.src = currentUrl;
+        }
       }
     }
   }, [currentUrl, isWebviewReady, webviewElement]);
@@ -437,7 +454,7 @@ export function DevPreviewPane({
                 )}
               </div>
             </div>
-          ) : !currentUrl ? (
+          ) : !currentUrl || status !== "running" ? (
             <div className="absolute inset-0 flex flex-col items-center justify-center bg-canopy-bg text-canopy-text p-6">
               {isUnconfigured ? (
                 <div className="flex flex-col items-center text-center max-w-md">
