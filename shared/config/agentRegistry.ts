@@ -104,9 +104,6 @@ export interface AgentConfig {
     scrollback?: number;
     blockAltScreen?: boolean;
     blockMouseReporting?: boolean;
-    blockScrollRegion?: boolean;
-    blockClearScreen?: boolean;
-    blockCursorToTop?: boolean;
     resizeStrategy?: "default" | "settled";
   };
   /**
@@ -195,11 +192,6 @@ export const AGENT_REGISTRY: Record<string, AgentConfig> = {
     },
     capabilities: {
       scrollback: 10000,
-      blockAltScreen: false,
-      blockMouseReporting: false,
-      blockScrollRegion: false,
-      blockClearScreen: false,
-      blockCursorToTop: false,
     },
     detection: {
       primaryPatterns: [
@@ -293,10 +285,7 @@ export const AGENT_REGISTRY: Record<string, AgentConfig> = {
     capabilities: {
       scrollback: 10000,
       blockAltScreen: true,
-      blockMouseReporting: false,
-      blockScrollRegion: false,
-      blockClearScreen: false,
-      blockCursorToTop: false,
+      blockMouseReporting: true,
     },
     detection: {
       primaryPatterns: [
@@ -387,11 +376,6 @@ export const AGENT_REGISTRY: Record<string, AgentConfig> = {
     },
     capabilities: {
       scrollback: 10000,
-      blockAltScreen: false,
-      blockMouseReporting: false,
-      blockScrollRegion: false,
-      blockClearScreen: false,
-      blockCursorToTop: false,
       resizeStrategy: "settled",
     },
     detection: {
@@ -517,10 +501,6 @@ export const AGENT_REGISTRY: Record<string, AgentConfig> = {
     capabilities: {
       scrollback: 10000,
       blockAltScreen: true,
-      blockMouseReporting: false,
-      blockScrollRegion: false,
-      blockClearScreen: false,
-      blockCursorToTop: false,
     },
     detection: {
       primaryPatterns: [

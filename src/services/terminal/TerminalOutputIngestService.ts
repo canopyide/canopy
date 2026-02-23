@@ -14,6 +14,7 @@ export class TerminalOutputIngestService {
   private initializePromise: Promise<void> | null = null;
   private ipcCoalescer: TerminalOutputCoalescer;
   private perfSampleCounter = 0;
+  private directModeIds = new Set<string>();
 
   constructor(private readonly writeToTerminal: (id: string, data: string | Uint8Array) => void) {
     this.ipcCoalescer = new TerminalOutputCoalescer(
@@ -57,6 +58,9 @@ export class TerminalOutputIngestService {
           this.worker?.terminate();
           this.worker = null;
           this.initializePromise = null;
+          for (const id of this.directModeIds) {
+            this.ipcCoalescer.setDirectMode(id, true);
+          }
         };
 
         const initMessage: WorkerInboundMessage = {
@@ -66,6 +70,14 @@ export class TerminalOutputIngestService {
         };
         this.worker.postMessage(initMessage);
         this.pollingActive = true;
+        for (const id of this.directModeIds) {
+          const message: WorkerInboundMessage = {
+            type: "SET_DIRECT_MODE",
+            id,
+            enabled: true,
+          };
+          this.worker.postMessage(message);
+        }
         console.log(
           `[TerminalOutputIngestService] Worker-based SAB ingestion enabled (${visualBuffers.length} shards)`
         );
@@ -118,6 +130,7 @@ export class TerminalOutputIngestService {
   }
 
   public resetForTerminal(id: string): void {
+    this.directModeIds.delete(id);
     if (!this.pollingActive || !this.worker) {
       this.ipcCoalescer.resetForTerminal(id);
       return;
@@ -130,6 +143,9 @@ export class TerminalOutputIngestService {
   }
 
   public setDirectMode(id: string, enabled: boolean): void {
+    if (enabled) this.directModeIds.add(id);
+    else this.directModeIds.delete(id);
+
     if (this.pollingActive && this.worker) {
       const message: WorkerInboundMessage = {
         type: "SET_DIRECT_MODE",
@@ -162,6 +178,9 @@ export class TerminalOutputIngestService {
       type: "STOP",
     };
     this.worker.postMessage(message);
+    for (const id of this.directModeIds) {
+      this.ipcCoalescer.setDirectMode(id, true);
+    }
     setTimeout(() => {
       this.worker?.terminate();
       this.worker = null;

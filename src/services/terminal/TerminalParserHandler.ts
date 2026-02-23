@@ -34,17 +34,11 @@ export class TerminalParserHandler {
   private getAgentCapabilities(): {
     blockAltScreen: boolean;
     blockMouseReporting: boolean;
-    blockScrollRegion: boolean;
-    blockClearScreen: boolean;
-    blockCursorToTop: boolean;
   } {
     if (this.managed.kind !== "agent") {
       return {
         blockAltScreen: false,
         blockMouseReporting: false,
-        blockScrollRegion: false,
-        blockClearScreen: false,
-        blockCursorToTop: false,
       };
     }
 
@@ -54,9 +48,6 @@ export class TerminalParserHandler {
     return {
       blockAltScreen: config?.capabilities?.blockAltScreen ?? false,
       blockMouseReporting: config?.capabilities?.blockMouseReporting ?? false,
-      blockScrollRegion: config?.capabilities?.blockScrollRegion ?? false,
-      blockClearScreen: config?.capabilities?.blockClearScreen ?? false,
-      blockCursorToTop: config?.capabilities?.blockCursorToTop ?? false,
     };
   }
 
@@ -119,17 +110,6 @@ export class TerminalParserHandler {
         }
       );
       this.disposables.push(decsetMouseHandler);
-
-      const decrstMouseHandler = terminal.parser.registerCsiHandler(
-        { prefix: "?", final: "l" },
-        (params) => {
-          if (!this.shouldBlock()) return false;
-          const p = this.normalizeCsiParams(params);
-          if (!p.some((v) => mouseModeParams.has(v))) return false;
-          return true;
-        }
-      );
-      this.disposables.push(decrstMouseHandler);
     }
   }
 
