@@ -363,11 +363,9 @@ export function DevPreviewPane({
         try {
           const loadedUrl = webviewElement.getURL();
           if (loadedUrl !== currentUrl) {
-            webviewElement
-              .loadURL(currentUrl)
-              .catch(() => {
-                webviewElement.src = currentUrl;
-              });
+            webviewElement.loadURL(currentUrl).catch(() => {
+              webviewElement.src = currentUrl;
+            });
           }
         } catch {
           webviewElement.src = currentUrl;

@@ -366,19 +366,13 @@ export class TerminalProcess {
       analysisEnabled: this.isAgentTerminal,
     };
 
-    if (this.isAgentTerminal && this.terminalInfo.headlessTerminal) {
-      this.headlessResponderDisposable = installHeadlessResponder(
-        this.terminalInfo.headlessTerminal,
-        (data) => {
-          if (this.terminalInfo.wasKilled) return;
-          try {
-            this.terminalInfo.ptyProcess.write(data);
-          } catch (error) {
-            this.logWriteError(error, { operation: "write(headless-responder)" });
-          }
-        }
-      );
-    }
+    // NOTE: The headless responder is intentionally NOT installed for agent
+    // terminals. It would forward query responses (CSI 6n cursor position,
+    // CSI c device attributes) from the headless terminal back to the PTY.
+    // But the frontend xterm.js ALSO responds to these same queries when it
+    // processes the output, causing double responses that corrupt Crossterm/
+    // Ratatui's input parser (Codex, OpenCode) and Ink's state (Claude Code).
+    // The frontend xterm.js is the sole query responder for agent terminals.
 
     if (TERMINAL_FRAME_STABILIZER_ENABLED && this.isAgentTerminal && headlessTerminal) {
       this.syncBuffer = new TerminalSyncBuffer({

@@ -60,7 +60,10 @@ export class TerminalOutputCoalescer {
   private buffers = new Map<string, BufferEntry>();
   private frameQueues = new Map<string, FrameQueue>();
   private interactiveUntil = new Map<string, number>();
-  private directModeIds = new Set<string>();
+  // Manual direct mode: set explicitly for agent terminals, never auto-cleared
+  private manualDirectModeIds = new Set<string>();
+  // Auto direct mode: set/cleared by alt-screen detection, cleared on reset
+  private autoDirectModeIds = new Set<string>();
 
   // Debug stats
   private stats = {
@@ -76,8 +79,8 @@ export class TerminalOutputCoalescer {
   ) {}
 
   public setDirectMode(id: string, enabled: boolean): void {
-    if (enabled) this.directModeIds.add(id);
-    else this.directModeIds.delete(id);
+    if (enabled) this.manualDirectModeIds.add(id);
+    else this.manualDirectModeIds.delete(id);
   }
 
   public bufferData(id: string, data: string | Uint8Array): void {
@@ -91,21 +94,22 @@ export class TerminalOutputCoalescer {
     const bytesSinceStart = prevBytes + dataLength;
     let isRedraw = this.detectRedrawPatternInStream(prevRecent, stringData, bytesSinceStart);
 
-    // Auto-detect alt screen enter/exit to toggle direct mode
+    // Auto-detect alt screen enter/exit to toggle auto direct mode
     for (const seq of TerminalOutputCoalescer.ALT_ENTER) {
       if (this.hasNewAnsiSequence(prevRecent, stringData, seq)) {
-        this.directModeIds.add(id);
+        this.autoDirectModeIds.add(id);
         break;
       }
     }
     for (const seq of TerminalOutputCoalescer.ALT_EXIT) {
       if (this.hasNewAnsiSequence(prevRecent, stringData, seq)) {
-        this.directModeIds.delete(id);
+        this.autoDirectModeIds.delete(id);
         break;
       }
     }
 
-    if (this.directModeIds.has(id)) {
+    // Direct mode active if either manual (agent terminals) or auto (alt-screen)
+    if (this.manualDirectModeIds.has(id) || this.autoDirectModeIds.has(id)) {
       isRedraw = false;
     }
 
@@ -266,7 +270,8 @@ export class TerminalOutputCoalescer {
       this.buffers.delete(id);
     }
     this.interactiveUntil.delete(id);
-    this.directModeIds.delete(id);
+    // Only clear auto direct mode (alt-screen detection), preserve manual mode
+    this.autoDirectModeIds.delete(id);
 
     const queue = this.frameQueues.get(id);
     if (queue) {
@@ -299,7 +304,8 @@ export class TerminalOutputCoalescer {
     this.buffers.clear();
     this.frameQueues.clear();
     this.interactiveUntil.clear();
-    this.directModeIds.clear();
+    this.manualDirectModeIds.clear();
+    this.autoDirectModeIds.clear();
   }
 
   private rescheduleFrameTimers(id: string, entry: BufferEntry): void {
