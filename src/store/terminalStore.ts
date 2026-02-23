@@ -536,45 +536,47 @@ export function setupTerminalStoreListeners() {
     return cleanupTerminalStoreListeners;
   }
 
-  agentStateUnsubscribe = terminalRegistryController.onAgentStateChanged((data: AgentStateChangePayload) => {
-    const { terminalId, state, timestamp, trigger, confidence } = data;
+  agentStateUnsubscribe = terminalRegistryController.onAgentStateChanged(
+    (data: AgentStateChangePayload) => {
+      const { terminalId, state, timestamp, trigger, confidence } = data;
 
-    if (typeof timestamp !== "number" || !Number.isFinite(timestamp)) {
-      logWarn("Invalid timestamp in agent state event", { data });
-      return;
+      if (typeof timestamp !== "number" || !Number.isFinite(timestamp)) {
+        logWarn("Invalid timestamp in agent state event", { data });
+        return;
+      }
+
+      if (!terminalId) {
+        logWarn("Missing terminalId in agent state event", { data });
+        return;
+      }
+
+      const clampedConfidence = Math.max(0, Math.min(1, confidence || 0));
+
+      const terminal = useTerminalStore.getState().terminals.find((t) => t.id === terminalId);
+
+      if (!terminal) {
+        return;
+      }
+
+      if (terminal.isRestarting) {
+        return;
+      }
+
+      if (terminal.lastStateChange && timestamp < terminal.lastStateChange) {
+        return;
+      }
+
+      terminalInstanceService.setAgentState(terminalId, state);
+
+      useTerminalStore
+        .getState()
+        .updateAgentState(terminalId, state, undefined, timestamp, trigger, clampedConfidence);
+
+      if (state === "waiting" || state === "idle") {
+        useTerminalStore.getState().processQueue(terminalId);
+      }
     }
-
-    if (!terminalId) {
-      logWarn("Missing terminalId in agent state event", { data });
-      return;
-    }
-
-    const clampedConfidence = Math.max(0, Math.min(1, confidence || 0));
-
-    const terminal = useTerminalStore.getState().terminals.find((t) => t.id === terminalId);
-
-    if (!terminal) {
-      return;
-    }
-
-    if (terminal.isRestarting) {
-      return;
-    }
-
-    if (terminal.lastStateChange && timestamp < terminal.lastStateChange) {
-      return;
-    }
-
-    terminalInstanceService.setAgentState(terminalId, state);
-
-    useTerminalStore
-      .getState()
-      .updateAgentState(terminalId, state, undefined, timestamp, trigger, clampedConfidence);
-
-    if (state === "waiting" || state === "idle") {
-      useTerminalStore.getState().processQueue(terminalId);
-    }
-  });
+  );
 
   activityUnsubscribe = terminalRegistryController.onActivity((data: TerminalActivityPayload) => {
     const { terminalId, headline, status, type, timestamp, lastCommand } = data;
@@ -583,25 +585,27 @@ export function setupTerminalStoreListeners() {
       .updateActivity(terminalId, headline, status, type, timestamp, lastCommand);
   });
 
-  trashedUnsubscribe = terminalRegistryController.onTrashed((data: { id: string; expiresAt: number }) => {
-    const { id, expiresAt } = data;
-    const state = useTerminalStore.getState();
-    const terminal = state.terminals.find((t) => t.id === id);
-    const originalLocation: "dock" | "grid" = terminal?.location === "dock" ? "dock" : "grid";
-    state.markAsTrashed(id, expiresAt, originalLocation);
+  trashedUnsubscribe = terminalRegistryController.onTrashed(
+    (data: { id: string; expiresAt: number }) => {
+      const { id, expiresAt } = data;
+      const state = useTerminalStore.getState();
+      const terminal = state.terminals.find((t) => t.id === id);
+      const originalLocation: "dock" | "grid" = terminal?.location === "dock" ? "dock" : "grid";
+      state.markAsTrashed(id, expiresAt, originalLocation);
 
-    const updates: Partial<PanelGridState> = {};
-    if (state.focusedId === id) {
-      const gridTerminals = state.terminals.filter((t) => t.id !== id && t.location === "grid");
-      updates.focusedId = gridTerminals[0]?.id ?? null;
+      const updates: Partial<PanelGridState> = {};
+      if (state.focusedId === id) {
+        const gridTerminals = state.terminals.filter((t) => t.id !== id && t.location === "grid");
+        updates.focusedId = gridTerminals[0]?.id ?? null;
+      }
+      if (state.maximizedId === id) {
+        updates.maximizedId = null;
+      }
+      if (Object.keys(updates).length > 0) {
+        useTerminalStore.setState(updates);
+      }
     }
-    if (state.maximizedId === id) {
-      updates.maximizedId = null;
-    }
-    if (Object.keys(updates).length > 0) {
-      useTerminalStore.setState(updates);
-    }
-  });
+  );
 
   restoredUnsubscribe = terminalRegistryController.onRestored((data: { id: string }) => {
     const { id } = data;

@@ -228,10 +228,7 @@ ${syncBufferInfo}
             <InfoSection title="Terminal Classification">
               <InfoRow label="Agent Terminal" value={info.isAgentTerminal ? "Yes" : "No"} />
               <InfoRow label="PTY Active" value={info.hasPty ? "Yes" : "No"} />
-              <InfoRow
-                label="Analysis Enabled"
-                value={info.analysisEnabled ? "Yes" : "No"}
-              />
+              <InfoRow label="Analysis Enabled" value={info.analysisEnabled ? "Yes" : "No"} />
               <InfoRow label="Resize Strategy" value={info.resizeStrategy || "default"} />
             </InfoSection>
 
