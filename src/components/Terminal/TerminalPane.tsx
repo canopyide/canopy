@@ -315,6 +315,21 @@ function TerminalPaneComponent({
 
   const handleKeyDown = useCallback(
     (e: React.KeyboardEvent) => {
+      // Handle Cmd+C to copy xterm selection regardless of which child has focus.
+      // This is needed because agent terminals focus the hybrid input bar, so
+      // xterm's built-in copy handler never receives the copy event.
+      if (e.metaKey && e.key === "c") {
+        const managed = terminalInstanceService.get(id);
+        if (managed?.terminal.hasSelection()) {
+          const nativeSelection = window.getSelection()?.toString() ?? "";
+          if (nativeSelection.length === 0) {
+            e.preventDefault();
+            void navigator.clipboard.writeText(managed.terminal.getSelection());
+            return;
+          }
+        }
+      }
+
       const target = e.target as HTMLElement;
 
       if (target.tagName === "TEXTAREA" || target.tagName === "INPUT") {
