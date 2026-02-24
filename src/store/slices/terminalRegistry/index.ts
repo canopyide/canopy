@@ -1,7 +1,7 @@
 import type { StateCreator } from "zustand";
 import type { TerminalRuntimeStatus, TerminalLocation, TabGroup, TabGroupLocation } from "@/types";
 import { terminalClient, agentSettingsClient, projectClient } from "@/clients";
-import { generateAgentFlags, generateAgentCommand } from "@shared/types";
+import { generateAgentCommand } from "@shared/types";
 import { terminalInstanceService } from "@/services/TerminalInstanceService";
 import { TerminalRefreshTier } from "@/types";
 import { validateTerminalConfig } from "@/utils/terminalValidation";
