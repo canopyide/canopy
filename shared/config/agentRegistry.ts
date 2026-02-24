@@ -121,6 +121,10 @@ export interface AgentConfig {
     resizeStrategy?: "default" | "settled";
     /** CLI flag to disable alt-screen and use inline rendering (e.g., "--no-alt-screen") */
     inlineModeFlag?: string;
+    /** Whether the agent emits DEC 2026 (synchronized output) markers.
+     * This is used as agent capability metadata for diagnostics/future tuning.
+     * Agent terminals currently bypass redraw-detection coalescing regardless. */
+    usesSyncOutput?: boolean;
     /** Whether the agent CLI supports bracketed paste input (default: true) */
     supportsBracketedPaste?: boolean;
     /** Escape sequence sent for Shift+Enter / soft newline (default: "\x1b\r") */
@@ -227,6 +231,7 @@ export const AGENT_REGISTRY: Record<string, AgentConfig> = {
     },
     capabilities: {
       scrollback: 10000,
+      usesSyncOutput: true,
       supportsBracketedPaste: true,
       softNewlineSequence: "\x1b\r",
       ignoredInputSequences: ["\x1b\r"],

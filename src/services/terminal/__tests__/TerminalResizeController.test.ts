@@ -186,6 +186,7 @@ describe("TerminalResizeController", () => {
 
     expect(resizeMock).toHaveBeenCalledTimes(1);
     expect(resizeMock).toHaveBeenCalledWith("term-1", 120, 40);
+    expect(managed.terminal.write).not.toHaveBeenCalled();
   });
 
   it("default strategy sends PTY resize immediately", () => {

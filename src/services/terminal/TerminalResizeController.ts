@@ -289,11 +289,11 @@ export class TerminalResizeController {
           return;
         }
 
-        // Sync xterm.js dimensions and clear display atomically with PTY resize.
-        // Clear via xterm.js (not PTY stdin) to give Ratatui's diff engine
-        // a clean slate without injecting unwanted input to the process.
+        // Sync xterm.js dimensions with the delayed PTY resize.
+        // Do not inject a synthetic clear-screen sequence here:
+        // if PTY dimensions are unchanged, many CLIs will not redraw and the
+        // display can appear blank until the next user interaction/output.
         this.resizeTerminal(current, cols, rows);
-        current.terminal.write("\x1b[2J\x1b[H");
         terminalClient.resize(id, cols, rows);
       }, SETTLED_RESIZE_DELAY_MS) as unknown as number;
       this.settledResizeTimers.set(id, timer);
