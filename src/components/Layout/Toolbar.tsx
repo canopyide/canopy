@@ -258,7 +258,10 @@ export function Toolbar({
             size="icon"
             onClick={onToggleFocusMode}
             className="text-canopy-text hover:bg-white/[0.06] hover:text-canopy-accent transition-colors"
-            title={createTooltipWithShortcut(isFocusMode ? "Show Sidebar" : "Hide Sidebar", "Cmd+B")}
+            title={createTooltipWithShortcut(
+              isFocusMode ? "Show Sidebar" : "Hide Sidebar",
+              "Cmd+B"
+            )}
             aria-label="Toggle Sidebar"
             aria-pressed={!isFocusMode}
           >
