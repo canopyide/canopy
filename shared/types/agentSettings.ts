@@ -75,6 +75,8 @@ export interface AgentSettingsEntry {
   dangerousArgs?: string;
   /** Toggle to include dangerousArgs in the final command */
   dangerousEnabled?: boolean;
+  /** Use inline rendering instead of fullscreen alt-screen TUI */
+  inlineMode?: boolean;
   [key: string]: unknown;
 }
 
@@ -97,6 +99,7 @@ export const DEFAULT_AGENT_SETTINGS: AgentSettings = {
         customFlags: "",
         dangerousArgs: DEFAULT_DANGEROUS_ARGS[id] ?? "",
         dangerousEnabled: false,
+        inlineMode: !!AGENT_REGISTRY[id]?.capabilities?.inlineModeFlag,
       },
     ])
   ),
@@ -175,6 +178,13 @@ export function generateAgentCommand(
           parts.push(escapeShellArg(arg));
         }
       }
+    }
+
+    // Add inline mode flag when enabled and agent supports it
+    // Default to true when agent supports it (handles pre-existing stored settings without this field)
+    const inlineModeFlag = agentConfig?.capabilities?.inlineModeFlag;
+    if (inlineModeFlag && entry.inlineMode !== false) {
+      parts.push(inlineModeFlag);
     }
   }
 
