@@ -21,11 +21,11 @@ This command is **fully automated**. Your job is to merge as many PRs as possibl
 
 Review and merge all open pull requests in a logical order. Quality checks run once after all merges are complete.
 
-**This is a batch operation** that processes multiple PRs sequentially using an optimized workflow that works directly in the main repository.
+**This is a batch operation** that processes multiple PRs sequentially. Each PR is merged server-side via `gh pr merge` to guarantee it is marked as **"Merged"** (not "Closed") in GitHub.
 
 ### Step 0: Setup
 
-1.  **Enable `git rerere`:** `git config rerere.enabled true && git config rerere.autoupdate true`. This makes Git remember conflict resolutions and auto-apply them if the same conflict recurs in later PRs.
+1.  **Enable `git rerere`:** `git config rerere.enabled true && git config rerere.autoupdate true`. This makes Git remember conflict resolutions for the fallback conflict resolution path.
 2.  **Environment Check:**
     *   Record current branch: `git branch --show-current`
     *   Check status: `git status --short`
@@ -66,43 +66,55 @@ For each PR in the calculated order:
     *   **Reject only for MAJOR flaws** (wrong architecture, missing core logic). Comment on PR and skip.
     *   Minor issues (bugs, typos, edge cases) — note for fixing before merge.
 
-#### 2.2: Prepare Branch
+#### 2.2: Apply Fixes (if needed)
+*   Only enter this step if the review noted minor issues that need fixing.
 *   **Delete Worktree:** If `git worktree list` shows one for this branch, remove it: `git worktree remove --force {path}`.
 *   **Fetch & Checkout:** `git fetch origin` -> `git checkout {headRefName}` -> `git pull origin {headRefName}`.
-*   **Apply Fixes:** If the review noted minor issues or PR comments need addressing, fix them now.
-*   **Commit Fixes:** `git commit -am "fix: address review feedback"` (only if changes were made).
-*   **DO NOT** merge target into the feature branch. **DO NOT REBASE.**
+*   **Apply Fixes:** Make the necessary code changes.
+*   **Commit & Push:** `git commit -am "fix: address review feedback"` -> `git push origin {headRefName}`. The fixes **must** be pushed to the PR branch so `gh pr merge` includes them.
+*   **Return to target:** `git checkout {baseRefName}`.
 
-#### 2.3: Merge into Target
-*   **Checkout Target:** `git checkout {target_branch}` -> `git pull origin {target_branch}`.
-*   **Execute Merge:** `git merge --no-ff {headRefName} -m "Merge pull request #{number}: {title}"`
-*   **Handle Conflicts:**
-    *   **Check `git rerere` first** — it may have auto-resolved from a previous conflict in this batch.
-    *   **Lockfiles (`package-lock.json`, etc.):** `git checkout --theirs {file}` then regenerate later in Step 3.
-    *   **Simple (whitespace, imports):** Resolve automatically.
-    *   **Complex:** Inspect conflict markers with `read_file`. Use expert judgment. If unresolvable, `git merge --abort` and mark as FAILED.
-*   **Verify:** Grep for `<<<<<<<` or `=======`. If found, fix immediately.
-*   **DO NOT push yet.** Continue to the next PR.
+#### 2.3: Merge via GitHub API
+*   **Capture HEAD SHA:** `SHA=$(gh pr view {number} --json headRefOid --jq .headRefOid)`. This is the commit you reviewed (or just pushed fixes to). Using `--match-head-commit` prevents merging unreviewed code if someone else pushes to the branch between your review and merge.
+*   **Execute Merge:** `gh pr merge {number} --merge --delete-branch --match-head-commit "$SHA"`
+    *   `--merge` creates a merge commit (equivalent to the "Merge pull request" button).
+    *   `--delete-branch` removes the remote branch after merge.
+    *   `--match-head-commit` fails the merge if the PR head has changed since review.
+    *   This guarantees the PR is marked as **"Merged"** in GitHub and linked issues are auto-closed.
+*   **Handle Merge Failures:**
+    *   If `gh pr merge` fails due to **merge conflicts:**
+        1.  `git fetch origin` -> `git checkout {headRefName}` -> `git pull origin {headRefName}`.
+        2.  `git merge origin/{baseRefName}` — merge the target branch INTO the feature branch.
+        3.  **Resolve conflicts:**
+            *   **Lockfiles (`package-lock.json`, etc.):** `git checkout --theirs {file}` then regenerate later in Step 3.
+            *   **Simple (whitespace, imports):** Resolve automatically.
+            *   **Complex:** Inspect conflict markers with `read_file`. Use expert judgment. If unresolvable, `git merge --abort` and mark as FAILED. Move to next PR.
+        4.  **Verify:** Grep for `<<<<<<<` or `=======`. If found, fix immediately.
+        5.  `git commit` (accept the merge commit) -> `git push origin {headRefName}`.
+        6.  `git checkout {baseRefName}`.
+        7.  **Re-capture SHA:** `SHA=$(gh pr view {number} --json headRefOid --jq .headRefOid)`.
+        8.  **Retry:** `gh pr merge {number} --merge --delete-branch --match-head-commit "$SHA"`. If this still fails, mark as FAILED and continue.
+    *   If `gh pr merge` fails due to **head commit mismatch** (someone pushed new commits): Re-review the new changes with `gh pr diff {number}`. If acceptable, re-capture SHA and retry. If suspicious, mark as FAILED and continue.
+    *   If `gh pr merge` fails for **other reasons** (branch protection, CI required, etc.): Log the error, mark as FAILED, continue to next PR.
+*   **Sync Local:** `git pull origin {baseRefName}` to keep local branch up to date for the next PR.
 
-#### 2.4: Cleanup PR
-*   **Close PR:** `gh pr close {number}` (if not auto-closed by merge).
-*   **Close Linked Issues:** If PR references "Closes #X" / "Fixes #X", check with `gh issue view {issue_number} --json state`. If still open: `gh issue close {issue_number} --comment "Fixed via merge of PR #{number}"`.
-*   **Delete Remote Branch:** `git push origin --delete {headRefName}`.
-*   **Delete Local Branch:** `git branch -D {headRefName}`.
-*   **Return to target:** `git checkout {target_branch}`.
+#### 2.4: Cleanup
+*   **Delete Local Branch:** `git branch -D {headRefName}` (remote branch already deleted by `--delete-branch`).
+*   **Close Linked Issues:** If the PR body references "Closes #X" / "Fixes #X", GitHub should auto-close them. Verify with `gh issue view {issue_number} --json state`. If still open: `gh issue close {issue_number} --comment "Fixed via merge of PR #{number}"`.
 
 ### Step 3: Post-Merge Quality Pass (ONE TIME)
 
 After **all** PRs have been merged (or attempted):
 
-1.  **Install Dependencies:** `npm install` (dependencies may have changed across PRs — this also regenerates `package-lock.json` if lockfile conflicts were resolved with `--theirs`).
-2.  **Rebuild Native Modules:** `npm run rebuild` (crucial for `node-pty`).
-3.  **Run Quality Checks:** `npm run check` (linting, type-checking, formatting).
-4.  **Run Tests:** `npm run test` (Vitest).
-5.  **Fix Loop (Max 3 attempts):**
+1.  **Sync Local:** `git checkout {target_branch}` -> `git pull origin {target_branch}`.
+2.  **Install Dependencies:** `npm install` (dependencies may have changed across PRs — this also regenerates `package-lock.json` if lockfile conflicts were resolved with `--theirs`).
+3.  **Rebuild Native Modules:** `npm run rebuild` (crucial for `node-pty`).
+4.  **Run Quality Checks:** `npm run check` (linting, type-checking, formatting).
+5.  **Run Tests:** `npm run test` (Vitest).
+6.  **Fix Loop (Max 3 attempts):**
     *   If failure: Analyze output -> Fix code -> Re-run checks/tests.
     *   If still failing after 3 attempts: Stop fixing and report the failures.
-6.  **Commit & Push:** If ANY changes were made (formatting, lint fixes, type fixes, lockfile regeneration): `git commit -am "chore: post-merge fixes"` -> `git push origin {target_branch}`.
+7.  **Commit & Push:** If ANY changes were made (formatting, lint fixes, type fixes, lockfile regeneration): `git commit -am "chore: post-merge fixes"` -> `git push origin {target_branch}`.
 
 ### Step 4: Final Report
 
