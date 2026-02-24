@@ -832,7 +832,8 @@ class TerminalInstanceService {
 
   focus(id: string): void {
     const managed = this.instances.get(id);
-    managed?.terminal.focus();
+    if (!managed) return;
+    managed.terminal.focus();
   }
 
   resetRenderer(id: string): void {
