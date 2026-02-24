@@ -6,6 +6,7 @@ import {
   getSoftNewlineSequence as getSoftNewlineSequenceShared,
   containsFullBracketedPaste,
 } from "../../../shared/utils/terminalInputProtocol.js";
+import { getEffectiveAgentConfig } from "../../../shared/config/agentRegistry.js";
 import { WRITE_MAX_CHUNK_SIZE } from "./types.js";
 
 export { BRACKETED_PASTE_START, BRACKETED_PASTE_END, PASTE_THRESHOLD_CHARS };
@@ -36,34 +37,20 @@ export function splitTrailingNewlines(text: string): { body: string; enterCount:
   return { body, enterCount };
 }
 
-function isGeminiTerminal(terminal: TerminalInfo): boolean {
-  return (
-    terminal.type === "gemini" ||
-    terminal.detectedAgentType === "gemini" ||
-    (terminal.kind === "agent" && terminal.agentId === "gemini")
-  );
-}
-
-function isCodexTerminal(terminal: TerminalInfo): boolean {
-  return (
-    terminal.type === "codex" ||
-    terminal.detectedAgentType === "codex" ||
-    (terminal.kind === "agent" && terminal.agentId === "codex")
-  );
-}
-
-function getEffectiveAgentType(terminal: TerminalInfo): string | undefined {
+function getEffectiveAgentId(terminal: TerminalInfo): string | undefined {
   return terminal.detectedAgentType ?? terminal.agentId ?? terminal.type;
 }
 
 export function supportsBracketedPaste(terminal: TerminalInfo): boolean {
-  return !isGeminiTerminal(terminal);
+  const agentId = getEffectiveAgentId(terminal);
+  if (!agentId) return true;
+  const config = getEffectiveAgentConfig(agentId);
+  return config?.capabilities?.supportsBracketedPaste ?? true;
 }
 
 export function getSoftNewlineSequence(terminal: TerminalInfo): string {
-  const effectiveType = getEffectiveAgentType(terminal);
-  const agentType = isCodexTerminal(terminal) ? "codex" : effectiveType;
-  return getSoftNewlineSequenceShared(agentType);
+  const agentId = getEffectiveAgentId(terminal);
+  return getSoftNewlineSequenceShared(agentId);
 }
 
 export function isBracketedPaste(data: string): boolean {
