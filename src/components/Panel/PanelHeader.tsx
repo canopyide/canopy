@@ -637,7 +637,9 @@ function PanelHeaderComponent({
               }}
               className="p-1.5 hover:bg-[color-mix(in_oklab,var(--color-status-error)_15%,transparent)] focus-visible:bg-[color-mix(in_oklab,var(--color-status-error)_15%,transparent)] focus-visible:outline focus-visible:outline-2 focus-visible:outline-[var(--color-status-error)] focus-visible:outline-offset-2 text-canopy-text/60 hover:text-[var(--color-status-error)] transition-colors"
               title={formatShortcutForTooltip("Close Session (Alt+Click to force close)")}
-              aria-label={formatShortcutForTooltip("Close session. Hold Alt and click to force close without recovery.")}
+              aria-label={formatShortcutForTooltip(
+                "Close session. Hold Alt and click to force close without recovery."
+              )}
             >
               <X className="w-3 h-3" aria-hidden="true" />
             </button>
