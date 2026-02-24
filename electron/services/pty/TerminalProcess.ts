@@ -29,7 +29,6 @@ import { events } from "../events.js";
 import { AgentSpawnedSchema, AgentStateChangedSchema } from "../../schemas/agent.js";
 import type { PtyPool } from "../PtyPool.js";
 import { installHeadlessResponder } from "./headlessResponder.js";
-import { TerminalSyncBuffer } from "./TerminalSyncBuffer.js";
 import { styleUrls } from "./UrlStyler.js";
 
 // Extracted modules
@@ -80,8 +79,6 @@ type CursorBuffer = {
 };
 
 const TERMINAL_DISABLE_URL_STYLING: boolean = process.env.CANOPY_DISABLE_URL_STYLING === "1";
-const TERMINAL_FRAME_STABILIZER_ENABLED: boolean =
-  process.env.CANOPY_DISABLE_FRAME_STABILIZER !== "1";
 
 export interface TerminalProcessCallbacks {
   emitData: (id: string, data: string | Uint8Array) => void;
@@ -116,7 +113,6 @@ export class TerminalProcess {
 
   private _scrollback: number;
   private headlessResponderDisposable: { dispose: () => void } | null = null;
-  private syncBuffer: TerminalSyncBuffer | null = null;
   private sessionPersistTimer: NodeJS.Timeout | null = null;
   private sessionPersistDirty = false;
   private sessionPersistInFlight = false;
@@ -125,7 +121,6 @@ export class TerminalProcess {
   private readonly isAgentTerminal: boolean;
   private forensicsBuffer = new TerminalForensicsBuffer();
   private _activityTier: "active" | "background" = "active";
-  private bufferChangeDisposable: { dispose: () => void } | null = null;
 
   private restoreSessionIfPresent(headlessTerminal: HeadlessTerminalType): void {
     if (!TERMINAL_SESSION_PERSISTENCE_ENABLED) return;
@@ -391,24 +386,6 @@ export class TerminalProcess {
     // Ratatui's input parser (Codex, OpenCode) and Ink's state (Claude Code).
     // The frontend xterm.js is the sole query responder for agent terminals.
 
-    if (TERMINAL_FRAME_STABILIZER_ENABLED && this.isAgentTerminal && headlessTerminal) {
-      this.syncBuffer = new TerminalSyncBuffer({
-        verbose: process.env.CANOPY_VERBOSE === "1",
-        terminalId: id,
-      });
-      this.syncBuffer.attach(headlessTerminal, (data) => {
-        if (this.terminalInfo.wasKilled) return;
-        this.emitDataDirect(data);
-      });
-
-      // Bypass SyncBuffer while in alt screen
-      const bufferChangeDisposable = headlessTerminal.buffer.onBufferChange(() => {
-        const inAltBuffer = headlessTerminal.buffer.active.type === "alternate";
-        this.syncBuffer?.setBypass(inAltBuffer);
-      });
-      this.bufferChangeDisposable = bufferChangeDisposable;
-    }
-
     this.setupPtyHandlers(ptyProcess);
 
     const ptyPid = ptyProcess.pid;
@@ -486,18 +463,6 @@ export class TerminalProcess {
     if (!terminal.headlessTerminal) {
       return;
     }
-    if (this.bufferChangeDisposable) {
-      try {
-        this.bufferChangeDisposable.dispose();
-      } catch {
-        // Ignore disposal errors
-      }
-      this.bufferChangeDisposable = null;
-    }
-    if (this.syncBuffer) {
-      this.syncBuffer.detach();
-      this.syncBuffer = null;
-    }
     if (this.headlessResponderDisposable) {
       try {
         this.headlessResponderDisposable.dispose();
@@ -552,20 +517,6 @@ export class TerminalProcess {
     };
   }
 
-  getSyncBufferState(): {
-    enabled: boolean;
-    bypassed: boolean;
-    framesEmitted: number;
-  } | null {
-    if (!this.syncBuffer) return null;
-    const debug = this.syncBuffer.getDebugState();
-    return {
-      enabled: true,
-      bypassed: debug.bypassed,
-      framesEmitted: debug.framesEmitted,
-    };
-  }
-
   getIsAgentTerminal(): boolean {
     return this.isAgentTerminal;
   }
@@ -592,10 +543,6 @@ export class TerminalProcess {
   write(data: string, traceId?: string): void {
     const terminal = this.terminalInfo;
     terminal.lastInputTime = Date.now();
-
-    if (data.length <= 64 && !isBracketedPaste(data)) {
-      this.syncBuffer?.markInteractive();
-    }
 
     if (terminal.isExited) {
       return;
@@ -1207,11 +1154,6 @@ export class TerminalProcess {
       }
       this.inputWriteQueue = [];
 
-      if (this.syncBuffer) {
-        this.syncBuffer.detach();
-        this.syncBuffer = null;
-      }
-
       this.callbacks.onExit(this.id, exitCode ?? 0);
       this.forensicsBuffer.logForensics(
         this.id,
@@ -1248,12 +1190,6 @@ export class TerminalProcess {
 
   private emitData(data: string | Uint8Array): void {
     const text = typeof data === "string" ? data : new TextDecoder().decode(data);
-
-    if (this.syncBuffer) {
-      this.syncBuffer.ingest(text);
-      return;
-    }
-
     this.emitDataDirect(text);
   }
 

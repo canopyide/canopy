@@ -186,14 +186,6 @@ export interface TerminalInfoPayload {
   analysisEnabled?: boolean;
   /** Resize strategy: "default" (immediate) or "settled" (batched for TUI agents) */
   resizeStrategy?: "default" | "settled";
-  /** DEC 2026 sync buffer state (null if not enabled) */
-  syncBuffer?: {
-    enabled: boolean;
-    /** Whether sync buffer is bypassed (alt screen active) */
-    bypassed: boolean;
-    /** Total frames emitted through the sync buffer */
-    framesEmitted: number;
-  } | null;
 }
 
 import type { TerminalActivityPayload } from "../terminal.js";

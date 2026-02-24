@@ -3,7 +3,7 @@ import "@xterm/xterm/css/xterm.css";
 import { cn } from "@/lib/utils";
 import { terminalClient } from "@/clients";
 import { TerminalRefreshTier } from "@/types";
-import type { TerminalType, AgentState } from "@/types";
+import type { TerminalType } from "@/types";
 import { terminalInstanceService } from "@/services/TerminalInstanceService";
 import { useScrollbackStore, usePerformanceModeStore, useTerminalFontStore } from "@/store";
 import { getScrollbackForType, PERFORMANCE_MODE_SCROLLBACK } from "@/utils/scrollbackConfig";
@@ -59,10 +59,6 @@ function XtermAdapterComponent({
   const stableRefreshTierProvider = useCallback(() => {
     return getRefreshTierRef.current ? getRefreshTierRef.current() : TerminalRefreshTier.FOCUSED;
   }, []);
-
-  // Agent state for state-aware rendering decisions (height ratchet, resize guard, scroll latch)
-  // Used via ref to avoid triggering re-renders that would cause XtermAdapter to detach/reattach
-  const agentStateRef = useRef<AgentState | undefined>(undefined);
 
   const scrollbackLines = useScrollbackStore((state) => state.scrollbackLines);
   const performanceMode = usePerformanceModeStore((state) => state.performanceMode);
@@ -396,52 +392,6 @@ function XtermAdapterComponent({
       terminalInstanceService.boostRefreshRate(terminalId);
     }
   }, [terminalId, stableRefreshTierProvider, currentTier]);
-
-  // Subscribe to agent state changes for state-aware rendering decisions
-  // This enables future defensive layers (height ratchet, resize guard, scroll latch)
-  useEffect(() => {
-    const unsubscribe = terminalInstanceService.addAgentStateListener(terminalId, (state) => {
-      agentStateRef.current = state;
-    });
-    return unsubscribe;
-  }, [terminalId]);
-
-  // Render health check: periodically validate and recover stuck terminal rendering.
-  // This addresses intermittent freeze issues where the terminal stops displaying output
-  // despite receiving data. The freeze typically resolves when focus changes (click away/back).
-  // This defensive mechanism forces a refresh when the agent is actively working to ensure
-  // output is always displayed without requiring manual user intervention.
-  useEffect(() => {
-    // Only run health checks for agent terminals where freezing has been observed
-    const isAgentTerminal =
-      terminalType === "claude" ||
-      terminalType === "gemini" ||
-      terminalType === "codex" ||
-      terminalType === "opencode";
-    if (!isAgentTerminal) return;
-
-    let intervalId: ReturnType<typeof setInterval> | null = null;
-
-    const runHealthCheck = () => {
-      const managed = terminalInstanceService.get(terminalId);
-      if (!managed) return;
-
-      // Only force refresh when agent is working and terminal should be receiving output
-      if (agentStateRef.current !== "working") return;
-
-      // Force a refresh to ensure terminal is rendering properly
-      managed.terminal.refresh(0, managed.terminal.rows - 1);
-    };
-
-    // Run health check every 2 seconds while the component is mounted
-    intervalId = setInterval(runHealthCheck, 2000);
-
-    return () => {
-      if (intervalId) {
-        clearInterval(intervalId);
-      }
-    };
-  }, [terminalId, terminalType]);
 
   // Subscribe to alt buffer state changes for TUI applications (OpenCode, vim, htop, etc.)
   // When in alt buffer, we need to sync the container styling

@@ -402,7 +402,6 @@ export class PtyManager extends EventEmitter {
       detectedAgentType: terminalInfo.detectedAgentType,
       analysisEnabled: terminalInfo.analysisEnabled,
       resizeStrategy: terminal.getResizeStrategy(),
-      syncBuffer: terminal.getSyncBufferState(),
     };
   }
 

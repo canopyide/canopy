@@ -1,20 +1,21 @@
 import { describe, it, expect } from "vitest";
 
 /**
- * Tests for the redraw detection pattern matching used in TerminalInstanceService.
+ * Tests for the redraw detection pattern matching used in TerminalOutputCoalescer.
  * These patterns trigger adaptive flush timing to eliminate TUI flicker.
  *
  * Detection triggers on:
  * - \x1b[2J - CSI Erase in Display (ED) - Clear entire display
  * - \x1b[H - CSI Cursor Position - Move cursor to home (1,1)
+ * - \x1b[2K\x1b[1A - Ink erase-lines pattern (erase line + cursor up)
  *
- * Both sequences typically signal the start of a full-screen repaint.
+ * These sequences typically signal the start of a full-screen repaint.
  */
 
 // Extract the redraw detection logic for testability
 function detectRedrawPattern(data: string | Uint8Array): boolean {
   if (typeof data === "string") {
-    return data.includes("\x1b[2J") || data.includes("\x1b[H");
+    return data.includes("\x1b[2J") || data.includes("\x1b[H") || data.includes("\x1b[2K\x1b[1A");
   }
   return false;
 }
@@ -45,6 +46,14 @@ describe("Terminal redraw detection", () => {
       expect(detectRedrawPattern(binaryData)).toBe(false);
     });
 
+    it("detects Ink erase-lines pattern (\\x1b[2K\\x1b[1A)", () => {
+      expect(detectRedrawPattern("\x1b[2K\x1b[1A")).toBe(true);
+      // Typical Ink multi-line erase: repeated erase-line + cursor-up
+      expect(detectRedrawPattern("\x1b[2K\x1b[1A\x1b[2K\x1b[1A\x1b[2K\x1b[G")).toBe(true);
+      // Erase-lines followed by content
+      expect(detectRedrawPattern("\x1b[2K\x1b[1A\x1b[2K\x1b[GNew content here")).toBe(true);
+    });
+
     it("returns false for other ANSI sequences", () => {
       // Color codes
       expect(detectRedrawPattern("\x1b[31m")).toBe(false); // Red
@@ -56,9 +65,9 @@ describe("Terminal redraw detection", () => {
       expect(detectRedrawPattern("\x1b[2D")).toBe(false); // Move backward 2
       // Cursor position with coordinates
       expect(detectRedrawPattern("\x1b[5;10H")).toBe(false); // Position 5,10
-      // Clear line (not full screen)
+      // Clear line (not full screen) — standalone, not part of erase-lines pattern
       expect(detectRedrawPattern("\x1b[K")).toBe(false); // Clear to end of line
-      expect(detectRedrawPattern("\x1b[2K")).toBe(false); // Clear entire line
+      expect(detectRedrawPattern("\x1b[2K")).toBe(false); // Clear entire line (no cursor up)
     });
 
     it("detects redraw in typical TUI frame data", () => {

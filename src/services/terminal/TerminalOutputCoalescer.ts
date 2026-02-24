@@ -340,6 +340,12 @@ export class TerminalOutputCoalescer {
     const hasNewHome = this.hasNewAnsiSequence(prevRecent, nextChunk, "\x1b[H");
     if (hasNewHome && bytesSinceStart <= EARLY_HOME_BYTE_WINDOW) return true;
 
+    // Ink's log-update erase-lines pattern: \x1b[2K (erase line) + \x1b[1A (cursor up)
+    // This is how Ink clears previously rendered output before redrawing.
+    // Distinct from \x1b[2J (clear screen) — used by Gemini CLI, Codex, and other Ink apps.
+    const hasEraseLineUp = this.hasNewAnsiSequence(prevRecent, nextChunk, "\x1b[2K\x1b[1A");
+    if (hasEraseLineUp) return true;
+
     return false;
   }
 

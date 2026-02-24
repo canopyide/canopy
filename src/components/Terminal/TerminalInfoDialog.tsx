@@ -131,12 +131,6 @@ export function TerminalInfoDialog({ isOpen, onClose, terminalId }: TerminalInfo
   const copyToClipboard = async () => {
     if (!info) return;
 
-    const syncBufferInfo = info.syncBuffer
-      ? `  Sync Buffer: Enabled
-  Alt Screen Bypass: ${info.syncBuffer.bypassed ? "Active (bypassed)" : "Inactive"}
-  Frames Emitted: ${info.syncBuffer.framesEmitted}`
-      : `  Sync Buffer: Disabled`;
-
     const diagnosticInfo = `Terminal Diagnostic Information
 =====================================
 
@@ -173,7 +167,6 @@ Activity Metrics:
 Performance & Diagnostics:
   Output Buffer Size: ${info.outputBufferSize} lines
   Semantic Buffer: ${info.semanticBufferLines} lines
-${syncBufferInfo}
 `;
 
     try {
@@ -261,18 +254,6 @@ ${syncBufferInfo}
             <InfoSection title="Performance & Diagnostics">
               <InfoRow label="Output Buffer Size" value={`${info.outputBufferSize} lines`} />
               <InfoRow label="Semantic Buffer" value={`${info.semanticBufferLines} lines`} />
-              {info.syncBuffer != null ? (
-                <>
-                  <InfoRow label="Sync Buffer" value="Enabled" />
-                  <InfoRow
-                    label="Alt Screen Bypass"
-                    value={info.syncBuffer.bypassed ? "Active (bypassed)" : "Inactive"}
-                  />
-                  <InfoRow label="Frames Emitted" value={info.syncBuffer.framesEmitted} />
-                </>
-              ) : (
-                <InfoRow label="Sync Buffer" value="Disabled" />
-              )}
             </InfoSection>
           </div>
         )}

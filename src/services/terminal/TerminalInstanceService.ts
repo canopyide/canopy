@@ -413,12 +413,9 @@ class TerminalInstanceService {
       altBufferListeners: new Set(),
     };
 
-    // Agent terminals have backend SyncBuffer handling frame batching
-    // (DEC 2026 sync mode, frame boundary detection, stability timeouts),
-    // so bypass the frontend coalescer's redraw detection to avoid
-    // double-buffering and frame drops. Codex uses DEC 2026 synchronized
-    // output without alt-screen, so the coalescer's alt-screen auto-detect
-    // never triggers — direct mode must be set explicitly.
+    // Agent terminals should bypass redraw-detection frame mode.
+    // In xterm.js 6 this coalescer path introduces stale/flush cycles and dropped
+    // frame artifacts for CLI TUIs (including non-DEC-2026 redraw styles).
     if (kind === "agent") {
       this.dataBuffer.setDirectMode(id, true);
     }

@@ -143,6 +143,37 @@ describe("TerminalInstanceService - Incremental Restore", () => {
     callbacks.forEach((cb) => cb());
   };
 
+  it("enables direct mode for agent terminals", () => {
+    const id = "test-agent-direct-mode";
+    const setDirectModeSpy = vi.spyOn(
+      (terminalInstanceService as any).dataBuffer,
+      "setDirectMode"
+    );
+
+    terminalInstanceService.getOrCreate(id, "gemini", {}, () => 3 as any, undefined);
+
+    expect(setDirectModeSpy).toHaveBeenCalledTimes(1);
+    expect(setDirectModeSpy).toHaveBeenCalledWith(id, true);
+
+    terminalInstanceService.destroy(id);
+    setDirectModeSpy.mockRestore();
+  });
+
+  it("does not enable direct mode for non-agent terminals", () => {
+    const id = "test-standard-no-direct-mode";
+    const setDirectModeSpy = vi.spyOn(
+      (terminalInstanceService as any).dataBuffer,
+      "setDirectMode"
+    );
+
+    terminalInstanceService.getOrCreate(id, "terminal", {}, () => 3 as any, undefined);
+
+    expect(setDirectModeSpy).not.toHaveBeenCalled();
+
+    terminalInstanceService.destroy(id);
+    setDirectModeSpy.mockRestore();
+  });
+
   it("should use synchronous restore for small serialized state", async () => {
     const id = "test-terminal-1";
     const smallState = "x".repeat(1000);

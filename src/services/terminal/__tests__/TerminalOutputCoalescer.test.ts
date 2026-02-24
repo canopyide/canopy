@@ -114,4 +114,43 @@ describe("TerminalOutputCoalescer", () => {
     advanceTime(8);
     expect(outputs).toEqual([{ id: "t1", data: "hello world" }]);
   });
+
+  it("detects Ink erase-lines pattern as redraw and uses frame mode", () => {
+    const outputs: CoalescerOutput[] = [];
+    const coalescer = createCoalescer((output) => {
+      outputs.push(output);
+    });
+
+    // Simulate Ink erase-lines + new content (typical Gemini CLI redraw)
+    const eraseLines = "\x1b[2K\x1b[1A\x1b[2K\x1b[1A\x1b[2K\x1b[G";
+    const newContent = "Status: working (5s)";
+
+    coalescer.bufferData("t1", eraseLines + newContent);
+
+    // Should not flush immediately (frame mode uses settle delay)
+    expect(outputs).toHaveLength(0);
+
+    // Settle timer fires → enqueues frame into frame queue
+    advanceTime(16);
+    // Frame presenter fires on next tick (delay=0 for first frame)
+    advanceTime(1);
+    expect(outputs).toHaveLength(1);
+    expect(outputs[0].data).toBe(eraseLines + newContent);
+  });
+
+  it("directMode bypasses erase-line detection", () => {
+    const outputs: CoalescerOutput[] = [];
+    const coalescer = createCoalescer((output) => {
+      outputs.push(output);
+    });
+
+    coalescer.setDirectMode("t1", true);
+
+    const eraseLines = "\x1b[2K\x1b[1A\x1b[2K\x1b[G";
+    coalescer.bufferData("t1", eraseLines + "content");
+
+    // DirectMode: standard flush delay (8ms), not frame mode
+    advanceTime(8);
+    expect(outputs).toHaveLength(1);
+  });
 });
