@@ -79,8 +79,11 @@ export function ConsoleDrawer({
     ? { label: "Restarting", textClass: "text-blue-400", dotClass: "bg-blue-400" }
     : (STATUS_LABEL[status] ?? STATUS_LABEL.stopped);
   const toggleLabel = isOpen ? "Hide Terminal" : "Show Terminal";
-  const hardRestartDisabled =
-    !onHardRestart || isRestarting || status === "starting" || status === "installing";
+  const hardRestartDisabled = !onHardRestart || isRestarting || status === "starting";
+  const restartTooltip =
+    status === "installing"
+      ? "Hard restart dev preview (may interrupt installation)"
+      : "Hard restart dev preview";
   const statusClass = cn(
     "inline-flex min-h-8 items-center px-3 text-[10px] font-semibold uppercase tracking-wide",
     onHardRestart && "border-r border-overlay/70",
@@ -120,8 +123,8 @@ export function ConsoleDrawer({
               "hover:bg-black/30 focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-blue-400 disabled:cursor-not-allowed disabled:opacity-40",
               isRestarting && "text-blue-400"
             )}
-            title="Hard restart dev preview"
-            aria-label="Hard restart dev preview"
+            title={restartTooltip}
+            aria-label={restartTooltip}
             aria-busy={isRestarting}
           >
             <RotateCw className={cn("h-3.5 w-3.5", isRestarting && "animate-spin")} />

@@ -28,6 +28,7 @@ export interface UseDevServerReturn extends UseDevServerState {
 }
 
 const STUCK_START_RECOVERY_MS = 10000;
+const STUCK_INSTALL_RECOVERY_MS = 60000;
 const MAX_AUTO_RECOVERY_ATTEMPTS = 1;
 
 function serializeEnv(env?: Record<string, string>): string {
@@ -83,7 +84,10 @@ export function useDevServer({
   const lastEnsureConfigRef = useRef<string>("");
   const pendingEnsureConfigRef = useRef<string | null>(null);
   const requestVersionRef = useRef(0);
-  const autoRecoveryAttemptsRef = useRef(0);
+  const autoRecoveryAttemptsRef = useRef<{ starting: number; installing: number }>({
+    starting: 0,
+    installing: 0,
+  });
 
   const latestContextRef = useRef<{
     panelId: string;
@@ -288,7 +292,7 @@ export function useDevServer({
 
   useEffect(() => {
     requestVersionRef.current += 1;
-    autoRecoveryAttemptsRef.current = 0;
+    autoRecoveryAttemptsRef.current = { starting: 0, installing: 0 };
   }, [panelId, currentProjectId, cwd, worktreeId, devCommand, envSignature]);
 
   useEffect(() => {
@@ -375,29 +379,34 @@ export function useDevServer({
   }, [panelId, currentProjectId, cwd, worktreeId, devCommand, envSignature, ensureLatestConfig]);
 
   useEffect(() => {
-    if (status !== "starting") {
-      autoRecoveryAttemptsRef.current = 0;
+    if (status !== "starting" && status !== "installing") {
+      autoRecoveryAttemptsRef.current = { starting: 0, installing: 0 };
       return;
     }
     if (!currentProjectId || !terminalId || url || isRestarting) return;
-    if (autoRecoveryAttemptsRef.current >= MAX_AUTO_RECOVERY_ATTEMPTS) return;
+    const currentAttempts = autoRecoveryAttemptsRef.current[status];
+    if (currentAttempts >= MAX_AUTO_RECOVERY_ATTEMPTS) return;
 
     const requestVersion = requestVersionRef.current;
     const requestProjectId = currentProjectId;
     const requestPanelId = panelId;
+    const requestStatus = status;
+    const recoveryTimeout =
+      status === "installing" ? STUCK_INSTALL_RECOVERY_MS : STUCK_START_RECOVERY_MS;
 
     const timeout = window.setTimeout(() => {
       const latestContext = latestContextRef.current;
       const latestSession = latestSessionRef.current;
 
       if (!isMountedRef.current) return;
-      if (autoRecoveryAttemptsRef.current >= MAX_AUTO_RECOVERY_ATTEMPTS) return;
+      if (autoRecoveryAttemptsRef.current[requestStatus] >= MAX_AUTO_RECOVERY_ATTEMPTS) return;
+      if (requestVersion !== requestVersionRef.current) return;
       if (latestContext.projectId !== requestProjectId) return;
       if (latestContext.panelId !== requestPanelId) return;
-      if (latestSession.status !== "starting" || latestSession.url || !latestSession.terminalId)
+      if (latestSession.status !== requestStatus || latestSession.url || !latestSession.terminalId)
         return;
 
-      autoRecoveryAttemptsRef.current += 1;
+      autoRecoveryAttemptsRef.current[requestStatus] += 1;
       void window.electron.devPreview
         .restart({ panelId: requestPanelId, projectId: requestProjectId })
         .then((nextState) => {
@@ -410,7 +419,7 @@ export function useDevServer({
             applyInvokeError(err);
           }
         });
-    }, STUCK_START_RECOVERY_MS);
+    }, recoveryTimeout);
 
     return () => {
       window.clearTimeout(timeout);

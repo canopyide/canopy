@@ -678,6 +678,138 @@ describe("useDevServer adversarial races", () => {
     }
   });
 
+  it("auto-restarts a stuck installing session once after 60s timeout", async () => {
+    vi.useFakeTimers();
+    try {
+      ensureMock.mockImplementation((request: { projectId: string }) =>
+        Promise.resolve(
+          buildState({
+            panelId: "panel-1",
+            projectId: request.projectId,
+            status: "installing",
+            terminalId: `term-${request.projectId}`,
+          })
+        )
+      );
+      getStateMock.mockImplementation((request: { projectId: string }) =>
+        Promise.resolve(
+          buildState({
+            panelId: "panel-1",
+            projectId: request.projectId,
+            status: "installing",
+            terminalId: `term-${request.projectId}`,
+          })
+        )
+      );
+      restartMock.mockImplementation((request: { projectId: string }) =>
+        Promise.resolve(
+          buildState({
+            panelId: "panel-1",
+            projectId: request.projectId,
+            status: "running",
+            terminalId: `restart-${request.projectId}`,
+            url: "http://localhost:3000/",
+          })
+        )
+      );
+
+      const { result } = renderHook(() =>
+        useDevServer({
+          panelId: "panel-1",
+          devCommand: "npm install && npm run dev",
+          cwd: "/repo",
+        })
+      );
+
+      await act(async () => {
+        await Promise.resolve();
+        await Promise.resolve();
+      });
+
+      expect(result.current.status).toBe("installing");
+      expect(ensureMock).toHaveBeenCalledTimes(1);
+
+      await act(async () => {
+        vi.advanceTimersByTime(10000);
+        await Promise.resolve();
+      });
+
+      expect(restartMock).not.toHaveBeenCalled();
+
+      await act(async () => {
+        vi.advanceTimersByTime(50000);
+        await Promise.resolve();
+      });
+
+      expect(restartMock).toHaveBeenCalledTimes(1);
+      expect(restartMock).toHaveBeenCalledWith(
+        expect.objectContaining({ panelId: "panel-1", projectId: "project-1" })
+      );
+
+      await act(async () => {
+        vi.advanceTimersByTime(120000);
+        await Promise.resolve();
+      });
+
+      expect(restartMock).toHaveBeenCalledTimes(1);
+    } finally {
+      vi.useRealTimers();
+    }
+  });
+
+  it("does not auto-restart installing session with URL present", async () => {
+    vi.useFakeTimers();
+    try {
+      ensureMock.mockImplementation((request: { projectId: string }) =>
+        Promise.resolve(
+          buildState({
+            panelId: "panel-1",
+            projectId: request.projectId,
+            status: "installing",
+            terminalId: `term-${request.projectId}`,
+            url: "http://localhost:3000/",
+          })
+        )
+      );
+      getStateMock.mockImplementation((request: { projectId: string }) =>
+        Promise.resolve(
+          buildState({
+            panelId: "panel-1",
+            projectId: request.projectId,
+            status: "installing",
+            terminalId: `term-${request.projectId}`,
+            url: "http://localhost:3000/",
+          })
+        )
+      );
+
+      const { result } = renderHook(() =>
+        useDevServer({
+          panelId: "panel-1",
+          devCommand: "npm install && npm run dev",
+          cwd: "/repo",
+        })
+      );
+
+      await act(async () => {
+        await Promise.resolve();
+        await Promise.resolve();
+      });
+
+      expect(result.current.status).toBe("installing");
+      expect(result.current.url).toBe("http://localhost:3000/");
+
+      await act(async () => {
+        vi.advanceTimersByTime(120000);
+        await Promise.resolve();
+      });
+
+      expect(restartMock).not.toHaveBeenCalled();
+    } finally {
+      vi.useRealTimers();
+    }
+  });
+
   it("ignores stale stop responses when command is re-enabled quickly", async () => {
     const stopDeferred = createDeferred<DevPreviewSessionState>();
 
