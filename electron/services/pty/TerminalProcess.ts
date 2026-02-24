@@ -1035,7 +1035,8 @@ export class TerminalProcess {
     const effectiveAgentId =
       this.terminalInfo.agentId ??
       (this.terminalInfo.type !== "terminal" ? this.terminalInfo.type : undefined);
-    const ignoredInputSequences = effectiveAgentId === "codex" ? ["\n", "\x1b\r"] : ["\x1b\r"];
+    const agentConfig = effectiveAgentId ? getEffectiveAgentConfig(effectiveAgentId) : undefined;
+    const ignoredInputSequences = agentConfig?.capabilities?.ignoredInputSequences ?? ["\x1b\r"];
 
     const detection = effectiveAgentId
       ? getEffectiveAgentConfig(effectiveAgentId)?.detection

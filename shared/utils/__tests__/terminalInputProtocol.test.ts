@@ -8,18 +8,42 @@ import {
   getSoftNewlineSequence,
   shouldUseBracketedPaste,
 } from "../terminalInputProtocol.js";
+import { setUserRegistry } from "../../config/agentRegistry.js";
+import type { AgentConfig } from "../../config/agentRegistry.js";
 
 describe("terminalInputProtocol", () => {
-  it("returns expected soft newline sequence for agent types", () => {
+  it("returns expected soft newline sequence for registered agents", () => {
     expect(getSoftNewlineSequence("codex")).toBe("\n");
     expect(getSoftNewlineSequence("claude")).toBe("\x1b\r");
     expect(getSoftNewlineSequence("gemini")).toBe("\x1b\r");
+    expect(getSoftNewlineSequence("opencode")).toBe("\n");
   });
 
   it("falls back to LF for normal terminal types", () => {
     expect(getSoftNewlineSequence("terminal")).toBe("\n");
     expect(getSoftNewlineSequence(undefined)).toBe("\n");
-    expect(getSoftNewlineSequence("unknown-agent")).toBe("\n");
+  });
+
+  it("defaults to ESC+CR for unknown agent types", () => {
+    expect(getSoftNewlineSequence("unknown-agent")).toBe("\x1b\r");
+    expect(getSoftNewlineSequence("custom-cli")).toBe("\x1b\r");
+  });
+
+  it("uses ESC+CR default for registered agent with missing softNewlineSequence capability", () => {
+    const customAgent: AgentConfig = {
+      id: "test-agent",
+      name: "Test Agent",
+      command: "test-agent",
+      color: "#ffffff",
+      iconId: "custom",
+      supportsContextInjection: false,
+      capabilities: {
+        scrollback: 1000,
+      },
+    };
+    setUserRegistry({ "test-agent": customAgent });
+    expect(getSoftNewlineSequence("test-agent")).toBe("\x1b\r");
+    setUserRegistry({});
   });
 
   it("detects full bracketed paste sequences only when complete", () => {

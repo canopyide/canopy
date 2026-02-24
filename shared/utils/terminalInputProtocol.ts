@@ -1,3 +1,5 @@
+import { getEffectiveAgentConfig } from "../config/agentRegistry.js";
+
 // Bracketed paste escape sequences
 export const BRACKETED_PASTE_START = "\x1b[200~";
 export const BRACKETED_PASTE_END = "\x1b[201~";
@@ -7,20 +9,16 @@ export const PASTE_THRESHOLD_CHARS = 200;
 
 /**
  * Get the soft-newline sequence for a given agent type.
- * Shift+Enter behavior differs by agent CLI.
- * For normal terminal types, returns plain LF (standard newline).
+ * Reads from agent registry capabilities. For normal terminals (undefined or "terminal"),
+ * returns plain LF. For unknown agent IDs, defaults to ESC+CR (most agent CLIs use this).
  */
 export function getSoftNewlineSequence(agentType?: string): string {
-  // Codex uses plain LF (\n / Ctrl+J)
-  if (agentType === "codex") {
-    return "\n";
+  if (!agentType || agentType === "terminal") return "\n";
+  const config = getEffectiveAgentConfig(agentType);
+  if (config) {
+    return config.capabilities?.softNewlineSequence ?? "\x1b\r";
   }
-  // Claude and Gemini agents use ESC+CR
-  if (agentType === "claude" || agentType === "gemini") {
-    return "\x1b\r";
-  }
-  // Normal terminals (type "terminal" or undefined) use plain LF
-  return "\n";
+  return "\x1b\r";
 }
 
 /**
