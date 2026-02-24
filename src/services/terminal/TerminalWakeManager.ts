@@ -34,7 +34,19 @@ export class TerminalWakeManager {
         const managed = this.deps.getInstance(id);
         if (!managed) return false;
 
+        // xterm v6 clears selection when terminal.reset() is called during
+        // restoreFromSerialized. Skip the restore if the user has an active
+        // text selection to avoid destroying their drag-selection.
+        if (managed.terminal.hasSelection()) {
+          return false;
+        }
+
         const { state } = await terminalClient.wake(id);
+
+        // Re-check after async: selection may have started while we were awaiting.
+        if (managed.terminal.hasSelection()) {
+          return false;
+        }
 
         // Alternate-screen TUIs repaint from live PTY data; serialized snapshots are optional.
         if (managed.isAltBuffer) {

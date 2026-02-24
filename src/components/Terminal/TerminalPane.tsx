@@ -353,10 +353,21 @@ function TerminalPaneComponent({
     return getTerminalRefreshTier(terminal, isFocused);
   }, [id, isFocused, getTerminal]);
 
-  const handleClick = useCallback(() => {
-    setFocused(id);
-    terminalInstanceService.boostRefreshRate(id);
-  }, [id, setFocused]);
+  const handleClick = useCallback(
+    (e?: React.MouseEvent) => {
+      const managed = terminalInstanceService.get(id);
+      if (managed?.terminal.hasSelection()) {
+        // Prevent ContentPanel from calling onFocus() which triggers parent
+        // re-renders. Don't call setFocused() either — it triggers a
+        // wake+restore cycle that calls terminal.reset(), clearing selection.
+        e?.preventDefault();
+        return;
+      }
+      setFocused(id);
+      terminalInstanceService.boostRefreshRate(id);
+    },
+    [id, setFocused]
+  );
 
   const handleXtermPointerDownCapture = useCallback(
     (e: React.PointerEvent<HTMLDivElement>) => {
@@ -431,6 +442,10 @@ function TerminalPaneComponent({
     if (focusTarget === "hybridInput") {
       const rafId = requestAnimationFrame(() => {
         requestAnimationFrame(() => {
+          // xterm v6 clears selection on blur. Don't steal focus from
+          // xterm when the user has an active text selection.
+          const managed = terminalInstanceService.get(id);
+          if (managed?.terminal.hasSelection()) return;
           inputBarRef.current?.focusWithCursorAtEnd();
         });
       });
