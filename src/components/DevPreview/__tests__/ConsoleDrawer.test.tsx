@@ -228,7 +228,7 @@ describe("ConsoleDrawer", () => {
       expect(restartButton.getAttribute("disabled")).not.toBeNull();
     });
 
-    it("disables restart button while installing", () => {
+    it("enables restart button while installing with warning tooltip", () => {
       render(
         <ConsoleDrawer
           terminalId={mockTerminalId}
@@ -238,8 +238,13 @@ describe("ConsoleDrawer", () => {
         />
       );
 
-      const restartButton = screen.getByRole("button", { name: "Hard restart dev preview" });
-      expect(restartButton.getAttribute("disabled")).not.toBeNull();
+      const restartButton = screen.getByRole("button", {
+        name: "Hard restart dev preview (may interrupt installation)",
+      });
+      expect(restartButton.getAttribute("disabled")).toBeNull();
+      expect(restartButton.getAttribute("title")).toBe(
+        "Hard restart dev preview (may interrupt installation)"
+      );
     });
   });
 
