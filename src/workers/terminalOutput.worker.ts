@@ -260,10 +260,6 @@ self.onmessage = (event: MessageEvent<WorkerInboundMessage>) => {
       break;
     }
 
-    case "SET_INTERACTIVE":
-    case "SET_DIRECT_MODE":
-      break;
-
     case "RESET_TERMINAL": {
       pendingOutputs = pendingOutputs.filter((output) => output.id !== message.id);
       recentCharsByTerminal.delete(message.id);

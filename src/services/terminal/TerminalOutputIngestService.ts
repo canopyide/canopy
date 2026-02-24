@@ -98,18 +98,10 @@ export class TerminalOutputIngestService {
     return this.pollingActive;
   }
 
-  public boost(): void {
-    // No-op: Atomics.wait-based worker doesn't need manual polling boost
-  }
-
   public bufferData(id: string, data: string | Uint8Array): void {
     if (this.pollingActive) return;
     this.markTerminalDataReceived(id, data);
     this.bufferIpcData(id, data);
-  }
-
-  public markInteractive(_id: string, _ttlMs: number = 1000): void {
-    // Coalescer removed from active pipeline; keep method for API compatibility.
   }
 
   public resetForTerminal(id: string): void {
@@ -122,10 +114,6 @@ export class TerminalOutputIngestService {
       id,
     };
     this.worker.postMessage(message);
-  }
-
-  public setDirectMode(_id: string, _enabled: boolean): void {
-    // Coalescer removed from active pipeline; keep method for API compatibility.
   }
 
   public flushForTerminal(id: string): void {

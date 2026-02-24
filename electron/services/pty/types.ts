@@ -145,8 +145,8 @@ export const RAW_OUTPUT_BUFFER_MAX_SIZE = 100 * 1024;
 export const TRASH_TTL_MS = 120 * 1000;
 
 // IPC Flow Control Configuration
-export const IPC_MAX_QUEUE_BYTES = 4 * 1024 * 1024; // 4MB max per terminal
-export const IPC_HIGH_WATERMARK_PERCENT = 90; // Pause PTY at 90% full
-export const IPC_LOW_WATERMARK_PERCENT = 50; // Resume PTY when drops to 50%
+export const IPC_MAX_QUEUE_BYTES = 8 * 1024 * 1024; // 8MB max per terminal
+export const IPC_HIGH_WATERMARK_PERCENT = 95; // Pause PTY at 95% full
+export const IPC_LOW_WATERMARK_PERCENT = 60; // Resume PTY when drops to 60%
 export const IPC_BACKPRESSURE_CHECK_INTERVAL_MS = 100; // Check every 100ms during backpressure
 export const IPC_MAX_PAUSE_MS = 5000; // Force resume after 5 seconds to prevent indefinite pause
