@@ -68,7 +68,6 @@ For each PR in the calculated order:
 
 #### 2.2: Apply Fixes (if needed)
 *   Only enter this step if the review noted minor issues that need fixing.
-*   **Delete Worktree:** If `git worktree list` shows one for this branch, remove it: `git worktree remove --force {path}`.
 *   **Fetch & Checkout:** `git fetch origin` -> `git checkout {headRefName}` -> `git pull origin {headRefName}`.
 *   **Apply Fixes:** Make the necessary code changes.
 *   **Commit & Push:** `git commit -am "fix: address review feedback"` -> `git push origin {headRefName}`. The fixes **must** be pushed to the PR branch so `gh pr merge` includes them.
@@ -77,7 +76,7 @@ For each PR in the calculated order:
 #### 2.3: Merge via GitHub API
 *   **Capture HEAD SHA:** `SHA=$(gh pr view {number} --json headRefOid --jq .headRefOid)`. This is the commit you reviewed (or just pushed fixes to). Using `--match-head-commit` prevents merging unreviewed code if someone else pushes to the branch between your review and merge.
 *   **Execute Merge:** `gh pr merge {number} --merge --delete-branch --match-head-commit "$SHA"`
-    *   `--merge` creates a merge commit (equivalent to the "Merge pull request" button).
+    *   `--merge` creates a merge commit and **preserves all individual commits** from the branch (not squash). The original commit messages remain visible in `git log`.
     *   `--delete-branch` removes the remote branch after merge.
     *   `--match-head-commit` fails the merge if the PR head has changed since review.
     *   This guarantees the PR is marked as **"Merged"** in GitHub and linked issues are auto-closed.
@@ -99,6 +98,7 @@ For each PR in the calculated order:
 *   **Sync Local:** `git pull origin {baseRefName}` to keep local branch up to date for the next PR.
 
 #### 2.4: Cleanup
+*   **Delete Worktree:** If `git worktree list` shows a worktree for this branch, remove it: `git worktree remove --force {path}`.
 *   **Delete Local Branch:** `git branch -D {headRefName}` (remote branch already deleted by `--delete-branch`).
 *   **Close Linked Issues:** If the PR body references "Closes #X" / "Fixes #X", GitHub should auto-close them. Verify with `gh issue view {issue_number} --json state`. If still open: `gh issue close {issue_number} --comment "Fixed via merge of PR #{number}"`.
 
