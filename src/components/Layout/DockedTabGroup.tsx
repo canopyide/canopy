@@ -33,7 +33,6 @@ import { useDockPanelPortal } from "./DockPanelOffscreenContainer";
 import { SortableTabButton } from "@/components/Panel/SortableTabButton";
 import type { TabGroup } from "@/types";
 import { buildPanelDuplicateOptions } from "@/services/terminal/panelDuplicationService";
-import { DockPopupScrim } from "./DockPopupScrim";
 
 interface DockedTabGroupProps {
   group: TabGroup;
@@ -429,10 +428,8 @@ export function DockedTabGroup({ group, panels }: DockedTabGroupProps) {
         </PopoverTrigger>
       </TerminalContextMenu>
 
-      <DockPopupScrim isOpen={isOpen} />
-
       <PopoverContent
-        className="w-[700px] max-w-[90vw] h-[500px] max-h-[80vh] p-0 bg-canopy-bg/95 backdrop-blur-sm border border-[var(--border-dock-popup)] shadow-[var(--shadow-dock-popover)] rounded-[var(--radius-lg)] overflow-hidden"
+        className="w-[700px] max-w-[90vw] h-[500px] max-h-[80vh] p-0 bg-canopy-bg/95 backdrop-blur-sm border border-[var(--border-dock-popup)] shadow-[var(--shadow-dock-panel-popover)] rounded-[var(--radius-lg)] overflow-hidden"
         side="top"
         align="start"
         sideOffset={10}
