@@ -366,7 +366,7 @@ describe("WorkspaceService.loadProject performance behavior", () => {
     service["initializePRService"] = vi.fn().mockReturnValue(prPromise);
     service["refreshAll"] = vi.fn().mockReturnValue(refreshPromise);
 
-    await service.loadProject("req-1", "/test/root");
+    await service.loadProject("req-1", "/test/root", "test-scope-id");
 
     expect(mockSendEvent).toHaveBeenCalledWith({
       type: "load-project-result",
