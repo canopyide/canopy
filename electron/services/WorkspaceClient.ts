@@ -78,6 +78,7 @@ export class WorkspaceClient extends EventEmitter {
 
   // Cached state
   private currentRootPath: string | null = null;
+  private currentProjectScopeId: string | null = null;
 
   constructor(config: WorkspaceClientConfig = {}) {
     super();
@@ -236,6 +237,13 @@ export class WorkspaceClient extends EventEmitter {
     console.log("[WorkspaceClient] Workspace Host started");
   }
 
+  private isCurrentProjectEvent(eventScopeId: string): boolean {
+    if (!this.currentProjectScopeId || !eventScopeId) {
+      return false;
+    }
+    return eventScopeId === this.currentProjectScopeId;
+  }
+
   private handleHostEvent(event: WorkspaceHostEvent): void {
     try {
       this.processHostEvent(event);
@@ -340,6 +348,9 @@ export class WorkspaceClient extends EventEmitter {
 
       // Handle spontaneous events (forward to renderer)
       case "worktree-update": {
+        if (!this.isCurrentProjectEvent(event.projectScopeId)) {
+          return;
+        }
         const worktree = event.worktree;
         this.sendToRenderer(CHANNELS.WORKTREE_UPDATE, worktree);
         // Emit to internal event bus with explicit object construction
@@ -371,10 +382,16 @@ export class WorkspaceClient extends EventEmitter {
       }
 
       case "worktree-removed":
+        if (!this.isCurrentProjectEvent(event.projectScopeId)) {
+          return;
+        }
         this.sendToRenderer(CHANNELS.WORKTREE_REMOVE, { worktreeId: event.worktreeId });
         break;
 
       case "pr-detected": {
+        if (!this.isCurrentProjectEvent(event.projectScopeId)) {
+          return;
+        }
         const prPayload = {
           worktreeId: event.worktreeId,
           prNumber: event.prNumber,
@@ -391,6 +408,9 @@ export class WorkspaceClient extends EventEmitter {
       }
 
       case "pr-cleared": {
+        if (!this.isCurrentProjectEvent(event.projectScopeId)) {
+          return;
+        }
         const clearPayload = { worktreeId: event.worktreeId, timestamp: Date.now() };
         events.emit("sys:pr:cleared", clearPayload);
         this.sendToRenderer(CHANNELS.PR_CLEARED, clearPayload);
@@ -398,6 +418,9 @@ export class WorkspaceClient extends EventEmitter {
       }
 
       case "issue-detected": {
+        if (!this.isCurrentProjectEvent(event.projectScopeId)) {
+          return;
+        }
         const issuePayload = {
           worktreeId: event.worktreeId,
           issueNumber: event.issueNumber,
@@ -553,12 +576,14 @@ export class WorkspaceClient extends EventEmitter {
 
   async loadProject(rootPath: string): Promise<void> {
     this.currentRootPath = rootPath;
+    this.currentProjectScopeId = crypto.randomUUID();
     const requestId = this.generateRequestId();
 
     await this.sendWithResponse({
       type: "load-project",
       requestId,
       rootPath,
+      projectScopeId: this.currentProjectScopeId,
     });
   }
 
@@ -665,14 +690,14 @@ export class WorkspaceClient extends EventEmitter {
   }
 
   async onProjectSwitch(): Promise<void> {
+    this.currentProjectScopeId = null;
+    this.currentRootPath = null;
     const requestId = this.generateRequestId();
 
     await this.sendWithResponse({
       type: "project-switch",
       requestId,
     });
-
-    this.currentRootPath = null;
   }
 
   async listBranches(rootPath: string): Promise<BranchInfo[]> {
