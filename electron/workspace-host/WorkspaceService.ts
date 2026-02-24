@@ -111,7 +111,11 @@ export class WorkspaceService {
     }
   }
 
-  async loadProject(requestId: string, projectRootPath: string, projectScopeId: string): Promise<void> {
+  async loadProject(
+    requestId: string,
+    projectRootPath: string,
+    projectScopeId: string
+  ): Promise<void> {
     try {
       this.projectRootPath = projectRootPath;
       this.projectScopeId = projectScopeId;
@@ -359,7 +363,11 @@ export class WorkspaceService {
         clearGitDirCache(monitor.path);
         invalidateGitStatusCache(monitor.path);
         if (this.projectScopeId) {
-          this.sendEvent({ type: "worktree-removed", worktreeId: id, projectScopeId: this.projectScopeId });
+          this.sendEvent({
+            type: "worktree-removed",
+            worktreeId: id,
+            projectScopeId: this.projectScopeId,
+          });
         }
         events.emit("sys:worktree:remove", { worktreeId: id, timestamp: Date.now() });
       }
@@ -929,7 +937,11 @@ export class WorkspaceService {
       return;
     }
     const snapshot = this.createSnapshot(monitor);
-    this.sendEvent({ type: "worktree-update", worktree: snapshot, projectScopeId: this.projectScopeId });
+    this.sendEvent({
+      type: "worktree-update",
+      worktree: snapshot,
+      projectScopeId: this.projectScopeId,
+    });
     events.emit("sys:worktree:update", snapshot as any);
   }
 
@@ -1237,7 +1249,11 @@ export class WorkspaceService {
       this.monitors.delete(worktreeId);
 
       if (this.projectScopeId) {
-        this.sendEvent({ type: "worktree-removed", worktreeId, projectScopeId: this.projectScopeId });
+        this.sendEvent({
+          type: "worktree-removed",
+          worktreeId,
+          projectScopeId: this.projectScopeId,
+        });
       }
       this.sendEvent({ type: "delete-worktree-result", requestId, success: true });
     } catch (error) {

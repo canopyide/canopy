@@ -81,7 +81,11 @@ port.on("message", async (rawMsg: any) => {
           });
           break;
         }
-        await workspaceService.loadProject(request.requestId, request.rootPath, request.projectScopeId);
+        await workspaceService.loadProject(
+          request.requestId,
+          request.rootPath,
+          request.projectScopeId
+        );
         break;
 
       case "sync":
