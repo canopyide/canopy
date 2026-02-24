@@ -97,7 +97,6 @@
    * Tier 50: Sidecar overlay
    * Tier 55: Maximized content (terminals)
    * Tier 60: Modal dialogs (full-screen overlays)
-   * Tier 65: Dock popup scrim (dims content behind expanded dock panel)
    * Tier 70: Popovers, dropdowns, tooltips (can appear above modals)
    * Tier 75: Nested dialogs (dialogs triggered from within popovers)
    * Tier 80: Toast notifications (always visible)
@@ -106,7 +105,6 @@
   --z-sidecar: 50;
   --z-maximized: 55;
   --z-modal: 60;
-  --z-dock-scrim: 65;
   --z-popover: 70;
   --z-nested-dialog: 75;
   --z-toast: 80;
@@ -119,6 +117,10 @@
   --shadow-modal: 0 1px 0 rgba(255, 255, 255, 0.04) inset, 0 20px 56px rgba(0, 0, 0, 0.5);
   --shadow-dock-popover:
     0 1px 0 rgba(255, 255, 255, 0.05) inset, 0 25px 70px -10px rgba(0, 0, 0, 0.6);
+  /* Strong multi-layered shadow for docked terminal/tab panels (no scrim overlay) */
+  --shadow-dock-panel-popover:
+    0 1px 0 rgba(255, 255, 255, 0.06) inset, 0 10px 40px -10px rgba(0, 0, 0, 0.35),
+    0 20px 60px -15px rgba(0, 0, 0, 0.25), 0 30px 80px -20px rgba(0, 0, 0, 0.15);
   --border-overlay: rgba(255, 255, 255, 0.06);
   --border-dock-popup: rgba(255, 255, 255, 0.12);
 
