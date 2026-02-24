@@ -109,6 +109,12 @@ export interface AgentConfig {
     resizeStrategy?: "default" | "settled";
     /** CLI flag to disable alt-screen and use inline rendering (e.g., "--no-alt-screen") */
     inlineModeFlag?: string;
+    /** Whether the agent CLI supports bracketed paste input (default: true) */
+    supportsBracketedPaste?: boolean;
+    /** Escape sequence sent for Shift+Enter / soft newline (default: "\x1b\r") */
+    softNewlineSequence?: string;
+    /** Input sequences the activity monitor should ignore (default: ["\x1b\r"]) */
+    ignoredInputSequences?: string[];
   };
   /**
    * Configuration for pattern-based working state detection.
@@ -209,6 +215,9 @@ export const AGENT_REGISTRY: Record<string, AgentConfig> = {
     },
     capabilities: {
       scrollback: 10000,
+      supportsBracketedPaste: true,
+      softNewlineSequence: "\x1b\r",
+      ignoredInputSequences: ["\x1b\r"],
     },
     detection: {
       primaryPatterns: [
@@ -307,6 +316,9 @@ export const AGENT_REGISTRY: Record<string, AgentConfig> = {
       blockAltScreen: true,
       blockMouseReporting: true,
       resizeStrategy: "settled",
+      supportsBracketedPaste: false,
+      softNewlineSequence: "\x1b\r",
+      ignoredInputSequences: ["\x1b\r"],
     },
     detection: {
       primaryPatterns: [
@@ -404,6 +416,9 @@ export const AGENT_REGISTRY: Record<string, AgentConfig> = {
       blockMouseReporting: true,
       resizeStrategy: "settled",
       inlineModeFlag: "--no-alt-screen",
+      supportsBracketedPaste: true,
+      softNewlineSequence: "\n",
+      ignoredInputSequences: ["\n", "\x1b\r"],
     },
     detection: {
       primaryPatterns: [
@@ -528,6 +543,9 @@ export const AGENT_REGISTRY: Record<string, AgentConfig> = {
     capabilities: {
       scrollback: 10000,
       blockAltScreen: true,
+      supportsBracketedPaste: true,
+      softNewlineSequence: "\n",
+      ignoredInputSequences: ["\n", "\x1b\r"],
     },
     detection: {
       primaryPatterns: [
