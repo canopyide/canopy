@@ -4,10 +4,8 @@ export type WorkerInboundMessage =
       buffers: SharedArrayBuffer[];
       signalBuffer: SharedArrayBuffer;
     }
-  | { type: "SET_INTERACTIVE"; id: string; ttlMs: number }
   | { type: "FLUSH_TERMINAL"; id: string }
   | { type: "RESET_TERMINAL"; id: string }
-  | { type: "SET_DIRECT_MODE"; id: string; enabled: boolean }
   | { type: "STOP" };
 
 export type WorkerOutboundMessage = {

@@ -678,11 +678,6 @@ export function setupTerminalStoreListeners() {
   flowStatusUnsubscribe = terminalRegistryController.onStatus((data: TerminalStatusPayload) => {
     const { id, status, timestamp } = data;
     useTerminalStore.getState().updateFlowStatus(id, status, timestamp);
-
-    // Recover from stalled streaming states without requiring a focus change.
-    if (status === "suspended" || status === "paused-backpressure") {
-      terminalInstanceService.wake(id);
-    }
   });
 
   backendCrashedUnsubscribe = terminalRegistryController.onBackendCrashed((details) => {

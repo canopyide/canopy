@@ -43,7 +43,7 @@ Main Process (electron/)     Renderer (src/)
 | `PtyManager`               | Terminal process pool, spawn/kill  |
 | `pty/TerminalProcess`      | Single PTY wrapper, data flow      |
 | `pty/AgentStateService`    | Idle/working/waiting detection     |
-| `pty/TerminalSyncBuffer`   | DEC 2026 sync for flicker-free TUI |
+| `pty/terminalInput`        | Input submission and timing         |
 | `GitService`               | Git operations via simple-git      |
 | `worktree/WorktreeService` | Worktree polling and status        |
 | `CopyTreeService`          | Context generation for agents      |

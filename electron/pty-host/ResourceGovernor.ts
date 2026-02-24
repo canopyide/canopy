@@ -8,7 +8,7 @@ export interface ResourceGovernorDeps {
 }
 
 export class ResourceGovernor {
-  private readonly MEMORY_LIMIT_PERCENT = 80;
+  private readonly MEMORY_LIMIT_PERCENT = 85;
   private readonly RESUME_THRESHOLD_PERCENT = 60;
   private readonly FORCE_RESUME_MS = 10000;
   private readonly CHECK_INTERVAL_MS = 2000;

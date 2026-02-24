@@ -1098,15 +1098,7 @@ export class TerminalProcess {
       terminal.lastOutputTime = Date.now();
 
       if (this.isAgentTerminal && this.activityMonitor) {
-        const inResizeCooldown =
-          this.resizeTimestamp > 0 &&
-          Date.now() - this.resizeTimestamp < TerminalProcess.RESIZE_COOLDOWN_MS;
-
-        if (inResizeCooldown) {
-          this.activityMonitor.onData();
-        } else {
-          this.activityMonitor.onData(data);
-        }
+        this.activityMonitor.onData(data);
       }
 
       if (!this.isAgentTerminal && (data.includes("\x1b[6n") || data.includes("\x1b[5n"))) {

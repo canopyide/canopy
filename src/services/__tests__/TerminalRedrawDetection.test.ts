@@ -1,7 +1,7 @@
 import { describe, it, expect } from "vitest";
 
 /**
- * Tests for the redraw detection pattern matching used in TerminalOutputCoalescer.
+ * Tests for the redraw detection pattern matching used in terminal output ingestion.
  * These patterns trigger adaptive flush timing to eliminate TUI flicker.
  *
  * Detection triggers on:

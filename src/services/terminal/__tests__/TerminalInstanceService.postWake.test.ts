@@ -44,7 +44,6 @@ vi.mock("../TerminalAddonManager", () => ({
 describe("TerminalInstanceService post-wake handling", () => {
   type PostWakeTestService = {
     instances: Map<string, { latestCols: number; latestRows: number }>;
-    postWakeTimers: Map<string, Set<ReturnType<typeof setTimeout>>>;
     handlePostWake: (id: string) => void;
   };
 
@@ -60,7 +59,6 @@ describe("TerminalInstanceService post-wake handling", () => {
       });
 
     service.instances.clear();
-    service.postWakeTimers.clear();
   });
 
   afterEach(() => {
@@ -69,42 +67,25 @@ describe("TerminalInstanceService post-wake handling", () => {
 
     if (service) {
       service.instances.clear();
-      service.postWakeTimers.clear();
     }
   });
 
-  it("does not apply delayed bounce resizes to a newly recreated terminal instance", () => {
+  it("performs a single immediate resize without bounce", () => {
     const id = "term-post-wake";
     if (!service) throw new Error("Service not initialized");
     service.instances.set(id, { latestCols: 80, latestRows: 24 });
 
     service.handlePostWake(id);
+
+    // xterm v6 handles rendering recovery without needing a row bounce.
+    // Only the immediate forceImmediateResize should fire (which calls fit,
+    // not terminalClient.resize directly).
     expect(mockTerminalClient.resize).toHaveBeenCalledTimes(1);
     expect(mockTerminalClient.resize).toHaveBeenNthCalledWith(1, id, 80, 24);
 
-    // Simulate fast destroy/recreate with the same terminal ID.
-    service.instances.set(id, { latestCols: 120, latestRows: 40 });
-
+    // No delayed bounce timers
     vi.advanceTimersByTime(200);
-
     expect(mockTerminalClient.resize).toHaveBeenCalledTimes(1);
-  });
-
-  it("coalesces repeated post-wake calls into a single delayed bounce", () => {
-    const id = "term-post-wake-coalesced";
-    if (!service) throw new Error("Service not initialized");
-    service.instances.set(id, { latestCols: 100, latestRows: 30 });
-
-    service.handlePostWake(id);
-    service.handlePostWake(id);
-
-    vi.advanceTimersByTime(200);
-
-    expect(mockTerminalClient.resize).toHaveBeenCalledTimes(4);
-    expect(mockTerminalClient.resize).toHaveBeenNthCalledWith(1, id, 100, 30);
-    expect(mockTerminalClient.resize).toHaveBeenNthCalledWith(2, id, 100, 30);
-    expect(mockTerminalClient.resize).toHaveBeenNthCalledWith(3, id, 100, 29);
-    expect(mockTerminalClient.resize).toHaveBeenNthCalledWith(4, id, 100, 30);
   });
 
   it("skips post-wake resize path when latest dimensions are invalid", () => {
