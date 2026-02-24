@@ -92,6 +92,7 @@ export class WorkspaceService {
   private git: SimpleGit | null = null;
   private pollingEnabled: boolean = true;
   private projectRootPath: string | null = null;
+  private projectScopeId: string | null = null;
   private prEventUnsubscribers: (() => void)[] = [];
   private prServiceInitializedForPath: string | null = null;
   private worktreeListCache = new Map<string, WorktreeListCacheEntry>();
@@ -110,9 +111,10 @@ export class WorkspaceService {
     }
   }
 
-  async loadProject(requestId: string, projectRootPath: string): Promise<void> {
+  async loadProject(requestId: string, projectRootPath: string, projectScopeId: string): Promise<void> {
     try {
       this.projectRootPath = projectRootPath;
+      this.projectScopeId = projectScopeId;
       this.git = simpleGit(projectRootPath);
 
       const rawWorktrees = await this.listWorktreesFromGit();
@@ -356,7 +358,9 @@ export class WorkspaceService {
         this.monitors.delete(id);
         clearGitDirCache(monitor.path);
         invalidateGitStatusCache(monitor.path);
-        this.sendEvent({ type: "worktree-removed", worktreeId: id });
+        if (this.projectScopeId) {
+          this.sendEvent({ type: "worktree-removed", worktreeId: id, projectScopeId: this.projectScopeId });
+        }
         events.emit("sys:worktree:remove", { worktreeId: id, timestamp: Date.now() });
       }
     }
@@ -921,8 +925,11 @@ export class WorkspaceService {
   }
 
   private emitUpdate(monitor: MonitorState): void {
+    if (!this.projectScopeId) {
+      return;
+    }
     const snapshot = this.createSnapshot(monitor);
-    this.sendEvent({ type: "worktree-update", worktree: snapshot });
+    this.sendEvent({ type: "worktree-update", worktree: snapshot, projectScopeId: this.projectScopeId });
     events.emit("sys:worktree:update", snapshot as any);
   }
 
@@ -961,7 +968,9 @@ export class WorkspaceService {
     }
 
     // Emit removal events for frontend cleanup
-    this.sendEvent({ type: "worktree-removed", worktreeId });
+    if (this.projectScopeId) {
+      this.sendEvent({ type: "worktree-removed", worktreeId, projectScopeId: this.projectScopeId });
+    }
     events.emit("sys:worktree:remove", { worktreeId, timestamp: Date.now() });
 
     console.log(
@@ -1227,7 +1236,9 @@ export class WorkspaceService {
       this.stopMonitor(monitor);
       this.monitors.delete(worktreeId);
 
-      this.sendEvent({ type: "worktree-removed", worktreeId });
+      if (this.projectScopeId) {
+        this.sendEvent({ type: "worktree-removed", worktreeId, projectScopeId: this.projectScopeId });
+      }
       this.sendEvent({ type: "delete-worktree-result", requestId, success: true });
     } catch (error) {
       this.sendEvent({
@@ -1447,16 +1458,19 @@ ${lines.map((l) => "+" + l).join("\n")}`;
           }
         }
 
-        this.sendEvent({
-          type: "pr-detected",
-          worktreeId: data.worktreeId,
-          prNumber: data.prNumber,
-          prUrl: data.prUrl,
-          prState: data.prState,
-          prTitle: data.prTitle,
-          issueNumber: data.issueNumber,
-          issueTitle: data.issueTitle,
-        });
+        if (this.projectScopeId) {
+          this.sendEvent({
+            type: "pr-detected",
+            worktreeId: data.worktreeId,
+            prNumber: data.prNumber,
+            prUrl: data.prUrl,
+            prState: data.prState,
+            prTitle: data.prTitle,
+            issueNumber: data.issueNumber,
+            issueTitle: data.issueTitle,
+            projectScopeId: this.projectScopeId,
+          });
+        }
       })
     );
 
@@ -1471,12 +1485,15 @@ ${lines.map((l) => "+" + l).join("\n")}`;
           }
         }
 
-        this.sendEvent({
-          type: "issue-detected",
-          worktreeId: data.worktreeId,
-          issueNumber: data.issueNumber,
-          issueTitle: data.issueTitle,
-        });
+        if (this.projectScopeId) {
+          this.sendEvent({
+            type: "issue-detected",
+            worktreeId: data.worktreeId,
+            issueNumber: data.issueNumber,
+            issueTitle: data.issueTitle,
+            projectScopeId: this.projectScopeId,
+          });
+        }
       })
     );
 
@@ -1494,10 +1511,13 @@ ${lines.map((l) => "+" + l).join("\n")}`;
           }
         }
 
-        this.sendEvent({
-          type: "pr-cleared",
-          worktreeId: data.worktreeId,
-        });
+        if (this.projectScopeId) {
+          this.sendEvent({
+            type: "pr-cleared",
+            worktreeId: data.worktreeId,
+            projectScopeId: this.projectScopeId,
+          });
+        }
       })
     );
 
@@ -1527,6 +1547,8 @@ ${lines.map((l) => "+" + l).join("\n")}`;
   }
 
   async onProjectSwitch(requestId: string): Promise<void> {
+    this.projectScopeId = null;
+
     this.cleanupPRService();
 
     for (const monitor of this.monitors.values()) {
