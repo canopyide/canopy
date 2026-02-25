@@ -8,6 +8,7 @@ import { usePulseStore } from "./pulseStore";
 
 interface WorktreeDataState {
   worktrees: Map<string, WorktreeState>;
+  projectId: string | null;
   isLoading: boolean;
   error: string | null;
   isInitialized: boolean;
@@ -25,6 +26,7 @@ type WorktreeDataStore = WorktreeDataState & WorktreeDataActions;
 let cleanupListeners: (() => void) | null = null;
 let initPromise: Promise<void> | null = null;
 let storeGeneration = 0;
+let targetProjectId: string | null = null;
 
 function mergeFetchedWorktrees(
   fetchedStates: WorktreeState[],
@@ -68,6 +70,7 @@ function mergeFetchedWorktrees(
 
 export const useWorktreeDataStore = create<WorktreeDataStore>()((set, get) => ({
   worktrees: new Map(),
+  projectId: null,
   isLoading: true,
   error: null,
   isInitialized: false,
@@ -225,6 +228,7 @@ export const useWorktreeDataStore = create<WorktreeDataStore>()((set, get) => ({
     if (initPromise) return;
 
     const capturedGeneration = storeGeneration;
+    const capturedProjectId = targetProjectId;
 
     initPromise = (async () => {
       try {
@@ -266,7 +270,7 @@ export const useWorktreeDataStore = create<WorktreeDataStore>()((set, get) => ({
           }
           const map = mergeFetchedWorktrees(states, prev.worktrees, issueMap);
 
-          return { worktrees: map, isLoading: false, isInitialized: true };
+          return { worktrees: map, projectId: capturedProjectId, isLoading: false, isInitialized: true };
         });
       } catch (e) {
         if (storeGeneration !== capturedGeneration) return;
@@ -281,6 +285,7 @@ export const useWorktreeDataStore = create<WorktreeDataStore>()((set, get) => ({
 
   refresh: async () => {
     const capturedGeneration = storeGeneration;
+    const capturedProjectId = targetProjectId;
     try {
       set({ error: null });
       await worktreeClient.refresh();
@@ -295,6 +300,7 @@ export const useWorktreeDataStore = create<WorktreeDataStore>()((set, get) => ({
         if (storeGeneration !== capturedGeneration) return prev;
         return {
           worktrees: mergeFetchedWorktrees(states, prev.worktrees),
+          projectId: capturedProjectId,
           isLoading: false,
           isInitialized: true,
         };
@@ -319,6 +325,7 @@ export const useWorktreeDataStore = create<WorktreeDataStore>()((set, get) => ({
 
 export function cleanupWorktreeDataStore() {
   storeGeneration++;
+  targetProjectId = null;
   if (cleanupListeners) {
     cleanupListeners();
     cleanupListeners = null;
@@ -331,15 +338,17 @@ export function cleanupWorktreeDataStore() {
   // The store will be properly reinitialized when forceReinitialize() is called.
   useWorktreeDataStore.setState({
     worktrees: new Map(),
+    projectId: null,
     isLoading: true,
     error: null,
     isInitialized: true,
   });
 }
 
-export function forceReinitializeWorktreeDataStore() {
+export function forceReinitializeWorktreeDataStore(projectId?: string) {
   // Called after backend project switch is complete to load worktrees for new project
   storeGeneration++;
+  targetProjectId = projectId ?? null;
   cleanupListeners?.();
   cleanupListeners = null;
   initPromise = null;
@@ -347,6 +356,7 @@ export function forceReinitializeWorktreeDataStore() {
   usePulseStore.getState().invalidateAll();
   useWorktreeDataStore.setState({
     worktrees: new Map(),
+    projectId: targetProjectId,
     isLoading: true,
     error: null,
     isInitialized: false,
