@@ -239,7 +239,9 @@ export const useWorktreeDataStore = create<WorktreeDataStore>()((set, get) => ({
         const states = await worktreeClient.getAll();
 
         if (storeGeneration !== capturedGeneration) {
-          console.warn("[WorktreeDataStore] Discarding stale initialize response - project switched");
+          console.warn(
+            "[WorktreeDataStore] Discarding stale initialize response - project switched"
+          );
           return;
         }
 
@@ -256,7 +258,9 @@ export const useWorktreeDataStore = create<WorktreeDataStore>()((set, get) => ({
         );
 
         if (storeGeneration !== capturedGeneration) {
-          console.warn("[WorktreeDataStore] Discarding stale initialize response - project switched");
+          console.warn(
+            "[WorktreeDataStore] Discarding stale initialize response - project switched"
+          );
           return;
         }
 
@@ -270,7 +274,12 @@ export const useWorktreeDataStore = create<WorktreeDataStore>()((set, get) => ({
           }
           const map = mergeFetchedWorktrees(states, prev.worktrees, issueMap);
 
-          return { worktrees: map, projectId: capturedProjectId, isLoading: false, isInitialized: true };
+          return {
+            worktrees: map,
+            projectId: capturedProjectId,
+            isLoading: false,
+            isInitialized: true,
+          };
         });
       } catch (e) {
         if (storeGeneration !== capturedGeneration) return;

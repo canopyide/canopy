@@ -46,11 +46,8 @@ vi.mock("../notificationStore", () => ({
   },
 }));
 
-const {
-  useWorktreeDataStore,
-  cleanupWorktreeDataStore,
-  forceReinitializeWorktreeDataStore,
-} = await import("../worktreeDataStore");
+const { useWorktreeDataStore, cleanupWorktreeDataStore, forceReinitializeWorktreeDataStore } =
+  await import("../worktreeDataStore");
 
 function createMockWorktree(id: string, overrides: Partial<WorktreeState> = {}): WorktreeState {
   return {
@@ -89,9 +86,7 @@ describe("worktreeDataStore project switch race conditions", () => {
       createMockWorktree("project-a-main", { isMainWorktree: true }),
       createMockWorktree("project-a-feature"),
     ];
-    const projectBWorktrees = [
-      createMockWorktree("project-b-main", { isMainWorktree: true }),
-    ];
+    const projectBWorktrees = [createMockWorktree("project-b-main", { isMainWorktree: true })];
 
     let resolveProjectA!: (value: WorktreeState[]) => void;
     const projectAPromise = new Promise<WorktreeState[]>((resolve) => {
@@ -126,12 +121,8 @@ describe("worktreeDataStore project switch race conditions", () => {
   });
 
   it("discards stale refresh getAll response that resolves after project switch", async () => {
-    const projectAWorktrees = [
-      createMockWorktree("project-a-main", { isMainWorktree: true }),
-    ];
-    const projectBWorktrees = [
-      createMockWorktree("project-b-main", { isMainWorktree: true }),
-    ];
+    const projectAWorktrees = [createMockWorktree("project-a-main", { isMainWorktree: true })];
+    const projectBWorktrees = [createMockWorktree("project-b-main", { isMainWorktree: true })];
 
     // Initialize project A
     getAllMock.mockResolvedValueOnce(projectAWorktrees);
