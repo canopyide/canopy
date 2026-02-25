@@ -77,6 +77,7 @@ describe("worktreeDataStore project switch race conditions", () => {
     cleanupWorktreeDataStore();
     useWorktreeDataStore.setState({
       worktrees: new Map(),
+      projectId: null,
       isLoading: true,
       error: null,
       isInitialized: false,
@@ -104,7 +105,7 @@ describe("worktreeDataStore project switch race conditions", () => {
     useWorktreeDataStore.getState().initialize();
 
     // Switch to project B before the first getAll resolves
-    forceReinitializeWorktreeDataStore();
+    forceReinitializeWorktreeDataStore("project-b");
 
     // Wait for project B to finish initializing
     await vi.waitFor(() => {
@@ -166,7 +167,7 @@ describe("worktreeDataStore project switch race conditions", () => {
     await Promise.resolve();
 
     // Switch project NOW — refresh()'s getAll() is in-flight, scope changes.
-    forceReinitializeWorktreeDataStore();
+    forceReinitializeWorktreeDataStore("project-b");
 
     // Wait for project B to initialize.
     await vi.waitFor(() => {
@@ -200,8 +201,8 @@ describe("worktreeDataStore project switch race conditions", () => {
 
     // Rapid switches: A → B → C (C is the final project)
     useWorktreeDataStore.getState().initialize();
-    forceReinitializeWorktreeDataStore();
-    forceReinitializeWorktreeDataStore();
+    forceReinitializeWorktreeDataStore("project-b");
+    forceReinitializeWorktreeDataStore("project-c");
 
     // Resolve in reverse order: C first (current project), then stale A and B.
     deferred[2].resolve(deferred[2].worktrees);
