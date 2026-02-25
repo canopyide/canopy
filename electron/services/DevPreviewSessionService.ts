@@ -717,10 +717,7 @@ export class DevPreviewSessionService {
       return;
     }
 
-    if (
-      session.needsInstall &&
-      session.installAttemptedGeneration !== session.generation
-    ) {
+    if (session.needsInstall && session.installAttemptedGeneration !== session.generation) {
       session.needsInstall = false;
       void this.runInstall(session);
       return;
