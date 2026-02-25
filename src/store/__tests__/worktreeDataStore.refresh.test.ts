@@ -22,6 +22,7 @@ vi.mock("@/clients", () => ({
     onPRDetected: vi.fn(() => () => {}),
     onPRCleared: vi.fn(() => () => {}),
     onIssueDetected: vi.fn(() => () => {}),
+    onIssueNotFound: vi.fn(() => () => {}),
   },
 }));
 
