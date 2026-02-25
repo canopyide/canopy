@@ -8,6 +8,7 @@ import { usePulseStore } from "./pulseStore";
 
 interface WorktreeDataState {
   worktrees: Map<string, WorktreeState>;
+  projectId: string | null;
   isLoading: boolean;
   error: string | null;
   isInitialized: boolean;
@@ -24,6 +25,8 @@ type WorktreeDataStore = WorktreeDataState & WorktreeDataActions;
 
 let cleanupListeners: (() => void) | null = null;
 let initPromise: Promise<void> | null = null;
+let storeGeneration = 0;
+let targetProjectId: string | null = null;
 
 function mergeFetchedWorktrees(
   fetchedStates: WorktreeState[],
@@ -67,6 +70,7 @@ function mergeFetchedWorktrees(
 
 export const useWorktreeDataStore = create<WorktreeDataStore>()((set, get) => ({
   worktrees: new Map(),
+  projectId: null,
   isLoading: true,
   error: null,
   isInitialized: false,
@@ -223,6 +227,9 @@ export const useWorktreeDataStore = create<WorktreeDataStore>()((set, get) => ({
 
     if (initPromise) return;
 
+    const capturedGeneration = storeGeneration;
+    const capturedProjectId = targetProjectId;
+
     initPromise = (async () => {
       try {
         set({ isLoading: true, error: null });
@@ -230,6 +237,11 @@ export const useWorktreeDataStore = create<WorktreeDataStore>()((set, get) => ({
         // Fetch the initial state - any events emitted during this call
         // will be captured by the listeners we set up above
         const states = await worktreeClient.getAll();
+
+        if (storeGeneration !== capturedGeneration) {
+          console.warn("[WorktreeDataStore] Discarding stale initialize response - project switched");
+          return;
+        }
 
         // Load persisted issue associations for each worktree
         const issueAssociations = await Promise.all(
@@ -242,16 +254,26 @@ export const useWorktreeDataStore = create<WorktreeDataStore>()((set, get) => ({
             }
           })
         );
+
+        if (storeGeneration !== capturedGeneration) {
+          console.warn("[WorktreeDataStore] Discarding stale initialize response - project switched");
+          return;
+        }
+
         const issueMap = new Map(
           issueAssociations.filter((a) => a.assoc !== null).map((a) => [a.id, a.assoc!])
         );
 
         set((prev) => {
+          if (storeGeneration !== capturedGeneration) {
+            return prev;
+          }
           const map = mergeFetchedWorktrees(states, prev.worktrees, issueMap);
 
-          return { worktrees: map, isLoading: false, isInitialized: true };
+          return { worktrees: map, projectId: capturedProjectId, isLoading: false, isInitialized: true };
         });
       } catch (e) {
+        if (storeGeneration !== capturedGeneration) return;
         set({
           error: e instanceof Error ? e.message : "Failed to load worktrees",
           isLoading: false,
@@ -262,16 +284,29 @@ export const useWorktreeDataStore = create<WorktreeDataStore>()((set, get) => ({
   },
 
   refresh: async () => {
+    const capturedGeneration = storeGeneration;
+    const capturedProjectId = targetProjectId;
     try {
       set({ error: null });
       await worktreeClient.refresh();
+
+      if (storeGeneration !== capturedGeneration) return;
+
       const states = await worktreeClient.getAll();
-      set((prev) => ({
-        worktrees: mergeFetchedWorktrees(states, prev.worktrees),
-        isLoading: false,
-        isInitialized: true,
-      }));
+
+      if (storeGeneration !== capturedGeneration) return;
+
+      set((prev) => {
+        if (storeGeneration !== capturedGeneration) return prev;
+        return {
+          worktrees: mergeFetchedWorktrees(states, prev.worktrees),
+          projectId: capturedProjectId,
+          isLoading: false,
+          isInitialized: true,
+        };
+      });
     } catch (e) {
+      if (storeGeneration !== capturedGeneration) return;
       set({ error: e instanceof Error ? e.message : "Failed to refresh worktrees" });
     }
   },
@@ -289,6 +324,8 @@ export const useWorktreeDataStore = create<WorktreeDataStore>()((set, get) => ({
 }));
 
 export function cleanupWorktreeDataStore() {
+  storeGeneration++;
+  targetProjectId = null;
   if (cleanupListeners) {
     cleanupListeners();
     cleanupListeners = null;
@@ -301,14 +338,17 @@ export function cleanupWorktreeDataStore() {
   // The store will be properly reinitialized when forceReinitialize() is called.
   useWorktreeDataStore.setState({
     worktrees: new Map(),
+    projectId: null,
     isLoading: true,
     error: null,
     isInitialized: true,
   });
 }
 
-export function forceReinitializeWorktreeDataStore() {
+export function forceReinitializeWorktreeDataStore(projectId?: string) {
   // Called after backend project switch is complete to load worktrees for new project
+  storeGeneration++;
+  targetProjectId = projectId ?? null;
   cleanupListeners?.();
   cleanupListeners = null;
   initPromise = null;
@@ -316,6 +356,7 @@ export function forceReinitializeWorktreeDataStore() {
   usePulseStore.getState().invalidateAll();
   useWorktreeDataStore.setState({
     worktrees: new Map(),
+    projectId: targetProjectId,
     isLoading: true,
     error: null,
     isInitialized: false,

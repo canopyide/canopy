@@ -76,6 +76,7 @@ describe("worktreeDataStore.refresh", () => {
     cleanupWorktreeDataStore();
     useWorktreeDataStore.setState({
       worktrees: new Map(),
+      projectId: null,
       isLoading: true,
       error: null,
       isInitialized: false,
