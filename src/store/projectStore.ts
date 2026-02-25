@@ -326,7 +326,7 @@ const createProjectStore: StateCreator<ProjectState> = (set, get) => ({
 
       // Now that backend has switched, reinitialize worktree data for the new project
       console.log("[ProjectSwitch] Reinitializing worktree data store...");
-      forceReinitializeWorktreeDataStore();
+      forceReinitializeWorktreeDataStore(projectId);
 
       // Refresh in the background so switch completion isn't blocked by project list I/O.
       void get().loadProjects();
@@ -511,7 +511,7 @@ const createProjectStore: StateCreator<ProjectState> = (set, get) => ({
 
       // Reinitialize worktree data for the reopened project
       console.log("[ProjectStore] Reinitializing worktree data store...");
-      forceReinitializeWorktreeDataStore();
+      forceReinitializeWorktreeDataStore(projectId);
 
       // Refresh in the background so switch completion isn't blocked by project list I/O.
       void get().loadProjects();
