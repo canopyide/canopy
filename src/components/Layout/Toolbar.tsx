@@ -383,7 +383,7 @@ export function Toolbar({
       },
       "github-stats": {
         render: () =>
-          stats && currentProject ? (
+          currentProject ? (
             <div
               key="github-stats"
               className="relative flex items-center h-8 rounded-[var(--radius-md)] overflow-hidden bg-white/[0.03] border border-divider divide-x divide-[var(--border-divider)] mr-2"
@@ -402,19 +402,21 @@ export function Toolbar({
                 }}
                 className={cn(
                   "text-canopy-text hover:bg-white/[0.04] hover:text-canopy-accent h-full px-3 gap-2 rounded-none rounded-l-[var(--radius-md)]",
-                  stats.issueCount === 0 && "opacity-50",
+                  stats?.issueCount === 0 && "opacity-50",
                   isStale && "opacity-60",
                   issuesOpen && "bg-white/[0.04] ring-1 ring-canopy-accent/20 text-canopy-accent"
                 )}
                 title={
                   isStale
-                    ? `${stats.issueCount ?? "?"} open issues (last updated ${getTimeSinceUpdate(lastUpdated)} - offline)`
+                    ? `${stats?.issueCount ?? "\u2014"} open issues (last updated ${getTimeSinceUpdate(lastUpdated)} - offline)`
                     : "Browse GitHub Issues"
                 }
-                aria-label={`${stats.issueCount ?? "?"} open issues${isStale ? " (cached)" : ""}`}
+                aria-label={`${stats?.issueCount ?? "\u2014"} open issues${isStale ? " (cached)" : ""}`}
               >
                 <CircleDot className="h-4 w-4" />
-                <span className="text-xs font-medium tabular-nums">{stats.issueCount ?? "?"}</span>
+                <span className="text-xs font-medium tabular-nums">
+                  {stats?.issueCount ?? "\u2014"}
+                </span>
               </Button>
               <FixedDropdown
                 open={issuesOpen}
@@ -426,7 +428,7 @@ export function Toolbar({
                   type="issue"
                   projectPath={currentProject.path}
                   onClose={() => setIssuesOpen(false)}
-                  initialCount={stats.issueCount}
+                  initialCount={stats?.issueCount}
                 />
               </FixedDropdown>
               <Button
@@ -443,19 +445,21 @@ export function Toolbar({
                 }}
                 className={cn(
                   "text-canopy-text hover:bg-white/[0.04] hover:text-canopy-accent h-full px-3 gap-2 rounded-none",
-                  stats.prCount === 0 && "opacity-50",
+                  stats?.prCount === 0 && "opacity-50",
                   isStale && "opacity-60",
                   prsOpen && "bg-white/[0.04] ring-1 ring-canopy-accent/20 text-canopy-accent"
                 )}
                 title={
                   isStale
-                    ? `${stats.prCount ?? "?"} open PRs (last updated ${getTimeSinceUpdate(lastUpdated)} - offline)`
+                    ? `${stats?.prCount ?? "\u2014"} open PRs (last updated ${getTimeSinceUpdate(lastUpdated)} - offline)`
                     : "Browse GitHub Pull Requests"
                 }
-                aria-label={`${stats.prCount ?? "?"} open pull requests${isStale ? " (cached)" : ""}`}
+                aria-label={`${stats?.prCount ?? "\u2014"} open pull requests${isStale ? " (cached)" : ""}`}
               >
                 <GitPullRequest className="h-4 w-4" />
-                <span className="text-xs font-medium tabular-nums">{stats.prCount ?? "?"}</span>
+                <span className="text-xs font-medium tabular-nums">
+                  {stats?.prCount ?? "\u2014"}
+                </span>
               </Button>
               <FixedDropdown
                 open={prsOpen}
@@ -467,7 +471,7 @@ export function Toolbar({
                   type="pr"
                   projectPath={currentProject.path}
                   onClose={() => setPrsOpen(false)}
-                  initialCount={stats.prCount}
+                  initialCount={stats?.prCount}
                 />
               </FixedDropdown>
               <Button
@@ -480,14 +484,16 @@ export function Toolbar({
                 }}
                 className={cn(
                   "text-canopy-text hover:bg-white/[0.04] hover:text-canopy-accent h-full px-3 gap-2 rounded-none rounded-r-[var(--radius-md)]",
-                  stats.commitCount === 0 && "opacity-50",
+                  stats?.commitCount === 0 && "opacity-50",
                   commitsOpen && "bg-white/[0.04] ring-1 ring-canopy-accent/20 text-canopy-accent"
                 )}
                 title="Browse Git Commits"
-                aria-label={`${stats.commitCount} commits`}
+                aria-label={`${stats?.commitCount ?? "\u2014"} commits`}
               >
                 <GitCommit className="h-4 w-4" />
-                <span className="text-xs font-medium tabular-nums">{stats.commitCount}</span>
+                <span className="text-xs font-medium tabular-nums">
+                  {stats?.commitCount ?? "\u2014"}
+                </span>
               </Button>
               <FixedDropdown
                 open={commitsOpen}
@@ -498,7 +504,7 @@ export function Toolbar({
                 <CommitList
                   projectPath={currentProject.path}
                   onClose={() => setCommitsOpen(false)}
-                  initialCount={stats.commitCount}
+                  initialCount={stats?.commitCount}
                 />
               </FixedDropdown>
               <GitHubStatusIndicator
@@ -508,7 +514,7 @@ export function Toolbar({
               />
             </div>
           ) : null,
-        isAvailable: !!(stats && currentProject),
+        isAvailable: !!currentProject,
       },
       notes: {
         render: () => (
