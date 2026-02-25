@@ -267,6 +267,10 @@ export function useRepositoryStats(): UseRepositoryStatsReturn {
       // Clear preserved counts on project switch to prevent cross-contamination
       lastKnownCountsRef.current = { issueCount: null, prCount: null, projectPath: null };
 
+      setStats(null);
+      setIsStale(false);
+      setLastUpdated(null);
+
       fetchStats().then(() => {
         if (mountedRef.current) {
           scheduleNextPoll();
