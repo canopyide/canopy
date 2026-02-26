@@ -8,7 +8,11 @@ import {
 import type { Project, ProjectCloseResult, TerminalSnapshot } from "@shared/types";
 import { projectClient } from "@/clients";
 import { resetAllStoresForProjectSwitch } from "./resetStores";
-import { forceReinitializeWorktreeDataStore, snapshotProjectWorktrees } from "./worktreeDataStore";
+import {
+  forceReinitializeWorktreeDataStore,
+  prePopulateWorktreeSnapshot,
+  snapshotProjectWorktrees,
+} from "./worktreeDataStore";
 import { flushTerminalPersistence } from "./slices";
 import { terminalPersistence, terminalToSnapshot } from "./persistence/terminalPersistence";
 import { useNotificationStore } from "./notificationStore";
@@ -321,29 +325,72 @@ const createProjectStore: StateCreator<ProjectState> = (set, get) => ({
         preserveTerminalIds,
       });
 
-      console.log("[ProjectSwitch] Switching project in main process...");
-      const project = await projectClient.switch(projectId);
-      set({ currentProject: project, isLoading: false });
+      // Pre-populate the worktree sidebar with cached snapshot data immediately.
+      // This shows the user something useful while the main process loads fresh data.
+      console.log("[ProjectSwitch] Pre-populating worktree snapshot...");
+      prePopulateWorktreeSnapshot(projectId);
+
+      // Set currentProject optimistically from the already-loaded project list.
+      // The main process switch will confirm this (or error/rollback).
+      if (targetProject) {
+        set({ currentProject: targetProject, isLoading: false });
+      }
 
       // Clear old settings and pre-load new project settings for instant toolbar updates
       console.log("[ProjectSwitch] Pre-loading project settings...");
       useProjectSettingsStore.getState().reset();
       void useProjectSettingsStore.getState().loadSettings(projectId);
 
-      // Now that backend has switched, reinitialize worktree data for the new project
-      console.log("[ProjectSwitch] Reinitializing worktree data store...");
-      forceReinitializeWorktreeDataStore(projectId);
+      // Fire the main process switch in the background — don't block the UI.
+      // When it completes, fetch fresh worktree data from the now-loaded workspace.
+      console.log("[ProjectSwitch] Switching project in main process (background)...");
+      projectClient
+        .switch(projectId)
+        .then((project) => {
+          // Update with the authoritative project data from the main process
+          set({ currentProject: project, isLoading: false });
 
-      // Refresh in the background so switch completion isn't blocked by project list I/O.
-      void get().loadProjects();
+          // Now that backend has switched, fetch fresh worktree data
+          console.log("[ProjectSwitch] Reinitializing worktree data store...");
+          forceReinitializeWorktreeDataStore(projectId);
+
+          // Refresh project list in the background
+          void get().loadProjects();
+        })
+        .catch((error) => {
+          cancelPreparedProjectSwitchRendererCache(oldProjectId);
+          logErrorWithContext(error, {
+            operation: "switch_project",
+            component: "projectStore",
+            details: { projectId, targetProjectName: targetProject?.name },
+          });
+          const message = getProjectOpenErrorMessage(error);
+          useNotificationStore.getState().addNotification({
+            type: "error",
+            title: "Failed to switch project",
+            message,
+            duration: 6000,
+          });
+          set({
+            error: message,
+            currentProject: currentProject,
+            isLoading: false,
+            isSwitching: false,
+            switchingToProjectName: null,
+          });
+          // Restore worktree data for the outgoing project so the sidebar isn't blank.
+          forceReinitializeWorktreeDataStore(oldProjectId ?? undefined);
+        });
 
       // Note: State re-hydration is triggered by PROJECT_ON_SWITCH IPC event
       // which is handled in useProjectSwitchRehydration. We don't dispatch
       // project-switched here to avoid duplicate hydration.
     } catch (error) {
+      // This catch handles errors from the synchronous setup phase
+      // (store resets, snapshot, terminal persistence, etc.)
       cancelPreparedProjectSwitchRendererCache(oldProjectId);
       logErrorWithContext(error, {
-        operation: "switch_project",
+        operation: "switch_project_setup",
         component: "projectStore",
         details: { projectId, targetProjectName: targetProject?.name },
       });
@@ -355,7 +402,6 @@ const createProjectStore: StateCreator<ProjectState> = (set, get) => ({
         duration: 6000,
       });
       set({ error: message, isLoading: false, isSwitching: false, switchingToProjectName: null });
-      // Restore worktree data for the outgoing project so the sidebar isn't blank.
       forceReinitializeWorktreeDataStore(oldProjectId ?? undefined);
     }
   },
@@ -513,29 +559,61 @@ const createProjectStore: StateCreator<ProjectState> = (set, get) => ({
         preserveTerminalIds,
       });
 
-      console.log("[ProjectStore] Reopening project...");
-      const project = await projectClient.reopen(projectId);
-      set({ currentProject: project, isLoading: false });
+      // Pre-populate the worktree sidebar with cached snapshot data immediately.
+      console.log("[ProjectStore] Pre-populating worktree snapshot...");
+      prePopulateWorktreeSnapshot(projectId);
+
+      // Set currentProject optimistically
+      if (targetProject) {
+        set({ currentProject: targetProject, isLoading: false });
+      }
 
       // Clear old settings and pre-load project settings for instant toolbar updates
       console.log("[ProjectStore] Pre-loading project settings...");
       useProjectSettingsStore.getState().reset();
       void useProjectSettingsStore.getState().loadSettings(projectId);
 
-      // Reinitialize worktree data for the reopened project
-      console.log("[ProjectStore] Reinitializing worktree data store...");
-      forceReinitializeWorktreeDataStore(projectId);
+      // Fire the main process reopen in the background
+      console.log("[ProjectStore] Reopening project in main process (background)...");
+      projectClient
+        .reopen(projectId)
+        .then((project) => {
+          set({ currentProject: project, isLoading: false });
 
-      // Refresh in the background so switch completion isn't blocked by project list I/O.
-      void get().loadProjects();
+          console.log("[ProjectStore] Reinitializing worktree data store...");
+          forceReinitializeWorktreeDataStore(projectId);
+
+          void get().loadProjects();
+        })
+        .catch((error) => {
+          cancelPreparedProjectSwitchRendererCache(oldProjectId);
+          logErrorWithContext(error, {
+            operation: "reopen_project",
+            component: "projectStore",
+            details: { projectId, targetProjectName: targetProject?.name },
+          });
+          const message = getProjectOpenErrorMessage(error);
+          useNotificationStore.getState().addNotification({
+            type: "error",
+            title: "Failed to reopen project",
+            message,
+            duration: 6000,
+          });
+          set({
+            error: message,
+            currentProject: currentProject,
+            isLoading: false,
+            isSwitching: false,
+            switchingToProjectName: null,
+          });
+          forceReinitializeWorktreeDataStore(oldProjectId ?? undefined);
+        });
 
       // Note: State re-hydration is triggered by PROJECT_ON_SWITCH IPC event
-      // which is handled in useProjectSwitchRehydration. We don't dispatch
-      // project-switched here to avoid duplicate hydration.
     } catch (error) {
       cancelPreparedProjectSwitchRendererCache(oldProjectId);
       logErrorWithContext(error, {
-        operation: "reopen_project",
+        operation: "reopen_project_setup",
         component: "projectStore",
         details: { projectId, targetProjectName: targetProject?.name },
       });
@@ -547,7 +625,6 @@ const createProjectStore: StateCreator<ProjectState> = (set, get) => ({
         duration: 6000,
       });
       set({ error: message, isLoading: false, isSwitching: false, switchingToProjectName: null });
-      // Restore worktree data for the outgoing project so the sidebar isn't blank.
       forceReinitializeWorktreeDataStore(oldProjectId ?? undefined);
       throw error;
     }
