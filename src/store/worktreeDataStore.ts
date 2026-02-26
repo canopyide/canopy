@@ -270,7 +270,7 @@ export const useWorktreeDataStore = create<WorktreeDataStore>()((set, get) => ({
         }
 
         // Load all persisted issue associations in a single IPC call
-        let issueMap = new Map<string, IssueAssociation>();
+        const issueMap = new Map<string, IssueAssociation>();
         try {
           const allAssociations = await worktreeClient.getAllIssueAssociations();
           if (storeGeneration !== capturedGeneration) {

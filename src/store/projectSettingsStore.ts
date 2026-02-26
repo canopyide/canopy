@@ -151,8 +151,12 @@ export function cleanupProjectSettingsStore(): void {
 }
 
 export function snapshotProjectSettings(projectId: string): void {
-  const { settings, detectedRunners, allDetectedRunners, projectId: storeProjectId } =
-    useProjectSettingsStore.getState();
+  const {
+    settings,
+    detectedRunners,
+    allDetectedRunners,
+    projectId: storeProjectId,
+  } = useProjectSettingsStore.getState();
   if (!settings) return;
   if (storeProjectId && storeProjectId !== projectId) return;
   settingsSnapshotCache.delete(projectId);
