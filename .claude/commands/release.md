@@ -42,6 +42,7 @@ Use `AskUserQuestion` to confirm. Present your recommendation with reasoning:
 > Reason: [e.g. "This is the initial release" / "N new features since vX.Y.Z warrant a minor bump" / "Only bug fixes since vX.Y.Z — patch bump"]
 
 Offer the recommended version as the first option, plus the adjacent alternatives. For example if recommending 0.2.0, offer:
+
 - `0.2.0` (Recommended) — MINOR bump, new features added
 - `0.3.0` — skip a minor version
 - `1.0.0` — MAJOR bump if this feels like a major milestone
@@ -91,16 +92,18 @@ Run these in parallel:
 
 Group everything into these categories based on commit prefixes and issue/PR labels:
 
-| Category | Commit Prefixes | Labels |
-|---|---|---|
-| **Features** | `feat:`, `feat(...)` | `enhancement`, `feature` |
-| **Bug Fixes** | `fix:`, `fix(...)` | `bug`, `bugfix` |
-| **Performance** | `perf:`, `perf(...)` | `performance` |
-| **Breaking Changes** | `BREAKING CHANGE`, `!:` | `breaking` |
-| **Other** | `chore:`, `docs:`, `refactor:`, `style:`, `ci:`, `build:` | — |
+| Category             | Commit Prefixes                                           | Labels                   |
+| -------------------- | --------------------------------------------------------- | ------------------------ |
+| **Features**         | `feat:`, `feat(...)`                                      | `enhancement`, `feature` |
+| **Bug Fixes**        | `fix:`, `fix(...)`                                        | `bug`, `bugfix`          |
+| **Performance**      | `perf:`, `perf(...)`                                      | `performance`            |
+| **Breaking Changes** | `BREAKING CHANGE`, `!:`                                   | `breaking`               |
+| **Other**            | `chore:`, `docs:`, `refactor:`, `style:`, `ci:`, `build:` | —                        |
 
 Present a summary to the user:
+
 > ### Release v0.X.0 Summary
+>
 > - **N** features, **N** bug fixes, **N** performance improvements
 > - **N** issues closed, **N** PRs merged
 >
@@ -126,24 +129,30 @@ If the file doesn't exist, create it. If it exists, prepend the new release sect
 ## [0.X.0] - YYYY-MM-DD
 
 ### Features
+
 - Description of feature (#issue)
 
 ### Bug Fixes
+
 - Description of fix (#issue)
 
 ### Performance
+
 - Description of improvement (#issue)
 
 ### Other Changes
+
 - Description (#issue)
 
 ---
 
 ## [previous version] - date
+
 ...
 ```
 
 **Rules:**
+
 - Each entry should be a concise, user-facing description — not a raw commit message.
 - Reference issue numbers as `#NNN` — they auto-link on GitHub.
 - Omit the "Other Changes" section if there's nothing meaningful (don't list chore commits that users don't care about).
@@ -173,7 +182,7 @@ This is used for the very first release when gitflow hasn't been set up yet.
 3. Update version in `package-lock.json` — there are TWO places:
    - Top-level `"version"` field (line 3)
    - Inside `"packages"."".version`
-   Use `npm version NEW_VERSION --no-git-tag-version` to handle both atomically.
+     Use `npm version NEW_VERSION --no-git-tag-version` to handle both atomically.
 4. Commit the changelog and version bump: `chore(release): release v0.X.0`
 5. Commit the changelog and version files together in a single commit.
 
@@ -214,6 +223,7 @@ git tag -a vX.Y.Z -m "Release vX.Y.Z"
 **Ask the user for explicit confirmation before pushing.** Show exactly what will be pushed:
 
 > Ready to push. This will:
+>
 > - Push `main` with tag `vX.Y.Z` (triggers CI release build)
 > - Push `develop` (if it exists)
 > - Delete remote `release/vX.Y.Z` branch (if applicable)
@@ -229,11 +239,13 @@ git push origin main --tags
 ```
 
 If `develop` exists:
+
 ```bash
 git push origin develop
 ```
 
 If this is the initial release (Flow A), create `develop` from `main` now:
+
 ```bash
 git checkout -b develop main
 git push -u origin develop
@@ -246,24 +258,29 @@ Tell the user they should set `develop` as the default branch in GitHub repo set
 ## Phase 6: Post-Release
 
 1. **Monitor CI:** Provide the command to watch the workflow:
+
    ```bash
    gh run list --limit 1 --workflow=release.yml
    gh run watch
    ```
 
 2. **GitHub Release (optional):** Ask the user if they want to create a GitHub Release. If yes:
+
    ```bash
    gh release create vX.Y.Z --title "vX.Y.Z" --notes-file CHANGELOG_SECTION.md
    ```
+
    Extract just the current version's section from CHANGELOG.md for the notes.
 
 3. **Clean up stale branches:** If there are remote branches that have been merged to main, offer to delete them:
+
    ```bash
    git branch -r --merged main | grep -v main | grep -v develop | grep -v HEAD
    ```
 
 4. Print a final summary:
    > ## Release Complete
+   >
    > - **Version:** vX.Y.Z
    > - **Tag:** pushed, CI triggered
    > - **Changelog:** updated
