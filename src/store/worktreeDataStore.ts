@@ -365,8 +365,10 @@ export const useWorktreeDataStore = create<WorktreeDataStore>()((set, get) => ({
 }));
 
 export function snapshotProjectWorktrees(projectId: string): void {
-  const { worktrees } = useWorktreeDataStore.getState();
+  const { worktrees, projectId: storeProjectId } = useWorktreeDataStore.getState();
   if (worktrees.size === 0) return;
+  // Don't cache if the store has already moved to a different project.
+  if (storeProjectId && storeProjectId !== projectId) return;
   projectSnapshotCache.delete(projectId);
   projectSnapshotCache.set(projectId, new Map(worktrees));
   evictOldestSnapshot();
