@@ -37,6 +37,24 @@ const initialState: ProjectSettingsState = {
   error: null,
 };
 
+const MAX_SETTINGS_CACHE_SIZE = 3;
+
+interface SettingsSnapshot {
+  settings: ProjectSettings;
+  detectedRunners: RunCommand[];
+  allDetectedRunners: RunCommand[];
+}
+
+const settingsSnapshotCache = new Map<string, SettingsSnapshot>();
+
+function evictOldestSettings(): void {
+  if (settingsSnapshotCache.size <= MAX_SETTINGS_CACHE_SIZE) return;
+  const firstKey = settingsSnapshotCache.keys().next().value;
+  if (firstKey !== undefined) {
+    settingsSnapshotCache.delete(firstKey);
+  }
+}
+
 const createProjectSettingsStore: StateCreator<ProjectSettingsState & ProjectSettingsActions> = (
   set,
   get
@@ -50,7 +68,12 @@ const createProjectSettingsStore: StateCreator<ProjectSettingsState & ProjectSet
       return;
     }
 
-    set({ isLoading: true, error: null, projectId });
+    // Only show loading state if no snapshot was pre-populated.
+    if (currentState.projectId !== projectId || !currentState.settings) {
+      set({ isLoading: true, error: null, projectId });
+    } else {
+      set({ error: null });
+    }
 
     try {
       const [data, detected] = await Promise.all([
@@ -73,6 +96,15 @@ const createProjectSettingsStore: StateCreator<ProjectSettingsState & ProjectSet
         isLoading: false,
         error: null,
       });
+
+      // Update the snapshot cache with fresh data
+      settingsSnapshotCache.delete(projectId);
+      settingsSnapshotCache.set(projectId, {
+        settings: data,
+        detectedRunners: newDetected,
+        allDetectedRunners: detected,
+      });
+      evictOldestSettings();
     } catch (err) {
       console.error("Failed to load project settings:", err);
 
@@ -116,4 +148,35 @@ export const useProjectSettingsStore = create<ProjectSettingsState & ProjectSett
 /** Cleanup function for project switch */
 export function cleanupProjectSettingsStore(): void {
   useProjectSettingsStore.getState().reset();
+}
+
+export function snapshotProjectSettings(projectId: string): void {
+  const { settings, detectedRunners, allDetectedRunners, projectId: storeProjectId } =
+    useProjectSettingsStore.getState();
+  if (!settings) return;
+  if (storeProjectId && storeProjectId !== projectId) return;
+  settingsSnapshotCache.delete(projectId);
+  settingsSnapshotCache.set(projectId, {
+    settings,
+    detectedRunners,
+    allDetectedRunners,
+  });
+  evictOldestSettings();
+}
+
+export function prePopulateProjectSettings(projectId: string): void {
+  const snapshot = settingsSnapshotCache.get(projectId);
+  if (!snapshot) {
+    // No cached settings — reset and let loadSettings fetch fresh
+    useProjectSettingsStore.setState({ ...initialState, projectId });
+    return;
+  }
+  useProjectSettingsStore.setState({
+    settings: snapshot.settings,
+    detectedRunners: snapshot.detectedRunners,
+    allDetectedRunners: snapshot.allDetectedRunners,
+    projectId,
+    isLoading: false,
+    error: null,
+  });
 }
