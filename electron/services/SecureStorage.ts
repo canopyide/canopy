@@ -6,24 +6,37 @@ export type SecureKey = "userConfig.githubToken";
 type UserConfigKey = keyof StoreSchema["userConfig"];
 type DotNotatedUserConfigKey = `userConfig.${UserConfigKey}`;
 
+/**
+ * Simple key-value storage backed by electron-store.
+ * Values are stored as plain text — the same security model as ~/.gitconfig or .env files.
+ * On first access, any previously safeStorage-encrypted values are migrated to plain text.
+ */
 class SecureStorage {
-  private _isAvailable: boolean | undefined;
+  private migrated = false;
 
-  private get isAvailable(): boolean {
-    if (!electron.safeStorage) {
-      return false;
-    }
-    if (this._isAvailable === undefined) {
-      this._isAvailable = electron.safeStorage.isEncryptionAvailable();
-      if (!this._isAvailable) {
-        console.warn("[SecureStorage] OS encryption not available. Falling back to plain text.");
+  private migrateIfNeeded(key: SecureKey): void {
+    if (this.migrated) return;
+    this.migrated = true;
+
+    const rawValue = store.get(key as DotNotatedUserConfigKey) as unknown;
+    if (typeof rawValue !== "string" || rawValue === "") return;
+
+    // Detect hex-encoded safeStorage values from previous versions
+    if (/^[0-9a-f]+$/i.test(rawValue) && rawValue.length % 2 === 0) {
+      try {
+        if (electron.safeStorage?.isEncryptionAvailable()) {
+          const buffer = Buffer.from(rawValue, "hex");
+          const decrypted = electron.safeStorage.decryptString(buffer);
+          store.set(key as DotNotatedUserConfigKey, decrypted);
+          console.info(`[SecureStorage] Migrated ${key} from encrypted to plain text.`);
+        }
+      } catch {
+        // Can't decrypt — value is either corrupted or was never encrypted.
+        // If it looks like a valid token, keep it; otherwise clear it.
+        console.warn(`[SecureStorage] Could not migrate ${key}, clearing corrupted entry.`);
+        store.delete(key as DotNotatedUserConfigKey);
       }
     }
-    return this._isAvailable;
-  }
-
-  private isHexEncoded(value: string): boolean {
-    return /^[0-9a-f]+$/i.test(value) && value.length % 2 === 0;
   }
 
   public set(key: SecureKey, value: string | undefined): void {
@@ -31,24 +44,12 @@ class SecureStorage {
       store.delete(key as DotNotatedUserConfigKey);
       return;
     }
-
-    if (this.isAvailable) {
-      try {
-        const encrypted = electron.safeStorage.encryptString(value);
-        store.set(key as DotNotatedUserConfigKey, encrypted.toString("hex"));
-      } catch (error) {
-        console.error(
-          `[SecureStorage] Failed to encrypt ${key}, falling back to plain text:`,
-          error
-        );
-        store.set(key as DotNotatedUserConfigKey, value);
-      }
-    } else {
-      store.set(key as DotNotatedUserConfigKey, value);
-    }
+    store.set(key as DotNotatedUserConfigKey, value);
   }
 
   public get(key: SecureKey): string | undefined {
+    this.migrateIfNeeded(key);
+
     const rawValue = store.get(key as DotNotatedUserConfigKey) as unknown;
     if (rawValue === undefined || rawValue === null || rawValue === "") return undefined;
     if (typeof rawValue !== "string") {
@@ -56,47 +57,9 @@ class SecureStorage {
       store.delete(key as DotNotatedUserConfigKey);
       return undefined;
     }
-
-    const storedValue = rawValue;
-
-    // If it's not hex encoded, it's definitely plain text.
-    if (!this.isHexEncoded(storedValue)) {
-      if (this.isAvailable) {
-        console.info(`[SecureStorage] Found plain-text ${key}, migrating to encrypted storage.`);
-        this.set(key, storedValue);
-      } else {
-        console.warn(
-          `[SecureStorage] Found plain-text ${key}, but encryption is unavailable. Keeping as plain-text.`
-        );
-      }
-      return storedValue;
-    }
-
-    // Only check for encryption availability if we have an encrypted value to decrypt
-    if (this.isAvailable) {
-      try {
-        const buffer = Buffer.from(storedValue, "hex");
-        return electron.safeStorage.decryptString(buffer);
-      } catch (_error) {
-        console.warn(
-          `[SecureStorage] Failed to decrypt ${key}, clearing corrupted entry. User will need to re-enter.`
-        );
-        store.delete(key as DotNotatedUserConfigKey);
-        return undefined;
-      }
-    }
-
-    // Value is hex encoded (looks encrypted) but encryption is not available
-    if (this.isHexEncoded(storedValue)) {
-      console.warn(
-        `[SecureStorage] Found encrypted ${key} but encryption unavailable. Clearing entry, user will need to re-enter.`
-      );
-      store.delete(key as DotNotatedUserConfigKey);
-      return undefined;
-    }
-
-    return storedValue;
+    return rawValue;
   }
+
   public delete(key: SecureKey): void {
     store.delete(key as DotNotatedUserConfigKey);
   }

@@ -516,13 +516,13 @@ async function createWindow(): Promise<void> {
     return;
   }
 
-  // Initialize GitHubAuth with SecureStorage (must happen in main process, before workspace client starts)
+  // Initialize GitHubAuth with storage (must happen in main process, before workspace client starts)
   GitHubAuth.initializeStorage({
     get: () => secureStorage.get("userConfig.githubToken"),
     set: (token) => secureStorage.set("userConfig.githubToken", token),
     delete: () => secureStorage.delete("userConfig.githubToken"),
   });
-  console.log("[MAIN] GitHubAuth initialized with SecureStorage");
+  console.log("[MAIN] GitHubAuth initialized with storage");
 
   // If there's a stored token, validate it to cache user info
   if (GitHubAuth.hasToken()) {

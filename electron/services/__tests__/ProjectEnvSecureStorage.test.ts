@@ -13,12 +13,9 @@ const storeMock = vi.hoisted(() => ({
 
 const safeStorageMock = vi.hoisted(() => ({
   isEncryptionAvailable: vi.fn(() => true),
-  encryptString: vi.fn((value: string) => Buffer.from(`enc:${value}`, "utf8")),
   decryptString: vi.fn((buffer: Buffer) => {
     const text = buffer.toString("utf8");
-    if (!text.startsWith("enc:")) {
-      throw new Error("Invalid payload");
-    }
+    if (!text.startsWith("enc:")) throw new Error("Invalid payload");
     return text.slice(4);
   }),
 }));
@@ -37,9 +34,6 @@ describe("ProjectEnvSecureStorage", () => {
     vi.resetModules();
     storeState.data = { projectEnv: {} };
     safeStorageMock.isEncryptionAvailable.mockReturnValue(true);
-    safeStorageMock.encryptString.mockImplementation((value: string) =>
-      Buffer.from(`enc:${value}`, "utf8")
-    );
     safeStorageMock.decryptString.mockImplementation((buffer: Buffer) => {
       const text = buffer.toString("utf8");
       if (!text.startsWith("enc:")) throw new Error("Invalid payload");
@@ -52,36 +46,35 @@ describe("ProjectEnvSecureStorage", () => {
     return mod.projectEnvSecureStorage;
   }
 
-  it("stores and retrieves encrypted env values", async () => {
+  it("stores and retrieves plain-text env values", async () => {
     const service = await getService();
     service.set("project-1", "API_KEY", "secret");
 
     expect(service.get("project-1", "API_KEY")).toBe("secret");
-    expect(safeStorageMock.encryptString).toHaveBeenCalledWith("secret");
   });
 
-  it("throws when encryption is unavailable during set", async () => {
+  it("migrates legacy encrypted values to plain text on read", async () => {
+    const encrypted = Buffer.from("enc:my-api-key", "utf8").toString("hex");
+    (storeState.data.projectEnv as Record<string, string>)["project-1:API_KEY"] = encrypted;
+    const service = await getService();
+
+    expect(service.get("project-1", "API_KEY")).toBe("my-api-key");
+  });
+
+  it("clears corrupted encrypted values that fail decryption", async () => {
+    const badHex = Buffer.from("not-encrypted", "utf8").toString("hex");
+    (storeState.data.projectEnv as Record<string, string>)["project-1:API_KEY"] = badHex;
+    const service = await getService();
+
+    expect(service.get("project-1", "API_KEY")).toBeUndefined();
+  });
+
+  it("stores values even when safeStorage is unavailable (no encryption needed)", async () => {
     safeStorageMock.isEncryptionAvailable.mockReturnValue(false);
     const service = await getService();
 
-    expect(() => service.set("project-1", "API_KEY", "secret")).toThrow(
-      "Cannot store sensitive environment variable"
-    );
-  });
-
-  it("returns undefined for non-hex stored values", async () => {
-    storeState.data.projectEnv = { "project-1:API_KEY": "plain-text" };
-    const service = await getService();
-
-    expect(service.get("project-1", "API_KEY")).toBeUndefined();
-  });
-
-  it("returns undefined when decrypt fails", async () => {
-    const badHex = Buffer.from("not-encrypted", "utf8").toString("hex");
-    storeState.data.projectEnv = { "project-1:API_KEY": badHex };
-    const service = await getService();
-
-    expect(service.get("project-1", "API_KEY")).toBeUndefined();
+    expect(() => service.set("project-1", "API_KEY", "secret")).not.toThrow();
+    expect(service.get("project-1", "API_KEY")).toBe("secret");
   });
 
   it("set handles malformed projectEnv store value by normalizing", async () => {

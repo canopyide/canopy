@@ -50,7 +50,6 @@ export class GitHubAuth {
    */
   static initializeStorage(storage: TokenStorage): void {
     this.storage = storage;
-    // Sync memory token with storage on init
     const storedToken = storage.get();
     if (storedToken) {
       this.memoryToken = storedToken;
