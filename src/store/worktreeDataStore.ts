@@ -29,7 +29,13 @@ let storeGeneration = 0;
 let targetProjectId: string | null = null;
 
 const MAX_SNAPSHOT_CACHE_SIZE = 3;
-const projectSnapshotCache = new Map<string, Map<string, WorktreeState>>();
+
+interface ProjectSnapshot {
+  worktrees: Map<string, WorktreeState>;
+  activeWorktreeId: string | null;
+}
+
+const projectSnapshotCache = new Map<string, ProjectSnapshot>();
 
 function evictOldestSnapshot(): void {
   if (projectSnapshotCache.size <= MAX_SNAPSHOT_CACHE_SIZE) return;
@@ -292,8 +298,12 @@ export const useWorktreeDataStore = create<WorktreeDataStore>()((set, get) => ({
 
           // Update the snapshot cache with the fresh data
           if (capturedProjectId) {
+            const activeWorktreeId = useWorktreeSelectionStore.getState().activeWorktreeId;
             projectSnapshotCache.delete(capturedProjectId);
-            projectSnapshotCache.set(capturedProjectId, new Map(map));
+            projectSnapshotCache.set(capturedProjectId, {
+              worktrees: new Map(map),
+              activeWorktreeId,
+            });
             evictOldestSnapshot();
           }
 
@@ -334,8 +344,12 @@ export const useWorktreeDataStore = create<WorktreeDataStore>()((set, get) => ({
 
         // Update the snapshot cache
         if (capturedProjectId) {
+          const activeWorktreeId = useWorktreeSelectionStore.getState().activeWorktreeId;
           projectSnapshotCache.delete(capturedProjectId);
-          projectSnapshotCache.set(capturedProjectId, new Map(map));
+          projectSnapshotCache.set(capturedProjectId, {
+            worktrees: new Map(map),
+            activeWorktreeId,
+          });
           evictOldestSnapshot();
         }
 
@@ -369,8 +383,12 @@ export function snapshotProjectWorktrees(projectId: string): void {
   if (worktrees.size === 0) return;
   // Don't cache if the store has already moved to a different project.
   if (storeProjectId && storeProjectId !== projectId) return;
+  const activeWorktreeId = useWorktreeSelectionStore.getState().activeWorktreeId;
   projectSnapshotCache.delete(projectId);
-  projectSnapshotCache.set(projectId, new Map(worktrees));
+  projectSnapshotCache.set(projectId, {
+    worktrees: new Map(worktrees),
+    activeWorktreeId,
+  });
   evictOldestSnapshot();
 }
 
@@ -408,10 +426,10 @@ export function prePopulateWorktreeSnapshot(projectId: string) {
   usePulseStore.getState().invalidateAll();
 
   const snapshot = projectSnapshotCache.get(projectId);
-  const hasSnapshot = snapshot && snapshot.size > 0;
+  const hasSnapshot = snapshot && snapshot.worktrees.size > 0;
 
   useWorktreeDataStore.setState({
-    worktrees: hasSnapshot ? new Map(snapshot) : new Map(),
+    worktrees: hasSnapshot ? new Map(snapshot.worktrees) : new Map(),
     projectId,
     isLoading: !hasSnapshot,
     error: null,
@@ -420,6 +438,12 @@ export function prePopulateWorktreeSnapshot(projectId: string) {
     // flip this to false and start the real fetch.
     isInitialized: true,
   });
+
+  // Restore the active worktree selection from the snapshot so the sidebar
+  // shows the correct worktree highlighted immediately.
+  if (hasSnapshot && snapshot.activeWorktreeId) {
+    useWorktreeSelectionStore.setState({ activeWorktreeId: snapshot.activeWorktreeId });
+  }
 }
 
 export function forceReinitializeWorktreeDataStore(projectId?: string) {
