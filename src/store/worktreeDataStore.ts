@@ -394,22 +394,50 @@ export function cleanupWorktreeDataStore() {
   });
 }
 
+export function prePopulateWorktreeSnapshot(projectId: string) {
+  // Pre-populate the store with cached snapshot data for instant sidebar rendering.
+  // Does NOT trigger IPC fetch — the main process may not have switched yet.
+  // Call forceReinitializeWorktreeDataStore() once the backend is ready to fetch fresh data.
+  storeGeneration++;
+  targetProjectId = projectId;
+  cleanupListeners?.();
+  cleanupListeners = null;
+  initPromise = null;
+  usePulseStore.getState().invalidateAll();
+
+  const snapshot = projectSnapshotCache.get(projectId);
+  const hasSnapshot = snapshot && snapshot.size > 0;
+
+  useWorktreeDataStore.setState({
+    worktrees: hasSnapshot ? new Map(snapshot) : new Map(),
+    projectId,
+    isLoading: !hasSnapshot,
+    error: null,
+    // Keep isInitialized: true so the hook doesn't auto-trigger initialize()
+    // before the backend is ready. forceReinitializeWorktreeDataStore() will
+    // flip this to false and start the real fetch.
+    isInitialized: true,
+  });
+}
+
 export function forceReinitializeWorktreeDataStore(projectId?: string) {
-  // Called after backend project switch is complete to load worktrees for new project
+  // Called after backend project switch is complete to load fresh worktrees.
+  // If prePopulateWorktreeSnapshot() was called first, the store already has
+  // cached data visible in the sidebar — this just triggers a background refresh.
+  const currentWorktrees = useWorktreeDataStore.getState().worktrees;
   storeGeneration++;
   targetProjectId = projectId ?? null;
   cleanupListeners?.();
   cleanupListeners = null;
   initPromise = null;
-  // Clear pulse store to cancel all retry timers
   usePulseStore.getState().invalidateAll();
 
-  // Pre-populate from snapshot if available for near-instant sidebar rendering
-  const snapshot = projectId ? projectSnapshotCache.get(projectId) : undefined;
-  const hasSnapshot = snapshot && snapshot.size > 0;
+  // Keep existing worktrees if they match the target project (from prePopulate)
+  const storeProjectId = useWorktreeDataStore.getState().projectId;
+  const keepExisting = projectId && storeProjectId === projectId && currentWorktrees.size > 0;
 
   useWorktreeDataStore.setState({
-    worktrees: hasSnapshot ? new Map(snapshot) : new Map(),
+    worktrees: keepExisting ? currentWorktrees : new Map(),
     projectId: targetProjectId,
     isLoading: true,
     error: null,
