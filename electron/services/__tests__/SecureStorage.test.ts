@@ -16,12 +16,9 @@ const storeMock = vi.hoisted(() => ({
 
 const safeStorageMock = vi.hoisted(() => ({
   isEncryptionAvailable: vi.fn(() => true),
-  encryptString: vi.fn((value: string) => Buffer.from(`enc:${value}`, "utf8")),
   decryptString: vi.fn((buffer: Buffer) => {
     const text = buffer.toString("utf8");
-    if (!text.startsWith("enc:")) {
-      throw new Error("Invalid payload");
-    }
+    if (!text.startsWith("enc:")) throw new Error("Invalid payload");
     return text.slice(4);
   }),
 }));
@@ -40,9 +37,6 @@ describe("SecureStorage", () => {
     vi.resetModules();
     storeState.data = {};
     safeStorageMock.isEncryptionAvailable.mockReturnValue(true);
-    safeStorageMock.encryptString.mockImplementation((value: string) =>
-      Buffer.from(`enc:${value}`, "utf8")
-    );
     safeStorageMock.decryptString.mockImplementation((buffer: Buffer) => {
       const text = buffer.toString("utf8");
       if (!text.startsWith("enc:")) throw new Error("Invalid payload");
@@ -55,35 +49,37 @@ describe("SecureStorage", () => {
     return mod.secureStorage;
   }
 
-  it("stores and retrieves encrypted values when encryption is available", async () => {
+  it("stores and retrieves plain-text values", async () => {
     const service = await getService();
-    service.set("userConfig.githubToken", "token-123");
+    service.set("userConfig.githubToken", "ghp_token123");
 
-    expect(service.get("userConfig.githubToken")).toBe("token-123");
+    expect(service.get("userConfig.githubToken")).toBe("ghp_token123");
   });
 
-  it("migrates plain-text values to encrypted storage when available", async () => {
-    storeState.data["userConfig.githubToken"] = "plain-token";
+  it("migrates legacy encrypted values to plain text on read", async () => {
+    // Simulate a previously safeStorage-encrypted value
+    const encrypted = Buffer.from("enc:ghp_secret", "utf8").toString("hex");
+    storeState.data["userConfig.githubToken"] = encrypted;
     const service = await getService();
 
-    expect(service.get("userConfig.githubToken")).toBe("plain-token");
-    expect(safeStorageMock.encryptString).toHaveBeenCalledWith("plain-token");
+    expect(service.get("userConfig.githubToken")).toBe("ghp_secret");
+    // Value should now be stored as plain text
+    expect(storeMock.set).toHaveBeenCalledWith("userConfig.githubToken", "ghp_secret");
   });
 
-  it("keeps plain-text values when encryption is unavailable", async () => {
-    safeStorageMock.isEncryptionAvailable.mockReturnValue(false);
-    storeState.data["userConfig.githubToken"] = "plain-token";
-    const service = await getService();
-
-    expect(service.get("userConfig.githubToken")).toBe("plain-token");
-  });
-
-  it("clears encrypted values if decryption fails", async () => {
+  it("clears corrupted encrypted values that fail decryption", async () => {
     storeState.data["userConfig.githubToken"] = Buffer.from("bad-payload", "utf8").toString("hex");
     const service = await getService();
 
     expect(service.get("userConfig.githubToken")).toBeUndefined();
     expect(storeMock.delete).toHaveBeenCalledWith("userConfig.githubToken");
+  });
+
+  it("keeps plain-text values as-is (no migration needed)", async () => {
+    storeState.data["userConfig.githubToken"] = "ghp_plaintoken";
+    const service = await getService();
+
+    expect(service.get("userConfig.githubToken")).toBe("ghp_plaintoken");
   });
 
   it("clears corrupted non-string values and returns undefined", async () => {

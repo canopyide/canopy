@@ -650,12 +650,6 @@ export class ProjectStore {
     if (settings.environmentVariables) {
       for (const [key, value] of Object.entries(settings.environmentVariables)) {
         if (isSensitiveEnvKey(key)) {
-          // Store sensitive value in secure storage
-          if (!projectEnvSecureStorage.checkAvailability()) {
-            throw new Error(
-              "Cannot save sensitive environment variables: encryption is not available on this system"
-            );
-          }
           try {
             projectEnvSecureStorage.set(projectId, key, value);
             secureEnvVarKeys.push(key);
