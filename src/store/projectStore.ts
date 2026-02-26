@@ -119,6 +119,10 @@ function getProjectOpenErrorMessage(error: unknown): string {
   return message || "Failed to open project.";
 }
 
+// Monotonically incrementing counter to ignore stale background switch callbacks.
+// Captured before each projectClient.switch/reopen call; checked in .then/.catch.
+let switchEpoch = 0;
+
 function evictRendererTerminalInstances(terminalIds: string[]): void {
   if (terminalIds.length === 0) {
     return;
@@ -344,9 +348,11 @@ const createProjectStore: StateCreator<ProjectState> = (set, get) => ({
       // Fire the main process switch in the background — don't block the UI.
       // When it completes, fetch fresh worktree data from the now-loaded workspace.
       console.log("[ProjectSwitch] Switching project in main process (background)...");
+      const capturedEpoch = ++switchEpoch;
       projectClient
         .switch(projectId)
         .then((project) => {
+          if (switchEpoch !== capturedEpoch) return; // Stale — user switched again
           // Update with the authoritative project data from the main process
           set({ currentProject: project, isLoading: false });
 
@@ -358,6 +364,7 @@ const createProjectStore: StateCreator<ProjectState> = (set, get) => ({
           void get().loadProjects();
         })
         .catch((error) => {
+          if (switchEpoch !== capturedEpoch) return; // Stale — user switched again
           cancelPreparedProjectSwitchRendererCache(oldProjectId);
           logErrorWithContext(error, {
             operation: "switch_project",
@@ -379,6 +386,9 @@ const createProjectStore: StateCreator<ProjectState> = (set, get) => ({
             switchingToProjectName: null,
           });
           // Restore worktree data for the outgoing project so the sidebar isn't blank.
+          // Pre-populate the cached snapshot first for an instant visible restore,
+          // then reinitialize in the background to load fresh data.
+          if (oldProjectId) prePopulateWorktreeSnapshot(oldProjectId);
           forceReinitializeWorktreeDataStore(oldProjectId ?? undefined);
         });
 
@@ -402,6 +412,7 @@ const createProjectStore: StateCreator<ProjectState> = (set, get) => ({
         duration: 6000,
       });
       set({ error: message, isLoading: false, isSwitching: false, switchingToProjectName: null });
+      if (oldProjectId) prePopulateWorktreeSnapshot(oldProjectId);
       forceReinitializeWorktreeDataStore(oldProjectId ?? undefined);
     }
   },
@@ -575,9 +586,11 @@ const createProjectStore: StateCreator<ProjectState> = (set, get) => ({
 
       // Fire the main process reopen in the background
       console.log("[ProjectStore] Reopening project in main process (background)...");
+      const capturedEpoch = ++switchEpoch;
       projectClient
         .reopen(projectId)
         .then((project) => {
+          if (switchEpoch !== capturedEpoch) return; // Stale — user switched again
           set({ currentProject: project, isLoading: false });
 
           console.log("[ProjectStore] Reinitializing worktree data store...");
@@ -586,6 +599,7 @@ const createProjectStore: StateCreator<ProjectState> = (set, get) => ({
           void get().loadProjects();
         })
         .catch((error) => {
+          if (switchEpoch !== capturedEpoch) return; // Stale — user switched again
           cancelPreparedProjectSwitchRendererCache(oldProjectId);
           logErrorWithContext(error, {
             operation: "reopen_project",
@@ -606,6 +620,7 @@ const createProjectStore: StateCreator<ProjectState> = (set, get) => ({
             isSwitching: false,
             switchingToProjectName: null,
           });
+          if (oldProjectId) prePopulateWorktreeSnapshot(oldProjectId);
           forceReinitializeWorktreeDataStore(oldProjectId ?? undefined);
         });
 
@@ -625,6 +640,7 @@ const createProjectStore: StateCreator<ProjectState> = (set, get) => ({
         duration: 6000,
       });
       set({ error: message, isLoading: false, isSwitching: false, switchingToProjectName: null });
+      if (oldProjectId) prePopulateWorktreeSnapshot(oldProjectId);
       forceReinitializeWorktreeDataStore(oldProjectId ?? undefined);
       throw error;
     }
