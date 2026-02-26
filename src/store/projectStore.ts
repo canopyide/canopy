@@ -18,7 +18,11 @@ import { terminalPersistence, terminalToSnapshot } from "./persistence/terminalP
 import { useNotificationStore } from "./notificationStore";
 import { useTerminalStore } from "./terminalStore";
 import { useWorktreeSelectionStore } from "./worktreeStore";
-import { useProjectSettingsStore } from "./projectSettingsStore";
+import {
+  useProjectSettingsStore,
+  snapshotProjectSettings,
+  prePopulateProjectSettings,
+} from "./projectSettingsStore";
 import { logErrorWithContext } from "@/utils/errorContext";
 import {
   prepareProjectSwitchRendererCache,
@@ -318,10 +322,11 @@ const createProjectStore: StateCreator<ProjectState> = (set, get) => ({
         evictRendererTerminalInstances(preparedCache.evictTerminalIds);
       }
 
-      // Snapshot worktrees for the outgoing project before clearing the store
-      // so we can pre-populate on switch-back (stale-while-revalidate).
+      // Snapshot outgoing project state before clearing stores so we can
+      // pre-populate on switch-back (stale-while-revalidate).
       if (oldProjectId) {
         snapshotProjectWorktrees(oldProjectId);
+        snapshotProjectSettings(oldProjectId);
       }
 
       console.log("[ProjectSwitch] Resetting renderer stores...");
@@ -329,10 +334,10 @@ const createProjectStore: StateCreator<ProjectState> = (set, get) => ({
         preserveTerminalIds,
       });
 
-      // Pre-populate the worktree sidebar with cached snapshot data immediately.
-      // This shows the user something useful while the main process loads fresh data.
-      console.log("[ProjectSwitch] Pre-populating worktree snapshot...");
+      // Pre-populate stores from cached snapshots for an instant UI.
+      console.log("[ProjectSwitch] Pre-populating snapshots...");
       prePopulateWorktreeSnapshot(projectId);
+      prePopulateProjectSettings(projectId);
 
       // Set currentProject optimistically from the already-loaded project list.
       // The main process switch will confirm this (or error/rollback).
@@ -340,9 +345,8 @@ const createProjectStore: StateCreator<ProjectState> = (set, get) => ({
         set({ currentProject: targetProject, isLoading: false });
       }
 
-      // Clear old settings and pre-load new project settings for instant toolbar updates
-      console.log("[ProjectSwitch] Pre-loading project settings...");
-      useProjectSettingsStore.getState().reset();
+      // Load fresh project settings in the background (will update cache when done)
+      console.log("[ProjectSwitch] Loading project settings (background)...");
       void useProjectSettingsStore.getState().loadSettings(projectId);
 
       // Fire the main process switch in the background — don't block the UI.
@@ -385,10 +389,11 @@ const createProjectStore: StateCreator<ProjectState> = (set, get) => ({
             isSwitching: false,
             switchingToProjectName: null,
           });
-          // Restore worktree data for the outgoing project so the sidebar isn't blank.
-          // Pre-populate the cached snapshot first for an instant visible restore,
-          // then reinitialize in the background to load fresh data.
-          if (oldProjectId) prePopulateWorktreeSnapshot(oldProjectId);
+          // Restore cached state for the outgoing project so the UI isn't blank.
+          if (oldProjectId) {
+            prePopulateWorktreeSnapshot(oldProjectId);
+            prePopulateProjectSettings(oldProjectId);
+          }
           forceReinitializeWorktreeDataStore(oldProjectId ?? undefined);
         });
 
@@ -412,7 +417,10 @@ const createProjectStore: StateCreator<ProjectState> = (set, get) => ({
         duration: 6000,
       });
       set({ error: message, isLoading: false, isSwitching: false, switchingToProjectName: null });
-      if (oldProjectId) prePopulateWorktreeSnapshot(oldProjectId);
+      if (oldProjectId) {
+        prePopulateWorktreeSnapshot(oldProjectId);
+        prePopulateProjectSettings(oldProjectId);
+      }
       forceReinitializeWorktreeDataStore(oldProjectId ?? undefined);
     }
   },
@@ -560,9 +568,10 @@ const createProjectStore: StateCreator<ProjectState> = (set, get) => ({
         evictRendererTerminalInstances(preparedCache.evictTerminalIds);
       }
 
-      // Snapshot worktrees for the outgoing project before clearing the store
+      // Snapshot outgoing project state before clearing stores
       if (oldProjectId) {
         snapshotProjectWorktrees(oldProjectId);
+        snapshotProjectSettings(oldProjectId);
       }
 
       console.log("[ProjectStore] Resetting renderer stores...");
@@ -570,18 +579,18 @@ const createProjectStore: StateCreator<ProjectState> = (set, get) => ({
         preserveTerminalIds,
       });
 
-      // Pre-populate the worktree sidebar with cached snapshot data immediately.
-      console.log("[ProjectStore] Pre-populating worktree snapshot...");
+      // Pre-populate stores from cached snapshots for an instant UI.
+      console.log("[ProjectStore] Pre-populating snapshots...");
       prePopulateWorktreeSnapshot(projectId);
+      prePopulateProjectSettings(projectId);
 
       // Set currentProject optimistically
       if (targetProject) {
         set({ currentProject: targetProject, isLoading: false });
       }
 
-      // Clear old settings and pre-load project settings for instant toolbar updates
-      console.log("[ProjectStore] Pre-loading project settings...");
-      useProjectSettingsStore.getState().reset();
+      // Load fresh project settings in the background (will update cache when done)
+      console.log("[ProjectStore] Loading project settings (background)...");
       void useProjectSettingsStore.getState().loadSettings(projectId);
 
       // Fire the main process reopen in the background
@@ -620,7 +629,10 @@ const createProjectStore: StateCreator<ProjectState> = (set, get) => ({
             isSwitching: false,
             switchingToProjectName: null,
           });
-          if (oldProjectId) prePopulateWorktreeSnapshot(oldProjectId);
+          if (oldProjectId) {
+            prePopulateWorktreeSnapshot(oldProjectId);
+            prePopulateProjectSettings(oldProjectId);
+          }
           forceReinitializeWorktreeDataStore(oldProjectId ?? undefined);
         });
 
@@ -640,7 +652,10 @@ const createProjectStore: StateCreator<ProjectState> = (set, get) => ({
         duration: 6000,
       });
       set({ error: message, isLoading: false, isSwitching: false, switchingToProjectName: null });
-      if (oldProjectId) prePopulateWorktreeSnapshot(oldProjectId);
+      if (oldProjectId) {
+        prePopulateWorktreeSnapshot(oldProjectId);
+        prePopulateProjectSettings(oldProjectId);
+      }
       forceReinitializeWorktreeDataStore(oldProjectId ?? undefined);
       throw error;
     }
