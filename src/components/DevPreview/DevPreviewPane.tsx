@@ -96,6 +96,8 @@ export function DevPreviewPane({
   const [isWebviewReady, setIsWebviewReady] = useState(false);
   const [consoleTerminalId, setConsoleTerminalId] = useState<string | null>(terminalId);
   const loadTimeoutRef = useRef<NodeJS.Timeout | null>(null);
+  const failLoadRetryRef = useRef<NodeJS.Timeout | null>(null);
+  const failLoadRetryCountRef = useRef<number>(0);
   const isConsoleOpen = terminal?.devPreviewConsoleOpen ?? false;
   const [isAutoDetecting, setIsAutoDetecting] = useState(false);
   const { saveSettings } = useProjectSettings();
@@ -112,6 +114,11 @@ export function DevPreviewPane({
     webviewRef.current = node;
     if (node) {
       lastSetUrlRef.current = "";
+      failLoadRetryCountRef.current = 0;
+      if (failLoadRetryRef.current) {
+        clearTimeout(failLoadRetryRef.current);
+        failLoadRetryRef.current = null;
+      }
     }
     setWebviewElement(node);
   }, []);
@@ -274,18 +281,63 @@ export function DevPreviewPane({
         clearTimeout(loadTimeoutRef.current);
         loadTimeoutRef.current = null;
       }
+      failLoadRetryCountRef.current = 0;
+      if (failLoadRetryRef.current) {
+        clearTimeout(failLoadRetryRef.current);
+        failLoadRetryRef.current = null;
+      }
     };
 
-    const handleDidFailLoad = () => {
+    const handleDidFailLoad = (e: Electron.DidFailLoadEvent) => {
       setIsLoading(false);
       if (loadTimeoutRef.current) {
         clearTimeout(loadTimeoutRef.current);
         loadTimeoutRef.current = null;
       }
+
+      // Retry on connection-refused errors: the readiness check may have passed
+      // a moment before the server was fully reachable from the webview.
+      const ERR_CONNECTION_REFUSED = -102;
+      const ERR_CONNECTION_RESET = -101;
+      if (
+        e.isMainFrame &&
+        (e.errorCode === ERR_CONNECTION_REFUSED || e.errorCode === ERR_CONNECTION_RESET)
+      ) {
+        const MAX_RETRIES = 5;
+        const retryCount = failLoadRetryCountRef.current;
+        if (retryCount < MAX_RETRIES) {
+          failLoadRetryCountRef.current += 1;
+          // Capture URL at fail-time so the retry loads the same page even if
+          // the webview navigates elsewhere during the backoff window.
+          const urlToRetry = e.validatedURL || "";
+          const delayMs = Math.min(500 * 2 ** retryCount, 8000);
+          // Clear any in-flight retry so only one is pending at a time.
+          if (failLoadRetryRef.current) {
+            clearTimeout(failLoadRetryRef.current);
+          }
+          failLoadRetryRef.current = setTimeout(() => {
+            failLoadRetryRef.current = null;
+            try {
+              if (urlToRetry && urlToRetry !== "about:blank") {
+                webview.loadURL(urlToRetry).catch(() => {});
+              }
+            } catch {
+              // Webview detached
+            }
+          }, delayMs);
+        }
+      }
     };
 
     const handleDidNavigate = (e: Electron.DidNavigateEvent) => {
       const navigatedUrl = e.url;
+      // A confirmed new main-frame navigation means we're past any previous failure;
+      // reset the retry budget so stale exhaustion doesn't block future attempts.
+      failLoadRetryCountRef.current = 0;
+      if (failLoadRetryRef.current) {
+        clearTimeout(failLoadRetryRef.current);
+        failLoadRetryRef.current = null;
+      }
       if (navigatedUrl !== lastSetUrlRef.current) {
         setHistory((prev) => pushBrowserHistory(prev, navigatedUrl));
         lastSetUrlRef.current = navigatedUrl;
@@ -304,7 +356,7 @@ export function DevPreviewPane({
     webview.addEventListener("did-start-loading", handleDidStartLoading);
     webview.addEventListener("did-stop-loading", handleDidStopLoading);
     webview.addEventListener("did-finish-load", handleDidFinishLoad);
-    webview.addEventListener("did-fail-load", handleDidFailLoad);
+    webview.addEventListener("did-fail-load", handleDidFailLoad as unknown as EventListener);
     webview.addEventListener("did-navigate", handleDidNavigate as unknown as EventListener);
     webview.addEventListener(
       "did-navigate-in-page",
@@ -315,12 +367,16 @@ export function DevPreviewPane({
       webview.removeEventListener("did-start-loading", handleDidStartLoading);
       webview.removeEventListener("did-stop-loading", handleDidStopLoading);
       webview.removeEventListener("did-finish-load", handleDidFinishLoad);
-      webview.removeEventListener("did-fail-load", handleDidFailLoad);
+      webview.removeEventListener("did-fail-load", handleDidFailLoad as unknown as EventListener);
       webview.removeEventListener("did-navigate", handleDidNavigate as unknown as EventListener);
       webview.removeEventListener(
         "did-navigate-in-page",
         handleDidNavigateInPage as unknown as EventListener
       );
+      if (failLoadRetryRef.current) {
+        clearTimeout(failLoadRetryRef.current);
+        failLoadRetryRef.current = null;
+      }
     };
   }, [webviewElement]);
 
@@ -378,6 +434,9 @@ export function DevPreviewPane({
     return () => {
       if (loadTimeoutRef.current) {
         clearTimeout(loadTimeoutRef.current);
+      }
+      if (failLoadRetryRef.current) {
+        clearTimeout(failLoadRetryRef.current);
       }
     };
   }, []);
