@@ -187,9 +187,9 @@
       "enableCookieEncryption": true,
       "enableNodeOptionsEnvironmentVariable": false,
       "enableNodeCliInspectArguments": false,
-      "enableEmbeddedAsarIntegrityValidation": true,
-      "onlyLoadAppFromAsar": true,
-      "loadBrowserProcessSpecificV8Snapshot": true,
+      "enableEmbeddedAsarIntegrityValidation": false,
+      "onlyLoadAppFromAsar": false,
+      "loadBrowserProcessSpecificV8Snapshot": false,
       "grantFileProtocolExtraPrivileges": false
     },
     "afterPack": "./scripts/afterPack.cjs",
@@ -198,7 +198,7 @@
         "!node_modules/clipboardy/fallbacks/linux"
       ],
       "x64ArchFiles": "Contents/Resources/app.asar.unpacked/node_modules/node-pty/build/Release/**",
-      "forceCodeSigning": true,
+      "forceCodeSigning": false,
       "notarize": false,
       "binaries": [
         "Contents/Resources/app.asar.unpacked/node_modules/node-pty/build/Release/spawn-helper"
