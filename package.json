@@ -194,6 +194,9 @@
     },
     "afterPack": "./scripts/afterPack.cjs",
     "mac": {
+      "files": [
+        "!node_modules/clipboardy/fallbacks/linux"
+      ],
       "forceCodeSigning": true,
       "notarize": false,
       "category": "public.app-category.developer-tools",
