@@ -8,6 +8,15 @@ interface ChildProcess {
   command?: string;
 }
 
+interface DetectedProcessCandidate {
+  agentType?: TerminalType;
+  processIconId?: string;
+  processName: string;
+  processCommand?: string;
+  priority: number;
+  order: number;
+}
+
 const AGENT_CLI_NAMES: Record<string, TerminalType> = {
   claude: "claude",
   gemini: "gemini",
@@ -57,6 +66,8 @@ const PROCESS_ICON_MAP: Record<string, string> = {
   terraform: "terraform",
   tofu: "terraform",
 };
+
+const PACKAGE_MANAGER_ICON_IDS = new Set(["npm", "yarn", "pnpm", "bun", "composer"]);
 
 export interface DetectionResult {
   detected: boolean;
@@ -177,49 +188,46 @@ export class ProcessDetector {
       command: p.command,
     }));
 
-    const primaryProcess = processes[0];
-    const currentCommand = primaryProcess?.command;
+    let bestMatch: DetectedProcessCandidate | null = null;
+    let order = 0;
 
     for (const proc of processes) {
-      const normalizedName = this.normalizeProcessName(proc.name);
-      const lowerName = normalizedName.toLowerCase();
-      const agentType = AGENT_CLI_NAMES[lowerName];
-      const processIconId = PROCESS_ICON_MAP[lowerName];
-
-      if (agentType || processIconId) {
-        return {
-          detected: true,
-          agentType,
-          processIconId,
-          processName: normalizedName,
-          isBusy,
-          currentCommand,
-        };
+      const candidate = this.buildDetectedCandidate(proc.name, proc.command, order++);
+      if (candidate) {
+        bestMatch = this.selectPreferredCandidate(bestMatch, candidate);
       }
     }
 
-    // On Windows, also check grandchildren for agent processes
+    // On Windows, check grandchildren as well (common when child is a shell wrapper).
     if (process.platform === "win32") {
       for (const child of children.slice(0, 10)) {
         const grandchildren = this.cache.getChildren(child.pid);
         for (const grandchild of grandchildren) {
-          const normalizedName = this.normalizeProcessName(grandchild.comm);
-          const lowerName = normalizedName.toLowerCase();
-          const agentType = AGENT_CLI_NAMES[lowerName];
-          const processIconId = PROCESS_ICON_MAP[lowerName];
-          if (agentType || processIconId) {
-            return {
-              detected: true,
-              agentType,
-              processIconId,
-              processName: normalizedName,
-              isBusy,
-              currentCommand: grandchild.command || grandchild.comm,
-            };
+          const candidate = this.buildDetectedCandidate(
+            grandchild.comm,
+            grandchild.command || grandchild.comm,
+            order++
+          );
+          if (candidate) {
+            bestMatch = this.selectPreferredCandidate(bestMatch, candidate);
           }
         }
       }
     }
+
+    if (bestMatch) {
+      return {
+        detected: true,
+        agentType: bestMatch.agentType,
+        processIconId: bestMatch.processIconId,
+        processName: bestMatch.processName,
+        isBusy,
+        currentCommand: bestMatch.processCommand || processes[0]?.command,
+      };
+    }
+
+    const primaryProcess = processes[0];
+    const currentCommand = primaryProcess?.command;
 
     return { detected: false, isBusy, currentCommand };
   }
@@ -231,5 +239,60 @@ export class ProcessDetector {
   private normalizeProcessName(name: string): string {
     const basename = name.split(/[\\/]/).pop() || name;
     return basename.replace(/\.exe$/i, "");
+  }
+
+  private buildDetectedCandidate(
+    processName: string,
+    processCommand: string | undefined,
+    order: number
+  ): DetectedProcessCandidate | null {
+    const normalizedName = this.normalizeProcessName(processName);
+    const lowerName = normalizedName.toLowerCase();
+    const agentType = AGENT_CLI_NAMES[lowerName];
+    const processIconId = PROCESS_ICON_MAP[lowerName];
+
+    if (!agentType && !processIconId) {
+      return null;
+    }
+
+    return {
+      agentType,
+      processIconId,
+      processName: normalizedName,
+      processCommand,
+      priority: this.getDetectionPriority(agentType, processIconId),
+      order,
+    };
+  }
+
+  private selectPreferredCandidate(
+    current: DetectedProcessCandidate | null,
+    candidate: DetectedProcessCandidate
+  ): DetectedProcessCandidate {
+    if (!current) {
+      return candidate;
+    }
+
+    if (candidate.priority < current.priority) {
+      return candidate;
+    }
+
+    if (candidate.priority === current.priority && candidate.order < current.order) {
+      return candidate;
+    }
+
+    return current;
+  }
+
+  private getDetectionPriority(agentType?: TerminalType, processIconId?: string): number {
+    if (agentType) {
+      return 0;
+    }
+
+    if (processIconId && PACKAGE_MANAGER_ICON_IDS.has(processIconId)) {
+      return 1;
+    }
+
+    return 2;
   }
 }

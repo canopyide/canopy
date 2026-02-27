@@ -4,6 +4,10 @@ import type { TerminalType, TerminalKind } from "@/types";
 import type { ComponentType } from "react";
 import { getAgentConfig, isRegisteredAgent } from "@/config/agents";
 import {
+  ClaudeIcon,
+  GeminiIcon,
+  CodexIcon,
+  OpenCodeIcon,
   NpmIcon,
   YarnIcon,
   PnpmIcon,
@@ -27,6 +31,10 @@ import {
 } from "@/components/icons";
 
 const PROCESS_ICON_MAP: Record<string, ComponentType<{ className?: string; size?: number }>> = {
+  claude: ClaudeIcon,
+  gemini: GeminiIcon,
+  codex: CodexIcon,
+  opencode: OpenCodeIcon,
   npm: NpmIcon,
   yarn: YarnIcon,
   pnpm: PnpmIcon,
