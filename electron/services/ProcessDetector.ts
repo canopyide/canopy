@@ -39,11 +39,23 @@ const PROCESS_ICON_MAP: Record<string, string> = {
   go: "go",
   cargo: "rust",
   rustc: "rust",
+  php: "php",
+  kotlin: "kotlin",
+  kotlinc: "kotlin",
+  swift: "swift",
+  swiftc: "swift",
+  elixir: "elixir",
+  mix: "elixir",
+  iex: "elixir",
   // Build tools
   gradle: "gradle",
   gradlew: "gradle",
-  // Containerization
+  webpack: "webpack",
+  vite: "vite",
+  // Infrastructure
   docker: "docker",
+  terraform: "terraform",
+  tofu: "terraform",
 };
 
 export interface DetectionResult {
