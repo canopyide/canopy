@@ -1314,7 +1314,7 @@ export class WorkspaceService {
       const branches: BranchInfo[] = [];
 
       for (const [branchName, branchDetail] of Object.entries(summary.branches)) {
-        if (branchName.includes("HEAD ->") || branchName.endsWith("/HEAD")) {
+        if (branchName.includes("HEAD ->") || branchName.endsWith("/HEAD") || branchName.startsWith("(")) {
           continue;
         }
 
