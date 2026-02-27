@@ -54,7 +54,7 @@ export function registerTerminalLifecycleHandlers(deps: HandlerDependencies): ()
     const projectId = currentProject?.id;
     const projectPath = currentProject?.path;
 
-    let cwd = validatedOptions.cwd || projectPath || process.env.HOME || os.homedir();
+    let cwd = validatedOptions.cwd || projectPath || os.homedir();
 
     const fs = await import("fs");
     const path = await import("path");
