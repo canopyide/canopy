@@ -113,16 +113,12 @@ describe("projectStore addProject", () => {
   });
 
   it("does not open git init dialog when resolved path is not absolute", async () => {
-    projectClientMock.add.mockRejectedValueOnce(
-      new Error("Not a git repository: relative/path")
-    );
+    projectClientMock.add.mockRejectedValueOnce(new Error("Not a git repository: relative/path"));
 
     await useProjectStore.getState().addProjectByPath("relative/path");
 
     expect(useProjectStore.getState().gitInitDialogOpen).toBe(false);
-    expect(addNotificationMock).toHaveBeenCalledWith(
-      expect.objectContaining({ type: "error" })
-    );
+    expect(addNotificationMock).toHaveBeenCalledWith(expect.objectContaining({ type: "error" }));
   });
 
   it("does not notify when the dialog is cancelled", async () => {
