@@ -260,7 +260,7 @@ export class PtyPool {
   }
 
   private getDefaultCwd(): string {
-    return process.env.HOME || os.homedir();
+    return os.homedir();
   }
 
   private getFilteredEnv(): Record<string, string> {
