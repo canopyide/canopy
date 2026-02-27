@@ -30,17 +30,12 @@
   <rect x="0" y="0" width="1024" height="1024" rx="229" ry="229" fill="#18181b" filter="url(#noise)"/>
   <rect x="4" y="4" width="1016" height="1016" rx="225" ry="225" fill="none" stroke="url(#borderGradient)" stroke-width="2"/>
 
-  <!-- Logo group - optically centered (76% fill, nudged up 10px) -->
-  <g transform="translate(175, 113) scale(4.544)">
-    <!-- Face fills for 3D depth (visible through outline holes) -->
-    <!-- Top face - brightest (catches light from above) -->
-    <polygon points="74.165,0 148.3303,42.8188 74.165,85.638 0,42.8188" fill="#3f3f46"/>
-    <!-- Left face - medium brightness -->
-    <polygon points="0,42.8188 74.165,85.638 74.165,171.2763 0,128.457" fill="#2d2d33"/>
-    <!-- Right face - darkest (in shadow) -->
-    <polygon points="148.3303,42.8188 148.3303,128.457 74.165,171.2763 74.165,85.638" fill="#232328"/>
-    <!-- Inner cavity - deepest shadow for depth -->
-    <polygon points="74.165,40.73 108.17,60.36 103.28,68.83 103.28,102.45 79.05,116.44 69.28,88.46 49.94,66.01 40.16,60.36" fill="#19191c"/>
+  <!-- Logo group - optically centered (74% fill per Apple large keyline, nudged up 10px) -->
+  <g transform="translate(185, 124) scale(4.414)">
+    <!-- Face fills matching CanopyIcon.tsx (exact face polygons, no inner cutout bleed) -->
+    <polygon points="74.165,11.2871 133.6674,45.6411 108.1701,60.3628 74.165,40.7305 40.1601,60.3628 14.663,45.6411" fill="#3f3f46"/>
+    <polygon points="9.7754,54.1064 35.2725,68.8281 45.0479,74.4717 69.2774,88.46 69.2774,157.1675 9.7754,122.8135" fill="#2d2d33"/>
+    <polygon points="138.5549,54.1064 113.0576,68.8281 113.0576,108.0918 79.0527,127.7241 79.0527,157.1675 138.5549,122.8135" fill="#232328"/>
 
     <!-- Cube outline with directional gradient -->
     <path

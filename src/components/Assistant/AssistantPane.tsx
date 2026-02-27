@@ -144,7 +144,7 @@ export function AssistantPane() {
           >
             <div className="flex items-center gap-2 min-w-0">
               <span className="shrink-0 flex items-center justify-center w-3.5 h-3.5">
-                <CanopyIcon className="w-3.5 h-3.5 text-canopy-accent" />
+                <CanopyIcon className="w-3.5 h-3.5 text-canopy-text/70" />
               </span>
               <span className="text-xs font-medium font-sans text-canopy-text truncate select-none transition-colors">
                 Canopy Assistant
