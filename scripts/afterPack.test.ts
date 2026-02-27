@@ -105,8 +105,9 @@ describe("afterPack", () => {
       await afterPack(createContext("win32", "/build/win"));
 
       expect(mockExistsSync).toHaveBeenCalledWith(path.join(unpackedBase, "node_modules/node-pty"));
+      // Windows uses ConPTY binaries, not pty.node
       expect(mockExistsSync).toHaveBeenCalledWith(
-        path.join(unpackedBase, "node_modules/node-pty/build/Release/pty.node")
+        path.join(unpackedBase, "node_modules/node-pty/build/Release/conpty.node")
       );
     });
 
@@ -128,11 +129,11 @@ describe("afterPack", () => {
       );
     });
 
-    it("should throw when pty.node binary is missing", async () => {
+    it("should throw when Windows binary is missing", async () => {
       mockExistsSync.mockReturnValueOnce(true).mockReturnValueOnce(false);
 
       await expect(afterPack(createContext("win32", "/build/win"))).rejects.toThrow(
-        /native binary not found/
+        /Windows node-pty binary not found/
       );
     });
   });
