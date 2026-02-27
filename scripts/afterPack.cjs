@@ -38,7 +38,12 @@ exports.default = async function afterPack(context) {
 
   if (electronPlatformName === "win32") {
     // Windows uses ConPTY + legacy winpty binaries (no pty.node on Windows)
-    const windowsBinaries = ["conpty.node", "conpty_console_list.node", "winpty-agent.exe", "winpty.dll"];
+    const windowsBinaries = [
+      "conpty.node",
+      "conpty_console_list.node",
+      "winpty-agent.exe",
+      "winpty.dll",
+    ];
     for (const bin of windowsBinaries) {
       const binPath = path.join(nodePtyPath, "build/Release", bin);
       if (!fs.existsSync(binPath)) {
@@ -48,7 +53,9 @@ exports.default = async function afterPack(context) {
         );
       }
     }
-    console.log("[afterPack] Windows node-pty binaries verified (conpty.node, conpty_console_list.node, winpty-agent.exe, winpty.dll)");
+    console.log(
+      "[afterPack] Windows node-pty binaries verified (conpty.node, conpty_console_list.node, winpty-agent.exe, winpty.dll)"
+    );
   } else {
     // macOS and Linux use pty.node
     const nativeBinaryPath = path.join(nodePtyPath, "build/Release/pty.node");
