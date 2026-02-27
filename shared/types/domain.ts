@@ -470,6 +470,8 @@ interface PtyPanelData extends BasePanelData {
   devPreviewConsoleOpen?: boolean;
   /** Behavior when terminal exits: "keep" preserves for review, "trash" sends to trash, "remove" deletes completely */
   exitBehavior?: PanelExitBehavior;
+  /** Detected process icon ID for dynamic terminal icons (transient, not persisted) */
+  detectedProcessId?: string;
 }
 
 interface BrowserPanelData extends BasePanelData {
@@ -603,6 +605,8 @@ export interface TerminalInstance {
   exitBehavior?: PanelExitBehavior;
   /** Whether this terminal has an active PTY process (false for orphaned terminals that exited) */
   hasPty?: boolean;
+  /** Detected process icon ID for dynamic terminal icons (transient, not persisted) */
+  detectedProcessId?: string;
   // Note: Tab membership is now stored in TabGroup objects, not on panels
 }
 
@@ -705,6 +709,8 @@ export interface TerminalSnapshot {
   scope?: "worktree" | "project";
   /** Note creation timestamp (kind === 'notes') */
   createdAt?: number;
+  /** Behavior when terminal exits */
+  exitBehavior?: PanelExitBehavior;
   // Note: Tab membership is now stored in ProjectState.tabGroups, not on terminals
 }
 
@@ -760,7 +766,7 @@ export interface ProjectState {
 export type RecipeTerminalType = AgentId | "terminal" | "dev-preview";
 
 /** Exit behavior for panels/terminals after process exits */
-export type PanelExitBehavior = "keep" | "trash" | "remove";
+export type PanelExitBehavior = "keep" | "trash" | "remove" | "restart";
 
 /** A single terminal definition within a recipe */
 export interface RecipeTerminal {
@@ -838,7 +844,7 @@ export interface ProjectSettings {
   runCommands: RunCommand[];
   /** Environment variables to set */
   environmentVariables?: Record<string, string>;
-  /** List of env var keys stored securely (values in safeStorage, not settings.json) */
+  /** List of env var keys stored separately from settings.json */
   secureEnvironmentVariables?: string[];
   /** List of env var keys found in plaintext that should be migrated (transient, not persisted) */
   insecureEnvironmentVariables?: string[];

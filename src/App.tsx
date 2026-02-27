@@ -64,6 +64,7 @@ import { TerminalInfoDialogHost } from "./components/Terminal/TerminalInfoDialog
 import { TerminalPalette, NewTerminalPalette } from "./components/TerminalPalette";
 import { PanelPalette } from "./components/PanelPalette/PanelPalette";
 import { GitInitDialog, ProjectOnboardingWizard } from "./components/Project";
+import { CreateProjectFolderDialog } from "./components/Project/CreateProjectFolderDialog";
 import { ProjectSwitcherPalette } from "./components/Project/ProjectSwitcherPalette";
 import { ActionPalette } from "./components/ActionPalette";
 import { QuickSwitcher } from "./components/QuickSwitcher";
@@ -613,6 +614,9 @@ function App() {
   const onboardingWizardOpen = useProjectStore((state) => state.onboardingWizardOpen);
   const onboardingProjectId = useProjectStore((state) => state.onboardingProjectId);
   const closeOnboardingWizard = useProjectStore((state) => state.closeOnboardingWizard);
+  const createFolderDialogOpen = useProjectStore((state) => state.createFolderDialogOpen);
+  const closeCreateFolderDialog = useProjectStore((state) => state.closeCreateFolderDialog);
+  const openCreateFolderDialog = useProjectStore((state) => state.openCreateFolderDialog);
   const { setActiveWorktree, selectWorktree, activeWorktreeId, focusedWorktreeId } =
     useWorktreeSelectionStore(
       useShallow((state) => ({
@@ -1037,6 +1041,10 @@ function App() {
         onSelect={projectSwitcherPalette.selectProject}
         onClose={projectSwitcherPalette.close}
         onAddProject={projectSwitcherPalette.addProject}
+        onCreateFolder={() => {
+          projectSwitcherPalette.close();
+          openCreateFolderDialog();
+        }}
         onStopProject={(projectId) => projectSwitcherPalette.stopProject(projectId)}
         onCloseProject={(projectId) => projectSwitcherPalette.removeProject(projectId)}
         removeConfirmProject={projectSwitcherPalette.removeConfirmProject}
@@ -1117,6 +1125,11 @@ function App() {
           onClose={closeOnboardingWizard}
         />
       )}
+
+      <CreateProjectFolderDialog
+        isOpen={createFolderDialogOpen}
+        onClose={closeCreateFolderDialog}
+      />
 
       <PanelTransitionOverlay />
 

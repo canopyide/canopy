@@ -1,42 +1,30 @@
 import { describe, it, expect, beforeEach, afterEach } from "vitest";
-import type { PtyManager } from "../PtyManager.js";
+import { PtyManager } from "../PtyManager.js";
+import { cleanupPtyManager, spawnShellTerminal, sleep } from "./helpers/ptyTestUtils.js";
 
-let PtyManagerClass: typeof PtyManager | null = null;
-let testUtils: typeof import("./helpers/ptyTestUtils.js") | null = null;
-
-try {
-  PtyManagerClass = (await import("../PtyManager.js")).PtyManager;
-  testUtils = await import("./helpers/ptyTestUtils.js");
-} catch {
-  console.warn("node-pty not available, skipping PTY activity tier tests");
-}
-
-const shouldSkip = !PtyManagerClass;
-
-describe.skipIf(shouldSkip)("PtyManager Activity Tier", () => {
-  const { cleanupPtyManager, spawnShellTerminal, sleep } = testUtils || {};
+describe("PtyManager Activity Tier", () => {
   let manager: PtyManager;
 
   beforeEach(() => {
-    manager = new PtyManagerClass!();
+    manager = new PtyManager();
   });
 
   afterEach(async () => {
-    await cleanupPtyManager?.(manager);
+    await cleanupPtyManager(manager);
   });
 
   describe("Activity Tier Assignment", () => {
     it("should default to active tier on spawn", async () => {
-      const id = await spawnShellTerminal!(manager);
-      await sleep!(200);
+      const id = await spawnShellTerminal(manager);
+      await sleep(200);
 
       const terminal = manager.getTerminal(id);
       expect(terminal).toBeDefined();
     });
 
     it("should accept setActivityTier calls without error", async () => {
-      const id = await spawnShellTerminal!(manager);
-      await sleep!(200);
+      const id = await spawnShellTerminal(manager);
+      await sleep(200);
 
       // These methods don't exist on PtyManager directly - they're IPC channels
       // This test documents the expected behavior at the TerminalProcess level
@@ -51,8 +39,8 @@ describe.skipIf(shouldSkip)("PtyManager Activity Tier", () => {
 
   describe("ActivityMonitor Polling Integration", () => {
     it("should support tier-driven polling interval changes", async () => {
-      const id = await spawnShellTerminal!(manager);
-      await sleep!(200);
+      const id = await spawnShellTerminal(manager);
+      await sleep(200);
 
       const terminal = manager.getTerminal(id);
       expect(terminal).toBeDefined();
@@ -64,13 +52,13 @@ describe.skipIf(shouldSkip)("PtyManager Activity Tier", () => {
       manager.setActivityMonitorTier(id, 50);
 
       // Verify terminal is still functioning
-      await sleep!(100);
+      await sleep(100);
       expect(manager.getTerminal(id)).toBeDefined();
     });
 
     it("should not crash when changing tiers multiple times", async () => {
-      const id = await spawnShellTerminal!(manager);
-      await sleep!(200);
+      const id = await spawnShellTerminal(manager);
+      await sleep(200);
 
       // Rapid tier changes should be safe
       for (let i = 0; i < 5; i++) {
@@ -78,15 +66,15 @@ describe.skipIf(shouldSkip)("PtyManager Activity Tier", () => {
         manager.setActivityMonitorTier(id, 50);
       }
 
-      await sleep!(100);
+      await sleep(100);
       expect(manager.getTerminal(id)).toBeDefined();
     });
   });
 
   describe("Terminal Lifecycle with Tier Changes", () => {
     it("should clean up tier state on terminal exit", async () => {
-      const id = await spawnShellTerminal!(manager);
-      await sleep!(200);
+      const id = await spawnShellTerminal(manager);
+      await sleep(200);
 
       const terminal = manager.getTerminal(id);
       expect(terminal).toBeDefined();
@@ -96,7 +84,7 @@ describe.skipIf(shouldSkip)("PtyManager Activity Tier", () => {
 
       // Kill terminal
       manager.kill(id);
-      await sleep!(200);
+      await sleep(200);
 
       // Verify cleanup
       expect(manager.getTerminal(id)).toBeUndefined();
