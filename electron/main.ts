@@ -28,6 +28,11 @@ fixPath();
 
 app.enableSandbox();
 
+// Prevent macOS keychain prompt ("canopy-app Safe Storage").
+// Chromium encrypts cookies/network state via the OS keychain by default.
+// We don't rely on Chromium cookie encryption — all secrets are in electron-store.
+app.commandLine.appendSwitch("use-mock-keychain");
+
 // Wrap ipcMain.handle globally to enforce sender validation on ALL IPC handlers
 // This must run before any handlers are registered
 function enforceIpcSenderValidation() {
