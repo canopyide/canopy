@@ -22,14 +22,14 @@ import {
   Monitor,
 } from "lucide-react";
 import { cn } from "@/lib/utils";
-import { isMac, createTooltipWithShortcut, formatShortcutForTooltip } from "@/lib/platform";
+import { isMac, createTooltipWithShortcut } from "@/lib/platform";
 import { getProjectGradient } from "@/lib/colorUtils";
 import { GitHubResourceList, CommitList } from "@/components/GitHub";
 import { AgentButton } from "./AgentButton";
 import { GitHubStatusIndicator, type GitHubStatusIndicatorStatus } from "./GitHubStatusIndicator";
 import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from "@/components/ui/tooltip";
 import { useWorktreeActions } from "@/hooks/useWorktreeActions";
-import { useProjectSettings } from "@/hooks";
+import { useProjectSettings, useKeybindingDisplay } from "@/hooks";
 import type { UseProjectSwitcherPaletteReturn } from "@/hooks";
 import { useProjectStore } from "@/store/projectStore";
 import { useSidecarStore, usePreferencesStore, useToolbarPreferencesStore } from "@/store";
@@ -124,6 +124,8 @@ export function Toolbar({
   const prevLastUpdatedRef = useRef<number | null>(null);
 
   const { handleCopyTree } = useWorktreeActions();
+  const terminalShortcut = useKeybindingDisplay("agent.terminal");
+  const browserShortcut = useKeybindingDisplay("agent.browser");
 
   const handleOpenProjectSettings = useCallback(() => {
     projectSwitcher.close();
@@ -320,33 +322,47 @@ export function Toolbar({
       },
       terminal: {
         render: () => (
-          <Button
-            key="terminal"
-            variant="ghost"
-            size="icon"
-            onClick={() => onLaunchAgent("terminal")}
-            className="text-canopy-text hover:bg-white/[0.06] transition-colors hover:text-canopy-accent focus-visible:text-canopy-accent"
-            title={formatShortcutForTooltip("Open Terminal (Cmd+T for palette)")}
-            aria-label="Open Terminal"
-          >
-            <Terminal />
-          </Button>
+          <TooltipProvider key="terminal">
+            <Tooltip>
+              <TooltipTrigger asChild>
+                <Button
+                  variant="ghost"
+                  size="icon"
+                  onClick={() => onLaunchAgent("terminal")}
+                  className="text-canopy-text hover:bg-white/[0.06] transition-colors hover:text-canopy-accent focus-visible:text-canopy-accent"
+                  aria-label="Open Terminal"
+                >
+                  <Terminal />
+                </Button>
+              </TooltipTrigger>
+              <TooltipContent side="bottom">
+                {terminalShortcut ? `Open Terminal (${terminalShortcut})` : "Open Terminal"}
+              </TooltipContent>
+            </Tooltip>
+          </TooltipProvider>
         ),
         isAvailable: true,
       },
       browser: {
         render: () => (
-          <Button
-            key="browser"
-            variant="ghost"
-            size="icon"
-            onClick={() => onLaunchAgent("browser")}
-            className="text-canopy-text hover:bg-white/[0.06] transition-colors hover:text-blue-400 focus-visible:text-blue-400"
-            title="Open Browser"
-            aria-label="Open Browser"
-          >
-            <Globe />
-          </Button>
+          <TooltipProvider key="browser">
+            <Tooltip>
+              <TooltipTrigger asChild>
+                <Button
+                  variant="ghost"
+                  size="icon"
+                  onClick={() => onLaunchAgent("browser")}
+                  className="text-canopy-text hover:bg-white/[0.06] transition-colors hover:text-blue-400 focus-visible:text-blue-400"
+                  aria-label="Open Browser"
+                >
+                  <Globe />
+                </Button>
+              </TooltipTrigger>
+              <TooltipContent side="bottom">
+                {browserShortcut ? `Open Browser (${browserShortcut})` : "Open Browser"}
+              </TooltipContent>
+            </Tooltip>
+          </TooltipProvider>
         ),
         isAvailable: true,
       },
@@ -646,6 +662,8 @@ export function Toolbar({
       agentSettings,
       openAgentSettings,
       onLaunchAgent,
+      terminalShortcut,
+      browserShortcut,
       devServerCommand,
       stats,
       currentProject,
