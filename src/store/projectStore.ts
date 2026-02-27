@@ -38,11 +38,15 @@ interface ProjectState {
   error: string | null;
   gitInitDialogOpen: boolean;
   gitInitDirectoryPath: string | null;
+  onboardingWizardOpen: boolean;
+  onboardingProjectId: string | null;
+  createFolderDialogOpen: boolean;
 
   loadProjects: () => Promise<void>;
   getCurrentProject: () => Promise<void>;
   addProject: () => Promise<void>;
   addProjectByPath: (path: string) => Promise<void>;
+  createProjectFolder: (parentPath: string, folderName: string) => Promise<void>;
   switchProject: (projectId: string) => Promise<void>;
   updateProject: (id: string, updates: Partial<Project>) => Promise<void>;
   removeProject: (id: string) => Promise<void>;
@@ -55,6 +59,9 @@ interface ProjectState {
   openGitInitDialog: (directoryPath: string) => void;
   closeGitInitDialog: () => void;
   handleGitInitSuccess: () => Promise<void>;
+  closeOnboardingWizard: () => void;
+  openCreateFolderDialog: () => void;
+  closeCreateFolderDialog: () => void;
 }
 
 const memoryStorage: StateStorage = (() => {
@@ -156,6 +163,9 @@ const createProjectStore: StateCreator<ProjectState> = (set, get) => ({
   switchingToProjectName: null,
   gitInitDialogOpen: false,
   gitInitDirectoryPath: null,
+  onboardingWizardOpen: false,
+  onboardingProjectId: null,
+  createFolderDialogOpen: false,
   error: null,
 
   addProjectByPath: async (path) => {
@@ -168,10 +178,16 @@ const createProjectStore: StateCreator<ProjectState> = (set, get) => ({
         return;
       }
 
+      const existingProjectIds = new Set(get().projects.map((p) => p.id));
       const newProject = await projectClient.add(resolvedPath);
+      const isNewProject = !existingProjectIds.has(newProject.id);
 
       await get().loadProjects();
       await get().switchProject(newProject.id);
+
+      if (isNewProject) {
+        set({ onboardingWizardOpen: true, onboardingProjectId: newProject.id });
+      }
     } catch (error) {
       logErrorWithContext(error, {
         operation: "add_project",
@@ -181,10 +197,12 @@ const createProjectStore: StateCreator<ProjectState> = (set, get) => ({
       const errorMessage = error instanceof Error ? error.message : String(error);
 
       if (errorMessage.includes("Not a git repository")) {
-        const resolvedPath = path.trim() || errorMessage.match(/Not a git repository: (.+)/)?.[1];
-        if (resolvedPath) {
+        const gitInitPath =
+          resolvedPath || path.trim() || errorMessage.match(/Not a git repository: (.+)/)?.[1];
+        const isAbsolutePath = (p: string) => p.startsWith("/") || /^[a-zA-Z]:[\\/]/.test(p);
+        if (gitInitPath && isAbsolutePath(gitInitPath)) {
           set({ isLoading: false });
-          get().openGitInitDialog(resolvedPath);
+          get().openGitInitDialog(gitInitPath);
           return;
         }
       }
@@ -453,6 +471,9 @@ const createProjectStore: StateCreator<ProjectState> = (set, get) => ({
       if (get().currentProject?.id === id) {
         set({ currentProject: null });
       }
+      if (get().onboardingProjectId === id) {
+        set({ onboardingWizardOpen: false, onboardingProjectId: null });
+      }
       set({ isLoading: false });
     } catch (error) {
       logErrorWithContext(error, {
@@ -679,6 +700,23 @@ const createProjectStore: StateCreator<ProjectState> = (set, get) => ({
     if (directoryPath) {
       await get().addProjectByPath(directoryPath);
     }
+  },
+
+  closeOnboardingWizard: () => {
+    set({ onboardingWizardOpen: false, onboardingProjectId: null });
+  },
+
+  openCreateFolderDialog: () => {
+    set({ createFolderDialogOpen: true });
+  },
+
+  closeCreateFolderDialog: () => {
+    set({ createFolderDialogOpen: false });
+  },
+
+  createProjectFolder: async (parentPath, folderName) => {
+    const newFolderPath = await projectClient.createFolder(parentPath, folderName);
+    await get().addProjectByPath(newFolderPath);
   },
 });
 

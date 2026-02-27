@@ -295,6 +295,7 @@ export interface ElectronAPI {
      */
     reopen(projectId: string): Promise<Project>;
     getStats(projectId: string): Promise<ProjectStats>;
+    createFolder(parentPath: string, folderName: string): Promise<string>;
     initGit(directoryPath: string): Promise<void>;
     /** Initialize git repository with progress events */
     initGitGuided(options: GitInitOptions): Promise<GitInitResult>;
@@ -359,6 +360,8 @@ export interface ElectronAPI {
       focusMode: boolean,
       focusPanelState?: { sidebarWidth: number; diagnosticsOpen: boolean }
     ): Promise<void>;
+    readClaudeMd(projectId: string): Promise<string | null>;
+    writeClaudeMd(projectId: string, content: string): Promise<void>;
   };
   agentSettings: {
     get(): Promise<AgentSettings>;

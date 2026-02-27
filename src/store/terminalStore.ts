@@ -463,6 +463,8 @@ export const useTerminalStore = create<PanelGridState>()((set, get, api) => {
 });
 
 let agentStateUnsubscribe: (() => void) | null = null;
+let agentDetectedUnsubscribe: (() => void) | null = null;
+let agentExitedUnsubscribe: (() => void) | null = null;
 let activityUnsubscribe: (() => void) | null = null;
 let trashedUnsubscribe: (() => void) | null = null;
 let restoredUnsubscribe: (() => void) | null = null;
@@ -485,6 +487,14 @@ export function cleanupTerminalStoreListeners() {
   if (agentStateUnsubscribe) {
     agentStateUnsubscribe();
     agentStateUnsubscribe = null;
+  }
+  if (agentDetectedUnsubscribe) {
+    agentDetectedUnsubscribe();
+    agentDetectedUnsubscribe = null;
+  }
+  if (agentExitedUnsubscribe) {
+    agentExitedUnsubscribe();
+    agentExitedUnsubscribe = null;
   }
   if (activityUnsubscribe) {
     activityUnsubscribe();
@@ -578,6 +588,36 @@ export function setupTerminalStoreListeners() {
     }
   );
 
+  agentDetectedUnsubscribe = terminalRegistryController.onAgentDetected((data) => {
+    const { terminalId, processIconId } = data;
+    if (!terminalId || !processIconId) return;
+
+    useTerminalStore.setState((state) => {
+      const terminal = state.terminals.find((t) => t.id === terminalId);
+      if (!terminal || terminal.detectedProcessId === processIconId) return state;
+      return {
+        terminals: state.terminals.map((t) =>
+          t.id === terminalId ? { ...t, detectedProcessId: processIconId } : t
+        ),
+      };
+    });
+  });
+
+  agentExitedUnsubscribe = terminalRegistryController.onAgentExited((data) => {
+    const { terminalId } = data;
+    if (!terminalId) return;
+
+    useTerminalStore.setState((state) => {
+      const terminal = state.terminals.find((t) => t.id === terminalId);
+      if (!terminal || !terminal.detectedProcessId) return state;
+      return {
+        terminals: state.terminals.map((t) =>
+          t.id === terminalId ? { ...t, detectedProcessId: undefined } : t
+        ),
+      };
+    });
+  });
+
   activityUnsubscribe = terminalRegistryController.onActivity((data: TerminalActivityPayload) => {
     const { terminalId, headline, status, type, timestamp, lastCommand } = data;
     useTerminalStore
@@ -655,8 +695,10 @@ export function setupTerminalStoreListeners() {
       return;
     }
 
-    if (terminal.exitBehavior === "keep") {
-      // Explicit keep - preserve terminal regardless of type
+    if (terminal.exitBehavior === "keep" || terminal.exitBehavior === "restart") {
+      // "keep": preserve terminal for review
+      // "restart": preserve terminal; TerminalPane triggers the restart via its exit effect
+      // Note: non-zero exits are already preserved above, so this only matters for exit code 0
       return;
     }
 
