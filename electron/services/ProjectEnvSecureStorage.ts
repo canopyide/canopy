@@ -47,7 +47,9 @@ class ProjectEnvSecureStorage {
         const projectEnv = this.getProjectEnvMap();
         projectEnv[compositeKey] = decrypted;
         store.set("projectEnv", projectEnv);
-        console.info(`[ProjectEnvSecureStorage] Migrated ${compositeKey} from encrypted to plain text.`);
+        console.info(
+          `[ProjectEnvSecureStorage] Migrated ${compositeKey} from encrypted to plain text.`
+        );
         return decrypted;
       }
     } catch {
