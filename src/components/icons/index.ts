@@ -1,19 +1,2 @@
-export { ClaudeIcon } from "./ClaudeIcon";
-export { GeminiIcon } from "./GeminiIcon";
-export { CodexIcon } from "./CodexIcon";
-export { OpenCodeIcon } from "./OpenCodeIcon";
 export { CanopyIcon } from "./CanopyIcon";
-
-export { NpmIcon } from "./NpmIcon";
-export { YarnIcon } from "./YarnIcon";
-export { PnpmIcon } from "./PnpmIcon";
-export { BunIcon } from "./BunIcon";
-export { PythonIcon } from "./PythonIcon";
-export { ComposerIcon } from "./ComposerIcon";
-export { DockerIcon } from "./DockerIcon";
-export { RustIcon } from "./RustIcon";
-export { GoIcon } from "./GoIcon";
-export { RubyIcon } from "./RubyIcon";
-export { NodeIcon } from "./NodeIcon";
-export { DenoIcon } from "./DenoIcon";
-export { GradleIcon } from "./GradleIcon";
+export * from "./brands";

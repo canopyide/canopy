@@ -17,6 +17,13 @@ import {
   NodeIcon,
   DenoIcon,
   GradleIcon,
+  PhpIcon,
+  ViteIcon,
+  WebpackIcon,
+  KotlinIcon,
+  SwiftIcon,
+  TerraformIcon,
+  ElixirIcon,
 } from "@/components/icons";
 
 const PROCESS_ICON_MAP: Record<string, ComponentType<{ className?: string; size?: number }>> = {
@@ -33,6 +40,13 @@ const PROCESS_ICON_MAP: Record<string, ComponentType<{ className?: string; size?
   node: NodeIcon,
   deno: DenoIcon,
   gradle: GradleIcon,
+  php: PhpIcon,
+  vite: ViteIcon,
+  webpack: WebpackIcon,
+  kotlin: KotlinIcon,
+  swift: SwiftIcon,
+  terraform: TerraformIcon,
+  elixir: ElixirIcon,
 };
 
 export interface TerminalIconProps {
