@@ -63,7 +63,7 @@ import { NewWorktreeDialog } from "./components/Worktree/NewWorktreeDialog";
 import { TerminalInfoDialogHost } from "./components/Terminal/TerminalInfoDialogHost";
 import { TerminalPalette, NewTerminalPalette } from "./components/TerminalPalette";
 import { PanelPalette } from "./components/PanelPalette/PanelPalette";
-import { GitInitDialog } from "./components/Project";
+import { GitInitDialog, ProjectOnboardingWizard } from "./components/Project";
 import { ProjectSwitcherPalette } from "./components/Project/ProjectSwitcherPalette";
 import { ActionPalette } from "./components/ActionPalette";
 import { QuickSwitcher } from "./components/QuickSwitcher";
@@ -610,6 +610,9 @@ function App() {
   const gitInitDirectoryPath = useProjectStore((state) => state.gitInitDirectoryPath);
   const closeGitInitDialog = useProjectStore((state) => state.closeGitInitDialog);
   const handleGitInitSuccess = useProjectStore((state) => state.handleGitInitSuccess);
+  const onboardingWizardOpen = useProjectStore((state) => state.onboardingWizardOpen);
+  const onboardingProjectId = useProjectStore((state) => state.onboardingProjectId);
+  const closeOnboardingWizard = useProjectStore((state) => state.closeOnboardingWizard);
   const { setActiveWorktree, selectWorktree, activeWorktreeId, focusedWorktreeId } =
     useWorktreeSelectionStore(
       useShallow((state) => ({
@@ -1104,6 +1107,14 @@ function App() {
           directoryPath={gitInitDirectoryPath}
           onSuccess={handleGitInitSuccess}
           onCancel={closeGitInitDialog}
+        />
+      )}
+
+      {onboardingProjectId && (
+        <ProjectOnboardingWizard
+          isOpen={onboardingWizardOpen}
+          projectId={onboardingProjectId}
+          onClose={closeOnboardingWizard}
         />
       )}
 
