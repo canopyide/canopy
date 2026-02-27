@@ -1,7 +1,6 @@
 <?xml version="1.0" encoding="UTF-8"?>
 <svg width="1024" height="1024" viewBox="0 0 1024 1024" fill="none" xmlns="http://www.w3.org/2000/svg">
   <defs>
-    <!-- Noise pattern using base64 encoded noise -->
     <filter id="noise">
       <feTurbulence type="fractalNoise" baseFrequency="0.9" numOctaves="4" result="noise"/>
       <feColorMatrix type="saturate" values="0"/>
@@ -14,33 +13,39 @@
       <feBlend in="SourceGraphic" mode="overlay"/>
     </filter>
 
-    <!-- Subtle inner border gradient -->
     <linearGradient id="borderGradient" x1="0%" y1="0%" x2="100%" y2="100%">
       <stop offset="0%" style="stop-color:#3f3f46;stop-opacity:0.6" />
       <stop offset="100%" style="stop-color:#27272a;stop-opacity:0.3" />
     </linearGradient>
+
+    <!-- Directional lighting gradient for cube edges (light from top-left) -->
+    <linearGradient id="cubeGradient" x1="0.15" y1="0" x2="0.85" y2="1">
+      <stop offset="0%" stop-color="#ffffff"/>
+      <stop offset="100%" stop-color="#b8b8c0"/>
+    </linearGradient>
   </defs>
 
-  <!-- Background with macOS corner radius (~22.37% = 229px) -->
-  <!-- Base dark background matching app grid-bg: #0d0d0e -->
+  <!-- Background with macOS corner radius -->
   <rect x="0" y="0" width="1024" height="1024" rx="229" ry="229" fill="#18181b"/>
-
-  <!-- Noise overlay layer -->
   <rect x="0" y="0" width="1024" height="1024" rx="229" ry="229" fill="#18181b" filter="url(#noise)"/>
-
-  <!-- Subtle inner border for depth -->
   <rect x="4" y="4" width="1016" height="1016" rx="225" ry="225" fill="none" stroke="url(#borderGradient)" stroke-width="2"/>
 
-  <!-- Canopy logo - centered with ~10% padding -->
-  <!-- Original viewBox: 0 0 148.3303 171.2764 -->
-  <!-- Scaling to fit in ~820px area (80% of 1024) centered -->
-  <!-- Scale: 820 / 171.2764 (height) = ~4.79 -->
-  <!-- Center offset X: (1024 - 148.3303 * 4.79) / 2 = ~157 -->
-  <!-- Center offset Y: (1024 - 171.2764 * 4.79) / 2 = ~102 -->
-  <g transform="translate(157, 102) scale(4.79)">
+  <!-- Logo group - optically centered (76% fill, nudged up 10px) -->
+  <g transform="translate(175, 113) scale(4.544)">
+    <!-- Face fills for 3D depth (visible through outline holes) -->
+    <!-- Top face - brightest (catches light from above) -->
+    <polygon points="74.165,0 148.3303,42.8188 74.165,85.638 0,42.8188" fill="#3f3f46"/>
+    <!-- Left face - medium brightness -->
+    <polygon points="0,42.8188 74.165,85.638 74.165,171.2763 0,128.457" fill="#2d2d33"/>
+    <!-- Right face - darkest (in shadow) -->
+    <polygon points="148.3303,42.8188 148.3303,128.457 74.165,171.2763 74.165,85.638" fill="#232328"/>
+    <!-- Inner cavity - deepest shadow for depth -->
+    <polygon points="74.165,40.73 108.17,60.36 103.28,68.83 103.28,102.45 79.05,116.44 69.28,88.46 49.94,66.01 40.16,60.36" fill="#19191c"/>
+
+    <!-- Cube outline with directional gradient -->
     <path
       d="M74.165,0L0,42.8188v85.6382l74.165,42.8193,74.1653-42.8193V42.8188L74.165,0ZM74.165,11.2871l59.5024,34.354-25.4973,14.7217-34.0051-19.6323-34.0049,19.6323-25.4971-14.7217L74.165,11.2871ZM79.0527,88.46v-5.4287l-4.8877-3.0366-4.8877-2.8218-19.3418-11.1665,24.2295-13.9888,24.2297,13.9888,4.8877,2.8218v33.6201l-24.2297,13.9888v-27.9771ZM9.7754,54.1064l25.4971,14.7217,9.7754,5.6436,24.2295,13.9883v68.7075L9.7754,122.8135V54.1064ZM138.5549,122.8135l-59.5022,34.354v-29.4434l34.0049-19.6323v-39.2637l25.4973-14.7217v68.707Z"
-      fill="#10b981"
+      fill="url(#cubeGradient)"
     />
   </g>
 </svg>
