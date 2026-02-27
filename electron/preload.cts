@@ -315,6 +315,7 @@ const CHANNELS = {
   PROJECT_CLOSE: "project:close",
   PROJECT_REOPEN: "project:reopen",
   PROJECT_GET_STATS: "project:get-stats",
+  PROJECT_CREATE_FOLDER: "project:create-folder",
   PROJECT_INIT_GIT: "project:init-git",
   PROJECT_INIT_GIT_GUIDED: "project:init-git-guided",
   PROJECT_INIT_GIT_PROGRESS: "project:init-git-progress",
@@ -331,6 +332,8 @@ const CHANNELS = {
   PROJECT_SET_TAB_GROUPS: "project:set-tab-groups",
   PROJECT_GET_FOCUS_MODE: "project:get-focus-mode",
   PROJECT_SET_FOCUS_MODE: "project:set-focus-mode",
+  PROJECT_READ_CLAUDE_MD: "project:read-claude-md",
+  PROJECT_WRITE_CLAUDE_MD: "project:write-claude-md",
 
   // Agent settings channels
   AGENT_SETTINGS_GET: "agent-settings:get",
@@ -863,6 +866,9 @@ const api: ElectronAPI = {
 
     getStats: (projectId: string) => ipcRenderer.invoke(CHANNELS.PROJECT_GET_STATS, projectId),
 
+    createFolder: (parentPath: string, folderName: string): Promise<string> =>
+      _typedInvoke(CHANNELS.PROJECT_CREATE_FOLDER, { parentPath, folderName }),
+
     initGit: (directoryPath: string) =>
       ipcRenderer.invoke(CHANNELS.PROJECT_INIT_GIT, directoryPath),
 
@@ -941,6 +947,12 @@ const api: ElectronAPI = {
       focusPanelState?: { sidebarWidth: number; diagnosticsOpen: boolean }
     ): Promise<void> =>
       _typedInvoke(CHANNELS.PROJECT_SET_FOCUS_MODE, { projectId, focusMode, focusPanelState }),
+
+    readClaudeMd: (projectId: string): Promise<string | null> =>
+      _typedInvoke(CHANNELS.PROJECT_READ_CLAUDE_MD, projectId),
+
+    writeClaudeMd: (projectId: string, content: string): Promise<void> =>
+      _typedInvoke(CHANNELS.PROJECT_WRITE_CLAUDE_MD, { projectId, content }),
   },
 
   // Agent Settings API

@@ -42,6 +42,9 @@ const createMockProjectClient = () => ({
   setTabGroups: vi.fn().mockResolvedValue(undefined),
   getTerminalSizes: vi.fn().mockResolvedValue({}),
   setTerminalSizes: vi.fn().mockResolvedValue(undefined),
+  readClaudeMd: vi.fn().mockResolvedValue(null),
+  writeClaudeMd: vi.fn().mockResolvedValue(undefined),
+  createFolder: vi.fn().mockResolvedValue(""),
 });
 
 describe("TerminalPersistence", () => {
@@ -154,6 +157,23 @@ describe("TerminalPersistence", () => {
           command: "claude --model sonnet-4",
         },
       ]);
+    });
+
+    it("excludes transient detectedProcessId from persisted snapshots", async () => {
+      const client = createMockProjectClient();
+      const persistence = new TerminalPersistence(client, { debounceMs: 100 });
+
+      const terminal = createMockTerminal({
+        id: "test-detected-process",
+        detectedProcessId: "npm",
+      });
+
+      persistence.save([terminal], projectId);
+      await vi.advanceTimersByTimeAsync(100);
+
+      const savedTerminals = client.setTerminals.mock.calls[0][1] as TerminalSnapshot[];
+      expect(savedTerminals).toHaveLength(1);
+      expect(savedTerminals[0]).not.toHaveProperty("detectedProcessId");
     });
 
     it("applies custom filter function", async () => {

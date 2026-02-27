@@ -1,26 +1,14 @@
 import { describe, it, expect, beforeEach, afterEach } from "vitest";
 import { randomUUID } from "crypto";
-import type { PtyManager } from "../PtyManager.js";
+import { PtyManager } from "../PtyManager.js";
+import { cleanupPtyManager, sleep } from "./helpers/ptyTestUtils.js";
 import type { TerminalType, TerminalKind } from "../../../shared/types/domain.js";
 
-let PtyManagerClass: any;
-let testUtils: any;
-
-try {
-  PtyManagerClass = (await import("../PtyManager.js")).PtyManager;
-  testUtils = await import("./helpers/ptyTestUtils.js");
-} catch (_error) {
-  console.warn("node-pty not available, skipping agent classification tests");
-}
-
-const shouldSkip = !PtyManagerClass;
-
-describe.skipIf(shouldSkip)("Agent Classification Matrix", () => {
-  const { cleanupPtyManager, sleep } = testUtils || {};
+describe("Agent Classification Matrix", () => {
   let manager: PtyManager;
 
   beforeEach(() => {
-    manager = new PtyManagerClass();
+    manager = new PtyManager();
   });
 
   afterEach(async () => {

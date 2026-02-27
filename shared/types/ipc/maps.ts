@@ -534,6 +534,10 @@ export interface IpcInvokeMap {
     args: [projectId: string];
     result: ProjectStats;
   };
+  "project:create-folder": {
+    args: [payload: { parentPath: string; folderName: string }];
+    result: string;
+  };
   "project:init-git": {
     args: [directoryPath: string];
     result: void;
@@ -609,6 +613,14 @@ export interface IpcInvokeMap {
         focusPanelState?: { sidebarWidth: number; diagnosticsOpen: boolean };
       },
     ];
+    result: void;
+  };
+  "project:read-claude-md": {
+    args: [projectId: string];
+    result: string | null;
+  };
+  "project:write-claude-md": {
+    args: [payload: { projectId: string; content: string }];
     result: void;
   };
 
