@@ -22,7 +22,7 @@ const common = {
   minify: isProd,
   sourcemap: !isProd,
   platform: "node",
-  target: "node20", // Electron 33 uses Node 20
+  target: "node22",
   external,
   logLevel: "info",
   absWorkingDir: root,
