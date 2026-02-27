@@ -181,10 +181,12 @@ const createProjectStore: StateCreator<ProjectState> = (set, get) => ({
       const errorMessage = error instanceof Error ? error.message : String(error);
 
       if (errorMessage.includes("Not a git repository")) {
-        const resolvedPath = path.trim() || errorMessage.match(/Not a git repository: (.+)/)?.[1];
-        if (resolvedPath) {
+        const gitInitPath =
+          resolvedPath || path.trim() || errorMessage.match(/Not a git repository: (.+)/)?.[1];
+        const isAbsolutePath = (p: string) => p.startsWith("/") || /^[a-zA-Z]:[\\/]/.test(p);
+        if (gitInitPath && isAbsolutePath(gitInitPath)) {
           set({ isLoading: false });
-          get().openGitInitDialog(resolvedPath);
+          get().openGitInitDialog(gitInitPath);
           return;
         }
       }
