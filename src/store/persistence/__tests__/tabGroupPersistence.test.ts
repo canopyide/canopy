@@ -38,6 +38,7 @@ const createMockProjectClient = () => ({
   setTerminalSizes: vi.fn().mockResolvedValue(undefined),
   readClaudeMd: vi.fn().mockResolvedValue(null),
   writeClaudeMd: vi.fn().mockResolvedValue(undefined),
+  createFolder: vi.fn().mockResolvedValue(""),
 });
 
 describe("TerminalPersistence.saveTabGroups", () => {
