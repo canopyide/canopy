@@ -367,7 +367,7 @@ export function NewWorktreeDialog({
         const mainBranch =
           branchList.find((b) => b.name === "main") || branchList.find((b) => b.name === "master");
 
-        const initialBranch = mainBranch?.name || currentBranch?.name || branchList[0]?.name || "";
+        const initialBranch = currentBranch?.name || mainBranch?.name || branchList[0]?.name || "";
         setBaseBranch(initialBranch);
 
         // Auto-set fromRemote based on the initial branch type
