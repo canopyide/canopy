@@ -24,7 +24,7 @@ export function EmptyState({ className, onSubmit: _onSubmit }: EmptyStateProps) 
   return (
     <div className={cn("flex h-full flex-col items-center justify-center p-8", className)}>
       <div className="flex flex-col items-center text-center">
-        <CanopyIcon className="h-12 w-12 text-canopy-accent/30 mb-4" />
+        <CanopyIcon className="h-12 w-12 text-canopy-text/30 mb-4" />
         <div className="text-center space-y-2">
           <p className="text-[14px] text-canopy-text/40 max-w-[280px] leading-relaxed">
             Orchestrate your panels, agents, and workflows.
