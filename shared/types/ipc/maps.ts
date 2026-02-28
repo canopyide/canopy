@@ -65,6 +65,7 @@ import type {
   AgentUpdateSettings,
   StartAgentUpdatePayload,
   StartAgentUpdateResult,
+  CliInstallStatus,
 } from "./system.js";
 import type { AppState, HydrateResult } from "./app.js";
 import type { LogEntry, LogFilterOptions } from "./logs.js";
@@ -1016,6 +1017,16 @@ export interface IpcInvokeMap {
   "agent-capabilities:is-agent-enabled": {
     args: [agentId: string];
     result: boolean;
+  };
+
+  // Canopy CLI install channels
+  "cli:install": {
+    args: [];
+    result: CliInstallStatus;
+  };
+  "cli:get-status": {
+    args: [];
+    result: CliInstallStatus;
   };
 }
 
