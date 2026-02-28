@@ -61,3 +61,13 @@ export interface StartAgentUpdateResult {
   /** Update command being executed */
   command: string;
 }
+
+/** Status of the installed Canopy CLI tool */
+export interface CliInstallStatus {
+  /** Whether the CLI script is installed */
+  installed: boolean;
+  /** Whether the installed CLI is current (symlink target or file contents match the bundled source) */
+  upToDate: boolean;
+  /** Absolute path where the CLI is installed */
+  path: string;
+}
