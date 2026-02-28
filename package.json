@@ -183,6 +183,10 @@
       {
         "from": "electron/services/assistant/examples.txt",
         "to": "examples.txt"
+      },
+      {
+        "from": "scripts/canopy-cli.sh",
+        "to": "canopy-cli.sh"
       }
     ],
     "asarUnpack": [

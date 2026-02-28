@@ -223,7 +223,7 @@ import {
 } from "./utils/webviewCsp.js";
 import { EventBuffer } from "./services/EventBuffer.js";
 import { CHANNELS } from "./ipc/channels.js";
-import { createApplicationMenu } from "./menu.js";
+import { createApplicationMenu, handleDirectoryOpen } from "./menu.js";
 import { resolveAppUrlToDistPath, getMimeType, buildHeaders } from "./utils/appProtocol.js";
 import { projectStore } from "./services/ProjectStore.js";
 import { taskQueueService } from "./services/TaskQueueService.js";
@@ -289,17 +289,41 @@ const DEFAULT_TERMINAL_ID = "default";
 let isQuitting = false;
 let resumeTimeout: NodeJS.Timeout | null = null;
 
+/** Path passed via CLI that hasn't been opened yet (app may still be initializing) */
+let pendingCliPath: string | null = null;
+
+function extractCliPath(argv: string[]): string | null {
+  const flag = argv.indexOf("--cli-path");
+  if (flag !== -1 && argv[flag + 1]) {
+    return argv[flag + 1];
+  }
+  return null;
+}
+
 const gotTheLock = app.requestSingleInstanceLock();
 
 if (!gotTheLock) {
   console.log("[MAIN] Another instance is already running. Quitting...");
   app.quit();
 } else {
-  app.on("second-instance", (_event, _commandLine, _workingDirectory) => {
+  app.on("second-instance", (_event, commandLine, _workingDirectory) => {
     console.log("[MAIN] Second instance detected, focusing main window");
     if (mainWindow) {
       if (mainWindow.isMinimized()) mainWindow.restore();
       mainWindow.focus();
+    }
+    const cliPath = extractCliPath(commandLine);
+    if (cliPath) {
+      if (mainWindow && !mainWindow.isDestroyed()) {
+        console.log("[MAIN] Opening CLI path from second instance:", cliPath);
+        handleDirectoryOpen(cliPath, mainWindow, cliAvailabilityService ?? undefined).catch((err) =>
+          console.error("[MAIN] Failed to open CLI path:", err)
+        );
+      } else {
+        // Window not ready yet — queue for when createWindow() completes
+        pendingCliPath = cliPath;
+        console.log("[MAIN] Queuing CLI path for when window is ready:", cliPath);
+      }
     }
   });
 
@@ -1121,6 +1145,17 @@ async function createWindow(): Promise<void> {
   initializeDeferredServices(mainWindow, cliAvailabilityService!, eventBuffer!).catch((error) => {
     console.error("[MAIN] Deferred services initialization failed:", error);
   });
+
+  // Handle path provided via CLI on first launch (e.g. `canopy /path/to/repo`)
+  const firstLaunchCliPath = extractCliPath(process.argv);
+  const cliPath = firstLaunchCliPath ?? pendingCliPath;
+  if (cliPath) {
+    pendingCliPath = null;
+    console.log("[MAIN] Opening CLI path from launch args:", cliPath);
+    handleDirectoryOpen(cliPath, mainWindow, cliAvailabilityService ?? undefined).catch((err) =>
+      console.error("[MAIN] Failed to open CLI path:", err)
+    );
+  }
 
   if (process.env.CANOPY_PERF_CAPTURE === "1" && !stopEventLoopLagMonitor) {
     stopEventLoopLagMonitor = startEventLoopLagMonitor();
