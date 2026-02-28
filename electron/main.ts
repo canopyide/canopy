@@ -293,9 +293,13 @@ let resumeTimeout: NodeJS.Timeout | null = null;
 let pendingCliPath: string | null = null;
 
 function extractCliPath(argv: string[]): string | null {
-  const flag = argv.indexOf("--cli-path");
-  if (flag !== -1 && argv[flag + 1]) {
-    return argv[flag + 1];
+  for (let i = 0; i < argv.length; i++) {
+    if (argv[i] === "--cli-path" && argv[i + 1]) {
+      return argv[i + 1];
+    }
+    if (argv[i].startsWith("--cli-path=")) {
+      return argv[i].slice("--cli-path=".length);
+    }
   }
   return null;
 }
