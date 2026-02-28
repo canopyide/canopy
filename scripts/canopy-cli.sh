@@ -1,41 +1,49 @@
 #!/usr/bin/env bash
 # Canopy CLI — opens a directory as a project in the Canopy app.
 # Usage: canopy [directory]   (defaults to current directory)
-# Version: CANOPY_APP_VERSION (replaced at install time)
 set -euo pipefail
 
 TARGET="${1:-.}"
 
-# Resolve to absolute path — guard each method against failure
-ABSOLUTE_PATH=""
-if command -v realpath &>/dev/null; then
-  ABSOLUTE_PATH="$(realpath -- "$TARGET" 2>/dev/null)" || ABSOLUTE_PATH=""
-fi
-if [[ -z "$ABSOLUTE_PATH" ]] && command -v python3 &>/dev/null; then
-  ABSOLUTE_PATH="$(python3 -c "import os,sys; print(os.path.realpath(sys.argv[1]))" -- "$TARGET" 2>/dev/null)" || ABSOLUTE_PATH=""
-fi
-if [[ -z "$ABSOLUTE_PATH" ]]; then
-  ABSOLUTE_PATH="$(cd -- "$TARGET" 2>/dev/null && pwd -P)" || ABSOLUTE_PATH=""
-fi
+# Resolve to an absolute directory path without external runtime dependencies
+ABSOLUTE_PATH="$(cd -- "$TARGET" 2>/dev/null && pwd -P)" || ABSOLUTE_PATH=""
 
 if [[ -z "$ABSOLUTE_PATH" || ! -d "$ABSOLUTE_PATH" ]]; then
   echo "canopy: '$TARGET' is not a directory" >&2
   exit 1
 fi
 
+resolve_script_path() {
+  local source="$1"
+
+  while [[ -h "$source" ]]; do
+    local dir=""
+    dir="$(cd -P "$(dirname "$source")" >/dev/null 2>&1 && pwd)"
+    source="$(readlink "$source")"
+    [[ "$source" != /* ]] && source="$dir/$source"
+  done
+
+  local source_dir=""
+  source_dir="$(cd -P "$(dirname "$source")" >/dev/null 2>&1 && pwd)"
+  printf "%s/%s\n" "$source_dir" "$(basename "$source")"
+}
+
 # --- macOS: locate the Canopy.app bundle ---
 if [[ "$(uname)" == "Darwin" ]]; then
-  # Try mdfind (Spotlight) first for a dynamic location
+  # Prefer deriving the app path from the installed symlink target.
   APP_PATH=""
-  if command -v mdfind &>/dev/null; then
-    APP_PATH="$(mdfind 'kMDItemCFBundleIdentifier == "com.canopy.commandcenter"' 2>/dev/null | head -1)"
-    # Validate that mdfind returned a real .app bundle
-    if [[ -n "$APP_PATH" && ! -d "$APP_PATH" ]]; then
-      APP_PATH=""
-    fi
+  SCRIPT_PATH="$(resolve_script_path "${BASH_SOURCE[0]}")"
+  if [[ "$SCRIPT_PATH" == *".app/"* ]]; then
+    APP_PATH="${SCRIPT_PATH%%.app/*}.app"
   fi
 
-  # Fall back to common locations
+  # Fall back to Spotlight if the script is not installed as an app symlink.
+  if [[ -z "$APP_PATH" ]] && command -v mdfind &>/dev/null; then
+    APP_PATH="$(mdfind 'kMDItemCFBundleIdentifier == "com.canopy.commandcenter"' 2>/dev/null | head -1)"
+    [[ -n "$APP_PATH" && ! -d "$APP_PATH" ]] && APP_PATH=""
+  fi
+
+  # Fall back to common locations.
   if [[ -z "$APP_PATH" ]]; then
     for candidate in \
       "$HOME/Applications/Canopy.app" \

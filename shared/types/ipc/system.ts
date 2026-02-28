@@ -66,7 +66,7 @@ export interface StartAgentUpdateResult {
 export interface CliInstallStatus {
   /** Whether the CLI script is installed */
   installed: boolean;
-  /** Whether the installed version matches the current app version */
+  /** Whether the installed CLI is current (symlink target or file contents match the bundled source) */
   upToDate: boolean;
   /** Absolute path where the CLI is installed */
   path: string;

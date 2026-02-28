@@ -183,10 +183,6 @@
       {
         "from": "electron/services/assistant/examples.txt",
         "to": "examples.txt"
-      },
-      {
-        "from": "scripts/canopy-cli.sh",
-        "to": "canopy-cli.sh"
       }
     ],
     "asarUnpack": [
@@ -204,6 +200,12 @@
     },
     "afterPack": "./scripts/afterPack.cjs",
     "mac": {
+      "extraResources": [
+        {
+          "from": "scripts/canopy-cli.sh",
+          "to": "canopy-cli.sh"
+        }
+      ],
       "files": [
         "!node_modules/clipboardy/fallbacks/linux"
       ],
@@ -289,6 +291,10 @@
         }
       },
       "extraResources": [
+        {
+          "from": "scripts/canopy-cli.sh",
+          "to": "canopy-cli.sh"
+        },
         {
           "from": "build/linux/canopy.apparmor",
           "to": "canopy.apparmor"
