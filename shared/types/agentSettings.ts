@@ -70,6 +70,8 @@ export const DEFAULT_ROUTING_CONFIG: AgentRoutingConfig = {
 
 export interface AgentSettingsEntry {
   enabled?: boolean;
+  /** Include this agent in the user's active workflow (toolbars, palettes, menus) */
+  selected?: boolean;
   customFlags?: string;
   /** Additional args appended when dangerous mode is enabled */
   dangerousArgs?: string;
