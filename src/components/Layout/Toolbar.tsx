@@ -26,6 +26,7 @@ import { isMac, createTooltipWithShortcut } from "@/lib/platform";
 import { getProjectGradient } from "@/lib/colorUtils";
 import { GitHubResourceList, CommitList } from "@/components/GitHub";
 import { AgentButton } from "./AgentButton";
+import { AgentSetupButton } from "./AgentSetupButton";
 import { GitHubStatusIndicator, type GitHubStatusIndicatorStatus } from "./GitHubStatusIndicator";
 import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from "@/components/ui/tooltip";
 import { useWorktreeActions } from "@/hooks/useWorktreeActions";
@@ -248,6 +249,11 @@ export function Toolbar({
     void actionService.dispatch("app.settings.openTab", { tab }, { source: "context-menu" });
   };
 
+  const hasAnySelectedAgent = useMemo(() => {
+    if (!agentSettings?.agents) return false;
+    return Object.values(agentSettings.agents).some((entry) => entry.selected === true);
+  }, [agentSettings]);
+
   const buttonRegistry = useMemo<
     Record<ToolbarButtonId, { render: () => React.ReactNode; isAvailable: boolean }>
   >(
@@ -276,6 +282,10 @@ export function Toolbar({
         ),
         isAvailable: true,
       },
+      "agent-setup": {
+        render: () => <AgentSetupButton key="agent-setup" />,
+        isAvailable: agentSettings != null && !hasAnySelectedAgent,
+      },
       claude: {
         render: () => (
           <AgentButton
@@ -286,7 +296,7 @@ export function Toolbar({
             onOpenSettings={openAgentSettings}
           />
         ),
-        isAvailable: true,
+        isAvailable: agentSettings?.agents?.claude?.selected ?? true,
       },
       gemini: {
         render: () => (
@@ -298,7 +308,7 @@ export function Toolbar({
             onOpenSettings={openAgentSettings}
           />
         ),
-        isAvailable: true,
+        isAvailable: agentSettings?.agents?.gemini?.selected ?? true,
       },
       codex: {
         render: () => (
@@ -310,7 +320,7 @@ export function Toolbar({
             onOpenSettings={openAgentSettings}
           />
         ),
-        isAvailable: true,
+        isAvailable: agentSettings?.agents?.codex?.selected ?? true,
       },
       opencode: {
         render: () => (
@@ -322,7 +332,7 @@ export function Toolbar({
             onOpenSettings={openAgentSettings}
           />
         ),
-        isAvailable: true,
+        isAvailable: agentSettings?.agents?.opencode?.selected ?? true,
       },
       terminal: {
         render: () => (
@@ -714,6 +724,7 @@ export function Toolbar({
       onToggleFocusMode,
       agentAvailability,
       agentSettings,
+      hasAnySelectedAgent,
       openAgentSettings,
       onLaunchAgent,
       terminalShortcut,

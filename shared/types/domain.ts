@@ -884,6 +884,7 @@ export interface ProjectSettings {
 /** Unique identifier for toolbar buttons */
 export type ToolbarButtonId =
   | "sidebar-toggle"
+  | "agent-setup"
   | "claude"
   | "gemini"
   | "codex"

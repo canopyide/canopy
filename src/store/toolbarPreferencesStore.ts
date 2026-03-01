@@ -23,6 +23,7 @@ function getSafeStorage(): StateStorage {
 }
 
 const DEFAULT_LEFT_BUTTONS: ToolbarButtonId[] = [
+  "agent-setup",
   "claude",
   "gemini",
   "codex",
