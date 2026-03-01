@@ -64,6 +64,7 @@ import { TerminalInfoDialogHost } from "./components/Terminal/TerminalInfoDialog
 import { TerminalPalette, NewTerminalPalette } from "./components/TerminalPalette";
 import { PanelPalette } from "./components/PanelPalette/PanelPalette";
 import { GitInitDialog, ProjectOnboardingWizard, WelcomeScreen } from "./components/Project";
+import { AgentSetupWizard, shouldShowAgentSetupWizard } from "./components/Setup";
 import { CreateProjectFolderDialog } from "./components/Project/CreateProjectFolderDialog";
 import { ProjectSwitcherPalette } from "./components/Project/ProjectSwitcherPalette";
 import { ActionPalette } from "./components/ActionPalette";
@@ -582,7 +583,25 @@ function App() {
       cleanupWorktreeDataStore();
     };
   }, []);
-  const { launchAgent, availability, agentSettings, refreshSettings } = useAgentLauncher();
+  const { launchAgent, availability, agentSettings, refreshSettings, isCheckingAvailability } =
+    useAgentLauncher();
+  const [isAgentSetupOpen, setIsAgentSetupOpen] = useState(false);
+  const agentSetupCheckedRef = useRef(false);
+
+  useEffect(() => {
+    if (agentSetupCheckedRef.current || isCheckingAvailability) return;
+    agentSetupCheckedRef.current = true;
+    if (shouldShowAgentSetupWizard(availability)) {
+      setIsAgentSetupOpen(true);
+    }
+  }, [isCheckingAvailability, availability]);
+
+  useEffect(() => {
+    const handleOpenWizard = () => setIsAgentSetupOpen(true);
+    window.addEventListener("canopy:open-agent-setup-wizard", handleOpenWizard);
+    return () => window.removeEventListener("canopy:open-agent-setup-wizard", handleOpenWizard);
+  }, []);
+
   const loadRecipes = useRecipeStore((state) => state.loadRecipes);
   useTerminalConfig();
   useWindowNotifications();
@@ -1129,6 +1148,12 @@ function App() {
           onClose={closeOnboardingWizard}
         />
       )}
+
+      <AgentSetupWizard
+        isOpen={isAgentSetupOpen}
+        onClose={() => setIsAgentSetupOpen(false)}
+        initialAvailability={availability}
+      />
 
       <CreateProjectFolderDialog
         isOpen={createFolderDialogOpen}
