@@ -1,30 +1,56 @@
-import { useEffect, useRef } from "react";
+import { useEffect, useRef, useState } from "react";
 import { updateFaviconBadge, clearFaviconBadge } from "@/services/FaviconBadgeService";
 import { useTerminalNotificationCounts } from "@/hooks/useTerminalSelectors";
 
 const DEBOUNCE_MS = 300;
+const EXPIRY_TICK_MS = 30_000;
 
 export function useWindowNotifications(): void {
   const prevStateRef = useRef({ waitingCount: 0, failedCount: 0 });
   const windowFocusedRef = useRef(true);
   const debounceTimerRef = useRef<NodeJS.Timeout | null>(null);
+  const blurTimeRef = useRef<number | null>(null);
+  const tickerRef = useRef<ReturnType<typeof setInterval> | null>(null);
+  const [, setTick] = useState(0);
 
-  const { waitingCount, failedCount } = useTerminalNotificationCounts();
+  const { waitingCount, failedCount } = useTerminalNotificationCounts(blurTimeRef.current);
 
-  // Handle window focus/blur for favicon badge clearing
   useEffect(() => {
     const handleFocus = () => {
       windowFocusedRef.current = true;
+      blurTimeRef.current = null;
+
+      if (tickerRef.current) {
+        clearInterval(tickerRef.current);
+        tickerRef.current = null;
+      }
+
+      if (debounceTimerRef.current) {
+        clearTimeout(debounceTimerRef.current);
+        debounceTimerRef.current = null;
+      }
+
       clearFaviconBadge();
+
+      if (window.electron?.notification?.updateBadge) {
+        window.electron.notification.updateBadge({ waitingCount: 0, failedCount: 0 });
+      }
+
+      setTick((t) => t + 1);
     };
 
     const handleBlur = () => {
       windowFocusedRef.current = false;
-      // Update badge when window loses focus if there are notifications
-      const { waitingCount, failedCount } = prevStateRef.current;
-      if (waitingCount > 0 || failedCount > 0) {
-        updateFaviconBadge(waitingCount, failedCount);
+      blurTimeRef.current = Date.now();
+
+      if (tickerRef.current) {
+        clearInterval(tickerRef.current);
       }
+      tickerRef.current = setInterval(() => {
+        setTick((t) => t + 1);
+      }, EXPIRY_TICK_MS);
+
+      setTick((t) => t + 1);
     };
 
     window.addEventListener("focus", handleFocus);
@@ -33,13 +59,16 @@ export function useWindowNotifications(): void {
     return () => {
       window.removeEventListener("focus", handleFocus);
       window.removeEventListener("blur", handleBlur);
+      if (tickerRef.current) {
+        clearInterval(tickerRef.current);
+        tickerRef.current = null;
+      }
     };
   }, []);
 
   useEffect(() => {
     const prevState = prevStateRef.current;
 
-    // Only send update if counts have changed
     if (prevState.waitingCount !== waitingCount || prevState.failedCount !== failedCount) {
       prevStateRef.current = { waitingCount, failedCount };
 
@@ -48,17 +77,13 @@ export function useWindowNotifications(): void {
         debounceTimerRef.current = null;
       }
 
-      // Debounce all updates to match main process debouncing
       debounceTimerRef.current = setTimeout(() => {
         debounceTimerRef.current = null;
 
-        // Update Electron main process (window title and macOS dock badge)
-        // Guard for browser/test environments
         if (window.electron?.notification?.updateBadge) {
           window.electron.notification.updateBadge({ waitingCount, failedCount });
         }
 
-        // Update favicon badge (only if window is not focused)
         if (!windowFocusedRef.current) {
           if (waitingCount > 0 || failedCount > 0) {
             updateFaviconBadge(waitingCount, failedCount);
@@ -70,7 +95,6 @@ export function useWindowNotifications(): void {
     }
   }, [waitingCount, failedCount]);
 
-  // Clear notifications on unmount
   useEffect(() => {
     return () => {
       if (debounceTimerRef.current) {
@@ -78,7 +102,11 @@ export function useWindowNotifications(): void {
         debounceTimerRef.current = null;
       }
 
-      // Clear notifications (browser-safe)
+      if (tickerRef.current) {
+        clearInterval(tickerRef.current);
+        tickerRef.current = null;
+      }
+
       if (window.electron?.notification?.updateBadge) {
         window.electron.notification.updateBadge({ waitingCount: 0, failedCount: 0 });
       }
