@@ -49,11 +49,23 @@ interface AgentSetupWizardProps {
   isOpen: boolean;
   onClose: () => void;
   initialAvailability?: CliAvailability;
+  agentIds?: readonly string[];
 }
 
 type WizardStep = "welcome" | "agent" | "complete";
 
-export function AgentSetupWizard({ isOpen, onClose, initialAvailability }: AgentSetupWizardProps) {
+export function AgentSetupWizard({
+  isOpen,
+  onClose,
+  initialAvailability,
+  agentIds,
+}: AgentSetupWizardProps) {
+  const effectiveAgentOrder = useMemo(() => {
+    if (!agentIds || agentIds.length === 0) return AGENT_ORDER;
+    const filtered = AGENT_ORDER.filter((id) => agentIds.includes(id));
+    return filtered.length > 0 ? filtered : AGENT_ORDER;
+  }, [agentIds]);
+
   const [step, setStep] = useState<WizardStep>("welcome");
   const [agentIndex, setAgentIndex] = useState(0);
   const [availability, setAvailability] = useState<CliAvailability>(
@@ -65,7 +77,7 @@ export function AgentSetupWizard({ isOpen, onClose, initialAvailability }: Agent
     isOpenRef.current = isOpen;
   }, [isOpen]);
 
-  const currentAgentId = AGENT_ORDER[agentIndex];
+  const currentAgentId = effectiveAgentOrder[agentIndex];
   const currentAgent = useMemo(
     () => (currentAgentId ? getAgentConfig(currentAgentId) : undefined),
     [currentAgentId]
@@ -73,8 +85,8 @@ export function AgentSetupWizard({ isOpen, onClose, initialAvailability }: Agent
   const isCurrentAvailable = currentAgentId ? availability[currentAgentId] === true : false;
 
   const installedAgents = useMemo(
-    () => AGENT_ORDER.filter((id) => availability[id] === true),
-    [availability]
+    () => effectiveAgentOrder.filter((id) => availability[id] === true),
+    [effectiveAgentOrder, availability]
   );
 
   // Reset wizard state when reopened
@@ -115,13 +127,13 @@ export function AgentSetupWizard({ isOpen, onClose, initialAvailability }: Agent
       setStep("agent");
       setAgentIndex(0);
     } else if (step === "agent") {
-      if (agentIndex < AGENT_ORDER.length - 1) {
+      if (agentIndex < effectiveAgentOrder.length - 1) {
         setAgentIndex((i) => i + 1);
       } else {
         setStep("complete");
       }
     }
-  }, [step, agentIndex]);
+  }, [step, agentIndex, effectiveAgentOrder]);
 
   const handleBack = useCallback(() => {
     if (step === "agent") {
@@ -132,9 +144,9 @@ export function AgentSetupWizard({ isOpen, onClose, initialAvailability }: Agent
       }
     } else if (step === "complete") {
       setStep("agent");
-      setAgentIndex(AGENT_ORDER.length - 1);
+      setAgentIndex(effectiveAgentOrder.length - 1);
     }
-  }, [step, agentIndex]);
+  }, [step, agentIndex, effectiveAgentOrder]);
 
   const handleSkip = useCallback(() => {
     handleNext();
@@ -146,8 +158,8 @@ export function AgentSetupWizard({ isOpen, onClose, initialAvailability }: Agent
   }, [onClose]);
 
   const stepNumber =
-    step === "welcome" ? 0 : step === "agent" ? agentIndex + 1 : AGENT_ORDER.length + 1;
-  const totalSteps = AGENT_ORDER.length + 2;
+    step === "welcome" ? 0 : step === "agent" ? agentIndex + 1 : effectiveAgentOrder.length + 1;
+  const totalSteps = effectiveAgentOrder.length + 2;
 
   return (
     <AppDialog isOpen={isOpen} onClose={handleFinish} size="lg" dismissible={true}>
@@ -164,7 +176,9 @@ export function AgentSetupWizard({ isOpen, onClose, initialAvailability }: Agent
       </AppDialog.Header>
 
       <AppDialog.Body>
-        {step === "welcome" && <WelcomeStep availability={availability} />}
+        {step === "welcome" && (
+          <WelcomeStep availability={availability} agentOrder={effectiveAgentOrder} />
+        )}
         {step === "agent" && currentAgent && (
           <div className="space-y-5">
             <AgentSetupStep
@@ -235,7 +249,13 @@ export function AgentSetupWizard({ isOpen, onClose, initialAvailability }: Agent
   );
 }
 
-function WelcomeStep({ availability }: { availability: CliAvailability }) {
+function WelcomeStep({
+  availability,
+  agentOrder,
+}: {
+  availability: CliAvailability;
+  agentOrder: readonly string[];
+}) {
   return (
     <div className="space-y-6">
       <div>
@@ -249,7 +269,7 @@ function WelcomeStep({ availability }: { availability: CliAvailability }) {
       </div>
 
       <div className="space-y-2">
-        {AGENT_ORDER.map((id) => {
+        {agentOrder.map((id) => {
           const agent = AGENT_REGISTRY[id];
           if (!agent) return null;
           const isInstalled = availability[id] === true;
