@@ -1,7 +1,7 @@
 import { useEffect, useMemo, useState, useCallback, useRef } from "react";
 import { cn } from "@/lib/utils";
 import { getAgentIds, getAgentConfig } from "@/config/agents";
-import { useAgentSettingsStore, useCliAvailabilityStore } from "@/store";
+import { useAgentSettingsStore, useCliAvailabilityStore, migrateAgentSelection } from "@/store";
 import { Button } from "@/components/ui/button";
 import {
   DEFAULT_AGENT_SETTINGS,
@@ -25,11 +25,13 @@ export function AgentSettings({ onSettingsChange }: AgentSettingsProps) {
     error: loadError,
     initialize,
     updateAgent,
+    setAgentSelected,
     reset,
   } = useAgentSettingsStore();
 
   const cliAvailability = useCliAvailabilityStore((state) => state.availability);
   const isCliLoading = useCliAvailabilityStore((state) => state.isLoading);
+  const isCliInitialized = useCliAvailabilityStore((state) => state.isInitialized);
   const isRefreshingCli = useCliAvailabilityStore((state) => state.isRefreshing);
   const cliError = useCliAvailabilityStore((state) => state.error);
   const initializeCliAvailability = useCliAvailabilityStore((state) => state.initialize);
@@ -49,6 +51,14 @@ export function AgentSettings({ onSettingsChange }: AgentSettingsProps) {
   useEffect(() => {
     void initializeCliAvailability();
   }, [initializeCliAvailability]);
+
+  // Migrate selection state for agents that don't have `selected` set yet.
+  // Gate on CLI availability being fully initialized (not just not-loading) to avoid
+  // persisting incorrect `false` defaults when the CLI check errored or is still pending.
+  useEffect(() => {
+    if (!settings || !isCliInitialized || isCliLoading) return;
+    void migrateAgentSelection(cliAvailability);
+  }, [settings, isCliInitialized, isCliLoading, cliAvailability]);
 
   useEffect(() => {
     return () => {
@@ -122,6 +132,7 @@ export function AgentSettings({ onSettingsChange }: AgentSettingsProps) {
             color: config.color,
             Icon: config.icon,
             usageUrl: config.usageUrl,
+            selected: entry.selected ?? false,
             enabled: entry.enabled ?? true,
             dangerousEnabled: entry.dangerousEnabled ?? false,
             hasCustomFlags: Boolean(entry.customFlags?.trim()),
@@ -224,10 +235,15 @@ export function AgentSettings({ onSettingsChange }: AgentSettingsProps) {
                     className={cn(!isActive && "opacity-60")}
                   />
                 )}
-                <span className={cn("truncate", !agent.enabled && "opacity-50")}>{agent.name}</span>
+                <span className={cn("truncate", !agent.selected && "opacity-50")}>
+                  {agent.name}
+                </span>
                 <div className="flex items-center gap-1 shrink-0">
-                  {!agent.enabled && (
-                    <span className="w-1.5 h-1.5 rounded-full bg-canopy-text/30" />
+                  {!agent.selected && (
+                    <span
+                      className="w-1.5 h-1.5 rounded-full bg-canopy-text/30"
+                      title="Not in workflow"
+                    />
                   )}
                   {agent.dangerousEnabled && (
                     <span className="w-1.5 h-1.5 rounded-full bg-[var(--color-status-error)]" />
@@ -294,6 +310,37 @@ export function AgentSettings({ onSettingsChange }: AgentSettingsProps) {
                   Reset
                 </Button>
               </div>
+            </div>
+
+            {/* Selected (Include in Workflow) Toggle */}
+            <div className="flex items-center justify-between">
+              <div>
+                <div className="text-sm font-medium text-canopy-text">Include in Workflow</div>
+                <div className="text-xs text-canopy-text/50">
+                  Show in toolbars, palettes, and menus
+                </div>
+              </div>
+              <button
+                role="switch"
+                aria-checked={activeEntry.selected ?? false}
+                aria-label={`Include ${activeAgent.name} in workflow`}
+                onClick={async () => {
+                  const current = activeEntry.selected ?? false;
+                  await setAgentSelected(activeAgent.id, !current);
+                  onSettingsChange?.();
+                }}
+                className={cn(
+                  "relative w-11 h-6 rounded-full transition-colors",
+                  (activeEntry.selected ?? false) ? "bg-canopy-accent" : "bg-canopy-border"
+                )}
+              >
+                <span
+                  className={cn(
+                    "absolute top-0.5 left-0.5 w-5 h-5 bg-white rounded-full transition-transform",
+                    (activeEntry.selected ?? false) && "translate-x-5"
+                  )}
+                />
+              </button>
             </div>
 
             {/* Enabled Toggle */}
