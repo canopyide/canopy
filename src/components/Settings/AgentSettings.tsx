@@ -8,7 +8,7 @@ import {
   getAgentSettingsEntry,
   DEFAULT_DANGEROUS_ARGS,
 } from "@shared/types";
-import { RotateCcw, ExternalLink, RefreshCw, Copy, Check } from "lucide-react";
+import { RotateCcw, ExternalLink, RefreshCw, Copy, Check, Sparkles } from "lucide-react";
 import { actionService } from "@/services/ActionService";
 import { Tooltip, TooltipContent, TooltipTrigger, TooltipProvider } from "@/components/ui/tooltip";
 import { AgentHelpOutput } from "./AgentHelpOutput";
@@ -201,11 +201,24 @@ export function AgentSettings({ onSettingsChange }: AgentSettingsProps) {
   return (
     <div className="space-y-6">
       <div className="space-y-4">
-        <div>
-          <h3 className="text-sm font-medium mb-1">Agent Runtime Settings</h3>
-          <p className="text-xs text-canopy-text/50">
-            Configure CLI flags and options for each agent
-          </p>
+        <div className="flex items-center justify-between">
+          <div>
+            <h3 className="text-sm font-medium mb-1">Agent Runtime Settings</h3>
+            <p className="text-xs text-canopy-text/50">
+              Configure CLI flags and options for each agent
+            </p>
+          </div>
+          <Button
+            variant="ghost"
+            size="sm"
+            onClick={() => {
+              window.dispatchEvent(new CustomEvent("canopy:open-agent-setup-wizard"));
+            }}
+            className="text-canopy-text/60 hover:text-canopy-text shrink-0"
+          >
+            <Sparkles className="w-3.5 h-3.5" />
+            Run Setup Wizard
+          </Button>
         </div>
 
         {/* Agent Selector - Horizontal scrolling pills */}
