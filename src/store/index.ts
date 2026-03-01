@@ -60,7 +60,12 @@ export { useUIStore } from "./uiStore";
 
 export { useGitHubConfigStore, cleanupGitHubConfigStore } from "./githubConfigStore";
 
-export { useAgentSettingsStore, cleanupAgentSettingsStore } from "./agentSettingsStore";
+export {
+  useAgentSettingsStore,
+  cleanupAgentSettingsStore,
+  getSelectedAgents,
+  migrateAgentSelection,
+} from "./agentSettingsStore";
 
 export { useCliAvailabilityStore, cleanupCliAvailabilityStore } from "./cliAvailabilityStore";
 
