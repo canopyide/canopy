@@ -4,3 +4,4 @@ export {
   markAgentSetupComplete,
   resetAgentSetupFlag,
 } from "./AgentSetupWizard";
+export { AgentSelectionStep, shouldShowAgentSelection } from "./AgentSelectionStep";

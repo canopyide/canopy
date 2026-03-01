@@ -65,7 +65,12 @@ import { TerminalPalette, NewTerminalPalette } from "./components/TerminalPalett
 import { PanelPalette } from "./components/PanelPalette/PanelPalette";
 import { MORE_AGENTS_PANEL_ID } from "./hooks/usePanelPalette";
 import { GitInitDialog, ProjectOnboardingWizard, WelcomeScreen } from "./components/Project";
-import { AgentSetupWizard, shouldShowAgentSetupWizard } from "./components/Setup";
+import {
+  AgentSetupWizard,
+  AgentSelectionStep,
+  shouldShowAgentSetupWizard,
+  shouldShowAgentSelection,
+} from "./components/Setup";
 import { CreateProjectFolderDialog } from "./components/Project/CreateProjectFolderDialog";
 import { ProjectSwitcherPalette } from "./components/Project/ProjectSwitcherPalette";
 import { ActionPalette } from "./components/ActionPalette";
@@ -87,6 +92,7 @@ import {
   useErrorStore,
   useDiagnosticsStore,
   useFocusStore,
+  useAgentSettingsStore,
   cleanupWorktreeDataStore,
   useToolbarPreferencesStore,
   type RetryAction,
@@ -590,6 +596,11 @@ function App() {
   const [isAgentSetupOpen, setIsAgentSetupOpen] = useState(false);
   const agentSetupCheckedRef = useRef(false);
 
+  // Agent selection step state for first-run onboarding
+  const [agentSelectionOpen, setAgentSelectionOpen] = useState(false);
+  const [onboardingSetupOpen, setOnboardingSetupOpen] = useState(false);
+  const [onboardingSetupAgentIds, setOnboardingSetupAgentIds] = useState<string[]>([]);
+
   useEffect(() => {
     if (agentSetupCheckedRef.current || isCheckingAvailability) return;
     agentSetupCheckedRef.current = true;
@@ -635,7 +646,49 @@ function App() {
   const onboardingWizardOpen = useProjectStore((state) => state.onboardingWizardOpen);
   const onboardingProjectId = useProjectStore((state) => state.onboardingProjectId);
   const closeOnboardingWizard = useProjectStore((state) => state.closeOnboardingWizard);
+
   const openOnboardingWizard = useProjectStore((state) => state.openOnboardingWizard);
+  const agentSettingsInitialized = useAgentSettingsStore((state) => state.isInitialized);
+
+  // Intercept onboarding to show agent selection on first run.
+  // Depends on agentSettingsInitialized so it re-evaluates once settings load.
+  useEffect(() => {
+    if (!onboardingWizardOpen || !onboardingProjectId) return;
+    if (shouldShowAgentSelection()) {
+      setAgentSelectionOpen(true);
+    }
+  }, [onboardingWizardOpen, onboardingProjectId, agentSettingsInitialized]);
+
+  // Reset local flow state whenever onboarding closes to avoid stale state on next project.
+  useEffect(() => {
+    if (!onboardingWizardOpen && !onboardingProjectId) {
+      setAgentSelectionOpen(false);
+      setOnboardingSetupOpen(false);
+      setOnboardingSetupAgentIds([]);
+    }
+  }, [onboardingWizardOpen, onboardingProjectId]);
+
+  const handleAgentSelectionContinue = useCallback(
+    (uninstalledIds: string[]) => {
+      setAgentSelectionOpen(false);
+      void refreshSettings();
+      if (uninstalledIds.length > 0) {
+        setOnboardingSetupAgentIds(uninstalledIds);
+        setOnboardingSetupOpen(true);
+      }
+    },
+    [refreshSettings]
+  );
+
+  const handleAgentSelectionSkip = useCallback(() => {
+    setAgentSelectionOpen(false);
+  }, []);
+
+  const handleOnboardingSetupClose = useCallback(() => {
+    setOnboardingSetupOpen(false);
+    setOnboardingSetupAgentIds([]);
+  }, []);
+
   const createFolderDialogOpen = useProjectStore((state) => state.createFolderDialogOpen);
   const closeCreateFolderDialog = useProjectStore((state) => state.closeCreateFolderDialog);
   const openCreateFolderDialog = useProjectStore((state) => state.openCreateFolderDialog);
@@ -1171,16 +1224,33 @@ function App() {
       )}
 
       {onboardingProjectId && (
+        <AgentSelectionStep
+          isOpen={agentSelectionOpen}
+          onContinue={handleAgentSelectionContinue}
+          onSkip={handleAgentSelectionSkip}
+        />
+      )}
+
+      {onboardingProjectId && (
         <ProjectOnboardingWizard
-          isOpen={onboardingWizardOpen}
+          isOpen={onboardingWizardOpen && !agentSelectionOpen && !onboardingSetupOpen}
           projectId={onboardingProjectId}
           onClose={closeOnboardingWizard}
           onFinish={handleWizardFinish}
         />
       )}
 
+      {onboardingSetupOpen && (
+        <AgentSetupWizard
+          isOpen={onboardingSetupOpen}
+          onClose={handleOnboardingSetupClose}
+          initialAvailability={availability}
+          agentIds={onboardingSetupAgentIds}
+        />
+      )}
+
       <AgentSetupWizard
-        isOpen={isAgentSetupOpen}
+        isOpen={isAgentSetupOpen && !onboardingWizardOpen}
         onClose={() => setIsAgentSetupOpen(false)}
         initialAvailability={availability}
       />
