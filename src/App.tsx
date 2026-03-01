@@ -63,6 +63,7 @@ import { NewWorktreeDialog } from "./components/Worktree/NewWorktreeDialog";
 import { TerminalInfoDialogHost } from "./components/Terminal/TerminalInfoDialogHost";
 import { TerminalPalette, NewTerminalPalette } from "./components/TerminalPalette";
 import { PanelPalette } from "./components/PanelPalette/PanelPalette";
+import { MORE_AGENTS_PANEL_ID } from "./hooks/usePanelPalette";
 import { GitInitDialog, ProjectOnboardingWizard, WelcomeScreen } from "./components/Project";
 import {
   AgentSetupWizard,
@@ -93,6 +94,7 @@ import {
   useFocusStore,
   useAgentSettingsStore,
   cleanupWorktreeDataStore,
+  useToolbarPreferencesStore,
   type RetryAction,
 } from "./store";
 import { useShallow } from "zustand/react/shallow";
@@ -645,6 +647,7 @@ function App() {
   const onboardingProjectId = useProjectStore((state) => state.onboardingProjectId);
   const closeOnboardingWizard = useProjectStore((state) => state.closeOnboardingWizard);
 
+  const openOnboardingWizard = useProjectStore((state) => state.openOnboardingWizard);
   const agentSettingsInitialized = useAgentSettingsStore((state) => state.isInitialized);
 
   // Intercept onboarding to show agent selection on first run.
@@ -812,6 +815,30 @@ function App() {
     setSettingsTab("general");
     setIsSettingsOpen(true);
   }, []);
+
+  const handleWizardFinish = useCallback(() => {
+    const defaultAgent = useToolbarPreferencesStore.getState().launcher.defaultAgent;
+    const selected = agentSettings?.agents
+      ? Object.entries(agentSettings.agents)
+          .filter(([, entry]) => entry.selected === true)
+          .map(([id]) => id)
+      : [];
+    const primaryAgent = defaultAgent ?? selected[0];
+
+    if (primaryAgent && availability[primaryAgent]) {
+      launchAgent(primaryAgent, {
+        worktreeId: activeWorktreeId ?? undefined,
+        prompt: "Hi! I'm ready to help with this project. What would you like to know?",
+      }).catch(() => {});
+    }
+  }, [launchAgent, activeWorktreeId, availability, agentSettings]);
+
+  const handleOpenSetupWizard = useCallback(() => {
+    const currentProject = useProjectStore.getState().currentProject;
+    if (!currentProject) return;
+    setIsSettingsOpen(false);
+    openOnboardingWizard(currentProject.id);
+  }, [openOnboardingWizard]);
 
   const handleOpenAgentSettings = useCallback(() => {
     setSettingsTab("agents");
@@ -1072,6 +1099,7 @@ function App() {
         onSelectNext={panelPalette.selectNext}
         onSelect={(kind) => {
           panelPalette.handleSelect(kind);
+          if (kind.id === MORE_AGENTS_PANEL_ID) return;
           if (kind.id.startsWith("agent:")) {
             const agentId = kind.id.slice("agent:".length);
             if (agentId) {
@@ -1088,7 +1116,7 @@ function App() {
         }}
         onConfirm={() => {
           const selected = panelPalette.confirmSelection();
-          if (selected) {
+          if (selected && selected.id !== MORE_AGENTS_PANEL_ID) {
             if (selected.id.startsWith("agent:")) {
               const agentId = selected.id.slice("agent:".length);
               if (agentId) {
@@ -1179,6 +1207,7 @@ function App() {
         onClose={() => setIsSettingsOpen(false)}
         defaultTab={settingsTab}
         onSettingsChange={refreshSettings}
+        onOpenSetupWizard={currentProject ? handleOpenSetupWizard : undefined}
       />
 
       <ShortcutReferenceDialog isOpen={isShortcutsOpen} onClose={() => setIsShortcutsOpen(false)} />
@@ -1207,6 +1236,7 @@ function App() {
           isOpen={onboardingWizardOpen && !agentSelectionOpen && !onboardingSetupOpen}
           projectId={onboardingProjectId}
           onClose={closeOnboardingWizard}
+          onFinish={handleWizardFinish}
         />
       )}
 
