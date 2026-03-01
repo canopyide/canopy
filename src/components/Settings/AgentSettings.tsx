@@ -1,7 +1,7 @@
 import { useEffect, useMemo, useState, useCallback, useRef } from "react";
 import { cn } from "@/lib/utils";
 import { getAgentIds, getAgentConfig } from "@/config/agents";
-import { useAgentSettingsStore } from "@/store";
+import { useAgentSettingsStore, useCliAvailabilityStore } from "@/store";
 import { Button } from "@/components/ui/button";
 import {
   DEFAULT_AGENT_SETTINGS,
@@ -12,7 +12,6 @@ import { RotateCcw, ExternalLink, RefreshCw, Copy, Check } from "lucide-react";
 import { actionService } from "@/services/ActionService";
 import { Tooltip, TooltipContent, TooltipTrigger, TooltipProvider } from "@/components/ui/tooltip";
 import { AgentHelpOutput } from "./AgentHelpOutput";
-import { cliAvailabilityClient } from "@/clients";
 import { getInstallBlocksForCurrentOS } from "@/lib/agentInstall";
 
 interface AgentSettingsProps {
@@ -28,14 +27,18 @@ export function AgentSettings({ onSettingsChange }: AgentSettingsProps) {
     updateAgent,
     reset,
   } = useAgentSettingsStore();
+
+  const cliAvailability = useCliAvailabilityStore((state) => state.availability);
+  const isCliLoading = useCliAvailabilityStore((state) => state.isLoading);
+  const isRefreshingCli = useCliAvailabilityStore((state) => state.isRefreshing);
+  const cliError = useCliAvailabilityStore((state) => state.error);
+  const initializeCliAvailability = useCliAvailabilityStore((state) => state.initialize);
+  const refreshCliAvailability = useCliAvailabilityStore((state) => state.refresh);
+
   const [activeAgentId, setActiveAgentId] = useState<string | null>(null);
-  const [cliAvailability, setCliAvailability] = useState<Record<string, boolean> | null>(null);
-  const [isRefreshingCli, setIsRefreshingCli] = useState(false);
-  const [cliCheckError, setCliCheckError] = useState<string | null>(null);
   const [copiedCommand, setCopiedCommand] = useState<string | null>(null);
   const copyTimeoutRef = useRef<NodeJS.Timeout | null>(null);
   const isMountedRef = useRef(true);
-  const refreshRequestIdRef = useRef(0);
   const scrollContainerRef = useRef<HTMLDivElement | null>(null);
   const activePillRef = useRef<HTMLButtonElement | null>(null);
 
@@ -44,23 +47,8 @@ export function AgentSettings({ onSettingsChange }: AgentSettingsProps) {
   }, [initialize]);
 
   useEffect(() => {
-    const loadCliAvailability = async () => {
-      try {
-        const availability = await cliAvailabilityClient.get();
-        if (isMountedRef.current) {
-          setCliAvailability(availability);
-          setCliCheckError(null);
-        }
-      } catch (error) {
-        console.error("[AgentSettings] Failed to load CLI availability:", error);
-        if (isMountedRef.current) {
-          setCliAvailability({});
-          setCliCheckError("Failed to check CLI availability");
-        }
-      }
-    };
-    void loadCliAvailability();
-  }, []);
+    void initializeCliAvailability();
+  }, [initializeCliAvailability]);
 
   useEffect(() => {
     return () => {
@@ -73,26 +61,12 @@ export function AgentSettings({ onSettingsChange }: AgentSettingsProps) {
 
   const handleRefreshCliAvailability = useCallback(async () => {
     if (isRefreshingCli) return;
-
-    const requestId = ++refreshRequestIdRef.current;
-    setIsRefreshingCli(true);
-    setCliCheckError(null);
     try {
-      const availability = await cliAvailabilityClient.refresh();
-      if (isMountedRef.current && refreshRequestIdRef.current === requestId) {
-        setCliAvailability(availability);
-      }
+      await refreshCliAvailability();
     } catch (error) {
       console.error("[AgentSettings] Failed to refresh CLI availability:", error);
-      if (isMountedRef.current && refreshRequestIdRef.current === requestId) {
-        setCliCheckError("Re-check failed. Try again or restart the app.");
-      }
-    } finally {
-      if (isMountedRef.current && refreshRequestIdRef.current === requestId) {
-        setIsRefreshingCli(false);
-      }
     }
-  }, [isRefreshingCli]);
+  }, [isRefreshingCli, refreshCliAvailability]);
 
   const handleCopyCommand = useCallback(async (command: string) => {
     try {
@@ -431,8 +405,8 @@ export function AgentSettings({ onSettingsChange }: AgentSettingsProps) {
             {/* Installation Section */}
             {(() => {
               const agentConfig = getAgentConfig(activeAgent.id);
-              const isCliAvailable = cliAvailability?.[activeAgent.id];
-              const isLoading = cliAvailability === null;
+              const isCliAvailable = cliAvailability[activeAgent.id];
+              const isLoading = isCliLoading;
               const installBlocks = agentConfig ? getInstallBlocksForCurrentOS(agentConfig) : null;
               const hasInstallConfig = agentConfig?.install;
 
@@ -472,9 +446,11 @@ export function AgentSettings({ onSettingsChange }: AgentSettingsProps) {
                     </Button>
                   </div>
 
-                  {cliCheckError && (
+                  {cliError && (
                     <div className="px-3 py-2 rounded-[var(--radius-md)] bg-[var(--color-status-error)]/10 border border-[var(--color-status-error)]/20">
-                      <p className="text-xs text-[var(--color-status-error)]">{cliCheckError}</p>
+                      <p className="text-xs text-[var(--color-status-error)]">
+                        Re-check failed. Try again or restart the app.
+                      </p>
                     </div>
                   )}
 

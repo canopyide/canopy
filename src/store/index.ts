@@ -62,6 +62,8 @@ export { useGitHubConfigStore, cleanupGitHubConfigStore } from "./githubConfigSt
 
 export { useAgentSettingsStore, cleanupAgentSettingsStore } from "./agentSettingsStore";
 
+export { useCliAvailabilityStore, cleanupCliAvailabilityStore } from "./cliAvailabilityStore";
+
 export { usePulseStore } from "./pulseStore";
 
 export { usePreferencesStore } from "./preferencesStore";
