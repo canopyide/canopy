@@ -18,11 +18,10 @@ interface UseGridNavigationOptions {
 export function useGridNavigation(options: UseGridNavigationOptions = {}) {
   const { containerSelector = "#terminal-grid" } = options;
 
-  const { terminals, focusedId, tabGroups, activeTabByGroup, getTabGroups } = useTerminalStore(
+  const { terminals, focusedId, activeTabByGroup, getTabGroups } = useTerminalStore(
     useShallow((state) => ({
       terminals: state.terminals,
       focusedId: state.focusedId,
-      tabGroups: state.tabGroups,
       activeTabByGroup: state.activeTabByGroup,
       getTabGroups: state.getTabGroups,
     }))
@@ -205,7 +204,7 @@ export function useGridNavigation(options: UseGridNavigationOptions = {}) {
       const resolvedId = group.panelIds.includes(activeId) ? activeId : group.panelIds[0];
       return resolvedId ? [resolvedId] : [];
     });
-  }, [getTabGroups, activeWorktreeId, terminals, tabGroups, activeTabByGroup]);
+  }, [getTabGroups, activeWorktreeId, activeTabByGroup]);
 
   const findByIndex = useCallback(
     (index: number): string | null => {

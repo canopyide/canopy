@@ -523,9 +523,7 @@ export function DndProvider({ children }: DndProviderProps) {
             // the dragged terminal. activeData.sourceIndex is the panel index among all
             // individual panels, not the group index, so it cannot be used here.
             // Prefer groupId match (explicit groups); fall back to panel membership.
-            let fromGroupIndex = tabGroupsAtLocation.findIndex(
-              (g) => g.id === activeData.groupId
-            );
+            let fromGroupIndex = tabGroupsAtLocation.findIndex((g) => g.id === activeData.groupId);
             if (fromGroupIndex === -1) {
               fromGroupIndex = tabGroupsAtLocation.findIndex((g) =>
                 g.panelIds.includes(activeData.terminal.id)
