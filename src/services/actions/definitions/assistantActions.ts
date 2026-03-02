@@ -1,5 +1,6 @@
 import type { ActionCallbacks, ActionRegistry } from "../actionTypes";
 import { useAssistantChatStore } from "@/store/assistantChatStore";
+import { useAppAgentStore } from "@/store/appAgentStore";
 
 export function registerAssistantActions(
   actions: ActionRegistry,
@@ -14,6 +15,8 @@ export function registerAssistantActions(
     danger: "safe",
     scope: "renderer",
     run: async () => {
+      const { hasApiKey, enabled } = useAppAgentStore.getState();
+      if (!hasApiKey || !enabled) return;
       useAssistantChatStore.getState().toggle();
     },
   }));

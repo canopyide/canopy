@@ -44,8 +44,16 @@ export function ContentDock({ density = "normal" }: ContentDockProps) {
   const { showMenu } = useNativeContextMenu();
   const activeWorktreeId = useWorktreeSelectionStore((state) => state.activeWorktreeId);
 
-  const { hasApiKey, isInitialized: agentStoreReady } = useAppAgentStore(
-    useShallow((s) => ({ hasApiKey: s.hasApiKey, isInitialized: s.isInitialized }))
+  const {
+    hasApiKey,
+    enabled,
+    isInitialized: agentStoreReady,
+  } = useAppAgentStore(
+    useShallow((s) => ({
+      hasApiKey: s.hasApiKey,
+      enabled: s.enabled,
+      isInitialized: s.isInitialized,
+    }))
   );
   const initializeAgentStore = useAppAgentStore((s) => s.initialize);
   const closeAssistant = useAssistantChatStore((s) => s.close);
@@ -55,12 +63,12 @@ export function ContentDock({ density = "normal" }: ContentDockProps) {
   }, [initializeAgentStore]);
 
   useEffect(() => {
-    if (agentStoreReady && !hasApiKey) {
+    if (agentStoreReady && (!hasApiKey || !enabled)) {
       closeAssistant();
     }
-  }, [agentStoreReady, hasApiKey, closeAssistant]);
+  }, [agentStoreReady, hasApiKey, enabled, closeAssistant]);
 
-  const showAssistant = agentStoreReady && hasApiKey;
+  const showAssistant = agentStoreReady && hasApiKey && enabled;
 
   const trashedTerminals = useTerminalStore(useShallow((state) => state.trashedTerminals));
   const terminals = useTerminalStore((state) => state.terminals);

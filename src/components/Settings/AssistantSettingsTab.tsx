@@ -13,12 +13,14 @@ import {
   RotateCcw,
 } from "lucide-react";
 import { DEFAULT_APP_AGENT_CONFIG } from "@shared/types";
+import { cn } from "@/lib/utils";
 import { Tooltip, TooltipContent, TooltipTrigger, TooltipProvider } from "@/components/ui/tooltip";
 
 type ValidationResult = "success" | "error" | "test-success" | "test-error" | null;
 
 export function AssistantSettingsTab() {
-  const { hasApiKey, config, initialize, setApiKey, setModel } = useAppAgentStore();
+  const { hasApiKey, config, enabled, initialize, setApiKey, setModel, setEnabled } =
+    useAppAgentStore();
   const [apiKeyInput, setApiKeyInput] = useState("");
   const [modelInput, setModelInput] = useState("");
   const [showApiKey, setShowApiKey] = useState(false);
@@ -173,6 +175,33 @@ export function AssistantSettingsTab() {
       </div>
 
       <div className="rounded-[var(--radius-lg)] border border-canopy-border bg-surface p-4 space-y-4">
+        <div className="flex items-center justify-between pb-3 border-b border-canopy-border">
+          <div>
+            <div className="text-sm font-medium text-canopy-text">Enable Canopy Assistant</div>
+            <div className="text-xs text-canopy-text/50">
+              When disabled, the assistant icon is hidden from the dock
+            </div>
+          </div>
+          <button
+            type="button"
+            role="switch"
+            aria-checked={enabled}
+            aria-label="Enable Canopy Assistant"
+            onClick={() => void setEnabled(!enabled).catch(() => {})}
+            className={cn(
+              "relative w-11 h-6 rounded-full transition-colors shrink-0",
+              enabled ? "bg-canopy-accent" : "bg-canopy-border"
+            )}
+          >
+            <span
+              className={cn(
+                "absolute top-0.5 left-0.5 w-5 h-5 bg-white rounded-full transition-transform",
+                enabled && "translate-x-5"
+              )}
+            />
+          </button>
+        </div>
+
         <div className="flex items-center gap-3 pb-3 border-b border-canopy-border">
           <div className="w-10 h-10 rounded-[var(--radius-md)] bg-gradient-to-br from-orange-500/20 to-red-500/20 flex items-center justify-center">
             <Sparkles className="w-5 h-5 text-orange-400" />
