@@ -467,7 +467,7 @@ export const HybridInputBar = forwardRef<HybridInputBarHandle, HybridInputBarPro
       const view = editorViewRef.current;
       if (!view) return;
       requestAnimationFrame(() => {
-        if (!editorViewRef.current) return;
+        if (editorViewRef.current !== view) return;
         view.dispatch({
           selection: EditorSelection.cursor(view.state.doc.length),
           scrollIntoView: true,
