@@ -615,7 +615,9 @@ export function Toolbar({
                     isCopyingTree && "cursor-wait opacity-70",
                     !activeWorktree && "opacity-50"
                   )}
-                  aria-label={isCopyingTree ? "Copying…" : treeCopied ? "Context Copied" : "Copy Context"}
+                  aria-label={
+                    isCopyingTree ? "Copying…" : treeCopied ? "Context Copied" : "Copy Context"
+                  }
                 >
                   {isCopyingTree ? (
                     <Loader2 className="animate-spin motion-reduce:animate-none" />
