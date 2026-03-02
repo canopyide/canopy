@@ -33,7 +33,12 @@ import { useWorktreeActions } from "@/hooks/useWorktreeActions";
 import { useProjectSettings, useKeybindingDisplay } from "@/hooks";
 import type { UseProjectSwitcherPaletteReturn } from "@/hooks";
 import { useProjectStore } from "@/store/projectStore";
-import { useSidecarStore, usePreferencesStore, useToolbarPreferencesStore } from "@/store";
+import {
+  useSidecarStore,
+  usePreferencesStore,
+  useToolbarPreferencesStore,
+  useCliAvailabilityStore,
+} from "@/store";
 import type { ToolbarButtonId } from "@/../../shared/types/domain";
 import { useWorktreeSelectionStore } from "@/store/worktreeStore";
 import { useWorktreeDataStore } from "@/store/worktreeDataStore";
@@ -249,10 +254,12 @@ export function Toolbar({
     void actionService.dispatch("app.settings.openTab", { tab }, { source: "context-menu" });
   };
 
-  const hasAnySelectedAgent = useMemo(() => {
-    if (!agentSettings?.agents) return false;
-    return Object.values(agentSettings.agents).some((entry) => entry.selected === true);
-  }, [agentSettings]);
+  const cliInitialized = useCliAvailabilityStore((state) => state.isInitialized);
+  const hasAnyInstalledAgent = useMemo(() => {
+    if (!cliInitialized) return true;
+    if (!agentAvailability) return false;
+    return Object.values(agentAvailability).some((v) => v === true);
+  }, [agentAvailability, cliInitialized]);
 
   const buttonRegistry = useMemo<
     Record<ToolbarButtonId, { render: () => React.ReactNode; isAvailable: boolean }>
@@ -284,7 +291,7 @@ export function Toolbar({
       },
       "agent-setup": {
         render: () => <AgentSetupButton key="agent-setup" />,
-        isAvailable: agentSettings != null && !hasAnySelectedAgent,
+        isAvailable: !hasAnyInstalledAgent,
       },
       claude: {
         render: () => (
@@ -292,7 +299,6 @@ export function Toolbar({
             key="claude"
             type="claude"
             availability={agentAvailability?.claude}
-            isEnabled={agentSettings?.agents?.claude?.enabled ?? true}
             onOpenSettings={openAgentSettings}
           />
         ),
@@ -304,7 +310,6 @@ export function Toolbar({
             key="gemini"
             type="gemini"
             availability={agentAvailability?.gemini}
-            isEnabled={agentSettings?.agents?.gemini?.enabled ?? true}
             onOpenSettings={openAgentSettings}
           />
         ),
@@ -316,7 +321,6 @@ export function Toolbar({
             key="codex"
             type="codex"
             availability={agentAvailability?.codex}
-            isEnabled={agentSettings?.agents?.codex?.enabled ?? true}
             onOpenSettings={openAgentSettings}
           />
         ),
@@ -328,7 +332,6 @@ export function Toolbar({
             key="opencode"
             type="opencode"
             availability={agentAvailability?.opencode}
-            isEnabled={agentSettings?.agents?.opencode?.enabled ?? true}
             onOpenSettings={openAgentSettings}
           />
         ),
@@ -724,7 +727,7 @@ export function Toolbar({
       onToggleFocusMode,
       agentAvailability,
       agentSettings,
-      hasAnySelectedAgent,
+      hasAnyInstalledAgent,
       openAgentSettings,
       onLaunchAgent,
       terminalShortcut,
