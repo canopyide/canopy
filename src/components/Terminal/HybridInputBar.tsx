@@ -169,14 +169,14 @@ export const HybridInputBar = forwardRef<HybridInputBarHandle, HybridInputBarPro
             const cursor = view.state.selection.main.head;
             const { filePath, thumbnailDataUrl } = result;
             view.dispatch({
-              changes: { from: cursor, insert: filePath },
+              changes: { from: cursor, insert: filePath + " " },
               effects: addImageChip.of({
                 from: cursor,
                 to: cursor + filePath.length,
                 filePath,
                 thumbnailUrl: thumbnailDataUrl,
               }),
-              selection: { anchor: cursor + filePath.length },
+              selection: { anchor: cursor + filePath.length + 1 },
             });
           } catch {
             // Editor may have been destroyed before IPC returned
