@@ -71,7 +71,7 @@ test("launch Claude agent", async () => {
   await window.screenshot({ path: "test-results/02-agent-launched.png" });
 });
 
-test("trust the workspace folder", async () => {
+test("trust the workspace folder and accept API key", async () => {
   const { window } = ctx;
 
   // Wait for Claude CLI to show the trust prompt
@@ -85,10 +85,20 @@ test("trust the workspace folder", async () => {
   await cmEditor.click();
   await window.keyboard.press("Enter");
 
+  // Claude Code detects ANTHROPIC_API_KEY and asks "Do you want to use this API key?"
+  // Option 2 "No (recommended)" is pre-selected, so we need to navigate up to "Yes"
+  await waitForTerminalText(ctx, "API key", 15_000);
+
+  await window.screenshot({ path: "test-results/04-api-key-prompt.png" });
+
+  await cmEditor.click();
+  await window.keyboard.press("ArrowUp");
+  await window.keyboard.press("Enter");
+
   // Wait for Claude's TUI to fully load (welcome screen appears)
   await waitForTerminalText(ctx, "Welcome", 60_000);
 
-  await window.screenshot({ path: "test-results/04-trust-accepted.png" });
+  await window.screenshot({ path: "test-results/05-trust-accepted.png" });
 });
 
 test("send hello world command and verify output", async () => {
@@ -102,12 +112,12 @@ test("send hello world command and verify output", async () => {
   await cmEditor.pressSequentially("Please say hello world", { delay: 30 });
   await window.keyboard.press("Enter");
 
-  await window.screenshot({ path: "test-results/05-command-sent.png" });
+  await window.screenshot({ path: "test-results/06-command-sent.png" });
 
   // Wait for Claude to process and respond
   await window.waitForTimeout(15_000);
 
-  await window.screenshot({ path: "test-results/06-hello-world-response.png" });
+  await window.screenshot({ path: "test-results/07-hello-world-response.png" });
 
   // Verify Claude responded with "hello world" (not just the command we typed).
   // The command "Please say hello world" contains it once — Claude's response adds another.
