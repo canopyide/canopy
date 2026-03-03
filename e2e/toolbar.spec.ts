@@ -42,13 +42,6 @@ test("toolbar renders key buttons", async () => {
   }
 });
 
-test("problems button shows error count", async () => {
-  const { window } = ctx;
-
-  // The problems button aria-label follows the pattern "Problems: N error(s)"
-  const problemsBtn = window.locator('[aria-label^="Problems:"]');
-  await expect(problemsBtn).toBeVisible({ timeout: 5_000 });
-
-  const label = await problemsBtn.getAttribute("aria-label");
-  expect(label).toMatch(/Problems: \d+ errors?/);
-});
+// Note: "problems button shows error count" test was removed from this file
+// because the Problems button only appears when a project is open.
+// It could be tested in a spec that opens a project first.

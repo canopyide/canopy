@@ -31,7 +31,7 @@ export async function launchApp(): Promise<AppContext> {
     executablePath: electronPath,
     args,
     env: { ...process.env, NODE_ENV: "production" },
-    timeout: 30_000,
+    timeout: 60_000,
   });
 
   // Log console errors for debugging
