@@ -35,6 +35,7 @@ import { getAgentConfig } from "@/config/agents";
 import { terminalClient } from "@/clients";
 import { HybridInputBar, type HybridInputBarHandle } from "./HybridInputBar";
 import { getTerminalFocusTarget } from "./terminalFocus";
+import { registerPanelFocusHandler } from "./terminalFocusRegistry";
 import { getCanopyCommand, isEscapedCommand, unescapeCommand } from "./canopySlashCommands";
 
 export type { TerminalType };
@@ -541,6 +542,29 @@ function TerminalPaneComponent({
     isBackendDisconnected,
     isBackendRecovering,
     isInputLocked,
+  ]);
+
+  useEffect(() => {
+    if (!showHybridInputBar) return;
+    return registerPanelFocusHandler(id, () => {
+      const focusTarget = getTerminalFocusTarget({
+        isAgentTerminal,
+        isInputDisabled: isBackendDisconnected || isBackendRecovering || isInputLocked,
+        hybridInputEnabled,
+        hybridInputAutoFocus,
+      });
+      if (focusTarget !== "hybridInput") return;
+      inputBarRef.current?.focusWithCursorAtEnd();
+    });
+  }, [
+    id,
+    showHybridInputBar,
+    isAgentTerminal,
+    isBackendDisconnected,
+    isBackendRecovering,
+    isInputLocked,
+    hybridInputEnabled,
+    hybridInputAutoFocus,
   ]);
 
   // Sync agent state to terminal service for scroll management
