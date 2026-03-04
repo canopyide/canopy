@@ -4,7 +4,7 @@ import { createFixtureRepo } from "../helpers/fixtures";
 import { openAndOnboardProject } from "../helpers/project";
 import { getFirstGridPanel, getGridPanelCount } from "../helpers/panels";
 import { SEL } from "../helpers/selectors";
-import { T_SHORT, T_MEDIUM, T_LONG } from "../helpers/timeouts";
+import { T_SHORT, T_MEDIUM, T_LONG, T_SETTLE } from "../helpers/timeouts";
 
 let ctx: AppContext;
 
@@ -75,7 +75,7 @@ test.describe.serial("Terminal Operations", () => {
     const restartBtn = panel.locator(SEL.panel.restart).first();
     await restartBtn.click({ force: true });
 
-    await window.waitForTimeout(300);
+    await window.waitForTimeout(T_SETTLE);
     await restartBtn.click({ force: true });
 
     await expect(panel).toBeVisible({ timeout: T_LONG });
@@ -89,7 +89,7 @@ test.describe.serial("Terminal Operations", () => {
     const closeBtn = panel.locator(SEL.panel.close).first();
     await closeBtn.click();
 
-    await window.waitForTimeout(500);
+    await window.waitForTimeout(T_SETTLE);
     const remaining = await getGridPanelCount(window);
     if (remaining > 0) {
       const panel2 = getFirstGridPanel(window);

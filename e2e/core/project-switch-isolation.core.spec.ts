@@ -61,11 +61,8 @@ test.describe.serial("Project Switch Isolation", () => {
   test("Project B has 0 panels (isolation verified)", async () => {
     const { window } = ctx;
 
-    // Give UI time to settle
-    await window.waitForTimeout(1_000);
-
-    const count = await getGridPanelCount(window);
-    expect(count).toBe(0);
+    // Poll until panels settle to 0 (project switch may take time on Windows)
+    await expect.poll(() => getGridPanelCount(window), { timeout: T_LONG }).toBe(0);
   });
 
   test("switch back to Project A restores 1 panel", async () => {
@@ -81,10 +78,7 @@ test.describe.serial("Project Switch Isolation", () => {
     const projectA = palette.locator('text="Project A"');
     await projectA.click();
 
-    // Wait for panels to restore
-    await window.waitForTimeout(2_000);
-
-    const count = await getGridPanelCount(window);
-    expect(count).toBe(1);
+    // Poll until panel is restored (may take time on Windows CI)
+    await expect.poll(() => getGridPanelCount(window), { timeout: T_LONG }).toBe(1);
   });
 });

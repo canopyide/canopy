@@ -35,10 +35,10 @@ test.describe.serial("Settings Persistence", () => {
     const toggle = window.locator(SEL.settings.projectPulseToggle);
     await expect(toggle).toBeVisible({ timeout: T_MEDIUM });
 
-    await expect(toggle).toHaveAttribute("aria-checked", "true");
+    await expect(toggle).toHaveAttribute("aria-checked", "true", { timeout: T_MEDIUM });
 
     await toggle.click();
-    await expect(toggle).toHaveAttribute("aria-checked", "false");
+    await expect(toggle).toHaveAttribute("aria-checked", "false", { timeout: T_MEDIUM });
   });
 
   test("Terminal tab: toggle Performance Mode on", async () => {
@@ -51,10 +51,10 @@ test.describe.serial("Settings Persistence", () => {
     await toggle.scrollIntoViewIfNeeded();
     await expect(toggle).toBeVisible({ timeout: T_MEDIUM });
 
-    await expect(toggle).toHaveAttribute("aria-checked", "false");
+    await expect(toggle).toHaveAttribute("aria-checked", "false", { timeout: T_MEDIUM });
 
     await toggle.click();
-    await expect(toggle).toHaveAttribute("aria-checked", "true");
+    await expect(toggle).toHaveAttribute("aria-checked", "true", { timeout: T_MEDIUM });
   });
 
   test("Appearance tab: change font family", async () => {
@@ -68,10 +68,10 @@ test.describe.serial("Settings Persistence", () => {
     const fontSelect = window.locator(SEL.settings.fontFamilySelect);
     await expect(fontSelect).toBeVisible({ timeout: T_MEDIUM });
 
-    await expect(fontSelect).toHaveValue("jetbrains");
+    await expect(fontSelect).toHaveValue("jetbrains", { timeout: T_MEDIUM });
 
     await fontSelect.selectOption("system");
-    await expect(fontSelect).toHaveValue("system");
+    await expect(fontSelect).toHaveValue("system", { timeout: T_MEDIUM });
   });
 
   test("close and reopen settings — changes persist", async () => {
@@ -87,20 +87,20 @@ test.describe.serial("Settings Persistence", () => {
     const generalTab = window.locator(`${SEL.settings.navSidebar} button:has-text("General")`);
     await generalTab.click();
     const pulseToggle = window.locator(SEL.settings.projectPulseToggle);
-    await expect(pulseToggle).toHaveAttribute("aria-checked", "false");
+    await expect(pulseToggle).toHaveAttribute("aria-checked", "false", { timeout: T_MEDIUM });
 
     const terminalTab = window.locator(`${SEL.settings.navSidebar} button:has-text("Terminal")`);
     await terminalTab.click();
     const perfToggle = window.locator(SEL.settings.performanceModeToggle);
     await perfToggle.scrollIntoViewIfNeeded();
-    await expect(perfToggle).toHaveAttribute("aria-checked", "true");
+    await expect(perfToggle).toHaveAttribute("aria-checked", "true", { timeout: T_MEDIUM });
 
     const appearanceTab = window.locator(
       `${SEL.settings.navSidebar} button:has-text("Appearance")`
     );
     await appearanceTab.click();
     const fontSelect = window.locator(SEL.settings.fontFamilySelect);
-    await expect(fontSelect).toHaveValue("system");
+    await expect(fontSelect).toHaveValue("system", { timeout: T_MEDIUM });
 
     await window.keyboard.press("Escape");
   });

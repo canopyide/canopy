@@ -4,7 +4,7 @@ import { createFixtureRepo } from "../helpers/fixtures";
 import { openAndOnboardProject } from "../helpers/project";
 import { getFirstGridPanel, getGridPanelCount } from "../helpers/panels";
 import { SEL } from "../helpers/selectors";
-import { T_SHORT, T_MEDIUM, T_LONG } from "../helpers/timeouts";
+import { T_SHORT, T_MEDIUM, T_LONG, T_SETTLE } from "../helpers/timeouts";
 
 let ctx: AppContext;
 
@@ -24,7 +24,7 @@ test.describe.serial("Multi-Panel Grid & Dock", () => {
 
     for (let i = 0; i < 3; i++) {
       await window.locator(SEL.toolbar.openTerminal).click();
-      await window.waitForTimeout(500);
+      await window.waitForTimeout(T_SETTLE);
     }
 
     await expect.poll(() => getGridPanelCount(window), { timeout: T_LONG }).toBe(3);
@@ -37,7 +37,7 @@ test.describe.serial("Multi-Panel Grid & Dock", () => {
     await expect(panels).toHaveCount(3, { timeout: T_MEDIUM });
 
     for (let i = 0; i < 3; i++) {
-      await expect(panels.nth(i)).toBeVisible();
+      await expect(panels.nth(i)).toBeVisible({ timeout: T_MEDIUM });
     }
   });
 
