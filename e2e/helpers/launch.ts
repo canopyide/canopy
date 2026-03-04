@@ -26,15 +26,11 @@ export async function launchApp(options: LaunchOptions = {}): Promise<AppContext
 
   if (process.env.CI) {
     // CI runners lack real GPUs — disable GPU to prevent hangs
-    args.unshift(
-      "--disable-gpu",
-      "--disable-software-rasterizer",
-      "--no-sandbox",
-      "--noerrdialogs"
-    );
+    args.unshift("--disable-gpu", "--disable-software-rasterizer", "--noerrdialogs");
 
     if (process.platform === "linux") {
-      args.unshift("--disable-dev-shm-usage");
+      // Linux CI needs --no-sandbox and shared memory workaround
+      args.unshift("--no-sandbox", "--disable-dev-shm-usage");
     }
   }
 
