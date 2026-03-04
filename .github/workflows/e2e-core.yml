@@ -68,6 +68,15 @@ jobs:
     timeout-minutes: 40
 
     steps:
+      - name: Exclude workspace from Windows Defender
+        if: runner.os == 'Windows'
+        shell: pwsh
+        run: |
+          Add-MpPreference -ExclusionPath "${{ github.workspace }}"
+          Add-MpPreference -ExclusionPath "$env:RUNNER_TEMP"
+          Add-MpPreference -ExclusionProcess "electron.exe"
+          Add-MpPreference -ExclusionProcess "node.exe"
+
       - name: Check out repository
         uses: actions/checkout@v4
 
