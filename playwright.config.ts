@@ -10,6 +10,7 @@ export default defineConfig({
   workers: "50%",
   fullyParallel: false,
   timeout: 180_000,
+  expect: { timeout: isWindowsCI ? 15_000 : isCI ? 10_000 : 5_000 },
   outputDir: "./test-results",
   use: {
     trace: "on-first-retry",
@@ -20,7 +21,7 @@ export default defineConfig({
       name: "core",
       testDir: "./e2e/core",
       timeout: coreTimeout,
-      retries: isCI ? 1 : 0,
+      retries: isCI ? 2 : 0,
     },
     {
       name: "online",

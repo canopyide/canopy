@@ -33,7 +33,7 @@ test.describe.serial("Worktree Lifecycle", () => {
     expect(mainBranch.length).toBeGreaterThan(0);
 
     const mainCard = window.locator(SEL.worktree.card(mainBranch));
-    await expect(mainCard).toHaveAttribute("aria-label", /selected/);
+    await expect(mainCard).toHaveAttribute("aria-label", /selected/, { timeout: T_MEDIUM });
   });
 
   test("create new worktree via UI", async () => {

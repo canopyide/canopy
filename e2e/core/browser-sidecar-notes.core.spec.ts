@@ -4,7 +4,7 @@ import { launchApp, closeApp, type AppContext } from "../helpers/launch";
 import { createFixtureRepo } from "../helpers/fixtures";
 import { openAndOnboardProject } from "../helpers/project";
 import { SEL } from "../helpers/selectors";
-import { T_SHORT, T_MEDIUM, T_LONG } from "../helpers/timeouts";
+import { T_SHORT, T_MEDIUM, T_LONG, T_SETTLE } from "../helpers/timeouts";
 
 let ctx: AppContext;
 let server: Server;
@@ -51,7 +51,7 @@ test.describe.serial("Browser, Sidecar & Notes", () => {
     await window.keyboard.press("Enter");
 
     // Give the webview time to load
-    await window.waitForTimeout(2_000);
+    await window.waitForTimeout(T_SETTLE * 3);
 
     // Address bar may strip the http:// protocol
     await expect(addressBar).toHaveValue(new RegExp(`127\\.0\\.0\\.1:${port}`), {
@@ -69,10 +69,10 @@ test.describe.serial("Browser, Sidecar & Notes", () => {
     }
 
     await sidecarBtn.click();
-    await window.waitForTimeout(500);
+    await window.waitForTimeout(T_SETTLE);
 
     await sidecarBtn.click();
-    await window.waitForTimeout(500);
+    await window.waitForTimeout(T_SETTLE);
   });
 
   test("notes palette opens and shows editor", async () => {
