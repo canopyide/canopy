@@ -15,6 +15,7 @@ import { existsSync } from "fs";
 import { app } from "electron";
 import { GitService } from "./GitService.js";
 import { isCanopyError } from "../utils/errorTypes.js";
+import { resilientRename, resilientWriteFile, resilientUnlink } from "../utils/fs.js";
 import { sanitizeSvg } from "../../shared/utils/svgSanitizer.js";
 import { TerminalSnapshotSchema, filterValidTerminalEntries } from "../schemas/ipc.js";
 import { logError } from "../utils/logger.js";
@@ -391,8 +392,8 @@ export class ProjectStore {
       if (ensureDir) {
         await fs.mkdir(stateDir, { recursive: true });
       }
-      await fs.writeFile(tempFilePath, JSON.stringify(validatedState, null, 2), "utf-8");
-      await fs.rename(tempFilePath, stateFilePath);
+      await resilientWriteFile(tempFilePath, JSON.stringify(validatedState, null, 2), "utf-8");
+      await resilientRename(tempFilePath, stateFilePath);
     };
 
     try {
@@ -474,7 +475,7 @@ export class ProjectStore {
       console.error(`[ProjectStore] Failed to load state for project ${projectId}:`, error);
       try {
         const quarantinePath = `${stateFilePath}.corrupted`;
-        await fs.rename(stateFilePath, quarantinePath);
+        await resilientRename(stateFilePath, quarantinePath);
         console.warn(`[ProjectStore] Corrupted state file moved to ${quarantinePath}`);
       } catch {
         // Ignore
@@ -622,7 +623,7 @@ export class ProjectStore {
       console.error(`[ProjectStore] Failed to load settings for ${projectId}:`, error);
       try {
         const quarantinePath = `${filePath}.corrupted`;
-        await fs.rename(filePath, quarantinePath);
+        await resilientRename(filePath, quarantinePath);
         console.warn(`[ProjectStore] Corrupted settings file moved to ${quarantinePath}`);
       } catch {
         // Ignore
@@ -772,8 +773,8 @@ export class ProjectStore {
       if (ensureDir) {
         await fs.mkdir(stateDir, { recursive: true });
       }
-      await fs.writeFile(tempFilePath, JSON.stringify(sanitizedSettings, null, 2), "utf-8");
-      await fs.rename(tempFilePath, filePath);
+      await resilientWriteFile(tempFilePath, JSON.stringify(sanitizedSettings, null, 2), "utf-8");
+      await resilientRename(tempFilePath, filePath);
     };
 
     try {
@@ -829,7 +830,7 @@ export class ProjectStore {
       console.error(`[ProjectStore] Failed to load recipes for ${projectId}:`, error);
       try {
         const quarantinePath = `${filePath}.corrupted`;
-        await fs.rename(filePath, quarantinePath);
+        await resilientRename(filePath, quarantinePath);
         console.warn(`[ProjectStore] Corrupted recipes file moved to ${quarantinePath}`);
       } catch {
         // Ignore
@@ -857,8 +858,8 @@ export class ProjectStore {
       if (ensureDir) {
         await fs.mkdir(stateDir, { recursive: true });
       }
-      await fs.writeFile(tempFilePath, JSON.stringify(recipes, null, 2), "utf-8");
-      await fs.rename(tempFilePath, filePath);
+      await resilientWriteFile(tempFilePath, JSON.stringify(recipes, null, 2), "utf-8");
+      await resilientRename(tempFilePath, filePath);
     };
 
     try {
@@ -949,7 +950,7 @@ export class ProjectStore {
       console.error(`[ProjectStore] Failed to load workflows for ${projectId}:`, error);
       try {
         const quarantinePath = `${filePath}.corrupted`;
-        await fs.rename(filePath, quarantinePath);
+        await resilientRename(filePath, quarantinePath);
         console.warn(`[ProjectStore] Corrupted workflows file moved to ${quarantinePath}`);
       } catch {
         // Ignore
@@ -986,8 +987,8 @@ export class ProjectStore {
       if (ensureDir) {
         await fs.mkdir(stateDir, { recursive: true });
       }
-      await fs.writeFile(tempFilePath, JSON.stringify(workflows, null, 2), "utf-8");
-      await fs.rename(tempFilePath, filePath);
+      await resilientWriteFile(tempFilePath, JSON.stringify(workflows, null, 2), "utf-8");
+      await resilientRename(tempFilePath, filePath);
     };
 
     try {
@@ -1088,7 +1089,7 @@ export class ProjectStore {
     }
 
     try {
-      await fs.unlink(stateFilePath);
+      await resilientUnlink(stateFilePath);
       this.invalidateProjectStateCache(projectId);
       if (process.env.CANOPY_VERBOSE) {
         console.log(`[ProjectStore] Cleared state for project ${projectId}`);
