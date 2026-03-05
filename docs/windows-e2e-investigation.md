@@ -2,7 +2,7 @@
 
 **Branch:** `fix/windows-e2e-stability`
 **Started:** 2026-03-05
-**Status:** In progress — root cause not yet identified
+**Status:** In progress — native crash mitigated; Windows launch race under active investigation
 
 ## The Problem
 
@@ -31,7 +31,29 @@ The process never reaches `[MAIN] All critical services ready`.
 - **Electron:** 40.6.1
 - **CI Runner:** GitHub Actions `windows-latest`
 - **node-pty:** 1.0.0 (rebuilt for Electron via postinstall)
-- **Launch flags:** `--no-sandbox`, `--disable-gpu`, `--disable-software-rasterizer`, `--noerrdialogs`, `--disable-backgrounding-occluded-windows`, `--disable-features=CalculateNativeWinOcclusion`
+- **Launch flags (current Windows CI):** `--disable-gpu`, `--disable-software-rasterizer`, `--noerrdialogs`, `--disable-backgrounding-occluded-windows`, `--disable-features=CalculateNativeWinOcclusion`
+
+### Current Finding (2026-03-05)
+
+The dominant failure mode has shifted:
+
+- Earlier runs failed with native main-process crash `0xC0000005` (ACCESS_VIOLATION).
+- Newer runs mostly fail with `TimeoutError: electron.launch` on Windows Core tests, even when logs show:
+  - `[MAIN] All critical services ready`
+  - Renderer boot messages and deferred services finishing normally.
+
+This points to a **startup handshake/race problem** rather than an app crash.
+
+Observed in failed launch call logs:
+
+- Renderer/main race errors during boot:
+  - `No handler registered for 'terminal:get-shared-buffers'`
+  - `No handler registered for 'agent-settings:get'`
+  - `No handler registered for 'terminal-config:get'`
+  - `No handler registered for 'system:get-home-dir'`
+  - `No handler registered for 'keybinding:get-overrides'`
+
+Interpretation: renderer can start invoking IPC before the full handler surface is consistently ready on Windows CI.
 
 ---
 
@@ -76,6 +98,55 @@ The process never reaches `[MAIN] All critical services ready`.
 **Result:** ⏳ Pending CI results.
 
 **Local macOS verification:** All tests pass (2799 unit, 56 e2e core).
+
+### Attempt 4: Revert Single-Instance Lock Skip
+
+**Hypothesis:** The `hasExplicitUserDataDir` change (commit `fa0ee041`) skips `app.requestSingleInstanceLock()` when `--user-data-dir` is provided. This was the first app code change on the branch, and develop (which always acquires the lock) passes Windows E2E. The lock's named pipe setup may stabilize process initialization on Windows, or skipping it changes timing in a way that triggers the crash.
+
+**Change:** Reverted to `const gotTheLock = isSmokeTest || app.requestSingleInstanceLock();`
+
+**Result:** ⏳ Pending CI results.
+
+### Attempt 5: Remove `--no-sandbox` on Windows CI
+
+**Hypothesis:** Forcing Chromium `--no-sandbox` on Windows destabilizes startup and correlates with `0xC0000005`.
+
+**Change:** Removed Windows `--no-sandbox` from `e2e/helpers/launch.ts` launch args.
+
+**Result:** ✅ Online Windows run passed (`22703906260`). Core no longer showed the prior native crash signature, but still suffered launch timeout flakiness.
+
+**Conclusion:** `--no-sandbox` on Windows was a regression amplifier; keep it removed.
+
+### Attempt 6: Fail Fast on Launch Timeout + Retry
+
+**Hypothesis:** Long single-attempt launch timeout wastes CI time when the app is already in a bad startup state.
+
+**Change:** Windows CI launch timeout reduced `120s -> 45s`, retries kept at 5.
+
+**Result:** ⚠️ Core still saw repeated `electron.launch` timeout retries, but retries eventually progressed into test execution.
+
+**Conclusion:** Better CI behavior, but not the root fix.
+
+### Attempt 7: E2E Startup Hardening (Pending Validation)
+
+**Hypothesis:** Renderer starts too early in Windows CI and races IPC registration/initialization, causing early missing-handler errors that destabilize Playwright launch handshake.
+
+**Changes:**
+
+- Added `CANOPY_E2E_DEFER_RENDERER_LOAD=1` mode:
+  - `electron/main.ts` defers `loadURL()` until after IPC handlers are registered.
+  - Enabled from `e2e/helpers/launch.ts` on Windows CI.
+- Added `CANOPY_E2E_SKIP_FIRST_RUN_DIALOGS=1` mode:
+  - `AgentSetupWizard` and `AgentSelectionStep` both short-circuit visibility checks under this env var.
+  - Enabled from `e2e/helpers/launch.ts` on Windows CI.
+
+**Result:** ⏳ Pending CI run.
+
+**Expected impact:**
+
+- Remove early "No handler registered" startup errors.
+- Reduce `electron.launch` timeout flake rate.
+- Eliminate modal overlays that intermittently block onboarding clicks in Core tests.
 
 ---
 
@@ -147,19 +218,21 @@ Even with module-level port references, there may be other transient native obje
 
 ## CI Runs
 
-| Run                                                                         | Commit     | Result           | Notes                                |
-| --------------------------------------------------------------------------- | ---------- | ---------------- | ------------------------------------ |
-| [22701811729](https://github.com/canopyide/canopy/actions/runs/22701811729) | `fa0ee041` | ❌ Windows crash | Baseline failure before fixes        |
-| [22702276959](https://github.com/canopyide/canopy/actions/runs/22702276959) | `026167d7` | ❌ Windows crash | SharedArrayBuffer skip — didn't help |
-| [22702276445](https://github.com/canopyide/canopy/actions/runs/22702276445) | `026167d7` | ❌ Windows crash | Same commit, online tests            |
-| [22702782744](https://github.com/canopyide/canopy/actions/runs/22702782744) | `44c43b36` | ❌ Windows crash | cwd + MessagePort GC — didn't help   |
+| Run                                                                         | Commit     | Result           | Notes                                                      |
+| --------------------------------------------------------------------------- | ---------- | ---------------- | ---------------------------------------------------------- |
+| [22701811729](https://github.com/canopyide/canopy/actions/runs/22701811729) | `fa0ee041` | ❌ Windows crash | Baseline failure before fixes                              |
+| [22702276959](https://github.com/canopyide/canopy/actions/runs/22702276959) | `026167d7` | ❌ Windows crash | SharedArrayBuffer skip — didn't help                       |
+| [22702276445](https://github.com/canopyide/canopy/actions/runs/22702276445) | `026167d7` | ❌ Windows crash | Same commit, online tests                                  |
+| [22702782744](https://github.com/canopyide/canopy/actions/runs/22702782744) | `44c43b36` | ❌ Windows crash | cwd + MessagePort GC — didn't help                         |
+| [22703906260](https://github.com/canopyide/canopy/actions/runs/22703906260) | `d2cef8bc` | ✅ Online passed | Removed Windows `--no-sandbox`                             |
+| [22703906264](https://github.com/canopyide/canopy/actions/runs/22703906264) | `d2cef8bc` | ❌ Core timeout  | App reaches ready; Playwright launch timeout               |
+| [22704599532](https://github.com/canopyide/canopy/actions/runs/22704599532) | `475ef32e` | 🚫 Canceled      | 45s timeout + retries; progressed into tests before cancel |
 
 ---
 
 ## Next Steps
 
-1. **Stagger utility process forks** — fork pty-host first, wait for ready, then fork workspace-host
-2. **Add explicit `sandbox: false`** to `utilityProcess.fork()` options
-3. **Search Electron GitHub issues** for `utilityProcess` + `0xC0000005` or ACCESS_VIOLATION
-4. **Lazy-load node-pty** in pty-host — delay import until after process message handlers are registered
-5. **Add diagnostic logging** — log immediately before and after each native operation in the main process during startup
+1. **Run Core Windows on latest commit** with deferred renderer load + first-run skip env and compare launch retry counts.
+2. **Confirm missing-handler errors disappear** from launch call logs.
+3. **If launch timeouts persist**, instrument `electron/main.ts` around `app.whenReady`, `createWindow`, and `loadURL` timestamps for handshake correlation.
+4. **Tune retry policy based on new data** (reduce attempts if flake drops).
