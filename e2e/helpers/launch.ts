@@ -34,6 +34,37 @@ function wait(ms: number): Promise<void> {
   return new Promise((resolve) => setTimeout(resolve, ms));
 }
 
+async function dismissFirstRunDialogs(window: Page): Promise<void> {
+  const firstRunHeading = window
+    .getByRole("heading", { name: /Agent Setup|Choose your AI agents/i })
+    .first();
+  const isFirstRunDialogVisible = await firstRunHeading.isVisible().catch(() => false);
+  if (!isFirstRunDialogVisible) return;
+
+  console.log("[e2e] First-run agent dialog detected, dismissing...");
+  const dismissActions = [
+    window.getByRole("button", { name: "Skip" }).first(),
+    window.getByRole("button", { name: "Close dialog" }).first(),
+  ];
+
+  for (const action of dismissActions) {
+    const visible = await action.isVisible().catch(() => false);
+    if (!visible) continue;
+    await action.click({ force: true }).catch(() => undefined);
+    const stillVisible = await firstRunHeading.isVisible().catch(() => false);
+    if (!stillVisible) {
+      console.log("[e2e] First-run agent dialog dismissed");
+      return;
+    }
+  }
+
+  await window.keyboard.press("Escape").catch(() => undefined);
+  const stillVisible = await firstRunHeading.isVisible().catch(() => false);
+  if (!stillVisible) {
+    console.log("[e2e] First-run agent dialog dismissed via Escape");
+  }
+}
+
 export async function launchApp(options: LaunchOptions = {}): Promise<AppContext> {
   // Windows CI can hang during Playwright's electron.launch handshake even when
   // the app process is already running. Keep attempts high, but fail fast.
@@ -68,10 +99,22 @@ export async function launchApp(options: LaunchOptions = {}): Promise<AppContext
 
     let app: ElectronApplication | null = null;
     try {
+      const launchEnv = {
+        ...process.env,
+        ...options.env,
+        NODE_ENV: "production",
+        ...(isWindowsCI
+          ? {
+              // Avoid first-run setup modals and defer renderer load until IPC is ready.
+              CANOPY_E2E_SKIP_FIRST_RUN_DIALOGS: "1",
+              CANOPY_E2E_DEFER_RENDERER_LOAD: "1",
+            }
+          : {}),
+      };
       app = await electron.launch({
         executablePath: electronPath,
         args,
-        env: { ...process.env, ...options.env, NODE_ENV: "production" },
+        env: launchEnv,
         timeout: launchTimeout,
       });
 
@@ -93,6 +136,7 @@ export async function launchApp(options: LaunchOptions = {}): Promise<AppContext
         localStorage.setItem("canopy:agent-selection-dismissed", "true");
       });
       console.log("[e2e] Agent wizard dismissal keys set in localStorage");
+      await dismissFirstRunDialogs(window);
 
       // Take an early screenshot for CI diagnostics
       try {
