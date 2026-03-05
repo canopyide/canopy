@@ -12,9 +12,12 @@ const STORAGE_KEY = "canopy:agent-setup-complete";
 const AGENT_ORDER = ["claude", "gemini", "codex", "opencode"] as const;
 const POLL_INTERVAL = 3000;
 
+const SKIP_FIRST_RUN_DIALOGS = process.env.CANOPY_E2E_SKIP_FIRST_RUN_DIALOGS === "1";
+
 let sessionGuard = false;
 
 export function shouldShowAgentSetupWizard(availability: CliAvailability): boolean {
+  if (SKIP_FIRST_RUN_DIALOGS) return false;
   if (sessionGuard) return false;
 
   try {

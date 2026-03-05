@@ -6,6 +6,8 @@ import { useCliAvailabilityStore } from "@/store/cliAvailabilityStore";
 import { AGENT_REGISTRY, AGENT_IDS } from "@/config/agents";
 import { Bot, Loader2 } from "lucide-react";
 
+const SKIP_FIRST_RUN_DIALOGS = process.env.CANOPY_E2E_SKIP_FIRST_RUN_DIALOGS === "1";
+
 const DISMISSAL_KEY = "canopy:agent-selection-dismissed";
 
 const AGENT_DESCRIPTIONS: Record<string, string> = {
@@ -167,6 +169,7 @@ export function AgentSelectionStep({ isOpen, onContinue, onSkip }: AgentSelectio
 }
 
 export function shouldShowAgentSelection(): boolean {
+  if (SKIP_FIRST_RUN_DIALOGS) return false;
   const { settings, isInitialized } = useAgentSettingsStore.getState();
   if (!isInitialized || !settings?.agents) return false;
   try {

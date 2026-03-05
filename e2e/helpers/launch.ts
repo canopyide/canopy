@@ -67,10 +67,21 @@ export async function launchApp(options: LaunchOptions = {}): Promise<AppContext
 
     let app: ElectronApplication | null = null;
     try {
+      const launchEnv = {
+        ...process.env,
+        ...options.env,
+        NODE_ENV: "production",
+        ...(isWindowsCI
+          ? {
+              CANOPY_E2E_SKIP_FIRST_RUN_DIALOGS: "1",
+              CANOPY_E2E_DEFER_RENDERER_LOAD: "1",
+            }
+          : {}),
+      };
       app = await electron.launch({
         executablePath: electronPath,
         args,
-        env: { ...process.env, ...options.env, NODE_ENV: "production" },
+        env: launchEnv,
         timeout: launchTimeout,
       });
 
