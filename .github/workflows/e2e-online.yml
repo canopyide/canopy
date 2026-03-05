@@ -124,7 +124,7 @@ jobs:
         run: |
           mkdir -p ~/.claude
           echo '{"hasCompletedOnboarding": true}' > ~/.claude.json
-          claude config set model sonnet
+          echo '{"model": "sonnet"}' > ~/.claude/settings.json
 
       - name: Configure Claude Code (Windows)
         if: runner.os == 'Windows'
@@ -134,7 +134,7 @@ jobs:
         run: |
           New-Item -ItemType Directory -Force -Path "$env:USERPROFILE\.claude" | Out-Null
           '{"hasCompletedOnboarding": true}' | Set-Content "$env:USERPROFILE\.claude.json"
-          claude config set model sonnet
+          '{"model": "sonnet"}' | Set-Content "$env:USERPROFILE\.claude\settings.json"
 
       - name: Run online e2e tests (macOS)
         if: runner.os == 'macOS'
