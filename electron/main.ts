@@ -1205,11 +1205,14 @@ async function createWindow(): Promise<void> {
     const allPassed = ptyReady && workspaceReady;
     if (allPassed) {
       console.log("[SMOKE] All boot checks passed");
-      app.exit(0);
     } else {
       console.error("[SMOKE] FAILED — one or more services did not start");
-      app.exit(1);
     }
+    // Dispose clients before exit so their host-exit handlers don't fire
+    // against an already-destroyed window (TypeError: Object has been destroyed)
+    workspaceClient.dispose();
+    ptyClient.dispose();
+    app.exit(allPassed ? 0 : 1);
     return;
   }
 
