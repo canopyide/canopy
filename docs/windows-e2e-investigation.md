@@ -2,7 +2,29 @@
 
 **Branch:** `fix/windows-e2e-stability`
 **Started:** 2026-03-05
-**Status:** In progress — native crash mitigated; Windows launch race under active investigation
+**Status:** Resolved on this branch — Windows Core + Online both passing
+
+## Actual Fix
+
+The working fix was a combination, not a single change:
+
+1. **Removed `--no-sandbox` on Windows E2E launches** (`e2e/helpers/launch.ts`).
+2. **Deferred renderer load in Windows E2E mode** by introducing
+   `CANOPY_E2E_DEFER_RENDERER_LOAD=1` and loading the renderer only after IPC handlers are
+   registered (`electron/main.ts`).
+3. **Added a hard skip for first-run agent dialogs** via
+   `CANOPY_E2E_SKIP_FIRST_RUN_DIALOGS=1` in:
+   - `src/components/Setup/AgentSetupWizard.tsx`
+   - `src/components/Setup/AgentSelectionStep.tsx`
+4. **Kept fail-fast launch behavior** (`45s` launch timeout with retries) so startup hangs do not
+   burn multi-minute attempts (`e2e/helpers/launch.ts`).
+
+### Why this fixed it
+
+- `--no-sandbox` removal eliminated a Windows instability amplifier.
+- Deferred renderer load removed startup race conditions where renderer invoked IPC before handlers
+  were consistently available.
+- First-run dialog skip removed modal interference during onboarding interactions in CI.
 
 ## The Problem
 
@@ -127,7 +149,7 @@ Interpretation: renderer can start invoking IPC before the full handler surface 
 
 **Conclusion:** Better CI behavior, but not the root fix.
 
-### Attempt 7: E2E Startup Hardening (Pending Validation)
+### Attempt 7: E2E Startup Hardening (Confirmed)
 
 **Hypothesis:** Renderer starts too early in Windows CI and races IPC registration/initialization, causing early missing-handler errors that destabilize Playwright launch handshake.
 
@@ -140,13 +162,16 @@ Interpretation: renderer can start invoking IPC before the full handler surface 
   - `AgentSetupWizard` and `AgentSelectionStep` both short-circuit visibility checks under this env var.
   - Enabled from `e2e/helpers/launch.ts` on Windows CI.
 
-**Result:** ⏳ Pending CI run.
+**Result:** ✅ Confirmed.
 
-**Expected impact:**
+- Core (Windows) success: [`22705294099`](https://github.com/canopyide/canopy/actions/runs/22705294099)
+- Online (Windows) success: [`22705461732`](https://github.com/canopyide/canopy/actions/runs/22705461732)
 
-- Remove early "No handler registered" startup errors.
-- Reduce `electron.launch` timeout flake rate.
-- Eliminate modal overlays that intermittently block onboarding clicks in Core tests.
+**Observed impact:**
+
+- No `electron.launch` timeout retries in successful Core run on latest commit.
+- No first-run modal interference during test onboarding.
+- Both Windows workflows completed successfully on the same fix commit.
 
 ---
 
@@ -227,12 +252,13 @@ Even with module-level port references, there may be other transient native obje
 | [22703906260](https://github.com/canopyide/canopy/actions/runs/22703906260) | `d2cef8bc` | ✅ Online passed | Removed Windows `--no-sandbox`                             |
 | [22703906264](https://github.com/canopyide/canopy/actions/runs/22703906264) | `d2cef8bc` | ❌ Core timeout  | App reaches ready; Playwright launch timeout               |
 | [22704599532](https://github.com/canopyide/canopy/actions/runs/22704599532) | `475ef32e` | 🚫 Canceled      | 45s timeout + retries; progressed into tests before cancel |
+| [22705294099](https://github.com/canopyide/canopy/actions/runs/22705294099) | `83a13f66` | ✅ Core passed   | No launch-timeout retries; 56 passed, 2 skipped            |
+| [22705461732](https://github.com/canopyide/canopy/actions/runs/22705461732) | `83a13f66` | ✅ Online passed | Windows-only Online workflow green                         |
 
 ---
 
 ## Next Steps
 
-1. **Run Core Windows on latest commit** with deferred renderer load + first-run skip env and compare launch retry counts.
-2. **Confirm missing-handler errors disappear** from launch call logs.
-3. **If launch timeouts persist**, instrument `electron/main.ts` around `app.whenReady`, `createWindow`, and `loadURL` timestamps for handshake correlation.
-4. **Tune retry policy based on new data** (reduce attempts if flake drops).
+1. **Cherry-pick or port commit `83a13f66` to `develop`**.
+2. **Re-run both Windows workflows on `develop`** to confirm parity.
+3. **If regressions recur**, capture launch call log and check for missing-handler startup errors first.
