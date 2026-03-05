@@ -353,11 +353,7 @@ function extractCliPath(argv: string[]): string | null {
   return null;
 }
 
-// Skip single-instance lock for smoke tests and when --user-data-dir is explicitly
-// provided (E2E tests). On Windows, the named pipe for the lock can persist briefly
-// after process exit, causing the next launch to fail and hang for the full timeout.
-const hasExplicitUserDataDir = process.argv.some((arg) => arg.startsWith("--user-data-dir="));
-const gotTheLock = isSmokeTest || hasExplicitUserDataDir || app.requestSingleInstanceLock();
+const gotTheLock = isSmokeTest || app.requestSingleInstanceLock();
 
 if (!gotTheLock) {
   console.log("[MAIN] Another instance is already running. Quitting...");
