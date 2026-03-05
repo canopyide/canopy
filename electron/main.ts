@@ -751,15 +751,28 @@ async function createWindow(): Promise<void> {
     });
   }
 
-  console.log("[MAIN] Window created, loading content immediately (Paint First)...");
+  const deferRendererLoadForE2E = process.env.CANOPY_E2E_DEFER_RENDERER_LOAD === "1";
+  let rendererLoadRequested = false;
+  const loadRenderer = (reason: string): void => {
+    if (!mainWindow || mainWindow.isDestroyed() || rendererLoadRequested) return;
+    rendererLoadRequested = true;
+    console.log(`[MAIN] Loading renderer (${reason})...`);
+    if (process.env.NODE_ENV === "development") {
+      console.log("[MAIN] Loading Vite dev server at http://localhost:5173");
+      mainWindow.loadURL("http://localhost:5173");
+    } else {
+      console.log("[MAIN] Loading production build via app:// protocol");
+      mainWindow.loadURL("app://canopy/index.html");
+    }
+  };
 
-  // LOAD RENDERER IMMEDIATELY
-  if (process.env.NODE_ENV === "development") {
-    console.log("[MAIN] Loading Vite dev server at http://localhost:5173");
-    mainWindow.loadURL("http://localhost:5173");
+  if (deferRendererLoadForE2E) {
+    console.log(
+      "[MAIN] Deferring renderer load until IPC handlers are registered (CANOPY_E2E_DEFER_RENDERER_LOAD=1)"
+    );
   } else {
-    console.log("[MAIN] Loading production build via app:// protocol");
-    mainWindow.loadURL("app://canopy/index.html");
+    console.log("[MAIN] Window created, loading content immediately (Paint First)...");
+    loadRenderer("paint-first");
   }
 
   mainWindow.webContents.setWindowOpenHandler(({ url }) => {
@@ -1002,6 +1015,10 @@ async function createWindow(): Promise<void> {
     sidecarManager
   );
   cleanupErrorHandlers = registerErrorHandlers(mainWindow, workspaceClient, ptyClient);
+
+  if (deferRendererLoadForE2E) {
+    loadRenderer("after-ipc-registration");
+  }
 
   function createAndDistributePorts(): void {
     // Close previous ports before creating new ones
