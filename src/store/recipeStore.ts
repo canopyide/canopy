@@ -275,8 +275,8 @@ const createRecipeStore: StateCreator<RecipeState> = (set, get) => ({
           const baseCommand = agentConfig?.command || terminal.type;
           const rawPrompt = terminal.initialPrompt?.trim();
           const resolvedContext: RecipeContext = {
-            worktreePath,
             ...context,
+            worktreePath,
           };
           const initialPrompt = rawPrompt
             ? replaceRecipeVariables(rawPrompt, resolvedContext)
