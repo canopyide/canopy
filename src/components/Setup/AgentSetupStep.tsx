@@ -56,9 +56,9 @@ export function AgentSetupStep({ agent, isAvailable, icon: Icon }: AgentSetupSte
       )}
 
       {isAvailable && (
-        <div className="flex items-center gap-2 px-3 py-2 rounded-[var(--radius-md)] bg-status-success/10 border border-status-success/20">
+        <div className="flex items-center gap-2 px-3 py-2 rounded-[var(--radius-md)] bg-surface border border-canopy-border">
           <CircleCheck className="w-4 h-4 text-status-success" />
-          <span className="text-sm text-status-success">{agent.name} is installed and ready</span>
+          <span className="text-sm text-canopy-text/70">{agent.name} is installed and ready</span>
         </div>
       )}
     </div>
@@ -68,7 +68,7 @@ export function AgentSetupStep({ agent, isAvailable, icon: Icon }: AgentSetupSte
 function StatusBadge({ isAvailable }: { isAvailable: boolean }) {
   if (isAvailable) {
     return (
-      <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-[11px] font-medium bg-status-success/15 text-status-success">
+      <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-[11px] font-medium text-status-success">
         <CircleCheck className="w-3 h-3" />
         Installed
       </span>

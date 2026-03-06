@@ -143,8 +143,8 @@ export function WorktreeDetails({
 
           {/* Block 2: Narrative (AI note, summary, or commit message) */}
           {effectiveNote && (
-            <div className="p-3 rounded-[var(--radius-lg)] bg-yellow-500/5 border border-yellow-500/20">
-              <div className="text-xs text-yellow-200/90 whitespace-pre-wrap font-mono">
+            <div className="p-3 rounded-[var(--radius-lg)] bg-status-warning/5 border border-status-warning/20">
+              <div className="text-xs text-status-warning/90 whitespace-pre-wrap font-mono">
                 {parsedNoteSegments.map((segment, index) =>
                   segment.type === "link" ? (
                     <a
