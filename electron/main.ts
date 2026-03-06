@@ -18,6 +18,7 @@ import { randomBytes } from "crypto";
 import fixPath from "fix-path";
 import { isTrustedRendererUrl } from "../shared/utils/trustedRenderer.js";
 import { isLocalhostUrl } from "../shared/utils/urlUtils.js";
+import { getDevServerUrl } from "../shared/config/devServer.js";
 import { PERF_MARKS } from "../shared/perf/marks.js";
 import type { IpcMainInvokeEvent } from "electron";
 import {
@@ -763,8 +764,9 @@ async function createWindow(): Promise<void> {
     rendererLoadRequested = true;
     console.log(`[MAIN] Loading renderer (${reason})...`);
     if (process.env.NODE_ENV === "development") {
-      console.log("[MAIN] Loading Vite dev server at http://localhost:5173");
-      mainWindow.loadURL("http://localhost:5173");
+      const devServerUrl = getDevServerUrl();
+      console.log(`[MAIN] Loading Vite dev server at ${devServerUrl}`);
+      mainWindow.loadURL(devServerUrl);
     } else {
       console.log("[MAIN] Loading production build via app:// protocol");
       mainWindow.loadURL("app://canopy/index.html");

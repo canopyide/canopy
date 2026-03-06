@@ -6,6 +6,7 @@ import { EmbeddedTerminal } from "./EmbeddedTerminal";
 import { SystemHealthCheckStep } from "./SystemHealthCheckStep";
 import { AGENT_REGISTRY, getAgentConfig } from "@/config/agents";
 import { cliAvailabilityClient } from "@/clients";
+import { isCanopyEnvEnabled } from "@/utils/env";
 import type { CliAvailability } from "@shared/types";
 import { Sparkles, ChevronLeft, ChevronRight, ArrowRight, SkipForward } from "lucide-react";
 
@@ -13,7 +14,7 @@ const STORAGE_KEY = "canopy:agent-setup-complete";
 const AGENT_ORDER = ["claude", "gemini", "codex", "opencode"] as const;
 const POLL_INTERVAL = 3000;
 
-const SKIP_FIRST_RUN_DIALOGS = process.env.CANOPY_E2E_SKIP_FIRST_RUN_DIALOGS === "1";
+const SKIP_FIRST_RUN_DIALOGS = isCanopyEnvEnabled("CANOPY_E2E_SKIP_FIRST_RUN_DIALOGS");
 
 let sessionGuard = false;
 

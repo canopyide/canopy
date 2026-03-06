@@ -4,9 +4,10 @@ import { Button } from "@/components/ui/button";
 import { useAgentSettingsStore } from "@/store";
 import { useCliAvailabilityStore } from "@/store/cliAvailabilityStore";
 import { AGENT_REGISTRY, AGENT_IDS } from "@/config/agents";
+import { isCanopyEnvEnabled } from "@/utils/env";
 import { Bot, Loader2 } from "lucide-react";
 
-const SKIP_FIRST_RUN_DIALOGS = process.env.CANOPY_E2E_SKIP_FIRST_RUN_DIALOGS === "1";
+const SKIP_FIRST_RUN_DIALOGS = isCanopyEnvEnabled("CANOPY_E2E_SKIP_FIRST_RUN_DIALOGS");
 
 const DISMISSAL_KEY = "canopy:agent-selection-dismissed";
 

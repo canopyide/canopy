@@ -15,9 +15,9 @@
     "*": "prettier --write --ignore-unknown"
   },
   "scripts": {
-    "dev": "concurrently -k \"npm run watch:main\" \"vite\" \"wait-on dist-electron/electron/main.js && npm run dev:electron\"",
+    "dev": "node scripts/dev.mjs",
     "dev:vite": "vite",
-    "dev:electron": "nodemon --delay 500ms --watch dist-electron --ext js --exec \"cross-env NODE_ENV=development electron .\"",
+    "dev:electron": "nodemon --delay 500ms --watch dist-electron/.build-ready.js --ext js --exec \"cross-env NODE_ENV=development electron .\"",
     "build:main": "cross-env NODE_ENV=production node scripts/build-main.mjs",
     "watch:main": "node scripts/build-main.mjs --watch",
     "build": "tsc && vite build && npm run build:main",
