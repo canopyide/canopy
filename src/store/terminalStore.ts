@@ -198,6 +198,9 @@ export const useTerminalStore = create<PanelGridState>()((set, get, api) => {
       const state = get();
       registrySlice.trashTerminal(id);
 
+      // Clear watch when panel is trashed (onTerminalRemoved only fires on full removal)
+      get().unwatchPanel(id);
+
       const updates: Partial<PanelGridState> = {};
 
       if (state.focusedId === id) {

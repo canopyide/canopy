@@ -148,6 +148,7 @@ class NotificationService {
     notification.on("failed" as "close", cleanup);
 
     notification.on("click", () => {
+      cleanup();
       if (this.mainWindow && !this.mainWindow.isDestroyed()) {
         if (this.mainWindow.isMinimized()) {
           this.mainWindow.restore();
