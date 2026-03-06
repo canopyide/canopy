@@ -142,7 +142,7 @@ function ArtifactItem({
               disabled={isProcessing}
               className={cn(
                 "px-3 py-1 text-xs rounded transition-colors",
-                "bg-status-info hover:brightness-110 text-canopy-bg",
+                "border border-status-info/30 text-status-info hover:bg-status-info/10",
                 "disabled:opacity-50 disabled:cursor-not-allowed"
               )}
             >
@@ -326,7 +326,7 @@ export function ArtifactOverlay({ terminalId, worktreeId, cwd, className }: Arti
           onClick={() => setIsExpanded(true)}
           className={cn(
             "px-3 py-2 rounded-[var(--radius-md)] shadow-lg",
-            "bg-status-info hover:brightness-110 text-canopy-bg",
+            "border border-status-info/30 text-status-info hover:bg-status-info/10",
             "text-sm font-medium transition-all",
             "flex items-center gap-2"
           )}
@@ -383,7 +383,7 @@ export function ArtifactOverlay({ terminalId, worktreeId, cwd, className }: Arti
                       disabled={isBulkActionRunning || !canCopyAll}
                       className={cn(
                         "px-3 py-1 text-xs rounded transition-colors",
-                        "bg-status-info hover:brightness-110 text-canopy-bg",
+                        "border border-status-info/30 text-status-info hover:bg-status-info/10",
                         "disabled:opacity-50 disabled:cursor-not-allowed"
                       )}
                     >
