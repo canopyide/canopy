@@ -54,9 +54,9 @@ describe("terminalColorSchemeStore", () => {
 
   it("getEffectiveTheme returns canopy theme for default", () => {
     const theme = useTerminalColorSchemeStore.getState().getEffectiveTheme();
-    expect(theme.background).toBe("#18181b");
-    expect(theme.cursor).toBe("#6b8de6");
-    expect(theme.selectionBackground).toBe("#1a2744");
+    expect(theme.background).toBe("#19191a");
+    expect(theme.cursor).toBe("#3F9366");
+    expect(theme.selectionBackground).toBe("#1a2c22");
     expect(theme.green).toBe("#10b981");
   });
 

@@ -741,13 +741,13 @@ async function createWindow(): Promise<void> {
           titleBarStyle: "hidden" as const,
           ...(process.platform === "win32" && {
             titleBarOverlay: {
-              color: "#18181b",
+              color: "#19191a",
               symbolColor: "#a1a1aa",
               height: 36,
             },
           }),
         }),
-    backgroundColor: "#18181b",
+    backgroundColor: "#19191a",
   });
   markPerformance(PERF_MARKS.MAIN_WINDOW_CREATED);
 
