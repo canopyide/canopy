@@ -85,7 +85,7 @@ export interface CanopyTerminalMetadata {
  * Used for filtering and can be called independently for testing.
  */
 export function isSensitiveVar(name: string): boolean {
-  return SENSITIVE_EXACT.has(name) || SENSITIVE_PATTERN.test(name);
+  return SENSITIVE_EXACT.has(name.toUpperCase()) || SENSITIVE_PATTERN.test(name);
 }
 
 /**

@@ -245,18 +245,26 @@ export class TerminalProcess {
       : undefined;
 
     const baseEnv = process.env as Record<string, string | undefined>;
-    const rawMergedEnv = { ...baseEnv, ...options.env };
 
-    // Filter out sensitive credentials, then inject CANOPY_* metadata.
-    // This prevents API keys, passwords, and tokens from leaking into spawned
-    // processes while preserving essential infrastructure vars (PATH, HOME, etc.).
-    const filteredEnv = filterEnvironment(rawMergedEnv);
-    const mergedEnv = injectCanopyMetadata(filteredEnv, {
-      paneId: id,
-      cwd: options.cwd,
-      projectId: options.projectId,
-      worktreeId: options.worktreeId,
-    });
+    // Filter sensitive credentials from the inherited process environment only.
+    // options.env contains intentional overrides (e.g. project settings env vars
+    // resolved from secure storage) and is merged in after filtering so those
+    // intentional values are not inadvertently stripped.
+    const filteredBaseEnv = filterEnvironment(baseEnv);
+    const intentionalEnv = options.env
+      ? (Object.fromEntries(
+          Object.entries(options.env).filter(([, v]) => v !== undefined)
+        ) as Record<string, string>)
+      : {};
+    const mergedEnv = injectCanopyMetadata(
+      { ...filteredBaseEnv, ...intentionalEnv },
+      {
+        paneId: id,
+        cwd: options.cwd,
+        projectId: options.projectId,
+        worktreeId: options.worktreeId,
+      }
+    );
 
     // For agent terminals, use non-interactive environment to suppress prompts
     // (oh-my-zsh updates, Homebrew notifications, etc.)
@@ -270,7 +278,9 @@ export class TerminalProcess {
       normalizedAgentId ? (AGENT_ENV_EXCLUSIONS[normalizedAgentId] ?? []) : []
     );
     const filteredAgentEnv = Object.fromEntries(
-      Object.entries(agentEnv).filter(([key]) => !exclusions.has(key))
+      Object.entries(agentEnv).filter(
+        ([key]) => !exclusions.has(key) && !key.startsWith("CANOPY_")
+      )
     ) as Record<string, string>;
     const env: Record<string, string> = this.isAgentTerminal
       ? { ...buildNonInteractiveEnv(mergedEnv, shell, agentId), ...filteredAgentEnv }
