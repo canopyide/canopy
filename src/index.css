@@ -1046,24 +1046,24 @@ body[data-performance-mode="true"] .github-status-error {
 
 /* Base diff table styling */
 .diff-viewer .diff {
-  background: #1a1b26;
-  color: #c0caf5;
+  background: var(--color-canopy-bg);
+  color: var(--color-canopy-text);
 }
 
 /* Gutter (line numbers) styling */
 .diff-viewer .diff-gutter {
-  background: #16171f;
-  color: #565f89;
+  background: var(--color-canopy-sidebar);
+  color: var(--color-state-idle);
   padding: 0 8px;
   min-width: 50px;
   text-align: right;
   user-select: none;
-  border-right: 1px solid #2d2f3a;
+  border-right: 1px solid var(--color-canopy-border);
 }
 
 /* Code content styling */
 .diff-viewer .diff-code {
-  background: #1a1b26;
+  background: var(--color-canopy-bg);
   padding: 0 12px;
   white-space: pre;
   overflow-x: auto;
@@ -1102,20 +1102,20 @@ body[data-performance-mode="true"] .github-status-error {
 
 /* Hunk header styling */
 .diff-viewer .diff-hunk-header {
-  background: #24283b;
+  background: var(--color-surface);
   color: #7aa2f7;
   padding: 4px 12px;
   font-size: 11px;
-  border-top: 1px solid #2d2f3a;
-  border-bottom: 1px solid #2d2f3a;
+  border-top: 1px solid var(--color-canopy-border);
+  border-bottom: 1px solid var(--color-canopy-border);
 }
 
 .diff-viewer .diff-hunk-header-gutter {
-  background: #24283b;
+  background: var(--color-surface);
 }
 
 .diff-viewer .diff-hunk-header-content {
-  background: #24283b;
+  background: var(--color-surface);
 }
 
 /* Split view specific styling */
@@ -1125,7 +1125,7 @@ body[data-performance-mode="true"] .github-status-error {
 
 /* Line number hover effect */
 .diff-viewer .diff-gutter:hover {
-  background: #24283b;
+  background: var(--color-surface);
 }
 
 /* Selection styling */
@@ -1141,16 +1141,16 @@ body[data-performance-mode="true"] .github-status-error {
 }
 
 .diff-viewer::-webkit-scrollbar-track {
-  background: #1a1b26;
+  background: var(--color-canopy-bg);
 }
 
 .diff-viewer::-webkit-scrollbar-thumb {
-  background: #565f89;
+  background: var(--color-state-idle);
   border-radius: var(--radius-sm);
 }
 
 .diff-viewer::-webkit-scrollbar-thumb:hover {
-  background: #6f7bb6;
+  background: color-mix(in oklab, var(--color-state-idle) 70%, white);
 }
 
 /* Syntax highlighting overrides for Tokyo Night palette */
