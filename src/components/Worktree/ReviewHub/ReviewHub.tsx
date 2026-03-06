@@ -213,7 +213,10 @@ export function ReviewHub({ isOpen, worktreePath, onClose }: ReviewHubProps) {
                 Review & Commit
               </h2>
               {status?.currentBranch && (
-                <span className="inline-flex items-center gap-1 px-1.5 py-0.5 rounded bg-white/[0.07] border border-white/[0.08] text-[11px] text-canopy-text/60 font-mono truncate max-w-[200px]">
+                <span
+                  title={status.currentBranch}
+                  className="inline-flex items-center gap-1 px-1.5 py-0.5 rounded bg-white/[0.07] border border-white/[0.08] text-[11px] text-canopy-text/60 font-mono truncate max-w-[200px]"
+                >
                   <GitBranch className="w-3 h-3 shrink-0" />
                   <span className="truncate">{status.currentBranch}</span>
                 </span>
@@ -388,7 +391,6 @@ export function ReviewHub({ isOpen, worktreePath, onClose }: ReviewHubProps) {
               isDetachedHead={status.isDetachedHead}
               hasConflicts={hasConflicts}
               hasRemote={status.hasRemote}
-              currentBranch={status.currentBranch}
               onCommit={handleCommit}
               onCommitAndPush={handleCommitAndPush}
             />
