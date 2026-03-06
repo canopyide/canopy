@@ -14,6 +14,14 @@ export async function openProject(
   await openFolder.click();
 }
 
+export async function dismissTelemetryConsent(window: Page): Promise<void> {
+  const dialog = window.getByRole("dialog", { name: "Crash reporting consent" });
+  if (await dialog.isVisible().catch(() => false)) {
+    await dialog.getByRole("button", { name: "No thanks" }).click();
+    await expect(dialog).not.toBeVisible({ timeout: 3_000 });
+  }
+}
+
 export async function completeOnboarding(window: Page, name: string): Promise<void> {
   const isWindowsCI = process.env.CI && process.platform === "win32";
   const visibleTimeout = isWindowsCI ? 45_000 : process.env.CI ? 20_000 : 10_000;
@@ -27,6 +35,8 @@ export async function completeOnboarding(window: Page, name: string): Promise<vo
 
   await window.getByRole("button", { name: "Finish" }).click();
   await expect(heading).not.toBeVisible({ timeout: closeTimeout });
+
+  await dismissTelemetryConsent(window);
 }
 
 export async function openAndOnboardProject(

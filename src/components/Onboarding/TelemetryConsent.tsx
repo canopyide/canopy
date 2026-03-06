@@ -3,10 +3,13 @@ import { Shield, X } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { cn } from "@/lib/utils";
 
+const SKIP_FIRST_RUN_DIALOGS = process.env.CANOPY_E2E_SKIP_FIRST_RUN_DIALOGS === "1";
+
 export function TelemetryConsent() {
   const [visible, setVisible] = useState(false);
 
   useEffect(() => {
+    if (SKIP_FIRST_RUN_DIALOGS) return;
     if (!window.electron?.telemetry) return;
     window.electron.telemetry.get().then(({ hasSeenPrompt }) => {
       if (!hasSeenPrompt) setVisible(true);

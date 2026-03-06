@@ -1,7 +1,7 @@
 import { test, expect } from "@playwright/test";
 import { launchApp, closeApp, type AppContext } from "../helpers/launch";
 import { createFixtureRepo } from "../helpers/fixtures";
-import { openProject } from "../helpers/project";
+import { openProject, dismissTelemetryConsent } from "../helpers/project";
 import { waitForTerminalText, runTerminalCommand } from "../helpers/terminal";
 import { getFirstGridPanel, getGridPanelCount, getDockPanelCount } from "../helpers/panels";
 import { SEL } from "../helpers/selectors";
@@ -40,6 +40,8 @@ test.describe.serial("Core: Terminal & Panels", () => {
 
       const heading = window.locator("h2", { hasText: "Set up your project" });
       await expect(heading).not.toBeVisible({ timeout: T_MEDIUM });
+
+      await dismissTelemetryConsent(window);
     });
 
     test("worktree dashboard appears with at least one card", async () => {
