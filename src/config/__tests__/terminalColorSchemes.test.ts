@@ -41,4 +41,12 @@ describe("terminalColorSchemes", () => {
   it("getSchemeById returns undefined for unknown ID", () => {
     expect(getSchemeById("nonexistent")).toBeUndefined();
   });
+
+  it("canopy scheme uses blue accent cursor and selection", () => {
+    const scheme = getSchemeById("canopy")!;
+    expect(scheme.colors.cursor).toBe("#6b8de6");
+    expect(scheme.colors.selectionBackground).toBe("#1a2744");
+    expect(scheme.colors.green).toBe("#10b981");
+    expect(scheme.colors.brightGreen).toBe("#34d399");
+  });
 });

@@ -38,9 +38,9 @@ export type ImportResult = { ok: true; scheme: ImportedScheme } | { ok: false; e
 const CANOPY_DEFAULTS: Required<ImportedSchemeColors> = {
   background: "#18181b",
   foreground: "#e4e4e7",
-  cursor: "#10b981",
+  cursor: "#6b8de6",
   cursorAccent: "#18181b",
-  selectionBackground: "#064e3b",
+  selectionBackground: "#1a2744",
   selectionForeground: "#e4e4e7",
   black: "#18181b",
   red: "#f87171",
