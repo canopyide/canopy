@@ -364,6 +364,13 @@ const CHANNELS = {
   GIT_GET_FILE_DIFF: "git:get-file-diff",
   GIT_GET_PROJECT_PULSE: "git:get-project-pulse",
   GIT_LIST_COMMITS: "git:list-commits",
+  GIT_STAGE_FILE: "git:stage-file",
+  GIT_UNSTAGE_FILE: "git:unstage-file",
+  GIT_STAGE_ALL: "git:stage-all",
+  GIT_UNSTAGE_ALL: "git:unstage-all",
+  GIT_COMMIT: "git:commit",
+  GIT_PUSH: "git:push",
+  GIT_GET_STAGING_STATUS: "git:get-staging-status",
 
   // Sidecar channels
   SIDECAR_CREATE: "sidecar:create",
@@ -1131,6 +1138,23 @@ const api: ElectronAPI = {
       skip?: number;
       limit?: number;
     }) => ipcRenderer.invoke(CHANNELS.GIT_LIST_COMMITS, options),
+
+    stageFile: (cwd: string, filePath: string) =>
+      _typedInvoke(CHANNELS.GIT_STAGE_FILE, { cwd, filePath }),
+
+    unstageFile: (cwd: string, filePath: string) =>
+      _typedInvoke(CHANNELS.GIT_UNSTAGE_FILE, { cwd, filePath }),
+
+    stageAll: (cwd: string) => _typedInvoke(CHANNELS.GIT_STAGE_ALL, cwd),
+
+    unstageAll: (cwd: string) => _typedInvoke(CHANNELS.GIT_UNSTAGE_ALL, cwd),
+
+    commit: (cwd: string, message: string) => _typedInvoke(CHANNELS.GIT_COMMIT, { cwd, message }),
+
+    push: (cwd: string, setUpstream?: boolean) =>
+      _typedInvoke(CHANNELS.GIT_PUSH, { cwd, setUpstream }),
+
+    getStagingStatus: (cwd: string) => _typedInvoke(CHANNELS.GIT_GET_STAGING_STATUS, cwd),
   },
 
   // Terminal Config API

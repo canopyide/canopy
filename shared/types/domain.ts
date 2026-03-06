@@ -8,7 +8,8 @@ export type GitStatus =
   | "untracked"
   | "ignored"
   | "renamed"
-  | "copied";
+  | "copied"
+  | "conflicted";
 
 /** Details about a single file change in a worktree */
 export interface FileChangeDetail {
@@ -52,6 +53,22 @@ export interface WorktreeChanges {
   lastCommitMessage?: string;
   /** Last commit time (ms since epoch, committer date) */
   lastCommitTimestampMs?: number;
+}
+
+export interface StagingFileEntry {
+  path: string;
+  status: GitStatus;
+  insertions: number | null;
+  deletions: number | null;
+}
+
+export interface StagingStatus {
+  staged: StagingFileEntry[];
+  unstaged: StagingFileEntry[];
+  conflicted: string[];
+  isDetachedHead: boolean;
+  currentBranch: string | null;
+  hasRemote: boolean;
 }
 
 // Worktree Types

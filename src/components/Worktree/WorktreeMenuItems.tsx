@@ -6,6 +6,7 @@ import {
   Code,
   Copy,
   Folder,
+  GitCommitHorizontal,
   GitPullRequest,
   Globe,
   Layers,
@@ -72,6 +73,7 @@ export interface WorktreeMenuItemsProps {
   onOpenPRSidecar?: () => void;
   onOpenPRExternal?: () => void;
   onAttachIssue?: () => void;
+  onOpenReviewHub?: () => void;
   onRunRecipe: (recipeId: string) => void;
   onSaveLayout?: () => void;
   onTogglePin?: () => void;
@@ -107,6 +109,7 @@ export function WorktreeMenuItems({
   onOpenPRSidecar,
   onOpenPRExternal,
   onAttachIssue,
+  onOpenReviewHub,
   onRunRecipe,
   onSaveLayout,
   onTogglePin,
@@ -235,6 +238,13 @@ export function WorktreeMenuItems({
         <C.Item onSelect={onAttachIssue}>
           <Link className="w-3.5 h-3.5 mr-2" />
           {worktree.issueNumber ? "Change Issue..." : "Attach to Issue..."}
+        </C.Item>
+      )}
+
+      {onOpenReviewHub && (
+        <C.Item onSelect={onOpenReviewHub}>
+          <GitCommitHorizontal className="w-3.5 h-3.5 mr-2" />
+          Review & Commit
         </C.Item>
       )}
 

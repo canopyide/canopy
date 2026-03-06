@@ -8,6 +8,7 @@ import type {
   TerminalRecipe,
   TerminalSnapshot,
   TabGroup,
+  StagingStatus,
 } from "../domain.js";
 import type { AgentSettings, AgentSettingsEntry } from "../agentSettings.js";
 
@@ -537,6 +538,13 @@ export interface ElectronAPI {
       skip?: number;
       limit?: number;
     }): Promise<import("../github.js").GitCommitListResponse>;
+    stageFile(cwd: string, filePath: string): Promise<void>;
+    unstageFile(cwd: string, filePath: string): Promise<void>;
+    stageAll(cwd: string): Promise<void>;
+    unstageAll(cwd: string): Promise<void>;
+    commit(cwd: string, message: string): Promise<{ hash: string; summary: string }>;
+    push(cwd: string, setUpstream?: boolean): Promise<{ success: boolean; error?: string }>;
+    getStagingStatus(cwd: string): Promise<StagingStatus>;
   };
   terminalConfig: {
     get(): Promise<TerminalConfig>;
