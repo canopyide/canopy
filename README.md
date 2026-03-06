@@ -103,7 +103,7 @@ Main Process (electron/)            Renderer (src/)
      └── Workspace Host (Worktree Monitor)
 ```
 
-- **Main Process** — Native operations (PTY, filesystem, git) exposed through a typed IPC bridge with 35+ namespaces.
+- **Main Process** — Native operations (PTY, filesystem, git) exposed through a typed IPC bridge with 36 namespaces.
 - **Renderer** — React 19 UI with Vite HMR. Zustand stores with atomic selectors for performance across many simultaneous panels.
 - **Utility Processes** — Isolated PTY Host with lock-free SharedRingBuffer flow control, and Workspace Host for continuous worktree monitoring.
 
