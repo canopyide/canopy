@@ -520,7 +520,8 @@ export function WorktreeOverviewModal({
                     "bg-canopy-sidebar/50",
                     "transition-all duration-200",
                     "hover:border-canopy-accent/50 hover:shadow-lg hover:shadow-canopy-accent/5",
-                    worktree.id === activeWorktreeId && "border-canopy-accent/70 shadow-md"
+                    worktree.id === activeWorktreeId &&
+                      "border-[var(--color-state-active)]/70 shadow-md"
                   )}
                 >
                   <WorktreeCard

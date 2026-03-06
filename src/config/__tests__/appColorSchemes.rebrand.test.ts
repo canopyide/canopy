@@ -78,6 +78,16 @@ describe("appColorSchemes rebrand — semantic color separation", () => {
       expect(tokens["state-active"]).toBe("#22c55e");
     });
 
+    it("state-active matches state-working (same green family)", () => {
+      const tokens = getScheme("canopy").tokens;
+      expect(tokens["state-active"]).toBe(tokens["state-working"]);
+    });
+
+    it("state-working differs from status-success (in-progress vs completed)", () => {
+      const tokens = getScheme("canopy").tokens;
+      expect(tokens["state-working"]).not.toBe(tokens["status-success"]);
+    });
+
     it("server-running matches status-success", () => {
       const tokens = getScheme("canopy").tokens;
       expect(tokens["server-running"]).toBe(tokens["status-success"]);
@@ -110,6 +120,16 @@ describe("appColorSchemes rebrand — semantic color separation", () => {
       const tokens = getScheme("canopy-slate").tokens;
       expect(tokens["state-active"]).not.toBe(tokens["canopy-accent"]);
       expect(tokens["state-active"]).toBe("#22c55e");
+    });
+
+    it("state-active matches state-working (same green family)", () => {
+      const tokens = getScheme("canopy-slate").tokens;
+      expect(tokens["state-active"]).toBe(tokens["state-working"]);
+    });
+
+    it("state-working differs from status-success (in-progress vs completed)", () => {
+      const tokens = getScheme("canopy-slate").tokens;
+      expect(tokens["state-working"]).not.toBe(tokens["status-success"]);
     });
 
     it("server-running matches status-success", () => {

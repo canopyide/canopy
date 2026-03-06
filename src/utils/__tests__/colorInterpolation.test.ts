@@ -30,6 +30,12 @@ describe("getActivityColor", () => {
     expect(getActivityColor(now)).toBe("color-mix(in oklab, #22c55e 100%, #52525b)");
   });
 
+  it("clamps future timestamps to 100% accent (elapsed < 0)", () => {
+    const now = Date.now();
+    vi.setSystemTime(now);
+    expect(getActivityColor(now + 5_000)).toBe("color-mix(in oklab, #22c55e 100%, #52525b)");
+  });
+
   it("returns ~50% mix at midpoint (45s)", () => {
     const start = Date.now();
     vi.setSystemTime(start + 45_000);
