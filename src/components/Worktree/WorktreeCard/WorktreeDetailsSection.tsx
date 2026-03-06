@@ -6,7 +6,7 @@ import { cn } from "@/lib/utils";
 import { ActivityLight } from "../ActivityLight";
 import { LiveTimeAgo } from "../LiveTimeAgo";
 import { WorktreeDetails } from "../WorktreeDetails";
-import { ChevronRight } from "lucide-react";
+import { ChevronRight, GitCommitHorizontal } from "lucide-react";
 import type { ComputedSubtitle } from "./hooks/useWorktreeStatus";
 import { Tooltip, TooltipContent, TooltipTrigger, TooltipProvider } from "@/components/ui/tooltip";
 
@@ -24,6 +24,7 @@ export interface WorktreeDetailsSectionProps {
   onPathClick: () => void;
   onDismissError: (id: string) => void;
   onRetryError: (id: string, action: RetryAction, args?: Record<string, unknown>) => Promise<void>;
+  onOpenReviewHub?: () => void;
 }
 
 export function WorktreeDetailsSection({
@@ -40,6 +41,7 @@ export function WorktreeDetailsSection({
   onPathClick,
   onDismissError,
   onRetryError,
+  onOpenReviewHub,
 }: WorktreeDetailsSectionProps) {
   const detailsId = `worktree-${worktree.id}-details`;
   const detailsPanelId = `worktree-${worktree.id}-details-panel`;
@@ -85,12 +87,18 @@ export function WorktreeDetailsSection({
           </div>
         </div>
       ) : (
-        <div className="-m-3">
+        <div className="-m-3 flex items-stretch">
           <button
             onClick={onToggleExpand}
             aria-expanded={false}
             aria-controls={detailsPanelId}
-            className="w-full px-3 py-2.5 flex items-center justify-between min-w-0 text-left rounded-[var(--radius-lg)] transition-colors hover:bg-white/5 focus-visible:outline focus-visible:outline-2 focus-visible:outline-canopy-accent focus-visible:outline-offset-[-2px]"
+            className={cn(
+              "flex-1 px-3 py-2.5 flex items-center justify-between min-w-0 text-left transition-colors hover:bg-white/5",
+              "focus-visible:outline focus-visible:outline-2 focus-visible:outline-canopy-accent focus-visible:outline-offset-[-2px]",
+              onOpenReviewHub && hasChanges
+                ? "rounded-l-[var(--radius-lg)]"
+                : "rounded-[var(--radius-lg)]"
+            )}
             id={`${detailsId}-button`}
           >
             <span className="text-xs truncate min-w-0 flex-1">
@@ -153,6 +161,28 @@ export function WorktreeDetailsSection({
               </Tooltip>
             </TooltipProvider>
           </button>
+
+          {onOpenReviewHub && hasChanges && (
+            <TooltipProvider>
+              <Tooltip>
+                <TooltipTrigger asChild>
+                  <button
+                    onClick={onOpenReviewHub}
+                    className={cn(
+                      "px-2 py-1 border-l border-white/5 transition-colors shrink-0",
+                      "text-canopy-accent/70 hover:text-canopy-accent hover:bg-canopy-accent/10",
+                      "rounded-r-[var(--radius-lg)]",
+                      "focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-canopy-accent"
+                    )}
+                    aria-label="Open Review & Commit"
+                  >
+                    <GitCommitHorizontal className="w-3.5 h-3.5" />
+                  </button>
+                </TooltipTrigger>
+                <TooltipContent side="bottom">Review & Commit</TooltipContent>
+              </Tooltip>
+            </TooltipProvider>
+          )}
         </div>
       )}
     </div>
