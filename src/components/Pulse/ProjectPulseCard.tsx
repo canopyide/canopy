@@ -135,7 +135,7 @@ export function ProjectPulseCard({ worktreeId, className }: ProjectPulseCardProp
       >
         <div className="flex flex-col gap-2">
           <div className="flex items-center gap-2 text-canopy-text/50" role="alert">
-            <AlertCircle className="w-4 h-4 text-canopy-error/70" aria-hidden="true" />
+            <AlertCircle className="w-4 h-4 text-status-error/70" aria-hidden="true" />
             <span className="text-xs">{error}</span>
             <button
               onClick={handleRefresh}
