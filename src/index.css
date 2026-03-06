@@ -79,10 +79,11 @@
   --color-server-starting: #d4a043; /* Same as status-warning: Server starting */
   --color-server-error: #d97979; /* Same as status-error: Server error */
 
-  /* GitHub entity state colors */
-  --color-github-open: #5bacce; /* Muted sky: open PRs */
-  --color-github-merged: #967adc; /* Muted violet: merged PRs */
-  --color-github-closed: var(--color-status-error); /* Reuses error: closed PRs/issues */
+  /* GitHub entity state colors — adapted from Primer dark mode */
+  --color-github-open: #3fb950; /* Green: open issues & PRs */
+  --color-github-merged: #a371f7; /* Purple: merged PRs & closed-completed issues */
+  --color-github-closed: #f85149; /* Red: closed PRs (not merged) */
+  --color-github-draft: #8b949e; /* Grey: draft PRs, closed-not-planned issues */
 
   /* Grid background - off-black base for noise texture */
   --color-grid-bg: #0d0d0e;

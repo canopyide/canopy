@@ -91,9 +91,9 @@ const IssueBadge = memo(function IssueBadge({
                 : `Open issue #${issueNumber} on GitHub`
             }
           >
-            <CircleDot className="w-3 h-3 text-status-success shrink-0" aria-hidden="true" />
+            <CircleDot className="w-3 h-3 text-github-open shrink-0" aria-hidden="true" />
             <span className="truncate text-canopy-text/90 flex-1 min-w-0">
-              {issueTitle || <span className="text-status-success font-mono">#{issueNumber}</span>}
+              {issueTitle || <span className="text-github-open font-mono">#{issueNumber}</span>}
             </span>
           </button>
         </TooltipTrigger>

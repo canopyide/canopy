@@ -194,7 +194,7 @@ export function IssuePickerDialog({
                   )}
                 >
                   {issue.state === "OPEN" ? (
-                    <CircleDot className="w-4 h-4 text-status-success shrink-0 mt-0.5" />
+                    <CircleDot className="w-4 h-4 text-github-open shrink-0 mt-0.5" />
                   ) : (
                     <CircleCheck className="w-4 h-4 text-github-merged shrink-0 mt-0.5" />
                   )}
