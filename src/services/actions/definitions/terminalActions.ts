@@ -1198,23 +1198,13 @@ export function registerTerminalActions(actions: ActionRegistry, callbacks: Acti
         const terminal = state.terminals.find((t) => t.id === targetId);
         // Fire immediately if agent is already in a terminal attention state
         if (terminal?.agentState === "completed" || terminal?.agentState === "waiting") {
-          void import("@/store/notificationStore").then(({ useNotificationStore }) => {
-            useNotificationStore.getState().addNotification({
-              type: "info",
-              title: "Agent already finished",
-              message: `${terminal.title ?? "Terminal"} is ${terminal.agentState}`,
-              duration: 8000,
-            });
-          });
-          if (window.electron?.notification?.showWatchNotification) {
-            window.electron.notification.showWatchNotification({
-              title: "Agent already finished",
-              body: `${terminal.title ?? "Terminal"} is ${terminal.agentState}`,
-              panelId: targetId,
-              panelTitle: terminal.title ?? targetId,
-              worktreeId: terminal.worktreeId ?? undefined,
-            });
-          }
+          const { fireWatchNotification } = await import("@/lib/watchNotification");
+          fireWatchNotification(
+            targetId,
+            terminal.title ?? targetId,
+            terminal.agentState,
+            terminal.worktreeId ?? undefined
+          );
         } else {
           state.watchPanel(targetId);
         }

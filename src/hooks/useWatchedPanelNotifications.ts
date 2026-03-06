@@ -1,49 +1,9 @@
 import { useEffect } from "react";
 import { useTerminalStore } from "@/store/terminalStore";
-import { useNotificationStore } from "@/store/notificationStore";
 import { useWorktreeSelectionStore } from "@/store/worktreeStore";
+import { fireWatchNotification } from "@/lib/watchNotification";
 
 const NOTIFICATION_STAGGER_MS = 250;
-
-function fireWatchNotification(
-  panelId: string,
-  panelTitle: string,
-  agentState: string,
-  worktreeId?: string
-): void {
-  const label = panelTitle || panelId;
-  const isWaiting = agentState === "waiting";
-  const title = isWaiting ? "Agent waiting for input" : "Agent task completed";
-  const message = isWaiting ? `${label} is waiting for your input` : `${label} finished its task`;
-
-  // 1. In-app banner (always shown, even if app is focused)
-  useNotificationStore.getState().addNotification({
-    type: isWaiting ? "warning" : "success",
-    title,
-    message,
-    duration: 12000,
-    action: {
-      label: "Go to terminal",
-      onClick: () => {
-        if (worktreeId) {
-          useWorktreeSelectionStore.getState().setActiveWorktree(worktreeId);
-        }
-        useTerminalStore.getState().setFocused(panelId, true);
-      },
-    },
-  });
-
-  // 2. OS native notification (unconditional — no focus check)
-  if (window.electron?.notification?.showWatchNotification) {
-    window.electron.notification.showWatchNotification({
-      title,
-      body: message,
-      panelId,
-      panelTitle: label,
-      worktreeId,
-    });
-  }
-}
 
 export function useWatchedPanelNotifications(): void {
   useEffect(() => {
@@ -77,7 +37,6 @@ export function useWatchedPanelNotifications(): void {
         terminals.map((t) => [t.id, t.agentState])
       );
 
-      // Check each currently watched panel for a completion transition
       for (const panelId of watchedPanels) {
         const currentState = currentAgentStates.get(panelId);
         const previousState = prevAgentStates.get(panelId);
@@ -99,6 +58,11 @@ export function useWatchedPanelNotifications(): void {
           const capturedWorktreeId = terminal.worktreeId ?? undefined;
 
           enqueueNotification(() => {
+            // Guard: skip if panel has since been removed or trashed
+            const { terminals: liveTerminals } = useTerminalStore.getState();
+            const liveTerminal = liveTerminals.find((t) => t.id === capturedPanelId);
+            if (!liveTerminal || liveTerminal.location === "trash") return;
+
             fireWatchNotification(
               capturedPanelId,
               capturedTitle,
