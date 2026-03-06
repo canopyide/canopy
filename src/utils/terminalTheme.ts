@@ -38,7 +38,7 @@ export const CANOPY_TERMINAL_THEME = CANOPY_TERMINAL_THEME_FALLBACK;
  * determined by the terminal application at runtime.
  */
 export function getTerminalThemeFromCSS(): typeof CANOPY_TERMINAL_THEME_FALLBACK {
-  if (typeof document === "undefined") return CANOPY_TERMINAL_THEME_FALLBACK;
+  if (typeof document === "undefined") return { ...CANOPY_TERMINAL_THEME_FALLBACK };
 
   const styles = getComputedStyle(document.documentElement);
   const getVar = (name: string, fallback: string): string => {
