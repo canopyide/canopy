@@ -126,6 +126,7 @@ export function FileStageRow({ file, isStaged, onToggle, onFileClick }: FileStag
       </TooltipProvider>
 
       <span
+        aria-hidden="true"
         className={cn(
           "inline-flex items-center justify-center rounded-sm px-1 mr-2 shrink-0",
           "text-[10px] font-medium leading-4 h-4 min-w-[16px]",
@@ -142,7 +143,7 @@ export function FileStageRow({ file, isStaged, onToggle, onFileClick }: FileStag
             {dir}/
           </span>
         )}
-        <span className="shrink-0 text-canopy-text group-hover:text-white font-medium font-mono text-[11px] transition-colors">
+        <span className="shrink truncate text-canopy-text group-hover:text-white font-medium font-mono text-[11px] transition-colors">
           {base}
         </span>
       </div>

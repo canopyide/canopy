@@ -10,7 +10,6 @@ interface CommitPanelProps {
   isDetachedHead: boolean;
   hasConflicts: boolean;
   hasRemote: boolean;
-  currentBranch: string | null;
   onCommit: (message: string) => Promise<void>;
   onCommitAndPush: (message: string) => Promise<void>;
 }
@@ -59,14 +58,14 @@ export function CommitPanel({
     (e: React.KeyboardEvent) => {
       if (e.key === "Enter" && (e.metaKey || e.ctrlKey)) {
         e.preventDefault();
-        if (e.shiftKey) {
+        if (e.shiftKey && hasRemote) {
           void handleCommitAndPush();
         } else {
           void handleCommit();
         }
       }
     },
-    [handleCommit, handleCommitAndPush]
+    [handleCommit, handleCommitAndPush, hasRemote]
   );
 
   return (
