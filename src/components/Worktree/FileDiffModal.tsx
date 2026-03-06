@@ -2,6 +2,7 @@ import { useEffect, useCallback, useState, useRef } from "react";
 import type { GitStatus } from "@shared/types";
 import { actionService } from "@/services/ActionService";
 import { FileViewerModal } from "@/components/FileViewer/FileViewerModal";
+import { useBranchForPath } from "@/hooks/useBranchForPath";
 
 export interface FileDiffModalProps {
   isOpen: boolean;
@@ -20,6 +21,7 @@ export function FileDiffModal({
 }: FileDiffModalProps) {
   const [diff, setDiff] = useState<string | undefined>(undefined);
   const requestRef = useRef(0);
+  const branch = useBranchForPath(worktreePath);
 
   const absoluteFilePath = worktreePath.endsWith("/")
     ? worktreePath + filePath
@@ -57,6 +59,7 @@ export function FileDiffModal({
       isOpen={isOpen}
       filePath={absoluteFilePath}
       rootPath={worktreePath}
+      branch={branch}
       diff={diff}
       defaultMode="diff"
       onClose={onClose}

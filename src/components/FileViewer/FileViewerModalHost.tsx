@@ -1,6 +1,7 @@
 import { useEffect, useState } from "react";
 import { FileViewerModal } from "./FileViewerModal";
 import { useProjectStore } from "@/store";
+import { useBranchForPath } from "@/hooks/useBranchForPath";
 
 interface FileViewState {
   path: string;
@@ -13,6 +14,8 @@ export function FileViewerModalHost() {
   const [fileView, setFileView] = useState<FileViewState | null>(null);
   const currentProject = useProjectStore((s) => s.currentProject);
   const projectRootPath = currentProject?.path ?? "";
+  const effectiveRootPath = fileView?.rootPath ?? projectRootPath;
+  const branch = useBranchForPath(effectiveRootPath);
 
   useEffect(() => {
     const handleOpen = (e: Event) => {
@@ -39,7 +42,8 @@ export function FileViewerModalHost() {
     <FileViewerModal
       isOpen={true}
       filePath={fileView.path}
-      rootPath={fileView.rootPath ?? projectRootPath}
+      rootPath={effectiveRootPath}
+      branch={branch}
       initialLine={fileView.line}
       initialCol={fileView.col}
       onClose={() => setFileView(null)}
