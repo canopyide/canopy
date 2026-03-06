@@ -1,5 +1,15 @@
 import React, { useCallback, useEffect, useRef, useState, type ReactNode } from "react";
-import { X, Maximize2, Minimize2, RotateCcw, Grid2X2, Activity, Plus } from "lucide-react";
+import {
+  X,
+  Maximize2,
+  Minimize2,
+  RotateCcw,
+  Grid2X2,
+  Activity,
+  Plus,
+  Bell,
+  BellOff,
+} from "lucide-react";
 import {
   DndContext,
   closestCenter,
@@ -21,6 +31,7 @@ import { TerminalIcon } from "@/components/Terminal/TerminalIcon";
 import { DockToBottomIcon } from "@/components/icons";
 import { useDragHandle } from "@/components/DragDrop/DragHandleContext";
 import { useBackgroundPanelStats } from "@/hooks";
+import { useTerminalStore } from "@/store/terminalStore";
 import { TabButton, type TabInfo } from "./TabButton";
 import { SortableTabButton } from "./SortableTabButton";
 import { panelKindCanRestart } from "@shared/config/panelKindRegistry";
@@ -221,6 +232,24 @@ function PanelHeaderComponent({
 
   // Get background activity stats for Zen Mode header
   const { activeCount, workingCount } = useBackgroundPanelStats(id);
+
+  // Watch state — only relevant for agent panels
+  const isWatched = useTerminalStore((state) => state.watchedPanels.has(id));
+  const watchPanel = useTerminalStore((state) => state.watchPanel);
+  const unwatchPanel = useTerminalStore((state) => state.unwatchPanel);
+  const showWatchButton = !!agentId;
+
+  const handleToggleWatch = useCallback(
+    (e: React.MouseEvent) => {
+      e.stopPropagation();
+      if (isWatched) {
+        unwatchPanel(id);
+      } else {
+        watchPanel(id);
+      }
+    },
+    [id, isWatched, watchPanel, unwatchPanel]
+  );
 
   // In dock, show shortened title without command summary for space efficiency
   const displayTitle = location === "dock" ? getBaseTitle(title) : title;
@@ -561,6 +590,44 @@ function PanelHeaderComponent({
           {/* Window controls - hover only */}
           <div className="flex items-center gap-1.5 opacity-0 pointer-events-none group-hover:opacity-100 group-hover:pointer-events-auto group-focus-within:opacity-100 group-focus-within:pointer-events-auto transition-opacity motion-reduce:transition-none">
             {headerActions}
+            {/* Watch toggle — only for agent panels */}
+            {showWatchButton && (
+              <TooltipProvider>
+                <Tooltip>
+                  <TooltipTrigger asChild>
+                    <button
+                      type="button"
+                      onClick={handleToggleWatch}
+                      onPointerDown={(e) => e.stopPropagation()}
+                      className={cn(
+                        "p-1.5 transition-colors focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2",
+                        isWatched
+                          ? "text-canopy-accent hover:text-canopy-accent/80 focus-visible:outline-canopy-accent"
+                          : "text-canopy-text/60 hover:text-canopy-text focus-visible:outline-canopy-accent"
+                      )}
+                      aria-label={
+                        isWatched
+                          ? "Cancel watch — stop waiting for completion"
+                          : "Watch this terminal — notify on completion"
+                      }
+                      aria-pressed={isWatched}
+                    >
+                      {isWatched ? (
+                        <Bell
+                          className="w-3 h-3 animate-pulse motion-reduce:animate-none"
+                          aria-hidden="true"
+                        />
+                      ) : (
+                        <BellOff className="w-3 h-3" aria-hidden="true" />
+                      )}
+                    </button>
+                  </TooltipTrigger>
+                  <TooltipContent side="bottom">
+                    {isWatched ? "Cancel watch" : "Watch this terminal"}
+                  </TooltipContent>
+                </Tooltip>
+              </TooltipProvider>
+            )}
             {/* Restart button - only shown for panel kinds that declare canRestart capability */}
             {canRestart && onRestart && (
               <TooltipProvider>
