@@ -105,9 +105,11 @@ export function SettingsDialog({
 
     const handleKeyDown = (e: KeyboardEvent) => {
       const isSearchShortcut = e.key === "/" || ((e.metaKey || e.ctrlKey) && e.key === "f");
-      const isEditingField = ["INPUT", "TEXTAREA"].includes(
-        (document.activeElement as HTMLElement)?.tagName ?? ""
-      );
+      const activeEl = document.activeElement as HTMLElement | null;
+      const isEditingField =
+        ["INPUT", "TEXTAREA"].includes(activeEl?.tagName ?? "") ||
+        activeEl?.contentEditable === "true" ||
+        activeEl?.isContentEditable === true;
 
       if (isSearchShortcut && !isEditingField) {
         e.preventDefault();
@@ -127,7 +129,9 @@ export function SettingsDialog({
 
   const matchCounts = useMemo(() => countMatchesPerTab(searchResults), [searchResults]);
 
-  const isSearching = deferredQuery.trim().length > 0;
+  // Use live searchQuery for mode switching to avoid deferred split-brain;
+  // deferredQuery drives the expensive filtering computation only.
+  const isSearching = searchQuery.trim().length > 0;
 
   const handleResultClick = (tab: SettingsTab) => {
     setActiveTab(tab);
