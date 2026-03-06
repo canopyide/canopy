@@ -54,6 +54,7 @@ import type {
   AgentUpdateSettings,
   StartAgentUpdatePayload,
   StartAgentUpdateResult,
+  SystemHealthCheckResult,
 } from "./system.js";
 import type { AppState, HydrateResult } from "./app.js";
 import type { LogEntry, LogFilterOptions } from "./logs.js";
@@ -257,6 +258,7 @@ export interface ElectronAPI {
     getAgentUpdateSettings(): Promise<AgentUpdateSettings>;
     setAgentUpdateSettings(settings: AgentUpdateSettings): Promise<void>;
     startAgentUpdate(payload: StartAgentUpdatePayload): Promise<StartAgentUpdateResult>;
+    healthCheck(): Promise<SystemHealthCheckResult>;
     onWake(callback: (data: SystemWakePayload) => void): () => void;
   };
   app: {
