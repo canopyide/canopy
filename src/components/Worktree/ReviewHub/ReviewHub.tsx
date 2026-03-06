@@ -1,6 +1,8 @@
 import { useCallback, useEffect, useRef, useState } from "react";
+import { createPortal } from "react-dom";
 import type { StagingStatus, GitStatus } from "@shared/types";
 import { cn } from "@/lib/utils";
+import { useOverlayState } from "@/hooks";
 import { X, RefreshCw, CheckSquare, Square, Loader2, AlertTriangle } from "lucide-react";
 import { FileStageRow } from "./FileStageRow";
 import { CommitPanel } from "./CommitPanel";
@@ -25,6 +27,8 @@ export function ReviewHub({ isOpen, worktreePath, onClose }: ReviewHubProps) {
   } | null>(null);
   const closeButtonRef = useRef<HTMLButtonElement>(null);
   const refreshIdRef = useRef(0);
+
+  useOverlayState(isOpen);
 
   const refresh = useCallback(async () => {
     if (!worktreePath) return;
@@ -175,7 +179,7 @@ export function ReviewHub({ isOpen, worktreePath, onClose }: ReviewHubProps) {
     (status?.conflicted.length ?? 0);
   const hasConflicts = (status?.conflicted.length ?? 0) > 0;
 
-  return (
+  return createPortal(
     <>
       <div
         className={cn(
@@ -393,6 +397,7 @@ export function ReviewHub({ isOpen, worktreePath, onClose }: ReviewHubProps) {
         worktreePath={worktreePath}
         onClose={() => setSelectedFile(null)}
       />
-    </>
+    </>,
+    document.body
   );
 }
