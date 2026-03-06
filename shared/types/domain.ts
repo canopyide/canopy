@@ -54,6 +54,21 @@ export interface WorktreeChanges {
   lastCommitTimestampMs?: number;
 }
 
+export interface StagingFileEntry {
+  path: string;
+  status: GitStatus;
+  insertions: number | null;
+  deletions: number | null;
+}
+
+export interface StagingStatus {
+  staged: StagingFileEntry[];
+  unstaged: StagingFileEntry[];
+  isDetachedHead: boolean;
+  currentBranch: string | null;
+  hasRemote: boolean;
+}
+
 // Worktree Types
 
 /** Worktree mood indicator */

@@ -222,6 +222,7 @@ export function WorktreeCard({
   const hasFocusedTerminal = useTerminalStore((state) => state.focusedId !== null);
 
   const [showIssuePicker, setShowIssuePicker] = useState(false);
+  const [showReviewHub, setShowReviewHub] = useState(false);
 
   const handleAttachIssue = useCallback(
     async (issue: GitHubIssue) => {
@@ -378,6 +379,7 @@ export function WorktreeCard({
     onEndAll: handleEndAll,
     onShowDeleteDialog: () => setShowDeleteDialog(true),
     onShowIssuePicker: () => setShowIssuePicker(true),
+    onShowReviewHub: () => setShowReviewHub(true),
   });
 
   const cardContent = (
@@ -484,6 +486,7 @@ export function WorktreeCard({
             onOpenPRSidecar: worktree.prUrl ? handleOpenPRSidecar : undefined,
             onOpenPRExternal: worktree.prUrl ? handleOpenPRExternal : undefined,
             onAttachIssue: () => setShowIssuePicker(true),
+            onOpenReviewHub: () => setShowReviewHub(true),
             onRunRecipe: (recipeId) => void handleRunRecipe(recipeId),
             onSaveLayout,
             onTogglePin: handleTogglePin,
@@ -514,6 +517,7 @@ export function WorktreeCard({
           onPathClick={handlePathClick}
           onDismissError={dismissError}
           onRetryError={handleErrorRetry}
+          onOpenReviewHub={() => setShowReviewHub(true)}
         />
 
         <WorktreeTerminalSection
@@ -535,6 +539,8 @@ export function WorktreeCard({
           onCloseIssuePicker={() => setShowIssuePicker(false)}
           onAttachIssue={(issue) => void handleAttachIssue(issue)}
           onDetachIssue={() => void handleDetachIssue()}
+          showReviewHub={showReviewHub}
+          onCloseReviewHub={() => setShowReviewHub(false)}
         />
       </div>
     </div>

@@ -24,6 +24,7 @@ import { registerAppAgentHandlers } from "./handlers/appAgent.js";
 import { registerAgentCapabilitiesHandlers } from "./handlers/agentCapabilities.js";
 import { registerCliHandlers } from "./handlers/cli.js";
 import { registerClipboardHandlers } from "./handlers/clipboard.js";
+import { registerGitWriteHandlers } from "./handlers/git-write.js";
 import { events } from "../services/events.js";
 import { typedHandle, typedSend, sendToRenderer } from "./utils.js";
 
@@ -78,6 +79,7 @@ export function registerIpcHandlers(deps: HandlerDependencies): () => void {
     register(() => registerAgentCapabilitiesHandlers());
     register(() => registerCliHandlers());
     register(() => registerClipboardHandlers());
+    register(() => registerGitWriteHandlers(deps));
   } catch (error) {
     runCleanups(cleanupFunctions);
     throw error;

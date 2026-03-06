@@ -6,7 +6,7 @@ import { cn } from "@/lib/utils";
 import { ActivityLight } from "../ActivityLight";
 import { LiveTimeAgo } from "../LiveTimeAgo";
 import { WorktreeDetails } from "../WorktreeDetails";
-import { ChevronRight } from "lucide-react";
+import { ChevronRight, GitCommitHorizontal } from "lucide-react";
 import type { ComputedSubtitle } from "./hooks/useWorktreeStatus";
 import { Tooltip, TooltipContent, TooltipTrigger, TooltipProvider } from "@/components/ui/tooltip";
 
@@ -24,6 +24,7 @@ export interface WorktreeDetailsSectionProps {
   onPathClick: () => void;
   onDismissError: (id: string) => void;
   onRetryError: (id: string, action: RetryAction, args?: Record<string, unknown>) => Promise<void>;
+  onOpenReviewHub?: () => void;
 }
 
 export function WorktreeDetailsSection({
@@ -40,6 +41,7 @@ export function WorktreeDetailsSection({
   onPathClick,
   onDismissError,
   onRetryError,
+  onOpenReviewHub,
 }: WorktreeDetailsSectionProps) {
   const detailsId = `worktree-${worktree.id}-details`;
   const detailsPanelId = `worktree-${worktree.id}-details-panel`;
@@ -118,6 +120,29 @@ export function WorktreeDetailsSection({
                         </span>
                       )}
                     </span>
+                  )}
+                  {onOpenReviewHub && (
+                    <TooltipProvider>
+                      <Tooltip>
+                        <TooltipTrigger asChild>
+                          <button
+                            onClick={(e) => {
+                              e.stopPropagation();
+                              onOpenReviewHub();
+                            }}
+                            className={cn(
+                              "ml-1 px-1.5 py-0.5 rounded text-[10px] font-medium transition-colors",
+                              "text-canopy-accent/80 hover:text-canopy-accent hover:bg-canopy-accent/10",
+                              "focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-canopy-accent"
+                            )}
+                          >
+                            <GitCommitHorizontal className="w-3 h-3 inline mr-0.5" />
+                            Review
+                          </button>
+                        </TooltipTrigger>
+                        <TooltipContent side="bottom">Open Review & Commit</TooltipContent>
+                      </Tooltip>
+                    </TooltipProvider>
                   )}
                 </span>
               ) : (
