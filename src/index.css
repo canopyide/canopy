@@ -1263,7 +1263,7 @@ body[data-performance-mode="true"] .animate-pulse-delayed {
 body[data-performance-mode="true"] .surface-overlay {
   -webkit-backdrop-filter: none !important;
   backdrop-filter: none !important;
-  background-color: var(--color-surface-panel-elevated) !important;
+  background-color: var(--color-surface-sidebar) !important;
 }
 
 body[data-performance-mode="true"] .surface-overlay.active-sessions-menu {
@@ -1290,8 +1290,8 @@ body[data-performance-mode="true"] [class*="backdrop-blur"] {
 
 @layer utilities {
   .surface-overlay {
-    background-color: var(--color-surface-panel-elevated);
-    background-color: color-mix(in oklab, var(--color-surface-panel-elevated) 94%, transparent);
+    background-color: var(--color-surface-sidebar);
+    background-color: color-mix(in oklab, var(--color-surface-sidebar) 94%, transparent);
     border: 1px solid var(--border-overlay);
     -webkit-backdrop-filter: blur(10px) saturate(120%);
     backdrop-filter: blur(10px) saturate(120%);
