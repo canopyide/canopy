@@ -71,6 +71,7 @@ export function NewWorktreeDialog({
   const [prefixPickerOpen, setPrefixPickerOpen] = useState(false);
   const [prefixSelectedIndex, setPrefixSelectedIndex] = useState(0);
   const branchInputTouchedRef = useRef(false);
+  const [gitUsername, setGitUsername] = useState<string | null>(null);
 
   const assignWorktreeToSelf = usePreferencesStore((s) => s.assignWorktreeToSelf);
   const setAssignWorktreeToSelf = usePreferencesStore((s) => s.setAssignWorktreeToSelf);
@@ -120,6 +121,12 @@ export function NewWorktreeDialog({
         .then((settings) => {
           if (currentProject?.id === requestedProjectId) {
             setProjectSettings(settings);
+            if (settings.branchPrefixMode === "username") {
+              window.electron.git
+                .getUsername(currentProject.path)
+                .then((username) => setGitUsername(username))
+                .catch(() => setGitUsername(null));
+            }
           }
         })
         .catch((err) => console.error("Failed to load project settings:", err));
@@ -193,6 +200,15 @@ export function NewWorktreeDialog({
   );
 
   const parsedBranch = useMemo(() => parseBranchInput(branchInput), [branchInput]);
+
+  const configuredBranchPrefix = useMemo(() => {
+    if (!projectSettings) return "";
+    const mode = projectSettings.branchPrefixMode ?? "none";
+    if (mode === "none") return "";
+    if (mode === "username") return gitUsername ? `${gitUsername}/` : "";
+    if (mode === "custom") return projectSettings.branchPrefixCustom?.trim() ?? "";
+    return "";
+  }, [projectSettings, gitUsername]);
 
   const prefixSuggestions = useMemo(() => {
     // Only show suggestions if typing at the beginning (no slash yet or cursor at prefix)
@@ -350,6 +366,7 @@ export function NewWorktreeDialog({
     setBranchInput("");
     setWorktreePath("");
     setProjectSettings(null);
+    setGitUsername(null);
     recipeSelectionTouchedRef.current = false;
     branchInputTouchedRef.current = false;
     setPrefixPickerOpen(false);
@@ -398,6 +415,15 @@ export function NewWorktreeDialog({
   }, [isOpen, loading]);
 
   useEffect(() => {
+    if (!configuredBranchPrefix) return;
+    if (branchInputTouchedRef.current) return;
+    if (selectedIssue) return;
+    if (branchInput === "" || branchInput === configuredBranchPrefix) {
+      setBranchInput(configuredBranchPrefix);
+    }
+  }, [configuredBranchPrefix, selectedIssue, branchInput]);
+
+  useEffect(() => {
     if (selectedIssue && !branchInputTouchedRef.current) {
       const slug = generateBranchSlug(selectedIssue.title, 30);
       const suggestedSlug = slug
@@ -405,11 +431,12 @@ export function NewWorktreeDialog({
         : `issue-${selectedIssue.number}`;
 
       const detectedPrefix = detectPrefixFromIssue(selectedIssue);
-      const prefix = detectedPrefix || "feature";
+      const typePrefix = detectedPrefix || "feature";
+      const baseName = `${typePrefix}/${suggestedSlug}`;
 
-      setBranchInput(`${prefix}/${suggestedSlug}`);
+      setBranchInput(configuredBranchPrefix ? `${configuredBranchPrefix}${baseName}` : baseName);
     }
-  }, [selectedIssue]);
+  }, [selectedIssue, configuredBranchPrefix]);
 
   // Auto-resolve branch name and path conflicts (debounced)
   useEffect(() => {

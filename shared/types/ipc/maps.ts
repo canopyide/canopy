@@ -852,6 +852,10 @@ export interface IpcInvokeMap {
     args: [cwd: string];
     result: StagingStatus;
   };
+  "git:get-username": {
+    args: [cwd: string];
+    result: string | null;
+  };
 
   // Sidecar channels
   "sidecar:create": {

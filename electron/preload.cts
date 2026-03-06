@@ -374,6 +374,7 @@ const CHANNELS = {
   GIT_COMMIT: "git:commit",
   GIT_PUSH: "git:push",
   GIT_GET_STAGING_STATUS: "git:get-staging-status",
+  GIT_GET_USERNAME: "git:get-username",
 
   // Sidecar channels
   SIDECAR_CREATE: "sidecar:create",
@@ -1158,6 +1159,8 @@ const api: ElectronAPI = {
       _typedInvoke(CHANNELS.GIT_PUSH, { cwd, setUpstream }),
 
     getStagingStatus: (cwd: string) => _typedInvoke(CHANNELS.GIT_GET_STAGING_STATUS, cwd),
+
+    getUsername: (cwd: string) => _typedInvoke(CHANNELS.GIT_GET_USERNAME, cwd),
   },
 
   // Terminal Config API

@@ -212,6 +212,7 @@ export const CHANNELS = {
   GIT_COMMIT: "git:commit",
   GIT_PUSH: "git:push",
   GIT_GET_STAGING_STATUS: "git:get-staging-status",
+  GIT_GET_USERNAME: "git:get-username",
 
   SIDECAR_CREATE: "sidecar:create",
   SIDECAR_SHOW: "sidecar:show",
