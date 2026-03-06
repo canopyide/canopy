@@ -44,9 +44,9 @@ Central dispatcher for all UI operations (`src/services/ActionService.ts`):
 
 ### Panel Architecture
 
-Panels (terminal, agent, browser) use discriminated unions:
+Panels (terminal, agent, browser, notes, dev-preview) use discriminated unions:
 
-- `PanelInstance = PtyPanelData | BrowserPanelData`
+- `PanelInstance = PtyPanelData | BrowserPanelData | NotesPanelData | DevPreviewPanelData`
 - `panelKindHasPty(kind)` - Check if panel needs PTY
 - Registry: `shared/config/panelKindRegistry.ts`
 

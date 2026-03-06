@@ -1,7 +1,7 @@
 # Canopy Command Center
 
 **Overview:** Electron-based IDE for orchestrating AI coding agents (Claude, Gemini, Codex). Features integrated terminals, worktree dashboard, panel management, and context injection.
-**Stack:** Electron 33, React 19, Vite 6, TypeScript, Tailwind CSS v4, Zustand, node-pty, simple-git.
+**Stack:** Electron 40, React 19, Vite 6, TypeScript, Tailwind CSS v4, Zustand, node-pty, simple-git.
 
 ## Critical Rules
 
@@ -36,7 +36,7 @@ The **Actions System** is the central orchestration layer for all UI operations.
 **Core Components:**
 
 - `ActionService` (`src/services/ActionService.ts`) - Registry and dispatcher singleton
-- Action definitions (`src/services/actions/definitions/`) - 17 domain-specific action files
+- Action definitions (`src/services/actions/definitions/`) - 20 domain-specific action files
 - Shared types (`shared/types/actions.ts`) - `ActionId`, `ActionDefinition`, `ActionManifestEntry`
 
 **Key Concepts:**
@@ -47,14 +47,14 @@ The **Actions System** is the central orchestration layer for all UI operations.
 - `ActionDanger` - Safety levels: "safe" | "confirm" | "restricted"
 - Actions emit events to the main process event bus for observability
 
-**Action Categories:** terminal, agent, panel, worktree, project, github, git, navigation, app, preferences, browser, system, logs, recipes
+**Action Categories:** terminal, agent, panel, worktree, worktreeSession, project, github, git, navigation, app, preferences, browser, system, logs, recipes, notes, workflow, devServer, file, introspection
 
 ### Panel Architecture
 
 Panels are the visual units in the panel grid and dock. The system uses discriminated union types for type safety:
 
-- `PanelInstance = PtyPanelData | BrowserPanelData`
-- Built-in panel kinds: `"terminal"` | `"agent"` | `"browser"`
+- `PanelInstance = PtyPanelData | BrowserPanelData | NotesPanelData | DevPreviewPanelData`
+- Built-in panel kinds: `"terminal"` | `"agent"` | `"browser"` | `"notes"` | `"dev-preview"`
 - `panelKindHasPty(kind)` - Check if panel requires PTY process
 - Panel Kind Registry (`shared/config/panelKindRegistry.ts`) - Extensible for custom panels
 
@@ -62,15 +62,7 @@ Panels are the visual units in the panel grid and dock. The system uses discrimi
 
 Access native features via namespaced API in Renderer. Returns Promises or Cleanups.
 
-- `worktree`: getAll, refresh, setActive, create, delete, onUpdate, onRemove
-- `terminal`: spawn, write, resize, kill, trash, restore, onData, onExit, onAgentStateChanged
-- `app`: getState, setState, hydrate, onMenuAction, quit
-- `copyTree`: generate, injectToTerminal, isAvailable, cancel, onProgress
-- `system`: openExternal, openPath, checkCommand, checkDirectory, getHomeDir
-- `project`: getAll, getCurrent, add, remove, update, switch, onSwitch
-- `logs`: getAll, getSources, clear, openFile, onEntry
-- `events`: emit (for action tracking)
-- `github`: openIssues, openPRs, listIssues, listPullRequests, getConfig, setToken
+36 namespaces including: `worktree`, `terminal`, `files`, `copyTree`, `system`, `app`, `menu`, `logs`, `errors`, `events`, `project`, `github`, `notes`, `devPreview`, `git`, `sidecar`, `hibernation`, `keybinding`, `worktreeConfig`, `window`, `notification`, `update`, `gemini`, `commands`, `appAgent`, `agentCapabilities`, `clipboard`, and more.
 
 ## Key Features & Implementation
 
@@ -143,7 +135,7 @@ src/
 │   └── actions/
 │       ├── actionDefinitions.ts  # Registration entry point
 │       ├── actionTypes.ts        # Callback interfaces
-│       └── definitions/          # 17 action definition files
+│       └── definitions/          # 20 action definition files
 ├── components/
 │   ├── Terminal/        # Xterm.js grid & controls
 │   ├── Worktree/        # Dashboard cards
