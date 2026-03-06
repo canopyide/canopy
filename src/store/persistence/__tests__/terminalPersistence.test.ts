@@ -123,6 +123,21 @@ describe("TerminalPersistence", () => {
       expect(savedTerminals).not.toContainEqual(expect.objectContaining({ id: "trash-1" }));
     });
 
+    it("excludes smoke test terminals by default", async () => {
+      const client = createMockProjectClient();
+      const persistence = new TerminalPersistence(client, { debounceMs: 100 });
+
+      const normalTerminal = createMockTerminal({ id: "grid-1" });
+      const smokeTerminal = createMockTerminal({ id: "smoke-test-terminal-1" });
+
+      persistence.save([normalTerminal, smokeTerminal], projectId);
+      await vi.advanceTimersByTimeAsync(100);
+
+      const savedTerminals = client.setTerminals.mock.calls[0][1] as TerminalSnapshot[];
+      expect(savedTerminals).toHaveLength(1);
+      expect(savedTerminals[0]).toEqual(expect.objectContaining({ id: "grid-1" }));
+    });
+
     it("transforms terminals with default transform", async () => {
       const client = createMockProjectClient();
       const persistence = new TerminalPersistence(client, { debounceMs: 100 });

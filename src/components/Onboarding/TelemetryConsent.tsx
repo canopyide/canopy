@@ -2,8 +2,9 @@ import { useState, useEffect } from "react";
 import { Shield, X } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { cn } from "@/lib/utils";
+import { isCanopyEnvEnabled } from "@/utils/env";
 
-const SKIP_FIRST_RUN_DIALOGS = process.env.CANOPY_E2E_SKIP_FIRST_RUN_DIALOGS === "1";
+const SKIP_FIRST_RUN_DIALOGS = isCanopyEnvEnabled("CANOPY_E2E_SKIP_FIRST_RUN_DIALOGS");
 
 export function TelemetryConsent() {
   const [visible, setVisible] = useState(false);

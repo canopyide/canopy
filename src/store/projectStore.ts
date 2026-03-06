@@ -28,6 +28,7 @@ import {
   prepareProjectSwitchRendererCache,
   cancelPreparedProjectSwitchRendererCache,
 } from "@/services/projectSwitchRendererCache";
+import { isSmokeTestTerminalId } from "@shared/utils/smokeTestTerminals";
 
 interface ProjectState {
   projects: Project[];
@@ -293,7 +294,7 @@ const createProjectStore: StateCreator<ProjectState> = (set, get) => ({
         // Get current terminals from store and save to per-project state
         const currentTerminals = useTerminalStore.getState().terminals;
         const terminalsToSave: TerminalSnapshot[] = currentTerminals
-          .filter((t) => t.location !== "trash")
+          .filter((t) => t.location !== "trash" && !isSmokeTestTerminalId(t.id))
           .map(terminalToSnapshot);
 
         const terminalSizes: Record<string, { cols: number; rows: number }> = {};
@@ -603,7 +604,7 @@ const createProjectStore: StateCreator<ProjectState> = (set, get) => ({
         // Get current terminals from store and save to per-project state
         const currentTerminals = useTerminalStore.getState().terminals;
         const terminalsToSave: TerminalSnapshot[] = currentTerminals
-          .filter((t) => t.location !== "trash")
+          .filter((t) => t.location !== "trash" && !isSmokeTestTerminalId(t.id))
           .map(terminalToSnapshot);
 
         const terminalSizes: Record<string, { cols: number; rows: number }> = {};
