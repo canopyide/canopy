@@ -29,9 +29,11 @@ function getStateIcon(state: string, type: "issue" | "pr") {
   return GitPullRequestClosed;
 }
 
-function getStateColor(state: string): string {
-  if (state === "OPEN") return "text-status-info";
-  if (state === "MERGED") return "text-status-success";
+function getStateColor(state: string, isDraft?: boolean): string {
+  if (isDraft) return "text-github-draft";
+  if (state === "OPEN") return "text-github-open";
+  if (state === "MERGED") return "text-github-merged";
+  if (state === "CLOSED") return "text-github-closed";
   return "text-muted-foreground";
 }
 
@@ -59,21 +61,21 @@ function getPRBadgeInfo(linkedPR: LinkedPRInfo): {
   if (linkedPR.state === "MERGED") {
     return {
       icon: GitMerge,
-      color: "text-status-success",
-      bgColor: "bg-status-success/10",
+      color: "text-github-merged",
+      bgColor: "bg-github-merged/10",
     };
   }
   if (linkedPR.state === "OPEN") {
     return {
       icon: GitPullRequest,
-      color: "text-status-info",
-      bgColor: "bg-status-info/10",
+      color: "text-github-open",
+      bgColor: "bg-github-open/10",
     };
   }
   return {
     icon: GitPullRequestClosed,
-    color: "text-muted-foreground",
-    bgColor: "bg-muted",
+    color: "text-github-closed",
+    bgColor: "bg-github-closed/10",
   };
 }
 
@@ -81,9 +83,9 @@ export function GitHubListItem({ item, type, onCreateWorktree }: GitHubListItemP
   const [copied, setCopied] = useState(false);
   const [copyError, setCopyError] = useState(false);
   const timeoutRef = useRef<number | undefined>(undefined);
-  const StateIcon = getStateIcon(item.state, type);
-  const stateColor = getStateColor(item.state);
   const isItemPR = isPR(item);
+  const StateIcon = getStateIcon(item.state, type);
+  const stateColor = getStateColor(item.state, isItemPR && item.isDraft);
 
   useEffect(() => {
     return () => {
