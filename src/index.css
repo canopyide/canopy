@@ -47,37 +47,42 @@
   --height-md: 2.5rem;
   --height-lg: 3rem;
 
-  /* Digital Ecology theme colors - The Forest Floor (Backgrounds) */
-  --color-canopy-bg: #18181b; /* Zinc-950: Neutral, deep charcoal */
-  --color-canopy-sidebar: #121214; /* Slightly darker, distinct from main content */
-  --color-canopy-border: #27272a; /* Zinc-800: Subtle separation */
+  /* Digital Ecology theme colors - The Forest Floor (Backgrounds)
+   * Surfaces use warm-shifted neutrals: still neutral enough to host
+   * agent brands, diffs, and semantic colors without clashing,
+   * but warmer than pure zinc to avoid "default Tailwind" feel. */
+  --color-canopy-bg: #19191a; /* Warm charcoal: slightly warmer than zinc-950 */
+  --color-canopy-sidebar: #131312; /* Warm dark: distinct from main content */
+  --color-canopy-border: #282828; /* Warm border: subtle separation */
   --color-canopy-text: #e4e4e7; /* Zinc-200: Soft white, not harsh */
-  --color-canopy-accent: #6b8de6; /* Canopy Blue: Brand accent */
-  --color-canopy-accent-rgb: 107, 141, 230; /* RGB values for accent color */
-  --color-terminal-selection: #1a2744; /* Deep blue: Terminal selection background */
+  --color-canopy-accent: #3f9366; /* Canopy Eucalyptus: Brand accent (~4.7:1 on bg) */
+  --color-canopy-accent-rgb: 63, 147, 102; /* RGB values for accent color */
+  --color-terminal-selection: #1a2c22; /* Green-tinted: Terminal selection background */
 
-  /* Semantic status colors - for user-facing states (success, error, warning, info) */
-  --color-status-success: #5dae8b; /* Muted sage green */
-  --color-status-warning: #d4a043; /* Warm amber: softened, 7.62:1 on bg */
-  --color-status-error: #d97979; /* Soft coral: softened, 5.95:1 on bg */
-  --color-status-info: #7f8ea3; /* Blue-gray: distinct from muted text, 5.37:1 on bg */
+  /* Semantic status colors - earthy/mineral palette harmonized with brand
+   * Brand green (#3F9366) is intentionally distinct from success (#5F8B6D):
+   * brand = habitat/place/focus, success = completed/healthy/merged */
+  --color-status-success: #5f8b6d; /* Fern: completed/healthy, distinct from brand */
+  --color-status-warning: #c59a4e; /* Pollen: warm amber, harmonized */
+  --color-status-error: #c8746c; /* Clay: earthy coral, clear but not harsh */
+  --color-status-info: #7b8c96; /* River slate: cool neutral, distinct from muted text */
 
   /* Semantic state colors - for agent/terminal lifecycle states
    * Green communicates "alive / in-progress" independent of brand identity.
    * Brand blue (canopy-accent) belongs on interactive elements only
    * (buttons, focus rings, text selections, active tab underlines).
    * state-working/state-active are intentionally distinct from status-success
-   * (#5dae8b muted sage = completed) — vivid green means "in progress". */
+   * (#5F8B6D fern = completed) — vivid green means "in progress". */
   --color-state-active: #22c55e; /* Green-500: Active Worktree — 7.84:1 on bg (WCAG AAA) */
   --color-state-idle: #52525b; /* Zinc-600: Dormant */
   --color-state-working: #22c55e; /* Green-500: AI is Working — 7.84:1 on bg (WCAG AAA) */
   --color-state-waiting: #fbbf24; /* Amber-400: Needs Attention */
 
   /* Server status colors - for dev server states */
-  --color-server-running: #5dae8b; /* Same as status-success: Server running */
+  --color-server-running: #5f8b6d; /* Same as status-success: Server running */
   --color-server-stopped: #52525b; /* Same as state-idle: Server inactive */
-  --color-server-starting: #d4a043; /* Same as status-warning: Server starting */
-  --color-server-error: #d97979; /* Same as status-error: Server error */
+  --color-server-starting: #c59a4e; /* Same as status-warning: Server starting */
+  --color-server-error: #c8746c; /* Same as status-error: Server error */
 
   /* GitHub entity state colors — adapted from Primer dark mode */
   --color-github-open: #3fb950; /* Green: open issues & PRs */
@@ -86,11 +91,11 @@
   --color-github-draft: #8b949e; /* Grey: draft PRs, closed-not-planned issues */
 
   /* Grid background - off-black base for noise texture */
-  --color-grid-bg: #0d0d0e;
+  --color-grid-bg: #0e0e0d;
 
   /* Terminal surface background - lighter for contrast with grid */
-  --color-surface: #1c1c20;
-  --color-surface-highlight: #2a2a2f;
+  --color-surface: #1d1d1e;
+  --color-surface-highlight: #2b2b2c;
 
   /* Subtle focus indicator - low opacity white for keyboard navigation */
   --color-canopy-focus: rgba(255, 255, 255, 0.18);
@@ -224,7 +229,7 @@
  * 3. Cards (surface) - Elevated from background
  * 4. Popovers/Modals (surface-highlight) - Highest elevation
  *
- * Primary Action: Blue (canopy-accent) - The Brand Color
+ * Primary Action: Eucalyptus Green (canopy-accent) - The Brand Color
  */
 .dark {
   /* Background surfaces - sourced from Canopy */
@@ -239,9 +244,8 @@
   --popover: var(--color-surface-highlight);
   --popover-foreground: var(--color-canopy-text);
 
-  /* Primary actions - aligned with brand accent (blue)
-   * Dark background color on blue provides WCAG AA contrast (5.55:1)
-   * Note: White text on #6b8de6 also passes WCAG AA (4.66:1)
+  /* Primary actions - aligned with brand accent (eucalyptus green)
+   * Dark background on green provides strong contrast (~4.7:1)
    */
   --primary: var(--color-canopy-accent);
   --primary-foreground: var(--color-canopy-bg);

@@ -36,13 +36,13 @@ export interface ImportedScheme {
 export type ImportResult = { ok: true; scheme: ImportedScheme } | { ok: false; errors: string[] };
 
 const CANOPY_DEFAULTS: Required<ImportedSchemeColors> = {
-  background: "#18181b",
+  background: "#19191a",
   foreground: "#e4e4e7",
-  cursor: "#6b8de6",
-  cursorAccent: "#18181b",
-  selectionBackground: "#1a2744",
+  cursor: "#3F9366",
+  cursorAccent: "#19191a",
+  selectionBackground: "#1a2c22",
   selectionForeground: "#e4e4e7",
-  black: "#18181b",
+  black: "#19191a",
   red: "#f87171",
   green: "#10b981",
   yellow: "#fbbf24",

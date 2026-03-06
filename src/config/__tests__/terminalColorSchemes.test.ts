@@ -42,10 +42,10 @@ describe("terminalColorSchemes", () => {
     expect(getSchemeById("nonexistent")).toBeUndefined();
   });
 
-  it("canopy scheme uses blue accent cursor and selection", () => {
+  it("canopy scheme uses eucalyptus accent cursor and selection", () => {
     const scheme = getSchemeById("canopy")!;
-    expect(scheme.colors.cursor).toBe("#6b8de6");
-    expect(scheme.colors.selectionBackground).toBe("#1a2744");
+    expect(scheme.colors.cursor).toBe("#3F9366");
+    expect(scheme.colors.selectionBackground).toBe("#1a2c22");
     expect(scheme.colors.green).toBe("#10b981");
     expect(scheme.colors.brightGreen).toBe("#34d399");
   });
