@@ -54,8 +54,6 @@
   --color-canopy-text: #e4e4e7; /* Zinc-200: Soft white, not harsh */
   --color-canopy-accent: #6b8de6; /* Canopy Blue: Brand accent */
   --color-canopy-accent-rgb: 107, 141, 230; /* RGB values for accent color */
-  --color-canopy-warning: #d4a043; /* Warm amber: softened from fbbf24 */
-  --color-canopy-error: #d97979; /* Soft coral: softened from f87171 */
   --color-terminal-selection: #1a2744; /* Deep blue: Terminal selection background */
 
   /* Semantic status colors - for user-facing states (success, error, warning, info) */
@@ -586,7 +584,7 @@ body,
     color: var(--color-state-working);
   }
   50% {
-    color: color-mix(in oklab, var(--color-state-working) 70%, white);
+    color: color-mix(in oklab, var(--color-state-working) 70%, var(--color-canopy-text));
   }
 }
 
