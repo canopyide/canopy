@@ -896,6 +896,10 @@ export interface ProjectSettings {
     /** Gitignore template to use (default: "node") */
     gitignoreTemplate?: "node" | "python" | "minimal" | "none";
   };
+  /** Branch prefix mode for new worktrees */
+  branchPrefixMode?: "none" | "username" | "custom";
+  /** Custom branch prefix string when branchPrefixMode is "custom" (e.g., "feature/") */
+  branchPrefixCustom?: string;
 }
 
 // Toolbar Customization Types

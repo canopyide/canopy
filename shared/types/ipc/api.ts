@@ -545,6 +545,7 @@ export interface ElectronAPI {
     commit(cwd: string, message: string): Promise<{ hash: string; summary: string }>;
     push(cwd: string, setUpstream?: boolean): Promise<{ success: boolean; error?: string }>;
     getStagingStatus(cwd: string): Promise<StagingStatus>;
+    getUsername(cwd: string): Promise<string | null>;
   };
   terminalConfig: {
     get(): Promise<TerminalConfig>;
