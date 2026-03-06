@@ -17,6 +17,8 @@ export type {
   GitStatus,
   FileChangeDetail,
   WorktreeChanges,
+  StagingFileEntry,
+  StagingStatus,
   // Worktree types
   WorktreeMood,
   Worktree,

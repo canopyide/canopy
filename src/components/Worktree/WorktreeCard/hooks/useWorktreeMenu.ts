@@ -19,6 +19,7 @@ export function useWorktreeMenu({
   onEndAll,
   onShowDeleteDialog,
   onShowIssuePicker,
+  onShowReviewHub,
 }: {
   worktree: WorktreeState;
   recipes: TerminalRecipe[];
@@ -40,6 +41,7 @@ export function useWorktreeMenu({
   onEndAll: () => void;
   onShowDeleteDialog: () => void;
   onShowIssuePicker?: () => void;
+  onShowReviewHub?: () => void;
 }): {
   contextMenuTemplate: MenuItemOption[];
   handleContextMenu: (event: React.MouseEvent) => Promise<void>;
@@ -118,6 +120,10 @@ export function useWorktreeMenu({
         id: "worktree:attach-issue",
         label: worktree.issueNumber ? "Change Issue..." : "Attach to Issue...",
         enabled: Boolean(onShowIssuePicker),
+      },
+      {
+        id: "worktree:review-hub",
+        label: "Review & Commit",
       },
       {
         id: "worktree:copy-context",
@@ -367,6 +373,9 @@ export function useWorktreeMenu({
         case "worktree:attach-issue":
           onShowIssuePicker?.();
           break;
+        case "worktree:review-hub":
+          onShowReviewHub?.();
+          break;
         case "worktree:delete":
           onShowDeleteDialog();
           break;
@@ -379,6 +388,7 @@ export function useWorktreeMenu({
       onRestartAll,
       onShowDeleteDialog,
       onShowIssuePicker,
+      onShowReviewHub,
       showMenu,
       worktree.id,
     ]

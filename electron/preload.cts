@@ -1131,6 +1131,23 @@ const api: ElectronAPI = {
       skip?: number;
       limit?: number;
     }) => ipcRenderer.invoke(CHANNELS.GIT_LIST_COMMITS, options),
+
+    stageFile: (cwd: string, filePath: string) =>
+      _typedInvoke(CHANNELS.GIT_STAGE_FILE, { cwd, filePath }),
+
+    unstageFile: (cwd: string, filePath: string) =>
+      _typedInvoke(CHANNELS.GIT_UNSTAGE_FILE, { cwd, filePath }),
+
+    stageAll: (cwd: string) => _typedInvoke(CHANNELS.GIT_STAGE_ALL, cwd),
+
+    unstageAll: (cwd: string) => _typedInvoke(CHANNELS.GIT_UNSTAGE_ALL, cwd),
+
+    commit: (cwd: string, message: string) => _typedInvoke(CHANNELS.GIT_COMMIT, { cwd, message }),
+
+    push: (cwd: string, setUpstream?: boolean) =>
+      _typedInvoke(CHANNELS.GIT_PUSH, { cwd, setUpstream }),
+
+    getStagingStatus: (cwd: string) => _typedInvoke(CHANNELS.GIT_GET_STAGING_STATUS, cwd),
   },
 
   // Terminal Config API
