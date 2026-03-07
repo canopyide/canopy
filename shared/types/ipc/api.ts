@@ -821,10 +821,42 @@ export interface ElectronAPI {
     validateApiKey(apiKey: string): Promise<{ valid: boolean; error?: string }>;
   };
   mcpServer: {
-    /** Get current MCP server status */
-    getStatus(): Promise<{ enabled: boolean; port: number | null }>;
+    /** Get current MCP server status and configuration */
+    getStatus(): Promise<{
+      enabled: boolean;
+      port: number | null;
+      configuredPort: number | null;
+      apiKey: string;
+    }>;
     /** Enable or disable the MCP server */
-    setEnabled(enabled: boolean): Promise<{ enabled: boolean; port: number | null }>;
+    setEnabled(
+      enabled: boolean
+    ): Promise<{
+      enabled: boolean;
+      port: number | null;
+      configuredPort: number | null;
+      apiKey: string;
+    }>;
+    /** Set a fixed port (null = auto-assign ephemeral port) */
+    setPort(
+      port: number | null
+    ): Promise<{
+      enabled: boolean;
+      port: number | null;
+      configuredPort: number | null;
+      apiKey: string;
+    }>;
+    /** Set the API key for bearer token authentication (empty string = no auth) */
+    setApiKey(
+      apiKey: string
+    ): Promise<{
+      enabled: boolean;
+      port: number | null;
+      configuredPort: number | null;
+      apiKey: string;
+    }>;
+    /** Generate a random API key and persist it */
+    generateApiKey(): Promise<string>;
     /** Get the JSON config snippet to paste into an MCP client config */
     getConfigSnippet(): Promise<string>;
   };

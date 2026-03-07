@@ -1,5 +1,6 @@
 import { ipcMain, BrowserWindow } from "electron";
 import http from "node:http";
+import net from "node:net";
 import { randomUUID } from "node:crypto";
 import os from "node:os";
 import path from "node:path";
@@ -14,6 +15,8 @@ import { store } from "../store.js";
 const DISCOVERY_DIR = path.join(os.homedir(), ".canopy");
 const DISCOVERY_FILE = path.join(DISCOVERY_DIR, "mcp.json");
 const MCP_SERVER_KEY = "canopy";
+const DEFAULT_PORT = 45454;
+const MAX_PORT_RETRIES = 10;
 
 interface PendingRequest<T> {
   resolve: (value: T) => void;
@@ -38,17 +41,40 @@ export class McpServerService {
     return this.port;
   }
 
+  private getConfig() {
+    return store.get("mcpServer");
+  }
+
   isEnabled(): boolean {
-    return store.get("mcpServer").enabled;
+    return this.getConfig().enabled;
   }
 
   async setEnabled(enabled: boolean): Promise<void> {
-    store.set("mcpServer", { enabled });
+    store.set("mcpServer", { ...this.getConfig(), enabled });
     if (enabled && this.mainWindow && !this.isRunning) {
       await this.start(this.mainWindow);
     } else if (!enabled && this.isRunning) {
       await this.stop();
     }
+  }
+
+  async setPort(port: number | null): Promise<void> {
+    const config = this.getConfig();
+    store.set("mcpServer", { ...config, port });
+    if (config.enabled && this.isRunning) {
+      await this.stop();
+      if (this.mainWindow) await this.start(this.mainWindow);
+    }
+  }
+
+  async setApiKey(apiKey: string): Promise<void> {
+    store.set("mcpServer", { ...this.getConfig(), apiKey });
+  }
+
+  generateApiKey(): string {
+    const key = `canopy_${randomUUID().replace(/-/g, "")}`;
+    store.set("mcpServer", { ...this.getConfig(), apiKey: key });
+    return key;
   }
 
   async start(window: BrowserWindow): Promise<void> {
@@ -75,24 +101,20 @@ export class McpServerService {
       });
     });
 
-    try {
-      await new Promise<void>((resolve, reject) => {
-        server.on("error", reject);
-        server.listen(0, "127.0.0.1", () => {
-          const addr = server.address() as AddressInfo | null;
-          this.port = addr?.port ?? null;
-          resolve();
-        });
-      });
-    } catch (err) {
-      // Rollback: remove listeners we just registered
+    const configuredPort = this.getConfig().port ?? DEFAULT_PORT;
+    const boundPort = await this.listenWithRetry(server, configuredPort);
+
+    if (boundPort === null) {
       for (const cleanup of this.cleanupListeners) {
         cleanup();
       }
       this.cleanupListeners = [];
-      throw err;
+      throw new Error(
+        `Failed to bind MCP server: ports ${configuredPort}–${configuredPort + MAX_PORT_RETRIES} all in use`
+      );
     }
 
+    this.port = boundPort;
     this.httpServer = server;
     await this.writeDiscoveryFile();
     console.log(`[MCP] Server started on http://127.0.0.1:${this.port}/sse`);
@@ -113,7 +135,6 @@ export class McpServerService {
     }
     this.cleanupListeners = [];
 
-    // Reject any pending requests
     for (const [id, pending] of this.pendingManifests) {
       clearTimeout(pending.timer);
       pending.reject(new Error("MCP server stopped"));
@@ -137,13 +158,72 @@ export class McpServerService {
     console.log("[MCP] Server stopped");
   }
 
-  getStatus(): { enabled: boolean; port: number | null } {
-    return { enabled: this.isEnabled(), port: this.port };
+  getStatus(): {
+    enabled: boolean;
+    port: number | null;
+    configuredPort: number | null;
+    apiKey: string;
+  } {
+    const config = this.getConfig();
+    return {
+      enabled: config.enabled,
+      port: this.port,
+      configuredPort: config.port,
+      apiKey: config.apiKey,
+    };
   }
 
   getConfigSnippet(): string {
+    const config = this.getConfig();
     const url = this.port ? `http://127.0.0.1:${this.port}/sse` : "http://127.0.0.1:<port>/sse";
-    return JSON.stringify({ mcpServers: { [MCP_SERVER_KEY]: { type: "sse", url } } }, null, 2);
+    const entry: Record<string, unknown> = { type: "sse", url };
+    if (config.apiKey) {
+      entry.headers = { Authorization: `Bearer ${config.apiKey}` };
+    }
+    return JSON.stringify({ mcpServers: { [MCP_SERVER_KEY]: entry } }, null, 2);
+  }
+
+  private async listenWithRetry(server: http.Server, startPort: number): Promise<number | null> {
+    for (let attempt = 0; attempt <= MAX_PORT_RETRIES; attempt++) {
+      const port = startPort + attempt;
+      if (port > 65535) break;
+
+      const available = await this.isPortAvailable(port);
+      if (!available) {
+        console.log(`[MCP] Port ${port} in use, trying next…`);
+        continue;
+      }
+
+      try {
+        await new Promise<void>((resolve, reject) => {
+          const onError = (err: Error) => {
+            server.removeListener("error", onError);
+            reject(err);
+          };
+          server.on("error", onError);
+          server.listen(port, "127.0.0.1", () => {
+            server.removeListener("error", onError);
+            resolve();
+          });
+        });
+        const addr = server.address() as AddressInfo | null;
+        return addr?.port ?? null;
+      } catch {
+        console.log(`[MCP] Port ${port} bind failed, trying next…`);
+        continue;
+      }
+    }
+    return null;
+  }
+
+  private isPortAvailable(port: number): Promise<boolean> {
+    return new Promise((resolve) => {
+      const tester = net.createServer();
+      tester.once("error", () => resolve(false));
+      tester.listen(port, "127.0.0.1", () => {
+        tester.close(() => resolve(true));
+      });
+    });
   }
 
   private setupIpcListeners(): void {
@@ -241,7 +321,6 @@ export class McpServerService {
       const rawArgs = request.params.arguments ?? {};
       const confirmed = (rawArgs as Record<string, unknown>)["__confirmed"] === true;
 
-      // Strip the __confirmed meta-arg before passing to action
       const args = { ...(rawArgs as Record<string, unknown>) };
       delete args["__confirmed"];
 
@@ -310,10 +389,23 @@ export class McpServerService {
     );
   }
 
+  private isAuthorized(req: http.IncomingMessage): boolean {
+    const apiKey = this.getConfig().apiKey;
+    if (!apiKey) return true;
+    const auth = req.headers.authorization ?? "";
+    return auth === `Bearer ${apiKey}`;
+  }
+
   private async handleRequest(req: http.IncomingMessage, res: http.ServerResponse): Promise<void> {
     if (!this.isValidHost(req)) {
       res.writeHead(403, { "Content-Type": "text/plain" });
       res.end("Forbidden");
+      return;
+    }
+
+    if (!this.isAuthorized(req)) {
+      res.writeHead(401, { "Content-Type": "text/plain" });
+      res.end("Unauthorized");
       return;
     }
 
@@ -359,10 +451,15 @@ export class McpServerService {
       }
 
       const mcpServers = (existing["mcpServers"] as Record<string, unknown> | undefined) ?? {};
-      mcpServers[MCP_SERVER_KEY] = {
+      const entry: Record<string, unknown> = {
         type: "sse",
         url: `http://127.0.0.1:${this.port}/sse`,
       };
+      const apiKey = this.getConfig().apiKey;
+      if (apiKey) {
+        entry.headers = { Authorization: `Bearer ${apiKey}` };
+      }
+      mcpServers[MCP_SERVER_KEY] = entry;
 
       await fs.writeFile(
         DISCOVERY_FILE,
