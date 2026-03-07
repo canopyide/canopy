@@ -16,7 +16,6 @@ export class VoiceTranscriptionService {
   private ws: WebSocket | null = null;
   private sessionId = 0;
   private connectTimeout: ReturnType<typeof setTimeout> | null = null;
-  private commitTimer: ReturnType<typeof setInterval> | null = null;
   private listeners: Set<(event: VoiceTranscriptionEvent) => void> = new Set();
   private pendingStart: { sessionId: number; resolve: (result: VoiceStartResult) => void } | null =
     null;
@@ -36,13 +35,6 @@ export class VoiceTranscriptionService {
     if (this.connectTimeout !== null) {
       clearTimeout(this.connectTimeout);
       this.connectTimeout = null;
-    }
-  }
-
-  private clearCommitTimer(): void {
-    if (this.commitTimer !== null) {
-      clearInterval(this.commitTimer);
-      this.commitTimer = null;
     }
   }
 
@@ -71,8 +63,8 @@ export class VoiceTranscriptionService {
 
     return new Promise((resolve) => {
       this.pendingStart = { sessionId: mySessionId, resolve };
-      logDebug(`${P} Opening WebSocket to OpenAI Realtime API (transcription)`);
-      const ws = new WebSocket("wss://api.openai.com/v1/realtime?model=gpt-4o-realtime-preview", {
+      logDebug(`${P} Opening WebSocket to OpenAI Realtime API (transcription-only)`);
+      const ws = new WebSocket("wss://api.openai.com/v1/realtime?intent=transcription", {
         headers: {
           Authorization: `Bearer ${settings.apiKey}`,
           "OpenAI-Beta": "realtime=v1",
@@ -107,29 +99,26 @@ export class VoiceTranscriptionService {
             : undefined;
 
         const sessionConfig = {
-          type: "session.update",
+          type: "transcription_session.update",
           session: {
-            modalities: ["text"],
             input_audio_format: "pcm16",
             input_audio_transcription: {
-              model: "gpt-4o-transcribe",
+              model: "gpt-4o-mini-transcribe",
               language: settings.language || "en",
               ...(prompt ? { prompt } : {}),
             },
-            turn_detection: null,
+            turn_detection: {
+              type: "server_vad",
+              threshold: 0.5,
+              prefix_padding_ms: 300,
+              silence_duration_ms: 500,
+            },
           },
         };
-        logDebug(`${P} Sending session.update`, { language: settings.language || "en" });
+        logDebug(`${P} Sending transcription_session.update`, {
+          language: settings.language || "en",
+        });
         ws.send(JSON.stringify(sessionConfig));
-
-        // Periodically commit the audio buffer to trigger transcription
-        // without waiting for silence detection.
-        this.clearCommitTimer();
-        this.commitTimer = setInterval(() => {
-          if (this.ws?.readyState === WebSocket.OPEN && this.sessionId === mySessionId) {
-            this.ws.send(JSON.stringify({ type: "input_audio_buffer.commit" }));
-          }
-        }, 2000);
 
         this.emit({ type: "status", status: "recording" });
         this.settlePendingStart(mySessionId, { ok: true });
@@ -181,6 +170,11 @@ export class VoiceTranscriptionService {
       if (transcript) {
         this.emit({ type: "complete", text: transcript });
       }
+    } else if (
+      type === "transcription_session.created" ||
+      type === "transcription_session.updated"
+    ) {
+      logInfo(`${P} ${type}`);
     } else if (type === "error") {
       const error = event.error as { message?: string; type?: string; code?: string } | undefined;
       const message =
@@ -221,7 +215,6 @@ export class VoiceTranscriptionService {
     this.sessionId++;
     this.audioChunkCount = 0;
     this.clearConnectTimeout();
-    this.clearCommitTimer();
     if (pendingSessionId !== undefined) {
       this.settlePendingStart(pendingSessionId, { ok: false, error: "Voice session stopped" });
     }
