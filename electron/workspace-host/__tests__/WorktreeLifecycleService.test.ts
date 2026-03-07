@@ -58,9 +58,7 @@ describe("WorktreeLifecycleService", () => {
       const mainConfig = { setup: ["npm install"] };
       const worktreeConfig = { setup: ["yarn install"] };
 
-      let accessCallCount = 0;
       mockAccess.mockImplementation(async (p: string) => {
-        accessCallCount++;
         // user config does not exist
         if ((p as string).includes("/.canopy/projects/")) throw new Error("ENOENT");
         // worktree config exists (second check)
@@ -151,13 +149,17 @@ describe("WorktreeLifecycleService", () => {
       expect(mockCp).not.toHaveBeenCalled();
     });
 
-    it("does nothing if destination .canopy already exists", async () => {
-      mockAccess.mockResolvedValue(undefined); // both exist
+    it("copies .canopy from src to dest even if dest already exists (force:false preserves existing)", async () => {
+      mockAccess.mockResolvedValue(undefined); // src exists
       await service.copyCanopyDir("/main/repo", "/new/worktree");
-      expect(mockCp).not.toHaveBeenCalled();
+      expect(mockCp).toHaveBeenCalledWith("/main/repo/.canopy", "/new/worktree/.canopy", {
+        recursive: true,
+        force: false,
+        errorOnExist: false,
+      });
     });
 
-    it("copies .canopy from src to dest when src exists and dest does not", async () => {
+    it("copies .canopy from src to dest when src exists", async () => {
       mockAccess.mockImplementation(async (p: string) => {
         if ((p as string).includes("/main/repo/.canopy")) return undefined; // src exists
         throw new Error("ENOENT"); // dest does not
@@ -166,6 +168,8 @@ describe("WorktreeLifecycleService", () => {
       await service.copyCanopyDir("/main/repo", "/new/worktree");
       expect(mockCp).toHaveBeenCalledWith("/main/repo/.canopy", "/new/worktree/.canopy", {
         recursive: true,
+        force: false,
+        errorOnExist: false,
       });
     });
 
@@ -181,9 +185,13 @@ describe("WorktreeLifecycleService", () => {
   });
 
   describe("buildEnv", () => {
-    it("returns CANOPY_* environment variables", () => {
+    it("returns CANOPY_* and non-interactive environment variables", () => {
       const env = service.buildEnv("/worktrees/feat", "/project", "feature/my-branch");
       expect(env).toEqual({
+        CI: "true",
+        NONINTERACTIVE: "1",
+        GIT_TERMINAL_PROMPT: "0",
+        DEBIAN_FRONTEND: "noninteractive",
         CANOPY_WORKTREE_PATH: "/worktrees/feat",
         CANOPY_PROJECT_ROOT: "/project",
         CANOPY_WORKTREE_NAME: "feature/my-branch",

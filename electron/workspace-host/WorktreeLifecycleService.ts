@@ -92,8 +92,9 @@ export class WorktreeLifecycleService {
   }
 
   /**
-   * Copy .canopy/ from the main repo to the new worktree if it doesn't already exist.
-   * Uses { overwrite: false } so worktree-level overrides are preserved.
+   * Copy .canopy/ from the main repo to the new worktree.
+   * Skips if source does not exist. Existing files in dest are never overwritten
+   * so worktree-level overrides are preserved.
    */
   async copyCanopyDir(srcPath: string, destPath: string): Promise<void> {
     const src = pathJoin(srcPath, ".canopy");
@@ -103,12 +104,9 @@ export class WorktreeLifecycleService {
       return;
     }
 
-    if (await fileExists(dest)) {
-      return;
-    }
-
     try {
-      await cp(src, dest, { recursive: true });
+      // force:false preserves any files already present in dest (e.g. worktree-level overrides)
+      await cp(src, dest, { recursive: true, force: false, errorOnExist: false });
     } catch (err) {
       console.warn("[WorktreeLifecycle] Failed to copy .canopy dir:", err);
     }
@@ -182,15 +180,33 @@ export class WorktreeLifecycleService {
 
       let timedOut = false;
 
-      const timeoutHandle = setTimeout(() => {
-        timedOut = true;
+      const killProcess = () => {
         try {
           if (child.pid !== undefined) {
             process.kill(-child.pid, "SIGTERM");
+          } else {
+            child.kill("SIGTERM");
           }
         } catch {
-          child.kill("SIGTERM");
+          // Process may have already exited
         }
+        // Escalate to SIGKILL after 5s if SIGTERM was ignored
+        setTimeout(() => {
+          try {
+            if (child.pid !== undefined) {
+              process.kill(-child.pid, "SIGKILL");
+            } else {
+              child.kill("SIGKILL");
+            }
+          } catch {
+            // Already gone
+          }
+        }, 5_000);
+      };
+
+      const timeoutHandle = setTimeout(() => {
+        timedOut = true;
+        killProcess();
       }, timeoutMs);
 
       child.stdout?.on("data", (chunk: Buffer) => {
@@ -236,6 +252,10 @@ export class WorktreeLifecycleService {
     worktreeName: string
   ): Record<string, string> {
     return {
+      CI: "true",
+      NONINTERACTIVE: "1",
+      GIT_TERMINAL_PROMPT: "0",
+      DEBIAN_FRONTEND: "noninteractive",
       CANOPY_WORKTREE_PATH: worktreePath,
       CANOPY_PROJECT_ROOT: projectRootPath,
       CANOPY_WORKTREE_NAME: worktreeName,

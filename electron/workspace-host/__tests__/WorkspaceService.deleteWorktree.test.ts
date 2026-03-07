@@ -136,7 +136,9 @@ describe("WorkspaceService.deleteWorktree", () => {
         calculateNextInterval: vi.fn().mockReturnValue(10000),
         recordSuccess: vi.fn(),
         recordFailure: vi.fn(),
+        // eslint-disable-next-line @typescript-eslint/no-explicit-any
       } as any,
+      // eslint-disable-next-line @typescript-eslint/no-explicit-any
       noteReader: { read: vi.fn().mockResolvedValue(null) } as any,
       gitWatcher: null,
       gitWatchDebounceTimer: null,
@@ -152,11 +154,13 @@ describe("WorkspaceService.deleteWorktree", () => {
     mockSendEvent = vi.fn();
 
     const WorkspaceServiceModule = await import("../WorkspaceService.js");
-    service = new WorkspaceServiceModule.WorkspaceService(mockSendEvent);
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    service = new WorkspaceServiceModule.WorkspaceService(mockSendEvent as any);
 
     // Set up minimal project state
     service["projectRootPath"] = "/test/root";
     service["projectScopeId"] = "test-scope";
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
     service["git"] = mockSimpleGit as any;
   });
 
@@ -214,7 +218,7 @@ describe("WorkspaceService.deleteWorktree", () => {
     const mockReadFile = vi.mocked(fsModule.readFile);
 
     // Make the main repo config exist
-    mockAccess.mockImplementation(async (p: string) => {
+    mockAccess.mockImplementation(async (p: unknown) => {
       if ((p as string).endsWith("/test/root/.canopy/config.json")) return undefined;
       throw new Error("ENOENT");
     });
@@ -222,10 +226,12 @@ describe("WorkspaceService.deleteWorktree", () => {
 
     const childProcessModule = await import("child_process");
     const mockSpawn = vi.mocked(childProcessModule.spawn);
-    const spawnCallOrder: string[] = [];
+
+    // Record a global call log so we can compare cross-module ordering
+    const globalCallLog: string[] = [];
 
     mockSpawn.mockImplementation(() => {
-      spawnCallOrder.push("spawn");
+      globalCallLog.push("spawn");
       const child = {
         pid: 99,
         stdout: { on: vi.fn() },
@@ -235,12 +241,12 @@ describe("WorkspaceService.deleteWorktree", () => {
         }),
         kill: vi.fn(),
       };
+      // eslint-disable-next-line @typescript-eslint/no-explicit-any
       return child as any;
     });
 
-    const rawCallOrder: string[] = [];
     mockSimpleGit.raw.mockImplementation(async (args: string[]) => {
-      rawCallOrder.push(args.join(" "));
+      globalCallLog.push(`git:${args.join(" ")}`);
     });
 
     const monitor = createMonitorState();
@@ -248,11 +254,14 @@ describe("WorkspaceService.deleteWorktree", () => {
 
     await service.deleteWorktree("req-4", "/test/worktree");
 
-    // Teardown spawn should happen before git worktree remove
-    const spawnIndex = spawnCallOrder.indexOf("spawn");
-    const gitRemoveIndex = rawCallOrder.findIndex((call) => call.includes("worktree remove"));
-    expect(spawnIndex).toBeLessThan(0 + (gitRemoveIndex >= 0 ? 1 : 0)); // spawn happened
-    expect(gitRemoveIndex).toBeGreaterThanOrEqual(0); // git remove happened
+    const spawnPos = globalCallLog.indexOf("spawn");
+    const gitRemovePos = globalCallLog.findIndex((e) => e.includes("worktree remove"));
+
+    // Both must have happened
+    expect(spawnPos).toBeGreaterThanOrEqual(0);
+    expect(gitRemovePos).toBeGreaterThanOrEqual(0);
+    // Teardown (spawn) must precede git worktree remove
+    expect(spawnPos).toBeLessThan(gitRemovePos);
   });
 
   it("proceeds with deletion even when teardown fails", async () => {
@@ -261,7 +270,7 @@ describe("WorkspaceService.deleteWorktree", () => {
     const mockAccess = vi.mocked(fsModule.access);
     const mockReadFile = vi.mocked(fsModule.readFile);
 
-    mockAccess.mockImplementation(async (p: string) => {
+    mockAccess.mockImplementation(async (p: unknown) => {
       if ((p as string).endsWith("/test/root/.canopy/config.json")) return undefined;
       throw new Error("ENOENT");
     });
@@ -279,6 +288,7 @@ describe("WorkspaceService.deleteWorktree", () => {
         }),
         kill: vi.fn(),
       };
+      // eslint-disable-next-line @typescript-eslint/no-explicit-any
       return child as any;
     });
 
