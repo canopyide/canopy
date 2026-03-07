@@ -301,6 +301,10 @@ import { autoUpdaterService } from "./services/AutoUpdaterService.js";
 import { SMOKE_BOOT_TIMEOUT_MS, runSmokeFunctionalChecks } from "./services/smokeTest.js";
 import { initializeTelemetry } from "./services/TelemetryService.js";
 import { mcpServerService } from "./services/McpServerService.js";
+import {
+  initializeCrashRecoveryService,
+  getCrashRecoveryService,
+} from "./services/CrashRecoveryService.js";
 
 // Initialize logger early with userData path
 initializeLogger(app.getPath("userData"));
@@ -314,12 +318,19 @@ const __dirname = path.dirname(__filename);
 // Telemetry must be initialized before error handlers so Sentry captures uncaught errors
 void initializeTelemetry();
 
+// Initialize crash recovery service early — detects dirty shutdown from previous session
+initializeCrashRecoveryService();
+
 process.on("uncaughtException", (error) => {
   console.error("[FATAL] Uncaught Exception:", error);
+  getCrashRecoveryService().recordCrash(error);
 });
 
 process.on("unhandledRejection", (reason, promise) => {
   console.error("[FATAL] Unhandled Promise Rejection at:", promise, "reason:", reason);
+  getCrashRecoveryService().recordCrash(
+    reason instanceof Error ? reason : new Error(String(reason))
+  );
 });
 
 let mainWindow: BrowserWindow | null = null;
@@ -420,6 +431,7 @@ if (!gotTheLock) {
     isQuitting = true;
 
     console.log("[MAIN] Starting graceful shutdown...");
+    getCrashRecoveryService().cleanupOnExit();
 
     // NOTE: Terminal state is persisted by the renderer via appClient.setState()
     // in terminalRegistrySlice.ts. We don't overwrite it here because:
@@ -865,6 +877,15 @@ async function createWindow(): Promise<void> {
   });
 
   setLoggerWindow(mainWindow);
+
+  // Detect renderer crashes and record them
+  mainWindow.webContents.on("render-process-gone", (_event, details) => {
+    if (details.reason === "clean-exit") return;
+    console.error("[MAIN] Renderer process gone:", details.reason, details.exitCode);
+    getCrashRecoveryService().recordCrash(
+      new Error(`Renderer process gone: ${details.reason} (exit code ${details.exitCode})`)
+    );
+  });
 
   // Use simple-fullscreen events for pre-Lion fullscreen that extends into notch area
   mainWindow.on("enter-full-screen", () => {
@@ -1324,6 +1345,9 @@ async function createWindow(): Promise<void> {
   initializeDeferredServices(mainWindow, cliAvailabilityService!, eventBuffer!).catch((error) => {
     console.error("[MAIN] Deferred services initialization failed:", error);
   });
+
+  // Start periodic session backups for crash recovery
+  getCrashRecoveryService().startBackupTimer();
 
   // Handle path provided via CLI on first launch (e.g. `canopy /path/to/repo`)
   const firstLaunchCliPath = extractCliPath(process.argv);
