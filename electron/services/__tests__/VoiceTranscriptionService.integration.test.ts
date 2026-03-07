@@ -28,6 +28,7 @@ describe("VoiceTranscriptionService integration", () => {
         apiKey: OPENAI_API_KEY,
         language: "en",
         customDictionary: [],
+        transcriptionModel: "gpt-4o-mini-transcribe",
       });
 
       expect(result).toEqual({ ok: true });

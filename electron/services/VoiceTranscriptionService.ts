@@ -103,7 +103,7 @@ export class VoiceTranscriptionService {
           session: {
             input_audio_format: "pcm16",
             input_audio_transcription: {
-              model: "gpt-4o-mini-transcribe",
+              model: settings.transcriptionModel || "gpt-4o-mini-transcribe",
               language: settings.language || "en",
               ...(prompt ? { prompt } : {}),
             },

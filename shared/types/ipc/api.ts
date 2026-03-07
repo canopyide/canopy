@@ -831,11 +831,14 @@ export type MicPermissionStatus =
   | "restricted"
   | "unknown";
 
+export type VoiceTranscriptionModel = "gpt-4o-mini-transcribe" | "gpt-4o-transcribe";
+
 export interface VoiceInputSettings {
   enabled: boolean;
   apiKey: string;
   language: string;
   customDictionary: string[];
+  transcriptionModel: VoiceTranscriptionModel;
 }
 
 export type VoiceInputStatus = "idle" | "connecting" | "recording" | "error";

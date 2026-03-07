@@ -110,6 +110,7 @@ export function registerVoiceInputHandlers(deps: HandlerDependencies): () => voi
       apiKey: string;
       language: string;
       customDictionary: string[];
+      transcriptionModel: string;
     }>
   ) => {
     const current = store.get("voiceInput");
