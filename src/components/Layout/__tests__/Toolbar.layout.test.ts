@@ -33,8 +33,9 @@ describe("Toolbar layout — issue #2584 project switcher collision", () => {
       expect(source).toContain("justify-self-center");
     });
 
-    it("has min-w-0 to allow shrinking", () => {
-      expect(source).toMatch(/CENTER GROUP[\s\S]{0,200}min-w-0/);
+    it("has min-w-0 and max-w-full to allow shrinking", () => {
+      // The center group wrapper must have both constraints for grid-track shrinking to work
+      expect(source).toContain("min-w-0 max-w-full pointer-events-none justify-self-center");
     });
   });
 
@@ -59,6 +60,10 @@ describe("Toolbar layout — issue #2584 project switcher collision", () => {
       const truncateMatches = source.match(/tracking-wide truncate/g);
       expect(truncateMatches).not.toBeNull();
       expect(truncateMatches!.length).toBeGreaterThanOrEqual(2);
+    });
+
+    it("emoji span has shrink-0 so it is not squeezed before name truncates", () => {
+      expect(source).toContain("text-base leading-none shrink-0");
     });
 
     it("branch badge has shrink-0 to stay visible during truncation", () => {
