@@ -102,6 +102,35 @@ describe("VoiceTranscriptionService", () => {
     expect(statuses.at(-1)).toBe("recording");
   });
 
+  it("does not emit idle when start() replaces a previous session", async () => {
+    const service = new VoiceTranscriptionService();
+    const events: Array<{ type: string; status?: string }> = [];
+
+    service.onEvent((event) => events.push(event));
+
+    const settings = { enabled: true, apiKey: "sk-test", language: "en", customDictionary: [] };
+
+    // Start first session
+    const firstPromise = service.start(settings);
+    const firstSocket = wsMock.instances.at(-1)!;
+    firstSocket.open();
+    await firstPromise;
+
+    // Clear events from first session
+    events.length = 0;
+
+    // Start second session (replaces first)
+    const secondPromise = service.start(settings);
+    const secondSocket = wsMock.instances.at(-1)!;
+
+    // The cleanup of the first session must NOT have emitted idle
+    const idleBeforeConnect = events.filter((e) => e.type === "status" && e.status === "idle");
+    expect(idleBeforeConnect).toHaveLength(0);
+
+    secondSocket.open();
+    await secondPromise;
+  });
+
   it("settles a pending start when the session is stopped before connect completes", async () => {
     const service = new VoiceTranscriptionService();
 
