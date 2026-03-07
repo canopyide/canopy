@@ -60,6 +60,7 @@ export function NewWorktreeDialog({
   const [selectedIssue, setSelectedIssue] = useState<GitHubIssue | null>(null);
   const [branchWasAutoResolved, setBranchWasAutoResolved] = useState(false);
   const [pathWasAutoResolved, setPathWasAutoResolved] = useState(false);
+  const [prBranchResolved, setPrBranchResolved] = useState<boolean | null>(null);
 
   const [branchPickerOpen, setBranchPickerOpen] = useState(false);
   const [branchQuery, setBranchQuery] = useState("");
@@ -373,6 +374,7 @@ export function NewWorktreeDialog({
     setError(null);
     setBranchWasAutoResolved(false);
     setPathWasAutoResolved(false);
+    setPrBranchResolved(null);
     setBranches([]);
     setBaseBranch("");
     setFromRemote(false);
@@ -405,17 +407,25 @@ export function NewWorktreeDialog({
           // For PR checkout, prefer the remote tracking branch origin/<headRefName>
           const remoteBranchName = `origin/${initialPR.headRefName}`;
           const remoteBranch = branchList.find((b) => b.name === remoteBranchName);
+          const localBranch = branchList.find((b) => b.name === initialPR.headRefName && !b.remote);
           if (remoteBranch) {
             setBaseBranch(remoteBranchName);
             setFromRemote(true);
+            setPrBranchResolved(true);
+          } else if (localBranch) {
+            // Branch exists locally — checkout existing branch
+            setBaseBranch(localBranch.name);
+            setFromRemote(false);
+            setPrBranchResolved(true);
           } else {
-            // Remote not fetched yet — fall back to main/master; user can adjust
+            // Remote branch not yet fetched — block creation
+            setPrBranchResolved(false);
             const mainBranch =
               branchList.find((b) => b.name === "main") ||
               branchList.find((b) => b.name === "master");
             const fallback = mainBranch?.name || branchList[0]?.name || "";
             setBaseBranch(fallback);
-            setFromRemote(!!branchList.find((b) => b.name === fallback)?.remote);
+            setFromRemote(false);
           }
         } else {
           const currentBranch = branchList.find((b) => b.current);
@@ -636,11 +646,19 @@ export function NewWorktreeDialog({
     setError(null);
 
     try {
+      // For PR checkout, detect if the branch already exists locally (use existing)
+      // vs needs to be created from remote (fromRemote).
+      const useExistingBranch =
+        initialPR !== null && initialPR !== undefined
+          ? branches.some((b) => b.name === fullBranchName && !b.remote)
+          : false;
+
       const options: CreateWorktreeOptions = {
         baseBranch,
         newBranch: fullBranchName,
         path: worktreePath.trim(),
-        fromRemote,
+        fromRemote: useExistingBranch ? false : fromRemote,
+        useExistingBranch,
       };
 
       const result = await actionService.dispatch(
@@ -729,9 +747,9 @@ export function NewWorktreeDialog({
           <TooltipProvider>
             <div className="space-y-4">
               {initialPR ? (
-                <div className="flex items-center gap-2.5 px-3 py-2.5 rounded-[var(--radius-md)] bg-canopy-accent/5 border border-canopy-accent/20 text-sm">
+                <div className="flex items-center gap-2.5 px-3 py-2.5 rounded-[var(--radius-md)] bg-canopy-accent/5 border border-canopy-accent/20 text-sm min-w-0">
                   <GitBranch className="w-4 h-4 text-canopy-accent shrink-0" aria-hidden="true" />
-                  <span className="text-canopy-text/80">
+                  <span className="text-canopy-text/80 min-w-0 truncate">
                     PR <span className="font-medium text-canopy-text">#{initialPR.number}</span> —{" "}
                     {initialPR.title}
                   </span>
@@ -1244,6 +1262,17 @@ export function NewWorktreeDialog({
                 </div>
               )}
 
+              {initialPR && prBranchResolved === false && (
+                <div className="flex items-start gap-2 p-3 bg-status-warning/10 border border-status-warning/20 rounded-[var(--radius-md)]">
+                  <AlertCircle className="w-4 h-4 text-status-warning mt-0.5 flex-shrink-0" />
+                  <p className="text-sm text-status-warning">
+                    Branch <span className="font-mono">{initialPR.headRefName ?? "unknown"}</span>{" "}
+                    has not been fetched from the remote yet. Run{" "}
+                    <span className="font-mono">git fetch origin</span> and reopen this dialog.
+                  </p>
+                </div>
+              )}
+
               {error && (
                 <div className="flex items-start gap-2 p-3 bg-status-error/10 border border-status-error/20 rounded-[var(--radius-md)]">
                   <AlertCircle className="w-4 h-4 text-status-error mt-0.5 flex-shrink-0" />
@@ -1261,7 +1290,11 @@ export function NewWorktreeDialog({
         </Button>
         <Button
           onClick={handleCreate}
-          disabled={creating || loading}
+          disabled={
+            creating ||
+            loading ||
+            (initialPR !== null && initialPR !== undefined && prBranchResolved === false)
+          }
           className="min-w-[100px]"
           data-testid="create-worktree-button"
         >
