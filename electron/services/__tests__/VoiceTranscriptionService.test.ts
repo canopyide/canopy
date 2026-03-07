@@ -109,7 +109,13 @@ describe("VoiceTranscriptionService", () => {
 
     service.onEvent((event) => events.push(event));
 
-    const settings = { enabled: true, apiKey: "sk-test", language: "en", customDictionary: [] };
+    const settings = {
+      enabled: true,
+      apiKey: "sk-test",
+      language: "en",
+      customDictionary: [],
+      transcriptionModel: "gpt-4o-mini-transcribe" as const,
+    };
 
     // Start first session
     const firstPromise = service.start(settings);

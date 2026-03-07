@@ -275,7 +275,7 @@ export class VoiceTranscriptionService {
       } else if (!this.staleChunkWarned) {
         this.staleChunkWarned = true;
         logWarn(`${P} sendAudioChunk called but no active session`, {
-          readyState: this.ws?.readyState,
+          readyState: null,
         });
       }
       return;
