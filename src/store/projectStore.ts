@@ -50,6 +50,8 @@ interface ProjectState {
   createProjectFolder: (parentPath: string, folderName: string) => Promise<void>;
   switchProject: (projectId: string) => Promise<void>;
   updateProject: (id: string, updates: Partial<Project>) => Promise<void>;
+  enableInRepoSettings: (id: string) => Promise<Project>;
+  disableInRepoSettings: (id: string) => Promise<Project>;
   removeProject: (id: string) => Promise<void>;
   closeProject: (
     projectId: string,
@@ -464,6 +466,24 @@ const createProjectStore: StateCreator<ProjectState> = (set, get) => ({
       set({ error: "Failed to update project", isLoading: false });
       throw error;
     }
+  },
+
+  enableInRepoSettings: async (id) => {
+    const updatedProject = await projectClient.enableInRepoSettings(id);
+    set((state) => ({
+      projects: state.projects.map((p) => (p.id === id ? updatedProject : p)),
+      currentProject: state.currentProject?.id === id ? updatedProject : state.currentProject,
+    }));
+    return updatedProject;
+  },
+
+  disableInRepoSettings: async (id) => {
+    const updatedProject = await projectClient.disableInRepoSettings(id);
+    set((state) => ({
+      projects: state.projects.map((p) => (p.id === id ? updatedProject : p)),
+      currentProject: state.currentProject?.id === id ? updatedProject : state.currentProject,
+    }));
+    return updatedProject;
   },
 
   removeProject: async (id) => {
