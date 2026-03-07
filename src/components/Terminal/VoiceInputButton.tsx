@@ -163,15 +163,22 @@ export function VoiceInputButton({
 
   const handleClick = useCallback(async () => {
     if (disabled) return;
+    // An active session always wins — let the user stop recording even if config was revoked.
+    if (isRecording) {
+      await stopRecording();
+      return;
+    }
     if (!isConfigured) {
+      // Re-check live: the Settings dialog is same-window so focus never fires after save.
+      const fresh = await window.electron?.voiceInput?.getSettings();
+      if (fresh?.enabled && !!fresh.apiKey) {
+        await startRecording();
+        return;
+      }
       void actionService.dispatch("app.settings.openTab", { tab: "voice" }, { source: "user" });
       return;
     }
-    if (isRecording) {
-      await stopRecording();
-    } else {
-      await startRecording();
-    }
+    await startRecording();
   }, [disabled, isConfigured, isRecording, startRecording, stopRecording]);
 
   useEffect(() => {
@@ -252,8 +259,14 @@ export function VoiceInputButton({
                 : "text-canopy-text/40 hover:text-canopy-text/70",
           disabled && "pointer-events-none opacity-40"
         )}
-        aria-label={isRecording ? "Stop voice recording" : "Start voice recording"}
-        aria-pressed={isRecording}
+        aria-label={
+          !isConfigured
+            ? "Set up voice input"
+            : isRecording
+              ? "Stop voice recording"
+              : "Start voice recording"
+        }
+        aria-pressed={isConfigured ? isRecording : undefined}
       >
         {status === "connecting" ? (
           <Loader2 className="h-3.5 w-3.5 animate-spin" />
