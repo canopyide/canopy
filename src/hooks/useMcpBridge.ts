@@ -12,13 +12,13 @@ export function useMcpBridge(): void {
   useEffect(() => {
     if (!window.electron?.mcpBridge) return;
 
-    const cleanupManifest = window.electron.mcpBridge.onGetManifestRequest(() => {
+    const cleanupManifest = window.electron.mcpBridge.onGetManifestRequest((requestId) => {
       try {
         const manifest = actionService.list();
-        window.electron.mcpBridge.sendGetManifestResponse(manifest);
+        window.electron.mcpBridge.sendGetManifestResponse(requestId, manifest);
       } catch (err) {
         console.error("[MCP Bridge] Failed to build manifest:", err);
-        window.electron.mcpBridge.sendGetManifestResponse([]);
+        window.electron.mcpBridge.sendGetManifestResponse(requestId, []);
       }
     });
 

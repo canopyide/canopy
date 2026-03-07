@@ -15,14 +15,8 @@ const DISCOVERY_DIR = path.join(os.homedir(), ".canopy");
 const DISCOVERY_FILE = path.join(DISCOVERY_DIR, "mcp.json");
 const MCP_SERVER_KEY = "canopy";
 
-interface PendingManifest {
-  resolve: (manifest: ActionManifestEntry[]) => void;
-  reject: (err: Error) => void;
-  timer: ReturnType<typeof setTimeout>;
-}
-
-interface PendingDispatch {
-  resolve: (result: ActionDispatchResult) => void;
+interface PendingRequest<T> {
+  resolve: (value: T) => void;
   reject: (err: Error) => void;
   timer: ReturnType<typeof setTimeout>;
 }
@@ -32,8 +26,8 @@ export class McpServerService {
   private port: number | null = null;
   private mainWindow: BrowserWindow | null = null;
   private sessions = new Map<string, SSEServerTransport>();
-  private pendingManifest: PendingManifest | null = null;
-  private pendingDispatches = new Map<string, PendingDispatch>();
+  private pendingManifests = new Map<string, PendingRequest<ActionManifestEntry[]>>();
+  private pendingDispatches = new Map<string, PendingRequest<ActionDispatchResult>>();
   private cleanupListeners: Array<() => void> = [];
 
   get isRunning(): boolean {
@@ -48,12 +42,12 @@ export class McpServerService {
     return store.get("mcpServer").enabled;
   }
 
-  setEnabled(enabled: boolean): void {
+  async setEnabled(enabled: boolean): Promise<void> {
     store.set("mcpServer", { enabled });
     if (enabled && this.mainWindow && !this.isRunning) {
-      void this.start(this.mainWindow);
+      await this.start(this.mainWindow);
     } else if (!enabled && this.isRunning) {
-      void this.stop();
+      await this.stop();
     }
   }
 
@@ -71,19 +65,35 @@ export class McpServerService {
 
     this.setupIpcListeners();
 
-    this.httpServer = http.createServer((req, res) => {
-      void this.handleRequest(req, res);
-    });
-
-    await new Promise<void>((resolve, reject) => {
-      this.httpServer!.on("error", reject);
-      this.httpServer!.listen(0, "127.0.0.1", () => {
-        const addr = this.httpServer!.address() as AddressInfo | null;
-        this.port = addr?.port ?? null;
-        resolve();
+    const server = http.createServer((req, res) => {
+      this.handleRequest(req, res).catch((err) => {
+        console.error("[MCP] Request handler error:", err);
+        if (!res.headersSent) {
+          res.writeHead(500, { "Content-Type": "text/plain" });
+          res.end("Internal server error");
+        }
       });
     });
 
+    try {
+      await new Promise<void>((resolve, reject) => {
+        server.on("error", reject);
+        server.listen(0, "127.0.0.1", () => {
+          const addr = server.address() as AddressInfo | null;
+          this.port = addr?.port ?? null;
+          resolve();
+        });
+      });
+    } catch (err) {
+      // Rollback: remove listeners we just registered
+      for (const cleanup of this.cleanupListeners) {
+        cleanup();
+      }
+      this.cleanupListeners = [];
+      throw err;
+    }
+
+    this.httpServer = server;
     await this.writeDiscoveryFile();
     console.log(`[MCP] Server started on http://127.0.0.1:${this.port}/sse`);
   }
@@ -104,10 +114,10 @@ export class McpServerService {
     this.cleanupListeners = [];
 
     // Reject any pending requests
-    if (this.pendingManifest) {
-      clearTimeout(this.pendingManifest.timer);
-      this.pendingManifest.reject(new Error("MCP server stopped"));
-      this.pendingManifest = null;
+    for (const [id, pending] of this.pendingManifests) {
+      clearTimeout(pending.timer);
+      pending.reject(new Error("MCP server stopped"));
+      this.pendingManifests.delete(id);
     }
     for (const [id, pending] of this.pendingDispatches) {
       clearTimeout(pending.timer);
@@ -137,11 +147,15 @@ export class McpServerService {
   }
 
   private setupIpcListeners(): void {
-    const manifestHandler = (_event: Electron.IpcMainEvent, manifest: ActionManifestEntry[]) => {
-      if (this.pendingManifest) {
-        clearTimeout(this.pendingManifest.timer);
-        this.pendingManifest.resolve(manifest);
-        this.pendingManifest = null;
+    const manifestHandler = (
+      _event: Electron.IpcMainEvent,
+      payload: { requestId: string; manifest: ActionManifestEntry[] }
+    ) => {
+      const pending = this.pendingManifests.get(payload.requestId);
+      if (pending) {
+        clearTimeout(pending.timer);
+        this.pendingManifests.delete(payload.requestId);
+        pending.resolve(payload.manifest);
       }
     };
 
@@ -168,13 +182,14 @@ export class McpServerService {
 
   private requestManifest(): Promise<ActionManifestEntry[]> {
     return new Promise((resolve, reject) => {
+      const requestId = randomUUID();
       const timer = setTimeout(() => {
-        this.pendingManifest = null;
+        this.pendingManifests.delete(requestId);
         reject(new Error("Manifest request timed out"));
       }, 5000);
 
-      this.pendingManifest = { resolve, reject, timer };
-      this.mainWindow?.webContents.send("mcp:get-manifest-request");
+      this.pendingManifests.set(requestId, { resolve, reject, timer });
+      this.mainWindow?.webContents.send("mcp:get-manifest-request", { requestId });
     });
   }
 
@@ -285,7 +300,23 @@ export class McpServerService {
     return server;
   }
 
+  private isValidHost(req: http.IncomingMessage): boolean {
+    const host = req.headers.host ?? "";
+    return (
+      host === `127.0.0.1:${this.port}` ||
+      host === `localhost:${this.port}` ||
+      host === "127.0.0.1" ||
+      host === "localhost"
+    );
+  }
+
   private async handleRequest(req: http.IncomingMessage, res: http.ServerResponse): Promise<void> {
+    if (!this.isValidHost(req)) {
+      res.writeHead(403, { "Content-Type": "text/plain" });
+      res.end("Forbidden");
+      return;
+    }
+
     if (req.method === "GET" && req.url === "/sse") {
       const transport = new SSEServerTransport("/messages", res);
       const server = this.createSessionServer();
