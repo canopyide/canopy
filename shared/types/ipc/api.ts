@@ -830,9 +830,12 @@ export interface ElectronAPI {
   };
   mcpBridge: {
     /** Listen for manifest requests from main process */
-    onGetManifestRequest(callback: () => void): () => void;
+    onGetManifestRequest(callback: (requestId: string) => void): () => void;
     /** Send action manifest to main process */
-    sendGetManifestResponse(manifest: import("../actions.js").ActionManifestEntry[]): void;
+    sendGetManifestResponse(
+      requestId: string,
+      manifest: import("../actions.js").ActionManifestEntry[]
+    ): void;
     /** Listen for action dispatch requests from main process */
     onDispatchActionRequest(
       callback: (payload: {

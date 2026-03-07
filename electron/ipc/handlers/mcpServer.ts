@@ -10,7 +10,7 @@ export function registerMcpServerHandlers(): () => void {
 
   ipcMain.handle(CHANNELS.MCP_SERVER_SET_ENABLED, async (_event, enabled: boolean) => {
     if (typeof enabled !== "boolean") throw new Error("enabled must be a boolean");
-    mcpServerService.setEnabled(enabled);
+    await mcpServerService.setEnabled(enabled);
     return mcpServerService.getStatus();
   });
   handlers.push(() => ipcMain.removeHandler(CHANNELS.MCP_SERVER_SET_ENABLED));

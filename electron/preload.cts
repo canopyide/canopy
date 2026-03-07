@@ -1625,14 +1625,15 @@ const api: ElectronAPI = {
   },
 
   mcpBridge: {
-    onGetManifestRequest: (callback: () => void) => {
-      const handler = () => callback();
+    onGetManifestRequest: (callback: (requestId: string) => void) => {
+      const handler = (_event: Electron.IpcRendererEvent, payload: { requestId: string }) =>
+        callback(payload.requestId);
       ipcRenderer.on("mcp:get-manifest-request", handler);
       return () => ipcRenderer.removeListener("mcp:get-manifest-request", handler);
     },
 
-    sendGetManifestResponse: (manifest: unknown) => {
-      ipcRenderer.send("mcp:get-manifest-response", manifest);
+    sendGetManifestResponse: (requestId: string, manifest: unknown) => {
+      ipcRenderer.send("mcp:get-manifest-response", { requestId, manifest });
     },
 
     onDispatchActionRequest: (
