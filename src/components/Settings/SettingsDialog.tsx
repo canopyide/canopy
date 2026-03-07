@@ -13,6 +13,7 @@ import {
   Settings as SettingsIcon,
   Bell,
   Mic,
+  Plug,
   Search,
 } from "lucide-react";
 import { cn } from "@/lib/utils";
@@ -360,6 +361,7 @@ export function SettingsDialog({
               setActiveTab("mcp");
               setSearchQuery("");
             }}
+            icon={<Plug className="w-4 h-4" />}
           >
             <span className="flex-1">MCP Server</span>
             {matchCounts.mcp ? <MatchBadge count={matchCounts.mcp} /> : null}

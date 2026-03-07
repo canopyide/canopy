@@ -125,6 +125,8 @@ export interface StoreSchema {
   };
   mcpServer: {
     enabled: boolean;
+    port: number | null;
+    apiKey: string;
   };
 }
 
@@ -198,7 +200,9 @@ const storeOptions = {
       customDictionary: [],
     },
     mcpServer: {
-      enabled: true,
+      enabled: false,
+      port: 45454,
+      apiKey: "",
     },
   },
   cwd: process.env.CANOPY_USER_DATA,

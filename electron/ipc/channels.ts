@@ -339,6 +339,9 @@ export const CHANNELS = {
   // MCP Server channels
   MCP_SERVER_GET_STATUS: "mcp-server:get-status",
   MCP_SERVER_SET_ENABLED: "mcp-server:set-enabled",
+  MCP_SERVER_SET_PORT: "mcp-server:set-port",
+  MCP_SERVER_SET_API_KEY: "mcp-server:set-api-key",
+  MCP_SERVER_GENERATE_API_KEY: "mcp-server:generate-api-key",
   MCP_SERVER_GET_CONFIG_SNIPPET: "mcp-server:get-config-snippet",
 
   // Voice Input channels
