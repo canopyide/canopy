@@ -281,4 +281,63 @@ describe("VoiceRecordingService — background recording", () => {
     expect(oscillatorMock.connect).toHaveBeenCalledWith(gainMock);
     expect(gainMock.connect).toHaveBeenCalledWith(ctx.destination);
   });
+
+  it("tears down the keep-alive oscillator and AudioContext when stop() is called", async () => {
+    const { ctx, oscillatorMock, gainMock } = setupGlobals();
+
+    const { __state } = (await import("@/store/voiceRecordingStore")) as unknown as {
+      __state: { activeTarget: { panelId: string } | null };
+    };
+    __state.activeTarget = { panelId: "panel-1" };
+
+    const { voiceRecordingService } = await import("../VoiceRecordingService");
+
+    await voiceRecordingService.start({ panelId: "panel-1", panelTitle: "Terminal" });
+    await voiceRecordingService.stop("Dictation stopped.", { skipRemoteStop: true });
+
+    expect(oscillatorMock.stop).toHaveBeenCalled();
+    expect(oscillatorMock.disconnect).toHaveBeenCalled();
+    expect(gainMock.disconnect).toHaveBeenCalled();
+    expect(ctx.close).toHaveBeenCalled();
+
+    __state.activeTarget = null;
+  });
+
+  it("stops recording when the active panel is moved to trash (panel-close regression)", async () => {
+    // Capture the terminalStore subscribe callback so we can trigger it.
+    let storeCallback: ((state: { terminals: unknown[] }) => void) | null = null;
+    const { useTerminalStore, __state: terminalState } =
+      (await import("@/store/terminalStore")) as unknown as {
+        useTerminalStore: { subscribe: ReturnType<typeof vi.fn> };
+        __state: { terminals: unknown[] };
+      };
+    (useTerminalStore.subscribe as ReturnType<typeof vi.fn>).mockImplementation(
+      (cb: (state: { terminals: unknown[] }) => void) => {
+        storeCallback = cb;
+        return () => {};
+      }
+    );
+
+    const { __state: voiceState } = (await import("@/store/voiceRecordingStore")) as unknown as {
+      __state: { activeTarget: { panelId: string } | null };
+    };
+    voiceState.activeTarget = { panelId: "panel-1" };
+
+    setupGlobals();
+    const { voiceRecordingService } = await import("../VoiceRecordingService");
+    const stopSpy = vi.spyOn(voiceRecordingService, "stop");
+
+    voiceRecordingService.initialize();
+
+    // Simulate the panel being removed from the terminal list.
+    expect(storeCallback).not.toBeNull();
+    storeCallback!({ terminals: [] });
+
+    expect(stopSpy).toHaveBeenCalledWith(
+      "Dictation stopped because its panel was closed.",
+      expect.objectContaining({ preserveLiveText: true })
+    );
+
+    voiceState.activeTarget = null;
+  });
 });

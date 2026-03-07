@@ -386,6 +386,12 @@ class VoiceRecordingService {
       await audioContext.resume();
     }
 
+    if (this.generation !== generation) {
+      logWarn(`${LOG_PREFIX} Generation mismatch after AudioContext setup`);
+      await this.cleanupAudioCapture();
+      return;
+    }
+
     // Keep the AudioContext in "running" state while backgrounded. Chromium
     // suspends capture-only contexts (no output to destination) when the window
     // loses focus. Connecting a silent oscillator to the destination tricks the
@@ -398,12 +404,6 @@ class VoiceRecordingService {
     keepAliveOscillator.start();
     this.keepAliveOscillator = keepAliveOscillator;
     this.keepAliveGain = keepAliveGain;
-
-    if (this.generation !== generation) {
-      logWarn(`${LOG_PREFIX} Generation mismatch after AudioContext setup`);
-      await this.cleanupAudioCapture();
-      return;
-    }
 
     logDebug(`${LOG_PREFIX} Loading pcm-processor worklet`);
     try {
