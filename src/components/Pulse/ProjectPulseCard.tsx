@@ -195,7 +195,9 @@ export function ProjectPulseCard({ worktreeId, className }: ProjectPulseCardProp
                 <DropdownMenuItem
                   key={option.value}
                   onClick={() => handleRangeChange(option.value)}
-                  className={cn(option.value === rangeDays && "bg-surface-highlight")}
+                  className={cn(
+                    option.value === rangeDays && "bg-canopy-accent/15 text-canopy-accent"
+                  )}
                 >
                   {option.label}
                 </DropdownMenuItem>
