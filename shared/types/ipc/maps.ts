@@ -1336,6 +1336,7 @@ export interface IpcEventMap {
   "sidecar:new-tab-menu-action": import("../sidecar.js").SidecarNewTabMenuAction;
 
   // System Sleep events
+  "system-sleep:on-suspend": void;
   "system-sleep:on-wake": number;
 
   // Menu events

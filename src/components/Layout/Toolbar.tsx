@@ -39,6 +39,7 @@ import {
   usePreferencesStore,
   useToolbarPreferencesStore,
   useCliAvailabilityStore,
+  useVoiceRecordingStore,
 } from "@/store";
 import type { ToolbarButtonId } from "@/../../shared/types/domain";
 import { useWorktreeSelectionStore } from "@/store/worktreeStore";
@@ -52,6 +53,7 @@ import { actionService } from "@/services/ActionService";
 import { ProjectSwitcherPalette } from "@/components/Project/ProjectSwitcherPalette";
 import { NotificationCenter } from "@/components/Notifications/NotificationCenter";
 import { useNotificationHistoryStore } from "@/store/slices/notificationHistorySlice";
+import { VoiceRecordingToolbarButton } from "./VoiceRecordingToolbarButton";
 
 interface ToolbarProps {
   onLaunchAgent: (
@@ -132,6 +134,10 @@ export function Toolbar({
   const [notificationCenterOpen, setNotificationCenterOpen] = useState(false);
   const notificationCenterButtonRef = useRef<HTMLButtonElement>(null);
   const notificationUnreadCount = useNotificationHistoryStore((s) => s.unreadCount);
+  const hasActiveVoiceRecording = useVoiceRecordingStore(
+    (state) =>
+      state.activeTarget !== null && (state.status === "connecting" || state.status === "recording")
+  );
   const [statsJustUpdated, setStatsJustUpdated] = useState(false);
   const prevLastUpdatedRef = useRef<number | null>(null);
 
@@ -426,6 +432,10 @@ export function Toolbar({
           </TooltipProvider>
         ),
         isAvailable: true,
+      },
+      "voice-recording": {
+        render: () => <VoiceRecordingToolbarButton key="voice-recording" />,
+        isAvailable: hasActiveVoiceRecording,
       },
       "github-stats": {
         render: () =>
@@ -789,6 +799,7 @@ export function Toolbar({
       terminalShortcut,
       browserShortcut,
       devServerCommand,
+      hasActiveVoiceRecording,
       stats,
       currentProject,
       issuesOpen,

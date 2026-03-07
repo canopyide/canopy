@@ -639,6 +639,8 @@ export interface ElectronAPI {
     getAwakeTimeSince(startTimestamp: number): Promise<number>;
     /** Reset accumulated sleep tracking */
     reset(): Promise<void>;
+    /** Subscribe to suspend events */
+    onSuspend(callback: () => void): () => void;
     /** Subscribe to wake events with sleep duration */
     onWake(callback: (sleepDurationMs: number) => void): () => void;
   };

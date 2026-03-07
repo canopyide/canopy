@@ -27,6 +27,7 @@ import {
   AlertCircle,
   PackagePlus,
   Bell,
+  Mic,
 } from "lucide-react";
 import { ClaudeIcon, GeminiIcon, CodexIcon, OpenCodeIcon } from "@/components/icons";
 import { useToolbarPreferencesStore } from "@/store";
@@ -74,6 +75,11 @@ const BUTTON_METADATA: Partial<Record<ToolbarButtonId, ButtonMetadata>> = {
     label: "Dev Server",
     icon: <Monitor className="h-4 w-4" />,
     description: "Start development server",
+  },
+  "voice-recording": {
+    label: "Voice Recording",
+    icon: <Mic className="h-4 w-4" />,
+    description: "Persistent dictation indicator shown while recording is active",
   },
   "github-stats": {
     label: "GitHub Stats",
