@@ -15,108 +15,113 @@ import { getLeadingSlashCommand, getAllAtFileTokens, type AtFileToken } from "./
 const MAX_TEXTAREA_HEIGHT_PX = 160;
 const LINE_HEIGHT_PX = 20;
 
-export const inputTheme = EditorView.theme({
-  "&": {
-    backgroundColor: "transparent",
-    height: "auto",
+export const inputTheme = EditorView.theme(
+  {
+    "&": {
+      backgroundColor: "transparent",
+      height: "auto",
+    },
+    "&.cm-focused": {
+      outline: "none",
+    },
+    ".cm-content": {
+      fontFamily: "var(--font-mono, monospace)",
+      fontSize: "12px",
+      lineHeight: "20px",
+      padding: "0 4px 0 0",
+      caretColor: "var(--theme-accent-primary)",
+    },
+    "&.cm-focused .cm-cursor": {
+      borderLeft: "2px solid var(--theme-accent-primary)",
+    },
+    "& .cm-selectionBackground": {
+      backgroundColor:
+        "color-mix(in oklab, var(--theme-accent-primary) 25%, transparent) !important",
+    },
+    "&.cm-focused .cm-selectionBackground": {
+      backgroundColor:
+        "color-mix(in oklab, var(--theme-accent-primary) 45%, transparent) !important",
+    },
+    ".cm-dropCursor": {
+      borderLeftColor: "var(--theme-accent-primary)",
+    },
+    ".cm-placeholder": {
+      color: "color-mix(in oklab, var(--theme-text-primary) 25%, transparent)",
+    },
+    ".cm-scroller": {
+      overflow: "hidden",
+    },
+    ".cm-line": {
+      padding: "0",
+    },
+    ".cm-slash-command-chip": {
+      fontWeight: 600,
+      color: "var(--theme-accent-primary)",
+      textDecoration: "underline dotted 1px",
+      textUnderlineOffset: "2px",
+    },
+    ".cm-slash-command-chip-invalid": {
+      color: "var(--theme-terminal-red)",
+      textDecoration: "underline wavy 1px",
+      textUnderlineOffset: "2px",
+    },
+    ".cm-file-chip": {
+      fontWeight: 600,
+      color: "var(--theme-syntax-chip)",
+      textDecoration: "underline dotted 1px",
+      textUnderlineOffset: "2px",
+    },
+    ".cm-tooltip": {
+      background: "transparent",
+      border: "none",
+      boxShadow: "none",
+    },
+    ".cm-tooltip-hover": {
+      background: "transparent",
+      border: "none",
+      boxShadow: "none",
+    },
+    ".cm-image-chip": {
+      display: "inline-flex",
+      alignItems: "center",
+      height: "20px",
+      verticalAlign: "bottom",
+      whiteSpace: "nowrap",
+      gap: "4px",
+      padding: "0 5px",
+      color: "var(--theme-accent-primary)",
+      fontWeight: 600,
+      background: "color-mix(in oklab, var(--theme-syntax-chip) 10%, transparent)",
+      borderRadius: "3px",
+    },
+    ".cm-image-chip img": {
+      height: "16px",
+      width: "16px",
+      objectFit: "cover",
+      borderRadius: "2px",
+      flexShrink: "0",
+    },
+    ".cm-file-drop-chip": {
+      display: "inline-flex",
+      alignItems: "center",
+      height: "20px",
+      verticalAlign: "bottom",
+      whiteSpace: "nowrap",
+      gap: "4px",
+      padding: "0 5px",
+      color: "var(--theme-accent-primary)",
+      fontWeight: 600,
+      background: "color-mix(in oklab, var(--theme-syntax-chip) 10%, transparent)",
+      borderRadius: "3px",
+    },
+    ".cm-file-drop-chip svg": {
+      height: "14px",
+      width: "14px",
+      flexShrink: "0",
+    },
   },
-  "&.cm-focused": {
-    outline: "none",
-  },
-  ".cm-content": {
-    fontFamily: "var(--font-mono, monospace)",
-    fontSize: "12px",
-    lineHeight: "20px",
-    padding: "0 4px 0 0",
-    caretColor: "var(--theme-accent-primary)",
-  },
-  "&.cm-focused .cm-cursor": {
-    borderLeft: "2px solid var(--theme-accent-primary)",
-  },
-  "& .cm-selectionBackground": {
-    backgroundColor: "color-mix(in oklab, var(--theme-accent-primary) 18%, transparent)",
-  },
-  "&.cm-focused .cm-selectionBackground": {
-    backgroundColor: "color-mix(in oklab, var(--theme-accent-primary) 32%, transparent)",
-  },
-  ".cm-dropCursor": {
-    borderLeftColor: "var(--theme-accent-primary)",
-  },
-  ".cm-placeholder": {
-    color: "color-mix(in oklab, var(--theme-text-primary) 25%, transparent)",
-  },
-  ".cm-scroller": {
-    overflow: "hidden",
-  },
-  ".cm-line": {
-    padding: "0",
-  },
-  ".cm-slash-command-chip": {
-    fontWeight: 600,
-    color: "var(--theme-accent-primary)",
-    textDecoration: "underline dotted 1px",
-    textUnderlineOffset: "2px",
-  },
-  ".cm-slash-command-chip-invalid": {
-    color: "var(--theme-terminal-red)",
-    textDecoration: "underline wavy 1px",
-    textUnderlineOffset: "2px",
-  },
-  ".cm-file-chip": {
-    fontWeight: 600,
-    color: "var(--theme-syntax-chip)",
-    textDecoration: "underline dotted 1px",
-    textUnderlineOffset: "2px",
-  },
-  ".cm-tooltip": {
-    background: "transparent",
-    border: "none",
-    boxShadow: "none",
-  },
-  ".cm-tooltip-hover": {
-    background: "transparent",
-    border: "none",
-    boxShadow: "none",
-  },
-  ".cm-image-chip": {
-    display: "inline-flex",
-    alignItems: "center",
-    height: "20px",
-    verticalAlign: "bottom",
-    whiteSpace: "nowrap",
-    gap: "4px",
-    padding: "0 5px",
-    color: "var(--theme-accent-primary)",
-    fontWeight: 600,
-    background: "color-mix(in oklab, var(--theme-syntax-chip) 10%, transparent)",
-    borderRadius: "3px",
-  },
-  ".cm-image-chip img": {
-    height: "16px",
-    width: "16px",
-    objectFit: "cover",
-    borderRadius: "2px",
-    flexShrink: "0",
-  },
-  ".cm-file-drop-chip": {
-    display: "inline-flex",
-    alignItems: "center",
-    height: "20px",
-    verticalAlign: "bottom",
-    whiteSpace: "nowrap",
-    gap: "4px",
-    padding: "0 5px",
-    color: "var(--theme-accent-primary)",
-    fontWeight: 600,
-    background: "color-mix(in oklab, var(--theme-syntax-chip) 10%, transparent)",
-    borderRadius: "3px",
-  },
-  ".cm-file-drop-chip svg": {
-    height: "14px",
-    width: "14px",
-    flexShrink: "0",
-  },
-});
+  { dark: true }
+);
 
 const slashChipMark = Decoration.mark({ class: "cm-slash-command-chip" });
 const invalidChipMark = Decoration.mark({
