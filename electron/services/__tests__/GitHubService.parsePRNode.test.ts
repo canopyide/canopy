@@ -33,8 +33,9 @@ function parsePRNode(node: RawPRNode) {
     state = "MERGED";
   }
 
-  const isFork =
-    headRepo && baseRepo ? headRepo.nameWithOwner !== baseRepo.nameWithOwner : undefined;
+  const headName = headRepo?.nameWithOwner;
+  const baseName = baseRepo?.nameWithOwner;
+  const isFork = headName && baseName ? headName !== baseName : undefined;
 
   return {
     number: node.number,
@@ -121,6 +122,24 @@ describe("parsePRNode", () => {
 
   it("sets isFork to undefined when both repositories are absent", () => {
     const result = parsePRNode(baseNode);
+    expect(result.isFork).toBeUndefined();
+  });
+
+  it("sets isFork to undefined when headRepository has no nameWithOwner (partial payload)", () => {
+    const result = parsePRNode({
+      ...baseNode,
+      headRepository: {},
+      baseRepository: { nameWithOwner: "owner/repo" },
+    });
+    expect(result.isFork).toBeUndefined();
+  });
+
+  it("sets isFork to undefined when baseRepository has no nameWithOwner (partial payload)", () => {
+    const result = parsePRNode({
+      ...baseNode,
+      headRepository: { nameWithOwner: "owner/repo" },
+      baseRepository: {},
+    });
     expect(result.isFork).toBeUndefined();
   });
 

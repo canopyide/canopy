@@ -785,8 +785,9 @@ function parsePRNode(node: Record<string, unknown>): GitHubPR {
     state = "MERGED";
   }
 
-  const isFork =
-    headRepo && baseRepo ? headRepo.nameWithOwner !== baseRepo.nameWithOwner : undefined;
+  const headName = headRepo?.nameWithOwner;
+  const baseName = baseRepo?.nameWithOwner;
+  const isFork = headName && baseName ? headName !== baseName : undefined;
 
   return {
     number: node.number as number,
