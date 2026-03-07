@@ -122,6 +122,7 @@ export interface StoreSchema {
     apiKey: string;
     language: string;
     customDictionary: string[];
+    transcriptionModel: string;
   };
 }
 
@@ -193,6 +194,7 @@ const storeOptions = {
       apiKey: "",
       language: "en",
       customDictionary: [],
+      transcriptionModel: "gpt-4o-mini-transcribe",
     },
   },
   cwd: process.env.CANOPY_USER_DATA,

@@ -19,7 +19,11 @@ import { Button } from "@/components/ui/button";
 import { SettingsSection } from "./SettingsSection";
 import { SettingsSwitchCard } from "./SettingsSwitchCard";
 import { dispatchVoiceInputSettingsChanged } from "@/lib/voiceInputSettingsEvents";
-import type { VoiceInputSettings, MicPermissionStatus } from "@shared/types";
+import type {
+  VoiceInputSettings,
+  MicPermissionStatus,
+  VoiceTranscriptionModel,
+} from "@shared/types";
 
 const LANGUAGES = [
   { code: "en", label: "English" },
@@ -34,11 +38,29 @@ const LANGUAGES = [
   { code: "ru", label: "Russian" },
 ];
 
+const TRANSCRIPTION_MODELS: {
+  value: VoiceTranscriptionModel;
+  label: string;
+  description: string;
+}[] = [
+  {
+    value: "gpt-4o-mini-transcribe",
+    label: "GPT-4o Mini Transcribe",
+    description: "Faster · ~$0.18/hr",
+  },
+  {
+    value: "gpt-4o-transcribe",
+    label: "GPT-4o Transcribe",
+    description: "Higher accuracy · ~$0.36/hr",
+  },
+];
+
 const DEFAULT_SETTINGS: VoiceInputSettings = {
   enabled: false,
   apiKey: "",
   language: "en",
   customDictionary: [],
+  transcriptionModel: "gpt-4o-mini-transcribe",
 };
 
 type LoadState = "loading" | "ready" | "error";
@@ -310,8 +332,7 @@ export function VoiceInputSettingsTab() {
               <h4 className="text-sm font-medium text-canopy-text">Get an API Key</h4>
               <p className="text-xs text-canopy-text/60">
                 Create an OpenAI API key with access to the Realtime API. Voice input uses the{" "}
-                <code className="text-canopy-text bg-canopy-bg px-1 rounded">gpt-4o-realtime</code>{" "}
-                model for low-latency transcription.
+                Realtime API for low-latency transcription.
               </p>
               <Button
                 onClick={() =>
@@ -356,6 +377,27 @@ export function VoiceInputSettingsTab() {
               {LANGUAGES.map(({ code, label }) => (
                 <option key={code} value={code}>
                   {label}
+                </option>
+              ))}
+            </select>
+          </SettingsSection>
+
+          {/* Transcription Model */}
+          <SettingsSection
+            icon={Mic}
+            title="Transcription Model"
+            description="Choose the model used for speech-to-text. Mini is faster and cheaper; the full model offers higher accuracy."
+          >
+            <select
+              value={settings.transcriptionModel}
+              onChange={(e) =>
+                update({ transcriptionModel: e.target.value as VoiceTranscriptionModel })
+              }
+              className="w-full max-w-xs bg-canopy-bg border border-canopy-border rounded-[var(--radius-md)] px-3 py-2 text-sm text-canopy-text focus:outline-none focus:ring-1 focus:ring-canopy-accent"
+            >
+              {TRANSCRIPTION_MODELS.map(({ value, label, description }) => (
+                <option key={value} value={value}>
+                  {label} — {description}
                 </option>
               ))}
             </select>

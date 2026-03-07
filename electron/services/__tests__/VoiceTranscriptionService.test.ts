@@ -89,6 +89,7 @@ describe("VoiceTranscriptionService", () => {
       apiKey: "sk-test",
       language: "en",
       customDictionary: [],
+      transcriptionModel: "gpt-4o-mini-transcribe" as const,
     });
 
     expect(statuses).toContain("connecting");
@@ -139,6 +140,7 @@ describe("VoiceTranscriptionService", () => {
       apiKey: "sk-test",
       language: "en",
       customDictionary: [],
+      transcriptionModel: "gpt-4o-mini-transcribe" as const,
     });
 
     service.stop();
