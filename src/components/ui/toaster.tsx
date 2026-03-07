@@ -103,7 +103,7 @@ function Toast({ notification }: { notification: Notification }) {
           "h-6 w-6 flex items-center justify-center",
           "text-canopy-text/40 transition-colors duration-150",
           "hover:text-canopy-text/80 hover:bg-white/10",
-          "focus-visible:opacity-100 focus-visible:outline focus-visible:outline-2 focus-visible:outline-canopy-accent focus-visible:outline-offset-2"
+          "focus-visible:outline focus-visible:outline-2 focus-visible:outline-canopy-accent focus-visible:outline-offset-2"
         )}
       >
         <X className="h-3.5 w-3.5" />
