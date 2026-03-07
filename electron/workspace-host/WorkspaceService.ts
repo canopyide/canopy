@@ -1329,6 +1329,8 @@ export class WorkspaceService {
     };
     this.emitUpdate(monitor);
 
+    const teardownStartedAt = monitor.lifecycleStatus?.startedAt ?? Date.now();
+
     try {
       const result = await this.lifecycleService.runCommands(commands, {
         cwd: monitor.path,
@@ -1343,12 +1345,26 @@ export class WorkspaceService {
               commandIndex,
               totalCommands,
               currentCommand: command,
-              startedAt: m.lifecycleStatus?.startedAt ?? Date.now(),
+              startedAt: m.lifecycleStatus?.startedAt ?? teardownStartedAt,
             };
             this.emitUpdate(m);
           }
         },
       });
+
+      const finalMonitor = this.monitors.get(worktreeId);
+      if (finalMonitor) {
+        finalMonitor.lifecycleStatus = {
+          phase: "teardown",
+          state: result.timedOut ? "timed-out" : result.success ? "success" : "failed",
+          totalCommands: commands.length,
+          output: result.output,
+          error: result.error,
+          startedAt: teardownStartedAt,
+          completedAt: Date.now(),
+        };
+        this.emitUpdate(finalMonitor);
+      }
 
       if (!result.success) {
         console.warn(
@@ -1357,6 +1373,18 @@ export class WorkspaceService {
         );
       }
     } catch (err) {
+      const finalMonitor = this.monitors.get(worktreeId);
+      if (finalMonitor) {
+        finalMonitor.lifecycleStatus = {
+          phase: "teardown",
+          state: "failed",
+          totalCommands: commands.length,
+          error: (err as Error).message,
+          startedAt: teardownStartedAt,
+          completedAt: Date.now(),
+        };
+        this.emitUpdate(finalMonitor);
+      }
       console.warn(
         `[WorktreeLifecycle] Teardown threw for worktree ${worktreeId} (continuing deletion):`,
         err
