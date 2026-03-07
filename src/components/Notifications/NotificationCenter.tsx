@@ -1,4 +1,4 @@
-import { useEffect, useMemo } from "react";
+import { useEffect, useMemo, useRef } from "react";
 import { Bell, Trash2 } from "lucide-react";
 import {
   useNotificationHistoryStore,
@@ -49,17 +49,17 @@ export function NotificationCenter({ open, onClose }: NotificationCenterProps) {
   const clearAll = useNotificationHistoryStore((s) => s.clearAll);
   const markAllRead = useNotificationHistoryStore((s) => s.markAllRead);
 
-  useEffect(() => {
-    if (open) {
-      markAllRead();
-    }
-  }, [open, markAllRead]);
+  const unseenIdsRef = useRef<Set<string>>(new Set());
 
   useEffect(() => {
-    if (open && entries.length > 0) {
+    if (open) {
+      const currentEntries = useNotificationHistoryStore.getState().entries;
+      unseenIdsRef.current = new Set(currentEntries.filter((e) => !e.seenAsToast).map((e) => e.id));
       markAllRead();
+    } else {
+      unseenIdsRef.current = new Set();
     }
-  }, [open, entries, markAllRead]);
+  }, [open, markAllRead]);
 
   const groups = useMemo(() => groupByCorrelationId(entries), [entries]);
 
@@ -91,9 +91,17 @@ export function NotificationCenter({ open, onClose }: NotificationCenterProps) {
           <div className="divide-y divide-white/[0.04]">
             {groups.map((group) =>
               group.correlationId && group.entries.length > 1 ? (
-                <NotificationThread key={group.correlationId} group={group} />
+                <NotificationThread
+                  key={group.correlationId}
+                  group={group}
+                  unseenIds={unseenIdsRef.current}
+                />
               ) : (
-                <NotificationCenterEntry key={group.entries[0].id} entry={group.entries[0]} />
+                <NotificationCenterEntry
+                  key={group.entries[0].id}
+                  entry={group.entries[0]}
+                  isNew={unseenIdsRef.current.has(group.entries[0].id)}
+                />
               )
             )}
           </div>
@@ -103,12 +111,13 @@ export function NotificationCenter({ open, onClose }: NotificationCenterProps) {
   );
 }
 
-function NotificationThread({ group }: { group: ThreadGroup }) {
+function NotificationThread({ group, unseenIds }: { group: ThreadGroup; unseenIds: Set<string> }) {
   const latest = group.entries[0];
+  const isNew = group.entries.some((e) => unseenIds.has(e.id));
 
   return (
     <div className="relative">
-      <NotificationCenterEntry entry={latest} threadCount={group.entries.length} />
+      <NotificationCenterEntry entry={latest} threadCount={group.entries.length} isNew={isNew} />
     </div>
   );
 }
