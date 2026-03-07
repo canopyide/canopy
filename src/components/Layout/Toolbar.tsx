@@ -904,7 +904,7 @@ export function Toolbar({
             >
               {currentProject ? (
                 <>
-                  <span className="text-base leading-none" aria-label="Project emoji">
+                  <span className="text-base leading-none shrink-0" aria-label="Project emoji">
                     {currentProject.emoji}
                   </span>
                   <span className="text-xs font-medium text-white/90 tracking-wide truncate min-w-0">
