@@ -1330,6 +1330,7 @@ export interface IpcEventMap {
 
   // Notification events
   "notification:update": { waitingCount: number; failedCount: number };
+  "notification:watch-navigate": { panelId: string; panelTitle: string; worktreeId?: string };
 
   // Auto-update events
   "update:available": { version: string };

@@ -1,5 +1,5 @@
 import React, { useCallback, useEffect, useRef, useState, type ReactNode } from "react";
-import { X, Maximize2, Minimize2, RotateCcw, Grid2X2, Activity, Plus } from "lucide-react";
+import { X, Maximize2, Minimize2, RotateCcw, Grid2X2, Activity, Plus, Bell } from "lucide-react";
 import {
   DndContext,
   closestCenter,
@@ -21,6 +21,7 @@ import { TerminalIcon } from "@/components/Terminal/TerminalIcon";
 import { DockToBottomIcon } from "@/components/icons";
 import { useDragHandle } from "@/components/DragDrop/DragHandleContext";
 import { useBackgroundPanelStats } from "@/hooks";
+import { useTerminalStore } from "@/store/terminalStore";
 import { TabButton, type TabInfo } from "./TabButton";
 import { SortableTabButton } from "./SortableTabButton";
 import { panelKindCanRestart } from "@shared/config/panelKindRegistry";
@@ -222,6 +223,19 @@ function PanelHeaderComponent({
   // Get background activity stats for Zen Mode header
   const { activeCount, workingCount } = useBackgroundPanelStats(id);
 
+  // Watch state — only relevant for agent panels
+  const isWatched = useTerminalStore((state) => state.watchedPanels.has(id));
+  const unwatchPanel = useTerminalStore((state) => state.unwatchPanel);
+  const showWatchButton = !!agentId;
+
+  const handleCancelWatch = useCallback(
+    (e: React.MouseEvent) => {
+      e.stopPropagation();
+      unwatchPanel(id);
+    },
+    [id, unwatchPanel]
+  );
+
   // In dock, show shortened title without command summary for space efficiency
   const displayTitle = location === "dock" ? getBaseTitle(title) : title;
 
@@ -340,7 +354,7 @@ function PanelHeaderComponent({
             : location === "dock"
               ? "bg-surface"
               : isFocused
-                ? "bg-white/[0.02]"
+                ? "bg-overlay-subtle"
                 : "bg-transparent",
           dragListeners && "cursor-grab active:cursor-grabbing",
           isPinged && !isMaximized && "animate-terminal-header-ping",
@@ -559,6 +573,29 @@ function PanelHeaderComponent({
 
         <div className="flex items-center gap-1.5">
           {/* Window controls - hover only */}
+          {/* Watch status indicator — only visible when actively watching; clicking cancels watch */}
+          {showWatchButton && isWatched && (
+            <TooltipProvider>
+              <Tooltip>
+                <TooltipTrigger asChild>
+                  <button
+                    type="button"
+                    onClick={handleCancelWatch}
+                    onPointerDown={(e) => e.stopPropagation()}
+                    className="p-1.5 transition-all text-canopy-accent hover:text-canopy-accent/80 focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-canopy-accent"
+                    aria-label="Cancel watch — stop waiting for completion"
+                  >
+                    <Bell
+                      className="w-3 h-3 animate-pulse motion-reduce:animate-none"
+                      aria-hidden="true"
+                    />
+                  </button>
+                </TooltipTrigger>
+                <TooltipContent side="bottom">Cancel watch</TooltipContent>
+              </Tooltip>
+            </TooltipProvider>
+          )}
+
           <div className="flex items-center gap-1.5 opacity-0 pointer-events-none group-hover:opacity-100 group-hover:pointer-events-auto group-focus-within:opacity-100 group-focus-within:pointer-events-auto transition-opacity motion-reduce:transition-none">
             {headerActions}
             {/* Restart button - only shown for panel kinds that declare canRestart capability */}
