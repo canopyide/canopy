@@ -137,7 +137,7 @@ export function PulseSummary({ pulse, compact = false }: PulseSummaryProps) {
             <div className="flex items-center gap-0.5 text-canopy-text/70">
               <FileCode className="w-3 h-3" />
               <span className="font-mono">{pulse.deltaToMain!.filesChanged}</span>
-              <span className="text-canopy-text/50">files</span>
+              <span className="text-canopy-text/55">files</span>
             </div>
           )}
 
