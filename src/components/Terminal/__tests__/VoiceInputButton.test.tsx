@@ -2,6 +2,7 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { render } from "@testing-library/react";
 import { VoiceInputButton } from "../VoiceInputButton";
+import { useVoiceRecordingStore } from "@/store/voiceRecordingStore";
 
 vi.mock("@/services/ActionService", () => ({
   actionService: {
@@ -32,6 +33,15 @@ describe("VoiceInputButton", () => {
     window.electron = {
       voiceInput: createVoiceInputApi(),
     } as unknown as typeof window.electron;
+    useVoiceRecordingStore.setState({
+      isConfigured: false,
+      status: "idle",
+      errorMessage: null,
+      activeTarget: null,
+      elapsedSeconds: 0,
+      panelBuffers: {},
+      announcement: null,
+    });
   });
 
   afterEach(() => {
@@ -39,12 +49,9 @@ describe("VoiceInputButton", () => {
   });
 
   it("shows the active mic icon when voice input is configured but idle", () => {
+    useVoiceRecordingStore.setState({ isConfigured: true });
     const { container } = render(
-      <VoiceInputButton
-        isConfigured
-        onTranscriptionDelta={() => {}}
-        onTranscriptionComplete={() => {}}
-      />
+      <VoiceInputButton panelId="panel-1" projectId="project-1" projectName="Canopy" />
     );
 
     expect(container.innerHTML).toContain("lucide-mic");
@@ -53,11 +60,7 @@ describe("VoiceInputButton", () => {
 
   it("shows the disabled mic icon when voice input is not configured", () => {
     const { container } = render(
-      <VoiceInputButton
-        isConfigured={false}
-        onTranscriptionDelta={() => {}}
-        onTranscriptionComplete={() => {}}
-      />
+      <VoiceInputButton panelId="panel-1" projectId="project-1" projectName="Canopy" />
     );
 
     expect(container.innerHTML).toContain("lucide-mic-off");

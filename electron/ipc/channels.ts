@@ -243,6 +243,7 @@ export const CHANNELS = {
   SYSTEM_SLEEP_GET_METRICS: "system-sleep:get-metrics",
   SYSTEM_SLEEP_GET_AWAKE_TIME: "system-sleep:get-awake-time",
   SYSTEM_SLEEP_RESET: "system-sleep:reset",
+  SYSTEM_SLEEP_ON_SUSPEND: "system-sleep:on-suspend",
   SYSTEM_SLEEP_ON_WAKE: "system-sleep:on-wake",
 
   KEYBINDING_GET_OVERRIDES: "keybinding:get-overrides",

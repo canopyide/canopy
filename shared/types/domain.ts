@@ -919,6 +919,7 @@ export type ToolbarButtonId =
   | "terminal"
   | "browser"
   | "dev-server"
+  | "voice-recording"
   | "github-stats"
   | "notes"
   | "copy-tree"

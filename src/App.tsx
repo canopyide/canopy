@@ -63,6 +63,7 @@ import { TerminalPalette, NewTerminalPalette } from "./components/TerminalPalett
 import { PanelPalette } from "./components/PanelPalette/PanelPalette";
 import { MORE_AGENTS_PANEL_ID } from "./hooks/usePanelPalette";
 import { GitInitDialog, ProjectOnboardingWizard, WelcomeScreen } from "./components/Project";
+import { VoiceRecordingAnnouncer } from "./components/Terminal/VoiceRecordingAnnouncer";
 import {
   AgentSetupWizard,
   AgentSelectionStep,
@@ -115,6 +116,7 @@ import type { WorktreeState, PanelKind } from "./types";
 import { startRendererMemoryMonitor } from "./utils/performance";
 import { startLongTaskMonitor } from "./utils/longTaskMonitor";
 import { actionService } from "./services/ActionService";
+import { voiceRecordingService } from "./services/VoiceRecordingService";
 import { useRenderProfiler } from "./utils/renderProfiler";
 
 interface SidebarContentProps {
@@ -975,6 +977,10 @@ function App() {
   useSystemWakeHandler();
   useDevServerDiscovery();
 
+  useEffect(() => {
+    voiceRecordingService.initialize();
+  }, []);
+
   if (!isElectronAvailable()) {
     return (
       <div className="h-screen w-screen flex items-center justify-center bg-canopy-bg">
@@ -992,6 +998,7 @@ function App() {
   return (
     <ErrorBoundary variant="fullscreen" componentName="App">
       <DndProvider>
+        <VoiceRecordingAnnouncer />
         <Profiler id="app-layout" onRender={onLayoutRender}>
           <AppLayout
             sidebarContent={

@@ -187,6 +187,7 @@ export type {
   NotificationSettings,
   VoiceInputSettings,
   VoiceInputStatus,
+  VoiceTranscriptionModel,
   MicPermissionStatus,
   BranchInfo,
   CreateWorktreeOptions,
