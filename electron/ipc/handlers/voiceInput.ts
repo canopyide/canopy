@@ -4,6 +4,7 @@ import { CHANNELS } from "../channels.js";
 import { store } from "../../store.js";
 import { VoiceTranscriptionService } from "../../services/VoiceTranscriptionService.js";
 import type { HandlerDependencies } from "../types.js";
+import type { VoiceInputSettings } from "../../../shared/types/ipc/api.js";
 
 let service: VoiceTranscriptionService | null = null;
 let activeEventUnsubscribe: (() => void) | null = null;
@@ -110,6 +111,7 @@ export function registerVoiceInputHandlers(deps: HandlerDependencies): () => voi
       apiKey: string;
       language: string;
       customDictionary: string[];
+      transcriptionModel: string;
     }>
   ) => {
     const current = store.get("voiceInput");
@@ -150,7 +152,7 @@ export function registerVoiceInputHandlers(deps: HandlerDependencies): () => voi
     };
     event.sender.once("destroyed", onDestroyed);
 
-    const result = await svc.start(settings);
+    const result = await svc.start(settings as VoiceInputSettings);
     if (!result.ok) {
       // Failed to start — clean up subscription immediately
       if (activeEventUnsubscribe === unsubscribe) {
@@ -163,8 +165,11 @@ export function registerVoiceInputHandlers(deps: HandlerDependencies): () => voi
   };
 
   const handleStop = async () => {
+    if (service) {
+      // Drain first (waits for pending transcriptions), then clean up subscription.
+      await service.stopGracefully();
+    }
     cleanupActiveSubscription();
-    service?.stop();
   };
 
   const handleAudioChunk = (_event: Electron.IpcMainInvokeEvent, chunk: ArrayBuffer) => {

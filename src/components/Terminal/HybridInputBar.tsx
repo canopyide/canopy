@@ -26,13 +26,12 @@ import {
   type AtFileContext,
   type SlashCommandContext,
 } from "./hybridInputParsing";
-import { CommandPickerButton, CommandPickerHost } from "@/components/Commands";
+import { CommandPickerHost } from "@/components/Commands";
 import { useCommandStore } from "@/store/commandStore";
 import { useProjectStore } from "@/store/projectStore";
+import { useTerminalStore, useVoiceRecordingStore, useWorktreeDataStore } from "@/store";
 import { VoiceInputButton } from "./VoiceInputButton";
-import { VOICE_INPUT_SETTINGS_CHANGED_EVENT } from "@/lib/voiceInputSettingsEvents";
 import type { CommandContext, CommandResult } from "@shared/types/commands";
-import type { VoiceInputSettings } from "@shared/types";
 import { isEnterLikeLineBreakInputEvent } from "./hybridInputEvents";
 import {
   inputTheme,
@@ -156,9 +155,20 @@ export const HybridInputBar = forwardRef<HybridInputBarHandle, HybridInputBarPro
     const latestRef = useRef<LatestState | null>(null);
 
     const openPicker = useCommandStore((s) => s.openPicker);
-    const [isVoiceConfigured, setIsVoiceConfigured] = useState(false);
-    const [isVoiceRecording, setIsVoiceRecording] = useState(false);
-    const pendingTranscriptRef = useRef<string>("");
+    const currentProject = useProjectStore((s) => s.currentProject);
+    const voiceStatus = useVoiceRecordingStore((s) => s.status);
+    const activeVoicePanelId = useVoiceRecordingStore((s) => s.activeTarget?.panelId ?? null);
+    const voiceDraftRevision = useTerminalInputStore((s) => s.voiceDraftRevision);
+    const panelWorktreeId = useTerminalStore(
+      (s) => s.terminals.find((terminal) => terminal.id === terminalId)?.worktreeId
+    );
+    const panelWorktree = useWorktreeDataStore((s) =>
+      panelWorktreeId ? s.worktrees.get(panelWorktreeId) : undefined
+    );
+    const isVoiceRecording = activeVoicePanelId === terminalId && voiceStatus === "recording";
+    const isVoiceConnecting = activeVoicePanelId === terminalId && voiceStatus === "connecting";
+    const isVoiceFinishing = activeVoicePanelId === terminalId && voiceStatus === "finishing";
+    const isVoiceActiveForPanel = isVoiceRecording || isVoiceConnecting || isVoiceFinishing;
 
     const commandContext = useMemo(
       (): CommandContext => ({
@@ -241,35 +251,6 @@ export const HybridInputBar = forwardRef<HybridInputBarHandle, HybridInputBarPro
         if (sendRafRef.current !== null) {
           cancelAnimationFrame(sendRafRef.current);
         }
-      };
-    }, []);
-
-    useEffect(() => {
-      const load = () => {
-        return window.electron?.voiceInput
-          ?.getSettings()
-          .then((s) => {
-            setIsVoiceConfigured(s.enabled && !!s.apiKey);
-          })
-          .catch(() => {});
-      };
-
-      const handleSettingsChanged = (event: Event) => {
-        const { detail } = event as CustomEvent<VoiceInputSettings>;
-        if (detail) {
-          setIsVoiceConfigured(detail.enabled && !!detail.apiKey);
-          return;
-        }
-        void load();
-      };
-
-      load();
-      // Re-check when the window regains focus so Settings changes are reflected immediately.
-      window.addEventListener("focus", load);
-      window.addEventListener(VOICE_INPUT_SETTINGS_CHANGED_EVENT, handleSettingsChanged);
-      return () => {
-        window.removeEventListener("focus", load);
-        window.removeEventListener(VOICE_INPUT_SETTINGS_CHANGED_EVENT, handleSettingsChanged);
       };
     }, []);
 
@@ -511,28 +492,29 @@ export const HybridInputBar = forwardRef<HybridInputBarHandle, HybridInputBarPro
       [applyEditorValue]
     );
 
-    const handleVoiceTranscriptionDelta = useCallback((delta: string) => {
-      pendingTranscriptRef.current += delta;
-    }, []);
-
-    const handleVoiceTranscriptionComplete = useCallback((text: string) => {
-      pendingTranscriptRef.current = "";
+    // Voice segments are flushed to the draft store by VoiceRecordingService
+    // and increment voiceDraftRevision.  Sync the editor to the draft when
+    // that revision bumps (works even if this component was unmounted during
+    // a worktree switch — on remount, the draft already contains the text).
+    useEffect(() => {
+      if (voiceDraftRevision === 0) return;
+      const draft = useTerminalInputStore.getState().getDraftInput(terminalId, currentProject?.id);
       const view = editorViewRef.current;
       if (!view) return;
-
       const current = view.state.doc.toString();
-      const separator = current && !current.endsWith(" ") ? " " : "";
-      const insert = separator + text;
-      const from = view.state.doc.length;
-
-      isApplyingExternalValueRef.current = true;
-      view.dispatch({
-        changes: { from, insert },
-        selection: { anchor: from + insert.length },
-        scrollIntoView: true,
-      });
-      view.focus();
-    }, []);
+      if (draft !== current) {
+        // Update React state first so the draft-writeback effect (which
+        // syncs `value` → setDraftInput) won't overwrite with stale data.
+        setValue(draft);
+        lastEmittedValueRef.current = draft;
+        isApplyingExternalValueRef.current = true;
+        view.dispatch({
+          changes: { from: 0, to: current.length, insert: draft },
+          selection: { anchor: draft.length },
+          scrollIntoView: true,
+        });
+      }
+    }, [voiceDraftRevision, terminalId, currentProject?.id]);
 
     const sendFromEditor = useCallback(() => {
       const view = editorViewRef.current;
@@ -1193,10 +1175,12 @@ export const HybridInputBar = forwardRef<HybridInputBarHandle, HybridInputBarPro
               "flex w-full items-center gap-1.5 rounded-sm border border-white/[0.06] bg-overlay-soft py-1 shadow-[0_6px_12px_rgba(0,0,0,0.18)] transition-colors",
               "group-hover:border-white/[0.08] group-hover:bg-overlay-medium",
               "focus-within:border-white/[0.12] focus-within:ring-1 focus-within:ring-white/[0.06] focus-within:bg-white/[0.05]",
+              isVoiceActiveForPanel &&
+                "border-canopy-accent/60 bg-canopy-accent/[0.12] shadow-[0_0_0_1px_rgba(var(--theme-accent-rgb),0.35),0_0_16px_rgba(var(--theme-accent-rgb),0.15)]",
               disabled && "opacity-60"
             )}
             aria-disabled={disabled}
-            aria-busy={isInitializing}
+            aria-busy={isInitializing || isVoiceConnecting}
           >
             <AutocompleteMenu
               ref={menuRef}
@@ -1209,9 +1193,15 @@ export const HybridInputBar = forwardRef<HybridInputBarHandle, HybridInputBarPro
               ariaLabel={activeMode === "command" ? "Command autocomplete" : "File autocomplete"}
             />
 
-            <div className="select-none pl-2 pr-1 font-mono text-xs font-semibold leading-5 text-canopy-accent/85">
+            <button
+              type="button"
+              onClick={openPicker}
+              disabled={disabled}
+              className="select-none pl-2 pr-1 font-mono text-xs font-semibold leading-5 text-canopy-accent/85 hover:text-canopy-accent transition-colors cursor-pointer focus-visible:outline-none"
+              aria-label="Open command picker"
+            >
               ❯
-            </div>
+            </button>
 
             <div className="relative flex-1">
               <div
@@ -1220,21 +1210,16 @@ export const HybridInputBar = forwardRef<HybridInputBarHandle, HybridInputBarPro
               />
             </div>
 
-            <div
-              className={cn(
-                "flex items-center gap-0.5 pr-1.5 transition-opacity motion-reduce:transition-none",
-                "opacity-0 group-hover:opacity-100 group-focus-within/shell:opacity-100",
-                isVoiceRecording && "opacity-100"
-              )}
-            >
+            <div className="flex items-center pr-1.5">
               <VoiceInputButton
-                onTranscriptionDelta={handleVoiceTranscriptionDelta}
-                onTranscriptionComplete={handleVoiceTranscriptionComplete}
-                onRecordingStateChange={setIsVoiceRecording}
+                panelId={terminalId}
+                panelTitle={agentId ? getAgentConfig(agentId)?.name : undefined}
+                projectId={currentProject?.id}
+                projectName={currentProject?.name}
+                worktreeId={panelWorktreeId}
+                worktreeLabel={panelWorktree?.branch || panelWorktree?.name}
                 disabled={disabled}
-                isConfigured={isVoiceConfigured}
               />
-              <CommandPickerButton onClick={openPicker} disabled={disabled} />
             </div>
           </div>
         </div>

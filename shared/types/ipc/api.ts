@@ -639,6 +639,8 @@ export interface ElectronAPI {
     getAwakeTimeSince(startTimestamp: number): Promise<number>;
     /** Reset accumulated sleep tracking */
     reset(): Promise<void>;
+    /** Subscribe to suspend events */
+    onSuspend(callback: () => void): () => void;
     /** Subscribe to wake events with sleep duration */
     onWake(callback: (sleepDurationMs: number) => void): () => void;
   };
@@ -829,11 +831,14 @@ export type MicPermissionStatus =
   | "restricted"
   | "unknown";
 
+export type VoiceTranscriptionModel = "gpt-4o-mini-transcribe" | "gpt-4o-transcribe";
+
 export interface VoiceInputSettings {
   enabled: boolean;
   apiKey: string;
   language: string;
   customDictionary: string[];
+  transcriptionModel: VoiceTranscriptionModel;
 }
 
-export type VoiceInputStatus = "idle" | "connecting" | "recording" | "error";
+export type VoiceInputStatus = "idle" | "connecting" | "recording" | "finishing" | "error";

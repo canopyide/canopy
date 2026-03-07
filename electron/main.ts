@@ -639,7 +639,7 @@ async function createWindow(): Promise<void> {
   }
 
   function lockdownTrustedPermissions(ses: Electron.Session): void {
-    const trustedPermissions = new Set(["clipboard-sanitized-write", "clipboard-read"]);
+    const trustedPermissions = new Set(["clipboard-sanitized-write", "clipboard-read", "media"]);
     ses.setPermissionRequestHandler((_wc, permission, callback) => {
       callback(trustedPermissions.has(permission));
     });
