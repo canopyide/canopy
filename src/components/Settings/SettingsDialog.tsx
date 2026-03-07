@@ -405,7 +405,10 @@ export function SettingsDialog({
           <div className="flex items-center justify-between px-6 py-4 border-b border-canopy-border bg-canopy-sidebar/50 shrink-0">
             <h3 className="text-lg font-medium text-canopy-text flex items-center gap-2">
               {isSearching ? (
-                "Search Results"
+                <>
+                  <Search className="w-5 h-5 text-canopy-text/60" />
+                  Search Results
+                </>
               ) : (
                 <>
                   {tabIcons[activeTab]}
