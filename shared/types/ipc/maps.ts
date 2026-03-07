@@ -13,7 +13,7 @@ import type { GitInitOptions, GitInitProgressEvent, GitInitResult } from "./gitI
 import type { AgentSettings } from "../agentSettings.js";
 import type { UserAgentRegistry, UserAgentConfig } from "../userAgentRegistry.js";
 import type { KeyAction } from "../keymap.js";
-import type { KeybindingImportResult } from "./api.js";
+import type { KeybindingImportResult, MicPermissionStatus } from "./api.js";
 
 import type {
   WorktreeSetActivePayload,
@@ -1244,6 +1244,36 @@ export interface IpcInvokeMap {
   "voice-input:stop": {
     args: [];
     result: void;
+  };
+  "voice-input:check-mic-permission": {
+    args: [];
+    result: MicPermissionStatus;
+  };
+  "voice-input:request-mic-permission": {
+    args: [];
+    result: boolean;
+  };
+  "voice-input:open-mic-settings": {
+    args: [];
+    result: void;
+  };
+  "voice-input:validate-api-key": {
+    args: [apiKey: string];
+    result: { valid: boolean; error?: string };
+  };
+
+  // MCP Server channels
+  "mcp-server:get-status": {
+    args: [];
+    result: { enabled: boolean; port: number | null };
+  };
+  "mcp-server:set-enabled": {
+    args: [enabled: boolean];
+    result: { enabled: boolean; port: number | null };
+  };
+  "mcp-server:get-config-snippet": {
+    args: [];
+    result: string;
   };
 }
 

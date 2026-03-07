@@ -123,6 +123,9 @@ export interface StoreSchema {
     language: string;
     customDictionary: string[];
   };
+  mcpServer: {
+    enabled: boolean;
+  };
 }
 
 const storeOptions = {
@@ -193,6 +196,9 @@ const storeOptions = {
       apiKey: "",
       language: "en",
       customDictionary: [],
+    },
+    mcpServer: {
+      enabled: true,
     },
   },
   cwd: process.env.CANOPY_USER_DATA,

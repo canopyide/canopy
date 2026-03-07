@@ -820,6 +820,34 @@ export interface ElectronAPI {
     openMicSettings(): Promise<void>;
     validateApiKey(apiKey: string): Promise<{ valid: boolean; error?: string }>;
   };
+  mcpServer: {
+    /** Get current MCP server status */
+    getStatus(): Promise<{ enabled: boolean; port: number | null }>;
+    /** Enable or disable the MCP server */
+    setEnabled(enabled: boolean): Promise<{ enabled: boolean; port: number | null }>;
+    /** Get the JSON config snippet to paste into an MCP client config */
+    getConfigSnippet(): Promise<string>;
+  };
+  mcpBridge: {
+    /** Listen for manifest requests from main process */
+    onGetManifestRequest(callback: () => void): () => void;
+    /** Send action manifest to main process */
+    sendGetManifestResponse(manifest: import("../actions.js").ActionManifestEntry[]): void;
+    /** Listen for action dispatch requests from main process */
+    onDispatchActionRequest(
+      callback: (payload: {
+        requestId: string;
+        actionId: string;
+        args?: unknown;
+        confirmed?: boolean;
+      }) => void
+    ): () => void;
+    /** Send action dispatch result to main process */
+    sendDispatchActionResponse(payload: {
+      requestId: string;
+      result: import("../actions.js").ActionDispatchResult;
+    }): void;
+  };
 }
 
 export type MicPermissionStatus =

@@ -514,4 +514,26 @@ export const SETTINGS_SEARCH_INDEX: SettingsSearchEntry[] = [
     description: "Clear all per-worktree split ratio overrides and return to the default ratio",
     keywords: ["reset", "worktree", "ratio", "split", "default", "clear"],
   },
+
+  // MCP Server
+  {
+    id: "mcp-server-enable",
+    tab: "mcp",
+    tabLabel: "MCP Server",
+    section: "Local MCP Server",
+    title: "Enable MCP Server",
+    description:
+      "Start a local MCP server so AI agents can invoke Canopy actions (open terminals, inject context, switch worktrees, etc.)",
+    keywords: ["mcp", "server", "agent", "local", "tools", "automation", "api", "enable"],
+  },
+  {
+    id: "mcp-server-config",
+    tab: "mcp",
+    tabLabel: "MCP Server",
+    section: "Connection",
+    title: "Copy MCP Config",
+    description:
+      "Copy the MCP server config snippet (JSON) to paste into your MCP client configuration",
+    keywords: ["mcp", "config", "copy", "snippet", "json", "client", "cursor", "claude"],
+  },
 ];
