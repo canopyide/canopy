@@ -114,6 +114,7 @@ import {
 import type { WorktreeState, PanelKind } from "./types";
 import { startRendererMemoryMonitor } from "./utils/performance";
 import { startLongTaskMonitor } from "./utils/longTaskMonitor";
+import { actionService } from "./services/ActionService";
 import { useRenderProfiler } from "./utils/renderProfiler";
 
 interface SidebarContentProps {
@@ -1134,6 +1135,10 @@ function App() {
         }}
         onStopProject={(projectId) => projectSwitcherPalette.stopProject(projectId)}
         onCloseProject={(projectId) => projectSwitcherPalette.removeProject(projectId)}
+        onOpenProjectSettings={() => {
+          projectSwitcherPalette.close();
+          void actionService.dispatch("project.settings.open", undefined, { source: "user" });
+        }}
         removeConfirmProject={projectSwitcherPalette.removeConfirmProject}
         onRemoveConfirmClose={() => projectSwitcherPalette.setRemoveConfirmProject(null)}
         onConfirmRemove={projectSwitcherPalette.confirmRemoveProject}

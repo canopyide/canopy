@@ -1,14 +1,15 @@
 import { useMemo, useEffect, useRef, useCallback } from "react";
+import { createPortal } from "react-dom";
 import { Circle, FolderPlus, Plus, Settings2, Square, X } from "lucide-react";
 import { cn } from "@/lib/utils";
 import { getProjectGradient } from "@/lib/colorUtils";
 import { AppPaletteDialog } from "@/components/ui/AppPaletteDialog";
-import { SearchablePalette } from "@/components/ui/SearchablePalette";
 import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover";
 import { Tooltip, TooltipContent, TooltipTrigger, TooltipProvider } from "@/components/ui/tooltip";
 import { ConfirmDialog } from "@/components/ui/ConfirmDialog";
 import { ProjectActionRow } from "./ProjectActionRow";
 import { useKeybindingDisplay } from "@/hooks/useKeybinding";
+import { useOverlayState } from "@/hooks";
 import type { ProjectSwitcherMode, SearchableProject } from "@/hooks/useProjectSwitcherPalette";
 import { useUIStore } from "@/store/uiStore";
 
@@ -387,144 +388,45 @@ const PROJECT_FOOTER = (
   </>
 );
 
-function ModalContent({
-  isOpen,
-  query,
-  results,
-  selectedIndex,
-  onQueryChange,
-  onSelectPrevious,
-  onSelectNext,
-  onSelect,
-  onClose,
-  onAddProject,
-  onCreateFolder,
-  onStopProject,
-  onCloseProject,
-}: Omit<ProjectSwitcherPaletteProps, "mode" | "children">) {
-  const listRef = useRef<HTMLDivElement>(null);
-  const projectSwitcherShortcut = useKeybindingDisplay("project.switcherPalette");
+const PALETTE_WIDTH = "w-[484px] max-w-[calc(100vw-2rem)]";
+const PALETTE_MAX_HEIGHT = "max-h-[60vh]";
 
-  useEffect(() => {
-    if (listRef.current && selectedIndex >= 0 && selectedIndex < results.length) {
-      const selectedItem = listRef.current.querySelector(
-        `#project-option-${results[selectedIndex].id}`
-      );
-      if (selectedItem) {
-        selectedItem.scrollIntoView({ block: "nearest" });
-      }
-    }
-  }, [selectedIndex, results]);
-
-  const handleBackspaceKeyDown = useCallback(
-    (e: React.KeyboardEvent) => {
-      if (
-        e.key === "Backspace" &&
-        (e.metaKey || e.ctrlKey) &&
-        onCloseProject &&
-        results.length > 0 &&
-        selectedIndex >= 0 &&
-        selectedIndex < results.length
-      ) {
-        e.preventDefault();
-        onCloseProject(results[selectedIndex].id);
-      }
-    },
-    [results, selectedIndex, onCloseProject]
-  );
-
-  return (
-    <SearchablePalette<SearchableProject>
-      isOpen={isOpen}
-      query={query}
-      results={results}
-      selectedIndex={selectedIndex}
-      onQueryChange={onQueryChange}
-      onSelectPrevious={onSelectPrevious}
-      onSelectNext={onSelectNext}
-      onConfirm={() => {
-        if (results.length > 0 && selectedIndex >= 0 && selectedIndex < results.length) {
-          onSelect(results[selectedIndex]);
-        }
-      }}
-      onClose={onClose}
-      getItemId={(project) => project.id}
-      renderItem={() => null}
-      label="Switch Project"
-      keyHint={projectSwitcherShortcut}
-      ariaLabel="Project switcher"
-      searchPlaceholder="Search projects..."
-      searchAriaLabel="Search projects"
-      listId="project-list"
-      itemIdPrefix="project-option"
-      headerClassName="pb-2"
-      bodyClassName="p-0"
-      onKeyDown={handleBackspaceKeyDown}
-      footer={PROJECT_FOOTER}
-      renderBody={() => (
-        <ProjectListContent
-          results={results}
-          selectedIndex={selectedIndex}
-          query={query}
-          onSelect={onSelect}
-          listRef={listRef}
-          onAddProject={onAddProject}
-          onCreateFolder={onCreateFolder}
-          onStopProject={onStopProject}
-          onCloseProject={onCloseProject}
-          showAddProject={true}
-          showCreateFolder={true}
-        />
-      )}
-    />
-  );
+interface ProjectPaletteInnerProps {
+  inputRef: React.RefObject<HTMLInputElement | null>;
+  listRef: React.RefObject<HTMLDivElement | null>;
+  query: string;
+  results: SearchableProject[];
+  selectedIndex: number;
+  onQueryChange: (query: string) => void;
+  onSelect: (project: SearchableProject) => void;
+  onClose: () => void;
+  onSelectPrevious: () => void;
+  onSelectNext: () => void;
+  onAddProject?: () => void;
+  onCreateFolder?: () => void;
+  onOpenProjectSettings?: () => void;
+  onStopProject?: (projectId: string) => void;
+  onCloseProject?: (projectId: string) => void;
 }
 
-function DropdownContent({
-  isOpen,
+function ProjectPaletteInner({
+  inputRef,
+  listRef,
   query,
   results,
   selectedIndex,
   onQueryChange,
-  onSelectPrevious,
-  onSelectNext,
   onSelect,
   onClose,
+  onSelectPrevious,
+  onSelectNext,
   onAddProject,
   onCreateFolder,
-  onStopProject,
   onOpenProjectSettings,
+  onStopProject,
   onCloseProject,
-  dropdownAlign = "start",
-  children,
-}: Omit<ProjectSwitcherPaletteProps, "mode">) {
-  const inputRef = useRef<HTMLInputElement>(null);
-  const listRef = useRef<HTMLDivElement>(null);
+}: ProjectPaletteInnerProps) {
   const projectSwitcherShortcut = useKeybindingDisplay("project.switcherPalette");
-  const overlayCount = useUIStore((state) => state.overlayCount);
-  const prevOverlayCountRef = useRef<number>(overlayCount);
-  const focusRafRef = useRef<number | null>(null);
-
-  useEffect(() => {
-    if (!isOpen) return;
-    focusRafRef.current = requestAnimationFrame(() => {
-      inputRef.current?.focus();
-      focusRafRef.current = null;
-    });
-    return () => {
-      if (focusRafRef.current !== null) {
-        cancelAnimationFrame(focusRafRef.current);
-        focusRafRef.current = null;
-      }
-    };
-  }, [isOpen]);
-
-  useEffect(() => {
-    if (isOpen && overlayCount > prevOverlayCountRef.current && overlayCount > 0) {
-      onClose();
-    }
-    prevOverlayCountRef.current = overlayCount;
-  }, [isOpen, overlayCount, onClose]);
 
   useEffect(() => {
     if (listRef.current && selectedIndex >= 0 && selectedIndex < results.length) {
@@ -535,7 +437,7 @@ function DropdownContent({
         selectedItem.scrollIntoView({ block: "nearest" });
       }
     }
-  }, [selectedIndex, results]);
+  }, [listRef, selectedIndex, results]);
 
   const handleKeyDown = useCallback(
     (e: React.KeyboardEvent) => {
@@ -592,10 +494,172 @@ function DropdownContent({
   const activeResult = results[selectedIndex];
 
   return (
+    <>
+      <AppPaletteDialog.Header
+        label="Switch Project"
+        keyHint={projectSwitcherShortcut}
+        className="pb-2"
+      >
+        <AppPaletteDialog.Input
+          inputRef={inputRef}
+          value={query}
+          onChange={(e) => onQueryChange(e.target.value)}
+          onKeyDown={handleKeyDown}
+          placeholder="Search projects..."
+          role="combobox"
+          aria-expanded={true}
+          aria-haspopup="listbox"
+          aria-label="Search projects"
+          aria-controls="project-list"
+          aria-activedescendant={activeResult ? `project-option-${activeResult.id}` : undefined}
+        />
+      </AppPaletteDialog.Header>
+
+      <AppPaletteDialog.Body maxHeight={PALETTE_MAX_HEIGHT} className="p-0">
+        <ProjectListContent
+          results={results}
+          selectedIndex={selectedIndex}
+          query={query}
+          onSelect={onSelect}
+          listRef={listRef}
+          onAddProject={onAddProject}
+          onCreateFolder={onCreateFolder}
+          onOpenProjectSettings={onOpenProjectSettings}
+          onStopProject={onStopProject}
+          onCloseProject={onCloseProject}
+          showAddProject
+          showCreateFolder
+          showProjectSettings={!!onOpenProjectSettings}
+        />
+      </AppPaletteDialog.Body>
+
+      <AppPaletteDialog.Footer>{PROJECT_FOOTER}</AppPaletteDialog.Footer>
+    </>
+  );
+}
+
+function ModalContent({
+  isOpen,
+  onClose,
+  ...innerProps
+}: Omit<ProjectSwitcherPaletteProps, "mode" | "children" | "dropdownAlign">) {
+  useOverlayState(isOpen);
+  const inputRef = useRef<HTMLInputElement>(null);
+  const listRef = useRef<HTMLDivElement>(null);
+  const dialogRef = useRef<HTMLDivElement>(null);
+  const previousFocusRef = useRef<HTMLElement | null>(null);
+
+  useEffect(() => {
+    if (isOpen) {
+      previousFocusRef.current = document.activeElement as HTMLElement;
+      requestAnimationFrame(() => inputRef.current?.focus());
+    } else if (previousFocusRef.current) {
+      previousFocusRef.current.focus();
+      previousFocusRef.current = null;
+    }
+  }, [isOpen]);
+
+  useEffect(() => {
+    if (!isOpen) return;
+    const handleKeyDown = (e: KeyboardEvent) => {
+      if (e.key === "Escape") {
+        onClose();
+      }
+    };
+    window.addEventListener("keydown", handleKeyDown);
+    return () => window.removeEventListener("keydown", handleKeyDown);
+  }, [isOpen, onClose]);
+
+  const handleBackdropClick = useCallback(
+    (e: React.MouseEvent) => {
+      if (e.target === e.currentTarget) {
+        onClose();
+      }
+    },
+    [onClose]
+  );
+
+  if (!isOpen) return null;
+
+  return createPortal(
+    <div
+      className="fixed inset-0 z-[var(--z-modal)] flex items-start justify-center pt-[15vh] bg-black/40 backdrop-blur-sm backdrop-saturate-[1.25]"
+      onClick={handleBackdropClick}
+      role="dialog"
+      aria-modal="true"
+      aria-label="Project switcher"
+    >
+      <div
+        ref={dialogRef}
+        className={cn(
+          PALETTE_WIDTH,
+          "mx-4 surface-overlay shadow-overlay rounded-[var(--radius-lg)] overflow-hidden",
+          "animate-in fade-in slide-in-from-top-4 duration-150"
+        )}
+        onClick={(e) => e.stopPropagation()}
+      >
+        <ProjectPaletteInner
+          inputRef={inputRef}
+          listRef={listRef}
+          query={innerProps.query}
+          results={innerProps.results}
+          selectedIndex={innerProps.selectedIndex}
+          onQueryChange={innerProps.onQueryChange}
+          onSelect={innerProps.onSelect}
+          onClose={onClose}
+          onSelectPrevious={innerProps.onSelectPrevious}
+          onSelectNext={innerProps.onSelectNext}
+          onAddProject={innerProps.onAddProject}
+          onCreateFolder={innerProps.onCreateFolder}
+          onOpenProjectSettings={innerProps.onOpenProjectSettings}
+          onStopProject={innerProps.onStopProject}
+          onCloseProject={innerProps.onCloseProject}
+        />
+      </div>
+    </div>,
+    document.body
+  );
+}
+
+function DropdownContent({
+  isOpen,
+  onClose,
+  dropdownAlign = "start",
+  children,
+  ...innerProps
+}: Omit<ProjectSwitcherPaletteProps, "mode">) {
+  const inputRef = useRef<HTMLInputElement>(null);
+  const listRef = useRef<HTMLDivElement>(null);
+  const overlayCount = useUIStore((state) => state.overlayCount);
+  const prevOverlayCountRef = useRef<number>(overlayCount);
+  const focusRafRef = useRef<number | null>(null);
+
+  useEffect(() => {
+    if (!isOpen) return;
+    focusRafRef.current = requestAnimationFrame(() => {
+      inputRef.current?.focus();
+      focusRafRef.current = null;
+    });
+    return () => {
+      if (focusRafRef.current !== null) {
+        cancelAnimationFrame(focusRafRef.current);
+        focusRafRef.current = null;
+      }
+    };
+  }, [isOpen]);
+
+  useEffect(() => {
+    if (isOpen && overlayCount > prevOverlayCountRef.current && overlayCount > 0) {
+      onClose();
+    }
+    prevOverlayCountRef.current = overlayCount;
+  }, [isOpen, overlayCount, onClose]);
+
+  return (
     <Popover open={isOpen} onOpenChange={(open) => !open && onClose()}>
       <PopoverTrigger asChild>{children}</PopoverTrigger>
       <PopoverContent
-        className="w-[484px] max-w-[calc(100vw-2rem)] p-0"
+        className={cn(PALETTE_WIDTH, "p-0")}
         data-testid="project-switcher-palette"
         align={dropdownAlign}
         sideOffset={8}
@@ -604,45 +668,23 @@ function DropdownContent({
           inputRef.current?.focus();
         }}
       >
-        <AppPaletteDialog.Header
-          label="Switch Project"
-          keyHint={projectSwitcherShortcut}
-          className="pb-2"
-        >
-          <AppPaletteDialog.Input
-            inputRef={inputRef}
-            value={query}
-            onChange={(e) => onQueryChange(e.target.value)}
-            onKeyDown={handleKeyDown}
-            placeholder="Search projects..."
-            role="combobox"
-            aria-expanded={isOpen}
-            aria-haspopup="listbox"
-            aria-label="Search projects"
-            aria-controls="project-list"
-            aria-activedescendant={activeResult ? `project-option-${activeResult.id}` : undefined}
-          />
-        </AppPaletteDialog.Header>
-
-        <AppPaletteDialog.Body maxHeight="max-h-[60vh]" className="p-0">
-          <ProjectListContent
-            results={results}
-            selectedIndex={selectedIndex}
-            query={query}
-            onSelect={onSelect}
-            listRef={listRef}
-            onAddProject={onAddProject}
-            onCreateFolder={onCreateFolder}
-            onOpenProjectSettings={onOpenProjectSettings}
-            onStopProject={onStopProject}
-            onCloseProject={onCloseProject}
-            showAddProject={true}
-            showCreateFolder={true}
-            showProjectSettings={!!onOpenProjectSettings}
-          />
-        </AppPaletteDialog.Body>
-
-        <AppPaletteDialog.Footer>{PROJECT_FOOTER}</AppPaletteDialog.Footer>
+        <ProjectPaletteInner
+          inputRef={inputRef}
+          listRef={listRef}
+          query={innerProps.query}
+          results={innerProps.results}
+          selectedIndex={innerProps.selectedIndex}
+          onQueryChange={innerProps.onQueryChange}
+          onSelect={innerProps.onSelect}
+          onClose={onClose}
+          onSelectPrevious={innerProps.onSelectPrevious}
+          onSelectNext={innerProps.onSelectNext}
+          onAddProject={innerProps.onAddProject}
+          onCreateFolder={innerProps.onCreateFolder}
+          onOpenProjectSettings={innerProps.onOpenProjectSettings}
+          onStopProject={innerProps.onStopProject}
+          onCloseProject={innerProps.onCloseProject}
+        />
       </PopoverContent>
     </Popover>
   );
@@ -713,6 +755,7 @@ export function ProjectSwitcherPalette({
         onCreateFolder={onCreateFolder}
         onStopProject={onStopProject}
         onCloseProject={onCloseProject}
+        onOpenProjectSettings={onOpenProjectSettings}
       />
     );
 
