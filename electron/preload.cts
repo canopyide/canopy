@@ -1597,6 +1597,7 @@ const api: ElectronAPI = {
         apiKey: string;
         language: string;
         customDictionary: string[];
+        transcriptionModel: "gpt-4o-mini-transcribe" | "gpt-4o-transcribe";
       }>
     ) => _typedInvoke(CHANNELS.VOICE_INPUT_SET_SETTINGS, patch),
     start: () => _typedInvoke(CHANNELS.VOICE_INPUT_START),

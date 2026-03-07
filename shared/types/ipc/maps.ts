@@ -13,7 +13,7 @@ import type { GitInitOptions, GitInitProgressEvent, GitInitResult } from "./gitI
 import type { AgentSettings } from "../agentSettings.js";
 import type { UserAgentRegistry, UserAgentConfig } from "../userAgentRegistry.js";
 import type { KeyAction } from "../keymap.js";
-import type { KeybindingImportResult } from "./api.js";
+import type { KeybindingImportResult, VoiceInputSettings } from "./api.js";
 
 import type {
   WorktreeSetActivePayload,
@@ -1224,17 +1224,10 @@ export interface IpcInvokeMap {
   // Voice input
   "voice-input:get-settings": {
     args: [];
-    result: { enabled: boolean; apiKey: string; language: string; customDictionary: string[] };
+    result: VoiceInputSettings;
   };
   "voice-input:set-settings": {
-    args: [
-      patch: Partial<{
-        enabled: boolean;
-        apiKey: string;
-        language: string;
-        customDictionary: string[];
-      }>,
-    ];
+    args: [patch: Partial<VoiceInputSettings>];
     result: void;
   };
   "voice-input:start": {

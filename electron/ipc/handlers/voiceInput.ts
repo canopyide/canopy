@@ -4,6 +4,7 @@ import { CHANNELS } from "../channels.js";
 import { store } from "../../store.js";
 import { VoiceTranscriptionService } from "../../services/VoiceTranscriptionService.js";
 import type { HandlerDependencies } from "../types.js";
+import type { VoiceInputSettings } from "../../../shared/types/ipc/api.js";
 
 let service: VoiceTranscriptionService | null = null;
 let activeEventUnsubscribe: (() => void) | null = null;
@@ -151,7 +152,7 @@ export function registerVoiceInputHandlers(deps: HandlerDependencies): () => voi
     };
     event.sender.once("destroyed", onDestroyed);
 
-    const result = await svc.start(settings);
+    const result = await svc.start(settings as VoiceInputSettings);
     if (!result.ok) {
       // Failed to start — clean up subscription immediately
       if (activeEventUnsubscribe === unsubscribe) {
