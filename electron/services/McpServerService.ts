@@ -24,6 +24,54 @@ interface PendingRequest<T> {
   timer: ReturnType<typeof setTimeout>;
 }
 
+function safeSerializeToolResult(value: unknown): string {
+  const seen = new WeakSet<object>();
+
+  try {
+    const serialized = JSON.stringify(
+      value,
+      (_key, currentValue) => {
+        if (typeof currentValue === "bigint") {
+          return currentValue.toString();
+        }
+        if (typeof currentValue === "symbol") {
+          return currentValue.toString();
+        }
+        if (typeof currentValue === "function") {
+          return `[Function: ${currentValue.name || "anonymous"}]`;
+        }
+        if (currentValue instanceof Error) {
+          return {
+            name: currentValue.name,
+            message: currentValue.message,
+            stack: currentValue.stack,
+          };
+        }
+        if (currentValue !== null && typeof currentValue === "object") {
+          if (seen.has(currentValue)) {
+            return "[Circular]";
+          }
+          seen.add(currentValue);
+        }
+        return currentValue;
+      },
+      2
+    );
+
+    if (serialized !== undefined) {
+      return serialized;
+    }
+  } catch {
+    // Fall through to string coercion.
+  }
+
+  try {
+    return String(value);
+  } catch {
+    return Object.prototype.toString.call(value);
+  }
+}
+
 export class McpServerService {
   private httpServer: http.Server | null = null;
   private port: number | null = null;
@@ -69,11 +117,17 @@ export class McpServerService {
 
   async setApiKey(apiKey: string): Promise<void> {
     store.set("mcpServer", { ...this.getConfig(), apiKey });
+    if (this.isRunning) {
+      await this.writeDiscoveryFile();
+    }
   }
 
-  generateApiKey(): string {
+  async generateApiKey(): Promise<string> {
     const key = `canopy_${randomUUID().replace(/-/g, "")}`;
     store.set("mcpServer", { ...this.getConfig(), apiKey: key });
+    if (this.isRunning) {
+      await this.writeDiscoveryFile();
+    }
     return key;
   }
 
@@ -229,13 +283,15 @@ export class McpServerService {
   private setupIpcListeners(): void {
     const manifestHandler = (
       _event: Electron.IpcMainEvent,
-      payload: { requestId: string; manifest: ActionManifestEntry[] }
+      payload: { requestId: string; manifest: unknown }
     ) => {
       const pending = this.pendingManifests.get(payload.requestId);
       if (pending) {
         clearTimeout(pending.timer);
         this.pendingManifests.delete(payload.requestId);
-        pending.resolve(payload.manifest);
+        pending.resolve(
+          Array.isArray(payload.manifest) ? (payload.manifest as ActionManifestEntry[]) : []
+        );
       }
     };
 
@@ -262,6 +318,14 @@ export class McpServerService {
 
   private requestManifest(): Promise<ActionManifestEntry[]> {
     return new Promise((resolve, reject) => {
+      let webContents: Electron.WebContents;
+      try {
+        webContents = this.getLiveWebContents();
+      } catch (err) {
+        reject(this.normalizeError(err, "MCP renderer bridge unavailable"));
+        return;
+      }
+
       const requestId = randomUUID();
       const timer = setTimeout(() => {
         this.pendingManifests.delete(requestId);
@@ -269,12 +333,30 @@ export class McpServerService {
       }, 5000);
 
       this.pendingManifests.set(requestId, { resolve, reject, timer });
-      this.mainWindow?.webContents.send("mcp:get-manifest-request", { requestId });
+      try {
+        webContents.send("mcp:get-manifest-request", { requestId });
+      } catch (err) {
+        clearTimeout(timer);
+        this.pendingManifests.delete(requestId);
+        reject(this.normalizeError(err, "Failed to request action manifest"));
+      }
     });
   }
 
-  private dispatchAction(actionId: string, args: unknown): Promise<ActionDispatchResult> {
+  private dispatchAction(
+    actionId: string,
+    args: unknown,
+    confirmed = false
+  ): Promise<ActionDispatchResult> {
     return new Promise((resolve, reject) => {
+      let webContents: Electron.WebContents;
+      try {
+        webContents = this.getLiveWebContents();
+      } catch (err) {
+        reject(this.normalizeError(err, "MCP renderer bridge unavailable"));
+        return;
+      }
+
       const requestId = randomUUID();
       const timer = setTimeout(() => {
         this.pendingDispatches.delete(requestId);
@@ -283,11 +365,18 @@ export class McpServerService {
 
       this.pendingDispatches.set(requestId, { resolve, reject, timer });
 
-      this.mainWindow?.webContents.send("mcp:dispatch-action-request", {
-        requestId,
-        actionId,
-        args,
-      });
+      try {
+        webContents.send("mcp:dispatch-action-request", {
+          requestId,
+          actionId,
+          args,
+          confirmed,
+        });
+      } catch (err) {
+        clearTimeout(timer);
+        this.pendingDispatches.delete(requestId);
+        reject(this.normalizeError(err, `Failed to dispatch action: ${actionId}`));
+      }
     });
   }
 
@@ -300,24 +389,23 @@ export class McpServerService {
     server.setRequestHandler(ListToolsRequestSchema, async () => {
       const manifest = await this.requestManifest();
       return {
-        tools: manifest.map((entry) => ({
-          name: entry.id,
-          description: `[${entry.category}] ${entry.title}: ${entry.description}${entry.danger === "confirm" ? " (⚠️ destructive)" : ""}`,
-          inputSchema: (entry.inputSchema as { type: string }) ?? {
-            type: "object",
-            properties: {},
-          },
-        })),
+        tools: manifest
+          .filter((entry) => entry.danger !== "restricted")
+          .map((entry) => ({
+            name: entry.id,
+            description: this.buildToolDescription(entry),
+            inputSchema: this.buildToolInputSchema(entry),
+          })),
       };
     });
 
     server.setRequestHandler(CallToolRequestSchema, async (request) => {
       const actionId = request.params.name;
-      const args = request.params.arguments ?? {};
+      const { args, confirmed } = this.parseToolArguments(request.params.arguments);
 
       let result: ActionDispatchResult;
       try {
-        result = await this.dispatchAction(actionId, args);
+        result = await this.dispatchAction(actionId, args, confirmed);
       } catch (err) {
         return {
           content: [
@@ -337,7 +425,7 @@ export class McpServerService {
               type: "text" as const,
               text:
                 result.result !== undefined && result.result !== null
-                  ? JSON.stringify(result.result, null, 2)
+                  ? safeSerializeToolResult(result.result)
                   : "OK",
             },
           ],
@@ -375,6 +463,102 @@ export class McpServerService {
     return auth === `Bearer ${apiKey}`;
   }
 
+  private buildToolDescription(entry: ActionManifestEntry): string {
+    let description = `[${entry.category}] ${entry.title}: ${entry.description}`;
+    if (entry.danger === "confirm") {
+      description += " Requires explicit confirmation via _meta.confirmed=true.";
+    }
+    return description;
+  }
+
+  private buildToolInputSchema(entry: ActionManifestEntry): Record<string, unknown> {
+    const baseSchema =
+      entry.inputSchema &&
+      typeof entry.inputSchema === "object" &&
+      !Array.isArray(entry.inputSchema) &&
+      entry.inputSchema["type"] === "object"
+        ? ({ ...entry.inputSchema } as Record<string, unknown>)
+        : {
+            type: "object",
+            properties: {},
+          };
+
+    if (entry.danger !== "confirm") {
+      return baseSchema;
+    }
+
+    const properties =
+      baseSchema["properties"] &&
+      typeof baseSchema["properties"] === "object" &&
+      !Array.isArray(baseSchema["properties"])
+        ? { ...(baseSchema["properties"] as Record<string, unknown>) }
+        : {};
+
+    properties["_meta"] = {
+      type: "object",
+      description: "Reserved Canopy MCP metadata.",
+      properties: {
+        confirmed: {
+          type: "boolean",
+          description: "Must be true to execute this destructive action.",
+        },
+      },
+      additionalProperties: false,
+    };
+
+    return {
+      ...baseSchema,
+      properties,
+    };
+  }
+
+  private parseToolArguments(rawArgs: unknown): { args: unknown; confirmed: boolean } {
+    if (!rawArgs || typeof rawArgs !== "object" || Array.isArray(rawArgs)) {
+      return {
+        args: rawArgs ?? {},
+        confirmed: false,
+      };
+    }
+
+    const argsRecord = rawArgs as Record<string, unknown>;
+    const meta = argsRecord["_meta"];
+    const metaRecord =
+      meta !== null && typeof meta === "object" && !Array.isArray(meta)
+        ? (meta as Record<string, unknown>)
+        : null;
+    const confirmed = metaRecord?.["confirmed"] === true;
+
+    if (!("_meta" in argsRecord)) {
+      return {
+        args: rawArgs,
+        confirmed,
+      };
+    }
+
+    const { _meta: _ignored, ...actionArgs } = argsRecord;
+    return {
+      args: Object.keys(actionArgs).length > 0 ? actionArgs : {},
+      confirmed,
+    };
+  }
+
+  private getLiveWebContents(): Electron.WebContents {
+    if (!this.mainWindow || this.mainWindow.isDestroyed()) {
+      throw new Error("MCP renderer bridge unavailable");
+    }
+
+    const { webContents } = this.mainWindow;
+    if (!webContents || webContents.isDestroyed()) {
+      throw new Error("MCP renderer bridge unavailable");
+    }
+
+    return webContents;
+  }
+
+  private normalizeError(err: unknown, fallback: string): Error {
+    return err instanceof Error ? err : new Error(fallback);
+  }
+
   private async handleRequest(req: http.IncomingMessage, res: http.ServerResponse): Promise<void> {
     if (!this.isValidHost(req)) {
       res.writeHead(403, { "Content-Type": "text/plain" });
@@ -388,7 +572,9 @@ export class McpServerService {
       return;
     }
 
-    if (req.method === "GET" && req.url === "/sse") {
+    const url = new URL(req.url ?? "/", `http://127.0.0.1:${this.port}`);
+
+    if (req.method === "GET" && url.pathname === "/sse") {
       const transport = new SSEServerTransport("/messages", res);
       const server = this.createSessionServer();
       const sessionId = transport.sessionId;
@@ -399,8 +585,7 @@ export class McpServerService {
       };
 
       await server.connect(transport);
-    } else if (req.method === "POST" && req.url?.startsWith("/messages")) {
-      const url = new URL(req.url, `http://127.0.0.1:${this.port}`);
+    } else if (req.method === "POST" && url.pathname === "/messages") {
       const sessionId = url.searchParams.get("sessionId") ?? "";
       const transport = this.sessions.get(sessionId);
 

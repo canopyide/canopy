@@ -864,7 +864,12 @@ export interface ElectronAPI {
     ): void;
     /** Listen for action dispatch requests from main process */
     onDispatchActionRequest(
-      callback: (payload: { requestId: string; actionId: string; args?: unknown }) => void
+      callback: (payload: {
+        requestId: string;
+        actionId: string;
+        args?: unknown;
+        confirmed?: boolean;
+      }) => void
     ): () => void;
     /** Send action dispatch result to main process */
     sendDispatchActionResponse(payload: {

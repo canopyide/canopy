@@ -34,8 +34,8 @@ export function registerMcpServerHandlers(): () => void {
   });
   handlers.push(() => ipcMain.removeHandler(CHANNELS.MCP_SERVER_SET_API_KEY));
 
-  ipcMain.handle(CHANNELS.MCP_SERVER_GENERATE_API_KEY, () => {
-    return mcpServerService.generateApiKey();
+  ipcMain.handle(CHANNELS.MCP_SERVER_GENERATE_API_KEY, async () => {
+    return await mcpServerService.generateApiKey();
   });
   handlers.push(() => ipcMain.removeHandler(CHANNELS.MCP_SERVER_GENERATE_API_KEY));
 
