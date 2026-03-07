@@ -1,19 +1,12 @@
 import { logDebug, logWarn } from "../utils/logger.js";
+import { DEFAULT_CORRECTION_SYSTEM_PROMPT } from "../../shared/config/voiceCorrection.js";
+
+export { DEFAULT_CORRECTION_SYSTEM_PROMPT };
 
 const P = "[VoiceCorrection]";
 const CORRECTION_TIMEOUT_MS = 2000;
 const MAX_HISTORY = 3;
 const MAX_TOKENS = 300;
-
-export const DEFAULT_CORRECTION_SYSTEM_PROMPT = `You are a speech-to-text post-processor. Your sole task is to clean raw transcription text for readability while preserving the exact original meaning and tone.
-
-Rules:
-- Remove filler words (um, uh, like, you know, so, right) only when used as fillers, not when used meaningfully
-- Fix punctuation and sentence casing
-- Correct technical term capitalization (React, TypeScript, JavaScript, Python, Node.js, API, GitHub, npm, etc.)
-- Correct obvious homophone errors based on context (their/there/they're, to/too/two, etc.)
-- Do NOT rephrase, summarize, or improve the speaker's eloquence or grammar beyond these fixes
-- If the input is already correct, return it verbatim`;
 
 const GUARDRAIL_SUFFIX =
   "\n\nOutput ONLY the corrected text — no explanations, no markup, no quotes, nothing else.";
@@ -114,7 +107,6 @@ export class VoiceCorrectionService {
         temperature: 0,
         max_tokens: MAX_TOKENS,
       }),
-      signal: AbortSignal.timeout(CORRECTION_TIMEOUT_MS),
     });
 
     if (!response.ok) {

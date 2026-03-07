@@ -125,6 +125,8 @@ export function registerVoiceInputHandlers(deps: HandlerDependencies): () => voi
 
   const handleStart = async (event: Electron.IpcMainInvokeEvent) => {
     const svc = getService();
+    // Snapshot transcription settings at session start (model, language, API key).
+    // Correction settings are read live from store per-event so mid-session changes apply.
     const settings = store.get("voiceInput") as VoiceInputSettings;
 
     // Clean up any existing subscription before starting a new session
@@ -147,15 +149,17 @@ export function registerVoiceInputHandlers(deps: HandlerDependencies): () => voi
         win.webContents.send(CHANNELS.VOICE_INPUT_TRANSCRIPTION_DELTA, voiceEvent.text);
       } else if (voiceEvent.type === "complete") {
         const rawText = voiceEvent.text;
-        if (settings.correctionEnabled && settings.apiKey) {
+        // Read correction settings live so mid-session changes take effect immediately.
+        const liveSettings = store.get("voiceInput") as VoiceInputSettings;
+        if (liveSettings.correctionEnabled && liveSettings.apiKey) {
           // Apply correction asynchronously before forwarding to the renderer.
           // Falls back to raw text on timeout or error.
           void correctionService!
             .correct(rawText, {
-              model: settings.correctionModel,
-              systemPrompt: settings.correctionSystemPrompt,
-              apiKey: settings.apiKey,
-              customDictionary: settings.customDictionary,
+              model: liveSettings.correctionModel,
+              systemPrompt: liveSettings.correctionSystemPrompt,
+              apiKey: liveSettings.apiKey,
+              customDictionary: liveSettings.customDictionary,
               projectContext,
             })
             .then((finalText) => {

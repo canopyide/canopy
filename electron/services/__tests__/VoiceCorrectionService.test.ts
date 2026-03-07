@@ -182,4 +182,42 @@ describe("VoiceCorrectionService", () => {
     const body = JSON.parse((fetchMock.mock.calls[0] as [string, RequestInit])[1].body as string);
     expect(body.temperature).toBe(0);
   });
+
+  it("falls back to raw text when API returns whitespace-only content", async () => {
+    vi.stubGlobal("fetch", vi.fn().mockResolvedValue(makeFetchResponse("   \n  ")));
+
+    const svc = new VoiceCorrectionService();
+    const result = await svc.correct("react is great", BASE_SETTINGS);
+    expect(result).toBe("react is great");
+  });
+
+  it("falls back to raw text when API response has no choices", async () => {
+    vi.stubGlobal(
+      "fetch",
+      vi.fn().mockResolvedValue({
+        ok: true,
+        status: 200,
+        json: async () => ({ choices: [] }),
+      } as unknown as Response)
+    );
+
+    const svc = new VoiceCorrectionService();
+    const result = await svc.correct("react is great", BASE_SETTINGS);
+    expect(result).toBe("react is great");
+  });
+
+  it("falls back to raw text when API response has null message content", async () => {
+    vi.stubGlobal(
+      "fetch",
+      vi.fn().mockResolvedValue({
+        ok: true,
+        status: 200,
+        json: async () => ({ choices: [{ message: { content: null } }] }),
+      } as unknown as Response)
+    );
+
+    const svc = new VoiceCorrectionService();
+    const result = await svc.correct("react is great", BASE_SETTINGS);
+    expect(result).toBe("react is great");
+  });
 });
