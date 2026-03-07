@@ -3,6 +3,7 @@ import { createPortal } from "react-dom";
 import { X } from "lucide-react";
 import { cn } from "@/lib/utils";
 import { useNotificationStore, type Notification } from "@/store/notificationStore";
+import { useShallow } from "zustand/react/shallow";
 
 const ACCENT_CLASS: Record<string, string> = {
   success: "border-l-status-success",
@@ -12,10 +13,12 @@ const ACCENT_CLASS: Record<string, string> = {
 };
 
 function Toast({ notification }: { notification: Notification }) {
-  const { dismissNotification, removeNotification } = useNotificationStore((state) => ({
-    dismissNotification: state.dismissNotification,
-    removeNotification: state.removeNotification,
-  }));
+  const { dismissNotification, removeNotification } = useNotificationStore(
+    useShallow((state) => ({
+      dismissNotification: state.dismissNotification,
+      removeNotification: state.removeNotification,
+    }))
+  );
   const [isVisible, setIsVisible] = useState(false);
   const [isPaused, setIsPaused] = useState(false);
 
