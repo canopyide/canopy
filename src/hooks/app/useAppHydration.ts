@@ -51,6 +51,7 @@ export function useAppHydration(callbacks: HydrationCallbacks, enabled = true) {
 
     restoreState();
   }, [
+    enabled,
     callbacks.addTerminal,
     callbacks.setActiveWorktree,
     callbacks.loadRecipes,
