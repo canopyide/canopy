@@ -306,11 +306,9 @@ describe("VoiceRecordingService — background recording", () => {
   it("stops recording when the active panel is moved to trash (panel-close regression)", async () => {
     // Capture the terminalStore subscribe callback so we can trigger it.
     let storeCallback: ((state: { terminals: unknown[] }) => void) | null = null;
-    const { useTerminalStore, __state: terminalState } =
-      (await import("@/store/terminalStore")) as unknown as {
-        useTerminalStore: { subscribe: ReturnType<typeof vi.fn> };
-        __state: { terminals: unknown[] };
-      };
+    const { useTerminalStore } = (await import("@/store/terminalStore")) as unknown as {
+      useTerminalStore: { subscribe: ReturnType<typeof vi.fn> };
+    };
     (useTerminalStore.subscribe as ReturnType<typeof vi.fn>).mockImplementation(
       (cb: (state: { terminals: unknown[] }) => void) => {
         storeCallback = cb;
