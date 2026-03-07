@@ -439,6 +439,9 @@ const CHANNELS = {
   NOTIFICATION_SETTINGS_GET: "notification:settings-get",
   NOTIFICATION_SETTINGS_SET: "notification:settings-set",
   NOTIFICATION_PLAY_SOUND: "notification:play-sound",
+  NOTIFICATION_SHOW_WATCH: "notification:show-watch",
+  NOTIFICATION_WATCH_NAVIGATE: "notification:watch-navigate",
+  NOTIFICATION_SYNC_WATCHED: "notification:sync-watched",
 
   // Auto-update channels
   UPDATE_AVAILABLE: "update:available",
@@ -1386,6 +1389,18 @@ const api: ElectronAPI = {
       }>
     ) => _typedInvoke(CHANNELS.NOTIFICATION_SETTINGS_SET, settings),
     playSound: (soundFile: string) => _typedInvoke(CHANNELS.NOTIFICATION_PLAY_SOUND, soundFile),
+    showWatchNotification: (payload: {
+      title: string;
+      body: string;
+      panelId: string;
+      panelTitle: string;
+      worktreeId?: string;
+    }) => ipcRenderer.send(CHANNELS.NOTIFICATION_SHOW_WATCH, payload),
+    onWatchNavigate: (
+      callback: (context: { panelId: string; panelTitle: string; worktreeId?: string }) => void
+    ) => _typedOn(CHANNELS.NOTIFICATION_WATCH_NAVIGATE, callback),
+    syncWatchedPanels: (panelIds: string[]) =>
+      ipcRenderer.send(CHANNELS.NOTIFICATION_SYNC_WATCHED, panelIds),
   },
 
   // Auto-Update API
