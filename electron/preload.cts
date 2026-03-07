@@ -500,6 +500,15 @@ const CHANNELS = {
   VOICE_INPUT_TRANSCRIPTION_COMPLETE: "voice-input:transcription-complete",
   VOICE_INPUT_ERROR: "voice-input:error",
   VOICE_INPUT_STATUS: "voice-input:status",
+  VOICE_INPUT_CHECK_MIC_PERMISSION: "voice-input:check-mic-permission",
+  VOICE_INPUT_REQUEST_MIC_PERMISSION: "voice-input:request-mic-permission",
+  VOICE_INPUT_OPEN_MIC_SETTINGS: "voice-input:open-mic-settings",
+  VOICE_INPUT_VALIDATE_API_KEY: "voice-input:validate-api-key",
+
+  // MCP Server channels
+  MCP_SERVER_GET_STATUS: "mcp-server:get-status",
+  MCP_SERVER_SET_ENABLED: "mcp-server:set-enabled",
+  MCP_SERVER_GET_CONFIG_SNIPPET: "mcp-server:get-config-snippet",
 } as const;
 
 const api: ElectronAPI = {
@@ -1607,6 +1616,44 @@ const api: ElectronAPI = {
     requestMicPermission: () => _typedInvoke(CHANNELS.VOICE_INPUT_REQUEST_MIC_PERMISSION),
     openMicSettings: () => _typedInvoke(CHANNELS.VOICE_INPUT_OPEN_MIC_SETTINGS),
     validateApiKey: (apiKey: string) => _typedInvoke(CHANNELS.VOICE_INPUT_VALIDATE_API_KEY, apiKey),
+  },
+
+  mcpServer: {
+    getStatus: () => _typedInvoke(CHANNELS.MCP_SERVER_GET_STATUS),
+    setEnabled: (enabled: boolean) => _typedInvoke(CHANNELS.MCP_SERVER_SET_ENABLED, enabled),
+    getConfigSnippet: () => _typedInvoke(CHANNELS.MCP_SERVER_GET_CONFIG_SNIPPET),
+  },
+
+  mcpBridge: {
+    onGetManifestRequest: (callback: () => void) => {
+      const handler = () => callback();
+      ipcRenderer.on("mcp:get-manifest-request", handler);
+      return () => ipcRenderer.removeListener("mcp:get-manifest-request", handler);
+    },
+
+    sendGetManifestResponse: (manifest: unknown) => {
+      ipcRenderer.send("mcp:get-manifest-response", manifest);
+    },
+
+    onDispatchActionRequest: (
+      callback: (payload: {
+        requestId: string;
+        actionId: string;
+        args?: unknown;
+        confirmed?: boolean;
+      }) => void
+    ) => {
+      const handler = (
+        _event: Electron.IpcRendererEvent,
+        payload: { requestId: string; actionId: string; args?: unknown; confirmed?: boolean }
+      ) => callback(payload);
+      ipcRenderer.on("mcp:dispatch-action-request", handler);
+      return () => ipcRenderer.removeListener("mcp:dispatch-action-request", handler);
+    },
+
+    sendDispatchActionResponse: (payload: { requestId: string; result: unknown }) => {
+      ipcRenderer.send("mcp:dispatch-action-response", payload);
+    },
   },
 };
 

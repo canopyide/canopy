@@ -31,6 +31,7 @@ import { WorktreeSettingsTab } from "./WorktreeSettingsTab";
 import { ToolbarSettingsTab } from "./ToolbarSettingsTab";
 import { EditorIntegrationTab } from "./EditorIntegrationTab";
 import { VoiceInputSettingsTab } from "./VoiceInputSettingsTab";
+import { McpServerSettingsTab } from "./McpServerSettingsTab";
 import { SETTINGS_SEARCH_INDEX } from "./settingsSearchIndex";
 import { filterSettings, countMatchesPerTab, HighlightText } from "./settingsSearchUtils";
 
@@ -54,6 +55,7 @@ export type SettingsTab =
   | "notifications"
   | "editor"
   | "voice"
+  | "mcp"
   | "troubleshooting";
 
 export function SettingsDialog({
@@ -165,6 +167,7 @@ export function SettingsDialog({
     notifications: "Notifications",
     editor: "Editor Integration",
     voice: "Voice Input",
+    mcp: "MCP Server",
     troubleshooting: "Troubleshooting",
   };
 
@@ -352,6 +355,16 @@ export function SettingsDialog({
             {matchCounts.voice ? <MatchBadge count={matchCounts.voice} /> : null}
           </NavButton>
           <NavButton
+            active={activeTab === "mcp" && !isSearching}
+            onClick={() => {
+              setActiveTab("mcp");
+              setSearchQuery("");
+            }}
+          >
+            <span className="flex-1">MCP Server</span>
+            {matchCounts.mcp ? <MatchBadge count={matchCounts.mcp} /> : null}
+          </NavButton>
+          <NavButton
             active={activeTab === "troubleshooting" && !isSearching}
             onClick={() => {
               setActiveTab("troubleshooting");
@@ -437,6 +450,10 @@ export function SettingsDialog({
 
                 <div className={activeTab === "voice" ? "" : "hidden"}>
                   <VoiceInputSettingsTab />
+                </div>
+
+                <div className={activeTab === "mcp" ? "" : "hidden"}>
+                  <McpServerSettingsTab />
                 </div>
 
                 <div className={activeTab === "troubleshooting" ? "" : "hidden"}>
