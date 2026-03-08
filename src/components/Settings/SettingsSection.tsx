@@ -19,7 +19,7 @@ export function SettingsSection({
   id,
 }: SettingsSectionProps) {
   return (
-    <div className="space-y-5" id={id}>
+    <div className="space-y-6" id={id}>
       <div>
         <h4 className="text-sm font-medium text-canopy-text mb-1.5 flex items-center gap-2">
           <Icon className={cn("w-4 h-4", iconColor)} aria-hidden="true" />
