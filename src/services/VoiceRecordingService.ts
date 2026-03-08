@@ -278,6 +278,19 @@ class VoiceRecordingService {
       })
     );
 
+    const handleEscapeKey = (e: KeyboardEvent) => {
+      if (e.key !== "Escape") return;
+      const state = useVoiceRecordingStore.getState();
+      if (state.status !== "connecting" && state.status !== "recording") return;
+      e.preventDefault();
+      e.stopPropagation();
+      void this.stop("Dictation cancelled.", { preserveLiveText: true });
+    };
+    window.addEventListener("keydown", handleEscapeKey, { capture: true });
+    this.unsubscribers.push(() =>
+      window.removeEventListener("keydown", handleEscapeKey, { capture: true })
+    );
+
     void this.refreshConfiguration();
   }
 
