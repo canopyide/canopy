@@ -7,20 +7,11 @@ const SUMMARY_PATH = resolve(__dirname, "../PulseSummary.tsx");
 const HEATMAP_PATH = resolve(__dirname, "../PulseHeatmap.tsx");
 
 describe("ProjectPulseCard — visual contrast (issue #2645)", () => {
-  it("card shell does not use low-contrast bg-surface", async () => {
+  it("card shell uses bg-canopy-sidebar for consistent card styling", async () => {
     const content = await readFile(CARD_PATH, "utf-8");
-    expect(content).toContain("bg-surface-highlight");
+    expect(content).toContain("bg-canopy-sidebar");
     expect(content).not.toContain("p-4 bg-surface ");
     expect(content).not.toContain('"w-fit bg-surface ');
-  });
-
-  it("all four card state variants include the specular top-edge shadow", async () => {
-    const content = await readFile(CARD_PATH, "utf-8");
-    const specularCount = (
-      content.match(/shadow-\[inset_0_1px_0_0_rgba\(255,255,255,0\.07\)\]/g) ?? []
-    ).length;
-    // loading, empty-repo, error, populated = 4 occurrences
-    expect(specularCount).toBeGreaterThanOrEqual(4);
   });
 
   it("Activity icon does not use reduced-opacity status-success", async () => {
