@@ -2,17 +2,16 @@ import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { VoiceCorrectionService } from "../VoiceCorrectionService.js";
 
 const BASE_SETTINGS = {
-  model: "gpt-5-nano",
-  apiKey: "sk-test",
+  geminiApiKey: "test-gemini-key",
   customDictionary: [] as string[],
 };
 
-function makeFetchResponse(content: string, ok = true, status = 200) {
+function makeGeminiResponse(text: string, ok = true, status = 200) {
   return {
     ok,
     status,
     json: async () => ({
-      choices: [{ message: { content } }],
+      candidates: [{ content: { parts: [{ text }] } }],
     }),
   } as unknown as Response;
 }
@@ -27,8 +26,8 @@ describe("VoiceCorrectionService", () => {
     vi.restoreAllMocks();
   });
 
-  it("returns corrected text from the API", async () => {
-    vi.stubGlobal("fetch", vi.fn().mockResolvedValue(makeFetchResponse("React is great.")));
+  it("returns corrected text from the Gemini API", async () => {
+    vi.stubGlobal("fetch", vi.fn().mockResolvedValue(makeGeminiResponse("React is great.")));
 
     const svc = new VoiceCorrectionService();
     const result = await svc.correct("react is great", BASE_SETTINGS);
@@ -36,7 +35,7 @@ describe("VoiceCorrectionService", () => {
   });
 
   it("falls back to raw text on API error", async () => {
-    vi.stubGlobal("fetch", vi.fn().mockResolvedValue(makeFetchResponse("", false, 500)));
+    vi.stubGlobal("fetch", vi.fn().mockResolvedValue(makeGeminiResponse("", false, 500)));
 
     const svc = new VoiceCorrectionService();
     const result = await svc.correct("react is great", BASE_SETTINGS);
@@ -52,7 +51,7 @@ describe("VoiceCorrectionService", () => {
   });
 
   it("falls back to raw text when API returns empty content", async () => {
-    vi.stubGlobal("fetch", vi.fn().mockResolvedValue(makeFetchResponse("")));
+    vi.stubGlobal("fetch", vi.fn().mockResolvedValue(makeGeminiResponse("")));
 
     const svc = new VoiceCorrectionService();
     const result = await svc.correct("react is great", BASE_SETTINGS);
@@ -67,7 +66,7 @@ describe("VoiceCorrectionService", () => {
         .mockImplementation(
           () =>
             new Promise((resolve) =>
-              setTimeout(() => resolve(makeFetchResponse("Corrected.")), 30000)
+              setTimeout(() => resolve(makeGeminiResponse("Corrected.")), 30000)
             )
         )
     );
@@ -89,8 +88,8 @@ describe("VoiceCorrectionService", () => {
     expect(fetchMock).not.toHaveBeenCalled();
   });
 
-  it("includes custom dictionary in the system message", async () => {
-    const fetchMock = vi.fn().mockResolvedValue(makeFetchResponse("Canopy is great."));
+  it("includes custom dictionary in the system instruction", async () => {
+    const fetchMock = vi.fn().mockResolvedValue(makeGeminiResponse("Canopy is great."));
     vi.stubGlobal("fetch", fetchMock);
 
     const svc = new VoiceCorrectionService();
@@ -100,13 +99,13 @@ describe("VoiceCorrectionService", () => {
     });
 
     const body = JSON.parse((fetchMock.mock.calls[0] as [string, RequestInit])[1].body as string);
-    const systemMessage = body.messages[0].content as string;
-    expect(systemMessage).toContain("Canopy");
-    expect(systemMessage).toContain("Worktree");
+    const systemText = (body.systemInstruction as { parts: Array<{ text: string }> }).parts[0].text;
+    expect(systemText).toContain("Canopy");
+    expect(systemText).toContain("Worktree");
   });
 
-  it("includes project name in the system message", async () => {
-    const fetchMock = vi.fn().mockResolvedValue(makeFetchResponse("Corrected."));
+  it("includes project name in the system instruction", async () => {
+    const fetchMock = vi.fn().mockResolvedValue(makeGeminiResponse("Corrected."));
     vi.stubGlobal("fetch", fetchMock);
 
     const svc = new VoiceCorrectionService();
@@ -116,12 +115,12 @@ describe("VoiceCorrectionService", () => {
     });
 
     const body = JSON.parse((fetchMock.mock.calls[0] as [string, RequestInit])[1].body as string);
-    const systemMessage = body.messages[0].content as string;
-    expect(systemMessage).toContain("my-project");
+    const systemText = (body.systemInstruction as { parts: Array<{ text: string }> }).parts[0].text;
+    expect(systemText).toContain("my-project");
   });
 
-  it("includes custom instructions in the system message", async () => {
-    const fetchMock = vi.fn().mockResolvedValue(makeFetchResponse("Corrected."));
+  it("includes custom instructions in the system instruction", async () => {
+    const fetchMock = vi.fn().mockResolvedValue(makeGeminiResponse("Corrected."));
     vi.stubGlobal("fetch", fetchMock);
 
     const svc = new VoiceCorrectionService();
@@ -131,32 +130,59 @@ describe("VoiceCorrectionService", () => {
     });
 
     const body = JSON.parse((fetchMock.mock.calls[0] as [string, RequestInit])[1].body as string);
-    const systemMessage = body.messages[0].content as string;
-    expect(systemMessage).toContain("Always capitalize ProductName.");
+    const systemText = (body.systemInstruction as { parts: Array<{ text: string }> }).parts[0].text;
+    expect(systemText).toContain("Always capitalize ProductName.");
   });
 
-  it("maintains a sliding history window of 3 paragraphs", async () => {
-    const fetchMock = vi.fn().mockResolvedValue(makeFetchResponse("Corrected sentence."));
+  it("uses Gemini API format with temperature 0 and maxOutputTokens", async () => {
+    const fetchMock = vi.fn().mockResolvedValue(makeGeminiResponse("Corrected."));
     vi.stubGlobal("fetch", fetchMock);
 
     const svc = new VoiceCorrectionService();
+    await svc.correct("test", BASE_SETTINGS);
 
+    const body = JSON.parse((fetchMock.mock.calls[0] as [string, RequestInit])[1].body as string);
+    expect(body.generationConfig.temperature).toBe(0);
+    expect(body.generationConfig.maxOutputTokens).toBe(2048);
+    expect(body.systemInstruction).toBeDefined();
+    expect(body.contents).toBeDefined();
+    expect(body.contents[0].role).toBe("user");
+  });
+
+  it("sends x-goog-api-key header for authentication", async () => {
+    const fetchMock = vi.fn().mockResolvedValue(makeGeminiResponse("Corrected."));
+    vi.stubGlobal("fetch", fetchMock);
+
+    const svc = new VoiceCorrectionService();
+    await svc.correct("test", BASE_SETTINGS);
+
+    const headers = (fetchMock.mock.calls[0] as [string, RequestInit])[1].headers as Record<
+      string,
+      string
+    >;
+    expect(headers["x-goog-api-key"]).toBe("test-gemini-key");
+  });
+
+  it("maintains a sliding history window of 3 paragraphs", async () => {
+    const fetchMock = vi.fn().mockResolvedValue(makeGeminiResponse("Corrected sentence."));
+    vi.stubGlobal("fetch", fetchMock);
+
+    const svc = new VoiceCorrectionService();
     await svc.correct("sentence one", BASE_SETTINGS);
     await svc.correct("sentence two", BASE_SETTINGS);
     await svc.correct("sentence three", BASE_SETTINGS);
     await svc.correct("sentence four", BASE_SETTINGS);
 
-    // The 4th call should have history with sentences 2-4 (window of 3, so sentence 1 dropped)
     const lastBody = JSON.parse(
       (fetchMock.mock.calls[3] as [string, RequestInit])[1].body as string
     );
-    const userMessage = lastBody.messages[1].content as string;
-    expect(userMessage).not.toContain("sentence one");
-    expect(userMessage).toContain("Corrected sentence.");
+    const userText = (lastBody.contents[0].parts[0] as { text: string }).text;
+    expect(userText).not.toContain("sentence one");
+    expect(userText).toContain("Corrected sentence.");
   });
 
   it("resets history on resetHistory()", async () => {
-    const fetchMock = vi.fn().mockResolvedValue(makeFetchResponse("Corrected."));
+    const fetchMock = vi.fn().mockResolvedValue(makeGeminiResponse("Corrected."));
     vi.stubGlobal("fetch", fetchMock);
 
     const svc = new VoiceCorrectionService();
@@ -165,26 +191,26 @@ describe("VoiceCorrectionService", () => {
     await svc.correct("sentence two", BASE_SETTINGS);
 
     const body = JSON.parse((fetchMock.mock.calls[1] as [string, RequestInit])[1].body as string);
-    const userMessage = body.messages[1].content as string;
-    expect(userMessage).not.toContain("sentence one");
+    const userText = (body.contents[0].parts[0] as { text: string }).text;
+    expect(userText).not.toContain("sentence one");
   });
 
   it("formats current input with <input> XML tags", async () => {
-    const fetchMock = vi.fn().mockResolvedValue(makeFetchResponse("Corrected."));
+    const fetchMock = vi.fn().mockResolvedValue(makeGeminiResponse("Corrected."));
     vi.stubGlobal("fetch", fetchMock);
 
     const svc = new VoiceCorrectionService();
     await svc.correct("test input text", BASE_SETTINGS);
 
     const body = JSON.parse((fetchMock.mock.calls[0] as [string, RequestInit])[1].body as string);
-    const userMessage = body.messages[1].content as string;
-    expect(userMessage).toContain("<input>");
-    expect(userMessage).toContain("test input text");
-    expect(userMessage).toContain("</input>");
+    const userText = (body.contents[0].parts[0] as { text: string }).text;
+    expect(userText).toContain("<input>");
+    expect(userText).toContain("test input text");
+    expect(userText).toContain("</input>");
   });
 
   it("formats history with <history> XML tags when history is present", async () => {
-    const fetchMock = vi.fn().mockResolvedValue(makeFetchResponse("Corrected."));
+    const fetchMock = vi.fn().mockResolvedValue(makeGeminiResponse("Corrected."));
     vi.stubGlobal("fetch", fetchMock);
 
     const svc = new VoiceCorrectionService();
@@ -192,96 +218,65 @@ describe("VoiceCorrectionService", () => {
     await svc.correct("sentence two", BASE_SETTINGS);
 
     const body = JSON.parse((fetchMock.mock.calls[1] as [string, RequestInit])[1].body as string);
-    const userMessage = body.messages[1].content as string;
-    expect(userMessage).toContain("<history>");
-    expect(userMessage).toContain("</history>");
-    expect(userMessage).toContain("Corrected.");
+    const userText = (body.contents[0].parts[0] as { text: string }).text;
+    expect(userText).toContain("<history>");
+    expect(userText).toContain("</history>");
+    expect(userText).toContain("Corrected.");
   });
 
   it("omits <history> section on first call when no history", async () => {
-    const fetchMock = vi.fn().mockResolvedValue(makeFetchResponse("Corrected."));
+    const fetchMock = vi.fn().mockResolvedValue(makeGeminiResponse("Corrected."));
     vi.stubGlobal("fetch", fetchMock);
 
     const svc = new VoiceCorrectionService();
     await svc.correct("first input", BASE_SETTINGS);
 
     const body = JSON.parse((fetchMock.mock.calls[0] as [string, RequestInit])[1].body as string);
-    const userMessage = body.messages[1].content as string;
-    expect(userMessage).not.toContain("<history>");
-    expect(userMessage).toContain("<input>");
+    const userText = (body.contents[0].parts[0] as { text: string }).text;
+    expect(userText).not.toContain("<history>");
+    expect(userText).toContain("<input>");
   });
 
-  it("always includes guardrail suffix in the system prompt", async () => {
-    const fetchMock = vi.fn().mockResolvedValue(makeFetchResponse("Corrected."));
+  it("always includes guardrail suffix in the system instruction", async () => {
+    const fetchMock = vi.fn().mockResolvedValue(makeGeminiResponse("Corrected."));
     vi.stubGlobal("fetch", fetchMock);
 
     const svc = new VoiceCorrectionService();
     await svc.correct("test", BASE_SETTINGS);
 
     const body = JSON.parse((fetchMock.mock.calls[0] as [string, RequestInit])[1].body as string);
-    const systemMessage = body.messages[0].content as string;
-    expect(systemMessage).toContain("plain text only");
-    expect(systemMessage).toContain("Begin immediately");
+    const systemText = (body.systemInstruction as { parts: Array<{ text: string }> }).parts[0].text;
+    expect(systemText).toContain("plain text only");
+    expect(systemText).toContain("Begin immediately");
   });
 
-  it("includes core prompt in the system message", async () => {
-    const fetchMock = vi.fn().mockResolvedValue(makeFetchResponse("Corrected."));
+  it("includes core prompt in the system instruction", async () => {
+    const fetchMock = vi.fn().mockResolvedValue(makeGeminiResponse("Corrected."));
     vi.stubGlobal("fetch", fetchMock);
 
     const svc = new VoiceCorrectionService();
     await svc.correct("test", BASE_SETTINGS);
 
     const body = JSON.parse((fetchMock.mock.calls[0] as [string, RequestInit])[1].body as string);
-    const systemMessage = body.messages[0].content as string;
-    expect(systemMessage).toContain("speech-to-text correction engine");
-  });
-
-  it("uses reasoning model parameters for gpt-5 models", async () => {
-    const fetchMock = vi.fn().mockResolvedValue(makeFetchResponse("Corrected."));
-    vi.stubGlobal("fetch", fetchMock);
-
-    const svc = new VoiceCorrectionService();
-    await svc.correct("test", BASE_SETTINGS);
-
-    const body = JSON.parse((fetchMock.mock.calls[0] as [string, RequestInit])[1].body as string);
-    // gpt-5-nano is a reasoning model: developer role, no temperature, reasoning_effort
-    expect(body.messages[0].role).toBe("developer");
-    expect(body.temperature).toBeUndefined();
-    expect(body.reasoning_effort).toBe("low");
-    expect(body.max_completion_tokens).toBe(2048);
-    expect(body.max_tokens).toBeUndefined();
+    const systemText = (body.systemInstruction as { parts: Array<{ text: string }> }).parts[0].text;
+    expect(systemText).toContain("speech-to-text correction engine");
   });
 
   it("falls back to raw text when API returns whitespace-only content", async () => {
-    vi.stubGlobal("fetch", vi.fn().mockResolvedValue(makeFetchResponse("   \n  ")));
+    vi.stubGlobal("fetch", vi.fn().mockResolvedValue(makeGeminiResponse("   \n  ")));
 
     const svc = new VoiceCorrectionService();
     const result = await svc.correct("react is great", BASE_SETTINGS);
     expect(result).toBe("react is great");
   });
 
-  it("falls back to raw text when API response has no choices", async () => {
+  it("falls back to raw text when API response has no candidates", async () => {
     vi.stubGlobal(
       "fetch",
       vi.fn().mockResolvedValue({
         ok: true,
         status: 200,
-        json: async () => ({ choices: [] }),
-      } as unknown as Response)
-    );
-
-    const svc = new VoiceCorrectionService();
-    const result = await svc.correct("react is great", BASE_SETTINGS);
-    expect(result).toBe("react is great");
-  });
-
-  it("falls back to raw text when API response has null message content", async () => {
-    vi.stubGlobal(
-      "fetch",
-      vi.fn().mockResolvedValue({
-        ok: true,
-        status: 200,
-        json: async () => ({ choices: [{ message: { content: null } }] }),
+        json: async () => ({ candidates: [] }),
       } as unknown as Response)
     );
 

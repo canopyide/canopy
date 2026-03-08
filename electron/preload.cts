@@ -508,6 +508,7 @@ const CHANNELS = {
   VOICE_INPUT_REQUEST_MIC_PERMISSION: "voice-input:request-mic-permission",
   VOICE_INPUT_OPEN_MIC_SETTINGS: "voice-input:open-mic-settings",
   VOICE_INPUT_VALIDATE_API_KEY: "voice-input:validate-api-key",
+  VOICE_INPUT_VALIDATE_GEMINI_KEY: "voice-input:validate-gemini-key",
   VOICE_INPUT_FLUSH_PARAGRAPH: "voice-input:flush-paragraph",
 
   // MCP Server channels
@@ -1617,12 +1618,11 @@ const api: ElectronAPI = {
     setSettings: (
       patch: Partial<{
         enabled: boolean;
-        apiKey: string;
+        googleCloudCredentialPath: string;
+        geminiApiKey: string;
         language: string;
         customDictionary: string[];
-        transcriptionModel: "gpt-4o-mini-transcribe" | "gpt-4o-transcribe";
         correctionEnabled: boolean;
-        correctionModel: "gpt-5-nano";
         correctionCustomInstructions: string;
       }>
     ) => _typedInvoke(CHANNELS.VOICE_INPUT_SET_SETTINGS, patch),
@@ -1645,7 +1645,10 @@ const api: ElectronAPI = {
     checkMicPermission: () => _typedInvoke(CHANNELS.VOICE_INPUT_CHECK_MIC_PERMISSION),
     requestMicPermission: () => _typedInvoke(CHANNELS.VOICE_INPUT_REQUEST_MIC_PERMISSION),
     openMicSettings: () => _typedInvoke(CHANNELS.VOICE_INPUT_OPEN_MIC_SETTINGS),
-    validateApiKey: (apiKey: string) => _typedInvoke(CHANNELS.VOICE_INPUT_VALIDATE_API_KEY, apiKey),
+    validateCredential: (credentialPath: string) =>
+      _typedInvoke(CHANNELS.VOICE_INPUT_VALIDATE_API_KEY, credentialPath),
+    validateGeminiKey: (apiKey: string) =>
+      _typedInvoke(CHANNELS.VOICE_INPUT_VALIDATE_GEMINI_KEY, apiKey),
   },
 
   mcpServer: {

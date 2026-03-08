@@ -55,13 +55,12 @@ vi.mock("../../../store.js", () => ({
       if (key === "voiceInput") {
         return {
           enabled: true,
-          apiKey: "sk-test",
+          googleCloudCredentialPath: "/fake/service-account.json",
+          geminiApiKey: "test-gemini-key",
           correctionEnabled: true,
-          correctionModel: "gpt-5-nano",
           customDictionary: [],
           correctionCustomInstructions: "",
           language: "en",
-          transcriptionModel: "gpt-4o-mini-transcribe",
         };
       }
       return undefined;
@@ -86,6 +85,7 @@ vi.mock("../../channels.js", () => ({
     VOICE_INPUT_REQUEST_MIC_PERMISSION: "voice-input:request-mic-permission",
     VOICE_INPUT_OPEN_MIC_SETTINGS: "voice-input:open-mic-settings",
     VOICE_INPUT_VALIDATE_API_KEY: "voice-input:validate-api-key",
+    VOICE_INPUT_VALIDATE_GEMINI_KEY: "voice-input:validate-gemini-key",
     VOICE_INPUT_FLUSH_PARAGRAPH: "voice-input:flush-paragraph",
   },
 }));
@@ -205,7 +205,9 @@ describe("voiceInput — paragraph buffering", () => {
     await vi.waitFor(() => {
       expect(shared.correctionCalls).toHaveLength(1);
       expect(shared.correctionCalls[0].text).toBe("react is great use it everywhere");
-      expect((shared.correctionCalls[0].settings as { model: string }).model).toBe("gpt-5-nano");
+      expect((shared.correctionCalls[0].settings as { geminiApiKey: string }).geminiApiKey).toBe(
+        "test-gemini-key"
+      );
     });
   });
 

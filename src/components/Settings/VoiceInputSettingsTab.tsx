@@ -5,7 +5,6 @@ import {
   EyeOff,
   Plus,
   X,
-  Key,
   Globe,
   BookText,
   Shield,
@@ -17,17 +16,14 @@ import {
   Sparkles,
   ChevronDown,
   ChevronUp,
+  FolderOpen,
 } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { SettingsSection } from "./SettingsSection";
 import { SettingsSwitchCard } from "./SettingsSwitchCard";
 import { dispatchVoiceInputSettingsChanged } from "@/lib/voiceInputSettingsEvents";
 import { CORE_CORRECTION_PROMPT } from "@shared/config/voiceCorrection";
-import type {
-  VoiceInputSettings,
-  MicPermissionStatus,
-  VoiceTranscriptionModel,
-} from "@shared/types";
+import type { VoiceInputSettings, MicPermissionStatus } from "@shared/types";
 
 const LANGUAGES = [
   { code: "en", label: "English" },
@@ -42,44 +38,25 @@ const LANGUAGES = [
   { code: "ru", label: "Russian" },
 ];
 
-const TRANSCRIPTION_MODELS: {
-  value: VoiceTranscriptionModel;
-  label: string;
-  description: string;
-}[] = [
-  {
-    value: "gpt-4o-mini-transcribe",
-    label: "GPT-4o Mini Transcribe",
-    description: "Faster · ~$0.18/hr",
-  },
-  {
-    value: "gpt-4o-transcribe",
-    label: "GPT-4o Transcribe",
-    description: "Higher accuracy · ~$0.36/hr",
-  },
-];
-
 const DEFAULT_SETTINGS: VoiceInputSettings = {
   enabled: false,
-  apiKey: "",
+  googleCloudCredentialPath: "",
+  geminiApiKey: "",
   language: "en",
   customDictionary: [],
-  transcriptionModel: "gpt-4o-mini-transcribe",
   correctionEnabled: false,
-  correctionModel: "gpt-5-nano",
   correctionCustomInstructions: "",
 };
 
 type LoadState = "loading" | "ready" | "error";
-type ApiKeyValidation = "idle" | "testing" | "valid" | "invalid";
+type ValidationState = "idle" | "testing" | "valid" | "invalid";
 
 export function VoiceInputSettingsTab() {
   const [settings, setSettings] = useState<VoiceInputSettings>(DEFAULT_SETTINGS);
   const [loadState, setLoadState] = useState<LoadState>("loading");
-  const [showApiKey, setShowApiKey] = useState(false);
-  const [apiKeyInput, setApiKeyInput] = useState("");
-  const [apiKeyValidation, setApiKeyValidation] = useState<ApiKeyValidation>("idle");
-  const [apiKeyError, setApiKeyError] = useState<string | null>(null);
+  const [credentialValidation, setCredentialValidation] = useState<ValidationState>("idle");
+  const [credentialError, setCredentialError] = useState<string | null>(null);
+  const [credentialInput, setCredentialInput] = useState("");
   const [micPermission, setMicPermission] = useState<MicPermissionStatus>("unknown");
   const [isRequestingMic, setIsRequestingMic] = useState(false);
   const [newDictionaryWord, setNewDictionaryWord] = useState("");
@@ -103,13 +80,13 @@ export function VoiceInputSettingsTab() {
   }, []);
 
   useEffect(() => {
-    if (apiKeyValidation !== "valid" && apiKeyValidation !== "invalid") return;
+    if (credentialValidation !== "valid" && credentialValidation !== "invalid") return;
     const timer = setTimeout(() => {
-      setApiKeyValidation("idle");
-      setApiKeyError(null);
+      setCredentialValidation("idle");
+      setCredentialError(null);
     }, 5000);
     return () => clearTimeout(timer);
-  }, [apiKeyValidation]);
+  }, [credentialValidation]);
 
   const update = (patch: Partial<VoiceInputSettings>) => {
     setSettings((prev) => {
@@ -122,55 +99,51 @@ export function VoiceInputSettingsTab() {
     });
   };
 
-  const handleTestApiKey = useCallback(async () => {
-    const key = apiKeyInput.trim() || settings.apiKey;
-    if (!key) return;
-
-    setApiKeyValidation("testing");
-    setApiKeyError(null);
-
+  const handleTestCredential = useCallback(async () => {
+    const path = credentialInput.trim() || settings.googleCloudCredentialPath;
+    if (!path) return;
+    setCredentialValidation("testing");
+    setCredentialError(null);
     try {
-      const result = await window.electron?.voiceInput?.validateApiKey(key);
+      const result = await window.electron?.voiceInput?.validateCredential(path);
       if (result?.valid) {
-        setApiKeyValidation("valid");
+        setCredentialValidation("valid");
       } else {
-        setApiKeyValidation("invalid");
-        setApiKeyError(result?.error || "Invalid API key");
+        setCredentialValidation("invalid");
+        setCredentialError(result?.error || "Invalid credential file");
       }
     } catch {
-      setApiKeyValidation("invalid");
-      setApiKeyError("Failed to validate API key");
+      setCredentialValidation("invalid");
+      setCredentialError("Failed to validate credential file");
     }
-  }, [apiKeyInput, settings.apiKey]);
+  }, [credentialInput, settings.googleCloudCredentialPath]);
 
-  const handleSaveApiKey = useCallback(async () => {
-    const key = apiKeyInput.trim();
-    if (!key) return;
-
-    setApiKeyValidation("testing");
-    setApiKeyError(null);
-
+  const handleSaveCredential = useCallback(async () => {
+    const path = credentialInput.trim();
+    if (!path) return;
+    setCredentialValidation("testing");
+    setCredentialError(null);
     try {
-      const result = await window.electron?.voiceInput?.validateApiKey(key);
+      const result = await window.electron?.voiceInput?.validateCredential(path);
       if (result?.valid) {
-        update({ apiKey: key });
-        setApiKeyInput("");
-        setApiKeyValidation("valid");
+        update({ googleCloudCredentialPath: path });
+        setCredentialInput("");
+        setCredentialValidation("valid");
       } else {
-        setApiKeyValidation("invalid");
-        setApiKeyError(result?.error || "Invalid API key");
+        setCredentialValidation("invalid");
+        setCredentialError(result?.error || "Invalid credential file");
       }
     } catch {
-      setApiKeyValidation("invalid");
-      setApiKeyError("Failed to validate API key");
+      setCredentialValidation("invalid");
+      setCredentialError("Failed to validate credential file");
     }
-  }, [apiKeyInput]);
+  }, [credentialInput]);
 
-  const handleClearApiKey = useCallback(() => {
-    update({ apiKey: "" });
-    setApiKeyInput("");
-    setApiKeyValidation("idle");
-    setApiKeyError(null);
+  const handleClearCredential = useCallback(() => {
+    update({ googleCloudCredentialPath: "" });
+    setCredentialInput("");
+    setCredentialValidation("idle");
+    setCredentialError(null);
   }, []);
 
   const handleRequestMicPermission = useCallback(async () => {
@@ -230,7 +203,7 @@ export function VoiceInputSettingsTab() {
       <SettingsSwitchCard
         icon={Mic}
         title="Voice Input"
-        subtitle="Dictate commands using your microphone via OpenAI Realtime API"
+        subtitle="Dictate commands using your microphone via Google Cloud Speech-to-Text (Chirp 3)"
         isEnabled={settings.enabled}
         onChange={() => update({ enabled: !settings.enabled })}
         ariaLabel="Toggle voice input"
@@ -238,61 +211,52 @@ export function VoiceInputSettingsTab() {
 
       {settings.enabled && (
         <>
-          {/* API Key Section */}
+          {/* Google Cloud Credential Section */}
           <SettingsSection
-            icon={Key}
-            title="OpenAI API Key"
-            description="Required for transcription via the OpenAI Realtime API. Your key is stored locally and never shared."
+            icon={FolderOpen}
+            title="Google Cloud Service Account"
+            description="Required for transcription via Chirp 3 (Google Cloud Speech-to-Text v2). Provide the path to your service account JSON key file. Your credentials are stored locally and never shared."
           >
             <div className="space-y-3">
               <div className="flex items-center justify-between">
                 <span className="text-sm text-canopy-text">
-                  {settings.apiKey ? (
+                  {settings.googleCloudCredentialPath ? (
                     <span className="flex items-center gap-1.5 text-status-success">
                       <Check className="w-3 h-3" />
-                      API key configured
+                      Service account key configured
                     </span>
                   ) : (
-                    <span className="text-canopy-text/50">No API key set</span>
+                    <span className="text-canopy-text/50">No credential configured</span>
                   )}
                 </span>
               </div>
 
               <div className="flex gap-2">
-                <div className="relative flex-1">
-                  <input
-                    type={showApiKey ? "text" : "password"}
-                    value={apiKeyInput}
-                    onChange={(e) => setApiKeyInput(e.target.value)}
-                    placeholder={settings.apiKey ? "Enter new key to replace" : "sk-..."}
-                    className="w-full bg-canopy-bg border border-canopy-border rounded-[var(--radius-md)] px-3 py-2 pr-10 font-mono text-sm text-canopy-text placeholder:text-canopy-text/40 focus:outline-none focus:ring-1 focus:ring-canopy-accent"
-                    autoComplete="new-password"
-                    spellCheck={false}
-                    disabled={apiKeyValidation === "testing"}
-                  />
-                  <button
-                    type="button"
-                    onClick={() => setShowApiKey((v) => !v)}
-                    className="absolute right-2 top-1/2 -translate-y-1/2 text-canopy-text/40 hover:text-canopy-text/70"
-                    aria-label={showApiKey ? "Hide API key" : "Show API key"}
-                  >
-                    {showApiKey ? (
-                      <EyeOff className="h-3.5 w-3.5" />
-                    ) : (
-                      <Eye className="h-3.5 w-3.5" />
-                    )}
-                  </button>
-                </div>
+                <input
+                  type="text"
+                  value={credentialInput}
+                  onChange={(e) => setCredentialInput(e.target.value)}
+                  placeholder={
+                    settings.googleCloudCredentialPath
+                      ? "Enter new path to replace"
+                      : "/path/to/service-account.json"
+                  }
+                  className="flex-1 bg-canopy-bg border border-canopy-border rounded-[var(--radius-md)] px-3 py-2 font-mono text-sm text-canopy-text placeholder:text-canopy-text/40 focus:outline-none focus:ring-1 focus:ring-canopy-accent"
+                  autoComplete="off"
+                  spellCheck={false}
+                  disabled={credentialValidation === "testing"}
+                />
                 <Button
-                  onClick={handleTestApiKey}
+                  onClick={handleTestCredential}
                   disabled={
-                    apiKeyValidation === "testing" || (!apiKeyInput.trim() && !settings.apiKey)
+                    credentialValidation === "testing" ||
+                    (!credentialInput.trim() && !settings.googleCloudCredentialPath)
                   }
                   variant="outline"
                   size="sm"
                   className="min-w-[70px] text-canopy-text border-canopy-border hover:bg-canopy-border"
                 >
-                  {apiKeyValidation === "testing" ? (
+                  {credentialValidation === "testing" ? (
                     <Loader2 className="animate-spin" />
                   ) : (
                     <>
@@ -302,16 +266,20 @@ export function VoiceInputSettingsTab() {
                   )}
                 </Button>
                 <Button
-                  onClick={handleSaveApiKey}
-                  disabled={apiKeyValidation === "testing" || !apiKeyInput.trim()}
+                  onClick={handleSaveCredential}
+                  disabled={credentialValidation === "testing" || !credentialInput.trim()}
                   size="sm"
                   className="min-w-[70px]"
                 >
-                  {apiKeyValidation === "testing" ? <Loader2 className="animate-spin" /> : "Save"}
+                  {credentialValidation === "testing" ? (
+                    <Loader2 className="animate-spin" />
+                  ) : (
+                    "Save"
+                  )}
                 </Button>
-                {settings.apiKey && (
+                {settings.googleCloudCredentialPath && (
                   <Button
-                    onClick={handleClearApiKey}
+                    onClick={handleClearCredential}
                     variant="outline"
                     size="sm"
                     className="text-status-error border-canopy-border hover:bg-status-error/10 hover:text-status-error/70 hover:border-status-error/20"
@@ -321,36 +289,39 @@ export function VoiceInputSettingsTab() {
                 )}
               </div>
 
-              {apiKeyValidation === "valid" && (
+              {credentialValidation === "valid" && (
                 <p className="text-xs text-status-success flex items-center gap-1">
                   <Check className="w-3 h-3" />
-                  API key is valid
+                  Service account key is valid
                 </p>
               )}
-              {apiKeyValidation === "invalid" && (
+              {credentialValidation === "invalid" && (
                 <p className="text-xs text-status-error flex items-center gap-1">
                   <AlertCircle className="w-3 h-3" />
-                  {apiKeyError || "Invalid API key"}
+                  {credentialError || "Invalid credential file"}
                 </p>
               )}
             </div>
 
             <div className="mt-4 space-y-3 rounded-[var(--radius-lg)] border border-canopy-border bg-surface p-4">
-              <h4 className="text-sm font-medium text-canopy-text">Get an API Key</h4>
+              <h4 className="text-sm font-medium text-canopy-text">Get a Service Account Key</h4>
               <p className="text-xs text-canopy-text/60">
-                Create an OpenAI API key with access to the Realtime API. Voice input uses the{" "}
-                Realtime API for low-latency transcription.
+                Create a service account in your Google Cloud project, grant it the{" "}
+                <span className="font-mono">Cloud Speech Client</span> role, and download a JSON key
+                file. Chirp 3 transcription costs ~$0.016/min (~$0.96/hr).
               </p>
               <Button
                 onClick={() =>
-                  window.electron?.system?.openExternal("https://platform.openai.com/api-keys")
+                  window.electron?.system?.openExternal(
+                    "https://console.cloud.google.com/iam-admin/serviceaccounts"
+                  )
                 }
                 variant="outline"
                 size="sm"
                 className="text-canopy-text border-canopy-border hover:bg-canopy-border"
               >
                 <ExternalLink />
-                Open OpenAI Dashboard
+                Open Google Cloud Console
               </Button>
             </div>
           </SettingsSection>
@@ -384,27 +355,6 @@ export function VoiceInputSettingsTab() {
               {LANGUAGES.map(({ code, label }) => (
                 <option key={code} value={code}>
                   {label}
-                </option>
-              ))}
-            </select>
-          </SettingsSection>
-
-          {/* Transcription Model */}
-          <SettingsSection
-            icon={Mic}
-            title="Transcription Model"
-            description="Choose the model used for speech-to-text. Mini is faster and cheaper; the full model offers higher accuracy."
-          >
-            <select
-              value={settings.transcriptionModel}
-              onChange={(e) =>
-                update({ transcriptionModel: e.target.value as VoiceTranscriptionModel })
-              }
-              className="w-full max-w-xs bg-canopy-bg border border-canopy-border rounded-[var(--radius-md)] px-3 py-2 text-sm text-canopy-text focus:outline-none focus:ring-1 focus:ring-canopy-accent"
-            >
-              {TRANSCRIPTION_MODELS.map(({ value, label, description }) => (
-                <option key={value} value={value}>
-                  {label} — {description}
                 </option>
               ))}
             </select>
@@ -494,6 +444,66 @@ interface AiCorrectionSectionProps {
 
 function AiCorrectionSection({ settings, update }: AiCorrectionSectionProps) {
   const [corePromptExpanded, setCorePromptExpanded] = useState(false);
+  const [showApiKey, setShowApiKey] = useState(false);
+  const [geminiKeyInput, setGeminiKeyInput] = useState("");
+  const [keyValidation, setKeyValidation] = useState<ValidationState>("idle");
+  const [keyError, setKeyError] = useState<string | null>(null);
+
+  useEffect(() => {
+    if (keyValidation !== "valid" && keyValidation !== "invalid") return;
+    const timer = setTimeout(() => {
+      setKeyValidation("idle");
+      setKeyError(null);
+    }, 5000);
+    return () => clearTimeout(timer);
+  }, [keyValidation]);
+
+  const handleTestKey = useCallback(async () => {
+    const key = geminiKeyInput.trim() || settings.geminiApiKey;
+    if (!key) return;
+    setKeyValidation("testing");
+    setKeyError(null);
+    try {
+      const result = await window.electron?.voiceInput?.validateGeminiKey(key);
+      if (result?.valid) {
+        setKeyValidation("valid");
+      } else {
+        setKeyValidation("invalid");
+        setKeyError(result?.error || "Invalid API key");
+      }
+    } catch {
+      setKeyValidation("invalid");
+      setKeyError("Failed to validate API key");
+    }
+  }, [geminiKeyInput, settings.geminiApiKey]);
+
+  const handleSaveKey = useCallback(async () => {
+    const key = geminiKeyInput.trim();
+    if (!key) return;
+    setKeyValidation("testing");
+    setKeyError(null);
+    try {
+      const result = await window.electron?.voiceInput?.validateGeminiKey(key);
+      if (result?.valid) {
+        update({ geminiApiKey: key });
+        setGeminiKeyInput("");
+        setKeyValidation("valid");
+      } else {
+        setKeyValidation("invalid");
+        setKeyError(result?.error || "Invalid API key");
+      }
+    } catch {
+      setKeyValidation("invalid");
+      setKeyError("Failed to validate API key");
+    }
+  }, [geminiKeyInput, update]);
+
+  const handleClearKey = useCallback(() => {
+    update({ geminiApiKey: "" });
+    setGeminiKeyInput("");
+    setKeyValidation("idle");
+    setKeyError(null);
+  }, [update]);
 
   return (
     <>
@@ -510,9 +520,115 @@ function AiCorrectionSection({ settings, update }: AiCorrectionSectionProps) {
         <SettingsSection
           icon={Sparkles}
           title="Correction Settings"
-          description="Transcriptions are corrected using GPT-5 Nano with an optimized prompt. Project name, custom dictionary, and your instructions are included automatically."
+          description="Transcriptions are corrected using Gemini 3.1 Flash Lite with an optimized prompt. Project name, custom dictionary, and your instructions are included automatically."
         >
           <div className="space-y-4">
+            {/* Gemini API Key */}
+            <div className="rounded-[var(--radius-lg)] border border-canopy-border bg-surface p-4 space-y-3">
+              <h4 className="text-sm font-medium text-canopy-text">Gemini API Key</h4>
+              <p className="text-xs text-canopy-text/60">
+                Required for AI correction. Get a free key from Google AI Studio.
+              </p>
+              <div className="flex items-center justify-between">
+                <span className="text-sm text-canopy-text">
+                  {settings.geminiApiKey ? (
+                    <span className="flex items-center gap-1.5 text-status-success">
+                      <Check className="w-3 h-3" />
+                      API key configured
+                    </span>
+                  ) : (
+                    <span className="text-canopy-text/50">No API key set</span>
+                  )}
+                </span>
+              </div>
+              <div className="flex gap-2">
+                <div className="relative flex-1">
+                  <input
+                    type={showApiKey ? "text" : "password"}
+                    value={geminiKeyInput}
+                    onChange={(e) => setGeminiKeyInput(e.target.value)}
+                    placeholder={settings.geminiApiKey ? "Enter new key to replace" : "AIza..."}
+                    className="w-full bg-canopy-bg border border-canopy-border rounded-[var(--radius-md)] px-3 py-2 pr-10 font-mono text-sm text-canopy-text placeholder:text-canopy-text/40 focus:outline-none focus:ring-1 focus:ring-canopy-accent"
+                    autoComplete="new-password"
+                    spellCheck={false}
+                    disabled={keyValidation === "testing"}
+                  />
+                  <button
+                    type="button"
+                    onClick={() => setShowApiKey((v) => !v)}
+                    className="absolute right-2 top-1/2 -translate-y-1/2 text-canopy-text/40 hover:text-canopy-text/70"
+                    aria-label={showApiKey ? "Hide API key" : "Show API key"}
+                  >
+                    {showApiKey ? (
+                      <EyeOff className="h-3.5 w-3.5" />
+                    ) : (
+                      <Eye className="h-3.5 w-3.5" />
+                    )}
+                  </button>
+                </div>
+                <Button
+                  onClick={handleTestKey}
+                  disabled={
+                    keyValidation === "testing" ||
+                    (!geminiKeyInput.trim() && !settings.geminiApiKey)
+                  }
+                  variant="outline"
+                  size="sm"
+                  className="min-w-[70px] text-canopy-text border-canopy-border hover:bg-canopy-border"
+                >
+                  {keyValidation === "testing" ? (
+                    <Loader2 className="animate-spin" />
+                  ) : (
+                    <>
+                      <FlaskConical />
+                      Test
+                    </>
+                  )}
+                </Button>
+                <Button
+                  onClick={handleSaveKey}
+                  disabled={keyValidation === "testing" || !geminiKeyInput.trim()}
+                  size="sm"
+                  className="min-w-[70px]"
+                >
+                  {keyValidation === "testing" ? <Loader2 className="animate-spin" /> : "Save"}
+                </Button>
+                {settings.geminiApiKey && (
+                  <Button
+                    onClick={handleClearKey}
+                    variant="outline"
+                    size="sm"
+                    className="text-status-error border-canopy-border hover:bg-status-error/10 hover:text-status-error/70 hover:border-status-error/20"
+                  >
+                    Clear
+                  </Button>
+                )}
+              </div>
+              {keyValidation === "valid" && (
+                <p className="text-xs text-status-success flex items-center gap-1">
+                  <Check className="w-3 h-3" />
+                  API key is valid
+                </p>
+              )}
+              {keyValidation === "invalid" && (
+                <p className="text-xs text-status-error flex items-center gap-1">
+                  <AlertCircle className="w-3 h-3" />
+                  {keyError || "Invalid API key"}
+                </p>
+              )}
+              <Button
+                onClick={() =>
+                  window.electron?.system?.openExternal("https://aistudio.google.com/apikey")
+                }
+                variant="outline"
+                size="sm"
+                className="text-canopy-text border-canopy-border hover:bg-canopy-border"
+              >
+                <ExternalLink />
+                Open Google AI Studio
+              </Button>
+            </div>
+
             {/* Core prompt (read-only) */}
             <div className="rounded-[var(--radius-lg)] border border-canopy-border bg-surface p-4 space-y-3">
               <button
@@ -541,7 +657,7 @@ function AiCorrectionSection({ settings, update }: AiCorrectionSectionProps) {
               )}
             </div>
 
-            {/* Custom instructions (user-editable, appended to core prompt) */}
+            {/* Custom instructions */}
             <div className="rounded-[var(--radius-lg)] border border-canopy-border bg-surface p-4 space-y-3">
               <h4 className="text-sm font-medium text-canopy-text">Custom Instructions</h4>
               <p className="text-xs text-canopy-text/40">
@@ -559,7 +675,6 @@ function AiCorrectionSection({ settings, update }: AiCorrectionSectionProps) {
 
             <p className="text-xs text-canopy-text/40">
               The system prompt also includes your project name and custom dictionary automatically.
-              Prompt caching keeps costs minimal (~$0.005/1M cached tokens).
             </p>
           </div>
         </SettingsSection>

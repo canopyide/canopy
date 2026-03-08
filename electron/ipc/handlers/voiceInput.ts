@@ -1,5 +1,6 @@
 import { ipcMain, systemPreferences, shell } from "electron";
 import { spawn } from "child_process";
+import { existsSync } from "node:fs";
 import { CHANNELS } from "../channels.js";
 import { store } from "../../store.js";
 import { VoiceTranscriptionService } from "../../services/VoiceTranscriptionService.js";
@@ -18,12 +19,11 @@ let sessionProjectInfo: { name?: string; path?: string } = {};
 
 const VOICE_INPUT_DEFAULTS: VoiceInputSettings = {
   enabled: false,
-  apiKey: "",
+  googleCloudCredentialPath: "",
+  geminiApiKey: "",
   language: "en",
   customDictionary: [],
-  transcriptionModel: "gpt-4o-mini-transcribe",
   correctionEnabled: false,
-  correctionModel: "gpt-5-nano",
   correctionCustomInstructions: "",
 };
 
@@ -58,7 +58,6 @@ function checkMicPermission(): MicPermissionStatus {
   if (process.platform === "darwin" || process.platform === "win32") {
     return systemPreferences.getMediaAccessStatus("microphone") as MicPermissionStatus;
   }
-  // Linux doesn't have a system-level media access API
   return "unknown";
 }
 
@@ -66,7 +65,6 @@ async function requestMicPermission(): Promise<boolean> {
   if (process.platform === "darwin") {
     return systemPreferences.askForMediaAccess("microphone");
   }
-  // On Windows/Linux, permission is requested via getUserMedia in the renderer
   return false;
 }
 
@@ -78,7 +76,6 @@ function openMicSettings(): void {
   } else if (process.platform === "win32") {
     void shell.openExternal("ms-settings:privacy-microphone");
   } else {
-    // Linux: try gnome-control-center, fall back silently
     try {
       spawn("gnome-control-center", ["sound"], { detached: true, stdio: "ignore" }).unref();
     } catch {
@@ -87,39 +84,68 @@ function openMicSettings(): void {
   }
 }
 
-async function validateOpenAIKey(apiKey: string): Promise<{ valid: boolean; error?: string }> {
-  if (!apiKey.trim()) {
-    return { valid: false, error: "API key is required" };
+async function validateGoogleCloudCredential(
+  credentialPath: string
+): Promise<{ valid: boolean; error?: string }> {
+  if (!credentialPath.trim()) {
+    return { valid: false, error: "Service account key path is required" };
+  }
+
+  if (!existsSync(credentialPath.trim())) {
+    return { valid: false, error: "File not found at the specified path" };
   }
 
   try {
-    const response = await fetch("https://api.openai.com/v1/models", {
-      method: "GET",
-      headers: {
-        Authorization: `Bearer ${apiKey.trim()}`,
-      },
-      signal: AbortSignal.timeout(10_000),
-    });
+    const { readFile } = await import("node:fs/promises");
+    const content = await readFile(credentialPath.trim(), "utf8");
+    const parsed = JSON.parse(content) as Record<string, unknown>;
+
+    if (parsed.type !== "service_account") {
+      return {
+        valid: false,
+        error: "File does not appear to be a service account key (missing type: service_account)",
+      };
+    }
+    if (!parsed.project_id || !parsed.private_key || !parsed.client_email) {
+      return { valid: false, error: "Service account key is missing required fields" };
+    }
+
+    return { valid: true };
+  } catch (error) {
+    if (error instanceof SyntaxError) {
+      return { valid: false, error: "File is not valid JSON" };
+    }
+    return { valid: false, error: "Could not read credential file" };
+  }
+}
+
+async function validateGeminiApiKey(apiKey: string): Promise<{ valid: boolean; error?: string }> {
+  if (!apiKey.trim()) {
+    return { valid: false, error: "Gemini API key is required" };
+  }
+
+  try {
+    const response = await fetch(
+      `https://generativelanguage.googleapis.com/v1beta/models?pageSize=1`,
+      {
+        method: "GET",
+        headers: { "x-goog-api-key": apiKey.trim() },
+        signal: AbortSignal.timeout(10_000),
+      }
+    );
 
     if (response.ok) {
       return { valid: true };
     }
-
-    if (response.status === 401) {
-      return { valid: false, error: "Invalid API key" };
+    if (response.status === 400 || response.status === 401 || response.status === 403) {
+      return { valid: false, error: "Invalid Gemini API key" };
     }
-
-    if (response.status === 429) {
-      // Rate limited but key is valid
-      return { valid: true };
-    }
-
     return { valid: false, error: `API returned status ${response.status}` };
   } catch (error) {
     if (error instanceof Error && error.name === "TimeoutError") {
       return { valid: false, error: "Connection timed out" };
     }
-    return { valid: false, error: "Failed to connect to OpenAI" };
+    return { valid: false, error: "Failed to connect to Gemini API" };
   }
 }
 
@@ -135,7 +161,6 @@ function getProjectInfo(): { name?: string; path?: string } {
  * Join the paragraph buffer into a single raw text string and clear it.
  * If correction is enabled, fires an async correction call and sends
  * VOICE_INPUT_CORRECTION_REPLACE when it resolves.
- * Returns the raw paragraph text (or null if the buffer was empty).
  */
 function flushParagraphBuffer(win: Electron.BrowserWindow | null): { rawText: string | null } {
   if (paragraphBuffer.length === 0) return { rawText: null };
@@ -144,13 +169,12 @@ function flushParagraphBuffer(win: Electron.BrowserWindow | null): { rawText: st
   paragraphBuffer = [];
 
   const liveSettings = getVoiceSettings();
-  const willCorrect = !!(liveSettings.correctionEnabled && liveSettings.apiKey);
+  const willCorrect = !!(liveSettings.correctionEnabled && liveSettings.geminiApiKey);
 
   if (willCorrect && correctionService && win && !win.isDestroyed()) {
     void correctionService
       .correct(rawText, {
-        model: liveSettings.correctionModel,
-        apiKey: liveSettings.apiKey,
+        geminiApiKey: liveSettings.geminiApiKey,
         customDictionary: liveSettings.customDictionary,
         customInstructions: liveSettings.correctionCustomInstructions,
         projectName: sessionProjectInfo.name,
@@ -185,20 +209,15 @@ export function registerVoiceInputHandlers(deps: HandlerDependencies): () => voi
 
   const handleStart = async (event: Electron.IpcMainInvokeEvent) => {
     const svc = getService();
-    // Snapshot transcription settings at session start (model, language, API key).
-    // Correction settings are read live from store per-event so mid-session changes apply.
     const settings = getVoiceSettings();
 
-    // Clean up any existing subscription before starting a new session
     cleanupActiveSubscription();
 
-    // Initialize (or reset) the correction service for this session
     if (!correctionService) {
       correctionService = new VoiceCorrectionService();
     }
     correctionService.resetHistory();
 
-    // Capture project info and reset paragraph buffer at session start
     sessionProjectInfo = getProjectInfo();
     paragraphBuffer = [];
 
@@ -210,15 +229,9 @@ export function registerVoiceInputHandlers(deps: HandlerDependencies): () => voi
         win.webContents.send(CHANNELS.VOICE_INPUT_TRANSCRIPTION_DELTA, voiceEvent.text);
       } else if (voiceEvent.type === "complete") {
         const rawText = voiceEvent.text.trim();
-
-        // Accumulate utterance into paragraph buffer — correction fires at paragraph
-        // boundaries (Enter or stop), not per utterance.
         if (rawText) {
           paragraphBuffer.push(rawText);
         }
-
-        // Notify the renderer so it can finalize the utterance in the draft.
-        // willCorrect is always false here: correction is batched at paragraph level.
         win.webContents.send(CHANNELS.VOICE_INPUT_TRANSCRIPTION_COMPLETE, {
           text: rawText,
           willCorrect: false,
@@ -232,7 +245,6 @@ export function registerVoiceInputHandlers(deps: HandlerDependencies): () => voi
 
     activeEventUnsubscribe = unsubscribe;
 
-    // Also clean up if the renderer is destroyed unexpectedly
     const onDestroyed = () => {
       if (activeEventUnsubscribe === unsubscribe) {
         activeEventUnsubscribe = null;
@@ -244,7 +256,6 @@ export function registerVoiceInputHandlers(deps: HandlerDependencies): () => voi
 
     const result = await svc.start(settings);
     if (!result.ok) {
-      // Failed to start — clean up subscription immediately
       if (activeEventUnsubscribe === unsubscribe) {
         activeEventUnsubscribe = null;
       }
@@ -256,12 +267,9 @@ export function registerVoiceInputHandlers(deps: HandlerDependencies): () => voi
 
   const handleStop = async (): Promise<{ rawText: string | null }> => {
     if (service) {
-      // Drain first (waits for pending transcriptions), then clean up subscription.
       await service.stopGracefully();
     }
     cleanupActiveSubscription();
-
-    // Flush any remaining paragraph utterances gathered since the last boundary.
     return flushParagraphBuffer(deps.mainWindow);
   };
 
@@ -285,8 +293,15 @@ export function registerVoiceInputHandlers(deps: HandlerDependencies): () => voi
     openMicSettings();
   };
 
-  const handleValidateApiKey = async (_event: Electron.IpcMainInvokeEvent, apiKey: string) => {
-    return validateOpenAIKey(apiKey);
+  const handleValidateCredential = async (
+    _event: Electron.IpcMainInvokeEvent,
+    credentialPath: string
+  ) => {
+    return validateGoogleCloudCredential(credentialPath);
+  };
+
+  const handleValidateGeminiKey = async (_event: Electron.IpcMainInvokeEvent, apiKey: string) => {
+    return validateGeminiApiKey(apiKey);
   };
 
   ipcMain.handle(CHANNELS.VOICE_INPUT_GET_SETTINGS, handleGetSettings);
@@ -297,7 +312,8 @@ export function registerVoiceInputHandlers(deps: HandlerDependencies): () => voi
   ipcMain.handle(CHANNELS.VOICE_INPUT_CHECK_MIC_PERMISSION, handleCheckMicPermission);
   ipcMain.handle(CHANNELS.VOICE_INPUT_REQUEST_MIC_PERMISSION, handleRequestMicPermission);
   ipcMain.handle(CHANNELS.VOICE_INPUT_OPEN_MIC_SETTINGS, handleOpenMicSettings);
-  ipcMain.handle(CHANNELS.VOICE_INPUT_VALIDATE_API_KEY, handleValidateApiKey);
+  ipcMain.handle(CHANNELS.VOICE_INPUT_VALIDATE_API_KEY, handleValidateCredential);
+  ipcMain.handle(CHANNELS.VOICE_INPUT_VALIDATE_GEMINI_KEY, handleValidateGeminiKey);
   ipcMain.handle(CHANNELS.VOICE_INPUT_FLUSH_PARAGRAPH, handleFlushParagraph);
 
   return () => {
@@ -310,6 +326,7 @@ export function registerVoiceInputHandlers(deps: HandlerDependencies): () => voi
     ipcMain.removeHandler(CHANNELS.VOICE_INPUT_REQUEST_MIC_PERMISSION);
     ipcMain.removeHandler(CHANNELS.VOICE_INPUT_OPEN_MIC_SETTINGS);
     ipcMain.removeHandler(CHANNELS.VOICE_INPUT_VALIDATE_API_KEY);
+    ipcMain.removeHandler(CHANNELS.VOICE_INPUT_VALIDATE_GEMINI_KEY);
     ipcMain.removeHandler(CHANNELS.VOICE_INPUT_FLUSH_PARAGRAPH);
     cleanupActiveSubscription();
     service?.destroy();

@@ -190,8 +190,6 @@ export type {
   NotificationSettings,
   VoiceInputSettings,
   VoiceInputStatus,
-  VoiceTranscriptionModel,
-  VoiceCorrectionModel,
   MicPermissionStatus,
   BranchInfo,
   CreateWorktreeOptions,

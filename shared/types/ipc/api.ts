@@ -829,7 +829,8 @@ export interface ElectronAPI {
     checkMicPermission(): Promise<MicPermissionStatus>;
     requestMicPermission(): Promise<boolean>;
     openMicSettings(): Promise<void>;
-    validateApiKey(apiKey: string): Promise<{ valid: boolean; error?: string }>;
+    validateCredential(credentialPath: string): Promise<{ valid: boolean; error?: string }>;
+    validateGeminiKey(apiKey: string): Promise<{ valid: boolean; error?: string }>;
   };
   mcpServer: {
     /** Get current MCP server status and configuration */
@@ -905,18 +906,15 @@ export type MicPermissionStatus =
   | "restricted"
   | "unknown";
 
-export type VoiceTranscriptionModel = "gpt-4o-mini-transcribe" | "gpt-4o-transcribe";
-
-export type VoiceCorrectionModel = "gpt-5-nano";
-
 export interface VoiceInputSettings {
   enabled: boolean;
-  apiKey: string;
+  /** Path to a Google Cloud service account JSON key file for Speech-to-Text v2 (Chirp 3). */
+  googleCloudCredentialPath: string;
+  /** Gemini AI Studio API key for the correction pass. */
+  geminiApiKey: string;
   language: string;
   customDictionary: string[];
-  transcriptionModel: VoiceTranscriptionModel;
   correctionEnabled: boolean;
-  correctionModel: VoiceCorrectionModel;
   correctionCustomInstructions: string;
 }
 

@@ -2,7 +2,7 @@ import { afterEach, describe, expect, it } from "vitest";
 import { VoiceTranscriptionService } from "../VoiceTranscriptionService.js";
 import type { VoiceTranscriptionEvent } from "../VoiceTranscriptionService.js";
 
-const OPENAI_API_KEY = process.env.OPENAI_API_KEY ?? "";
+const GOOGLE_CREDENTIAL_PATH = process.env.GOOGLE_APPLICATION_CREDENTIALS ?? "";
 
 function delay(ms: number): Promise<void> {
   return new Promise((resolve) => setTimeout(resolve, ms));
@@ -15,8 +15,8 @@ describe("VoiceTranscriptionService integration", () => {
     service?.destroy();
   });
 
-  it.skipIf(!OPENAI_API_KEY)(
-    "connects to OpenAI Realtime API and session config is accepted",
+  it.skipIf(!GOOGLE_CREDENTIAL_PATH)(
+    "connects to Google Cloud Speech-to-Text v2 and Chirp 3 session config is accepted",
     async () => {
       service = new VoiceTranscriptionService();
 
@@ -25,19 +25,18 @@ describe("VoiceTranscriptionService integration", () => {
 
       const result = await service.start({
         enabled: true,
-        apiKey: OPENAI_API_KEY,
+        googleCloudCredentialPath: GOOGLE_CREDENTIAL_PATH,
+        geminiApiKey: "",
         language: "en",
         customDictionary: [],
-        transcriptionModel: "gpt-4o-mini-transcribe",
         correctionEnabled: false,
-        correctionModel: "gpt-5-nano",
         correctionCustomInstructions: "",
       });
 
       expect(result).toEqual({ ok: true });
       expect(events.some((e) => e.type === "status" && e.status === "recording")).toBe(true);
 
-      // Wait for any async server errors (e.g. invalid session config)
+      // Wait for any async server errors
       await delay(2000);
 
       const errors = events.filter((e) => e.type === "error");

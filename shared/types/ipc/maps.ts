@@ -1255,6 +1255,10 @@ export interface IpcInvokeMap {
     result: void;
   };
   "voice-input:validate-api-key": {
+    args: [credentialPath: string];
+    result: { valid: boolean; error?: string };
+  };
+  "voice-input:validate-gemini-key": {
     args: [apiKey: string];
     result: { valid: boolean; error?: string };
   };

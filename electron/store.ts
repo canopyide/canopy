@@ -119,12 +119,11 @@ export interface StoreSchema {
   };
   voiceInput: {
     enabled: boolean;
-    apiKey: string;
+    googleCloudCredentialPath: string;
+    geminiApiKey: string;
     language: string;
     customDictionary: string[];
-    transcriptionModel: string;
     correctionEnabled: boolean;
-    correctionModel: string;
     correctionCustomInstructions: string;
   };
   mcpServer: {
@@ -202,12 +201,11 @@ const storeOptions = {
     },
     voiceInput: {
       enabled: false,
-      apiKey: "",
+      googleCloudCredentialPath: "",
+      geminiApiKey: "",
       language: "en",
       customDictionary: [],
-      transcriptionModel: "gpt-4o-mini-transcribe",
       correctionEnabled: false,
-      correctionModel: "gpt-5-nano",
       correctionCustomInstructions: "",
     },
     mcpServer: {

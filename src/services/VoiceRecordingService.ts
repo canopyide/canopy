@@ -255,17 +255,17 @@ class VoiceRecordingService {
 
   async refreshConfiguration(): Promise<boolean> {
     const settings = await window.electron.voiceInput.getSettings();
-    const isConfigured = settings.enabled && !!settings.apiKey;
+    const isConfigured = settings.enabled && !!settings.googleCloudCredentialPath;
     logDebug(`${LOG_PREFIX} refreshConfiguration`, {
       enabled: settings.enabled,
-      hasApiKey: !!settings.apiKey,
+      hasCredential: !!settings.googleCloudCredentialPath,
       isConfigured,
       correctionEnabled: settings.correctionEnabled,
     });
     // Keep correction state in sync for live-segment dimming
     useVoiceRecordingStore
       .getState()
-      .setCorrectionEnabled(!!(settings.correctionEnabled && settings.apiKey));
+      .setCorrectionEnabled(!!(settings.correctionEnabled && settings.geminiApiKey));
     useVoiceRecordingStore.getState().setConfigured(isConfigured);
     return isConfigured;
   }

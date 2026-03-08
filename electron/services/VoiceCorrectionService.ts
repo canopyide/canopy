@@ -8,15 +8,14 @@ import {
 export { CORE_CORRECTION_PROMPT, buildCorrectionSystemPrompt };
 
 const P = "[VoiceCorrection]";
-// Paragraphs take longer than single sentences for gpt-5-nano (reasoning overhead).
 const CORRECTION_TIMEOUT_MS = 15000;
 const MAX_HISTORY = 3;
-// Paragraph-level correction requires more tokens: reasoning + multi-sentence output.
-const MAX_COMPLETION_TOKENS = 2048;
+const MAX_OUTPUT_TOKENS = 2048;
+const GEMINI_MODEL = "gemini-3.1-flash-lite-preview";
+const GEMINI_API_BASE = "https://generativelanguage.googleapis.com/v1beta/models";
 
 export interface VoiceCorrectionSettings {
-  model: string;
-  apiKey: string;
+  geminiApiKey: string;
   customDictionary: string[];
   customInstructions?: string;
   projectName?: string;
@@ -71,10 +70,9 @@ export class VoiceCorrectionService {
   }
 
   private async callApi(rawText: string, settings: VoiceCorrectionSettings): Promise<string> {
-    const { model, apiKey, customDictionary, customInstructions, projectName, projectPath } =
+    const { geminiApiKey, customDictionary, customInstructions, projectName, projectPath } =
       settings;
 
-    // System message: core prompt + context (cached across requests)
     const context: CorrectionPromptContext = {
       projectName,
       projectPath,
@@ -83,55 +81,56 @@ export class VoiceCorrectionService {
     };
     const systemPrompt = buildCorrectionSystemPrompt(context);
 
-    // User message: history (for context) + current sentence to correct
     const userParts: string[] = [];
-
     if (this.history.length > 0) {
       userParts.push(
         `<history>\n${this.history.map((s, i) => `${i + 1}. ${s}`).join("\n")}\n</history>`
       );
     }
-
     userParts.push(`<input>\n${rawText}\n</input>`);
 
     const userMessage = userParts.join("\n\n");
 
-    // GPT-5 family models are reasoning models that require different API parameters
-    const isReasoningModel = model.startsWith("gpt-5");
+    logDebug(`${P} Calling Gemini correction API`, {
+      model: GEMINI_MODEL,
+      historyLen: this.history.length,
+    });
 
-    logDebug(`${P} Calling Chat Completions`, { model, historyLen: this.history.length });
-
-    const response = await fetch("https://api.openai.com/v1/chat/completions", {
+    const url = `${GEMINI_API_BASE}/${GEMINI_MODEL}:generateContent`;
+    const response = await fetch(url, {
       method: "POST",
       headers: {
         "Content-Type": "application/json",
-        Authorization: `Bearer ${apiKey}`,
+        "x-goog-api-key": geminiApiKey,
       },
       body: JSON.stringify({
-        model,
-        messages: [
-          // GPT-5 reasoning models use "developer" role for instructions
-          { role: isReasoningModel ? "developer" : "system", content: systemPrompt },
-          { role: "user", content: userMessage },
+        systemInstruction: {
+          parts: [{ text: systemPrompt }],
+        },
+        contents: [
+          {
+            role: "user",
+            parts: [{ text: userMessage }],
+          },
         ],
-        // Reasoning models (gpt-5-nano) don't support temperature and need
-        // reasoning_effort to limit internal chain-of-thought token usage.
-        ...(isReasoningModel ? { reasoning_effort: "low" } : { temperature: 0 }),
-        max_completion_tokens: MAX_COMPLETION_TOKENS,
+        generationConfig: {
+          temperature: 0,
+          maxOutputTokens: MAX_OUTPUT_TOKENS,
+        },
       }),
     });
 
     if (!response.ok) {
-      throw new Error(`OpenAI API error: ${response.status}`);
+      throw new Error(`Gemini API error: ${response.status}`);
     }
 
     const data = (await response.json()) as {
-      choices: Array<{ message: { content: string | null } }>;
+      candidates: Array<{ content: { parts: Array<{ text: string }> } }>;
     };
 
-    const content = data.choices[0]?.message?.content;
+    const content = data.candidates[0]?.content?.parts[0]?.text;
     if (!content) {
-      throw new Error("No content in API response");
+      throw new Error("No content in Gemini API response");
     }
 
     return content;

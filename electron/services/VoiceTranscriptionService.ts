@@ -1,8 +1,13 @@
-import WebSocket from "ws";
+import { v2 } from "@google-cloud/speech";
 import type { VoiceInputSettings } from "../../shared/types/ipc/api.js";
 import { logDebug, logInfo, logWarn, logError } from "../utils/logger.js";
 
 const P = "[VoiceTranscription]";
+
+/** Pre-emptive reconnect before the 5-minute Chirp 3 session limit. */
+const SESSION_RECONNECT_MS = 4.5 * 60 * 1000;
+/** Duration to send audio to both old and new stream during handoff. */
+const DUAL_STREAM_OVERLAP_MS = 2000;
 
 export type VoiceTranscriptionEvent =
   | { type: "delta"; text: string }
@@ -12,25 +17,29 @@ export type VoiceTranscriptionEvent =
 
 type VoiceStartResult = { ok: true } | { ok: false; error: string };
 
+interface ActiveStream {
+  stream: ReturnType<InstanceType<typeof v2.SpeechClient>["_streamingRecognize"]>;
+  sessionTimer: ReturnType<typeof setTimeout>;
+  overlapTimer: ReturnType<typeof setTimeout> | null;
+}
+
 export class VoiceTranscriptionService {
-  private ws: WebSocket | null = null;
+  private client: InstanceType<typeof v2.SpeechClient> | null = null;
+  private activeStream: ActiveStream | null = null;
+  private pendingStream: ActiveStream | null = null;
   private sessionId = 0;
-  private connectTimeout: ReturnType<typeof setTimeout> | null = null;
   private listeners: Set<(event: VoiceTranscriptionEvent) => void> = new Set();
   private pendingStart: { sessionId: number; resolve: (result: VoiceStartResult) => void } | null =
     null;
-
-  /** Chunks that arrive before the WebSocket is open. */
-  private preConnectBuffer: ArrayBuffer[] = [];
   private isReady = false;
+  private preConnectBuffer: Buffer[] = [];
 
-  /** Drain state for graceful stop. */
-  private drainResolve: (() => void) | null = null;
-  private drainTimeout: ReturnType<typeof setTimeout> | null = null;
-  private drainPromise: Promise<void> | null = null;
-  private isDraining = false;
-  private awaitingCommitAck = false;
-  private pendingItemIds: Set<string> = new Set();
+  private stopResolve: (() => void) | null = null;
+  private stopPromise: Promise<void> | null = null;
+  private isStopping = false;
+
+  private audioChunkCount = 0;
+  private settings: VoiceInputSettings | null = null;
 
   onEvent(listener: (event: VoiceTranscriptionEvent) => void): () => void {
     this.listeners.add(listener);
@@ -43,13 +52,6 @@ export class VoiceTranscriptionService {
     }
   }
 
-  private clearConnectTimeout(): void {
-    if (this.connectTimeout !== null) {
-      clearTimeout(this.connectTimeout);
-      this.connectTimeout = null;
-    }
-  }
-
   private settlePendingStart(sessionId: number, result: VoiceStartResult): void {
     if (this.pendingStart?.sessionId !== sessionId) return;
     const { resolve } = this.pendingStart;
@@ -58,9 +60,9 @@ export class VoiceTranscriptionService {
   }
 
   async start(settings: VoiceInputSettings): Promise<VoiceStartResult> {
-    if (!settings.apiKey) {
-      logWarn(`${P} No API key configured`);
-      return { ok: false, error: "OpenAI API key not configured" };
+    if (!settings.googleCloudCredentialPath) {
+      logWarn(`${P} No Google Cloud credential path configured`);
+      return { ok: false, error: "Google Cloud service account key not configured" };
     }
 
     const mySessionId = this.sessionId + 1;
@@ -68,338 +70,345 @@ export class VoiceTranscriptionService {
       language: settings.language,
       hasDictionary: settings.customDictionary.length > 0,
     });
-    this.cleanupPreviousSession();
+
+    this.cleanupSession();
     this.sessionId = mySessionId;
     this.isReady = false;
     this.preConnectBuffer = [];
+    this.isStopping = false;
+    this.settings = settings;
 
     this.emit({ type: "status", status: "connecting" });
 
     return new Promise((resolve) => {
       this.pendingStart = { sessionId: mySessionId, resolve };
-      logDebug(`${P} Opening WebSocket to OpenAI Realtime API (transcription-only)`);
-      const ws = new WebSocket("wss://api.openai.com/v1/realtime?intent=transcription", {
-        headers: {
-          Authorization: `Bearer ${settings.apiKey}`,
-          "OpenAI-Beta": "realtime=v1",
-        },
-      });
+      this.openStream(mySessionId, true);
+    });
+  }
 
-      this.connectTimeout = setTimeout(() => {
-        this.connectTimeout = null;
-        logError(`${P} WebSocket connection timed out (10s)`);
-        ws.terminate();
-        if (this.sessionId === mySessionId) {
-          this.emit({ type: "error", message: "Connection timed out" });
-          this.emit({ type: "status", status: "error" });
-          this.settlePendingStart(mySessionId, { ok: false, error: "Connection timed out" });
-        }
-      }, 10000);
+  private buildRecognizeConfig(settings: VoiceInputSettings) {
+    const phrases = settings.customDictionary.map((term) => ({ value: term, boost: 15 }));
 
-      ws.on("open", () => {
-        this.clearConnectTimeout();
-        logInfo(`${P} WebSocket connected`);
-        if (this.sessionId !== mySessionId) {
-          logWarn(`${P} Session expired during connect, terminating`);
-          ws.terminate();
-          return;
-        }
-
-        this.ws = ws;
-
-        const prompt =
-          settings.customDictionary.length > 0
-            ? `Technical terms: ${settings.customDictionary.join(", ")}.`
-            : undefined;
-
-        const sessionConfig = {
-          type: "transcription_session.update",
-          session: {
-            input_audio_format: "pcm16",
-            input_audio_transcription: {
-              model: settings.transcriptionModel || "gpt-4o-mini-transcribe",
-              language: settings.language || "en",
-              ...(prompt ? { prompt } : {}),
-            },
-            turn_detection: {
-              type: "server_vad",
-              threshold: 0.5,
-              prefix_padding_ms: 300,
-              silence_duration_ms: 500,
-            },
+    return {
+      recognizer: `projects/-/locations/global/recognizers/_`,
+      streamingConfig: {
+        config: {
+          model: "chirp_3",
+          languageCodes: [this.toChirp3Locale(settings.language || "en")],
+          explicitDecodingConfig: {
+            encoding: "LINEAR16" as const,
+            sampleRateHertz: 24000,
+            audioChannelCount: 1,
           },
-        };
-        logDebug(`${P} Sending transcription_session.update`, {
-          language: settings.language || "en",
-        });
-        ws.send(JSON.stringify(sessionConfig));
+          ...(phrases.length > 0
+            ? {
+                adaptation: {
+                  phraseSets: [
+                    {
+                      inlinePhraseSet: { phrases },
+                    },
+                  ],
+                },
+              }
+            : {}),
+        },
+        streamingFeatures: { interimResults: true },
+      },
+    };
+  }
 
-        // Flush pre-connect buffer
-        if (this.preConnectBuffer.length > 0) {
-          logInfo(`${P} Flushing ${this.preConnectBuffer.length} buffered audio chunks`);
-          for (const chunk of this.preConnectBuffer) {
-            const base64 = Buffer.from(chunk).toString("base64");
-            ws.send(JSON.stringify({ type: "input_audio_buffer.append", audio: base64 }));
+  private toChirp3Locale(language: string): string {
+    const localeMap: Record<string, string> = {
+      en: "en-US",
+      es: "es-ES",
+      fr: "fr-FR",
+      de: "de-DE",
+      ja: "ja-JP",
+      zh: "zh-CN",
+      ko: "ko-KR",
+      pt: "pt-BR",
+      it: "it-IT",
+      ru: "ru-RU",
+    };
+    return localeMap[language] ?? language;
+  }
+
+  private openStream(mySessionId: number, isPrimary: boolean): void {
+    if (this.sessionId !== mySessionId) return;
+
+    if (!this.client) {
+      const settings = this.settings;
+      if (!settings) return;
+      this.client = new v2.SpeechClient({
+        keyFilename: settings.googleCloudCredentialPath,
+      });
+      logDebug(`${P} Created SpeechClient`);
+    }
+
+    const settings = this.settings;
+    if (!settings) return;
+
+    logInfo(`${P} Opening Chirp 3 stream (primary=${isPrimary})`);
+
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    const stream = (this.client as any)._streamingRecognize() as ReturnType<
+      InstanceType<typeof v2.SpeechClient>["_streamingRecognize"]
+    >;
+
+    stream.on(
+      "data",
+      (response: {
+        results?: Array<{ isFinal?: boolean; alternatives?: Array<{ transcript?: string }> }>;
+      }) => {
+        if (this.sessionId !== mySessionId) return;
+        const results = response.results ?? [];
+        for (const result of results) {
+          const transcript = result.alternatives?.[0]?.transcript ?? "";
+          if (!transcript) continue;
+          if (result.isFinal) {
+            logDebug(`${P} Final transcript: "${transcript.slice(0, 50)}..."`);
+            this.emit({ type: "complete", text: transcript });
+          } else {
+            this.emit({ type: "delta", text: transcript });
           }
-          this.preConnectBuffer = [];
         }
+      }
+    );
 
-        this.isReady = true;
-        this.emit({ type: "status", status: "recording" });
-        this.settlePendingStart(mySessionId, { ok: true });
-      });
+    stream.on("error", (err: Error) => {
+      if (this.sessionId !== mySessionId) return;
+      const message = err.message;
+      logError(`${P} Stream error`, err);
 
-      ws.on("message", (data: WebSocket.RawData) => {
-        if (this.sessionId !== mySessionId) return;
-        try {
-          const event = JSON.parse(data.toString()) as Record<string, unknown>;
-          logDebug(`${P} Server event: ${event.type as string}`);
-          this.handleServerEvent(event);
-        } catch {
-          logWarn(`${P} Failed to parse server message`);
-        }
-      });
-
-      ws.on("error", (err) => {
-        this.clearConnectTimeout();
-        if (this.sessionId !== mySessionId) return;
-        const message = err instanceof Error ? err.message : "WebSocket error";
-        logError(`${P} WebSocket error`, err);
-        this.ws = null;
+      if (isPrimary) {
         this.isReady = false;
         this.emit({ type: "error", message });
         this.emit({ type: "status", status: "error" });
         this.settlePendingStart(mySessionId, { ok: false, error: message });
-        this.settleDrain();
-      });
+        this.activeStream = null;
+      }
+      this.settleDrain();
+    });
 
-      ws.on("close", (code, reason) => {
-        this.clearConnectTimeout();
-        logInfo(`${P} WebSocket closed`, { code, reason: reason?.toString() });
-        if (this.sessionId !== mySessionId) return;
-        this.ws = null;
+    stream.on("end", () => {
+      if (this.sessionId !== mySessionId) return;
+      logInfo(`${P} Stream ended (primary=${isPrimary})`);
+      if (isPrimary) {
+        this.activeStream = null;
         this.isReady = false;
-        this.settlePendingStart(mySessionId, { ok: false, error: "Connection closed" });
-        if (this.isDraining) {
+        if (this.isStopping) {
           this.settleDrain();
         } else {
           this.emit({ type: "status", status: "idle" });
         }
-      });
+      }
     });
-  }
 
-  private handleServerEvent(event: Record<string, unknown>): void {
-    const type = event.type as string;
+    const sessionTimer = setTimeout(() => {
+      if (this.sessionId !== mySessionId || !isPrimary) return;
+      logInfo(`${P} Pre-emptive reconnect at 4m30s`);
+      this.rotateStream(mySessionId);
+    }, SESSION_RECONNECT_MS);
 
-    if (type === "conversation.item.input_audio_transcription.delta") {
-      const delta = (event as { delta?: string }).delta ?? "";
-      if (delta) {
-        this.emit({ type: "delta", text: delta });
-      }
-    } else if (type === "conversation.item.input_audio_transcription.completed") {
-      const transcript = (event as { transcript?: string }).transcript ?? "";
-      const itemId = (event as { item_id?: string }).item_id;
-      if (transcript) {
-        this.emit({ type: "complete", text: transcript });
-      }
-      // Track completion for drain — even empty transcripts count.
-      if (itemId) {
-        this.pendingItemIds.delete(itemId);
-      }
-      if (this.isDraining && !this.awaitingCommitAck && this.pendingItemIds.size === 0) {
-        this.settleDrain();
-      }
-    } else if (type === "conversation.item.input_audio_transcription.failed") {
-      const itemId = (event as { item_id?: string }).item_id;
-      logWarn(`${P} Transcription failed for item ${itemId}`);
-      if (itemId) {
-        this.pendingItemIds.delete(itemId);
-      }
-      if (this.isDraining && !this.awaitingCommitAck && this.pendingItemIds.size === 0) {
-        this.settleDrain();
-      }
-    } else if (type === "input_audio_buffer.committed") {
-      const itemId = (event as { item_id?: string }).item_id;
-      this.awaitingCommitAck = false;
-      if (itemId) {
-        logDebug(`${P} Audio buffer committed, tracking item ${itemId}`);
-        this.pendingItemIds.add(itemId);
-      } else if (this.isDraining && this.pendingItemIds.size === 0) {
-        // Commit ack with no item (empty buffer) — drain can finish.
-        this.settleDrain();
-      }
-    } else if (
-      type === "transcription_session.created" ||
-      type === "transcription_session.updated"
-    ) {
-      logInfo(`${P} ${type}`);
-    } else if (type === "error") {
-      const error = event.error as { message?: string; type?: string; code?: string } | undefined;
-      const message =
-        error?.message ??
-        (typeof error === "object" ? JSON.stringify(error) : "Unknown error from OpenAI");
-      if (this.isDraining) {
-        // During drain, errors (e.g. commit on empty buffer) are non-fatal.
-        // Clear commit ack flag so drain can settle if no items are pending.
-        this.awaitingCommitAck = false;
-        logWarn(`${P} Server error during drain (non-fatal)`, {
-          errorType: error?.type,
-          code: error?.code,
-          message,
-        });
-        if (this.pendingItemIds.size === 0) {
-          this.settleDrain();
+    const entry: ActiveStream = { stream, sessionTimer, overlapTimer: null };
+
+    // Send config as first message
+    try {
+      stream.write(this.buildRecognizeConfig(settings));
+    } catch (err) {
+      const message = err instanceof Error ? err.message : String(err);
+      logError(`${P} Failed to write config to stream`, err);
+      clearTimeout(sessionTimer);
+      this.settlePendingStart(mySessionId, { ok: false, error: message });
+      return;
+    }
+
+    if (isPrimary) {
+      this.activeStream = entry;
+
+      // Flush pre-connect buffer
+      if (this.preConnectBuffer.length > 0) {
+        logInfo(`${P} Flushing ${this.preConnectBuffer.length} buffered audio chunks`);
+        for (const buf of this.preConnectBuffer) {
+          try {
+            stream.write({ audio: buf });
+          } catch {
+            /* best-effort */
+          }
         }
-      } else {
-        logError(`${P} Server error`, { errorType: error?.type, code: error?.code, message });
-        this.emit({ type: "error", message });
+        this.preConnectBuffer = [];
       }
+
+      this.isReady = true;
+      this.emit({ type: "status", status: "recording" });
+      this.settlePendingStart(mySessionId, { ok: true });
+    } else {
+      this.pendingStream = entry;
     }
   }
 
-  private audioChunkCount = 0;
-  private staleChunkWarned = false;
+  private rotateStream(mySessionId: number): void {
+    if (this.sessionId !== mySessionId) return;
+
+    logInfo(`${P} Rotating stream — opening new stream`);
+    this.openStream(mySessionId, false);
+
+    // After overlap window, promote pending to active
+    const overlapTimer = setTimeout(() => {
+      if (this.sessionId !== mySessionId) return;
+      const old = this.activeStream;
+      const next = this.pendingStream;
+      this.pendingStream = null;
+
+      if (old) {
+        logInfo(`${P} Closing old stream after overlap`);
+        clearTimeout(old.sessionTimer);
+        if (old.overlapTimer) clearTimeout(old.overlapTimer);
+        try {
+          old.stream.end();
+        } catch {
+          /* best-effort */
+        }
+      }
+
+      if (next) {
+        this.activeStream = next;
+        logInfo(`${P} New stream promoted to active`);
+      }
+    }, DUAL_STREAM_OVERLAP_MS);
+
+    if (this.activeStream) {
+      this.activeStream.overlapTimer = overlapTimer;
+    }
+  }
 
   sendAudioChunk(chunk: ArrayBuffer): void {
-    // During drain, reject new audio.
-    if (this.isDraining) return;
+    if (this.isStopping) return;
 
-    // Buffer chunks that arrive before the WebSocket is ready.
-    if (!this.isReady || !this.ws || this.ws.readyState !== WebSocket.OPEN) {
-      if (this.ws || this.pendingStart) {
-        // Connection is in progress — buffer the chunk (up to ~10s at 24kHz).
+    const buf = Buffer.from(chunk);
+
+    if (!this.isReady || !this.activeStream) {
+      if (this.pendingStart) {
         if (this.preConnectBuffer.length < 100) {
-          this.preConnectBuffer.push(chunk);
+          this.preConnectBuffer.push(buf);
         }
-      } else if (!this.staleChunkWarned) {
-        this.staleChunkWarned = true;
-        logWarn(`${P} sendAudioChunk called but no active session`, {
-          readyState: null,
-        });
       }
       return;
     }
+
     this.audioChunkCount++;
     if (this.audioChunkCount <= 3 || this.audioChunkCount % 200 === 0) {
-      logDebug(`${P} Sending audio chunk #${this.audioChunkCount}`, { bytes: chunk.byteLength });
+      logDebug(`${P} Sending audio chunk #${this.audioChunkCount}`, { bytes: buf.byteLength });
     }
-    const base64 = Buffer.from(chunk).toString("base64");
-    this.ws.send(
-      JSON.stringify({
-        type: "input_audio_buffer.append",
-        audio: base64,
-      })
-    );
-  }
 
-  private cleanupPreviousSession(): void {
-    logDebug(`${P} Cleaning up previous session`, { sessionId: this.sessionId, hasWs: !!this.ws });
-    const pendingSessionId = this.pendingStart?.sessionId;
-    this.sessionId++;
-    this.audioChunkCount = 0;
-    this.staleChunkWarned = false;
-    this.isReady = false;
-    this.preConnectBuffer = [];
-    this.clearConnectTimeout();
-    this.clearDrainTimeout();
-    this.isDraining = false;
-    this.pendingItemIds.clear();
-    if (this.drainResolve) {
-      this.drainResolve();
-      this.drainResolve = null;
-    }
-    if (pendingSessionId !== undefined) {
-      this.settlePendingStart(pendingSessionId, { ok: false, error: "Voice session stopped" });
-    }
-    if (this.ws) {
-      try {
-        this.ws.close();
-      } catch {
-        // Ignore close errors
+    try {
+      this.activeStream.stream.write({ audio: buf });
+      // Also send to pending stream during overlap
+      if (this.pendingStream) {
+        this.pendingStream.stream.write({ audio: buf });
       }
-      this.ws = null;
-    }
-  }
-
-  private clearDrainTimeout(): void {
-    if (this.drainTimeout !== null) {
-      clearTimeout(this.drainTimeout);
-      this.drainTimeout = null;
+    } catch {
+      logWarn(`${P} Failed to write audio chunk`);
     }
   }
 
   private settleDrain(): void {
-    this.clearDrainTimeout();
-    this.isDraining = false;
-    this.awaitingCommitAck = false;
-    this.drainPromise = null;
-    this.pendingItemIds.clear();
-    if (this.drainResolve) {
-      logInfo(`${P} Drain completed`);
-      const resolve = this.drainResolve;
-      this.drainResolve = null;
+    this.isStopping = false;
+    this.stopPromise = null;
+    if (this.stopResolve) {
+      const resolve = this.stopResolve;
+      this.stopResolve = null;
       resolve();
     }
   }
 
-  /**
-   * Graceful stop: commit remaining audio, wait for pending transcriptions,
-   * then close the WebSocket. Returns a promise that resolves when done.
-   */
   async stopGracefully(): Promise<void> {
-    logInfo(`${P} stopGracefully() called`, { sessionId: this.sessionId, hasWs: !!this.ws });
+    logInfo(`${P} stopGracefully() called`, { sessionId: this.sessionId });
 
-    // If already draining, join the existing drain promise.
-    if (this.drainPromise) {
-      logDebug(`${P} Already draining, joining existing promise`);
-      return this.drainPromise;
+    if (this.stopPromise) {
+      return this.stopPromise;
     }
 
-    if (!this.ws || this.ws.readyState !== WebSocket.OPEN) {
-      this.cleanupPreviousSession();
+    if (!this.activeStream) {
+      this.cleanupSession();
       this.emit({ type: "status", status: "idle" });
       return;
     }
 
-    this.isDraining = true;
+    this.isStopping = true;
     this.emit({ type: "status", status: "finishing" });
 
-    // Send input_audio_buffer.commit to force transcription of any remaining audio.
-    this.awaitingCommitAck = true;
-    try {
-      this.ws.send(JSON.stringify({ type: "input_audio_buffer.commit" }));
-      logDebug(`${P} Sent input_audio_buffer.commit`);
-    } catch {
-      logWarn(`${P} Failed to send commit, closing immediately`);
-      this.cleanupPreviousSession();
-      this.emit({ type: "status", status: "idle" });
-      return;
-    }
-
-    // Wait for pending transcriptions to complete (up to 3s).
-    this.drainPromise = new Promise<void>((resolve) => {
-      this.drainResolve = resolve;
-      this.drainTimeout = setTimeout(() => {
-        logWarn(`${P} Drain timed out after 3s, force closing`, {
-          pendingItems: this.pendingItemIds.size,
-        });
+    this.stopPromise = new Promise<void>((resolve) => {
+      this.stopResolve = resolve;
+      const timeout = setTimeout(() => {
+        logWarn(`${P} Stop timed out after 3s`);
         this.settleDrain();
       }, 3000);
+
+      const stream = this.activeStream?.stream;
+      if (stream) {
+        try {
+          stream.end();
+          logDebug(`${P} Called stream.end() for graceful stop`);
+        } catch {
+          clearTimeout(timeout);
+          this.settleDrain();
+        }
+      } else {
+        clearTimeout(timeout);
+        this.settleDrain();
+      }
     });
 
-    await this.drainPromise;
-
-    // Now actually close the connection.
-    this.cleanupPreviousSession();
+    await this.stopPromise;
+    this.cleanupSession();
     this.emit({ type: "status", status: "idle" });
   }
 
-  /** Hard stop — immediate teardown with no drain. */
   stop(): void {
-    logInfo(`${P} stop() called`, { sessionId: this.sessionId, hasWs: !!this.ws });
-    this.cleanupPreviousSession();
+    logInfo(`${P} stop() called`);
+    this.cleanupSession();
     this.emit({ type: "status", status: "idle" });
+  }
+
+  private cleanupSession(): void {
+    logDebug(`${P} Cleaning up session`, { sessionId: this.sessionId });
+    this.sessionId++;
+    this.audioChunkCount = 0;
+    this.isReady = false;
+    this.preConnectBuffer = [];
+    this.isStopping = false;
+    this.settings = null;
+    this.stopResolve = null;
+    this.stopPromise = null;
+
+    if (this.pendingStart) {
+      const { resolve } = this.pendingStart;
+      this.pendingStart = null;
+      resolve({ ok: false, error: "Voice session stopped" });
+    }
+
+    for (const entry of [this.activeStream, this.pendingStream]) {
+      if (!entry) continue;
+      clearTimeout(entry.sessionTimer);
+      if (entry.overlapTimer) clearTimeout(entry.overlapTimer);
+      try {
+        entry.stream.end();
+      } catch {
+        /* best-effort */
+      }
+    }
+    this.activeStream = null;
+    this.pendingStream = null;
+
+    if (this.client) {
+      try {
+        void this.client.close();
+      } catch {
+        /* best-effort */
+      }
+      this.client = null;
+    }
   }
 
   destroy(): void {
