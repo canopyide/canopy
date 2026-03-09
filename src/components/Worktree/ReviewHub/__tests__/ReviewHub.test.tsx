@@ -598,13 +598,35 @@ describe("ReviewHub", () => {
       });
     });
 
-    it("does not show PR indicator when branch has no remote", async () => {
+    it("does not show PR indicator when branch has no remote, even with PR data", async () => {
+      setWorktreePR({
+        prNumber: 42,
+        prUrl: "https://github.com/test/repo/pull/42",
+        prState: "open",
+      });
       getStagingStatusMock.mockResolvedValue(makeStatus({ hasRemote: false }));
 
       render(<ReviewHub isOpen={true} worktreePath={WORKTREE_PATH} onClose={vi.fn()} />);
 
       await waitFor(() => screen.getByText("index.ts"));
       expect(screen.queryByText("No PR")).toBeNull();
+      expect(screen.queryByText("#42")).toBeNull();
+    });
+
+    it("shows closed state for closed PRs", async () => {
+      setWorktreePR({
+        prNumber: 77,
+        prUrl: "https://github.com/test/repo/pull/77",
+        prState: "closed",
+      });
+      getStagingStatusMock.mockResolvedValue(makeStatus({ hasRemote: true }));
+
+      render(<ReviewHub isOpen={true} worktreePath={WORKTREE_PATH} onClose={vi.fn()} />);
+
+      await waitFor(() => {
+        screen.getByText("#77");
+        screen.getByText("closed");
+      });
     });
 
     it("shows merged state for merged PRs", async () => {
