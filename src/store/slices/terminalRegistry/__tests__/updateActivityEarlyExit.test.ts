@@ -157,6 +157,95 @@ describe("updateActivity early-exit (#2701)", () => {
     expect(after[0].activityTimestamp).toBe(2000);
   });
 
+  it("replaces array reference when activityType changes", () => {
+    useTerminalStore.setState({ terminals: [baseTerminal] });
+
+    const before = useTerminalStore.getState().terminals;
+
+    useTerminalStore
+      .getState()
+      .updateActivity(
+        baseTerminal.id,
+        baseTerminal.activityHeadline,
+        baseTerminal.activityStatus,
+        "interactive",
+        baseTerminal.activityTimestamp,
+        baseTerminal.lastCommand
+      );
+
+    const after = useTerminalStore.getState().terminals;
+    expect(after).not.toBe(before);
+    expect(after[0].activityType).toBe("interactive");
+  });
+
+  it("replaces array reference when lastCommand changes", () => {
+    useTerminalStore.setState({ terminals: [baseTerminal] });
+
+    const before = useTerminalStore.getState().terminals;
+
+    useTerminalStore
+      .getState()
+      .updateActivity(
+        baseTerminal.id,
+        baseTerminal.activityHeadline,
+        baseTerminal.activityStatus,
+        baseTerminal.activityType,
+        baseTerminal.activityTimestamp,
+        "npm run build"
+      );
+
+    const after = useTerminalStore.getState().terminals;
+    expect(after).not.toBe(before);
+    expect(after[0].lastCommand).toBe("npm run build");
+  });
+
+  it("preserves array reference for unchanged terminal when sibling terminal differs", () => {
+    const sibling = { ...baseTerminal, id: "test-terminal-2", title: "Sibling" };
+    useTerminalStore.setState({ terminals: [baseTerminal, sibling] });
+
+    const before = useTerminalStore.getState().terminals;
+    const siblingBefore = before[1];
+
+    useTerminalStore
+      .getState()
+      .updateActivity(
+        baseTerminal.id,
+        baseTerminal.activityHeadline,
+        baseTerminal.activityStatus,
+        baseTerminal.activityType,
+        baseTerminal.activityTimestamp,
+        baseTerminal.lastCommand
+      );
+
+    const after = useTerminalStore.getState().terminals;
+    expect(after).toBe(before);
+    expect(after[1]).toBe(siblingBefore);
+  });
+
+  it("updates only the target terminal when multiple terminals exist", () => {
+    const sibling = { ...baseTerminal, id: "test-terminal-2", title: "Sibling" };
+    useTerminalStore.setState({ terminals: [baseTerminal, sibling] });
+
+    const before = useTerminalStore.getState().terminals;
+    const siblingBefore = before[1];
+
+    useTerminalStore
+      .getState()
+      .updateActivity(
+        baseTerminal.id,
+        "Updated headline",
+        baseTerminal.activityStatus,
+        baseTerminal.activityType,
+        2000,
+        baseTerminal.lastCommand
+      );
+
+    const after = useTerminalStore.getState().terminals;
+    expect(after).not.toBe(before);
+    expect(after[0].activityHeadline).toBe("Updated headline");
+    expect(after[1]).toBe(siblingBefore);
+  });
+
   it("preserves array reference when terminal id is not found", () => {
     useTerminalStore.setState({ terminals: [baseTerminal] });
 
