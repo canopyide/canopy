@@ -350,11 +350,11 @@ export function useProjectSwitcherPalette(): UseProjectSwitcherPaletteReturn {
 
   const selectProject = useCallback(
     async (project: SearchableProject) => {
-      close();
-
       if (project.isActive || project.isMissing) {
         return;
       }
+
+      close();
 
       if (project.isBackground) {
         notify({
