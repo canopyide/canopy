@@ -48,8 +48,13 @@ vi.mock("../notificationStore", () => ({
   },
 }));
 
-const { useWorktreeDataStore, cleanupWorktreeDataStore, forceReinitializeWorktreeDataStore } =
-  await import("../worktreeDataStore");
+const {
+  useWorktreeDataStore,
+  cleanupWorktreeDataStore,
+  forceReinitializeWorktreeDataStore,
+  prePopulateWorktreeSnapshot,
+  resetSnapshotCacheForTests,
+} = await import("../worktreeDataStore");
 
 function createMockWorktree(id: string, overrides: Partial<WorktreeState> = {}): WorktreeState {
   return {
@@ -74,6 +79,9 @@ describe("worktreeDataStore project switch race conditions", () => {
     refreshMock.mockReset();
     vi.clearAllMocks();
     cleanupWorktreeDataStore();
+    // Clear the snapshot cache so earlier test runs cannot supply pre-cached
+    // data to prePopulateWorktreeSnapshot() calls in later tests.
+    resetSnapshotCacheForTests();
     useWorktreeDataStore.setState({
       worktrees: new Map(),
       projectId: null,
@@ -215,5 +223,84 @@ describe("worktreeDataStore project switch race conditions", () => {
     expect(state.worktrees.has("a-main")).toBe(false);
     expect(state.worktrees.has("b-main")).toBe(false);
     expect(state.worktrees.size).toBe(1);
+  });
+
+  it("blocks refresh() during the prePopulate→forceReinit window to prevent cross-project contamination", async () => {
+    const projectAWorktrees = [createMockWorktree("project-a-main", { isMainWorktree: true })];
+    const projectBWorktrees = [createMockWorktree("project-b-main", { isMainWorktree: true })];
+
+    // Initialize project A.
+    getAllMock.mockResolvedValueOnce(projectAWorktrees);
+    refreshMock.mockResolvedValue(undefined);
+
+    useWorktreeDataStore.getState().initialize();
+    await vi.waitFor(() => {
+      expect(useWorktreeDataStore.getState().isInitialized).toBe(true);
+    });
+
+    // Simulate project switch: cleanup → prePopulate (main process switch in-flight).
+    cleanupWorktreeDataStore();
+    prePopulateWorktreeSnapshot("project-b");
+
+    // At this point isSwitching = true.  A refresh() triggered by the sidebar refresh
+    // button must be rejected — the main process is still on project A.
+    const getAllCallsBefore = getAllMock.mock.calls.length;
+    const refreshCallsBefore = refreshMock.mock.calls.length;
+
+    await useWorktreeDataStore.getState().refresh();
+
+    // Neither worktreeClient.refresh nor worktreeClient.getAll should have been called.
+    expect(refreshMock.mock.calls.length).toBe(refreshCallsBefore);
+    expect(getAllMock.mock.calls.length).toBe(getAllCallsBefore);
+
+    // Now simulate main process switch completing → forceReinit clears the lock.
+    getAllMock.mockResolvedValueOnce(projectBWorktrees);
+    forceReinitializeWorktreeDataStore("project-b");
+
+    await vi.waitFor(() => {
+      expect(useWorktreeDataStore.getState().isInitialized).toBe(true);
+    });
+
+    // Only project B's worktrees must be in the store.
+    const state = useWorktreeDataStore.getState();
+    expect(state.worktrees.has("project-b-main")).toBe(true);
+    expect(state.worktrees.has("project-a-main")).toBe(false);
+    expect(state.projectId).toBe("project-b");
+  });
+
+  it("allows refresh() after forceReinitializeWorktreeDataStore clears the switching lock", async () => {
+    const projectBWorktrees = [createMockWorktree("project-b-main", { isMainWorktree: true })];
+    const projectBWorktreesAfterRefresh = [
+      createMockWorktree("project-b-main", { isMainWorktree: true }),
+      createMockWorktree("project-b-feature"),
+    ];
+
+    // Go through the full switch flow to project B.
+    cleanupWorktreeDataStore();
+    prePopulateWorktreeSnapshot("project-b");
+    getAllMock.mockResolvedValueOnce(projectBWorktrees);
+    forceReinitializeWorktreeDataStore("project-b");
+
+    await vi.waitFor(() => {
+      expect(useWorktreeDataStore.getState().isInitialized).toBe(true);
+    });
+
+    // Now refresh() must work normally (isSwitching = false after forceReinit).
+    // refreshMock returns undefined (already configured) and getAll returns updated list.
+    refreshMock.mockResolvedValue(undefined);
+    getAllMock.mockResolvedValueOnce(projectBWorktreesAfterRefresh);
+
+    const refreshCallsBefore = refreshMock.mock.calls.length;
+    await useWorktreeDataStore.getState().refresh();
+
+    // Verify that the IPC refresh was actually invoked (lock was cleared).
+    expect(refreshMock.mock.calls.length).toBe(refreshCallsBefore + 1);
+
+    const state = useWorktreeDataStore.getState();
+    expect(state.worktrees.has("project-b-main")).toBe(true);
+    expect(state.worktrees.has("project-b-feature")).toBe(true);
+    expect(state.worktrees.has("project-a-main")).toBe(false);
+    expect(state.worktrees.size).toBe(2);
+    expect(state.projectId).toBe("project-b");
   });
 });

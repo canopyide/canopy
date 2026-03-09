@@ -27,6 +27,11 @@ let cleanupListeners: (() => void) | null = null;
 let initPromise: Promise<void> | null = null;
 let storeGeneration = 0;
 let targetProjectId: string | null = null;
+// True during the window between cleanupWorktreeDataStore() and forceReinitializeWorktreeDataStore().
+// During this window the main process has not yet completed its project switch, so any IPC
+// fetch (refresh) would return data from the outgoing project.  Block refresh() until the
+// switch is finalised.
+let isSwitching = false;
 
 const MAX_SNAPSHOT_CACHE_SIZE = 3;
 
@@ -101,7 +106,15 @@ export const useWorktreeDataStore = create<WorktreeDataStore>()((set, get) => ({
     // This must run before the isInitialized guard so that push events
     // are never silently dropped after a cleanup+remount.
     if (!cleanupListeners) {
+      const listenerGeneration = storeGeneration;
       const unsubUpdate = worktreeClient.onUpdate((state) => {
+        if (storeGeneration !== listenerGeneration) {
+          console.warn(
+            "[WorktreeDataStore] Discarding stale onUpdate event - project switched since listener was registered",
+            { stateId: state.id }
+          );
+          return;
+        }
         set((prev) => {
           const next = new Map(prev.worktrees);
           const existing = prev.worktrees.get(state.id);
@@ -353,6 +366,12 @@ export const useWorktreeDataStore = create<WorktreeDataStore>()((set, get) => ({
   },
 
   refresh: async () => {
+    if (isSwitching) {
+      console.warn(
+        "[WorktreeDataStore] refresh() skipped - project switch in progress (main process not ready)"
+      );
+      return;
+    }
     const capturedGeneration = storeGeneration;
     const capturedProjectId = targetProjectId;
     try {
@@ -447,6 +466,12 @@ export function prePopulateWorktreeSnapshot(projectId: string) {
   // Call forceReinitializeWorktreeDataStore() once the backend is ready to fetch fresh data.
   storeGeneration++;
   targetProjectId = projectId;
+  // Lock out refresh() until the main process completes its switch.
+  // Between here and forceReinitializeWorktreeDataStore(), targetProjectId is set to the
+  // incoming project but the IPC layer is still serving the outgoing project's data.
+  // Any refresh() in this window would write the wrong project's worktrees into the store
+  // under the new projectId, bypassing all generation and projectMismatch guards.
+  isSwitching = true;
   cleanupListeners?.();
   cleanupListeners = null;
   initPromise = null;
@@ -480,6 +505,8 @@ export function forceReinitializeWorktreeDataStore(projectId?: string) {
   const currentWorktrees = useWorktreeDataStore.getState().worktrees;
   storeGeneration++;
   targetProjectId = projectId ?? null;
+  // Main process switch is confirmed complete — allow refresh() to proceed.
+  isSwitching = false;
   cleanupListeners?.();
   cleanupListeners = null;
   initPromise = null;
@@ -505,6 +532,11 @@ export function forceReinitializeWorktreeDataStore(projectId?: string) {
  * This should be called after terminal hydration completes to ensure
  * terminals are loaded before checking for orphans.
  */
+export function resetSnapshotCacheForTests(): void {
+  projectSnapshotCache.clear();
+  isSwitching = false;
+}
+
 export function cleanupOrphanedTerminals() {
   const getWorktreeIds = (wtMap: Map<string, WorktreeState>) => {
     const ids = new Set<string>();
