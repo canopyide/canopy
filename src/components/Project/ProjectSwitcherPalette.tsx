@@ -73,6 +73,7 @@ function ProjectListItem({
       id={`project-option-${project.id}`}
       role="option"
       aria-selected={index === selectedIndex}
+      aria-disabled={project.isMissing || undefined}
       className={cn(
         "group relative w-full flex items-center gap-3 px-3 py-2 rounded-[var(--radius-md)] text-left transition-colors border border-transparent",
         project.isActive

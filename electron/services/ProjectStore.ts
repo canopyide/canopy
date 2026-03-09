@@ -231,6 +231,7 @@ export class ProjectStore {
 
     const safeUpdates: Partial<Project> = {};
     if (updates.name !== undefined) safeUpdates.name = updates.name;
+    if (updates.path !== undefined) safeUpdates.path = updates.path;
     if (updates.emoji !== undefined) safeUpdates.emoji = updates.emoji;
     if (updates.color !== undefined) safeUpdates.color = updates.color;
     if (updates.lastOpened !== undefined) safeUpdates.lastOpened = updates.lastOpened;
