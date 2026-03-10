@@ -17,6 +17,10 @@ export function WorktreeSidebarSearchBar({ inputRef }: WorktreeSidebarSearchBarP
   const internalRef = useRef<HTMLInputElement | null>(null);
 
   useEffect(() => {
+    if (debounceRef.current) {
+      clearTimeout(debounceRef.current);
+      debounceRef.current = null;
+    }
     setLocalQuery(query);
   }, [query]);
 

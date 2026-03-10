@@ -258,8 +258,8 @@ function SidebarContent({ onOpenOverview }: SidebarContentProps) {
       activityFilters,
     };
 
-    // Filter non-main worktrees only
-    const nonMain = worktrees.filter((w) => !w.isMainWorktree);
+    // Filter non-main worktrees only (exclude by ID to handle fallback case)
+    const nonMain = worktrees.filter((w) => w.id !== mainWorktree?.id);
     const filtered = nonMain.filter((worktree) => {
       const derived = derivedMetaMap.get(worktree.id) ?? {
         hasErrors: false,
@@ -304,6 +304,7 @@ function SidebarContent({ onOpenOverview }: SidebarContentProps) {
     activityFilters,
     alwaysShowActive,
     pinnedWorktrees,
+    mainWorktree,
     derivedMetaMap,
     activeWorktreeId,
   ]);
