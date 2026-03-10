@@ -645,15 +645,12 @@ function registerCanopyFileProtocol(): void {
         return new Response("Missing path or root parameter", { status: 400 });
       }
 
-      const decodedPath = decodeURIComponent(filePath);
-      const decodedRoot = decodeURIComponent(rootPath);
-
-      if (!path.isAbsolute(decodedPath) || !path.isAbsolute(decodedRoot)) {
+      if (!path.isAbsolute(filePath) || !path.isAbsolute(rootPath)) {
         return new Response("Paths must be absolute", { status: 400 });
       }
 
-      const normalizedFile = path.normalize(decodedPath);
-      const normalizedRoot = path.normalize(decodedRoot);
+      const normalizedFile = path.normalize(filePath);
+      const normalizedRoot = path.normalize(rootPath);
 
       if (
         !normalizedFile.startsWith(normalizedRoot + path.sep) &&
