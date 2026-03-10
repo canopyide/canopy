@@ -137,9 +137,7 @@ export function ImageViewerTab() {
             >
               {isSaving ? "Saving…" : "Save"}
             </button>
-            {saved && (
-              <span className="text-xs text-status-success">Saved</span>
-            )}
+            {saved && <span className="text-xs text-status-success">Saved</span>}
           </div>
 
           {saveError && <p className="text-xs text-status-error">{saveError}</p>}

@@ -94,9 +94,7 @@ describe("FileViewerModal", () => {
   });
 
   it("renders inline image for PNG files without calling filesClient.read", async () => {
-    render(
-      <FileViewerModal {...defaultProps} filePath="/project/assets/logo.png" />
-    );
+    render(<FileViewerModal {...defaultProps} filePath="/project/assets/logo.png" />);
 
     await waitFor(() => {
       const img = screen.getByRole("img");
@@ -113,9 +111,7 @@ describe("FileViewerModal", () => {
   it.each(["jpg", "jpeg", "gif", "webp", "bmp", "ico"])(
     "renders inline image for .%s files",
     async (ext) => {
-      render(
-        <FileViewerModal {...defaultProps} filePath={`/project/image.${ext}`} />
-      );
+      render(<FileViewerModal {...defaultProps} filePath={`/project/image.${ext}`} />);
 
       await waitFor(() => {
         expect(screen.getByRole("img")).toBeTruthy();
@@ -131,9 +127,7 @@ describe("FileViewerModal", () => {
       content: '<svg xmlns="http://www.w3.org/2000/svg"><circle r="10"/></svg>',
     });
 
-    render(
-      <FileViewerModal {...defaultProps} filePath="/project/icon.svg" />
-    );
+    render(<FileViewerModal {...defaultProps} filePath="/project/icon.svg" />);
 
     await waitFor(() => {
       expect(mockRead).toHaveBeenCalledWith({
@@ -149,9 +143,7 @@ describe("FileViewerModal", () => {
   it("shows binary error with Open in Editor for non-image binaries", async () => {
     mockRead.mockResolvedValue({ ok: false, code: "BINARY_FILE" });
 
-    render(
-      <FileViewerModal {...defaultProps} filePath="/project/app.wasm" />
-    );
+    render(<FileViewerModal {...defaultProps} filePath="/project/app.wasm" />);
 
     await waitFor(() => {
       expect(screen.getByText("Binary file — cannot display")).toBeTruthy();
@@ -161,9 +153,7 @@ describe("FileViewerModal", () => {
   });
 
   it("dispatches file.openImageViewer when image viewer button is clicked", async () => {
-    render(
-      <FileViewerModal {...defaultProps} filePath="/project/photo.jpg" />
-    );
+    render(<FileViewerModal {...defaultProps} filePath="/project/photo.jpg" />);
 
     await waitFor(() => {
       expect(screen.getByText("Open in Image Viewer")).toBeTruthy();
