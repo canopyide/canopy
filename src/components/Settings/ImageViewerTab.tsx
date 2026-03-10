@@ -24,6 +24,10 @@ export function ImageViewerTab() {
 
   useEffect(() => {
     if (!activeProjectId) return;
+    setMode("os");
+    setCustomCommand("");
+    setSaved(false);
+    setSaveError(null);
     let cancelled = false;
     window.electron.project
       .getSettings(activeProjectId)

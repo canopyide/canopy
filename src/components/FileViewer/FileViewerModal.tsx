@@ -157,6 +157,11 @@ export function FileViewerModal({
       .catch((err) => console.error("[FileViewerModal] openInEditor failed:", err));
   }, [filePath, initialLine, initialCol]);
 
+  const handleImageError = useCallback(() => {
+    setErrorCode("NOT_FOUND");
+    setLoadState("error");
+  }, []);
+
   const handleOpenInImageViewer = useCallback(() => {
     actionService
       .dispatch("file.openImageViewer", { path: filePath }, { source: "user" })
@@ -332,6 +337,7 @@ export function FileViewerModal({
                 alt={fileName}
                 className="max-w-full max-h-[70vh] object-contain rounded"
                 draggable={false}
+                onError={handleImageError}
               />
             )}
             {loadState === "svg" && sanitizedSvg && (
@@ -372,14 +378,25 @@ export function FileViewerModal({
             {loadState === "error" && errorCode && (
               <div className="flex flex-col items-center justify-center h-64 gap-3">
                 <p className="text-sm text-muted-foreground">{ERROR_MESSAGES[errorCode]}</p>
-                <button
-                  type="button"
-                  onClick={handleOpenInEditor}
-                  className="flex items-center gap-1.5 px-3 py-1.5 text-xs text-canopy-text bg-canopy-border hover:bg-canopy-border/80 rounded transition-colors"
-                >
-                  <ExternalLink className="w-3.5 h-3.5" />
-                  Open in Editor
-                </button>
+                {imageFile ? (
+                  <button
+                    type="button"
+                    onClick={handleOpenInImageViewer}
+                    className="flex items-center gap-1.5 px-3 py-1.5 text-xs text-canopy-text bg-canopy-border hover:bg-canopy-border/80 rounded transition-colors"
+                  >
+                    <ImageIcon className="w-3.5 h-3.5" />
+                    Open in Image Viewer
+                  </button>
+                ) : (
+                  <button
+                    type="button"
+                    onClick={handleOpenInEditor}
+                    className="flex items-center gap-1.5 px-3 py-1.5 text-xs text-canopy-text bg-canopy-border hover:bg-canopy-border/80 rounded transition-colors"
+                  >
+                    <ExternalLink className="w-3.5 h-3.5" />
+                    Open in Editor
+                  </button>
+                )}
               </div>
             )}
 
