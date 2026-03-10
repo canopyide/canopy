@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useState, useRef } from "react";
-import { Search, Filter, X } from "lucide-react";
+import { Search, X } from "lucide-react";
 import { cn } from "@/lib/utils";
 import { useWorktreeFilterStore } from "@/store/worktreeFilterStore";
 import { WorktreeFilterPopover } from "./WorktreeFilterPopover";
