@@ -131,7 +131,6 @@ export const HybridInputBar = forwardRef<HybridInputBarHandle, HybridInputBarPro
     const [value, setValue] = useState(() => getDraftInput(terminalId, projectId));
     const submitAfterCompositionRef = useRef(false);
     const isComposingRef = useRef(false);
-    const sendRafRef = useRef<number | null>(null);
     const editorHostRef = useRef<HTMLDivElement | null>(null);
     const editorViewRef = useRef<EditorView | null>(null);
     const placeholderCompartmentRef = useRef(new Compartment());
@@ -250,14 +249,6 @@ export const HybridInputBar = forwardRef<HybridInputBarHandle, HybridInputBarPro
         setInitializationState("initialized");
       }
     }, [initializationState, isAgentTerminal, agentHasLifecycleEvent]);
-
-    useEffect(() => {
-      return () => {
-        if (sendRafRef.current !== null) {
-          cancelAnimationFrame(sendRafRef.current);
-        }
-      };
-    }, []);
 
     const isInitializing = isAgentTerminal && initializationState === "initializing";
 
@@ -606,14 +597,6 @@ export const HybridInputBar = forwardRef<HybridInputBarHandle, HybridInputBarPro
       sendText(text);
     }, [sendText]);
 
-    const queueSend = useCallback(() => {
-      if (sendRafRef.current !== null) return;
-      sendRafRef.current = requestAnimationFrame(() => {
-        sendRafRef.current = null;
-        sendFromEditor();
-      });
-    }, [sendFromEditor]);
-
     const focusEditor = useCallback(() => {
       const view = editorViewRef.current;
       if (!view) return;
@@ -884,7 +867,7 @@ export const HybridInputBar = forwardRef<HybridInputBarHandle, HybridInputBarPro
               return true;
             }
 
-            queueSend();
+            sendFromEditor();
             return true;
           },
           compositionstart: () => {
@@ -897,7 +880,11 @@ export const HybridInputBar = forwardRef<HybridInputBarHandle, HybridInputBarPro
             isComposingRef.current = false;
             if (!submitAfterCompositionRef.current) return false;
             submitAfterCompositionRef.current = false;
-            queueSend();
+            // Defer one tick so CM6 can commit the final composition text to
+            // view.state.doc before we read it.  Unlike the old RAF approach,
+            // setTimeout is NOT canceled by the blur handler, so a focus shift
+            // during composition cannot silently drop the submission.
+            setTimeout(sendFromEditor, 0);
             return false;
           },
           keydown: (event) => {
@@ -931,15 +918,10 @@ export const HybridInputBar = forwardRef<HybridInputBarHandle, HybridInputBarPro
             handledEnterRef.current = false;
             submitAfterCompositionRef.current = false;
 
-            if (sendRafRef.current !== null) {
-              cancelAnimationFrame(sendRafRef.current);
-              sendRafRef.current = null;
-            }
-
             return false;
           },
         }),
-      [applyAutocompleteSelection, queueSend]
+      [applyAutocompleteSelection, sendFromEditor]
     );
 
     const keymapExtension = useMemo(
@@ -1031,7 +1013,7 @@ export const HybridInputBar = forwardRef<HybridInputBarHandle, HybridInputBarPro
               handledEnterRef.current = false;
             }, 0);
 
-            queueSend();
+            sendFromEditor();
             return true;
           },
           onEscape: () => {
@@ -1159,7 +1141,7 @@ export const HybridInputBar = forwardRef<HybridInputBarHandle, HybridInputBarPro
             return true;
           },
         }),
-      [applyAutocompleteSelection, handleHistoryNavigation, queueSend]
+      [applyAutocompleteSelection, handleHistoryNavigation, sendFromEditor]
     );
 
     useLayoutEffect(() => {
