@@ -1,5 +1,4 @@
 import { useEffect } from "react";
-import { shouldShowFirstRunToast, markFirstRunToastSeen } from "../../lib/firstRunToast";
 import { keybindingService } from "../../services/KeybindingService";
 import { Kbd } from "../../components/ui/Kbd";
 import { isElectronAvailable } from "../useElectron";
@@ -10,9 +9,12 @@ export function useFirstRunToasts(isStateLoaded: boolean) {
     if (!isElectronAvailable() || !isStateLoaded) {
       return;
     }
+    if (!window.electron?.onboarding) return;
 
-    if (shouldShowFirstRunToast()) {
-      markFirstRunToastSeen();
+    window.electron.onboarding.get().then((state) => {
+      if (!state.completed || state.firstRunToastSeen) return;
+
+      void window.electron.onboarding.markToastSeen();
 
       const shortcuts = [
         { id: "nav.quickSwitcher", label: "switch terminals" },
@@ -37,6 +39,6 @@ export function useFirstRunToasts(isStateLoaded: boolean) {
         inboxMessage: "Keyboard shortcuts are available — use the action palette to explore",
         duration: 9000,
       });
-    }
+    });
   }, [isStateLoaded]);
 }
