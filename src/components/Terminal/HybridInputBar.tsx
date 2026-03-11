@@ -565,9 +565,6 @@ export const HybridInputBar = forwardRef<HybridInputBarHandle, HybridInputBarPro
               }
             }
           }
-          if (ranges.length === 0 && docLen > 0) {
-            ranges.push({ from: 0, to: docLen });
-          }
           view.dispatch({
             effects: [setInterimRange.of(null), setPendingAIRanges.of(ranges)],
           });

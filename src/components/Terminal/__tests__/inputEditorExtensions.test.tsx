@@ -1003,6 +1003,18 @@ describe("pendingAIField", () => {
     view.destroy();
   });
 
+  it("clamps negative from to zero", () => {
+    const view = makeView("hello");
+    view.dispatch({ effects: setPendingAIRanges.of([{ from: -5, to: 3 }]) });
+
+    const decos = view.state.field(pendingAIField);
+    const iter = decos.iter();
+    expect(iter.value).not.toBeNull();
+    expect(iter.from).toBe(0);
+    expect(iter.to).toBe(3);
+    view.destroy();
+  });
+
   it("filters ranges where clamped from >= clamped to", () => {
     const view = makeView("hi");
     view.dispatch({ effects: setPendingAIRanges.of([{ from: 50, to: 100 }]) });
