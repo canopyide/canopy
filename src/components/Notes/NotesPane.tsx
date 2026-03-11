@@ -62,6 +62,7 @@ export function NotesPane({
   const [sent, setSent] = useState(false);
 
   const [viewMode, setViewMode] = useState<"edit" | "split" | "preview">("edit");
+  const [editorMountKey, setEditorMountKey] = useState(0);
 
   const saveTimeoutRef = useRef<NodeJS.Timeout | null>(null);
   const lastSavedContentRef = useRef<string>("");
@@ -259,7 +260,7 @@ export function NotesPane({
       scrollDOM.removeEventListener("scroll", onEditorScroll);
       previewEl.removeEventListener("scroll", onPreviewScroll);
     };
-  }, [viewMode]);
+  }, [viewMode, editorMountKey]);
 
   const handleCopyPath = useCallback(async () => {
     const addressablePath = `@.canopy/notes/${notePath}`;
@@ -552,6 +553,7 @@ export function NotesPane({
                   onChange={handleContentChange}
                   onCreateEditor={(view) => {
                     editorViewRef.current = view;
+                    setEditorMountKey((k) => k + 1);
                   }}
                   readOnly={hasConflict}
                   basicSetup={{

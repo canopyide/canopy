@@ -26,7 +26,9 @@ export const MarkdownPreview = forwardRef<HTMLDivElement, MarkdownPreviewProps>(
                   href={href}
                   onClick={(e) => {
                     e.preventDefault();
-                    if (href) window.electron.system.openExternal(href);
+                    if (href && /^https?:\/\/|^mailto:/i.test(href)) {
+                      window.electron.system.openExternal(href);
+                    }
                   }}
                 >
                   {children}
