@@ -37,6 +37,7 @@ export function terminalToSnapshot(t: TerminalInstance): TerminalSnapshot {
       ...(t.devPreviewConsoleOpen !== undefined && {
         devPreviewConsoleOpen: t.devPreviewConsoleOpen,
       }),
+      ...(t.createdAt !== undefined && { createdAt: t.createdAt }),
       ...(t.exitBehavior !== undefined && { exitBehavior: t.exitBehavior }),
     };
   }
