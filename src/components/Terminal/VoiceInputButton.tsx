@@ -171,7 +171,11 @@ export function VoiceInputButton({
         return;
       }
 
-      void actionService.dispatch("app.settings.openTab", { tab: "voice" }, { source: "user" });
+      void actionService.dispatch(
+        "app.settings.openTab",
+        { tab: "notifications" },
+        { source: "user" }
+      );
       return;
     }
 

@@ -113,7 +113,7 @@ export function SidecarDock() {
         case "settings:open:sidecar":
           void actionService.dispatch(
             "app.settings.openTab",
-            { tab: "sidecar" },
+            { tab: "integrations" },
             { source: "context-menu" }
           );
           break;

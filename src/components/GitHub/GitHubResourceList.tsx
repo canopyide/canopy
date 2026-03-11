@@ -307,7 +307,11 @@ export function GitHubResourceList({
   const isTokenError = error?.includes("GitHub token not configured") ?? false;
 
   const handleOpenGitHubSettings = () => {
-    void actionService.dispatch("app.settings.openTab", { tab: "github" }, { source: "user" });
+    void actionService.dispatch(
+      "app.settings.openTab",
+      { tab: "integrations" },
+      { source: "user" }
+    );
     onClose?.();
   };
 

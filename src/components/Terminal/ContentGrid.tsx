@@ -728,7 +728,7 @@ export function ContentGrid({ className, defaultCwd, agentAvailability }: Conten
       if (actionId === "settings:terminal") {
         void actionService.dispatch(
           "app.settings.openTab",
-          { tab: "terminal" },
+          { tab: "workspace" },
           { source: "context-menu" }
         );
       }

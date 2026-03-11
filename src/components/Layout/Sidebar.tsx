@@ -99,7 +99,7 @@ export function Sidebar({ width, onResize, children, className }: SidebarProps) 
         case "settings:worktree":
           void actionService.dispatch(
             "app.settings.openTab",
-            { tab: "worktree" },
+            { tab: "workspace" },
             { source: "context-menu" }
           );
           break;

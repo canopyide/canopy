@@ -254,10 +254,12 @@ export function Toolbar({
   const handleSettingsContextMenu = async (event: React.MouseEvent) => {
     const template: MenuItemOption[] = [
       { id: "settings:general", label: "General" },
-      { id: "settings:agents", label: "Agents" },
-      { id: "settings:terminal", label: "Terminal" },
+      { id: "settings:appearance", label: "Appearance" },
       { id: "settings:keyboard", label: "Keyboard" },
-      { id: "settings:sidecar", label: "Sidecar" },
+      { id: "settings:workspace", label: "Workspace" },
+      { id: "settings:agents", label: "Agents" },
+      { id: "settings:integrations", label: "Integrations" },
+      { id: "settings:notifications", label: "Notifications" },
       { type: "separator" },
       { id: "settings:troubleshooting", label: "Troubleshooting" },
     ];
