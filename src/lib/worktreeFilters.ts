@@ -329,7 +329,7 @@ export function findIntegrationWorktree<T extends Worktree | WorktreeState>(
         w.id !== mainWorktreeId &&
         !w.isMainWorktree &&
         w.branch != null &&
-        (INTEGRATION_BRANCH_NAMES as readonly string[]).includes(w.branch)
+        (INTEGRATION_BRANCH_NAMES as readonly string[]).includes(w.branch.toLowerCase())
     ) ?? null
   );
 }
