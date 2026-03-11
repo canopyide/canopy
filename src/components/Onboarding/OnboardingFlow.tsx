@@ -19,15 +19,10 @@ const STEP_ORDER: OnboardingStep[] = ["telemetry", "agentSelection", "agentSetup
 
 interface OnboardingFlowProps {
   availability: CliAvailability;
-  isCheckingAvailability: boolean;
   onRefreshSettings: () => Promise<void>;
 }
 
-export function OnboardingFlow({
-  availability,
-  isCheckingAvailability,
-  onRefreshSettings,
-}: OnboardingFlowProps) {
+export function OnboardingFlow({ availability, onRefreshSettings }: OnboardingFlowProps) {
   const [state, setState] = useState<OnboardingState | null>(null);
   const [currentStep, setCurrentStep] = useState<OnboardingStep | null>(null);
   const [agentSetupIds, setAgentSetupIds] = useState<string[]>([]);
