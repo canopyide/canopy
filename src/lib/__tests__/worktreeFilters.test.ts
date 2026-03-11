@@ -709,7 +709,25 @@ describe("findIntegrationWorktree", () => {
     expect(result?.id).toBe("dev");
   });
 
-  it("returns null for worktrees with null branch", () => {
+  it("excludes worktree by mainWorktreeId even when isMainWorktree is false", () => {
+    const worktrees = [
+      createMockWorktree({ id: "fallback-main", branch: "develop", isMainWorktree: false }),
+      createMockWorktree({ id: "feat", branch: "feature/test" }),
+    ];
+    const result = findIntegrationWorktree(worktrees, "fallback-main");
+    expect(result).toBeNull();
+  });
+
+  it("matches case-insensitively", () => {
+    const worktrees = [
+      createMockWorktree({ id: "main", branch: "main", isMainWorktree: true }),
+      createMockWorktree({ id: "dev", branch: "Develop" }),
+    ];
+    const result = findIntegrationWorktree(worktrees, "main");
+    expect(result?.id).toBe("dev");
+  });
+
+  it("returns null for worktrees with undefined branch", () => {
     const worktrees = [
       createMockWorktree({ id: "main", branch: "main", isMainWorktree: true }),
       createMockWorktree({ id: "detached", branch: undefined }),
