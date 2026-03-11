@@ -211,7 +211,11 @@ class ErrorService {
       const errors = this.pendingQueue.splice(0);
       const webContents = this.mainWindow!.webContents;
       for (const error of errors) {
-        webContents.send(CHANNELS.ERROR_NOTIFY, error);
+        try {
+          webContents.send(CHANNELS.ERROR_NOTIFY, error);
+        } catch {
+          // Window may have been destroyed mid-flush; re-buffer remaining
+        }
       }
       this.clearPersistedErrors();
     } finally {
