@@ -13,19 +13,12 @@ export const LaunchLocationSchema = z.enum(["grid", "dock"]);
 
 export const SettingsTabSchema = z.enum([
   "general",
+  "appearance",
   "keyboard",
-  "terminal",
-  "terminalAppearance",
-  "worktree",
+  "workspace",
   "agents",
-  "github",
-  "sidecar",
-  "toolbar",
-  "editor",
-  "imageViewer",
+  "integrations",
   "notifications",
-  "voice",
-  "mcp",
   "troubleshooting",
 ]);
 

@@ -102,11 +102,11 @@ export const SETTINGS_SEARCH_INDEX: SettingsSearchEntry[] = [
     keywords: ["reset", "default", "shortcuts", "restore", "keybindings"],
   },
 
-  // Terminal (Panel Grid)
+  // Workspace — Panel Grid
   {
     id: "terminal-performance-mode",
-    tab: "terminal",
-    tabLabel: "Terminal",
+    tab: "workspace",
+    tabLabel: "Workspace",
     section: "Performance Mode",
     title: "Performance Mode",
     description:
@@ -115,8 +115,8 @@ export const SETTINGS_SEARCH_INDEX: SettingsSearchEntry[] = [
   },
   {
     id: "terminal-hybrid-input",
-    tab: "terminal",
-    tabLabel: "Terminal",
+    tab: "workspace",
+    tabLabel: "Workspace",
     section: "Hybrid Input Bar",
     title: "Hybrid Input Bar",
     description: "Show the multi-line input bar on agent terminals",
@@ -124,8 +124,8 @@ export const SETTINGS_SEARCH_INDEX: SettingsSearchEntry[] = [
   },
   {
     id: "terminal-hybrid-autofocus",
-    tab: "terminal",
-    tabLabel: "Terminal",
+    tab: "workspace",
+    tabLabel: "Workspace",
     section: "Hybrid Input Bar",
     title: "Auto-Focus Input",
     description: "Selecting a pane focuses the input bar or the terminal (xterm)",
@@ -133,8 +133,8 @@ export const SETTINGS_SEARCH_INDEX: SettingsSearchEntry[] = [
   },
   {
     id: "terminal-two-pane-split",
-    tab: "terminal",
-    tabLabel: "Terminal",
+    tab: "workspace",
+    tabLabel: "Workspace",
     section: "Two-Pane Split Layout",
     title: "Two-Pane Split Layout",
     description: "When exactly two panels are open, display them with a resizable divider",
@@ -142,8 +142,8 @@ export const SETTINGS_SEARCH_INDEX: SettingsSearchEntry[] = [
   },
   {
     id: "terminal-scrollback",
-    tab: "terminal",
-    tabLabel: "Terminal",
+    tab: "workspace",
+    tabLabel: "Workspace",
     section: "Scrollback History",
     title: "Scrollback History",
     description: "Set base scrollback lines for terminal history: 1,000, 5,000, or 10,000 lines",
@@ -151,18 +151,97 @@ export const SETTINGS_SEARCH_INDEX: SettingsSearchEntry[] = [
   },
   {
     id: "terminal-grid-layout",
-    tab: "terminal",
-    tabLabel: "Terminal",
+    tab: "workspace",
+    tabLabel: "Workspace",
     section: "Grid Layout Strategy",
     title: "Grid Layout Strategy",
     description: "Control how panels arrange in the grid: automatic, fixed columns, or fixed rows",
     keywords: ["grid", "layout", "columns", "rows", "panels", "arrangement", "strategy"],
   },
+  {
+    id: "terminal-preview-layout",
+    tab: "workspace",
+    tabLabel: "Workspace",
+    section: "Two-Pane Split Layout",
+    title: "Preview-Focused Layout",
+    description:
+      "Give more space to browser or dev-preview panels (65/35 split) vs balanced layout (50/50)",
+    keywords: ["preview", "browser", "focused", "ratio", "split", "layout", "two pane"],
+  },
+  {
+    id: "terminal-default-ratio",
+    tab: "workspace",
+    tabLabel: "Workspace",
+    section: "Two-Pane Split Layout",
+    title: "Default Split Ratio",
+    description: "Set the default left/right split ratio for two-pane layout",
+    keywords: ["ratio", "split", "default", "percentage", "slider", "two pane"],
+  },
+  {
+    id: "terminal-reset-ratios",
+    tab: "workspace",
+    tabLabel: "Workspace",
+    section: "Two-Pane Split Layout",
+    title: "Reset All Worktree Split Ratios",
+    description: "Clear all per-worktree split ratio overrides and return to the default ratio",
+    keywords: ["reset", "worktree", "ratio", "split", "default", "clear"],
+  },
+
+  // Workspace — Worktree Paths
+  {
+    id: "worktree-path-pattern",
+    tab: "workspace",
+    tabLabel: "Workspace",
+    section: "Worktree Path Pattern",
+    title: "Worktree Path Pattern",
+    description:
+      "Customize where worktrees are created using variables: {base-folder}, {branch-slug}, {repo-name}, {parent-dir}",
+    keywords: ["worktree", "path", "pattern", "branch", "folder", "directory", "location", "git"],
+  },
+
+  // Workspace — Toolbar
+  {
+    id: "toolbar-left-buttons",
+    tab: "workspace",
+    tabLabel: "Workspace",
+    section: "Left Side Buttons",
+    title: "Left Toolbar Buttons",
+    description: "Drag to reorder, uncheck to hide left toolbar buttons",
+    keywords: ["toolbar", "buttons", "left", "reorder", "customize", "hide"],
+  },
+  {
+    id: "toolbar-right-buttons",
+    tab: "workspace",
+    tabLabel: "Workspace",
+    section: "Right Side Buttons",
+    title: "Right Toolbar Buttons",
+    description: "Drag to reorder, uncheck to hide right toolbar buttons",
+    keywords: ["toolbar", "buttons", "right", "reorder", "customize", "hide"],
+  },
+  {
+    id: "toolbar-launcher",
+    tab: "workspace",
+    tabLabel: "Workspace",
+    section: "Launcher Palette",
+    title: "Launcher Palette Settings",
+    description:
+      "Configure the default panel type highlighted when opening the launcher. Always show dev server option.",
+    keywords: ["launcher", "palette", "default", "panel", "dev server", "open", "selection"],
+  },
+  {
+    id: "toolbar-reset",
+    tab: "workspace",
+    tabLabel: "Workspace",
+    section: "Toolbar Customization",
+    title: "Reset Toolbar to Defaults",
+    description: "Reset all toolbar button positions and visibility to defaults",
+    keywords: ["reset", "default", "toolbar", "restore"],
+  },
 
   // Appearance
   {
     id: "appearance-theme",
-    tab: "terminalAppearance",
+    tab: "appearance",
     tabLabel: "Appearance",
     section: "App Theme",
     title: "App Theme",
@@ -171,7 +250,7 @@ export const SETTINGS_SEARCH_INDEX: SettingsSearchEntry[] = [
   },
   {
     id: "appearance-color-scheme",
-    tab: "terminalAppearance",
+    tab: "appearance",
     tabLabel: "Appearance",
     section: "Terminal Color Scheme",
     title: "Terminal Color Scheme",
@@ -180,7 +259,7 @@ export const SETTINGS_SEARCH_INDEX: SettingsSearchEntry[] = [
   },
   {
     id: "appearance-font-size",
-    tab: "terminalAppearance",
+    tab: "appearance",
     tabLabel: "Appearance",
     section: "Font Size",
     title: "Font Size",
@@ -189,24 +268,12 @@ export const SETTINGS_SEARCH_INDEX: SettingsSearchEntry[] = [
   },
   {
     id: "appearance-font-family",
-    tab: "terminalAppearance",
+    tab: "appearance",
     tabLabel: "Appearance",
     section: "Font Family",
     title: "Font Family",
     description: "Choose terminal font: JetBrains Mono or system monospace",
     keywords: ["font", "family", "mono", "JetBrains", "monospace", "typeface"],
-  },
-
-  // Worktree Paths
-  {
-    id: "worktree-path-pattern",
-    tab: "worktree",
-    tabLabel: "Worktree",
-    section: "Worktree Path Pattern",
-    title: "Worktree Path Pattern",
-    description:
-      "Customize where worktrees are created using variables: {base-folder}, {branch-slug}, {repo-name}, {parent-dir}",
-    keywords: ["worktree", "path", "pattern", "branch", "folder", "directory", "location", "git"],
   },
 
   // CLI Agents — General subtab
@@ -234,7 +301,7 @@ export const SETTINGS_SEARCH_INDEX: SettingsSearchEntry[] = [
     ],
   },
 
-  // CLI Agents — per-agent subtabs (default to "claude" subtab so search results land inside an agent card)
+  // CLI Agents — per-agent subtabs
   {
     id: "agents-enable",
     tab: "agents",
@@ -302,138 +369,22 @@ export const SETTINGS_SEARCH_INDEX: SettingsSearchEntry[] = [
     keywords: ["install", "setup", "wizard", "cli", "download", "npm", "brew"],
   },
 
-  // GitHub Integration
+  // Integrations — GitHub
   {
     id: "github-token",
-    tab: "github",
-    tabLabel: "GitHub",
+    tab: "integrations",
+    tabLabel: "Integrations",
     section: "Personal Access Token",
     title: "GitHub Personal Access Token",
     description: "Configure GitHub authentication token. Required scopes: repo, read:org",
     keywords: ["github", "token", "authentication", "auth", "PAT", "access", "scopes", "API"],
   },
 
-  // Sidecar Links
-  {
-    id: "sidecar-default-agent",
-    tab: "sidecar",
-    tabLabel: "Sidecar",
-    section: "Default New Tab Agent",
-    title: "Default New Tab Agent",
-    description: "Choose which agent opens when you click the + button in the sidecar",
-    keywords: ["sidecar", "agent", "default", "new tab", "browser"],
-  },
-  {
-    id: "sidecar-default-links",
-    tab: "sidecar",
-    tabLabel: "Sidecar",
-    section: "Default Links",
-    title: "Default Links",
-    description: "System-provided links shown in the sidecar panel",
-    keywords: ["sidecar", "links", "default", "browser", "bookmarks"],
-  },
-  {
-    id: "sidecar-custom-links",
-    tab: "sidecar",
-    tabLabel: "Sidecar",
-    section: "Custom Links",
-    title: "Custom Links",
-    description: "Add custom URLs and links to the sidecar panel",
-    keywords: ["sidecar", "custom", "links", "url", "add", "bookmark"],
-  },
-  {
-    id: "sidecar-width",
-    tab: "sidecar",
-    tabLabel: "Sidecar",
-    section: "Default Width",
-    title: "Sidecar Default Width",
-    description: "Set the default width of the sidecar panel",
-    keywords: ["sidecar", "width", "size", "panel", "resize"],
-  },
-
-  // Toolbar Customization
-  {
-    id: "toolbar-left-buttons",
-    tab: "toolbar",
-    tabLabel: "Toolbar",
-    section: "Left Side Buttons",
-    title: "Left Toolbar Buttons",
-    description: "Drag to reorder, uncheck to hide left toolbar buttons",
-    keywords: ["toolbar", "buttons", "left", "reorder", "customize", "hide"],
-  },
-  {
-    id: "toolbar-right-buttons",
-    tab: "toolbar",
-    tabLabel: "Toolbar",
-    section: "Right Side Buttons",
-    title: "Right Toolbar Buttons",
-    description: "Drag to reorder, uncheck to hide right toolbar buttons",
-    keywords: ["toolbar", "buttons", "right", "reorder", "customize", "hide"],
-  },
-  {
-    id: "toolbar-launcher",
-    tab: "toolbar",
-    tabLabel: "Toolbar",
-    section: "Launcher Palette",
-    title: "Launcher Palette Settings",
-    description:
-      "Configure the default panel type highlighted when opening the launcher. Always show dev server option.",
-    keywords: ["launcher", "palette", "default", "panel", "dev server", "open", "selection"],
-  },
-  {
-    id: "toolbar-reset",
-    tab: "toolbar",
-    tabLabel: "Toolbar",
-    section: "Toolbar Customization",
-    title: "Reset Toolbar to Defaults",
-    description: "Reset all toolbar button positions and visibility to defaults",
-    keywords: ["reset", "default", "toolbar", "restore"],
-  },
-
-  // Notifications
-  {
-    id: "notifications-completed",
-    tab: "notifications",
-    tabLabel: "Notifications",
-    section: "Agent Notifications",
-    title: "Agent Completed Notification",
-    description: "Show a notification when an agent finishes its task",
-    keywords: ["notification", "alert", "complete", "done", "agent", "finish"],
-  },
-  {
-    id: "notifications-waiting",
-    tab: "notifications",
-    tabLabel: "Notifications",
-    section: "Agent Notifications",
-    title: "Agent Waiting for Input",
-    description: "Show a notification when an agent needs input",
-    keywords: ["notification", "waiting", "input", "agent", "prompt", "pause"],
-  },
-  {
-    id: "notifications-failed",
-    tab: "notifications",
-    tabLabel: "Notifications",
-    section: "Agent Notifications",
-    title: "Agent Failed Notification",
-    description: "Show a notification when an agent encounters an error",
-    keywords: ["notification", "error", "failed", "agent", "alert"],
-  },
-  {
-    id: "notifications-sound",
-    tab: "notifications",
-    tabLabel: "Notifications",
-    section: "Sound",
-    title: "Notification Sound",
-    description:
-      "Play a sound when notifications fire. Choose from chime, ping, complete, waiting, or error sounds.",
-    keywords: ["sound", "audio", "chime", "ping", "notification", "alert", "volume"],
-  },
-
-  // Editor Integration
+  // Integrations — Editor
   {
     id: "editor-external",
-    tab: "editor",
-    tabLabel: "Editor",
+    tab: "integrations",
+    tabLabel: "Integrations",
     section: "External Editor",
     title: "External Editor",
     description:
@@ -453,11 +404,11 @@ export const SETTINGS_SEARCH_INDEX: SettingsSearchEntry[] = [
     ],
   },
 
-  // Image Viewer
+  // Integrations — Image Viewer
   {
     id: "image-viewer",
-    tab: "imageViewer",
-    tabLabel: "Image Viewer",
+    tab: "integrations",
+    tabLabel: "Integrations",
     section: "Image Viewer",
     title: "Image Viewer",
     description:
@@ -476,6 +427,199 @@ export const SETTINGS_SEARCH_INDEX: SettingsSearchEntry[] = [
       "photoshop",
       "gimp",
     ],
+  },
+
+  // Integrations — Sidecar
+  {
+    id: "sidecar-default-agent",
+    tab: "integrations",
+    tabLabel: "Integrations",
+    section: "Default New Tab Agent",
+    title: "Default New Tab Agent",
+    description: "Choose which agent opens when you click the + button in the sidecar",
+    keywords: ["sidecar", "agent", "default", "new tab", "browser"],
+  },
+  {
+    id: "sidecar-default-links",
+    tab: "integrations",
+    tabLabel: "Integrations",
+    section: "Default Links",
+    title: "Default Links",
+    description: "System-provided links shown in the sidecar panel",
+    keywords: ["sidecar", "links", "default", "browser", "bookmarks"],
+  },
+  {
+    id: "sidecar-custom-links",
+    tab: "integrations",
+    tabLabel: "Integrations",
+    section: "Custom Links",
+    title: "Custom Links",
+    description: "Add custom URLs and links to the sidecar panel",
+    keywords: ["sidecar", "custom", "links", "url", "add", "bookmark"],
+  },
+  {
+    id: "sidecar-width",
+    tab: "integrations",
+    tabLabel: "Integrations",
+    section: "Default Width",
+    title: "Sidecar Default Width",
+    description: "Set the default width of the sidecar panel",
+    keywords: ["sidecar", "width", "size", "panel", "resize"],
+  },
+
+  // Integrations — MCP Server
+  {
+    id: "mcp-server-enable",
+    tab: "integrations",
+    tabLabel: "Integrations",
+    section: "MCP Server",
+    title: "Enable MCP Server",
+    description:
+      "Start a local MCP server so AI agents can invoke Canopy actions (open terminals, inject context, switch worktrees, etc.)",
+    keywords: ["mcp", "server", "agent", "local", "tools", "automation", "api", "enable"],
+  },
+  {
+    id: "mcp-server-config",
+    tab: "integrations",
+    tabLabel: "Integrations",
+    section: "Connection",
+    title: "Copy MCP Config",
+    description:
+      "Copy the MCP server config snippet (JSON) to paste into your MCP client configuration",
+    keywords: ["mcp", "config", "copy", "snippet", "json", "client", "cursor", "claude"],
+  },
+  {
+    id: "mcp-server-port",
+    tab: "integrations",
+    tabLabel: "Integrations",
+    section: "Port",
+    title: "Server Port",
+    description:
+      "Set a fixed port for the MCP server or leave empty for automatic ephemeral port assignment",
+    keywords: ["mcp", "port", "fixed", "ephemeral", "network", "bind"],
+  },
+  {
+    id: "mcp-server-auth",
+    tab: "integrations",
+    tabLabel: "Integrations",
+    section: "Authentication",
+    title: "API Key Authentication",
+    description:
+      "Generate a bearer token to secure MCP connections. Clients must include the token in the Authorization header.",
+    keywords: ["mcp", "api", "key", "auth", "token", "bearer", "security", "password"],
+  },
+
+  // Notifications
+  {
+    id: "notifications-completed",
+    tab: "notifications",
+    tabLabel: "Notifications & Voice",
+    section: "Agent Notifications",
+    title: "Agent Completed Notification",
+    description: "Show a notification when an agent finishes its task",
+    keywords: ["notification", "alert", "complete", "done", "agent", "finish"],
+  },
+  {
+    id: "notifications-waiting",
+    tab: "notifications",
+    tabLabel: "Notifications & Voice",
+    section: "Agent Notifications",
+    title: "Agent Waiting for Input",
+    description: "Show a notification when an agent needs input",
+    keywords: ["notification", "waiting", "input", "agent", "prompt", "pause"],
+  },
+  {
+    id: "notifications-failed",
+    tab: "notifications",
+    tabLabel: "Notifications & Voice",
+    section: "Agent Notifications",
+    title: "Agent Failed Notification",
+    description: "Show a notification when an agent encounters an error",
+    keywords: ["notification", "error", "failed", "agent", "alert"],
+  },
+  {
+    id: "notifications-sound",
+    tab: "notifications",
+    tabLabel: "Notifications & Voice",
+    section: "Sound",
+    title: "Notification Sound",
+    description:
+      "Play a sound when notifications fire. Choose from chime, ping, complete, waiting, or error sounds.",
+    keywords: ["sound", "audio", "chime", "ping", "notification", "alert", "volume"],
+  },
+
+  // Voice Input
+  {
+    id: "voice-enable",
+    tab: "notifications",
+    tabLabel: "Notifications & Voice",
+    section: "Voice Input",
+    title: "Enable Voice Input",
+    description: "Enable speech-to-text voice input for terminal commands",
+    keywords: ["voice", "speech", "microphone", "dictation", "stt", "enable"],
+  },
+  {
+    id: "voice-deepgram-key",
+    tab: "notifications",
+    tabLabel: "Notifications & Voice",
+    section: "Voice Input",
+    title: "Deepgram API Key",
+    description: "Configure Deepgram API key for speech-to-text transcription",
+    keywords: ["deepgram", "api", "key", "speech", "transcription", "voice"],
+  },
+  {
+    id: "voice-language",
+    tab: "notifications",
+    tabLabel: "Notifications & Voice",
+    section: "Voice Input",
+    title: "Transcription Language",
+    description: "Set the language for voice transcription",
+    keywords: ["language", "locale", "voice", "transcription", "speech"],
+  },
+  {
+    id: "voice-model",
+    tab: "notifications",
+    tabLabel: "Notifications & Voice",
+    section: "Voice Input",
+    title: "Transcription Model",
+    description: "Choose the Deepgram model for voice transcription: nova-2 or nova-3",
+    keywords: ["model", "nova", "deepgram", "transcription", "voice", "accuracy"],
+  },
+  {
+    id: "voice-custom-dictionary",
+    tab: "notifications",
+    tabLabel: "Notifications & Voice",
+    section: "Voice Input",
+    title: "Custom Dictionary",
+    description: "Add custom words and phrases to improve voice recognition accuracy",
+    keywords: ["dictionary", "custom", "words", "vocabulary", "recognition", "voice"],
+  },
+  {
+    id: "voice-ai-correction",
+    tab: "notifications",
+    tabLabel: "Notifications & Voice",
+    section: "AI Text Correction",
+    title: "AI Text Correction",
+    description: "Use AI to clean up and correct voice transcription output",
+    keywords: ["ai", "correction", "cleanup", "voice", "openai", "text"],
+  },
+  {
+    id: "voice-openai-key",
+    tab: "notifications",
+    tabLabel: "Notifications & Voice",
+    section: "AI Text Correction",
+    title: "OpenAI API Key",
+    description: "Configure OpenAI API key for AI text correction of voice transcriptions",
+    keywords: ["openai", "api", "key", "correction", "voice", "gpt"],
+  },
+  {
+    id: "voice-correction-model",
+    tab: "notifications",
+    tabLabel: "Notifications & Voice",
+    section: "AI Text Correction",
+    title: "Correction Model",
+    description: "Choose the AI model used for text correction: gpt-4o-mini or gpt-4o",
+    keywords: ["model", "correction", "gpt", "openai", "voice", "ai"],
   },
 
   // Troubleshooting
@@ -550,77 +694,5 @@ export const SETTINGS_SEARCH_INDEX: SettingsSearchEntry[] = [
     title: "Enable Verbose Logging",
     description: "Enable verbose logging for this session only. Resets on app restart.",
     keywords: ["verbose", "logging", "debug", "log level", "session"],
-  },
-
-  // Terminal sub-controls
-  {
-    id: "terminal-preview-layout",
-    tab: "terminal",
-    tabLabel: "Terminal",
-    section: "Two-Pane Split Layout",
-    title: "Preview-Focused Layout",
-    description:
-      "Give more space to browser or dev-preview panels (65/35 split) vs balanced layout (50/50)",
-    keywords: ["preview", "browser", "focused", "ratio", "split", "layout", "two pane"],
-  },
-  {
-    id: "terminal-default-ratio",
-    tab: "terminal",
-    tabLabel: "Terminal",
-    section: "Two-Pane Split Layout",
-    title: "Default Split Ratio",
-    description: "Set the default left/right split ratio for two-pane layout",
-    keywords: ["ratio", "split", "default", "percentage", "slider", "two pane"],
-  },
-  {
-    id: "terminal-reset-ratios",
-    tab: "terminal",
-    tabLabel: "Terminal",
-    section: "Two-Pane Split Layout",
-    title: "Reset All Worktree Split Ratios",
-    description: "Clear all per-worktree split ratio overrides and return to the default ratio",
-    keywords: ["reset", "worktree", "ratio", "split", "default", "clear"],
-  },
-
-  // MCP Server
-  {
-    id: "mcp-server-enable",
-    tab: "mcp",
-    tabLabel: "MCP Server",
-    section: "MCP Server",
-    title: "Enable MCP Server",
-    description:
-      "Start a local MCP server so AI agents can invoke Canopy actions (open terminals, inject context, switch worktrees, etc.)",
-    keywords: ["mcp", "server", "agent", "local", "tools", "automation", "api", "enable"],
-  },
-  {
-    id: "mcp-server-config",
-    tab: "mcp",
-    tabLabel: "MCP Server",
-    section: "Connection",
-    title: "Copy MCP Config",
-    description:
-      "Copy the MCP server config snippet (JSON) to paste into your MCP client configuration",
-    keywords: ["mcp", "config", "copy", "snippet", "json", "client", "cursor", "claude"],
-  },
-  {
-    id: "mcp-server-port",
-    tab: "mcp",
-    tabLabel: "MCP Server",
-    section: "Port",
-    title: "Server Port",
-    description:
-      "Set a fixed port for the MCP server or leave empty for automatic ephemeral port assignment",
-    keywords: ["mcp", "port", "fixed", "ephemeral", "network", "bind"],
-  },
-  {
-    id: "mcp-server-auth",
-    tab: "mcp",
-    tabLabel: "MCP Server",
-    section: "Authentication",
-    title: "API Key Authentication",
-    description:
-      "Generate a bearer token to secure MCP connections. Clients must include the token in the Authorization header.",
-    keywords: ["mcp", "api", "key", "auth", "token", "bearer", "security", "password"],
   },
 ];

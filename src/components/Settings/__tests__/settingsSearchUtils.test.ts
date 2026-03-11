@@ -19,7 +19,7 @@ describe("filterSettings", () => {
   it("matches by description text", () => {
     const results = filterSettings(SETTINGS_SEARCH_INDEX, "JetBrains");
     expect(results.length).toBeGreaterThan(0);
-    expect(results.some((r) => r.tab === "terminalAppearance")).toBe(true);
+    expect(results.some((r) => r.tab === "appearance")).toBe(true);
   });
 
   it("matches by keyword", () => {
@@ -84,7 +84,7 @@ describe("countMatchesPerTab", () => {
   it("counts correctly for single-tab results", () => {
     const results = filterSettings(SETTINGS_SEARCH_INDEX, "JetBrains Mono");
     const counts = countMatchesPerTab(results);
-    expect(counts.terminalAppearance).toBeGreaterThanOrEqual(1);
+    expect(counts.appearance).toBeGreaterThanOrEqual(1);
   });
 
   it("aggregates counts — total equals result count", () => {
@@ -97,12 +97,12 @@ describe("countMatchesPerTab", () => {
   it("only includes tabs that have matches", () => {
     const results = filterSettings(SETTINGS_SEARCH_INDEX, "github token");
     const counts = countMatchesPerTab(results);
-    // All results should be github tab — relaxed: every key has count > 0
+    // All results should have count > 0
     for (const count of Object.values(counts)) {
       expect(count).toBeGreaterThan(0);
     }
-    // And github should be one of the tabs with matches
-    expect(counts.github).toBeGreaterThanOrEqual(1);
+    // And integrations should be one of the tabs with matches
+    expect(counts.integrations).toBeGreaterThanOrEqual(1);
   });
 });
 
@@ -235,24 +235,41 @@ describe("subtab-aware search", () => {
 });
 
 describe("SETTINGS_SEARCH_INDEX", () => {
-  it("has entries covering all 12 settings tabs", () => {
+  it("has entries covering all 8 settings tabs", () => {
     const tabs = new Set(SETTINGS_SEARCH_INDEX.map((e) => e.tab));
     const expectedTabs = [
       "general",
+      "appearance",
       "keyboard",
-      "terminal",
-      "terminalAppearance",
-      "worktree",
+      "workspace",
       "agents",
-      "github",
-      "sidecar",
-      "toolbar",
+      "integrations",
       "notifications",
-      "editor",
       "troubleshooting",
     ];
     for (const tab of expectedTabs) {
       expect(tabs.has(tab as never), `tab "${tab}" should be in index`).toBe(true);
+    }
+  });
+
+  it("has no entries referencing old removed tab IDs", () => {
+    const removedTabs = [
+      "terminalAppearance",
+      "terminal",
+      "worktree",
+      "toolbar",
+      "github",
+      "sidecar",
+      "editor",
+      "imageViewer",
+      "mcp",
+      "voice",
+    ];
+    for (const entry of SETTINGS_SEARCH_INDEX) {
+      expect(
+        removedTabs.includes(entry.tab),
+        `entry "${entry.id}" should not reference removed tab "${entry.tab}"`
+      ).toBe(false);
     }
   });
 
@@ -275,5 +292,11 @@ describe("SETTINGS_SEARCH_INDEX", () => {
 
   it("has at least 50 entries across all tabs", () => {
     expect(SETTINGS_SEARCH_INDEX.length).toBeGreaterThanOrEqual(50);
+  });
+
+  it("includes voice input entries", () => {
+    const voiceEntries = SETTINGS_SEARCH_INDEX.filter((e) => e.id.startsWith("voice-"));
+    expect(voiceEntries.length).toBeGreaterThanOrEqual(5);
+    expect(voiceEntries.every((e) => e.tab === "notifications")).toBe(true);
   });
 });

@@ -910,14 +910,12 @@ function App() {
   const handleOpenSettingsTab = useCallback((tab: string) => {
     const allowedTabs: SettingsTab[] = [
       "general",
+      "appearance",
       "keyboard",
-      "terminal",
-      "terminalAppearance",
-      "worktree",
+      "workspace",
       "agents",
-      "github",
-      "sidecar",
-      "toolbar",
+      "integrations",
+      "notifications",
       "troubleshooting",
     ];
     if (!allowedTabs.includes(tab as SettingsTab)) {

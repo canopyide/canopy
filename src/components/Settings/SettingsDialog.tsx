@@ -11,20 +11,14 @@ import {
 import {
   X,
   Waypoints,
-  Code,
-  Github,
   LayoutGrid,
-  PanelRight,
   Keyboard,
-  GitBranch,
   Terminal,
-  Settings as SettingsIcon,
   Settings2,
   LifeBuoy,
   Bell,
-  Mic,
+  Palette,
   Plug,
-  Image,
   Search,
   ChevronRight,
 } from "lucide-react";
@@ -33,19 +27,12 @@ import { appClient } from "@/clients";
 import { AppDialog } from "@/components/ui/AppDialog";
 import { AgentSettings } from "./AgentSettings";
 import { GeneralTab } from "./GeneralTab";
-import { TerminalSettingsTab } from "./TerminalSettingsTab";
 import { TerminalAppearanceTab } from "./TerminalAppearanceTab";
-import { GitHubSettingsTab } from "./GitHubSettingsTab";
 import { TroubleshootingTab } from "./TroubleshootingTab";
-import { NotificationSettingsTab } from "./NotificationSettingsTab";
-import { SidecarSettingsTab } from "./SidecarSettingsTab";
 import { KeyboardShortcutsTab } from "./KeyboardShortcutsTab";
-import { WorktreeSettingsTab } from "./WorktreeSettingsTab";
-import { ToolbarSettingsTab } from "./ToolbarSettingsTab";
-import { EditorIntegrationTab } from "./EditorIntegrationTab";
-import { ImageViewerTab } from "./ImageViewerTab";
-import { VoiceInputSettingsTab } from "./VoiceInputSettingsTab";
-import { McpServerSettingsTab } from "./McpServerSettingsTab";
+import { WorkspaceTab } from "./WorkspaceTab";
+import { IntegrationsTab } from "./IntegrationsTab";
+import { NotificationsVoiceTab } from "./NotificationsVoiceTab";
 import { SETTINGS_SEARCH_INDEX } from "./settingsSearchIndex";
 import { filterSettings, countMatchesPerTab, HighlightText } from "./settingsSearchUtils";
 
@@ -64,19 +51,12 @@ interface SettingsDialogProps {
 
 export type SettingsTab =
   | "general"
+  | "appearance"
   | "keyboard"
-  | "terminal"
-  | "terminalAppearance"
-  | "worktree"
+  | "workspace"
   | "agents"
-  | "github"
-  | "sidecar"
-  | "toolbar"
+  | "integrations"
   | "notifications"
-  | "editor"
-  | "imageViewer"
-  | "voice"
-  | "mcp"
   | "troubleshooting";
 
 export function SettingsDialog({
@@ -90,6 +70,7 @@ export function SettingsDialog({
   const [searchQuery, setSearchQuery] = useState("");
   const deferredQuery = useDeferredValue(searchQuery);
   const searchInputRef = useRef<HTMLInputElement>(null);
+  const contentRef = useRef<HTMLDivElement>(null);
   const setSidecarOpen = useSidecarStore((state) => state.setOpen);
 
   useEffect(() => {
@@ -206,8 +187,14 @@ export function SettingsDialog({
     let highlightTimer: ReturnType<typeof setTimeout>;
     const timer = setTimeout(() => {
       const el = document.getElementById(scrollToSection);
-      if (el) {
-        el.scrollIntoView({ behavior: "smooth", block: "start" });
+      const container = contentRef.current;
+      if (el && container) {
+        const elRect = el.getBoundingClientRect();
+        const containerRect = container.getBoundingClientRect();
+        container.scrollTo({
+          top: container.scrollTop + elRect.top - containerRect.top,
+          behavior: "smooth",
+        });
         el.classList.add("settings-highlight");
         highlightTimer = setTimeout(() => el.classList.remove("settings-highlight"), 1500);
       }
@@ -234,7 +221,7 @@ export function SettingsDialog({
     // General defaults: showProjectPulse=true, showDeveloperTools=false
     if (!showProjectPulse || showDeveloperTools) tabs.add("general");
 
-    // Terminal defaults: performanceMode=false, scrollback=5000, strategy=automatic,
+    // Workspace (panel grid) defaults: performanceMode=false, scrollback=5000, strategy=automatic,
     // hybridInput=true, hybridAutoFocus=true, twoPaneSplit.enabled=true, preferPreview=false, ratio=0.5
     if (
       performanceMode ||
@@ -246,7 +233,7 @@ export function SettingsDialog({
       twoPaneSplitConfig.preferPreview ||
       Math.round(twoPaneSplitConfig.defaultRatio * 100) !== 50
     ) {
-      tabs.add("terminal");
+      tabs.add("workspace");
     }
 
     return tabs;
@@ -272,37 +259,23 @@ export function SettingsDialog({
 
   const tabTitles: Record<SettingsTab, string> = {
     general: "General",
+    appearance: "Appearance",
     keyboard: "Keyboard Shortcuts",
-    terminal: "Panel Grid",
-    terminalAppearance: "Appearance",
-    worktree: "Worktree Paths",
+    workspace: "Workspace",
     agents: "CLI Agents",
-    github: "GitHub Integration",
-    sidecar: "Sidecar Links",
-    toolbar: "Toolbar Customization",
-    notifications: "Notifications",
-    editor: "Editor Integration",
-    imageViewer: "Image Viewer",
-    voice: "Voice Input",
-    mcp: "MCP Server",
+    integrations: "Integrations",
+    notifications: "Notifications & Voice",
     troubleshooting: "Troubleshooting",
   };
 
   const tabIcons: Record<SettingsTab, React.ReactNode> = {
     general: <Settings2 className="w-5 h-5 text-canopy-text/60" />,
+    appearance: <Palette className="w-5 h-5 text-canopy-text/60" />,
     keyboard: <Keyboard className="w-5 h-5 text-canopy-text/60" />,
-    terminal: <LayoutGrid className="w-5 h-5 text-canopy-text/60" />,
-    terminalAppearance: <Terminal className="w-5 h-5 text-canopy-text/60" />,
-    worktree: <GitBranch className="w-5 h-5 text-canopy-text/60" />,
+    workspace: <LayoutGrid className="w-5 h-5 text-canopy-text/60" />,
     agents: <Waypoints className="w-5 h-5 text-canopy-text/60" />,
-    github: <Github className="w-5 h-5 text-canopy-text/60" />,
-    sidecar: <PanelRight className="w-5 h-5 text-canopy-text/60" />,
-    toolbar: <SettingsIcon className="w-5 h-5 text-canopy-text/60" />,
+    integrations: <Plug className="w-5 h-5 text-canopy-text/60" />,
     notifications: <Bell className="w-5 h-5 text-canopy-text/60" />,
-    editor: <Code className="w-5 h-5 text-canopy-text/60" />,
-    imageViewer: <Image className="w-5 h-5 text-canopy-text/60" />,
-    voice: <Mic className="w-5 h-5 text-canopy-text/60" />,
-    mcp: <Plug className="w-5 h-5 text-canopy-text/60" />,
     troubleshooting: <LifeBuoy className="w-5 h-5 text-canopy-text/60" />,
   };
 
@@ -369,12 +342,12 @@ export function SettingsDialog({
                 onSelect={handleNavSelect}
               />
               <NavItem
-                tab="terminalAppearance"
-                icon={<Terminal className="w-4 h-4" />}
+                tab="appearance"
+                icon={<Palette className="w-4 h-4" />}
                 label="Appearance"
                 activeTab={activeTab}
                 isSearching={isSearching}
-                matchCount={matchCounts.terminalAppearance}
+                matchCount={matchCounts.appearance}
                 onSelect={handleNavSelect}
               />
               <NavItem
@@ -397,38 +370,17 @@ export function SettingsDialog({
               />
             </NavGroup>
 
-            <NavGroup label="Terminal">
+            <NavGroup label="Workspace">
               <NavItem
-                tab="terminal"
+                tab="workspace"
                 icon={<LayoutGrid className="w-4 h-4" />}
-                label="Panel Grid"
+                label="Workspace"
                 activeTab={activeTab}
                 isSearching={isSearching}
-                matchCount={matchCounts.terminal}
-                modified={modifiedTabs.has("terminal")}
+                matchCount={matchCounts.workspace}
+                modified={modifiedTabs.has("workspace")}
                 onSelect={handleNavSelect}
               />
-              <NavItem
-                tab="worktree"
-                icon={<GitBranch className="w-4 h-4" />}
-                label="Worktree"
-                activeTab={activeTab}
-                isSearching={isSearching}
-                matchCount={matchCounts.worktree}
-                onSelect={handleNavSelect}
-              />
-              <NavItem
-                tab="toolbar"
-                icon={<SettingsIcon className="w-4 h-4" />}
-                label="Toolbar"
-                activeTab={activeTab}
-                isSearching={isSearching}
-                matchCount={matchCounts.toolbar}
-                onSelect={handleNavSelect}
-              />
-            </NavGroup>
-
-            <NavGroup label="Integrations">
               <NavItem
                 tab="agents"
                 icon={<Waypoints className="w-4 h-4" />}
@@ -439,60 +391,12 @@ export function SettingsDialog({
                 onSelect={handleNavSelect}
               />
               <NavItem
-                tab="github"
-                icon={<Github className="w-4 h-4" />}
-                label="GitHub"
-                activeTab={activeTab}
-                isSearching={isSearching}
-                matchCount={matchCounts.github}
-                onSelect={handleNavSelect}
-              />
-              <NavItem
-                tab="editor"
-                icon={<Code className="w-4 h-4" />}
-                label="Editor"
-                activeTab={activeTab}
-                isSearching={isSearching}
-                matchCount={matchCounts.editor}
-                onSelect={handleNavSelect}
-              />
-              <NavItem
-                tab="imageViewer"
-                icon={<Image className="w-4 h-4" />}
-                label="Image Viewer"
-                activeTab={activeTab}
-                isSearching={isSearching}
-                matchCount={matchCounts.imageViewer}
-                onSelect={handleNavSelect}
-              />
-              <NavItem
-                tab="sidecar"
-                icon={<PanelRight className="w-4 h-4" />}
-                label="Sidecar"
-                activeTab={activeTab}
-                isSearching={isSearching}
-                matchCount={matchCounts.sidecar}
-                onSelect={handleNavSelect}
-              />
-              <NavItem
-                tab="mcp"
+                tab="integrations"
                 icon={<Plug className="w-4 h-4" />}
-                label="MCP Server"
+                label="Integrations"
                 activeTab={activeTab}
                 isSearching={isSearching}
-                matchCount={matchCounts.mcp}
-                onSelect={handleNavSelect}
-              />
-            </NavGroup>
-
-            <NavGroup label="Input">
-              <NavItem
-                tab="voice"
-                icon={<Mic className="w-4 h-4" />}
-                label="Voice Input"
-                activeTab={activeTab}
-                isSearching={isSearching}
-                matchCount={matchCounts.voice}
+                matchCount={matchCounts.integrations}
                 onSelect={handleNavSelect}
               />
             </NavGroup>
@@ -539,7 +443,7 @@ export function SettingsDialog({
             </button>
           </div>
 
-          <div className="p-6 overflow-y-auto flex-1">
+          <div ref={contentRef} className="p-6 overflow-y-auto flex-1">
             {isSearching ? (
               <SearchResults
                 results={searchResults}
@@ -556,20 +460,16 @@ export function SettingsDialog({
                   />
                 </div>
 
+                <div className={activeTab === "appearance" ? "" : "hidden"}>
+                  <TerminalAppearanceTab />
+                </div>
+
                 <div className={activeTab === "keyboard" ? "" : "hidden"}>
                   <KeyboardShortcutsTab />
                 </div>
 
-                <div className={activeTab === "terminal" ? "" : "hidden"}>
-                  <TerminalSettingsTab />
-                </div>
-
-                <div className={activeTab === "terminalAppearance" ? "" : "hidden"}>
-                  <TerminalAppearanceTab />
-                </div>
-
-                <div className={activeTab === "worktree" ? "" : "hidden"}>
-                  <WorktreeSettingsTab />
+                <div className={activeTab === "workspace" ? "" : "hidden"}>
+                  <WorkspaceTab />
                 </div>
 
                 <div className={activeTab === "agents" ? "" : "hidden"}>
@@ -580,36 +480,12 @@ export function SettingsDialog({
                   />
                 </div>
 
-                <div className={activeTab === "github" ? "" : "hidden"}>
-                  <GitHubSettingsTab />
-                </div>
-
-                <div className={activeTab === "sidecar" ? "" : "hidden"}>
-                  <SidecarSettingsTab />
-                </div>
-
-                <div className={activeTab === "toolbar" ? "" : "hidden"}>
-                  <ToolbarSettingsTab />
+                <div className={activeTab === "integrations" ? "" : "hidden"}>
+                  <IntegrationsTab />
                 </div>
 
                 <div className={activeTab === "notifications" ? "" : "hidden"}>
-                  <NotificationSettingsTab />
-                </div>
-
-                <div className={activeTab === "editor" ? "" : "hidden"}>
-                  <EditorIntegrationTab />
-                </div>
-
-                <div className={activeTab === "imageViewer" ? "" : "hidden"}>
-                  <ImageViewerTab />
-                </div>
-
-                <div className={activeTab === "voice" ? "" : "hidden"}>
-                  <VoiceInputSettingsTab />
-                </div>
-
-                <div className={activeTab === "mcp" ? "" : "hidden"}>
-                  <McpServerSettingsTab />
+                  <NotificationsVoiceTab />
                 </div>
 
                 <div className={activeTab === "troubleshooting" ? "" : "hidden"}>
