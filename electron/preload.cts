@@ -1646,6 +1646,18 @@ const api: ElectronAPI = {
     markPromptShown: () => _typedInvoke(CHANNELS.TELEMETRY_MARK_PROMPT_SHOWN),
   },
 
+  onboarding: {
+    get: () => _typedInvoke(CHANNELS.ONBOARDING_GET),
+    migrate: (payload: {
+      agentSelectionDismissed: boolean;
+      agentSetupComplete: boolean;
+      firstRunToastSeen: boolean;
+    }) => _typedInvoke(CHANNELS.ONBOARDING_MIGRATE, payload),
+    setStep: (step: string | null) => _typedInvoke(CHANNELS.ONBOARDING_SET_STEP, step),
+    complete: () => _typedInvoke(CHANNELS.ONBOARDING_COMPLETE),
+    markToastSeen: () => _typedInvoke(CHANNELS.ONBOARDING_MARK_TOAST_SEEN),
+  },
+
   // Voice Input API
   voiceInput: {
     getSettings: () => _typedInvoke(CHANNELS.VOICE_INPUT_GET_SETTINGS),
