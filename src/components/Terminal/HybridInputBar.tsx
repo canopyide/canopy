@@ -532,17 +532,8 @@ export const HybridInputBar = forwardRef<HybridInputBarHandle, HybridInputBarPro
       const view = editorViewRef.current;
       if (!view) return;
 
-      console.log("[VoiceDebug] decoration useEffect fired", {
-        transcriptPhase,
-        voiceCorrectionEnabled,
-        pendingCorrections: pendingCorrections ?? [],
-        liveSegmentStart,
-        docLen: view.state.doc.length,
-      });
-
       // When correction is disabled, suppress all voice decorations
       if (!voiceCorrectionEnabled) {
-        console.log("[VoiceDebug] correction disabled — suppressing decorations");
         view.dispatch({
           effects: [setInterimRange.of(null), setPendingAIRanges.of([])],
         });
@@ -558,7 +549,6 @@ export const HybridInputBar = forwardRef<HybridInputBarHandle, HybridInputBarPro
             liveSegmentStart >= 0 && liveSegmentStart < docLen
               ? { from: liveSegmentStart, to: docLen }
               : null;
-          console.log("[VoiceDebug] interim phase — interimRange:", interimRange);
           view.dispatch({
             effects: [setInterimRange.of(interimRange), setPendingAIRanges.of([])],
           });
@@ -570,18 +560,11 @@ export const HybridInputBar = forwardRef<HybridInputBarHandle, HybridInputBarPro
             const doc = view.state.doc.toString();
             for (const p of pendingCorrections) {
               const idx = doc.indexOf(p.rawText, Math.max(0, p.segmentStart - 20));
-              console.log("[VoiceDebug] pending_ai: searching for rawText", {
-                rawText: p.rawText,
-                segmentStart: p.segmentStart,
-                foundAt: idx,
-                docSnapshot: doc.substring(0, 200),
-              });
               if (idx >= 0) {
                 ranges.push({ from: idx, to: idx + p.rawText.length });
               }
             }
           }
-          console.log("[VoiceDebug] paragraph_pending_ai — applying ranges:", ranges);
           view.dispatch({
             effects: [setInterimRange.of(null), setPendingAIRanges.of(ranges)],
           });
@@ -589,7 +572,6 @@ export const HybridInputBar = forwardRef<HybridInputBarHandle, HybridInputBarPro
         }
         default:
           // idle, utterance_final, stable — clear all decorations
-          console.log("[VoiceDebug] phase", transcriptPhase, "— clearing decorations");
           view.dispatch({
             effects: [setInterimRange.of(null), setPendingAIRanges.of([])],
           });
@@ -990,21 +972,10 @@ export const HybridInputBar = forwardRef<HybridInputBarHandle, HybridInputBarPro
               // Register pending correction once we know the authoritative rawText.
               // Only add when correction is enabled — otherwise no CORRECTION_REPLACE
               // will arrive and the text would stay dimmed permanently.
-              console.log("[VoiceDebug] Enter pressed during voice", {
-                paragraphStart,
-                correctionEnabled,
-                tid,
-              });
               if (paragraphStart >= 0 && correctionEnabled) {
                 flushPromise
                   .then((result) => {
-                    console.log("[VoiceDebug] flushParagraph resolved", result);
                     if (result?.correctionId && result.rawText) {
-                      console.log("[VoiceDebug] adding pending correction", {
-                        correctionId: result.correctionId,
-                        rawText: result.rawText,
-                        paragraphStart,
-                      });
                       useVoiceRecordingStore
                         .getState()
                         .addPendingCorrection(
@@ -1013,22 +984,9 @@ export const HybridInputBar = forwardRef<HybridInputBarHandle, HybridInputBarPro
                           paragraphStart,
                           result.rawText
                         );
-                    } else {
-                      console.log(
-                        "[VoiceDebug] flushParagraph result missing correctionId or rawText"
-                      );
                     }
                   })
-                  .catch((err) => {
-                    console.error("[VoiceDebug] flushParagraph failed", err);
-                  });
-              } else {
-                console.log(
-                  "[VoiceDebug] skipping correction — paragraphStart:",
-                  paragraphStart,
-                  "correctionEnabled:",
-                  correctionEnabled
-                );
+                  .catch(() => {});
               }
 
               return true;

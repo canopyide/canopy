@@ -189,10 +189,7 @@ function flushParagraphBuffer(win: Electron.BrowserWindow | null): {
   rawText: string | null;
   correctionId: string | null;
 } {
-  if (paragraphBuffer.length === 0) {
-    console.log("[VoiceDebug:main] flushParagraphBuffer — buffer empty");
-    return { rawText: null, correctionId: null };
-  }
+  if (paragraphBuffer.length === 0) return { rawText: null, correctionId: null };
 
   const rawText = paragraphBuffer.join(" ");
   paragraphBuffer = [];
@@ -200,19 +197,8 @@ function flushParagraphBuffer(win: Electron.BrowserWindow | null): {
   const liveSettings = getVoiceSettings();
   const willCorrect = !!(liveSettings.correctionEnabled && liveSettings.correctionApiKey);
 
-  console.log("[VoiceDebug:main] flushParagraphBuffer", {
-    rawText,
-    willCorrect,
-    correctionEnabled: liveSettings.correctionEnabled,
-    hasApiKey: !!liveSettings.correctionApiKey,
-    model: liveSettings.correctionModel,
-    hasCorrectionService: !!correctionService,
-    hasWin: !!win,
-  });
-
   if (willCorrect && correctionService && win && !win.isDestroyed()) {
     const correctionId = crypto.randomUUID();
-    console.log("[VoiceDebug:main] starting correction", { correctionId, rawText });
     void correctionService
       .correct(rawText, {
         model: liveSettings.correctionModel,
@@ -223,7 +209,6 @@ function flushParagraphBuffer(win: Electron.BrowserWindow | null): {
         projectPath: sessionProjectInfo.path,
       })
       .then((correctedText) => {
-        console.log("[VoiceDebug:main] correction resolved", { correctionId, correctedText });
         if (!win.isDestroyed()) {
           win.webContents.send(CHANNELS.VOICE_INPUT_CORRECTION_REPLACE, {
             correctionId,
@@ -231,13 +216,10 @@ function flushParagraphBuffer(win: Electron.BrowserWindow | null): {
           });
         }
       })
-      .catch((err) => {
-        console.error("[VoiceDebug:main] correction failed", err);
-      });
+      .catch(() => {});
     return { rawText, correctionId };
   }
 
-  console.log("[VoiceDebug:main] correction skipped — willCorrect:", willCorrect);
   return { rawText, correctionId: null };
 }
 

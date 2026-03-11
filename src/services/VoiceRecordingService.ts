@@ -195,7 +195,6 @@ class VoiceRecordingService {
     this.unsubscribers.push(
       voiceInput.onCorrectionReplace(({ correctionId, correctedText }) => {
         logDebug(`${LOG_PREFIX} Received correction replace`, { correctionId });
-        console.log("[VoiceDebug] onCorrectionReplace received", { correctionId, correctedText });
         const voiceState = useVoiceRecordingStore.getState();
 
         // Find the panel that owns this correction ID.
@@ -213,19 +212,7 @@ class VoiceRecordingService {
           }
         }
 
-        if (!panelId || !pending) {
-          console.log(
-            "[VoiceDebug] onCorrectionReplace — no matching pending correction found for",
-            correctionId
-          );
-          return;
-        }
-        console.log(
-          "[VoiceDebug] onCorrectionReplace — matched panel",
-          panelId,
-          "pending:",
-          pending
-        );
+        if (!panelId || !pending) return;
 
         if (correctedText !== pending.rawText) {
           const inputStore = useTerminalInputStore.getState();
