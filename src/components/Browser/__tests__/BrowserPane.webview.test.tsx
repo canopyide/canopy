@@ -49,7 +49,7 @@ const {
   useProjectStoreMock,
   useIsDraggingMock,
   actionDispatchMock,
-  urlHistoryStoreMock,
+  useUrlHistoryStoreMock,
 } = vi.hoisted(() => {
   const terminalStoreState = {
     getTerminal: vi.fn(),
@@ -68,12 +68,12 @@ const {
   );
   const useIsDraggingMock = vi.fn(() => false);
   const actionDispatchMock = vi.fn();
-  const urlHistoryStoreMock = {
+  const urlHistoryStoreState = {
     recordVisit: vi.fn(),
     updateTitle: vi.fn(),
   };
-  const useUrlHistoryStoreMock = vi.fn((selector: (state: typeof urlHistoryStoreMock) => unknown) =>
-    selector(urlHistoryStoreMock)
+  const useUrlHistoryStoreMock = vi.fn(
+    (selector: (state: typeof urlHistoryStoreState) => unknown) => selector(urlHistoryStoreState)
   );
   return {
     terminalStoreState,
@@ -81,7 +81,6 @@ const {
     useProjectStoreMock,
     useIsDraggingMock,
     actionDispatchMock,
-    urlHistoryStoreMock,
     useUrlHistoryStoreMock,
   };
 });
@@ -91,11 +90,9 @@ vi.mock("@/store", () => ({
   useProjectStore: useProjectStoreMock,
 }));
 
-vi.mock("@/store/urlHistoryStore", () => {
-  const state = { recordVisit: vi.fn(), updateTitle: vi.fn() };
-  const useUrlHistoryStore = vi.fn((selector: (s: typeof state) => unknown) => selector(state));
-  return { useUrlHistoryStore };
-});
+vi.mock("@/store/urlHistoryStore", () => ({
+  useUrlHistoryStore: useUrlHistoryStoreMock,
+}));
 
 vi.mock("@/components/DragDrop", () => ({
   useIsDragging: useIsDraggingMock,
