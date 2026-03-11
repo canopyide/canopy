@@ -56,7 +56,7 @@ test.describe.serial("Core: Shell & Settings", () => {
       await expect(sidebar).toBeVisible({ timeout: T_SHORT });
     });
 
-    test("settings opens, navigates tabs, closes via Escape", async () => {
+    test("settings opens, navigates all tabs, closes via Escape", async () => {
       const { window } = ctx;
 
       await window.locator(SEL.toolbar.openSettings).click();
@@ -67,12 +67,22 @@ test.describe.serial("Core: Shell & Settings", () => {
       const defaultTab = window.locator("h3", { hasText: "General" });
       await expect(defaultTab).toBeVisible({ timeout: T_SHORT });
 
+      // Full tab list including v0.3.0 additions: Notifications, Worktree,
+      // Toolbar, Editor, Image Viewer, MCP Server, Voice Input
       const tabs = [
         { nav: "Keyboard", title: "Keyboard Shortcuts" },
+        { nav: "Notifications", title: "Notifications" },
         { nav: "Panel Grid", title: "Panel Grid" },
+        { nav: "Worktree", title: "Worktree Paths" },
+        { nav: "Toolbar", title: "Toolbar Customization" },
         { nav: "Appearance", title: "Appearance" },
         { nav: "CLI Agents", title: "CLI Agents" },
         { nav: "GitHub", title: "GitHub Integration" },
+        { nav: "Editor", title: "Editor Integration" },
+        { nav: "Image Viewer", title: "Image Viewer" },
+        { nav: "Sidecar", title: "Sidecar Links" },
+        { nav: "MCP Server", title: "MCP Server" },
+        { nav: "Voice Input", title: "Voice Input" },
         { nav: "Troubleshooting", title: "Troubleshooting" },
       ];
 

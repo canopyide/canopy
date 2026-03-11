@@ -20,6 +20,9 @@ export const SEL = {
     projectPulseToggle: '[aria-label="Project Pulse Toggle"]',
     performanceModeToggle: '[aria-label="Performance Mode Toggle"]',
     fontFamilySelect: 'select[aria-label="Terminal font family"]',
+    subtabNav: '[aria-label="Subtab navigation"]',
+    searchInput: '[aria-label="Search settings"]',
+    searchClear: '[aria-label="Clear search"]',
   },
   panel: {
     gridPanel: '[data-panel-location="grid"]',
@@ -48,6 +51,11 @@ export const SEL = {
     createButton: '[data-testid="create-worktree-button"]',
     deleteDialog: '[data-testid="delete-worktree-dialog"]',
     deleteConfirm: '[data-testid="delete-worktree-confirm"]',
+    searchInput: '[aria-label="Search worktrees"]',
+    searchClear: '[aria-label="Clear search and filters"]',
+    reviewHubButton: '[aria-label="Open Review & Commit"]',
+    filterButton: '[aria-label="Filter and sort worktrees"]',
+    filterPopover: '[data-testid="worktree-filter-popover"]',
   },
   dock: {
     container: "#dock-container",
@@ -66,6 +74,11 @@ export const SEL = {
   },
   notes: {
     palette: '[data-testid="notes-palette"]',
+  },
+  reviewHub: {
+    container: '[data-testid="review-hub"]',
+    diffMode: '[data-testid="review-hub-diff-mode"]',
+    close: '[data-testid="review-hub-close"]',
   },
   welcome: {
     openFolder: 'button:has-text("Open Folder")',
