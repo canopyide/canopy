@@ -519,11 +519,9 @@ function SidebarContent({ onOpenOverview }: SidebarContentProps) {
         <div className="flex items-baseline gap-1.5">
           <h2 className="text-canopy-text font-semibold text-sm tracking-wide">Worktrees</h2>
           <span className="text-canopy-text/50 text-xs">
-            (
             {hasFilters && visibleCount !== worktrees.length
-              ? `${visibleCount} of ${worktrees.length}`
-              : worktrees.length}
-            )
+              ? `(${visibleCount} of ${worktrees.length})`
+              : `(${worktrees.length})`}
           </span>
         </div>
         <div className="flex items-center gap-1">
