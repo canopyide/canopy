@@ -644,8 +644,7 @@ function App() {
       cleanupWorktreeDataStore();
     };
   }, []);
-  const { launchAgent, availability, agentSettings, refreshSettings, isCheckingAvailability } =
-    useAgentLauncher();
+  const { launchAgent, availability, agentSettings, refreshSettings } = useAgentLauncher();
 
   const loadRecipes = useRecipeStore((state) => state.loadRecipes);
   useTerminalConfig();
@@ -1245,11 +1244,7 @@ function App() {
 
       <Toaster />
       <UpdateNotification />
-      <OnboardingFlow
-        availability={availability}
-        isCheckingAvailability={isCheckingAvailability}
-        onRefreshSettings={refreshSettings}
-      />
+      <OnboardingFlow availability={availability} onRefreshSettings={refreshSettings} />
     </ErrorBoundary>
   );
 }
