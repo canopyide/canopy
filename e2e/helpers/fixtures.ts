@@ -60,11 +60,18 @@ export function createFixtureRepo(options: FixtureRepoOptions = {}): string {
   git('commit -m "initial commit"', dir);
 
   if (withFeatureBranch) {
-    git("checkout -b feature/test-branch", dir);
-    writeFileSync(path.join(dir, "CHANGELOG.md"), "# Changelog\n\n- Feature branch\n");
-    git("add -A", dir);
-    git('commit -m "add changelog"', dir);
-    git("checkout main", dir);
+    git("branch feature/test-branch", dir);
+    const worktreeDir = path.join(
+      dir,
+      "..",
+      path.basename(dir) + "-worktrees",
+      "feature-test-branch"
+    );
+    mkdirSync(path.dirname(worktreeDir), { recursive: true });
+    git(`worktree add ${JSON.stringify(worktreeDir)} feature/test-branch`, dir);
+    writeFileSync(path.join(worktreeDir, "CHANGELOG.md"), "# Changelog\n\n- Feature branch\n");
+    git("add -A", worktreeDir);
+    git('commit -m "add changelog"', worktreeDir);
   }
 
   return dir;
