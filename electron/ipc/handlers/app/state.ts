@@ -207,8 +207,9 @@ export function registerAppStateHandlers(): () => void {
     }
 
     // Apply one-shot crash recovery panel filter if set
+    // Empty array means "no specific selection" (legacy/no-panels case) — skip filtering
     const panelFilter = getCrashRecoveryService().consumePanelFilter();
-    if (panelFilter !== null) {
+    if (panelFilter !== null && panelFilter.length > 0) {
       const filterSet = new Set(panelFilter);
       terminalsToUse = terminalsToUse.filter((t) => filterSet.has(t.id));
       console.log(

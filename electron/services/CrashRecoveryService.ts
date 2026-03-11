@@ -129,7 +129,7 @@ export class CrashRecoveryService {
       const raw = fs.readFileSync(this.backupPath, "utf8");
       const snapshot = JSON.parse(raw) as SessionSnapshot;
 
-      if (panelIds !== undefined && snapshot.appState) {
+      if (panelIds !== undefined && panelIds.length > 0 && snapshot.appState) {
         const appState = snapshot.appState as Record<string, unknown>;
         if (Array.isArray(appState.terminals)) {
           const idSet = new Set(panelIds);
@@ -142,7 +142,7 @@ export class CrashRecoveryService {
       this.applySessionSnapshot(snapshot);
       console.log(
         "[CrashRecovery] Session restored from backup" +
-          (panelIds ? ` (${panelIds.length} panels selected)` : "")
+          (panelIds && panelIds.length > 0 ? ` (${panelIds.length} panels selected)` : "")
       );
       return true;
     } catch (err) {
