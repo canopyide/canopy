@@ -275,11 +275,12 @@ function queueCorrectionRequest(job: QueuedCorrectionJob, win: Electron.BrowserW
     rawLen: job.rawText.length,
   });
 
+  const svc = correctionService;
   correctionRequestTail = correctionRequestTail
     .catch(() => {})
     .then(async () => {
       const liveSettings = getVoiceSettings();
-      const result = await correctionService!.correct(
+      const result = await svc.correct(
         {
           rawText: job.rawText,
           reason: job.reason,
