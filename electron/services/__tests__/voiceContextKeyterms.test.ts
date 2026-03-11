@@ -1,4 +1,5 @@
 import { describe, expect, it, vi } from "vitest";
+import type { PtyClient } from "../PtyClient.js";
 import {
   assembleKeyterms,
   tokenizeBranchName,
@@ -25,7 +26,7 @@ vi.mock("../../utils/logger.js", () => ({
   logError: vi.fn(),
 }));
 
-function makePtyClient(lines: string[] = []) {
+function makePtyClient(lines: string[] = []): Pick<PtyClient, "getAllTerminalSnapshots"> {
   return {
     getAllTerminalSnapshots: vi.fn().mockResolvedValue([
       {
@@ -37,7 +38,7 @@ function makePtyClient(lines: string[] = []) {
         spawnedAt: 0,
       },
     ]),
-  } as any;
+  };
 }
 
 describe("tokenizeBranchName", () => {
@@ -142,7 +143,7 @@ describe("assembleKeyterms", () => {
   });
 
   it("adds terminal identifiers when ptyClient provided", async () => {
-    const ptyClient = makePtyClient(["const myVariable = handleRequest();"]);
+    const ptyClient = makePtyClient(["const myVariable = handleRequest();"]) as PtyClient;
     const result = await assembleKeyterms({
       customDictionary: [],
       ptyClient,
@@ -171,7 +172,7 @@ describe("assembleKeyterms", () => {
     const origProto = GitService.prototype.listBranches;
     GitService.prototype.listBranches = vi
       .fn()
-      .mockRejectedValue(new Error("git not found")) as any;
+      .mockRejectedValue(new Error("git not found")) as typeof GitService.prototype.listBranches;
     try {
       const result = await assembleKeyterms({
         customDictionary: ["MyTerm"],
@@ -186,7 +187,7 @@ describe("assembleKeyterms", () => {
   it("falls back gracefully when ptyClient fails", async () => {
     const ptyClient = {
       getAllTerminalSnapshots: vi.fn().mockRejectedValue(new Error("pty error")),
-    } as any;
+    } as unknown as PtyClient;
     const result = await assembleKeyterms({
       customDictionary: ["MyTerm"],
       ptyClient,
@@ -204,7 +205,7 @@ describe("assembleKeyterms", () => {
   });
 
   it("preserves priority order: custom dict > project name > branch > terminal", async () => {
-    const ptyClient = makePtyClient(["const terminalIdent = true;"]);
+    const ptyClient = makePtyClient(["const terminalIdent = true;"]) as PtyClient;
     const result = await assembleKeyterms({
       customDictionary: ["CustomFirst"],
       projectName: "ProjectSecond",
