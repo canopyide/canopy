@@ -67,22 +67,14 @@ test.describe.serial("Core: Shell & Settings", () => {
       const defaultTab = window.locator("h3", { hasText: "General" });
       await expect(defaultTab).toBeVisible({ timeout: T_SHORT });
 
-      // Full tab list including v0.3.0 additions: Notifications, Worktree,
-      // Toolbar, Editor, Image Viewer, MCP Server, Voice Input
+      // Consolidated tabs (8 groups after #2774 settings consolidation)
       const tabs = [
-        { nav: "Keyboard", title: "Keyboard Shortcuts" },
-        { nav: "Notifications", title: "Notifications" },
-        { nav: "Panel Grid", title: "Panel Grid" },
-        { nav: "Worktree", title: "Worktree Paths" },
-        { nav: "Toolbar", title: "Toolbar Customization" },
         { nav: "Appearance", title: "Appearance" },
+        { nav: "Keyboard", title: "Keyboard Shortcuts" },
+        { nav: "Workspace", title: "Workspace" },
         { nav: "CLI Agents", title: "CLI Agents" },
-        { nav: "GitHub", title: "GitHub Integration" },
-        { nav: "Editor", title: "Editor Integration" },
-        { nav: "Image Viewer", title: "Image Viewer" },
-        { nav: "Sidecar", title: "Sidecar Links" },
-        { nav: "MCP Server", title: "MCP Server" },
-        { nav: "Voice Input", title: "Voice Input" },
+        { nav: "Integrations", title: "Integrations" },
+        { nav: "Notifications", title: "Notifications & Voice" },
         { nav: "Troubleshooting", title: "Troubleshooting" },
       ];
 
@@ -202,9 +194,7 @@ test.describe.serial("Core: Shell & Settings", () => {
     test("Terminal tab: toggle Performance Mode on", async () => {
       const { window } = ctx;
 
-      const terminalTab = window.locator(
-        `${SEL.settings.navSidebar} button:has-text("Panel Grid")`
-      );
+      const terminalTab = window.locator(`${SEL.settings.navSidebar} button:has-text("Workspace")`);
       await terminalTab.click();
 
       const toggle = window.locator(SEL.settings.performanceModeToggle);
@@ -247,9 +237,7 @@ test.describe.serial("Core: Shell & Settings", () => {
       const pulseToggle = window.locator(SEL.settings.projectPulseToggle);
       await expect(pulseToggle).toHaveAttribute("aria-checked", "false", { timeout: T_MEDIUM });
 
-      const terminalTab = window.locator(
-        `${SEL.settings.navSidebar} button:has-text("Panel Grid")`
-      );
+      const terminalTab = window.locator(`${SEL.settings.navSidebar} button:has-text("Workspace")`);
       await terminalTab.click();
       const perfToggle = window.locator(SEL.settings.performanceModeToggle);
       await perfToggle.scrollIntoViewIfNeeded();

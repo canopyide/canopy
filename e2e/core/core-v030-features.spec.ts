@@ -124,15 +124,11 @@ test.describe.serial("Core: v0.3.0 Features", () => {
       const heading = window.locator(SEL.settings.heading);
       await expect(heading).toBeVisible({ timeout: T_MEDIUM });
 
-      // Each entry: nav button text → expected h3 title in the content area
+      // Consolidated tabs after #2774 settings consolidation
       const newTabs = [
-        { nav: "Notifications", title: "Notifications" },
-        { nav: "Worktree", title: "Worktree Paths" },
-        { nav: "Toolbar", title: "Toolbar Customization" },
-        { nav: "Editor", title: "Editor Integration" },
-        { nav: "Image Viewer", title: "Image Viewer" },
-        { nav: "MCP Server", title: "MCP Server" },
-        { nav: "Voice Input", title: "Voice Input" },
+        { nav: "Workspace", title: "Workspace" },
+        { nav: "Integrations", title: "Integrations" },
+        { nav: "Notifications", title: "Notifications & Voice" },
       ];
 
       for (const { nav, title } of newTabs) {
