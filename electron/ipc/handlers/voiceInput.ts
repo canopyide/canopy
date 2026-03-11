@@ -3,7 +3,10 @@ import { spawn } from "child_process";
 import { CHANNELS } from "../channels.js";
 import { store } from "../../store.js";
 import { projectStore } from "../../services/ProjectStore.js";
-import { VoiceTranscriptionService } from "../../services/VoiceTranscriptionService.js";
+import {
+  VoiceTranscriptionService,
+  type SegmentConfidence,
+} from "../../services/VoiceTranscriptionService.js";
 import { VoiceCorrectionService } from "../../services/VoiceCorrectionService.js";
 import type { HandlerDependencies } from "../types.js";
 import type { VoiceInputSettings } from "../../../shared/types/ipc/api.js";
@@ -26,9 +29,12 @@ interface QueuedCorrectionJob {
   correctionId: string;
   rawText: string;
   reason: "stop";
+  minConfidence?: number;
+  uncertainWords?: string[];
 }
 
 let sessionTranscript = "";
+let sessionConfidenceSegments: SegmentConfidence[] = [];
 let pendingParagraphBreak = false;
 let sessionProjectInfo: { name?: string; path?: string } = {};
 
@@ -248,17 +254,31 @@ function getSessionCorrectionText(): string {
   return sessionTranscript.replace(/[ \t]+$/g, "");
 }
 
+function mergeSessionConfidence(): { minConfidence: number; uncertainWords: string[] } {
+  if (sessionConfidenceSegments.length === 0) {
+    return { minConfidence: 0, uncertainWords: [] };
+  }
+  return {
+    minConfidence: Math.min(...sessionConfidenceSegments.map((s) => s.minConfidence)),
+    uncertainWords: sessionConfidenceSegments.flatMap((s) => s.uncertainWords),
+  };
+}
+
 function buildCorrectionJob(): QueuedCorrectionJob | null {
   const rawText = getSessionCorrectionText();
   if (!rawText) return null;
 
+  const { minConfidence, uncertainWords } = mergeSessionConfidence();
   const job: QueuedCorrectionJob = {
     correctionId: crypto.randomUUID(),
     rawText,
     reason: "stop",
+    minConfidence,
+    uncertainWords,
   };
 
   sessionTranscript = "";
+  sessionConfidenceSegments = [];
   pendingParagraphBreak = false;
   return job;
 }
@@ -282,6 +302,8 @@ function queueCorrectionRequest(job: QueuedCorrectionJob, win: Electron.BrowserW
         {
           rawText: job.rawText,
           reason: job.reason,
+          uncertainWords: job.uncertainWords,
+          minConfidence: job.minConfidence,
         },
         {
           model: liveSettings.correctionModel,
@@ -368,6 +390,7 @@ export function registerVoiceInputHandlers(deps: HandlerDependencies): () => voi
     // Capture project info and reset the session transcript at session start.
     sessionProjectInfo = getProjectInfo();
     sessionTranscript = "";
+    sessionConfidenceSegments = [];
     pendingParagraphBreak = false;
 
     const unsubscribe = svc.onEvent((voiceEvent) => {
@@ -381,6 +404,9 @@ export function registerVoiceInputHandlers(deps: HandlerDependencies): () => voi
 
         if (rawText) {
           appendSessionText(rawText);
+        }
+        if (voiceEvent.confidence) {
+          sessionConfidenceSegments.push(voiceEvent.confidence);
         }
 
         // Notify the renderer so it can finalize the utterance in the draft.
@@ -445,10 +471,11 @@ export function registerVoiceInputHandlers(deps: HandlerDependencies): () => voi
     // Capture in-flight utterance text before inserting a paragraph break in the draft,
     // but defer AI correction until the session stops.
     if (service) {
-      const inFlightText = service.commitParagraphBoundary();
+      const { text: inFlightText, confidence } = service.commitParagraphBoundary();
       if (inFlightText) {
         appendSessionText(inFlightText);
       }
+      sessionConfidenceSegments.push(confidence);
     }
     markParagraphBreak();
     return { rawText: null, correctionId: null };
@@ -510,6 +537,7 @@ export function registerVoiceInputHandlers(deps: HandlerDependencies): () => voi
     service = null;
     correctionService = null;
     sessionTranscript = "";
+    sessionConfidenceSegments = [];
     pendingParagraphBreak = false;
   };
 }
