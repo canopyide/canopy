@@ -219,6 +219,7 @@ export function WorktreeFilterPopover({ hideSearchInput = false }: WorktreeFilte
         align="start"
         sideOffset={8}
         className="w-72 p-0 max-h-[70vh] overflow-y-auto"
+        data-testid="worktree-filter-popover"
       >
         <div className="flex flex-col">
           {/* Search */}

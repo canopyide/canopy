@@ -7,6 +7,7 @@ interface FixtureRepoOptions {
   name?: string;
   withFeatureBranch?: boolean;
   withMultipleFiles?: boolean;
+  withImageFile?: boolean;
 }
 
 function git(cmd: string, cwd: string) {
@@ -14,7 +15,12 @@ function git(cmd: string, cwd: string) {
 }
 
 export function createFixtureRepo(options: FixtureRepoOptions = {}): string {
-  const { name = "test-project", withFeatureBranch = false, withMultipleFiles = false } = options;
+  const {
+    name = "test-project",
+    withFeatureBranch = false,
+    withMultipleFiles = false,
+    withImageFile = false,
+  } = options;
 
   const dir = mkdtempSync(path.join(tmpdir(), `canopy-e2e-${name}-`));
 
@@ -38,6 +44,16 @@ export function createFixtureRepo(options: FixtureRepoOptions = {}): string {
       path.join(dir, "package.json"),
       JSON.stringify({ name, version: "1.0.0", private: true }, null, 2) + "\n"
     );
+  }
+
+  if (withImageFile) {
+    mkdirSync(path.join(dir, "assets"), { recursive: true });
+    // 1x1 red PNG pixel (minimal valid PNG)
+    const pngBuffer = Buffer.from(
+      "iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVR42mP8/5+hHgAHggJ/PchI7wAAAABJRU5ErkJggg==",
+      "base64"
+    );
+    writeFileSync(path.join(dir, "assets", "logo.png"), pngBuffer);
   }
 
   git("add -A", dir);

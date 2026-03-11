@@ -378,6 +378,7 @@ export function ReviewHub({ isOpen, worktreePath, onClose }: ReviewHubProps) {
         role="dialog"
         aria-modal="true"
         aria-labelledby="review-hub-title"
+        data-testid="review-hub"
       >
         <div
           className={cn(
@@ -464,6 +465,7 @@ export function ReviewHub({ isOpen, worktreePath, onClose }: ReviewHubProps) {
                 className="flex items-center rounded border border-white/[0.08] overflow-hidden text-[11px]"
                 role="group"
                 aria-label="Diff mode"
+                data-testid="review-hub-diff-mode"
               >
                 <button
                   onClick={() => handleDiffModeChange("working-tree")}
@@ -523,6 +525,7 @@ export function ReviewHub({ isOpen, worktreePath, onClose }: ReviewHubProps) {
                   "focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-canopy-accent"
                 )}
                 aria-label="Close"
+                data-testid="review-hub-close"
               >
                 <X className="w-4 h-4" />
               </button>
