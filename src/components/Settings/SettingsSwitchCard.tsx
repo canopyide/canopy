@@ -1,4 +1,5 @@
 import type { ComponentType } from "react";
+import { RotateCcw } from "lucide-react";
 import { cn } from "@/lib/utils";
 
 const COLOR_SCHEMES = {
@@ -32,6 +33,9 @@ interface SettingsSwitchCardProps {
   disabled?: boolean;
   colorScheme?: keyof typeof COLOR_SCHEMES;
   variant?: "card" | "compact";
+  isModified?: boolean;
+  onReset?: () => void;
+  resetAriaLabel?: string;
 }
 
 export function SettingsSwitchCard({
@@ -44,11 +48,15 @@ export function SettingsSwitchCard({
   disabled,
   colorScheme = "accent",
   variant = "card",
+  isModified,
+  onReset,
+  resetAriaLabel,
 }: SettingsSwitchCardProps) {
   const scheme = COLOR_SCHEMES[colorScheme];
   const isCard = variant === "card";
+  const showReset = isModified && onReset;
 
-  return (
+  const button = (
     <button
       type="button"
       onClick={onChange}
@@ -57,13 +65,19 @@ export function SettingsSwitchCard({
       aria-checked={isEnabled}
       aria-label={ariaLabel}
       className={cn(
-        "w-full flex items-center justify-between transition-all focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2",
+        "relative w-full flex items-center justify-between transition-all focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2",
         isCard ? "p-4 rounded-[var(--radius-lg)] border hover:bg-white/5" : "py-2",
         isEnabled ? scheme.enabled : "border-canopy-border text-canopy-text/70",
         scheme.focus,
         disabled && "opacity-50 cursor-not-allowed"
       )}
     >
+      {isModified && isCard && (
+        <div
+          className="absolute left-0 top-2 bottom-2 w-0.5 rounded-full bg-canopy-accent"
+          aria-hidden="true"
+        />
+      )}
       <div className="flex items-center gap-3">
         {Icon && (
           <Icon
@@ -91,5 +105,28 @@ export function SettingsSwitchCard({
         />
       </div>
     </button>
+  );
+
+  if (!showReset) return button;
+
+  return (
+    <div className="group relative">
+      {button}
+      <button
+        type="button"
+        aria-label={resetAriaLabel ?? `Reset ${title} to default`}
+        className={cn(
+          "absolute top-1/2 -translate-y-1/2 z-10 p-1 rounded-sm",
+          "text-canopy-text/40 hover:text-canopy-accent",
+          "invisible group-hover:visible group-focus-within:visible focus-visible:visible",
+          "focus-visible:outline focus-visible:outline-2 focus-visible:outline-canopy-accent",
+          "transition-colors",
+          isCard ? "right-[4.5rem]" : "right-[3.25rem]"
+        )}
+        onClick={onReset}
+      >
+        <RotateCcw className="w-3 h-3" />
+      </button>
+    </div>
   );
 }
