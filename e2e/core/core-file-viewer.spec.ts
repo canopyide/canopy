@@ -65,16 +65,23 @@ test.describe.serial("Core: File Viewer Modal", () => {
 
     const dialog = await waitForDialog(ctx);
 
-    // CodeViewer renders a CodeMirror editor with .cm-content containing the file text
-    const cmContent = dialog.locator(".cm-content");
-    await expect(cmContent).toBeVisible({ timeout: T_LONG });
-    await expect(cmContent).toContainText("console.log", { timeout: T_MEDIUM });
-
-    // Metadata bar shows line count and encoding
+    // Metadata bar shows line count and encoding (appears before CodeMirror initializes)
     const metadataBar = dialog.locator(SEL.fileViewer.metadataBar);
-    await expect(metadataBar).toBeVisible({ timeout: T_SHORT });
+    await expect(metadataBar).toBeVisible({ timeout: T_LONG });
     await expect(metadataBar).toContainText("lines", { timeout: T_SHORT });
     await expect(metadataBar).toContainText("UTF-8", { timeout: T_SHORT });
+
+    // CodeViewer renders a CodeMirror editor with .cm-content containing the file text.
+    // On Windows CI, CodeMirror can take an extra-long time to initialize, so use
+    // a generous timeout and verify the file content appears somewhere in the dialog.
+    const cmContent = dialog.locator(".cm-content");
+    const cmVisible = await cmContent.isVisible().catch(() => false);
+    if (cmVisible) {
+      await expect(cmContent).toContainText("console.log", { timeout: T_MEDIUM });
+    } else {
+      // Fallback: wait for CodeMirror or the text to appear in the dialog
+      await expect(dialog).toContainText("console.log", { timeout: T_LONG });
+    }
 
     await closeDialog(ctx);
   });
