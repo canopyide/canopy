@@ -131,6 +131,40 @@ describe("useSearchablePalette", () => {
       expect(result.current.results).toHaveLength(5);
       expect(result.current.totalResults).toBe(5);
     });
+
+    it("totalResults works with fuse search", () => {
+      const items: PaletteItem[] = Array.from({ length: 25 }, (_, i) => ({
+        id: `item-${i}`,
+        name: `Searchable Item ${i}`,
+      }));
+
+      const { result } = renderHook(() =>
+        useSearchablePalette<PaletteItem>({
+          items,
+          debounceMs: 0,
+          maxResults: 10,
+          fuseOptions: {
+            keys: ["name"],
+            threshold: 0.4,
+          },
+        })
+      );
+
+      // No query: all items shown, capped at maxResults
+      expect(result.current.results).toHaveLength(10);
+      expect(result.current.totalResults).toBe(25);
+
+      // Query that matches all items via fuse
+      act(() => {
+        result.current.setQuery("Searchable");
+      });
+      act(() => {
+        vi.runAllTimers();
+      });
+
+      expect(result.current.totalResults).toBeGreaterThan(0);
+      expect(result.current.results.length).toBeLessThanOrEqual(10);
+    });
   });
 
   describe("mutual exclusion via paletteId", () => {
