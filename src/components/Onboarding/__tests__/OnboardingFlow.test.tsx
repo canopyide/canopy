@@ -11,6 +11,11 @@ const defaultOnboardingState: OnboardingState = {
   currentStep: null,
   migratedFromLocalStorage: true,
   firstRunToastSeen: false,
+  newsletterPromptSeen: false,
+  checklist: {
+    dismissed: false,
+    items: { openedProject: false, launchedAgent: false, createdWorktree: false },
+  },
 };
 
 const onboardingMock = {
@@ -18,6 +23,8 @@ const onboardingMock = {
   setStep: vi.fn(() => Promise.resolve()),
   complete: vi.fn(() => Promise.resolve()),
   migrate: vi.fn(() => Promise.resolve({ ...defaultOnboardingState })),
+  markToastSeen: vi.fn(() => Promise.resolve()),
+  markNewsletterSeen: vi.fn(() => Promise.resolve()),
 };
 
 const telemetryMock = {
@@ -39,6 +46,16 @@ vi.stubGlobal("window", {
 
 vi.mock("@/utils/env", () => ({
   isCanopyEnvEnabled: () => false,
+}));
+
+vi.mock("../NewsletterStep", () => ({
+  NewsletterStep: vi.fn(({ onDismiss }: { onDismiss: (subscribed: boolean) => void }) => (
+    <div data-testid="newsletter-step">
+      <button data-testid="newsletter-dismiss" onClick={() => onDismiss(false)}>
+        Dismiss
+      </button>
+    </div>
+  )),
 }));
 
 vi.mock("../TelemetryConsentStep", () => ({
@@ -100,7 +117,7 @@ describe("OnboardingFlow telemetry tracking", () => {
     // Wait for hydration and step_viewed event
     await vi.waitFor(() => {
       expect(trackMock).toHaveBeenCalledWith("onboarding_step_viewed", {
-        step: "telemetry",
+        step: "newsletter",
         stepIndex: 0,
       });
     });
@@ -116,6 +133,11 @@ describe("OnboardingFlow telemetry tracking", () => {
       expect(trackMock).toHaveBeenCalledWith("onboarding_step_viewed", expect.any(Object));
     });
 
+    // Dismiss newsletter to advance to telemetry
+    await act(async () => {
+      getByTestId("newsletter-dismiss").click();
+    });
+
     // Accept telemetry to advance to agent selection
     await act(async () => {
       getByTestId("accept").click();
@@ -125,7 +147,7 @@ describe("OnboardingFlow telemetry tracking", () => {
     await vi.waitFor(() => {
       expect(trackMock).toHaveBeenCalledWith("onboarding_step_viewed", {
         step: "agentSelection",
-        stepIndex: 1,
+        stepIndex: 2,
       });
     });
 
@@ -151,6 +173,11 @@ describe("OnboardingFlow telemetry tracking", () => {
       expect(trackMock).toHaveBeenCalled();
     });
 
+    // Dismiss newsletter
+    await act(async () => {
+      getByTestId("newsletter-dismiss").click();
+    });
+
     // Accept telemetry
     await act(async () => {
       getByTestId("accept").click();
@@ -169,7 +196,7 @@ describe("OnboardingFlow telemetry tracking", () => {
     await vi.waitFor(() => {
       expect(trackMock).toHaveBeenCalledWith(
         "onboarding_completed",
-        expect.objectContaining({ totalSteps: 3 })
+        expect.objectContaining({ totalSteps: 4 })
       );
     });
   });
@@ -188,7 +215,7 @@ describe("OnboardingFlow telemetry tracking", () => {
     unmount();
 
     expect(trackMock).toHaveBeenCalledWith("onboarding_abandoned", {
-      lastStep: "telemetry",
+      lastStep: "newsletter",
       lastStepIndex: 0,
     });
   });
@@ -201,6 +228,11 @@ describe("OnboardingFlow telemetry tracking", () => {
     // Wait for hydration
     await vi.waitFor(() => {
       expect(trackMock).toHaveBeenCalled();
+    });
+
+    // Dismiss newsletter
+    await act(async () => {
+      getByTestId("newsletter-dismiss").click();
     });
 
     // Accept telemetry
