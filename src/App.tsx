@@ -29,6 +29,7 @@ import {
   useWatchedPanelNotifications,
   useWorktreeActions,
   useMenuActions,
+  useErrors,
 } from "./hooks";
 import { useActionRegistry } from "./hooks/useActionRegistry";
 import { useUpdateListener } from "./hooks/useUpdateListener";
@@ -633,6 +634,8 @@ function SidebarContent({ onOpenOverview }: SidebarContentProps) {
 }
 
 function App() {
+  useErrors();
+
   const { crossDiffDialog, closeCrossWorktreeDiff } = useWorktreeSelectionStore(
     useShallow((state) => ({
       crossDiffDialog: state.crossDiffDialog,

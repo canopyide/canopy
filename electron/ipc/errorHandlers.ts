@@ -1,6 +1,7 @@
+import { randomUUID } from "node:crypto";
 import { ipcMain, BrowserWindow, shell } from "electron";
 import { CHANNELS } from "./channels.js";
-import { getLogFilePath } from "../utils/logger.js";
+import { getLogFilePath, logError as logErrorUtil } from "../utils/logger.js";
 import {
   GitError,
   ProcessError,
@@ -13,30 +14,7 @@ import {
 import { store } from "../store.js";
 import type { PtyClient } from "../services/PtyClient.js";
 import type { WorkspaceClient } from "../services/WorkspaceClient.js";
-
-type ErrorType = "git" | "process" | "filesystem" | "network" | "config" | "unknown";
-
-type RetryAction = "terminal" | "git" | "worktree";
-
-interface AppError {
-  id: string;
-  timestamp: number;
-  type: ErrorType;
-  message: string;
-  details?: string;
-  source?: string;
-  context?: {
-    worktreeId?: string;
-    terminalId?: string;
-    filePath?: string;
-    command?: string;
-  };
-  isTransient: boolean;
-  dismissed: boolean;
-  retryAction?: RetryAction;
-  retryArgs?: Record<string, unknown>;
-  fromPreviousSession?: boolean;
-}
+import type { AppError, ErrorType, RetryAction } from "@shared/types/ipc/errors.js";
 
 interface RetryPayload {
   errorId: string;
@@ -113,6 +91,7 @@ function createAppError(
   } = {}
 ): AppError {
   const details = getErrorDetails(error);
+  const correlationId = randomUUID();
 
   return {
     id: generateErrorId(),
@@ -126,6 +105,7 @@ function createAppError(
     dismissed: false,
     retryAction: options.retryAction,
     retryArgs: options.retryArgs,
+    correlationId,
   };
 }
 
@@ -198,6 +178,12 @@ class ErrorService {
 
   notifyError(error: unknown, options: Parameters<typeof createAppError>[1] = {}) {
     const appError = createAppError(error, options);
+    logErrorUtil(`[${appError.correlationId}] ${appError.message}`, error, {
+      correlationId: appError.correlationId,
+      type: appError.type,
+      source: appError.source,
+      context: appError.context,
+    });
     this.sendError(appError);
     return appError;
   }

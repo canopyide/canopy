@@ -3,6 +3,7 @@ import { useErrorStore, type AppError, type RetryAction } from "@/store";
 import { isElectronAvailable } from "./useElectron";
 import { errorsClient } from "@/clients";
 import { logErrorWithContext } from "@/utils/errorContext";
+import { notify } from "@/lib/notify";
 
 let ipcListenerAttached = false;
 export function useErrors() {
@@ -37,7 +38,18 @@ export function useErrors() {
         retryAction: error.retryAction,
         retryArgs: error.retryArgs,
         fromPreviousSession: error.fromPreviousSession,
+        correlationId: error.correlationId,
       });
+
+      if (error.correlationId) {
+        notify({
+          type: "error",
+          title: error.source,
+          message: error.message,
+          correlationId: error.correlationId,
+          priority: "low",
+        });
+      }
     });
 
     errorsClient
@@ -54,7 +66,18 @@ export function useErrors() {
             retryAction: error.retryAction,
             retryArgs: error.retryArgs,
             fromPreviousSession: error.fromPreviousSession,
+            correlationId: error.correlationId,
           });
+
+          if (error.correlationId) {
+            notify({
+              type: "error",
+              title: error.source,
+              message: error.message,
+              correlationId: error.correlationId,
+              priority: "low",
+            });
+          }
         }
       })
       .catch(() => {
