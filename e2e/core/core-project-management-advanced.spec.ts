@@ -157,10 +157,10 @@ test.describe.serial("Core: Project Management Advanced", () => {
 
       // Should show "No worktrees match filters" or zero cards
       await expect
-        .poll(
-          () => modal.locator("[data-worktree-branch]").count(),
-          { timeout: T_MEDIUM, message: "Expected zero worktree cards for non-matching search" }
-        )
+        .poll(() => modal.locator("[data-worktree-branch]").count(), {
+          timeout: T_MEDIUM,
+          message: "Expected zero worktree cards for non-matching search",
+        })
         .toBe(0);
 
       // Clear search
