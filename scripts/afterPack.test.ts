@@ -242,6 +242,23 @@ describe("afterPack", () => {
         /better-sqlite3 not found/
       );
     });
+
+    it("should throw when better_sqlite3.node binary is missing on Windows", async () => {
+      mockExistsSync
+        .mockReturnValueOnce(true) // node-pty dir
+        .mockReturnValueOnce(true) // conpty.node
+        .mockReturnValueOnce(true) // conpty_console_list.node
+        .mockReturnValueOnce(true) // conpty/conpty.dll
+        .mockReturnValueOnce(true) // conpty/OpenConsole.exe
+        .mockReturnValueOnce(true) // final: conpty/conpty.dll
+        .mockReturnValueOnce(true) // final: conpty/OpenConsole.exe
+        .mockReturnValueOnce(true) // better-sqlite3 dir
+        .mockReturnValueOnce(false); // better_sqlite3.node missing
+
+      await expect(afterPack(createContext("win32", "/build/win"))).rejects.toThrow(
+        /better-sqlite3 native binary not found/
+      );
+    });
   });
 
   describe("Linux", () => {
