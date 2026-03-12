@@ -35,4 +35,6 @@ export interface AppError {
   retryArgs?: Record<string, unknown>;
   /** Whether this error originated from a previous session (crash recovery) */
   fromPreviousSession?: boolean;
+  /** Correlation ID linking this error across main process logs, error store, and notification history */
+  correlationId?: string;
 }

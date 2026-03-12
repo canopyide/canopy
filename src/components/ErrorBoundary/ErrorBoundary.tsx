@@ -46,6 +46,12 @@ export class ErrorBoundary extends Component<ErrorBoundaryProps, ErrorBoundarySt
     const { onError, context, componentName } = this.props;
     const componentStack = errorInfo.componentStack || "";
 
+    this.setState({
+      errorInfo,
+    });
+
+    const correlationId = crypto.randomUUID();
+
     let incidentId: string | null = null;
     try {
       incidentId = useErrorStore.getState().addError({
@@ -55,6 +61,7 @@ export class ErrorBoundary extends Component<ErrorBoundaryProps, ErrorBoundarySt
         source: componentName || "ErrorBoundary",
         context,
         isTransient: false,
+        correlationId,
       });
     } catch (storeError) {
       console.error("Failed to add error to store:", storeError);
@@ -74,6 +81,7 @@ export class ErrorBoundary extends Component<ErrorBoundaryProps, ErrorBoundarySt
     }
 
     logError("React error boundary caught render error", error, {
+      correlationId,
       componentName: componentName || "ErrorBoundary",
       context,
       componentStack,

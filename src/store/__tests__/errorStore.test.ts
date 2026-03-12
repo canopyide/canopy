@@ -73,6 +73,43 @@ describe("errorStore", () => {
     expect(state.errors.some((entry) => entry.message === "error-54")).toBe(true);
   });
 
+  it("preserves correlationId through addError", () => {
+    const id = useErrorStore.getState().addError({
+      type: "git",
+      message: "push rejected",
+      source: "git",
+      isTransient: false,
+      correlationId: "test-corr-1234",
+    });
+
+    const error = useErrorStore.getState().errors.find((e) => e.id === id);
+    expect(error?.correlationId).toBe("test-corr-1234");
+  });
+
+  it("preserves original correlationId on deduplicated errors", () => {
+    vi.setSystemTime(new Date("2026-01-01T00:00:00.000Z"));
+    useErrorStore.getState().addError({
+      type: "git",
+      message: "push rejected",
+      source: "git",
+      isTransient: false,
+      correlationId: "original-corr-id",
+    });
+
+    vi.setSystemTime(new Date("2026-01-01T00:00:00.200Z"));
+    useErrorStore.getState().addError({
+      type: "git",
+      message: "push rejected",
+      source: "git",
+      isTransient: false,
+      correlationId: "new-corr-id",
+    });
+
+    const state = useErrorStore.getState();
+    expect(state.errors).toHaveLength(1);
+    expect(state.errors[0]?.correlationId).toBe("original-corr-id");
+  });
+
   it("clearAll fully clears error panel state", () => {
     useErrorStore.getState().setPanelOpen(true);
     useErrorStore.getState().addError({

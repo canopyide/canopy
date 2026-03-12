@@ -111,6 +111,11 @@ export function ErrorBanner({
             {error.source && <span className="text-xs text-status-error/80">• {error.source}</span>}
           </div>
           <p className="text-sm text-status-error truncate">{error.message}</p>
+          {error.correlationId && (
+            <span className="font-mono text-[10px] text-status-error/40">
+              Ref: {error.correlationId.split("-")[0]}
+            </span>
+          )}
         </div>
         <div className="flex items-center gap-1 shrink-0">
           {error.details && (
