@@ -3,7 +3,7 @@ import { launchApp, closeApp, type AppContext } from "../helpers/launch";
 import { createFixtureRepo } from "../helpers/fixtures";
 import { openAndOnboardProject } from "../helpers/project";
 import { SEL } from "../helpers/selectors";
-import { T_SHORT, T_MEDIUM, T_SETTLE } from "../helpers/timeouts";
+import { T_SHORT, T_MEDIUM, T_LONG, T_SETTLE } from "../helpers/timeouts";
 
 let ctx: AppContext;
 
@@ -108,13 +108,7 @@ test.describe.serial("Core: Settings Advanced", () => {
     test("per-shortcut reset button restores default binding", async () => {
       const { window } = ctx;
 
-      await window.evaluate(() =>
-        (window as unknown as Record<string, any>).electron?.keybinding?.setOverride(
-          "panel.openSettings",
-          ["Ctrl+Shift+Z"]
-        )
-      );
-
+      // Open settings and navigate to Keyboard tab
       await window.locator(SEL.toolbar.openSettings).click();
       await expect(window.locator(SEL.settings.heading)).toBeVisible({ timeout: T_MEDIUM });
 
@@ -136,8 +130,36 @@ test.describe.serial("Core: Settings Advanced", () => {
       await row.scrollIntoViewIfNeeded();
       await row.hover();
 
+      // Use the Edit UI to create an override via recording
+      const editBtn = row.locator("button", { hasText: "Edit" });
+      await expect(editBtn).toBeVisible({ timeout: T_SHORT });
+      await editBtn.click();
+
+      // Click "Click to record shortcut" to start recording
+      const recordPrompt = window.locator(SEL.settings.shortcutRecordPrompt);
+      await expect(recordPrompt).toBeVisible({ timeout: T_SHORT });
+      await recordPrompt.click();
+
+      // Press a key combo
+      await window.keyboard.press("Control+Shift+KeyZ");
+
+      // Wait for chord timeout (1s) + settle for recording to finish
+      await window.waitForTimeout(1500);
+
+      // Click Save to apply the override
+      const saveBtn = window.locator("button", { hasText: "Save" });
+      await expect(saveBtn).toBeVisible({ timeout: T_SHORT });
+      await saveBtn.click();
+
+      // Wait for the recorder to close
+      await window.waitForTimeout(T_SETTLE);
+
+      // Now hover the row again to see the reset button
+      await row.scrollIntoViewIfNeeded();
+      await row.hover();
+
       const resetBtn = row.locator(SEL.settings.shortcutResetButton);
-      await expect(resetBtn).toBeVisible({ timeout: T_SHORT });
+      await expect(resetBtn).toBeVisible({ timeout: T_MEDIUM });
       await resetBtn.click();
 
       await row.hover();
