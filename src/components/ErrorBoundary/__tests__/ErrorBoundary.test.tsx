@@ -91,20 +91,26 @@ describe("ErrorBoundary", () => {
     );
   });
 
-  it("resets state when resetError is called", () => {
+  it("resets state when resetError is called and child stops throwing", () => {
+    let shouldThrow = true;
+    function ConditionalThrow() {
+      if (shouldThrow) throw new Error("Test render error");
+      return <div>Recovered</div>;
+    }
+
     render(
       <ErrorBoundary variant="section">
-        <ThrowingChild shouldThrow={true} />
+        <ConditionalThrow />
       </ErrorBoundary>
     );
 
     expect(screen.getByText("Section Error")).toBeTruthy();
 
+    shouldThrow = false;
     fireEvent.click(screen.getByText("Try Again"));
 
-    // After reset, the child will throw again since shouldThrow is still true
-    // But we verify the boundary attempted to re-render children
-    expect(screen.getByText("Section Error")).toBeTruthy();
+    expect(screen.getByText("Recovered")).toBeTruthy();
+    expect(screen.queryByText("Section Error")).toBeNull();
   });
 
   it("provides onReport to section variant", () => {
@@ -135,6 +141,37 @@ describe("ErrorBoundary", () => {
     );
 
     expect(screen.queryByText("Report Issue")).toBeNull();
+  });
+
+  it("renders incident ID in production mode for section variant", () => {
+    vi.stubEnv("DEV", false);
+
+    render(
+      <ErrorBoundary variant="section">
+        <ThrowingChild shouldThrow={true} />
+      </ErrorBoundary>
+    );
+
+    const errors = useErrorStore.getState().errors;
+    const shortId = errors[0].id.slice(-7);
+
+    expect(screen.getByText(`Error ID: ${shortId}`)).toBeTruthy();
+    expect(screen.queryByText("Test render error")).toBeNull();
+    expect(
+      screen.getByText("Something went wrong. Please try again or contact support.")
+    ).toBeTruthy();
+  });
+
+  it("hides technical details in production mode", () => {
+    vi.stubEnv("DEV", false);
+
+    render(
+      <ErrorBoundary variant="section">
+        <ThrowingChild shouldThrow={true} />
+      </ErrorBoundary>
+    );
+
+    expect(screen.queryByText("Technical Details")).toBeNull();
   });
 
   it("calls onError callback when provided", () => {
