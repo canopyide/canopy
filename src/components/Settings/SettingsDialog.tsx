@@ -162,6 +162,51 @@ export function SettingsDialog({
     return () => window.removeEventListener("keydown", handleKeyDown);
   }, [isOpen]);
 
+  // Modified-from-default tracking
+  const performanceMode = usePerformanceModeStore((s) => s.performanceMode);
+  const scrollbackLines = useScrollbackStore((s) => s.scrollbackLines);
+  const layoutConfig = useLayoutConfigStore((s) => s.layoutConfig);
+  const hybridInputEnabled = useTerminalInputStore((s) => s.hybridInputEnabled);
+  const hybridInputAutoFocus = useTerminalInputStore((s) => s.hybridInputAutoFocus);
+  const twoPaneSplitConfig = useTwoPaneSplitStore((s) => s.config);
+  const showProjectPulse = usePreferencesStore((s) => s.showProjectPulse);
+  const showDeveloperTools = usePreferencesStore((s) => s.showDeveloperTools);
+
+  const modifiedTabs = useMemo(() => {
+    const tabs = new Set<SettingsTab>();
+
+    // General defaults: showProjectPulse=true, showDeveloperTools=false
+    if (!showProjectPulse || showDeveloperTools) tabs.add("general");
+
+    // Terminal defaults: performanceMode=false, scrollback=5000, strategy=automatic,
+    // hybridInput=true, hybridAutoFocus=true, twoPaneSplit.enabled=true, preferPreview=false, ratio=0.5
+    if (
+      performanceMode ||
+      scrollbackLines !== 5000 ||
+      layoutConfig.strategy !== "automatic" ||
+      !hybridInputEnabled ||
+      !hybridInputAutoFocus ||
+      !twoPaneSplitConfig.enabled ||
+      twoPaneSplitConfig.preferPreview ||
+      Math.round(twoPaneSplitConfig.defaultRatio * 100) !== 50
+    ) {
+      tabs.add("terminal");
+    }
+
+    return tabs;
+  }, [
+    showProjectPulse,
+    showDeveloperTools,
+    performanceMode,
+    scrollbackLines,
+    layoutConfig.strategy,
+    hybridInputEnabled,
+    hybridInputAutoFocus,
+    twoPaneSplitConfig.enabled,
+    twoPaneSplitConfig.preferPreview,
+    twoPaneSplitConfig.defaultRatio,
+  ]);
+
   const searchResults = useMemo(
     () => filterSettings(SETTINGS_SEARCH_INDEX, deferredQuery, { modifiedTabs }),
     [deferredQuery, modifiedTabs]
@@ -232,51 +277,6 @@ export function SettingsDialog({
       clearTimeout(highlightTimer);
     };
   }, [scrollToSection, activeTab, isSearching]);
-
-  // Modified-from-default tracking
-  const performanceMode = usePerformanceModeStore((s) => s.performanceMode);
-  const scrollbackLines = useScrollbackStore((s) => s.scrollbackLines);
-  const layoutConfig = useLayoutConfigStore((s) => s.layoutConfig);
-  const hybridInputEnabled = useTerminalInputStore((s) => s.hybridInputEnabled);
-  const hybridInputAutoFocus = useTerminalInputStore((s) => s.hybridInputAutoFocus);
-  const twoPaneSplitConfig = useTwoPaneSplitStore((s) => s.config);
-  const showProjectPulse = usePreferencesStore((s) => s.showProjectPulse);
-  const showDeveloperTools = usePreferencesStore((s) => s.showDeveloperTools);
-
-  const modifiedTabs = useMemo(() => {
-    const tabs = new Set<SettingsTab>();
-
-    // General defaults: showProjectPulse=true, showDeveloperTools=false
-    if (!showProjectPulse || showDeveloperTools) tabs.add("general");
-
-    // Terminal defaults: performanceMode=false, scrollback=5000, strategy=automatic,
-    // hybridInput=true, hybridAutoFocus=true, twoPaneSplit.enabled=true, preferPreview=false, ratio=0.5
-    if (
-      performanceMode ||
-      scrollbackLines !== 5000 ||
-      layoutConfig.strategy !== "automatic" ||
-      !hybridInputEnabled ||
-      !hybridInputAutoFocus ||
-      !twoPaneSplitConfig.enabled ||
-      twoPaneSplitConfig.preferPreview ||
-      Math.round(twoPaneSplitConfig.defaultRatio * 100) !== 50
-    ) {
-      tabs.add("terminal");
-    }
-
-    return tabs;
-  }, [
-    showProjectPulse,
-    showDeveloperTools,
-    performanceMode,
-    scrollbackLines,
-    layoutConfig.strategy,
-    hybridInputEnabled,
-    hybridInputAutoFocus,
-    twoPaneSplitConfig.enabled,
-    twoPaneSplitConfig.preferPreview,
-    twoPaneSplitConfig.defaultRatio,
-  ]);
 
   const handleNavSelect = useCallback((tab: SettingsTab) => {
     setActiveTab(tab);
