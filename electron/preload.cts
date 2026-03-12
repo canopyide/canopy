@@ -249,6 +249,7 @@ const CHANNELS = {
   GITHUB_GET_REPO_STATS: "github:get-repo-stats",
   GITHUB_OPEN_ISSUES: "github:open-issues",
   GITHUB_OPEN_PRS: "github:open-prs",
+  GITHUB_OPEN_COMMITS: "github:open-commits",
   GITHUB_OPEN_ISSUE: "github:open-issue",
   GITHUB_OPEN_PR: "github:open-pr",
   GITHUB_CHECK_CLI: "github:check-cli",
@@ -1167,6 +1168,8 @@ const api: ElectronAPI = {
     openIssues: (cwd: string) => _typedInvoke(CHANNELS.GITHUB_OPEN_ISSUES, cwd),
 
     openPRs: (cwd: string) => _typedInvoke(CHANNELS.GITHUB_OPEN_PRS, cwd),
+
+    openCommits: (cwd: string) => _typedInvoke(CHANNELS.GITHUB_OPEN_COMMITS, cwd),
 
     openIssue: (cwd: string, issueNumber: number) =>
       _typedInvoke(CHANNELS.GITHUB_OPEN_ISSUE, { cwd, issueNumber }),
