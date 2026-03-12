@@ -5,7 +5,7 @@ import { createFixtureRepo } from "../helpers/fixtures";
 import { openAndOnboardProject } from "../helpers/project";
 import { getGridPanelCount } from "../helpers/panels";
 import { SEL } from "../helpers/selectors";
-import { T_SHORT, T_MEDIUM, T_LONG, T_SETTLE } from "../helpers/timeouts";
+import { T_SHORT, T_MEDIUM, T_LONG } from "../helpers/timeouts";
 
 let ctx: AppContext;
 let server: Server;
