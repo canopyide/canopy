@@ -3,7 +3,7 @@ import { launchApp, closeApp, type AppContext } from "../helpers/launch";
 import { createFixtureRepo } from "../helpers/fixtures";
 import { openAndOnboardProject } from "../helpers/project";
 import { SEL } from "../helpers/selectors";
-import { T_SHORT, T_MEDIUM, T_LONG, T_SETTLE } from "../helpers/timeouts";
+import { T_SHORT, T_MEDIUM, T_SETTLE } from "../helpers/timeouts";
 
 let ctx: AppContext;
 
@@ -150,7 +150,8 @@ test.describe.serial("Core: Settings Advanced", () => {
         .poll(
           async () => {
             const settings = await window.evaluate(() =>
-              (window as any).electron?.notification?.getSettings()
+              // eslint-disable-next-line @typescript-eslint/no-explicit-any
+              (window as unknown as Record<string, any>).electron?.notification?.getSettings()
             );
             return settings?.completedEnabled;
           },
@@ -185,7 +186,8 @@ test.describe.serial("Core: Settings Advanced", () => {
         .poll(
           async () => {
             const settings = await window.evaluate(() =>
-              (window as any).electron?.notification?.getSettings()
+              // eslint-disable-next-line @typescript-eslint/no-explicit-any
+              (window as unknown as Record<string, any>).electron?.notification?.getSettings()
             );
             return settings?.completedEnabled;
           },
