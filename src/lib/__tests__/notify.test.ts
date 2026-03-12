@@ -408,12 +408,15 @@ describe("notify()", () => {
       expect(useNotificationStore.getState().notifications).toHaveLength(1);
     });
 
-    it("records each event individually in history", () => {
+    it("records each event individually in history with distinct messages", () => {
       vi.spyOn(document, "hasFocus").mockReturnValue(true);
       notify(makeCoalescePayload("agent:completed", "Agent 1 done"));
       notify(makeCoalescePayload("agent:completed", "Agent 2 done"));
 
-      expect(useNotificationHistoryStore.getState().entries).toHaveLength(2);
+      const entries = useNotificationHistoryStore.getState().entries;
+      expect(entries).toHaveLength(2);
+      expect(entries[0].message).toBe("Agent 1 done");
+      expect(entries[1].message).toBe("Agent 2 done");
     });
 
     it("updates toast message and title on coalesce", () => {

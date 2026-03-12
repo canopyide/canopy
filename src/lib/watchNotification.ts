@@ -61,20 +61,10 @@ export function fireWatchNotification(
       buildTitle: () => "Agent tasks completed",
       buildMessage: (count) => `${count} agents finished their tasks`,
       buildInboxMessage: (count) => `${count} agents finished their tasks`,
-      buildAction: (count) => {
-        if (count === 1) {
-          return {
-            label: "Go to terminal",
-            onClick: () => navigateToPanel(panelId, worktreeId),
-            actionId: "panel.focus",
-            actionArgs: { panelId, ...(worktreeId ? { worktreeId } : {}) },
-          };
-        }
-        return {
-          label: "View all",
-          onClick: () => useUIStore.getState().openNotificationCenter(),
-        };
-      },
+      buildAction: () => ({
+        label: "View all",
+        onClick: () => useUIStore.getState().openNotificationCenter(),
+      }),
     },
   });
 }
