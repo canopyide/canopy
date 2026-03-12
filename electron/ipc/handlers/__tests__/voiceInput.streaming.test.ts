@@ -124,9 +124,15 @@ describe("TranscriptionBuffer", () => {
       ...highWords("stand is nice today"),
     ]);
 
+    expect(clusters).toHaveLength(2);
     // First cluster: "racked" with right-context "is a great"
-    expect(clusters.length).toBeGreaterThanOrEqual(1);
-    expect(clusters[0].words[0].word).toBe("racked");
+    expect(clusters[0].words.map((w) => w.word)).toEqual(["racked"]);
+    expect(clusters[0].rightContext.map((w) => w.word)).toEqual(["is", "a", "great"]);
+    // Second cluster: "zoo" with right-context "stand is nice"
+    expect(clusters[1].words.map((w) => w.word)).toEqual(["zoo"]);
+    expect(clusters[1].rightContext.map((w) => w.word)).toEqual(["stand", "is", "nice"]);
+    // Left-context of second cluster should include preceding high-confidence words
+    expect(clusters[1].leftContext.map((w) => w.word)).toEqual(["great", "tool"]);
   });
 
   it("does not re-emit clusters that were already emitted", () => {

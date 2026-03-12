@@ -387,6 +387,25 @@ describe("VoiceCorrectionService", () => {
       expect(input).toContain("so much today");
     });
 
+    it("falls back to raw span on HTTP error", async () => {
+      vi.stubGlobal("fetch", vi.fn().mockResolvedValue(makeFetchResponse({}, false, 500)));
+
+      const svc = new VoiceCorrectionService();
+      const result = await svc.correctWord(
+        {
+          uncertainWords: ["racked"],
+          leftContext: "",
+          rightContext: "is great now",
+          rawSpan: "racked",
+        },
+        BASE_SETTINGS
+      );
+
+      expect(result.action).toBe("no_change");
+      expect(result.confirmedText).toBe("racked");
+      expect(result.confidence).toBe("low");
+    });
+
     it("returns raw span for empty input", async () => {
       const fetchMock = vi.fn();
       vi.stubGlobal("fetch", fetchMock);
