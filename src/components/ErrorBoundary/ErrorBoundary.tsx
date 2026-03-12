@@ -48,6 +48,8 @@ export class ErrorBoundary extends Component<ErrorBoundaryProps, ErrorBoundarySt
       errorInfo,
     });
 
+    const correlationId = crypto.randomUUID();
+
     try {
       useErrorStore.getState().addError({
         type: "unknown",
@@ -56,6 +58,7 @@ export class ErrorBoundary extends Component<ErrorBoundaryProps, ErrorBoundarySt
         source: componentName || "ErrorBoundary",
         context,
         isTransient: false,
+        correlationId,
       });
     } catch (storeError) {
       console.error("Failed to add error to store:", storeError);
@@ -70,6 +73,7 @@ export class ErrorBoundary extends Component<ErrorBoundaryProps, ErrorBoundarySt
     }
 
     logError("React error boundary caught render error", error, {
+      correlationId,
       componentName: componentName || "ErrorBoundary",
       context,
       componentStack,

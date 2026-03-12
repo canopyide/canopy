@@ -11,6 +11,7 @@ const shellMock = vi.hoisted(() => ({
 
 const loggerMock = vi.hoisted(() => ({
   getLogFilePath: vi.fn(() => "/tmp/canopy.log"),
+  logError: vi.fn(),
 }));
 
 const storeMock = vi.hoisted(() => ({
@@ -162,7 +163,31 @@ describe("errorHandlers", () => {
       CHANNELS.ERROR_NOTIFY,
       expect.objectContaining({
         source: "retry-unknown",
+        correlationId: expect.any(String),
       })
+    );
+  });
+
+  it("generates a correlationId on every error and logs it", async () => {
+    const CHANNELS = await getChannels();
+    const mockWindow = createMockWindow();
+    registerErrorHandlers(mockWindow as never, null, null);
+
+    const retryHandler = getInvokeHandler(CHANNELS.ERROR_RETRY);
+    await retryHandler({} as never, undefined as never).catch(() => {});
+
+    const sentError = mockWindow.webContents.send.mock.calls.find(
+      ([channel]: string[]) => channel === CHANNELS.ERROR_NOTIFY
+    )?.[1];
+    expect(sentError).toBeDefined();
+    expect(sentError.correlationId).toMatch(
+      /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/
+    );
+
+    expect(loggerMock.logError).toHaveBeenCalledWith(
+      expect.stringContaining(sentError.correlationId),
+      expect.anything(),
+      expect.objectContaining({ correlationId: sentError.correlationId })
     );
   });
 
@@ -225,6 +250,26 @@ describe("errorHandlers", () => {
             type: "config",
           }),
         ])
+      );
+    });
+
+    it("preserves correlationId through buffer and flush", async () => {
+      const CHANNELS = await getChannels();
+      const destroyedWindow = createMockWindow({ destroyed: true });
+      registerErrorHandlers(destroyedWindow as never, null, null);
+
+      const retryHandler = getInvokeHandler(CHANNELS.ERROR_RETRY);
+      await retryHandler({} as never, undefined as never).catch(() => {});
+
+      const goodWindow = createMockWindow();
+      registerErrorHandlers(goodWindow as never, null, null);
+      flushPendingErrors();
+
+      const sentError = goodWindow.webContents.send.mock.calls.find(
+        ([channel]: string[]) => channel === CHANNELS.ERROR_NOTIFY
+      )?.[1];
+      expect(sentError.correlationId).toMatch(
+        /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/
       );
     });
 
@@ -303,7 +348,7 @@ describe("errorHandlers", () => {
   });
 
   describe("getPendingPersistedErrors", () => {
-    it("returns persisted errors with fromPreviousSession flag", async () => {
+    it("returns persisted errors with fromPreviousSession flag and preserves correlationId", async () => {
       const CHANNELS = await getChannels();
       const persistedErrors = [
         {
@@ -313,6 +358,7 @@ describe("errorHandlers", () => {
           message: "Config error from last session",
           isTransient: false,
           dismissed: false,
+          correlationId: "aabbccdd-1111-2222-3333-444455556666",
         },
       ];
       storeMock.store.get.mockReturnValue(persistedErrors);
@@ -326,6 +372,7 @@ describe("errorHandlers", () => {
           id: "error-prev-1",
           message: "Config error from last session",
           fromPreviousSession: true,
+          correlationId: "aabbccdd-1111-2222-3333-444455556666",
         }),
       ]);
     });

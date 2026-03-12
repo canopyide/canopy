@@ -22,6 +22,7 @@ export interface AppError {
   retryAction?: RetryAction;
   retryArgs?: Record<string, unknown>;
   fromPreviousSession?: boolean;
+  correlationId?: string;
 }
 
 interface ErrorStore {
