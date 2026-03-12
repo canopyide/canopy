@@ -1,4 +1,4 @@
-import Fuse, { type IFuseOptions } from "fuse.js";
+import Fuse, { type Expression, type IFuseOptions } from "fuse.js";
 import type { SettingsTab } from "./SettingsDialog";
 import type { SettingsSearchEntry } from "./settingsSearchIndex";
 
@@ -89,7 +89,7 @@ export function filterSettings(
         ],
       })),
     };
-    fuseResults = fuse.search(structured);
+    fuseResults = fuse.search(structured as unknown as Expression);
   } else {
     fuseResults = fuse.search(cleanQuery);
   }
