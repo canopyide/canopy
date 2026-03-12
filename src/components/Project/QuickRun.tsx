@@ -522,6 +522,12 @@ export function QuickRun({ projectId }: QuickRunProps) {
                                 {item.value}
                               </span>
                             )}
+                            {(item.type === "script" || item.type === "saved") &&
+                              item.description && (
+                                <span className="block truncate text-[11px] opacity-40 font-sans mt-0.5">
+                                  {item.description}
+                                </span>
+                              )}
                           </div>
                           {item.type === "saved" ? (
                             <button
