@@ -92,4 +92,10 @@ export const SEL = {
     panel: '[aria-label^="Claude agent:"]',
     startButton: '[aria-label="Start Claude Agent"]',
   },
+  fileViewer: {
+    dialog: '[role="dialog"]',
+    closeButton: '[aria-label="Close dialog"]',
+    metadataBar: ".font-mono",
+    image: "img",
+  },
 } as const;
