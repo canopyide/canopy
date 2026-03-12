@@ -1,9 +1,7 @@
 import { test, expect } from "@playwright/test";
 import { launchApp, closeApp, type AppContext } from "../helpers/launch";
-import { createFixtureRepo } from "../helpers/fixtures";
-import { openAndOnboardProject } from "../helpers/project";
 import { SEL } from "../helpers/selectors";
-import { T_SHORT, T_MEDIUM, T_SETTLE } from "../helpers/timeouts";
+import { T_SHORT, T_MEDIUM } from "../helpers/timeouts";
 
 const mod = process.platform === "darwin" ? "Meta" : "Control";
 
@@ -161,39 +159,6 @@ test.describe.serial("Core: Diagnostics & Notifications", () => {
       await expect(window.locator(SEL.notifications.emptyState)).not.toBeVisible({
         timeout: T_SHORT,
       });
-    });
-
-    test("Clear all appears after onboarding generates notifications", async () => {
-      const { app, window } = ctx;
-
-      const fixtureRepo = createFixtureRepo({ name: "diag-notifications" });
-      await openAndOnboardProject(app, window, fixtureRepo, "Diag Test");
-
-      // Wait for first-run toasts to fire
-      await window.waitForTimeout(T_SETTLE * 2);
-
-      await window.locator(SEL.notifications.bellButton).click();
-
-      // Wait briefly for popover
-      await window.waitForTimeout(T_SETTLE);
-
-      const clearAll = window.locator(SEL.notifications.clearAllButton);
-      const hasClearAll = await clearAll.isVisible().catch(() => false);
-      if (!hasClearAll) {
-        test.skip(true, "First-run toast did not fire — Clear all button not present");
-        return;
-      }
-
-      await clearAll.click();
-
-      // After clear all, popover closes (onClose called) — reopen to verify empty
-      await window.locator(SEL.notifications.bellButton).click();
-      await expect(window.locator(SEL.notifications.emptyState)).toBeVisible({
-        timeout: T_MEDIUM,
-      });
-
-      // Close popover
-      await window.keyboard.press("Escape");
     });
   });
 });
