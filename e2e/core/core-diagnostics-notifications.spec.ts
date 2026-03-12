@@ -19,10 +19,10 @@ test.describe.serial("Core: Diagnostics & Notifications", () => {
   // ── Diagnostics Dock ──────────────────────────────────────
 
   test.describe.serial("Diagnostics Dock", () => {
-    test("opens via Ctrl+Shift+M with Problems tab active", async () => {
+    test("opens via keyboard shortcut with Problems tab active", async () => {
       const { window } = ctx;
 
-      await window.keyboard.press("Control+Shift+M");
+      await window.keyboard.press(`${mod}+Shift+D`);
 
       const dock = window.locator(SEL.diagnostics.dock);
       await expect(dock).toBeVisible({ timeout: T_MEDIUM });
