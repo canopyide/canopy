@@ -5,6 +5,7 @@ import {
   resolvePrerequisites,
   BASELINE_PREREQUISITES,
 } from "../SystemHealthCheck.js";
+import { setUserRegistry, type AgentConfig } from "../../../shared/config/agentRegistry.js";
 
 vi.mock("child_process", () => ({
   execFileSync: vi.fn(),
@@ -39,15 +40,74 @@ describe("resolvePrerequisites", () => {
   });
 
   it("deduplicates by tool name keeping stricter severity", () => {
-    // node is in baseline as fatal — agent can't downgrade it
-    const specs = resolvePrerequisites(["claude"]);
+    const testAgent: AgentConfig = {
+      id: "test-agent",
+      name: "Test",
+      command: "test-agent",
+      color: "#000",
+      iconId: "test",
+      supportsContextInjection: false,
+      prerequisites: [{ tool: "npm", label: "npm", versionArgs: ["--version"], severity: "fatal" }],
+    };
+    setUserRegistry({ "test-agent": testAgent });
+
+    const specs = resolvePrerequisites(["test-agent"]);
+    const npmSpec = specs.find((s) => s.tool === "npm");
+    // npm is baseline "warn" but test-agent declares it "fatal" — fatal should win
+    expect(npmSpec?.severity).toBe("fatal");
+
+    setUserRegistry({});
+  });
+
+  it("deduplicates keeping higher minVersion", () => {
+    const testAgent: AgentConfig = {
+      id: "test-agent",
+      name: "Test",
+      command: "test-agent",
+      color: "#000",
+      iconId: "test",
+      supportsContextInjection: false,
+      prerequisites: [
+        {
+          tool: "node",
+          label: "Node.js",
+          versionArgs: ["--version"],
+          severity: "fatal",
+          minVersion: "20.0.0",
+        },
+      ],
+    };
+    setUserRegistry({ "test-agent": testAgent });
+
+    const specs = resolvePrerequisites(["test-agent"]);
     const nodeSpec = specs.find((s) => s.tool === "node");
-    expect(nodeSpec?.severity).toBe("fatal");
+    // Baseline node has minVersion 18.0.0, agent wants 20.0.0 — higher wins
+    expect(nodeSpec?.minVersion).toBe("20.0.0");
+
+    setUserRegistry({});
+  });
+
+  it("does not produce duplicates when same tool appears in baseline and agent", () => {
+    const testAgent: AgentConfig = {
+      id: "test-agent",
+      name: "Test",
+      command: "test-agent",
+      color: "#000",
+      iconId: "test",
+      supportsContextInjection: false,
+      prerequisites: [{ tool: "git", label: "Git", versionArgs: ["--version"], severity: "fatal" }],
+    };
+    setUserRegistry({ "test-agent": testAgent });
+
+    const specs = resolvePrerequisites(["test-agent"]);
+    const gitSpecs = specs.filter((s) => s.tool === "git");
+    expect(gitSpecs).toHaveLength(1);
+
+    setUserRegistry({});
   });
 
   it("ignores unknown agent IDs gracefully", () => {
     const specs = resolvePrerequisites(["nonexistent"]);
-    // Should still have baseline
     expect(specs.length).toBe(BASELINE_PREREQUISITES.length);
   });
 });
@@ -215,6 +275,45 @@ describe("runSystemHealthCheck", () => {
     expect(node?.version).toBe("16.0.0");
     expect(node?.meetsMinVersion).toBe(false);
     expect(result.allRequired).toBe(false);
+  });
+
+  it("meetsMinVersion is false when version command fails for a tool with minVersion", async () => {
+    mockedExecFileSync.mockImplementation((cmd, args) => {
+      const arg = Array.isArray(args) ? args[0] : "";
+      if (cmd === "git") return "git version 2.43.0\n";
+      if (arg === "node") return ""; // which succeeds
+      if (cmd === "node") throw new Error("version check failed"); // version extraction fails
+      if (cmd === "npm") return "10.2.4\n";
+      if (cmd === "gh") return "gh version 2.40.0\n";
+      return "";
+    });
+
+    const result = await runSystemHealthCheck();
+
+    const node = result.prerequisites.find((p) => p.tool === "node");
+    expect(node?.available).toBe(true);
+    expect(node?.version).toBeNull();
+    expect(node?.meetsMinVersion).toBe(false);
+    expect(result.allRequired).toBe(false);
+  });
+
+  it("handles unparsable version output gracefully", async () => {
+    mockedExecFileSync.mockImplementation((cmd, args) => {
+      const arg = Array.isArray(args) ? args[0] : "";
+      if (cmd === "git") return "git version 2.43.0\n";
+      if (cmd === "node") return "not-a-version\n";
+      if (cmd === "npm") return "10.2.4\n";
+      if (cmd === "gh") return "gh version 2.40.0\n";
+      if (arg === "git" || arg === "node" || arg === "npm" || arg === "gh") return "";
+      return "";
+    });
+
+    const result = await runSystemHealthCheck();
+
+    const node = result.prerequisites.find((p) => p.tool === "node");
+    expect(node?.available).toBe(true);
+    expect(node?.version).toBeNull();
+    expect(node?.meetsMinVersion).toBe(false);
   });
 
   it("meetsMinVersion is true when version meets minimum", async () => {
