@@ -40,7 +40,7 @@ export function FindBar({ find }: FindBarProps) {
   };
 
   return (
-    <div className="absolute top-2 right-2 z-20 flex items-center gap-1 rounded-md bg-canopy-panel border border-canopy-border shadow-lg px-2 py-1">
+    <div className="absolute top-2 right-2 z-20 flex items-center gap-1 rounded-md bg-surface-panel-elevated border border-canopy-border shadow-lg px-2 py-1">
       <input
         ref={inputRef}
         type="text"
@@ -67,7 +67,7 @@ export function FindBar({ find }: FindBarProps) {
         type="button"
         onClick={goPrev}
         disabled={matchCount === 0}
-        className="p-0.5 rounded hover:bg-canopy-hover disabled:opacity-30 text-canopy-text/70"
+        className="p-0.5 rounded hover:bg-white/10 disabled:opacity-30 text-canopy-text/70"
         aria-label="Previous match"
       >
         <ChevronUp className="w-3.5 h-3.5" />
@@ -76,7 +76,7 @@ export function FindBar({ find }: FindBarProps) {
         type="button"
         onClick={goNext}
         disabled={matchCount === 0}
-        className="p-0.5 rounded hover:bg-canopy-hover disabled:opacity-30 text-canopy-text/70"
+        className="p-0.5 rounded hover:bg-white/10 disabled:opacity-30 text-canopy-text/70"
         aria-label="Next match"
       >
         <ChevronDown className="w-3.5 h-3.5" />
@@ -84,7 +84,7 @@ export function FindBar({ find }: FindBarProps) {
       <button
         type="button"
         onClick={close}
-        className="p-0.5 rounded hover:bg-canopy-hover text-canopy-text/70"
+        className="p-0.5 rounded hover:bg-white/10 text-canopy-text/70"
         aria-label="Close find bar"
       >
         <X className="w-3.5 h-3.5" />
