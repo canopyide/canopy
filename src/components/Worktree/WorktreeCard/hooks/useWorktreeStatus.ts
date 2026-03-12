@@ -152,12 +152,7 @@ export function useWorktreeStatus({
     if (worktree.prState === "open") return "in-review";
 
     return null;
-  }, [
-    isMainWorktree,
-    worktree.worktreeChanges,
-    worktree.prState,
-    worktree.issueNumber,
-  ]);
+  }, [isMainWorktree, worktree.worktreeChanges, worktree.prState, worktree.issueNumber]);
 
   const lifecycle = worktree.lifecycleStatus;
   const isLifecycleRunning = lifecycle?.state === "running";
