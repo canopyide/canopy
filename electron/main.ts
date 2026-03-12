@@ -591,25 +591,29 @@ function setupWebviewCSP(): void {
       });
 
       // Intercept JavaScript dialogs (alert/confirm/prompt) from webview guests.
-      // @ts-expect-error Electron 40 emits "js-dialog" but its TS types omit it from the overload union
-      contents.on(
+      // Electron 40 emits "js-dialog" but its TS types omit it from the overload union.
+      (contents as { on: (event: string, listener: (...args: unknown[]) => void) => void }).on(
         "js-dialog",
         (
-          event: Electron.Event,
-          _url: string,
-          message: string,
-          dialogType: string,
-          defaultValue: string,
-          callback: (success: boolean, response?: string) => void
+          event: unknown,
+          _url: unknown,
+          message: unknown,
+          dialogType: unknown,
+          defaultValue: unknown,
+          callback: unknown
         ) => {
-          event.preventDefault();
+          (event as Electron.Event).preventDefault();
+          const msg = message as string;
+          const type = dialogType as string;
+          const defVal = (defaultValue as string) ?? "";
+          const cb = callback as (success: boolean, response?: string) => void;
 
           const dialogService = getWebviewDialogService();
           const dialogId = crypto.randomUUID();
-          const panelId = dialogService.registerDialog(dialogId, contents.id, callback);
+          const panelId = dialogService.registerDialog(dialogId, contents.id, cb);
 
           if (!panelId) {
-            callback(dialogType === "alert");
+            cb(type === "alert");
             return;
           }
 
@@ -617,13 +621,13 @@ function setupWebviewCSP(): void {
             mainWindow.webContents.send("webview:dialog-request", {
               dialogId,
               panelId,
-              type: dialogType,
-              message,
-              defaultValue: defaultValue ?? "",
+              type,
+              message: msg,
+              defaultValue: defVal,
             });
           } else {
-            callback(dialogType === "alert");
-            dialogService.resolveDialog(dialogId, dialogType === "alert");
+            cb(type === "alert");
+            dialogService.resolveDialog(dialogId, type === "alert");
           }
         }
       );
