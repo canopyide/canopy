@@ -501,7 +501,7 @@ export function QuickRun({ projectId }: QuickRunProps) {
                         ) : (
                           <Terminal className="h-3 w-3 opacity-40 shrink-0" />
                         )}
-                        <div className="flex-1 truncate flex items-center justify-between min-w-0">
+                        <div className="flex-1 truncate flex items-start justify-between min-w-0">
                           <div className="truncate">
                             <span
                               className={cn(
