@@ -21,6 +21,16 @@ function addToast(overrides: Record<string, unknown> = {}) {
   });
 }
 
+let fixtureElements: HTMLElement[] = [];
+
+function createFixtureButton(text: string): HTMLButtonElement {
+  const btn = document.createElement("button");
+  btn.textContent = text;
+  document.body.appendChild(btn);
+  fixtureElements.push(btn);
+  return btn;
+}
+
 describe("Toast accessibility", () => {
   beforeEach(() => {
     vi.useFakeTimers();
@@ -29,7 +39,12 @@ describe("Toast accessibility", () => {
   });
 
   afterEach(() => {
+    vi.runOnlyPendingTimers();
     vi.useRealTimers();
+    for (const el of fixtureElements) {
+      el.remove();
+    }
+    fixtureElements = [];
   });
 
   it("announces non-error toast via polite channel", async () => {
@@ -119,10 +134,37 @@ describe("Toast accessibility", () => {
     expect(screen.queryByText("Test message")).toBeNull();
   });
 
+  it("stays paused when focus moves between toast children", async () => {
+    render(<Toaster />);
+    await act(async () => {
+      addToast({
+        duration: 1000,
+        action: { label: "Undo", onClick: () => {} },
+      });
+      vi.advanceTimersByTime(16);
+    });
+
+    const actionButton = screen.getByText("Undo");
+    const dismissButton = screen.getByLabelText("Dismiss notification");
+
+    await act(async () => {
+      actionButton.focus();
+    });
+
+    await act(async () => {
+      fireEvent.blur(actionButton, { relatedTarget: dismissButton });
+      fireEvent.focus(dismissButton);
+    });
+
+    await act(async () => {
+      vi.advanceTimersByTime(2000);
+    });
+
+    expect(screen.getByText("Test message")).toBeTruthy();
+  });
+
   it("restores focus to previously focused element on dismiss", async () => {
-    const target = document.createElement("button");
-    target.textContent = "Target";
-    document.body.appendChild(target);
+    const target = createFixtureButton("Target");
     target.focus();
 
     render(<Toaster />);
@@ -140,13 +182,10 @@ describe("Toast accessibility", () => {
     });
 
     expect(document.activeElement).toBe(target);
-    document.body.removeChild(target);
   });
 
   it("does not steal focus on auto-dismiss", async () => {
-    const target = document.createElement("button");
-    target.textContent = "External";
-    document.body.appendChild(target);
+    const target = createFixtureButton("External");
     target.focus();
 
     render(<Toaster />);
@@ -162,7 +201,26 @@ describe("Toast accessibility", () => {
     });
 
     expect(document.activeElement).toBe(target);
-    document.body.removeChild(target);
+  });
+
+  it("uses role=status for non-error toasts", async () => {
+    render(<Toaster />);
+    await act(async () => {
+      addToast({ type: "info" });
+      vi.advanceTimersByTime(16);
+    });
+
+    expect(screen.getByRole("status")).toBeTruthy();
+  });
+
+  it("uses role=alert for error toasts", async () => {
+    render(<Toaster />);
+    await act(async () => {
+      addToast({ type: "error", message: "Error occurred" });
+      vi.advanceTimersByTime(16);
+    });
+
+    expect(screen.getByRole("alert")).toBeTruthy();
   });
 
   it("includes motion-reduce classes on toast container", async () => {
@@ -172,7 +230,7 @@ describe("Toast accessibility", () => {
       vi.advanceTimersByTime(16);
     });
 
-    const toast = screen.getByRole("alert");
+    const toast = screen.getByRole("status");
     expect(toast.className).toContain("motion-reduce:transition-none");
     expect(toast.className).toContain("motion-reduce:duration-0");
   });

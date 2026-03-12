@@ -98,7 +98,7 @@ function Toast({ notification }: { notification: Notification }) {
           setIsPaused(false);
         }
       }}
-      role="alert"
+      role={notification.type === "error" ? "alert" : "status"}
     >
       <div className="flex-1 space-y-1 min-w-0 py-0.5">
         {notification.title && (
