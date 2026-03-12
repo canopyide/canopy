@@ -38,17 +38,21 @@ export function useGlobalKeybindings(enabled: boolean = true): void {
 
       // Handle Shift+F10 and ContextMenu key for panel context menus.
       // Must be checked before the editable/terminal bailouts below.
+      // Respects user overrides — if the binding is disabled, fall through.
       if (
         e.key === "ContextMenu" ||
         (e.key === "F10" && e.shiftKey && !e.ctrlKey && !e.metaKey && !e.altKey)
       ) {
-        e.preventDefault();
-        e.stopPropagation();
-        const focusedId = useTerminalStore.getState().focusedId;
-        if (focusedId) {
-          openPanelContextMenu(focusedId);
+        const effectiveCombo = keybindingService.getEffectiveCombo("terminal.contextMenu");
+        if (effectiveCombo !== undefined) {
+          e.preventDefault();
+          e.stopPropagation();
+          const focusedId = useTerminalStore.getState().focusedId;
+          if (focusedId) {
+            openPanelContextMenu(focusedId);
+          }
+          return;
         }
-        return;
       }
 
       // For editable contexts without modifiers, let native behavior happen
