@@ -1,5 +1,6 @@
 import type { ActionDefinition, ActionId } from "@shared/types/actions";
 import type { Worktree } from "@shared/types/domain";
+import type { SettingsNavTarget } from "@/components/Settings";
 
 export type ActionRegistry = Map<ActionId, () => ActionDefinition<unknown, unknown>>;
 
@@ -7,7 +8,7 @@ export type NavigationDirection = "up" | "down" | "left" | "right";
 
 export interface ActionCallbacks {
   onOpenSettings: () => void;
-  onOpenSettingsTab: (tab: string) => void;
+  onOpenSettingsTab: (target: SettingsNavTarget) => void;
   onToggleSidebar: () => void;
   onToggleFocusMode: () => void;
   onOpenWorktreePalette: () => void;

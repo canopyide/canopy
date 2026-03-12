@@ -29,6 +29,12 @@ export const SettingsTabSchema = z.enum([
   "troubleshooting",
 ]);
 
+export const SettingsNavTargetSchema = z.object({
+  tab: SettingsTabSchema,
+  subtab: z.string().optional(),
+  sectionId: z.string().optional(),
+});
+
 export const TerminalTypeSchema = z.enum(["terminal", "claude", "gemini", "codex", "opencode"]);
 
 export const LegacyAgentTypeSchema = z.enum(["claude", "gemini", "codex", "opencode"]);
