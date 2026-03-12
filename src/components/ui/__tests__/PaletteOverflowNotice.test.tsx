@@ -6,7 +6,7 @@ import { PaletteOverflowNotice } from "../PaletteOverflowNotice";
 describe("PaletteOverflowNotice", () => {
   it("renders when total exceeds shown", () => {
     render(<PaletteOverflowNotice shown={20} total={47} />);
-    expect(screen.getByText(/Showing 20 of 47/)).toBeInTheDocument();
+    expect(screen.getByText(/Showing 20 of 47/)).toBeTruthy();
   });
 
   it("renders nothing when total equals shown", () => {
@@ -22,12 +22,12 @@ describe("PaletteOverflowNotice", () => {
   it("has aria-hidden attribute", () => {
     render(<PaletteOverflowNotice shown={20} total={47} />);
     const notice = screen.getByText(/Showing 20 of 47/);
-    expect(notice).toHaveAttribute("aria-hidden", "true");
+    expect(notice.getAttribute("aria-hidden")).toBe("true");
   });
 
   it("does not have role=option", () => {
     render(<PaletteOverflowNotice shown={20} total={47} />);
     const notice = screen.getByText(/Showing 20 of 47/);
-    expect(notice).not.toHaveAttribute("role");
+    expect(notice.getAttribute("role")).toBeNull();
   });
 });
