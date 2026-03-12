@@ -584,7 +584,10 @@ export function Toolbar({
                 <GitHubResourceList
                   type="issue"
                   projectPath={currentProject.path}
-                  onClose={() => setIssuesOpen(false)}
+                  onClose={() => {
+                    setIssuesOpen(false);
+                    issuesButtonRef.current?.focus();
+                  }}
                   initialCount={stats?.issueCount}
                 />
               </FixedDropdown>
@@ -634,7 +637,10 @@ export function Toolbar({
                 <GitHubResourceList
                   type="pr"
                   projectPath={currentProject.path}
-                  onClose={() => setPrsOpen(false)}
+                  onClose={() => {
+                    setPrsOpen(false);
+                    prsButtonRef.current?.focus();
+                  }}
                   initialCount={stats?.prCount}
                 />
               </FixedDropdown>
@@ -674,7 +680,10 @@ export function Toolbar({
               >
                 <CommitList
                   projectPath={currentProject.path}
-                  onClose={() => setCommitsOpen(false)}
+                  onClose={() => {
+                    setCommitsOpen(false);
+                    commitsButtonRef.current?.focus();
+                  }}
                   initialCount={stats?.commitCount}
                 />
               </FixedDropdown>
