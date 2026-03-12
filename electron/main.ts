@@ -303,6 +303,7 @@ import { store } from "./store.js";
 import { MigrationRunner } from "./services/StoreMigrations.js";
 import { migrations } from "./services/migrations/index.js";
 import { initializeHibernationService } from "./services/HibernationService.js";
+import { getWebviewDialogService } from "./services/WebviewDialogService.js";
 import { GitHubAuth } from "./services/github/GitHubAuth.js";
 import { secureStorage } from "./services/SecureStorage.js";
 import {
@@ -652,6 +653,47 @@ function setupWebviewCSP(): void {
         }
         return { action: "deny" };
       });
+
+      // Intercept JavaScript dialogs (alert/confirm/prompt) from webview guests.
+      // Electron 40 emits "js-dialog" but its TS types omit it from the overload union.
+      (contents as { on: (event: string, listener: (...args: unknown[]) => void) => void }).on(
+        "js-dialog",
+        (
+          event: unknown,
+          _url: unknown,
+          message: unknown,
+          dialogType: unknown,
+          defaultValue: unknown,
+          callback: unknown
+        ) => {
+          (event as Electron.Event).preventDefault();
+          const msg = message as string;
+          const type = dialogType as string;
+          const defVal = (defaultValue as string) ?? "";
+          const cb = callback as (success: boolean, response?: string) => void;
+
+          const dialogService = getWebviewDialogService();
+          const dialogId = crypto.randomUUID();
+          const panelId = dialogService.registerDialog(dialogId, contents.id, cb);
+
+          if (!panelId) {
+            cb(type === "alert");
+            return;
+          }
+
+          if (mainWindow && !mainWindow.isDestroyed()) {
+            mainWindow.webContents.send("webview:dialog-request", {
+              dialogId,
+              panelId,
+              type,
+              message: msg,
+              defaultValue: defVal,
+            });
+          } else {
+            dialogService.resolveDialog(dialogId, type === "alert");
+          }
+        }
+      );
     }
   });
 }
