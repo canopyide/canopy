@@ -590,13 +590,19 @@ export function NewWorktreeDialog({
     };
   }, [branchInput, rootPath]);
 
-  const isFormDirty = useMemo(() => {
-    if (branchInputTouchedRef.current && branchInput.trim()) return true;
-    if (issueTouchedRef.current) return true;
-    if (recipeSelectionTouchedRef.current) return true;
-    if (pathTouchedRef.current && worktreePath.trim()) return true;
-    return false;
-  }, [branchInput, worktreePath, selectedIssue, selectedRecipeId]);
+  const isFormDirty = useMemo(
+    () => {
+      if (branchInputTouchedRef.current && branchInput.trim()) return true;
+      if (issueTouchedRef.current && selectedIssue !== null) return true;
+      if (recipeSelectionTouchedRef.current) return true;
+      if (pathTouchedRef.current && worktreePath.trim()) return true;
+      return false;
+    },
+    // selectedIssue and selectedRecipeId are intentional triggers — the memo reads
+    // touched refs that are set in the same handler as these state changes.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+    [branchInput, worktreePath, selectedIssue, selectedRecipeId]
+  );
 
   const handleBeforeClose = useCallback((): boolean => {
     if (!isFormDirty) return true;
