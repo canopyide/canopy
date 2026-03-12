@@ -1,4 +1,5 @@
 import { ipcMain } from "electron";
+import { randomBytes } from "crypto";
 import { CHANNELS } from "../channels.js";
 import type { HandlerDependencies } from "../types.js";
 import type {
@@ -15,6 +16,7 @@ export function registerDemoHandlers(deps: HandlerDependencies): () => void {
   }
 
   function sendCommandAndAwait(execChannel: string, payload?: unknown): Promise<void> {
+    const requestId = randomBytes(8).toString("hex");
     return new Promise<void>((resolve, reject) => {
       const timeout = setTimeout(() => {
         ipcMain.removeListener(CHANNELS.DEMO_COMMAND_DONE, listener);
@@ -23,9 +25,9 @@ export function registerDemoHandlers(deps: HandlerDependencies): () => void {
 
       const listener = (
         _event: Electron.IpcMainEvent,
-        result: { channel: string; error?: string }
+        result: { requestId: string; error?: string }
       ) => {
-        if (result.channel === execChannel) {
+        if (result.requestId === requestId) {
           clearTimeout(timeout);
           ipcMain.removeListener(CHANNELS.DEMO_COMMAND_DONE, listener);
           if (result.error) {
@@ -37,7 +39,7 @@ export function registerDemoHandlers(deps: HandlerDependencies): () => void {
       };
 
       ipcMain.on(CHANNELS.DEMO_COMMAND_DONE, listener);
-      deps.mainWindow.webContents.send(execChannel, payload);
+      deps.mainWindow.webContents.send(execChannel, { ...((payload as object) ?? {}), requestId });
     });
   }
 

@@ -2,36 +2,29 @@
 import { describe, it, expect, vi, beforeEach, afterEach, afterAll } from "vitest";
 import { render, cleanup } from "@testing-library/react";
 
-type Listener = (...args: unknown[]) => void;
-const listeners = new Map<string, Listener[]>();
+type Listener = (payload: Record<string, unknown>) => void;
+const listenerMap = new Map<string, Listener[]>();
 
-const ipcRendererMock = {
-  on: vi.fn((channel: string, handler: Listener) => {
-    if (!listeners.has(channel)) listeners.set(channel, []);
-    listeners.get(channel)!.push(handler);
+const demoMock = {
+  onExecCommand: vi.fn((channel: string, callback: Listener): (() => void) => {
+    if (!listenerMap.has(channel)) listenerMap.set(channel, []);
+    listenerMap.get(channel)!.push(callback);
+    return () => {
+      const arr = listenerMap.get(channel);
+      if (arr) {
+        const idx = arr.indexOf(callback);
+        if (idx !== -1) arr.splice(idx, 1);
+      }
+    };
   }),
-  removeListener: vi.fn((channel: string, handler: Listener) => {
-    const arr = listeners.get(channel);
-    if (arr) {
-      const idx = arr.indexOf(handler);
-      if (idx !== -1) arr.splice(idx, 1);
-    }
-  }),
-  send: vi.fn(),
-};
-
-const webFrameMock = {
+  sendCommandDone: vi.fn(),
   getZoomFactor: vi.fn(() => 1),
   setZoomFactor: vi.fn(),
 };
 
-// Mock window.require for Electron modules
-const originalRequire = (window as unknown as { require?: (...args: unknown[]) => unknown })
-  .require;
-(window as unknown as { require: (...args: unknown[]) => unknown }).require = (mod: unknown) => {
-  if (mod === "electron") return { ipcRenderer: ipcRendererMock, webFrame: webFrameMock };
-  throw new Error(`Unexpected require: ${String(mod)}`);
-};
+// Set up window.electron.demo before importing the component
+const originalElectron = (window as unknown as { electron?: unknown }).electron;
+(window as unknown as { electron: unknown }).electron = { demo: demoMock };
 
 // Stub Element.prototype.animate (jsdom doesn't support WAAPI)
 const mockAnimation = {
@@ -44,17 +37,17 @@ Element.prototype.animate = vi.fn(() => mockAnimation as unknown as Animation);
 
 import { DemoCursor } from "../DemoCursor";
 
-function emit(channel: string, payload?: unknown) {
-  const handlers = listeners.get(channel) ?? [];
+function emit(channel: string, payload: Record<string, unknown> = {}) {
+  const handlers = listenerMap.get(channel) ?? [];
   for (const h of handlers) {
-    h({}, payload);
+    h(payload);
   }
 }
 
 describe("DemoCursor", () => {
   beforeEach(() => {
     vi.clearAllMocks();
-    listeners.clear();
+    listenerMap.clear();
   });
 
   afterEach(() => {
@@ -68,77 +61,66 @@ describe("DemoCursor", () => {
     expect(svg!.querySelector("path")).toBeTruthy();
   });
 
-  it("registers IPC listeners on mount", () => {
+  it("registers exec command listeners on mount", () => {
     render(<DemoCursor />);
-    expect(ipcRendererMock.on).toHaveBeenCalledWith("demo:exec-move-to", expect.any(Function));
-    expect(ipcRendererMock.on).toHaveBeenCalledWith("demo:exec-click", expect.any(Function));
-    expect(ipcRendererMock.on).toHaveBeenCalledWith("demo:exec-type", expect.any(Function));
-    expect(ipcRendererMock.on).toHaveBeenCalledWith("demo:exec-set-zoom", expect.any(Function));
-    expect(ipcRendererMock.on).toHaveBeenCalledWith(
+    expect(demoMock.onExecCommand).toHaveBeenCalledWith("demo:exec-move-to", expect.any(Function));
+    expect(demoMock.onExecCommand).toHaveBeenCalledWith("demo:exec-click", expect.any(Function));
+    expect(demoMock.onExecCommand).toHaveBeenCalledWith("demo:exec-type", expect.any(Function));
+    expect(demoMock.onExecCommand).toHaveBeenCalledWith("demo:exec-set-zoom", expect.any(Function));
+    expect(demoMock.onExecCommand).toHaveBeenCalledWith(
       "demo:exec-wait-for-selector",
       expect.any(Function)
     );
-    expect(ipcRendererMock.on).toHaveBeenCalledWith("demo:exec-pause", expect.any(Function));
-    expect(ipcRendererMock.on).toHaveBeenCalledWith("demo:exec-resume", expect.any(Function));
+    expect(demoMock.onExecCommand).toHaveBeenCalledWith("demo:exec-pause", expect.any(Function));
+    expect(demoMock.onExecCommand).toHaveBeenCalledWith("demo:exec-resume", expect.any(Function));
   });
 
-  it("removes IPC listeners on unmount", () => {
+  it("cleans up listeners on unmount", () => {
     const { unmount } = render(<DemoCursor />);
+    // All 7 onExecCommand calls return cleanup functions
+    expect(demoMock.onExecCommand).toHaveBeenCalledTimes(7);
     unmount();
-    expect(ipcRendererMock.removeListener).toHaveBeenCalledWith(
-      "demo:exec-move-to",
-      expect.any(Function)
-    );
-    expect(ipcRendererMock.removeListener).toHaveBeenCalledWith(
-      "demo:exec-click",
-      expect.any(Function)
-    );
+    // After unmount, listeners should be removed
+    expect(listenerMap.get("demo:exec-move-to")?.length ?? 0).toBe(0);
+    expect(listenerMap.get("demo:exec-click")?.length ?? 0).toBe(0);
   });
 
-  it("moveTo calls element.animate and sends done", async () => {
+  it("moveTo calls element.animate and sends done with requestId", async () => {
     render(<DemoCursor />);
-    emit("demo:exec-move-to", { x: 30, y: 40, durationMs: 500 });
+    emit("demo:exec-move-to", { x: 30, y: 40, durationMs: 500, requestId: "req-1" });
 
-    // Wait for async handler
     await new Promise((r) => setTimeout(r, 10));
 
     expect(Element.prototype.animate).toHaveBeenCalled();
-    expect(ipcRendererMock.send).toHaveBeenCalledWith("demo:command-done", {
-      channel: "demo:exec-move-to",
-    });
+    expect(demoMock.sendCommandDone).toHaveBeenCalledWith("req-1", undefined);
   });
 
   it("click calls element.animate for press and release", async () => {
     render(<DemoCursor />);
-    emit("demo:exec-click");
+    emit("demo:exec-click", { requestId: "req-2" });
 
     await new Promise((r) => setTimeout(r, 10));
 
-    // Press + release = at least 2 animate calls
     expect(
       (Element.prototype.animate as ReturnType<typeof vi.fn>).mock.calls.length
     ).toBeGreaterThanOrEqual(2);
-    expect(ipcRendererMock.send).toHaveBeenCalledWith("demo:command-done", {
-      channel: "demo:exec-click",
-    });
+    expect(demoMock.sendCommandDone).toHaveBeenCalledWith("req-2", undefined);
   });
 
   it("pause sends done immediately", () => {
     render(<DemoCursor />);
-    emit("demo:exec-pause");
+    emit("demo:exec-pause", { requestId: "req-3" });
 
-    expect(ipcRendererMock.send).toHaveBeenCalledWith("demo:command-done", {
-      channel: "demo:exec-pause",
-    });
+    expect(demoMock.sendCommandDone).toHaveBeenCalledWith("req-3", undefined);
   });
 
-  it("resume sends done immediately", () => {
+  it("resume sends done and releases paused commands", () => {
     render(<DemoCursor />);
-    emit("demo:exec-resume");
+    emit("demo:exec-pause", { requestId: "req-4" });
+    emit("demo:exec-resume", { requestId: "req-5" });
 
-    expect(ipcRendererMock.send).toHaveBeenCalledWith("demo:command-done", {
-      channel: "demo:exec-resume",
-    });
+    expect(demoMock.sendCommandDone).toHaveBeenCalledWith("req-4", undefined);
+    expect(demoMock.sendCommandDone).toHaveBeenCalledWith("req-5", undefined);
   });
 
   it("waitForSelector resolves immediately when element exists", async () => {
@@ -147,23 +129,20 @@ describe("DemoCursor", () => {
     document.body.appendChild(el);
 
     render(<DemoCursor />);
-    emit("demo:exec-wait-for-selector", { selector: "#test-target" });
+    emit("demo:exec-wait-for-selector", { selector: "#test-target", requestId: "req-6" });
 
     await new Promise((r) => setTimeout(r, 10));
 
-    expect(ipcRendererMock.send).toHaveBeenCalledWith("demo:command-done", {
-      channel: "demo:exec-wait-for-selector",
-    });
+    expect(demoMock.sendCommandDone).toHaveBeenCalledWith("req-6", undefined);
 
     document.body.removeChild(el);
   });
 });
 
-// Restore window.require
 afterAll(() => {
-  if (originalRequire) {
-    (window as unknown as { require: (...args: unknown[]) => unknown }).require = originalRequire;
+  if (originalElectron) {
+    (window as unknown as { electron: unknown }).electron = originalElectron;
   } else {
-    delete (window as unknown as { require?: (...args: unknown[]) => unknown }).require;
+    delete (window as unknown as { electron?: unknown }).electron;
   }
 });
