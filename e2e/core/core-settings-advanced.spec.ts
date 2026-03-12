@@ -1,0 +1,200 @@
+import { test, expect } from "@playwright/test";
+import { launchApp, closeApp, type AppContext } from "../helpers/launch";
+import { createFixtureRepo } from "../helpers/fixtures";
+import { openAndOnboardProject } from "../helpers/project";
+import { SEL } from "../helpers/selectors";
+import { T_SHORT, T_MEDIUM, T_LONG, T_SETTLE } from "../helpers/timeouts";
+
+let ctx: AppContext;
+
+test.describe.serial("Core: Settings Advanced", () => {
+  test.beforeAll(async () => {
+    ctx = await launchApp();
+    const fixtureDir = createFixtureRepo({ name: "settings-advanced" });
+    await openAndOnboardProject(ctx.app, ctx.window, fixtureDir, "Settings Advanced Test");
+  });
+
+  test.afterAll(async () => {
+    if (ctx?.app) await closeApp(ctx.app);
+  });
+
+  // ── Keyboard Shortcuts (4 tests) ──────────────────────────
+
+  test.describe.serial("Keyboard Shortcuts", () => {
+    test("open settings and navigate to Keyboard tab", async () => {
+      const { window } = ctx;
+      await window.locator(SEL.toolbar.openSettings).click();
+      await expect(window.locator(SEL.settings.heading)).toBeVisible({ timeout: T_MEDIUM });
+
+      await window.locator(`${SEL.settings.navSidebar} button`, { hasText: "Keyboard" }).click();
+      await expect(window.locator("h3", { hasText: "Keyboard Shortcuts" })).toBeVisible({
+        timeout: T_SHORT,
+      });
+    });
+
+    test("shortcut list renders with search input and rows", async () => {
+      const { window } = ctx;
+      await expect(window.locator(SEL.settings.shortcutsSearchInput)).toBeVisible({
+        timeout: T_SHORT,
+      });
+      await expect(window.locator(SEL.settings.shortcutResetAllButton)).toBeVisible({
+        timeout: T_SHORT,
+      });
+
+      const rows = window.locator(".group").filter({
+        has: window.locator("button", { hasText: "Edit" }),
+      });
+      await expect(rows.first()).toBeVisible({ timeout: T_SHORT });
+      expect(await rows.count()).toBeGreaterThan(0);
+    });
+
+    test("search filters shortcut rows", async () => {
+      const { window } = ctx;
+      const searchInput = window.locator(SEL.settings.shortcutsSearchInput);
+
+      await searchInput.fill("Open settings");
+      await window.waitForTimeout(T_SETTLE);
+
+      const rows = window.locator(".group").filter({
+        has: window.locator("button", { hasText: "Edit" }),
+      });
+      const count = await rows.count();
+      expect(count).toBeGreaterThan(0);
+
+      const firstRowText = await rows.first().textContent();
+      expect(firstRowText?.toLowerCase()).toContain("open settings");
+
+      await searchInput.fill("");
+      await window.waitForTimeout(T_SETTLE);
+
+      const allCount = await rows.count();
+      expect(allCount).toBeGreaterThan(count);
+    });
+
+    test("click Edit enters edit mode, Cancel exits it", async () => {
+      const { window } = ctx;
+
+      const searchInput = window.locator(SEL.settings.shortcutsSearchInput);
+      await searchInput.fill("Open settings");
+      await window.waitForTimeout(T_SETTLE);
+
+      const row = window
+        .locator(".group")
+        .filter({
+          has: window.locator("button", { hasText: "Edit" }),
+        })
+        .first();
+      await row.scrollIntoViewIfNeeded();
+      await row.hover();
+
+      const editBtn = row.locator("button", { hasText: "Edit" });
+      await expect(editBtn).toBeVisible({ timeout: T_SHORT });
+      await editBtn.click();
+
+      const recordPrompt = window.locator(SEL.settings.shortcutRecordPrompt);
+      await expect(recordPrompt).toBeVisible({ timeout: T_SHORT });
+
+      const cancelBtn = window.locator(SEL.settings.shortcutCancelButton);
+      await cancelBtn.click();
+      await expect(recordPrompt).not.toBeVisible({ timeout: T_SHORT });
+
+      await searchInput.fill("");
+      await window.waitForTimeout(T_SETTLE);
+
+      await window.keyboard.press("Escape");
+      await expect(window.locator(SEL.settings.heading)).not.toBeVisible({ timeout: T_SHORT });
+    });
+  });
+
+  // ── Notification Settings (3 tests) ───────────────────────
+
+  test.describe.serial("Notification Settings", () => {
+    test("open settings and navigate to Notifications tab — checkboxes visible", async () => {
+      const { window } = ctx;
+      await window.locator(SEL.toolbar.openSettings).click();
+      await expect(window.locator(SEL.settings.heading)).toBeVisible({ timeout: T_MEDIUM });
+
+      await window
+        .locator(`${SEL.settings.navSidebar} button`, { hasText: "Notifications" })
+        .click();
+      await expect(window.locator("h3", { hasText: "Notifications" })).toBeVisible({
+        timeout: T_SHORT,
+      });
+
+      await expect(window.locator("text=Loading…")).not.toBeVisible({ timeout: T_MEDIUM });
+
+      await expect(window.locator(SEL.settings.notifCompletedCheckbox)).toBeVisible({
+        timeout: T_SHORT,
+      });
+      await expect(window.locator(SEL.settings.notifWaitingCheckbox)).toBeVisible({
+        timeout: T_SHORT,
+      });
+      await expect(window.locator(SEL.settings.notifFailedCheckbox)).toBeVisible({
+        timeout: T_SHORT,
+      });
+      await expect(window.locator(SEL.settings.notifSoundToggle)).toBeVisible({
+        timeout: T_SHORT,
+      });
+    });
+
+    test("toggle notification checkbox and verify persistence", async () => {
+      const { window } = ctx;
+
+      const checkbox = window.locator(SEL.settings.notifCompletedCheckbox);
+      await expect(checkbox).not.toBeChecked({ timeout: T_SHORT });
+
+      await checkbox.click();
+      await expect(checkbox).toBeChecked({ timeout: T_SHORT });
+
+      await expect
+        .poll(
+          async () => {
+            const settings = await window.evaluate(() =>
+              (window as any).electron?.notification?.getSettings()
+            );
+            return settings?.completedEnabled;
+          },
+          { timeout: T_MEDIUM }
+        )
+        .toBe(true);
+
+      await window.keyboard.press("Escape");
+      await expect(window.locator(SEL.settings.heading)).not.toBeVisible({ timeout: T_SHORT });
+
+      await window.locator(SEL.toolbar.openSettings).click();
+      await expect(window.locator(SEL.settings.heading)).toBeVisible({ timeout: T_MEDIUM });
+
+      await window
+        .locator(`${SEL.settings.navSidebar} button`, { hasText: "Notifications" })
+        .click();
+      await expect(window.locator("text=Loading…")).not.toBeVisible({ timeout: T_MEDIUM });
+
+      await expect(checkbox).toBeChecked({ timeout: T_SHORT });
+    });
+
+    test("cleanup — uncheck notification checkbox", async () => {
+      const { window } = ctx;
+
+      const checkbox = window.locator(SEL.settings.notifCompletedCheckbox);
+      await expect(checkbox).toBeChecked({ timeout: T_SHORT });
+
+      await checkbox.click();
+      await expect(checkbox).not.toBeChecked({ timeout: T_SHORT });
+
+      await expect
+        .poll(
+          async () => {
+            const settings = await window.evaluate(() =>
+              (window as any).electron?.notification?.getSettings()
+            );
+            return settings?.completedEnabled;
+          },
+          { timeout: T_MEDIUM }
+        )
+        .toBe(false);
+
+      await window.keyboard.press("Escape");
+      await expect(window.locator(SEL.settings.heading)).not.toBeVisible({ timeout: T_SHORT });
+    });
+  });
+});
