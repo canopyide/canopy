@@ -74,6 +74,7 @@ test.describe.serial("Core: Terminal Search & Scrollback", () => {
       const panel = getFirstGridPanel(window);
 
       await panel.locator(SEL.terminal.xtermRows).click();
+      await window.waitForTimeout(T_SETTLE);
       await window.evaluate(() => window.dispatchEvent(new CustomEvent("canopy:find-in-panel")));
 
       await expect(panel.locator(SEL.terminal.searchInput)).toBeVisible({ timeout: T_MEDIUM });
@@ -117,6 +118,7 @@ test.describe.serial("Core: Terminal Search & Scrollback", () => {
       const panel = getFirstGridPanel(window);
 
       await panel.locator(SEL.terminal.xtermRows).click();
+      await window.waitForTimeout(T_SETTLE);
       await window.evaluate(() => window.dispatchEvent(new CustomEvent("canopy:find-in-panel")));
 
       const input = panel.locator(SEL.terminal.searchInput);
