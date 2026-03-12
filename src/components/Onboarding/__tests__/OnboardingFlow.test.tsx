@@ -9,7 +9,6 @@ const defaultOnboardingState: OnboardingState = {
   completed: false,
   currentStep: null,
   migratedFromLocalStorage: true,
-  completedSteps: [],
 };
 
 const onboardingMock = {
