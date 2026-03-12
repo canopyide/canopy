@@ -4,7 +4,7 @@
  * data-context-trigger attribute. Radix requires bubbles:true and valid coordinates.
  */
 export function openPanelContextMenu(terminalId: string): boolean {
-  const triggerEl = document.querySelector(`[data-context-trigger="${CSS.escape(terminalId)}"]`);
+  const triggerEl = document.querySelector(`[data-context-trigger="${terminalId}"]`);
   if (!triggerEl || !(triggerEl instanceof HTMLElement)) return false;
 
   const rect = triggerEl.getBoundingClientRect();
