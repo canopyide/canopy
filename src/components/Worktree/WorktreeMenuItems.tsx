@@ -217,11 +217,7 @@ export function WorktreeMenuItems({
             Close All (Trash)
             <C.Shortcut>({counts.active})</C.Shortcut>
           </C.Item>
-          <C.Item
-            onSelect={onEndAll}
-            disabled={!hasSessions}
-            destructive
-          >
+          <C.Item onSelect={onEndAll} disabled={!hasSessions} destructive>
             <X className="w-3.5 h-3.5 mr-2" />
             End All (Kill)
             <C.Shortcut>({counts.all})</C.Shortcut>
