@@ -1,7 +1,6 @@
 import { useCallback, useEffect, useRef } from "react";
 import { Mic, Loader2 } from "lucide-react";
 import { cn } from "@/lib/utils";
-import { actionService } from "@/services/ActionService";
 import { useVoiceRecordingStore } from "@/store/voiceRecordingStore";
 import { voiceRecordingService } from "@/services/VoiceRecordingService";
 
@@ -154,26 +153,8 @@ export function VoiceInputButton({
     return () => cancelAnimationFrame(rafRef.current);
   }, [showOrbit, isFinishing]);
 
-  const handleClick = useCallback(async () => {
+  const handleClick = useCallback(() => {
     if (disabled && !isActive) return;
-
-    if (!isConfigured && !isActive) {
-      const fresh = await window.electron?.voiceInput?.getSettings();
-      if (fresh?.enabled && fresh.deepgramApiKey) {
-        void voiceRecordingService.toggle({
-          panelId,
-          panelTitle,
-          projectId,
-          projectName,
-          worktreeId,
-          worktreeLabel,
-        });
-        return;
-      }
-
-      void actionService.dispatch("app.settings.openTab", { tab: "voice" }, { source: "user" });
-      return;
-    }
 
     void voiceRecordingService.toggle({
       panelId,
@@ -183,17 +164,7 @@ export function VoiceInputButton({
       worktreeId,
       worktreeLabel,
     });
-  }, [
-    disabled,
-    isActive,
-    isConfigured,
-    panelId,
-    panelTitle,
-    projectId,
-    projectName,
-    worktreeId,
-    worktreeLabel,
-  ]);
+  }, [disabled, isActive, panelId, panelTitle, projectId, projectName, worktreeId, worktreeLabel]);
 
   if (!isConfigured && !isActive) return null;
 
