@@ -145,7 +145,8 @@ test.describe.serial("Core: Terminal Recipes", () => {
       await editor.locator(SEL.recipeEditor.cancelButton).click();
       await expect(editor).not.toBeVisible({ timeout: T_SHORT });
 
-      // Reopen and verify original name was preserved (cancel did not save)
+      // Re-select recipes tab and reopen to verify original name was preserved
+      await window.locator(SEL.projectSettings.recipesTab).click();
       await window
         .locator(SEL.projectSettings.editRecipeButton("E2E Test Recipe"))
         .click({ force: true });
