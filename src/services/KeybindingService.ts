@@ -173,7 +173,7 @@ const DEFAULT_KEYBINDINGS: KeybindingConfig[] = [
     combo: "Cmd+Shift+A",
     scope: "global",
     priority: 0,
-    description: "Open agent palette",
+    description: "Open quick switcher",
     category: "Agents",
   },
   {
