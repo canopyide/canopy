@@ -393,6 +393,9 @@ function fireMicroCorrection(
     });
   }
 
+  // Snapshot project info at queue time so a new session can't overwrite it.
+  const projectInfo = { ...sessionProjectInfo };
+
   correctionPool.add(async () => {
     if (!correctionService) return;
     const liveSettings = getVoiceSettings();
@@ -409,8 +412,8 @@ function fireMicroCorrection(
         apiKey: liveSettings.correctionApiKey,
         customDictionary: liveSettings.customDictionary,
         customInstructions: liveSettings.correctionCustomInstructions,
-        projectName: sessionProjectInfo.name,
-        projectPath: sessionProjectInfo.path,
+        projectName: projectInfo.name,
+        projectPath: projectInfo.path,
       }
     );
 
