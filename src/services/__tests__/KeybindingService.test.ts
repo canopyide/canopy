@@ -224,6 +224,21 @@ describe("KeybindingService", () => {
     });
 
     const match = service.findMatchingAction(event);
-    expect(match?.actionId).not.toBe("terminal.contextMenu");
+    expect(match).toBeUndefined();
+  });
+
+  it("getEffectiveCombo returns undefined when terminal.contextMenu is disabled", () => {
+    const service = new KeybindingService();
+    (service as unknown as { overrides: Map<string, string[]> }).overrides.set(
+      "terminal.contextMenu",
+      []
+    );
+
+    expect(service.getEffectiveCombo("terminal.contextMenu")).toBeUndefined();
+  });
+
+  it("getEffectiveCombo returns Shift+F10 for terminal.contextMenu by default", () => {
+    const service = new KeybindingService();
+    expect(service.getEffectiveCombo("terminal.contextMenu")).toBe("Shift+F10");
   });
 });
