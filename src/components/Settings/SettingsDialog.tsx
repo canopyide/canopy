@@ -72,6 +72,8 @@ interface SettingsDialogProps {
   isOpen: boolean;
   onClose: () => void;
   defaultTab?: SettingsTab;
+  defaultSubtab?: string;
+  defaultSectionId?: string;
   onSettingsChange?: () => void;
 }
 
@@ -96,6 +98,8 @@ export function SettingsDialog({
   isOpen,
   onClose,
   defaultTab,
+  defaultSubtab,
+  defaultSectionId,
   onSettingsChange,
 }: SettingsDialogProps) {
   const [activeTab, setActiveTab] = useState<SettingsTab>(defaultTab ?? "general");
@@ -114,11 +118,18 @@ export function SettingsDialog({
   const [appVersion, setAppVersion] = useState<string>("Loading...");
 
   useEffect(() => {
-    if (isOpen && defaultTab && defaultTab !== activeTab) {
-      setActiveTab(defaultTab);
+    if (isOpen && defaultTab) {
+      if (defaultTab !== activeTab) {
+        setActiveTab(defaultTab);
+      }
+      if (defaultSubtab !== undefined) {
+        setActiveSubtabs((prev) => ({ ...prev, [defaultTab]: defaultSubtab }));
+      }
+      setScrollToSection(defaultSectionId ?? null);
+      setSearchQuery("");
     }
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [isOpen, defaultTab]);
+  }, [isOpen, defaultTab, defaultSubtab, defaultSectionId]);
 
   useEffect(() => {
     if (isOpen) {

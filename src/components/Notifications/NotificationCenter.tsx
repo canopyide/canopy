@@ -1,11 +1,12 @@
 import { useEffect, useMemo, useState } from "react";
-import { Bell, Trash2 } from "lucide-react";
+import { Bell, Settings2, Trash2 } from "lucide-react";
 import {
   useNotificationHistoryStore,
   type NotificationHistoryEntry,
 } from "@/store/slices/notificationHistorySlice";
 import { NotificationCenterEntry } from "./NotificationCenterEntry";
 import { Button } from "@/components/ui/button";
+import { actionService } from "@/services/ActionService";
 
 interface NotificationCenterProps {
   open: boolean;
@@ -74,21 +75,40 @@ export function NotificationCenter({ open, onClose }: NotificationCenterProps) {
     <div className="w-[360px] max-h-[420px] flex flex-col">
       <div className="flex items-center justify-between px-3 py-2 border-b border-divider">
         <span className="text-xs font-medium text-canopy-text/80">Notifications</span>
-        {entries.length > 0 && (
+        <div className="flex items-center gap-1">
           <Button
             type="button"
             variant="ghost"
             size="xs"
             onClick={() => {
-              clearAll();
               onClose();
+              void actionService.dispatch(
+                "app.settings.openTab",
+                { tab: "notifications" },
+                { source: "user" }
+              );
             }}
             className="text-canopy-text/50"
           >
-            <Trash2 />
-            Clear all
+            <Settings2 />
+            Configure
           </Button>
-        )}
+          {entries.length > 0 && (
+            <Button
+              type="button"
+              variant="ghost"
+              size="xs"
+              onClick={() => {
+                clearAll();
+                onClose();
+              }}
+              className="text-canopy-text/50"
+            >
+              <Trash2 />
+              Clear all
+            </Button>
+          )}
+        </div>
       </div>
       <div className="flex-1 overflow-y-auto">
         {groups.length === 0 ? (

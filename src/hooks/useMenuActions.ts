@@ -2,10 +2,11 @@ import { useEffect } from "react";
 import { isElectronAvailable } from "./useElectron";
 import { actionService } from "@/services/ActionService";
 import type { ActionId } from "@shared/types/actions";
+import type { SettingsNavTarget } from "@/components/Settings";
 
 export interface UseMenuActionsOptions {
   onOpenSettings: () => void;
-  onOpenSettingsTab?: (tab: string) => void;
+  onOpenSettingsTab?: (target: SettingsNavTarget) => void;
   onToggleSidebar: () => void;
   onLaunchAgent: (
     agentId: "claude" | "gemini" | "codex" | "opencode" | "terminal" | "browser"
