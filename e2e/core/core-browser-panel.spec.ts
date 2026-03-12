@@ -127,15 +127,22 @@ test.describe.serial("Core: Browser Panel", () => {
       await expect(addressBar).toHaveValue(/page-b/, { timeout: T_LONG });
     });
 
-    test("reload button is clickable without errors", async () => {
+    test("reload preserves current URL", async () => {
       const { window } = ctx;
       const panel = window.locator(SEL.panel.gridPanel).first();
+      const addressBar = panel.locator(SEL.browser.addressBar);
 
+      const urlBefore = await addressBar.inputValue();
       await expect(panel.locator(SEL.browser.reloadButton)).toBeEnabled({ timeout: T_SHORT });
       await panel.locator(SEL.browser.reloadButton).click();
       await window.waitForTimeout(T_SETTLE);
 
-      await expect(panel).toBeVisible({ timeout: T_SHORT });
+      await expect(addressBar).toHaveValue(
+        new RegExp(urlBefore.replace(/[.*+?^${}()|[\]\\]/g, "\\$&")),
+        {
+          timeout: T_LONG,
+        }
+      );
     });
   });
 
