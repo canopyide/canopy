@@ -16,6 +16,27 @@ export interface GettingStartedChecklistState {
 
 let observerInitialized = false;
 
+function reconcileCurrentState(
+  markItem: (item: ChecklistItemId) => void,
+  getChecklist: () => ChecklistState | null
+) {
+  const cl = getChecklist();
+  if (!cl || cl.dismissed) return;
+
+  if (!cl.items.openedProject && useProjectStore.getState().currentProject !== null) {
+    markItem("openedProject");
+  }
+  if (
+    !cl.items.launchedAgent &&
+    useTerminalStore.getState().terminals.some((t) => t.kind === "agent")
+  ) {
+    markItem("launchedAgent");
+  }
+  if (!cl.items.createdWorktree && useWorktreeDataStore.getState().worktrees.size > 1) {
+    markItem("createdWorktree");
+  }
+}
+
 function initChecklistObserver(
   markItem: (item: ChecklistItemId) => void,
   getChecklist: () => ChecklistState | null
@@ -51,6 +72,7 @@ function initChecklistObserver(
 
 export function useGettingStartedChecklist(isStateLoaded: boolean): GettingStartedChecklistState {
   const [checklist, setChecklist] = useState<ChecklistState | null>(null);
+  const [onboardingCompleted, setOnboardingCompleted] = useState(false);
   const [collapsed, setCollapsed] = useState(false);
   const [forceShow, setForceShow] = useState(false);
   const checklistRef = useRef(checklist);
@@ -86,23 +108,26 @@ export function useGettingStartedChecklist(isStateLoaded: boolean): GettingStart
     setCollapsed((prev) => !prev);
   }, []);
 
-  // Hydrate checklist state
+  // Hydrate checklist state and check onboarding completion
   useEffect(() => {
     if (!isElectronAvailable() || !isStateLoaded) return;
     if (!window.electron?.onboarding) return;
 
-    window.electron.onboarding
-      .getChecklist()
-      .then((state) => {
-        setChecklist(state);
+    Promise.all([window.electron.onboarding.get(), window.electron.onboarding.getChecklist()])
+      .then(([onboarding, checklistState]) => {
+        setOnboardingCompleted(onboarding.completed);
+        setChecklist(checklistState);
       })
       .catch(console.error);
   }, [isStateLoaded]);
 
-  // Set up Zustand subscriptions for auto-completion
+  // Set up Zustand subscriptions for auto-completion + reconcile current state
   useEffect(() => {
     if (!isElectronAvailable() || !isStateLoaded) return;
     initChecklistObserver(markItem, () => checklistRef.current);
+    // Reconcile after hydration settles (checklist may still be null here,
+    // but the subscriptions will catch changes going forward)
+    reconcileCurrentState(markItem, () => checklistRef.current);
   }, [isStateLoaded, markItem]);
 
   // Listen for Help > Getting Started menu action
@@ -110,7 +135,6 @@ export function useGettingStartedChecklist(isStateLoaded: boolean): GettingStart
     const handleShow = () => {
       setForceShow(true);
       setCollapsed(false);
-      // Re-fetch from store in case it was dismissed
       if (isElectronAvailable() && window.electron?.onboarding) {
         window.electron.onboarding
           .getChecklist()
@@ -127,16 +151,20 @@ export function useGettingStartedChecklist(isStateLoaded: boolean): GettingStart
   // Notify when onboarding completes — show checklist in the same session
   const notifyOnboardingComplete = useCallback(() => {
     if (!isElectronAvailable() || !window.electron?.onboarding) return;
+    setOnboardingCompleted(true);
     window.electron.onboarding
       .getChecklist()
       .then((state) => {
         setChecklist(state);
+        // Reconcile after hydration in case stores already have data
+        setTimeout(() => reconcileCurrentState(markItem, () => checklistRef.current), 0);
       })
       .catch(console.error);
-  }, []);
+  }, [markItem]);
 
   const allDone = checklist ? Object.values(checklist.items).every(Boolean) : false;
-  const visible = checklist !== null && (forceShow || (!checklist.dismissed && !allDone));
+  const visible =
+    checklist !== null && (forceShow || (onboardingCompleted && !checklist.dismissed && !allDone));
 
   return {
     visible,
