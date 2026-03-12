@@ -79,7 +79,7 @@ export function ErrorFallback({
             </p>
           )}
 
-          {!import.meta.env.DEV && incidentId && (
+          {!import.meta.env.DEV && incidentId && variant !== "component" && (
             <p className={cn("text-canopy-text/50 font-mono", sizes.message)}>
               Error ID: {incidentId.slice(-7)}
             </p>
