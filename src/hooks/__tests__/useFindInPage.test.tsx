@@ -1,15 +1,15 @@
 // @vitest-environment jsdom
 import { renderHook, act } from "@testing-library/react";
-import { beforeEach, afterEach, describe, expect, it, vi } from "vitest";
+import { beforeEach, afterEach, describe, expect, it, vi, type Mock } from "vitest";
 import { useFindInPage } from "../useFindInPage";
 
-const onFindShortcutMock = vi.fn(() => vi.fn());
+// eslint-disable-next-line @typescript-eslint/no-explicit-any
+const onFindShortcutMock: Mock<any> = vi.fn(() => vi.fn());
 
 vi.mock("@/hooks/useFindInPage", async (importOriginal) => {
   return importOriginal();
 });
 
-// Mock window.electron.webview.onFindShortcut
 beforeEach(() => {
   (globalThis as Record<string, unknown>).window = globalThis;
   Object.defineProperty(globalThis, "electron", {
@@ -28,9 +28,17 @@ afterEach(() => {
   onFindShortcutMock.mockClear();
 });
 
-function createMockWebview() {
+interface MockWebview {
+  findInPage: Mock;
+  stopFindInPage: Mock;
+  addEventListener: Mock;
+  removeEventListener: Mock;
+  _emit: (type: string, payload: Record<string, unknown>) => void;
+}
+
+function createMockWebview(): Electron.WebviewTag & MockWebview {
   const listeners = new Map<string, Set<EventListener>>();
-  const mock = {
+  const mock: MockWebview = {
     findInPage: vi.fn(() => 1),
     stopFindInPage: vi.fn(),
     addEventListener: vi.fn((type: string, handler: EventListener) => {
@@ -46,9 +54,7 @@ function createMockWebview() {
       listeners.get(type)?.forEach((h) => h(event));
     },
   };
-  return mock as unknown as Electron.WebviewTag & {
-    _emit: (type: string, payload: Record<string, unknown>) => void;
-  };
+  return mock as unknown as Electron.WebviewTag & MockWebview;
 }
 
 describe("useFindInPage", () => {
@@ -153,18 +159,18 @@ describe("useFindInPage", () => {
   it("handles find shortcut for open/close", () => {
     const webview = createMockWebview();
     let shortcutCallback: (payload: { panelId: string; shortcut: string }) => void;
-    onFindShortcutMock.mockImplementation((cb: typeof shortcutCallback) => {
-      shortcutCallback = cb;
-      return vi.fn();
-    });
+    onFindShortcutMock.mockImplementation(
+      (cb: (payload: { panelId: string; shortcut: string }) => void) => {
+        shortcutCallback = cb;
+        return vi.fn();
+      }
+    );
 
     const { result } = renderHook(() => useFindInPage("panel-1", webview, true, true));
 
-    // Open via shortcut
     act(() => shortcutCallback!({ panelId: "panel-1", shortcut: "find" }));
     expect(result.current.isOpen).toBe(true);
 
-    // Close via shortcut
     act(() => shortcutCallback!({ panelId: "panel-1", shortcut: "close" }));
     expect(result.current.isOpen).toBe(false);
   });
@@ -172,10 +178,12 @@ describe("useFindInPage", () => {
   it("ignores shortcuts for different panels", () => {
     const webview = createMockWebview();
     let shortcutCallback: (payload: { panelId: string; shortcut: string }) => void;
-    onFindShortcutMock.mockImplementation((cb: typeof shortcutCallback) => {
-      shortcutCallback = cb;
-      return vi.fn();
-    });
+    onFindShortcutMock.mockImplementation(
+      (cb: (payload: { panelId: string; shortcut: string }) => void) => {
+        shortcutCallback = cb;
+        return vi.fn();
+      }
+    );
 
     const { result } = renderHook(() => useFindInPage("panel-1", webview, true, true));
 
