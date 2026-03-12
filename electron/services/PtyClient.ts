@@ -614,13 +614,26 @@ export class PtyClient extends EventEmitter {
         this.broker.resolve((event as any).requestId, (event as any).killed ?? 0);
         break;
 
-      case "graceful-kill-result":
-        this.broker.resolve((event as any).requestId, (event as any).agentSessionId ?? null);
+      case "graceful-kill-result": {
+        const gkEvent = event as {
+          type: "graceful-kill-result";
+          requestId: string;
+          id: string;
+          agentSessionId: string | null;
+        };
+        this.broker.resolve(gkEvent.requestId, gkEvent.agentSessionId ?? null);
         break;
+      }
 
-      case "graceful-kill-by-project-result":
-        this.broker.resolve((event as any).requestId, (event as any).results ?? []);
+      case "graceful-kill-by-project-result": {
+        const gkpEvent = event as {
+          type: "graceful-kill-by-project-result";
+          requestId: string;
+          results: Array<{ id: string; agentSessionId: string | null }>;
+        };
+        this.broker.resolve(gkpEvent.requestId, gkpEvent.results ?? []);
         break;
+      }
 
       case "project-stats":
         this.broker.resolve(

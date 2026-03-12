@@ -507,7 +507,7 @@ if (!gotTheLock) {
           if (!state?.terminals) continue;
 
           for (const result of captured) {
-            const snapshot = state.terminals.find((t: any) => t.id === result.id);
+            const snapshot = state.terminals.find((t) => t.id === result.id);
             if (snapshot) {
               snapshot.agentSessionId = result.agentSessionId;
             }
