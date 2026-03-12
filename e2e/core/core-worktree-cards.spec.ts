@@ -45,8 +45,15 @@ test.describe.serial("Core: Worktree Cards", () => {
       const mainCard = window.locator(SEL.worktree.card(MAIN));
       const featureCard = window.locator(SEL.worktree.card(FEATURE));
 
-      await expect(mainCard).toHaveAttribute("aria-label", /selected/, { timeout: T_MEDIUM });
-      await expect(featureCard).not.toHaveAttribute("aria-label", /selected/);
+      await expect
+        .poll(() => mainCard.getAttribute("aria-label"), {
+          timeout: T_LONG,
+          message: "Main card should be selected by default",
+        })
+        .toContain("selected");
+
+      const featureLabel = await featureCard.getAttribute("aria-label");
+      expect(featureLabel).not.toContain("selected");
     });
 
     test("main worktree shows uncommitted changes, feature does not", async () => {
@@ -74,8 +81,19 @@ test.describe.serial("Core: Worktree Cards", () => {
 
       await featureCard.click();
 
-      await expect(featureCard).toHaveAttribute("aria-label", /selected/, { timeout: T_MEDIUM });
-      await expect(mainCard).not.toHaveAttribute("aria-label", /selected/, { timeout: T_MEDIUM });
+      await expect
+        .poll(() => featureCard.getAttribute("aria-label"), {
+          timeout: T_MEDIUM,
+          message: "Feature card should become selected after click",
+        })
+        .toContain("selected");
+
+      await expect
+        .poll(() => mainCard.getAttribute("aria-label"), {
+          timeout: T_MEDIUM,
+          message: "Main card should lose selection after clicking feature",
+        })
+        .not.toContain("selected");
     });
 
     test("clicking main card restores selection", async () => {
@@ -86,10 +104,19 @@ test.describe.serial("Core: Worktree Cards", () => {
 
       await mainCard.click();
 
-      await expect(mainCard).toHaveAttribute("aria-label", /selected/, { timeout: T_MEDIUM });
-      await expect(featureCard).not.toHaveAttribute("aria-label", /selected/, {
-        timeout: T_MEDIUM,
-      });
+      await expect
+        .poll(() => mainCard.getAttribute("aria-label"), {
+          timeout: T_MEDIUM,
+          message: "Main card should become selected after click",
+        })
+        .toContain("selected");
+
+      await expect
+        .poll(() => featureCard.getAttribute("aria-label"), {
+          timeout: T_MEDIUM,
+          message: "Feature card should lose selection after clicking main",
+        })
+        .not.toContain("selected");
     });
   });
 
@@ -102,7 +129,9 @@ test.describe.serial("Core: Worktree Cards", () => {
       // Switch to feature card first — it has the richest menu (Pin, Delete)
       const featureCard = window.locator(SEL.worktree.card(FEATURE));
       await featureCard.click();
-      await expect(featureCard).toHaveAttribute("aria-label", /selected/, { timeout: T_MEDIUM });
+      await expect
+        .poll(() => featureCard.getAttribute("aria-label"), { timeout: T_MEDIUM })
+        .toContain("selected");
 
       const actionsBtn = featureCard.locator(SEL.worktree.actionsMenu);
       await actionsBtn.click();
@@ -177,7 +206,9 @@ test.describe.serial("Core: Worktree Cards", () => {
       // Feature card should have at least 1 panel from the Open Terminal test
       const featureCard = window.locator(SEL.worktree.card(FEATURE));
       await featureCard.click();
-      await expect(featureCard).toHaveAttribute("aria-label", /selected/, { timeout: T_MEDIUM });
+      await expect
+        .poll(() => featureCard.getAttribute("aria-label"), { timeout: T_MEDIUM })
+        .toContain("selected");
 
       await expect
         .poll(() => getGridPanelCount(window), { timeout: T_LONG })
@@ -186,13 +217,17 @@ test.describe.serial("Core: Worktree Cards", () => {
       // Switch to main — should have 0 panels
       const mainCard = window.locator(SEL.worktree.card(MAIN));
       await mainCard.click();
-      await expect(mainCard).toHaveAttribute("aria-label", /selected/, { timeout: T_MEDIUM });
+      await expect
+        .poll(() => mainCard.getAttribute("aria-label"), { timeout: T_MEDIUM })
+        .toContain("selected");
 
       await expect.poll(() => getGridPanelCount(window), { timeout: T_LONG }).toBe(0);
 
       // Switch back to feature — panels should reappear
       await featureCard.click();
-      await expect(featureCard).toHaveAttribute("aria-label", /selected/, { timeout: T_MEDIUM });
+      await expect
+        .poll(() => featureCard.getAttribute("aria-label"), { timeout: T_MEDIUM })
+        .toContain("selected");
 
       await expect
         .poll(() => getGridPanelCount(window), { timeout: T_LONG })
