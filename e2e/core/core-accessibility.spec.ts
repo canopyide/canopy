@@ -17,7 +17,12 @@ function buildAxeScanner(page: import("@playwright/test").Page) {
 }
 
 function formatViolations(violations: import("axe-core").Result[]): string {
-  return violations.map((v) => `[${v.id}] ${v.help} (${v.nodes.length} nodes)`).join("\n");
+  return violations
+    .map((v) => {
+      const targets = v.nodes.map((n) => n.target.join(" > ")).join(", ");
+      return `[${v.id}] ${v.help} (${v.impact}) — ${targets}`;
+    })
+    .join("\n");
 }
 
 test.describe.serial("Core: Accessibility", () => {
@@ -75,24 +80,23 @@ test.describe.serial("Core: Accessibility", () => {
 
       test("terminal panel passes WCAG 2.0 AA audit", async () => {
         const { window } = ctx;
+        const before = await getGridPanelCount(window);
 
         await window.keyboard.press(`${mod}+t`);
-        await expect
-          .poll(() => getGridPanelCount(window), { timeout: T_LONG })
-          .toBeGreaterThanOrEqual(1);
+        await expect.poll(() => getGridPanelCount(window), { timeout: T_LONG }).toBe(before + 1);
         await window
           .locator(SEL.terminal.xtermRows)
           .first()
           .waitFor({ state: "visible", timeout: T_LONG });
 
         const results = await buildAxeScanner(window)
-          .exclude(".xterm-rows") // xterm.js canvas content triggers color-contrast false positives
+          .exclude(".xterm-rows") // xterm.js terminal row content triggers color-contrast false positives
           .exclude(".xterm-viewport") // scrollable-region-focusable false positive
           .analyze();
         expect(results.violations, formatViolations(results.violations)).toEqual([]);
 
         await window.keyboard.press(`${mod}+w`);
-        await expect.poll(() => getGridPanelCount(window), { timeout: T_MEDIUM }).toBe(0);
+        await expect.poll(() => getGridPanelCount(window), { timeout: T_MEDIUM }).toBe(before);
       });
     });
   });
@@ -103,6 +107,11 @@ test.describe.serial("Core: Accessibility", () => {
     test("Cmd+, opens settings and focuses within the dialog", async () => {
       const { window } = ctx;
 
+      // Focus a known element before opening settings so we can verify focus restoration
+      const settingsButton = window.locator(SEL.toolbar.openSettings);
+      await settingsButton.focus();
+      await expect(settingsButton).toBeFocused({ timeout: T_SHORT });
+
       await window.keyboard.press(`${mod}+,`);
       const heading = window.locator(SEL.settings.heading);
       await expect(heading).toBeVisible({ timeout: T_MEDIUM });
@@ -112,11 +121,15 @@ test.describe.serial("Core: Accessibility", () => {
       await expect(searchInput).toBeFocused({ timeout: T_SHORT });
     });
 
-    test("Escape closes settings and restores focus", async () => {
+    test("Escape closes settings and restores focus to trigger", async () => {
       const { window } = ctx;
 
       await window.keyboard.press("Escape");
       await expect(window.locator(SEL.settings.heading)).not.toBeVisible({ timeout: T_SHORT });
+
+      // AppDialog restores focus to the previously focused element on close
+      const settingsButton = window.locator(SEL.toolbar.openSettings);
+      await expect(settingsButton).toBeFocused({ timeout: T_SHORT });
     });
 
     test("toolbar supports arrow-key navigation", async () => {
