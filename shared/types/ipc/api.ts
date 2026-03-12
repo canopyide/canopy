@@ -1013,6 +1013,13 @@ export interface ElectronAPI {
     waitForSelector(selector: string, timeoutMs?: number): Promise<void>;
     pause(): Promise<void>;
     resume(): Promise<void>;
+    onExecCommand(
+      channel: string,
+      callback: (payload: Record<string, unknown>) => void
+    ): () => void;
+    sendCommandDone(requestId: string, error?: string): void;
+    getZoomFactor(): number;
+    setZoomFactor(factor: number): void;
   };
 }
 

@@ -63,7 +63,8 @@ import type { ShowContextMenuPayload } from "../shared/types/menu.js";
 
 export type { ElectronAPI };
 
-const isDemoMode = process.argv.includes("--demo-mode");
+const isDemoMode =
+  !process.argv.some((a) => a.includes("app.asar")) && process.argv.includes("--demo-mode");
 
 // Store MessagePort for direct Renderer ↔ Pty Host communication
 // Note: We cannot return MessagePort via contextBridge (it's not cloneable/transferable via that API).
@@ -1864,6 +1865,26 @@ const api: ElectronAPI = {
             _typedInvoke(CHANNELS.DEMO_WAIT_FOR_SELECTOR, { selector, timeoutMs }),
           pause: () => _typedInvoke(CHANNELS.DEMO_PAUSE),
           resume: () => _typedInvoke(CHANNELS.DEMO_RESUME),
+          onExecCommand: (
+            channel: string,
+            callback: (payload: Record<string, unknown>) => void
+          ): (() => void) => {
+            const handler = (_event: Electron.IpcRendererEvent, payload: Record<string, unknown>) =>
+              callback(payload);
+            ipcRenderer.on(channel, handler);
+            return () => ipcRenderer.removeListener(channel, handler);
+          },
+          sendCommandDone: (requestId: string, error?: string) => {
+            ipcRenderer.send(CHANNELS.DEMO_COMMAND_DONE, { requestId, error });
+          },
+          getZoomFactor: () => {
+            const { webFrame } = require("electron");
+            return webFrame.getZoomFactor();
+          },
+          setZoomFactor: (factor: number) => {
+            const { webFrame } = require("electron");
+            webFrame.setZoomFactor(factor);
+          },
         },
       }
     : {}),

@@ -9,6 +9,10 @@ const ipcMainMock = vi.hoisted(() => ({
 
 vi.mock("electron", () => ({ ipcMain: ipcMainMock }));
 
+vi.mock("crypto", () => ({
+  randomBytes: vi.fn(() => ({ toString: () => "test-request-id" })),
+}));
+
 import { registerDemoHandlers } from "../demo.js";
 import type { HandlerDependencies } from "../../types.js";
 import type { BrowserWindow } from "electron";
@@ -89,19 +93,18 @@ describe("registerDemoHandlers", () => {
     expect(result.height).toBe(1080);
   });
 
-  it("moveTo handler sends exec event to renderer and awaits done", async () => {
+  it("moveTo handler sends exec event with requestId and awaits done", async () => {
     const deps = makeDeps(true);
     registerDemoHandlers(deps);
 
     const [, handler] =
       ipcMainMock.handle.mock.calls.find(([ch]: unknown[]) => ch === "demo:move-to") ?? [];
 
-    // Simulate renderer responding to the command
+    // Simulate renderer responding to the command with matching requestId
     ipcMainMock.on.mockImplementation((channel: string, listener: (...args: unknown[]) => void) => {
       if (channel === "demo:command-done") {
-        // Simulate async response after webContents.send
         setTimeout(() => {
-          listener({}, { channel: "demo:exec-move-to" });
+          listener({}, { requestId: "test-request-id" });
         }, 10);
       }
     });
@@ -110,7 +113,7 @@ describe("registerDemoHandlers", () => {
     expect(result).toBeUndefined();
     expect(deps.mainWindow.webContents.send as ReturnType<typeof vi.fn>).toHaveBeenCalledWith(
       "demo:exec-move-to",
-      { x: 25, y: 75, durationMs: 500 }
+      { x: 25, y: 75, durationMs: 500, requestId: "test-request-id" }
     );
   });
 });
