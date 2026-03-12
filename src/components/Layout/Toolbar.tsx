@@ -259,8 +259,10 @@ export function Toolbar({
       { id: "settings:agents", label: "Agents" },
       { id: "settings:terminal", label: "Terminal" },
       { id: "settings:keyboard", label: "Keyboard" },
+      { id: "settings:notifications", label: "Notifications" },
       { id: "settings:sidecar", label: "Sidecar" },
       { type: "separator" },
+      { id: "settings:toolbar", label: "Customize Toolbar…" },
       { id: "settings:troubleshooting", label: "Troubleshooting" },
     ];
 

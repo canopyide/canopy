@@ -75,7 +75,7 @@ import { QuickSwitcher } from "./components/QuickSwitcher";
 import { ConfirmDialog } from "./components/ui/ConfirmDialog";
 import { RecipeEditor } from "./components/TerminalRecipe/RecipeEditor";
 import { NotesPalette } from "./components/Notes";
-import { SettingsDialog, type SettingsTab } from "./components/Settings";
+import { SettingsDialog, type SettingsTab, type SettingsNavTarget } from "./components/Settings";
 import { ShortcutReferenceDialog } from "./components/KeyboardShortcuts";
 import { Toaster } from "./components/ui/toaster";
 import { UpdateNotification } from "./components/UpdateNotification";
@@ -771,6 +771,8 @@ function App() {
 
   const [isSettingsOpen, setIsSettingsOpen] = useState(false);
   const [settingsTab, setSettingsTab] = useState<SettingsTab>("general");
+  const [settingsSubtab, setSettingsSubtab] = useState<string | undefined>();
+  const [settingsSectionId, setSettingsSectionId] = useState<string | undefined>();
   const [isShortcutsOpen, setIsShortcutsOpen] = useState(false);
   const isNotesPaletteOpen = usePaletteStore((state) => state.activePaletteId === "notes");
   const [isWorktreeOverviewOpen, setIsWorktreeOverviewOpen] = useState(false);
@@ -833,6 +835,8 @@ function App() {
 
   const handleSettings = useCallback(() => {
     setSettingsTab("general");
+    setSettingsSubtab(undefined);
+    setSettingsSectionId(undefined);
     setIsSettingsOpen(true);
   }, []);
 
@@ -854,10 +858,12 @@ function App() {
 
   const handleOpenAgentSettings = useCallback(() => {
     setSettingsTab("agents");
+    setSettingsSubtab(undefined);
+    setSettingsSectionId(undefined);
     setIsSettingsOpen(true);
   }, []);
 
-  const handleOpenSettingsTab = useCallback((tab: string) => {
+  const handleOpenSettingsTab = useCallback((target: SettingsNavTarget) => {
     const allowedTabs: SettingsTab[] = [
       "general",
       "keyboard",
@@ -868,22 +874,33 @@ function App() {
       "github",
       "sidecar",
       "toolbar",
+      "notifications",
+      "editor",
+      "imageViewer",
+      "voice",
+      "mcp",
       "troubleshooting",
     ];
-    if (!allowedTabs.includes(tab as SettingsTab)) {
-      setSettingsTab("general");
-      setIsSettingsOpen(true);
-      return;
-    }
-    setSettingsTab(tab as SettingsTab);
+    const tab = allowedTabs.includes(target.tab as SettingsTab)
+      ? (target.tab as SettingsTab)
+      : "general";
+    setSettingsTab(tab);
+    setSettingsSubtab(target.subtab);
+    setSettingsSectionId(target.sectionId);
     setIsSettingsOpen(true);
   }, []);
 
   useEffect(() => {
     const handleOpenSettingsTabEvent = (event: Event) => {
       const customEvent = event as CustomEvent<unknown>;
-      const tab = typeof customEvent.detail === "string" ? customEvent.detail : "";
-      handleOpenSettingsTab(tab);
+      const detail = customEvent.detail;
+      const target: SettingsNavTarget =
+        typeof detail === "string"
+          ? { tab: detail as SettingsTab }
+          : detail && typeof detail === "object" && "tab" in detail
+            ? (detail as SettingsNavTarget)
+            : { tab: "general" };
+      handleOpenSettingsTab(target);
     };
 
     window.addEventListener("canopy:open-settings-tab", handleOpenSettingsTabEvent);
@@ -1216,6 +1233,8 @@ function App() {
         isOpen={isSettingsOpen}
         onClose={() => setIsSettingsOpen(false)}
         defaultTab={settingsTab}
+        defaultSubtab={settingsSubtab}
+        defaultSectionId={settingsSectionId}
         onSettingsChange={refreshSettings}
       />
 

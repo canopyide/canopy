@@ -1,6 +1,6 @@
 import React, { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { useShallow } from "zustand/react/shallow";
-import { AlertTriangle, Loader2 } from "lucide-react";
+import { AlertTriangle, Loader2, Settings } from "lucide-react";
 import type {
   TerminalType,
   TerminalRestartError,
@@ -36,6 +36,7 @@ import { HybridInputBar, type HybridInputBarHandle } from "./HybridInputBar";
 import { getTerminalFocusTarget } from "./terminalFocus";
 import { registerPanelFocusHandler } from "./terminalFocusRegistry";
 import { getCanopyCommand, isEscapedCommand, unescapeCommand } from "./canopySlashCommands";
+import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from "@/components/ui/tooltip";
 
 export type { TerminalType };
 
@@ -542,6 +543,36 @@ function TerminalPaneComponent({
   // Determine panel kind based on agent
   const kind = effectiveAgentId ? "agent" : "terminal";
 
+  const agentHeaderActions = useMemo(() => {
+    if (!effectiveAgentId) return undefined;
+    const agentConfig = getAgentConfig(effectiveAgentId);
+    const agentName = agentConfig?.name ?? effectiveAgentId;
+    return (
+      <TooltipProvider>
+        <Tooltip>
+          <TooltipTrigger asChild>
+            <button
+              type="button"
+              onClick={(e) => {
+                e.stopPropagation();
+                void actionService.dispatch(
+                  "app.settings.openTab",
+                  { tab: "agents", subtab: effectiveAgentId },
+                  { source: "user" }
+                );
+              }}
+              className="p-1 rounded-[var(--radius-sm)] text-canopy-text/50 hover:text-canopy-text hover:bg-canopy-text/10 transition-colors"
+              aria-label={`Configure ${agentName} settings`}
+            >
+              <Settings className="w-3 h-3" />
+            </button>
+          </TooltipTrigger>
+          <TooltipContent side="bottom">{agentName} Settings</TooltipContent>
+        </Tooltip>
+      </TooltipProvider>
+    );
+  }, [effectiveAgentId]);
+
   return (
     <ContentPanel
       ref={containerRef}
@@ -561,6 +592,7 @@ function TerminalPaneComponent({
       onTitleChange={onTitleChange}
       onMinimize={onMinimize}
       onRestore={onRestore}
+      headerActions={agentHeaderActions}
       onRestart={handleRestart}
       isExited={isExited}
       exitCode={exitCode}
