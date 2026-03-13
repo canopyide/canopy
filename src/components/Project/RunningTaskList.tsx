@@ -57,11 +57,29 @@ export function RunningTaskList({ worktreeId }: RunningTaskListProps) {
     return () => clearInterval(id);
   }, [hasRunning]);
 
-  // Auto-clear successful tasks after delay
+  // Auto-clear successful tasks after delay, and clear dismiss/timers on restart
   useEffect(() => {
     const timers = autoClearTimers.current;
     for (const t of quickRunTerminals) {
       const status = deriveTaskStatus(t);
+
+      // If a terminal is running/restarting again (was restarted), clear its dismiss state and timer
+      if (status === "running" || status === "restarting") {
+        if (dismissedIds.has(t.id)) {
+          setDismissedIds((prev) => {
+            const next = new Set(prev);
+            next.delete(t.id);
+            return next;
+          });
+        }
+        const existingTimer = timers.get(t.id);
+        if (existingTimer) {
+          clearTimeout(existingTimer);
+          timers.delete(t.id);
+        }
+        continue;
+      }
+
       if (status === "success" && !dismissedIds.has(t.id) && !timers.has(t.id)) {
         const timer = setTimeout(() => {
           setDismissedIds((prev) => new Set(prev).add(t.id));
@@ -72,12 +90,11 @@ export function RunningTaskList({ worktreeId }: RunningTaskListProps) {
     }
 
     return () => {
-      for (const [id, timer] of timers) {
-        if (!quickRunTerminals.some((t) => t.id === id)) {
-          clearTimeout(timer);
-          timers.delete(id);
-        }
+      // On unmount or dependency change, clear all timers
+      for (const [, timer] of timers) {
+        clearTimeout(timer);
       }
+      timers.clear();
     };
   }, [quickRunTerminals, dismissedIds]);
 
