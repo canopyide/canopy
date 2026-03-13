@@ -19,6 +19,7 @@ import { cn } from "@/lib/utils";
 import { detectTerminalTypeFromCommand } from "@/utils/terminalType";
 import { Tooltip, TooltipContent, TooltipTrigger, TooltipProvider } from "@/components/ui/tooltip";
 import type { RunCommand } from "@/types";
+import { RunningTaskList } from "./RunningTaskList";
 
 interface QuickRunProps {
   projectId: string;
@@ -311,6 +312,7 @@ export function QuickRun({ projectId }: QuickRunProps) {
         location: useDock ? "dock" : "grid",
         worktreeId: activeWorktreeId || undefined,
         exitBehavior: useAutoRestart ? "restart" : undefined,
+        spawnedBy: "quickrun",
       });
     } catch (error) {
       console.error("Failed to spawn terminal:", error);
@@ -381,6 +383,8 @@ export function QuickRun({ projectId }: QuickRunProps) {
               Select a worktree above to enable Quick Run
             </div>
           ) : (
+            <>
+            {activeWorktreeId && <RunningTaskList worktreeId={activeWorktreeId} />}
             <div
               className={cn(
                 "relative flex items-center bg-surface border border-canopy-border rounded-[var(--radius-md)]",
@@ -584,6 +588,7 @@ export function QuickRun({ projectId }: QuickRunProps) {
                 </div>
               )}
             </div>
+            </>
           )}
         </div>
       )}
