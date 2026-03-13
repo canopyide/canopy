@@ -66,6 +66,7 @@ export interface StoreSchema {
       scope?: "worktree" | "project";
       createdAt?: number;
       devCommand?: string;
+      browserConsoleOpen?: boolean;
       devPreviewConsoleOpen?: boolean;
     }>;
     /** @deprecated Recipes are now stored per-project. This field is kept for migration only. */
