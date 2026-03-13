@@ -1,3 +1,4 @@
+// @vitest-environment jsdom
 import { describe, it, expect, beforeEach } from "vitest";
 import { useUrlHistoryStore, frecencyScore, getFrecencySuggestions } from "../urlHistoryStore";
 import type { UrlHistoryEntry } from "@shared/types/domain";
