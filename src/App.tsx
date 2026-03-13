@@ -29,6 +29,7 @@ import {
   useWorktreeActions,
   useMenuActions,
   useErrors,
+  useReEntrySummary,
 } from "./hooks";
 import { useActionRegistry } from "./hooks/useActionRegistry";
 import { useUpdateListener } from "./hooks/useUpdateListener";
@@ -83,6 +84,7 @@ import { NotesPalette } from "./components/Notes";
 import { SettingsDialog, type SettingsTab, type SettingsNavTarget } from "./components/Settings";
 import { ShortcutReferenceDialog } from "./components/KeyboardShortcuts";
 import { Toaster } from "./components/ui/toaster";
+import { ReEntrySummary } from "./components/ui/ReEntrySummary";
 import { UpdateNotification } from "./components/UpdateNotification";
 import { OnboardingFlow } from "./components/Onboarding/OnboardingFlow";
 import { GettingStartedChecklist } from "./components/Onboarding/GettingStartedChecklist";
@@ -696,6 +698,7 @@ function App() {
   useAppThemeConfig();
   useWindowNotifications();
   useWatchedPanelNotifications();
+  const reEntrySummary = useReEntrySummary();
   useUpdateListener();
   useMcpBridge();
   const [homeDir, setHomeDir] = useState<string | undefined>(undefined);
@@ -1320,6 +1323,7 @@ function App() {
       <PanelTransitionOverlay />
 
       <Toaster />
+      <ReEntrySummary state={reEntrySummary} />
       <UpdateNotification />
       <OnboardingFlow
         availability={availability}
