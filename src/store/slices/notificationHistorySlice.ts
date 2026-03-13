@@ -76,7 +76,10 @@ export const useNotificationHistoryStore = create<NotificationHistoryState>((set
   dismissEntry: (id) =>
     set((state) => {
       const entries = state.entries.filter((e) => e.id !== id);
-      return { entries, unreadCount: entries.filter((e) => !e.seenAsToast && e.countable !== false).length };
+      return {
+        entries,
+        unreadCount: entries.filter((e) => !e.seenAsToast && e.countable !== false).length,
+      };
     }),
   clearAll: () => set({ entries: [], unreadCount: 0 }),
   markAllRead: () =>
