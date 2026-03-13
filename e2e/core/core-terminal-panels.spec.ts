@@ -90,7 +90,10 @@ test.describe.serial("Core: Terminal & Panels", () => {
       const { window } = ctx;
 
       const panel = getFirstGridPanel(window);
-      const minimizeBtn = panel.locator(SEL.panel.minimize).first();
+      // Open the overflow menu, then click "Move to Dock" inside the dropdown
+      const overflowBtn = panel.locator(SEL.panel.overflowMenu).first();
+      await overflowBtn.click();
+      const minimizeBtn = window.locator(SEL.panel.minimize).first();
       await minimizeBtn.click();
 
       await expect(panel).not.toBeVisible({ timeout: T_SHORT });
@@ -166,9 +169,13 @@ test.describe.serial("Core: Terminal & Panels", () => {
       const { window } = ctx;
 
       const panel = getFirstGridPanel(window);
-      const restartBtn = panel.locator(SEL.panel.restart).first();
+      // Open overflow menu and click Restart (first click arms it)
+      const overflowBtn = panel.locator(SEL.panel.overflowMenu).first();
+      await overflowBtn.click();
+      const restartBtn = window.locator(SEL.panel.restart).first();
       await restartBtn.click({ force: true });
 
+      // Second click confirms the restart (menu stays open while armed)
       await window.waitForTimeout(T_SETTLE);
       await restartBtn.click({ force: true });
 
