@@ -4,35 +4,35 @@ import { middleTruncate } from "../../utils/textParsing";
 import { BRANCH_PREFIX_MAP, DEFAULT_BRANCH_TYPE } from "@shared/config/branchPrefixes";
 import { Tooltip, TooltipContent, TooltipTrigger, TooltipProvider } from "@/components/ui/tooltip";
 import {
+  BookOpen,
   Bug,
-  FileText,
+  Construction,
   FlaskConical,
   GitBranch,
-  Hammer,
   Infinity as InfinityIcon,
+  Layers,
+  Lightbulb,
   Package,
   Palette,
   Rocket,
-  RotateCw,
-  Sparkles,
   Wrench,
   Zap,
   type LucideIcon,
 } from "lucide-react";
 
 const BRANCH_TYPE_ICONS: Record<string, LucideIcon> = {
-  feature: Sparkles,
+  feature: Lightbulb,
   bugfix: Bug,
   chore: Wrench,
-  docs: FileText,
-  refactor: RotateCw,
+  docs: BookOpen,
+  refactor: Layers,
   test: FlaskConical,
   release: Rocket,
   ci: InfinityIcon,
   deps: Package,
   perf: Zap,
   style: Palette,
-  wip: Hammer,
+  wip: Construction,
   other: GitBranch,
 };
 
