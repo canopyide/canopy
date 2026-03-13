@@ -89,8 +89,8 @@ describe("webviewCsp", () => {
         })
       );
 
-      expect(directives["default-src"]).not.toContain("https: ");
-      expect(directives["script-src"]).not.toContain("https: ");
+      expect(directives["default-src"]).not.toMatch(/(?:^|\s)https:(?:\s|$)/);
+      expect(directives["script-src"]).not.toMatch(/(?:^|\s)https:(?:\s|$)/);
       expect(csp).not.toContain("http://example.com");
     });
 
