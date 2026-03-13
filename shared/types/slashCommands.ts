@@ -9,6 +9,7 @@ export interface SlashCommand {
   scope: SlashCommandScope;
   agentId: LegacyAgentType;
   sourcePath?: string;
+  kind?: "command" | "skill";
 }
 
 export interface SlashCommandListRequest {
