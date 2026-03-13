@@ -332,68 +332,74 @@ export const HybridInputBar = forwardRef<HybridInputBarHandle, HybridInputBarPro
       const view = editorViewRef.current;
       if (!view || !e.dataTransfer.files.length) return;
 
-      const nonImageFiles: { path: string; name: string }[] = [];
+      type ResolvedFile =
+        | { type: "image"; filePath: string; thumbnailDataUrl: string }
+        | { type: "file"; filePath: string; fileName: string };
+
+      const resolved: ResolvedFile[] = [];
 
       for (const file of Array.from(e.dataTransfer.files)) {
-        try {
-          const filePath = window.electron.webUtils.getPathForFile(file);
-          if (!filePath) continue;
+        const filePath = window.electron.webUtils.getPathForFile(file);
+        if (!filePath) continue;
+        const name = file.name.trim() || filePath.split(/[/\\]/).filter(Boolean).pop() || filePath;
 
-          if (IMAGE_EXTENSIONS.test(file.name)) {
+        if (IMAGE_EXTENSIONS.test(file.name)) {
+          try {
             const result = await window.electron.clipboard.thumbnailFromPath(filePath);
             if (result.ok) {
-              const cursor = view.state.selection.main.head;
-              view.dispatch({
-                changes: { from: cursor, insert: filePath + " " },
-                effects: addImageChip.of({
-                  from: cursor,
-                  to: cursor + filePath.length,
-                  filePath,
-                  thumbnailUrl: result.thumbnailDataUrl,
-                }),
-                selection: { anchor: cursor + filePath.length + 1 },
-              });
+              resolved.push({ type: "image", filePath, thumbnailDataUrl: result.thumbnailDataUrl });
             } else {
-              const name =
-                file.name.trim() || filePath.split(/[/\\]/).filter(Boolean).pop() || filePath;
-              nonImageFiles.push({ path: filePath, name });
+              resolved.push({ type: "file", filePath, fileName: name });
             }
-          } else {
-            const name =
-              file.name.trim() || filePath.split(/[/\\]/).filter(Boolean).pop() || filePath;
-            nonImageFiles.push({ path: filePath, name });
+          } catch {
+            resolved.push({ type: "file", filePath, fileName: name });
           }
-        } catch {
-          // Editor may have been destroyed
+        } else {
+          resolved.push({ type: "file", filePath, fileName: name });
         }
       }
 
-      if (nonImageFiles.length > 0 && view) {
-        try {
-          const cursor = view.state.selection.main.head;
-          const effects: ReturnType<typeof addFileDropChip.of>[] = [];
-          let insertText = "";
-          for (const file of nonImageFiles) {
-            const token = formatAtFileToken(file.path);
-            const from = cursor + insertText.length;
+      if (resolved.length === 0) return;
+
+      try {
+        const cursor = view.state.selection.main.head;
+        const imageEffects: ReturnType<typeof addImageChip.of>[] = [];
+        const fileEffects: ReturnType<typeof addFileDropChip.of>[] = [];
+        let insertText = "";
+
+        for (const entry of resolved) {
+          const from = cursor + insertText.length;
+          if (entry.type === "image") {
+            insertText += entry.filePath + " ";
+            imageEffects.push(
+              addImageChip.of({
+                from,
+                to: from + entry.filePath.length,
+                filePath: entry.filePath,
+                thumbnailUrl: entry.thumbnailDataUrl,
+              })
+            );
+          } else {
+            const token = formatAtFileToken(entry.filePath);
             insertText += token + " ";
-            effects.push(
+            fileEffects.push(
               addFileDropChip.of({
                 from,
                 to: from + token.length,
-                filePath: file.path,
-                fileName: file.name,
+                filePath: entry.filePath,
+                fileName: entry.fileName,
               })
             );
           }
-          view.dispatch({
-            changes: { from: cursor, insert: insertText },
-            effects,
-            selection: { anchor: cursor + insertText.length },
-          });
-        } catch {
-          // Editor may have been destroyed
         }
+
+        view.dispatch({
+          changes: { from: cursor, insert: insertText },
+          effects: [...imageEffects, ...fileEffects],
+          selection: { anchor: cursor + insertText.length },
+        });
+      } catch {
+        // Editor may have been destroyed
       }
     }, []);
 

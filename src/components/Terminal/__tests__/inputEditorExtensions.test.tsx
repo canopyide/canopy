@@ -809,6 +809,14 @@ describe("createFilePasteHandler", () => {
   });
 
   it("does not call onFilePaste for files without a path", () => {
+    const originalElectron = window.electron;
+    (window as unknown as Record<string, unknown>).electron = {
+      ...window.electron,
+      webUtils: {
+        getPathForFile: () => "",
+      },
+    };
+
     const onFilePaste = vi.fn();
     const parent = document.createElement("div");
     const view = new EditorView({
@@ -820,7 +828,6 @@ describe("createFilePasteHandler", () => {
     });
 
     const file = new File(["content"], "test.txt", { type: "text/plain" });
-    // No .path property set (non-Electron file)
 
     const mockData = makeMockClipboardData([{ kind: "file", type: "text/plain", file }]);
     const pasteEvent = makePasteEvent(mockData.clipboardData);
@@ -830,6 +837,7 @@ describe("createFilePasteHandler", () => {
     expect(onFilePaste).not.toHaveBeenCalled();
 
     view.destroy();
+    (window as unknown as Record<string, unknown>).electron = originalElectron;
   });
 });
 
