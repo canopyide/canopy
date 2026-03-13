@@ -50,11 +50,7 @@ function isPR(item: GitHubIssue | GitHubPR): item is GitHubPR {
   return "isDraft" in item;
 }
 
-function buildTooltipLines(
-  item: GitHubIssue | GitHubPR,
-  type: "issue" | "pr",
-  isItemPR: boolean
-): string[] {
+function buildTooltipLines(item: GitHubIssue | GitHubPR, isItemPR: boolean): string[] {
   const lines: string[] = ["Open in GitHub"];
 
   if (isItemPR && (item as GitHubPR).headRefName) {
@@ -131,7 +127,7 @@ export function GitHubListItem({
     }
   };
 
-  const tooltipLines = buildTooltipLines(item, type, isItemPR);
+  const tooltipLines = buildTooltipLines(item, isItemPR);
   const isForkPR = isItemPR && (item as GitHubPR).isFork === true;
 
   return (
