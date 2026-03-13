@@ -2,7 +2,7 @@ import { ipcMain, dialog, BrowserWindow } from "electron";
 import { CHANNELS } from "../channels.js";
 import { store } from "../../store.js";
 import { parseColorSchemeFile } from "../../utils/colorSchemeImporter.js";
-import type { AppThemeConfig } from "../../../shared/types/appTheme.js";
+import type { AppThemeConfig, ColorVisionMode } from "../../../shared/types/appTheme.js";
 
 function getAppThemeConfig(): AppThemeConfig {
   const config = store.get("appTheme");
@@ -62,7 +62,10 @@ export function registerAppThemeHandlers(): () => void {
       return;
     }
     const current = getAppThemeConfig();
-    store.set("appTheme", { ...current, colorVisionMode: mode } satisfies AppThemeConfig);
+    store.set("appTheme", {
+      ...current,
+      colorVisionMode: mode as ColorVisionMode,
+    } satisfies AppThemeConfig);
   };
   ipcMain.handle(CHANNELS.APP_THEME_SET_COLOR_VISION_MODE, handleAppThemeSetColorVisionMode);
   handlers.push(() => ipcMain.removeHandler(CHANNELS.APP_THEME_SET_COLOR_VISION_MODE));
