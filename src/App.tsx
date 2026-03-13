@@ -142,7 +142,6 @@ function SidebarContent({ onOpenOverview }: SidebarContentProps) {
     selectWorktree,
     createDialog,
     closeCreateDialog,
-    openQuickCreate,
   } = useWorktreeSelectionStore(
     useShallow((state) => ({
       activeWorktreeId: state.activeWorktreeId,
@@ -150,7 +149,6 @@ function SidebarContent({ onOpenOverview }: SidebarContentProps) {
       selectWorktree: state.selectWorktree,
       createDialog: state.createDialog,
       closeCreateDialog: state.closeCreateDialog,
-      openQuickCreate: state.openQuickCreate,
     }))
   );
 
@@ -566,9 +564,13 @@ function SidebarContent({ onOpenOverview }: SidebarContentProps) {
             </button>
           </div>
           <button
-            onClick={() => openQuickCreate()}
+            onClick={() =>
+              actionService.dispatch("worktree.createDialog.open", undefined, {
+                source: "user",
+              })
+            }
             className="p-1 text-canopy-text/40 hover:text-canopy-text hover:bg-white/[0.06] rounded transition-colors"
-            title={createTooltipWithShortcut("Create new worktree", "Cmd+Shift+N")}
+            title="Create new worktree"
             aria-label="Create new worktree"
           >
             <Plus className="w-3.5 h-3.5" />
