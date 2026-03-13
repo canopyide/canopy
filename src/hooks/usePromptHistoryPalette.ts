@@ -1,6 +1,7 @@
 import { useState, useCallback, useMemo } from "react";
 import type { IFuseOptions } from "fuse.js";
 import { useCommandHistoryStore, type PromptHistoryEntry } from "@/store/commandHistoryStore";
+import { useShallow } from "zustand/react/shallow";
 import { useTerminalInputStore } from "@/store/terminalInputStore";
 import { useSearchablePalette } from "./useSearchablePalette";
 
@@ -22,13 +23,23 @@ export interface UsePromptHistoryPaletteOptions {
 export function usePromptHistoryPalette({ terminalId, projectId }: UsePromptHistoryPaletteOptions) {
   const [scope, setScope] = useState<HistoryScope>("project");
 
-  const projectHistory = useCommandHistoryStore((s) => s.getProjectHistory(projectId));
-  const globalHistory = useCommandHistoryStore((s) => s.getGlobalHistory());
+  const history = useCommandHistoryStore(useShallow((s) => s.history));
 
-  const items = useMemo(
-    () => (scope === "project" ? projectHistory : globalHistory),
-    [scope, projectHistory, globalHistory]
-  );
+  const items = useMemo(() => {
+    if (scope === "project") {
+      return projectId ? (history[projectId] ?? []) : [];
+    }
+    const all = Object.values(history).flat();
+    const seen = new Set<string>();
+    const deduped: PromptHistoryEntry[] = [];
+    for (const entry of all.sort((a, b) => b.addedAt - a.addedAt)) {
+      if (!seen.has(entry.prompt)) {
+        seen.add(entry.prompt);
+        deduped.push(entry);
+      }
+    }
+    return deduped;
+  }, [scope, projectId, history]);
 
   const palette = useSearchablePalette<PromptHistoryEntry>({
     items,
