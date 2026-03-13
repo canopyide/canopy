@@ -17,6 +17,7 @@ import {
   ArrowDownToLine,
   Bell,
   BellOff,
+  Bot,
   Clipboard,
   Copy,
   CopyPlus,
@@ -393,6 +394,7 @@ export function TerminalContextMenu({
                   disabled={isCurrent}
                   onSelect={() => handleAction(`move-to-worktree:${wt.id}`)}
                 >
+                  <GitBranch className={ICON_CLASS} aria-hidden="true" />
                   {label}
                 </ContextMenuItem>
               );
@@ -591,6 +593,7 @@ export function TerminalContextMenu({
             disabled={isCurrent}
             onSelect={() => handleAction(`convert-to:${agentId}`)}
           >
+            <Bot className={ICON_CLASS} aria-hidden="true" />
             {config.name}
           </ContextMenuItem>
         );
