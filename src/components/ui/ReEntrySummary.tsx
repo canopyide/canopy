@@ -46,25 +46,24 @@ function buildLines(counts: ReEntrySummaryState["counts"]): Array<{
 }
 
 export function ReEntrySummary({ state }: { state: ReEntrySummaryState }) {
+  const { visible, dismiss } = state;
   const [isVisible, setIsVisible] = useState(false);
   const [isPaused, setIsPaused] = useState(false);
 
   useEffect(() => {
-    if (!state.visible) {
+    if (!visible) {
       setIsVisible(false);
       return;
     }
     const handle = requestAnimationFrame(() => setIsVisible(true));
     return () => cancelAnimationFrame(handle);
-  }, [state.visible]);
+  }, [visible]);
 
   useEffect(() => {
-    if (!state.visible || isPaused) return;
-    const timer = setTimeout(() => {
-      state.dismiss();
-    }, AUTO_DISMISS_MS);
+    if (!visible || isPaused) return;
+    const timer = setTimeout(dismiss, AUTO_DISMISS_MS);
     return () => clearTimeout(timer);
-  }, [state.visible, state.dismiss, isPaused]);
+  }, [visible, dismiss, isPaused]);
 
   if (!state.visible) return null;
 
