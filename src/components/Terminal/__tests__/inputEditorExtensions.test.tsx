@@ -15,6 +15,7 @@ import {
   setInterimRange,
   pendingAIField,
   setPendingAIRanges,
+  diffChipField,
 } from "../inputEditorExtensions";
 
 describe("computeAutoSize", () => {
@@ -1091,5 +1092,70 @@ describe("voice decoration phase integration", () => {
     expect(view.state.field(interimMarkField).iter().value).toBeNull();
     expect(view.state.field(pendingAIField).iter().value).toBeNull();
     view.destroy();
+  });
+});
+
+describe("diffChipField", () => {
+  it("creates decorations for @diff tokens", () => {
+    const state = EditorState.create({
+      doc: "check @diff please",
+      extensions: [diffChipField],
+    });
+    const chipState = state.field(diffChipField);
+    expect(chipState.tokens).toHaveLength(1);
+    expect(chipState.tokens[0].diffType).toBe("unstaged");
+    expect(chipState.tokens[0].start).toBe(6);
+    expect(chipState.tokens[0].end).toBe(11);
+  });
+
+  it("creates decorations for @diff:staged tokens", () => {
+    const state = EditorState.create({
+      doc: "@diff:staged",
+      extensions: [diffChipField],
+    });
+    const chipState = state.field(diffChipField);
+    expect(chipState.tokens).toHaveLength(1);
+    expect(chipState.tokens[0].diffType).toBe("staged");
+  });
+
+  it("creates decorations for @diff:head tokens", () => {
+    const state = EditorState.create({
+      doc: "@diff:head",
+      extensions: [diffChipField],
+    });
+    const chipState = state.field(diffChipField);
+    expect(chipState.tokens).toHaveLength(1);
+    expect(chipState.tokens[0].diffType).toBe("head");
+  });
+
+  it("finds multiple diff tokens", () => {
+    const state = EditorState.create({
+      doc: "@diff and @diff:staged and @diff:head",
+      extensions: [diffChipField],
+    });
+    const chipState = state.field(diffChipField);
+    expect(chipState.tokens).toHaveLength(3);
+  });
+
+  it("returns empty for text without diff tokens", () => {
+    const state = EditorState.create({
+      doc: "just plain text",
+      extensions: [diffChipField],
+    });
+    const chipState = state.field(diffChipField);
+    expect(chipState.tokens).toHaveLength(0);
+  });
+
+  it("updates when document changes", () => {
+    const state = EditorState.create({
+      doc: "@diff",
+      extensions: [diffChipField],
+    });
+    expect(state.field(diffChipField).tokens).toHaveLength(1);
+
+    const tr = state.update({
+      changes: { from: 0, to: 5, insert: "hello" },
+    });
+    expect(tr.state.field(diffChipField).tokens).toHaveLength(0);
   });
 });
