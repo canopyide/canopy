@@ -27,6 +27,7 @@ export function TerminalDockRegion() {
   return (
     <div
       ref={dockRegionRef}
+      role="region"
       tabIndex={-1}
       aria-label="Dock bar"
       data-macro-focus={isMacroFocused ? "true" : undefined}

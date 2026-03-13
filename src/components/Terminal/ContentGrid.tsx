@@ -922,6 +922,7 @@ export function ContentGrid({ className, defaultCwd, agentAvailability }: Conten
         return (
           <div
             ref={gridRegionRef}
+            role="region"
             tabIndex={-1}
             aria-label="Terminal grid"
             data-macro-focus={isMacroFocused ? "true" : undefined}
@@ -954,6 +955,7 @@ export function ContentGrid({ className, defaultCwd, agentAvailability }: Conten
         return (
           <div
             ref={gridRegionRef}
+            role="region"
             tabIndex={-1}
             aria-label="Terminal grid"
             data-macro-focus={isMacroFocused ? "true" : undefined}
@@ -987,6 +989,7 @@ export function ContentGrid({ className, defaultCwd, agentAvailability }: Conten
       <div
         key="split-mode"
         ref={gridRegionRef}
+        role="region"
         tabIndex={-1}
         aria-label="Terminal grid"
         data-macro-focus={isMacroFocused ? "true" : undefined}
@@ -1025,6 +1028,7 @@ export function ContentGrid({ className, defaultCwd, agentAvailability }: Conten
     <div
       key="grid-mode"
       ref={gridRegionRef}
+      role="region"
       tabIndex={-1}
       aria-label="Terminal grid"
       data-macro-focus={isMacroFocused ? "true" : undefined}

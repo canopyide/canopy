@@ -457,6 +457,7 @@ export function SidecarDock() {
   return (
     <div
       ref={dockRef}
+      role="region"
       aria-label="Sidecar"
       data-macro-focus={isMacroFocused ? "true" : undefined}
       className={cn(
