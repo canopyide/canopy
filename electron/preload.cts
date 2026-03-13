@@ -1355,6 +1355,9 @@ const api: ElectronAPI = {
       }),
 
     getUsername: (cwd: string) => _typedInvoke(CHANNELS.GIT_GET_USERNAME, cwd),
+
+    getWorkingDiff: (cwd: string, type: "unstaged" | "staged" | "head") =>
+      _typedInvoke(CHANNELS.GIT_GET_WORKING_DIFF, { cwd, type }),
   },
 
   // Terminal Config API
