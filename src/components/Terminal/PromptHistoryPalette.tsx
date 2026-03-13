@@ -1,4 +1,4 @@
-import { useCallback } from "react";
+import { useCallback, useEffect } from "react";
 import { SearchablePalette } from "@/components/ui/SearchablePalette";
 import {
   usePromptHistoryPalette,
@@ -25,7 +25,11 @@ function truncatePrompt(text: string, maxLen = 80): string {
   return firstLine.slice(0, maxLen) + "…";
 }
 
-export function PromptHistoryPalette(props: UsePromptHistoryPaletteOptions) {
+export interface PromptHistoryPaletteProps extends UsePromptHistoryPaletteOptions {
+  onOpenRef?: React.MutableRefObject<(() => void) | null>;
+}
+
+export function PromptHistoryPalette({ onOpenRef, ...props }: PromptHistoryPaletteProps) {
   const {
     isOpen,
     query,
@@ -37,10 +41,20 @@ export function PromptHistoryPalette(props: UsePromptHistoryPaletteOptions) {
     selectNext,
     confirmSelection,
     close,
+    open,
     scope,
     toggleScope,
     selectEntry,
   } = usePromptHistoryPalette(props);
+
+  useEffect(() => {
+    if (onOpenRef) {
+      onOpenRef.current = open;
+      return () => {
+        onOpenRef.current = null;
+      };
+    }
+  }, [onOpenRef, open]);
 
   const getItemId = useCallback((item: PromptHistoryEntry) => item.id, []);
 
