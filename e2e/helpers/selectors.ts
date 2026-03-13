@@ -167,4 +167,18 @@ export const SEL = {
     updateButton: 'button:has-text("Update Recipe")',
     cancelButton: 'button:has-text("Cancel")',
   },
+  diagnostics: {
+    dock: '[aria-label="Diagnostics dock"]',
+    resizeHandle: '[aria-label="Resize diagnostics dock"]',
+    closeButton: '[aria-label="Close diagnostics dock"]',
+    tabList: '[aria-label="Diagnostics tabs"]',
+    tab: (name: string) => `#diagnostics-${name}-tab`,
+    panel: (name: string) => `#diagnostics-${name}-panel`,
+  },
+  notifications: {
+    bellButton: '[aria-label^="Notifications"]',
+    emptyState: 'text="No notifications yet"',
+    configureButton: 'button:has-text("Configure")',
+    clearAllButton: 'button:has-text("Clear all")',
+  },
 } as const;
