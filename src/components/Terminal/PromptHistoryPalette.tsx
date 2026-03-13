@@ -48,12 +48,11 @@ export function PromptHistoryPalette({ onOpenRef, ...props }: PromptHistoryPalet
   } = usePromptHistoryPalette(props);
 
   useEffect(() => {
-    if (onOpenRef) {
-      onOpenRef.current = open;
-      return () => {
-        onOpenRef.current = null;
-      };
-    }
+    if (!onOpenRef) return;
+    onOpenRef.current = open;
+    return () => {
+      onOpenRef.current = null;
+    };
   }, [onOpenRef, open]);
 
   const getItemId = useCallback((item: PromptHistoryEntry) => item.id, []);
