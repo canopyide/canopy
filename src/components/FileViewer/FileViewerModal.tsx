@@ -66,10 +66,11 @@ export function FileViewerModal({
   // If the file is outside the project root, use its parent directory as the
   // effective root so that the canopy-file:// protocol and files.read IPC
   // containment checks pass.
-  const normalizedRoot = rootPath.endsWith("/") ? rootPath : rootPath + "/";
-  const effectiveRootPath = filePath.startsWith(normalizedRoot)
+  const fwd = (p: string) => p.replace(/\\/g, "/");
+  const fwdRoot = fwd(rootPath).replace(/\/$/, "") + "/";
+  const effectiveRootPath = fwd(filePath).startsWith(fwdRoot)
     ? rootPath
-    : filePath.substring(0, filePath.lastIndexOf("/")) || "/";
+    : filePath.substring(0, Math.max(filePath.lastIndexOf("/"), filePath.lastIndexOf("\\"))) || "/";
 
   const hasDiff = Boolean(diff && diff.trim() && diff !== "NO_CHANGES");
   const [mode, setMode] = useState<ViewMode>(() => {
