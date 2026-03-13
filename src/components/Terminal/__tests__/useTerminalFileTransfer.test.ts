@@ -21,6 +21,7 @@ vi.mock("@/services/TerminalInstanceService", () => ({
 import { IMAGE_EXTENSIONS, useTerminalFileTransfer } from "../useTerminalFileTransfer";
 import { terminalClient } from "@/clients";
 import { terminalInstanceService } from "@/services/TerminalInstanceService";
+import { escapeShellArgOptional } from "@shared/utils/shellEscape.js";
 
 describe("IMAGE_EXTENSIONS", () => {
   it("matches common image formats", () => {
@@ -149,10 +150,9 @@ describe("useTerminalFileTransfer hook", () => {
       });
     });
 
-    // Path contains dots, so escapeShellArgOptional wraps in single quotes
     expect(terminalClient.write).toHaveBeenCalledWith(
       "term-1",
-      "'/tmp/canopy-clipboard/clipboard-123-abc.png'"
+      escapeShellArgOptional("/tmp/canopy-clipboard/clipboard-123-abc.png")
     );
     expect(terminalInstanceService.notifyUserInput).toHaveBeenCalledWith("term-1");
     expect(event.defaultPrevented).toBe(true);
@@ -170,7 +170,9 @@ describe("useTerminalFileTransfer hook", () => {
       });
     });
 
-    expect(onInput).toHaveBeenCalledWith("'/tmp/canopy-clipboard/clipboard-123-abc.png'");
+    expect(onInput).toHaveBeenCalledWith(
+      escapeShellArgOptional("/tmp/canopy-clipboard/clipboard-123-abc.png")
+    );
   });
 
   it("text-only paste does not call saveImage and is not prevented", () => {
@@ -231,10 +233,9 @@ describe("useTerminalFileTransfer hook", () => {
       });
     });
 
-    // escapeShellArgOptional wraps paths with spaces in single quotes
     expect(terminalClient.write).toHaveBeenCalledWith(
       "term-1",
-      "'/tmp/canopy clipboard/my screenshot.png'"
+      escapeShellArgOptional("/tmp/canopy clipboard/my screenshot.png")
     );
   });
 
@@ -254,7 +255,7 @@ describe("useTerminalFileTransfer hook", () => {
 
     expect(terminalClient.write).toHaveBeenCalledWith(
       "term-1",
-      "'/Users/test/document.pdf' '/Users/test/script.sh'"
+      `${escapeShellArgOptional("/Users/test/document.pdf")} ${escapeShellArgOptional("/Users/test/script.sh")}`
     );
     expect(terminalInstanceService.notifyUserInput).toHaveBeenCalledWith("term-1");
     expect(event.defaultPrevented).toBe(true);
@@ -269,7 +270,10 @@ describe("useTerminalFileTransfer hook", () => {
     const event = makeDropEvent([file]);
     container.dispatchEvent(event);
 
-    expect(terminalClient.write).toHaveBeenCalledWith("term-1", "'/Users/test/my file.pdf'");
+    expect(terminalClient.write).toHaveBeenCalledWith(
+      "term-1",
+      escapeShellArgOptional("/Users/test/my file.pdf")
+    );
   });
 
   it("file drop with unresolved path skips that file", () => {
@@ -284,7 +288,10 @@ describe("useTerminalFileTransfer hook", () => {
     const event = makeDropEvent([file1, file2]);
     container.dispatchEvent(event);
 
-    expect(terminalClient.write).toHaveBeenCalledWith("term-1", "'/Users/test/resolved.pdf'");
+    expect(terminalClient.write).toHaveBeenCalledWith(
+      "term-1",
+      escapeShellArgOptional("/Users/test/resolved.pdf")
+    );
   });
 
   it("file drop with all unresolved paths does not write to terminal", () => {
@@ -321,7 +328,7 @@ describe("useTerminalFileTransfer hook", () => {
     const event = makeDropEvent([file]);
     container.dispatchEvent(event);
 
-    expect(onInput).toHaveBeenCalledWith("'/Users/test/file.ts'");
+    expect(onInput).toHaveBeenCalledWith(escapeShellArgOptional("/Users/test/file.ts"));
   });
 
   // --- Drag event tests ---
