@@ -20,6 +20,8 @@ export interface NotificationHistoryEntry {
   seenAsToast: boolean;
   /** True after being included in a re-entry summary shown on window refocus. */
   summarized: boolean;
+  /** When false, the entry exists in history but does not increment the unread badge. Defaults to true. */
+  countable: boolean;
   context?: {
     projectId?: string;
     worktreeId?: string;
@@ -30,9 +32,10 @@ export interface NotificationHistoryEntry {
 
 type AddEntryInput = Omit<
   NotificationHistoryEntry,
-  "id" | "timestamp" | "seenAsToast" | "summarized"
+  "id" | "timestamp" | "seenAsToast" | "summarized" | "countable"
 > & {
   seenAsToast?: boolean;
+  countable?: boolean;
 };
 
 const MAX_ENTRIES = 200;
@@ -52,10 +55,12 @@ export const useNotificationHistoryStore = create<NotificationHistoryState>((set
   unreadCount: 0,
   addEntry: (entry) => {
     const seenAsToast = entry.seenAsToast ?? false;
+    const countable = entry.countable ?? true;
     const newEntry: NotificationHistoryEntry = {
       ...entry,
       seenAsToast,
       summarized: false,
+      countable,
       id: crypto.randomUUID(),
       timestamp: Date.now(),
     };
@@ -64,14 +69,14 @@ export const useNotificationHistoryStore = create<NotificationHistoryState>((set
       if (updated.length > MAX_ENTRIES) {
         updated.length = MAX_ENTRIES;
       }
-      const unreadCount = updated.filter((e) => !e.seenAsToast).length;
+      const unreadCount = updated.filter((e) => !e.seenAsToast && e.countable !== false).length;
       return { entries: updated, unreadCount };
     });
   },
   dismissEntry: (id) =>
     set((state) => {
       const entries = state.entries.filter((e) => e.id !== id);
-      return { entries, unreadCount: entries.filter((e) => !e.seenAsToast).length };
+      return { entries, unreadCount: entries.filter((e) => !e.seenAsToast && e.countable !== false).length };
     }),
   clearAll: () => set({ entries: [], unreadCount: 0 }),
   markAllRead: () =>

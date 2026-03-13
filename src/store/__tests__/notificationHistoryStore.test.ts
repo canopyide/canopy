@@ -12,6 +12,7 @@ function addEntry(
     title: string;
     message: string;
     correlationId: string;
+    countable: boolean;
   }> = {}
 ) {
   getState().addEntry({
@@ -19,6 +20,7 @@ function addEntry(
     message: overrides.message ?? "Test notification",
     title: overrides.title,
     correlationId: overrides.correlationId,
+    countable: overrides.countable,
   });
 }
 
@@ -193,6 +195,35 @@ describe("notificationHistorySlice", () => {
       getState().addEntry({ type: "success", message: "seen", seenAsToast: true });
       expect(getState().entries).toHaveLength(200);
       expect(getState().unreadCount).toBe(199);
+    });
+
+    it("defaults countable to true on new entries", () => {
+      addEntry({ message: "test" });
+      expect(getState().entries[0].countable).toBe(true);
+    });
+
+    it("does not increment unreadCount when countable is false", () => {
+      addEntry({ message: "uncountable", countable: false });
+      expect(getState().entries).toHaveLength(1);
+      expect(getState().unreadCount).toBe(0);
+    });
+
+    it("correctly counts mixed countable and non-countable entries", () => {
+      addEntry({ message: "countable 1" });
+      addEntry({ message: "uncountable", countable: false });
+      addEntry({ message: "countable 2" });
+      expect(getState().entries).toHaveLength(3);
+      expect(getState().unreadCount).toBe(2);
+    });
+
+    it("dismissing a non-countable entry does not change unreadCount", () => {
+      addEntry({ message: "countable" });
+      addEntry({ message: "uncountable", countable: false });
+      expect(getState().unreadCount).toBe(1);
+      const uncountableId = getState().entries[0].id;
+      getState().dismissEntry(uncountableId);
+      expect(getState().entries).toHaveLength(1);
+      expect(getState().unreadCount).toBe(1);
     });
   });
 

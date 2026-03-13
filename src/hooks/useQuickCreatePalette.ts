@@ -154,6 +154,8 @@ export function useQuickCreatePalette(): UseQuickCreatePaletteReturn {
               type: "success",
               title: "Worktree Created",
               message: `${branch}${assignMsg}`,
+              priority: "low",
+              countable: false,
               action: {
                 label: "Undo",
                 onClick: () => {},
