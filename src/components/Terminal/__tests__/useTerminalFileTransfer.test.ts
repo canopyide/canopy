@@ -99,18 +99,6 @@ describe("terminal file transfer behavior", () => {
     return event;
   }
 
-  function makeDropEvent(files: File[]): DragEvent {
-    const event = new Event("drop", { bubbles: true, cancelable: true }) as DragEvent;
-    Object.defineProperty(event, "dataTransfer", {
-      value: {
-        files,
-        types: ["Files"],
-        dropEffect: "none",
-      },
-    });
-    return event;
-  }
-
   it("image paste calls saveImage and writes path to terminal", async () => {
     // Simulate what the hook does for an image paste
     const event = makePasteEvent(true);
