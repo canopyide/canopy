@@ -183,8 +183,7 @@ function PanelHeaderComponent({
   // Whether the overflow "..." menu has any items to show
   const showMoveToDock = !!onMinimize && !isMaximized && location !== "dock";
   const showCancelWatch = showWatchButton && isWatched;
-  const hasOverflowItems =
-    (canRestart && !!onRestart) || showCancelWatch || !!headerActions;
+  const hasOverflowItems = (canRestart && !!onRestart) || showCancelWatch || !!headerActions;
 
   // Restart handler for Radix DropdownMenu onSelect
   const handleRestartSelect = useCallback(
@@ -623,10 +622,9 @@ function PanelHeaderComponent({
                   Cancel Watch
                 </DropdownMenuItem>
               )}
-              {headerActions &&
-                ((canRestart && !!onRestart) || showCancelWatch) && (
-                  <DropdownMenuSeparator />
-                )}
+              {headerActions && ((canRestart && !!onRestart) || showCancelWatch) && (
+                <DropdownMenuSeparator />
+              )}
               {headerActions && (
                 <div role="presentation" onKeyDown={(e) => e.stopPropagation()}>
                   {headerActions}
