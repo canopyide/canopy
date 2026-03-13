@@ -84,6 +84,7 @@ describe("computeChipState", () => {
           worktreeErrorCount: 1,
           failedTerminalCount: 1,
           waitingTerminalCount: 1,
+          directingTerminalCount: 1,
           lifecycleStage: "ready-for-cleanup",
           isComplete: true,
         })
