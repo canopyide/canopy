@@ -53,6 +53,10 @@ function isPR(item: GitHubIssue | GitHubPR): item is GitHubPR {
 function buildTooltipLines(item: GitHubIssue | GitHubPR, isItemPR: boolean): string[] {
   const lines: string[] = ["Open in GitHub"];
 
+  if (isItemPR && (item as GitHubPR).isDraft) {
+    lines.push("Draft");
+  }
+
   if (isItemPR && (item as GitHubPR).headRefName) {
     lines.push(`Branch: ${(item as GitHubPR).headRefName}`);
   }
@@ -242,21 +246,23 @@ export function GitHubListItem({
             <TooltipProvider>
               <Tooltip>
                 <TooltipTrigger asChild>
-                  <button
-                    type="button"
-                    onClick={handleCreateWorktree}
-                    tabIndex={isActive ? 0 : -1}
-                    disabled={isForkPR}
-                    className={cn(
-                      "text-xs px-2 py-1 rounded transition-colors flex items-center gap-1 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring",
-                      isForkPR
-                        ? "opacity-40 cursor-not-allowed"
-                        : "hover:bg-muted hover:text-canopy-accent"
-                    )}
-                  >
-                    <GitBranch className="w-3 h-3" />
-                    <span>Create Worktree</span>
-                  </button>
+                  <span className="inline-flex">
+                    <button
+                      type="button"
+                      onClick={handleCreateWorktree}
+                      tabIndex={isActive ? 0 : -1}
+                      disabled={isForkPR}
+                      className={cn(
+                        "text-xs px-2 py-1 rounded transition-colors flex items-center gap-1 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring",
+                        isForkPR
+                          ? "opacity-40 cursor-not-allowed"
+                          : "hover:bg-muted hover:text-canopy-accent"
+                      )}
+                    >
+                      <GitBranch className="w-3 h-3" />
+                      <span>Create Worktree</span>
+                    </button>
+                  </span>
                 </TooltipTrigger>
                 <TooltipContent side="bottom">
                   {isForkPR
