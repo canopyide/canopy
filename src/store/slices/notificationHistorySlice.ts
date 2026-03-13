@@ -28,7 +28,10 @@ export interface NotificationHistoryEntry {
   actions?: NotificationHistoryAction[];
 }
 
-type AddEntryInput = Omit<NotificationHistoryEntry, "id" | "timestamp" | "seenAsToast" | "summarized"> & {
+type AddEntryInput = Omit<
+  NotificationHistoryEntry,
+  "id" | "timestamp" | "seenAsToast" | "summarized"
+> & {
   seenAsToast?: boolean;
 };
 
