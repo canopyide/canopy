@@ -94,6 +94,7 @@ test.describe.serial("Core: Terminal & Panels", () => {
       const overflowBtn = panel.locator(SEL.panel.overflowMenu).first();
       await overflowBtn.click();
       const minimizeBtn = window.locator(SEL.panel.minimize).first();
+      await expect(minimizeBtn).toBeVisible({ timeout: T_SHORT });
       await minimizeBtn.click();
 
       await expect(panel).not.toBeVisible({ timeout: T_SHORT });

@@ -604,6 +604,7 @@ function PanelHeaderComponent({
                   className={cn(
                     armedRestartId === id && "bg-status-warning/10 text-status-warning"
                   )}
+                  data-testid={armedRestartId === id ? "panel-restart-confirm" : "panel-restart"}
                   aria-label={
                     armedRestartId === id
                       ? `Armed — click again to confirm restart. ${countdown !== null ? `${countdown} seconds remaining` : ""}`
@@ -617,7 +618,7 @@ function PanelHeaderComponent({
                 </DropdownMenuItem>
               )}
               {showMoveToDock && (
-                <DropdownMenuItem onSelect={() => onMinimize!()}>
+                <DropdownMenuItem onSelect={() => onMinimize!()} data-testid="panel-move-to-dock">
                   <DockToBottomIcon className="w-3 h-3 mr-2" />
                   Move to Dock
                 </DropdownMenuItem>
