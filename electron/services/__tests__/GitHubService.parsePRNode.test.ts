@@ -189,6 +189,14 @@ describe("parsePRNode", () => {
     expect(result.ciStatus).toBe("PENDING");
   });
 
+  it("extracts ciStatus ERROR from statusCheckRollup", () => {
+    const result = parsePRNode({
+      ...baseNode,
+      commits: { nodes: [{ commit: { statusCheckRollup: { state: "ERROR" } } }] },
+    });
+    expect(result.ciStatus).toBe("ERROR");
+  });
+
   it("extracts ciStatus EXPECTED from statusCheckRollup", () => {
     const result = parsePRNode({
       ...baseNode,

@@ -107,6 +107,8 @@ function getCIStatusInfo(status: GitHubPRCIStatus): { color: string; tooltip: st
     case "FAILURE":
     case "ERROR":
       return { color: "bg-status-error", tooltip: "Checks failing" };
+    default:
+      return { color: "bg-muted-foreground", tooltip: "Check status unknown" };
   }
 }
 
