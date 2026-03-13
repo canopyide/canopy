@@ -66,10 +66,11 @@ export function FileViewerModal({
   // If the file is outside the project root, use its parent directory as the
   // effective root so that the canopy-file:// protocol and files.read IPC
   // containment checks pass.
-  const normalizedRoot = rootPath.endsWith("/") ? rootPath : rootPath + "/";
-  const effectiveRootPath = filePath.startsWith(normalizedRoot)
+  const fwd = (p: string) => p.replace(/\\/g, "/");
+  const fwdRoot = fwd(rootPath).replace(/\/$/, "") + "/";
+  const effectiveRootPath = fwd(filePath).startsWith(fwdRoot)
     ? rootPath
-    : filePath.substring(0, filePath.lastIndexOf("/")) || "/";
+    : filePath.substring(0, Math.max(filePath.lastIndexOf("/"), filePath.lastIndexOf("\\"))) || "/";
 
   const hasDiff = Boolean(diff && diff.trim() && diff !== "NO_CHANGES");
   const [mode, setMode] = useState<ViewMode>(() => {
@@ -241,7 +242,13 @@ export function FileViewerModal({
   }, [isOpen, isImageMode, mode]);
 
   return (
-    <AppDialog isOpen={isOpen} onClose={onClose} size="6xl" maxHeight="max-h-[90vh]">
+    <AppDialog
+      isOpen={isOpen}
+      onClose={onClose}
+      size="6xl"
+      maxHeight="max-h-[90vh]"
+      data-testid="file-viewer-dialog"
+    >
       <AppDialog.Header className="py-3">
         <div className="flex items-center gap-3 min-w-0">
           <TooltipProvider>
@@ -446,7 +453,10 @@ export function FileViewerModal({
             {loadState === "loaded" && content !== null && (
               <>
                 {metadata && (
-                  <div className="px-3 py-1 border-b border-canopy-border text-xs text-muted-foreground font-mono">
+                  <div
+                    data-testid="file-viewer-metadata"
+                    className="px-3 py-1 border-b border-canopy-border text-xs text-muted-foreground font-mono"
+                  >
                     {metadata.lineCount} lines · {metadata.sizeLabel} · UTF-8
                   </div>
                 )}
