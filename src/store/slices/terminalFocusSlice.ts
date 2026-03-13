@@ -87,7 +87,10 @@ export interface TerminalFocusSlice {
   focusPreviousAgent: (isInTrash: (id: string) => boolean, validWorktreeIds: Set<string>) => void;
 
   // Dock-specific blocked agent cycling (failed > waiting priority)
-  focusNextBlockedDock: (activeWorktreeId: string | undefined) => void;
+  focusNextBlockedDock: (
+    activeWorktreeId: string | undefined,
+    getPanelGroup?: (panelId: string) => { id: string; panelIds: string[] } | undefined
+  ) => void;
 
   handleTerminalRemoved: (
     removedId: string,
@@ -512,9 +515,9 @@ export const createTerminalFocusSlice =
         pingTerminal(prevTerminal.id);
       },
 
-      focusNextBlockedDock: (activeWorktreeId) => {
+      focusNextBlockedDock: (activeWorktreeId, getPanelGroup) => {
         const terminals = getTerminals();
-        const { activeDockTerminalId, openDockTerminal, pingTerminal } = get();
+        const { activeDockTerminalId, openDockTerminal, setActiveTab, pingTerminal } = get();
 
         const dockTerminals = terminals.filter(
           (t) =>
@@ -534,6 +537,14 @@ export const createTerminalFocusSlice =
         const currentIndex = sorted.findIndex((t) => t.id === activeDockTerminalId);
         const nextIndex = (currentIndex + 1) % sorted.length;
         const nextTerminal = sorted[nextIndex];
+
+        // Activate the correct tab in the group before opening the dock popover
+        if (getPanelGroup) {
+          const group = getPanelGroup(nextTerminal.id);
+          if (group) {
+            setActiveTab(group.id, nextTerminal.id);
+          }
+        }
 
         openDockTerminal(nextTerminal.id);
         pingTerminal(nextTerminal.id);
