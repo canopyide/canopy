@@ -209,6 +209,8 @@ export const HybridInputBar = forwardRef<HybridInputBarHandle, HybridInputBarPro
     const [selectedIndex, setSelectedIndex] = useState(0);
     const lastQueryRef = useRef<string>("");
     const [menuLeftPx, setMenuLeftPx] = useState<number>(0);
+    const dragDepthRef = useRef(0);
+    const [isDragOverFiles, setIsDragOverFiles] = useState(false);
     const [initializationState, setInitializationState] = useState<"initializing" | "initialized">(
       "initializing"
     );
@@ -295,6 +297,106 @@ export const HybridInputBar = forwardRef<HybridInputBarHandle, HybridInputBarPro
         }),
       []
     );
+
+    const IMAGE_EXTENSIONS = /\.(png|jpe?g|bmp|tiff?|avif|heic)$/i;
+
+    const handleDragEnter = useCallback((e: React.DragEvent) => {
+      if (!e.dataTransfer.types.includes("Files")) return;
+      e.preventDefault();
+      e.stopPropagation();
+      dragDepthRef.current++;
+      if (dragDepthRef.current === 1) setIsDragOverFiles(true);
+    }, []);
+
+    const handleDragOver = useCallback((e: React.DragEvent) => {
+      if (!e.dataTransfer.types.includes("Files")) return;
+      e.preventDefault();
+      e.stopPropagation();
+      e.dataTransfer.dropEffect = "copy";
+    }, []);
+
+    const handleDragLeave = useCallback((e: React.DragEvent) => {
+      e.stopPropagation();
+      dragDepthRef.current--;
+      if (dragDepthRef.current <= 0) {
+        dragDepthRef.current = 0;
+        setIsDragOverFiles(false);
+      }
+    }, []);
+
+    const handleDrop = useCallback(async (e: React.DragEvent) => {
+      e.preventDefault();
+      e.stopPropagation();
+      dragDepthRef.current = 0;
+      setIsDragOverFiles(false);
+
+      const view = editorViewRef.current;
+      if (!view || !e.dataTransfer.files.length) return;
+
+      const nonImageFiles: { path: string; name: string }[] = [];
+
+      for (const file of Array.from(e.dataTransfer.files)) {
+        try {
+          const filePath = window.electron.webUtils.getPathForFile(file);
+          if (!filePath) continue;
+
+          if (IMAGE_EXTENSIONS.test(file.name)) {
+            const result = await window.electron.clipboard.thumbnailFromPath(filePath);
+            if (result.ok) {
+              const cursor = view.state.selection.main.head;
+              view.dispatch({
+                changes: { from: cursor, insert: filePath + " " },
+                effects: addImageChip.of({
+                  from: cursor,
+                  to: cursor + filePath.length,
+                  filePath,
+                  thumbnailUrl: result.thumbnailDataUrl,
+                }),
+                selection: { anchor: cursor + filePath.length + 1 },
+              });
+            } else {
+              const name =
+                file.name.trim() || filePath.split(/[/\\]/).filter(Boolean).pop() || filePath;
+              nonImageFiles.push({ path: filePath, name });
+            }
+          } else {
+            const name =
+              file.name.trim() || filePath.split(/[/\\]/).filter(Boolean).pop() || filePath;
+            nonImageFiles.push({ path: filePath, name });
+          }
+        } catch {
+          // Editor may have been destroyed
+        }
+      }
+
+      if (nonImageFiles.length > 0 && view) {
+        try {
+          const cursor = view.state.selection.main.head;
+          const effects: ReturnType<typeof addFileDropChip.of>[] = [];
+          let insertText = "";
+          for (const file of nonImageFiles) {
+            const token = formatAtFileToken(file.path);
+            const from = cursor + insertText.length;
+            insertText += token + " ";
+            effects.push(
+              addFileDropChip.of({
+                from,
+                to: from + token.length,
+                filePath: file.path,
+                fileName: file.name,
+              })
+            );
+          }
+          view.dispatch({
+            changes: { from: cursor, insert: insertText },
+            effects,
+            selection: { anchor: cursor + insertText.length },
+          });
+        } catch {
+          // Editor may have been destroyed
+        }
+      }
+    }, []);
 
     const editorViewRefForUrl = editorViewRef;
     const urlPasteFieldInstance = useMemo(
@@ -1496,8 +1598,13 @@ export const HybridInputBar = forwardRef<HybridInputBarHandle, HybridInputBarPro
               "focus-within:border-white/[0.12] focus-within:ring-1 focus-within:ring-white/[0.06] focus-within:bg-white/[0.05]",
               isVoiceActiveForPanel &&
                 "border-canopy-accent/60 bg-canopy-accent/[0.12] shadow-[0_0_0_1px_rgba(var(--theme-accent-rgb),0.35),0_0_16px_rgba(var(--theme-accent-rgb),0.15)]",
+              isDragOverFiles && "border-canopy-accent/60 ring-1 ring-canopy-accent/30",
               disabled && "opacity-60"
             )}
+            onDragEnter={handleDragEnter}
+            onDragOver={handleDragOver}
+            onDragLeave={handleDragLeave}
+            onDrop={handleDrop}
             aria-disabled={disabled}
             aria-busy={isInitializing || isVoiceConnecting}
           >
@@ -1511,6 +1618,12 @@ export const HybridInputBar = forwardRef<HybridInputBarHandle, HybridInputBarPro
               style={{ left: `${menuLeftPx}px` }}
               ariaLabel={activeMode === "command" ? "Command autocomplete" : "File autocomplete"}
             />
+
+            {isDragOverFiles && (
+              <div className="absolute inset-0 z-10 flex items-center justify-center rounded-sm bg-canopy-bg/80 pointer-events-none">
+                <span className="text-xs font-medium text-canopy-accent">Drop to attach</span>
+              </div>
+            )}
 
             <button
               type="button"
