@@ -45,6 +45,7 @@ export const SEL = {
     restoreFromDock: '[aria-label*="Restore to grid"]',
     duplicate: '[aria-label="Duplicate panel as new tab"]',
     restart: '[role="menuitem"]:has-text("Restart Session")',
+    restartConfirm: '[role="menuitem"]:has-text("Confirm Restart")',
     tabList: '[role="tablist"][aria-label="Panel tabs"]',
     tab: '[role="tab"]',
   },

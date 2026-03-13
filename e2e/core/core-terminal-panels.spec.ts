@@ -175,9 +175,9 @@ test.describe.serial("Core: Terminal & Panels", () => {
       const restartBtn = window.locator(SEL.panel.restart).first();
       await restartBtn.click({ force: true });
 
-      // Second click confirms the restart (menu stays open while armed)
-      await window.waitForTimeout(T_SETTLE);
-      await restartBtn.click({ force: true });
+      // Second click confirms the restart (menu stays open while armed, text changes)
+      const confirmBtn = window.locator(SEL.panel.restartConfirm).first();
+      await confirmBtn.click({ force: true });
 
       await expect(panel).toBeVisible({ timeout: T_LONG });
     });
