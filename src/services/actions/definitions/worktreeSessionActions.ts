@@ -126,11 +126,7 @@ export function registerWorktreeSessionActions(
       const { worktreeId } = args as { worktreeId?: string };
       const targetWorktreeId = worktreeId ?? ctx.activeWorktreeId;
       if (!targetWorktreeId) return;
-      const state = useTerminalStore.getState();
-      const terminalsInWorktree = state.terminals.filter(
-        (t) => t.worktreeId === targetWorktreeId && t.location !== "trash"
-      );
-      state.bulkTrashByWorktree(targetWorktreeId);
+      useTerminalStore.getState().bulkTrashByWorktree(targetWorktreeId);
     },
   }));
 
