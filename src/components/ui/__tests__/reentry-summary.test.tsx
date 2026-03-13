@@ -104,6 +104,26 @@ describe("ReEntrySummary", () => {
     expect(screen.getByText("Go to Worktree")).toBeTruthy();
   });
 
+  it("Go to Worktree button calls selectWorktree and dismiss", async () => {
+    const { useWorktreeSelectionStore } = await import("@/store/worktreeStore");
+    const selectSpy = vi.fn();
+    useWorktreeSelectionStore.setState({ selectWorktree: selectSpy });
+
+    const dismiss = vi.fn();
+    render(
+      <ReEntrySummary
+        state={makeState({
+          dismiss,
+          singleWorktreeId: "wt-42",
+          counts: { warning: 0, error: 0, success: 1, info: 0 },
+        })}
+      />
+    );
+    fireEvent.click(screen.getByText("Go to Worktree"));
+    expect(selectSpy).toHaveBeenCalledWith("wt-42");
+    expect(dismiss).toHaveBeenCalledOnce();
+  });
+
   it("auto-dismisses after 8 seconds", () => {
     const dismiss = vi.fn();
     render(
