@@ -156,6 +156,7 @@ export function useQuickCreatePalette(): UseQuickCreatePaletteReturn {
               message: `${branch}${assignMsg}`,
               action: {
                 label: "Undo",
+                onClick: () => {},
                 actionId: "worktree.delete",
                 actionArgs: { worktreeId: createdWorktreeId, force: true },
               },
