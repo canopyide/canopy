@@ -1,6 +1,6 @@
 import { z } from "zod";
 import { AGENT_REGISTRY, getEffectiveAgentConfig } from "../config/agentRegistry.js";
-import { escapeShellArg } from "../utils/shellEscape.js";
+import { escapeShellArg, escapeShellArgOptional } from "../utils/shellEscape.js";
 
 /**
  * Domain weights for agent routing (0-1 scale).
@@ -294,7 +294,7 @@ export function buildResumeCommand(agentId: string, sessionId: string): string |
     if (arg.startsWith("-")) {
       parts.push(arg);
     } else {
-      parts.push(escapeShellArg(arg));
+      parts.push(escapeShellArgOptional(arg));
     }
   }
   return parts.join(" ");
