@@ -108,7 +108,7 @@ export function TerminalIcon({
     const detectedAgentConfig = getAgentConfig(detectedProcessId);
     if (detectedAgentConfig) {
       const AgentIcon = detectedAgentConfig.icon;
-      return <AgentIcon {...finalProps} brandColor={brandColor ?? detectedAgentConfig.color} />;
+      return <AgentIcon {...finalProps} brandColor={brandColor} />;
     }
   }
 
