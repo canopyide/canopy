@@ -450,5 +450,51 @@ describe("AgentNotificationService", () => {
 
       expect(notificationServiceMock.showNativeNotification).not.toHaveBeenCalled();
     });
+
+    it("does not fire if terminal moved from dock to grid before timer fires", () => {
+      mockStore({ waitingEnabled: true });
+
+      events.emit("agent:state-changed", makePayload("waiting"));
+      vi.advanceTimersByTime(60_000);
+
+      // Terminal moved to grid mid-wait
+      mockStore(
+        { waitingEnabled: true },
+        {
+          terminals: [
+            {
+              id: "term-1",
+              kind: "agent",
+              agentId: "agent-1",
+              title: "Claude Agent",
+              location: "grid",
+              worktreeId: "wt-1",
+            },
+          ],
+        }
+      );
+      vi.advanceTimersByTime(180_000);
+
+      expect(notificationServiceMock.showNativeNotification).not.toHaveBeenCalled();
+    });
+
+    it("resets timer from zero on rapid waiting-working-waiting toggle", () => {
+      mockStore({ waitingEnabled: true });
+
+      events.emit("agent:state-changed", makePayload("waiting"));
+      vi.advanceTimersByTime(120_000); // 2min into first wait
+
+      // Leave and re-enter waiting
+      events.emit("agent:state-changed", makePayload("working", "waiting"));
+      events.emit("agent:state-changed", makePayload("waiting", "working"));
+
+      // 120_000ms from re-entry — should NOT fire yet (threshold is 180_000)
+      vi.advanceTimersByTime(120_000);
+      expect(notificationServiceMock.showNativeNotification).not.toHaveBeenCalled();
+
+      // 60_000ms more — now 180_000 from re-entry, should fire
+      vi.advanceTimersByTime(60_000);
+      expect(notificationServiceMock.showNativeNotification).toHaveBeenCalledTimes(1);
+    });
   });
 });

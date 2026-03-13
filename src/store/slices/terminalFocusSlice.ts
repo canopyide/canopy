@@ -351,6 +351,9 @@ export const createTerminalFocusSlice =
         }
 
         if (terminal.location === "dock") {
+          if (terminal.agentState === "waiting") {
+            window.electron?.notification?.acknowledgeWaiting(id);
+          }
           set({ activeDockTerminalId: id, focusedId: id });
         } else {
           set({ focusedId: id, activeDockTerminalId: null });
