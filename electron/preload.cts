@@ -1730,6 +1730,9 @@ const api: ElectronAPI = {
       _typedInvoke(CHANNELS.APP_THEME_SET_CUSTOM_SCHEMES, schemesJson),
 
     importTheme: () => _typedInvoke(CHANNELS.APP_THEME_IMPORT),
+
+    setColorVisionMode: (mode: string) =>
+      _typedInvoke(CHANNELS.APP_THEME_SET_COLOR_VISION_MODE, mode),
   },
 
   telemetry: {
