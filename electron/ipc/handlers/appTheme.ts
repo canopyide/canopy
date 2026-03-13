@@ -52,6 +52,21 @@ export function registerAppThemeHandlers(): () => void {
   ipcMain.handle(CHANNELS.APP_THEME_SET_CUSTOM_SCHEMES, handleAppThemeSetCustomSchemes);
   handlers.push(() => ipcMain.removeHandler(CHANNELS.APP_THEME_SET_CUSTOM_SCHEMES));
 
+  const VALID_COLOR_VISION_MODES = ["default", "red-green", "blue-yellow"];
+  const handleAppThemeSetColorVisionMode = async (
+    _event: Electron.IpcMainInvokeEvent,
+    mode: string
+  ) => {
+    if (typeof mode !== "string" || !VALID_COLOR_VISION_MODES.includes(mode)) {
+      console.warn("Invalid color vision mode:", mode);
+      return;
+    }
+    const current = getAppThemeConfig();
+    store.set("appTheme", { ...current, colorVisionMode: mode } satisfies AppThemeConfig);
+  };
+  ipcMain.handle(CHANNELS.APP_THEME_SET_COLOR_VISION_MODE, handleAppThemeSetColorVisionMode);
+  handlers.push(() => ipcMain.removeHandler(CHANNELS.APP_THEME_SET_COLOR_VISION_MODE));
+
   const handleAppThemeImport = async (event: Electron.IpcMainInvokeEvent) => {
     const win = BrowserWindow.fromWebContents(event.sender) ?? BrowserWindow.getFocusedWindow();
     const dialogOptions = {
