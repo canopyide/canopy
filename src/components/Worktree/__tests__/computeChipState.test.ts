@@ -69,15 +69,15 @@ describe("computeChipState", () => {
       ).toBe("error");
     });
 
-    it("waiting beats cleanup", () => {
+    it("cleanup beats waiting", () => {
       expect(computeChipState({ ...base, waitingTerminalCount: 1, lifecycleStage: "merged" })).toBe(
-        "waiting"
+        "cleanup"
       );
     });
 
-    it("waiting beats complete", () => {
+    it("complete beats waiting", () => {
       expect(computeChipState({ ...base, waitingTerminalCount: 1, isComplete: true })).toBe(
-        "waiting"
+        "complete"
       );
     });
 
