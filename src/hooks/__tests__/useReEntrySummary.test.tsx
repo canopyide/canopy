@@ -144,7 +144,7 @@ describe("useReEntrySummary", () => {
   });
 
   it("calls markSummarized on the store", () => {
-    const { result } = renderHook(() => useReEntrySummary());
+    renderHook(() => useReEntrySummary());
 
     act(() => {
       window.dispatchEvent(new Event("blur"));
