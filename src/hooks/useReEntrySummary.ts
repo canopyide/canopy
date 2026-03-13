@@ -68,7 +68,7 @@ export function useReEntrySummary(): ReEntrySummaryState {
 
       const { entries, markSummarized } = useNotificationHistoryStore.getState();
       const unseen = entries.filter(
-        (e) => !e.seenAsToast && !e.summarized && e.timestamp > blurTime
+        (e) => !e.seenAsToast && !e.summarized && e.timestamp >= blurTime
       );
       if (unseen.length === 0) return;
 

@@ -247,14 +247,15 @@ describe("useReEntrySummary", () => {
   });
 
   it("only includes entries created during the blur period", () => {
+    const realNow = Date.now;
+    let now = 10000;
+    Date.now = () => now;
+
     const { result } = renderHook(() => useReEntrySummary());
 
     addEntry({ type: "info", message: "Old low-priority" });
 
-    const realNow = Date.now;
-    let now = realNow();
-    Date.now = () => now;
-
+    now += 5000;
     act(() => {
       window.dispatchEvent(new Event("blur"));
     });
