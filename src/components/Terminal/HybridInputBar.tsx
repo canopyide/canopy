@@ -1027,8 +1027,7 @@ export const HybridInputBar = forwardRef<HybridInputBarHandle, HybridInputBarPro
             const nextTarget = event.relatedTarget as HTMLElement | null;
             const root = rootRef.current;
             if (root && nextTarget && root.contains(nextTarget)) return false;
-            const modalHost = modalEditorHostRef.current;
-            if (modalHost && nextTarget && modalHost.contains(nextTarget)) return false;
+            if (latestRef.current?.isExpanded) return false;
 
             setAtContext(null);
             setSlashContext(null);
@@ -1276,7 +1275,7 @@ export const HybridInputBar = forwardRef<HybridInputBarHandle, HybridInputBarPro
           onStash: handleStash,
           onPopStash: handlePopStash,
           onExpand: () => {
-            setIsExpanded(true);
+            setIsExpanded((v) => !v);
             return true;
           },
         }),
@@ -1453,15 +1452,20 @@ export const HybridInputBar = forwardRef<HybridInputBarHandle, HybridInputBarPro
         });
         view.dom.style.height = "";
         view.scrollDOM.style.overflowY = "auto";
+        // Double rAF to ensure we focus after AppDialog's own rAF focus logic
         requestAnimationFrame(() => {
-          view.requestMeasure();
-          view.focus();
+          requestAnimationFrame(() => {
+            view.requestMeasure();
+            view.focus();
+          });
         });
       } else if (!isExpanded && compactHost) {
         compactHost.appendChild(view.dom);
         view.dispatch({
           effects: autoSizeCompartmentRef.current.reconfigure(createAutoSize()),
         });
+        // Force a geometry update so createAutoSize restores the compact height
+        view.dom.style.height = "";
         requestAnimationFrame(() => {
           view.requestMeasure();
           view.focus();
