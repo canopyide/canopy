@@ -71,13 +71,13 @@ class AgentNotificationService {
     }
 
     // Cancel waiting escalation when agent leaves "waiting"
-    if (previousState === "waiting" && state !== "waiting") {
-      this.clearWaitingEscalation(key);
+    if (previousState === "waiting" && state !== "waiting" && terminalId) {
+      this.clearWaitingEscalation(terminalId);
     }
 
     // Schedule waiting escalation for docked agents (independent of watched status)
     if (state === "waiting" && terminalId) {
-      this.scheduleWaitingEscalation(key, worktreeId, terminalId, agentId);
+      this.scheduleWaitingEscalation(terminalId, worktreeId, agentId);
     }
 
     // Skip if all OS notification types are disabled (off by default).
@@ -155,13 +155,12 @@ class AgentNotificationService {
   }
 
   private scheduleWaitingEscalation(
-    key: string,
+    terminalId: string,
     worktreeId?: string,
-    terminalId?: string,
     agentId?: string
   ): void {
-    if (this.waitingEscalationTimers.has(key)) {
-      clearTimeout(this.waitingEscalationTimers.get(key)!);
+    if (this.waitingEscalationTimers.has(terminalId)) {
+      clearTimeout(this.waitingEscalationTimers.get(terminalId)!);
     }
 
     const settings = store.get("notificationSettings");
@@ -169,15 +168,20 @@ class AgentNotificationService {
 
     // Only escalate for docked terminals
     const terminals = store.get("appState").terminals;
-    const terminal = terminalId ? terminals.find((t) => t.id === terminalId) : undefined;
+    const terminal = terminals.find((t) => t.id === terminalId);
     if (!terminal || terminal.location !== "dock") return;
 
     const timer = setTimeout(() => {
-      this.waitingEscalationTimers.delete(key);
+      this.waitingEscalationTimers.delete(terminalId);
       const currentSettings = store.get("notificationSettings");
       if (!currentSettings.waitingEscalationEnabled || !currentSettings.waitingEnabled) return;
 
-      const label = terminal.title || this.getLabel(agentId, worktreeId);
+      // Re-read terminal state — skip if moved out of dock or removed
+      const currentTerminals = store.get("appState").terminals;
+      const currentTerminal = currentTerminals.find((t) => t.id === terminalId);
+      if (!currentTerminal || currentTerminal.location !== "dock") return;
+
+      const label = currentTerminal.title || this.getLabel(agentId, worktreeId);
       this.playNotificationSound(currentSettings.soundEnabled);
       notificationService.showNativeNotification(
         "Agent still waiting",
@@ -185,7 +189,7 @@ class AgentNotificationService {
       );
     }, settings.waitingEscalationDelayMs);
 
-    this.waitingEscalationTimers.set(key, timer);
+    this.waitingEscalationTimers.set(terminalId, timer);
   }
 
   private clearWaitingEscalation(key: string): void {
@@ -197,17 +201,7 @@ class AgentNotificationService {
   }
 
   acknowledgeWaiting(terminalId: string): void {
-    // Try the terminal ID as key first, then scan for matching entries
-    if (this.waitingEscalationTimers.has(terminalId)) {
-      this.clearWaitingEscalation(terminalId);
-      return;
-    }
-    // The key may be agentId; look up terminal in store to find its agentId
-    const terminals = store.get("appState").terminals;
-    const terminal = terminals.find((t) => t.id === terminalId);
-    if (terminal?.agentId && this.waitingEscalationTimers.has(terminal.agentId)) {
-      this.clearWaitingEscalation(terminal.agentId);
-    }
+    this.clearWaitingEscalation(terminalId);
   }
 
   private enqueue(
