@@ -257,7 +257,7 @@ export function useProjectSwitcherPalette(): UseProjectSwitcherPaletteReturn {
   const backgroundWaitingCount = useMemo(
     () =>
       searchableProjects
-        .filter((p) => !p.isActive && p.waitingAgentCount > 0)
+        .filter((p) => !p.isActive && p.isBackground && p.waitingAgentCount > 0)
         .reduce((sum, p) => sum + p.waitingAgentCount, 0),
     [searchableProjects]
   );
