@@ -488,11 +488,15 @@ describe("WorkflowEngine", () => {
 
       const runs = await engine.listAllRuns();
       // .every() short-circuits: only the first (false) condition is recorded
-      expect(runs[0].evaluatedConditions.length).toBeGreaterThanOrEqual(1);
+      expect(runs[0].evaluatedConditions).toHaveLength(1);
       expect(runs[0].evaluatedConditions[0].result).toBe(false);
     });
 
     it("evaluates cross-node status conditions via condition.taskId", async () => {
+      // node-b's condition checks that node-a is "completed".
+      // We complete node-a first, then fail node-b (via onFailure routing).
+      // The condition reads node-a's state (completed), NOT node-b's state (failed).
+      // If the engine ignored taskId, it would read "failed" and the condition would fail.
       const crossNodeWorkflow: WorkflowDefinition = {
         id: "cross-node",
         name: "Cross Node Condition",
@@ -507,7 +511,7 @@ describe("WorkflowEngine", () => {
             id: "node-b",
             type: "action",
             config: { actionId: "act-2" },
-            onSuccess: ["node-c"],
+            onFailure: ["node-c"],
             conditions: [{ type: "status", taskId: "node-a", op: "==", value: "completed" }],
           },
           {
@@ -530,7 +534,7 @@ describe("WorkflowEngine", () => {
 
       await engine.startWorkflow("cross-node");
 
-      // Complete node-a first so its state is available for cross-node lookup
+      // Complete node-a so its state is "completed"
       events.emit("task:completed", {
         taskId: "task-node-a",
         result: "Done",
@@ -541,10 +545,11 @@ describe("WorkflowEngine", () => {
       mockQueueService.createTask.mockClear();
       mockQueueService.enqueueTask.mockClear();
 
-      // Complete node-b — its condition references node-a's status
-      events.emit("task:completed", {
+      // Fail node-b — its onFailure condition references node-a's status ("completed"),
+      // NOT node-b's own status ("failed"). This distinguishes cross-node from self lookup.
+      events.emit("task:failed", {
         taskId: "task-node-b",
-        result: "Also done",
+        error: "node-b broke",
         timestamp: Date.now(),
       });
       await settle();
@@ -774,7 +779,13 @@ describe("WorkflowEngine", () => {
   });
 
   describe("diamond DAG completion", () => {
-    it("schedules converged node only after both dependencies complete", async () => {
+    it("wires fan-in dependencies correctly and deduplicates scheduling", async () => {
+      // True diamond: A → B and A → C, then B → D and C → D.
+      // D has dependencies on both B and C (fan-in).
+      // The engine schedules D when the first upstream (B or C) completes,
+      // wiring both dep task IDs. The scheduledNodes guard prevents the second
+      // upstream from scheduling D again. Fan-in ordering is enforced by the
+      // task queue via the `dependencies` array.
       const diamondWorkflow: WorkflowDefinition = {
         id: "diamond",
         name: "Diamond DAG",
@@ -784,20 +795,27 @@ describe("WorkflowEngine", () => {
             id: "node-a",
             type: "action",
             config: { actionId: "act-a" },
-            onSuccess: ["node-b"],
+            onSuccess: ["node-b", "node-c"],
           },
           {
             id: "node-b",
             type: "action",
             config: { actionId: "act-b" },
             dependencies: ["node-a"],
-            onSuccess: ["node-c"],
+            onSuccess: ["node-d"],
           },
           {
             id: "node-c",
             type: "action",
             config: { actionId: "act-c" },
-            dependencies: ["node-a", "node-b"],
+            dependencies: ["node-a"],
+            onSuccess: ["node-d"],
+          },
+          {
+            id: "node-d",
+            type: "action",
+            config: { actionId: "act-d" },
+            dependencies: ["node-b", "node-c"],
           },
         ],
       };
@@ -813,7 +831,7 @@ describe("WorkflowEngine", () => {
 
       await engine.startWorkflow("diamond");
 
-      // Complete node-a → node-b gets scheduled (via onSuccess)
+      // Complete node-a → both node-b and node-c get scheduled
       events.emit("task:completed", {
         taskId: "task-node-a",
         result: "A done",
@@ -821,22 +839,18 @@ describe("WorkflowEngine", () => {
       });
       await settle();
 
-      // node-b should be scheduled but NOT node-c (node-b hasn't completed yet)
-      expect(mockQueueService.createTask).toHaveBeenCalledWith(
-        expect.objectContaining({
-          metadata: expect.objectContaining({ nodeId: "node-b" }),
-        })
-      );
       const createCalls1 = mockQueueService.createTask.mock.calls;
       const scheduledNodeIds1 = createCalls1.map(
         (call: [{ metadata: { nodeId: string } }]) => call[0].metadata.nodeId
       );
-      expect(scheduledNodeIds1).not.toContain("node-c");
+      expect(scheduledNodeIds1).toContain("node-b");
+      expect(scheduledNodeIds1).toContain("node-c");
+      expect(scheduledNodeIds1).not.toContain("node-d");
 
       mockQueueService.createTask.mockClear();
-      mockQueueService.enqueueTask.mockClear();
 
-      // Complete node-b → node-c should now be scheduled (both deps met)
+      // Complete node-b → node-d gets scheduled with both B and C task dependencies
+      // (C was already scheduled so its taskMapping exists)
       events.emit("task:completed", {
         taskId: "task-node-b",
         result: "B done",
@@ -846,16 +860,31 @@ describe("WorkflowEngine", () => {
 
       expect(mockQueueService.createTask).toHaveBeenCalledWith(
         expect.objectContaining({
-          metadata: expect.objectContaining({ nodeId: "node-c" }),
+          metadata: expect.objectContaining({ nodeId: "node-d" }),
+          dependencies: expect.arrayContaining(["task-node-b", "task-node-c"]),
         })
       );
 
       mockQueueService.createTask.mockClear();
 
-      // Complete node-c → workflow should complete
+      // Complete node-c → node-d should NOT be scheduled again (dedup guard)
       events.emit("task:completed", {
         taskId: "task-node-c",
         result: "C done",
+        timestamp: Date.now(),
+      });
+      await settle();
+
+      const createCalls3 = mockQueueService.createTask.mock.calls;
+      const scheduledNodeIds3 = createCalls3.map(
+        (call: [{ metadata: { nodeId: string } }]) => call[0].metadata.nodeId
+      );
+      expect(scheduledNodeIds3).not.toContain("node-d");
+
+      // Complete node-d → workflow should complete
+      events.emit("task:completed", {
+        taskId: "task-node-d",
+        result: "D done",
         timestamp: Date.now(),
       });
       await settle();
@@ -867,26 +896,31 @@ describe("WorkflowEngine", () => {
   });
 
   describe("checkWorkflowCompletion", () => {
-    it("marks workflow as failed when any scheduled node has failed", async () => {
-      const twoNodeWorkflow: WorkflowDefinition = {
-        id: "two-node",
-        name: "Two Node Workflow",
+    it("marks workflow as failed via completion check when a scheduled node has failed", async () => {
+      // node-a fails but has onFailure routing to node-err, keeping the run "running".
+      // node-err completes. Now all scheduled nodes are terminal (node-a: failed, node-err: completed).
+      // checkWorkflowCompletion fires and detects the failed node → workflow status = "failed".
+      const completionWorkflow: WorkflowDefinition = {
+        id: "completion-check",
+        name: "Completion Check Workflow",
         version: "1.0.0",
         nodes: [
           {
             id: "node-a",
             type: "action",
             config: { actionId: "act-1" },
+            onFailure: ["node-err"],
           },
           {
-            id: "node-b",
+            id: "node-err",
             type: "action",
-            config: { actionId: "act-2" },
+            config: { actionId: "act-err" },
+            dependencies: ["node-a"],
           },
         ],
       };
 
-      mockLoader.getWorkflow = vi.fn().mockResolvedValue({ definition: twoNodeWorkflow });
+      mockLoader.getWorkflow = vi.fn().mockResolvedValue({ definition: completionWorkflow });
       mockQueueService.createTask = vi.fn().mockImplementation((params) => ({
         id: `task-${params.metadata.nodeId}`,
         status: "queued",
@@ -895,25 +929,29 @@ describe("WorkflowEngine", () => {
       mockQueueService.enqueueTask = vi.fn().mockResolvedValue(undefined);
       mockPersistence.save = vi.fn().mockResolvedValue(undefined);
 
-      await engine.startWorkflow("two-node");
+      await engine.startWorkflow("completion-check");
 
-      // Complete node-a successfully
-      events.emit("task:completed", {
-        taskId: "task-node-a",
-        result: "OK",
-        timestamp: Date.now(),
-      });
-      await settle();
-
-      // Fail node-b (no onFailure targets → workflow fails immediately)
+      // Fail node-a → onFailure routes to node-err, run stays "running"
       events.emit("task:failed", {
-        taskId: "task-node-b",
-        error: "nope",
+        taskId: "task-node-a",
+        error: "something broke",
         timestamp: Date.now(),
       });
       await settle();
 
-      const runs = await engine.listAllRuns();
+      let runs = await engine.listAllRuns();
+      expect(runs[0].status).toBe("running");
+
+      // Complete node-err → all scheduled nodes are terminal now
+      // checkWorkflowCompletion sees node-a is "failed" → workflow fails
+      events.emit("task:completed", {
+        taskId: "task-node-err",
+        result: "Recovered",
+        timestamp: Date.now(),
+      });
+      await settle();
+
+      runs = await engine.listAllRuns();
       expect(runs[0].status).toBe("failed");
       expect(runs[0].completedAt).toBeDefined();
     });
