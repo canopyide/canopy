@@ -2,6 +2,8 @@
  * Tests for WorkflowLoader - Workflow validation and loading.
  */
 
+import path from "path";
+import fs from "fs/promises";
 import { describe, it, expect, beforeEach } from "vitest";
 import { WorkflowLoader } from "../WorkflowLoader.js";
 import type { WorkflowDefinition } from "../../../shared/types/workflow.js";
@@ -1132,5 +1134,92 @@ describe("WorkflowLoader", () => {
       const found = await loader.getWorkflow("workflow1");
       expect(found).toBeNull();
     });
+  });
+});
+
+describe("built-in workflows from disk", () => {
+  const WORKFLOWS_DIR = path.resolve(process.cwd(), "electron/workflows");
+  let loader: WorkflowLoader;
+  let jsonFiles: string[];
+
+  beforeEach(async () => {
+    loader = new WorkflowLoader();
+    const files = await fs.readdir(WORKFLOWS_DIR);
+    jsonFiles = files.filter((f) => f.endsWith(".json"));
+  });
+
+  it("finds at least 3 built-in workflow files", () => {
+    expect(jsonFiles.length).toBeGreaterThanOrEqual(3);
+  });
+
+  it("each built-in workflow passes loadFromFile validation", async () => {
+    for (const file of jsonFiles) {
+      const filePath = path.join(WORKFLOWS_DIR, file);
+      const loaded = await loader.loadFromFile(filePath, "built-in");
+      expect(loaded, `${file} should load successfully`).not.toBeNull();
+      expect(loaded!.source).toBe("built-in");
+    }
+  });
+
+  it("each built-in workflow has unique id matching filename", async () => {
+    const ids = new Set<string>();
+    for (const file of jsonFiles) {
+      const filePath = path.join(WORKFLOWS_DIR, file);
+      const loaded = await loader.loadFromFile(filePath, "built-in");
+      const expectedId = file.replace(".json", "");
+      expect(loaded!.definition.id, `${file} id should match filename`).toBe(expectedId);
+      expect(
+        ids.has(loaded!.definition.id),
+        `duplicate workflow id: ${loaded!.definition.id}`
+      ).toBe(false);
+      ids.add(loaded!.definition.id);
+    }
+  });
+
+  it("no built-in workflow uses non-existent terminal.executeCommand", async () => {
+    for (const file of jsonFiles) {
+      const filePath = path.join(WORKFLOWS_DIR, file);
+      const loaded = await loader.loadFromFile(filePath, "built-in");
+      for (const node of loaded!.definition.nodes) {
+        expect(
+          node.config.actionId,
+          `${file}: node "${node.id}" uses removed action "terminal.executeCommand"`
+        ).not.toBe("terminal.executeCommand");
+      }
+    }
+  });
+
+  it("each built-in workflow uses only known action IDs", async () => {
+    const knownActionIds = new Set([
+      "terminal.new",
+      "terminal.sendCommand",
+      "terminal.close",
+      "terminal.list",
+      "notes.create",
+      "notes.list",
+      "notes.openPalette",
+      "worktree.list",
+      "worktree.getCurrent",
+      "worktree.refresh",
+      "worktree.refreshPullRequests",
+      "github.openPRs",
+      "github.openIssues",
+      "github.openCommits",
+      "git.stageAll",
+      "git.commit",
+      "git.push",
+      "git.getStagingStatus",
+    ]);
+
+    for (const file of jsonFiles) {
+      const filePath = path.join(WORKFLOWS_DIR, file);
+      const loaded = await loader.loadFromFile(filePath, "built-in");
+      for (const node of loaded!.definition.nodes) {
+        expect(
+          knownActionIds.has(node.config.actionId),
+          `${file}: node "${node.id}" uses unknown actionId "${node.config.actionId}"`
+        ).toBe(true);
+      }
+    }
   });
 });
