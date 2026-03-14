@@ -8,19 +8,7 @@ import { cn } from "@/lib/utils";
 import type { WorktreeTerminalCounts } from "@/hooks/useWorktreeTerminals";
 import { STATE_COLORS, STATE_ICONS, STATE_LABELS, STATE_PRIORITY } from "../terminalStateConfig";
 import { Tooltip, TooltipContent, TooltipTrigger, TooltipProvider } from "../../ui/tooltip";
-import {
-  AlertCircle,
-  CheckCircle2,
-  ChevronRight,
-  GripVertical,
-  LayoutGrid,
-  Loader2,
-  PanelBottom,
-  Pencil,
-  Play,
-  Terminal,
-  XCircle,
-} from "lucide-react";
+import { ChevronRight, GripVertical, LayoutGrid, PanelBottom, Terminal } from "lucide-react";
 import {
   SortableWorktreeTerminal,
   getAccordionDragId,
@@ -178,38 +166,22 @@ export function WorktreeTerminalSection({
                       </button>
 
                       <div className="flex items-center gap-2.5 shrink-0">
-                        {term.agentState === "working" && (
-                          <Loader2
-                            className="w-3 h-3 animate-spin motion-reduce:animate-none text-state-working"
-                            aria-label="Working"
-                          />
-                        )}
-
-                        {term.agentState === "running" && (
-                          <Play className="w-3 h-3 text-status-info" aria-label="Running" />
-                        )}
-
-                        {term.agentState === "waiting" && (
-                          <AlertCircle
-                            className="w-3 h-3 text-status-warning"
-                            aria-label="Waiting for input"
-                          />
-                        )}
-
-                        {term.agentState === "directing" && (
-                          <Pencil className="w-3 h-3 text-status-info" aria-label="Directing" />
-                        )}
-
-                        {term.agentState === "failed" && (
-                          <XCircle className="w-3 h-3 text-status-error" aria-label="Failed" />
-                        )}
-
-                        {term.agentState === "completed" && (
-                          <CheckCircle2
-                            className="w-3 h-3 text-status-success"
-                            aria-label="Completed"
-                          />
-                        )}
+                        {term.agentState &&
+                          term.agentState !== "idle" &&
+                          (() => {
+                            const Icon = STATE_ICONS[term.agentState];
+                            return (
+                              <Icon
+                                className={cn(
+                                  "w-3 h-3",
+                                  STATE_COLORS[term.agentState],
+                                  term.agentState === "working" &&
+                                    "animate-spin motion-reduce:animate-none"
+                                )}
+                                aria-label={STATE_LABELS[term.agentState]}
+                              />
+                            );
+                          })()}
 
                         <TooltipProvider>
                           <Tooltip>

@@ -1,11 +1,12 @@
-import { Loader2, Play, AlertCircle, Circle, CheckCircle2, XCircle, Pencil } from "lucide-react";
+import { Play, Circle, CheckCircle2, XCircle } from "lucide-react";
 import type { AgentState } from "@/types";
+import { SpinnerCircle, HollowCircle, SolidCircle } from "@/components/icons/AgentStateCircles";
 
 export const STATE_ICONS: Record<AgentState, React.ComponentType<{ className?: string }>> = {
-  working: Loader2,
+  working: SpinnerCircle,
   running: Play,
-  waiting: AlertCircle,
-  directing: Pencil,
+  waiting: HollowCircle,
+  directing: SolidCircle,
   idle: Circle,
   completed: CheckCircle2,
   failed: XCircle,

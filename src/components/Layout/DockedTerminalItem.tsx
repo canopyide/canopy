@@ -272,7 +272,6 @@ export function DockedTerminalItem({ terminal }: DockedTerminalItemProps) {
                         className={cn(
                           "w-3.5 h-3.5",
                           agentState === "working" && "animate-spin",
-                          agentState === "waiting" && "animate-breathe",
                           "motion-reduce:animate-none"
                         )}
                         aria-hidden="true"
