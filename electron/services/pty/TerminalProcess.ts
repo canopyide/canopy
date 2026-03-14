@@ -49,6 +49,7 @@ import {
   OUTPUT_SETTLE_MAX_WAIT_MS,
   OUTPUT_SETTLE_POLL_INTERVAL_MS,
 } from "./terminalInput.js";
+import type { IMarker } from "@xterm/headless";
 import {
   TERMINAL_SESSION_PERSISTENCE_ENABLED,
   SESSION_SNAPSHOT_MAX_BYTES,
@@ -122,13 +123,19 @@ export class TerminalProcess {
   private readonly isAgentTerminal: boolean;
   private forensicsBuffer = new TerminalForensicsBuffer();
   private _activityTier: "active" | "background" = "active";
+  private _restoreBannerStart: IMarker | null = null;
+  private _restoreBannerEnd: IMarker | null = null;
 
   private restoreSessionIfPresent(headlessTerminal: HeadlessTerminalType): void {
     if (!TERMINAL_SESSION_PERSISTENCE_ENABLED) return;
     if (this.isAgentTerminal) return;
     if (this.options.restore === false) return;
 
-    restoreSessionFromFile(headlessTerminal, this.id);
+    const result = restoreSessionFromFile(headlessTerminal, this.id);
+    if (result.restored) {
+      this._restoreBannerStart = result.bannerStartMarker;
+      this._restoreBannerEnd = result.bannerEndMarker;
+    }
   }
 
   private scheduleSessionPersist(): void {
@@ -155,7 +162,10 @@ export class TerminalProcess {
     this.sessionPersistInFlight = true;
     try {
       this.sessionPersistDirty = false;
-      const state = await this.getSerializedStateAsync();
+      const state =
+        this._restoreBannerStart || this._restoreBannerEnd
+          ? this._serializeForPersistence()
+          : await this.getSerializedStateAsync();
       if (!state) return;
       if (Buffer.byteLength(state, "utf8") > SESSION_SNAPSHOT_MAX_BYTES) {
         return;
@@ -991,6 +1001,37 @@ export class TerminalProcess {
     }
   }
 
+  private _serializeForPersistence(): string | null {
+    const addon = this.terminalInfo.serializeAddon;
+    const terminal = this.terminalInfo.headlessTerminal;
+    if (!addon || !terminal) return null;
+
+    const startMarker = this._restoreBannerStart;
+    const endMarker = this._restoreBannerEnd;
+
+    if (!startMarker || !endMarker || startMarker.line < 0 || endMarker.line < 0) {
+      return addon.serialize();
+    }
+
+    try {
+      const bufLen = terminal.buffer.active.length;
+      const bannerStart = startMarker.line;
+      const bannerEnd = endMarker.line;
+
+      const beforePart =
+        bannerStart > 0 ? addon.serialize({ range: { start: 0, end: bannerStart - 1 } }) : "";
+      const afterPart =
+        bannerEnd < bufLen - 1
+          ? addon.serialize({ range: { start: bannerEnd, end: bufLen - 1 } })
+          : "";
+
+      if (beforePart && afterPart) return beforePart + "\r\n" + afterPart;
+      return beforePart || afterPart || addon.serialize();
+    } catch {
+      return addon.serialize();
+    }
+  }
+
   markChecked(): void {
     this.terminalInfo.lastCheckTime = Date.now();
   }
@@ -1167,7 +1208,7 @@ export class TerminalProcess {
       !this.terminalInfo.wasKilled
     ) {
       try {
-        const state = this.getSerializedState();
+        const state = this._serializeForPersistence() ?? this.getSerializedState();
         if (state && Buffer.byteLength(state, "utf8") <= SESSION_SNAPSHOT_MAX_BYTES) {
           persistSessionSnapshotSync(this.id, state);
           this.sessionPersistDirty = false;
