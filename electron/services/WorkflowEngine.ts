@@ -225,11 +225,19 @@ export class WorkflowEngine {
     }
 
     let resolvedArgs = node.config.args;
-    if (resolvedArgs) {
+    if (resolvedArgs && this.hasTemplateExpressions(resolvedArgs)) {
+      for (const depId of dependencies) {
+        const depState = run.nodeStates[depId];
+        if (!depState || depState.status !== "completed") {
+          throw new Error(
+            `Cannot compile node ${node.id}: dependency ${depId} has not completed yet (status: ${depState?.status ?? "unknown"})`
+          );
+        }
+      }
       try {
         resolvedArgs = this.resolveTemplateArgs(resolvedArgs, run.nodeStates);
       } catch (error) {
-        this.failNode(node.id, run, (error as Error).message);
+        await this.failNode(node.id, run, (error as Error).message);
         throw error;
       }
     }
@@ -286,12 +294,23 @@ export class WorkflowEngine {
     }
 
     if (payload.data) {
-      const dataJson = JSON.stringify(payload.data);
-      if (Buffer.byteLength(dataJson, "utf8") > MAX_RESULT_DATA_BYTES) {
-        const sizeMB = (Buffer.byteLength(dataJson, "utf8") / 1_048_576).toFixed(2);
-        this.failNode(mapping.nodeId, run, `Node result data exceeds 1 MB limit (${sizeMB} MB)`);
-        await this.schedulePersist();
-        await this.checkWorkflowCompletion(run);
+      try {
+        const dataJson = JSON.stringify(payload.data);
+        if (Buffer.byteLength(dataJson, "utf8") > MAX_RESULT_DATA_BYTES) {
+          const sizeMB = (Buffer.byteLength(dataJson, "utf8") / 1_048_576).toFixed(2);
+          await this.failNode(
+            mapping.nodeId,
+            run,
+            `Node result data exceeds 1 MB limit (${sizeMB} MB)`
+          );
+          return;
+        }
+      } catch (e) {
+        await this.failNode(
+          mapping.nodeId,
+          run,
+          `Node result data could not be serialized: ${(e as Error).message}`
+        );
         return;
       }
     }
@@ -528,6 +547,22 @@ export class WorkflowEngine {
     return resolved;
   }
 
+  private hasTemplateExpressions(value: unknown): boolean {
+    if (typeof value === "string") {
+      TEMPLATE_REGEX.lastIndex = 0;
+      return TEMPLATE_REGEX.test(value);
+    }
+    if (Array.isArray(value)) {
+      return value.some((item) => this.hasTemplateExpressions(item));
+    }
+    if (value !== null && typeof value === "object") {
+      return Object.values(value as Record<string, unknown>).some((v) =>
+        this.hasTemplateExpressions(v)
+      );
+    }
+    return false;
+  }
+
   private resolveTemplateValue(value: unknown, nodeStates: Record<string, NodeState>): unknown {
     if (typeof value === "string") {
       return this.resolveTemplateString(value, nodeStates);
@@ -554,6 +589,7 @@ export class WorkflowEngine {
       return this.resolveExpression(pureMatch[1], nodeStates);
     }
 
+    TEMPLATE_REGEX.lastIndex = 0;
     if (!TEMPLATE_REGEX.test(value)) {
       return value;
     }
@@ -598,13 +634,42 @@ export class WorkflowEngine {
   /**
    * Mark a node as failed and evaluate onFailure routing.
    */
-  private failNode(nodeId: string, run: WorkflowRun, error: string): void {
+  private async failNode(nodeId: string, run: WorkflowRun, error: string): Promise<void> {
     const nodeState = run.nodeStates[nodeId];
     if (!nodeState) return;
 
+    const now = Date.now();
     nodeState.status = "failed";
-    nodeState.completedAt = Date.now();
+    nodeState.completedAt = now;
     nodeState.result = { error };
+
+    const node = run.definition.nodes.find((n) => n.id === nodeId);
+    if (!node) return;
+
+    const nextNodeIds = await this.evaluateRouting(node, nodeState, run, "onFailure");
+
+    if (nextNodeIds.length > 0) {
+      for (const nextId of nextNodeIds) {
+        const nextNode = run.definition.nodes.find((n) => n.id === nextId);
+        if (nextNode && !run.scheduledNodes.has(nextId)) {
+          await this.compileNodeToTask(nextNode, run);
+        }
+      }
+    } else {
+      run.status = "failed";
+      run.completedAt = now;
+
+      events.emit("workflow:failed", {
+        runId: run.runId,
+        workflowId: run.workflowId,
+        workflowVersion: run.workflowVersion,
+        error: `Node ${nodeId} failed: ${error}`,
+        timestamp: now,
+      });
+    }
+
+    await this.schedulePersist();
+    await this.checkWorkflowCompletion(run);
   }
 
   /**

@@ -587,5 +587,128 @@ describe("WorkflowEngine", () => {
       expect(nodeState.status).toBe("failed");
       expect(nodeState.result?.error).toContain("exceeds 1 MB limit");
     });
+
+    it("fails node and marks workflow as failed when size guard triggers", async () => {
+      const singleNodeWorkflow: WorkflowDefinition = {
+        id: "single-workflow",
+        name: "Single Node",
+        version: "1.0.0",
+        nodes: [
+          {
+            id: "node-1",
+            type: "action",
+            config: { actionId: "action-1", args: {} },
+          },
+        ],
+      };
+
+      mockLoader.getWorkflow.mockResolvedValue({ definition: singleNodeWorkflow });
+      await engine.startWorkflow("single-workflow");
+
+      events.emit("task:completed", {
+        taskId: "task-node-1",
+        result: "Done",
+        data: { bigField: "x".repeat(1_100_000) },
+        timestamp: Date.now(),
+      });
+
+      await new Promise((resolve) => setTimeout(resolve, 10));
+
+      const runs = await engine.listAllRuns();
+      expect(runs[0].status).toBe("failed");
+    });
+  });
+
+  describe("template error handling", () => {
+    it("fails workflow when template references non-existent node", async () => {
+      const badRefWorkflow: WorkflowDefinition = {
+        id: "bad-ref-workflow",
+        name: "Bad Ref",
+        version: "1.0.0",
+        nodes: [
+          {
+            id: "node-1",
+            type: "action",
+            config: {
+              actionId: "action-1",
+              args: { val: "{{ghost.data.x}}" },
+            },
+          },
+        ],
+      };
+
+      mockLoader.getWorkflow.mockResolvedValue({ definition: badRefWorkflow });
+
+      await expect(engine.startWorkflow("bad-ref-workflow")).rejects.toThrow(
+        'node "ghost" not found'
+      );
+    });
+
+    it("fails workflow when template expression has no dot path", async () => {
+      const noDotWorkflow: WorkflowDefinition = {
+        id: "no-dot-workflow",
+        name: "No Dot",
+        version: "1.0.0",
+        nodes: [
+          {
+            id: "node-1",
+            type: "action",
+            config: {
+              actionId: "action-1",
+              args: { val: "{{nodeid}}" },
+            },
+          },
+        ],
+      };
+
+      mockLoader.getWorkflow.mockResolvedValue({ definition: noDotWorkflow });
+
+      await expect(engine.startWorkflow("no-dot-workflow")).rejects.toThrow(
+        "must be in format {{nodeId.path}}"
+      );
+    });
+
+    it("evaluates onFailure routing when failNode is triggered by size guard", async () => {
+      const failoverWorkflow: WorkflowDefinition = {
+        id: "failover-workflow",
+        name: "Failover",
+        version: "1.0.0",
+        nodes: [
+          {
+            id: "node-1",
+            type: "action",
+            config: { actionId: "action-1", args: {} },
+            onFailure: ["node-recovery"],
+          },
+          {
+            id: "node-recovery",
+            type: "action",
+            config: { actionId: "recovery-action", args: {} },
+          },
+        ],
+      };
+
+      mockLoader.getWorkflow.mockResolvedValue({ definition: failoverWorkflow });
+      await engine.startWorkflow("failover-workflow");
+
+      mockQueueService.createTask.mockClear();
+
+      events.emit("task:completed", {
+        taskId: "task-node-1",
+        result: "Done",
+        data: { bigField: "x".repeat(1_100_000) },
+        timestamp: Date.now(),
+      });
+
+      await new Promise((resolve) => setTimeout(resolve, 50));
+
+      const runs = await engine.listAllRuns();
+      const node1State = runs[0].nodeStates["node-1"];
+      expect(node1State.status).toBe("failed");
+      expect(node1State.result?.error).toContain("exceeds 1 MB limit");
+      // Verify recovery node was scheduled via onFailure routing
+      expect(runs[0].scheduledNodes.has("node-recovery")).toBe(true);
+      expect(runs[0].nodeStates["node-recovery"]).toBeDefined();
+    });
   });
 });
