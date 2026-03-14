@@ -253,13 +253,17 @@ export class ActivityMonitor {
   private rewriteWindowStart = 0;
   private rewriteCount = 0;
 
-  // Status line noise filter patterns (token counts, costs, progress indicators)
+  // Status line noise filter patterns (token counts, costs, progress indicators, spinners)
   private static readonly STATUS_LINE_PATTERNS: RegExp[] = [
     /\b\d+\s*tokens?\b/i,
     /\$\d+\.\d+/,
     /\b\d+%\b/,
     /\[\d+\/\d+\]/,
     /⏱️?\s*\d+[smh]/,
+    /[\u2800-\u28FF]/, // Braille spinner characters (⠋⠙⠹⠸⠼⠴⠦⠧⠇⠏)
+    /esc to interrupt/i, // Claude Code / Gemini CLI status line marker
+    /[✽✻✦]\s/, // Claude Code deliberation / Gemini tool icons
+    /\b(?:working|thinking|deliberating|responding|running)\b.*[([]/i, // Spinner verb + context
   ];
 
   // State preservation for project switch
@@ -571,7 +575,11 @@ export class ActivityMonitor {
     this.lastDataTimestamp = now;
 
     const isLikelyUserEcho = data ? this.isLikelyUserEcho(data, now) : false;
-    if (data && !isLikelyUserEcho) {
+    // Detect cosmetic status line rewrites early so they can be excluded
+    // from all activity tracking (debounce, line-rewrite detection, byte counting). Issue #3189.
+    const isCosmeticRedraw = data ? this.isStatusLineRewrite(data) : false;
+
+    if (data && !isLikelyUserEcho && !isCosmeticRedraw) {
       this.lastActivityTimestamp = now;
     }
 
@@ -580,13 +588,14 @@ export class ActivityMonitor {
       this.revalidateStateAfterWake();
     }
 
-    if (data && !isLikelyUserEcho) {
+    if (data && !isLikelyUserEcho && !isCosmeticRedraw) {
       this.updateLineRewriteDetection(data, now);
     }
 
     // For polling-enabled terminals: check raw stream for patterns FIRST
     // This runs BEFORE the busy-state early return to ensure instant detection
-    if (data && this.getVisibleLines && !isLikelyUserEcho) {
+    // Skip cosmetic redraws to prevent spinner frames from triggering busy. Issue #3189.
+    if (data && this.getVisibleLines && !isLikelyUserEcho && !isCosmeticRedraw) {
       // Use rolling buffer to catch patterns split across PTY chunks
       this.updatePatternBuffer(data);
       const bufferText = stripAnsi(this.patternBuffer);
@@ -644,20 +653,18 @@ export class ActivityMonitor {
       // when patterns are still visible in xterm but not in the rolling buffer.
     }
 
-    // Now handle busy state - reset debounce timer
-    if (this.state === "busy" && !isLikelyUserEcho) {
-      this.resetDebounceTimer();
-    }
-
     if (!data || isLikelyUserEcho) {
       return;
     }
 
-    // Filter status line rewrites (token counts, costs, progress) from volume-based activity.
-    // These CR-based single-line updates don't represent real agent output.
-    // Debounce timer is already reset above to keep busy state alive.
-    if (this.isStatusLineRewrite(data)) {
+    // Filter cosmetic redraws from remaining activity tracking (debounce, byte counting).
+    if (isCosmeticRedraw) {
       return;
+    }
+
+    // Reset debounce timer only for semantic output (after filtering cosmetic redraws)
+    if (this.state === "busy") {
+      this.resetDebounceTimer();
     }
 
     // Update pattern buffer and check for working patterns (non-polling terminals only)
@@ -894,7 +901,8 @@ export class ActivityMonitor {
         count++;
       }
     }
-    if (data.includes("\x1b[2K") || data.includes("\x1b[K")) {
+    // eslint-disable-next-line no-control-regex
+    if (data.includes("\x1b[2K") || data.includes("\x1b[K") || /\u001b\[\d*A/.test(data)) {
       count++;
     }
     return count;
@@ -917,7 +925,13 @@ export class ActivityMonitor {
         }
       }
     }
-    if (!hasRewrite && !data.includes("\x1b[2K") && !data.includes("\x1b[K")) {
+    if (
+      !hasRewrite &&
+      !data.includes("\x1b[2K") &&
+      !data.includes("\x1b[K") &&
+      // eslint-disable-next-line no-control-regex
+      !/\u001b\[\d*A/.test(data)
+    ) {
       return false;
     }
 
