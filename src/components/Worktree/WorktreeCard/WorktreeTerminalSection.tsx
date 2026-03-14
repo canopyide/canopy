@@ -35,7 +35,7 @@ function StateIcon({ state, count }: StateIconProps) {
           <Icon
             className={cn(
               "w-3 h-3",
-              state === "working" && "animate-spin motion-reduce:animate-none"
+              state === "working" && "animate-spin-slow motion-reduce:animate-none"
             )}
             aria-hidden
           />
@@ -176,7 +176,7 @@ export function WorktreeTerminalSection({
                                   "w-3 h-3",
                                   STATE_COLORS[term.agentState],
                                   term.agentState === "working" &&
-                                    "animate-spin motion-reduce:animate-none"
+                                    "animate-spin-slow motion-reduce:animate-none"
                                 )}
                                 aria-label={STATE_LABELS[term.agentState]}
                               />
