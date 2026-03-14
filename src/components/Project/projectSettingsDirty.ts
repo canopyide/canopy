@@ -21,6 +21,7 @@ export interface ProjectSettingsSnapshot {
   copyTreeSettings: CopyTreeSettings;
   branchPrefixMode: "none" | "username" | "custom";
   branchPrefixCustom: string;
+  agentInstructions: string;
 }
 
 interface EnvVar {
@@ -52,7 +53,8 @@ export function createProjectSettingsSnapshot(
   copyTreeSettings: CopyTreeSettings,
   branchPrefixMode: "none" | "username" | "custom" = "none",
   branchPrefixCustom: string = "",
-  devServerLoadTimeout: number | undefined = undefined
+  devServerLoadTimeout: number | undefined = undefined,
+  agentInstructions: string = ""
 ): ProjectSettingsSnapshot {
   const envVarRecord: Record<string, string> = {};
   const seenKeys = new Map<string, number>();
@@ -129,6 +131,7 @@ export function createProjectSettingsSnapshot(
     copyTreeSettings: normalizedCopyTreeSettings,
     branchPrefixMode: normalizedMode,
     branchPrefixCustom: normalizedMode === "custom" ? trimmedCustom : "",
+    agentInstructions: agentInstructions.trim(),
   };
 }
 
@@ -210,6 +213,7 @@ export function areSnapshotsEqual(a: ProjectSettingsSnapshot, b: ProjectSettings
 
   if (a.branchPrefixMode !== b.branchPrefixMode) return false;
   if (a.branchPrefixCustom !== b.branchPrefixCustom) return false;
+  if (a.agentInstructions !== b.agentInstructions) return false;
 
   return true;
 }
