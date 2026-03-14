@@ -1,4 +1,4 @@
-import { describe, it, expect, vi, beforeEach } from "vitest";
+import { describe, it, expect, vi, beforeEach, afterEach } from "vitest";
 import { TerminalRefreshTier } from "../../../../shared/types/domain";
 import type { ManagedTerminal } from "../types";
 import type { RendererPolicyDeps } from "../TerminalRendererPolicy";
@@ -18,6 +18,12 @@ describe("WebGL lease through tier transitions", () => {
   beforeEach(async () => {
     vi.clearAllMocks();
 
+    (globalThis as unknown as { window: Window & typeof globalThis }).window = {
+      ...(globalThis as unknown as { window?: Window & typeof globalThis }).window,
+      setTimeout: globalThis.setTimeout,
+      clearTimeout: globalThis.clearTimeout,
+    } as Window & typeof globalThis;
+
     onTierApplied = vi.fn();
 
     mockManagedTerminal = {
@@ -36,11 +42,15 @@ describe("WebGL lease through tier transitions", () => {
     mockDeps = {
       getInstance: vi.fn(() => mockManagedTerminal as ManagedTerminal),
       wakeAndRestore: vi.fn(() => Promise.resolve(true)),
-      onTierApplied,
+      onTierApplied: onTierApplied as RendererPolicyDeps["onTierApplied"],
     };
 
     const { TerminalRendererPolicy } = await import("../TerminalRendererPolicy");
     policy = new TerminalRendererPolicy(mockDeps);
+  });
+
+  afterEach(() => {
+    vi.useRealTimers();
   });
 
   it("FOCUSED → BURST fires onTierApplied with BURST (not a detach trigger)", () => {
