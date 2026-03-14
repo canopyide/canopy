@@ -361,6 +361,13 @@ describe("notify()", () => {
       expect(useNotificationHistoryStore.getState().unreadCount).toBe(0);
     });
 
+    it("does not increment unreadCount when countable is false", () => {
+      vi.spyOn(document, "hasFocus").mockReturnValue(true);
+      notify({ type: "success", message: "Silent success", priority: "low", countable: false });
+      expect(useNotificationHistoryStore.getState().entries).toHaveLength(1);
+      expect(useNotificationHistoryStore.getState().unreadCount).toBe(0);
+    });
+
     it("does not increment unreadCount for grid-bar notifications (shown inline)", () => {
       vi.spyOn(document, "hasFocus").mockReturnValue(false);
       notify({ type: "info", message: "Inline", priority: "low", placement: "grid-bar" });
@@ -386,10 +393,10 @@ describe("notify()", () => {
       message,
       priority: "high" as const,
       title: "Agent task completed",
-      duration: 12000,
+      duration: 5000,
       coalesce: {
         key,
-        windowMs: 2000,
+        windowMs: 15000,
         buildMessage: (count: number) => `${count} agents finished`,
         buildTitle: () => "Agent tasks completed",
         buildAction: (count: number) =>
@@ -447,7 +454,7 @@ describe("notify()", () => {
 
       const id1 = notify(makeCoalescePayload());
 
-      now = 4000; // 3s later, past the 2s window
+      now = 17000; // 16s later, past the 15s window
       const id2 = notify(makeCoalescePayload());
 
       expect(id1).not.toBe(id2);
@@ -465,11 +472,11 @@ describe("notify()", () => {
 
       const id1 = notify(makeCoalescePayload());
 
-      now = 2500; // 1.5s later, within 2s window
+      now = 8000; // 7s later, within 15s window
       const id2 = notify(makeCoalescePayload());
       expect(id1).toBe(id2);
 
-      now = 4000; // 1.5s after last update, still within refreshed window
+      now = 14000; // 6s after last update, still within refreshed window
       const id3 = notify(makeCoalescePayload());
       expect(id1).toBe(id3);
 

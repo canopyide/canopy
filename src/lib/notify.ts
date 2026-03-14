@@ -42,6 +42,8 @@ export interface NotifyPayload {
   correlationId?: string;
   /** When set, rapidly fired notifications with the same key coalesce into a single updating toast */
   coalesce?: CoalesceOptions;
+  /** When false, the history entry exists but does not increment the unread badge. Defaults to true. */
+  countable?: boolean;
 }
 
 interface CoalesceEntry {
@@ -101,6 +103,7 @@ export function notify(payload: NotifyPayload): string {
         message: historyMessage,
         correlationId,
         seenAsToast: true,
+        countable: payload.countable,
         actions: historyActions.length > 0 ? historyActions : undefined,
       });
     }
@@ -122,6 +125,7 @@ export function notify(payload: NotifyPayload): string {
       message: historyMessage,
       correlationId,
       seenAsToast: shouldToast,
+      countable: payload.countable,
       actions: historyActions.length > 0 ? historyActions : undefined,
     });
   }
