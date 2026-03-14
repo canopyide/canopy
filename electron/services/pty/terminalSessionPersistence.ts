@@ -1,8 +1,14 @@
-import { existsSync, readFileSync, writeFileSync, unlinkSync, mkdirSync } from "fs";
+import { existsSync, readFileSync, statSync, writeFileSync, unlinkSync, mkdirSync } from "fs";
 import { mkdir, writeFile, unlink } from "node:fs/promises";
 import { resilientRename, resilientRenameSync } from "../../utils/fs.js";
 import path from "node:path";
-import type { Terminal as HeadlessTerminalType } from "@xterm/headless";
+import type { Terminal as HeadlessTerminalType, IMarker } from "@xterm/headless";
+
+export interface RestoreResult {
+  restored: boolean;
+  bannerStartMarker: IMarker | null;
+  bannerEndMarker: IMarker | null;
+}
 
 export const TERMINAL_SESSION_PERSISTENCE_ENABLED: boolean =
   process.env.CANOPY_TERMINAL_SESSION_PERSISTENCE !== "0";
@@ -37,25 +43,62 @@ export function getSessionPath(id: string): string | null {
   return path.join(dir, `${safeId}.restore`);
 }
 
+const NULL_RESTORE: RestoreResult = {
+  restored: false,
+  bannerStartMarker: null,
+  bannerEndMarker: null,
+};
+
+function formatRestoreTimestamp(mtimeMs: number): string {
+  const d = new Date(mtimeMs);
+  const pad = (n: number) => String(n).padStart(2, "0");
+  return `${d.getFullYear()}-${pad(d.getMonth() + 1)}-${pad(d.getDate())} ${pad(d.getHours())}:${pad(d.getMinutes())}`;
+}
+
 export function restoreSessionFromFile(
   headlessTerminal: HeadlessTerminalType,
   terminalId: string
-): void {
+): RestoreResult {
   const sessionPath = getSessionPath(terminalId);
-  if (!sessionPath) return;
+  if (!sessionPath) return NULL_RESTORE;
 
   try {
-    if (!existsSync(sessionPath)) return;
+    if (!existsSync(sessionPath)) return NULL_RESTORE;
     const content = readFileSync(sessionPath, "utf8");
     if (Buffer.byteLength(content, "utf8") > SESSION_SNAPSHOT_MAX_BYTES) {
-      return;
+      return NULL_RESTORE;
     }
+
+    let sessionMtime: number | null = null;
+    try {
+      sessionMtime = statSync(sessionPath).mtimeMs;
+    } catch {
+      /* best-effort */
+    }
+
     headlessTerminal.write(content);
+
+    const wasInAlternateScreen = headlessTerminal.buffer.active.type === "alternate";
+    if (wasInAlternateScreen) {
+      headlessTerminal.write("\x1b[?1049l");
+    }
+
+    const ts = sessionMtime ? formatRestoreTimestamp(sessionMtime) : "";
+    const label = wasInAlternateScreen
+      ? `─── Restored · ${ts} · previous session was in a full-screen app ───`
+      : `─── Session restored · ${ts} ───`;
+
+    const bannerStartMarker = headlessTerminal.registerMarker(0) ?? null;
+    headlessTerminal.write(`\r\n\x1b[2m\x1b[38;5;240m${label}\x1b[0m\r\n`);
+    const bannerEndMarker = headlessTerminal.registerMarker(0) ?? null;
+
+    return { restored: true, bannerStartMarker, bannerEndMarker };
   } catch (error) {
     console.warn(
       `[terminalSessionPersistence] Failed to restore session for ${terminalId}:`,
       error
     );
+    return NULL_RESTORE;
   }
 }
 
