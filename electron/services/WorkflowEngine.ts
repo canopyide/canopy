@@ -320,18 +320,23 @@ export class WorkflowEngine {
   }
 
   /**
-   * Schedule the root nodes of a loop body iteration.
+   * Schedule all body nodes for a loop iteration.
+   * Root nodes (no deps) are compiled first, then dependent nodes.
+   * The task queue handles execution ordering via dependencies.
    */
   private async compileBodyIteration(
     loopNode: LoopNode,
     run: WorkflowRun,
     iterIndex: number
   ): Promise<void> {
-    const rootNodes = loopNode.body.filter(
-      (n) => !n.dependencies || n.dependencies.length === 0
-    );
+    // Sort: roots first, then nodes with dependencies
+    const roots = loopNode.body.filter((n) => !n.dependencies || n.dependencies.length === 0);
+    const withDeps = loopNode.body.filter((n) => n.dependencies && n.dependencies.length > 0);
 
-    for (const bodyNode of rootNodes) {
+    for (const bodyNode of roots) {
+      await this.compileSingleBodyNode(bodyNode, loopNode, run, iterIndex);
+    }
+    for (const bodyNode of withDeps) {
       await this.compileSingleBodyNode(bodyNode, loopNode, run, iterIndex);
     }
   }
