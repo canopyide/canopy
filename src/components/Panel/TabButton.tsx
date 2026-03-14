@@ -268,7 +268,6 @@ const TabButtonComponent = forwardRef<HTMLDivElement, TabButtonProps>(function T
                   "w-3 h-3 shrink-0",
                   STATE_COLORS[agentState],
                   agentState === "working" && "animate-spin",
-                  agentState === "waiting" && "animate-breathe",
                   "motion-reduce:animate-none"
                 )}
                 aria-hidden="true"
