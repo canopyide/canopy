@@ -35,9 +35,8 @@ export const useWorkflowStore = create<WorkflowState>((set, get) => ({
     try {
       const allRuns = await window.electron.workflow.listRuns();
       if (get().epoch !== epoch) return;
-      const sorted = allRuns.sort((a, b) => b.startedAt - a.startedAt).slice(0, MAX_RUNS);
-      const map = new Map(sorted.map((r) => [r.runId, r]));
-      set({ runs: map, isInitialized: true });
+      const map = new Map(allRuns.map((r) => [r.runId, r]));
+      set({ runs: trimRuns(map), isInitialized: true });
     } catch {
       if (get().epoch !== epoch) return;
       set({ isInitialized: true });
