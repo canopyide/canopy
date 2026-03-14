@@ -149,6 +149,16 @@ describe("registerWorkflowHandlers", () => {
 
       expect(result).toEqual(summaries);
     });
+
+    it("works even when engine is null (uses loader directly)", async () => {
+      mockGetWorkflowEngine.mockReturnValue(null);
+      mockListWorkflows.mockResolvedValue([]);
+
+      registerWorkflowHandlers(deps);
+      const result = await getHandler("workflow:list")({});
+
+      expect(result).toEqual([]);
+    });
   });
 
   describe("startWorkflow", () => {
@@ -197,7 +207,7 @@ describe("registerWorkflowHandlers", () => {
   });
 
   describe("getWorkflowRun", () => {
-    it("serializes scheduledNodes Set to array", async () => {
+    it("serializes scheduledNodes Set to array and preserves other fields", async () => {
       const run = makeWorkflowRun();
       const mockEngine = { getWorkflowRun: vi.fn().mockResolvedValue(run) };
       mockGetWorkflowEngine.mockReturnValue(mockEngine);
@@ -207,6 +217,11 @@ describe("registerWorkflowHandlers", () => {
 
       expect(Array.isArray(result.scheduledNodes)).toBe(true);
       expect(result.scheduledNodes).toEqual(expect.arrayContaining(["n1", "n2"]));
+      expect(result.runId).toBe("run-1");
+      expect(result.workflowId).toBe("wf-1");
+      expect(result.status).toBe("running");
+      expect(result.nodeStates).toEqual({});
+      expect(result.taskMapping).toEqual({});
     });
 
     it("returns null for nonexistent run", async () => {
@@ -218,10 +233,20 @@ describe("registerWorkflowHandlers", () => {
 
       expect(result).toBeNull();
     });
+
+    it("throws when engine is null", async () => {
+      mockGetWorkflowEngine.mockReturnValue(null);
+
+      registerWorkflowHandlers(deps);
+
+      await expect(getHandler("workflow:get-run")({}, "run-1")).rejects.toThrow(
+        "WorkflowEngine not initialized"
+      );
+    });
   });
 
   describe("listRuns", () => {
-    it("serializes all runs", async () => {
+    it("serializes all runs and preserves fields", async () => {
       const runs = [makeWorkflowRun(), makeWorkflowRun({ runId: "run-2" })];
       const mockEngine = { listAllRuns: vi.fn().mockResolvedValue(runs) };
       mockGetWorkflowEngine.mockReturnValue(mockEngine);
@@ -233,7 +258,19 @@ describe("registerWorkflowHandlers", () => {
 
       expect(result).toHaveLength(2);
       expect(Array.isArray(result[0].scheduledNodes)).toBe(true);
+      expect(result[0].runId).toBe("run-1");
       expect(Array.isArray(result[1].scheduledNodes)).toBe(true);
+      expect(result[1].runId).toBe("run-2");
+    });
+
+    it("throws when engine is null", async () => {
+      mockGetWorkflowEngine.mockReturnValue(null);
+
+      registerWorkflowHandlers(deps);
+
+      await expect(getHandler("workflow:list-runs")({})).rejects.toThrow(
+        "WorkflowEngine not initialized"
+      );
     });
   });
 
