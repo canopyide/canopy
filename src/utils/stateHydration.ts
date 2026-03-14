@@ -486,6 +486,7 @@ export async function hydrateAppState(
                     devPreviewConsoleOpen: isDevPreview ? saved.devPreviewConsoleOpen : undefined,
                     exitBehavior: saved.exitBehavior,
                     agentSessionId: saved.agentSessionId,
+                    agentLaunchFlags: saved.agentLaunchFlags,
                   });
 
                   if (backendTerminal.activityTier) {
@@ -652,6 +653,7 @@ export async function hydrateAppState(
                           : undefined,
                         exitBehavior: saved.exitBehavior,
                         agentSessionId: saved.agentSessionId,
+                        agentLaunchFlags: saved.agentLaunchFlags,
                       });
 
                       if (reconnectedTerminal.activityTier) {
@@ -720,7 +722,11 @@ export async function hydrateAppState(
 
                       if (agentId) {
                         if (saved.agentSessionId) {
-                          const resumeCmd = buildResumeCommand(agentId, saved.agentSessionId);
+                          const resumeCmd = buildResumeCommand(
+                            agentId,
+                            saved.agentSessionId,
+                            saved.agentLaunchFlags
+                          );
                           if (resumeCmd) {
                             command = resumeCmd;
                           } else if (agentSettings) {
@@ -781,6 +787,7 @@ export async function hydrateAppState(
                           ? saved.devPreviewConsoleOpen
                           : undefined,
                         exitBehavior: isAgentPanel ? undefined : saved.exitBehavior,
+                        agentLaunchFlags: saved.agentLaunchFlags,
                         restore: true,
                       });
 
