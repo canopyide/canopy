@@ -78,7 +78,6 @@ function TerminalHeaderContentComponent({
                 className={cn(
                   "w-3 h-3",
                   agentState === "working" && "animate-spin",
-                  agentState === "waiting" && "animate-breathe",
                   "motion-reduce:animate-none"
                 )}
                 aria-hidden="true"
