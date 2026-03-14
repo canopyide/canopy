@@ -39,7 +39,6 @@ import {
   useSidecarStore,
   usePreferencesStore,
   useToolbarPreferencesStore,
-  useCliAvailabilityStore,
   useVoiceRecordingStore,
   usePaletteStore,
 } from "@/store";
@@ -369,12 +368,10 @@ export function Toolbar({
     [getToolbarItems, syncToolbarTabStops]
   );
 
-  const cliInitialized = useCliAvailabilityStore((state) => state.isInitialized);
-  const hasAnyInstalledAgent = useMemo(() => {
-    if (!cliInitialized) return true;
-    if (!agentAvailability) return false;
-    return Object.values(agentAvailability).some((v) => v === true);
-  }, [agentAvailability, cliInitialized]);
+  const hasAnySelectedAgent = useMemo(() => {
+    if (!agentSettings) return true;
+    return Object.values(agentSettings.agents ?? {}).some((entry) => entry?.selected !== false);
+  }, [agentSettings]);
 
   const buttonRegistry = useMemo<
     Record<ToolbarButtonId, { render: () => React.ReactNode; isAvailable: boolean }>
@@ -407,7 +404,7 @@ export function Toolbar({
       },
       "agent-setup": {
         render: () => <AgentSetupButton key="agent-setup" data-toolbar-item="" />,
-        isAvailable: !hasAnyInstalledAgent,
+        isAvailable: !hasAnySelectedAgent,
       },
       claude: {
         render: () => (
@@ -419,7 +416,7 @@ export function Toolbar({
             data-toolbar-item=""
           />
         ),
-        isAvailable: agentSettings?.agents?.claude?.selected ?? true,
+        isAvailable: agentSettings === null || agentSettings.agents?.claude?.selected !== false,
       },
       gemini: {
         render: () => (
@@ -431,7 +428,7 @@ export function Toolbar({
             data-toolbar-item=""
           />
         ),
-        isAvailable: agentSettings?.agents?.gemini?.selected ?? true,
+        isAvailable: agentSettings === null || agentSettings.agents?.gemini?.selected !== false,
       },
       codex: {
         render: () => (
@@ -443,7 +440,7 @@ export function Toolbar({
             data-toolbar-item=""
           />
         ),
-        isAvailable: agentSettings?.agents?.codex?.selected ?? true,
+        isAvailable: agentSettings === null || agentSettings.agents?.codex?.selected !== false,
       },
       opencode: {
         render: () => (
@@ -455,7 +452,7 @@ export function Toolbar({
             data-toolbar-item=""
           />
         ),
-        isAvailable: agentSettings?.agents?.opencode?.selected ?? true,
+        isAvailable: agentSettings === null || agentSettings.agents?.opencode?.selected !== false,
       },
       cursor: {
         render: () => (
@@ -467,7 +464,7 @@ export function Toolbar({
             data-toolbar-item=""
           />
         ),
-        isAvailable: agentSettings?.agents?.cursor?.selected ?? true,
+        isAvailable: agentSettings === null || agentSettings.agents?.cursor?.selected !== false,
       },
       terminal: {
         render: () => (
@@ -965,7 +962,7 @@ export function Toolbar({
       onToggleFocusMode,
       agentAvailability,
       agentSettings,
-      hasAnyInstalledAgent,
+      hasAnySelectedAgent,
       openAgentSettings,
       onLaunchAgent,
       terminalShortcut,
