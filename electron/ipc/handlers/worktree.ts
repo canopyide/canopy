@@ -12,11 +12,7 @@ import type {
   IssueAssociation,
 } from "../../../shared/types/ipc/worktree.js";
 import type { WorktreeState } from "../../../shared/types/domain.js";
-import {
-  generateWorktreePath,
-  DEFAULT_WORKTREE_PATH_PATTERN,
-  validatePathPattern,
-} from "../../../shared/utils/pathPattern.js";
+import { generateWorktreePath, validatePathPattern } from "../../../shared/utils/pathPattern.js";
 import { GitService } from "../../services/GitService.js";
 import { projectStore } from "../../services/ProjectStore.js";
 import { logDebug, logError } from "../../utils/logger.js";
