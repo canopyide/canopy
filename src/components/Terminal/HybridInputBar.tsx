@@ -596,16 +596,12 @@ export const HybridInputBar = forwardRef<HybridInputBarHandle, HybridInputBarPro
 
     const autocompleteTerminalItems = useMemo((): AutocompleteItem[] => {
       if (!terminalContext) return [];
-      return [
-        { key: "terminal", label: "Terminal output (@terminal)", value: "@terminal" },
-      ];
+      return [{ key: "terminal", label: "Terminal output (@terminal)", value: "@terminal" }];
     }, [terminalContext]);
 
     const autocompleteSelectionItems = useMemo((): AutocompleteItem[] => {
       if (!selectionContext) return [];
-      return [
-        { key: "selection", label: "Terminal selection (@selection)", value: "@selection" },
-      ];
+      return [{ key: "selection", label: "Terminal selection (@selection)", value: "@selection" }];
     }, [selectionContext]);
 
     const autocompleteItems = useMemo((): AutocompleteItem[] => {
@@ -625,7 +621,14 @@ export const HybridInputBar = forwardRef<HybridInputBarHandle, HybridInputBarPro
         return autocompleteCommands;
       }
       return [];
-    }, [activeMode, autocompleteTerminalItems, autocompleteSelectionItems, autocompleteDiffItems, autocompleteCommands, autocompleteFiles]);
+    }, [
+      activeMode,
+      autocompleteTerminalItems,
+      autocompleteSelectionItems,
+      autocompleteDiffItems,
+      autocompleteCommands,
+      autocompleteFiles,
+    ]);
 
     const isLoading =
       activeMode === "file"
@@ -1375,11 +1378,7 @@ export const HybridInputBar = forwardRef<HybridInputBarHandle, HybridInputBarPro
             const termCtx = getTerminalContext(text, caret);
             if (termCtx) {
               const prev = lastTerminalContextRef.current;
-              if (
-                !prev ||
-                prev.atStart !== termCtx.atStart ||
-                prev.tokenEnd !== termCtx.tokenEnd
-              ) {
+              if (!prev || prev.atStart !== termCtx.atStart || prev.tokenEnd !== termCtx.tokenEnd) {
                 lastTerminalContextRef.current = termCtx;
                 setTerminalContext(termCtx);
               }
@@ -1409,11 +1408,7 @@ export const HybridInputBar = forwardRef<HybridInputBarHandle, HybridInputBarPro
             const selCtx = getSelectionContext(text, caret);
             if (selCtx) {
               const prev = lastSelectionContextRef.current;
-              if (
-                !prev ||
-                prev.atStart !== selCtx.atStart ||
-                prev.tokenEnd !== selCtx.tokenEnd
-              ) {
+              if (!prev || prev.atStart !== selCtx.atStart || prev.tokenEnd !== selCtx.tokenEnd) {
                 lastSelectionContextRef.current = selCtx;
                 setSelectionContext(selCtx);
               }
@@ -2074,7 +2069,10 @@ export const HybridInputBar = forwardRef<HybridInputBarHandle, HybridInputBarPro
               <span className="text-xs font-medium">Attach error output</span>
               <button
                 type="button"
-                onClick={() => { setErrorChipDismissed(true); errorChipDismissedRef.current = true; }}
+                onClick={() => {
+                  setErrorChipDismissed(true);
+                  errorChipDismissedRef.current = true;
+                }}
                 className="ml-0.5 rounded-sm p-0.5 hover:bg-status-error/20 transition-colors cursor-pointer"
                 aria-label="Dismiss error context"
               >

@@ -97,13 +97,7 @@ export interface AtTerminalContext {
   tokenEnd: number;
 }
 
-const TERMINAL_PREFIXES = [
-  "term",
-  "termi",
-  "termin",
-  "termina",
-  "terminal",
-];
+const TERMINAL_PREFIXES = ["term", "termi", "termin", "termina", "terminal"];
 
 export function getTerminalContext(text: string, caret: number): AtTerminalContext | null {
   if (caret < 0 || caret > text.length) return null;
@@ -170,14 +164,7 @@ export interface AtSelectionContext {
   tokenEnd: number;
 }
 
-const SELECTION_PREFIXES = [
-  "sele",
-  "selec",
-  "select",
-  "selecti",
-  "selectio",
-  "selection",
-];
+const SELECTION_PREFIXES = ["sele", "selec", "select", "selecti", "selectio", "selection"];
 
 export function getSelectionContext(text: string, caret: number): AtSelectionContext | null {
   if (caret < 0 || caret > text.length) return null;
