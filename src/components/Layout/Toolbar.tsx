@@ -416,7 +416,7 @@ export function Toolbar({
             data-toolbar-item=""
           />
         ),
-        isAvailable: agentSettings === null || agentSettings.agents?.claude?.selected !== false,
+        isAvailable: !agentSettings || agentSettings.agents?.claude?.selected !== false,
       },
       gemini: {
         render: () => (
@@ -428,7 +428,7 @@ export function Toolbar({
             data-toolbar-item=""
           />
         ),
-        isAvailable: agentSettings === null || agentSettings.agents?.gemini?.selected !== false,
+        isAvailable: !agentSettings || agentSettings.agents?.gemini?.selected !== false,
       },
       codex: {
         render: () => (
@@ -440,7 +440,7 @@ export function Toolbar({
             data-toolbar-item=""
           />
         ),
-        isAvailable: agentSettings === null || agentSettings.agents?.codex?.selected !== false,
+        isAvailable: !agentSettings || agentSettings.agents?.codex?.selected !== false,
       },
       opencode: {
         render: () => (
@@ -452,7 +452,7 @@ export function Toolbar({
             data-toolbar-item=""
           />
         ),
-        isAvailable: agentSettings === null || agentSettings.agents?.opencode?.selected !== false,
+        isAvailable: !agentSettings || agentSettings.agents?.opencode?.selected !== false,
       },
       cursor: {
         render: () => (
@@ -464,7 +464,7 @@ export function Toolbar({
             data-toolbar-item=""
           />
         ),
-        isAvailable: agentSettings === null || agentSettings.agents?.cursor?.selected !== false,
+        isAvailable: !agentSettings || agentSettings.agents?.cursor?.selected !== false,
       },
       terminal: {
         render: () => (
