@@ -370,7 +370,8 @@ export function Toolbar({
 
   const hasAnySelectedAgent = useMemo(() => {
     if (!agentSettings) return true;
-    return Object.values(agentSettings.agents ?? {}).some((entry) => entry?.selected !== false);
+    const agents = agentSettings.agents ?? {};
+    return BUILT_IN_AGENT_IDS.some((id) => agents[id]?.selected !== false);
   }, [agentSettings]);
 
   const buttonRegistry = useMemo<
