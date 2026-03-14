@@ -77,7 +77,7 @@ function TerminalHeaderContentComponent({
               <StateIcon
                 className={cn(
                   "w-3 h-3",
-                  agentState === "working" && "animate-spin",
+                  agentState === "working" && "animate-spin-slow",
                   "motion-reduce:animate-none"
                 )}
                 aria-hidden="true"
