@@ -47,7 +47,7 @@ export function fireWatchNotification(
     priority: "high",
     title: "Agent task completed",
     message: `${label} finished its task`,
-    duration: 12000,
+    duration: 5000,
     correlationId: panelId,
     action: {
       label: "Go to terminal",
@@ -57,7 +57,7 @@ export function fireWatchNotification(
     },
     coalesce: {
       key: "agent:completed",
-      windowMs: 2000,
+      windowMs: 15000,
       buildTitle: () => "Agent tasks completed",
       buildMessage: (count) => `${count} agents finished their tasks`,
       buildInboxMessage: (count) => `${count} agents finished their tasks`,
