@@ -135,4 +135,55 @@ describe("TerminalWebGLManager", () => {
   it("detachCurrent is safe to call when no addon is attached", () => {
     expect(() => manager.detachCurrent()).not.toThrow();
   });
+
+  it("stale context loss callback does not detach new terminal's addon", () => {
+    let firstContextLossHandler: (() => void) | undefined;
+    let callCount = 0;
+    mockOnContextLoss.mockImplementation((handler: () => void) => {
+      callCount++;
+      if (callCount === 1) {
+        firstContextLossHandler = handler;
+      }
+      return { dispose: vi.fn() };
+    });
+
+    const managed1 = makeManagedTerminal();
+    const managed2 = makeManagedTerminal();
+
+    manager.attachToFocused("t1", managed1);
+    manager.attachToFocused("t2", managed2);
+
+    // Firing stale context loss from t1's addon should NOT detach t2
+    firstContextLossHandler!();
+    // t2 should still be attached — a new attach should be a no-op
+    manager.attachToFocused("t2", managed2);
+    expect(WebglAddonMock).toHaveBeenCalledTimes(2); // only 2, not 3
+  });
+
+  it("recovers cleanly after failed attach", () => {
+    const managed = makeManagedTerminal();
+    (managed.terminal.loadAddon as ReturnType<typeof vi.fn>).mockImplementationOnce(() => {
+      throw new Error("WebGL init failed");
+    });
+
+    manager.attachToFocused("t1", managed);
+
+    // Internal state should be clean — next attach should work
+    const managed2 = makeManagedTerminal();
+    manager.attachToFocused("t2", managed2);
+    expect(WebglAddonMock).toHaveBeenCalledTimes(2);
+    expect(managed2.terminal.loadAddon).toHaveBeenCalledTimes(1);
+  });
+
+  it("detachIfCurrent only detaches when id matches", () => {
+    const managed = makeManagedTerminal();
+    manager.attachToFocused("t1", managed);
+
+    manager.detachIfCurrent("t2"); // should be no-op
+    manager.attachToFocused("t1", managed); // should be no-op (still attached)
+    expect(WebglAddonMock).toHaveBeenCalledTimes(1);
+
+    manager.detachIfCurrent("t1"); // should detach
+    expect(mockAddonDispose).toHaveBeenCalled();
+  });
 });

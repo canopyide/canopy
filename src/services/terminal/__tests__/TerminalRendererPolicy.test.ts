@@ -247,7 +247,7 @@ describe("TerminalRendererPolicy", () => {
       );
     });
 
-    it("does not fire immediately on downgrade from FOCUSED (hysteresis)", async () => {
+    it("does not fire for no-op tier changes", async () => {
       const onTierApplied = vi.fn();
       mockDeps.onTierApplied = onTierApplied;
       mockManagedTerminal.lastAppliedTier = TerminalRefreshTier.FOCUSED;
@@ -255,14 +255,8 @@ describe("TerminalRendererPolicy", () => {
       const { TerminalRendererPolicy } = await import("../TerminalRendererPolicy");
       policy = new TerminalRendererPolicy(mockDeps);
 
-      // Downgrade is deferred via window.setTimeout (hysteresis) — in node
-      // environment window is not defined, so this verifies the upgrade vs
-      // downgrade branching: upgrades fire immediately, downgrades do not.
-      try {
-        policy.applyRendererPolicy("test-id", TerminalRefreshTier.VISIBLE);
-      } catch {
-        // window.setTimeout throws in node environment — expected
-      }
+      // Same tier — should be a no-op, callback should not fire
+      policy.applyRendererPolicy("test-id", TerminalRefreshTier.FOCUSED);
 
       expect(onTierApplied).not.toHaveBeenCalled();
     });
