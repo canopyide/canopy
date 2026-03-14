@@ -1181,8 +1181,10 @@ describe("built-in workflows from disk", () => {
       const filePath = path.join(WORKFLOWS_DIR, file);
       const loaded = await loader.loadFromFile(filePath, "built-in");
       for (const node of loaded!.definition.nodes) {
+        if (node.type !== "action") continue;
+        const config = node.config as { actionId: string };
         expect(
-          node.config.actionId,
+          config.actionId,
           `${file}: node "${node.id}" uses removed action "terminal.executeCommand"`
         ).not.toBe("terminal.executeCommand");
       }
@@ -1215,9 +1217,11 @@ describe("built-in workflows from disk", () => {
       const filePath = path.join(WORKFLOWS_DIR, file);
       const loaded = await loader.loadFromFile(filePath, "built-in");
       for (const node of loaded!.definition.nodes) {
+        if (node.type !== "action") continue;
+        const config = node.config as { actionId: string };
         expect(
-          knownActionIds.has(node.config.actionId),
-          `${file}: node "${node.id}" uses unknown actionId "${node.config.actionId}"`
+          knownActionIds.has(config.actionId),
+          `${file}: node "${node.id}" uses unknown actionId "${config.actionId}"`
         ).toBe(true);
       }
     }
