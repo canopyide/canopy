@@ -339,15 +339,22 @@ export class WorkflowEngine {
   ): void {
     const key = `${run.runId}::${nodeId}`;
 
-    const resolver = (approved: boolean, feedback?: string) => {
-      void this.handleApprovalResolution(run.runId, nodeId, approved, feedback);
-    };
-
-    this.pendingApprovals.set(key, { resolve: resolver });
+    this.pendingApprovals.set(key, {
+      resolve: (_approved: boolean, _feedback?: string) => {
+        // Placeholder — resolveApproval() calls handleApprovalResolution directly
+      },
+    });
 
     if (timeoutMs) {
       const handle = setTimeout(() => {
-        resolver(false, "Approval timed out");
+        this.pendingApprovals.delete(key);
+        void this.handleApprovalResolution(
+          run.runId,
+          nodeId,
+          false,
+          "Approval timed out",
+          true
+        );
       }, timeoutMs);
       this.approvalTimeouts.set(key, handle);
     }
@@ -435,11 +442,11 @@ export class WorkflowEngine {
     feedback?: string
   ): Promise<void> {
     const key = `${runId}::${nodeId}`;
-    const pending = this.pendingApprovals.get(key);
-    if (!pending) {
+    if (!this.pendingApprovals.has(key)) {
       throw new Error(`No pending approval found for run ${runId}, node ${nodeId}`);
     }
-    pending.resolve(approved, feedback);
+    this.pendingApprovals.delete(key);
+    await this.handleApprovalResolution(runId, nodeId, approved, feedback);
   }
 
   /**
