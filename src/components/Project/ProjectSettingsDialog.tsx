@@ -3,6 +3,7 @@ import {
   Terminal,
   Key,
   FolderX,
+  Bot,
   Plus,
   Trash2,
   ChevronUp,
@@ -77,7 +78,7 @@ interface EnvVar {
   value: string;
 }
 
-type ProjectSettingsTab = "general" | "context" | "automation" | "recipes" | "commands";
+type ProjectSettingsTab = "general" | "context" | "automation" | "recipes" | "commands" | "agent";
 
 function formatBytes(bytes: number): string {
   if (bytes === 0) return "0 B";
@@ -127,6 +128,7 @@ export function ProjectSettingsDialog({ projectId, isOpen, onClose }: ProjectSet
   const [isTestingConfig, setIsTestingConfig] = useState(false);
   const [branchPrefixMode, setBranchPrefixMode] = useState<"none" | "username" | "custom">("none");
   const [branchPrefixCustom, setBranchPrefixCustom] = useState<string>("");
+  const [agentInstructions, setAgentInstructions] = useState<string>("");
   const fileInputRef = useRef<HTMLInputElement>(null);
   const initialSnapshotRef = useRef<ProjectSettingsSnapshot | null>(null);
   const [showUnsavedChangesDialog, setShowUnsavedChangesDialog] = useState(false);
@@ -173,7 +175,8 @@ export function ProjectSettingsDialog({ projectId, isOpen, onClose }: ProjectSet
       copyTreeSettings,
       branchPrefixMode,
       branchPrefixCustom,
-      devServerLoadTimeout
+      devServerLoadTimeout,
+      agentInstructions
     );
   }, [
     name,
@@ -189,6 +192,7 @@ export function ProjectSettingsDialog({ projectId, isOpen, onClose }: ProjectSet
     copyTreeSettings,
     branchPrefixMode,
     branchPrefixCustom,
+    agentInstructions,
     currentProject,
   ]);
 
@@ -280,6 +284,7 @@ export function ProjectSettingsDialog({ projectId, isOpen, onClose }: ProjectSet
       const initialCopyTreeSettings = settings.copyTreeSettings || {};
       const initialBranchPrefixMode = settings.branchPrefixMode ?? "none";
       const initialBranchPrefixCustom = settings.branchPrefixCustom ?? "";
+      const initialAgentInstructions = settings.agentInstructions ?? "";
 
       setName(currentProject.name);
       setEmoji(currentProject.emoji || "🌲");
@@ -294,6 +299,7 @@ export function ProjectSettingsDialog({ projectId, isOpen, onClose }: ProjectSet
       setCopyTreeSettings(initialCopyTreeSettings);
       setBranchPrefixMode(initialBranchPrefixMode);
       setBranchPrefixCustom(initialBranchPrefixCustom);
+      setAgentInstructions(initialAgentInstructions);
 
       initialSnapshotRef.current = createProjectSettingsSnapshot(
         currentProject.name,
@@ -308,7 +314,8 @@ export function ProjectSettingsDialog({ projectId, isOpen, onClose }: ProjectSet
         initialCopyTreeSettings,
         initialBranchPrefixMode,
         initialBranchPrefixCustom,
-        initialDevServerLoadTimeout
+        initialDevServerLoadTimeout,
+        initialAgentInstructions
       );
 
       setIsInitialized(true);
@@ -329,6 +336,7 @@ export function ProjectSettingsDialog({ projectId, isOpen, onClose }: ProjectSet
       setSaveError(null);
       setBranchPrefixMode("none");
       setBranchPrefixCustom("");
+      setAgentInstructions("");
       hasLoadedRecipes.current = false;
       setActiveTab("general");
       initialSnapshotRef.current = null;
@@ -547,6 +555,7 @@ export function ProjectSettingsDialog({ projectId, isOpen, onClose }: ProjectSet
         branchPrefixMode: effectivePrefixMode !== "none" ? effectivePrefixMode : undefined,
         branchPrefixCustom:
           effectivePrefixMode === "custom" ? sanitizedBranchPrefixCustom : undefined,
+        agentInstructions: agentInstructions.trim() || undefined,
         insecureEnvironmentVariables: undefined,
         unresolvedSecureEnvironmentVariables: undefined,
       });
@@ -578,7 +587,8 @@ export function ProjectSettingsDialog({ projectId, isOpen, onClose }: ProjectSet
         hasCopyTreeSettings ? sanitizedCopyTreeSettings : {},
         branchPrefixMode,
         sanitizedBranchPrefixCustom,
-        devServerLoadTimeout
+        devServerLoadTimeout,
+        agentInstructions
       );
 
       requestClose({ bypassDirty: true });
@@ -740,6 +750,7 @@ export function ProjectSettingsDialog({ projectId, isOpen, onClose }: ProjectSet
     automation: "Automation",
     recipes: "Recipes",
     commands: "Commands",
+    agent: "Agent",
   };
 
   return (
@@ -789,6 +800,13 @@ export function ProjectSettingsDialog({ projectId, isOpen, onClose }: ProjectSet
               icon={<Command className="w-4 h-4" />}
             >
               Commands
+            </NavButton>
+            <NavButton
+              active={activeTab === "agent"}
+              onClick={() => setActiveTab("agent")}
+              icon={<Bot className="w-4 h-4" />}
+            >
+              Agent
             </NavButton>
           </div>
 
@@ -2265,6 +2283,49 @@ export function ProjectSettingsDialog({ projectId, isOpen, onClose }: ProjectSet
                       overrides={commandOverrides}
                       onChange={setCommandOverrides}
                     />
+                  </div>
+
+                  {/* Agent Tab */}
+                  <div className={activeTab === "agent" ? "" : "hidden"}>
+                    <div className="space-y-6">
+                      <div>
+                        <h4 className="text-sm font-medium text-canopy-text mb-1">
+                          Agent Instructions
+                        </h4>
+                        <p className="text-xs text-canopy-text/60 mb-3">
+                          These instructions are automatically prepended to the initial prompt of
+                          every new agent session in this project. Stored in{" "}
+                          <code className="text-[11px] bg-canopy-bg/80 px-1 py-0.5 rounded">
+                            .canopy/settings.json
+                          </code>{" "}
+                          — do not include secrets.
+                        </p>
+                        <textarea
+                          value={agentInstructions}
+                          onChange={(e) => setAgentInstructions(e.target.value)}
+                          placeholder="e.g., Always use TypeScript strict mode. Follow our naming conventions..."
+                          rows={8}
+                          className="w-full rounded-md border border-canopy-border bg-canopy-input px-3 py-2 text-sm text-canopy-text placeholder:text-canopy-text/40 focus:outline-none focus:ring-2 focus:ring-canopy-accent resize-y font-mono"
+                        />
+                        <div className="flex items-center justify-between mt-1.5">
+                          <p className="text-xs text-canopy-text/40">
+                            Newlines are collapsed to spaces when passed to the agent CLI.
+                          </p>
+                          <span
+                            className={cn(
+                              "text-xs tabular-nums",
+                              agentInstructions.length >= 5000
+                                ? "text-red-500"
+                                : agentInstructions.length >= 4000
+                                  ? "text-amber-500"
+                                  : "text-canopy-text/40"
+                            )}
+                          >
+                            {agentInstructions.length.toLocaleString()} / 5,000
+                          </span>
+                        </div>
+                      </div>
+                    </div>
                   </div>
                 </>
               )}
