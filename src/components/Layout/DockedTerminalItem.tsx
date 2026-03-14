@@ -272,7 +272,7 @@ export function DockedTerminalItem({ terminal }: DockedTerminalItemProps) {
                       <StateIcon
                         className={cn(
                           "w-3.5 h-3.5",
-                          agentState === "working" && "animate-spin",
+                          agentState === "working" && "animate-spin-slow",
                           "motion-reduce:animate-none"
                         )}
                         aria-hidden="true"
