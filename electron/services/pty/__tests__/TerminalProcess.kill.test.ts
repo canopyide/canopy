@@ -2,7 +2,7 @@ import { beforeEach, describe, expect, it, vi } from "vitest";
 import type { IPty } from "node-pty";
 import { TerminalProcess } from "../TerminalProcess.js";
 
-type SpawnFn = (file: string, args: string[], options: any) => IPty;
+type SpawnFn = (file: string, args: string[], options: Record<string, unknown>) => IPty;
 
 let spawnMock: ReturnType<typeof vi.fn<SpawnFn>>;
 
@@ -59,7 +59,7 @@ function createTerminal(options?: Partial<TerminalProcessOptions>): TerminalProc
         handleActivityState: () => {},
         updateAgentState: () => {},
         emitAgentKilled: () => {},
-      } as any,
+      } as unknown as ConstructorParameters<typeof TerminalProcess>[3]["agentStateService"],
       ptyPool: null,
       processTreeCache: null,
     }

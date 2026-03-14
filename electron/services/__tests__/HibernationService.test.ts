@@ -6,8 +6,8 @@ const storeMock = vi.hoisted(() => ({
 }));
 
 const projectStoreMock = vi.hoisted(() => ({
-  getCurrentProjectId: vi.fn(() => null),
-  getAllProjects: vi.fn(() => []),
+  getCurrentProjectId: vi.fn<() => string | null>(() => null),
+  getAllProjects: vi.fn<() => Array<{ id: string; name: string; lastOpened: number }>>(() => []),
   clearProjectState: vi.fn(async () => {}),
 }));
 
@@ -122,7 +122,7 @@ describe("HibernationService", () => {
     const { HibernationService: FreshService } = await import("../HibernationService.js");
     const service = new FreshService();
 
-    await (service as any).checkAndHibernate();
+    await (service as unknown as { checkAndHibernate(): Promise<void> }).checkAndHibernate();
 
     expect(gracefulKillMock).toHaveBeenCalledWith("proj-1");
     expect(projectStoreMock.clearProjectState).not.toHaveBeenCalled();
