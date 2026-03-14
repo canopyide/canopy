@@ -81,13 +81,13 @@ function createTitleHandler(
 
 describe("title state hysteresis (#3217)", () => {
   let managed: ManagedState;
-  let reportFn: ReturnType<typeof vi.fn>;
+  let reportFn: ReturnType<typeof vi.fn<[state: "working" | "waiting"], void>>;
   let handler: (title: string) => void;
 
   beforeEach(() => {
     vi.useFakeTimers();
     managed = {};
-    reportFn = vi.fn<(state: "working" | "waiting") => void>();
+    reportFn = vi.fn<[state: "working" | "waiting"], void>();
     handler = createTitleHandler(GEMINI_PATTERNS, managed, reportFn);
   });
 
@@ -144,7 +144,7 @@ describe("title state hysteresis (#3217)", () => {
   });
 
   it("handles rapid spinner alternation without flooding", () => {
-    for (let i = 0; i < 30; i++) {
+    for (let i = 0; i < 31; i++) {
       handler(i % 2 === 0 ? "✦ Frame" : "◇ Frame");
     }
     expect(reportFn).toHaveBeenCalledTimes(1);
