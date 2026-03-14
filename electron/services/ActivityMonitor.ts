@@ -901,6 +901,7 @@ export class ActivityMonitor {
         count++;
       }
     }
+    // eslint-disable-next-line no-control-regex
     if (data.includes("\x1b[2K") || data.includes("\x1b[K") || /\u001b\[\d*A/.test(data)) {
       count++;
     }
@@ -928,6 +929,7 @@ export class ActivityMonitor {
       !hasRewrite &&
       !data.includes("\x1b[2K") &&
       !data.includes("\x1b[K") &&
+      // eslint-disable-next-line no-control-regex
       !/\u001b\[\d*A/.test(data)
     ) {
       return false;
