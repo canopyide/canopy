@@ -11,6 +11,23 @@ import {
   restoreSessionFromFile,
 } from "../terminalSessionPersistence.js";
 
+function createMockHeadless(bufferType: "normal" | "alternate" = "normal") {
+  let currentType = bufferType;
+  const writeFn = vi.fn().mockImplementation((data: string) => {
+    if (data === "\x1b[?1049l") currentType = "normal";
+  });
+  return {
+    write: writeFn,
+    buffer: {
+      get active() {
+        return { type: currentType, length: 100 };
+      },
+      normal: { baseY: 0, cursorY: 0, length: 100 },
+    },
+    registerMarker: vi.fn().mockReturnValue({ line: 0, dispose: vi.fn() }),
+  };
+}
+
 describe("terminalSessionPersistence", () => {
   let userDataDir: string;
   const previousUserData = process.env.CANOPY_USER_DATA;
@@ -45,24 +62,66 @@ describe("terminalSessionPersistence", () => {
     expect(fs.existsSync(asyncPath)).toBe(false);
   });
 
-  it("restores valid snapshot content but ignores oversized snapshots", async () => {
+  it("restores valid snapshot and injects separator banner", async () => {
     const sessionDir = path.join(userDataDir, "terminal-sessions");
     await fsp.mkdir(sessionDir, { recursive: true });
 
     const validPath = path.join(sessionDir, "term-valid.restore");
-    const hugePath = path.join(sessionDir, "term-huge.restore");
-
     await fsp.writeFile(validPath, "hello world", "utf8");
+
+    const headless = createMockHeadless();
+    const result = restoreSessionFromFile(headless as never, "term-valid");
+
+    expect(result.restored).toBe(true);
+    expect(result.bannerStartMarker).not.toBeNull();
+    expect(result.bannerEndMarker).not.toBeNull();
+
+    expect(headless.write).toHaveBeenCalledWith("hello world");
+    const bannerCall = headless.write.mock.calls.find((c: string[]) =>
+      c[0].includes("Session restored")
+    );
+    expect(bannerCall).toBeDefined();
+  });
+
+  it("ignores oversized snapshots and returns not restored", async () => {
+    const sessionDir = path.join(userDataDir, "terminal-sessions");
+    await fsp.mkdir(sessionDir, { recursive: true });
+
+    const hugePath = path.join(sessionDir, "term-huge.restore");
     await fsp.writeFile(hugePath, "y".repeat(SESSION_SNAPSHOT_MAX_BYTES + 100), "utf8");
 
-    const headless = {
-      write: vi.fn(),
-    };
+    const headless = createMockHeadless();
+    const result = restoreSessionFromFile(headless as never, "term-huge");
 
-    restoreSessionFromFile(headless as never, "term-valid");
-    restoreSessionFromFile(headless as never, "term-huge");
+    expect(result.restored).toBe(false);
+    expect(headless.write).not.toHaveBeenCalled();
+  });
 
-    expect(headless.write).toHaveBeenCalledTimes(1);
-    expect(headless.write).toHaveBeenCalledWith("hello world");
+  it("returns not restored when no session file exists", () => {
+    const headless = createMockHeadless();
+    const result = restoreSessionFromFile(headless as never, "nonexistent");
+
+    expect(result.restored).toBe(false);
+    expect(result.bannerStartMarker).toBeNull();
+    expect(result.bannerEndMarker).toBeNull();
+    expect(headless.write).not.toHaveBeenCalled();
+  });
+
+  it("handles alternate screen by exiting and showing TUI explanation", async () => {
+    const sessionDir = path.join(userDataDir, "terminal-sessions");
+    await fsp.mkdir(sessionDir, { recursive: true });
+
+    const sessionPath = path.join(sessionDir, "term-alt.restore");
+    await fsp.writeFile(sessionPath, "alt-screen-content", "utf8");
+
+    const headless = createMockHeadless("alternate");
+    const result = restoreSessionFromFile(headless as never, "term-alt");
+
+    expect(result.restored).toBe(true);
+
+    const writeArgs = headless.write.mock.calls.map((c: string[]) => c[0]);
+    expect(writeArgs).toContain("\x1b[?1049l");
+    const tuiBanner = writeArgs.find((a: string) => a.includes("full-screen app"));
+    expect(tuiBanner).toBeDefined();
   });
 });
