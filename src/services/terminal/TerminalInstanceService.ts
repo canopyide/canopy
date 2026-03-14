@@ -643,6 +643,7 @@ class TerminalInstanceService {
         }
       }
     }
+    managed.terminal.blur();
     managed.lastDetachAt = Date.now();
     managed.isDetached = true;
   }
@@ -666,6 +667,7 @@ class TerminalInstanceService {
       }
     }
 
+    managed.terminal.blur();
     managed.lastDetachAt = Date.now();
   }
 
