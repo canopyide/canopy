@@ -78,7 +78,7 @@ class TerminalInstanceService {
         if (tier === TerminalRefreshTier.FOCUSED) {
           this.webGLManager.attachToFocused(id, managed);
         } else {
-          this.webGLManager.detachCurrent();
+          this.webGLManager.detachIfCurrent(id);
         }
       },
     });

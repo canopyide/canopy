@@ -16,9 +16,11 @@ export class TerminalWebGLManager {
 
     this.detachCurrent();
 
+    let addon: WebglAddon | null = null;
+    let clDisposable: IDisposable | null = null;
     try {
-      const addon = new WebglAddon();
-      this.contextLossDisposable = addon.onContextLoss(() => {
+      addon = new WebglAddon();
+      clDisposable = addon.onContextLoss(() => {
         if (this.currentId === id && this.currentAddon === addon) {
           this.detachCurrent();
         }
@@ -26,8 +28,12 @@ export class TerminalWebGLManager {
       managed.terminal.loadAddon(addon);
       this.currentId = id;
       this.currentAddon = addon;
+      this.contextLossDisposable = clDisposable;
     } catch {
-      // WebGL unavailable (CI, older GPU, context limit) — stay on DOM renderer
+      // WebGL unavailable (CI, older GPU, context limit) — stay on DOM renderer.
+      // Clean up partially-constructed addon to prevent leaks.
+      try { clDisposable?.dispose(); } catch { /* ignore */ }
+      try { addon?.dispose(); } catch { /* ignore */ }
     }
   }
 
@@ -49,6 +55,12 @@ export class TerminalWebGLManager {
       this.currentAddon = null;
     }
     this.currentId = null;
+  }
+
+  detachIfCurrent(id: string): void {
+    if (this.currentId === id) {
+      this.detachCurrent();
+    }
   }
 
   onTerminalDestroyed(id: string): void {
