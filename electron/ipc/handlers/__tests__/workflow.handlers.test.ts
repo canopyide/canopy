@@ -252,9 +252,7 @@ describe("registerWorkflowHandlers", () => {
       mockGetWorkflowEngine.mockReturnValue(mockEngine);
 
       registerWorkflowHandlers(deps);
-      const result = (await getHandler("workflow:list-runs")({})) as Array<
-        Record<string, unknown>
-      >;
+      const result = (await getHandler("workflow:list-runs")({})) as Array<Record<string, unknown>>;
 
       expect(result).toHaveLength(2);
       expect(Array.isArray(result[0].scheduledNodes)).toBe(true);
