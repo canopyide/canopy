@@ -1,12 +1,18 @@
 import { describe, it, expect, vi, beforeEach } from "vitest";
 import type { ManagedTerminal } from "../types";
 
-const mockAddonDispose = vi.fn();
-const mockContextLossDispose = vi.fn();
-const mockOnContextLoss = vi.fn((_handler: () => void) => ({ dispose: mockContextLossDispose }));
+let mockAddonDispose: ReturnType<typeof vi.fn>;
+let mockContextLossDispose: ReturnType<typeof vi.fn>;
+let mockOnContextLoss: ReturnType<typeof vi.fn>;
+
+function createMockAddon() {
+  return { dispose: mockAddonDispose, onContextLoss: mockOnContextLoss };
+}
 
 vi.mock("@xterm/addon-webgl", () => ({
-  WebglAddon: vi.fn(),
+  WebglAddon: vi.fn(function () {
+    return createMockAddon();
+  }),
 }));
 
 function makeManagedTerminal(overrides: Partial<ManagedTerminal> = {}): ManagedTerminal {
@@ -24,14 +30,17 @@ describe("TerminalWebGLManager", () => {
   let WebglAddonMock: ReturnType<typeof vi.fn>;
 
   beforeEach(async () => {
+    mockAddonDispose = vi.fn();
+    mockContextLossDispose = vi.fn();
+    mockOnContextLoss = vi.fn((_handler: () => void) => ({ dispose: mockContextLossDispose }));
+
     vi.clearAllMocks();
 
     const webglMod = await import("@xterm/addon-webgl");
     WebglAddonMock = webglMod.WebglAddon as unknown as ReturnType<typeof vi.fn>;
-    WebglAddonMock.mockImplementation(() => ({
-      dispose: mockAddonDispose,
-      onContextLoss: mockOnContextLoss,
-    }));
+    WebglAddonMock.mockImplementation(function () {
+      return createMockAddon();
+    });
 
     const mod = await import("../TerminalWebGLManager");
     manager = new mod.TerminalWebGLManager();
