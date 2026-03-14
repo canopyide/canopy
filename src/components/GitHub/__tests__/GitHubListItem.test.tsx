@@ -70,16 +70,16 @@ afterEach(() => {
 });
 
 describe("GitHubListItem", () => {
-  it("renders issue title as a span", () => {
+  it("renders issue title as a clickable button", () => {
     render(<GitHubListItem item={baseIssue} type="issue" />);
     const title = screen.getByText("Fix the thing");
-    expect(title.tagName).toBe("SPAN");
+    expect(title.tagName).toBe("BUTTON");
   });
 
-  it("renders PR title as a span", () => {
+  it("renders PR title as a clickable button", () => {
     render(<GitHubListItem item={basePR} type="pr" />);
     const title = screen.getByText("Add new feature");
-    expect(title.tagName).toBe("SPAN");
+    expect(title.tagName).toBe("BUTTON");
   });
 
   it("renders author and time in metadata row", () => {
