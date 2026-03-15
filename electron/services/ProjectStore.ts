@@ -863,6 +863,7 @@ export class ProjectStore {
   async getProjectSettings(projectId: string): Promise<ProjectSettings> {
     const filePath = this.getSettingsFilePath(projectId);
     if (!filePath || !existsSync(filePath)) {
+      this.notificationOverridesCache.delete(projectId);
       return { runCommands: [] };
     }
 
@@ -1024,6 +1025,7 @@ export class ProjectStore {
       return settings;
     } catch (error) {
       console.error(`[ProjectStore] Failed to load settings for ${projectId}:`, error);
+      this.notificationOverridesCache.delete(projectId);
       try {
         const quarantinePath = `${filePath}.corrupted`;
         await resilientRename(filePath, quarantinePath);
