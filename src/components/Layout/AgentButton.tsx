@@ -115,7 +115,11 @@ export function AgentButton({
     }
 
     if (actionId === "settings:agents") {
-      onOpenSettings();
+      void actionService.dispatch(
+        "app.settings.openTab",
+        { tab: "agents", subtab: type },
+        { source: "context-menu" }
+      );
     }
   };
 
