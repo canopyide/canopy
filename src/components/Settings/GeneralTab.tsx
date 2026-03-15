@@ -268,9 +268,7 @@ export function GeneralTab({
                 <span className="text-[10px] font-medium px-1.5 py-0.5 rounded-full bg-canopy-accent/15 text-canopy-accent leading-none">
                   Beta
                 </span>
-                <span className="text-xs text-canopy-text/40 font-mono ml-auto">
-                  v{appVersion}
-                </span>
+                <span className="text-xs text-canopy-text/40 font-mono ml-auto">v{appVersion}</span>
               </div>
               <p className="text-xs text-canopy-text/50 leading-relaxed">
                 An orchestration board for AI coding agents. Start agents on worktrees, monitor
@@ -416,9 +414,7 @@ export function GeneralTab({
               <SettingsSwitchCard
                 icon={Moon}
                 title={
-                  hibernationConfig.enabled
-                    ? "Auto-Hibernation Enabled"
-                    : "Enable Auto-Hibernation"
+                  hibernationConfig.enabled ? "Auto-Hibernation Enabled" : "Enable Auto-Hibernation"
                 }
                 subtitle={
                   hibernationConfig.enabled
