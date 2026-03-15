@@ -46,8 +46,9 @@ export function AgentSelectorDropdown({
   })();
 
   useEffect(() => {
-    setActiveIndex(0);
-  }, [filterQuery]);
+    const q = filterQuery.trim();
+    setActiveIndex(q && items.length > 1 ? 1 : 0);
+  }, [filterQuery]); // eslint-disable-line react-hooks/exhaustive-deps -- items derived from filterQuery
 
   useEffect(() => {
     activeItemRef.current?.scrollIntoView({ block: "nearest" });
@@ -97,7 +98,6 @@ export function AgentSelectorDropdown({
       <PopoverTrigger asChild>
         <button
           type="button"
-          role="combobox"
           aria-expanded={open}
           aria-haspopup="listbox"
           className={cn(
@@ -161,6 +161,7 @@ export function AgentSelectorDropdown({
             onChange={(e) => setFilterQuery(e.target.value)}
             onKeyDown={handleKeyDown}
             role="combobox"
+            aria-label="Filter agents"
             aria-expanded={open}
             aria-autocomplete="list"
             aria-controls="agent-selector-list"
