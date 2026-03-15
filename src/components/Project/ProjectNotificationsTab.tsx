@@ -42,10 +42,10 @@ export function ProjectNotificationsTab({ overrides, onChange }: ProjectNotifica
     [overrides, onChange]
   );
 
-  const clearOverride = useCallback(
-    (key: keyof NotificationSettings) => {
+  const clearOverrides = useCallback(
+    (...keys: (keyof NotificationSettings)[]) => {
       const next = { ...overrides };
-      delete next[key];
+      for (const key of keys) delete next[key];
       onChange(next);
     },
     [overrides, onChange]
@@ -82,7 +82,7 @@ export function ProjectNotificationsTab({ overrides, onChange }: ProjectNotifica
             isOverridden={overrides.completedEnabled !== undefined}
             onToggleOverride={(on) => {
               if (on) setOverride("completedEnabled", globalSettings.completedEnabled);
-              else clearOverride("completedEnabled");
+              else clearOverrides("completedEnabled");
             }}
           >
             <SettingsCheckbox
@@ -101,9 +101,11 @@ export function ProjectNotificationsTab({ overrides, onChange }: ProjectNotifica
             onToggleOverride={(on) => {
               if (on) setOverride("waitingEnabled", globalSettings.waitingEnabled);
               else {
-                clearOverride("waitingEnabled");
-                clearOverride("waitingEscalationEnabled");
-                clearOverride("waitingEscalationDelayMs");
+                clearOverrides(
+                  "waitingEnabled",
+                  "waitingEscalationEnabled",
+                  "waitingEscalationDelayMs"
+                );
               }
             }}
           >
@@ -127,8 +129,7 @@ export function ProjectNotificationsTab({ overrides, onChange }: ProjectNotifica
                         globalSettings.waitingEscalationEnabled
                       );
                     else {
-                      clearOverride("waitingEscalationEnabled");
-                      clearOverride("waitingEscalationDelayMs");
+                      clearOverrides("waitingEscalationEnabled", "waitingEscalationDelayMs");
                     }
                   }}
                 >
@@ -151,7 +152,7 @@ export function ProjectNotificationsTab({ overrides, onChange }: ProjectNotifica
                           "waitingEscalationDelayMs",
                           globalSettings.waitingEscalationDelayMs
                         );
-                      else clearOverride("waitingEscalationDelayMs");
+                      else clearOverrides("waitingEscalationDelayMs");
                     }}
                   >
                     <select
@@ -179,7 +180,7 @@ export function ProjectNotificationsTab({ overrides, onChange }: ProjectNotifica
             isOverridden={overrides.failedEnabled !== undefined}
             onToggleOverride={(on) => {
               if (on) setOverride("failedEnabled", globalSettings.failedEnabled);
-              else clearOverride("failedEnabled");
+              else clearOverrides("failedEnabled");
             }}
           >
             <SettingsCheckbox
@@ -206,8 +207,7 @@ export function ProjectNotificationsTab({ overrides, onChange }: ProjectNotifica
             onToggleOverride={(on) => {
               if (on) setOverride("soundEnabled", globalSettings.soundEnabled);
               else {
-                clearOverride("soundEnabled");
-                clearOverride("soundFile");
+                clearOverrides("soundEnabled", "soundFile");
               }
             }}
           >
@@ -227,7 +227,7 @@ export function ProjectNotificationsTab({ overrides, onChange }: ProjectNotifica
               isOverridden={overrides.soundFile !== undefined}
               onToggleOverride={(on) => {
                 if (on) setOverride("soundFile", globalSettings.soundFile);
-                else clearOverride("soundFile");
+                else clearOverrides("soundFile");
               }}
             >
               <div className="flex items-center gap-2">
