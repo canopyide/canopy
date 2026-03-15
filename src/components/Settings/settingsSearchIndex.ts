@@ -937,9 +937,12 @@ export const SETTINGS_SEARCH_INDEX: SettingsSearchEntry[] = [
       "api key",
       "secret",
       "token",
+      "password",
       "PATH",
       "inject",
       "terminal",
+      "encryption",
+      "dotenv",
     ],
   },
 ];
