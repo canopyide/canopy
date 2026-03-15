@@ -57,6 +57,10 @@ export class ProjectMcpManager {
         });
       });
 
+      child.stdout?.on("data", () => {
+        // Consume stdout to prevent pipe buffer from filling
+      });
+
       child.stderr?.on("data", () => {
         // Consume stderr to prevent pipe buffer from filling
       });

@@ -45,7 +45,7 @@ export function McpServersTab({ servers, onChange, runStates }: McpServersTabPro
       originalName: name,
       name,
       command: config.command,
-      args: (config.args ?? []).join(" "),
+      args: (config.args ?? []).join("\n"),
       env: config.env
         ? Object.entries(config.env)
             .map(([k, v]) => `${k}=${v}`)
@@ -83,7 +83,10 @@ export function McpServersTab({ servers, onChange, runStates }: McpServersTabPro
       command: editing.command.trim(),
     };
 
-    const args = editing.args.trim().split(/\s+/).filter(Boolean);
+    const args = editing.args
+      .split("\n")
+      .map((a) => a.trim())
+      .filter(Boolean);
     if (args.length > 0) config.args = args;
 
     if (editing.env.trim()) {
@@ -232,14 +235,14 @@ export function McpServersTab({ servers, onChange, runStates }: McpServersTabPro
 
             <div>
               <label className="text-xs text-canopy-text/60 block mb-1">
-                Arguments <span className="text-canopy-text/40">(space-separated)</span>
+                Arguments <span className="text-canopy-text/40">(one per line)</span>
               </label>
-              <input
-                type="text"
+              <textarea
                 value={editing.args}
                 onChange={(e) => setEditing({ ...editing, args: e.target.value })}
-                placeholder="e.g., -y @modelcontextprotocol/server-postgres"
-                className="w-full rounded-md border border-canopy-border bg-canopy-sidebar px-3 py-1.5 text-sm text-canopy-text placeholder:text-canopy-text/40 focus:outline-none focus:ring-2 focus:ring-canopy-accent font-mono"
+                placeholder={"-y\n@modelcontextprotocol/server-postgres"}
+                rows={3}
+                className="w-full rounded-md border border-canopy-border bg-canopy-sidebar px-3 py-1.5 text-sm text-canopy-text placeholder:text-canopy-text/40 focus:outline-none focus:ring-2 focus:ring-canopy-accent font-mono resize-y"
               />
             </div>
 
