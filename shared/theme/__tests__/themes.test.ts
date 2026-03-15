@@ -322,6 +322,41 @@ describe("built-in schemes — Highlands theme", () => {
   });
 });
 
+describe("built-in schemes — Namib theme", () => {
+  const namib = BUILT_IN_APP_SCHEMES.find((s) => s.id === "namib")!;
+
+  it("exists and is a dark builtin theme", () => {
+    expect(namib).toBeDefined();
+    expect(namib.type).toBe("dark");
+    expect(namib.builtin).toBe(true);
+  });
+
+  it("has the correct accent and canvas colors", () => {
+    expect(namib.tokens["accent-primary"]).toBe("#3F9366");
+    expect(namib.tokens["surface-canvas"]).toBe("#1C0F0B");
+  });
+
+  it("has the scarab cyan keyword color", () => {
+    expect(namib.tokens["syntax-keyword"]).toBe("#48C0B2");
+  });
+
+  it("derives terminal-black/white/bright-black from surfaces and activity", () => {
+    expect(namib.tokens["terminal-black"]).toBe("#1C0F0B");
+    expect(namib.tokens["terminal-white"]).toBe("#E5E0D8");
+    expect(namib.tokens["terminal-bright-black"]).toBe("#4A3530");
+  });
+
+  it("produces all 79 required token keys", () => {
+    for (const key of APP_THEME_TOKEN_KEYS) {
+      expect(namib.tokens).toHaveProperty(key, expect.any(String));
+    }
+  });
+
+  it("has no contrast warnings", () => {
+    expect(getAppThemeWarnings(namib)).toEqual([]);
+  });
+});
+
 describe("normalizeAppColorScheme", () => {
   it("uses a light fallback base for partial light themes", () => {
     const scheme = normalizeAppColorScheme({
