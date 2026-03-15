@@ -48,6 +48,17 @@ export function EnvironmentSettingsTab() {
   const [rowErrors, setRowErrors] = useState<Record<string, string>>({});
   const [isDirty, setIsDirty] = useState(false);
 
+  // Force-reset draft when the active project changes, even if dirty
+  useEffect(() => {
+    setEnvRows(envVarsFromRecord(settings?.environmentVariables));
+    setVisibleEnvVars(new Set());
+    setRowErrors({});
+    setSaveError(null);
+    setIsDirty(false);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [currentProject?.id]);
+
+  // Re-sync from store when not editing (e.g. external save)
   useEffect(() => {
     if (!isDirty) {
       setEnvRows(envVarsFromRecord(settings?.environmentVariables));
@@ -55,13 +66,14 @@ export function EnvironmentSettingsTab() {
       setRowErrors({});
       setSaveError(null);
     }
-  }, [currentProject?.id, settings?.environmentVariables, isDirty]);
+  }, [settings?.environmentVariables, isDirty]);
 
   const updateRow = useCallback((index: number, field: "key" | "value", value: string) => {
     setEnvRows((prev) => {
       const updated = [...prev];
       const row = updated[index];
       const oldKey = row.key;
+      const rowId = row.id;
       updated[index] = { ...row, [field]: value };
 
       if (field === "key") {
@@ -70,21 +82,23 @@ export function EnvironmentSettingsTab() {
         if (!wasSensitive && nowSensitive) {
           setVisibleEnvVars((prev) => {
             const next = new Set(prev);
-            next.delete(row.id);
+            next.delete(rowId);
             return next;
           });
         }
       }
 
+      // Clear validation error for this row on edit
+      setRowErrors((prev) => {
+        if (!prev[rowId]) return prev;
+        const next = { ...prev };
+        delete next[rowId];
+        return next;
+      });
+
       return updated;
     });
     setIsDirty(true);
-    setRowErrors((prev) => {
-      if (!prev[index]) return prev;
-      const next = { ...prev };
-      delete next[index];
-      return next;
-    });
   }, []);
 
   const addRow = useCallback(() => {
@@ -150,6 +164,7 @@ export function EnvironmentSettingsTab() {
       await saveSettings({
         ...settings,
         environmentVariables: envVarsToRecord(envRows),
+        insecureEnvironmentVariables: undefined,
       });
       setIsDirty(false);
     } catch (err) {
