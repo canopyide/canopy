@@ -11,9 +11,7 @@ const GENERAL_SUBTAB_IDS = ["overview", "hibernation", "display"];
  */
 describe("GeneralTab subtab derivation logic", () => {
   function deriveEffectiveSubtab(activeSubtab: string | null): string {
-    return activeSubtab && GENERAL_SUBTAB_IDS.includes(activeSubtab)
-      ? activeSubtab
-      : "overview";
+    return activeSubtab && GENERAL_SUBTAB_IDS.includes(activeSubtab) ? activeSubtab : "overview";
   }
 
   it('defaults to "overview" when activeSubtab is null', () => {
