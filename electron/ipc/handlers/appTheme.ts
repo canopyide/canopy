@@ -6,14 +6,15 @@ import type { AppThemeConfig, ColorVisionMode } from "../../../shared/types/appT
 
 function getAppThemeConfig(): AppThemeConfig {
   const config = store.get("appTheme");
-  if (
+  const hasStoredScheme =
     config &&
     typeof config === "object" &&
     !Array.isArray(config) &&
     "colorSchemeId" in config &&
     typeof config.colorSchemeId === "string" &&
-    config.colorSchemeId
-  ) {
+    config.colorSchemeId;
+
+  if (hasStoredScheme) {
     return config as AppThemeConfig;
   }
 
