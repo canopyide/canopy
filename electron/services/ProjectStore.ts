@@ -883,6 +883,10 @@ export class ProjectStore {
             : undefined,
         branchPrefixCustom:
           typeof parsed.branchPrefixCustom === "string" ? parsed.branchPrefixCustom : undefined,
+        agentInstructions:
+          typeof parsed.agentInstructions === "string" && parsed.agentInstructions.trim()
+            ? parsed.agentInstructions
+            : undefined,
       };
 
       return settings;
@@ -1462,6 +1466,7 @@ export class ProjectStore {
       devServerLoadTimeout?: number;
       copyTreeSettings?: import("../types/index.js").CopyTreeSettings;
       excludedPaths?: string[];
+      agentInstructions?: string;
     } = { version: 1 };
 
     if (settings.runCommands?.length) payload.runCommands = settings.runCommands;
@@ -1469,6 +1474,8 @@ export class ProjectStore {
     if (settings.devServerLoadTimeout) payload.devServerLoadTimeout = settings.devServerLoadTimeout;
     if (settings.copyTreeSettings) payload.copyTreeSettings = settings.copyTreeSettings;
     if (settings.excludedPaths?.length) payload.excludedPaths = settings.excludedPaths;
+    if (settings.agentInstructions?.trim())
+      payload.agentInstructions = settings.agentInstructions.trim();
 
     const uniqueSuffix = `${Date.now()}-${Math.random().toString(36).slice(2, 8)}`;
     const tempFilePath = `${filePath}.${uniqueSuffix}.tmp`;
