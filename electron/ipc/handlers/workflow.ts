@@ -54,8 +54,7 @@ export function registerWorkflowHandlers(deps: HandlerDependencies): () => void 
 
   handlers.push(
     typedHandle(CHANNELS.WORKFLOW_LIST_RUNS, async () => {
-      const engine = getWorkflowEngine();
-      if (!engine) return [];
+      const engine = requireEngine();
       const runs = await engine.listAllRuns();
       return runs.map(serializeWorkflowRun);
     })
