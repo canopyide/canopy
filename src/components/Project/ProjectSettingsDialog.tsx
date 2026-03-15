@@ -685,7 +685,8 @@ export function ProjectSettingsDialog({ projectId, isOpen, onClose }: ProjectSet
         devServerLoadTimeout,
         agentInstructions,
         worktreePathPattern.trim(),
-        currentTerminalSettings
+        currentTerminalSettings,
+        mcpServers
       );
 
       requestClose({ bypassDirty: true });
