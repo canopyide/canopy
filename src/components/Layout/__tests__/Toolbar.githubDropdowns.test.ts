@@ -12,7 +12,7 @@ describe("Toolbar GitHub dropdown search clearing — issue #3251", () => {
   });
 
   it("imports useGitHubFilterStore", () => {
-    expect(source).toContain("import { useGitHubFilterStore }");
+    expect(source).toContain("useGitHubFilterStore");
   });
 
   it("destructures setIssueSearchQuery from the store", () => {

@@ -132,7 +132,8 @@ export function Toolbar({
   const [issuesOpen, setIssuesOpen] = useState(false);
   const [prsOpen, setPrsOpen] = useState(false);
   const [commitsOpen, setCommitsOpen] = useState(false);
-  const { setIssueSearchQuery, setPrSearchQuery } = useGitHubFilterStore();
+  const setIssueSearchQuery = useGitHubFilterStore((s) => s.setIssueSearchQuery);
+  const setPrSearchQuery = useGitHubFilterStore((s) => s.setPrSearchQuery);
   const [isFullscreen, setIsFullscreen] = useState(false);
   const [treeCopied, setTreeCopied] = useState(false);
   const [isCopyingTree, setIsCopyingTree] = useState(false);
