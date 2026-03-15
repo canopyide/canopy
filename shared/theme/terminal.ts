@@ -1,11 +1,14 @@
 import type { ITheme } from "@xterm/xterm";
 import type { AppColorScheme, AppColorSchemeTokens } from "./types.js";
 
-export const TERMINAL_SCROLLBAR_DEFAULTS = {
-  scrollbarSliderBackground: "rgba(82, 82, 91, 0.4)",
-  scrollbarSliderHoverBackground: "rgba(82, 82, 91, 0.6)",
-  scrollbarSliderActiveBackground: "rgba(82, 82, 91, 0.8)",
-} as const;
+export function getTerminalScrollbarDefaults(type: "dark" | "light") {
+  const ch = type === "dark" ? "255, 255, 255" : "0, 0, 0";
+  return {
+    scrollbarSliderBackground: `rgba(${ch}, 0.20)`,
+    scrollbarSliderHoverBackground: `rgba(${ch}, 0.40)`,
+    scrollbarSliderActiveBackground: `rgba(${ch}, 0.50)`,
+  };
+}
 
 export function getTerminalThemeFromAppTokens(tokens: AppColorSchemeTokens): ITheme {
   return {
@@ -31,10 +34,13 @@ export function getTerminalThemeFromAppTokens(tokens: AppColorSchemeTokens): ITh
     brightMagenta: tokens["terminal-bright-magenta"],
     brightCyan: tokens["terminal-bright-cyan"],
     brightWhite: tokens["terminal-bright-white"],
-    ...TERMINAL_SCROLLBAR_DEFAULTS,
+    ...getTerminalScrollbarDefaults("dark"),
   };
 }
 
 export function getTerminalThemeFromAppScheme(scheme: AppColorScheme): ITheme {
-  return getTerminalThemeFromAppTokens(scheme.tokens);
+  return {
+    ...getTerminalThemeFromAppTokens(scheme.tokens),
+    ...getTerminalScrollbarDefaults(scheme.type),
+  };
 }

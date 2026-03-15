@@ -100,6 +100,6 @@ describe("terminalColorSchemeStore", () => {
   it("getEffectiveTheme adds scrollbar defaults for non-canopy schemes", () => {
     useTerminalColorSchemeStore.getState().setSelectedSchemeId("dracula");
     const theme = useTerminalColorSchemeStore.getState().getEffectiveTheme();
-    expect(theme.scrollbarSliderBackground).toBe("rgba(82, 82, 91, 0.4)");
+    expect(theme.scrollbarSliderBackground).toBe("rgba(255, 255, 255, 0.20)");
   });
 });
