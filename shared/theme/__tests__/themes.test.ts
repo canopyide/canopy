@@ -14,7 +14,13 @@ import { APP_THEME_TOKEN_KEYS, type AppColorSchemeTokens } from "../types.js";
 function wcagContrastRatio(hex1: string, hex2: string): number {
   function luminance(hex: string): number {
     const c = hex.replace("#", "");
-    const e = c.length === 3 ? c.split("").map((ch) => `${ch}${ch}`).join("") : c;
+    const e =
+      c.length === 3
+        ? c
+            .split("")
+            .map((ch) => `${ch}${ch}`)
+            .join("")
+        : c;
     const toLinear = (v: number) => {
       const n = v / 255;
       return n <= 0.04045 ? n / 12.92 : ((n + 0.055) / 1.055) ** 2.4;
