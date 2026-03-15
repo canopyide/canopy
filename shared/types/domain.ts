@@ -998,6 +998,8 @@ export interface ProjectSettings {
   branchPrefixMode?: "none" | "username" | "custom";
   /** Custom branch prefix string when branchPrefixMode is "custom" (e.g., "feature/") */
   branchPrefixCustom?: string;
+  /** Project-specific instructions prepended to every new agent session prompt */
+  agentInstructions?: string;
 }
 
 // Toolbar Customization Types
