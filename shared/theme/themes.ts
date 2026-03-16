@@ -927,7 +927,7 @@ export const BUILT_IN_APP_SCHEMES: AppColorScheme[] = [
       "syntax-keyword": "#795293",
       "syntax-string": "#B94665",
       "syntax-function": "#2D7A52",
-      "syntax-comment": "#5A7485",
+      "syntax-comment": "#526D7E",
       "syntax-number": "#2E5E82",
       "syntax-operator": "#006A71",
       "syntax-punctuation": "#3A4D5C",
