@@ -145,17 +145,17 @@ async function collectGpu() {
   const result: Record<string, unknown> = {};
 
   try {
+    result.featureStatus = app.getGPUFeatureStatus();
+  } catch {
+    result.featureStatus = { error: "Failed to get GPU feature status" };
+  }
+
+  try {
     result.info = await withTimeout(app.getGPUInfo("basic") as Promise<unknown>, GPU_TIMEOUT_MS, {
       error: "GPU info timed out",
     });
   } catch {
     result.info = { error: "Failed to get GPU info" };
-  }
-
-  try {
-    result.featureStatus = app.getGPUFeatureStatus();
-  } catch {
-    result.featureStatus = { error: "Failed to get GPU feature status" };
   }
 
   return result;
