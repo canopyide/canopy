@@ -96,6 +96,12 @@ describe("terminalColorSchemes", () => {
     expect(scheme!.id).toBe("dracula");
   });
 
+  it("redwoods maps to its bespoke terminal scheme", () => {
+    const scheme = getMappedTerminalScheme("redwoods");
+    expect(scheme).toBeDefined();
+    expect(scheme!.id).toBe("redwoods");
+  });
+
   it("getMappedTerminalScheme returns undefined for unknown app theme", () => {
     expect(getMappedTerminalScheme("nonexistent")).toBeUndefined();
   });
