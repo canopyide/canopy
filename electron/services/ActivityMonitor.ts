@@ -13,7 +13,6 @@ import { LineRewriteDetector, isStatusLineRewrite } from "./pty/LineRewriteDetec
 import {
   detectPrompt,
   DEFAULT_PROMPT_PATTERNS,
-  type PromptDetectionResult,
   type PromptDetectorConfig,
 } from "./pty/PromptDetector.js";
 import { detectCompletion } from "./pty/CompletionDetector.js";
