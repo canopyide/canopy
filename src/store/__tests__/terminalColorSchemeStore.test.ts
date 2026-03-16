@@ -163,7 +163,7 @@ describe("terminalColorSchemeStore", () => {
     it("returns mapped scheme background when app theme changes", () => {
       useAppThemeStore.setState({ selectedSchemeId: "fiordland" });
       const bg = selectWrapperBackground(useTerminalColorSchemeStore.getState());
-      expect(bg).toBe("#282a36");
+      expect(bg).toBe("#070D12");
     });
 
     it("returns hex color for built-in non-default scheme", () => {
