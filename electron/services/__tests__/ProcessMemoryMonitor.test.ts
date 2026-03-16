@@ -30,7 +30,12 @@ import { startAppMetricsMonitor } from "../ProcessMemoryMonitor.js";
 
 const mockGetAppMetrics = app.getAppMetrics as ReturnType<typeof vi.fn>;
 
-function makeMetric(type: string, workingSetSizeKB: number, pid = 1000): Electron.ProcessMetric {
+function makeMetric(
+  type: string,
+  workingSetSizeKB: number,
+  pid = 1000,
+  privateBytesKB?: number
+): Electron.ProcessMetric {
   return {
     type,
     pid,
@@ -38,6 +43,7 @@ function makeMetric(type: string, workingSetSizeKB: number, pid = 1000): Electro
     memory: {
       workingSetSize: workingSetSizeKB,
       peakWorkingSetSize: workingSetSizeKB,
+      ...(privateBytesKB !== undefined ? { privateBytes: privateBytesKB } : {}),
     },
     sandboxed: false,
     integrityLevel: "unknown",
@@ -255,5 +261,147 @@ describe("ProcessMemoryMonitor", () => {
     stop();
     vi.advanceTimersByTime(60_000);
     expect(logDebug).toHaveBeenCalledTimes(1);
+  });
+
+  // --- New tests for privateBytes and trend detection ---
+
+  it("prefers privateBytes over workingSetSize when available", () => {
+    // privateBytes = 350 MB, workingSetSize = 100 MB — should use 350 MB
+    mockGetAppMetrics.mockReturnValue([makeMetric("Browser", 100 * 1024, 100, 350 * 1024)]);
+
+    stop = startAppMetricsMonitor();
+    vi.advanceTimersByTime(30_000);
+
+    expect(logWarn).toHaveBeenCalledWith("process-memory-threshold-exceeded", {
+      pid: 100,
+      type: "Browser",
+      mb: 350,
+      thresholdMb: 300,
+    });
+  });
+
+  it("falls back to workingSetSize when privateBytes is not available", () => {
+    // No privateBytes supplied — should use workingSetSize of 600 MB
+    mockGetAppMetrics.mockReturnValue([makeMetric("Utility", 600 * 1024, 300)]);
+
+    stop = startAppMetricsMonitor();
+    vi.advanceTimersByTime(30_000);
+
+    expect(logWarn).toHaveBeenCalledWith("process-memory-threshold-exceeded", {
+      pid: 300,
+      type: "Utility",
+      mb: 600,
+      thresholdMb: 500,
+    });
+  });
+
+  it("emits trend warning after sustained growth exceeding 5 MB/hr", () => {
+    // Simulate steady growth over 31 minutes (62 ticks × 30s)
+    // Start at 100 MB, grow ~3 MB per 60s bucket = ~180 MB/hr... too fast.
+    // We want growth just above threshold: 5 MB/hr = 2.5 MB per 30 min window
+    // Start at 100 MB, grow 0.1 MB per tick → 6.2 MB over 62 ticks (31 min)
+    // Per 0.5 hours that's ~6 MB/hr > 5 MB/hr threshold
+    const baseMb = 100;
+    const growthPerTickMb = 0.1; // ~6 MB/hr
+    let tick = 0;
+
+    mockGetAppMetrics.mockImplementation(() => {
+      const mb = baseMb + tick * growthPerTickMb;
+      tick++;
+      return [makeMetric("Tab", mb * 1024, 500, mb * 1024)];
+    });
+
+    stop = startAppMetricsMonitor();
+
+    // Need 15 min startup suppression + 30 buckets (30 min of buckets)
+    // Total: at least 30 min of bucket history after 15 min startup = need 45 min total
+    // But dual suppression is AND — once 30 buckets AND 15 min both met.
+    // 30 buckets = 30 × 2 ticks = 60 ticks = 30 min. Startup suppression = 15 min.
+    // So at 30 min (60 ticks), we have 30 buckets AND 30 min > 15 min — both pass.
+    // But need 31 min (62 ticks) for the 31st bucket to trigger evaluation.
+    // Actually: first bucket commits at tick 2, second at tick 4, ..., 30th at tick 60.
+    // At tick 60 (30 min), emaHistory.length = 30, AND 30 min > 15 min.
+    // Trend is evaluated on bucket commit, so first evaluation at tick 60.
+
+    vi.advanceTimersByTime(62 * 30_000); // 31 min
+
+    const trendCalls = vi
+      .mocked(logWarn)
+      .mock.calls.filter((c) => c[0] === "process-memory-trend-warning");
+    expect(trendCalls.length).toBeGreaterThanOrEqual(1);
+    expect(trendCalls[0]![1]).toMatchObject({
+      pid: 500,
+      type: "Tab",
+    });
+    expect(
+      (trendCalls[0]![1] as { growthMbPerHour: number }).growthMbPerHour
+    ).toBeGreaterThanOrEqual(5);
+  });
+
+  it("suppresses trend warning during first 15 minutes of monitoring", () => {
+    // Rapid growth (well above threshold) but only run for 14 minutes
+    const baseMb = 100;
+    const growthPerTickMb = 1; // Very aggressive growth
+    let tick = 0;
+
+    mockGetAppMetrics.mockImplementation(() => {
+      const mb = baseMb + tick * growthPerTickMb;
+      tick++;
+      return [makeMetric("Tab", mb * 1024, 500, mb * 1024)];
+    });
+
+    stop = startAppMetricsMonitor();
+
+    // 14 minutes = 28 ticks. Only 14 buckets committed. Startup suppression AND
+    // bucket count (< 30) both prevent trend evaluation.
+    vi.advanceTimersByTime(28 * 30_000);
+
+    const trendCalls = vi
+      .mocked(logWarn)
+      .mock.calls.filter((c) => c[0] === "process-memory-trend-warning");
+    expect(trendCalls).toHaveLength(0);
+  });
+
+  it("does not trigger trend warning when single-sample spikes are absorbed by bucket-minimum", () => {
+    // Flat baseline of 100 MB but every odd tick spikes to 200 MB.
+    // Bucket-minimum should always pick the baseline (100 MB), so EMA stays flat.
+    const baseKB = 100 * 1024;
+    const spikeKB = 200 * 1024;
+    let tick = 0;
+
+    mockGetAppMetrics.mockImplementation(() => {
+      const kb = tick % 2 === 0 ? spikeKB : baseKB;
+      tick++;
+      return [makeMetric("Tab", kb, 500, kb)];
+    });
+
+    stop = startAppMetricsMonitor();
+
+    // Run 62 ticks (31 min) — enough for full trend evaluation window
+    vi.advanceTimersByTime(62 * 30_000);
+
+    const trendCalls = vi
+      .mocked(logWarn)
+      .mock.calls.filter((c) => c[0] === "process-memory-trend-warning");
+    expect(trendCalls).toHaveLength(0);
+  });
+
+  it("prunes trend state for PIDs that are no longer reported", () => {
+    // Start with PID 500, then remove it
+    mockGetAppMetrics.mockReturnValue([makeMetric("Browser", 200 * 1024, 500)]);
+
+    stop = startAppMetricsMonitor();
+    vi.advanceTimersByTime(30_000);
+
+    // Now only PID 600 is returned — PID 500 should be pruned
+    mockGetAppMetrics.mockReturnValue([makeMetric("Browser", 200 * 1024, 600)]);
+    vi.advanceTimersByTime(30_000);
+
+    // Confirm new PID gets sampled (no crash from stale state)
+    expect(logDebug).toHaveBeenCalledWith("process-memory-sample", {
+      pid: 600,
+      type: "Browser",
+      mb: 200,
+    });
   });
 });
