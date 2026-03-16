@@ -74,6 +74,12 @@ export function RecipesTab({
   }, [isOpen]);
 
   useEffect(() => {
+    if (isOpen) {
+      hasLoadedRecipes.current = false;
+    }
+  }, [projectId, isOpen]);
+
+  useEffect(() => {
     return () => {
       if (exportTimeoutRef.current) {
         clearTimeout(exportTimeoutRef.current);

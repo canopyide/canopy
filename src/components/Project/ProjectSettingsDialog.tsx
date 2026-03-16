@@ -46,7 +46,7 @@ type ProjectSettingsTab =
   | "mcp"
   | "notifications";
 
-export const GITIGNORE_SNIPPET = `# Canopy in-repo settings — safe to commit\n.canopy/project.json\n.canopy/settings.json\n\n# Canopy machine-local settings — do not commit\n.canopy/*.local.json`;
+export { GITIGNORE_SNIPPET } from "./projectSettingsConstants";
 
 export function ProjectSettingsDialog({ projectId, isOpen, onClose }: ProjectSettingsDialogProps) {
   const { settings, saveSettings, isLoading, error } = useProjectSettings(projectId);
@@ -577,13 +577,13 @@ export function ProjectSettingsDialog({ projectId, isOpen, onClose }: ProjectSet
                       enableInRepoSettings={enableInRepoSettings}
                       disableInRepoSettings={disableInRepoSettings}
                       projectId={projectId}
+                      isOpen={isOpen}
                     />
                   </div>
 
                   {/* Context Tab */}
                   <div className={activeTab === "context" ? "" : "hidden"}>
                     <ContextTab
-                      projectId={projectId}
                       excludedPaths={excludedPaths}
                       onExcludedPathsChange={setExcludedPaths}
                       copyTreeSettings={copyTreeSettings}
@@ -592,6 +592,7 @@ export function ProjectSettingsDialog({ projectId, isOpen, onClose }: ProjectSet
                       onEnvironmentVariablesChange={setEnvironmentVariables}
                       worktrees={worktrees}
                       settings={settings}
+                      isOpen={isOpen}
                     />
                   </div>
 

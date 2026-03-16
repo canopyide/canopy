@@ -1,4 +1,4 @@
-import { useState, useRef } from "react";
+import { useState, useRef, useEffect } from "react";
 import { Image, Upload, X, Rocket, Check, GitBranch, FolderOpen, Copy } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover";
@@ -6,7 +6,7 @@ import { EmojiPicker } from "@/components/ui/emoji-picker";
 import { getProjectGradient } from "@/lib/colorUtils";
 import { cn } from "@/lib/utils";
 import { validateProjectSvg, sanitizeSvg, svgToDataUrl } from "@/lib/svg";
-import { GITIGNORE_SNIPPET } from "./ProjectSettingsDialog";
+import { GITIGNORE_SNIPPET } from "./projectSettingsConstants";
 import type { Project } from "@shared/types/domain";
 
 interface GeneralTabProps {
@@ -24,6 +24,7 @@ interface GeneralTabProps {
   enableInRepoSettings: (projectId: string) => Promise<Project>;
   disableInRepoSettings: (projectId: string) => Promise<Project>;
   projectId: string;
+  isOpen: boolean;
 }
 
 export function GeneralTab({
@@ -41,6 +42,7 @@ export function GeneralTab({
   enableInRepoSettings,
   disableInRepoSettings,
   projectId,
+  isOpen,
 }: GeneralTabProps) {
   const [isEmojiPickerOpen, setIsEmojiPickerOpen] = useState(false);
   const [iconError, setIconError] = useState<string | null>(null);
@@ -52,6 +54,22 @@ export function GeneralTab({
   const [inRepoError, setInRepoError] = useState<string | null>(null);
   const [gitignoreCopied, setGitignoreCopied] = useState(false);
   const gitignoreCopyTimeoutRef = useRef<NodeJS.Timeout | null>(null);
+
+  useEffect(() => {
+    if (!isOpen) {
+      setIsEmojiPickerOpen(false);
+      setIconError(null);
+      setIsDraggingIcon(false);
+      setInRepoExpanded(false);
+      setInRepoEnabling(false);
+      setInRepoError(null);
+      setGitignoreCopied(false);
+      if (gitignoreCopyTimeoutRef.current) {
+        clearTimeout(gitignoreCopyTimeoutRef.current);
+        gitignoreCopyTimeoutRef.current = null;
+      }
+    }
+  }, [isOpen]);
 
   const handleIconFile = async (file: File) => {
     setIconError(null);
