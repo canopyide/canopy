@@ -13,6 +13,25 @@ export interface WorktreeRatioEntry {
   panels: [string | null, string | null];
 }
 
+export function resolveEffectiveRatio(
+  entry: WorktreeRatioEntry | undefined,
+  currentLeft: string,
+  currentRight: string
+): number | undefined {
+  if (!entry) return undefined;
+  const [storedLeft, storedRight] = entry.panels;
+  if (
+    storedLeft !== null &&
+    storedRight !== null &&
+    storedLeft !== currentLeft &&
+    storedLeft === currentRight &&
+    storedRight === currentLeft
+  ) {
+    return 1 - entry.ratio;
+  }
+  return entry.ratio;
+}
+
 interface TwoPaneSplitState {
   config: TwoPaneSplitConfig;
   ratioByWorktreeId: Record<string, WorktreeRatioEntry>;
