@@ -1,4 +1,4 @@
-import { useState } from "react";
+import { useState, useEffect } from "react";
 import {
   FolderX,
   Key,
@@ -38,7 +38,6 @@ function parsePositiveInt(value: string): number | undefined {
 }
 
 interface ContextTabProps {
-  projectId: string;
   excludedPaths: string[];
   onExcludedPathsChange: (value: string[]) => void;
   copyTreeSettings: CopyTreeSettings;
@@ -47,6 +46,7 @@ interface ContextTabProps {
   onEnvironmentVariablesChange: (value: EnvVar[]) => void;
   worktrees: Worktree[];
   settings: ProjectSettings | null;
+  isOpen: boolean;
 }
 
 export function ContextTab({
@@ -58,10 +58,19 @@ export function ContextTab({
   onEnvironmentVariablesChange,
   worktrees,
   settings,
+  isOpen,
 }: ContextTabProps) {
   const [visibleEnvVars, setVisibleEnvVars] = useState<Set<string>>(new Set());
   const [testConfigResult, setTestConfigResult] = useState<CopyTreeTestConfigResult | null>(null);
   const [isTestingConfig, setIsTestingConfig] = useState(false);
+
+  useEffect(() => {
+    if (!isOpen) {
+      setVisibleEnvVars(new Set());
+      setTestConfigResult(null);
+      setIsTestingConfig(false);
+    }
+  }, [isOpen]);
 
   const toggleEnvVarVisibility = (id: string) => {
     setVisibleEnvVars((prev) => {
