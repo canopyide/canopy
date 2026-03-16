@@ -417,9 +417,9 @@ describe("blockAltScreen capabilities", () => {
     expect(config?.capabilities?.blockAltScreen).toBe(true);
   });
 
-  it("claude blocks alt screen", () => {
+  it("claude does not explicitly set blockAltScreen (defaults to false)", () => {
     const config = getAgentConfig("claude");
-    expect(config?.capabilities?.blockAltScreen).toBe(true);
+    expect(config?.capabilities?.blockAltScreen).toBeUndefined();
   });
 
   it("gemini blocks alt screen", () => {
