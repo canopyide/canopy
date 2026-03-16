@@ -666,15 +666,11 @@ describe("built-in schemes — Atacama light theme", () => {
 
   it("has distinct syntax-operator (#4A5D7B) different from syntax-keyword", () => {
     expect(atacama.tokens["syntax-operator"]).toBe("#4A5D7B");
-    expect(atacama.tokens["syntax-operator"]).not.toBe(
-      atacama.tokens["syntax-keyword"],
-    );
+    expect(atacama.tokens["syntax-operator"]).not.toBe(atacama.tokens["syntax-keyword"]);
   });
 
   it("has text-secondary color-mix referencing current surface-canvas", () => {
-    expect(atacama.tokens["text-secondary"]).toBe(
-      "color-mix(in oklab, #3A3431 72%, #F0F0ED)",
-    );
+    expect(atacama.tokens["text-secondary"]).toBe("color-mix(in oklab, #3A3431 72%, #F0F0ED)");
   });
 
   it("has light-appropriate category colors (oklch L=0.58-0.68)", () => {
