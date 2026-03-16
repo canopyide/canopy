@@ -116,11 +116,7 @@ describe("evaluateCondition", () => {
     };
     const run = makeRun();
     expect(
-      evaluateCondition(
-        { type: "result", path: "data.score", op: ">=", value: 90 },
-        nodeState,
-        run
-      )
+      evaluateCondition({ type: "result", path: "data.score", op: ">=", value: 90 }, nodeState, run)
     ).toBe(true);
   });
 

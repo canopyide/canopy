@@ -196,11 +196,7 @@ export class LoopCompiler {
       if (run.scheduledNodes.has(candidateComposite)) continue;
 
       const allDepsMet = candidate.dependencies.every((depId) => {
-        const depComposite = buildCompositeId(
-          composite.loopNodeId,
-          composite.iterIndex,
-          depId
-        );
+        const depComposite = buildCompositeId(composite.loopNodeId, composite.iterIndex, depId);
         const depState = run.nodeStates[depComposite];
         return depState?.status === "completed";
       });
@@ -213,11 +209,7 @@ export class LoopCompiler {
     for (const nextId of bodyNode.onSuccess || []) {
       const nextBodyNode = loopNode.body.find((n) => n.id === nextId);
       if (nextBodyNode) {
-        const nextComposite = buildCompositeId(
-          composite.loopNodeId,
-          composite.iterIndex,
-          nextId
-        );
+        const nextComposite = buildCompositeId(composite.loopNodeId, composite.iterIndex, nextId);
         if (!run.scheduledNodes.has(nextComposite)) {
           await this.compileSingleBodyNode(nextBodyNode, loopNode, run, composite.iterIndex);
         }
@@ -243,11 +235,7 @@ export class LoopCompiler {
       for (const nextId of bodyNode.onFailure!) {
         const nextBodyNode = loopNode.body.find((n) => n.id === nextId);
         if (nextBodyNode) {
-          const nextComposite = buildCompositeId(
-            composite.loopNodeId,
-            composite.iterIndex,
-            nextId
-          );
+          const nextComposite = buildCompositeId(composite.loopNodeId, composite.iterIndex, nextId);
           if (!run.scheduledNodes.has(nextComposite)) {
             await this.compileSingleBodyNode(nextBodyNode, loopNode, run, composite.iterIndex);
           }
