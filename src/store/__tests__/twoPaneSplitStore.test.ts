@@ -1,5 +1,5 @@
 import { beforeEach, describe, expect, it } from "vitest";
-import { useTwoPaneSplitStore } from "../twoPaneSplitStore";
+import { useTwoPaneSplitStore, resolveEffectiveRatio } from "../twoPaneSplitStore";
 import type { WorktreeRatioEntry } from "../twoPaneSplitStore";
 
 function entry(
@@ -171,5 +171,35 @@ describe("twoPaneSplitStore", () => {
     it("returns defaultRatio for null worktreeId", () => {
       expect(useTwoPaneSplitStore.getState().getWorktreeRatio(null)).toBe(0.5);
     });
+  });
+});
+
+describe("resolveEffectiveRatio", () => {
+  it("returns undefined when entry is undefined", () => {
+    expect(resolveEffectiveRatio(undefined, "a", "b")).toBeUndefined();
+  });
+
+  it("returns raw ratio when stored panels match current order", () => {
+    expect(resolveEffectiveRatio(entry(0.35, ["a", "b"]), "a", "b")).toBe(0.35);
+  });
+
+  it("inverts ratio when stored panels are exact reverse of current", () => {
+    expect(resolveEffectiveRatio(entry(0.35, ["a", "b"]), "b", "a")).toBe(0.65);
+  });
+
+  it("returns raw ratio when stored panels are null (legacy migration)", () => {
+    expect(resolveEffectiveRatio(entry(0.35, [null, null]), "b", "a")).toBe(0.35);
+  });
+
+  it("returns raw ratio when only left panel is null", () => {
+    expect(resolveEffectiveRatio(entry(0.35, [null, "b"]), "b", "a")).toBe(0.35);
+  });
+
+  it("returns raw ratio when panels are completely different (stale IDs)", () => {
+    expect(resolveEffectiveRatio(entry(0.35, ["x", "y"]), "a", "b")).toBe(0.35);
+  });
+
+  it("returns raw ratio when only one panel matches (partial match)", () => {
+    expect(resolveEffectiveRatio(entry(0.35, ["a", "x"]), "b", "a")).toBe(0.35);
   });
 });

@@ -3,6 +3,7 @@ import { createPortal } from "react-dom";
 import { SortableContext, horizontalListSortingStrategy } from "@dnd-kit/sortable";
 import { cn } from "@/lib/utils";
 import { useTwoPaneSplitStore } from "@/store";
+import { resolveEffectiveRatio } from "@/store/twoPaneSplitStore";
 import type { TerminalInstance } from "@/store";
 import { SortableTerminal } from "@/components/DragDrop";
 import { GridPanel } from "./GridPanel";
@@ -50,24 +51,21 @@ export function TwoPaneSplitLayout({
 
   commitRatioIfChangedRef.current = commitRatioIfChanged;
 
+  const setWorktreeRatio = useTwoPaneSplitStore((state) => state.setWorktreeRatio);
+
   const storedEntry = activeWorktreeId ? ratioByWorktreeId[activeWorktreeId] : undefined;
 
-  const effectiveStoredRatio = useMemo(() => {
-    if (!storedEntry) return undefined;
-    const [storedLeft, storedRight] = storedEntry.panels;
-    const currentLeftId = terminals[0].id;
-    const currentRightId = terminals[1].id;
-    if (
-      storedLeft !== null &&
-      storedRight !== null &&
-      storedLeft !== currentLeftId &&
-      storedLeft === currentRightId &&
-      storedRight === currentLeftId
-    ) {
-      return 1 - storedEntry.ratio;
+  // Backfill panel IDs for legacy entries migrated from v0 (panels are [null, null])
+  useEffect(() => {
+    if (storedEntry && storedEntry.panels[0] === null && storedEntry.panels[1] === null && activeWorktreeId) {
+      setWorktreeRatio(activeWorktreeId, storedEntry.ratio, [terminals[0].id, terminals[1].id]);
     }
-    return storedEntry.ratio;
-  }, [storedEntry, terminals]);
+  }, [storedEntry, activeWorktreeId, terminals, setWorktreeRatio]);
+
+  const effectiveStoredRatio = useMemo(
+    () => resolveEffectiveRatio(storedEntry, terminals[0].id, terminals[1].id),
+    [storedEntry, terminals]
+  );
 
   const computeDefaultRatio = useCallback(() => {
     if (!preferPreview) return defaultRatio;
