@@ -7,7 +7,7 @@ import { getProjectGradient } from "@/lib/colorUtils";
 import { cn } from "@/lib/utils";
 import { validateProjectSvg, sanitizeSvg, svgToDataUrl } from "@/lib/svg";
 import { GITIGNORE_SNIPPET } from "./projectSettingsConstants";
-import type { Project } from "@shared/types/domain";
+import type { Project } from "@shared/types/project";
 
 interface GeneralTabProps {
   currentProject: Project | undefined;

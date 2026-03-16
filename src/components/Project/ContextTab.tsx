@@ -20,7 +20,7 @@ import { copyTreeClient } from "@/clients/copyTreeClient";
 import { isSensitiveEnvKey } from "@shared/utils/envVars";
 import type { CopyTreeSettings, CopyTreeTestConfigResult, Worktree } from "@/types";
 import type { EnvVar } from "./projectSettingsDirty";
-import type { ProjectSettings } from "@shared/types/domain";
+import type { ProjectSettings } from "@shared/types/project";
 
 function formatBytes(bytes: number): string {
   if (bytes === 0) return "0 B";

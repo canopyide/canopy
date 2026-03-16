@@ -17,7 +17,7 @@ import { cn } from "@/lib/utils";
 import { SCROLLBACK_MIN, SCROLLBACK_MAX } from "@shared/config/scrollback";
 import { validatePathPattern, previewPathPattern } from "@shared/utils/pathPattern";
 import type { RunCommand, TerminalRecipe } from "@/types";
-import type { Project } from "@shared/types/domain";
+import type { Project } from "@shared/types/project";
 
 interface AutomationTabProps {
   currentProject: Project | undefined;
