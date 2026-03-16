@@ -2,7 +2,7 @@ import { app, BrowserWindow, ipcMain, nativeTheme } from "electron";
 import path from "path";
 import { createWindowWithState } from "../windowState.js";
 import { store } from "../store.js";
-import { resolveAppTheme } from "../../shared/theme/index.js";
+import { resolveAppTheme, normalizeAppColorScheme } from "../../shared/theme/index.js";
 import type { AppColorScheme } from "../../shared/theme/index.js";
 import { setLoggerWindow } from "../utils/logger.js";
 import { canOpenExternalUrl, openExternalUrl } from "../utils/openExternal.js";
@@ -49,7 +49,7 @@ export function setupBrowserWindow(dirname: string): CreateWindowResult {
     typeof themeConfig.colorSchemeId === "string" &&
     themeConfig.colorSchemeId
   ) {
-    colorSchemeId = themeConfig.colorSchemeId;
+    colorSchemeId = themeConfig.colorSchemeId.trim();
   } else {
     colorSchemeId = nativeTheme.shouldUseDarkColors ? "daintree" : "bondi";
   }
@@ -64,7 +64,7 @@ export function setupBrowserWindow(dirname: string): CreateWindowResult {
   ) {
     try {
       const parsed = JSON.parse(themeConfig.customSchemes);
-      if (Array.isArray(parsed)) customSchemes = parsed;
+      if (Array.isArray(parsed)) customSchemes = parsed.map((s: AppColorScheme) => normalizeAppColorScheme(s));
     } catch {
       // Malformed custom schemes — fall back to built-in only
     }
