@@ -85,7 +85,7 @@ export function ErrorBanner({
           className
         )}
       >
-        <TypeIcon className="w-4 h-4 shrink-0" />
+        <TypeIcon className="w-4 h-4 shrink-0 text-status-error" />
         <span className="text-status-error truncate flex-1">{error.message}</span>
         {error.recoveryHint && (
           <span className="text-status-error/70 text-xs shrink-0 truncate max-w-[40%]">
@@ -131,7 +131,7 @@ export function ErrorBanner({
       role="alert"
     >
       <div className="flex items-center gap-2 px-3 py-2 bg-[color-mix(in_oklab,var(--color-status-error)_12%,transparent)]">
-        <TypeIcon className="w-5 h-5 shrink-0" />
+        <TypeIcon className="w-5 h-5 shrink-0 text-status-error" />
         <div className="flex-1 min-w-0">
           <div className="flex items-center gap-2">
             <span className="text-xs text-status-error font-medium">{typeLabel}</span>
