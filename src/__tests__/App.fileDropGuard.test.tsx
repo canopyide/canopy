@@ -34,7 +34,7 @@ function useFileDropGuard() {
 
 function createDragEvent(
   type: string,
-  types: string[],
+  types: string[]
 ): { event: Event; dataTransfer: { dropEffect: string } } {
   const event = new Event(type, { bubbles: true, cancelable: true });
   const dataTransfer = { dropEffect: "copy", types };
