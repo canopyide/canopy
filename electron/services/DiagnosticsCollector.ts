@@ -142,9 +142,23 @@ async function collectDisplay() {
 }
 
 async function collectGpu() {
-  return withTimeout(app.getGPUInfo("basic") as Promise<unknown>, GPU_TIMEOUT_MS, {
-    error: "GPU info timed out",
-  });
+  const result: Record<string, unknown> = {};
+
+  try {
+    result.featureStatus = app.getGPUFeatureStatus();
+  } catch {
+    result.featureStatus = { error: "Failed to get GPU feature status" };
+  }
+
+  try {
+    result.info = await withTimeout(app.getGPUInfo("basic") as Promise<unknown>, GPU_TIMEOUT_MS, {
+      error: "GPU info timed out",
+    });
+  } catch {
+    result.info = { error: "Failed to get GPU info" };
+  }
+
+  return result;
 }
 
 async function collectProcess() {
