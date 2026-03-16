@@ -463,13 +463,6 @@ export function NewWorktreeDialog({
         if (selectedIssue && assignWorktreeToSelf && currentUser) {
           try {
             await githubClient.assignIssue(rootPath, selectedIssue.number, currentUser);
-            notify({
-              type: "success",
-              title: "Issue Assigned",
-              message: `Issue #${selectedIssue.number} assigned to @${currentUser}`,
-              priority: "low",
-              countable: false,
-            });
           } catch (assignErr) {
             const message =
               assignErr instanceof Error ? assignErr.message : "Failed to assign issue";
