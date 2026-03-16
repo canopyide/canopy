@@ -136,7 +136,7 @@ export function AgentButton({
               disabled={isLoading}
               data-toolbar-item={dataToolbarItem}
               className={cn(
-                "text-canopy-text hover:bg-white/[0.06] transition-colors",
+                "text-canopy-text hover:bg-tint/[0.06] transition-colors",
                 isAvailable && "hover:text-canopy-accent focus-visible:text-canopy-accent",
                 !isAvailable && !isLoading && "opacity-60"
               )}

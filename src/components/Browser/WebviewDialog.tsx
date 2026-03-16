@@ -94,7 +94,7 @@ export function WebviewDialog({ dialog, onRespond }: WebviewDialogProps) {
             <button
               type="button"
               onClick={handleCancel}
-              className="px-3 py-1.5 text-xs font-medium text-canopy-text/70 bg-canopy-bg hover:bg-white/5 border border-canopy-border rounded-md transition-colors focus:outline-none focus:ring-1 focus:ring-canopy-accent/50"
+              className="px-3 py-1.5 text-xs font-medium text-canopy-text/70 bg-canopy-bg hover:bg-tint/5 border border-canopy-border rounded-md transition-colors focus:outline-none focus:ring-1 focus:ring-canopy-accent/50"
             >
               Cancel
             </button>

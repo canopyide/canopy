@@ -993,7 +993,7 @@ export function ProjectSettingsDialog({ projectId, isOpen, onClose }: ProjectSet
                               <button
                                 type="button"
                                 aria-label="Change project emoji"
-                                className="flex h-14 w-14 items-center justify-center rounded-[var(--radius-xl)] shadow-inner shrink-0 bg-white/5 hover:bg-white/10 transition-colors border border-transparent hover:border-canopy-border cursor-pointer group"
+                                className="flex h-14 w-14 items-center justify-center rounded-[var(--radius-xl)] shadow-inner shrink-0 bg-tint/5 hover:bg-tint/10 transition-colors border border-transparent hover:border-canopy-border cursor-pointer group"
                                 style={{
                                   background: getProjectGradient(currentProject.color),
                                 }}
@@ -1025,7 +1025,7 @@ export function ProjectSettingsDialog({ projectId, isOpen, onClose }: ProjectSet
                               type="text"
                               value={name}
                               onChange={(e) => setName(e.target.value)}
-                              className="w-full bg-transparent border border-canopy-border rounded px-3 py-2 text-sm text-canopy-text focus:outline-none focus:border-canopy-accent focus:ring-1 focus:ring-canopy-accent/30 transition-all placeholder:text-canopy-text/40"
+                              className="w-full bg-transparent border border-canopy-border rounded px-3 py-2 text-sm text-canopy-text focus:outline-none focus:border-canopy-accent focus:ring-1 focus:ring-canopy-accent/30 transition-all placeholder:text-text-muted"
                               placeholder="My Awesome Project"
                             />
                           </div>
@@ -1048,7 +1048,7 @@ export function ProjectSettingsDialog({ projectId, isOpen, onClose }: ProjectSet
                         type="text"
                         value={devServerCommand}
                         onChange={(e) => setDevServerCommand(e.target.value)}
-                        className="w-full bg-canopy-bg border border-canopy-border rounded px-3 py-2 text-sm text-canopy-text font-mono focus:outline-none focus:border-canopy-accent focus:ring-1 focus:ring-canopy-accent/30 transition-all placeholder:text-canopy-text/40"
+                        className="w-full bg-canopy-bg border border-canopy-border rounded px-3 py-2 text-sm text-canopy-text font-mono focus:outline-none focus:border-canopy-accent focus:ring-1 focus:ring-canopy-accent/30 transition-all placeholder:text-text-muted"
                         placeholder="npm run dev"
                         spellCheck={false}
                         autoCapitalize="off"
@@ -1078,7 +1078,7 @@ export function ProjectSettingsDialog({ projectId, isOpen, onClose }: ProjectSet
                               setDevServerLoadTimeout(num);
                             }
                           }}
-                          className="w-28 bg-canopy-bg border border-canopy-border rounded px-3 py-2 text-sm text-canopy-text font-mono focus:outline-none focus:border-canopy-accent focus:ring-1 focus:ring-canopy-accent/30 transition-all placeholder:text-canopy-text/40"
+                          className="w-28 bg-canopy-bg border border-canopy-border rounded px-3 py-2 text-sm text-canopy-text font-mono focus:outline-none focus:border-canopy-accent focus:ring-1 focus:ring-canopy-accent/30 transition-all placeholder:text-text-muted"
                           placeholder="30"
                           aria-label="Dev server load timeout in seconds"
                         />
@@ -1206,7 +1206,7 @@ export function ProjectSettingsDialog({ projectId, isOpen, onClose }: ProjectSet
                           "w-full flex items-center justify-between p-4 rounded-[var(--radius-lg)] border transition-all focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-canopy-accent",
                           currentProject?.inRepoSettings
                             ? "bg-canopy-accent/10 border-canopy-accent text-canopy-accent"
-                            : "border-canopy-border hover:bg-white/5 text-canopy-text/70",
+                            : "border-canopy-border hover:bg-tint/5 text-canopy-text/70",
                           inRepoEnabling && "opacity-50 cursor-not-allowed"
                         )}
                       >
@@ -1287,7 +1287,7 @@ export function ProjectSettingsDialog({ projectId, isOpen, onClose }: ProjectSet
                               <button
                                 type="button"
                                 onClick={() => void handleCopyGitignore()}
-                                className="flex items-center gap-1 px-2 py-1 rounded text-xs text-canopy-text/60 hover:text-canopy-text hover:bg-white/5 transition-colors"
+                                className="flex items-center gap-1 px-2 py-1 rounded text-xs text-canopy-text/60 hover:text-canopy-text hover:bg-tint/5 transition-colors"
                                 aria-label="Copy .gitignore snippet"
                               >
                                 {gitignoreCopied ? (
@@ -2332,7 +2332,7 @@ export function ProjectSettingsDialog({ projectId, isOpen, onClose }: ProjectSet
                             type="text"
                             value={terminalShell}
                             onChange={(e) => setTerminalShell(e.target.value)}
-                            className="w-full bg-canopy-bg border border-canopy-border rounded px-3 py-2 text-sm text-canopy-text font-mono focus:outline-none focus:border-canopy-accent focus:ring-1 focus:ring-canopy-accent/30 transition-all placeholder:text-canopy-text/40"
+                            className="w-full bg-canopy-bg border border-canopy-border rounded px-3 py-2 text-sm text-canopy-text font-mono focus:outline-none focus:border-canopy-accent focus:ring-1 focus:ring-canopy-accent/30 transition-all placeholder:text-text-muted"
                             placeholder="/bin/zsh"
                             spellCheck={false}
                             autoComplete="off"
@@ -2352,7 +2352,7 @@ export function ProjectSettingsDialog({ projectId, isOpen, onClose }: ProjectSet
                             type="text"
                             value={terminalShellArgs}
                             onChange={(e) => setTerminalShellArgs(e.target.value)}
-                            className="w-full bg-canopy-bg border border-canopy-border rounded px-3 py-2 text-sm text-canopy-text font-mono focus:outline-none focus:border-canopy-accent focus:ring-1 focus:ring-canopy-accent/30 transition-all placeholder:text-canopy-text/40"
+                            className="w-full bg-canopy-bg border border-canopy-border rounded px-3 py-2 text-sm text-canopy-text font-mono focus:outline-none focus:border-canopy-accent focus:ring-1 focus:ring-canopy-accent/30 transition-all placeholder:text-text-muted"
                             placeholder="-l"
                             spellCheck={false}
                             autoComplete="off"
@@ -2371,7 +2371,7 @@ export function ProjectSettingsDialog({ projectId, isOpen, onClose }: ProjectSet
                             type="text"
                             value={terminalDefaultCwd}
                             onChange={(e) => setTerminalDefaultCwd(e.target.value)}
-                            className="w-full bg-canopy-bg border border-canopy-border rounded px-3 py-2 text-sm text-canopy-text font-mono focus:outline-none focus:border-canopy-accent focus:ring-1 focus:ring-canopy-accent/30 transition-all placeholder:text-canopy-text/40"
+                            className="w-full bg-canopy-bg border border-canopy-border rounded px-3 py-2 text-sm text-canopy-text font-mono focus:outline-none focus:border-canopy-accent focus:ring-1 focus:ring-canopy-accent/30 transition-all placeholder:text-text-muted"
                             placeholder="/path/to/working/directory"
                             spellCheck={false}
                             autoComplete="off"
@@ -2395,7 +2395,7 @@ export function ProjectSettingsDialog({ projectId, isOpen, onClose }: ProjectSet
                             max={SCROLLBACK_MAX}
                             value={terminalScrollback}
                             onChange={(e) => setTerminalScrollback(e.target.value)}
-                            className="w-28 bg-canopy-bg border border-canopy-border rounded px-3 py-2 text-sm text-canopy-text font-mono focus:outline-none focus:border-canopy-accent focus:ring-1 focus:ring-canopy-accent/30 transition-all placeholder:text-canopy-text/40"
+                            className="w-28 bg-canopy-bg border border-canopy-border rounded px-3 py-2 text-sm text-canopy-text font-mono focus:outline-none focus:border-canopy-accent focus:ring-1 focus:ring-canopy-accent/30 transition-all placeholder:text-text-muted"
                             placeholder="2500"
                           />
                           {terminalScrollback.trim() &&
@@ -2600,7 +2600,7 @@ export function ProjectSettingsDialog({ projectId, isOpen, onClose }: ProjectSet
                           onChange={(e) => setAgentInstructions(e.target.value)}
                           placeholder="e.g., Always use TypeScript strict mode. Follow our naming conventions..."
                           rows={8}
-                          className="w-full rounded-md border border-canopy-border bg-canopy-sidebar px-3 py-2 text-sm text-canopy-text placeholder:text-canopy-text/40 focus:outline-none focus:ring-2 focus:ring-canopy-accent resize-y font-mono"
+                          className="w-full rounded-md border border-canopy-border bg-canopy-sidebar px-3 py-2 text-sm text-canopy-text placeholder:text-text-muted focus:outline-none focus:ring-2 focus:ring-canopy-accent resize-y font-mono"
                         />
                         <div className="flex items-center justify-between mt-1.5">
                           <p className="text-xs text-canopy-text/40">

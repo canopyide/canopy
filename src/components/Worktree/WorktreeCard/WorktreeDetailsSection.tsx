@@ -53,7 +53,7 @@ export function WorktreeDetailsSection({
   return (
     <div
       id={detailsId}
-      className="mt-3 p-3 bg-white/[0.01] rounded-[var(--radius-lg)] border border-white/5"
+      className="mt-3 p-3 bg-overlay-subtle rounded-[var(--radius-lg)] border border-border-subtle"
     >
       {isExpanded ? (
         <div className="-m-3">
@@ -61,7 +61,7 @@ export function WorktreeDetailsSection({
             onClick={onToggleExpand}
             aria-expanded={true}
             aria-controls={detailsPanelId}
-            className="w-full px-3 py-2.5 flex items-center justify-between text-left border-b border-white/5 transition-colors bg-overlay-soft hover:bg-white/[0.05] focus-visible:outline focus-visible:outline-2 focus-visible:outline-canopy-accent focus-visible:outline-offset-[-2px] rounded-t-[var(--radius-lg)]"
+            className="w-full px-3 py-2.5 flex items-center justify-between text-left border-b border-border-subtle transition-colors bg-overlay-soft hover:bg-overlay-medium focus-visible:outline focus-visible:outline-2 focus-visible:outline-canopy-accent focus-visible:outline-offset-[-2px] rounded-t-[var(--radius-lg)]"
             id={`${detailsId}-button`}
           >
             <span className="text-xs text-canopy-text/50 font-medium">Details</span>
@@ -97,7 +97,7 @@ export function WorktreeDetailsSection({
             aria-expanded={false}
             aria-controls={detailsPanelId}
             className={cn(
-              "flex-1 px-3 py-2.5 flex items-center justify-between min-w-0 text-left transition-colors hover:bg-white/5",
+              "flex-1 px-3 py-2.5 flex items-center justify-between min-w-0 text-left transition-colors hover:bg-tint/5",
               "focus-visible:outline focus-visible:outline-2 focus-visible:outline-canopy-accent focus-visible:outline-offset-[-2px]",
               onOpenReviewHub && hasChanges
                 ? "rounded-l-[var(--radius-lg)]"
@@ -182,7 +182,7 @@ export function WorktreeDetailsSection({
                   <button
                     onClick={onOpenReviewHub}
                     className={cn(
-                      "px-2 py-1 border-l border-white/5 transition-colors shrink-0",
+                      "px-2 py-1 border-l border-border-subtle transition-colors shrink-0",
                       "text-[var(--color-state-active)]/70 hover:text-[var(--color-state-active)] hover:bg-[var(--color-state-active)]/10",
                       "rounded-r-[var(--radius-lg)]",
                       "focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-canopy-accent"

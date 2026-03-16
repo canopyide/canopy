@@ -107,7 +107,7 @@ export function UpdateNotification() {
               <div className="text-xs text-canopy-text/90 leading-snug">
                 {Math.round(progress)}% complete
               </div>
-              <div className="h-1 w-full rounded-full bg-white/10 overflow-hidden">
+              <div className="h-1 w-full rounded-full bg-tint/10 overflow-hidden">
                 <div
                   className="h-full rounded-full bg-canopy-accent transition-[width] duration-300 ease-out"
                   style={{ width: `${progress}%` }}
@@ -161,7 +161,7 @@ export function UpdateNotification() {
               "absolute right-1.5 top-1.5 rounded-[var(--radius-xs)]",
               "h-6 w-6 flex items-center justify-center",
               "text-canopy-text/60 transition-colors",
-              "hover:text-canopy-text/90 hover:bg-white/10",
+              "hover:text-canopy-text/90 hover:bg-tint/10",
               "focus-visible:outline focus-visible:outline-2 focus-visible:outline-canopy-accent focus-visible:outline-offset-2"
             )}
           >

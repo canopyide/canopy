@@ -403,7 +403,7 @@ export function ReviewHub({ isOpen, worktreePath, onClose }: ReviewHubProps) {
               {status?.currentBranch && (
                 <span
                   title={status.currentBranch}
-                  className="inline-flex items-center gap-1 px-1.5 py-0.5 rounded bg-white/[0.07] border border-white/[0.08] text-[11px] text-canopy-text/60 font-mono truncate max-w-[200px]"
+                  className="inline-flex items-center gap-1 px-1.5 py-0.5 rounded bg-tint/[0.07] border border-tint/[0.08] text-[11px] text-canopy-text/60 font-mono truncate max-w-[200px]"
                 >
                   <GitBranch className="w-3 h-3 shrink-0" />
                   <span className="truncate">{status.currentBranch}</span>
@@ -415,8 +415,8 @@ export function ReviewHub({ isOpen, worktreePath, onClose }: ReviewHubProps) {
                   onClick={() => void githubClient.openPR(worktreePR.prUrl as string)}
                   className={cn(
                     "inline-flex items-center gap-1 px-1.5 py-0.5 rounded text-[11px] font-mono",
-                    "bg-white/[0.07] border border-white/[0.08]",
-                    "hover:bg-white/[0.12] transition-colors cursor-pointer",
+                    "bg-tint/[0.07] border border-tint/[0.08]",
+                    "hover:bg-tint/[0.12] transition-colors cursor-pointer",
                     "focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-canopy-accent"
                   )}
                   aria-label={`Open pull request #${worktreePR.prNumber} on GitHub`}
@@ -453,7 +453,7 @@ export function ReviewHub({ isOpen, worktreePath, onClose }: ReviewHubProps) {
                 </button>
               )}
               {status?.hasRemote && !worktreePR && (
-                <span className="inline-flex items-center gap-1 px-1.5 py-0.5 rounded bg-white/[0.07] border border-white/[0.08] text-[11px] text-canopy-text/40">
+                <span className="inline-flex items-center gap-1 px-1.5 py-0.5 rounded bg-tint/[0.07] border border-tint/[0.08] text-[11px] text-canopy-text/40">
                   <GitPullRequest className="w-3 h-3 shrink-0" />
                   <span>No PR</span>
                 </span>
@@ -462,7 +462,7 @@ export function ReviewHub({ isOpen, worktreePath, onClose }: ReviewHubProps) {
             <div className="flex items-center gap-2 shrink-0">
               {/* Diff mode toggle */}
               <div
-                className="flex items-center rounded border border-white/[0.08] overflow-hidden text-[11px]"
+                className="flex items-center rounded border border-tint/[0.08] overflow-hidden text-[11px]"
                 role="group"
                 aria-label="Diff mode"
                 data-testid="review-hub-diff-mode"
@@ -473,8 +473,8 @@ export function ReviewHub({ isOpen, worktreePath, onClose }: ReviewHubProps) {
                     "px-2 py-1 transition-colors",
                     "focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-canopy-accent",
                     diffMode === "working-tree"
-                      ? "bg-white/[0.12] text-canopy-text"
-                      : "text-canopy-text/50 hover:text-canopy-text hover:bg-white/[0.06]"
+                      ? "bg-tint/[0.12] text-canopy-text"
+                      : "text-canopy-text/50 hover:text-canopy-text hover:bg-tint/[0.06]"
                   )}
                   aria-pressed={diffMode === "working-tree"}
                 >
@@ -484,12 +484,12 @@ export function ReviewHub({ isOpen, worktreePath, onClose }: ReviewHubProps) {
                   onClick={() => handleDiffModeChange("base-branch")}
                   disabled={!status?.currentBranch}
                   className={cn(
-                    "px-2 py-1 transition-colors border-l border-white/[0.08]",
+                    "px-2 py-1 transition-colors border-l border-tint/[0.08]",
                     "focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-canopy-accent",
                     "disabled:opacity-40 disabled:cursor-not-allowed",
                     diffMode === "base-branch"
-                      ? "bg-white/[0.12] text-canopy-text"
-                      : "text-canopy-text/50 hover:text-canopy-text hover:bg-white/[0.06]"
+                      ? "bg-tint/[0.12] text-canopy-text"
+                      : "text-canopy-text/50 hover:text-canopy-text hover:bg-tint/[0.06]"
                   )}
                   aria-pressed={diffMode === "base-branch"}
                 >
@@ -503,7 +503,7 @@ export function ReviewHub({ isOpen, worktreePath, onClose }: ReviewHubProps) {
                   disabled={loading}
                   className={cn(
                     "p-1.5 rounded transition-colors",
-                    "text-canopy-text/60 hover:text-canopy-text hover:bg-white/[0.06]",
+                    "text-canopy-text/60 hover:text-canopy-text hover:bg-tint/[0.06]",
                     "focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-canopy-accent"
                   )}
                   aria-label="Refresh"
@@ -521,7 +521,7 @@ export function ReviewHub({ isOpen, worktreePath, onClose }: ReviewHubProps) {
                 onClick={onClose}
                 className={cn(
                   "p-1.5 rounded transition-colors",
-                  "text-canopy-text/60 hover:text-canopy-text hover:bg-white/[0.06]",
+                  "text-canopy-text/60 hover:text-canopy-text hover:bg-tint/[0.06]",
                   "focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-canopy-accent"
                 )}
                 aria-label="Close"
@@ -576,7 +576,7 @@ export function ReviewHub({ isOpen, worktreePath, onClose }: ReviewHubProps) {
                   <div className="flex items-center justify-between px-4 py-2 bg-overlay-subtle border-b border-divider">
                     <span className="text-[11px] font-semibold uppercase tracking-wider text-canopy-text/60">
                       Changed vs {mainBranch}
-                      <span className="ml-1.5 tabular-nums bg-white/10 rounded px-1 py-0.5 text-[10px] font-medium normal-case tracking-normal">
+                      <span className="ml-1.5 tabular-nums bg-tint/10 rounded px-1 py-0.5 text-[10px] font-medium normal-case tracking-normal">
                         {baseBranchFiles.length}
                       </span>
                     </span>
@@ -590,7 +590,7 @@ export function ReviewHub({ isOpen, worktreePath, onClose }: ReviewHubProps) {
                           onClick={() => setSelectedBaseBranchFile(file)}
                           className={cn(
                             "w-full flex items-center gap-2 px-2 py-1.5 rounded text-left text-xs",
-                            "hover:bg-white/[0.05] transition-colors",
+                            "hover:bg-tint/[0.05] transition-colors",
                             "focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-canopy-accent"
                           )}
                         >
@@ -660,7 +660,7 @@ export function ReviewHub({ isOpen, worktreePath, onClose }: ReviewHubProps) {
                       <div className="flex items-center justify-between px-4 py-2 bg-overlay-subtle">
                         <span className="text-[11px] font-semibold uppercase tracking-wider text-canopy-text/60">
                           Staged
-                          <span className="ml-1.5 tabular-nums bg-white/10 rounded px-1 py-0.5 text-[10px] font-medium normal-case tracking-normal">
+                          <span className="ml-1.5 tabular-nums bg-tint/10 rounded px-1 py-0.5 text-[10px] font-medium normal-case tracking-normal">
                             {status.staged.length}
                           </span>
                         </span>
@@ -700,7 +700,7 @@ export function ReviewHub({ isOpen, worktreePath, onClose }: ReviewHubProps) {
                       <div className="flex items-center justify-between px-4 py-2 bg-overlay-subtle">
                         <span className="text-[11px] font-semibold uppercase tracking-wider text-canopy-text/60">
                           Changes
-                          <span className="ml-1.5 tabular-nums bg-white/10 rounded px-1 py-0.5 text-[10px] font-medium normal-case tracking-normal">
+                          <span className="ml-1.5 tabular-nums bg-tint/10 rounded px-1 py-0.5 text-[10px] font-medium normal-case tracking-normal">
                             {status.unstaged.length}
                           </span>
                         </span>

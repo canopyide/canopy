@@ -172,7 +172,7 @@ export function NotificationCenter({ open, onClose }: NotificationCenterProps) {
             </span>
           </div>
         ) : (
-          <div className="divide-y divide-white/[0.04]">
+          <div className="divide-y divide-tint/[0.04]">
             {groups.map((group) =>
               group.correlationId && group.entries.length > 1 ? (
                 <NotificationThread

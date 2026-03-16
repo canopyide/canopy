@@ -409,8 +409,8 @@ export function WorktreeCard({
         variant === "grid" && "rounded-lg border border-divider bg-canopy-sidebar/50",
         isActive
           ? variant === "sidebar"
-            ? "bg-overlay-medium shadow-[inset_0_1px_0_0_rgba(255,255,255,0.05)]"
-            : "bg-overlay-medium shadow-[inset_0_1px_0_0_rgba(255,255,255,0.05)]"
+            ? "bg-overlay-medium shadow-[inset_0_1px_0_0_var(--color-overlay-strong)]"
+            : "bg-overlay-medium shadow-[inset_0_1px_0_0_var(--color-overlay-strong)]"
           : "hover:bg-overlay-subtle",
         variant === "sidebar" && !isActive && "bg-transparent",
         isActive &&

@@ -47,7 +47,7 @@ function PropertyTree({
   const visibleProps = properties.filter((p) => p.enumerable !== false && p.name !== "__proto__");
 
   return (
-    <div className="pl-3 border-l border-white/10">
+    <div className="pl-3 border-l border-tint/10">
       {visibleProps.map((prop) => (
         <div key={prop.name} className="flex items-start gap-1">
           <span className="text-text-secondary shrink-0">{prop.name}</span>
@@ -146,7 +146,7 @@ export function ObjectInspector({
         type="button"
         onClick={() => void handleExpand()}
         className={cn(
-          "inline text-left hover:bg-white/5 rounded px-0.5 -mx-0.5 transition-colors",
+          "inline text-left hover:bg-tint/5 rounded px-0.5 -mx-0.5 transition-colors",
           isExpanded ? "text-canopy-text/90" : "text-canopy-text/70"
         )}
       >

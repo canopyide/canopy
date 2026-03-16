@@ -186,8 +186,8 @@ export function ProjectSwitcher() {
                 className={cn(
                   "relative w-full justify-between h-12 px-2.5",
                   "rounded-[var(--radius-lg)]",
-                  "border border-white/[0.06]",
-                  "bg-overlay-subtle shadow-[inset_0_1px_0_rgba(255,255,255,0.03)]",
+                  "border border-tint/[0.06]",
+                  "bg-overlay-subtle shadow-[inset_0_1px_0_var(--color-overlay-soft)]",
                   "hover:bg-overlay-medium transition-colors",
                   "active:scale-100"
                 )}

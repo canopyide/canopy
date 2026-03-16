@@ -2097,9 +2097,9 @@ export const HybridInputBar = forwardRef<HybridInputBarHandle, HybridInputBarPro
             ref={inputShellRef}
             className={cn(
               "group/shell relative",
-              "flex w-full items-center gap-1.5 rounded-sm border border-white/[0.06] bg-overlay-soft py-1 shadow-[0_6px_12px_rgba(0,0,0,0.18)] transition-colors",
-              "group-hover:border-white/[0.08] group-hover:bg-overlay-medium",
-              "focus-within:border-white/[0.12] focus-within:ring-1 focus-within:ring-white/[0.06] focus-within:bg-white/[0.05]",
+              "flex w-full items-center gap-1.5 rounded-sm border border-border-subtle bg-overlay-soft py-1 shadow-[0_6px_12px_rgba(0,0,0,0.18)] transition-colors",
+              "group-hover:border-border-default group-hover:bg-overlay-medium",
+              "focus-within:border-border-strong focus-within:ring-1 focus-within:ring-overlay-emphasis focus-within:bg-overlay-soft",
               isVoiceActiveForPanel &&
                 "border-canopy-accent/60 bg-canopy-accent/[0.12] shadow-[0_0_0_1px_rgba(var(--theme-accent-rgb),0.35),0_0_16px_rgba(var(--theme-accent-rgb),0.15)]",
               isDragOverFiles && "border-canopy-accent/60 ring-1 ring-canopy-accent/30",
@@ -2168,7 +2168,7 @@ export const HybridInputBar = forwardRef<HybridInputBarHandle, HybridInputBarPro
                 <button
                   type="button"
                   onClick={handlePopStash}
-                  className="flex items-center justify-center h-5 w-5 rounded-sm text-canopy-accent/70 hover:text-canopy-accent hover:bg-white/[0.06] transition-colors cursor-pointer"
+                  className="flex items-center justify-center h-5 w-5 rounded-sm text-canopy-accent/70 hover:text-canopy-accent hover:bg-tint/[0.06] transition-colors cursor-pointer"
                   aria-label="Restore stashed input"
                   title="Restore stashed input (⌘⇧X)"
                 >

@@ -231,7 +231,7 @@ function EmptyState({
                 // Defense-in-depth: sanitize SVG at render time
                 const sanitized = sanitizeSvg(projectIconSvg);
                 if (!sanitized.ok) {
-                  return <CanopyIcon className="h-28 w-28 text-white/80" />;
+                  return <CanopyIcon className="h-28 w-28 text-tint/80" />;
                 }
                 return (
                   <img
@@ -242,7 +242,7 @@ function EmptyState({
                 );
               })()
             ) : (
-              <CanopyIcon className="h-28 w-28 text-white/80" />
+              <CanopyIcon className="h-28 w-28 text-tint/80" />
             )}
             {hasActiveWorktree && (
               <button
@@ -341,7 +341,7 @@ function EmptyState({
                   type="button"
                   onClick={handleExplainProject}
                   disabled={!defaultCwd}
-                  className="flex items-center gap-1.5 px-2.5 py-1.5 rounded-md hover:bg-white/5 transition-colors group disabled:opacity-50 disabled:cursor-not-allowed focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-canopy-accent/50"
+                  className="flex items-center gap-1.5 px-2.5 py-1.5 rounded-md hover:bg-tint/5 transition-colors group disabled:opacity-50 disabled:cursor-not-allowed focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-canopy-accent/50"
                 >
                   <BookOpen className="h-3.5 w-3.5 text-canopy-text/50 group-hover:text-canopy-text/70 transition-colors" />
                   <span className="text-xs text-canopy-text/50 group-hover:text-canopy-text/70 transition-colors">
@@ -358,7 +358,7 @@ function EmptyState({
                   onClick={handleWhatsNext}
                   disabled={!defaultCwd || isLaunchingWhatsNext}
                   aria-busy={isLaunchingWhatsNext}
-                  className="flex items-center gap-1.5 px-2.5 py-1.5 rounded-md hover:bg-white/5 transition-colors group disabled:opacity-50 disabled:cursor-not-allowed focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-canopy-accent/50"
+                  className="flex items-center gap-1.5 px-2.5 py-1.5 rounded-md hover:bg-tint/5 transition-colors group disabled:opacity-50 disabled:cursor-not-allowed focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-canopy-accent/50"
                 >
                   <Sparkles
                     className={cn(
@@ -378,7 +378,7 @@ function EmptyState({
                 <button
                   type="button"
                   onClick={handleOpenHelp}
-                  className="flex items-center gap-1.5 px-2.5 py-1.5 rounded-md hover:bg-white/5 transition-colors group focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-canopy-accent/50"
+                  className="flex items-center gap-1.5 px-2.5 py-1.5 rounded-md hover:bg-tint/5 transition-colors group focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-canopy-accent/50"
                 >
                   <div className="w-0 h-0 border-t-[2.5px] border-t-transparent border-l-[5px] border-l-canopy-text/50 border-b-[2.5px] border-b-transparent group-hover:border-l-canopy-text/70 transition-colors" />
                   <span className="text-xs text-canopy-text/50 group-hover:text-canopy-text/70 transition-colors">
@@ -393,7 +393,7 @@ function EmptyState({
             <button
               type="button"
               onClick={handleOpenHelp}
-              className="flex items-center gap-1.5 px-2.5 py-1.5 rounded-md hover:bg-white/5 transition-colors group focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-canopy-accent/50"
+              className="flex items-center gap-1.5 px-2.5 py-1.5 rounded-md hover:bg-tint/5 transition-colors group focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-canopy-accent/50"
             >
               <div className="w-0 h-0 border-t-[2.5px] border-t-transparent border-l-[5px] border-l-canopy-text/50 border-b-[2.5px] border-b-transparent group-hover:border-l-canopy-text/70 transition-colors" />
               <span className="text-xs text-canopy-text/50 group-hover:text-canopy-text/70 transition-colors">

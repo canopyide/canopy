@@ -341,7 +341,7 @@ export function ToolbarSettingsTab() {
           onClick={reset}
           className={cn(
             "flex items-center gap-1.5 px-3 py-1.5 text-sm rounded-[var(--radius-md)] border border-canopy-border",
-            "text-canopy-text/60 hover:text-canopy-text hover:bg-white/5 transition-colors"
+            "text-canopy-text/60 hover:text-canopy-text hover:bg-tint/5 transition-colors"
           )}
         >
           <RotateCcw className="w-3.5 h-3.5" />

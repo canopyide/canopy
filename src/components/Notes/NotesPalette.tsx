@@ -905,7 +905,7 @@ export function NotesPalette({ isOpen, onClose }: NotesPaletteProps) {
                       <button
                         type="button"
                         onClick={handleClose}
-                        className="p-1 rounded-[var(--radius-sm)] text-canopy-text/50 hover:text-canopy-text hover:bg-white/5 transition-colors"
+                        className="p-1 rounded-[var(--radius-sm)] text-canopy-text/50 hover:text-canopy-text hover:bg-tint/5 transition-colors"
                         aria-label="Close"
                       >
                         <X size={16} />

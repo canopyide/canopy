@@ -45,7 +45,7 @@ export function RunCard({ run, onCancel }: RunCardProps) {
           {run.status === "running" && onCancel && (
             <button
               onClick={() => onCancel(run.runId)}
-              className="p-0.5 rounded hover:bg-white/[0.06] text-text-muted hover:text-canopy-text transition-colors"
+              className="p-0.5 rounded hover:bg-tint/[0.06] text-text-muted hover:text-canopy-text transition-colors"
               aria-label="Cancel workflow run"
             >
               <X className="w-3 h-3" />

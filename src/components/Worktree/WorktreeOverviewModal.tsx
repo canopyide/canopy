@@ -353,8 +353,8 @@ export function WorktreeOverviewModal({
                         "flex items-center gap-1.5 px-2 py-1 rounded-full text-xs transition-colors",
                         "focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-canopy-accent",
                         hideMainWorktree
-                          ? "bg-white/[0.06] text-canopy-text/40 hover:text-canopy-text/60"
-                          : "bg-white/[0.10] text-canopy-text/70 hover:text-canopy-text/90"
+                          ? "bg-tint/[0.06] text-canopy-text/40 hover:text-canopy-text/60"
+                          : "bg-tint/[0.10] text-canopy-text/70 hover:text-canopy-text/90"
                       )}
                     >
                       <House
@@ -391,7 +391,7 @@ export function WorktreeOverviewModal({
                       className={cn(
                         "flex items-center gap-1.5 px-2 py-1.5 rounded text-xs",
                         "text-canopy-text/60 hover:text-canopy-text",
-                        "hover:bg-white/[0.06]",
+                        "hover:bg-tint/[0.06]",
                         "transition-colors",
                         "focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-canopy-accent"
                       )}
@@ -412,7 +412,7 @@ export function WorktreeOverviewModal({
               className={cn(
                 "p-2 rounded-lg transition-colors",
                 "text-canopy-text/60 hover:text-canopy-text",
-                "hover:bg-white/[0.06]",
+                "hover:bg-tint/[0.06]",
                 "focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-canopy-accent"
               )}
               aria-label="Close overview"
@@ -552,7 +552,7 @@ export function WorktreeOverviewModal({
         <div className="px-6 py-3 border-t border-divider shrink-0">
           <div className="flex items-center justify-center gap-4 text-xs text-canopy-text/40">
             <span>
-              <kbd className="px-1.5 py-0.5 bg-white/[0.06] rounded text-[10px]">Esc</kbd> to close
+              <kbd className="px-1.5 py-0.5 bg-tint/[0.06] rounded text-[10px]">Esc</kbd> to close
             </span>
             <span>Click a worktree to switch</span>
           </div>

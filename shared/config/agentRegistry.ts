@@ -463,7 +463,7 @@ export const AGENT_REGISTRY: Record<string, AgentConfig> = {
     id: "codex",
     name: "Codex",
     command: "codex",
-    color: "#e4e4e7",
+    color: "#10a37f",
     iconId: "codex",
     supportsContextInjection: true,
     shortcut: "Cmd/Ctrl+Alt+X",

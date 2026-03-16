@@ -463,7 +463,7 @@ function SidebarContent({ onOpenOverview }: SidebarContentProps) {
           <div className="text-[var(--color-status-error)] text-sm mb-2">{error}</div>
           <button
             onClick={refresh}
-            className="text-xs px-2 py-1 border border-divider rounded hover:bg-white/[0.06] text-canopy-text"
+            className="text-xs px-2 py-1 border border-divider rounded hover:bg-tint/[0.06] text-canopy-text"
           >
             Retry
           </button>
@@ -486,7 +486,7 @@ function SidebarContent({ onOpenOverview }: SidebarContentProps) {
 
           <p className="text-sm text-canopy-text/60 mb-4 max-w-xs">
             Open a Git repository with worktrees to get started. Use{" "}
-            <kbd className="px-1.5 py-0.5 bg-white/[0.06] rounded text-xs">
+            <kbd className="px-1.5 py-0.5 bg-tint/[0.06] rounded text-xs">
               File → Open Directory
             </kbd>
           </p>
@@ -557,7 +557,7 @@ function SidebarContent({ onOpenOverview }: SidebarContentProps) {
           <div className="invisible group-hover/header:visible group-focus-within/header:visible flex items-center gap-1">
             <button
               onClick={onOpenOverview}
-              className="p-1 text-canopy-text/40 hover:text-canopy-text hover:bg-white/[0.06] rounded transition-colors"
+              className="p-1 text-canopy-text/40 hover:text-canopy-text hover:bg-tint/[0.06] rounded transition-colors"
               title={createTooltipWithShortcut("Open worktrees overview", "Cmd+Shift+O")}
               aria-label="Open worktrees overview"
             >
@@ -566,7 +566,7 @@ function SidebarContent({ onOpenOverview }: SidebarContentProps) {
             <button
               onClick={handleRefreshAll}
               disabled={isRefreshing}
-              className="p-1 text-canopy-text/40 hover:text-canopy-text hover:bg-white/[0.06] rounded transition-colors disabled:opacity-40 disabled:cursor-not-allowed"
+              className="p-1 text-canopy-text/40 hover:text-canopy-text hover:bg-tint/[0.06] rounded transition-colors disabled:opacity-40 disabled:cursor-not-allowed"
               title="Refresh sidebar"
               aria-label="Refresh sidebar"
             >
@@ -579,7 +579,7 @@ function SidebarContent({ onOpenOverview }: SidebarContentProps) {
                 source: "user",
               })
             }
-            className="p-1 text-canopy-text/40 hover:text-canopy-text hover:bg-white/[0.06] rounded transition-colors"
+            className="p-1 text-canopy-text/40 hover:text-canopy-text hover:bg-tint/[0.06] rounded transition-colors"
             title="Create new worktree"
             aria-label="Create new worktree"
           >

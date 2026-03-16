@@ -114,7 +114,7 @@ export function WorktreeDetails({
         <>
           {/* Time Display for Expanded View */}
           {showTime && lastActivityTimestamp && (
-            <div className="flex items-center gap-2 pb-2 border-b border-white/5">
+            <div className="flex items-center gap-2 pb-2 border-b border-tint/5">
               <div className="flex items-center gap-1.5 text-xs text-canopy-text/50">
                 <span className="text-xs font-medium">Last active:</span>
                 <ActivityLight lastActivityTimestamp={lastActivityTimestamp} />
@@ -202,7 +202,7 @@ export function WorktreeDetails({
       )}
 
       {/* System path footer */}
-      <div className="pt-3 border-t border-white/5">
+      <div className="pt-3 border-t border-tint/5">
         <div className="flex items-center gap-2">
           <TooltipProvider>
             <Tooltip>
@@ -233,7 +233,7 @@ export function WorktreeDetails({
                 <button
                   type="button"
                   onClick={handleCopyPath}
-                  className="shrink-0 p-1 text-canopy-text/40 hover:text-canopy-text/60 hover:bg-white/5 rounded transition-colors focus-visible:outline focus-visible:outline-2 focus-visible:outline-canopy-accent"
+                  className="shrink-0 p-1 text-canopy-text/40 hover:text-canopy-text/60 hover:bg-tint/5 rounded transition-colors focus-visible:outline focus-visible:outline-2 focus-visible:outline-canopy-accent"
                   aria-label={pathCopied ? "Path copied to clipboard" : "Copy path to clipboard"}
                 >
                   {pathCopied ? (

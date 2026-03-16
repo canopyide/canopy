@@ -440,7 +440,7 @@ export function GeneralTab({
                           "px-3 py-1.5 rounded-[var(--radius-md)] text-xs font-medium transition-all",
                           hibernationConfig.inactiveThresholdHours === value
                             ? "bg-canopy-accent/10 border border-canopy-accent text-canopy-accent"
-                            : "border border-canopy-border hover:bg-white/5 text-canopy-text/70"
+                            : "border border-canopy-border hover:bg-tint/5 text-canopy-text/70"
                         )}
                       >
                         {label}
