@@ -666,6 +666,9 @@ export const AGENT_REGISTRY: Record<string, AgentConfig> = {
       softNewlineSequence: "\n",
       ignoredInputSequences: ["\n", "\x1b\r"],
     },
+    env: {
+      COLORFGBG: "15;0",
+    },
     detection: {
       primaryPatterns: [
         "[⠋⠙⠹⠸⠼⠴⠦⠧⠇⠏]\\s+[^\\n]{2,80}\\s*\\(.*esc",

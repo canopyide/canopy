@@ -406,6 +406,13 @@ describe("AgentDomainWeightsSchema", () => {
   });
 });
 
+describe("opencode TUI environment", () => {
+  it("sets COLORFGBG to bypass termenv OSC 11 background color query", () => {
+    const config = getAgentConfig("opencode");
+    expect(config?.env?.COLORFGBG).toBe("15;0");
+  });
+});
+
 describe("blockAltScreen capabilities", () => {
   it("opencode allows alt screen for Bubble Tea TUI", () => {
     const config = getAgentConfig("opencode");
