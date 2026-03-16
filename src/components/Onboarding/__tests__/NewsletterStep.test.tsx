@@ -1,6 +1,5 @@
 // @vitest-environment jsdom
-import { render, screen } from "@testing-library/react";
-import userEvent from "@testing-library/user-event";
+import { render, screen, fireEvent } from "@testing-library/react";
 import { describe, expect, it, vi, beforeEach } from "vitest";
 import { NewsletterStep } from "../NewsletterStep";
 
@@ -22,37 +21,39 @@ describe("NewsletterStep", () => {
 
   it("renders the email input and subscribe button", () => {
     render(<NewsletterStep onDismiss={onDismiss} />);
-    expect(screen.getByLabelText("Email address")).toBeInTheDocument();
-    expect(screen.getByRole("button", { name: "Subscribe" })).toBeInTheDocument();
+    expect(screen.getByLabelText("Email address")).toBeTruthy();
+    expect(screen.getByRole("button", { name: "Subscribe" })).toBeTruthy();
   });
 
   it("disables Subscribe button when email is empty", () => {
     render(<NewsletterStep onDismiss={onDismiss} />);
-    expect(screen.getByRole("button", { name: "Subscribe" })).toBeDisabled();
+    expect(screen.getByRole("button", { name: "Subscribe" })).toHaveProperty("disabled", true);
   });
 
-  it("disables Subscribe button for whitespace-only input", async () => {
-    const user = userEvent.setup();
+  it("disables Subscribe button for whitespace-only input", () => {
     render(<NewsletterStep onDismiss={onDismiss} />);
-    await user.type(screen.getByLabelText("Email address"), "   ");
-    expect(screen.getByRole("button", { name: "Subscribe" })).toBeDisabled();
+    fireEvent.change(screen.getByLabelText("Email address"), { target: { value: "   " } });
+    expect(screen.getByRole("button", { name: "Subscribe" })).toHaveProperty("disabled", true);
   });
 
-  it("enables Subscribe button after typing a valid email", async () => {
-    const user = userEvent.setup();
+  it("enables Subscribe button after typing a valid email", () => {
     render(<NewsletterStep onDismiss={onDismiss} />);
-    await user.type(screen.getByLabelText("Email address"), "test@example.com");
-    expect(screen.getByRole("button", { name: "Subscribe" })).toBeEnabled();
+    fireEvent.change(screen.getByLabelText("Email address"), {
+      target: { value: "test@example.com" },
+    });
+    expect(screen.getByRole("button", { name: "Subscribe" })).toHaveProperty("disabled", false);
   });
 
-  it("calls openExternal with correct MailerLite URL and onDismiss(true) on subscribe", async () => {
-    const user = userEvent.setup();
+  it("calls openExternal with correct MailerLite URL and onDismiss(true) on subscribe", () => {
     render(<NewsletterStep onDismiss={onDismiss} />);
-    await user.type(screen.getByLabelText("Email address"), "test@example.com");
-    await user.click(screen.getByRole("button", { name: "Subscribe" }));
+    fireEvent.change(screen.getByLabelText("Email address"), {
+      target: { value: "test@example.com" },
+    });
+    fireEvent.click(screen.getByRole("button", { name: "Subscribe" }));
 
     expect(openExternalMock).toHaveBeenCalledOnce();
-    const calledUrl = new URL(openExternalMock.mock.calls[0][0] as string);
+    const firstCall = openExternalMock.mock.calls[0] as unknown as [string];
+    const calledUrl = new URL(firstCall[0]);
     expect(calledUrl.origin + calledUrl.pathname).toBe(
       "https://assets.mailerlite.com/jsonp/1076771/forms/182133737563097046/subscribe"
     );
@@ -62,19 +63,17 @@ describe("NewsletterStep", () => {
     expect(onDismiss).toHaveBeenCalledWith(true);
   });
 
-  it("calls onDismiss(false) on 'No thanks' without calling openExternal", async () => {
-    const user = userEvent.setup();
+  it("calls onDismiss(false) on 'No thanks' without calling openExternal", () => {
     render(<NewsletterStep onDismiss={onDismiss} />);
-    await user.click(screen.getByRole("button", { name: "No thanks" }));
+    fireEvent.click(screen.getByRole("button", { name: "No thanks" }));
 
     expect(onDismiss).toHaveBeenCalledWith(false);
     expect(openExternalMock).not.toHaveBeenCalled();
   });
 
-  it("calls onDismiss(false) on dismiss X button without calling openExternal", async () => {
-    const user = userEvent.setup();
+  it("calls onDismiss(false) on dismiss X button without calling openExternal", () => {
     render(<NewsletterStep onDismiss={onDismiss} />);
-    await user.click(screen.getByLabelText("Dismiss"));
+    fireEvent.click(screen.getByLabelText("Dismiss"));
 
     expect(onDismiss).toHaveBeenCalledWith(false);
     expect(openExternalMock).not.toHaveBeenCalled();
