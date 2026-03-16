@@ -399,7 +399,7 @@ describe("PullRequestService", () => {
     // Advance 90s — first revalidation fires and throws
     await vi.advanceTimersByTimeAsync(90 * 1000);
     expect(revalidationCallCount).toBe(2);
-    expect(logWarnMock).toHaveBeenCalledWith("Revalidation unexpected error", {
+    expect(logWarnMock).toHaveBeenCalledWith("Revalidation check error", {
       error: "Revalidation kaboom",
     });
 
@@ -450,8 +450,9 @@ describe("PullRequestService", () => {
     // Advance past debounce timer (100ms) to trigger the throwing checkForPRs
     await vi.advanceTimersByTimeAsync(100);
     expect(callCount).toBe(2);
-    expect(logWarnMock).toHaveBeenCalledWith("Debounced PR check failed", {
+    expect(logWarnMock).toHaveBeenCalledWith("PR check failed", {
       error: "Debounce kaboom",
+      consecutiveErrors: 1,
     });
 
     pullRequestService.destroy();

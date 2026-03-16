@@ -266,9 +266,7 @@ class PullRequestService {
           this.consecutiveErrors = 0;
           this.nextRetryAt = 0;
           void this.checkForPRs()
-            .catch((err) =>
-              this.handleError(err instanceof Error ? err.message : String(err))
-            )
+            .catch((err) => this.handleError(err instanceof Error ? err.message : String(err)))
             .finally(() => this.scheduleNextPoll());
         }, delay);
       }
