@@ -1252,6 +1252,23 @@ export class TerminalProcess {
         this.ensureHeadlessResponder();
       }
 
+      // Respond to OSC 10/11 (foreground/background color queries) for agent terminals.
+      // xterm.js does not respond to these OSC queries, so there is no double-response
+      // risk with the frontend. Without this, termenv (used by Bubble Tea / OpenCode)
+      // blocks for 5 seconds PER query waiting for responses that never come.
+      if (this.isAgentTerminal && data.includes("\x1b]1")) {
+        try {
+          if (data.includes("\x1b]10;?")) {
+            terminal.ptyProcess.write("\x1b]10;rgb:cccc/cccc/cccc\x1b\\");
+          }
+          if (data.includes("\x1b]11;?")) {
+            terminal.ptyProcess.write("\x1b]11;rgb:0000/0000/0000\x1b\\");
+          }
+        } catch (error) {
+          this.logWriteError(error, { operation: "write(osc-color-response)" });
+        }
+      }
+
       terminal.headlessTerminal?.write(data);
       this.scheduleSessionPersist();
 
