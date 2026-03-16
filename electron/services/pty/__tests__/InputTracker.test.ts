@@ -62,8 +62,8 @@ describe("InputTracker", () => {
 
     it("exits bracketed paste after timeout", () => {
       tracker.process("\x1b[200~", 1000);
-      // Paste timeout is 5000ms
-      const result = tracker.process("x", 7000);
+      // Paste timeout is 5000ms — process input after timeout to trigger exit
+      tracker.process("x", 7000);
       // After timeout, paste mode exits
       expect(tracker.process("\r", 7001)).toEqual({ kind: "enter", hadText: true });
     });
