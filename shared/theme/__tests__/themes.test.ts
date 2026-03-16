@@ -691,7 +691,7 @@ describe("Hokkaido built-in scheme", () => {
   it.each([
     ["syntax-keyword", "#795293", 4.5],
     ["syntax-string", "#B94665", 4.5],
-    ["syntax-comment", "#5A7485", 4.5],
+    ["syntax-comment", "#526D7E", 4.5],
     ["syntax-number", "#2E5E82", 4.5],
     ["syntax-operator", "#006A71", 4.5],
     ["syntax-function", "#2D7A52", 4.5],
