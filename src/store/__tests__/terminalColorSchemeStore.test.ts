@@ -132,7 +132,10 @@ describe("terminalColorSchemeStore", () => {
       const store = useTerminalColorSchemeStore.getState();
       store.addCustomScheme(CUSTOM_SCHEME);
       store.setSelectedSchemeId("custom-test");
-      store.addCustomScheme({ ...CUSTOM_SCHEME, colors: { ...CUSTOM_SCHEME.colors, background: "#222222" } });
+      store.addCustomScheme({
+        ...CUSTOM_SCHEME,
+        colors: { ...CUSTOM_SCHEME.colors, background: "#222222" },
+      });
       const bg = selectWrapperBackground(useTerminalColorSchemeStore.getState());
       expect(bg).toBe("#222222");
     });
