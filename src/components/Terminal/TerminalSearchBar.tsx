@@ -230,6 +230,16 @@ export function TerminalSearchBar({ terminalId, onClose, className }: TerminalSe
         </span>
       )}
 
+      <span className="sr-only" role="status" aria-live="polite" aria-atomic="true">
+        {searchTerm && searchStatus !== "idle"
+          ? searchStatus === "found"
+            ? "Found"
+            : searchStatus === "none"
+              ? "No matches"
+              : "Invalid regex"
+          : ""}
+      </span>
+
       <TooltipProvider>
         <Tooltip>
           <TooltipTrigger asChild>
