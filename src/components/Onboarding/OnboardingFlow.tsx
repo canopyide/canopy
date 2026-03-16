@@ -242,10 +242,7 @@ export function OnboardingFlow({
 
   return (
     <>
-      <OnboardingProgressIndicator
-        currentIndex={currentStepIndex}
-        total={STEP_ORDER.length}
-      />
+      <OnboardingProgressIndicator currentIndex={currentStepIndex} total={STEP_ORDER.length} />
 
       {currentStep === "newsletter" && (
         <NewsletterStep ref={headingRef} onDismiss={handleNewsletterDismiss} />
