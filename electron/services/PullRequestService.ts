@@ -145,7 +145,11 @@ class PullRequestService {
 
       if (this.hasUnresolvedCandidates() && this.isEnabled) {
         logDebug("Running debounced PR check", { candidateCount: this.candidates.size });
-        void this.checkForPRs();
+        void this.checkForPRs().catch((err) =>
+          logWarn("Debounced PR check failed", {
+            error: err instanceof Error ? err.message : String(err),
+          })
+        );
 
         if (!this.pollTimer) {
           this.scheduleNextPoll();
@@ -261,7 +265,9 @@ class PullRequestService {
           logDebug("Circuit breaker recovery - running immediate check");
           this.consecutiveErrors = 0;
           this.nextRetryAt = 0;
-          void this.checkForPRs().then(() => this.scheduleNextPoll());
+          void this.checkForPRs()
+            .catch((err) => this.handleError(err instanceof Error ? err.message : String(err)))
+            .finally(() => this.scheduleNextPoll());
         }, delay);
       }
       return;
@@ -281,7 +287,9 @@ class PullRequestService {
 
     this.pollTimer = setTimeout(() => {
       this.pollTimer = null;
-      void this.checkForPRs().then(() => this.scheduleNextPoll());
+      void this.checkForPRs()
+        .catch((err) => this.handleError(err instanceof Error ? err.message : String(err)))
+        .finally(() => this.scheduleNextPoll());
     }, interval);
   }
 
@@ -316,7 +324,13 @@ class PullRequestService {
 
     this.revalidationTimer = setTimeout(() => {
       this.revalidationTimer = null;
-      void this.revalidateResolvedPRs().then(() => this.scheduleRevalidation());
+      void this.revalidateResolvedPRs()
+        .catch((err) =>
+          logWarn("Revalidation unexpected error", {
+            error: err instanceof Error ? err.message : String(err),
+          })
+        )
+        .finally(() => this.scheduleRevalidation());
     }, RESOLVED_REVALIDATION_INTERVAL_MS);
   }
 
