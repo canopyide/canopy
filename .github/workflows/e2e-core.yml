@@ -1,9 +1,6 @@
 name: E2E Core Tests
 
 on:
-  pull_request:
-    branches: [main, develop]
-    types: [labeled, synchronize]
   schedule:
     - cron: "0 3 * * *"
   workflow_dispatch:
@@ -37,10 +34,6 @@ env:
 jobs:
   # Determine which platforms to run on
   matrix-setup:
-    # Skip PR runs unless the 'run-e2e' label is present
-    if: >
-      github.event_name != 'pull_request' ||
-      contains(github.event.pull_request.labels.*.name, 'run-e2e')
     runs-on: ubuntu-22.04
     outputs:
       matrix: ${{ steps.set.outputs.matrix }}
@@ -49,10 +42,7 @@ jobs:
         run: |
           PLATFORM="${{ inputs.platform || 'all' }}"
 
-          # PRs run on Linux, macOS, and Windows
-          if [ "${{ github.event_name }}" = "pull_request" ]; then
-            echo 'matrix={"include":[{"os":"macos-14","name":"macOS"},{"os":"ubuntu-22.04","name":"Linux"},{"os":"windows-latest","name":"Windows"}]}' >> "$GITHUB_OUTPUT"
-          elif [ "$PLATFORM" = "macos" ]; then
+          if [ "$PLATFORM" = "macos" ]; then
             echo 'matrix={"include":[{"os":"macos-14","name":"macOS"}]}' >> "$GITHUB_OUTPUT"
           elif [ "$PLATFORM" = "linux" ]; then
             echo 'matrix={"include":[{"os":"ubuntu-22.04","name":"Linux"}]}' >> "$GITHUB_OUTPUT"
